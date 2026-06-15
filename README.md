@@ -1,26 +1,25 @@
-<h1 align="center"><a href="https://flowoss.com">Flow - Open Source Software (OSS)</a></h1>
+# Flow Reader
 
-<h2 align="center">Redefine ePub reader</h2>
-
-<p align="center">Free. Open source. Browser-based.</p>
-
-<p align="center"><img src="apps/website/public/screenshots/01.webp"/>
-
-</p>
+Local-first ePub reader based on Next.js and a vendored ePub.js package.
 
 ## Features
 
-- Grid layout
+- Grid reader layout
+- Local library import/export
 - Search in book
 - Image preview
 - Custom typography
-- Highlight and Annotation
-- Theme
-- Share/Download book with link
-- Data export
-- Cloud storage
+- Highlights and annotations
+- Theme settings
+- Open ePub files from local disk or URL
 
-For planed features, see our [roadmap](https://pacexy.notion.site/283696d0071c43bfb03652e8e5f47936?v=b43f4dd7a3cb4ce785d6c32b698a8ff5).
+## Project Structure
+
+- `src/` - Next.js reader application source
+- `locales/` - application translations
+- `public/` - static assets and install metadata
+- `packages/epubjs/` - vendored ePub rendering engine
+- `packages/tailwind/` - shared Tailwind preset
 
 ## Development
 
@@ -30,53 +29,27 @@ For planed features, see our [roadmap](https://pacexy.notion.site/283696d0071c43
 - [pnpm](https://pnpm.io/installation)
 - [Git](https://git-scm.com/downloads)
 
-### Clone the repo
+### Install
 
 ```bash
-git clone https://github.com/pacexy/flow
+pnpm install
 ```
 
-### Install the dependencies
-
-```bash
-pnpm i
-```
-
-### Setup the environment variables
-
-Copy and rename all `.env.local.example`s to `.env.local` and setup the environment variables.
-
-### Run the apps
+### Run
 
 ```bash
 pnpm dev
 ```
 
-## Self-hosting
+The reader starts at `http://localhost:7127`.
 
-Before self-hosting, you should [setup the environment variables](#setup-the-environment-variables).
+### Verify
 
-### Docker
-
-You can use docker-compose:
-
-```sh
-docker compose up -d
+```bash
+pnpm lint
+pnpm build
+pnpm --filter @flow/epubjs test
 ```
-
-Or build the image and run it manually:
-
-```sh
-docker build -t flow .
-docker run -p 3000:3000 --env-file apps/reader/.env.local flow
-```
-
-## Contributing
-
-There are many ways in which you can participate in this project, for example:
-
-- [Submit bugs and feature requests](https://github.com/pacexy/flow/issues/new), and help us verify as they are checked in
-- [Submit pull requests](https://github.com/pacexy/flow/pulls)
 
 ## Credits
 
@@ -84,5 +57,3 @@ There are many ways in which you can participate in this project, for example:
 - [React](https://github.com/facebook/react)
 - [Next.js](https://nextjs.org/)
 - [TypeScript](https://www.typescriptlang.org)
-- [Vercel](https://vercel.com)
-- [Turborepo](https://turbo.build/repo)

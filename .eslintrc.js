@@ -1,8 +1,7 @@
-const path = require('path')
-
 module.exports = {
   root: true,
   env: {
+    browser: true,
     node: true,
   },
   extends: [
@@ -13,12 +12,22 @@ module.exports = {
   ],
   settings: {
     next: {
-      rootDir: path.join(__dirname, 'apps/reader'),
+      rootDir: __dirname,
     },
   },
   parser: '@typescript-eslint/parser',
   plugins: ['@typescript-eslint'],
   rules: {
+    '@next/next/no-html-link-for-pages': 'off',
+    '@next/next/no-img-element': 'off',
+    'react/jsx-key': 'off',
+    'react/no-children-prop': 'off',
+    'react-hooks/exhaustive-deps': [
+      'warn',
+      {
+        additionalHooks: 'useRecoilCallback|useRecoilTransaction_UNSTABLE',
+      },
+    ],
     'no-unused-vars': 'off',
     '@typescript-eslint/no-unused-vars': [
       'error',

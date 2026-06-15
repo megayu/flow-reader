@@ -1,25 +1,32 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "display": "Default",
+  "display": "Next.js",
   "compilerOptions": {
-    "composite": false,
-    "esModuleInterop": true,
+    "target": "es6",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "inlineSources": false,
-    "isolatedModules": true,
+    "noEmit": true,
+    "incremental": true,
+    "esModuleInterop": true,
+    "module": "esnext",
     "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "strict": true,
+    "experimentalDecorators": true,
+    "noUncheckedIndexedAccess": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "preserveWatchOutput": true,
-    "skipLibCheck": true,
-    "noUncheckedIndexedAccess": true,
-    "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@flow/reader/*": ["apps/reader/src/*"],
-      "@flow/internal": ["packages/internal/src/index.ts"],
+      "@flow/reader/*": ["src/*"],
+      "@flow/reader/locales": ["locales/index.ts"],
       "@flow/epubjs/*": ["packages/epubjs/*"]
     }
   },
+  "include": ["next-env.d.ts", "src", "locales"],
   "exclude": ["node_modules"]
 }
