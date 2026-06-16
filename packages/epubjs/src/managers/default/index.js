@@ -469,6 +469,7 @@ class DefaultViewManager {
   next() {
     var next
     var left
+    var maxLeft
 
     let dir = this.settings.direction
 
@@ -480,14 +481,14 @@ class DefaultViewManager {
       (!dir || dir === 'ltr')
     ) {
       this.scrollLeft = this.container.scrollLeft
+      maxLeft = Math.max(
+        this.container.scrollWidth - this.container.offsetWidth,
+        0,
+      )
 
-      left =
-        this.container.scrollLeft +
-        this.container.offsetWidth +
-        this.layout.delta
-
-      if (left <= this.container.scrollWidth) {
-        this.scrollBy(this.layout.delta, 0, true)
+      if (this.container.scrollLeft < maxLeft - 1) {
+        left = Math.min(this.container.scrollLeft + this.layout.delta, maxLeft)
+        this.scrollTo(left, 0, true)
       } else {
         next = this.views.last().section.next()
       }
