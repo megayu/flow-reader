@@ -286,6 +286,48 @@ class DefaultViewManager {
     return Math.max(1, Math.ceil(view.width() / this.layout.pageWidth))
   }
 
+  isReflowablePageVisible(view, pageIndex) {
+    if (
+      !this.isReflowableSpread() ||
+      !view ||
+      !this.layout.pageWidth ||
+      this.settings.fullsize
+    ) {
+      return false
+    }
+
+    let viewportStart = this.container.scrollLeft
+    let viewportEnd = viewportStart + this.layout.width
+    let viewStart = view.offset().left
+    let pageStart = viewStart + pageIndex * this.layout.pageWidth
+    let pageEnd = Math.min(
+      viewStart + view.width(),
+      pageStart + this.layout.pageWidth,
+    )
+
+    return (
+      Math.max(pageStart, viewportStart) < Math.min(pageEnd, viewportEnd) - 1
+    )
+  }
+
+  isFirstReflowablePageVisible() {
+    let first = this.views.first()
+
+    return (
+      first && !first.section.prev() && this.isReflowablePageVisible(first, 0)
+    )
+  }
+
+  isLastReflowablePageVisible() {
+    let last = this.views.last()
+
+    return (
+      last &&
+      !last.section.next() &&
+      this.isReflowablePageVisible(last, this.viewPageCount(last) - 1)
+    )
+  }
+
   displayedPageCount() {
     return this.views
       .displayed()
@@ -349,6 +391,30 @@ class DefaultViewManager {
     )
   }
 
+  prependPreviousReflowableSpread(left) {
+    let previous = this.views.first().section.prev()
+
+    if (!previous) {
+      this.views.first().element.style.marginLeft = ''
+      this.scrollTo(0, 0, true)
+      this.views.show()
+      return
+    }
+
+    return this.prepend(previous).then(
+      function (view) {
+        left += view.width()
+
+        if (left < -1) {
+          return this.prependPreviousReflowableSpread(left)
+        }
+
+        this.scrollTo(Math.max(left, 0), 0, true)
+        this.views.show()
+      }.bind(this),
+    )
+  }
+
   trimReflowableSpreadViews() {
     if (!this.isReflowableSpread() || !this.views || this.views.length <= 1) {
       return
@@ -396,7 +462,12 @@ class DefaultViewManager {
     var visible = this.views.find(section)
 
     // View is already shown, just move to correct location in view
-    if (visible && section && this.layout.name !== 'pre-paginated') {
+    if (
+      visible &&
+      section &&
+      this.layout.name !== 'pre-paginated' &&
+      !this.isReflowableSpread()
+    ) {
       let offset = visible.offset()
       let targetOffset
       let targetWidth
@@ -608,6 +679,11 @@ class DefaultViewManager {
 
     if (!this.views.length) return
 
+    if (this.isLastReflowablePageVisible()) {
+      this.views.show()
+      return
+    }
+
     if (this.needsReflowableSpreadFill('tail')) {
       return Promise.resolve(this.fillReflowableSpread('tail')).then(
         function () {
@@ -724,6 +800,13 @@ class DefaultViewManager {
 
     if (!this.views.length) return
 
+    if (this.isFirstReflowablePageVisible()) {
+      this.views.first().element.style.marginLeft = ''
+      this.scrollTo(0, 0, true)
+      this.views.show()
+      return
+    }
+
     if (
       this.isPaginated &&
       this.settings.axis === 'horizontal' &&
@@ -731,10 +814,17 @@ class DefaultViewManager {
     ) {
       this.scrollLeft = this.container.scrollLeft
 
-      left = this.container.scrollLeft
+      if (this.isReflowableSpread()) {
+        left = this.container.scrollLeft - this.layout.delta
 
-      if (left > 0) {
-        this.scrollBy(-this.layout.delta, 0, true)
+        if (left >= -1) {
+          this.scrollTo(Math.max(left, 0), 0, true)
+        } else {
+          return this.prependPreviousReflowableSpread(left)
+        }
+      } else if (this.container.scrollLeft > 1) {
+        left = Math.max(this.container.scrollLeft - this.layout.delta, 0)
+        this.scrollTo(left, 0, true)
       } else {
         prev = this.views.first().section.prev()
       }
@@ -767,8 +857,9 @@ class DefaultViewManager {
 
       let top = this.container.scrollTop
 
-      if (top > 0) {
-        this.scrollBy(0, -this.layout.height, true)
+      if (top > 1) {
+        top = Math.max(top - this.layout.height, 0)
+        this.scrollTo(0, top, true)
       } else {
         prev = this.views.first().section.prev()
       }
