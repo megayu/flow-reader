@@ -14,6 +14,10 @@ const isWebkit =
 
 const ELEMENT_NODE = 1
 const TEXT_NODE = 3
+const SPREAD_BACKGROUND_STYLE = 'spread-background-fit'
+const SPREAD_BACKGROUND_ATTRIBUTE = 'data-epubjs-spread-background-fit'
+const SPREAD_BACKGROUND_SOURCE_ATTRIBUTE =
+  'data-epubjs-spread-background-source'
 
 /**
  * Handles DOM manipulation, queries and events for View contents
@@ -759,6 +763,213 @@ class Contents {
     styleEl.innerHTML = serializedCss
 
     return true
+  }
+
+  /**
+   * Fit a single-page visual background to the real content page when
+   * a reflowable spread adds a synthetic blank page.
+   * @param {number} width
+   * @param {number} height
+   * @param {string} [direction="ltr"]
+   */
+  fitSpreadBackground(width, height, direction) {
+    if (
+      !this.document ||
+      !this.documentElement ||
+      !this.content ||
+      !isNumber(width) ||
+      !isNumber(height) ||
+      width <= 0 ||
+      height <= 0
+    ) {
+      this.clearSpreadBackgroundFit()
+      return false
+    }
+
+    var alignRight = direction === 'rtl'
+    var background =
+      this._spreadBackgroundFit || this.findSpreadBackground(width, height)
+
+    this.documentElement.setAttribute(SPREAD_BACKGROUND_ATTRIBUTE, 'true')
+    this.content.setAttribute(SPREAD_BACKGROUND_ATTRIBUTE, 'true')
+
+    if (this._spreadBackgroundSource) {
+      this._spreadBackgroundSource.removeAttribute(
+        SPREAD_BACKGROUND_SOURCE_ATTRIBUTE,
+      )
+      this._spreadBackgroundSource = undefined
+    }
+
+    if (background) {
+      this._spreadBackgroundFit = background
+      this._spreadBackgroundSource = background.element
+      this._spreadBackgroundSource.setAttribute(
+        SPREAD_BACKGROUND_SOURCE_ATTRIBUTE,
+        'true',
+      )
+
+      this.content.style.setProperty(
+        '--epubjs-spread-background-color',
+        background.backgroundColor,
+      )
+      this.content.style.setProperty(
+        '--epubjs-spread-background-image',
+        background.backgroundImage,
+      )
+      this.content.style.setProperty(
+        '--epubjs-spread-background-blend-mode',
+        background.backgroundBlendMode,
+      )
+    } else {
+      this._spreadBackgroundFit = undefined
+      this.content.style.removeProperty('--epubjs-spread-background-color')
+      this.content.style.removeProperty('--epubjs-spread-background-image')
+      this.content.style.removeProperty('--epubjs-spread-background-blend-mode')
+    }
+
+    var css = `
+      html[${SPREAD_BACKGROUND_ATTRIBUTE}],
+      body[${SPREAD_BACKGROUND_ATTRIBUTE}],
+      [${SPREAD_BACKGROUND_SOURCE_ATTRIBUTE}] {
+        background-image: none !important;
+        background-color: transparent !important;
+      }
+
+      [${SPREAD_BACKGROUND_SOURCE_ATTRIBUTE}]::before,
+      [${SPREAD_BACKGROUND_SOURCE_ATTRIBUTE}]::after {
+        background-image: none !important;
+        background-color: transparent !important;
+      }
+
+      body[${SPREAD_BACKGROUND_ATTRIBUTE}] {
+        position: relative !important;
+        z-index: 0 !important;
+      }
+
+      body[${SPREAD_BACKGROUND_ATTRIBUTE}]::before {
+        content: "" !important;
+        position: fixed !important;
+        top: 0 !important;
+        right: ${alignRight ? '0' : 'auto'} !important;
+        bottom: auto !important;
+        left: ${alignRight ? 'auto' : '0'} !important;
+        width: ${width}px !important;
+        height: ${height}px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        pointer-events: none !important;
+        z-index: -1 !important;
+        background-color: var(--epubjs-spread-background-color, transparent) !important;
+        background-image: var(--epubjs-spread-background-image, none) !important;
+        background-position: center center !important;
+        background-size: contain !important;
+        background-repeat: no-repeat !important;
+        background-origin: border-box !important;
+        background-clip: border-box !important;
+        background-attachment: scroll !important;
+        background-blend-mode: var(--epubjs-spread-background-blend-mode, normal) !important;
+      }
+
+      body[${SPREAD_BACKGROUND_ATTRIBUTE}] img,
+      body[${SPREAD_BACKGROUND_ATTRIBUTE}] svg {
+        max-width: ${width}px !important;
+        max-height: ${height}px !important;
+        object-fit: contain !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+    `
+
+    this.addStylesheetCss(css, SPREAD_BACKGROUND_STYLE)
+    return true
+  }
+
+  clearSpreadBackgroundFit() {
+    if (!this.document) return false
+
+    if (this.documentElement) {
+      this.documentElement.removeAttribute(SPREAD_BACKGROUND_ATTRIBUTE)
+    }
+
+    if (this.content) {
+      this.content.removeAttribute(SPREAD_BACKGROUND_ATTRIBUTE)
+    }
+
+    if (this._spreadBackgroundSource) {
+      this._spreadBackgroundSource.removeAttribute(
+        SPREAD_BACKGROUND_SOURCE_ATTRIBUTE,
+      )
+    }
+
+    this._spreadBackgroundFit = undefined
+    this._spreadBackgroundSource = undefined
+    if (this.content) {
+      this.content.style.removeProperty('--epubjs-spread-background-color')
+      this.content.style.removeProperty('--epubjs-spread-background-image')
+      this.content.style.removeProperty('--epubjs-spread-background-blend-mode')
+    }
+    this.addStylesheetCss(' ', SPREAD_BACKGROUND_STYLE)
+
+    return true
+  }
+
+  findSpreadBackground(width, height) {
+    if (!this.window || !this.content) return undefined
+
+    var targets = [this.content, this.documentElement]
+    var descendants = this.content.querySelectorAll('*')
+
+    for (var i = 0; i < descendants.length; i++) {
+      targets.push(descendants[i])
+    }
+
+    var match
+    var matchScore = 0
+
+    for (i = 0; i < targets.length; i++) {
+      var target = targets[i]
+      if (!target) continue
+
+      var styles = [
+        this.window.getComputedStyle(target),
+        this.window.getComputedStyle(target, '::before'),
+        this.window.getComputedStyle(target, '::after'),
+      ]
+
+      for (var j = 0; j < styles.length; j++) {
+        var computed = styles[j]
+        if (
+          !computed ||
+          !computed.backgroundImage ||
+          computed.backgroundImage === 'none'
+        ) {
+          continue
+        }
+
+        var rect = target.getBoundingClientRect()
+        var area = Math.max(rect.width, 0) * Math.max(rect.height, 0)
+        var isRoot = target === this.content || target === this.documentElement
+        var isPageSized =
+          rect.width >= width * 0.45 &&
+          rect.height >= height * 0.25 &&
+          area >= width * height * 0.15
+
+        if (!isRoot && !isPageSized) continue
+
+        var score = area + (isRoot ? width * height : 0)
+        if (score <= matchScore) continue
+
+        matchScore = score
+        match = {
+          element: target,
+          backgroundColor: computed.backgroundColor,
+          backgroundImage: computed.backgroundImage,
+          backgroundBlendMode: computed.backgroundBlendMode,
+        }
+      }
+    }
+
+    return match
   }
 
   /**

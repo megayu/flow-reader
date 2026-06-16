@@ -228,9 +228,9 @@ class Layout {
       spreads = 1
       pages = 1
     } else if (this._flow === 'paginated') {
-      pageLength = pageLength || this.delta
-      spreads = Math.ceil(totalLength / pageLength)
-      pages = spreads * this.divisor
+      pageLength = pageLength || this.pageWidth || this.delta
+      pages = Math.ceil(totalLength / pageLength)
+      spreads = Math.ceil(pages / this.divisor)
     } else {
       // scrolled
       pageLength = pageLength || this.height

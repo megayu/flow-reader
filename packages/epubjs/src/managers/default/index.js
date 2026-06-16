@@ -268,6 +268,121 @@ class DefaultViewManager {
     }
   }
 
+  isReflowableSpread() {
+    return (
+      this.isPaginated &&
+      this.settings.axis === 'horizontal' &&
+      this.layout &&
+      this.layout.name === 'reflowable' &&
+      this.layout.divisor > 1
+    )
+  }
+
+  viewPageCount(view) {
+    if (!view || !this.layout || !this.layout.pageWidth) {
+      return 0
+    }
+
+    return Math.max(1, Math.ceil(view.width() / this.layout.pageWidth))
+  }
+
+  displayedPageCount() {
+    return this.views
+      .displayed()
+      .reduce((count, view) => count + this.viewPageCount(view), 0)
+  }
+
+  isNearReflowableTail() {
+    if (!this.isReflowableSpread()) {
+      return false
+    }
+
+    let scrollLeft = this.settings.fullsize
+      ? window.scrollX
+      : this.container.scrollLeft
+    let maxLeft = Math.max(
+      (this.settings.fullsize
+        ? document.documentElement.scrollWidth - window.innerWidth
+        : this.container.scrollWidth - this.container.offsetWidth) || 0,
+      0,
+    )
+
+    return scrollLeft >= maxLeft - this.layout.pageWidth - 1
+  }
+
+  needsReflowableSpreadFill(mode = 'initial') {
+    if (
+      !this.isReflowableSpread() ||
+      !this.views.length ||
+      !this.views.last().section.next()
+    ) {
+      return false
+    }
+
+    if (mode === 'tail') {
+      return (
+        this.displayedPageCount() % this.layout.divisor !== 0 &&
+        this.isNearReflowableTail()
+      )
+    }
+
+    return (
+      this.views.length === 1 &&
+      this.viewPageCount(this.views.last()) % this.layout.divisor !== 0
+    )
+  }
+
+  fillReflowableSpread(mode = 'initial') {
+    if (!this.needsReflowableSpreadFill(mode)) {
+      return
+    }
+
+    let next = this.views.last().section.next()
+
+    return this.append(next).then(
+      function (view) {
+        if (!this.views.hidden) {
+          view.show()
+        }
+        this.trimReflowableSpreadViews()
+      }.bind(this),
+    )
+  }
+
+  trimReflowableSpreadViews() {
+    if (!this.isReflowableSpread() || !this.views || this.views.length <= 1) {
+      return
+    }
+
+    let visible = this.visible()
+    let firstVisible = visible[0]
+    if (!firstVisible) {
+      return
+    }
+
+    let firstVisibleIndex = this.views.indexOf(firstVisible)
+    if (firstVisibleIndex <= 0) {
+      return
+    }
+
+    let above = this.views.slice(0, firstVisibleIndex)
+    above.forEach((view) => {
+      let prevLeft = this.settings.fullsize
+        ? window.scrollX
+        : this.container.scrollLeft
+      let width = view.width()
+
+      this.views.remove(view)
+      this.emit(EVENTS.MANAGERS.REMOVED, view)
+
+      if (this.settings.fullsize) {
+        window.scrollTo(prevLeft - width, 0)
+      } else {
+        this.scrollTo(Math.max(prevLeft - width, 0), 0, true)
+      }
+    })
+  }
+
   display(section, target) {
     var displaying = new defer()
     var displayed = displaying.promise
@@ -283,21 +398,28 @@ class DefaultViewManager {
     // View is already shown, just move to correct location in view
     if (visible && section && this.layout.name !== 'pre-paginated') {
       let offset = visible.offset()
-
-      if (this.settings.direction === 'ltr') {
-        this.scrollTo(offset.left, offset.top, true)
-      } else {
-        let width = visible.width()
-        this.scrollTo(offset.left + width, offset.top, true)
-      }
+      let targetOffset
+      let targetWidth
 
       if (target) {
-        let offset = visible.locationOf(target)
-        let width = visible.width()
-        this.moveTo(offset, width)
+        targetOffset = visible.locationOf(target)
+        targetWidth = visible.width()
       }
 
-      displaying.resolve()
+      Promise.resolve(this.fillReflowableSpread('initial')).then(
+        function () {
+          if (targetOffset) {
+            this.moveTo(targetOffset, targetWidth)
+          } else if (this.settings.direction === 'ltr') {
+            this.scrollTo(offset.left, offset.top, true)
+          } else {
+            let width = visible.width()
+            this.scrollTo(offset.left + width, offset.top, true)
+          }
+
+          displaying.resolve()
+        }.bind(this),
+      )
       return displayed
     }
 
@@ -313,14 +435,16 @@ class DefaultViewManager {
       forceRight = true
     }
 
+    let targetOffset
+    let targetWidth
+
     this.add(section, forceRight)
       .then(
         function (view) {
           // Move to correct place within the section, if needed
           if (target) {
-            let offset = view.locationOf(target)
-            let width = view.width()
-            this.moveTo(offset, width)
+            targetOffset = view.locationOf(target)
+            targetWidth = view.width()
           }
         }.bind(this),
         (err) => {
@@ -334,6 +458,15 @@ class DefaultViewManager {
       )
       .then(
         function () {
+          return this.fillReflowableSpread('initial')
+        }.bind(this),
+      )
+      .then(
+        function () {
+          if (targetOffset) {
+            this.moveTo(targetOffset, targetWidth)
+          }
+
           this.views.show()
 
           displaying.resolve()
@@ -475,6 +608,14 @@ class DefaultViewManager {
 
     if (!this.views.length) return
 
+    if (this.needsReflowableSpreadFill('tail')) {
+      return Promise.resolve(this.fillReflowableSpread('tail')).then(
+        function () {
+          return this.next()
+        }.bind(this),
+      )
+    }
+
     if (
       this.isPaginated &&
       this.settings.axis === 'horizontal' &&
@@ -489,6 +630,7 @@ class DefaultViewManager {
       if (this.container.scrollLeft < maxLeft - 1) {
         left = Math.min(this.container.scrollLeft + this.layout.delta, maxLeft)
         this.scrollTo(left, 0, true)
+        this.trimReflowableSpreadViews()
       } else {
         next = this.views.last().section.next()
       }
@@ -552,6 +694,11 @@ class DefaultViewManager {
           (err) => {
             return err
           },
+        )
+        .then(
+          function () {
+            return this.fillReflowableSpread('initial')
+          }.bind(this),
         )
         .then(
           function () {
@@ -663,6 +810,11 @@ class DefaultViewManager {
         )
         .then(
           function () {
+            return this.fillReflowableSpread('initial')
+          }.bind(this),
+        )
+        .then(
+          function () {
             if (this.isPaginated && this.settings.axis === 'horizontal') {
               if (this.settings.direction === 'rtl') {
                 if (this.settings.rtlScrollType === 'default') {
@@ -674,6 +826,12 @@ class DefaultViewManager {
                     true,
                   )
                 }
+              } else if (this.isReflowableSpread()) {
+                let first = this.views.first()
+                let page = Math.max(this.viewPageCount(first) - 1, 0)
+                let left =
+                  Math.floor(page / this.layout.divisor) * this.layout.delta
+                this.scrollTo(left, 0, true)
               } else {
                 this.scrollTo(
                   this.container.scrollWidth - this.layout.delta,
@@ -806,7 +964,9 @@ class DefaultViewManager {
       left = window.scrollX
     }
 
-    let sections = visible.map((view) => {
+    let sections = []
+
+    visible.forEach((view) => {
       let { index, href } = view.section
       let offset
       let position = view.position()
@@ -817,7 +977,21 @@ class DefaultViewManager {
       let end
       let pageWidth
 
-      if (this.settings.direction === 'rtl') {
+      if (!this.settings.fullsize && this.settings.direction !== 'rtl') {
+        let viewStart = view.offset().left
+        let viewEnd = viewStart + width
+        let viewportStart = this.container.scrollLeft
+        let viewportEnd = viewportStart + this.layout.width
+
+        let intersectionStart = Math.max(viewportStart, viewStart)
+        let intersectionEnd = Math.min(viewportEnd, viewEnd)
+
+        start = intersectionStart - viewStart
+        end = intersectionEnd - viewStart
+        start = Math.max(0, start)
+        end = Math.min(width, Math.max(start, end))
+        pageWidth = end - start
+      } else if (this.settings.direction === 'rtl') {
         offset = container.right - left
         pageWidth =
           Math.min(Math.abs(offset - position.left), this.layout.width) - used
@@ -830,6 +1004,10 @@ class DefaultViewManager {
         end = start + pageWidth
       }
 
+      if (pageWidth <= 1 || end <= start) {
+        return
+      }
+
       used += pageWidth
 
       let mapping = this.mapping.page(
@@ -839,15 +1017,25 @@ class DefaultViewManager {
         end,
       )
 
-      let totalPages = this.layout.count(width).pages
-      let startPage = Math.floor(start / this.layout.pageWidth)
+      let totalPages = this.viewPageCount(view)
+      let pageFudge =
+        !this.settings.fullsize && this.settings.direction !== 'rtl' ? 1 : 0
+      let startPage = Math.floor((start + pageFudge) / this.layout.pageWidth)
       let pages = []
-      let endPage = Math.floor(end / this.layout.pageWidth)
+      let endPage = Math.floor((end + pageFudge) / this.layout.pageWidth)
 
       // start page should not be negative
       if (startPage < 0) {
         startPage = 0
         endPage = endPage + 1
+      }
+
+      if (startPage >= totalPages) {
+        startPage = totalPages - 1
+      }
+
+      if (endPage > totalPages) {
+        endPage = totalPages
       }
 
       // Reverse page counts for rtl
@@ -862,13 +1050,13 @@ class DefaultViewManager {
         pages.push(pg)
       }
 
-      return {
+      sections.push({
         index,
         href,
         pages,
         totalPages,
         mapping,
-      }
+      })
     })
 
     return sections

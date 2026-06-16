@@ -79,6 +79,7 @@ type AsRef = { $$valtioRef: true }
 export class BookTab extends BaseTab {
   epub?: Book
   iframe?: Window & AsRef
+  iframes: (Window & AsRef)[] = []
   rendition?: Rendition & { manager?: any }
   nav?: Navigation
   locationToReturn?: Location
@@ -87,6 +88,7 @@ export class BookTab extends BaseTab {
   results?: IMatch[]
   activeResultID?: string
   rendered = false
+  turning = false
 
   get container() {
     return this?.rendition?.manager?.container as HTMLDivElement | undefined
@@ -109,15 +111,29 @@ export class BookTab extends BaseTab {
       this.display(section.href, returnable)
     }
   }
-  prev() {
-    this.rendition?.prev()
-    // avoid content flash
-    if (this.container?.scrollLeft === 0 && !this.location?.atStart) {
-      this.rendered = false
+  async prev() {
+    if (this.turning) return
+
+    this.turning = true
+    try {
+      await this.rendition?.prev()
+      // avoid content flash
+      if (this.container?.scrollLeft === 0 && !this.location?.atStart) {
+        this.rendered = false
+      }
+    } finally {
+      this.turning = false
     }
   }
-  next() {
-    this.rendition?.next()
+  async next() {
+    if (this.turning) return
+
+    this.turning = true
+    try {
+      await this.rendition?.next()
+    } finally {
+      this.turning = false
+    }
   }
 
   updateBook(changes: Partial<BookRecord>) {
@@ -151,7 +167,13 @@ export class BookTab extends BaseTab {
   }
 
   rangeToCfi(range: Range) {
-    return this.view.contents.cfiFromRange(range)
+    const doc =
+      range.commonAncestorContainer.ownerDocument ??
+      (range.commonAncestorContainer as Document)
+    const win = doc.defaultView
+    const view = this.viewForWindow(win) ?? this.view
+    if (!view) throw new Error('No active view for selected range')
+    return view.contents.cfiFromRange(range)
   }
   putAnnotation(
     type: AnnotationType,
@@ -258,12 +280,68 @@ export class BookTab extends BaseTab {
     return this.location?.start.href
   }
 
+  get currentSection() {
+    const index = this.location?.start.index
+    return (
+      this.sections?.find((s) => s.index === index) ??
+      this.sections?.find((s) => s.href === this.currentHref) ??
+      this.section
+    )
+  }
+
   get currentNavItem() {
-    return this.section?.navitem
+    return this.currentSection?.navitem
+  }
+
+  get currentSectionHeading() {
+    const heading = this.currentSection?.document.querySelector(
+      'h1, h2, h3, h4, h5, h6',
+    )
+    return heading?.textContent?.trim()
+  }
+
+  getHeaderPath() {
+    const path = this.getNavPath()
+    const heading = this.currentSectionHeading
+
+    if (!heading) return path
+    if (!path.length) return [{ id: heading, label: heading } as INavItem]
+
+    const last = path[path.length - 1]
+    if (last?.label === heading) return path
+
+    return [
+      ...path.slice(0, -1),
+      {
+        ...last,
+        id: last?.id ?? heading,
+        label: heading,
+      } as INavItem,
+    ]
   }
 
   get view() {
-    return this.rendition?.manager?.views._views[0]
+    return (
+      this.rendition?.manager?.current?.() ??
+      this.rendition?.manager?.views._views[0]
+    )
+  }
+
+  viewForWindow(win: Window | null) {
+    return this.rendition?.manager?.views._views.find(
+      (view: any) => view.window === win,
+    )
+  }
+
+  syncFrames() {
+    const views = this.rendition?.manager?.views?._views ?? []
+    const iframes = views
+      .map((view: any) => view.window as Window | undefined)
+      .filter((win: Window | undefined): win is Window => !!win)
+      .map((win: Window) => ref(win) as Window & AsRef)
+
+    this.iframes = iframes
+    this.iframe = iframes[0]
   }
 
   getNavPath(navItem = this.currentNavItem) {
@@ -327,7 +405,7 @@ export class BookTab extends BaseTab {
   }
 
   private _el?: HTMLDivElement
-  onRender?: () => void
+  onRender?: (contents?: any) => void
   async render(el: HTMLDivElement) {
     if (el === this._el) return
     this._el = ref(el)
@@ -373,12 +451,14 @@ export class BookTab extends BaseTab {
     this.rendition.themes.default(defaultStyle)
     this.rendition.hooks.render.register((view: any) => {
       console.log('hooks.render', view)
-      this.onRender?.()
+      this.syncFrames()
+      this.onRender?.(view.contents)
     })
 
     this.rendition.on('relocated', (loc: Location) => {
       console.log('relocated', loc)
       this.rendered = true
+      this.syncFrames()
       this.timeline.unshift({
         location: loc,
         timestamp: Date.now(),
@@ -387,7 +467,16 @@ export class BookTab extends BaseTab {
       // calculate percentage
       if (this.sections) {
         const start = loc.start
-        const i = this.sections.findIndex((s) => s.href === start.href)
+        const end = loc.end ?? loc.start
+        const activeSection =
+          this.sections.find((s) => s.index === start.index) ??
+          this.sections.find((s) => s.href === start.href) ??
+          this.section
+        if (activeSection) this.section = ref(activeSection)
+
+        const i = this.sections.findIndex((s) => s.href === end.href)
+        if (i === -1) return
+
         const previousSectionsLength = this.sections
           .slice(0, i)
           .reduce((acc, s) => acc + s.length, 0)
@@ -395,7 +484,7 @@ export class BookTab extends BaseTab {
           previousSectionsLength / this.totalLength
         const currentSectionPercentage =
           this.sections[i]!.length / this.totalLength
-        const displayedPercentage = start.displayed.page / start.displayed.total
+        const displayedPercentage = end.displayed.page / end.displayed.total
 
         const percentage =
           previousSectionsPercentage +
@@ -416,14 +505,15 @@ export class BookTab extends BaseTab {
     })
     this.rendition.on('rendered', (section: ISection, view: any) => {
       console.log('rendered', [section, view])
-      this.section = ref(section)
-      this.iframe = ref(view.window as Window)
+      if (!this.section) this.section = ref(section)
+      this.syncFrames()
     })
     this.rendition.on('selected', (...args: any[]) => {
       console.log('selected', args)
     })
     this.rendition.on('removed', (...args: any[]) => {
       console.log('removed', args)
+      this.syncFrames()
     })
   }
 

@@ -291,10 +291,91 @@ class IframeView {
   }
 
   // Resize a single axis based on content dimensions
+  hasContentInRange(start, end) {
+    let doc = this.document
+    let root = this.contents && this.contents.content
+
+    if (!doc || !root) {
+      return false
+    }
+
+    let nodeFilter = doc.defaultView.NodeFilter
+    let walker = doc.createTreeWalker(
+      root,
+      nodeFilter.SHOW_TEXT,
+      {
+        acceptNode(node) {
+          return node.data && node.data.trim().length > 0
+            ? nodeFilter.FILTER_ACCEPT
+            : nodeFilter.FILTER_REJECT
+        },
+      },
+      false,
+    )
+    let node
+    let range = doc.createRange()
+
+    while ((node = walker.nextNode())) {
+      range.selectNodeContents(node)
+      let rects = range.getClientRects()
+
+      for (let i = 0; i < rects.length; i++) {
+        let rect = rects[i]
+        if (
+          rect.width > 0 &&
+          rect.height > 0 &&
+          rect.right > start + 1 &&
+          rect.left < end - 1
+        ) {
+          range.detach && range.detach()
+          return true
+        }
+      }
+    }
+
+    range.detach && range.detach()
+
+    let media = root.querySelectorAll('img, svg, math, video, audio, canvas')
+    for (let i = 0; i < media.length; i++) {
+      let rect = media[i].getBoundingClientRect()
+      if (
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.right > start + 1 &&
+        rect.left < end - 1
+      ) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  trimTrailingBlankPages(width) {
+    if (
+      !this.layout ||
+      !this.layout.pageWidth ||
+      this.layout.name !== 'reflowable' ||
+      this.settings.axis !== 'horizontal'
+    ) {
+      return width
+    }
+
+    let pageWidth = this.layout.pageWidth
+    let pages = Math.max(1, Math.ceil(width / pageWidth))
+
+    for (let i = pages - 1; i >= 0; i--) {
+      if (this.hasContentInRange(i * pageWidth, (i + 1) * pageWidth)) {
+        return (i + 1) * pageWidth
+      }
+    }
+
+    return width
+  }
+
   expand(force) {
     var width = this.lockedWidth
     var height = this.lockedHeight
-    var columns
 
     var textWidth, textHeight
 
@@ -314,18 +395,6 @@ class IframeView {
       if (width % this.layout.pageWidth > 0) {
         width = Math.ceil(width / this.layout.pageWidth) * this.layout.pageWidth
       }
-
-      if (this.settings.forceEvenPages) {
-        columns = width / this.layout.pageWidth
-        if (
-          this.layout.divisor > 1 &&
-          this.layout.name === 'reflowable' &&
-          columns % 2 > 0
-        ) {
-          // add a blank page
-          width += this.layout.pageWidth
-        }
-      }
     } // Expand Vertically
     else if (this.settings.axis === 'vertical') {
       height = this.contents.textHeight()
@@ -341,6 +410,11 @@ class IframeView {
     // if Frame is still hidden, so needs reframing
     if (this._needsReframe || width != this._width || height != this._height) {
       this.reframe(width, height)
+
+      let trimmedWidth = this.trimTrailingBlankPages(width)
+      if (trimmedWidth < width - 1) {
+        this.reframe(trimmedWidth, height)
+      }
     }
 
     this._expanding = false
@@ -376,7 +450,7 @@ class IframeView {
     requestAnimationFrame(() => {
       let mark
       for (let m in this.marks) {
-        if (this.marks.hasOwnProperty(m)) {
+        if (Object.prototype.hasOwnProperty.call(this.marks, m)) {
           mark = this.marks[m]
           this.placeMark(mark.element, mark.range)
         }
@@ -424,10 +498,9 @@ class IframeView {
 
       this.iframe.contentDocument.open()
       // For Cordova windows platform
-      if (window.MSApp && MSApp.execUnsafeLocalFunction) {
-        var outerThis = this
-        MSApp.execUnsafeLocalFunction(function () {
-          outerThis.iframe.contentDocument.write(contents)
+      if (window.MSApp && window.MSApp.execUnsafeLocalFunction) {
+        window.MSApp.execUnsafeLocalFunction(() => {
+          this.iframe.contentDocument.write(contents)
         })
       } else {
         this.iframe.contentDocument.write(contents)
@@ -448,6 +521,10 @@ class IframeView {
       this.section.cfiBase,
       this.section.index,
     )
+    this._onWheel = (event) => {
+      this.emit(EVENTS.VIEWS.WHEEL, event)
+    }
+    this.document.addEventListener('wheel', this._onWheel, { passive: false })
 
     this.rendering = false
 
@@ -854,6 +931,10 @@ class IframeView {
       this.displayed = false
 
       this.removeListeners()
+      if (this._onWheel && this.document) {
+        this.document.removeEventListener('wheel', this._onWheel)
+        this._onWheel = undefined
+      }
       this.contents.destroy()
 
       this.stopExpanding = true

@@ -430,6 +430,9 @@ class Rendition {
     view.on(EVENTS.VIEWS.MARK_CLICKED, (cfiRange, data) =>
       this.triggerMarkEvent(cfiRange, data, view.contents),
     )
+    view.on(EVENTS.VIEWS.WHEEL, (event) =>
+      this.emit(EVENTS.VIEWS.WHEEL, event, view.contents),
+    )
 
     this.hooks.render.trigger(view, this).then(() => {
       if (view.contents) {

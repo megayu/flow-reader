@@ -46,6 +46,7 @@ export const EVENTS = {
     DISPLAYED: 'displayed',
     SHOWN: 'shown',
     HIDDEN: 'hidden',
+    WHEEL: 'wheel',
     MARK_CLICKED: 'markClicked',
   },
   RENDITION: {
