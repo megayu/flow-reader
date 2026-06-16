@@ -43,7 +43,7 @@ export function updateCustomStyle(
   if (!contents || !settings) return
 
   const { zoom, ...other } = settings
-  let css = `a, article, cite, div, li, p, pre, span, table, body {
+  let css = `p, li, blockquote {
     ${mapToCss(other)}
   }`
 
