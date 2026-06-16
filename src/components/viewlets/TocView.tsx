@@ -61,12 +61,15 @@ const TocPane: React.FC = () => {
   const rowRefs = useRef(new Map<string, HTMLDivElement>())
 
   useEffect(() => {
-    if (!currentKey || lastScrolledKey.current === currentKey) return
+    if (!currentKey) return
 
     const row = rowRefs.current.get(currentKey)
     if (!row) return
 
-    lastScrolledKey.current = currentKey
+    const scrollKey = `${currentKey}:${rows.length}`
+    if (lastScrolledKey.current === scrollKey) return
+
+    lastScrolledKey.current = scrollKey
     row.scrollIntoView({ block: 'nearest' })
   }, [currentKey, rows.length])
 
@@ -117,12 +120,13 @@ const TocRow: React.FC<TocRowProps> = ({ currentNavItem, item }) => {
   if (!item) return null
   const { label, subitems, depth, expanded, href } = item
   const tab = reader.focusedBookTab
+  const active = tocItemIdentity(item) === tocItemIdentity(currentNavItem)
 
   return (
     <Row
       title={label.trim()}
       depth={depth}
-      active={href === currentNavItem?.href}
+      active={active}
       expanded={expanded}
       subitems={subitems}
       onClick={() => {

@@ -288,14 +288,52 @@ export class BookTab extends BaseTab {
     this.locationToReturn = undefined
   }
 
-  mapSectionToNavItem(sectionHref: string) {
-    let navItem: NavItem | undefined
+  mapSectionToNavItem(sectionHref: string, sections = this.sections) {
+    let navItem: INavItem | undefined
     this.nav?.toc.forEach((item) =>
-      dfs(item as NavItem, (i) => {
+      dfs(item as INavItem, (i) => {
         if (compareHref(sectionHref, i.href)) navItem ??= i
       }),
     )
-    return navItem
+    if (navItem) return navItem
+
+    const section = sections?.find((s) => s.href === sectionHref)
+    if (!section || !sections) return
+
+    let closest:
+      | {
+          item: INavItem
+          order: number
+          sectionIndex: number
+        }
+      | undefined
+    let order = 0
+
+    this.nav?.toc.forEach((item) =>
+      dfs(item as INavItem, (i) => {
+        const matchedSection = sections.find((s) => compareHref(s.href, i.href))
+        if (!matchedSection || matchedSection.index > section.index) {
+          order++
+          return
+        }
+
+        if (
+          !closest ||
+          matchedSection.index > closest.sectionIndex ||
+          (matchedSection.index === closest.sectionIndex &&
+            order > closest.order)
+        ) {
+          closest = {
+            item: i,
+            order,
+            sectionIndex: matchedSection.index,
+          }
+        }
+        order++
+      }),
+    )
+
+    return closest?.item
   }
 
   get currentHref() {
@@ -312,7 +350,12 @@ export class BookTab extends BaseTab {
   }
 
   get currentNavItem() {
-    return this.currentSection?.navitem
+    return (
+      this.currentSection?.navitem ??
+      (this.currentHref
+        ? this.mapSectionToNavItem(this.currentHref)
+        : undefined)
+    )
   }
 
   get currentSectionHeading() {
@@ -385,6 +428,14 @@ export class BookTab extends BaseTab {
     return path
   }
 
+  expandNavPath(navItem = this.currentNavItem) {
+    const path = this.getNavPath(navItem)
+
+    path.slice(0, -1).forEach((item) => {
+      item.expanded = true
+    })
+  }
+
   searchInSection(keyword = this.keyword, section = this.section) {
     if (!section) return
 
@@ -453,7 +504,7 @@ export class BookTab extends BaseTab {
           s.length = s.document.body.textContent?.length ?? 0
           s.images = [...s.document.querySelectorAll('img')].map((el) => el.src)
           this.epub!.loaded.navigation.then(() => {
-            s.navitem = this.mapSectionToNavItem(s.href)
+            s.navitem = this.mapSectionToNavItem(s.href, sections)
           })
         })
         this.sections = ref(sections)
@@ -495,6 +546,12 @@ export class BookTab extends BaseTab {
           this.sections.find((s) => s.href === start.href) ??
           this.section
         if (activeSection) this.section = ref(activeSection)
+        const activeNavItem =
+          activeSection?.navitem ?? this.mapSectionToNavItem(start.href)
+        if (activeSection && activeNavItem) {
+          activeSection.navitem = activeNavItem
+        }
+        this.expandNavPath(activeNavItem)
 
         const i = this.sections.findIndex((s) => s.href === end.href)
         if (i === -1) return
