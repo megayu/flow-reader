@@ -6,6 +6,22 @@ import { Settings } from './state'
 import { keys } from './utils'
 
 export const activeClass = 'bg-primary70'
+export const notePopoverClass = 'flow-note-popover'
+
+const bodyTextSelector = [
+  'body > p',
+  'body > li',
+  'body > blockquote',
+  `body > :not(.${notePopoverClass}) p`,
+  `body > :not(.${notePopoverClass}) li`,
+  `body > :not(.${notePopoverClass}) blockquote`,
+].join(',\n')
+
+const readerLinkSelector = [
+  'body > a:any-link',
+  `body > :not(.${notePopoverClass}) a:any-link`,
+].join(',\n')
+
 export const defaultStyle = {
   html: {
     padding: '0 !important',
@@ -13,7 +29,7 @@ export const defaultStyle = {
   body: {
     background: 'transparent',
   },
-  'a:any-link': {
+  [readerLinkSelector]: {
     color: '#3b82f6 !important',
     'text-decoration': 'none !important',
   },
@@ -43,7 +59,7 @@ export function updateCustomStyle(
   if (!contents || !settings) return
 
   const { zoom, ...other } = settings
-  let css = `p, li, blockquote {
+  let css = `${bodyTextSelector} {
     ${mapToCss(other)}
   }`
 
