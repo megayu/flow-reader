@@ -902,7 +902,7 @@ interface FooterProps {
   tab: BookTab
 }
 const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
-  const { locationToReturn, location, book } = useSnapshot(tab)
+  const { locationToReturn, book } = useSnapshot(tab)
 
   return (
     <Bar>
@@ -927,8 +927,9 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
         </>
       ) : (
         <>
-          <div>{location?.start.href}</div>
-          <div>{((book.percentage ?? 0) * 100).toFixed()}%</div>
+          <div className="ml-auto">
+            {((book.percentage ?? 0) * 100).toFixed()}%
+          </div>
         </>
       )}
     </Bar>
