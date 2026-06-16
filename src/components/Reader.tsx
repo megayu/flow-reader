@@ -562,8 +562,7 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
 
 const NOTE_POPOVER_CLASS = notePopoverClass
 const NOTE_POPOVER_MARGIN = 18
-const NOTE_POPOVER_PADDING_X = 14
-const NOTE_POPOVER_PADDING_Y = 10
+const NOTE_POPOVER_PADDING = 10
 const NOTE_POPOVER_MAX_RATIO = 3.6
 const NOTE_POPOVER_MIN_WIDTH = 180
 
@@ -662,8 +661,43 @@ function cloneNoteElement(el: HTMLElement, anchor: HTMLAnchorElement) {
       unwrapBacklink(node as HTMLAnchorElement)
     }
   })
+  normalizeNotePopoverContent(clone)
 
   return clone
+}
+
+function normalizeNotePopoverContent(root: HTMLElement) {
+  const listNodes = [
+    ...(root.matches('ol, ul, li') ? [root] : []),
+    ...Array.from(root.querySelectorAll<HTMLElement>('ol, ul, li')),
+  ]
+  const blockNodes = [
+    ...(root.matches('p, ol, ul, li, blockquote') ? [root] : []),
+    ...Array.from(
+      root.querySelectorAll<HTMLElement>('p, ol, ul, li, blockquote'),
+    ),
+  ]
+  const textNodes = [
+    ...(root.matches('p, li, blockquote, div') ? [root] : []),
+    ...Array.from(root.querySelectorAll<HTMLElement>('p, li, blockquote, div')),
+  ]
+
+  listNodes.forEach((node) => {
+    node.style.setProperty('list-style', 'none', 'important')
+    node.style.setProperty('list-style-type', 'none', 'important')
+  })
+  listNodes
+    .filter((node) => node.tagName === 'OL' || node.tagName === 'UL')
+    .forEach((node) => {
+      node.style.setProperty('padding', '0', 'important')
+      node.style.setProperty('padding-left', '0', 'important')
+    })
+  blockNodes.forEach((node) => {
+    node.style.setProperty('margin', '0', 'important')
+  })
+  textNodes.forEach((node) => {
+    node.style.setProperty('text-align', 'justify', 'important')
+  })
 }
 
 function cloneNoteElementWithContext(el: HTMLElement) {
@@ -738,7 +772,7 @@ function showNotePopover(anchor: HTMLAnchorElement, noteElement: HTMLElement) {
     minWidth: '0',
     maxWidth: `${getNotePopoverMaxWidth(win)}px`,
     overflow: 'visible',
-    padding: `${NOTE_POPOVER_PADDING_Y}px ${NOTE_POPOVER_PADDING_X}px`,
+    padding: `${NOTE_POPOVER_PADDING}px`,
     borderRadius: '10px',
     background: '#fff',
     boxShadow: '0 10px 26px rgba(0, 0, 0, 0.18)',
@@ -758,6 +792,7 @@ function showNotePopover(anchor: HTMLAnchorElement, noteElement: HTMLElement) {
   Object.assign(content.style, {
     margin: '0',
     maxWidth: '100%',
+    textAlign: 'justify',
   })
 
   Object.assign(arrow.style, {

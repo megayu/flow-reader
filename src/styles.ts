@@ -22,6 +22,12 @@ const readerLinkSelector = [
   `body > :not(.${notePopoverClass}) a:any-link`,
 ].join(',\n')
 
+const notePopoverListSelector = [
+  `.${notePopoverClass} ol`,
+  `.${notePopoverClass} ul`,
+  `.${notePopoverClass} li`,
+].join(',\n')
+
 export const defaultStyle = {
   html: {
     padding: '0 !important',
@@ -35,6 +41,12 @@ export const defaultStyle = {
   },
   '::selection': {
     'background-color': 'rgba(3, 102, 214, 0.2)',
+  },
+  [notePopoverListSelector]: {
+    'list-style-type': 'none !important',
+  },
+  [`.${notePopoverClass} li::marker`]: {
+    content: '"" !important',
   },
 }
 
