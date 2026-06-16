@@ -1,13 +1,8 @@
 import { StateLayer } from '@literal-ui/core'
-import { useMemo } from 'react'
+import { useEffect, useRef } from 'react'
 import { VscCollapseAll, VscExpandAll } from 'react-icons/vsc'
 
-import {
-  useLibrary,
-  useList,
-  useMobile,
-  useTranslation,
-} from '@flow/reader/hooks'
+import { useLibrary, useMobile, useTranslation } from '@flow/reader/hooks'
 import {
   compareHref,
   dfs,
@@ -58,16 +53,26 @@ const TocPane: React.FC = () => {
   const t = useTranslation()
   const { focusedBookTab } = useReaderSnapshot()
   const toc = focusedBookTab?.nav?.toc as INavItem[] | undefined
-  const rows = useMemo(() => toc?.flatMap((i) => flatTree(i)), [toc])
+  const rows = toc?.flatMap((i) => flatTree(i)) ?? []
   const expanded = toc?.some((r) => r.expanded)
   const currentNavItem = focusedBookTab?.currentNavItem
+  const currentKey = tocItemIdentity(currentNavItem)
+  const lastScrolledKey = useRef<string>()
+  const rowRefs = useRef(new Map<string, HTMLDivElement>())
 
-  const { outerRef, innerRef, items, scrollToItem } = useList(rows)
+  useEffect(() => {
+    if (!currentKey || lastScrolledKey.current === currentKey) return
+
+    const row = rowRefs.current.get(currentKey)
+    if (!row) return
+
+    lastScrolledKey.current = currentKey
+    row.scrollIntoView({ block: 'nearest' })
+  }, [currentKey, rows.length])
 
   return (
     <Pane
       headline={t('toc.title')}
-      ref={outerRef}
       actions={[
         {
           id: expanded ? 'collapse-all' : 'expand-all',
@@ -81,18 +86,25 @@ const TocPane: React.FC = () => {
         },
       ]}
     >
-      {rows && (
-        <div ref={innerRef}>
-          {items.map(({ index }) => (
-            <TocRow
-              key={index}
-              currentNavItem={currentNavItem as INavItem}
-              item={rows[index]}
-              onActivate={() => scrollToItem(index)}
-            />
-          ))}
-        </div>
-      )}
+      {rows.map((item, index) => {
+        const identity = tocItemIdentity(item)
+        return (
+          <div
+            key={tocRowKey(item, index)}
+            ref={(el) => {
+              if (!identity) return
+
+              if (el) {
+                rowRefs.current.set(identity, el)
+              } else {
+                rowRefs.current.delete(identity)
+              }
+            }}
+          >
+            <TocRow currentNavItem={currentNavItem as INavItem} item={item} />
+          </div>
+        )
+      })}
     </Pane>
   )
 }
@@ -100,15 +112,10 @@ const TocPane: React.FC = () => {
 interface TocRowProps {
   currentNavItem?: INavItem
   item?: INavItem
-  onActivate: () => void
 }
-const TocRow: React.FC<TocRowProps> = ({
-  currentNavItem,
-  item,
-  onActivate,
-}) => {
+const TocRow: React.FC<TocRowProps> = ({ currentNavItem, item }) => {
   if (!item) return null
-  const { label, subitems, depth, expanded, id, href } = item
+  const { label, subitems, depth, expanded, href } = item
   const tab = reader.focusedBookTab
 
   return (
@@ -131,8 +138,18 @@ const TocRow: React.FC<TocRowProps> = ({
         }
       }}
       // `tab` can not be proxy here
-      toggle={() => tab?.toggle(id)}
-      onActivate={onActivate}
+      toggle={() => tab?.toggleNavItem(item)}
     />
   )
+}
+
+function tocItemIdentity(item?: Pick<INavItem, 'id' | 'href' | 'label'>) {
+  return item && (item.id || item.href || item.label)
+}
+
+function tocRowKey(
+  item: Pick<INavItem, 'id' | 'href' | 'label'> | undefined,
+  index: number,
+) {
+  return `${tocItemIdentity(item) ?? 'toc-row'}:${index}`
 }

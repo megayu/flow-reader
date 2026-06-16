@@ -253,6 +253,28 @@ export class BookTab extends BaseTab {
     if (item) item.expanded = !item.expanded
   }
 
+  toggleNavItem(target: Pick<INavItem, 'id' | 'href'>) {
+    const item = this.findNavItem(target)
+    if (item) item.expanded = !item.expanded
+  }
+
+  findNavItem(
+    target: Pick<INavItem, 'id' | 'href'>,
+    nodes = this.nav?.toc,
+  ): INavItem | undefined {
+    if (!target.id && !target.href) return
+    if (!nodes) return
+
+    for (const item of nodes as INavItem[]) {
+      if (target.id ? item.id === target.id : item.href === target.href) {
+        return item
+      }
+
+      const child = this.findNavItem(target, item.subitems)
+      if (child) return child
+    }
+  }
+
   toggleResult(id: string) {
     const item = find(this.results, id)
     if (item) item.expanded = !item.expanded

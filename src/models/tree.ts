@@ -17,6 +17,8 @@ export function find<T extends INode>(
   nodes: T[] = [],
   id: string,
 ): T | undefined {
+  if (!id) return
+
   const node = nodes.find((n) => n.id === id)
   if (node) return node
   for (const child of nodes) {

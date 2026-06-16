@@ -1,6 +1,6 @@
 import { StateLayer } from '@literal-ui/core'
 import clsx from 'clsx'
-import { ComponentProps, useEffect, useRef } from 'react'
+import { ComponentProps } from 'react'
 import { MdClose } from 'react-icons/md'
 import { VscChevronDown, VscChevronRight } from 'react-icons/vsc'
 
@@ -18,7 +18,6 @@ interface RowProps extends ComponentProps<'div'> {
   info?: string
   subitems?: Readonly<any[]>
   toggle?: () => void
-  onActivate?: () => void
   onDelete?: () => void
   badge?: boolean
 }
@@ -32,7 +31,6 @@ export const Row: React.FC<RowProps> = ({
   depth = 0,
   subitems,
   toggle,
-  onActivate,
   className,
   children,
   badge,
@@ -41,15 +39,9 @@ export const Row: React.FC<RowProps> = ({
   ...props
 }) => {
   const trans = useTranslation()
-  const onActivateRef = useRef(onActivate)
-  onActivateRef.current = onActivate
 
   const childCount = subitems?.length
   const t = children || label || title
-
-  useEffect(() => {
-    if (active) onActivateRef.current?.()
-  }, [active])
 
   return (
     <div
