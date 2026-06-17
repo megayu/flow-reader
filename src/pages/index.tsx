@@ -3,19 +3,14 @@ import clsx from 'clsx'
 import { useLiveQuery } from 'dexie-react-hooks'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import React, { useEffect, useState } from 'react'
-import {
-  MdCheckBox,
-  MdCheckBoxOutlineBlank,
-  MdOutlineFileDownload,
-  MdOutlineShare,
-} from 'react-icons/md'
+import React, { useEffect } from 'react'
+import { MdCheckBox, MdCheckBoxOutlineBlank } from 'react-icons/md'
 import { useSet } from 'react-use'
 
 import { pack } from '../backup'
-import { ReaderGridView, Button, TextField, DropZone } from '../components'
+import { ReaderGridView, Button, DropZone } from '../components'
 import { BookRecord, CoverRecord, db } from '../db'
-import { fetchBook, handleFiles } from '../file'
+import { handleFiles } from '../file'
 import {
   useDisablePinchZooming,
   useLibrary,
@@ -24,33 +19,14 @@ import {
 } from '../hooks'
 import { reader, useReaderSnapshot } from '../models'
 import { lock } from '../styles'
-import { copy } from '../utils'
 
 const placeholder = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect fill="gray" fill-opacity="0" width="1" height="1"/></svg>`
-
-const SOURCE = 'src'
 
 export default function Index() {
   const { focusedTab } = useReaderSnapshot()
   const router = useRouter()
-  const [loading, setLoading] = useState(false)
 
   useDisablePinchZooming()
-
-  useEffect(() => {
-    let src = router.query[SOURCE]
-    if (!src) return
-    if (!Array.isArray(src)) src = [src]
-
-    setLoading(true)
-    Promise.all(
-      src.map((s) =>
-        fetchBook(s).then((b) => {
-          reader.addTab(b)
-        }),
-      ),
-    ).finally(() => setLoading(false))
-  }, [router.query])
 
   useEffect(() => {
     router.beforePopState(({ url }) => {
@@ -73,7 +49,7 @@ export default function Index() {
         <title>{focusedTab?.title ?? 'Flow'}</title>
       </Head>
       <ReaderGridView />
-      {loading || <Library />}
+      <Library />
     </>
   )
 }
@@ -109,49 +85,11 @@ const Library: React.FC = () => {
       }}
     >
       <div className="mb-4 space-y-2.5">
-        <div>
-          <TextField
-            name={SOURCE}
-            placeholder="https://link.to/remote.epub"
-            type="url"
-            hideLabel
-            actions={[
-              {
-                title: t('share'),
-                Icon: MdOutlineShare,
-                onClick(el) {
-                  if (el?.reportValidity()) {
-                    copy(`${window.location.origin}/?${SOURCE}=${el.value}`)
-                  }
-                },
-              },
-              {
-                title: t('download'),
-                Icon: MdOutlineFileDownload,
-                onClick(el) {
-                  if (el?.reportValidity()) fetchBook(el.value)
-                },
-              },
-            ]}
-          />
-        </div>
         <div className="flex items-center justify-between gap-4">
           <div className="space-x-2">
-            {books.length ? (
+            {!!books.length && (
               <Button variant="secondary" onClick={toggleSelect}>
                 {t(select ? 'cancel' : 'select')}
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                disabled={!books}
-                onClick={() => {
-                  fetchBook(
-                    'https://epubtest.org/books/Fundamental-Accessibility-Tests-Basic-Functionality-v1.0.0.epub',
-                  )
-                }}
-              >
-                {t('download_sample_book')}
               </Button>
             )}
             {select &&

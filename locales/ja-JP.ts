@@ -1,8 +1,5 @@
 export default {
   'home.title': 'ホーム',
-  'home.share': '共有',
-  'home.download': 'ダウンロード',
-  'home.download_sample_book': 'サンプルブックをダウンロード',
   'home.select': '選択',
   'home.cancel': 'キャンセル',
   'home.select_all': 'すべて選択',

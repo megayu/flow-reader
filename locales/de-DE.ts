@@ -1,8 +1,5 @@
 export default {
   'home.title': 'Startseite',
-  'home.share': 'Teilen',
-  'home.download': 'Herunterladen',
-  'home.download_sample_book': 'Beispielbuch herunterladen',
   'home.select': 'Auswählen',
   'home.cancel': 'Abbrechen',
   'home.select_all': 'Alle auswählen',
