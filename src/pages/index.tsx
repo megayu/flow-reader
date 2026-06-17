@@ -22,6 +22,28 @@ import { lock } from '../styles'
 
 const placeholder = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect fill="gray" fill-opacity="0" width="1" height="1"/></svg>`
 
+function cleanBookText(value?: string) {
+  return value?.replace(/\s+/g, ' ').trim() ?? ''
+}
+
+function stripFileExtension(filename: string) {
+  return cleanBookText(filename).replace(/\.[^.]+$/, '')
+}
+
+function getBookDisplayTitle(book: BookRecord) {
+  return cleanBookText(book.metadata.title) || stripFileExtension(book.name)
+}
+
+function getBookTooltip(book: BookRecord) {
+  return [
+    cleanBookText(book.metadata.title),
+    cleanBookText(book.metadata.creator),
+    cleanBookText(book.name),
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
 export default function Index() {
   const { focusedTab } = useReaderSnapshot()
   const router = useRouter()
@@ -192,6 +214,8 @@ const Book: React.FC<BookProps> = ({
   const mobile = useMobile()
 
   const cover = covers?.find((c) => c.id === book.id)?.cover
+  const displayTitle = getBookDisplayTitle(book)
+  const tooltip = getBookTooltip(book)
 
   const Icon = selected ? MdCheckBox : MdCheckBoxOutlineBlank
 
@@ -234,10 +258,10 @@ const Book: React.FC<BookProps> = ({
       </div>
 
       <div
-        className="mt-2 w-full text-on-surface-variant typescale-body-small line-clamp-2 lg:typescale-body-medium"
-        title={book.name}
+        className="mt-2 w-full text-center text-on-surface-variant typescale-body-small line-clamp-2 lg:typescale-body-medium"
+        title={tooltip}
       >
-        {book.name}
+        {displayTitle}
       </div>
     </div>
   )
