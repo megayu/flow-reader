@@ -19,6 +19,8 @@ const classNamesToGenerate = [
   'bg-surface3',
   'bg-surface4',
   'bg-surface5',
+  'bg-[#F3E8D2]',
+  'bg-[#E1EED8]',
   'hover:bg-surface',
   'hover:bg-surface1',
   'hover:bg-surface2',

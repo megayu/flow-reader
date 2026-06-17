@@ -2,13 +2,13 @@ import clsx from 'clsx'
 import { ComponentProps } from 'react'
 
 import {
+  backgroundOptions,
   useBackground,
   useColorScheme,
   useSourceColor,
   useTranslation,
 } from '@flow/reader/hooks'
 
-import { range } from '../../utils'
 import { ColorPicker, Label } from '../Form'
 import { PaneViewProps, PaneView, Pane } from '../base'
 
@@ -33,19 +33,16 @@ export const ThemeView: React.FC<PaneViewProps> = (props) => {
         <div>
           <Label name={t('background_color')}></Label>
           <div className="flex gap-2">
-            {range(7)
-              .filter((i) => !(i % 2))
-              .map((i) => i - 1)
-              .map((i) => (
-                <Background
-                  key={i}
-                  className={i > 0 ? `bg-surface${i}` : 'bg-white'}
-                  onClick={() => {
-                    setScheme('light')
-                    setBackground(i)
-                  }}
-                />
-              ))}
+            {backgroundOptions.map((background) => (
+              <Background
+                key={background.value}
+                className={background.className}
+                onClick={() => {
+                  setScheme('light')
+                  setBackground(background.value)
+                }}
+              />
+            ))}
             <Background
               className="bg-black"
               onClick={() => {
