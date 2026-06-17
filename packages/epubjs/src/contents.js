@@ -14,6 +14,9 @@ const isWebkit =
 
 const ELEMENT_NODE = 1
 const TEXT_NODE = 3
+const PAGE_BACKGROUND_STYLE = 'page-background-normalize'
+const PAGE_BACKGROUND_ATTRIBUTE = 'data-epubjs-page-background'
+const PAGE_BACKGROUND_SOURCE_ATTRIBUTE = 'data-epubjs-page-background-source'
 const SPREAD_BACKGROUND_STYLE = 'spread-background-fit'
 const SPREAD_BACKGROUND_ATTRIBUTE = 'data-epubjs-spread-background-fit'
 const SPREAD_BACKGROUND_SOURCE_ATTRIBUTE =
@@ -913,6 +916,390 @@ class Contents {
     return true
   }
 
+  normalizePageBackgrounds(width, height) {
+    if (
+      !this.document ||
+      !this.documentElement ||
+      !this.content ||
+      !isNumber(width) ||
+      !isNumber(height) ||
+      width <= 0 ||
+      height <= 0
+    ) {
+      this.clearPageBackgroundNormalization()
+      return false
+    }
+
+    this.restorePageBackgroundOverrides()
+
+    this.documentElement.setAttribute(PAGE_BACKGROUND_ATTRIBUTE, 'true')
+    this.content.setAttribute(PAGE_BACKGROUND_ATTRIBUTE, 'true')
+
+    if (this._pageBackgroundSources) {
+      this._pageBackgroundSources.forEach((element) => {
+        element.removeAttribute(PAGE_BACKGROUND_SOURCE_ATTRIBUTE)
+      })
+    }
+
+    var backgrounds = this.findPageBackgrounds(width, height)
+    this._pageBackgroundSources = backgrounds.map((background) => {
+      background.element.setAttribute(PAGE_BACKGROUND_SOURCE_ATTRIBUTE, 'true')
+      return background.element
+    })
+
+    var css = `
+      html[${PAGE_BACKGROUND_ATTRIBUTE}],
+      body[${PAGE_BACKGROUND_ATTRIBUTE}],
+      [${PAGE_BACKGROUND_SOURCE_ATTRIBUTE}] {
+        background-color: transparent !important;
+      }
+    `
+
+    this.addStylesheetCss(css, PAGE_BACKGROUND_STYLE)
+
+    this._pageBackgroundVersion = (this._pageBackgroundVersion || 0) + 1
+    var version = this._pageBackgroundVersion
+
+    backgrounds.forEach((background) => {
+      this.fitOversizedPageBackground(background, width, height, version)
+    })
+
+    return true
+  }
+
+  clearPageBackgroundNormalization() {
+    if (!this.document) return false
+
+    this.restorePageBackgroundOverrides()
+    this._pageBackgroundVersion = (this._pageBackgroundVersion || 0) + 1
+
+    if (this.documentElement) {
+      this.documentElement.removeAttribute(PAGE_BACKGROUND_ATTRIBUTE)
+    }
+
+    if (this.content) {
+      this.content.removeAttribute(PAGE_BACKGROUND_ATTRIBUTE)
+    }
+
+    if (this._pageBackgroundSources) {
+      this._pageBackgroundSources.forEach((element) => {
+        element.removeAttribute(PAGE_BACKGROUND_SOURCE_ATTRIBUTE)
+      })
+    }
+
+    this._pageBackgroundSources = undefined
+    this.addStylesheetCss(' ', PAGE_BACKGROUND_STYLE)
+
+    return true
+  }
+
+  restorePageBackgroundOverrides() {
+    if (!this._pageBackgroundOverrides) return
+
+    this._pageBackgroundOverrides.forEach((override) => {
+      if (!override.element) return
+
+      if (override.value) {
+        override.element.style.setProperty(
+          'background-size',
+          override.value,
+          override.priority,
+        )
+      } else {
+        override.element.style.removeProperty('background-size')
+      }
+    })
+
+    this._pageBackgroundOverrides = undefined
+  }
+
+  findPageBackgrounds(width, height) {
+    if (!this.window || !this.content) return []
+
+    var targets = [this.documentElement, this.content]
+    var children = this.content.children || []
+
+    for (var i = 0; i < children.length; i++) {
+      targets.push(children[i])
+    }
+
+    var backgrounds = []
+
+    for (i = 0; i < targets.length; i++) {
+      var element = targets[i]
+      if (!element) continue
+
+      var computed = this.window.getComputedStyle(element)
+      if (
+        !computed ||
+        !computed.backgroundImage ||
+        computed.backgroundImage === 'none'
+      ) {
+        continue
+      }
+
+      var rect = element.getBoundingClientRect()
+      var area = Math.max(rect.width, 0) * Math.max(rect.height, 0)
+      var isRoot = element === this.content || element === this.documentElement
+      var isPageSized =
+        rect.width >= width * 0.45 &&
+        rect.height >= height * 0.25 &&
+        area >= width * height * 0.15
+
+      if (!isRoot && !isPageSized) continue
+
+      backgrounds.push({
+        element,
+        computed,
+        isRoot,
+      })
+    }
+
+    return backgrounds
+  }
+
+  fitOversizedPageBackground(background, width, height, version) {
+    var computed = background.computed
+    var imageUrl = this.backgroundImageUrl(computed.backgroundImage)
+
+    if (
+      !imageUrl ||
+      this.hasMultipleBackgroundImages(computed.backgroundImage)
+    ) {
+      return
+    }
+
+    var repeat = (computed.backgroundRepeat || '').trim()
+    if (repeat && repeat !== 'no-repeat' && repeat !== 'no-repeat no-repeat') {
+      return
+    }
+
+    this.backgroundImageSize(imageUrl, (imageSize) => {
+      if (
+        !imageSize ||
+        !this.document ||
+        this._pageBackgroundVersion !== version
+      ) {
+        return
+      }
+
+      var nextSize = this.nextPageBackgroundSize(
+        background,
+        imageSize,
+        width,
+        height,
+      )
+
+      if (!nextSize) return
+
+      this.setPageBackgroundSize(background.element, nextSize)
+    })
+  }
+
+  nextPageBackgroundSize(background, imageSize, width, height) {
+    var element = background.element
+    var computed = this.window.getComputedStyle(element)
+    var rect = element.getBoundingClientRect()
+    var boxWidth = background.isRoot
+      ? width
+      : Math.min(rect.width || width, width)
+    var boxHeight = background.isRoot
+      ? height
+      : Math.min(rect.height || height, height)
+
+    if (boxWidth <= 0 || boxHeight <= 0) return undefined
+
+    var size = this.resolveBackgroundSize(
+      computed.backgroundSize,
+      imageSize,
+      boxWidth,
+      boxHeight,
+    )
+
+    if (!size) return undefined
+
+    if (
+      size.overflow ||
+      (background.isRoot && (size.usesPagePercent || size.usesPageBox))
+    ) {
+      return `${Math.round(size.width)}px ${Math.round(size.height)}px`
+    }
+
+    return undefined
+  }
+
+  resolveBackgroundSize(backgroundSize, imageSize, boxWidth, boxHeight) {
+    var layer = this.firstBackgroundLayer(backgroundSize || 'auto')
+    if (!layer) return undefined
+
+    var normalized = layer.trim().toLowerCase()
+    var naturalWidth = imageSize.width
+    var naturalHeight = imageSize.height
+    var ratio = naturalHeight / naturalWidth
+
+    if (normalized === 'cover' || normalized === 'contain') {
+      var scale =
+        normalized === 'cover'
+          ? Math.max(boxWidth / naturalWidth, boxHeight / naturalHeight)
+          : Math.min(boxWidth / naturalWidth, boxHeight / naturalHeight)
+      var width = naturalWidth * scale
+      var height = naturalHeight * scale
+
+      if (normalized === 'cover') {
+        scale = Math.min(boxWidth / naturalWidth, boxHeight / naturalHeight)
+        return {
+          width: naturalWidth * scale,
+          height: naturalHeight * scale,
+          overflow: width > boxWidth + 1 || height > boxHeight + 1,
+        }
+      }
+
+      return { width, height, overflow: false, usesPageBox: true }
+    }
+
+    var tokens = normalized.split(/\s+/).filter(Boolean)
+    if (tokens.length === 0 || tokens.length > 2) return undefined
+    if (tokens.length === 1) tokens.push('auto')
+
+    var widthValue = this.resolveBackgroundSizeToken(tokens[0], boxWidth)
+    var heightValue = this.resolveBackgroundSizeToken(tokens[1], boxHeight)
+
+    if (widthValue === undefined || heightValue === undefined) return undefined
+
+    var usesPagePercent = widthValue.percent || heightValue.percent
+    var displayWidth = widthValue.value
+    var displayHeight = heightValue.value
+
+    if (displayWidth === undefined && displayHeight === undefined) {
+      displayWidth = naturalWidth
+      displayHeight = naturalHeight
+    } else if (displayWidth === undefined) {
+      displayWidth = displayHeight / ratio
+    } else if (displayHeight === undefined) {
+      displayHeight = displayWidth * ratio
+    }
+
+    if (displayWidth <= 0 || displayHeight <= 0) return undefined
+
+    if (displayWidth > boxWidth + 1 || displayHeight > boxHeight + 1) {
+      var fitScale = Math.min(
+        boxWidth / displayWidth,
+        boxHeight / displayHeight,
+      )
+      return {
+        width: displayWidth * fitScale,
+        height: displayHeight * fitScale,
+        overflow: true,
+        usesPagePercent,
+      }
+    }
+
+    return {
+      width: displayWidth,
+      height: displayHeight,
+      overflow: false,
+      usesPagePercent,
+    }
+  }
+
+  resolveBackgroundSizeToken(token, basis) {
+    if (!token || token === 'auto') return { value: undefined, percent: false }
+
+    if (token.endsWith('%')) {
+      var percent = parseFloat(token)
+      if (!isFinite(percent)) return undefined
+      return { value: (basis * percent) / 100, percent: true }
+    }
+
+    if (token.endsWith('px')) {
+      var px = parseFloat(token)
+      if (!isFinite(px)) return undefined
+      return { value: px, percent: false }
+    }
+
+    return undefined
+  }
+
+  firstBackgroundLayer(value) {
+    var depth = 0
+    var quote
+
+    for (var i = 0; i < value.length; i++) {
+      var char = value[i]
+
+      if (quote) {
+        if (char === quote && value[i - 1] !== '\\') quote = undefined
+        continue
+      }
+
+      if (char === '"' || char === "'") {
+        quote = char
+      } else if (char === '(') {
+        depth++
+      } else if (char === ')') {
+        depth--
+      } else if (char === ',' && depth === 0) {
+        return value.slice(0, i)
+      }
+    }
+
+    return value
+  }
+
+  backgroundImageUrl(value) {
+    var match = /url\((?:"([^"]+)"|'([^']+)'|([^)]*))\)/.exec(value || '')
+    if (!match) return undefined
+    return (match[1] || match[2] || match[3] || '').trim()
+  }
+
+  hasMultipleBackgroundImages(value) {
+    if (!value) return false
+    var first = this.firstBackgroundLayer(value)
+    return first.length < value.length
+  }
+
+  backgroundImageSize(url, callback) {
+    this._backgroundImageSizes = this._backgroundImageSizes || {}
+
+    if (this._backgroundImageSizes[url]) {
+      callback(this._backgroundImageSizes[url])
+      return
+    }
+
+    var image = new this.window.Image()
+    image.onload = () => {
+      var size = {
+        width: image.naturalWidth || image.width,
+        height: image.naturalHeight || image.height,
+      }
+
+      if (size.width > 0 && size.height > 0) {
+        this._backgroundImageSizes[url] = size
+        callback(size)
+      }
+    }
+    image.onerror = () => callback(undefined)
+    image.src = url
+  }
+
+  setPageBackgroundSize(element, value) {
+    this._pageBackgroundOverrides = this._pageBackgroundOverrides || []
+
+    var existing = this._pageBackgroundOverrides.find(
+      (override) => override.element === element,
+    )
+
+    if (!existing) {
+      this._pageBackgroundOverrides.push({
+        element,
+        value: element.style.getPropertyValue('background-size'),
+        priority: element.style.getPropertyPriority('background-size'),
+      })
+    }
+
+    element.style.setProperty('background-size', value, 'important')
+  }
+
   findSpreadBackground(width, height) {
     if (!this.window || !this.content) return undefined
 
@@ -1278,6 +1665,12 @@ class Contents {
     this.css('margin', '0')
     this.css('box-sizing', 'border-box')
 
+    if (isNumber(width) && isNumber(height) && width >= 0 && height >= 0) {
+      this.normalizePageBackgrounds(width, height)
+    } else {
+      this.clearPageBackgroundNormalization()
+    }
+
     this.viewport(viewport)
   }
 
@@ -1337,6 +1730,7 @@ class Contents {
 
     this.css(COLUMN_GAP, gap + 'px')
     this.css(COLUMN_WIDTH, columnWidth + 'px')
+    this.normalizePageBackgrounds(columnWidth, height)
 
     // Fix glyph clipping in WebKit
     // https://github.com/futurepress/epub.js/issues/983
