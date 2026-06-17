@@ -686,16 +686,79 @@ class Book {
    */
   coverUrl() {
     return this.loaded.cover.then(() => {
-      if (!this.cover) {
-        return null
+      if (this.cover) {
+        return this.createCoverUrl(this.cover)
       }
 
-      if (this.archived) {
-        return this.archive.createUrl(this.cover)
-      } else {
-        return this.cover
+      let cover = this.findCoverFromManifest()
+      if (cover) {
+        return this.createCoverUrl(cover)
       }
+
+      return this.findCoverFromSpine()
     })
+  }
+
+  createCoverUrl(cover) {
+    if (this.archived) {
+      return this.archive.createUrl(cover)
+    } else {
+      return cover
+    }
+  }
+
+  findCoverFromManifest() {
+    let manifest = this.packaging && this.packaging.manifest
+
+    if (!manifest) return
+
+    let item = Object.keys(manifest)
+      .map((id) => ({ ...manifest[id], id }))
+      .find((item) => {
+        return (
+          isImageManifestItem(item) &&
+          (isCoverName(item.id) || isCoverName(item.href))
+        )
+      })
+
+    return item && this.resolve(item.href)
+  }
+
+  findCoverFromSpine() {
+    let manifest = this.packaging && this.packaging.manifest
+    let spine = this.packaging && this.packaging.spine
+
+    if (!manifest || !spine || !spine.length) {
+      return null
+    }
+
+    let itemref = spine[0]
+    let item = manifest[itemref.idref]
+
+    if (!item || !isHtmlManifestItem(item)) {
+      return null
+    }
+
+    if (!isCoverName(itemref.idref) && !isCoverName(item.href)) {
+      return null
+    }
+
+    return this.load(item.href)
+      .then((doc) => {
+        let href = findFirstImageHref(doc)
+        if (!href) return null
+
+        if (isAbsoluteUrl(href)) {
+          return href
+        }
+
+        let coverDocument = this.resolve(item.href)
+        let coverPath = new Path(coverDocument).resolve(href)
+        return this.createCoverUrl(coverPath)
+      })
+      .catch(() => {
+        return null
+      })
   }
 
   /**
@@ -785,6 +848,48 @@ class Book {
     this.path = undefined
     this.archived = false
   }
+}
+
+const IMAGE_MEDIA_TYPE_RE = /^image\//i
+const HTML_MEDIA_TYPE_RE = /^(application\/xhtml\+xml|text\/html)$/i
+const COVER_NAME_RE = /(^|[/_.-])cover([/_.-]|$)/i
+const ABSOLUTE_URL_RE = /^[a-z][a-z0-9+.-]*:/i
+
+function isImageManifestItem(item) {
+  return IMAGE_MEDIA_TYPE_RE.test(item.type || '')
+}
+
+function isHtmlManifestItem(item) {
+  return HTML_MEDIA_TYPE_RE.test(item.type || '')
+}
+
+function isCoverName(value) {
+  return COVER_NAME_RE.test(value || '')
+}
+
+function isAbsoluteUrl(value) {
+  return ABSOLUTE_URL_RE.test(value || '')
+}
+
+function findFirstImageHref(doc) {
+  if (!doc) return ''
+
+  let image = doc.getElementsByTagName('img')[0]
+  if (image) {
+    return image.getAttribute('src') || ''
+  }
+
+  image = doc.getElementsByTagName('image')[0]
+  if (image) {
+    return (
+      image.getAttribute('href') ||
+      image.getAttribute('xlink:href') ||
+      image.getAttributeNS('http://www.w3.org/1999/xlink', 'href') ||
+      ''
+    )
+  }
+
+  return ''
 }
 
 //-- Enable binding events to book
