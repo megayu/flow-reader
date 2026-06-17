@@ -1,7 +1,6 @@
 import { debounce } from '@github/mini-throttle/decorators'
 import { IS_SERVER } from '@literal-ui/hooks'
 import React from 'react'
-import { v4 as uuidv4 } from 'uuid'
 import { proxy, ref, snapshot, subscribe, useSnapshot } from 'valtio'
 
 import type { Rendition, Location, Book } from '@flow/epubjs'
@@ -11,6 +10,7 @@ import Section from '@flow/epubjs/types/section'
 import { AnnotationColor, AnnotationType } from '../annotation'
 import { BookRecord, db } from '../db'
 import { fileToEpub } from '../file'
+import { createId } from '../id'
 import { defaultStyle } from '../styles'
 
 import { dfs, find, INode } from './tree'
@@ -191,7 +191,7 @@ export class BookTab extends BaseTab {
     const now = Date.now()
     if (!annotation) {
       annotation = {
-        id: uuidv4(),
+        id: createId(),
         bookId: this.book.id,
         cfi,
         spine: {
@@ -619,7 +619,7 @@ type Tab = BookTab | PageTab
 type TabParam = ConstructorParameters<typeof BookTab | typeof PageTab>[0]
 
 export class Group {
-  id = uuidv4()
+  id = createId()
   tabs: Tab[] = []
 
   constructor(

@@ -1,9 +1,8 @@
-import { v4 as uuidv4 } from 'uuid'
-
 import ePub, { Book } from '@flow/epubjs'
 
 import { unpack } from './backup'
 import { BookRecord, db } from './db'
+import { createId } from './id'
 import { mapExtToMimes } from './mime'
 
 export async function fileToEpub(file: File) {
@@ -47,7 +46,7 @@ export async function addBook(file: File) {
   const metadata = await epub.loaded.metadata
 
   const book: BookRecord = {
-    id: uuidv4(),
+    id: createId(),
     name: file.name || `${metadata.title}.epub`,
     size: file.size,
     metadata,

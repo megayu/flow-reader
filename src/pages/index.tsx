@@ -3,7 +3,7 @@ import clsx from 'clsx'
 import { useLiveQuery } from 'dexie-react-hooks'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   MdArrowDownward,
   MdArrowUpward,
@@ -11,7 +11,6 @@ import {
   MdCheckBoxOutlineBlank,
   MdKeyboardArrowDown,
 } from 'react-icons/md'
-import { useSet } from 'react-use'
 
 import { pack } from '../backup'
 import {
@@ -106,6 +105,39 @@ function toggleSortDirection(direction: SortDirection): SortDirection {
   return direction === 'asc' ? 'desc' : 'asc'
 }
 
+function useStringSet() {
+  const [values, setValues] = useState(() => new Set<string>())
+
+  const add = useCallback((value: string) => {
+    setValues((current) => {
+      if (current.has(value)) return current
+      const next = new Set(current)
+      next.add(value)
+      return next
+    })
+  }, [])
+
+  const has = useCallback((value: string) => values.has(value), [values])
+
+  const toggle = useCallback((value: string) => {
+    setValues((current) => {
+      const next = new Set(current)
+      if (next.has(value)) {
+        next.delete(value)
+      } else {
+        next.add(value)
+      }
+      return next
+    })
+  }, [])
+
+  const reset = useCallback(() => {
+    setValues((current) => (current.size ? new Set() : current))
+  }, [])
+
+  return [values, { add, has, toggle, reset }] as const
+}
+
 export default function Index() {
   const { focusedTab } = useReaderSnapshot()
   const router = useRouter()
@@ -148,7 +180,7 @@ const Library: React.FC = () => {
   const sortMenuRef = useRef<HTMLDivElement>(null)
 
   const [select, toggleSelect] = useBoolean(false)
-  const [selectedBookIds, { add, has, toggle, reset }] = useSet<string>()
+  const [selectedBookIds, { add, has, toggle, reset }] = useStringSet()
 
   const { groups } = useReaderSnapshot()
 
