@@ -43,23 +43,12 @@ export const SearchView: React.FC<PaneViewProps> = (props) => {
 
   const results = focusedBookTab?.results
   const expanded = results?.some((r) => r.expanded)
+  const toggleResults = () => {
+    reader.focusedBookTab?.results?.forEach((r) => (r.expanded = !expanded))
+  }
 
   return (
-    <PaneView
-      actions={[
-        {
-          id: expanded ? 'collapse-all' : 'expand-all',
-          title: t(expanded ? 'action.collapse_all' : 'action.expand_all'),
-          Icon: expanded ? VscCollapseAll : VscExpandAll,
-          handle() {
-            reader.focusedBookTab?.results?.forEach(
-              (r) => (r.expanded = !expanded),
-            )
-          },
-        },
-      ]}
-      {...props}
-    >
+    <PaneView {...props}>
       <div className="scroll-parent">
         <div className="px-5 py-px">
           <TextField
@@ -71,6 +60,15 @@ export const SearchView: React.FC<PaneViewProps> = (props) => {
             placeholder={t('search.title')}
             onChange={(e) => setKeyword(e.target.value)}
             onClear={() => setKeyword('')}
+            actions={[
+              {
+                title: t(
+                  expanded ? 'action.collapse_all' : 'action.expand_all',
+                ),
+                Icon: expanded ? VscCollapseAll : VscExpandAll,
+                onClick: toggleResults,
+              },
+            ]}
           />
         </div>
         {keyword && results && (

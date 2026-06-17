@@ -70,33 +70,16 @@ export interface PaneViewProps extends ComponentProps<'div'> {
 }
 export function PaneView({
   className,
-  name,
-  title,
-  actions,
+  name: _name,
+  title: _title,
+  actions: _actions,
   ...props
 }: PaneViewProps) {
   return (
-    <>
-      <div
-        className={clsx(
-          'flex items-center justify-between px-5 py-2.5',
-          className,
-        )}
-      >
-        <h2
-          title={title}
-          className="text-on-surface"
-          style={{ fontSize: scale(11, 12) }}
-        >
-          {name?.toUpperCase()}
-        </h2>
-        {actions && <ActionBar actions={actions} className="-mr-1" />}
-      </div>
-      <SplitView
-        vertical
-        className={clsx('scroll-parent', className)}
-        {...props}
-      />
-    </>
+    <SplitView
+      vertical
+      className={clsx('scroll-parent', className)}
+      {...props}
+    />
   )
 }
