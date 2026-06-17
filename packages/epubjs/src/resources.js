@@ -149,9 +149,7 @@ class Resources {
     })
 
     return Promise.all(replacements).then((replacementUrls) => {
-      this.replacementUrls = replacementUrls.filter((url) => {
-        return typeof url === 'string'
-      })
+      this.replacementUrls = replacementUrls
       return replacementUrls
     })
   }
@@ -278,7 +276,7 @@ class Resources {
     if (indexInUrls === -1) {
       return
     }
-    if (this.replacementUrls.length) {
+    if (this.replacementUrls.length && this.replacementUrls[indexInUrls]) {
       return new Promise(
         function (resolve, reject) {
           resolve(this.replacementUrls[indexInUrls])
@@ -306,6 +304,57 @@ class Resources {
     return substitute(content, relUrls, this.replacementUrls)
   }
 
+  /**
+   * Substitute media references that are present in section markup but omitted
+   * from the OPF manifest. Some EPUBs reference images directly from XHTML
+   * without declaring them as package resources, so the normal manifest-based
+   * replacement pass cannot see them.
+   * @param  {string} content
+   * @param  {string} url section url the content is relative to
+   * @return {Promise<string>}
+   */
+  substituteMissingMedia(content, url) {
+    if (!this.settings.archive || !content || !url) {
+      return Promise.resolve(content)
+    }
+
+    var sectionPath = new Path(url)
+    var urls = collectMediaUrls(content)
+
+    if (!urls.length) {
+      return Promise.resolve(content)
+    }
+
+    var replacements = urls.map((src) => {
+      var assetPath = stripUrlSuffix(src)
+      var absolute = path.isAbsolute(assetPath)
+        ? assetPath
+        : sectionPath.resolve(assetPath)
+
+      return this.createUrl(absolute)
+        .then((replacement) => {
+          return { src, replacement }
+        })
+        .catch(() => {
+          return null
+        })
+    })
+
+    return Promise.all(replacements).then((items) => {
+      var output = content
+
+      items.forEach((item) => {
+        if (!item || !item.replacement) {
+          return
+        }
+
+        output = substitute(output, [item.src], [item.replacement])
+      })
+
+      return output
+    })
+  }
+
   destroy() {
     this.settings = undefined
     this.manifest = undefined
@@ -318,6 +367,72 @@ class Resources {
     this.urls = undefined
     this.cssUrls = undefined
   }
+}
+
+const MEDIA_TAG_RE = /<(?:img|image|source)\b[^>]*>/gi
+const URL_ATTR_RE = /\b(?:src|href|xlink:href)=["']([^"']+)["']/gi
+const SRCSET_ATTR_RE = /\bsrcset=["']([^"']+)["']/gi
+const ABSOLUTE_URL_RE = /^[a-z][a-z0-9+.-]*:/i
+
+function collectMediaUrls(content) {
+  var urls = []
+  var seen = Object.create(null)
+  var tagMatch
+
+  while ((tagMatch = MEDIA_TAG_RE.exec(content))) {
+    var tag = tagMatch[0]
+    var attrMatch
+
+    URL_ATTR_RE.lastIndex = 0
+    while ((attrMatch = URL_ATTR_RE.exec(tag))) {
+      addMediaUrl(attrMatch[1], urls, seen)
+    }
+
+    SRCSET_ATTR_RE.lastIndex = 0
+    while ((attrMatch = SRCSET_ATTR_RE.exec(tag))) {
+      attrMatch[1].split(',').forEach((candidate) => {
+        addMediaUrl(candidate.trim().split(/\s+/)[0], urls, seen)
+      })
+    }
+  }
+
+  return urls
+}
+
+function addMediaUrl(src, urls, seen) {
+  if (!src || !shouldResolveMediaUrl(src) || seen[src]) {
+    return
+  }
+
+  seen[src] = true
+  urls.push(src)
+}
+
+function shouldResolveMediaUrl(src) {
+  var value = src.trim()
+
+  return (
+    value &&
+    value.charAt(0) !== '#' &&
+    value.indexOf('//') !== 0 &&
+    !ABSOLUTE_URL_RE.test(value)
+  )
+}
+
+function stripUrlSuffix(src) {
+  var end = src.length
+  var query = src.indexOf('?')
+  var hash = src.indexOf('#')
+
+  if (query > -1) {
+    end = Math.min(end, query)
+  }
+
+  if (hash > -1) {
+    end = Math.min(end, hash)
+  }
+
+  return src.slice(0, end)
 }
 
 export default Resources

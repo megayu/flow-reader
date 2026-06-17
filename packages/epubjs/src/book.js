@@ -648,6 +648,11 @@ class Book {
       // Substitute hook
       let substituteResources = (output, section) => {
         section.output = this.resources.substitute(output, section.url)
+        return this.resources
+          .substituteMissingMedia(section.output, section.url)
+          .then((output) => {
+            section.output = output
+          })
       }
 
       // Set to use replacements
@@ -701,6 +706,11 @@ class Book {
   replacements() {
     this.spine.hooks.serialize.register((output, section) => {
       section.output = this.resources.substitute(output, section.url)
+      return this.resources
+        .substituteMissingMedia(section.output, section.url)
+        .then((output) => {
+          section.output = output
+        })
     })
 
     return this.resources.replacements().then(() => {
