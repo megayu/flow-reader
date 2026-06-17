@@ -1,7 +1,12 @@
 import { StateLayer } from '@literal-ui/core'
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { VscCollapseAll, VscExpandAll } from 'react-icons/vsc'
 
+import {
+  compareBookDisplayTitle,
+  getBookDisplayTitle,
+  getBookTooltip,
+} from '@flow/reader/book'
 import { useLibrary, useMobile, useTranslation } from '@flow/reader/hooks'
 import {
   compareHref,
@@ -27,24 +32,33 @@ export const TocView: React.FC<PaneViewProps> = (props) => {
 
 const LibraryPane: React.FC = () => {
   const books = useLibrary()
+  const sortedBooks = useMemo(
+    () => books?.slice().sort(compareBookDisplayTitle),
+    [books],
+  )
   const t = useTranslation('toc')
   return (
     <Pane headline={t('library')} preferredSize={240}>
-      {books?.map((book) => (
-        <button
-          key={book.id}
-          className="relative w-full truncate py-1 pl-5 pr-3 text-left"
-          title={book.name}
-          draggable
-          onClick={() => reader.addTab(book)}
-          onDragStart={(e) => {
-            e.dataTransfer.setData('text/plain', book.id)
-          }}
-        >
-          <StateLayer />
-          {book.name}
-        </button>
-      ))}
+      {sortedBooks?.map((book) => {
+        const displayTitle = getBookDisplayTitle(book)
+        const tooltip = getBookTooltip(book)
+
+        return (
+          <button
+            key={book.id}
+            className="relative w-full truncate py-1 pl-5 pr-3 text-left"
+            title={tooltip}
+            draggable
+            onClick={() => reader.addTab(book)}
+            onDragStart={(e) => {
+              e.dataTransfer.setData('text/plain', book.id)
+            }}
+          >
+            <StateLayer />
+            {displayTitle}
+          </button>
+        )
+      })}
     </Pane>
   )
 }

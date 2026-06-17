@@ -14,6 +14,12 @@ import {
 import { useSet } from 'react-use'
 
 import { pack } from '../backup'
+import {
+  cleanBookText,
+  compareBookDisplayTitle,
+  getBookDisplayTitle,
+  getBookTooltip,
+} from '../book'
 import { ReaderGridView, Button, DropZone } from '../components'
 import { BookRecord, CoverRecord, db } from '../db'
 import { handleFiles } from '../file'
@@ -45,30 +51,8 @@ const sortFieldOptions: SortField[] = [
 
 const toolbarButtonClass = 'h-8'
 
-function cleanBookText(value?: string) {
-  return value?.replace(/\s+/g, ' ').trim() ?? ''
-}
-
-function stripFileExtension(filename: string) {
-  return cleanBookText(filename).replace(/\.[^.]+$/, '')
-}
-
-function getBookDisplayTitle(book: BookRecord) {
-  return cleanBookText(book.metadata.title) || stripFileExtension(book.name)
-}
-
-function getBookTooltip(book: BookRecord) {
-  return [
-    cleanBookText(book.metadata.title),
-    cleanBookText(book.metadata.creator),
-    cleanBookText(book.name),
-  ]
-    .filter(Boolean)
-    .join('\n')
-}
-
 function compareBookTitle(a: BookRecord, b: BookRecord) {
-  return collator.compare(getBookDisplayTitle(a), getBookDisplayTitle(b))
+  return compareBookDisplayTitle(a, b)
 }
 
 function compareBookString(
