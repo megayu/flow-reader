@@ -114,9 +114,8 @@ interface CheckboxProps extends ComponentProps<'input'> {
 }
 export const Checkbox: React.FC<CheckboxProps> = ({ name, ...props }) => {
   return (
-    <div className="flex items-center">
-      <Label name={name} />
-      <div className="checkbox bg-default relative ml-auto rounded-sm">
+    <div className="flex items-center gap-2">
+      <div className="checkbox bg-default relative shrink-0 rounded-sm">
         <input
           type="checkbox"
           name={name}
@@ -126,6 +125,7 @@ export const Checkbox: React.FC<CheckboxProps> = ({ name, ...props }) => {
         />
         <MdCheck className="pointer-events-none invisible absolute top-0 text-on-surface-variant peer-checked:visible" />
       </div>
+      <Label name={name} className="!mb-0" />
     </div>
   )
 }
