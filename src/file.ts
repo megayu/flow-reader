@@ -32,6 +32,8 @@ export async function handleFiles(files: Iterable<File>) {
 
     if (!book) {
       book = await addBook(file)
+    } else {
+      await ensureBookCover(book, file)
     }
 
     newBooks.push(book)
@@ -54,20 +56,35 @@ export async function addBook(file: File) {
     annotations: [],
   }
   db?.books.add(book)
-  addFile(book.id, file, epub)
+  await addFile(book.id, file, epub)
   return book
 }
 
 export async function addFile(id: string, file: File, epub?: Book) {
-  db?.files.add({ id, file })
+  await db?.files.put({ id, file })
+  await ensureBookCover({ id }, file, epub)
+}
+
+export async function ensureBookCover(
+  book: Pick<BookRecord, 'id'>,
+  file?: File,
+  epub?: Book,
+) {
+  const existing = await db?.covers.get(book.id)
+  if (existing?.cover) return existing.cover
 
   if (!epub) {
+    const record = file ? undefined : await db?.files.get(book.id)
+    file = file ?? record?.file
+    if (!file) return null
+
     epub = await fileToEpub(file)
   }
 
   const url = await epub.coverUrl()
   const cover = url && (await toDataUrl(url))
-  db?.covers.add({ id, cover })
+  await db?.covers.put({ id: book.id, cover })
+  return cover
 }
 
 export function readBlob(fn: (reader: FileReader) => void) {
