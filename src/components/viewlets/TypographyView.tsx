@@ -29,6 +29,8 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
   const t = useTranslation('typography')
 
   const [localFonts, setLocalFonts] = useState<string[]>()
+  const localFontsRequestRef = useRef<Promise<string[] | undefined>>()
+  const fontInputRef = useRef<HTMLInputElement>(null)
 
   const { fontFamily, fontSize, fontWeight, lineHeight, zoom, spread } =
     scope === TypographyScope.Book
@@ -61,20 +63,50 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
   )
 
   const queryLocalFonts = useCallback(async () => {
-    if (localFonts) return
+    if (localFonts) return localFonts
+    if (localFontsRequestRef.current) return localFontsRequestRef.current
     if (!('queryLocalFonts' in window)) {
       console.error('queryLocalFonts is not available')
       return
     }
 
-    try {
-      const fonts = await window.queryLocalFonts()
-      const uniqueFonts = Array.from(new Set(fonts.map((f) => f.family)))
-      setLocalFonts(uniqueFonts)
-    } catch (error) {
-      console.error('Error querying local fonts:', error)
-    }
+    localFontsRequestRef.current = window
+      .queryLocalFonts()
+      .then((fonts) => {
+        const uniqueFonts = Array.from(new Set(fonts.map((f) => f.family)))
+        setLocalFonts(uniqueFonts)
+        return uniqueFonts
+      })
+      .catch((error) => {
+        console.error('Error querying local fonts:', error)
+        return undefined
+      })
+      .finally(() => {
+        localFontsRequestRef.current = undefined
+      })
+
+    return localFontsRequestRef.current
   }, [localFonts])
+
+  const openFontPicker = useCallback(async () => {
+    const input = fontInputRef.current
+    if (!input) return
+
+    await queryLocalFonts()
+
+    requestAnimationFrame(() => {
+      try {
+        const currentInput = fontInputRef.current as
+          | (HTMLInputElement & {
+              showPicker?: () => void
+            })
+          | null
+        currentInput?.showPicker?.()
+      } catch {
+        // Some browsers only allow showPicker for specific input types.
+      }
+    })
+  }, [queryLocalFonts])
 
   return (
     <PaneView {...props}>
@@ -117,21 +149,27 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
         <TextField
           as="input"
           name={t('font_family')}
-          value={fontFamily}
+          value={fontFamily ?? ''}
           placeholder="default"
-          // Tips: Datalist only appears on mouse click or keyboard input.
-          // Does not show when focused via Tab/focus() or triggered by click()
-          datalist={localFonts?.map((font) => (
+          datalist={(localFonts ?? []).map((font) => (
             <option key={font} value={font}>
               {font}
             </option>
           ))}
+          hideDatalistIndicator
+          mRef={fontInputRef}
           onFocus={queryLocalFonts}
-          // Preload fonts to ensure `localFonts` is available on first mouse click.
-          // Without preloading, datalist dropdown will be empty for the first mouse click.
-          onMouseEnter={queryLocalFonts}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            fontInputRef.current?.focus()
+            openFontPicker()
+          }}
           onChange={(e) => {
-            setTypography('fontFamily', e.target.value)
+            setTypography('fontFamily', e.target.value || undefined)
+          }}
+          onClear={() => {
+            if (fontInputRef.current) fontInputRef.current.value = ''
+            setTypography('fontFamily', undefined)
           }}
         />
         <NumberField

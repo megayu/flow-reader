@@ -27,6 +27,7 @@ export type TextFieldProps<T extends ElementType> = PolymorphicPropsWithoutRef<
     autoFocus?: boolean
     actions?: Action[]
     datalist?: React.ReactNode[]
+    hideDatalistIndicator?: boolean
     onClear?: () => void
     // https://react-typescript-cheatsheet.netlify.app/docs/basic/getting-started/forward_and_create_ref/#generic-forwardrefs
     mRef?: RefObject<HTMLInputElement> | null
@@ -41,6 +42,7 @@ export function TextField<T extends ElementType = 'input'>({
   autoFocus,
   actions = [],
   datalist,
+  hideDatalistIndicator = false,
   onClear,
   mRef: outerRef,
   ...props
@@ -84,6 +86,7 @@ export function TextField<T extends ElementType = 'input'>({
           id={name}
           className={clsx(
             'w-0 flex-1 bg-transparent py-1 px-1.5 !text-[13px] text-on-surface-variant typescale-body-medium placeholder:text-outline/60',
+            hideDatalistIndicator && 'datalist-no-indicator',
             isInput || 'scroll h-full resize-none',
           )}
           {...(datalist && { list: datalistId })}
