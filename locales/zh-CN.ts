@@ -7,6 +7,12 @@ export default {
   'home.export': '导出',
   'home.import': '导入',
   'home.delete': '删除',
+  'home.sort.title': '标题',
+  'home.sort.creator': '作者',
+  'home.sort.updatedAt': '上次阅读',
+  'home.sort.createdAt': '添加时间',
+  'home.sort.asc': '正序',
+  'home.sort.desc': '倒序',
 
   'toc.title': '目录',
   'toc.library': '图书馆',

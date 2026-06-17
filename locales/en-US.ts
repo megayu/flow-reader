@@ -7,6 +7,12 @@ export default {
   'home.export': 'Export',
   'home.import': 'Import',
   'home.delete': 'Delete',
+  'home.sort.title': 'Title',
+  'home.sort.creator': 'Author',
+  'home.sort.updatedAt': 'Last read',
+  'home.sort.createdAt': 'Added',
+  'home.sort.asc': 'Ascending',
+  'home.sort.desc': 'Descending',
 
   'toc.title': 'TOC',
   'toc.library': 'Library',

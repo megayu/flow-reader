@@ -7,6 +7,12 @@ export default {
   'home.export': 'エクスポート',
   'home.import': 'インポート',
   'home.delete': '削除',
+  'home.sort.title': 'タイトル',
+  'home.sort.creator': '著者',
+  'home.sort.updatedAt': '最終読書',
+  'home.sort.createdAt': '追加日時',
+  'home.sort.asc': '昇順',
+  'home.sort.desc': '降順',
 
   'toc.title': '目次',
   'toc.library': 'ライブラリ',
