@@ -1170,6 +1170,8 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
   const percentage = `${((book.percentage ?? 0) * 100).toFixed(2)}%`
   const startDisplayed = location?.start.displayed
   const endDisplayed = location?.end.displayed
+  const singleVisiblePageOnRight =
+    spread && !!startDisplayed && startDisplayed.slot === 'right'
   const hasTwoVisiblePages =
     !!location &&
     (location.start.href !== location.end.href ||
@@ -1199,16 +1201,19 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
       ) : spread ? (
         <div className="grid h-6 grid-cols-2 items-center px-[4vw] text-center text-outline typescale-body-small sm:px-2">
           <div>
-            {startDisplayed &&
+            {!singleVisiblePageOnRight &&
+              startDisplayed &&
               formatFooterPage(
                 startDisplayed,
                 hasTwoVisiblePages ? '' : percentage,
               )}
           </div>
           <div>
-            {hasTwoVisiblePages &&
-              endDisplayed &&
-              formatFooterPage(endDisplayed, percentage)}
+            {singleVisiblePageOnRight
+              ? formatFooterPage(startDisplayed, percentage)
+              : hasTwoVisiblePages &&
+                endDisplayed &&
+                formatFooterPage(endDisplayed, percentage)}
           </div>
         </div>
       ) : (

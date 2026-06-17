@@ -820,6 +820,7 @@ class Rendition {
         displayed: {
           page: start.pages[0] || 1,
           total: start.totalPages,
+          slot: start.startSlot,
         },
       },
       end: {
@@ -829,6 +830,7 @@ class Rendition {
         displayed: {
           page: end.pages[end.pages.length - 1] || 1,
           total: end.totalPages,
+          slot: end.endSlot,
         },
       },
     }

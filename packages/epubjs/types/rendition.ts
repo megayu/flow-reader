@@ -49,6 +49,7 @@ export interface DisplayedLocation {
   displayed: {
     page: number
     total: number
+    slot?: 'left' | 'right'
   }
 }
 

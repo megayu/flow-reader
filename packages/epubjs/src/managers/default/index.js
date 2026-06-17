@@ -47,6 +47,8 @@ class DefaultViewManager {
     }
 
     this.rendered = false
+    this.reflowablePageCountCache = {}
+    this.currentReflowableSpread = undefined
   }
 
   render(element, size) {
@@ -276,6 +278,308 @@ class DefaultViewManager {
       this.layout.name === 'reflowable' &&
       this.layout.divisor > 1
     )
+  }
+
+  canUseLogicalReflowableSpread() {
+    return (
+      this.isReflowableSpread() &&
+      !this.settings.fullsize &&
+      (!this.settings.direction || this.settings.direction === 'ltr')
+    )
+  }
+
+  reflowableLayoutCacheKey(section) {
+    if (!this.layout) {
+      return section.index + ':unknown'
+    }
+
+    return [
+      section.index,
+      this.layout.width,
+      this.layout.height,
+      this.layout.pageWidth,
+      this.layout.columnWidth,
+      this.layout.gap,
+      this.settings.axis,
+      this.settings.direction || 'ltr',
+    ].join(':')
+  }
+
+  cacheReflowablePageCount(view) {
+    if (!view || !view.section) {
+      return 0
+    }
+
+    let pageCount = this.viewPageCount(view)
+    this.reflowablePageCountCache[this.reflowableLayoutCacheKey(view.section)] =
+      pageCount
+    return pageCount
+  }
+
+  async measureReflowableSectionPageCount(section) {
+    if (!section) {
+      return 0
+    }
+
+    let existing = this.views && this.views.find(section)
+    if (existing) {
+      return this.cacheReflowablePageCount(existing)
+    }
+
+    let key = this.reflowableLayoutCacheKey(section)
+    if (this.reflowablePageCountCache[key]) {
+      return this.reflowablePageCountCache[key]
+    }
+
+    let scrollLeft = this.container ? this.container.scrollLeft : 0
+    let view = this.createView(section)
+    view.element.style.visibility = 'hidden'
+    view.iframe && (view.iframe.style.visibility = 'hidden')
+
+    view.on(EVENTS.VIEWS.AXIS, (axis) => {
+      this.updateAxis(axis)
+    })
+
+    view.on(EVENTS.VIEWS.WRITING_MODE, (mode) => {
+      this.updateWritingMode(mode)
+    })
+
+    this.views.append(view)
+
+    try {
+      await view.display(this.request)
+      return this.cacheReflowablePageCount(view)
+    } finally {
+      this.views.remove(view)
+      this.scrollTo(scrollLeft, 0, true)
+    }
+  }
+
+  reflowablePage(section, pageIndex) {
+    return {
+      section,
+      pageIndex,
+    }
+  }
+
+  sameReflowableSection(left, right) {
+    return (
+      left &&
+      right &&
+      left.section &&
+      right.section &&
+      left.section.index === right.section.index
+    )
+  }
+
+  async nextReflowablePage(address) {
+    if (!address || !address.section) {
+      return
+    }
+
+    let pageCount = await this.measureReflowableSectionPageCount(
+      address.section,
+    )
+    if (address.pageIndex + 1 < pageCount) {
+      return this.reflowablePage(address.section, address.pageIndex + 1)
+    }
+
+    let next = address.section.next && address.section.next()
+    if (!next) {
+      return
+    }
+
+    let nextPageCount = await this.measureReflowableSectionPageCount(next)
+    if (!nextPageCount) {
+      return
+    }
+
+    return this.reflowablePage(next, 0)
+  }
+
+  async previousReflowablePage(address) {
+    if (!address || !address.section) {
+      return
+    }
+
+    if (address.pageIndex > 0) {
+      return this.reflowablePage(address.section, address.pageIndex - 1)
+    }
+
+    let prev = address.section.prev && address.section.prev()
+    if (!prev) {
+      return
+    }
+
+    let pageCount = await this.measureReflowableSectionPageCount(prev)
+    if (!pageCount) {
+      return
+    }
+
+    return this.reflowablePage(prev, pageCount - 1)
+  }
+
+  async renderReflowableSpread(spread) {
+    let viewBySectionIndex = {}
+
+    this.clear()
+    this.updateLayout()
+
+    if (spread.left) {
+      let leftView = await this.add(spread.left.section)
+      viewBySectionIndex[spread.left.section.index] = leftView
+      this.cacheReflowablePageCount(leftView)
+    }
+
+    if (
+      spread.right &&
+      (!spread.left || !this.sameReflowableSection(spread.left, spread.right))
+    ) {
+      let rightView = spread.left
+        ? await this.append(spread.right.section)
+        : await this.add(spread.right.section)
+      viewBySectionIndex[spread.right.section.index] = rightView
+      this.cacheReflowablePageCount(rightView)
+    }
+
+    this.applyReflowableSpreadPosition(spread, viewBySectionIndex)
+  }
+
+  async displayReflowableSpread(section, target) {
+    this.clear()
+    this.updateLayout()
+
+    let view = await this.add(section)
+    this.cacheReflowablePageCount(view)
+
+    let pageIndex = 0
+    if (target) {
+      let targetOffset = view.locationOf(target)
+      pageIndex = Math.floor(
+        Math.max(targetOffset.left, 0) / this.layout.pageWidth,
+      )
+      pageIndex = Math.min(
+        Math.max(pageIndex, 0),
+        Math.max(this.viewPageCount(view) - 1, 0),
+      )
+    }
+
+    let left = this.reflowablePage(section, pageIndex)
+    let right = await this.nextReflowablePage(left)
+    let spread = {
+      left,
+      right,
+    }
+    let viewBySectionIndex = {
+      [section.index]: view,
+    }
+
+    if (
+      right &&
+      !this.sameReflowableSection(left, right) &&
+      !viewBySectionIndex[right.section.index]
+    ) {
+      let rightView = await this.append(right.section)
+      viewBySectionIndex[right.section.index] = rightView
+      this.cacheReflowablePageCount(rightView)
+    }
+
+    this.applyReflowableSpreadPosition(spread, viewBySectionIndex)
+  }
+
+  applyReflowableSpreadPosition(spread, viewBySectionIndex) {
+    let left = spread.left
+    let right = spread.right
+    let pageWidth = this.layout.pageWidth
+    let leftView = left && viewBySectionIndex[left.section.index]
+    let rightView = right && viewBySectionIndex[right.section.index]
+
+    if (leftView) {
+      leftView.element.style.marginLeft = ''
+      leftView.element.style.marginRight = right ? '' : pageWidth + 'px'
+      this.scrollTo(
+        leftView.offset().left + left.pageIndex * pageWidth,
+        0,
+        true,
+      )
+    } else if (rightView) {
+      rightView.element.style.marginLeft = pageWidth + 'px'
+      rightView.element.style.marginRight = ''
+      this.scrollTo(0, 0, true)
+    }
+
+    this.currentReflowableSpread = spread
+    this.views.show()
+  }
+
+  async nextReflowableSpread() {
+    let spread = this.currentReflowableSpread
+    if (!spread) {
+      spread = this.reflowableSpreadFromVisible()
+    }
+
+    let current = spread && (spread.right || spread.left)
+    let nextLeft = await this.nextReflowablePage(current)
+    if (!nextLeft) {
+      this.views.show()
+      return
+    }
+
+    let nextRight = await this.nextReflowablePage(nextLeft)
+    return this.renderReflowableSpread({
+      left: nextLeft,
+      right: nextRight,
+    })
+  }
+
+  async previousReflowableSpread() {
+    let spread = this.currentReflowableSpread
+    if (!spread) {
+      spread = this.reflowableSpreadFromVisible()
+    }
+
+    let current = spread && spread.left
+    let prevRight = await this.previousReflowablePage(current)
+    if (!prevRight) {
+      this.views.show()
+      return
+    }
+
+    let prevLeft = await this.previousReflowablePage(prevRight)
+    return this.renderReflowableSpread({
+      left: prevLeft,
+      right: prevRight,
+    })
+  }
+
+  reflowableSpreadFromVisible() {
+    let visible = this.paginatedLocation()
+    if (!visible.length) {
+      return
+    }
+
+    let pages = []
+    visible.forEach((location) => {
+      let view = this.views
+        .displayed()
+        .find((candidate) => candidate.section.index === location.index)
+      if (!view) {
+        return
+      }
+
+      location.pages.forEach((page) => {
+        pages.push(this.reflowablePage(view.section, page - 1))
+      })
+    })
+
+    if (!pages.length) {
+      return
+    }
+
+    return {
+      left: pages[0],
+      right: pages[1],
+    }
   }
 
   viewPageCount(view) {
@@ -525,6 +829,18 @@ class DefaultViewManager {
       target = undefined
     }
 
+    if (this.canUseLogicalReflowableSpread()) {
+      this.displayReflowableSpread(section, target).then(
+        function () {
+          displaying.resolve()
+        },
+        function (err) {
+          displaying.reject(err)
+        },
+      )
+      return displayed
+    }
+
     // Check to make sure the section we want isn't already shown
     var visible = this.views.find(section)
 
@@ -746,6 +1062,10 @@ class DefaultViewManager {
 
     if (!this.views.length) return
 
+    if (this.canUseLogicalReflowableSpread()) {
+      return this.nextReflowableSpread()
+    }
+
     let trailing = this.trailingReflowableSection()
     if (trailing) {
       return this.display(trailing)
@@ -874,6 +1194,10 @@ class DefaultViewManager {
     let dir = this.settings.direction
 
     if (!this.views.length) return
+
+    if (this.canUseLogicalReflowableSpread()) {
+      return this.previousReflowableSpread()
+    }
 
     if (this.isFirstReflowablePageVisible()) {
       this.views.first().element.style.marginLeft = ''
@@ -1028,6 +1352,8 @@ class DefaultViewManager {
     // this.q.clear();
 
     if (this.views) {
+      this.currentReflowableSpread = undefined
+      this.reflowablePageCountCache = {}
       this.views.hide()
       this.scrollTo(0, 0, true)
       this.views.clear()
@@ -1036,12 +1362,77 @@ class DefaultViewManager {
 
   currentLocation() {
     this.updateLayout()
-    if (this.isPaginated && this.settings.axis === 'horizontal') {
+    if (this.canUseLogicalReflowableSpread() && this.currentReflowableSpread) {
+      this.location = this.reflowableSpreadLocation()
+    } else if (this.isPaginated && this.settings.axis === 'horizontal') {
       this.location = this.paginatedLocation()
     } else {
       this.location = this.scrolledLocation()
     }
     return this.location
+  }
+
+  reflowableSpreadLocation() {
+    let spread = this.currentReflowableSpread
+    if (!spread) {
+      return []
+    }
+
+    let addresses = []
+    if (spread.left) {
+      addresses.push(extend({ slot: 'left' }, spread.left))
+    }
+    if (spread.right) {
+      addresses.push(extend({ slot: 'right' }, spread.right))
+    }
+
+    let grouped = []
+    addresses.forEach((address) => {
+      let last = grouped[grouped.length - 1]
+      if (last && last.section.index === address.section.index) {
+        last.endPageIndex = address.pageIndex
+        last.pages.push(address.pageIndex + 1)
+        last.endSlot = address.slot
+      } else {
+        grouped.push({
+          section: address.section,
+          startPageIndex: address.pageIndex,
+          endPageIndex: address.pageIndex,
+          pages: [address.pageIndex + 1],
+          startSlot: address.slot,
+          endSlot: address.slot,
+        })
+      }
+    })
+
+    return grouped
+      .map((group) => {
+        let view = this.views.find(group.section)
+        if (!view) {
+          return
+        }
+
+        let pageWidth = this.layout.pageWidth
+        let start = group.startPageIndex * pageWidth
+        let end = Math.min((group.endPageIndex + 1) * pageWidth, view.width())
+        let mapping = this.mapping.page(
+          view.contents,
+          view.section.cfiBase,
+          start,
+          end,
+        )
+
+        return {
+          index: group.section.index,
+          href: group.section.href,
+          pages: group.pages,
+          totalPages: this.viewPageCount(view),
+          mapping,
+          startSlot: group.startSlot,
+          endSlot: group.endSlot,
+        }
+      })
+      .filter(Boolean)
   }
 
   scrolledLocation() {
