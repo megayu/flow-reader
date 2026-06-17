@@ -6,13 +6,60 @@ import { useSettings } from '@flow/reader/state'
 import { useColorScheme } from './useColorScheme'
 import { useTheme } from './useTheme'
 
-export const backgroundOptions = [
-  { value: -1, className: 'bg-white' },
-  { value: -2, className: 'bg-[#F3E8D2]', color: '#F3E8D2' },
-  { value: -3, className: 'bg-[#E1EED8]', color: '#E1EED8' },
-  { value: 1, className: 'bg-surface1' },
-  { value: 3, className: 'bg-surface3' },
-  { value: 5, className: 'bg-surface5' },
+interface BackgroundOption {
+  value: number
+  className: string
+  sidebarClassName: string
+  activityBarClassName: string
+  rowActiveClassName: string
+  color?: string
+}
+
+export const backgroundOptions: BackgroundOption[] = [
+  {
+    value: -1,
+    className: 'bg-white',
+    sidebarClassName: 'bg-[#F4F6F7]',
+    activityBarClassName: 'bg-[#E8EDF0]',
+    rowActiveClassName: 'bg-[#DDE5EA]',
+  },
+  {
+    value: -2,
+    className: 'bg-[#F3E8D2]',
+    sidebarClassName: 'bg-[#EADBBC]',
+    activityBarClassName: 'bg-[#E1CCA5]',
+    rowActiveClassName: 'bg-[#D8BE94]',
+    color: '#F3E8D2',
+  },
+  {
+    value: -3,
+    className: 'bg-[#E1EED8]',
+    sidebarClassName: 'bg-[#D3E4C8]',
+    activityBarClassName: 'bg-[#C4D8B7]',
+    rowActiveClassName: 'bg-[#B7CBA8]',
+    color: '#E1EED8',
+  },
+  {
+    value: 1,
+    className: 'bg-surface1',
+    sidebarClassName: 'bg-surface2',
+    activityBarClassName: 'bg-surface3',
+    rowActiveClassName: 'bg-surface4',
+  },
+  {
+    value: 3,
+    className: 'bg-surface3',
+    sidebarClassName: 'bg-surface4',
+    activityBarClassName: 'bg-surface5',
+    rowActiveClassName: 'bg-surface5',
+  },
+  {
+    value: 5,
+    className: 'bg-surface5',
+    sidebarClassName: 'bg-surface5',
+    activityBarClassName: 'bg-surface5',
+    rowActiveClassName: 'bg-outline/20',
+  },
 ]
 
 const customBackgrounds = new Map(
@@ -20,6 +67,28 @@ const customBackgrounds = new Map(
     .filter((background) => background.color)
     .map((background) => [background.value, background]),
 )
+
+const backgroundOptionMap = new Map(
+  backgroundOptions.map((background) => [background.value, background]),
+)
+const defaultBackgroundOption = backgroundOptions[0] as BackgroundOption
+
+const darkBackground = {
+  contentClassName: 'bg-default',
+  sidebarClassName: 'bg-surface',
+  activityBarClassName: 'bg-default',
+  rowActiveClassName: 'bg-outline/20',
+}
+
+function getMaterialBackgroundOption(level: number): BackgroundOption {
+  return {
+    value: level,
+    className: `bg-surface${level}`,
+    sidebarClassName: `bg-surface${Math.min(level + 1, 5)}`,
+    activityBarClassName: `bg-surface${Math.min(level + 2, 5)}`,
+    rowActiveClassName: `bg-surface${Math.min(level + 3, 5)}`,
+  }
+}
 
 export function useBackground() {
   const [{ theme }, setSettings] = useSettings()
@@ -43,14 +112,18 @@ export function useBackground() {
   const level = theme?.background ?? -1
 
   const background = useMemo(() => {
-    if (dark) return 'bg-default'
+    if (dark) return darkBackground
 
-    const customBackground = customBackgrounds.get(level)
-    if (customBackground) return customBackground.className
+    const option =
+      backgroundOptionMap.get(level) ??
+      (level > 0 ? getMaterialBackgroundOption(level) : defaultBackgroundOption)
 
-    if (level > 0) return `bg-surface${level}`
-
-    return 'bg-default'
+    return {
+      contentClassName: option.className,
+      sidebarClassName: option.sidebarClassName,
+      activityBarClassName: option.activityBarClassName,
+      rowActiveClassName: option.rowActiveClassName,
+    }
   }, [dark, level])
 
   useEffect(() => {
@@ -78,5 +151,5 @@ export function useBackground() {
     document.querySelector('#theme-color')?.setAttribute('content', color)
   }, [dark, level, rawTheme])
 
-  return [background, setBackground] as const
+  return [background.contentClassName, setBackground, background] as const
 }

@@ -4,7 +4,7 @@ import { ComponentProps } from 'react'
 import { MdClose } from 'react-icons/md'
 import { VscChevronDown, VscChevronRight } from 'react-icons/vsc'
 
-import { LIST_ITEM_SIZE, useTranslation } from '../hooks'
+import { LIST_ITEM_SIZE, useBackground, useTranslation } from '../hooks'
 import { scale } from '../platform'
 
 import { IconButton } from './Button'
@@ -39,6 +39,7 @@ export const Row: React.FC<RowProps> = ({
   ...props
 }) => {
   const trans = useTranslation()
+  const [, , background] = useBackground()
 
   const childCount = subitems?.length
   const t = children || label || title
@@ -47,7 +48,7 @@ export const Row: React.FC<RowProps> = ({
     <div
       className={clsx(
         'list-row relative flex cursor-pointer items-center text-left',
-        active && 'bg-outline/20',
+        active && background.rowActiveClassName,
         className,
       )}
       style={{

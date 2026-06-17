@@ -132,8 +132,15 @@ const ActivityBar: React.FC = () => {
     minSize: 48,
     maxSize: 48,
   })
+  const [, , background] = useBackground()
+
   return (
-    <div className="ActivityBar flex flex-col justify-between">
+    <div
+      className={clsx(
+        'ActivityBar flex flex-col justify-between',
+        background.activityBarClassName,
+      )}
+    >
       <ViewActionBar env={Env.Desktop} />
       <PageActionBar env={Env.Desktop} />
     </div>
@@ -222,6 +229,7 @@ function NavigationBar() {
   const r = useReaderSnapshot()
   const readMode = r.focusedTab?.isBook
   const [visible, setVisible] = useRecoilState(navbarState)
+  const [, , background] = useBackground()
 
   return (
     <>
@@ -231,7 +239,12 @@ function NavigationBar() {
           onClick={() => setVisible(false)}
         />
       )}
-      <div className="NavigationBar fixed inset-x-0 bottom-0 z-10 border-t border-surface-variant bg-surface">
+      <div
+        className={clsx(
+          'NavigationBar fixed inset-x-0 bottom-0 z-10 border-t border-surface-variant',
+          background.sidebarClassName,
+        )}
+      >
         {readMode ? (
           <ViewActionBar
             env={Env.Mobile}
@@ -288,6 +301,7 @@ const SideBar: React.FC = () => {
   const [action, setAction] = useAction()
   const mobile = useMobile()
   const t = useTranslation()
+  const [, , background] = useBackground()
 
   const { size } = useSplitViewItem(SideBar, {
     preferredSize: 240,
@@ -300,7 +314,8 @@ const SideBar: React.FC = () => {
       {action && mobile && <Overlay onClick={() => setAction(undefined)} />}
       <div
         className={clsx(
-          'SideBar flex flex-col bg-surface',
+          'SideBar flex flex-col',
+          background.sidebarClassName,
           !action && '!hidden',
           mobile ? 'absolute inset-y-0 right-0 z-10' : '',
         )}
