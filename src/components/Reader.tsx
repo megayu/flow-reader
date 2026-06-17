@@ -223,6 +223,7 @@ function ReaderGroup({ index }: ReaderGroupProps) {
 
 interface PaneContainerProps {
   active: boolean
+  children?: React.ReactNode
 }
 const PaneContainer: React.FC<PaneContainerProps> = ({ active, children }) => {
   return <div className={clsx('h-full', active || 'hidden')}>{children}</div>

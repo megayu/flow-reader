@@ -1,5 +1,6 @@
 import Dexie from 'dexie'
 import { useRouter } from 'next/router'
+import type { ReactNode } from 'react'
 
 import { ColorScheme, useColorScheme, useTranslation } from '@flow/reader/hooks'
 import { localeNames } from '@flow/reader/locales'
@@ -75,6 +76,7 @@ export const Settings: React.FC = () => {
 }
 
 interface PartProps {
+  children?: ReactNode
   title: string
 }
 const Item: React.FC<PartProps> = ({ title, children }) => {

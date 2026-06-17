@@ -4,11 +4,13 @@ import {
   useState,
   createContext,
   DragEvent,
+  ReactNode,
   useCallback,
   useEffect,
 } from 'react'
 
 interface DropZoneProps {
+  children?: ReactNode
   className?: string
   onDrop?: (e: DragEvent<HTMLDivElement>, position?: Position) => void
   split?: boolean
@@ -126,7 +128,7 @@ const DndContext = createContext<{
   dragover: boolean
   setDragEvent: (e?: DragEvent) => void
 }>({ dragover: false, setDragEvent: () => {} })
-const DndProvider: React.FC = ({ children }) => {
+const DndProvider: React.FC<{ children?: ReactNode }> = ({ children }) => {
   const [dragover, setDragover] = useState(false)
 
   const setDragEvent = useCallback((e?: DragEvent) => {
