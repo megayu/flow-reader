@@ -234,6 +234,8 @@ class IframeView {
       this._height = 0
       this._textWidth = undefined
       this._contentWidth = undefined
+      this._contentPageCount = undefined
+      this._measureWidth = undefined
       this._textHeight = undefined
       this._contentHeight = undefined
     }
@@ -373,6 +375,49 @@ class IframeView {
     return width
   }
 
+  shouldPadTrailingBlankPage(pageCount) {
+    if (
+      !this.layout ||
+      !this.layout.pageWidth ||
+      this.layout.name !== 'reflowable' ||
+      this.settings.axis !== 'horizontal' ||
+      this.layout.divisor <= 1 ||
+      pageCount % this.layout.divisor === 0
+    ) {
+      return false
+    }
+
+    let next = this.section && this.section.next && this.section.next()
+
+    return !next || !(next.next && next.next())
+  }
+
+  displayWidthForContentWidth(contentWidth) {
+    if (
+      !this.layout ||
+      !this.layout.pageWidth ||
+      this.layout.name !== 'reflowable' ||
+      this.settings.axis !== 'horizontal'
+    ) {
+      return contentWidth
+    }
+
+    let pageCount = Math.max(1, Math.ceil(contentWidth / this.layout.pageWidth))
+
+    this._contentWidth = contentWidth
+    this._contentPageCount = pageCount
+
+    if (this.shouldPadTrailingBlankPage(pageCount)) {
+      return (
+        Math.ceil(pageCount / this.layout.divisor) *
+        this.layout.divisor *
+        this.layout.pageWidth
+      )
+    }
+
+    return contentWidth
+  }
+
   expand(force) {
     var width = this.lockedWidth
     var height = this.lockedHeight
@@ -408,12 +453,18 @@ class IframeView {
 
     // Only Resize if dimensions have changed or
     // if Frame is still hidden, so needs reframing
-    if (this._needsReframe || width != this._width || height != this._height) {
+    if (
+      this._needsReframe ||
+      width != this._measureWidth ||
+      height != this._height
+    ) {
       this.reframe(width, height)
+      this._measureWidth = width
 
       let trimmedWidth = this.trimTrailingBlankPages(width)
-      if (trimmedWidth < width - 1) {
-        this.reframe(trimmedWidth, height)
+      let displayWidth = this.displayWidthForContentWidth(trimmedWidth)
+      if (displayWidth != width) {
+        this.reframe(displayWidth, height)
       }
     }
 
@@ -649,6 +700,18 @@ class IframeView {
 
   width() {
     return this._width
+  }
+
+  pageCount() {
+    if (this._contentPageCount) {
+      return this._contentPageCount
+    }
+
+    if (!this.layout || !this.layout.pageWidth) {
+      return 0
+    }
+
+    return Math.max(1, Math.ceil(this._width / this.layout.pageWidth))
   }
 
   height() {

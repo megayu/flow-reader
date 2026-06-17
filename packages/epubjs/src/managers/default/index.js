@@ -283,7 +283,34 @@ class DefaultViewManager {
       return 0
     }
 
+    if (typeof view.pageCount === 'function') {
+      return view.pageCount()
+    }
+
     return Math.max(1, Math.ceil(view.width() / this.layout.pageWidth))
+  }
+
+  visibleLengthThreshold() {
+    if (!this.isReflowableSpread() || !this.layout.pageWidth) {
+      return 1
+    }
+
+    return Math.min(Math.max(this.layout.pageWidth * 0.02, 2), 24)
+  }
+
+  snapReflowablePageOffset(offset) {
+    if (!this.isReflowableSpread() || !this.layout.pageWidth) {
+      return offset
+    }
+
+    let pageWidth = this.layout.pageWidth
+    let snapped = Math.round(offset / pageWidth) * pageWidth
+
+    if (Math.abs(snapped - offset) <= this.visibleLengthThreshold()) {
+      return snapped
+    }
+
+    return offset
   }
 
   isReflowablePageVisible(view, pageIndex) {
@@ -328,6 +355,43 @@ class DefaultViewManager {
     )
   }
 
+  trailingReflowableSection() {
+    if (!this.isReflowableSpread() || !this.views.length) {
+      return
+    }
+
+    let visible = this.visible()
+    if (visible.length < 2) {
+      return
+    }
+
+    let first = visible[0]
+    let last = visible[visible.length - 1]
+    if (first.section.index === last.section.index) {
+      return
+    }
+
+    return last.section
+  }
+
+  maxReflowableLeftForView(view) {
+    if (!view || !this.layout || !this.layout.pageWidth) {
+      return 0
+    }
+
+    let maxLeft = Math.max(
+      this.container.scrollWidth - this.container.offsetWidth,
+      0,
+    )
+    let pages = this.viewPageCount(view)
+    let left =
+      view.offset().left +
+      Math.floor(Math.max(pages - 1, 0) / this.layout.divisor) *
+        this.layout.delta
+
+    return Math.min(Math.max(left, 0), maxLeft)
+  }
+
   displayedPageCount() {
     return this.views
       .displayed()
@@ -353,10 +417,13 @@ class DefaultViewManager {
   }
 
   needsReflowableSpreadFill(mode = 'initial') {
+    let next = this.views.length && this.views.last().section.next()
+
     if (
       !this.isReflowableSpread() ||
       !this.views.length ||
-      !this.views.last().section.next()
+      !next ||
+      !next.next()
     ) {
       return false
     }
@@ -679,6 +746,11 @@ class DefaultViewManager {
 
     if (!this.views.length) return
 
+    let trailing = this.trailingReflowableSection()
+    if (trailing) {
+      return this.display(trailing)
+    }
+
     if (this.isLastReflowablePageVisible()) {
       this.views.show()
       return
@@ -702,6 +774,9 @@ class DefaultViewManager {
         this.container.scrollWidth - this.container.offsetWidth,
         0,
       )
+      if (this.isReflowableSpread()) {
+        maxLeft = this.maxReflowableLeftForView(this.views.last())
+      }
 
       if (this.container.scrollLeft < maxLeft - 1) {
         left = Math.min(this.container.scrollLeft + this.layout.delta, maxLeft)
@@ -820,7 +895,12 @@ class DefaultViewManager {
         if (left >= -1) {
           this.scrollTo(Math.max(left, 0), 0, true)
         } else {
-          return this.prependPreviousReflowableSpread(left)
+          let first = this.views.first()
+          if (first && !first.section.next()) {
+            prev = first.section.prev()
+          } else {
+            return this.prependPreviousReflowableSpread(left)
+          }
         }
       } else if (this.container.scrollLeft > 1) {
         left = Math.max(this.container.scrollLeft - this.layout.delta, 0)
@@ -919,9 +999,7 @@ class DefaultViewManager {
                 }
               } else if (this.isReflowableSpread()) {
                 let first = this.views.first()
-                let page = Math.max(this.viewPageCount(first) - 1, 0)
-                let left =
-                  Math.floor(page / this.layout.divisor) * this.layout.delta
+                let left = this.maxReflowableLeftForView(first)
                 this.scrollTo(left, 0, true)
               } else {
                 this.scrollTo(
@@ -1081,6 +1159,8 @@ class DefaultViewManager {
         end = intersectionEnd - viewStart
         start = Math.max(0, start)
         end = Math.min(width, Math.max(start, end))
+        start = this.snapReflowablePageOffset(start)
+        end = this.snapReflowablePageOffset(end)
         pageWidth = end - start
       } else if (this.settings.direction === 'rtl') {
         offset = container.right - left
@@ -1095,7 +1175,7 @@ class DefaultViewManager {
         end = start + pageWidth
       }
 
-      if (pageWidth <= 1 || end <= start) {
+      if (pageWidth <= this.visibleLengthThreshold() || end <= start) {
         return
       }
 
@@ -1156,19 +1236,20 @@ class DefaultViewManager {
   isVisible(view, offsetPrev, offsetNext, _container) {
     var position = view.position()
     var container = _container || this.bounds()
+    var visibleLength
 
-    if (
-      this.settings.axis === 'horizontal' &&
-      position.right > container.left - offsetPrev &&
-      position.left < container.right + offsetNext
-    ) {
-      return true
-    } else if (
-      this.settings.axis === 'vertical' &&
-      position.bottom > container.top - offsetPrev &&
-      position.top < container.bottom + offsetNext
-    ) {
-      return true
+    if (this.settings.axis === 'horizontal') {
+      visibleLength =
+        Math.min(position.right, container.right + offsetNext) -
+        Math.max(position.left, container.left - offsetPrev)
+
+      return visibleLength > this.visibleLengthThreshold()
+    } else if (this.settings.axis === 'vertical') {
+      visibleLength =
+        Math.min(position.bottom, container.bottom + offsetNext) -
+        Math.max(position.top, container.top - offsetPrev)
+
+      return visibleLength > this.visibleLengthThreshold()
     }
 
     return false
