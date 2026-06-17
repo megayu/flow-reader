@@ -198,6 +198,7 @@ class IframeView {
 
           // apply the layout function to the contents
           this.layout.format(this.contents, this.section, this.axis)
+          this.fitMediaBeforeMeasure()
 
           // Listen for events that require an expansion of the iframe
           this.addListeners()
@@ -351,6 +352,51 @@ class IframeView {
     }
 
     return false
+  }
+
+  fitMediaBeforeMeasure() {
+    if (
+      !this.contents ||
+      !this.layout ||
+      this.layout.name === 'pre-paginated'
+    ) {
+      return
+    }
+
+    let computed = this.contents.window.getComputedStyle(
+      this.contents.content,
+      null,
+    )
+    let height =
+      (this.contents.content.offsetHeight -
+        (parseFloat(computed.paddingTop) +
+          parseFloat(computed.paddingBottom))) *
+      0.95
+    let horizontalPadding =
+      parseFloat(computed.paddingLeft) + parseFloat(computed.paddingRight)
+    let maxWidth = this.layout.columnWidth
+      ? this.layout.columnWidth - horizontalPadding + 'px'
+      : '100%'
+
+    this.contents.addStylesheetRules(
+      {
+        img: {
+          'max-width': maxWidth + '!important',
+          'max-height': height + 'px' + '!important',
+          'object-fit': 'contain',
+          'page-break-inside': 'avoid',
+          'break-inside': 'avoid',
+          'box-sizing': 'border-box',
+        },
+        svg: {
+          'max-width': maxWidth + '!important',
+          'max-height': height + 'px' + '!important',
+          'page-break-inside': 'avoid',
+          'break-inside': 'avoid',
+        },
+      },
+      'epubjs-media-fit-before-measure',
+    )
   }
 
   trimTrailingBlankPages(width) {
