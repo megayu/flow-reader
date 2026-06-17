@@ -3,12 +3,18 @@ import clsx from 'clsx'
 import { useLiveQuery } from 'dexie-react-hooks'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import React, { useEffect, useMemo, useState } from 'react'
-import { MdCheckBox, MdCheckBoxOutlineBlank } from 'react-icons/md'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  MdArrowDownward,
+  MdArrowUpward,
+  MdCheckBox,
+  MdCheckBoxOutlineBlank,
+  MdKeyboardArrowDown,
+} from 'react-icons/md'
 import { useSet } from 'react-use'
 
 import { pack } from '../backup'
-import { ReaderGridView, Button, DropZone, Select } from '../components'
+import { ReaderGridView, Button, DropZone } from '../components'
 import { BookRecord, CoverRecord, db } from '../db'
 import { handleFiles } from '../file'
 import {
@@ -36,6 +42,8 @@ const sortFieldOptions: SortField[] = [
   'updatedAt',
   'createdAt',
 ]
+
+const toolbarButtonClass = 'h-8'
 
 function cleanBookText(value?: string) {
   return value?.replace(/\s+/g, ' ').trim() ?? ''
@@ -110,6 +118,10 @@ function sortBooks(
   })
 }
 
+function toggleSortDirection(direction: SortDirection): SortDirection {
+  return direction === 'asc' ? 'desc' : 'asc'
+}
+
 export default function Index() {
   const { focusedTab } = useReaderSnapshot()
   const router = useRouter()
@@ -148,6 +160,8 @@ const Library: React.FC = () => {
   const t = useTranslation('home')
   const [sortField, setSortField] = useState<SortField>('title')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [sortMenuOpen, setSortMenuOpen] = useState(false)
+  const sortMenuRef = useRef<HTMLDivElement>(null)
 
   const [select, toggleSelect] = useBoolean(false)
   const [selectedBookIds, { add, has, toggle, reset }] = useSet<string>()
@@ -158,6 +172,27 @@ const Library: React.FC = () => {
     if (!select) reset()
   }, [reset, select])
 
+  useEffect(() => {
+    if (!sortMenuOpen) return
+
+    const closeOnPointerDown = (e: PointerEvent) => {
+      if (!sortMenuRef.current?.contains(e.target as Node)) {
+        setSortMenuOpen(false)
+      }
+    }
+    const closeOnEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSortMenuOpen(false)
+    }
+
+    document.addEventListener('pointerdown', closeOnPointerDown)
+    document.addEventListener('keydown', closeOnEscape)
+
+    return () => {
+      document.removeEventListener('pointerdown', closeOnPointerDown)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [sortMenuOpen])
+
   const sortedBooks = useMemo(
     () => sortBooks(books ?? [], sortField, sortDirection),
     [books, sortDirection, sortField],
@@ -167,6 +202,8 @@ const Library: React.FC = () => {
   if (!books) return null
 
   const allSelected = selectedBookIds.size === books.length
+  const DirectionIcon =
+    sortDirection === 'asc' ? MdArrowUpward : MdArrowDownward
 
   return (
     <DropZone
@@ -183,41 +220,90 @@ const Library: React.FC = () => {
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             {!!books.length && !select && (
-              <>
-                <Select
-                  value={sortField}
-                  onChange={(e) => setSortField(e.target.value as SortField)}
+              <div
+                ref={sortMenuRef}
+                className="relative flex items-center gap-1"
+              >
+                <Button
+                  type="button"
+                  variant="secondary"
+                  compact
+                  className={clsx(
+                    toolbarButtonClass,
+                    'inline-flex min-w-[4.5rem] items-center justify-between gap-1',
+                  )}
+                  aria-haspopup="menu"
+                  aria-expanded={sortMenuOpen}
+                  onClick={() => setSortMenuOpen((open) => !open)}
                 >
-                  {sortFieldOptions.map((field) => (
-                    <option key={field} value={field}>
-                      {t(`sort.${field}`)}
-                    </option>
-                  ))}
-                </Select>
-                <Select
-                  value={sortDirection}
-                  onChange={(e) =>
-                    setSortDirection(e.target.value as SortDirection)
+                  <span>{t(`sort.${sortField}`)}</span>
+                  <MdKeyboardArrowDown size={16} className="text-outline" />
+                </Button>
+                {sortMenuOpen && (
+                  <div
+                    role="menu"
+                    className="absolute left-0 top-full z-20 mt-1 min-w-[7rem] bg-surface py-1 text-on-surface-variant shadow-1 ring-1 ring-inset ring-surface-variant"
+                  >
+                    {sortFieldOptions.map((field) => (
+                      <button
+                        key={field}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={field === sortField}
+                        className={clsx(
+                          'block w-full px-3 py-1.5 text-left typescale-label-large hover:bg-outline/10',
+                          field === sortField &&
+                            'bg-outline/10 text-on-surface',
+                        )}
+                        onClick={() => {
+                          setSortField(field)
+                          setSortMenuOpen(false)
+                        }}
+                      >
+                        {t(`sort.${field}`)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  compact
+                  className={clsx(toolbarButtonClass, 'w-8 px-0 text-center')}
+                  title={t(`sort.${sortDirection}`)}
+                  aria-label={t(`sort.${sortDirection}`)}
+                  onClick={() =>
+                    setSortDirection((direction) =>
+                      toggleSortDirection(direction),
+                    )
                   }
                 >
-                  <option value="asc">{t('sort.asc')}</option>
-                  <option value="desc">{t('sort.desc')}</option>
-                </Select>
-              </>
+                  <DirectionIcon size={16} className="mx-auto" />
+                </Button>
+              </div>
             )}
             {!!books.length && (
-              <Button variant="secondary" onClick={toggleSelect}>
+              <Button
+                variant="secondary"
+                className={toolbarButtonClass}
+                onClick={toggleSelect}
+              >
                 {t(select ? 'cancel' : 'select')}
               </Button>
             )}
             {select &&
               (allSelected ? (
-                <Button variant="secondary" onClick={reset}>
+                <Button
+                  variant="secondary"
+                  className={toolbarButtonClass}
+                  onClick={reset}
+                >
                   {t('deselect_all')}
                 </Button>
               ) : (
                 <Button
                   variant="secondary"
+                  className={toolbarButtonClass}
                   onClick={() => books.forEach((b) => add(b.id))}
                 >
                   {t('select_all')}
@@ -228,6 +314,7 @@ const Library: React.FC = () => {
           <div className="space-x-2">
             {select ? (
               <Button
+                className={toolbarButtonClass}
                 onClick={() => {
                   toggleSelect()
                   const bookIds = [...selectedBookIds]
@@ -243,12 +330,13 @@ const Library: React.FC = () => {
               <>
                 <Button
                   variant="secondary"
+                  className={toolbarButtonClass}
                   disabled={!books.length}
                   onClick={pack}
                 >
                   {t('export')}
                 </Button>
-                <Button className="relative">
+                <Button className={clsx(toolbarButtonClass, 'relative')}>
                   <input
                     type="file"
                     accept="application/epub+zip,application/epub,application/zip"
