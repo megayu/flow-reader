@@ -530,7 +530,6 @@ export class BookTab extends BaseTab {
 
     this.rendition.on('relocated', (loc: Location) => {
       console.log('relocated', loc)
-      this.rendered = true
       this.syncFrames()
       this.timeline.unshift({
         location: loc,
@@ -554,7 +553,10 @@ export class BookTab extends BaseTab {
         this.expandNavPath(activeNavItem)
 
         const i = this.sections.findIndex((s) => s.href === end.href)
-        if (i === -1) return
+        if (i === -1) {
+          this.rendered = true
+          return
+        }
 
         const previousSectionsLength = this.sections
           .slice(0, i)
@@ -571,6 +573,8 @@ export class BookTab extends BaseTab {
 
         this.updateBook({ cfi: start.cfi, percentage })
       }
+
+      this.rendered = true
     })
 
     this.rendition.on('attached', (...args: any[]) => {

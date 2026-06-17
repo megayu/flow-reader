@@ -1137,6 +1137,10 @@ interface ReaderPaneHeaderProps {
   tab: BookTab
 }
 const ReaderPaneHeader: React.FC<ReaderPaneHeaderProps> = ({ tab }) => {
+  const { location, section } = useSnapshot(tab)
+  void location
+  void section
+
   const navPath = tab.getHeaderPath()
 
   return (
