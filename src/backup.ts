@@ -1,6 +1,3 @@
-import { saveAs } from 'file-saver'
-import JSZip from 'jszip'
-
 import { BookRecord, db } from './db'
 
 interface SerializedBooks {
@@ -11,6 +8,11 @@ interface SerializedBooks {
 
 const VERSION = 1
 const DATA_FILENAME = 'data.json'
+
+async function createZip() {
+  const { default: JSZip } = await import('jszip')
+  return new JSZip()
+}
 
 function serializeData(books?: BookRecord[]) {
   return JSON.stringify({
@@ -34,11 +36,14 @@ function deserializeData(text: string) {
 }
 
 export async function pack() {
+  const [{ saveAs }, zip] = await Promise.all([
+    import('file-saver'),
+    createZip(),
+  ])
   const books = await db?.books.toArray()
   const covers = await db?.covers.toArray()
   const files = await db?.files.toArray()
 
-  const zip = new JSZip()
   zip.file(DATA_FILENAME, serializeData(books))
   zip.file('covers.json', JSON.stringify(covers))
 
@@ -53,7 +58,7 @@ export async function pack() {
 }
 
 export async function unpack(file: File) {
-  const zip = new JSZip()
+  const zip = await createZip()
   await zip.loadAsync(file)
 
   const booksJSON = zip.file(DATA_FILENAME)

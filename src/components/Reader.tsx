@@ -1,5 +1,6 @@
 import { useEventListener } from '@literal-ui/hooks'
 import clsx from 'clsx'
+import dynamic from 'next/dynamic'
 import React, {
   ComponentProps,
   useCallback,
@@ -10,7 +11,7 @@ import React, {
 } from 'react'
 import { MdChevronRight, MdWebAsset } from 'react-icons/md'
 import { RiBookLine } from 'react-icons/ri'
-import { PhotoSlider } from 'react-photo-view'
+import type { IPhotoSliderProps } from 'react-photo-view/dist/PhotoSlider'
 import { useSetRecoilState } from 'recoil'
 import useTilg from 'tilg'
 import { useSnapshot } from 'valtio'
@@ -41,6 +42,14 @@ import { Tab } from './Tab'
 import { TextSelectionMenu } from './TextSelectionMenu'
 import { DropZone, SplitView, useDndContext, useSplitViewItem } from './base'
 import * as pages from './pages'
+
+const PhotoSlider = dynamic<IPhotoSliderProps>(
+  () =>
+    import('react-photo-view').then(
+      (mod) => mod.PhotoSlider as React.ComponentType<IPhotoSliderProps>,
+    ),
+  { ssr: false },
+)
 
 function handleKeyDown(tab?: BookTab) {
   return (e: KeyboardEvent) => {
