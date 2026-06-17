@@ -1712,12 +1712,12 @@ class Contents {
     if (axis === 'vertical') {
       this.css('padding-top', gap / 2 + 'px')
       this.css('padding-bottom', gap / 2 + 'px')
-      this.css('padding-left', '20px')
-      this.css('padding-right', '20px')
+      this.css('padding-left', '10px')
+      this.css('padding-right', '10px')
       this.css(COLUMN_AXIS, 'vertical')
     } else {
-      this.css('padding-top', '20px')
-      this.css('padding-bottom', '20px')
+      this.css('padding-top', '10px')
+      this.css('padding-bottom', '10px')
       this.css('padding-left', gap / 2 + 'px')
       this.css('padding-right', gap / 2 + 'px')
       this.css(COLUMN_AXIS, 'horizontal')

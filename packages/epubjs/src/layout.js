@@ -111,7 +111,7 @@ class Layout {
     var width = _width
     var height = _height
 
-    var section = Math.floor(width / 12)
+    var section = 48 //Math.floor(width / 12)
 
     var columnWidth
     var spreadWidth
