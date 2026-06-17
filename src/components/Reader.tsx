@@ -565,6 +565,12 @@ const NOTE_POPOVER_MARGIN = 18
 const NOTE_POPOVER_PADDING = 10
 const NOTE_POPOVER_MAX_RATIO = 3.6
 const NOTE_POPOVER_MIN_WIDTH = 180
+const NOTE_CONTAINER_PATTERN =
+  /(?:footnote|endnote|noteref|note|annotation|comment|reference|fn|ftn)/i
+const NOTE_CIRCLED_MARKER_PATTERN = /^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]$/
+const NOTE_NUMBER_MARKER_PATTERN = /^[0-9一二三四五六七八九十]+$/
+const NOTE_MARKER_OPENERS = '([〔［（【'
+const NOTE_MARKER_CLOSERS = ')]〕］）】'
 
 function getAnchorFromEvent(e: MouseEvent) {
   return (e.target as ClosestTarget | null)?.closest?.('a[href]') as
@@ -587,7 +593,7 @@ function getLinkedNote(tab: BookTab, anchor: HTMLAnchorElement) {
   const target = findLinkedElement(tab, anchor, path, id)
   if (!target || !isLikelyNoteLink(anchor, target, href, id)) return
 
-  return findNoteElement(target)
+  return findNoteElement(target, anchor)
 }
 
 function findLinkedElement(
@@ -620,19 +626,15 @@ function getElementByIdOrName(doc: Document, id: string) {
   )
 }
 
-function findNoteElement(el: HTMLElement) {
+function findNoteElement(el: HTMLElement, anchor: HTMLAnchorElement) {
+  const segmentedNote = createSegmentedNoteElement(el, anchor)
+  if (segmentedNote) return segmentedNote
+
   let cur: HTMLElement | null = el
   let fallback: HTMLElement | undefined
 
   while (cur && cur !== cur.ownerDocument.body) {
-    const type = cur.getAttribute('epub:type') ?? cur.getAttribute('type') ?? ''
-    const role = cur.getAttribute('role') ?? ''
-
-    if (
-      /(?:footnote|endnote|note)/i.test(type) ||
-      /(?:doc-footnote|doc-endnote|note)/i.test(role) ||
-      cur.tagName === 'ASIDE'
-    ) {
+    if (isNoteContainer(cur)) {
       return cur
     }
 
@@ -650,6 +652,127 @@ function findNoteElement(el: HTMLElement) {
   }
 
   return fallback ?? el
+}
+
+function createSegmentedNoteElement(
+  target: HTMLElement,
+  anchor: HTMLAnchorElement,
+) {
+  const container = findNoteContainer(target)
+  const marker = target.closest('a[href]') as HTMLAnchorElement | null
+  if (!container || !marker || !isBacklink(marker, anchor)) return
+
+  const markerChild = getDirectChild(container, marker)
+  if (!markerChild || !hasMultipleNoteMarkers(container)) return
+
+  const doc = target.ownerDocument
+  const wrapper = doc.createElement('div')
+
+  wrapper.className = container.className
+  if (container.id) wrapper.dataset.noteContainerId = container.id
+
+  let node: ChildNode | null = markerChild
+  while (node) {
+    if (node !== markerChild && startsWithNoteMarker(node)) break
+
+    wrapper.appendChild(node.cloneNode(true))
+    node = node.nextSibling
+  }
+
+  return wrapper.childNodes.length ? wrapper : undefined
+}
+
+function getDirectChild(parent: HTMLElement, child: HTMLElement) {
+  let cur: HTMLElement = child
+
+  while (cur.parentElement && cur.parentElement !== parent) {
+    cur = cur.parentElement
+  }
+
+  return cur.parentElement === parent ? cur : undefined
+}
+
+function hasMultipleNoteMarkers(container: HTMLElement) {
+  return (
+    Array.from(container.childNodes).filter(startsWithNoteMarker).length > 1
+  )
+}
+
+function startsWithNoteMarker(node: ChildNode) {
+  if (!isElementNode(node)) return false
+  const el = node as HTMLElement
+
+  if (isNoteMarkerAnchor(el)) return true
+
+  const firstElement = Array.from(el.childNodes).find(
+    (child) =>
+      isElementNode(child) || (child.textContent?.trim()?.length ?? 0) > 0,
+  )
+
+  return (
+    isElementNode(firstElement) &&
+    isNoteMarkerAnchor(firstElement as HTMLElement)
+  )
+}
+
+function isNoteMarkerAnchor(el: HTMLElement) {
+  return (
+    el.tagName === 'A' &&
+    el.hasAttribute('href') &&
+    isNoteMarkerText(el.textContent)
+  )
+}
+
+function isElementNode(node: ChildNode | undefined) {
+  return (
+    node?.nodeType === 1 && typeof (node as HTMLElement).tagName === 'string'
+  )
+}
+
+function findNoteContainer(el: HTMLElement) {
+  let cur: HTMLElement | null = el
+
+  while (cur && cur !== cur.ownerDocument.body) {
+    if (isNoteContainer(cur)) return cur
+    cur = cur.parentElement
+  }
+}
+
+function isNoteContainer(el: HTMLElement) {
+  return el.tagName === 'ASIDE' || NOTE_CONTAINER_PATTERN.test(getNoteAttrs(el))
+}
+
+function getNoteAttrs(el: HTMLElement) {
+  return [
+    el.id,
+    el.className,
+    el.getAttribute('epub:type'),
+    el.getAttribute('type'),
+    el.getAttribute('role'),
+  ].join(' ')
+}
+
+function isNoteMarkerText(text: string | null | undefined) {
+  const marker = (text ?? '').trim()
+  if (!marker) return false
+  if (/^[*＊]+$/.test(marker)) return true
+  if (NOTE_CIRCLED_MARKER_PATTERN.test(marker)) return true
+
+  const normalized = stripNoteMarkerWrapper(marker)
+  return NOTE_NUMBER_MARKER_PATTERN.test(normalized)
+}
+
+function stripNoteMarkerWrapper(text: string) {
+  let marker = text.trim()
+
+  if (NOTE_MARKER_OPENERS.includes(marker[0] ?? '')) {
+    marker = marker.slice(1)
+  }
+  if (NOTE_MARKER_CLOSERS.includes(marker[marker.length - 1] ?? '')) {
+    marker = marker.slice(0, -1)
+  }
+
+  return marker.trim()
 }
 
 function cloneNoteElement(el: HTMLElement, anchor: HTMLAnchorElement) {
@@ -983,24 +1106,30 @@ function isLikelyNoteLink(
   href: string,
   id: string,
 ) {
+  const noteContainer = findNoteContainer(target)
+  const item = target.closest('li')
   const attrs = [
     href,
     id,
-    anchor.id,
-    anchor.className,
-    anchor.getAttribute('epub:type'),
-    anchor.getAttribute('role'),
-    target.id,
-    target.className,
-    target.getAttribute('epub:type'),
-    target.getAttribute('role'),
+    getNoteAttrs(anchor),
+    getNoteAttrs(target),
+    noteContainer && getNoteAttrs(noteContainer),
   ].join(' ')
 
-  if (/(?:footnote|endnote|noteref|note|fn|ftn)/i.test(attrs)) return true
-  if (anchor.closest('sup')) return true
+  if (NOTE_CONTAINER_PATTERN.test(attrs)) return true
+  if (
+    (anchor.closest('sup') || anchor.querySelector('sup')) &&
+    (noteContainer ||
+      target.closest('aside') ||
+      item?.parentElement?.tagName === 'OL')
+  ) {
+    return true
+  }
+  if (isNoteMarkerText(anchor.textContent) && noteContainer) {
+    return true
+  }
   if (target.closest('aside')) return true
 
-  const item = target.closest('li')
   return item?.parentElement?.tagName === 'OL'
 }
 
