@@ -28,6 +28,14 @@
     }
   },
   "bundle": {
-    "active": false
+    "active": false,
+    "fileAssociations": [
+      {
+        "ext": ["epub"],
+        "name": "EPUB Book",
+        "description": "EPUB eBook",
+        "mimeType": "application/epub+zip"
+      }
+    ]
   }
 }

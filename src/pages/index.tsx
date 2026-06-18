@@ -21,7 +21,7 @@ import {
 } from '../book'
 import { ReaderGridView, Button, DropZone } from '../components'
 import { BookRecord, CoverRecord, db } from '../db'
-import { handleFiles } from '../file'
+import { handleFiles, setupNativeOpenFiles } from '../file'
 import {
   useDisablePinchZooming,
   useLibrary,
@@ -152,6 +152,26 @@ export default function Index() {
       return true
     })
   }, [router])
+
+  useEffect(() => {
+    let disposed = false
+    let unlisten: (() => void) | undefined
+
+    setupNativeOpenFiles((books) => {
+      reader.addTab(books[0]!)
+    }).then((handler) => {
+      if (disposed) {
+        handler?.()
+      } else {
+        unlisten = handler
+      }
+    })
+
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
+  }, [])
 
   return (
     <>

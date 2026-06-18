@@ -5,6 +5,19 @@ import { BookRecord, db } from './db'
 import { createId } from './id'
 import { mapExtToMimes } from './mime'
 
+const nativeOpenEvent = 'flow-open-files'
+
+interface NativeOpenFile {
+  name: string
+  mimeType: string
+  data: string
+}
+
+type NativeInvoke = <T>(
+  command: string,
+  args?: Record<string, unknown>,
+) => Promise<T>
+
 export async function fileToEpub(file: File) {
   const data = await file.arrayBuffer()
   return ePub(data)
@@ -46,6 +59,61 @@ export async function handleFiles(files: Iterable<File>) {
   }
 
   return newBooks
+}
+
+export async function setupNativeOpenFiles(
+  onOpen?: (books: BookRecord[]) => void,
+) {
+  if (typeof window === 'undefined') return
+
+  try {
+    const [{ invoke }, { listen }] = await Promise.all([
+      import('@tauri-apps/api/core'),
+      import('@tauri-apps/api/event'),
+    ])
+
+    const openPaths = async (paths: string[]) => {
+      if (!paths.length) return
+
+      const files = await readNativeOpenFiles(invoke, paths)
+      if (!files.length) return
+
+      const books = await handleFiles(files)
+      if (books.length) onOpen?.(books)
+    }
+
+    await openPaths(await invoke<string[]>('take_pending_open_paths'))
+
+    return listen<string[]>(nativeOpenEvent, (event) => {
+      void openPaths(event.payload)
+    })
+  } catch (error) {
+    console.debug('Native file open is unavailable', error)
+  }
+}
+
+async function readNativeOpenFiles(invoke: NativeInvoke, paths: string[]) {
+  const files = await invoke<NativeOpenFile[]>('read_native_epub_files', {
+    paths,
+  })
+
+  return files.map(
+    (file) =>
+      new File([base64ToUint8Array(file.data)], file.name, {
+        type: file.mimeType,
+      }),
+  )
+}
+
+function base64ToUint8Array(data: string) {
+  const binary = atob(data)
+  const bytes = new Uint8Array(binary.length)
+
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+
+  return bytes
 }
 
 export async function addBook(file: File) {
