@@ -1,4 +1,5 @@
 use serde::Serialize;
+use tauri_plugin_window_state::StateFlags;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -15,6 +16,16 @@ fn list_system_fonts() -> Vec<SystemFont> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    StateFlags::SIZE
+                        | StateFlags::POSITION
+                        | StateFlags::MAXIMIZED
+                        | StateFlags::FULLSCREEN,
+                )
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![list_system_fonts])
         .run(tauri::generate_context!())
         .expect("error while running Flow");
