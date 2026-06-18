@@ -1,7 +1,5 @@
-import { useBoolean } from '@literal-ui/hooks'
-import React, { Fragment } from 'react'
-import { useMemo } from 'react'
-import { VscCopy } from 'react-icons/vsc'
+import React, { Fragment, useMemo, useState } from 'react'
+import { VscCollapseAll, VscCopy, VscExpandAll } from 'react-icons/vsc'
 
 import { Annotation } from '@flow/reader/annotation'
 import { useTranslation } from '@flow/reader/hooks'
@@ -44,7 +42,11 @@ const DefinitionPane: React.FC = () => {
 
 const AnnotationPane: React.FC = () => {
   const { focusedBookTab } = useReaderSnapshot()
-  const t = useTranslation('annotation')
+  const t = useTranslation()
+  const annotationT = useTranslation('annotation')
+  const [collapsedSections, setCollapsedSections] = useState(
+    () => new Set<string>(),
+  )
 
   const annotations = useMemo(
     () => (focusedBookTab?.book.annotations as Annotation[]) ?? [],
@@ -54,6 +56,22 @@ const AnnotationPane: React.FC = () => {
   const groupedAnnotation = useMemo(() => {
     return group(annotations ?? [], (a) => a.spine.index)
   }, [annotations])
+  const sectionIds = useMemo(() => keys(groupedAnnotation), [groupedAnnotation])
+  const expanded = sectionIds.some((id) => !collapsedSections.has(id))
+  const toggleSections = () => {
+    setCollapsedSections(() => (expanded ? new Set(sectionIds) : new Set()))
+  }
+  const toggleSection = (id: string) => {
+    setCollapsedSections((current) => {
+      const next = new Set(current)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
 
   const exportAnnotations = () => {
     // process annotations to be under each section
@@ -84,24 +102,39 @@ const AnnotationPane: React.FC = () => {
 
   return (
     <Pane
-      headline={t('annotations')}
+      headline={annotationT('annotations')}
       actions={
         annotations.length > 0
           ? [
               {
                 id: 'copy-all',
-                title: t('copy_as_markdown'),
+                title: annotationT('copy_as_markdown'),
                 Icon: VscCopy,
                 handle() {
                   exportAnnotations()
+                },
+              },
+              {
+                id: expanded ? 'collapse-all' : 'expand-all',
+                title: t(
+                  expanded ? 'action.collapse_all' : 'action.expand_all',
+                ),
+                Icon: expanded ? VscCollapseAll : VscExpandAll,
+                handle() {
+                  toggleSections()
                 },
               },
             ]
           : undefined
       }
     >
-      {keys(groupedAnnotation).map((k) => (
-        <AnnotationBlock key={k} annotations={groupedAnnotation[k]!} />
+      {sectionIds.map((k) => (
+        <AnnotationBlock
+          key={k}
+          annotations={groupedAnnotation[k]!}
+          expanded={!collapsedSections.has(k)}
+          toggle={() => toggleSection(k)}
+        />
       ))}
     </Pane>
   )
@@ -109,10 +142,14 @@ const AnnotationPane: React.FC = () => {
 
 interface AnnotationBlockProps {
   annotations: Annotation[]
+  expanded: boolean
+  toggle: () => void
 }
-const AnnotationBlock: React.FC<AnnotationBlockProps> = ({ annotations }) => {
-  const [expanded, toggle] = useBoolean(true)
-
+const AnnotationBlock: React.FC<AnnotationBlockProps> = ({
+  annotations,
+  expanded,
+  toggle,
+}) => {
   return (
     <div>
       <Row
