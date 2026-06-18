@@ -50,6 +50,7 @@ input[type='color']::-webkit-color-swatch {
 }
 
 .scroll {
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
@@ -57,11 +58,18 @@ input[type='color']::-webkit-color-swatch {
 .scroll::-webkit-scrollbar {
   width: 10px;
 }
+.scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
 .scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+.scroll:hover::-webkit-scrollbar-thumb,
+.scroll.scrollbar-visible::-webkit-scrollbar-thumb {
   @apply bg-on-background/10 hover:bg-on-background/20 active:bg-on-background/30;
 }
 .scroll-parent {
-  @apply flex flex-col overflow-hidden;
+  @apply flex min-h-0 flex-col overflow-hidden;
 }
 
 .scroll-h {

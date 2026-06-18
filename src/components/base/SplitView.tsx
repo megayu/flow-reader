@@ -106,11 +106,11 @@ export const SplitView = ({
   if (!childList.length) return null
 
   return (
-    <div className={clsx('SplitView relative h-full', className)}>
+    <div className={clsx('SplitView relative h-full min-h-0', className)}>
       <SplitViewContext.Provider value={{ registerView }}>
         <div
           className={clsx(
-            'SplitViewContainer flex h-full',
+            'SplitViewContainer flex h-full min-h-0',
             vertical && 'flex-col',
           )}
         >

@@ -24,7 +24,10 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
   })
   return (
     <div
-      className={clsx('Pane scroll-parent group', size && 'shrink-0')}
+      className={clsx(
+        'Pane scroll-parent group min-h-0',
+        size || !expanded ? 'shrink-0' : 'flex-1',
+      )}
       style={{
         height: expanded ? size : 24,
       }}
@@ -51,7 +54,7 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
       <div
         ref={ref}
         className={clsx(
-          'scroll text-on-surface-variant typescale-body-small',
+          'scroll min-h-0 flex-1 text-on-surface-variant typescale-body-small',
           !expanded && 'hidden',
           className,
         )}
@@ -78,7 +81,7 @@ export function PaneView({
   return (
     <SplitView
       vertical
-      className={clsx('scroll-parent', className)}
+      className={clsx('scroll-parent min-h-0', className)}
       {...props}
     />
   )

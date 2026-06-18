@@ -15,7 +15,7 @@ export const ImageView: React.FC<PaneViewProps> = (props) => {
 
   return (
     <PaneView {...props}>
-      <div className="scroll">
+      <div className="scroll min-h-0 flex-1 text-on-surface-variant typescale-body-small">
         {sections?.map((s) => (
           <Block key={s.href} section={s} />
         ))}

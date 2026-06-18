@@ -31,6 +31,7 @@ import {
 } from '../hooks'
 import { BookTab, reader, useReaderSnapshot } from '../models'
 import { isTouchScreen } from '../platform'
+import { revealScrollbars } from '../scrollbar'
 import { notePopoverClass, updateCustomStyle } from '../styles'
 
 import {
@@ -452,6 +453,7 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
   const handleRenditionWheel = useCallback(
     (e: WheelEvent) => {
       e.preventDefault()
+      revealScrollbars()
 
       const delta =
         Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX
