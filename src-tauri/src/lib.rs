@@ -22,7 +22,10 @@ pub fn run() {
 
 #[cfg(target_os = "windows")]
 mod system_fonts {
-    use std::{collections::BTreeMap, path::Path};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        path::Path,
+    };
 
     use winreg::{
         enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ},
@@ -54,7 +57,7 @@ mod system_fonts {
         for (name, value) in key.enum_values().filter_map(Result::ok) {
             let path = String::from_reg_value(&value).unwrap_or_default();
             for label in font_labels(&name, &path) {
-                let sort_key = label.to_lowercase();
+                let sort_key = font_identity(&label);
                 fonts.entry(sort_key).or_insert_with(|| SystemFont {
                     family: label.clone(),
                     label,
@@ -78,15 +81,17 @@ mod system_fonts {
             name
         };
 
+        let mut seen = BTreeSet::new();
+
         source
             .split(" & ")
             .map(clean_family_name)
-            .filter(|name| !name.is_empty())
+            .filter(|name| !name.is_empty() && seen.insert(font_identity(name)))
             .collect()
     }
 
     fn clean_registry_name(name: &str) -> String {
-        let mut name = name.trim().to_string();
+        let mut name = name.trim().trim_matches('"').to_string();
         for suffix in [
             " (TrueType)",
             " (OpenType)",
@@ -103,7 +108,60 @@ mod system_fonts {
     }
 
     fn clean_family_name(name: &str) -> String {
-        let mut name = name.trim().to_string();
+        let mut name = strip_font_extension(name.trim().trim_matches('"')).to_string();
+        name = expand_compact_family_name(&name);
+
+        loop {
+            let Some(cleaned) = strip_style_suffix(&name) else {
+                break;
+            };
+            name = cleaned;
+        }
+
+        name.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    fn readable_path_stem(font_path: &str) -> Option<String> {
+        Path::new(font_path)
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().trim().to_string())
+            .filter(|stem| !stem.is_empty())
+    }
+
+    fn strip_font_extension(name: &str) -> &str {
+        let lower_name = name.to_ascii_lowercase();
+        for extension in [".ttf", ".ttc", ".otf"] {
+            if lower_name.ends_with(extension) {
+                return name[..name.len() - extension.len()].trim();
+            }
+        }
+
+        name
+    }
+
+    fn expand_compact_family_name(name: &str) -> String {
+        let name = name.replace(['_', '-'], " ");
+        let mut expanded = String::with_capacity(name.len() + 8);
+        let mut prev = None;
+
+        for ch in name.chars() {
+            if let Some(prev_ch) = prev {
+                if should_insert_space(prev_ch, ch) {
+                    expanded.push(' ');
+                }
+            }
+            expanded.push(ch);
+            prev = Some(ch);
+        }
+
+        expanded
+    }
+
+    fn should_insert_space(prev: char, current: char) -> bool {
+        (prev.is_ascii_lowercase() || prev.is_ascii_digit()) && current.is_ascii_uppercase()
+    }
+
+    fn strip_style_suffix(name: &str) -> Option<String> {
         for suffix in [
             " Bold Italic",
             " Bold Oblique",
@@ -123,18 +181,19 @@ mod system_fonts {
             " Black",
         ] {
             if let Some(cleaned) = name.strip_suffix(suffix) {
-                name = cleaned.trim().to_string();
-                break;
+                return Some(cleaned.trim().to_string());
             }
         }
-        name
+
+        None
     }
 
-    fn readable_path_stem(font_path: &str) -> Option<String> {
-        Path::new(font_path)
-            .file_stem()
-            .map(|stem| stem.to_string_lossy().trim().to_string())
-            .filter(|stem| !stem.is_empty())
+    fn font_identity(name: &str) -> String {
+        clean_family_name(name)
+            .to_lowercase()
+            .chars()
+            .filter(|ch| ch.is_alphanumeric() || contains_cjk_char(*ch))
+            .collect()
     }
 
     fn should_prefer_path_label(name: &str, path_label: Option<&str>) -> bool {
@@ -146,18 +205,20 @@ mod system_fonts {
     }
 
     fn contains_cjk(value: &str) -> bool {
-        value.chars().any(|ch| {
-            matches!(
-                ch as u32,
-                0x3400..=0x4dbf
-                    | 0x4e00..=0x9fff
-                    | 0xf900..=0xfaff
-                    | 0x20000..=0x2a6df
-                    | 0x2a700..=0x2b73f
-                    | 0x2b740..=0x2b81f
-                    | 0x2b820..=0x2ceaf
-            )
-        })
+        value.chars().any(contains_cjk_char)
+    }
+
+    fn contains_cjk_char(ch: char) -> bool {
+        matches!(
+            ch as u32,
+            0x3400..=0x4dbf
+                | 0x4e00..=0x9fff
+                | 0xf900..=0xfaff
+                | 0x20000..=0x2a6df
+                | 0x2a700..=0x2b73f
+                | 0x2b740..=0x2b81f
+                | 0x2b820..=0x2ceaf
+        )
     }
 
     fn looks_mojibake(value: &str) -> bool {

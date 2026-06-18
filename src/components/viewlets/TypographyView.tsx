@@ -221,16 +221,16 @@ function createFontOptions(fonts: SystemFont[]) {
 
   fonts.forEach(({ family, label }) => {
     const normalizedFamily = family.trim()
-    const normalizedLabel = label.trim() || normalizedFamily
+    const normalizedLabel = cleanFontLabel(label.trim() || normalizedFamily)
     if (!normalizedFamily) return
 
-    const key = normalizedFamily.toLowerCase()
+    const key = fontOptionKey(normalizedLabel || normalizedFamily)
     if (unique.has(key)) return
 
     unique.set(key, {
       family: normalizedFamily,
-      label: normalizedLabel,
-      searchText: `${normalizedFamily} ${normalizedLabel}`.toLowerCase(),
+      label: normalizedLabel || normalizedFamily,
+      searchText: `${normalizedFamily} ${normalizedLabel} ${key}`.toLowerCase(),
     })
   })
 
@@ -240,6 +240,24 @@ function createFontOptions(fonts: SystemFont[]) {
       sensitivity: 'base',
     }),
   )
+}
+
+function cleanFontLabel(label: string) {
+  return label
+    .replace(/\.(?:ttf|ttc|otf)$/i, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function fontOptionKey(label: string) {
+  return cleanFontLabel(label)
+    .toLowerCase()
+    .replace(
+      /\b(?:bold|italic|oblique|regular|medium|light|semibold|semi bold|semilight|semi light|black)\b/g,
+      '',
+    )
+    .replace(/[^a-z0-9\u3400-\u9fff\uf900-\ufaff]+/g, '')
 }
 
 interface FontFieldProps {
@@ -287,6 +305,22 @@ const FontField: React.FC<FontFieldProps> = ({
     setOpen(false)
   }, [])
 
+  const estimatedPopoverWidth = useMemo(() => {
+    const longestLabel = filteredOptions.reduce(
+      (longest, option) =>
+        option.label.length > longest.length ? option.label : longest,
+      '',
+    )
+    const estimatedTextWidth = Array.from(longestLabel).reduce((width, ch) => {
+      if (/[\u3400-\u9fff\uf900-\ufaff]/.test(ch)) return width + 15
+      if (/[A-Z0-9]/.test(ch)) return width + 8
+      if (/\s/.test(ch)) return width + 4
+      return width + 7
+    }, 0)
+
+    return estimatedTextWidth + 34
+  }, [filteredOptions])
+
   const updatePopoverPosition = useCallback(() => {
     const root = rootRef.current
     if (!root) return
@@ -295,18 +329,19 @@ const FontField: React.FC<FontFieldProps> = ({
     const viewportWidth = window.innerWidth
     const viewportHeight = window.innerHeight
     const margin = 8
-    const itemHeight = 54
+    const itemHeight = 36
     const contentHeight = Math.max(filteredOptions.length, 1) * itemHeight + 8
     const hasQuery = !!query
     const rightSpace = viewportWidth - rect.right - margin
-    const preferSide = !hasQuery && rightSpace >= 240
+    const maxAvailableWidth = viewportWidth - margin * 2
+    const desiredWidth = Math.min(
+      Math.max(rect.width, 280, estimatedPopoverWidth),
+      Math.min(560, maxAvailableWidth),
+    )
+    const preferSide = !hasQuery && rightSpace >= desiredWidth
     const width = preferSide
-      ? Math.min(420, rightSpace - margin)
-      : Math.min(
-          Math.max(240, rect.width * 0.68),
-          rect.width,
-          viewportWidth - margin * 2,
-        )
+      ? Math.min(desiredWidth, rightSpace - margin)
+      : desiredWidth
 
     if (preferSide) {
       const top = Math.max(
@@ -339,7 +374,7 @@ const FontField: React.FC<FontFieldProps> = ({
       width,
       maxHeight: Math.max(120, maxHeight),
     })
-  }, [filteredOptions.length, query])
+  }, [estimatedPopoverWidth, filteredOptions.length, query])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -408,7 +443,7 @@ const FontField: React.FC<FontFieldProps> = ({
         createPortal(
           <div
             ref={popoverRef}
-            className="fixed z-[100] overflow-y-auto bg-surface py-1 text-on-surface shadow-1 ring-1 ring-inset ring-surface-variant"
+            className="fixed z-[100] overflow-y-auto overflow-x-hidden bg-surface py-1 text-on-surface shadow-1 ring-1 ring-inset ring-surface-variant"
             style={popoverStyle}
           >
             {filteredOptions.map((option) => (
@@ -416,10 +451,14 @@ const FontField: React.FC<FontFieldProps> = ({
                 key={option.family}
                 type="button"
                 className={clsx(
-                  'block min-h-[54px] w-full px-5 py-3 text-left !text-[16px] hover:bg-outline/10',
+                  'block min-h-[36px] w-full whitespace-nowrap px-3 py-1.5 text-left !text-[14px] leading-5 hover:bg-outline/10',
                   option.family === value && 'bg-outline/10',
                 )}
-                style={{ fontFamily: option.family }}
+                style={{
+                  fontFamily: option.family,
+                  fontSize: 14,
+                  lineHeight: '20px',
+                }}
                 onMouseDown={(e) => {
                   e.preventDefault()
                 }}
