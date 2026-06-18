@@ -27,12 +27,19 @@ export async function handleFiles(files: Iterable<File>) {
       continue
     }
 
-    let book = books?.find((b) => b.name === file.name)
+    const existingBook = books?.find((b) => b.name === file.name)
 
-    if (!book) {
-      book = await addBook(file)
-    } else {
-      await ensureBookCover(book, file)
+    const book = existingBook
+      ? await replaceBook(existingBook.id, file)
+      : await addBook(file)
+
+    if (books) {
+      const index = books.findIndex((b) => b.id === existingBook?.id)
+      if (index >= 0) {
+        books.splice(index, 1, book)
+      } else {
+        books.push(book)
+      }
     }
 
     newBooks.push(book)
@@ -55,6 +62,31 @@ export async function addBook(file: File) {
     annotations: [],
   }
   db?.books.add(book)
+  await addFile(book.id, file, epub, book)
+  return book
+}
+
+async function replaceBook(oldId: string, file: File) {
+  const epub = await fileToEpub(file)
+  const metadata = await epub.loaded.metadata
+
+  await Promise.all([
+    db?.books.delete(oldId),
+    db?.files.delete(oldId),
+    db?.covers.delete(oldId),
+  ])
+
+  const book: BookRecord = {
+    id: createId(),
+    name: file.name || `${metadata.title}.epub`,
+    size: file.size,
+    metadata,
+    createdAt: Date.now(),
+    definitions: [],
+    annotations: [],
+  }
+
+  await db?.books.add(book)
   await addFile(book.id, file, epub, book)
   return book
 }
