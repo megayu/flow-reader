@@ -18,12 +18,19 @@ type NativeInvoke = <T>(
   args?: Record<string, unknown>,
 ) => Promise<T>
 
+interface HandleFilesOptions {
+  replaceExisting?: boolean
+}
+
 export async function fileToEpub(file: File) {
   const data = await file.arrayBuffer()
   return ePub(data)
 }
 
-export async function handleFiles(files: Iterable<File>) {
+export async function handleFiles(
+  files: Iterable<File>,
+  { replaceExisting = true }: HandleFilesOptions = {},
+) {
   const books = await db?.books.toArray()
   const newBooks = []
 
@@ -41,6 +48,11 @@ export async function handleFiles(files: Iterable<File>) {
     }
 
     const existingBook = books?.find((b) => b.name === file.name)
+
+    if (existingBook && !replaceExisting) {
+      newBooks.push(existingBook)
+      continue
+    }
 
     const book = existingBook
       ? await replaceBook(existingBook.id, file)
@@ -78,7 +90,7 @@ export async function setupNativeOpenFiles(
       const files = await readNativeOpenFiles(invoke, paths)
       if (!files.length) return
 
-      const books = await handleFiles(files)
+      const books = await handleFiles(files, { replaceExisting: false })
       if (books.length) onOpen?.(books)
     }
 
