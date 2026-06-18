@@ -48,7 +48,9 @@ interface ThemeConfiguration {
   background?: number
 }
 
-export const defaultSettings: Settings = {}
+export const defaultSettings: Settings = {
+  enableTextSelectionMenu: true,
+}
 
 const settingsState = atom<Settings>({
   key: 'settings',
