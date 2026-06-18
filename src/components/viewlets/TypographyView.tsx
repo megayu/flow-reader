@@ -1,5 +1,14 @@
 import clsx from 'clsx'
-import { useCallback, useRef, useState } from 'react'
+import {
+  CSSProperties,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import { createPortal } from 'react-dom'
 import { MdAdd, MdRemove } from 'react-icons/md'
 
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
@@ -15,11 +24,20 @@ import { keys } from '@flow/reader/utils'
 import { Select, TextField, TextFieldProps } from '../Form'
 import { PaneViewProps, PaneView, Pane } from '../base'
 
-// Define an interface for the Font object
-
 enum TypographyScope {
   Book,
   Global,
+}
+
+interface FontOption {
+  family: string
+  label: string
+  searchText: string
+}
+
+interface SystemFont {
+  family: string
+  label: string
 }
 
 export const TypographyView: React.FC<PaneViewProps> = (props) => {
@@ -28,9 +46,8 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
   const [scope, setScope] = useState(TypographyScope.Book)
   const t = useTranslation('typography')
 
-  const [localFonts, setLocalFonts] = useState<string[]>()
-  const localFontsRequestRef = useRef<Promise<string[] | undefined>>()
-  const fontInputRef = useRef<HTMLInputElement>(null)
+  const [localFonts, setLocalFonts] = useState<FontOption[]>()
+  const localFontsRequestRef = useRef<Promise<FontOption[] | undefined>>()
 
   const { fontFamily, fontSize, fontWeight, lineHeight, zoom, spread } =
     scope === TypographyScope.Book
@@ -62,51 +79,42 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
     [scope, setSettings],
   )
 
-  const queryLocalFonts = useCallback(async () => {
-    if (localFonts) return localFonts
-    if (localFontsRequestRef.current) return localFontsRequestRef.current
+  const queryBrowserFonts = useCallback(async () => {
     if (!('queryLocalFonts' in window)) {
       console.error('queryLocalFonts is not available')
       return
     }
 
-    localFontsRequestRef.current = window
-      .queryLocalFonts()
+    try {
+      const fonts = await window.queryLocalFonts()
+      return createFontOptions(
+        fonts.map((font) => ({
+          family: font.family,
+          label: font.family,
+        })),
+      )
+    } catch (error) {
+      console.error('Error querying local fonts:', error)
+      return undefined
+    }
+  }, [])
+
+  const queryFonts = useCallback(async () => {
+    if (localFonts) return localFonts
+    if (localFontsRequestRef.current) return localFontsRequestRef.current
+
+    localFontsRequestRef.current = querySystemFonts()
+      .then((fonts) => fonts ?? queryBrowserFonts())
       .then((fonts) => {
-        const uniqueFonts = Array.from(new Set(fonts.map((f) => f.family)))
-        setLocalFonts(uniqueFonts)
-        return uniqueFonts
-      })
-      .catch((error) => {
-        console.error('Error querying local fonts:', error)
-        return undefined
+        if (fonts) setLocalFonts(fonts)
+        return fonts
       })
       .finally(() => {
         localFontsRequestRef.current = undefined
       })
 
     return localFontsRequestRef.current
-  }, [localFonts])
-
-  const openFontPicker = useCallback(async () => {
-    const input = fontInputRef.current
-    if (!input) return
-
-    await queryLocalFonts()
-
-    requestAnimationFrame(() => {
-      try {
-        const currentInput = fontInputRef.current as
-          | (HTMLInputElement & {
-              showPicker?: () => void
-            })
-          | null
-        currentInput?.showPicker?.()
-      } catch {
-        // Some browsers only allow showPicker for specific input types.
-      }
-    })
-  }, [queryLocalFonts])
+  }, [localFonts, queryBrowserFonts])
 
   return (
     <PaneView {...props}>
@@ -146,30 +154,13 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
             {t('page_view.double_page')}
           </option>
         </Select>
-        <TextField
-          as="input"
+        <FontField
           name={t('font_family')}
           value={fontFamily ?? ''}
-          placeholder="default"
-          datalist={(localFonts ?? []).map((font) => (
-            <option key={font} value={font}>
-              {font}
-            </option>
-          ))}
-          hideDatalistIndicator
-          mRef={fontInputRef}
-          onFocus={queryLocalFonts}
-          onMouseDown={(e) => {
-            e.preventDefault()
-            fontInputRef.current?.focus()
-            openFontPicker()
-          }}
-          onChange={(e) => {
-            setTypography('fontFamily', e.target.value || undefined)
-          }}
-          onClear={() => {
-            if (fontInputRef.current) fontInputRef.current.value = ''
-            setTypography('fontFamily', undefined)
+          options={localFonts ?? []}
+          loadOptions={queryFonts}
+          onChange={(value) => {
+            setTypography('fontFamily', value || undefined)
           }}
         />
         <NumberField
@@ -211,6 +202,246 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
         />
       </Pane>
     </PaneView>
+  )
+}
+
+async function querySystemFonts() {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const fonts = await invoke<SystemFont[]>('list_system_fonts')
+    const options = createFontOptions(fonts)
+    return options.length ? options : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function createFontOptions(fonts: SystemFont[]) {
+  const unique = new Map<string, FontOption>()
+
+  fonts.forEach(({ family, label }) => {
+    const normalizedFamily = family.trim()
+    const normalizedLabel = label.trim() || normalizedFamily
+    if (!normalizedFamily) return
+
+    const key = normalizedFamily.toLowerCase()
+    if (unique.has(key)) return
+
+    unique.set(key, {
+      family: normalizedFamily,
+      label: normalizedLabel,
+      searchText: `${normalizedFamily} ${normalizedLabel}`.toLowerCase(),
+    })
+  })
+
+  return [...unique.values()].sort((a, b) =>
+    a.label.localeCompare(b.label, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    }),
+  )
+}
+
+interface FontFieldProps {
+  name: string
+  value: string
+  options: FontOption[]
+  loadOptions: () => Promise<FontOption[] | undefined>
+  onChange: (value: string) => void
+}
+
+const FontField: React.FC<FontFieldProps> = ({
+  name,
+  value,
+  options,
+  loadOptions,
+  onChange,
+}) => {
+  const [inputValue, setInputValue] = useState(value)
+  const [open, setOpen] = useState(false)
+  const [popoverStyle, setPopoverStyle] = useState<CSSProperties>()
+  const rootRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setInputValue(value)
+  }, [value])
+
+  const query = inputValue.trim().toLowerCase()
+  const filteredOptions = useMemo(() => {
+    if (!query) return options
+
+    const keywords = query.split(/\s+/).filter(Boolean)
+    return options.filter((option) =>
+      keywords.every((keyword) => option.searchText.includes(keyword)),
+    )
+  }, [options, query])
+
+  const openPicker = useCallback(() => {
+    setOpen(true)
+    loadOptions()
+  }, [loadOptions])
+
+  const closePicker = useCallback(() => {
+    setOpen(false)
+  }, [])
+
+  const updatePopoverPosition = useCallback(() => {
+    const root = rootRef.current
+    if (!root) return
+
+    const rect = root.getBoundingClientRect()
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+    const margin = 8
+    const itemHeight = 54
+    const contentHeight = Math.max(filteredOptions.length, 1) * itemHeight + 8
+    const hasQuery = !!query
+    const rightSpace = viewportWidth - rect.right - margin
+    const preferSide = !hasQuery && rightSpace >= 240
+    const width = preferSide
+      ? Math.min(420, rightSpace - margin)
+      : Math.min(
+          Math.max(240, rect.width * 0.68),
+          rect.width,
+          viewportWidth - margin * 2,
+        )
+
+    if (preferSide) {
+      const top = Math.max(
+        margin,
+        Math.min(rect.top - 6, viewportHeight - margin - contentHeight),
+      )
+      setPopoverStyle({
+        left: rect.right + margin,
+        top,
+        width,
+        maxHeight: viewportHeight - top - margin,
+      })
+      return
+    }
+
+    const belowTop = rect.bottom + margin
+    const belowSpace = viewportHeight - belowTop - margin
+    const aboveSpace = rect.top - margin * 2
+    const showAbove =
+      belowSpace < Math.min(contentHeight, 180) && aboveSpace > belowSpace
+    const maxHeight = showAbove ? aboveSpace : belowSpace
+    const height = Math.min(contentHeight, maxHeight)
+
+    setPopoverStyle({
+      left: Math.min(
+        viewportWidth - width - margin,
+        Math.max(margin, rect.right - width),
+      ),
+      top: showAbove ? rect.top - margin - height : belowTop,
+      width,
+      maxHeight: Math.max(120, maxHeight),
+    })
+  }, [filteredOptions.length, query])
+
+  useLayoutEffect(() => {
+    if (!open) return
+
+    updatePopoverPosition()
+  }, [open, updatePopoverPosition])
+
+  useEffect(() => {
+    if (!open) return
+
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Node
+      if (
+        rootRef.current?.contains(target) ||
+        popoverRef.current?.contains(target)
+      ) {
+        return
+      }
+
+      closePicker()
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closePicker()
+    }
+
+    window.addEventListener('resize', updatePopoverPosition)
+    window.addEventListener('scroll', updatePopoverPosition, true)
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('resize', updatePopoverPosition)
+      window.removeEventListener('scroll', updatePopoverPosition, true)
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [closePicker, open, updatePopoverPosition])
+
+  return (
+    <div ref={rootRef}>
+      <TextField
+        as="input"
+        name={name}
+        value={inputValue}
+        placeholder="default"
+        mRef={inputRef}
+        onFocus={openPicker}
+        onClick={openPicker}
+        onChange={(e) => {
+          const nextValue = e.target.value
+          setInputValue(nextValue)
+          onChange(nextValue)
+          setOpen(true)
+          loadOptions()
+        }}
+        onClear={() => {
+          setInputValue('')
+          onChange('')
+          setOpen(true)
+          loadOptions()
+          inputRef.current?.focus()
+        }}
+      />
+      {open &&
+        popoverStyle &&
+        createPortal(
+          <div
+            ref={popoverRef}
+            className="fixed z-[100] overflow-y-auto bg-surface py-1 text-on-surface shadow-1 ring-1 ring-inset ring-surface-variant"
+            style={popoverStyle}
+          >
+            {filteredOptions.map((option) => (
+              <button
+                key={option.family}
+                type="button"
+                className={clsx(
+                  'block min-h-[54px] w-full px-5 py-3 text-left !text-[16px] hover:bg-outline/10',
+                  option.family === value && 'bg-outline/10',
+                )}
+                style={{ fontFamily: option.family }}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                }}
+                onClick={() => {
+                  setInputValue(option.family)
+                  onChange(option.family)
+                  closePicker()
+                  inputRef.current?.focus()
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+            {!filteredOptions.length && (
+              <div className="px-5 py-3 text-outline typescale-body-medium">
+                没有匹配字体
+              </div>
+            )}
+          </div>,
+          document.body,
+        )}
+    </div>
   )
 }
 

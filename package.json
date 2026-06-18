@@ -27,6 +27,7 @@
     "@literal-ui/next": "0.0.3",
     "@material/material-color-utilities": "0.2.0",
     "@next/bundle-analyzer": "12.3.7",
+    "@tauri-apps/api": "2.11.1",
     "@types/react-highlight-words": "0.16.4",
     "clsx": "1.1.1",
     "dayjs": "1.11.2",

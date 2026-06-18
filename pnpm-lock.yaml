@@ -29,6 +29,9 @@ importers:
       '@next/bundle-analyzer':
         specifier: 12.3.7
         version: 12.3.7
+      '@tauri-apps/api':
+        specifier: 2.11.1
+        version: 2.11.1
       '@types/react-highlight-words':
         specifier: 0.16.4
         version: 0.16.4
@@ -1005,6 +1008,9 @@ packages:
     resolution: {integrity: sha512-HFzAQuqYCjyy/SX9sLGB1lroPzmcnWv1FHkIpmypte10hptf4oPUfucryMKovZh2u0uiS9U5Ty3GghWfEJGwVw==}
     peerDependencies:
       tailwindcss: '>=2.0.0 || >=3.0.0 || >=3.0.0-alpha.1'
+
+  '@tauri-apps/api@2.11.1':
+    resolution: {integrity: sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA==}
 
   '@tauri-apps/cli-darwin-arm64@2.11.2':
     resolution: {integrity: sha512-+4UZzLt+eOAEQCwgd+TqKgyUJMrvx+BgdXLLaqJYmPqzP+nE6YZr/hY6CWLYGQb8jFn99jEkmC6uA3tNvamA1w==}
@@ -7450,6 +7456,8 @@ snapshots:
   '@tailwindcss/line-clamp@0.4.2(tailwindcss@3.2.0(postcss@8.5.15))':
     dependencies:
       tailwindcss: 3.2.0(postcss@8.5.15)
+
+  '@tauri-apps/api@2.11.1': {}
 
   '@tauri-apps/cli-darwin-arm64@2.11.2':
     optional: true
