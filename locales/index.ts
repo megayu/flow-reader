@@ -11,10 +11,20 @@ export const localeNames: Record<string, string> = {
   'de-DE': 'Deutsch',
 }
 
-// eslint-disable-next-line import/no-anonymous-default-export
-export default {
+const messages = {
   'en-US': en_US,
   'zh-CN': zh_CN,
   'ja-JP': ja_JP,
   'de-DE': de_DE,
 } as const
+
+export type AppLocale = keyof typeof messages
+
+export const defaultLocale: AppLocale = 'zh-CN'
+export const localeOptions = Object.keys(messages) as AppLocale[]
+
+export function isAppLocale(locale: string | undefined): locale is AppLocale {
+  return !!locale && locale in messages
+}
+
+export default messages

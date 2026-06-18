@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "cross-env RECOIL_DUPLICATE_ATOM_KEY_CHECKING_ENABLED=false next dev -p 7127",
     "build": "next build",
+    "export": "next build && next export",
     "analyze": "cross-env ANALYZE=true next build",
     "start": "next start -p 7127",
     "lint": "next lint",

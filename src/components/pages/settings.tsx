@@ -1,9 +1,13 @@
 import Dexie from 'dexie'
-import { useRouter } from 'next/router'
 import type { ReactNode } from 'react'
 
-import { ColorScheme, useColorScheme, useTranslation } from '@flow/reader/hooks'
-import { localeNames } from '@flow/reader/locales'
+import {
+  ColorScheme,
+  useColorScheme,
+  useLocale,
+  useTranslation,
+} from '@flow/reader/hooks'
+import { AppLocale, localeNames } from '@flow/reader/locales'
 import { useSettings } from '@flow/reader/state'
 
 import { Button } from '../Button'
@@ -12,7 +16,7 @@ import { Page } from '../Page'
 
 export const Settings: React.FC = () => {
   const { scheme, setScheme } = useColorScheme()
-  const { asPath, push, locale, locales } = useRouter()
+  const { locale, locales, setLocale } = useLocale()
   const [settings, setSettings] = useSettings()
   const t = useTranslation('settings')
 
@@ -23,7 +27,7 @@ export const Settings: React.FC = () => {
           <Select
             value={locale}
             onChange={(e) => {
-              push(asPath, undefined, { locale: e.target.value })
+              setLocale(e.target.value as AppLocale)
             }}
           >
             {locales?.map((loc) => (

@@ -2,6 +2,7 @@ import { IS_SERVER } from '@literal-ui/hooks'
 import { atom, AtomEffect, useRecoilState } from 'recoil'
 
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
+import { AppLocale } from '@flow/reader/locales'
 
 function localStorageEffect<T>(key: string, defaultValue: T): AtomEffect<T> {
   return ({ setSelf, onSet }) => {
@@ -30,6 +31,7 @@ export const navbarState = atom<boolean>({
 export interface Settings extends TypographyConfiguration {
   theme?: ThemeConfiguration
   enableTextSelectionMenu?: boolean
+  locale?: AppLocale
 }
 
 export interface TypographyConfiguration {

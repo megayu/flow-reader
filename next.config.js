@@ -14,10 +14,6 @@ const config = {
   webpack(config) {
     return config
   },
-  i18n: {
-    locales: ['en-US', 'zh-CN', 'ja-JP', 'de-DE'],
-    defaultLocale: 'en-US',
-  },
 }
 
 module.exports = withTM(withBundleAnalyzer(config))
