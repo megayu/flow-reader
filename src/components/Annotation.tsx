@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import { useSnapshot } from 'valtio'
 
 import { colorMap, Annotation as IAnnotation } from '../annotation'
-import { useSetAction } from '../hooks'
 import { BookTab, compareHref } from '../models'
 
 // avoid click penetration
@@ -15,7 +14,6 @@ interface FindMatchProps {
   tab: BookTab
 }
 const FindMatches: React.FC<FindMatchProps> = ({ tab }) => {
-  const setAction = useSetAction()
   const { rendition, results, currentHref } = useSnapshot(tab)
 
   useEffect(() => {
@@ -24,10 +22,12 @@ const FindMatches: React.FC<FindMatchProps> = ({ tab }) => {
     const matches = result?.subitems
     matches?.forEach((m) => {
       try {
-        const h = rendition?.annotations.highlight(
+        rendition?.annotations.highlight(
           m.cfi!,
           undefined,
-          undefined,
+          () => {
+            setClickedAnnotation(true)
+          },
           undefined,
           {
             // tailwind yellow-500
@@ -35,11 +35,6 @@ const FindMatches: React.FC<FindMatchProps> = ({ tab }) => {
             'fill-opacity': 'unset',
           },
         )
-
-        const g = h?.mark.element as SVGGElement
-        g?.addEventListener('click', () => {
-          setClickedAnnotation(true)
-        })
       } catch (error) {
         // ignore matched text in `<title>`
       }
@@ -50,7 +45,7 @@ const FindMatches: React.FC<FindMatchProps> = ({ tab }) => {
         rendition?.annotations.remove(m.cfi!, 'highlight')
       })
     }
-  }, [currentHref, rendition?.annotations, results, setAction])
+  }, [currentHref, rendition?.annotations, results])
 
   return null
 }
@@ -60,7 +55,6 @@ interface DefinitionProps {
   definition: string
 }
 const Definition: React.FC<DefinitionProps> = ({ tab, definition }) => {
-  const setAction = useSetAction()
   const { rendition, currentHref } = useSnapshot(tab)
 
   useEffect(() => {
@@ -69,10 +63,15 @@ const Definition: React.FC<DefinitionProps> = ({ tab, definition }) => {
 
     matches?.forEach((m) => {
       try {
-        const h = rendition?.annotations.highlight(
+        rendition?.annotations.highlight(
           m.cfi!,
           undefined,
-          undefined,
+          (event?: Event) => {
+            event?.preventDefault()
+            event?.stopPropagation()
+            tab.setAnnotationRange(m.cfi!)
+            setClickedAnnotation(true)
+          },
           undefined,
           {
             // tailwind gray-600
@@ -80,14 +79,6 @@ const Definition: React.FC<DefinitionProps> = ({ tab, definition }) => {
             'fill-opacity': 'unset',
           },
         )
-
-        const g = h?.mark.element as SVGGElement
-
-        // `<rect>` should be reserved to response `click`
-        g?.addEventListener('click', () => {
-          tab.setAnnotationRange(m.cfi!)
-          setClickedAnnotation(true)
-        })
       } catch (error) {
         // ignore matched text in `<title>`
       }
@@ -98,7 +89,7 @@ const Definition: React.FC<DefinitionProps> = ({ tab, definition }) => {
         rendition?.annotations.remove(m.cfi!, 'highlight'),
       )
     }
-  }, [currentHref, definition, rendition?.annotations, setAction, tab])
+  }, [currentHref, definition, rendition?.annotations, tab])
 
   return null
 }
@@ -111,24 +102,21 @@ const Annotation: React.FC<AnnotationProps> = ({ tab, annotation }) => {
   const { rendition } = useSnapshot(tab)
 
   useEffect(() => {
-    const h = rendition?.annotations[annotation.type](
+    rendition?.annotations[annotation.type](
       annotation.cfi,
       undefined,
-      undefined,
+      (event?: Event) => {
+        event?.preventDefault()
+        event?.stopPropagation()
+        tab.setAnnotationRange(annotation.cfi)
+        setClickedAnnotation(true)
+      },
       undefined,
       {
         fill: colorMap[annotation.color],
         'fill-opacity': '0.5',
       },
     )
-
-    const g = h?.mark?.element as SVGGElement
-
-    // `<rect>` should be reserved to response `click`
-    g?.addEventListener('click', () => {
-      tab.setAnnotationRange(annotation.cfi)
-      setClickedAnnotation(true)
-    })
 
     return () => {
       rendition?.annotations.remove(annotation.cfi, annotation.type)

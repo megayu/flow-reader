@@ -35,7 +35,7 @@ interface TextSelectionMenuProps {
 export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
   tab,
 }) => {
-  const { rendition, annotationRange } = useSnapshot(tab)
+  const { rendition, annotationRange, annotationCfi } = useSnapshot(tab)
   const [settings] = useSettings()
 
   // `manager` is not reactive, so we need to use getter
@@ -84,6 +84,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
       containerRect={el.parentElement!.getBoundingClientRect()}
       viewRect={el.getBoundingClientRect()}
       text={text}
+      cfi={selection ? undefined : annotationCfi}
       forward={forward}
       hide={() => {
         if (selection) {
@@ -96,6 +97,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
         if (tab.annotationRange) {
           tab.annotationRange = undefined
         }
+        if (tab.annotationCfi) tab.annotationCfi = undefined
       }}
     />
   )
@@ -111,6 +113,7 @@ interface TextSelectionMenuRendererProps {
   containerRect: DOMRect
   viewRect: DOMRect
   text: string
+  cfi?: string
   forward: boolean
   hide: () => void
 }
@@ -122,6 +125,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   viewRect,
   forward,
   text,
+  cfi: annotationCfi,
   hide,
 }) => {
   const setAction = useSetAction()
@@ -131,7 +135,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const mobile = useMobile()
   const t = useTranslation('menu')
 
-  const cfi = tab.rangeToCfi(range)
+  const cfi = annotationCfi ?? tab.rangeToCfi(range)
   const annotation = tab.book.annotations.find((a) => a.cfi === cfi)
   const [annotate, setAnnotate] = useState(!!annotation)
 

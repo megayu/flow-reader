@@ -148,9 +148,13 @@ export class BookTab extends BaseTab {
   }
 
   annotationRange?: Range
+  annotationCfi?: string
   setAnnotationRange(cfi: string) {
     const range = this.view?.contents.range(cfi)
-    if (range) this.annotationRange = ref(range)
+    if (range) {
+      this.annotationRange = ref(range)
+      this.annotationCfi = cfi
+    }
   }
 
   define(def: string[]) {
