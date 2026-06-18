@@ -27,8 +27,6 @@ export default {
 
   'image.title': '图片',
 
-  'timeline.title': '时间线',
-
   'typography.title': '排版',
   'typography.scope.book': '书籍',
   'typography.scope.global': '全局',
@@ -51,10 +49,6 @@ export default {
 
   'settings.title': '设置',
   'settings.language': '语言',
-  'settings.color_scheme': '颜色模式',
-  'settings.color_scheme.system': '系统',
-  'settings.color_scheme.light': '浅色',
-  'settings.color_scheme.dark': '深色',
   'settings.cache': '缓存',
   'settings.cache.clear': '清除',
   'settings.text_selection_menu': '文本选择菜单',

@@ -6,7 +6,6 @@ export type Action =
   | 'annotation'
   | 'typography'
   | 'image'
-  | 'timeline'
   | 'theme'
 export const actionState = atom<Action | undefined>({
   key: 'action',

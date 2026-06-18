@@ -8,15 +8,18 @@ import {
   useSourceColor,
   useTranslation,
 } from '@flow/reader/hooks'
+import { useSettings } from '@flow/reader/state'
 
 import { ColorPicker, Label } from '../Form'
 import { PaneViewProps, PaneView, Pane } from '../base'
 
 export const ThemeView: React.FC<PaneViewProps> = (props) => {
-  const { setScheme } = useColorScheme()
+  const { dark, setScheme } = useColorScheme()
   const { sourceColor, setSourceColor } = useSourceColor()
   const [, setBackground] = useBackground()
+  const [{ theme }] = useSettings()
   const t = useTranslation('theme')
+  const selectedBackground = theme?.background ?? -1
 
   return (
     <PaneView {...props}>
@@ -37,6 +40,7 @@ export const ThemeView: React.FC<PaneViewProps> = (props) => {
               <Background
                 key={background.value}
                 className={background.className}
+                selected={!dark && selectedBackground === background.value}
                 onClick={() => {
                   setScheme('light')
                   setBackground(background.value)
@@ -45,6 +49,7 @@ export const ThemeView: React.FC<PaneViewProps> = (props) => {
             ))}
             <Background
               className="bg-black"
+              selected={dark}
               onClick={() => {
                 setScheme('dark')
               }}
@@ -56,12 +61,24 @@ export const ThemeView: React.FC<PaneViewProps> = (props) => {
   )
 }
 
-interface BackgroundProps extends ComponentProps<'div'> {}
-const Background: React.FC<BackgroundProps> = ({ className, ...props }) => {
+interface BackgroundProps extends ComponentProps<'button'> {
+  selected?: boolean
+}
+const Background: React.FC<BackgroundProps> = ({
+  className,
+  selected,
+  ...props
+}) => {
   return (
-    <div
-      className={clsx('light h-6 w-6 border border-outline-variant', className)}
+    <button
+      type="button"
+      aria-pressed={selected}
+      className={clsx(
+        'light h-6 w-6 border',
+        selected ? 'border-2 border-primary70' : 'border-outline-variant',
+        className,
+      )}
       {...props}
-    ></div>
+    />
   )
 }

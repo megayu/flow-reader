@@ -1,12 +1,7 @@
 import Dexie from 'dexie'
 import type { ReactNode } from 'react'
 
-import {
-  ColorScheme,
-  useColorScheme,
-  useLocale,
-  useTranslation,
-} from '@flow/reader/hooks'
+import { useLocale, useTranslation } from '@flow/reader/hooks'
 import { AppLocale, localeNames } from '@flow/reader/locales'
 import { useSettings } from '@flow/reader/state'
 
@@ -15,7 +10,6 @@ import { Checkbox, Select } from '../Form'
 import { Page } from '../Page'
 
 export const Settings: React.FC = () => {
-  const { scheme, setScheme } = useColorScheme()
   const { locale, locales, setLocale } = useLocale()
   const [settings, setSettings] = useSettings()
   const t = useTranslation('settings')
@@ -35,18 +29,6 @@ export const Settings: React.FC = () => {
                 {localeNames[loc] || loc}
               </option>
             ))}
-          </Select>
-        </Item>
-        <Item title={t('color_scheme')}>
-          <Select
-            value={scheme}
-            onChange={(e) => {
-              setScheme(e.target.value as ColorScheme)
-            }}
-          >
-            <option value="system">{t('color_scheme.system')}</option>
-            <option value="light">{t('color_scheme.light')}</option>
-            <option value="dark">{t('color_scheme.dark')}</option>
           </Select>
         </Item>
         <Item title={t('text_selection_menu')}>

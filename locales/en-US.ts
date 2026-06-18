@@ -27,8 +27,6 @@ export default {
 
   'image.title': 'Image',
 
-  'timeline.title': 'Timeline',
-
   'typography.title': 'Typography',
   'typography.scope.book': 'Book',
   'typography.scope.global': 'Global',
@@ -51,10 +49,6 @@ export default {
 
   'settings.title': 'Settings',
   'settings.language': 'Language',
-  'settings.color_scheme': 'Color Scheme',
-  'settings.color_scheme.system': 'System',
-  'settings.color_scheme.light': 'Light',
-  'settings.color_scheme.dark': 'Dark',
   'settings.cache': 'Cache',
   'settings.cache.clear': 'Clear',
   'settings.text_selection_menu': 'Text Selection Menu',

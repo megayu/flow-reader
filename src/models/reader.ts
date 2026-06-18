@@ -56,11 +56,6 @@ export interface ISection extends Section {
   navitem?: INavItem
 }
 
-interface TimelineItem {
-  location: Location
-  timestamp: number
-}
-
 class BaseTab {
   constructor(public readonly id: string, public readonly title = id) {}
 
@@ -95,9 +90,9 @@ export class BookTab extends BaseTab {
     return this?.rendition?.manager?.container as HTMLDivElement | undefined
   }
 
-  timeline: TimelineItem[] = []
+  currentLocation?: Location
   get location() {
-    return this.timeline[0]?.location
+    return this.currentLocation
   }
 
   display(target?: string, returnable = true) {
@@ -536,10 +531,7 @@ export class BookTab extends BaseTab {
     this.rendition.on('relocated', (loc: Location) => {
       console.log('relocated', loc)
       this.syncFrames()
-      this.timeline.unshift({
-        location: loc,
-        timestamp: Date.now(),
-      })
+      this.currentLocation = loc
 
       // calculate percentage
       if (this.sections) {

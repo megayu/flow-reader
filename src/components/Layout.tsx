@@ -8,7 +8,6 @@ import {
   MdOutlineImage,
   MdSearch,
   MdToc,
-  MdTimeline,
   MdOutlineLightMode,
 } from 'react-icons/md'
 import { RiFontSize, RiHome6Line, RiSettings5Line } from 'react-icons/ri'
@@ -34,7 +33,6 @@ import { AnnotationView } from './viewlets/AnnotationView'
 import { ImageView } from './viewlets/ImageView'
 import { SearchView } from './viewlets/SearchView'
 import { ThemeView } from './viewlets/ThemeView'
-import { TimelineView } from './viewlets/TimelineView'
 import { TocView } from './viewlets/TocView'
 import { TypographyView } from './viewlets/TypographyView'
 
@@ -101,13 +99,6 @@ const viewActions: IViewAction[] = [
     title: 'image',
     Icon: MdOutlineImage,
     View: ImageView,
-    env: Env.Desktop,
-  },
-  {
-    name: 'timeline',
-    title: 'timeline',
-    Icon: MdTimeline,
-    View: TimelineView,
     env: Env.Desktop,
   },
   {
