@@ -39,6 +39,10 @@ export default {
   'typography.font_size': 'Schriftgröße',
   'typography.font_weight': 'Schriftstärke',
   'typography.line_height': 'Zeilenhöhe',
+  'typography.text_indent': 'Erstzeileneinzug',
+  'typography.text_align': 'Ausrichtung',
+  'typography.text_align.default': 'Standard',
+  'typography.text_align.justify': 'Blocksatz',
   'typography.zoom': 'Zoom',
 
   'theme.title': 'Design',

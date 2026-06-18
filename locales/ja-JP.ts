@@ -39,6 +39,10 @@ export default {
   'typography.font_size': 'フォントサイズ',
   'typography.font_weight': 'フォントウェイト',
   'typography.line_height': '行の高さ',
+  'typography.text_indent': '字下げ',
+  'typography.text_align': '配置',
+  'typography.text_align.default': 'デフォルト',
+  'typography.text_align.justify': '両端',
   'typography.zoom': 'ズーム',
 
   'theme.title': 'テーマ',

@@ -21,7 +21,7 @@ import {
 } from '@flow/reader/state'
 import { keys } from '@flow/reader/utils'
 
-import { Select, TextField, TextFieldProps } from '../Form'
+import { Label, Select, TextField, TextFieldProps } from '../Form'
 import { PaneViewProps, PaneView, Pane } from '../base'
 
 enum TypographyScope {
@@ -49,7 +49,16 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
   const [localFonts, setLocalFonts] = useState<FontOption[]>()
   const localFontsRequestRef = useRef<Promise<FontOption[] | undefined>>()
 
-  const { fontFamily, fontSize, fontWeight, lineHeight, zoom, spread } =
+  const {
+    fontFamily,
+    fontSize,
+    fontWeight,
+    lineHeight,
+    textAlign,
+    textIndent,
+    zoom,
+    spread,
+  } =
     scope === TypographyScope.Book
       ? focusedBookTab?.book.configuration?.typography ?? defaultSettings
       : settings
@@ -154,6 +163,15 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
             {t('page_view.double_page')}
           </option>
         </Select>
+        <NumberField
+          name={t('zoom')}
+          min={1}
+          step={0.1}
+          defaultValue={zoom}
+          onChange={(v) => {
+            setTypography('zoom', v || undefined)
+          }}
+        />
         <FontField
           name={t('font_family')}
           value={fontFamily ?? ''}
@@ -192,12 +210,19 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
           }}
         />
         <NumberField
-          name={t('zoom')}
-          min={1}
-          step={0.1}
-          defaultValue={zoom}
+          name={t('text_indent')}
+          min={0}
+          step={0.5}
+          defaultValue={textIndent}
           onChange={(v) => {
-            setTypography('zoom', v || undefined)
+            setTypography('textIndent', v || undefined)
+          }}
+        />
+        <TextAlignField
+          name={t('text_align')}
+          value={textAlign}
+          onChange={(value) => {
+            setTypography('textAlign', value)
           }}
         />
       </Pane>
@@ -258,6 +283,52 @@ function fontOptionKey(label: string) {
       '',
     )
     .replace(/[^a-z0-9\u3400-\u9fff\uf900-\ufaff]+/g, '')
+}
+
+interface TextAlignFieldProps {
+  name: string
+  value?: TypographyConfiguration['textAlign']
+  onChange: (value?: TypographyConfiguration['textAlign']) => void
+}
+
+const TextAlignField: React.FC<TextAlignFieldProps> = ({
+  name,
+  value,
+  onChange,
+}) => {
+  const t = useTranslation('typography')
+  const options: {
+    label: string
+    value?: TypographyConfiguration['textAlign']
+  }[] = [
+    { label: t('text_align.default') },
+    { label: t('text_align.justify'), value: 'justify' },
+  ]
+
+  return (
+    <div className="flex flex-col">
+      <Label name={name} />
+      <div className="bg-default flex h-[31px] items-center p-0.5 text-on-surface-variant">
+        {options.map((option) => {
+          const selected = option.value === value
+
+          return (
+            <button
+              key={option.value ?? 'default'}
+              type="button"
+              className={clsx(
+                'h-full flex-1 px-2 !text-[13px] typescale-body-medium',
+                selected && 'bg-primary70 text-on-primary-container',
+              )}
+              onClick={() => onChange(option.value)}
+            >
+              {option.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 interface FontFieldProps {
@@ -517,7 +588,7 @@ const NumberField: React.FC<NumberFieldProps> = ({ onChange, ...props }) => {
       mRef={ref}
       // lazy render
       onBlur={(e) => {
-        onChange(Number(e.target.value))
+        onChange(e.target.value === '' ? undefined : Number(e.target.value))
       }}
       onClear={() => {
         if (ref.current) ref.current.value = ''

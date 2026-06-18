@@ -116,6 +116,11 @@ function pickBodyTypography(settings: Settings) {
     fontSize: settings.fontSize,
     fontWeight: settings.fontWeight,
     lineHeight: settings.lineHeight,
+    textIndent:
+      settings.textIndent === undefined
+        ? undefined
+        : `${settings.textIndent}em`,
+    textAlign: settings.textAlign,
   })
 }
 

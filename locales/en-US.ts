@@ -39,6 +39,10 @@ export default {
   'typography.font_size': 'Font Size',
   'typography.font_weight': 'Font Weight',
   'typography.line_height': 'Line Height',
+  'typography.text_indent': 'First Line Indent',
+  'typography.text_align': 'Alignment',
+  'typography.text_align.default': 'Default',
+  'typography.text_align.justify': 'Justify',
   'typography.zoom': 'Zoom',
 
   'theme.title': 'Theme',

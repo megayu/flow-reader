@@ -39,6 +39,8 @@ export interface TypographyConfiguration {
   fontWeight?: number
   fontFamily?: string
   lineHeight?: number
+  textIndent?: number
+  textAlign?: 'justify'
   spread?: RenditionSpread
   zoom?: number
 }

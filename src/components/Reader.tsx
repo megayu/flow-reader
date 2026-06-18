@@ -286,6 +286,8 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
     typography.fontSize,
     typography.fontWeight,
     typography.lineHeight,
+    typography.textAlign,
+    typography.textIndent,
   ])
 
   const applyCustomStyle = useCallback(
