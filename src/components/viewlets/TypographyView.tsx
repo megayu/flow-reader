@@ -433,9 +433,7 @@ const FontField: React.FC<FontFieldProps> = ({
         onClear={() => {
           setInputValue('')
           onChange('')
-          setOpen(true)
-          loadOptions()
-          inputRef.current?.focus()
+          closePicker()
         }}
       />
       {open &&

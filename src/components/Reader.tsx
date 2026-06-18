@@ -272,18 +272,36 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
   const setNavbar = useSetRecoilState(navbarState)
   const mobile = useMobile()
 
+  useEffect(() => {
+    const manager = rendition?.manager as
+      | { reflowablePageCountCache?: Record<string, number> }
+      | undefined
+
+    if (manager?.reflowablePageCountCache) {
+      manager.reflowablePageCountCache = {}
+    }
+  }, [
+    rendition,
+    typography.fontFamily,
+    typography.fontSize,
+    typography.fontWeight,
+    typography.lineHeight,
+  ])
+
   const applyCustomStyle = useCallback(
     (contents?: any) => {
       if (contents) {
-        updateCustomStyle(contents, typography)
+        updateCustomStyle(contents, typography, tab.bodyTextCache)
         return
       }
 
       rendition
         ?.getContents()
-        .forEach((contents: any) => updateCustomStyle(contents, typography))
+        .forEach((contents: any) =>
+          updateCustomStyle(contents, typography, tab.bodyTextCache),
+        )
     },
-    [rendition, typography],
+    [rendition, tab.bodyTextCache, typography],
   )
 
   useEffect(() => {

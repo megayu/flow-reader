@@ -11,7 +11,7 @@ import { AnnotationColor, AnnotationType } from '../annotation'
 import { BookRecord, db } from '../db'
 import { fileToEpub } from '../file'
 import { createId } from '../id'
-import { defaultStyle } from '../styles'
+import { BodyTextDetectionCache, defaultStyle } from '../styles'
 
 import { dfs, find, INode } from './tree'
 
@@ -87,6 +87,7 @@ export class BookTab extends BaseTab {
   sections?: ISection[]
   results?: IMatch[]
   activeResultID?: string
+  bodyTextCache: BodyTextDetectionCache = ref(new Map())
   rendered = false
   turning = false
 
