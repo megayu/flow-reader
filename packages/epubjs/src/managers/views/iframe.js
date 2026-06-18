@@ -196,6 +196,10 @@ class IframeView {
           this.setWritingMode(writingMode)
           this.emit(EVENTS.VIEWS.WRITING_MODE, writingMode)
 
+          if (typeof this.settings.beforeLayout === 'function') {
+            this.settings.beforeLayout(this.contents, this)
+          }
+
           // apply the layout function to the contents
           this.layout.format(this.contents, this.section, this.axis)
           this.fitMediaBeforeMeasure()
@@ -421,23 +425,6 @@ class IframeView {
     return width
   }
 
-  shouldPadTrailingBlankPage(pageCount) {
-    if (
-      !this.layout ||
-      !this.layout.pageWidth ||
-      this.layout.name !== 'reflowable' ||
-      this.settings.axis !== 'horizontal' ||
-      this.layout.divisor <= 1 ||
-      pageCount % this.layout.divisor === 0
-    ) {
-      return false
-    }
-
-    let next = this.section && this.section.next && this.section.next()
-
-    return !next || !(next.next && next.next())
-  }
-
   displayWidthForContentWidth(contentWidth) {
     if (
       !this.layout ||
@@ -452,14 +439,6 @@ class IframeView {
 
     this._contentWidth = contentWidth
     this._contentPageCount = pageCount
-
-    if (this.shouldPadTrailingBlankPage(pageCount)) {
-      return (
-        Math.ceil(pageCount / this.layout.divisor) *
-        this.layout.divisor *
-        this.layout.pageWidth
-      )
-    }
 
     return contentWidth
   }

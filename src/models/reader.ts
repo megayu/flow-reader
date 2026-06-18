@@ -478,6 +478,7 @@ export class BookTab extends BaseTab {
   }
 
   private _el?: HTMLDivElement
+  onBeforeLayout?: (contents?: any) => void
   onRender?: (contents?: any) => void
   async render(el: HTMLDivElement) {
     if (el === this._el) return
@@ -517,6 +518,12 @@ export class BookTab extends BaseTab {
         allowScriptedContent: true,
       }),
     )
+    const manager = this.rendition.manager
+    if (manager?.viewSettings) {
+      manager.viewSettings.beforeLayout = (contents: any) => {
+        this.onBeforeLayout?.(contents)
+      }
+    }
     console.log(this.rendition)
     this.rendition.display(
       this.location?.start.cfi ?? this.book.cfi ?? undefined,

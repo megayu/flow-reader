@@ -235,9 +235,18 @@ interface BookPaneProps {
   onMouseDown: () => void
 }
 
+interface ReflowableManager {
+  reflowablePageCountCache?: Record<string, number>
+  currentReflowableSpread?: unknown
+  viewSettings?: {
+    beforeLayout?: (contents: unknown) => void
+  }
+}
+
 function BookPane({ tab, onMouseDown }: BookPaneProps) {
   const ref = useRef<HTMLDivElement>(null)
   const prevSize = useRef(0)
+  const previousTypographyLayoutSignature = useRef<string>()
   const typography = useTypography(tab)
   const { dark } = useColorScheme()
   const [background] = useBackground()
@@ -273,24 +282,6 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
   const setNavbar = useSetRecoilState(navbarState)
   const mobile = useMobile()
 
-  useEffect(() => {
-    const manager = rendition?.manager as
-      | { reflowablePageCountCache?: Record<string, number> }
-      | undefined
-
-    if (manager?.reflowablePageCountCache) {
-      manager.reflowablePageCountCache = {}
-    }
-  }, [
-    rendition,
-    typography.fontFamily,
-    typography.fontSize,
-    typography.fontWeight,
-    typography.lineHeight,
-    typography.textAlign,
-    typography.textIndent,
-  ])
-
   const applyCustomStyle = useCallback(
     (contents?: any) => {
       if (contents) {
@@ -306,6 +297,20 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
     },
     [rendition, tab.bodyTextCache, typography],
   )
+
+  useEffect(() => {
+    const manager = rendition?.manager as ReflowableManager | undefined
+    if (!manager) {
+      tab.onBeforeLayout = applyCustomStyle
+      return
+    }
+
+    tab.onBeforeLayout = applyCustomStyle
+    manager.viewSettings ??= {}
+    manager.viewSettings.beforeLayout = (contents) => {
+      tab.onBeforeLayout?.(contents)
+    }
+  }, [applyCustomStyle, rendition, tab])
 
   useEffect(() => {
     tab.onRender = applyCustomStyle
@@ -325,6 +330,45 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
   }, [typography.spread, rendition])
 
   useEffect(() => applyCustomStyle(), [applyCustomStyle])
+
+  useEffect(() => {
+    const manager = rendition?.manager as ReflowableManager | undefined
+    if (!rendition || !manager) return
+
+    manager.reflowablePageCountCache = {}
+    manager.currentReflowableSpread = undefined
+
+    const signature = [
+      typography.fontFamily,
+      typography.fontSize,
+      typography.fontWeight,
+      typography.lineHeight,
+      typography.textAlign,
+      typography.textIndent,
+    ].join('|')
+
+    if (previousTypographyLayoutSignature.current === undefined) {
+      previousTypographyLayoutSignature.current = signature
+      return
+    }
+
+    if (previousTypographyLayoutSignature.current === signature) return
+    previousTypographyLayoutSignature.current = signature
+
+    const target = tab.location?.start.cfi ?? tab.book.cfi
+    if (target) {
+      void rendition.display(target)
+    }
+  }, [
+    rendition,
+    tab,
+    typography.fontFamily,
+    typography.fontSize,
+    typography.fontWeight,
+    typography.lineHeight,
+    typography.textAlign,
+    typography.textIndent,
+  ])
 
   useEffect(() => {
     if (dark === undefined) return
