@@ -5,6 +5,7 @@ import React, {
   ComponentProps,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -542,6 +543,19 @@ interface ChapterFindState {
   searching: boolean
 }
 
+interface RectLike {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+interface NotePopoverState {
+  anchorRect: RectLike
+  pageRect: RectLike
+  content: HTMLElement
+}
+
 const initialChapterFind: ChapterFindState = {
   open: false,
   query: '',
@@ -558,6 +572,7 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
   const previousFindLocationKey = useRef<string>()
   const [chapterFind, setChapterFind] =
     useState<ChapterFindState>(initialChapterFind)
+  const [notePopover, setNotePopover] = useState<NotePopoverState>()
   const typography = useTypography(tab)
   const { dark } = useColorScheme()
   const [background] = useBackground()
@@ -613,6 +628,7 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
   const openChapterFind = useCallback(() => {
     const sectionIndex = findScopeSectionIndex()
 
+    setNotePopover(undefined)
     setChapterFind((state) => ({
       ...state,
       open: true,
@@ -947,15 +963,9 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
       const doc = win.document
 
       const handleClick = (e: MouseEvent) => {
-        const target = e.target as ClosestTarget | null
-        if (target?.closest?.(`.${NOTE_POPOVER_CLASS}`)) {
-          e.stopPropagation()
-          return
-        }
-
         const anchor = getAnchorFromEvent(e)
         if (!anchor) {
-          closeNotePopover(doc)
+          setNotePopover(undefined)
           return
         }
 
@@ -965,11 +975,21 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
         e.preventDefault()
         e.stopPropagation()
         e.stopImmediatePropagation()
-        showNotePopover(anchor, noteElement)
+
+        const popover = createNotePopoverState(
+          anchor,
+          noteElement,
+          ref.current,
+          rendition,
+        )
+        if (!popover) return
+
+        closeChapterFind()
+        setNotePopover(popover)
       }
 
       const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') closeNotePopover(doc)
+        if (e.key === 'Escape') setNotePopover(undefined)
       }
 
       doc.addEventListener('click', handleClick, true)
@@ -978,14 +998,14 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
       return () => {
         doc.removeEventListener('click', handleClick, true)
         doc.removeEventListener('keydown', handleKeyDown, true)
-        closeNotePopover(doc)
+        setNotePopover(undefined)
       }
     })
 
     return () => {
       cleanups.forEach((cleanup) => cleanup())
     }
-  }, [frameWindows, tab])
+  }, [closeChapterFind, frameWindows, rendition, tab])
 
   const handleFrameClick = useCallback(
     (e: MouseEvent) => {
@@ -1169,6 +1189,10 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
         />
         <TextSelectionMenu tab={tab} />
         <Annotations tab={tab} />
+        <NotePopover
+          popover={notePopover}
+          onClose={() => setNotePopover(undefined)}
+        />
         <ChapterFindHighlights find={chapterFind} tab={tab} />
         {chapterFind.open && (
           <ChapterFindBar
@@ -1306,6 +1330,111 @@ const ChapterFindHighlights: React.FC<ChapterFindHighlightsProps> = ({
   return null
 }
 
+interface NotePopoverProps {
+  popover?: NotePopoverState
+  onClose: () => void
+}
+
+const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) => {
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState({ width: 0, height: 0 })
+
+  useLayoutEffect(() => {
+    const content = contentRef.current
+    if (!content || !popover) return
+
+    content.replaceChildren(popover.content)
+
+    const updateSize = () => {
+      const rect = popoverRef.current?.getBoundingClientRect()
+      setSize({
+        width: Math.ceil(rect?.width ?? 0),
+        height: Math.ceil(rect?.height ?? 0),
+      })
+    }
+
+    updateSize()
+    popoverRef.current?.focus()
+
+    const observer = new ResizeObserver(updateSize)
+    if (popoverRef.current) observer.observe(popoverRef.current)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [popover])
+
+  if (!popover) return null
+
+  const maxWidth = Math.max(
+    NOTE_POPOVER_MIN_WIDTH,
+    popover.pageRect.width - NOTE_POPOVER_MARGIN * 2,
+  )
+  const placement = getNoteOverlayPlacement(
+    popover.anchorRect,
+    popover.pageRect,
+    {
+      width: size.width || maxWidth,
+      height: size.height,
+    },
+  )
+
+  return (
+    <div
+      data-flow-keyboard-capture="true"
+      ref={popoverRef}
+      className={clsx(NOTE_POPOVER_CLASS, 'focus:outline-none')}
+      tabIndex={-1}
+      style={{
+        position: 'absolute',
+        zIndex: 40,
+        boxSizing: 'border-box',
+        left: placement.left,
+        top: placement.top,
+        width: 'max-content',
+        maxWidth,
+        overflow: 'visible',
+        padding: NOTE_POPOVER_PADDING,
+        borderRadius: 10,
+        background: '#fff',
+        boxShadow: '0 10px 26px rgba(0, 0, 0, 0.18)',
+        visibility: size.width ? 'visible' : 'hidden',
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation()
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          onClose()
+        }
+      }}
+    >
+      <div
+        ref={contentRef}
+        style={{
+          margin: 0,
+          maxWidth: '100%',
+          textAlign: 'justify',
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left: placement.arrowLeft,
+          top: placement.placeAbove ? undefined : -6,
+          bottom: placement.placeAbove ? -6 : undefined,
+          width: 12,
+          height: 12,
+          background: '#fff',
+          transform: 'rotate(45deg)',
+        }}
+      />
+    </div>
+  )
+}
+
 function isFindShortcut(e: KeyboardEvent) {
   return (
     (e.ctrlKey || e.metaKey) &&
@@ -1413,14 +1542,147 @@ function findLocationKey(location: unknown) {
 const NOTE_POPOVER_CLASS = notePopoverClass
 const NOTE_POPOVER_MARGIN = 18
 const NOTE_POPOVER_PADDING = 10
-const NOTE_POPOVER_MAX_RATIO = 3.6
 const NOTE_POPOVER_MIN_WIDTH = 180
+const NOTE_POPOVER_ARROW_EDGE_OFFSET = 24
+const NOTE_INLINE_STYLE_EXCLUDE_PATTERN =
+  /^(?:position|inset|left|right|top|bottom|z-index|transform|translate|scale|rotate|width|height|min-width|max-width|min-height|max-height|overflow|overflow-x|overflow-y|column-|break-|page-break-)/
 const NOTE_CONTAINER_PATTERN =
   /(?:footnote|endnote|noteref|note|annotation|comment|reference|fn|ftn)/i
 const NOTE_CIRCLED_MARKER_PATTERN = /^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]$/
 const NOTE_NUMBER_MARKER_PATTERN = /^[0-9一二三四五六七八九十]+$/
 const NOTE_MARKER_OPENERS = '([〔［（【'
 const NOTE_MARKER_CLOSERS = ')]〕］）】'
+
+function createNotePopoverState(
+  anchor: HTMLAnchorElement,
+  noteElement: HTMLElement,
+  container: HTMLElement | null,
+  rendition: unknown,
+): NotePopoverState | undefined {
+  const win = anchor.ownerDocument.defaultView
+  const frame = win?.frameElement
+  if (!win || !(frame instanceof HTMLElement) || !container) return
+
+  const containerRect = container.getBoundingClientRect()
+  const frameRect = frame.getBoundingClientRect()
+  const anchorRect = anchor.getBoundingClientRect()
+  const anchorRectInContainer = rectFromDomRect({
+    left: frameRect.left + anchorRect.left - containerRect.left,
+    top: frameRect.top + anchorRect.top - containerRect.top,
+    width: anchorRect.width,
+    height: anchorRect.height,
+  })
+  const visibleRect = intersectRects(
+    {
+      left: frameRect.left - containerRect.left,
+      top: frameRect.top - containerRect.top,
+      width: frameRect.width,
+      height: frameRect.height,
+    },
+    {
+      left: 0,
+      top: 0,
+      width: containerRect.width,
+      height: containerRect.height,
+    },
+  )
+
+  if (!visibleRect) return
+
+  return {
+    anchorRect: anchorRectInContainer,
+    pageRect: getVisiblePageRect(
+      visibleRect,
+      anchorRectInContainer,
+      getRenditionDivisor(rendition),
+    ),
+    content: cloneNoteElement(noteElement, anchor),
+  }
+}
+
+function getRenditionDivisor(rendition: unknown) {
+  const divisor = (rendition as any)?.manager?.layout?.divisor
+  return Number.isFinite(divisor) && divisor > 1 ? Math.floor(divisor) : 1
+}
+
+function getVisiblePageRect(
+  visibleRect: RectLike,
+  anchorRect: RectLike,
+  divisor: number,
+) {
+  if (divisor < 2) return visibleRect
+
+  const pageWidth = visibleRect.width / divisor
+  const anchorCenter = anchorRect.left + anchorRect.width / 2
+  const pageIndex = clamp(
+    Math.floor((anchorCenter - visibleRect.left) / pageWidth),
+    0,
+    divisor - 1,
+  )
+
+  return {
+    left: visibleRect.left + pageIndex * pageWidth,
+    top: visibleRect.top,
+    width: pageWidth,
+    height: visibleRect.height,
+  }
+}
+
+function getNoteOverlayPlacement(
+  anchorRect: RectLike,
+  pageRect: RectLike,
+  size: { width: number; height: number },
+) {
+  const margin = NOTE_POPOVER_MARGIN
+  const gap = 10
+  const pageRight = pageRect.left + pageRect.width
+  const pageBottom = pageRect.top + pageRect.height
+  const anchorCenter = anchorRect.left + anchorRect.width / 2
+  const minLeft = pageRect.left + margin
+  const maxLeft = pageRight - size.width - margin
+  const left = getNotePopoverLeft(anchorCenter, size.width, minLeft, maxLeft)
+  const roomAbove = anchorRect.top - pageRect.top - margin - gap
+  const roomBelow =
+    pageBottom - (anchorRect.top + anchorRect.height) - margin - gap
+  const placeAbove = roomAbove >= size.height || roomAbove >= roomBelow
+  const topAbove = anchorRect.top - size.height - gap
+  const topBelow = anchorRect.top + anchorRect.height + gap
+  const top = placeAbove
+    ? clamp(topAbove, pageRect.top + margin, pageBottom - size.height - margin)
+    : clamp(topBelow, pageRect.top + margin, pageBottom - size.height - margin)
+
+  return {
+    left,
+    top,
+    placeAbove,
+    arrowLeft: clamp(anchorCenter - left - 6, 18, size.width - 18),
+  }
+}
+
+function rectFromDomRect(rect: RectLike): RectLike {
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  }
+}
+
+function intersectRects(a: RectLike, b: RectLike): RectLike | undefined {
+  const left = Math.max(a.left, b.left)
+  const top = Math.max(a.top, b.top)
+  const right = Math.min(a.left + a.width, b.left + b.width)
+  const bottom = Math.min(a.top + a.height, b.top + b.height)
+
+  if (right <= left || bottom <= top) return
+
+  return {
+    left,
+    top,
+    width: right - left,
+    height: bottom - top,
+  }
+}
 
 function getAnchorFromEvent(e: MouseEvent) {
   return (e.target as ClosestTarget | null)?.closest?.('a[href]') as
@@ -1675,16 +1937,74 @@ function normalizeNotePopoverContent(root: HTMLElement) {
 
 function cloneNoteElementWithContext(el: HTMLElement) {
   const ancestors = getNoteContextAncestors(el)
-  let root = el.cloneNode(true) as HTMLElement
+  let root = cloneElementWithInlineStyles(el)
 
   ancestors.forEach((ancestor) => {
     const wrapper = ancestor.cloneNode(false) as HTMLElement
+    copyComputedStyles(ancestor, wrapper)
     wrapper.style.setProperty('display', 'contents', 'important')
     wrapper.appendChild(root)
     root = wrapper
   })
 
   return root
+}
+
+function cloneElementWithInlineStyles(el: HTMLElement) {
+  const clone = el.cloneNode(true) as HTMLElement
+  copyComputedStyleTree(el, clone)
+
+  return clone
+}
+
+function copyComputedStyleTree(source: HTMLElement, target: HTMLElement) {
+  copyComputedStyles(source, target)
+  copyResolvedResourceAttributes(source, target)
+
+  const sourceElements = Array.from(source.querySelectorAll<HTMLElement>('*'))
+  const targetElements = Array.from(target.querySelectorAll<HTMLElement>('*'))
+
+  sourceElements.forEach((sourceElement, index) => {
+    const targetElement = targetElements[index]
+    if (!targetElement) return
+
+    copyComputedStyles(sourceElement, targetElement)
+    copyResolvedResourceAttributes(sourceElement, targetElement)
+  })
+}
+
+function copyComputedStyles(source: HTMLElement, target: HTMLElement) {
+  const win = source.ownerDocument.defaultView
+  if (!win) return
+
+  const style = win.getComputedStyle(source)
+  for (let i = 0; i < style.length; i++) {
+    const property = style[i]
+    if (!property || NOTE_INLINE_STYLE_EXCLUDE_PATTERN.test(property)) continue
+
+    const value = style.getPropertyValue(property)
+    if (!value) continue
+    if (property === 'display' && value === 'none') continue
+    if (property === 'visibility' && value === 'hidden') continue
+
+    target.style.setProperty(
+      property,
+      value,
+      style.getPropertyPriority(property),
+    )
+  }
+}
+
+function copyResolvedResourceAttributes(
+  source: HTMLElement,
+  target: HTMLElement,
+) {
+  if (source.tagName === 'IMG' && target.tagName === 'IMG') {
+    target.setAttribute('src', (source as HTMLImageElement).src)
+  }
+  if (source.tagName === 'A' && target.tagName === 'A') {
+    target.setAttribute('href', (source as HTMLAnchorElement).href)
+  }
 }
 
 function getNoteContextAncestors(el: HTMLElement) {
@@ -1720,210 +2040,33 @@ function unwrapBacklink(link: HTMLAnchorElement) {
   link.replaceWith(span)
 }
 
-function showNotePopover(anchor: HTMLAnchorElement, noteElement: HTMLElement) {
-  const doc = anchor.ownerDocument
-  const win = doc.defaultView
-  if (!win) return
-
-  closeNotePopover(doc)
-
-  const popover = doc.createElement('div')
-  const content = doc.createElement('div')
-  const arrow = doc.createElement('div')
-
-  popover.className = NOTE_POPOVER_CLASS
-  arrow.className = `${NOTE_POPOVER_CLASS}-arrow`
-
-  content.appendChild(cloneNoteElement(noteElement, anchor))
-  popover.append(content, arrow)
-  doc.body.appendChild(popover)
-
-  Object.assign(popover.style, {
-    position: 'fixed',
-    zIndex: '2147483647',
-    boxSizing: 'border-box',
-    minWidth: '0',
-    maxWidth: `${getNotePopoverMaxWidth(win)}px`,
-    overflow: 'visible',
-    padding: `${NOTE_POPOVER_PADDING}px`,
-    borderRadius: '10px',
-    background: '#fff',
-    boxShadow: '0 10px 26px rgba(0, 0, 0, 0.18)',
-    visibility: 'hidden',
-    left: '0px',
-    top: '0px',
-    width: 'max-content',
-    columnWidth: 'auto',
-    columnCount: 'auto',
-    columnGap: 'normal',
-    pageBreakInside: 'avoid',
-    breakInside: 'avoid',
-  })
-  popover.style.setProperty('column-span', 'all')
-  popover.style.setProperty('-webkit-column-span', 'all')
-
-  Object.assign(content.style, {
-    margin: '0',
-    maxWidth: '100%',
-    textAlign: 'justify',
-  })
-
-  Object.assign(arrow.style, {
-    position: 'absolute',
-    width: '12px',
-    height: '12px',
-    background: '#fff',
-    transform: 'rotate(45deg)',
-  })
-
-  fitNotePopoverToContent(popover, win)
-
-  positionNotePopover(anchor, popover, arrow)
-  popover.style.visibility = 'visible'
-}
-
-function fitNotePopoverToContent(popover: HTMLElement, win: Window) {
-  const viewport = getNoteViewport(win)
-  const maxWidth = getNotePopoverMaxWidth(win)
-  const minWidth = Math.min(NOTE_POPOVER_MIN_WIDTH, maxWidth)
-  const maxHeight = viewport.height - NOTE_POPOVER_MARGIN * 2
-
-  popover.style.width = 'max-content'
-  popover.style.maxWidth = `${maxWidth}px`
-
-  const naturalWidth = Math.ceil(popover.getBoundingClientRect().width)
-  let width = Math.min(naturalWidth, maxWidth)
-
-  popover.style.width = `${width}px`
-
-  for (let i = 0; i < 6; i++) {
-    const rect = popover.getBoundingClientRect()
-    if (!rect.height || rect.width / rect.height <= NOTE_POPOVER_MAX_RATIO) {
-      return
-    }
-
-    const nextWidth = Math.max(minWidth, Math.floor(width * 0.86))
-    if (nextWidth === width) return
-
-    width = nextWidth
-    popover.style.width = `${width}px`
-  }
-
-  if (popover.getBoundingClientRect().height > maxHeight) {
-    popover.style.width = `${maxWidth}px`
-  }
-}
-
-function getNotePopoverMaxWidth(win: Window) {
-  return Math.max(240, getNoteViewport(win).width - NOTE_POPOVER_MARGIN * 2)
-}
-
-function closeNotePopover(doc: Document) {
-  doc
-    .querySelectorAll(`.${NOTE_POPOVER_CLASS}`)
-    .forEach((node) => node.remove())
-}
-
-function positionNotePopover(
-  anchor: HTMLAnchorElement,
-  popover: HTMLElement,
-  arrow: HTMLElement,
+function getNotePopoverLeft(
+  anchorCenter: number,
+  width: number,
+  minLeft: number,
+  maxLeft: number,
 ) {
-  const win = anchor.ownerDocument.defaultView
-  if (!win) return
+  const centeredLeft = anchorCenter - width / 2
+  const leftEdgeAligned = anchorCenter - NOTE_POPOVER_ARROW_EDGE_OFFSET
+  const rightEdgeAligned = anchorCenter - width + NOTE_POPOVER_ARROW_EDGE_OFFSET
+  const leftRoom = anchorCenter - minLeft
+  const rightRoom = maxLeft + width - anchorCenter
+  const centeredRoom = width / 2
 
-  const margin = NOTE_POPOVER_MARGIN
-  const gap = 10
-  const anchorRect = anchor.getBoundingClientRect()
-  const rect = popover.getBoundingClientRect()
-  const center = anchorRect.left + anchorRect.width / 2
-  const viewport = getNoteViewport(win)
-  const viewportRight = viewport.left + viewport.width
-  const viewportBottom = viewport.top + viewport.height
-  const left = clamp(
-    center - rect.width / 2,
-    viewport.left + margin,
-    viewportRight - rect.width - margin,
-  )
-  const topAbove = anchorRect.top - rect.height - gap
-  const topBelow = anchorRect.bottom + gap
-  const roomAbove = anchorRect.top - viewport.top - margin - gap
-  const roomBelow = viewportBottom - anchorRect.bottom - margin - gap
-  const placeAbove = roomAbove >= rect.height || roomAbove >= roomBelow
-  const top = placeAbove
-    ? clamp(
-        topAbove,
-        viewport.top + margin,
-        viewportBottom - rect.height - margin,
-      )
-    : clamp(
-        topBelow,
-        viewport.top + margin,
-        viewportBottom - rect.height - margin,
-      )
-  const arrowLeft = clamp(center - left - 6, 18, rect.width - 18)
-
-  popover.style.left = `${left}px`
-  popover.style.top = `${top}px`
-  arrow.style.left = `${arrowLeft}px`
-
-  if (placeAbove) {
-    arrow.style.bottom = '-6px'
-    arrow.style.top = ''
-  } else {
-    arrow.style.top = '-6px'
-    arrow.style.bottom = ''
+  if (leftRoom < centeredRoom && rightRoom > leftRoom) {
+    return clamp(leftEdgeAligned, minLeft, maxLeft)
   }
+
+  if (rightRoom < centeredRoom && leftRoom > rightRoom) {
+    return clamp(rightEdgeAligned, minLeft, maxLeft)
+  }
+
+  return clamp(centeredLeft, minLeft, maxLeft)
 }
 
 function clamp(value: number, min: number, max: number) {
   if (max < min) return min
   return Math.min(Math.max(value, min), max)
-}
-
-function getNoteViewport(win: Window) {
-  const frame = win.frameElement
-  const parentWin = frame?.ownerDocument.defaultView
-
-  if (frame instanceof HTMLElement && parentWin) {
-    const frameRect = frame.getBoundingClientRect()
-    const parentViewport = getWindowViewport(parentWin)
-    const left = clamp(parentViewport.left - frameRect.left, 0, frameRect.width)
-    const top = clamp(parentViewport.top - frameRect.top, 0, frameRect.height)
-    const right = clamp(
-      parentViewport.left + parentViewport.width - frameRect.left,
-      0,
-      frameRect.width,
-    )
-    const bottom = clamp(
-      parentViewport.top + parentViewport.height - frameRect.top,
-      0,
-      frameRect.height,
-    )
-
-    if (right > left && bottom > top) {
-      return {
-        left,
-        top,
-        width: right - left,
-        height: bottom - top,
-      }
-    }
-  }
-
-  return getWindowViewport(win)
-}
-
-function getWindowViewport(win: Window) {
-  const visualViewport = win.visualViewport
-  const docEl = win.document.documentElement
-
-  return {
-    left: visualViewport?.offsetLeft ?? 0,
-    top: visualViewport?.offsetTop ?? 0,
-    width: visualViewport?.width ?? docEl.clientWidth ?? win.innerWidth,
-    height: visualViewport?.height ?? docEl.clientHeight ?? win.innerHeight,
-  }
 }
 
 function sameHref(a: string | undefined, b: string | undefined) {
