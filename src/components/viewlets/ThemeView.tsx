@@ -11,7 +11,7 @@ import {
 import { useSettings } from '@flow/reader/state'
 
 import { ColorPicker, Label } from '../Form'
-import { PaneViewProps, PaneView, Pane } from '../base'
+import { PaneViewProps, PaneView } from '../base'
 
 export const ThemeView: React.FC<PaneViewProps> = (props) => {
   const { dark, setScheme } = useColorScheme()
@@ -23,40 +23,42 @@ export const ThemeView: React.FC<PaneViewProps> = (props) => {
 
   return (
     <PaneView {...props}>
-      <Pane headline={t('title')} className="space-y-3 px-5 pt-2 pb-4">
-        <div>
-          <ColorPicker
-            name={t('source_color')}
-            defaultValue={sourceColor}
-            onChange={(e) => {
-              setSourceColor(e.target.value)
-            }}
-          />
-        </div>
-        <div>
-          <Label name={t('background_color')}></Label>
-          <div className="flex gap-2">
-            {backgroundOptions.map((background) => (
-              <Background
-                key={background.value}
-                className={background.className}
-                selected={!dark && selectedBackground === background.value}
-                onClick={() => {
-                  setScheme('light')
-                  setBackground(background.value)
-                }}
-              />
-            ))}
-            <Background
-              className="bg-black"
-              selected={dark}
-              onClick={() => {
-                setScheme('dark')
+      <div className="scroll min-h-0 flex-1 text-on-surface-variant typescale-body-small">
+        <div className="space-y-3 pl-4 pr-1.5 pt-2 pb-4">
+          <div>
+            <ColorPicker
+              name={t('source_color')}
+              defaultValue={sourceColor}
+              onChange={(e) => {
+                setSourceColor(e.target.value)
               }}
             />
           </div>
+          <div>
+            <Label name={t('background_color')}></Label>
+            <div className="flex gap-2">
+              {backgroundOptions.map((background) => (
+                <Background
+                  key={background.value}
+                  className={background.className}
+                  selected={!dark && selectedBackground === background.value}
+                  onClick={() => {
+                    setScheme('light')
+                    setBackground(background.value)
+                  }}
+                />
+              ))}
+              <Background
+                className="bg-black"
+                selected={dark}
+                onClick={() => {
+                  setScheme('dark')
+                }}
+              />
+            </div>
+          </div>
         </div>
-      </Pane>
+      </div>
     </PaneView>
   )
 }

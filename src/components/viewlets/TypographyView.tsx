@@ -21,8 +21,8 @@ import {
 } from '@flow/reader/state'
 import { keys } from '@flow/reader/utils'
 
-import { Label, Select, TextField, TextFieldProps } from '../Form'
-import { PaneViewProps, PaneView, Pane } from '../base'
+import { Label, TextField, TextFieldProps } from '../Form'
+import { PaneViewProps, PaneView } from '../base'
 
 enum TypographyScope {
   Book,
@@ -127,105 +127,103 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
 
   return (
     <PaneView {...props}>
-      <div className="flex h-10 items-center gap-2 px-4 !text-[13px] typescale-body-medium">
-        {keys(TypographyScope)
-          .filter((k) => isNaN(Number(k)))
-          .map((scopeName) => (
-            <button
-              key={scopeName}
-              className={clsx(
-                TypographyScope[scopeName] === scope
-                  ? 'text-on-surface-variant'
-                  : 'text-outline/60',
-              )}
-              onClick={() => setScope(TypographyScope[scopeName])}
-            >
-              {t(`scope.${scopeName.toLowerCase()}`)}
-            </button>
-          ))}
+      <div className="flex min-h-0 flex-1 flex-col text-on-surface-variant typescale-body-small">
+        <div className="border-b border-on-surface-variant/25">
+          <div className="flex h-7 items-center gap-2 pl-4 pr-1.5 !text-[13px] typescale-body-medium">
+            {keys(TypographyScope)
+              .filter((k) => isNaN(Number(k)))
+              .map((scopeName) => (
+                <button
+                  key={scopeName}
+                  className={clsx(
+                    TypographyScope[scopeName] === scope
+                      ? 'text-on-surface-variant'
+                      : 'text-outline/60',
+                  )}
+                  onClick={() => setScope(TypographyScope[scopeName])}
+                >
+                  {t(`scope.${scopeName.toLowerCase()}`)}
+                </button>
+              ))}
+          </div>
+        </div>
+        <div className="scroll min-h-0 flex-1">
+          <div
+            className="space-y-3 pl-4 pr-1.5 pt-2 pb-4"
+            key={`${scope}${focusedBookTab?.id}`}
+          >
+            <SpreadField
+              name={t('page_view')}
+              value={spread ?? RenditionSpread.Auto}
+              onChange={(value) => {
+                setTypography('spread', value)
+              }}
+            />
+            <NumberField
+              name={t('zoom')}
+              min={1}
+              step={0.1}
+              defaultValue={zoom}
+              onChange={(v) => {
+                setTypography('zoom', v || undefined)
+              }}
+            />
+            <FontField
+              name={t('font_family')}
+              value={fontFamily ?? ''}
+              options={localFonts ?? []}
+              loadOptions={queryFonts}
+              onChange={(value) => {
+                setTypography('fontFamily', value || undefined)
+              }}
+            />
+            <NumberField
+              name={t('font_size')}
+              min={14}
+              max={28}
+              defaultValue={fontSize && parseInt(fontSize)}
+              onChange={(v) => {
+                setTypography('fontSize', v ? v + 'px' : undefined)
+              }}
+            />
+            <NumberField
+              name={t('font_weight')}
+              min={100}
+              max={900}
+              step={100}
+              defaultValue={fontWeight}
+              onChange={(v) => {
+                setTypography('fontWeight', v || undefined)
+              }}
+            />
+            <NumberField
+              name={t('line_height')}
+              min={1}
+              step={0.1}
+              defaultValue={lineHeight}
+              onChange={(v) => {
+                setTypography('lineHeight', v || undefined)
+              }}
+            />
+            <NumberField
+              name={t('text_indent')}
+              min={0}
+              step={0.5}
+              defaultValue={textIndent}
+              onChange={(v) => {
+                setTypography('textIndent', v || undefined)
+              }}
+            />
+            <TextAlignField
+              name={t('text_align')}
+              value={textAlign}
+              onChange={(value) => {
+                setTypography('textAlign', value)
+              }}
+            />
+          </div>
+        </div>
       </div>
-      <Pane
-        headline={t('title')}
-        className="space-y-3 px-4 pt-2 pb-4"
-        key={`${scope}${focusedBookTab?.id}`}
-      >
-        <Select
-          name={t('page_view')}
-          value={spread ?? RenditionSpread.Auto}
-          onChange={(e) => {
-            setTypography('spread', e.target.value as RenditionSpread)
-          }}
-        >
-          <option value={RenditionSpread.None}>
-            {t('page_view.single_page')}
-          </option>
-          <option value={RenditionSpread.Auto}>
-            {t('page_view.double_page')}
-          </option>
-        </Select>
-        <NumberField
-          name={t('zoom')}
-          min={1}
-          step={0.1}
-          defaultValue={zoom}
-          onChange={(v) => {
-            setTypography('zoom', v || undefined)
-          }}
-        />
-        <FontField
-          name={t('font_family')}
-          value={fontFamily ?? ''}
-          options={localFonts ?? []}
-          loadOptions={queryFonts}
-          onChange={(value) => {
-            setTypography('fontFamily', value || undefined)
-          }}
-        />
-        <NumberField
-          name={t('font_size')}
-          min={14}
-          max={28}
-          defaultValue={fontSize && parseInt(fontSize)}
-          onChange={(v) => {
-            setTypography('fontSize', v ? v + 'px' : undefined)
-          }}
-        />
-        <NumberField
-          name={t('font_weight')}
-          min={100}
-          max={900}
-          step={100}
-          defaultValue={fontWeight}
-          onChange={(v) => {
-            setTypography('fontWeight', v || undefined)
-          }}
-        />
-        <NumberField
-          name={t('line_height')}
-          min={1}
-          step={0.1}
-          defaultValue={lineHeight}
-          onChange={(v) => {
-            setTypography('lineHeight', v || undefined)
-          }}
-        />
-        <NumberField
-          name={t('text_indent')}
-          min={0}
-          step={0.5}
-          defaultValue={textIndent}
-          onChange={(v) => {
-            setTypography('textIndent', v || undefined)
-          }}
-        />
-        <TextAlignField
-          name={t('text_align')}
-          value={textAlign}
-          onChange={(value) => {
-            setTypography('textAlign', value)
-          }}
-        />
-      </Pane>
     </PaneView>
   )
 }
@@ -291,20 +289,24 @@ interface TextAlignFieldProps {
   onChange: (value?: TypographyConfiguration['textAlign']) => void
 }
 
-const TextAlignField: React.FC<TextAlignFieldProps> = ({
+interface SegmentedFieldOption<T extends string | undefined> {
+  label: string
+  value: T
+}
+
+interface SegmentedFieldProps<T extends string | undefined> {
+  name: string
+  value: T
+  options: SegmentedFieldOption<T>[]
+  onChange: (value: T) => void
+}
+
+function SegmentedField<T extends string | undefined>({
   name,
   value,
+  options,
   onChange,
-}) => {
-  const t = useTranslation('typography')
-  const options: {
-    label: string
-    value?: TypographyConfiguration['textAlign']
-  }[] = [
-    { label: t('text_align.default') },
-    { label: t('text_align.justify'), value: 'justify' },
-  ]
-
+}: SegmentedFieldProps<T>) {
   return (
     <div className="flex flex-col">
       <Label name={name} />
@@ -328,6 +330,54 @@ const TextAlignField: React.FC<TextAlignFieldProps> = ({
         })}
       </div>
     </div>
+  )
+}
+
+interface SpreadFieldProps {
+  name: string
+  value: RenditionSpread
+  onChange: (value: RenditionSpread) => void
+}
+
+const SpreadField: React.FC<SpreadFieldProps> = ({ name, value, onChange }) => {
+  const t = useTranslation('typography')
+
+  return (
+    <SegmentedField
+      name={name}
+      value={value}
+      options={[
+        {
+          label: t('page_view.single_page'),
+          value: RenditionSpread.None,
+        },
+        {
+          label: t('page_view.double_page'),
+          value: RenditionSpread.Auto,
+        },
+      ]}
+      onChange={onChange}
+    />
+  )
+}
+
+const TextAlignField: React.FC<TextAlignFieldProps> = ({
+  name,
+  value,
+  onChange,
+}) => {
+  const t = useTranslation('typography')
+
+  return (
+    <SegmentedField
+      name={name}
+      value={value}
+      options={[
+        { label: t('text_align.default'), value: undefined },
+        { label: t('text_align.justify'), value: 'justify' },
+      ]}
+      onChange={onChange}
+    />
   )
 }
 
