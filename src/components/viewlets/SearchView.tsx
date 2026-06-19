@@ -50,7 +50,7 @@ export const SearchView: React.FC<PaneViewProps> = (props) => {
   return (
     <PaneView {...props}>
       <div className="scroll-parent">
-        <div className="px-5 py-px">
+        <div className="py-px">
           <TextField
             as="input"
             name="keyword"
