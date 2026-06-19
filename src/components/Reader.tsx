@@ -47,7 +47,7 @@ import {
 } from './Annotation'
 import { Tab } from './Tab'
 import { TextSelectionMenu } from './TextSelectionMenu'
-import { DropZone, SplitView, useDndContext, useSplitViewItem } from './base'
+import { DropZone, useDndContext } from './base'
 import * as pages from './pages'
 
 const PhotoSlider = dynamic<IPhotoSliderProps>(
@@ -294,13 +294,12 @@ export function ReaderGridView() {
   useEventListener('contextmenu', preventContextMenu)
 
   if (!groups.length) return null
-  return (
-    <SplitView className={clsx('ReaderGridView')}>
-      {groups.map(({ id }, i) => (
-        <ReaderGroup key={id} index={i} />
-      ))}
-    </SplitView>
-  )
+  const preferredIndex = reader.focusedIndex > -1 ? reader.focusedIndex : 0
+  const index = groups[preferredIndex] ? preferredIndex : 0
+  const group = groups[index]
+  if (!group) return null
+
+  return <ReaderGroup key={group.id} index={index} />
 }
 
 interface ReaderGroupProps {
@@ -308,14 +307,8 @@ interface ReaderGroupProps {
 }
 function ReaderGroup({ index }: ReaderGroupProps) {
   const group = reader.groups[index]!
-  const { focusedIndex } = useReaderSnapshot()
   const { tabs, selectedIndex } = useSnapshot(group)
   const t = useTranslation()
-
-  const { size } = useSplitViewItem(`${ReaderGroup.name}.${index}`, {
-    // to disable sash resize
-    visible: false,
-  })
 
   const handleMouseDown = useCallback(() => {
     reader.selectGroup(index)
@@ -325,15 +318,11 @@ function ReaderGroup({ index }: ReaderGroupProps) {
     <div
       className="ReaderGroup flex flex-1 flex-col overflow-hidden focus:outline-none"
       onMouseDown={handleMouseDown}
-      style={{ width: size }}
     >
-      <Tab.List
-        className="hidden sm:flex"
-        onDelete={() => reader.removeGroup(index)}
-      >
+      <Tab.List className="hidden sm:flex">
         {tabs.map((tab, i) => {
           const selected = i === selectedIndex
-          const focused = index === focusedIndex && selected
+          const focused = selected
           return (
             <Tab
               key={tab.id}
@@ -342,10 +331,6 @@ function ReaderGroup({ index }: ReaderGroupProps) {
               onClick={() => group.selectTab(i)}
               onDelete={() => reader.removeTab(i, index)}
               Icon={tab instanceof BookTab ? RiBookLine : MdWebAsset}
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', `${index},${i}`)
-              }}
             >
               {tab.isBook ? tab.title : t(`${tab.title}.title`)}
             </Tab>
@@ -355,8 +340,7 @@ function ReaderGroup({ index }: ReaderGroupProps) {
 
       <DropZone
         className={clsx('flex-1', isTouchScreen || 'h-0')}
-        split
-        onDrop={async (e, position) => {
+        onDrop={async (e) => {
           // read `e.dataTransfer` first to avoid get empty value after `await`
           const files = e.dataTransfer.files
           let tabs = []
@@ -365,40 +349,14 @@ function ReaderGroup({ index }: ReaderGroupProps) {
             tabs = await handleFiles(files)
           } else {
             const text = e.dataTransfer.getData('text/plain')
-            const fromTab = text.includes(',')
-
-            if (fromTab) {
-              const indexes = text.split(',')
-              const groupIdx = Number(indexes[0])
-
-              if (index === groupIdx) {
-                if (group.tabs.length === 1) return
-                if (position === 'universe') return
-              }
-
-              const tabIdx = Number(indexes[1])
-              const tab = reader.removeTab(tabIdx, groupIdx)
-              if (tab) tabs.push(tab)
-            } else {
-              const id = text
-              const tabParam =
-                Object.values(pages).find((p) => p.displayName === id) ??
-                (await db?.books.get(id))
-              if (tabParam) tabs.push(tabParam)
-            }
+            const tabParam =
+              Object.values(pages).find((p) => p.displayName === text) ??
+              (await db?.books.get(text))
+            if (tabParam) tabs.push(tabParam)
           }
 
           if (tabs.length) {
-            switch (position) {
-              case 'left':
-                reader.addGroup(tabs, index)
-                break
-              case 'right':
-                reader.addGroup(tabs, index + 1)
-                break
-              default:
-                tabs.forEach((t) => reader.addTab(t, index))
-            }
+            tabs.forEach((t) => reader.addTab(t, index))
           }
         }}
       >

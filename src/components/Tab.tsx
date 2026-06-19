@@ -71,15 +71,17 @@ const List: React.FC<ListProps> = ({ className, onDelete, ...props }) => {
       )}
     >
       <ul className={clsx('scroll-h flex')} {...props} />
-      <IconButton
-        className="mx-2"
-        title={t('action.close')}
-        Icon={MdClose}
-        onClick={(e) => {
-          e.stopPropagation()
-          onDelete?.()
-        }}
-      />
+      {onDelete && (
+        <IconButton
+          className="mx-2"
+          title={t('action.close')}
+          Icon={MdClose}
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+        />
+      )}
     </div>
   )
 }
