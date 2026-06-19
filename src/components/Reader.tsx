@@ -299,7 +299,11 @@ export function ReaderGridView() {
   const group = groups[index]
   if (!group) return null
 
-  return <ReaderGroup key={group.id} index={index} />
+  return (
+    <div className="ReaderGridView relative flex h-full min-h-0">
+      <ReaderGroup key={group.id} index={index} />
+    </div>
+  )
 }
 
 interface ReaderGroupProps {
@@ -316,7 +320,7 @@ function ReaderGroup({ index }: ReaderGroupProps) {
 
   return (
     <div
-      className="ReaderGroup flex flex-1 flex-col overflow-hidden focus:outline-none"
+      className="ReaderGroup flex h-full min-h-0 flex-1 flex-col overflow-hidden focus:outline-none"
       onMouseDown={handleMouseDown}
     >
       <Tab.List className="hidden sm:flex">
@@ -339,7 +343,7 @@ function ReaderGroup({ index }: ReaderGroupProps) {
       </Tab.List>
 
       <DropZone
-        className={clsx('flex-1', isTouchScreen || 'h-0')}
+        className={clsx('min-h-0 flex-1', isTouchScreen || 'h-0')}
         onDrop={async (e) => {
           // read `e.dataTransfer` first to avoid get empty value after `await`
           const files = e.dataTransfer.files
