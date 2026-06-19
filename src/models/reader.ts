@@ -855,6 +855,10 @@ export class Reader {
     return this.removeTab(group.selectedIndex, this.focusedIndex)
   }
 
+  closeAllTabs() {
+    this.clear()
+  }
+
   replaceTab(
     param: TabParam,
     index = this.focusedIndex,

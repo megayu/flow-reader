@@ -94,11 +94,18 @@ function handleKeyDown(tab?: BookTab) {
 function handleCommandShortcut(e: KeyboardEvent) {
   if (!hasCommandModifier(e) || e.altKey) return false
 
-  if (!e.shiftKey && e.key.toLowerCase() === 'w') {
+  if (e.key.toLowerCase() === 'w') {
     e.preventDefault()
     e.stopPropagation()
     e.stopImmediatePropagation?.()
-    reader.closeFocusedTab()
+
+    if (!isReaderShortcutTargetBlocked(e)) {
+      if (e.shiftKey) {
+        reader.closeAllTabs()
+      } else {
+        reader.closeFocusedTab()
+      }
+    }
     return true
   }
 
@@ -1122,7 +1129,7 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
   return (
     <div
       data-flow-keyboard-capture="true"
-      className="bg-default absolute top-4 right-4 z-30 flex items-center gap-2 rounded-lg px-3 py-2 text-on-surface-variant shadow-lg"
+      className="bg-default absolute -top-12 right-4 z-30 flex items-center gap-2 rounded-lg px-3 py-2 text-on-surface-variant shadow-lg"
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >

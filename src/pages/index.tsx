@@ -12,7 +12,6 @@ import {
   MdKeyboardArrowDown,
 } from 'react-icons/md'
 
-import { pack } from '../backup'
 import {
   cleanBookText,
   compareBookDisplayTitle,
@@ -380,29 +379,19 @@ const Library: React.FC = () => {
                 {t('delete')}
               </Button>
             ) : (
-              <>
-                <Button
-                  variant="secondary"
-                  className={toolbarButtonClass}
-                  disabled={!books.length}
-                  onClick={pack}
-                >
-                  {t('export')}
-                </Button>
-                <Button className={clsx(toolbarButtonClass, 'relative')}>
-                  <input
-                    type="file"
-                    accept="application/epub+zip,application/epub,application/zip"
-                    className="absolute inset-0 cursor-pointer opacity-0"
-                    onChange={(e) => {
-                      const files = e.target.files
-                      if (files) handleFiles(files)
-                    }}
-                    multiple
-                  />
-                  {t('import')}
-                </Button>
-              </>
+              <Button className={clsx(toolbarButtonClass, 'relative')}>
+                <input
+                  type="file"
+                  accept="application/epub+zip,application/epub"
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                  onChange={(e) => {
+                    const files = e.target.files
+                    if (files) handleFiles(files)
+                  }}
+                  multiple
+                />
+                {t('import')}
+              </Button>
             )}
           </div>
         </div>

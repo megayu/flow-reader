@@ -1,6 +1,5 @@
 import ePub, { Book } from '@flow/epubjs'
 
-import { unpack } from './backup'
 import { BookRecord, db } from './db'
 import { createId } from './id'
 import { mapExtToMimes } from './mime'
@@ -36,11 +35,6 @@ export async function handleFiles(
 
   for (const file of files) {
     console.log(file)
-
-    if (mapExtToMimes['.zip'].includes(file.type)) {
-      unpack(file)
-      continue
-    }
 
     if (!mapExtToMimes['.epub'].includes(file.type)) {
       console.error(`Unsupported file type: ${file.type}`)

@@ -4,7 +4,6 @@ export default {
   'home.cancel': 'Cancel',
   'home.select_all': 'Select all',
   'home.deselect_all': 'Deselect all',
-  'home.export': 'Export',
   'home.import': 'Import',
   'home.delete': 'Delete',
   'home.sort.title': 'Title',

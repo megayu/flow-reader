@@ -4,7 +4,6 @@ export default {
   'home.cancel': '取消',
   'home.select_all': '选择所有',
   'home.deselect_all': '取消选择所有',
-  'home.export': '导出',
   'home.import': '导入',
   'home.delete': '删除',
   'home.sort.title': '标题',
