@@ -122,6 +122,61 @@ export class BookTab extends BaseTab {
 
     this.display(cfi, false)
   }
+  private async reflowablePageGlobalIndex(page: any) {
+    const manager = this.rendition?.manager
+    page = await manager?.normalizeReflowablePage?.(page)
+    if (!page) return
+
+    let index = page.pageIndex
+    let previous = page.section.prev && page.section.prev()
+    while (previous) {
+      const pageCount = await manager.measureReflowableSectionPageCount(
+        previous,
+      )
+      index += pageCount
+      previous = previous.prev && previous.prev()
+    }
+
+    return index
+  }
+  private async reflowableSpreadContainingInFlow(page: any) {
+    const manager = this.rendition?.manager
+    page = await manager?.normalizeReflowablePage?.(page)
+    if (!manager || !page) return
+
+    let left = page
+    const globalIndex = await this.reflowablePageGlobalIndex(page)
+    let offset =
+      manager.layout.divisor > 1 && globalIndex !== undefined
+        ? globalIndex % manager.layout.divisor
+        : 0
+
+    while (offset > 0 && left) {
+      left = await manager.previousReflowablePage(left)
+      offset--
+    }
+
+    return manager.reflowableSpreadFromLeft(left || page)
+  }
+  async displaySectionStartInFlow(section: ISection) {
+    const manager = this.rendition?.manager
+
+    if (
+      manager?.canUseLogicalReflowableSpread?.() &&
+      manager.reflowablePageForTarget &&
+      manager.renderReflowableSpread
+    ) {
+      const page = await manager.reflowablePageForTarget(section)
+      const spread = await this.reflowableSpreadContainingInFlow(page)
+      if (spread) {
+        await manager.renderReflowableSpread(spread)
+        this.rendition?.reportLocation()
+        return
+      }
+    }
+
+    this.display(section.href, false)
+  }
   displayFromSelector(selector: string, section: ISection, returnable = true) {
     try {
       const el = section.document.querySelector(selector)
@@ -153,6 +208,39 @@ export class BookTab extends BaseTab {
     } finally {
       this.turning = false
     }
+  }
+  private sectionPositionFromLocation(
+    location?: Pick<Location['start'], 'index' | 'href'>,
+  ) {
+    if (!this.sections || !location) return -1
+
+    return this.sections.findIndex(
+      (section) =>
+        section.index === location.index || section.href === location.href,
+    )
+  }
+  private async navigateSection(direction: -1 | 1) {
+    if (this.turning || !this.sections?.length || !this.location) return
+
+    const location = direction > 0 ? this.location.end : this.location.start
+    const currentPosition = this.sectionPositionFromLocation(location)
+    if (currentPosition === -1) return
+
+    const target = this.sections[currentPosition + direction]
+    if (!target) return
+
+    this.turning = true
+    try {
+      await this.displaySectionStartInFlow(target)
+    } finally {
+      this.turning = false
+    }
+  }
+  prevSection() {
+    return this.navigateSection(-1)
+  }
+  nextSection() {
+    return this.navigateSection(1)
   }
 
   updateBook(changes: Partial<BookRecord>) {

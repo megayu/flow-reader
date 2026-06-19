@@ -62,6 +62,7 @@ function handleKeyDown(tab?: BookTab) {
   return (e: KeyboardEvent) => {
     try {
       if (handleReturnShortcut(e, tab)) return
+      if (handleChapterShortcut(e, tab)) return
 
       switch (e.code) {
         case 'ArrowLeft':
@@ -81,12 +82,32 @@ function handleKeyDown(tab?: BookTab) {
   }
 }
 
+function handleChapterShortcut(e: KeyboardEvent, tab?: BookTab) {
+  if (!tab) return false
+
+  const direction =
+    e.code === 'BracketLeft' || e.key === '['
+      ? -1
+      : e.code === 'BracketRight' || e.key === ']'
+      ? 1
+      : 0
+  if (!direction) return false
+  if (shouldIgnoreReaderShortcut(e)) return false
+
+  e.preventDefault()
+  e.stopPropagation()
+  e.stopImmediatePropagation?.()
+
+  void (direction < 0 ? tab.prevSection() : tab.nextSection())
+  return true
+}
+
 function handleReturnShortcut(e: KeyboardEvent, tab?: BookTab) {
   if (!tab?.locationToReturn) return false
 
   const key = e.key.toLowerCase()
   if (key !== 'b' && key !== 'r' && key !== 's') return false
-  if (shouldIgnoreReturnShortcut(e)) return false
+  if (shouldIgnoreReaderShortcut(e)) return false
 
   e.preventDefault()
   e.stopPropagation()
@@ -103,7 +124,7 @@ function handleReturnShortcut(e: KeyboardEvent, tab?: BookTab) {
   return true
 }
 
-function shouldIgnoreReturnShortcut(e: KeyboardEvent) {
+function shouldIgnoreReaderShortcut(e: KeyboardEvent) {
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return true
   if (isEditableTarget(e.target)) return true
   return hasKeyboardCapturingLayer(e.target)
