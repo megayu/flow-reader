@@ -67,6 +67,37 @@ export interface BodyTextDetectionCacheEntry {
 
 export type BodyTextDetectionCache = Map<string, BodyTextDetectionCacheEntry>
 
+export interface BodyTypographyBaseline {
+  fontSize?: number
+  fontWeight?: number
+  lineHeight?: number
+}
+
+export function getBodyTypographyBaseline(
+  contents: Contents | undefined,
+  bodyTextCache?: BodyTextDetectionCache,
+): BodyTypographyBaseline {
+  if (!contents) return {}
+
+  ensureBodyTextMarkers(contents, bodyTextCache)
+
+  const el =
+    contents.document.querySelector<HTMLElement>(bodyTextSelector) ??
+    contents.document.body
+  if (!el) return {}
+
+  const style = contents.window.getComputedStyle(el)
+  const fontSize = parseCssPixel(style.fontSize)
+  const fontWeight = parseCssFontWeight(style.fontWeight)
+  const lineHeight = parseCssLineHeight(style.lineHeight, fontSize)
+
+  return {
+    fontSize,
+    fontWeight,
+    lineHeight,
+  }
+}
+
 export function updateCustomStyle(
   contents: Contents | undefined,
   settings: Settings | undefined,
@@ -131,6 +162,30 @@ function removeDefaultCssValues<T extends CSSProperties>(styles: T) {
       return value !== undefined && value !== null && value !== ''
     }),
   ) as T
+}
+
+function parseCssPixel(value: string) {
+  const number = parseFloat(value)
+  return Number.isFinite(number) ? number : undefined
+}
+
+function parseCssFontWeight(value: string) {
+  if (value === 'normal') return 400
+  if (value === 'bold') return 700
+
+  const number = parseFloat(value)
+  if (!Number.isFinite(number)) return undefined
+
+  return Math.min(900, Math.max(100, Math.round(number / 100) * 100))
+}
+
+function parseCssLineHeight(value: string, fontSize?: number) {
+  if (value === 'normal') return 1.2
+
+  const lineHeight = parseCssPixel(value)
+  if (!lineHeight || !fontSize) return undefined
+
+  return Math.round((lineHeight / fontSize) * 10) / 10
 }
 
 function ensureBodyTextMarkers(

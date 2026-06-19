@@ -38,7 +38,11 @@ import {
 import { BookTab, reader, useReaderSnapshot } from '../models'
 import { isTouchScreen } from '../platform'
 import { revealScrollbars } from '../scrollbar'
-import { notePopoverClass, updateCustomStyle } from '../styles'
+import {
+  getBodyTypographyBaseline,
+  notePopoverClass,
+  updateCustomStyle,
+} from '../styles'
 
 import {
   getClickedAnnotation,
@@ -98,8 +102,9 @@ function handleCommandShortcut(e: KeyboardEvent) {
     return true
   }
 
+  const fontSizeReset = isFontSizeResetShortcut(e)
   const fontSizeDelta = getFontSizeShortcutDelta(e)
-  if (!fontSizeDelta) return false
+  if (!fontSizeReset && !fontSizeDelta) return false
 
   e.preventDefault()
   e.stopPropagation()
@@ -107,7 +112,13 @@ function handleCommandShortcut(e: KeyboardEvent) {
 
   if (!isReaderShortcutTargetBlocked(e)) {
     const tab = reader.focusedBookTab
-    if (tab) updateBookFontSize(tab, fontSizeDelta)
+    if (tab) {
+      if (fontSizeReset) {
+        clearBookFontSize(tab)
+      } else {
+        updateBookFontSize(tab, fontSizeDelta)
+      }
+    }
   }
   return true
 }
@@ -137,10 +148,14 @@ function getFontSizeShortcutDelta(e: KeyboardEvent) {
   return 0
 }
 
+function isFontSizeResetShortcut(e: KeyboardEvent) {
+  return !e.shiftKey && (e.code === 'Digit0' || e.code === 'Numpad0')
+}
+
 function updateBookFontSize(tab: BookTab, delta: number) {
   const fontSize =
     parseFontSize(tab.book.configuration?.typography?.fontSize) ??
-    getGlobalFontSize() ??
+    getCurrentBodyFontSize(tab) ??
     FONT_SIZE_DEFAULT
   const next = clamp(fontSize + delta, FONT_SIZE_MIN, FONT_SIZE_MAX)
 
@@ -155,20 +170,30 @@ function updateBookFontSize(tab: BookTab, delta: number) {
   })
 }
 
+function clearBookFontSize(tab: BookTab) {
+  const typography = {
+    ...tab.book.configuration?.typography,
+  }
+  delete typography.fontSize
+
+  tab.updateBook({
+    configuration: {
+      ...tab.book.configuration,
+      typography,
+    },
+  })
+}
+
+function getCurrentBodyFontSize(tab: BookTab) {
+  return getBodyTypographyBaseline(tab.view?.contents, tab.bodyTextCache)
+    .fontSize
+}
+
 function parseFontSize(value: string | undefined) {
   if (!value) return
 
   const size = parseInt(value, 10)
   return Number.isFinite(size) ? size : undefined
-}
-
-function getGlobalFontSize() {
-  try {
-    const settings = JSON.parse(localStorage.getItem('settings') ?? '{}')
-    return parseFontSize(settings.fontSize)
-  } catch {
-    return undefined
-  }
 }
 
 function handleChapterShortcut(e: KeyboardEvent, tab?: BookTab) {

@@ -21,6 +21,7 @@ import {
 } from '@flow/reader/state'
 import { keys } from '@flow/reader/utils'
 
+import { getBodyTypographyBaseline } from '../../styles'
 import { Label, TextField, TextFieldProps } from '../Form'
 import { PaneViewProps, PaneView } from '../base'
 
@@ -141,6 +142,11 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
     return localFontsRequestRef.current
   }, [localFonts, queryBrowserFonts])
 
+  const getCurrentBodyBaseline = useCallback(() => {
+    const tab = reader.focusedBookTab
+    return getBodyTypographyBaseline(tab?.view?.contents, tab?.bodyTextCache)
+  }, [])
+
   return (
     <PaneView {...props}>
       <div className="flex min-h-0 flex-1 flex-col text-on-surface-variant typescale-body-small">
@@ -187,7 +193,7 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
               name={t('zoom')}
               min={1}
               step={0.1}
-              defaultValue={zoom}
+              value={zoom}
               onChange={(v) => {
                 setTypography('zoom', v || undefined)
               }}
@@ -205,7 +211,8 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
               name={t('font_size')}
               min={14}
               max={28}
-              defaultValue={fontSize && parseInt(fontSize)}
+              value={fontSize ? parseInt(fontSize) : undefined}
+              baseValue={() => getCurrentBodyBaseline().fontSize}
               onChange={(v) => {
                 setTypography('fontSize', v ? v + 'px' : undefined)
               }}
@@ -215,7 +222,8 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
               min={100}
               max={900}
               step={100}
-              defaultValue={fontWeight}
+              value={fontWeight}
+              baseValue={() => getCurrentBodyBaseline().fontWeight}
               onChange={(v) => {
                 setTypography('fontWeight', v || undefined)
               }}
@@ -224,7 +232,8 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
               name={t('line_height')}
               min={1}
               step={0.1}
-              defaultValue={lineHeight}
+              value={lineHeight}
+              baseValue={() => getCurrentBodyBaseline().lineHeight}
               onChange={(v) => {
                 setTypography('lineHeight', v || undefined)
               }}
@@ -233,7 +242,7 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
               name={t('text_indent')}
               min={0}
               step={0.5}
-              defaultValue={textIndent}
+              value={textIndent}
               onChange={(v) => {
                 setTypography('textIndent', v || undefined)
               }}
@@ -662,12 +671,39 @@ const FontField: React.FC<FontFieldProps> = ({
   )
 }
 
-interface NumberFieldProps extends Omit<TextFieldProps<'input'>, 'onChange'> {
+interface NumberFieldProps
+  extends Omit<TextFieldProps<'input'>, 'onChange' | 'value' | 'defaultValue'> {
+  value?: number
+  baseValue?: () => number | undefined
   onChange: (v?: number) => void
 }
-const NumberField: React.FC<NumberFieldProps> = ({ onChange, ...props }) => {
+const NumberField: React.FC<NumberFieldProps> = ({
+  value,
+  baseValue,
+  onChange,
+  ...props
+}) => {
   const ref = useRef<HTMLInputElement>(null)
   const t = useTranslation('action')
+
+  useEffect(() => {
+    if (!ref.current) return
+    ref.current.value = value === undefined ? '' : String(value)
+  }, [value])
+
+  const step = (direction: -1 | 1) => {
+    if (!ref.current) return
+
+    if (ref.current.value === '') {
+      const base = baseValue?.()
+      if (base !== undefined) {
+        ref.current.value = String(base)
+      }
+    }
+
+    direction < 0 ? ref.current.stepDown() : ref.current.stepUp()
+    onChange(Number(ref.current.value))
+  }
 
   return (
     <TextField
@@ -679,22 +715,19 @@ const NumberField: React.FC<NumberFieldProps> = ({ onChange, ...props }) => {
           title: t('step_down'),
           Icon: MdRemove,
           onClick: () => {
-            if (!ref.current) return
-            ref.current.stepDown()
-            onChange(Number(ref.current.value))
+            step(-1)
           },
         },
         {
           title: t('step_up'),
           Icon: MdAdd,
           onClick: () => {
-            if (!ref.current) return
-            ref.current.stepUp()
-            onChange(Number(ref.current.value))
+            step(1)
           },
         },
       ]}
       mRef={ref}
+      defaultValue={value}
       // lazy render
       onBlur={(e) => {
         onChange(e.target.value === '' ? undefined : Number(e.target.value))
