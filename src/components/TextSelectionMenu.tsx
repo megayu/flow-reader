@@ -161,6 +161,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         onMouseDown={hide}
       />
       <div
+        data-flow-keyboard-capture="true"
         ref={(el) => {
           if (!el) return
           setWidth(el.clientWidth)

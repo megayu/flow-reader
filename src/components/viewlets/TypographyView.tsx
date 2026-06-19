@@ -511,6 +511,7 @@ const FontField: React.FC<FontFieldProps> = ({
         popoverStyle &&
         createPortal(
           <div
+            data-flow-keyboard-capture="true"
             ref={popoverRef}
             className="fixed z-[100] overflow-y-auto overflow-x-hidden bg-surface py-1 text-on-surface shadow-1 ring-1 ring-inset ring-surface-variant"
             style={popoverStyle}

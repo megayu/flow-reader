@@ -77,7 +77,7 @@ export class BookTab extends BaseTab {
   iframes: (Window & AsRef)[] = []
   rendition?: Rendition & { manager?: any }
   nav?: Navigation
-  locationToReturn?: Location
+  locationsToReturn: Location[] = []
   section?: ISection
   sections?: ISection[]
   results?: IMatch[]
@@ -93,6 +93,9 @@ export class BookTab extends BaseTab {
   currentLocation?: Location
   get location() {
     return this.currentLocation
+  }
+  get locationToReturn() {
+    return this.locationsToReturn[this.locationsToReturn.length - 1]
   }
 
   display(target?: string, returnable = true) {
@@ -301,11 +304,34 @@ export class BookTab extends BaseTab {
   }
 
   showPrevLocation() {
-    this.locationToReturn = this.location
+    if (this.location) {
+      this.locationsToReturn.push(this.location)
+    }
   }
 
-  hidePrevLocation() {
-    this.locationToReturn = undefined
+  returnToPreviousLocation() {
+    const location = this.locationsToReturn.pop()
+    if (!location) return false
+
+    this.display(location.end.cfi, false)
+    return true
+  }
+
+  returnToFirstLocation() {
+    const location = this.locationsToReturn[0]
+    if (!location) return false
+
+    this.locationsToReturn = []
+    this.display(location.end.cfi, false)
+    return true
+  }
+
+  hidePrevLocation(all = true) {
+    if (all) {
+      this.locationsToReturn = []
+    } else {
+      this.locationsToReturn.pop()
+    }
   }
 
   mapSectionToNavItem(sectionHref: string, sections = this.sections) {

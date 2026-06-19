@@ -61,6 +61,8 @@ const PhotoSlider = dynamic<IPhotoSliderProps>(
 function handleKeyDown(tab?: BookTab) {
   return (e: KeyboardEvent) => {
     try {
+      if (handleReturnShortcut(e, tab)) return
+
       switch (e.code) {
         case 'ArrowLeft':
         case 'ArrowUp':
@@ -77,6 +79,73 @@ function handleKeyDown(tab?: BookTab) {
       // ignore `rendition is undefined` error
     }
   }
+}
+
+function handleReturnShortcut(e: KeyboardEvent, tab?: BookTab) {
+  if (!tab?.locationToReturn) return false
+
+  const key = e.key.toLowerCase()
+  if (key !== 'b' && key !== 'r' && key !== 's') return false
+  if (shouldIgnoreReturnShortcut(e)) return false
+
+  e.preventDefault()
+  e.stopPropagation()
+  e.stopImmediatePropagation?.()
+
+  if (key === 'b') {
+    return tab.returnToPreviousLocation()
+  }
+  if (key === 'r') {
+    return tab.returnToFirstLocation()
+  }
+
+  tab.hidePrevLocation()
+  return true
+}
+
+function shouldIgnoreReturnShortcut(e: KeyboardEvent) {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return true
+  if (isEditableTarget(e.target)) return true
+  return hasKeyboardCapturingLayer(e.target)
+}
+
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false
+
+  const el = target as HTMLElement
+  return !!el.closest('input, textarea, select, [contenteditable="true"]')
+}
+
+function hasKeyboardCapturingLayer(target: EventTarget | null) {
+  const doc =
+    target instanceof Node && target.ownerDocument
+      ? target.ownerDocument
+      : document
+  const parentDoc = doc.defaultView?.frameElement?.ownerDocument
+  const docs = new Set<Document>()
+
+  ;[doc, parentDoc, document].forEach((candidate) => {
+    if (candidate) docs.add(candidate)
+  })
+  ;[...docs].forEach((candidate) => {
+    candidate.querySelectorAll('iframe').forEach((frame) => {
+      try {
+        if (frame.contentDocument) docs.add(frame.contentDocument)
+      } catch (error) {
+        // ignore cross-origin frames
+      }
+    })
+  })
+
+  return [...docs].some((candidate) =>
+    candidate.querySelector(
+      [
+        '[data-flow-keyboard-capture="true"]',
+        `.${NOTE_POPOVER_CLASS}`,
+        '[role="dialog"]',
+      ].join(','),
+    ),
+  )
 }
 
 function useFrameEvent<K extends keyof WindowEventMap>(
@@ -387,6 +456,39 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
     }
   }, [handleFindShortcut])
   useFrameEvent(frameWindows, 'keydown', handleFindShortcut, { capture: true })
+
+  const handleReturnMouseButton = useCallback(
+    (e: MouseEvent) => {
+      if (e.button !== 3) return
+      if (reader.focusedBookTab !== tab) return
+      if (!tab.locationToReturn) return
+      if (isEditableTarget(e.target) || hasKeyboardCapturingLayer(e.target)) {
+        return
+      }
+
+      e.preventDefault()
+      e.stopPropagation()
+      e.stopImmediatePropagation?.()
+      tab.returnToPreviousLocation()
+    },
+    [tab],
+  )
+
+  useEffect(() => {
+    document.addEventListener('mousedown', handleReturnMouseButton, true)
+    document.addEventListener('auxclick', handleReturnMouseButton, true)
+
+    return () => {
+      document.removeEventListener('mousedown', handleReturnMouseButton, true)
+      document.removeEventListener('auxclick', handleReturnMouseButton, true)
+    }
+  }, [handleReturnMouseButton])
+  useFrameEvent(frameWindows, 'mousedown', handleReturnMouseButton, {
+    capture: true,
+  })
+  useFrameEvent(frameWindows, 'auxclick', handleReturnMouseButton, {
+    capture: true,
+  })
 
   const applyCustomStyle = useCallback(
     (contents?: any) => {
@@ -925,6 +1027,7 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
 
   return (
     <div
+      data-flow-keyboard-capture="true"
       className="bg-default absolute top-4 right-4 z-30 flex items-center gap-2 rounded-lg px-3 py-2 text-on-surface-variant shadow-lg"
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
@@ -1698,7 +1801,8 @@ interface FooterProps {
   tab: BookTab
 }
 const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
-  const { locationToReturn, location, book, rendition } = useSnapshot(tab)
+  const { locationsToReturn, location, book, rendition } = useSnapshot(tab)
+  const locationToReturn = locationsToReturn[locationsToReturn.length - 1]
   const divisor = rendition?.manager?.layout?.divisor ?? 1
   const spread = divisor > 1
   const percentage = `${((book.percentage ?? 0) * 100).toFixed(2)}%`
@@ -1715,16 +1819,26 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
     <>
       {locationToReturn ? (
         <Bar>
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              className={returnActionClass}
+              onClick={() => {
+                tab.returnToFirstLocation()
+              }}
+            >
+              Return to start
+            </button>
+            <button
+              className={clsx(returnActionClass, 'truncate')}
+              onClick={() => {
+                tab.returnToPreviousLocation()
+              }}
+            >
+              Return to {locationToReturn.end.cfi}
+            </button>
+          </div>
           <button
-            className={clsx(locationToReturn || 'invisible')}
-            onClick={() => {
-              tab.hidePrevLocation()
-              tab.display(locationToReturn.end.cfi, false)
-            }}
-          >
-            Return to {locationToReturn.end.cfi}
-          </button>
-          <button
+            className={returnActionClass}
             onClick={() => {
               tab.hidePrevLocation()
             }}
@@ -1758,6 +1872,9 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
     </>
   )
 }
+
+const returnActionClass =
+  'rounded px-1 hover:bg-outline/10 hover:text-on-surface'
 
 function formatFooterPage(
   displayed: { page: number; total: number },
