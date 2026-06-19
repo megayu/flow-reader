@@ -52,6 +52,8 @@ export default {
   'settings.cache.clear': '清除',
   'settings.text_selection_menu': '文本选择菜单',
   'settings.text_selection_menu.enable': '启用',
+  'settings.hide_endnotes': '尾注',
+  'settings.hide_endnotes.enable': '隐藏尾注',
 
   'menu.copy': '复制',
   'menu.search_in_book': '书内搜索',

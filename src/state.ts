@@ -31,6 +31,7 @@ export const navbarState = atom<boolean>({
 export interface Settings extends TypographyConfiguration {
   theme?: ThemeConfiguration
   enableTextSelectionMenu?: boolean
+  hideEndnotes?: boolean
   locale?: AppLocale
 }
 
@@ -52,6 +53,7 @@ interface ThemeConfiguration {
 
 export const defaultSettings: Settings = {
   enableTextSelectionMenu: true,
+  hideEndnotes: false,
 }
 
 const settingsState = atom<Settings>({

@@ -24,6 +24,52 @@ const notePopoverListSelector = [
   `.${notePopoverClass} li`,
 ].join(',\n')
 
+const endnoteContentBlockTags = [
+  'aside',
+  'section',
+  'div',
+  'ol',
+  'ul',
+  'li',
+  'p',
+]
+
+const endnoteContentAttributes = [
+  '[role="doc-footnote"]',
+  '[role="doc-footnotes"]',
+  '[role="doc-endnote"]',
+  '[role="doc-endnotes"]',
+  '[epub\\:type*="footnote"]',
+  '[epub\\:type*="footnotes"]',
+  '[epub\\:type*="endnote"]',
+  '[epub\\:type*="endnotes"]',
+  '[epub\\:type*="rearnote"]',
+  '[epub\\:type*="rearnotes"]',
+  '[type*="footnote"]',
+  '[type*="footnotes"]',
+  '[type*="endnote"]',
+  '[type*="endnotes"]',
+  '[type*="rearnote"]',
+  '[type*="rearnotes"]',
+  '[class*="footnote" i]',
+  '[class*="endnote" i]',
+  '[class*="rearnote" i]',
+  '[id*="footnote" i]',
+  '[id*="endnote" i]',
+  '[id*="rearnote" i]',
+]
+
+const endnoteContentBlockSelectors = endnoteContentBlockTags.flatMap((tag) =>
+  endnoteContentAttributes.map((attribute) => `${tag}${attribute}`),
+)
+
+const hiddenEndnoteSelector = [
+  ...endnoteContentBlockSelectors.map((selector) => `body > ${selector}`),
+  ...endnoteContentBlockSelectors.map(
+    (selector) => `body > :not(.${notePopoverClass}) ${selector}`,
+  ),
+].join(',\n')
+
 export const defaultStyle = {
   html: {
     padding: '0 !important',
@@ -114,6 +160,12 @@ export function updateCustomStyle(
     ensureBodyTextMarkers(contents, bodyTextCache)
     css += `${bodyTextSelector} {
       ${mapToCss(bodyTypography)}
+    }`
+  }
+
+  if (settings.hideEndnotes) {
+    css += `${hiddenEndnoteSelector} {
+      display: none !important;
     }`
   }
 

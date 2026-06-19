@@ -749,6 +749,7 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
       typography.lineHeight,
       typography.textAlign,
       typography.textIndent,
+      typography.hideEndnotes,
     ].join('|')
 
     if (previousTypographyLayoutSignature.current === undefined) {
@@ -772,6 +773,7 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
     typography.lineHeight,
     typography.textAlign,
     typography.textIndent,
+    typography.hideEndnotes,
   ])
 
   const findOpen = chapterFind.open

@@ -43,6 +43,18 @@ export const Settings: React.FC = () => {
             }}
           />
         </Item>
+        <Item title={t('hide_endnotes')}>
+          <Checkbox
+            name={t('hide_endnotes.enable')}
+            checked={settings.hideEndnotes === true}
+            onChange={(e) => {
+              setSettings({
+                ...settings,
+                hideEndnotes: e.target.checked,
+              })
+            }}
+          />
+        </Item>
         <Item title={t('cache')}>
           <Button
             variant="secondary"

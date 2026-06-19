@@ -52,6 +52,8 @@ export default {
   'settings.cache.clear': 'Clear',
   'settings.text_selection_menu': 'Text Selection Menu',
   'settings.text_selection_menu.enable': 'Enable',
+  'settings.hide_endnotes': 'Endnotes',
+  'settings.hide_endnotes.enable': 'Hide endnotes',
 
   'menu.copy': 'Copy',
   'menu.search_in_book': 'Search in book',
