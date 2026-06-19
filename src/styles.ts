@@ -120,7 +120,8 @@ function pickBodyTypography(settings: Settings) {
       settings.textIndent === undefined
         ? undefined
         : `${settings.textIndent}em`,
-    textAlign: settings.textAlign,
+    textAlign:
+      settings.textAlign === 'default' ? undefined : settings.textAlign,
   })
 }
 

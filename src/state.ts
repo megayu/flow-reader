@@ -40,7 +40,7 @@ export interface TypographyConfiguration {
   fontFamily?: string
   lineHeight?: number
   textIndent?: number
-  textAlign?: 'justify'
+  textAlign?: 'default' | 'justify'
   spread?: RenditionSpread
   zoom?: number
 }

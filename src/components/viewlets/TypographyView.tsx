@@ -29,6 +29,8 @@ enum TypographyScope {
   Global,
 }
 
+type TextAlignOption = NonNullable<TypographyConfiguration['textAlign']>
+
 interface FontOption {
   family: string
   label: string
@@ -48,6 +50,11 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
 
   const [localFonts, setLocalFonts] = useState<FontOption[]>()
   const localFontsRequestRef = useRef<Promise<FontOption[] | undefined>>()
+  const bookTypography = focusedBookTab?.book.configuration?.typography
+  const typography =
+    scope === TypographyScope.Book
+      ? bookTypography ?? defaultSettings
+      : settings
 
   const {
     fontFamily,
@@ -58,10 +65,9 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
     textIndent,
     zoom,
     spread,
-  } =
-    scope === TypographyScope.Book
-      ? focusedBookTab?.book.configuration?.typography ?? defaultSettings
-      : settings
+  } = typography
+  const globalSpread = settings.spread ?? RenditionSpread.Auto
+  const globalTextAlign: TextAlignOption = settings.textAlign ?? 'default'
 
   const setTypography = useCallback(
     <K extends keyof TypographyConfiguration>(
@@ -69,13 +75,23 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
       v: TypographyConfiguration[K],
     ) => {
       if (scope === TypographyScope.Book) {
-        reader.focusedBookTab?.updateBook({
+        const tab = reader.focusedBookTab
+        if (!tab) return
+
+        const typography = {
+          ...tab.book.configuration?.typography,
+        }
+
+        if (v === undefined) {
+          delete typography[k]
+        } else {
+          typography[k] = v
+        }
+
+        tab.updateBook({
           configuration: {
-            ...reader.focusedBookTab.book.configuration,
-            typography: {
-              ...reader.focusedBookTab.book.configuration?.typography,
-              [k]: v,
-            },
+            ...tab.book.configuration,
+            typography,
           },
         })
       } else {
@@ -154,7 +170,15 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
           >
             <SpreadField
               name={t('page_view')}
-              value={spread ?? RenditionSpread.Auto}
+              value={
+                scope === TypographyScope.Book
+                  ? bookTypography?.spread
+                  : spread ?? RenditionSpread.Auto
+              }
+              inheritedValue={
+                scope === TypographyScope.Book ? globalSpread : undefined
+              }
+              unsetOnSelected={scope === TypographyScope.Book}
               onChange={(value) => {
                 setTypography('spread', value)
               }}
@@ -216,7 +240,15 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
             />
             <TextAlignField
               name={t('text_align')}
-              value={textAlign}
+              value={
+                scope === TypographyScope.Book
+                  ? bookTypography?.textAlign
+                  : textAlign ?? 'default'
+              }
+              inheritedValue={
+                scope === TypographyScope.Book ? globalTextAlign : undefined
+              }
+              unsetOnSelected={scope === TypographyScope.Book}
               onChange={(value) => {
                 setTypography('textAlign', value)
               }}
@@ -285,25 +317,31 @@ function fontOptionKey(label: string) {
 
 interface TextAlignFieldProps {
   name: string
-  value?: TypographyConfiguration['textAlign']
-  onChange: (value?: TypographyConfiguration['textAlign']) => void
+  value?: TextAlignOption
+  inheritedValue?: TextAlignOption
+  unsetOnSelected?: boolean
+  onChange: (value?: TextAlignOption) => void
 }
 
-interface SegmentedFieldOption<T extends string | undefined> {
+interface SegmentedFieldOption<T extends string> {
   label: string
   value: T
 }
 
-interface SegmentedFieldProps<T extends string | undefined> {
+interface SegmentedFieldProps<T extends string> {
   name: string
-  value: T
+  value?: T
+  inheritedValue?: T
+  unsetOnSelected?: boolean
   options: SegmentedFieldOption<T>[]
-  onChange: (value: T) => void
+  onChange: (value?: T) => void
 }
 
-function SegmentedField<T extends string | undefined>({
+function SegmentedField<T extends string>({
   name,
   value,
+  inheritedValue,
+  unsetOnSelected = false,
   options,
   onChange,
 }: SegmentedFieldProps<T>) {
@@ -313,6 +351,8 @@ function SegmentedField<T extends string | undefined>({
       <div className="bg-default flex h-[31px] items-center p-0.5 text-on-surface-variant">
         {options.map((option) => {
           const selected = option.value === value
+          const inherited =
+            value === undefined && option.value === inheritedValue
 
           return (
             <button
@@ -321,8 +361,12 @@ function SegmentedField<T extends string | undefined>({
               className={clsx(
                 'h-full flex-1 px-2 !text-[13px] typescale-body-medium',
                 selected && 'bg-primary70 text-on-primary-container',
+                inherited &&
+                  'bg-on-surface-variant/10 ring-1 ring-inset ring-on-surface-variant/30',
               )}
-              onClick={() => onChange(option.value)}
+              onClick={() =>
+                onChange(selected && unsetOnSelected ? undefined : option.value)
+              }
             >
               {option.label}
             </button>
@@ -335,17 +379,27 @@ function SegmentedField<T extends string | undefined>({
 
 interface SpreadFieldProps {
   name: string
-  value: RenditionSpread
-  onChange: (value: RenditionSpread) => void
+  value?: RenditionSpread
+  inheritedValue?: RenditionSpread
+  unsetOnSelected?: boolean
+  onChange: (value?: RenditionSpread) => void
 }
 
-const SpreadField: React.FC<SpreadFieldProps> = ({ name, value, onChange }) => {
+const SpreadField: React.FC<SpreadFieldProps> = ({
+  name,
+  value,
+  inheritedValue,
+  unsetOnSelected,
+  onChange,
+}) => {
   const t = useTranslation('typography')
 
   return (
     <SegmentedField
       name={name}
       value={value}
+      inheritedValue={inheritedValue}
+      unsetOnSelected={unsetOnSelected}
       options={[
         {
           label: t('page_view.single_page'),
@@ -364,6 +418,8 @@ const SpreadField: React.FC<SpreadFieldProps> = ({ name, value, onChange }) => {
 const TextAlignField: React.FC<TextAlignFieldProps> = ({
   name,
   value,
+  inheritedValue,
+  unsetOnSelected,
   onChange,
 }) => {
   const t = useTranslation('typography')
@@ -372,8 +428,10 @@ const TextAlignField: React.FC<TextAlignFieldProps> = ({
     <SegmentedField
       name={name}
       value={value}
+      inheritedValue={inheritedValue}
+      unsetOnSelected={unsetOnSelected}
       options={[
-        { label: t('text_align.default'), value: undefined },
+        { label: t('text_align.default'), value: 'default' },
         { label: t('text_align.justify'), value: 'justify' },
       ]}
       onChange={onChange}
