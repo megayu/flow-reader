@@ -848,6 +848,13 @@ export class Reader {
     return group?.removeTab(index)
   }
 
+  closeFocusedTab() {
+    const group = this.focusedGroup
+    if (!group) return
+
+    return this.removeTab(group.selectedIndex, this.focusedIndex)
+  }
+
   replaceTab(
     param: TabParam,
     index = this.focusedIndex,

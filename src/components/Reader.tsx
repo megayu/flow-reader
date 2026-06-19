@@ -58,9 +58,14 @@ const PhotoSlider = dynamic<IPhotoSliderProps>(
   { ssr: false },
 )
 
+const FONT_SIZE_MIN = 14
+const FONT_SIZE_MAX = 28
+const FONT_SIZE_DEFAULT = 16
+
 function handleKeyDown(tab?: BookTab) {
   return (e: KeyboardEvent) => {
     try {
+      if (handleCommandShortcut(e)) return
       if (handleReturnShortcut(e, tab)) return
       if (handleChapterShortcut(e, tab)) return
 
@@ -79,6 +84,90 @@ function handleKeyDown(tab?: BookTab) {
     } catch (error) {
       // ignore `rendition is undefined` error
     }
+  }
+}
+
+function handleCommandShortcut(e: KeyboardEvent) {
+  if (!hasCommandModifier(e) || e.altKey) return false
+
+  if (!e.shiftKey && e.key.toLowerCase() === 'w') {
+    e.preventDefault()
+    e.stopPropagation()
+    e.stopImmediatePropagation?.()
+    reader.closeFocusedTab()
+    return true
+  }
+
+  const fontSizeDelta = getFontSizeShortcutDelta(e)
+  if (!fontSizeDelta) return false
+
+  e.preventDefault()
+  e.stopPropagation()
+  e.stopImmediatePropagation?.()
+
+  if (!isReaderShortcutTargetBlocked(e)) {
+    const tab = reader.focusedBookTab
+    if (tab) updateBookFontSize(tab, fontSizeDelta)
+  }
+  return true
+}
+
+function hasCommandModifier(e: KeyboardEvent) {
+  return e.metaKey || e.ctrlKey
+}
+
+function getFontSizeShortcutDelta(e: KeyboardEvent) {
+  if (
+    e.code === 'Equal' ||
+    e.code === 'NumpadAdd' ||
+    e.key === '+' ||
+    e.key === '='
+  ) {
+    return 1
+  }
+  if (
+    e.code === 'Minus' ||
+    e.code === 'NumpadSubtract' ||
+    e.key === '-' ||
+    e.key === '_'
+  ) {
+    return -1
+  }
+
+  return 0
+}
+
+function updateBookFontSize(tab: BookTab, delta: number) {
+  const fontSize =
+    parseFontSize(tab.book.configuration?.typography?.fontSize) ??
+    getGlobalFontSize() ??
+    FONT_SIZE_DEFAULT
+  const next = clamp(fontSize + delta, FONT_SIZE_MIN, FONT_SIZE_MAX)
+
+  tab.updateBook({
+    configuration: {
+      ...tab.book.configuration,
+      typography: {
+        ...tab.book.configuration?.typography,
+        fontSize: `${next}px`,
+      },
+    },
+  })
+}
+
+function parseFontSize(value: string | undefined) {
+  if (!value) return
+
+  const size = parseInt(value, 10)
+  return Number.isFinite(size) ? size : undefined
+}
+
+function getGlobalFontSize() {
+  try {
+    const settings = JSON.parse(localStorage.getItem('settings') ?? '{}')
+    return parseFontSize(settings.fontSize)
+  } catch {
+    return undefined
   }
 }
 
@@ -126,6 +215,10 @@ function handleReturnShortcut(e: KeyboardEvent, tab?: BookTab) {
 
 function shouldIgnoreReaderShortcut(e: KeyboardEvent) {
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return true
+  return isReaderShortcutTargetBlocked(e)
+}
+
+function isReaderShortcutTargetBlocked(e: KeyboardEvent) {
   if (isEditableTarget(e.target)) return true
   return hasKeyboardCapturingLayer(e.target)
 }
@@ -190,10 +283,15 @@ function useFrameEvent<K extends keyof WindowEventMap>(
   }, [frames, listener, options, type])
 }
 
+function preventContextMenu(e: Event) {
+  e.preventDefault()
+}
+
 export function ReaderGridView() {
   const { groups } = useReaderSnapshot()
 
   useEventListener('keydown', handleKeyDown(reader.focusedBookTab))
+  useEventListener('contextmenu', preventContextMenu)
 
   if (!groups.length) return null
   return (
@@ -866,6 +964,7 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
     [container, mobile, setNavbar, tab],
   )
   useFrameEvent(frameWindows, 'click', handleFrameClick)
+  useFrameEvent(frameWindows, 'contextmenu', preventContextMenu)
 
   const handleRenditionWheel = useCallback(
     (e: WheelEvent) => {
