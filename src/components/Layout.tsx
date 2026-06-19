@@ -232,7 +232,7 @@ function NavigationBar() {
       )}
       <div
         className={clsx(
-          'NavigationBar fixed inset-x-0 bottom-0 z-10 border-t border-surface-variant',
+          'NavigationBar fixed inset-x-0 bottom-0 z-10 border-t border-on-surface-variant/25',
           background.sidebarClassName,
         )}
       >

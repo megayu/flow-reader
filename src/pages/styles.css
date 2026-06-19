@@ -103,7 +103,7 @@ p {
   content: '';
   flex-grow: 1;
   width: 100%;
-  @apply h-px bg-surface-variant;
+  @apply h-px bg-on-surface-variant/25;
 }
 
 .progress-bit {

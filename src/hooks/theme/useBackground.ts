@@ -15,6 +15,8 @@ interface BackgroundOption {
   color?: string
 }
 
+export const darkBackgroundColor = '#24292e'
+
 export const backgroundOptions: BackgroundOption[] = [
   {
     value: -1,
@@ -56,9 +58,9 @@ export const backgroundOptions: BackgroundOption[] = [
   {
     value: 5,
     className: 'bg-surface5',
-    sidebarClassName: 'bg-surface5',
-    activityBarClassName: 'bg-surface5',
-    rowActiveClassName: 'bg-outline/20',
+    sidebarClassName: 'bg-surface6',
+    activityBarClassName: 'bg-surface7',
+    rowActiveClassName: 'bg-surface7',
   },
 ]
 
@@ -75,9 +77,9 @@ const defaultBackgroundOption = backgroundOptions[0] as BackgroundOption
 
 const darkBackground = {
   contentClassName: 'bg-default',
-  sidebarClassName: 'bg-surface',
-  activityBarClassName: 'bg-default',
-  rowActiveClassName: 'bg-outline/20',
+  sidebarClassName: 'bg-[#1D2328]',
+  activityBarClassName: 'bg-[#171C20]',
+  rowActiveClassName: 'bg-[#24292E]',
 }
 
 function getMaterialBackgroundOption(level: number): BackgroundOption {
@@ -142,7 +144,7 @@ export function useBackground() {
 
     const customBackground = customBackgrounds.get(level)
     const color = dark
-      ? '#24292e'
+      ? darkBackgroundColor
       : customBackground?.color ??
         (level < 0
           ? '#fff'

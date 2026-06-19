@@ -3,6 +3,7 @@ import { ComponentProps } from 'react'
 
 import {
   backgroundOptions,
+  darkBackgroundColor,
   useBackground,
   useColorScheme,
   useSourceColor,
@@ -49,7 +50,7 @@ export const ThemeView: React.FC<PaneViewProps> = (props) => {
                 />
               ))}
               <Background
-                className="bg-black"
+                style={{ backgroundColor: darkBackgroundColor }}
                 selected={dark}
                 onClick={() => {
                   setScheme('dark')
