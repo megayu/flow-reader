@@ -127,7 +127,7 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
 
   return (
     <PaneView {...props}>
-      <div className="flex gap-2 px-5 pb-2 !text-[13px] typescale-body-medium">
+      <div className="flex h-10 items-center gap-2 px-4 !text-[13px] typescale-body-medium">
         {keys(TypographyScope)
           .filter((k) => isNaN(Number(k)))
           .map((scopeName) => (
@@ -146,7 +146,7 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
       </div>
       <Pane
         headline={t('title')}
-        className="space-y-3 px-5 pt-2 pb-4"
+        className="space-y-3 px-4 pt-2 pb-4"
         key={`${scope}${focusedBookTab?.id}`}
       >
         <Select

@@ -103,7 +103,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
   )
 }
 
-const ICON_SIZE = scale(22, 28)
+const ICON_SIZE = scale(20, 24)
 const ANNOTATION_SIZE = scale(24, 30)
 
 interface TextSelectionMenuRendererProps {
@@ -212,11 +212,16 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             />
           </div>
         ) : (
-          <div className="-mx- mb-3 flex gap-1 text-on-surface-variant">
+          <div className="mb-3 flex gap-2 text-on-surface-variant">
             <IconButton
               title={t('copy')}
               Icon={MdCopyAll}
               size={ICON_SIZE}
+              className="!flex items-center justify-center !p-0"
+              style={{
+                width: ANNOTATION_SIZE,
+                height: ANNOTATION_SIZE,
+              }}
               onClick={() => {
                 hide()
                 copy(text)
@@ -226,6 +231,11 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               title={t('search_in_book')}
               Icon={MdSearch}
               size={ICON_SIZE}
+              className="!flex items-center justify-center !p-0"
+              style={{
+                width: ANNOTATION_SIZE,
+                height: ANNOTATION_SIZE,
+              }}
               onClick={() => {
                 hide()
                 setAction('search')
@@ -236,6 +246,11 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               title={t('annotate')}
               Icon={MdOutlineEdit}
               size={ICON_SIZE}
+              className="!flex items-center justify-center !p-0"
+              style={{
+                width: ANNOTATION_SIZE,
+                height: ANNOTATION_SIZE,
+              }}
               onClick={() => {
                 setAnnotate(true)
               }}
@@ -245,6 +260,11 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 title={t('undefine')}
                 Icon={MdOutlineIndeterminateCheckBox}
                 size={ICON_SIZE}
+                className="!flex items-center justify-center !p-0"
+                style={{
+                  width: ANNOTATION_SIZE,
+                  height: ANNOTATION_SIZE,
+                }}
                 onClick={() => {
                   hide()
                   tab.undefine(text)
@@ -255,6 +275,11 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 title={t('define')}
                 Icon={MdOutlineAddBox}
                 size={ICON_SIZE}
+                className="!flex items-center justify-center !p-0"
+                style={{
+                  width: ANNOTATION_SIZE,
+                  height: ANNOTATION_SIZE,
+                }}
                 onClick={() => {
                   hide()
                   tab.define([text])

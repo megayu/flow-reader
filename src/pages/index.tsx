@@ -209,6 +209,23 @@ const Library: React.FC = () => {
   }, [reset, select])
 
   useEffect(() => {
+    if (!select) return
+
+    const cancelSelectionOnEscape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+
+      e.preventDefault()
+      toggleSelect()
+    }
+
+    document.addEventListener('keydown', cancelSelectionOnEscape)
+
+    return () => {
+      document.removeEventListener('keydown', cancelSelectionOnEscape)
+    }
+  }, [select, toggleSelect])
+
+  useEffect(() => {
     if (!sortMenuOpen) return
 
     const closeOnPointerDown = (e: PointerEvent) => {

@@ -148,7 +148,7 @@ export const Select: React.FC<SelectProps> = ({
         name={name}
         id={name}
         className={clsx(
-          'bg-default max-w-xs px-0.5 py-1 !text-[13px] text-on-surface-variant typescale-body-medium',
+          'bg-default w-full px-0.5 py-1 !text-[13px] text-on-surface-variant typescale-body-medium',
         )}
         {...props}
       ></select>
