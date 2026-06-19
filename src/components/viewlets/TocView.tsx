@@ -1,6 +1,7 @@
 import { StateLayer } from '@literal-ui/core'
 import clsx from 'clsx'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { MdMyLocation } from 'react-icons/md'
 import { VscCollapseAll, VscExpandAll } from 'react-icons/vsc'
 
 import {
@@ -125,6 +126,7 @@ const TocPane: React.FC = () => {
   const currentKey = tocItemIdentity(currentNavItem)
   const lastScrolledKey = useRef<string>()
   const rowRefs = useRef(new Map<string, HTMLDivElement>())
+  const [locateRequest, setLocateRequest] = useState(0)
 
   useEffect(() => {
     if (!currentKey) return
@@ -139,10 +141,37 @@ const TocPane: React.FC = () => {
     row.scrollIntoView({ block: 'nearest' })
   }, [currentKey, rows.length])
 
+  useEffect(() => {
+    if (!locateRequest || !currentKey) return
+
+    const frame = window.requestAnimationFrame(() => {
+      const row = rowRefs.current.get(currentKey)
+      if (!row) return
+
+      lastScrolledKey.current = `${currentKey}:${rows.length}`
+      row.scrollIntoView({ block: 'center' })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [currentKey, locateRequest, rows.length])
+
   return (
     <Pane
       headline={t('toc.title')}
       actions={[
+        {
+          id: 'locate-current',
+          title: t('action.locate_current'),
+          Icon: MdMyLocation,
+          handle() {
+            const tab = reader.focusedBookTab
+            const navItem = tab?.currentNavItem
+            if (!navItem) return
+
+            tab.expandNavPath(navItem)
+            setLocateRequest((request) => request + 1)
+          },
+        },
         {
           id: expanded ? 'collapse-all' : 'expand-all',
           title: t(expanded ? 'action.collapse_all' : 'action.expand_all'),

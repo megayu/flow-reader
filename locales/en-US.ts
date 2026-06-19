@@ -65,6 +65,7 @@ export default {
 
   'action.expand_all': 'Expand All',
   'action.collapse_all': 'Collapse All',
+  'action.locate_current': 'Locate Current Page',
   'action.close': 'Close',
   'action.clear': 'Clear',
   'action.step_down': 'Step Down',
