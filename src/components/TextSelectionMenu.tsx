@@ -188,6 +188,11 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         tabIndex={-1}
         onKeyDown={(e) => {
           e.stopPropagation()
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            hide()
+            return
+          }
           if (e.key === 'c' && e.ctrlKey) {
             copy(text)
           }
