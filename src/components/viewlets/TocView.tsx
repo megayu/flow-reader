@@ -1,4 +1,5 @@
 import { StateLayer } from '@literal-ui/core'
+import clsx from 'clsx'
 import { useEffect, useMemo, useRef } from 'react'
 import { VscCollapseAll, VscExpandAll } from 'react-icons/vsc'
 
@@ -7,7 +8,12 @@ import {
   getBookDisplayTitle,
   getBookTooltip,
 } from '@flow/reader/book'
-import { useLibrary, useMobile, useTranslation } from '@flow/reader/hooks'
+import {
+  useBackground,
+  useLibrary,
+  useMobile,
+  useTranslation,
+} from '@flow/reader/hooks'
 import {
   compareHref,
   dfs,
@@ -32,22 +38,65 @@ export const TocView: React.FC<PaneViewProps> = (props) => {
 
 const LibraryPane: React.FC = () => {
   const books = useLibrary()
+  const { focusedBookTab, groups } = useReaderSnapshot()
+  const [, , background] = useBackground()
+  const paneRef = useRef<HTMLDivElement>(null)
+  const rowRefs = useRef(new Map<string, HTMLButtonElement>())
   const sortedBooks = useMemo(
     () => books?.slice().sort(compareBookDisplayTitle),
     [books],
   )
+  const openedBookIds = useMemo(
+    () =>
+      new Set(
+        groups.flatMap((group) =>
+          group.tabs
+            .map((tab) => ('book' in tab ? tab.book?.id : undefined))
+            .filter((id): id is string => !!id),
+        ),
+      ),
+    [groups],
+  )
+  const currentBookId = focusedBookTab?.book.id
   const t = useTranslation('toc')
+
+  useEffect(() => {
+    if (!currentBookId) return
+    const pane = paneRef.current
+    if (!pane || pane.offsetParent === null) return
+
+    rowRefs.current.get(currentBookId)?.scrollIntoView({ block: 'nearest' })
+  }, [currentBookId, sortedBooks?.length])
+
   return (
-    <Pane headline={t('library')} preferredSize={240}>
+    <Pane ref={paneRef} headline={t('library')} preferredSize={240}>
       {sortedBooks?.map((book) => {
         const displayTitle = getBookDisplayTitle(book)
         const tooltip = getBookTooltip(book)
+        const opened = openedBookIds.has(book.id)
+        const active = book.id === currentBookId
 
         return (
           <button
             key={book.id}
-            className="relative w-full truncate py-1 pl-5 pr-3 text-left"
+            ref={(el) => {
+              if (el) {
+                rowRefs.current.set(book.id, el)
+              } else {
+                rowRefs.current.delete(book.id)
+              }
+            }}
+            className={clsx(
+              'relative w-full truncate py-1 pl-5 pr-3 text-left',
+              opened && !active && 'bg-primary/5',
+              active &&
+                clsx(
+                  background.rowActiveClassName,
+                  'ring-1 ring-inset ring-primary70',
+                ),
+            )}
             title={tooltip}
+            aria-current={active ? 'true' : undefined}
             draggable
             onClick={() => reader.addTab(book)}
             onDragStart={(e) => {
@@ -55,6 +104,9 @@ const LibraryPane: React.FC = () => {
             }}
           >
             <StateLayer />
+            {opened && !active && (
+              <span className="absolute inset-y-1 left-1 w-0.5 rounded-full bg-primary70/60" />
+            )}
             {displayTitle}
           </button>
         )
