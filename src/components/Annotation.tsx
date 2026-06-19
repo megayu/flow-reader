@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useSnapshot } from 'valtio'
 
 import { colorMap, Annotation as IAnnotation } from '../annotation'
+import { useColorScheme } from '../hooks'
 import { BookTab, compareHref } from '../models'
 
 // avoid click penetration
@@ -9,6 +10,37 @@ let clickedAnnotation = false
 
 export const getClickedAnnotation = () => clickedAnnotation
 export const setClickedAnnotation = (v: boolean) => (clickedAnnotation = v)
+
+const definitionPalette = [
+  { light: '37, 99, 235', dark: '147, 197, 253' },
+  { light: '124, 58, 237', dark: '196, 181, 253' },
+  { light: '190, 24, 93', dark: '244, 114, 182' },
+  { light: '194, 65, 12', dark: '251, 146, 60' },
+  { light: '15, 118, 110', dark: '94, 234, 212' },
+  { light: '5, 150, 105', dark: '110, 231, 183' },
+  { light: '180, 83, 9', dark: '252, 211, 77' },
+  { light: '8, 145, 178', dark: '103, 232, 249' },
+]
+
+function definitionColorIndex(definition: string) {
+  let hash = 0
+  const text = definition.trim().toLowerCase()
+
+  for (let i = 0; i < text.length; i++) {
+    hash = (hash * 31 + text.charCodeAt(i)) >>> 0
+  }
+
+  return hash % definitionPalette.length
+}
+
+function definitionHighlightStyle(definition: string, dark: boolean) {
+  const color = definitionPalette[definitionColorIndex(definition)]!
+
+  return {
+    fill: `rgba(${dark ? color.dark : color.light}, ${dark ? 0.26 : 0.18})`,
+    'fill-opacity': 'unset',
+  }
+}
 
 interface FindMatchProps {
   tab: BookTab
@@ -53,13 +85,15 @@ const FindMatches: React.FC<FindMatchProps> = ({ tab }) => {
 interface DefinitionProps {
   tab: BookTab
   definition: string
+  dark: boolean
 }
-const Definition: React.FC<DefinitionProps> = ({ tab, definition }) => {
+const Definition: React.FC<DefinitionProps> = ({ tab, definition, dark }) => {
   const { rendition, currentHref } = useSnapshot(tab)
 
   useEffect(() => {
     const result = tab.searchInSection(definition)
     const matches = result?.subitems
+    const styles = definitionHighlightStyle(definition, dark)
 
     matches?.forEach((m) => {
       try {
@@ -73,11 +107,7 @@ const Definition: React.FC<DefinitionProps> = ({ tab, definition }) => {
             setClickedAnnotation(true)
           },
           undefined,
-          {
-            // tailwind gray-600
-            fill: 'rgba(75, 85, 99, 0.15)',
-            'fill-opacity': 'unset',
-          },
+          styles,
         )
       } catch (error) {
         // ignore matched text in `<title>`
@@ -89,7 +119,7 @@ const Definition: React.FC<DefinitionProps> = ({ tab, definition }) => {
         rendition?.annotations.remove(m.cfi!, 'highlight'),
       )
     }
-  }, [currentHref, definition, rendition?.annotations, tab])
+  }, [currentHref, dark, definition, rendition?.annotations, tab])
 
   return null
 }
@@ -137,6 +167,7 @@ interface AnnotationsProps {
 }
 export const Annotations: React.FC<AnnotationsProps> = ({ tab }) => {
   const { book, section } = useSnapshot(tab)
+  const { dark } = useColorScheme()
 
   return (
     <>
@@ -149,7 +180,12 @@ export const Annotations: React.FC<AnnotationsProps> = ({ tab }) => {
           <Annotation key={annotation.id} tab={tab} annotation={annotation} />
         ))}
       {book.definitions.map((definition) => (
-        <Definition key={definition} tab={tab} definition={definition} />
+        <Definition
+          key={definition}
+          tab={tab}
+          definition={definition}
+          dark={!!dark}
+        />
       ))}
     </>
   )
