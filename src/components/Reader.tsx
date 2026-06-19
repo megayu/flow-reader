@@ -25,6 +25,7 @@ import { useSnapshot } from 'valtio'
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
 import { navbarState } from '@flow/reader/state'
 
+import { getBookDisplayTitle, getBookTooltip } from '../book'
 import { db } from '../db'
 import { handleFiles } from '../file'
 import {
@@ -109,6 +110,8 @@ function handleCommandShortcut(e: KeyboardEvent) {
     return true
   }
 
+  if (handleTabSwitchShortcut(e)) return true
+
   const fontSizeReset = isFontSizeResetShortcut(e)
   const fontSizeDelta = getFontSizeShortcutDelta(e)
   if (!fontSizeReset && !fontSizeDelta) return false
@@ -128,6 +131,42 @@ function handleCommandShortcut(e: KeyboardEvent) {
     }
   }
   return true
+}
+
+function handleTabSwitchShortcut(e: KeyboardEvent) {
+  if (e.shiftKey) return false
+
+  const index = getCommandTabIndex(e)
+  const direction = getCommandTabDirection(e)
+  if (index === undefined && direction === 0) return false
+
+  e.preventDefault()
+  e.stopPropagation()
+  e.stopImmediatePropagation?.()
+
+  if (!isReaderShortcutTargetBlocked(e)) {
+    if (index === 8) {
+      reader.selectLastFocusedTab()
+    } else if (index !== undefined) {
+      reader.selectFocusedTab(index)
+    } else if (direction) {
+      reader.selectAdjacentFocusedTab(direction)
+    }
+  }
+  return true
+}
+
+function getCommandTabIndex(e: KeyboardEvent) {
+  const match = /^(?:Digit|Numpad)([1-9])$/.exec(e.code)
+  if (match) return Number(match[1]) - 1
+
+  if (/^[1-9]$/.test(e.key)) return Number(e.key) - 1
+}
+
+function getCommandTabDirection(e: KeyboardEvent): -1 | 0 | 1 {
+  if (e.code === 'ArrowLeft') return -1
+  if (e.code === 'ArrowRight') return 1
+  return 0
 }
 
 function hasCommandModifier(e: KeyboardEvent) {
@@ -345,30 +384,57 @@ function ReaderGroup({ index }: ReaderGroupProps) {
   const group = reader.groups[index]!
   const { tabs, selectedIndex } = useSnapshot(group)
   const t = useTranslation()
+  const tabWheelDelta = useRef(0)
+  const lastTabWheelSwitch = useRef(0)
 
   const handleMouseDown = useCallback(() => {
     reader.selectGroup(index)
   }, [index])
+
+  const handleTabWheel = useCallback(
+    (e: React.WheelEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+
+      const delta =
+        Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX
+      if (!delta) return
+
+      tabWheelDelta.current += delta
+
+      const now = Date.now()
+      if (now - lastTabWheelSwitch.current < 180) return
+      if (Math.abs(tabWheelDelta.current) < 30) return
+
+      reader.selectGroup(index)
+      group.selectAdjacentTab(tabWheelDelta.current > 0 ? 1 : -1, true)
+      tabWheelDelta.current = 0
+      lastTabWheelSwitch.current = now
+    },
+    [group, index],
+  )
 
   return (
     <div
       className="ReaderGroup flex h-full min-h-0 flex-1 flex-col overflow-hidden focus:outline-none"
       onMouseDown={handleMouseDown}
     >
-      <Tab.List className="hidden sm:flex">
+      <Tab.List className="hidden sm:flex" onWheel={handleTabWheel}>
         {tabs.map((tab, i) => {
           const selected = i === selectedIndex
           const focused = selected
+          const label = getReaderTabLabel(tab, t)
           return (
             <Tab
               key={tab.id}
               selected={selected}
               focused={focused}
+              title={getReaderTabTooltip(tab, t)}
               onClick={() => group.selectTab(i)}
               onDelete={() => reader.removeTab(i, index)}
               Icon={tab instanceof BookTab ? RiBookLine : MdWebAsset}
             >
-              {tab.isBook ? tab.title : t(`${tab.title}.title`)}
+              {label}
             </Tab>
           )
         })}
@@ -408,6 +474,24 @@ function ReaderGroup({ index }: ReaderGroupProps) {
       </DropZone>
     </div>
   )
+}
+
+function getReaderTabLabel(
+  tab: BookTab | { title: string },
+  t: (key: string) => string,
+) {
+  return tab instanceof BookTab
+    ? getBookDisplayTitle(tab.book)
+    : t(`${tab.title}.title`)
+}
+
+function getReaderTabTooltip(
+  tab: BookTab | { title: string },
+  t: (key: string) => string,
+) {
+  return tab instanceof BookTab
+    ? getBookTooltip(tab.book)
+    : getReaderTabLabel(tab, t)
 }
 
 interface PaneContainerProps {

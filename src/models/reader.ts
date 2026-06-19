@@ -809,7 +809,25 @@ export class Group {
   }
 
   selectTab(index: number) {
+    if (index < 0 || index >= this.tabs.length) return
+
     this.selectedIndex = index
+  }
+
+  selectLastTab() {
+    this.selectTab(this.tabs.length - 1)
+  }
+
+  selectAdjacentTab(delta: -1 | 1, loop = false) {
+    if (!this.tabs.length) return
+
+    let index = this.selectedIndex + delta
+
+    if (loop) {
+      index = (index + this.tabs.length) % this.tabs.length
+    }
+
+    this.selectTab(index)
   }
 }
 
@@ -857,6 +875,18 @@ export class Reader {
 
   closeAllTabs() {
     this.clear()
+  }
+
+  selectFocusedTab(index: number) {
+    this.focusedGroup?.selectTab(index)
+  }
+
+  selectLastFocusedTab() {
+    this.focusedGroup?.selectLastTab()
+  }
+
+  selectAdjacentFocusedTab(delta: -1 | 1, loop = false) {
+    this.focusedGroup?.selectAdjacentTab(delta, loop)
   }
 
   replaceTab(

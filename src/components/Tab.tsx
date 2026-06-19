@@ -57,10 +57,16 @@ export function Tab({
   )
 }
 
-interface ListProps extends ComponentProps<'ul'> {
+interface ListProps extends Omit<ComponentProps<'ul'>, 'onWheel'> {
   onDelete?: () => void
+  onWheel?: ComponentProps<'div'>['onWheel']
 }
-const List: React.FC<ListProps> = ({ className, onDelete, ...props }) => {
+const List: React.FC<ListProps> = ({
+  className,
+  onDelete,
+  onWheel,
+  ...props
+}) => {
   const t = useTranslation()
 
   return (
@@ -69,6 +75,7 @@ const List: React.FC<ListProps> = ({ className, onDelete, ...props }) => {
         'flex items-center justify-between bg-primary/5',
         className,
       )}
+      onWheel={onWheel}
     >
       <ul className={clsx('scroll-h flex')} {...props} />
       {onDelete && (
