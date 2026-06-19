@@ -23,7 +23,7 @@ export const backgroundOptions: BackgroundOption[] = [
     className: 'bg-white',
     sidebarClassName: 'bg-[#F4F6F7]',
     activityBarClassName: 'bg-[#E8EDF0]',
-    rowActiveClassName: 'bg-[#DDE5EA]',
+    rowActiveClassName: 'bg-[#D1DEE6]',
   },
   {
     value: -2,
@@ -46,21 +46,21 @@ export const backgroundOptions: BackgroundOption[] = [
     className: 'bg-surface1',
     sidebarClassName: 'bg-surface2',
     activityBarClassName: 'bg-surface3',
-    rowActiveClassName: 'bg-surface4',
+    rowActiveClassName: 'bg-surface6',
   },
   {
     value: 3,
     className: 'bg-surface3',
     sidebarClassName: 'bg-surface4',
     activityBarClassName: 'bg-surface5',
-    rowActiveClassName: 'bg-surface5',
+    rowActiveClassName: 'bg-surface7',
   },
   {
     value: 5,
     className: 'bg-surface5',
     sidebarClassName: 'bg-surface6',
     activityBarClassName: 'bg-surface7',
-    rowActiveClassName: 'bg-surface7',
+    rowActiveClassName: 'bg-surface9',
   },
 ]
 
@@ -79,16 +79,16 @@ const darkBackground = {
   contentClassName: 'bg-default',
   sidebarClassName: 'bg-[#1D2328]',
   activityBarClassName: 'bg-[#171C20]',
-  rowActiveClassName: 'bg-[#24292E]',
+  rowActiveClassName: 'bg-[#36424B]',
 }
 
 function getMaterialBackgroundOption(level: number): BackgroundOption {
   return {
     value: level,
     className: `bg-surface${level}`,
-    sidebarClassName: `bg-surface${Math.min(level + 1, 5)}`,
-    activityBarClassName: `bg-surface${Math.min(level + 2, 5)}`,
-    rowActiveClassName: `bg-surface${Math.min(level + 3, 5)}`,
+    sidebarClassName: `bg-surface${Math.min(level + 1, 7)}`,
+    activityBarClassName: `bg-surface${Math.min(level + 2, 7)}`,
+    rowActiveClassName: `bg-surface${Math.min(level + 5, 9)}`,
   }
 }
 

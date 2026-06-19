@@ -87,6 +87,8 @@ const surfaceMap = {
   5: 0.14,
   6: 0.17,
   7: 0.2,
+  8: 0.24,
+  9: 0.28,
 }
 
 Object.entries(surfaceMap).forEach(([level, opacity]) => {

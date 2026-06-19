@@ -89,7 +89,7 @@ const LibraryPane: React.FC = () => {
             }}
             className={clsx(
               'relative w-full truncate py-1 pl-5 pr-3 text-left',
-              opened && !active && 'bg-primary/5',
+              opened && !active && background.rowActiveClassName,
               active &&
                 clsx(
                   background.rowActiveClassName,
@@ -149,7 +149,7 @@ const TocPane: React.FC = () => {
       if (!row) return
 
       lastScrolledKey.current = `${currentKey}:${rows.length}`
-      row.scrollIntoView({ block: 'center' })
+      row.scrollIntoView({ block: 'nearest' })
     })
 
     return () => window.cancelAnimationFrame(frame)
