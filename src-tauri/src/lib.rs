@@ -121,7 +121,8 @@ pub fn run() {
                     StateFlags::SIZE
                         | StateFlags::POSITION
                         | StateFlags::MAXIMIZED
-                        | StateFlags::FULLSCREEN,
+                        | StateFlags::FULLSCREEN
+                        | StateFlags::VISIBLE,
                 )
                 .build(),
         )
