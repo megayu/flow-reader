@@ -9,7 +9,13 @@ import React, {
   useRef,
   useState,
 } from 'react'
-import { MdChevronRight, MdWebAsset } from 'react-icons/md'
+import {
+  MdChevronRight,
+  MdClose,
+  MdKeyboardArrowDown,
+  MdKeyboardArrowUp,
+  MdWebAsset,
+} from 'react-icons/md'
 import { RiBookLine } from 'react-icons/ri'
 import type { IPhotoSliderProps } from 'react-photo-view/dist/PhotoSlider'
 import { useSetRecoilState } from 'recoil'
@@ -237,21 +243,62 @@ interface BookPaneProps {
 
 interface ReflowableManager {
   reflowablePageCountCache?: Record<string, number>
-  currentReflowableSpread?: unknown
+  currentReflowableSpread?: ReflowableSpread
   viewSettings?: {
     beforeLayout?: (contents: unknown) => void
   }
+}
+
+interface ReflowablePageAddress {
+  section?: {
+    index: number
+  }
+  pageIndex: number
+}
+
+interface ReflowableSpread {
+  left?: ReflowablePageAddress
+  right?: ReflowablePageAddress
+}
+
+interface ChapterFindResult {
+  cfi: string
+  excerpt: string
+  pageIndex: number
+}
+
+interface ChapterFindState {
+  open: boolean
+  query: string
+  sectionIndex?: number
+  results: ChapterFindResult[]
+  activeIndex: number
+  searching: boolean
+}
+
+const initialChapterFind: ChapterFindState = {
+  open: false,
+  query: '',
+  results: [],
+  activeIndex: 0,
+  searching: false,
 }
 
 function BookPane({ tab, onMouseDown }: BookPaneProps) {
   const ref = useRef<HTMLDivElement>(null)
   const prevSize = useRef(0)
   const previousTypographyLayoutSignature = useRef<string>()
+  const chapterFindInputRef = useRef<HTMLInputElement>(null)
+  const ignoreNextFindLocationSync = useRef(false)
+  const previousFindLocationKey = useRef<string>()
+  const [chapterFind, setChapterFind] =
+    useState<ChapterFindState>(initialChapterFind)
   const typography = useTypography(tab)
   const { dark } = useColorScheme()
   const [background] = useBackground()
 
-  const { iframe, iframes, rendition, rendered, container } = useSnapshot(tab)
+  const { iframe, iframes, rendition, rendered, container, currentLocation } =
+    useSnapshot(tab)
   const frameWindows = useMemo(
     () => (iframes.length ? [...iframes] : iframe ? [iframe] : []),
     [iframe, iframes],
@@ -281,6 +328,65 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
 
   const setNavbar = useSetRecoilState(navbarState)
   const mobile = useMobile()
+
+  const findScopeSectionIndex = useCallback(() => {
+    const manager = rendition?.manager as ReflowableManager | undefined
+    const spread = manager?.currentReflowableSpread
+    const rightIndex = spread?.right?.section?.index
+    const leftIndex = spread?.left?.section?.index
+
+    return rightIndex ?? leftIndex ?? tab.currentSection?.index
+  }, [rendition?.manager, tab])
+
+  const focusChapterFindInput = useCallback(() => {
+    window.setTimeout(() => {
+      chapterFindInputRef.current?.focus()
+      chapterFindInputRef.current?.select()
+    })
+  }, [])
+
+  const openChapterFind = useCallback(() => {
+    const sectionIndex = findScopeSectionIndex()
+
+    setChapterFind((state) => ({
+      ...state,
+      open: true,
+      sectionIndex,
+      activeIndex: 0,
+    }))
+    focusChapterFindInput()
+  }, [findScopeSectionIndex, focusChapterFindInput])
+
+  const closeChapterFind = useCallback(() => {
+    setChapterFind((state) => ({
+      ...state,
+      open: false,
+      results: [],
+      activeIndex: 0,
+      searching: false,
+    }))
+  }, [])
+
+  const handleFindShortcut = useCallback(
+    (e: KeyboardEvent) => {
+      if (!isFindShortcut(e)) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      e.stopImmediatePropagation?.()
+      openChapterFind()
+    },
+    [openChapterFind],
+  )
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleFindShortcut, true)
+
+    return () => {
+      document.removeEventListener('keydown', handleFindShortcut, true)
+    }
+  }, [handleFindShortcut])
+  useFrameEvent(frameWindows, 'keydown', handleFindShortcut, { capture: true })
 
   const applyCustomStyle = useCallback(
     (contents?: any) => {
@@ -369,6 +475,150 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
     typography.textAlign,
     typography.textIndent,
   ])
+
+  const findOpen = chapterFind.open
+  const findQuery = chapterFind.query
+  const findSectionIndex = chapterFind.sectionIndex
+
+  useEffect(() => {
+    let cancelled = false
+    const query = findQuery.trim()
+
+    if (!findOpen || !query || findSectionIndex === undefined) {
+      setChapterFind((state) => ({
+        ...state,
+        results: [],
+        activeIndex: 0,
+        searching: false,
+      }))
+      return
+    }
+
+    const sectionIndex = findSectionIndex
+    const section = tab.sections?.find((s) => s.index === sectionIndex)
+    if (!section) return
+
+    setChapterFind((state) => ({ ...state, searching: true }))
+
+    async function searchSection() {
+      const matches = (
+        section!.find(query) as Array<{
+          cfi?: string
+          excerpt?: string
+        }>
+      ).filter((match) => !!match.cfi)
+
+      const results: ChapterFindResult[] = []
+      for (const match of matches) {
+        if (cancelled) return
+        results.push({
+          cfi: match.cfi!,
+          excerpt: match.excerpt ?? '',
+          pageIndex: await tab.pageIndexForCfi(sectionIndex, match.cfi!),
+        })
+      }
+
+      if (cancelled) return
+
+      const visibleIndex = firstVisibleFindResultIndex(
+        results,
+        sectionIndex,
+        rendition?.manager as ReflowableManager | undefined,
+      )
+
+      setChapterFind((state) => ({
+        ...state,
+        results,
+        activeIndex: visibleIndex > -1 ? visibleIndex : 0,
+        searching: false,
+      }))
+    }
+
+    void searchSection()
+
+    return () => {
+      cancelled = true
+    }
+  }, [findOpen, findQuery, findSectionIndex, rendition?.manager, tab])
+
+  useEffect(() => {
+    if (
+      !chapterFind.open ||
+      !chapterFind.results.length ||
+      chapterFind.sectionIndex === undefined
+    ) {
+      return
+    }
+
+    const locationKey = findLocationKey(currentLocation)
+    if (locationKey === previousFindLocationKey.current) return
+    previousFindLocationKey.current = locationKey
+
+    if (ignoreNextFindLocationSync.current) {
+      ignoreNextFindLocationSync.current = false
+      return
+    }
+
+    const visibleIndex = firstVisibleFindResultIndex(
+      chapterFind.results,
+      chapterFind.sectionIndex,
+      rendition?.manager as ReflowableManager | undefined,
+    )
+    if (visibleIndex < 0) return
+
+    setChapterFind((state) =>
+      state.activeIndex === visibleIndex
+        ? state
+        : {
+            ...state,
+            activeIndex: visibleIndex,
+          },
+    )
+  }, [
+    chapterFind.open,
+    chapterFind.results,
+    chapterFind.sectionIndex,
+    currentLocation,
+    rendition?.manager,
+  ])
+
+  const goToFindResult = useCallback(
+    (index: number) => {
+      if (
+        chapterFind.sectionIndex === undefined ||
+        !chapterFind.results.length
+      ) {
+        return
+      }
+
+      const nextIndex = clamp(index, 0, chapterFind.results.length - 1)
+      const result = chapterFind.results[nextIndex]
+      if (!result) return
+
+      setChapterFind((state) => ({
+        ...state,
+        activeIndex: nextIndex,
+      }))
+
+      if (
+        !isFindResultVisible(
+          result,
+          chapterFind.sectionIndex,
+          rendition?.manager as ReflowableManager | undefined,
+        )
+      ) {
+        ignoreNextFindLocationSync.current = true
+        void tab
+          .displayReflowableTarget(chapterFind.sectionIndex, result.cfi)
+          .finally(() => {
+            window.setTimeout(() => {
+              ignoreNextFindLocationSync.current = false
+            })
+          })
+      }
+    },
+    [chapterFind.results, chapterFind.sectionIndex, rendition?.manager, tab],
+  )
 
   useEffect(() => {
     if (dark === undefined) return
@@ -630,10 +880,218 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
         />
         <TextSelectionMenu tab={tab} />
         <Annotations tab={tab} />
+        <ChapterFindHighlights find={chapterFind} tab={tab} />
+        {chapterFind.open && (
+          <ChapterFindBar
+            find={chapterFind}
+            inputRef={chapterFindInputRef}
+            onChange={(query) =>
+              setChapterFind((state) => ({
+                ...state,
+                query,
+                activeIndex: 0,
+              }))
+            }
+            onClose={closeChapterFind}
+            onNext={() => goToFindResult(chapterFind.activeIndex + 1)}
+            onPrevious={() => goToFindResult(chapterFind.activeIndex - 1)}
+          />
+        )}
       </div>
       <ReaderPaneFooter tab={tab} />
     </div>
   )
+}
+
+interface ChapterFindBarProps {
+  find: ChapterFindState
+  inputRef: React.RefObject<HTMLInputElement>
+  onChange: (query: string) => void
+  onClose: () => void
+  onNext: () => void
+  onPrevious: () => void
+}
+const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
+  find,
+  inputRef,
+  onChange,
+  onClose,
+  onNext,
+  onPrevious,
+}) => {
+  const count = find.results.length
+  const current = count ? find.activeIndex + 1 : 0
+  const disabled = !count || find.searching
+
+  return (
+    <div
+      className="bg-default absolute top-4 right-4 z-30 flex items-center gap-2 rounded-lg px-3 py-2 text-on-surface-variant shadow-lg"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <input
+        ref={inputRef}
+        className="w-40 bg-transparent px-1 py-0.5 text-on-surface outline-none typescale-body-medium"
+        value={find.query}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          e.stopPropagation()
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            e.shiftKey ? onPrevious() : onNext()
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            onClose()
+          }
+        }}
+      />
+      <div className="min-w-[3.5rem] text-center text-outline typescale-body-small">
+        {find.searching ? '...' : `${current}/${count}`}
+      </div>
+      <button
+        className="p-1 text-outline hover:text-on-surface disabled:opacity-40"
+        disabled={disabled || find.activeIndex <= 0}
+        onClick={onPrevious}
+      >
+        <MdKeyboardArrowUp size={22} />
+      </button>
+      <button
+        className="p-1 text-outline hover:text-on-surface disabled:opacity-40"
+        disabled={disabled || find.activeIndex >= count - 1}
+        onClick={onNext}
+      >
+        <MdKeyboardArrowDown size={22} />
+      </button>
+      <button
+        className="p-1 text-outline hover:text-on-surface"
+        onClick={onClose}
+      >
+        <MdClose size={22} />
+      </button>
+    </div>
+  )
+}
+
+interface ChapterFindHighlightsProps {
+  find: ChapterFindState
+  tab: BookTab
+}
+const ChapterFindHighlights: React.FC<ChapterFindHighlightsProps> = ({
+  find,
+  tab,
+}) => {
+  const { rendition } = useSnapshot(tab)
+  const active = find.open ? find.results[find.activeIndex] : undefined
+
+  useEffect(() => {
+    if (!active?.cfi) return
+
+    try {
+      rendition?.annotations.highlight(
+        active.cfi,
+        undefined,
+        () => {
+          setClickedAnnotation(true)
+        },
+        undefined,
+        {
+          fill: 'rgba(59, 130, 246, 0.38)',
+          'fill-opacity': 'unset',
+        },
+      )
+    } catch (error) {
+      // ignore matched text in unsupported nodes
+    }
+
+    return () => {
+      try {
+        rendition?.annotations.remove(active.cfi, 'highlight')
+      } catch (error) {
+        // ignore removed views
+      }
+    }
+  }, [active?.cfi, rendition?.annotations])
+
+  return null
+}
+
+function isFindShortcut(e: KeyboardEvent) {
+  return (
+    (e.ctrlKey || e.metaKey) &&
+    !e.altKey &&
+    (e.key.toLowerCase() === 'f' || e.code === 'KeyF')
+  )
+}
+
+function visibleFindPageIndexes(
+  sectionIndex: number,
+  manager: ReflowableManager | undefined,
+) {
+  const spread = manager?.currentReflowableSpread
+  const pages = new Set<number>()
+
+  if (spread?.left?.section?.index === sectionIndex) {
+    pages.add(spread.left.pageIndex)
+  }
+  if (spread?.right?.section?.index === sectionIndex) {
+    pages.add(spread.right.pageIndex)
+  }
+
+  return pages
+}
+
+function firstVisibleFindResultIndex(
+  results: ChapterFindResult[],
+  sectionIndex: number,
+  manager: ReflowableManager | undefined,
+) {
+  const pages = visibleFindPageIndexes(sectionIndex, manager)
+  if (!pages.size) return -1
+
+  return results.findIndex((result) => pages.has(result.pageIndex))
+}
+
+function isFindResultVisible(
+  result: ChapterFindResult,
+  sectionIndex: number,
+  manager: ReflowableManager | undefined,
+) {
+  return visibleFindPageIndexes(sectionIndex, manager).has(result.pageIndex)
+}
+
+function findLocationKey(location: unknown) {
+  const loc = location as
+    | {
+        start?: {
+          href?: string
+          displayed?: {
+            page?: number
+            total?: number
+            slot?: string
+          }
+        }
+        end?: {
+          href?: string
+          displayed?: {
+            page?: number
+            total?: number
+            slot?: string
+          }
+        }
+      }
+    | undefined
+
+  return [
+    loc?.start?.href,
+    loc?.start?.displayed?.page,
+    loc?.start?.displayed?.total,
+    loc?.start?.displayed?.slot,
+    loc?.end?.href,
+    loc?.end?.displayed?.page,
+    loc?.end?.displayed?.total,
+    loc?.end?.displayed?.slot,
+  ].join('|')
 }
 
 const NOTE_POPOVER_CLASS = notePopoverClass

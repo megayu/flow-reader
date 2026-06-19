@@ -99,6 +99,26 @@ export class BookTab extends BaseTab {
     this.rendition?.display(target)
     if (returnable) this.showPrevLocation()
   }
+  async pageIndexForCfi(sectionIndex: number, cfi: string) {
+    const section = this.sections?.find((s) => s.index === sectionIndex)
+    const manager = this.rendition?.manager
+    if (!section || !manager?.reflowablePageForTarget) return 0
+
+    const page = await manager.reflowablePageForTarget(section, cfi)
+    return page?.pageIndex ?? 0
+  }
+  async displayReflowableTarget(sectionIndex: number, cfi: string) {
+    const section = this.sections?.find((s) => s.index === sectionIndex)
+    const manager = this.rendition?.manager
+
+    if (section && manager?.canUseLogicalReflowableSpread?.()) {
+      await manager.displayReflowableTarget(section, cfi)
+      this.rendition?.reportLocation()
+      return
+    }
+
+    this.display(cfi, false)
+  }
   displayFromSelector(selector: string, section: ISection, returnable = true) {
     try {
       const el = section.document.querySelector(selector)

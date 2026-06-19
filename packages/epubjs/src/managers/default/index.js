@@ -363,11 +363,65 @@ class DefaultViewManager {
     }
   }
 
+  async withReflowableSectionView(section, callback) {
+    let existing = this.views && this.views.find(section)
+    if (existing) {
+      return callback(existing)
+    }
+
+    let scrollLeft = this.container ? this.container.scrollLeft : 0
+    let view = this.createView(section)
+    view.element.style.visibility = 'hidden'
+    view.iframe && (view.iframe.style.visibility = 'hidden')
+
+    view.on(EVENTS.VIEWS.AXIS, (axis) => {
+      this.updateAxis(axis)
+    })
+
+    view.on(EVENTS.VIEWS.WRITING_MODE, (mode) => {
+      this.updateWritingMode(mode)
+    })
+
+    this.views.append(view)
+
+    try {
+      await view.display(this.request)
+      return callback(view)
+    } finally {
+      this.views.remove(view)
+      this.scrollTo(scrollLeft, 0, true)
+    }
+  }
+
   reflowablePage(section, pageIndex) {
     return {
       section,
       pageIndex,
     }
+  }
+
+  async reflowablePageForTarget(section, target) {
+    if (!section) {
+      return
+    }
+
+    return this.withReflowableSectionView(section, async (view) => {
+      this.cacheReflowablePageCount(view)
+
+      let pageIndex = 0
+      if (target) {
+        let targetOffset = view.locationOf(target)
+        pageIndex = Math.floor(
+          Math.max(targetOffset.left, 0) / this.layout.pageWidth,
+        )
+        pageIndex = Math.min(
+          Math.max(pageIndex, 0),
+          Math.max(this.viewPageCount(view) - 1, 0),
+        )
+      }
+
+      return this.reflowablePage(section, pageIndex)
+    })
   }
 
   sameReflowableSection(left, right) {
@@ -463,6 +517,79 @@ class DefaultViewManager {
       left: await this.previousReflowablePage(right),
       right,
     }
+  }
+
+  async reflowableSpreadContaining(page) {
+    page = await this.normalizeReflowablePage(page)
+    if (!page) {
+      return
+    }
+
+    let left = page
+    if (this.layout.divisor > 1 && page.pageIndex % this.layout.divisor) {
+      left = await this.previousReflowablePage(page)
+    }
+
+    return this.reflowableSpreadFromLeft(left || page)
+  }
+
+  async reflowableSpreadFromCurrentPhase(page) {
+    page = await this.normalizeReflowablePage(page)
+    if (!page || !this.currentReflowableSpread || this.layout.divisor <= 1) {
+      return
+    }
+
+    let spread = this.currentReflowableSpread
+    let leftInSection = this.sameReflowableSection(spread.left, page)
+    let rightInSection = this.sameReflowableSection(spread.right, page)
+    if (!leftInSection && !rightInSection) {
+      return
+    }
+
+    if (
+      (leftInSection && spread.left.pageIndex === page.pageIndex) ||
+      (rightInSection && spread.right.pageIndex === page.pageIndex)
+    ) {
+      return spread
+    }
+
+    let divisor = this.layout.divisor
+    let basePageIndex = leftInSection
+      ? spread.left.pageIndex
+      : spread.right.pageIndex + 1
+    let startPageIndex
+
+    if (page.pageIndex < basePageIndex) {
+      startPageIndex =
+        basePageIndex -
+        Math.ceil((basePageIndex - page.pageIndex) / divisor) * divisor
+    } else {
+      startPageIndex =
+        basePageIndex +
+        Math.floor((page.pageIndex - basePageIndex) / divisor) * divisor
+    }
+
+    return this.reflowableSpreadFromLeft(
+      this.reflowablePage(page.section, startPageIndex),
+    )
+  }
+
+  async reflowableSpreadForTarget(page) {
+    return (
+      (await this.reflowableSpreadFromCurrentPhase(page)) ||
+      this.reflowableSpreadContaining(page)
+    )
+  }
+
+  async displayReflowableTarget(section, target) {
+    let page = await this.reflowablePageForTarget(section, target)
+    let spread = await this.reflowableSpreadForTarget(page)
+    if (!spread) {
+      this.views.show()
+      return
+    }
+
+    return this.renderReflowableSpread(spread)
   }
 
   async renderReflowableSpread(spread) {
