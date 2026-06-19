@@ -464,7 +464,6 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
   const prevSize = useRef(0)
   const previousTypographyLayoutSignature = useRef<string>()
   const chapterFindInputRef = useRef<HTMLInputElement>(null)
-  const ignoreNextFindLocationSync = useRef(false)
   const previousFindLocationKey = useRef<string>()
   const [chapterFind, setChapterFind] =
     useState<ChapterFindState>(initialChapterFind)
@@ -762,26 +761,21 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
     if (locationKey === previousFindLocationKey.current) return
     previousFindLocationKey.current = locationKey
 
-    if (ignoreNextFindLocationSync.current) {
-      ignoreNextFindLocationSync.current = false
-      return
-    }
+    const manager = rendition?.manager as ReflowableManager | undefined
+    setChapterFind((state) => {
+      const visibleIndex = nearestVisibleFindResultIndex(
+        state.results,
+        state.sectionIndex,
+        manager,
+        state.activeIndex,
+      )
+      if (visibleIndex < 0 || state.activeIndex === visibleIndex) return state
 
-    const visibleIndex = firstVisibleFindResultIndex(
-      chapterFind.results,
-      chapterFind.sectionIndex,
-      rendition?.manager as ReflowableManager | undefined,
-    )
-    if (visibleIndex < 0) return
-
-    setChapterFind((state) =>
-      state.activeIndex === visibleIndex
-        ? state
-        : {
-            ...state,
-            activeIndex: visibleIndex,
-          },
-    )
+      return {
+        ...state,
+        activeIndex: visibleIndex,
+      }
+    })
   }, [
     chapterFind.open,
     chapterFind.results,
@@ -815,14 +809,7 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
           rendition?.manager as ReflowableManager | undefined,
         )
       ) {
-        ignoreNextFindLocationSync.current = true
-        void tab
-          .displayReflowableTarget(chapterFind.sectionIndex, result.cfi)
-          .finally(() => {
-            window.setTimeout(() => {
-              ignoreNextFindLocationSync.current = false
-            })
-          })
+        void tab.displayReflowableTarget(chapterFind.sectionIndex, result.cfi)
       }
     },
     [chapterFind.results, chapterFind.sectionIndex, rendition?.manager, tab],
@@ -1260,6 +1247,32 @@ function firstVisibleFindResultIndex(
   if (!pages.size) return -1
 
   return results.findIndex((result) => pages.has(result.pageIndex))
+}
+
+function nearestVisibleFindResultIndex(
+  results: ChapterFindResult[],
+  sectionIndex: number | undefined,
+  manager: ReflowableManager | undefined,
+  activeIndex: number,
+) {
+  if (sectionIndex === undefined) return -1
+
+  const pages = visibleFindPageIndexes(sectionIndex, manager)
+  if (!pages.size) return -1
+
+  let nearestIndex = -1
+  let nearestDistance = Number.POSITIVE_INFINITY
+  results.forEach((result, index) => {
+    if (!pages.has(result.pageIndex)) return
+
+    const distance = Math.abs(index - activeIndex)
+    if (distance >= nearestDistance) return
+
+    nearestIndex = index
+    nearestDistance = distance
+  })
+
+  return nearestIndex
 }
 
 function isFindResultVisible(
