@@ -14,21 +14,11 @@ import { MdAdd, MdRemove } from 'react-icons/md'
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
 import { useTranslation } from '@flow/reader/hooks'
 import { reader, useReaderSnapshot } from '@flow/reader/models'
-import {
-  defaultSettings,
-  TypographyConfiguration,
-  useSettings,
-} from '@flow/reader/state'
-import { keys } from '@flow/reader/utils'
+import { TypographyConfiguration, useSettings } from '@flow/reader/state'
 
 import { getBodyTypographyBaseline } from '../../styles'
 import { Label, TextField, TextFieldProps } from '../Form'
 import { PaneViewProps, PaneView } from '../base'
-
-enum TypographyScope {
-  Book,
-  Global,
-}
 
 type TextAlignOption = NonNullable<TypographyConfiguration['textAlign']>
 
@@ -45,28 +35,16 @@ interface SystemFont {
 
 export const TypographyView: React.FC<PaneViewProps> = (props) => {
   const { focusedBookTab } = useReaderSnapshot()
-  const [settings, setSettings] = useSettings()
-  const [scope, setScope] = useState(TypographyScope.Book)
+  const [settings] = useSettings()
   const t = useTranslation('typography')
 
   const [localFonts, setLocalFonts] = useState<FontOption[]>()
   const localFontsRequestRef = useRef<Promise<FontOption[] | undefined>>()
   const bookTypography = focusedBookTab?.book.configuration?.typography
-  const typography =
-    scope === TypographyScope.Book
-      ? bookTypography ?? defaultSettings
-      : settings
+  const typography = bookTypography ?? {}
 
-  const {
-    fontFamily,
-    fontSize,
-    fontWeight,
-    lineHeight,
-    textAlign,
-    textIndent,
-    zoom,
-    spread,
-  } = typography
+  const { fontFamily, fontSize, fontWeight, lineHeight, textIndent, zoom } =
+    typography
   const globalSpread = settings.spread ?? RenditionSpread.Auto
   const globalTextAlign: TextAlignOption = settings.textAlign ?? 'default'
 
@@ -75,34 +53,27 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
       k: K,
       v: TypographyConfiguration[K],
     ) => {
-      if (scope === TypographyScope.Book) {
-        const tab = reader.focusedBookTab
-        if (!tab) return
+      const tab = reader.focusedBookTab
+      if (!tab) return
 
-        const typography = {
-          ...tab.book.configuration?.typography,
-        }
-
-        if (v === undefined) {
-          delete typography[k]
-        } else {
-          typography[k] = v
-        }
-
-        tab.updateBook({
-          configuration: {
-            ...tab.book.configuration,
-            typography,
-          },
-        })
-      } else {
-        setSettings((prev) => ({
-          ...prev,
-          [k]: v,
-        }))
+      const typography = {
+        ...tab.book.configuration?.typography,
       }
+
+      if (v === undefined) {
+        delete typography[k]
+      } else {
+        typography[k] = v
+      }
+
+      tab.updateBook({
+        configuration: {
+          ...tab.book.configuration,
+          typography,
+        },
+      })
     },
-    [scope, setSettings],
+    [],
   )
 
   const queryBrowserFonts = useCallback(async () => {
@@ -150,43 +121,27 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
   return (
     <PaneView {...props}>
       <div className="flex min-h-0 flex-1 flex-col text-on-surface-variant typescale-body-small">
-        <div className="border-b border-on-surface-variant/25">
-          <div className="flex h-7 items-center gap-2 pl-4 pr-1.5 !text-[13px] typescale-body-medium">
-            {keys(TypographyScope)
-              .filter((k) => isNaN(Number(k)))
-              .map((scopeName) => (
-                <button
-                  key={scopeName}
-                  className={clsx(
-                    TypographyScope[scopeName] === scope
-                      ? 'text-on-surface-variant'
-                      : 'text-outline/60',
-                  )}
-                  onClick={() => setScope(TypographyScope[scopeName])}
-                >
-                  {t(`scope.${scopeName.toLowerCase()}`)}
-                </button>
-              ))}
-          </div>
-        </div>
         <div className="scroll min-h-0 flex-1">
           <div
             className="space-y-3 pl-4 pr-1.5 pt-2 pb-4"
-            key={`${scope}${focusedBookTab?.id}`}
+            key={focusedBookTab?.id}
           >
             <SpreadField
               name={t('page_view')}
-              value={
-                scope === TypographyScope.Book
-                  ? bookTypography?.spread
-                  : spread ?? RenditionSpread.Auto
-              }
-              inheritedValue={
-                scope === TypographyScope.Book ? globalSpread : undefined
-              }
-              unsetOnSelected={scope === TypographyScope.Book}
+              value={bookTypography?.spread}
+              inheritedValue={globalSpread}
+              unsetOnSelected
               onChange={(value) => {
                 setTypography('spread', value)
+              }}
+            />
+            <TextAlignField
+              name={t('text_align')}
+              value={bookTypography?.textAlign}
+              inheritedValue={globalTextAlign}
+              unsetOnSelected
+              onChange={(value) => {
+                setTypography('textAlign', value)
               }}
             />
             <NumberField
@@ -245,21 +200,6 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
               value={textIndent}
               onChange={(v) => {
                 setTypography('textIndent', v || undefined)
-              }}
-            />
-            <TextAlignField
-              name={t('text_align')}
-              value={
-                scope === TypographyScope.Book
-                  ? bookTypography?.textAlign
-                  : textAlign ?? 'default'
-              }
-              inheritedValue={
-                scope === TypographyScope.Book ? globalTextAlign : undefined
-              }
-              unsetOnSelected={scope === TypographyScope.Book}
-              onChange={(value) => {
-                setTypography('textAlign', value)
               }}
             />
           </div>

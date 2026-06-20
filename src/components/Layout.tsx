@@ -28,7 +28,7 @@ import { navbarState } from '../state'
 import { activeClass } from '../styles'
 
 import { SplitView, useSplitViewItem } from './base'
-import { Settings } from './pages'
+import { SettingsDialog } from './pages'
 import { AnnotationView } from './viewlets/AnnotationView'
 import { ImageView } from './viewlets/ImageView'
 import { SearchView } from './viewlets/SearchView'
@@ -40,6 +40,7 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
   useColorScheme()
 
   const [ready, setReady] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const setAction = useSetAction()
   const mobile = useMobile()
 
@@ -52,11 +53,25 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
   return (
     <div id="layout" className="select-none">
       <SplitView>
-        {mobile === false && <ActivityBar />}
-        {mobile === true && <NavigationBar />}
+        {mobile === false && (
+          <ActivityBar
+            settingsOpen={settingsOpen}
+            onSettingsOpenChange={setSettingsOpen}
+          />
+        )}
+        {mobile === true && (
+          <NavigationBar
+            settingsOpen={settingsOpen}
+            onSettingsOpenChange={setSettingsOpen}
+          />
+        )}
         {ready && <SideBar />}
         {ready && <Reader>{children}</Reader>}
       </SplitView>
+      <SettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
     </div>
   )
 }
@@ -110,8 +125,16 @@ const viewActions: IViewAction[] = [
   },
 ]
 
-const ActivityBar: React.FC = () => {
-  useSplitViewItem(ActivityBar, {
+interface SettingsActionProps {
+  settingsOpen: boolean
+  onSettingsOpenChange: (open: boolean) => void
+}
+
+const ActivityBar: React.FC<SettingsActionProps> = ({
+  settingsOpen,
+  onSettingsOpenChange,
+}) => {
+  useSplitViewItem('ActivityBar', {
     preferredSize: 48,
     minSize: 48,
     maxSize: 48,
@@ -126,7 +149,11 @@ const ActivityBar: React.FC = () => {
       )}
     >
       <ViewActionBar env={Env.Desktop} />
-      <PageActionBar env={Env.Desktop} />
+      <PageActionBar
+        env={Env.Desktop}
+        settingsOpen={settingsOpen}
+        onSettingsOpenChange={onSettingsOpenChange}
+      />
     </div>
   )
 }
@@ -134,6 +161,8 @@ const ActivityBar: React.FC = () => {
 interface EnvActionBarProps extends ComponentProps<'div'> {
   env: Env
 }
+
+interface PageActionBarProps extends EnvActionBarProps, SettingsActionProps {}
 
 function ViewActionBar({ className, env }: EnvActionBarProps) {
   const [action, setAction] = useAction()
@@ -159,14 +188,17 @@ function ViewActionBar({ className, env }: EnvActionBarProps) {
   )
 }
 
-function PageActionBar({ env }: EnvActionBarProps) {
+function PageActionBar({
+  env,
+  settingsOpen,
+  onSettingsOpenChange,
+}: PageActionBarProps) {
   const mobile = useMobile()
   const [action, setAction] = useState('Home')
   const [themeOpen, setThemeOpen] = useState(false)
   const t = useTranslation()
 
   interface IPageAction extends IAction {
-    Component?: React.FC
     disabled?: boolean
   }
 
@@ -188,7 +220,6 @@ function PageActionBar({ env }: EnvActionBarProps) {
         name: 'settings',
         title: 'settings',
         Icon: RiSettings5Line,
-        Component: Settings,
         env: Env.Desktop | Env.Mobile,
       },
     ],
@@ -200,10 +231,11 @@ function PageActionBar({ env }: EnvActionBarProps) {
       <ActionBar>
         {pageActions
           .filter((a) => a.env & env)
-          .map(({ name, title, Icon, Component, disabled }, i) => {
+          .map(({ name, title, Icon, disabled }, i) => {
             const active = mobile
               ? action === name
-              : themeOpen && name === 'theme'
+              : (themeOpen && name === 'theme') ||
+                (settingsOpen && name === 'settings')
             const actionButton = (
               <Action
                 key={i}
@@ -218,7 +250,11 @@ function PageActionBar({ env }: EnvActionBarProps) {
                   }
 
                   setThemeOpen(false)
-                  Component ? reader.addTab(Component) : reader.clear()
+                  if (name === 'settings') {
+                    onSettingsOpenChange(true)
+                  } else {
+                    reader.clear()
+                  }
                   setAction(name)
                 }}
               />
@@ -245,7 +281,10 @@ function PageActionBar({ env }: EnvActionBarProps) {
   )
 }
 
-function NavigationBar() {
+function NavigationBar({
+  settingsOpen,
+  onSettingsOpenChange,
+}: SettingsActionProps) {
   const r = useReaderSnapshot()
   const readMode = r.focusedTab?.isBook
   const [visible, setVisible] = useRecoilState(navbarState)
@@ -271,7 +310,11 @@ function NavigationBar() {
             className={clsx(visible || 'hidden')}
           />
         ) : (
-          <PageActionBar env={Env.Mobile} />
+          <PageActionBar
+            env={Env.Mobile}
+            settingsOpen={settingsOpen}
+            onSettingsOpenChange={onSettingsOpenChange}
+          />
         )}
       </div>
     </>

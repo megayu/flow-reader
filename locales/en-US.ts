@@ -55,6 +55,8 @@ export default {
 
   'settings.title': 'Settings',
   'settings.language': 'Language',
+  'settings.default_page_view': 'Default View',
+  'settings.default_text_align': 'Default Alignment',
   'settings.cache': 'Cache',
   'settings.cache.clear': 'Clear',
   'settings.text_selection_menu': 'Text Selection Menu',

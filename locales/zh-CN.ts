@@ -55,6 +55,8 @@ export default {
 
   'settings.title': '设置',
   'settings.language': '语言',
+  'settings.default_page_view': '默认视图',
+  'settings.default_text_align': '默认对齐方式',
   'settings.cache': '缓存',
   'settings.cache.clear': '清除',
   'settings.text_selection_menu': '文本选择菜单',

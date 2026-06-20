@@ -22,9 +22,16 @@ export function useTypography(tab: BookTab) {
 
   return useMemo(
     () => ({
-      ...settings,
+      spread: settings.spread,
+      textAlign: settings.textAlign,
+      hideEndnotes: settings.hideEndnotes,
       ...removeUndefinedProperty(book.configuration?.typography ?? {}),
     }),
-    [book.configuration?.typography, settings],
+    [
+      book.configuration?.typography,
+      settings.hideEndnotes,
+      settings.spread,
+      settings.textAlign,
+    ],
   )
 }
