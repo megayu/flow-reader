@@ -1,12 +1,6 @@
 import { atom, useRecoilState, useSetRecoilState } from 'recoil'
 
-export type Action =
-  | 'toc'
-  | 'search'
-  | 'annotation'
-  | 'typography'
-  | 'image'
-  | 'theme'
+export type Action = 'toc' | 'search' | 'annotation' | 'typography' | 'image'
 export const actionState = atom<Action | undefined>({
   key: 'action',
   default: undefined,

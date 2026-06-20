@@ -1,0 +1,200 @@
+import clsx from 'clsx'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { HexColorPicker } from 'react-colorful'
+import { MdContentCopy, MdContentPaste } from 'react-icons/md'
+
+import { useTranslation } from '../hooks'
+
+import { Button, IconButton } from './Button'
+
+const colorSlotCount = 9
+
+interface ColorPickerPopoverProps {
+  className?: string
+  defaultValue: string
+  value: string
+  onApply: (color: string) => void
+  onCancel: () => void
+  onPreview: (color: string) => void
+  handleEscape?: boolean
+}
+
+export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
+  className,
+  defaultValue,
+  value,
+  onApply,
+  onCancel,
+  onPreview,
+  handleEscape = true,
+}) => {
+  const initialColorRef = useRef(normalizeHexColor(value) ?? defaultValue)
+  const normalizedDefault = normalizeHexColor(defaultValue) ?? '#0ea5e9'
+  const [draft, setDraft] = useState(initialColorRef.current)
+  const [input, setInput] = useState(initialColorRef.current)
+  const [slots, setSlots] = useState<(string | undefined)[]>(
+    Array.from({ length: colorSlotCount }),
+  )
+  const t = useTranslation('color_picker')
+
+  const slotItems = useMemo(() => slots.slice(0, colorSlotCount), [slots])
+
+  useEffect(() => {
+    if (!handleEscape) return
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopPropagation()
+      onPreview(initialColorRef.current)
+      onCancel()
+    }
+
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [handleEscape, onCancel, onPreview])
+
+  const updateDraft = (color: string) => {
+    const normalized = normalizeHexColor(color)
+    if (!normalized) return
+
+    setDraft(normalized)
+    setInput(normalized)
+    onPreview(normalized)
+  }
+
+  const saveDraftToSlot = () => {
+    setSlots((prev) => {
+      const next = Array.from({ length: colorSlotCount }, (_, i) => prev[i])
+      const filledColors = next.filter(Boolean)
+      if (filledColors.includes(draft)) return next
+
+      const emptyIndex = next.findIndex((color) => !color)
+      if (emptyIndex >= 0) {
+        next[emptyIndex] = draft
+        return next
+      }
+
+      return next
+    })
+  }
+
+  return (
+    <div
+      className={clsx(
+        'bg-default w-72 rounded-sm p-3 text-on-surface-variant shadow-lg ring-1 ring-inset ring-on-surface-variant/20',
+        className,
+      )}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <HexColorPicker
+        color={draft}
+        onChange={updateDraft}
+        className="!h-36 !w-full"
+      />
+      <div className="mt-3 flex items-center gap-2">
+        <div
+          className="h-8 w-8 shrink-0 rounded-sm ring-1 ring-inset ring-on-surface-variant/30"
+          style={{ backgroundColor: draft }}
+        />
+        <input
+          value={input}
+          spellCheck={false}
+          className="textfield h-8 min-w-0 flex-1 bg-transparent px-2 font-mono !text-[13px] text-on-surface-variant"
+          onChange={(e) => {
+            const next = e.target.value
+            setInput(next)
+
+            const normalized = normalizeHexColor(next)
+            if (!normalized) return
+
+            setDraft(normalized)
+            onPreview(normalized)
+          }}
+          onBlur={() => setInput(draft)}
+        />
+        <IconButton
+          title={t('copy')}
+          Icon={MdContentCopy}
+          className="text-outline"
+          onClick={() => {
+            navigator.clipboard?.writeText(draft).catch(() => undefined)
+          }}
+        />
+        <IconButton
+          title={t('paste')}
+          Icon={MdContentPaste}
+          className="text-outline"
+          onClick={() => {
+            navigator.clipboard
+              ?.readText()
+              .then(updateDraft)
+              .catch(() => undefined)
+          }}
+        />
+      </div>
+      <div className="mt-3 grid grid-cols-9 gap-1">
+        {slotItems.map((color, index) => (
+          <button
+            type="button"
+            key={index}
+            className="h-6 rounded-sm bg-surface ring-1 ring-inset ring-on-surface-variant/25"
+            style={color ? { backgroundColor: color } : undefined}
+            onClick={() => {
+              if (color) {
+                updateDraft(color)
+              } else {
+                saveDraftToSlot()
+              }
+            }}
+          />
+        ))}
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <Button variant="secondary" compact onClick={saveDraftToSlot}>
+          {t('save_slot')}
+        </Button>
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="secondary"
+            compact
+            onClick={() => updateDraft(normalizedDefault)}
+          >
+            {t('reset')}
+          </Button>
+          <Button
+            variant="secondary"
+            compact
+            onClick={() => {
+              onPreview(initialColorRef.current)
+              onCancel()
+            }}
+          >
+            {t('cancel')}
+          </Button>
+          <Button compact onClick={() => onApply(draft)}>
+            {t('apply')}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function normalizeHexColor(value: string | undefined) {
+  const raw = value?.trim()
+  if (!raw) return
+
+  const hex = raw.startsWith('#') ? raw.slice(1) : raw
+  if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+    return `#${hex
+      .split('')
+      .map((char) => `${char}${char}`)
+      .join('')
+      .toUpperCase()}`
+  }
+
+  if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+    return `#${hex.toUpperCase()}`
+  }
+}

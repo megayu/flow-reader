@@ -1,67 +1,196 @@
 import clsx from 'clsx'
-import { ComponentProps } from 'react'
+import { ComponentProps, useEffect, useRef, useState } from 'react'
 
 import {
   backgroundOptions,
+  customBackgroundValue,
   darkBackgroundColor,
+  defaultCustomBackgroundColor,
+  isDarkPaletteColor,
+  normalizePaletteColor,
   useBackground,
   useColorScheme,
-  useSourceColor,
-  useTranslation,
 } from '@flow/reader/hooks'
-import { useSettings } from '@flow/reader/state'
+import { useSettings, type Settings } from '@flow/reader/state'
 
-import { ColorPicker, Label } from '../Form'
+import { ColorPickerPopover } from '../ColorPickerPopover'
 import { PaneViewProps, PaneView } from '../base'
 
 export const ThemeView: React.FC<PaneViewProps> = (props) => {
-  const { dark, setScheme } = useColorScheme()
-  const { sourceColor, setSourceColor } = useSourceColor()
-  const [, setBackground] = useBackground()
-  const [{ theme }] = useSettings()
-  const t = useTranslation('theme')
-  const selectedBackground = theme?.background ?? -1
-
   return (
     <PaneView {...props}>
-      <div className="scroll min-h-0 flex-1 text-on-surface-variant typescale-body-small">
-        <div className="space-y-3 pl-4 pr-1.5 pt-2 pb-4">
-          <div>
-            <ColorPicker
-              name={t('source_color')}
-              defaultValue={sourceColor}
-              onChange={(e) => {
-                setSourceColor(e.target.value)
-              }}
-            />
-          </div>
-          <div>
-            <Label name={t('background_color')}></Label>
-            <div className="flex gap-2">
-              {backgroundOptions.map((background) => (
-                <Background
-                  key={background.value}
-                  className={background.className}
-                  selected={!dark && selectedBackground === background.value}
-                  onClick={() => {
-                    setScheme('light')
-                    setBackground(background.value)
-                  }}
-                />
-              ))}
-              <Background
-                style={{ backgroundColor: darkBackgroundColor }}
-                selected={dark}
-                onClick={() => {
-                  setScheme('dark')
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+      <ThemePanel />
     </PaneView>
   )
+}
+
+interface ThemePanelProps {
+  className?: string
+  onClose?: () => void
+}
+export const ThemePanel: React.FC<ThemePanelProps> = ({
+  className,
+  onClose,
+}) => {
+  const { dark, scheme, setScheme } = useColorScheme()
+  const [, setBackground] = useBackground()
+  const [{ theme }, setSettings] = useSettings()
+  const [customPickerOpen, setCustomPickerOpen] = useState(false)
+  const previousThemeRef = useRef<Settings['theme']>()
+  const previousSchemeRef = useRef<'light' | 'dark' | 'system'>('system')
+  const customSessionActiveRef = useRef(false)
+  const customSessionAppliedRef = useRef(false)
+  const selectedBackground = theme?.background ?? -1
+  const customBackground =
+    normalizePaletteColor(theme?.customBackground) ??
+    defaultCustomBackgroundColor
+  const positioned = hasPositionClass(className)
+
+  const applyBackground = (background: number) => {
+    customSessionActiveRef.current = false
+    customSessionAppliedRef.current = true
+    setCustomPickerOpen(false)
+    setScheme('light')
+    setBackground(background)
+  }
+
+  const previewCustomBackground = (color: string) => {
+    setScheme(isDarkPaletteColor(color) ? 'dark' : 'light')
+    setSettings((prev) => ({
+      ...prev,
+      theme: {
+        ...prev.theme,
+        background: customBackgroundValue,
+        customBackground: color,
+      },
+    }))
+  }
+
+  const openCustomPicker = () => {
+    if (!customSessionActiveRef.current) {
+      previousThemeRef.current = theme
+      previousSchemeRef.current = scheme ?? 'system'
+      customSessionActiveRef.current = true
+      customSessionAppliedRef.current = false
+    }
+    setCustomPickerOpen(true)
+    previewCustomBackground(customBackground)
+  }
+
+  const restorePreviousTheme = () => {
+    if (customSessionActiveRef.current && !customSessionAppliedRef.current) {
+      setSettings((prev) => ({
+        ...prev,
+        theme: previousThemeRef.current,
+      }))
+      setScheme(previousSchemeRef.current)
+    }
+    customSessionActiveRef.current = false
+    customSessionAppliedRef.current = false
+    setCustomPickerOpen(false)
+  }
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopPropagation()
+
+      if (customPickerOpen) {
+        restorePreviousTheme()
+      }
+
+      onClose?.()
+    }
+
+    const targets = [window, ...getIframeWindows()]
+    targets.forEach((target) =>
+      target.addEventListener('keydown', onKeyDown, true),
+    )
+    return () => {
+      targets.forEach((target) =>
+        target.removeEventListener('keydown', onKeyDown, true),
+      )
+    }
+  })
+
+  useEffect(() => {
+    return () => {
+      if (customSessionActiveRef.current && !customSessionAppliedRef.current) {
+        setSettings((prev) => ({
+          ...prev,
+          theme: previousThemeRef.current,
+        }))
+        setScheme(previousSchemeRef.current)
+      }
+    }
+  }, [setScheme, setSettings])
+
+  return (
+    <div
+      className={clsx(
+        'bg-default/70 z-[100] flex flex-col-reverse items-center gap-2 rounded-full p-1 text-on-surface-variant shadow-lg ring-1 ring-inset ring-on-surface-variant/20 backdrop-blur-sm typescale-body-small',
+        positioned || 'relative',
+        className,
+      )}
+    >
+      {backgroundOptions.map((background) => (
+        <Background
+          key={background.value}
+          style={{ backgroundColor: background.color }}
+          selected={!dark && selectedBackground === background.value}
+          onClick={() => applyBackground(background.value)}
+        />
+      ))}
+      <Background
+        style={{ backgroundColor: darkBackgroundColor }}
+        selected={dark && selectedBackground !== customBackgroundValue}
+        onClick={() => {
+          customSessionActiveRef.current = false
+          customSessionAppliedRef.current = true
+          setCustomPickerOpen(false)
+          setScheme('dark')
+        }}
+      />
+      <Background
+        style={{ backgroundColor: customBackground }}
+        selected={selectedBackground === customBackgroundValue}
+        className="border-dashed"
+        onClick={openCustomPicker}
+      />
+      {customPickerOpen && (
+        <div className="absolute left-[46px] top-0 z-[110]">
+          <ColorPickerPopover
+            value={customBackground}
+            defaultValue={defaultCustomBackgroundColor}
+            handleEscape={false}
+            onPreview={previewCustomBackground}
+            onApply={(color) => {
+              customSessionAppliedRef.current = true
+              customSessionActiveRef.current = false
+              previewCustomBackground(color)
+              setCustomPickerOpen(false)
+            }}
+            onCancel={restorePreviousTheme}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function hasPositionClass(className: string | undefined) {
+  return /\b(?:absolute|fixed|relative|sticky)\b/.test(className ?? '')
+}
+
+function getIframeWindows() {
+  return Array.from(document.querySelectorAll('iframe')).flatMap((frame) => {
+    try {
+      return frame.contentWindow ? [frame.contentWindow] : []
+    } catch {
+      return []
+    }
+  })
 }
 
 interface BackgroundProps extends ComponentProps<'button'> {
@@ -77,7 +206,7 @@ const Background: React.FC<BackgroundProps> = ({
       type="button"
       aria-pressed={selected}
       className={clsx(
-        'light h-6 w-6 border',
+        'light h-9 w-9 rounded-full border shadow-sm',
         selected ? 'border-2 border-primary70' : 'border-outline-variant',
         className,
       )}

@@ -1,11 +1,13 @@
 import Dexie from 'dexie'
 import type { ReactNode } from 'react'
+import { useState } from 'react'
 
-import { useLocale, useTranslation } from '@flow/reader/hooks'
+import { useLocale, useSourceColor, useTranslation } from '@flow/reader/hooks'
 import { AppLocale, localeNames } from '@flow/reader/locales'
 import { useSettings } from '@flow/reader/state'
 
 import { Button } from '../Button'
+import { ColorPickerPopover, normalizeHexColor } from '../ColorPickerPopover'
 import { Checkbox, Select } from '../Form'
 import { Page } from '../Page'
 
@@ -31,6 +33,7 @@ export const Settings: React.FC = () => {
             ))}
           </Select>
         </Item>
+        <SourceColorSetting />
         <Item title={t('text_selection_menu')}>
           <Checkbox
             name={t('text_selection_menu.enable')}
@@ -70,6 +73,55 @@ export const Settings: React.FC = () => {
         </Item>
       </div>
     </Page>
+  )
+}
+
+const SourceColorSetting: React.FC = () => {
+  const { sourceColor, setSourceColor } = useSourceColor()
+  const [open, setOpen] = useState(false)
+  const [displayColor, setDisplayColor] = useState(sourceColor)
+  const t = useTranslation('theme')
+
+  const color = normalizeHexColor(displayColor) ?? sourceColor
+
+  return (
+    <Item title={t('source_color')}>
+      <div className="relative inline-block">
+        <button
+          type="button"
+          className="bg-default flex h-8 min-w-[9rem] items-center gap-2 px-2 text-left text-on-surface-variant ring-1 ring-inset ring-surface-variant"
+          onClick={() => {
+            setDisplayColor(sourceColor)
+            setOpen(true)
+          }}
+        >
+          <span
+            className="h-5 w-8 shrink-0 rounded-sm ring-1 ring-inset ring-on-surface-variant/30"
+            style={{ backgroundColor: color }}
+          />
+          <span className="font-mono !text-[13px]">{color}</span>
+        </button>
+        {open && (
+          <ColorPickerPopover
+            className="absolute left-0 top-full z-20 mt-2"
+            value={sourceColor}
+            defaultValue="#0ea5e9"
+            onPreview={(next) => {
+              setDisplayColor(next)
+              setSourceColor(next)
+            }}
+            onApply={(next) => {
+              setSourceColor(next)
+              setDisplayColor(next)
+              setOpen(false)
+            }}
+            onCancel={() => {
+              setOpen(false)
+            }}
+          />
+        )}
+      </div>
+    </Item>
   )
 }
 

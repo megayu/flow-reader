@@ -46,6 +46,13 @@ export default {
   'theme.source_color': 'Source Color',
   'theme.background_color': 'Background Color',
 
+  'color_picker.copy': 'Copy color',
+  'color_picker.paste': 'Paste color',
+  'color_picker.save_slot': 'Save',
+  'color_picker.reset': 'Reset',
+  'color_picker.cancel': 'Cancel',
+  'color_picker.apply': 'Apply',
+
   'settings.title': 'Settings',
   'settings.language': 'Language',
   'settings.cache': 'Cache',

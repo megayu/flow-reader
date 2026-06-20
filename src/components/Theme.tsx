@@ -10,42 +10,6 @@ import { rgbFromArgb } from '../color'
 import { useSetTheme, useSourceColor } from '../hooks'
 import { range } from '../utils'
 
-// let `tailwindcss` generate classes
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const classNamesToGenerate = [
-  'bg-surface',
-  'bg-surface1',
-  'bg-surface2',
-  'bg-surface3',
-  'bg-surface4',
-  'bg-surface5',
-  'bg-surface6',
-  'bg-surface7',
-  'bg-surface8',
-  'bg-surface9',
-  'bg-[#171C20]',
-  'bg-[#1D2328]',
-  'bg-[#36424B]',
-  'bg-[#F3E8D2]',
-  'bg-[#E1EED8]',
-  'bg-[#D1DEE6]',
-  'bg-[#F4F6F7]',
-  'bg-[#E8EDF0]',
-  'bg-[#DDE5EA]',
-  'bg-[#EADBBC]',
-  'bg-[#E1CCA5]',
-  'bg-[#D8BE94]',
-  'bg-[#D3E4C8]',
-  'bg-[#C4D8B7]',
-  'bg-[#B7CBA8]',
-  'hover:bg-surface',
-  'hover:bg-surface1',
-  'hover:bg-surface2',
-  'hover:bg-surface3',
-  'hover:bg-surface4',
-  'hover:bg-surface5',
-]
-
 function camelToSnake(s: string) {
   return s.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()
 }

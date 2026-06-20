@@ -53,6 +53,9 @@ importers:
       react:
         specifier: 18.2.0
         version: 18.2.0
+      react-colorful:
+        specifier: 5.7.0
+        version: 5.7.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       react-cool-virtual:
         specifier: 0.7.0
         version: 0.7.0(react@18.2.0)
@@ -5068,6 +5071,12 @@ packages:
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0 || ^19.0.0-rc
 
+  react-colorful@5.7.0:
+    resolution: {integrity: sha512-fuesYIemttah97XmsIHmz4OORDHiSFzyc9HMAIrCHJou2jaRQmL8cFJ76K4zQhhj8jzwOBlOi4BaGTjjOZCfTg==}
+    peerDependencies:
+      react: '>=16.8.0'
+      react-dom: '>=16.8.0'
+
   react-cool-virtual@0.7.0:
     resolution: {integrity: sha512-oWRsF0Pf9dRWncpFvsCNWm0W/d/UEbUqxNIuhGEcLzdW16leokcl9gSYG9Ha5raaF/qq029W1cj65zAwgJyR7A==}
     peerDependencies:
@@ -6594,7 +6603,7 @@ snapshots:
       '@babel/traverse': 7.26.5
       '@babel/types': 7.26.5
       convert-source-map: 1.9.0
-      debug: 4.4.0(supports-color@6.1.0)
+      debug: 4.4.0(supports-color@9.4.0)
       gensync: 1.0.0-beta.2
       json5: 2.2.3
       lodash: 4.18.1
@@ -6617,7 +6626,7 @@ snapshots:
       '@babel/traverse': 7.26.5
       '@babel/types': 7.26.5
       convert-source-map: 2.0.0
-      debug: 4.4.0(supports-color@6.1.0)
+      debug: 4.4.0(supports-color@9.4.0)
       gensync: 1.0.0-beta.2
       json5: 2.2.3
       semver: 6.3.1
@@ -6675,7 +6684,7 @@ snapshots:
       '@babel/core': 7.26.0
       '@babel/helper-compilation-targets': 7.26.5
       '@babel/helper-plugin-utils': 7.26.5
-      debug: 4.4.0(supports-color@6.1.0)
+      debug: 4.4.0(supports-color@9.4.0)
       lodash.debounce: 4.0.8
       resolve: 1.22.10
     transitivePeerDependencies:
@@ -8954,10 +8963,6 @@ snapshots:
     optionalDependencies:
       supports-color: 6.0.0
 
-  debug@3.2.7:
-    dependencies:
-      ms: 2.1.3
-
   debug@3.2.7(supports-color@6.1.0):
     dependencies:
       ms: 2.1.3
@@ -9549,7 +9554,7 @@ snapshots:
 
   eslint-import-resolver-node@0.3.9:
     dependencies:
-      debug: 3.2.7
+      debug: 3.2.7(supports-color@6.1.0)
       is-core-module: 2.16.1
       resolve: 1.22.10
     transitivePeerDependencies:
@@ -9569,7 +9574,7 @@ snapshots:
 
   eslint-module-utils@2.13.0(@typescript-eslint/parser@5.19.0(eslint@8.13.0)(typescript@4.6.3))(eslint-import-resolver-node@0.3.9)(eslint@8.13.0):
     dependencies:
-      debug: 3.2.7
+      debug: 3.2.7(supports-color@6.1.0)
     optionalDependencies:
       '@typescript-eslint/parser': 5.19.0(eslint@8.13.0)(typescript@4.6.3)
       eslint: 8.13.0
@@ -9584,7 +9589,7 @@ snapshots:
       array.prototype.findlastindex: 1.2.6
       array.prototype.flat: 1.3.3
       array.prototype.flatmap: 1.3.3
-      debug: 3.2.7
+      debug: 3.2.7(supports-color@6.1.0)
       doctrine: 2.1.0
       eslint: 8.13.0
       eslint-import-resolver-node: 0.3.9
@@ -11211,7 +11216,7 @@ snapshots:
   log4js@6.9.1:
     dependencies:
       date-format: 4.0.14
-      debug: 4.4.0(supports-color@6.1.0)
+      debug: 4.4.0(supports-color@9.4.0)
       flatted: 3.3.2
       rfdc: 1.4.1
       streamroller: 3.1.5
@@ -11453,7 +11458,7 @@ snapshots:
 
   micromark@2.11.4:
     dependencies:
-      debug: 4.4.0(supports-color@6.1.0)
+      debug: 4.4.0(supports-color@9.4.0)
       parse-entities: 2.0.0
     transitivePeerDependencies:
       - supports-color
@@ -12377,6 +12382,11 @@ snapshots:
       '@babel/runtime': 7.26.0
       react: 18.2.0
 
+  react-colorful@5.7.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
+    dependencies:
+      react: 18.2.0
+      react-dom: 18.2.0(react@18.2.0)
+
   react-cool-virtual@0.7.0(react@18.2.0):
     dependencies:
       '@babel/runtime': 7.26.0
@@ -13215,7 +13225,7 @@ snapshots:
   streamroller@3.1.5:
     dependencies:
       date-format: 4.0.14
-      debug: 4.4.0(supports-color@6.1.0)
+      debug: 4.4.0(supports-color@9.4.0)
       fs-extra: 8.1.0
     transitivePeerDependencies:
       - supports-color

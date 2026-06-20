@@ -32,7 +32,7 @@ import { Settings } from './pages'
 import { AnnotationView } from './viewlets/AnnotationView'
 import { ImageView } from './viewlets/ImageView'
 import { SearchView } from './viewlets/SearchView'
-import { ThemeView } from './viewlets/ThemeView'
+import { ThemePanel } from './viewlets/ThemeView'
 import { TocView } from './viewlets/TocView'
 import { TypographyView } from './viewlets/TypographyView'
 
@@ -108,13 +108,6 @@ const viewActions: IViewAction[] = [
     View: TypographyView,
     env: Env.Desktop | Env.Mobile,
   },
-  {
-    name: 'theme',
-    title: 'theme',
-    Icon: MdOutlineLightMode,
-    View: ThemeView,
-    env: Env.Desktop | Env.Mobile,
-  },
 ]
 
 const ActivityBar: React.FC = () => {
@@ -169,6 +162,7 @@ function ViewActionBar({ className, env }: EnvActionBarProps) {
 function PageActionBar({ env }: EnvActionBarProps) {
   const mobile = useMobile()
   const [action, setAction] = useState('Home')
+  const [themeOpen, setThemeOpen] = useState(false)
   const t = useTranslation()
 
   interface IPageAction extends IAction {
@@ -178,6 +172,12 @@ function PageActionBar({ env }: EnvActionBarProps) {
 
   const pageActions: IPageAction[] = useMemo(
     () => [
+      {
+        name: 'theme',
+        title: 'theme',
+        Icon: MdOutlineLightMode,
+        env: Env.Desktop,
+      },
       {
         name: 'home',
         title: 'home',
@@ -196,23 +196,52 @@ function PageActionBar({ env }: EnvActionBarProps) {
   )
 
   return (
-    <ActionBar>
-      {pageActions
-        .filter((a) => a.env & env)
-        .map(({ name, title, Icon, Component, disabled }, i) => (
-          <Action
-            title={t(`${title}.title`)}
-            Icon={Icon}
-            active={mobile ? action === name : undefined}
-            disabled={disabled}
-            onClick={() => {
-              Component ? reader.addTab(Component) : reader.clear()
-              setAction(name)
-            }}
-            key={i}
-          />
-        ))}
-    </ActionBar>
+    <div>
+      <ActionBar>
+        {pageActions
+          .filter((a) => a.env & env)
+          .map(({ name, title, Icon, Component, disabled }, i) => {
+            const active = mobile
+              ? action === name
+              : themeOpen && name === 'theme'
+            const actionButton = (
+              <Action
+                key={i}
+                title={t(`${title}.title`)}
+                Icon={Icon}
+                active={active}
+                disabled={disabled}
+                onClick={() => {
+                  if (name === 'theme') {
+                    setThemeOpen((open) => !open)
+                    return
+                  }
+
+                  setThemeOpen(false)
+                  Component ? reader.addTab(Component) : reader.clear()
+                  setAction(name)
+                }}
+              />
+            )
+
+            if (name === 'theme') {
+              return (
+                <div className="relative h-12 w-12" key={i}>
+                  {themeOpen && (
+                    <ThemePanel
+                      className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2"
+                      onClose={() => setThemeOpen(false)}
+                    />
+                  )}
+                  {actionButton}
+                </div>
+              )
+            }
+
+            return actionButton
+          })}
+      </ActionBar>
+    </div>
   )
 }
 

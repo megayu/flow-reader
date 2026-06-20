@@ -49,6 +49,7 @@ export interface TypographyConfiguration {
 interface ThemeConfiguration {
   source?: string
   background?: number
+  customBackground?: string
 }
 
 export const defaultSettings: Settings = {

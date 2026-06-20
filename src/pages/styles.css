@@ -7,12 +7,37 @@ body,
 #__next,
 #layout {
   height: 100%;
+  overflow: hidden;
+  background-color: var(--flow-bg-content);
+}
+
+:root {
+  --flow-bg-content: #ffffff;
+  --flow-bg-sidebar: #f0f0f0;
+  --flow-bg-activity: #e0e0e0;
+  --flow-bg-active: #d1d1d1;
 }
 
 .checkbox,
 .textfield,
 select {
   @apply ring-1 ring-inset ring-surface-variant;
+}
+
+.flow-bg-content {
+  background-color: var(--flow-bg-content);
+}
+
+.flow-bg-sidebar {
+  background-color: var(--flow-bg-sidebar);
+}
+
+.flow-bg-activity {
+  background-color: var(--flow-bg-activity);
+}
+
+.flow-bg-active {
+  background-color: var(--flow-bg-active);
 }
 
 .textfield:focus-within,

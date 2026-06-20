@@ -46,6 +46,13 @@ export default {
   'theme.source_color': '源色',
   'theme.background_color': '背景色',
 
+  'color_picker.copy': '复制颜色',
+  'color_picker.paste': '粘贴颜色',
+  'color_picker.save_slot': '暂存',
+  'color_picker.reset': '重置',
+  'color_picker.cancel': '取消',
+  'color_picker.apply': '应用',
+
   'settings.title': '设置',
   'settings.language': '语言',
   'settings.cache': '缓存',
