@@ -28,6 +28,12 @@ export const navbarState = atom<boolean>({
   default: false,
 })
 
+export type ViewMode = 'reader' | 'library'
+export const viewModeState = atom<ViewMode>({
+  key: 'viewMode',
+  default: 'library',
+})
+
 export interface Settings extends TypographyConfiguration {
   theme?: ThemeConfiguration
   enableTextSelectionMenu?: boolean

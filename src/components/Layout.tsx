@@ -5,13 +5,15 @@ import { useMemo } from 'react'
 import { IconType } from 'react-icons'
 import {
   MdFormatUnderlined,
+  MdLibraryBooks,
+  MdMenuBook,
   MdOutlineImage,
   MdSearch,
   MdToc,
   MdOutlineLightMode,
 } from 'react-icons/md'
 import { RiFontSize, RiHome6Line, RiSettings5Line } from 'react-icons/ri'
-import { useRecoilState } from 'recoil'
+import { useRecoilState, useRecoilValue } from 'recoil'
 
 import {
   Env,
@@ -24,7 +26,7 @@ import {
   useTranslation,
 } from '../hooks'
 import { reader, useReaderSnapshot } from '../models'
-import { navbarState } from '../state'
+import { navbarState, viewModeState } from '../state'
 import { activeClass } from '../styles'
 
 import { SplitView, useSplitViewItem } from './base'
@@ -166,20 +168,26 @@ interface PageActionBarProps extends EnvActionBarProps, SettingsActionProps {}
 
 function ViewActionBar({ className, env }: EnvActionBarProps) {
   const [action, setAction] = useAction()
+  const viewMode = useRecoilValue(viewModeState)
   const t = useTranslation()
+  const disabled = viewMode === 'library'
 
   return (
     <ActionBar className={className}>
       {viewActions
         .filter((a) => a.env & env)
         .map(({ name, title, Icon }) => {
-          const active = action === name
+          const active = !disabled && action === name
           return (
             <Action
               title={t(`${title}.title`)}
               Icon={Icon}
               active={active}
-              onClick={() => setAction(active ? undefined : name)}
+              disabled={disabled}
+              onClick={() => {
+                if (disabled) return
+                setAction(active ? undefined : name)
+              }}
               key={name}
             />
           )
@@ -196,6 +204,8 @@ function PageActionBar({
   const mobile = useMobile()
   const [action, setAction] = useState('Home')
   const [themeOpen, setThemeOpen] = useState(false)
+  const [viewMode, setViewMode] = useRecoilState(viewModeState)
+  const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation()
 
   interface IPageAction extends IAction {
@@ -204,6 +214,14 @@ function PageActionBar({
 
   const pageActions: IPageAction[] = useMemo(
     () => [
+      {
+        name: 'mode',
+        title:
+          viewMode === 'library' ? 'mode.return_reader' : 'mode.enter_library',
+        Icon: viewMode === 'library' ? MdMenuBook : MdLibraryBooks,
+        disabled: viewMode === 'library' && !focusedBookTab,
+        env: Env.Desktop,
+      },
       {
         name: 'theme',
         title: 'theme',
@@ -223,7 +241,7 @@ function PageActionBar({
         env: Env.Desktop | Env.Mobile,
       },
     ],
-    [],
+    [focusedBookTab, viewMode],
   )
 
   return (
@@ -234,12 +252,14 @@ function PageActionBar({
           .map(({ name, title, Icon, disabled }, i) => {
             const active = mobile
               ? action === name
-              : (themeOpen && name === 'theme') ||
+              : (viewMode === 'library' && name === 'mode') ||
+                (themeOpen && name === 'theme') ||
                 (settingsOpen && name === 'settings')
+            const titleKey = name === 'mode' ? title : `${title}.title`
             const actionButton = (
               <Action
                 key={i}
-                title={t(`${title}.title`)}
+                title={t(titleKey)}
                 Icon={Icon}
                 active={active}
                 disabled={disabled}
@@ -250,6 +270,15 @@ function PageActionBar({
                   }
 
                   setThemeOpen(false)
+                  if (name === 'mode') {
+                    if (viewMode === 'library') {
+                      if (focusedBookTab) setViewMode('reader')
+                    } else {
+                      setViewMode('library')
+                    }
+                    return
+                  }
+
                   if (name === 'settings') {
                     onSettingsOpenChange(true)
                   } else {
@@ -364,6 +393,7 @@ const SideBar: React.FC = () => {
   const [action, setAction] = useAction()
   const mobile = useMobile()
   const t = useTranslation()
+  const viewMode = useRecoilValue(viewModeState)
   const [, , background] = useBackground()
 
   const { size } = useSplitViewItem(SideBar, {
@@ -380,6 +410,7 @@ const SideBar: React.FC = () => {
           'SideBar flex flex-col',
           background.sidebarClassName,
           !action && '!hidden',
+          viewMode === 'library' && 'pointer-events-none opacity-50',
           mobile ? 'absolute inset-y-0 right-0 z-10' : '',
         )}
         style={{ width: mobile ? '75%' : size }}

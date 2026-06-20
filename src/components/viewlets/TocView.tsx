@@ -3,6 +3,7 @@ import clsx from 'clsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MdMyLocation } from 'react-icons/md'
 import { VscCollapseAll, VscExpandAll } from 'react-icons/vsc'
+import { useSetRecoilState } from 'recoil'
 
 import {
   compareBookDisplayTitle,
@@ -23,6 +24,7 @@ import {
   reader,
   useReaderSnapshot,
 } from '@flow/reader/models'
+import { viewModeState } from '@flow/reader/state'
 
 import { Row } from '../Row'
 import { PaneViewProps, PaneView, Pane } from '../base'
@@ -40,6 +42,7 @@ export const TocView: React.FC<PaneViewProps> = (props) => {
 const LibraryPane: React.FC = () => {
   const books = useLibrary()
   const { focusedBookTab, groups } = useReaderSnapshot()
+  const setViewMode = useSetRecoilState(viewModeState)
   const [, , background] = useBackground()
   const paneRef = useRef<HTMLDivElement>(null)
   const rowRefs = useRef(new Map<string, HTMLButtonElement>())
@@ -99,7 +102,10 @@ const LibraryPane: React.FC = () => {
             title={tooltip}
             aria-current={active ? 'true' : undefined}
             draggable
-            onClick={() => reader.addTab(book)}
+            onClick={() => {
+              reader.addTab(book)
+              setViewMode('reader')
+            }}
             onDragStart={(e) => {
               e.dataTransfer.setData('text/plain', book.id)
             }}

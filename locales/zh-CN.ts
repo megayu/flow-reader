@@ -46,6 +46,9 @@ export default {
   'theme.source_color': '源色',
   'theme.background_color': '背景色',
 
+  'mode.enter_library': '进入图书馆',
+  'mode.return_reader': '返回阅读',
+
   'color_picker.copy': '复制颜色',
   'color_picker.paste': '粘贴颜色',
   'color_picker.save_slot': '暂存',

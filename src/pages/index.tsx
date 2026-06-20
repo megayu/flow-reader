@@ -11,6 +11,7 @@ import {
   MdCheckBoxOutlineBlank,
   MdKeyboardArrowDown,
 } from 'react-icons/md'
+import { useRecoilState } from 'recoil'
 
 import {
   cleanBookText,
@@ -28,6 +29,7 @@ import {
   useTranslation,
 } from '../hooks'
 import { reader, useReaderSnapshot } from '../models'
+import { viewModeState } from '../state'
 import { lock } from '../styles'
 
 const placeholder = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect fill="gray" fill-opacity="0" width="1" height="1"/></svg>`
@@ -138,7 +140,8 @@ function useStringSet() {
 }
 
 export default function Index() {
-  const { focusedTab } = useReaderSnapshot()
+  const { focusedTab, groups } = useReaderSnapshot()
+  const [viewMode, setViewMode] = useRecoilState(viewModeState)
   const router = useRouter()
 
   useDisablePinchZooming()
@@ -158,6 +161,7 @@ export default function Index() {
 
     setupNativeOpenFiles((books) => {
       reader.addTab(books[0]!)
+      setViewMode('reader')
     }).then((handler) => {
       if (disposed) {
         handler?.()
@@ -170,7 +174,15 @@ export default function Index() {
       disposed = true
       unlisten?.()
     }
-  }, [])
+  }, [setViewMode])
+
+  useEffect(() => {
+    if (!groups.length && viewMode !== 'library') {
+      setViewMode('library')
+    }
+  }, [groups.length, setViewMode, viewMode])
+
+  const library = <Library onOpenBook={() => setViewMode('reader')} />
 
   return (
     <>
@@ -183,13 +195,22 @@ export default function Index() {
         />
         <title>{focusedTab?.title ?? 'Flow Reader'}</title>
       </Head>
-      <ReaderGridView />
-      <Library />
+      {groups.length ? (
+        <ReaderGridView
+          content={viewMode === 'library' ? library : undefined}
+        />
+      ) : (
+        library
+      )}
     </>
   )
 }
 
-const Library: React.FC = () => {
+interface LibraryProps {
+  onOpenBook: () => void
+}
+
+const Library: React.FC<LibraryProps> = ({ onOpenBook }) => {
   const books = useLibrary()
   const covers = useLiveQuery(() => db?.covers.toArray() ?? [])
   const t = useTranslation('home')
@@ -200,8 +221,6 @@ const Library: React.FC = () => {
 
   const [select, toggleSelect] = useBoolean(false)
   const [selectedBookIds, { add, has, toggle, reset }] = useStringSet()
-
-  const { groups } = useReaderSnapshot()
 
   useEffect(() => {
     if (!select) reset()
@@ -250,7 +269,6 @@ const Library: React.FC = () => {
     [books, sortDirection, sortField],
   )
 
-  if (groups.length) return null
   if (!books) return null
 
   const allSelected = selectedBookIds.size === books.length
@@ -259,11 +277,14 @@ const Library: React.FC = () => {
 
   return (
     <DropZone
-      className="scroll-parent h-full p-4"
+      className="scroll-parent flex h-full min-h-0 flex-col p-4"
       onDrop={(e) => {
         const bookId = e.dataTransfer.getData('text/plain')
         const book = books.find((b) => b.id === bookId)
-        if (book) reader.addTab(book)
+        if (book) {
+          reader.addTab(book)
+          onOpenBook()
+        }
 
         handleFiles(e.dataTransfer.files)
       }}
@@ -397,7 +418,7 @@ const Library: React.FC = () => {
         </div>
       </div>
 
-      <div className="scroll h-full">
+      <div className="scroll min-h-0 flex-1">
         <ul
           className="grid"
           style={{
@@ -414,6 +435,7 @@ const Library: React.FC = () => {
               select={select}
               selected={has(book.id)}
               toggle={toggle}
+              onOpenBook={onOpenBook}
             />
           ))}
         </ul>
@@ -428,6 +450,7 @@ interface BookProps {
   select?: boolean
   selected?: boolean
   toggle: (id: string) => void
+  onOpenBook: () => void
 }
 const Book: React.FC<BookProps> = ({
   book,
@@ -435,6 +458,7 @@ const Book: React.FC<BookProps> = ({
   select,
   selected,
   toggle,
+  onOpenBook,
 }) => {
   const router = useRouter()
   const mobile = useMobile()
@@ -456,6 +480,7 @@ const Book: React.FC<BookProps> = ({
           } else {
             if (mobile) await router.push('/_')
             reader.addTab(book)
+            onOpenBook()
           }
         }}
       >

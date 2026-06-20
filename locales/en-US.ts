@@ -46,6 +46,9 @@ export default {
   'theme.source_color': 'Source Color',
   'theme.background_color': 'Background Color',
 
+  'mode.enter_library': 'Enter Library',
+  'mode.return_reader': 'Return to Reading',
+
   'color_picker.copy': 'Copy color',
   'color_picker.paste': 'Paste color',
   'color_picker.save_slot': 'Save',

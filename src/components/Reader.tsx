@@ -19,12 +19,12 @@ import {
 } from 'react-icons/md'
 import { RiBookLine } from 'react-icons/ri'
 import type { IPhotoSliderProps } from 'react-photo-view/dist/PhotoSlider'
-import { useSetRecoilState } from 'recoil'
+import { useRecoilValue, useSetRecoilState } from 'recoil'
 import useTilg from 'tilg'
 import { useSnapshot } from 'valtio'
 
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
-import { navbarState } from '@flow/reader/state'
+import { navbarState, viewModeState, type ViewMode } from '@flow/reader/state'
 
 import { getBookDisplayTitle, getBookTooltip } from '../book'
 import { db } from '../db'
@@ -68,10 +68,15 @@ const FONT_SIZE_MIN = 14
 const FONT_SIZE_MAX = 28
 const FONT_SIZE_DEFAULT = 16
 
-function handleKeyDown(tab?: BookTab) {
+function handleKeyDown(
+  tab: BookTab | undefined,
+  viewMode: ViewMode,
+  enterReaderMode: () => void,
+) {
   return (e: KeyboardEvent) => {
     try {
-      if (handleCommandShortcut(e)) return
+      if (handleCommandShortcut(e, viewMode, enterReaderMode)) return
+      if (viewMode === 'library') return
       if (handleReturnShortcut(e, tab)) return
       if (handleChapterShortcut(e, tab)) return
 
@@ -93,7 +98,11 @@ function handleKeyDown(tab?: BookTab) {
   }
 }
 
-function handleCommandShortcut(e: KeyboardEvent) {
+function handleCommandShortcut(
+  e: KeyboardEvent,
+  viewMode: ViewMode,
+  enterReaderMode: () => void,
+) {
   if (!hasCommandModifier(e) || e.altKey) return false
 
   if (e.key.toLowerCase() === 'w') {
@@ -111,7 +120,7 @@ function handleCommandShortcut(e: KeyboardEvent) {
     return true
   }
 
-  if (handleTabSwitchShortcut(e)) return true
+  if (handleTabSwitchShortcut(e, enterReaderMode)) return true
 
   const fontSizeReset = isFontSizeResetShortcut(e)
   const fontSizeDelta = getFontSizeShortcutDelta(e)
@@ -120,6 +129,8 @@ function handleCommandShortcut(e: KeyboardEvent) {
   e.preventDefault()
   e.stopPropagation()
   e.stopImmediatePropagation?.()
+
+  if (viewMode === 'library') return true
 
   if (!isReaderShortcutTargetBlocked(e)) {
     const tab = reader.focusedBookTab
@@ -134,7 +145,10 @@ function handleCommandShortcut(e: KeyboardEvent) {
   return true
 }
 
-function handleTabSwitchShortcut(e: KeyboardEvent) {
+function handleTabSwitchShortcut(
+  e: KeyboardEvent,
+  enterReaderMode: () => void,
+) {
   if (e.shiftKey) return false
 
   const index = getCommandTabIndex(e)
@@ -146,6 +160,15 @@ function handleTabSwitchShortcut(e: KeyboardEvent) {
   e.stopImmediatePropagation?.()
 
   if (!isReaderShortcutTargetBlocked(e)) {
+    const group = reader.focusedGroup
+    const hasTarget =
+      index === 8
+        ? !!group?.tabs.length
+        : index !== undefined
+        ? !!group?.tabs[index]
+        : !!group?.tabs.length
+    if (!hasTarget) return true
+
     if (index === 8) {
       reader.selectLastFocusedTab()
     } else if (index !== undefined) {
@@ -153,6 +176,7 @@ function handleTabSwitchShortcut(e: KeyboardEvent) {
     } else if (direction) {
       reader.selectAdjacentFocusedTab(direction)
     }
+    enterReaderMode()
   }
   return true
 }
@@ -359,10 +383,23 @@ function preventContextMenu(e: Event) {
   e.preventDefault()
 }
 
-export function ReaderGridView() {
-  const { groups } = useReaderSnapshot()
+interface ReaderGridViewProps {
+  content?: React.ReactNode
+}
 
-  useEventListener('keydown', handleKeyDown(reader.focusedBookTab))
+export function ReaderGridView({ content }: ReaderGridViewProps) {
+  const { groups } = useReaderSnapshot()
+  const setViewMode = useSetRecoilState(viewModeState)
+  const viewMode = useRecoilValue(viewModeState)
+  const enterReaderMode = useCallback(
+    () => setViewMode('reader'),
+    [setViewMode],
+  )
+
+  useEventListener(
+    'keydown',
+    handleKeyDown(reader.focusedBookTab, viewMode, enterReaderMode),
+  )
   useEventListener('contextmenu', preventContextMenu)
 
   if (!groups.length) return null
@@ -373,18 +410,26 @@ export function ReaderGridView() {
 
   return (
     <div className="ReaderGridView relative flex h-full min-h-0">
-      <ReaderGroup key={group.id} index={index} />
+      <ReaderGroup
+        key={group.id}
+        index={index}
+        content={content}
+        onEnterReaderMode={enterReaderMode}
+      />
     </div>
   )
 }
 
 interface ReaderGroupProps {
   index: number
+  content?: React.ReactNode
+  onEnterReaderMode: () => void
 }
-function ReaderGroup({ index }: ReaderGroupProps) {
+function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
   const group = reader.groups[index]!
   const { tabs, selectedIndex } = useSnapshot(group)
   const t = useTranslation()
+  const [backgroundClassName] = useBackground()
   const tabWheelDelta = useRef(0)
   const lastTabWheelSwitch = useRef(0)
 
@@ -409,10 +454,11 @@ function ReaderGroup({ index }: ReaderGroupProps) {
 
       reader.selectGroup(index)
       group.selectAdjacentTab(tabWheelDelta.current > 0 ? 1 : -1, true)
+      onEnterReaderMode()
       tabWheelDelta.current = 0
       lastTabWheelSwitch.current = now
     },
-    [group, index],
+    [group, index, onEnterReaderMode],
   )
 
   return (
@@ -431,7 +477,10 @@ function ReaderGroup({ index }: ReaderGroupProps) {
               selected={selected}
               focused={focused}
               title={getReaderTabTooltip(tab, t)}
-              onClick={() => group.selectTab(i)}
+              onClick={() => {
+                group.selectTab(i)
+                onEnterReaderMode()
+              }}
               onDelete={() => reader.removeTab(i, index)}
               Icon={tab instanceof BookTab ? RiBookLine : MdWebAsset}
             >
@@ -441,38 +490,54 @@ function ReaderGroup({ index }: ReaderGroupProps) {
         })}
       </Tab.List>
 
-      <DropZone
-        className={clsx('min-h-0 flex-1', isTouchScreen || 'h-0')}
-        onDrop={async (e) => {
-          // read `e.dataTransfer` first to avoid get empty value after `await`
-          const files = e.dataTransfer.files
-          let tabs = []
+      <div className="relative min-h-0 flex-1">
+        <DropZone
+          className={clsx(
+            'h-full min-h-0',
+            content && 'pointer-events-none opacity-0',
+          )}
+          onDrop={async (e) => {
+            // read `e.dataTransfer` first to avoid get empty value after `await`
+            const files = e.dataTransfer.files
+            let tabs = []
 
-          if (files.length) {
-            tabs = await handleFiles(files)
-          } else {
-            const text = e.dataTransfer.getData('text/plain')
-            const tabParam =
-              Object.values(pages).find((p) => p.displayName === text) ??
-              (await db?.books.get(text))
-            if (tabParam) tabs.push(tabParam)
-          }
+            if (files.length) {
+              tabs = await handleFiles(files)
+            } else {
+              const text = e.dataTransfer.getData('text/plain')
+              const tabParam =
+                Object.values(pages).find((p) => p.displayName === text) ??
+                (await db?.books.get(text))
+              if (tabParam) tabs.push(tabParam)
+            }
 
-          if (tabs.length) {
-            tabs.forEach((t) => reader.addTab(t, index))
-          }
-        }}
-      >
-        {group.tabs.map((tab, i) => (
-          <PaneContainer active={i === selectedIndex} key={tab.id}>
-            {tab instanceof BookTab ? (
-              <BookPane tab={tab} onMouseDown={handleMouseDown} />
-            ) : (
-              <tab.Component />
+            if (tabs.length) {
+              tabs.forEach((t) => reader.addTab(t, index))
+              onEnterReaderMode()
+            }
+          }}
+        >
+          {group.tabs.map((tab, i) => (
+            <PaneContainer active={i === selectedIndex} key={tab.id}>
+              {tab instanceof BookTab ? (
+                <BookPane tab={tab} onMouseDown={handleMouseDown} />
+              ) : (
+                <tab.Component />
+              )}
+            </PaneContainer>
+          ))}
+        </DropZone>
+        {content && (
+          <div
+            className={clsx(
+              'absolute inset-0 z-10 min-h-0 overflow-hidden',
+              backgroundClassName,
             )}
-          </PaneContainer>
-        ))}
-      </DropZone>
+          >
+            {content}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -607,6 +672,12 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
   }, [])
 
   const setNavbar = useSetRecoilState(navbarState)
+  const viewMode = useRecoilValue(viewModeState)
+  const setViewMode = useSetRecoilState(viewModeState)
+  const enterReaderMode = useCallback(
+    () => setViewMode('reader'),
+    [setViewMode],
+  )
   const mobile = useMobile()
 
   const findScopeSectionIndex = useCallback(() => {
@@ -1090,7 +1161,10 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
     }
   }, [handleRenditionWheel, rendition])
 
-  const handleFrameKeyDown = useMemo(() => handleKeyDown(tab), [tab])
+  const handleFrameKeyDown = useMemo(
+    () => handleKeyDown(tab, viewMode, enterReaderMode),
+    [enterReaderMode, tab, viewMode],
+  )
   useFrameEvent(frameWindows, 'keydown', handleFrameKeyDown)
 
   const handleFrameTouchStart = useCallback(
