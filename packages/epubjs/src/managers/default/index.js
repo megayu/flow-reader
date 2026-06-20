@@ -324,6 +324,14 @@ class DefaultViewManager {
     return pageCount
   }
 
+  deleteReflowablePageCountCache(section) {
+    if (!section) {
+      return
+    }
+
+    delete this.reflowablePageCountCache[this.reflowableLayoutCacheKey(section)]
+  }
+
   async measureReflowableSectionPageCount(section) {
     if (!section) {
       return 0
@@ -398,6 +406,88 @@ class DefaultViewManager {
       section,
       pageIndex,
     }
+  }
+
+  clampReflowablePageToCount(address, pageCount) {
+    if (!address || !address.section || !pageCount) {
+      return
+    }
+
+    return this.reflowablePage(
+      address.section,
+      Math.min(Math.max(address.pageIndex, 0), pageCount - 1),
+    )
+  }
+
+  async firstReflowablePageAfterSection(section) {
+    let next = section && section.next && section.next()
+    while (next) {
+      let pageCount = await this.measureReflowableSectionPageCount(next)
+      if (pageCount) {
+        return this.reflowablePage(next, 0)
+      }
+      next = next.next && next.next()
+    }
+  }
+
+  async lastReflowablePageBeforeSection(section) {
+    let prev = section && section.prev && section.prev()
+    while (prev) {
+      let pageCount = await this.measureReflowableSectionPageCount(prev)
+      if (pageCount) {
+        return this.reflowablePage(prev, pageCount - 1)
+      }
+      prev = prev.prev && prev.prev()
+    }
+  }
+
+  async reflowablePageAfterRenderedLeft(left, leftPageCount) {
+    if (!left || !leftPageCount) {
+      return
+    }
+
+    if (left.pageIndex + 1 < leftPageCount) {
+      return this.reflowablePage(left.section, left.pageIndex + 1)
+    }
+
+    return this.firstReflowablePageAfterSection(left.section)
+  }
+
+  async reflowablePageBeforeRenderedRight(right, rightPageCount) {
+    if (!right || !rightPageCount) {
+      return
+    }
+
+    if (right.pageIndex > 0) {
+      return this.reflowablePage(right.section, right.pageIndex - 1)
+    }
+
+    return this.lastReflowablePageBeforeSection(right.section)
+  }
+
+  renderedReflowablePageCount(section) {
+    let view = section && this.views && this.views.find(section)
+    return view ? this.cacheReflowablePageCount(view) : 0
+  }
+
+  async nextReflowablePageFromRendered(address) {
+    let pageCount = this.renderedReflowablePageCount(address && address.section)
+    if (pageCount) {
+      address = this.clampReflowablePageToCount(address, pageCount)
+      return this.reflowablePageAfterRenderedLeft(address, pageCount)
+    }
+
+    return this.nextReflowablePage(address)
+  }
+
+  async previousReflowablePageFromRendered(address) {
+    let pageCount = this.renderedReflowablePageCount(address && address.section)
+    if (pageCount) {
+      address = this.clampReflowablePageToCount(address, pageCount)
+      return this.reflowablePageBeforeRenderedRight(address, pageCount)
+    }
+
+    return this.previousReflowablePage(address)
   }
 
   async reflowablePageForTarget(section, target) {
@@ -504,6 +594,7 @@ class DefaultViewManager {
     return {
       left,
       right: await this.nextReflowablePage(left),
+      anchor: 'left',
     }
   }
 
@@ -516,6 +607,7 @@ class DefaultViewManager {
     return {
       left: await this.previousReflowablePage(right),
       right,
+      anchor: 'right',
     }
   }
 
@@ -598,17 +690,58 @@ class DefaultViewManager {
     this.clear()
     this.updateLayout()
 
+    if (spread.anchor === 'right' && spread.right) {
+      spread.right = await this.normalizeReflowablePage(spread.right)
+      if (spread.right) {
+        let rightView = await this.add(spread.right.section)
+        viewBySectionIndex[spread.right.section.index] = rightView
+        let rightPageCount = this.cacheReflowablePageCount(rightView)
+        let rightPageIndex = spread.endsAtSectionEnd
+          ? rightPageCount - 1
+          : spread.right.pageIndex
+        spread.right = this.clampReflowablePageToCount(
+          this.reflowablePage(spread.right.section, rightPageIndex),
+          rightPageCount,
+        )
+        spread.left = await this.reflowablePageBeforeRenderedRight(
+          spread.right,
+          rightPageCount,
+        )
+      }
+
+      if (
+        spread.left &&
+        spread.right &&
+        !this.sameReflowableSection(spread.left, spread.right)
+      ) {
+        let leftView = await this.prepend(spread.left.section)
+        viewBySectionIndex[spread.left.section.index] = leftView
+        let leftPageCount = this.cacheReflowablePageCount(leftView)
+        spread.left = this.reflowablePage(
+          spread.left.section,
+          Math.max(leftPageCount - 1, 0),
+        )
+      }
+
+      this.applyReflowableSpreadPosition(spread, viewBySectionIndex)
+      return
+    }
+
     if (spread.left) {
       spread.left = await this.normalizeReflowablePage(spread.left)
-    }
-    if (spread.right) {
-      spread.right = await this.normalizeReflowablePage(spread.right)
     }
 
     if (spread.left) {
       let leftView = await this.add(spread.left.section)
       viewBySectionIndex[spread.left.section.index] = leftView
-      this.cacheReflowablePageCount(leftView)
+      let leftPageCount = this.cacheReflowablePageCount(leftView)
+      spread.left = this.clampReflowablePageToCount(spread.left, leftPageCount)
+      spread.right = await this.reflowablePageAfterRenderedLeft(
+        spread.left,
+        leftPageCount,
+      )
+    } else if (spread.right) {
+      spread.right = await this.normalizeReflowablePage(spread.right)
     }
 
     if (
@@ -626,46 +759,14 @@ class DefaultViewManager {
   }
 
   async displayReflowableSpread(section, target) {
-    this.clear()
-    this.updateLayout()
-
-    let view = await this.add(section)
-    this.cacheReflowablePageCount(view)
-
-    let pageIndex = 0
-    if (target) {
-      let targetOffset = view.locationOf(target)
-      pageIndex = Math.floor(
-        Math.max(targetOffset.left, 0) / this.layout.pageWidth,
-      )
-      pageIndex = Math.min(
-        Math.max(pageIndex, 0),
-        Math.max(this.viewPageCount(view) - 1, 0),
-      )
-    }
-
-    let left = this.reflowablePage(section, pageIndex)
-    let spread = await this.reflowableSpreadFromLeft(left)
+    let page = await this.reflowablePageForTarget(section, target)
+    let spread = await this.reflowableSpreadForTarget(page)
     if (!spread) {
       this.views.show()
       return
     }
 
-    let viewBySectionIndex = {
-      [section.index]: view,
-    }
-
-    if (
-      spread.right &&
-      !this.sameReflowableSection(spread.left, spread.right) &&
-      !viewBySectionIndex[spread.right.section.index]
-    ) {
-      let rightView = await this.append(spread.right.section)
-      viewBySectionIndex[spread.right.section.index] = rightView
-      this.cacheReflowablePageCount(rightView)
-    }
-
-    this.applyReflowableSpreadPosition(spread, viewBySectionIndex)
+    return this.renderReflowableSpread(spread)
   }
 
   applyReflowableSpreadPosition(spread, viewBySectionIndex) {
@@ -704,7 +805,7 @@ class DefaultViewManager {
     }
 
     let current = spread && (spread.right || spread.left)
-    let nextLeft = await this.nextReflowablePage(current)
+    let nextLeft = await this.nextReflowablePageFromRendered(current)
     if (!nextLeft) {
       this.views.show()
       return
@@ -726,7 +827,7 @@ class DefaultViewManager {
     }
 
     let current = spread && spread.left
-    let prevRight = await this.previousReflowablePage(current)
+    let prevRight = await this.previousReflowablePageFromRendered(current)
     if (!prevRight) {
       this.views.show()
       return
@@ -736,6 +837,10 @@ class DefaultViewManager {
     if (!previousSpread) {
       this.views.show()
       return
+    }
+
+    if (current && !this.sameReflowableSection(current, prevRight)) {
+      previousSpread.endsAtSectionEnd = true
     }
 
     return this.renderReflowableSpread(previousSpread)
@@ -917,6 +1022,10 @@ class DefaultViewManager {
   }
 
   afterResized(view) {
+    if (this.canUseLogicalReflowableSpread()) {
+      this.deleteReflowablePageCountCache(view && view.section)
+    }
+
     this.emit(EVENTS.MANAGERS.RESIZE, view.section)
   }
 
