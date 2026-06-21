@@ -403,6 +403,7 @@ const FontField: React.FC<FontFieldProps> = ({
   loadOptions,
   onChange,
 }) => {
+  const t = useTranslation('typography')
   const [inputValue, setInputValue] = useState(value)
   const [open, setOpen] = useState(false)
   const [popoverStyle, setPopoverStyle] = useState<CSSProperties>()
@@ -547,7 +548,7 @@ const FontField: React.FC<FontFieldProps> = ({
         as="input"
         name={name}
         value={inputValue}
-        placeholder="default"
+        placeholder={t('default_value')}
         mRef={inputRef}
         onFocus={openPicker}
         onClick={openPicker}
@@ -601,7 +602,7 @@ const FontField: React.FC<FontFieldProps> = ({
             ))}
             {!filteredOptions.length && (
               <div className="px-5 py-3 text-outline typescale-body-medium">
-                没有匹配字体
+                {t('no_matching_fonts')}
               </div>
             )}
           </div>,
@@ -624,7 +625,8 @@ const NumberField: React.FC<NumberFieldProps> = ({
   ...props
 }) => {
   const ref = useRef<HTMLInputElement>(null)
-  const t = useTranslation('action')
+  const actionT = useTranslation('action')
+  const typographyT = useTranslation('typography')
 
   useEffect(() => {
     if (!ref.current) return
@@ -649,17 +651,17 @@ const NumberField: React.FC<NumberFieldProps> = ({
     <TextField
       as="input"
       type="number"
-      placeholder="default"
+      placeholder={typographyT('default_value')}
       actions={[
         {
-          title: t('step_down'),
+          title: actionT('step_down'),
           Icon: MdRemove,
           onClick: () => {
             step(-1)
           },
         },
         {
-          title: t('step_up'),
+          title: actionT('step_up'),
           Icon: MdAdd,
           onClick: () => {
             step(1)

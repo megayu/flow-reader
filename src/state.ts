@@ -31,6 +31,11 @@ export const zenTypographyOverridesState = atom<
   default: {},
 })
 
+export const settingsDialogOpenState = atom<boolean>({
+  key: 'settingsDialogOpen',
+  default: false,
+})
+
 export interface Settings extends TypographyConfiguration {
   theme?: ThemeConfiguration
   enableTextSelectionMenu?: boolean

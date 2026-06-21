@@ -37,6 +37,7 @@ import {
 import { reader, useReaderSnapshot } from '../models'
 import {
   navbarState,
+  settingsDialogOpenState,
   viewModeState,
   zenModeState,
   zenTypographyOverridesState,
@@ -56,12 +57,15 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
   useColorScheme()
 
   const [ready, setReady] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useRecoilState(
+    settingsDialogOpenState,
+  )
   const [action, setAction] = useAction()
   const actionBeforeZen = useRef<Action | undefined>()
   const zenModeRef = useRef(false)
   const mobile = useMobile()
   const zenMode = useRecoilValue(zenModeState)
+  const { focusedBookTab } = useReaderSnapshot()
   const setZenTypographyOverrides = useSetRecoilState(
     zenTypographyOverridesState,
   )
@@ -86,7 +90,26 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
     }
 
     zenModeRef.current = zenMode
-  }, [action, setAction, setZenTypographyOverrides, zenMode])
+  }, [action, setAction, setSettingsOpen, setZenTypographyOverrides, zenMode])
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!isSettingsShortcut(e)) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      e.stopImmediatePropagation?.()
+      setSettingsOpen(true)
+    }
+
+    const targets = [window, ...getIframeWindows()]
+    targets.forEach((target) => target.addEventListener('keydown', onKeyDown))
+    return () => {
+      targets.forEach((target) =>
+        target.removeEventListener('keydown', onKeyDown),
+      )
+    }
+  }, [focusedBookTab?.id, setSettingsOpen])
 
   return (
     <div id="layout" className="select-none">
@@ -114,6 +137,25 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
       )}
     </div>
   )
+}
+
+function isSettingsShortcut(e: KeyboardEvent) {
+  return (
+    (e.ctrlKey || e.metaKey) &&
+    !e.altKey &&
+    !e.shiftKey &&
+    (e.key === ',' || e.code === 'Comma')
+  )
+}
+
+function getIframeWindows() {
+  return Array.from(document.querySelectorAll('iframe')).flatMap((frame) => {
+    try {
+      return frame.contentWindow ? [frame.contentWindow] : []
+    } catch {
+      return []
+    }
+  })
 }
 
 interface IAction {

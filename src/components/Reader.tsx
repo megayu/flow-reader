@@ -26,6 +26,7 @@ import { useSnapshot } from 'valtio'
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
 import {
   navbarState,
+  settingsDialogOpenState,
   useSettingsReady,
   viewModeState,
   zenModeState,
@@ -39,7 +40,9 @@ import { db } from '../db'
 import { handleFiles } from '../file'
 import {
   hasSelection,
+  type Action as ReaderPanelAction,
   useBackground,
+  useAction,
   useColorScheme,
   useMobile,
   useTranslation,
@@ -79,6 +82,15 @@ const FONT_SIZE_DEFAULT = 16
 type ZenTypographyOverridesSetter = SetterOrUpdater<
   Record<string, TypographyConfiguration>
 >
+type ReaderPanelActionSetter = SetterOrUpdater<ReaderPanelAction | undefined>
+type SettingsOpenSetter = SetterOrUpdater<boolean>
+
+interface ReaderShortcutContext {
+  action?: ReaderPanelAction
+  setAction: ReaderPanelActionSetter
+  setViewMode: SetterOrUpdater<ViewMode>
+  setSettingsOpen: SettingsOpenSetter
+}
 
 function handleKeyDown(
   tab: BookTab | undefined,
@@ -87,6 +99,7 @@ function handleKeyDown(
   zenMode: boolean,
   setZenMode: (value: boolean) => void,
   setZenTypographyOverrides: ZenTypographyOverridesSetter,
+  shortcuts: ReaderShortcutContext,
 ) {
   return (e: KeyboardEvent) => {
     try {
@@ -108,7 +121,8 @@ function handleKeyDown(
         return
       }
 
-      if (handleCommandShortcut(e, viewMode, enterReaderMode)) return
+      if (handleCommandShortcut(e, viewMode, enterReaderMode, shortcuts)) return
+      if (handleAppShortcut(e, tab, viewMode, setZenMode, shortcuts)) return
       if (viewMode === 'library') return
       if (handleReturnShortcut(e, tab)) return
       if (handleChapterShortcut(e, tab)) return
@@ -132,12 +146,64 @@ async function exitFullscreenIfActive() {
   }
 }
 
+async function toggleFullscreenIfAvailable() {
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window')
+    const win = getCurrentWindow()
+    await win.setFullscreen(!(await win.isFullscreen()))
+  } catch {
+    // Not running in Tauri.
+  }
+}
+
+async function toggleDevtools() {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    await invoke('toggle_devtools')
+  } catch {
+    // Not running in Tauri.
+  }
+}
+
+function isSettingsShortcut(e: KeyboardEvent) {
+  return !e.shiftKey && (e.key === ',' || e.code === 'Comma')
+}
+
+function isDevtoolsShortcut(e: KeyboardEvent) {
+  return (
+    e.shiftKey &&
+    !e.altKey &&
+    (e.code === 'KeyI' || e.key.toLowerCase() === 'i')
+  )
+}
+
 function handleCommandShortcut(
   e: KeyboardEvent,
   viewMode: ViewMode,
   enterReaderMode: () => void,
+  shortcuts: ReaderShortcutContext,
 ) {
   if (!hasCommandModifier(e) || e.altKey) return false
+
+  if (isSettingsShortcut(e)) {
+    e.preventDefault()
+    e.stopPropagation()
+    e.stopImmediatePropagation?.()
+
+    if (!hasKeyboardCapturingLayer(e.target)) {
+      shortcuts.setSettingsOpen(true)
+    }
+    return true
+  }
+
+  if (isDevtoolsShortcut(e)) {
+    e.preventDefault()
+    e.stopPropagation()
+    e.stopImmediatePropagation?.()
+
+    void toggleDevtools()
+    return true
+  }
 
   if (e.key.toLowerCase() === 'w') {
     e.preventDefault()
@@ -157,6 +223,68 @@ function handleCommandShortcut(
   if (handleTabSwitchShortcut(e, enterReaderMode)) return true
 
   return handleFontSizeShortcut(e, viewMode)
+}
+
+function handleAppShortcut(
+  e: KeyboardEvent,
+  tab: BookTab | undefined,
+  viewMode: ViewMode,
+  setZenMode: (value: boolean) => void,
+  shortcuts: ReaderShortcutContext,
+) {
+  if (shouldIgnoreReaderShortcut(e)) return false
+
+  const key = e.key.toLowerCase()
+
+  if (key === 'f') {
+    e.preventDefault()
+    e.stopPropagation()
+    e.stopImmediatePropagation?.()
+    void toggleFullscreenIfAvailable()
+    return true
+  }
+
+  if (key === 'l') {
+    e.preventDefault()
+    e.stopPropagation()
+    e.stopImmediatePropagation?.()
+    if (viewMode === 'library') {
+      if (tab) shortcuts.setViewMode('reader')
+    } else {
+      shortcuts.setViewMode('library')
+    }
+    return true
+  }
+
+  if (viewMode === 'library' || !tab) return false
+
+  if (key === 'z') {
+    e.preventDefault()
+    e.stopPropagation()
+    e.stopImmediatePropagation?.()
+    setZenMode(true)
+    return true
+  }
+
+  const panel = getPanelShortcutAction(e)
+  if (!panel) return false
+
+  e.preventDefault()
+  e.stopPropagation()
+  e.stopImmediatePropagation?.()
+  shortcuts.setAction(shortcuts.action === panel ? undefined : panel)
+  return true
+}
+
+function getPanelShortcutAction(
+  e: KeyboardEvent,
+): ReaderPanelAction | undefined {
+  const key = e.key.toLowerCase()
+  if (key === 't') return 'toc'
+  if (e.key === '/') return 'search'
+  if (key === 'a') return 'annotation'
+  if (key === 'i') return 'image'
+  if (key === 'p') return 'typography'
 }
 
 function handleFontSizeShortcut(e: KeyboardEvent, viewMode: ViewMode) {
@@ -568,10 +696,12 @@ interface ReaderGridViewProps {
 
 export function ReaderGridView({ content }: ReaderGridViewProps) {
   const { groups } = useReaderSnapshot()
+  const [action, setAction] = useAction()
   const setViewMode = useSetRecoilState(viewModeState)
   const viewMode = useRecoilValue(viewModeState)
   const zenMode = useRecoilValue(zenModeState)
   const setZenMode = useSetRecoilState(zenModeState)
+  const setSettingsOpen = useSetRecoilState(settingsDialogOpenState)
   const setZenTypographyOverrides = useSetRecoilState(
     zenTypographyOverridesState,
   )
@@ -589,6 +719,12 @@ export function ReaderGridView({ content }: ReaderGridViewProps) {
       zenMode,
       setZenMode,
       setZenTypographyOverrides,
+      {
+        action,
+        setAction,
+        setViewMode,
+        setSettingsOpen,
+      },
     ),
   )
   useEventListener('contextmenu', preventContextMenu)
@@ -1000,6 +1136,8 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     [setViewMode],
   )
   const mobile = useMobile()
+  const [action, setAction] = useAction()
+  const setSettingsOpen = useSetRecoilState(settingsDialogOpenState)
 
   const findScopeSectionIndex = useCallback(() => {
     const manager = rendition?.manager as ReflowableManager | undefined
@@ -1448,11 +1586,21 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
         zenMode,
         setZenMode,
         setZenTypographyOverrides,
+        {
+          action,
+          setAction,
+          setViewMode,
+          setSettingsOpen,
+        },
       ),
     [
+      action,
       enterReaderMode,
+      setAction,
       setZenMode,
       setZenTypographyOverrides,
+      setSettingsOpen,
+      setViewMode,
       tab,
       viewMode,
       zenMode,
@@ -2527,6 +2675,7 @@ interface FooterProps {
 }
 const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
   const { locationsToReturn, location, book, rendition } = useSnapshot(tab)
+  const t = useTranslation('reader')
   const locationToReturn = locationsToReturn[locationsToReturn.length - 1]
   const divisor = rendition?.manager?.layout?.divisor ?? 1
   const spread = divisor > 1
@@ -2550,28 +2699,31 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
           <div className="flex min-w-0 items-center gap-2">
             <button
               className={returnActionClass}
+              title={t('return_to_start')}
               onClick={() => {
                 tab.returnToFirstLocation()
               }}
             >
-              Return to start
+              {t('return_to_start')}
             </button>
             <button
               className={clsx(returnActionClass, 'truncate')}
+              title={`${t('return_to_previous')}: ${locationToReturn.end.cfi}`}
               onClick={() => {
                 tab.returnToPreviousLocation()
               }}
             >
-              Return to {locationToReturn.end.cfi}
+              {t('return_to_previous')}
             </button>
           </div>
           <button
             className={returnActionClass}
+            title={t('dismiss_return')}
             onClick={() => {
               tab.hidePrevLocation()
             }}
           >
-            Stay
+            {t('dismiss_return')}
           </button>
         </Bar>
       ) : spread ? (
