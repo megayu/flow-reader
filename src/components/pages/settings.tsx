@@ -163,6 +163,18 @@ export const Settings: React.FC = () => {
                   }}
                 />
               </Item>
+              <Item title={t('restore_last_reading')}>
+                <Checkbox
+                  name={t('restore_last_reading.enable')}
+                  checked={settings.restoreLastReadingOnStartup === true}
+                  onChange={(e) => {
+                    setSettings({
+                      ...settings,
+                      restoreLastReadingOnStartup: e.target.checked,
+                    })
+                  }}
+                />
+              </Item>
               <Item title={t('text_selection_menu')}>
                 <Checkbox
                   name={t('text_selection_menu.enable')}

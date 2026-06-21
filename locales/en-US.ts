@@ -68,6 +68,8 @@ export default {
   'settings.language': 'Language',
   'settings.default_page_view': 'Default View',
   'settings.default_text_align': 'Default Alignment',
+  'settings.restore_last_reading': 'Restore last reading on startup',
+  'settings.restore_last_reading.enable': 'Enable',
   'settings.text_selection_menu': 'Text Selection Menu',
   'settings.text_selection_menu.enable': 'Enable',
   'settings.hide_endnotes': 'Endnotes',

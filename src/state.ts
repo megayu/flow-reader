@@ -40,6 +40,8 @@ export interface Settings extends TypographyConfiguration {
   theme?: ThemeConfiguration
   enableTextSelectionMenu?: boolean
   hideEndnotes?: boolean
+  restoreLastReadingOnStartup?: boolean
+  startupSession?: StartupSession
   locale?: AppLocale
 }
 
@@ -59,6 +61,11 @@ interface ThemeConfiguration {
   background?: number
   customBackground?: string
   scheme?: ColorScheme
+}
+
+interface StartupSession {
+  viewMode?: ViewMode
+  bookId?: string
 }
 
 export const defaultSettings: Settings = {

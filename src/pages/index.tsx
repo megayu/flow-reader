@@ -29,7 +29,7 @@ import {
   useTranslation,
 } from '../hooks'
 import { reader, useReaderSnapshot } from '../models'
-import { viewModeState } from '../state'
+import { useSettings, useSettingsReady, viewModeState } from '../state'
 import { lock } from '../styles'
 
 const placeholder = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect fill="gray" fill-opacity="0" width="1" height="1"/></svg>`
@@ -140,10 +140,17 @@ function useStringSet() {
 }
 
 export default function Index() {
-  const { focusedTab, groups } = useReaderSnapshot()
+  const { focusedBookTab, focusedTab, groups } = useReaderSnapshot()
   const [viewMode, setViewMode] = useRecoilState(viewModeState)
+  const [settings, setSettings] = useSettings()
+  const settingsReady = useSettingsReady()
   const viewModeRef = useRef(viewMode)
+  const openedFromNativeRef = useRef(false)
+  const startupRestoreStartedRef = useRef(false)
   const router = useRouter()
+  const [nativeOpenReady, setNativeOpenReady] = useState(false)
+  const [startupRestoreDone, setStartupRestoreDone] = useState(false)
+  const focusedBookId = focusedBookTab?.book.id
 
   useDisablePinchZooming()
 
@@ -166,6 +173,7 @@ export default function Index() {
 
     setupNativeOpenFiles({
       onOpen: (books) => {
+        openedFromNativeRef.current = true
         reader.addTab(books[0]!)
         setViewMode('reader')
       },
@@ -180,6 +188,7 @@ export default function Index() {
         handler?.()
       } else {
         unlisten = handler
+        setNativeOpenReady(true)
       }
     })
 
@@ -190,12 +199,86 @@ export default function Index() {
   }, [setViewMode])
 
   useEffect(() => {
+    if (
+      !settingsReady ||
+      !nativeOpenReady ||
+      startupRestoreStartedRef.current
+    ) {
+      return
+    }
+
+    startupRestoreStartedRef.current = true
+    if (
+      openedFromNativeRef.current ||
+      !settings.restoreLastReadingOnStartup ||
+      settings.startupSession?.viewMode !== 'reader' ||
+      !settings.startupSession.bookId
+    ) {
+      setStartupRestoreDone(true)
+      return
+    }
+
+    db.books
+      .get(settings.startupSession.bookId)
+      .then((book) => {
+        if (!book || reader.groups.length) return
+
+        reader.addTab(book)
+        setViewMode('reader')
+      })
+      .finally(() => {
+        setStartupRestoreDone(true)
+      })
+  }, [
+    nativeOpenReady,
+    setViewMode,
+    settings.restoreLastReadingOnStartup,
+    settings.startupSession?.bookId,
+    settings.startupSession?.viewMode,
+    settingsReady,
+    startupRestoreDone,
+  ])
+
+  useEffect(() => {
+    if (!settingsReady || !startupRestoreDone) return
+
+    const nextSession =
+      viewMode === 'reader' && focusedBookId
+        ? {
+            viewMode,
+            bookId: focusedBookId,
+          }
+        : viewMode === 'library'
+        ? {
+            viewMode,
+          }
+        : undefined
+
+    if (!nextSession) return
+
+    setSettings((prev) => {
+      if (
+        prev.startupSession?.viewMode === nextSession.viewMode &&
+        prev.startupSession?.bookId === nextSession.bookId
+      ) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        startupSession: nextSession,
+      }
+    })
+  }, [focusedBookId, setSettings, settingsReady, startupRestoreDone, viewMode])
+
+  useEffect(() => {
     if (!groups.length && viewMode !== 'library') {
       setViewMode('library')
     }
   }, [groups.length, setViewMode, viewMode])
 
   const library = <Library onOpenBook={() => setViewMode('reader')} />
+  const contentReady = startupRestoreDone
 
   return (
     <>
@@ -208,7 +291,7 @@ export default function Index() {
         />
         <title>{focusedTab?.title ?? 'Flow Reader'}</title>
       </Head>
-      {groups.length ? (
+      {!contentReady ? null : groups.length ? (
         <ReaderGridView
           content={viewMode === 'library' ? library : undefined}
         />
