@@ -50,6 +50,7 @@ export default {
   'mode.return_reader': '返回阅读',
   'fullscreen.enter': '进入全屏',
   'fullscreen.exit': '退出全屏',
+  'zen.enter': '进入禅模式',
 
   'color_picker.copy': '复制颜色',
   'color_picker.paste': '粘贴颜色',

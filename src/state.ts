@@ -19,6 +19,18 @@ export const viewModeState = atom<ViewMode>({
   default: 'library',
 })
 
+export const zenModeState = atom<boolean>({
+  key: 'zenMode',
+  default: false,
+})
+
+export const zenTypographyOverridesState = atom<
+  Record<string, TypographyConfiguration>
+>({
+  key: 'zenTypographyOverrides',
+  default: {},
+})
+
 export interface Settings extends TypographyConfiguration {
   theme?: ThemeConfiguration
   enableTextSelectionMenu?: boolean

@@ -50,6 +50,7 @@ export default {
   'mode.return_reader': 'Return to Reading',
   'fullscreen.enter': 'Enter Fullscreen',
   'fullscreen.exit': 'Exit Fullscreen',
+  'zen.enter': 'Enter Zen Mode',
 
   'color_picker.copy': 'Copy color',
   'color_picker.paste': 'Paste color',

@@ -11,6 +11,7 @@ import {
 } from 'react'
 import { IconType } from 'react-icons'
 import {
+  MdCenterFocusStrong,
   MdFormatUnderlined,
   MdFullscreen,
   MdFullscreenExit,
@@ -22,7 +23,7 @@ import {
   MdOutlineLightMode,
 } from 'react-icons/md'
 import { RiFontSize, RiHome6Line, RiSettings5Line } from 'react-icons/ri'
-import { useRecoilState, useRecoilValue } from 'recoil'
+import { useRecoilState, useRecoilValue, useSetRecoilState } from 'recoil'
 
 import {
   Env,
@@ -31,11 +32,15 @@ import {
   useBackground,
   useColorScheme,
   useMobile,
-  useSetAction,
   useTranslation,
 } from '../hooks'
 import { reader, useReaderSnapshot } from '../models'
-import { navbarState, viewModeState } from '../state'
+import {
+  navbarState,
+  viewModeState,
+  zenModeState,
+  zenTypographyOverridesState,
+} from '../state'
 import { activeClass } from '../styles'
 
 import { SplitView, useSplitViewItem } from './base'
@@ -52,8 +57,14 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
 
   const [ready, setReady] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const setAction = useSetAction()
+  const [action, setAction] = useAction()
+  const actionBeforeZen = useRef<Action | undefined>()
+  const zenModeRef = useRef(false)
   const mobile = useMobile()
+  const zenMode = useRecoilValue(zenModeState)
+  const setZenTypographyOverrides = useSetRecoilState(
+    zenTypographyOverridesState,
+  )
 
   useEffect(() => {
     if (mobile === undefined) return
@@ -61,28 +72,46 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
     setReady(true)
   }, [mobile, setAction])
 
+  useEffect(() => {
+    if (zenMode && !zenModeRef.current) {
+      actionBeforeZen.current = action
+      setAction(undefined)
+      setSettingsOpen(false)
+    }
+
+    if (!zenMode && zenModeRef.current) {
+      setAction(actionBeforeZen.current)
+      actionBeforeZen.current = undefined
+      setZenTypographyOverrides({})
+    }
+
+    zenModeRef.current = zenMode
+  }, [action, setAction, setZenTypographyOverrides, zenMode])
+
   return (
     <div id="layout" className="select-none">
       <SplitView>
-        {mobile === false && (
+        {!zenMode && mobile === false && (
           <ActivityBar
             settingsOpen={settingsOpen}
             onSettingsOpenChange={setSettingsOpen}
           />
         )}
-        {mobile === true && (
+        {!zenMode && mobile === true && (
           <NavigationBar
             settingsOpen={settingsOpen}
             onSettingsOpenChange={setSettingsOpen}
           />
         )}
-        {ready && <SideBar />}
+        {ready && !zenMode && <SideBar />}
         {ready && <Reader>{children}</Reader>}
       </SplitView>
-      <SettingsDialog
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-      />
+      {!zenMode && (
+        <SettingsDialog
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </div>
   )
 }
@@ -310,6 +339,7 @@ function PageActionBar({
   const [action, setAction] = useState('Home')
   const [themeOpen, setThemeOpen] = useState(false)
   const [viewMode, setViewMode] = useRecoilState(viewModeState)
+  const [zenMode, setZenMode] = useRecoilState(zenModeState)
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation()
   const { fullscreen, toggleFullscreen } = useFullscreenAction()
@@ -341,6 +371,13 @@ function PageActionBar({
         env: Env.Desktop,
       },
       {
+        name: 'zen',
+        title: 'zen.enter',
+        Icon: MdCenterFocusStrong,
+        disabled: viewMode === 'library' || !focusedBookTab,
+        env: Env.Desktop,
+      },
+      {
         name: 'home',
         title: 'home',
         Icon: RiHome6Line,
@@ -367,9 +404,10 @@ function PageActionBar({
               : (viewMode === 'library' && name === 'mode') ||
                 (themeOpen && name === 'theme') ||
                 (fullscreen && name === 'fullscreen') ||
+                (zenMode && name === 'zen') ||
                 (settingsOpen && name === 'settings')
             const titleKey =
-              name === 'mode' || name === 'fullscreen'
+              name === 'mode' || name === 'fullscreen' || name === 'zen'
                 ? title
                 : `${title}.title`
             const actionButton = (
@@ -388,6 +426,14 @@ function PageActionBar({
                   setThemeOpen(false)
                   if (name === 'fullscreen') {
                     void toggleFullscreen()
+                    return
+                  }
+
+                  if (name === 'zen') {
+                    if (viewMode !== 'library' && focusedBookTab) {
+                      onSettingsOpenChange(false)
+                      setZenMode(true)
+                    }
                     return
                   }
 

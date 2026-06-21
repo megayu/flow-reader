@@ -19,7 +19,7 @@ import {
 } from 'react-icons/md'
 import { RiBookLine } from 'react-icons/ri'
 import type { IPhotoSliderProps } from 'react-photo-view/dist/PhotoSlider'
-import { useRecoilValue, useSetRecoilState } from 'recoil'
+import { useRecoilValue, useSetRecoilState, type SetterOrUpdater } from 'recoil'
 import useTilg from 'tilg'
 import { useSnapshot } from 'valtio'
 
@@ -28,6 +28,9 @@ import {
   navbarState,
   useSettingsReady,
   viewModeState,
+  zenModeState,
+  zenTypographyOverridesState,
+  type TypographyConfiguration,
   type ViewMode,
 } from '@flow/reader/state'
 
@@ -73,35 +76,43 @@ const PhotoSlider = dynamic<IPhotoSliderProps>(
 const FONT_SIZE_MIN = 14
 const FONT_SIZE_MAX = 28
 const FONT_SIZE_DEFAULT = 16
+type ZenTypographyOverridesSetter = SetterOrUpdater<
+  Record<string, TypographyConfiguration>
+>
 
 function handleKeyDown(
   tab: BookTab | undefined,
   viewMode: ViewMode,
   enterReaderMode: () => void,
+  zenMode: boolean,
+  setZenMode: (value: boolean) => void,
+  setZenTypographyOverrides: ZenTypographyOverridesSetter,
 ) {
   return (e: KeyboardEvent) => {
     try {
       if (e.key === 'Escape') {
+        if (zenMode) {
+          e.preventDefault()
+          e.stopPropagation()
+          e.stopImmediatePropagation?.()
+          setZenMode(false)
+          return
+        }
+
         void exitFullscreenIfActive()
+      }
+
+      if (handleZenEnterShortcut(e, tab, viewMode, setZenMode)) return
+      if (zenMode) {
+        handleZenShortcut(e, tab, viewMode, setZenTypographyOverrides)
+        return
       }
 
       if (handleCommandShortcut(e, viewMode, enterReaderMode)) return
       if (viewMode === 'library') return
       if (handleReturnShortcut(e, tab)) return
       if (handleChapterShortcut(e, tab)) return
-
-      switch (e.code) {
-        case 'ArrowLeft':
-        case 'ArrowUp':
-          tab?.prev()
-          break
-        case 'ArrowRight':
-        case 'ArrowDown':
-          tab?.next()
-          break
-        case 'Space':
-          e.shiftKey ? tab?.prev() : tab?.next()
-      }
+      handlePageTurnShortcut(e, tab)
     } catch (error) {
       // ignore `rendition is undefined` error
     }
@@ -145,6 +156,12 @@ function handleCommandShortcut(
 
   if (handleTabSwitchShortcut(e, enterReaderMode)) return true
 
+  return handleFontSizeShortcut(e, viewMode)
+}
+
+function handleFontSizeShortcut(e: KeyboardEvent, viewMode: ViewMode) {
+  if (!hasCommandModifier(e) || e.altKey) return false
+
   const fontSizeReset = isFontSizeResetShortcut(e)
   const fontSizeDelta = getFontSizeShortcutDelta(e)
   if (!fontSizeReset && !fontSizeDelta) return false
@@ -164,6 +181,75 @@ function handleCommandShortcut(
         updateBookFontSize(tab, fontSizeDelta)
       }
     }
+  }
+  return true
+}
+
+function handleZenEnterShortcut(
+  e: KeyboardEvent,
+  tab: BookTab | undefined,
+  viewMode: ViewMode,
+  setZenMode: (value: boolean) => void,
+) {
+  if (viewMode === 'library' || !tab) return false
+  if (e.key.toLowerCase() !== 'z') return false
+  if (shouldIgnoreReaderShortcut(e)) return false
+
+  e.preventDefault()
+  e.stopPropagation()
+  e.stopImmediatePropagation?.()
+  setZenMode(true)
+  return true
+}
+
+function handleZenShortcut(
+  e: KeyboardEvent,
+  tab: BookTab | undefined,
+  viewMode: ViewMode,
+  setZenTypographyOverrides: ZenTypographyOverridesSetter,
+) {
+  if (handleZenFontSizeShortcut(e, tab, viewMode, setZenTypographyOverrides)) {
+    return true
+  }
+  if (handleChapterShortcut(e, tab)) return true
+  if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (handlePageTurnShortcut(e, tab)) return true
+  }
+
+  if (hasCommandModifier(e) && !isReaderShortcutTargetBlocked(e)) {
+    e.preventDefault()
+    e.stopPropagation()
+    e.stopImmediatePropagation?.()
+    return true
+  }
+
+  return false
+}
+
+function handleZenFontSizeShortcut(
+  e: KeyboardEvent,
+  tab: BookTab | undefined,
+  viewMode: ViewMode,
+  setZenTypographyOverrides: ZenTypographyOverridesSetter,
+) {
+  if (!hasCommandModifier(e) || e.altKey) return false
+
+  const fontSizeReset = isFontSizeResetShortcut(e)
+  const fontSizeDelta = getFontSizeShortcutDelta(e)
+  if (!fontSizeReset && !fontSizeDelta) return false
+
+  e.preventDefault()
+  e.stopPropagation()
+  e.stopImmediatePropagation?.()
+
+  if (viewMode === 'library' || !tab || isReaderShortcutTargetBlocked(e)) {
+    return true
+  }
+
+  if (fontSizeReset) {
+    clearZenBookFontSize(tab, setZenTypographyOverrides)
+  } else {
+    updateZenBookFontSize(tab, fontSizeDelta, setZenTypographyOverrides)
   }
   return true
 }
@@ -278,6 +364,56 @@ function clearBookFontSize(tab: BookTab) {
   })
 }
 
+function updateZenBookFontSize(
+  tab: BookTab,
+  delta: number,
+  setZenTypographyOverrides: ZenTypographyOverridesSetter,
+) {
+  setZenTypographyOverrides((overrides) => {
+    const bookId = tab.book.id
+    const typography = overrides[bookId] ?? {}
+    const fontSize =
+      parseFontSize(typography.fontSize) ??
+      parseFontSize(tab.book.configuration?.typography?.fontSize) ??
+      getCurrentBodyFontSize(tab) ??
+      FONT_SIZE_DEFAULT
+    const next = clamp(fontSize + delta, FONT_SIZE_MIN, FONT_SIZE_MAX)
+
+    return {
+      ...overrides,
+      [bookId]: {
+        ...typography,
+        fontSize: `${next}px`,
+      },
+    }
+  })
+}
+
+function clearZenBookFontSize(
+  tab: BookTab,
+  setZenTypographyOverrides: ZenTypographyOverridesSetter,
+) {
+  setZenTypographyOverrides((overrides) => {
+    const bookId = tab.book.id
+    const typography = {
+      ...overrides[bookId],
+    }
+
+    delete typography.fontSize
+
+    if (!Object.keys(typography).length) {
+      const next = { ...overrides }
+      delete next[bookId]
+      return next
+    }
+
+    return {
+      ...overrides,
+      [bookId]: typography,
+    }
+  })
+}
+
 function getCurrentBodyFontSize(tab: BookTab) {
   return getBodyTypographyBaseline(tab.view?.contents, tab.bodyTextCache)
     .fontSize
@@ -308,6 +444,26 @@ function handleChapterShortcut(e: KeyboardEvent, tab?: BookTab) {
 
   void (direction < 0 ? tab.prevSection() : tab.nextSection())
   return true
+}
+
+function handlePageTurnShortcut(e: KeyboardEvent, tab?: BookTab) {
+  if (!tab) return false
+
+  switch (e.code) {
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      tab.prev()
+      return true
+    case 'ArrowRight':
+    case 'ArrowDown':
+      tab.next()
+      return true
+    case 'Space':
+      e.shiftKey ? tab.prev() : tab.next()
+      return true
+    default:
+      return false
+  }
 }
 
 function handleReturnShortcut(e: KeyboardEvent, tab?: BookTab) {
@@ -414,6 +570,11 @@ export function ReaderGridView({ content }: ReaderGridViewProps) {
   const { groups } = useReaderSnapshot()
   const setViewMode = useSetRecoilState(viewModeState)
   const viewMode = useRecoilValue(viewModeState)
+  const zenMode = useRecoilValue(zenModeState)
+  const setZenMode = useSetRecoilState(zenModeState)
+  const setZenTypographyOverrides = useSetRecoilState(
+    zenTypographyOverridesState,
+  )
   const enterReaderMode = useCallback(
     () => setViewMode('reader'),
     [setViewMode],
@@ -421,7 +582,14 @@ export function ReaderGridView({ content }: ReaderGridViewProps) {
 
   useEventListener(
     'keydown',
-    handleKeyDown(reader.focusedBookTab, viewMode, enterReaderMode),
+    handleKeyDown(
+      reader.focusedBookTab,
+      viewMode,
+      enterReaderMode,
+      zenMode,
+      setZenMode,
+      setZenTypographyOverrides,
+    ),
   )
   useEventListener('contextmenu', preventContextMenu)
 
@@ -453,6 +621,7 @@ function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
   const { tabs, selectedIndex } = useSnapshot(group)
   const t = useTranslation()
   const [backgroundClassName] = useBackground()
+  const zenMode = useRecoilValue(zenModeState)
   const tabWheelDelta = useRef(0)
   const lastTabWheelSwitch = useRef(0)
 
@@ -489,7 +658,10 @@ function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
       className="ReaderGroup flex h-full min-h-0 flex-1 flex-col overflow-hidden focus:outline-none"
       onMouseDown={handleMouseDown}
     >
-      <Tab.List className="hidden sm:flex" onWheel={handleTabWheel}>
+      <Tab.List
+        className={clsx('hidden sm:flex', zenMode && '!hidden')}
+        onWheel={handleTabWheel}
+      >
         {tabs.map((tab, i) => {
           const selected = i === selectedIndex
           const focused = selected
@@ -818,6 +990,11 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
   const setNavbar = useSetRecoilState(navbarState)
   const viewMode = useRecoilValue(viewModeState)
   const setViewMode = useSetRecoilState(viewModeState)
+  const zenMode = useRecoilValue(zenModeState)
+  const setZenMode = useSetRecoilState(zenModeState)
+  const setZenTypographyOverrides = useSetRecoilState(
+    zenTypographyOverridesState,
+  )
   const enterReaderMode = useCallback(
     () => setViewMode('reader'),
     [setViewMode],
@@ -870,9 +1047,10 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
       e.preventDefault()
       e.stopPropagation()
       e.stopImmediatePropagation?.()
+      if (zenMode) return
       openChapterFind()
     },
-    [openChapterFind],
+    [openChapterFind, zenMode],
   )
 
   useEffect(() => {
@@ -884,8 +1062,18 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
   }, [handleFindShortcut])
   useFrameEvent(frameWindows, 'keydown', handleFindShortcut, { capture: true })
 
+  useEffect(() => {
+    if (!zenMode) return
+
+    closeChapterFind()
+    setNotePopover(undefined)
+    if (tab.annotationRange) tab.annotationRange = undefined
+    if (tab.annotationCfi) tab.annotationCfi = undefined
+  }, [closeChapterFind, tab, zenMode])
+
   const handleReturnMouseButton = useCallback(
     (e: MouseEvent) => {
+      if (zenMode) return
       if (e.button !== 3) return
       if (reader.focusedBookTab !== tab) return
       if (!tab.locationToReturn) return
@@ -898,7 +1086,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
       e.stopImmediatePropagation?.()
       tab.returnToPreviousLocation()
     },
-    [tab],
+    [tab, zenMode],
   )
 
   useEffect(() => {
@@ -1087,6 +1275,10 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
   const lastWheelTurn = useRef(0)
 
   useEffect(() => {
+    if (zenMode) setSrc(undefined)
+  }, [zenMode])
+
+  useEffect(() => {
     if (src) {
       if (document.activeElement instanceof HTMLElement)
         document.activeElement?.blur()
@@ -1114,6 +1306,11 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
       const doc = win.document
 
       const handleClick = (e: MouseEvent) => {
+        if (zenMode) {
+          setNotePopover(undefined)
+          return
+        }
+
         const anchor = getAnchorFromEvent(e)
         if (!anchor) {
           setNotePopover(undefined)
@@ -1156,7 +1353,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     return () => {
       cleanups.forEach((cleanup) => cleanup())
     }
-  }, [closeChapterFind, frameWindows, rendition, tab])
+  }, [closeChapterFind, frameWindows, rendition, tab, zenMode])
 
   const handleFrameClick = useCallback(
     (e: MouseEvent) => {
@@ -1170,6 +1367,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
           return
         }
         if (
+          !zenMode &&
           mobile === false &&
           el.tagName === 'IMG' &&
           el.src.startsWith('blob:')
@@ -1199,7 +1397,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
         }
       }
     },
-    [container, mobile, setNavbar, tab],
+    [container, mobile, setNavbar, tab, zenMode],
   )
   useFrameEvent(frameWindows, 'click', handleFrameClick)
   useFrameEvent(frameWindows, 'contextmenu', preventContextMenu)
@@ -1242,8 +1440,23 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
   }, [handleRenditionWheel, rendition])
 
   const handleFrameKeyDown = useMemo(
-    () => handleKeyDown(tab, viewMode, enterReaderMode),
-    [enterReaderMode, tab, viewMode],
+    () =>
+      handleKeyDown(
+        tab,
+        viewMode,
+        enterReaderMode,
+        zenMode,
+        setZenMode,
+        setZenTypographyOverrides,
+      ),
+    [
+      enterReaderMode,
+      setZenMode,
+      setZenTypographyOverrides,
+      tab,
+      viewMode,
+      zenMode,
+    ],
   )
   useFrameEvent(frameWindows, 'keydown', handleFrameKeyDown)
 
@@ -1320,12 +1533,12 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     <div className={clsx('flex h-full flex-col', mobile && 'py-[3vw]')}>
       <PhotoSlider
         images={[{ src, key: 0 }]}
-        visible={!!src}
+        visible={!zenMode && !!src}
         onClose={() => setSrc(undefined)}
         maskOpacity={0.6}
         bannerVisible={false}
       />
-      <ReaderPaneHeader tab={tab} />
+      {!zenMode && <ReaderPaneHeader tab={tab} />}
       <div
         ref={ref}
         className={clsx('relative flex-1', isTouchScreen || 'h-0')}
@@ -1341,14 +1554,16 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
             background,
           )}
         />
-        <TextSelectionMenu tab={tab} />
+        {!zenMode && <TextSelectionMenu tab={tab} />}
         <Annotations tab={tab} />
-        <NotePopover
-          popover={notePopover}
-          onClose={() => setNotePopover(undefined)}
-        />
-        <ChapterFindHighlights find={chapterFind} tab={tab} />
-        {chapterFind.open && (
+        {!zenMode && (
+          <NotePopover
+            popover={notePopover}
+            onClose={() => setNotePopover(undefined)}
+          />
+        )}
+        {!zenMode && <ChapterFindHighlights find={chapterFind} tab={tab} />}
+        {!zenMode && chapterFind.open && (
           <ChapterFindBar
             find={chapterFind}
             inputRef={chapterFindInputRef}
