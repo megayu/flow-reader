@@ -310,6 +310,9 @@ class DefaultViewManager {
       this.layout.gap,
       this.settings.axis,
       this.settings.direction || 'ltr',
+      this.viewSettings && this.viewSettings.layoutStyleSignature
+        ? this.viewSettings.layoutStyleSignature
+        : '',
     ].join(':')
   }
 
@@ -685,77 +688,156 @@ class DefaultViewManager {
   }
 
   async renderReflowableSpread(spread) {
+    if (spread && spread.exact) {
+      return this.renderExactReflowableSpread(spread)
+    }
+
     let viewBySectionIndex = {}
+    let resolvedSpread = {
+      ...spread,
+    }
 
     this.clear()
     this.updateLayout()
 
-    if (spread.anchor === 'right' && spread.right) {
-      spread.right = await this.normalizeReflowablePage(spread.right)
-      if (spread.right) {
-        let rightView = await this.add(spread.right.section)
-        viewBySectionIndex[spread.right.section.index] = rightView
+    if (resolvedSpread.anchor === 'right' && resolvedSpread.right) {
+      resolvedSpread.right = await this.normalizeReflowablePage(
+        resolvedSpread.right,
+      )
+      if (resolvedSpread.right) {
+        let rightView = await this.add(resolvedSpread.right.section)
+        viewBySectionIndex[resolvedSpread.right.section.index] = rightView
         let rightPageCount = this.cacheReflowablePageCount(rightView)
-        let rightPageIndex = spread.endsAtSectionEnd
+        let rightPageIndex = resolvedSpread.endsAtSectionEnd
           ? rightPageCount - 1
-          : spread.right.pageIndex
-        spread.right = this.clampReflowablePageToCount(
-          this.reflowablePage(spread.right.section, rightPageIndex),
+          : resolvedSpread.right.pageIndex
+        resolvedSpread.right = this.clampReflowablePageToCount(
+          this.reflowablePage(resolvedSpread.right.section, rightPageIndex),
           rightPageCount,
         )
-        spread.left = await this.reflowablePageBeforeRenderedRight(
-          spread.right,
+        resolvedSpread.left = await this.reflowablePageBeforeRenderedRight(
+          resolvedSpread.right,
           rightPageCount,
         )
       }
 
       if (
-        spread.left &&
-        spread.right &&
-        !this.sameReflowableSection(spread.left, spread.right)
+        resolvedSpread.left &&
+        resolvedSpread.right &&
+        !this.sameReflowableSection(resolvedSpread.left, resolvedSpread.right)
       ) {
-        let leftView = await this.prepend(spread.left.section)
-        viewBySectionIndex[spread.left.section.index] = leftView
+        let leftView = await this.prepend(resolvedSpread.left.section)
+        viewBySectionIndex[resolvedSpread.left.section.index] = leftView
         let leftPageCount = this.cacheReflowablePageCount(leftView)
-        spread.left = this.reflowablePage(
-          spread.left.section,
+        resolvedSpread.left = this.reflowablePage(
+          resolvedSpread.left.section,
           Math.max(leftPageCount - 1, 0),
         )
       }
 
-      this.applyReflowableSpreadPosition(spread, viewBySectionIndex)
+      this.applyReflowableSpreadPosition(resolvedSpread, viewBySectionIndex)
       return
     }
 
-    if (spread.left) {
-      spread.left = await this.normalizeReflowablePage(spread.left)
+    if (resolvedSpread.left) {
+      resolvedSpread.left = await this.normalizeReflowablePage(
+        resolvedSpread.left,
+      )
     }
 
-    if (spread.left) {
-      let leftView = await this.add(spread.left.section)
-      viewBySectionIndex[spread.left.section.index] = leftView
+    if (resolvedSpread.left) {
+      let leftView = await this.add(resolvedSpread.left.section)
+      viewBySectionIndex[resolvedSpread.left.section.index] = leftView
       let leftPageCount = this.cacheReflowablePageCount(leftView)
-      spread.left = this.clampReflowablePageToCount(spread.left, leftPageCount)
-      spread.right = await this.reflowablePageAfterRenderedLeft(
-        spread.left,
+      resolvedSpread.left = this.clampReflowablePageToCount(
+        resolvedSpread.left,
         leftPageCount,
       )
-    } else if (spread.right) {
-      spread.right = await this.normalizeReflowablePage(spread.right)
+      resolvedSpread.right = await this.reflowablePageAfterRenderedLeft(
+        resolvedSpread.left,
+        leftPageCount,
+      )
+    } else if (resolvedSpread.right) {
+      resolvedSpread.right = await this.normalizeReflowablePage(
+        resolvedSpread.right,
+      )
     }
 
     if (
-      spread.right &&
-      (!spread.left || !this.sameReflowableSection(spread.left, spread.right))
+      resolvedSpread.right &&
+      (!resolvedSpread.left ||
+        !this.sameReflowableSection(resolvedSpread.left, resolvedSpread.right))
     ) {
-      let rightView = spread.left
-        ? await this.append(spread.right.section)
-        : await this.add(spread.right.section)
-      viewBySectionIndex[spread.right.section.index] = rightView
+      let rightView = resolvedSpread.left
+        ? await this.append(resolvedSpread.right.section)
+        : await this.add(resolvedSpread.right.section)
+      viewBySectionIndex[resolvedSpread.right.section.index] = rightView
       this.cacheReflowablePageCount(rightView)
     }
 
-    this.applyReflowableSpreadPosition(spread, viewBySectionIndex)
+    this.applyReflowableSpreadPosition(resolvedSpread, viewBySectionIndex)
+  }
+
+  async renderExactReflowableSpread(spread) {
+    let viewBySectionIndex = {}
+    let resolvedSpread = {
+      ...spread,
+      anchor: spread.anchor || (spread.left ? 'left' : 'right'),
+    }
+
+    this.clear()
+    this.updateLayout()
+
+    if (resolvedSpread.left) {
+      resolvedSpread.left = await this.normalizeReflowablePage(
+        resolvedSpread.left,
+      )
+    }
+    if (resolvedSpread.right) {
+      resolvedSpread.right = await this.normalizeReflowablePage(
+        resolvedSpread.right,
+      )
+    }
+
+    if (!resolvedSpread.left && !resolvedSpread.right) {
+      this.views.show()
+      return
+    }
+
+    let leftPageCount
+    if (resolvedSpread.left) {
+      let leftView = await this.add(resolvedSpread.left.section)
+      viewBySectionIndex[resolvedSpread.left.section.index] = leftView
+      leftPageCount = this.cacheReflowablePageCount(leftView)
+      resolvedSpread.left = this.clampReflowablePageToCount(
+        resolvedSpread.left,
+        leftPageCount,
+      )
+    }
+
+    if (resolvedSpread.right) {
+      if (
+        resolvedSpread.left &&
+        this.sameReflowableSection(resolvedSpread.left, resolvedSpread.right)
+      ) {
+        resolvedSpread.right = this.clampReflowablePageToCount(
+          resolvedSpread.right,
+          leftPageCount || 1,
+        )
+      } else {
+        let rightView = resolvedSpread.left
+          ? await this.append(resolvedSpread.right.section)
+          : await this.add(resolvedSpread.right.section)
+        viewBySectionIndex[resolvedSpread.right.section.index] = rightView
+        let rightPageCount = this.cacheReflowablePageCount(rightView)
+        resolvedSpread.right = this.clampReflowablePageToCount(
+          resolvedSpread.right,
+          rightPageCount,
+        )
+      }
+    }
+
+    this.applyReflowableSpreadPosition(resolvedSpread, viewBySectionIndex)
   }
 
   async displayReflowableSpread(section, target) {

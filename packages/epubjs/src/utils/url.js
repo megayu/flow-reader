@@ -2,6 +2,28 @@ import path from 'path-webpack'
 
 import Path from './path'
 
+function isTauriAssetUrl(url) {
+  return url && url.protocol === 'http:' && url.hostname === 'asset.localhost'
+}
+
+function hasEncodedPathSeparators(pathname) {
+  return /%2f|%5c/i.test(pathname)
+}
+
+function decodeAssetPath(pathname) {
+  return window.decodeURIComponent(pathname).replace(/\\/g, '/')
+}
+
+function encodeAssetPath(pathname) {
+  var normalized = pathname.replace(/\\/g, '/')
+
+  if (normalized.charAt(0) === '/') {
+    normalized = normalized.slice(1)
+  }
+
+  return '/' + window.encodeURIComponent(normalized)
+}
+
 /**
  * creates a Url object for parsing and manipulation of a url string
  * @param	{string} urlString	a url string (relative or absolute)
@@ -22,6 +44,7 @@ class Url {
     this.hash = ''
     this.search = ''
     this.base = baseString
+    this.encodedAssetPath = false
 
     if (
       !absolute &&
@@ -50,6 +73,14 @@ class Url {
         this.search = this.Url.search
 
         pathname = this.Url.pathname + (this.Url.search ? this.Url.search : '')
+        this.encodedAssetPath =
+          isTauriAssetUrl(this.Url) &&
+          hasEncodedPathSeparators(this.Url.pathname)
+        if (this.encodedAssetPath) {
+          pathname =
+            decodeAssetPath(this.Url.pathname) +
+            (this.Url.search ? this.Url.search : '')
+        }
       } catch (e) {
         // Skip URL parsing
         this.Url = undefined
@@ -89,6 +120,11 @@ class Url {
     }
 
     fullpath = path.resolve(this.directory, what)
+
+    if (this.encodedAssetPath) {
+      return this.origin + encodeAssetPath(fullpath)
+    }
+
     return this.origin + fullpath
   }
 

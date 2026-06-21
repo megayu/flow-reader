@@ -1,75 +1,45 @@
-import ePub, { Book } from '@flow/epubjs'
-
-import { BookRecord, db } from './db'
-import { createId } from './id'
-import { mapExtToMimes } from './mime'
+import { BookRecord, importBookPaths } from './db'
 
 const nativeOpenEvent = 'flow-open-files'
-
-interface NativeOpenFile {
-  name: string
-  mimeType: string
-  data: string
-}
-
-type NativeInvoke = <T>(
-  command: string,
-  args?: Record<string, unknown>,
-) => Promise<T>
 
 interface HandleFilesOptions {
   replaceExisting?: boolean
 }
 
-export async function fileToEpub(file: File) {
-  const data = await file.arrayBuffer()
-  return ePub(data)
+export async function handleFiles(
+  _files: Iterable<File>,
+  _options: HandleFilesOptions = {},
+) {
+  return []
 }
 
-export async function handleFiles(
-  files: Iterable<File>,
+export async function handleFilePaths(
+  paths: string[],
   { replaceExisting = true }: HandleFilesOptions = {},
 ) {
-  const books = await db?.books.toArray()
-  const newBooks = []
+  if (!paths.length) return []
 
-  for (const file of files) {
-    console.log(file)
-
-    if (!mapExtToMimes['.epub'].includes(file.type)) {
-      console.error(`Unsupported file type: ${file.type}`)
-      continue
-    }
-
-    const existingBook = books?.find((b) => b.name === file.name)
-
-    if (existingBook && !replaceExisting) {
-      newBooks.push(existingBook)
-      continue
-    }
-
-    const book = existingBook
-      ? await replaceBook(existingBook.id, file)
-      : await addBook(file)
-
-    if (books) {
-      const index = books.findIndex((b) => b.id === existingBook?.id)
-      if (index >= 0) {
-        books.splice(index, 1, book)
-      } else {
-        books.push(book)
-      }
-    }
-
-    newBooks.push(book)
-  }
-
-  return newBooks
+  return importBookPaths(paths, { replaceExisting })
 }
 
-export async function setupNativeOpenFiles(
-  onOpen?: (books: BookRecord[]) => void,
-) {
+export async function openImportDialog() {
+  const { open } = await import('@tauri-apps/plugin-dialog')
+  const selected = await open({
+    multiple: true,
+    filters: [{ name: 'EPUB', extensions: ['epub'] }],
+  })
+  const paths = Array.isArray(selected) ? selected : selected ? [selected] : []
+
+  return handleFilePaths(paths, { replaceExisting: true })
+}
+
+export async function setupNativeOpenFiles({
+  onOpen,
+  onDrop,
+}: {
+  onOpen?: (books: BookRecord[]) => void
+  onDrop?: (books: BookRecord[]) => void
+}) {
   if (typeof window === 'undefined') return
 
   try {
@@ -78,246 +48,52 @@ export async function setupNativeOpenFiles(
       import('@tauri-apps/api/event'),
     ])
 
-    const openPaths = async (paths: string[]) => {
+    const openPaths = async (
+      paths: string[],
+      { replaceExisting = false }: HandleFilesOptions = {},
+    ) => {
       if (!paths.length) return
 
-      const files = await readNativeOpenFiles(invoke, paths)
-      if (!files.length) return
-
-      const books = await handleFiles(files, { replaceExisting: false })
+      const books = await handleFilePaths(paths, { replaceExisting })
       if (books.length) onOpen?.(books)
     }
 
-    await openPaths(await invoke<string[]>('take_pending_open_paths'))
-
-    return listen<string[]>(nativeOpenEvent, (event) => {
-      void openPaths(event.payload)
+    await openPaths(await invoke<string[]>('take_pending_open_paths'), {
+      replaceExisting: false,
     })
+
+    const unlistenOpen = await listen<string[]>(nativeOpenEvent, (event) => {
+      void openPaths(event.payload, { replaceExisting: false })
+    })
+
+    let unlistenDrop: (() => void) | undefined
+    try {
+      const { getCurrentWebviewWindow } = await import(
+        '@tauri-apps/api/webviewWindow'
+      )
+      unlistenDrop = await getCurrentWebviewWindow().onDragDropEvent(
+        (event) => {
+          if (event.payload.type !== 'drop') return
+          void handleFilePaths(event.payload.paths, {
+            replaceExisting: true,
+          }).then((books) => {
+            if (books.length) onDrop?.(books)
+          })
+        },
+      )
+    } catch (error) {
+      console.debug('Native file drop is unavailable', error)
+    }
+
+    return () => {
+      unlistenOpen()
+      unlistenDrop?.()
+    }
   } catch (error) {
     console.debug('Native file open is unavailable', error)
   }
 }
 
-async function readNativeOpenFiles(invoke: NativeInvoke, paths: string[]) {
-  const files = await invoke<NativeOpenFile[]>('read_native_epub_files', {
-    paths,
-  })
-
-  return files.map(
-    (file) =>
-      new File([base64ToUint8Array(file.data)], file.name, {
-        type: file.mimeType,
-      }),
-  )
-}
-
-function base64ToUint8Array(data: string) {
-  const binary = atob(data)
-  const bytes = new Uint8Array(binary.length)
-
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i)
-  }
-
-  return bytes
-}
-
-export async function addBook(file: File) {
-  const epub = await fileToEpub(file)
-  const metadata = await epub.loaded.metadata
-
-  const book: BookRecord = {
-    id: createId(),
-    name: file.name || `${metadata.title}.epub`,
-    size: file.size,
-    metadata,
-    createdAt: Date.now(),
-    definitions: [],
-    annotations: [],
-  }
-  db?.books.add(book)
-  await addFile(book.id, file, epub, book)
-  return book
-}
-
-async function replaceBook(oldId: string, file: File) {
-  const epub = await fileToEpub(file)
-  const metadata = await epub.loaded.metadata
-
-  await Promise.all([
-    db?.books.delete(oldId),
-    db?.files.delete(oldId),
-    db?.covers.delete(oldId),
-  ])
-
-  const book: BookRecord = {
-    id: createId(),
-    name: file.name || `${metadata.title}.epub`,
-    size: file.size,
-    metadata,
-    createdAt: Date.now(),
-    definitions: [],
-    annotations: [],
-  }
-
-  await db?.books.add(book)
-  await addFile(book.id, file, epub, book)
-  return book
-}
-
-export async function addFile(
-  id: string,
-  file: File,
-  epub?: Book,
-  book?: CoverBook,
-) {
-  await db?.files.put({ id, file })
-  await ensureBookCover(book ?? { id }, file, epub)
-}
-
-export async function ensureBookCover(
-  book: CoverBook,
-  file?: File,
-  epub?: Book,
-) {
-  const existing = await db?.covers.get(book.id)
-  if (existing?.cover) return existing.cover
-
-  if (!epub) {
-    const record = file ? undefined : await db?.files.get(book.id)
-    file = file ?? record?.file
-    if (!file) return null
-
-    epub = await fileToEpub(file)
-  }
-
-  const url = await epub.coverUrl()
-  let cover = url ? await toDataUrl(url).catch(() => null) : null
-
-  if (!cover) {
-    const metadata = book.metadata ?? (await epub.loaded.metadata)
-    cover = createTextCover(metadata, book.name ?? file?.name)
-  }
-
-  await db?.covers.put({ id: book.id, cover })
-  return cover
-}
-
-export function readBlob(fn: (reader: FileReader) => void) {
-  return new Promise<string>((resolve) => {
-    const reader = new FileReader()
-    reader.addEventListener('load', () => {
-      resolve(reader.result as string)
-    })
-    fn(reader)
-  })
-}
-
-async function toDataUrl(url: string) {
-  const res = await fetch(url)
-  const buffer = await res.blob()
-  return readBlob((r) => r.readAsDataURL(buffer))
-}
-
-type CoverBook = Pick<BookRecord, 'id'> &
-  Partial<Pick<BookRecord, 'name' | 'metadata'>>
-
-function createTextCover(
-  metadata?: Partial<BookRecord['metadata']>,
-  filename?: string,
-) {
-  const title = cleanText(metadata?.title) || stripFileExtension(filename) || ''
-  const creator = cleanText(metadata?.creator)
-
-  const titleLines = wrapCoverText(title, creator ? 9 : 8, creator ? 3 : 4)
-  const titleSize = titleLines.length > 2 ? 92 : 112
-  const titleLineHeight = titleSize * 1.28
-  const creatorSize = 72
-  const creatorLineHeight = 86
-  const creatorLines = creator ? wrapCoverText(creator, 10, 2) : []
-  const contentHeight =
-    titleLines.length * titleLineHeight +
-    (creatorLines.length ? 72 + creatorLines.length * creatorLineHeight : 0)
-  let y = 512 - contentHeight / 2 + titleSize
-
-  const titleSvg = titleLines
-    .map((line) => {
-      const text = svgText(line)
-      const node = `<text x="384" y="${Math.round(
-        y,
-      )}" text-anchor="middle" font-size="${titleSize}" font-weight="800">${text}</text>`
-      y += titleLineHeight
-      return node
-    })
-    .join('')
-
-  y += creatorLines.length ? 72 : 0
-
-  const creatorSvg = creatorLines
-    .map((line) => {
-      const text = svgText(line)
-      const node = `<text x="384" y="${Math.round(
-        y,
-      )}" text-anchor="middle" font-size="${creatorSize}" font-weight="700">${text}</text>`
-      y += creatorLineHeight
-      return node
-    })
-    .join('')
-
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 768 1024">
-  <rect width="768" height="1024" fill="#ead7b5"/>
-  <g fill="#3d3122" font-family="Noto Serif CJK SC, Source Han Serif SC, STSong, SimSun, serif" dominant-baseline="alphabetic">
-    ${titleSvg}
-    ${creatorSvg}
-  </g>
-</svg>`
-
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
-}
-
-function cleanText(value?: string) {
-  return value?.replace(/\s+/g, ' ').trim() ?? ''
-}
-
-function stripFileExtension(filename?: string) {
-  return cleanText(filename).replace(/\.[^.]+$/, '')
-}
-
-function wrapCoverText(
-  text: string,
-  maxUnitsPerLine: number,
-  maxLines: number,
-) {
-  const chars = [...text]
-  const lines: string[] = []
-  let line = ''
-  let units = 0
-
-  chars.forEach((char) => {
-    const width = char.charCodeAt(0) <= 0xff ? 0.55 : 1
-    if (line && units + width > maxUnitsPerLine) {
-      lines.push(line)
-      line = char
-      units = width
-      return
-    }
-
-    line += char
-    units += width
-  })
-
-  if (line) lines.push(line)
-
-  if (lines.length <= maxLines) return lines
-
-  const visible = lines.slice(0, maxLines)
-  visible[maxLines - 1] = `${visible[maxLines - 1]!.replace(/…+$/, '')}…`
-  return visible
-}
-
-function svgText(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+export function isTauriRuntime() {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 }

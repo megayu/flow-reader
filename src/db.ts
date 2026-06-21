@@ -1,11 +1,7 @@
-import { IS_SERVER } from '@literal-ui/hooks'
-import Dexie, { Table } from 'dexie'
+import type { PackagingMetadataObject } from '@flow/epubjs/types/packaging'
 
-import { PackagingMetadataObject } from '@flow/epubjs/types/packaging'
-
-import { Annotation } from './annotation'
-import { fileToEpub } from './file'
-import { TypographyConfiguration } from './state'
+import type { Annotation } from './annotation'
+import type { TypographyConfiguration } from './state'
 
 export interface FileRecord {
   id: string
@@ -17,102 +13,324 @@ export interface CoverRecord {
   cover: string | null
 }
 
+export interface CoverInput {
+  mimeType: string
+  extension: string
+  data: number[]
+}
+
+export interface ReadingSpreadPageRecord {
+  sectionIndex: number
+  pageIndex: number
+}
+
+export interface ReadingSpreadRecord extends ReadingSpreadPageRecord {
+  version: 1
+  anchor: 'left' | 'right'
+  layoutStyleSignature?: string
+}
+
 export interface BookRecord {
-  // TODO: use file hash as id
   id: string
   name: string
   size: number
   metadata: PackagingMetadataObject
   createdAt: number
   updatedAt?: number
+  lastReadAt?: number
   cfi?: string
   percentage?: number
   definitions: string[]
   annotations: Annotation[]
   configuration?: {
     typography?: TypographyConfiguration
+    spread?: ReadingSpreadRecord
+  }
+  contentHash?: string
+  contentVersion?: number
+  stateLoaded?: boolean
+}
+
+type NativeInvoke = <T>(
+  command: string,
+  args?: Record<string, unknown>,
+) => Promise<T>
+
+type Listener = () => void
+type TableName = 'books' | 'covers' | 'files' | 'settings'
+
+const listeners = new Map<TableName, Set<Listener>>()
+const bookCache = new Map<string, BookRecord>()
+let booksCache: BookRecord[] | undefined
+const pendingNativeWrites = new Set<Promise<unknown>>()
+
+function subscribe(table: TableName, listener: Listener) {
+  let set = listeners.get(table)
+  if (!set) {
+    set = new Set()
+    listeners.set(table, set)
+  }
+  set.add(listener)
+
+  return () => {
+    set?.delete(listener)
   }
 }
 
-export class DB extends Dexie {
-  // 'books' is added by dexie when declaring the stores()
-  // We just tell the typing system this is the case
-  files!: Table<FileRecord>
-  covers!: Table<CoverRecord>
-  books!: Table<BookRecord>
+function notify(...tables: TableName[]) {
+  tables.forEach((table) => {
+    listeners.get(table)?.forEach((listener) => listener())
+  })
+}
 
-  constructor(name: string) {
-    super(name)
+function asFullBook(book: BookRecord) {
+  return { ...book, stateLoaded: true }
+}
 
-    this.version(5).stores({
-      books:
-        'id, name, size, metadata, createdAt, updatedAt, cfi, percentage, definitions, annotations, configuration',
-    })
+function asBookSummary(book: BookRecord) {
+  return { ...book, stateLoaded: false }
+}
 
-    this.version(4)
-      .stores({
-        books:
-          'id, name, size, metadata, createdAt, updatedAt, cfi, percentage, definitions, annotations',
-      })
-      .upgrade(async (t) => {
-        t.table('books')
-          .toCollection()
-          .modify((r) => {
-            r.annotations = []
-          })
-      })
+function mergeBookSummary(book: BookRecord, existing?: BookRecord) {
+  if (!existing?.stateLoaded) return asBookSummary(book)
 
-    this.version(3)
-      .stores({
-        books:
-          'id, name, size, metadata, createdAt, updatedAt, cfi, percentage, definitions',
-      })
-      .upgrade(async (t) => {
-        const files = await t.table('files').toArray()
-
-        const metadatas = await Dexie.waitFor(
-          Promise.all(
-            files.map(async ({ file }) => {
-              const epub = await fileToEpub(file)
-              return epub.loaded.metadata
-            }),
-          ),
-        )
-
-        return t
-          .table('books')
-          .toCollection()
-          .modify(async (r) => {
-            const i = files.findIndex((f) => f.id === r.id)
-            r.metadata = metadatas[i]
-            r.size = files[i].file.size
-          })
-          .catch((e) => {
-            console.error(e)
-            throw e
-          })
-      })
-    this.version(2)
-      .stores({
-        books: 'id, name, createdAt, cfi, percentage, definitions',
-      })
-      .upgrade(async (t) => {
-        const books = await t.table('books').toArray()
-        ;['covers', 'files'].forEach((tableName) => {
-          t.table(tableName)
-            .toCollection()
-            .modify((r) => {
-              const book = books.find((b) => b.name === r.id)
-              if (book) r.id = book.id
-            })
-        })
-      })
-    this.version(1).stores({
-      books: 'id, name, createdAt, cfi, percentage, definitions', // Primary key and indexed props
-      covers: 'id, cover',
-      files: 'id, file',
-    })
+  return {
+    ...existing,
+    ...book,
+    definitions: existing.definitions,
+    annotations: existing.annotations,
+    configuration: existing.configuration,
+    stateLoaded: true,
   }
 }
 
-export const db = IS_SERVER ? null : new DB('re-reader')
+function rememberBook(book: BookRecord, { full = true } = {}) {
+  const normalized = full ? asFullBook(book) : asBookSummary(book)
+  bookCache.set(book.id, normalized)
+
+  if (!booksCache) return
+
+  const index = booksCache.findIndex((item) => item.id === book.id)
+  if (index >= 0) {
+    booksCache = [
+      ...booksCache.slice(0, index),
+      normalized,
+      ...booksCache.slice(index + 1),
+    ]
+  } else {
+    booksCache = [...booksCache, normalized]
+  }
+}
+
+function rememberBooks(books: BookRecord[]) {
+  booksCache = books.map((book) =>
+    mergeBookSummary(book, bookCache.get(book.id)),
+  )
+  bookCache.clear()
+  booksCache.forEach((book) => bookCache.set(book.id, book))
+}
+
+function forgetBooks(ids: string[]) {
+  ids.forEach((id) => bookCache.delete(id))
+  if (booksCache) {
+    booksCache = booksCache.filter((book) => !ids.includes(book.id))
+  }
+}
+
+function isReadingPositionOnlyUpdate(changes: Partial<BookRecord>) {
+  const keys = Object.keys(changes)
+  return (
+    keys.length > 0 &&
+    keys.some((key) => key === 'cfi' || key === 'percentage') &&
+    keys.every((key) =>
+      ['cfi', 'percentage', 'updatedAt', 'lastReadAt'].includes(key),
+    )
+  )
+}
+
+let invokePromise: Promise<NativeInvoke> | undefined
+let convertFileSrcPromise:
+  | Promise<((filePath: string, protocol?: string) => string) | undefined>
+  | undefined
+
+async function getInvoke() {
+  if (typeof window === 'undefined') {
+    throw new Error('Native storage is not available on the server')
+  }
+
+  invokePromise ??= import('@tauri-apps/api/core').then(({ invoke }) => invoke)
+  return invokePromise
+}
+
+async function invoke<T>(command: string, args?: Record<string, unknown>) {
+  return (await getInvoke())<T>(command, args)
+}
+
+function trackNativeWrite<T>(promise: Promise<T>) {
+  const tracked = promise.finally(() => {
+    pendingNativeWrites.delete(tracked)
+  })
+
+  pendingNativeWrites.add(tracked)
+  return tracked
+}
+
+async function waitForPendingNativeWrites() {
+  while (pendingNativeWrites.size) {
+    await Promise.allSettled(Array.from(pendingNativeWrites))
+  }
+}
+
+async function filePathToUrl(path: string) {
+  try {
+    convertFileSrcPromise ??= import('@tauri-apps/api/core').then(
+      ({ convertFileSrc }) => convertFileSrc,
+    )
+    const convertFileSrc = await convertFileSrcPromise
+    const normalizedPath = path.replace(/\\/g, '/')
+    return convertFileSrc?.(normalizedPath) ?? normalizedPath
+  } catch {
+    return path
+  }
+}
+
+async function toCoverRecord(record: CoverRecord | null) {
+  if (!record) return undefined
+
+  return {
+    ...record,
+    cover: record.cover ? await filePathToUrl(record.cover) : null,
+  }
+}
+
+export const db = {
+  subscribe,
+  notify,
+  async flush() {
+    await waitForPendingNativeWrites()
+    return invoke('flush_storage')
+  },
+  books: {
+    async toArray() {
+      if (booksCache) return booksCache
+
+      const books = await invoke<BookRecord[]>('list_books')
+      rememberBooks(books)
+      return books
+    },
+    get(id: string) {
+      const cached = bookCache.get(id)
+      if (cached?.stateLoaded) return Promise.resolve(cached)
+
+      return invoke<BookRecord | null>('get_book', { id }).then((book) => {
+        if (book) {
+          const loadedBook = asFullBook(book)
+          rememberBook(loadedBook)
+          return loadedBook
+        }
+        return undefined
+      })
+    },
+    peek(id: string) {
+      return bookCache.get(id)
+    },
+    remember(book: BookRecord) {
+      rememberBook(book)
+    },
+    async update(id: string, changes: Partial<BookRecord>) {
+      const cached = bookCache.get(id)
+      if (cached) {
+        rememberBook({ ...cached, ...changes }, { full: cached.stateLoaded })
+      }
+
+      const book = await trackNativeWrite(
+        invoke<BookRecord | null>('update_book', {
+          id,
+          changes,
+        }),
+      )
+      if (book) rememberBook(book)
+
+      if (!isReadingPositionOnlyUpdate(changes)) {
+        notify('books')
+      }
+      return book ?? undefined
+    },
+    async bulkDelete(ids: string[]) {
+      await trackNativeWrite(invoke('delete_books', { ids }))
+      forgetBooks(ids)
+      notify('books', 'covers', 'files')
+    },
+    async delete(id: string) {
+      await this.bulkDelete([id])
+    },
+  },
+  files: {
+    async getPackageUrl(id: string) {
+      const path = await invoke<string>('get_book_package_path', { id })
+      return filePathToUrl(path)
+    },
+    async bulkDelete(ids: string[]) {
+      await db.books.bulkDelete(ids)
+    },
+    async delete(id: string) {
+      await db.books.delete(id)
+    },
+  },
+  covers: {
+    async toArray() {
+      const covers = await invoke<CoverRecord[]>('list_covers')
+      return Promise.all(
+        covers.map(async (cover) => ({
+          ...cover,
+          cover: cover.cover ? await filePathToUrl(cover.cover) : null,
+        })),
+      )
+    },
+    get(id: string) {
+      return invoke<CoverRecord | null>('get_cover', { id }).then((cover) =>
+        toCoverRecord(cover),
+      )
+    },
+    async put(record: { id: string; cover: CoverInput | null }) {
+      await trackNativeWrite(
+        invoke('update_cover', {
+          id: record.id,
+          cover: record.cover,
+        }),
+      )
+      notify('covers')
+      return record.id
+    },
+    async bulkDelete(ids: string[]) {
+      await db.books.bulkDelete(ids)
+    },
+    async delete(id: string) {
+      await db.books.delete(id)
+    },
+  },
+}
+
+export async function importBookPaths(
+  paths: string[],
+  { replaceExisting = true }: { replaceExisting?: boolean } = {},
+) {
+  const books = await trackNativeWrite(
+    invoke<BookRecord[]>('import_epub_paths', {
+      paths,
+      replaceExisting,
+    }),
+  )
+  books.forEach((book) => rememberBook(book))
+  notify('books', 'covers', 'files')
+  return books
+}
+
+export async function getSettingsFromStorage<T>() {
+  return invoke<T>('get_settings')
+}
+
+export async function updateSettingsInStorage<T>(settings: T) {
+  await trackNativeWrite(invoke('update_settings', { settings }))
+  notify('settings')
+}

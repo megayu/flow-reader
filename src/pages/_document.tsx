@@ -34,21 +34,7 @@ const background = {
   dark: '#24292e',
 }
 
-// external import in `_document.tsx` will break fast refresh,
-// so move it to `_document.tsx`
 function PreventFlash() {
-  const setColorScheme = () => {
-    const mql = window.matchMedia('(prefers-color-scheme: dark)')
-    const scheme = localStorage.getItem('literal-color-scheme') ?? 'system'
-
-    if (scheme === '"dark"' || (scheme === '"system"' && mql.matches)) {
-      document.documentElement.classList.toggle('dark', true)
-      document
-        .querySelector('#theme-color')
-        ?.setAttribute('content', background.dark)
-    }
-  }
-
   return (
     <>
       <style>{`
@@ -63,9 +49,6 @@ function PreventFlash() {
         dangerouslySetInnerHTML={{
           __html: `const background=${JSON.stringify(background)}`,
         }}
-      ></script>
-      <script
-        dangerouslySetInnerHTML={{ __html: `(${setColorScheme})()` }}
       ></script>
     </>
   )

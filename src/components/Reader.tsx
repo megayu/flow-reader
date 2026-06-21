@@ -24,7 +24,12 @@ import useTilg from 'tilg'
 import { useSnapshot } from 'valtio'
 
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
-import { navbarState, viewModeState, type ViewMode } from '@flow/reader/state'
+import {
+  navbarState,
+  useSettingsReady,
+  viewModeState,
+  type ViewMode,
+} from '@flow/reader/state'
 
 import { getBookDisplayTitle, getBookTooltip } from '../book'
 import { db } from '../db'
@@ -41,6 +46,7 @@ import { BookTab, reader, useReaderSnapshot } from '../models'
 import { isTouchScreen } from '../platform'
 import { revealScrollbars } from '../scrollbar'
 import {
+  createTypographyLayoutSignature,
   getBodyTypographyBaseline,
   notePopoverClass,
   updateCustomStyle,
@@ -507,7 +513,7 @@ function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
               const text = e.dataTransfer.getData('text/plain')
               const tabParam =
                 Object.values(pages).find((p) => p.displayName === text) ??
-                (await db?.books.get(text))
+                (await db.books.get(text))
               if (tabParam) tabs.push(tabParam)
             }
 
@@ -520,7 +526,11 @@ function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
           {group.tabs.map((tab, i) => (
             <PaneContainer active={i === selectedIndex} key={tab.id}>
               {tab instanceof BookTab ? (
-                <BookPane tab={tab} onMouseDown={handleMouseDown} />
+                <BookPane
+                  active={i === selectedIndex}
+                  tab={tab}
+                  onMouseDown={handleMouseDown}
+                />
               ) : (
                 <tab.Component />
               )}
@@ -569,6 +579,7 @@ const PaneContainer: React.FC<PaneContainerProps> = ({ active, children }) => {
 }
 
 interface BookPaneProps {
+  active: boolean
   tab: BookTab
   onMouseDown: () => void
 }
@@ -578,6 +589,7 @@ interface ReflowableManager {
   currentReflowableSpread?: ReflowableSpread
   viewSettings?: {
     beforeLayout?: (contents: unknown) => void
+    layoutStyleSignature?: string
   }
 }
 
@@ -629,16 +641,151 @@ const initialChapterFind: ChapterFindState = {
   searching: false,
 }
 
-function BookPane({ tab, onMouseDown }: BookPaneProps) {
-  const ref = useRef<HTMLDivElement>(null)
+interface BookRenditionLifecycleOptions {
+  active: boolean
+  settingsReady: boolean
+  tab: BookTab
+  rendition: any
+  currentSpread: RenditionSpread
+  typographyLayoutSignature: string
+  applyCustomStyle: (contents?: any) => void
+  containerRef: React.RefObject<HTMLDivElement>
+}
+
+function useBookRenditionLifecycle({
+  active,
+  settingsReady,
+  tab,
+  rendition,
+  currentSpread,
+  typographyLayoutSignature,
+  applyCustomStyle,
+  containerRef,
+}: BookRenditionLifecycleOptions) {
   const prevSize = useRef(0)
+  const previousSpread = useRef<string>()
   const previousTypographyLayoutSignature = useRef<string>()
+  const applyCustomStyleRef = useRef(applyCustomStyle)
+  const currentSpreadRef = useRef(currentSpread)
+
+  applyCustomStyleRef.current = applyCustomStyle
+  currentSpreadRef.current = currentSpread
+
+  const renderIfReady = useCallback(() => {
+    if (!active || !settingsReady || rendition) return
+
+    const el = containerRef.current
+    if (!el || el.getBoundingClientRect().width === 0) return
+
+    const beforeLayout = applyCustomStyleRef.current
+    if (!beforeLayout) return
+
+    previousTypographyLayoutSignature.current = typographyLayoutSignature
+    tab.render(
+      el,
+      currentSpreadRef.current,
+      beforeLayout,
+      typographyLayoutSignature,
+    )
+  }, [
+    active,
+    containerRef,
+    rendition,
+    settingsReady,
+    tab,
+    typographyLayoutSignature,
+  ])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    const observer = new ResizeObserver(([entry]) => {
+      const size = entry?.contentRect.width ?? 0
+      // `display: hidden` will lead `rect` to 0
+      if (size !== 0 && size !== prevSize.current) {
+        requestAnimationFrame(() => {
+          if (!rendition) {
+            renderIfReady()
+            return
+          }
+
+          reader.resize()
+        })
+      }
+      prevSize.current = size
+    })
+
+    observer.observe(el)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [containerRef, rendition, renderIfReady])
+
+  useEffect(() => {
+    tab.setBeforeLayout(applyCustomStyle, typographyLayoutSignature)
+  }, [applyCustomStyle, rendition, tab, typographyLayoutSignature])
+
+  useEffect(() => {
+    return () => {
+      tab.destroy()
+    }
+  }, [tab])
+
+  useEffect(() => {
+    renderIfReady()
+  }, [renderIfReady])
+
+  useEffect(() => {
+    /**
+     * when `spread` changes, we should call `spread()` to re-layout,
+     * then call {@link updateCustomStyle} to update custom style
+     * according to the latest layout
+     */
+    if (!rendition) return
+
+    if (previousSpread.current === undefined) {
+      previousSpread.current = currentSpread
+      return
+    }
+    if (previousSpread.current === currentSpread) return
+
+    previousSpread.current = currentSpread
+    rendition.spread(currentSpread)
+  }, [currentSpread, rendition])
+
+  useEffect(() => {
+    if (!rendition) return
+    tab.setBeforeLayout(applyCustomStyle, typographyLayoutSignature)
+
+    if (previousTypographyLayoutSignature.current === typographyLayoutSignature)
+      return
+    previousTypographyLayoutSignature.current = typographyLayoutSignature
+
+    tab.resetLayoutPageState()
+
+    const target = tab.location?.start.cfi ?? tab.book.cfi
+    if (target) {
+      void rendition.display(target)
+    }
+  }, [applyCustomStyle, rendition, tab, typographyLayoutSignature])
+}
+
+function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
+  const ref = useRef<HTMLDivElement>(null)
   const chapterFindInputRef = useRef<HTMLInputElement>(null)
   const previousFindLocationKey = useRef<string>()
   const [chapterFind, setChapterFind] =
     useState<ChapterFindState>(initialChapterFind)
   const [notePopover, setNotePopover] = useState<NotePopoverState>()
   const typography = useTypography(tab)
+  const currentSpread = typography.spread ?? RenditionSpread.Auto
+  const typographyLayoutSignature = useMemo(
+    () => createTypographyLayoutSignature(typography),
+    [typography],
+  )
+  const settingsReady = useSettingsReady()
   const { dark } = useColorScheme()
   const [background] = useBackground()
 
@@ -650,26 +797,6 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
   )
 
   useTilg()
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-
-    const observer = new ResizeObserver(([e]) => {
-      const size = e?.contentRect.width ?? 0
-      // `display: hidden` will lead `rect` to 0
-      if (size !== 0 && prevSize.current !== 0) {
-        reader.resize()
-      }
-      prevSize.current = size
-    })
-
-    observer.observe(el)
-
-    return () => {
-      observer.disconnect()
-    }
-  }, [])
 
   const setNavbar = useSetRecoilState(navbarState)
   const viewMode = useRecoilValue(viewModeState)
@@ -789,79 +916,16 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
     [rendition, tab.bodyTextCache, typography],
   )
 
-  useEffect(() => {
-    const manager = rendition?.manager as ReflowableManager | undefined
-    if (!manager) {
-      tab.onBeforeLayout = applyCustomStyle
-      return
-    }
-
-    tab.onBeforeLayout = applyCustomStyle
-    manager.viewSettings ??= {}
-    manager.viewSettings.beforeLayout = (contents) => {
-      tab.onBeforeLayout?.(contents)
-    }
-  }, [applyCustomStyle, rendition, tab])
-
-  useEffect(() => {
-    tab.onRender = applyCustomStyle
-  }, [applyCustomStyle, tab])
-
-  useEffect(() => {
-    if (ref.current) tab.render(ref.current)
-  }, [tab])
-
-  useEffect(() => {
-    /**
-     * when `spread` changes, we should call `spread()` to re-layout,
-     * then call {@link updateCustomStyle} to update custom style
-     * according to the latest layout
-     */
-    rendition?.spread(typography.spread ?? RenditionSpread.Auto)
-  }, [typography.spread, rendition])
-
-  useEffect(() => applyCustomStyle(), [applyCustomStyle])
-
-  useEffect(() => {
-    const manager = rendition?.manager as ReflowableManager | undefined
-    if (!rendition || !manager) return
-
-    manager.reflowablePageCountCache = {}
-    manager.currentReflowableSpread = undefined
-
-    const signature = [
-      typography.fontFamily,
-      typography.fontSize,
-      typography.fontWeight,
-      typography.lineHeight,
-      typography.textAlign,
-      typography.textIndent,
-      typography.hideEndnotes,
-    ].join('|')
-
-    if (previousTypographyLayoutSignature.current === undefined) {
-      previousTypographyLayoutSignature.current = signature
-      return
-    }
-
-    if (previousTypographyLayoutSignature.current === signature) return
-    previousTypographyLayoutSignature.current = signature
-
-    const target = tab.location?.start.cfi ?? tab.book.cfi
-    if (target) {
-      void rendition.display(target)
-    }
-  }, [
-    rendition,
+  useBookRenditionLifecycle({
+    active,
+    settingsReady,
     tab,
-    typography.fontFamily,
-    typography.fontSize,
-    typography.fontWeight,
-    typography.lineHeight,
-    typography.textAlign,
-    typography.textIndent,
-    typography.hideEndnotes,
-  ])
+    rendition,
+    currentSpread,
+    typographyLayoutSignature,
+    applyCustomStyle,
+    containerRef: ref,
+  })
 
   const findOpen = chapterFind.open
   const findQuery = chapterFind.query
@@ -1017,7 +1081,6 @@ function BookPane({ tab, onMouseDown }: BookPaneProps) {
   // `dragenter` not fired in iframe when the count of times is even, so use `dragover`
   const handleFrameDragOver = useCallback(
     (e: DragEvent) => {
-      console.log('drag enter in iframe')
       setDragEvent(e as any)
     },
     [setDragEvent],
@@ -2235,7 +2298,10 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
   const locationToReturn = locationsToReturn[locationsToReturn.length - 1]
   const divisor = rendition?.manager?.layout?.divisor ?? 1
   const spread = divisor > 1
-  const percentage = `${((book.percentage ?? 0) * 100).toFixed(2)}%`
+  const percentage =
+    typeof book.percentage === 'number'
+      ? `${(book.percentage * 100).toFixed(2)}%`
+      : ''
   const startDisplayed = location?.start.displayed
   const endDisplayed = location?.end.displayed
   const singleVisiblePageOnRight =

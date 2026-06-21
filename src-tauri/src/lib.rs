@@ -3,10 +3,10 @@ use std::{
     sync::Mutex,
 };
 
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::Serialize;
-use tauri::{Emitter, Manager};
-use tauri_plugin_window_state::StateFlags;
+use tauri::{Emitter, Manager, WindowEvent};
+
+mod storage;
 
 const OPEN_FILES_EVENT: &str = "flow-open-files";
 
@@ -18,15 +18,6 @@ struct PendingOpenFiles(Mutex<Vec<PathBuf>>);
 struct SystemFont {
     family: String,
     label: String,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct NativeOpenFile {
-    name: String,
-    path: String,
-    mime_type: String,
-    data: String,
 }
 
 #[tauri::command]
@@ -45,31 +36,12 @@ fn take_pending_open_paths(state: tauri::State<'_, PendingOpenFiles>) -> Vec<Str
 }
 
 #[tauri::command]
-fn read_native_epub_files(paths: Vec<String>) -> Result<Vec<NativeOpenFile>, String> {
-    let mut files = Vec::new();
-
-    for path in paths {
-        let path = PathBuf::from(path);
-        if !is_epub_file(&path) {
-            continue;
-        }
-
-        let bytes =
-            std::fs::read(&path).map_err(|error| format!("Failed to read {:?}: {error}", path))?;
-        let name = path
-            .file_name()
-            .map(|name| name.to_string_lossy().to_string())
-            .unwrap_or_else(|| "book.epub".to_string());
-
-        files.push(NativeOpenFile {
-            name,
-            path: path.to_string_lossy().to_string(),
-            mime_type: "application/epub+zip".to_string(),
-            data: STANDARD.encode(bytes),
-        });
+fn toggle_devtools(window: tauri::WebviewWindow) {
+    if window.is_devtools_open() {
+        window.close_devtools();
+    } else {
+        window.open_devtools();
     }
-
-    Ok(files)
 }
 
 fn collect_epub_paths<I, P>(paths: I) -> Vec<PathBuf>
@@ -85,11 +57,7 @@ where
 }
 
 fn is_epub_file(path: &Path) -> bool {
-    path.is_file()
-        && path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("epub"))
+    storage::is_epub_file(path)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -98,6 +66,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(PendingOpenFiles(Mutex::new(pending_open_files)))
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             let paths = collect_epub_paths(argv);
             if paths.is_empty() {
@@ -115,21 +84,45 @@ pub fn run() {
                 let _ = window.emit(OPEN_FILES_EVENT, payload);
             }
         }))
-        .plugin(
-            tauri_plugin_window_state::Builder::default()
-                .with_state_flags(
-                    StateFlags::SIZE
-                        | StateFlags::POSITION
-                        | StateFlags::MAXIMIZED
-                        | StateFlags::FULLSCREEN
-                        | StateFlags::VISIBLE,
-                )
-                .build(),
-        )
+        .setup(|app| {
+            let storage = storage::AppStorage::load(app.handle()).map_err(std::io::Error::other)?;
+            app.manage(storage);
+
+            if let Some(window) = app.get_webview_window("main") {
+                storage::restore_window_state(&window);
+            }
+
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+
+            if matches!(
+                event,
+                WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed
+            ) {
+                storage::flush_app_storage(window);
+                storage::save_window_state(window);
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             list_system_fonts,
             take_pending_open_paths,
-            read_native_epub_files,
+            toggle_devtools,
+            storage::list_books,
+            storage::get_book,
+            storage::list_covers,
+            storage::get_cover,
+            storage::update_cover,
+            storage::import_epub_paths,
+            storage::get_book_package_path,
+            storage::update_book,
+            storage::delete_books,
+            storage::get_settings,
+            storage::update_settings,
+            storage::flush_storage,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Flow");

@@ -1,5 +1,13 @@
 import path from 'path-webpack'
 
+function isTauriAssetUrl(url) {
+  return url && url.protocol === 'http:' && url.hostname === 'asset.localhost'
+}
+
+function hasEncodedPathSeparators(pathname) {
+  return /%2f|%5c/i.test(pathname)
+}
+
 /**
  * Creates a Path object for parsing and manipulation of a path strings
  *
@@ -14,7 +22,11 @@ class Path {
 
     protocol = pathString.indexOf('://')
     if (protocol > -1) {
-      pathString = new URL(pathString).pathname
+      const url = new URL(pathString)
+      pathString =
+        isTauriAssetUrl(url) && hasEncodedPathSeparators(url.pathname)
+          ? window.decodeURIComponent(url.pathname).replace(/\\/g, '/')
+          : url.pathname
     }
 
     parsed = this.parse(pathString)

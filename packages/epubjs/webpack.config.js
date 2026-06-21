@@ -46,6 +46,7 @@ module.exports = {
   resolve: {
     alias: {
       path: 'path-webpack',
+      xmldom: '@xmldom/xmldom',
     },
   },
   devServer: {

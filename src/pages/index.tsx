@@ -1,6 +1,5 @@
 import { useBoolean } from '@literal-ui/hooks'
 import clsx from 'clsx'
-import { useLiveQuery } from 'dexie-react-hooks'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -21,8 +20,9 @@ import {
 } from '../book'
 import { ReaderGridView, Button, DropZone } from '../components'
 import { BookRecord, CoverRecord, db } from '../db'
-import { handleFiles, setupNativeOpenFiles } from '../file'
+import { handleFiles, openImportDialog, setupNativeOpenFiles } from '../file'
 import {
+  useCovers,
   useDisablePinchZooming,
   useLibrary,
   useMobile,
@@ -79,7 +79,7 @@ function compareBooksByField(a: BookRecord, b: BookRecord, field: SortField) {
     )
   }
   if (field === 'updatedAt') {
-    return compareBookNumber(a, b, (book) => book.updatedAt)
+    return compareBookNumber(a, b, (book) => book.lastReadAt ?? book.updatedAt)
   }
 
   return compareBookNumber(a, b, (book) => book.createdAt)
@@ -142,9 +142,14 @@ function useStringSet() {
 export default function Index() {
   const { focusedTab, groups } = useReaderSnapshot()
   const [viewMode, setViewMode] = useRecoilState(viewModeState)
+  const viewModeRef = useRef(viewMode)
   const router = useRouter()
 
   useDisablePinchZooming()
+
+  useEffect(() => {
+    viewModeRef.current = viewMode
+  }, [viewMode])
 
   useEffect(() => {
     router.beforePopState(({ url }) => {
@@ -159,9 +164,17 @@ export default function Index() {
     let disposed = false
     let unlisten: (() => void) | undefined
 
-    setupNativeOpenFiles((books) => {
-      reader.addTab(books[0]!)
-      setViewMode('reader')
+    setupNativeOpenFiles({
+      onOpen: (books) => {
+        reader.addTab(books[0]!)
+        setViewMode('reader')
+      },
+      onDrop: (books) => {
+        if (viewModeRef.current === 'library') return
+
+        books.forEach((book) => reader.addTab(book))
+        setViewMode('reader')
+      },
     }).then((handler) => {
       if (disposed) {
         handler?.()
@@ -212,7 +225,7 @@ interface LibraryProps {
 
 const Library: React.FC<LibraryProps> = ({ onOpenBook }) => {
   const books = useLibrary()
-  const covers = useLiveQuery(() => db?.covers.toArray() ?? [])
+  const covers = useCovers()
   const t = useTranslation('home')
   const [sortField, setSortField] = useState<SortField>('title')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
@@ -286,7 +299,9 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook }) => {
           onOpenBook()
         }
 
-        handleFiles(e.dataTransfer.files)
+        if (e.dataTransfer.files.length) {
+          handleFiles(e.dataTransfer.files)
+        }
       }}
     >
       <div className="mb-4 space-y-2.5">
@@ -392,25 +407,18 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook }) => {
                   toggleSelect()
                   const bookIds = [...selectedBookIds]
 
-                  db?.books.bulkDelete(bookIds)
-                  db?.covers.bulkDelete(bookIds)
-                  db?.files.bulkDelete(bookIds)
+                  db.books.bulkDelete(bookIds)
                 }}
               >
                 {t('delete')}
               </Button>
             ) : (
-              <Button className={clsx(toolbarButtonClass, 'relative')}>
-                <input
-                  type="file"
-                  accept="application/epub+zip,application/epub"
-                  className="absolute inset-0 cursor-pointer opacity-0"
-                  onChange={(e) => {
-                    const files = e.target.files
-                    if (files) handleFiles(files)
-                  }}
-                  multiple
-                />
+              <Button
+                className={toolbarButtonClass}
+                onClick={() => {
+                  void openImportDialog()
+                }}
+              >
                 {t('import')}
               </Button>
             )}
@@ -479,7 +487,7 @@ const Book: React.FC<BookProps> = ({
             toggle(book.id)
           } else {
             if (mobile) await router.push('/_')
-            reader.addTab(book)
+            reader.addTab((await db.books.get(book.id)) ?? book)
             onOpenBook()
           }
         }}

@@ -22,6 +22,7 @@ class Resources {
       archive: options && options.archive,
       resolver: options && options.resolver,
       request: options && options.request,
+      rootUrl: options && options.rootUrl,
     }
 
     this.process(manifest)
@@ -45,6 +46,7 @@ class Resources {
 
     this.urls = []
     this.cssUrls = []
+    this.resolvedCssUrls = Object.create(null)
 
     this.split()
     this.splitUrls()
@@ -305,6 +307,132 @@ class Resources {
   }
 
   /**
+   * Resolve local resource references in a section document without preloading
+   * every manifest asset. This keeps the unarchived Tauri path lazy while
+   * preventing srcdoc iframes from resolving relative paths against
+   * asset.localhost/.
+   * @param  {document} doc section document
+   * @param  {Section} section current section
+   * @return {Promise<void>}
+   */
+  resolveSectionResourceUrls(doc, section) {
+    if (!doc || !section || !section.url) {
+      return Promise.resolve()
+    }
+
+    var sectionUrl = new Url(section.url)
+    var rootUrl = resolvePackageRootUrl(
+      this.settings.rootUrl,
+      section,
+      sectionUrl,
+    )
+
+    if (rootUrl && section.href) {
+      sectionUrl = new Url(rootUrl.resolve(stripUrlPath(section.href)))
+    }
+
+    var stylesheetTasks = []
+
+    eachElement(doc, (element) => {
+      var tagName = getTagName(element)
+
+      resolveElementAttribute(element, sectionUrl, rootUrl, 'src')
+      resolveElementAttribute(element, sectionUrl, rootUrl, 'poster')
+      resolveElementAttribute(element, sectionUrl, rootUrl, 'data')
+      resolveElementAttribute(element, sectionUrl, rootUrl, 'xlink:href')
+      resolveSrcsetAttribute(element, sectionUrl, rootUrl)
+      resolveStyleAttribute(element, sectionUrl, rootUrl)
+
+      if (tagName === 'image') {
+        resolveElementAttribute(element, sectionUrl, rootUrl, 'href')
+      }
+
+      if (tagName === 'link') {
+        var href = element.getAttribute('href')
+        if (isBlockedResourceUrl(href)) {
+          removeElement(element)
+          return
+        }
+
+        if (!shouldResolveUrl(href)) {
+          return
+        }
+
+        if (isStylesheetLink(element)) {
+          stylesheetTasks.push(
+            this.createResolvedCssUrl(href, sectionUrl, rootUrl).then((url) => {
+              element.setAttribute('href', url)
+            }),
+          )
+        } else {
+          element.setAttribute(
+            'href',
+            resolveLocalUrl(href, sectionUrl, rootUrl),
+          )
+        }
+      }
+    })
+
+    return Promise.all(stylesheetTasks).then(() => {
+      return resolveInlineStyleElements.call(this, doc, sectionUrl, rootUrl)
+    })
+  }
+
+  createResolvedCssUrl(href, sectionUrl, rootUrl) {
+    var absolute = resolveLocalUrl(href, sectionUrl, rootUrl)
+
+    if (this.resolvedCssUrls[absolute]) {
+      return Promise.resolve(this.resolvedCssUrls[absolute])
+    }
+
+    debugResource('css link', {
+      href,
+      section: sectionUrl && sectionUrl.toString(),
+      root: rootUrl && rootUrl.toString(),
+      absolute,
+    })
+
+    return this.createResolvedCssUrlFromAbsolute(absolute, rootUrl)
+  }
+
+  createResolvedCssUrlFromAbsolute(absolute, rootUrl, seen) {
+    if (this.resolvedCssUrls[absolute]) {
+      return Promise.resolve(this.resolvedCssUrls[absolute])
+    }
+
+    return this.createResolvedCssText(absolute, rootUrl, seen)
+      .then((rewritten) => {
+        var objectUrl = createBlobUrl(rewritten, 'text/css')
+        this.resolvedCssUrls[absolute] = objectUrl
+        return objectUrl
+      })
+      .catch((error) => {
+        warnResource('failed to rewrite stylesheet', {
+          absolute,
+          error,
+        })
+        return createBlobUrl('', 'text/css')
+      })
+  }
+
+  createResolvedCssText(absolute, rootUrl, seen) {
+    seen = seen || Object.create(null)
+
+    if (seen[absolute]) {
+      return Promise.resolve('')
+    }
+
+    seen[absolute] = true
+
+    return this.settings.request(absolute, 'text').then((text) => {
+      var cssUrl = new Url(absolute)
+      return resolveCssImports
+        .call(this, text, cssUrl, rootUrl, seen)
+        .then((withImports) => resolveCssUrls(withImports, cssUrl, rootUrl))
+    })
+  }
+
+  /**
    * Substitute media references that are present in section markup but omitted
    * from the OPF manifest. Some EPUBs reference images directly from XHTML
    * without declaring them as package resources, so the normal manifest-based
@@ -366,6 +494,7 @@ class Resources {
 
     this.urls = undefined
     this.cssUrls = undefined
+    this.resolvedCssUrls = undefined
   }
 }
 
@@ -373,6 +502,12 @@ const MEDIA_TAG_RE = /<(?:img|image|source)\b[^>]*>/gi
 const URL_ATTR_RE = /\b(?:src|href|xlink:href)=["']([^"']+)["']/gi
 const SRCSET_ATTR_RE = /\bsrcset=["']([^"']+)["']/gi
 const ABSOLUTE_URL_RE = /^[a-z][a-z0-9+.-]*:/i
+const BLOCKED_RESOURCE_URL_RE = /^(?:file|res):/i
+const CSS_IMPORT_RE =
+  /@import\s+(?:url\(\s*)?(['"]?)([^'")\s;]+)\1\s*\)?([^;]*);/gi
+const CSS_URL_RE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi
+const EMPTY_RESOURCE_URL = 'data:,'
+const RESOURCE_DEBUG_KEY = 'flow.debug.resources'
 
 function collectMediaUrls(content) {
   var urls = []
@@ -433,6 +568,269 @@ function stripUrlSuffix(src) {
   }
 
   return src.slice(0, end)
+}
+
+function stripUrlPath(src) {
+  return src.slice(0, stripUrlSuffix(src).length)
+}
+
+function getUrlSuffix(src) {
+  return src.slice(stripUrlSuffix(src).length)
+}
+
+function shouldResolveUrl(src) {
+  var value = src && src.trim()
+
+  return (
+    value &&
+    value.charAt(0) !== '#' &&
+    value.indexOf('//') !== 0 &&
+    !isBlockedResourceUrl(value) &&
+    !ABSOLUTE_URL_RE.test(value)
+  )
+}
+
+function isBlockedResourceUrl(src) {
+  var value = src && src.trim()
+
+  return !!value && BLOCKED_RESOURCE_URL_RE.test(value)
+}
+
+function resolvePackageRootUrl(rootUrl, section, sectionUrl) {
+  var configured = rootUrl && new Url(ensureDirectoryUrl(rootUrl))
+  return configured || derivePackageRootUrl(section, sectionUrl)
+}
+
+function derivePackageRootUrl(section, sectionUrl) {
+  if (!section || !section.href || !sectionUrl) {
+    return
+  }
+
+  var sectionHref = stripUrlPath(section.href).replace(/\\/g, '/')
+  var segments = sectionHref.split('/').filter(Boolean)
+  var parentSteps = Math.max(0, segments.length - 1)
+  var relativeRoot = parentSteps
+    ? new Array(parentSteps).fill('..').join('/')
+    : '.'
+
+  return new Url(ensureDirectoryUrl(sectionUrl.resolve(relativeRoot)))
+}
+
+function resolveLocalUrl(src, baseUrl, rootUrl) {
+  var assetPath
+
+  if (!shouldResolveUrl(src)) {
+    return src
+  }
+
+  assetPath = stripUrlPath(src)
+
+  if (!assetPath) {
+    return src
+  }
+
+  if (assetPath.charAt(0) === '/' && rootUrl) {
+    return rootUrl.resolve(assetPath.slice(1)) + getUrlSuffix(src)
+  }
+
+  return baseUrl.resolve(assetPath) + getUrlSuffix(src)
+}
+
+function resolveSrcsetAttribute(element, baseUrl, rootUrl) {
+  var srcset = element.getAttribute('srcset')
+
+  if (!srcset) {
+    return
+  }
+
+  element.setAttribute(
+    'srcset',
+    srcset
+      .split(',')
+      .map((candidate) => {
+        var parts = candidate.trim().split(/\s+/)
+        if (!parts[0]) {
+          return candidate
+        }
+
+        if (isBlockedResourceUrl(parts[0])) {
+          return ''
+        }
+
+        parts[0] = resolveLocalUrl(parts[0], baseUrl, rootUrl)
+        return parts.join(' ')
+      })
+      .filter(Boolean)
+      .join(', '),
+  )
+}
+
+function resolveElementAttribute(element, baseUrl, rootUrl, attribute) {
+  var value = element.getAttribute(attribute)
+
+  if (!value) {
+    return
+  }
+
+  if (isBlockedResourceUrl(value)) {
+    element.removeAttribute(attribute)
+    return
+  }
+
+  element.setAttribute(attribute, resolveLocalUrl(value, baseUrl, rootUrl))
+}
+
+function resolveStyleAttribute(element, baseUrl, rootUrl) {
+  var style = element.getAttribute('style')
+
+  if (!style) {
+    return
+  }
+
+  element.setAttribute('style', resolveCssUrls(style, baseUrl, rootUrl))
+}
+
+function resolveInlineStyleElements(doc, baseUrl, rootUrl) {
+  var styles = doc.getElementsByTagName('style')
+  var tasks = []
+
+  for (var i = 0; i < styles.length; i++) {
+    let style = styles[i]
+    tasks.push(
+      resolveCssImports
+        .call(this, style.textContent, baseUrl, rootUrl)
+        .then((withImports) => {
+          style.textContent = resolveCssUrls(withImports, baseUrl, rootUrl)
+        }),
+    )
+  }
+
+  return Promise.all(tasks)
+}
+
+function resolveCssImports(css, baseUrl, rootUrl, seen) {
+  if (!css) {
+    return Promise.resolve(css)
+  }
+
+  var replacements = []
+  var output = css.replace(CSS_IMPORT_RE, (match, quote, url, suffix) => {
+    if (isBlockedResourceUrl(url)) {
+      warnResource('drop blocked css import', url)
+      return ''
+    }
+
+    if (!shouldResolveUrl(url)) {
+      return match
+    }
+
+    var absolute = resolveLocalUrl(url, baseUrl, rootUrl)
+    var token = '/* FLOW_CSS_IMPORT_' + replacements.length + ' */'
+    replacements.push(
+      this.createResolvedCssUrlFromAbsolute(absolute, rootUrl, seen).then(
+        (resolved) => {
+          return {
+            token,
+            replacement: '@import url("' + resolved + '")' + suffix + ';',
+          }
+        },
+      ),
+    )
+    return token
+  })
+
+  return Promise.all(replacements).then((items) => {
+    items.forEach((item) => {
+      output = output.replace(item.token, item.replacement)
+    })
+    return output
+  })
+}
+
+function resolveCssUrls(css, baseUrl, rootUrl) {
+  if (!css) {
+    return css
+  }
+
+  return css.replace(CSS_URL_RE, (match, quote, url) => {
+    if (isBlockedResourceUrl(url)) {
+      warnResource('drop blocked css url', url)
+      return 'url("' + EMPTY_RESOURCE_URL + '")'
+    }
+
+    if (!shouldResolveUrl(url)) {
+      return match
+    }
+
+    var resolved = resolveLocalUrl(url, baseUrl, rootUrl)
+    debugResource('css url', {
+      url,
+      base: baseUrl && baseUrl.toString(),
+      root: rootUrl && rootUrl.toString(),
+      resolved,
+    })
+    return 'url("' + resolved + '")'
+  })
+}
+
+function ensureDirectoryUrl(url) {
+  if (!url || url.charAt(url.length - 1) === '/') {
+    return url
+  }
+
+  return url + '/'
+}
+
+function isStylesheetLink(element) {
+  var rel = element.getAttribute('rel')
+  var type = element.getAttribute('type')
+
+  return (
+    (rel && rel.toLowerCase().indexOf('stylesheet') > -1) ||
+    (type && type.toLowerCase() === 'text/css')
+  )
+}
+
+function removeElement(element) {
+  if (element.parentNode) {
+    element.parentNode.removeChild(element)
+  }
+}
+
+function eachElement(doc, callback) {
+  var elements = doc.getElementsByTagName('*')
+
+  for (var i = 0; i < elements.length; i++) {
+    callback(elements[i])
+  }
+}
+
+function getTagName(element) {
+  return (element.localName || element.tagName || '').toLowerCase()
+}
+
+function shouldDebugResources() {
+  try {
+    return (
+      typeof window !== 'undefined' &&
+      window.localStorage &&
+      window.localStorage.getItem(RESOURCE_DEBUG_KEY) === '1'
+    )
+  } catch (error) {
+    return false
+  }
+}
+
+function debugResource(message, detail) {
+  if (shouldDebugResources()) {
+    console.debug('[flow:resources]', message, detail)
+  }
+}
+
+function warnResource(message, detail) {
+  if (shouldDebugResources()) {
+    console.warn('[flow:resources]', message, detail)
+  }
 }
 
 export default Resources

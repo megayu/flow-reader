@@ -1,6 +1,5 @@
 import { Overlay } from '@literal-ui/core'
 import clsx from 'clsx'
-import Dexie from 'dexie'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -10,7 +9,6 @@ import { useLocale, useSourceColor, useTranslation } from '@flow/reader/hooks'
 import { AppLocale, localeNames } from '@flow/reader/locales'
 import { useSettings } from '@flow/reader/state'
 
-import { Button } from '../Button'
 import { ColorPickerPopover, normalizeHexColor } from '../ColorPickerPopover'
 import { Checkbox, Select } from '../Form'
 import { Page } from '../Page'
@@ -152,19 +150,6 @@ export const Settings: React.FC = () => {
               })
             }}
           />
-        </Item>
-        <Item title={t('cache')}>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              window.localStorage.clear()
-              Dexie.getDatabaseNames().then((names) => {
-                names.forEach((n) => Dexie.delete(n))
-              })
-            }}
-          >
-            {t('cache.clear')}
-          </Button>
         </Item>
       </div>
     </Page>

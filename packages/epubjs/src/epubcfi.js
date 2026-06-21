@@ -339,7 +339,7 @@ class EpubCFI {
     var terminalA, terminalB
 
     var rangeAStartSteps, rangeAEndSteps
-    var rangeBEndSteps, rangeBEndSteps
+    var rangeBStartSteps, rangeBEndSteps
     var rangeAStartTerminal, rangeAEndTerminal
     var rangeBStartTerminal, rangeBEndTerminal
 
@@ -893,7 +893,7 @@ class EpubCFI {
     var lastStepIndex = steps[steps.length - 1].index
 
     for (let childIndex in map) {
-      if (!map.hasOwnProperty(childIndex)) return
+      if (!Object.prototype.hasOwnProperty.call(map, childIndex)) return
 
       if (map[childIndex] === lastStepIndex) {
         child = children[childIndex]
@@ -927,7 +927,6 @@ class EpubCFI {
     var doc = _doc || document
     var range
     var start, end, startContainer, endContainer
-    var cfi = this
     var startSteps, endSteps
     var needsIgnoring = ignoreClass
       ? doc.querySelector('.' + ignoreClass) != null
@@ -940,26 +939,26 @@ class EpubCFI {
       range = new RangeObject()
     }
 
-    if (cfi.range) {
-      start = cfi.start
-      startSteps = cfi.path.steps.concat(start.steps)
+    if (this.range) {
+      start = this.start
+      startSteps = this.path.steps.concat(start.steps)
       startContainer = this.findNode(
         startSteps,
         doc,
         needsIgnoring ? ignoreClass : null,
       )
-      end = cfi.end
-      endSteps = cfi.path.steps.concat(end.steps)
+      end = this.end
+      endSteps = this.path.steps.concat(end.steps)
       endContainer = this.findNode(
         endSteps,
         doc,
         needsIgnoring ? ignoreClass : null,
       )
     } else {
-      start = cfi.path
-      startSteps = cfi.path.steps
+      start = this.path
+      startSteps = this.path.steps
       startContainer = this.findNode(
-        cfi.path.steps,
+        this.path.steps,
         doc,
         needsIgnoring ? ignoreClass : null,
       )
@@ -982,7 +981,6 @@ class EpubCFI {
         range.setStart(missed.container, missed.offset)
       }
     } else {
-      console.log('No startContainer found for', this.toString())
       // No start found
       return null
     }
@@ -997,7 +995,7 @@ class EpubCFI {
       } catch (e) {
         missed = this.fixMiss(
           endSteps,
-          cfi.end.terminal.offset,
+          this.end.terminal.offset,
           doc,
           needsIgnoring ? ignoreClass : null,
         )

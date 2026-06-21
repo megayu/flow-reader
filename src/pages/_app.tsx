@@ -28,8 +28,34 @@ function useRevealScrollbars() {
   }, [])
 }
 
+function useDevtoolsShortcut() {
+  useEffect(() => {
+    const handleKeyDown = async (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey) return
+      if (event.code !== 'KeyI' && event.key.toLowerCase() !== 'i') return
+
+      event.preventDefault()
+      event.stopPropagation()
+
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('toggle_devtools')
+      } catch {
+        // Not running in Tauri.
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown, true)
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true)
+    }
+  }, [])
+}
+
 export default function MyApp({ Component, pageProps }: AppProps) {
   useRevealScrollbars()
+  useDevtoolsShortcut()
 
   return (
     <AppLiteralProvider>

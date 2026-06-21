@@ -28,11 +28,10 @@
     "@material/material-color-utilities": "0.2.0",
     "@next/bundle-analyzer": "12.3.7",
     "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-dialog": "2",
     "@types/react-highlight-words": "0.16.4",
     "clsx": "1.1.1",
     "dayjs": "1.11.2",
-    "dexie": "3.2.2",
-    "dexie-react-hooks": "1.1.1",
     "next": "12.3.7",
     "react": "18.2.0",
     "react-colorful": "5.7.0",
@@ -45,7 +44,6 @@
     "react-polymorphic-types": "2.0.0",
     "recoil": "0.7.6",
     "tilg": "0.1.1",
-    "use-local-storage-state": "18.1.1",
     "valtio": "1.6.0"
   },
   "devDependencies": {

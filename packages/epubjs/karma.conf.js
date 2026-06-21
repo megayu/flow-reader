@@ -8,6 +8,14 @@ webpackConfig.module.rules.push({
 
 module.exports = function (config) {
   config.set({
+    plugins: [
+      require('karma-chrome-launcher'),
+      require('karma-mocha'),
+      require('karma-mocha-reporter'),
+      require('karma-sourcemap-loader'),
+      require('karma-webpack'),
+    ],
+
     // base path that will be used to resolve all patterns (eg. files, exclude)
     basePath: '',
 

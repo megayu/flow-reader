@@ -1,6 +1,6 @@
 import { StateLayer } from '@literal-ui/core'
 import clsx from 'clsx'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { MdMyLocation } from 'react-icons/md'
 import { VscCollapseAll, VscExpandAll } from 'react-icons/vsc'
 import { useSetRecoilState } from 'recoil'
@@ -13,13 +13,13 @@ import {
 import {
   useBackground,
   useLibrary,
+  useList,
   useMobile,
   useTranslation,
 } from '@flow/reader/hooks'
 import {
   compareHref,
   dfs,
-  flatTree,
   INavItem,
   reader,
   useReaderSnapshot,
@@ -126,40 +126,38 @@ const TocPane: React.FC = () => {
   const t = useTranslation()
   const { focusedBookTab } = useReaderSnapshot()
   const toc = focusedBookTab?.nav?.toc as INavItem[] | undefined
-  const rows = toc?.flatMap((i) => flatTree(i)) ?? []
+  const rows = useMemo(() => flattenToc(toc), [toc])
+  const { outerRef, innerRef, items, scrollToItem } = useList(rows)
   const expanded = toc?.some((r) => r.expanded)
   const currentNavItem = focusedBookTab?.currentNavItem
   const currentKey = tocItemIdentity(currentNavItem)
+  const currentIndex = useMemo(
+    () => rows.findIndex(({ item }) => tocItemIdentity(item) === currentKey),
+    [currentKey, rows],
+  )
   const lastScrolledKey = useRef<string>()
-  const rowRefs = useRef(new Map<string, HTMLDivElement>())
   const [locateRequest, setLocateRequest] = useState(0)
 
   useEffect(() => {
-    if (!currentKey) return
-
-    const row = rowRefs.current.get(currentKey)
-    if (!row) return
+    if (!currentKey || currentIndex < 0) return
 
     const scrollKey = `${currentKey}:${rows.length}`
     if (lastScrolledKey.current === scrollKey) return
 
     lastScrolledKey.current = scrollKey
-    row.scrollIntoView({ block: 'nearest' })
-  }, [currentKey, rows.length])
+    scrollToItem({ index: currentIndex, align: 'auto' })
+  }, [currentIndex, currentKey, rows.length, scrollToItem])
 
   useEffect(() => {
-    if (!locateRequest || !currentKey) return
+    if (!locateRequest || !currentKey || currentIndex < 0) return
 
     const frame = window.requestAnimationFrame(() => {
-      const row = rowRefs.current.get(currentKey)
-      if (!row) return
-
       lastScrolledKey.current = `${currentKey}:${rows.length}`
-      row.scrollIntoView({ block: 'nearest' })
+      scrollToItem({ index: currentIndex, align: 'auto' })
     })
 
     return () => window.cancelAnimationFrame(frame)
-  }, [currentKey, locateRequest, rows.length])
+  }, [currentIndex, currentKey, locateRequest, rows.length, scrollToItem])
 
   return (
     <Pane
@@ -189,39 +187,38 @@ const TocPane: React.FC = () => {
           },
         },
       ]}
+      ref={outerRef}
     >
-      {rows.map((item, index) => {
-        const identity = tocItemIdentity(item)
-        return (
-          <div
-            key={tocRowKey(item, index)}
-            ref={(el) => {
-              if (!identity) return
+      <div ref={innerRef}>
+        {items.map(({ index }) => {
+          const row = rows[index]
+          const item = row?.item
+          const identity = tocItemIdentity(item)
+          const active = identity === currentKey
 
-              if (el) {
-                rowRefs.current.set(identity, el)
-              } else {
-                rowRefs.current.delete(identity)
-              }
-            }}
-          >
-            <TocRow currentNavItem={currentNavItem as INavItem} item={item} />
-          </div>
-        )
-      })}
+          return (
+            <TocRow
+              key={tocRowKey(item, index)}
+              active={active}
+              depth={row?.depth ?? 1}
+              item={item}
+            />
+          )
+        })}
+      </div>
     </Pane>
   )
 }
 
 interface TocRowProps {
-  currentNavItem?: INavItem
+  active: boolean
+  depth: number
   item?: INavItem
 }
-const TocRow: React.FC<TocRowProps> = ({ currentNavItem, item }) => {
+const TocRow: React.FC<TocRowProps> = memo(({ active, depth, item }) => {
   if (!item) return null
-  const { label, subitems, depth, expanded, href } = item
+  const { label, subitems, expanded, href } = item
   const tab = reader.focusedBookTab
-  const active = tocItemIdentity(item) === tocItemIdentity(currentNavItem)
 
   return (
     <Row
@@ -237,16 +234,17 @@ const TocRow: React.FC<TocRowProps> = ({ currentNavItem, item }) => {
         if (!section) return
 
         if (id) {
-          tab?.displayFromSelector(`#${id}`, section, false)
+          void tab?.displayFromSelector(`#${id}`, section, false)
         } else {
-          tab?.display(section.href, false)
+          void tab?.displaySectionStart(section)
         }
       }}
       // `tab` can not be proxy here
       toggle={() => tab?.toggleNavItem(item)}
     />
   )
-}
+})
+TocRow.displayName = 'TocRow'
 
 function tocItemIdentity(item?: Pick<INavItem, 'id' | 'href' | 'label'>) {
   return item && (item.id || item.href || item.label)
@@ -257,4 +255,17 @@ function tocRowKey(
   index: number,
 ) {
   return `${tocItemIdentity(item) ?? 'toc-row'}:${index}`
+}
+
+function flattenToc(nodes: INavItem[] = []) {
+  const rows: Array<{ item: INavItem; depth: number }> = []
+
+  const visit = (node: INavItem, depth: number) => {
+    rows.push({ item: node, depth })
+    if (!node.expanded) return
+    node.subitems?.forEach((item) => visit(item, depth + 1))
+  }
+
+  nodes.forEach((node) => visit(node, 1))
+  return rows
 }

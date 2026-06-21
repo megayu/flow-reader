@@ -1,5 +1,3 @@
-import JSZip from 'jszip/dist/jszip'
-
 import { defer, isXml, parse } from './utils/core'
 import mime from './utils/mime'
 import Path from './utils/path'
@@ -12,9 +10,8 @@ import request from './utils/request'
 class Archive {
   constructor() {
     this.zip = undefined
+    this.zipPromise = undefined
     this.urlCache = {}
-
-    this.checkRequirements()
   }
 
   /**
@@ -23,11 +20,21 @@ class Archive {
    * @private
    */
   checkRequirements() {
-    try {
-      this.zip = new JSZip()
-    } catch (e) {
-      throw new Error('JSZip lib not loaded')
+    return this.ensureZip()
+  }
+
+  ensureZip() {
+    if (this.zip) {
+      return Promise.resolve(this.zip)
     }
+
+    this.zipPromise ??= import('jszip/dist/jszip').then((module) => {
+      const JSZip = module.default || module
+      this.zip = new JSZip()
+      return this.zip
+    })
+
+    return this.zipPromise
   }
 
   /**
@@ -37,7 +44,9 @@ class Archive {
    * @return {Promise} zipfile
    */
   open(input, isBase64) {
-    return this.zip.loadAsync(input, { base64: isBase64 })
+    return this.ensureZip().then((zip) =>
+      zip.loadAsync(input, { base64: isBase64 }),
+    )
   }
 
   /**
@@ -47,10 +56,8 @@ class Archive {
    * @return {Promise} zipfile
    */
   openUrl(zipUrl, isBase64) {
-    return request(zipUrl, 'binary').then(
-      function (data) {
-        return this.zip.loadAsync(data, { base64: isBase64 })
-      }.bind(this),
+    return Promise.all([this.ensureZip(), request(zipUrl, 'binary')]).then(
+      ([zip, data]) => zip.loadAsync(data, { base64: isBase64 }),
     )
   }
 

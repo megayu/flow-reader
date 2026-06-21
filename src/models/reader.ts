@@ -1,15 +1,20 @@
 import { debounce } from '@github/mini-throttle/decorators'
 import { IS_SERVER } from '@literal-ui/hooks'
 import React from 'react'
-import { proxy, ref, snapshot, subscribe, useSnapshot } from 'valtio'
+import { proxy, ref, snapshot, useSnapshot } from 'valtio'
 
+import ePub, { Rendition as EpubRendition } from '@flow/epubjs'
 import type { Rendition, Location, Book } from '@flow/epubjs'
 import Navigation, { NavItem } from '@flow/epubjs/types/navigation'
 import Section from '@flow/epubjs/types/section'
 
 import { AnnotationColor, AnnotationType } from '../annotation'
-import { BookRecord, db } from '../db'
-import { fileToEpub } from '../file'
+import {
+  BookRecord,
+  ReadingSpreadPageRecord,
+  ReadingSpreadRecord,
+  db,
+} from '../db'
 import { createId } from '../id'
 import { BodyTextDetectionCache, defaultStyle } from '../styles'
 
@@ -39,6 +44,81 @@ function compareDefinition(d1: string, d2: string) {
   return d1.toLowerCase() === d2.toLowerCase()
 }
 
+function isReadingPositionOnlyUpdate(changes: Partial<BookRecord>) {
+  const keys = Object.keys(changes)
+  return (
+    keys.some((key) => key === 'cfi' || key === 'percentage') &&
+    keys.every((key) =>
+      ['cfi', 'percentage', 'updatedAt', 'lastReadAt'].includes(key),
+    )
+  )
+}
+
+function displayLocationPercentage(location?: Location['end']) {
+  const percentage = location?.percentage
+  if (typeof percentage !== 'number' || !Number.isFinite(percentage)) return
+  if (percentage < 0 || percentage > 1) return
+  return percentage
+}
+
+function estimatePercentageFromSpine(
+  location: Location['end'],
+  sectionCount: number,
+) {
+  if (!sectionCount) return 0
+
+  const sectionIndex = Math.max(0, Math.min(location.index, sectionCount - 1))
+  const totalPages = Math.max(1, location.displayed.total || 1)
+  const page = Math.max(1, Math.min(location.displayed.page || 1, totalPages))
+  const sectionProgress = page / totalPages
+
+  return Math.max(
+    0,
+    Math.min(1, (sectionIndex + sectionProgress) / sectionCount),
+  )
+}
+
+function calculateReadingPercentage({
+  location,
+  sections,
+  totalLength,
+}: {
+  location: Location
+  sections: ISection[]
+  totalLength?: number
+}) {
+  if (location.atStart) return 0
+  if (location.atEnd) return 1
+
+  const end = location.end ?? location.start
+  const sectionIndex = sections.findIndex((s) => s.href === end.href)
+  const activeSection = sectionIndex >= 0 ? sections[sectionIndex] : undefined
+
+  if (activeSection && totalLength && activeSection.length) {
+    const previousSectionsLength = sections
+      .slice(0, sectionIndex)
+      .reduce((acc, s) => acc + s.length, 0)
+    const previousSectionsPercentage = previousSectionsLength / totalLength
+    const currentSectionPercentage = activeSection.length / totalLength
+    const displayedPercentage =
+      end.displayed.total > 0 ? end.displayed.page / end.displayed.total : 0
+
+    return Math.max(
+      0,
+      Math.min(
+        1,
+        previousSectionsPercentage +
+          currentSectionPercentage * displayedPercentage,
+      ),
+    )
+  }
+
+  const estimated = estimatePercentageFromSpine(end, sections.length)
+  if (estimated > 0) return estimated
+
+  return displayLocationPercentage(end) ?? 0
+}
+
 export interface INavItem extends NavItem, INode {
   subitems?: INavItem[]
 }
@@ -54,6 +134,113 @@ export interface ISection extends Section {
   length: number
   images: string[]
   navitem?: INavItem
+}
+
+interface SectionNavIndex {
+  nav: Navigation
+  sections: ISection[]
+  exactBySectionHref: Map<string, INavItem>
+  entries: Array<{
+    item: INavItem
+    order: number
+    sectionIndex: number
+  }>
+}
+
+function snapshotReflowablePage(
+  page: any,
+): ReadingSpreadPageRecord | undefined {
+  if (
+    !page?.section ||
+    typeof page.section.index !== 'number' ||
+    typeof page.pageIndex !== 'number'
+  ) {
+    return
+  }
+
+  return {
+    sectionIndex: page.section.index,
+    pageIndex: page.pageIndex,
+  }
+}
+
+function snapshotReflowableSpread(
+  manager: any,
+  layoutStyleSignature?: string,
+): ReadingSpreadRecord | undefined {
+  const spread = manager?.currentReflowableSpread
+  if (!manager?.canUseLogicalReflowableSpread?.() || !spread) return
+
+  const left = snapshotReflowablePage(spread.left)
+  const right = snapshotReflowablePage(spread.right)
+  const page = left ?? right
+  if (!page) return
+
+  return {
+    ...page,
+    version: 1,
+    anchor: left ? 'left' : 'right',
+    ...(layoutStyleSignature ? { layoutStyleSignature } : {}),
+  }
+}
+
+function hydrateReflowablePage(
+  page: ReadingSpreadPageRecord | undefined,
+  sections: ISection[] | undefined,
+) {
+  if (!page || !sections) return
+  const section = sections.find(
+    (candidate) => candidate.index === page.sectionIndex,
+  )
+  if (!section) return
+
+  return {
+    section,
+    pageIndex: page.pageIndex,
+  }
+}
+
+function hydrateReflowableSpread(
+  spread: ReadingSpreadRecord | undefined,
+  sections: ISection[] | undefined,
+  layoutStyleSignature?: string,
+) {
+  if (!spread || spread.version !== 1 || !sections) return
+  if (
+    spread.layoutStyleSignature &&
+    spread.layoutStyleSignature !== layoutStyleSignature
+  ) {
+    return
+  }
+
+  const page = hydrateReflowablePage(spread, sections)
+  if (!page) return
+
+  return spread.anchor === 'right'
+    ? {
+        exact: true,
+        anchor: 'right',
+        right: page,
+      }
+    : {
+        left: page,
+        anchor: 'left',
+      }
+}
+
+function mergeConfigurationWithSpread(
+  configuration: BookRecord['configuration'],
+  spread: ReadingSpreadRecord | undefined,
+) {
+  const next = { ...(configuration ?? {}) }
+
+  if (spread) {
+    next.spread = spread
+  } else {
+    delete next.spread
+  }
+
+  return next
 }
 
 class BaseTab {
@@ -85,6 +272,14 @@ export class BookTab extends BaseTab {
   bodyTextCache: BodyTextDetectionCache = ref(new Map())
   rendered = false
   turning = false
+  private sectionInfoPromises = new Map<number, Promise<void>>()
+  private pendingBookUpdate?: Partial<BookRecord>
+  private pendingBookUpdateTimer?: ReturnType<typeof setTimeout>
+  private destroyPromise?: Promise<void>
+  private navigationPromise?: Promise<void>
+  private renderGeneration = 0
+  private sectionNavIndex?: SectionNavIndex
+  private currentSpreadState?: ReadingSpreadRecord
 
   get container() {
     return this?.rendition?.manager?.container as HTMLDivElement | undefined
@@ -116,71 +311,51 @@ export class BookTab extends BaseTab {
 
     if (section && manager?.canUseLogicalReflowableSpread?.()) {
       await manager.displayReflowableTarget(section, cfi)
-      this.rendition?.reportLocation()
+      await this.rendition?.reportLocation()
       return
     }
 
     this.display(cfi, false)
   }
-  private async reflowablePageGlobalIndex(page: any) {
-    const manager = this.rendition?.manager
-    page = await manager?.normalizeReflowablePage?.(page)
-    if (!page) return
-
-    let index = page.pageIndex
-    let previous = page.section.prev && page.section.prev()
-    while (previous) {
-      const pageCount = await manager.measureReflowableSectionPageCount(
-        previous,
-      )
-      index += pageCount
-      previous = previous.prev && previous.prev()
-    }
-
-    return index
+  async displaySectionStart(section: ISection) {
+    return this.displayTarget(section)
   }
-  private async reflowableSpreadContainingInFlow(page: any) {
-    const manager = this.rendition?.manager
-    page = await manager?.normalizeReflowablePage?.(page)
-    if (!manager || !page) return
-
-    let left = page
-    const globalIndex = await this.reflowablePageGlobalIndex(page)
-    let offset =
-      manager.layout.divisor > 1 && globalIndex !== undefined
-        ? globalIndex % manager.layout.divisor
-        : 0
-
-    while (offset > 0 && left) {
-      left = await manager.previousReflowablePage(left)
-      offset--
-    }
-
-    return manager.reflowableSpreadFromLeft(left || page)
-  }
-  async displaySectionStartInFlow(section: ISection) {
+  async displayTarget(section: ISection, target?: string) {
     const manager = this.rendition?.manager
 
     if (
       manager?.canUseLogicalReflowableSpread?.() &&
       manager.reflowablePageForTarget &&
+      manager.reflowableSpreadFromLeft &&
       manager.renderReflowableSpread
     ) {
-      const page = await manager.reflowablePageForTarget(section)
-      const spread = await this.reflowableSpreadContainingInFlow(page)
+      const page = await manager.reflowablePageForTarget(section, target)
+      const spread = await manager.reflowableSpreadFromLeft(page)
       if (spread) {
         await manager.renderReflowableSpread(spread)
-        this.rendition?.reportLocation()
+        await this.rendition?.reportLocation()
         return
       }
     }
 
-    this.display(section.href, false)
+    this.display(target ?? section.href, false)
   }
-  displayFromSelector(selector: string, section: ISection, returnable = true) {
+
+  async displayFromSelector(
+    selector: string,
+    section: ISection,
+    returnable = true,
+  ) {
     try {
+      await this.ensureSectionInfo(section)
       const el = section.document.querySelector(selector)
-      if (el) this.display(section.cfiFromElement(el), returnable)
+      if (el) {
+        const cfi = section.cfiFromElement(el)
+        if (returnable) this.showPrevLocation()
+        await this.displayTarget(section, cfi)
+      } else {
+        await this.displaySectionStart(section)
+      }
     } catch (err) {
       this.display(section.href, returnable)
     }
@@ -188,26 +363,24 @@ export class BookTab extends BaseTab {
   async prev() {
     if (this.turning) return
 
-    this.turning = true
-    try {
+    return this.runNavigation(async () => {
       await this.rendition?.prev()
       // avoid content flash
-      if (this.container?.scrollLeft === 0 && !this.location?.atStart) {
+      if (
+        !this.rendition?.manager?.canUseLogicalReflowableSpread?.() &&
+        this.container?.scrollLeft === 0 &&
+        !this.location?.atStart
+      ) {
         this.rendered = false
       }
-    } finally {
-      this.turning = false
-    }
+    })
   }
   async next() {
     if (this.turning) return
 
-    this.turning = true
-    try {
+    return this.runNavigation(async () => {
       await this.rendition?.next()
-    } finally {
-      this.turning = false
-    }
+    })
   }
   private sectionPositionFromLocation(
     location?: Pick<Location['start'], 'index' | 'href'>,
@@ -229,12 +402,9 @@ export class BookTab extends BaseTab {
     const target = this.sections[currentPosition + direction]
     if (!target) return
 
-    this.turning = true
-    try {
-      await this.displaySectionStartInFlow(target)
-    } finally {
-      this.turning = false
-    }
+    return this.runNavigation(async () => {
+      await this.displaySectionStart(target)
+    })
   }
   prevSection() {
     return this.navigateSection(-1)
@@ -250,7 +420,110 @@ export class BookTab extends BaseTab {
     }
     // don't wait promise resolve to make valtio batch updates
     this.book = { ...this.book, ...changes }
-    db?.books.update(this.book.id, changes)
+    db.books.remember(this.book)
+
+    if (isReadingPositionOnlyUpdate(changes)) {
+      void db.books.update(this.book.id, changes).catch((error) => {
+        console.error(error)
+      })
+      return
+    }
+
+    this.flushPendingBookUpdate()
+    void db.books.update(this.book.id, changes).catch((error) => {
+      console.error(error)
+    })
+  }
+
+  private schedulePendingBookUpdate() {
+    if (this.pendingBookUpdateTimer) return
+
+    this.pendingBookUpdateTimer = setTimeout(() => {
+      this.flushPendingBookUpdate()
+    }, 15_000)
+  }
+
+  flushPendingBookUpdate({ flushStorage = true } = {}) {
+    if (this.pendingBookUpdateTimer) {
+      clearTimeout(this.pendingBookUpdateTimer)
+      this.pendingBookUpdateTimer = undefined
+    }
+
+    const changes = this.pendingBookUpdate
+    if (!changes) return Promise.resolve()
+
+    this.pendingBookUpdate = undefined
+    return db.books
+      .update(this.book.id, changes)
+      .then(() => {
+        if (flushStorage) return db.flush()
+      })
+      .catch((error) => {
+        console.error(error)
+      })
+  }
+
+  private createCurrentPositionUpdate(): Partial<BookRecord> | undefined {
+    if (!this.currentLocation || !this.sections) return
+
+    const percentage = calculateReadingPercentage({
+      location: this.currentLocation,
+      sections: this.sections,
+      totalLength: this.totalLength,
+    })
+
+    return {
+      cfi: this.currentLocation.start.cfi,
+      percentage,
+      configuration: mergeConfigurationWithSpread(
+        this.book.configuration,
+        this.currentSpreadState,
+      ),
+    }
+  }
+
+  async flushForClose({ flushStorage = true } = {}) {
+    try {
+      await this.navigationPromise
+    } catch (error) {
+      console.error(error)
+    }
+
+    const positionUpdate = this.createCurrentPositionUpdate()
+    if (positionUpdate) {
+      const changes = {
+        ...positionUpdate,
+        updatedAt: Date.now(),
+      }
+      this.book = { ...this.book, ...changes }
+      db.books.remember(this.book)
+      await db.books.update(this.book.id, changes)
+    }
+
+    await this.flushPendingBookUpdate({ flushStorage: false })
+    if (flushStorage) await db.flush()
+  }
+
+  private async runNavigation(action: () => Promise<void>) {
+    if (this.turning) return
+
+    this.turning = true
+    const navigation = (async () => {
+      try {
+        await action()
+      } finally {
+        this.turning = false
+      }
+    })()
+
+    this.navigationPromise = navigation
+    try {
+      await navigation
+    } finally {
+      if (this.navigationPromise === navigation) {
+        this.navigationPromise = undefined
+      }
+    }
   }
 
   annotationRange?: Range
@@ -364,7 +637,12 @@ export class BookTab extends BaseTab {
     if (item) item.expanded = !item.expanded
   }
 
-  toggleNavItem(target: Pick<INavItem, 'id' | 'href'>) {
+  toggleNavItem(target: Pick<INavItem, 'id' | 'href'> & Partial<INavItem>) {
+    if ('expanded' in target) {
+      target.expanded = !target.expanded
+      return
+    }
+
     const item = this.findNavItem(target)
     if (item) item.expanded = !item.expanded
   }
@@ -422,52 +700,70 @@ export class BookTab extends BaseTab {
     }
   }
 
-  mapSectionToNavItem(sectionHref: string, sections = this.sections) {
-    let navItem: INavItem | undefined
-    this.nav?.toc.forEach((item) =>
-      dfs(item as INavItem, (i) => {
-        if (compareHref(sectionHref, i.href)) navItem ??= i
-      }),
-    )
-    if (navItem) return navItem
+  private getSectionNavIndex(sections = this.sections) {
+    if (!this.nav || !sections) return
+    if (
+      this.sectionNavIndex?.nav === this.nav &&
+      this.sectionNavIndex.sections === sections
+    ) {
+      return this.sectionNavIndex
+    }
 
-    const section = sections?.find((s) => s.href === sectionHref)
-    if (!section || !sections) return
-
-    let closest:
-      | {
-          item: INavItem
-          order: number
-          sectionIndex: number
-        }
-      | undefined
+    const exactBySectionHref = new Map<string, INavItem>()
+    const entries: SectionNavIndex['entries'] = []
     let order = 0
 
-    this.nav?.toc.forEach((item) =>
-      dfs(item as INavItem, (i) => {
-        const matchedSection = sections.find((s) => compareHref(s.href, i.href))
-        if (!matchedSection || matchedSection.index > section.index) {
-          order++
-          return
-        }
+    this.nav.toc.forEach((item) =>
+      dfs(item as INavItem, (navItem) => {
+        const matchedSection = sections.find((section) =>
+          compareHref(section.href, navItem.href),
+        )
 
-        if (
-          !closest ||
-          matchedSection.index > closest.sectionIndex ||
-          (matchedSection.index === closest.sectionIndex &&
-            order > closest.order)
-        ) {
-          closest = {
-            item: i,
+        if (matchedSection) {
+          exactBySectionHref.set(
+            matchedSection.href,
+            exactBySectionHref.get(matchedSection.href) ?? navItem,
+          )
+          entries.push({
+            item: navItem,
             order,
             sectionIndex: matchedSection.index,
-          }
+          })
         }
+
         order++
       }),
     )
 
-    return closest?.item
+    entries.sort((a, b) => a.sectionIndex - b.sectionIndex || a.order - b.order)
+    this.sectionNavIndex = {
+      nav: this.nav,
+      sections,
+      exactBySectionHref,
+      entries,
+    }
+
+    return this.sectionNavIndex
+  }
+
+  mapSectionToNavItem(sectionHref: string, sections = this.sections) {
+    if (!sectionHref || !sections) return
+
+    const index = this.getSectionNavIndex(sections)
+    const section = sections.find(
+      (s) => s.href === sectionHref || compareHref(s.href, sectionHref),
+    )
+    if (!section || !index) return
+
+    const exact = index.exactBySectionHref.get(section.href)
+    if (exact) return exact
+
+    for (let i = index.entries.length - 1; i >= 0; i--) {
+      const entry = index.entries[i]!
+      if (entry.sectionIndex <= section.index) {
+        return entry.item
+      }
+    }
   }
 
   get currentHref() {
@@ -534,13 +830,65 @@ export class BookTab extends BaseTab {
 
   syncFrames() {
     const views = this.rendition?.manager?.views?._views ?? []
-    const iframes = views
+    const windows: Window[] = views
       .map((view: any) => view.window as Window | undefined)
       .filter((win: Window | undefined): win is Window => !!win)
-      .map((win: Window) => ref(win) as Window & AsRef)
+    const sameFrames =
+      windows.length === this.iframes.length &&
+      windows.every((win, index) => this.iframes[index] === win)
+
+    if (sameFrames) return
+
+    const iframes = windows.map((win: Window) => ref(win) as Window & AsRef)
 
     this.iframes = iframes
     this.iframe = iframes[0]
+  }
+
+  destroy() {
+    if (this.destroyPromise) return this.destroyPromise
+
+    this.destroyPromise = this.destroyAfterFlush()
+    return this.destroyPromise
+  }
+
+  private async destroyAfterFlush() {
+    this.renderGeneration++
+
+    try {
+      await this.flushForClose()
+    } catch (error) {
+      console.error(error)
+    } finally {
+      this.destroyRendering()
+    }
+  }
+
+  private destroyRendering() {
+    try {
+      this.rendition?.destroy?.()
+    } catch (error) {
+      console.error(error)
+    }
+
+    try {
+      ;(this.epub as any)?.destroy?.()
+    } catch (error) {
+      console.error(error)
+    }
+
+    this.epub = undefined
+    this.iframe = undefined
+    this.iframes = []
+    this.rendition = undefined
+    this.section = undefined
+    this.sections = undefined
+    this.sectionNavIndex = undefined
+    this.rendered = false
+    this._el = undefined
+    this.renderingEl = undefined
+    this.sectionInfoPromises.clear()
+    this.bodyTextCache = ref(new Map())
   }
 
   getNavPath(navItem = this.currentNavItem) {
@@ -590,10 +938,17 @@ export class BookTab extends BaseTab {
     }
   }
 
+  async searchInSectionAsync(keyword = this.keyword, section = this.section) {
+    if (!section) return
+
+    await this.ensureSectionInfo(section)
+    return this.searchInSection(keyword, section)
+  }
+
   search(keyword = this.keyword) {
     // avoid blocking input
     return new Promise<IMatch[] | undefined>((resolve) => {
-      requestIdleCallback(() => {
+      requestIdleCallback(async () => {
         if (!keyword) {
           resolve(undefined)
           return
@@ -601,78 +956,247 @@ export class BookTab extends BaseTab {
 
         const results: IMatch[] = []
 
-        this.sections?.forEach((s) => {
-          const result = this.searchInSection(keyword, s)
+        // The callback itself is idle, but each section is still loaded
+        // sequentially to avoid the old all-spine load spike.
+        for (const s of this.sections ?? []) {
+          const result = await this.searchInSectionAsync(keyword, s)
           if (result) results.push(result)
-        })
+        }
 
         resolve(results)
       })
     })
   }
 
-  private _el?: HTMLDivElement
-  onBeforeLayout?: (contents?: any) => void
-  onRender?: (contents?: any) => void
-  async render(el: HTMLDivElement) {
-    if (el === this._el) return
-    this._el = ref(el)
+  private assignSectionNavItem(section: ISection, sections = this.sections) {
+    const navitem = this.mapSectionToNavItem(section.href, sections)
+    if (navitem) section.navitem = navitem
+  }
 
-    const file = await db?.files.get(this.book.id)
-    if (!file) return
+  async ensureSectionInfo(section: ISection) {
+    if (!this.epub) return
 
-    this.epub = ref(await fileToEpub(file.file))
-
-    this.epub.loaded.navigation.then((nav) => {
-      this.nav = nav
-    })
-    console.log(this.epub)
-    this.epub.loaded.spine.then((spine: any) => {
-      const sections = spine.spineItems as ISection[]
-      // https://github.com/futurepress/epub.js/issues/887#issuecomment-700736486
-      const promises = sections.map((s) =>
-        s.load(this.epub?.load.bind(this.epub)),
-      )
-
-      Promise.all(promises).then(() => {
-        sections.forEach((s) => {
-          s.length = s.document.body.textContent?.length ?? 0
-          s.images = [...s.document.querySelectorAll('img')].map((el) => el.src)
-          this.epub!.loaded.navigation.then(() => {
-            s.navitem = this.mapSectionToNavItem(s.href, sections)
-          })
-        })
-        this.sections = ref(sections)
-      })
-    })
-    this.rendition = ref(
-      this.epub.renderTo(el, {
-        width: '100%',
-        height: '100%',
-        allowScriptedContent: true,
-      }),
-    )
-    const manager = this.rendition.manager
-    if (manager?.viewSettings) {
-      manager.viewSettings.beforeLayout = (contents: any) => {
-        this.onBeforeLayout?.(contents)
-      }
+    if (section.document?.body && section.length !== undefined) {
+      this.assignSectionNavItem(section)
+      return
     }
-    console.log(this.rendition)
-    this.rendition.display(
+
+    const index = section.index ?? this.sections?.indexOf(section) ?? -1
+    const cached = this.sectionInfoPromises.get(index)
+    if (cached) return cached
+
+    const promise = Promise.resolve(
+      section.load(this.epub.load.bind(this.epub)),
+    )
+      .then(() => {
+        section.length = section.document?.body?.textContent?.length ?? 0
+        section.images = [
+          ...(section.document?.querySelectorAll('img') ?? []),
+        ].map((el) => el.src)
+        this.assignSectionNavItem(section)
+      })
+      .catch((error) => {
+        console.error('Failed to load section info', error)
+      })
+
+    if (index >= 0) this.sectionInfoPromises.set(index, promise)
+    return promise
+  }
+
+  private _el?: HTMLDivElement
+  private renderingEl?: HTMLDivElement
+  onBeforeLayout?: (contents?: any) => void
+  private layoutStyleSignature?: string
+
+  setBeforeLayout(
+    beforeLayout?: (contents?: any) => void,
+    layoutStyleSignature?: string,
+  ) {
+    if (beforeLayout) {
+      this.onBeforeLayout = beforeLayout
+    }
+    if (layoutStyleSignature !== undefined) {
+      this.layoutStyleSignature = layoutStyleSignature
+    }
+
+    const manager = this.rendition?.manager
+    if (!manager) return
+
+    manager.viewSettings ??= {}
+    manager.viewSettings.layoutStyleSignature = this.layoutStyleSignature
+    manager.viewSettings.beforeLayout = (contents: any) => {
+      this.onBeforeLayout?.(contents)
+    }
+  }
+
+  resetLayoutPageState() {
+    const manager = this.rendition?.manager
+    if (!manager) return
+
+    manager.reflowablePageCountCache = {}
+    manager.currentReflowableSpread = undefined
+  }
+
+  private async displayInitialPosition() {
+    const manager = this.rendition?.manager
+    const spread = hydrateReflowableSpread(
+      this.book.configuration?.spread,
+      this.sections,
+      this.layoutStyleSignature,
+    )
+
+    if (
+      spread &&
+      manager?.canUseLogicalReflowableSpread?.() &&
+      manager.renderReflowableSpread
+    ) {
+      await manager.renderReflowableSpread(spread)
+      await this.rendition?.reportLocation()
+      return
+    }
+
+    await this.rendition?.display(
       this.location?.start.cfi ?? this.book.cfi ?? undefined,
     )
-    this.rendition.themes.default(defaultStyle)
-    this.rendition.hooks.render.register((view: any) => {
-      console.log('hooks.render', view)
-      this.syncFrames()
-      this.onRender?.(view.contents)
+  }
+
+  async render(
+    el: HTMLDivElement,
+    initialSpread?: string,
+    beforeLayout?: (contents?: any) => void,
+    layoutStyleSignature?: string,
+  ) {
+    this.setBeforeLayout(beforeLayout, layoutStyleSignature)
+    if (el === this._el) return
+    if (el === this.renderingEl) return
+    if (el.getBoundingClientRect().width === 0) return
+
+    this.renderingEl = ref(el)
+    const generation = ++this.renderGeneration
+    const clearRendering = () => {
+      if (el === this.renderingEl) this.renderingEl = undefined
+    }
+
+    const loadedBook = await db.books.get(this.book.id)
+    if (generation !== this.renderGeneration) {
+      clearRendering()
+      return
+    }
+    if (loadedBook) {
+      this.book = loadedBook
+    }
+
+    const fileUrl = await db.files.getPackageUrl(this.book.id)
+    if (generation !== this.renderGeneration) {
+      clearRendering()
+      return
+    }
+    if (!fileUrl) {
+      clearRendering()
+      return
+    }
+
+    let epub: Book
+    try {
+      epub = ref(await ePub(fileUrl))
+    } catch (error) {
+      console.error(error)
+      clearRendering()
+      return
+    }
+
+    if (generation !== this.renderGeneration) {
+      try {
+        ;(epub as any)?.destroy?.()
+      } catch (error) {
+        console.error(error)
+      }
+      clearRendering()
+      return
+    }
+
+    if (el.getBoundingClientRect().width === 0) {
+      try {
+        ;(epub as any)?.destroy?.()
+      } catch (error) {
+        console.error(error)
+      }
+      clearRendering()
+      return
+    }
+
+    let rendition: Rendition
+    try {
+      rendition = ref(
+        new EpubRendition(epub, {
+          width: '100%',
+          height: '100%',
+          allowScriptedContent: true,
+        }),
+      )
+      ;(epub as any).rendition = rendition
+      await rendition.attachTo(el)
+    } catch (error) {
+      console.error(error)
+      try {
+        ;(epub as any)?.destroy?.()
+      } catch (destroyError) {
+        console.error(destroyError)
+      }
+      clearRendering()
+      return
+    }
+
+    if (generation !== this.renderGeneration) {
+      try {
+        ;(rendition as any)?.destroy?.()
+        ;(epub as any)?.destroy?.()
+      } catch (error) {
+        console.error(error)
+      }
+      clearRendering()
+      return
+    }
+
+    this.epub = epub
+    this.rendition = rendition
+    this._el = ref(el)
+    clearRendering()
+    this.epub.loaded.navigation.then((nav) => {
+      if (generation !== this.renderGeneration) return
+      this.nav = nav
     })
+    try {
+      const spine = await this.epub.loaded.spine
+      if (generation !== this.renderGeneration) return
+      const sections = (spine as any).spineItems as ISection[]
+      sections.forEach((s) => {
+        s.length ??= 0
+        s.images ??= []
+      })
+      this.sections = ref(sections)
+    } catch (error) {
+      if (generation === this.renderGeneration) {
+        console.error(error)
+      }
+      return
+    }
+    this.setBeforeLayout()
+    this.rendition.themes.default(defaultStyle)
+    this.rendition.hooks.render.register(() => {
+      this.syncFrames()
+    })
+    if (initialSpread) {
+      this.rendition.spread(initialSpread)
+    }
 
     this.rendition.on('relocated', (loc: Location) => {
-      console.log('relocated', loc)
       this.syncFrames()
       this.currentLocation = loc
+      this.currentSpreadState = snapshotReflowableSpread(
+        this.rendition?.manager,
+        this.layoutStyleSignature,
+      )
 
       // calculate percentage
       if (this.sections) {
@@ -690,52 +1214,38 @@ export class BookTab extends BaseTab {
         }
         this.expandNavPath(activeNavItem)
 
-        const i = this.sections.findIndex((s) => s.href === end.href)
-        if (i === -1) {
+        if (!this.sections.some((s) => s.href === end.href)) {
           this.rendered = true
           return
         }
 
-        const previousSectionsLength = this.sections
-          .slice(0, i)
-          .reduce((acc, s) => acc + s.length, 0)
-        const previousSectionsPercentage =
-          previousSectionsLength / this.totalLength
-        const currentSectionPercentage =
-          this.sections[i]!.length / this.totalLength
-        const displayedPercentage = end.displayed.page / end.displayed.total
-
-        const percentage =
-          previousSectionsPercentage +
-          currentSectionPercentage * displayedPercentage
-
-        this.updateBook({ cfi: start.cfi, percentage })
+        const percentage = calculateReadingPercentage({
+          location: loc,
+          sections: this.sections,
+          totalLength: this.totalLength,
+        })
+        this.updateBook({ cfi: loc.start.cfi, percentage })
       }
 
       this.rendered = true
     })
 
-    this.rendition.on('attached', (...args: any[]) => {
-      console.log('attached', args)
-    })
-    this.rendition.on('started', (...args: any[]) => {
-      console.log('started', args)
-    })
-    this.rendition.on('displayed', (...args: any[]) => {
-      console.log('displayed', args)
-    })
-    this.rendition.on('rendered', (section: ISection, view: any) => {
-      console.log('rendered', [section, view])
+    this.rendition.on('rendered', (section: ISection) => {
       if (!this.section) this.section = ref(section)
+      void this.ensureSectionInfo(section)
       this.syncFrames()
     })
-    this.rendition.on('selected', (...args: any[]) => {
-      console.log('selected', args)
-    })
-    this.rendition.on('removed', (...args: any[]) => {
-      console.log('removed', args)
+    this.rendition.on('removed', () => {
       this.syncFrames()
     })
+
+    try {
+      await this.displayInitialPosition()
+    } catch (error) {
+      if (generation === this.renderGeneration) {
+        console.error(error)
+      }
+    }
   }
 
   constructor(public book: BookRecord) {
@@ -756,6 +1266,18 @@ class PageTab extends BaseTab {
 type Tab = BookTab | PageTab
 type TabParam = ConstructorParameters<typeof BookTab | typeof PageTab>[0]
 
+function resolveTabParam(param: TabParam | Tab) {
+  if (param instanceof BookTab || param instanceof PageTab) return param
+  if (typeof param === 'function') return param
+
+  return db.books.peek(param.id) ?? param
+}
+
+function disposeTab(tab?: Tab) {
+  if (tab instanceof BookTab) return tab.destroy()
+  return Promise.resolve()
+}
+
 export class Group {
   id = createId()
   tabs: Tab[] = []
@@ -764,7 +1286,8 @@ export class Group {
     tabs: Array<Tab | TabParam> = [],
     public selectedIndex = tabs.length - 1,
   ) {
-    this.tabs = tabs.map((t) => {
+    this.tabs = tabs.map((tabParam) => {
+      const t = resolveTabParam(tabParam)
       if (t instanceof BookTab || t instanceof PageTab) return t
       const isPage = typeof t === 'function'
       return isPage ? new PageTab(t) : new BookTab(t)
@@ -786,10 +1309,11 @@ export class Group {
   }
 
   addTab(param: TabParam | Tab) {
-    const isTab = param instanceof BookTab || param instanceof PageTab
-    const isPage = typeof param === 'function'
+    const resolved = resolveTabParam(param)
+    const isTab = resolved instanceof BookTab || resolved instanceof PageTab
+    const isPage = typeof resolved === 'function'
 
-    const id = isTab ? param.id : isPage ? param.displayName : param.id
+    const id = isTab ? resolved.id : isPage ? resolved.displayName : resolved.id
 
     const index = this.tabs.findIndex((t) => t.id === id)
     if (index > -1) {
@@ -797,7 +1321,11 @@ export class Group {
       return this.tabs[index]
     }
 
-    const tab = isTab ? param : isPage ? new PageTab(param) : new BookTab(param)
+    const tab = isTab
+      ? resolved
+      : isPage
+      ? new PageTab(resolved)
+      : new BookTab(resolved)
 
     this.tabs.splice(++this.selectedIndex, 0, tab)
     return tab
@@ -834,6 +1362,7 @@ export class Group {
 export class Reader {
   groups: Group[] = []
   focusedIndex = -1
+  private pendingDisposals = new Set<Promise<unknown>>()
 
   get focusedGroup() {
     return this.groups[this.focusedIndex]
@@ -860,10 +1389,14 @@ export class Reader {
   removeTab(index: number, groupIdx = this.focusedIndex) {
     const group = this.groups[groupIdx]
     if (group?.tabs.length === 1) {
+      const tab = group.tabs[0]
       this.removeGroup(groupIdx)
-      return group.tabs[0]
+      this.trackDisposal(disposeTab(tab))
+      return tab
     }
-    return group?.removeTab(index)
+    const tab = group?.removeTab(index)
+    this.trackDisposal(disposeTab(tab))
+    return tab
   }
 
   closeFocusedTab() {
@@ -915,6 +1448,9 @@ export class Reader {
   }
 
   clear() {
+    this.groups.forEach(({ tabs }) =>
+      tabs.forEach((tab) => this.trackDisposal(disposeTab(tab))),
+    )
     this.groups = []
     this.focusedIndex = -1
   }
@@ -930,13 +1466,27 @@ export class Reader {
       })
     })
   }
+
+  flushPendingBookUpdates() {
+    return Promise.all([
+      ...Array.from(this.pendingDisposals),
+      ...this.groups.flatMap(({ bookTabs }) =>
+        bookTabs.map((tab) => tab.flushForClose({ flushStorage: false })),
+      ),
+    ]).then(() => db.flush())
+  }
+
+  private trackDisposal(promise: Promise<unknown>) {
+    const tracked = promise.finally(() => {
+      this.pendingDisposals.delete(tracked)
+    })
+
+    this.pendingDisposals.add(tracked)
+    return tracked
+  }
 }
 
 export const reader = proxy(new Reader())
-
-subscribe(reader, () => {
-  console.log(snapshot(reader))
-})
 
 export function useReaderSnapshot() {
   return useSnapshot(reader)

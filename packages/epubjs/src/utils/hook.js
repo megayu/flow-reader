@@ -56,7 +56,7 @@ class Hook {
       try {
         var executing = task.apply(context, args)
       } catch (err) {
-        console.log(err)
+        console.error(err)
       }
 
       if (executing && typeof executing['then'] === 'function') {

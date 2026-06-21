@@ -19,8 +19,6 @@ import request from './utils/request'
 import Url from './utils/url'
 
 const CONTAINER_PATH = 'META-INF/container.xml'
-const IBOOKS_DISPLAY_OPTIONS_PATH =
-  'META-INF/com.apple.ibooks.display-options.xml'
 
 const INPUT_TYPE = {
   BINARY: 'binary',
@@ -463,21 +461,8 @@ class Book {
   unpack(packaging) {
     this.package = packaging //TODO: deprecated this
 
-    if (this.packaging.metadata.layout === '') {
-      // rendition:layout not set - check display options if book is pre-paginated
-      this.load(this.url.resolve(IBOOKS_DISPLAY_OPTIONS_PATH))
-        .then((xml) => {
-          this.displayOptions = new DisplayOptions(xml)
-          this.loading.displayOptions.resolve(this.displayOptions)
-        })
-        .catch((err) => {
-          this.displayOptions = new DisplayOptions()
-          this.loading.displayOptions.resolve(this.displayOptions)
-        })
-    } else {
-      this.displayOptions = new DisplayOptions()
-      this.loading.displayOptions.resolve(this.displayOptions)
-    }
+    this.displayOptions = new DisplayOptions()
+    this.loading.displayOptions.resolve(this.displayOptions)
 
     this.spine.unpack(
       this.packaging,
@@ -489,9 +474,16 @@ class Book {
       archive: this.archive,
       resolver: this.resolve.bind(this),
       request: this.request.bind(this),
+      rootUrl: this.packageRootUrl(),
       replacements:
-        this.settings.replacements || (this.archived ? 'blobUrl' : 'base64'),
+        this.settings.replacements || (this.archived ? 'blobUrl' : 'none'),
     })
+
+    if (!this.archived) {
+      this.spine.hooks.content.register(
+        this.resources.resolveSectionResourceUrls.bind(this.resources),
+      )
+    }
 
     this.loadNavigation(this.packaging).then(() => {
       // this.toc = this.navigation.toc;
@@ -848,6 +840,18 @@ class Book {
     this.path = undefined
     this.archived = false
   }
+
+  packageRootUrl() {
+    if (!this.path || !this.url) {
+      return
+    }
+
+    if (this.path.isAbsolute(this.path.directory)) {
+      return ensureDirectoryUrl(this.url.resolve('.'))
+    }
+
+    return ensureDirectoryUrl(this.url.resolve(this.path.directory || '.'))
+  }
 }
 
 const IMAGE_MEDIA_TYPE_RE = /^image\//i
@@ -896,3 +900,11 @@ function findFirstImageHref(doc) {
 EventEmitter(Book.prototype)
 
 export default Book
+
+function ensureDirectoryUrl(url) {
+  if (!url || url.charAt(url.length - 1) === '/') {
+    return url
+  }
+
+  return url + '/'
+}

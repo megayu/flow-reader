@@ -29,7 +29,7 @@ type Position = 'universe' | 'left' | 'right' | 'top' | 'bottom'
 // https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Drag_operations#drag_data
 function accept(e?: DragEvent) {
   const dt = e?.dataTransfer
-  return !!dt?.types.every((t) => ['text/plain', 'Files'].includes(t))
+  return !!dt && [...dt.types].some((t) => ['text/plain', 'Files'].includes(t))
 }
 
 const DropZoneInner: React.FC<DropZoneProps> = ({
@@ -81,7 +81,6 @@ const DropZoneInner: React.FC<DropZoneProps> = ({
       className={clsx('relative', className)}
       // https://developer.mozilla.org/en-US/docs/Web/API/File/Using_files_from_web_applications#selecting_files_using_drag_and_drop
       onDragEnter={(e) => {
-        console.log('drag enter', e.dataTransfer.types)
         if (dragover) return
 
         setDragEvent(e)
@@ -107,12 +106,10 @@ const DropZoneInner: React.FC<DropZoneProps> = ({
         <div
           className="absolute inset-0 z-10"
           onDragOver={handleDragover}
-          onDragLeave={(e) => {
-            console.log('drag leave', e.target)
+          onDragLeave={() => {
             setDragEvent()
           }}
           onDrop={(e) => {
-            console.log('drop', e)
             setDragEvent()
             e.stopPropagation()
             e.preventDefault()
