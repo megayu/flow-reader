@@ -1,10 +1,19 @@
 import { Overlay } from '@literal-ui/core'
 import clsx from 'clsx'
-import { ComponentProps, PropsWithChildren, useEffect, useState } from 'react'
-import { useMemo } from 'react'
+import {
+  ComponentProps,
+  PropsWithChildren,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { IconType } from 'react-icons'
 import {
   MdFormatUnderlined,
+  MdFullscreen,
+  MdFullscreenExit,
   MdLibraryBooks,
   MdMenuBook,
   MdOutlineImage,
@@ -196,6 +205,102 @@ function ViewActionBar({ className, env }: EnvActionBarProps) {
   )
 }
 
+function useFullscreenAction() {
+  const [fullscreen, setFullscreen] = useState(false)
+  const fullscreenRef = useRef(false)
+
+  const updateFullscreen = useCallback(async () => {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      const nextFullscreen = await getCurrentWindow().isFullscreen()
+      fullscreenRef.current = nextFullscreen
+      setFullscreen(nextFullscreen)
+    } catch {
+      fullscreenRef.current = false
+      setFullscreen(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    let unlistenResize: (() => void) | undefined
+    let unlistenFocus: (() => void) | undefined
+    let disposed = false
+
+    const initialize = async () => {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window')
+        const win = getCurrentWindow()
+
+        await updateFullscreen()
+
+        const [resizeListener, focusListener] = await Promise.all([
+          win.onResized(updateFullscreen),
+          win.onFocusChanged(updateFullscreen),
+        ])
+
+        if (disposed) {
+          resizeListener()
+          focusListener()
+          return
+        }
+
+        unlistenResize = resizeListener
+        unlistenFocus = focusListener
+      } catch {
+        fullscreenRef.current = false
+        setFullscreen(false)
+      }
+    }
+
+    void initialize()
+
+    return () => {
+      disposed = true
+      unlistenResize?.()
+      unlistenFocus?.()
+    }
+  }, [updateFullscreen])
+
+  useEffect(() => {
+    const onKeyDown = async (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !fullscreenRef.current) return
+
+      e.preventDefault()
+      e.stopPropagation()
+
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window')
+        await getCurrentWindow().setFullscreen(false)
+      } finally {
+        fullscreenRef.current = false
+        setFullscreen(false)
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown, true)
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true)
+    }
+  }, [])
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      const win = getCurrentWindow()
+      const nextFullscreen = !(await win.isFullscreen())
+      await win.setFullscreen(nextFullscreen)
+      fullscreenRef.current = nextFullscreen
+      setFullscreen(nextFullscreen)
+    } catch {
+      fullscreenRef.current = false
+      setFullscreen(false)
+    }
+  }, [])
+
+  return { fullscreen, toggleFullscreen }
+}
+
 function PageActionBar({
   env,
   settingsOpen,
@@ -207,6 +312,7 @@ function PageActionBar({
   const [viewMode, setViewMode] = useRecoilState(viewModeState)
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation()
+  const { fullscreen, toggleFullscreen } = useFullscreenAction()
 
   interface IPageAction extends IAction {
     disabled?: boolean
@@ -229,6 +335,12 @@ function PageActionBar({
         env: Env.Desktop,
       },
       {
+        name: 'fullscreen',
+        title: fullscreen ? 'fullscreen.exit' : 'fullscreen.enter',
+        Icon: fullscreen ? MdFullscreenExit : MdFullscreen,
+        env: Env.Desktop,
+      },
+      {
         name: 'home',
         title: 'home',
         Icon: RiHome6Line,
@@ -241,7 +353,7 @@ function PageActionBar({
         env: Env.Desktop | Env.Mobile,
       },
     ],
-    [focusedBookTab, viewMode],
+    [focusedBookTab, fullscreen, viewMode],
   )
 
   return (
@@ -254,8 +366,12 @@ function PageActionBar({
               ? action === name
               : (viewMode === 'library' && name === 'mode') ||
                 (themeOpen && name === 'theme') ||
+                (fullscreen && name === 'fullscreen') ||
                 (settingsOpen && name === 'settings')
-            const titleKey = name === 'mode' ? title : `${title}.title`
+            const titleKey =
+              name === 'mode' || name === 'fullscreen'
+                ? title
+                : `${title}.title`
             const actionButton = (
               <Action
                 key={i}
@@ -270,6 +386,11 @@ function PageActionBar({
                   }
 
                   setThemeOpen(false)
+                  if (name === 'fullscreen') {
+                    void toggleFullscreen()
+                    return
+                  }
+
                   if (name === 'mode') {
                     if (viewMode === 'library') {
                       if (focusedBookTab) setViewMode('reader')

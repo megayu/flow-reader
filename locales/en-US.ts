@@ -48,6 +48,8 @@ export default {
 
   'mode.enter_library': 'Enter Library',
   'mode.return_reader': 'Return to Reading',
+  'fullscreen.enter': 'Enter Fullscreen',
+  'fullscreen.exit': 'Exit Fullscreen',
 
   'color_picker.copy': 'Copy color',
   'color_picker.paste': 'Paste color',

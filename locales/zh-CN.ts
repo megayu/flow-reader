@@ -48,6 +48,8 @@ export default {
 
   'mode.enter_library': '进入图书馆',
   'mode.return_reader': '返回阅读',
+  'fullscreen.enter': '进入全屏',
+  'fullscreen.exit': '退出全屏',
 
   'color_picker.copy': '复制颜色',
   'color_picker.paste': '粘贴颜色',

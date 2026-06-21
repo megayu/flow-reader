@@ -81,6 +81,10 @@ function handleKeyDown(
 ) {
   return (e: KeyboardEvent) => {
     try {
+      if (e.key === 'Escape') {
+        void exitFullscreenIfActive()
+      }
+
       if (handleCommandShortcut(e, viewMode, enterReaderMode)) return
       if (viewMode === 'library') return
       if (handleReturnShortcut(e, tab)) return
@@ -101,6 +105,19 @@ function handleKeyDown(
     } catch (error) {
       // ignore `rendition is undefined` error
     }
+  }
+}
+
+async function exitFullscreenIfActive() {
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window')
+    const win = getCurrentWindow()
+
+    if (await win.isFullscreen()) {
+      await win.setFullscreen(false)
+    }
+  } catch {
+    // Not running in Tauri.
   }
 }
 
