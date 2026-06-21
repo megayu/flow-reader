@@ -99,12 +99,15 @@ pub fn run() {
                 return;
             }
 
-            if matches!(
-                event,
-                WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed
-            ) {
-                storage::flush_app_storage(window);
-                storage::save_window_state(window);
+            match event {
+                WindowEvent::CloseRequested { .. } => {
+                    storage::flush_app_storage(window);
+                    storage::save_window_state(window);
+                }
+                WindowEvent::Destroyed => {
+                    storage::flush_app_storage(window);
+                }
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![

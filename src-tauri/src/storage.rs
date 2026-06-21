@@ -165,6 +165,10 @@ struct WindowState {
     fullscreen: bool,
 }
 
+const MIN_RESTORED_WINDOW_WIDTH: u32 = 900;
+const MIN_RESTORED_WINDOW_HEIGHT: u32 = 600;
+const WINDOWS_MINIMIZED_POSITION_SENTINEL: i32 = -30_000;
+
 fn empty_object() -> Value {
     json!({})
 }
@@ -1290,6 +1294,11 @@ pub fn restore_window_state(window: &WebviewWindow) {
     };
 
     if let Some(state) = state {
+        if !is_restorable_window_state(&state) {
+            let _ = window.show();
+            return;
+        }
+
         let _ = window.set_position(PhysicalPosition::new(state.x, state.y));
         let _ = window.set_size(PhysicalSize::new(state.width, state.height));
 
@@ -1304,6 +1313,10 @@ pub fn restore_window_state(window: &WebviewWindow) {
 }
 
 pub fn save_window_state(window: &Window) {
+    if window.is_minimized().unwrap_or(false) {
+        return;
+    }
+
     let app = window.app_handle();
     let Ok(position) = window.outer_position() else {
         return;
@@ -1323,7 +1336,18 @@ pub fn save_window_state(window: &Window) {
         fullscreen,
     };
 
+    if !is_restorable_window_state(&state) {
+        return;
+    }
+
     if let Ok(path) = window_state_path(app) {
         let _ = write_json(&path, &state);
     }
+}
+
+fn is_restorable_window_state(state: &WindowState) -> bool {
+    state.x > WINDOWS_MINIMIZED_POSITION_SENTINEL
+        && state.y > WINDOWS_MINIMIZED_POSITION_SENTINEL
+        && state.width >= MIN_RESTORED_WINDOW_WIDTH
+        && state.height >= MIN_RESTORED_WINDOW_HEIGHT
 }
