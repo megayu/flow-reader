@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom'
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
 import { useLocale, useSourceColor, useTranslation } from '@flow/reader/hooks'
 import { AppLocale, localeNames } from '@flow/reader/locales'
-import { useSettings } from '@flow/reader/state'
+import { defaultTextImportRules, useSettings } from '@flow/reader/state'
 
 import { ColorPickerPopover, normalizeHexColor } from '../ColorPickerPopover'
 import { Checkbox, Select } from '../Form'
@@ -58,7 +58,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   )
 }
 
-type SettingsTab = 'basic' | 'reading' | 'shortcuts'
+type SettingsTab = 'basic' | 'reading' | 'txt' | 'shortcuts'
 
 export const Settings: React.FC = () => {
   const { locale, locales, setLocale } = useLocale()
@@ -66,7 +66,23 @@ export const Settings: React.FC = () => {
   const t = useTranslation('settings')
   const typographyT = useTranslation('typography')
   const [activeTab, setActiveTab] = useState<SettingsTab>('basic')
-  const tabs: SettingsTab[] = ['basic', 'reading', 'shortcuts']
+  const tabs: SettingsTab[] = ['basic', 'reading', 'txt', 'shortcuts']
+  const textImportRules = {
+    ...defaultTextImportRules,
+    ...settings.textImportRules,
+  }
+  const updateTextImportRules = (
+    patch: Partial<typeof defaultTextImportRules>,
+  ) => {
+    setSettings((prev) => ({
+      ...prev,
+      textImportRules: {
+        ...defaultTextImportRules,
+        ...prev.textImportRules,
+        ...patch,
+      },
+    }))
+  }
 
   return (
     <div className="flex h-full min-h-0">
@@ -201,10 +217,70 @@ export const Settings: React.FC = () => {
               </Item>
             </>
           )}
+          {activeTab === 'txt' && (
+            <>
+              <Item title={t('txt_import.group_rules')}>
+                <PatternTextarea
+                  value={textImportRules.groupPatterns}
+                  onChange={(patterns) =>
+                    updateTextImportRules({ groupPatterns: patterns })
+                  }
+                />
+              </Item>
+              <Item title={t('txt_import.chapter_rules')}>
+                <PatternTextarea
+                  value={textImportRules.chapterPatterns}
+                  onChange={(patterns) =>
+                    updateTextImportRules({ chapterPatterns: patterns })
+                  }
+                />
+              </Item>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  className="h-8 rounded-sm px-3 text-outline typescale-body-medium hover:bg-on-surface-variant/10 hover:text-on-surface-variant"
+                  onClick={() => {
+                    setSettings((prev) => ({
+                      ...prev,
+                      textImportRules: defaultTextImportRules,
+                    }))
+                  }}
+                >
+                  {t('txt_import.restore_defaults')}
+                </button>
+              </div>
+            </>
+          )}
           {activeTab === 'shortcuts' && <ShortcutSettings />}
         </div>
       </section>
     </div>
+  )
+}
+
+interface PatternTextareaProps {
+  value: string[]
+  onChange: (value: string[]) => void
+}
+
+const PatternTextarea: React.FC<PatternTextareaProps> = ({
+  value,
+  onChange,
+}) => {
+  return (
+    <textarea
+      className="scroll bg-default min-h-28 w-full resize-y px-2 py-1 font-mono !text-[12px] leading-5 text-on-surface-variant outline-none ring-1 ring-inset ring-surface-variant focus:ring-primary70"
+      value={value.join('\n')}
+      spellCheck={false}
+      onChange={(event) => {
+        onChange(
+          event.target.value
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean),
+        )
+      }}
+    />
   )
 }
 

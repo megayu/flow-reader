@@ -40,6 +40,20 @@ export default {
   'home.library_filter.title': '筛选',
   'home.library_filter.all': '全部',
 
+  'text_import.title': 'TXT 导入预览',
+  'text_import.encoding': '编码',
+  'text_import.chapters': '章节预览',
+  'text_import.sample': '文本预览',
+  'text_import.expand_all': '全部展开',
+  'text_import.collapse_all': '全部折叠',
+  'text_import.cancel': '取消',
+  'text_import.import_selected': '导入选中',
+  'text_import.empty': '没有可预览的 TXT 文件',
+  'text_import.status.ready': '可导入',
+  'text_import.status.needsReview': '需确认',
+  'text_import.status.error': '不可导入',
+  'text_import.status.skipped': '已存在',
+
   'toc.title': '目录',
   'toc.library': '图书馆',
 
@@ -91,6 +105,7 @@ export default {
   'settings.title': '设置',
   'settings.tabs.basic': '基础',
   'settings.tabs.reading': '阅读',
+  'settings.tabs.txt': 'TXT',
   'settings.tabs.shortcuts': '快捷键',
   'settings.language': '语言',
   'settings.default_page_view': '默认视图',
@@ -101,6 +116,9 @@ export default {
   'settings.text_selection_menu.enable': '启用',
   'settings.hide_endnotes': '尾注',
   'settings.hide_endnotes.enable': '隐藏尾注',
+  'settings.txt_import.group_rules': '分组规则',
+  'settings.txt_import.chapter_rules': '章节规则',
+  'settings.txt_import.restore_defaults': '恢复默认规则',
 
   'menu.copy': '复制',
   'menu.search_in_book': '书内搜索',

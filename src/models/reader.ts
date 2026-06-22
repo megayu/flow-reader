@@ -638,13 +638,15 @@ export class BookTab extends BaseTab {
   }
 
   toggleNavItem(target: Pick<INavItem, 'id' | 'href'> & Partial<INavItem>) {
-    if ('expanded' in target) {
-      target.expanded = !target.expanded
+    const item = this.findNavItem(target)
+    if (item) {
+      item.expanded = !item.expanded
       return
     }
 
-    const item = this.findNavItem(target)
-    if (item) item.expanded = !item.expanded
+    if ('expanded' in target) {
+      target.expanded = !target.expanded
+    }
   }
 
   findNavItem(

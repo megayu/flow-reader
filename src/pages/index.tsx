@@ -31,6 +31,7 @@ import {
   getBookTooltip,
 } from '../book'
 import { ReaderGridView, Button, DropZone } from '../components'
+import { TextImportDialog } from '../components/TextImportDialog'
 import { BookRecord, CoverRecord, ReadingStatus, db } from '../db'
 import { handleFiles, openImportDialog, setupNativeOpenFiles } from '../file'
 import {
@@ -252,9 +253,31 @@ export default function Index() {
   const router = useRouter()
   const [nativeOpenReady, setNativeOpenReady] = useState(false)
   const [startupRestoreDone, setStartupRestoreDone] = useState(false)
+  const [textImportDialog, setTextImportDialog] = useState<{
+    paths: string[]
+    openAfterImport: boolean
+  }>()
   const focusedBookId = focusedBookTab?.book.id
 
   useDisablePinchZooming()
+
+  const openTextImportDialog = useCallback(
+    (paths: string[], openAfterImport: boolean) => {
+      if (!paths.length) return
+      setTextImportDialog({ paths, openAfterImport })
+    },
+    [],
+  )
+
+  const handleTextImported = useCallback(
+    (books: BookRecord[], openAfterImport: boolean) => {
+      if (!openAfterImport || !books.length) return
+
+      books.forEach((book) => reader.addTab(book))
+      setViewMode('reader')
+    },
+    [setViewMode],
+  )
 
   useEffect(() => {
     viewModeRef.current = viewMode
@@ -285,6 +308,9 @@ export default function Index() {
         books.forEach((book) => reader.addTab(book))
         setViewMode('reader')
       },
+      onDropTextPaths: (paths) => {
+        openTextImportDialog(paths, viewModeRef.current !== 'library')
+      },
     }).then((handler) => {
       if (disposed) {
         handler?.()
@@ -298,7 +324,7 @@ export default function Index() {
       disposed = true
       unlisten?.()
     }
-  }, [setViewMode])
+  }, [openTextImportDialog, setViewMode])
 
   useEffect(() => {
     if (
@@ -379,7 +405,12 @@ export default function Index() {
     }
   }, [groups.length, setViewMode, viewMode])
 
-  const library = <Library onOpenBook={() => setViewMode('reader')} />
+  const library = (
+    <Library
+      onOpenBook={() => setViewMode('reader')}
+      onTextPaths={(paths) => openTextImportDialog(paths, false)}
+    />
+  )
   const contentReady = startupRestoreDone
 
   return (
@@ -400,15 +431,24 @@ export default function Index() {
       ) : (
         library
       )}
+      {textImportDialog && (
+        <TextImportDialog
+          paths={textImportDialog.paths}
+          openAfterImport={textImportDialog.openAfterImport}
+          onClose={() => setTextImportDialog(undefined)}
+          onImported={handleTextImported}
+        />
+      )}
     </>
   )
 }
 
 interface LibraryProps {
   onOpenBook: () => void
+  onTextPaths: (paths: string[]) => void
 }
 
-const Library: React.FC<LibraryProps> = ({ onOpenBook }) => {
+const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
   const books = useLibrary()
   const covers = useCovers()
   const t = useTranslation('home')
@@ -538,7 +578,7 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook }) => {
         }
 
         if (e.dataTransfer.files.length) {
-          handleFiles(e.dataTransfer.files)
+          handleFiles(e.dataTransfer.files, { onTextPaths })
         }
       }}
     >
@@ -654,7 +694,7 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook }) => {
               <Button
                 className={toolbarButtonClass}
                 onClick={() => {
-                  void openImportDialog()
+                  void openImportDialog({ onTextPaths })
                 }}
               >
                 {t('import')}

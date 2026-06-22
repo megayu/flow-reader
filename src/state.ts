@@ -51,6 +51,7 @@ export interface Settings extends TypographyConfiguration {
   hideEndnotes?: boolean
   restoreLastReadingOnStartup?: boolean
   startupSession?: StartupSession
+  textImportRules?: TextImportRulesConfiguration
   locale?: AppLocale
 }
 
@@ -77,9 +78,27 @@ interface StartupSession {
   bookId?: string
 }
 
+export interface TextImportRulesConfiguration {
+  groupPatterns: string[]
+  chapterPatterns: string[]
+}
+
+export const defaultTextImportRules: TextImportRulesConfiguration = {
+  groupPatterns: [
+    '^\\s*第[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]+[卷部集篇].*',
+    '^\\s*(Book|Part|Volume)\\s+[0-9IVXLCDM]+.*',
+  ],
+  chapterPatterns: [
+    '^\\s*第[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]+[章回节].*',
+    '^\\s*(简介|序言|序|前言|自序|楔子|后记|尾声|番外|附录).*',
+    '^\\s*Chapter\\s+[0-9IVXLCDM]+.*',
+  ],
+}
+
 export const defaultSettings: Settings = {
   enableTextSelectionMenu: true,
   hideEndnotes: false,
+  textImportRules: defaultTextImportRules,
 }
 
 const settingsState = atom<Settings>({

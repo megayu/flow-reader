@@ -40,6 +40,20 @@ export default {
   'home.library_filter.title': 'Filter',
   'home.library_filter.all': 'All',
 
+  'text_import.title': 'TXT Import Preview',
+  'text_import.encoding': 'Encoding',
+  'text_import.chapters': 'Chapter Preview',
+  'text_import.sample': 'Text Preview',
+  'text_import.expand_all': 'Expand All',
+  'text_import.collapse_all': 'Collapse All',
+  'text_import.cancel': 'Cancel',
+  'text_import.import_selected': 'Import Selected',
+  'text_import.empty': 'No TXT files to preview',
+  'text_import.status.ready': 'Ready',
+  'text_import.status.needsReview': 'Needs review',
+  'text_import.status.error': 'Cannot import',
+  'text_import.status.skipped': 'Already imported',
+
   'toc.title': 'TOC',
   'toc.library': 'Library',
 
@@ -91,6 +105,7 @@ export default {
   'settings.title': 'Settings',
   'settings.tabs.basic': 'Basic',
   'settings.tabs.reading': 'Reading',
+  'settings.tabs.txt': 'TXT',
   'settings.tabs.shortcuts': 'Shortcuts',
   'settings.language': 'Language',
   'settings.default_page_view': 'Default View',
@@ -101,6 +116,9 @@ export default {
   'settings.text_selection_menu.enable': 'Enable',
   'settings.hide_endnotes': 'Endnotes',
   'settings.hide_endnotes.enable': 'Hide endnotes',
+  'settings.txt_import.group_rules': 'Group rules',
+  'settings.txt_import.chapter_rules': 'Chapter rules',
+  'settings.txt_import.restore_defaults': 'Restore default rules',
 
   'menu.copy': 'Copy',
   'menu.search_in_book': 'Search in book',

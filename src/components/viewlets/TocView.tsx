@@ -217,8 +217,15 @@ interface TocRowProps {
 }
 const TocRow: React.FC<TocRowProps> = memo(({ active, depth, item }) => {
   if (!item) return null
-  const { label, subitems, expanded, href } = item
+  const { label, subitems, expanded, href = '' } = item
   const tab = reader.focusedBookTab
+  const hasSubitems = !!subitems?.length
+  const toggleItem = () => {
+    tab?.toggleNavItem({
+      id: item.id,
+      href: item.href,
+    })
+  }
 
   return (
     <Row
@@ -228,10 +235,18 @@ const TocRow: React.FC<TocRowProps> = memo(({ active, depth, item }) => {
       expanded={expanded}
       subitems={subitems}
       onClick={() => {
+        if (!href.trim()) {
+          if (hasSubitems) toggleItem()
+          return
+        }
+
         const [, id] = href.split('#')
         const section = tab?.sections?.find((s) => compareHref(s.href, href))
 
-        if (!section) return
+        if (!section) {
+          if (hasSubitems) toggleItem()
+          return
+        }
 
         if (id) {
           void tab?.displayFromSelector(`#${id}`, section, false)
@@ -240,7 +255,7 @@ const TocRow: React.FC<TocRowProps> = memo(({ active, depth, item }) => {
         }
       }}
       // `tab` can not be proxy here
-      toggle={() => tab?.toggleNavItem(item)}
+      toggle={toggleItem}
     />
   )
 })

@@ -4,41 +4,66 @@ const nativeOpenEvent = 'flow-open-files'
 
 interface HandleFilesOptions {
   replaceExisting?: boolean
+  onTextPaths?: (paths: string[]) => void
+}
+
+function isEpubPath(path: string) {
+  return path.toLowerCase().endsWith('.epub')
+}
+
+function isTxtPath(path: string) {
+  return path.toLowerCase().endsWith('.txt')
+}
+
+function getNativeFilePath(file: File) {
+  const path = (file as File & { path?: string }).path
+  return typeof path === 'string' && path ? path : ''
 }
 
 export async function handleFiles(
-  _files: Iterable<File>,
-  _options: HandleFilesOptions = {},
+  files: Iterable<File>,
+  options: HandleFilesOptions = {},
 ) {
-  return []
+  const paths = [...files].map(getNativeFilePath).filter(Boolean)
+  if (!paths.length) return []
+
+  return handleFilePaths(paths, options)
 }
 
 export async function handleFilePaths(
   paths: string[],
-  { replaceExisting = true }: HandleFilesOptions = {},
+  { replaceExisting = true, onTextPaths }: HandleFilesOptions = {},
 ) {
   if (!paths.length) return []
 
-  return importBookPaths(paths, { replaceExisting })
+  const epubPaths = paths.filter(isEpubPath)
+  const textPaths = paths.filter(isTxtPath)
+
+  if (textPaths.length) onTextPaths?.(textPaths)
+  if (!epubPaths.length) return []
+
+  return importBookPaths(epubPaths, { replaceExisting })
 }
 
-export async function openImportDialog() {
+export async function openImportDialog(options: HandleFilesOptions = {}) {
   const { open } = await import('@tauri-apps/plugin-dialog')
   const selected = await open({
     multiple: true,
-    filters: [{ name: 'EPUB', extensions: ['epub'] }],
+    filters: [{ name: 'Books', extensions: ['epub', 'txt'] }],
   })
   const paths = Array.isArray(selected) ? selected : selected ? [selected] : []
 
-  return handleFilePaths(paths, { replaceExisting: true })
+  return handleFilePaths(paths, { replaceExisting: true, ...options })
 }
 
 export async function setupNativeOpenFiles({
   onOpen,
   onDrop,
+  onDropTextPaths,
 }: {
   onOpen?: (books: BookRecord[]) => void
   onDrop?: (books: BookRecord[]) => void
+  onDropTextPaths?: (paths: string[]) => void
 }) {
   if (typeof window === 'undefined') return
 
@@ -76,6 +101,7 @@ export async function setupNativeOpenFiles({
           if (event.payload.type !== 'drop') return
           void handleFilePaths(event.payload.paths, {
             replaceExisting: true,
+            onTextPaths: onDropTextPaths,
           }).then((books) => {
             if (books.length) onDrop?.(books)
           })

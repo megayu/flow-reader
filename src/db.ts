@@ -19,6 +19,41 @@ export interface CoverInput {
   data: number[]
 }
 
+export interface TextImportEncodingOption {
+  id: string
+  label: string
+}
+
+export interface TextImportChapterPreview {
+  title: string
+  level: number
+  role: 'group' | 'chapter'
+}
+
+export interface TextImportPreview {
+  path: string
+  filename: string
+  title: string
+  encoding: string
+  encodingLabel: string
+  confidence: 'high' | 'medium' | 'low' | 'failed'
+  status: 'ready' | 'needsReview' | 'error' | 'skipped'
+  selected: boolean
+  message?: string | null
+  sample: string
+  chapters: TextImportChapterPreview[]
+}
+
+export interface TextImportSelection {
+  path: string
+  encoding?: string
+}
+
+export interface TextImportRulesInput {
+  groupPatterns: string[]
+  chapterPatterns: string[]
+}
+
 export interface ReadingSpreadPageRecord {
   sectionIndex: number
   pageIndex: number
@@ -322,6 +357,41 @@ export async function importBookPaths(
     invoke<BookRecord[]>('import_epub_paths', {
       paths,
       replaceExisting,
+    }),
+  )
+  books.forEach((book) => rememberBook(book))
+  notify('books', 'covers', 'files')
+  return books
+}
+
+export function getTextImportEncodings() {
+  return invoke<TextImportEncodingOption[]>('get_text_import_encodings')
+}
+
+export function previewTextImportPaths(
+  paths: string[],
+  encodings: Record<string, string> = {},
+  rules?: TextImportRulesInput,
+) {
+  return invoke<TextImportPreview[]>('preview_text_import_paths', {
+    paths,
+    encodings,
+    rules,
+  })
+}
+
+export async function importTextPaths(
+  imports: TextImportSelection[],
+  {
+    replaceExisting = true,
+    rules,
+  }: { replaceExisting?: boolean; rules?: TextImportRulesInput } = {},
+) {
+  const books = await trackNativeWrite(
+    invoke<BookRecord[]>('import_text_paths', {
+      imports,
+      replaceExisting,
+      rules,
     }),
   )
   books.forEach((book) => rememberBook(book))
