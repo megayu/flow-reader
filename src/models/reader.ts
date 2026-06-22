@@ -392,17 +392,53 @@ export class BookTab extends BaseTab {
         section.index === location.index || section.href === location.href,
     )
   }
+
+  private async displayCurrentSectionStartBeforePreviousSection() {
+    const manager = this.rendition?.manager
+    const spread = manager?.currentReflowableSpread
+
+    if (manager?.canUseLogicalReflowableSpread?.() && spread) {
+      const page = spread.left ?? spread.right
+      if (page?.section && page.pageIndex > 0) {
+        await this.displaySectionStart(page.section)
+        return true
+      }
+
+      return false
+    }
+
+    const start = this.location?.start
+    const pageNumber = start?.displayed?.page
+    if (!start || typeof pageNumber !== 'number' || pageNumber <= 1) {
+      return false
+    }
+
+    const currentPosition = this.sectionPositionFromLocation(start)
+    const section = this.sections?.[currentPosition]
+    if (!section) return false
+
+    await this.displaySectionStart(section)
+    return true
+  }
+
   private async navigateSection(direction: -1 | 1) {
     if (this.turning || !this.sections?.length || !this.location) return
 
-    const location = direction > 0 ? this.location.end : this.location.start
-    const currentPosition = this.sectionPositionFromLocation(location)
-    if (currentPosition === -1) return
-
-    const target = this.sections[currentPosition + direction]
-    if (!target) return
-
     return this.runNavigation(async () => {
+      if (
+        direction < 0 &&
+        (await this.displayCurrentSectionStartBeforePreviousSection())
+      ) {
+        return
+      }
+
+      const location = direction > 0 ? this.location?.end : this.location?.start
+      const currentPosition = this.sectionPositionFromLocation(location)
+      if (currentPosition === -1) return
+
+      const target = this.sections?.[currentPosition + direction]
+      if (!target) return
+
       await this.displaySectionStart(target)
     })
   }
