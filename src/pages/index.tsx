@@ -1,14 +1,21 @@
+import { Overlay } from '@literal-ui/core'
 import { useBoolean } from '@literal-ui/hooks'
 import clsx from 'clsx'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   MdArrowDownward,
   MdArrowUpward,
   MdCheckBox,
   MdCheckBoxOutlineBlank,
+  MdDeleteOutline,
+  MdEdit,
+  MdInfoOutline,
   MdKeyboardArrowDown,
+  MdMenuBook,
+  MdWarningAmber,
 } from 'react-icons/md'
 import { useRecoilState } from 'recoil'
 
@@ -50,6 +57,72 @@ const sortFieldOptions: SortField[] = [
 ]
 
 const toolbarButtonClass = 'h-8'
+
+function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return ''
+
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = bytes
+  let unitIndex = 0
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex++
+  }
+
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 2)} ${
+    units[unitIndex]
+  }`
+}
+
+function formatDateTime(value?: number) {
+  if (!value) return ''
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+
+  return date.toLocaleString()
+}
+
+function formatPercentage(value?: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return ''
+
+  return `${Math.max(0, Math.min(100, value * 100)).toFixed(2)}%`
+}
+
+function formatLanguage(value?: string) {
+  const language = cleanBookText(value)
+  if (!language) return ''
+
+  try {
+    const displayNames = new Intl.DisplayNames([navigator.language], {
+      type: 'language',
+    })
+    return displayNames.of(language) ?? language
+  } catch {
+    return language
+  }
+}
+
+function cleanBookDescription(value?: string) {
+  return (
+    value
+      ?.replace(/\r\n?/g, '\n')
+      .split(/\n{2,}/)
+      .map((paragraph) => paragraph.replace(/[ \t\n]+/g, ' ').trim())
+      .filter(Boolean)
+      .join('\n\n') ?? ''
+  )
+}
+
+function clampMenuPosition(x: number, y: number) {
+  if (typeof window === 'undefined') return { x, y }
+
+  return {
+    x: Math.min(x, Math.max(8, window.innerWidth - 176)),
+    y: Math.min(y, Math.max(8, window.innerHeight - 168)),
+  }
+}
 
 function compareBookTitle(a: BookRecord, b: BookRecord) {
   return compareBookDisplayTitle(a, b)
@@ -374,6 +447,9 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook }) => {
   return (
     <DropZone
       className="scroll-parent flex h-full min-h-0 flex-col p-4"
+      onContextMenu={(e) => {
+        e.preventDefault()
+      }}
       onDrop={(e) => {
         const bookId = e.dataTransfer.getData('text/plain')
         const book = books.find((b) => b.id === bookId)
@@ -553,28 +629,136 @@ const Book: React.FC<BookProps> = ({
 }) => {
   const router = useRouter()
   const mobile = useMobile()
+  const t = useTranslation('home')
+  const contextMenuRef = useRef<HTMLDivElement>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number }>()
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [infoOpen, setInfoOpen] = useState(false)
 
   const cover = covers?.find((c) => c.id === book.id)?.cover
   const displayTitle = getBookDisplayTitle(book)
   const tooltip = getBookTooltip(book)
 
   const Icon = selected ? MdCheckBox : MdCheckBoxOutlineBlank
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(undefined)
+    setConfirmDelete(false)
+  }, [])
+
+  const openContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      if (select) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      setContextMenu(clampMenuPosition(e.clientX, e.clientY))
+      setConfirmDelete(false)
+    },
+    [select],
+  )
+
+  const openBook = useCallback(async () => {
+    if (mobile) await router.push('/_')
+    reader.addTab((await db.books.get(book.id)) ?? book)
+    onOpenBook()
+  }, [book, mobile, onOpenBook, router])
+
+  useEffect(() => {
+    if (!contextMenu) return
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (contextMenuRef.current?.contains(e.target as Node)) return
+      closeContextMenu()
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeContextMenu()
+    }
+
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [closeContextMenu, contextMenu])
 
   return (
-    <div className="relative flex flex-col">
+    <div className="relative flex flex-col" onContextMenu={openContextMenu}>
       <div
         role="button"
         className="relative border border-inverse-on-surface"
-        onClick={async () => {
+        onClick={() => {
           if (select) {
             toggle(book.id)
           } else {
-            if (mobile) await router.push('/_')
-            reader.addTab((await db.books.get(book.id)) ?? book)
-            onOpenBook()
+            void openBook()
           }
         }}
+        onContextMenu={openContextMenu}
       >
+        {contextMenu && (
+          <div
+            ref={contextMenuRef}
+            className="ring-on-surface-variant/15 fixed z-[70] w-40 bg-surface py-1 text-on-surface-variant shadow-lg ring-1 ring-inset"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <BookContextMenuButton
+              Icon={MdMenuBook}
+              label={t('context.open')}
+              onClick={() => {
+                closeContextMenu()
+                void openBook()
+              }}
+            />
+            <BookContextMenuButton
+              Icon={MdEdit}
+              label={t('context.edit')}
+              onClick={() => {
+                closeContextMenu()
+                setEditOpen(true)
+              }}
+            />
+            <BookContextMenuButton
+              Icon={MdInfoOutline}
+              label={t('context.info')}
+              onClick={() => {
+                closeContextMenu()
+                setInfoOpen(true)
+              }}
+            />
+            <div className="my-1 h-px bg-on-surface-variant/10" />
+            <BookContextMenuButton
+              danger
+              Icon={confirmDelete ? MdWarningAmber : MdDeleteOutline}
+              label={t(
+                confirmDelete ? 'context.confirm_delete' : 'context.delete',
+              )}
+              onClick={() => {
+                if (!confirmDelete) {
+                  setConfirmDelete(true)
+                  return
+                }
+
+                closeContextMenu()
+                void db.books.delete(book.id)
+              }}
+            />
+          </div>
+        )}
+        {editOpen && (
+          <EditBookDialog book={book} onClose={() => setEditOpen(false)} />
+        )}
+        {infoOpen && (
+          <BookInfoDialog
+            book={book}
+            cover={cover}
+            onClose={() => setInfoOpen(false)}
+          />
+        )}
         {book.percentage !== undefined && (
           <div className="absolute right-0 bg-gray-500/60 px-2 text-gray-100 typescale-body-large">
             {(book.percentage * 100).toFixed()}%
@@ -606,5 +790,239 @@ const Book: React.FC<BookProps> = ({
         {displayTitle}
       </div>
     </div>
+  )
+}
+
+interface BookContextMenuButtonProps {
+  danger?: boolean
+  Icon: React.ComponentType<{ size?: number; className?: string }>
+  label: string
+  onClick: () => void
+}
+
+const BookContextMenuButton: React.FC<BookContextMenuButtonProps> = ({
+  danger,
+  Icon,
+  label,
+  onClick,
+}) => {
+  return (
+    <button
+      type="button"
+      className={clsx(
+        'flex h-8 w-full items-center gap-2 px-3 text-left typescale-body-medium hover:bg-on-surface-variant/10',
+        danger ? 'text-error' : 'text-on-surface-variant',
+      )}
+      onClick={onClick}
+    >
+      <Icon size={18} className="shrink-0" />
+      <span className="min-w-0 truncate">{label}</span>
+    </button>
+  )
+}
+
+interface BookDialogProps {
+  book: BookRecord
+  onClose: () => void
+}
+
+const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
+  const t = useTranslation('home')
+  const titleRef = useRef<HTMLInputElement>(null)
+  const [title, setTitle] = useState(getBookDisplayTitle(book))
+  const [creator, setCreator] = useState(cleanBookText(book.metadata.creator))
+
+  useEffect(() => {
+    const input = titleRef.current
+    input?.focus()
+    input?.select()
+  }, [])
+
+  const save = () => {
+    void db.books
+      .update(book.id, {
+        metadata: {
+          ...book.metadata,
+          title: cleanBookText(title),
+          creator: cleanBookText(creator),
+        },
+      })
+      .then(() => onClose())
+  }
+
+  return (
+    <ModalShell onClose={onClose}>
+      <form
+        className="w-[min(28rem,calc(100vw-2rem))] bg-surface p-5 text-on-surface-variant shadow-lg ring-1 ring-inset ring-on-surface-variant/20"
+        onSubmit={(e) => {
+          e.preventDefault()
+          save()
+        }}
+      >
+        <div className="space-y-4">
+          <label className="block">
+            <span className="mb-1 block typescale-label-large">
+              {t('edit.title')}
+            </span>
+            <input
+              ref={titleRef}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onClick={(e) => e.currentTarget.select()}
+              onFocus={(e) => e.currentTarget.select()}
+              className="bg-default w-full px-2 py-1.5 text-on-surface-variant outline-none ring-1 ring-inset ring-surface-variant focus:ring-primary"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block typescale-label-large">
+              {t('edit.creator')}
+            </span>
+            <input
+              value={creator}
+              onChange={(e) => setCreator(e.target.value)}
+              onClick={(e) => e.currentTarget.select()}
+              onFocus={(e) => e.currentTarget.select()}
+              className="bg-default w-full px-2 py-1.5 text-on-surface-variant outline-none ring-1 ring-inset ring-surface-variant focus:ring-primary"
+            />
+          </label>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            {t('cancel')}
+          </Button>
+          <Button type="submit">{t('edit.save')}</Button>
+        </div>
+      </form>
+    </ModalShell>
+  )
+}
+
+interface BookInfoDialogProps extends BookDialogProps {
+  cover?: string | null
+}
+
+const BookInfoDialog: React.FC<BookInfoDialogProps> = ({
+  book,
+  cover,
+  onClose,
+}) => {
+  const t = useTranslation('home')
+  const title = getBookDisplayTitle(book)
+  const description = cleanBookDescription(book.metadata.description)
+  const rows = [
+    [t('info.creator'), cleanBookText(book.metadata.creator)],
+    [t('info.language'), formatLanguage(book.metadata.language)],
+    [t('info.publisher'), cleanBookText(book.metadata.publisher)],
+    [t('info.pubdate'), cleanBookText(book.metadata.pubdate)],
+    [t('info.filename'), cleanBookText(book.name)],
+    [t('info.size'), formatFileSize(book.size)],
+    [t('info.createdAt'), formatDateTime(book.createdAt)],
+    [t('info.lastReadAt'), formatDateTime(book.lastReadAt)],
+    [t('info.percentage'), formatPercentage(book.percentage)],
+  ].filter(([, value]) => !!value)
+
+  return (
+    <ModalShell onClose={onClose}>
+      <div className="relative max-h-[calc(100vh-4rem)] w-[min(46rem,calc(100vw-2rem))] overflow-hidden bg-surface p-5 text-on-surface-variant shadow-lg ring-1 ring-inset ring-on-surface-variant/20">
+        <button
+          type="button"
+          aria-label={t('cancel')}
+          className="absolute right-3 top-3 text-outline hover:text-on-surface-variant"
+          onClick={onClose}
+        >
+          ×
+        </button>
+        <div className="grid gap-5 sm:grid-cols-[12rem_minmax(0,1fr)]">
+          <div className="mx-auto w-40 sm:w-full">
+            {cover && (
+              <img
+                src={cover}
+                alt=""
+                className="aspect-[9/12] w-full object-cover shadow-sm"
+                draggable={false}
+              />
+            )}
+          </div>
+          <div className="min-w-0 pr-6">
+            <h2 className="text-center !text-[30px] font-bold leading-tight text-on-surface-variant sm:text-left">
+              {title}
+            </h2>
+            {!!rows.length && (
+              <dl className="mt-4 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-2 gap-y-1 typescale-body-large">
+                {rows.map(([label, value]) => (
+                  <React.Fragment key={label}>
+                    <dt className="font-semibold">{label}:</dt>
+                    <dd className="min-w-0 break-words">{value}</dd>
+                  </React.Fragment>
+                ))}
+              </dl>
+            )}
+          </div>
+        </div>
+        {description && (
+          <div className="scroll border-on-surface-variant/15 mt-5 max-h-[min(18rem,38vh)] overflow-y-auto border-t pt-4 text-justify typescale-body-large">
+            {description.split(/\n{2,}/).map((paragraph, index) => (
+              <p key={index} className={clsx(index > 0 && 'mt-3')}>
+                {paragraph}
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
+    </ModalShell>
+  )
+}
+
+interface ModalShellProps {
+  children: React.ReactNode
+  onClose: () => void
+}
+
+const ModalShell: React.FC<ModalShellProps> = ({ children, onClose }) => {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+
+      e.preventDefault()
+      onClose()
+    }
+
+    document.addEventListener('keydown', onKeyDown, true)
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true)
+    }
+  }, [onClose])
+
+  return createPortal(
+    <>
+      <Overlay
+        className="z-[80] !bg-black/20"
+        onClick={(e) => {
+          e.stopPropagation()
+          onClose()
+        }}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        data-flow-keyboard-capture="true"
+        className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) onClose()
+        }}
+        onClick={(e) => {
+          e.stopPropagation()
+        }}
+      >
+        <div
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {children}
+        </div>
+      </div>
+    </>,
+    document.body,
   )
 }

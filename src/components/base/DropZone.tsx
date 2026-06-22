@@ -7,9 +7,10 @@ import {
   ReactNode,
   useCallback,
   useEffect,
+  HTMLAttributes,
 } from 'react'
 
-interface DropZoneProps {
+interface DropZoneProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onDrop'> {
   children?: ReactNode
   className?: string
   onDrop?: (e: DragEvent<HTMLDivElement>, position?: Position) => void
@@ -37,6 +38,7 @@ const DropZoneInner: React.FC<DropZoneProps> = ({
   className,
   onDrop,
   split = false,
+  ...props
 }) => {
   const { dragover, setDragEvent } = useDndContext()
   const [position, setPosition] = useState<Position>()
@@ -79,6 +81,7 @@ const DropZoneInner: React.FC<DropZoneProps> = ({
   return (
     <div
       className={clsx('relative', className)}
+      {...props}
       // https://developer.mozilla.org/en-US/docs/Web/API/File/Using_files_from_web_applications#selecting_files_using_drag_and_drop
       onDragEnter={(e) => {
         if (dragover) return
