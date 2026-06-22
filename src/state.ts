@@ -6,7 +6,11 @@ import { RenditionSpread } from '@flow/epubjs/types/rendition'
 import type { ColorScheme } from '@flow/reader/hooks/theme/useColorScheme'
 import { AppLocale } from '@flow/reader/locales'
 
-import { getSettingsFromStorage, updateSettingsInStorage } from './db'
+import {
+  getSettingsFromStorage,
+  updateSettingsInStorage,
+  type ReadingStatus,
+} from './db'
 
 export const navbarState = atom<boolean>({
   key: 'navbar',
@@ -34,6 +38,11 @@ export const zenTypographyOverridesState = atom<
 export const settingsDialogOpenState = atom<boolean>({
   key: 'settingsDialogOpen',
   default: false,
+})
+
+export const libraryStatusFilterState = atom<ReadingStatus[]>({
+  key: 'libraryStatusFilter',
+  default: [],
 })
 
 export interface Settings extends TypographyConfiguration {

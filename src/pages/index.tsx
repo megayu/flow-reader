@@ -8,13 +8,18 @@ import { createPortal } from 'react-dom'
 import {
   MdArrowDownward,
   MdArrowUpward,
+  MdBookmark,
+  MdBookmarkBorder,
+  MdCheck,
   MdCheckBox,
   MdCheckBoxOutlineBlank,
+  MdCheckCircle,
   MdDeleteOutline,
   MdEdit,
   MdInfoOutline,
   MdKeyboardArrowDown,
   MdMenuBook,
+  MdRemoveCircleOutline,
   MdWarningAmber,
 } from 'react-icons/md'
 import { useRecoilState } from 'recoil'
@@ -26,17 +31,23 @@ import {
   getBookTooltip,
 } from '../book'
 import { ReaderGridView, Button, DropZone } from '../components'
-import { BookRecord, CoverRecord, db } from '../db'
+import { BookRecord, CoverRecord, ReadingStatus, db } from '../db'
 import { handleFiles, openImportDialog, setupNativeOpenFiles } from '../file'
 import {
   useCovers,
   useDisablePinchZooming,
   useLibrary,
+  useLibraryAction,
   useMobile,
   useTranslation,
 } from '../hooks'
 import { reader, useReaderSnapshot } from '../models'
-import { useSettings, useSettingsReady, viewModeState } from '../state'
+import {
+  libraryStatusFilterState,
+  useSettings,
+  useSettingsReady,
+  viewModeState,
+} from '../state'
 import { lock } from '../styles'
 
 const placeholder = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect fill="gray" fill-opacity="0" width="1" height="1"/></svg>`
@@ -56,7 +67,25 @@ const sortFieldOptions: SortField[] = [
   'createdAt',
 ]
 
+const readingStatusOptions: ReadingStatus[] = ['toRead', 'reading', 'read']
+
 const toolbarButtonClass = 'h-8'
+
+function isKeyboardTargetBlocked(e: KeyboardEvent) {
+  const target = e.target as HTMLElement | null
+  return !!target?.closest(
+    'input, textarea, select, [contenteditable="true"], [data-flow-keyboard-capture="true"]',
+  )
+}
+
+function toggleReadingStatusFilter(
+  filters: ReadingStatus[],
+  status: ReadingStatus,
+) {
+  return filters.includes(status)
+    ? filters.filter((item) => item !== status)
+    : [...filters, status]
+}
 
 function formatFileSize(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return ''
@@ -387,6 +416,10 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook }) => {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const sortMenuRef = useRef<HTMLDivElement>(null)
+  const [statusFilters, setStatusFilters] = useRecoilState(
+    libraryStatusFilterState,
+  )
+  const [, setLibraryAction] = useLibraryAction()
 
   const [select, toggleSelect] = useBoolean(false)
   const [selectedBookIds, { add, has, toggle, reset }] = useStringSet()
@@ -433,9 +466,55 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook }) => {
     }
   }, [sortMenuOpen])
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || isKeyboardTargetBlocked(e)) {
+        return
+      }
+
+      const key = e.key.toLowerCase()
+      if (key === 's') {
+        e.preventDefault()
+        e.stopPropagation()
+        setLibraryAction((action) =>
+          action === 'libraryFilter' ? undefined : 'libraryFilter',
+        )
+        return
+      }
+
+      if (e.key === '1') {
+        e.preventDefault()
+        e.stopPropagation()
+        setStatusFilters([])
+        return
+      }
+
+      const status = readingStatusOptions[Number(e.key) - 2]
+      if (status) {
+        e.preventDefault()
+        e.stopPropagation()
+        setStatusFilters((filters) =>
+          toggleReadingStatusFilter(filters, status),
+        )
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [setLibraryAction, setStatusFilters])
+
   const sortedBooks = useMemo(
-    () => sortBooks(books ?? [], sortField, sortDirection),
-    [books, sortDirection, sortField],
+    () =>
+      sortBooks(books ?? [], sortField, sortDirection).filter((book) => {
+        if (!statusFilters.length) return true
+        return (
+          !!book.readingStatus && statusFilters.includes(book.readingStatus)
+        )
+      }),
+    [books, sortDirection, sortField, statusFilters],
   )
 
   if (!books) return null
@@ -631,7 +710,9 @@ const Book: React.FC<BookProps> = ({
   const mobile = useMobile()
   const t = useTranslation('home')
   const contextMenuRef = useRef<HTMLDivElement>(null)
+  const statusMenuRef = useRef<HTMLDivElement>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number }>()
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
@@ -664,6 +745,14 @@ const Book: React.FC<BookProps> = ({
     onOpenBook()
   }, [book, mobile, onOpenBook, router])
 
+  const updateReadingStatus = useCallback(
+    (readingStatus: ReadingStatus | null) => {
+      setStatusMenuOpen(false)
+      void db.books.update(book.id, { readingStatus })
+    },
+    [book.id],
+  )
+
   useEffect(() => {
     if (!contextMenu) return
 
@@ -684,11 +773,31 @@ const Book: React.FC<BookProps> = ({
     }
   }, [closeContextMenu, contextMenu])
 
+  useEffect(() => {
+    if (!statusMenuOpen) return
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (statusMenuRef.current?.contains(e.target as Node)) return
+      setStatusMenuOpen(false)
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setStatusMenuOpen(false)
+    }
+
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [statusMenuOpen])
+
   return (
     <div className="relative flex flex-col" onContextMenu={openContextMenu}>
       <div
         role="button"
-        className="relative border border-inverse-on-surface"
+        className="group relative border border-inverse-on-surface"
         onClick={() => {
           if (select) {
             toggle(book.id)
@@ -759,8 +868,44 @@ const Book: React.FC<BookProps> = ({
             onClose={() => setInfoOpen(false)}
           />
         )}
+        {book.readingStatus && (
+          <ReadingStatusBadge
+            status={book.readingStatus}
+            title={t(`reading_status.${book.readingStatus}`)}
+          />
+        )}
+        {!select && (
+          <div
+            ref={statusMenuRef}
+            className="absolute right-1 top-1 z-20"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+            }}
+          >
+            <button
+              type="button"
+              title={t('reading_status.change')}
+              className={clsx(
+                'flex h-7 w-7 items-center justify-center rounded-sm bg-surface/90 text-outline opacity-0 shadow-sm ring-1 ring-inset ring-on-surface-variant/20 hover:text-on-surface-variant group-hover:opacity-100',
+                statusMenuOpen && 'text-on-surface-variant opacity-100',
+              )}
+              onClick={() => setStatusMenuOpen((open) => !open)}
+            >
+              <MdBookmarkBorder size={18} />
+            </button>
+            {statusMenuOpen && (
+              <ReadingStatusMenu
+                status={book.readingStatus ?? null}
+                onChange={updateReadingStatus}
+              />
+            )}
+          </div>
+        )}
         {book.percentage !== undefined && (
-          <div className="absolute right-0 bg-gray-500/60 px-2 text-gray-100 typescale-body-large">
+          <div className="absolute right-0 bg-gray-500/60 px-2 text-gray-100 typescale-body-large group-hover:hidden">
             {(book.percentage * 100).toFixed()}%
           </div>
         )}
@@ -817,6 +962,123 @@ const BookContextMenuButton: React.FC<BookContextMenuButtonProps> = ({
     >
       <Icon size={18} className="shrink-0" />
       <span className="min-w-0 truncate">{label}</span>
+    </button>
+  )
+}
+
+const readingStatusIcon: Record<
+  ReadingStatus,
+  React.ComponentType<{ size?: number; className?: string }>
+> = {
+  toRead: MdBookmark,
+  reading: MdMenuBook,
+  read: MdCheckCircle,
+}
+
+const readingStatusClassName: Record<ReadingStatus, string> = {
+  toRead: 'bg-amber-500 text-white',
+  reading: 'bg-sky-500 text-white',
+  read: 'bg-emerald-600 text-white',
+}
+
+interface ReadingStatusBadgeProps {
+  status: ReadingStatus
+  title: string
+}
+
+const ReadingStatusBadge: React.FC<ReadingStatusBadgeProps> = ({
+  status,
+  title,
+}) => {
+  const Icon = readingStatusIcon[status]
+
+  return (
+    <div
+      title={title}
+      className={clsx(
+        'absolute left-1 top-1 z-10 flex h-7 w-7 items-center justify-center rounded-sm shadow-sm',
+        readingStatusClassName[status],
+      )}
+    >
+      <Icon size={18} />
+    </div>
+  )
+}
+
+interface ReadingStatusMenuProps {
+  status: ReadingStatus | null
+  onChange: (status: ReadingStatus | null) => void
+}
+
+const ReadingStatusMenu: React.FC<ReadingStatusMenuProps> = ({
+  status,
+  onChange,
+}) => {
+  const t = useTranslation('home')
+
+  return (
+    <div className="ring-on-surface-variant/15 absolute right-0 top-full mt-1 w-40 bg-surface py-1 text-on-surface-variant shadow-lg ring-1 ring-inset">
+      <ReadingStatusMenuItem
+        Icon={MdBookmarkBorder}
+        label={t('reading_status.unmarked')}
+        checked={!status}
+        onClick={() => onChange(null)}
+      />
+      {readingStatusOptions.map((option) => {
+        const Icon = readingStatusIcon[option]
+        return (
+          <ReadingStatusMenuItem
+            key={option}
+            Icon={Icon}
+            label={t(`reading_status.${option}`)}
+            checked={status === option}
+            onClick={() => onChange(option)}
+          />
+        )
+      })}
+      {status && (
+        <>
+          <div className="my-1 h-px bg-on-surface-variant/10" />
+          <ReadingStatusMenuItem
+            danger
+            Icon={MdRemoveCircleOutline}
+            label={t('reading_status.remove')}
+            checked={false}
+            onClick={() => onChange(null)}
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
+interface ReadingStatusMenuItemProps {
+  danger?: boolean
+  checked: boolean
+  Icon: React.ComponentType<{ size?: number; className?: string }>
+  label: string
+  onClick: () => void
+}
+
+const ReadingStatusMenuItem: React.FC<ReadingStatusMenuItemProps> = ({
+  danger,
+  checked,
+  Icon,
+  label,
+  onClick,
+}) => {
+  return (
+    <button
+      type="button"
+      className={clsx(
+        'flex h-8 w-full items-center gap-2 px-3 text-left typescale-body-medium hover:bg-on-surface-variant/10',
+        danger ? 'text-error' : 'text-on-surface-variant',
+      )}
+      onClick={onClick}
+    >
+      <Icon size={17} className="shrink-0" />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {checked && <MdCheck size={17} className="shrink-0 text-primary" />}
     </button>
   )
 }

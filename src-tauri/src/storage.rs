@@ -70,6 +70,8 @@ struct LibraryBook {
     id: String,
     name: String,
     size: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reading_status: Option<ReadingStatus>,
     #[serde(default)]
     content_hash: String,
     #[serde(default)]
@@ -93,6 +95,8 @@ pub struct BookRecord {
     id: String,
     name: String,
     size: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reading_status: Option<ReadingStatus>,
     #[serde(default = "empty_object")]
     metadata: Value,
     created_at: u64,
@@ -135,6 +139,14 @@ pub struct CoverInput {
 struct ParsedEpubInfo {
     metadata: Value,
     cover: Option<CoverInput>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum ReadingStatus {
+    ToRead,
+    Reading,
+    Read,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -231,6 +243,7 @@ impl AppStorage {
             id: book.id.clone(),
             name: book.name.clone(),
             size: book.size,
+            reading_status: book.reading_status.clone(),
             metadata: book.metadata.clone(),
             created_at: book.created_at,
             updated_at: book.updated_at,
@@ -250,6 +263,7 @@ impl AppStorage {
             id: book.id.clone(),
             name: book.name.clone(),
             size: book.size,
+            reading_status: book.reading_status.clone(),
             metadata: book.metadata.clone(),
             created_at: book.created_at,
             updated_at: book.updated_at,
@@ -1094,6 +1108,7 @@ fn import_epub_path_impl(
                 id,
                 name,
                 size,
+                reading_status: None,
                 content_hash: hash,
                 content_version: 1,
                 metadata: empty_object(),
@@ -1296,6 +1311,13 @@ pub fn update_book(
             }
             if let Some(value) = object.get("size").and_then(Value::as_u64) {
                 book.size = value;
+                library_changed = true;
+                immediate_flush = true;
+            }
+            if object.contains_key("readingStatus") {
+                book.reading_status = object
+                    .get("readingStatus")
+                    .and_then(|value| serde_json::from_value(value.clone()).ok());
                 library_changed = true;
                 immediate_flush = true;
             }

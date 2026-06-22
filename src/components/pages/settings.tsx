@@ -472,6 +472,31 @@ const ShortcutSettings: React.FC = () => {
       ],
     },
     {
+      title: t('group.library'),
+      items: [
+        {
+          label: t('library_filter_panel'),
+          shortcuts: [['S']],
+        },
+        {
+          label: t('library_filter_all'),
+          shortcuts: [['1']],
+        },
+        {
+          label: t('library_filter_to_read'),
+          shortcuts: [['2']],
+        },
+        {
+          label: t('library_filter_reading'),
+          shortcuts: [['3']],
+        },
+        {
+          label: t('library_filter_read'),
+          shortcuts: [['4']],
+        },
+      ],
+    },
+    {
       title: t('group.development'),
       items: [
         {

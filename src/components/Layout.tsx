@@ -15,6 +15,7 @@ import {
   MdFormatUnderlined,
   MdFullscreen,
   MdFullscreenExit,
+  MdFilterList,
   MdLibraryBooks,
   MdMenuBook,
   MdOutlineImage,
@@ -27,8 +28,10 @@ import { useRecoilState, useRecoilValue, useSetRecoilState } from 'recoil'
 
 import {
   Env,
-  Action,
+  type Action as ReaderPanelAction,
+  type LibraryAction,
   useAction,
+  useLibraryAction,
   useBackground,
   useColorScheme,
   useMobile,
@@ -37,6 +40,7 @@ import {
 import { reader, useReaderSnapshot } from '../models'
 import {
   navbarState,
+  libraryStatusFilterState,
   settingsDialogOpenState,
   viewModeState,
   zenModeState,
@@ -44,7 +48,7 @@ import {
 } from '../state'
 import { activeClass } from '../styles'
 
-import { SplitView, useSplitViewItem } from './base'
+import { PaneView, SplitView, useSplitViewItem } from './base'
 import { SettingsDialog } from './pages'
 import { AnnotationView } from './viewlets/AnnotationView'
 import { ImageView } from './viewlets/ImageView'
@@ -61,7 +65,7 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
     settingsDialogOpenState,
   )
   const [action, setAction] = useAction()
-  const actionBeforeZen = useRef<Action | undefined>()
+  const actionBeforeZen = useRef<ReaderPanelAction | undefined>()
   const zenModeRef = useRef(false)
   const mobile = useMobile()
   const zenMode = useRecoilValue(zenModeState)
@@ -165,7 +169,7 @@ interface IAction {
   env: number
 }
 interface IViewAction extends IAction {
-  name: Action
+  name: ReaderPanelAction
   View: React.FC<any>
 }
 
@@ -203,6 +207,21 @@ const viewActions: IViewAction[] = [
     title: 'typography',
     Icon: RiFontSize,
     View: TypographyView,
+    env: Env.Desktop | Env.Mobile,
+  },
+]
+
+interface ILibraryViewAction extends IAction {
+  name: LibraryAction
+  View: React.FC<any>
+}
+
+const libraryViewActions: ILibraryViewAction[] = [
+  {
+    name: 'libraryFilter',
+    title: 'library_filter',
+    Icon: MdFilterList,
+    View: LibraryFilterView,
     env: Env.Desktop | Env.Mobile,
   },
 ]
@@ -248,25 +267,30 @@ interface PageActionBarProps extends EnvActionBarProps, SettingsActionProps {}
 
 function ViewActionBar({ className, env }: EnvActionBarProps) {
   const [action, setAction] = useAction()
+  const [libraryAction, setLibraryAction] = useLibraryAction()
   const viewMode = useRecoilValue(viewModeState)
   const t = useTranslation()
-  const disabled = viewMode === 'library'
+  const actions: Array<IViewAction | ILibraryViewAction> =
+    viewMode === 'library' ? libraryViewActions : viewActions
+  const activeAction = viewMode === 'library' ? libraryAction : action
 
   return (
     <ActionBar className={className}>
-      {viewActions
+      {actions
         .filter((a) => a.env & env)
         .map(({ name, title, Icon }) => {
-          const active = !disabled && action === name
+          const active = activeAction === name
           return (
             <Action
               title={t(`${title}.title`)}
               Icon={Icon}
               active={active}
-              disabled={disabled}
               onClick={() => {
-                if (disabled) return
-                setAction(active ? undefined : name)
+                if (viewMode === 'library') {
+                  setLibraryAction(active ? undefined : (name as LibraryAction))
+                } else {
+                  setAction(active ? undefined : (name as ReaderPanelAction))
+                }
               }}
               key={name}
             />
@@ -600,40 +624,102 @@ const Action: React.FC<ActionProps> = ({
 
 const SideBar: React.FC = () => {
   const [action, setAction] = useAction()
+  const [libraryAction, setLibraryAction] = useLibraryAction()
   const mobile = useMobile()
   const t = useTranslation()
   const viewMode = useRecoilValue(viewModeState)
   const [, , background] = useBackground()
+  const activeAction = viewMode === 'library' ? libraryAction : action
+  const setActiveAction = viewMode === 'library' ? setLibraryAction : setAction
+  const actions = viewMode === 'library' ? libraryViewActions : viewActions
 
   const { size } = useSplitViewItem(SideBar, {
     preferredSize: 240,
     minSize: 160,
-    visible: !!action,
+    visible: !!activeAction,
   })
 
   return (
     <>
-      {action && mobile && <Overlay onClick={() => setAction(undefined)} />}
+      {activeAction && mobile && (
+        <Overlay onClick={() => setActiveAction(undefined)} />
+      )}
       <div
         className={clsx(
           'SideBar flex flex-col',
           background.sidebarClassName,
-          !action && '!hidden',
-          viewMode === 'library' && 'pointer-events-none opacity-50',
+          !activeAction && '!hidden',
           mobile ? 'absolute inset-y-0 right-0 z-10' : '',
         )}
         style={{ width: mobile ? '75%' : size }}
       >
-        {viewActions.map(({ name, title, View }) => (
+        {actions.map(({ name, title, View }) => (
           <View
             key={name}
             name={t(`${name}.title`)}
             title={t(`${title}.title`)}
-            className={clsx(name !== action && '!hidden')}
+            className={clsx(name !== activeAction && '!hidden')}
           />
         ))}
       </div>
     </>
+  )
+}
+
+const libraryStatusOptions = ['toRead', 'reading', 'read'] as const
+
+function LibraryFilterView({ className }: ComponentProps<'div'>) {
+  const t = useTranslation('home')
+  const [filters, setFilters] = useRecoilState(libraryStatusFilterState)
+
+  const toggle = (status: typeof libraryStatusOptions[number]) => {
+    setFilters((current) =>
+      current.includes(status)
+        ? current.filter((item) => item !== status)
+        : [...current, status],
+    )
+  }
+
+  return (
+    <PaneView
+      name={t('library_filter.title')}
+      title={t('library_filter.title')}
+      className={clsx('p-3', className)}
+    >
+      <div className="space-y-2">
+        <button
+          type="button"
+          className={clsx(
+            'h-9 w-full px-3 text-left ring-1 ring-inset typescale-body-medium',
+            filters.length === 0
+              ? 'bg-primary70 text-on-primary-container ring-primary'
+              : 'bg-surface text-on-surface-variant ring-surface-variant hover:bg-on-surface-variant/10',
+          )}
+          onClick={() => setFilters([])}
+        >
+          {t('library_filter.all')}
+        </button>
+        {libraryStatusOptions.map((status) => {
+          const active = filters.includes(status)
+          return (
+            <button
+              key={status}
+              type="button"
+              className={clsx(
+                'flex h-9 w-full items-center justify-between px-3 text-left ring-1 ring-inset typescale-body-medium',
+                active
+                  ? 'bg-primary70 text-on-primary-container ring-primary'
+                  : 'bg-surface text-on-surface-variant ring-surface-variant hover:bg-on-surface-variant/10',
+              )}
+              onClick={() => toggle(status)}
+            >
+              <span>{t(`reading_status.${status}`)}</span>
+              {active && <span aria-hidden>✓</span>}
+            </button>
+          )
+        })}
+      </div>
+    </PaneView>
   )
 }
 

@@ -30,10 +30,13 @@ export interface ReadingSpreadRecord extends ReadingSpreadPageRecord {
   layoutStyleSignature?: string
 }
 
+export type ReadingStatus = 'toRead' | 'reading' | 'read'
+
 export interface BookRecord {
   id: string
   name: string
   size: number
+  readingStatus?: ReadingStatus | null
   metadata: PackagingMetadataObject
   createdAt: number
   updatedAt?: number
