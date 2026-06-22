@@ -44,12 +44,41 @@ function compareDefinition(d1: string, d2: string) {
   return d1.toLowerCase() === d2.toLowerCase()
 }
 
-function isReadingPositionOnlyUpdate(changes: Partial<BookRecord>) {
+function withoutReadingSpread(
+  configuration: BookRecord['configuration'] | undefined,
+) {
+  const { spread, ...rest } = configuration ?? {}
+  return rest
+}
+
+function isSpreadOnlyConfigurationUpdate(
+  changes: Partial<BookRecord>,
+  currentBook: BookRecord,
+) {
+  if (!('configuration' in changes)) return true
+
+  return (
+    JSON.stringify(withoutReadingSpread(changes.configuration)) ===
+    JSON.stringify(withoutReadingSpread(currentBook.configuration))
+  )
+}
+
+function isReadingPositionOnlyUpdate(
+  changes: Partial<BookRecord>,
+  currentBook: BookRecord,
+) {
   const keys = Object.keys(changes)
   return (
     keys.some((key) => key === 'cfi' || key === 'percentage') &&
+    isSpreadOnlyConfigurationUpdate(changes, currentBook) &&
     keys.every((key) =>
-      ['cfi', 'percentage', 'updatedAt', 'lastReadAt'].includes(key),
+      [
+        'cfi',
+        'percentage',
+        'updatedAt',
+        'lastReadAt',
+        'configuration',
+      ].includes(key),
     )
   )
 }
@@ -450,6 +479,8 @@ export class BookTab extends BaseTab {
   }
 
   updateBook(changes: Partial<BookRecord>) {
+    const readingPositionOnly = isReadingPositionOnlyUpdate(changes, this.book)
+
     changes = {
       ...changes,
       updatedAt: Date.now(),
@@ -458,7 +489,7 @@ export class BookTab extends BaseTab {
     this.book = { ...this.book, ...changes }
     db.books.remember(this.book)
 
-    if (isReadingPositionOnlyUpdate(changes)) {
+    if (readingPositionOnly) {
       void db.books.update(this.book.id, changes).catch((error) => {
         console.error(error)
       })
@@ -499,10 +530,12 @@ export class BookTab extends BaseTab {
       })
   }
 
-  private createCurrentPositionUpdate(): Partial<BookRecord> | undefined {
+  private createCurrentPositionUpdate(
+    percentage?: number,
+  ): Partial<BookRecord> | undefined {
     if (!this.currentLocation || !this.sections) return
 
-    const percentage = calculateReadingPercentage({
+    percentage ??= calculateReadingPercentage({
       location: this.currentLocation,
       sections: this.sections,
       totalLength: this.totalLength,
@@ -1262,7 +1295,10 @@ export class BookTab extends BaseTab {
           sections: this.sections,
           totalLength: this.totalLength,
         })
-        this.updateBook({ cfi: loc.start.cfi, percentage })
+        const positionUpdate = this.createCurrentPositionUpdate(percentage)
+        if (positionUpdate) {
+          this.updateBook(positionUpdate)
+        }
       }
 
       this.rendered = true

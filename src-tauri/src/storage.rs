@@ -2587,6 +2587,22 @@ pub fn get_book_package_path(storage: State<'_, AppStorage>, id: String) -> Resu
     Err("Book package is unavailable".to_string())
 }
 
+fn configuration_without_spread(value: Option<&Value>) -> Value {
+    match value {
+        Some(Value::Object(object)) => {
+            let mut object = object.clone();
+            object.remove("spread");
+            Value::Object(object)
+        }
+        Some(value) => value.clone(),
+        None => Value::Object(Default::default()),
+    }
+}
+
+fn is_spread_only_configuration_update(current: Option<&Value>, incoming: &Value) -> bool {
+    configuration_without_spread(current) == configuration_without_spread(Some(incoming))
+}
+
 #[tauri::command]
 pub fn update_book(
     storage: State<'_, AppStorage>,
@@ -2611,14 +2627,13 @@ pub fn update_book(
         if let Some(object) = changes.as_object() {
             let updates_reading_position =
                 object.contains_key("cfi") || object.contains_key("percentage");
-            let explicit_state_update = object.contains_key("definitions")
-                || object.contains_key("annotations")
-                || object.contains_key("configuration");
-            reading_position_only = updates_reading_position
-                && !explicit_state_update
-                && object
-                    .keys()
-                    .all(|key| matches!(key.as_str(), "cfi" | "percentage" | "updatedAt"));
+            let allowed_reading_position_keys = object.keys().all(|key| {
+                matches!(
+                    key.as_str(),
+                    "cfi" | "percentage" | "updatedAt" | "lastReadAt" | "configuration"
+                )
+            });
+            let mut configuration_spread_only_update = !object.contains_key("configuration");
 
             if let Some(value) = object.get("name").and_then(Value::as_str) {
                 book.name = value.to_string();
@@ -2701,11 +2716,24 @@ pub fn update_book(
                     immediate_flush = true;
                 }
                 if let Some(value) = object.get("configuration") {
+                    let spread_only = is_spread_only_configuration_update(
+                        book_state.configuration.as_ref(),
+                        value,
+                    );
+                    configuration_spread_only_update = spread_only;
                     book_state.configuration = Some(value.clone());
                     state_changed = true;
-                    immediate_flush = true;
+                    if !spread_only {
+                        immediate_flush = true;
+                    }
                 }
             }
+
+            let explicit_state_update = object.contains_key("definitions")
+                || object.contains_key("annotations")
+                || (object.contains_key("configuration") && !configuration_spread_only_update);
+            reading_position_only =
+                updates_reading_position && !explicit_state_update && allowed_reading_position_keys;
         }
 
         state.library.books[book_index] = book.clone();

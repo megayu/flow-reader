@@ -175,13 +175,43 @@ function forgetBooks(ids: string[]) {
   }
 }
 
-function isReadingPositionOnlyUpdate(changes: Partial<BookRecord>) {
+function withoutReadingSpread(
+  configuration: BookRecord['configuration'] | undefined,
+) {
+  const { spread, ...rest } = configuration ?? {}
+  return rest
+}
+
+function isSpreadOnlyConfigurationUpdate(
+  changes: Partial<BookRecord>,
+  currentBook?: BookRecord,
+) {
+  if (!('configuration' in changes)) return true
+  if (!currentBook) return false
+
+  return (
+    JSON.stringify(withoutReadingSpread(changes.configuration)) ===
+    JSON.stringify(withoutReadingSpread(currentBook.configuration))
+  )
+}
+
+function isReadingPositionOnlyUpdate(
+  changes: Partial<BookRecord>,
+  currentBook?: BookRecord,
+) {
   const keys = Object.keys(changes)
   return (
     keys.length > 0 &&
     keys.some((key) => key === 'cfi' || key === 'percentage') &&
+    isSpreadOnlyConfigurationUpdate(changes, currentBook) &&
     keys.every((key) =>
-      ['cfi', 'percentage', 'updatedAt', 'lastReadAt'].includes(key),
+      [
+        'cfi',
+        'percentage',
+        'updatedAt',
+        'lastReadAt',
+        'configuration',
+      ].includes(key),
     )
   )
 }
@@ -282,6 +312,7 @@ export const db = {
     },
     async update(id: string, changes: Partial<BookRecord>) {
       const cached = bookCache.get(id)
+      const readingPositionOnly = isReadingPositionOnlyUpdate(changes, cached)
       if (cached) {
         rememberBook({ ...cached, ...changes }, { full: cached.stateLoaded })
       }
@@ -294,7 +325,7 @@ export const db = {
       )
       if (book) rememberBook(book)
 
-      if (!isReadingPositionOnlyUpdate(changes)) {
+      if (!readingPositionOnly) {
         notify(
           ...(['books', changes.metadata ? 'covers' : undefined].filter(
             Boolean,
