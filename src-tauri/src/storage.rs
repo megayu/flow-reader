@@ -25,6 +25,7 @@ const BOOK_FILE: &str = "book.epub";
 const SOURCE_TEXT_FILE: &str = "source.txt";
 const UNPACKED_DIR: &str = "unpacked";
 const COVER_STEM: &str = "cover";
+const GENERATED_TEXT_COVER_MARKER: &str = r#"data-flow-generated-cover="true""#;
 const METADATA_FILE: &str = "metadata.json";
 const STATE_FILE: &str = "state.json";
 const WINDOW_STATE_FILE: &str = "window-state.json";
@@ -603,6 +604,25 @@ fn read_cover(storage: &AppStorage, id: &str) -> Result<Option<String>, String> 
     Ok(None)
 }
 
+fn is_generated_text_cover(storage: &AppStorage, id: &str) -> Result<bool, String> {
+    let Some(path) = read_cover(storage, id)? else {
+        return Ok(true);
+    };
+    let path = PathBuf::from(path);
+    if !path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("svg"))
+    {
+        return Ok(false);
+    }
+
+    let svg = fs::read_to_string(path).unwrap_or_default();
+    Ok(svg.contains(GENERATED_TEXT_COVER_MARKER)
+        || (svg.contains(r##"<rect width="768" height="1024" fill="#ead7b5"/>"##)
+            && svg.contains("Noto Serif CJK SC")))
+}
+
 fn remove_cover_files(storage: &AppStorage, id: &str) -> Result<(), String> {
     let dir = storage.book_dir(id);
     if !dir.exists() {
@@ -1083,6 +1103,146 @@ fn path_to_client_string(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+fn svg_char_width(ch: char) -> f32 {
+    if ch.is_ascii_whitespace() {
+        0.35
+    } else if ch.is_ascii() {
+        0.58
+    } else {
+        1.0
+    }
+}
+
+fn wrap_svg_text(value: &str, font_size: f32, max_width: f32) -> Vec<String> {
+    let max_width = max_width / font_size;
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    let mut width = 0.0;
+
+    for ch in value.chars() {
+        if ch == '\n' {
+            let text = line.trim();
+            if !text.is_empty() {
+                lines.push(text.to_string());
+            }
+            line.clear();
+            width = 0.0;
+            continue;
+        }
+
+        let char_width = svg_char_width(ch);
+        if width + char_width > max_width && !line.trim().is_empty() {
+            lines.push(line.trim().to_string());
+            line.clear();
+            width = 0.0;
+        }
+
+        if !line.is_empty() || !ch.is_whitespace() {
+            line.push(ch);
+            width += char_width;
+        }
+    }
+
+    let text = line.trim();
+    if !text.is_empty() {
+        lines.push(text.to_string());
+    }
+
+    if lines.is_empty() {
+        vec![value.to_string()]
+    } else {
+        lines
+    }
+}
+
+fn svg_text_block(
+    lines: &[String],
+    y: f32,
+    font_size: f32,
+    line_height: f32,
+    font_weight: u16,
+) -> String {
+    let mut output = format!(
+        r#"<text x="384" y="{y:.1}" text-anchor="middle" font-size="{font_size:.1}" font-weight="{font_weight}">"#
+    );
+
+    for (index, line) in lines.iter().enumerate() {
+        if index == 0 {
+            output.push_str(&format!(r#"<tspan x="384">{}</tspan>"#, escape_svg(line)));
+        } else {
+            output.push_str(&format!(
+                r#"<tspan x="384" dy="{line_height:.1}">{}</tspan>"#,
+                escape_svg(line)
+            ));
+        }
+    }
+
+    output.push_str("</text>");
+    output
+}
+
+fn create_text_cover_svg(title: &str, creator: &str) -> String {
+    let has_creator = !creator.is_empty();
+    let max_width = 608.0;
+    let mut title_size = 92.0;
+    let mut creator_size = 54.0;
+    let mut title_lines = wrap_svg_text(title, title_size, max_width);
+    let mut creator_lines = if has_creator {
+        wrap_svg_text(creator, creator_size, max_width)
+    } else {
+        Vec::new()
+    };
+
+    loop {
+        let title_line_height = title_size * 1.18;
+        let creator_line_height = creator_size * 1.2;
+        let title_height = title_lines.len() as f32 * title_line_height;
+        let creator_height = creator_lines.len() as f32 * creator_line_height;
+        let gap = if has_creator { 58.0 } else { 0.0 };
+        let total_height = title_height + gap + creator_height;
+
+        if total_height <= 620.0 || title_size <= 40.0 {
+            let title_y = 512.0 - total_height / 2.0 + title_size;
+            let title_block =
+                svg_text_block(&title_lines, title_y, title_size, title_line_height, 800);
+            let creator_block = if has_creator {
+                let creator_y = title_y
+                    + title_line_height * (title_lines.len().saturating_sub(1) as f32)
+                    + gap
+                    + creator_size;
+                svg_text_block(
+                    &creator_lines,
+                    creator_y,
+                    creator_size,
+                    creator_line_height,
+                    700,
+                )
+            } else {
+                String::new()
+            };
+
+            return format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 768 1024" data-flow-generated-cover="true">
+  <rect width="768" height="1024" fill="#ead7b5"/>
+  <g fill="#3d3122" font-family="Noto Serif CJK SC, Source Han Serif SC, STSong, SimSun, serif" dominant-baseline="alphabetic">
+    {title_block}
+    {creator_block}
+  </g>
+</svg>"##
+            );
+        }
+
+        title_size -= 6.0;
+        creator_size = (creator_size - 3.0).max(34.0);
+        title_lines = wrap_svg_text(title, title_size, max_width);
+        creator_lines = if has_creator {
+            wrap_svg_text(creator, creator_size, max_width)
+        } else {
+            Vec::new()
+        };
+    }
+}
+
 fn create_text_cover_input(metadata: &Value, fallback_title: Option<&str>) -> Option<CoverInput> {
     let title = metadata
         .get("title")
@@ -1099,25 +1259,7 @@ fn create_text_cover_input(metadata: &Value, fallback_title: Option<&str>) -> Op
         .and_then(Value::as_str)
         .map(clean_xml_text)
         .unwrap_or_default();
-    let creator_node = if creator.is_empty() {
-        String::new()
-    } else {
-        format!(
-            r#"<text x="384" y="594" text-anchor="middle" font-size="72" font-weight="700">{}</text>"#,
-            escape_svg(&creator)
-        )
-    };
-    let svg = format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 768 1024">
-  <rect width="768" height="1024" fill="#ead7b5"/>
-  <g fill="#3d3122" font-family="Noto Serif CJK SC, Source Han Serif SC, STSong, SimSun, serif" dominant-baseline="alphabetic">
-    <text x="384" y="512" text-anchor="middle" font-size="104" font-weight="800">{}</text>
-    {}
-  </g>
-</svg>"##,
-        escape_svg(&title),
-        creator_node
-    );
+    let svg = create_text_cover_svg(&title, &creator);
 
     Some(CoverInput {
         mime_type: "image/svg+xml".to_string(),
@@ -1407,7 +1549,9 @@ fn compile_text_import_rules(input: Option<&TextImportRulesInput>) -> Vec<TextIm
                 return None;
             }
 
-            Regex::new(pattern).ok().map(|regex| TextImportRule { role, regex })
+            Regex::new(pattern)
+                .ok()
+                .map(|regex| TextImportRule { role, regex })
         })
         .collect()
 }
@@ -2496,6 +2640,18 @@ pub fn update_book(
             if let Some(value) = object.get("metadata") {
                 book.metadata = value.clone();
                 write_metadata(&storage, &id, value)?;
+                if is_generated_text_cover(&storage, &id)? {
+                    write_cover(
+                        &storage,
+                        &id,
+                        create_text_cover_input(
+                            value,
+                            Path::new(&book.name)
+                                .file_stem()
+                                .and_then(|name| name.to_str()),
+                        ),
+                    )?;
+                }
                 library_changed = true;
                 immediate_flush = true;
             }
@@ -2791,8 +2947,7 @@ mod tests {
 
     #[test]
     fn marks_generated_text_body_on_container_only() {
-        let document =
-            parse_text_import_document("第1章 开始\n第一段。\n第二段。", "测试书", None);
+        let document = parse_text_import_document("第1章 开始\n第一段。\n第二段。", "测试书", None);
         let xhtml = text_section_xhtml(&document.sections[0]);
 
         assert!(xhtml.contains(r#"<div class="flow-txt-body" data-flow-body-text="true">"#));

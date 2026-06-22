@@ -232,12 +232,17 @@ async function filePathToUrl(path: string) {
   }
 }
 
+function addCacheBuster(url: string) {
+  return `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}`
+}
+
 async function toCoverRecord(record: CoverRecord | null) {
   if (!record) return undefined
 
+  const cover = record.cover ? await filePathToUrl(record.cover) : null
   return {
     ...record,
-    cover: record.cover ? await filePathToUrl(record.cover) : null,
+    cover: cover ? addCacheBuster(cover) : null,
   }
 }
 
@@ -290,7 +295,11 @@ export const db = {
       if (book) rememberBook(book)
 
       if (!isReadingPositionOnlyUpdate(changes)) {
-        notify('books')
+        notify(
+          ...(['books', changes.metadata ? 'covers' : undefined].filter(
+            Boolean,
+          ) as TableName[]),
+        )
       }
       return book ?? undefined
     },
@@ -321,7 +330,9 @@ export const db = {
       return Promise.all(
         covers.map(async (cover) => ({
           ...cover,
-          cover: cover.cover ? await filePathToUrl(cover.cover) : null,
+          cover: cover.cover
+            ? addCacheBuster(await filePathToUrl(cover.cover))
+            : null,
         })),
       )
     },
