@@ -14,6 +14,8 @@ import {
   ReadingSpreadPageRecord,
   ReadingSpreadRecord,
   db,
+  searchBookText,
+  unloadBookSearchText,
 } from '../db'
 import { createId } from '../id'
 import { BodyTextDetectionCache, defaultStyle } from '../styles'
@@ -156,6 +158,10 @@ export interface IMatch extends INode {
   excerpt: string
   description?: string
   cfi?: string
+  sectionIndex?: number
+  href?: string
+  occurrence?: number
+  offset?: number
   subitems?: IMatch[]
 }
 
@@ -388,6 +394,40 @@ export class BookTab extends BaseTab {
     } catch (err) {
       this.display(section.href, returnable)
     }
+  }
+
+  async displaySearchResult(result: IMatch, keyword = this.keyword) {
+    if (result.cfi) {
+      this.display(result.cfi)
+      return
+    }
+
+    const section =
+      this.sections?.find((s) => s.index === result.sectionIndex) ??
+      this.sections?.find((s) => s.href === result.href)
+
+    if (!section) {
+      this.display(result.href)
+      return
+    }
+
+    try {
+      await this.ensureSectionInfo(section)
+      const matches = section.find(keyword) as Array<{
+        cfi?: string
+      }>
+      const match = matches[result.occurrence ?? 0] ?? matches[0]
+      if (match?.cfi) {
+        this.showPrevLocation()
+        await this.displayTarget(section, match.cfi)
+        return
+      }
+    } catch (error) {
+      console.error(error)
+    }
+
+    this.showPrevLocation()
+    await this.displaySectionStart(section)
   }
   async prev() {
     if (this.turning) return
@@ -694,7 +734,11 @@ export class BookTab extends BaseTab {
   // only use throttle/debounce for side effects
   @debounce(1000)
   async onKeywordChange() {
-    this.results = await this.search()
+    const keyword = this.keyword
+    const results = await this.search(keyword)
+    if (this.keyword === keyword) {
+      this.results = results
+    }
   }
 
   get totalLength() {
@@ -931,6 +975,7 @@ export class BookTab extends BaseTab {
     } catch (error) {
       console.error(error)
     } finally {
+      void unloadBookSearchText(this.book.id).catch(console.error)
       this.destroyRendering()
     }
   }
@@ -1016,27 +1061,15 @@ export class BookTab extends BaseTab {
     return this.searchInSection(keyword, section)
   }
 
-  search(keyword = this.keyword) {
-    // avoid blocking input
-    return new Promise<IMatch[] | undefined>((resolve) => {
-      requestIdleCallback(async () => {
-        if (!keyword) {
-          resolve(undefined)
-          return
-        }
+  async search(keyword = this.keyword) {
+    if (!keyword.trim()) return undefined
 
-        const results: IMatch[] = []
-
-        // The callback itself is idle, but each section is still loaded
-        // sequentially to avoid the old all-spine load spike.
-        for (const s of this.sections ?? []) {
-          const result = await this.searchInSectionAsync(keyword, s)
-          if (result) results.push(result)
-        }
-
-        resolve(results)
-      })
-    })
+    try {
+      return (await searchBookText(this.book.id, keyword)) as IMatch[]
+    } catch (error) {
+      console.error(error)
+      return []
+    }
   }
 
   private assignSectionNavItem(section: ISection, sections = this.sections) {

@@ -124,6 +124,8 @@ pub fn run() {
             storage::preview_text_import_paths,
             storage::import_text_paths,
             storage::get_book_package_path,
+            storage::search_book_text,
+            storage::unload_book_search_text,
             storage::update_book,
             storage::delete_books,
             storage::get_settings,

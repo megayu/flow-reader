@@ -89,6 +89,24 @@ export interface BookRecord {
   stateLoaded?: boolean
 }
 
+export interface BookSearchHit {
+  id: string
+  excerpt: string
+  cfi?: string | null
+  sectionIndex: number
+  href: string
+  occurrence: number
+  offset: number
+}
+
+export interface BookSearchResult {
+  id: string
+  excerpt: string
+  description?: string | null
+  subitems: BookSearchHit[]
+  expanded: boolean
+}
+
 type NativeInvoke = <T>(
   command: string,
   args?: Record<string, unknown>,
@@ -439,6 +457,18 @@ export async function importTextPaths(
   books.forEach((book) => rememberBook(book))
   notify('books', 'covers', 'files')
   return books
+}
+
+export function searchBookText(id: string, keyword: string, limit?: number) {
+  return invoke<BookSearchResult[]>('search_book_text', {
+    id,
+    keyword,
+    limit,
+  })
+}
+
+export function unloadBookSearchText(id: string) {
+  return invoke('unload_book_search_text', { id })
 }
 
 export async function getSettingsFromStorage<T>() {

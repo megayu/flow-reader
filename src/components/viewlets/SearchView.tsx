@@ -118,7 +118,7 @@ interface ResultRowProps {
 }
 const ResultRow: React.FC<ResultRowProps> = ({ result, keyword }) => {
   if (!result) return null
-  const { cfi, depth, expanded, subitems, id } = result
+  const { depth, expanded, subitems, id } = result
   let { excerpt, description } = result
   const tab = reader.focusedBookTab
   const isResult = depth === 1
@@ -140,7 +140,7 @@ const ResultRow: React.FC<ResultRowProps> = ({ result, keyword }) => {
         onClick: () => {
           if (tab) {
             tab.activeResultID = id
-            tab.display(cfi)
+            void tab.displaySearchResult(result, keyword)
           }
         },
       })}
