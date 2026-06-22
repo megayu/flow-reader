@@ -48,7 +48,8 @@ import {
   useTranslation,
   useTypography,
 } from '../hooks'
-import { BookTab, reader, useReaderSnapshot } from '../models'
+import { BookTab, reader, useReaderSnapshot, type ISection } from '../models'
+import { findSectionByLinkedHref, safeDecodeHref, sameHref } from '../noteLinks'
 import { isTouchScreen } from '../platform'
 import { revealScrollbars } from '../scrollbar'
 import {
@@ -1101,6 +1102,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
   const ref = useRef<HTMLDivElement>(null)
   const chapterFindInputRef = useRef<HTMLInputElement>(null)
   const previousFindLocationKey = useRef<string>()
+  const noteRequestId = useRef(0)
   const [chapterFind, setChapterFind] =
     useState<ChapterFindState>(initialChapterFind)
   const [notePopover, setNotePopover] = useState<NotePopoverState>()
@@ -1445,33 +1447,62 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
 
       const handleClick = (e: MouseEvent) => {
         if (zenMode) {
+          noteRequestId.current += 1
           setNotePopover(undefined)
           return
         }
 
         const anchor = getAnchorFromEvent(e)
         if (!anchor) {
+          noteRequestId.current += 1
           setNotePopover(undefined)
           return
         }
 
-        const noteElement = getLinkedNote(tab, anchor)
-        if (!noteElement) return
+        if (!isPotentialNoteLink(anchor)) {
+          return
+        }
 
         e.preventDefault()
         e.stopPropagation()
         e.stopImmediatePropagation()
-
-        const popover = createNotePopoverState(
-          anchor,
-          noteElement,
-          ref.current,
-          rendition,
-        )
-        if (!popover) return
-
         closeChapterFind()
-        setNotePopover(popover)
+        setNotePopover(undefined)
+
+        const requestId = (noteRequestId.current += 1)
+        let note: LinkedNoteResult | undefined
+
+        void (async () => {
+          try {
+            note = await getLinkedNote(tab, anchor, ref.current)
+            if (!note) {
+              return
+            }
+            if (requestId !== noteRequestId.current) {
+              return
+            }
+            if (!anchor.isConnected) {
+              return
+            }
+
+            const popover = createNotePopoverState(
+              anchor,
+              note.element,
+              ref.current,
+              rendition,
+            )
+            if (!popover) {
+              return
+            }
+            if (requestId !== noteRequestId.current) {
+              return
+            }
+
+            setNotePopover(popover)
+          } finally {
+            note?.cleanup?.()
+          }
+        })()
       }
 
       const handleKeyDown = (e: KeyboardEvent) => {
@@ -1484,6 +1515,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
       return () => {
         doc.removeEventListener('click', handleClick, true)
         doc.removeEventListener('keydown', handleKeyDown, true)
+        noteRequestId.current += 1
         setNotePopover(undefined)
       }
     })
@@ -1933,6 +1965,8 @@ const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) => {
         style={{
           margin: 0,
           maxWidth: '100%',
+          whiteSpace: 'normal',
+          overflowWrap: 'break-word',
           textAlign: 'justify',
         }}
       />
@@ -2061,8 +2095,37 @@ const NOTE_POPOVER_MARGIN = 18
 const NOTE_POPOVER_PADDING = 10
 const NOTE_POPOVER_MIN_WIDTH = 180
 const NOTE_POPOVER_ARROW_EDGE_OFFSET = 24
-const NOTE_INLINE_STYLE_EXCLUDE_PATTERN =
-  /^(?:position|inset|left|right|top|bottom|z-index|transform|translate|scale|rotate|width|height|min-width|max-width|min-height|max-height|overflow|overflow-x|overflow-y|column-|break-|page-break-)/
+const NOTE_POPOVER_TEXT_STYLE_PROPERTIES = [
+  'color',
+  'direction',
+  'font-family',
+  'font-feature-settings',
+  'font-kerning',
+  'font-size',
+  'font-stretch',
+  'font-style',
+  'font-synthesis',
+  'font-variant',
+  'font-variant-caps',
+  'font-variant-east-asian',
+  'font-variant-ligatures',
+  'font-variant-numeric',
+  'font-weight',
+  'letter-spacing',
+  'line-height',
+  'text-decoration-color',
+  'text-decoration-line',
+  'text-decoration-style',
+  'text-emphasis-color',
+  'text-emphasis-position',
+  'text-emphasis-style',
+  'text-orientation',
+  'text-transform',
+  'unicode-bidi',
+  'vertical-align',
+  'word-spacing',
+  'writing-mode',
+]
 const NOTE_CONTAINER_PATTERN =
   /(?:footnote|endnote|noteref|note|annotation|comment|reference|fn|ftn)/i
 const NOTE_CIRCLED_MARKER_PATTERN = /^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]$/
@@ -2108,41 +2171,42 @@ function createNotePopoverState(
 
   return {
     anchorRect: anchorRectInContainer,
-    pageRect: getVisiblePageRect(
-      visibleRect,
-      anchorRectInContainer,
-      getRenditionDivisor(rendition),
-    ),
+    pageRect: getVisiblePageRect(visibleRect, anchorRectInContainer, rendition),
     content: cloneNoteElement(noteElement, anchor),
   }
-}
-
-function getRenditionDivisor(rendition: unknown) {
-  const divisor = (rendition as any)?.manager?.layout?.divisor
-  return Number.isFinite(divisor) && divisor > 1 ? Math.floor(divisor) : 1
 }
 
 function getVisiblePageRect(
   visibleRect: RectLike,
   anchorRect: RectLike,
-  divisor: number,
+  rendition: unknown,
 ) {
-  if (divisor < 2) return visibleRect
+  const pageWidth = getRenditionPageWidth(rendition)
+  if (!pageWidth || visibleRect.width <= pageWidth * 1.25) return visibleRect
 
-  const pageWidth = visibleRect.width / divisor
   const anchorCenter = anchorRect.left + anchorRect.width / 2
+  const pageCount = Math.max(1, Math.ceil(visibleRect.width / pageWidth))
   const pageIndex = clamp(
     Math.floor((anchorCenter - visibleRect.left) / pageWidth),
     0,
-    divisor - 1,
+    pageCount - 1,
   )
+  const left = visibleRect.left + pageIndex * pageWidth
+  const right = Math.min(visibleRect.left + visibleRect.width, left + pageWidth)
 
   return {
-    left: visibleRect.left + pageIndex * pageWidth,
+    left,
     top: visibleRect.top,
-    width: pageWidth,
+    width: right - left,
     height: visibleRect.height,
   }
+}
+
+function getRenditionPageWidth(rendition: unknown) {
+  const pageWidth = (rendition as any)?.manager?.layout?.pageWidth
+  return Number.isFinite(pageWidth) && pageWidth > 0
+    ? Number(pageWidth)
+    : undefined
 }
 
 function getNoteOverlayPlacement(
@@ -2202,48 +2266,93 @@ function intersectRects(a: RectLike, b: RectLike): RectLike | undefined {
 }
 
 function getAnchorFromEvent(e: MouseEvent) {
-  return (e.target as ClosestTarget | null)?.closest?.('a[href]') as
+  const direct = (e.target as ClosestTarget | null)?.closest?.('a[href]') as
     | HTMLAnchorElement
     | undefined
+  if (direct) return direct
+
+  return e
+    .composedPath()
+    .find(
+      (node): node is HTMLAnchorElement =>
+        node instanceof HTMLAnchorElement && node.hasAttribute('href'),
+    )
 }
 
 interface ClosestTarget {
   closest?: (selector: string) => Element | null
 }
 
-function getLinkedNote(tab: BookTab, anchor: HTMLAnchorElement) {
+interface LinkedNoteResult {
+  element: HTMLElement
+  cleanup?: () => void
+}
+
+async function getLinkedNote(
+  tab: BookTab,
+  anchor: HTMLAnchorElement,
+  container: HTMLElement | null,
+): Promise<LinkedNoteResult | undefined> {
   const href = anchor.getAttribute('href')
   if (!href || href.startsWith('mailto:') || href.includes('://')) return
 
   const [path = '', hash = ''] = href.split('#')
   if (!hash) return
 
-  const id = safeDecode(hash)
-  const target = findLinkedElement(tab, anchor, path, id)
-  if (!target || !isLikelyNoteLink(anchor, target, href, id)) return
+  const id = safeDecodeHref(hash)
+  const target = await findLinkedElement(tab, anchor, path, id, container)
+  if (!target || !isLikelyNoteLink(anchor, target.element, href, id)) {
+    target?.cleanup?.()
+    return
+  }
 
-  return findNoteElement(target, anchor)
+  const noteElement = findNoteElement(target.element, anchor)
+  return noteElement
+    ? {
+        element: noteElement,
+        cleanup: target.cleanup,
+      }
+    : target
 }
 
-function findLinkedElement(
+async function findLinkedElement(
   tab: BookTab,
   anchor: HTMLAnchorElement,
   path: string,
   id: string,
-) {
+  container: HTMLElement | null,
+): Promise<LinkedNoteResult | undefined> {
   const currentDocument = anchor.ownerDocument
 
   if (!path) {
-    return getElementByIdOrName(currentDocument, id)
+    return wrapNoteElement(getElementByIdOrName(currentDocument, id))
   }
 
-  if (sameHref(tab.section?.href, path)) {
+  const anchorSection = findRenderedSectionByDocument(tab, currentDocument)
+  const baseHref = anchorSection?.href ?? tab.section?.href
+  const targetSection = findSectionByLinkedHref(tab.sections, baseHref, path)
+
+  if (targetSection && sameHref(anchorSection?.href, targetSection.href)) {
     const currentElement = getElementByIdOrName(currentDocument, id)
-    if (currentElement) return currentElement
+    if (currentElement) return wrapNoteElement(currentElement)
   }
 
-  const section = tab.sections?.find((s) => sameHref(s.href, path))
-  return section && getElementByIdOrName(section.document, id)
+  if (targetSection) {
+    const renderedDocument = findRenderedDocumentBySection(tab, targetSection)
+    const renderedElement =
+      renderedDocument && getElementByIdOrName(renderedDocument, id)
+    if (renderedElement) return wrapNoteElement(renderedElement)
+
+    return renderLinkedSectionElement(tab, anchor, targetSection, id, container)
+  }
+
+  return wrapNoteElement(getElementByIdOrName(currentDocument, id))
+}
+
+function wrapNoteElement(
+  element: HTMLElement | undefined,
+): LinkedNoteResult | undefined {
+  return element ? { element } : undefined
 }
 
 function getElementByIdOrName(doc: Document, id: string) {
@@ -2253,6 +2362,186 @@ function getElementByIdOrName(doc: Document, id: string) {
       (el) => el.getAttribute('name') === id,
     ) as HTMLElement | undefined)
   )
+}
+
+function findRenderedSectionByDocument(tab: BookTab, doc: Document) {
+  const canonical = getDocumentCanonicalHref(doc)
+
+  return tab.sections?.find(
+    (section) =>
+      sameHref(section.href, canonical) ||
+      sameHref(section.canonical, canonical),
+  )
+}
+
+function findRenderedDocumentBySection(tab: BookTab, section: ISection) {
+  const windows = tab.iframes.length
+    ? tab.iframes
+    : tab.iframe
+    ? [tab.iframe]
+    : []
+
+  return windows
+    .map((win) => win.document)
+    .find((doc) => {
+      const canonical = getDocumentCanonicalHref(doc)
+
+      return (
+        sameHref(section.href, canonical) ||
+        sameHref(section.canonical, canonical)
+      )
+    })
+}
+
+function getDocumentCanonicalHref(doc: Document) {
+  return (
+    doc
+      .querySelector<HTMLLinkElement>('link[rel="canonical"]')
+      ?.getAttribute('href') ?? undefined
+  )
+}
+
+async function renderLinkedSectionElement(
+  tab: BookTab,
+  anchor: HTMLAnchorElement,
+  section: ISection,
+  id: string,
+  container: HTMLElement | null,
+): Promise<LinkedNoteResult | undefined> {
+  if (!tab.epub || !container) return
+
+  const ownerDocument = container.ownerDocument
+  const iframe = ownerDocument.createElement('iframe')
+  const sourceFrame = anchor.ownerDocument.defaultView?.frameElement
+  const sourceFrameRect =
+    sourceFrame instanceof HTMLElement
+      ? sourceFrame.getBoundingClientRect()
+      : undefined
+  iframe.setAttribute('aria-hidden', 'true')
+  iframe.tabIndex = -1
+  Object.assign(iframe.style, {
+    position: 'fixed',
+    left: '-10000px',
+    top: '-10000px',
+    width: `${Math.max(320, Math.ceil(sourceFrameRect?.width ?? 960))}px`,
+    height: `${Math.max(320, Math.ceil(sourceFrameRect?.height ?? 960))}px`,
+    border: '0',
+    opacity: '0',
+    pointerEvents: 'none',
+  })
+
+  const cleanup = () => iframe.remove()
+
+  try {
+    const output = stripScriptsFromNoteSectionHtml(
+      await renderFreshLinkedSectionDocument(tab, section, id),
+    )
+    const loaded = new Promise<void>((resolve, reject) => {
+      const timer = window.setTimeout(resolve, 1500)
+
+      iframe.addEventListener(
+        'load',
+        () => {
+          window.clearTimeout(timer)
+          resolve()
+        },
+        { once: true },
+      )
+      iframe.addEventListener(
+        'error',
+        () => {
+          window.clearTimeout(timer)
+          reject(new Error(`Failed to render note section: ${section.href}`))
+        },
+        { once: true },
+      )
+    })
+
+    iframe.srcdoc = output
+    container.appendChild(iframe)
+    await loaded
+
+    const doc = iframe.contentDocument
+    if (!doc) {
+      cleanup()
+      return
+    }
+
+    await waitForNoteDocumentStyles(doc)
+    const target = getElementByIdOrName(doc, id)
+    if (!target) {
+      cleanup()
+      return
+    }
+    const element = findNoteElement(target, anchor)
+
+    return { element, cleanup }
+  } catch (error) {
+    cleanup()
+    return
+  }
+}
+
+async function renderFreshLinkedSectionDocument(
+  tab: BookTab,
+  section: ISection,
+  id: string,
+) {
+  const sectionUrl = section.url
+  if (!sectionUrl) {
+    throw new Error(`Missing section url: ${section.href}`)
+  }
+
+  const document = (await tab.epub!.load(sectionUrl)) as Document
+
+  await section.hooks?.content?.trigger(document, section)
+
+  const target = getElementByIdOrName(document, id)
+  if (!target) {
+    throw new Error(`Missing linked note target: ${section.href}#${id}`)
+  }
+
+  return document.documentElement.outerHTML
+}
+
+async function waitForNoteDocumentStyles(doc: Document) {
+  const fonts = doc.fonts
+  if (fonts) {
+    await Promise.race([
+      fonts.ready.catch(() => undefined),
+      new Promise((resolve) => window.setTimeout(resolve, 300)),
+    ])
+  }
+
+  await new Promise((resolve) => window.requestAnimationFrame(resolve))
+}
+
+function isPotentialNoteLink(anchor: HTMLAnchorElement) {
+  const href = anchor.getAttribute('href')
+  if (!href || href.startsWith('mailto:') || href.includes('://')) return false
+
+  const [, hash = ''] = href.split('#')
+  if (!hash) return false
+
+  const attrs = [href, safeDecodeHref(hash), getNoteAttrs(anchor)].join(' ')
+  if (NOTE_CONTAINER_PATTERN.test(attrs)) return true
+
+  return (
+    !!anchor.closest('sup') ||
+    !!anchor.querySelector('sup') ||
+    isNoteMarkerText(anchor.textContent)
+  )
+}
+
+function stripScriptsFromNoteSectionHtml(html: string) {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<script\b[^>]*\/>/gi, '')
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(
+      /\s+(href|src|xlink:href)\s*=\s*(["'])\s*javascript:[\s\S]*?\2/gi,
+      '',
+    )
 }
 
 function findNoteElement(el: HTMLElement, anchor: HTMLAnchorElement) {
@@ -2267,13 +2556,7 @@ function findNoteElement(el: HTMLElement, anchor: HTMLAnchorElement) {
       return cur
     }
 
-    if (
-      !fallback &&
-      (cur.tagName === 'P' ||
-        cur.tagName === 'LI' ||
-        cur.tagName === 'BLOCKQUOTE' ||
-        cur.tagName === 'DIV')
-    ) {
+    if (!fallback && isTagName(cur, 'P', 'LI', 'BLOCKQUOTE', 'DIV')) {
       fallback = cur
     }
 
@@ -2299,16 +2582,25 @@ function createSegmentedNoteElement(
 
   wrapper.className = container.className
   if (container.id) wrapper.dataset.noteContainerId = container.id
+  copyNoteTextStyles(container, wrapper)
 
   let node: ChildNode | null = markerChild
   while (node) {
     if (node !== markerChild && startsWithNoteMarker(node)) break
 
-    wrapper.appendChild(node.cloneNode(true))
+    wrapper.appendChild(cloneNoteNode(node))
     node = node.nextSibling
   }
 
   return wrapper.childNodes.length ? wrapper : undefined
+}
+
+function cloneNoteNode(node: ChildNode) {
+  if (isElementNode(node)) {
+    return cloneElementWithNoteStyles(node as HTMLElement)
+  }
+
+  return node.cloneNode(true)
 }
 
 function getDirectChild(parent: HTMLElement, child: HTMLElement) {
@@ -2346,7 +2638,7 @@ function startsWithNoteMarker(node: ChildNode) {
 
 function isNoteMarkerAnchor(el: HTMLElement) {
   return (
-    el.tagName === 'A' &&
+    isTagName(el, 'A') &&
     el.hasAttribute('href') &&
     isNoteMarkerText(el.textContent)
   )
@@ -2368,7 +2660,12 @@ function findNoteContainer(el: HTMLElement) {
 }
 
 function isNoteContainer(el: HTMLElement) {
-  return el.tagName === 'ASIDE' || NOTE_CONTAINER_PATTERN.test(getNoteAttrs(el))
+  return isTagName(el, 'ASIDE') || NOTE_CONTAINER_PATTERN.test(getNoteAttrs(el))
+}
+
+function isTagName(el: Element, ...names: string[]) {
+  const tagName = el.tagName.toUpperCase()
+  return names.some((name) => tagName === name)
 }
 
 function getNoteAttrs(el: HTMLElement) {
@@ -2404,8 +2701,22 @@ function stripNoteMarkerWrapper(text: string) {
   return marker.trim()
 }
 
+function startsWithNoteMarkerText(text: string | null | undefined) {
+  const marker = (text ?? '').trim()
+  if (!marker) return false
+  if (isNoteMarkerText(marker)) return true
+
+  const firstToken = marker.split(/\s+/)[0]
+  if (isNoteMarkerText(firstToken)) return true
+
+  const firstChar = Array.from(marker)[0]
+  if (isNoteMarkerText(firstChar)) return true
+
+  return /^[0-9一二三四五六七八九十]+[.．、]/.test(marker)
+}
+
 function cloneNoteElement(el: HTMLElement, anchor: HTMLAnchorElement) {
-  const clone = cloneNoteElementWithContext(el)
+  const clone = cloneNoteContentElement(el)
 
   clone.querySelectorAll('script, style').forEach((node) => node.remove())
   clone.querySelectorAll('a[href]').forEach((node) => {
@@ -2416,6 +2727,78 @@ function cloneNoteElement(el: HTMLElement, anchor: HTMLAnchorElement) {
   normalizeNotePopoverContent(clone)
 
   return clone
+}
+
+function cloneNoteContentElement(el: HTMLElement) {
+  const source = getFlattenedNoteContentSource(el)
+  if (!shouldFlattenNoteRoot(source)) {
+    return cloneElementWithNoteStyles(source)
+  }
+
+  const wrapper = source.ownerDocument.createElement('div')
+  copyNoteTextStyles(source, wrapper)
+  Array.from(source.childNodes).forEach((node) => {
+    wrapper.appendChild(cloneNoteNode(node))
+  })
+
+  return wrapper
+}
+
+function getFlattenedNoteContentSource(el: HTMLElement) {
+  let current = el
+  let child = getFlattenableNoteChild(current)
+
+  while (child) {
+    current = child
+    child = getFlattenableNoteChild(current)
+  }
+
+  return current
+}
+
+function getFlattenableNoteChild(el: HTMLElement) {
+  const child = getSingleElementChild(el)
+  if (!child || hasMeaningfulOwnText(el)) return
+
+  if (isTagName(el, 'LI') && isTagName(child, 'P', 'DIV', 'BLOCKQUOTE')) {
+    return child
+  }
+
+  if (isTagName(el, 'P', 'DIV') && isTagName(child, 'SPAN')) {
+    return child
+  }
+}
+
+function getSingleElementChild(el: HTMLElement) {
+  const children = Array.from(el.children) as HTMLElement[]
+  return children.length === 1 ? children[0] : undefined
+}
+
+function hasMeaningfulOwnText(el: HTMLElement) {
+  return Array.from(el.childNodes).some(
+    (node) => node.nodeType === 3 && !!node.textContent?.trim(),
+  )
+}
+
+function shouldFlattenNoteRoot(el: HTMLElement) {
+  if (!isTagName(el, 'P', 'DIV', 'LI')) return false
+  if (isNoteContainer(el)) return false
+
+  return !Array.from(el.children).some((child) =>
+    isTagName(
+      child,
+      'P',
+      'DIV',
+      'OL',
+      'UL',
+      'LI',
+      'TABLE',
+      'BLOCKQUOTE',
+      'FIGURE',
+      'SECTION',
+      'ASIDE',
+    ),
+  )
 }
 
 function normalizeNotePopoverContent(root: HTMLElement) {
@@ -2429,53 +2812,33 @@ function normalizeNotePopoverContent(root: HTMLElement) {
       root.querySelectorAll<HTMLElement>('p, ol, ul, li, blockquote'),
     ),
   ]
-  const textNodes = [
-    ...(root.matches('p, li, blockquote, div') ? [root] : []),
-    ...Array.from(root.querySelectorAll<HTMLElement>('p, li, blockquote, div')),
-  ]
 
   listNodes.forEach((node) => {
     node.style.setProperty('list-style', 'none', 'important')
     node.style.setProperty('list-style-type', 'none', 'important')
   })
   listNodes
-    .filter((node) => node.tagName === 'OL' || node.tagName === 'UL')
+    .filter((node) => isTagName(node, 'OL', 'UL'))
     .forEach((node) => {
       node.style.setProperty('padding', '0', 'important')
       node.style.setProperty('padding-left', '0', 'important')
     })
   blockNodes.forEach((node) => {
     node.style.setProperty('margin', '0', 'important')
-  })
-  textNodes.forEach((node) => {
-    node.style.setProperty('text-align', 'justify', 'important')
+    node.style.setProperty('padding', '0', 'important')
   })
 }
 
-function cloneNoteElementWithContext(el: HTMLElement) {
-  const ancestors = getNoteContextAncestors(el)
-  let root = cloneElementWithInlineStyles(el)
-
-  ancestors.forEach((ancestor) => {
-    const wrapper = ancestor.cloneNode(false) as HTMLElement
-    copyComputedStyles(ancestor, wrapper)
-    wrapper.style.setProperty('display', 'contents', 'important')
-    wrapper.appendChild(root)
-    root = wrapper
-  })
-
-  return root
-}
-
-function cloneElementWithInlineStyles(el: HTMLElement) {
+function cloneElementWithNoteStyles(el: HTMLElement) {
   const clone = el.cloneNode(true) as HTMLElement
-  copyComputedStyleTree(el, clone)
+  copyNoteStyleTree(el, clone)
 
   return clone
 }
 
-function copyComputedStyleTree(source: HTMLElement, target: HTMLElement) {
-  copyComputedStyles(source, target)
+function copyNoteStyleTree(source: HTMLElement, target: HTMLElement) {
+  target.removeAttribute('style')
+  copyNoteTextStyles(source, target)
   copyResolvedResourceAttributes(source, target)
 
   const sourceElements = Array.from(source.querySelectorAll<HTMLElement>('*'))
@@ -2485,31 +2848,27 @@ function copyComputedStyleTree(source: HTMLElement, target: HTMLElement) {
     const targetElement = targetElements[index]
     if (!targetElement) return
 
-    copyComputedStyles(sourceElement, targetElement)
+    targetElement.removeAttribute('style')
+    copyNoteTextStyles(sourceElement, targetElement)
     copyResolvedResourceAttributes(sourceElement, targetElement)
   })
 }
 
-function copyComputedStyles(source: HTMLElement, target: HTMLElement) {
+function copyNoteTextStyles(source: HTMLElement, target: HTMLElement) {
   const win = source.ownerDocument.defaultView
   if (!win) return
 
   const style = win.getComputedStyle(source)
-  for (let i = 0; i < style.length; i++) {
-    const property = style[i]
-    if (!property || NOTE_INLINE_STYLE_EXCLUDE_PATTERN.test(property)) continue
-
+  NOTE_POPOVER_TEXT_STYLE_PROPERTIES.forEach((property) => {
     const value = style.getPropertyValue(property)
-    if (!value) continue
-    if (property === 'display' && value === 'none') continue
-    if (property === 'visibility' && value === 'hidden') continue
+    if (!value || value === 'normal' || value === 'auto') return
 
     target.style.setProperty(
       property,
       value,
       style.getPropertyPriority(property),
     )
-  }
+  })
 }
 
 function copyResolvedResourceAttributes(
@@ -2522,18 +2881,6 @@ function copyResolvedResourceAttributes(
   if (source.tagName === 'A' && target.tagName === 'A') {
     target.setAttribute('href', (source as HTMLAnchorElement).href)
   }
-}
-
-function getNoteContextAncestors(el: HTMLElement) {
-  const ancestors: HTMLElement[] = []
-  let cur = el.parentElement
-
-  while (cur && cur !== cur.ownerDocument.body) {
-    ancestors.push(cur)
-    cur = cur.parentElement
-  }
-
-  return ancestors
 }
 
 function isBacklink(link: HTMLAnchorElement, anchor: HTMLAnchorElement) {
@@ -2551,10 +2898,7 @@ function isBacklink(link: HTMLAnchorElement, anchor: HTMLAnchorElement) {
 }
 
 function unwrapBacklink(link: HTMLAnchorElement) {
-  const span = link.ownerDocument.createElement('span')
-
-  span.append(...Array.from(link.childNodes))
-  link.replaceWith(span)
+  link.replaceWith(...Array.from(link.childNodes))
 }
 
 function getNotePopoverLeft(
@@ -2586,30 +2930,6 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
-function sameHref(a: string | undefined, b: string | undefined) {
-  if (!a || !b) return false
-
-  const normalize = (href: string) =>
-    safeDecode(href)
-      .split('#')[0]!
-      .replace(/\\/g, '/')
-      .replace(/^\.\//, '')
-      .replace(/^(?:\.\.\/)+/, '')
-
-  const na = normalize(a)
-  const nb = normalize(b)
-
-  return na === nb || na.endsWith(`/${nb}`) || nb.endsWith(`/${na}`)
-}
-
-function safeDecode(text: string) {
-  try {
-    return decodeURIComponent(text)
-  } catch {
-    return text
-  }
-}
-
 function isLikelyNoteLink(
   anchor: HTMLAnchorElement,
   target: HTMLElement,
@@ -2625,14 +2945,16 @@ function isLikelyNoteLink(
     getNoteAttrs(target),
     noteContainer && getNoteAttrs(noteContainer),
   ].join(' ')
+  const anchorLooksLikeNote =
+    !!anchor.closest('sup') ||
+    !!anchor.querySelector('sup') ||
+    startsWithNoteMarkerText(anchor.textContent)
 
   if (NOTE_CONTAINER_PATTERN.test(attrs)) return true
-  if (
-    (anchor.closest('sup') || anchor.querySelector('sup')) &&
-    (noteContainer ||
-      target.closest('aside') ||
-      item?.parentElement?.tagName === 'OL')
-  ) {
+  if (anchorLooksLikeNote && startsWithNoteMarkerText(target.textContent)) {
+    return true
+  }
+  if (anchorLooksLikeNote && (noteContainer || target.closest('aside'))) {
     return true
   }
   if (isNoteMarkerText(anchor.textContent) && noteContainer) {

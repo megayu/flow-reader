@@ -385,13 +385,6 @@ class Resources {
       return Promise.resolve(this.resolvedCssUrls[absolute])
     }
 
-    debugResource('css link', {
-      href,
-      section: sectionUrl && sectionUrl.toString(),
-      root: rootUrl && rootUrl.toString(),
-      absolute,
-    })
-
     return this.createResolvedCssUrlFromAbsolute(absolute, rootUrl)
   }
 
@@ -407,10 +400,6 @@ class Resources {
         return objectUrl
       })
       .catch((error) => {
-        warnResource('failed to rewrite stylesheet', {
-          absolute,
-          error,
-        })
         return createBlobUrl('', 'text/css')
       })
   }
@@ -507,7 +496,6 @@ const CSS_IMPORT_RE =
   /@import\s+(?:url\(\s*)?(['"]?)([^'")\s;]+)\1\s*\)?([^;]*);/gi
 const CSS_URL_RE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi
 const EMPTY_RESOURCE_URL = 'data:,'
-const RESOURCE_DEBUG_KEY = 'flow.debug.resources'
 
 function collectMediaUrls(content) {
   var urls = []
@@ -716,7 +704,6 @@ function resolveCssImports(css, baseUrl, rootUrl, seen) {
   var replacements = []
   var output = css.replace(CSS_IMPORT_RE, (match, quote, url, suffix) => {
     if (isBlockedResourceUrl(url)) {
-      warnResource('drop blocked css import', url)
       return ''
     }
 
@@ -754,7 +741,6 @@ function resolveCssUrls(css, baseUrl, rootUrl) {
 
   return css.replace(CSS_URL_RE, (match, quote, url) => {
     if (isBlockedResourceUrl(url)) {
-      warnResource('drop blocked css url', url)
       return 'url("' + EMPTY_RESOURCE_URL + '")'
     }
 
@@ -763,12 +749,6 @@ function resolveCssUrls(css, baseUrl, rootUrl) {
     }
 
     var resolved = resolveLocalUrl(url, baseUrl, rootUrl)
-    debugResource('css url', {
-      url,
-      base: baseUrl && baseUrl.toString(),
-      root: rootUrl && rootUrl.toString(),
-      resolved,
-    })
     return 'url("' + resolved + '")'
   })
 }
@@ -807,30 +787,6 @@ function eachElement(doc, callback) {
 
 function getTagName(element) {
   return (element.localName || element.tagName || '').toLowerCase()
-}
-
-function shouldDebugResources() {
-  try {
-    return (
-      typeof window !== 'undefined' &&
-      window.localStorage &&
-      window.localStorage.getItem(RESOURCE_DEBUG_KEY) === '1'
-    )
-  } catch (error) {
-    return false
-  }
-}
-
-function debugResource(message, detail) {
-  if (shouldDebugResources()) {
-    console.debug('[flow:resources]', message, detail)
-  }
-}
-
-function warnResource(message, detail) {
-  if (shouldDebugResources()) {
-    console.warn('[flow:resources]', message, detail)
-  }
 }
 
 export default Resources
