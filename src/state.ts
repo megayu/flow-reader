@@ -51,6 +51,8 @@ export interface Settings extends TypographyConfiguration {
   hideEndnotes?: boolean
   restoreLastReadingOnStartup?: boolean
   startupSession?: StartupSession
+  readerSidebarOpen?: boolean
+  librarySidebarOpen?: boolean
   textImportRules?: TextImportRulesConfiguration
   locale?: AppLocale
 }
@@ -98,6 +100,8 @@ export const defaultTextImportRules: TextImportRulesConfiguration = {
 export const defaultSettings: Settings = {
   enableTextSelectionMenu: true,
   hideEndnotes: false,
+  readerSidebarOpen: true,
+  librarySidebarOpen: false,
   textImportRules: defaultTextImportRules,
 }
 

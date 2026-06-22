@@ -76,7 +76,7 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
 
   useEffect(() => {
     if (mobile === undefined) return
-    setAction(mobile ? undefined : 'toc')
+    if (mobile) setAction(undefined)
     setReady(true)
   }, [mobile, setAction])
 

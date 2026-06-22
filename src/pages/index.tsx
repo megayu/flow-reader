@@ -37,6 +37,7 @@ import { handleFiles, openImportDialog, setupNativeOpenFiles } from '../file'
 import {
   useCovers,
   useDisablePinchZooming,
+  useAction,
   useLibrary,
   useLibraryAction,
   useMobile,
@@ -245,6 +246,8 @@ function useStringSet() {
 export default function Index() {
   const { focusedBookTab, focusedTab, groups } = useReaderSnapshot()
   const [viewMode, setViewMode] = useRecoilState(viewModeState)
+  const [readerAction, setReaderAction] = useAction()
+  const [libraryAction, setLibraryAction] = useLibraryAction()
   const [settings, setSettings] = useSettings()
   const settingsReady = useSettingsReady()
   const viewModeRef = useRef(viewMode)
@@ -258,6 +261,16 @@ export default function Index() {
     openAfterImport: boolean
   }>()
   const focusedBookId = focusedBookTab?.book.id
+
+  const applySavedSidebarState = useCallback(() => {
+    setReaderAction(settings.readerSidebarOpen === false ? undefined : 'toc')
+    setLibraryAction(settings.librarySidebarOpen ? 'libraryFilter' : undefined)
+  }, [
+    setLibraryAction,
+    setReaderAction,
+    settings.librarySidebarOpen,
+    settings.readerSidebarOpen,
+  ])
 
   useDisablePinchZooming()
 
@@ -342,6 +355,7 @@ export default function Index() {
       settings.startupSession?.viewMode !== 'reader' ||
       !settings.startupSession.bookId
     ) {
+      applySavedSidebarState()
       setStartupRestoreDone(true)
       return
     }
@@ -349,17 +363,31 @@ export default function Index() {
     db.books
       .get(settings.startupSession.bookId)
       .then((book) => {
-        if (!book || reader.groups.length) return
+        if (!book || reader.groups.length) {
+          applySavedSidebarState()
+          return
+        }
 
         reader.addTab(book)
+        setReaderAction(
+          settings.readerSidebarOpen === false ? undefined : 'toc',
+        )
+        setLibraryAction(
+          settings.librarySidebarOpen ? 'libraryFilter' : undefined,
+        )
         setViewMode('reader')
       })
       .finally(() => {
         setStartupRestoreDone(true)
       })
   }, [
+    applySavedSidebarState,
     nativeOpenReady,
+    setLibraryAction,
+    setReaderAction,
     setViewMode,
+    settings.librarySidebarOpen,
+    settings.readerSidebarOpen,
     settings.restoreLastReadingOnStartup,
     settings.startupSession?.bookId,
     settings.startupSession?.viewMode,
@@ -398,6 +426,34 @@ export default function Index() {
       }
     })
   }, [focusedBookId, setSettings, settingsReady, startupRestoreDone, viewMode])
+
+  useEffect(() => {
+    if (!settingsReady || !startupRestoreDone) return
+
+    const nextReaderSidebarOpen = readerAction !== undefined
+    const nextLibrarySidebarOpen = libraryAction !== undefined
+
+    setSettings((prev) => {
+      if (
+        prev.readerSidebarOpen === nextReaderSidebarOpen &&
+        prev.librarySidebarOpen === nextLibrarySidebarOpen
+      ) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        readerSidebarOpen: nextReaderSidebarOpen,
+        librarySidebarOpen: nextLibrarySidebarOpen,
+      }
+    })
+  }, [
+    libraryAction,
+    readerAction,
+    setSettings,
+    settingsReady,
+    startupRestoreDone,
+  ])
 
   useEffect(() => {
     if (!groups.length && viewMode !== 'library') {
