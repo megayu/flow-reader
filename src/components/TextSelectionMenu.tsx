@@ -1,6 +1,6 @@
 import { Overlay } from '@literal-ui/core'
 import clsx from 'clsx'
-import { useCallback, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import FocusLock from 'react-focus-lock'
 import {
   MdCopyAll,
@@ -35,29 +35,38 @@ interface TextSelectionMenuProps {
 export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
   tab,
 }) => {
-  const { rendition, annotationRange, annotationCfi } = useSnapshot(tab)
+  const { rendition, annotationRange, annotationCfi, iframes } =
+    useSnapshot(tab)
   const [settings] = useSettings()
 
-  // `manager` is not reactive, so we need to use getter
-  const view = useCallback(() => {
-    return rendition?.manager?.views._views[0]
-  }, [rendition])
+  const windows = useMemo(
+    () =>
+      (iframes.length
+        ? iframes
+        : rendition?.manager?.views?._views
+            ?.map((view: any) => view.window as Window | undefined)
+            .filter((win: Window | undefined): win is Window => !!win) ??
+          []) as Window[],
+    [iframes, rendition],
+  )
 
-  const win = view()?.window
-  const [selection, setSelection] = useTextSelection(win)
+  const [selection, setSelection] = useTextSelection(windows)
 
   // If text selection menu is disabled, don't render it
   if (settings.enableTextSelectionMenu === false) {
     return null
   }
 
-  const el = view()?.element as HTMLElement
-  if (!el) return null
-
   // it is possible that both `selection` and `tab.annotationRange`
   // are set when select end within an annotation
-  const range = selection?.getRangeAt(0) ?? annotationRange
+  const range = (selection?.getRangeAt(0) ?? annotationRange) as
+    | Range
+    | undefined
   if (!range) return null
+
+  const view = tab.viewForRange(range)
+  const el = view?.element as HTMLElement | undefined
+  if (!el) return null
 
   // prefer to display above the selection to avoid text selection helpers
   // https://stackoverflow.com/questions/68081757/hide-the-two-text-selection-helpers-in-mobile-browsers
@@ -136,6 +145,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const t = useTranslation('menu')
 
   const cfi = annotationCfi ?? tab.rangeToCfi(range)
+  const section = tab.sectionForRange(range)
   const annotation = tab.book.annotations.find((a) => a.cfi === cfi)
   const [annotate, setAnnotate] = useState(!!annotation)
 
@@ -311,6 +321,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                       color,
                       text,
                       ref.current?.value,
+                      section,
                     )
                     hide()
                   }}
@@ -345,6 +356,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                   annotation?.color ?? 'yellow',
                   text,
                   ref.current?.value,
+                  section,
                 )
                 hide()
               }}

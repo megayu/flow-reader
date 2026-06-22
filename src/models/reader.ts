@@ -660,12 +660,9 @@ export class BookTab extends BaseTab {
   }
 
   rangeToCfi(range: Range) {
-    const doc =
-      range.commonAncestorContainer.ownerDocument ??
-      (range.commonAncestorContainer as Document)
-    const win = doc.defaultView
-    const view = this.viewForWindow(win) ?? this.view
+    const view = this.viewForRange(range)
     if (!view) throw new Error('No active view for selected range')
+
     return view.contents.cfiFromRange(range)
   }
   putAnnotation(
@@ -674,9 +671,14 @@ export class BookTab extends BaseTab {
     color: AnnotationColor,
     text: string,
     notes?: string,
+    section = this.section,
   ) {
-    const spine = this.section
-    if (!spine?.navitem) return
+    const spine = section ?? this.section
+    if (!spine) return
+
+    const navitem = spine.navitem ?? this.mapSectionToNavItem(spine.href)
+    if (navitem) spine.navitem = navitem
+    if (!spine.navitem) return
 
     const i = this.book.annotations.findIndex((a) => a.cfi === cfi)
     let annotation = this.book.annotations[i]
@@ -941,6 +943,24 @@ export class BookTab extends BaseTab {
     return this.rendition?.manager?.views._views.find(
       (view: any) => view.window === win,
     )
+  }
+
+  viewForRange(range: Range) {
+    const doc =
+      range.commonAncestorContainer.ownerDocument ??
+      (range.commonAncestorContainer as Document)
+
+    return this.viewForWindow(doc.defaultView) ?? this.view
+  }
+
+  sectionForRange(range: Range) {
+    const section = this.viewForRange(range)?.section as ISection | undefined
+    if (section) {
+      this.assignSectionNavItem(section)
+      return section
+    }
+
+    return this.section
   }
 
   syncFrames() {

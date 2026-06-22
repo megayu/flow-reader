@@ -1,7 +1,6 @@
 // https://github.com/juliankrispel/use-text-selection
 
-import { useEventListener } from '@literal-ui/hooks'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { isTouchScreen } from '../platform'
 
@@ -26,32 +25,70 @@ export function isForwardSelection(selection: Selection) {
   return true
 }
 
-export function useTextSelection(win?: Window) {
+export function useTextSelection(target?: Window | Window[]) {
   const [selection, setSelection] = useState<Selection | undefined>()
   const render = useForceRender()
-
-  // On touch screen device, mouse/touch/pointer events not working when selection is created.
-  useEventListener(
-    isTouchScreen ? win?.document : win,
-    isTouchScreen ? 'selectionchange' : 'mouseup',
-    () => {
-      const s = win?.getSelection()
-
-      if (hasSelection(s)) {
-        // sometime `getSelection` will return the same `selection`
-        // when select text by clicking empty space
-        render()
-        setSelection(s)
-      }
-    },
+  const windows = useMemo(
+    () =>
+      (Array.isArray(target) ? target : target ? [target] : []).filter(
+        (win): win is Window => !!win,
+      ),
+    [target],
   )
 
-  // https://stackoverflow.com/questions/3413683/disabling-the-context-menu-on-long-taps-on-android
-  useEventListener(win, 'contextmenu', (e) => {
-    if (isTouchScreen) {
-      e.preventDefault()
+  // On touch screen device, mouse/touch/pointer events not working when selection is created.
+  useEffect(() => {
+    const event = isTouchScreen ? 'selectionchange' : 'mouseup'
+
+    const removeListeners = windows.map((win) => {
+      const target = isTouchScreen ? win.document : win
+      const updateSelection = () => {
+        const s = win.getSelection()
+
+        if (hasSelection(s)) {
+          // sometime `getSelection` will return the same `selection`
+          // when select text by clicking empty space
+          render()
+          setSelection(s)
+        }
+      }
+
+      target.addEventListener(event, updateSelection)
+
+      return () => target.removeEventListener(event, updateSelection)
+    })
+
+    return () => {
+      removeListeners.forEach((removeListener) => removeListener())
     }
-  })
+  }, [render, windows])
+
+  // https://stackoverflow.com/questions/3413683/disabling-the-context-menu-on-long-taps-on-android
+  useEffect(() => {
+    if (!isTouchScreen) return
+
+    const removeListeners = windows.map((win) => {
+      const preventContextMenu = (e: Event) => {
+        e.preventDefault()
+      }
+
+      win.addEventListener('contextmenu', preventContextMenu)
+
+      return () => win.removeEventListener('contextmenu', preventContextMenu)
+    })
+
+    return () => {
+      removeListeners.forEach((removeListener) => removeListener())
+    }
+  }, [windows])
+
+  useEffect(() => {
+    if (!selection) return
+    const selectionWindow = selection.anchorNode?.ownerDocument?.defaultView
+    if (!selectionWindow || windows.includes(selectionWindow)) return
+
+    setSelection(undefined)
+  }, [selection, windows])
 
   return [selection, setSelection] as const
 }
