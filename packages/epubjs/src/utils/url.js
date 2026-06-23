@@ -1,4 +1,4 @@
-import path from 'path-webpack'
+import path from './posix-path'
 
 import Path from './path'
 

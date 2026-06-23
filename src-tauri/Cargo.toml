@@ -19,11 +19,11 @@ serde_json = "1"
 sha2 = "0.10"
 tauri-plugin-single-instance = "2"
 tauri-plugin-dialog = "2"
-roxmltree = "0.20"
+roxmltree = "0.21"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 encoding_rs = "0.8"
 regex = "1"
 zstd = "0.13"
 
 [target.'cfg(windows)'.dependencies]
-winreg = "0.55"
+winreg = "0.56"

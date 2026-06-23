@@ -1,16 +1,18 @@
-import { Overlay } from '@literal-ui/core'
 import clsx from 'clsx'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
-import { useLocale, useSourceColor, useTranslation } from '@flow/reader/hooks'
+import { useSourceColor } from '@flow/reader/hooks/theme/useSourceColor'
+import { useLocale } from '@flow/reader/hooks/useLocale'
+import { useTranslation } from '@flow/reader/hooks/useTranslation'
 import { AppLocale, localeNames } from '@flow/reader/locales'
 import { defaultTextImportRules, useSettings } from '@flow/reader/state'
 
 import { ColorPickerPopover, normalizeHexColor } from '../ColorPickerPopover'
 import { Checkbox, Select } from '../Form'
+import { Overlay } from '../base/Overlay'
 
 interface SettingsDialogProps {
   open: boolean
@@ -49,7 +51,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
         role="dialog"
         aria-modal="true"
         data-flow-keyboard-capture="true"
-        className="bg-default fixed left-1/2 top-1/2 z-[90] h-[min(38rem,calc(100vh-4rem))] w-[min(48rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-md text-on-surface-variant shadow-lg ring-1 ring-inset ring-on-surface-variant/20"
+        className="text-muted-foreground ring-border bg-background fixed top-1/2 left-1/2 z-[90] h-[min(38rem,calc(100vh-4rem))] w-[min(48rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-md shadow-lg ring-1 ring-inset"
       >
         <Settings />
       </div>
@@ -86,8 +88,8 @@ export const Settings: React.FC = () => {
 
   return (
     <div className="flex h-full min-h-0">
-      <aside className="border-on-surface-variant/15 w-40 shrink-0 border-r bg-on-surface-variant/[0.04] p-2">
-        <h1 className="px-3 py-3 text-on-surface-variant typescale-title-medium">
+      <aside className="border-border bg-muted/50 w-40 shrink-0 border-r p-2">
+        <h1 className="text-muted-foreground px-3 py-3 text-base font-semibold">
           {t('title')}
         </h1>
         <nav className="mt-1 space-y-1">
@@ -98,10 +100,10 @@ export const Settings: React.FC = () => {
                 key={tab}
                 type="button"
                 className={clsx(
-                  'flex h-9 w-full items-center rounded-sm px-3 text-left typescale-body-medium',
+                  'flex h-9 w-full items-center rounded-sm px-3 text-left text-sm',
                   selected
-                    ? 'bg-primary70 text-on-primary-container'
-                    : 'text-on-surface-variant hover:bg-on-surface-variant/10',
+                    ? 'text-primary-foreground bg-primary'
+                    : 'text-muted-foreground hover:bg-muted',
                 )}
                 onClick={() => setActiveTab(tab)}
               >
@@ -112,7 +114,7 @@ export const Settings: React.FC = () => {
         </nav>
       </aside>
       <section className="scroll min-w-0 flex-1 overflow-y-auto px-5 py-4">
-        <h2 className="text-on-surface-variant typescale-title-medium">
+        <h2 className="text-muted-foreground text-base font-semibold">
           {t(`tabs.${activeTab}`)}
         </h2>
         <div className="mt-5 space-y-5">
@@ -238,7 +240,7 @@ export const Settings: React.FC = () => {
               <div className="flex justify-end">
                 <button
                   type="button"
-                  className="h-8 rounded-sm px-3 text-outline typescale-body-medium hover:bg-on-surface-variant/10 hover:text-on-surface-variant"
+                  className="text-muted-foreground hover:bg-muted hover:text-muted-foreground h-8 rounded-sm px-3 text-sm"
                   onClick={() => {
                     setSettings((prev) => ({
                       ...prev,
@@ -269,7 +271,7 @@ const PatternTextarea: React.FC<PatternTextareaProps> = ({
 }) => {
   return (
     <textarea
-      className="scroll bg-default min-h-28 w-full resize-y px-2 py-1 font-mono !text-[12px] leading-5 text-on-surface-variant outline-none ring-1 ring-inset ring-surface-variant focus:ring-primary70"
+      className="scroll text-muted-foreground ring-border focus:ring-ring bg-background min-h-28 w-full resize-y px-2 py-1 font-mono !text-[12px] leading-5 ring-1 outline-none ring-inset"
       value={value.join('\n')}
       spellCheck={false}
       onChange={(event) => {
@@ -301,7 +303,7 @@ function SegmentedField<T extends string>({
   onChange,
 }: SegmentedFieldProps<T>) {
   return (
-    <div className="bg-default flex h-8 items-center p-0.5 text-on-surface-variant ring-1 ring-inset ring-surface-variant">
+    <div className="text-muted-foreground ring-border bg-background flex h-8 items-center p-0.5 ring-1 ring-inset">
       {options.map((option) => {
         const selected = option.value === value
 
@@ -310,8 +312,8 @@ function SegmentedField<T extends string>({
             key={option.value}
             type="button"
             className={clsx(
-              'h-full flex-1 px-2 !text-[13px] typescale-body-medium hover:bg-on-surface-variant/10',
-              selected && 'bg-primary70 text-on-primary-container',
+              'hover:bg-muted h-full flex-1 px-2 text-sm !text-[13px]',
+              selected && 'text-primary-foreground bg-primary',
             )}
             onClick={() => onChange(option.value)}
           >
@@ -336,21 +338,21 @@ const SourceColorSetting: React.FC = () => {
       <div className="relative inline-block">
         <button
           type="button"
-          className="bg-default flex h-8 min-w-[9rem] items-center gap-2 px-2 text-left text-on-surface-variant ring-1 ring-inset ring-surface-variant"
+          className="text-muted-foreground ring-border bg-background flex h-8 min-w-[9rem] items-center gap-2 px-2 text-left ring-1 ring-inset"
           onClick={() => {
             setDisplayColor(sourceColor)
             setOpen(true)
           }}
         >
           <span
-            className="h-5 w-8 shrink-0 rounded-sm ring-1 ring-inset ring-on-surface-variant/30"
+            className="ring-border h-5 w-8 shrink-0 rounded-sm ring-1 ring-inset"
             style={{ backgroundColor: color }}
           />
           <span className="font-mono !text-[13px]">{color}</span>
         </button>
         {open && (
           <ColorPickerPopover
-            className="absolute left-0 top-full z-20 mt-2"
+            className="absolute top-full left-0 z-20 mt-2"
             value={sourceColor}
             defaultValue="#0ea5e9"
             onPreview={(next) => {
@@ -389,7 +391,7 @@ interface PartProps {
 const Item: React.FC<PartProps> = ({ title, children }) => {
   return (
     <div className="grid gap-2 sm:grid-cols-[8.5rem_minmax(0,1fr)] sm:items-center">
-      <h3 className="text-on-surface-variant typescale-title-small">{title}</h3>
+      <h3 className="text-muted-foreground text-sm font-semibold">{title}</h3>
       <div className="min-w-0">{children}</div>
     </div>
   )
@@ -587,16 +589,16 @@ const ShortcutSettings: React.FC = () => {
     <div className="space-y-5">
       {groups.map((group) => (
         <section key={group.title}>
-          <h3 className="mb-2 text-on-surface-variant typescale-title-small">
+          <h3 className="text-muted-foreground mb-2 text-sm font-semibold">
             {group.title}
           </h3>
-          <div className="divide-y divide-on-surface-variant/10">
+          <div className="divide-border divide-y">
             {group.items.map((item) => (
               <div
                 key={item.label}
-                className="min-h-9 flex items-center justify-between gap-4 py-1.5"
+                className="flex min-h-9 items-center justify-between gap-4 py-1.5"
               >
-                <span className="min-w-0 text-on-surface-variant typescale-body-medium">
+                <span className="text-muted-foreground min-w-0 text-sm">
                   {item.label}
                 </span>
                 <div className="flex shrink-0 flex-wrap justify-end gap-1">
@@ -624,9 +626,9 @@ const ShortcutChord: React.FC<{ shortcut: ShortcutChordValue }> = ({
       {shortcut.map((key, index) => (
         <span className="inline-flex items-center gap-1" key={index}>
           {index > 0 && (
-            <span className="text-outline typescale-body-small">+</span>
+            <span className="text-muted-foreground text-xs">+</span>
           )}
-          <kbd className="bg-on-surface-variant/8 min-w-[1.55rem] rounded-sm px-1.5 py-0.5 text-center font-mono !text-[12px] leading-5 text-on-surface-variant ring-1 ring-inset ring-on-surface-variant/20">
+          <kbd className="bg-muted text-muted-foreground ring-border min-w-[1.55rem] rounded-sm px-1.5 py-0.5 text-center font-mono !text-[12px] leading-5 ring-1 ring-inset">
             {key}
           </kbd>
         </span>

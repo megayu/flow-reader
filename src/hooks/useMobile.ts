@@ -1,15 +1,11 @@
 import { useEffect } from 'react'
-import { atom, useRecoilState } from 'recoil'
 
-export const mobileState = atom<boolean | undefined>({
-  key: 'mobile',
-  default: undefined,
-})
+import { useMobileState } from '../state'
 
 let listened = false
 
 export function useMobile() {
-  const [mobile, setMobile] = useRecoilState(mobileState)
+  const [mobile, setMobile] = useMobileState()
 
   useEffect(() => {
     if (listened) return

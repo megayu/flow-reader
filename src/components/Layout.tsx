@@ -1,4 +1,3 @@
-import { Overlay } from '@literal-ui/core'
 import clsx from 'clsx'
 import {
   ComponentProps,
@@ -18,38 +17,41 @@ import {
   MdFilterList,
   MdLibraryBooks,
   MdMenuBook,
+  MdOutlineLightMode,
   MdOutlineImage,
   MdSearch,
   MdToc,
-  MdOutlineLightMode,
 } from 'react-icons/md'
 import { RiFontSize, RiHome6Line, RiSettings5Line } from 'react-icons/ri'
-import { useRecoilState, useRecoilValue, useSetRecoilState } from 'recoil'
 
+import { useBackground } from '../hooks/theme/useBackground'
+import { useColorScheme } from '../hooks/theme/useColorScheme'
 import {
-  Env,
-  type Action as ReaderPanelAction,
-  type LibraryAction,
   useAction,
   useLibraryAction,
-  useBackground,
-  useColorScheme,
-  useMobile,
-  useTranslation,
-} from '../hooks'
-import { reader, useReaderSnapshot } from '../models'
+  type Action as ReaderPanelAction,
+  type LibraryAction,
+} from '../hooks/useAction'
+import { Env } from '../hooks/useEnv'
+import { useMobile } from '../hooks/useMobile'
+import { useTranslation } from '../hooks/useTranslation'
+import { reader, useReaderSnapshot } from '../models/reader'
 import {
-  navbarState,
-  libraryStatusFilterState,
-  settingsDialogOpenState,
-  viewModeState,
-  zenModeState,
-  zenTypographyOverridesState,
+  useLibraryStatusFilter,
+  useNavbar,
+  useSettingsDialogOpen,
+  useSetZenTypographyOverrides,
+  useViewMode,
+  useViewModeValue,
+  useZenMode,
+  useZenModeValue,
 } from '../state'
 import { activeClass } from '../styles'
 
-import { PaneView, SplitView, useSplitViewItem } from './base'
-import { SettingsDialog } from './pages'
+import { Overlay } from './base/Overlay'
+import { PaneView } from './base/PaneView'
+import { SplitView, useSplitViewItem } from './base/SplitView'
+import { SettingsDialog } from './pages/settings'
 import { AnnotationView } from './viewlets/AnnotationView'
 import { ImageView } from './viewlets/ImageView'
 import { SearchView } from './viewlets/SearchView'
@@ -61,18 +63,14 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
   useColorScheme()
 
   const [ready, setReady] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useRecoilState(
-    settingsDialogOpenState,
-  )
+  const [settingsOpen, setSettingsOpen] = useSettingsDialogOpen()
   const [action, setAction] = useAction()
-  const actionBeforeZen = useRef<ReaderPanelAction | undefined>()
+  const actionBeforeZen = useRef<ReaderPanelAction | undefined>(undefined)
   const zenModeRef = useRef(false)
   const mobile = useMobile()
-  const zenMode = useRecoilValue(zenModeState)
+  const zenMode = useZenModeValue()
   const { focusedBookTab } = useReaderSnapshot()
-  const setZenTypographyOverrides = useSetRecoilState(
-    zenTypographyOverridesState,
-  )
+  const setZenTypographyOverrides = useSetZenTypographyOverrides()
 
   useEffect(() => {
     if (mobile === undefined) return
@@ -268,7 +266,7 @@ interface PageActionBarProps extends EnvActionBarProps, SettingsActionProps {}
 function ViewActionBar({ className, env }: EnvActionBarProps) {
   const [action, setAction] = useAction()
   const [libraryAction, setLibraryAction] = useLibraryAction()
-  const viewMode = useRecoilValue(viewModeState)
+  const viewMode = useViewModeValue()
   const t = useTranslation()
   const actions: Array<IViewAction | ILibraryViewAction> =
     viewMode === 'library' ? libraryViewActions : viewActions
@@ -404,8 +402,8 @@ function PageActionBar({
   const mobile = useMobile()
   const [action, setAction] = useState('Home')
   const [themeOpen, setThemeOpen] = useState(false)
-  const [viewMode, setViewMode] = useRecoilState(viewModeState)
-  const [zenMode, setZenMode] = useRecoilState(zenModeState)
+  const [viewMode, setViewMode] = useViewMode()
+  const [zenMode, setZenMode] = useZenMode()
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation()
   const { fullscreen, toggleFullscreen } = useFullscreenAction()
@@ -549,7 +547,7 @@ function NavigationBar({
 }: SettingsActionProps) {
   const r = useReaderSnapshot()
   const readMode = r.focusedTab?.isBook
-  const [visible, setVisible] = useRecoilState(navbarState)
+  const [visible, setVisible] = useNavbar()
   const [, , background] = useBackground()
 
   return (
@@ -562,7 +560,7 @@ function NavigationBar({
       )}
       <div
         className={clsx(
-          'NavigationBar fixed inset-x-0 bottom-0 z-10 border-t border-on-surface-variant/25',
+          'NavigationBar border-border fixed inset-x-0 bottom-0 z-10 border-t',
           background.sidebarClassName,
         )}
       >
@@ -605,8 +603,10 @@ const Action: React.FC<ActionProps> = ({
     <button
       className={clsx(
         'Action relative flex h-12 w-12 flex-1 items-center justify-center sm:flex-initial',
-        active ? 'text-on-surface-variant' : 'text-outline/70',
-        props.disabled ? 'text-on-disabled' : 'hover:text-on-surface-variant ',
+        active ? 'text-muted-foreground' : 'text-muted-foreground/70',
+        props.disabled
+          ? 'text-muted-foreground'
+          : 'hover:text-muted-foreground',
         className,
       )}
       {...props}
@@ -627,7 +627,7 @@ const SideBar: React.FC = () => {
   const [libraryAction, setLibraryAction] = useLibraryAction()
   const mobile = useMobile()
   const t = useTranslation()
-  const viewMode = useRecoilValue(viewModeState)
+  const viewMode = useViewModeValue()
   const [, , background] = useBackground()
   const activeAction = viewMode === 'library' ? libraryAction : action
   const setActiveAction = viewMode === 'library' ? setLibraryAction : setAction
@@ -670,9 +670,9 @@ const libraryStatusOptions = ['toRead', 'reading', 'read'] as const
 
 function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const t = useTranslation('home')
-  const [filters, setFilters] = useRecoilState(libraryStatusFilterState)
+  const [filters, setFilters] = useLibraryStatusFilter()
 
-  const toggle = (status: typeof libraryStatusOptions[number]) => {
+  const toggle = (status: (typeof libraryStatusOptions)[number]) => {
     setFilters((current) =>
       current.includes(status)
         ? current.filter((item) => item !== status)
@@ -690,10 +690,10 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
         <button
           type="button"
           className={clsx(
-            'h-9 w-full px-3 text-left ring-1 ring-inset typescale-body-medium',
+            'h-9 w-full px-3 text-left text-sm ring-1 ring-inset',
             filters.length === 0
-              ? 'bg-primary70 text-on-primary-container ring-primary'
-              : 'bg-surface text-on-surface-variant ring-surface-variant hover:bg-on-surface-variant/10',
+              ? 'text-primary-foreground ring-ring bg-primary'
+              : 'bg-popover text-muted-foreground ring-border hover:bg-muted',
           )}
           onClick={() => setFilters([])}
         >
@@ -706,10 +706,10 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
               key={status}
               type="button"
               className={clsx(
-                'flex h-9 w-full items-center justify-between px-3 text-left ring-1 ring-inset typescale-body-medium',
+                'flex h-9 w-full items-center justify-between px-3 text-left text-sm ring-1 ring-inset',
                 active
-                  ? 'bg-primary70 text-on-primary-container ring-primary'
-                  : 'bg-surface text-on-surface-variant ring-surface-variant hover:bg-on-surface-variant/10',
+                  ? 'text-primary-foreground ring-ring bg-primary'
+                  : 'bg-popover text-muted-foreground ring-border hover:bg-muted',
               )}
               onClick={() => toggle(status)}
             >

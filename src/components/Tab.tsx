@@ -3,7 +3,8 @@ import { ComponentProps } from 'react'
 import { IconType } from 'react-icons'
 import { MdClose } from 'react-icons/md'
 
-import { useBackground, useTranslation } from '../hooks'
+import { useBackground } from '../hooks/theme/useBackground'
+import { useTranslation } from '../hooks/useTranslation'
 import { activeClass } from '../styles'
 
 import { IconButton } from './Button'
@@ -32,9 +33,11 @@ export function Tab({
     <div
       role="tab"
       className={clsx(
-        ' relative flex cursor-pointer items-center gap-1 p-2 pr-1 typescale-body-small',
-        selected ? `text-outline ${bg}` : `text-outline/60 hover:${bg}`,
-        focused && '!text-on-surface',
+        'relative flex cursor-pointer items-center gap-1 p-2 pr-1 text-xs',
+        selected
+          ? `text-muted-foreground ${bg}`
+          : `text-muted-foreground/60 hover:${bg}`,
+        focused && '!text-foreground',
         className,
       )}
       title={children}
@@ -43,7 +46,7 @@ export function Tab({
       {focused && (
         <div className={clsx('absolute inset-x-0 top-0 h-px', activeClass)} />
       )}
-      <Icon size={16} className="text-outline" />
+      <Icon size={16} className="text-muted-foreground" />
       <span className="max-w-[200px] truncate">{children}</span>
       <IconButton
         title={t('action.close')}
@@ -72,7 +75,7 @@ const List: React.FC<ListProps> = ({
   return (
     <div
       className={clsx(
-        'flex items-center justify-between bg-primary/5',
+        'bg-primary/5 flex items-center justify-between',
         className,
       )}
       onWheel={onWheel}

@@ -1,5 +1,3 @@
-import { Overlay } from '@literal-ui/core'
-import { useBoolean } from '@literal-ui/hooks'
 import clsx from 'clsx'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
@@ -22,7 +20,6 @@ import {
   MdRemoveCircleOutline,
   MdWarningAmber,
 } from 'react-icons/md'
-import { useRecoilState } from 'recoil'
 
 import {
   cleanBookText,
@@ -30,25 +27,25 @@ import {
   getBookDisplayTitle,
   getBookTooltip,
 } from '../book'
-import { ReaderGridView, Button, DropZone } from '../components'
+import { Button } from '../components/Button'
+import { ReaderGridView } from '../components/Reader'
 import { TextImportDialog } from '../components/TextImportDialog'
+import { DropZone } from '../components/base/DropZone'
+import { Overlay } from '../components/base/Overlay'
 import { BookRecord, CoverRecord, ReadingStatus, db } from '../db'
 import { handleFiles, openImportDialog, setupNativeOpenFiles } from '../file'
+import { useAction, useLibraryAction } from '../hooks/useAction'
+import { useBoolean } from '../hooks/useBoolean'
+import { useDisablePinchZooming } from '../hooks/useDisablePinchZooming'
+import { useCovers, useLibrary } from '../hooks/useLibrary'
+import { useMobile } from '../hooks/useMobile'
+import { useTranslation } from '../hooks/useTranslation'
+import { reader, useReaderSnapshot } from '../models/reader'
 import {
-  useCovers,
-  useDisablePinchZooming,
-  useAction,
-  useLibrary,
-  useLibraryAction,
-  useMobile,
-  useTranslation,
-} from '../hooks'
-import { reader, useReaderSnapshot } from '../models'
-import {
-  libraryStatusFilterState,
+  useLibraryStatusFilter,
   useSettings,
   useSettingsReady,
-  viewModeState,
+  useViewMode,
 } from '../state'
 import { lock } from '../styles'
 
@@ -245,7 +242,7 @@ function useStringSet() {
 
 export default function Index() {
   const { focusedBookTab, focusedTab, groups } = useReaderSnapshot()
-  const [viewMode, setViewMode] = useRecoilState(viewModeState)
+  const [viewMode, setViewMode] = useViewMode()
   const [readerAction, setReaderAction] = useAction()
   const [libraryAction, setLibraryAction] = useLibraryAction()
   const [settings, setSettings] = useSettings()
@@ -405,10 +402,10 @@ export default function Index() {
             bookId: focusedBookId,
           }
         : viewMode === 'library'
-        ? {
-            viewMode,
-          }
-        : undefined
+          ? {
+              viewMode,
+            }
+          : undefined
 
     if (!nextSession) return
 
@@ -512,9 +509,7 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const sortMenuRef = useRef<HTMLDivElement>(null)
-  const [statusFilters, setStatusFilters] = useRecoilState(
-    libraryStatusFilterState,
-  )
+  const [statusFilters, setStatusFilters] = useLibraryStatusFilter()
   const [, setLibraryAction] = useLibraryAction()
 
   const [select, toggleSelect] = useBoolean(false)
@@ -659,12 +654,15 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
                   onClick={() => setSortMenuOpen((open) => !open)}
                 >
                   <span>{t(`sort.${sortField}`)}</span>
-                  <MdKeyboardArrowDown size={16} className="text-outline" />
+                  <MdKeyboardArrowDown
+                    size={16}
+                    className="text-muted-foreground"
+                  />
                 </Button>
                 {sortMenuOpen && (
                   <div
                     role="menu"
-                    className="absolute left-0 top-full z-20 mt-1 min-w-[7rem] bg-surface py-1 text-on-surface-variant shadow-1 ring-1 ring-inset ring-surface-variant"
+                    className="bg-popover text-muted-foreground ring-border absolute top-full left-0 z-20 mt-1 min-w-[7rem] py-1 shadow-sm ring-1 ring-inset"
                   >
                     {sortFieldOptions.map((field) => (
                       <button
@@ -673,9 +671,8 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
                         role="menuitemradio"
                         aria-checked={field === sortField}
                         className={clsx(
-                          'block w-full px-3 py-1.5 text-left typescale-label-large hover:bg-outline/10',
-                          field === sortField &&
-                            'bg-outline/10 text-on-surface',
+                          'hover:bg-muted block w-full px-3 py-1.5 text-left text-sm font-medium',
+                          field === sortField && 'bg-muted text-foreground',
                         )}
                         onClick={() => {
                           setSortField(field)
@@ -893,7 +890,7 @@ const Book: React.FC<BookProps> = ({
     <div className="relative flex flex-col" onContextMenu={openContextMenu}>
       <div
         role="button"
-        className="group relative border border-inverse-on-surface"
+        className="border-border group relative border"
         onClick={() => {
           if (select) {
             toggle(book.id)
@@ -906,7 +903,7 @@ const Book: React.FC<BookProps> = ({
         {contextMenu && (
           <div
             ref={contextMenuRef}
-            className="ring-on-surface-variant/15 fixed z-[70] w-40 bg-surface py-1 text-on-surface-variant shadow-lg ring-1 ring-inset"
+            className="ring-border bg-popover text-muted-foreground fixed z-[70] w-40 py-1 shadow-lg ring-1 ring-inset"
             style={{ left: contextMenu.x, top: contextMenu.y }}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
@@ -935,7 +932,7 @@ const Book: React.FC<BookProps> = ({
                 setInfoOpen(true)
               }}
             />
-            <div className="my-1 h-px bg-on-surface-variant/10" />
+            <div className="bg-muted my-1 h-px" />
             <BookContextMenuButton
               danger
               Icon={confirmDelete ? MdWarningAmber : MdDeleteOutline}
@@ -973,7 +970,7 @@ const Book: React.FC<BookProps> = ({
         {!select && (
           <div
             ref={statusMenuRef}
-            className="absolute right-1 top-1 z-20"
+            className="absolute top-1 right-1 z-20"
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
             onContextMenu={(e) => {
@@ -985,8 +982,8 @@ const Book: React.FC<BookProps> = ({
               type="button"
               title={t('reading_status.change')}
               className={clsx(
-                'flex h-7 w-7 items-center justify-center rounded-sm bg-surface/90 text-outline opacity-0 shadow-sm ring-1 ring-inset ring-on-surface-variant/20 hover:text-on-surface-variant group-hover:opacity-100',
-                statusMenuOpen && 'text-on-surface-variant opacity-100',
+                'bg-popover/90 text-muted-foreground ring-border hover:text-muted-foreground flex h-7 w-7 items-center justify-center rounded-sm opacity-0 shadow-sm ring-1 ring-inset group-hover:opacity-100',
+                statusMenuOpen && 'text-muted-foreground opacity-100',
               )}
               onClick={() => setStatusMenuOpen((open) => !open)}
             >
@@ -1001,7 +998,7 @@ const Book: React.FC<BookProps> = ({
           </div>
         )}
         {book.percentage !== undefined && (
-          <div className="absolute right-0 bg-gray-500/60 px-2 text-gray-100 typescale-body-large group-hover:hidden">
+          <div className="absolute right-0 bg-gray-500/60 px-2 text-base text-gray-100 group-hover:hidden">
             {(book.percentage * 100).toFixed()}%
           </div>
         )}
@@ -1012,12 +1009,12 @@ const Book: React.FC<BookProps> = ({
           draggable={false}
         />
         {select && (
-          <div className="absolute bottom-1 right-1">
+          <div className="absolute right-1 bottom-1">
             <Icon
               size={24}
               className={clsx(
                 '-m-1',
-                selected ? 'text-tertiary' : 'text-outline',
+                selected ? 'text-primary' : 'text-muted-foreground',
               )}
             />
           </div>
@@ -1025,7 +1022,7 @@ const Book: React.FC<BookProps> = ({
       </div>
 
       <div
-        className="mt-2 w-full text-center text-on-surface-variant typescale-body-small line-clamp-2 lg:typescale-body-medium"
+        className="text-muted-foreground mt-2 line-clamp-2 w-full text-center text-xs lg:text-sm"
         title={tooltip}
       >
         {displayTitle}
@@ -1051,8 +1048,8 @@ const BookContextMenuButton: React.FC<BookContextMenuButtonProps> = ({
     <button
       type="button"
       className={clsx(
-        'flex h-8 w-full items-center gap-2 px-3 text-left typescale-body-medium hover:bg-on-surface-variant/10',
-        danger ? 'text-error' : 'text-on-surface-variant',
+        'hover:bg-muted flex h-8 w-full items-center gap-2 px-3 text-left text-sm',
+        danger ? 'text-destructive' : 'text-muted-foreground',
       )}
       onClick={onClick}
     >
@@ -1092,7 +1089,7 @@ const ReadingStatusBadge: React.FC<ReadingStatusBadgeProps> = ({
     <div
       title={title}
       className={clsx(
-        'absolute left-1 top-1 z-10 flex h-7 w-7 items-center justify-center rounded-sm shadow-sm',
+        'absolute top-1 left-1 z-10 flex h-7 w-7 items-center justify-center rounded-sm shadow-sm',
         readingStatusClassName[status],
       )}
     >
@@ -1113,7 +1110,7 @@ const ReadingStatusMenu: React.FC<ReadingStatusMenuProps> = ({
   const t = useTranslation('home')
 
   return (
-    <div className="ring-on-surface-variant/15 absolute right-0 top-full mt-1 w-40 bg-surface py-1 text-on-surface-variant shadow-lg ring-1 ring-inset">
+    <div className="ring-border bg-popover text-muted-foreground absolute top-full right-0 mt-1 w-40 py-1 shadow-lg ring-1 ring-inset">
       <ReadingStatusMenuItem
         Icon={MdBookmarkBorder}
         label={t('reading_status.unmarked')}
@@ -1134,7 +1131,7 @@ const ReadingStatusMenu: React.FC<ReadingStatusMenuProps> = ({
       })}
       {status && (
         <>
-          <div className="my-1 h-px bg-on-surface-variant/10" />
+          <div className="bg-muted my-1 h-px" />
           <ReadingStatusMenuItem
             danger
             Icon={MdRemoveCircleOutline}
@@ -1167,14 +1164,14 @@ const ReadingStatusMenuItem: React.FC<ReadingStatusMenuItemProps> = ({
     <button
       type="button"
       className={clsx(
-        'flex h-8 w-full items-center gap-2 px-3 text-left typescale-body-medium hover:bg-on-surface-variant/10',
-        danger ? 'text-error' : 'text-on-surface-variant',
+        'hover:bg-muted flex h-8 w-full items-center gap-2 px-3 text-left text-sm',
+        danger ? 'text-destructive' : 'text-muted-foreground',
       )}
       onClick={onClick}
     >
       <Icon size={17} className="shrink-0" />
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {checked && <MdCheck size={17} className="shrink-0 text-primary" />}
+      {checked && <MdCheck size={17} className="text-primary shrink-0" />}
     </button>
   )
 }
@@ -1211,7 +1208,7 @@ const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
   return (
     <ModalShell onClose={onClose}>
       <form
-        className="w-[min(28rem,calc(100vw-2rem))] bg-surface p-5 text-on-surface-variant shadow-lg ring-1 ring-inset ring-on-surface-variant/20"
+        className="bg-popover text-muted-foreground ring-border w-[min(28rem,calc(100vw-2rem))] p-5 shadow-lg ring-1 ring-inset"
         onSubmit={(e) => {
           e.preventDefault()
           save()
@@ -1219,7 +1216,7 @@ const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
       >
         <div className="space-y-4">
           <label className="block">
-            <span className="mb-1 block typescale-label-large">
+            <span className="mb-1 block text-sm font-medium">
               {t('edit.title')}
             </span>
             <input
@@ -1228,11 +1225,11 @@ const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
               onChange={(e) => setTitle(e.target.value)}
               onClick={(e) => e.currentTarget.select()}
               onFocus={(e) => e.currentTarget.select()}
-              className="bg-default w-full px-2 py-1.5 text-on-surface-variant outline-none ring-1 ring-inset ring-surface-variant focus:ring-primary"
+              className="text-muted-foreground ring-border focus:ring-ring bg-background w-full px-2 py-1.5 ring-1 outline-none ring-inset"
             />
           </label>
           <label className="block">
-            <span className="mb-1 block typescale-label-large">
+            <span className="mb-1 block text-sm font-medium">
               {t('edit.creator')}
             </span>
             <input
@@ -1240,7 +1237,7 @@ const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
               onChange={(e) => setCreator(e.target.value)}
               onClick={(e) => e.currentTarget.select()}
               onFocus={(e) => e.currentTarget.select()}
-              className="bg-default w-full px-2 py-1.5 text-on-surface-variant outline-none ring-1 ring-inset ring-surface-variant focus:ring-primary"
+              className="text-muted-foreground ring-border focus:ring-ring bg-background w-full px-2 py-1.5 ring-1 outline-none ring-inset"
             />
           </label>
         </div>
@@ -1281,11 +1278,11 @@ const BookInfoDialog: React.FC<BookInfoDialogProps> = ({
 
   return (
     <ModalShell onClose={onClose}>
-      <div className="relative max-h-[calc(100vh-4rem)] w-[min(46rem,calc(100vw-2rem))] overflow-hidden bg-surface p-5 text-on-surface-variant shadow-lg ring-1 ring-inset ring-on-surface-variant/20">
+      <div className="bg-popover text-muted-foreground ring-border relative max-h-[calc(100vh-4rem)] w-[min(46rem,calc(100vw-2rem))] overflow-hidden p-5 shadow-lg ring-1 ring-inset">
         <button
           type="button"
           aria-label={t('cancel')}
-          className="absolute right-3 top-3 text-outline hover:text-on-surface-variant"
+          className="text-muted-foreground hover:text-muted-foreground absolute top-3 right-3"
           onClick={onClose}
         >
           ×
@@ -1302,11 +1299,11 @@ const BookInfoDialog: React.FC<BookInfoDialogProps> = ({
             )}
           </div>
           <div className="min-w-0 pr-6">
-            <h2 className="text-center !text-[30px] font-bold leading-tight text-on-surface-variant sm:text-left">
+            <h2 className="text-muted-foreground text-center !text-[30px] leading-tight font-bold sm:text-left">
               {title}
             </h2>
             {!!rows.length && (
-              <dl className="mt-4 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-2 gap-y-1 typescale-body-large">
+              <dl className="mt-4 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-2 gap-y-1 text-base">
                 {rows.map(([label, value]) => (
                   <React.Fragment key={label}>
                     <dt className="font-semibold">{label}:</dt>
@@ -1318,7 +1315,7 @@ const BookInfoDialog: React.FC<BookInfoDialogProps> = ({
           </div>
         </div>
         {description && (
-          <div className="scroll border-on-surface-variant/15 mt-5 max-h-[min(18rem,38vh)] overflow-y-auto border-t pt-4 text-justify typescale-body-large">
+          <div className="scroll border-border mt-5 max-h-[min(18rem,38vh)] overflow-y-auto border-t pt-4 text-justify text-base">
             {description.split(/\n{2,}/).map((paragraph, index) => (
               <p key={index} className={clsx(index > 0 && 'mt-3')}>
                 {paragraph}

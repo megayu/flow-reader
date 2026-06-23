@@ -1,4 +1,4 @@
-import EventEmitter from 'event-emitter'
+import EventEmitter from './utils/event-emitter'
 
 import Archive from './archive'
 import Container from './container'

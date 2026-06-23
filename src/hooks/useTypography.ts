@@ -1,9 +1,8 @@
 import { useMemo } from 'react'
-import { useRecoilValue } from 'recoil'
 import { useSnapshot } from 'valtio'
 
-import { BookTab } from '../models'
-import { useSettings, zenTypographyOverridesState } from '../state'
+import { BookTab } from '../models/reader'
+import { useSettings, useZenTypographyOverrides } from '../state'
 
 function removeUndefinedProperty<T extends Record<string, any>>(obj: T) {
   const newObj: Partial<T> = {}
@@ -20,7 +19,7 @@ function removeUndefinedProperty<T extends Record<string, any>>(obj: T) {
 export function useTypography(tab: BookTab) {
   const { book } = useSnapshot(tab)
   const [settings] = useSettings()
-  const zenTypographyOverrides = useRecoilValue(zenTypographyOverridesState)
+  const zenTypographyOverrides = useZenTypographyOverrides()
   const zenTypography = zenTypographyOverrides[book.id]
 
   return useMemo(

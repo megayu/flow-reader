@@ -1,4 +1,4 @@
-import path from 'path-webpack'
+import path from './posix-path'
 
 function isTauriAssetUrl(url) {
   return url && url.protocol === 'http:' && url.hostname === 'asset.localhost'

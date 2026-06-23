@@ -1,7 +1,7 @@
 var path = require('path')
 
 var webpack = require('webpack')
-var PROD = process.env.NODE_ENV === 'production'
+var mode = process.env.NODE_ENV || 'development'
 var LEGACY = process.env.LEGACY
 var MINIMIZE = process.env.MINIMIZE === 'true'
 var hostname = 'localhost'
@@ -21,7 +21,7 @@ if (MINIMIZE) {
 }
 
 module.exports = {
-  mode: process.env.NODE_ENV,
+  mode: mode,
   entry: {
     epub: './src/epub.js',
   },
@@ -42,17 +42,26 @@ module.exports = {
     'jszip/dist/jszip': 'JSZip',
     xmldom: 'xmldom',
   },
-  plugins: [],
+  plugins: [
+    new webpack.ProvidePlugin({
+      process: 'process/browser',
+    }),
+  ],
   resolve: {
     alias: {
-      path: 'path-webpack',
       xmldom: '@xmldom/xmldom',
+    },
+    fallback: {
+      assert: require.resolve('assert/'),
     },
   },
   devServer: {
     host: hostname,
     port: port,
-    inline: true,
+    static: {
+      directory: path.resolve(__dirname, 'dist'),
+      publicPath: '/dist/',
+    },
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET,PUT,POST,DELETE',

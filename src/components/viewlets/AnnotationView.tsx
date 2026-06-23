@@ -2,12 +2,12 @@ import React, { Fragment, useMemo, useState } from 'react'
 import { VscCollapseAll, VscCopy, VscExpandAll } from 'react-icons/vsc'
 
 import { Annotation } from '@flow/reader/annotation'
-import { useTranslation } from '@flow/reader/hooks'
-import { reader, useReaderSnapshot } from '@flow/reader/models'
+import { useTranslation } from '@flow/reader/hooks/useTranslation'
+import { reader, useReaderSnapshot } from '@flow/reader/models/reader'
 import { copy, group, keys } from '@flow/reader/utils'
 
 import { Row } from '../Row'
-import { PaneViewProps, PaneView, Pane } from '../base'
+import { Pane, PaneView, PaneViewProps } from '../base/PaneView'
 
 export const AnnotationView: React.FC<PaneViewProps> = (props) => {
   return (
@@ -184,7 +184,7 @@ const AnnotationBlock: React.FC<AnnotationBlockProps> = ({
                     reader.focusedBookTab?.display(a.cfi)
                   }}
                 >
-                  <span className="text-outline">{a.notes}</span>
+                  <span className="text-muted-foreground">{a.notes}</span>
                 </Row>
               )}
             </Fragment>

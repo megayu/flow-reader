@@ -1,21 +1,20 @@
-import { useBoolean } from '@literal-ui/hooks'
-
-import { ISection, reader, useReaderSnapshot } from '@flow/reader/models'
+import { useBoolean } from '@flow/reader/hooks/useBoolean'
+import { ISection, reader, useReaderSnapshot } from '@flow/reader/models/reader'
 
 import { Row } from '../Row'
-import { PaneView, PaneViewProps } from '../base'
+import { PaneView, PaneViewProps } from '../base/PaneView'
 
 export const ImageView: React.FC<PaneViewProps> = (props) => {
-  const { focusedBookTab } = useReaderSnapshot()
-  const sections = focusedBookTab?.sections?.filter((s) => s.images.length) as
-    | ISection[]
-    | undefined
+  useReaderSnapshot()
+  const sections = reader.focusedBookTab?.sections?.filter(
+    (s) => s.images.length,
+  ) as ISection[] | undefined
 
   if ((sections?.length ?? 0) > 500) return null
 
   return (
     <PaneView {...props}>
-      <div className="scroll min-h-0 flex-1 text-on-surface-variant typescale-body-small">
+      <div className="scroll text-muted-foreground min-h-0 flex-1 text-xs">
         {sections?.map((s) => (
           <Block key={s.href} section={s} />
         ))}
@@ -28,10 +27,10 @@ interface BlockProps {
   section: ISection
 }
 const Block: React.FC<BlockProps> = ({ section }) => {
-  const { focusedBookTab } = useReaderSnapshot()
+  useReaderSnapshot()
   const [expanded, toggle] = useBoolean(false)
 
-  const resources = focusedBookTab?.epub?.resources
+  const resources = reader.focusedBookTab?.epub?.resources
   if (!resources) return null
 
   const blobs = resources.replacementUrls

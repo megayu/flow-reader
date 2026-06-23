@@ -15,7 +15,7 @@ import { keys } from './utils'
 export { getBodyTypographyBaseline, notePopoverClass } from './bodyText'
 export type { BodyTextDetectionCache, BodyTypographyBaseline } from './bodyText'
 
-export const activeClass = 'bg-primary70'
+export const activeClass = 'bg-primary'
 
 const readerLinkSelector = [
   'body > a:any-link',

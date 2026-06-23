@@ -5,7 +5,7 @@ export default function Document() {
     // https://github.com/vercel/next.js/issues/10285
     // Next injects `<style data-next-hide-fouc="true">body{display:none}</style>`,
     // so we should set background on `html`
-    <Html className="bg-default">
+    <Html className="bg-background">
       <Head>
         <link rel="icon" href="/icons/192.png"></link>
         <PWA />
@@ -38,10 +38,10 @@ function PreventFlash() {
   return (
     <>
       <style>{`
-        .bg-default, .hover\\:bg-default:hover {
+        .bg-background, .hover\\:bg-background:hover {
           background: ${background.light};
         }
-        .dark.bg-default, .dark .bg-default, .dark .hover\\:bg-default:hover {
+        .dark.bg-background, .dark .bg-background, .dark .hover\\:bg-background:hover {
           background: ${background.dark};
         }
       `}</style>

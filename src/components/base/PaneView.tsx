@@ -4,8 +4,8 @@ import { ComponentProps, forwardRef, useState } from 'react'
 import { scale } from '@flow/reader/platform'
 
 import { Twisty } from '../Row'
-import { Action, ActionBar } from '../base'
 
+import { Action, ActionBar } from './ActionBar'
 import { SplitView, useSplitViewItem } from './SplitView'
 
 interface PaneProps extends ComponentProps<'div'> {
@@ -39,7 +39,7 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
       >
         <Twisty expanded={expanded} />
         <div
-          className="!font-bold text-on-surface-variant typescale-label-small"
+          className="text-muted-foreground text-xs !font-bold font-medium"
           style={{ fontSize: scale(11, 12) }}
         >
           {headline.toUpperCase()}
@@ -54,7 +54,7 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
       <div
         ref={ref}
         className={clsx(
-          'scroll min-h-0 flex-1 text-on-surface-variant typescale-body-small',
+          'scroll text-muted-foreground min-h-0 flex-1 text-xs',
           !expanded && 'hidden',
           className,
         )}

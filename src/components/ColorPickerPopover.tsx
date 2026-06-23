@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { HexColorPicker } from 'react-colorful'
 import { MdContentCopy, MdContentPaste } from 'react-icons/md'
 
-import { useTranslation } from '../hooks'
+import { useTranslation } from '../hooks/useTranslation'
 
 import { Button, IconButton } from './Button'
 
@@ -82,7 +82,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
   return (
     <div
       className={clsx(
-        'bg-default w-72 rounded-sm p-3 text-on-surface-variant shadow-lg ring-1 ring-inset ring-on-surface-variant/20',
+        'text-muted-foreground ring-border bg-background w-72 rounded-sm p-3 shadow-lg ring-1 ring-inset',
         className,
       )}
       onClick={(e) => e.stopPropagation()}
@@ -94,13 +94,13 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
       />
       <div className="mt-3 flex items-center gap-2">
         <div
-          className="h-8 w-8 shrink-0 rounded-sm ring-1 ring-inset ring-on-surface-variant/30"
+          className="ring-border h-8 w-8 shrink-0 rounded-sm ring-1 ring-inset"
           style={{ backgroundColor: draft }}
         />
         <input
           value={input}
           spellCheck={false}
-          className="textfield h-8 min-w-0 flex-1 bg-transparent px-2 font-mono !text-[13px] text-on-surface-variant"
+          className="textfield text-muted-foreground h-8 min-w-0 flex-1 bg-transparent px-2 font-mono !text-[13px]"
           onChange={(e) => {
             const next = e.target.value
             setInput(next)
@@ -116,7 +116,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
         <IconButton
           title={t('copy')}
           Icon={MdContentCopy}
-          className="text-outline"
+          className="text-muted-foreground"
           onClick={() => {
             navigator.clipboard?.writeText(draft).catch(() => undefined)
           }}
@@ -124,7 +124,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
         <IconButton
           title={t('paste')}
           Icon={MdContentPaste}
-          className="text-outline"
+          className="text-muted-foreground"
           onClick={() => {
             navigator.clipboard
               ?.readText()
@@ -138,7 +138,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
           <button
             type="button"
             key={index}
-            className="h-6 rounded-sm bg-surface ring-1 ring-inset ring-on-surface-variant/25"
+            className="bg-popover ring-border h-6 rounded-sm ring-1 ring-inset"
             style={color ? { backgroundColor: color } : undefined}
             onClick={() => {
               if (color) {

@@ -15,7 +15,7 @@ export function useTranslation(scope?: string) {
       return (
         messages[messageKey as keyof typeof messages] ??
         locales[defaultLocale][
-          messageKey as keyof typeof locales[typeof defaultLocale]
+          messageKey as keyof (typeof locales)[typeof defaultLocale]
         ] ??
         key
       )

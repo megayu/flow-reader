@@ -1,26 +1,21 @@
-import { atom, useRecoilState, useSetRecoilState } from 'recoil'
+import {
+  useLibraryActionState,
+  useReaderActionState,
+  useSetReaderActionState,
+  type Action,
+  type LibraryAction,
+} from '../state'
 
-export type Action = 'toc' | 'search' | 'annotation' | 'typography' | 'image'
-export type LibraryAction = 'libraryFilter'
-
-export const actionState = atom<Action | undefined>({
-  key: 'action',
-  default: undefined,
-})
-
-export const libraryActionState = atom<LibraryAction | undefined>({
-  key: 'libraryAction',
-  default: undefined,
-})
+export type { Action, LibraryAction }
 
 export function useSetAction() {
-  return useSetRecoilState(actionState)
+  return useSetReaderActionState()
 }
 
 export function useAction() {
-  return useRecoilState(actionState)
+  return useReaderActionState()
 }
 
 export function useLibraryAction() {
-  return useRecoilState(libraryActionState)
+  return useLibraryActionState()
 }

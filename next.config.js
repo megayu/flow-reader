@@ -1,19 +1,13 @@
-const withBundleAnalyzer = require('@next/bundle-analyzer')({
-  enabled: process.env.ANALYZE === 'true',
-})
-const withTM = require('next-transpile-modules')([
-  '@flow/epubjs',
-  '@material/material-color-utilities',
-])
-
 /**
  * @type {import('next').NextConfig}
  **/
 const config = {
+  output: 'export',
   pageExtensions: ['ts', 'tsx'],
-  webpack(config) {
-    return config
+  transpilePackages: ['@flow/epubjs', '@material/material-color-utilities'],
+  turbopack: {
+    root: __dirname,
   },
 }
 
-module.exports = withTM(withBundleAnalyzer(config))
+module.exports = config

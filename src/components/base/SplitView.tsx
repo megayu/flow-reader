@@ -1,5 +1,3 @@
-import { Overlay } from '@literal-ui/core'
-import { Maybe } from '@literal-ui/hooks'
 import clsx from 'clsx'
 import {
   Children,
@@ -12,8 +10,10 @@ import {
   useState,
 } from 'react'
 
-import { useMobile } from '@flow/reader/hooks'
+import { useMobile } from '@flow/reader/hooks/useMobile'
 import { clamp } from '@flow/reader/utils'
+
+import { Overlay } from './Overlay'
 
 interface ISplitViewItem {
   key: string
@@ -130,7 +130,7 @@ export const SplitView = ({
 const SASH_SIZE = 4
 interface SashProps {
   vertical: boolean
-  views: Maybe<ISplitViewItem>[]
+  views: (ISplitViewItem | undefined)[]
 }
 const Sash: React.FC<SashProps> = ({ vertical, views }) => {
   const [hover, setHover] = useState(false)
@@ -178,11 +178,11 @@ const Sash: React.FC<SashProps> = ({ vertical, views }) => {
     >
       <div
         className={clsx(
-          'pointer-events-none absolute inset-0 border-on-surface-variant/25 transition-[background-color]',
+          'border-border pointer-events-none absolute inset-0 transition-[background-color]',
           vertical
             ? 'top-1/2 -translate-y-1/2 border-b'
             : 'left-1/2 -translate-x-1/2 border-r',
-          (hover || active) && 'h-full w-full border-none bg-primary70',
+          (hover || active) && 'bg-primary h-full w-full border-none',
         )}
       ></div>
       {active && <Overlay className="!bg-transparent" />}

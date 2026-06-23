@@ -1,4 +1,4 @@
-import EventEmitter from 'event-emitter'
+import EventEmitter from '../../utils/event-emitter'
 import { Pane, Highlight, Underline } from 'marks-pane'
 
 import Contents from '../../contents'

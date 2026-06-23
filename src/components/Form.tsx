@@ -3,6 +3,7 @@ import {
   ElementType,
   useRef,
   useEffect,
+  useId,
   RefObject,
   ComponentProps,
 } from 'react'
@@ -10,14 +11,17 @@ import { IconType } from 'react-icons'
 import { MdCheck, MdClose } from 'react-icons/md'
 import { PolymorphicPropsWithoutRef } from 'react-polymorphic-types'
 
-import { useMobile, useTranslation } from '../hooks'
+import { useMobile } from '../hooks/useMobile'
+import { useTranslation } from '../hooks/useTranslation'
 
 import { IconButton } from './Button'
+
+type TextFieldElement = HTMLInputElement | HTMLTextAreaElement
 
 type Action = {
   title: string
   Icon: IconType
-  onClick: (el: HTMLInputElement | null) => void
+  onClick: (el: TextFieldElement | null) => void
 }
 
 export type TextFieldProps<T extends ElementType> = PolymorphicPropsWithoutRef<
@@ -30,7 +34,7 @@ export type TextFieldProps<T extends ElementType> = PolymorphicPropsWithoutRef<
     hideDatalistIndicator?: boolean
     onClear?: () => void
     // https://react-typescript-cheatsheet.netlify.app/docs/basic/getting-started/forward_and_create_ref/#generic-forwardrefs
-    mRef?: RefObject<HTMLInputElement> | null
+    mRef?: RefObject<TextFieldElement | null> | null
   },
   T
 >
@@ -47,10 +51,10 @@ export function TextField<T extends ElementType = 'input'>({
   mRef: outerRef,
   ...props
 }: TextFieldProps<T>) {
-  const Component = as || 'input'
+  const Component = (as || 'input') as ElementType<any>
   const isInput = Component === 'input'
-  const innerRef = useRef<HTMLInputElement>(null)
-  const datalistId = `${name}-datalist` // TODO: use `useId`
+  const innerRef = useRef<TextFieldElement | null>(null)
+  const datalistId = useId()
   const ref = outerRef || innerRef
   const mobile = useMobile()
   const t = useTranslation()
@@ -79,13 +83,13 @@ export function TextField<T extends ElementType = 'input'>({
       <Label name={name} hide={hideLabel}>
         {name}
       </Label>
-      <div className="bg-default textfield flex grow items-center">
+      <div className="textfield bg-background flex grow items-center">
         <Component
           ref={ref}
           name={name}
           id={name}
           className={clsx(
-            'w-0 flex-1 bg-transparent py-1 px-1.5 !text-[13px] text-on-surface-variant typescale-body-medium placeholder:text-outline/60',
+            'text-muted-foreground placeholder:text-muted-foreground/60 w-0 flex-1 bg-transparent px-1.5 py-1 text-sm !text-[13px]',
             hideDatalistIndicator && 'datalist-no-indicator',
             isInput || 'scroll h-full resize-none',
           )}
@@ -97,7 +101,7 @@ export function TextField<T extends ElementType = 'input'>({
           <div className="mx-1 flex gap-0.5">
             {actions.map(({ onClick, ...a }) => (
               <IconButton
-                className="!p-px text-outline"
+                className="text-muted-foreground !p-px"
                 key={a.title}
                 onClick={() => {
                   onClick(ref.current)
@@ -118,7 +122,7 @@ interface CheckboxProps extends ComponentProps<'input'> {
 export const Checkbox: React.FC<CheckboxProps> = ({ name, ...props }) => {
   return (
     <div className="flex items-center gap-2">
-      <div className="checkbox bg-default relative shrink-0 rounded-sm">
+      <div className="checkbox bg-background relative shrink-0 rounded-sm">
         <input
           type="checkbox"
           name={name}
@@ -126,7 +130,7 @@ export const Checkbox: React.FC<CheckboxProps> = ({ name, ...props }) => {
           className="peer block h-4 w-4 appearance-none"
           {...props}
         />
-        <MdCheck className="pointer-events-none invisible absolute top-0 text-on-surface-variant peer-checked:visible" />
+        <MdCheck className="text-muted-foreground pointer-events-none invisible absolute top-0 peer-checked:visible" />
       </div>
       <Label name={name} className="!mb-0" />
     </div>
@@ -148,7 +152,7 @@ export const Select: React.FC<SelectProps> = ({
         name={name}
         id={name}
         className={clsx(
-          'bg-default w-full px-0.5 py-1 !text-[13px] text-on-surface-variant typescale-body-medium',
+          'text-muted-foreground bg-background w-full px-0.5 py-1 text-sm !text-[13px]',
         )}
         {...props}
       ></select>
@@ -191,7 +195,7 @@ export const Label: React.FC<LabelProps> = ({
     <label
       htmlFor={name}
       className={clsx(
-        'mb-1 block !text-[13px] text-on-surface-variant typescale-label-medium',
+        'text-muted-foreground mb-1 block text-xs !text-[13px] font-medium',
         hide && 'hidden',
         className,
       )}

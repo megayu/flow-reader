@@ -2,8 +2,8 @@ import { useEffect } from 'react'
 import { useSnapshot } from 'valtio'
 
 import { colorMap, Annotation as IAnnotation } from '../annotation'
-import { useColorScheme } from '../hooks'
-import { BookTab, compareHref } from '../models'
+import { useColorScheme } from '../hooks/theme/useColorScheme'
+import { BookTab, compareHref } from '../models/reader'
 
 // avoid click penetration
 let clickedAnnotation = false

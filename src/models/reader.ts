@@ -1,5 +1,4 @@
 import { debounce } from '@github/mini-throttle/decorators'
-import { IS_SERVER } from '@literal-ui/hooks'
 import React from 'react'
 import { proxy, ref, snapshot, useSnapshot } from 'valtio'
 
@@ -7,6 +6,7 @@ import ePub, { Rendition as EpubRendition } from '@flow/epubjs'
 import type { Rendition, Location, Book } from '@flow/epubjs'
 import Navigation, { NavItem } from '@flow/epubjs/types/navigation'
 import Section from '@flow/epubjs/types/section'
+import { IS_SERVER } from '@flow/reader/env'
 
 import { AnnotationColor, AnnotationType } from '../annotation'
 import {
@@ -279,7 +279,10 @@ function mergeConfigurationWithSpread(
 }
 
 class BaseTab {
-  constructor(public readonly id: string, public readonly title = id) {}
+  constructor(
+    public readonly id: string,
+    public readonly title = id,
+  ) {}
 
   get isBook(): boolean {
     return this instanceof BookTab
@@ -974,7 +977,9 @@ export class BookTab extends BaseTab {
 
     if (sameFrames) return
 
-    const iframes = windows.map((win: Window) => ref(win) as Window & AsRef)
+    const iframes = windows.map(
+      (win: Window) => ref(win) as unknown as Window & AsRef,
+    )
 
     this.iframes = iframes
     this.iframe = iframes[0]
@@ -1451,8 +1456,8 @@ export class Group {
     const tab = isTab
       ? resolved
       : isPage
-      ? new PageTab(resolved)
-      : new BookTab(resolved)
+        ? new PageTab(resolved)
+        : new BookTab(resolved)
 
     this.tabs.splice(++this.selectedIndex, 0, tab)
     return tab

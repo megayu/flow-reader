@@ -1,7 +1,8 @@
-import { useMediaQuery } from '@literal-ui/hooks'
 import { useCallback, useEffect } from 'react'
 
 import { useSettings } from '@flow/reader/state'
+
+import { useMediaQuery } from '../useMediaQuery'
 
 export type ColorScheme = 'light' | 'dark' | 'system'
 

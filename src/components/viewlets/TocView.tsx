@@ -1,33 +1,30 @@
-import { StateLayer } from '@literal-ui/core'
 import clsx from 'clsx'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { MdMyLocation } from 'react-icons/md'
 import { VscCollapseAll, VscExpandAll } from 'react-icons/vsc'
-import { useSetRecoilState } from 'recoil'
 
 import {
   compareBookDisplayTitle,
   getBookDisplayTitle,
   getBookTooltip,
 } from '@flow/reader/book'
-import {
-  useBackground,
-  useLibrary,
-  useList,
-  useMobile,
-  useTranslation,
-} from '@flow/reader/hooks'
+import { useBackground } from '@flow/reader/hooks/theme/useBackground'
+import { useLibrary } from '@flow/reader/hooks/useLibrary'
+import { useList } from '@flow/reader/hooks/useList'
+import { useMobile } from '@flow/reader/hooks/useMobile'
+import { useTranslation } from '@flow/reader/hooks/useTranslation'
 import {
   compareHref,
-  dfs,
   INavItem,
   reader,
   useReaderSnapshot,
-} from '@flow/reader/models'
-import { viewModeState } from '@flow/reader/state'
+} from '@flow/reader/models/reader'
+import { dfs } from '@flow/reader/models/tree'
+import { useSetViewMode } from '@flow/reader/state'
 
 import { Row } from '../Row'
-import { PaneViewProps, PaneView, Pane } from '../base'
+import { Pane, PaneView, PaneViewProps } from '../base/PaneView'
+import { StateLayer } from '../base/StateLayer'
 
 export const TocView: React.FC<PaneViewProps> = (props) => {
   const mobile = useMobile()
@@ -42,7 +39,7 @@ export const TocView: React.FC<PaneViewProps> = (props) => {
 const LibraryPane: React.FC = () => {
   const books = useLibrary()
   const { focusedBookTab, groups } = useReaderSnapshot()
-  const setViewMode = useSetRecoilState(viewModeState)
+  const setViewMode = useSetViewMode()
   const [, , background] = useBackground()
   const paneRef = useRef<HTMLDivElement>(null)
   const rowRefs = useRef(new Map<string, HTMLButtonElement>())
@@ -91,12 +88,12 @@ const LibraryPane: React.FC = () => {
               }
             }}
             className={clsx(
-              'relative w-full truncate py-1 pl-5 pr-3 text-left',
+              'relative w-full truncate py-1 pr-3 pl-5 text-left',
               opened && !active && background.rowActiveClassName,
               active &&
                 clsx(
                   background.rowActiveClassName,
-                  'ring-1 ring-inset ring-primary70',
+                  'ring-ring ring-1 ring-inset',
                 ),
             )}
             title={tooltip}
@@ -112,7 +109,7 @@ const LibraryPane: React.FC = () => {
           >
             <StateLayer />
             {opened && !active && (
-              <span className="absolute inset-y-1 left-1 w-0.5 rounded-full bg-primary70/60" />
+              <span className="bg-primary/60 absolute inset-y-1 left-1 w-0.5 rounded-full" />
             )}
             {displayTitle}
           </button>
@@ -135,7 +132,7 @@ const TocPane: React.FC = () => {
     () => rows.findIndex(({ item }) => tocItemIdentity(item) === currentKey),
     [currentKey, rows],
   )
-  const lastScrolledKey = useRef<string>()
+  const lastScrolledKey = useRef<string | undefined>(undefined)
   const [locateRequest, setLocateRequest] = useState(0)
 
   useEffect(() => {

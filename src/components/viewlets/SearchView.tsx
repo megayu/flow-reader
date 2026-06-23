@@ -2,17 +2,15 @@ import { useState, useEffect, useMemo } from 'react'
 import Highlighter from 'react-highlight-words'
 import { VscCollapseAll, VscExpandAll } from 'react-icons/vsc'
 
-import { useAction, useList, useTranslation } from '@flow/reader/hooks'
-import {
-  flatTree,
-  IMatch,
-  useReaderSnapshot,
-  reader,
-} from '@flow/reader/models'
+import { useAction } from '@flow/reader/hooks/useAction'
+import { useList } from '@flow/reader/hooks/useList'
+import { useTranslation } from '@flow/reader/hooks/useTranslation'
+import { IMatch, reader, useReaderSnapshot } from '@flow/reader/models/reader'
+import { flatTree } from '@flow/reader/models/tree'
 
 import { TextField } from '../Form'
 import { Row } from '../Row'
-import { PaneViewProps, PaneView } from '../base'
+import { PaneView, PaneViewProps } from '../base/PaneView'
 
 // When inputting with IME and storing state in `valtio`,
 // unexpected rendering with `e.target.value === ''` occurs,
@@ -96,7 +94,7 @@ const ResultList: React.FC<ResultListProps> = ({ results, keyword }) => {
 
   return (
     <>
-      <div className="px-5 py-2 text-outline  typescale-body-small">
+      <div className="text-muted-foreground px-5 py-2 text-xs">
         {t('files.result')
           .replace('{n}', '' + resultCount)
           .replace('{m}', '' + sectionCount)}

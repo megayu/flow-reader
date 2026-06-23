@@ -1,4 +1,4 @@
-import EventEmitter from 'event-emitter'
+import EventEmitter from './utils/event-emitter'
 import localforage from 'localforage'
 
 import { defer, isXml, parse } from './utils/core'

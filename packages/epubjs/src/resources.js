@@ -1,4 +1,4 @@
-import path from 'path-webpack'
+import path from './utils/posix-path'
 
 import { createBase64Url, createBlobUrl, blob2base64 } from './utils/core'
 import mime from './utils/mime'

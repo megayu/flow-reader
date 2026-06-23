@@ -1,16 +1,12 @@
 import './styles.css'
 import 'react-photo-view/dist/react-photo-view.css'
 
-import { LiteralProvider } from '@literal-ui/core'
 import type { AppProps } from 'next/app'
-import type { ComponentType, PropsWithChildren } from 'react'
 import { useEffect } from 'react'
-import { RecoilRoot } from 'recoil'
 
-import { Layout, Theme } from '../components'
+import { Layout } from '../components/Layout'
+import { Theme } from '../components/Theme'
 import { revealScrollbars } from '../scrollbar'
-
-const AppLiteralProvider = LiteralProvider as ComponentType<PropsWithChildren>
 
 function useRevealScrollbars() {
   useEffect(() => {
@@ -58,13 +54,11 @@ export default function MyApp({ Component, pageProps }: AppProps) {
   useDevtoolsShortcut()
 
   return (
-    <AppLiteralProvider>
-      <RecoilRoot>
-        <Theme />
-        <Layout>
-          <Component {...pageProps} />
-        </Layout>
-      </RecoilRoot>
-    </AppLiteralProvider>
+    <>
+      <Theme />
+      <Layout>
+        <Component {...pageProps} />
+      </Layout>
+    </>
   )
 }

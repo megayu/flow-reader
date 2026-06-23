@@ -28,11 +28,13 @@ class Archive {
       return Promise.resolve(this.zip)
     }
 
-    this.zipPromise ??= import('jszip/dist/jszip').then((module) => {
-      const JSZip = module.default || module
-      this.zip = new JSZip()
-      return this.zip
-    })
+    if (!this.zipPromise) {
+      this.zipPromise = import('jszip/dist/jszip').then((module) => {
+        const JSZip = module.default || module
+        this.zip = new JSZip()
+        return this.zip
+      })
+    }
 
     return this.zipPromise
   }
@@ -145,10 +147,10 @@ class Archive {
   /**
    * Get Text from Archive by Url
    * @param  {string} url
-   * @param  {string} [encoding]
+   * @param  {string} [_encoding]
    * @return {string}
    */
-  getText(url, encoding) {
+  getText(url, _encoding) {
     var decodededUrl = window.decodeURIComponent(url.substr(1)) // Remove first slash
     var entry = this.zip.file(decodededUrl)
 

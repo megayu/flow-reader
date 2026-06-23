@@ -9,12 +9,12 @@ import {
   isDarkPaletteColor,
   normalizePaletteColor,
   useBackground,
-  useColorScheme,
-} from '@flow/reader/hooks'
+} from '@flow/reader/hooks/theme/useBackground'
+import { useColorScheme } from '@flow/reader/hooks/theme/useColorScheme'
 import { useSettings, type Settings } from '@flow/reader/state'
 
 import { ColorPickerPopover } from '../ColorPickerPopover'
-import { PaneViewProps, PaneView } from '../base'
+import { PaneView, PaneViewProps } from '../base/PaneView'
 
 export const ThemeView: React.FC<PaneViewProps> = (props) => {
   return (
@@ -36,7 +36,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({
   const [, setBackground] = useBackground()
   const [{ theme }, setSettings] = useSettings()
   const [customPickerOpen, setCustomPickerOpen] = useState(false)
-  const previousThemeRef = useRef<Settings['theme']>()
+  const previousThemeRef = useRef<Settings['theme'] | undefined>(undefined)
   const previousSchemeRef = useRef<'light' | 'dark' | 'system'>('system')
   const customSessionActiveRef = useRef(false)
   const customSessionAppliedRef = useRef(false)
@@ -129,7 +129,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({
   return (
     <div
       className={clsx(
-        'bg-default/70 z-[100] flex flex-col-reverse items-center gap-2 rounded-full p-1 text-on-surface-variant shadow-lg ring-1 ring-inset ring-on-surface-variant/20 backdrop-blur-sm typescale-body-small',
+        'text-muted-foreground ring-border bg-background/70 z-[100] flex flex-col-reverse items-center gap-2 rounded-full p-1 text-xs shadow-lg ring-1 backdrop-blur-sm ring-inset',
         positioned || 'relative',
         className,
       )}
@@ -159,7 +159,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({
         onClick={openCustomPicker}
       />
       {customPickerOpen && (
-        <div className="absolute left-[46px] top-0 z-[110]">
+        <div className="absolute top-0 left-[46px] z-[110]">
           <ColorPickerPopover
             value={customBackground}
             defaultValue={defaultCustomBackgroundColor}
@@ -207,7 +207,7 @@ const Background: React.FC<BackgroundProps> = ({
       aria-pressed={selected}
       className={clsx(
         'light h-9 w-9 rounded-full border shadow-sm',
-        selected ? 'border-2 border-primary70' : 'border-outline-variant',
+        selected ? 'border-primary border-2' : 'border-border',
         className,
       )}
       {...props}

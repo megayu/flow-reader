@@ -1,10 +1,21 @@
-let webpackConfig = require('./webpack.config.js')
-webpackConfig.mode = 'development'
-webpackConfig.externals = {}
-webpackConfig.module.rules.push({
-  test: /\.xhtml$/i,
-  use: 'raw-loader',
-})
+let baseWebpackConfig = require('./webpack.config.js')
+let webpackConfig = {
+  ...baseWebpackConfig,
+  mode: 'development',
+  externals: {},
+  module: {
+    ...baseWebpackConfig.module,
+    rules: [
+      ...baseWebpackConfig.module.rules,
+      {
+        test: /\.xhtml$/i,
+        use: 'raw-loader',
+      },
+    ],
+  },
+}
+delete webpackConfig.entry
+delete webpackConfig.optimization
 
 module.exports = function (config) {
   config.set({
@@ -21,7 +32,7 @@ module.exports = function (config) {
 
     // frameworks to use
     // available frameworks: https://npmjs.org/browse/keyword/karma-adapter
-    frameworks: ['mocha'],
+    frameworks: ['mocha', 'webpack'],
 
     // list of files / patterns to load in the browser
     files: [
@@ -65,7 +76,6 @@ module.exports = function (config) {
     //   devtool: 'inline-source-map',
     //   resolve: {
     //     alias: {
-    //       path: "path-webpack"
     //     }
     //   },
     //   module: {

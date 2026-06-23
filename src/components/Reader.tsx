@@ -1,4 +1,3 @@
-import { useEventListener } from '@literal-ui/hooks'
 import clsx from 'clsx'
 import dynamic from 'next/dynamic'
 import React, {
@@ -19,18 +18,19 @@ import {
 } from 'react-icons/md'
 import { RiBookLine } from 'react-icons/ri'
 import type { IPhotoSliderProps } from 'react-photo-view/dist/PhotoSlider'
-import { useRecoilValue, useSetRecoilState, type SetterOrUpdater } from 'recoil'
-import useTilg from 'tilg'
 import { useSnapshot } from 'valtio'
 
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
 import {
-  navbarState,
-  settingsDialogOpenState,
+  useSetNavbar,
+  useSetSettingsDialogOpen,
+  useSetViewMode,
+  useSetZenMode,
+  useSetZenTypographyOverrides,
   useSettingsReady,
-  viewModeState,
-  zenModeState,
-  zenTypographyOverridesState,
+  useViewModeValue,
+  useZenModeValue,
+  type SetterOrUpdater,
   type TypographyConfiguration,
   type ViewMode,
 } from '@flow/reader/state'
@@ -38,17 +38,20 @@ import {
 import { getBookDisplayTitle, getBookTooltip } from '../book'
 import { db } from '../db'
 import { handleFiles } from '../file'
+import { useBackground } from '../hooks/theme/useBackground'
+import { useColorScheme } from '../hooks/theme/useColorScheme'
+import { useAction, type Action as ReaderPanelAction } from '../hooks/useAction'
+import { useEventListener } from '../hooks/useEventListener'
+import { useMobile } from '../hooks/useMobile'
+import { hasSelection } from '../hooks/useTextSelection'
+import { useTranslation } from '../hooks/useTranslation'
+import { useTypography } from '../hooks/useTypography'
 import {
-  hasSelection,
-  type Action as ReaderPanelAction,
-  useBackground,
-  useAction,
-  useColorScheme,
-  useMobile,
-  useTranslation,
-  useTypography,
-} from '../hooks'
-import { BookTab, reader, useReaderSnapshot, type ISection } from '../models'
+  BookTab,
+  reader,
+  useReaderSnapshot,
+  type ISection,
+} from '../models/reader'
 import { findSectionByLinkedHref, safeDecodeHref, sameHref } from '../noteLinks'
 import { isTouchScreen } from '../platform'
 import { revealScrollbars } from '../scrollbar'
@@ -66,8 +69,8 @@ import {
 } from './Annotation'
 import { Tab } from './Tab'
 import { TextSelectionMenu } from './TextSelectionMenu'
-import { DropZone, useDndContext } from './base'
-import * as pages from './pages'
+import { DropZone, useDndContext } from './base/DropZone'
+import { Settings } from './pages/settings'
 
 const PhotoSlider = dynamic<IPhotoSliderProps>(
   () =>
@@ -80,6 +83,7 @@ const PhotoSlider = dynamic<IPhotoSliderProps>(
 const FONT_SIZE_MIN = 14
 const FONT_SIZE_MAX = 28
 const FONT_SIZE_DEFAULT = 16
+const pageComponents = [Settings]
 type ZenTypographyOverridesSetter = SetterOrUpdater<
   Record<string, TypographyConfiguration>
 >
@@ -403,8 +407,8 @@ function handleTabSwitchShortcut(
       index === 8
         ? !!group?.tabs.length
         : index !== undefined
-        ? !!group?.tabs[index]
-        : !!group?.tabs.length
+          ? !!group?.tabs[index]
+          : !!group?.tabs.length
     if (!hasTarget) return true
 
     if (index === 8) {
@@ -562,8 +566,8 @@ function handleChapterShortcut(e: KeyboardEvent, tab?: BookTab) {
     e.code === 'BracketLeft' || e.key === '['
       ? -1
       : e.code === 'BracketRight' || e.key === ']'
-      ? 1
-      : 0
+        ? 1
+        : 0
   if (!direction) return false
   if (shouldIgnoreReaderShortcut(e)) return false
 
@@ -698,14 +702,12 @@ interface ReaderGridViewProps {
 export function ReaderGridView({ content }: ReaderGridViewProps) {
   const { groups } = useReaderSnapshot()
   const [action, setAction] = useAction()
-  const setViewMode = useSetRecoilState(viewModeState)
-  const viewMode = useRecoilValue(viewModeState)
-  const zenMode = useRecoilValue(zenModeState)
-  const setZenMode = useSetRecoilState(zenModeState)
-  const setSettingsOpen = useSetRecoilState(settingsDialogOpenState)
-  const setZenTypographyOverrides = useSetRecoilState(
-    zenTypographyOverridesState,
-  )
+  const setViewMode = useSetViewMode()
+  const viewMode = useViewModeValue()
+  const zenMode = useZenModeValue()
+  const setZenMode = useSetZenMode()
+  const setSettingsOpen = useSetSettingsDialogOpen()
+  const setZenTypographyOverrides = useSetZenTypographyOverrides()
   const enterReaderMode = useCallback(
     () => setViewMode('reader'),
     [setViewMode],
@@ -758,7 +760,7 @@ function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
   const { tabs, selectedIndex } = useSnapshot(group)
   const t = useTranslation()
   const [backgroundClassName] = useBackground()
-  const zenMode = useRecoilValue(zenModeState)
+  const zenMode = useZenModeValue()
   const tabWheelDelta = useRef(0)
   const lastTabWheelSwitch = useRef(0)
 
@@ -826,7 +828,7 @@ function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
         <DropZone
           className={clsx(
             'h-full min-h-0',
-            content && 'pointer-events-none opacity-0',
+            Boolean(content) && 'pointer-events-none opacity-0',
           )}
           onDrop={async (e) => {
             // read `e.dataTransfer` first to avoid get empty value after `await`
@@ -838,7 +840,7 @@ function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
             } else {
               const text = e.dataTransfer.getData('text/plain')
               const tabParam =
-                Object.values(pages).find((p) => p.displayName === text) ??
+                pageComponents.find((p) => p.displayName === text) ??
                 (await db.books.get(text))
               if (tabParam) tabs.push(tabParam)
             }
@@ -975,7 +977,7 @@ interface BookRenditionLifecycleOptions {
   currentSpread: RenditionSpread
   typographyLayoutSignature: string
   applyCustomStyle: (contents?: any) => void
-  containerRef: React.RefObject<HTMLDivElement>
+  containerRef: React.RefObject<HTMLDivElement | null>
 }
 
 function useBookRenditionLifecycle({
@@ -989,8 +991,10 @@ function useBookRenditionLifecycle({
   containerRef,
 }: BookRenditionLifecycleOptions) {
   const prevSize = useRef(0)
-  const previousSpread = useRef<string>()
-  const previousTypographyLayoutSignature = useRef<string>()
+  const previousSpread = useRef<string | undefined>(undefined)
+  const previousTypographyLayoutSignature = useRef<string | undefined>(
+    undefined,
+  )
   const applyCustomStyleRef = useRef(applyCustomStyle)
   const currentSpreadRef = useRef(currentSpread)
 
@@ -1101,7 +1105,7 @@ function useBookRenditionLifecycle({
 function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
   const ref = useRef<HTMLDivElement>(null)
   const chapterFindInputRef = useRef<HTMLInputElement>(null)
-  const previousFindLocationKey = useRef<string>()
+  const previousFindLocationKey = useRef<string | undefined>(undefined)
   const noteRequestId = useRef(0)
   const [chapterFind, setChapterFind] =
     useState<ChapterFindState>(initialChapterFind)
@@ -1118,28 +1122,30 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
 
   const { iframe, iframes, rendition, rendered, container, currentLocation } =
     useSnapshot(tab)
-  const frameWindows = useMemo(
-    () => (iframes.length ? [...iframes] : iframe ? [iframe] : []),
-    [iframe, iframes],
-  )
+  const frameWindows = useMemo(() => {
+    void iframe
+    void iframes.length
 
-  useTilg()
+    return tab.iframes.length
+      ? [...tab.iframes]
+      : tab.iframe
+        ? [tab.iframe]
+        : []
+  }, [iframe, iframes, tab])
 
-  const setNavbar = useSetRecoilState(navbarState)
-  const viewMode = useRecoilValue(viewModeState)
-  const setViewMode = useSetRecoilState(viewModeState)
-  const zenMode = useRecoilValue(zenModeState)
-  const setZenMode = useSetRecoilState(zenModeState)
-  const setZenTypographyOverrides = useSetRecoilState(
-    zenTypographyOverridesState,
-  )
+  const setNavbar = useSetNavbar()
+  const viewMode = useViewModeValue()
+  const setViewMode = useSetViewMode()
+  const zenMode = useZenModeValue()
+  const setZenMode = useSetZenMode()
+  const setZenTypographyOverrides = useSetZenTypographyOverrides()
   const enterReaderMode = useCallback(
     () => setViewMode('reader'),
     [setViewMode],
   )
   const mobile = useMobile()
   const [action, setAction] = useAction()
-  const setSettingsOpen = useSetRecoilState(settingsDialogOpenState)
+  const setSettingsOpen = useSetSettingsDialogOpen()
 
   const findScopeSectionIndex = useCallback(() => {
     const manager = rendition?.manager as ReflowableManager | undefined
@@ -1767,7 +1773,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
 
 interface ChapterFindBarProps {
   find: ChapterFindState
-  inputRef: React.RefObject<HTMLInputElement>
+  inputRef: React.RefObject<HTMLInputElement | null>
   onChange: (query: string) => void
   onClose: () => void
   onNext: () => void
@@ -1788,13 +1794,13 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
   return (
     <div
       data-flow-keyboard-capture="true"
-      className="bg-default absolute -top-12 right-4 z-30 flex items-center gap-2 rounded-lg px-3 py-2 text-on-surface-variant shadow-lg"
+      className="text-muted-foreground bg-background absolute -top-12 right-4 z-30 flex items-center gap-2 rounded-lg px-3 py-2 shadow-lg"
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
       <input
         ref={inputRef}
-        className="w-40 bg-transparent px-1 py-0.5 text-on-surface outline-none typescale-body-medium"
+        className="text-foreground w-40 bg-transparent px-1 py-0.5 text-sm outline-none"
         value={find.query}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
@@ -1809,25 +1815,25 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
           }
         }}
       />
-      <div className="min-w-[3.5rem] text-center text-outline typescale-body-small">
+      <div className="text-muted-foreground min-w-[3.5rem] text-center text-xs">
         {find.searching ? '...' : `${current}/${count}`}
       </div>
       <button
-        className="p-1 text-outline hover:text-on-surface disabled:opacity-40"
+        className="text-muted-foreground hover:text-foreground p-1 disabled:opacity-40"
         disabled={disabled || find.activeIndex <= 0}
         onClick={onPrevious}
       >
         <MdKeyboardArrowUp size={22} />
       </button>
       <button
-        className="p-1 text-outline hover:text-on-surface disabled:opacity-40"
+        className="text-muted-foreground hover:text-foreground p-1 disabled:opacity-40"
         disabled={disabled || find.activeIndex >= count - 1}
         onClick={onNext}
       >
         <MdKeyboardArrowDown size={22} />
       </button>
       <button
-        className="p-1 text-outline hover:text-on-surface"
+        className="text-muted-foreground hover:text-foreground p-1"
         onClick={onClose}
       >
         <MdClose size={22} />
@@ -2378,8 +2384,8 @@ function findRenderedDocumentBySection(tab: BookTab, section: ISection) {
   const windows = tab.iframes.length
     ? tab.iframes
     : tab.iframe
-    ? [tab.iframe]
-    : []
+      ? [tab.iframe]
+      : []
 
   return windows
     .map((win) => win.document)
@@ -2981,7 +2987,7 @@ const ReaderPaneHeader: React.FC<ReaderPaneHeaderProps> = ({ tab }) => {
         {navPath.map((item, i) => (
           <button
             key={i}
-            className="flex shrink-0 items-center hover:text-on-surface"
+            className="hover:text-foreground flex shrink-0 items-center"
           >
             {item.label}
             {i !== navPath.length - 1 && <MdChevronRight size={20} />}
@@ -3049,7 +3055,7 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
           </button>
         </Bar>
       ) : spread ? (
-        <div className="grid h-6 grid-cols-2 items-center px-[4vw] text-center text-outline typescale-body-small sm:px-2">
+        <div className="text-muted-foreground grid h-6 grid-cols-2 items-center px-[4vw] text-center text-xs sm:px-2">
           <div>
             {!singleVisiblePageOnRight &&
               startDisplayed &&
@@ -3067,7 +3073,7 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
           </div>
         </div>
       ) : (
-        <div className="flex h-6 items-center justify-center px-[4vw] text-outline typescale-body-small sm:px-2">
+        <div className="text-muted-foreground flex h-6 items-center justify-center px-[4vw] text-xs sm:px-2">
           {startDisplayed && formatFooterPage(startDisplayed, percentage)}
         </div>
       )}
@@ -3075,8 +3081,7 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
   )
 }
 
-const returnActionClass =
-  'rounded px-1 hover:bg-outline/10 hover:text-on-surface'
+const returnActionClass = 'rounded px-1 hover:bg-muted hover:text-foreground'
 
 function formatFooterPage(
   displayed: { page: number; total: number },
@@ -3092,7 +3097,7 @@ const Bar: React.FC<LineProps> = ({ className, ...props }) => {
   return (
     <div
       className={clsx(
-        'flex h-6 items-center justify-between gap-2 px-[4vw] text-outline typescale-body-small sm:px-2',
+        'text-muted-foreground flex h-6 items-center justify-between gap-2 px-[4vw] text-xs sm:px-2',
         className,
       )}
       {...props}

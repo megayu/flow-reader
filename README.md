@@ -19,7 +19,6 @@ Local-first ePub reader based on Next.js and a vendored ePub.js package.
 - `locales/` - application translations
 - `public/` - static assets and install metadata
 - `packages/epubjs/` - vendored ePub rendering engine
-- `packages/tailwind/` - shared Tailwind preset
 
 ## Development
 

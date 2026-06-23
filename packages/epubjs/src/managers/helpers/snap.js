@@ -1,4 +1,4 @@
-import EventEmitter from 'event-emitter'
+import EventEmitter from '../../utils/event-emitter'
 
 import { EVENTS, DOM_EVENTS } from '../../utils/constants'
 import {

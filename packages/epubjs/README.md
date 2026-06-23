@@ -114,22 +114,16 @@ This will allow the sandboxed content to run scripts, but currently makes the sa
 
 API documentation is available at [epubjs.org/documentation/0.3/](http://epubjs.org/documentation/0.3/)
 
-A Markdown version is included in the repo at [documentation/API.md](https://github.com/futurepress/epub.js/blob/master/documentation/md/API.md)
+This vendored package does not generate or commit local API documentation.
 
 ## Running Locally
 
-install [node.js](http://nodejs.org/)
+Install [node.js](http://nodejs.org/)
 
-Then install the project dependences with npm
+Then install the workspace dependencies with pnpm from the repository root.
 
-```javascript
-npm install
-```
-
-You can run the reader locally with the command
-
-```javascript
-npm start
+```sh
+pnpm install
 ```
 
 ## Examples
@@ -144,10 +138,10 @@ npm start
 
 ## Testing
 
-Test can be run by Karma from NPM
+Tests can be run by Karma from pnpm.
 
 ```js
-npm test
+pnpm --filter @flow/epubjs test
 ```
 
 ## Building for Distribution
@@ -156,14 +150,8 @@ Builds are concatenated and minified using [webpack](https://webpack.js.org/) an
 
 To generate a new build run
 
-```javascript
-npm run prepare
-```
-
-or to continuously build run
-
-```javascript
-npm run watch
+```sh
+pnpm --filter @flow/epubjs build
 ```
 
 ## Hooks

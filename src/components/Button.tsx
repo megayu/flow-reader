@@ -1,9 +1,12 @@
-import { StateLayer } from '@literal-ui/core'
 import clsx from 'clsx'
 import { ComponentProps } from 'react'
 import { IconType } from 'react-icons'
 
-interface IconButtonProps extends ComponentProps<'button'> {
+import { cn } from '@/lib/utils'
+
+import { Button as ShadcnButton } from './ui/button'
+
+interface IconButtonProps extends Omit<ComponentProps<'button'>, 'size'> {
   Icon: IconType
   size?: number
 }
@@ -14,16 +17,25 @@ export function IconButton({
   ...props
 }: IconButtonProps) {
   return (
-    <button className={clsx('relative block p-0.5', className)} {...props}>
-      <StateLayer />
+    <ShadcnButton
+      variant="ghost"
+      size="icon-sm"
+      className={cn('h-auto w-auto rounded-sm p-0.5', className)}
+      {...props}
+    >
       <Icon size={size} />
-    </button>
+    </ShadcnButton>
   )
 }
 
 const variantMap = {
-  primary: 'bg-primary-container text-on-primary-container',
-  secondary: 'bg-outline/10 text-on-surface-variant',
+  primary: 'default',
+  secondary: 'secondary',
+} as const
+
+const compactClassMap = {
+  true: 'h-auto px-2 py-1',
+  false: 'h-auto px-3 py-1.5',
 }
 
 export interface ButtonProps extends ComponentProps<'button'> {
@@ -37,13 +49,9 @@ export const Button: React.FC<ButtonProps> = ({
   ...props
 }) => {
   return (
-    <button
-      className={clsx(
-        'typescale-label-large disabled:bg-disabled disabled:text-on-disabled',
-        variantMap[variant],
-        compact ? 'px-2 py-1' : 'px-3 py-1.5',
-        className,
-      )}
+    <ShadcnButton
+      variant={variantMap[variant]}
+      className={clsx(compactClassMap[`${compact}`], className)}
       {...props}
     />
   )

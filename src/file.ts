@@ -93,9 +93,8 @@ export async function setupNativeOpenFiles({
 
     let unlistenDrop: (() => void) | undefined
     try {
-      const { getCurrentWebviewWindow } = await import(
-        '@tauri-apps/api/webviewWindow'
-      )
+      const { getCurrentWebviewWindow } =
+        await import('@tauri-apps/api/webviewWindow')
       unlistenDrop = await getCurrentWebviewWindow().onDragDropEvent(
         (event) => {
           if (event.payload.type !== 'drop') return

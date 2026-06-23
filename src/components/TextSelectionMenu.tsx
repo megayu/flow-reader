@@ -1,4 +1,3 @@
-import { Overlay } from '@literal-ui/core'
 import clsx from 'clsx'
 import { useMemo, useRef, useState } from 'react'
 import FocusLock from 'react-focus-lock'
@@ -12,22 +11,24 @@ import {
 import { useSnapshot } from 'valtio'
 
 import { typeMap, colorMap } from '../annotation'
-import {
-  isForwardSelection,
-  useMobile,
-  useSetAction,
-  useTextSelection,
-  useTranslation,
-  useTypography,
-} from '../hooks'
-import { BookTab } from '../models'
+import { useSetAction } from '../hooks/useAction'
+import { useMobile } from '../hooks/useMobile'
+import { isForwardSelection, useTextSelection } from '../hooks/useTextSelection'
+import { useTranslation } from '../hooks/useTranslation'
+import { useTypography } from '../hooks/useTypography'
+import { BookTab } from '../models/reader'
 import { isTouchScreen, scale } from '../platform'
 import { useSettings } from '../state'
 import { copy, keys, last } from '../utils'
 
 import { Button, IconButton } from './Button'
 import { TextField } from './Form'
-import { layout, LayoutAnchorMode, LayoutAnchorPosition } from './base'
+import {
+  layout,
+  LayoutAnchorMode,
+  LayoutAnchorPosition,
+} from './base/ContextView'
+import { Overlay } from './base/Overlay'
 
 interface TextSelectionMenuProps {
   tab: BookTab
@@ -35,20 +36,20 @@ interface TextSelectionMenuProps {
 export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
   tab,
 }) => {
-  const { rendition, annotationRange, annotationCfi, iframes } =
-    useSnapshot(tab)
+  const { iframes } = useSnapshot(tab)
   const [settings] = useSettings()
 
-  const windows = useMemo(
-    () =>
-      (iframes.length
-        ? iframes
-        : rendition?.manager?.views?._views
+  const windows = useMemo(() => {
+    void iframes.length
+
+    return (
+      tab.iframes.length
+        ? [...tab.iframes]
+        : (tab.rendition?.manager?.views?._views
             ?.map((view: any) => view.window as Window | undefined)
-            .filter((win: Window | undefined): win is Window => !!win) ??
-          []) as Window[],
-    [iframes, rendition],
-  )
+            .filter((win: Window | undefined): win is Window => !!win) ?? [])
+    ) as Window[]
+  }, [iframes.length, tab])
 
   const [selection, setSelection] = useTextSelection(windows)
 
@@ -59,7 +60,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
 
   // it is possible that both `selection` and `tab.annotationRange`
   // are set when select end within an annotation
-  const range = (selection?.getRangeAt(0) ?? annotationRange) as
+  const range = (selection?.getRangeAt(0) ?? tab.annotationRange) as
     | Range
     | undefined
   if (!range) return null
@@ -73,8 +74,8 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
   const forward = isTouchScreen
     ? false
     : selection
-    ? isForwardSelection(selection)
-    : true
+      ? isForwardSelection(selection)
+      : true
 
   const rects = [...range.getClientRects()].filter((r) => Math.round(r.width))
   const anchorRect = rects && (forward ? last(rects) : rects[0])
@@ -93,7 +94,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
       containerRect={el.parentElement!.getBoundingClientRect()}
       viewRect={el.getBoundingClientRect()}
       text={text}
-      cfi={selection ? undefined : annotationCfi}
+      cfi={selection ? undefined : tab.annotationCfi}
       forward={forward}
       hide={() => {
         if (selection) {
@@ -181,7 +182,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           }
         }}
         className={clsx(
-          'absolute z-50 bg-surface p-2 text-on-surface-variant shadow-1 focus:outline-none',
+          'bg-popover text-muted-foreground absolute z-50 p-2 shadow-sm focus:outline-none',
         )}
         style={{
           left: layout(containerRect.width, width, {
@@ -222,7 +223,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             />
           </div>
         ) : (
-          <div className="mb-3 flex gap-2 text-on-surface-variant">
+          <div className="text-muted-foreground mb-3 flex gap-2">
             <IconButton
               title={t('copy')}
               Icon={MdCopyAll}
@@ -311,7 +312,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                     fontSize: scale(16, 20),
                   }}
                   className={clsx(
-                    'flex cursor-pointer items-center justify-center text-on-surface-variant typescale-body-large',
+                    'text-muted-foreground flex cursor-pointer items-center justify-center text-base',
                     typeMap[type].class,
                   )}
                   onClick={() => {

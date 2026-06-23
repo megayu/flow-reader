@@ -1,4 +1,4 @@
-import EventEmitter from 'event-emitter'
+import EventEmitter from '../../utils/event-emitter'
 
 import Contents from '../../contents'
 import EpubCFI from '../../epubcfi'

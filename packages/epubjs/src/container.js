@@ -1,4 +1,4 @@
-import path from 'path-webpack'
+import path from './utils/posix-path'
 
 import { qs } from './utils/core'
 

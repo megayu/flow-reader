@@ -1,13 +1,15 @@
-import { StateLayer } from '@literal-ui/core'
 import clsx from 'clsx'
 import { ComponentProps } from 'react'
 import { MdClose } from 'react-icons/md'
 import { VscChevronDown, VscChevronRight } from 'react-icons/vsc'
 
-import { LIST_ITEM_SIZE, useBackground, useTranslation } from '../hooks'
+import { useBackground } from '../hooks/theme/useBackground'
+import { LIST_ITEM_SIZE } from '../hooks/useList'
+import { useTranslation } from '../hooks/useTranslation'
 import { scale } from '../platform'
 
 import { IconButton } from './Button'
+import { StateLayer } from './base/StateLayer'
 
 interface RowProps extends ComponentProps<'div'> {
   expanded?: boolean
@@ -71,8 +73,8 @@ export const Row: React.FC<RowProps> = ({
       />
       <div
         className={clsx(
-          'truncate typescale-body-small',
-          t ? 'text-on-surface-variant' : 'text-outline/60',
+          'truncate text-xs',
+          t ? 'text-muted-foreground' : 'text-muted-foreground/60',
         )}
         style={{
           fontSize: scale(12, 14),
@@ -82,7 +84,7 @@ export const Row: React.FC<RowProps> = ({
         {t || trans('untitled')}
         {description && (
           <span
-            className="text-outline"
+            className="text-muted-foreground"
             style={{
               fontSize: scale(11, 12),
               marginLeft: scale(4, 6),
@@ -95,7 +97,7 @@ export const Row: React.FC<RowProps> = ({
       <div className="ml-auto">
         {badge && childCount && (
           <div
-            className="rounded-full bg-tertiary-container px-1.5 py-px text-on-tertiary-container"
+            className="bg-accent text-accent-foreground rounded-full px-1.5 py-px"
             style={{
               fontSize: scale(11, 12),
             }}
@@ -113,7 +115,7 @@ export const Row: React.FC<RowProps> = ({
             }}
           />
         )}
-        <span className="text-outline">{info}</span>
+        <span className="text-muted-foreground">{info}</span>
       </div>
     </div>
   )
@@ -131,7 +133,7 @@ export const Twisty: React.FC<TwistyProps> = ({
   return (
     <Icon
       size={20}
-      className={clsx('shrink-0 text-outline', className)}
+      className={clsx('text-muted-foreground shrink-0', className)}
       style={{ padding: scale(2, 1) }}
       {...props}
     />

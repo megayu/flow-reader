@@ -1,15 +1,9 @@
-import { Theme } from '@material/material-color-utilities'
-import { atom, useRecoilValue, useSetRecoilState } from 'recoil'
-
-const themeState = atom<Theme | undefined>({
-  key: 'theme',
-  default: undefined,
-})
+import { useSetThemeValue, useThemeValue } from '@flow/reader/state'
 
 export function useTheme() {
-  return useRecoilValue(themeState)
+  return useThemeValue()
 }
 
 export function useSetTheme() {
-  return useSetRecoilState(themeState)
+  return useSetThemeValue()
 }

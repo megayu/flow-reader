@@ -12,13 +12,13 @@ import { createPortal } from 'react-dom'
 import { MdAdd, MdRemove } from 'react-icons/md'
 
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
-import { useTranslation } from '@flow/reader/hooks'
-import { reader, useReaderSnapshot } from '@flow/reader/models'
+import { useTranslation } from '@flow/reader/hooks/useTranslation'
+import { reader, useReaderSnapshot } from '@flow/reader/models/reader'
 import { TypographyConfiguration, useSettings } from '@flow/reader/state'
 
 import { getBodyTypographyBaseline } from '../../styles'
 import { Label, TextField, TextFieldProps } from '../Form'
-import { PaneViewProps, PaneView } from '../base'
+import { PaneView, PaneViewProps } from '../base/PaneView'
 
 type TextAlignOption = NonNullable<TypographyConfiguration['textAlign']>
 
@@ -39,7 +39,9 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
   const t = useTranslation('typography')
 
   const [localFonts, setLocalFonts] = useState<FontOption[]>()
-  const localFontsRequestRef = useRef<Promise<FontOption[] | undefined>>()
+  const localFontsRequestRef = useRef<
+    Promise<FontOption[] | undefined> | undefined
+  >(undefined)
   const bookTypography = focusedBookTab?.book.configuration?.typography
   const typography = bookTypography ?? {}
 
@@ -120,10 +122,10 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
 
   return (
     <PaneView {...props}>
-      <div className="flex min-h-0 flex-1 flex-col text-on-surface-variant typescale-body-small">
+      <div className="text-muted-foreground flex min-h-0 flex-1 flex-col text-xs">
         <div className="scroll min-h-0 flex-1">
           <div
-            className="space-y-3 pl-4 pr-1.5 pt-2 pb-4"
+            className="space-y-3 pt-2 pr-1.5 pb-4 pl-4"
             key={focusedBookTab?.id}
           >
             <SpreadField
@@ -297,7 +299,7 @@ function SegmentedField<T extends string>({
   return (
     <div className="flex flex-col">
       <Label name={name} />
-      <div className="bg-default flex h-[31px] items-center p-0.5 text-on-surface-variant">
+      <div className="text-muted-foreground bg-background flex h-[31px] items-center p-0.5">
         {options.map((option) => {
           const selected = option.value === value
           const inherited =
@@ -308,10 +310,9 @@ function SegmentedField<T extends string>({
               key={option.value ?? 'default'}
               type="button"
               className={clsx(
-                'h-full flex-1 px-2 !text-[13px] typescale-body-medium',
-                selected && 'bg-primary70 text-on-primary-container',
-                inherited &&
-                  'bg-on-surface-variant/10 ring-1 ring-inset ring-on-surface-variant/30',
+                'h-full flex-1 px-2 text-sm !text-[13px]',
+                selected && 'text-primary-foreground bg-primary',
+                inherited && 'bg-muted ring-border ring-1 ring-inset',
               )}
               onClick={() =>
                 onChange(selected && unsetOnSelected ? undefined : option.value)
@@ -571,7 +572,7 @@ const FontField: React.FC<FontFieldProps> = ({
           <div
             data-flow-keyboard-capture="true"
             ref={popoverRef}
-            className="fixed z-[100] overflow-y-auto overflow-x-hidden bg-surface py-1 text-on-surface shadow-1 ring-1 ring-inset ring-surface-variant"
+            className="bg-popover text-foreground ring-border fixed z-[100] overflow-x-hidden overflow-y-auto py-1 shadow-sm ring-1 ring-inset"
             style={popoverStyle}
           >
             {filteredOptions.map((option) => (
@@ -579,8 +580,8 @@ const FontField: React.FC<FontFieldProps> = ({
                 key={option.family}
                 type="button"
                 className={clsx(
-                  'block min-h-[36px] w-full whitespace-nowrap px-3 py-1.5 text-left !text-[14px] leading-5 hover:bg-outline/10',
-                  option.family === value && 'bg-outline/10',
+                  'hover:bg-muted block min-h-[36px] w-full px-3 py-1.5 text-left !text-[14px] leading-5 whitespace-nowrap',
+                  option.family === value && 'bg-muted',
                 )}
                 style={{
                   fontFamily: option.family,
@@ -601,7 +602,7 @@ const FontField: React.FC<FontFieldProps> = ({
               </button>
             ))}
             {!filteredOptions.length && (
-              <div className="px-5 py-3 text-outline typescale-body-medium">
+              <div className="text-muted-foreground px-5 py-3 text-sm">
                 {t('no_matching_fonts')}
               </div>
             )}
@@ -612,8 +613,10 @@ const FontField: React.FC<FontFieldProps> = ({
   )
 }
 
-interface NumberFieldProps
-  extends Omit<TextFieldProps<'input'>, 'onChange' | 'value' | 'defaultValue'> {
+interface NumberFieldProps extends Omit<
+  TextFieldProps<'input'>,
+  'onChange' | 'value' | 'defaultValue'
+> {
   value?: number
   baseValue?: () => number | undefined
   onChange: (v?: number) => void
