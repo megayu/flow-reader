@@ -11,7 +11,6 @@ import { IconType } from 'react-icons'
 import { MdCheck, MdClose } from 'react-icons/md'
 import { PolymorphicPropsWithoutRef } from 'react-polymorphic-types'
 
-import { useMobile } from '../hooks/useMobile'
 import { useTranslation } from '../hooks/useTranslation'
 
 import { IconButton } from './Button'
@@ -56,7 +55,6 @@ export function TextField<T extends ElementType = 'input'>({
   const innerRef = useRef<TextFieldElement | null>(null)
   const datalistId = useId()
   const ref = outerRef || innerRef
-  const mobile = useMobile()
   const t = useTranslation()
 
   if (onClear) {
@@ -71,12 +69,12 @@ export function TextField<T extends ElementType = 'input'>({
   }
 
   useEffect(() => {
-    if (mobile === false && autoFocus) {
+    if (autoFocus) {
       setTimeout(() => {
         ref.current?.focus()
       })
     }
-  }, [autoFocus, mobile, ref])
+  }, [autoFocus, ref])
 
   return (
     <div className={clsx('flex flex-col', className)}>

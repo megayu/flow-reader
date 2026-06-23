@@ -22,7 +22,6 @@ import { useSnapshot } from 'valtio'
 
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
 import {
-  useSetNavbar,
   useSetSettingsDialogOpen,
   useSetViewMode,
   useSetZenMode,
@@ -42,8 +41,6 @@ import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
 import { useAction, type Action as ReaderPanelAction } from '../hooks/useAction'
 import { useEventListener } from '../hooks/useEventListener'
-import { useMobile } from '../hooks/useMobile'
-import { hasSelection } from '../hooks/useTextSelection'
 import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
 import {
@@ -53,7 +50,6 @@ import {
   type ISection,
 } from '../models/reader'
 import { findSectionByLinkedHref, safeDecodeHref, sameHref } from '../noteLinks'
-import { isTouchScreen } from '../platform'
 import { revealScrollbars } from '../scrollbar'
 import {
   createTypographyLayoutSignature,
@@ -62,11 +58,7 @@ import {
   updateCustomStyle,
 } from '../styles'
 
-import {
-  getClickedAnnotation,
-  setClickedAnnotation,
-  Annotations,
-} from './Annotation'
+import { setClickedAnnotation, Annotations } from './Annotation'
 import { Tab } from './Tab'
 import { TextSelectionMenu } from './TextSelectionMenu'
 import { DropZone, useDndContext } from './base/DropZone'
@@ -798,7 +790,7 @@ function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
       onMouseDown={handleMouseDown}
     >
       <Tab.List
-        className={clsx('hidden sm:flex', zenMode && '!hidden')}
+        className={clsx('flex', zenMode && '!hidden')}
         onWheel={handleTabWheel}
       >
         {tabs.map((tab, i) => {
@@ -1120,7 +1112,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
   const { dark } = useColorScheme()
   const [background] = useBackground()
 
-  const { iframe, iframes, rendition, rendered, container, currentLocation } =
+  const { iframe, iframes, rendition, rendered, currentLocation } =
     useSnapshot(tab)
   const frameWindows = useMemo(() => {
     void iframe
@@ -1133,7 +1125,6 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
         : []
   }, [iframe, iframes, tab])
 
-  const setNavbar = useSetNavbar()
   const viewMode = useViewModeValue()
   const setViewMode = useSetViewMode()
   const zenMode = useZenModeValue()
@@ -1143,7 +1134,6 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     () => setViewMode('reader'),
     [setViewMode],
   )
-  const mobile = useMobile()
   const [action, setAction] = useAction()
   const setSettingsOpen = useSetSettingsDialogOpen()
 
@@ -1542,38 +1532,13 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
           tab.showPrevLocation()
           return
         }
-        if (
-          !zenMode &&
-          mobile === false &&
-          el.tagName === 'IMG' &&
-          el.src.startsWith('blob:')
-        ) {
+        if (!zenMode && el.tagName === 'IMG' && el.src.startsWith('blob:')) {
           setSrc(el.src)
           return
         }
       }
-
-      if (isTouchScreen && container) {
-        if (getClickedAnnotation()) {
-          setClickedAnnotation(false)
-          return
-        }
-
-        const w = container.clientWidth
-        const x = e.clientX % w
-        const threshold = 0.3
-        const side = w * threshold
-
-        if (x < side) {
-          tab.prev()
-        } else if (w - x < side) {
-          tab.next()
-        } else if (mobile) {
-          setNavbar((a) => !a)
-        }
-      }
     },
-    [container, mobile, setNavbar, tab, zenMode],
+    [tab, zenMode],
   )
   useFrameEvent(frameWindows, 'click', handleFrameClick)
   useFrameEvent(frameWindows, 'contextmenu', preventContextMenu)
@@ -1646,77 +1611,8 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
   )
   useFrameEvent(frameWindows, 'keydown', handleFrameKeyDown)
 
-  const handleFrameTouchStart = useCallback(
-    (e: TouchEvent) => {
-      const x0 = e.targetTouches[0]?.clientX ?? 0
-      const y0 = e.targetTouches[0]?.clientY ?? 0
-      const t0 = Date.now()
-      const win = e.currentTarget as Window | null
-
-      if (!win) return
-
-      // When selecting text with long tap, `touchend` is not fired,
-      // so instead of use `addEventlistener`, we should use `on*`
-      // to remove the previous listener.
-      win.ontouchend = function handleTouchEnd(e: TouchEvent) {
-        win.ontouchend = null
-        const selection = win.getSelection()
-        if (hasSelection(selection)) return
-
-        const x1 = e.changedTouches[0]?.clientX ?? 0
-        const y1 = e.changedTouches[0]?.clientY ?? 0
-        const t1 = Date.now()
-
-        const deltaX = x1 - x0
-        const deltaY = y1 - y0
-        const deltaT = t1 - t0
-
-        const absX = Math.abs(deltaX)
-        const absY = Math.abs(deltaY)
-
-        if (absX < 10) return
-
-        if (absY / absX > 2) {
-          if (deltaT > 100 || absX < 30) {
-            return
-          }
-        }
-
-        if (deltaX > 0) {
-          tab.prev()
-        }
-
-        if (deltaX < 0) {
-          tab.next()
-        }
-      }
-    },
-    [tab],
-  )
-  useFrameEvent(frameWindows, 'touchstart', handleFrameTouchStart)
-
-  useEffect(() => {
-    const cleanups = frameWindows.map((win) => {
-      const handleTouchMove = (event: TouchEvent) => {
-        event.preventDefault()
-      }
-
-      win.document.addEventListener('touchmove', handleTouchMove, {
-        passive: false,
-      })
-
-      return () => {
-        win.document.removeEventListener('touchmove', handleTouchMove)
-      }
-    })
-
-    return () => {
-      cleanups.forEach((cleanup) => cleanup())
-    }
-  }, [frameWindows])
-
   return (
-    <div className={clsx('flex h-full flex-col', mobile && 'py-[3vw]')}>
+    <div className="flex h-full flex-col">
       <PhotoSlider
         images={[{ src, key: 0 }]}
         visible={!zenMode && !!src}
@@ -1727,7 +1623,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
       {!zenMode && <ReaderPaneHeader tab={tab} />}
       <div
         ref={ref}
-        className={clsx('relative flex-1', isTouchScreen || 'h-0')}
+        className="relative h-0 flex-1"
         // `color-scheme: dark` will make iframe background white
         style={{ colorScheme: 'auto' }}
       >
@@ -3055,7 +2951,7 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
           </button>
         </Bar>
       ) : spread ? (
-        <div className="text-muted-foreground grid h-6 grid-cols-2 items-center px-[4vw] text-center text-xs sm:px-2">
+        <div className="text-muted-foreground grid h-6 grid-cols-2 items-center px-2 text-center text-xs">
           <div>
             {!singleVisiblePageOnRight &&
               startDisplayed &&
@@ -3073,7 +2969,7 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
           </div>
         </div>
       ) : (
-        <div className="text-muted-foreground flex h-6 items-center justify-center px-[4vw] text-xs sm:px-2">
+        <div className="text-muted-foreground flex h-6 items-center justify-center px-2 text-xs">
           {startDisplayed && formatFooterPage(startDisplayed, percentage)}
         </div>
       )}
@@ -3097,7 +2993,7 @@ const Bar: React.FC<LineProps> = ({ className, ...props }) => {
   return (
     <div
       className={clsx(
-        'text-muted-foreground flex h-6 items-center justify-between gap-2 px-[4vw] text-xs sm:px-2',
+        'text-muted-foreground flex h-6 items-center justify-between gap-2 px-2 text-xs',
         className,
       )}
       {...props}

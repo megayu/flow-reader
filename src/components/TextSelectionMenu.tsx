@@ -12,12 +12,10 @@ import { useSnapshot } from 'valtio'
 
 import { typeMap, colorMap } from '../annotation'
 import { useSetAction } from '../hooks/useAction'
-import { useMobile } from '../hooks/useMobile'
 import { isForwardSelection, useTextSelection } from '../hooks/useTextSelection'
 import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
 import { BookTab } from '../models/reader'
-import { isTouchScreen, scale } from '../platform'
 import { useSettings } from '../state'
 import { copy, keys, last } from '../utils'
 
@@ -100,13 +98,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
   const el = view?.element as HTMLElement | undefined
   if (!el) return null
 
-  // prefer to display above the selection to avoid text selection helpers
-  // https://stackoverflow.com/questions/68081757/hide-the-two-text-selection-helpers-in-mobile-browsers
-  const forward = isTouchScreen
-    ? false
-    : selection
-      ? isForwardSelection(selection)
-      : true
+  const forward = selection ? isForwardSelection(selection) : true
 
   const rects = [...range.getClientRects()].filter((r) => Math.round(r.width))
   const anchorRect = rects && (forward ? last(rects) : rects[0])
@@ -147,8 +139,8 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
   )
 }
 
-const ICON_SIZE = scale(20, 24)
-const ANNOTATION_SIZE = scale(24, 30)
+const ICON_SIZE = 20
+const ANNOTATION_SIZE = 24
 
 interface TextSelectionMenuRendererProps {
   tab: BookTab
@@ -176,7 +168,6 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const ref = useRef<HTMLInputElement>(null)
   const [width, setWidth] = useState(0)
   const [height, setHeight] = useState(0)
-  const mobile = useMobile()
   const t = useTranslation('menu')
 
   const cfi = annotationCfi ?? tab.rangeToCfi(range)
@@ -199,7 +190,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     : _lineHeight * (zoom ?? 1)
 
   return (
-    <FocusLock disabled={mobile}>
+    <FocusLock>
       <Overlay
         // cover `sash`
         className="!z-50 !bg-transparent"
@@ -213,9 +204,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           if (!el) return
           setWidth(el.clientWidth)
           setHeight(el.clientHeight)
-          if (!mobile) {
-            el.focus()
-          }
+          el.focus()
         }}
         className={clsx(
           'bg-popover text-muted-foreground absolute z-50 p-2 shadow-sm focus:outline-none',
@@ -345,7 +334,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                     [typeMap[type].style]: colorMap[color],
                     width: ANNOTATION_SIZE,
                     height: ANNOTATION_SIZE,
-                    fontSize: scale(16, 20),
+                    fontSize: 16,
                   }}
                   className={clsx(
                     'text-muted-foreground flex cursor-pointer items-center justify-center text-base',

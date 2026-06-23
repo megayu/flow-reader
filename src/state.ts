@@ -83,8 +83,6 @@ interface AppStore {
   action?: Action
   libraryAction?: LibraryAction
   libraryStatusFilter: ReadingStatus[]
-  mobile?: boolean
-  navbar: boolean
   settings: Settings
   settingsDialogOpen: boolean
   settingsReady: boolean
@@ -95,8 +93,6 @@ interface AppStore {
   setAction: SetterOrUpdater<Action | undefined>
   setLibraryAction: SetterOrUpdater<LibraryAction | undefined>
   setLibraryStatusFilter: SetterOrUpdater<ReadingStatus[]>
-  setMobile: SetterOrUpdater<boolean | undefined>
-  setNavbar: SetterOrUpdater<boolean>
   setSettings: SetterOrUpdater<Settings>
   setSettingsDialogOpen: SetterOrUpdater<boolean>
   setSettingsReady: SetterOrUpdater<boolean>
@@ -116,8 +112,6 @@ export const useAppStore = create<AppStore>((set) => ({
   action: undefined,
   libraryAction: undefined,
   libraryStatusFilter: [],
-  mobile: undefined,
-  navbar: false,
   settings: defaultSettings,
   settingsDialogOpen: false,
   settingsReady: false,
@@ -135,10 +129,6 @@ export const useAppStore = create<AppStore>((set) => ({
     set((state) => ({
       libraryStatusFilter: resolveUpdate(value, state.libraryStatusFilter),
     })),
-  setMobile: (value) =>
-    set((state) => ({ mobile: resolveUpdate(value, state.mobile) })),
-  setNavbar: (value) =>
-    set((state) => ({ navbar: resolveUpdate(value, state.navbar) })),
   setSettings: (value) =>
     set((state) => ({ settings: resolveUpdate(value, state.settings) })),
   setSettingsDialogOpen: (value) =>
@@ -187,24 +177,6 @@ export function useLibraryStatusFilter() {
   const setFilters = useAppStore((state) => state.setLibraryStatusFilter)
 
   return [filters, setFilters] as const
-}
-
-export function useMobileState() {
-  const mobile = useAppStore((state) => state.mobile)
-  const setMobile = useAppStore((state) => state.setMobile)
-
-  return [mobile, setMobile] as const
-}
-
-export function useNavbar() {
-  const navbar = useAppStore((state) => state.navbar)
-  const setNavbar = useAppStore((state) => state.setNavbar)
-
-  return [navbar, setNavbar] as const
-}
-
-export function useSetNavbar() {
-  return useAppStore((state) => state.setNavbar)
 }
 
 export function useSettingsDialogOpen() {

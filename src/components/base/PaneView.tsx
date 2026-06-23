@@ -1,8 +1,6 @@
 import clsx from 'clsx'
 import { ComponentProps, forwardRef, useState } from 'react'
 
-import { scale } from '@flow/reader/platform'
-
 import { Twisty } from '../Row'
 
 import { Action, ActionBar } from './ActionBar'
@@ -40,7 +38,7 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
         <Twisty expanded={expanded} />
         <div
           className="text-muted-foreground text-xs !font-bold font-medium"
-          style={{ fontSize: scale(11, 12) }}
+          style={{ fontSize: 11 }}
         >
           {headline.toUpperCase()}
         </div>

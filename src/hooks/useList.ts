@@ -1,9 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react'
 
-import { scale } from '../platform'
-
-export const LIST_ITEM_SIZE = scale(24, 32)
+export const LIST_ITEM_SIZE = 24
 
 interface ScrollToItemOptions {
   align?: 'auto' | 'center' | 'end' | 'start'

@@ -81,9 +81,6 @@ export function useBackground() {
     root.style.setProperty('--flow-bg-sidebar', palette.sidebar)
     root.style.setProperty('--flow-bg-activity', palette.activity)
     root.style.setProperty('--flow-bg-active', palette.active)
-    document
-      .querySelector('#theme-color')
-      ?.setAttribute('content', palette.content)
   }, [palette])
 
   return [

@@ -390,7 +390,7 @@ interface PartProps {
 }
 const Item: React.FC<PartProps> = ({ title, children }) => {
   return (
-    <div className="grid gap-2 sm:grid-cols-[8.5rem_minmax(0,1fr)] sm:items-center">
+    <div className="grid grid-cols-[8.5rem_minmax(0,1fr)] items-center gap-2">
       <h3 className="text-muted-foreground text-sm font-semibold">{title}</h3>
       <div className="min-w-0">{children}</div>
     </div>

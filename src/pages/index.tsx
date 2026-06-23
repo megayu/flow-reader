@@ -36,9 +36,7 @@ import { BookRecord, CoverRecord, ReadingStatus, db } from '../db'
 import { handleFiles, openImportDialog, setupNativeOpenFiles } from '../file'
 import { useAction, useLibraryAction } from '../hooks/useAction'
 import { useBoolean } from '../hooks/useBoolean'
-import { useDisablePinchZooming } from '../hooks/useDisablePinchZooming'
 import { useCovers, useLibrary } from '../hooks/useLibrary'
-import { useMobile } from '../hooks/useMobile'
 import { useTranslation } from '../hooks/useTranslation'
 import { reader, useReaderSnapshot } from '../models/reader'
 import {
@@ -269,8 +267,6 @@ export default function Index() {
     settings.readerSidebarOpen,
   ])
 
-  useDisablePinchZooming()
-
   const openTextImportDialog = useCallback(
     (paths: string[], openAfterImport: boolean) => {
       if (!paths.length) return
@@ -469,12 +465,6 @@ export default function Index() {
   return (
     <>
       <Head>
-        {/* https://github.com/microsoft/vscode/blob/36fdf6b697cba431beb6e391b5a8c5f3606975a1/src/vs/code/browser/workbench/workbench.html#L16 */}
-        {/* Disable pinch zooming */}
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no"
-        />
         <title>{focusedTab?.title ?? 'Flow Reader'}</title>
       </Head>
       {!contentReady ? null : groups.length ? (
@@ -799,8 +789,6 @@ const Book: React.FC<BookProps> = ({
   toggle,
   onOpenBook,
 }) => {
-  const router = useRouter()
-  const mobile = useMobile()
   const t = useTranslation('home')
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const statusMenuRef = useRef<HTMLDivElement>(null)
@@ -833,10 +821,9 @@ const Book: React.FC<BookProps> = ({
   )
 
   const openBook = useCallback(async () => {
-    if (mobile) await router.push('/_')
     reader.addTab((await db.books.get(book.id)) ?? book)
     onOpenBook()
-  }, [book, mobile, onOpenBook, router])
+  }, [book, onOpenBook])
 
   const updateReadingStatus = useCallback(
     (readingStatus: ReadingStatus | null) => {
@@ -1022,7 +1009,7 @@ const Book: React.FC<BookProps> = ({
       </div>
 
       <div
-        className="text-muted-foreground mt-2 line-clamp-2 w-full text-center text-xs lg:text-sm"
+        className="text-muted-foreground mt-2 line-clamp-2 w-full text-center text-sm"
         title={tooltip}
       >
         {displayTitle}
@@ -1287,8 +1274,8 @@ const BookInfoDialog: React.FC<BookInfoDialogProps> = ({
         >
           ×
         </button>
-        <div className="grid gap-5 sm:grid-cols-[12rem_minmax(0,1fr)]">
-          <div className="mx-auto w-40 sm:w-full">
+        <div className="grid grid-cols-[12rem_minmax(0,1fr)] gap-5">
+          <div className="w-full">
             {cover && (
               <img
                 src={cover}
@@ -1299,7 +1286,7 @@ const BookInfoDialog: React.FC<BookInfoDialogProps> = ({
             )}
           </div>
           <div className="min-w-0 pr-6">
-            <h2 className="text-muted-foreground text-center !text-[30px] leading-tight font-bold sm:text-left">
+            <h2 className="text-muted-foreground !text-[30px] leading-tight font-bold">
               {title}
             </h2>
             {!!rows.length && (

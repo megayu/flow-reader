@@ -11,7 +11,6 @@ import {
 import { useBackground } from '@flow/reader/hooks/theme/useBackground'
 import { useLibrary } from '@flow/reader/hooks/useLibrary'
 import { useList } from '@flow/reader/hooks/useList'
-import { useMobile } from '@flow/reader/hooks/useMobile'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
 import {
   compareHref,
@@ -27,10 +26,9 @@ import { Pane, PaneView, PaneViewProps } from '../base/PaneView'
 import { StateLayer } from '../base/StateLayer'
 
 export const TocView: React.FC<PaneViewProps> = (props) => {
-  const mobile = useMobile()
   return (
     <PaneView {...props}>
-      {mobile || <LibraryPane />}
+      <LibraryPane />
       <TocPane />
     </PaneView>
   )

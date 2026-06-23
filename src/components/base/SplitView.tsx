@@ -10,7 +10,6 @@ import {
   useState,
 } from 'react'
 
-import { useMobile } from '@flow/reader/hooks/useMobile'
 import { clamp } from '@flow/reader/utils'
 
 import { Overlay } from './Overlay'
@@ -135,7 +134,6 @@ interface SashProps {
 const Sash: React.FC<SashProps> = ({ vertical, views }) => {
   const [hover, setHover] = useState(false)
   const [active, setActive] = useState(false)
-  const mobile = useMobile()
 
   const enabled = views.every((v) => v?.visible && v?.resize)
 
@@ -143,7 +141,7 @@ const Sash: React.FC<SashProps> = ({ vertical, views }) => {
     <div
       className={clsx(
         'sash relative z-30 shrink-0',
-        (mobile || !enabled) && 'pointer-events-none',
+        !enabled && 'pointer-events-none',
         vertical ? 'cursor-ns-resize' : 'cursor-ew-resize',
       )}
       style={{

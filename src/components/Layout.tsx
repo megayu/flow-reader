@@ -22,7 +22,7 @@ import {
   MdSearch,
   MdToc,
 } from 'react-icons/md'
-import { RiFontSize, RiHome6Line, RiSettings5Line } from 'react-icons/ri'
+import { RiFontSize, RiSettings5Line } from 'react-icons/ri'
 
 import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
@@ -32,13 +32,10 @@ import {
   type Action as ReaderPanelAction,
   type LibraryAction,
 } from '../hooks/useAction'
-import { Env } from '../hooks/useEnv'
-import { useMobile } from '../hooks/useMobile'
 import { useTranslation } from '../hooks/useTranslation'
-import { reader, useReaderSnapshot } from '../models/reader'
+import { useReaderSnapshot } from '../models/reader'
 import {
   useLibraryStatusFilter,
-  useNavbar,
   useSettingsDialogOpen,
   useSetZenTypographyOverrides,
   useViewMode,
@@ -48,7 +45,6 @@ import {
 } from '../state'
 import { activeClass } from '../styles'
 
-import { Overlay } from './base/Overlay'
 import { PaneView } from './base/PaneView'
 import { SplitView, useSplitViewItem } from './base/SplitView'
 import { SettingsDialog } from './pages/settings'
@@ -62,21 +58,13 @@ import { TypographyView } from './viewlets/TypographyView'
 export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
   useColorScheme()
 
-  const [ready, setReady] = useState(false)
   const [settingsOpen, setSettingsOpen] = useSettingsDialogOpen()
   const [action, setAction] = useAction()
   const actionBeforeZen = useRef<ReaderPanelAction | undefined>(undefined)
   const zenModeRef = useRef(false)
-  const mobile = useMobile()
   const zenMode = useZenModeValue()
   const { focusedBookTab } = useReaderSnapshot()
   const setZenTypographyOverrides = useSetZenTypographyOverrides()
-
-  useEffect(() => {
-    if (mobile === undefined) return
-    if (mobile) setAction(undefined)
-    setReady(true)
-  }, [mobile, setAction])
 
   useEffect(() => {
     if (zenMode && !zenModeRef.current) {
@@ -116,20 +104,14 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
   return (
     <div id="layout" className="select-none">
       <SplitView>
-        {!zenMode && mobile === false && (
+        {!zenMode && (
           <ActivityBar
             settingsOpen={settingsOpen}
             onSettingsOpenChange={setSettingsOpen}
           />
         )}
-        {!zenMode && mobile === true && (
-          <NavigationBar
-            settingsOpen={settingsOpen}
-            onSettingsOpenChange={setSettingsOpen}
-          />
-        )}
-        {ready && !zenMode && <SideBar />}
-        {ready && <Reader>{children}</Reader>}
+        {!zenMode && <SideBar />}
+        <Reader>{children}</Reader>
       </SplitView>
       {!zenMode && (
         <SettingsDialog
@@ -164,7 +146,6 @@ interface IAction {
   name: string
   title: string
   Icon: IconType
-  env: number
 }
 interface IViewAction extends IAction {
   name: ReaderPanelAction
@@ -177,35 +158,30 @@ const viewActions: IViewAction[] = [
     title: 'toc',
     Icon: MdToc,
     View: TocView,
-    env: Env.Desktop | Env.Mobile,
   },
   {
     name: 'search',
     title: 'search',
     Icon: MdSearch,
     View: SearchView,
-    env: Env.Desktop | Env.Mobile,
   },
   {
     name: 'annotation',
     title: 'annotation',
     Icon: MdFormatUnderlined,
     View: AnnotationView,
-    env: Env.Desktop | Env.Mobile,
   },
   {
     name: 'image',
     title: 'image',
     Icon: MdOutlineImage,
     View: ImageView,
-    env: Env.Desktop,
   },
   {
     name: 'typography',
     title: 'typography',
     Icon: RiFontSize,
     View: TypographyView,
-    env: Env.Desktop | Env.Mobile,
   },
 ]
 
@@ -220,7 +196,6 @@ const libraryViewActions: ILibraryViewAction[] = [
     title: 'library_filter',
     Icon: MdFilterList,
     View: LibraryFilterView,
-    env: Env.Desktop | Env.Mobile,
   },
 ]
 
@@ -247,9 +222,8 @@ const ActivityBar: React.FC<SettingsActionProps> = ({
         background.activityBarClassName,
       )}
     >
-      <ViewActionBar env={Env.Desktop} />
+      <ViewActionBar />
       <PageActionBar
-        env={Env.Desktop}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={onSettingsOpenChange}
       />
@@ -257,13 +231,10 @@ const ActivityBar: React.FC<SettingsActionProps> = ({
   )
 }
 
-interface EnvActionBarProps extends ComponentProps<'div'> {
-  env: Env
-}
+interface PageActionBarProps
+  extends ComponentProps<'div'>, SettingsActionProps {}
 
-interface PageActionBarProps extends EnvActionBarProps, SettingsActionProps {}
-
-function ViewActionBar({ className, env }: EnvActionBarProps) {
+function ViewActionBar({ className }: ComponentProps<'div'>) {
   const [action, setAction] = useAction()
   const [libraryAction, setLibraryAction] = useLibraryAction()
   const viewMode = useViewModeValue()
@@ -274,26 +245,24 @@ function ViewActionBar({ className, env }: EnvActionBarProps) {
 
   return (
     <ActionBar className={className}>
-      {actions
-        .filter((a) => a.env & env)
-        .map(({ name, title, Icon }) => {
-          const active = activeAction === name
-          return (
-            <Action
-              title={t(`${title}.title`)}
-              Icon={Icon}
-              active={active}
-              onClick={() => {
-                if (viewMode === 'library') {
-                  setLibraryAction(active ? undefined : (name as LibraryAction))
-                } else {
-                  setAction(active ? undefined : (name as ReaderPanelAction))
-                }
-              }}
-              key={name}
-            />
-          )
-        })}
+      {actions.map(({ name, title, Icon }) => {
+        const active = activeAction === name
+        return (
+          <Action
+            title={t(`${title}.title`)}
+            Icon={Icon}
+            active={active}
+            onClick={() => {
+              if (viewMode === 'library') {
+                setLibraryAction(active ? undefined : (name as LibraryAction))
+              } else {
+                setAction(active ? undefined : (name as ReaderPanelAction))
+              }
+            }}
+            key={name}
+          />
+        )
+      })}
     </ActionBar>
   )
 }
@@ -395,12 +364,9 @@ function useFullscreenAction() {
 }
 
 function PageActionBar({
-  env,
   settingsOpen,
   onSettingsOpenChange,
 }: PageActionBarProps) {
-  const mobile = useMobile()
-  const [action, setAction] = useState('Home')
   const [themeOpen, setThemeOpen] = useState(false)
   const [viewMode, setViewMode] = useViewMode()
   const [zenMode, setZenMode] = useZenMode()
@@ -420,38 +386,27 @@ function PageActionBar({
           viewMode === 'library' ? 'mode.return_reader' : 'mode.enter_library',
         Icon: viewMode === 'library' ? MdMenuBook : MdLibraryBooks,
         disabled: viewMode === 'library' && !focusedBookTab,
-        env: Env.Desktop,
       },
       {
         name: 'theme',
         title: 'theme',
         Icon: MdOutlineLightMode,
-        env: Env.Desktop,
       },
       {
         name: 'fullscreen',
         title: fullscreen ? 'fullscreen.exit' : 'fullscreen.enter',
         Icon: fullscreen ? MdFullscreenExit : MdFullscreen,
-        env: Env.Desktop,
       },
       {
         name: 'zen',
         title: 'zen.enter',
         Icon: MdCenterFocusStrong,
         disabled: viewMode === 'library' || !focusedBookTab,
-        env: Env.Desktop,
-      },
-      {
-        name: 'home',
-        title: 'home',
-        Icon: RiHome6Line,
-        env: Env.Mobile,
       },
       {
         name: 'settings',
         title: 'settings',
         Icon: RiSettings5Line,
-        env: Env.Desktop | Env.Mobile,
       },
     ],
     [focusedBookTab, fullscreen, viewMode],
@@ -460,131 +415,85 @@ function PageActionBar({
   return (
     <div>
       <ActionBar>
-        {pageActions
-          .filter((a) => a.env & env)
-          .map(({ name, title, Icon, disabled }, i) => {
-            const active = mobile
-              ? action === name
-              : (viewMode === 'library' && name === 'mode') ||
-                (themeOpen && name === 'theme') ||
-                (fullscreen && name === 'fullscreen') ||
-                (zenMode && name === 'zen') ||
-                (settingsOpen && name === 'settings')
-            const titleKey =
-              name === 'mode' || name === 'fullscreen' || name === 'zen'
-                ? title
-                : `${title}.title`
-            const actionButton = (
-              <Action
-                key={i}
-                title={t(titleKey)}
-                Icon={Icon}
-                active={active}
-                disabled={disabled}
-                onClick={() => {
-                  if (name === 'theme') {
-                    setThemeOpen((open) => !open)
-                    return
-                  }
+        {pageActions.map(({ name, title, Icon, disabled }, i) => {
+          const active =
+            (viewMode === 'library' && name === 'mode') ||
+            (themeOpen && name === 'theme') ||
+            (fullscreen && name === 'fullscreen') ||
+            (zenMode && name === 'zen') ||
+            (settingsOpen && name === 'settings')
+          const titleKey =
+            name === 'mode' || name === 'fullscreen' || name === 'zen'
+              ? title
+              : `${title}.title`
+          const actionButton = (
+            <Action
+              key={i}
+              title={t(titleKey)}
+              Icon={Icon}
+              active={active}
+              disabled={disabled}
+              onClick={() => {
+                if (name === 'theme') {
+                  setThemeOpen((open) => !open)
+                  return
+                }
 
-                  setThemeOpen(false)
-                  if (name === 'fullscreen') {
-                    void toggleFullscreen()
-                    return
-                  }
+                setThemeOpen(false)
+                if (name === 'fullscreen') {
+                  void toggleFullscreen()
+                  return
+                }
 
-                  if (name === 'zen') {
-                    if (viewMode !== 'library' && focusedBookTab) {
-                      onSettingsOpenChange(false)
-                      setZenMode(true)
-                    }
-                    return
+                if (name === 'zen') {
+                  if (viewMode !== 'library' && focusedBookTab) {
+                    onSettingsOpenChange(false)
+                    setZenMode(true)
                   }
+                  return
+                }
 
-                  if (name === 'mode') {
-                    if (viewMode === 'library') {
-                      if (focusedBookTab) setViewMode('reader')
-                    } else {
-                      setViewMode('library')
-                    }
-                    return
-                  }
-
-                  if (name === 'settings') {
-                    onSettingsOpenChange(true)
+                if (name === 'mode') {
+                  if (viewMode === 'library') {
+                    if (focusedBookTab) setViewMode('reader')
                   } else {
-                    reader.clear()
+                    setViewMode('library')
                   }
-                  setAction(name)
-                }}
-              />
+                  return
+                }
+
+                if (name === 'settings') {
+                  onSettingsOpenChange(true)
+                }
+              }}
+            />
+          )
+
+          if (name === 'theme') {
+            return (
+              <div className="relative h-12 w-12" key={i}>
+                {themeOpen && (
+                  <ThemePanel
+                    className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2"
+                    onClose={() => setThemeOpen(false)}
+                  />
+                )}
+                {actionButton}
+              </div>
             )
+          }
 
-            if (name === 'theme') {
-              return (
-                <div className="relative h-12 w-12" key={i}>
-                  {themeOpen && (
-                    <ThemePanel
-                      className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2"
-                      onClose={() => setThemeOpen(false)}
-                    />
-                  )}
-                  {actionButton}
-                </div>
-              )
-            }
-
-            return actionButton
-          })}
+          return actionButton
+        })}
       </ActionBar>
     </div>
-  )
-}
-
-function NavigationBar({
-  settingsOpen,
-  onSettingsOpenChange,
-}: SettingsActionProps) {
-  const r = useReaderSnapshot()
-  const readMode = r.focusedTab?.isBook
-  const [visible, setVisible] = useNavbar()
-  const [, , background] = useBackground()
-
-  return (
-    <>
-      {visible && (
-        <Overlay
-          className="!bg-transparent"
-          onClick={() => setVisible(false)}
-        />
-      )}
-      <div
-        className={clsx(
-          'NavigationBar border-border fixed inset-x-0 bottom-0 z-10 border-t',
-          background.sidebarClassName,
-        )}
-      >
-        {readMode ? (
-          <ViewActionBar
-            env={Env.Mobile}
-            className={clsx(visible || 'hidden')}
-          />
-        ) : (
-          <PageActionBar
-            env={Env.Mobile}
-            settingsOpen={settingsOpen}
-            onSettingsOpenChange={onSettingsOpenChange}
-          />
-        )}
-      </div>
-    </>
   )
 }
 
 interface ActionBarProps extends ComponentProps<'ul'> {}
 function ActionBar({ className, ...props }: ActionBarProps) {
   return (
-    <ul className={clsx('ActionBar flex sm:flex-col', className)} {...props} />
+    <ul className={clsx('ActionBar flex flex-col', className)} {...props} />
   )
 }
 
@@ -598,11 +507,10 @@ const Action: React.FC<ActionProps> = ({
   active,
   ...props
 }) => {
-  const mobile = useMobile()
   return (
     <button
       className={clsx(
-        'Action relative flex h-12 w-12 flex-1 items-center justify-center sm:flex-initial',
+        'Action relative flex h-12 w-12 items-center justify-center',
         active ? 'text-muted-foreground' : 'text-muted-foreground/70',
         props.disabled
           ? 'text-muted-foreground'
@@ -611,26 +519,23 @@ const Action: React.FC<ActionProps> = ({
       )}
       {...props}
     >
-      {active &&
-        (mobile || (
-          <div
-            className={clsx('absolute', 'inset-y-0 left-0 w-0.5', activeClass)}
-          />
-        ))}
+      {active && (
+        <div
+          className={clsx('absolute', 'inset-y-0 left-0 w-0.5', activeClass)}
+        />
+      )}
       <Icon size={28} />
     </button>
   )
 }
 
 const SideBar: React.FC = () => {
-  const [action, setAction] = useAction()
-  const [libraryAction, setLibraryAction] = useLibraryAction()
-  const mobile = useMobile()
+  const [action] = useAction()
+  const [libraryAction] = useLibraryAction()
   const t = useTranslation()
   const viewMode = useViewModeValue()
   const [, , background] = useBackground()
   const activeAction = viewMode === 'library' ? libraryAction : action
-  const setActiveAction = viewMode === 'library' ? setLibraryAction : setAction
   const actions = viewMode === 'library' ? libraryViewActions : viewActions
 
   const { size } = useSplitViewItem(SideBar, {
@@ -640,29 +545,23 @@ const SideBar: React.FC = () => {
   })
 
   return (
-    <>
-      {activeAction && mobile && (
-        <Overlay onClick={() => setActiveAction(undefined)} />
+    <div
+      className={clsx(
+        'SideBar flex flex-col',
+        background.sidebarClassName,
+        !activeAction && '!hidden',
       )}
-      <div
-        className={clsx(
-          'SideBar flex flex-col',
-          background.sidebarClassName,
-          !activeAction && '!hidden',
-          mobile ? 'absolute inset-y-0 right-0 z-10' : '',
-        )}
-        style={{ width: mobile ? '75%' : size }}
-      >
-        {actions.map(({ name, title, View }) => (
-          <View
-            key={name}
-            name={t(`${name}.title`)}
-            title={t(`${title}.title`)}
-            className={clsx(name !== activeAction && '!hidden')}
-          />
-        ))}
-      </div>
-    </>
+      style={{ width: size }}
+    >
+      {actions.map(({ name, title, View }) => (
+        <View
+          key={name}
+          name={t(`${name}.title`)}
+          title={t(`${title}.title`)}
+          className={clsx(name !== activeAction && '!hidden')}
+        />
+      ))}
+    </div>
   )
 }
 
@@ -728,16 +627,9 @@ const Reader: React.FC<ReaderProps> = ({ className, ...props }) => {
   useSplitViewItem(Reader)
   const [bg] = useBackground()
 
-  const r = useReaderSnapshot()
-  const readMode = r.focusedTab?.isBook
-
   return (
     <div
-      className={clsx(
-        'Reader flex-1 overflow-hidden',
-        readMode || 'mb-12 sm:mb-0',
-        bg,
-      )}
+      className={clsx('Reader flex-1 overflow-hidden', className, bg)}
       {...props}
     />
   )

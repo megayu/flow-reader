@@ -8,7 +8,6 @@ export default function Document() {
     <Html className="bg-background">
       <Head>
         <link rel="icon" href="/icons/192.png"></link>
-        <PWA />
         <PreventFlash />
       </Head>
       <body>
@@ -16,16 +15,6 @@ export default function Document() {
         <NextScript />
       </body>
     </Html>
-  )
-}
-
-function PWA() {
-  return (
-    <>
-      <link rel="manifest" href="/manifest.json" />
-      <meta id="theme-color" name="theme-color" content={background.light} />
-      <link rel="apple-touch-icon" href="/icons/192.png" />
-    </>
   )
 }
 
