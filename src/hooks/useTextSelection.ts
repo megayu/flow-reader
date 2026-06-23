@@ -34,9 +34,6 @@ export function useTextSelection(target?: Window | Window[]) {
     [target],
   )
 
-  // `mouseup` alone is unreliable when the pointer is released outside the
-  // iframe, so also listen to `selectionchange` and update after selection
-  // handles settle.
   useEffect(() => {
     const removeListeners = windows.map((win) => {
       let timeout: ReturnType<typeof setTimeout> | undefined
@@ -53,20 +50,31 @@ export function useTextSelection(target?: Window | Window[]) {
         }
       }
 
-      const scheduleSelectionUpdate = () => {
+      const clearCollapsedSelection = () => {
         if (timeout) clearTimeout(timeout)
-        timeout = setTimeout(updateSelection, 80)
+        timeout = setTimeout(() => {
+          const s = win.getSelection()
+          if (hasSelection(s)) return
+
+          setSelection((selection) => {
+            const selectionWindow =
+              selection?.anchorNode?.ownerDocument?.defaultView
+            return selectionWindow === win ? undefined : selection
+          })
+        }, 80)
       }
 
       win.addEventListener('mouseup', updateSelection)
-      win.document.addEventListener('selectionchange', scheduleSelectionUpdate)
+      win.document.addEventListener('mouseup', updateSelection)
+      win.document.addEventListener('selectionchange', clearCollapsedSelection)
 
       return () => {
         if (timeout) clearTimeout(timeout)
         win.removeEventListener('mouseup', updateSelection)
+        win.document.removeEventListener('mouseup', updateSelection)
         win.document.removeEventListener(
           'selectionchange',
-          scheduleSelectionUpdate,
+          clearCollapsedSelection,
         )
       }
     })
