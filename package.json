@@ -11,18 +11,21 @@
     "release:local": "node scripts/release-local.mjs",
     "analyze:turbopack": "next experimental-analyze --output",
     "start": "next start -p 7127",
-    "lint": "eslint src locales next.config.js tailwind.config.js postcss.config.js eslint.config.mjs",
+    "lint": "eslint src locales scripts test next.config.js tailwind.config.js postcss.config.js eslint.config.mjs playwright.config.ts",
     "test:theme": "node test/theme-tokens.js",
+    "test:smoke": "node scripts/test-smoke.mjs",
     "check": "pnpm test:theme && pnpm lint && pnpm build",
-    "check:full": "pnpm check && pnpm --filter @flow/epubjs test && cargo test --manifest-path src-tauri/Cargo.toml",
+    "check:full": "pnpm check && pnpm test:smoke && pnpm --filter @flow/epubjs test && cargo test --manifest-path src-tauri/Cargo.toml",
     "check:release": "pnpm check:full && pnpm tauri:build",
     "prepare": "husky install"
   },
   "lint-staged": {
     "*.{js,json,css,ts,tsx,md,mdx}": "prettier --write",
-    "!(pnpm-lock).{yml,yaml}": "prettier --write",
-    "{src,locales}/**/*.{js,ts,tsx}": "eslint --fix",
+    "*.{yml,yaml}": "prettier --write",
+    "{src,locales,test}/**/*.{js,ts,tsx}": "eslint --fix",
+    "scripts/**/*.mjs": "eslint --fix",
     "{next,tailwind,postcss}.config.js": "eslint --fix",
+    "playwright.config.ts": "eslint --fix",
     "eslint.config.mjs": "eslint --fix"
   },
   "dependencies": {
@@ -51,6 +54,7 @@
     "zustand": "5.0.14"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.0",
     "@tailwindcss/postcss": "4.3.1",
     "@tauri-apps/cli": "2.11.3",
     "@types/node": "20.19.43",
