@@ -218,12 +218,13 @@ struct WindowState {
     height: u32,
     #[serde(default)]
     maximized: bool,
-    #[serde(default)]
-    fullscreen: bool,
 }
 
 const MIN_RESTORED_WINDOW_WIDTH: u32 = 900;
 const MIN_RESTORED_WINDOW_HEIGHT: u32 = 600;
+const DEFAULT_RESTORED_WINDOW_WIDTH: u32 = 1280;
+const DEFAULT_RESTORED_WINDOW_HEIGHT: u32 = 800;
+const MAXIMIZED_BOUNDS_TOLERANCE: u32 = 16;
 const WINDOWS_MINIMIZED_POSITION_SENTINEL: i32 = -30_000;
 
 fn empty_object() -> Value {
