@@ -928,7 +928,7 @@ export class BookTab extends BaseTab {
   }
 
   get currentSectionHeading() {
-    const heading = this.currentSection?.document.querySelector(
+    const heading = this.currentSection?.document?.querySelector(
       'h1, h2, h3, h4, h5, h6',
     )
     return heading?.textContent?.trim()
