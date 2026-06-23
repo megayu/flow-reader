@@ -47,7 +47,7 @@ export const SearchView: React.FC<PaneViewProps> = (props) => {
 
   return (
     <PaneView {...props}>
-      <div className="scroll-parent">
+      <div className="scroll-parent h-full flex-1">
         <div className="py-px">
           <TextField
             as="input"
@@ -99,7 +99,7 @@ const ResultList: React.FC<ResultListProps> = ({ results, keyword }) => {
           .replace('{n}', '' + resultCount)
           .replace('{m}', '' + sectionCount)}
       </div>
-      <div ref={outerRef} className="scroll">
+      <div ref={outerRef} className="scroll flex-1">
         <div ref={innerRef}>
           {items.map(({ index }) => (
             <ResultRow key={index} result={rows[index]} keyword={keyword} />
@@ -119,7 +119,7 @@ const ResultRow: React.FC<ResultRowProps> = ({ result, keyword }) => {
   const { depth, expanded, subitems, id } = result
   let { excerpt, description } = result
   const tab = reader.focusedBookTab
-  const isResult = depth === 1
+  const isGroup = !!subitems?.length
 
   excerpt = excerpt.trim()
   description = description?.trim()
@@ -133,8 +133,8 @@ const ResultRow: React.FC<ResultRowProps> = ({ result, keyword }) => {
       active={tab?.activeResultID === id}
       expanded={expanded}
       subitems={subitems}
-      badge={isResult}
-      {...(!isResult && {
+      badge={isGroup}
+      {...(!isGroup && {
         onClick: () => {
           if (tab) {
             tab.activeResultID = id
@@ -144,7 +144,7 @@ const ResultRow: React.FC<ResultRowProps> = ({ result, keyword }) => {
       })}
       toggle={() => tab?.toggleResult(id)}
     >
-      {!isResult && (
+      {!isGroup && (
         <Highlighter
           highlightClassName="match-highlight"
           searchWords={[keyword]}
