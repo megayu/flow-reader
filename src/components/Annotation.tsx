@@ -103,7 +103,7 @@ const Definition: React.FC<DefinitionProps> = ({ tab, definition, dark }) => {
           (event?: Event) => {
             event?.preventDefault()
             event?.stopPropagation()
-            tab.setAnnotationRange(m.cfi!)
+            tab.setAnnotationRange(m.cfi!, event?.currentTarget)
             setClickedAnnotation(true)
           },
           undefined,
@@ -138,7 +138,7 @@ const Annotation: React.FC<AnnotationProps> = ({ tab, annotation }) => {
       (event?: Event) => {
         event?.preventDefault()
         event?.stopPropagation()
-        tab.setAnnotationRange(annotation.cfi)
+        tab.setAnnotationRange(annotation.cfi, event?.currentTarget)
         setClickedAnnotation(true)
       },
       undefined,

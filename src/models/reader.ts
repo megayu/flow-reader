@@ -640,12 +640,31 @@ export class BookTab extends BaseTab {
 
   annotationRange?: Range
   annotationCfi?: string
-  setAnnotationRange(cfi: string) {
-    const range = this.view?.contents.range(cfi)
-    if (range) {
-      this.annotationRange = ref(range)
-      this.annotationCfi = cfi
+  setAnnotationRange(cfi: string, target?: EventTarget | null) {
+    const doc =
+      target && 'ownerDocument' in target
+        ? (target.ownerDocument as Document | undefined)
+        : undefined
+    const targetView = doc?.defaultView
+      ? this.viewForWindow(doc.defaultView)
+      : undefined
+    const views = this.rendition?.manager?.views?._views ?? []
+    const candidates = [targetView, this.view, ...views].filter(Boolean)
+
+    for (const view of [...new Set(candidates)] as any[]) {
+      try {
+        const range = view?.contents?.range(cfi)
+        if (range) {
+          this.annotationRange = ref(range)
+          this.annotationCfi = cfi
+          return true
+        }
+      } catch (error) {
+        // The CFI only resolves in the view that owns the annotation.
+      }
     }
+
+    return false
   }
 
   define(def: string[]) {

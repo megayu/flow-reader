@@ -33,23 +33,56 @@ import { Overlay } from './base/Overlay'
 interface TextSelectionMenuProps {
   tab: BookTab
 }
+
+function getSelectionRange(selection?: Selection) {
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+    return
+  }
+
+  try {
+    return selection.getRangeAt(0)
+  } catch (error) {
+    return
+  }
+}
+
+function clearWindowSelections(windows: readonly Window[]) {
+  windows.forEach((win) => {
+    try {
+      win.getSelection()?.removeAllRanges()
+    } catch (error) {
+      // The iframe may have been detached since the selection was captured.
+    }
+  })
+}
+
 export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
   tab,
 }) => {
-  const { iframes } = useSnapshot(tab)
+  const { iframe, iframes, annotationRange, annotationCfi } = useSnapshot(
+    tab,
+  ) as unknown as {
+    iframe?: Window
+    iframes: readonly Window[]
+    annotationRange?: Range
+    annotationCfi?: string
+  }
   const [settings] = useSettings()
 
   const windows = useMemo(() => {
+    void iframe
     void iframes.length
 
     return (
       tab.iframes.length
         ? [...tab.iframes]
-        : (tab.rendition?.manager?.views?._views
-            ?.map((view: any) => view.window as Window | undefined)
-            .filter((win: Window | undefined): win is Window => !!win) ?? [])
+        : tab.iframe
+          ? [tab.iframe]
+          : (tab.rendition?.manager?.views?._views
+              ?.map((view: any) => view.window as Window | undefined)
+              .filter((win: Window | undefined): win is Window => !!win) ?? [])
     ) as Window[]
-  }, [iframes.length, tab])
+  }, [iframe, iframes, tab])
 
   const [selection, setSelection] = useTextSelection(windows)
 
@@ -60,9 +93,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
 
   // it is possible that both `selection` and `tab.annotationRange`
   // are set when select end within an annotation
-  const range = (selection?.getRangeAt(0) ?? tab.annotationRange) as
-    | Range
-    | undefined
+  const range = getSelectionRange(selection) ?? annotationRange
   if (!range) return null
 
   const view = tab.viewForRange(range)
@@ -94,20 +125,23 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
       containerRect={el.parentElement!.getBoundingClientRect()}
       viewRect={el.getBoundingClientRect()}
       text={text}
-      cfi={selection ? undefined : tab.annotationCfi}
+      cfi={selection ? undefined : annotationCfi}
       forward={forward}
       hide={() => {
         if (selection) {
-          selection.removeAllRanges()
+          try {
+            selection.removeAllRanges()
+          } catch (error) {
+            // The selection may belong to an iframe that has been replaced.
+          }
           setSelection(undefined)
         }
+        clearWindowSelections(windows)
         /**
          * {@link range}
          */
-        if (tab.annotationRange) {
-          tab.annotationRange = undefined
-        }
-        if (tab.annotationCfi) tab.annotationCfi = undefined
+        tab.annotationRange = undefined
+        tab.annotationCfi = undefined
       }}
     />
   )
@@ -169,7 +203,9 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
       <Overlay
         // cover `sash`
         className="!z-50 !bg-transparent"
+        onClick={hide}
         onMouseDown={hide}
+        onPointerDown={hide}
       />
       <div
         data-flow-keyboard-capture="true"

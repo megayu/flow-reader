@@ -36,12 +36,12 @@ export function useTextSelection(target?: Window | Window[]) {
     [target],
   )
 
-  // On touch screen device, mouse/touch/pointer events not working when selection is created.
+  // `mouseup` alone is unreliable when the pointer is released outside the
+  // iframe, so also listen to `selectionchange` and update after selection
+  // handles settle.
   useEffect(() => {
-    const event = isTouchScreen ? 'selectionchange' : 'mouseup'
-
     const removeListeners = windows.map((win) => {
-      const target = isTouchScreen ? win.document : win
+      let timeout: ReturnType<typeof setTimeout> | undefined
       const updateSelection = () => {
         const s = win.getSelection()
 
@@ -50,12 +50,27 @@ export function useTextSelection(target?: Window | Window[]) {
           // when select text by clicking empty space
           render()
           setSelection(s)
+        } else {
+          setSelection(undefined)
         }
       }
 
-      target.addEventListener(event, updateSelection)
+      const scheduleSelectionUpdate = () => {
+        if (timeout) clearTimeout(timeout)
+        timeout = setTimeout(updateSelection, isTouchScreen ? 250 : 80)
+      }
 
-      return () => target.removeEventListener(event, updateSelection)
+      win.addEventListener('mouseup', updateSelection)
+      win.document.addEventListener('selectionchange', scheduleSelectionUpdate)
+
+      return () => {
+        if (timeout) clearTimeout(timeout)
+        win.removeEventListener('mouseup', updateSelection)
+        win.document.removeEventListener(
+          'selectionchange',
+          scheduleSelectionUpdate,
+        )
+      }
     })
 
     return () => {
@@ -85,7 +100,14 @@ export function useTextSelection(target?: Window | Window[]) {
   useEffect(() => {
     if (!selection) return
     const selectionWindow = selection.anchorNode?.ownerDocument?.defaultView
-    if (!selectionWindow || windows.includes(selectionWindow)) return
+    if (
+      selectionWindow &&
+      windows.includes(selectionWindow) &&
+      hasSelection(selection) &&
+      selection.anchorNode?.isConnected
+    ) {
+      return
+    }
 
     setSelection(undefined)
   }, [selection, windows])
