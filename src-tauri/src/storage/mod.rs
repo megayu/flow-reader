@@ -700,7 +700,7 @@ mod tests {
 
         assert_eq!(
             text,
-            "第一章 Alpha target & beta platform Second paragraph."
+            "第一章\nAlpha target & beta platform\nSecond paragraph."
         );
         assert!(!text.contains("不应进入搜索"));
     }
@@ -767,6 +767,70 @@ mod tests {
             .excerpt
             .contains("target phrase appears"));
         assert_eq!(results[0].subitems[1].occurrence, 1);
+    }
+
+    #[test]
+    fn search_excerpt_stays_within_matching_paragraph() {
+        let cache = SearchTextCache {
+            version: SEARCH_TEXT_CACHE_VERSION,
+            extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
+            book_hash: "abc123".to_string(),
+            content_version: 1,
+            sections: vec![SearchTextSection {
+                section_index: 0,
+                href: "Text/chapter.xhtml".to_string(),
+                title: Some("Chapter".to_string()),
+                nav_path: Vec::new(),
+                text: [
+                    "First paragraph should not be included.",
+                    "Second paragraph has the target phrase and only this paragraph should be shown.",
+                    "Third paragraph should not be included.",
+                ]
+                .join("\n"),
+            }],
+        };
+
+        let results = search_text_in_cache(&cache, "target phrase", 20);
+        let excerpt = &results[0].subitems[0].excerpt;
+
+        assert!(excerpt.contains("Second paragraph has the target phrase"));
+        assert!(!excerpt.contains("First paragraph"));
+        assert!(!excerpt.contains("Third paragraph"));
+    }
+
+    #[test]
+    fn search_excerpt_trims_long_matching_paragraph_only() {
+        let cache = SearchTextCache {
+            version: SEARCH_TEXT_CACHE_VERSION,
+            extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
+            book_hash: "abc123".to_string(),
+            content_version: 1,
+            sections: vec![SearchTextSection {
+                section_index: 0,
+                href: "Text/chapter.xhtml".to_string(),
+                title: Some("Chapter".to_string()),
+                nav_path: Vec::new(),
+                text: [
+                    "Previous paragraph should not leak into the excerpt.",
+                    &format!(
+                        "{} target phrase {}",
+                        "before ".repeat(40),
+                        "after ".repeat(40)
+                    ),
+                    "Next paragraph should not leak into the excerpt.",
+                ]
+                .join("\n"),
+            }],
+        };
+
+        let results = search_text_in_cache(&cache, "target phrase", 20);
+        let excerpt = &results[0].subitems[0].excerpt;
+
+        assert!(excerpt.starts_with('…'));
+        assert!(excerpt.ends_with('…'));
+        assert!(excerpt.contains("target phrase"));
+        assert!(!excerpt.contains("Previous paragraph"));
+        assert!(!excerpt.contains("Next paragraph"));
     }
 
     #[test]
@@ -852,7 +916,7 @@ mod tests {
         assert_eq!(sections[0].section_index, 0);
         assert_eq!(sections[0].href, "Text/one.xhtml");
         assert_eq!(sections[0].title.as_deref(), Some("Chapter One"));
-        assert_eq!(sections[0].text, "Chapter One The target phrase appears.");
+        assert_eq!(sections[0].text, "Chapter One\nThe target phrase appears.");
         assert_eq!(sections[1].section_index, 1);
         assert_eq!(sections[1].href, "Text/two.xhtml");
 

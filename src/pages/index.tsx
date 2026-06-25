@@ -1,25 +1,28 @@
 import clsx from 'clsx'
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  BookTextIcon,
+  BookOpenIcon,
+  CalendarPlusIcon,
+  CheckIcon,
+  FileInputIcon,
+  HistoryIcon,
+  InfoIcon,
+  ListChecksIcon,
+  ListXIcon,
+  PencilIcon,
+  SquareIcon,
+  SquareCheckBigIcon,
+  SquareXIcon,
+  Trash2Icon,
+  TriangleAlertIcon,
+  UserRound,
+  type LucideIcon,
+} from 'lucide-react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
-import {
-  MdArrowDownward,
-  MdArrowUpward,
-  MdBookmark,
-  MdBookmarkBorder,
-  MdCheck,
-  MdCheckBox,
-  MdCheckBoxOutlineBlank,
-  MdCheckCircle,
-  MdDeleteOutline,
-  MdEdit,
-  MdInfoOutline,
-  MdKeyboardArrowDown,
-  MdMenuBook,
-  MdRemoveCircleOutline,
-  MdWarningAmber,
-} from 'react-icons/md'
 
 import {
   cleanBookText,
@@ -27,11 +30,37 @@ import {
   getBookDisplayTitle,
   getBookTooltip,
 } from '../book'
+import {
+  AppTooltip,
+  readerPageTooltipContentStyle,
+} from '../components/AppTooltip'
+import { BookTooltipContent } from '../components/BookTooltipContent'
 import { Button } from '../components/Button'
 import { ReaderGridView } from '../components/Reader'
+import { ReadingStatusIcon } from '../components/ReadingStatusIcon'
 import { TextImportDialog } from '../components/TextImportDialog'
 import { DropZone } from '../components/base/DropZone'
-import { Overlay } from '../components/base/Overlay'
+import { Button as UiButton } from '../components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog'
+import { Input } from '../components/ui/input'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '../components/ui/popover'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select'
 import { BookRecord, CoverRecord, ReadingStatus, db } from '../db'
 import { handleFiles, openImportDialog, setupNativeOpenFiles } from '../file'
 import { useAction, useLibraryAction } from '../hooks/useAction'
@@ -40,6 +69,10 @@ import { useCovers, useLibrary } from '../hooks/useLibrary'
 import { useTranslation } from '../hooks/useTranslation'
 import { reader, useReaderSnapshot } from '../models/reader'
 import {
+  defaultLibrarySort,
+  librarySortFieldOptions,
+  type LibrarySortDirection,
+  type LibrarySortField,
   useLibraryStatusFilter,
   useSettings,
   useSettingsReady,
@@ -49,24 +82,21 @@ import { lock } from '../styles'
 
 const placeholder = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect fill="gray" fill-opacity="0" width="1" height="1"/></svg>`
 
-type SortField = 'title' | 'creator' | 'updatedAt' | 'createdAt'
-type SortDirection = 'asc' | 'desc'
-
 const collator = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: 'base',
 })
 
-const sortFieldOptions: SortField[] = [
-  'title',
-  'creator',
-  'updatedAt',
-  'createdAt',
-]
+const sortFieldIconMap = {
+  title: BookTextIcon,
+  creator: UserRound,
+  updatedAt: HistoryIcon,
+  createdAt: CalendarPlusIcon,
+} satisfies Record<LibrarySortField, LucideIcon>
 
 const readingStatusOptions: ReadingStatus[] = ['toRead', 'reading', 'read']
 
-const toolbarButtonClass = 'h-8'
+const toolbarButtonClass = 'h-8 leading-none'
 
 function isKeyboardTargetBlocked(e: KeyboardEvent) {
   const target = e.target as HTMLElement | null
@@ -114,6 +144,12 @@ function formatPercentage(value?: number) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return ''
 
   return `${Math.max(0, Math.min(100, value * 100)).toFixed(2)}%`
+}
+
+function getBookProgressPercent(value?: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return
+
+  return Math.max(0, Math.min(100, value * 100))
 }
 
 function formatLanguage(value?: string) {
@@ -170,7 +206,11 @@ function compareBookNumber(
   return (getValue(a) ?? 0) - (getValue(b) ?? 0)
 }
 
-function compareBooksByField(a: BookRecord, b: BookRecord, field: SortField) {
+function compareBooksByField(
+  a: BookRecord,
+  b: BookRecord,
+  field: LibrarySortField,
+) {
   if (field === 'title') return compareBookTitle(a, b)
   if (field === 'creator') {
     return compareBookString(a, b, (book) =>
@@ -186,8 +226,8 @@ function compareBooksByField(a: BookRecord, b: BookRecord, field: SortField) {
 
 function sortBooks(
   books: BookRecord[],
-  field: SortField,
-  direction: SortDirection,
+  field: LibrarySortField,
+  direction: LibrarySortDirection,
 ) {
   return [...books].sort((a, b) => {
     const primary = compareBooksByField(a, b, field)
@@ -201,7 +241,9 @@ function sortBooks(
   })
 }
 
-function toggleSortDirection(direction: SortDirection): SortDirection {
+function toggleSortDirection(
+  direction: LibrarySortDirection,
+): LibrarySortDirection {
   return direction === 'asc' ? 'desc' : 'asc'
 }
 
@@ -495,15 +537,43 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
   const books = useLibrary()
   const covers = useCovers()
   const t = useTranslation('home')
-  const [sortField, setSortField] = useState<SortField>('title')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
-  const [sortMenuOpen, setSortMenuOpen] = useState(false)
-  const sortMenuRef = useRef<HTMLDivElement>(null)
+  const [settings, setSettings] = useSettings()
+  const sortField = settings.librarySort?.field ?? defaultLibrarySort.field
+  const sortDirection =
+    settings.librarySort?.direction ?? defaultLibrarySort.direction
   const [statusFilters, setStatusFilters] = useLibraryStatusFilter()
   const [, setLibraryAction] = useLibraryAction()
 
   const [select, toggleSelect] = useBoolean(false)
   const [selectedBookIds, { add, has, toggle, reset }] = useStringSet()
+
+  const setSortField = useCallback(
+    (field: LibrarySortField) => {
+      setSettings((settings) => ({
+        ...settings,
+        librarySort: {
+          field,
+          direction:
+            settings.librarySort?.direction ?? defaultLibrarySort.direction,
+        },
+      }))
+    },
+    [setSettings],
+  )
+
+  const toggleCurrentSortDirection = useCallback(() => {
+    setSettings((settings) => {
+      const librarySort = settings.librarySort ?? defaultLibrarySort
+
+      return {
+        ...settings,
+        librarySort: {
+          field: librarySort.field,
+          direction: toggleSortDirection(librarySort.direction),
+        },
+      }
+    })
+  }, [setSettings])
 
   useEffect(() => {
     if (!select) reset()
@@ -527,27 +597,6 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
   }, [select, toggleSelect])
 
   useEffect(() => {
-    if (!sortMenuOpen) return
-
-    const closeOnPointerDown = (e: PointerEvent) => {
-      if (!sortMenuRef.current?.contains(e.target as Node)) {
-        setSortMenuOpen(false)
-      }
-    }
-    const closeOnEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSortMenuOpen(false)
-    }
-
-    document.addEventListener('pointerdown', closeOnPointerDown)
-    document.addEventListener('keydown', closeOnEscape)
-
-    return () => {
-      document.removeEventListener('pointerdown', closeOnPointerDown)
-      document.removeEventListener('keydown', closeOnEscape)
-    }
-  }, [sortMenuOpen])
-
-  useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey || isKeyboardTargetBlocked(e)) {
         return
@@ -563,14 +612,14 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
         return
       }
 
-      if (e.key === '1') {
+      if (e.key === '0' || e.key === '`' || e.code === 'Backquote') {
         e.preventDefault()
         e.stopPropagation()
         setStatusFilters([])
         return
       }
 
-      const status = readingStatusOptions[Number(e.key) - 2]
+      const status = readingStatusOptions[Number(e.key) - 1]
       if (status) {
         e.preventDefault()
         e.stopPropagation()
@@ -601,8 +650,7 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
   if (!books) return null
 
   const allSelected = selectedBookIds.size === books.length
-  const DirectionIcon =
-    sortDirection === 'asc' ? MdArrowUpward : MdArrowDownward
+  const DirectionIcon = sortDirection === 'asc' ? ArrowUpIcon : ArrowDownIcon
 
   return (
     <DropZone
@@ -627,65 +675,60 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             {!!books.length && !select && (
-              <div
-                ref={sortMenuRef}
-                className="relative flex items-center gap-1"
-              >
+              <div className="flex items-center">
+                <Select
+                  value={sortField}
+                  onValueChange={(value) =>
+                    setSortField(value as LibrarySortField)
+                  }
+                >
+                  <SelectTrigger
+                    aria-label={t(`sort.${sortField}`)}
+                    className={clsx(
+                      toolbarButtonClass,
+                      'bg-secondary text-secondary-foreground min-w-[6.25rem] rounded-r-none border-transparent px-2.5 text-base font-medium hover:bg-[var(--flow-bg-control-hover)] [&_[data-slot=select-value]]:leading-none [&_[data-slot=select-value]]:font-medium',
+                    )}
+                    size="default"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent
+                    align="start"
+                    className="min-w-[7rem] p-1 text-base"
+                    position="popper"
+                  >
+                    {librarySortFieldOptions.map((field) => {
+                      const SortIcon = sortFieldIconMap[field]
+
+                      return (
+                        <SelectItem
+                          key={field}
+                          value={field}
+                          className="h-8 py-0 pr-7 pl-2 text-base leading-none font-medium"
+                        >
+                          <SortIcon
+                            aria-hidden
+                            className="text-muted-foreground size-4"
+                          />
+                          <span className="leading-none">
+                            {t(`sort.${field}`)}
+                          </span>
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
                 <Button
                   type="button"
                   variant="secondary"
                   compact
                   className={clsx(
                     toolbarButtonClass,
-                    'inline-flex min-w-[4.5rem] items-center justify-between gap-1',
+                    'border-background/40 w-8 rounded-l-none border-l px-0 text-center font-medium',
                   )}
-                  aria-haspopup="menu"
-                  aria-expanded={sortMenuOpen}
-                  onClick={() => setSortMenuOpen((open) => !open)}
-                >
-                  <span>{t(`sort.${sortField}`)}</span>
-                  <MdKeyboardArrowDown
-                    size={16}
-                    className="text-muted-foreground"
-                  />
-                </Button>
-                {sortMenuOpen && (
-                  <div
-                    role="menu"
-                    className="bg-popover text-muted-foreground ring-border absolute top-full left-0 z-20 mt-1 min-w-[7rem] py-1 shadow-sm ring-1 ring-inset"
-                  >
-                    {sortFieldOptions.map((field) => (
-                      <button
-                        key={field}
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={field === sortField}
-                        className={clsx(
-                          'hover:bg-muted block w-full px-3 py-1.5 text-left text-sm font-medium',
-                          field === sortField && 'bg-muted text-foreground',
-                        )}
-                        onClick={() => {
-                          setSortField(field)
-                          setSortMenuOpen(false)
-                        }}
-                      >
-                        {t(`sort.${field}`)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <Button
-                  type="button"
-                  variant="secondary"
-                  compact
-                  className={clsx(toolbarButtonClass, 'w-8 px-0 text-center')}
                   title={t(`sort.${sortDirection}`)}
                   aria-label={t(`sort.${sortDirection}`)}
-                  onClick={() =>
-                    setSortDirection((direction) =>
-                      toggleSortDirection(direction),
-                    )
-                  }
+                  onClick={toggleCurrentSortDirection}
                 >
                   <DirectionIcon size={16} className="mx-auto" />
                 </Button>
@@ -694,28 +737,37 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
             {!!books.length && (
               <Button
                 variant="secondary"
-                className={toolbarButtonClass}
+                className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                 onClick={toggleSelect}
               >
-                {t(select ? 'cancel' : 'select')}
+                {select ? (
+                  <SquareXIcon aria-hidden className="size-4" />
+                ) : (
+                  <SquareCheckBigIcon aria-hidden className="size-4" />
+                )}
+                <span className="leading-none">
+                  {t(select ? 'cancel' : 'select')}
+                </span>
               </Button>
             )}
             {select &&
               (allSelected ? (
                 <Button
                   variant="secondary"
-                  className={toolbarButtonClass}
+                  className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                   onClick={reset}
                 >
-                  {t('deselect_all')}
+                  <ListXIcon aria-hidden className="size-4" />
+                  <span className="leading-none">{t('deselect_all')}</span>
                 </Button>
               ) : (
                 <Button
                   variant="secondary"
-                  className={toolbarButtonClass}
+                  className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                   onClick={() => books.forEach((b) => add(b.id))}
                 >
-                  {t('select_all')}
+                  <ListChecksIcon aria-hidden className="size-4" />
+                  <span className="leading-none">{t('select_all')}</span>
                 </Button>
               ))}
           </div>
@@ -723,7 +775,8 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
           <div className="space-x-2">
             {select ? (
               <Button
-                className={toolbarButtonClass}
+                variant="destructive"
+                className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                 onClick={() => {
                   toggleSelect()
                   const bookIds = [...selectedBookIds]
@@ -731,16 +784,18 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
                   db.books.bulkDelete(bookIds)
                 }}
               >
-                {t('delete')}
+                <Trash2Icon aria-hidden className="size-4" />
+                <span className="leading-none">{t('delete')}</span>
               </Button>
             ) : (
               <Button
-                className={toolbarButtonClass}
+                className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                 onClick={() => {
                   void openImportDialog({ onTextPaths })
                 }}
               >
-                {t('import')}
+                <FileInputIcon aria-hidden className="size-4" />
+                <span className="leading-none">{t('import')}</span>
               </Button>
             )}
           </div>
@@ -791,7 +846,6 @@ const Book: React.FC<BookProps> = ({
 }) => {
   const t = useTranslation('home')
   const contextMenuRef = useRef<HTMLDivElement>(null)
-  const statusMenuRef = useRef<HTMLDivElement>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number }>()
   const [statusMenuOpen, setStatusMenuOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -802,7 +856,7 @@ const Book: React.FC<BookProps> = ({
   const displayTitle = getBookDisplayTitle(book)
   const tooltip = getBookTooltip(book)
 
-  const Icon = selected ? MdCheckBox : MdCheckBoxOutlineBlank
+  const Icon = selected ? SquareCheckBigIcon : SquareIcon
   const closeContextMenu = useCallback(() => {
     setContextMenu(undefined)
     setConfirmDelete(false)
@@ -833,6 +887,24 @@ const Book: React.FC<BookProps> = ({
     [book.id],
   )
 
+  const activateBook = useCallback(() => {
+    if (select) {
+      toggle(book.id)
+    } else {
+      void openBook()
+    }
+  }, [book.id, openBook, select, toggle])
+
+  const onBookKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return
+
+      e.preventDefault()
+      activateBook()
+    },
+    [activateBook],
+  )
+
   useEffect(() => {
     if (!contextMenu) return
 
@@ -853,50 +925,28 @@ const Book: React.FC<BookProps> = ({
     }
   }, [closeContextMenu, contextMenu])
 
-  useEffect(() => {
-    if (!statusMenuOpen) return
-
-    const onPointerDown = (e: PointerEvent) => {
-      if (statusMenuRef.current?.contains(e.target as Node)) return
-      setStatusMenuOpen(false)
-    }
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setStatusMenuOpen(false)
-    }
-
-    document.addEventListener('pointerdown', onPointerDown)
-    document.addEventListener('keydown', onKeyDown)
-
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [statusMenuOpen])
+  const progressPercent = getBookProgressPercent(book.percentage)
 
   return (
-    <div className="relative flex flex-col" onContextMenu={openContextMenu}>
+    <div className="relative" onContextMenu={openContextMenu}>
       <div
         role="button"
-        className="border-border group relative border"
-        onClick={() => {
-          if (select) {
-            toggle(book.id)
-          } else {
-            void openBook()
-          }
-        }}
+        tabIndex={0}
+        className="group hover:bg-popover/70 focus-visible:ring-ring/50 relative flex cursor-pointer flex-col rounded-lg p-2 transition-colors outline-none focus-visible:ring-2"
+        onClick={activateBook}
         onContextMenu={openContextMenu}
+        onKeyDown={onBookKeyDown}
       >
         {contextMenu && (
           <div
             ref={contextMenuRef}
-            className="ring-border bg-popover text-muted-foreground fixed z-[70] w-40 py-1 shadow-lg ring-1 ring-inset"
+            className="ring-border bg-popover text-popover-foreground fixed z-[70] w-40 rounded-lg p-1 shadow-lg ring-1"
             style={{ left: contextMenu.x, top: contextMenu.y }}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
             <BookContextMenuButton
-              Icon={MdMenuBook}
+              Icon={BookOpenIcon}
               label={t('context.open')}
               onClick={() => {
                 closeContextMenu()
@@ -904,7 +954,7 @@ const Book: React.FC<BookProps> = ({
               }}
             />
             <BookContextMenuButton
-              Icon={MdEdit}
+              Icon={PencilIcon}
               label={t('context.edit')}
               onClick={() => {
                 closeContextMenu()
@@ -912,7 +962,7 @@ const Book: React.FC<BookProps> = ({
               }}
             />
             <BookContextMenuButton
-              Icon={MdInfoOutline}
+              Icon={InfoIcon}
               label={t('context.info')}
               onClick={() => {
                 closeContextMenu()
@@ -922,7 +972,7 @@ const Book: React.FC<BookProps> = ({
             <div className="bg-muted my-1 h-px" />
             <BookContextMenuButton
               danger
-              Icon={confirmDelete ? MdWarningAmber : MdDeleteOutline}
+              Icon={confirmDelete ? TriangleAlertIcon : Trash2Icon}
               label={t(
                 confirmDelete ? 'context.confirm_delete' : 'context.delete',
               )}
@@ -938,82 +988,112 @@ const Book: React.FC<BookProps> = ({
             />
           </div>
         )}
-        {editOpen && (
-          <EditBookDialog book={book} onClose={() => setEditOpen(false)} />
-        )}
-        {infoOpen && (
-          <BookInfoDialog
-            book={book}
-            cover={cover}
-            onClose={() => setInfoOpen(false)}
-          />
-        )}
-        {book.readingStatus && (
-          <ReadingStatusBadge
-            status={book.readingStatus}
-            title={t(`reading_status.${book.readingStatus}`)}
-          />
-        )}
-        {!select && (
-          <div
-            ref={statusMenuRef}
-            className="absolute top-1 right-1 z-20"
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-            onContextMenu={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-            }}
-          >
-            <button
-              type="button"
-              title={t('reading_status.change')}
-              className={clsx(
-                'bg-popover/90 text-muted-foreground ring-border hover:text-muted-foreground flex h-7 w-7 items-center justify-center rounded-sm opacity-0 shadow-sm ring-1 ring-inset group-hover:opacity-100',
-                statusMenuOpen && 'text-muted-foreground opacity-100',
-              )}
-              onClick={() => setStatusMenuOpen((open) => !open)}
-            >
-              <MdBookmarkBorder size={18} />
-            </button>
-            {statusMenuOpen && (
-              <ReadingStatusMenu
-                status={book.readingStatus ?? null}
-                onChange={updateReadingStatus}
-              />
-            )}
-          </div>
-        )}
-        {book.percentage !== undefined && (
-          <div className="absolute right-0 bg-gray-500/60 px-2 text-base text-gray-100 group-hover:hidden">
-            {(book.percentage * 100).toFixed()}%
-          </div>
-        )}
-        <img
-          src={cover ?? placeholder}
-          alt="Cover"
-          className="mx-auto aspect-[9/12] object-cover"
-          draggable={false}
-        />
-        {select && (
-          <div className="absolute right-1 bottom-1">
-            <Icon
-              size={24}
-              className={clsx(
-                '-m-1',
-                selected ? 'text-primary' : 'text-muted-foreground',
-              )}
+        <div className="border-border relative mx-auto aspect-[9/12] w-full max-w-[12.5rem] overflow-hidden rounded-lg border shadow-sm">
+          {book.readingStatus && (
+            <ReadingStatusBadge
+              status={book.readingStatus}
+              title={t(`reading_status.${book.readingStatus}`)}
+              hidden={statusMenuOpen}
             />
+          )}
+          {!select && (
+            <Popover open={statusMenuOpen} onOpenChange={setStatusMenuOpen}>
+              <div
+                className="absolute top-2 right-2 z-20"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+              >
+                <AppTooltip label={t('reading_status.change')}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={t('reading_status.change')}
+                      className={clsx(
+                        'flex size-8 items-center justify-center rounded-lg opacity-0 shadow-sm ring-1 transition-opacity ring-inset group-hover:opacity-100',
+                        readingStatusEditButtonClassName[
+                          book.readingStatus ?? 'unmarked'
+                        ],
+                        statusMenuOpen && 'opacity-100',
+                      )}
+                    >
+                      <ReadingStatusIcon
+                        intent="edit"
+                        status={book.readingStatus ?? null}
+                        size={18}
+                        tone="current"
+                      />
+                    </button>
+                  </PopoverTrigger>
+                </AppTooltip>
+                <PopoverContent
+                  align="start"
+                  side="bottom"
+                  sideOffset={4}
+                  className="w-36 p-1 text-base"
+                  style={{ fontSize: 'var(--app-font-size-md)' }}
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  <ReadingStatusMenu
+                    status={book.readingStatus ?? null}
+                    onChange={updateReadingStatus}
+                  />
+                </PopoverContent>
+              </div>
+            </Popover>
+          )}
+          <img
+            src={cover ?? placeholder}
+            alt="Cover"
+            className="block h-full w-full rounded-lg object-cover"
+            draggable={false}
+          />
+          {!select && progressPercent !== undefined && (
+            <BookProgress
+              percent={progressPercent}
+              status={book.readingStatus ?? null}
+            />
+          )}
+          {select && (
+            <div className="absolute right-2 bottom-2 z-20">
+              <Icon
+                size={24}
+                className={clsx(
+                  '-m-1',
+                  selected
+                    ? 'text-[var(--flow-accent)]'
+                    : 'text-muted-foreground',
+                )}
+              />
+            </div>
+          )}
+        </div>
+        <AppTooltip
+          content={<BookTooltipContent book={book} />}
+          contentStyle={readerPageTooltipContentStyle}
+          label={tooltip}
+        >
+          <div className="text-foreground mt-2 flex min-h-[3em] w-full items-start justify-center px-1 text-center text-lg leading-tight font-semibold">
+            <span className="line-clamp-2 min-w-0 break-words">
+              {displayTitle}
+            </span>
           </div>
-        )}
+        </AppTooltip>
       </div>
-
-      <div
-        className="text-muted-foreground mt-2 line-clamp-2 w-full text-center text-sm"
-        title={tooltip}
-      >
-        {displayTitle}
-      </div>
+      {editOpen && (
+        <EditBookDialog book={book} onClose={() => setEditOpen(false)} />
+      )}
+      {infoOpen && (
+        <BookInfoDialog
+          book={book}
+          cover={cover}
+          onClose={() => setInfoOpen(false)}
+        />
+      )}
     </div>
   )
 }
@@ -1035,7 +1115,7 @@ const BookContextMenuButton: React.FC<BookContextMenuButtonProps> = ({
     <button
       type="button"
       className={clsx(
-        'hover:bg-muted flex h-8 w-full items-center gap-2 px-3 text-left text-sm',
+        'hover:bg-muted flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-base outline-none',
         danger ? 'text-destructive' : 'text-muted-foreground',
       )}
       onClick={onClick}
@@ -1046,43 +1126,104 @@ const BookContextMenuButton: React.FC<BookContextMenuButtonProps> = ({
   )
 }
 
-const readingStatusIcon: Record<
-  ReadingStatus,
-  React.ComponentType<{ size?: number; className?: string }>
-> = {
-  toRead: MdBookmark,
-  reading: MdMenuBook,
-  read: MdCheckCircle,
+const readingStatusBadgeClassName: Record<ReadingStatus, string> = {
+  toRead: 'bg-amber-500 text-white ring-amber-700/15',
+  reading: 'bg-sky-500 text-white ring-sky-700/15',
+  read: 'bg-emerald-600 text-white ring-emerald-800/15',
 }
 
-const readingStatusClassName: Record<ReadingStatus, string> = {
-  toRead: 'bg-amber-500 text-white',
-  reading: 'bg-sky-500 text-white',
-  read: 'bg-emerald-600 text-white',
+const readingStatusEditButtonClassName: Record<
+  ReadingStatus | 'unmarked',
+  string
+> = {
+  unmarked:
+    'bg-popover/95 text-muted-foreground ring-border hover:bg-muted hover:text-foreground',
+  toRead: 'bg-amber-50/95 text-amber-600 ring-amber-200 hover:bg-amber-100',
+  reading: 'bg-sky-50/95 text-sky-600 ring-sky-200 hover:bg-sky-100',
+  read: 'bg-emerald-50/95 text-emerald-600 ring-emerald-200 hover:bg-emerald-100',
+}
+
+const readingStatusProgressBarClassName: Record<
+  ReadingStatus | 'unmarked',
+  string
+> = {
+  unmarked: 'bg-sky-500',
+  toRead: 'bg-amber-500',
+  reading: 'bg-sky-500',
+  read: 'bg-emerald-500',
+}
+
+const readingStatusProgressPillClassName: Record<
+  ReadingStatus | 'unmarked',
+  string
+> = {
+  unmarked: 'bg-sky-50/95 text-sky-600 ring-sky-200',
+  toRead: 'bg-amber-50/95 text-amber-600 ring-amber-200',
+  reading: 'bg-sky-50/95 text-sky-600 ring-sky-200',
+  read: 'bg-emerald-50/95 text-emerald-600 ring-emerald-200',
+}
+
+interface BookProgressProps {
+  percent: number
+  status: ReadingStatus | null
+}
+
+const BookProgress: React.FC<BookProgressProps> = ({ percent, status }) => {
+  const statusKey = status ?? 'unmarked'
+
+  return (
+    <div className="pointer-events-none absolute right-1 bottom-1 left-1 z-10 flex items-center gap-1.5">
+      <div className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-white/75 shadow-sm ring-1 ring-black/5">
+        <div
+          className={clsx(
+            'h-full rounded-full',
+            readingStatusProgressBarClassName[statusKey],
+          )}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      <div
+        className={clsx(
+          'flex h-5 items-center justify-center rounded-full px-1.5 text-xs leading-none font-semibold shadow-sm ring-1 ring-inset',
+          readingStatusProgressPillClassName[statusKey],
+        )}
+      >
+        {percent.toFixed()}%
+      </div>
+    </div>
+  )
 }
 
 interface ReadingStatusBadgeProps {
+  hidden?: boolean
   status: ReadingStatus
   title: string
 }
 
 const ReadingStatusBadge: React.FC<ReadingStatusBadgeProps> = ({
+  hidden,
   status,
   title,
 }) => {
-  const Icon = readingStatusIcon[status]
-
-  return (
+  const badge = (
     <div
-      title={title}
+      aria-label={title}
       className={clsx(
-        'absolute top-1 left-1 z-10 flex h-7 w-7 items-center justify-center rounded-sm shadow-sm',
-        readingStatusClassName[status],
+        'absolute top-2 right-2 z-10 flex size-8 items-center justify-center rounded-lg shadow-sm ring-1 transition-opacity ring-inset group-hover:opacity-0',
+        readingStatusBadgeClassName[status],
+        hidden && 'opacity-0',
       )}
     >
-      <Icon size={18} />
+      <ReadingStatusIcon
+        status={status}
+        size={18}
+        tone="current"
+        className="text-white"
+      />
     </div>
   )
+
+  return <AppTooltip label={title}>{badge}</AppTooltip>
 }
 
 interface ReadingStatusMenuProps {
@@ -1097,37 +1238,24 @@ const ReadingStatusMenu: React.FC<ReadingStatusMenuProps> = ({
   const t = useTranslation('home')
 
   return (
-    <div className="ring-border bg-popover text-muted-foreground absolute top-full right-0 mt-1 w-40 py-1 shadow-lg ring-1 ring-inset">
+    <div className="flex flex-col gap-0.5">
       <ReadingStatusMenuItem
-        Icon={MdBookmarkBorder}
+        iconStatus={null}
         label={t('reading_status.unmarked')}
         checked={!status}
         onClick={() => onChange(null)}
       />
       {readingStatusOptions.map((option) => {
-        const Icon = readingStatusIcon[option]
         return (
           <ReadingStatusMenuItem
             key={option}
-            Icon={Icon}
+            iconStatus={option}
             label={t(`reading_status.${option}`)}
             checked={status === option}
             onClick={() => onChange(option)}
           />
         )
       })}
-      {status && (
-        <>
-          <div className="bg-muted my-1 h-px" />
-          <ReadingStatusMenuItem
-            danger
-            Icon={MdRemoveCircleOutline}
-            label={t('reading_status.remove')}
-            checked={false}
-            onClick={() => onChange(null)}
-          />
-        </>
-      )}
     </div>
   )
 }
@@ -1135,31 +1263,46 @@ const ReadingStatusMenu: React.FC<ReadingStatusMenuProps> = ({
 interface ReadingStatusMenuItemProps {
   danger?: boolean
   checked: boolean
-  Icon: React.ComponentType<{ size?: number; className?: string }>
+  iconStatus: ReadingStatus | null
   label: string
   onClick: () => void
+  removeIcon?: boolean
 }
 
 const ReadingStatusMenuItem: React.FC<ReadingStatusMenuItemProps> = ({
   danger,
   checked,
-  Icon,
+  iconStatus,
   label,
   onClick,
+  removeIcon,
 }) => {
   return (
-    <button
+    <UiButton
       type="button"
+      variant="ghost"
+      size="sm"
       className={clsx(
-        'hover:bg-muted flex h-8 w-full items-center gap-2 px-3 text-left text-sm',
-        danger ? 'text-destructive' : 'text-muted-foreground',
+        'h-8 w-full justify-start gap-2 px-2 text-base leading-none',
+        danger
+          ? 'text-destructive hover:bg-destructive/10 hover:text-destructive'
+          : 'text-muted-foreground',
       )}
+      style={{ fontSize: 'var(--app-font-size-md)' }}
       onClick={onClick}
     >
-      <Icon size={17} className="shrink-0" />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {checked && <MdCheck size={17} className="text-primary shrink-0" />}
-    </button>
+      <ReadingStatusIcon
+        intent={removeIcon ? 'remove' : 'status'}
+        status={iconStatus}
+        className={danger ? 'text-destructive' : undefined}
+      />
+      <span className="min-w-0 flex-1 truncate text-left leading-none">
+        {label}
+      </span>
+      {checked && (
+        <CheckIcon className="size-4 shrink-0 text-[var(--flow-accent)]" />
+      )}
+    </UiButton>
   )
 }
 
@@ -1168,17 +1311,15 @@ interface BookDialogProps {
   onClose: () => void
 }
 
+function selectInputOnFocus(e: React.FocusEvent<HTMLInputElement>) {
+  e.currentTarget.select()
+}
+
 const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
   const t = useTranslation('home')
   const titleRef = useRef<HTMLInputElement>(null)
   const [title, setTitle] = useState(getBookDisplayTitle(book))
   const [creator, setCreator] = useState(cleanBookText(book.metadata.creator))
-
-  useEffect(() => {
-    const input = titleRef.current
-    input?.focus()
-    input?.select()
-  }, [])
 
   const save = () => {
     void db.books
@@ -1193,49 +1334,65 @@ const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
   }
 
   return (
-    <ModalShell onClose={onClose}>
-      <form
-        className="bg-popover text-muted-foreground ring-border w-[min(28rem,calc(100vw-2rem))] p-5 shadow-lg ring-1 ring-inset"
-        onSubmit={(e) => {
-          e.preventDefault()
-          save()
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <DialogContent
+        data-flow-keyboard-capture="true"
+        className="w-[min(28rem,calc(100vw-2rem))] max-w-none text-base"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          titleRef.current?.focus()
+          titleRef.current?.select()
         }}
       >
-        <div className="space-y-4">
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium">
-              {t('edit.title')}
-            </span>
-            <input
-              ref={titleRef}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onClick={(e) => e.currentTarget.select()}
-              onFocus={(e) => e.currentTarget.select()}
-              className="text-muted-foreground ring-border focus:ring-ring bg-background w-full px-2 py-1.5 ring-1 outline-none ring-inset"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium">
-              {t('edit.creator')}
-            </span>
-            <input
-              value={creator}
-              onChange={(e) => setCreator(e.target.value)}
-              onClick={(e) => e.currentTarget.select()}
-              onFocus={(e) => e.currentTarget.select()}
-              className="text-muted-foreground ring-border focus:ring-ring bg-background w-full px-2 py-1.5 ring-1 outline-none ring-inset"
-            />
-          </label>
-        </div>
-        <div className="mt-5 flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            {t('cancel')}
-          </Button>
-          <Button type="submit">{t('edit.save')}</Button>
-        </div>
-      </form>
-    </ModalShell>
+        <form
+          className="grid gap-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            save()
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{t('edit.dialog_title')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <label className="block">
+              <span className="text-muted-foreground mb-1.5 block leading-none font-medium">
+                {t('edit.title')}
+              </span>
+              <Input
+                ref={titleRef}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onFocus={selectInputOnFocus}
+                className="focus-visible:border-input text-base focus-visible:ring-0"
+              />
+            </label>
+            <label className="block">
+              <span className="text-muted-foreground mb-1.5 block leading-none font-medium">
+                {t('edit.creator')}
+              </span>
+              <Input
+                value={creator}
+                onChange={(e) => setCreator(e.target.value)}
+                onFocus={selectInputOnFocus}
+                className="focus-visible:border-input text-base focus-visible:ring-0"
+              />
+            </label>
+          </div>
+          <DialogFooter className="-mx-4 mt-1 -mb-4 px-4 py-3">
+            <UiButton type="button" variant="secondary" onClick={onClose}>
+              {t('cancel')}
+            </UiButton>
+            <UiButton type="submit">{t('edit.save')}</UiButton>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -1264,17 +1421,17 @@ const BookInfoDialog: React.FC<BookInfoDialogProps> = ({
   ].filter(([, value]) => !!value)
 
   return (
-    <ModalShell onClose={onClose}>
-      <div className="bg-popover text-muted-foreground ring-border relative max-h-[calc(100vh-4rem)] w-[min(46rem,calc(100vw-2rem))] overflow-hidden p-5 shadow-lg ring-1 ring-inset">
-        <button
-          type="button"
-          aria-label={t('cancel')}
-          className="text-muted-foreground hover:text-muted-foreground absolute top-3 right-3"
-          onClick={onClose}
-        >
-          ×
-        </button>
-        <div className="grid grid-cols-[12rem_minmax(0,1fr)] gap-5">
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <DialogContent
+        data-flow-keyboard-capture="true"
+        className="max-h-[calc(100vh-4rem)] w-[min(46rem,calc(100vw-2rem))] max-w-none gap-0 overflow-hidden p-0 text-base"
+      >
+        <div className="grid grid-cols-[12rem_minmax(0,1fr)] gap-5 p-5 pr-12">
           <div className="w-full">
             {cover && (
               <img
@@ -1286,9 +1443,9 @@ const BookInfoDialog: React.FC<BookInfoDialogProps> = ({
             )}
           </div>
           <div className="min-w-0 pr-6">
-            <h2 className="text-muted-foreground !text-[30px] leading-tight font-bold">
+            <DialogTitle className="text-foreground !text-xl leading-tight font-bold">
               {title}
-            </h2>
+            </DialogTitle>
             {!!rows.length && (
               <dl className="mt-4 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-2 gap-y-1 text-base">
                 {rows.map(([label, value]) => (
@@ -1302,7 +1459,7 @@ const BookInfoDialog: React.FC<BookInfoDialogProps> = ({
           </div>
         </div>
         {description && (
-          <div className="scroll border-border mt-5 max-h-[min(18rem,38vh)] overflow-y-auto border-t pt-4 text-justify text-base">
+          <div className="scroll border-border max-h-[min(18rem,38vh)] overflow-y-auto border-t p-5 pt-4 text-justify text-base">
             {description.split(/\n{2,}/).map((paragraph, index) => (
               <p key={index} className={clsx(index > 0 && 'mt-3')}>
                 {paragraph}
@@ -1310,61 +1467,7 @@ const BookInfoDialog: React.FC<BookInfoDialogProps> = ({
             ))}
           </div>
         )}
-      </div>
-    </ModalShell>
-  )
-}
-
-interface ModalShellProps {
-  children: React.ReactNode
-  onClose: () => void
-}
-
-const ModalShell: React.FC<ModalShellProps> = ({ children, onClose }) => {
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-
-      e.preventDefault()
-      onClose()
-    }
-
-    document.addEventListener('keydown', onKeyDown, true)
-
-    return () => {
-      document.removeEventListener('keydown', onKeyDown, true)
-    }
-  }, [onClose])
-
-  return createPortal(
-    <>
-      <Overlay
-        className="z-[80] !bg-black/20"
-        onClick={(e) => {
-          e.stopPropagation()
-          onClose()
-        }}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        data-flow-keyboard-capture="true"
-        className="fixed inset-0 z-[90] flex items-center justify-center p-4"
-        onMouseDown={(e) => {
-          if (e.target === e.currentTarget) onClose()
-        }}
-        onClick={(e) => {
-          e.stopPropagation()
-        }}
-      >
-        <div
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {children}
-        </div>
-      </div>
-    </>,
-    document.body,
+      </DialogContent>
+    </Dialog>
   )
 }

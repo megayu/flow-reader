@@ -1,4 +1,5 @@
 import clsx from 'clsx'
+import { CheckIcon, type LucideIcon, XIcon } from 'lucide-react'
 import {
   ElementType,
   useRef,
@@ -7,8 +8,6 @@ import {
   RefObject,
   ComponentProps,
 } from 'react'
-import { IconType } from 'react-icons'
-import { MdCheck, MdClose } from 'react-icons/md'
 import { PolymorphicPropsWithoutRef } from 'react-polymorphic-types'
 
 import { useTranslation } from '../hooks/useTranslation'
@@ -19,7 +18,7 @@ type TextFieldElement = HTMLInputElement | HTMLTextAreaElement
 
 type Action = {
   title: string
-  Icon: IconType
+  Icon: LucideIcon
   onClick: (el: TextFieldElement | null) => void
 }
 
@@ -62,7 +61,7 @@ export function TextField<T extends ElementType = 'input'>({
       ...actions,
       {
         title: t('action.clear'),
-        Icon: MdClose,
+        Icon: XIcon,
         onClick: onClear,
       },
     ]
@@ -87,7 +86,7 @@ export function TextField<T extends ElementType = 'input'>({
           name={name}
           id={name}
           className={clsx(
-            'text-muted-foreground placeholder:text-muted-foreground/60 w-0 flex-1 bg-transparent px-1.5 py-1 text-sm !text-[13px]',
+            'text-muted-foreground placeholder:text-muted-foreground/60 w-0 flex-1 bg-transparent px-1.5 py-1 text-base',
             hideDatalistIndicator && 'datalist-no-indicator',
             isInput || 'scroll h-full resize-none',
           )}
@@ -128,7 +127,7 @@ export const Checkbox: React.FC<CheckboxProps> = ({ name, ...props }) => {
           className="peer block h-4 w-4 appearance-none"
           {...props}
         />
-        <MdCheck className="text-muted-foreground pointer-events-none invisible absolute top-0 peer-checked:visible" />
+        <CheckIcon className="text-muted-foreground pointer-events-none invisible absolute top-0 size-4 peer-checked:visible" />
       </div>
       <Label name={name} className="!mb-0" />
     </div>
@@ -150,7 +149,7 @@ export const Select: React.FC<SelectProps> = ({
         name={name}
         id={name}
         className={clsx(
-          'text-muted-foreground bg-background w-full px-0.5 py-1 text-sm !text-[13px]',
+          'text-muted-foreground bg-background w-full px-0.5 py-1 text-base',
         )}
         {...props}
       ></select>
@@ -193,7 +192,7 @@ export const Label: React.FC<LabelProps> = ({
     <label
       htmlFor={name}
       className={clsx(
-        'text-muted-foreground mb-1 block text-xs !text-[13px] font-medium',
+        'text-muted-foreground mb-1 block text-base font-medium',
         hide && 'hidden',
         className,
       )}

@@ -1,12 +1,12 @@
 import clsx from 'clsx'
-import { ComponentProps } from 'react'
-import { MdClose } from 'react-icons/md'
-import { VscChevronDown, VscChevronRight } from 'react-icons/vsc'
+import { ChevronDownIcon, ChevronRightIcon, XIcon } from 'lucide-react'
+import { ComponentProps, CSSProperties } from 'react'
 
 import { useBackground } from '../hooks/theme/useBackground'
 import { LIST_ITEM_SIZE } from '../hooks/useList'
 import { useTranslation } from '../hooks/useTranslation'
 
+import { AppTooltip } from './AppTooltip'
 import { IconButton } from './Button'
 import { StateLayer } from './base/StateLayer'
 
@@ -21,6 +21,7 @@ interface RowProps extends ComponentProps<'div'> {
   toggle?: () => void
   onDelete?: () => void
   badge?: boolean
+  tooltipContentStyle?: CSSProperties
 }
 export const Row: React.FC<RowProps> = ({
   title,
@@ -37,6 +38,7 @@ export const Row: React.FC<RowProps> = ({
   badge,
   onClick,
   onDelete,
+  tooltipContentStyle,
   ...props
 }) => {
   const trans = useTranslation()
@@ -44,24 +46,26 @@ export const Row: React.FC<RowProps> = ({
 
   const childCount = subitems?.length
   const t = children || label || title
+  const tooltip = typeof title === 'string' ? title : undefined
+  const indent = Math.max(0, depth - 1) * 20
 
-  return (
+  const row = (
     <div
+      aria-label={tooltip}
       className={clsx(
-        'list-row relative flex cursor-pointer items-center text-left',
+        'list-row group/row relative flex cursor-pointer items-center text-left',
         active && background.rowActiveClassName,
         className,
       )}
       style={{
-        paddingLeft: depth * 8,
-        paddingRight: 12,
+        paddingLeft: indent,
+        paddingRight: 0,
         height: LIST_ITEM_SIZE,
       }}
-      title={title}
       onClick={onClick ?? toggle}
       {...props}
     >
-      <StateLayer />
+      <StateLayer className="transition-colors group-hover/row:bg-[var(--flow-bg-control-hover)]" />
       <Twisty
         expanded={expanded}
         className={clsx(!childCount && 'invisible')}
@@ -72,42 +76,37 @@ export const Row: React.FC<RowProps> = ({
       />
       <div
         className={clsx(
-          'truncate text-xs',
+          'relative z-10 flex h-full min-w-0 flex-1 items-center text-base leading-none',
           t ? 'text-muted-foreground' : 'text-muted-foreground/60',
         )}
         style={{
-          fontSize: 12,
           marginLeft: 0,
         }}
       >
-        {t || trans('untitled')}
-        {description && (
-          <span
-            className="text-muted-foreground"
-            style={{
-              fontSize: 11,
-              marginLeft: 4,
-            }}
-          >
-            {description}
-          </span>
-        )}
+        <span className="block min-w-0 truncate whitespace-nowrap">
+          {t || trans('untitled')}
+          {description && (
+            <span
+              className="text-muted-foreground/60"
+              style={{
+                marginLeft: 4,
+              }}
+            >
+              {description}
+            </span>
+          )}
+        </span>
       </div>
-      <div className="ml-auto">
+      <div className="relative z-10 ml-auto flex h-full items-center">
         {badge && childCount && (
-          <div
-            className="bg-accent text-accent-foreground rounded-full px-1.5 py-px"
-            style={{
-              fontSize: 11,
-            }}
-          >
+          <div className="mr-1 flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[var(--flow-bg-control)] px-1 text-sm leading-none text-[var(--flow-text-muted)] ring-1 ring-[var(--flow-border)] ring-inset">
             {childCount}
           </div>
         )}
         {onDelete && (
           <IconButton
             className="action hidden"
-            Icon={MdClose}
+            Icon={XIcon}
             onClick={(e) => {
               e.stopPropagation()
               onDelete?.()
@@ -117,6 +116,14 @@ export const Row: React.FC<RowProps> = ({
         <span className="text-muted-foreground">{info}</span>
       </div>
     </div>
+  )
+
+  return tooltip ? (
+    <AppTooltip contentStyle={tooltipContentStyle} label={tooltip}>
+      {row}
+    </AppTooltip>
+  ) : (
+    row
   )
 }
 
@@ -128,7 +135,7 @@ export const Twisty: React.FC<TwistyProps> = ({
   className,
   ...props
 }) => {
-  const Icon = expanded ? VscChevronDown : VscChevronRight
+  const Icon = expanded ? ChevronDownIcon : ChevronRightIcon
   return (
     <Icon
       size={20}

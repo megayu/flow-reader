@@ -1,7 +1,8 @@
-import React, { Fragment, useMemo, useState } from 'react'
-import { VscCollapseAll, VscCopy, VscExpandAll } from 'react-icons/vsc'
+import { CopyIcon, FoldVerticalIcon, UnfoldVerticalIcon } from 'lucide-react'
+import React, { useMemo, useState } from 'react'
 
 import { Annotation } from '@flow/reader/annotation'
+import { useList } from '@flow/reader/hooks/useList'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
 import { reader, useReaderSnapshot } from '@flow/reader/models/reader'
 import { copy, group, keys } from '@flow/reader/utils'
@@ -21,24 +22,55 @@ export const AnnotationView: React.FC<PaneViewProps> = (props) => {
 const DefinitionPane: React.FC = () => {
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation('annotation')
+  const definitions = focusedBookTab?.book.definitions ?? []
+  const { outerRef, items, totalSize } = useList(definitions)
 
   return (
-    <Pane headline={t('definitions')} preferredSize={120}>
-      {focusedBookTab?.book.definitions.map((d) => {
-        return (
-          <Row
-            key={d}
-            onDelete={() => {
-              reader.focusedBookTab?.undefine(d)
-            }}
-          >
-            {d}
-          </Row>
-        )
-      })}
+    <Pane headline={t('definitions')} preferredSize={120} ref={outerRef}>
+      <div className="relative" style={{ height: totalSize }}>
+        {items.map(({ index, start, size }) => {
+          const definition = definitions[index]
+          if (!definition) return null
+
+          return (
+            <div
+              key={definition}
+              className="absolute top-0 right-0 left-0"
+              style={{
+                height: size,
+                transform: `translateY(${start}px)`,
+              }}
+            >
+              <Row
+                onDelete={() => {
+                  reader.focusedBookTab?.undefine(definition)
+                }}
+              >
+                {definition}
+              </Row>
+            </div>
+          )
+        })}
+      </div>
     </Pane>
   )
 }
+
+type AnnotationRow =
+  | {
+      annotations: Annotation[]
+      expanded: boolean
+      id: string
+      type: 'section'
+    }
+  | {
+      annotation: Annotation
+      type: 'annotation'
+    }
+  | {
+      annotation: Annotation
+      type: 'note'
+    }
 
 const AnnotationPane: React.FC = () => {
   const { focusedBookTab } = useReaderSnapshot()
@@ -58,6 +90,49 @@ const AnnotationPane: React.FC = () => {
   }, [annotations])
   const sectionIds = useMemo(() => keys(groupedAnnotation), [groupedAnnotation])
   const expanded = sectionIds.some((id) => !collapsedSections.has(id))
+  const rows = useMemo(
+    () =>
+      sectionIds.flatMap((id): AnnotationRow[] => {
+        const annotations = groupedAnnotation[id] ?? []
+        const sectionExpanded = !collapsedSections.has(id)
+
+        if (!sectionExpanded) {
+          return [
+            {
+              annotations,
+              expanded: false,
+              id,
+              type: 'section',
+            },
+          ]
+        }
+
+        return [
+          {
+            annotations,
+            expanded: true,
+            id,
+            type: 'section',
+          },
+          ...annotations.flatMap((annotation): AnnotationRow[] => [
+            {
+              annotation,
+              type: 'annotation',
+            },
+            ...(annotation.notes
+              ? [
+                  {
+                    annotation,
+                    type: 'note' as const,
+                  },
+                ]
+              : []),
+          ]),
+        ]
+      }),
+    [collapsedSections, groupedAnnotation, sectionIds],
+  )
+  const { outerRef, items, totalSize } = useList(rows)
   const toggleSections = () => {
     setCollapsedSections(() => (expanded ? new Set(sectionIds) : new Set()))
   }
@@ -103,13 +178,14 @@ const AnnotationPane: React.FC = () => {
   return (
     <Pane
       headline={annotationT('annotations')}
+      ref={outerRef}
       actions={
         annotations.length > 0
           ? [
               {
                 id: 'copy-all',
                 title: annotationT('copy_as_markdown'),
-                Icon: VscCopy,
+                Icon: CopyIcon,
                 handle() {
                   exportAnnotations()
                 },
@@ -119,7 +195,7 @@ const AnnotationPane: React.FC = () => {
                 title: t(
                   expanded ? 'action.collapse_all' : 'action.expand_all',
                 ),
-                Icon: expanded ? VscCollapseAll : VscExpandAll,
+                Icon: expanded ? FoldVerticalIcon : UnfoldVerticalIcon,
                 handle() {
                   toggleSections()
                 },
@@ -128,69 +204,63 @@ const AnnotationPane: React.FC = () => {
           : undefined
       }
     >
-      {sectionIds.map((k) => (
-        <AnnotationBlock
-          key={k}
-          annotations={groupedAnnotation[k]!}
-          expanded={!collapsedSections.has(k)}
-          toggle={() => toggleSection(k)}
-        />
-      ))}
+      <div className="relative" style={{ height: totalSize }}>
+        {items.map(({ index, start, size }) => {
+          const row = rows[index]
+          if (!row) return null
+
+          return (
+            <div
+              key={annotationRowKey(row)}
+              className="absolute top-0 right-0 left-0"
+              style={{
+                height: size,
+                transform: `translateY(${start}px)`,
+              }}
+            >
+              {row.type === 'section' ? (
+                <Row
+                  depth={1}
+                  badge
+                  expanded={row.expanded}
+                  toggle={() => toggleSection(row.id)}
+                  subitems={row.annotations}
+                >
+                  {row.annotations[0]?.spine.title}
+                </Row>
+              ) : row.type === 'annotation' ? (
+                <Row
+                  depth={2}
+                  onClick={() => {
+                    reader.focusedBookTab?.display(row.annotation.cfi)
+                  }}
+                  onDelete={() => {
+                    reader.focusedBookTab?.removeAnnotation(row.annotation.cfi)
+                  }}
+                >
+                  {row.annotation.text}
+                </Row>
+              ) : (
+                <Row
+                  depth={3}
+                  onClick={() => {
+                    reader.focusedBookTab?.display(row.annotation.cfi)
+                  }}
+                >
+                  <span className="text-muted-foreground">
+                    {row.annotation.notes}
+                  </span>
+                </Row>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </Pane>
   )
 }
 
-interface AnnotationBlockProps {
-  annotations: Annotation[]
-  expanded: boolean
-  toggle: () => void
-}
-const AnnotationBlock: React.FC<AnnotationBlockProps> = ({
-  annotations,
-  expanded,
-  toggle,
-}) => {
-  return (
-    <div>
-      <Row
-        depth={1}
-        badge
-        expanded={expanded}
-        toggle={toggle}
-        subitems={annotations}
-      >
-        {annotations[0]?.spine.title}
-      </Row>
-
-      {expanded && (
-        <div>
-          {annotations.map((a) => (
-            <Fragment key={a.id}>
-              <Row
-                depth={2}
-                onClick={() => {
-                  reader.focusedBookTab?.display(a.cfi)
-                }}
-                onDelete={() => {
-                  reader.focusedBookTab?.removeAnnotation(a.cfi)
-                }}
-              >
-                {a.text}
-              </Row>
-              {a.notes && (
-                <Row
-                  depth={3}
-                  onClick={() => {
-                    reader.focusedBookTab?.display(a.cfi)
-                  }}
-                >
-                  <span className="text-muted-foreground">{a.notes}</span>
-                </Row>
-              )}
-            </Fragment>
-          ))}
-        </div>
-      )}
-    </div>
-  )
+function annotationRowKey(row: AnnotationRow) {
+  if (row.type === 'section') return `section:${row.id}`
+  return `${row.type}:${row.annotation.id}`
 }

@@ -1,13 +1,13 @@
 import clsx from 'clsx'
+import {
+  CopyIcon,
+  PencilIcon,
+  SearchIcon,
+  SquareMinusIcon,
+  SquarePlusIcon,
+} from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import FocusLock from 'react-focus-lock'
-import {
-  MdCopyAll,
-  MdOutlineAddBox,
-  MdOutlineEdit,
-  MdOutlineIndeterminateCheckBox,
-  MdSearch,
-} from 'react-icons/md'
 import { useSnapshot } from 'valtio'
 
 import { typeMap, colorMap } from '../annotation'
@@ -82,7 +82,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
     ) as Window[]
   }, [iframe, iframes, tab])
 
-  const [selection, setSelection] = useTextSelection(windows)
+  const [selection, setSelection, releasePoint] = useTextSelection(windows)
 
   // If text selection menu is disabled, don't render it
   if (settings.enableTextSelectionMenu === false) {
@@ -116,6 +116,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
       anchorRect={anchorRect}
       containerRect={el.parentElement!.getBoundingClientRect()}
       viewRect={el.getBoundingClientRect()}
+      releasePoint={selection ? releasePoint : undefined}
       text={text}
       cfi={selection ? undefined : annotationCfi}
       forward={forward}
@@ -139,8 +140,10 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
   )
 }
 
-const ICON_SIZE = 20
-const ANNOTATION_SIZE = 24
+const ICON_SIZE = 28
+const ANNOTATION_SIZE = 32
+const actionIconClassName =
+  '!flex items-center justify-center !p-0 [&_svg]:!size-7'
 
 interface TextSelectionMenuRendererProps {
   tab: BookTab
@@ -148,6 +151,7 @@ interface TextSelectionMenuRendererProps {
   anchorRect: DOMRect
   containerRect: DOMRect
   viewRect: DOMRect
+  releasePoint?: { x: number; y: number }
   text: string
   cfi?: string
   forward: boolean
@@ -159,6 +163,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   anchorRect,
   containerRect,
   viewRect,
+  releasePoint,
   forward,
   text,
   cfi: annotationCfi,
@@ -175,9 +180,11 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const annotation = tab.book.annotations.find((a) => a.cfi === cfi)
   const [annotate, setAnnotate] = useState(!!annotation)
 
-  const position = forward
+  const position = releasePoint
     ? LayoutAnchorPosition.Before
-    : LayoutAnchorPosition.After
+    : forward
+      ? LayoutAnchorPosition.Before
+      : LayoutAnchorPosition.After
 
   const { zoom } = useTypography(tab)
   const endContainer = forward ? range.endContainer : range.startContainer
@@ -188,6 +195,15 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const lineHeight = isNaN(_lineHeight)
     ? anchorRect.height
     : _lineHeight * (zoom ?? 1)
+  const layoutAnchor = releasePoint
+    ? {
+        left: releasePoint.x,
+        top: releasePoint.y,
+        width: 1,
+        height: 1,
+      }
+    : anchorRect
+  const layoutLineHeight = releasePoint ? layoutAnchor.height : lineHeight
 
   return (
     <FocusLock>
@@ -207,18 +223,19 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           el.focus()
         }}
         className={clsx(
-          'bg-popover text-muted-foreground absolute z-50 p-2 shadow-sm focus:outline-none',
+          'border-border bg-popover text-popover-foreground absolute z-50 rounded-lg border p-2 shadow-lg shadow-black/10 focus:outline-none',
         )}
         style={{
           left: layout(containerRect.width, width, {
-            offset: anchorRect.left + viewRect.left - containerRect.left,
-            size: anchorRect.width,
+            offset: layoutAnchor.left + viewRect.left - containerRect.left,
+            size: layoutAnchor.width,
             mode: LayoutAnchorMode.ALIGN,
             position,
           }),
           top: layout(containerRect.height, height, {
-            offset: anchorRect.top - (lineHeight - anchorRect.height) / 2,
-            size: lineHeight,
+            offset:
+              layoutAnchor.top - (layoutLineHeight - layoutAnchor.height) / 2,
+            size: layoutLineHeight,
             position,
           }),
         }}
@@ -251,9 +268,9 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           <div className="text-muted-foreground mb-3 flex gap-2">
             <IconButton
               title={t('copy')}
-              Icon={MdCopyAll}
+              Icon={CopyIcon}
               size={ICON_SIZE}
-              className="!flex items-center justify-center !p-0"
+              className={actionIconClassName}
               style={{
                 width: ANNOTATION_SIZE,
                 height: ANNOTATION_SIZE,
@@ -265,9 +282,9 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             />
             <IconButton
               title={t('search_in_book')}
-              Icon={MdSearch}
+              Icon={SearchIcon}
               size={ICON_SIZE}
-              className="!flex items-center justify-center !p-0"
+              className={actionIconClassName}
               style={{
                 width: ANNOTATION_SIZE,
                 height: ANNOTATION_SIZE,
@@ -280,9 +297,9 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             />
             <IconButton
               title={t('annotate')}
-              Icon={MdOutlineEdit}
+              Icon={PencilIcon}
               size={ICON_SIZE}
-              className="!flex items-center justify-center !p-0"
+              className={actionIconClassName}
               style={{
                 width: ANNOTATION_SIZE,
                 height: ANNOTATION_SIZE,
@@ -294,9 +311,9 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             {tab.isDefined(text) ? (
               <IconButton
                 title={t('undefine')}
-                Icon={MdOutlineIndeterminateCheckBox}
+                Icon={SquareMinusIcon}
                 size={ICON_SIZE}
-                className="!flex items-center justify-center !p-0"
+                className={actionIconClassName}
                 style={{
                   width: ANNOTATION_SIZE,
                   height: ANNOTATION_SIZE,
@@ -309,9 +326,9 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             ) : (
               <IconButton
                 title={t('define')}
-                Icon={MdOutlineAddBox}
+                Icon={SquarePlusIcon}
                 size={ICON_SIZE}
-                className="!flex items-center justify-center !p-0"
+                className={actionIconClassName}
                 style={{
                   width: ANNOTATION_SIZE,
                   height: ANNOTATION_SIZE,
@@ -334,10 +351,10 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                     [typeMap[type].style]: colorMap[color],
                     width: ANNOTATION_SIZE,
                     height: ANNOTATION_SIZE,
-                    fontSize: 16,
+                    fontSize: 18,
                   }}
                   className={clsx(
-                    'text-muted-foreground flex cursor-pointer items-center justify-center text-base',
+                    'border-border text-muted-foreground hover:bg-muted flex cursor-pointer items-center justify-center rounded-md border text-base',
                     typeMap[type].class,
                   )}
                   onClick={() => {

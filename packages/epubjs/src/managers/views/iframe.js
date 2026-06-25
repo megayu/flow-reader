@@ -15,6 +15,88 @@ import {
   revokeBlobUrl,
 } from '../../utils/core'
 
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
+
+class WavyUnderline extends Highlight {
+  render() {
+    while (this.element.firstChild) {
+      this.element.removeChild(this.element.firstChild)
+    }
+
+    let docFrag = this.element.ownerDocument.createDocumentFragment()
+    let filtered = this.filteredRanges()
+    let offset = this.element.getBoundingClientRect()
+    let container = this.container.getBoundingClientRect()
+    let stroke = this.attributes.stroke || 'black'
+    let strokeOpacity = this.attributes['stroke-opacity'] || '0.9'
+    let strokeWidth = numberAttribute(this.attributes, 'stroke-width', 1.8)
+    let amplitude = numberAttribute(this.attributes, 'data-wave-amplitude', 2)
+    let period = numberAttribute(this.attributes, 'data-wave-period', 7)
+    let gap = numberAttribute(this.attributes, 'data-wave-gap', 1.5)
+
+    for (let i = 0, len = filtered.length; i < len; i++) {
+      let r = filtered[i]
+      let x = r.left - offset.left + container.left
+      let y = r.top - offset.top + container.top + r.height + gap
+
+      let rect = createSvgElement(this.element.ownerDocument, 'rect')
+      rect.setAttribute('x', x)
+      rect.setAttribute('y', r.top - offset.top + container.top)
+      rect.setAttribute('height', r.height)
+      rect.setAttribute('width', r.width)
+      rect.setAttribute('fill', 'none')
+      rect.setAttribute('stroke', 'none')
+
+      let path = createSvgElement(this.element.ownerDocument, 'path')
+      path.setAttribute(
+        'd',
+        wavyUnderlinePath(x, r.width, y, amplitude, period),
+      )
+      path.setAttribute('fill', 'none')
+      path.setAttribute('stroke', stroke)
+      path.setAttribute('stroke-opacity', strokeOpacity)
+      path.setAttribute('stroke-width', strokeWidth)
+      path.setAttribute('stroke-linecap', 'round')
+      path.setAttribute('stroke-linejoin', 'round')
+
+      docFrag.appendChild(rect)
+      docFrag.appendChild(path)
+    }
+
+    this.element.appendChild(docFrag)
+  }
+}
+
+function createSvgElement(document, tagName) {
+  return document.createElementNS(SVG_NAMESPACE, tagName)
+}
+
+function numberAttribute(attributes, name, fallback) {
+  let value = Number(attributes[name])
+  return Number.isFinite(value) ? value : fallback
+}
+
+function wavyUnderlinePath(x, width, y, amplitude, period) {
+  let halfPeriod = Math.max(period / 2, 1)
+  let remaining = Math.max(width, 0)
+  let cursor = 0
+  let direction = -1
+  let path = `M${x} ${y}`
+
+  while (remaining > 0) {
+    let segment = Math.min(halfPeriod, remaining)
+    let controlX = x + cursor + segment / 2
+    let endX = x + cursor + segment
+
+    path += ` Q${controlX} ${y + direction * amplitude} ${endX} ${y}`
+    cursor += segment
+    remaining -= segment
+    direction *= -1
+  }
+
+  return path
+}
+
 class IframeView {
   constructor(section, options) {
     this.settings = extend(
@@ -836,7 +918,9 @@ class IframeView {
       this.pane = new Pane(this.iframe, this.element)
     }
 
-    let m = new Underline(range, className, data, attributes)
+    let Mark =
+      attributes['data-underline-style'] === 'wavy' ? WavyUnderline : Underline
+    let m = new Mark(range, className, data, attributes)
     let h = this.pane.addMark(m)
 
     this.underlines[cfiRange] = {

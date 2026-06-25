@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react'
 import { BookRecord, CoverRecord, db } from '../db'
 
 export function useLibrary() {
-  const [books, setBooks] = useState<BookRecord[]>()
+  const [books, setBooks] = useState<BookRecord[] | undefined>(() =>
+    db.books.peekAll(),
+  )
 
   useEffect(() => {
     let disposed = false
@@ -27,7 +29,9 @@ export function useLibrary() {
 }
 
 export function useCovers() {
-  const [covers, setCovers] = useState<CoverRecord[]>()
+  const [covers, setCovers] = useState<CoverRecord[] | undefined>(() =>
+    db.covers.peekAll(),
+  )
 
   useEffect(() => {
     let disposed = false

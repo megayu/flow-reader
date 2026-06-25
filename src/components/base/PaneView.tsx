@@ -36,10 +36,7 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
         onClick={() => setExpanded((e) => !e)}
       >
         <Twisty expanded={expanded} />
-        <div
-          className="text-muted-foreground text-xs !font-bold font-medium"
-          style={{ fontSize: 11 }}
-        >
+        <div className="text-muted-foreground text-base !font-bold font-medium">
           {headline.toUpperCase()}
         </div>
         {actions && (
@@ -52,7 +49,7 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
       <div
         ref={ref}
         className={clsx(
-          'scroll text-muted-foreground min-h-0 flex-1 text-xs',
+          'scroll text-muted-foreground min-h-0 flex-1 text-base',
           !expanded && 'hidden',
           className,
         )}

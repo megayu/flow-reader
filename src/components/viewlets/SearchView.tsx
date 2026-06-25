@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
+import { FoldVerticalIcon, UnfoldVerticalIcon, XIcon } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Highlighter from 'react-highlight-words'
-import { VscCollapseAll, VscExpandAll } from 'react-icons/vsc'
 
 import { useAction } from '@flow/reader/hooks/useAction'
 import { useList } from '@flow/reader/hooks/useList'
@@ -8,9 +8,11 @@ import { useTranslation } from '@flow/reader/hooks/useTranslation'
 import { IMatch, reader, useReaderSnapshot } from '@flow/reader/models/reader'
 import { flatTree } from '@flow/reader/models/tree'
 
-import { TextField } from '../Form'
+import { readerPageTooltipContentStyle } from '../AppTooltip'
+import { IconButton } from '../Button'
 import { Row } from '../Row'
 import { PaneView, PaneViewProps } from '../base/PaneView'
+import { Input } from '../ui/input'
 
 // When inputting with IME and storing state in `valtio`,
 // unexpected rendering with `e.target.value === ''` occurs,
@@ -18,16 +20,20 @@ import { PaneView, PaneViewProps } from '../base/PaneView'
 // while this will not happen when using `React.useState`,
 // so we should create an intermediate `keyword` state to fix this.
 function useIntermediateKeyword() {
-  const [keyword, setKeyword] = useState('')
   const { focusedBookTab } = useReaderSnapshot()
+  const modelKeyword = focusedBookTab?.keyword ?? ''
+  const [keyword, setLocalKeyword] = useState(modelKeyword)
 
   useEffect(() => {
-    setKeyword(focusedBookTab?.keyword ?? '')
-  }, [focusedBookTab?.keyword])
+    setLocalKeyword((current) =>
+      current === modelKeyword ? current : modelKeyword,
+    )
+  }, [modelKeyword])
 
-  useEffect(() => {
-    reader.focusedBookTab?.setKeyword(keyword)
-  }, [keyword])
+  const setKeyword = useCallback((nextKeyword: string) => {
+    setLocalKeyword(nextKeyword)
+    reader.focusedBookTab?.setKeyword(nextKeyword)
+  }, [])
 
   return [keyword, setKeyword] as const
 }
@@ -36,40 +42,70 @@ export const SearchView: React.FC<PaneViewProps> = (props) => {
   const [action] = useAction()
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation()
+  const inputRef = useRef<HTMLInputElement | null>(null)
 
   const [keyword, setKeyword] = useIntermediateKeyword()
 
+  const active = action === 'search'
   const results = focusedBookTab?.results
   const expanded = results?.some((r) => r.expanded)
   const toggleResults = () => {
     reader.focusedBookTab?.results?.forEach((r) => (r.expanded = !expanded))
   }
 
+  useEffect(() => {
+    if (!active) return
+
+    const timeout = window.setTimeout(() => {
+      inputRef.current?.focus()
+    })
+
+    return () => window.clearTimeout(timeout)
+  }, [active])
+
   return (
     <PaneView {...props}>
       <div className="scroll-parent h-full flex-1">
-        <div className="py-px">
-          <TextField
-            as="input"
-            name="keyword"
-            autoFocus={action === 'search'}
-            hideLabel
-            value={keyword}
-            placeholder={t('search.title')}
-            onChange={(e) => setKeyword(e.target.value)}
-            onClear={() => setKeyword('')}
-            actions={[
-              {
-                title: t(
+        <div className="px-px py-px">
+          <div className="bg-background flex h-8 items-center rounded-lg transition-shadow focus-within:shadow-[inset_0_0_0_1px_var(--ring)]">
+            <Input
+              ref={inputRef}
+              name="keyword"
+              autoFocus={active}
+              aria-label={t('search.title')}
+              value={keyword}
+              placeholder={t('search.title')}
+              className="h-full flex-1 rounded-lg border-0 bg-transparent px-2.5 py-0 focus-visible:border-transparent focus-visible:ring-0"
+              onChange={(e) => setKeyword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Escape') return
+
+                e.preventDefault()
+                e.stopPropagation()
+                inputRef.current?.blur()
+              }}
+            />
+            <div className="flex shrink-0 items-center gap-0.5 pr-1">
+              <IconButton
+                className="text-muted-foreground"
+                title={t(
                   expanded ? 'action.collapse_all' : 'action.expand_all',
-                ),
-                Icon: expanded ? VscCollapseAll : VscExpandAll,
-                onClick: toggleResults,
-              },
-            ]}
-          />
+                )}
+                Icon={expanded ? FoldVerticalIcon : UnfoldVerticalIcon}
+                onClick={toggleResults}
+              />
+              {keyword && (
+                <IconButton
+                  className="text-muted-foreground"
+                  title={t('action.clear')}
+                  Icon={XIcon}
+                  onClick={() => setKeyword('')}
+                />
+              )}
+            </div>
+          </div>
         </div>
-        {keyword && results && (
+        {active && keyword && results && (
           <ResultList results={results as IMatch[]} keyword={keyword} />
         )}
       </div>
@@ -86,7 +122,7 @@ const ResultList: React.FC<ResultListProps> = ({ results, keyword }) => {
     () => results.flatMap((r) => flatTree(r)) ?? [],
     [results],
   )
-  const { outerRef, innerRef, items } = useList(rows)
+  const { outerRef, items, totalSize } = useList(rows)
   const t = useTranslation('search')
 
   const sectionCount = results.length
@@ -94,15 +130,24 @@ const ResultList: React.FC<ResultListProps> = ({ results, keyword }) => {
 
   return (
     <>
-      <div className="text-muted-foreground px-5 py-2 text-xs">
+      <div className="text-muted-foreground px-3 py-2 text-base">
         {t('files.result')
           .replace('{n}', '' + resultCount)
           .replace('{m}', '' + sectionCount)}
       </div>
       <div ref={outerRef} className="scroll flex-1">
-        <div ref={innerRef}>
-          {items.map(({ index }) => (
-            <ResultRow key={index} result={rows[index]} keyword={keyword} />
+        <div className="relative" style={{ height: totalSize }}>
+          {items.map(({ index, start, size }) => (
+            <div
+              key={rows[index]?.id ?? index}
+              className="absolute top-0 right-0 left-0"
+              style={{
+                height: size,
+                transform: `translateY(${start}px)`,
+              }}
+            >
+              <ResultRow result={rows[index]} keyword={keyword} />
+            </div>
           ))}
         </div>
       </div>
@@ -134,6 +179,7 @@ const ResultRow: React.FC<ResultRowProps> = ({ result, keyword }) => {
       expanded={expanded}
       subitems={subitems}
       badge={isGroup}
+      tooltipContentStyle={readerPageTooltipContentStyle}
       {...(!isGroup && {
         onClick: () => {
           if (tab) {

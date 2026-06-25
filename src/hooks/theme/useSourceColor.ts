@@ -1,22 +1,37 @@
 import { useCallback } from 'react'
 
 import { useSettings } from '@flow/reader/state'
+import {
+  defaultAccentColor,
+  normalizePaletteColor,
+} from '@flow/reader/styles/theme'
 
-export function useSourceColor() {
+export function useAccentColor() {
   const [{ theme }, setSettings] = useSettings()
+  const accentColor =
+    normalizePaletteColor(theme?.accent ?? theme?.source) ?? defaultAccentColor
 
-  const setSourceColor = useCallback(
-    (source: string) => {
+  const setAccentColor = useCallback(
+    (accent: string) => {
       setSettings((prev) => ({
         ...prev,
         theme: {
           ...prev.theme,
-          source,
+          accent,
         },
       }))
     },
     [setSettings],
   )
 
-  return { sourceColor: theme?.source ?? '#0ea5e9', setSourceColor }
+  return { accentColor, setAccentColor }
+}
+
+export function useSourceColor() {
+  const { accentColor, setAccentColor } = useAccentColor()
+
+  return {
+    sourceColor: accentColor,
+    setSourceColor: setAccentColor,
+  }
 }

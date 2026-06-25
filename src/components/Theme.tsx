@@ -1,32 +1,21 @@
-import {
-  themeFromSourceColor,
-  argbFromHex,
-} from '@material/material-color-utilities'
 import Head from 'next/head'
-import { useEffect, useMemo } from 'react'
 
-import { useSourceColor } from '../hooks/theme/useSourceColor'
-import { useSetTheme } from '../hooks/theme/useTheme'
-import { createThemeCss } from '../styles/theme'
+import { useSettings } from '../state'
+import { createFlowThemeCss } from '../styles/theme'
+import { createAppTypographyCss } from '../styles/ui'
 
 export function Theme() {
-  const { sourceColor } = useSourceColor()
-  const setTheme = useSetTheme()
-
-  const theme = useMemo(
-    () => themeFromSourceColor(argbFromHex(sourceColor)),
-    [sourceColor],
-  )
-
-  useEffect(() => {
-    setTheme(theme)
-  }, [setTheme, theme])
+  const [settings] = useSettings()
 
   return (
     <Head>
       <style
         id="theme"
-        dangerouslySetInnerHTML={{ __html: createThemeCss(theme) }}
+        dangerouslySetInnerHTML={{
+          __html:
+            createFlowThemeCss(settings.theme) +
+            createAppTypographyCss(settings.ui?.fontSize),
+        }}
       ></style>
     </Head>
   )

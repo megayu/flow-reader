@@ -1,7 +1,10 @@
 import clsx from 'clsx'
+import {
+  FoldVerticalIcon,
+  LocateFixedIcon,
+  UnfoldVerticalIcon,
+} from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { MdMyLocation } from 'react-icons/md'
-import { VscCollapseAll, VscExpandAll } from 'react-icons/vsc'
 
 import {
   compareBookDisplayTitle,
@@ -10,7 +13,7 @@ import {
 } from '@flow/reader/book'
 import { useBackground } from '@flow/reader/hooks/theme/useBackground'
 import { useLibrary } from '@flow/reader/hooks/useLibrary'
-import { useList } from '@flow/reader/hooks/useList'
+import { LIST_ITEM_SIZE, useList } from '@flow/reader/hooks/useList'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
 import {
   compareHref,
@@ -21,6 +24,8 @@ import {
 import { dfs } from '@flow/reader/models/tree'
 import { useSetViewMode } from '@flow/reader/state'
 
+import { AppTooltip, readerPageTooltipContentStyle } from '../AppTooltip'
+import { BookTooltipContent } from '../BookTooltipContent'
 import { Row } from '../Row'
 import { Pane, PaneView, PaneViewProps } from '../base/PaneView'
 import { StateLayer } from '../base/StateLayer'
@@ -39,12 +44,11 @@ const LibraryPane: React.FC = () => {
   const { focusedBookTab, groups } = useReaderSnapshot()
   const setViewMode = useSetViewMode()
   const [, , background] = useBackground()
-  const paneRef = useRef<HTMLDivElement>(null)
-  const rowRefs = useRef(new Map<string, HTMLButtonElement>())
   const sortedBooks = useMemo(
-    () => books?.slice().sort(compareBookDisplayTitle),
+    () => books?.slice().sort(compareBookDisplayTitle) ?? [],
     [books],
   )
+  const { outerRef, items, scrollToItem, totalSize } = useList(sortedBooks)
   const openedBookIds = useMemo(
     () =>
       new Set(
@@ -57,62 +61,94 @@ const LibraryPane: React.FC = () => {
     [groups],
   )
   const currentBookId = focusedBookTab?.book.id
+  const currentIndex = useMemo(
+    () => sortedBooks.findIndex((book) => book.id === currentBookId),
+    [currentBookId, sortedBooks],
+  )
   const t = useTranslation('toc')
 
   useEffect(() => {
-    if (!currentBookId) return
-    const pane = paneRef.current
-    if (!pane || pane.offsetParent === null) return
+    if (!currentBookId || currentIndex < 0) return
 
-    rowRefs.current.get(currentBookId)?.scrollIntoView({ block: 'nearest' })
-  }, [currentBookId, sortedBooks?.length])
+    scrollToItem({ index: currentIndex, align: 'auto' })
+  }, [currentBookId, currentIndex, scrollToItem])
 
   return (
-    <Pane ref={paneRef} headline={t('library')} preferredSize={240}>
-      {sortedBooks?.map((book) => {
-        const displayTitle = getBookDisplayTitle(book)
-        const tooltip = getBookTooltip(book)
-        const opened = openedBookIds.has(book.id)
-        const active = book.id === currentBookId
+    <Pane ref={outerRef} headline={t('library')} preferredSize={240}>
+      <div className="relative" style={{ height: totalSize }}>
+        {items.map(({ index, start, size }) => {
+          const book = sortedBooks[index]
+          if (!book) return null
 
-        return (
-          <button
-            key={book.id}
-            ref={(el) => {
-              if (el) {
-                rowRefs.current.set(book.id, el)
-              } else {
-                rowRefs.current.delete(book.id)
-              }
-            }}
-            className={clsx(
-              'relative w-full truncate py-1 pr-3 pl-5 text-left',
-              opened && !active && background.rowActiveClassName,
-              active &&
-                clsx(
-                  background.rowActiveClassName,
-                  'ring-ring ring-1 ring-inset',
-                ),
-            )}
-            title={tooltip}
-            aria-current={active ? 'true' : undefined}
-            draggable
-            onClick={() => {
-              reader.addTab(book)
-              setViewMode('reader')
-            }}
-            onDragStart={(e) => {
-              e.dataTransfer.setData('text/plain', book.id)
-            }}
-          >
-            <StateLayer />
-            {opened && !active && (
-              <span className="bg-primary/60 absolute inset-y-1 left-1 w-0.5 rounded-full" />
-            )}
-            {displayTitle}
-          </button>
-        )
-      })}
+          const displayTitle = getBookDisplayTitle(book)
+          const tooltip = getBookTooltip(book)
+          const opened = openedBookIds.has(book.id)
+          const active = book.id === currentBookId
+
+          const bookButton = (
+            <button
+              className={clsx(
+                'group/library-row relative flex w-full items-center truncate py-0 pr-3 pl-5 text-left leading-none outline-none',
+                opened &&
+                  !active &&
+                  'text-foreground/85 bg-[var(--flow-bg-control)]',
+                active &&
+                  clsx(
+                    background.rowActiveClassName,
+                    'text-foreground ring-1 ring-[var(--flow-accent-border)] ring-inset',
+                  ),
+              )}
+              style={{
+                height: LIST_ITEM_SIZE,
+              }}
+              aria-label={tooltip}
+              aria-current={active ? 'true' : undefined}
+              draggable
+              onClick={() => {
+                reader.addTab(book)
+                setViewMode('reader')
+              }}
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/plain', book.id)
+              }}
+            >
+              <StateLayer className="transition-colors group-hover/library-row:bg-[var(--flow-bg-control-hover)]" />
+              {(opened || active) && (
+                <span
+                  className={clsx(
+                    'absolute inset-y-1 left-1 w-0.5 rounded-full',
+                    active
+                      ? 'w-1 bg-[var(--flow-accent)]'
+                      : 'bg-[var(--flow-accent-border)]',
+                  )}
+                />
+              )}
+              <span className="relative z-10 min-w-0 flex-1 truncate">
+                {displayTitle}
+              </span>
+            </button>
+          )
+
+          return (
+            <div
+              key={book.id}
+              className="absolute top-0 right-0 left-0"
+              style={{
+                height: size,
+                transform: `translateY(${start}px)`,
+              }}
+            >
+              <AppTooltip
+                content={<BookTooltipContent book={book} />}
+                contentStyle={readerPageTooltipContentStyle}
+                label={tooltip}
+              >
+                {bookButton}
+              </AppTooltip>
+            </div>
+          )
+        })}
+      </div>
     </Pane>
   )
 }
@@ -122,7 +158,7 @@ const TocPane: React.FC = () => {
   const { focusedBookTab } = useReaderSnapshot()
   const toc = focusedBookTab?.nav?.toc as INavItem[] | undefined
   const rows = useMemo(() => flattenToc(toc), [toc])
-  const { outerRef, innerRef, items, scrollToItem } = useList(rows)
+  const { outerRef, items, scrollToItem, totalSize } = useList(rows)
   const expanded = toc?.some((r) => r.expanded)
   const currentNavItem = focusedBookTab?.currentNavItem
   const currentKey = tocItemIdentity(currentNavItem)
@@ -161,7 +197,7 @@ const TocPane: React.FC = () => {
         {
           id: 'locate-current',
           title: t('action.locate_current'),
-          Icon: MdMyLocation,
+          Icon: LocateFixedIcon,
           handle() {
             const tab = reader.focusedBookTab
             const navItem = tab?.currentNavItem
@@ -174,7 +210,7 @@ const TocPane: React.FC = () => {
         {
           id: expanded ? 'collapse-all' : 'expand-all',
           title: t(expanded ? 'action.collapse_all' : 'action.expand_all'),
-          Icon: expanded ? VscCollapseAll : VscExpandAll,
+          Icon: expanded ? FoldVerticalIcon : UnfoldVerticalIcon,
           handle() {
             reader.focusedBookTab?.nav?.toc?.forEach((r) =>
               dfs(r as INavItem, (i) => (i.expanded = !expanded)),
@@ -184,20 +220,24 @@ const TocPane: React.FC = () => {
       ]}
       ref={outerRef}
     >
-      <div ref={innerRef}>
-        {items.map(({ index }) => {
+      <div className="relative" style={{ height: totalSize }}>
+        {items.map(({ index, start, size }) => {
           const row = rows[index]
           const item = row?.item
           const identity = tocItemIdentity(item)
           const active = identity === currentKey
 
           return (
-            <TocRow
+            <div
               key={tocRowKey(item, index)}
-              active={active}
-              depth={row?.depth ?? 1}
-              item={item}
-            />
+              className="absolute top-0 right-0 left-0"
+              style={{
+                height: size,
+                transform: `translateY(${start}px)`,
+              }}
+            >
+              <TocRow active={active} depth={row?.depth ?? 1} item={item} />
+            </div>
           )
         })}
       </div>
@@ -225,6 +265,7 @@ const TocRow: React.FC<TocRowProps> = memo(({ active, depth, item }) => {
   return (
     <Row
       title={label.trim()}
+      tooltipContentStyle={readerPageTooltipContentStyle}
       depth={depth}
       active={active}
       expanded={expanded}

@@ -1,5 +1,21 @@
 import clsx from 'clsx'
 import {
+  BookOpen,
+  Focus,
+  Highlighter,
+  Image,
+  Library,
+  ListFilter,
+  Maximize,
+  Minimize,
+  Search,
+  Settings,
+  Sun,
+  TableOfContents,
+  Type,
+  type LucideIcon,
+} from 'lucide-react'
+import {
   ComponentProps,
   PropsWithChildren,
   useCallback,
@@ -8,21 +24,6 @@ import {
   useRef,
   useState,
 } from 'react'
-import { IconType } from 'react-icons'
-import {
-  MdCenterFocusStrong,
-  MdFormatUnderlined,
-  MdFullscreen,
-  MdFullscreenExit,
-  MdFilterList,
-  MdLibraryBooks,
-  MdMenuBook,
-  MdOutlineLightMode,
-  MdOutlineImage,
-  MdSearch,
-  MdToc,
-} from 'react-icons/md'
-import { RiFontSize, RiSettings5Line } from 'react-icons/ri'
 
 import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
@@ -34,6 +35,7 @@ import {
 } from '../hooks/useAction'
 import { useTranslation } from '../hooks/useTranslation'
 import { useReaderSnapshot } from '../models/reader'
+import { getShortcutChords, type ShortcutActionId } from '../shortcuts'
 import {
   useLibraryStatusFilter,
   useSettingsDialogOpen,
@@ -45,9 +47,12 @@ import {
 } from '../state'
 import { activeClass } from '../styles'
 
+import { AppTooltip } from './AppTooltip'
+import { ReadingStatusIcon } from './ReadingStatusIcon'
 import { PaneView } from './base/PaneView'
 import { SplitView, useSplitViewItem } from './base/SplitView'
 import { SettingsDialog } from './pages/settings'
+import { Button as UiButton } from './ui/button'
 import { AnnotationView } from './viewlets/AnnotationView'
 import { ImageView } from './viewlets/ImageView'
 import { SearchView } from './viewlets/SearchView'
@@ -145,7 +150,8 @@ function getIframeWindows() {
 interface IAction {
   name: string
   title: string
-  Icon: IconType
+  Icon: LucideIcon
+  shortcutId?: ShortcutActionId
 }
 interface IViewAction extends IAction {
   name: ReaderPanelAction
@@ -156,31 +162,36 @@ const viewActions: IViewAction[] = [
   {
     name: 'toc',
     title: 'toc',
-    Icon: MdToc,
+    Icon: TableOfContents,
+    shortcutId: 'tocPanel',
     View: TocView,
   },
   {
     name: 'search',
     title: 'search',
-    Icon: MdSearch,
+    Icon: Search,
+    shortcutId: 'searchPanel',
     View: SearchView,
   },
   {
     name: 'annotation',
     title: 'annotation',
-    Icon: MdFormatUnderlined,
+    Icon: Highlighter,
+    shortcutId: 'annotationPanel',
     View: AnnotationView,
   },
   {
     name: 'image',
     title: 'image',
-    Icon: MdOutlineImage,
+    Icon: Image,
+    shortcutId: 'imagePanel',
     View: ImageView,
   },
   {
     name: 'typography',
     title: 'typography',
-    Icon: RiFontSize,
+    Icon: Type,
+    shortcutId: 'typographyPanel',
     View: TypographyView,
   },
 ]
@@ -194,7 +205,8 @@ const libraryViewActions: ILibraryViewAction[] = [
   {
     name: 'libraryFilter',
     title: 'library_filter',
-    Icon: MdFilterList,
+    Icon: ListFilter,
+    shortcutId: 'libraryFilterPanel',
     View: LibraryFilterView,
   },
 ]
@@ -245,13 +257,14 @@ function ViewActionBar({ className }: ComponentProps<'div'>) {
 
   return (
     <ActionBar className={className}>
-      {actions.map(({ name, title, Icon }) => {
+      {actions.map(({ name, title, Icon, shortcutId }) => {
         const active = activeAction === name
         return (
           <Action
-            title={t(`${title}.title`)}
+            label={t(`${title}.title`)}
             Icon={Icon}
             active={active}
+            shortcut={getPrimaryShortcut(shortcutId)}
             onClick={() => {
               if (viewMode === 'library') {
                 setLibraryAction(active ? undefined : (name as LibraryAction))
@@ -384,29 +397,33 @@ function PageActionBar({
         name: 'mode',
         title:
           viewMode === 'library' ? 'mode.return_reader' : 'mode.enter_library',
-        Icon: viewMode === 'library' ? MdMenuBook : MdLibraryBooks,
+        Icon: viewMode === 'library' ? BookOpen : Library,
+        shortcutId: 'libraryReaderToggle',
         disabled: viewMode === 'library' && !focusedBookTab,
       },
       {
         name: 'theme',
         title: 'theme',
-        Icon: MdOutlineLightMode,
+        Icon: Sun,
       },
       {
         name: 'fullscreen',
         title: fullscreen ? 'fullscreen.exit' : 'fullscreen.enter',
-        Icon: fullscreen ? MdFullscreenExit : MdFullscreen,
+        Icon: fullscreen ? Minimize : Maximize,
+        shortcutId: 'fullscreen',
       },
       {
         name: 'zen',
         title: 'zen.enter',
-        Icon: MdCenterFocusStrong,
+        Icon: Focus,
+        shortcutId: 'zenMode',
         disabled: viewMode === 'library' || !focusedBookTab,
       },
       {
         name: 'settings',
         title: 'settings',
-        Icon: RiSettings5Line,
+        Icon: Settings,
+        shortcutId: 'openSettings',
       },
     ],
     [focusedBookTab, fullscreen, viewMode],
@@ -415,7 +432,7 @@ function PageActionBar({
   return (
     <div>
       <ActionBar>
-        {pageActions.map(({ name, title, Icon, disabled }, i) => {
+        {pageActions.map(({ name, title, Icon, shortcutId, disabled }, i) => {
           const active =
             (viewMode === 'library' && name === 'mode') ||
             (themeOpen && name === 'theme') ||
@@ -429,10 +446,11 @@ function PageActionBar({
           const actionButton = (
             <Action
               key={i}
-              title={t(titleKey)}
+              label={t(titleKey)}
               Icon={Icon}
               active={active}
               disabled={disabled}
+              shortcut={getPrimaryShortcut(shortcutId)}
               onClick={() => {
                 if (name === 'theme') {
                   setThemeOpen((open) => !open)
@@ -474,7 +492,7 @@ function PageActionBar({
               <div className="relative h-12 w-12" key={i}>
                 {themeOpen && (
                   <ThemePanel
-                    className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2"
+                    className="absolute bottom-0 left-full ml-1"
                     onClose={() => setThemeOpen(false)}
                   />
                 )}
@@ -498,23 +516,30 @@ function ActionBar({ className, ...props }: ActionBarProps) {
 }
 
 interface ActionProps extends ComponentProps<'button'> {
-  Icon: IconType
+  Icon: LucideIcon
   active?: boolean
+  label: string
+  shortcut?: string[]
 }
 const Action: React.FC<ActionProps> = ({
   className,
   Icon,
   active,
+  label,
+  shortcut,
   ...props
 }) => {
-  return (
+  const button = (
     <button
+      aria-label={label}
       className={clsx(
         'Action relative flex h-12 w-12 items-center justify-center',
-        active ? 'text-muted-foreground' : 'text-muted-foreground/70',
         props.disabled
-          ? 'text-muted-foreground'
-          : 'hover:text-muted-foreground',
+          ? 'text-muted-foreground/35 cursor-not-allowed opacity-60'
+          : clsx(
+              'hover:text-muted-foreground cursor-pointer',
+              active ? 'text-muted-foreground' : 'text-muted-foreground/70',
+            ),
         className,
       )}
       {...props}
@@ -527,6 +552,21 @@ const Action: React.FC<ActionProps> = ({
       <Icon size={28} />
     </button>
   )
+
+  return (
+    <AppTooltip
+      disabled={props.disabled}
+      label={label}
+      shortcut={shortcut}
+      side="right"
+    >
+      {button}
+    </AppTooltip>
+  )
+}
+
+function getPrimaryShortcut(shortcutId: ShortcutActionId | undefined) {
+  return shortcutId ? getShortcutChords(shortcutId)[0] : undefined
 }
 
 const SideBar: React.FC = () => {
@@ -566,6 +606,10 @@ const SideBar: React.FC = () => {
 }
 
 const libraryStatusOptions = ['toRead', 'reading', 'read'] as const
+const libraryFilterButtonClassName =
+  'h-9 w-full justify-start gap-2 px-3 text-base leading-none'
+const libraryFilterInactiveButtonClassName =
+  'bg-[var(--flow-sidebar-item-bg)] ring-1 ring-[var(--flow-sidebar-item-border)] ring-inset hover:bg-[var(--flow-sidebar-item-bg-hover)] aria-expanded:bg-[var(--flow-sidebar-item-bg-active)]'
 
 function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const t = useTranslation('home')
@@ -586,35 +630,43 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
       className={clsx('p-3', className)}
     >
       <div className="space-y-2">
-        <button
+        <UiButton
           type="button"
+          variant={filters.length === 0 ? 'default' : 'secondary'}
           className={clsx(
-            'h-9 w-full px-3 text-left text-sm ring-1 ring-inset',
-            filters.length === 0
-              ? 'text-primary-foreground ring-ring bg-primary'
-              : 'bg-popover text-muted-foreground ring-border hover:bg-muted',
+            libraryFilterButtonClassName,
+            filters.length !== 0 && libraryFilterInactiveButtonClassName,
           )}
           onClick={() => setFilters([])}
         >
-          {t('library_filter.all')}
-        </button>
+          <ReadingStatusIcon
+            status={null}
+            className={filters.length === 0 ? 'text-primary-foreground' : ''}
+          />
+          <span className="leading-none">{t('library_filter.all')}</span>
+        </UiButton>
         {libraryStatusOptions.map((status) => {
           const active = filters.includes(status)
           return (
-            <button
+            <UiButton
               key={status}
               type="button"
+              variant={active ? 'default' : 'secondary'}
               className={clsx(
-                'flex h-9 w-full items-center justify-between px-3 text-left text-sm ring-1 ring-inset',
-                active
-                  ? 'text-primary-foreground ring-ring bg-primary'
-                  : 'bg-popover text-muted-foreground ring-border hover:bg-muted',
+                libraryFilterButtonClassName,
+                !active && libraryFilterInactiveButtonClassName,
               )}
               onClick={() => toggle(status)}
             >
-              <span>{t(`reading_status.${status}`)}</span>
+              <ReadingStatusIcon
+                status={status}
+                className={active ? 'text-primary-foreground' : ''}
+              />
+              <span className="min-w-0 flex-1 text-left leading-none">
+                {t(`reading_status.${status}`)}
+              </span>
               {active && <span aria-hidden>✓</span>}
-            </button>
+            </UiButton>
           )
         })}
       </div>

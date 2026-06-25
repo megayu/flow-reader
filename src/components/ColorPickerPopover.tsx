@@ -1,7 +1,7 @@
 import clsx from 'clsx'
+import { ClipboardPasteIcon, CopyIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { HexColorPicker } from 'react-colorful'
-import { MdContentCopy, MdContentPaste } from 'react-icons/md'
 
 import { useTranslation } from '../hooks/useTranslation'
 
@@ -98,9 +98,11 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
           style={{ backgroundColor: draft }}
         />
         <input
+          aria-label={t('hex')}
           value={input}
           spellCheck={false}
-          className="textfield text-muted-foreground h-8 min-w-0 flex-1 bg-transparent px-2 font-mono !text-[13px]"
+          className="textfield text-muted-foreground h-8 min-w-0 flex-1 bg-transparent px-2 font-mono text-base"
+          onFocus={(e) => e.currentTarget.select()}
           onChange={(e) => {
             const next = e.target.value
             setInput(next)
@@ -115,7 +117,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
         />
         <IconButton
           title={t('copy')}
-          Icon={MdContentCopy}
+          Icon={CopyIcon}
           className="text-muted-foreground"
           onClick={() => {
             navigator.clipboard?.writeText(draft).catch(() => undefined)
@@ -123,7 +125,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
         />
         <IconButton
           title={t('paste')}
-          Icon={MdContentPaste}
+          Icon={ClipboardPasteIcon}
           className="text-muted-foreground"
           onClick={() => {
             navigator.clipboard

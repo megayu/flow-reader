@@ -1,13 +1,14 @@
 import clsx from 'clsx'
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  FoldVerticalIcon,
+  SquareCheckBigIcon,
+  SquareIcon,
+  UnfoldVerticalIcon,
+} from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { MdCheckBox, MdCheckBoxOutlineBlank } from 'react-icons/md'
-import {
-  VscChevronDown,
-  VscChevronRight,
-  VscCollapseAll,
-  VscExpandAll,
-} from 'react-icons/vsc'
 
 import {
   getTextImportEncodings,
@@ -24,6 +25,7 @@ import type {
 import { useTranslation } from '../hooks/useTranslation'
 import { defaultTextImportRules, useSettings } from '../state'
 
+import { AppTooltip } from './AppTooltip'
 import { Button } from './Button'
 import { Select } from './Form'
 import { Overlay } from './base/Overlay'
@@ -207,20 +209,21 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
         data-flow-keyboard-capture="true"
         className="text-muted-foreground ring-border bg-background fixed top-1/2 left-1/2 z-[90] flex h-[min(42rem,calc(100vh-4rem))] w-[min(82rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-md shadow-xl ring-1 ring-inset"
       >
-        <aside className="border-border bg-muted/50 flex w-72 shrink-0 flex-col border-r">
+        <aside className="border-border flex w-72 shrink-0 flex-col border-r bg-[var(--flow-bg-sidebar)]">
           <div className="px-4 py-3 text-base font-semibold">{t('title')}</div>
           <div className="scroll min-h-0 flex-1 overflow-y-auto p-2">
             {previews.map((preview) => {
               const selected = selectedPaths.has(preview.path)
               const active = activePreview?.path === preview.path
-              const Icon = selected ? MdCheckBox : MdCheckBoxOutlineBlank
+              const Icon = selected ? SquareCheckBigIcon : SquareIcon
               return (
                 <button
                   key={preview.path}
                   type="button"
                   className={clsx(
-                    'hover:bg-muted mb-1 flex w-full items-start gap-2 rounded-sm px-2 py-2 text-left',
-                    active && 'text-primary-foreground bg-primary',
+                    'mb-1 flex w-full items-start gap-2 rounded-sm px-2 py-2 text-left hover:bg-[var(--flow-bg-control-hover)]',
+                    active &&
+                      'text-foreground bg-[var(--flow-accent-bg)] ring-1 ring-[var(--flow-accent-border)] ring-inset',
                   )}
                   onClick={() => setActivePath(preview.path)}
                 >
@@ -238,10 +241,10 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                     }}
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm">
+                    <span className="block truncate text-base">
                       {preview.filename}
                     </span>
-                    <span className="text-muted-foreground mt-0.5 block truncate text-xs">
+                    <span className="text-muted-foreground mt-0.5 block truncate text-base">
                       {preview.encodingLabel} · {t(`status.${preview.status}`)}
                     </span>
                   </span>
@@ -249,7 +252,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
               )
             })}
             {!loading && !previews.length && (
-              <div className="text-muted-foreground px-2 py-6 text-sm">
+              <div className="text-muted-foreground px-2 py-6 text-base">
                 {t('empty')}
               </div>
             )}
@@ -263,7 +266,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
             </div>
             {activePreview && (
               <div className="mt-2 grid grid-cols-[auto_minmax(12rem,20rem)] items-center gap-x-3 gap-y-2">
-                <div className="text-muted-foreground text-sm">
+                <div className="text-muted-foreground text-base">
                   {t('encoding')}
                 </div>
                 <Select
@@ -290,31 +293,37 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
           <div className="grid min-h-0 flex-1 grid-cols-[minmax(22rem,0.9fr)_minmax(28rem,1.1fr)] gap-5 overflow-hidden p-5">
             <section className="flex min-h-0 flex-col">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold">{t('chapters')}</h3>
+                <h3 className="text-base font-semibold">{t('chapters')}</h3>
                 {!!collapsibleChapterKeys.length && (
-                  <button
-                    type="button"
-                    className="text-muted-foreground hover:bg-muted hover:text-muted-foreground rounded-sm p-1"
-                    title={t(
+                  <AppTooltip
+                    label={t(
                       chapterPreviewExpanded ? 'collapse_all' : 'expand_all',
                     )}
-                    onClick={() => {
-                      setCollapsedChapterKeys(
-                        chapterPreviewExpanded
-                          ? new Set(collapsibleChapterKeys)
-                          : new Set(),
-                      )
-                    }}
                   >
-                    {chapterPreviewExpanded ? (
-                      <VscCollapseAll size={18} />
-                    ) : (
-                      <VscExpandAll size={18} />
-                    )}
-                  </button>
+                    <button
+                      type="button"
+                      aria-label={t(
+                        chapterPreviewExpanded ? 'collapse_all' : 'expand_all',
+                      )}
+                      className="text-muted-foreground hover:text-muted-foreground rounded-sm p-1 hover:bg-[var(--flow-bg-control-hover)]"
+                      onClick={() => {
+                        setCollapsedChapterKeys(
+                          chapterPreviewExpanded
+                            ? new Set(collapsibleChapterKeys)
+                            : new Set(),
+                        )
+                      }}
+                    >
+                      {chapterPreviewExpanded ? (
+                        <FoldVerticalIcon className="size-[18px]" />
+                      ) : (
+                        <UnfoldVerticalIcon className="size-[18px]" />
+                      )}
+                    </button>
+                  </AppTooltip>
                 )}
               </div>
-              <div className="scroll bg-muted/50 min-h-0 flex-1 overflow-auto rounded-sm p-2 text-sm">
+              <div className="scroll min-h-0 flex-1 overflow-auto rounded-sm bg-[var(--flow-bg-panel)] p-2 text-base">
                 <ChapterPreviewTree
                   nodes={chapterTree}
                   collapsedKeys={collapsedChapterKeys}
@@ -333,15 +342,15 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
               </div>
             </section>
             <section className="flex min-h-0 flex-col">
-              <h3 className="mb-2 text-sm font-semibold">{t('sample')}</h3>
-              <pre className="scroll bg-muted/50 min-h-0 flex-1 overflow-auto rounded-sm p-3 font-sans text-sm whitespace-pre-wrap">
+              <h3 className="mb-2 text-base font-semibold">{t('sample')}</h3>
+              <pre className="scroll min-h-0 flex-1 overflow-auto rounded-sm bg-[var(--flow-bg-panel)] p-3 font-sans text-base whitespace-pre-wrap">
                 {activePreview?.sample ?? ''}
               </pre>
             </section>
           </div>
 
           <div className="border-border flex items-center justify-between border-t px-5 py-3">
-            <div className="text-destructive min-w-0 text-xs">
+            <div className="text-destructive min-w-0 text-base">
               {error || activePreview?.message || ''}
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -381,7 +390,7 @@ const ChapterPreviewTree: React.FC<ChapterPreviewTreeProps> = ({
   if (nodes.every((node) => !node.children.length)) {
     return (
       <pre
-        className="font-sans text-sm whitespace-pre-wrap"
+        className="font-sans text-base whitespace-pre-wrap"
         style={{ paddingLeft: depth ? depth * 16 : 0 }}
       >
         {nodes.map((node) => node.title).join('\n')}
@@ -394,14 +403,14 @@ const ChapterPreviewTree: React.FC<ChapterPreviewTreeProps> = ({
       {nodes.map((node) => {
         const hasChildren = node.children.length > 0
         const collapsed = collapsedKeys.has(node.key)
-        const Icon = collapsed ? VscChevronRight : VscChevronDown
+        const Icon = collapsed ? ChevronRightIcon : ChevronDownIcon
 
         return (
           <div key={node.key}>
             <button
               type="button"
               className={clsx(
-                'hover:bg-muted flex w-full items-center gap-1 rounded-sm py-1 pr-2 text-left',
+                'flex w-full items-center gap-1 rounded-sm py-1 pr-2 text-left hover:bg-[var(--flow-bg-control-hover)]',
                 hasChildren
                   ? 'text-muted-foreground'
                   : 'text-muted-foreground/80',

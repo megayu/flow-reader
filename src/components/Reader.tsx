@@ -1,5 +1,17 @@
 import clsx from 'clsx'
-import dynamic from 'next/dynamic'
+import {
+  BookOpenIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ChevronUpIcon,
+  ChevronsDownIcon,
+  ChevronsUpIcon,
+  MinusIcon,
+  PanelTopIcon,
+  PlusIcon,
+  RotateCcwIcon,
+  XIcon,
+} from 'lucide-react'
 import React, {
   ComponentProps,
   useCallback,
@@ -9,15 +21,7 @@ import React, {
   useRef,
   useState,
 } from 'react'
-import {
-  MdChevronRight,
-  MdClose,
-  MdKeyboardArrowDown,
-  MdKeyboardArrowUp,
-  MdWebAsset,
-} from 'react-icons/md'
-import { RiBookLine } from 'react-icons/ri'
-import type { IPhotoSliderProps } from 'react-photo-view/dist/PhotoSlider'
+import { createPortal } from 'react-dom'
 import { useSnapshot } from 'valtio'
 
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
@@ -35,7 +39,7 @@ import {
 } from '@flow/reader/state'
 
 import { getBookDisplayTitle, getBookTooltip } from '../book'
-import { db } from '../db'
+import { db, type BookRecord } from '../db'
 import { handleFiles } from '../file'
 import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
@@ -51,6 +55,7 @@ import {
 } from '../models/reader'
 import { findSectionByLinkedHref, safeDecodeHref, sameHref } from '../noteLinks'
 import { revealScrollbars } from '../scrollbar'
+import { getShortcutChords } from '../shortcuts'
 import {
   createTypographyLayoutSignature,
   getBodyTypographyBaseline,
@@ -59,22 +64,23 @@ import {
 } from '../styles'
 
 import { setClickedAnnotation, Annotations } from './Annotation'
+import { BookTooltipContent } from './BookTooltipContent'
+import { ShortcutChord } from './ShortcutChord'
 import { Tab } from './Tab'
 import { TextSelectionMenu } from './TextSelectionMenu'
 import { DropZone, useDndContext } from './base/DropZone'
 import { Settings } from './pages/settings'
 
-const PhotoSlider = dynamic<IPhotoSliderProps>(
-  () =>
-    import('react-photo-view').then(
-      (mod) => mod.PhotoSlider as React.ComponentType<IPhotoSliderProps>,
-    ),
-  { ssr: false },
-)
-
 const FONT_SIZE_MIN = 14
 const FONT_SIZE_MAX = 28
 const FONT_SIZE_DEFAULT = 16
+const IMAGE_PREVIEW_ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 5]
+const IMAGE_PREVIEW_MIN_STEP = IMAGE_PREVIEW_ZOOM_STEPS[0] ?? 0.5
+const IMAGE_PREVIEW_MAX_STEP =
+  IMAGE_PREVIEW_ZOOM_STEPS[IMAGE_PREVIEW_ZOOM_STEPS.length - 1] ?? 5
+const IMAGE_PREVIEW_SIDE_PADDING = 64
+const IMAGE_PREVIEW_VERTICAL_PADDING = 192
+const IMAGE_PREVIEW_WHEEL_THRESHOLD = 6
 const pageComponents = [Settings]
 type ZenTypographyOverridesSetter = SetterOrUpdater<
   Record<string, TypographyConfiguration>
@@ -755,6 +761,7 @@ function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
   const zenMode = useZenModeValue()
   const tabWheelDelta = useRef(0)
   const lastTabWheelSwitch = useRef(0)
+  const [hoveredTabIndex, setHoveredTabIndex] = useState<number | undefined>()
 
   const handleMouseDown = useCallback(() => {
     reader.selectGroup(index)
@@ -802,13 +809,27 @@ function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
               key={tab.id}
               selected={selected}
               focused={focused}
+              showSeparator={
+                !selected &&
+                i + 1 < tabs.length &&
+                i + 1 !== selectedIndex &&
+                hoveredTabIndex !== i &&
+                hoveredTabIndex !== i + 1
+              }
               title={getReaderTabTooltip(tab, t)}
+              tooltipContent={getReaderTabTooltipContent(tab)}
+              onMouseEnter={() => setHoveredTabIndex(i)}
+              onMouseLeave={() =>
+                setHoveredTabIndex((current) =>
+                  current === i ? undefined : current,
+                )
+              }
               onClick={() => {
                 group.selectTab(i)
                 onEnterReaderMode()
               }}
               onDelete={() => reader.removeTab(i, index)}
-              Icon={tab instanceof BookTab ? RiBookLine : MdWebAsset}
+              Icon={tab instanceof BookTab ? BookOpenIcon : PanelTopIcon}
             >
               {label}
             </Tab>
@@ -890,12 +911,32 @@ function getReaderTabTooltip(
     : getReaderTabLabel(tab, t)
 }
 
+function getReaderTabTooltipContent(tab: BookTab | { title: string }) {
+  if (!(tab instanceof BookTab)) return
+
+  const book = tab.book as unknown as BookRecord
+  return <BookTooltipContent book={book} />
+}
+
 interface PaneContainerProps {
   active: boolean
   children?: React.ReactNode
 }
 const PaneContainer: React.FC<PaneContainerProps> = ({ active, children }) => {
-  return <div className={clsx('h-full', active || 'hidden')}>{children}</div>
+  return (
+    <div
+      aria-hidden={!active}
+      data-flow-reader-pane
+      className={clsx(
+        'overflow-hidden',
+        active
+          ? 'absolute inset-0 z-10 h-full'
+          : 'pointer-events-none fixed top-0 left-[-10000px] z-[-1] h-screen w-screen opacity-0',
+      )}
+    >
+      {children}
+    </div>
+  )
 }
 
 interface BookPaneProps {
@@ -972,6 +1013,17 @@ interface BookRenditionLifecycleOptions {
   containerRef: React.RefObject<HTMLDivElement | null>
 }
 
+function getVisibleLayoutSize(el?: HTMLDivElement | null) {
+  if (!el) return
+
+  const rect = el.getBoundingClientRect()
+  const width = Math.round(rect.width)
+  const height = Math.round(rect.height)
+  if (width <= 0 || height <= 0) return
+
+  return { width, height, key: `${width}x${height}` }
+}
+
 function useBookRenditionLifecycle({
   active,
   settingsReady,
@@ -982,11 +1034,12 @@ function useBookRenditionLifecycle({
   applyCustomStyle,
   containerRef,
 }: BookRenditionLifecycleOptions) {
-  const prevSize = useRef(0)
+  const prevSize = useRef<string | undefined>(undefined)
   const previousSpread = useRef<string | undefined>(undefined)
   const previousTypographyLayoutSignature = useRef<string | undefined>(
     undefined,
   )
+  const layoutFrame = useRef<number | undefined>(undefined)
   const applyCustomStyleRef = useRef(applyCustomStyle)
   const currentSpreadRef = useRef(currentSpread)
 
@@ -996,15 +1049,16 @@ function useBookRenditionLifecycle({
   const renderIfReady = useCallback(() => {
     if (!active || !settingsReady || rendition) return
 
-    const el = containerRef.current
-    if (!el || el.getBoundingClientRect().width === 0) return
+    const size = getVisibleLayoutSize(containerRef.current)
+    if (!size) return
 
     const beforeLayout = applyCustomStyleRef.current
     if (!beforeLayout) return
 
+    prevSize.current = size.key
     previousTypographyLayoutSignature.current = typographyLayoutSignature
     tab.render(
-      el,
+      containerRef.current!,
       currentSpreadRef.current,
       beforeLayout,
       typographyLayoutSignature,
@@ -1018,32 +1072,50 @@ function useBookRenditionLifecycle({
     typographyLayoutSignature,
   ])
 
+  const syncVisibleSize = useCallback(() => {
+    if (!active || !settingsReady) return
+
+    const size = getVisibleLayoutSize(containerRef.current)
+    if (!size) return
+
+    if (!rendition) {
+      renderIfReady()
+      return
+    }
+
+    if (prevSize.current === size.key) return
+    prevSize.current = size.key
+
+    try {
+      rendition.resize(size.width, size.height)
+    } catch (error) {
+      console.error(error)
+    }
+  }, [active, containerRef, rendition, renderIfReady, settingsReady])
+
+  const scheduleVisibleSizeSync = useCallback(() => {
+    if (layoutFrame.current !== undefined) {
+      cancelAnimationFrame(layoutFrame.current)
+    }
+
+    layoutFrame.current = requestAnimationFrame(() => {
+      layoutFrame.current = undefined
+      syncVisibleSize()
+    })
+  }, [syncVisibleSize])
+
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
 
-    const observer = new ResizeObserver(([entry]) => {
-      const size = entry?.contentRect.width ?? 0
-      // `display: hidden` will lead `rect` to 0
-      if (size !== 0 && size !== prevSize.current) {
-        requestAnimationFrame(() => {
-          if (!rendition) {
-            renderIfReady()
-            return
-          }
-
-          reader.resize()
-        })
-      }
-      prevSize.current = size
-    })
+    const observer = new ResizeObserver(scheduleVisibleSizeSync)
 
     observer.observe(el)
 
     return () => {
       observer.disconnect()
     }
-  }, [containerRef, rendition, renderIfReady])
+  }, [containerRef, scheduleVisibleSizeSync])
 
   useEffect(() => {
     tab.setBeforeLayout(applyCustomStyle, typographyLayoutSignature)
@@ -1060,12 +1132,17 @@ function useBookRenditionLifecycle({
   }, [renderIfReady])
 
   useEffect(() => {
-    /**
-     * when `spread` changes, we should call `spread()` to re-layout,
-     * then call {@link updateCustomStyle} to update custom style
-     * according to the latest layout
-     */
-    if (!rendition) return
+    scheduleVisibleSizeSync()
+    return () => {
+      if (layoutFrame.current !== undefined) {
+        cancelAnimationFrame(layoutFrame.current)
+        layoutFrame.current = undefined
+      }
+    }
+  }, [scheduleVisibleSizeSync])
+
+  useEffect(() => {
+    if (!active || !rendition) return
 
     if (previousSpread.current === undefined) {
       previousSpread.current = currentSpread
@@ -1075,10 +1152,10 @@ function useBookRenditionLifecycle({
 
     previousSpread.current = currentSpread
     rendition.spread(currentSpread)
-  }, [currentSpread, rendition])
+  }, [active, currentSpread, rendition])
 
   useEffect(() => {
-    if (!rendition) return
+    if (!active || !rendition) return
     tab.setBeforeLayout(applyCustomStyle, typographyLayoutSignature)
 
     if (previousTypographyLayoutSignature.current === typographyLayoutSignature)
@@ -1091,7 +1168,7 @@ function useBookRenditionLifecycle({
     if (target) {
       void rendition.display(target)
     }
-  }, [applyCustomStyle, rendition, tab, typographyLayoutSignature])
+  }, [active, applyCustomStyle, rendition, tab, typographyLayoutSignature])
 }
 
 function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
@@ -1124,6 +1201,10 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
         ? [tab.iframe]
         : []
   }, [iframe, iframes, tab])
+  const activeFrameWindows = useMemo(
+    () => (active ? frameWindows : []),
+    [active, frameWindows],
+  )
 
   const viewMode = useViewModeValue()
   const setViewMode = useSetViewMode()
@@ -1190,13 +1271,17 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
   )
 
   useEffect(() => {
+    if (!active) return
+
     document.addEventListener('keydown', handleFindShortcut, true)
 
     return () => {
       document.removeEventListener('keydown', handleFindShortcut, true)
     }
-  }, [handleFindShortcut])
-  useFrameEvent(frameWindows, 'keydown', handleFindShortcut, { capture: true })
+  }, [active, handleFindShortcut])
+  useFrameEvent(activeFrameWindows, 'keydown', handleFindShortcut, {
+    capture: true,
+  })
 
   useEffect(() => {
     if (!zenMode) return
@@ -1226,6 +1311,8 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
   )
 
   useEffect(() => {
+    if (!active) return
+
     document.addEventListener('mousedown', handleReturnMouseButton, true)
     document.addEventListener('auxclick', handleReturnMouseButton, true)
 
@@ -1233,11 +1320,11 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
       document.removeEventListener('mousedown', handleReturnMouseButton, true)
       document.removeEventListener('auxclick', handleReturnMouseButton, true)
     }
-  }, [handleReturnMouseButton])
-  useFrameEvent(frameWindows, 'mousedown', handleReturnMouseButton, {
+  }, [active, handleReturnMouseButton])
+  useFrameEvent(activeFrameWindows, 'mousedown', handleReturnMouseButton, {
     capture: true,
   })
-  useFrameEvent(frameWindows, 'auxclick', handleReturnMouseButton, {
+  useFrameEvent(activeFrameWindows, 'auxclick', handleReturnMouseButton, {
     capture: true,
   })
 
@@ -1268,6 +1355,50 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     containerRef: ref,
   })
 
+  useEffect(() => {
+    if (!active) return
+
+    const updateReaderPageWidth = () => {
+      const width = getCurrentReaderPageWidth(rendition, ref.current)
+      if (!width) return
+      const spreadWidth = getCurrentReaderSpreadWidth(rendition, ref.current)
+
+      document.documentElement.style.setProperty(
+        '--flow-reader-page-width',
+        `${width}px`,
+      )
+      if (spreadWidth) {
+        document.documentElement.style.setProperty(
+          '--flow-reader-spread-width',
+          `${spreadWidth}px`,
+        )
+      }
+    }
+    const scheduleReaderPageWidthUpdate = () => {
+      updateReaderPageWidth()
+      requestAnimationFrame(updateReaderPageWidth)
+      window.setTimeout(updateReaderPageWidth, 100)
+    }
+
+    scheduleReaderPageWidthUpdate()
+
+    const el = ref.current
+    if (!el) return
+
+    const observer = new ResizeObserver(scheduleReaderPageWidthUpdate)
+    observer.observe(el)
+    const mutationObserver = new MutationObserver(scheduleReaderPageWidthUpdate)
+    mutationObserver.observe(el, {
+      childList: true,
+      subtree: true,
+    })
+
+    return () => {
+      observer.disconnect()
+      mutationObserver.disconnect()
+    }
+  }, [active, currentLocation, rendered, rendition])
+
   const findOpen = chapterFind.open
   const findQuery = chapterFind.query
   const findSectionIndex = chapterFind.sectionIndex
@@ -1276,7 +1407,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     let cancelled = false
     const query = findQuery.trim()
 
-    if (!findOpen || !query || findSectionIndex === undefined) {
+    if (!active || !findOpen || !query || findSectionIndex === undefined) {
       setChapterFind((state) => ({
         ...state,
         results: [],
@@ -1331,11 +1462,12 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     return () => {
       cancelled = true
     }
-  }, [findOpen, findQuery, findSectionIndex, rendition?.manager, tab])
+  }, [active, findOpen, findQuery, findSectionIndex, rendition?.manager, tab])
 
   useEffect(() => {
     if (
       !chapterFind.open ||
+      !active ||
       !chapterFind.results.length ||
       chapterFind.sectionIndex === undefined
     ) {
@@ -1363,6 +1495,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     })
   }, [
     chapterFind.open,
+    active,
     chapterFind.results,
     chapterFind.sectionIndex,
     currentLocation,
@@ -1430,14 +1563,16 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     },
     [setDragEvent],
   )
-  useFrameEvent(frameWindows, 'dragover', handleFrameDragOver)
+  useFrameEvent(activeFrameWindows, 'dragover', handleFrameDragOver)
 
   const handleFrameMouseDown = useCallback(() => {
     onMouseDown()
   }, [onMouseDown])
-  useFrameEvent(frameWindows, 'mousedown', handleFrameMouseDown)
+  useFrameEvent(activeFrameWindows, 'mousedown', handleFrameMouseDown)
 
   useEffect(() => {
+    if (!active) return
+
     const cleanups = frameWindows.map((win) => {
       const doc = win.document
 
@@ -1519,7 +1654,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     return () => {
       cleanups.forEach((cleanup) => cleanup())
     }
-  }, [closeChapterFind, frameWindows, rendition, tab, zenMode])
+  }, [active, closeChapterFind, frameWindows, rendition, tab, zenMode])
 
   const handleFrameClick = useCallback(
     (e: MouseEvent) => {
@@ -1532,16 +1667,29 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
           tab.showPrevLocation()
           return
         }
-        if (!zenMode && el.tagName === 'IMG' && el.src.startsWith('blob:')) {
-          setSrc(el.src)
+        if (!zenMode && el.tagName === 'IMG') {
+          const imageSrc = el.currentSrc || el.src
+          if (imageSrc) {
+            setSrc(imageSrc)
+            return
+          }
+          return
+        }
+        if (!zenMode && el.tagName === 'SOURCE') {
+          const image = el.parentElement?.querySelector('img')
+          const imageSrc = image?.currentSrc || image?.src
+          if (imageSrc) {
+            setSrc(imageSrc)
+            return
+          }
           return
         }
       }
     },
     [tab, zenMode],
   )
-  useFrameEvent(frameWindows, 'click', handleFrameClick)
-  useFrameEvent(frameWindows, 'contextmenu', preventContextMenu)
+  useFrameEvent(activeFrameWindows, 'click', handleFrameClick)
+  useFrameEvent(activeFrameWindows, 'contextmenu', preventContextMenu)
 
   const handleRenditionWheel = useCallback(
     (e: WheelEvent) => {
@@ -1569,7 +1717,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
   )
 
   useEffect(() => {
-    if (!rendition) return
+    if (!active || !rendition) return
 
     const target = rendition as any
     target.on('wheel', handleRenditionWheel)
@@ -1578,7 +1726,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
       target.off?.('wheel', handleRenditionWheel)
       target.removeListener?.('wheel', handleRenditionWheel)
     }
-  }, [handleRenditionWheel, rendition])
+  }, [active, handleRenditionWheel, rendition])
 
   const handleFrameKeyDown = useMemo(
     () =>
@@ -1609,16 +1757,13 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
       zenMode,
     ],
   )
-  useFrameEvent(frameWindows, 'keydown', handleFrameKeyDown)
+  useFrameEvent(activeFrameWindows, 'keydown', handleFrameKeyDown)
 
   return (
     <div className="flex h-full flex-col">
-      <PhotoSlider
-        images={[{ src, key: 0 }]}
-        visible={!zenMode && !!src}
+      <ReaderImagePreview
+        src={!zenMode ? src : undefined}
         onClose={() => setSrc(undefined)}
-        maskOpacity={0.6}
-        bannerVisible={false}
       />
       {!zenMode && <ReaderPaneHeader tab={tab} />}
       <div
@@ -1636,15 +1781,17 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
             background,
           )}
         />
-        {!zenMode && <TextSelectionMenu tab={tab} />}
-        <Annotations tab={tab} />
+        {!zenMode && active && <TextSelectionMenu tab={tab} />}
+        <Annotations active={active} tab={tab} />
         {!zenMode && (
           <NotePopover
             popover={notePopover}
             onClose={() => setNotePopover(undefined)}
           />
         )}
-        {!zenMode && <ChapterFindHighlights find={chapterFind} tab={tab} />}
+        {!zenMode && (
+          <ChapterFindHighlights active={active} find={chapterFind} tab={tab} />
+        )}
         {!zenMode && chapterFind.open && (
           <ChapterFindBar
             find={chapterFind}
@@ -1661,9 +1808,497 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
             onPrevious={() => goToFindResult(chapterFind.activeIndex - 1)}
           />
         )}
+        {!zenMode && active && <ReaderEdgeNavigation tab={tab} />}
       </div>
       <ReaderPaneFooter tab={tab} />
     </div>
+  )
+}
+
+interface ReaderEdgeNavigationProps {
+  tab: BookTab
+}
+
+const ReaderEdgeNavigation: React.FC<ReaderEdgeNavigationProps> = ({ tab }) => {
+  const t = useTranslation('shortcuts')
+  const items = [
+    {
+      label: t('previous_chapter'),
+      Icon: ChevronsUpIcon,
+      onClick: () => void tab.prevSection(),
+    },
+    {
+      label: t('previous_page'),
+      Icon: ChevronUpIcon,
+      onClick: () => void tab.prev(),
+    },
+    {
+      label: t('next_page'),
+      Icon: ChevronDownIcon,
+      onClick: () => void tab.next(),
+    },
+    {
+      label: t('next_chapter'),
+      Icon: ChevronsDownIcon,
+      onClick: () => void tab.nextSection(),
+    },
+  ] as const
+
+  return (
+    <div
+      data-flow-reader-edge-nav
+      className="group absolute top-1/2 right-0 z-30 flex w-6 -translate-y-1/2"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div
+        data-flow-reader-edge-nav-panel
+        className="text-foreground ring-foreground/10 pointer-events-none flex w-full flex-col overflow-hidden rounded-l-lg bg-black/10 opacity-0 shadow-sm ring-1 shadow-black/10 backdrop-blur-md backdrop-saturate-150 ring-inset group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 dark:bg-white/10"
+      >
+        {items.map(({ label, Icon, onClick }) => (
+          <button
+            key={label}
+            type="button"
+            aria-label={label}
+            className="text-muted-foreground hover:text-foreground focus-visible:ring-ring flex h-9 w-full cursor-pointer items-center justify-center border-0 bg-transparent outline-none hover:bg-[var(--flow-bg-control-hover)] focus-visible:ring-2 focus-visible:ring-inset"
+            onClick={onClick}
+          >
+            <Icon className="size-[1.125rem]" />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+interface ReaderImagePreviewProps {
+  src?: string
+  onClose: () => void
+}
+
+type ReaderImagePreviewMode = 'fit' | 'zoom'
+
+const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
+  src,
+  onClose,
+}) => {
+  const t = useTranslation('image_preview')
+  const previewRef = useRef<HTMLDivElement>(null)
+  const stageRef = useRef<HTMLDivElement>(null)
+  const [naturalSize, setNaturalSize] = useState<{
+    width: number
+    height: number
+  }>()
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 })
+  const [dragging, setDragging] = useState(false)
+  const [mode, setMode] = useState<ReaderImagePreviewMode>('fit')
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [scale, setScale] = useState(1)
+  const dragState = useRef<
+    | {
+        pointerId: number
+        startPan: { x: number; y: number }
+        startX: number
+        startY: number
+      }
+    | undefined
+  >(undefined)
+
+  const availableSize = useMemo(
+    () => ({
+      height: Math.max(1, stageSize.height - IMAGE_PREVIEW_VERTICAL_PADDING),
+      width: Math.max(1, stageSize.width - IMAGE_PREVIEW_SIDE_PADDING),
+    }),
+    [stageSize.height, stageSize.width],
+  )
+
+  const fitScale = useMemo(() => {
+    if (!naturalSize || !stageSize.width || !stageSize.height) return 1
+
+    return Math.min(
+      1,
+      availableSize.width / naturalSize.width,
+      availableSize.height / naturalSize.height,
+    )
+  }, [
+    availableSize.height,
+    availableSize.width,
+    naturalSize,
+    stageSize.height,
+    stageSize.width,
+  ])
+
+  const panBounds = useMemo(() => {
+    if (!naturalSize) return { x: 0, y: 0 }
+
+    return {
+      x: Math.max(0, (naturalSize.width * scale - availableSize.width) / 2),
+      y: Math.max(0, (naturalSize.height * scale - availableSize.height) / 2),
+    }
+  }, [availableSize.height, availableSize.width, naturalSize, scale])
+
+  useLayoutEffect(() => {
+    if (!src) return
+
+    const stage = stageRef.current
+    if (!stage) return
+
+    const updateStageSize = () => {
+      const rect = stage.getBoundingClientRect()
+      setStageSize({
+        width: rect.width,
+        height: rect.height,
+      })
+    }
+
+    updateStageSize()
+
+    const observer = new ResizeObserver(updateStageSize)
+    observer.observe(stage)
+    window.addEventListener('resize', updateStageSize)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', updateStageSize)
+    }
+  }, [src])
+
+  useEffect(() => {
+    if (!src) return
+
+    setNaturalSize(undefined)
+    setMode('fit')
+    setPan({ x: 0, y: 0 })
+    setScale(1)
+
+    requestAnimationFrame(() => {
+      previewRef.current?.focus()
+    })
+  }, [src])
+
+  useEffect(() => {
+    if (!src || mode !== 'fit') return
+    setPan({ x: 0, y: 0 })
+    setScale(fitScale)
+  }, [fitScale, mode, src])
+
+  const zoomTo = useCallback((nextScale: number) => {
+    setMode('zoom')
+    setPan({ x: 0, y: 0 })
+    setScale(clamp(nextScale, IMAGE_PREVIEW_MIN_STEP, IMAGE_PREVIEW_MAX_STEP))
+  }, [])
+
+  const zoomIn = useCallback(() => {
+    setScale((current) => {
+      const next = getNextImagePreviewZoomIn(current)
+      if (next === undefined) return current
+      setMode('zoom')
+      setPan({ x: 0, y: 0 })
+      return next
+    })
+  }, [])
+
+  const zoomOut = useCallback(() => {
+    setScale((current) => {
+      const next = getNextImagePreviewZoomOut(current)
+      if (next === undefined) return current
+      setMode('zoom')
+      setPan({ x: 0, y: 0 })
+      return next
+    })
+  }, [])
+
+  const resetToFit = useCallback(() => {
+    setMode('fit')
+    setPan({ x: 0, y: 0 })
+    setScale(fitScale)
+  }, [fitScale])
+
+  useEffect(() => {
+    setPan((current) => clampImagePreviewPan(current, panBounds))
+  }, [panBounds])
+
+  const handleWheel = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+
+      const delta =
+        Math.abs(event.deltaY) >= Math.abs(event.deltaX)
+          ? event.deltaY
+          : event.deltaX
+      if (Math.abs(delta) < IMAGE_PREVIEW_WHEEL_THRESHOLD) return
+
+      if (delta < 0) zoomIn()
+      else zoomOut()
+    },
+    [zoomIn, zoomOut],
+  )
+
+  const canPan = panBounds.x > 0 || panBounds.y > 0
+
+  const handleImagePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+
+      if (!canPan) return
+
+      event.currentTarget.setPointerCapture(event.pointerId)
+      dragState.current = {
+        pointerId: event.pointerId,
+        startPan: pan,
+        startX: event.clientX,
+        startY: event.clientY,
+      }
+      setDragging(true)
+    },
+    [canPan, pan],
+  )
+
+  const handleImagePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const drag = dragState.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+
+      event.preventDefault()
+      event.stopPropagation()
+
+      setPan(
+        clampImagePreviewPan(
+          {
+            x: drag.startPan.x + event.clientX - drag.startX,
+            y: drag.startPan.y + event.clientY - drag.startY,
+          },
+          panBounds,
+        ),
+      )
+    },
+    [panBounds],
+  )
+
+  const endImageDrag = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (dragState.current?.pointerId !== event.pointerId) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      dragState.current = undefined
+      setDragging(false)
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (!src) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) return
+
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        onClose()
+        return
+      }
+
+      if (event.key === '+' || event.key === '=') {
+        event.preventDefault()
+        event.stopPropagation()
+        zoomIn()
+        return
+      }
+
+      if (event.key === '-') {
+        event.preventDefault()
+        event.stopPropagation()
+        zoomOut()
+        return
+      }
+
+      if (event.key === '0') {
+        event.preventDefault()
+        event.stopPropagation()
+        resetToFit()
+        return
+      }
+
+      if (event.key === '1') {
+        event.preventDefault()
+        event.stopPropagation()
+        zoomTo(1)
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown, true)
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true)
+    }
+  }, [onClose, resetToFit, src, zoomIn, zoomOut, zoomTo])
+
+  if (!src) return null
+
+  const zoomPercent = `${Math.round(scale * 100)}%`
+  const canZoomOut =
+    getNextImagePreviewZoomOut(scale) !== undefined &&
+    scale > IMAGE_PREVIEW_MIN_STEP
+  const canZoomIn =
+    getNextImagePreviewZoomIn(scale) !== undefined &&
+    scale < IMAGE_PREVIEW_MAX_STEP
+  const isOneToOne = Math.abs(scale - 1) < 0.001
+  const isFit = mode === 'fit'
+
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
+    <div
+      ref={previewRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('title')}
+      data-flow-keyboard-capture="true"
+      tabIndex={-1}
+      className="fixed inset-0 z-[9999] overflow-hidden bg-neutral-500/45 text-white backdrop-blur-2xl backdrop-saturate-75 outline-none"
+      onWheel={handleWheel}
+      onMouseDown={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+      }}
+      onClick={onClose}
+    >
+      <div className="pointer-events-none absolute inset-0 bg-white/8" />
+      <div
+        ref={stageRef}
+        className="absolute inset-0 flex items-center justify-center overflow-hidden px-8 py-24"
+      >
+        <div
+          className={clsx(
+            'pointer-events-auto touch-none select-none',
+            !dragging && 'transition-transform duration-100 ease-out',
+            canPan
+              ? dragging
+                ? 'cursor-grabbing'
+                : 'cursor-grab'
+              : 'cursor-default',
+          )}
+          style={{
+            width: naturalSize ? naturalSize.width : undefined,
+            height: naturalSize ? naturalSize.height : undefined,
+            transform: `translate3d(${pan.x}px, ${pan.y}px, 0)`,
+          }}
+          onPointerDown={handleImagePointerDown}
+          onPointerMove={handleImagePointerMove}
+          onPointerUp={endImageDrag}
+          onPointerCancel={endImageDrag}
+          onLostPointerCapture={endImageDrag}
+          onClick={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <img
+            src={src}
+            alt=""
+            draggable={false}
+            className={clsx(
+              'max-w-none shadow-2xl shadow-black/35 select-none',
+              !dragging && 'transition-transform duration-100 ease-out',
+            )}
+            style={{
+              width: naturalSize ? naturalSize.width : undefined,
+              height: naturalSize ? naturalSize.height : undefined,
+              transform: `scale(${scale})`,
+            }}
+            onLoad={(event) => {
+              const image = event.currentTarget
+              setNaturalSize({
+                width: image.naturalWidth || image.width,
+                height: image.naturalHeight || image.height,
+              })
+            }}
+          />
+        </div>
+      </div>
+
+      <div
+        className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/35 px-2 py-1.5 text-white shadow-lg ring-1 ring-white/15 backdrop-blur-md"
+        onClick={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <ReaderImagePreviewButton
+          label={t('zoom_out')}
+          disabled={!canZoomOut}
+          onClick={zoomOut}
+        >
+          <MinusIcon className="size-5" />
+        </ReaderImagePreviewButton>
+        <div className="min-w-16 px-2 text-center text-sm font-medium tabular-nums">
+          {zoomPercent}
+        </div>
+        <ReaderImagePreviewButton
+          label={t('zoom_in')}
+          disabled={!canZoomIn}
+          onClick={zoomIn}
+        >
+          <PlusIcon className="size-5" />
+        </ReaderImagePreviewButton>
+        <div className="mx-1 h-5 w-px bg-white/20" />
+        <ReaderImagePreviewButton
+          label={t('actual_size')}
+          active={isOneToOne && !isFit}
+          disabled={isOneToOne && !isFit}
+          onClick={() => zoomTo(1)}
+        >
+          <span className="text-xs font-semibold tracking-normal">1:1</span>
+        </ReaderImagePreviewButton>
+        <ReaderImagePreviewButton
+          label={t('fit')}
+          active={isFit}
+          disabled={isFit}
+          onClick={resetToFit}
+        >
+          <RotateCcwIcon className="size-[1.125rem]" />
+        </ReaderImagePreviewButton>
+        <div className="mx-1 h-5 w-px bg-white/20" />
+        <ReaderImagePreviewButton label={t('close')} onClick={onClose}>
+          <XIcon className="size-5" />
+        </ReaderImagePreviewButton>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+interface ReaderImagePreviewButtonProps extends ComponentProps<'button'> {
+  active?: boolean
+  label: string
+}
+
+function ReaderImagePreviewButton({
+  active,
+  children,
+  className,
+  disabled,
+  label,
+  ...props
+}: ReaderImagePreviewButtonProps) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      className={clsx(
+        'flex size-9 items-center justify-center rounded-full border-0 bg-transparent text-white/85 transition-colors outline-none',
+        active && 'bg-white/18 text-white',
+        disabled
+          ? 'cursor-default text-white/35'
+          : 'cursor-pointer hover:bg-white/16 hover:text-white focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-0',
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -1696,7 +2331,7 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
     >
       <input
         ref={inputRef}
-        className="text-foreground w-40 bg-transparent px-1 py-0.5 text-sm outline-none"
+        className="text-foreground w-40 bg-transparent px-1 py-0.5 text-base outline-none"
         value={find.query}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
@@ -1711,7 +2346,7 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
           }
         }}
       />
-      <div className="text-muted-foreground min-w-[3.5rem] text-center text-xs">
+      <div className="text-muted-foreground min-w-[3.5rem] text-center text-base">
         {find.searching ? '...' : `${current}/${count}`}
       </div>
       <button
@@ -1719,64 +2354,98 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
         disabled={disabled || find.activeIndex <= 0}
         onClick={onPrevious}
       >
-        <MdKeyboardArrowUp size={22} />
+        <ChevronUpIcon className="size-[22px]" />
       </button>
       <button
         className="text-muted-foreground hover:text-foreground p-1 disabled:opacity-40"
         disabled={disabled || find.activeIndex >= count - 1}
         onClick={onNext}
       >
-        <MdKeyboardArrowDown size={22} />
+        <ChevronDownIcon className="size-[22px]" />
       </button>
       <button
         className="text-muted-foreground hover:text-foreground p-1"
         onClick={onClose}
       >
-        <MdClose size={22} />
+        <XIcon className="size-[22px]" />
       </button>
     </div>
   )
 }
 
 interface ChapterFindHighlightsProps {
+  active: boolean
   find: ChapterFindState
   tab: BookTab
 }
 const ChapterFindHighlights: React.FC<ChapterFindHighlightsProps> = ({
+  active,
   find,
   tab,
 }) => {
-  const { rendition } = useSnapshot(tab)
-  const active = find.open ? find.results[find.activeIndex] : undefined
+  const { rendition, currentLocation, iframes } = useSnapshot(tab)
+  const matches = useMemo(() => {
+    if (!find.open) return []
+
+    const seen = new Set<string>()
+    return find.results.flatMap((result, index) => {
+      if (!result.cfi || seen.has(result.cfi)) return []
+
+      seen.add(result.cfi)
+      return [
+        {
+          active: index === find.activeIndex,
+          cfi: result.cfi,
+        },
+      ]
+    })
+  }, [find.activeIndex, find.open, find.results])
 
   useEffect(() => {
-    if (!active?.cfi) return
+    if (!active || !matches.length) return
 
-    try {
-      rendition?.annotations.highlight(
-        active.cfi,
-        undefined,
-        () => {
-          setClickedAnnotation(true)
-        },
-        undefined,
-        {
-          fill: 'rgba(59, 130, 246, 0.38)',
+    const addHighlight = (cfi: string, styles: Record<string, string>) => {
+      try {
+        rendition?.annotations.highlight(
+          cfi,
+          undefined,
+          () => {
+            setClickedAnnotation(true)
+          },
+          undefined,
+          styles,
+        )
+      } catch (error) {
+        // ignore matched text in unsupported nodes
+      }
+    }
+
+    matches
+      .filter((match) => !match.active)
+      .forEach((match) =>
+        addHighlight(match.cfi, {
+          fill: 'rgba(234, 179, 8, 0.3)',
           'fill-opacity': 'unset',
-        },
+        }),
       )
-    } catch (error) {
-      // ignore matched text in unsupported nodes
+    const activeMatch = matches.find((match) => match.active)
+    if (activeMatch) {
+      addHighlight(activeMatch.cfi, {
+        fill: 'rgba(59, 130, 246, 0.46)',
+        'fill-opacity': 'unset',
+      })
     }
 
     return () => {
-      try {
-        rendition?.annotations.remove(active.cfi, 'highlight')
-      } catch (error) {
-        // ignore removed views
-      }
+      matches.forEach((match) => {
+        try {
+          rendition?.annotations.remove(match.cfi, 'highlight')
+        } catch (error) {
+          // ignore removed views
+        }
+      })
     }
-  }, [active?.cfi, rendition?.annotations])
+  }, [active, currentLocation, iframes.length, matches, rendition?.annotations])
 
   return null
 }
@@ -1848,8 +2517,10 @@ const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) => {
         overflow: 'visible',
         padding: NOTE_POPOVER_PADDING,
         borderRadius: 10,
-        background: '#fff',
-        boxShadow: '0 10px 26px rgba(0, 0, 0, 0.18)',
+        color: 'var(--flow-text)',
+        background: 'var(--flow-bg-panel)',
+        border: '1px solid var(--flow-border)',
+        boxShadow: '0 12px 28px rgba(0, 0, 0, 0.22)',
         visibility: size.width ? 'visible' : 'hidden',
       }}
       onMouseDown={(e) => e.stopPropagation()}
@@ -1870,6 +2541,7 @@ const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) => {
           whiteSpace: 'normal',
           overflowWrap: 'break-word',
           textAlign: 'justify',
+          color: 'inherit',
         }}
       />
       <div
@@ -1880,7 +2552,19 @@ const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) => {
           bottom: placement.placeAbove ? -6 : undefined,
           width: 12,
           height: 12,
-          background: '#fff',
+          background: 'var(--flow-bg-panel)',
+          borderRight: placement.placeAbove
+            ? '1px solid var(--flow-border)'
+            : undefined,
+          borderBottom: placement.placeAbove
+            ? '1px solid var(--flow-border)'
+            : undefined,
+          borderLeft: placement.placeAbove
+            ? undefined
+            : '1px solid var(--flow-border)',
+          borderTop: placement.placeAbove
+            ? undefined
+            : '1px solid var(--flow-border)',
           transform: 'rotate(45deg)',
         }}
       />
@@ -1998,7 +2682,6 @@ const NOTE_POPOVER_PADDING = 10
 const NOTE_POPOVER_MIN_WIDTH = 180
 const NOTE_POPOVER_ARROW_EDGE_OFFSET = 24
 const NOTE_POPOVER_TEXT_STYLE_PROPERTIES = [
-  'color',
   'direction',
   'font-family',
   'font-feature-settings',
@@ -2109,6 +2792,40 @@ function getRenditionPageWidth(rendition: unknown) {
   return Number.isFinite(pageWidth) && pageWidth > 0
     ? Number(pageWidth)
     : undefined
+}
+
+function getCurrentReaderPageWidth(
+  rendition: unknown,
+  container?: HTMLElement | null,
+) {
+  const pageWidth = getRenditionPageWidth(rendition)
+  if (pageWidth) return Math.round(pageWidth)
+
+  const rect = container?.getBoundingClientRect()
+  if (!rect || rect.width <= 0) return
+
+  const divisor = getRenditionDivisor(rendition)
+  return Math.round(rect.width / divisor)
+}
+
+function getCurrentReaderSpreadWidth(
+  rendition: unknown,
+  container?: HTMLElement | null,
+) {
+  const pageWidth = getRenditionPageWidth(rendition)
+  const rect = container?.getBoundingClientRect()
+  if (!pageWidth) return rect?.width ? Math.round(rect.width) : undefined
+
+  const divisor = getRenditionDivisor(rendition)
+  const spreadWidth = Math.round(pageWidth * divisor)
+  if (!rect || rect.width <= 0) return spreadWidth
+
+  return Math.min(Math.round(rect.width), spreadWidth)
+}
+
+function getRenditionDivisor(rendition: unknown) {
+  const divisor = (rendition as any)?.manager?.layout?.divisor
+  return Number.isFinite(divisor) && divisor > 1 ? Number(divisor) : 1
 }
 
 function getNoteOverlayPlacement(
@@ -2832,6 +3549,27 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
+function clampImagePreviewPan(
+  pan: { x: number; y: number },
+  bounds: { x: number; y: number },
+) {
+  return {
+    x: clamp(pan.x, -bounds.x, bounds.x),
+    y: clamp(pan.y, -bounds.y, bounds.y),
+  }
+}
+
+function getNextImagePreviewZoomIn(current: number) {
+  return IMAGE_PREVIEW_ZOOM_STEPS.find((step) => step > current + 0.001)
+}
+
+function getNextImagePreviewZoomOut(current: number) {
+  for (let index = IMAGE_PREVIEW_ZOOM_STEPS.length - 1; index >= 0; index--) {
+    const step = IMAGE_PREVIEW_ZOOM_STEPS[index]
+    if (step !== undefined && step < current - 0.001) return step
+  }
+}
+
 function isLikelyNoteLink(
   anchor: HTMLAnchorElement,
   target: HTMLElement,
@@ -2886,7 +3624,9 @@ const ReaderPaneHeader: React.FC<ReaderPaneHeaderProps> = ({ tab }) => {
             className="hover:text-foreground flex shrink-0 items-center"
           >
             {item.label}
-            {i !== navPath.length - 1 && <MdChevronRight size={20} />}
+            {i !== navPath.length - 1 && (
+              <ChevronRightIcon className="size-5" />
+            )}
           </button>
         ))}
       </div>
@@ -2915,6 +3655,9 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
     !!location &&
     (location.start.href !== location.end.href ||
       location.start.displayed.page !== location.end.displayed.page)
+  const returnStartShortcut = getShortcutChords('returnStart')[0]
+  const returnPreviousShortcut = getShortcutChords('returnPrevious')[0]
+  const dismissReturnShortcut = getShortcutChords('dismissReturn')[0]
 
   return (
     <>
@@ -2923,35 +3666,44 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
           <div className="flex min-w-0 items-center gap-2">
             <button
               className={returnActionClass}
-              title={t('return_to_start')}
+              aria-label={t('return_to_start')}
               onClick={() => {
                 tab.returnToFirstLocation()
               }}
             >
-              {t('return_to_start')}
+              <span>{t('return_to_start')}</span>
+              {returnStartShortcut && (
+                <ShortcutChord compact shortcut={returnStartShortcut} />
+              )}
             </button>
             <button
               className={clsx(returnActionClass, 'truncate')}
-              title={`${t('return_to_previous')}: ${locationToReturn.end.cfi}`}
+              aria-label={t('return_to_previous')}
               onClick={() => {
                 tab.returnToPreviousLocation()
               }}
             >
-              {t('return_to_previous')}
+              <span>{t('return_to_previous')}</span>
+              {returnPreviousShortcut && (
+                <ShortcutChord compact shortcut={returnPreviousShortcut} />
+              )}
             </button>
           </div>
           <button
             className={returnActionClass}
-            title={t('dismiss_return')}
+            aria-label={t('dismiss_return')}
             onClick={() => {
               tab.hidePrevLocation()
             }}
           >
-            {t('dismiss_return')}
+            <span>{t('dismiss_return')}</span>
+            {dismissReturnShortcut && (
+              <ShortcutChord compact shortcut={dismissReturnShortcut} />
+            )}
           </button>
         </Bar>
       ) : spread ? (
-        <div className="text-muted-foreground grid h-6 grid-cols-2 items-center px-2 text-center text-xs">
+        <div className="text-muted-foreground grid h-6 grid-cols-2 items-center px-2 text-center text-base">
           <div>
             {!singleVisiblePageOnRight &&
               startDisplayed &&
@@ -2969,7 +3721,7 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
           </div>
         </div>
       ) : (
-        <div className="text-muted-foreground flex h-6 items-center justify-center px-2 text-xs">
+        <div className="text-muted-foreground flex h-6 items-center justify-center px-2 text-base">
           {startDisplayed && formatFooterPage(startDisplayed, percentage)}
         </div>
       )}
@@ -2977,7 +3729,8 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
   )
 }
 
-const returnActionClass = 'rounded px-1 hover:bg-muted hover:text-foreground'
+const returnActionClass =
+  'inline-flex items-center gap-1.5 rounded px-1 hover:bg-muted hover:text-foreground'
 
 function formatFooterPage(
   displayed: { page: number; total: number },
@@ -2993,7 +3746,7 @@ const Bar: React.FC<LineProps> = ({ className, ...props }) => {
   return (
     <div
       className={clsx(
-        'text-muted-foreground flex h-6 items-center justify-between gap-2 px-2 text-xs',
+        'text-muted-foreground flex h-6 items-center justify-between gap-2 px-2 text-base',
         className,
       )}
       {...props}

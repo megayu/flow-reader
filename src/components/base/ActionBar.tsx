@@ -1,13 +1,13 @@
 import clsx from 'clsx'
+import { type LucideIcon } from 'lucide-react'
 import { ComponentProps } from 'react'
-import { IconType } from 'react-icons'
 
 import { IconButton } from '../Button'
 
 export interface Action {
   id: string
   title: string
-  Icon: IconType
+  Icon: LucideIcon
   handle: () => void
 }
 
@@ -18,8 +18,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({ actions, className }) => {
   return (
     <ul className={clsx('text-muted-foreground flex gap-1', className)}>
       {actions.map(({ id, title, Icon, handle }) => (
-        <li key={id} title={title}>
+        <li key={id}>
           <IconButton
+            title={title}
             Icon={Icon}
             onClick={(e) => {
               e.stopPropagation()

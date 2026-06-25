@@ -42,6 +42,249 @@ export function compareHref(
   }
 }
 
+function normalizeImageSource(src: string) {
+  try {
+    return decodeURI(src)
+  } catch {
+    return src
+  }
+}
+
+function imageSourcesMatch(a: string | undefined, b: string | undefined) {
+  if (!a || !b) return false
+  if (a === b) return true
+
+  const normalizedA = normalizeImageSource(a)
+  const normalizedB = normalizeImageSource(b)
+  return (
+    normalizedA === normalizedB ||
+    normalizedA.includes(normalizedB) ||
+    normalizedB.includes(normalizedA)
+  )
+}
+
+const imageArtifactSelector = [
+  'sup',
+  'sub',
+  'ruby',
+  'rt',
+  'rp',
+  'small',
+  'aside',
+  'footer',
+  'header',
+  'nav',
+  '[role="doc-noteref"]',
+  '[role="note"]',
+  '[epub\\:type~="noteref"]',
+  '[epub\\:type~="footnote"]',
+  '[epub\\:type~="endnote"]',
+  '[epub\\:type~="annotation"]',
+  '[class*="note" i]',
+  '[class*="footnote" i]',
+  '[class*="endnote" i]',
+  '[class*="annotation" i]',
+].join(',')
+
+const imageTitleSelector = [
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'title',
+  '[epub\\:type~="titlepage"]',
+  '[epub\\:type~="chapter"] > header',
+].join(',')
+
+const decorativeImagePattern =
+  /(cover|decor|divider|flower|glyph|icon|note|ornament|title|zhu|注|题|章|節|节)/i
+const metadataElementTags = new Set(['LINK', 'META', 'SCRIPT', 'STYLE'])
+
+function textLength(value: string | null | undefined) {
+  return value?.replace(/\s+/g, '').length ?? 0
+}
+
+function elementName(element: Element) {
+  return element.localName.toUpperCase()
+}
+
+function siblingTextLength(element: Element) {
+  let length = 0
+
+  for (const node of element.parentElement?.childNodes ?? []) {
+    if (node === element) continue
+    if (node.nodeType === Node.TEXT_NODE) {
+      length += textLength(node.textContent)
+    } else if (
+      node instanceof Element &&
+      !['IMG', 'SVG', 'PICTURE'].includes(elementName(node))
+    ) {
+      length += textLength(node.textContent)
+    }
+  }
+
+  return length
+}
+
+function numericDimension(value: string | null) {
+  if (!value) return
+  const match = value.match(/[\d.]+/)
+  if (!match) return
+
+  const numeric = Number(match[0])
+  return Number.isFinite(numeric) ? numeric : undefined
+}
+
+function imageDeclaredSize(image: HTMLImageElement) {
+  const width =
+    numericDimension(image.getAttribute('width')) ??
+    numericDimension(image.style.width)
+  const height =
+    numericDimension(image.getAttribute('height')) ??
+    numericDimension(image.style.height)
+
+  return { height, width }
+}
+
+function isNearDocumentStart(element: Element) {
+  const body = element.ownerDocument.body
+  const walker = element.ownerDocument.createTreeWalker(
+    body,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+    {
+      acceptNode(node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          return textLength(node.textContent)
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_REJECT
+        }
+
+        const current = node as Element
+        if (current === element) return NodeFilter.FILTER_ACCEPT
+        if (current.closest('script, style')) return NodeFilter.FILTER_REJECT
+        if (['IMG', 'SVG', 'PICTURE'].includes(elementName(current))) {
+          return NodeFilter.FILTER_ACCEPT
+        }
+
+        return NodeFilter.FILTER_SKIP
+      },
+    },
+  )
+
+  let meaningful = 0
+  let node = walker.nextNode()
+  while (node && meaningful < 8) {
+    if (node === element) return meaningful <= 3
+    meaningful += 1
+    node = walker.nextNode()
+  }
+
+  return false
+}
+
+function nextHeadingTextLength(element: Element) {
+  const container = element.closest('div,p,figure,section') ?? element
+  let sibling = container.nextElementSibling
+  let scanned = 0
+
+  while (sibling && scanned < 8) {
+    if (metadataElementTags.has(elementName(sibling))) {
+      sibling = sibling.nextElementSibling
+      continue
+    }
+
+    if (/^H[1-6]$/.test(elementName(sibling))) {
+      return textLength(sibling.textContent)
+    }
+    const heading = sibling.querySelector('h1,h2,h3,h4,h5,h6')
+    if (heading) return textLength(heading.textContent)
+    if (textLength(sibling.textContent)) scanned += 1
+    sibling = sibling.nextElementSibling
+  }
+
+  return 0
+}
+
+function isImageOnlyBlock(image: HTMLImageElement) {
+  const block = image.closest('div,p,figure,section') ?? image.parentElement
+  if (!block) return true
+
+  const mediaCount = block.querySelectorAll('img,svg,picture').length
+  return mediaCount > 0 && textLength(block.textContent) === 0
+}
+
+function isLeadingTitleImage(image: HTMLImageElement) {
+  return (
+    isNearDocumentStart(image) &&
+    isImageOnlyBlock(image) &&
+    nextHeadingTextLength(image) > 0
+  )
+}
+
+function collectSectionImages(section: ISection): ImageEntry[] {
+  return [...(section.document?.querySelectorAll('img') ?? [])].map(
+    (el, index) => classifyImage(el, index),
+  )
+}
+
+function classifyImage(image: HTMLImageElement, index: number): ImageEntry {
+  const src = image.currentSrc || image.src || image.getAttribute('src') || ''
+  const { height, width } = imageDeclaredSize(image)
+  const sourceText = [
+    src,
+    image.getAttribute('alt'),
+    image.getAttribute('class'),
+    image.getAttribute('id'),
+    image.parentElement?.getAttribute('class'),
+  ]
+    .filter(Boolean)
+    .join(' ')
+  const siblingText = siblingTextLength(image)
+  const parentText = textLength(image.parentElement?.textContent)
+  const inlineParent = !!image.closest('p, span, a, em, strong, b, i')
+  const likelyInlineBySize =
+    (height !== undefined && height <= 48) ||
+    (width !== undefined && width <= 48)
+  const likelySmallIcon =
+    (height !== undefined &&
+      height <= 72 &&
+      width !== undefined &&
+      width <= 72) ||
+    (likelyInlineBySize && decorativeImagePattern.test(sourceText))
+
+  let reason: ImageFilterReason | undefined
+
+  if (image.closest(imageArtifactSelector) || likelySmallIcon) {
+    reason = 'icon'
+  } else if (
+    inlineParent &&
+    (siblingText > 0 || parentText >= 8) &&
+    (likelyInlineBySize || siblingText > 0)
+  ) {
+    reason = 'inlineGlyph'
+  } else if (
+    image.closest(imageTitleSelector) ||
+    isLeadingTitleImage(image) ||
+    (isNearDocumentStart(image) && decorativeImagePattern.test(sourceText))
+  ) {
+    reason = 'titleArt'
+  } else if (
+    decorativeImagePattern.test(sourceText) &&
+    isNearDocumentStart(image)
+  ) {
+    reason = 'decorative'
+  }
+
+  return {
+    hiddenByDefault: !!reason,
+    index,
+    ...(reason ? { reason } : {}),
+    src,
+  }
+}
+
 function compareDefinition(d1: string, d2: string) {
   return d1.toLowerCase() === d2.toLowerCase()
 }
@@ -167,8 +410,21 @@ export interface IMatch extends INode {
 
 export interface ISection extends Section {
   length: number
-  images: string[]
+  images: ImageEntry[]
   navitem?: INavItem
+}
+
+export type ImageFilterReason =
+  | 'decorative'
+  | 'icon'
+  | 'inlineGlyph'
+  | 'titleArt'
+
+export interface ImageEntry {
+  hiddenByDefault: boolean
+  index: number
+  reason?: ImageFilterReason
+  src: string
 }
 
 interface SectionNavIndex {
@@ -363,20 +619,19 @@ export class BookTab extends BaseTab {
 
     if (
       manager?.canUseLogicalReflowableSpread?.() &&
-      manager.reflowablePageForTarget &&
-      manager.reflowableSpreadFromLeft &&
-      manager.renderReflowableSpread
+      manager.displayReflowableTarget
     ) {
-      const page = await manager.reflowablePageForTarget(section, target)
-      const spread = await manager.reflowableSpreadFromLeft(page)
-      if (spread) {
-        await manager.renderReflowableSpread(spread)
-        await this.rendition?.reportLocation()
-        return
-      }
+      await manager.displayReflowableTarget(section, target)
+      await this.rendition?.reportLocation()
+      return
     }
 
-    this.display(target ?? section.href, false)
+    this.display(
+      target?.startsWith('#')
+        ? `${section.href}${target}`
+        : (target ?? section.href),
+      false,
+    )
   }
 
   async displayFromSelector(
@@ -388,7 +643,9 @@ export class BookTab extends BaseTab {
       await this.ensureSectionInfo(section)
       const el = section.document.querySelector(selector)
       if (el) {
-        const cfi = section.cfiFromElement(el)
+        const cfi = selector.startsWith('#')
+          ? selector
+          : section.cfiFromElement(el)
         if (returnable) this.showPrevLocation()
         await this.displayTarget(section, cfi)
       } else {
@@ -399,9 +656,46 @@ export class BookTab extends BaseTab {
     }
   }
 
+  async displayImage(
+    section: ISection,
+    src: string,
+    index: number,
+    returnable = true,
+  ) {
+    try {
+      await this.ensureSectionInfo(section)
+      const images = [
+        ...(section.document?.querySelectorAll('img') ?? []),
+      ] as HTMLImageElement[]
+      const el =
+        images.find((image) => imageSourcesMatch(image.src, src)) ??
+        images[index]
+
+      if (el) {
+        const cfi = section.cfiFromElement(el)
+        if (returnable) this.showPrevLocation()
+        await this.displayTarget(section, cfi)
+        return
+      }
+
+      await this.displaySectionStart(section)
+    } catch (err) {
+      this.display(section.href, returnable)
+    }
+  }
+
   async displaySearchResult(result: IMatch, keyword = this.keyword) {
     if (result.cfi) {
-      this.display(result.cfi)
+      const section =
+        this.sections?.find((s) => s.index === result.sectionIndex) ??
+        this.sections?.find((s) => s.href === result.href)
+
+      if (section) {
+        this.showPrevLocation()
+        await this.displayTarget(section, result.cfi)
+      } else {
+        this.display(result.cfi)
+      }
       return
     }
 
@@ -421,6 +715,7 @@ export class BookTab extends BaseTab {
       }>
       const match = matches[result.occurrence ?? 0] ?? matches[0]
       if (match?.cfi) {
+        result.cfi = match.cfi
         this.showPrevLocation()
         await this.displayTarget(section, match.cfi)
         return
@@ -752,6 +1047,7 @@ export class BookTab extends BaseTab {
   setKeyword(keyword: string) {
     if (this.keyword === keyword) return
     this.keyword = keyword
+    this.activeResultID = undefined
     this.onKeywordChange()
   }
 
@@ -1079,9 +1375,10 @@ export class BookTab extends BaseTab {
   }
 
   searchInSection(keyword = this.keyword, section = this.section) {
-    if (!section) return
+    const query = keyword.trim()
+    if (!query || !section?.document?.body) return
 
-    const subitems = section.find(keyword) as unknown as IMatch[]
+    const subitems = section.find(query) as unknown as IMatch[]
     if (!subitems.length) return
 
     const navItem = section.navitem
@@ -1125,6 +1422,7 @@ export class BookTab extends BaseTab {
     if (!this.epub) return
 
     if (section.document?.body && section.length !== undefined) {
+      section.images = collectSectionImages(section)
       this.assignSectionNavItem(section)
       return
     }
@@ -1138,9 +1436,7 @@ export class BookTab extends BaseTab {
     )
       .then(() => {
         section.length = section.document?.body?.textContent?.length ?? 0
-        section.images = [
-          ...(section.document?.querySelectorAll('img') ?? []),
-        ].map((el) => el.src)
+        section.images = collectSectionImages(section)
         this.assignSectionNavItem(section)
       })
       .catch((error) => {

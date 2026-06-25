@@ -180,7 +180,8 @@ const Sash: React.FC<SashProps> = ({ vertical, views }) => {
           vertical
             ? 'top-1/2 -translate-y-1/2 border-b'
             : 'left-1/2 -translate-x-1/2 border-r',
-          (hover || active) && 'bg-primary h-full w-full border-none',
+          (hover || active) &&
+            'h-full w-full border-none bg-[var(--flow-accent)]',
         )}
       ></div>
       {active && <Overlay className="!bg-transparent" />}

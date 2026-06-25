@@ -666,8 +666,8 @@ fn append_visible_search_text(node: roxmltree::Node, output: &mut String) {
 }
 
 fn push_search_text_boundary(output: &mut String) {
-    if !output.ends_with(char::is_whitespace) {
-        output.push(' ');
+    if !output.is_empty() && !output.ends_with('\n') {
+        output.push('\n');
     }
 }
 
@@ -715,7 +715,14 @@ fn is_search_text_block_element(name: &str) -> bool {
 }
 
 fn collapse_search_text_whitespace(value: &str) -> String {
-    value.split_whitespace().collect::<Vec<_>>().join(" ")
+    value
+        .split('\n')
+        .filter_map(|line| {
+            let line = line.split_whitespace().collect::<Vec<_>>().join(" ");
+            (!line.is_empty()).then_some(line)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn strip_html_for_search_text(value: &str) -> String {
@@ -841,15 +848,51 @@ fn search_text_excerpt(text: &str, offset: usize, keyword: &str) -> String {
     }
 
     let keyword_len = keyword.chars().count().max(1);
-    let start = offset.saturating_sub(SEARCH_TEXT_EXCERPT_RADIUS);
-    let end = (offset + keyword_len + SEARCH_TEXT_EXCERPT_RADIUS).min(chars.len());
+    let offset = offset.min(chars.len());
+    let keyword_end = (offset + keyword_len).min(chars.len());
+    let mut paragraph_start = chars[..offset]
+        .iter()
+        .rposition(|ch| *ch == '\n')
+        .map_or(0, |index| index + 1);
+    let mut paragraph_end = chars[keyword_end..]
+        .iter()
+        .position(|ch| *ch == '\n')
+        .map_or(chars.len(), |index| keyword_end + index);
+
+    while paragraph_start < paragraph_end && chars[paragraph_start].is_whitespace() {
+        paragraph_start += 1;
+    }
+    while paragraph_end > paragraph_start && chars[paragraph_end - 1].is_whitespace() {
+        paragraph_end -= 1;
+    }
+
+    if paragraph_start >= paragraph_end {
+        return String::new();
+    }
+
+    let mut start = offset
+        .saturating_sub(SEARCH_TEXT_EXCERPT_RADIUS)
+        .max(paragraph_start);
+    let mut end = (offset + keyword_len + SEARCH_TEXT_EXCERPT_RADIUS).min(paragraph_end);
+
+    while start < end && chars[start].is_whitespace() {
+        start += 1;
+    }
+    while end > start && chars[end - 1].is_whitespace() {
+        end -= 1;
+    }
+
+    if start >= end {
+        return String::new();
+    }
+
     let mut excerpt = String::new();
 
-    if start > 0 {
+    if start > paragraph_start {
         excerpt.push('…');
     }
     excerpt.extend(chars[start..end].iter());
-    if end < chars.len() {
+    if end < paragraph_end {
         excerpt.push('…');
     }
 

@@ -7,7 +7,6 @@ export default function Document() {
     // so we should set background on `html`
     <Html className="bg-background">
       <Head>
-        <link rel="icon" href="/icons/192.png"></link>
         <PreventFlash />
       </Head>
       <body>

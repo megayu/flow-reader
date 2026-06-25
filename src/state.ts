@@ -1,11 +1,14 @@
-import type { Theme } from '@material/material-color-utilities'
 import { useEffect } from 'react'
 import { create } from 'zustand'
 
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
 import { IS_SERVER } from '@flow/reader/env'
-import type { ColorScheme } from '@flow/reader/hooks/theme/useColorScheme'
 import { AppLocale } from '@flow/reader/locales'
+import {
+  normalizeThemeConfiguration,
+  type ThemeConfiguration,
+} from '@flow/reader/styles/theme'
+import { defaultUiFontSize, normalizeUiFontSize } from '@flow/reader/styles/ui'
 
 import {
   getSettingsFromStorage,
@@ -18,15 +21,19 @@ export type SetterOrUpdater<T> = (value: T | ((prev: T) => T)) => void
 export type ViewMode = 'reader' | 'library'
 export type Action = 'toc' | 'search' | 'annotation' | 'typography' | 'image'
 export type LibraryAction = 'libraryFilter'
+export type LibrarySortField = 'title' | 'creator' | 'updatedAt' | 'createdAt'
+export type LibrarySortDirection = 'asc' | 'desc'
 
 export interface Settings extends TypographyConfiguration {
   theme?: ThemeConfiguration
+  ui?: UiConfiguration
   enableTextSelectionMenu?: boolean
   hideEndnotes?: boolean
   restoreLastReadingOnStartup?: boolean
   startupSession?: StartupSession
   readerSidebarOpen?: boolean
   librarySidebarOpen?: boolean
+  librarySort?: LibrarySortConfiguration
   textImportRules?: TextImportRulesConfiguration
   locale?: AppLocale
 }
@@ -42,11 +49,8 @@ export interface TypographyConfiguration {
   zoom?: number
 }
 
-interface ThemeConfiguration {
-  source?: string
-  background?: number
-  customBackground?: string
-  scheme?: ColorScheme
+interface UiConfiguration {
+  fontSize?: number
 }
 
 interface StartupSession {
@@ -54,9 +58,26 @@ interface StartupSession {
   bookId?: string
 }
 
+export interface LibrarySortConfiguration {
+  field: LibrarySortField
+  direction: LibrarySortDirection
+}
+
 export interface TextImportRulesConfiguration {
   groupPatterns: string[]
   chapterPatterns: string[]
+}
+
+export const librarySortFieldOptions: LibrarySortField[] = [
+  'title',
+  'creator',
+  'updatedAt',
+  'createdAt',
+]
+
+export const defaultLibrarySort: LibrarySortConfiguration = {
+  field: 'title',
+  direction: 'asc',
 }
 
 export const defaultTextImportRules: TextImportRulesConfiguration = {
@@ -76,7 +97,11 @@ export const defaultSettings: Settings = {
   hideEndnotes: false,
   readerSidebarOpen: true,
   librarySidebarOpen: false,
+  librarySort: defaultLibrarySort,
   textImportRules: defaultTextImportRules,
+  ui: {
+    fontSize: defaultUiFontSize,
+  },
 }
 
 interface AppStore {
@@ -86,7 +111,6 @@ interface AppStore {
   settings: Settings
   settingsDialogOpen: boolean
   settingsReady: boolean
-  theme?: Theme
   viewMode: ViewMode
   zenMode: boolean
   zenTypographyOverrides: Record<string, TypographyConfiguration>
@@ -96,7 +120,6 @@ interface AppStore {
   setSettings: SetterOrUpdater<Settings>
   setSettingsDialogOpen: SetterOrUpdater<boolean>
   setSettingsReady: SetterOrUpdater<boolean>
-  setTheme: SetterOrUpdater<Theme | undefined>
   setViewMode: SetterOrUpdater<ViewMode>
   setZenMode: SetterOrUpdater<boolean>
   setZenTypographyOverrides: SetterOrUpdater<
@@ -115,7 +138,6 @@ export const useAppStore = create<AppStore>((set) => ({
   settings: defaultSettings,
   settingsDialogOpen: false,
   settingsReady: false,
-  theme: undefined,
   viewMode: 'library',
   zenMode: false,
   zenTypographyOverrides: {},
@@ -139,8 +161,6 @@ export const useAppStore = create<AppStore>((set) => ({
     set((state) => ({
       settingsReady: resolveUpdate(value, state.settingsReady),
     })),
-  setTheme: (value) =>
-    set((state) => ({ theme: resolveUpdate(value, state.theme) })),
   setViewMode: (value) =>
     set((state) => ({ viewMode: resolveUpdate(value, state.viewMode) })),
   setZenMode: (value) =>
@@ -190,14 +210,6 @@ export function useSetSettingsDialogOpen() {
   return useAppStore((state) => state.setSettingsDialogOpen)
 }
 
-export function useThemeValue() {
-  return useAppStore((state) => state.theme)
-}
-
-export function useSetThemeValue() {
-  return useAppStore((state) => state.setTheme)
-}
-
 export function useViewMode() {
   const viewMode = useAppStore((state) => state.viewMode)
   const setViewMode = useAppStore((state) => state.setViewMode)
@@ -241,10 +253,45 @@ let settingsLoadPromise: Promise<Settings> | undefined
 
 function loadSettings() {
   settingsLoadPromise ??= getSettingsFromStorage<Partial<Settings>>()
-    .then((value) => ({ ...defaultSettings, ...value }))
+    .then((value) => normalizeSettings(value))
     .catch(() => defaultSettings)
 
   return settingsLoadPromise
+}
+
+function normalizeSettings(value: Partial<Settings> | undefined): Settings {
+  const settings = { ...defaultSettings, ...value }
+
+  return {
+    ...settings,
+    theme: normalizeThemeConfiguration(settings.theme),
+    librarySort: normalizeLibrarySort(settings.librarySort),
+    textImportRules: {
+      ...defaultTextImportRules,
+      ...settings.textImportRules,
+    },
+    ui: {
+      ...defaultSettings.ui,
+      ...settings.ui,
+      fontSize: normalizeUiFontSize(settings.ui?.fontSize),
+    },
+  }
+}
+
+function normalizeLibrarySort(
+  value: Partial<LibrarySortConfiguration> | undefined,
+): LibrarySortConfiguration {
+  const field = librarySortFieldOptions.includes(
+    value?.field as LibrarySortField,
+  )
+    ? (value?.field as LibrarySortField)
+    : defaultLibrarySort.field
+  const direction =
+    value?.direction === 'desc' || value?.direction === 'asc'
+      ? value.direction
+      : defaultLibrarySort.direction
+
+  return { field, direction }
 }
 
 export function useSettings() {

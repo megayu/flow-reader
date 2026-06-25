@@ -1,22 +1,22 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback } from 'react'
 
 import { useSettings } from '@flow/reader/state'
 import {
   backgroundOptions,
+  backgroundPresets,
   createBackgroundPalette,
   customBackgroundValue,
   darkBackgroundColor,
   defaultCustomBackgroundColor,
   isDarkPaletteColor,
   normalizePaletteColor,
-  type BackgroundOption,
   type BackgroundPalette,
+  type BackgroundPresetId,
 } from '@flow/reader/styles/theme'
-
-import { useColorScheme } from './useColorScheme'
 
 export {
   backgroundOptions,
+  backgroundPresets,
   createBackgroundPalette,
   customBackgroundValue,
   darkBackgroundColor,
@@ -26,10 +26,15 @@ export {
 }
 export type { BackgroundPalette }
 
-const backgroundOptionMap = new Map(
-  backgroundOptions.map((background) => [background.value, background]),
-)
-const defaultBackgroundOption = backgroundOptions[0] as BackgroundOption
+const legacyBackgroundPresetMap: Record<number, BackgroundPresetId> = {
+  [-1]: 'clean',
+  [1]: 'clean',
+  [-2]: 'sepia',
+  [-3]: 'sage',
+  [3]: 'mist',
+  [5]: 'mist',
+  [customBackgroundValue]: 'custom',
+}
 
 const backgroundClassNames = {
   contentClassName: 'flow-bg-content',
@@ -39,8 +44,7 @@ const backgroundClassNames = {
 }
 
 export function useBackground() {
-  const [{ theme }, setSettings] = useSettings()
-  const { dark } = useColorScheme()
+  const [, setSettings] = useSettings()
 
   const setBackground = useCallback(
     (background: number) => {
@@ -48,40 +52,18 @@ export function useBackground() {
         ...prev,
         theme: {
           ...prev.theme,
-          background,
+          backgroundPreset: legacyBackgroundPresetMap[background] ?? 'clean',
+          scheme:
+            background === customBackgroundValue
+              ? prev.theme?.scheme
+              : legacyBackgroundPresetMap[background] === 'custom'
+                ? prev.theme?.scheme
+                : 'light',
         },
       }))
     },
     [setSettings],
   )
-
-  const level = theme?.background ?? -1
-  const customBackground = theme?.customBackground
-
-  const palette = useMemo(() => {
-    const customColor = normalizePaletteColor(customBackground)
-
-    if (level === customBackgroundValue) {
-      return createBackgroundPalette(
-        customColor ?? defaultCustomBackgroundColor,
-      )
-    }
-
-    if (dark) return createBackgroundPalette(darkBackgroundColor)
-
-    const color =
-      backgroundOptionMap.get(level)?.color ?? defaultBackgroundOption.color
-
-    return createBackgroundPalette(color)
-  }, [customBackground, dark, level])
-
-  useEffect(() => {
-    const root = document.documentElement
-    root.style.setProperty('--flow-bg-content', palette.content)
-    root.style.setProperty('--flow-bg-sidebar', palette.sidebar)
-    root.style.setProperty('--flow-bg-activity', palette.activity)
-    root.style.setProperty('--flow-bg-active', palette.active)
-  }, [palette])
 
   return [
     backgroundClassNames.contentClassName,

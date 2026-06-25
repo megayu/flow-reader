@@ -1,5 +1,7 @@
 import clsx from 'clsx'
+import { MinusIcon, PlusIcon, XIcon } from 'lucide-react'
 import {
+  ComponentProps,
   CSSProperties,
   useCallback,
   useEffect,
@@ -9,7 +11,6 @@ import {
   useState,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { MdAdd, MdRemove } from 'react-icons/md'
 
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
@@ -17,8 +18,10 @@ import { reader, useReaderSnapshot } from '@flow/reader/models/reader'
 import { TypographyConfiguration, useSettings } from '@flow/reader/state'
 
 import { getBodyTypographyBaseline } from '../../styles'
-import { Label, TextField, TextFieldProps } from '../Form'
+import { IconButton } from '../Button'
 import { PaneView, PaneViewProps } from '../base/PaneView'
+import { Button as UiButton } from '../ui/button'
+import { Input } from '../ui/input'
 
 type TextAlignOption = NonNullable<TypographyConfiguration['textAlign']>
 
@@ -122,7 +125,7 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
 
   return (
     <PaneView {...props}>
-      <div className="text-muted-foreground flex min-h-0 flex-1 flex-col text-xs">
+      <div className="text-muted-foreground flex min-h-0 flex-1 flex-col text-base">
         <div className="scroll min-h-0 flex-1">
           <div
             className="space-y-3 pt-2 pr-1.5 pb-4 pl-4"
@@ -298,32 +301,47 @@ function SegmentedField<T extends string>({
 }: SegmentedFieldProps<T>) {
   return (
     <div className="flex flex-col">
-      <Label name={name} />
-      <div className="text-muted-foreground bg-background flex h-[31px] items-center p-0.5">
+      <FieldLabel name={name} />
+      <div className="text-muted-foreground ring-border bg-background flex h-8 items-center overflow-hidden rounded-lg p-0.5 ring-1 ring-inset">
         {options.map((option) => {
           const selected = option.value === value
           const inherited =
             value === undefined && option.value === inheritedValue
 
           return (
-            <button
+            <UiButton
               key={option.value ?? 'default'}
               type="button"
+              variant={selected ? 'default' : 'ghost'}
+              size="sm"
               className={clsx(
-                'h-full flex-1 px-2 text-sm !text-[13px]',
-                selected && 'text-primary-foreground bg-primary',
-                inherited && 'bg-muted ring-border ring-1 ring-inset',
+                'h-full flex-1 rounded-lg px-2 text-base leading-none',
+                selected || 'text-muted-foreground',
+                inherited &&
+                  !selected &&
+                  'bg-muted ring-border ring-1 ring-inset',
               )}
               onClick={() =>
                 onChange(selected && unsetOnSelected ? undefined : option.value)
               }
             >
               {option.label}
-            </button>
+            </UiButton>
           )
         })}
       </div>
     </div>
+  )
+}
+
+const FieldLabel: React.FC<{ name: string }> = ({ name }) => {
+  return (
+    <label
+      htmlFor={name}
+      className="text-muted-foreground mb-1 block text-base font-medium"
+    >
+      {name}
+    </label>
   )
 }
 
@@ -405,6 +423,7 @@ const FontField: React.FC<FontFieldProps> = ({
   onChange,
 }) => {
   const t = useTranslation('typography')
+  const actionT = useTranslation('action')
   const [inputValue, setInputValue] = useState(value)
   const [open, setOpen] = useState(false)
   const [popoverStyle, setPopoverStyle] = useState<CSSProperties>()
@@ -545,34 +564,49 @@ const FontField: React.FC<FontFieldProps> = ({
 
   return (
     <div ref={rootRef}>
-      <TextField
-        as="input"
-        name={name}
-        value={inputValue}
-        placeholder={t('default_value')}
-        mRef={inputRef}
-        onFocus={openPicker}
-        onClick={openPicker}
-        onChange={(e) => {
-          const nextValue = e.target.value
-          setInputValue(nextValue)
-          onChange(nextValue)
-          setOpen(true)
-          loadOptions()
-        }}
-        onClear={() => {
-          setInputValue('')
-          onChange('')
-          closePicker()
-        }}
-      />
+      <div className="flex flex-col">
+        <FieldLabel name={name} />
+        <div className="border-input bg-background focus-within:border-ring focus-within:ring-ring/50 flex h-8 items-center rounded-lg border transition-colors focus-within:ring-3">
+          <Input
+            ref={inputRef}
+            name={name}
+            id={name}
+            value={inputValue}
+            placeholder={t('default_value')}
+            className="h-full flex-1 rounded-none border-0 bg-transparent px-2.5 py-0 leading-none focus-visible:border-transparent focus-visible:ring-0"
+            onFocus={openPicker}
+            onClick={openPicker}
+            onChange={(e) => {
+              const nextValue = e.target.value
+              setInputValue(nextValue)
+              onChange(nextValue)
+              setOpen(true)
+              loadOptions()
+            }}
+          />
+          {inputValue && (
+            <div className="flex shrink-0 items-center pr-1">
+              <IconButton
+                className="text-muted-foreground"
+                title={actionT('clear')}
+                Icon={XIcon}
+                onClick={() => {
+                  setInputValue('')
+                  onChange('')
+                  closePicker()
+                }}
+              />
+            </div>
+          )}
+        </div>
+      </div>
       {open &&
         popoverStyle &&
         createPortal(
           <div
             data-flow-keyboard-capture="true"
             ref={popoverRef}
-            className="bg-popover text-foreground ring-border fixed z-[100] overflow-x-hidden overflow-y-auto py-1 shadow-sm ring-1 ring-inset"
+            className="bg-popover text-popover-foreground ring-border fixed z-[100] overflow-x-hidden overflow-y-auto rounded-lg p-1 shadow-lg ring-1"
             style={popoverStyle}
           >
             {filteredOptions.map((option) => (
@@ -580,12 +614,11 @@ const FontField: React.FC<FontFieldProps> = ({
                 key={option.family}
                 type="button"
                 className={clsx(
-                  'hover:bg-muted block min-h-[36px] w-full px-3 py-1.5 text-left !text-[14px] leading-5 whitespace-nowrap',
+                  'hover:bg-muted block min-h-[36px] w-full rounded-md px-3 py-1.5 text-left text-base leading-5 whitespace-nowrap',
                   option.family === value && 'bg-muted',
                 )}
                 style={{
                   fontFamily: option.family,
-                  fontSize: 14,
                   lineHeight: '20px',
                 }}
                 onMouseDown={(e) => {
@@ -602,7 +635,7 @@ const FontField: React.FC<FontFieldProps> = ({
               </button>
             ))}
             {!filteredOptions.length && (
-              <div className="text-muted-foreground px-5 py-3 text-sm">
+              <div className="text-muted-foreground px-5 py-3 text-base">
                 {t('no_matching_fonts')}
               </div>
             )}
@@ -614,7 +647,7 @@ const FontField: React.FC<FontFieldProps> = ({
 }
 
 interface NumberFieldProps extends Omit<
-  TextFieldProps<'input'>,
+  ComponentProps<'input'>,
   'onChange' | 'value' | 'defaultValue'
 > {
   value?: number
@@ -651,37 +684,52 @@ const NumberField: React.FC<NumberFieldProps> = ({
   }
 
   return (
-    <TextField
-      as="input"
-      type="number"
-      placeholder={typographyT('default_value')}
-      actions={[
-        {
-          title: actionT('step_down'),
-          Icon: MdRemove,
-          onClick: () => {
-            step(-1)
-          },
-        },
-        {
-          title: actionT('step_up'),
-          Icon: MdAdd,
-          onClick: () => {
-            step(1)
-          },
-        },
-      ]}
-      mRef={ref}
-      defaultValue={value}
-      // lazy render
-      onBlur={(e) => {
-        onChange(e.target.value === '' ? undefined : Number(e.target.value))
-      }}
-      onClear={() => {
-        if (ref.current) ref.current.value = ''
-        onChange(undefined)
-      }}
-      {...props}
-    />
+    <div className="flex flex-col">
+      {typeof props.name === 'string' && <FieldLabel name={props.name} />}
+      <div className="border-input bg-background focus-within:border-ring focus-within:ring-ring/50 flex h-8 items-center rounded-lg border transition-colors focus-within:ring-3">
+        <Input
+          ref={ref}
+          type="number"
+          id={typeof props.name === 'string' ? props.name : undefined}
+          placeholder={typographyT('default_value')}
+          defaultValue={value}
+          className="h-full flex-1 rounded-none border-0 bg-transparent px-2.5 py-0 leading-none focus-visible:border-transparent focus-visible:ring-0"
+          // lazy render
+          onBlur={(e) => {
+            onChange(e.target.value === '' ? undefined : Number(e.target.value))
+          }}
+          {...props}
+        />
+        <div className="flex shrink-0 items-center gap-0.5 pr-1">
+          <IconButton
+            className="text-muted-foreground"
+            title={actionT('step_down')}
+            Icon={MinusIcon}
+            onClick={() => {
+              step(-1)
+            }}
+          />
+          <IconButton
+            className="text-muted-foreground"
+            title={actionT('step_up')}
+            Icon={PlusIcon}
+            onClick={() => {
+              step(1)
+            }}
+          />
+          {value !== undefined && (
+            <IconButton
+              className="text-muted-foreground"
+              title={actionT('clear')}
+              Icon={XIcon}
+              onClick={() => {
+                if (ref.current) ref.current.value = ''
+                onChange(undefined)
+              }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
   )
 }

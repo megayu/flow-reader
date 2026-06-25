@@ -118,6 +118,7 @@ type TableName = 'books' | 'covers' | 'files' | 'settings'
 const listeners = new Map<TableName, Set<Listener>>()
 const bookCache = new Map<string, BookRecord>()
 let booksCache: BookRecord[] | undefined
+let coversCache: CoverRecord[] | undefined
 const pendingNativeWrites = new Set<Promise<unknown>>()
 
 function subscribe(table: TableName, listener: Listener) {
@@ -191,6 +192,20 @@ function forgetBooks(ids: string[]) {
   if (booksCache) {
     booksCache = booksCache.filter((book) => !ids.includes(book.id))
   }
+}
+
+function rememberCovers(covers: CoverRecord[]) {
+  coversCache = covers
+}
+
+function forgetCovers(ids: string[]) {
+  if (coversCache) {
+    coversCache = coversCache.filter((cover) => !ids.includes(cover.id))
+  }
+}
+
+function invalidateCovers() {
+  coversCache = undefined
 }
 
 function withoutReadingSpread(
@@ -325,6 +340,9 @@ export const db = {
     peek(id: string) {
       return bookCache.get(id)
     },
+    peekAll() {
+      return booksCache
+    },
     remember(book: BookRecord) {
       rememberBook(book)
     },
@@ -344,6 +362,7 @@ export const db = {
       if (book) rememberBook(book)
 
       if (!readingPositionOnly) {
+        if (changes.metadata) invalidateCovers()
         notify(
           ...(['books', changes.metadata ? 'covers' : undefined].filter(
             Boolean,
@@ -355,6 +374,7 @@ export const db = {
     async bulkDelete(ids: string[]) {
       await trackNativeWrite(invoke('delete_books', { ids }))
       forgetBooks(ids)
+      forgetCovers(ids)
       notify('books', 'covers', 'files')
     },
     async delete(id: string) {
@@ -375,8 +395,10 @@ export const db = {
   },
   covers: {
     async toArray() {
+      if (coversCache) return coversCache
+
       const covers = await invoke<CoverRecord[]>('list_covers')
-      return Promise.all(
+      const normalized = await Promise.all(
         covers.map(async (cover) => ({
           ...cover,
           cover: cover.cover
@@ -384,6 +406,11 @@ export const db = {
             : null,
         })),
       )
+      rememberCovers(normalized)
+      return normalized
+    },
+    peekAll() {
+      return coversCache
     },
     get(id: string) {
       return invoke<CoverRecord | null>('get_cover', { id }).then((cover) =>
@@ -397,6 +424,7 @@ export const db = {
           cover: record.cover,
         }),
       )
+      invalidateCovers()
       notify('covers')
       return record.id
     },
@@ -420,6 +448,7 @@ export async function importBookPaths(
     }),
   )
   books.forEach((book) => rememberBook(book))
+  invalidateCovers()
   notify('books', 'covers', 'files')
   return books
 }
@@ -455,6 +484,7 @@ export async function importTextPaths(
     }),
   )
   books.forEach((book) => rememberBook(book))
+  invalidateCovers()
   notify('books', 'covers', 'files')
   return books
 }

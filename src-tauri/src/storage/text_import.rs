@@ -187,8 +187,8 @@ fn svg_text_block(
 fn create_text_cover_svg(title: &str, creator: &str) -> String {
     let has_creator = !creator.is_empty();
     let max_width = 608.0;
-    let mut title_size = 92.0;
-    let mut creator_size = 54.0;
+    let mut title_size = 108.0;
+    let mut creator_size = 64.0;
     let mut title_lines = wrap_svg_text(title, title_size, max_width);
     let mut creator_lines = if has_creator {
         wrap_svg_text(creator, creator_size, max_width)

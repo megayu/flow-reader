@@ -20,6 +20,7 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     baseURL: `http://${host}:${port}`,
+    locale: 'en-US',
     trace: 'off',
     screenshot: 'off',
     video: 'off',

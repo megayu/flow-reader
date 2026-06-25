@@ -4,6 +4,11 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { useForceRender } from './useForceRender'
 
+export interface TextSelectionReleasePoint {
+  x: number
+  y: number
+}
+
 export function hasSelection(
   selection?: Selection | null,
 ): selection is Selection {
@@ -25,6 +30,9 @@ export function isForwardSelection(selection: Selection) {
 
 export function useTextSelection(target?: Window | Window[]) {
   const [selection, setSelection] = useState<Selection | undefined>()
+  const [releasePoint, setReleasePoint] = useState<
+    TextSelectionReleasePoint | undefined
+  >()
   const render = useForceRender()
   const windows = useMemo(
     () =>
@@ -37,7 +45,7 @@ export function useTextSelection(target?: Window | Window[]) {
   useEffect(() => {
     const removeListeners = windows.map((win) => {
       let timeout: ReturnType<typeof setTimeout> | undefined
-      const updateSelection = () => {
+      const updateSelection = (event: MouseEvent) => {
         const s = win.getSelection()
 
         if (hasSelection(s)) {
@@ -45,8 +53,13 @@ export function useTextSelection(target?: Window | Window[]) {
           // when select text by clicking empty space
           render()
           setSelection(s)
+          setReleasePoint({
+            x: event.clientX,
+            y: event.clientY,
+          })
         } else {
           setSelection(undefined)
+          setReleasePoint(undefined)
         }
       }
 
@@ -61,6 +74,7 @@ export function useTextSelection(target?: Window | Window[]) {
               selection?.anchorNode?.ownerDocument?.defaultView
             return selectionWindow === win ? undefined : selection
           })
+          setReleasePoint(undefined)
         }, 80)
       }
 
@@ -97,7 +111,8 @@ export function useTextSelection(target?: Window | Window[]) {
     }
 
     setSelection(undefined)
+    setReleasePoint(undefined)
   }, [selection, windows])
 
-  return [selection, setSelection] as const
+  return [selection, setSelection, releasePoint] as const
 }

@@ -1,11 +1,11 @@
 import './styles.css'
-import 'react-photo-view/dist/react-photo-view.css'
 
 import type { AppProps } from 'next/app'
 import { useEffect } from 'react'
 
 import { Layout } from '../components/Layout'
 import { Theme } from '../components/Theme'
+import { TooltipProvider } from '../components/ui/tooltip'
 import { revealScrollbars } from '../scrollbar'
 
 function useRevealScrollbars() {
@@ -49,16 +49,81 @@ function useDevtoolsShortcut() {
   }, [])
 }
 
+function disableControlAutocomplete(element: Element) {
+  if (element instanceof HTMLFormElement) {
+    element.setAttribute('autocomplete', 'off')
+    return
+  }
+
+  if (
+    !(element instanceof HTMLInputElement) &&
+    !(element instanceof HTMLTextAreaElement)
+  ) {
+    return
+  }
+
+  element.setAttribute('autocomplete', 'off')
+  element.setAttribute('autocorrect', 'off')
+  element.setAttribute('autocapitalize', 'off')
+  element.setAttribute('spellcheck', 'false')
+}
+
+function disableAutocompleteIn(root: ParentNode) {
+  if (root instanceof Element) {
+    disableControlAutocomplete(root)
+  }
+
+  root
+    .querySelectorAll?.('form, input, textarea')
+    .forEach(disableControlAutocomplete)
+}
+
+function useDisableInputAutocomplete() {
+  useEffect(() => {
+    disableAutocompleteIn(document)
+
+    const handleFocusIn = (event: FocusEvent) => {
+      if (event.target instanceof Element) {
+        disableControlAutocomplete(event.target)
+      }
+    }
+
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node instanceof Element) {
+            disableAutocompleteIn(node)
+          }
+        })
+      })
+    })
+
+    document.addEventListener('focusin', handleFocusIn, true)
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    })
+
+    return () => {
+      document.removeEventListener('focusin', handleFocusIn, true)
+      observer.disconnect()
+    }
+  }, [])
+}
+
 export default function MyApp({ Component, pageProps }: AppProps) {
   useRevealScrollbars()
   useDevtoolsShortcut()
+  useDisableInputAutocomplete()
 
   return (
     <>
       <Theme />
-      <Layout>
-        <Component {...pageProps} />
-      </Layout>
+      <TooltipProvider>
+        <Layout>
+          <Component {...pageProps} />
+        </Layout>
+      </TooltipProvider>
     </>
   )
 }
