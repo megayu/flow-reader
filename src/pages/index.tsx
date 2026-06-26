@@ -12,7 +12,6 @@ import {
   ListChecksIcon,
   ListXIcon,
   PencilIcon,
-  SquareIcon,
   SquareCheckBigIcon,
   SquareXIcon,
   TagIcon,
@@ -863,7 +862,7 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
 
       <div className="scroll min-h-0 flex-1">
         <ul
-          className="grid"
+          className="grid p-1"
           style={{
             gridTemplateColumns: `repeat(auto-fill, minmax(calc(120px + 2vw), 1fr))`,
             columnGap: lock(10, 16),
@@ -923,7 +922,6 @@ const Book: React.FC<BookProps> = ({
   const displayTitle = getBookDisplayTitle(book)
   const tooltip = getBookTooltip(book)
 
-  const Icon = selected ? SquareCheckBigIcon : SquareIcon
   const closeContextMenu = useCallback(() => {
     setContextMenu(undefined)
     setConfirmDelete(false)
@@ -999,7 +997,12 @@ const Book: React.FC<BookProps> = ({
       <div
         role="button"
         tabIndex={0}
-        className="group hover:bg-popover/70 focus-visible:ring-ring/50 relative flex cursor-pointer flex-col rounded-md p-1 transition-colors outline-none focus-visible:ring-2"
+        className={clsx(
+          'group focus-visible:ring-ring/50 relative flex cursor-pointer flex-col rounded-md p-1 transition-colors outline-none focus-visible:ring-2',
+          select && selected
+            ? 'bg-[var(--flow-accent-bg)] ring-2 ring-[var(--flow-accent)] hover:bg-[var(--flow-accent-bg)]'
+            : 'hover:bg-popover/70',
+        )}
         onClick={activateBook}
         onContextMenu={openContextMenu}
         onKeyDown={onBookKeyDown}
@@ -1135,15 +1138,17 @@ const Book: React.FC<BookProps> = ({
           )}
           {select && (
             <div className="absolute right-2 bottom-2 z-20">
-              <Icon
-                size={24}
+              <div
+                aria-hidden
                 className={clsx(
-                  '-m-1',
+                  'flex size-6 items-center justify-center rounded-md shadow-sm ring-1 ring-inset',
                   selected
-                    ? 'text-[var(--flow-accent)]'
-                    : 'text-muted-foreground',
+                    ? 'bg-[var(--flow-accent)] text-[var(--flow-accent-text)] ring-[var(--flow-accent)]'
+                    : 'bg-[var(--flow-bg-panel)] ring-[var(--flow-border)]',
                 )}
-              />
+              >
+                {selected && <CheckIcon className="size-4" strokeWidth={2.5} />}
+              </div>
             </div>
           )}
         </div>
