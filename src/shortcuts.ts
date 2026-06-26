@@ -164,13 +164,13 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
     labelKey: 'library_filter_panel',
     shortcuts: [['S']],
   },
-  libraryFilterAll: {
-    labelKey: 'library_filter_all',
-    shortcuts: [['`'], ['0']],
-  },
   libraryFilterClear: {
     labelKey: 'library_filter_clear',
     shortcuts: [['Esc']],
+  },
+  libraryFilterAll: {
+    labelKey: 'library_filter_all',
+    shortcuts: [['`'], ['0']],
   },
   libraryFilterToRead: {
     labelKey: 'library_filter_to_read',
@@ -247,8 +247,8 @@ const shortcutGroups: ShortcutGroupDefinition[] = [
     titleKey: 'group.library',
     items: [
       shortcutDefinitions.libraryFilterPanel,
-      shortcutDefinitions.libraryFilterAll,
       shortcutDefinitions.libraryFilterClear,
+      shortcutDefinitions.libraryFilterAll,
       shortcutDefinitions.libraryFilterToRead,
       shortcutDefinitions.libraryFilterReading,
       shortcutDefinitions.libraryFilterRead,
