@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { BookRecord, CoverRecord, db } from '../db'
+import { BookRecord, CoverRecord, LibraryTagRecord, db } from '../db'
 
 export function useLibrary() {
   const [books, setBooks] = useState<BookRecord[] | undefined>(() =>
@@ -52,4 +52,30 @@ export function useCovers() {
   }, [])
 
   return covers
+}
+
+export function useLibraryTags() {
+  const [tags, setTags] = useState<LibraryTagRecord[] | undefined>(() =>
+    db.tags.peekAll(),
+  )
+
+  useEffect(() => {
+    let disposed = false
+
+    const load = () => {
+      db.tags.toArray().then((tags) => {
+        if (!disposed) setTags(tags)
+      })
+    }
+
+    load()
+    const unsubscribe = db.subscribe('tags', load)
+
+    return () => {
+      disposed = true
+      unsubscribe()
+    }
+  }, [])
+
+  return tags
 }

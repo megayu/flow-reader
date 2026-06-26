@@ -2,11 +2,19 @@ import type { Page } from '@playwright/test'
 
 import type { BookRecord } from '../src/db'
 
+export interface TestLibraryTagRecord {
+  id: string
+  name: string
+  createdAt: number
+  updatedAt?: number
+}
+
 interface TauriMockOptions {
   books?: BookRecord[]
   importedBooks?: BookRecord[]
   openDialogPaths?: string[]
   settings?: Record<string, unknown>
+  tags?: TestLibraryTagRecord[]
 }
 
 export async function installTauriMock(
@@ -16,6 +24,7 @@ export async function installTauriMock(
     importedBooks = [],
     openDialogPaths = [],
     settings = {},
+    tags = [],
   }: TauriMockOptions = {},
 ) {
   await page.addInitScript(
@@ -24,6 +33,7 @@ export async function installTauriMock(
       fixtureImportedBooks,
       fixtureOpenDialogPaths,
       fixtureSettings,
+      fixtureTags,
     }) => {
       type TauriInternals = {
         callbacks?: Record<number, (...args: unknown[]) => unknown>
@@ -62,6 +72,9 @@ export async function installTauriMock(
       })()
       const bookStore = new Map<string, BookRecord>(
         fixtureBooks.map((book) => [book.id, book]),
+      )
+      const tagStore = new Map<string, TestLibraryTagRecord>(
+        fixtureTags.map((tag) => [tag.id, tag]),
       )
       const importQueue = [...fixtureImportedBooks]
       const settingsStore: Record<string, unknown> = {
@@ -104,6 +117,82 @@ export async function installTauriMock(
           return null
         }
         if (command === 'list_books') return Array.from(bookStore.values())
+        if (command === 'list_tags') return Array.from(tagStore.values())
+        if (command === 'create_tag') {
+          const name = String(args?.name ?? '')
+            .replace(/\s+/g, ' ')
+            .trim()
+          if (!name) return null
+          const existing = Array.from(tagStore.values()).find(
+            (tag) => tag.name.toLowerCase() === name.toLowerCase(),
+          )
+          if (existing) return existing
+
+          const tag = {
+            id: `tag-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`,
+            name,
+            createdAt: Date.now(),
+          }
+          tagStore.set(tag.id, tag)
+          return tag
+        }
+        if (command === 'update_tag') {
+          const id = String(args?.id)
+          const current = tagStore.get(id)
+          if (!current) return null
+          const name = String(args?.name ?? current.name)
+            .replace(/\s+/g, ' ')
+            .trim()
+          if (!name) return current
+
+          const duplicate = Array.from(tagStore.values()).find(
+            (tag) =>
+              tag.id !== id && tag.name.toLowerCase() === name.toLowerCase(),
+          )
+          if (duplicate) return current
+
+          const updated = { ...current, name, updatedAt: Date.now() }
+          tagStore.set(id, updated)
+          return updated
+        }
+        if (command === 'delete_tag') {
+          const id = String(args?.id)
+          tagStore.delete(id)
+          bookStore.forEach((book, bookId) => {
+            const tagIds = (
+              (book as BookRecord & { tagIds?: string[] }).tagIds ?? []
+            ).filter((tagId) => tagId !== id)
+            bookStore.set(bookId, { ...book, tagIds })
+          })
+          return Array.from(bookStore.values())
+        }
+        if (command === 'update_book_tags') {
+          const ids = Array.isArray(args?.ids) ? args.ids.map(String) : []
+          const addTagIds = Array.isArray(args?.addTagIds)
+            ? args.addTagIds.map(String)
+            : []
+          const removeTagIds = Array.isArray(args?.removeTagIds)
+            ? args.removeTagIds.map(String)
+            : []
+          const updatedBooks: BookRecord[] = []
+
+          ids.forEach((id) => {
+            const current = bookStore.get(id)
+            if (!current) return
+
+            const tagIds = new Set(
+              (current as BookRecord & { tagIds?: string[] }).tagIds ?? [],
+            )
+            removeTagIds.forEach((tagId) => tagIds.delete(tagId))
+            addTagIds.forEach((tagId) => tagIds.add(tagId))
+
+            const updated = { ...current, tagIds: Array.from(tagIds) }
+            bookStore.set(id, updated)
+            updatedBooks.push(updated)
+          })
+
+          return updatedBooks
+        }
         if (command === 'get_book')
           return bookStore.get(String(args?.id)) ?? null
         if (command === 'update_book') {
@@ -148,6 +237,7 @@ export async function installTauriMock(
       fixtureImportedBooks: importedBooks,
       fixtureOpenDialogPaths: openDialogPaths,
       fixtureSettings: settings,
+      fixtureTags: tags,
     },
   )
 }

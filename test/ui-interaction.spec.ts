@@ -322,6 +322,7 @@ test('settings shortcut list hides internal developer tools shortcut', async ({
 
   expect(shortcutText).toMatch(/ClosealltabsCtrl\+Shift\+W/)
   expect(shortcutText).toMatch(/Filterall.*`.*0/)
+  expect(shortcutText).toMatch(/Clearfilters.*Esc/)
   expect(shortcutText).toMatch(/Filtertoread.*1/)
   expect(shortcutText).toMatch(/Filterreading.*2/)
   expect(shortcutText).toMatch(/Filterread.*3/)

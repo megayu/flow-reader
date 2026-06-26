@@ -108,6 +108,8 @@ struct Library {
     version: u32,
     #[serde(default)]
     books: Vec<LibraryBook>,
+    #[serde(default)]
+    tags: Vec<LibraryTagRecord>,
 }
 
 fn library_version() -> u32 {
@@ -137,6 +139,8 @@ struct LibraryBook {
     cfi: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     percentage: Option<f64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tag_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,12 +166,24 @@ pub struct BookRecord {
     cfi: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     percentage: Option<f64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tag_ids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     configuration: Option<Value>,
     #[serde(default)]
     content_hash: String,
     #[serde(default)]
     content_version: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryTagRecord {
+    id: String,
+    name: String,
+    created_at: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    updated_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -325,6 +341,7 @@ impl AppStorage {
             annotations: book_state.annotations,
             cfi: book_state.cfi,
             percentage: book_state.percentage,
+            tag_ids: book.tag_ids.clone(),
             configuration: book_state.configuration,
             content_hash: book.content_hash.clone(),
             content_version: book.content_version,
@@ -345,6 +362,7 @@ impl AppStorage {
             annotations: Vec::new(),
             cfi: book.cfi.clone(),
             percentage: book.percentage,
+            tag_ids: book.tag_ids.clone(),
             configuration: None,
             content_hash: book.content_hash.clone(),
             content_version: book.content_version,
@@ -459,6 +477,7 @@ fn clone_library(library: &Library) -> Library {
     Library {
         version: library.version,
         books: library.books.clone(),
+        tags: library.tags.clone(),
     }
 }
 

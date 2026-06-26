@@ -9,13 +9,16 @@ import {
   ListFilter,
   Maximize,
   Minimize,
+  PencilIcon,
   PinIcon,
   PinOffIcon,
+  PlusIcon,
   RotateCcwIcon,
   Search,
   Settings,
   Sun,
   TableOfContents,
+  Trash2Icon,
   Type,
   XIcon,
   type LucideIcon,
@@ -24,6 +27,7 @@ import {
   ComponentProps,
   MouseEvent as ReactMouseEvent,
   PropsWithChildren,
+  ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -31,6 +35,7 @@ import {
   useState,
 } from 'react'
 
+import { db, type LibraryTagRecord } from '../db'
 import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
 import {
@@ -39,22 +44,29 @@ import {
   type Action as ReaderPanelAction,
   type LibraryAction,
 } from '../hooks/useAction'
-import { useLibrary } from '../hooks/useLibrary'
+import { useLibrary, useLibraryTags } from '../hooks/useLibrary'
 import { useTranslation } from '../hooks/useTranslation'
 import {
   areStringListsEqual,
+  cleanLibraryTagName,
   getLibraryAuthorOptions,
+  getLibraryTagOptions,
   pinLibraryAuthor,
+  pinLibraryTag,
   pruneLibraryAuthorFilters,
+  pruneLibraryTagFilters,
+  sameLibraryTagName,
   toggleLibraryAuthorFilter,
+  toggleLibraryTagFilter,
   unpinLibraryAuthor,
-  type LibraryAuthorOption,
+  unpinLibraryTag,
 } from '../libraryFilters'
 import { useReaderSnapshot } from '../models/reader'
 import { getShortcutChords, type ShortcutActionId } from '../shortcuts'
 import {
   useLibraryAuthorFilter,
   useLibraryStatusFilter,
+  useLibraryTagFilter,
   useSettings,
   useSettingsDialogOpen,
   useSetZenTypographyOverrides,
@@ -71,6 +83,14 @@ import { PaneView } from './base/PaneView'
 import { SplitView, useSplitViewItem } from './base/SplitView'
 import { SettingsDialog } from './pages/settings'
 import { Button as UiButton } from './ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog'
+import { Input } from './ui/input'
 import { AnnotationView } from './viewlets/AnnotationView'
 import { ImageView } from './viewlets/ImageView'
 import { SearchView } from './viewlets/SearchView'
@@ -652,10 +672,19 @@ const libraryFilterIconButtonClassName =
 function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const t = useTranslation('home')
   const books = useLibrary()
+  const tags = useLibraryTags()
+  const [libraryAction] = useLibraryAction()
   const [settings, setSettings] = useSettings()
   const [statusFilters, setStatusFilters] = useLibraryStatusFilter()
   const [authorFilters, setAuthorFilters] = useLibraryAuthorFilter()
+  const [tagFilters, setTagFilters] = useLibraryTagFilter()
   const [authorsExpanded, setAuthorsExpanded] = useState(true)
+  const [tagsExpanded, setTagsExpanded] = useState(true)
+  const [creatingTag, setCreatingTag] = useState(false)
+  const [newTagName, setNewTagName] = useState('')
+  const [editingTag, setEditingTag] = useState<LibraryTagRecord>()
+  const [deletingTag, setDeletingTag] = useState<LibraryTagRecord>()
+  const newTagInputRef = useRef<HTMLInputElement>(null)
   const authorOptions = useMemo(
     () =>
       getLibraryAuthorOptions(
@@ -665,7 +694,20 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
       ),
     [books, settings.libraryPinnedAuthors, statusFilters],
   )
-  const hasFilters = statusFilters.length > 0 || authorFilters.length > 0
+  const tagOptions = useMemo(
+    () =>
+      getLibraryTagOptions(
+        books ?? [],
+        statusFilters,
+        tags ?? [],
+        settings.libraryPinnedTags ?? [],
+      ),
+    [books, settings.libraryPinnedTags, statusFilters, tags],
+  )
+  const hasFilters =
+    statusFilters.length > 0 ||
+    authorFilters.length > 0 ||
+    tagFilters.length > 0
 
   const toggle = (status: (typeof libraryStatusOptions)[number]) => {
     setStatusFilters((current) =>
@@ -678,17 +720,42 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const clearFilters = useCallback(() => {
     setStatusFilters([])
     setAuthorFilters([])
-  }, [setAuthorFilters, setStatusFilters])
+    setTagFilters([])
+  }, [setAuthorFilters, setStatusFilters, setTagFilters])
 
   const resetAuthors = useCallback(() => {
     setAuthorFilters([])
   }, [setAuthorFilters])
+
+  const resetTags = useCallback(() => {
+    setTagFilters([])
+  }, [setTagFilters])
+
+  const createGlobalTag = useCallback(async () => {
+    const name = cleanLibraryTagName(newTagName)
+    if (!name) return
+
+    const existing = tags?.find((tag) => sameLibraryTagName(tag.name, name))
+    if (!existing) {
+      await db.tags.create(name)
+    }
+
+    setNewTagName('')
+    requestAnimationFrame(() => newTagInputRef.current?.focus())
+  }, [newTagName, tags])
 
   const toggleAuthor = useCallback(
     (author: string) => {
       setAuthorFilters((current) => toggleLibraryAuthorFilter(current, author))
     },
     [setAuthorFilters],
+  )
+
+  const toggleTag = useCallback(
+    (tagId: string) => {
+      setTagFilters((current) => toggleLibraryTagFilter(current, tagId))
+    },
+    [setTagFilters],
   )
 
   const pinAuthor = useCallback(
@@ -717,12 +784,72 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     [setSettings],
   )
 
+  const pinTag = useCallback(
+    (tagId: string) => {
+      setSettings((current) => ({
+        ...current,
+        libraryPinnedTags: pinLibraryTag(
+          current.libraryPinnedTags ?? [],
+          tagId,
+        ),
+      }))
+    },
+    [setSettings],
+  )
+
+  const unpinTag = useCallback(
+    (tagId: string) => {
+      setSettings((current) => ({
+        ...current,
+        libraryPinnedTags: unpinLibraryTag(
+          current.libraryPinnedTags ?? [],
+          tagId,
+        ),
+      }))
+    },
+    [setSettings],
+  )
+
   useEffect(() => {
     setAuthorFilters((current) => {
       const next = pruneLibraryAuthorFilters(current, authorOptions)
       return areStringListsEqual(current, next) ? current : next
     })
   }, [authorOptions, setAuthorFilters])
+
+  useEffect(() => {
+    setTagFilters((current) => {
+      const next = pruneLibraryTagFilters(current, tagOptions)
+      return areStringListsEqual(current, next) ? current : next
+    })
+  }, [setTagFilters, tagOptions])
+
+  useEffect(() => {
+    if (!creatingTag) return
+
+    requestAnimationFrame(() => newTagInputRef.current?.focus())
+  }, [creatingTag])
+
+  useEffect(() => {
+    if (libraryAction !== 'libraryFilter') return
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || isLibraryFilterShortcutBlocked(e)) return
+
+      e.preventDefault()
+      e.stopPropagation()
+
+      if (hasFilters) {
+        clearFilters()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [clearFilters, hasFilters, libraryAction])
 
   return (
     <PaneView
@@ -731,14 +858,17 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
       className={clsx('p-3', className)}
     >
       <div
-        className="flex h-full min-h-0 flex-col gap-3"
+        className="flex h-full min-h-0 flex-col gap-2"
         data-testid="library-filter-panel"
       >
-        <div className="flex h-9 items-center justify-between gap-2">
+        <div className="flex h-6 items-center justify-between gap-2">
           <div className="text-foreground text-lg leading-none font-semibold">
             {t('library_filter.title')}
           </div>
-          <AppTooltip label={t('library_filter.clear')}>
+          <AppTooltip
+            label={t('library_filter.clear')}
+            shortcut={getPrimaryShortcut('libraryFilterClear')}
+          >
             <UiButton
               type="button"
               variant="ghost"
@@ -822,15 +952,22 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
           resetLabel={t('library_filter.reset')}
           resetDisabled={!authorFilters.length}
           onReset={resetAuthors}
+          testId="library-author-section"
         >
           {authorOptions.length ? (
             <div className={libraryFilterOptionsClassName}>
               {authorOptions.map((option) => (
-                <AuthorFilterChip
+                <LibraryFilterChip
                   key={option.name}
-                  option={option}
+                  label={option.name}
+                  pinned={option.pinned}
+                  testId="library-author-chip"
+                  labelTestId="library-author-chip-label"
+                  contextMenuTestId="library-author-context-menu"
                   active={authorFilters.includes(option.name)}
                   onToggle={() => toggleAuthor(option.name)}
+                  pinLabel={t('library_filter.pin_author')}
+                  unpinLabel={t('library_filter.unpin_author')}
                   onPin={() => pinAuthor(option.name)}
                   onUnpin={() => unpinAuthor(option.name)}
                 />
@@ -842,36 +979,172 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
             </div>
           )}
         </FilterSection>
+
+        <FilterSection
+          title={t('library_filter.tags')}
+          expanded={tagsExpanded}
+          onExpandedChange={setTagsExpanded}
+          resetLabel={t('library_filter.reset')}
+          resetDisabled={!tagFilters.length}
+          onReset={resetTags}
+          testId="library-tag-section"
+          actions={
+            <AppTooltip label={t('library_filter.new_tag')}>
+              <UiButton
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t('library_filter.new_tag')}
+                className={libraryFilterIconButtonClassName}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setCreatingTag(true)
+                  setTagsExpanded(true)
+                }}
+              >
+                <PlusIcon aria-hidden className="size-4.5" />
+              </UiButton>
+            </AppTooltip>
+          }
+        >
+          {creatingTag && (
+            <div className="mb-1">
+              <Input
+                ref={newTagInputRef}
+                aria-label={t('library_filter.new_tag')}
+                value={newTagName}
+                onChange={(e) => setNewTagName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    setCreatingTag(false)
+                    setNewTagName('')
+                    return
+                  }
+
+                  if (e.key !== 'Enter') return
+
+                  e.preventDefault()
+                  void createGlobalTag()
+                }}
+                className="focus-visible:border-input h-7 rounded-md px-2 text-sm focus-visible:ring-0"
+              />
+            </div>
+          )}
+          {tagOptions.length ? (
+            <div className={libraryFilterOptionsClassName}>
+              {tagOptions.map((option) => {
+                const tag = tags?.find((item) => item.id === option.id)
+                if (!tag) return null
+
+                return (
+                  <LibraryFilterChip
+                    key={option.id}
+                    active={tagFilters.includes(option.id)}
+                    label={option.name}
+                    pinned={option.pinned}
+                    testId="library-tag-chip"
+                    labelTestId="library-tag-chip-label"
+                    contextMenuTestId="library-tag-context-menu"
+                    dataValue={option.id}
+                    onToggle={() => toggleTag(option.id)}
+                    pinLabel={t('library_filter.pin_tag')}
+                    unpinLabel={t('library_filter.unpin_tag')}
+                    onPin={() => pinTag(option.id)}
+                    onUnpin={() => unpinTag(option.id)}
+                    menuItems={[
+                      {
+                        Icon: PencilIcon,
+                        label: t('library_filter.edit_tag'),
+                        onClick: () => setEditingTag(tag),
+                      },
+                      {
+                        danger: true,
+                        Icon: Trash2Icon,
+                        label: t('library_filter.delete_tag'),
+                        onClick: () => setDeletingTag(tag),
+                      },
+                    ]}
+                  />
+                )
+              })}
+            </div>
+          ) : (
+            <div className="text-muted-foreground py-0.5 text-sm leading-tight">
+              {t('library_filter.no_tags')}
+            </div>
+          )}
+        </FilterSection>
       </div>
+      {editingTag && (
+        <EditLibraryTagDialog
+          tag={editingTag}
+          onClose={() => setEditingTag(undefined)}
+        />
+      )}
+      {deletingTag && (
+        <DeleteLibraryTagDialog
+          tag={deletingTag}
+          onDeleted={() => {
+            setSettings((current) => ({
+              ...current,
+              libraryPinnedTags: unpinLibraryTag(
+                current.libraryPinnedTags ?? [],
+                deletingTag.id,
+              ),
+            }))
+            setDeletingTag(undefined)
+          }}
+          onClose={() => setDeletingTag(undefined)}
+        />
+      )}
     </PaneView>
   )
 }
 
+function isLibraryFilterShortcutBlocked(e: KeyboardEvent) {
+  const target = e.target as HTMLElement | null
+  if (
+    target?.closest(
+      'input, textarea, select, [contenteditable="true"], [data-flow-keyboard-capture="true"], [role="dialog"], [role="menu"]',
+    )
+  ) {
+    return true
+  }
+
+  return !!document.querySelector('[role="dialog"], [role="menu"]')
+}
+
 interface FilterSectionProps extends PropsWithChildren {
+  actions?: ReactNode
   expanded: boolean
   onExpandedChange: (expanded: boolean) => void
   onReset: () => void
   resetDisabled: boolean
   resetLabel: string
+  testId?: string
   title: string
 }
 
 const FilterSection: React.FC<FilterSectionProps> = ({
+  actions,
   children,
   expanded,
   onExpandedChange,
   onReset,
   resetDisabled,
   resetLabel,
+  testId,
   title,
 }) => {
   return (
-    <section className={libraryFilterPanelClassName}>
+    <section className={libraryFilterPanelClassName} data-testid={testId}>
       <div className={libraryFilterPanelHeaderClassName}>
         <UiButton
           type="button"
           variant="ghost"
           size="sm"
+          aria-label={`${title} section`}
           aria-expanded={expanded}
           className="h-8 min-w-0 flex-1 justify-start gap-2 rounded-xl bg-transparent px-0 text-left hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 aria-expanded:bg-transparent aria-expanded:text-[var(--flow-text)]"
           onClick={() => onExpandedChange(!expanded)}
@@ -885,6 +1158,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
           />
           <span className={libraryFilterSectionHeaderClassName}>{title}</span>
         </UiButton>
+        {actions}
         <AppTooltip label={resetLabel}>
           <UiButton
             type="button"
@@ -908,24 +1182,48 @@ const FilterSection: React.FC<FilterSectionProps> = ({
   )
 }
 
-interface AuthorFilterChipProps {
+interface LibraryFilterMenuItem {
+  danger?: boolean
+  Icon: LucideIcon
+  label: string
+  onClick: () => void
+}
+
+interface LibraryFilterChipProps {
   active: boolean
+  contextMenuTestId: string
+  dataValue?: string
+  label: string
+  labelTestId: string
+  menuItems?: LibraryFilterMenuItem[]
   onPin: () => void
   onToggle: () => void
   onUnpin: () => void
-  option: LibraryAuthorOption
+  pinLabel: string
+  pinned: boolean
+  testId: string
+  unpinLabel: string
 }
 
-const AuthorFilterChip: React.FC<AuthorFilterChipProps> = ({
+const LibraryFilterChip: React.FC<LibraryFilterChipProps> = ({
   active,
+  contextMenuTestId,
+  dataValue,
+  label,
+  labelTestId,
+  menuItems = [],
   onPin,
   onToggle,
   onUnpin,
-  option,
+  pinLabel,
+  pinned,
+  testId,
+  unpinLabel,
 }) => {
-  const t = useTranslation('home')
   const contextMenuRef = useRef<HTMLDivElement>(null)
+  const labelRef = useRef<HTMLSpanElement>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number }>()
+  const [labelOverflowing, setLabelOverflowing] = useState(false)
 
   const closeContextMenu = useCallback(() => {
     setContextMenu(undefined)
@@ -957,17 +1255,37 @@ const AuthorFilterChip: React.FC<AuthorFilterChipProps> = ({
     }
   }, [closeContextMenu, contextMenu])
 
+  useEffect(() => {
+    const labelElement = labelRef.current
+    if (!labelElement) return
+
+    const updateOverflow = () => {
+      setLabelOverflowing(labelElement.scrollWidth > labelElement.clientWidth)
+    }
+
+    updateOverflow()
+
+    if (typeof ResizeObserver === 'undefined') return
+
+    const observer = new ResizeObserver(updateOverflow)
+    observer.observe(labelElement)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [label])
+
   return (
-    <div className="relative max-w-full min-w-0" data-testid="author-chip-wrap">
+    <div className="relative max-w-full min-w-0">
       <UiButton
         type="button"
         size="sm"
         variant={active ? 'default' : 'secondary'}
         aria-pressed={active}
-        aria-label={option.name}
-        title={option.name}
-        data-testid="library-author-chip"
-        data-author={option.name}
+        aria-label={label}
+        title={labelOverflowing ? label : undefined}
+        data-testid={testId}
+        data-value={dataValue ?? label}
         className={clsx(
           libraryFilterChipClassName,
           'max-w-full justify-start',
@@ -976,7 +1294,7 @@ const AuthorFilterChip: React.FC<AuthorFilterChipProps> = ({
         onClick={onToggle}
         onContextMenu={openContextMenu}
       >
-        {option.pinned && (
+        {pinned && (
           <PinIcon
             aria-hidden
             className={clsx(
@@ -986,10 +1304,11 @@ const AuthorFilterChip: React.FC<AuthorFilterChipProps> = ({
           />
         )}
         <span
+          ref={labelRef}
           className="min-w-0 truncate leading-none"
-          data-testid="library-author-chip-label"
+          data-testid={labelTestId}
         >
-          {option.name}
+          {label}
         </span>
       </UiButton>
 
@@ -997,57 +1316,190 @@ const AuthorFilterChip: React.FC<AuthorFilterChipProps> = ({
         <div
           ref={contextMenuRef}
           role="menu"
-          data-testid="library-author-context-menu"
-          className="ring-border bg-popover text-popover-foreground fixed z-[70] w-36 rounded-lg p-1 shadow-lg ring-1"
+          data-testid={contextMenuTestId}
+          className="ring-border bg-popover text-popover-foreground fixed z-[70] w-40 rounded-lg p-1 shadow-lg ring-1"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
-          <AuthorContextMenuButton
+          <LibraryFilterContextMenuButton
             Icon={PinIcon}
-            label={t('library_filter.pin_author')}
+            label={pinLabel}
             onClick={() => {
               onPin()
               closeContextMenu()
             }}
           />
-          {option.pinned && (
-            <AuthorContextMenuButton
+          {pinned && (
+            <LibraryFilterContextMenuButton
               Icon={PinOffIcon}
-              label={t('library_filter.unpin_author')}
+              label={unpinLabel}
               onClick={() => {
                 onUnpin()
                 closeContextMenu()
               }}
             />
           )}
+          {menuItems.length > 0 && <div className="bg-muted my-1 h-px" />}
+          {menuItems.map((item) => (
+            <LibraryFilterContextMenuButton
+              key={item.label}
+              danger={item.danger}
+              Icon={item.Icon}
+              label={item.label}
+              onClick={() => {
+                item.onClick()
+                closeContextMenu()
+              }}
+            />
+          ))}
         </div>
       )}
     </div>
   )
 }
 
-interface AuthorContextMenuButtonProps {
+interface LibraryFilterContextMenuButtonProps {
+  danger?: boolean
   Icon: LucideIcon
   label: string
   onClick: () => void
 }
 
-const AuthorContextMenuButton: React.FC<AuthorContextMenuButtonProps> = ({
-  Icon,
-  label,
-  onClick,
-}) => {
+const LibraryFilterContextMenuButton: React.FC<
+  LibraryFilterContextMenuButtonProps
+> = ({ danger, Icon, label, onClick }) => {
   return (
     <button
       type="button"
       role="menuitem"
-      className="hover:bg-muted text-muted-foreground flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-base outline-none"
+      className={clsx(
+        'hover:bg-muted flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-base outline-none',
+        danger ? 'text-destructive' : 'text-muted-foreground',
+      )}
       onClick={onClick}
     >
       <Icon aria-hidden className="size-4 shrink-0" />
       <span className="min-w-0 truncate">{label}</span>
     </button>
+  )
+}
+
+interface LibraryTagDialogProps {
+  onClose: () => void
+  tag: LibraryTagRecord
+}
+
+const EditLibraryTagDialog: React.FC<LibraryTagDialogProps> = ({
+  onClose,
+  tag,
+}) => {
+  const t = useTranslation('home')
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [name, setName] = useState(tag.name)
+  const trimmedName = name.replace(/\s+/g, ' ').trim()
+  const canSave = !!trimmedName && trimmedName !== tag.name
+
+  const save = () => {
+    if (!canSave) return
+
+    void db.tags.update(tag.id, trimmedName).then(() => onClose())
+  }
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <DialogContent
+        data-flow-keyboard-capture="true"
+        className="w-[min(24rem,calc(100vw-2rem))] max-w-none text-base"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          inputRef.current?.focus()
+          inputRef.current?.select()
+        }}
+      >
+        <form
+          className="grid gap-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            save()
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{t('library_filter.edit_tag')}</DialogTitle>
+          </DialogHeader>
+          <label className="block">
+            <span className="text-muted-foreground mb-1.5 block leading-none font-medium">
+              {t('library_filter.tag_name')}
+            </span>
+            <Input
+              ref={inputRef}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="focus-visible:border-input text-base focus-visible:ring-0"
+            />
+          </label>
+          <DialogFooter className="-mx-4 mt-1 -mb-4 px-4 py-3">
+            <UiButton type="button" variant="secondary" onClick={onClose}>
+              {t('cancel')}
+            </UiButton>
+            <UiButton type="submit" disabled={!canSave}>
+              {t('edit.save')}
+            </UiButton>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+interface DeleteLibraryTagDialogProps extends LibraryTagDialogProps {
+  onDeleted: () => void
+}
+
+const DeleteLibraryTagDialog: React.FC<DeleteLibraryTagDialogProps> = ({
+  onClose,
+  onDeleted,
+  tag,
+}) => {
+  const t = useTranslation('home')
+
+  const remove = () => {
+    void db.tags.delete(tag.id).then(() => onDeleted())
+  }
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <DialogContent
+        data-flow-keyboard-capture="true"
+        className="w-[min(24rem,calc(100vw-2rem))] max-w-none text-base"
+      >
+        <DialogHeader>
+          <DialogTitle>{t('library_filter.delete_tag')}</DialogTitle>
+        </DialogHeader>
+        <div className="text-muted-foreground leading-relaxed">
+          {t('library_filter.delete_tag_message')}{' '}
+          <span className="text-foreground font-medium">{tag.name}</span>
+        </div>
+        <DialogFooter className="-mx-4 mt-1 -mb-4 px-4 py-3">
+          <UiButton type="button" variant="secondary" onClick={onClose}>
+            {t('cancel')}
+          </UiButton>
+          <UiButton type="button" variant="destructive" onClick={remove}>
+            {t('library_filter.delete_tag')}
+          </UiButton>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

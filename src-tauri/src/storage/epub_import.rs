@@ -506,6 +506,7 @@ pub(super) fn import_epub_path_impl(
                 last_read_at: None,
                 cfi: None,
                 percentage: None,
+                tag_ids: Vec::new(),
             });
             (state.library.books.len() - 1, true)
         };

@@ -35,6 +35,7 @@ export interface Settings extends TypographyConfiguration {
   librarySidebarOpen?: boolean
   librarySort?: LibrarySortConfiguration
   libraryPinnedAuthors?: string[]
+  libraryPinnedTags?: string[]
   textImportRules?: TextImportRulesConfiguration
   locale?: AppLocale
 }
@@ -110,6 +111,7 @@ interface AppStore {
   libraryAction?: LibraryAction
   libraryAuthorFilter: string[]
   libraryStatusFilter: ReadingStatus[]
+  libraryTagFilter: string[]
   settings: Settings
   settingsDialogOpen: boolean
   settingsReady: boolean
@@ -120,6 +122,7 @@ interface AppStore {
   setLibraryAction: SetterOrUpdater<LibraryAction | undefined>
   setLibraryAuthorFilter: SetterOrUpdater<string[]>
   setLibraryStatusFilter: SetterOrUpdater<ReadingStatus[]>
+  setLibraryTagFilter: SetterOrUpdater<string[]>
   setSettings: SetterOrUpdater<Settings>
   setSettingsDialogOpen: SetterOrUpdater<boolean>
   setSettingsReady: SetterOrUpdater<boolean>
@@ -139,6 +142,7 @@ export const useAppStore = create<AppStore>((set) => ({
   libraryAction: undefined,
   libraryAuthorFilter: [],
   libraryStatusFilter: [],
+  libraryTagFilter: [],
   settings: defaultSettings,
   settingsDialogOpen: false,
   settingsReady: false,
@@ -158,6 +162,10 @@ export const useAppStore = create<AppStore>((set) => ({
   setLibraryStatusFilter: (value) =>
     set((state) => ({
       libraryStatusFilter: resolveUpdate(value, state.libraryStatusFilter),
+    })),
+  setLibraryTagFilter: (value) =>
+    set((state) => ({
+      libraryTagFilter: resolveUpdate(value, state.libraryTagFilter),
     })),
   setSettings: (value) =>
     set((state) => ({ settings: resolveUpdate(value, state.settings) })),
@@ -210,6 +218,13 @@ export function useLibraryStatusFilter() {
 export function useLibraryAuthorFilter() {
   const filters = useAppStore((state) => state.libraryAuthorFilter)
   const setFilters = useAppStore((state) => state.setLibraryAuthorFilter)
+
+  return [filters, setFilters] as const
+}
+
+export function useLibraryTagFilter() {
+  const filters = useAppStore((state) => state.libraryTagFilter)
+  const setFilters = useAppStore((state) => state.setLibraryTagFilter)
 
   return [filters, setFilters] as const
 }
@@ -282,6 +297,7 @@ function normalizeSettings(value: Partial<Settings> | undefined): Settings {
     theme: normalizeThemeConfiguration(settings.theme),
     librarySort: normalizeLibrarySort(settings.librarySort),
     libraryPinnedAuthors: normalizeStringList(settings.libraryPinnedAuthors),
+    libraryPinnedTags: normalizeStringList(settings.libraryPinnedTags),
     textImportRules: {
       ...defaultTextImportRules,
       ...settings.textImportRules,

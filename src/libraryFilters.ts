@@ -1,5 +1,5 @@
 import { cleanBookText } from './book'
-import type { BookRecord, ReadingStatus } from './db'
+import type { BookRecord, LibraryTagRecord, ReadingStatus } from './db'
 
 const authorCollator = new Intl.Collator(undefined, {
   numeric: true,
@@ -11,8 +11,25 @@ export interface LibraryAuthorOption {
   pinned: boolean
 }
 
+export interface LibraryTagOption {
+  id: string
+  name: string
+  pinned: boolean
+}
+
 export function getBookAuthor(book: BookRecord) {
   return cleanBookText(book.metadata.creator)
+}
+
+export function cleanLibraryTagName(value: string) {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+export function sameLibraryTagName(a: string, b: string) {
+  return (
+    cleanLibraryTagName(a).toLocaleLowerCase() ===
+    cleanLibraryTagName(b).toLocaleLowerCase()
+  )
 }
 
 export function matchesLibraryStatusFilter(
@@ -28,14 +45,17 @@ export function filterBooksByLibraryFilters(
   books: BookRecord[],
   statusFilters: ReadingStatus[],
   authorFilters: string[],
+  tagFilters: string[] = [],
 ) {
   const authors = new Set(authorFilters)
+  const tags = new Set(tagFilters)
 
   return books.filter((book) => {
     if (!matchesLibraryStatusFilter(book, statusFilters)) return false
-    if (!authors.size) return true
+    if (authors.size && !authors.has(getBookAuthor(book))) return false
+    if (!tags.size) return true
 
-    return authors.has(getBookAuthor(book))
+    return (book.tagIds ?? []).some((tagId) => tags.has(tagId))
   })
 }
 
@@ -81,6 +101,51 @@ export function pruneLibraryAuthorFilters(
   )
 }
 
+export function getLibraryTagOptions(
+  books: BookRecord[],
+  statusFilters: ReadingStatus[],
+  tags: LibraryTagRecord[],
+  pinnedTags: string[] = [],
+): LibraryTagOption[] {
+  const availableTagIds = new Set(tags.map((tag) => tag.id))
+  const tagById = new Map(tags.map((tag) => [tag.id, tag]))
+
+  books.forEach((book) => {
+    if (!matchesLibraryStatusFilter(book, statusFilters)) return
+    ;(book.tagIds ?? []).forEach((tagId) => {
+      if (tagById.has(tagId)) availableTagIds.add(tagId)
+    })
+  })
+
+  const sortedTags = Array.from(availableTagIds)
+    .map((tagId) => tagById.get(tagId)!)
+    .sort((a, b) => authorCollator.compare(a.name, b.name))
+  const availableTags = new Set(sortedTags.map((tag) => tag.id))
+  const pinned = uniqueStrings(pinnedTags).filter((tagId) =>
+    availableTags.has(tagId),
+  )
+  const pinnedSet = new Set(pinned)
+
+  return [
+    ...pinned
+      .map((id) => tagById.get(id))
+      .filter((tag): tag is LibraryTagRecord => !!tag)
+      .map((tag) => ({ id: tag.id, name: tag.name, pinned: true })),
+    ...sortedTags
+      .filter((tag) => !pinnedSet.has(tag.id))
+      .map((tag) => ({ id: tag.id, name: tag.name, pinned: false })),
+  ]
+}
+
+export function pruneLibraryTagFilters(
+  tagFilters: string[],
+  tagOptions: LibraryTagOption[],
+) {
+  const availableTags = new Set(tagOptions.map((option) => option.id))
+
+  return uniqueStrings(tagFilters).filter((tagId) => availableTags.has(tagId))
+}
+
 export function toggleLibraryAuthorFilter(
   authorFilters: string[],
   author: string,
@@ -88,6 +153,12 @@ export function toggleLibraryAuthorFilter(
   return authorFilters.includes(author)
     ? authorFilters.filter((item) => item !== author)
     : [...authorFilters, author]
+}
+
+export function toggleLibraryTagFilter(tagFilters: string[], tagId: string) {
+  return tagFilters.includes(tagId)
+    ? tagFilters.filter((item) => item !== tagId)
+    : [...tagFilters, tagId]
 }
 
 export function pinLibraryAuthor(pinnedAuthors: string[], author: string) {
@@ -99,6 +170,14 @@ export function pinLibraryAuthor(pinnedAuthors: string[], author: string) {
 
 export function unpinLibraryAuthor(pinnedAuthors: string[], author: string) {
   return uniqueStrings(pinnedAuthors).filter((item) => item !== author)
+}
+
+export function pinLibraryTag(pinnedTags: string[], tagId: string) {
+  return [tagId, ...uniqueStrings(pinnedTags).filter((item) => item !== tagId)]
+}
+
+export function unpinLibraryTag(pinnedTags: string[], tagId: string) {
+  return uniqueStrings(pinnedTags).filter((item) => item !== tagId)
 }
 
 export function areStringListsEqual(a: string[], b: string[]) {

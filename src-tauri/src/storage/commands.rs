@@ -7,6 +7,50 @@ use serde_json::Value;
 use tauri::State;
 
 use super::*;
+
+fn clean_tag_name(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn same_tag_name(a: &str, b: &str) -> bool {
+    a.eq_ignore_ascii_case(b)
+}
+
+fn tag_id_from_name(name: &str, created_at: u64) -> String {
+    let slug = name
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    let slug = if slug.is_empty() { "tag" } else { &slug };
+
+    format!("tag-{slug}-{created_at}")
+}
+
+fn compose_book_summaries(storage: &AppStorage) -> Result<Vec<BookRecord>, String> {
+    let state = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?;
+
+    Ok(state
+        .library
+        .books
+        .iter()
+        .map(|book| storage.compose_book_summary(book))
+        .collect())
+}
+
 #[tauri::command]
 pub fn list_books(storage: State<'_, AppStorage>) -> Result<Vec<BookRecord>, String> {
     let state = storage
@@ -20,6 +64,178 @@ pub fn list_books(storage: State<'_, AppStorage>) -> Result<Vec<BookRecord>, Str
         .iter()
         .map(|book| storage.compose_book_summary(book))
         .collect())
+}
+
+#[tauri::command]
+pub fn list_tags(storage: State<'_, AppStorage>) -> Result<Vec<LibraryTagRecord>, String> {
+    let state = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?;
+
+    Ok(state.library.tags.clone())
+}
+
+#[tauri::command]
+pub fn create_tag(
+    storage: State<'_, AppStorage>,
+    name: String,
+) -> Result<Option<LibraryTagRecord>, String> {
+    let name = clean_tag_name(&name);
+    if name.is_empty() {
+        return Ok(None);
+    }
+
+    let tag = {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+
+        if let Some(tag) = state
+            .library
+            .tags
+            .iter()
+            .find(|tag| same_tag_name(&tag.name, &name))
+            .cloned()
+        {
+            return Ok(Some(tag));
+        }
+
+        let created_at = now_ms();
+        let mut id = tag_id_from_name(&name, created_at);
+        let mut suffix = 1;
+        while state.library.tags.iter().any(|tag| tag.id == id) {
+            suffix += 1;
+            id = format!("{}-{suffix}", tag_id_from_name(&name, created_at));
+        }
+
+        let tag = LibraryTagRecord {
+            id,
+            name,
+            created_at,
+            updated_at: None,
+        };
+        state.library.tags.push(tag.clone());
+        tag
+    };
+
+    storage.mark_library_dirty();
+    storage.flush_dirty()?;
+    Ok(Some(tag))
+}
+
+#[tauri::command]
+pub fn update_tag(
+    storage: State<'_, AppStorage>,
+    id: String,
+    name: String,
+) -> Result<Option<LibraryTagRecord>, String> {
+    let name = clean_tag_name(&name);
+    if name.is_empty() {
+        return Ok(None);
+    }
+
+    let tag = {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+
+        if state
+            .library
+            .tags
+            .iter()
+            .any(|tag| tag.id != id && same_tag_name(&tag.name, &name))
+        {
+            return Ok(None);
+        }
+
+        let Some(tag) = state.library.tags.iter_mut().find(|tag| tag.id == id) else {
+            return Ok(None);
+        };
+
+        tag.name = name;
+        tag.updated_at = Some(now_ms());
+        tag.clone()
+    };
+
+    storage.mark_library_dirty();
+    storage.flush_dirty()?;
+    Ok(Some(tag))
+}
+
+#[tauri::command]
+pub fn delete_tag(storage: State<'_, AppStorage>, id: String) -> Result<Vec<BookRecord>, String> {
+    {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+
+        state.library.tags.retain(|tag| tag.id != id);
+        for book in &mut state.library.books {
+            book.tag_ids.retain(|tag_id| tag_id != &id);
+        }
+    }
+
+    storage.mark_library_dirty();
+    storage.flush_dirty()?;
+    compose_book_summaries(&storage)
+}
+
+#[tauri::command]
+pub fn update_book_tags(
+    storage: State<'_, AppStorage>,
+    ids: Vec<String>,
+    add_tag_ids: Vec<String>,
+    remove_tag_ids: Vec<String>,
+) -> Result<Vec<BookRecord>, String> {
+    let id_set = ids.into_iter().collect::<std::collections::HashSet<_>>();
+    let add_tag_ids = add_tag_ids
+        .into_iter()
+        .filter(|tag_id| !tag_id.is_empty())
+        .collect::<Vec<_>>();
+    let remove_tag_ids = remove_tag_ids
+        .into_iter()
+        .filter(|tag_id| !tag_id.is_empty())
+        .collect::<std::collections::HashSet<_>>();
+
+    {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+
+        let existing_tags = state
+            .library
+            .tags
+            .iter()
+            .map(|tag| tag.id.clone())
+            .collect::<std::collections::HashSet<_>>();
+        for book in &mut state.library.books {
+            if !id_set.contains(&book.id) {
+                continue;
+            }
+
+            book.tag_ids
+                .retain(|tag_id| !remove_tag_ids.contains(tag_id));
+            for tag_id in &add_tag_ids {
+                if existing_tags.contains(tag_id) && !book.tag_ids.contains(tag_id) {
+                    book.tag_ids.push(tag_id.clone());
+                }
+            }
+        }
+    }
+
+    storage.mark_library_dirty();
+    storage.flush_dirty()?;
+    compose_book_summaries(&storage)
 }
 
 #[tauri::command]
@@ -307,6 +523,21 @@ pub fn update_book(
             if let Some(value) = object.get("lastReadAt").and_then(Value::as_u64) {
                 book.last_read_at = Some(value);
                 library_changed = true;
+            }
+            if let Some(value) = object.get("tagIds") {
+                let mut seen = std::collections::HashSet::new();
+                let tag_ids = value
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .filter(|tag_id| !tag_id.is_empty())
+                    .filter(|tag_id| seen.insert((*tag_id).to_string()))
+                    .map(str::to_string)
+                    .collect::<Vec<_>>();
+                book.tag_ids = tag_ids;
+                library_changed = true;
+                immediate_flush = true;
             }
 
             {

@@ -83,6 +83,9 @@ async function setupLibrary(page: Page) {
     books: fixtureBooks,
     importedBooks,
     openDialogPaths: ['C:\\books\\delta.epub'],
+    settings: {
+      librarySidebarOpen: false,
+    },
   })
   await page.goto('/')
   await page.addStyleTag({
@@ -91,8 +94,20 @@ async function setupLibrary(page: Page) {
   })
   await expect(page.locator('#layout')).toBeVisible()
 
-  await page.getByRole('button', { name: /^Filter$/ }).click()
-  await expect(page.getByTestId('library-filter-panel')).toBeVisible()
+  await openLibraryFilterPanel(page)
+}
+
+async function openLibraryFilterPanel(page: Page) {
+  const panel = page.getByTestId('library-filter-panel')
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (await panel.isVisible()) return
+
+    await page.getByRole('button', { name: /^Filter$/ }).click()
+    await page.waitForTimeout(100)
+  }
+
+  await expect(panel).toBeVisible()
 }
 
 function authorChip(page: Page, author: string) {
@@ -163,6 +178,11 @@ test('library author filters pin authors and refresh when books change', async (
   expect(longChipMetrics.labelOverflow).toBe('hidden')
   expect(longChipMetrics.textOverflow).toBe('ellipsis')
   expect(longChipMetrics.whiteSpace).toBe('nowrap')
+  await expect(authorChip(page, longAuthor)).toHaveAttribute(
+    'title',
+    longAuthor,
+  )
+  await expect(authorChip(page, 'Anne Able')).not.toHaveAttribute('title', /.+/)
 
   await authorChip(page, 'Anne Able').click()
   await expect(page.getByText('Alpha Draft')).toBeVisible()
@@ -173,7 +193,10 @@ test('library author filters pin authors and refresh when books change', async (
   await expect(page.getByText('Alpha Draft')).toHaveCount(0)
   await expect(page.getByText('Gamma Read')).toBeVisible()
 
-  await page.getByRole('button', { name: /^Reset$/ }).click()
+  await page
+    .getByTestId('library-author-section')
+    .getByRole('button', { name: /^Reset$/ })
+    .click()
   await expect(page.getByText('Beta Read')).toBeVisible()
   await expect(page.getByText('Gamma Read')).toBeVisible()
 
@@ -234,10 +257,34 @@ test('library author filters pin authors and refresh when books change', async (
 
   await page.reload()
   await expect(page.locator('#layout')).toBeVisible()
-  if (!(await page.getByTestId('library-filter-panel').isVisible())) {
-    await page.getByRole('button', { name: /^Filter$/ }).click()
-  }
+  await openLibraryFilterPanel(page)
   await expect.poll(() => pinnedAuthors(page)).toEqual([longAuthor])
   await expect.poll(() => authorNames(page)).toContainEqual(longAuthor)
   expect((await authorNames(page))[0]).toBe(longAuthor)
+})
+
+test('library filter panel clears filters on Escape without closing', async ({
+  page,
+}) => {
+  await setupLibrary(page)
+
+  await authorChip(page, 'Anne Able').click()
+  await expect(page.getByText('Alpha Draft')).toBeVisible()
+  await expect(page.getByText('Gamma Read')).toBeVisible()
+  await expect(page.getByText('Beta Read')).toHaveCount(0)
+
+  await page.getByRole('button', { name: /^Clear$/ }).hover()
+  await expect(page.getByRole('tooltip').locator('kbd')).toContainText(['Esc'])
+  await page.mouse.move(500, 500)
+
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('library-filter-panel')).toBeVisible()
+  await expect(authorChip(page, 'Anne Able')).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  )
+  await expect(page.getByText('Beta Read')).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('library-filter-panel')).toBeVisible()
 })

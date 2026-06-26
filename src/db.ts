@@ -67,6 +67,13 @@ export interface ReadingSpreadRecord extends ReadingSpreadPageRecord {
 
 export type ReadingStatus = 'toRead' | 'reading' | 'read'
 
+export interface LibraryTagRecord {
+  id: string
+  name: string
+  createdAt: number
+  updatedAt?: number
+}
+
 export interface BookRecord {
   id: string
   name: string
@@ -78,6 +85,7 @@ export interface BookRecord {
   lastReadAt?: number
   cfi?: string
   percentage?: number
+  tagIds?: string[]
   definitions: string[]
   annotations: Annotation[]
   configuration?: {
@@ -113,12 +121,13 @@ type NativeInvoke = <T>(
 ) => Promise<T>
 
 type Listener = () => void
-type TableName = 'books' | 'covers' | 'files' | 'settings'
+type TableName = 'books' | 'covers' | 'files' | 'settings' | 'tags'
 
 const listeners = new Map<TableName, Set<Listener>>()
 const bookCache = new Map<string, BookRecord>()
 let booksCache: BookRecord[] | undefined
 let coversCache: CoverRecord[] | undefined
+let tagsCache: LibraryTagRecord[] | undefined
 const pendingNativeWrites = new Set<Promise<unknown>>()
 
 function subscribe(table: TableName, listener: Listener) {
@@ -162,7 +171,9 @@ function mergeBookSummary(book: BookRecord, existing?: BookRecord) {
 }
 
 function rememberBook(book: BookRecord, { full = true } = {}) {
-  const normalized = full ? asFullBook(book) : asBookSummary(book)
+  const normalized = full
+    ? asFullBook(book)
+    : mergeBookSummary(book, bookCache.get(book.id))
   bookCache.set(book.id, normalized)
 
   if (!booksCache) return
@@ -206,6 +217,31 @@ function forgetCovers(ids: string[]) {
 
 function invalidateCovers() {
   coversCache = undefined
+}
+
+function rememberTags(tags: LibraryTagRecord[]) {
+  tagsCache = tags
+}
+
+function rememberTag(tag: LibraryTagRecord) {
+  if (!tagsCache) return
+
+  const index = tagsCache.findIndex((item) => item.id === tag.id)
+  if (index >= 0) {
+    tagsCache = [
+      ...tagsCache.slice(0, index),
+      tag,
+      ...tagsCache.slice(index + 1),
+    ]
+  } else {
+    tagsCache = [...tagsCache, tag]
+  }
+}
+
+function forgetTag(id: string) {
+  if (tagsCache) {
+    tagsCache = tagsCache.filter((tag) => tag.id !== id)
+  }
 }
 
 function withoutReadingSpread(
@@ -379,6 +415,61 @@ export const db = {
     },
     async delete(id: string) {
       await this.bulkDelete([id])
+    },
+    async updateTags(
+      ids: string[],
+      {
+        addTagIds = [],
+        removeTagIds = [],
+      }: { addTagIds?: string[]; removeTagIds?: string[] },
+    ) {
+      const books = await trackNativeWrite(
+        invoke<BookRecord[]>('update_book_tags', {
+          ids,
+          addTagIds,
+          removeTagIds,
+        }),
+      )
+      books.forEach((book) => rememberBook(book, { full: false }))
+      notify('books')
+      return books
+    },
+  },
+  tags: {
+    async toArray() {
+      if (tagsCache) return tagsCache
+
+      const tags = await invoke<LibraryTagRecord[]>('list_tags')
+      rememberTags(tags)
+      return tags
+    },
+    peekAll() {
+      return tagsCache
+    },
+    async create(name: string) {
+      const tag = await trackNativeWrite(
+        invoke<LibraryTagRecord | null>('create_tag', { name }),
+      )
+      if (tag) rememberTag(tag)
+      notify('tags')
+      return tag ?? undefined
+    },
+    async update(id: string, name: string) {
+      const tag = await trackNativeWrite(
+        invoke<LibraryTagRecord | null>('update_tag', { id, name }),
+      )
+      if (tag) rememberTag(tag)
+      notify('tags')
+      return tag ?? undefined
+    },
+    async delete(id: string) {
+      const books = await trackNativeWrite(
+        invoke<BookRecord[]>('delete_tag', { id }),
+      )
+      forgetTag(id)
+      books.forEach((book) => rememberBook(book, { full: false }))
+      notify('tags', 'books')
+      return books
     },
   },
   files: {

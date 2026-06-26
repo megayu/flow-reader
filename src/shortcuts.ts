@@ -11,6 +11,7 @@ export type ShortcutActionId =
   | 'imagePanel'
   | 'increaseFontSize'
   | 'libraryFilterAll'
+  | 'libraryFilterClear'
   | 'libraryFilterPanel'
   | 'libraryFilterRead'
   | 'libraryFilterReading'
@@ -167,6 +168,10 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
     labelKey: 'library_filter_all',
     shortcuts: [['`'], ['0']],
   },
+  libraryFilterClear: {
+    labelKey: 'library_filter_clear',
+    shortcuts: [['Esc']],
+  },
   libraryFilterToRead: {
     labelKey: 'library_filter_to_read',
     shortcuts: [['1']],
@@ -243,6 +248,7 @@ const shortcutGroups: ShortcutGroupDefinition[] = [
     items: [
       shortcutDefinitions.libraryFilterPanel,
       shortcutDefinitions.libraryFilterAll,
+      shortcutDefinitions.libraryFilterClear,
       shortcutDefinitions.libraryFilterToRead,
       shortcutDefinitions.libraryFilterReading,
       shortcutDefinitions.libraryFilterRead,
