@@ -179,6 +179,11 @@ textarea:focus-visible {
   outline: none;
 }
 
+#layout input,
+#layout textarea {
+  caret-color: FieldText;
+}
+
 #layout button:not(:disabled),
 #layout [role='button']:not([aria-disabled='true']),
 #layout a[href],
