@@ -34,6 +34,7 @@ export interface Settings extends TypographyConfiguration {
   readerSidebarOpen?: boolean
   librarySidebarOpen?: boolean
   librarySort?: LibrarySortConfiguration
+  libraryPinnedAuthors?: string[]
   textImportRules?: TextImportRulesConfiguration
   locale?: AppLocale
 }
@@ -107,6 +108,7 @@ export const defaultSettings: Settings = {
 interface AppStore {
   action?: Action
   libraryAction?: LibraryAction
+  libraryAuthorFilter: string[]
   libraryStatusFilter: ReadingStatus[]
   settings: Settings
   settingsDialogOpen: boolean
@@ -116,6 +118,7 @@ interface AppStore {
   zenTypographyOverrides: Record<string, TypographyConfiguration>
   setAction: SetterOrUpdater<Action | undefined>
   setLibraryAction: SetterOrUpdater<LibraryAction | undefined>
+  setLibraryAuthorFilter: SetterOrUpdater<string[]>
   setLibraryStatusFilter: SetterOrUpdater<ReadingStatus[]>
   setSettings: SetterOrUpdater<Settings>
   setSettingsDialogOpen: SetterOrUpdater<boolean>
@@ -134,6 +137,7 @@ function resolveUpdate<T>(value: T | ((prev: T) => T), prev: T) {
 export const useAppStore = create<AppStore>((set) => ({
   action: undefined,
   libraryAction: undefined,
+  libraryAuthorFilter: [],
   libraryStatusFilter: [],
   settings: defaultSettings,
   settingsDialogOpen: false,
@@ -146,6 +150,10 @@ export const useAppStore = create<AppStore>((set) => ({
   setLibraryAction: (value) =>
     set((state) => ({
       libraryAction: resolveUpdate(value, state.libraryAction),
+    })),
+  setLibraryAuthorFilter: (value) =>
+    set((state) => ({
+      libraryAuthorFilter: resolveUpdate(value, state.libraryAuthorFilter),
     })),
   setLibraryStatusFilter: (value) =>
     set((state) => ({
@@ -195,6 +203,13 @@ export function useLibraryActionState() {
 export function useLibraryStatusFilter() {
   const filters = useAppStore((state) => state.libraryStatusFilter)
   const setFilters = useAppStore((state) => state.setLibraryStatusFilter)
+
+  return [filters, setFilters] as const
+}
+
+export function useLibraryAuthorFilter() {
+  const filters = useAppStore((state) => state.libraryAuthorFilter)
+  const setFilters = useAppStore((state) => state.setLibraryAuthorFilter)
 
   return [filters, setFilters] as const
 }
@@ -266,6 +281,7 @@ function normalizeSettings(value: Partial<Settings> | undefined): Settings {
     ...settings,
     theme: normalizeThemeConfiguration(settings.theme),
     librarySort: normalizeLibrarySort(settings.librarySort),
+    libraryPinnedAuthors: normalizeStringList(settings.libraryPinnedAuthors),
     textImportRules: {
       ...defaultTextImportRules,
       ...settings.textImportRules,
@@ -292,6 +308,24 @@ function normalizeLibrarySort(
       : defaultLibrarySort.direction
 
   return { field, direction }
+}
+
+function normalizeStringList(value: unknown) {
+  if (!Array.isArray(value)) return []
+
+  const seen = new Set<string>()
+  const list: string[] = []
+  value.forEach((item) => {
+    if (typeof item !== 'string') return
+
+    const normalized = item.replace(/\s+/g, ' ').trim()
+    if (!normalized || seen.has(normalized)) return
+
+    seen.add(normalized)
+    list.push(normalized)
+  })
+
+  return list
 }
 
 export function useSettings() {

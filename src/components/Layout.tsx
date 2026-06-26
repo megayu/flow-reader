@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import {
   BookOpen,
+  ChevronDown,
   Focus,
   Highlighter,
   Image,
@@ -8,15 +9,20 @@ import {
   ListFilter,
   Maximize,
   Minimize,
+  PinIcon,
+  PinOffIcon,
+  RotateCcwIcon,
   Search,
   Settings,
   Sun,
   TableOfContents,
   Type,
+  XIcon,
   type LucideIcon,
 } from 'lucide-react'
 import {
   ComponentProps,
+  MouseEvent as ReactMouseEvent,
   PropsWithChildren,
   useCallback,
   useEffect,
@@ -33,11 +39,23 @@ import {
   type Action as ReaderPanelAction,
   type LibraryAction,
 } from '../hooks/useAction'
+import { useLibrary } from '../hooks/useLibrary'
 import { useTranslation } from '../hooks/useTranslation'
+import {
+  areStringListsEqual,
+  getLibraryAuthorOptions,
+  pinLibraryAuthor,
+  pruneLibraryAuthorFilters,
+  toggleLibraryAuthorFilter,
+  unpinLibraryAuthor,
+  type LibraryAuthorOption,
+} from '../libraryFilters'
 import { useReaderSnapshot } from '../models/reader'
 import { getShortcutChords, type ShortcutActionId } from '../shortcuts'
 import {
+  useLibraryAuthorFilter,
   useLibraryStatusFilter,
+  useSettings,
   useSettingsDialogOpen,
   useSetZenTypographyOverrides,
   useViewMode,
@@ -105,6 +123,18 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
       )
     }
   }, [focusedBookTab?.id, setSettingsOpen])
+
+  useEffect(() => {
+    const preventNativeContextMenu = (e: MouseEvent) => {
+      e.preventDefault()
+    }
+
+    document.addEventListener('contextmenu', preventNativeContextMenu)
+
+    return () => {
+      document.removeEventListener('contextmenu', preventNativeContextMenu)
+    }
+  }, [])
 
   return (
     <div id="layout" className="select-none">
@@ -606,22 +636,93 @@ const SideBar: React.FC = () => {
 }
 
 const libraryStatusOptions = ['toRead', 'reading', 'read'] as const
-const libraryFilterButtonClassName =
-  'h-9 w-full justify-start gap-2 px-3 text-base leading-none'
-const libraryFilterInactiveButtonClassName =
-  'bg-[var(--flow-sidebar-item-bg)] ring-1 ring-[var(--flow-sidebar-item-border)] ring-inset hover:bg-[var(--flow-sidebar-item-bg-hover)] aria-expanded:bg-[var(--flow-sidebar-item-bg-active)]'
+const libraryFilterPanelClassName =
+  'rounded-md bg-[var(--flow-sidebar-item-bg)]/70 p-2 ring-[var(--flow-sidebar-item-border)] ring-inset'
+const libraryFilterPanelHeaderClassName = 'mb-1 flex h-6 items-center gap-1'
+const libraryFilterOptionsClassName = 'flex min-w-0 flex-wrap gap-1'
+const libraryFilterChipClassName =
+  'h-7 max-w-full min-w-0 gap-1 px-2 text-sm leading-none'
+const libraryFilterInactiveChipClassName =
+  'bg-transparent text-[var(--flow-text)] ring-1 ring-[var(--flow-sidebar-item-border)] ring-inset hover:bg-[var(--flow-sidebar-item-bg-hover)]'
+const libraryFilterSectionHeaderClassName =
+  'text-[var(--flow-text)] text-base leading-none font-semibold'
+const libraryFilterIconButtonClassName =
+  'size-8 rounded-md text-[var(--flow-text-muted)] hover:text-[var(--flow-text)]'
 
 function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const t = useTranslation('home')
-  const [filters, setFilters] = useLibraryStatusFilter()
+  const books = useLibrary()
+  const [settings, setSettings] = useSettings()
+  const [statusFilters, setStatusFilters] = useLibraryStatusFilter()
+  const [authorFilters, setAuthorFilters] = useLibraryAuthorFilter()
+  const [authorsExpanded, setAuthorsExpanded] = useState(true)
+  const authorOptions = useMemo(
+    () =>
+      getLibraryAuthorOptions(
+        books ?? [],
+        statusFilters,
+        settings.libraryPinnedAuthors ?? [],
+      ),
+    [books, settings.libraryPinnedAuthors, statusFilters],
+  )
+  const hasFilters = statusFilters.length > 0 || authorFilters.length > 0
 
   const toggle = (status: (typeof libraryStatusOptions)[number]) => {
-    setFilters((current) =>
+    setStatusFilters((current) =>
       current.includes(status)
         ? current.filter((item) => item !== status)
         : [...current, status],
     )
   }
+
+  const clearFilters = useCallback(() => {
+    setStatusFilters([])
+    setAuthorFilters([])
+  }, [setAuthorFilters, setStatusFilters])
+
+  const resetAuthors = useCallback(() => {
+    setAuthorFilters([])
+  }, [setAuthorFilters])
+
+  const toggleAuthor = useCallback(
+    (author: string) => {
+      setAuthorFilters((current) => toggleLibraryAuthorFilter(current, author))
+    },
+    [setAuthorFilters],
+  )
+
+  const pinAuthor = useCallback(
+    (author: string) => {
+      setSettings((current) => ({
+        ...current,
+        libraryPinnedAuthors: pinLibraryAuthor(
+          current.libraryPinnedAuthors ?? [],
+          author,
+        ),
+      }))
+    },
+    [setSettings],
+  )
+
+  const unpinAuthor = useCallback(
+    (author: string) => {
+      setSettings((current) => ({
+        ...current,
+        libraryPinnedAuthors: unpinLibraryAuthor(
+          current.libraryPinnedAuthors ?? [],
+          author,
+        ),
+      }))
+    },
+    [setSettings],
+  )
+
+  useEffect(() => {
+    setAuthorFilters((current) => {
+      const next = pruneLibraryAuthorFilters(current, authorOptions)
+      return areStringListsEqual(current, next) ? current : next
+    })
+  }, [authorOptions, setAuthorFilters])
 
   return (
     <PaneView
@@ -629,49 +730,334 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
       title={t('library_filter.title')}
       className={clsx('p-3', className)}
     >
-      <div className="space-y-2">
-        <UiButton
-          type="button"
-          variant={filters.length === 0 ? 'default' : 'secondary'}
-          className={clsx(
-            libraryFilterButtonClassName,
-            filters.length !== 0 && libraryFilterInactiveButtonClassName,
-          )}
-          onClick={() => setFilters([])}
-        >
-          <ReadingStatusIcon
-            status={null}
-            className={filters.length === 0 ? 'text-primary-foreground' : ''}
-          />
-          <span className="leading-none">{t('library_filter.all')}</span>
-        </UiButton>
-        {libraryStatusOptions.map((status) => {
-          const active = filters.includes(status)
-          return (
+      <div
+        className="flex h-full min-h-0 flex-col gap-3"
+        data-testid="library-filter-panel"
+      >
+        <div className="flex h-9 items-center justify-between gap-2">
+          <div className="text-foreground text-lg leading-none font-semibold">
+            {t('library_filter.title')}
+          </div>
+          <AppTooltip label={t('library_filter.clear')}>
             <UiButton
-              key={status}
               type="button"
-              variant={active ? 'default' : 'secondary'}
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t('library_filter.clear')}
+              className={libraryFilterIconButtonClassName}
+              disabled={!hasFilters}
+              onClick={clearFilters}
+            >
+              <XIcon aria-hidden className="size-4.5" />
+            </UiButton>
+          </AppTooltip>
+        </div>
+
+        <section
+          className={libraryFilterPanelClassName}
+          data-testid="library-status-filter"
+        >
+          <div className={libraryFilterPanelHeaderClassName}>
+            <div className={libraryFilterSectionHeaderClassName}>
+              {t('library_filter.status')}
+            </div>
+          </div>
+          <div className={libraryFilterOptionsClassName}>
+            <UiButton
+              type="button"
+              size="sm"
+              variant={statusFilters.length === 0 ? 'default' : 'secondary'}
+              aria-pressed={statusFilters.length === 0}
+              data-testid="library-filter-status-all"
               className={clsx(
-                libraryFilterButtonClassName,
-                !active && libraryFilterInactiveButtonClassName,
+                libraryFilterChipClassName,
+                statusFilters.length !== 0 &&
+                  libraryFilterInactiveChipClassName,
               )}
-              onClick={() => toggle(status)}
+              onClick={() => setStatusFilters([])}
             >
               <ReadingStatusIcon
-                status={status}
-                className={active ? 'text-primary-foreground' : ''}
+                status={null}
+                className={
+                  statusFilters.length === 0 ? 'text-primary-foreground' : ''
+                }
               />
-              <span className="min-w-0 flex-1 text-left leading-none">
-                {t(`reading_status.${status}`)}
+              <span className="min-w-0 truncate leading-none">
+                {t('library_filter.all')}
               </span>
-              {active && <span aria-hidden>✓</span>}
             </UiButton>
-          )
-        })}
+            {libraryStatusOptions.map((status) => {
+              const active = statusFilters.includes(status)
+              return (
+                <UiButton
+                  key={status}
+                  type="button"
+                  size="sm"
+                  variant={active ? 'default' : 'secondary'}
+                  aria-pressed={active}
+                  data-testid={`library-filter-status-${status}`}
+                  className={clsx(
+                    libraryFilterChipClassName,
+                    !active && libraryFilterInactiveChipClassName,
+                  )}
+                  onClick={() => toggle(status)}
+                >
+                  <ReadingStatusIcon
+                    status={status}
+                    className={active ? 'text-primary-foreground' : ''}
+                  />
+                  <span className="min-w-0 truncate leading-none">
+                    {t(`reading_status.${status}`)}
+                  </span>
+                </UiButton>
+              )
+            })}
+          </div>
+        </section>
+
+        <FilterSection
+          title={t('library_filter.author')}
+          expanded={authorsExpanded}
+          onExpandedChange={setAuthorsExpanded}
+          resetLabel={t('library_filter.reset')}
+          resetDisabled={!authorFilters.length}
+          onReset={resetAuthors}
+        >
+          {authorOptions.length ? (
+            <div className={libraryFilterOptionsClassName}>
+              {authorOptions.map((option) => (
+                <AuthorFilterChip
+                  key={option.name}
+                  option={option}
+                  active={authorFilters.includes(option.name)}
+                  onToggle={() => toggleAuthor(option.name)}
+                  onPin={() => pinAuthor(option.name)}
+                  onUnpin={() => unpinAuthor(option.name)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="text-muted-foreground py-0.5 text-sm leading-tight">
+              {t('library_filter.no_authors')}
+            </div>
+          )}
+        </FilterSection>
       </div>
     </PaneView>
   )
+}
+
+interface FilterSectionProps extends PropsWithChildren {
+  expanded: boolean
+  onExpandedChange: (expanded: boolean) => void
+  onReset: () => void
+  resetDisabled: boolean
+  resetLabel: string
+  title: string
+}
+
+const FilterSection: React.FC<FilterSectionProps> = ({
+  children,
+  expanded,
+  onExpandedChange,
+  onReset,
+  resetDisabled,
+  resetLabel,
+  title,
+}) => {
+  return (
+    <section className={libraryFilterPanelClassName}>
+      <div className={libraryFilterPanelHeaderClassName}>
+        <UiButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-expanded={expanded}
+          className="h-8 min-w-0 flex-1 justify-start gap-2 rounded-xl bg-transparent px-0 text-left hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 aria-expanded:bg-transparent aria-expanded:text-[var(--flow-text)]"
+          onClick={() => onExpandedChange(!expanded)}
+        >
+          <ChevronDown
+            aria-hidden
+            className={clsx(
+              'size-4.5 shrink-0 transition-transform',
+              !expanded && '-rotate-90',
+            )}
+          />
+          <span className={libraryFilterSectionHeaderClassName}>{title}</span>
+        </UiButton>
+        <AppTooltip label={resetLabel}>
+          <UiButton
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={resetLabel}
+            className={libraryFilterIconButtonClassName}
+            disabled={resetDisabled}
+            onClick={(e) => {
+              e.stopPropagation()
+              onReset()
+            }}
+          >
+            <RotateCcwIcon aria-hidden className="size-4.5" />
+          </UiButton>
+        </AppTooltip>
+      </div>
+
+      {expanded && children}
+    </section>
+  )
+}
+
+interface AuthorFilterChipProps {
+  active: boolean
+  onPin: () => void
+  onToggle: () => void
+  onUnpin: () => void
+  option: LibraryAuthorOption
+}
+
+const AuthorFilterChip: React.FC<AuthorFilterChipProps> = ({
+  active,
+  onPin,
+  onToggle,
+  onUnpin,
+  option,
+}) => {
+  const t = useTranslation('home')
+  const contextMenuRef = useRef<HTMLDivElement>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number }>()
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(undefined)
+  }, [])
+
+  const openContextMenu = useCallback((e: ReactMouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu(clampFilterContextMenuPosition(e.clientX, e.clientY))
+  }, [])
+
+  useEffect(() => {
+    if (!contextMenu) return
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (contextMenuRef.current?.contains(e.target as Node)) return
+      closeContextMenu()
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeContextMenu()
+    }
+
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [closeContextMenu, contextMenu])
+
+  return (
+    <div className="relative max-w-full min-w-0" data-testid="author-chip-wrap">
+      <UiButton
+        type="button"
+        size="sm"
+        variant={active ? 'default' : 'secondary'}
+        aria-pressed={active}
+        aria-label={option.name}
+        title={option.name}
+        data-testid="library-author-chip"
+        data-author={option.name}
+        className={clsx(
+          libraryFilterChipClassName,
+          'max-w-full justify-start',
+          !active && libraryFilterInactiveChipClassName,
+        )}
+        onClick={onToggle}
+        onContextMenu={openContextMenu}
+      >
+        {option.pinned && (
+          <PinIcon
+            aria-hidden
+            className={clsx(
+              'size-3.5',
+              active ? 'text-primary-foreground' : 'text-muted-foreground',
+            )}
+          />
+        )}
+        <span
+          className="min-w-0 truncate leading-none"
+          data-testid="library-author-chip-label"
+        >
+          {option.name}
+        </span>
+      </UiButton>
+
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          role="menu"
+          data-testid="library-author-context-menu"
+          className="ring-border bg-popover text-popover-foreground fixed z-[70] w-36 rounded-lg p-1 shadow-lg ring-1"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <AuthorContextMenuButton
+            Icon={PinIcon}
+            label={t('library_filter.pin_author')}
+            onClick={() => {
+              onPin()
+              closeContextMenu()
+            }}
+          />
+          {option.pinned && (
+            <AuthorContextMenuButton
+              Icon={PinOffIcon}
+              label={t('library_filter.unpin_author')}
+              onClick={() => {
+                onUnpin()
+                closeContextMenu()
+              }}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface AuthorContextMenuButtonProps {
+  Icon: LucideIcon
+  label: string
+  onClick: () => void
+}
+
+const AuthorContextMenuButton: React.FC<AuthorContextMenuButtonProps> = ({
+  Icon,
+  label,
+  onClick,
+}) => {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className="hover:bg-muted text-muted-foreground flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-base outline-none"
+      onClick={onClick}
+    >
+      <Icon aria-hidden className="size-4 shrink-0" />
+      <span className="min-w-0 truncate">{label}</span>
+    </button>
+  )
+}
+
+function clampFilterContextMenuPosition(x: number, y: number) {
+  if (typeof window === 'undefined') return { x, y }
+
+  return {
+    x: Math.min(x, Math.max(8, window.innerWidth - 160)),
+    y: Math.min(y, Math.max(8, window.innerHeight - 96)),
+  }
 }
 
 interface ReaderProps extends ComponentProps<'div'> {}

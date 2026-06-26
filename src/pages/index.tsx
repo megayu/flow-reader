@@ -67,12 +67,14 @@ import { useAction, useLibraryAction } from '../hooks/useAction'
 import { useBoolean } from '../hooks/useBoolean'
 import { useCovers, useLibrary } from '../hooks/useLibrary'
 import { useTranslation } from '../hooks/useTranslation'
+import { filterBooksByLibraryFilters } from '../libraryFilters'
 import { reader, useReaderSnapshot } from '../models/reader'
 import {
   defaultLibrarySort,
   librarySortFieldOptions,
   type LibrarySortDirection,
   type LibrarySortField,
+  useLibraryAuthorFilter,
   useLibraryStatusFilter,
   useSettings,
   useSettingsReady,
@@ -542,6 +544,7 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
   const sortDirection =
     settings.librarySort?.direction ?? defaultLibrarySort.direction
   const [statusFilters, setStatusFilters] = useLibraryStatusFilter()
+  const [authorFilters] = useLibraryAuthorFilter()
   const [, setLibraryAction] = useLibraryAction()
 
   const [select, toggleSelect] = useBoolean(false)
@@ -638,13 +641,12 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
 
   const sortedBooks = useMemo(
     () =>
-      sortBooks(books ?? [], sortField, sortDirection).filter((book) => {
-        if (!statusFilters.length) return true
-        return (
-          !!book.readingStatus && statusFilters.includes(book.readingStatus)
-        )
-      }),
-    [books, sortDirection, sortField, statusFilters],
+      filterBooksByLibraryFilters(
+        sortBooks(books ?? [], sortField, sortDirection),
+        statusFilters,
+        authorFilters,
+      ),
+    [authorFilters, books, sortDirection, sortField, statusFilters],
   )
 
   if (!books) return null

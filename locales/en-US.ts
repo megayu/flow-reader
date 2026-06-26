@@ -40,6 +40,13 @@ export default {
   'library_filter.title': 'Filter',
   'home.library_filter.title': 'Filter',
   'home.library_filter.all': 'All',
+  'home.library_filter.author': 'Author',
+  'home.library_filter.clear': 'Clear',
+  'home.library_filter.no_authors': 'No authors',
+  'home.library_filter.pin_author': 'Pin',
+  'home.library_filter.reset': 'Reset',
+  'home.library_filter.status': 'Reading status',
+  'home.library_filter.unpin_author': 'Unpin',
 
   'text_import.title': 'TXT Import Preview',
   'text_import.encoding': 'Encoding',

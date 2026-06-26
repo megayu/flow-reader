@@ -40,6 +40,13 @@ export default {
   'library_filter.title': '筛选',
   'home.library_filter.title': '筛选',
   'home.library_filter.all': '全部',
+  'home.library_filter.author': '作者',
+  'home.library_filter.clear': '清空选择',
+  'home.library_filter.no_authors': '没有作者',
+  'home.library_filter.pin_author': '置顶',
+  'home.library_filter.reset': '重置',
+  'home.library_filter.status': '阅读状态',
+  'home.library_filter.unpin_author': '取消置顶',
 
   'text_import.title': 'TXT 导入预览',
   'text_import.encoding': '编码',
