@@ -808,9 +808,9 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
         <ul
           className="grid"
           style={{
-            gridTemplateColumns: `repeat(auto-fill, minmax(calc(80px + 3vw), 1fr))`,
-            columnGap: lock(16, 32),
-            rowGap: lock(24, 40),
+            gridTemplateColumns: `repeat(auto-fill, minmax(calc(120px + 2vw), 1fr))`,
+            columnGap: lock(10, 16),
+            rowGap: lock(10, 16),
           }}
         >
           {sortedBooks.map((book) => (
@@ -934,7 +934,7 @@ const Book: React.FC<BookProps> = ({
       <div
         role="button"
         tabIndex={0}
-        className="group hover:bg-popover/70 focus-visible:ring-ring/50 relative flex cursor-pointer flex-col rounded-lg p-2 transition-colors outline-none focus-visible:ring-2"
+        className="group hover:bg-popover/70 focus-visible:ring-ring/50 relative flex cursor-pointer flex-col rounded-md p-1 transition-colors outline-none focus-visible:ring-2"
         onClick={activateBook}
         onContextMenu={openContextMenu}
         onKeyDown={onBookKeyDown}
@@ -990,7 +990,7 @@ const Book: React.FC<BookProps> = ({
             />
           </div>
         )}
-        <div className="border-border relative mx-auto aspect-[9/12] w-full max-w-[12.5rem] overflow-hidden rounded-lg border shadow-sm">
+        <div className="border-border relative mx-auto aspect-[9/12] w-full max-w-[15rem] overflow-hidden rounded-md border shadow-sm">
           {book.readingStatus && (
             <ReadingStatusBadge
               status={book.readingStatus}
@@ -1051,7 +1051,7 @@ const Book: React.FC<BookProps> = ({
           <img
             src={cover ?? placeholder}
             alt="Cover"
-            className="block h-full w-full rounded-lg object-cover"
+            className="block h-full w-full rounded-[inherit] object-cover"
             draggable={false}
           />
           {!select && progressPercent !== undefined && (
@@ -1079,7 +1079,7 @@ const Book: React.FC<BookProps> = ({
           contentStyle={readerPageTooltipContentStyle}
           label={tooltip}
         >
-          <div className="text-foreground mt-2 flex min-h-[3em] w-full items-start justify-center px-1 text-center text-lg leading-tight font-semibold">
+          <div className="text-foreground mt-2 flex min-h-[2.5em] w-full items-start justify-center px-1 text-center text-lg leading-tight font-semibold">
             <span className="line-clamp-2 min-w-0 break-words">
               {displayTitle}
             </span>
