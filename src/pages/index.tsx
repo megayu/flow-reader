@@ -4,6 +4,7 @@ import {
   ArrowUpIcon,
   BookTextIcon,
   BookOpenIcon,
+  BookImageIcon,
   CalendarPlusIcon,
   CheckIcon,
   FileInputIcon,
@@ -81,7 +82,12 @@ import {
 import { reader, useReaderSnapshot } from '../models/reader'
 import {
   defaultLibrarySort,
+  defaultLibraryDisplay,
+  libraryBookCardWidthMax,
+  libraryBookCardWidthMin,
+  libraryBookCardWidthStep,
   librarySortFieldOptions,
+  normalizeLibraryBookCardWidth,
   type LibrarySortDirection,
   type LibrarySortField,
   useLibraryAuthorFilter,
@@ -91,7 +97,7 @@ import {
   useSettingsReady,
   useViewMode,
 } from '../state'
-import { lock } from '../styles'
+import { clamp } from '../utils'
 
 const placeholder = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect fill="gray" fill-opacity="0" width="1" height="1"/></svg>`
 
@@ -110,6 +116,11 @@ const sortFieldIconMap = {
 const readingStatusOptions: ReadingStatus[] = ['toRead', 'reading', 'read']
 
 const toolbarButtonClass = 'h-8 leading-none'
+const libraryBookCardSizePresets = [
+  { key: 'small', value: 140 },
+  { key: 'medium', value: 160 },
+  { key: 'large', value: 200 },
+] as const
 
 function isKeyboardTargetBlocked(e: KeyboardEvent) {
   const target = e.target as HTMLElement | null
@@ -584,6 +595,10 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
   const sortField = settings.librarySort?.field ?? defaultLibrarySort.field
   const sortDirection =
     settings.librarySort?.direction ?? defaultLibrarySort.direction
+  const bookCardWidth = normalizeLibraryBookCardWidth(
+    settings.libraryDisplay?.bookCardWidth ??
+      defaultLibraryDisplay.bookCardWidth,
+  )
   const [statusFilters, setStatusFilters] = useLibraryStatusFilter()
   const [authorFilters] = useLibraryAuthorFilter()
   const [tagFilters] = useLibraryTagFilter()
@@ -592,6 +607,21 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
   const [select, toggleSelect] = useBoolean(false)
   const [selectedBookIds, { add, has, toggle, reset }] = useStringSet()
   const [batchTagsOpen, setBatchTagsOpen] = useState(false)
+
+  const setBookCardWidth = useCallback(
+    (bookCardWidth: number) => {
+      const normalized = normalizeLibraryBookCardWidth(bookCardWidth)
+
+      setSettings((settings) => ({
+        ...settings,
+        libraryDisplay: {
+          ...(settings.libraryDisplay ?? defaultLibraryDisplay),
+          bookCardWidth: normalized,
+        },
+      }))
+    },
+    [setSettings],
+  )
 
   const setSortField = useCallback(
     (field: LibrarySortField) => {
@@ -698,6 +728,15 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
   const allSelected = selectedBookIds.size === books.length
   const selectedBooks = books.filter((book) => selectedBookIds.has(book.id))
   const DirectionIcon = sortDirection === 'asc' ? ArrowUpIcon : ArrowDownIcon
+  const bookCardGap = clamp(Math.round(bookCardWidth * 0.08), 10, 20)
+  const bookGridPadding = clamp(Math.round(bookCardWidth * 0.04), 4, 10)
+  const bookGridStyle = {
+    gridTemplateColumns: `repeat(auto-fill, minmax(${bookCardWidth}px, 1fr))`,
+    columnGap: `${bookCardGap}px`,
+    rowGap: `${bookCardGap}px`,
+    padding: `${bookGridPadding}px`,
+    '--library-book-card-width': `${bookCardWidth}px`,
+  } as React.CSSProperties
 
   return (
     <DropZone
@@ -781,6 +820,83 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
                 </Button>
               </div>
             )}
+            {!!books.length && !select && (
+              <Popover>
+                <AppTooltip label={t('book_size.title')}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      compact
+                      className={clsx(toolbarButtonClass, 'w-8 px-0')}
+                      aria-label={t('book_size.title')}
+                    >
+                      <BookImageIcon aria-hidden className="mx-auto size-4" />
+                    </Button>
+                  </PopoverTrigger>
+                </AppTooltip>
+                <PopoverContent
+                  align="start"
+                  className="w-64 gap-3 p-3 text-base"
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium">{t('book_size.title')}</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {bookCardWidth}px
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    {libraryBookCardSizePresets.map((preset) => {
+                      const active = bookCardWidth === preset.value
+
+                      return (
+                        <UiButton
+                          key={preset.key}
+                          type="button"
+                          variant={active ? 'default' : 'secondary'}
+                          size="sm"
+                          className="h-8"
+                          onClick={() => setBookCardWidth(preset.value)}
+                        >
+                          {t(`book_size.${preset.key}`)}
+                        </UiButton>
+                      )
+                    })}
+                  </div>
+                  <input
+                    type="range"
+                    min={libraryBookCardWidthMin}
+                    max={libraryBookCardWidthMax}
+                    step={libraryBookCardWidthStep}
+                    value={bookCardWidth}
+                    aria-label={t('book_size.title')}
+                    className="h-2 w-full cursor-pointer accent-[var(--flow-accent)]"
+                    onChange={(e) => setBookCardWidth(Number(e.target.value))}
+                  />
+                  <div className="flex items-center justify-between gap-3 text-base">
+                    <span className="text-muted-foreground">
+                      {libraryBookCardWidthMin}px
+                    </span>
+                    <UiButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={() =>
+                        setBookCardWidth(defaultLibraryDisplay.bookCardWidth)
+                      }
+                    >
+                      {t('book_size.default')}
+                    </UiButton>
+                    <span className="text-muted-foreground">
+                      {libraryBookCardWidthMax}px
+                    </span>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
             {!!books.length && (
               <Button
                 variant="secondary"
@@ -861,14 +977,7 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
       </div>
 
       <div className="scroll min-h-0 flex-1">
-        <ul
-          className="grid p-1"
-          style={{
-            gridTemplateColumns: `repeat(auto-fill, minmax(calc(120px + 2vw), 1fr))`,
-            columnGap: lock(10, 16),
-            rowGap: lock(10, 16),
-          }}
-        >
+        <ul className="grid" style={bookGridStyle}>
           {sortedBooks.map((book) => (
             <Book
               key={book.id}
@@ -1066,7 +1175,10 @@ const Book: React.FC<BookProps> = ({
             />
           </div>
         )}
-        <div className="border-border relative mx-auto aspect-[9/12] w-full max-w-[15rem] overflow-hidden rounded-md border shadow-sm">
+        <div
+          className="border-border relative mx-auto aspect-[9/12] w-full overflow-hidden rounded-md border shadow-sm"
+          style={{ maxWidth: 'var(--library-book-card-width)' }}
+        >
           {book.readingStatus && (
             <ReadingStatusBadge
               status={book.readingStatus}

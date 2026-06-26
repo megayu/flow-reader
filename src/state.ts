@@ -33,6 +33,7 @@ export interface Settings extends TypographyConfiguration {
   startupSession?: StartupSession
   readerSidebarOpen?: boolean
   librarySidebarOpen?: boolean
+  libraryDisplay?: LibraryDisplayConfiguration
   librarySort?: LibrarySortConfiguration
   libraryPinnedAuthors?: string[]
   libraryPinnedTags?: string[]
@@ -65,6 +66,10 @@ export interface LibrarySortConfiguration {
   direction: LibrarySortDirection
 }
 
+export interface LibraryDisplayConfiguration {
+  bookCardWidth: number
+}
+
 export interface TextImportRulesConfiguration {
   groupPatterns: string[]
   chapterPatterns: string[]
@@ -80,6 +85,15 @@ export const librarySortFieldOptions: LibrarySortField[] = [
 export const defaultLibrarySort: LibrarySortConfiguration = {
   field: 'title',
   direction: 'asc',
+}
+
+export const libraryBookCardWidthMin = 120
+export const libraryBookCardWidthMax = 240
+export const libraryBookCardWidthStep = 10
+export const defaultLibraryBookCardWidth = 160
+
+export const defaultLibraryDisplay: LibraryDisplayConfiguration = {
+  bookCardWidth: defaultLibraryBookCardWidth,
 }
 
 export const defaultTextImportRules: TextImportRulesConfiguration = {
@@ -99,6 +113,7 @@ export const defaultSettings: Settings = {
   hideEndnotes: false,
   readerSidebarOpen: true,
   librarySidebarOpen: false,
+  libraryDisplay: defaultLibraryDisplay,
   librarySort: defaultLibrarySort,
   textImportRules: defaultTextImportRules,
   ui: {
@@ -295,6 +310,7 @@ function normalizeSettings(value: Partial<Settings> | undefined): Settings {
   return {
     ...settings,
     theme: normalizeThemeConfiguration(settings.theme),
+    libraryDisplay: normalizeLibraryDisplay(settings.libraryDisplay),
     librarySort: normalizeLibrarySort(settings.librarySort),
     libraryPinnedAuthors: normalizeStringList(settings.libraryPinnedAuthors),
     libraryPinnedTags: normalizeStringList(settings.libraryPinnedTags),
@@ -307,6 +323,29 @@ function normalizeSettings(value: Partial<Settings> | undefined): Settings {
       ...settings.ui,
       fontSize: normalizeUiFontSize(settings.ui?.fontSize),
     },
+  }
+}
+
+export function normalizeLibraryBookCardWidth(value: unknown) {
+  const numeric =
+    typeof value === 'number' && Number.isFinite(value)
+      ? value
+      : defaultLibraryBookCardWidth
+
+  const stepped =
+    Math.round(numeric / libraryBookCardWidthStep) * libraryBookCardWidthStep
+
+  return Math.min(
+    Math.max(stepped, libraryBookCardWidthMin),
+    libraryBookCardWidthMax,
+  )
+}
+
+function normalizeLibraryDisplay(
+  value: Partial<LibraryDisplayConfiguration> | undefined,
+): LibraryDisplayConfiguration {
+  return {
+    bookCardWidth: normalizeLibraryBookCardWidth(value?.bookCardWidth),
   }
 }
 
