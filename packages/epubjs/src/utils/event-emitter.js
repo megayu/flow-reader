@@ -14,11 +14,15 @@ const methods = [
 ]
 
 export default function applyEventEmitter(target) {
-  EventEmitter.call(target)
-
   methods.forEach((method) => {
     if (typeof EventEmitter.prototype[method] === 'function') {
-      target[method] = EventEmitter.prototype[method]
+      target[method] = function (...args) {
+        if (!Object.prototype.hasOwnProperty.call(this, '_events')) {
+          EventEmitter.call(this)
+        }
+
+        return EventEmitter.prototype[method].apply(this, args)
+      }
     }
   })
 

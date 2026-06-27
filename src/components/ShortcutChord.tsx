@@ -20,7 +20,7 @@ export const ShortcutChord: FC<ShortcutChordProps> = ({
   return (
     <span className={clsx('inline-flex items-center gap-1', className)}>
       {shortcut.map((key, index) => (
-        <span className="inline-flex items-center gap-1" key={index}>
+        <span className="inline-flex items-center gap-1" key={key}>
           {index > 0 && (
             <span className={clsx('text-muted-foreground', textSizeClass)}>
               +

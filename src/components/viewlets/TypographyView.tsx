@@ -5,6 +5,7 @@ import {
   CSSProperties,
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -37,6 +38,12 @@ interface SystemFont {
 }
 
 export const TypographyView: React.FC<PaneViewProps> = (props) => {
+  const active = props.active ?? true
+
+  return <PaneView {...props}>{active && <TypographyPane />}</PaneView>
+}
+
+const TypographyPane: React.FC = () => {
   const { focusedBookTab } = useReaderSnapshot()
   const [settings] = useSettings()
   const t = useTranslation('typography')
@@ -124,93 +131,91 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
   }, [])
 
   return (
-    <PaneView {...props}>
-      <div className="text-muted-foreground flex min-h-0 flex-1 flex-col text-base">
-        <div className="scroll min-h-0 flex-1">
-          <div
-            className="space-y-3 pt-2 pr-1.5 pb-4 pl-4"
-            key={focusedBookTab?.id}
-          >
-            <SpreadField
-              name={t('page_view')}
-              value={bookTypography?.spread}
-              inheritedValue={globalSpread}
-              unsetOnSelected
-              onChange={(value) => {
-                setTypography('spread', value)
-              }}
-            />
-            <TextAlignField
-              name={t('text_align')}
-              value={bookTypography?.textAlign}
-              inheritedValue={globalTextAlign}
-              unsetOnSelected
-              onChange={(value) => {
-                setTypography('textAlign', value)
-              }}
-            />
-            <NumberField
-              name={t('zoom')}
-              min={1}
-              step={0.1}
-              value={zoom}
-              onChange={(v) => {
-                setTypography('zoom', v || undefined)
-              }}
-            />
-            <FontField
-              name={t('font_family')}
-              value={fontFamily ?? ''}
-              options={localFonts ?? []}
-              loadOptions={queryFonts}
-              onChange={(value) => {
-                setTypography('fontFamily', value || undefined)
-              }}
-            />
-            <NumberField
-              name={t('font_size')}
-              min={14}
-              max={28}
-              value={fontSize ? parseInt(fontSize) : undefined}
-              baseValue={() => getCurrentBodyBaseline().fontSize}
-              onChange={(v) => {
-                setTypography('fontSize', v ? v + 'px' : undefined)
-              }}
-            />
-            <NumberField
-              name={t('font_weight')}
-              min={100}
-              max={900}
-              step={100}
-              value={fontWeight}
-              baseValue={() => getCurrentBodyBaseline().fontWeight}
-              onChange={(v) => {
-                setTypography('fontWeight', v || undefined)
-              }}
-            />
-            <NumberField
-              name={t('line_height')}
-              min={1}
-              step={0.1}
-              value={lineHeight}
-              baseValue={() => getCurrentBodyBaseline().lineHeight}
-              onChange={(v) => {
-                setTypography('lineHeight', v || undefined)
-              }}
-            />
-            <NumberField
-              name={t('text_indent')}
-              min={0}
-              step={0.5}
-              value={textIndent}
-              onChange={(v) => {
-                setTypography('textIndent', v || undefined)
-              }}
-            />
-          </div>
+    <div className="text-muted-foreground flex min-h-0 flex-1 flex-col text-base">
+      <div className="scroll min-h-0 flex-1">
+        <div
+          className="space-y-3 pt-2 pr-1.5 pb-4 pl-4"
+          key={focusedBookTab?.id}
+        >
+          <SpreadField
+            name={t('page_view')}
+            value={bookTypography?.spread}
+            inheritedValue={globalSpread}
+            unsetOnSelected
+            onChange={(value) => {
+              setTypography('spread', value)
+            }}
+          />
+          <TextAlignField
+            name={t('text_align')}
+            value={bookTypography?.textAlign}
+            inheritedValue={globalTextAlign}
+            unsetOnSelected
+            onChange={(value) => {
+              setTypography('textAlign', value)
+            }}
+          />
+          <NumberField
+            name={t('zoom')}
+            min={1}
+            step={0.1}
+            value={zoom}
+            onChange={(v) => {
+              setTypography('zoom', v || undefined)
+            }}
+          />
+          <FontField
+            name={t('font_family')}
+            value={fontFamily ?? ''}
+            options={localFonts ?? []}
+            loadOptions={queryFonts}
+            onChange={(value) => {
+              setTypography('fontFamily', value || undefined)
+            }}
+          />
+          <NumberField
+            name={t('font_size')}
+            min={14}
+            max={28}
+            value={fontSize ? parseInt(fontSize) : undefined}
+            baseValue={() => getCurrentBodyBaseline().fontSize}
+            onChange={(v) => {
+              setTypography('fontSize', v ? v + 'px' : undefined)
+            }}
+          />
+          <NumberField
+            name={t('font_weight')}
+            min={100}
+            max={900}
+            step={100}
+            value={fontWeight}
+            baseValue={() => getCurrentBodyBaseline().fontWeight}
+            onChange={(v) => {
+              setTypography('fontWeight', v || undefined)
+            }}
+          />
+          <NumberField
+            name={t('line_height')}
+            min={1}
+            step={0.1}
+            value={lineHeight}
+            baseValue={() => getCurrentBodyBaseline().lineHeight}
+            onChange={(v) => {
+              setTypography('lineHeight', v || undefined)
+            }}
+          />
+          <NumberField
+            name={t('text_indent')}
+            min={0}
+            step={0.5}
+            value={textIndent}
+            onChange={(v) => {
+              setTypography('textIndent', v || undefined)
+            }}
+          />
         </div>
       </div>
-    </PaneView>
+    </div>
   )
 }
 
@@ -424,16 +429,18 @@ const FontField: React.FC<FontFieldProps> = ({
 }) => {
   const t = useTranslation('typography')
   const actionT = useTranslation('action')
-  const [inputValue, setInputValue] = useState(value)
+  const [inputState, setInputState] = useState({ inputValue: value, value })
   const [open, setOpen] = useState(false)
   const [popoverStyle, setPopoverStyle] = useState<CSSProperties>()
   const rootRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    setInputValue(value)
-  }, [value])
+  if (inputState.value !== value) {
+    setInputState({ inputValue: value, value })
+  }
+
+  const inputValue = inputState.value === value ? inputState.inputValue : value
 
   const query = inputValue.trim().toLowerCase()
   const filteredOptions = useMemo(() => {
@@ -453,6 +460,20 @@ const FontField: React.FC<FontFieldProps> = ({
   const closePicker = useCallback(() => {
     setOpen(false)
   }, [])
+  const handleDocumentPointerDown = useEffectEvent((e: PointerEvent) => {
+    const target = e.target as Node
+    if (
+      rootRef.current?.contains(target) ||
+      popoverRef.current?.contains(target)
+    ) {
+      return
+    }
+
+    closePicker()
+  })
+  const handleDocumentKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key === 'Escape') closePicker()
+  })
 
   const estimatedPopoverWidth = useMemo(() => {
     const longestLabel = filteredOptions.reduce(
@@ -524,6 +545,9 @@ const FontField: React.FC<FontFieldProps> = ({
       maxHeight: Math.max(120, maxHeight),
     })
   }, [estimatedPopoverWidth, filteredOptions.length, query])
+  const handlePopoverPositionUpdate = useEffectEvent(() => {
+    updatePopoverPosition()
+  })
 
   useLayoutEffect(() => {
     if (!open) return
@@ -535,32 +559,27 @@ const FontField: React.FC<FontFieldProps> = ({
     if (!open) return
 
     const handlePointerDown = (e: PointerEvent) => {
-      const target = e.target as Node
-      if (
-        rootRef.current?.contains(target) ||
-        popoverRef.current?.contains(target)
-      ) {
-        return
-      }
-
-      closePicker()
+      handleDocumentPointerDown(e)
     }
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closePicker()
+      handleDocumentKeyDown(e)
+    }
+    const handleResizeOrScroll = () => {
+      handlePopoverPositionUpdate()
     }
 
-    window.addEventListener('resize', updatePopoverPosition)
-    window.addEventListener('scroll', updatePopoverPosition, true)
+    window.addEventListener('resize', handleResizeOrScroll)
+    window.addEventListener('scroll', handleResizeOrScroll, true)
     document.addEventListener('pointerdown', handlePointerDown)
     document.addEventListener('keydown', handleKeyDown)
 
     return () => {
-      window.removeEventListener('resize', updatePopoverPosition)
-      window.removeEventListener('scroll', updatePopoverPosition, true)
+      window.removeEventListener('resize', handleResizeOrScroll)
+      window.removeEventListener('scroll', handleResizeOrScroll, true)
       document.removeEventListener('pointerdown', handlePointerDown)
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [closePicker, open, updatePopoverPosition])
+  }, [open])
 
   return (
     <div ref={rootRef}>
@@ -578,7 +597,7 @@ const FontField: React.FC<FontFieldProps> = ({
             onClick={openPicker}
             onChange={(e) => {
               const nextValue = e.target.value
-              setInputValue(nextValue)
+              setInputState((state) => ({ ...state, inputValue: nextValue }))
               onChange(nextValue)
               setOpen(true)
               loadOptions()
@@ -591,7 +610,7 @@ const FontField: React.FC<FontFieldProps> = ({
                 title={actionT('clear')}
                 Icon={XIcon}
                 onClick={() => {
-                  setInputValue('')
+                  setInputState((state) => ({ ...state, inputValue: '' }))
                   onChange('')
                   closePicker()
                 }}
@@ -625,7 +644,10 @@ const FontField: React.FC<FontFieldProps> = ({
                   e.preventDefault()
                 }}
                 onClick={() => {
-                  setInputValue(option.family)
+                  setInputState((state) => ({
+                    ...state,
+                    inputValue: option.family,
+                  }))
                   onChange(option.family)
                   closePicker()
                   inputRef.current?.focus()

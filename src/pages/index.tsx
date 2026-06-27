@@ -23,7 +23,14 @@ import {
 } from 'lucide-react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import {
   cleanBookText,
@@ -176,29 +183,36 @@ function getBookProgressPercent(value?: number) {
   return Math.max(0, Math.min(100, value * 100))
 }
 
+let languageDisplayNamesLocale: string | undefined
+let languageDisplayNames: Intl.DisplayNames | undefined
+
 function formatLanguage(value?: string) {
   const language = cleanBookText(value)
   if (!language) return ''
 
   try {
-    const displayNames = new Intl.DisplayNames([navigator.language], {
-      type: 'language',
-    })
-    return displayNames.of(language) ?? language
+    const locale = navigator.language
+    if (!languageDisplayNames || languageDisplayNamesLocale !== locale) {
+      languageDisplayNamesLocale = locale
+      languageDisplayNames = new Intl.DisplayNames([locale], {
+        type: 'language',
+      })
+    }
+    return languageDisplayNames.of(language) ?? language
   } catch {
     return language
   }
 }
 
 function cleanBookDescription(value?: string) {
-  return (
-    value
-      ?.replace(/\r\n?/g, '\n')
-      .split(/\n{2,}/)
-      .map((paragraph) => paragraph.replace(/[ \t\n]+/g, ' ').trim())
-      .filter(Boolean)
-      .join('\n\n') ?? ''
-  )
+  if (!value) return ''
+
+  const paragraphs: string[] = []
+  for (const paragraph of value.replace(/\r\n?/g, '\n').split(/\n{2,}/)) {
+    const normalized = paragraph.replace(/[ \t\n]+/g, ' ').trim()
+    if (normalized) paragraphs.push(normalized)
+  }
+  return paragraphs.join('\n\n')
 }
 
 function uniqueStringValues(values: string[]) {
@@ -342,9 +356,9 @@ export default function Index() {
   const settingsReady = useSettingsReady()
   const viewModeRef = useRef(viewMode)
   const openedFromNativeRef = useRef(false)
+  const nativeOpenReadyRef = useRef(false)
   const startupRestoreStartedRef = useRef(false)
   const router = useRouter()
-  const [nativeOpenReady, setNativeOpenReady] = useState(false)
   const [startupRestoreDone, setStartupRestoreDone] = useState(false)
   const [textImportDialog, setTextImportDialog] = useState<{
     paths: string[]
@@ -379,6 +393,49 @@ export default function Index() {
     },
     [setViewMode],
   )
+
+  const tryRestoreStartupSession = useEffectEvent(() => {
+    if (
+      !settingsReady ||
+      !nativeOpenReadyRef.current ||
+      startupRestoreStartedRef.current
+    ) {
+      return
+    }
+
+    startupRestoreStartedRef.current = true
+    if (
+      openedFromNativeRef.current ||
+      !settings.restoreLastReadingOnStartup ||
+      settings.startupSession?.viewMode !== 'reader' ||
+      !settings.startupSession.bookId
+    ) {
+      applySavedSidebarState()
+      setStartupRestoreDone(true)
+      return
+    }
+
+    db.books
+      .get(settings.startupSession.bookId)
+      .then((book) => {
+        if (!book || reader.groups.length) {
+          applySavedSidebarState()
+          return
+        }
+
+        reader.addTab(book)
+        setReaderAction(
+          settings.readerSidebarOpen === false ? undefined : 'toc',
+        )
+        setLibraryAction(
+          settings.librarySidebarOpen ? 'libraryFilter' : undefined,
+        )
+        setViewMode('reader')
+      })
+      .finally(() => {
+        setStartupRestoreDone(true)
+      })
+  })
 
   useEffect(() => {
     viewModeRef.current = viewMode
@@ -417,7 +474,8 @@ export default function Index() {
         handler?.()
       } else {
         unlisten = handler
-        setNativeOpenReady(true)
+        nativeOpenReadyRef.current = true
+        tryRestoreStartupSession()
       }
     })
 
@@ -428,60 +486,8 @@ export default function Index() {
   }, [openTextImportDialog, setViewMode])
 
   useEffect(() => {
-    if (
-      !settingsReady ||
-      !nativeOpenReady ||
-      startupRestoreStartedRef.current
-    ) {
-      return
-    }
-
-    startupRestoreStartedRef.current = true
-    if (
-      openedFromNativeRef.current ||
-      !settings.restoreLastReadingOnStartup ||
-      settings.startupSession?.viewMode !== 'reader' ||
-      !settings.startupSession.bookId
-    ) {
-      applySavedSidebarState()
-      setStartupRestoreDone(true)
-      return
-    }
-
-    db.books
-      .get(settings.startupSession.bookId)
-      .then((book) => {
-        if (!book || reader.groups.length) {
-          applySavedSidebarState()
-          return
-        }
-
-        reader.addTab(book)
-        setReaderAction(
-          settings.readerSidebarOpen === false ? undefined : 'toc',
-        )
-        setLibraryAction(
-          settings.librarySidebarOpen ? 'libraryFilter' : undefined,
-        )
-        setViewMode('reader')
-      })
-      .finally(() => {
-        setStartupRestoreDone(true)
-      })
-  }, [
-    applySavedSidebarState,
-    nativeOpenReady,
-    setLibraryAction,
-    setReaderAction,
-    setViewMode,
-    settings.librarySidebarOpen,
-    settings.readerSidebarOpen,
-    settings.restoreLastReadingOnStartup,
-    settings.startupSession?.bookId,
-    settings.startupSession?.viewMode,
-    settingsReady,
-    startupRestoreDone,
-  ])
+    tryRestoreStartupSession()
+  })
 
   useEffect(() => {
     if (!settingsReady || !startupRestoreDone) return
@@ -1078,16 +1084,22 @@ const Book: React.FC<BookProps> = ({
     },
     [activateBook],
   )
+  const handleContextMenuPointerDown = useEffectEvent((e: PointerEvent) => {
+    if (contextMenuRef.current?.contains(e.target as Node)) return
+    closeContextMenu()
+  })
+  const handleContextMenuKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key === 'Escape') closeContextMenu()
+  })
 
   useEffect(() => {
     if (!contextMenu) return
 
     const onPointerDown = (e: PointerEvent) => {
-      if (contextMenuRef.current?.contains(e.target as Node)) return
-      closeContextMenu()
+      handleContextMenuPointerDown(e)
     }
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeContextMenu()
+      handleContextMenuKeyDown(e)
     }
 
     document.addEventListener('pointerdown', onPointerDown)
@@ -1097,7 +1109,7 @@ const Book: React.FC<BookProps> = ({
       document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [closeContextMenu, contextMenu])
+  }, [contextMenu])
 
   const progressPercent = getBookProgressPercent(book.percentage)
 
@@ -1651,25 +1663,28 @@ const TagSelectionEditor: React.FC<TagSelectionEditorProps> = ({
 }
 
 function getTagsInAllBooks(books: BookRecord[], tags: LibraryTagRecord[]) {
-  return new Set(
-    tags
-      .filter(
-        (tag) =>
-          books.length > 0 &&
-          books.every((book) => (book.tagIds ?? []).includes(tag.id)),
-      )
-      .map((tag) => tag.id),
-  )
+  const tagIds = new Set<string>()
+  if (!books.length) return tagIds
+  const bookTagIds = books.map((book) => new Set(book.tagIds ?? []))
+
+  for (const tag of tags) {
+    if (bookTagIds.every((ids) => ids.has(tag.id))) {
+      tagIds.add(tag.id)
+    }
+  }
+  return tagIds
 }
 
 function getTagsInAnyBook(books: BookRecord[], tags: LibraryTagRecord[]) {
-  return new Set(
-    tags
-      .filter((tag) =>
-        books.some((book) => (book.tagIds ?? []).includes(tag.id)),
-      )
-      .map((tag) => tag.id),
-  )
+  const tagIds = new Set<string>()
+  const bookTagIds = books.map((book) => new Set(book.tagIds ?? []))
+
+  for (const tag of tags) {
+    if (bookTagIds.some((ids) => ids.has(tag.id))) {
+      tagIds.add(tag.id)
+    }
+  }
+  return tagIds
 }
 
 function getPartiallySelectedTags(
@@ -1907,8 +1922,10 @@ const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
 const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
   const t = useTranslation('home')
   const titleRef = useRef<HTMLInputElement>(null)
-  const [title, setTitle] = useState(getBookDisplayTitle(book))
-  const [creator, setCreator] = useState(cleanBookText(book.metadata.creator))
+  const [title, setTitle] = useState(() => getBookDisplayTitle(book))
+  const [creator, setCreator] = useState(() =>
+    cleanBookText(book.metadata.creator),
+  )
 
   const save = () => {
     void db.books
@@ -2050,7 +2067,7 @@ const BookInfoDialog: React.FC<BookInfoDialogProps> = ({
         {description && (
           <div className="scroll border-border max-h-[min(18rem,38vh)] overflow-y-auto border-t p-5 pt-4 text-justify text-base">
             {description.split(/\n{2,}/).map((paragraph, index) => (
-              <p key={index} className={clsx(index > 0 && 'mt-3')}>
+              <p key={paragraph} className={clsx(index > 0 && 'mt-3')}>
                 {paragraph}
               </p>
             ))}

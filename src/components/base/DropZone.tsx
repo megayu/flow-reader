@@ -8,6 +8,7 @@ import {
   useCallback,
   useEffect,
   HTMLAttributes,
+  useMemo,
 } from 'react'
 
 interface DropZoneProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onDrop'> {
@@ -134,12 +135,12 @@ const DndProvider: React.FC<{ children?: ReactNode }> = ({ children }) => {
   const setDragEvent = useCallback((e?: DragEvent) => {
     setDragover(accept(e))
   }, [])
-
-  return (
-    <DndContext.Provider value={{ dragover, setDragEvent }}>
-      {children}
-    </DndContext.Provider>
+  const value = useMemo(
+    () => ({ dragover, setDragEvent }),
+    [dragover, setDragEvent],
   )
+
+  return <DndContext.Provider value={value}>{children}</DndContext.Provider>
 }
 
 export function useDndContext() {

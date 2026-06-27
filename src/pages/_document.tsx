@@ -21,6 +21,7 @@ const background = {
   light: 'white',
   dark: '#24292e',
 }
+const preventFlashScript = 'const background={"light":"white","dark":"#24292e"}'
 
 function PreventFlash() {
   return (
@@ -35,7 +36,7 @@ function PreventFlash() {
       `}</style>
       <script
         dangerouslySetInnerHTML={{
-          __html: `const background=${JSON.stringify(background)}`,
+          __html: preventFlashScript,
         }}
       ></script>
     </>

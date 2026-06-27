@@ -4,7 +4,8 @@ import {
   LocateFixedIcon,
   UnfoldVerticalIcon,
 } from 'lucide-react'
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
+import { useSnapshot } from 'valtio'
 
 import {
   compareBookDisplayTitle,
@@ -16,30 +17,40 @@ import { useLibrary } from '@flow/reader/hooks/useLibrary'
 import { LIST_ITEM_SIZE, useList } from '@flow/reader/hooks/useList'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
 import {
+  BookTab,
   compareHref,
   INavItem,
   reader,
   useReaderSnapshot,
 } from '@flow/reader/models/reader'
-import { dfs } from '@flow/reader/models/tree'
 import { useSetViewMode } from '@flow/reader/state'
 
 import { AppTooltip, readerPageTooltipContentStyle } from '../AppTooltip'
 import { BookTooltipContent } from '../BookTooltipContent'
-import { Row } from '../Row'
+import { Twisty } from '../Row'
 import { Pane, PaneView, PaneViewProps } from '../base/PaneView'
 import { StateLayer } from '../base/StateLayer'
 
 export const TocView: React.FC<PaneViewProps> = (props) => {
+  const active = props.active ?? true
+
   return (
     <PaneView {...props}>
-      <LibraryPane />
-      <TocPane />
+      {active && (
+        <>
+          <LibraryPane active={active} />
+          <TocPane active={active} />
+        </>
+      )}
     </PaneView>
   )
 }
 
-const LibraryPane: React.FC = () => {
+interface ActivePaneProps {
+  active: boolean
+}
+
+const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
   const books = useLibrary()
   const { focusedBookTab, groups } = useReaderSnapshot()
   const setViewMode = useSetViewMode()
@@ -68,10 +79,11 @@ const LibraryPane: React.FC = () => {
   const t = useTranslation('toc')
 
   useEffect(() => {
+    if (!active) return
     if (!currentBookId || currentIndex < 0) return
 
     scrollToItem({ index: currentIndex, align: 'auto' })
-  }, [currentBookId, currentIndex, scrollToItem])
+  }, [active, currentBookId, currentIndex, scrollToItem])
 
   return (
     <Pane ref={outerRef} headline={t('library')} preferredSize={240}>
@@ -87,6 +99,7 @@ const LibraryPane: React.FC = () => {
 
           const bookButton = (
             <button
+              type="button"
               className={clsx(
                 'group/library-row relative flex w-full items-center truncate py-0 pr-3 pl-5 text-left leading-none outline-none',
                 opened &&
@@ -153,23 +166,58 @@ const LibraryPane: React.FC = () => {
   )
 }
 
-const TocPane: React.FC = () => {
+const TocPane: React.FC<ActivePaneProps> = ({ active }) => {
+  const focusedBookTab = useFocusedBookTabReference()
+
+  if (!focusedBookTab) return <EmptyTocPane />
+
+  return <BookTocPane active={active} tab={focusedBookTab} />
+}
+
+function useFocusedBookTabReference() {
+  const readerSnapshot = useSnapshot(reader)
+  const focusedIndex = readerSnapshot.focusedIndex
+  const focusedGroup = readerSnapshot.groups[focusedIndex]
+  const selectedIndex = focusedGroup?.selectedIndex
+  const selectedTabId = focusedGroup?.tabs[selectedIndex ?? -1]?.id
+
+  void selectedTabId
+  return reader.focusedBookTab
+}
+
+const EmptyTocPane: React.FC = () => {
   const t = useTranslation()
-  const { focusedBookTab } = useReaderSnapshot()
-  const toc = focusedBookTab?.nav?.toc as INavItem[] | undefined
-  const rows = useMemo(() => flattenToc(toc), [toc])
+
+  return <Pane headline={t('toc.title')} />
+}
+
+interface BookTocPaneProps {
+  active: boolean
+  tab: BookTab
+}
+
+const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
+  const t = useTranslation()
+  const [, , background] = useBackground()
+  const tabSnapshot = useSnapshot(tab)
+  const toc = tab.nav?.toc as INavItem[] | undefined
+  const tocVersion = tabSnapshot.tocVersion
+  const rows = useMemo(() => {
+    void tocVersion
+    return flattenToc(toc)
+  }, [toc, tocVersion])
   const { outerRef, items, scrollToItem, totalSize } = useList(rows)
   const expanded = toc?.some((r) => r.expanded)
-  const currentNavItem = focusedBookTab?.currentNavItem
+  const currentNavItem = tabSnapshot.currentNavItem
   const currentKey = tocItemIdentity(currentNavItem)
   const currentIndex = useMemo(
     () => rows.findIndex(({ item }) => tocItemIdentity(item) === currentKey),
     [currentKey, rows],
   )
   const lastScrolledKey = useRef<string | undefined>(undefined)
-  const [locateRequest, setLocateRequest] = useState(0)
 
   useEffect(() => {
+    if (!active) return
     if (!currentKey || currentIndex < 0) return
 
     const scrollKey = `${currentKey}:${rows.length}`
@@ -177,18 +225,7 @@ const TocPane: React.FC = () => {
 
     lastScrolledKey.current = scrollKey
     scrollToItem({ index: currentIndex, align: 'auto' })
-  }, [currentIndex, currentKey, rows.length, scrollToItem])
-
-  useEffect(() => {
-    if (!locateRequest || !currentKey || currentIndex < 0) return
-
-    const frame = window.requestAnimationFrame(() => {
-      lastScrolledKey.current = `${currentKey}:${rows.length}`
-      scrollToItem({ index: currentIndex, align: 'auto' })
-    })
-
-    return () => window.cancelAnimationFrame(frame)
-  }, [currentIndex, currentKey, locateRequest, rows.length, scrollToItem])
+  }, [active, currentIndex, currentKey, rows.length, scrollToItem])
 
   return (
     <Pane
@@ -203,8 +240,22 @@ const TocPane: React.FC = () => {
             const navItem = tab?.currentNavItem
             if (!navItem) return
 
+            const tocVersion = tab.tocVersion
             tab.expandNavPath(navItem)
-            setLocateRequest((request) => request + 1)
+            lastScrolledKey.current = undefined
+
+            if (
+              !currentKey ||
+              tab.tocVersion !== tocVersion ||
+              currentIndex < 0
+            )
+              return
+
+            window.requestAnimationFrame(() => {
+              if (!active) return
+              lastScrolledKey.current = `${currentKey}:${rows.length}`
+              scrollToItem({ index: currentIndex, align: 'auto' })
+            })
           },
         },
         {
@@ -212,16 +263,14 @@ const TocPane: React.FC = () => {
           title: t(expanded ? 'action.collapse_all' : 'action.expand_all'),
           Icon: expanded ? FoldVerticalIcon : UnfoldVerticalIcon,
           handle() {
-            reader.focusedBookTab?.nav?.toc?.forEach((r) =>
-              dfs(r as INavItem, (i) => (i.expanded = !expanded)),
-            )
+            reader.focusedBookTab?.setNavExpanded(!expanded)
           },
         },
       ]}
       ref={outerRef}
     >
       <div className="relative" style={{ height: totalSize }}>
-        {items.map(({ index, start, size }) => {
+        {items.map(({ index, start, size }, slotIndex) => {
           const row = rows[index]
           const item = row?.item
           const identity = tocItemIdentity(item)
@@ -229,14 +278,21 @@ const TocPane: React.FC = () => {
 
           return (
             <div
-              key={tocRowKey(item, index)}
+              key={`toc-slot:${slotIndex}`}
               className="absolute top-0 right-0 left-0"
               style={{
                 height: size,
                 transform: `translateY(${start}px)`,
               }}
             >
-              <TocRow active={active} depth={row?.depth ?? 1} item={item} />
+              <TocRow
+                active={active}
+                activeClassName={background.rowActiveClassName}
+                depth={row?.depth ?? 1}
+                item={item}
+                tab={tab}
+                untitledLabel={t('untitled')}
+              />
             </div>
           )
         })}
@@ -247,65 +303,101 @@ const TocPane: React.FC = () => {
 
 interface TocRowProps {
   active: boolean
+  activeClassName: string
   depth: number
   item?: INavItem
+  tab: BookTab
+  untitledLabel: string
 }
-const TocRow: React.FC<TocRowProps> = memo(({ active, depth, item }) => {
-  if (!item) return null
-  const { label, subitems, expanded, href = '' } = item
-  const tab = reader.focusedBookTab
-  const hasSubitems = !!subitems?.length
-  const toggleItem = () => {
-    tab?.toggleNavItem({
-      id: item.id,
-      href: item.href,
-    })
-  }
+const TocRow: React.FC<TocRowProps> = memo(
+  ({ active, activeClassName, depth, item, tab, untitledLabel }) => {
+    if (!item) return null
+    const { label, subitems, expanded, href = '' } = item
+    const hasSubitems = !!subitems?.length
+    const title = label.trim()
+    const indent = Math.max(0, depth - 1) * 20
+    const toggleItem = () => {
+      tab.toggleNavItem({
+        id: item.id,
+        href: item.href,
+      })
+    }
 
-  return (
-    <Row
-      title={label.trim()}
-      tooltipContentStyle={readerPageTooltipContentStyle}
-      depth={depth}
-      active={active}
-      expanded={expanded}
-      subitems={subitems}
-      onClick={() => {
-        if (!href.trim()) {
-          if (hasSubitems) toggleItem()
-          return
-        }
+    const handleClick = () => {
+      if (!href.trim()) {
+        if (hasSubitems) toggleItem()
+        return
+      }
 
-        const [, id] = href.split('#')
-        const section = tab?.sections?.find((s) => compareHref(s.href, href))
+      const [, id] = href.split('#')
+      const section = tab.sections?.find((s) => compareHref(s.href, href))
 
-        if (!section) {
-          if (hasSubitems) toggleItem()
-          return
-        }
+      if (!section) {
+        if (hasSubitems) toggleItem()
+        return
+      }
 
-        if (id) {
-          void tab?.displayFromSelector(`#${id}`, section, false)
-        } else {
-          void tab?.displaySectionStart(section)
-        }
-      }}
-      // `tab` can not be proxy here
-      toggle={toggleItem}
-    />
-  )
-})
+      if (id) {
+        void tab.displayFromSelector(`#${id}`, section, false)
+      } else {
+        void tab.displaySectionStart(section)
+      }
+    }
+
+    const row = (
+      <button
+        type="button"
+        aria-label={title}
+        className={clsx(
+          'list-row group/row relative flex w-full cursor-pointer appearance-none items-center border-0 bg-transparent p-0 text-left',
+          active && activeClassName,
+        )}
+        style={{
+          paddingLeft: indent,
+          paddingRight: 0,
+          height: LIST_ITEM_SIZE,
+        }}
+        onClick={handleClick}
+      >
+        <StateLayer className="transition-colors group-hover/row:bg-[var(--flow-bg-control-hover)]" />
+        <Twisty
+          expanded={!!expanded}
+          className={clsx(!hasSubitems && 'invisible')}
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleItem()
+          }}
+        />
+        <div
+          className={clsx(
+            'relative z-10 flex h-full min-w-0 flex-1 items-center text-base leading-none',
+            title ? 'text-muted-foreground' : 'text-muted-foreground/60',
+          )}
+          style={{
+            marginLeft: 0,
+          }}
+        >
+          <span className="block min-w-0 truncate whitespace-nowrap">
+            {title || untitledLabel}
+          </span>
+        </div>
+        <div className="relative z-10 ml-auto flex h-full items-center" />
+      </button>
+    )
+
+    return title ? (
+      <AppTooltip contentStyle={readerPageTooltipContentStyle} label={title}>
+        {row}
+      </AppTooltip>
+    ) : (
+      row
+    )
+  },
+)
 TocRow.displayName = 'TocRow'
 
 function tocItemIdentity(item?: Pick<INavItem, 'id' | 'href' | 'label'>) {
   return item && (item.id || item.href || item.label)
-}
-
-function tocRowKey(
-  item: Pick<INavItem, 'id' | 'href' | 'label'> | undefined,
-  index: number,
-) {
-  return `${tocItemIdentity(item) ?? 'toc-row'}:${index}`
 }
 
 function flattenToc(nodes: INavItem[] = []) {

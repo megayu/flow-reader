@@ -30,6 +30,7 @@ import {
   ReactNode,
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -482,7 +483,7 @@ function PageActionBar({
   return (
     <div>
       <ActionBar>
-        {pageActions.map(({ name, title, Icon, shortcutId, disabled }, i) => {
+        {pageActions.map(({ name, title, Icon, shortcutId, disabled }) => {
           const active =
             (viewMode === 'library' && name === 'mode') ||
             (themeOpen && name === 'theme') ||
@@ -495,7 +496,7 @@ function PageActionBar({
               : `${title}.title`
           const actionButton = (
             <Action
-              key={i}
+              key={name}
               label={t(titleKey)}
               Icon={Icon}
               active={active}
@@ -539,7 +540,7 @@ function PageActionBar({
 
           if (name === 'theme') {
             return (
-              <div className="relative h-12 w-12" key={i}>
+              <div className="relative h-12 w-12" key={name}>
                 {themeOpen && (
                   <ThemePanel
                     className="absolute bottom-0 left-full ml-1"
@@ -581,6 +582,7 @@ const Action: React.FC<ActionProps> = ({
 }) => {
   const button = (
     <button
+      type="button"
       aria-label={label}
       className={clsx(
         'Action relative flex h-12 w-12 items-center justify-center',
@@ -645,6 +647,7 @@ const SideBar: React.FC = () => {
     >
       {actions.map(({ name, title, View }) => (
         <View
+          active={name === activeAction}
           key={name}
           name={t(`${name}.title`)}
           title={t(`${title}.title`)}
@@ -830,18 +833,22 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     requestAnimationFrame(() => newTagInputRef.current?.focus())
   }, [creatingTag])
 
+  const handleLibraryFilterKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key !== 'Escape' || isLibraryFilterShortcutBlocked(e)) return
+
+    e.preventDefault()
+    e.stopPropagation()
+
+    if (hasFilters) {
+      clearFilters()
+    }
+  })
+
   useEffect(() => {
     if (libraryAction !== 'libraryFilter') return
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || isLibraryFilterShortcutBlocked(e)) return
-
-      e.preventDefault()
-      e.stopPropagation()
-
-      if (hasFilters) {
-        clearFilters()
-      }
+      handleLibraryFilterKeyDown(e)
     }
 
     document.addEventListener('keydown', onKeyDown)
@@ -849,7 +856,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [clearFilters, hasFilters, libraryAction])
+  }, [libraryAction])
 
   return (
     <PaneView
@@ -1078,6 +1085,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
       </div>
       {editingTag && (
         <EditLibraryTagDialog
+          key={editingTag.id}
           tag={editingTag}
           onClose={() => setEditingTag(undefined)}
         />
@@ -1189,6 +1197,8 @@ interface LibraryFilterMenuItem {
   onClick: () => void
 }
 
+const EMPTY_LIBRARY_FILTER_MENU_ITEMS: LibraryFilterMenuItem[] = []
+
 interface LibraryFilterChipProps {
   active: boolean
   contextMenuTestId: string
@@ -1211,7 +1221,7 @@ const LibraryFilterChip: React.FC<LibraryFilterChipProps> = ({
   dataValue,
   label,
   labelTestId,
-  menuItems = [],
+  menuItems = EMPTY_LIBRARY_FILTER_MENU_ITEMS,
   onPin,
   onToggle,
   onUnpin,
@@ -1234,16 +1244,23 @@ const LibraryFilterChip: React.FC<LibraryFilterChipProps> = ({
     e.stopPropagation()
     setContextMenu(clampFilterContextMenuPosition(e.clientX, e.clientY))
   }, [])
+  const handleContextMenuPointerDown = useEffectEvent((e: PointerEvent) => {
+    if (contextMenuRef.current?.contains(e.target as Node)) return
+    closeContextMenu()
+  })
+  const handleContextMenuKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key === 'Escape') closeContextMenu()
+  })
 
   useEffect(() => {
     if (!contextMenu) return
+    contextMenuRef.current?.focus()
 
     const onPointerDown = (e: PointerEvent) => {
-      if (contextMenuRef.current?.contains(e.target as Node)) return
-      closeContextMenu()
+      handleContextMenuPointerDown(e)
     }
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeContextMenu()
+      handleContextMenuKeyDown(e)
     }
 
     document.addEventListener('pointerdown', onPointerDown)
@@ -1253,7 +1270,7 @@ const LibraryFilterChip: React.FC<LibraryFilterChipProps> = ({
       document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [closeContextMenu, contextMenu])
+  }, [contextMenu])
 
   useEffect(() => {
     const labelElement = labelRef.current
@@ -1316,8 +1333,9 @@ const LibraryFilterChip: React.FC<LibraryFilterChipProps> = ({
         <div
           ref={contextMenuRef}
           role="menu"
+          tabIndex={-1}
           data-testid={contextMenuTestId}
-          className="ring-border bg-popover text-popover-foreground fixed z-[70] w-40 rounded-lg p-1 shadow-lg ring-1"
+          className="ring-border bg-popover text-popover-foreground fixed z-[70] w-40 rounded-lg p-1 shadow-lg ring-1 outline-none"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
@@ -1396,7 +1414,11 @@ const EditLibraryTagDialog: React.FC<LibraryTagDialogProps> = ({
 }) => {
   const t = useTranslation('home')
   const inputRef = useRef<HTMLInputElement>(null)
-  const [name, setName] = useState(tag.name)
+  const [nameState, setNameState] = useState({ tagId: tag.id, name: tag.name })
+  if (nameState.tagId !== tag.id) {
+    setNameState({ tagId: tag.id, name: tag.name })
+  }
+  const name = nameState.tagId === tag.id ? nameState.name : tag.name
   const trimmedName = name.replace(/\s+/g, ' ').trim()
   const canSave = !!trimmedName && trimmedName !== tag.name
 
@@ -1439,7 +1461,12 @@ const EditLibraryTagDialog: React.FC<LibraryTagDialogProps> = ({
             <Input
               ref={inputRef}
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) =>
+                setNameState((state) => ({
+                  ...state,
+                  name: e.target.value,
+                }))
+              }
               className="focus-visible:border-input text-base focus-visible:ring-0"
             />
           </label>

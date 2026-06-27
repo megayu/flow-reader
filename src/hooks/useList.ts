@@ -1,7 +1,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 export const LIST_ITEM_SIZE = 24
-const LIST_OVERSCAN = 8
+const LIST_OVERSCAN = 4
 
 interface ScrollToItemOptions {
   align?: 'auto' | 'center' | 'end' | 'start'
@@ -53,7 +53,7 @@ export function useList(array: Readonly<any[]> = []) {
     }
 
     updateViewport()
-    el.addEventListener('scroll', updateViewport, { passive: true })
+    el.addEventListener('scroll', scheduleUpdate, { passive: true })
 
     const observer =
       typeof ResizeObserver === 'undefined'
@@ -67,7 +67,7 @@ export function useList(array: Readonly<any[]> = []) {
     }
 
     return () => {
-      el.removeEventListener('scroll', updateViewport)
+      el.removeEventListener('scroll', scheduleUpdate)
       observer?.disconnect()
       window.removeEventListener('resize', scheduleUpdate)
       if (frame) window.cancelAnimationFrame(frame)

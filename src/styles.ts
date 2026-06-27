@@ -124,6 +124,59 @@ export function createTypographyLayoutSignature(settings: Settings) {
     .join('|')
 }
 
+export function createTypographyStyleSignature(settings: Settings) {
+  return [settings.textAlign].map((value) => value ?? '').join('|')
+}
+
+const zoomBodyProperties = [
+  'width',
+  'height',
+  'columnWidth',
+  'columnGap',
+  'paddingTop',
+  'paddingBottom',
+  'paddingLeft',
+  'paddingRight',
+] as const
+
+type ZoomBodyProperty = (typeof zoomBodyProperties)[number]
+type ZoomBodyStyleSource = Partial<Record<ZoomBodyProperty, unknown>>
+
+function readCssPixelValue(value: unknown) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : undefined
+  }
+
+  if (typeof value !== 'string') return
+
+  const match = value.trim().match(/^(-?\d+(?:\.\d+)?)px$/)
+  if (!match) return
+
+  const numeric = Number(match[1])
+  return Number.isFinite(numeric) ? numeric : undefined
+}
+
+export function createZoomBodyStyles(
+  source: ZoomBodyStyleSource,
+  zoom: number,
+) {
+  const styles: CSSProperties = {
+    transformOrigin: 'top left',
+    transform: `scale(${zoom})`,
+  }
+
+  if (!Number.isFinite(zoom) || zoom === 0) return styles
+
+  zoomBodyProperties.forEach((property) => {
+    const value = readCssPixelValue(source[property])
+    if (value === undefined) return
+
+    styles[property] = `${value / zoom}px`
+  })
+
+  return styles
+}
+
 export function updateCustomStyle(
   contents: Contents | undefined,
   settings: Settings | undefined,
@@ -151,22 +204,8 @@ export function updateCustomStyle(
 
   if (zoom) {
     const body = contents.content as HTMLBodyElement
-    const scale = (p: keyof CSSStyleDeclaration) => ({
-      [p]: `${parseInt(body.style[p] as string) / zoom}px`,
-    })
     css += `body {
-      ${mapToCss({
-        transformOrigin: 'top left',
-        transform: `scale(${zoom})`,
-        ...scale('width'),
-        ...scale('height'),
-        ...scale('columnWidth'),
-        ...scale('columnGap'),
-        ...scale('paddingTop'),
-        ...scale('paddingBottom'),
-        ...scale('paddingLeft'),
-        ...scale('paddingRight'),
-      })}
+      ${mapToCss(createZoomBodyStyles(body.style, zoom))}
     }`
   }
 

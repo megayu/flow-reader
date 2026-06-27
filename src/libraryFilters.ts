@@ -82,12 +82,11 @@ export function getLibraryAuthorOptions(
   )
   const pinnedSet = new Set(pinned)
 
-  return [
-    ...pinned.map((name) => ({ name, pinned: true })),
-    ...sortedAuthors
-      .filter((name) => !pinnedSet.has(name))
-      .map((name) => ({ name, pinned: false })),
-  ]
+  const options = pinned.map((name) => ({ name, pinned: true }))
+  for (const name of sortedAuthors) {
+    if (!pinnedSet.has(name)) options.push({ name, pinned: false })
+  }
+  return options
 }
 
 export function pruneLibraryAuthorFilters(
@@ -126,15 +125,17 @@ export function getLibraryTagOptions(
   )
   const pinnedSet = new Set(pinned)
 
-  return [
-    ...pinned
-      .map((id) => tagById.get(id))
-      .filter((tag): tag is LibraryTagRecord => !!tag)
-      .map((tag) => ({ id: tag.id, name: tag.name, pinned: true })),
-    ...sortedTags
-      .filter((tag) => !pinnedSet.has(tag.id))
-      .map((tag) => ({ id: tag.id, name: tag.name, pinned: false })),
-  ]
+  const options: LibraryTagOption[] = []
+  for (const id of pinned) {
+    const tag = tagById.get(id)
+    if (tag) options.push({ id: tag.id, name: tag.name, pinned: true })
+  }
+  for (const tag of sortedTags) {
+    if (!pinnedSet.has(tag.id)) {
+      options.push({ id: tag.id, name: tag.name, pinned: false })
+    }
+  }
+  return options
 }
 
 export function pruneLibraryTagFilters(

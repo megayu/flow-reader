@@ -208,6 +208,10 @@ class DefaultViewManager {
   }
 
   onResized(e) {
+    if (this.suspendResize) {
+      return
+    }
+
     this.resize()
   }
 

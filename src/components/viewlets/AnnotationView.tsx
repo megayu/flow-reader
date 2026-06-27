@@ -1,7 +1,7 @@
 import { CopyIcon, FoldVerticalIcon, UnfoldVerticalIcon } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
 
-import { Annotation } from '@flow/reader/annotation'
+import { Annotation, getAnnotationSpineTitle } from '@flow/reader/annotation'
 import { useList } from '@flow/reader/hooks/useList'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
 import { reader, useReaderSnapshot } from '@flow/reader/models/reader'
@@ -11,10 +11,16 @@ import { Row } from '../Row'
 import { Pane, PaneView, PaneViewProps } from '../base/PaneView'
 
 export const AnnotationView: React.FC<PaneViewProps> = (props) => {
+  const active = props.active ?? true
+
   return (
     <PaneView {...props}>
-      <DefinitionPane />
-      <AnnotationPane />
+      {active && (
+        <>
+          <DefinitionPane />
+          <AnnotationPane />
+        </>
+      )}
     </PaneView>
   )
 }
@@ -22,7 +28,7 @@ export const AnnotationView: React.FC<PaneViewProps> = (props) => {
 const DefinitionPane: React.FC = () => {
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation('annotation')
-  const definitions = focusedBookTab?.book.definitions ?? []
+  const definitions = focusedBookTab?.overlayState.definitions ?? []
   const { outerRef, items, totalSize } = useList(definitions)
 
   return (
@@ -81,8 +87,8 @@ const AnnotationPane: React.FC = () => {
   )
 
   const annotations = useMemo(
-    () => (focusedBookTab?.book.annotations as Annotation[]) ?? [],
-    [focusedBookTab?.book.annotations],
+    () => (focusedBookTab?.overlayState.annotations as Annotation[]) ?? [],
+    [focusedBookTab?.overlayState.annotations],
   )
 
   const groupedAnnotation = useMemo(() => {
@@ -151,7 +157,7 @@ const AnnotationPane: React.FC = () => {
   const exportAnnotations = () => {
     // process annotations to be under each section
     // group annotations by title
-    const grouped = group(annotations, (a) => a.spine.title)
+    const grouped = group(annotations, (a) => getAnnotationSpineTitle(a.spine))
     const exported: Record<string, any[]> = {}
     for (const chapter in grouped) {
       const annotations =
@@ -226,7 +232,9 @@ const AnnotationPane: React.FC = () => {
                   toggle={() => toggleSection(row.id)}
                   subitems={row.annotations}
                 >
-                  {row.annotations[0]?.spine.title}
+                  {row.annotations[0]
+                    ? getAnnotationSpineTitle(row.annotations[0].spine)
+                    : undefined}
                 </Row>
               ) : row.type === 'annotation' ? (
                 <Row

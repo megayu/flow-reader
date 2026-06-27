@@ -21,6 +21,7 @@ type Action = {
   Icon: LucideIcon
   onClick: (el: TextFieldElement | null) => void
 }
+const EMPTY_ACTIONS: Action[] = []
 
 export type TextFieldProps<T extends ElementType> = PolymorphicPropsWithoutRef<
   {
@@ -42,7 +43,7 @@ export function TextField<T extends ElementType = 'input'>({
   className,
   hideLabel = false,
   autoFocus,
-  actions = [],
+  actions = EMPTY_ACTIONS,
   datalist,
   hideDatalistIndicator = false,
   onClear,
@@ -68,11 +69,13 @@ export function TextField<T extends ElementType = 'input'>({
   }
 
   useEffect(() => {
-    if (autoFocus) {
-      setTimeout(() => {
-        ref.current?.focus()
-      })
-    }
+    if (!autoFocus) return
+
+    const timer = setTimeout(() => {
+      ref.current?.focus()
+    })
+
+    return () => clearTimeout(timer)
   }, [autoFocus, ref])
 
   return (

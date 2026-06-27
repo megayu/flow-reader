@@ -8,6 +8,14 @@ import {
 } from '../../locales'
 import { useSettings, useSettingsReady } from '../state'
 
+function getBaseLanguage(locale: string) {
+  return locale.split('-')[0]?.toLowerCase() ?? locale.toLowerCase()
+}
+
+const localeByBaseLanguage = new Map(
+  localeOptions.map((locale) => [getBaseLanguage(locale), locale]),
+)
+
 function getBrowserLocale(): AppLocale {
   if (typeof navigator === 'undefined') return defaultLocale
 
@@ -19,9 +27,7 @@ function getBrowserLocale(): AppLocale {
   for (const language of languages) {
     if (isAppLocale(language)) return language
 
-    const baseMatch = localeOptions.find((locale) =>
-      locale.toLowerCase().startsWith(`${language.split('-')[0]}-`),
-    )
+    const baseMatch = localeByBaseLanguage.get(getBaseLanguage(language))
     if (baseMatch) return baseMatch
   }
 

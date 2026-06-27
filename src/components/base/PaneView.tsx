@@ -32,8 +32,14 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
     >
       <div
         role="button"
+        tabIndex={0}
         className="flex h-6 shrink-0 items-center"
         onClick={() => setExpanded((e) => !e)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          event.preventDefault()
+          event.currentTarget.click()
+        }}
       >
         <Twisty expanded={expanded} />
         <div className="text-muted-foreground text-base !font-bold font-medium">
@@ -62,11 +68,13 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
 })
 
 export interface PaneViewProps extends ComponentProps<'div'> {
+  active?: boolean
   name: string
   title: string
   actions?: Action[]
 }
 export function PaneView({
+  active: _active,
   className,
   name: _name,
   title: _title,

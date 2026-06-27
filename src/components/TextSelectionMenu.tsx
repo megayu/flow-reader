@@ -177,7 +177,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
 
   const cfi = annotationCfi ?? tab.rangeToCfi(range)
   const section = tab.sectionForRange(range)
-  const annotation = tab.book.annotations.find((a) => a.cfi === cfi)
+  const annotation = tab.overlayState.annotations.find((a) => a.cfi === cfi)
   const [annotate, setAnnotate] = useState(!!annotation)
 
   const position = releasePoint
@@ -345,8 +345,10 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           {keys(typeMap).map((type) => (
             <div key={type} className="flex gap-2">
               {keys(colorMap).map((color) => (
-                <div
+                <button
+                  type="button"
                   key={color}
+                  aria-label={`${type} ${color}`}
                   style={{
                     [typeMap[type].style]: colorMap[color],
                     width: ANNOTATION_SIZE,
@@ -354,7 +356,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                     fontSize: 18,
                   }}
                   className={clsx(
-                    'border-border text-muted-foreground hover:bg-muted flex cursor-pointer items-center justify-center rounded-md border text-base',
+                    'border-border text-muted-foreground hover:bg-muted flex cursor-pointer appearance-none items-center justify-center rounded-md border bg-transparent p-0 text-base',
                     typeMap[type].class,
                   )}
                   onClick={() => {
@@ -370,7 +372,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                   }}
                 >
                   A
-                </div>
+                </button>
               ))}
             </div>
           ))}

@@ -10,8 +10,10 @@ export function useAsync<T>(
 
   useEffect(() => {
     ref.current()?.then(setValue)
+    /* oxlint-disable react-doctor/exhaustive-deps */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
+  /* oxlint-enable react-doctor/exhaustive-deps */
 
   return value
 }

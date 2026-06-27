@@ -7,7 +7,7 @@ import {
   SquareIcon,
   UnfoldVerticalIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import {
@@ -49,6 +49,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
   onImported,
 }) => {
   const t = useTranslation('text_import')
+  const titleId = useId()
   const [settings] = useSettings()
   const [encodings, setEncodings] = useState<TextImportEncodingOption[]>([])
   const [previews, setPreviews] = useState<TextImportPreview[]>([])
@@ -157,17 +158,19 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     setCollapsedChapterKeys(new Set())
   }, [activePreview?.path])
 
-  const selectedImports = previews
-    .filter(
-      (preview) =>
-        selectedPaths.has(preview.path) &&
-        preview.status !== 'error' &&
-        preview.status !== 'skipped',
-    )
-    .map((preview) => ({
-      path: preview.path,
-      encoding: encodingOverrides[preview.path] ?? preview.encoding,
-    }))
+  const selectedImports: { encoding: string; path: string }[] = []
+  for (const preview of previews) {
+    if (
+      selectedPaths.has(preview.path) &&
+      preview.status !== 'error' &&
+      preview.status !== 'skipped'
+    ) {
+      selectedImports.push({
+        path: preview.path,
+        encoding: encodingOverrides[preview.path] ?? preview.encoding,
+      })
+    }
+  }
 
   const toggleSelected = (preview: TextImportPreview) => {
     if (preview.status === 'error' || preview.status === 'skipped') return
@@ -206,11 +209,14 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
       <div
         role="dialog"
         aria-modal="true"
+        aria-labelledby={titleId}
         data-flow-keyboard-capture="true"
         className="text-muted-foreground ring-border bg-background fixed top-1/2 left-1/2 z-[90] flex h-[min(42rem,calc(100vh-4rem))] w-[min(82rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-md shadow-xl ring-1 ring-inset"
       >
         <aside className="border-border flex w-72 shrink-0 flex-col border-r bg-[var(--flow-bg-sidebar)]">
-          <div className="px-4 py-3 text-base font-semibold">{t('title')}</div>
+          <div id={titleId} className="px-4 py-3 text-base font-semibold">
+            {t('title')}
+          </div>
           <div className="scroll min-h-0 flex-1 overflow-y-auto p-2">
             {previews.map((preview) => {
               const selected = selectedPaths.has(preview.path)
@@ -484,7 +490,10 @@ function collectCollapsibleChapterKeys(nodes: ChapterPreviewNode[]) {
 }
 
 function normalizePatternList(patterns: string[] | undefined) {
-  return (patterns ?? [])
-    .map((pattern) => pattern.trim())
-    .filter((pattern) => pattern.length > 0)
+  const normalized: string[] = []
+  for (const pattern of patterns ?? []) {
+    const trimmed = pattern.trim()
+    if (trimmed) normalized.push(trimmed)
+  }
+  return normalized
 }

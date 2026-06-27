@@ -1,5 +1,6 @@
 const assert = require('assert')
 const fs = require('fs')
+const Module = require('module')
 const path = require('path')
 
 const ts = require('typescript')
@@ -15,16 +16,10 @@ const { outputText } = ts.transpileModule(source, {
   fileName: sourcePath,
 })
 
-const moduleShim = { exports: {} }
-
-new Function(
-  'exports',
-  'require',
-  'module',
-  '__filename',
-  '__dirname',
-  outputText,
-)(moduleShim.exports, require, moduleShim, sourcePath, path.dirname(sourcePath))
+const compiledModule = new Module(sourcePath, module)
+compiledModule.filename = sourcePath
+compiledModule.paths = Module._nodeModulePaths(path.dirname(sourcePath))
+compiledModule._compile(outputText, sourcePath)
 
 const {
   backgroundPresets,
@@ -34,7 +29,7 @@ const {
   isDarkPaletteColor,
   normalizeThemeConfiguration,
   normalizePaletteColor,
-} = moduleShim.exports
+} = compiledModule.exports
 
 const flowTokenNames = [
   '--flow-bg-app',

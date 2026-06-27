@@ -52,6 +52,12 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
 }
 
 type SettingsTab = 'basic' | 'reading' | 'txt' | 'shortcuts'
+const SETTINGS_TABS: SettingsTab[] = ['basic', 'reading', 'txt', 'shortcuts']
+const TEXTAREA_SIZE_STYLE = {
+  fieldSizing: 'fixed',
+  maxHeight: '22rem',
+  minHeight: '8.5rem',
+} satisfies CSSProperties
 
 export const Settings: React.FC = () => {
   const { locale, locales, setLocale } = useLocale()
@@ -59,7 +65,6 @@ export const Settings: React.FC = () => {
   const t = useTranslation('settings')
   const typographyT = useTranslation('typography')
   const [activeTab, setActiveTab] = useState<SettingsTab>('basic')
-  const tabs: SettingsTab[] = ['basic', 'reading', 'txt', 'shortcuts']
   const textImportRules = {
     ...defaultTextImportRules,
     ...settings.textImportRules,
@@ -92,7 +97,7 @@ export const Settings: React.FC = () => {
           variant="line"
           className="mt-1 flex h-auto w-full flex-col items-stretch gap-1 rounded-none bg-transparent p-0"
         >
-          {tabs.map((tab) => {
+          {SETTINGS_TABS.map((tab) => {
             return (
               <TabsTrigger
                 key={tab}
@@ -277,11 +282,6 @@ const PatternTextarea: React.FC<PatternTextareaProps> = ({
   const focusedRef = useRef(false)
   const focusedValueRef = useRef(valueText)
   const onChangeRef = useRef(onChange)
-  const textareaSizeStyle = {
-    fieldSizing: 'fixed',
-    maxHeight: '22rem',
-    minHeight: '8.5rem',
-  } satisfies CSSProperties
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -298,7 +298,7 @@ const PatternTextarea: React.FC<PatternTextareaProps> = ({
     <Textarea
       aria-label={label}
       className="scroll resize-y overflow-y-auto rounded-lg font-mono text-base leading-5"
-      style={textareaSizeStyle}
+      style={TEXTAREA_SIZE_STYLE}
       value={draft}
       spellCheck={false}
       onChange={(event) => {
@@ -323,10 +323,12 @@ const PatternTextarea: React.FC<PatternTextareaProps> = ({
 }
 
 function parsePatternText(value: string) {
-  return value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
+  const patterns: string[] = []
+  for (const line of value.split(/\r?\n/)) {
+    const pattern = line.trim()
+    if (pattern) patterns.push(pattern)
+  }
+  return patterns
 }
 
 interface SegmentedFieldOption<T extends string> {

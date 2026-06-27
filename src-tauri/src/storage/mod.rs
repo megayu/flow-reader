@@ -56,6 +56,7 @@ use text_import::{
 };
 
 const APP_DATA_DIR_NAME: &str = "Flow Reader";
+const APP_DATA_DIR_ENV: &str = "FLOW_READER_DATA_DIR";
 const BOOKS_DIR: &str = "books";
 const LIBRARY_FILE: &str = "library.json";
 const SETTINGS_FILE: &str = "settings.json";
@@ -482,6 +483,13 @@ fn clone_library(library: &Library) -> Library {
 }
 
 fn data_root(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Some(root) = std::env::var_os(APP_DATA_DIR_ENV) {
+        let root = PathBuf::from(root);
+        if !root.as_os_str().is_empty() {
+            return Ok(root);
+        }
+    }
+
     let default_dir = app
         .path()
         .app_data_dir()

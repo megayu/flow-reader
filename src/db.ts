@@ -62,6 +62,10 @@ export interface ReadingSpreadPageRecord {
 export interface ReadingSpreadRecord extends ReadingSpreadPageRecord {
   version: 1
   anchor: 'left' | 'right'
+  exact?: boolean
+  left?: ReadingSpreadPageRecord
+  right?: ReadingSpreadPageRecord
+  endsAtSectionEnd?: boolean
   layoutStyleSignature?: string
 }
 

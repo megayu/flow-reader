@@ -1,5 +1,11 @@
 import clsx from 'clsx'
-import { ComponentProps, useEffect, useRef, useState } from 'react'
+import {
+  ComponentProps,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from 'react'
 
 import { useAccentColor } from '@flow/reader/hooks/theme/useSourceColor'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
@@ -99,6 +105,15 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({
     setCustomPickerOpen(false)
   }
 
+  const restorePreviousThemeOnUnmount = useEffectEvent(() => {
+    if (customSessionActiveRef.current && !customSessionAppliedRef.current) {
+      setSettings((prev) => ({
+        ...prev,
+        theme: previousThemeRef.current,
+      }))
+    }
+  })
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
@@ -131,14 +146,9 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({
 
   useEffect(() => {
     return () => {
-      if (customSessionActiveRef.current && !customSessionAppliedRef.current) {
-        setSettings((prev) => ({
-          ...prev,
-          theme: previousThemeRef.current,
-        }))
-      }
+      restorePreviousThemeOnUnmount()
     }
-  }, [setSettings])
+  }, [])
 
   return (
     <div

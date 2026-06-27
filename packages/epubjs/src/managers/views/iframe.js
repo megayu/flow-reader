@@ -603,14 +603,24 @@ class IframeView {
       heightDelta: heightDelta,
     }
 
-    this.pane && this.pane.render()
+    if (this.pane) {
+      try {
+        this.pane.render()
+      } catch (error) {
+        // Marks may point to ranges from a view that was just cleared.
+      }
+    }
 
     requestAnimationFrame(() => {
       let mark
       for (let m in this.marks) {
         if (Object.prototype.hasOwnProperty.call(this.marks, m)) {
           mark = this.marks[m]
-          this.placeMark(mark.element, mark.range)
+          try {
+            this.placeMark(mark.element, mark.range)
+          } catch (error) {
+            // Ignore detached ranges; active annotations are redrawn by callers.
+          }
         }
       }
     })

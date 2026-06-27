@@ -1,5 +1,6 @@
 const assert = require('assert')
 const fs = require('fs')
+const Module = require('module')
 const path = require('path')
 
 const ts = require('typescript')
@@ -21,20 +22,12 @@ const requireShim = (id) => {
   return require(id)
 }
 
-new Function(
-  'exports',
-  'require',
-  'module',
-  '__filename',
-  '__dirname',
-  outputText,
-)(
-  moduleShim.exports,
-  requireShim,
-  moduleShim,
-  sourcePath,
-  path.dirname(sourcePath),
-)
+const compiledModule = new Module(sourcePath, module)
+compiledModule.filename = sourcePath
+compiledModule.paths = Module._nodeModulePaths(path.dirname(sourcePath))
+compiledModule.require = requireShim
+compiledModule._compile(outputText, sourcePath)
+moduleShim.exports = compiledModule.exports
 
 const { detectBodyTextIndexes, getBodyTextCandidates } = moduleShim.exports
 

@@ -24,7 +24,11 @@ export async function handleFiles(
   files: Iterable<File>,
   options: HandleFilesOptions = {},
 ) {
-  const paths = [...files].map(getNativeFilePath).filter(Boolean)
+  const paths: string[] = []
+  for (const file of files) {
+    const path = getNativeFilePath(file)
+    if (path) paths.push(path)
+  }
   if (!paths.length) return []
 
   return handleFilePaths(paths, options)

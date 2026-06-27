@@ -43,7 +43,7 @@ interface FindMatchProps {
   tab: BookTab
 }
 const FindMatches: React.FC<FindMatchProps> = ({ active, tab }) => {
-  const { rendition, results, keyword, currentLocation, iframes } =
+  const { rendition, results, keyword, paginationVersion, viewVersion } =
     useSnapshot(tab)
 
   useEffect(() => {
@@ -81,13 +81,13 @@ const FindMatches: React.FC<FindMatchProps> = ({ active, tab }) => {
       })
     }
   }, [
-    currentLocation,
     active,
-    iframes.length,
     keyword,
+    paginationVersion,
     rendition?.annotations,
     results,
     tab,
+    viewVersion,
   ])
 
   return null
@@ -141,64 +141,81 @@ const Definitions: React.FC<DefinitionsProps> = ({
   tab,
   dark,
 }) => {
-  const { rendition, currentHref, rendered, section } = useSnapshot(tab)
-  const matchCacheRef = useRef(new Map<string, DefinitionMatch[]>())
+  const {
+    rendition,
+    rendered,
+    visibleSectionIndexes,
+    paginationVersion,
+    viewVersion,
+    overlayVersion,
+  } = useSnapshot(tab)
+  const matchCacheRef = useRef<Map<string, DefinitionMatch[]> | undefined>(
+    undefined,
+  )
+  matchCacheRef.current ??= new Map()
   const definitionItems = useMemo(
     () =>
-      definitions
-        .map(
-          (definition, index): DefinitionItem => ({
-            definition: definition.trim(),
-            index,
-          }),
-        )
-        .filter((item) => item.definition),
+      definitions.reduce<DefinitionItem[]>((items, definition, index) => {
+        const normalized = definition.trim()
+        if (normalized) items.push({ definition: normalized, index })
+        return items
+      }, []),
     [definitions],
   )
   const definitionKey = useMemo(
     () => definitionItems.map((item) => item.definition).join('\u0000'),
     [definitionItems],
   )
+  const visibleSectionKey = visibleSectionIndexes.join('|')
 
   useEffect(() => {
     const annotations = rendition?.annotations
     let cancelled = false
     const drawnCfis: string[] = []
-    const currentSection = tab.section
-    const sectionIndex = currentSection?.index
+    const currentSections = tab.visibleSections.filter((section) =>
+      visibleSectionIndexes.includes(section.index),
+    )
 
     if (
       !active ||
       !rendered ||
       !annotations ||
-      !currentSection ||
-      sectionIndex === undefined ||
+      !currentSections.length ||
       !definitionItems.length
     ) {
       return
     }
 
-    const cacheKey = `${sectionIndex}:${definitionKey}`
-
     void (async () => {
-      let matches = matchCacheRef.current.get(cacheKey)
+      const matchesBySection = await Promise.all(
+        currentSections.map(async (currentSection) => {
+          const cacheKey = `${currentSection.index}:${definitionKey}`
+          let sectionMatches = matchCacheRef.current?.get(cacheKey)
 
-      if (!matches) {
-        await tab.ensureSectionInfo(currentSection)
-        if (cancelled || tab.section?.index !== sectionIndex) return
+          if (!sectionMatches) {
+            await tab.ensureSectionInfo(currentSection)
+            if (cancelled) return [] as DefinitionMatch[]
 
-        matches = definitionItems.flatMap(({ definition, index }) => {
-          const result = tab.searchInSection(definition, currentSection)
-          return (
-            result?.subitems.flatMap((match) =>
-              match.cfi ? [{ cfi: match.cfi, index }] : [],
-            ) ?? []
-          )
-        })
-        matchCacheRef.current.set(cacheKey, matches)
-      }
+            sectionMatches = definitionItems.flatMap(
+              ({ definition, index }) => {
+                const result = tab.searchInSection(definition, currentSection)
+                return (
+                  result?.subitems.flatMap((match) =>
+                    match.cfi ? [{ cfi: match.cfi, index }] : [],
+                  ) ?? []
+                )
+              },
+            )
+            matchCacheRef.current?.set(cacheKey, sectionMatches)
+          }
 
-      if (cancelled || tab.section?.index !== sectionIndex) return
+          return sectionMatches
+        }),
+      )
+
+      if (cancelled) return
+
+      const matches = matchesBySection.flat()
 
       matches.forEach((match) => {
         const styles = definitionUnderlineStyle(match.index, dark)
@@ -237,14 +254,17 @@ const Definitions: React.FC<DefinitionsProps> = ({
     }
   }, [
     active,
-    currentHref,
     dark,
     definitionItems,
     definitionKey,
+    overlayVersion,
+    paginationVersion,
     rendered,
     rendition?.annotations,
-    section?.index,
     tab,
+    visibleSectionKey,
+    visibleSectionIndexes,
+    viewVersion,
   ])
 
   return null
@@ -255,7 +275,7 @@ interface AnnotationProps {
   annotation: IAnnotation
 }
 const Annotation: React.FC<AnnotationProps> = ({ tab, annotation }) => {
-  const { rendition } = useSnapshot(tab)
+  const { rendition, viewVersion, overlayVersion } = useSnapshot(tab)
 
   useEffect(() => {
     rendition?.annotations[annotation.type](
@@ -281,8 +301,10 @@ const Annotation: React.FC<AnnotationProps> = ({ tab, annotation }) => {
     annotation.cfi,
     annotation.color,
     annotation.type,
+    overlayVersion,
     rendition?.annotations,
     tab,
+    viewVersion,
   ])
 
   return null
@@ -293,23 +315,32 @@ interface AnnotationsProps {
   tab: BookTab
 }
 export const Annotations: React.FC<AnnotationsProps> = ({ active, tab }) => {
-  const { book, section } = useSnapshot(tab)
+  const { overlayState, visibleSectionIndexes, overlayVersion } =
+    useSnapshot(tab)
   const { dark } = useColorScheme()
+  void overlayVersion
+  const visibleSectionIndexSet = new Set(visibleSectionIndexes)
 
   return (
     <>
       <FindMatches active={active} tab={tab} />
       {/* with `key`, react will mount/unmount it automatically */}
       {active &&
-        book.annotations
+        overlayState.annotations.flatMap((annotation) =>
           // seems to fix annotation flash when executing `next()` and `display()`
-          .filter((a) => a.spine.index === section?.index)
-          .map((annotation) => (
-            <Annotation key={annotation.id} tab={tab} annotation={annotation} />
-          ))}
+          visibleSectionIndexSet.has(annotation.spine.index)
+            ? [
+                <Annotation
+                  key={annotation.id}
+                  tab={tab}
+                  annotation={annotation}
+                />,
+              ]
+            : [],
+        )}
       <Definitions
         active={active}
-        definitions={book.definitions}
+        definitions={overlayState.definitions}
         tab={tab}
         dark={!!dark}
       />

@@ -16,6 +16,7 @@ import React, {
   ComponentProps,
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -58,6 +59,7 @@ import { revealScrollbars } from '../scrollbar'
 import { getShortcutChords } from '../shortcuts'
 import {
   createTypographyLayoutSignature,
+  createTypographyStyleSignature,
   getBodyTypographyBaseline,
   notePopoverClass,
   updateCustomStyle,
@@ -674,19 +676,29 @@ function useFrameEvent<K extends keyof WindowEventMap>(
   listener: (event: WindowEventMap[K]) => void,
   options?: AddEventListenerOptions,
 ) {
+  const listenerRef = useRef(listener)
+
+  useEffect(() => {
+    listenerRef.current = listener
+  }, [listener])
+
   useEffect(() => {
     if (!frames.length) return
 
+    const handler = (event: WindowEventMap[K]) => {
+      listenerRef.current(event)
+    }
+
     frames.forEach((frame) => {
-      frame.addEventListener(type, listener, options)
+      frame.addEventListener(type, handler, options)
     })
 
     return () => {
       frames.forEach((frame) => {
-        frame.removeEventListener(type, listener, options)
+        frame.removeEventListener(type, handler, options)
       })
     }
-  }, [frames, listener, options, type])
+  }, [frames, options, type])
 }
 
 function preventContextMenu(e: Event) {
@@ -706,10 +718,9 @@ export function ReaderGridView({ content }: ReaderGridViewProps) {
   const setZenMode = useSetZenMode()
   const setSettingsOpen = useSetSettingsDialogOpen()
   const setZenTypographyOverrides = useSetZenTypographyOverrides()
-  const enterReaderMode = useCallback(
-    () => setViewMode('reader'),
-    [setViewMode],
-  )
+  const enterReaderMode = useCallback(() => {
+    if (viewMode !== 'reader') setViewMode('reader')
+  }, [setViewMode, viewMode])
 
   useEventListener(
     'keydown',
@@ -756,11 +767,9 @@ interface ReaderGroupProps {
 function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
   const group = reader.groups[index]!
   const { tabs, selectedIndex } = useSnapshot(group)
-  const t = useTranslation()
   const [backgroundClassName] = useBackground()
   const zenMode = useZenModeValue()
   const tabWheelDelta = useRef(0)
-  const lastTabWheelSwitch = useRef(0)
   const [hoveredTabIndex, setHoveredTabIndex] = useState<number | undefined>()
 
   const handleMouseDown = useCallback(() => {
@@ -778,15 +787,12 @@ function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
 
       tabWheelDelta.current += delta
 
-      const now = Date.now()
-      if (now - lastTabWheelSwitch.current < 180) return
       if (Math.abs(tabWheelDelta.current) < 30) return
 
       reader.selectGroup(index)
       group.selectAdjacentTab(tabWheelDelta.current > 0 ? 1 : -1, true)
       onEnterReaderMode()
       tabWheelDelta.current = 0
-      lastTabWheelSwitch.current = now
     },
     [group, index, onEnterReaderMode],
   )
@@ -803,12 +809,14 @@ function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
         {tabs.map((tab, i) => {
           const selected = i === selectedIndex
           const focused = selected
-          const label = getReaderTabLabel(tab, t)
           return (
-            <Tab
+            <ReaderTabItem
+              group={group}
+              groupIndex={index}
+              index={i}
               key={tab.id}
-              selected={selected}
               focused={focused}
+              selected={selected}
               showSeparator={
                 !selected &&
                 i + 1 < tabs.length &&
@@ -816,23 +824,10 @@ function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
                 hoveredTabIndex !== i &&
                 hoveredTabIndex !== i + 1
               }
-              title={getReaderTabTooltip(tab, t)}
-              tooltipContent={getReaderTabTooltipContent(tab)}
-              onMouseEnter={() => setHoveredTabIndex(i)}
-              onMouseLeave={() =>
-                setHoveredTabIndex((current) =>
-                  current === i ? undefined : current,
-                )
-              }
-              onClick={() => {
-                group.selectTab(i)
-                onEnterReaderMode()
-              }}
-              onDelete={() => reader.removeTab(i, index)}
-              Icon={tab instanceof BookTab ? BookOpenIcon : PanelTopIcon}
-            >
-              {label}
-            </Tab>
+              tab={tab}
+              onEnterReaderMode={onEnterReaderMode}
+              onHoverChange={setHoveredTabIndex}
+            />
           )
         })}
       </Tab.List>
@@ -902,6 +897,65 @@ function getReaderTabLabel(
     : t(`${tab.title}.title`)
 }
 
+interface ReaderTabItemProps {
+  focused: boolean
+  group: {
+    selectTab(index: number): void
+  }
+  groupIndex: number
+  index: number
+  onEnterReaderMode: () => void
+  onHoverChange: React.Dispatch<React.SetStateAction<number | undefined>>
+  selected: boolean
+  showSeparator: boolean
+  tab: BookTab | { id: string; title: string }
+}
+
+const ReaderTabItem = React.memo(function ReaderTabItem({
+  focused,
+  group,
+  groupIndex,
+  index,
+  onEnterReaderMode,
+  onHoverChange,
+  selected,
+  showSeparator,
+  tab,
+}: ReaderTabItemProps) {
+  const t = useTranslation()
+  const label = getReaderTabLabel(tab, t)
+  const handleMouseEnter = useCallback(() => {
+    onHoverChange(index)
+  }, [index, onHoverChange])
+  const handleMouseLeave = useCallback(() => {
+    onHoverChange((current) => (current === index ? undefined : current))
+  }, [index, onHoverChange])
+  const handleClick = useCallback(() => {
+    group.selectTab(index)
+    onEnterReaderMode()
+  }, [group, index, onEnterReaderMode])
+  const handleDelete = useCallback(() => {
+    reader.removeTab(index, groupIndex)
+  }, [groupIndex, index])
+
+  return (
+    <Tab
+      selected={selected}
+      focused={focused}
+      showSeparator={showSeparator}
+      title={getReaderTabTooltip(tab, t)}
+      tooltipContent={getReaderTabTooltipContent(tab)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onClick={handleClick}
+      onDelete={handleDelete}
+      Icon={tab instanceof BookTab ? BookOpenIcon : PanelTopIcon}
+    >
+      {label}
+    </Tab>
+  )
+})
+
 function getReaderTabTooltip(
   tab: BookTab | { title: string },
   t: (key: string) => string,
@@ -922,22 +976,24 @@ interface PaneContainerProps {
   active: boolean
   children?: React.ReactNode
 }
-const PaneContainer: React.FC<PaneContainerProps> = ({ active, children }) => {
-  return (
-    <div
-      aria-hidden={!active}
-      data-flow-reader-pane
-      className={clsx(
-        'overflow-hidden',
-        active
-          ? 'absolute inset-0 z-10 h-full'
-          : 'pointer-events-none fixed top-0 left-[-10000px] z-[-1] h-screen w-screen opacity-0',
-      )}
-    >
-      {children}
-    </div>
-  )
-}
+const PaneContainer: React.FC<PaneContainerProps> = React.memo(
+  function PaneContainer({ active, children }) {
+    return (
+      <div
+        aria-hidden={!active}
+        data-flow-reader-pane
+        className={clsx(
+          'absolute inset-0 h-full overflow-hidden',
+          active
+            ? 'visible z-10 opacity-100'
+            : 'pointer-events-none invisible z-0 opacity-0',
+        )}
+      >
+        {children}
+      </div>
+    )
+  },
+)
 
 interface BookPaneProps {
   active: boolean
@@ -1009,6 +1065,7 @@ interface BookRenditionLifecycleOptions {
   rendition: any
   currentSpread: RenditionSpread
   typographyLayoutSignature: string
+  typographyStyleSignature: string
   applyCustomStyle: (contents?: any) => void
   containerRef: React.RefObject<HTMLDivElement | null>
 }
@@ -1031,6 +1088,7 @@ function useBookRenditionLifecycle({
   rendition,
   currentSpread,
   typographyLayoutSignature,
+  typographyStyleSignature,
   applyCustomStyle,
   containerRef,
 }: BookRenditionLifecycleOptions) {
@@ -1039,12 +1097,19 @@ function useBookRenditionLifecycle({
   const previousTypographyLayoutSignature = useRef<string | undefined>(
     undefined,
   )
+  const previousTypographyStyleSignature = useRef<string | undefined>(undefined)
   const layoutFrame = useRef<number | undefined>(undefined)
   const applyCustomStyleRef = useRef(applyCustomStyle)
   const currentSpreadRef = useRef(currentSpread)
 
   applyCustomStyleRef.current = applyCustomStyle
   currentSpreadRef.current = currentSpread
+
+  const cancelVisibleSizeSync = useCallback(() => {
+    const frame = layoutFrame.current
+    if (frame !== undefined) cancelAnimationFrame(frame)
+    layoutFrame.current = undefined
+  }, [])
 
   const renderIfReady = useCallback(() => {
     if (!active || !settingsReady || rendition) return
@@ -1057,6 +1122,7 @@ function useBookRenditionLifecycle({
 
     prevSize.current = size.key
     previousTypographyLayoutSignature.current = typographyLayoutSignature
+    previousTypographyStyleSignature.current = typographyStyleSignature
     tab.render(
       containerRef.current!,
       currentSpreadRef.current,
@@ -1070,6 +1136,7 @@ function useBookRenditionLifecycle({
     settingsReady,
     tab,
     typographyLayoutSignature,
+    typographyStyleSignature,
   ])
 
   const syncVisibleSize = useCallback(() => {
@@ -1087,22 +1154,21 @@ function useBookRenditionLifecycle({
     prevSize.current = size.key
 
     try {
-      rendition.resize(size.width, size.height)
+      tab.markLayoutChanged()
+      tab.resizeRendition(size.width, size.height)
     } catch (error) {
       console.error(error)
     }
-  }, [active, containerRef, rendition, renderIfReady, settingsReady])
+  }, [active, containerRef, rendition, renderIfReady, settingsReady, tab])
 
   const scheduleVisibleSizeSync = useCallback(() => {
-    if (layoutFrame.current !== undefined) {
-      cancelAnimationFrame(layoutFrame.current)
-    }
+    cancelVisibleSizeSync()
 
     layoutFrame.current = requestAnimationFrame(() => {
       layoutFrame.current = undefined
       syncVisibleSize()
     })
-  }, [syncVisibleSize])
+  }, [cancelVisibleSizeSync, syncVisibleSize])
 
   useEffect(() => {
     const el = containerRef.current
@@ -1133,13 +1199,8 @@ function useBookRenditionLifecycle({
 
   useEffect(() => {
     scheduleVisibleSizeSync()
-    return () => {
-      if (layoutFrame.current !== undefined) {
-        cancelAnimationFrame(layoutFrame.current)
-        layoutFrame.current = undefined
-      }
-    }
-  }, [scheduleVisibleSizeSync])
+    return cancelVisibleSizeSync
+  }, [cancelVisibleSizeSync, scheduleVisibleSizeSync])
 
   useEffect(() => {
     if (!active || !rendition) return
@@ -1152,7 +1213,8 @@ function useBookRenditionLifecycle({
 
     previousSpread.current = currentSpread
     rendition.spread(currentSpread)
-  }, [active, currentSpread, rendition])
+    void tab.relayoutCurrentView()
+  }, [active, currentSpread, rendition, tab])
 
   useEffect(() => {
     if (!active || !rendition) return
@@ -1162,16 +1224,25 @@ function useBookRenditionLifecycle({
       return
     previousTypographyLayoutSignature.current = typographyLayoutSignature
 
-    tab.resetLayoutPageState()
-
-    const target = tab.location?.start.cfi ?? tab.book.cfi
-    if (target) {
-      void rendition.display(target)
-    }
+    void tab.relayoutCurrentView()
   }, [active, applyCustomStyle, rendition, tab, typographyLayoutSignature])
+
+  useEffect(() => {
+    if (!active || !rendition) return
+
+    if (previousTypographyStyleSignature.current === typographyStyleSignature)
+      return
+    previousTypographyStyleSignature.current = typographyStyleSignature
+
+    applyCustomStyle()
+  }, [active, applyCustomStyle, rendition, typographyStyleSignature])
 }
 
-function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
+const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
+  active,
+  tab,
+  onMouseDown,
+}) {
   const ref = useRef<HTMLDivElement>(null)
   const chapterFindInputRef = useRef<HTMLInputElement>(null)
   const previousFindLocationKey = useRef<string | undefined>(undefined)
@@ -1185,11 +1256,15 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     () => createTypographyLayoutSignature(typography),
     [typography],
   )
+  const typographyStyleSignature = useMemo(
+    () => createTypographyStyleSignature(typography),
+    [typography],
+  )
   const settingsReady = useSettingsReady()
   const { dark } = useColorScheme()
   const [background] = useBackground()
 
-  const { iframe, iframes, rendition, rendered, currentLocation } =
+  const { iframe, iframes, rendition, rendered, paginationVersion } =
     useSnapshot(tab)
   const frameWindows = useMemo(() => {
     void iframe
@@ -1206,15 +1281,20 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     [active, frameWindows],
   )
 
+  useLayoutEffect(() => {
+    return () => {
+      tab.setActive(false)
+    }
+  }, [tab])
+
   const viewMode = useViewModeValue()
   const setViewMode = useSetViewMode()
   const zenMode = useZenModeValue()
   const setZenMode = useSetZenMode()
   const setZenTypographyOverrides = useSetZenTypographyOverrides()
-  const enterReaderMode = useCallback(
-    () => setViewMode('reader'),
-    [setViewMode],
-  )
+  const enterReaderMode = useCallback(() => {
+    if (viewMode !== 'reader') setViewMode('reader')
+  }, [setViewMode, viewMode])
   const [action, setAction] = useAction()
   const setSettingsOpen = useSetSettingsDialogOpen()
 
@@ -1256,6 +1336,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
       searching: false,
     }))
   }, [])
+  const closeChapterFindEvent = useEffectEvent(closeChapterFind)
 
   const handleFindShortcut = useCallback(
     (e: KeyboardEvent) => {
@@ -1269,16 +1350,21 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     },
     [openChapterFind, zenMode],
   )
+  const handleFindShortcutEvent = useEffectEvent(handleFindShortcut)
 
   useEffect(() => {
     if (!active) return
 
-    document.addEventListener('keydown', handleFindShortcut, true)
+    const onKeyDown = (event: KeyboardEvent) => {
+      handleFindShortcutEvent(event)
+    }
+
+    document.addEventListener('keydown', onKeyDown, true)
 
     return () => {
-      document.removeEventListener('keydown', handleFindShortcut, true)
+      document.removeEventListener('keydown', onKeyDown, true)
     }
-  }, [active, handleFindShortcut])
+  }, [active])
   useFrameEvent(activeFrameWindows, 'keydown', handleFindShortcut, {
     capture: true,
   })
@@ -1309,18 +1395,23 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     },
     [tab, zenMode],
   )
+  const handleReturnMouseButtonEvent = useEffectEvent(handleReturnMouseButton)
 
   useEffect(() => {
     if (!active) return
 
-    document.addEventListener('mousedown', handleReturnMouseButton, true)
-    document.addEventListener('auxclick', handleReturnMouseButton, true)
+    const onMouseButton = (event: MouseEvent) => {
+      handleReturnMouseButtonEvent(event)
+    }
+
+    document.addEventListener('mousedown', onMouseButton, true)
+    document.addEventListener('auxclick', onMouseButton, true)
 
     return () => {
-      document.removeEventListener('mousedown', handleReturnMouseButton, true)
-      document.removeEventListener('auxclick', handleReturnMouseButton, true)
+      document.removeEventListener('mousedown', onMouseButton, true)
+      document.removeEventListener('auxclick', onMouseButton, true)
     }
-  }, [active, handleReturnMouseButton])
+  }, [active])
   useFrameEvent(activeFrameWindows, 'mousedown', handleReturnMouseButton, {
     capture: true,
   })
@@ -1351,6 +1442,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     rendition,
     currentSpread,
     typographyLayoutSignature,
+    typographyStyleSignature,
     applyCustomStyle,
     containerRef: ref,
   })
@@ -1397,7 +1489,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
       observer.disconnect()
       mutationObserver.disconnect()
     }
-  }, [active, currentLocation, rendered, rendition])
+  }, [active, paginationVersion, rendered, rendition])
 
   const findOpen = chapterFind.open
   const findQuery = chapterFind.query
@@ -1420,26 +1512,29 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     const sectionIndex = findSectionIndex
     const section = tab.sections?.find((s) => s.index === sectionIndex)
     if (!section) return
+    const currentSection = section
 
     setChapterFind((state) => ({ ...state, searching: true }))
 
     async function searchSection() {
       const matches = (
-        section!.find(query) as Array<{
+        currentSection.find(query) as Array<{
           cfi?: string
           excerpt?: string
         }>
-      ).filter((match) => !!match.cfi)
+      ).flatMap((match) => (match.cfi ? [match] : []))
 
-      const results: ChapterFindResult[] = []
-      for (const match of matches) {
-        if (cancelled) return
-        results.push({
-          cfi: match.cfi!,
-          excerpt: match.excerpt ?? '',
-          pageIndex: await tab.pageIndexForCfi(sectionIndex, match.cfi!),
-        })
-      }
+      const results = await Promise.all(
+        matches.map(async (match): Promise<ChapterFindResult> => {
+          const cfi = match.cfi!
+
+          return {
+            cfi,
+            excerpt: match.excerpt ?? '',
+            pageIndex: await tab.pageIndexForCfi(sectionIndex, cfi),
+          }
+        }),
+      )
 
       if (cancelled) return
 
@@ -1474,7 +1569,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
       return
     }
 
-    const locationKey = findLocationKey(currentLocation)
+    const locationKey = findLocationKey(tab.paginationSnapshot?.location)
     if (locationKey === previousFindLocationKey.current) return
     previousFindLocationKey.current = locationKey
 
@@ -1498,8 +1593,9 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     active,
     chapterFind.results,
     chapterFind.sectionIndex,
-    currentLocation,
+    paginationVersion,
     rendition?.manager,
+    tab,
   ])
 
   const goToFindResult = useCallback(
@@ -1597,7 +1693,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
         e.preventDefault()
         e.stopPropagation()
         e.stopImmediatePropagation()
-        closeChapterFind()
+        closeChapterFindEvent()
         setNotePopover(undefined)
 
         const requestId = (noteRequestId.current += 1)
@@ -1654,7 +1750,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     return () => {
       cleanups.forEach((cleanup) => cleanup())
     }
-  }, [active, closeChapterFind, frameWindows, rendition, tab, zenMode])
+  }, [active, frameWindows, rendition, tab, zenMode])
 
   const handleFrameClick = useCallback(
     (e: MouseEvent) => {
@@ -1715,18 +1811,23 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
     },
     [tab],
   )
+  const handleRenditionWheelEvent = useEffectEvent(handleRenditionWheel)
 
   useEffect(() => {
     if (!active || !rendition) return
 
     const target = rendition as any
-    target.on('wheel', handleRenditionWheel)
+    const onWheel = (event: WheelEvent) => {
+      handleRenditionWheelEvent(event)
+    }
+
+    target.on('wheel', onWheel)
 
     return () => {
-      target.off?.('wheel', handleRenditionWheel)
-      target.removeListener?.('wheel', handleRenditionWheel)
+      target.off?.('wheel', onWheel)
+      target.removeListener?.('wheel', onWheel)
     }
-  }, [active, handleRenditionWheel, rendition])
+  }, [active, rendition])
 
   const handleFrameKeyDown = useMemo(
     () =>
@@ -1813,7 +1914,7 @@ function BookPane({ active, tab, onMouseDown }: BookPaneProps) {
       <ReaderPaneFooter tab={tab} />
     </div>
   )
-}
+})
 
 interface ReaderEdgeNavigationProps {
   tab: BookTab
@@ -2088,46 +2189,49 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
     },
     [],
   )
+  const handlePreviewKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return
+
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      onClose()
+      return
+    }
+
+    if (event.key === '+' || event.key === '=') {
+      event.preventDefault()
+      event.stopPropagation()
+      zoomIn()
+      return
+    }
+
+    if (event.key === '-') {
+      event.preventDefault()
+      event.stopPropagation()
+      zoomOut()
+      return
+    }
+
+    if (event.key === '0') {
+      event.preventDefault()
+      event.stopPropagation()
+      resetToFit()
+      return
+    }
+
+    if (event.key === '1') {
+      event.preventDefault()
+      event.stopPropagation()
+      zoomTo(1)
+    }
+  })
 
   useEffect(() => {
     if (!src) return
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.altKey || event.ctrlKey || event.metaKey) return
-
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        event.stopPropagation()
-        onClose()
-        return
-      }
-
-      if (event.key === '+' || event.key === '=') {
-        event.preventDefault()
-        event.stopPropagation()
-        zoomIn()
-        return
-      }
-
-      if (event.key === '-') {
-        event.preventDefault()
-        event.stopPropagation()
-        zoomOut()
-        return
-      }
-
-      if (event.key === '0') {
-        event.preventDefault()
-        event.stopPropagation()
-        resetToFit()
-        return
-      }
-
-      if (event.key === '1') {
-        event.preventDefault()
-        event.stopPropagation()
-        zoomTo(1)
-      }
+      handlePreviewKeyDown(event)
     }
 
     document.addEventListener('keydown', handleKeyDown, true)
@@ -2135,7 +2239,7 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true)
     }
-  }, [onClose, resetToFit, src, zoomIn, zoomOut, zoomTo])
+  }, [src])
 
   if (!src) return null
 
@@ -2318,6 +2422,8 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
   onNext,
   onPrevious,
 }) => {
+  const t = useTranslation('shortcuts')
+  const actionT = useTranslation('action')
   const count = find.results.length
   const current = count ? find.activeIndex + 1 : 0
   const disabled = !count || find.searching
@@ -2331,6 +2437,7 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
     >
       <input
         ref={inputRef}
+        aria-label={t('chapter_find')}
         className="text-foreground w-40 bg-transparent px-1 py-0.5 text-base outline-none"
         value={find.query}
         onChange={(e) => onChange(e.target.value)}
@@ -2350,6 +2457,8 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
         {find.searching ? '...' : `${current}/${count}`}
       </div>
       <button
+        type="button"
+        aria-label={t('previous_find_result')}
         className="text-muted-foreground hover:text-foreground p-1 disabled:opacity-40"
         disabled={disabled || find.activeIndex <= 0}
         onClick={onPrevious}
@@ -2357,6 +2466,8 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
         <ChevronUpIcon className="size-[22px]" />
       </button>
       <button
+        type="button"
+        aria-label={t('next_find_result')}
         className="text-muted-foreground hover:text-foreground p-1 disabled:opacity-40"
         disabled={disabled || find.activeIndex >= count - 1}
         onClick={onNext}
@@ -2364,6 +2475,8 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
         <ChevronDownIcon className="size-[22px]" />
       </button>
       <button
+        type="button"
+        aria-label={actionT('close')}
         className="text-muted-foreground hover:text-foreground p-1"
         onClick={onClose}
       >
@@ -2383,7 +2496,7 @@ const ChapterFindHighlights: React.FC<ChapterFindHighlightsProps> = ({
   find,
   tab,
 }) => {
-  const { rendition, currentLocation, iframes } = useSnapshot(tab)
+  const { rendition, paginationVersion, viewVersion } = useSnapshot(tab)
   const matches = useMemo(() => {
     if (!find.open) return []
 
@@ -2420,14 +2533,14 @@ const ChapterFindHighlights: React.FC<ChapterFindHighlightsProps> = ({
       }
     }
 
-    matches
-      .filter((match) => !match.active)
-      .forEach((match) =>
+    for (const match of matches) {
+      if (!match.active) {
         addHighlight(match.cfi, {
           fill: 'rgba(234, 179, 8, 0.3)',
           'fill-opacity': 'unset',
-        }),
-      )
+        })
+      }
+    }
     const activeMatch = matches.find((match) => match.active)
     if (activeMatch) {
       addHighlight(activeMatch.cfi, {
@@ -2445,7 +2558,7 @@ const ChapterFindHighlights: React.FC<ChapterFindHighlightsProps> = ({
         }
       })
     }
-  }, [active, currentLocation, iframes.length, matches, rendition?.annotations])
+  }, [active, matches, paginationVersion, rendition?.annotations, viewVersion])
 
   return null
 }
@@ -3037,6 +3150,7 @@ async function renderLinkedSectionElement(
       ? sourceFrame.getBoundingClientRect()
       : undefined
   iframe.setAttribute('aria-hidden', 'true')
+  iframe.setAttribute('sandbox', 'allow-same-origin')
   iframe.tabIndex = -1
   Object.assign(iframe.style, {
     position: 'fixed',
@@ -3436,12 +3550,12 @@ function normalizeNotePopoverContent(root: HTMLElement) {
     node.style.setProperty('list-style', 'none', 'important')
     node.style.setProperty('list-style-type', 'none', 'important')
   })
-  listNodes
-    .filter((node) => isTagName(node, 'OL', 'UL'))
-    .forEach((node) => {
-      node.style.setProperty('padding', '0', 'important')
-      node.style.setProperty('padding-left', '0', 'important')
-    })
+  for (const node of listNodes) {
+    if (!isTagName(node, 'OL', 'UL')) continue
+
+    node.style.setProperty('padding', '0', 'important')
+    node.style.setProperty('padding-left', '0', 'important')
+  }
   blockNodes.forEach((node) => {
     node.style.setProperty('margin', '0', 'important')
     node.style.setProperty('padding', '0', 'important')
@@ -3609,18 +3723,16 @@ interface ReaderPaneHeaderProps {
   tab: BookTab
 }
 const ReaderPaneHeader: React.FC<ReaderPaneHeaderProps> = ({ tab }) => {
-  const { location, section } = useSnapshot(tab)
-  void location
-  void section
-
-  const navPath = tab.getHeaderPath()
+  const { paginationSnapshot } = useSnapshot(tab)
+  const navPath = paginationSnapshot?.headerPath ?? []
 
   return (
     <Bar>
       <div className="scroll-h flex">
         {navPath.map((item, i) => (
           <button
-            key={i}
+            key={item.id ?? item.href ?? item.label}
+            type="button"
             className="hover:text-foreground flex shrink-0 items-center"
           >
             {item.label}
@@ -3638,14 +3750,15 @@ interface FooterProps {
   tab: BookTab
 }
 const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
-  const { locationsToReturn, location, book, rendition } = useSnapshot(tab)
+  const { locationsToReturn, paginationSnapshot } = useSnapshot(tab)
   const t = useTranslation('reader')
   const locationToReturn = locationsToReturn[locationsToReturn.length - 1]
-  const divisor = rendition?.manager?.layout?.divisor ?? 1
+  const location = paginationSnapshot?.location
+  const divisor = paginationSnapshot?.spreadDivisor ?? 1
   const spread = divisor > 1
   const percentage =
-    typeof book.percentage === 'number'
-      ? `${(book.percentage * 100).toFixed(2)}%`
+    typeof paginationSnapshot?.percentage === 'number'
+      ? `${(paginationSnapshot.percentage * 100).toFixed(2)}%`
       : ''
   const startDisplayed = location?.start.displayed
   const endDisplayed = location?.end.displayed
@@ -3665,6 +3778,7 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
         <Bar>
           <div className="flex min-w-0 items-center gap-2">
             <button
+              type="button"
               className={returnActionClass}
               aria-label={t('return_to_start')}
               onClick={() => {
@@ -3677,6 +3791,7 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
               )}
             </button>
             <button
+              type="button"
               className={clsx(returnActionClass, 'truncate')}
               aria-label={t('return_to_previous')}
               onClick={() => {
@@ -3690,6 +3805,7 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
             </button>
           </div>
           <button
+            type="button"
             className={returnActionClass}
             aria-label={t('dismiss_return')}
             onClick={() => {

@@ -2,7 +2,6 @@ import { FoldVerticalIcon, UnfoldVerticalIcon, XIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Highlighter from 'react-highlight-words'
 
-import { useAction } from '@flow/reader/hooks/useAction'
 import { useList } from '@flow/reader/hooks/useList'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
 import { IMatch, reader, useReaderSnapshot } from '@flow/reader/models/reader'
@@ -39,14 +38,18 @@ function useIntermediateKeyword() {
 }
 
 export const SearchView: React.FC<PaneViewProps> = (props) => {
-  const [action] = useAction()
+  const active = props.active ?? true
+
+  return <PaneView {...props}>{active && <SearchPane />}</PaneView>
+}
+
+const SearchPane: React.FC = () => {
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation()
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   const [keyword, setKeyword] = useIntermediateKeyword()
 
-  const active = action === 'search'
   const results = focusedBookTab?.results
   const expanded = results?.some((r) => r.expanded)
   const toggleResults = () => {
@@ -54,62 +57,56 @@ export const SearchView: React.FC<PaneViewProps> = (props) => {
   }
 
   useEffect(() => {
-    if (!active) return
-
     const timeout = window.setTimeout(() => {
       inputRef.current?.focus()
     })
 
     return () => window.clearTimeout(timeout)
-  }, [active])
+  }, [])
 
   return (
-    <PaneView {...props}>
-      <div className="scroll-parent h-full flex-1">
-        <div className="px-px py-px">
-          <div className="bg-background flex h-8 items-center rounded-lg transition-shadow focus-within:shadow-[inset_0_0_0_1px_var(--ring)]">
-            <Input
-              ref={inputRef}
-              name="keyword"
-              autoFocus={active}
-              aria-label={t('search.title')}
-              value={keyword}
-              placeholder={t('search.title')}
-              className="h-full flex-1 rounded-lg border-0 bg-transparent px-2.5 py-0 focus-visible:border-transparent focus-visible:ring-0"
-              onChange={(e) => setKeyword(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key !== 'Escape') return
+    <div className="scroll-parent h-full flex-1">
+      <div className="px-px py-px">
+        <div className="bg-background flex h-8 items-center rounded-lg transition-shadow focus-within:shadow-[inset_0_0_0_1px_var(--ring)]">
+          <Input
+            ref={inputRef}
+            name="keyword"
+            autoFocus
+            aria-label={t('search.title')}
+            value={keyword}
+            placeholder={t('search.title')}
+            className="h-full flex-1 rounded-lg border-0 bg-transparent px-2.5 py-0 focus-visible:border-transparent focus-visible:ring-0"
+            onChange={(e) => setKeyword(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Escape') return
 
-                e.preventDefault()
-                e.stopPropagation()
-                inputRef.current?.blur()
-              }}
+              e.preventDefault()
+              e.stopPropagation()
+              inputRef.current?.blur()
+            }}
+          />
+          <div className="flex shrink-0 items-center gap-0.5 pr-1">
+            <IconButton
+              className="text-muted-foreground"
+              title={t(expanded ? 'action.collapse_all' : 'action.expand_all')}
+              Icon={expanded ? FoldVerticalIcon : UnfoldVerticalIcon}
+              onClick={toggleResults}
             />
-            <div className="flex shrink-0 items-center gap-0.5 pr-1">
+            {keyword && (
               <IconButton
                 className="text-muted-foreground"
-                title={t(
-                  expanded ? 'action.collapse_all' : 'action.expand_all',
-                )}
-                Icon={expanded ? FoldVerticalIcon : UnfoldVerticalIcon}
-                onClick={toggleResults}
+                title={t('action.clear')}
+                Icon={XIcon}
+                onClick={() => setKeyword('')}
               />
-              {keyword && (
-                <IconButton
-                  className="text-muted-foreground"
-                  title={t('action.clear')}
-                  Icon={XIcon}
-                  onClick={() => setKeyword('')}
-                />
-              )}
-            </div>
+            )}
           </div>
         </div>
-        {active && keyword && results && (
-          <ResultList results={results as IMatch[]} keyword={keyword} />
-        )}
       </div>
-    </PaneView>
+      {keyword && results && (
+        <ResultList results={results as IMatch[]} keyword={keyword} />
+      )}
+    </div>
   )
 }
 

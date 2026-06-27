@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { ClipboardPasteIcon, CopyIcon } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { HexColorPicker } from 'react-colorful'
 
 import { useTranslation } from '../hooks/useTranslation'
@@ -32,27 +32,37 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
   const normalizedDefault = normalizeHexColor(defaultValue) ?? '#0ea5e9'
   const [draft, setDraft] = useState(initialColorRef.current)
   const [input, setInput] = useState(initialColorRef.current)
-  const [slots, setSlots] = useState<(string | undefined)[]>(
+  const [slots, setSlots] = useState<(string | undefined)[]>(() =>
     Array.from({ length: colorSlotCount }),
   )
   const t = useTranslation('color_picker')
 
-  const slotItems = useMemo(() => slots.slice(0, colorSlotCount), [slots])
+  const slotItems = useMemo(
+    () =>
+      Array.from({ length: colorSlotCount }, (_, index) => ({
+        id: `slot-${index}`,
+        color: slots[index],
+      })),
+    [slots],
+  )
+  const handleEscapeKey = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return
+    e.preventDefault()
+    e.stopPropagation()
+    onPreview(initialColorRef.current)
+    onCancel()
+  })
 
   useEffect(() => {
     if (!handleEscape) return
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      e.preventDefault()
-      e.stopPropagation()
-      onPreview(initialColorRef.current)
-      onCancel()
+      handleEscapeKey(e)
     }
 
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [handleEscape, onCancel, onPreview])
+  }, [handleEscape])
 
   const updateDraft = (color: string) => {
     const normalized = normalizeHexColor(color)
@@ -136,10 +146,11 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
         />
       </div>
       <div className="mt-3 grid grid-cols-9 gap-1">
-        {slotItems.map((color, index) => (
+        {slotItems.map(({ id, color }) => (
           <button
             type="button"
-            key={index}
+            key={id}
+            aria-label={color ? color : t('save_slot')}
             className="bg-popover ring-border h-6 rounded-sm ring-1 ring-inset"
             style={color ? { backgroundColor: color } : undefined}
             onClick={() => {

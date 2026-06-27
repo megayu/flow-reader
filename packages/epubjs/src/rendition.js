@@ -315,7 +315,21 @@ class Rendition {
     if (this.displaying) {
       this.displaying.resolve()
     }
-    return this.q.enqueue(this._display, target)
+
+    this._displayRequestId = (this._displayRequestId || 0) + 1
+    this._locationRequestId = (this._locationRequestId || 0) + 1
+    const displayRequestId = this._displayRequestId
+    const locationRequestId = this._locationRequestId
+
+    return this.q
+      .enqueue(this._display, target, displayRequestId)
+      .then((section) => {
+        if (displayRequestId !== this._displayRequestId) {
+          return section
+        }
+
+        return this.reportLocation(locationRequestId).then(() => section)
+      })
   }
 
   /**
@@ -324,7 +338,7 @@ class Rendition {
    * @param  {string} target Url or EpubCFI
    * @return {Promise}
    */
-  _display(target) {
+  _display(target, requestId) {
     if (!this.book) {
       return
     }
@@ -336,6 +350,11 @@ class Rendition {
 
     this.displaying = displaying
 
+    if (requestId !== this._displayRequestId) {
+      displaying.resolve()
+      return displayed
+    }
+
     // Check if this is a book percentage
     if (this.book.locations.length() && isFloat(target)) {
       target = this.book.locations.cfiFromPercentage(parseFloat(target))
@@ -344,12 +363,18 @@ class Rendition {
     section = this.book.spine.get(target)
 
     if (!section) {
+      this.displaying = undefined
       displaying.reject(new Error('No Section Found'))
       return displayed
     }
 
     this.manager.display(section, target).then(
       () => {
+        if (requestId !== this._displayRequestId) {
+          displaying.resolve(section)
+          return
+        }
+
         displaying.resolve(section)
         this.displaying = undefined
 
@@ -360,16 +385,22 @@ class Rendition {
          * @memberof Rendition
          */
         this.emit(EVENTS.RENDITION.DISPLAYED, section)
-        this.reportLocation()
       },
       (err) => {
+        if (requestId !== this._displayRequestId) {
+          displaying.resolve()
+          return
+        }
+
         /**
          * Emit that has been an error displaying
          * @event displayError
          * @param {Section} section
          * @memberof Rendition
          */
+        this.displaying = undefined
         this.emit(EVENTS.RENDITION.DISPLAY_ERROR, err)
+        displaying.reject(err)
       },
     )
 
@@ -492,8 +523,14 @@ class Rendition {
       epubcfi,
     )
 
+    if (this._flowSuppressResizeRedisplay) {
+      return
+    }
+
     if (this.location && this.location.start) {
-      this.display(epubcfi || this.location.start.cfi)
+      this.display(epubcfi || this.location.start.cfi).catch((err) => {
+        this.emit(EVENTS.RENDITION.DISPLAY_ERROR, err)
+      })
     }
   }
 
@@ -548,9 +585,12 @@ class Rendition {
    * @return {Promise}
    */
   next() {
+    this._locationRequestId = (this._locationRequestId || 0) + 1
+    let requestId = this._locationRequestId
+
     return this.q
       .enqueue(this.manager.next.bind(this.manager))
-      .then(this.reportLocation.bind(this))
+      .then(() => this.reportLocation(requestId))
   }
 
   /**
@@ -558,9 +598,12 @@ class Rendition {
    * @return {Promise}
    */
   prev() {
+    this._locationRequestId = (this._locationRequestId || 0) + 1
+    let requestId = this._locationRequestId
+
     return this.q
       .enqueue(this.manager.prev.bind(this.manager))
-      .then(this.reportLocation.bind(this))
+      .then(() => this.reportLocation(requestId))
   }
 
   //-- http://www.idpf.org/epub/301/spec/epub-publications.html#meta-properties-rendering
@@ -637,7 +680,9 @@ class Rendition {
 
     if (this.manager && this.manager.isRendered() && this.location) {
       this.manager.clear()
-      this.display(this.location.start.cfi)
+      this.display(this.location.start.cfi).catch((err) => {
+        this.emit(EVENTS.RENDITION.DISPLAY_ERROR, err)
+      })
     }
   }
 
@@ -698,7 +743,9 @@ class Rendition {
 
     if (this.manager && this.manager.isRendered() && this.location) {
       this.manager.clear()
-      this.display(this.location.start.cfi)
+      this.display(this.location.start.cfi).catch((err) => {
+        this.emit(EVENTS.RENDITION.DISPLAY_ERROR, err)
+      })
     }
   }
 
@@ -707,13 +754,21 @@ class Rendition {
    * @fires relocated
    * @fires locationChanged
    */
-  reportLocation() {
+  reportLocation(requestId) {
     return this.q.enqueue(
       function reportedLocation() {
         return new Promise(
           function (resolve, reject) {
             requestAnimationFrame(
               function reportedLocationAfterRAF() {
+                if (
+                  typeof requestId === 'number' &&
+                  requestId !== this._locationRequestId
+                ) {
+                  resolve()
+                  return
+                }
+
                 var emitLocation = function (result) {
                   let located = this.located(result)
 
@@ -748,7 +803,9 @@ class Rendition {
                    * @type {displayedLocation}
                    * @memberof Rendition
                    */
-                  this.emit(EVENTS.RENDITION.RELOCATED, this.location)
+                  this.emit(EVENTS.RENDITION.RELOCATED, this.location, {
+                    requestId,
+                  })
                   resolve(this.location)
                 }.bind(this)
 
@@ -1056,7 +1113,9 @@ class Rendition {
     if (contents) {
       contents.on(EVENTS.CONTENTS.LINK_CLICKED, (href) => {
         let relative = this.book.path.relative(href)
-        this.display(relative)
+        this.display(relative).catch((err) => {
+          this.emit(EVENTS.RENDITION.DISPLAY_ERROR, err)
+        })
       })
     }
   }

@@ -13,11 +13,13 @@
     "start": "next start -p 7127",
     "lint": "eslint src locales scripts test next.config.js tailwind.config.js postcss.config.js eslint.config.mjs playwright.config.ts",
     "test:theme": "node test/theme-tokens.js",
+    "test:reader-optimization": "node test/reader-optimization.js",
     "test:smoke": "node scripts/test-smoke.mjs",
-    "check": "pnpm test:theme && pnpm lint && pnpm build",
+    "check": "pnpm test:theme && pnpm test:reader-optimization && pnpm lint && pnpm build",
     "check:full": "pnpm check && pnpm test:smoke && pnpm --filter @flow/epubjs test && cargo test --manifest-path src-tauri/Cargo.toml",
     "check:release": "pnpm check:full && pnpm tauri:build",
-    "prepare": "husky install"
+    "prepare": "husky install",
+    "doctor": "npx react-doctor@latest"
   },
   "lint-staged": {
     "*.{js,json,css,ts,tsx,md,mdx}": "prettier --write",

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Dispatch, SetStateAction, useEffect, useMemo, useState } from 'react'
 
 import { useAction } from '@flow/reader/hooks/useAction'
 import { useBoolean } from '@flow/reader/hooks/useBoolean'
@@ -45,12 +45,27 @@ function imageSignature(section: ISection) {
 }
 
 export const ImageView: React.FC<PaneViewProps> = (props) => {
+  const active = props.active ?? true
+  const [mode, setMode] = useState<ImageDisplayMode>('illustrations')
+
+  return (
+    <PaneView {...props}>
+      {active && <ImagePane mode={mode} setMode={setMode} />}
+    </PaneView>
+  )
+}
+
+interface ImagePaneProps {
+  mode: ImageDisplayMode
+  setMode: Dispatch<SetStateAction<ImageDisplayMode>>
+}
+
+const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
   const [action] = useAction()
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation()
   const tab = reader.focusedBookTab
   const [, setImageScanRevision] = useState(0)
-  const [mode, setMode] = useState<ImageDisplayMode>('illustrations')
   const liveSections = useMemo(
     () => (tab?.sections as ISection[] | undefined) ?? [],
     [tab?.sections],
@@ -96,16 +111,14 @@ export const ImageView: React.FC<PaneViewProps> = (props) => {
   }, [canLoadImages, liveSections, tab])
 
   const allImages = liveSections.flatMap(imageEntries)
-  const sections = liveSections
-    .map((section): ImageSection => {
-      const entries = imageEntries(section)
-      const images =
-        mode === 'all'
-          ? entries
-          : entries.filter((image) => !image.hiddenByDefault)
-      return { images, section }
-    })
-    .filter(({ images }) => images.length)
+  const sections = liveSections.flatMap((section): ImageSection[] => {
+    const entries = imageEntries(section)
+    const images =
+      mode === 'all'
+        ? entries
+        : entries.filter((image) => !image.hiddenByDefault)
+    return images.length ? [{ images, section }] : []
+  })
   const visibleImageCount = sections.reduce(
     (count, section) => count + section.images.length,
     0,
@@ -114,45 +127,43 @@ export const ImageView: React.FC<PaneViewProps> = (props) => {
   if (sectionCount > MAX_IMAGE_SECTIONS) return null
 
   return (
-    <PaneView {...props}>
-      <div className="flex h-full min-h-0 flex-col">
-        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--flow-border)] bg-[var(--flow-bg-sidebar)] px-2">
-          <div className="flex h-8 min-w-0 flex-1 items-center rounded-lg bg-[var(--flow-sidebar-item-bg)] p-0.5 ring-1 ring-[var(--flow-sidebar-item-border)] ring-inset">
-            {(['illustrations', 'all'] as const).map((item) => (
-              <button
-                key={item}
-                type="button"
-                className={[
-                  'flex h-full min-w-0 flex-1 items-center justify-center truncate rounded-md px-2 py-0 text-base leading-tight font-medium transition-colors',
-                  mode === item
-                    ? 'bg-[var(--flow-accent-bg)] text-[var(--flow-text)] ring-1 ring-[var(--flow-accent-border)] ring-inset'
-                    : 'text-[var(--flow-text-muted)] hover:bg-[var(--flow-sidebar-item-bg-hover)] hover:text-[var(--flow-text)]',
-                ].join(' ')}
-                onClick={() => setMode(item)}
-              >
-                {t(`image.filter.${item}`)}
-              </button>
-            ))}
-          </div>
-          <span className="flex h-7 min-w-8 shrink-0 items-center justify-center rounded-full bg-[var(--flow-sidebar-item-bg)] px-1.5 text-sm leading-none font-medium text-[var(--flow-text-muted)] ring-1 ring-[var(--flow-sidebar-item-border)] ring-inset">
-            {mode === 'all'
-              ? visibleImageCount
-              : `${visibleImageCount}/${allImages.length}`}
-          </span>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--flow-border)] bg-[var(--flow-bg-sidebar)] px-2">
+        <div className="flex h-8 min-w-0 flex-1 items-center rounded-lg bg-[var(--flow-sidebar-item-bg)] p-0.5 ring-1 ring-[var(--flow-sidebar-item-border)] ring-inset">
+          {(['illustrations', 'all'] as const).map((item) => (
+            <button
+              key={item}
+              type="button"
+              className={[
+                'flex h-full min-w-0 flex-1 items-center justify-center truncate rounded-md px-2 py-0 text-base leading-tight font-medium transition-colors',
+                mode === item
+                  ? 'bg-[var(--flow-accent-bg)] text-[var(--flow-text)] ring-1 ring-[var(--flow-accent-border)] ring-inset'
+                  : 'text-[var(--flow-text-muted)] hover:bg-[var(--flow-sidebar-item-bg-hover)] hover:text-[var(--flow-text)]',
+              ].join(' ')}
+              onClick={() => setMode(item)}
+            >
+              {t(`image.filter.${item}`)}
+            </button>
+          ))}
         </div>
-        <div className="scroll text-muted-foreground min-h-0 flex-1 text-base">
-          {sections.length ? (
-            sections.map(({ images, section }) => (
-              <Block key={section.href} images={images} section={section} />
-            ))
-          ) : (
-            <div className="px-5 py-4 text-base text-[var(--flow-text-muted)]">
-              {t('image.empty')}
-            </div>
-          )}
-        </div>
+        <span className="flex h-7 min-w-8 shrink-0 items-center justify-center rounded-full bg-[var(--flow-sidebar-item-bg)] px-1.5 text-sm leading-none font-medium text-[var(--flow-text-muted)] ring-1 ring-[var(--flow-sidebar-item-border)] ring-inset">
+          {mode === 'all'
+            ? visibleImageCount
+            : `${visibleImageCount}/${allImages.length}`}
+        </span>
       </div>
-    </PaneView>
+      <div className="scroll text-muted-foreground min-h-0 flex-1 text-base">
+        {sections.length ? (
+          sections.map(({ images, section }) => (
+            <Block key={section.href} images={images} section={section} />
+          ))
+        ) : (
+          <div className="px-5 py-4 text-base text-[var(--flow-text-muted)]">
+            {t('image.empty')}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -188,11 +199,10 @@ const Block: React.FC<BlockProps> = ({ images, section }) => {
 
             if (!imageSrc) return null
             return (
-              <img
-                className="w-full cursor-pointer px-5 py-2"
+              <button
+                type="button"
                 key={`${src}:${image.index}`}
-                src={imageSrc}
-                alt={asset?.href ?? src}
+                className="block w-full cursor-pointer border-0 bg-transparent p-0 text-left"
                 onClick={() => {
                   void reader.focusedBookTab?.displayImage(
                     section,
@@ -200,7 +210,13 @@ const Block: React.FC<BlockProps> = ({ images, section }) => {
                     image.index,
                   )
                 }}
-              />
+              >
+                <img
+                  className="w-full px-5 py-2"
+                  src={imageSrc}
+                  alt={asset?.href ?? src}
+                />
+              </button>
             )
           })}
         </div>

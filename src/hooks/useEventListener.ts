@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 import { IS_SERVER } from '@flow/reader/env'
 
@@ -7,13 +7,23 @@ export function useEventListener<K extends keyof WindowEventMap>(
   listener: (event: WindowEventMap[K]) => void,
   options?: boolean | AddEventListenerOptions,
 ) {
+  const listenerRef = useRef(listener)
+
+  useEffect(() => {
+    listenerRef.current = listener
+  }, [listener])
+
   useEffect(() => {
     if (IS_SERVER) return
 
-    window.addEventListener(type, listener, options)
+    const handler = (event: WindowEventMap[K]) => {
+      listenerRef.current(event)
+    }
+
+    window.addEventListener(type, handler, options)
 
     return () => {
-      window.removeEventListener(type, listener, options)
+      window.removeEventListener(type, handler, options)
     }
-  }, [listener, options, type])
+  }, [options, type])
 }

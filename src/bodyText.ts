@@ -273,12 +273,11 @@ function getBodyTextCandidateText(el: HTMLElement) {
 }
 
 function getDirectText(el: HTMLElement) {
-  return normalizeText(
-    [...el.childNodes]
-      .filter((node) => node.nodeType === 3)
-      .map((node) => node.textContent ?? '')
-      .join(''),
-  )
+  let text = ''
+  for (const node of el.childNodes) {
+    if (node.nodeType === 3) text += node.textContent ?? ''
+  }
+  return normalizeText(text)
 }
 
 function collectBodyTextCandidateText(

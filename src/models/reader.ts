@@ -8,7 +8,13 @@ import Navigation, { NavItem } from '@flow/epubjs/types/navigation'
 import Section from '@flow/epubjs/types/section'
 import { IS_SERVER } from '@flow/reader/env'
 
-import { AnnotationColor, AnnotationType } from '../annotation'
+import {
+  AnnotationColor,
+  AnnotationType,
+  compareDefinition,
+  createAnnotationSpine,
+  normalizeDefinition,
+} from '../annotation'
 import {
   BookRecord,
   ReadingSpreadPageRecord,
@@ -110,6 +116,8 @@ function elementName(element: Element) {
   return element.localName.toUpperCase()
 }
 
+const NON_TEXT_SIBLING_TAGS = new Set(['IMG', 'SVG', 'PICTURE'])
+
 function siblingTextLength(element: Element) {
   let length = 0
 
@@ -119,7 +127,7 @@ function siblingTextLength(element: Element) {
       length += textLength(node.textContent)
     } else if (
       node instanceof Element &&
-      !['IMG', 'SVG', 'PICTURE'].includes(elementName(node))
+      !NON_TEXT_SIBLING_TAGS.has(elementName(node))
     ) {
       length += textLength(node.textContent)
     }
@@ -285,10 +293,6 @@ function classifyImage(image: HTMLImageElement, index: number): ImageEntry {
   }
 }
 
-function compareDefinition(d1: string, d2: string) {
-  return d1.toLowerCase() === d2.toLowerCase()
-}
-
 function withoutReadingSpread(
   configuration: BookRecord['configuration'] | undefined,
 ) {
@@ -393,6 +397,13 @@ function calculateReadingPercentage({
   return displayLocationPercentage(end) ?? 0
 }
 
+function fallbackReadingPercentage(location: Location) {
+  if (location.atStart) return 0
+  if (location.atEnd) return 1
+
+  return displayLocationPercentage(location.end ?? location.start)
+}
+
 export interface INavItem extends NavItem, INode {
   subitems?: INavItem[]
 }
@@ -427,6 +438,41 @@ export interface ImageEntry {
   src: string
 }
 
+export interface BookOverlayState {
+  annotations: BookRecord['annotations']
+  definitions: BookRecord['definitions']
+}
+
+export type BookTypographyConfiguration = NonNullable<
+  BookRecord['configuration']
+>['typography']
+
+export interface PaginationSnapshot {
+  location: Location
+  percentage?: number
+  spreadDivisor: number
+  layoutVersion: number
+  paginationVersion: number
+  headerPath: HeaderPathItem[]
+  visibleSectionIndexes: number[]
+}
+
+export interface HeaderPathItem {
+  id?: string
+  href?: string
+  label: string
+}
+
+interface RelocatedEventMeta {
+  requestId?: number
+}
+
+interface LocationRequestIntent {
+  anchorTarget?: string
+  layoutKey?: string
+  updateAnchor: boolean
+}
+
 interface SectionNavIndex {
   nav: Navigation
   sections: ISection[]
@@ -455,22 +501,49 @@ function snapshotReflowablePage(
   }
 }
 
+function locationEndsAtDisplayedPageEnd(location?: Location) {
+  const displayed = location?.end?.displayed
+  return (
+    typeof displayed?.page === 'number' &&
+    typeof displayed.total === 'number' &&
+    displayed.total > 0 &&
+    displayed.page >= displayed.total
+  )
+}
+
 function snapshotReflowableSpread(
   manager: any,
   layoutStyleSignature?: string,
+  location?: Location,
 ): ReadingSpreadRecord | undefined {
   const spread = manager?.currentReflowableSpread
   if (!manager?.canUseLogicalReflowableSpread?.() || !spread) return
 
   const left = snapshotReflowablePage(spread.left)
   const right = snapshotReflowablePage(spread.right)
-  const page = left ?? right
+  const endsAtSectionEnd =
+    Boolean(spread.endsAtSectionEnd) || locationEndsAtDisplayedPageEnd(location)
+  const endAnchoredPage = endsAtSectionEnd ? (right ?? left) : undefined
+  const anchor =
+    endAnchoredPage || (spread.anchor === 'right' && right)
+      ? 'right'
+      : spread.anchor === 'left' && left
+        ? 'left'
+        : left
+          ? 'left'
+          : 'right'
+  const page =
+    endAnchoredPage ?? (anchor === 'right' ? (right ?? left) : (left ?? right))
   if (!page) return
 
   return {
     ...page,
     version: 1,
-    anchor: left ? 'left' : 'right',
+    anchor,
+    exact: !endsAtSectionEnd,
+    ...(left ? { left } : {}),
+    ...((endAnchoredPage ?? right) ? { right: endAnchoredPage ?? right } : {}),
+    ...(endsAtSectionEnd ? { endsAtSectionEnd: true } : {}),
     ...(layoutStyleSignature ? { layoutStyleSignature } : {}),
   }
 }
@@ -504,6 +577,22 @@ function hydrateReflowableSpread(
     return
   }
 
+  if (spread.left || spread.right) {
+    const left = hydrateReflowablePage(spread.left, sections)
+    const right = hydrateReflowablePage(spread.right, sections)
+    const anchor = spread.anchor === 'right' ? 'right' : 'left'
+    const anchorPage = anchor === 'right' ? right : left
+    if (!anchorPage) return
+
+    return {
+      exact: spread.exact ?? true,
+      anchor,
+      ...(left ? { left } : {}),
+      ...(right ? { right } : {}),
+      ...(spread.endsAtSectionEnd ? { endsAtSectionEnd: true } : {}),
+    }
+  }
+
   const page = hydrateReflowablePage(spread, sections)
   if (!page) return
 
@@ -517,6 +606,15 @@ function hydrateReflowableSpread(
         left: page,
         anchor: 'left',
       }
+}
+
+function readingSpreadSectionIndexes(spread: ReadingSpreadRecord) {
+  const pages =
+    spread.left || spread.right ? [spread.left, spread.right] : [spread]
+
+  return pages
+    .filter((page): page is ReadingSpreadPageRecord => Boolean(page))
+    .map((page) => page.sectionIndex)
 }
 
 function mergeConfigurationWithSpread(
@@ -561,11 +659,24 @@ export class BookTab extends BaseTab {
   locationsToReturn: Location[] = []
   section?: ISection
   sections?: ISection[]
+  visibleSections: ISection[] = []
+  visibleSectionIndexes: number[] = []
   results?: IMatch[]
   activeResultID?: string
   bodyTextCache: BodyTextDetectionCache = ref(new Map())
+  overlayState: BookOverlayState = {
+    annotations: [],
+    definitions: [],
+  }
+  typographyConfiguration: BookTypographyConfiguration
+  paginationSnapshot?: PaginationSnapshot
   rendered = false
   turning = false
+  layoutVersion = 0
+  viewVersion = 0
+  paginationVersion = 0
+  overlayVersion = 0
+  active = false
   private sectionInfoPromises = new Map<number, Promise<void>>()
   private pendingBookUpdate?: Partial<BookRecord>
   private pendingBookUpdateTimer?: ReturnType<typeof setTimeout>
@@ -574,6 +685,17 @@ export class BookTab extends BaseTab {
   private renderGeneration = 0
   private sectionNavIndex?: SectionNavIndex
   private currentSpreadState?: ReadingSpreadRecord
+  private preferredSectionIndex?: number
+  private allowLocationJump = false
+  private navigationDirection?: -1 | 1
+  private relayoutAnchorSectionIndexes?: number[]
+  private acceptedLocationRequests = new Map<number, LocationRequestIntent>()
+  private runtimeAnchorCfi?: string
+  private runtimeSpreadAnchor?: ReadingSpreadRecord
+  private spreadAnchorsByLayout = new Map<string, ReadingSpreadRecord>()
+  private layoutOperationId = 0
+  private layoutOperationPromise = Promise.resolve()
+  rejectedLocationEventCount = 0
 
   get container() {
     return this?.rendition?.manager?.container as HTMLDivElement | undefined
@@ -587,9 +709,172 @@ export class BookTab extends BaseTab {
     return this.locationsToReturn[this.locationsToReturn.length - 1]
   }
 
-  display(target?: string, returnable = true) {
-    this.rendition?.display(target)
+  private sectionForDisplayTarget(target?: string) {
+    if (!target) return
+
+    try {
+      const section = this.epub?.spine?.get(target) as ISection | undefined
+      if (section) return section
+    } catch (error) {
+      // Invalid CFIs and stale hrefs are handled by falling back below.
+    }
+
+    const [href] = target.split('#')
+    return this.sections?.find(
+      (section) =>
+        section.href === target ||
+        section.href === href ||
+        compareHref(section.href, target) ||
+        compareHref(section.href, href),
+    )
+  }
+
+  private locationAnchorCfi(location = this.currentLocation) {
+    return location?.start.cfi
+  }
+
+  private currentAnchorCfi() {
+    if (this.sectionForDisplayTarget(this.runtimeAnchorCfi)) {
+      return this.runtimeAnchorCfi
+    }
+
+    return this.locationAnchorCfi()
+  }
+
+  private committedDisplayTarget() {
+    const target = this.currentAnchorCfi()
+    return this.sectionForDisplayTarget(target) ? target : undefined
+  }
+
+  private initialDisplayTarget() {
+    const candidates = [
+      this.currentAnchorCfi(),
+      this.book.cfi,
+      this.sections?.[0]?.href,
+    ]
+
+    return candidates.find((target) => this.sectionForDisplayTarget(target))
+  }
+
+  getCurrentDisplayTarget() {
+    return this.committedDisplayTarget()
+  }
+
+  resizeRendition(width: number, height: number) {
+    const operationId = ++this.layoutOperationId
+
+    this.layoutOperationPromise = this.layoutOperationPromise
+      .catch(() => undefined)
+      .then(() => this.runResizeRendition(operationId, width, height))
+  }
+
+  private async runResizeRendition(
+    operationId: number,
+    width: number,
+    height: number,
+  ) {
+    if (operationId !== this.layoutOperationId) return
+
+    const target = this.committedDisplayTarget()
+    if (!target) return
+
+    this.rememberCurrentLayoutSpread()
+    this.allowLocationJump = false
+    this.navigationDirection = undefined
+    this.relayoutAnchorSectionIndexes = [...this.visibleSectionIndexes]
+    const rendition = this.rendition as any
+    const manager = rendition?.manager
+    const layoutKey = this.layoutAnchorKey(width, height)
+    const spread =
+      this.storedSpreadForLayout(width, height) ??
+      hydrateReflowableSpread(
+        this.runtimeSpreadAnchor,
+        this.sections,
+        this.layoutStyleSignature,
+      )
+
+    if (!rendition || !manager) return
+
+    rendition._flowSuppressResizeRedisplay = true
+    try {
+      rendition.resize(width, height, target)
+    } finally {
+      rendition._flowSuppressResizeRedisplay = false
+    }
+
+    try {
+      if (spread && manager.renderReflowableSpread) {
+        const requestId = this.createManualLocationRequest({
+          layoutKey,
+          updateAnchor: false,
+        })
+        await manager.renderReflowableSpread(spread)
+        await (this.rendition as any)?.reportLocation(requestId)
+        this.commitPendingRenditionLocation(requestId)
+        return
+      }
+
+      const previousRequestId = this.currentRenditionLocationRequestId()
+      const display = this.rendition?.display(target)
+      const requestId = this.trackRenditionLocationRequest(previousRequestId, {
+        layoutKey,
+        updateAnchor: false,
+      })
+      await display
+      this.commitPendingRenditionLocation(requestId)
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  private resolveDisplayTarget(
+    target?: string,
+    fallback: 'current' | 'initial' | false = 'current',
+  ) {
+    if (target && this.sectionForDisplayTarget(target)) return target
+    if (target && /^\d*\.?\d+$/.test(target)) return target
+
+    if (fallback === 'current') return this.committedDisplayTarget()
+    if (fallback === 'initial') return this.initialDisplayTarget()
+  }
+
+  private async displayResolvedTarget(
+    target?: string,
+    {
+      preferredSection,
+      returnable = true,
+    }: { preferredSection?: ISection; returnable?: boolean } = {},
+  ) {
+    const resolvedTarget = this.resolveDisplayTarget(
+      target,
+      target ? false : 'current',
+    )
+    if (!resolvedTarget || !this.rendition) return
+
+    const resolvedSection =
+      preferredSection ?? this.sectionForDisplayTarget(resolvedTarget)
+    this.preferredSectionIndex = resolvedSection?.index
+    this.allowLocationJump = true
+    this.navigationDirection = undefined
+    this.relayoutAnchorSectionIndexes = undefined
     if (returnable) this.showPrevLocation()
+
+    try {
+      const previousRequestId = this.currentRenditionLocationRequestId()
+      const display = this.rendition.display(resolvedTarget)
+      const requestId = this.trackRenditionLocationRequest(previousRequestId, {
+        anchorTarget: resolvedTarget,
+        updateAnchor: true,
+      })
+      await display
+      this.commitPendingRenditionLocation(requestId)
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  display(target?: string, returnable = true) {
+    void this.displayResolvedTarget(target, { returnable })
   }
   async pageIndexForCfi(sectionIndex: number, cfi: string) {
     const section = this.sections?.find((s) => s.index === sectionIndex)
@@ -601,36 +886,23 @@ export class BookTab extends BaseTab {
   }
   async displayReflowableTarget(sectionIndex: number, cfi: string) {
     const section = this.sections?.find((s) => s.index === sectionIndex)
-    const manager = this.rendition?.manager
-
-    if (section && manager?.canUseLogicalReflowableSpread?.()) {
-      await manager.displayReflowableTarget(section, cfi)
-      await this.rendition?.reportLocation()
-      return
-    }
-
-    this.display(cfi, false)
+    await this.displayResolvedTarget(cfi, {
+      preferredSection: section,
+      returnable: false,
+    })
   }
   async displaySectionStart(section: ISection) {
     return this.displayTarget(section)
   }
   async displayTarget(section: ISection, target?: string) {
-    const manager = this.rendition?.manager
-
-    if (
-      manager?.canUseLogicalReflowableSpread?.() &&
-      manager.displayReflowableTarget
-    ) {
-      await manager.displayReflowableTarget(section, target)
-      await this.rendition?.reportLocation()
-      return
-    }
-
-    this.display(
+    await this.displayResolvedTarget(
       target?.startsWith('#')
         ? `${section.href}${target}`
         : (target ?? section.href),
-      false,
+      {
+        preferredSection: section,
+        returnable: false,
+      },
     )
   }
 
@@ -731,7 +1003,17 @@ export class BookTab extends BaseTab {
     if (this.turning) return
 
     return this.runNavigation(async () => {
-      await this.rendition?.prev()
+      this.preferredSectionIndex = undefined
+      this.navigationDirection = -1
+      this.allowLocationJump = false
+      this.relayoutAnchorSectionIndexes = undefined
+      const previousRequestId = this.currentRenditionLocationRequestId()
+      const navigation = this.rendition?.prev()
+      const requestId = this.trackRenditionLocationRequest(previousRequestId, {
+        updateAnchor: true,
+      })
+      await navigation
+      this.commitPendingRenditionLocation(requestId)
       // avoid content flash
       if (
         !this.rendition?.manager?.canUseLogicalReflowableSpread?.() &&
@@ -746,7 +1028,17 @@ export class BookTab extends BaseTab {
     if (this.turning) return
 
     return this.runNavigation(async () => {
-      await this.rendition?.next()
+      this.preferredSectionIndex = undefined
+      this.navigationDirection = 1
+      this.allowLocationJump = false
+      this.relayoutAnchorSectionIndexes = undefined
+      const previousRequestId = this.currentRenditionLocationRequestId()
+      const navigation = this.rendition?.next()
+      const requestId = this.trackRenditionLocationRequest(previousRequestId, {
+        updateAnchor: true,
+      })
+      await navigation
+      this.commitPendingRenditionLocation(requestId)
     })
   }
   private sectionPositionFromLocation(
@@ -816,6 +1108,33 @@ export class BookTab extends BaseTab {
     return this.navigateSection(1)
   }
 
+  private setBook(book: BookRecord) {
+    this.book = book
+    this.overlayState = {
+      annotations: book.annotations,
+      definitions: book.definitions,
+    }
+    this.typographyConfiguration = book.configuration?.typography
+  }
+
+  private syncOverlayState(changes: Partial<BookRecord>) {
+    if (!('annotations' in changes) && !('definitions' in changes)) return
+
+    this.overlayState = {
+      annotations: changes.annotations ?? this.overlayState.annotations,
+      definitions: changes.definitions ?? this.overlayState.definitions,
+    }
+  }
+
+  private syncTypographyConfiguration(changes: Partial<BookRecord>) {
+    if (!('configuration' in changes)) return
+
+    const typography = changes.configuration?.typography
+    if (typography === this.typographyConfiguration) return
+
+    this.typographyConfiguration = typography
+  }
+
   updateBook(changes: Partial<BookRecord>) {
     const readingPositionOnly = isReadingPositionOnlyUpdate(changes, this.book)
 
@@ -825,6 +1144,8 @@ export class BookTab extends BaseTab {
     }
     // don't wait promise resolve to make valtio batch updates
     this.book = { ...this.book, ...changes }
+    this.syncOverlayState(changes)
+    this.syncTypographyConfiguration(changes)
     db.books.remember(this.book)
 
     if (readingPositionOnly) {
@@ -879,8 +1200,10 @@ export class BookTab extends BaseTab {
       totalLength: this.totalLength,
     })
 
+    const cfi = this.locationAnchorCfi(this.currentLocation)
+
     return {
-      cfi: this.currentLocation.start.cfi,
+      cfi,
       percentage,
       configuration: mergeConfigurationWithSpread(
         this.book.configuration,
@@ -902,7 +1225,7 @@ export class BookTab extends BaseTab {
         ...positionUpdate,
         updatedAt: Date.now(),
       }
-      this.book = { ...this.book, ...changes }
+      this.setBook({ ...this.book, ...changes })
       db.books.remember(this.book)
       await db.books.update(this.book.id, changes)
     }
@@ -962,15 +1285,256 @@ export class BookTab extends BaseTab {
     return false
   }
 
+  private bumpOverlayVersion() {
+    this.overlayVersion++
+  }
+
+  private bumpViewVersion() {
+    this.viewVersion++
+    this.bumpOverlayVersion()
+  }
+
+  private commitPaginationSnapshot(
+    location: Location,
+    percentage?: number,
+    activeSection = this.section,
+  ) {
+    const divisor = this.rendition?.manager?.layout?.divisor
+
+    this.paginationVersion++
+    this.paginationSnapshot = {
+      location,
+      percentage,
+      spreadDivisor:
+        typeof divisor === 'number' && Number.isFinite(divisor) && divisor > 0
+          ? divisor
+          : 1,
+      layoutVersion: this.layoutVersion,
+      paginationVersion: this.paginationVersion,
+      headerPath: this.snapshotHeaderPath(activeSection),
+      visibleSectionIndexes: [...this.visibleSectionIndexes],
+    }
+  }
+
+  markLayoutChanged() {
+    this.layoutVersion++
+  }
+
+  private currentRenditionLocationRequestId() {
+    const requestId = (this.rendition as any)?._locationRequestId
+    return typeof requestId === 'number' ? requestId : undefined
+  }
+
+  private trackRenditionLocationRequest(
+    previousRequestId: number | undefined,
+    intent: LocationRequestIntent,
+  ) {
+    const requestId = this.currentRenditionLocationRequestId()
+    if (requestId === undefined || requestId === previousRequestId) return
+
+    this.acceptedLocationRequests.set(requestId, intent)
+    return requestId
+  }
+
+  private createManualLocationRequest(intent: LocationRequestIntent) {
+    const rendition = this.rendition as any
+    if (!rendition) return
+
+    const requestId =
+      typeof rendition._locationRequestId === 'number'
+        ? rendition._locationRequestId + 1
+        : 1
+    rendition._locationRequestId = requestId
+    this.acceptedLocationRequests.set(requestId, intent)
+    return requestId
+  }
+
+  private commitPendingRenditionLocation(requestId: number | undefined) {
+    if (
+      typeof requestId !== 'number' ||
+      !this.acceptedLocationRequests.has(requestId)
+    ) {
+      return
+    }
+
+    if (requestId !== this.currentRenditionLocationRequestId()) {
+      this.acceptedLocationRequests.delete(requestId)
+      this.rejectedLocationEventCount++
+      return
+    }
+
+    const loc = this.rendition?.location
+    if (!loc) {
+      this.acceptedLocationRequests.delete(requestId)
+      this.rejectedLocationEventCount++
+      return
+    }
+
+    this.commitRelocatedLocation(loc, { requestId })
+  }
+
+  private consumeLocationEventIntent(meta?: RelocatedEventMeta) {
+    const requestId = meta?.requestId
+
+    if (typeof requestId === 'number') {
+      const intent = this.acceptedLocationRequests.get(requestId)
+      if (intent) {
+        this.acceptedLocationRequests.delete(requestId)
+        return intent
+      }
+
+      this.rejectedLocationEventCount++
+      return
+    }
+
+    this.rejectedLocationEventCount++
+  }
+
+  private commitRelocatedLocation(loc: Location, meta?: RelocatedEventMeta) {
+    const locationIntent = this.consumeLocationEventIntent(meta)
+    if (!locationIntent) return
+
+    this.syncFrames()
+    let percentage = fallbackReadingPercentage(loc)
+    const visibleSections = this.visibleSectionsForLocation(loc)
+
+    // calculate percentage
+    if (this.sections) {
+      const end = loc.end ?? loc.start
+
+      if (!this.sections.some((s) => s.href === end.href)) {
+        if (!this.shouldAcceptRelocatedLocation(percentage, visibleSections)) {
+          this.rejectedLocationEventCount++
+          return
+        }
+
+        const currentSpreadState = snapshotReflowableSpread(
+          this.rendition?.manager,
+          this.layoutStyleSignature,
+          loc,
+        )
+        this.currentLocation = loc
+        this.currentSpreadState = currentSpreadState
+        if (locationIntent.updateAnchor) {
+          this.spreadAnchorsByLayout.clear()
+          this.runtimeSpreadAnchor = currentSpreadState
+        }
+        this.rememberCurrentLayoutSpread(locationIntent.layoutKey, {
+          replace: locationIntent.updateAnchor,
+          spread: currentSpreadState,
+        })
+        const activeSection = this.commitVisibleSections(loc, visibleSections)
+        this.updateRuntimeAnchorCfi(loc, locationIntent)
+        this.commitPaginationSnapshot(loc, percentage, activeSection)
+        this.clearLocationIntent()
+        this.rendered = true
+        return
+      }
+
+      percentage = calculateReadingPercentage({
+        location: loc,
+        sections: this.sections,
+        totalLength: this.totalLength,
+      })
+    }
+
+    if (!this.shouldAcceptRelocatedLocation(percentage, visibleSections)) {
+      this.rejectedLocationEventCount++
+      return
+    }
+
+    const currentSpreadState = snapshotReflowableSpread(
+      this.rendition?.manager,
+      this.layoutStyleSignature,
+      loc,
+    )
+    this.currentLocation = loc
+    this.currentSpreadState = currentSpreadState
+    if (locationIntent.updateAnchor) {
+      this.spreadAnchorsByLayout.clear()
+      this.runtimeSpreadAnchor = currentSpreadState
+    }
+    this.rememberCurrentLayoutSpread(locationIntent.layoutKey, {
+      replace: locationIntent.updateAnchor,
+      spread: currentSpreadState,
+    })
+    const activeSection = this.commitVisibleSections(loc, visibleSections)
+    this.updateRuntimeAnchorCfi(loc, locationIntent)
+
+    if (this.sections) {
+      const start = loc.start
+      const activeNavItem =
+        activeSection?.navitem ??
+        this.mapSectionToNavItem(activeSection?.href ?? start.href)
+      if (activeSection && activeNavItem) {
+        activeSection.navitem = activeNavItem
+      }
+      this.expandNavPath(activeNavItem)
+
+      const positionUpdate = this.createCurrentPositionUpdate(percentage)
+      if (positionUpdate) {
+        this.updateBook(positionUpdate)
+      }
+    }
+
+    this.commitPaginationSnapshot(loc, percentage, activeSection)
+    this.clearLocationIntent()
+    this.rendered = true
+  }
+
+  private updateRuntimeAnchorCfi(
+    location: Location,
+    intent: LocationRequestIntent,
+  ) {
+    if (!intent.updateAnchor) return
+
+    const anchor = this.sectionForDisplayTarget(intent.anchorTarget)
+      ? intent.anchorTarget
+      : this.locationAnchorCfi(location)
+    if (this.sectionForDisplayTarget(anchor)) {
+      this.runtimeAnchorCfi = anchor
+    }
+  }
+
+  setActive(active: boolean) {
+    this.active = active
+
+    const manager = this.rendition?.manager
+    if (manager) {
+      manager.suspendResize = true
+    }
+  }
+
   define(def: string[]) {
-    this.updateBook({ definitions: [...this.book.definitions, ...def] })
+    const definitions = [...this.book.definitions]
+    let changed = false
+
+    def.forEach((item) => {
+      const definition = normalizeDefinition(item)
+      if (!definition) return
+      if (
+        definitions.some((current) => compareDefinition(current, definition))
+      ) {
+        return
+      }
+
+      definitions.push(definition)
+      changed = true
+    })
+
+    if (!changed) return
+
+    this.updateBook({ definitions })
+    this.bumpOverlayVersion()
   }
   undefine(def: string) {
-    this.updateBook({
-      definitions: this.book.definitions.filter(
-        (d) => !compareDefinition(d, def),
-      ),
-    })
+    const definitions = this.book.definitions.filter(
+      (d) => !compareDefinition(d, def),
+    )
+    if (definitions.length === this.book.definitions.length) return
+
+    this.updateBook({ definitions })
+    this.bumpOverlayVersion()
   }
   isDefined(def: string) {
     return this.book.definitions.some((d) => compareDefinition(d, def))
@@ -995,10 +1559,12 @@ export class BookTab extends BaseTab {
 
     const navitem = spine.navitem ?? this.mapSectionToNavItem(spine.href)
     if (navitem) spine.navitem = navitem
-    if (!spine.navitem) return
+    const annotationSpine = createAnnotationSpine(spine)
+    if (!annotationSpine) return
 
-    const i = this.book.annotations.findIndex((a) => a.cfi === cfi)
-    let annotation = this.book.annotations[i]
+    const annotations = [...snapshot(this.book.annotations)]
+    const i = annotations.findIndex((a) => a.cfi === cfi)
+    let annotation = annotations[i]
 
     const now = Date.now()
     if (!annotation) {
@@ -1006,10 +1572,7 @@ export class BookTab extends BaseTab {
         id: createId(),
         bookId: this.book.id,
         cfi,
-        spine: {
-          index: spine.index,
-          title: spine.navitem.label,
-        },
+        spine: annotationSpine,
         createAt: now,
         updatedAt: now,
         type,
@@ -1018,32 +1581,34 @@ export class BookTab extends BaseTab {
         text,
       }
 
-      this.updateBook({
-        // DataCloneError: Failed to execute 'put' on 'IDBObjectStore': #<Object> could not be cloned.
-        annotations: [...snapshot(this.book.annotations), annotation],
-      })
+      this.updateBook({ annotations: [...annotations, annotation] })
     } else {
       annotation = {
-        ...this.book.annotations[i]!,
+        ...annotation,
         type,
         updatedAt: now,
         color,
         notes,
         text,
       }
-      this.book.annotations.splice(i, 1, annotation)
-      this.updateBook({
-        annotations: [...snapshot(this.book.annotations)],
-      })
+      annotations.splice(i, 1, annotation)
+      this.updateBook({ annotations })
     }
+
+    this.bumpOverlayVersion()
   }
   removeAnnotation(cfi: string) {
-    return this.updateBook({
-      annotations: snapshot(this.book.annotations).filter((a) => a.cfi !== cfi),
-    })
+    const annotations = snapshot(this.book.annotations).filter(
+      (a) => a.cfi !== cfi,
+    )
+    if (annotations.length === this.book.annotations.length) return
+
+    this.updateBook({ annotations })
+    this.bumpOverlayVersion()
   }
 
   keyword = ''
+  tocVersion = 0
   setKeyword(keyword: string) {
     if (this.keyword === keyword) return
     this.keyword = keyword
@@ -1067,19 +1632,38 @@ export class BookTab extends BaseTab {
 
   toggle(id: string) {
     const item = find(this.nav?.toc, id) as INavItem
-    if (item) item.expanded = !item.expanded
+    if (item) {
+      item.expanded = !item.expanded
+      this.tocVersion++
+    }
   }
 
   toggleNavItem(target: Pick<INavItem, 'id' | 'href'> & Partial<INavItem>) {
     const item = this.findNavItem(target)
     if (item) {
       item.expanded = !item.expanded
+      this.tocVersion++
       return
     }
 
     if ('expanded' in target) {
       target.expanded = !target.expanded
+      this.tocVersion++
     }
+  }
+
+  setNavExpanded(expanded: boolean) {
+    let changed = false
+
+    this.nav?.toc?.forEach((root) =>
+      dfs(root as INavItem, (item) => {
+        if (item.expanded === expanded) return
+        item.expanded = expanded
+        changed = true
+      }),
+    )
+
+    if (changed) this.tocVersion++
   }
 
   findNavItem(
@@ -1205,6 +1789,101 @@ export class BookTab extends BaseTab {
     return this.location?.start.href
   }
 
+  private sectionFromLocationPoint(
+    point?: Pick<Location['start'], 'index' | 'href'>,
+  ) {
+    if (!point) return
+
+    return (
+      this.sections?.find((section) => section.index === point.index) ??
+      this.sections?.find((section) => section.href === point.href) ??
+      this.sections?.find((section) => compareHref(section.href, point.href))
+    )
+  }
+
+  private visibleSectionsForLocation(location: Location) {
+    const sections: ISection[] = []
+    const seen = new Set<number>()
+    const add = (section?: ISection) => {
+      if (!section || seen.has(section.index)) return
+
+      this.assignSectionNavItem(section)
+      seen.add(section.index)
+      sections.push(section)
+    }
+
+    const spread = this.rendition?.manager?.currentReflowableSpread
+    add(spread?.left?.section as ISection | undefined)
+    add(spread?.right?.section as ISection | undefined)
+    add(this.sectionFromLocationPoint(location.start))
+    add(this.sectionFromLocationPoint(location.end))
+
+    return sections
+  }
+
+  private commitVisibleSections(
+    location: Location,
+    visibleSections = this.visibleSectionsForLocation(location),
+  ) {
+    this.visibleSections = ref(visibleSections)
+    this.visibleSectionIndexes = visibleSections.map((section) => section.index)
+
+    const preferredSection =
+      this.preferredSectionIndex === undefined
+        ? undefined
+        : visibleSections.find(
+            (section) => section.index === this.preferredSectionIndex,
+          )
+    const startSection = this.sectionFromLocationPoint(location.start)
+    const activeSection =
+      preferredSection ?? startSection ?? visibleSections[0] ?? this.section
+
+    if (activeSection) {
+      this.assignSectionNavItem(activeSection)
+      this.section = ref(activeSection)
+    }
+
+    return activeSection
+  }
+
+  private shouldAcceptRelocatedLocation(
+    percentage: number | undefined,
+    visibleSections: ISection[],
+  ) {
+    if (this.relayoutAnchorSectionIndexes?.length) {
+      const nextIndexes = new Set(
+        visibleSections.map((section) => section.index),
+      )
+      const stillAnchored = this.relayoutAnchorSectionIndexes.some((index) =>
+        nextIndexes.has(index),
+      )
+      if (!stillAnchored) return false
+    }
+
+    const currentPercentage = this.paginationSnapshot?.percentage
+    if (
+      !this.allowLocationJump &&
+      typeof currentPercentage === 'number' &&
+      Number.isFinite(currentPercentage) &&
+      typeof percentage === 'number' &&
+      Number.isFinite(percentage)
+    ) {
+      const delta = percentage - currentPercentage
+
+      if (this.navigationDirection === 1 && delta < -0.01) return false
+      if (this.navigationDirection === -1 && delta > 0.01) return false
+      if (!this.navigationDirection && delta < -0.2) return false
+    }
+
+    return true
+  }
+
+  private clearLocationIntent() {
+    this.allowLocationJump = false
+    this.navigationDirection = undefined
+    this.relayoutAnchorSectionIndexes = undefined
+  }
+
   get currentSection() {
     const index = this.location?.start.index
     return (
@@ -1223,16 +1902,21 @@ export class BookTab extends BaseTab {
     )
   }
 
-  get currentSectionHeading() {
-    const heading = this.currentSection?.document?.querySelector(
-      'h1, h2, h3, h4, h5, h6',
-    )
+  private sectionHeading(section = this.currentSection) {
+    const heading = section?.document?.querySelector('h1, h2, h3, h4, h5, h6')
     return heading?.textContent?.trim()
   }
 
-  getHeaderPath() {
-    const path = this.getNavPath()
-    const heading = this.currentSectionHeading
+  get currentSectionHeading() {
+    return this.sectionHeading()
+  }
+
+  getHeaderPath(section = this.currentSection) {
+    const navItem =
+      section?.navitem ??
+      (section?.href ? this.mapSectionToNavItem(section.href) : undefined)
+    const path = this.getNavPath(navItem)
+    const heading = this.sectionHeading(section)
 
     if (!heading) return path
     if (!path.length) return [{ id: heading, label: heading } as INavItem]
@@ -1248,6 +1932,14 @@ export class BookTab extends BaseTab {
         label: heading,
       } as INavItem,
     ]
+  }
+
+  private snapshotHeaderPath(section = this.currentSection): HeaderPathItem[] {
+    return this.getHeaderPath(section).map((item) => ({
+      id: item.id,
+      href: item.href,
+      label: item.label,
+    }))
   }
 
   get view() {
@@ -1286,18 +1978,23 @@ export class BookTab extends BaseTab {
     const windows: Window[] = views
       .map((view: any) => view.window as Window | undefined)
       .filter((win: Window | undefined): win is Window => !!win)
-    const sameFrames =
-      windows.length === this.iframes.length &&
-      windows.every((win, index) => this.iframes[index] === win)
+    const iframes = this.iframes
 
-    if (sameFrames) return
+    if (
+      windows.length === iframes.length &&
+      windows.every((win, index) => iframes[index] === win)
+    ) {
+      return false
+    }
 
-    const iframes = windows.map(
+    const nextIframes = windows.map(
       (win: Window) => ref(win) as unknown as Window & AsRef,
     )
 
-    this.iframes = iframes
-    this.iframe = iframes[0]
+    this.iframes = nextIframes
+    this.iframe = nextIframes[0]
+    this.bumpViewVersion()
+    return true
   }
 
   destroy() {
@@ -1321,6 +2018,8 @@ export class BookTab extends BaseTab {
   }
 
   private destroyRendering() {
+    this.layoutOperationId++
+
     try {
       this.rendition?.destroy?.()
     } catch (error) {
@@ -1340,6 +2039,13 @@ export class BookTab extends BaseTab {
     this.section = undefined
     this.sections = undefined
     this.sectionNavIndex = undefined
+    this.visibleSections = []
+    this.visibleSectionIndexes = []
+    this.preferredSectionIndex = undefined
+    this.runtimeAnchorCfi = undefined
+    this.runtimeSpreadAnchor = undefined
+    this.acceptedLocationRequests.clear()
+    this.spreadAnchorsByLayout.clear()
     this.rendered = false
     this._el = undefined
     this.renderingEl = undefined
@@ -1368,10 +2074,14 @@ export class BookTab extends BaseTab {
 
   expandNavPath(navItem = this.currentNavItem) {
     const path = this.getNavPath(navItem)
+    let changed = false
 
     path.slice(0, -1).forEach((item) => {
+      if (!item.expanded) changed = true
       item.expanded = true
     })
+
+    if (changed) this.tocVersion++
   }
 
   searchInSection(keyword = this.keyword, section = this.section) {
@@ -1479,6 +2189,107 @@ export class BookTab extends BaseTab {
 
     manager.reflowablePageCountCache = {}
     manager.currentReflowableSpread = undefined
+    this.markLayoutChanged()
+  }
+
+  private layoutAnchorKey(width?: number, height?: number) {
+    const manager = this.rendition?.manager
+    const resolvedWidth =
+      width ??
+      manager?._stageSize?.width ??
+      manager?.viewSettings?.width ??
+      this.container?.getBoundingClientRect().width
+    const resolvedHeight =
+      height ??
+      manager?._stageSize?.height ??
+      manager?.viewSettings?.height ??
+      this.container?.getBoundingClientRect().height
+
+    if (!resolvedWidth || !resolvedHeight) return
+
+    return [
+      Math.round(resolvedWidth),
+      Math.round(resolvedHeight),
+      this.layoutStyleSignature ?? '',
+      (this.rendition as any)?.settings?.spread ?? '',
+    ].join(':')
+  }
+
+  private rememberCurrentLayoutSpread(
+    key = this.layoutAnchorKey(),
+    {
+      replace = true,
+      spread,
+    }: { replace?: boolean; spread?: ReadingSpreadRecord } = {},
+  ) {
+    if (!key) return
+    if (!replace && this.spreadAnchorsByLayout.has(key)) return
+
+    const currentSpread =
+      spread ??
+      snapshotReflowableSpread(
+        this.rendition?.manager,
+        this.layoutStyleSignature,
+        this.rendition?.location ?? this.currentLocation,
+      )
+    if (
+      currentSpread &&
+      this.visibleSectionIndexes.length &&
+      !readingSpreadSectionIndexes(currentSpread).some((sectionIndex) =>
+        this.visibleSectionIndexes.includes(sectionIndex),
+      )
+    ) {
+      return
+    }
+    if (currentSpread) {
+      this.spreadAnchorsByLayout.set(key, currentSpread)
+    }
+  }
+
+  private storedSpreadForLayout(width: number, height: number) {
+    const key = this.layoutAnchorKey(width, height)
+    if (!key) return
+
+    return hydrateReflowableSpread(
+      this.spreadAnchorsByLayout.get(key),
+      this.sections,
+      this.layoutStyleSignature,
+    )
+  }
+
+  async relayoutCurrentView(target = this.committedDisplayTarget()) {
+    const generation = this.renderGeneration
+    const resolvedTarget = this.resolveDisplayTarget(target)
+    if (!resolvedTarget) return
+
+    this.resetLayoutPageState()
+    this.allowLocationJump = false
+    this.navigationDirection = undefined
+    this.relayoutAnchorSectionIndexes = [...this.visibleSectionIndexes]
+
+    try {
+      if (resolvedTarget) {
+        const previousRequestId = this.currentRenditionLocationRequestId()
+        const display = this.rendition?.display(resolvedTarget)
+        const requestId = this.trackRenditionLocationRequest(
+          previousRequestId,
+          {
+            updateAnchor: false,
+          },
+        )
+        await display
+        this.commitPendingRenditionLocation(requestId)
+        return
+      }
+
+      const requestId = this.createManualLocationRequest({
+        updateAnchor: false,
+      })
+      await (this.rendition as any)?.reportLocation(requestId)
+      this.commitPendingRenditionLocation(requestId)
+    } catch (error) {
+      if (generation === this.renderGeneration) console.error(error)
+    }
   }
 
   private async displayInitialPosition() {
@@ -1494,14 +2305,25 @@ export class BookTab extends BaseTab {
       manager?.canUseLogicalReflowableSpread?.() &&
       manager.renderReflowableSpread
     ) {
+      const requestId = this.createManualLocationRequest({ updateAnchor: true })
       await manager.renderReflowableSpread(spread)
-      await this.rendition?.reportLocation()
+      await (this.rendition as any)?.reportLocation(requestId)
+      this.commitPendingRenditionLocation(requestId)
       return
     }
 
-    await this.rendition?.display(
+    const target = this.resolveDisplayTarget(
       this.location?.start.cfi ?? this.book.cfi ?? undefined,
+      'initial',
     )
+    const previousRequestId = this.currentRenditionLocationRequestId()
+    const display = this.rendition?.display(target)
+    const requestId = this.trackRenditionLocationRequest(previousRequestId, {
+      anchorTarget: target,
+      updateAnchor: true,
+    })
+    await display
+    this.commitPendingRenditionLocation(requestId)
   }
 
   async render(
@@ -1527,7 +2349,7 @@ export class BookTab extends BaseTab {
       return
     }
     if (loadedBook) {
-      this.book = loadedBook
+      this.setBook(loadedBook)
     }
 
     const fileUrl = await db.files.getPackageUrl(this.book.id)
@@ -1569,17 +2391,34 @@ export class BookTab extends BaseTab {
       return
     }
 
+    const initialRect = el.getBoundingClientRect()
+    const initialWidth = Math.round(initialRect.width)
+    const initialHeight = Math.round(initialRect.height)
+    if (initialWidth <= 0 || initialHeight <= 0) {
+      try {
+        ;(epub as any)?.destroy?.()
+      } catch (error) {
+        console.error(error)
+      }
+      clearRendering()
+      return
+    }
+
     let rendition: Rendition
     try {
       rendition = ref(
         new EpubRendition(epub, {
-          width: '100%',
-          height: '100%',
+          width: initialWidth,
+          height: initialHeight,
           allowScriptedContent: true,
         }),
       )
       ;(epub as any).rendition = rendition
       await rendition.attachTo(el)
+      const renditionManager = (rendition as any).manager
+      if (renditionManager) {
+        renditionManager.suspendResize = true
+      }
     } catch (error) {
       console.error(error)
       try {
@@ -1634,56 +2473,21 @@ export class BookTab extends BaseTab {
       this.rendition.spread(initialSpread)
     }
 
-    this.rendition.on('relocated', (loc: Location) => {
-      this.syncFrames()
-      this.currentLocation = loc
-      this.currentSpreadState = snapshotReflowableSpread(
-        this.rendition?.manager,
-        this.layoutStyleSignature,
-      )
-
-      // calculate percentage
-      if (this.sections) {
-        const start = loc.start
-        const end = loc.end ?? loc.start
-        const activeSection =
-          this.sections.find((s) => s.index === start.index) ??
-          this.sections.find((s) => s.href === start.href) ??
-          this.section
-        if (activeSection) this.section = ref(activeSection)
-        const activeNavItem =
-          activeSection?.navitem ?? this.mapSectionToNavItem(start.href)
-        if (activeSection && activeNavItem) {
-          activeSection.navitem = activeNavItem
-        }
-        this.expandNavPath(activeNavItem)
-
-        if (!this.sections.some((s) => s.href === end.href)) {
-          this.rendered = true
-          return
-        }
-
-        const percentage = calculateReadingPercentage({
-          location: loc,
-          sections: this.sections,
-          totalLength: this.totalLength,
-        })
-        const positionUpdate = this.createCurrentPositionUpdate(percentage)
-        if (positionUpdate) {
-          this.updateBook(positionUpdate)
-        }
-      }
-
-      this.rendered = true
-    })
+    this.rendition.on('relocated', (loc: Location, meta?: RelocatedEventMeta) =>
+      this.commitRelocatedLocation(loc, meta),
+    )
 
     this.rendition.on('rendered', (section: ISection) => {
       if (!this.section) this.section = ref(section)
+      if (!this.visibleSections.length) {
+        this.visibleSections = ref([section])
+        this.visibleSectionIndexes = [section.index]
+      }
       void this.ensureSectionInfo(section)
-      this.syncFrames()
+      if (!this.syncFrames()) this.bumpViewVersion()
     })
     this.rendition.on('removed', () => {
-      this.syncFrames()
+      if (!this.syncFrames()) this.bumpViewVersion()
     })
 
     try {
@@ -1697,6 +2501,11 @@ export class BookTab extends BaseTab {
 
   constructor(public book: BookRecord) {
     super(book.id, book.name)
+    this.overlayState = {
+      annotations: book.annotations,
+      definitions: book.definitions,
+    }
+    this.typographyConfiguration = book.configuration?.typography
 
     // don't subscribe `db.books` in `constructor`, it will
     // 1. update the unproxied instance, which is not reactive
@@ -1725,6 +2534,10 @@ function disposeTab(tab?: Tab) {
   return Promise.resolve()
 }
 
+function setTabRuntimeActive(tab: Tab | undefined, active: boolean) {
+  if (tab instanceof BookTab) tab.setActive(active)
+}
+
 export class Group {
   id = createId()
   tabs: Tab[] = []
@@ -1739,6 +2552,7 @@ export class Group {
       const isPage = typeof t === 'function'
       return isPage ? new PageTab(t) : new BookTab(t)
     })
+    this.setSelectedRuntimeActive(true)
   }
 
   get selectedTab() {
@@ -1749,9 +2563,16 @@ export class Group {
     return this.tabs.filter((t) => t instanceof BookTab) as BookTab[]
   }
 
+  setSelectedRuntimeActive(active: boolean) {
+    setTabRuntimeActive(this.selectedTab, active)
+  }
+
   removeTab(index: number) {
+    const wasSelected = index === this.selectedIndex
     const tab = this.tabs.splice(index, 1)
+    setTabRuntimeActive(tab[0], false)
     this.selectedIndex = updateIndex(this.tabs, index)
+    if (wasSelected) this.setSelectedRuntimeActive(true)
     return tab[0]
   }
 
@@ -1774,7 +2595,9 @@ export class Group {
         ? new PageTab(resolved)
         : new BookTab(resolved)
 
+    this.setSelectedRuntimeActive(false)
     this.tabs.splice(++this.selectedIndex, 0, tab)
+    setTabRuntimeActive(tab, true)
     return tab
   }
 
@@ -1785,8 +2608,11 @@ export class Group {
 
   selectTab(index: number) {
     if (index < 0 || index >= this.tabs.length) return
+    if (index === this.selectedIndex) return
 
+    this.setSelectedRuntimeActive(false)
     this.selectedIndex = index
+    this.setSelectedRuntimeActive(true)
   }
 
   selectLastTab() {
@@ -1884,14 +2710,20 @@ export class Reader {
   }
 
   addGroup(tabs: Array<Tab | TabParam>, index = this.focusedIndex + 1) {
+    this.focusedGroup?.setSelectedRuntimeActive(false)
     const group = proxy(new Group(tabs))
     this.groups.splice(index, 0, group)
     this.focusedIndex = index
+    group.setSelectedRuntimeActive(true)
     return group
   }
 
   selectGroup(index: number) {
+    if (index === this.focusedIndex) return
+
+    this.focusedGroup?.setSelectedRuntimeActive(false)
     this.focusedIndex = index
+    this.focusedGroup?.setSelectedRuntimeActive(true)
   }
 
   clear() {
@@ -1904,9 +2736,11 @@ export class Reader {
 
   resize() {
     this.groups.forEach(({ bookTabs }) => {
-      bookTabs.forEach(({ rendition }) => {
+      bookTabs.forEach((tab) => {
+        if (!tab.active) return
+
         try {
-          rendition?.resize()
+          tab.rendition?.resize()
         } catch (error) {
           console.error(error)
         }

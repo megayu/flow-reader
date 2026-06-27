@@ -1,6 +1,10 @@
 import clsx from 'clsx'
 import { ChevronDownIcon, ChevronRightIcon, XIcon } from 'lucide-react'
-import { ComponentProps, CSSProperties } from 'react'
+import {
+  ComponentProps,
+  CSSProperties,
+  KeyboardEvent as ReactKeyboardEvent,
+} from 'react'
 
 import { useBackground } from '../hooks/theme/useBackground'
 import { LIST_ITEM_SIZE } from '../hooks/useList'
@@ -37,8 +41,11 @@ export const Row: React.FC<RowProps> = ({
   children,
   badge,
   onClick,
+  onKeyDown,
   onDelete,
   tooltipContentStyle,
+  role,
+  tabIndex,
   ...props
 }) => {
   const trans = useTranslation()
@@ -48,10 +55,21 @@ export const Row: React.FC<RowProps> = ({
   const t = children || label || title
   const tooltip = typeof title === 'string' ? title : undefined
   const indent = Math.max(0, depth - 1) * 20
+  const interactive = !!(onClick ?? toggle)
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    onKeyDown?.(event)
+    if (event.defaultPrevented || !interactive) return
+    if (event.key !== 'Enter' && event.key !== ' ') return
+
+    event.preventDefault()
+    event.currentTarget.click()
+  }
 
   const row = (
     <div
       aria-label={tooltip}
+      role={role ?? (interactive ? 'button' : undefined)}
+      tabIndex={tabIndex ?? (interactive ? 0 : undefined)}
       className={clsx(
         'list-row group/row relative flex cursor-pointer items-center text-left',
         active && background.rowActiveClassName,
@@ -63,6 +81,7 @@ export const Row: React.FC<RowProps> = ({
         height: LIST_ITEM_SIZE,
       }}
       onClick={onClick ?? toggle}
+      onKeyDown={handleKeyDown}
       {...props}
     >
       <StateLayer className="transition-colors group-hover/row:bg-[var(--flow-bg-control-hover)]" />

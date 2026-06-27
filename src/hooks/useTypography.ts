@@ -17,24 +17,24 @@ function removeUndefinedProperty<T extends Record<string, any>>(obj: T) {
 }
 
 export function useTypography(tab: BookTab) {
-  const { book } = useSnapshot(tab)
+  const { typographyConfiguration } = useSnapshot(tab)
   const [settings] = useSettings()
   const zenTypographyOverrides = useZenTypographyOverrides()
-  const zenTypography = zenTypographyOverrides[book.id]
+  const zenTypography = zenTypographyOverrides[tab.id]
 
   return useMemo(
     () => ({
       spread: settings.spread,
       textAlign: settings.textAlign,
       hideEndnotes: settings.hideEndnotes,
-      ...removeUndefinedProperty(book.configuration?.typography ?? {}),
+      ...removeUndefinedProperty(typographyConfiguration ?? {}),
       ...removeUndefinedProperty(zenTypography ?? {}),
     }),
     [
-      book.configuration?.typography,
       settings.hideEndnotes,
       settings.spread,
       settings.textAlign,
+      typographyConfiguration,
       zenTypography,
     ],
   )
