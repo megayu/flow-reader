@@ -198,6 +198,23 @@ function getIframeWindows() {
   })
 }
 
+function isFullscreenShortcut(e: KeyboardEvent) {
+  return (
+    !e.ctrlKey &&
+    !e.metaKey &&
+    !e.altKey &&
+    !e.shiftKey &&
+    (e.key.toLowerCase() === 'f' || e.code === 'KeyF')
+  )
+}
+
+function isAppShortcutTargetBlocked(e: KeyboardEvent) {
+  const target = e.target as HTMLElement | null
+  return !!target?.closest(
+    'input, textarea, select, [contenteditable="true"], [data-flow-keyboard-capture="true"]',
+  )
+}
+
 interface IAction {
   name: string
   title: string
@@ -423,6 +440,23 @@ function useFullscreenAction() {
       setFullscreen(false)
     }
   }, [])
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!isFullscreenShortcut(e) || isAppShortcutTargetBlocked(e)) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      e.stopImmediatePropagation?.()
+      void toggleFullscreen()
+    }
+
+    document.addEventListener('keydown', onKeyDown, true)
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true)
+    }
+  }, [toggleFullscreen])
 
   return { fullscreen, toggleFullscreen }
 }

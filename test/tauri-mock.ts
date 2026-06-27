@@ -56,6 +56,7 @@ export async function installTauriMock(
       const globalWindow = window as typeof window & {
         __TAURI_EVENT_PLUGIN_INTERNALS__?: TauriEventInternals
         __FLOW_TEST_TAURI__?: {
+          fullscreen: boolean
           settingsStore: Record<string, unknown>
         }
         __TAURI_INTERNALS__?: TauriInternals
@@ -82,6 +83,7 @@ export async function installTauriMock(
         ...(storedSettings ?? {}),
         ...fixtureSettings,
       }
+      let fullscreen = false
       let nextCallbackId = 1
       let nextEventId = 1
 
@@ -90,7 +92,12 @@ export async function installTauriMock(
         {})
       const callbacks = (internals.callbacks ??= {})
 
-      globalWindow.__FLOW_TEST_TAURI__ = { settingsStore }
+      globalWindow.__FLOW_TEST_TAURI__ = {
+        get fullscreen() {
+          return fullscreen
+        },
+        settingsStore,
+      }
       internals.metadata = {
         currentWebview: { label: 'main' },
         currentWindow: { label: 'main' },
@@ -225,6 +232,11 @@ export async function installTauriMock(
         if (command === 'flush_storage') return null
         if (command === 'plugin:event|listen') return nextEventId++
         if (command === 'plugin:event|unlisten') return null
+        if (command === 'plugin:window|is_fullscreen') return fullscreen
+        if (command === 'plugin:window|set_fullscreen') {
+          fullscreen = Boolean(args?.value)
+          return null
+        }
         if (command.startsWith('plugin:window|is_')) return false
         if (command.startsWith('plugin:window|')) return null
         if (command.startsWith('plugin:webview|')) return null
@@ -251,5 +263,17 @@ export async function getStoredSettings(page: Page) {
     }
 
     return globalWindow.__FLOW_TEST_TAURI__?.settingsStore ?? {}
+  })
+}
+
+export async function getFullscreenState(page: Page) {
+  return page.evaluate(() => {
+    const globalWindow = window as typeof window & {
+      __FLOW_TEST_TAURI__?: {
+        fullscreen: boolean
+      }
+    }
+
+    return globalWindow.__FLOW_TEST_TAURI__?.fullscreen ?? false
   })
 }

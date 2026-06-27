@@ -1,6 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { getStoredSettings, installTauriMock } from './tauri-mock'
+import {
+  getFullscreenState,
+  getStoredSettings,
+  installTauriMock,
+} from './tauri-mock'
 
 const settingsShortcut =
   process.platform === 'darwin' ? 'Meta+Comma' : 'Control+Comma'
@@ -137,6 +141,24 @@ test('zen mode action is visibly disabled in library mode', async ({
 
   await zenButton.hover({ force: true })
   await expect(page.getByRole('tooltip')).toHaveCount(0)
+})
+
+test('fullscreen shortcut works in library mode without an open tab', async ({
+  page,
+}) => {
+  await expect(
+    page.getByRole('button', { name: /Enter Fullscreen/ }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: /Return to Reading/ }),
+  ).toBeDisabled()
+  await expect.poll(() => getFullscreenState(page)).toBe(false)
+
+  await page.keyboard.press('f')
+  await expect.poll(() => getFullscreenState(page)).toBe(true)
+
+  await page.keyboard.press('f')
+  await expect.poll(() => getFullscreenState(page)).toBe(false)
 })
 
 test('accent color updates primary bridge and selected controls', async ({
