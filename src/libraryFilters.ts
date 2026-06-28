@@ -106,7 +106,9 @@ export function getLibraryTagOptions(
   tags: LibraryTagRecord[],
   pinnedTags: string[] = [],
 ): LibraryTagOption[] {
-  const availableTagIds = new Set(tags.map((tag) => tag.id))
+  const availableTagIds = new Set<string>(
+    statusFilters.length ? [] : tags.map((tag) => tag.id),
+  )
   const tagById = new Map(tags.map((tag) => [tag.id, tag]))
 
   books.forEach((book) => {

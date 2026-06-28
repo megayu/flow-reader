@@ -70,6 +70,57 @@ const fixtureBooks = [
   }),
 ]
 
+test('library tag filters refresh from books matching the selected reading status', async ({
+  page,
+}) => {
+  await installTauriMock(page, {
+    books: [
+      createBook({
+        id: 'done',
+        title: 'Done Book',
+        readingStatus: 'read',
+        tagIds: ['tag-done'],
+      }),
+      createBook({
+        id: 'active',
+        title: 'Active Book',
+        readingStatus: 'reading',
+        tagIds: ['tag-active'],
+      }),
+      createBook({
+        id: 'later',
+        title: 'Later Book',
+        readingStatus: 'toRead',
+        tagIds: ['tag-later'],
+      }),
+    ],
+    settings: {
+      librarySidebarOpen: false,
+    },
+    tags: [
+      { id: 'tag-done', name: 'Done', createdAt: 1 },
+      { id: 'tag-active', name: 'Active', createdAt: 2 },
+      { id: 'tag-later', name: 'Later', createdAt: 3 },
+    ],
+  })
+  await page.goto('/')
+  await page.addStyleTag({
+    content:
+      'nextjs-portal{display:none!important;pointer-events:none!important}',
+  })
+  await expect(page.locator('#layout')).toBeVisible()
+  await openLibraryFilterPanel(page)
+
+  await expect(tagChip(page, 'Done')).toBeVisible()
+  await expect(tagChip(page, 'Active')).toBeVisible()
+  await expect(tagChip(page, 'Later')).toBeVisible()
+
+  await page.getByTestId('library-filter-status-reading').click()
+  await expect(tagChip(page, 'Active')).toBeVisible()
+  await expect(tagChip(page, 'Done')).toHaveCount(0)
+  await expect(tagChip(page, 'Later')).toHaveCount(0)
+})
+
 async function setupLibrary(page: Page) {
   await installTauriMock(page, {
     books: fixtureBooks,
