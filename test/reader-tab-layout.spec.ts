@@ -1098,6 +1098,60 @@ test.beforeEach(async ({ page }, testInfo) => {
   await expect(page.locator('ul.grid [role="button"]')).toHaveCount(3)
 })
 
+test('long-book closes image preview when clicking outside the visible image', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+
+  await page.evaluate(async () => {
+    const tab = (window as any).reader.focusedBookTab
+    const doc = tab?.iframe?.document
+    if (!doc?.body) throw new Error('Missing active reader document')
+
+    const image = doc.createElement('img')
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1600">' +
+      '<rect width="2400" height="1600" fill="#1d4ed8"/>' +
+      '<circle cx="1200" cy="800" r="520" fill="#f8fafc"/>' +
+      '</svg>'
+    image.src = `data:image/svg+xml,${encodeURIComponent(svg)}`
+    image.alt = 'Large preview target'
+    doc.body.prepend(image)
+
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve()
+      image.onerror = () => reject(new Error('Preview test image failed'))
+      if (image.complete) resolve()
+    })
+
+    image.dispatchEvent(
+      new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      }),
+    )
+  })
+
+  const preview = page.getByRole('dialog', { name: /Image preview/ })
+  await expect(preview).toBeVisible()
+
+  const image = preview.locator('img')
+  await expect
+    .poll(async () => (await image.boundingBox())?.width ?? 0)
+    .toBeLessThan(1400)
+
+  const imageBox = await image.boundingBox()
+  if (!imageBox) throw new Error('Missing preview image bounds')
+
+  const clickX =
+    imageBox.x > 24 ? imageBox.x - 16 : imageBox.x + imageBox.width + 16
+  await page.mouse.click(clickX, imageBox.y + imageBox.height / 2)
+  await expect(preview).toBeHidden()
+})
+
 async function displayFocusedSectionIndex(page: Page, sectionIndex: number) {
   await page.evaluate(async (targetIndex) => {
     const tab = (window as any).reader.focusedBookTab

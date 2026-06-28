@@ -2140,6 +2140,20 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
 
   const handleImagePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
+      const rect = event.currentTarget.getBoundingClientRect()
+      const insideImage =
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom
+
+      if (!insideImage) {
+        event.preventDefault()
+        event.stopPropagation()
+        onClose()
+        return
+      }
+
       event.preventDefault()
       event.stopPropagation()
 
@@ -2154,7 +2168,7 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
       }
       setDragging(true)
     },
-    [canPan, pan],
+    [canPan, onClose, pan],
   )
 
   const handleImagePointerMove = useCallback(
@@ -2189,6 +2203,16 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
     },
     [],
   )
+
+  const handlePreviewBackdropPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      onClose()
+    },
+    [onClose],
+  )
+
   const handlePreviewKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return
 
@@ -2265,6 +2289,7 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
       tabIndex={-1}
       className="fixed inset-0 z-[9999] overflow-hidden bg-neutral-500/45 text-white backdrop-blur-2xl backdrop-saturate-75 outline-none"
       onWheel={handleWheel}
+      onPointerDown={handlePreviewBackdropPointerDown}
       onMouseDown={(event) => {
         event.preventDefault()
         event.stopPropagation()
@@ -2289,7 +2314,7 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
           style={{
             width: naturalSize ? naturalSize.width : undefined,
             height: naturalSize ? naturalSize.height : undefined,
-            transform: `translate3d(${pan.x}px, ${pan.y}px, 0)`,
+            transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${scale})`,
           }}
           onPointerDown={handleImagePointerDown}
           onPointerMove={handleImagePointerMove}
@@ -2305,12 +2330,10 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
             draggable={false}
             className={clsx(
               'max-w-none shadow-2xl shadow-black/35 select-none',
-              !dragging && 'transition-transform duration-100 ease-out',
             )}
             style={{
               width: naturalSize ? naturalSize.width : undefined,
               height: naturalSize ? naturalSize.height : undefined,
-              transform: `scale(${scale})`,
             }}
             onLoad={(event) => {
               const image = event.currentTarget
@@ -2325,6 +2348,7 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
 
       <div
         className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/35 px-2 py-1.5 text-white shadow-lg ring-1 ring-white/15 backdrop-blur-md"
+        onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
         onMouseDown={(event) => event.stopPropagation()}
       >
