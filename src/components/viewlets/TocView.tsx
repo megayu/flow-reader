@@ -86,7 +86,13 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
   }, [active, currentBookId, currentIndex, scrollToItem])
 
   return (
-    <Pane ref={outerRef} headline={t('library')} preferredSize={240}>
+    <Pane
+      ref={outerRef}
+      headline={t('library')}
+      minSize={120}
+      preferredSize={220}
+      storageKey="flow-reader:pane:toc:library"
+    >
       <div className="relative" style={{ height: totalSize }}>
         {items.map(({ index, start, size }) => {
           const book = sortedBooks[index]
@@ -230,6 +236,8 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
   return (
     <Pane
       headline={t('toc.title')}
+      minSize={160}
+      storageKey="flow-reader:pane:toc:toc"
       actions={[
         {
           id: 'locate-current',

@@ -32,7 +32,13 @@ const DefinitionPane: React.FC = () => {
   const { outerRef, items, totalSize } = useList(definitions)
 
   return (
-    <Pane headline={t('definitions')} preferredSize={120} ref={outerRef}>
+    <Pane
+      headline={t('definitions')}
+      minSize={72}
+      preferredSize={120}
+      ref={outerRef}
+      storageKey="flow-reader:pane:annotation:definitions"
+    >
       <div className="relative" style={{ height: totalSize }}>
         {items.map(({ index, start, size }) => {
           const definition = definitions[index]
@@ -184,7 +190,9 @@ const AnnotationPane: React.FC = () => {
   return (
     <Pane
       headline={annotationT('annotations')}
+      minSize={160}
       ref={outerRef}
+      storageKey="flow-reader:pane:annotation:annotations"
       actions={
         annotations.length > 0
           ? [

@@ -2,10 +2,12 @@ import clsx from 'clsx'
 import {
   Children,
   ComponentProps,
+  Fragment,
   createContext,
   useCallback,
   useContext,
   useEffect,
+  isValidElement,
   useMemo,
   useState,
 } from 'react'
@@ -15,7 +17,9 @@ import { clamp } from '@flow/reader/utils'
 import { Overlay } from './Overlay'
 
 interface ISplitViewItem {
+  fixed?: boolean
   key: string
+  reset?: () => void
   visible?: boolean
   resize?: (size: number) => void
 }
@@ -24,6 +28,21 @@ interface SplitViewContext {
 }
 const SplitViewContext = createContext<Partial<SplitViewContext>>({})
 SplitViewContext.displayName = 'SplitViewContext'
+
+function flattenSplitViewChildren(
+  children: React.ReactNode,
+): React.ReactNode[] {
+  return Children.toArray(children).flatMap((child) => {
+    if (
+      !isValidElement<{ children?: React.ReactNode }>(child) ||
+      child.type !== Fragment
+    ) {
+      return [child]
+    }
+
+    return flattenSplitViewChildren(child.props.children)
+  })
+}
 
 function useSplitView() {
   return useContext(SplitViewContext)
@@ -41,15 +60,48 @@ function useSize(
   preferredSize?: number,
   minSize = 0,
   maxSize = Number.POSITIVE_INFINITY,
+  storageKey?: string,
 ) {
-  const [size, setSize] = useState(preferredSize)
+  const [size, setSize] = useState(() => {
+    if (!storageKey || typeof window === 'undefined') return preferredSize
+
+    const stored = window.localStorage.getItem(storageKey)
+    const parsed = stored ? Number(stored) : Number.NaN
+    return Number.isFinite(parsed)
+      ? clamp(parsed, minSize, maxSize)
+      : preferredSize
+  })
+  const persistSize = useCallback(
+    (size: number | undefined) => {
+      if (!storageKey || typeof window === 'undefined') return
+
+      if (size === undefined) {
+        window.localStorage.removeItem(storageKey)
+      } else {
+        window.localStorage.setItem(storageKey, String(size))
+      }
+    },
+    [storageKey],
+  )
   const resize = useCallback(
     (delta: number) => {
-      setSize((size) => size && clamp(size + delta, minSize, maxSize))
+      setSize((size) => {
+        const current = size ?? preferredSize
+        if (current === undefined) return size
+
+        const next = clamp(current + delta, minSize, maxSize)
+        persistSize(next)
+        return next
+      })
     },
-    [maxSize, minSize],
+    [maxSize, minSize, persistSize, preferredSize],
   )
-  return [size, resize] as const
+  const reset = useCallback(() => {
+    persistSize(undefined)
+    setSize(preferredSize)
+  }, [persistSize, preferredSize])
+
+  return [size, resize, reset] as const
 }
 
 export function useSplitViewItem(
@@ -58,24 +110,34 @@ export function useSplitViewItem(
     preferredSize,
     minSize = 0,
     maxSize = Number.POSITIVE_INFINITY,
+    storageKey,
     visible = true,
   }: {
     preferredSize?: number
     minSize?: number
     maxSize?: number
+    storageKey?: string
     visible?: boolean
   } = {},
 ) {
-  const [size, _resize] = useSize(preferredSize, minSize, maxSize)
-  const resize = minSize === maxSize ? undefined : _resize
+  const [size, _resize, reset] = useSize(
+    preferredSize,
+    minSize,
+    maxSize,
+    storageKey,
+  )
+  const fixed = minSize === maxSize
+  const resize = fixed ? undefined : _resize
   const stringKey = typeof key === 'string' ? key : key.name
   const view = useMemo(
     () => ({
+      fixed,
       key: stringKey,
+      reset,
       resize,
       visible,
     }),
-    [stringKey, resize, visible],
+    [fixed, reset, stringKey, resize, visible],
   )
   useRegisterView(stringKey, view)
 
@@ -102,7 +164,7 @@ export const SplitView = ({
   }, [])
   const contextValue = useMemo(() => ({ registerView }), [registerView])
 
-  const childList = Children.toArray(children)
+  const childList = flattenSplitViewChildren(children)
   if (!childList.length) return null
 
   return (
@@ -127,7 +189,9 @@ export const SplitView = ({
   )
 }
 
-const SASH_SIZE = 4
+const SASH_SIZE = 6
+const SASH_LINE_SIZE = 1
+const SASH_HIGHLIGHT_LINE_SIZE = 2
 interface SashProps {
   vertical: boolean
   views: (ISplitViewItem | undefined)[]
@@ -135,8 +199,11 @@ interface SashProps {
 const Sash: React.FC<SashProps> = ({ vertical, views }) => {
   const [hover, setHover] = useState(false)
   const [active, setActive] = useState(false)
+  const highlighted = hover || active
 
-  const enabled = views.every((v) => v?.visible && v?.resize)
+  const visible = views.every((v) => v?.visible)
+  const fixed = views.some((v) => v?.fixed)
+  const enabled = visible && !fixed && views.some((v) => v?.resize)
 
   return (
     <div
@@ -155,7 +222,12 @@ const Sash: React.FC<SashProps> = ({ vertical, views }) => {
       onMouseLeave={() => {
         setHover(false)
       }}
-      onMouseDown={() => {
+      onDoubleClick={(event) => {
+        event.preventDefault()
+        views.forEach((v) => v?.reset?.())
+      }}
+      onMouseDown={(event) => {
+        event.preventDefault()
         setActive(true)
 
         function handleMouseMove(e: MouseEvent) {
@@ -177,13 +249,18 @@ const Sash: React.FC<SashProps> = ({ vertical, views }) => {
     >
       <div
         className={clsx(
-          'border-border pointer-events-none absolute inset-0 transition-[background-color]',
-          vertical
-            ? 'top-1/2 -translate-y-1/2 border-b'
-            : 'left-1/2 -translate-x-1/2 border-r',
-          (hover || active) &&
-            'h-full w-full border-none bg-[var(--flow-accent)]',
+          'pointer-events-none absolute inset-0 transition-[background-color,opacity]',
+          vertical ? 'top-1/2 -translate-y-1/2' : 'left-1/2 -translate-x-1/2',
+          highlighted
+            ? 'bg-[var(--flow-accent)]'
+            : 'bg-[var(--flow-border-strong)]',
+          highlighted && (active ? 'opacity-90' : 'opacity-65'),
         )}
+        style={{
+          [vertical ? 'height' : 'width']: highlighted
+            ? SASH_HIGHLIGHT_LINE_SIZE
+            : SASH_LINE_SIZE,
+        }}
       ></div>
       {active && <Overlay className="!bg-transparent" />}
     </div>

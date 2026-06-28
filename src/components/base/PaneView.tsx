@@ -8,16 +8,32 @@ import { SplitView, useSplitViewItem } from './SplitView'
 
 interface PaneProps extends ComponentProps<'div'> {
   headline: string
+  maxSize?: number
+  minSize?: number
   preferredSize?: number
+  storageKey?: string
   actions?: Action[]
 }
 export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
-  { className, headline, preferredSize, children, actions, ...props },
+  {
+    actions,
+    children,
+    className,
+    headline,
+    maxSize,
+    minSize = 72,
+    preferredSize,
+    storageKey,
+    ...props
+  },
   ref,
 ) {
   const [expanded, setExpanded] = useState(true)
   const { size } = useSplitViewItem(headline, {
+    maxSize,
+    minSize,
     preferredSize,
+    storageKey,
     visible: expanded,
   })
   return (
@@ -27,13 +43,13 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
         size || !expanded ? 'shrink-0' : 'flex-1',
       )}
       style={{
-        height: expanded ? size : 24,
+        height: expanded ? size : 28,
       }}
     >
       <div
         role="button"
         tabIndex={0}
-        className="flex h-6 shrink-0 items-center"
+        className="border-border/70 bg-foreground/[0.035] hover:bg-foreground/[0.055] flex h-7 shrink-0 items-center border-y px-0.5 transition-colors"
         onClick={() => setExpanded((e) => !e)}
         onKeyDown={(event) => {
           if (event.key !== 'Enter' && event.key !== ' ') return
@@ -41,14 +57,14 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
           event.currentTarget.click()
         }}
       >
-        <Twisty expanded={expanded} />
-        <div className="text-muted-foreground text-base !font-bold font-medium">
+        <Twisty expanded={expanded} className="text-muted-foreground/80" />
+        <div className="text-muted-foreground/85 text-base leading-none font-semibold tracking-normal">
           {headline.toUpperCase()}
         </div>
         {actions && (
           <ActionBar
             actions={actions}
-            className="invisible ml-auto flex pr-1 group-hover:visible"
+            className="invisible ml-auto flex pr-0.5 group-hover:visible"
           />
         )}
       </div>
