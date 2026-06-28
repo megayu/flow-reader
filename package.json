@@ -19,7 +19,8 @@
     "check:full": "pnpm check && pnpm test:smoke && pnpm --filter @flow/epubjs test && cargo test --manifest-path src-tauri/Cargo.toml",
     "check:release": "pnpm check:full && pnpm tauri:build",
     "prepare": "husky install",
-    "doctor": "npx react-doctor@latest"
+    "doctor": "npx react-doctor@latest -y",
+    "doctor:lines": "npx react-doctor@latest --scope lines --base HEAD --no-score --verbose -y"
   },
   "lint-staged": {
     "*.{js,json,css,ts,tsx,md,mdx}": "prettier --write",
