@@ -1,20 +1,26 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Project Structure
 
-- Single Next.js reader app at the repository root.
-- App source lives in `src/`; pages are in `src/pages`, reusable UI is in `src/components`, hooks are in `src/hooks`, and reader state/models are in `src/models` and `src/state.ts`.
-- Translations live in `locales/`; static assets and install metadata live in `public/`.
-- Workspace packages remain under `packages/`: `packages/epubjs` for the vendored reader engine and `packages/tailwind` for the Tailwind preset.
-- Root configs (`next.config.js`, `tsconfig.json`, `tailwind.config.js`, `prettier.config.js`) govern the app directly.
+- App code lives in `src/`: pages in `src/pages`, UI in `src/components`, hooks in `src/hooks`, reader models in `src/models`, shared app state in `src/state.ts`.
+- Translations live in `locales/`.
+- Tauri native shell and storage code lives in `src-tauri/`.
+- Workspace packages live in `packages/`: `packages/epubjs` is the vendored reader engine, `packages/tailwind` is the Tailwind preset.
+- Static assets and install metadata live in `public/`.
 
-## Build, Test, and Development Commands
+## Commands
 
-- `pnpm install` - bootstrap dependencies; rerun after updating workspace packages.
-- `pnpm dev` - launch the local reader on port 7127 with hot reload.
+- `pnpm install` - install dependencies after checkout or lockfile/package changes.
+- `pnpm dev` - run the Next.js app on port 7127.
+- `pnpm tauri:dev` - run the desktop app with devtools enabled.
+- `pnpm lint` - run ESLint across app, locale, script, and test files.
 - `pnpm build` - run the production Next.js build.
-- `pnpm lint` - run Next.js ESLint checks.
-- `pnpm --filter @flow/epubjs test` - execute the Karma/Mocha suite for the vendored engine; Chrome headless is required.
+- `pnpm check` - run theme/reader optimization tests, lint, and build.
+- `pnpm test:smoke` - run the app smoke suite.
+- `pnpm exec playwright test <spec>` - run targeted Playwright tests; set `PLAYWRIGHT_PORT` if 7127 is busy.
+- `pnpm doctor:lines` - run after non-trivial React component/hook changes to catch render, hook, and state-flow issues on changed lines.
+- `pnpm --filter @flow/epubjs test` - run the vendored EPUB engine Karma/Mocha suite; Chrome headless is required.
+- `cargo test --manifest-path src-tauri/Cargo.toml` - run native storage/Tauri tests.
 
 ## Coding Style & Naming Conventions
 
@@ -25,11 +31,11 @@
 
 ## Testing Guidelines
 
-- UI work relies on manual verification through `pnpm dev`; note smoke steps for reader changes until automated tests land.
-- Write descriptive test names, for example `should render highlights menu`, and keep them deterministic across browsers.
+- Prefer targeted automated checks for changed behavior: Playwright for UI flows, `pnpm lint` for TS/React rules, `pnpm build` for production type/build coverage.
+- For reader rendering, selection, keyboard, or layout changes, include manual smoke steps when automation does not cover the interaction.
 
 ## Commit & Pull Request Guidelines
 
 - Use Conventional Commits (`feat:`, `fix:`, `chore:`).
-- PRs should summarize UX changes and attach screenshots or recordings for reader tweaks.
-- Run `pnpm build`, `pnpm lint`, and targeted tests before opening a PR; call out known gaps or platform caveats.
+- Run the smallest relevant checks before committing; use `pnpm check` or `pnpm check:full` for broader validation.
+- PRs should summarize UX changes and include screenshots or recordings for visual reader tweaks.
