@@ -5,7 +5,7 @@
 - App code lives in `src/`: pages in `src/pages`, UI in `src/components`, hooks in `src/hooks`, reader models in `src/models`, shared app state in `src/state.ts`.
 - Translations live in `locales/`.
 - Tauri native shell and storage code lives in `src-tauri/`.
-- Workspace packages live in `packages/`: `packages/epubjs` is the vendored reader engine, `packages/tailwind` is the Tailwind preset.
+- Workspace packages live in `packages/`; currently `packages/epubjs` is the vendored reader engine.
 - Static assets and install metadata live in `public/`.
 
 ## Commands
