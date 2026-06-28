@@ -43,7 +43,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent
         data-flow-keyboard-capture="true"
-        className="h-[min(38rem,calc(100vh-4rem))] w-[min(48rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-lg p-0"
+        className="h-[min(38rem,calc(100vh-4rem))] w-[min(56rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-lg p-0"
       >
         <Settings />
       </DialogContent>
@@ -499,7 +499,7 @@ interface PartProps {
 }
 const Item: React.FC<PartProps> = ({ title, children }) => {
   return (
-    <div className="grid grid-cols-[8.5rem_minmax(0,1fr)] items-center gap-2">
+    <div className="grid grid-cols-[10rem_minmax(0,1fr)] items-center gap-2">
       <h3 className="text-muted-foreground text-base font-semibold">{title}</h3>
       <div className="min-w-0">{children}</div>
     </div>

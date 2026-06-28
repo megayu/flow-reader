@@ -82,23 +82,22 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
     ) as Window[]
   }, [iframe, iframes, tab])
 
-  const [selection, setSelection, releasePoint] = useTextSelection(windows)
-
-  // If text selection menu is disabled, don't render it
-  if (settings.enableTextSelectionMenu === false) {
-    return null
-  }
+  const [selection, setSelection, releasePoint, menuOpen] = useTextSelection(
+    windows,
+    { automatic: settings.enableTextSelectionMenu !== false },
+  )
 
   // it is possible that both `selection` and `tab.annotationRange`
   // are set when select end within an annotation
-  const range = getSelectionRange(selection) ?? annotationRange
+  const menuSelection = menuOpen ? selection : undefined
+  const range = getSelectionRange(menuSelection) ?? annotationRange
   if (!range) return null
 
   const view = tab.viewForRange(range)
   const el = view?.element as HTMLElement | undefined
   if (!el) return null
 
-  const forward = selection ? isForwardSelection(selection) : true
+  const forward = menuSelection ? isForwardSelection(menuSelection) : true
 
   const rects = [...range.getClientRects()].filter((r) => Math.round(r.width))
   const anchorRect = rects && (forward ? last(rects) : rects[0])
@@ -116,14 +115,14 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
       anchorRect={anchorRect}
       containerRect={el.parentElement!.getBoundingClientRect()}
       viewRect={el.getBoundingClientRect()}
-      releasePoint={selection ? releasePoint : undefined}
+      releasePoint={menuSelection ? releasePoint : undefined}
       text={text}
-      cfi={selection ? undefined : annotationCfi}
+      cfi={menuSelection ? undefined : annotationCfi}
       forward={forward}
       hide={() => {
-        if (selection) {
+        if (menuSelection) {
           try {
-            selection.removeAllRanges()
+            menuSelection.removeAllRanges()
           } catch (error) {
             // The selection may belong to an iframe that has been replaced.
           }

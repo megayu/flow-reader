@@ -9,6 +9,10 @@ export interface TextSelectionReleasePoint {
   y: number
 }
 
+interface TextSelectionOptions {
+  automatic?: boolean
+}
+
 export function hasSelection(
   selection?: Selection | null,
 ): selection is Selection {
@@ -28,11 +32,15 @@ export function isForwardSelection(selection: Selection) {
   return true
 }
 
-export function useTextSelection(target?: Window | Window[]) {
+export function useTextSelection(
+  target?: Window | Window[],
+  { automatic = true }: TextSelectionOptions = {},
+) {
   const [selection, setSelection] = useState<Selection | undefined>()
   const [releasePoint, setReleasePoint] = useState<
     TextSelectionReleasePoint | undefined
   >()
+  const [menuOpen, setMenuOpen] = useState(false)
   const render = useForceRender()
   const windows = useMemo(
     () =>
@@ -57,10 +65,25 @@ export function useTextSelection(target?: Window | Window[]) {
             x: event.clientX,
             y: event.clientY,
           })
+          setMenuOpen(automatic)
         } else {
           setSelection(undefined)
           setReleasePoint(undefined)
+          setMenuOpen(false)
         }
+      }
+      const openContextMenuSelection = (event: MouseEvent) => {
+        const s = win.getSelection()
+        if (!hasSelection(s)) return
+
+        event.preventDefault()
+        render()
+        setSelection(s)
+        setReleasePoint({
+          x: event.clientX,
+          y: event.clientY,
+        })
+        setMenuOpen(true)
       }
 
       const clearCollapsedSelection = () => {
@@ -75,17 +98,25 @@ export function useTextSelection(target?: Window | Window[]) {
             return selectionWindow === win ? undefined : selection
           })
           setReleasePoint(undefined)
+          setMenuOpen(false)
         }, 80)
       }
 
       win.addEventListener('mouseup', updateSelection)
+      win.addEventListener('contextmenu', openContextMenuSelection)
       win.document.addEventListener('mouseup', updateSelection)
+      win.document.addEventListener('contextmenu', openContextMenuSelection)
       win.document.addEventListener('selectionchange', clearCollapsedSelection)
 
       return () => {
         if (timeout) clearTimeout(timeout)
         win.removeEventListener('mouseup', updateSelection)
+        win.removeEventListener('contextmenu', openContextMenuSelection)
         win.document.removeEventListener('mouseup', updateSelection)
+        win.document.removeEventListener(
+          'contextmenu',
+          openContextMenuSelection,
+        )
         win.document.removeEventListener(
           'selectionchange',
           clearCollapsedSelection,
@@ -96,10 +127,15 @@ export function useTextSelection(target?: Window | Window[]) {
     return () => {
       removeListeners.forEach((removeListener) => removeListener())
     }
-  }, [render, windows])
+  }, [automatic, render, windows])
 
   useEffect(() => {
-    if (!selection) return
+    if (!selection) {
+      setReleasePoint(undefined)
+      setMenuOpen(false)
+      return
+    }
+
     const selectionWindow = selection.anchorNode?.ownerDocument?.defaultView
     if (
       selectionWindow &&
@@ -112,7 +148,8 @@ export function useTextSelection(target?: Window | Window[]) {
 
     setSelection(undefined)
     setReleasePoint(undefined)
+    setMenuOpen(false)
   }, [selection, windows])
 
-  return [selection, setSelection, releasePoint] as const
+  return [selection, setSelection, releasePoint, menuOpen] as const
 }

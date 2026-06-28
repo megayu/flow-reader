@@ -165,7 +165,8 @@ export default {
   'settings.default_text_align': 'Default Alignment',
   'settings.restore_last_reading': 'Restore last reading on startup',
   'settings.restore_last_reading.enable': 'Enable',
-  'settings.text_selection_menu': 'Text Selection Menu',
+  'settings.text_selection_menu':
+    'Automatically show menu after selecting text',
   'settings.text_selection_menu.enable': 'Enable',
   'settings.hide_endnotes': 'Endnotes',
   'settings.hide_endnotes.enable': 'Hide endnotes',

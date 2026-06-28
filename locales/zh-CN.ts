@@ -164,7 +164,7 @@ export default {
   'settings.default_text_align': '默认对齐方式',
   'settings.restore_last_reading': '启动时恢复上次阅读',
   'settings.restore_last_reading.enable': '启用',
-  'settings.text_selection_menu': '文本选择菜单',
+  'settings.text_selection_menu': '选中文本自动显示菜单',
   'settings.text_selection_menu.enable': '启用',
   'settings.hide_endnotes': '尾注',
   'settings.hide_endnotes.enable': '隐藏尾注',
