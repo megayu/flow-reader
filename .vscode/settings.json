@@ -1,15 +1,5 @@
 {
   "typescript.tsdk": "./node_modules/typescript/lib",
   // https://github.com/tailwindlabs/tailwindcss/discussions/5258#discussioncomment-1979394
-  "css.lint.unknownAtRules": "ignore",
-  "exportall.config.folderListener": [
-    "/apps/reader/src/components",
-    "/apps/reader/src/hooks",
-    "/apps/reader/src/components/base",
-    "/apps/reader/src/hooks/remote",
-    "/apps/reader/src/components/pages",
-    "/apps/website/src/components",
-    "/apps/reader/src/hooks/theme",
-    "/apps/reader/src/models"
-  ]
+  "css.lint.unknownAtRules": "ignore"
 }

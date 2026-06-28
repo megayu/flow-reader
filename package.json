@@ -1,6 +1,7 @@
 {
   "name": "flow-reader",
   "private": true,
+  "description": "Tauri desktop EPUB and TXT reader based on pacexy/flow",
   "packageManager": "pnpm@11.8.0",
   "scripts": {
     "dev": "next dev -p 7127",

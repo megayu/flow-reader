@@ -6,7 +6,7 @@
 - Translations live in `locales/`.
 - Tauri native shell and storage code lives in `src-tauri/`.
 - Workspace packages live in `packages/`; currently `packages/epubjs` is the vendored reader engine.
-- Static assets and install metadata live in `public/`.
+- Desktop icons live in `src-tauri/icons/`; Tauri permissions live in `src-tauri/capabilities/`.
 
 ## Commands
 
