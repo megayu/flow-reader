@@ -6,7 +6,7 @@
     "dev": "next dev -p 7127",
     "build": "next build",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
+    "tauri:dev": "tauri dev --features devtools",
     "tauri:build": "tauri build --no-bundle",
     "release:local": "node scripts/release-local.mjs",
     "analyze:turbopack": "next experimental-analyze --output",

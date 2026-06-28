@@ -6,6 +6,7 @@ import { useEffect } from 'react'
 import { Layout } from '../components/Layout'
 import { Theme } from '../components/Theme'
 import { TooltipProvider } from '../components/ui/tooltip'
+import { devtoolsShortcutEnabled, toggleDevtools } from '../devtools'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import { revealScrollbars } from '../scrollbar'
 
@@ -27,6 +28,8 @@ function useRevealScrollbars() {
 
 function useDevtoolsShortcut() {
   useEffect(() => {
+    if (!devtoolsShortcutEnabled) return
+
     const handleKeyDown = async (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || !event.shiftKey) return
       if (event.code !== 'KeyI' && event.key.toLowerCase() !== 'i') return
@@ -35,12 +38,7 @@ function useDevtoolsShortcut() {
       event.preventDefault()
       event.stopPropagation()
 
-      try {
-        const { invoke } = await import('@tauri-apps/api/core')
-        await invoke('toggle_devtools')
-      } catch {
-        // Not running in Tauri.
-      }
+      await toggleDevtools()
     }
 
     document.addEventListener('keydown', handleKeyDown, true)

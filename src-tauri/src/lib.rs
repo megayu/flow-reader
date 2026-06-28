@@ -37,10 +37,18 @@ fn take_pending_open_paths(state: tauri::State<'_, PendingOpenFiles>) -> Vec<Str
 
 #[tauri::command]
 fn toggle_devtools(window: tauri::WebviewWindow) {
-    if window.is_devtools_open() {
-        window.close_devtools();
-    } else {
-        window.open_devtools();
+    #[cfg(feature = "devtools")]
+    {
+        if window.is_devtools_open() {
+            window.close_devtools();
+        } else {
+            window.open_devtools();
+        }
+    }
+
+    #[cfg(not(feature = "devtools"))]
+    {
+        let _ = window;
     }
 }
 

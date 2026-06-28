@@ -41,6 +41,7 @@ import {
 
 import { getBookDisplayTitle, getBookTooltip } from '../book'
 import { db, type BookRecord } from '../db'
+import { devtoolsShortcutEnabled, toggleDevtools } from '../devtools'
 import { handleFiles } from '../file'
 import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
@@ -166,15 +167,6 @@ async function toggleFullscreenIfAvailable() {
   }
 }
 
-async function toggleDevtools() {
-  try {
-    const { invoke } = await import('@tauri-apps/api/core')
-    await invoke('toggle_devtools')
-  } catch {
-    // Not running in Tauri.
-  }
-}
-
 function isSettingsShortcut(e: KeyboardEvent) {
   return !e.shiftKey && (e.key === ',' || e.code === 'Comma')
 }
@@ -206,7 +198,7 @@ function handleCommandShortcut(
     return true
   }
 
-  if (isDevtoolsShortcut(e)) {
+  if (devtoolsShortcutEnabled && isDevtoolsShortcut(e)) {
     e.preventDefault()
     e.stopPropagation()
     e.stopImmediatePropagation?.()
