@@ -6,7 +6,7 @@ import { useEffect } from 'react'
 import { Layout } from '../components/Layout'
 import { Theme } from '../components/Theme'
 import { TooltipProvider } from '../components/ui/tooltip'
-import { devtoolsShortcutEnabled, toggleDevtools } from '../devtools'
+import { loadDevtoolsShortcutEnabled, toggleDevtools } from '../devtools'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import { revealScrollbars } from '../scrollbar'
 
@@ -28,8 +28,6 @@ function useRevealScrollbars() {
 
 function useDevtoolsShortcut() {
   useEffect(() => {
-    if (!devtoolsShortcutEnabled) return
-
     const handleKeyDown = async (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || !event.shiftKey) return
       if (event.code !== 'KeyI' && event.key.toLowerCase() !== 'i') return
@@ -41,10 +39,20 @@ function useDevtoolsShortcut() {
       await toggleDevtools()
     }
 
-    document.addEventListener('keydown', handleKeyDown, true)
+    let disposed = false
+    let listening = false
+
+    void loadDevtoolsShortcutEnabled().then((enabled) => {
+      if (disposed || !enabled) return
+      listening = true
+      document.addEventListener('keydown', handleKeyDown, true)
+    })
 
     return () => {
-      document.removeEventListener('keydown', handleKeyDown, true)
+      disposed = true
+      if (listening) {
+        document.removeEventListener('keydown', handleKeyDown, true)
+      }
     }
   }, [])
 }

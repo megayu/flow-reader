@@ -36,6 +36,11 @@ fn take_pending_open_paths(state: tauri::State<'_, PendingOpenFiles>) -> Vec<Str
 }
 
 #[tauri::command]
+fn is_devtools_enabled() -> bool {
+    cfg!(feature = "devtools")
+}
+
+#[tauri::command]
 fn toggle_devtools(window: tauri::WebviewWindow) {
     #[cfg(feature = "devtools")]
     {
@@ -119,6 +124,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            is_devtools_enabled,
             list_system_fonts,
             take_pending_open_paths,
             toggle_devtools,

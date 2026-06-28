@@ -41,7 +41,7 @@ import {
 
 import { getBookDisplayTitle, getBookTooltip } from '../book'
 import { db, type BookRecord } from '../db'
-import { devtoolsShortcutEnabled, toggleDevtools } from '../devtools'
+import { isDevtoolsShortcutEnabled, toggleDevtools } from '../devtools'
 import { handleFiles } from '../file'
 import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
@@ -198,7 +198,7 @@ function handleCommandShortcut(
     return true
   }
 
-  if (devtoolsShortcutEnabled && isDevtoolsShortcut(e)) {
+  if (isDevtoolsShortcutEnabled() && isDevtoolsShortcut(e)) {
     e.preventDefault()
     e.stopPropagation()
     e.stopImmediatePropagation?.()
