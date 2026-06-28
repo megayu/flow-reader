@@ -1866,25 +1866,24 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
         src={!zenMode ? src : undefined}
         onClose={() => setSrc(undefined)}
       />
-      {!zenMode && (
-        <ReaderPaneHeader tab={tab}>
-          {chapterFind.open && (
-            <ChapterFindBar
-              find={chapterFind}
-              inputRef={chapterFindInputRef}
-              onChange={(query) =>
-                setChapterFind((state) => ({
-                  ...state,
-                  query,
-                  activeIndex: 0,
-                }))
-              }
-              onClose={closeChapterFind}
-              onNext={() => goToFindResult(chapterFind.activeIndex + 1)}
-              onPrevious={() => goToFindResult(chapterFind.activeIndex - 1)}
-            />
-          )}
-        </ReaderPaneHeader>
+      {!zenMode && <ReaderPaneHeader tab={tab} />}
+      {!zenMode && chapterFind.open && active && (
+        <ChapterFindOverlay anchorRef={ref}>
+          <ChapterFindBar
+            find={chapterFind}
+            inputRef={chapterFindInputRef}
+            onChange={(query) =>
+              setChapterFind((state) => ({
+                ...state,
+                query,
+                activeIndex: 0,
+              }))
+            }
+            onClose={closeChapterFind}
+            onNext={() => goToFindResult(chapterFind.activeIndex + 1)}
+            onPrevious={() => goToFindResult(chapterFind.activeIndex - 1)}
+          />
+        </ChapterFindOverlay>
       )}
       <div
         ref={ref}
@@ -2442,6 +2441,55 @@ interface ChapterFindBarProps {
   onNext: () => void
   onPrevious: () => void
 }
+
+interface ChapterFindOverlayProps {
+  anchorRef: React.RefObject<HTMLElement | null>
+  children: React.ReactNode
+}
+
+const ChapterFindOverlay: React.FC<ChapterFindOverlayProps> = ({
+  anchorRef,
+  children,
+}) => {
+  const [style, setStyle] = useState<React.CSSProperties>()
+
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current
+    if (!anchor) return
+
+    let frame = 0
+    const update = () => {
+      window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(() => {
+        const rect = anchor.getBoundingClientRect()
+
+        setStyle({
+          position: 'fixed',
+          right: Math.max(8, window.innerWidth - rect.right + 8),
+          bottom: Math.max(8, window.innerHeight - rect.top + 8),
+          zIndex: 50,
+        })
+      })
+    }
+
+    update()
+
+    const observer = new ResizeObserver(update)
+    observer.observe(anchor)
+    window.addEventListener('resize', update)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      observer.disconnect()
+      window.removeEventListener('resize', update)
+    }
+  }, [anchorRef])
+
+  if (!style) return null
+
+  return createPortal(<div style={style}>{children}</div>, document.body)
+}
+
 const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
   find,
   inputRef,
@@ -2455,6 +2503,11 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
   const count = find.results.length
   const current = count ? find.activeIndex + 1 : 0
   const disabled = !count || find.searching
+
+  useLayoutEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [inputRef])
 
   return (
     <div
@@ -3749,18 +3802,14 @@ function isLikelyNoteLink(
 }
 
 interface ReaderPaneHeaderProps {
-  children?: React.ReactNode
   tab: BookTab
 }
-const ReaderPaneHeader: React.FC<ReaderPaneHeaderProps> = ({
-  children,
-  tab,
-}) => {
+const ReaderPaneHeader: React.FC<ReaderPaneHeaderProps> = ({ tab }) => {
   const { paginationSnapshot } = useSnapshot(tab)
   const navPath = paginationSnapshot?.headerPath ?? []
 
   return (
-    <Bar className={clsx('relative', children && 'h-14')}>
+    <Bar>
       <div className="scroll-h flex">
         {navPath.map((item, i) => (
           <button
@@ -3775,7 +3824,6 @@ const ReaderPaneHeader: React.FC<ReaderPaneHeaderProps> = ({
           </button>
         ))}
       </div>
-      {children && <div className="absolute top-2 right-2">{children}</div>}
     </Bar>
   )
 }
