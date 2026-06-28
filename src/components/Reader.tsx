@@ -680,6 +680,25 @@ function preventContextMenu(e: Event) {
   e.preventDefault()
 }
 
+function getSelectedText(windows: readonly Window[]) {
+  for (const win of windows) {
+    try {
+      const selection = win.getSelection()
+      const text = selection?.toString().replace(/\s+/g, ' ').trim()
+      if (
+        text &&
+        !selection?.isCollapsed &&
+        selection?.anchorNode?.isConnected
+      ) {
+        return text
+      }
+    } catch (error) {
+      // The iframe may have been detached while handling a shortcut.
+    }
+  }
+  return ''
+}
+
 interface ReaderGridViewProps {
   content?: React.ReactNode
 }
@@ -1291,16 +1310,18 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
 
   const openChapterFind = useCallback(() => {
     const sectionIndex = findScopeSectionIndex()
+    const selectedText = getSelectedText(activeFrameWindows)
 
     setNotePopover(undefined)
     setChapterFind((state) => ({
       ...state,
       open: true,
+      query: selectedText || state.query,
       sectionIndex,
       activeIndex: 0,
     }))
     focusChapterFindInput()
-  }, [findScopeSectionIndex, focusChapterFindInput])
+  }, [activeFrameWindows, findScopeSectionIndex, focusChapterFindInput])
 
   const closeChapterFind = useCallback(() => {
     setChapterFind((state) => ({
