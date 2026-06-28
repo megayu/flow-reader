@@ -49,6 +49,11 @@ import { useEventListener } from '../hooks/useEventListener'
 import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
 import {
+  hasKeyboardCaptureLayer,
+  isEditableKeyboardTarget,
+  isGlobalKeyboardShortcutBlocked,
+} from '../keyboard'
+import {
   BookTab,
   reader,
   useReaderSnapshot,
@@ -581,6 +586,8 @@ function handleChapterShortcut(e: KeyboardEvent, tab?: BookTab) {
 
 function handlePageTurnShortcut(e: KeyboardEvent, tab?: BookTab) {
   if (!tab) return false
+  if (e.ctrlKey || e.metaKey || e.altKey) return false
+  if (isReaderShortcutTargetBlocked(e)) return false
 
   switch (e.code) {
     case 'ArrowLeft':
@@ -627,47 +634,21 @@ function shouldIgnoreReaderShortcut(e: KeyboardEvent) {
 }
 
 function isReaderShortcutTargetBlocked(e: KeyboardEvent) {
-  if (isEditableTarget(e.target)) return true
-  return hasKeyboardCapturingLayer(e.target)
+  return (
+    isGlobalKeyboardShortcutBlocked(e) || hasKeyboardCapturingLayer(e.target)
+  )
 }
 
 function isEditableTarget(target: EventTarget | null) {
-  if (!(target instanceof Element)) return false
-
-  const el = target as HTMLElement
-  return !!el.closest('input, textarea, select, [contenteditable="true"]')
+  return isEditableKeyboardTarget(target)
 }
 
 function hasKeyboardCapturingLayer(target: EventTarget | null) {
-  const doc =
-    target instanceof Node && target.ownerDocument
-      ? target.ownerDocument
-      : document
-  const parentDoc = doc.defaultView?.frameElement?.ownerDocument
-  const docs = new Set<Document>()
-
-  ;[doc, parentDoc, document].forEach((candidate) => {
-    if (candidate) docs.add(candidate)
-  })
-  ;[...docs].forEach((candidate) => {
-    candidate.querySelectorAll('iframe').forEach((frame) => {
-      try {
-        if (frame.contentDocument) docs.add(frame.contentDocument)
-      } catch (error) {
-        // ignore cross-origin frames
-      }
-    })
-  })
-
-  return [...docs].some((candidate) =>
-    candidate.querySelector(
-      [
-        '[data-flow-keyboard-capture="true"]',
-        `.${NOTE_POPOVER_CLASS}`,
-        '[role="dialog"]',
-      ].join(','),
-    ),
-  )
+  return hasKeyboardCaptureLayer(target, [
+    `.${NOTE_POPOVER_CLASS}`,
+    '[role="dialog"]',
+    '[role="menu"]',
+  ])
 }
 
 function useFrameEvent<K extends keyof WindowEventMap>(
@@ -1341,6 +1322,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
   const handleFindShortcut = useCallback(
     (e: KeyboardEvent) => {
       if (!isFindShortcut(e)) return
+      if (isReaderShortcutTargetBlocked(e)) return
 
       e.preventDefault()
       e.stopPropagation()

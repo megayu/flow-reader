@@ -81,6 +81,7 @@ import { useAction, useLibraryAction } from '../hooks/useAction'
 import { useBoolean } from '../hooks/useBoolean'
 import { useCovers, useLibrary, useLibraryTags } from '../hooks/useLibrary'
 import { useTranslation } from '../hooks/useTranslation'
+import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import {
   cleanLibraryTagName,
   filterBooksByLibraryFilters,
@@ -130,10 +131,7 @@ const libraryBookCardSizePresets = [
 ] as const
 
 function isKeyboardTargetBlocked(e: KeyboardEvent) {
-  const target = e.target as HTMLElement | null
-  return !!target?.closest(
-    'input, textarea, select, [contenteditable="true"], [data-flow-keyboard-capture="true"]',
-  )
+  return isGlobalKeyboardShortcutBlocked(e)
 }
 
 function toggleReadingStatusFilter(
@@ -666,6 +664,7 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
 
     const cancelSelectionOnEscape = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
+      if (isGlobalKeyboardShortcutBlocked(e)) return
 
       e.preventDefault()
       toggleSelect()
@@ -1131,6 +1130,8 @@ const Book: React.FC<BookProps> = ({
         {contextMenu && (
           <div
             ref={contextMenuRef}
+            role="menu"
+            tabIndex={-1}
             className="ring-border bg-popover text-popover-foreground fixed z-[70] w-40 rounded-lg p-1 shadow-lg ring-1"
             style={{ left: contextMenu.x, top: contextMenu.y }}
             onPointerDown={(e) => e.stopPropagation()}
@@ -1322,6 +1323,7 @@ const BookContextMenuButton: React.FC<BookContextMenuButtonProps> = ({
   return (
     <button
       type="button"
+      role="menuitem"
       className={clsx(
         'hover:bg-muted flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-base outline-none',
         danger ? 'text-destructive' : 'text-muted-foreground',

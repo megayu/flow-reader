@@ -47,6 +47,7 @@ import {
 } from '../hooks/useAction'
 import { useLibrary, useLibraryTags } from '../hooks/useLibrary'
 import { useTranslation } from '../hooks/useTranslation'
+import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import {
   areStringListsEqual,
   cleanLibraryTagName,
@@ -129,6 +130,7 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!isSettingsShortcut(e)) return
+      if (isGlobalKeyboardShortcutBlocked(e)) return
 
       e.preventDefault()
       e.stopPropagation()
@@ -209,10 +211,7 @@ function isFullscreenShortcut(e: KeyboardEvent) {
 }
 
 function isAppShortcutTargetBlocked(e: KeyboardEvent) {
-  const target = e.target as HTMLElement | null
-  return !!target?.closest(
-    'input, textarea, select, [contenteditable="true"], [data-flow-keyboard-capture="true"]',
-  )
+  return isGlobalKeyboardShortcutBlocked(e)
 }
 
 interface IAction {
@@ -1145,16 +1144,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
 }
 
 function isLibraryFilterShortcutBlocked(e: KeyboardEvent) {
-  const target = e.target as HTMLElement | null
-  if (
-    target?.closest(
-      'input, textarea, select, [contenteditable="true"], [data-flow-keyboard-capture="true"], [role="dialog"], [role="menu"]',
-    )
-  ) {
-    return true
-  }
-
-  return !!document.querySelector('[role="dialog"], [role="menu"]')
+  return isGlobalKeyboardShortcutBlocked(e)
 }
 
 interface FilterSectionProps extends PropsWithChildren {

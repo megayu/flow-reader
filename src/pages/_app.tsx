@@ -6,6 +6,7 @@ import { useEffect } from 'react'
 import { Layout } from '../components/Layout'
 import { Theme } from '../components/Theme'
 import { TooltipProvider } from '../components/ui/tooltip'
+import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import { revealScrollbars } from '../scrollbar'
 
 function useRevealScrollbars() {
@@ -29,6 +30,7 @@ function useDevtoolsShortcut() {
     const handleKeyDown = async (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || !event.shiftKey) return
       if (event.code !== 'KeyI' && event.key.toLowerCase() !== 'i') return
+      if (isGlobalKeyboardShortcutBlocked(event)) return
 
       event.preventDefault()
       event.stopPropagation()
