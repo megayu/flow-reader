@@ -113,6 +113,7 @@ export function detectBodyTextIndexes(
     return [
       {
         index,
+        inlineMargin: getInlineMargin(style),
         textLength: text.length,
         signature: createBodyTextSignature(el, style),
       },
@@ -156,6 +157,7 @@ function applyBodyTextIndexes(
 
 interface BodyTextCandidate {
   index: number
+  inlineMargin: number
   textLength: number
   signature: string
 }
@@ -166,6 +168,7 @@ interface BodyTextCluster {
   count: number
   totalText: number
   avgText: number
+  inlineMargin: number
   score: number
 }
 
@@ -255,6 +258,8 @@ function createBodyTextSignature(el: HTMLElement, style: CSSStyleDeclaration) {
     style.backgroundColor,
     style.textAlign,
     style.textIndent,
+    style.marginLeft,
+    style.marginRight,
     style.marginTop,
     style.marginBottom,
   ].join('|')
@@ -262,6 +267,13 @@ function createBodyTextSignature(el: HTMLElement, style: CSSStyleDeclaration) {
 
 function normalizedClassName(el: HTMLElement) {
   return [...el.classList].sort().join(' ')
+}
+
+function getInlineMargin(style: CSSStyleDeclaration) {
+  return (
+    (parseCssPixel(style.marginLeft) ?? 0) +
+    (parseCssPixel(style.marginRight) ?? 0)
+  )
 }
 
 function getBodyTextCandidateText(el: HTMLElement) {
@@ -313,6 +325,7 @@ function createBodyTextClusters(candidates: BodyTextCandidate[]) {
       count: 0,
       totalText: 0,
       avgText: 0,
+      inlineMargin: candidate.inlineMargin,
       score: 0,
     }
 
@@ -345,6 +358,11 @@ function selectBodyTextClusters(clusters: BodyTextCluster[]) {
   const rest = candidates
     .filter((cluster) => cluster !== winner)
     .sort((a, b) => b.score - a.score)
+  const runnerUp = rest[0]
+
+  if (runnerUp && runnerUp.inlineMargin > winner.inlineMargin) {
+    return selected
+  }
 
   for (const cluster of rest) {
     if (selected.length >= 3) break
