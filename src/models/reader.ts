@@ -48,6 +48,21 @@ export function compareHref(
   }
 }
 
+function splitHrefTarget(href: string | undefined) {
+  const [path = '', hash] = href?.split('#') ?? []
+  return { hash, path }
+}
+
+function safeDecode(value: string | undefined) {
+  if (!value) return value
+
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
 function normalizeImageSource(src: string) {
   try {
     return decodeURI(src)
@@ -474,15 +489,26 @@ interface LocationRequestIntent {
   updateAnchor: boolean
 }
 
+interface SectionNavEntry {
+  href: string
+  hash?: string
+  item: INavItem
+  order: number
+  sectionIndex: number
+}
+
+interface SectionNavAnchorEntry extends SectionNavEntry {
+  cfi: string
+}
+
 interface SectionNavIndex {
   nav: Navigation
   sections: ISection[]
   exactBySectionHref: Map<string, INavItem>
-  entries: Array<{
-    item: INavItem
-    order: number
-    sectionIndex: number
-  }>
+  entriesBySectionIndex: Map<number, SectionNavEntry[]>
+  anchorEntriesBySectionIndex: Map<number, SectionNavAnchorEntry[]>
+  anchorPromisesBySectionIndex: Map<number, Promise<SectionNavAnchorEntry[]>>
+  entries: SectionNavEntry[]
 }
 
 function snapshotReflowablePage(
@@ -694,6 +720,7 @@ export class BookTab extends BaseTab {
   private runtimeAnchorCfi?: string
   private runtimeSpreadAnchor?: ReadingSpreadRecord
   private spreadAnchorsByLayout = new Map<string, ReadingSpreadRecord>()
+  private navRefreshGeneration = 0
   private layoutOperationId = 0
   private layoutOperationPromise = Promise.resolve()
   rejectedLocationEventCount = 0
@@ -1081,10 +1108,36 @@ export class BookTab extends BaseTab {
     return true
   }
 
+  private async navigateNavItem(direction: -1 | 1) {
+    const point = direction > 0 ? this.location?.end : this.location?.start
+    const anchor = await this.navAnchorForLocationPoint(point)
+    if (!anchor) return false
+
+    const entries = this.getSectionNavIndex()?.entries
+    if (!entries?.length) return false
+
+    const index = entries.findIndex((entry) => entry.item === anchor.item)
+    const target = index < 0 ? undefined : entries[index + direction]
+    if (!target) return false
+
+    const section = this.sections?.find(
+      (section) => section.index === target.sectionIndex,
+    )
+    if (!section) return false
+
+    await this.displayTarget(
+      section,
+      target.hash ? `#${target.hash}` : undefined,
+    )
+    return true
+  }
+
   private async navigateSection(direction: -1 | 1) {
     if (this.turning || !this.sections?.length || !this.location) return
 
     return this.runNavigation(async () => {
+      if (await this.navigateNavItem(direction)) return
+
       if (
         direction < 0 &&
         (await this.displayCurrentSectionStartBeforePreviousSection())
@@ -1426,6 +1479,11 @@ export class BookTab extends BaseTab {
         })
         const activeSection = this.commitVisibleSections(loc, visibleSections)
         this.updateRuntimeAnchorCfi(loc, locationIntent)
+        void this.refreshVisibleNavItems(
+          loc,
+          activeSection,
+          ++this.navRefreshGeneration,
+        )
         this.commitPaginationSnapshot(loc, percentage, activeSection)
         this.clearLocationIntent()
         this.rendered = true
@@ -1471,6 +1529,11 @@ export class BookTab extends BaseTab {
         activeSection.navitem = activeNavItem
       }
       this.expandNavPath(activeNavItem)
+      void this.refreshVisibleNavItems(
+        loc,
+        activeSection,
+        ++this.navRefreshGeneration,
+      )
 
       const positionUpdate = this.createCurrentPositionUpdate(percentage)
       if (positionUpdate) {
@@ -1730,6 +1793,7 @@ export class BookTab extends BaseTab {
     }
 
     const exactBySectionHref = new Map<string, INavItem>()
+    const entriesBySectionIndex = new Map<number, SectionNavEntry[]>()
     const entries: SectionNavIndex['entries'] = []
     let order = 0
 
@@ -1740,15 +1804,25 @@ export class BookTab extends BaseTab {
         )
 
         if (matchedSection) {
+          const { hash, path } = splitHrefTarget(navItem.href)
+          const entry = {
+            href: path,
+            hash,
+            item: navItem,
+            order,
+            sectionIndex: matchedSection.index,
+          }
+
           exactBySectionHref.set(
             matchedSection.href,
             exactBySectionHref.get(matchedSection.href) ?? navItem,
           )
-          entries.push({
-            item: navItem,
-            order,
-            sectionIndex: matchedSection.index,
-          })
+          entries.push(entry)
+
+          const sectionEntries =
+            entriesBySectionIndex.get(matchedSection.index) ?? []
+          sectionEntries.push(entry)
+          entriesBySectionIndex.set(matchedSection.index, sectionEntries)
         }
 
         order++
@@ -1757,6 +1831,9 @@ export class BookTab extends BaseTab {
 
     entries.sort((a, b) => a.sectionIndex - b.sectionIndex || a.order - b.order)
     this.sectionNavIndex = {
+      anchorEntriesBySectionIndex: new Map(),
+      anchorPromisesBySectionIndex: new Map(),
+      entriesBySectionIndex,
       nav: this.nav,
       sections,
       exactBySectionHref,
@@ -1784,6 +1861,123 @@ export class BookTab extends BaseTab {
         return entry.item
       }
     }
+  }
+
+  private sectionHasMultipleNavItems(section: ISection | undefined) {
+    if (!section) return false
+
+    const entries = this.getSectionNavIndex()?.entriesBySectionIndex.get(
+      section.index,
+    )
+    return !!entries && entries.length > 1
+  }
+
+  private async navAnchorsForSection(section: ISection) {
+    const index = this.getSectionNavIndex()
+    const entries = index?.entriesBySectionIndex.get(section.index)
+    if (!index || !entries || entries.length <= 1) return []
+
+    const cached = index.anchorEntriesBySectionIndex.get(section.index)
+    if (cached) return cached
+
+    const pending = index.anchorPromisesBySectionIndex.get(section.index)
+    if (pending) return pending
+
+    const promise = this.createNavAnchorsForSection(section, entries)
+    index.anchorPromisesBySectionIndex.set(section.index, promise)
+    return promise
+  }
+
+  private async createNavAnchorsForSection(
+    section: ISection,
+    entries: SectionNavEntry[],
+  ) {
+    await this.ensureSectionInfo(section)
+
+    const anchors = entries.flatMap((entry) => {
+      const element = this.findNavAnchorElement(section, entry.hash)
+      if (!element) return []
+
+      try {
+        return [
+          {
+            ...entry,
+            cfi: section.cfiFromElement(element),
+          },
+        ]
+      } catch (error) {
+        return []
+      }
+    })
+
+    anchors.sort((a, b) => this.compareCfi(a.cfi, b.cfi) || a.order - b.order)
+    this.getSectionNavIndex()?.anchorEntriesBySectionIndex.set(
+      section.index,
+      anchors,
+    )
+    return anchors
+  }
+
+  private findNavAnchorElement(section: ISection, hash: string | undefined) {
+    const document = section.document
+    if (!document) return
+
+    const decoded = safeDecode(hash)
+    if (!hash) return document.body
+
+    return (
+      document.getElementById(hash) ??
+      (decoded && decoded !== hash
+        ? document.getElementById(decoded)
+        : undefined)
+    )
+  }
+
+  private compareCfi(a: string, b: string) {
+    try {
+      return this.rendition?.epubcfi?.compare(a, b) ?? 0
+    } catch {
+      return 0
+    }
+  }
+
+  private navItemFromCachedSectionCfi(
+    section: ISection | undefined,
+    cfi: string | undefined,
+  ) {
+    if (!section || !cfi) return
+
+    const anchors = this.getSectionNavIndex()?.anchorEntriesBySectionIndex.get(
+      section.index,
+    )
+    if (!anchors?.length) return
+
+    return this.pickNavAnchorForCfi(anchors, cfi)?.item
+  }
+
+  private pickNavAnchorForCfi(
+    anchors: SectionNavAnchorEntry[],
+    cfi: string | undefined,
+  ) {
+    if (!cfi) return anchors[0]
+
+    let selected = anchors[0]
+    for (const anchor of anchors) {
+      if (this.compareCfi(anchor.cfi, cfi) > 0) break
+      selected = anchor
+    }
+
+    return selected
+  }
+
+  private async navAnchorForLocationPoint(
+    point: Pick<Location['start'], 'index' | 'href' | 'cfi'> | undefined,
+  ) {
+    const section = this.sectionFromLocationPoint(point)
+    if (!section || !this.sectionHasMultipleNavItems(section)) return
+
+    const anchors = await this.navAnchorsForSection(section)
+    return this.pickNavAnchorForCfi(anchors, point?.cfi)
   }
 
   get currentHref() {
@@ -1847,6 +2041,32 @@ export class BookTab extends BaseTab {
     return activeSection
   }
 
+  private async refreshVisibleNavItems(
+    location: Location,
+    activeSection: ISection | undefined,
+    generation: number,
+  ) {
+    if (!this.sections) return
+
+    const [startAnchor, endAnchor] = await Promise.all([
+      this.navAnchorForLocationPoint(location.start),
+      this.navAnchorForLocationPoint(location.end),
+    ])
+
+    if (this.navRefreshGeneration !== generation) return
+
+    if (activeSection && startAnchor?.item) {
+      if (activeSection.navitem !== startAnchor.item) {
+        activeSection.navitem = startAnchor.item
+        this.tocVersion++
+      }
+    }
+
+    ;[startAnchor?.item, endAnchor?.item].forEach((item) => {
+      if (item) this.expandNavPath(item)
+    })
+  }
+
   private shouldAcceptRelocatedLocation(
     percentage: number | undefined,
     visibleSections: ISection[],
@@ -1895,8 +2115,14 @@ export class BookTab extends BaseTab {
   }
 
   get currentNavItem() {
+    const currentSection = this.currentSection
+
     return (
-      this.currentSection?.navitem ??
+      this.navItemFromCachedSectionCfi(
+        currentSection,
+        this.location?.start.cfi,
+      ) ??
+      currentSection?.navitem ??
       (this.currentHref
         ? this.mapSectionToNavItem(this.currentHref)
         : undefined)
