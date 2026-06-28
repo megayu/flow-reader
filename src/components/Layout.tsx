@@ -1188,9 +1188,10 @@ const FilterSection: React.FC<FilterSectionProps> = ({
           size="sm"
           aria-label={`${title} section`}
           aria-expanded={expanded}
-          className="h-8 min-w-0 flex-1 justify-start gap-2 rounded-xl bg-transparent px-0 text-left hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 aria-expanded:bg-transparent aria-expanded:text-[var(--flow-text)]"
+          className="h-8 min-w-0 flex-1 justify-start gap-1.5 rounded-xl bg-transparent px-0 text-left hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 aria-expanded:bg-transparent aria-expanded:text-[var(--flow-text)]"
           onClick={() => onExpandedChange(!expanded)}
         >
+          <span className={libraryFilterSectionHeaderClassName}>{title}</span>
           <ChevronDown
             aria-hidden
             className={clsx(
@@ -1198,7 +1199,6 @@ const FilterSection: React.FC<FilterSectionProps> = ({
               !expanded && '-rotate-90',
             )}
           />
-          <span className={libraryFilterSectionHeaderClassName}>{title}</span>
         </UiButton>
         {actions}
         <AppTooltip label={resetLabel}>
