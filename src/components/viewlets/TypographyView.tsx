@@ -685,6 +685,12 @@ const NumberField: React.FC<NumberFieldProps> = ({
   const ref = useRef<HTMLInputElement>(null)
   const actionT = useTranslation('action')
   const typographyT = useTranslation('typography')
+  const min = parseNumberInputProp(props.min)
+  const max = parseNumberInputProp(props.max)
+  const stepDownDisabled =
+    value !== undefined && min !== undefined && value <= min
+  const stepUpDisabled =
+    value !== undefined && max !== undefined && value >= max
 
   useEffect(() => {
     if (!ref.current) return
@@ -693,6 +699,8 @@ const NumberField: React.FC<NumberFieldProps> = ({
 
   const step = (direction: -1 | 1) => {
     if (!ref.current) return
+    if (direction < 0 && stepDownDisabled) return
+    if (direction > 0 && stepUpDisabled) return
 
     if (ref.current.value === '') {
       const base = baseValue?.()
@@ -724,7 +732,8 @@ const NumberField: React.FC<NumberFieldProps> = ({
         />
         <div className="flex shrink-0 items-center gap-0.5 pr-1">
           <IconButton
-            className="text-muted-foreground"
+            className="text-muted-foreground flex size-6 items-center justify-center"
+            disabled={stepDownDisabled}
             title={actionT('step_down')}
             Icon={MinusIcon}
             onClick={() => {
@@ -732,16 +741,22 @@ const NumberField: React.FC<NumberFieldProps> = ({
             }}
           />
           <IconButton
-            className="text-muted-foreground"
+            className="text-muted-foreground flex size-6 items-center justify-center"
+            disabled={stepUpDisabled}
             title={actionT('step_up')}
             Icon={PlusIcon}
             onClick={() => {
               step(1)
             }}
           />
-          {value !== undefined && (
+          <span
+            aria-hidden={value === undefined}
+            className="flex size-6 items-center justify-center"
+          >
             <IconButton
-              className="text-muted-foreground"
+              className="text-muted-foreground flex size-6 items-center justify-center"
+              disabled={value === undefined}
+              tabIndex={value === undefined ? -1 : undefined}
               title={actionT('clear')}
               Icon={XIcon}
               onClick={() => {
@@ -749,9 +764,18 @@ const NumberField: React.FC<NumberFieldProps> = ({
                 onChange(undefined)
               }}
             />
-          )}
+          </span>
         </div>
       </div>
     </div>
   )
+}
+
+function parseNumberInputProp(value: string | number | undefined) {
+  if (typeof value === 'number')
+    return Number.isFinite(value) ? value : undefined
+  if (typeof value !== 'string') return undefined
+
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : undefined
 }
