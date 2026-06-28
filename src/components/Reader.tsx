@@ -1956,6 +1956,27 @@ interface ReaderImagePreviewProps {
 
 type ReaderImagePreviewMode = 'fit' | 'zoom'
 
+interface ReaderImagePreviewState {
+  mode: ReaderImagePreviewMode
+  naturalSize?: {
+    width: number
+    height: number
+  }
+  pan: {
+    x: number
+    y: number
+  }
+  scale: number
+}
+
+function createReaderImagePreviewState(): ReaderImagePreviewState {
+  return {
+    mode: 'fit',
+    pan: { x: 0, y: 0 },
+    scale: 1,
+  }
+}
+
 const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
   src,
   onClose,
@@ -1963,15 +1984,12 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
   const t = useTranslation('image_preview')
   const previewRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
-  const [naturalSize, setNaturalSize] = useState<{
-    width: number
-    height: number
-  }>()
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 })
   const [dragging, setDragging] = useState(false)
-  const [mode, setMode] = useState<ReaderImagePreviewMode>('fit')
-  const [pan, setPan] = useState({ x: 0, y: 0 })
-  const [scale, setScale] = useState(1)
+  const [previewState, setPreviewState] = useState(
+    createReaderImagePreviewState,
+  )
+  const { mode, naturalSize, pan, scale } = previewState
   const dragState = useRef<
     | {
         pointerId: number
@@ -2006,14 +2024,29 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
     stageSize.width,
   ])
 
+  const displayScale = mode === 'fit' ? fitScale : scale
+  const previewReady =
+    !!naturalSize && stageSize.width > 0 && stageSize.height > 0
+
   const panBounds = useMemo(() => {
     if (!naturalSize) return { x: 0, y: 0 }
 
     return {
-      x: Math.max(0, (naturalSize.width * scale - availableSize.width) / 2),
-      y: Math.max(0, (naturalSize.height * scale - availableSize.height) / 2),
+      x: Math.max(
+        0,
+        (naturalSize.width * displayScale - availableSize.width) / 2,
+      ),
+      y: Math.max(
+        0,
+        (naturalSize.height * displayScale - availableSize.height) / 2,
+      ),
     }
-  }, [availableSize.height, availableSize.width, naturalSize, scale])
+  }, [availableSize.height, availableSize.width, displayScale, naturalSize])
+
+  const clampedPan = useMemo(
+    () => clampImagePreviewPan(pan, panBounds),
+    [pan, panBounds],
+  )
 
   useLayoutEffect(() => {
     if (!src) return
@@ -2041,60 +2074,54 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
     }
   }, [src])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!src) return
 
-    setNaturalSize(undefined)
-    setMode('fit')
-    setPan({ x: 0, y: 0 })
-    setScale(1)
+    setPreviewState(createReaderImagePreviewState())
 
     requestAnimationFrame(() => {
       previewRef.current?.focus()
     })
   }, [src])
 
-  useEffect(() => {
-    if (!src || mode !== 'fit') return
-    setPan({ x: 0, y: 0 })
-    setScale(fitScale)
-  }, [fitScale, mode, src])
-
   const zoomTo = useCallback((nextScale: number) => {
-    setMode('zoom')
-    setPan({ x: 0, y: 0 })
-    setScale(clamp(nextScale, IMAGE_PREVIEW_MIN_STEP, IMAGE_PREVIEW_MAX_STEP))
+    setPreviewState((current) => ({
+      ...current,
+      mode: 'zoom',
+      pan: { x: 0, y: 0 },
+      scale: clamp(nextScale, IMAGE_PREVIEW_MIN_STEP, IMAGE_PREVIEW_MAX_STEP),
+    }))
   }, [])
 
   const zoomIn = useCallback(() => {
-    setScale((current) => {
-      const next = getNextImagePreviewZoomIn(current)
-      if (next === undefined) return current
-      setMode('zoom')
-      setPan({ x: 0, y: 0 })
-      return next
-    })
-  }, [])
+    const next = getNextImagePreviewZoomIn(displayScale)
+    if (next === undefined) return
+    setPreviewState((current) => ({
+      ...current,
+      mode: 'zoom',
+      pan: { x: 0, y: 0 },
+      scale: next,
+    }))
+  }, [displayScale])
 
   const zoomOut = useCallback(() => {
-    setScale((current) => {
-      const next = getNextImagePreviewZoomOut(current)
-      if (next === undefined) return current
-      setMode('zoom')
-      setPan({ x: 0, y: 0 })
-      return next
-    })
-  }, [])
+    const next = getNextImagePreviewZoomOut(displayScale)
+    if (next === undefined) return
+    setPreviewState((current) => ({
+      ...current,
+      mode: 'zoom',
+      pan: { x: 0, y: 0 },
+      scale: next,
+    }))
+  }, [displayScale])
 
   const resetToFit = useCallback(() => {
-    setMode('fit')
-    setPan({ x: 0, y: 0 })
-    setScale(fitScale)
-  }, [fitScale])
-
-  useEffect(() => {
-    setPan((current) => clampImagePreviewPan(current, panBounds))
-  }, [panBounds])
+    setPreviewState((current) => ({
+      ...current,
+      mode: 'fit',
+      pan: { x: 0, y: 0 },
+    }))
+  }, [])
 
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLDivElement>) => {
@@ -2113,7 +2140,7 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
     [zoomIn, zoomOut],
   )
 
-  const canPan = panBounds.x > 0 || panBounds.y > 0
+  const canPan = previewReady && (panBounds.x > 0 || panBounds.y > 0)
 
   const handleImagePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -2139,13 +2166,13 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
       event.currentTarget.setPointerCapture(event.pointerId)
       dragState.current = {
         pointerId: event.pointerId,
-        startPan: pan,
+        startPan: clampedPan,
         startX: event.clientX,
         startY: event.clientY,
       }
       setDragging(true)
     },
-    [canPan, onClose, pan],
+    [canPan, clampedPan, onClose],
   )
 
   const handleImagePointerMove = useCallback(
@@ -2156,15 +2183,16 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
       event.preventDefault()
       event.stopPropagation()
 
-      setPan(
-        clampImagePreviewPan(
+      setPreviewState((current) => ({
+        ...current,
+        pan: clampImagePreviewPan(
           {
             x: drag.startPan.x + event.clientX - drag.startX,
             y: drag.startPan.y + event.clientY - drag.startY,
           },
           panBounds,
         ),
-      )
+      }))
     },
     [panBounds],
   )
@@ -2244,14 +2272,14 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
 
   if (!src) return null
 
-  const zoomPercent = `${Math.round(scale * 100)}%`
+  const zoomPercent = `${Math.round(displayScale * 100)}%`
   const canZoomOut =
-    getNextImagePreviewZoomOut(scale) !== undefined &&
-    scale > IMAGE_PREVIEW_MIN_STEP
+    getNextImagePreviewZoomOut(displayScale) !== undefined &&
+    displayScale > IMAGE_PREVIEW_MIN_STEP
   const canZoomIn =
-    getNextImagePreviewZoomIn(scale) !== undefined &&
-    scale < IMAGE_PREVIEW_MAX_STEP
-  const isOneToOne = Math.abs(scale - 1) < 0.001
+    getNextImagePreviewZoomIn(displayScale) !== undefined &&
+    displayScale < IMAGE_PREVIEW_MAX_STEP
+  const isOneToOne = Math.abs(displayScale - 1) < 0.001
   const isFit = mode === 'fit'
 
   if (typeof document === 'undefined') return null
@@ -2281,7 +2309,11 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
         <div
           className={clsx(
             'pointer-events-auto touch-none select-none',
-            !dragging && 'transition-transform duration-100 ease-out',
+            mode === 'zoom' &&
+              previewReady &&
+              !dragging &&
+              'transition-transform duration-100 ease-out',
+            previewReady ? 'opacity-100' : 'opacity-0',
             canPan
               ? dragging
                 ? 'cursor-grabbing'
@@ -2291,7 +2323,7 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
           style={{
             width: naturalSize ? naturalSize.width : undefined,
             height: naturalSize ? naturalSize.height : undefined,
-            transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${scale})`,
+            transform: `translate3d(${clampedPan.x}px, ${clampedPan.y}px, 0) scale(${displayScale})`,
           }}
           onPointerDown={handleImagePointerDown}
           onPointerMove={handleImagePointerMove}
@@ -2314,10 +2346,13 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
             }}
             onLoad={(event) => {
               const image = event.currentTarget
-              setNaturalSize({
-                width: image.naturalWidth || image.width,
-                height: image.naturalHeight || image.height,
-              })
+              setPreviewState((current) => ({
+                ...current,
+                naturalSize: {
+                  width: image.naturalWidth || image.width,
+                  height: image.naturalHeight || image.height,
+                },
+              }))
             }}
           />
         </div>
