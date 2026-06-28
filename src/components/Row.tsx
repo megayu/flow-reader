@@ -158,7 +158,10 @@ export const Twisty: React.FC<TwistyProps> = ({
   return (
     <Icon
       size={20}
-      className={clsx('text-muted-foreground shrink-0', className)}
+      className={clsx(
+        'text-muted-foreground relative z-10 shrink-0',
+        className,
+      )}
       style={{ padding: 2 }}
       {...props}
     />

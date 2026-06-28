@@ -290,6 +290,7 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
                 activeClassName={background.rowActiveClassName}
                 depth={row?.depth ?? 1}
                 item={item}
+                itemExpanded={!!item?.expanded}
                 tab={tab}
                 untitledLabel={t('untitled')}
               />
@@ -306,13 +307,22 @@ interface TocRowProps {
   activeClassName: string
   depth: number
   item?: INavItem
+  itemExpanded: boolean
   tab: BookTab
   untitledLabel: string
 }
 const TocRow: React.FC<TocRowProps> = memo(
-  ({ active, activeClassName, depth, item, tab, untitledLabel }) => {
+  ({
+    active,
+    activeClassName,
+    depth,
+    item,
+    itemExpanded,
+    tab,
+    untitledLabel,
+  }) => {
     if (!item) return null
-    const { label, subitems, expanded, href = '' } = item
+    const { label, subitems, href = '' } = item
     const hasSubitems = !!subitems?.length
     const title = label.trim()
     const indent = Math.max(0, depth - 1) * 20
@@ -361,7 +371,7 @@ const TocRow: React.FC<TocRowProps> = memo(
       >
         <StateLayer className="transition-colors group-hover/row:bg-[var(--flow-bg-control-hover)]" />
         <Twisty
-          expanded={!!expanded}
+          expanded={itemExpanded}
           className={clsx(!hasSubitems && 'invisible')}
           onClick={(e) => {
             e.stopPropagation()
