@@ -2686,6 +2686,24 @@ export class Reader {
     this.clear()
   }
 
+  closeBookTabs(bookId: string) {
+    for (
+      let groupIndex = this.groups.length - 1;
+      groupIndex >= 0;
+      groupIndex--
+    ) {
+      const group = this.groups[groupIndex]
+      if (!group) continue
+
+      for (let tabIndex = group.tabs.length - 1; tabIndex >= 0; tabIndex--) {
+        const tab = group.tabs[tabIndex]
+        if (!(tab instanceof BookTab) || tab.book.id !== bookId) continue
+
+        this.removeTab(tabIndex, groupIndex)
+      }
+    }
+  }
+
   selectFocusedTab(index: number) {
     this.focusedGroup?.selectTab(index)
   }

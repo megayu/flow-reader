@@ -1182,6 +1182,7 @@ const Book: React.FC<BookProps> = ({
                 }
 
                 closeContextMenu()
+                reader.closeBookTabs(book.id)
                 void db.books.delete(book.id)
               }}
             />
