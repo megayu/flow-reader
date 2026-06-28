@@ -420,6 +420,7 @@ export interface IMatch extends INode {
 }
 
 export interface ISection extends Section {
+  imageInfoLoaded?: boolean
   length: number
   images: ImageEntry[]
   navitem?: INavItem
@@ -2133,6 +2134,7 @@ export class BookTab extends BaseTab {
 
     if (section.document?.body && section.length !== undefined) {
       section.images = collectSectionImages(section)
+      section.imageInfoLoaded = true
       this.assignSectionNavItem(section)
       return
     }
@@ -2147,6 +2149,7 @@ export class BookTab extends BaseTab {
       .then(() => {
         section.length = section.document?.body?.textContent?.length ?? 0
         section.images = collectSectionImages(section)
+        section.imageInfoLoaded = true
         this.assignSectionNavItem(section)
       })
       .catch((error) => {

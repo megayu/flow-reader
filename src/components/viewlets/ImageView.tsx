@@ -1,7 +1,17 @@
-import { Dispatch, SetStateAction, useEffect, useMemo, useState } from 'react'
+import {
+  CSSProperties,
+  Dispatch,
+  SetStateAction,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useAction } from '@flow/reader/hooks/useAction'
-import { useBoolean } from '@flow/reader/hooks/useBoolean'
+import { LIST_ITEM_SIZE } from '@flow/reader/hooks/useList'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
 import {
   ImageEntry,
@@ -13,12 +23,35 @@ import {
 import { Row } from '../Row'
 import { PaneView, PaneViewProps } from '../base/PaneView'
 
-const MAX_IMAGE_SECTIONS = 500
+const IMAGE_SCAN_CONCURRENCY = 4
+const IMAGE_LIST_OVERSCAN = 6
+const IMAGE_LIST_TOP_PADDING = 4
+const IMAGE_SECTION_ESTIMATED_THUMBNAIL_HEIGHT = 180
+
 type ImageDisplayMode = 'illustrations' | 'all'
 
 interface ImageSection {
   images: ImageEntry[]
   section: ISection
+}
+
+interface ImageAssetEntry {
+  href?: string
+  index: number
+  normalizedHref?: string
+}
+
+interface ImageAssetLookup {
+  assets: any[]
+  blobs: string[]
+  entries: ImageAssetEntry[]
+  indexesByHref: Map<string, number>
+}
+
+interface VirtualImageSection {
+  index: number
+  section: ImageSection
+  start: number
 }
 
 function normalizeImageEntry(image: ImageEntry | string, index: number) {
@@ -35,6 +68,10 @@ function imageEntries(section: ISection) {
   return section.images.map(normalizeImageEntry)
 }
 
+function knownImageEntries(section: ISection) {
+  return !!section.imageInfoLoaded
+}
+
 function imageSignature(section: ISection) {
   return imageEntries(section)
     .map(
@@ -42,6 +79,180 @@ function imageSignature(section: ISection) {
         `${image.index}:${image.src}:${image.hiddenByDefault ? (image.reason ?? 'hidden') : 'visible'}`,
     )
     .join('|')
+}
+
+function normalizePath(value: string | undefined) {
+  if (!value) return
+
+  try {
+    return decodeURI(value)
+  } catch {
+    return value
+  }
+}
+
+function assignImageSectionNavItems(
+  tab: typeof reader.focusedBookTab,
+  sections: ISection[],
+) {
+  if (!tab) return
+
+  sections.forEach((section) => {
+    section.navitem ??= tab.mapSectionToNavItem(section.href)
+  })
+}
+
+function createImageAssetLookup(resources: any): ImageAssetLookup | undefined {
+  if (!resources) return
+
+  const assets = resources.assets ?? []
+  const blobs = resources.replacementUrls ?? []
+  const indexesByHref = new Map<string, number>()
+  const entries = assets.map((asset: any, index: number) => {
+    const href = asset?.href
+    const normalizedHref = normalizePath(href)
+
+    if (href) indexesByHref.set(href, index)
+    if (normalizedHref) indexesByHref.set(normalizedHref, index)
+
+    return {
+      href,
+      index,
+      normalizedHref,
+    }
+  })
+
+  return {
+    assets,
+    blobs,
+    entries,
+    indexesByHref,
+  }
+}
+
+function sectionKey(section: ISection) {
+  return section.href
+}
+
+function estimatedImageSectionHeight(section: ImageSection, expanded: boolean) {
+  return expanded
+    ? LIST_ITEM_SIZE +
+        section.images.length * IMAGE_SECTION_ESTIMATED_THUMBNAIL_HEIGHT
+    : LIST_ITEM_SIZE
+}
+
+function useVirtualImageSections(
+  sections: ImageSection[],
+  expandedKeys: ReadonlySet<string>,
+) {
+  const outerRef = useRef<HTMLDivElement | null>(null)
+  const measuredHeights = useRef<Map<string, number> | null>(null)
+  const [measureRevision, setMeasureRevision] = useState(0)
+  const [viewport, setViewport] = useState({ height: 0, scrollTop: 0 })
+
+  measuredHeights.current ??= new Map()
+
+  const updateViewport = useCallback(() => {
+    const el = outerRef.current
+    if (!el) return
+
+    const next = {
+      height: Math.ceil(el.clientHeight),
+      scrollTop: Math.max(0, el.scrollTop),
+    }
+
+    setViewport((current) =>
+      current.height === next.height && current.scrollTop === next.scrollTop
+        ? current
+        : next,
+    )
+  }, [])
+
+  useLayoutEffect(() => {
+    const el = outerRef.current
+    if (!el) return
+
+    let frame = 0
+    const scheduleUpdate = () => {
+      if (frame) return
+
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
+        updateViewport()
+      })
+    }
+
+    updateViewport()
+    el.addEventListener('scroll', scheduleUpdate, { passive: true })
+
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? undefined
+        : new ResizeObserver(scheduleUpdate)
+
+    if (observer) {
+      observer.observe(el)
+    } else {
+      window.addEventListener('resize', scheduleUpdate)
+    }
+
+    return () => {
+      el.removeEventListener('scroll', scheduleUpdate)
+      observer?.disconnect()
+      window.removeEventListener('resize', scheduleUpdate)
+      if (frame) window.cancelAnimationFrame(frame)
+    }
+  }, [updateViewport])
+
+  useLayoutEffect(() => {
+    updateViewport()
+  }, [sections.length, updateViewport])
+
+  void measureRevision
+
+  const layoutItems: VirtualImageSection[] = []
+  let totalSize = 0
+
+  sections.forEach((section, index) => {
+    const key = sectionKey(section.section)
+    const expanded = expandedKeys.has(key)
+    const measured = measuredHeights.current?.get(key)
+    const height = expanded
+      ? (measured ?? estimatedImageSectionHeight(section, expanded))
+      : LIST_ITEM_SIZE
+
+    layoutItems.push({
+      index,
+      section,
+      start: totalSize,
+    })
+    totalSize += height
+  })
+
+  const start = Math.max(0, viewport.scrollTop)
+  const end = start + viewport.height
+  const overscan = IMAGE_LIST_OVERSCAN * LIST_ITEM_SIZE
+  const visibleItems = layoutItems.filter((item, index) => {
+    const next = layoutItems[index + 1]
+    const itemEnd = next?.start ?? totalSize
+
+    return itemEnd >= start - overscan && item.start <= end + overscan
+  })
+
+  const setMeasuredHeight = useCallback((key: string, height: number) => {
+    const next = Math.max(LIST_ITEM_SIZE, Math.ceil(height))
+    if (measuredHeights.current?.get(key) === next) return
+
+    measuredHeights.current?.set(key, next)
+    setMeasureRevision((revision) => revision + 1)
+  }, [])
+
+  return {
+    outerRef,
+    setMeasuredHeight,
+    totalSize,
+    visibleItems,
+  }
 }
 
 export const ImageView: React.FC<PaneViewProps> = (props) => {
@@ -65,14 +276,21 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation()
   const tab = reader.focusedBookTab
+  const [expandedState, setExpandedState] = useState(() => ({
+    keys: new Set<string>(),
+    mode,
+  }))
   const [, setImageScanRevision] = useState(0)
   const liveSections = useMemo(
     () => (tab?.sections as ISection[] | undefined) ?? [],
     [tab?.sections],
   )
   const snapshotSections = focusedBookTab?.sections as ISection[] | undefined
-  const sectionCount = snapshotSections?.length ?? 0
-  const canLoadImages = action === 'image' && sectionCount <= MAX_IMAGE_SECTIONS
+  const canLoadImages = action === 'image' && !!snapshotSections
+  const imageAssetLookup = useMemo(
+    () => createImageAssetLookup(tab?.epub?.resources),
+    [tab?.epub?.resources],
+  )
 
   useEffect(() => {
     if (!canLoadImages || !liveSections.length || !tab) return
@@ -89,19 +307,40 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
     }
 
     void (async () => {
+      assignImageSectionNavItems(tab, liveSections)
       refreshImages()
 
-      for (const section of liveSections) {
-        if (cancelled || reader.focusedBookTab !== tab) return
+      let nextSectionIndex = 0
+      const sectionsToScan = liveSections.filter(
+        (section) => !knownImageEntries(section),
+      )
 
-        const previousImageSignature = imageSignature(section)
-        await tab.ensureSectionInfo(section)
-        if (cancelled || reader.focusedBookTab !== tab) return
+      const scanNextSection = async () => {
+        while (!cancelled) {
+          const section = sectionsToScan[nextSectionIndex]
+          nextSectionIndex += 1
+          if (!section) return
 
-        if (imageSignature(section) !== previousImageSignature) {
-          refreshImages()
+          if (knownImageEntries(section)) continue
+          if (reader.focusedBookTab !== tab) return
+
+          const previousImageSignature = imageSignature(section)
+          await tab.ensureSectionInfo(section)
+
+          if (cancelled || reader.focusedBookTab !== tab) return
+
+          if (imageSignature(section) !== previousImageSignature) {
+            refreshImages()
+          }
         }
       }
+
+      await Promise.all(
+        Array.from(
+          { length: Math.min(IMAGE_SCAN_CONCURRENCY, sectionsToScan.length) },
+          scanNextSection,
+        ),
+      )
     })()
 
     return () => {
@@ -123,12 +362,36 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
     (count, section) => count + section.images.length,
     0,
   )
+  let expandedKeys = expandedState.keys
 
-  if (sectionCount > MAX_IMAGE_SECTIONS) return null
+  if (expandedState.mode !== mode) {
+    expandedKeys = new Set()
+    setExpandedState({ keys: expandedKeys, mode })
+  }
+
+  const { outerRef, setMeasuredHeight, totalSize, visibleItems } =
+    useVirtualImageSections(sections, expandedKeys)
+
+  const toggleSection = useCallback(
+    (key: string) => {
+      setExpandedState((current) => {
+        const next = new Set(current.mode === mode ? current.keys : [])
+
+        if (next.has(key)) {
+          next.delete(key)
+        } else {
+          next.add(key)
+        }
+
+        return { keys: next, mode }
+      })
+    },
+    [mode],
+  )
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--flow-border)] bg-[var(--flow-bg-sidebar)] px-2">
+      <div className="flex h-11 shrink-0 items-center gap-2 bg-[var(--flow-bg-sidebar)] px-2">
         <div className="flex h-8 min-w-0 flex-1 items-center rounded-lg bg-[var(--flow-sidebar-item-bg)] p-0.5 ring-1 ring-[var(--flow-sidebar-item-border)] ring-inset">
           {(['illustrations', 'all'] as const).map((item) => (
             <button
@@ -152,13 +415,39 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
             : `${visibleImageCount}/${allImages.length}`}
         </span>
       </div>
-      <div className="scroll text-muted-foreground min-h-0 flex-1 text-base">
+      <div
+        ref={outerRef}
+        className="scroll text-muted-foreground min-h-0 flex-1 text-base"
+      >
         {sections.length ? (
-          sections.map(({ images, section }) => (
-            <Block key={section.href} images={images} section={section} />
-          ))
+          <div
+            className="relative pt-1"
+            style={{ height: totalSize + IMAGE_LIST_TOP_PADDING }}
+          >
+            {visibleItems.map(({ section: imageSection, start }) => {
+              const key = sectionKey(imageSection.section)
+              const expanded = expandedKeys.has(key)
+
+              return (
+                <MeasuredImageBlock
+                  key={key}
+                  assetLookup={imageAssetLookup}
+                  expanded={expanded}
+                  images={imageSection.images}
+                  section={imageSection.section}
+                  style={{
+                    position: 'absolute',
+                    top: start,
+                    width: '100%',
+                  }}
+                  onMeasured={(height) => setMeasuredHeight(key, height)}
+                  onToggle={() => toggleSection(key)}
+                />
+              )
+            })}
+          </div>
         ) : (
-          <div className="px-5 py-4 text-base text-[var(--flow-text-muted)]">
+          <div className="px-5 pt-1 pb-4 text-base text-[var(--flow-text-muted)]">
             {t('image.empty')}
           </div>
         )}
@@ -168,34 +457,85 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
 }
 
 interface BlockProps {
+  assetLookup?: ImageAssetLookup
+  expanded: boolean
   images: ImageEntry[]
+  onToggle: () => void
   section: ISection
 }
-const Block: React.FC<BlockProps> = ({ images, section }) => {
+
+interface MeasuredImageBlockProps extends BlockProps {
+  onMeasured: (height: number) => void
+  style: CSSProperties
+}
+
+const MeasuredImageBlock: React.FC<MeasuredImageBlockProps> = ({
+  onMeasured,
+  style,
+  ...props
+}) => {
+  const ref = useRef<HTMLDivElement | null>(null)
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    let frame = 0
+    const measure = () => {
+      if (frame) return
+
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
+        onMeasured(el.offsetHeight)
+      })
+    }
+
+    measure()
+
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? undefined
+        : new ResizeObserver(measure)
+
+    if (observer) {
+      observer.observe(el)
+    }
+
+    return () => {
+      observer?.disconnect()
+      if (frame) window.cancelAnimationFrame(frame)
+    }
+  }, [onMeasured])
+
+  return (
+    <div ref={ref} style={style}>
+      <Block {...props} />
+    </div>
+  )
+}
+
+const Block: React.FC<BlockProps> = ({
+  assetLookup,
+  expanded,
+  images,
+  onToggle,
+  section,
+}) => {
   useReaderSnapshot()
-  const [expanded, toggle] = useBoolean(false)
-
-  const resources = reader.focusedBookTab?.epub?.resources
-  if (!resources) return null
-
-  const blobs = resources.replacementUrls
-  const assets = resources.assets
 
   return (
     <div>
-      <Row badge expanded={expanded} toggle={toggle} subitems={images}>
-        {section.navitem?.label}
+      <Row badge expanded={expanded} toggle={onToggle} subitems={images}>
+        {section.navitem?.label ?? section.href}
       </Row>
 
       {expanded && (
         <div>
           {images.map((image) => {
             const { src } = image
-            const i = assets.findIndex((a: any) =>
-              imageSourceMatchesAsset(src, a.href),
-            )
-            const asset = assets[i]
-            const imageSrc = blobs[i] ?? src
+            const i = findImageAssetIndex(src, assetLookup)
+            const asset = assetLookup?.assets[i]
+            const imageSrc = assetLookup?.blobs[i] ?? src
 
             if (!imageSrc) return null
             return (
@@ -225,13 +565,33 @@ const Block: React.FC<BlockProps> = ({ images, section }) => {
   )
 }
 
-function imageSourceMatchesAsset(src: string, href?: string) {
+function findImageAssetIndex(src: string, lookup?: ImageAssetLookup) {
+  if (!lookup) return -1
+
+  const normalizedSrc = normalizePath(src)
+  const exactIndex =
+    lookup.indexesByHref.get(src) ??
+    (normalizedSrc ? lookup.indexesByHref.get(normalizedSrc) : undefined)
+
+  if (exactIndex !== undefined) return exactIndex
+
+  return lookup.entries.findIndex((entry) =>
+    imageSourceMatchesAsset(src, normalizedSrc, entry),
+  )
+}
+
+function imageSourceMatchesAsset(
+  src: string,
+  normalizedSrc: string | undefined,
+  asset: ImageAssetEntry,
+) {
+  const href = asset.href
   if (!href) return false
   if (src.includes(href)) return true
 
-  try {
-    return decodeURI(src).includes(href)
-  } catch {
-    return false
-  }
+  return !!(
+    normalizedSrc &&
+    asset.normalizedHref &&
+    normalizedSrc.includes(asset.normalizedHref)
+  )
 }
