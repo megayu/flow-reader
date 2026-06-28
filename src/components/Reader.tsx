@@ -10,6 +10,8 @@ import {
   PanelTopIcon,
   PlusIcon,
   RotateCcwIcon,
+  RotateCwIcon,
+  RefreshCwIcon,
   XIcon,
 } from 'lucide-react'
 import React, {
@@ -1609,20 +1611,27 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
     rendition?.themes.override('color', dark ? '#bfc8ca' : '#3f484a', dark)
   }, [rendition, dark])
 
-  const [src, setSrc] = useState<string>()
+  const imagePreviewOpenKey = useRef(0)
+  const [imagePreview, setImagePreview] = useState<{
+    key: number
+    src: string
+  }>()
   const wheelDelta = useRef(0)
   const lastWheelTurn = useRef(0)
 
-  useEffect(() => {
-    if (zenMode) setSrc(undefined)
-  }, [zenMode])
+  const openImagePreview = useCallback((src: string) => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
+    setImagePreview({
+      key: (imagePreviewOpenKey.current += 1),
+      src,
+    })
+  }, [])
 
   useEffect(() => {
-    if (src) {
-      if (document.activeElement instanceof HTMLElement)
-        document.activeElement?.blur()
-    }
-  }, [src])
+    if (zenMode) setImagePreview(undefined)
+  }, [zenMode])
 
   const { setDragEvent } = useDndContext()
 
@@ -1740,7 +1749,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
         if (!zenMode && el.tagName === 'IMG') {
           const imageSrc = el.currentSrc || el.src
           if (imageSrc) {
-            setSrc(imageSrc)
+            openImagePreview(imageSrc)
             return
           }
           return
@@ -1749,14 +1758,14 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
           const image = el.parentElement?.querySelector('img')
           const imageSrc = image?.currentSrc || image?.src
           if (imageSrc) {
-            setSrc(imageSrc)
+            openImagePreview(imageSrc)
             return
           }
           return
         }
       }
     },
-    [tab, zenMode],
+    [openImagePreview, tab, zenMode],
   )
   useFrameEvent(activeFrameWindows, 'click', handleFrameClick)
   useFrameEvent(activeFrameWindows, 'contextmenu', preventContextMenu)
@@ -1837,8 +1846,9 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
   return (
     <div className="flex h-full flex-col">
       <ReaderImagePreview
-        src={!zenMode ? src : undefined}
-        onClose={() => setSrc(undefined)}
+        openKey={!zenMode ? imagePreview?.key : undefined}
+        src={!zenMode ? imagePreview?.src : undefined}
+        onClose={() => setImagePreview(undefined)}
       />
       {!zenMode && <ReaderPaneHeader tab={tab} />}
       {!zenMode && chapterFind.open && active && (
@@ -1950,11 +1960,13 @@ const ReaderEdgeNavigation: React.FC<ReaderEdgeNavigationProps> = ({ tab }) => {
 }
 
 interface ReaderImagePreviewProps {
+  openKey?: number
   src?: string
   onClose: () => void
 }
 
 type ReaderImagePreviewMode = 'fit' | 'zoom'
+type ReaderImagePreviewRotation = 0 | 90 | 180 | 270
 
 interface ReaderImagePreviewState {
   mode: ReaderImagePreviewMode
@@ -1966,6 +1978,7 @@ interface ReaderImagePreviewState {
     x: number
     y: number
   }
+  rotation: ReaderImagePreviewRotation
   scale: number
 }
 
@@ -1973,11 +1986,13 @@ function createReaderImagePreviewState(): ReaderImagePreviewState {
   return {
     mode: 'fit',
     pan: { x: 0, y: 0 },
+    rotation: 0,
     scale: 1,
   }
 }
 
 const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
+  openKey,
   src,
   onClose,
 }) => {
@@ -1989,7 +2004,7 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
   const [previewState, setPreviewState] = useState(
     createReaderImagePreviewState,
   )
-  const { mode, naturalSize, pan, scale } = previewState
+  const { mode, naturalSize, pan, rotation, scale } = previewState
   const dragState = useRef<
     | {
         pointerId: number
@@ -2008,18 +2023,29 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
     [stageSize.height, stageSize.width],
   )
 
+  const rotatedSize = useMemo(() => {
+    if (!naturalSize) return undefined
+    if (rotation === 90 || rotation === 270) {
+      return {
+        width: naturalSize.height,
+        height: naturalSize.width,
+      }
+    }
+    return naturalSize
+  }, [naturalSize, rotation])
+
   const fitScale = useMemo(() => {
-    if (!naturalSize || !stageSize.width || !stageSize.height) return 1
+    if (!rotatedSize || !stageSize.width || !stageSize.height) return 1
 
     return Math.min(
       1,
-      availableSize.width / naturalSize.width,
-      availableSize.height / naturalSize.height,
+      availableSize.width / rotatedSize.width,
+      availableSize.height / rotatedSize.height,
     )
   }, [
     availableSize.height,
     availableSize.width,
-    naturalSize,
+    rotatedSize,
     stageSize.height,
     stageSize.width,
   ])
@@ -2029,19 +2055,19 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
     !!naturalSize && stageSize.width > 0 && stageSize.height > 0
 
   const panBounds = useMemo(() => {
-    if (!naturalSize) return { x: 0, y: 0 }
+    if (!rotatedSize) return { x: 0, y: 0 }
 
     return {
       x: Math.max(
         0,
-        (naturalSize.width * displayScale - availableSize.width) / 2,
+        (rotatedSize.width * displayScale - availableSize.width) / 2,
       ),
       y: Math.max(
         0,
-        (naturalSize.height * displayScale - availableSize.height) / 2,
+        (rotatedSize.height * displayScale - availableSize.height) / 2,
       ),
     }
-  }, [availableSize.height, availableSize.width, displayScale, naturalSize])
+  }, [availableSize.height, availableSize.width, displayScale, rotatedSize])
 
   const clampedPan = useMemo(
     () => clampImagePreviewPan(pan, panBounds),
@@ -2072,7 +2098,7 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
       observer.disconnect()
       window.removeEventListener('resize', updateStageSize)
     }
-  }, [src])
+  }, [openKey, src])
 
   useLayoutEffect(() => {
     if (!src) return
@@ -2082,7 +2108,7 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
     requestAnimationFrame(() => {
       previewRef.current?.focus()
     })
-  }, [src])
+  }, [openKey, src])
 
   const zoomTo = useCallback((nextScale: number) => {
     setPreviewState((current) => ({
@@ -2120,6 +2146,14 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
       ...current,
       mode: 'fit',
       pan: { x: 0, y: 0 },
+    }))
+  }, [])
+
+  const rotateImage = useCallback((delta: -90 | 90) => {
+    setPreviewState((current) => ({
+      ...current,
+      pan: { x: 0, y: 0 },
+      rotation: normalizeImagePreviewRotation(current.rotation + delta),
     }))
   }, [])
 
@@ -2253,6 +2287,20 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
       event.preventDefault()
       event.stopPropagation()
       zoomTo(1)
+      return
+    }
+
+    if (event.key === '[') {
+      event.preventDefault()
+      event.stopPropagation()
+      rotateImage(-90)
+      return
+    }
+
+    if (event.key === ']') {
+      event.preventDefault()
+      event.stopPropagation()
+      rotateImage(90)
     }
   })
 
@@ -2323,7 +2371,7 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
           style={{
             width: naturalSize ? naturalSize.width : undefined,
             height: naturalSize ? naturalSize.height : undefined,
-            transform: `translate3d(${clampedPan.x}px, ${clampedPan.y}px, 0) scale(${displayScale})`,
+            transform: `translate3d(${clampedPan.x}px, ${clampedPan.y}px, 0) rotate(${rotation}deg) scale(${displayScale})`,
           }}
           onPointerDown={handleImagePointerDown}
           onPointerMove={handleImagePointerMove}
@@ -2334,6 +2382,7 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
           onMouseDown={(event) => event.stopPropagation()}
         >
           <img
+            key={openKey}
             src={src}
             alt=""
             draggable={false}
@@ -2391,12 +2440,24 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
           <span className="text-xs font-semibold tracking-normal">1:1</span>
         </ReaderImagePreviewButton>
         <ReaderImagePreviewButton
+          label={t('rotate_left')}
+          onClick={() => rotateImage(-90)}
+        >
+          <RotateCcwIcon className="size-[1.125rem]" />
+        </ReaderImagePreviewButton>
+        <ReaderImagePreviewButton
+          label={t('rotate_right')}
+          onClick={() => rotateImage(90)}
+        >
+          <RotateCwIcon className="size-[1.125rem]" />
+        </ReaderImagePreviewButton>
+        <ReaderImagePreviewButton
           label={t('fit')}
           active={isFit}
           disabled={isFit}
           onClick={resetToFit}
         >
-          <RotateCcwIcon className="size-[1.125rem]" />
+          <RefreshCwIcon className="size-[1.125rem]" />
         </ReaderImagePreviewButton>
         <div className="mx-1 h-5 w-px bg-white/20" />
         <ReaderImagePreviewButton label={t('close')} onClick={onClose}>
@@ -3762,6 +3823,21 @@ function clampImagePreviewPan(
     x: clamp(pan.x, -bounds.x, bounds.x),
     y: clamp(pan.y, -bounds.y, bounds.y),
   }
+}
+
+function normalizeImagePreviewRotation(
+  value: number,
+): ReaderImagePreviewRotation {
+  const normalized = ((value % 360) + 360) % 360
+  if (
+    normalized === 0 ||
+    normalized === 90 ||
+    normalized === 180 ||
+    normalized === 270
+  ) {
+    return normalized
+  }
+  return 0
 }
 
 function getNextImagePreviewZoomIn(current: number) {

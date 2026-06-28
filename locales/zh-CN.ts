@@ -101,6 +101,8 @@ export default {
   'image_preview.zoom_in': '放大',
   'image_preview.zoom_out': '缩小',
   'image_preview.actual_size': '原始大小',
+  'image_preview.rotate_left': '向左旋转',
+  'image_preview.rotate_right': '向右旋转',
   'image_preview.fit': '适应窗口',
   'image_preview.close': '关闭',
 

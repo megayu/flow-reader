@@ -102,6 +102,8 @@ export default {
   'image_preview.zoom_in': 'Zoom in',
   'image_preview.zoom_out': 'Zoom out',
   'image_preview.actual_size': 'Actual size',
+  'image_preview.rotate_left': 'Rotate left',
+  'image_preview.rotate_right': 'Rotate right',
   'image_preview.fit': 'Fit to window',
   'image_preview.close': 'Close',
 
