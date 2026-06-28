@@ -1866,9 +1866,29 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
         src={!zenMode ? src : undefined}
         onClose={() => setSrc(undefined)}
       />
-      {!zenMode && <ReaderPaneHeader tab={tab} />}
+      {!zenMode && (
+        <ReaderPaneHeader tab={tab}>
+          {chapterFind.open && (
+            <ChapterFindBar
+              find={chapterFind}
+              inputRef={chapterFindInputRef}
+              onChange={(query) =>
+                setChapterFind((state) => ({
+                  ...state,
+                  query,
+                  activeIndex: 0,
+                }))
+              }
+              onClose={closeChapterFind}
+              onNext={() => goToFindResult(chapterFind.activeIndex + 1)}
+              onPrevious={() => goToFindResult(chapterFind.activeIndex - 1)}
+            />
+          )}
+        </ReaderPaneHeader>
+      )}
       <div
         ref={ref}
+        data-flow-reader-content
         className="relative h-0 flex-1"
         // `color-scheme: dark` will make iframe background white
         style={{ colorScheme: 'auto' }}
@@ -1892,22 +1912,6 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
         )}
         {!zenMode && (
           <ChapterFindHighlights active={active} find={chapterFind} tab={tab} />
-        )}
-        {!zenMode && chapterFind.open && (
-          <ChapterFindBar
-            find={chapterFind}
-            inputRef={chapterFindInputRef}
-            onChange={(query) =>
-              setChapterFind((state) => ({
-                ...state,
-                query,
-                activeIndex: 0,
-              }))
-            }
-            onClose={closeChapterFind}
-            onNext={() => goToFindResult(chapterFind.activeIndex + 1)}
-            onPrevious={() => goToFindResult(chapterFind.activeIndex - 1)}
-          />
         )}
         {!zenMode && active && <ReaderEdgeNavigation tab={tab} />}
       </div>
@@ -2454,8 +2458,9 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
 
   return (
     <div
+      data-flow-chapter-find-bar
       data-flow-keyboard-capture="true"
-      className="text-muted-foreground bg-background absolute -top-12 right-4 z-30 flex items-center gap-2 rounded-lg px-3 py-2 shadow-lg"
+      className="text-muted-foreground bg-background flex items-center gap-2 rounded-lg px-3 py-2 shadow-lg"
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
@@ -3744,14 +3749,18 @@ function isLikelyNoteLink(
 }
 
 interface ReaderPaneHeaderProps {
+  children?: React.ReactNode
   tab: BookTab
 }
-const ReaderPaneHeader: React.FC<ReaderPaneHeaderProps> = ({ tab }) => {
+const ReaderPaneHeader: React.FC<ReaderPaneHeaderProps> = ({
+  children,
+  tab,
+}) => {
   const { paginationSnapshot } = useSnapshot(tab)
   const navPath = paginationSnapshot?.headerPath ?? []
 
   return (
-    <Bar>
+    <Bar className={clsx('relative', children && 'h-14')}>
       <div className="scroll-h flex">
         {navPath.map((item, i) => (
           <button
@@ -3766,6 +3775,7 @@ const ReaderPaneHeader: React.FC<ReaderPaneHeaderProps> = ({ tab }) => {
           </button>
         ))}
       </div>
+      {children && <div className="absolute top-2 right-2">{children}</div>}
     </Bar>
   )
 }

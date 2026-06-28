@@ -7,6 +7,7 @@ import type { BookRecord } from '../src/db'
 const aliceEpubPath = path.resolve('packages/epubjs/test/fixtures/alice.epub')
 const alicePackageUrl = '/test-assets/alice.epub'
 const longPackageUrl = '/test-assets/long/OPS/package.opf'
+const findShortcut = process.platform === 'darwin' ? 'Meta+F' : 'Control+F'
 
 function createBook(id: string, title: string): BookRecord {
   return {
@@ -1150,6 +1151,40 @@ test('long-book closes image preview when clicking outside the visible image', a
     imageBox.x > 24 ? imageBox.x - 16 : imageBox.x + imageBox.width + 16
   await page.mouse.click(clickX, imageBox.y + imageBox.height / 2)
   await expect(preview).toBeHidden()
+})
+
+test('long-book keeps chapter find bar out of the reading content', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+
+  await page.keyboard.press(findShortcut)
+
+  const findInput = page.getByRole('textbox', { name: /Find in chapter/ })
+  await expect(findInput).toBeVisible()
+
+  const metrics = await page.evaluate(() => {
+    const pane = document.querySelector(
+      '[data-flow-reader-pane][aria-hidden="false"]',
+    )
+    const findBar = document.querySelector('[data-flow-chapter-find-bar]')
+    const content = document.querySelector('[data-flow-reader-content]')
+    const paneRect = pane?.getBoundingClientRect()
+    const findBarRect = findBar?.getBoundingClientRect()
+    const contentRect = content?.getBoundingClientRect()
+
+    return {
+      contentTop: Math.round(contentRect?.top ?? -1),
+      findBarBottom: Math.round(findBarRect?.bottom ?? -1),
+      findBarTop: Math.round(findBarRect?.top ?? -1),
+      paneTop: Math.round(paneRect?.top ?? -1),
+    }
+  })
+
+  expect(metrics.findBarTop).toBeGreaterThanOrEqual(metrics.paneTop)
+  expect(metrics.findBarBottom).toBeLessThanOrEqual(metrics.contentTop)
 })
 
 async function displayFocusedSectionIndex(page: Page, sectionIndex: number) {
