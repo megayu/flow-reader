@@ -443,7 +443,7 @@ class Resources {
     }
 
     var replacements = urls.map((src) => {
-      var assetPath = stripUrlSuffix(src)
+      var assetPath = decodeUrlPath(stripUrlSuffix(src))
       var absolute = path.isAbsolute(assetPath)
         ? assetPath
         : sectionPath.resolve(assetPath)
@@ -559,11 +559,19 @@ function stripUrlSuffix(src) {
 }
 
 function stripUrlPath(src) {
-  return src.slice(0, stripUrlSuffix(src).length)
+  return decodeUrlPath(src.slice(0, stripUrlSuffix(src).length))
 }
 
 function getUrlSuffix(src) {
   return src.slice(stripUrlSuffix(src).length)
+}
+
+function decodeUrlPath(src) {
+  try {
+    return decodeURI(src)
+  } catch {
+    return src
+  }
 }
 
 function shouldResolveUrl(src) {
