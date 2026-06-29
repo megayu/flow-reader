@@ -64,7 +64,6 @@ const BOOK_FILE: &str = "book.epub";
 const SOURCE_TEXT_FILE: &str = "source.txt";
 const UNPACKED_DIR: &str = "unpacked";
 const SEARCH_TEXT_CACHE_FILE: &str = "search-text.v1.json.zst";
-const SEARCH_TEXT_DEFAULT_LIMIT: usize = 1000;
 const SEARCH_TEXT_EXCERPT_RADIUS: usize = 60;
 pub const SEARCH_TEXT_CACHE_VERSION: u32 = 1;
 pub const SEARCH_TEXT_EXTRACTOR_VERSION: u32 = 1;
@@ -780,7 +779,7 @@ mod tests {
             ],
         };
 
-        let results = search_text_in_cache(&cache, "target phrase", 20);
+        let results = search_text_in_cache(&cache, "target phrase", Some(20));
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].id, "Text/two.xhtml");
@@ -794,6 +793,34 @@ mod tests {
             .excerpt
             .contains("target phrase appears"));
         assert_eq!(results[0].subitems[1].occurrence, 1);
+    }
+
+    #[test]
+    fn searches_cached_text_without_default_result_limit() {
+        let sections = (0..1001)
+            .map(|index| SearchTextSection {
+                section_index: index,
+                href: format!("Text/{index:04}.xhtml"),
+                title: Some(format!("Chapter {index}")),
+                nav_path: Vec::new(),
+                text: "target phrase".to_string(),
+            })
+            .collect();
+        let cache = SearchTextCache {
+            version: SEARCH_TEXT_CACHE_VERSION,
+            extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
+            book_hash: "abc123".to_string(),
+            content_version: 1,
+            sections,
+        };
+
+        let results = search_text_in_cache(&cache, "target phrase", None);
+        let result_count = results
+            .iter()
+            .map(|result| result.subitems.len())
+            .sum::<usize>();
+
+        assert_eq!(result_count, 1001);
     }
 
     #[test]
@@ -817,7 +844,7 @@ mod tests {
             }],
         };
 
-        let results = search_text_in_cache(&cache, "target phrase", 20);
+        let results = search_text_in_cache(&cache, "target phrase", Some(20));
         let excerpt = &results[0].subitems[0].excerpt;
 
         assert!(excerpt.contains("Second paragraph has the target phrase"));
@@ -850,7 +877,7 @@ mod tests {
             }],
         };
 
-        let results = search_text_in_cache(&cache, "target phrase", 20);
+        let results = search_text_in_cache(&cache, "target phrase", Some(20));
         let excerpt = &results[0].subitems[0].excerpt;
 
         assert!(excerpt.starts_with('…'));
@@ -876,7 +903,7 @@ mod tests {
             }],
         };
 
-        let results = search_text_in_cache(&cache, "target phrase", 20);
+        let results = search_text_in_cache(&cache, "target phrase", Some(20));
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].excerpt, "Chapter Two");

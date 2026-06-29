@@ -409,11 +409,7 @@ pub async fn search_book_text(
     tauri::async_runtime::spawn_blocking(move || {
         let book = storage.library_book(&id)?;
         let cache = load_or_build_search_text_cache(&storage, &book)?;
-        Ok(search_text_in_cache(
-            &cache,
-            &keyword,
-            limit.unwrap_or(SEARCH_TEXT_DEFAULT_LIMIT),
-        ))
+        Ok(search_text_in_cache(&cache, &keyword, limit))
     })
     .await
     .map_err(|error| error.to_string())?

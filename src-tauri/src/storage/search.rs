@@ -758,10 +758,10 @@ fn strip_html_for_search_text(value: &str) -> String {
 pub(super) fn search_text_in_cache(
     cache: &SearchTextCache,
     keyword: &str,
-    limit: usize,
+    limit: Option<usize>,
 ) -> Vec<SearchTextResult> {
     let keyword = keyword.trim();
-    if keyword.is_empty() || limit == 0 {
+    if keyword.is_empty() || limit == Some(0) {
         return Vec::new();
     }
 
@@ -797,7 +797,7 @@ pub(super) fn search_text_in_cache(
 
             total += 1;
             occurrence += 1;
-            if total >= limit {
+            if limit.is_some_and(|limit| total >= limit) {
                 break;
             }
 
@@ -826,7 +826,7 @@ pub(super) fn search_text_in_cache(
             });
         }
 
-        if total >= limit {
+        if limit.is_some_and(|limit| total >= limit) {
             break 'sections;
         }
     }
