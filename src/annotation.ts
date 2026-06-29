@@ -13,14 +13,14 @@ export const typeMap = {
 
 export type AnnotationColor = keyof typeof colorMap
 
-// "dark color + low opacity" is clearer than "light color + high opacity"
-// from tailwind [color]-600
+// Keep the stored color keys stable; tune the rendered fills for readability
+// across both light and dark reader backgrounds.
 export const colorMap = {
-  yellow: 'rgba(217, 119, 6, 0.2)',
-  red: 'rgba(220, 38, 38, 0.2)',
-  green: 'rgba(22, 163, 74, 0.2)',
-  blue: 'rgba(37, 99, 235, 0.2)',
-  purple: 'rgba(147, 51, 234, 0.22)',
+  yellow: 'rgba(202, 138, 4, 0.42)',
+  red: 'rgba(225, 29, 72, 0.36)',
+  green: 'rgba(22, 163, 74, 0.38)',
+  blue: 'rgba(37, 99, 235, 0.34)',
+  purple: 'rgba(126, 34, 206, 0.36)',
 }
 
 export function normalizeDefinition(definition: string) {

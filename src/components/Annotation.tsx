@@ -12,16 +12,14 @@ export const getClickedAnnotation = () => clickedAnnotation
 export const setClickedAnnotation = (v: boolean) => (clickedAnnotation = v)
 
 const definitionPalette = [
-  { light: '#2563eb', dark: '#60a5fa' },
-  { light: '#dc2626', dark: '#f87171' },
-  { light: '#16a34a', dark: '#4ade80' },
-  { light: '#9333ea', dark: '#c084fc' },
-  { light: '#ea580c', dark: '#fb923c' },
+  { light: '#dc2626', dark: '#ff4d4d' },
+  { light: '#ea580c', dark: '#ff8a00' },
+  { light: '#ca8a04', dark: '#fde047' },
+  { light: '#16a34a', dark: '#8cff00' },
   { light: '#0891b2', dark: '#22d3ee' },
-  { light: '#db2777', dark: '#f472b6' },
-  { light: '#65a30d', dark: '#a3e635' },
-  { light: '#4f46e5', dark: '#818cf8' },
-  { light: '#0d9488', dark: '#2dd4bf' },
+  { light: '#2563eb', dark: '#4d7cff' },
+  { light: '#9333ea', dark: '#c084fc' },
+  { light: '#111827', dark: '#f8fafc' },
 ]
 
 const clickableMarkStyle = {
@@ -38,8 +36,8 @@ function definitionUnderlineStyle(index: number, dark: boolean) {
     'data-wave-gap': 1.5,
     'data-wave-period': 7,
     stroke: dark ? color.dark : color.light,
-    'stroke-opacity': dark ? 0.95 : 0.9,
-    'stroke-width': 1.8,
+    'stroke-opacity': 1,
+    'stroke-width': 2.2,
   }
 }
 
@@ -296,7 +294,7 @@ const Annotation: React.FC<AnnotationProps> = ({ tab, annotation }) => {
       {
         ...clickableMarkStyle,
         fill: colorMap[annotation.color],
-        'fill-opacity': '0.5',
+        'fill-opacity': 'unset',
       },
     )
 
