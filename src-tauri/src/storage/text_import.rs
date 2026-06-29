@@ -21,6 +21,10 @@ pub struct TextImportSelection {
     pub(super) path: String,
     #[serde(default)]
     pub(super) encoding: Option<String>,
+    #[serde(default)]
+    pub(super) title: Option<String>,
+    #[serde(default)]
+    pub(super) creator: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,6 +98,7 @@ pub(super) enum TextEncodingConfidence {
 #[derive(Debug, Clone)]
 pub(super) struct TextImportDocument {
     pub(super) title: String,
+    pub(super) creator: String,
     pub(super) sections: Vec<TextImportSection>,
     pub(super) chapters: Vec<TextImportChapterPreview>,
 }
@@ -685,6 +690,7 @@ pub(super) fn parse_text_import_document(
         let generated_chapters = text_sections_to_chapter_previews(&generated_sections);
         return TextImportDocument {
             title: title.to_string(),
+            creator: String::new(),
             sections: generated_sections,
             chapters: generated_chapters,
         };
@@ -708,6 +714,7 @@ pub(super) fn parse_text_import_document(
 
     TextImportDocument {
         title: title.to_string(),
+        creator: String::new(),
         sections,
         chapters,
     }
@@ -941,6 +948,7 @@ fn write_text_publication(
     id: &str,
     document: &TextImportDocument,
     encoding_label: &str,
+    cover: Option<&CoverInput>,
 ) -> Result<(), String> {
     let unpacked_dir = storage.book_dir(id).join(UNPACKED_DIR);
     if unpacked_dir.exists() {
@@ -949,9 +957,11 @@ fn write_text_publication(
 
     let meta_inf = unpacked_dir.join("META-INF");
     let oebps = unpacked_dir.join("OEBPS");
+    let images_dir = oebps.join("Images");
     let text_dir = oebps.join("Text");
     let styles_dir = oebps.join("Styles");
     fs::create_dir_all(&meta_inf).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&images_dir).map_err(|error| error.to_string())?;
     fs::create_dir_all(&text_dir).map_err(|error| error.to_string())?;
     fs::create_dir_all(&styles_dir).map_err(|error| error.to_string())?;
     fs::write(unpacked_dir.join("mimetype"), "application/epub+zip")
@@ -969,6 +979,9 @@ fn write_text_publication(
     .map_err(|error| error.to_string())?;
 
     fs::write(styles_dir.join("txt.css"), text_import_css()).map_err(|error| error.to_string())?;
+    if let Some(cover) = cover {
+        write_text_cover_to_unpacked(storage, id, cover)?;
+    }
 
     for (index, section) in document.sections.iter().enumerate() {
         fs::write(
@@ -1144,13 +1157,16 @@ pub(super) fn text_content_opf(document: &TextImportDocument, encoding_label: &s
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="book-id">{}</dc:identifier>
     <dc:title>{}</dc:title>
+    <dc:creator>{}</dc:creator>
     <dc:language>zh-CN</dc:language>
+    <meta name="cover" content="cover-image"/>
     <meta property="source-format">txt</meta>
     <meta property="source-encoding">{}</meta>
   </metadata>
   <manifest>
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
     <item id="style" href="Styles/txt.css" media-type="text/css"/>
+    <item id="cover-image" href="Images/cover.svg" media-type="image/svg+xml" properties="cover-image"/>
     {}
   </manifest>
   <spine>
@@ -1159,10 +1175,29 @@ pub(super) fn text_content_opf(document: &TextImportDocument, encoding_label: &s
 </package>"#,
         escape_xml(&document.title),
         escape_xml(&document.title),
+        escape_xml(&document.creator),
         escape_xml(encoding_label),
         manifest_items,
         spine_items
     )
+}
+
+pub(super) fn write_text_cover_to_unpacked(
+    storage: &AppStorage,
+    id: &str,
+    cover: &CoverInput,
+) -> Result<(), String> {
+    if cover.mime_type != "image/svg+xml" || cover.data.is_empty() {
+        return Ok(());
+    }
+
+    let images_dir = storage
+        .book_dir(id)
+        .join(UNPACKED_DIR)
+        .join("OEBPS")
+        .join("Images");
+    fs::create_dir_all(&images_dir).map_err(|error| error.to_string())?;
+    fs::write(images_dir.join("cover.svg"), &cover.data).map_err(|error| error.to_string())
 }
 
 fn escape_xml(value: &str) -> String {
@@ -1184,6 +1219,8 @@ pub(super) fn import_text_path_impl(
     storage: &AppStorage,
     path: &Path,
     encoding: Option<&str>,
+    import_title: Option<&str>,
+    import_creator: Option<&str>,
     replace_existing: bool,
     rules: Option<&TextImportRulesInput>,
 ) -> Result<BookRecord, String> {
@@ -1201,15 +1238,27 @@ pub(super) fn import_text_path_impl(
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| "book.txt".to_string());
-    let title = path
+    let fallback_title = path
         .file_stem()
         .map(|name| name.to_string_lossy().to_string())
         .filter(|title| !title.is_empty())
         .unwrap_or_else(|| name.trim_end_matches(".txt").to_string());
+    let title = import_title
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .map(str::to_string)
+        .unwrap_or(fallback_title);
+    let creator = import_creator
+        .map(str::trim)
+        .filter(|creator| !creator.is_empty())
+        .map(str::to_string)
+        .unwrap_or_default();
 
-    let document = parse_text_import_document(&decoded.text, &title, rules);
+    let mut document = parse_text_import_document(&decoded.text, &title, rules);
+    document.creator = creator.clone();
     let metadata = json!({
         "title": title,
+        "creator": creator,
         "sourceFormat": "txt",
         "sourceEncodingId": decoded.encoding,
         "sourceEncoding": decoded.encoding_label,
@@ -1290,7 +1339,15 @@ pub(super) fn import_text_path_impl(
             let _ = fs::remove_file(dir.join(BOOK_FILE));
         }
         fs::copy(path, dir.join(SOURCE_TEXT_FILE)).map_err(|error| error.to_string())?;
-        write_text_publication(storage, &id, &document, &decoded.encoding_label)?;
+        let cover =
+            create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str()));
+        write_text_publication(
+            storage,
+            &id,
+            &document,
+            &decoded.encoding_label,
+            cover.as_ref(),
+        )?;
         book.metadata = metadata;
         {
             let mut state = storage
@@ -1303,14 +1360,7 @@ pub(super) fn import_text_path_impl(
             }
         }
         write_metadata(storage, &id, &book.metadata)?;
-        write_cover(
-            storage,
-            &id,
-            create_text_cover_input(
-                &book.metadata,
-                path.file_stem().and_then(|name| name.to_str()),
-            ),
-        )?;
+        write_cover(storage, &id, cover)?;
         if let Err(error) = build_and_write_search_text_cache(storage, &book) {
             eprintln!("Failed to build search text cache for {}: {error}", book.id);
         }

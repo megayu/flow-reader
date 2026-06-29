@@ -49,7 +49,7 @@ use search::{
 use text_import::{
     create_skipped_text_import_preview, create_text_cover_input, create_text_import_preview,
     decode_source_text_bytes, decode_text_bytes, encode_text_bytes, import_text_path_impl,
-    should_skip_text_import_preview, text_import_encoding_options,
+    should_skip_text_import_preview, text_import_encoding_options, write_text_cover_to_unpacked,
 };
 #[cfg(test)]
 use text_import::{
@@ -1948,11 +1948,19 @@ mod tests {
 
     #[test]
     fn generates_valid_text_import_opf_metadata() {
-        let document = parse_text_import_document("第1章 开始\n正文。", "测试书", None);
+        let mut document = parse_text_import_document("第1章 开始\n正文。", "测试书", None);
+        document.creator = "作者".to_string();
         let opf = text_content_opf(&document, "GB18030");
 
+        assert!(opf.contains(r#"<dc:title>测试书</dc:title>"#));
+        assert!(opf.contains(r#"<dc:creator>作者</dc:creator>"#));
+        assert!(opf.contains(r#"<meta name="cover" content="cover-image"/>"#));
         assert!(opf.contains(r#"<meta property="source-format">txt</meta>"#));
         assert!(opf.contains(r#"<meta property="source-encoding">GB18030</meta>"#));
+        assert!(opf.contains(
+            r#"<item id="cover-image" href="Images/cover.svg" media-type="image/svg+xml" properties="cover-image"/>"#
+        ));
+        assert!(!opf.contains("cover.xhtml"));
         assert!(!opf.contains("flow:source"));
     }
 

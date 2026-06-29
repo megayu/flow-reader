@@ -70,6 +70,8 @@ export default {
   'home.library_filter.unpin_tag': '取消置顶',
 
   'text_import.title': 'TXT 导入预览',
+  'text_import.book_title': '书名',
+  'text_import.creator': '作者',
   'text_import.encoding': '编码',
   'text_import.chapters': '章节预览',
   'text_import.sample': '文本预览',
@@ -77,6 +79,7 @@ export default {
   'text_import.collapse_all': '全部折叠',
   'text_import.cancel': '取消',
   'text_import.import_selected': '导入选中',
+  'text_import.loading': '正在加载预览...',
   'text_import.empty': '没有可预览的 TXT 文件',
   'text_import.status.ready': '可导入',
   'text_import.status.needsReview': '需确认',

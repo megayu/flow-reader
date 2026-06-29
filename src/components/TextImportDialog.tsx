@@ -8,7 +8,6 @@ import {
   UnfoldVerticalIcon,
 } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 
 import {
   getTextImportEncodings,
@@ -26,9 +25,16 @@ import { useTranslation } from '../hooks/useTranslation'
 import { defaultTextImportRules, useSettings } from '../state'
 
 import { AppTooltip } from './AppTooltip'
-import { Button } from './Button'
-import { Select } from './Form'
-import { Overlay } from './base/Overlay'
+import { Button } from './ui/button'
+import { Dialog, DialogContent, DialogTitle } from './ui/dialog'
+import { Input } from './ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select'
 
 interface TextImportDialogProps {
   paths: string[]
@@ -58,6 +64,23 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
   const [encodingOverrides, setEncodingOverrides] = useState<
     Record<string, string>
   >({})
+  const [titleOverrides, setTitleOverrides] = useState<Record<string, string>>(
+    {},
+  )
+  const [creatorOverrides, setCreatorOverrides] = useState<
+    Record<string, string>
+  >({})
+  const [previewSplit, setPreviewSplit] = useState(44)
+  const previewAreaRef = useRef<HTMLDivElement>(null)
+  const splitDragRef = useRef<
+    | {
+        pointerId: number
+        startX: number
+        startSplit: number
+        width: number
+      }
+    | undefined
+  >(undefined)
   const [loading, setLoading] = useState(false)
   const [importing, setImporting] = useState(false)
   const [error, setError] = useState('')
@@ -92,6 +115,20 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
       .then((items) => {
         if (disposed) return
         setPreviews(items)
+        setTitleOverrides((current) => {
+          const next = { ...current }
+          for (const item of items) {
+            if (next[item.path] === undefined) next[item.path] = item.title
+          }
+          return next
+        })
+        setCreatorOverrides((current) => {
+          const next = { ...current }
+          for (const item of items) {
+            if (next[item.path] === undefined) next[item.path] = ''
+          }
+          return next
+        })
         setSelectedPaths((current) => {
           const next = new Set(
             [...current].filter((path) =>
@@ -136,6 +173,32 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
+  useEffect(() => {
+    const onPointerMove = (event: PointerEvent) => {
+      const drag = splitDragRef.current
+      if (!drag || event.pointerId !== drag.pointerId) return
+      const delta = ((event.clientX - drag.startX) / drag.width) * 100
+      setPreviewSplit(Math.min(72, Math.max(28, drag.startSplit + delta)))
+    }
+    const onPointerUp = (event: PointerEvent) => {
+      if (splitDragRef.current?.pointerId !== event.pointerId) return
+      splitDragRef.current = undefined
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', onPointerUp)
+    window.addEventListener('pointercancel', onPointerUp)
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', onPointerUp)
+      window.removeEventListener('pointercancel', onPointerUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [])
+
   const activePreview = useMemo(
     () =>
       previews.find((preview) => preview.path === activePath) ?? previews[0],
@@ -158,7 +221,12 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     setCollapsedChapterKeys(new Set())
   }, [activePreview?.path])
 
-  const selectedImports: { encoding: string; path: string }[] = []
+  const selectedImports: {
+    creator?: string
+    encoding: string
+    path: string
+    title?: string
+  }[] = []
   for (const preview of previews) {
     if (
       selectedPaths.has(preview.path) &&
@@ -168,6 +236,8 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
       selectedImports.push({
         path: preview.path,
         encoding: encodingOverrides[preview.path] ?? preview.encoding,
+        title: (titleOverrides[preview.path] ?? preview.title).trim(),
+        creator: (creatorOverrides[preview.path] ?? '').trim(),
       })
     }
   }
@@ -203,21 +273,22 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     }
   }
 
-  return createPortal(
-    <>
-      <Overlay className="z-[80] !bg-black/20" onClick={onClose} />
-      <div
-        role="dialog"
-        aria-modal="true"
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
         aria-labelledby={titleId}
         data-flow-keyboard-capture="true"
-        className="text-muted-foreground ring-border bg-background fixed top-1/2 left-1/2 z-[90] flex h-[min(42rem,calc(100vh-4rem))] w-[min(82rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-md shadow-xl ring-1 ring-inset"
+        showCloseButton={false}
+        className="grid h-[min(40rem,calc(100vh-3rem))] w-[min(58rem,calc(100vw-1.5rem))] max-w-none grid-cols-[12rem_minmax(0,1fr)] gap-0 overflow-hidden p-0"
       >
-        <aside className="border-border flex w-72 shrink-0 flex-col border-r bg-[var(--flow-bg-sidebar)]">
-          <div id={titleId} className="px-4 py-3 text-base font-semibold">
-            {t('title')}
+        <aside className="border-border flex min-h-0 flex-col border-r bg-[var(--flow-bg-sidebar)]">
+          <div className="border-border border-b px-3 py-3">
+            <DialogTitle id={titleId}>{t('title')}</DialogTitle>
           </div>
-          <div className="scroll min-h-0 flex-1 overflow-y-auto p-2">
+          <div
+            className="scroll min-h-0 flex-1 overflow-y-auto p-2"
+            style={{ scrollbarGutter: 'auto' }}
+          >
             {previews.map((preview) => {
               const selected = selectedPaths.has(preview.path)
               const active = activePreview?.path === preview.path
@@ -227,14 +298,14 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                   key={preview.path}
                   type="button"
                   className={clsx(
-                    'mb-1 flex w-full items-start gap-2 rounded-sm px-2 py-2 text-left hover:bg-[var(--flow-bg-control-hover)]',
+                    'mb-1 flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-[var(--flow-bg-control-hover)]',
                     active &&
                       'text-foreground bg-[var(--flow-accent-bg)] ring-1 ring-[var(--flow-accent-border)] ring-inset',
                   )}
                   onClick={() => setActivePath(preview.path)}
                 >
                   <Icon
-                    size={20}
+                    size={18}
                     className={clsx(
                       'mt-0.5 shrink-0',
                       (preview.status === 'error' ||
@@ -265,97 +336,188 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
           </div>
         </aside>
 
-        <main className="flex min-w-0 flex-1 flex-col">
-          <div className="border-border border-b px-5 py-3">
-            <div className="truncate text-base font-semibold">
-              {activePreview?.title ?? t('title')}
-            </div>
+        <main className="flex min-h-0 min-w-0 flex-col">
+          <div className="border-border shrink-0 border-b px-4 py-3">
             {activePreview && (
-              <div className="mt-2 grid grid-cols-[auto_minmax(12rem,20rem)] items-center gap-x-3 gap-y-2">
-                <div className="text-muted-foreground text-base">
-                  {t('encoding')}
-                </div>
-                <Select
-                  value={encodingOverrides[activePreview.path] ?? 'auto'}
-                  onChange={(event) => {
-                    setEncodingOverrides((current) => ({
-                      ...current,
-                      [activePreview.path]: event.target.value,
-                    }))
-                  }}
-                >
-                  {encodings.map((encoding) => (
-                    <option key={encoding.id} value={encoding.id}>
-                      {encoding.id === 'auto'
-                        ? `${encoding.label} (${activePreview.encodingLabel})`
-                        : encoding.label}
-                    </option>
-                  ))}
-                </Select>
+              <div
+                className="grid gap-3"
+                style={{
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(10rem, 1fr))',
+                }}
+              >
+                <label className="grid gap-1">
+                  <span className="text-muted-foreground text-base">
+                    {t('book_title')}
+                  </span>
+                  <Input
+                    value={titleOverrides[activePreview.path] ?? ''}
+                    onChange={(event) => {
+                      setTitleOverrides((current) => ({
+                        ...current,
+                        [activePreview.path]: event.target.value,
+                      }))
+                    }}
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-muted-foreground text-base">
+                    {t('creator')}
+                  </span>
+                  <Input
+                    value={creatorOverrides[activePreview.path] ?? ''}
+                    onChange={(event) => {
+                      setCreatorOverrides((current) => ({
+                        ...current,
+                        [activePreview.path]: event.target.value,
+                      }))
+                    }}
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-muted-foreground text-base">
+                    {t('encoding')}
+                  </span>
+                  <Select
+                    value={encodingOverrides[activePreview.path] ?? 'auto'}
+                    onValueChange={(value) => {
+                      setEncodingOverrides((current) => ({
+                        ...current,
+                        [activePreview.path]: value,
+                      }))
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {encodings.map((encoding) => (
+                        <SelectItem key={encoding.id} value={encoding.id}>
+                          {encoding.id === 'auto'
+                            ? `${encoding.label} (${activePreview.encodingLabel})`
+                            : encoding.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
               </div>
             )}
           </div>
 
-          <div className="grid min-h-0 flex-1 grid-cols-[minmax(22rem,0.9fr)_minmax(28rem,1.1fr)] gap-5 overflow-hidden p-5">
-            <section className="flex min-h-0 flex-col">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <h3 className="text-base font-semibold">{t('chapters')}</h3>
-                {!!collapsibleChapterKeys.length && (
-                  <AppTooltip
-                    label={t(
-                      chapterPreviewExpanded ? 'collapse_all' : 'expand_all',
-                    )}
-                  >
-                    <button
-                      type="button"
-                      aria-label={t(
+          {activePreview ? (
+            <div
+              ref={previewAreaRef}
+              data-testid="text-import-preview-grid"
+              className="grid min-h-0 flex-1 overflow-hidden"
+              style={{
+                gridTemplateColumns: `minmax(0,${previewSplit}fr) 0.75rem minmax(0,${
+                  100 - previewSplit
+                }fr)`,
+              }}
+            >
+              <section className="flex min-h-0 min-w-0 flex-col py-4 pr-2 pl-4">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3 className="text-base font-semibold">{t('chapters')}</h3>
+                  {!!collapsibleChapterKeys.length && (
+                    <AppTooltip
+                      label={t(
                         chapterPreviewExpanded ? 'collapse_all' : 'expand_all',
                       )}
-                      className="text-muted-foreground hover:text-muted-foreground rounded-sm p-1 hover:bg-[var(--flow-bg-control-hover)]"
-                      onClick={() => {
-                        setCollapsedChapterKeys(
-                          chapterPreviewExpanded
-                            ? new Set(collapsibleChapterKeys)
-                            : new Set(),
-                        )
-                      }}
                     >
-                      {chapterPreviewExpanded ? (
-                        <FoldVerticalIcon className="size-[18px]" />
-                      ) : (
-                        <UnfoldVerticalIcon className="size-[18px]" />
-                      )}
-                    </button>
-                  </AppTooltip>
-                )}
-              </div>
-              <div className="scroll min-h-0 flex-1 overflow-auto rounded-sm bg-[var(--flow-bg-panel)] p-2 text-base">
-                <ChapterPreviewTree
-                  nodes={chapterTree}
-                  collapsedKeys={collapsedChapterKeys}
-                  onToggle={(key) => {
-                    setCollapsedChapterKeys((current) => {
-                      const next = new Set(current)
-                      if (next.has(key)) {
-                        next.delete(key)
-                      } else {
-                        next.add(key)
-                      }
-                      return next
-                    })
-                  }}
-                />
-              </div>
-            </section>
-            <section className="flex min-h-0 flex-col">
-              <h3 className="mb-2 text-base font-semibold">{t('sample')}</h3>
-              <pre className="scroll min-h-0 flex-1 overflow-auto rounded-sm bg-[var(--flow-bg-panel)] p-3 font-sans text-base whitespace-pre-wrap">
-                {activePreview?.sample ?? ''}
-              </pre>
-            </section>
-          </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t(
+                          chapterPreviewExpanded
+                            ? 'collapse_all'
+                            : 'expand_all',
+                        )}
+                        onClick={() => {
+                          setCollapsedChapterKeys(
+                            chapterPreviewExpanded
+                              ? new Set(collapsibleChapterKeys)
+                              : new Set(),
+                          )
+                        }}
+                      >
+                        {chapterPreviewExpanded ? (
+                          <FoldVerticalIcon className="size-[18px]" />
+                        ) : (
+                          <UnfoldVerticalIcon className="size-[18px]" />
+                        )}
+                      </Button>
+                    </AppTooltip>
+                  )}
+                </div>
+                <div className="scroll min-h-0 flex-1 overflow-auto rounded-lg bg-[var(--flow-bg-panel)] p-2 text-base">
+                  <ChapterPreviewTree
+                    nodes={chapterTree}
+                    collapsedKeys={collapsedChapterKeys}
+                    onToggle={(key) => {
+                      setCollapsedChapterKeys((current) => {
+                        const next = new Set(current)
+                        if (next.has(key)) {
+                          next.delete(key)
+                        } else {
+                          next.add(key)
+                        }
+                        return next
+                      })
+                    }}
+                  />
+                </div>
+              </section>
+              <button
+                type="button"
+                aria-label={`${t('chapters')} / ${t('sample')}`}
+                className="group flex h-full cursor-col-resize items-stretch justify-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-ring)]"
+                onPointerDown={(event) => {
+                  const width = previewAreaRef.current?.clientWidth
+                  if (!width) return
+                  event.currentTarget.setPointerCapture(event.pointerId)
+                  splitDragRef.current = {
+                    pointerId: event.pointerId,
+                    startX: event.clientX,
+                    startSplit: previewSplit,
+                    width,
+                  }
+                  document.body.style.cursor = 'col-resize'
+                  document.body.style.userSelect = 'none'
+                  event.preventDefault()
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+                    return
+                  }
+                  event.preventDefault()
+                  setPreviewSplit((current) =>
+                    Math.min(
+                      72,
+                      Math.max(
+                        28,
+                        current + (event.key === 'ArrowLeft' ? -4 : 4),
+                      ),
+                    ),
+                  )
+                }}
+              >
+                <div className="bg-border group-hover:bg-ring/60 h-full w-px transition-colors" />
+              </button>
+              <section className="flex min-h-0 min-w-0 flex-col py-4 pr-4 pl-2">
+                <h3 className="mb-2 text-base font-semibold">{t('sample')}</h3>
+                <pre className="scroll min-h-0 flex-1 overflow-auto rounded-lg bg-[var(--flow-bg-panel)] p-3 font-sans text-base whitespace-pre-wrap">
+                  {activePreview.sample}
+                </pre>
+              </section>
+            </div>
+          ) : (
+            <div className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center p-4 text-base">
+              {loading ? t('loading') : t('empty')}
+            </div>
+          )}
 
-          <div className="border-border flex items-center justify-between border-t px-5 py-3">
+          <div className="border-border flex shrink-0 items-center justify-between gap-3 border-t bg-[var(--flow-bg-panel)] px-4 py-3">
             <div className="text-destructive min-w-0 text-base">
               {error || activePreview?.message || ''}
             </div>
@@ -372,9 +534,8 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
             </div>
           </div>
         </main>
-      </div>
-    </>,
-    document.body,
+      </DialogContent>
+    </Dialog>
   )
 }
 

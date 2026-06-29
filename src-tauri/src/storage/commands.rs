@@ -370,6 +370,8 @@ pub fn import_text_paths(
             &storage,
             &path,
             import.encoding.as_deref(),
+            import.title.as_deref(),
+            import.creator.as_deref(),
             replace_existing,
             rules,
         )?);
@@ -522,16 +524,18 @@ pub fn update_book(
                 write_metadata(&storage, &id, value)?;
                 sync_unpacked_opf_metadata(&storage.book_dir(&id).join(UNPACKED_DIR), value)?;
                 if is_generated_text_cover(&storage, &id)? {
-                    write_cover(
-                        &storage,
-                        &id,
-                        create_text_cover_input(
-                            value,
-                            Path::new(&book.name)
-                                .file_stem()
-                                .and_then(|name| name.to_str()),
-                        ),
-                    )?;
+                    let cover = create_text_cover_input(
+                        value,
+                        Path::new(&book.name)
+                            .file_stem()
+                            .and_then(|name| name.to_str()),
+                    );
+                    if book.source_format == Some(BookSourceFormat::Txt) {
+                        if let Some(cover) = cover.as_ref() {
+                            write_text_cover_to_unpacked(&storage, &id, cover)?;
+                        }
+                    }
+                    write_cover(&storage, &id, cover)?;
                 }
                 library_changed = true;
                 immediate_flush = true;

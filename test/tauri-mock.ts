@@ -1,6 +1,11 @@
 import type { Page } from '@playwright/test'
 
-import type { BookRecord } from '../src/db'
+import type {
+  BookRecord,
+  TextImportEncodingOption,
+  TextImportPreview,
+  TextImportSelection,
+} from '../src/db'
 
 export interface TestLibraryTagRecord {
   id: string
@@ -16,6 +21,8 @@ interface TauriMockOptions {
   saveDialogPath?: string | null
   settings?: Record<string, unknown>
   tags?: TestLibraryTagRecord[]
+  textImportEncodings?: TextImportEncodingOption[]
+  textImportPreviews?: TextImportPreview[]
 }
 
 export async function installTauriMock(
@@ -27,6 +34,12 @@ export async function installTauriMock(
     saveDialogPath = null,
     settings = {},
     tags = [],
+    textImportEncodings = [
+      { id: 'auto', label: 'Auto' },
+      { id: 'utf-8', label: 'UTF-8' },
+      { id: 'gb18030', label: 'GB18030' },
+    ],
+    textImportPreviews = [],
   }: TauriMockOptions = {},
 ) {
   await page.addInitScript(
@@ -37,6 +50,8 @@ export async function installTauriMock(
       fixtureSaveDialogPath,
       fixtureSettings,
       fixtureTags,
+      fixtureTextImportEncodings,
+      fixtureTextImportPreviews,
     }) => {
       type TauriInternals = {
         callbacks?: Record<number, (...args: unknown[]) => unknown>
@@ -66,6 +81,7 @@ export async function installTauriMock(
           }>
           fullscreen: boolean
           settingsStore: Record<string, unknown>
+          textImports: TextImportSelection[]
         }
         __TAURI_INTERNALS__?: TauriInternals
       }
@@ -86,6 +102,9 @@ export async function installTauriMock(
         fixtureTags.map((tag) => [tag.id, tag]),
       )
       const importQueue = [...fixtureImportedBooks]
+      const textImportPreviewStore = new Map<string, TextImportPreview>(
+        fixtureTextImportPreviews.map((preview) => [preview.path, preview]),
+      )
       const settingsStore: Record<string, unknown> = {
         locale: 'en-US',
         ...(storedSettings ?? {}),
@@ -106,6 +125,7 @@ export async function installTauriMock(
           return fullscreen
         },
         settingsStore,
+        textImports: [],
       }
       internals.metadata = {
         currentWebview: { label: 'main' },
@@ -234,6 +254,40 @@ export async function installTauriMock(
           imported.forEach((book) => bookStore.set(book.id, book))
           return imported
         }
+        if (command === 'get_text_import_encodings') {
+          return fixtureTextImportEncodings
+        }
+        if (command === 'preview_text_import_paths') {
+          const paths = Array.isArray(args?.paths) ? args.paths.map(String) : []
+          return paths.map((path) => {
+            const preview = textImportPreviewStore.get(path)
+            if (preview) return preview
+
+            const filename = path.split(/[\\/]/).pop() ?? 'book.txt'
+            const title = filename.replace(/\.[^.]+$/, '') || filename
+            return {
+              path,
+              filename,
+              title,
+              encoding: 'utf-8',
+              encodingLabel: 'UTF-8',
+              confidence: 'high',
+              status: 'ready',
+              selected: true,
+              chapters: [],
+              sample: '',
+            }
+          })
+        }
+        if (command === 'import_text_paths') {
+          const imports = Array.isArray(args?.imports)
+            ? (args.imports as TextImportSelection[])
+            : []
+          globalWindow.__FLOW_TEST_TAURI__?.textImports.push(...imports)
+          const imported = importQueue.splice(0, Math.max(imports.length, 1))
+          imported.forEach((book) => bookStore.set(book.id, book))
+          return imported
+        }
         if (command === 'export_book') {
           const id = String(args?.id)
           const format = String(args?.format)
@@ -283,6 +337,8 @@ export async function installTauriMock(
       fixtureSaveDialogPath: saveDialogPath,
       fixtureSettings: settings,
       fixtureTags: tags,
+      fixtureTextImportEncodings: textImportEncodings,
+      fixtureTextImportPreviews: textImportPreviews,
     },
   )
 }
@@ -324,5 +380,17 @@ export async function getExportedBooks(page: Page) {
     }
 
     return globalWindow.__FLOW_TEST_TAURI__?.exports ?? []
+  })
+}
+
+export async function getImportedTextSelections(page: Page) {
+  return page.evaluate(() => {
+    const globalWindow = window as typeof window & {
+      __FLOW_TEST_TAURI__?: {
+        textImports: TextImportSelection[]
+      }
+    }
+
+    return globalWindow.__FLOW_TEST_TAURI__?.textImports ?? []
   })
 }

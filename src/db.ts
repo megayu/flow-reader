@@ -47,6 +47,8 @@ export interface TextImportPreview {
 export interface TextImportSelection {
   path: string
   encoding?: string
+  title?: string
+  creator?: string
 }
 
 export interface TextImportRulesInput {

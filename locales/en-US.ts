@@ -71,6 +71,8 @@ export default {
   'home.library_filter.unpin_tag': 'Unpin',
 
   'text_import.title': 'TXT Import Preview',
+  'text_import.book_title': 'Book title',
+  'text_import.creator': 'Author',
   'text_import.encoding': 'Encoding',
   'text_import.chapters': 'Chapter Preview',
   'text_import.sample': 'Text Preview',
@@ -78,6 +80,7 @@ export default {
   'text_import.collapse_all': 'Collapse All',
   'text_import.cancel': 'Cancel',
   'text_import.import_selected': 'Import Selected',
+  'text_import.loading': 'Loading preview...',
   'text_import.empty': 'No TXT files to preview',
   'text_import.status.ready': 'Ready',
   'text_import.status.needsReview': 'Needs review',
