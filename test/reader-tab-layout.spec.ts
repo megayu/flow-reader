@@ -547,6 +547,46 @@ async function expectVisibleReaderMarks(
     .toBeGreaterThanOrEqual(minimum)
 }
 
+async function expectReaderMarkCursor(page: Page, ref: string) {
+  const point = await page.evaluate((markRef) => {
+    const mark = Array.from(document.querySelectorAll(`[ref="${markRef}"]`))
+      .filter((candidate) => !candidate.closest('[aria-hidden="true"]'))
+      .find((candidate) => {
+        const rect = candidate.getBoundingClientRect()
+        return rect.width > 0 && rect.height > 0
+      })
+
+    if (!mark) return
+
+    const rect = mark.getBoundingClientRect()
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    }
+  }, ref)
+
+  if (!point) throw new Error(`Missing visible mark ${ref}`)
+
+  await page.mouse.move(point.x, point.y)
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const activeFrames = Array.from(
+          document.querySelectorAll('iframe'),
+        ).filter((frame) => !frame.closest('[aria-hidden="true"]'))
+
+        return activeFrames.some((frame) => {
+          const doc = (frame as HTMLIFrameElement).contentDocument
+          return (
+            doc?.documentElement?.style.cursor === 'pointer' ||
+            doc?.body?.style.cursor === 'pointer'
+          )
+        })
+      }),
+    )
+    .toBe(true)
+}
+
 async function addVisibleAnnotation(page: Page) {
   return page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab
@@ -2076,10 +2116,12 @@ test('keeps three tabs stable and redraws same-chapter overlays immediately', as
     ;(window as any).reader.focusedBookTab?.define(['Alice'])
   })
   await expectVisibleReaderMarks(page, 'flow-definition-underline', 1)
+  await expectReaderMarkCursor(page, 'flow-definition-underline')
 
   const annotation = await addVisibleAnnotation(page)
   expect(annotation.text).toBe('Alice')
   await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
+  await expectReaderMarkCursor(page, 'epubjs-hl')
 
   await page.evaluate(() => {
     ;(window as any).reader.focusedBookTab?.undefine(' alice ')

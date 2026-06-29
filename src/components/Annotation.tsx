@@ -24,10 +24,15 @@ const definitionPalette = [
   { light: '#0d9488', dark: '#2dd4bf' },
 ]
 
+const clickableMarkStyle = {
+  cursor: 'pointer',
+}
+
 function definitionUnderlineStyle(index: number, dark: boolean) {
   const color = definitionPalette[index % definitionPalette.length]!
 
   return {
+    ...clickableMarkStyle,
     'data-underline-style': 'wavy',
     'data-wave-amplitude': 2,
     'data-wave-gap': 1.5,
@@ -289,6 +294,7 @@ const Annotation: React.FC<AnnotationProps> = ({ tab, annotation }) => {
       },
       undefined,
       {
+        ...clickableMarkStyle,
         fill: colorMap[annotation.color],
         'fill-opacity': '0.5',
       },

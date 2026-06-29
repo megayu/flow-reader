@@ -76,6 +76,15 @@ function numberAttribute(attributes, name, fallback) {
   return Number.isFinite(value) ? value : fallback
 }
 
+function rectContainsPoint(rect, offset, x, y) {
+  let top = rect.top - offset.top
+  let left = rect.left - offset.left
+  let bottom = top + rect.height
+  let right = left + rect.width
+
+  return top <= y && left <= x && bottom > y && right > x
+}
+
 function wavyUnderlinePath(x, width, y, amplitude, period) {
   let halfPeriod = Math.max(period / 2, 1)
   let remaining = Math.max(width, 0)
@@ -143,6 +152,10 @@ class IframeView {
     this.highlights = {}
     this.underlines = {}
     this.marks = {}
+    this.markCursorProxyDocument = undefined
+    this.markCursorProxyMove = undefined
+    this.markCursorProxyLeave = undefined
+    this.activeMarkCursor = undefined
   }
 
   container(axis) {
@@ -898,6 +911,7 @@ class IframeView {
     }
 
     h.element.setAttribute('ref', className)
+    this.applyMarkCursor(h, attributes.cursor)
     h.element.addEventListener('click', emitter)
     h.element.addEventListener('touchstart', emitter)
 
@@ -943,6 +957,7 @@ class IframeView {
     }
 
     h.element.setAttribute('ref', className)
+    this.applyMarkCursor(h, attributes.cursor)
     h.element.addEventListener('click', emitter)
     h.element.addEventListener('touchstart', emitter)
 
@@ -951,6 +966,113 @@ class IframeView {
       h.element.addEventListener('touchstart', cb)
     }
     return h
+  }
+
+  applyMarkCursor(mark, cursor) {
+    if (!mark || !cursor) {
+      return
+    }
+
+    mark.element.setAttribute('cursor', cursor)
+    mark.element.style.cursor = cursor
+    this.ensureMarkCursorProxy()
+  }
+
+  ensureMarkCursorProxy() {
+    if (!this.document || !this.iframe) {
+      return
+    }
+
+    if (this.markCursorProxyDocument === this.document) {
+      return
+    }
+
+    if (this.markCursorProxyDocument && this.markCursorProxyMove) {
+      this.markCursorProxyDocument.removeEventListener(
+        'mousemove',
+        this.markCursorProxyMove,
+      )
+    }
+    if (this.markCursorProxyDocument && this.markCursorProxyLeave) {
+      this.markCursorProxyDocument.removeEventListener(
+        'mouseleave',
+        this.markCursorProxyLeave,
+      )
+    }
+
+    this.markCursorProxyMove = (event) => {
+      this.updateMarkCursor(event)
+    }
+    this.markCursorProxyLeave = () => {
+      this.setDocumentCursor(undefined)
+    }
+    this.markCursorProxyDocument = this.document
+    this.document.addEventListener('mousemove', this.markCursorProxyMove, false)
+    this.document.addEventListener(
+      'mouseleave',
+      this.markCursorProxyLeave,
+      false,
+    )
+  }
+
+  updateMarkCursor(event) {
+    let cursor = this.cursorForMarkPoint(event.clientX, event.clientY)
+    this.setDocumentCursor(cursor)
+  }
+
+  cursorForMarkPoint(x, y) {
+    if (!this.iframe) {
+      return
+    }
+
+    let offset = this.iframe.getBoundingClientRect()
+    let marks = [
+      ...Object.values(this.highlights),
+      ...Object.values(this.underlines),
+    ]
+
+    for (let i = marks.length - 1; i >= 0; i--) {
+      let mark = marks[i] && marks[i].mark
+      let cursor = mark && mark.element && mark.element.style.cursor
+      if (!cursor || !this.markContainsPoint(mark, offset, x, y)) {
+        continue
+      }
+
+      return cursor
+    }
+  }
+
+  markContainsPoint(mark, offset, x, y) {
+    let rect = mark.getBoundingClientRect()
+    if (!rectContainsPoint(rect, offset, x, y)) {
+      return false
+    }
+
+    let rects = mark.getClientRects()
+    for (let i = 0, len = rects.length; i < len; i++) {
+      if (rectContainsPoint(rects[i], offset, x, y)) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  setDocumentCursor(cursor) {
+    if (cursor === this.activeMarkCursor) {
+      return
+    }
+
+    let root = this.document && this.document.documentElement
+    let body = this.document && this.document.body
+
+    if (root) {
+      root.style.cursor = cursor || ''
+    }
+    if (body) {
+      body.style.cursor = cursor || ''
+    }
+    this.activeMarkCursor = cursor
   }
 
   mark(cfiRange, data = {}, cb) {
