@@ -80,6 +80,13 @@ Read this before proposing or testing a Flow Reader performance change. Search f
 - Decision: keep as a correctness/performance prerequisite.
 - Constraint: performance work must not reintroduce stale layout reuse after real reading-position changes.
 
+### Live patch active text edit before full reload
+
+- Change: after a text edit succeeds, patch the edited active tab's rendered section text node in place and re-report the current location. Reload is kept as a fallback when the rendered node cannot be verified.
+- Measured effect: in `tauri-release` custom UI verification on a generated TXT book, the active reader kept 2 iframes mounted, the loading cover stayed hidden, and visible text changed within about 55ms after save sampling started.
+- Decision: keep. It removes the user-visible blank interval caused by destroying the rendition before the replacement render finishes.
+- Constraint: only use this for the edited active tab when section href, text-node index, original text, and offsets all match. Other tabs or stale targets should continue to use the conservative reload path.
+
 ## Rejected Approaches
 
 ### Row CSS containment

@@ -13,6 +13,7 @@ interface TauriMockOptions {
   books?: BookRecord[]
   importedBooks?: BookRecord[]
   openDialogPaths?: string[]
+  saveDialogPath?: string | null
   settings?: Record<string, unknown>
   tags?: TestLibraryTagRecord[]
 }
@@ -23,6 +24,7 @@ export async function installTauriMock(
     books = [],
     importedBooks = [],
     openDialogPaths = [],
+    saveDialogPath = null,
     settings = {},
     tags = [],
   }: TauriMockOptions = {},
@@ -32,6 +34,7 @@ export async function installTauriMock(
       fixtureBooks,
       fixtureImportedBooks,
       fixtureOpenDialogPaths,
+      fixtureSaveDialogPath,
       fixtureSettings,
       fixtureTags,
     }) => {
@@ -56,6 +59,11 @@ export async function installTauriMock(
       const globalWindow = window as typeof window & {
         __TAURI_EVENT_PLUGIN_INTERNALS__?: TauriEventInternals
         __FLOW_TEST_TAURI__?: {
+          exports: Array<{
+            format: string
+            id: string
+            outputPath: string
+          }>
           fullscreen: boolean
           settingsStore: Record<string, unknown>
         }
@@ -93,6 +101,7 @@ export async function installTauriMock(
       const callbacks = (internals.callbacks ??= {})
 
       globalWindow.__FLOW_TEST_TAURI__ = {
+        exports: [],
         get fullscreen() {
           return fullscreen
         },
@@ -225,10 +234,33 @@ export async function installTauriMock(
           imported.forEach((book) => bookStore.set(book.id, book))
           return imported
         }
+        if (command === 'export_book') {
+          const id = String(args?.id)
+          const format = String(args?.format)
+          const outputPath = String(args?.outputPath ?? '')
+          const current = bookStore.get(id)
+          if (!current) return null
+
+          globalWindow.__FLOW_TEST_TAURI__?.exports.push({
+            format,
+            id,
+            outputPath,
+          })
+          const updated = {
+            ...current,
+            exportedVersions: {
+              ...(current.exportedVersions ?? {}),
+              [format]: current.contentVersion ?? 0,
+            },
+          }
+          bookStore.set(id, updated)
+          return updated
+        }
         if (command === 'list_covers') return []
         if (command === 'get_cover') return null
         if (command === 'take_pending_open_paths') return []
         if (command === 'plugin:dialog|open') return fixtureOpenDialogPaths
+        if (command === 'plugin:dialog|save') return fixtureSaveDialogPath
         if (command === 'flush_storage') return null
         if (command === 'plugin:event|listen') return nextEventId++
         if (command === 'plugin:event|unlisten') return null
@@ -248,6 +280,7 @@ export async function installTauriMock(
       fixtureBooks: books,
       fixtureImportedBooks: importedBooks,
       fixtureOpenDialogPaths: openDialogPaths,
+      fixtureSaveDialogPath: saveDialogPath,
       fixtureSettings: settings,
       fixtureTags: tags,
     },
@@ -275,5 +308,21 @@ export async function getFullscreenState(page: Page) {
     }
 
     return globalWindow.__FLOW_TEST_TAURI__?.fullscreen ?? false
+  })
+}
+
+export async function getExportedBooks(page: Page) {
+  return page.evaluate(() => {
+    const globalWindow = window as typeof window & {
+      __FLOW_TEST_TAURI__?: {
+        exports: Array<{
+          format: string
+          id: string
+          outputPath: string
+        }>
+      }
+    }
+
+    return globalWindow.__FLOW_TEST_TAURI__?.exports ?? []
   })
 }

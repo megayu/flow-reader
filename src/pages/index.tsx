@@ -7,6 +7,7 @@ import {
   BookImageIcon,
   CalendarPlusIcon,
   CheckIcon,
+  DownloadIcon,
   FileInputIcon,
   HistoryIcon,
   InfoIcon,
@@ -37,6 +38,7 @@ import {
   compareBookDisplayTitle,
   getBookDisplayTitle,
   getBookTooltip,
+  stripFileExtension,
 } from '../book'
 import {
   AppTooltip,
@@ -71,10 +73,12 @@ import {
 } from '../components/ui/select'
 import {
   BookRecord,
+  BookExportFormat,
   CoverRecord,
   LibraryTagRecord,
   ReadingStatus,
   db,
+  exportBook,
 } from '../db'
 import { handleFiles, openImportDialog, setupNativeOpenFiles } from '../file'
 import { useAction, useLibraryAction } from '../hooks/useAction'
@@ -179,6 +183,63 @@ function getBookProgressPercent(value?: number) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return
 
   return Math.max(0, Math.min(100, value * 100))
+}
+
+function bookSourceFormat(book: BookRecord) {
+  return (
+    book.sourceFormat ??
+    (((book.metadata as { sourceFormat?: string }).sourceFormat === 'txt'
+      ? 'txt'
+      : 'epub') as BookRecord['sourceFormat'])
+  )
+}
+
+function bookExportFormats(book: BookRecord): BookExportFormat[] {
+  return bookSourceFormat(book) === 'txt' ? ['txt', 'epub'] : ['epub']
+}
+
+function isBookExportDirty(book: BookRecord, format: BookExportFormat) {
+  return (
+    !!book.contentEditedAt &&
+    (book.exportedVersions?.[format] ?? 0) < (book.contentVersion ?? 0)
+  )
+}
+
+function exportFormatExtension(format: BookExportFormat) {
+  return format === 'txt' ? 'txt' : 'epub'
+}
+
+function exportDialogFilter(format: BookExportFormat) {
+  return format === 'txt'
+    ? { name: 'TXT', extensions: ['txt'] }
+    : { name: 'EPUB', extensions: ['epub'] }
+}
+
+function cleanExportFileName(value: string) {
+  const fallback = 'book'
+  const cleaned = value.replace(/[\\/:*?"<>|]+/g, ' ').trim()
+  return cleaned || fallback
+}
+
+function getExportDefaultPath(book: BookRecord, format: BookExportFormat) {
+  const base = cleanExportFileName(
+    stripFileExtension(book.name) || getBookDisplayTitle(book),
+  )
+  return `${base}.${exportFormatExtension(format)}`
+}
+
+async function exportBookWithDialog(
+  book: BookRecord,
+  format: BookExportFormat,
+) {
+  const { save } = await import('@tauri-apps/plugin-dialog')
+  const outputPath = await save({
+    defaultPath: getExportDefaultPath(book, format),
+    filters: [exportDialogFilter(format)],
+  })
+  if (!outputPath) return
+
+  await exportBook(book.id, format, outputPath)
 }
 
 let languageDisplayNamesLocale: string | undefined
@@ -1031,10 +1092,12 @@ const Book: React.FC<BookProps> = ({
   const [editOpen, setEditOpen] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
   const [tagsOpen, setTagsOpen] = useState(false)
+  const [exportingFormat, setExportingFormat] = useState<BookExportFormat>()
 
   const cover = covers?.find((c) => c.id === book.id)?.cover
   const displayTitle = getBookDisplayTitle(book)
   const tooltip = getBookTooltip(book)
+  const exportFormats = bookExportFormats(book)
 
   const closeContextMenu = useCallback(() => {
     setContextMenu(undefined)
@@ -1169,6 +1232,24 @@ const Book: React.FC<BookProps> = ({
                 setInfoOpen(true)
               }}
             />
+            {exportFormats.map((format) => {
+              const dirty = isBookExportDirty(book, format)
+              return (
+                <BookContextMenuButton
+                  key={format}
+                  Icon={DownloadIcon}
+                  label={`${t('context.export')} ${format.toUpperCase()}${dirty ? '*' : ''}`}
+                  disabled={exportingFormat === format}
+                  onClick={() => {
+                    closeContextMenu()
+                    setExportingFormat(format)
+                    void exportBookWithDialog(book, format)
+                      .catch((error) => console.error(error))
+                      .finally(() => setExportingFormat(undefined))
+                  }}
+                />
+              )
+            })}
             <div className="bg-muted my-1 h-px" />
             <BookContextMenuButton
               danger
@@ -1309,6 +1390,7 @@ const Book: React.FC<BookProps> = ({
 
 interface BookContextMenuButtonProps {
   danger?: boolean
+  disabled?: boolean
   Icon: React.ComponentType<{ size?: number; className?: string }>
   label: string
   onClick: () => void
@@ -1316,6 +1398,7 @@ interface BookContextMenuButtonProps {
 
 const BookContextMenuButton: React.FC<BookContextMenuButtonProps> = ({
   danger,
+  disabled,
   Icon,
   label,
   onClick,
@@ -1324,8 +1407,10 @@ const BookContextMenuButton: React.FC<BookContextMenuButtonProps> = ({
     <button
       type="button"
       role="menuitem"
+      disabled={disabled}
       className={clsx(
         'hover:bg-muted flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-base outline-none',
+        disabled && 'pointer-events-none opacity-50',
         danger ? 'text-destructive' : 'text-muted-foreground',
       )}
       onClick={onClick}

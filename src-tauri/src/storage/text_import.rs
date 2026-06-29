@@ -177,6 +177,29 @@ mod tests {
         assert!(svg.contains("Author &amp; Co"));
         assert!(!svg.contains("<tspan"));
     }
+
+    #[test]
+    fn source_text_round_trips_with_recorded_legacy_encoding() {
+        let original = "第一章\n错别字 MD4_A_RED\n";
+        let encoded = encode_text_bytes(original, "gb18030", false).unwrap();
+        assert!(std::str::from_utf8(&encoded).is_err());
+
+        let metadata = json!({
+            "sourceEncodingId": "gb18030",
+            "sourceEncoding": "GB18030"
+        });
+        let decoded = decode_source_text_bytes(&encoded, &metadata);
+        let legacy_metadata = json!({ "sourceEncoding": "GB18030" });
+        let decoded_legacy = decode_source_text_bytes(&encoded, &legacy_metadata);
+        assert_eq!(decoded_legacy.encoding, "gb18030");
+
+        let updated = decoded.text.replace("错别字", "正字");
+        let rewritten = encode_text_bytes(&updated, &decoded.encoding, decoded.had_bom).unwrap();
+        assert!(std::str::from_utf8(&rewritten).is_err());
+
+        let decoded_again = decode_source_text_bytes(&rewritten, &metadata);
+        assert_eq!(decoded_again.text, "第一章\n正字 MD4_A_RED\n");
+    }
 }
 
 pub(super) fn text_import_encoding_options() -> Vec<TextImportEncodingOption> {
@@ -207,6 +230,35 @@ fn text_encoding_by_id(id: &str) -> Option<(&'static str, &'static str, &'static
         "windows-1252" => Some(("windows-1252", "Windows-1252", WINDOWS_1252)),
         _ => None,
     }
+}
+
+fn text_encoding_id_by_label(label: &str) -> Option<&'static str> {
+    let normalized = label.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "utf-8" | "utf8" => Some("utf-8"),
+        "utf-16le" | "utf-16 le" => Some("utf-16le"),
+        "utf-16be" | "utf-16 be" => Some("utf-16be"),
+        "gb18030" => Some("gb18030"),
+        "big5" | "big-5" => Some("big5"),
+        "shift_jis" | "shift-jis" | "sjis" => Some("shift_jis"),
+        "euc-kr" | "euckr" => Some("euc-kr"),
+        "windows-1252" | "windows 1252" | "cp1252" => Some("windows-1252"),
+        _ => None,
+    }
+}
+
+pub(super) fn source_encoding_id_from_metadata(metadata: &Value) -> Option<String> {
+    metadata
+        .get("sourceEncodingId")
+        .and_then(Value::as_str)
+        .and_then(text_encoding_id_by_label)
+        .or_else(|| {
+            metadata
+                .get("sourceEncoding")
+                .and_then(Value::as_str)
+                .and_then(text_encoding_id_by_label)
+        })
+        .map(str::to_string)
 }
 
 pub(super) fn decode_text_bytes(bytes: &[u8], encoding: Option<&str>) -> DecodedText {
@@ -317,6 +369,72 @@ pub(super) fn decode_text_bytes(bytes: &[u8], encoding: Option<&str>) -> Decoded
 fn decode_with_encoding(bytes: &[u8], encoding: &'static Encoding) -> (String, bool) {
     let (text, had_errors) = encoding.decode_without_bom_handling(bytes);
     (text.into_owned(), had_errors)
+}
+
+pub(super) struct DecodedSourceText {
+    pub(super) text: String,
+    pub(super) encoding: String,
+    pub(super) had_bom: bool,
+}
+
+pub(super) fn decode_source_text_bytes(bytes: &[u8], metadata: &Value) -> DecodedSourceText {
+    let encoding = source_encoding_id_from_metadata(metadata);
+    let had_bom = bytes.starts_with(&[0xef, 0xbb, 0xbf])
+        || bytes.starts_with(&[0xff, 0xfe])
+        || bytes.starts_with(&[0xfe, 0xff]);
+    let decoded = decode_text_bytes(bytes, encoding.as_deref());
+    DecodedSourceText {
+        text: decoded.text,
+        encoding: decoded.encoding,
+        had_bom,
+    }
+}
+
+pub(super) fn encode_text_bytes(
+    text: &str,
+    encoding: &str,
+    write_bom: bool,
+) -> Result<Vec<u8>, String> {
+    match encoding {
+        "utf-8" => {
+            let mut bytes = Vec::with_capacity(text.len() + if write_bom { 3 } else { 0 });
+            if write_bom {
+                bytes.extend_from_slice(&[0xef, 0xbb, 0xbf]);
+            }
+            bytes.extend_from_slice(text.as_bytes());
+            Ok(bytes)
+        }
+        "utf-16le" => {
+            let mut bytes = Vec::with_capacity(text.len() * 2 + if write_bom { 2 } else { 0 });
+            if write_bom {
+                bytes.extend_from_slice(&[0xff, 0xfe]);
+            }
+            for unit in text.encode_utf16() {
+                bytes.extend_from_slice(&unit.to_le_bytes());
+            }
+            Ok(bytes)
+        }
+        "utf-16be" => {
+            let mut bytes = Vec::with_capacity(text.len() * 2 + if write_bom { 2 } else { 0 });
+            if write_bom {
+                bytes.extend_from_slice(&[0xfe, 0xff]);
+            }
+            for unit in text.encode_utf16() {
+                bytes.extend_from_slice(&unit.to_be_bytes());
+            }
+            Ok(bytes)
+        }
+        other => {
+            let Some((_, _, encoding)) = text_encoding_by_id(other) else {
+                return Err(format!("Unsupported source text encoding: {other}"));
+            };
+            let (encoded, _, had_errors) = encoding.encode(text);
+            if had_errors {
+                return Err(format!("Text contains characters unsupported by {other}"));
+            }
+            Ok(encoded.into_owned())
+        }
+    }
 }
 
 fn sample_text_bytes(bytes: &[u8]) -> Vec<u8> {
@@ -836,6 +954,8 @@ fn write_text_publication(
     fs::create_dir_all(&meta_inf).map_err(|error| error.to_string())?;
     fs::create_dir_all(&text_dir).map_err(|error| error.to_string())?;
     fs::create_dir_all(&styles_dir).map_err(|error| error.to_string())?;
+    fs::write(unpacked_dir.join("mimetype"), "application/epub+zip")
+        .map_err(|error| error.to_string())?;
 
     fs::write(
         meta_inf.join("container.xml"),
@@ -1091,6 +1211,7 @@ pub(super) fn import_text_path_impl(
     let metadata = json!({
         "title": title,
         "sourceFormat": "txt",
+        "sourceEncodingId": decoded.encoding,
         "sourceEncoding": decoded.encoding_label,
     });
 
@@ -1140,6 +1261,9 @@ pub(super) fn import_text_path_impl(
                 name,
                 size,
                 reading_status: None,
+                source_format: Some(BookSourceFormat::Txt),
+                exported_versions: Default::default(),
+                content_edited_at: None,
                 content_hash: hash,
                 content_version: 1,
                 metadata: metadata.clone(),

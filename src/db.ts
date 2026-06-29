@@ -54,6 +54,24 @@ export interface TextImportRulesInput {
   chapterPatterns: string[]
 }
 
+export type BookSourceFormat = 'epub' | 'txt'
+export type BookExportFormat = 'epub' | 'txt'
+
+export interface BookTextReplaceTarget {
+  sectionHref: string
+  textNodeIndex: number
+  textNodeText: string
+  startOffset: number
+  endOffset: number
+  paragraphIndex?: number
+}
+
+export interface BookTextReplaceResult {
+  book: BookRecord
+  sectionHref: string
+  changed: boolean
+}
+
 export interface ReadingSpreadPageRecord {
   sectionIndex: number
   pageIndex: number
@@ -83,6 +101,9 @@ export interface BookRecord {
   name: string
   size: number
   readingStatus?: ReadingStatus | null
+  sourceFormat?: BookSourceFormat
+  exportedVersions?: Partial<Record<BookExportFormat, number>>
+  contentEditedAt?: number
   metadata: PackagingMetadataObject
   createdAt: number
   updatedAt?: number
@@ -335,8 +356,10 @@ async function filePathToUrl(path: string) {
   }
 }
 
-function addCacheBuster(url: string) {
-  return `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}`
+function addCacheBuster(url: string, version: string | number = Date.now()) {
+  return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(
+    String(version),
+  )}`
 }
 
 async function toCoverRecord(record: CoverRecord | null) {
@@ -590,6 +613,45 @@ export function searchBookText(id: string, keyword: string, limit?: number) {
     keyword,
     limit,
   })
+}
+
+export async function replaceBookText({
+  id,
+  target,
+  oldText,
+  newText,
+}: {
+  id: string
+  target: BookTextReplaceTarget
+  oldText: string
+  newText: string
+}) {
+  const result = await trackNativeWrite(
+    invoke<BookTextReplaceResult>('replace_book_text', {
+      id,
+      target,
+      oldText,
+      newText,
+    }),
+  )
+  rememberBook(result.book)
+  notify('books', 'files')
+  return result
+}
+
+export async function exportBook(
+  id: string,
+  format: BookExportFormat,
+  outputPath: string,
+) {
+  const book = await trackNativeWrite(
+    invoke<BookRecord | null>('export_book', { id, format, outputPath }),
+  )
+  if (book) {
+    rememberBook(book)
+    notify('books')
+  }
+  return book ?? undefined
 }
 
 export function unloadBookSearchText(id: string) {

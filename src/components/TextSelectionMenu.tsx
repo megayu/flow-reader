@@ -1,21 +1,23 @@
 import clsx from 'clsx'
 import {
   CopyIcon,
+  FilePenLineIcon,
   PencilIcon,
   SearchIcon,
   SquareMinusIcon,
   SquarePlusIcon,
 } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import FocusLock from 'react-focus-lock'
 import { useSnapshot } from 'valtio'
 
 import { typeMap, colorMap } from '../annotation'
+import { BookTextReplaceTarget, replaceBookText } from '../db'
 import { useSetAction } from '../hooks/useAction'
 import { isForwardSelection, useTextSelection } from '../hooks/useTextSelection'
 import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
-import { BookTab } from '../models/reader'
+import { BookTab, reader } from '../models/reader'
 import { useSettings } from '../state'
 import { copy, keys, last } from '../utils'
 
@@ -38,7 +40,7 @@ function getSelectionRange(selection?: Selection) {
   }
 
   try {
-    return selection.getRangeAt(0)
+    return selection.getRangeAt(0).cloneRange()
   } catch (error) {
     return
   }
@@ -52,6 +54,98 @@ function clearWindowSelections(windows: readonly Window[]) {
       // The iframe may have been detached since the selection was captured.
     }
   })
+}
+
+interface TextReplaceTarget extends BookTextReplaceTarget {
+  selectedText: string
+}
+
+function paragraphIndexForTextNode(node: Node) {
+  const paragraph = node.parentElement?.closest('p')
+  const body = paragraph?.closest('[data-flow-body-text="true"]')
+  if (!paragraph || !body) return
+
+  const paragraphs = Array.from(body.children).filter(
+    (element) => element.tagName.toLowerCase() === 'p',
+  )
+  const index = paragraphs.indexOf(paragraph)
+  return index >= 0 ? index : undefined
+}
+
+function createTextReplaceTarget(
+  range: Range,
+  section: ReturnType<BookTab['sectionForRange']>,
+): TextReplaceTarget | undefined {
+  if (!section?.href) return
+  if (range.startContainer !== range.endContainer) return
+  if (range.startContainer.nodeType !== Node.TEXT_NODE) return
+
+  const node = range.startContainer
+  const selectedText = range.toString()
+  if (!selectedText) return
+
+  const ownerDocument = node.ownerDocument
+  const body = ownerDocument?.body
+  if (!body) return
+
+  const walker = ownerDocument.createTreeWalker(body, NodeFilter.SHOW_TEXT)
+  let textNodeIndex = 0
+  let current = walker.nextNode()
+  while (current) {
+    if (current === node) {
+      const textNodeText = node.textContent ?? ''
+      return {
+        sectionHref: section.href,
+        textNodeIndex,
+        textNodeText,
+        startOffset: range.startOffset,
+        endOffset: range.endOffset,
+        paragraphIndex: paragraphIndexForTextNode(node),
+        selectedText,
+      }
+    }
+    textNodeIndex += 1
+    current = walker.nextNode()
+  }
+}
+
+const textReplacementErrorKeys = [
+  {
+    fragments: ['TEXT_REPLACE_EMPTY', 'Selected text is empty'],
+    key: 'edit_text_error_empty',
+  },
+  {
+    fragments: [
+      'TEXT_REPLACE_SECTION_BODY_NOT_FOUND',
+      'TEXT_REPLACE_NODE_STALE',
+      'TEXT_REPLACE_TEXT_STALE',
+      'TEXT_REPLACE_NODE_NOT_FOUND',
+      'no longer matches',
+      'no longer exists',
+      'node was not found',
+    ],
+    key: 'edit_text_error_stale',
+  },
+]
+
+interface TextReplacementError {
+  message: string
+  detail?: string
+}
+
+function textReplacementErrorMessage(
+  error: unknown,
+  t: (key: string) => string,
+): TextReplacementError {
+  const message = error instanceof Error ? error.message : String(error)
+  const match = textReplacementErrorKeys.find(({ fragments }) =>
+    fragments.some((fragment) => message.includes(fragment)),
+  )
+
+  return {
+    message: t(match?.key ?? 'edit_text_error_generic'),
+    detail: message || undefined,
+  }
 }
 
 export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
@@ -178,6 +272,36 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const section = tab.sectionForRange(range)
   const annotation = tab.overlayState.annotations.find((a) => a.cfi === cfi)
   const [annotate, setAnnotate] = useState(!!annotation)
+  const replacementRef = useRef<HTMLTextAreaElement>(null)
+  const currentReplaceTarget = useMemo(
+    () => createTextReplaceTarget(range, section),
+    [range, section],
+  )
+  const replacementSnapshotRef = useRef<TextReplaceTarget | undefined>(
+    undefined,
+  )
+  const [editing, setEditing] = useState(false)
+  const [savingReplacement, setSavingReplacement] = useState(false)
+  const [replacementError, setReplacementError] =
+    useState<TextReplacementError>()
+  const replaceTarget = editing
+    ? replacementSnapshotRef.current
+    : currentReplaceTarget
+
+  useEffect(() => {
+    if (!editing) return
+
+    const timer = window.setTimeout(() => {
+      const textarea = replacementRef.current
+      if (!textarea) return
+
+      const end = textarea.value.length
+      textarea.focus()
+      textarea.setSelectionRange(end, end)
+    })
+
+    return () => window.clearTimeout(timer)
+  }, [editing])
 
   const position = releasePoint
     ? LayoutAnchorPosition.Before
@@ -251,7 +375,28 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           }
         }}
       >
-        {annotate ? (
+        {editing ? (
+          <div className="mb-3 space-y-2">
+            <textarea
+              ref={replacementRef}
+              name="replacement"
+              aria-label={t('edit_text')}
+              defaultValue={replaceTarget?.selectedText ?? text}
+              className="textfield bg-background text-foreground scroll h-40 w-72 resize-none px-1.5 py-1 text-base outline-none"
+            />
+            {replacementError && (
+              <div className="text-destructive w-72 text-sm leading-snug">
+                <div>{replacementError.message}</div>
+                {replacementError.detail && (
+                  <div className="mt-1 text-xs break-words">
+                    {t('edit_text_error_reason')}
+                    {replacementError.detail}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : annotate ? (
           <div className="mb-3">
             <TextField
               mRef={ref}
@@ -292,6 +437,22 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 hide()
                 setAction('search')
                 tab.setKeyword(text)
+              }}
+            />
+            <IconButton
+              title={t('edit_text')}
+              Icon={FilePenLineIcon}
+              disabled={!currentReplaceTarget}
+              size={ICON_SIZE}
+              className={actionIconClassName}
+              style={{
+                width: ANNOTATION_SIZE,
+                height: ANNOTATION_SIZE,
+              }}
+              onClick={() => {
+                replacementSnapshotRef.current = currentReplaceTarget
+                setReplacementError(undefined)
+                setEditing(true)
               }}
             />
             <IconButton
@@ -340,43 +501,102 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             )}
           </div>
         )}
-        <div className="space-y-2">
-          {keys(typeMap).map((type) => (
-            <div key={type} className="flex gap-2">
-              {keys(colorMap).map((color) => (
-                <button
-                  type="button"
-                  key={color}
-                  aria-label={`${type} ${color}`}
-                  style={{
-                    [typeMap[type].style]: colorMap[color],
-                    width: ANNOTATION_SIZE,
-                    height: ANNOTATION_SIZE,
-                    fontSize: 18,
-                  }}
-                  className={clsx(
-                    'border-border text-muted-foreground hover:bg-muted flex cursor-pointer appearance-none items-center justify-center rounded-md border bg-transparent p-0 text-base',
-                    typeMap[type].class,
-                  )}
-                  onClick={() => {
-                    tab.putAnnotation(
-                      type,
-                      cfi,
-                      color,
-                      text,
-                      ref.current?.value,
-                      section,
+        {!editing && (
+          <div className="space-y-2">
+            {keys(typeMap).map((type) => (
+              <div key={type} className="flex gap-2">
+                {keys(colorMap).map((color) => (
+                  <button
+                    type="button"
+                    key={color}
+                    aria-label={`${type} ${color}`}
+                    style={{
+                      [typeMap[type].style]: colorMap[color],
+                      width: ANNOTATION_SIZE,
+                      height: ANNOTATION_SIZE,
+                      fontSize: 18,
+                    }}
+                    className={clsx(
+                      'border-border text-muted-foreground hover:bg-muted flex cursor-pointer appearance-none items-center justify-center rounded-md border bg-transparent p-0 text-base',
+                      typeMap[type].class,
+                    )}
+                    onClick={() => {
+                      tab.putAnnotation(
+                        type,
+                        cfi,
+                        color,
+                        text,
+                        ref.current?.value,
+                        section,
+                      )
+                      hide()
+                    }}
+                  >
+                    A
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+        {editing && (
+          <div className="mt-3 flex gap-2">
+            <Button
+              compact
+              variant="secondary"
+              disabled={savingReplacement}
+              onClick={() => {
+                setEditing(false)
+                setReplacementError(undefined)
+              }}
+            >
+              {t('cancel')}
+            </Button>
+            <Button
+              className="ml-auto"
+              compact
+              disabled={!replaceTarget || savingReplacement}
+              onClick={() => {
+                if (!replaceTarget) return
+                const { selectedText, ...target } = replaceTarget
+                const newText = replacementRef.current?.value ?? selectedText
+                if (newText === selectedText) {
+                  hide()
+                  return
+                }
+
+                setSavingReplacement(true)
+                setReplacementError(undefined)
+                void replaceBookText({
+                  id: tab.book.id,
+                  target,
+                  oldText: selectedText,
+                  newText,
+                })
+                  .then((result) => {
+                    reader.applyBookContentEdit(
+                      result.book,
+                      result.sectionHref,
+                      tab,
+                      {
+                        target,
+                        oldText: selectedText,
+                        newText,
+                      },
                     )
                     hide()
-                  }}
-                >
-                  A
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-        {annotate && (
+                  })
+                  .catch((error) => {
+                    setReplacementError(textReplacementErrorMessage(error, t))
+                  })
+                  .finally(() => setSavingReplacement(false))
+              }}
+            >
+              {savingReplacement ? '...' : t('save')}
+            </Button>
+          </div>
+        )}
+        {annotate && !editing && (
           <div className="mt-3 flex">
             {annotation && (
               <Button

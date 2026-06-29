@@ -416,6 +416,37 @@ pub async fn search_book_text(
 }
 
 #[tauri::command]
+pub async fn replace_book_text(
+    storage: State<'_, AppStorage>,
+    id: String,
+    target: BookTextReplaceTarget,
+    old_text: String,
+    new_text: String,
+) -> Result<BookTextReplaceResult, String> {
+    let storage = (*storage).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        replace_book_text_impl(&storage, id, target, old_text, new_text)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn export_book(
+    storage: State<'_, AppStorage>,
+    id: String,
+    format: BookExportFormat,
+    output_path: String,
+) -> Result<Option<BookRecord>, String> {
+    let storage = (*storage).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        export_book_impl(&storage, id, format, PathBuf::from(output_path))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub fn unload_book_search_text(storage: State<'_, AppStorage>, id: String) -> Result<(), String> {
     storage.unload_search_text_cache(&id);
     Ok(())
@@ -489,6 +520,7 @@ pub fn update_book(
             if let Some(value) = object.get("metadata") {
                 book.metadata = value.clone();
                 write_metadata(&storage, &id, value)?;
+                sync_unpacked_opf_metadata(&storage.book_dir(&id).join(UNPACKED_DIR), value)?;
                 if is_generated_text_cover(&storage, &id)? {
                     write_cover(
                         &storage,

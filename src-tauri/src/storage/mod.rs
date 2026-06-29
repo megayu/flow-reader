@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    io::Read,
+    io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Duration,
@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager};
+use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
 mod book_assets;
 mod commands;
@@ -47,8 +48,8 @@ use search::{
 };
 use text_import::{
     create_skipped_text_import_preview, create_text_cover_input, create_text_import_preview,
-    decode_text_bytes, import_text_path_impl, should_skip_text_import_preview,
-    text_import_encoding_options,
+    decode_source_text_bytes, decode_text_bytes, encode_text_bytes, import_text_path_impl,
+    should_skip_text_import_preview, text_import_encoding_options,
 };
 #[cfg(test)]
 use text_import::{
@@ -72,6 +73,8 @@ const GENERATED_TEXT_COVER_MARKER: &str = r#"data-flow-generated-cover="true""#;
 const METADATA_FILE: &str = "metadata.json";
 const STATE_FILE: &str = "state.json";
 const WINDOW_STATE_FILE: &str = "window-state.json";
+const EPUB_ZIP_WRITER_BUFFER_SIZE: usize = 256 * 1024;
+const TXT_EPUB_DEFLATE_LEVEL: i64 = 2;
 
 const READING_POSITION_FLUSH_DELAY: Duration = Duration::from_secs(15);
 
@@ -124,6 +127,12 @@ struct LibraryBook {
     size: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     reading_status: Option<ReadingStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_format: Option<BookSourceFormat>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    exported_versions: HashMap<String, u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content_edited_at: Option<u64>,
     #[serde(default)]
     content_hash: String,
     #[serde(default)]
@@ -151,6 +160,11 @@ pub struct BookRecord {
     size: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     reading_status: Option<ReadingStatus>,
+    source_format: BookSourceFormat,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    exported_versions: HashMap<String, u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content_edited_at: Option<u64>,
     #[serde(default = "empty_object")]
     metadata: Value,
     created_at: u64,
@@ -208,6 +222,49 @@ enum ReadingStatus {
     ToRead,
     Reading,
     Read,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BookSourceFormat {
+    Epub,
+    Txt,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BookExportFormat {
+    Epub,
+    Txt,
+}
+
+impl BookExportFormat {
+    fn as_str(self) -> &'static str {
+        match self {
+            BookExportFormat::Epub => "epub",
+            BookExportFormat::Txt => "txt",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BookTextReplaceTarget {
+    section_href: String,
+    text_node_index: usize,
+    text_node_text: String,
+    start_offset: usize,
+    end_offset: usize,
+    #[serde(default)]
+    paragraph_index: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BookTextReplaceResult {
+    book: BookRecord,
+    section_href: String,
+    changed: bool,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -333,6 +390,9 @@ impl AppStorage {
             name: book.name.clone(),
             size: book.size,
             reading_status: book.reading_status.clone(),
+            source_format: self.book_source_format(book),
+            exported_versions: book.exported_versions.clone(),
+            content_edited_at: book.content_edited_at,
             metadata: book.metadata.clone(),
             created_at: book.created_at,
             updated_at: book.updated_at,
@@ -354,6 +414,9 @@ impl AppStorage {
             name: book.name.clone(),
             size: book.size,
             reading_status: book.reading_status.clone(),
+            source_format: self.book_source_format(book),
+            exported_versions: book.exported_versions.clone(),
+            content_edited_at: book.content_edited_at,
             metadata: book.metadata.clone(),
             created_at: book.created_at,
             updated_at: book.updated_at,
@@ -366,6 +429,24 @@ impl AppStorage {
             configuration: None,
             content_hash: book.content_hash.clone(),
             content_version: book.content_version,
+        }
+    }
+
+    fn book_source_format(&self, book: &LibraryBook) -> BookSourceFormat {
+        if let Some(source_format) = book.source_format {
+            return source_format;
+        }
+
+        if book
+            .metadata
+            .get("sourceFormat")
+            .and_then(Value::as_str)
+            .is_some_and(|format| format.eq_ignore_ascii_case("txt"))
+            || self.book_dir(&book.id).join(SOURCE_TEXT_FILE).exists()
+        {
+            BookSourceFormat::Txt
+        } else {
+            BookSourceFormat::Epub
         }
     }
 
@@ -586,19 +667,1243 @@ fn id_from_hash(hash: &str) -> String {
     hash.chars().take(16).collect()
 }
 
+fn book_export_key(format: BookExportFormat) -> String {
+    format.as_str().to_string()
+}
+
+fn mark_book_exported(book: &mut LibraryBook, format: BookExportFormat) {
+    book.exported_versions
+        .insert(book_export_key(format), book.content_version);
+}
+
+#[cfg(test)]
+fn book_is_export_dirty(book: &LibraryBook, format: BookExportFormat) -> bool {
+    book.content_edited_at.is_some()
+        && book
+            .exported_versions
+            .get(format.as_str())
+            .copied()
+            .unwrap_or_default()
+            < book.content_version
+}
+
+fn escape_xml_text(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn unescape_xml_text(value: &str) -> String {
+    let mut result = String::with_capacity(value.len());
+    let mut cursor = 0usize;
+
+    while let Some(relative_start) = value[cursor..].find('&') {
+        let start = cursor + relative_start;
+        result.push_str(&value[cursor..start]);
+        let Some(relative_end) = value[start..].find(';') else {
+            result.push_str(&value[start..]);
+            return result;
+        };
+        let end = start + relative_end;
+        let entity = &value[start + 1..end];
+        match entity {
+            "amp" => result.push('&'),
+            "lt" => result.push('<'),
+            "gt" => result.push('>'),
+            "quot" => result.push('"'),
+            "apos" => result.push('\''),
+            "nbsp" => result.push('\u{00a0}'),
+            entity if entity.starts_with("#x") || entity.starts_with("#X") => {
+                if let Ok(codepoint) = u32::from_str_radix(&entity[2..], 16) {
+                    if let Some(character) = char::from_u32(codepoint) {
+                        result.push(character);
+                    } else {
+                        result.push_str(&value[start..=end]);
+                    }
+                } else {
+                    result.push_str(&value[start..=end]);
+                }
+            }
+            entity if entity.starts_with('#') => {
+                if let Ok(codepoint) = entity[1..].parse::<u32>() {
+                    if let Some(character) = char::from_u32(codepoint) {
+                        result.push(character);
+                    } else {
+                        result.push_str(&value[start..=end]);
+                    }
+                } else {
+                    result.push_str(&value[start..=end]);
+                }
+            }
+            _ => result.push_str(&value[start..=end]),
+        }
+        cursor = end + 1;
+    }
+
+    result.push_str(&value[cursor..]);
+    result
+}
+
+fn escape_xml_attr(value: &str) -> String {
+    escape_xml_text(value)
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+fn metadata_string(metadata: &Value, key: &str) -> Option<String> {
+    metadata
+        .get(key)
+        .and_then(Value::as_str)
+        .map(|value| value.trim().to_string())
+}
+
+fn normalize_xml_declaration_to_utf8(xml: &str) -> String {
+    let Some(end) = xml.find("?>") else {
+        return xml.to_string();
+    };
+    let declaration = &xml[..end + 2];
+    if !declaration.trim_start().starts_with("<?xml") {
+        return xml.to_string();
+    }
+
+    if let Some(updated_declaration) = replace_quoted_attr_value(declaration, "encoding", "UTF-8") {
+        format!("{updated_declaration}{}", &xml[end + 2..])
+    } else {
+        xml.to_string()
+    }
+}
+
+fn replace_quoted_attr_value(text: &str, attr: &str, value: &str) -> Option<String> {
+    for quote in ['"', '\''] {
+        let marker = format!("{attr}={quote}");
+        if let Some(value_start) = text.find(&marker).map(|start| start + marker.len()) {
+            let value_end = text[value_start..].find(quote)? + value_start;
+            let mut updated = String::with_capacity(text.len() + value.len());
+            updated.push_str(&text[..value_start]);
+            updated.push_str(&escape_xml_attr(value));
+            updated.push_str(&text[value_end..]);
+            return Some(updated);
+        }
+    }
+
+    None
+}
+
+fn copy_until_closing_tag(lines: &[&str], index: &mut usize, closing: &str) -> String {
+    let mut block = lines[*index].to_string();
+    while !block.contains(closing) && *index + 1 < lines.len() {
+        *index += 1;
+        block.push_str(lines[*index]);
+    }
+    block
+}
+
+fn compact_open_tag(open_tag: &str) -> String {
+    if open_tag.contains('\n') {
+        open_tag.split_whitespace().collect::<Vec<_>>().join(" ")
+    } else {
+        open_tag.to_string()
+    }
+}
+
+fn replace_metadata_block(block: &str, value: &str, closing: &str, update_file_as: bool) -> String {
+    let Some(open_start) = block.find('<') else {
+        return block.to_string();
+    };
+    let Some(open_end) = block.find('>') else {
+        return block.to_string();
+    };
+    let Some(close_start) = block[open_end + 1..]
+        .find(closing)
+        .map(|offset| open_end + 1 + offset)
+    else {
+        return block.to_string();
+    };
+    let Some(close_end) = block[close_start..]
+        .find('>')
+        .map(|offset| close_start + offset + 1)
+    else {
+        return block.to_string();
+    };
+
+    let mut open_tag = compact_open_tag(&block[open_start..open_end + 1]);
+    if update_file_as {
+        open_tag = replace_quoted_attr_value(&open_tag, "opf:file-as", value).unwrap_or(open_tag);
+    }
+
+    let mut updated = String::with_capacity(block.len() + value.len());
+    updated.push_str(&block[..open_start]);
+    updated.push_str(&open_tag);
+    updated.push_str(&escape_xml_text(value));
+    updated.push_str(&block[close_start..close_end]);
+    updated.push_str(&block[close_end..]);
+    updated
+}
+
+fn remove_block_keep_tail(block: &str, closing: &str) -> String {
+    let Some(close_start) = block.find(closing) else {
+        return block.to_string();
+    };
+    let Some(close_end) = block[close_start..]
+        .find('>')
+        .map(|offset| close_start + offset + 1)
+    else {
+        return block.to_string();
+    };
+
+    block[close_end..].to_string()
+}
+
+fn update_opf_metadata_xml(xml: &str, metadata: &Value) -> String {
+    let title = metadata_string(metadata, "title");
+    let creator = metadata_string(metadata, "creator");
+    if title.is_none() && creator.is_none() {
+        return xml.to_string();
+    }
+
+    let lines = xml.split_inclusive('\n').collect::<Vec<_>>();
+    let lines = if lines.is_empty() { vec![xml] } else { lines };
+    let mut updated = String::with_capacity(xml.len());
+    let mut title_done = title.is_none();
+    let mut creator_done = creator.is_none();
+    let mut index = 0usize;
+
+    while index < lines.len() {
+        let line = lines[index];
+        let trimmed = line.trim_start();
+
+        if !title_done && (trimmed.starts_with("<dc:title") || trimmed.starts_with("<title")) {
+            let closing = if trimmed.starts_with("<dc:title") {
+                "</dc:title"
+            } else {
+                "</title"
+            };
+            let block = copy_until_closing_tag(&lines, &mut index, closing);
+            updated.push_str(&replace_metadata_block(
+                &block,
+                title.as_deref().unwrap_or_default(),
+                closing,
+                false,
+            ));
+            title_done = true;
+            index += 1;
+            continue;
+        }
+
+        if trimmed.starts_with("<dc:creator") || trimmed.starts_with("<creator") {
+            let closing = if trimmed.starts_with("<dc:creator") {
+                "</dc:creator"
+            } else {
+                "</creator"
+            };
+            let block = copy_until_closing_tag(&lines, &mut index, closing);
+            match creator.as_deref() {
+                Some("") => updated.push_str(&remove_block_keep_tail(&block, closing)),
+                Some(creator) if !creator_done => {
+                    updated.push_str(&replace_metadata_block(&block, creator, closing, true));
+                    creator_done = true;
+                }
+                _ => updated.push_str(&block),
+            }
+            index += 1;
+            continue;
+        }
+
+        updated.push_str(line);
+        index += 1;
+    }
+
+    updated
+}
+
+fn sync_unpacked_opf_metadata(unpacked_dir: &Path, metadata: &Value) -> Result<(), String> {
+    if !unpacked_dir.exists() {
+        return Ok(());
+    }
+
+    let opf_path = find_unpacked_opf_path(unpacked_dir)?;
+    let bytes = fs::read(&opf_path).map_err(|error| error.to_string())?;
+    let decoded = decode_text_bytes(&bytes, None);
+    let xml = normalize_xml_declaration_to_utf8(&decoded.text);
+    let updated = update_opf_metadata_xml(&xml, metadata);
+    if updated != xml || decoded.encoding != "utf-8" {
+        fs::write(opf_path, updated.as_bytes()).map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn body_content_range(xhtml: &str) -> Option<(usize, usize)> {
+    let lower = xhtml.to_ascii_lowercase();
+    let body_tag_start = lower.find("<body")?;
+    let body_content_start = lower[body_tag_start..].find('>')? + body_tag_start + 1;
+    let body_content_end = lower[body_content_start..]
+        .find("</body")
+        .map(|index| body_content_start + index)
+        .unwrap_or(xhtml.len());
+
+    Some((body_content_start, body_content_end))
+}
+
+fn utf16_offset_to_byte_index(text: &str, offset: usize) -> Option<usize> {
+    let mut utf16_offset = 0usize;
+    for (byte_index, character) in text.char_indices() {
+        if utf16_offset == offset {
+            return Some(byte_index);
+        }
+        utf16_offset += character.len_utf16();
+        if utf16_offset > offset {
+            return None;
+        }
+    }
+
+    if utf16_offset == offset {
+        Some(text.len())
+    } else {
+        None
+    }
+}
+
+fn replace_text_by_utf16_offsets(
+    text: &str,
+    start_offset: usize,
+    end_offset: usize,
+    old_text: &str,
+    new_text: &str,
+) -> Result<String, String> {
+    if start_offset > end_offset {
+        return Err(TEXT_REPLACE_TEXT_STALE_ERROR.to_string());
+    }
+    let start = utf16_offset_to_byte_index(text, start_offset)
+        .ok_or_else(|| TEXT_REPLACE_TEXT_STALE_ERROR.to_string())?;
+    let end = utf16_offset_to_byte_index(text, end_offset)
+        .ok_or_else(|| TEXT_REPLACE_TEXT_STALE_ERROR.to_string())?;
+    if &text[start..end] != old_text {
+        return Err(TEXT_REPLACE_TEXT_STALE_ERROR.to_string());
+    }
+
+    let mut updated = String::with_capacity(text.len() + new_text.len());
+    updated.push_str(&text[..start]);
+    updated.push_str(new_text);
+    updated.push_str(&text[end..]);
+    Ok(updated)
+}
+
+fn replace_xhtml_text_node(
+    xhtml: &str,
+    target: &BookTextReplaceTarget,
+    old_text: &str,
+    new_text: &str,
+) -> Result<String, String> {
+    if old_text.is_empty() {
+        return Err(TEXT_REPLACE_EMPTY_ERROR.to_string());
+    }
+    if old_text == new_text {
+        return Ok(xhtml.to_string());
+    }
+
+    let (body_start, body_end) =
+        body_content_range(xhtml).ok_or_else(|| TEXT_REPLACE_SECTION_BODY_NOT_FOUND.to_string())?;
+    let mut text_node_index = 0usize;
+    let mut cursor = body_start;
+
+    while cursor < body_end {
+        let Some(relative_text_end) = xhtml[cursor..body_end].find('<') else {
+            break;
+        };
+        let text_end = cursor + relative_text_end;
+        if text_end > cursor {
+            if text_node_index == target.text_node_index {
+                let raw_text = &xhtml[cursor..text_end];
+                let decoded_text = unescape_xml_text(raw_text);
+                if decoded_text != target.text_node_text {
+                    return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
+                }
+                let updated_text = replace_text_by_utf16_offsets(
+                    &decoded_text,
+                    target.start_offset,
+                    target.end_offset,
+                    old_text,
+                    new_text,
+                )?;
+
+                let mut updated = String::with_capacity(xhtml.len() + new_text.len());
+                updated.push_str(&xhtml[..cursor]);
+                updated.push_str(&escape_xml_text(&updated_text));
+                updated.push_str(&xhtml[text_end..]);
+                return Ok(updated);
+            }
+            text_node_index += 1;
+        }
+
+        let Some(relative_tag_end) = xhtml[text_end..body_end].find('>') else {
+            break;
+        };
+        cursor = text_end + relative_tag_end + 1;
+    }
+
+    Err(TEXT_REPLACE_NODE_NOT_FOUND_ERROR.to_string())
+}
+
+const TEXT_REPLACE_EMPTY_ERROR: &str = "TEXT_REPLACE_EMPTY";
+const TEXT_REPLACE_SECTION_BODY_NOT_FOUND: &str = "TEXT_REPLACE_SECTION_BODY_NOT_FOUND";
+const TEXT_REPLACE_NODE_STALE_ERROR: &str = "TEXT_REPLACE_NODE_STALE";
+const TEXT_REPLACE_TEXT_STALE_ERROR: &str = "TEXT_REPLACE_TEXT_STALE";
+const TEXT_REPLACE_NODE_NOT_FOUND_ERROR: &str = "TEXT_REPLACE_NODE_NOT_FOUND";
+
+#[derive(Debug, Clone)]
+struct SourceParagraphRange {
+    text: String,
+    start: usize,
+    end: usize,
+}
+
+#[derive(Debug, Clone)]
+struct SourceTextReplacement {
+    range: SourceParagraphRange,
+    updated_paragraph: String,
+}
+
+#[derive(Debug, Clone)]
+enum SourceTextUpdate {
+    Patch {
+        offset: u64,
+        bytes: Vec<u8>,
+    },
+    Splice {
+        offset: u64,
+        old_len: u64,
+        bytes: Vec<u8>,
+    },
+    Rewrite(Vec<u8>),
+}
+
+enum GeneratedTextItem {
+    Heading(String),
+    Paragraph(String),
+}
+
+fn normalized_source_line_ranges(source: &str) -> Vec<SourceParagraphRange> {
+    let mut ranges = Vec::new();
+    let mut cursor = 0usize;
+
+    for line in source.split_inclusive('\n') {
+        let line_start = cursor;
+        cursor += line.len();
+
+        let without_newline = line.strip_suffix('\n').unwrap_or(line);
+        let without_line_ending = without_newline
+            .strip_suffix('\r')
+            .unwrap_or(without_newline);
+        let trimmed_start = without_line_ending.len() - without_line_ending.trim_start().len();
+        let trimmed_end = without_line_ending.trim_end().len();
+        if trimmed_start >= trimmed_end {
+            continue;
+        }
+
+        ranges.push(SourceParagraphRange {
+            text: without_line_ending[trimmed_start..trimmed_end].to_string(),
+            start: line_start + trimmed_start,
+            end: line_start + trimmed_end,
+        });
+    }
+
+    if cursor < source.len() {
+        let line = &source[cursor..];
+        let trimmed_start = line.len() - line.trim_start().len();
+        let trimmed_end = line.trim_end().len();
+        if trimmed_start < trimmed_end {
+            ranges.push(SourceParagraphRange {
+                text: line[trimmed_start..trimmed_end].to_string(),
+                start: cursor + trimmed_start,
+                end: cursor + trimmed_end,
+            });
+        }
+    }
+
+    ranges
+}
+
+fn generated_text_section_index(href: &str) -> Option<usize> {
+    let filename = href.rsplit(['/', '\\']).next()?;
+    let number = filename
+        .strip_prefix("part")?
+        .strip_suffix(".xhtml")?
+        .parse::<usize>()
+        .ok()?;
+    number.checked_sub(1)
+}
+
+fn extract_first_tag_text(xhtml: &str, tag_name: &str) -> Option<String> {
+    let open_tag = format!("<{tag_name}");
+    let close_tag = format!("</{tag_name}>");
+    let tag_start = xhtml.find(&open_tag)?;
+    let content_start = xhtml[tag_start..].find('>')? + tag_start + 1;
+    let content_end = xhtml[content_start..].find(&close_tag)? + content_start;
+    Some(unescape_xml_text(&xhtml[content_start..content_end]))
+}
+
+fn extract_generated_text_paragraphs(xhtml: &str) -> Vec<String> {
+    let Some(body_marker) = xhtml.find("data-flow-body-text") else {
+        return Vec::new();
+    };
+    let body = &xhtml[body_marker..];
+    let body_end = body.find("</div>").unwrap_or(body.len());
+    let body = &body[..body_end];
+    let mut paragraphs = Vec::new();
+    let mut cursor = 0usize;
+
+    while let Some(relative_start) = body[cursor..].find("<p>") {
+        let start = cursor + relative_start + "<p>".len();
+        let Some(relative_end) = body[start..].find("</p>") else {
+            break;
+        };
+        let end = start + relative_end;
+        paragraphs.push(unescape_xml_text(&body[start..end]));
+        cursor = end + "</p>".len();
+    }
+
+    paragraphs
+}
+
+fn generated_text_items_before_target(
+    text_dir: &Path,
+    target_section_index: usize,
+    target_paragraph_index: usize,
+) -> Result<Vec<GeneratedTextItem>, String> {
+    let mut items = Vec::new();
+    for section_index in 0..=target_section_index {
+        let path = text_dir.join(format!("part{:04}.xhtml", section_index + 1));
+        let xhtml =
+            fs::read_to_string(path).map_err(|_| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
+        if let Some(heading) = extract_first_tag_text(&xhtml, "h2") {
+            items.push(GeneratedTextItem::Heading(heading));
+        }
+        let section_paragraphs = extract_generated_text_paragraphs(&xhtml);
+        if section_index == target_section_index {
+            if target_paragraph_index >= section_paragraphs.len() {
+                return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
+            }
+            items.extend(
+                section_paragraphs
+                    .into_iter()
+                    .take(target_paragraph_index + 1)
+                    .map(GeneratedTextItem::Paragraph),
+            );
+        } else {
+            items.extend(
+                section_paragraphs
+                    .into_iter()
+                    .map(GeneratedTextItem::Paragraph),
+            );
+        }
+    }
+
+    Ok(items)
+}
+
+fn source_range_for_generated_paragraph(
+    source: &str,
+    generated_items: &[GeneratedTextItem],
+) -> Result<SourceParagraphRange, String> {
+    let source_ranges = normalized_source_line_ranges(source);
+    let mut source_index = 0usize;
+    let mut selected_range: Option<SourceParagraphRange> = None;
+
+    for item in generated_items {
+        match item {
+            GeneratedTextItem::Heading(heading) => {
+                if source_ranges
+                    .get(source_index)
+                    .is_some_and(|range| range.text == *heading)
+                {
+                    source_index += 1;
+                }
+            }
+            GeneratedTextItem::Paragraph(paragraph) => {
+                while source_index < source_ranges.len()
+                    && source_ranges[source_index].text != *paragraph
+                {
+                    source_index += 1;
+                }
+                if source_index >= source_ranges.len() {
+                    return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
+                }
+                selected_range = Some(source_ranges[source_index].clone());
+                source_index += 1;
+            }
+        }
+    }
+
+    selected_range.ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())
+}
+
+fn generated_txt_source_replacement(
+    source: &str,
+    text_dir: &Path,
+    target: &BookTextReplaceTarget,
+    old_text: &str,
+    new_text: &str,
+) -> Result<Option<SourceTextReplacement>, String> {
+    if old_text.is_empty() {
+        return Err(TEXT_REPLACE_EMPTY_ERROR.to_string());
+    }
+    if old_text == new_text {
+        return Ok(None);
+    }
+
+    let section_index = generated_text_section_index(&target.section_href)
+        .ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
+    let paragraph_index = target
+        .paragraph_index
+        .ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
+    let generated_items =
+        generated_text_items_before_target(text_dir, section_index, paragraph_index)?;
+    let source_range = source_range_for_generated_paragraph(source, &generated_items)?;
+    if source_range.text != target.text_node_text {
+        return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
+    }
+
+    let updated_paragraph = replace_text_by_utf16_offsets(
+        &source_range.text,
+        target.start_offset,
+        target.end_offset,
+        old_text,
+        new_text,
+    )?;
+    Ok(Some(SourceTextReplacement {
+        range: source_range,
+        updated_paragraph,
+    }))
+}
+
+#[cfg(test)]
+fn replace_generated_txt_source_text(
+    source: &str,
+    text_dir: &Path,
+    target: &BookTextReplaceTarget,
+    old_text: &str,
+    new_text: &str,
+) -> Result<Option<String>, String> {
+    let Some(replacement) =
+        generated_txt_source_replacement(source, text_dir, target, old_text, new_text)?
+    else {
+        return Ok(None);
+    };
+
+    let mut updated = String::with_capacity(source.len() + new_text.len());
+    updated.push_str(&source[..replacement.range.start]);
+    updated.push_str(&replacement.updated_paragraph);
+    updated.push_str(&source[replacement.range.end..]);
+    Ok(Some(updated))
+}
+
+fn encoded_txt_source_update(
+    source: &str,
+    source_bytes: &[u8],
+    encoding: &str,
+    had_bom: bool,
+    replacement: SourceTextReplacement,
+) -> Result<Option<SourceTextUpdate>, String> {
+    if replacement.range.text == replacement.updated_paragraph {
+        return Ok(None);
+    }
+
+    let old_bytes = encode_text_bytes(&replacement.range.text, encoding, false)?;
+    let new_bytes = encode_text_bytes(&replacement.updated_paragraph, encoding, false)?;
+    let prefix_bytes = encode_text_bytes(&source[..replacement.range.start], encoding, had_bom)?;
+    let offset = prefix_bytes.len();
+    let end = offset.saturating_add(old_bytes.len());
+    if old_bytes.len() == new_bytes.len() {
+        if source_bytes.get(offset..end) == Some(old_bytes.as_slice()) {
+            return Ok(Some(SourceTextUpdate::Patch {
+                offset: offset as u64,
+                bytes: new_bytes,
+            }));
+        }
+    } else if source_bytes.get(offset..end) == Some(old_bytes.as_slice()) {
+        return Ok(Some(SourceTextUpdate::Splice {
+            offset: offset as u64,
+            old_len: old_bytes.len() as u64,
+            bytes: new_bytes,
+        }));
+    }
+
+    let mut updated = String::with_capacity(source.len() + replacement.updated_paragraph.len());
+    updated.push_str(&source[..replacement.range.start]);
+    updated.push_str(&replacement.updated_paragraph);
+    updated.push_str(&source[replacement.range.end..]);
+    Ok(Some(SourceTextUpdate::Rewrite(encode_text_bytes(
+        &updated, encoding, had_bom,
+    )?)))
+}
+
+fn source_text_temp_path(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("source.txt");
+    path.with_file_name(format!("{file_name}.tmp"))
+}
+
+fn write_source_text_splice(
+    path: &Path,
+    offset: u64,
+    old_len: u64,
+    bytes: &[u8],
+) -> Result<(), String> {
+    let tmp = source_text_temp_path(path);
+    let mut input = BufReader::new(fs::File::open(path).map_err(|error| error.to_string())?);
+    let mut output = BufWriter::new(fs::File::create(&tmp).map_err(|error| error.to_string())?);
+
+    io::copy(&mut input.by_ref().take(offset), &mut output).map_err(|error| error.to_string())?;
+    output.write_all(bytes).map_err(|error| error.to_string())?;
+    input
+        .seek(SeekFrom::Start(offset.saturating_add(old_len)))
+        .map_err(|error| error.to_string())?;
+    io::copy(&mut input, &mut output).map_err(|error| error.to_string())?;
+    output.flush().map_err(|error| error.to_string())?;
+    drop(output);
+    drop(input);
+
+    fs::remove_file(path).map_err(|error| error.to_string())?;
+    fs::rename(&tmp, path).map_err(|error| error.to_string())
+}
+
+fn write_source_text_update(path: &Path, update: &SourceTextUpdate) -> Result<(), String> {
+    match update {
+        SourceTextUpdate::Patch { offset, bytes } => {
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .open(path)
+                .map_err(|error| error.to_string())?;
+            file.seek(SeekFrom::Start(*offset))
+                .map_err(|error| error.to_string())?;
+            file.write_all(bytes).map_err(|error| error.to_string())
+        }
+        SourceTextUpdate::Splice {
+            offset,
+            old_len,
+            bytes,
+        } => write_source_text_splice(path, *offset, *old_len, bytes),
+        SourceTextUpdate::Rewrite(bytes) => {
+            fs::write(path, bytes).map_err(|error| error.to_string())
+        }
+    }
+}
+
+fn percent_decode_path(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0usize;
+
+    while index < bytes.len() {
+        if bytes[index] == b'%' && index + 2 < bytes.len() {
+            if let Ok(byte) = u8::from_str_radix(&value[index + 1..index + 3], 16) {
+                decoded.push(byte);
+                index += 3;
+                continue;
+            }
+        }
+        decoded.push(bytes[index]);
+        index += 1;
+    }
+
+    String::from_utf8_lossy(&decoded).to_string()
+}
+
+fn resolve_unpacked_resource_path(unpacked_dir: &Path, href: &str) -> Result<PathBuf, String> {
+    let opf_path = find_unpacked_opf_path(unpacked_dir)?;
+    let opf_dir = opf_path.parent().unwrap_or(unpacked_dir);
+    let href = href.split('#').next().unwrap_or("").replace('\\', "/");
+    let href = percent_decode_path(&href);
+    let normalized = normalize_zip_path(href);
+    if normalized.is_empty() {
+        return Err("Selected section has an invalid href".to_string());
+    }
+
+    let candidate = opf_dir.join(normalized.trim_start_matches('/'));
+    let canonical_unpacked = fs::canonicalize(unpacked_dir).map_err(|error| error.to_string())?;
+    let canonical_candidate = fs::canonicalize(&candidate).map_err(|error| error.to_string())?;
+    if !canonical_candidate.starts_with(canonical_unpacked) {
+        return Err("Selected section is outside the unpacked book".to_string());
+    }
+
+    Ok(canonical_candidate)
+}
+
+fn collect_files_sorted(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut files = Vec::new();
+    collect_files(root, &mut files)?;
+    files.sort_by(|a, b| {
+        let a = a.strip_prefix(root).unwrap_or(a);
+        let b = b.strip_prefix(root).unwrap_or(b);
+        a.cmp(b)
+    });
+    Ok(files)
+}
+
+fn collect_files(path: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+    for entry in fs::read_dir(path).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let path = entry.path();
+        let file_type = entry.file_type().map_err(|error| error.to_string())?;
+        if file_type.is_dir() {
+            collect_files(&path, files)?;
+        } else if file_type.is_file() {
+            files.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn zip_relative_path(root: &Path, path: &Path) -> Result<String, String> {
+    let relative = path.strip_prefix(root).map_err(|error| error.to_string())?;
+    Ok(relative.to_string_lossy().replace('\\', "/"))
+}
+
+fn epub_entry_compression(relative: &str) -> CompressionMethod {
+    let extension = relative
+        .rsplit_once('.')
+        .map(|(_, extension)| extension.to_ascii_lowercase())
+        .unwrap_or_default();
+    match extension.as_str() {
+        "jpg" | "jpeg" | "png" | "gif" | "webp" | "avif" | "mp3" | "mp4" | "m4a" | "ogg"
+        | "opus" | "woff" | "woff2" | "ttf" | "otf" => CompressionMethod::Stored,
+        _ => CompressionMethod::Deflated,
+    }
+}
+
+fn write_epub_file(
+    writer: &mut ZipWriter<BufWriter<fs::File>>,
+    relative: &str,
+    path: &Path,
+    deflate_level: Option<i64>,
+) -> Result<(), String> {
+    let content_options = SimpleFileOptions::default()
+        .compression_method(epub_entry_compression(relative))
+        .compression_level(deflate_level)
+        .unix_permissions(0o644);
+    writer
+        .start_file(relative, content_options)
+        .map_err(|error| error.to_string())?;
+    let mut file = fs::File::open(path).map_err(|error| error.to_string())?;
+    std::io::copy(&mut file, writer).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn epub_entry_is_editable_text(relative: &str) -> bool {
+    let extension = relative
+        .rsplit_once('.')
+        .map(|(_, extension)| extension.to_ascii_lowercase())
+        .unwrap_or_default();
+    matches!(extension.as_str(), "htm" | "html" | "xhtml" | "opf")
+}
+
+fn system_time_epoch_seconds(time: std::time::SystemTime) -> i128 {
+    match time.duration_since(std::time::UNIX_EPOCH) {
+        Ok(duration) => duration.as_secs() as i128,
+        Err(error) => -(error.duration().as_secs() as i128),
+    }
+}
+
+fn unpacked_file_was_modified(path: &Path) -> Result<bool, String> {
+    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
+    let modified = metadata.modified().map_err(|error| error.to_string())?;
+    let created = match metadata.created() {
+        Ok(created) => created,
+        Err(_) => return Ok(true),
+    };
+
+    Ok(system_time_epoch_seconds(created) != system_time_epoch_seconds(modified))
+}
+
+fn should_copy_original_zip_entry(relative: &str, path: &Path) -> Result<bool, String> {
+    if !epub_entry_is_editable_text(relative) {
+        return Ok(true);
+    }
+
+    Ok(!unpacked_file_was_modified(path)?)
+}
+
+fn write_epub_from_unpacked_dir(
+    unpacked_dir: &Path,
+    output_path: &Path,
+    deflate_level: Option<i64>,
+) -> Result<(), String> {
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+
+    let tmp = output_path.with_extension("tmp");
+    let file = fs::File::create(&tmp).map_err(|error| error.to_string())?;
+    let mut writer = ZipWriter::new(BufWriter::with_capacity(EPUB_ZIP_WRITER_BUFFER_SIZE, file));
+    let stored = SimpleFileOptions::default()
+        .compression_method(CompressionMethod::Stored)
+        .unix_permissions(0o644);
+
+    writer
+        .start_file("mimetype", stored)
+        .map_err(|error| error.to_string())?;
+    let mimetype = fs::read(unpacked_dir.join("mimetype"))
+        .unwrap_or_else(|_| b"application/epub+zip".to_vec());
+    writer
+        .write_all(&mimetype)
+        .map_err(|error| error.to_string())?;
+
+    for path in collect_files_sorted(unpacked_dir)? {
+        let relative = zip_relative_path(unpacked_dir, &path)?;
+        if relative == "mimetype" {
+            continue;
+        }
+        write_epub_file(&mut writer, &relative, &path, deflate_level)?;
+    }
+
+    let mut output = writer.finish().map_err(|error| error.to_string())?;
+    output.flush().map_err(|error| error.to_string())?;
+    if output_path.exists() {
+        fs::remove_file(output_path).map_err(|error| error.to_string())?;
+    }
+    fs::rename(&tmp, output_path).map_err(|error| error.to_string())
+}
+
+fn write_epub_from_original_and_unpacked(
+    original_epub: &Path,
+    unpacked_dir: &Path,
+    output_path: &Path,
+) -> Result<(), String> {
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+
+    let source = fs::File::open(original_epub).map_err(|error| error.to_string())?;
+    let mut archive = ZipArchive::new(source).map_err(|error| error.to_string())?;
+    let tmp = output_path.with_extension("tmp");
+    let file = fs::File::create(&tmp).map_err(|error| error.to_string())?;
+    let mut writer = ZipWriter::new(BufWriter::with_capacity(EPUB_ZIP_WRITER_BUFFER_SIZE, file));
+    let stored = SimpleFileOptions::default()
+        .compression_method(CompressionMethod::Stored)
+        .unix_permissions(0o644);
+
+    writer
+        .start_file("mimetype", stored)
+        .map_err(|error| error.to_string())?;
+    let mimetype = fs::read(unpacked_dir.join("mimetype"))
+        .unwrap_or_else(|_| b"application/epub+zip".to_vec());
+    writer
+        .write_all(&mimetype)
+        .map_err(|error| error.to_string())?;
+
+    let mut written = HashSet::from(["mimetype".to_string()]);
+    for index in 0..archive.len() {
+        let name = archive
+            .name_for_index(index)
+            .ok_or_else(|| "Invalid EPUB entry index".to_string())?
+            .to_string();
+        let relative = normalize_zip_path(name.replace('\\', "/"));
+        if relative.is_empty() || relative == "mimetype" {
+            continue;
+        }
+
+        let entry = archive.by_index(index).map_err(|error| error.to_string())?;
+        if entry.is_dir() {
+            continue;
+        }
+        drop(entry);
+
+        let unpacked_path = unpacked_dir.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
+        if !unpacked_path.is_file() {
+            continue;
+        }
+
+        if should_copy_original_zip_entry(&relative, &unpacked_path)? {
+            let raw_entry = archive.by_index(index).map_err(|error| error.to_string())?;
+            writer
+                .raw_copy_file(raw_entry)
+                .map_err(|error| error.to_string())?;
+        } else {
+            write_epub_file(&mut writer, &relative, &unpacked_path, None)?;
+        }
+        written.insert(relative);
+    }
+
+    for path in collect_files_sorted(unpacked_dir)? {
+        let relative = zip_relative_path(unpacked_dir, &path)?;
+        if written.contains(&relative) {
+            continue;
+        }
+        write_epub_file(&mut writer, &relative, &path, None)?;
+    }
+
+    let mut output = writer.finish().map_err(|error| error.to_string())?;
+    output.flush().map_err(|error| error.to_string())?;
+    if output_path.exists() {
+        fs::remove_file(output_path).map_err(|error| error.to_string())?;
+    }
+    fs::rename(&tmp, output_path).map_err(|error| error.to_string())
+}
+
+fn hash_book_content(
+    storage: &AppStorage,
+    book: &LibraryBook,
+    source_format: BookSourceFormat,
+) -> Result<String, String> {
+    let mut hasher = Sha256::new();
+    let unpacked_dir = storage.book_dir(&book.id).join(UNPACKED_DIR);
+    if unpacked_dir.exists() {
+        for path in collect_files_sorted(&unpacked_dir)? {
+            let relative = zip_relative_path(&unpacked_dir, &path)?;
+            hasher.update(relative.as_bytes());
+            hasher.update([0]);
+            hasher.update(fs::read(&path).map_err(|error| error.to_string())?);
+            hasher.update([0]);
+        }
+    }
+    if source_format == BookSourceFormat::Txt {
+        let source_path = storage.book_dir(&book.id).join(SOURCE_TEXT_FILE);
+        if source_path.exists() {
+            hasher.update(SOURCE_TEXT_FILE.as_bytes());
+            hasher.update([0]);
+            hasher.update(fs::read(source_path).map_err(|error| error.to_string())?);
+        }
+    }
+
+    let digest = hasher.finalize();
+    Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+pub(super) fn replace_book_text_impl(
+    storage: &AppStorage,
+    id: String,
+    target: BookTextReplaceTarget,
+    old_text: String,
+    new_text: String,
+) -> Result<BookTextReplaceResult, String> {
+    let initial_book = storage.library_book(&id)?;
+    let source_format = storage.book_source_format(&initial_book);
+    let book_dir = storage.book_dir(&id);
+    let unpacked_dir = book_dir.join(UNPACKED_DIR);
+    if !unpacked_dir.exists() {
+        let book_path = book_dir.join(BOOK_FILE);
+        if book_path.exists() {
+            unpack_epub(&book_path, &unpacked_dir)?;
+        }
+    }
+
+    let section_path = resolve_unpacked_resource_path(&unpacked_dir, &target.section_href)?;
+    let xhtml = fs::read_to_string(&section_path).map_err(|error| error.to_string())?;
+    let updated_xhtml = replace_xhtml_text_node(&xhtml, &target, &old_text, &new_text)?;
+    if updated_xhtml == xhtml {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        return Ok(BookTextReplaceResult {
+            book: storage.compose_book(&mut state, &initial_book)?,
+            section_href: target.section_href,
+            changed: false,
+        });
+    }
+
+    let source_update = if source_format == BookSourceFormat::Txt {
+        let source_path = book_dir.join(SOURCE_TEXT_FILE);
+        let source_bytes = fs::read(&source_path).map_err(|error| error.to_string())?;
+        let decoded_source = decode_source_text_bytes(&source_bytes, &initial_book.metadata);
+        let text_dir = section_path
+            .parent()
+            .ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
+        generated_txt_source_replacement(
+            &decoded_source.text,
+            text_dir,
+            &target,
+            &old_text,
+            &new_text,
+        )?
+        .map(|replacement| {
+            encoded_txt_source_update(
+                &decoded_source.text,
+                &source_bytes,
+                &decoded_source.encoding,
+                decoded_source.had_bom,
+                replacement,
+            )
+            .map(|update| update.map(|update| (source_path, update)))
+        })
+        .transpose()?
+        .flatten()
+    } else {
+        None
+    };
+
+    if let Some((path, update)) = &source_update {
+        write_source_text_update(path, update)?;
+    }
+    fs::write(&section_path, updated_xhtml).map_err(|error| error.to_string())?;
+
+    let mut book = {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let Some(book) = state.library.books.iter_mut().find(|book| book.id == id) else {
+            return Err("Book not found".to_string());
+        };
+        let now = now_ms();
+        book.source_format = Some(source_format);
+        book.content_version = book.content_version.saturating_add(1).max(1);
+        book.content_edited_at = Some(now);
+        book.updated_at = Some(now);
+        book.last_read_at = book.last_read_at.or(Some(now));
+        book.clone()
+    };
+
+    book.content_hash = hash_book_content(storage, &book, source_format)?;
+    if source_format == BookSourceFormat::Txt {
+        book.size = fs::metadata(book_dir.join(SOURCE_TEXT_FILE))
+            .map_err(|error| error.to_string())?
+            .len();
+    }
+
+    {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let Some(stored_book) = state
+            .library
+            .books
+            .iter_mut()
+            .find(|stored| stored.id == id)
+        else {
+            return Err("Book not found".to_string());
+        };
+        stored_book.content_hash = book.content_hash.clone();
+        stored_book.size = book.size;
+    }
+
+    storage.unload_search_text_cache(&id);
+    storage.mark_library_dirty();
+    storage.flush_dirty()?;
+
+    let mut state = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?;
+    Ok(BookTextReplaceResult {
+        book: storage.compose_book(&mut state, &book)?,
+        section_href: target.section_href,
+        changed: true,
+    })
+}
+
+pub(super) fn export_book_impl(
+    storage: &AppStorage,
+    id: String,
+    format: BookExportFormat,
+    output_path: PathBuf,
+) -> Result<Option<BookRecord>, String> {
+    let initial_book = storage.library_book(&id)?;
+    let source_format = storage.book_source_format(&initial_book);
+    let book_dir = storage.book_dir(&id);
+
+    match format {
+        BookExportFormat::Epub => {
+            let unpacked_dir = book_dir.join(UNPACKED_DIR);
+            if !unpacked_dir.exists() {
+                let book_path = book_dir.join(BOOK_FILE);
+                if book_path.exists() {
+                    unpack_epub(&book_path, &unpacked_dir)?;
+                }
+            }
+            let book_path = book_dir.join(BOOK_FILE);
+            if source_format == BookSourceFormat::Epub && book_path.exists() {
+                write_epub_from_original_and_unpacked(&book_path, &unpacked_dir, &output_path)?;
+            } else {
+                let deflate_level = if source_format == BookSourceFormat::Txt {
+                    Some(TXT_EPUB_DEFLATE_LEVEL)
+                } else {
+                    None
+                };
+                write_epub_from_unpacked_dir(&unpacked_dir, &output_path, deflate_level)?;
+            }
+        }
+        BookExportFormat::Txt => {
+            if source_format != BookSourceFormat::Txt {
+                return Err("Only TXT imports can be exported as TXT".to_string());
+            }
+            if let Some(parent) = output_path.parent() {
+                fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+            }
+            fs::copy(book_dir.join(SOURCE_TEXT_FILE), &output_path)
+                .map_err(|error| error.to_string())?;
+        }
+    }
+
+    let book = {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let Some(book) = state.library.books.iter_mut().find(|book| book.id == id) else {
+            return Ok(None);
+        };
+        book.source_format = Some(source_format);
+        mark_book_exported(book, format);
+        book.clone()
+    };
+
+    storage.mark_library_dirty();
+    storage.flush_dirty()?;
+
+    let mut state = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?;
+    storage.compose_book(&mut state, &book).map(Some)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_text_bytes, normalize_publication_date, parse_text_import_document,
-        read_search_text_sections_from_unpacked, search_text_cache_from_bytes,
-        search_text_cache_to_bytes, search_text_in_cache, text_content_opf, text_nav_xhtml,
-        text_section_xhtml, visible_search_text_from_xhtml, SearchTextCache, SearchTextSection,
-        TextImportRulesInput, SEARCH_TEXT_CACHE_VERSION, SEARCH_TEXT_EXTRACTOR_VERSION,
+        book_is_export_dirty, decode_text_bytes, empty_object, encoded_txt_source_update,
+        mark_book_exported, normalize_publication_date, parse_text_import_document,
+        read_search_text_sections_from_unpacked, replace_generated_txt_source_text,
+        replace_xhtml_text_node, search_text_cache_from_bytes, search_text_cache_to_bytes,
+        search_text_in_cache, sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml,
+        text_section_xhtml, visible_search_text_from_xhtml, write_epub_from_original_and_unpacked,
+        write_epub_from_unpacked_dir, write_source_text_update, BookExportFormat, BookSourceFormat,
+        BookTextReplaceTarget, LibraryBook, ReadingStatus, SearchTextCache, SearchTextSection,
+        SourceParagraphRange, SourceTextReplacement, SourceTextUpdate, TextImportRulesInput,
+        SEARCH_TEXT_CACHE_VERSION, SEARCH_TEXT_EXTRACTOR_VERSION,
     };
+    use serde_json::json;
     use std::{
         fs,
-        time::{SystemTime, UNIX_EPOCH},
+        io::{Read, Write},
+        time::{Duration, SystemTime, UNIX_EPOCH},
     };
+    use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
+
+    fn wait_until_next_epoch_second() {
+        let start = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        while SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            == start
+        {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
 
     #[test]
     fn normalizes_common_publication_date_formats() {
@@ -1128,5 +2433,600 @@ mod tests {
         );
 
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn replaces_selected_xhtml_text_node_by_dom_index() {
+        let xhtml = r#"<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><body><p>target one</p><p>target two</p></body></html>"#;
+        let target = BookTextReplaceTarget {
+            section_href: "Text/chapter.xhtml".to_string(),
+            text_node_index: 1,
+            text_node_text: "target two".to_string(),
+            start_offset: 0,
+            end_offset: 6,
+            paragraph_index: None,
+        };
+
+        let updated =
+            replace_xhtml_text_node(xhtml, &target, "target", "fixed").expect("replace succeeds");
+
+        assert!(updated.contains("<p>target one</p>"));
+        assert!(updated.contains("<p>fixed two</p>"));
+    }
+
+    #[test]
+    fn escapes_replacement_when_rewriting_xhtml_text_node() {
+        let xhtml = r#"<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><body><p>A &amp; B target</p></body></html>"#;
+        let target = BookTextReplaceTarget {
+            section_href: "Text/chapter.xhtml".to_string(),
+            text_node_index: 0,
+            text_node_text: "A & B target".to_string(),
+            start_offset: 6,
+            end_offset: 12,
+            paragraph_index: None,
+        };
+
+        let updated = replace_xhtml_text_node(xhtml, &target, "target", "C < D & E")
+            .expect("replace succeeds");
+
+        assert!(updated.contains("<p>A &amp; B C &lt; D &amp; E</p>"));
+    }
+
+    #[test]
+    fn replaces_repeated_txt_source_text_by_section_paragraph_and_offsets() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-source-replace-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let text_dir = root.join("Text");
+        fs::create_dir_all(&text_dir).unwrap();
+        fs::write(
+            text_dir.join("part0001.xhtml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><body><h2 class="flow-txt-chapter">重复 MD4_A_RED</h2><div class="flow-txt-body" data-flow-body-text="true"><p>重复 MD4_A_RED</p><p>重复 MD4_A_RED</p></div></body></html>"#,
+        )
+        .unwrap();
+
+        let source = "重复 MD4_A_RED\n重复 MD4_A_RED\n重复 MD4_A_RED\n";
+        let target = BookTextReplaceTarget {
+            section_href: "Text/part0001.xhtml".to_string(),
+            text_node_index: 2,
+            text_node_text: "重复 MD4_A_RED".to_string(),
+            start_offset: 3,
+            end_offset: 12,
+            paragraph_index: Some(1),
+        };
+
+        let updated =
+            replace_generated_txt_source_text(source, &text_dir, &target, "MD4_A_RED", "MD5_A_RED")
+                .expect("direct source replacement succeeds")
+                .expect("source is changed");
+
+        assert_eq!(updated, "重复 MD4_A_RED\n重复 MD4_A_RED\n重复 MD5_A_RED\n");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn builds_patch_for_equal_byte_txt_source_replacement() {
+        let source = "第一段 MD4_A_RED\n第二段。\n";
+        let replacement = SourceTextReplacement {
+            range: SourceParagraphRange {
+                text: "第一段 MD4_A_RED".to_string(),
+                start: 0,
+                end: "第一段 MD4_A_RED".len(),
+            },
+            updated_paragraph: "第一段 MD5_A_RED".to_string(),
+        };
+        let source_bytes = source.as_bytes();
+
+        let update = encoded_txt_source_update(source, source_bytes, "utf-8", false, replacement)
+            .expect("source update is encoded")
+            .expect("source is changed");
+
+        match update {
+            SourceTextUpdate::Patch { offset, bytes } => {
+                assert_eq!(offset, 0);
+                assert_eq!(bytes, "第一段 MD5_A_RED".as_bytes());
+            }
+            SourceTextUpdate::Splice { .. } => {
+                panic!("equal byte replacement should patch in place")
+            }
+            SourceTextUpdate::Rewrite(_) => panic!("equal byte replacement should patch in place"),
+        }
+    }
+
+    #[test]
+    fn builds_splice_for_different_byte_txt_source_replacement() {
+        let source = "第一段 MD4_A_RED\n第二段。\n";
+        let replacement = SourceTextReplacement {
+            range: SourceParagraphRange {
+                text: "第一段 MD4_A_RED".to_string(),
+                start: 0,
+                end: "第一段 MD4_A_RED".len(),
+            },
+            updated_paragraph: "第一段 MD55_A_RED".to_string(),
+        };
+        let source_bytes = source.as_bytes();
+
+        let update = encoded_txt_source_update(source, source_bytes, "utf-8", false, replacement)
+            .expect("source update is encoded")
+            .expect("source is changed");
+
+        match update {
+            SourceTextUpdate::Patch { .. } => panic!("different byte replacement must splice"),
+            SourceTextUpdate::Splice {
+                offset,
+                old_len,
+                bytes,
+            } => {
+                assert_eq!(offset, 0);
+                assert_eq!(old_len, "第一段 MD4_A_RED".len() as u64);
+                assert_eq!(bytes, "第一段 MD55_A_RED".as_bytes());
+            }
+            SourceTextUpdate::Rewrite(bytes) => {
+                panic!("different byte replacement should splice, got {bytes:?}")
+            }
+        }
+    }
+
+    #[test]
+    fn writes_splice_txt_source_update_without_losing_tail() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "flow-reader-source-splice-test-{}-{nonce}.txt",
+            std::process::id()
+        ));
+        fs::write(&path, "第一段 MD4_A_RED\n第二段。\n").unwrap();
+
+        write_source_text_update(
+            &path,
+            &SourceTextUpdate::Splice {
+                offset: 0,
+                old_len: "第一段 MD4_A_RED".len() as u64,
+                bytes: "第一段 MD55_A_RED".as_bytes().to_vec(),
+            },
+        )
+        .expect("splice write succeeds");
+
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "第一段 MD55_A_RED\n第二段。\n"
+        );
+
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn exports_epub_with_required_mimetype_entry() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-export-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let output = root.with_extension("epub");
+        fs::create_dir_all(root.join("META-INF")).unwrap();
+        fs::create_dir_all(root.join("OEBPS")).unwrap();
+        fs::write(root.join("mimetype"), "application/epub+zip").unwrap();
+        fs::write(
+            root.join("META-INF/container.xml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><container version="1.0"></container>"#,
+        )
+        .unwrap();
+        fs::write(root.join("OEBPS/content.opf"), "<package/>").unwrap();
+
+        write_epub_from_unpacked_dir(&root, &output, None).expect("export succeeds");
+
+        let file = fs::File::open(&output).unwrap();
+        let mut archive = ZipArchive::new(file).unwrap();
+        let (mimetype_name, mimetype_compression) = {
+            let mimetype = archive.by_index(0).unwrap();
+            (mimetype.name().to_string(), mimetype.compression())
+        };
+        assert_eq!(mimetype_name, "mimetype");
+        assert_eq!(mimetype_compression, CompressionMethod::Stored);
+
+        fs::remove_dir_all(&root).unwrap();
+        fs::remove_file(output).unwrap();
+    }
+
+    #[test]
+    fn exports_epub_compresses_text_and_stores_already_compressed_assets() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-export-compression-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let output = root.with_extension("epub");
+        fs::create_dir_all(root.join("OEBPS")).unwrap();
+        fs::create_dir_all(root.join("OEBPS/images")).unwrap();
+        fs::write(root.join("mimetype"), "application/epub+zip").unwrap();
+        fs::write(root.join("OEBPS/content.opf"), "<package/>").unwrap();
+        fs::write(root.join("OEBPS/images/page.jpg"), [1u8, 2, 3, 4]).unwrap();
+
+        write_epub_from_unpacked_dir(&root, &output, None).expect("export succeeds");
+
+        let file = fs::File::open(&output).unwrap();
+        let mut archive = ZipArchive::new(file).unwrap();
+        let content_compression = archive.by_name("OEBPS/content.opf").unwrap().compression();
+        let image_compression = archive
+            .by_name("OEBPS/images/page.jpg")
+            .unwrap()
+            .compression();
+        assert_eq!(content_compression, CompressionMethod::Deflated);
+        assert_eq!(image_compression, CompressionMethod::Stored);
+
+        fs::remove_dir_all(&root).unwrap();
+        fs::remove_file(output).unwrap();
+    }
+
+    #[test]
+    fn exports_epub_reuses_original_entries_and_rewrites_changed_files() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-export-raw-copy-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let original = root.join("original.epub");
+        let unpacked = root.join("unpacked");
+        let output = root.join("exported.epub");
+        fs::create_dir_all(unpacked.join("OEBPS/images")).unwrap();
+        fs::create_dir_all(unpacked.join("OEBPS/styles")).unwrap();
+        fs::write(unpacked.join("mimetype"), "application/epub+zip").unwrap();
+        fs::write(
+            unpacked.join("OEBPS/content.opf"),
+            "<package>original</package>",
+        )
+        .unwrap();
+        fs::write(unpacked.join("OEBPS/chapter.xhtml"), "<p>same</p>").unwrap();
+        fs::write(unpacked.join("OEBPS/styles/book.css"), "p{color:red}").unwrap();
+        fs::write(unpacked.join("OEBPS/images/page.jpg"), [9u8; 128]).unwrap();
+
+        let file = fs::File::create(&original).unwrap();
+        let mut writer = ZipWriter::new(file);
+        let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+        let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+        writer.start_file("mimetype", stored).unwrap();
+        writer.write_all(b"application/epub+zip").unwrap();
+        writer.start_file("OEBPS/content.opf", stored).unwrap();
+        writer.write_all(b"<package>original</package>").unwrap();
+        writer.start_file("OEBPS/chapter.xhtml", stored).unwrap();
+        writer.write_all(b"<p>same</p>").unwrap();
+        writer.start_file("OEBPS/styles/book.css", stored).unwrap();
+        writer.write_all(b"p{color:red}").unwrap();
+        writer
+            .start_file("OEBPS/images/page.jpg", deflated)
+            .unwrap();
+        writer.write_all(&[9u8; 128]).unwrap();
+        writer.finish().unwrap();
+
+        wait_until_next_epoch_second();
+        fs::write(
+            unpacked.join("OEBPS/content.opf"),
+            "<package>changed</package>",
+        )
+        .unwrap();
+        fs::write(unpacked.join("OEBPS/chapter.xhtml"), "<p>tame</p>").unwrap();
+        fs::write(unpacked.join("OEBPS/styles/book.css"), "p{color:blue}").unwrap();
+        fs::write(unpacked.join("OEBPS/images/page.jpg"), [8u8; 128]).unwrap();
+
+        write_epub_from_original_and_unpacked(&original, &unpacked, &output)
+            .expect("export succeeds");
+
+        let file = fs::File::open(&output).unwrap();
+        let mut archive = ZipArchive::new(file).unwrap();
+        let (mimetype_name, mimetype_compression) = {
+            let mimetype = archive.by_index(0).unwrap();
+            (mimetype.name().to_string(), mimetype.compression())
+        };
+        assert_eq!(mimetype_name, "mimetype");
+        assert_eq!(mimetype_compression, CompressionMethod::Stored);
+        assert_eq!(
+            archive.by_name("OEBPS/content.opf").unwrap().compression(),
+            CompressionMethod::Deflated
+        );
+        assert_eq!(
+            archive
+                .by_name("OEBPS/chapter.xhtml")
+                .unwrap()
+                .compression(),
+            CompressionMethod::Deflated
+        );
+        assert_eq!(
+            archive
+                .by_name("OEBPS/styles/book.css")
+                .unwrap()
+                .compression(),
+            CompressionMethod::Stored
+        );
+        assert_eq!(
+            archive
+                .by_name("OEBPS/images/page.jpg")
+                .unwrap()
+                .compression(),
+            CompressionMethod::Deflated
+        );
+        let mut content = String::new();
+        archive
+            .by_name("OEBPS/content.opf")
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
+        assert_eq!(content, "<package>changed</package>");
+        content.clear();
+        archive
+            .by_name("OEBPS/chapter.xhtml")
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
+        assert_eq!(content, "<p>tame</p>");
+        content.clear();
+        archive
+            .by_name("OEBPS/styles/book.css")
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
+        assert_eq!(content, "p{color:red}");
+        let mut image = Vec::new();
+        archive
+            .by_name("OEBPS/images/page.jpg")
+            .unwrap()
+            .read_to_end(&mut image)
+            .unwrap();
+        assert_eq!(image, vec![9u8; 128]);
+
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn syncs_unpacked_opf_title_and_first_creator_metadata() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-opf-metadata-test-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("META-INF")).unwrap();
+        fs::create_dir_all(root.join("OEBPS")).unwrap();
+        fs::write(
+            root.join("META-INF/container.xml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<container>
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf"/>
+  </rootfiles>
+</container>"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("OEBPS/content.opf"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+  <metadata>
+    <dc:title>旧标题</dc:title>
+    <dc:creator opf:role="aut" opf:file-as="旧作者">旧作者</dc:creator>
+    <dc:creator opf:role="trl" opf:file-as="译者">译者</dc:creator>
+  </metadata>
+</package>"#,
+        )
+        .unwrap();
+
+        sync_unpacked_opf_metadata(
+            &root,
+            &json!({
+                "title": "新标题 & 续",
+                "creator": "新作者"
+            }),
+        )
+        .expect("metadata sync succeeds");
+
+        let opf = fs::read_to_string(root.join("OEBPS/content.opf")).unwrap();
+        assert!(opf.contains("<dc:title>新标题 &amp; 续</dc:title>"));
+        assert!(
+            opf.contains(r#"<dc:creator opf:role="aut" opf:file-as="新作者">新作者</dc:creator>"#)
+        );
+        assert!(opf.contains(r#"<dc:creator opf:role="trl" opf:file-as="译者">译者</dc:creator>"#));
+        assert!(!opf.contains("旧标题"));
+        assert!(!opf.contains("旧作者"));
+
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn syncs_unpacked_opf_multiline_creator_and_preserves_tail() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-opf-metadata-multiline-test-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("META-INF")).unwrap();
+        fs::create_dir_all(root.join("OEBPS")).unwrap();
+        fs::write(
+            root.join("META-INF/container.xml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("OEBPS/content.opf"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+  <metadata>
+    <dc:title>旧标题</dc:title>
+    <dc:creator
+      opf:role="aut"
+      opf:file-as="旧作者">旧作者
+    </dc:creator><meta property="keep">tail</meta>
+  </metadata>
+</package>"#,
+        )
+        .unwrap();
+
+        sync_unpacked_opf_metadata(
+            &root,
+            &json!({
+                "title": "新标题",
+                "creator": "新作者"
+            }),
+        )
+        .expect("metadata sync succeeds");
+
+        let opf = fs::read_to_string(root.join("OEBPS/content.opf")).unwrap();
+        assert!(opf.contains("<dc:title>新标题</dc:title>"));
+        assert!(opf.contains(
+            r#"    <dc:creator opf:role="aut" opf:file-as="新作者">新作者</dc:creator><meta property="keep">tail</meta>"#
+        ));
+        assert!(!opf.contains("<dc:creator\n"));
+        assert!(!opf.contains("旧作者"));
+
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn syncs_unpacked_opf_metadata_removes_creators_when_author_is_empty() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-opf-metadata-empty-author-test-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("META-INF")).unwrap();
+        fs::create_dir_all(root.join("OEBPS")).unwrap();
+        fs::write(
+            root.join("META-INF/container.xml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("OEBPS/content.opf"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata>
+    <dc:title>旧标题</dc:title>
+    <dc:creator>作者一</dc:creator>
+    <dc:creator>作者二</dc:creator>
+  </metadata>
+</package>"#,
+        )
+        .unwrap();
+
+        sync_unpacked_opf_metadata(
+            &root,
+            &json!({
+                "title": "保留标题",
+                "creator": ""
+            }),
+        )
+        .expect("metadata sync succeeds");
+
+        let opf = fs::read_to_string(root.join("OEBPS/content.opf")).unwrap();
+        assert!(opf.contains("<dc:title>保留标题</dc:title>"));
+        assert!(!opf.contains("dc:creator"));
+        assert!(!opf.contains("作者一"));
+        assert!(!opf.contains("作者二"));
+
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn syncs_unpacked_opf_metadata_rewrites_utf16_opf_as_utf8() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-opf-metadata-utf16-test-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("META-INF")).unwrap();
+        fs::create_dir_all(root.join("OEBPS")).unwrap();
+        fs::write(
+            root.join("META-INF/container.xml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>"#,
+        )
+        .unwrap();
+        let opf = r#"<?xml version="1.0" encoding="UTF-16LE"?>
+<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata>
+    <dc:title>旧标题</dc:title>
+    <dc:creator>旧作者</dc:creator>
+  </metadata>
+</package>"#;
+        let mut bytes = vec![0xff, 0xfe];
+        for unit in opf.encode_utf16() {
+            bytes.extend_from_slice(&unit.to_le_bytes());
+        }
+        fs::write(root.join("OEBPS/content.opf"), bytes).unwrap();
+
+        sync_unpacked_opf_metadata(
+            &root,
+            &json!({
+                "title": "新标题",
+                "creator": "新作者"
+            }),
+        )
+        .expect("metadata sync succeeds");
+
+        let opf = fs::read_to_string(root.join("OEBPS/content.opf")).unwrap();
+        assert!(opf.contains(r#"encoding="UTF-8""#));
+        assert!(opf.contains("<dc:title>新标题</dc:title>"));
+        assert!(opf.contains("<dc:creator>新作者</dc:creator>"));
+
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn exported_versions_are_tracked_per_format() {
+        let mut book = test_library_book(BookSourceFormat::Txt);
+        book.content_version = 3;
+        book.content_edited_at = Some(123);
+
+        mark_book_exported(&mut book, BookExportFormat::Txt);
+
+        assert_eq!(book.exported_versions.get("txt"), Some(&3));
+        assert!(book_is_export_dirty(&book, BookExportFormat::Epub));
+        assert!(!book_is_export_dirty(&book, BookExportFormat::Txt));
+    }
+
+    fn test_library_book(source_format: BookSourceFormat) -> LibraryBook {
+        LibraryBook {
+            id: "book".to_string(),
+            name: "book.txt".to_string(),
+            size: 1,
+            reading_status: None::<ReadingStatus>,
+            source_format: Some(source_format),
+            exported_versions: Default::default(),
+            content_edited_at: None,
+            content_hash: "hash".to_string(),
+            content_version: 1,
+            metadata: empty_object(),
+            created_at: 1,
+            updated_at: None,
+            last_read_at: None,
+            cfi: None,
+            percentage: None,
+            tag_ids: Vec::new(),
+        }
     }
 }

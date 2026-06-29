@@ -4,6 +4,7 @@ import { proxy, ref, snapshot, useSnapshot } from 'valtio'
 
 import ePub, { Rendition as EpubRendition } from '@flow/epubjs'
 import type { Rendition, Location, Book } from '@flow/epubjs'
+import epubRequest from '@flow/epubjs/src/utils/request'
 import Navigation, { NavItem } from '@flow/epubjs/types/navigation'
 import Section from '@flow/epubjs/types/section'
 import { IS_SERVER } from '@flow/reader/env'
@@ -16,6 +17,7 @@ import {
   normalizeDefinition,
 } from '../annotation'
 import {
+  BookTextReplaceTarget,
   BookRecord,
   ReadingSpreadPageRecord,
   ReadingSpreadRecord,
@@ -61,6 +63,77 @@ function safeDecode(value: string | undefined) {
   } catch {
     return value
   }
+}
+
+function appendUrlQuery(url: string, name: string, value: string | number) {
+  if (/^(?:blob|data|javascript):/i.test(url)) return url
+
+  const hashIndex = url.indexOf('#')
+  const base = hashIndex >= 0 ? url.slice(0, hashIndex) : url
+  const hash = hashIndex >= 0 ? url.slice(hashIndex) : ''
+  const joiner = base.includes('?') ? '&' : '?'
+
+  return `${base}${joiner}${name}=${encodeURIComponent(String(value))}${hash}`
+}
+
+function documentBody(document: Document) {
+  return (
+    document.body ??
+    document.getElementsByTagName('body')[0] ??
+    document.documentElement
+  )
+}
+
+function patchDocumentTextNode(
+  document: Document | undefined,
+  target: BookTextReplaceTarget,
+  oldText: string,
+  newText: string,
+) {
+  const body = document && documentBody(document)
+  const view = document?.defaultView ?? window
+  if (!body || !view) return false
+
+  const walker = document.createTreeWalker(body, view.NodeFilter.SHOW_TEXT)
+  let textNodeIndex = 0
+  let current = walker.nextNode()
+  while (current) {
+    if (textNodeIndex === target.textNodeIndex) {
+      const text = current.textContent ?? ''
+      if (text !== target.textNodeText) return false
+      if (text.slice(target.startOffset, target.endOffset) !== oldText) {
+        return false
+      }
+
+      current.textContent =
+        text.slice(0, target.startOffset) +
+        newText +
+        text.slice(target.endOffset)
+      return true
+    }
+
+    textNodeIndex += 1
+    current = walker.nextNode()
+  }
+
+  return false
+}
+
+function createVersionedEpubRequest(contentVersion?: number) {
+  if (!contentVersion) return undefined
+
+  return (
+    url: string,
+    type?: string | null,
+    withCredentials?: boolean,
+    headers?: Record<string, string>,
+  ) =>
+    epubRequest(
+      appendUrlQuery(url, 'flowContentVersion', contentVersion),
+      type,
+      withCredentials,
+      headers,
+    )
 }
 
 function normalizeImageSource(src: string) {
@@ -719,6 +792,7 @@ export class BookTab extends BaseTab {
   private acceptedLocationRequests = new Map<number, LocationRequestIntent>()
   private runtimeAnchorCfi?: string
   private runtimeSpreadAnchor?: ReadingSpreadRecord
+  private contentReloadTarget?: string
   private spreadAnchorsByLayout = new Map<string, ReadingSpreadRecord>()
   private navRefreshGeneration = 0
   private layoutOperationId = 0
@@ -1169,6 +1243,83 @@ export class BookTab extends BaseTab {
       definitions: book.definitions,
     }
     this.typographyConfiguration = book.configuration?.typography
+  }
+
+  reloadContentAfterEdit(book: BookRecord, target?: string) {
+    this.setBook(book)
+    this.annotationRange = undefined
+    this.annotationCfi = undefined
+    this.runtimeAnchorCfi = undefined
+    this.runtimeSpreadAnchor = undefined
+    this.spreadAnchorsByLayout.clear()
+    this.destroyRendering()
+    this.contentReloadTarget = target
+    this.bumpViewVersion()
+  }
+
+  async applyRenderedTextEdit(
+    book: BookRecord,
+    target: BookTextReplaceTarget,
+    oldText: string,
+    newText: string,
+  ) {
+    const manager = this.rendition?.manager as any
+    const views = manager?.views?._views as
+      | Array<{
+          section?: ISection
+          document?: Document
+          contents?: { document?: Document }
+          layout?: { format?: (...args: any[]) => void }
+          axis?: string
+          expand?: () => void
+          _contentPageCount?: number
+        }>
+      | undefined
+    const view = views?.find(
+      (view) =>
+        view.section?.href &&
+        (view.section.href === target.sectionHref ||
+          compareHref(view.section.href, target.sectionHref) ||
+          compareHref(target.sectionHref, view.section.href)),
+    )
+    if (!view) return false
+
+    const patchedFrame = patchDocumentTextNode(
+      view.document ?? view.contents?.document,
+      target,
+      oldText,
+      newText,
+    )
+    if (!patchedFrame) return false
+
+    const sectionDocument = (view.section as any)?.document as
+      | Document
+      | undefined
+    if (sectionDocument && sectionDocument !== view.document) {
+      patchDocumentTextNode(sectionDocument, target, oldText, newText)
+    }
+
+    this.setBook(book)
+    this.annotationRange = undefined
+    this.annotationCfi = undefined
+    this.runtimeAnchorCfi = undefined
+    this.runtimeSpreadAnchor = undefined
+    this.spreadAnchorsByLayout.clear()
+    view._contentPageCount = undefined
+    try {
+      manager?.deleteReflowablePageCountCache?.(view.section)
+      view.layout?.format?.(view.contents, view.section, view.axis)
+      view.expand?.()
+      const requestId = this.createManualLocationRequest({
+        updateAnchor: true,
+      })
+      await (this.rendition as any)?.reportLocation(requestId)
+      this.commitPendingRenditionLocation(requestId)
+    } catch (error) {
+      console.error(error)
+    }
+    this.bumpViewVersion()
+    return true
   }
 
   private syncOverlayState(changes: Partial<BookRecord>) {
@@ -1830,7 +1981,7 @@ export class BookTab extends BaseTab {
     )
 
     entries.sort((a, b) => a.sectionIndex - b.sectionIndex || a.order - b.order)
-    this.sectionNavIndex = {
+    const nextIndex = {
       anchorEntriesBySectionIndex: new Map(),
       anchorPromisesBySectionIndex: new Map(),
       entriesBySectionIndex,
@@ -1840,7 +1991,12 @@ export class BookTab extends BaseTab {
       entries,
     }
 
-    return this.sectionNavIndex
+    try {
+      this.sectionNavIndex = nextIndex
+      return this.sectionNavIndex
+    } catch (error) {
+      return nextIndex
+    }
   }
 
   mapSectionToNavItem(sectionHref: string, sections = this.sections) {
@@ -2299,6 +2455,7 @@ export class BookTab extends BaseTab {
     this.preferredSectionIndex = undefined
     this.runtimeAnchorCfi = undefined
     this.runtimeSpreadAnchor = undefined
+    this.contentReloadTarget = undefined
     this.acceptedLocationRequests.clear()
     this.spreadAnchorsByLayout.clear()
     this.rendered = false
@@ -2550,12 +2707,16 @@ export class BookTab extends BaseTab {
   }
 
   private async displayInitialPosition() {
+    const contentReloadTarget = this.contentReloadTarget
+    this.contentReloadTarget = undefined
     const manager = this.rendition?.manager
-    const spread = hydrateReflowableSpread(
-      this.book.configuration?.spread,
-      this.sections,
-      this.layoutStyleSignature,
-    )
+    const spread = contentReloadTarget
+      ? undefined
+      : hydrateReflowableSpread(
+          this.book.configuration?.spread,
+          this.sections,
+          this.layoutStyleSignature,
+        )
 
     if (
       spread &&
@@ -2570,7 +2731,10 @@ export class BookTab extends BaseTab {
     }
 
     const target = this.resolveDisplayTarget(
-      this.location?.start.cfi ?? this.book.cfi ?? undefined,
+      contentReloadTarget ??
+        this.location?.start.cfi ??
+        this.book.cfi ??
+        undefined,
       'initial',
     )
     const previousRequestId = this.currentRenditionLocationRequestId()
@@ -2621,7 +2785,11 @@ export class BookTab extends BaseTab {
 
     let epub: Book
     try {
-      epub = ref(await ePub(fileUrl))
+      epub = ref(
+        await ePub(fileUrl, {
+          requestMethod: createVersionedEpubRequest(this.book.contentVersion),
+        } as any),
+      )
     } catch (error) {
       console.error(error)
       clearRendering()
@@ -2778,6 +2946,12 @@ class PageTab extends BaseTab {
 
 type Tab = BookTab | PageTab
 type TabParam = ConstructorParameters<typeof BookTab | typeof PageTab>[0]
+
+interface BookContentEditPatch {
+  target: BookTextReplaceTarget
+  oldText: string
+  newText: string
+}
 
 function resolveTabParam(param: TabParam | Tab) {
   if (param instanceof BookTab || param instanceof PageTab) return param
@@ -2954,6 +3128,39 @@ export class Reader {
         if (!(tab instanceof BookTab) || tab.book.id !== bookId) continue
 
         this.removeTab(tabIndex, groupIndex)
+      }
+    }
+  }
+
+  applyBookContentEdit(
+    book: BookRecord,
+    reloadTarget?: string,
+    editedTab?: BookTab,
+    patch?: BookContentEditPatch,
+  ) {
+    db.books.remember(book)
+    for (const group of this.groups) {
+      for (const tab of group.bookTabs) {
+        if (tab.book.id === book.id) {
+          if (tab === editedTab && patch) {
+            void tab
+              .applyRenderedTextEdit(
+                book,
+                patch.target,
+                patch.oldText,
+                patch.newText,
+              )
+              .then((patched) => {
+                if (!patched) tab.reloadContentAfterEdit(book, reloadTarget)
+              })
+            continue
+          }
+
+          tab.reloadContentAfterEdit(
+            book,
+            !editedTab || tab === editedTab ? reloadTarget : undefined,
+          )
+        }
       }
     }
   }

@@ -21,6 +21,7 @@ export default {
   'home.context.open': 'Open',
   'home.context.edit': 'Edit',
   'home.context.info': 'Info',
+  'home.context.export': 'Export',
   'home.context.delete': 'Delete',
   'home.context.confirm_delete': 'Confirm delete',
   'home.edit.title': 'Title',
@@ -177,9 +178,18 @@ export default {
   'menu.copy': 'Copy',
   'menu.search_in_book': 'Search in book',
   'menu.annotate': 'Annotate',
+  'menu.edit_text': 'Edit text',
+  'menu.edit_text_error_empty': 'Select text to edit',
+  'menu.edit_text_error_stale':
+    'The original text changed. Select the text again and retry.',
+  'menu.edit_text_error_generic':
+    'Could not update the text. Select it again and retry.',
+  'menu.edit_text_error_reason': 'Reason: ',
   'menu.define': 'Define',
   'menu.undefine': 'Undefine',
   'menu.create': 'Create',
+  'menu.cancel': 'Cancel',
+  'menu.save': 'Save',
   'menu.delete': 'Delete',
   'menu.update': 'Update',
 

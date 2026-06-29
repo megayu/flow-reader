@@ -16,6 +16,7 @@ workflow used in this repository.
 - Theme system with accent color, background presets, custom background color, light/dark/system modes, and contrast options.
 - Search tools for full-book search and current-chapter find, including selected-text find from the reader.
 - Highlights, annotations, definitions, copy-as-Markdown, and a reusable text selection menu with optional right-click triggering.
+- In-place text correction while reading, with export support for edited EPUB and TXT files.
 - Image panel with illustration filtering, image gallery, preview, zoom, fit, and rotate controls.
 - Keyboard shortcuts for navigation, tabs, display, panels, search, library filters, fullscreen, Zen mode.
 

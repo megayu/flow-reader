@@ -20,6 +20,7 @@ export const colorMap = {
   red: 'rgba(220, 38, 38, 0.2)',
   green: 'rgba(22, 163, 74, 0.2)',
   blue: 'rgba(37, 99, 235, 0.2)',
+  purple: 'rgba(147, 51, 234, 0.22)',
 }
 
 export function normalizeDefinition(definition: string) {
