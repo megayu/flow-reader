@@ -2081,6 +2081,10 @@ export class BookTab extends BaseTab {
       if (!stillAnchored) return false
     }
 
+    if (this.isNavigationSectionProgressConsistent(visibleSections)) {
+      return true
+    }
+
     const currentPercentage = this.paginationSnapshot?.percentage
     if (
       !this.allowLocationJump &&
@@ -2097,6 +2101,30 @@ export class BookTab extends BaseTab {
     }
 
     return true
+  }
+
+  private isNavigationSectionProgressConsistent(visibleSections: ISection[]) {
+    if (!this.navigationDirection) return false
+
+    const nextIndexes = visibleSections
+      .map((section) => section.index)
+      .filter((index) => typeof index === 'number')
+    const currentIndexes = this.paginationSnapshot?.visibleSectionIndexes.length
+      ? this.paginationSnapshot.visibleSectionIndexes
+      : this.visibleSectionIndexes
+
+    if (!nextIndexes.length || !currentIndexes.length) return false
+
+    const nextMin = Math.min(...nextIndexes)
+    const nextMax = Math.max(...nextIndexes)
+    const currentMin = Math.min(...currentIndexes)
+    const currentMax = Math.max(...currentIndexes)
+
+    if (this.navigationDirection === 1) {
+      return nextMax > currentMax && nextMin >= currentMin
+    }
+
+    return nextMin < currentMin && nextMax <= currentMax
   }
 
   private clearLocationIntent() {

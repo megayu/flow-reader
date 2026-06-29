@@ -1258,7 +1258,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
   const { dark } = useColorScheme()
   const [background] = useBackground()
 
-  const { iframe, iframes, rendition, rendered, paginationVersion } =
+  const { iframe, iframes, rendition, rendered, turning, paginationVersion } =
     useSnapshot(tab)
   const frameWindows = useMemo(() => {
     void iframe
@@ -1898,11 +1898,12 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
         style={{ colorScheme: 'auto' }}
       >
         <div
+          data-flow-reader-loading-cover
           className={clsx(
             'absolute inset-0',
             // do not cover `sash`
             'z-20',
-            rendered && 'hidden',
+            rendered && !turning && 'hidden',
             background,
           )}
         />

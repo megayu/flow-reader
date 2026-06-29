@@ -712,6 +712,82 @@ async function readFocusedRenderSignature(page: Page) {
   }
 }
 
+async function readActiveReaderBodyHeaderState(page: Page) {
+  return page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    const activePane = document.querySelector(
+      '[data-flow-reader-pane][aria-hidden="false"]',
+    )
+    const frames = Array.from(activePane?.querySelectorAll('iframe') ?? [])
+      .filter((frame) => {
+        const rect = frame.getBoundingClientRect()
+        const style = getComputedStyle(frame)
+        return (
+          rect.width > 0 &&
+          rect.height > 0 &&
+          style.display !== 'none' &&
+          style.visibility !== 'hidden'
+        )
+      })
+      .map((frame) => {
+        const iframe = frame as HTMLIFrameElement
+        return iframe.contentDocument?.body?.innerText ?? ''
+      })
+    const cover = activePane?.querySelector('[data-flow-reader-loading-cover]')
+    const coverVisible = cover
+      ? getComputedStyle(cover).display !== 'none' &&
+        getComputedStyle(cover).visibility !== 'hidden'
+      : false
+
+    return {
+      body: frames.join('\n'),
+      coverVisible,
+      header:
+        tab?.paginationSnapshot?.headerPath
+          ?.map((item: { label?: string }) => item.label ?? '')
+          .join(' ') ?? '',
+      rendered: !!tab?.rendered,
+      startIndex: tab?.paginationSnapshot?.location?.start?.index,
+      turning: !!tab?.turning,
+      visibleFrameCount: frames.length,
+    }
+  })
+}
+
+async function setLongBookAtSectionFinalSpread(
+  page: Page,
+  sectionIndex: number,
+) {
+  await page.evaluate(async (index) => {
+    const tab = (window as any).reader.focusedBookTab
+    const manager = tab?.rendition?.manager
+    const section = tab?.sections?.find(
+      (candidate: { index?: number }) => candidate.index === index,
+    )
+    if (!tab || !manager || !section) {
+      throw new Error('Missing tab, manager, or section')
+    }
+
+    await tab.ensureSectionInfo(section)
+    const pageCount = await manager.measureReflowableSectionPageCount(section)
+    if (!pageCount) throw new Error('Missing measured page count')
+
+    const requestId = ((tab.rendition._locationRequestId ?? 0) + 1) as number
+    tab.rendition._locationRequestId = requestId
+    tab.acceptedLocationRequests.set(requestId, { updateAnchor: true })
+    await manager.renderReflowableSpread({
+      anchor: 'right',
+      endsAtSectionEnd: true,
+      right: {
+        section,
+        pageIndex: pageCount - 1,
+      },
+    })
+    await tab.rendition.reportLocation(requestId)
+    tab.commitPendingRenditionLocation(requestId)
+  }, sectionIndex)
+}
+
 async function expectFocusedTabId(page: Page, tabId: string) {
   await expect
     .poll(async () => (await readFocusedTabState(page)).tabId)
@@ -1220,6 +1296,64 @@ test('reapplies zoom layout when switching from double page to single page', asy
       spread: 'none',
       viewSignatures: expect.arrayContaining([expect.stringContaining('none')]),
     })
+})
+
+test('long-book does not expose next-chapter body under stale header while page turn is pending', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1500, height: 900 })
+
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+  await setLongBookAtSectionFinalSpread(page, 38)
+  await waitForStableReaderLayout(page, {
+    header: /FLOW-CHAPTER-039/,
+    sidebarVisible: true,
+  })
+
+  await page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    const rendition = tab?.rendition
+    if (!rendition) throw new Error('Missing rendition')
+
+    const original = rendition.reportLocation.bind(rendition)
+    let release: (() => void) | undefined
+    ;(window as any).__flowReleaseReportLocation = () => release?.()
+    rendition.reportLocation = async (...args: unknown[]) => {
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+      return original(...args)
+    }
+  })
+
+  const turnPromise = page.evaluate(() =>
+    (window as any).reader.focusedBookTab.next(),
+  )
+
+  try {
+    await expect
+      .poll(async () => {
+        const state = await readActiveReaderBodyHeaderState(page)
+        return state.body.includes('FLOW-CHAPTER-040')
+      })
+      .toBe(true)
+
+    const pendingState = await readActiveReaderBodyHeaderState(page)
+    expect(pendingState.header).toContain('FLOW-CHAPTER-039')
+    expect(pendingState.body).toContain('FLOW-CHAPTER-040')
+    expect(pendingState.coverVisible, JSON.stringify(pendingState)).toBe(true)
+  } finally {
+    await page.evaluate(() => {
+      ;(window as any).__flowReleaseReportLocation?.()
+    })
+    await turnPromise
+  }
+
+  await waitForStableReaderLayout(page, {
+    header: /FLOW-CHAPTER-040/,
+    sidebarVisible: true,
+  })
 })
 
 test('long-book closes image preview when clicking outside the visible image', async ({
