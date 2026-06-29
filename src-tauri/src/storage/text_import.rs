@@ -106,144 +106,30 @@ pub(super) struct TextImportSection {
     pub(super) prefix_parent_title: bool,
 }
 
-fn svg_char_width(ch: char) -> f32 {
-    if ch.is_ascii_whitespace() {
-        0.35
-    } else if ch.is_ascii() {
-        0.58
-    } else {
-        1.0
-    }
-}
-
-fn wrap_svg_text(value: &str, font_size: f32, max_width: f32) -> Vec<String> {
-    let max_width = max_width / font_size;
-    let mut lines = Vec::new();
-    let mut line = String::new();
-    let mut width = 0.0;
-
-    for ch in value.chars() {
-        if ch == '\n' {
-            let text = line.trim();
-            if !text.is_empty() {
-                lines.push(text.to_string());
-            }
-            line.clear();
-            width = 0.0;
-            continue;
-        }
-
-        let char_width = svg_char_width(ch);
-        if width + char_width > max_width && !line.trim().is_empty() {
-            lines.push(line.trim().to_string());
-            line.clear();
-            width = 0.0;
-        }
-
-        if !line.is_empty() || !ch.is_whitespace() {
-            line.push(ch);
-            width += char_width;
-        }
-    }
-
-    let text = line.trim();
-    if !text.is_empty() {
-        lines.push(text.to_string());
-    }
-
-    if lines.is_empty() {
-        vec![value.to_string()]
-    } else {
-        lines
-    }
-}
-
-fn svg_text_block(
-    lines: &[String],
-    y: f32,
-    font_size: f32,
-    line_height: f32,
-    font_weight: u16,
-) -> String {
-    let mut output = format!(
-        r#"<text x="384" y="{y:.1}" text-anchor="middle" font-size="{font_size:.1}" font-weight="{font_weight}">"#
-    );
-
-    for (index, line) in lines.iter().enumerate() {
-        if index == 0 {
-            output.push_str(&format!(r#"<tspan x="384">{}</tspan>"#, escape_svg(line)));
-        } else {
-            output.push_str(&format!(
-                r#"<tspan x="384" dy="{line_height:.1}">{}</tspan>"#,
-                escape_svg(line)
-            ));
-        }
-    }
-
-    output.push_str("</text>");
-    output
-}
-
 fn create_text_cover_svg(title: &str, creator: &str) -> String {
     let has_creator = !creator.is_empty();
-    let max_width = 608.0;
-    let mut title_size = 108.0;
-    let mut creator_size = 64.0;
-    let mut title_lines = wrap_svg_text(title, title_size, max_width);
-    let mut creator_lines = if has_creator {
-        wrap_svg_text(creator, creator_size, max_width)
+    let title = escape_svg(title);
+    let creator = escape_svg(creator);
+    let creator_block = if has_creator {
+        format!(
+            r#"<div xmlns="http://www.w3.org/1999/xhtml" style="margin-top:clamp(10px,3.5vw,20px);font-size:clamp(14px,8vw,22px);line-height:1.18;font-weight:700;overflow-wrap:anywhere;word-break:break-word;">{creator}</div>"#
+        )
     } else {
-        Vec::new()
+        String::new()
     };
 
-    loop {
-        let title_line_height = title_size * 1.18;
-        let creator_line_height = creator_size * 1.2;
-        let title_height = title_lines.len() as f32 * title_line_height;
-        let creator_height = creator_lines.len() as f32 * creator_line_height;
-        let gap = if has_creator { 58.0 } else { 0.0 };
-        let total_height = title_height + gap + creator_height;
-
-        if total_height <= 620.0 || title_size <= 40.0 {
-            let title_y = 512.0 - total_height / 2.0 + title_size;
-            let title_block =
-                svg_text_block(&title_lines, title_y, title_size, title_line_height, 800);
-            let creator_block = if has_creator {
-                let creator_y = title_y
-                    + title_line_height * (title_lines.len().saturating_sub(1) as f32)
-                    + gap
-                    + creator_size;
-                svg_text_block(
-                    &creator_lines,
-                    creator_y,
-                    creator_size,
-                    creator_line_height,
-                    700,
-                )
-            } else {
-                String::new()
-            };
-
-            return format!(
-                r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 768 1024" data-flow-generated-cover="true">
-  <rect width="768" height="1024" fill="#ead7b5"/>
-  <g fill="#3d3122" font-family="Noto Serif CJK SC, Source Han Serif SC, STSong, SimSun, serif" dominant-baseline="alphabetic">
-    {title_block}
+    format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" data-flow-generated-cover="true">
+  <title>{title}</title>
+  <rect width="100%" height="100%" fill="#ead7b5"/>
+  <foreignObject x="7.5%" y="14%" width="85%" height="72%">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#3d3122;font-family:Noto Serif CJK SC, Source Han Serif SC, STSong, SimSun, serif;overflow:hidden;">
+      <div xmlns="http://www.w3.org/1999/xhtml" style="max-width:100%;font-size:clamp(18px,12vw,30px);line-height:1.12;font-weight:800;overflow-wrap:anywhere;word-break:break-word;">{title}</div>
     {creator_block}
-  </g>
+    </div>
+  </foreignObject>
 </svg>"##
-            );
-        }
-
-        title_size -= 6.0;
-        creator_size = (creator_size - 3.0).max(34.0);
-        title_lines = wrap_svg_text(title, title_size, max_width);
-        creator_lines = if has_creator {
-            wrap_svg_text(creator, creator_size, max_width)
-        } else {
-            Vec::new()
-        };
-    }
+    )
 }
 
 pub(super) fn create_text_cover_input(
@@ -272,6 +158,25 @@ pub(super) fn create_text_cover_input(
         extension: "svg".to_string(),
         data: svg.into_bytes(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_cover_uses_responsive_foreign_object_layout() {
+        let svg = create_text_cover_svg("A Very Long Generated Title", "Author & Co");
+
+        assert!(svg.contains(r#"data-flow-generated-cover="true""#));
+        assert!(svg.contains("<foreignObject"));
+        assert!(svg.contains("font-size:clamp("));
+        assert!(svg.contains("overflow-wrap:anywhere"));
+        assert!(svg.contains(r#"width="100%" height="100%""#));
+        assert!(!svg.contains("viewBox"));
+        assert!(svg.contains("Author &amp; Co"));
+        assert!(!svg.contains("<tspan"));
+    }
 }
 
 pub(super) fn text_import_encoding_options() -> Vec<TextImportEncodingOption> {
