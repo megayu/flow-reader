@@ -119,6 +119,7 @@ export function createTypographyLayoutSignature(settings: Settings) {
     settings.textIndent,
     settings.hideEndnotes,
     settings.zoom,
+    settings.spread,
   ]
     .map((value) => value ?? '')
     .join('|')
@@ -141,6 +142,13 @@ const zoomBodyProperties = [
 
 type ZoomBodyProperty = (typeof zoomBodyProperties)[number]
 type ZoomBodyStyleSource = Partial<Record<ZoomBodyProperty, unknown>>
+type ZoomLayoutStyleSource = {
+  width?: unknown
+  height?: unknown
+  columnWidth?: unknown
+  gap?: unknown
+  name?: unknown
+}
 
 function readCssPixelValue(value: unknown) {
   if (typeof value === 'number') {
@@ -177,10 +185,61 @@ export function createZoomBodyStyles(
   return styles
 }
 
+function cssPixelValue(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? `${value}px`
+    : undefined
+}
+
+export function createZoomLayoutBodyStyleSource(
+  layout: ZoomLayoutStyleSource | undefined,
+  axis?: string,
+): ZoomBodyStyleSource {
+  if (!layout || layout.name !== 'reflowable') return {}
+
+  const gap =
+    typeof layout.gap === 'number' && Number.isFinite(layout.gap)
+      ? layout.gap
+      : undefined
+  const horizontal = axis !== 'vertical'
+
+  return {
+    width: cssPixelValue(layout.width),
+    height: cssPixelValue(layout.height),
+    columnWidth: cssPixelValue(layout.columnWidth),
+    columnGap: cssPixelValue(gap),
+    paddingTop: cssPixelValue(
+      horizontal ? 10 : gap === undefined ? 10 : gap / 2,
+    ),
+    paddingBottom: cssPixelValue(
+      horizontal ? 10 : gap === undefined ? 10 : gap / 2,
+    ),
+    paddingLeft: cssPixelValue(horizontal ? (gap ?? 0) / 2 : 10),
+    paddingRight: cssPixelValue(horizontal ? (gap ?? 0) / 2 : 10),
+  }
+}
+
+function createZoomBodyStyleSource(
+  bodyStyle: CSSStyleDeclaration,
+  layoutStyles: ZoomBodyStyleSource,
+): ZoomBodyStyleSource {
+  return {
+    width: layoutStyles.width ?? bodyStyle.width,
+    height: layoutStyles.height ?? bodyStyle.height,
+    columnWidth: layoutStyles.columnWidth ?? bodyStyle.columnWidth,
+    columnGap: layoutStyles.columnGap ?? bodyStyle.columnGap,
+    paddingTop: layoutStyles.paddingTop ?? bodyStyle.paddingTop,
+    paddingBottom: layoutStyles.paddingBottom ?? bodyStyle.paddingBottom,
+    paddingLeft: layoutStyles.paddingLeft ?? bodyStyle.paddingLeft,
+    paddingRight: layoutStyles.paddingRight ?? bodyStyle.paddingRight,
+  }
+}
+
 export function updateCustomStyle(
   contents: Contents | undefined,
   settings: Settings | undefined,
   bodyTextCache?: BodyTextDetectionCache,
+  layoutView?: { axis?: string; layout?: ZoomLayoutStyleSource },
 ) {
   if (!contents || !settings) return
 
@@ -204,8 +263,17 @@ export function updateCustomStyle(
 
   if (zoom) {
     const body = contents.content as HTMLBodyElement
+    const layoutStyles = createZoomLayoutBodyStyleSource(
+      layoutView?.layout,
+      layoutView?.axis,
+    )
     css += `body {
-      ${mapToCss(createZoomBodyStyles(body.style, zoom))}
+      ${mapToCss(
+        createZoomBodyStyles(
+          createZoomBodyStyleSource(body.style, layoutStyles),
+          zoom,
+        ),
+      )}
     }`
   }
 

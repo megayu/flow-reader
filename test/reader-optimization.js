@@ -63,6 +63,7 @@ function testTextAlignIsNonPaginationStyle() {
     textIndent: 2,
     hideEndnotes: false,
     zoom: 1,
+    spread: 'auto',
   }
 
   assert.strictEqual(
@@ -81,6 +82,18 @@ function testTextAlignIsNonPaginationStyle() {
     styles.createTypographyStyleSignature({ textAlign: 'default' }),
     styles.createTypographyStyleSignature({ textAlign: 'justify' }),
     'textAlign must still update current iframe styles immediately',
+  )
+
+  assert.notStrictEqual(
+    styles.createTypographyLayoutSignature({
+      ...layoutBase,
+      spread: 'auto',
+    }),
+    styles.createTypographyLayoutSignature({
+      ...layoutBase,
+      spread: 'none',
+    }),
+    'spread changes must invalidate rendered reflowable views',
   )
 }
 
@@ -117,6 +130,39 @@ function testZoomBodyStylesSkipNonNumericValues() {
     !Object.values(result).some((value) => String(value).includes('NaN')),
     'zoom styles must never emit NaNpx',
   )
+}
+
+function testZoomBodyStylesCanUseCurrentLayout() {
+  assert.strictEqual(
+    typeof styles.createZoomLayoutBodyStyleSource,
+    'function',
+    'Expected zoom body styles to be buildable from the current layout',
+  )
+
+  const source = styles.createZoomLayoutBodyStyleSource(
+    {
+      name: 'reflowable',
+      width: 1000,
+      height: 800,
+      columnWidth: 460,
+      gap: 40,
+    },
+    'horizontal',
+  )
+  const result = styles.createZoomBodyStyles(source, 2)
+
+  assert.deepStrictEqual(result, {
+    transformOrigin: 'top left',
+    transform: 'scale(2)',
+    width: '500px',
+    height: '400px',
+    columnWidth: '230px',
+    columnGap: '20px',
+    paddingTop: '5px',
+    paddingBottom: '5px',
+    paddingLeft: '10px',
+    paddingRight: '10px',
+  })
 }
 
 function testDefinitionsAreNormalizedConsistently() {
@@ -175,6 +221,7 @@ function testAnnotationSpineDoesNotRequireNavItem() {
 
 testTextAlignIsNonPaginationStyle()
 testZoomBodyStylesSkipNonNumericValues()
+testZoomBodyStylesCanUseCurrentLayout()
 testDefinitionsAreNormalizedConsistently()
 testAnnotationSpineDoesNotRequireNavItem()
 console.log('reader optimization tests passed')

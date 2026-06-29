@@ -1999,9 +1999,13 @@ class DefaultViewManager {
     if (this.views) {
       this.views.forEach(function (view) {
         if (view) {
+          view.settings = view.settings || {}
+          view.settings.beforeLayout = this.viewSettings.beforeLayout
+          view.settings.layoutStyleSignature =
+            this.viewSettings.layoutStyleSignature
           view.setLayout(layout)
         }
-      })
+      }, this)
     }
   }
 

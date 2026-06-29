@@ -2388,11 +2388,11 @@ export class BookTab extends BaseTab {
 
   private _el?: HTMLDivElement
   private renderingEl?: HTMLDivElement
-  onBeforeLayout?: (contents?: any) => void
+  onBeforeLayout?: (contents?: any, view?: any) => void
   private layoutStyleSignature?: string
 
   setBeforeLayout(
-    beforeLayout?: (contents?: any) => void,
+    beforeLayout?: (contents?: any, view?: any) => void,
     layoutStyleSignature?: string,
   ) {
     if (beforeLayout) {
@@ -2407,8 +2407,8 @@ export class BookTab extends BaseTab {
 
     manager.viewSettings ??= {}
     manager.viewSettings.layoutStyleSignature = this.layoutStyleSignature
-    manager.viewSettings.beforeLayout = (contents: any) => {
-      this.onBeforeLayout?.(contents)
+    manager.viewSettings.beforeLayout = (contents: any, view: any) => {
+      this.onBeforeLayout?.(contents, view)
     }
   }
 
@@ -2558,7 +2558,7 @@ export class BookTab extends BaseTab {
   async render(
     el: HTMLDivElement,
     initialSpread?: string,
-    beforeLayout?: (contents?: any) => void,
+    beforeLayout?: (contents?: any, view?: any) => void,
     layoutStyleSignature?: string,
   ) {
     this.setBeforeLayout(beforeLayout, layoutStyleSignature)

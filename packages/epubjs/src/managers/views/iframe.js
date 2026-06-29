@@ -731,6 +731,9 @@ class IframeView {
     this.layout = layout
 
     if (this.contents) {
+      if (typeof this.settings.beforeLayout === 'function') {
+        this.settings.beforeLayout(this.contents, this)
+      }
       this.layout.format(this.contents)
       this.expand()
     }

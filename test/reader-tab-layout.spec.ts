@@ -1099,6 +1099,89 @@ test.beforeEach(async ({ page }, testInfo) => {
   await expect(page.locator('ul.grid [role="button"]')).toHaveCount(3)
 })
 
+test('reapplies zoom layout when switching from double page to single page', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+
+  await page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    tab.updateBook({
+      configuration: {
+        ...tab.book.configuration,
+        typography: {
+          ...tab.book.configuration?.typography,
+          zoom: 1.5,
+        },
+      },
+    })
+  })
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const tab = (window as any).reader.focusedBookTab
+        return tab?.book?.configuration?.typography?.zoom
+      }),
+    )
+    .toBe(1.5)
+
+  await page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    tab.updateBook({
+      configuration: {
+        ...tab.book.configuration,
+        typography: {
+          ...tab.book.configuration?.typography,
+          spread: 'none',
+          zoom: 1.5,
+        },
+      },
+    })
+  })
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const tab = (window as any).reader.focusedBookTab
+        const manager = tab?.rendition?.manager
+        const layout = manager?.layout
+        const signature = manager?.viewSettings?.layoutStyleSignature
+        const views = manager?.views?._views ?? []
+        const frame = Array.from(document.querySelectorAll('iframe')).find(
+          (candidate) => !candidate.closest('[aria-hidden="true"]'),
+        ) as HTMLIFrameElement | undefined
+        const body = frame?.contentDocument?.body
+        const bodyStyle = body ? getComputedStyle(body) : undefined
+        const bodyColumnWidth = bodyStyle
+          ? Number.parseFloat(bodyStyle.columnWidth)
+          : 0
+        const expectedColumnWidth =
+          typeof layout?.columnWidth === 'number' ? layout.columnWidth / 1.5 : 0
+
+        return {
+          columnMatches:
+            expectedColumnWidth > 0 &&
+            Math.abs(bodyColumnWidth - expectedColumnWidth) <= 1,
+          divisor: layout?.divisor,
+          signature,
+          spread: tab?.rendition?.settings?.spread,
+          viewSignatures: views.map(
+            (view: any) => view?.settings?.layoutStyleSignature,
+          ),
+        }
+      }),
+    )
+    .toMatchObject({
+      columnMatches: true,
+      divisor: 1,
+      spread: 'none',
+      viewSignatures: expect.arrayContaining([expect.stringContaining('none')]),
+    })
+})
+
 test('long-book closes image preview when clicking outside the visible image', async ({
   page,
 }) => {

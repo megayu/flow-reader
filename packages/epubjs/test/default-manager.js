@@ -87,6 +87,34 @@ describe('DefaultViewManager reflowable spread', function () {
     assert.equal(large.endsWith(':font-size:20'), true)
   })
 
+  it('syncs current layout styling callbacks onto existing views', function () {
+    const manager = createManager()
+    const beforeLayout = () => {}
+    const view = {
+      settings: {
+        beforeLayout: undefined,
+        layoutStyleSignature: 'zoom:1',
+      },
+      setLayout(layout) {
+        this.layout = layout
+      },
+    }
+
+    manager.viewSettings.beforeLayout = beforeLayout
+    manager.viewSettings.layoutStyleSignature = 'zoom:1.5|spread:none'
+    manager.views = {
+      forEach(callback, thisArg) {
+        callback.call(thisArg, view)
+      },
+    }
+
+    manager.setLayout(manager.layout)
+
+    assert.equal(view.settings.beforeLayout, beforeLayout)
+    assert.equal(view.settings.layoutStyleSignature, 'zoom:1.5|spread:none')
+    assert.equal(view.layout, manager.layout)
+  })
+
   it('can reset the current spread without clearing measured page counts', function () {
     const manager = createManager()
 

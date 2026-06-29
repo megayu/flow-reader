@@ -999,7 +999,7 @@ interface ReflowableManager {
   reflowablePageCountCache?: Record<string, number>
   currentReflowableSpread?: ReflowableSpread
   viewSettings?: {
-    beforeLayout?: (contents: unknown) => void
+    beforeLayout?: (contents: unknown, view?: unknown) => void
     layoutStyleSignature?: string
   }
 }
@@ -1060,7 +1060,7 @@ interface BookRenditionLifecycleOptions {
   currentSpread: RenditionSpread
   typographyLayoutSignature: string
   typographyStyleSignature: string
-  applyCustomStyle: (contents?: any) => void
+  applyCustomStyle: (contents?: any, view?: any) => void
   containerRef: React.RefObject<HTMLDivElement | null>
 }
 
@@ -1417,9 +1417,9 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
   })
 
   const applyCustomStyle = useCallback(
-    (contents?: any) => {
+    (contents?: any, view?: any) => {
       if (contents) {
-        updateCustomStyle(contents, typography, tab.bodyTextCache)
+        updateCustomStyle(contents, typography, tab.bodyTextCache, view)
         return
       }
 
