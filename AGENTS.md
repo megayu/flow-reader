@@ -13,7 +13,7 @@
 - `pnpm install` - install dependencies after checkout or lockfile/package changes.
 - `pnpm dev` - run the Next.js app on port 7127.
 - `pnpm tauri:dev` - run the desktop app with devtools enabled.
-- `pnpm lint` - run ESLint across app, locale, script, and test files.
+- `pnpm lint` - run ESLint across app, locale, script, repository skill, and test files.
 - `pnpm build` - run the production Next.js build.
 - `pnpm check` - run theme/reader optimization tests, lint, and build.
 - `pnpm test:smoke` - run the app smoke suite.
@@ -21,6 +21,12 @@
 - `pnpm doctor:lines` - run after non-trivial React component/hook changes to catch render, hook, and state-flow issues on changed lines.
 - `pnpm --filter @flow/epubjs test` - run the vendored EPUB engine Karma/Mocha suite; Chrome headless is required.
 - `cargo test --manifest-path src-tauri/Cargo.toml` - run native storage/Tauri tests.
+
+## Repository Skills
+
+- Repository-specific skills live in `.agents/skills/`.
+- Before changing reader runtime performance, tab switching, page turns, sidebar reader interactions, annotation/definition overlays, EPUB rendering, or generated content that can affect pagination cost, read `.agents/skills/reader-performance-measurement/SKILL.md` and follow it.
+- Before changing deterministic reader layout, zoom, single/spread mode, tab isolation, sidebar/window resize behavior, iframe pane geometry, reader header/footer/page alignment, or generated content that can affect reader layout, read `.agents/skills/reader-deterministic-layout/SKILL.md` and follow it.
 
 ## Coding Style & Naming Conventions
 
@@ -32,7 +38,7 @@
 ## Testing Guidelines
 
 - Prefer targeted automated checks for changed behavior: Playwright for UI flows, `pnpm lint` for TS/React rules, `pnpm build` for production type/build coverage.
-- For reader rendering, selection, keyboard, or layout changes, include manual smoke steps when automation does not cover the interaction.
+- For reader rendering, selection, keyboard, layout, or performance-sensitive changes, use the repository skills above to choose the required client checks.
 
 ## Commit & Pull Request Guidelines
 

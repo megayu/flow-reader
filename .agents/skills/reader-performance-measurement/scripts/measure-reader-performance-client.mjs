@@ -5,9 +5,10 @@ import { execFileSync } from 'node:child_process'
 import { chromium } from '@playwright/test'
 
 const CDP_URL = process.env.FLOW_READER_CDP_URL ?? 'http://127.0.0.1:9351'
+const APP_URL = process.env.FLOW_READER_APP_URL ?? 'http://127.0.0.1:7127'
 const OUT_DIR =
   process.env.FLOW_READER_PERF_OUT_DIR ??
-  path.join(process.cwd(), 'docs', 'agent-guide', 'perf-results')
+  path.join(process.cwd(), 'perf-results', 'reader-performance-client')
 const RUNS = Number(process.env.FLOW_READER_PERF_RUNS ?? 12)
 const BURST_RUNS = Number(
   process.env.FLOW_READER_PERF_BURST_RUNS ?? Math.max(4, Math.floor(RUNS / 3)),
@@ -15,11 +16,40 @@ const BURST_RUNS = Number(
 const STEADY_SKIP = Number(process.env.FLOW_READER_PERF_STEADY_SKIP ?? 3)
 const CPU_PROFILE = process.env.FLOW_READER_CPU_PROFILE === '1'
 const DIAGNOSTICS = process.env.FLOW_READER_PERF_DIAGNOSTICS === '1'
+const WINDOW_WIDTH = Number(process.env.FLOW_READER_PERF_WINDOW_WIDTH ?? 1600)
+const WINDOW_HEIGHT = Number(process.env.FLOW_READER_PERF_WINDOW_HEIGHT ?? 1000)
+const SKIP_WINDOW_RESIZE =
+  process.env.FLOW_READER_PERF_SKIP_WINDOW_RESIZE === '1'
+const REQUIRE_WINDOW_RESIZE =
+  process.env.FLOW_READER_PERF_REQUIRE_WINDOW_RESIZE === '1'
+const INCLUDE_TEXT_PREFIX =
+  process.env.FLOW_READER_PERF_INCLUDE_TEXT_PREFIX === '1'
+const HEADLESS_BROWSER = process.env.FLOW_READER_PERF_HEADLESS === '1'
+const BROWSER_CHANNEL =
+  process.env.FLOW_READER_PERF_BROWSER_CHANNEL ??
+  (process.platform === 'win32' ? 'msedge' : 'chrome')
+const BOOK_CHAPTERS = Number(process.env.FLOW_READER_PERF_BOOK_CHAPTERS ?? 120)
+const BOOK_PARAGRAPHS = Number(
+  process.env.FLOW_READER_PERF_BOOK_PARAGRAPHS ?? 20,
+)
 const SCENARIO_FILTERS = (process.env.FLOW_READER_PERF_SCENARIOS ?? '')
   .split(',')
   .map((filter) => filter.trim())
   .filter(Boolean)
+const PERF_MODE = resolvePerfMode(process.env.FLOW_READER_PERF_MODE)
+const BOOK_SOURCE =
+  process.env.FLOW_READER_PERF_BOOK_SOURCE ??
+  (PERF_MODE === 'browser' ? 'mock' : 'native')
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function resolvePerfMode(value) {
+  const mode = String(value || 'auto').toLowerCase()
+  if (mode === 'auto') return process.platform === 'win32' ? 'tauri' : 'browser'
+  if (mode === 'tauri' || mode === 'browser') return mode
+  fail(
+    `unsupported FLOW_READER_PERF_MODE "${value}"; use auto, tauri, or browser`,
+  )
+}
 
 function fail(message, detail) {
   const error = new Error(message)
@@ -39,7 +69,7 @@ function powershell(command) {
   )
 }
 
-function setFlowWindowBounds(width, height, x = 40, y = 40) {
+function setFlowWindowBoundsWin32(width, height, x = 40, y = 40) {
   powershell(`
 Add-Type @"
 using System;
@@ -49,14 +79,91 @@ public static class FlowPerfWin32 {
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 }
 "@
-$p = Get-Process -Name flow-reader | Sort-Object StartTime -Descending | Select-Object -First 1
-if (-not $p) { throw 'flow-reader process not found' }
+$p = Get-Process -Name 'flow-reader','Flow Reader' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Sort-Object StartTime -Descending | Select-Object -First 1
+if (-not $p) { throw 'Flow Reader process not found' }
 $h = $p.MainWindowHandle
 if ($h -eq 0) { throw 'flow-reader MainWindowHandle is 0' }
 [FlowPerfWin32]::ShowWindow($h, 9) | Out-Null
 Start-Sleep -Milliseconds 100
 [FlowPerfWin32]::SetWindowPos($h, [IntPtr]::Zero, ${x}, ${y}, ${width}, ${height}, 0x0040) | Out-Null
 `)
+}
+
+async function setCdpWindowBounds(target, width, height, x = 40, y = 40) {
+  let session
+  try {
+    session = await target.page.context().newCDPSession(target.page)
+    const { windowId } = await session.send('Browser.getWindowForTarget')
+    await session.send('Browser.setWindowBounds', {
+      windowId,
+      bounds: { windowState: 'normal' },
+    })
+    await session.send('Browser.setWindowBounds', {
+      windowId,
+      bounds: { left: x, top: y, width, height },
+    })
+    return { ok: true, method: 'cdp-browser-window-bounds' }
+  } catch (error) {
+    return { ok: false, reason: error?.message || String(error) }
+  } finally {
+    await session?.detach().catch(() => {})
+  }
+}
+
+function windowBoundsMatch(metrics, width, height) {
+  return (
+    Math.abs(metrics.outerWidth - width) <= 8 &&
+    Math.abs(metrics.outerHeight - height) <= 8
+  )
+}
+
+async function applyWindowBounds(target) {
+  if (SKIP_WINDOW_RESIZE) {
+    return {
+      method: 'skipped',
+      reason: 'FLOW_READER_PERF_SKIP_WINDOW_RESIZE=1',
+    }
+  }
+
+  if (target.mode === 'browser') {
+    await target.page.setViewportSize({
+      width: WINDOW_WIDTH,
+      height: WINDOW_HEIGHT,
+    })
+    return { method: 'playwright-viewport' }
+  }
+
+  if (process.platform === 'win32') {
+    setFlowWindowBoundsWin32(WINDOW_WIDTH, WINDOW_HEIGHT)
+    return { method: 'win32-user32' }
+  }
+
+  const cdpResize = await setCdpWindowBounds(
+    target,
+    WINDOW_WIDTH,
+    WINDOW_HEIGHT,
+  )
+  if (cdpResize.ok) {
+    await wait(150)
+    const metrics = await readWindowMetrics(target.page)
+    if (windowBoundsMatch(metrics, WINDOW_WIDTH, WINDOW_HEIGHT)) {
+      return { method: cdpResize.method }
+    }
+  }
+
+  const reason = `real Tauri window resizing could not be controlled through CDP: ${cdpResize.reason}`
+  if (REQUIRE_WINDOW_RESIZE) fail(`failed to resize client window: ${reason}`)
+  return { method: 'skipped', reason }
+}
+
+async function readWindowMetrics(page) {
+  return page.evaluate(() => ({
+    innerWidth: window.innerWidth,
+    innerHeight: window.innerHeight,
+    outerWidth: window.outerWidth,
+    outerHeight: window.outerHeight,
+    devicePixelRatio: window.devicePixelRatio,
+  }))
 }
 
 function makeBook(filePath, title, prefix, chapterCount, paragraphs) {
@@ -76,6 +183,281 @@ function makeBook(filePath, title, prefix, chapterCount, paragraphs) {
     parts.push('')
   }
   fs.writeFileSync(filePath, parts.join('\n'), 'utf8')
+}
+
+function createPerfBrowserBooks() {
+  return ['A', 'B', 'C'].map((name, index) => {
+    const prefix = `PERF_${name}`
+    const title = `FLOW_PERF_${name}`
+    return {
+      id: `flow-perf-${name.toLowerCase()}`,
+      name: `${title}.epub`,
+      size: BOOK_CHAPTERS * BOOK_PARAGRAPHS * 512,
+      metadata: {
+        title,
+        creator: 'Flow Performance',
+        language: 'en-US',
+      },
+      createdAt: 1 + index,
+      updatedAt: 1 + index,
+      cfi: 'chapter_001.xhtml',
+      definitions: [],
+      annotations: [],
+      stateLoaded: true,
+      packageUrl: `/flow-perf/${name}/OPS/package.opf`,
+      perfPrefix: prefix,
+      perfTitle: title,
+    }
+  })
+}
+
+function perfBookResource(pathname, book) {
+  const base = `/flow-perf/${book.id.replace('flow-perf-', '').toUpperCase()}/OPS/`
+  const normalized = pathname.startsWith(base)
+    ? pathname.slice(base.length)
+    : pathname.replace(/^\/flow-perf\/[^/]+\/OPS\//, '')
+  const chapterMatch = /^chapter_(\d{3})\.xhtml$/.exec(normalized)
+
+  if (normalized === 'package.opf') {
+    const manifest = Array.from({ length: BOOK_CHAPTERS }, (_, index) => {
+      const number = String(index + 1).padStart(3, '0')
+      return `<item id="chapter_${number}" href="chapter_${number}.xhtml" media-type="application/xhtml+xml"/>`
+    }).join('\n')
+    const spine = Array.from({ length: BOOK_CHAPTERS }, (_, index) => {
+      const number = String(index + 1).padStart(3, '0')
+      return `<itemref linear="yes" idref="chapter_${number}"/>`
+    }).join('\n')
+
+    return {
+      contentType: 'application/oebps-package+xml',
+      body: `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="pub-id">${book.id}</dc:identifier>
+    <dc:title>${book.perfTitle}</dc:title>
+    <dc:creator>Flow Performance</dc:creator>
+    <dc:language>en-US</dc:language>
+    <meta property="dcterms:modified">2026-06-29T00:00:00Z</meta>
+  </metadata>
+  <manifest>
+    <item id="toc" properties="nav" href="toc.xhtml" media-type="application/xhtml+xml"/>
+    <item id="style" href="style.css" media-type="text/css"/>
+    ${manifest}
+  </manifest>
+  <spine>
+    ${spine}
+  </spine>
+</package>`,
+    }
+  }
+
+  if (normalized === 'toc.xhtml') {
+    const items = Array.from({ length: BOOK_CHAPTERS }, (_, index) => {
+      const number = String(index + 1).padStart(3, '0')
+      return `<li><a href="chapter_${number}.xhtml">${book.perfPrefix}-CHAPTER-${number}</a></li>`
+    }).join('\n')
+
+    return {
+      contentType: 'application/xhtml+xml',
+      body: `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head><title>${book.perfTitle}</title></head>
+  <body>
+    <nav epub:type="toc"><ol>${items}</ol></nav>
+  </body>
+</html>`,
+    }
+  }
+
+  if (normalized === 'style.css') {
+    return {
+      contentType: 'text/css',
+      body: 'body{font-family:serif;} p{margin:1em 0;}',
+    }
+  }
+
+  if (chapterMatch) {
+    const number = Number(chapterMatch[1])
+    const padded = String(number).padStart(3, '0')
+    const title = `${book.perfPrefix}-CHAPTER-${padded}`
+    const paragraphs = Array.from({ length: BOOK_PARAGRAPHS }, (_, index) => {
+      const marker = `${book.perfPrefix}-${padded}-${String(index).padStart(
+        2,
+        '0',
+      )}`
+      return `<p>${marker} ${book.perfTitle} deterministic reader performance paragraph for cross-platform browser measurement. This text is repeated to create stable columns, page turns, and tab switching load. ${marker} ${marker} ${marker}</p>`
+    }).join('\n')
+
+    return {
+      contentType: 'application/xhtml+xml',
+      body: `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <title>${title}</title>
+    <link rel="stylesheet" href="style.css" type="text/css"/>
+  </head>
+  <body>
+    <section><h1>${title}</h1>${paragraphs}</section>
+  </body>
+</html>`,
+    }
+  }
+}
+
+async function installPerfBookRoutes(page, books) {
+  await page.route('**/flow-perf/**', (route) => {
+    const pathname = new URL(route.request().url()).pathname
+    const book = books.find((candidate) =>
+      pathname.startsWith(
+        `/flow-perf/${candidate.id.replace('flow-perf-', '').toUpperCase()}/`,
+      ),
+    )
+    const resource = book ? perfBookResource(pathname, book) : undefined
+
+    if (!resource) {
+      return route.fulfill({
+        status: 404,
+        contentType: 'text/plain',
+        body: 'not found',
+      })
+    }
+
+    return route.fulfill(resource)
+  })
+}
+
+async function installBrowserTauriMock(page, books) {
+  await page.addInitScript((fixtureBooks) => {
+    const globalWindow = window
+    const bookStore = new Map(fixtureBooks.map((book) => [book.id, book]))
+    const settingsStore = { locale: 'en-US' }
+    let nextCallbackId = 1
+    let nextEventId = 1
+
+    const internals = (globalWindow.__TAURI_INTERNALS__ ??= {})
+    const eventInternals = (globalWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ ??=
+      {})
+    const callbacks = (internals.callbacks ??= {})
+
+    globalWindow.__FLOW_PERF_TAURI__ = { settingsStore }
+    internals.metadata = {
+      currentWebview: { label: 'main' },
+      currentWindow: { label: 'main' },
+    }
+    internals.convertFileSrc = (filePath) => filePath
+    internals.transformCallback = (callback) => {
+      const id = nextCallbackId++
+      callbacks[id] = callback
+      return id
+    }
+    internals.unregisterCallback = (id) => {
+      delete callbacks[id]
+    }
+    internals.runCallback = (id, ...args) => callbacks[id]?.(...args)
+    eventInternals.unregisterListener = () => undefined
+    internals.invoke = async (command, args = {}) => {
+      if (command === 'get_settings') return { ...settingsStore }
+      if (command === 'update_settings') {
+        Object.assign(settingsStore, args.settings ?? {})
+        return null
+      }
+      if (command === 'list_books') return Array.from(bookStore.values())
+      if (command === 'get_book') return bookStore.get(String(args.id)) ?? null
+      if (command === 'update_book') {
+        const id = String(args.id)
+        const current = bookStore.get(id)
+        if (!current) return null
+        const updated = { ...current, ...(args.changes ?? {}) }
+        bookStore.set(id, updated)
+        return updated
+      }
+      if (command === 'import_text_paths') return Array.from(bookStore.values())
+      if (command === 'list_covers') return []
+      if (command === 'get_cover') return null
+      if (command === 'get_book_package_path') {
+        return bookStore.get(String(args.id))?.packageUrl ?? ''
+      }
+      if (command === 'take_pending_open_paths') return []
+      if (command === 'flush_storage') return null
+      if (command === 'search_book_text') return []
+      if (command === 'unload_book_search_text') return null
+      if (command === 'plugin:event|listen') return nextEventId++
+      if (command === 'plugin:event|unlisten') return null
+      if (command.startsWith('plugin:window|is_')) return false
+      if (command.startsWith('plugin:window|')) return null
+      if (command.startsWith('plugin:webview|')) return null
+      return null
+    }
+  }, books)
+}
+
+async function installRuntimePerfBookMock(page, books) {
+  await page.evaluate((fixtureBooks) => {
+    const globalWindow = window
+    const internals = (globalWindow.__TAURI_INTERNALS__ ??= {})
+    const originalInvoke = internals.invoke?.bind(internals)
+    const bookStore = new Map(fixtureBooks.map((book) => [book.id, book]))
+
+    internals.invoke = async (command, args = {}) => {
+      if (command === 'list_books') return Array.from(bookStore.values())
+      if (command === 'get_book') return bookStore.get(String(args.id)) ?? null
+      if (command === 'update_book') {
+        const id = String(args.id)
+        const current = bookStore.get(id)
+        if (!current) return null
+        const updated = { ...current, ...(args.changes ?? {}) }
+        bookStore.set(id, updated)
+        return updated
+      }
+      if (command === 'import_text_paths') return Array.from(bookStore.values())
+      if (command === 'list_covers') return []
+      if (command === 'get_cover') return null
+      if (command === 'get_book_package_path') {
+        return bookStore.get(String(args.id))?.packageUrl ?? ''
+      }
+      if (command === 'search_book_text') return []
+      if (command === 'unload_book_search_text') return null
+      return originalInvoke?.(command, args) ?? null
+    }
+  }, books)
+}
+
+async function createPerfTarget() {
+  if (PERF_MODE === 'tauri') {
+    const browser = await chromium.connectOverCDP(CDP_URL)
+    const context = browser.contexts()[0]
+    const page =
+      context
+        .pages()
+        .find((candidate) => candidate.url().includes('localhost:7127')) ||
+      context.pages()[0]
+
+    if (BOOK_SOURCE === 'mock') {
+      const books = createPerfBrowserBooks()
+      await installPerfBookRoutes(page, books)
+      await installRuntimePerfBookMock(page, books)
+      return { browser, context, page, mode: 'tauri', appUrl: CDP_URL, books }
+    }
+
+    return { browser, context, page, mode: 'tauri', appUrl: CDP_URL }
+  }
+
+  const books = createPerfBrowserBooks()
+  const browser = await chromium.launch({
+    channel: BROWSER_CHANNEL,
+    headless: HEADLESS_BROWSER,
+    args: [`--window-size=${WINDOW_WIDTH},${WINDOW_HEIGHT}`],
+  })
+  const context = await browser.newContext({
+    viewport: { width: WINDOW_WIDTH, height: WINDOW_HEIGHT },
+    deviceScaleFactor: 1,
+  })
+  const page = await context.newPage()
+  await installPerfBookRoutes(page, books)
+  await installBrowserTauriMock(page, books)
+  await page.goto(APP_URL)
+
+  return { browser, context, page, mode: 'browser', appUrl: APP_URL, books }
 }
 
 async function invoke(page, command, args) {
@@ -173,7 +555,7 @@ async function ensureSidebar(page, visible, panel = 'toc') {
 }
 
 async function readState(page) {
-  return page.evaluate(() => {
+  return page.evaluate((includeTextPrefix) => {
     const normalize = (text) =>
       String(text ?? '')
         .replace(/\s+/g, ' ')
@@ -215,13 +597,30 @@ async function readState(page) {
       const frames = Array.from(pane.querySelectorAll('iframe')).map(
         (iframe) => {
           let text = ''
+          let location = ''
+          let readyState = ''
+          let headings = []
           try {
-            text = iframe.contentDocument?.body?.innerText || ''
+            const doc = iframe.contentDocument
+            text = doc?.body?.textContent || ''
+            location = iframe.contentWindow?.location?.href || ''
+            readyState = doc?.readyState || ''
+            headings = Array.from(
+              doc?.querySelectorAll('h1,h2,h3,[epub\\:type~="title"]') || [],
+            )
+              .map((heading) => normalize(heading.textContent).slice(0, 120))
+              .filter(Boolean)
+              .slice(0, 4)
           } catch {}
           return {
             rect: rectOf(iframe),
+            location,
+            readyState,
             textLength: normalize(text).length,
-            textPrefix: normalize(text).slice(0, 180),
+            textPrefix: includeTextPrefix
+              ? normalize(text).slice(0, 180)
+              : undefined,
+            headings,
           }
         },
       )
@@ -229,7 +628,6 @@ async function readState(page) {
         hidden: pane.getAttribute('aria-hidden') === 'true',
         opacity: style.opacity,
         visibility: style.visibility,
-        text: normalize(pane.innerText),
         rect: rectOf(pane),
         frames,
       }
@@ -265,11 +663,13 @@ async function readState(page) {
       tabCount: tabs.length,
       activeTab,
       activePane,
-      activePaneText: activePane?.text || '',
       activeFrameCount: activePane?.frames.length || 0,
-      activeFrameText: (activePane?.frames || [])
-        .map((frame) => frame.textPrefix)
-        .join('\n'),
+      activeFrameHeadings: (activePane?.frames || []).flatMap(
+        (frame) => frame.headings || [],
+      ),
+      activeFrameText: includeTextPrefix
+        ? (activePane?.frames || []).map((frame) => frame.textPrefix).join('\n')
+        : '',
       sidebarVisible: (() => {
         const sidebar = document.querySelector('.SideBar')
         if (!sidebar) return false
@@ -283,7 +683,7 @@ async function readState(page) {
         )
       })(),
     }
-  })
+  }, INCLUDE_TEXT_PREFIX)
 }
 
 async function readFastInteractionState(page) {
@@ -319,7 +719,6 @@ async function readFastInteractionState(page) {
       activePane,
       activeTab: group?.tabs?.[selectedIndex]
         ? {
-            title: group.tabs[selectedIndex].title,
             turning: !!group.tabs[selectedIndex].turning,
           }
         : null,
@@ -358,12 +757,17 @@ function assertRenderAligned(state, label) {
   )
   const headers = pagination.headerPath.filter(Boolean)
   assert(headers.length > 0, `${label}: empty header path`, pagination)
-  assert(
-    headers.some((header) => state.activeFrameText.includes(header)) ||
-      state.activeFrameText.includes(state.activeTab.title),
-    `${label}: header does not match body`,
-    { headers, bodyText: state.activeFrameText },
-  )
+  if (INCLUDE_TEXT_PREFIX) {
+    assert(
+      headers.some((header) => state.activeFrameText.includes(header)) ||
+        state.activeFrameText.includes(state.activeTab.title),
+      `${label}: header does not match body`,
+      {
+        headers,
+        bodyText: state.activeFrameText,
+      },
+    )
+  }
 }
 
 function assertFastInteractionVisible(state, label) {
@@ -381,11 +785,16 @@ function assertFastInteractionVisible(state, label) {
 function activeRenderSignature(state) {
   return JSON.stringify({
     selectedIndex: state.selectedIndex,
-    title: state.activeTab?.title,
     location: state.activeTab?.pagination?.location,
     percentage: state.activeTab?.pagination?.percentage,
     visibleSectionIndexes: state.activeTab?.pagination?.visibleSectionIndexes,
-    frameText: state.activeFrameText,
+    frames: state.activePane?.frames?.map((frame) => ({
+      rect: frame.rect,
+      location: frame.location,
+      readyState: frame.readyState,
+      textLength: frame.textLength,
+      headings: frame.headings,
+    })),
   })
 }
 
@@ -483,16 +892,7 @@ async function installPerfInstrumentation(page) {
     const classifyElement = (node) => {
       if (!(node instanceof Element)) return 'unknown'
       if (node.closest('[data-flow-reader-pane]')) return 'reader-pane'
-      if (node.closest('.SideBar')) {
-        if (node.closest('.Pane')) {
-          const headline = node
-            .closest('.Pane')
-            ?.querySelector('[role="button"]')?.textContent
-          if (/图书馆|LIBRARY/i.test(headline || '')) return 'sidebar-library'
-          if (/目录|TOC/i.test(headline || '')) return 'sidebar-toc'
-        }
-        return 'sidebar'
-      }
+      if (node.closest('.SideBar')) return 'sidebar'
       if (node.closest('.Reader')) return 'reader'
       return 'document'
     }
@@ -622,7 +1022,7 @@ async function installPerfInstrumentation(page) {
       ;(group?.tabs || []).forEach((tab) => {
         if (window.__flowPerf.wrapped.has(tab)) return
         window.__flowPerf.wrapped.add(tab)
-        window.__flowPerf.counters[tab.id] ||= { title: tab.title }
+        window.__flowPerf.counters[tab.id] ||= {}
         methods.forEach((method) => {
           if (typeof tab[method] !== 'function') return
           const original = tab[method].bind(tab)
@@ -1214,20 +1614,35 @@ async function main() {
   const bookPaths = ['A', 'B', 'C'].map((name) =>
     path.join(tempDir, `FLOW_PERF_${name}.txt`),
   )
-  makeBook(bookPaths[0], 'FLOW_PERF_A', 'PERF_A', 120, 20)
-  makeBook(bookPaths[1], 'FLOW_PERF_B', 'PERF_B', 120, 20)
-  makeBook(bookPaths[2], 'FLOW_PERF_C', 'PERF_C', 120, 20)
+  if (PERF_MODE === 'tauri') {
+    makeBook(
+      bookPaths[0],
+      'FLOW_PERF_A',
+      'PERF_A',
+      BOOK_CHAPTERS,
+      BOOK_PARAGRAPHS,
+    )
+    makeBook(
+      bookPaths[1],
+      'FLOW_PERF_B',
+      'PERF_B',
+      BOOK_CHAPTERS,
+      BOOK_PARAGRAPHS,
+    )
+    makeBook(
+      bookPaths[2],
+      'FLOW_PERF_C',
+      'PERF_C',
+      BOOK_CHAPTERS,
+      BOOK_PARAGRAPHS,
+    )
+  }
 
-  const browser = await chromium.connectOverCDP(CDP_URL)
-  const context = browser.contexts()[0]
-  const page =
-    context
-      .pages()
-      .find((candidate) => candidate.url().includes('localhost:7127')) ||
-    context.pages()[0]
+  const target = await createPerfTarget()
+  const { browser, page } = target
 
   page.on('pageerror', (error) => console.log('PAGEERROR', error.message))
-  setFlowWindowBounds(1600, 1000)
+  const windowResize = await applyWindowBounds(target)
   await wait(1000)
   await page.waitForLoadState('domcontentloaded')
   await page.waitForFunction(
@@ -1236,14 +1651,24 @@ async function main() {
     { timeout: 30000 },
   )
 
-  const imported = await invoke(page, 'import_text_paths', {
-    imports: bookPaths.map((bookPath) => ({ path: bookPath })),
-    replaceExisting: true,
-  })
+  const imported =
+    BOOK_SOURCE === 'mock'
+      ? target.books
+      : await invoke(page, 'import_text_paths', {
+          imports: bookPaths.map((bookPath) => ({ path: bookPath })),
+          replaceExisting: true,
+        })
+  const books = await Promise.all(
+    imported.map(async (book) => {
+      const full = await invoke(page, 'get_book', { id: book.id })
+      return full ?? book
+    }),
+  )
   await page.evaluate((books) => {
     window.reader.closeAllTabs?.()
     books.forEach((book) => window.reader.addTab(book))
-  }, imported)
+    window.reader.focusedGroup?.selectTab(0)
+  }, books)
   await ensureReaderMode(page)
   await waitForSettled(page, 'initial imported tabs')
   await installPerfInstrumentation(page)
@@ -1365,7 +1790,7 @@ async function main() {
   await page.evaluate((book) => {
     window.reader.closeAllTabs?.()
     window.reader.addTab(book)
-  }, imported[0])
+  }, books[0])
   await ensureReaderMode(page)
   await navigateTabTo(page, 0, 28, 2)
 
@@ -1424,11 +1849,17 @@ async function main() {
 
   const result = {
     generatedAt: new Date().toISOString(),
-    cdpUrl: CDP_URL,
+    mode: target.mode,
+    appUrl: target.appUrl,
+    cdpUrl: target.mode === 'tauri' ? CDP_URL : undefined,
     diagnostics: DIAGNOSTICS,
     runsPerScenario: RUNS,
     burstRunsPerScenario: BURST_RUNS,
-    window: { width: 1600, height: 1000 },
+    window: {
+      requested: { width: WINDOW_WIDTH, height: WINDOW_HEIGHT },
+      resize: windowResize,
+      actual: await readWindowMetrics(page),
+    },
     scenarios,
     profiles,
   }

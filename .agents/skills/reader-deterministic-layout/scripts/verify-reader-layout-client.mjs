@@ -1,11 +1,38 @@
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { chromium } from '@playwright/test'
 
 const CDP_URL = process.env.FLOW_READER_CDP_URL ?? 'http://127.0.0.1:9351'
+const APP_URL = process.env.FLOW_READER_APP_URL ?? 'http://127.0.0.1:7127'
+const OUT_DIR =
+  process.env.FLOW_READER_LAYOUT_OUT_DIR ??
+  path.join(process.cwd(), 'test-results', 'reader-layout-client')
+const WINDOW_WIDTH = Number(process.env.FLOW_READER_LAYOUT_WINDOW_WIDTH ?? 1600)
+const WINDOW_HEIGHT = Number(
+  process.env.FLOW_READER_LAYOUT_WINDOW_HEIGHT ?? 1000,
+)
+const MAXIMIZED_WIDTH = Number(
+  process.env.FLOW_READER_LAYOUT_MAXIMIZED_WIDTH ?? 1920,
+)
+const MAXIMIZED_HEIGHT = Number(
+  process.env.FLOW_READER_LAYOUT_MAXIMIZED_HEIGHT ?? 1080,
+)
+const HEADLESS_BROWSER = process.env.FLOW_READER_LAYOUT_HEADLESS === '1'
+const BROWSER_CHANNEL =
+  process.env.FLOW_READER_LAYOUT_BROWSER_CHANNEL ??
+  (process.platform === 'win32' ? 'msedge' : 'chrome')
+const LAYOUT_MODE = resolveLayoutMode(process.env.FLOW_READER_LAYOUT_MODE)
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function resolveLayoutMode(value) {
+  const mode = String(value || 'auto').toLowerCase()
+  if (mode === 'auto') return process.platform === 'win32' ? 'tauri' : 'browser'
+  if (mode === 'tauri' || mode === 'browser') return mode
+  fail(
+    `unsupported FLOW_READER_LAYOUT_MODE "${value}"; use auto, tauri, or browser`,
+  )
+}
 
 function fail(message, detail) {
   const error = new Error(message)
@@ -15,6 +42,12 @@ function fail(message, detail) {
 
 function assert(condition, message, detail) {
   if (!condition) fail(message, detail)
+}
+
+function isTransientPageEvaluationError(error) {
+  return /Execution context was destroyed|Cannot find context with specified id|Target closed/.test(
+    error?.message || '',
+  )
 }
 
 function makeBook(filePath, title, prefix, chapterCount, paragraphs) {
@@ -44,7 +77,7 @@ function powershell(command) {
   )
 }
 
-function setFlowWindowBounds(width, height, x = 40, y = 40) {
+function setFlowWindowBoundsWin32(width, height, x = 40, y = 40) {
   powershell(`
 Add-Type @"
 using System;
@@ -54,8 +87,8 @@ public static class FlowWin32 {
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 }
 "@
-$p = Get-Process -Name flow-reader | Sort-Object StartTime -Descending | Select-Object -First 1
-if (-not $p) { throw 'flow-reader process not found' }
+$p = Get-Process -Name 'flow-reader','Flow Reader' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Sort-Object StartTime -Descending | Select-Object -First 1
+if (-not $p) { throw 'Flow Reader process not found' }
 $h = $p.MainWindowHandle
 if ($h -eq 0) { throw 'flow-reader MainWindowHandle is 0' }
 [FlowWin32]::ShowWindow($h, 9) | Out-Null
@@ -64,7 +97,7 @@ Start-Sleep -Milliseconds 100
 `)
 }
 
-function maximizeFlowWindow() {
+function maximizeFlowWindowWin32() {
   powershell(`
 Add-Type @"
 using System;
@@ -73,12 +106,361 @@ public static class FlowWin32Max {
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 }
 "@
-$p = Get-Process -Name flow-reader | Sort-Object StartTime -Descending | Select-Object -First 1
-if (-not $p) { throw 'flow-reader process not found' }
+$p = Get-Process -Name 'flow-reader','Flow Reader' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Sort-Object StartTime -Descending | Select-Object -First 1
+if (-not $p) { throw 'Flow Reader process not found' }
 $h = $p.MainWindowHandle
 if ($h -eq 0) { throw 'flow-reader MainWindowHandle is 0' }
 [FlowWin32Max]::ShowWindow($h, 3) | Out-Null
 `)
+}
+
+async function setCdpWindowBounds(target, width, height, x = 40, y = 40) {
+  let session
+  try {
+    session = await target.page.context().newCDPSession(target.page)
+    const { windowId } = await session.send('Browser.getWindowForTarget')
+    await session.send('Browser.setWindowBounds', {
+      windowId,
+      bounds: { windowState: 'normal' },
+    })
+    await session.send('Browser.setWindowBounds', {
+      windowId,
+      bounds: { left: x, top: y, width, height },
+    })
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, reason: error?.message || String(error) }
+  } finally {
+    await session?.detach().catch(() => {})
+  }
+}
+
+async function readClientWindowMetrics(target) {
+  return target.page.evaluate(() => ({
+    innerHeight: window.innerHeight,
+    innerWidth: window.innerWidth,
+    outerHeight: window.outerHeight,
+    outerWidth: window.outerWidth,
+  }))
+}
+
+function windowBoundsMatch(metrics, width, height) {
+  return (
+    Math.abs(metrics.outerWidth - width) <= 8 &&
+    Math.abs(metrics.outerHeight - height) <= 8
+  )
+}
+
+async function maximizeCdpWindow(target) {
+  let session
+  try {
+    session = await target.page.context().newCDPSession(target.page)
+    const { windowId } = await session.send('Browser.getWindowForTarget')
+    await session.send('Browser.setWindowBounds', {
+      windowId,
+      bounds: { windowState: 'maximized' },
+    })
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, reason: error?.message || String(error) }
+  } finally {
+    await session?.detach().catch(() => {})
+  }
+}
+
+async function setFlowWindowBounds(target, width, height, x = 40, y = 40) {
+  if (target.mode === 'browser') {
+    await target.page.setViewportSize({ width, height })
+    await target.page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => resolve(null)),
+          ),
+        ),
+    )
+    return
+  }
+  if (process.platform === 'win32') {
+    setFlowWindowBoundsWin32(width, height, x, y)
+    await wait(150)
+    return
+  }
+
+  const cdpResize = await setCdpWindowBounds(target, width, height, x, y)
+  if (cdpResize.ok) {
+    await wait(150)
+    const metrics = await readClientWindowMetrics(target)
+    if (windowBoundsMatch(metrics, width, height)) return
+  }
+
+  if (process.platform !== 'win32') {
+    fail(
+      `real Tauri layout verification window resizing could not be controlled through CDP: ${cdpResize.reason}`,
+    )
+  }
+}
+
+async function maximizeFlowWindow(target) {
+  if (target.mode === 'browser') {
+    await target.page.setViewportSize({
+      width: MAXIMIZED_WIDTH,
+      height: MAXIMIZED_HEIGHT,
+    })
+    await target.page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => resolve(null)),
+          ),
+        ),
+    )
+    return
+  }
+  if (process.platform === 'win32') {
+    maximizeFlowWindowWin32()
+    await wait(150)
+    return
+  }
+
+  const cdpMaximize = await maximizeCdpWindow(target)
+  if (cdpMaximize.ok) {
+    await wait(150)
+    const metrics = await readClientWindowMetrics(target)
+    if (metrics.outerWidth >= MAXIMIZED_WIDTH - 80) return
+  }
+
+  if (process.platform !== 'win32') {
+    fail(
+      `real Tauri layout verification maximize could not be controlled through CDP: ${cdpMaximize.reason}`,
+    )
+  }
+}
+
+function createLayoutBrowserBooks() {
+  return [
+    ['A', 'FLOW_MD4_A_RED', 'MD4_A_RED', 14],
+    ['B', 'FLOW_MD4_B_BLUE', 'MD4_B_BLUE', 14],
+    ['C', 'FLOW_MD4_C_GREEN', 'MD4_C_GREEN', 8],
+  ].map(([name, title, prefix, paragraphCount], index) => ({
+    id: `flow-md4-${String(name).toLowerCase()}`,
+    name: `${title}.epub`,
+    size: 90 * Number(paragraphCount) * 512,
+    metadata: {
+      title,
+      creator: 'Flow Layout',
+      language: 'en-US',
+    },
+    createdAt: 1 + index,
+    updatedAt: 1 + index,
+    cfi: 'chapter_001.xhtml',
+    definitions: [],
+    annotations: [],
+    stateLoaded: true,
+    packageUrl: `/flow-layout/${name}/OPS/package.opf`,
+    layoutTitle: title,
+    layoutPrefix: prefix,
+    layoutParagraphCount: Number(paragraphCount),
+  }))
+}
+
+function layoutBookResource(pathname, book) {
+  const normalized = pathname.replace(/^\/flow-layout\/[^/]+\/OPS\//, '')
+  const chapterMatch = /^chapter_(\d{3})\.xhtml$/.exec(normalized)
+
+  if (normalized === 'package.opf') {
+    const manifest = Array.from({ length: 90 }, (_, index) => {
+      const number = String(index + 1).padStart(3, '0')
+      return `<item id="chapter_${number}" href="chapter_${number}.xhtml" media-type="application/xhtml+xml"/>`
+    }).join('\n')
+    const spine = Array.from({ length: 90 }, (_, index) => {
+      const number = String(index + 1).padStart(3, '0')
+      return `<itemref linear="yes" idref="chapter_${number}"/>`
+    }).join('\n')
+
+    return {
+      contentType: 'application/oebps-package+xml',
+      body: `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="pub-id">${book.id}</dc:identifier>
+    <dc:title>${book.layoutTitle}</dc:title>
+    <dc:creator>Flow Layout</dc:creator>
+    <dc:language>en-US</dc:language>
+    <meta property="dcterms:modified">2026-06-29T00:00:00Z</meta>
+  </metadata>
+  <manifest>
+    <item id="toc" properties="nav" href="toc.xhtml" media-type="application/xhtml+xml"/>
+    <item id="style" href="style.css" media-type="text/css"/>
+    ${manifest}
+  </manifest>
+  <spine>${spine}</spine>
+</package>`,
+    }
+  }
+
+  if (normalized === 'toc.xhtml') {
+    const items = Array.from({ length: 90 }, (_, index) => {
+      const number = String(index + 1).padStart(3, '0')
+      return `<li><a href="chapter_${number}.xhtml">${book.layoutPrefix} CHAPTER ${index + 1}</a></li>`
+    }).join('\n')
+
+    return {
+      contentType: 'application/xhtml+xml',
+      body: `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head><title>${book.layoutTitle}</title></head>
+  <body><nav epub:type="toc"><ol>${items}</ol></nav></body>
+</html>`,
+    }
+  }
+
+  if (normalized === 'style.css') {
+    return {
+      contentType: 'text/css',
+      body: 'body{font-family:serif;} p{margin:1em 0;}',
+    }
+  }
+
+  if (chapterMatch) {
+    const chapter = Number(chapterMatch[1])
+    const chapterNumber = String(chapter).padStart(3, '0')
+    const title = `${book.layoutPrefix} CHAPTER ${chapter}`
+    const paragraphs = Array.from(
+      { length: book.layoutParagraphCount },
+      (_, index) => {
+        const marker = `${book.layoutPrefix}-${chapterNumber}-${String(
+          index,
+        ).padStart(2, '0')}`
+        return `<p>${marker} ${book.layoutTitle} ${book.layoutPrefix} ${book.layoutPrefix} ${book.layoutPrefix} deterministic layout verification paragraph. ${marker} ${marker}</p>`
+      },
+    ).join('\n')
+
+    return {
+      contentType: 'application/xhtml+xml',
+      body: `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <title>${title}</title>
+    <link rel="stylesheet" href="style.css" type="text/css"/>
+  </head>
+  <body><section><h1>${title}</h1>${paragraphs}</section></body>
+</html>`,
+    }
+  }
+}
+
+async function installLayoutBookRoutes(page, books) {
+  await page.route('**/flow-layout/**', (route) => {
+    const pathname = new URL(route.request().url()).pathname
+    const book = books.find((candidate) =>
+      pathname.startsWith(
+        `/flow-layout/${candidate.id.slice(-1).toUpperCase()}/`,
+      ),
+    )
+    const resource = book ? layoutBookResource(pathname, book) : undefined
+    if (!resource) {
+      return route.fulfill({
+        status: 404,
+        contentType: 'text/plain',
+        body: 'not found',
+      })
+    }
+    return route.fulfill(resource)
+  })
+}
+
+async function installBrowserTauriMock(page, books) {
+  await page.addInitScript((fixtureBooks) => {
+    const globalWindow = window
+    const bookStore = new Map(fixtureBooks.map((book) => [book.id, book]))
+    const settingsStore = { locale: 'en-US' }
+    let nextCallbackId = 1
+    let nextEventId = 1
+
+    const internals = (globalWindow.__TAURI_INTERNALS__ ??= {})
+    const eventInternals = (globalWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ ??=
+      {})
+    const callbacks = (internals.callbacks ??= {})
+
+    internals.metadata = {
+      currentWebview: { label: 'main' },
+      currentWindow: { label: 'main' },
+    }
+    internals.convertFileSrc = (filePath) => filePath
+    internals.transformCallback = (callback) => {
+      const id = nextCallbackId++
+      callbacks[id] = callback
+      return id
+    }
+    internals.unregisterCallback = (id) => {
+      delete callbacks[id]
+    }
+    internals.runCallback = (id, ...args) => callbacks[id]?.(...args)
+    eventInternals.unregisterListener = () => undefined
+    internals.invoke = async (command, args = {}) => {
+      if (command === 'get_settings') return { ...settingsStore }
+      if (command === 'update_settings') {
+        Object.assign(settingsStore, args.settings ?? {})
+        return null
+      }
+      if (command === 'list_books') return Array.from(bookStore.values())
+      if (command === 'get_book') return bookStore.get(String(args.id)) ?? null
+      if (command === 'update_book') {
+        const id = String(args.id)
+        const current = bookStore.get(id)
+        if (!current) return null
+        const updated = { ...current, ...(args.changes ?? {}) }
+        bookStore.set(id, updated)
+        return updated
+      }
+      if (command === 'import_text_paths') return Array.from(bookStore.values())
+      if (command === 'list_covers') return []
+      if (command === 'get_cover') return null
+      if (command === 'get_book_package_path') {
+        return bookStore.get(String(args.id))?.packageUrl ?? ''
+      }
+      if (command === 'take_pending_open_paths') return []
+      if (command === 'flush_storage') return null
+      if (command === 'search_book_text') return []
+      if (command === 'unload_book_search_text') return null
+      if (command === 'plugin:event|listen') return nextEventId++
+      if (command === 'plugin:event|unlisten') return null
+      if (command.startsWith('plugin:window|is_')) return false
+      if (command.startsWith('plugin:window|')) return null
+      if (command.startsWith('plugin:webview|')) return null
+      return null
+    }
+  }, books)
+}
+
+async function createLayoutTarget() {
+  if (LAYOUT_MODE === 'tauri') {
+    const browser = await chromium.connectOverCDP(CDP_URL)
+    const context = browser.contexts()[0]
+    const page =
+      context
+        .pages()
+        .find((candidate) => candidate.url().includes('localhost:7127')) ||
+      context.pages()[0]
+    return { browser, context, page, mode: 'tauri', appUrl: CDP_URL }
+  }
+
+  const books = createLayoutBrowserBooks()
+  const browser = await chromium.launch({
+    channel: BROWSER_CHANNEL,
+    headless: HEADLESS_BROWSER,
+    args: [`--window-size=${WINDOW_WIDTH},${WINDOW_HEIGHT}`],
+  })
+  const context = await browser.newContext({
+    viewport: { width: WINDOW_WIDTH, height: WINDOW_HEIGHT },
+    deviceScaleFactor: 1,
+  })
+  const page = await context.newPage()
+  await installLayoutBookRoutes(page, books)
+  await installBrowserTauriMock(page, books)
+  await page.goto(APP_URL)
+  return { browser, context, page, mode: 'browser', appUrl: APP_URL, books }
 }
 
 async function invoke(page, command, args) {
@@ -292,6 +674,16 @@ async function readState(page) {
       }
     })
     const activePane = panes.find((pane) => !pane.hidden)
+    const activePaneElement = document.querySelector(
+      '[data-flow-reader-pane][aria-hidden="false"]',
+    )
+    const loadingCover = activePaneElement?.querySelector(
+      '[data-flow-reader-loading-cover]',
+    )
+    const loadingCoverStyle = loadingCover
+      ? getComputedStyle(loadingCover)
+      : undefined
+    const loadingCoverRect = rectOf(loadingCover)
     const selectedIndex = group?.selectedIndex ?? -1
     const activeTab = tabs[selectedIndex]
     const sidebar = document.querySelector('.SideBar')
@@ -319,6 +711,12 @@ async function readState(page) {
       panes,
       activeTab,
       activePane,
+      loadingCoverVisible:
+        !!loadingCover &&
+        loadingCoverStyle.display !== 'none' &&
+        loadingCoverStyle.visibility !== 'hidden' &&
+        loadingCoverRect.width > 0 &&
+        loadingCoverRect.height > 0,
       activePaneText: activePane?.text || '',
       activeFrameCount: activePane?.frames.length || 0,
       activeFrameText: (activePane?.frames || [])
@@ -447,7 +845,16 @@ async function waitForSettled(page, label, timeout = 30000) {
   let stable = 0
   let lastState
   while (Date.now() - start < timeout) {
-    const state = await readState(page)
+    let state
+    try {
+      state = await readState(page)
+    } catch (error) {
+      if (isTransientPageEvaluationError(error)) {
+        await wait(250)
+        continue
+      }
+      throw error
+    }
     lastState = state
     try {
       assertRenderAligned(state, label)
@@ -470,7 +877,16 @@ async function waitForAllTabsReady(page, label, timeout = 30000) {
   let stable = 0
   let lastState
   while (Date.now() - start < timeout) {
-    const state = await readState(page)
+    let state
+    try {
+      state = await readState(page)
+    } catch (error) {
+      if (isTransientPageEvaluationError(error)) {
+        await wait(250)
+        continue
+      }
+      throw error
+    }
     lastState = state
     const allReady =
       state.tabs.length > 0 &&
@@ -702,6 +1118,120 @@ async function navigateTabToEnd(page, tabIndex) {
   )
 }
 
+async function setTabToSectionFinalSpread(page, tabIndex, sectionIndex) {
+  await page.evaluate(
+    async ({ tabIndex, sectionIndex }) => {
+      const group = window.reader.focusedGroup
+      group.selectTab(tabIndex)
+      const tab = group.tabs[tabIndex]
+      const deadline = Date.now() + 30000
+      while (
+        (!tab.sections || !tab.sections[sectionIndex]) &&
+        Date.now() < deadline
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+
+      const section = tab.sections?.[sectionIndex]
+      const manager = tab.rendition?.manager
+      if (!section || !manager) {
+        throw new Error(`section ${sectionIndex} or manager missing`)
+      }
+
+      await tab.ensureSectionInfo(section)
+      const pageCount = await manager.measureReflowableSectionPageCount(section)
+      if (!pageCount) throw new Error(`section ${sectionIndex} has no pages`)
+
+      const requestId = (tab.rendition._locationRequestId ?? 0) + 1
+      tab.rendition._locationRequestId = requestId
+      tab.acceptedLocationRequests.set(requestId, { updateAnchor: true })
+      await manager.renderReflowableSpread({
+        anchor: 'right',
+        endsAtSectionEnd: true,
+        right: {
+          section,
+          pageIndex: pageCount - 1,
+        },
+      })
+      await tab.rendition.reportLocation(requestId)
+      tab.commitPendingRenditionLocation(requestId)
+    },
+    { tabIndex, sectionIndex },
+  )
+  await waitForSettled(page, `tab ${tabIndex} section ${sectionIndex} final`)
+}
+
+async function assertPendingPageTurnCover(page, label) {
+  await setTabToSectionFinalSpread(page, 0, 38)
+  const before = await readState(page)
+  const beforeFrameHashes = before.activePane?.frames.map(
+    (frame) => frame.textHash,
+  )
+  const beforeHeaderPath = before.activeTab?.pagination?.headerPath ?? []
+  assert(beforeFrameHashes?.length, `${label}: setup has no active frames`, {
+    before,
+  })
+  assert(beforeHeaderPath.length, `${label}: setup has no header`, { before })
+
+  await page.evaluate(() => {
+    const tab = window.reader.focusedBookTab
+    const rendition = tab?.rendition
+    if (!rendition) throw new Error('Missing rendition')
+
+    const original = rendition.reportLocation.bind(rendition)
+    let release
+    window.__flowReleaseReportLocation = () => release?.()
+    rendition.reportLocation = async (...args) => {
+      await new Promise((resolve) => {
+        release = resolve
+      })
+      return original(...args)
+    }
+  })
+
+  const turn = page.evaluate(() => window.reader.focusedBookTab.next())
+  try {
+    const start = Date.now()
+    let pending
+    while (Date.now() - start < 10000) {
+      pending = await readState(page)
+      const pendingHashes = pending.activePane?.frames.map(
+        (frame) => frame.textHash,
+      )
+      if (JSON.stringify(pendingHashes) !== JSON.stringify(beforeFrameHashes)) {
+        break
+      }
+      await wait(50)
+    }
+
+    const pendingFrameHashes = pending?.activePane?.frames.map(
+      (frame) => frame.textHash,
+    )
+    assert(
+      JSON.stringify(pendingFrameHashes) !== JSON.stringify(beforeFrameHashes),
+      `${label}: body did not change while reportLocation was pending`,
+      { beforeFrameHashes, pendingFrameHashes, pending },
+    )
+    assert(
+      JSON.stringify(pending.activeTab?.pagination?.headerPath ?? []) ===
+        JSON.stringify(beforeHeaderPath),
+      `${label}: pending state did not keep the old snapshot`,
+      { beforeHeaderPath, pending: pending.activeTab?.pagination },
+    )
+    assert(
+      pending.loadingCoverVisible,
+      `${label}: next chapter body was visible before pagination snapshot committed`,
+      { beforeFrameHashes, pendingFrameHashes, pending },
+    )
+  } finally {
+    await page.evaluate(() => window.__flowReleaseReportLocation?.())
+    await turn
+  }
+
+  const settled = await waitForSettled(page, `${label} settled`)
+  assertRenderAligned(settled, `${label} settled`)
+}
+
 async function switchByKeyboard(page, targetIndex, label, options = {}) {
   const { pure = true } = options
   await resetCounters(page)
@@ -809,26 +1339,24 @@ async function assertHiddenTabsUnchanged(page, operation, label) {
 }
 
 async function main() {
-  const outDir = path.join(os.tmpdir(), `flow-tauri-md4-${Date.now()}`)
+  const runId = `${LAYOUT_MODE}-${new Date().toISOString().replace(/[:.]/g, '-')}`
+  const outDir = path.join(OUT_DIR, runId)
   const booksDir = path.join(outDir, 'books')
   fs.mkdirSync(booksDir, { recursive: true })
   const bookA = path.join(booksDir, 'FLOW_MD4_A_RED.txt')
   const bookB = path.join(booksDir, 'FLOW_MD4_B_BLUE.txt')
   const bookC = path.join(booksDir, 'FLOW_MD4_C_GREEN.txt')
-  makeBook(bookA, 'FLOW_MD4_A_RED', 'MD4_A_RED', 90, 14)
-  makeBook(bookB, 'FLOW_MD4_B_BLUE', 'MD4_B_BLUE', 90, 14)
-  makeBook(bookC, 'FLOW_MD4_C_GREEN', 'MD4_C_GREEN', 90, 8)
+  if (LAYOUT_MODE === 'tauri') {
+    makeBook(bookA, 'FLOW_MD4_A_RED', 'MD4_A_RED', 90, 14)
+    makeBook(bookB, 'FLOW_MD4_B_BLUE', 'MD4_B_BLUE', 90, 14)
+    makeBook(bookC, 'FLOW_MD4_C_GREEN', 'MD4_C_GREEN', 90, 8)
+  }
 
-  const browser = await chromium.connectOverCDP(CDP_URL)
-  const page =
-    browser
-      .contexts()[0]
-      .pages()
-      .find((candidate) => candidate.url().includes('localhost:7127')) ||
-    browser.contexts()[0].pages()[0]
+  const target = await createLayoutTarget()
+  const { browser, page } = target
   page.on('pageerror', (error) => console.log('PAGEERROR', error.message))
 
-  setFlowWindowBounds(1600, 1000)
+  await setFlowWindowBounds(target, WINDOW_WIDTH, WINDOW_HEIGHT)
   await wait(1000)
   await page.waitForLoadState('domcontentloaded')
   await page.waitForFunction(
@@ -837,14 +1365,24 @@ async function main() {
     { timeout: 30000 },
   )
 
-  const imported = await invoke(page, 'import_text_paths', {
-    imports: [{ path: bookA }, { path: bookB }, { path: bookC }],
-    replaceExisting: true,
-  })
+  const imported =
+    target.mode === 'browser'
+      ? target.books
+      : await invoke(page, 'import_text_paths', {
+          imports: [{ path: bookA }, { path: bookB }, { path: bookC }],
+          replaceExisting: true,
+        })
+  const books = await Promise.all(
+    imported.map(async (book) => {
+      const full = await invoke(page, 'get_book', { id: book.id })
+      return full ?? book
+    }),
+  )
   await page.evaluate((books) => {
     window.reader.closeAllTabs?.()
     books.forEach((book) => window.reader.addTab(book))
-  }, imported)
+    window.reader.focusedGroup?.selectTab(0)
+  }, books)
   await ensureReaderMode(page)
   await waitForSettled(page, 'initial imported tabs')
   await instrumentCounters(page)
@@ -927,13 +1465,13 @@ async function main() {
     },
   )
 
-  setFlowWindowBounds(1500, 940)
+  await setFlowWindowBounds(target, 1500, 940)
   const restored1 = activeRenderSignature(
     await waitForSettled(page, 'standard 2 restored first'),
   )
-  maximizeFlowWindow()
+  await maximizeFlowWindow(target)
   await waitForSettled(page, 'standard 2 maximized')
-  setFlowWindowBounds(1500, 940)
+  await setFlowWindowBounds(target, 1500, 940)
   const restored2 = activeRenderSignature(
     await waitForSettled(page, 'standard 2 restored second'),
   )
@@ -947,15 +1485,18 @@ async function main() {
   )
   results.push('standard 2 passed')
 
+  await assertPendingPageTurnCover(page, 'pending page turn header/body gate')
+  results.push('pending page turn header/body gate passed')
+
   const singleOps = [
-    async () => setFlowWindowBounds(1420, 920),
+    async () => setFlowWindowBounds(target, 1420, 920),
     async () => ensureSidebar(page, false),
-    async () => setFlowWindowBounds(1780, 1040),
+    async () => setFlowWindowBounds(target, 1780, 1040),
     async () => ensureSidebar(page, true),
-    async () => maximizeFlowWindow(),
-    async () => setFlowWindowBounds(1600, 1000),
+    async () => maximizeFlowWindow(target),
+    async () => setFlowWindowBounds(target, 1600, 1000),
     async () => ensureSidebar(page, false),
-    async () => setFlowWindowBounds(1500, 940),
+    async () => setFlowWindowBounds(target, 1500, 940),
     async () => ensureSidebar(page, true),
   ]
   for (let i = 0; i < singleOps.length; i += 1) {
@@ -970,10 +1511,10 @@ async function main() {
   await page.evaluate((books) => {
     window.reader.closeAllTabs?.()
     books.forEach((book) => window.reader.addTab(book))
-  }, imported)
+  }, books)
   await ensureReaderMode(page)
   await ensureSidebar(page, true)
-  setFlowWindowBounds(1600, 1000)
+  await setFlowWindowBounds(target, 1600, 1000)
   await navigateTabTo(page, 0, 18, 2)
   await navigateTabTo(page, 1, 46, 1)
   await navigateTabToEnd(page, 2)
@@ -985,13 +1526,13 @@ async function main() {
 
   await switchByKeyboard(page, 1, 'standard 4 tab0->tab1')
   await ensureSidebar(page, false)
-  setFlowWindowBounds(1450, 900)
+  await setFlowWindowBounds(target, 1450, 900)
   assertRenderAligned(
     await waitForSettled(page, 'standard 4 tab1 closed resized'),
     'standard 4 tab1 closed resized',
   )
   await switchByKeyboard(page, 2, 'standard 4 tab1->tab2', { pure: false })
-  maximizeFlowWindow()
+  await maximizeFlowWindow(target)
   assertRenderAligned(
     await waitForSettled(page, 'standard 4 tab2 maximized'),
     'standard 4 tab2 maximized',
@@ -1001,7 +1542,7 @@ async function main() {
     await waitForSettled(page, 'standard 4 tab2 open maximized'),
     'standard 4 tab2 open maximized',
   )
-  setFlowWindowBounds(1600, 1000)
+  await setFlowWindowBounds(target, 1600, 1000)
   await switchByKeyboard(page, 0, 'standard 4 switch back tab0')
   await ensureSidebar(page, true)
   const tab0OpenAfter = activeRenderSignature(
@@ -1020,18 +1561,20 @@ async function main() {
   results.push('standard 4 passed')
 
   const finalState = await readState(page)
-  console.log(
-    JSON.stringify(
-      {
-        outDir,
-        results,
-        finalSelectedIndex: finalState.selectedIndex,
-        finalInnerSize: finalState.innerSize,
-      },
-      null,
-      2,
-    ),
+  const result = {
+    outDir,
+    mode: target.mode,
+    appUrl: target.appUrl,
+    results,
+    finalSelectedIndex: finalState.selectedIndex,
+    finalInnerSize: finalState.innerSize,
+  }
+  fs.writeFileSync(
+    path.join(outDir, 'result.json'),
+    `${JSON.stringify(result, null, 2)}\n`,
+    'utf8',
   )
+  console.log(JSON.stringify(result, null, 2))
   await browser.close()
 }
 

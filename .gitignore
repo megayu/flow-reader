@@ -8,6 +8,7 @@ node_modules
 # testing
 coverage
 test-results
+perf-results
 
 # next.js
 .next/

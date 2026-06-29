@@ -1,0 +1,122 @@
+# Reader Deterministic Layout Failure Patterns
+
+Read this before changing Flow Reader layout, pagination, tab-pane, or reader-header/footer logic. Search for symptoms that match the bug before adding new fallback behavior.
+
+## How To Use This File
+
+- Start from a recorded reproduction path when the symptom matches.
+- Verify the same invariant after fixing: body, header, footer, page number, percentage, and visible section indexes must come from one committed pagination snapshot.
+- Do not hide a mismatch by falling back to persisted CFI, first section, nearest valid section, delayed retry loops, or broad event acceptance.
+- When a new deterministic bug is fixed or an approach is rejected, add a compact entry in the matching section: successful fixes or reproducible bug patterns under `Known Failure Patterns`, rejected directions under `Rejected Approaches`. Include symptom, path, root cause, decision, and verification gate.
+
+## Known Failure Patterns
+
+### Header/body mismatch during pending page turn
+
+- Symptom: during a page turn, the iframe body advances to the next chapter while the header/footer still belong to the previous committed snapshot.
+- Reproduction path: long generated book, start near the end of one section, trigger next page, sample the client while `tab.turning` is still true and before the pagination snapshot has committed.
+- Root cause: epubjs can update the iframe body before Flow Reader has accepted and committed the matching relocated/pagination snapshot.
+- Fix direction: keep the loading cover visible while a page turn is pending, and commit body/header/footer/progress together from one snapshot.
+- Verification gate: the client verifier must include a pending page-turn gate where a next body is covered until header/footer/body can commit together.
+
+### Cross-section navigation rejected as percentage rollback
+
+- Symptom: after next/previous at a section boundary, body can be on the next chapter while header/footer stay stale because the correct relocated event was rejected.
+- Reproduction path: navigate across adjacent sections where the old committed percentage is high enough that the new section's initial percentage looks like a rollback.
+- Root cause: a monotonic percentage guard can reject legitimate cross-section navigation when it does not first account for intended section-index direction.
+- Fix direction: accept locations whose section indexes move consistently with the active navigation direction before applying percentage rollback checks.
+- Verification gate: focused Playwright tests must cover cross-section spread navigation and stale-header prevention.
+
+### Final-page relayout loses terminal spread semantics
+
+- Symptom: after resize/sidebar changes, the body remains in the final chapter but the footer changes from end-of-book to an earlier page such as `1 / 3` or `2 / 3`.
+- Reproduction path: open a long generated book, place one tab at the final visible spread, switch away, change reader width, then switch back.
+- Root cause: old page indexes were replayed after page count changed. The model preserved "page index 0/1" but lost "this spread ended at the section/book end".
+- Fix direction: record whether a spread ends at the section end and resolve the right side to the new last page after relayout.
+- Verification gate: tests must cover final-page stability across tab switches and relayouts.
+
+### Shared epubjs EventEmitter state leaks between tabs
+
+- Symptom: resizing or displaying one tab changes another hidden tab's rendition location, body, or manager spread.
+- Reproduction path: three tabs at distant sections, resize while tab C is active, then inspect hidden tab A/B runtime locations and committed snapshots.
+- Root cause: epubjs EventEmitter state was stored on prototypes, causing manager instances to share listener tables.
+- Fix direction: keep EventEmitter state per instance and gate relocated/rendered commits by explicit request or transaction identity.
+- Verification gate: multi-tab randomized resize/sidebar/tab-switch client verification must prove inactive tabs do not commit foreign sections.
+
+### Hidden pane measured under a different geometry
+
+- Symptom: tab switching without size changes still changes pages, leaves blank iframes, or blocks page turns.
+- Reproduction path: compare active pane rect with inactive pane rect after opening multiple tabs.
+- Root cause: inactive panes were positioned offscreen with fixed full-window dimensions, so iframe column layout had different inputs while hidden.
+- Fix direction: keep inactive panes in the same reader coordinate system as the active pane using absolute same-geometry layout; hide via visibility, opacity, pointer events, and z-index.
+- Verification gate: the verifier must check inactive pane geometry, no hidden input handling, and no pagination counters during unchanged-size tab switching.
+
+### Hidden iframe paint leak in Tauri WebView
+
+- Symptom: DOM says inactive panes are hidden, but screenshots show hidden-tab iframe text over the active tab.
+- Reproduction path: same-geometry inactive panes with `visibility: hidden` only, then inspect real Tauri screenshots/pixels after switching tabs.
+- Root cause: in the WebView compositor, hidden iframe content can still paint unless the pane is also fully transparent.
+- Fix direction: inactive panes need `opacity: 0` in addition to hidden visibility and disabled pointer events.
+- Verification gate: real-client verification must include screenshot or pixel checks, not only DOM visibility checks.
+
+### Duplicate active ownership on tab switch
+
+- Symptom: unchanged-size tab switching produces many more active/inactive writes than the expected deactivate-old and activate-new operations.
+- Reproduction path: instrument `setActive` calls while switching across three tabs without reader width or typography changes.
+- Root cause: tab group selection owned active state synchronously, while a `BookPane` layout effect repeated active writes during cleanup/setup.
+- Fix direction: keep active-state ownership in the group/tab model; pane components should only clear active state on unmount.
+- Verification gate: pure tab switching should have exactly the expected active flips and zero reader pagination counters.
+
+### Stale layout spread cache after real position change
+
+- Symptom: after turning pages with the sidebar closed, reopening the TOC/sidebar can combine a new snapshot/header with an old iframe body from a previous section.
+- Reproduction path: page turn, then return to a previously cached sidebar-open layout state.
+- Root cause: layout-specific spread anchors were reused even after the actual reading position changed.
+- Fix direction: clear layout spread anchors on committed position changes before storing the new current spread.
+- Verification gate: TOC/sidebar reopen after page turns must keep body/header/footer aligned.
+
+## Rejected Approaches
+
+### Visibility-only hidden panes
+
+- Attempt: keep inactive panes at the same geometry but hide them only with `visibility: hidden`, pointer-events off, and lower z-index.
+- Why it failed: real Tauri WebView screenshots showed inactive iframe text composited over the active tab.
+- Do not repeat unless a different compositor strategy is proven with pixel checks.
+
+### Hidden tab kept at active geometry plus exact spread restore without ownership fix
+
+- Attempt: change hidden pane geometry and restore exact spread after resize/activation.
+- Why it failed: user-facing behavior got worse, including blank renders, blocked page turns, and restart/first-page regressions. It tried to repair stale runtime state after the fact instead of preventing stale operations from committing.
+- Do not repeat without first fixing operation ownership and event gating.
+
+### Active-only resize plus runtime/current target split
+
+- Attempt: limit resize to active tabs and split initial open target from committed runtime target.
+- Why it failed: automated eventual-stability tests passed, but rapid tab switching still visibly stalled and the code did not prove unchanged-size tab switch was only a visibility flip.
+- Do not treat this as complete evidence for deterministic layout.
+
+### Shell-level tab render reduction without lifecycle ownership change
+
+- Attempt: reduce React work around tabs and no-op same-tab selection without changing rendition lifecycle ownership.
+- Why it failed: real multi-tab use still had blocked page turns, blank bodies, first-page restore, and page jumps. The shell got lighter but stale epubjs/runtime events could still commit.
+- Do not extend shell-only optimizations as a fix for reader state mismatch.
+
+### Instant tab-strip gate without runtime ownership change
+
+- Attempt: add counters and tab-strip geometry gates but leave deeper runtime ownership unchanged.
+- Why it failed: it proved some shell properties but did not explain foreign section/location commits, stale relocated events, persisted-progress races, or shared state.
+- Keep diagnostics, but do not use them alone as proof of deterministic reader state.
+
+### Full spread snapshot without operation ownership change
+
+- Attempt: store left/right spread snapshots and validate either visible side.
+- Why it failed: the final-page relayout bug still reproduced because operation sequencing and terminal-spread semantics were not fully addressed.
+- Keep only when paired with ownership and terminal-spread fixes.
+
+## Current Gates To Protect
+
+- Unchanged-size tab switching must call zero `display`, `next`, `prev`, `resizeRendition`, and `relayoutCurrentView`.
+- Hidden panes must keep active-reader geometry and must not leak pixels or receive input.
+- Page turns must not reveal a future body under stale header/footer while a committed snapshot is pending.
+- Final-page, chapter-start, chapter-middle, and cross-section spreads must survive resize/sidebar/tab-switch operations.
+- Browser tests are useful, but WebView compositor and window behavior require real-client verification for final acceptance.
