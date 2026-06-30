@@ -748,26 +748,12 @@ pub fn update_book(
 }
 
 #[tauri::command]
-pub fn delete_books(storage: State<'_, AppStorage>, ids: Vec<String>) -> Result<(), String> {
-    {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
-        state.library.books.retain(|book| !ids.contains(&book.id));
-        for id in &ids {
-            state.book_states.remove(id);
-        }
-    }
-
-    for id in ids {
-        storage.unload_search_text_cache(&id);
-        let _ = fs::remove_dir_all(storage.book_dir(&id));
-    }
-
-    storage.mark_library_dirty();
-    storage.flush_dirty()
+pub fn delete_books(
+    storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    delete_books_impl(&storage, &tasks, ids)
 }
 
 #[tauri::command]

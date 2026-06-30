@@ -61,6 +61,7 @@ use text_import::{
 const APP_DATA_DIR_NAME: &str = "Flow Reader";
 const APP_DATA_DIR_ENV: &str = "FLOW_READER_DATA_DIR";
 const BOOKS_DIR: &str = "books";
+const DELETE_TOMBSTONES_DIR: &str = "delete-tombstones";
 const LIBRARY_FILE: &str = "library.json";
 const SETTINGS_FILE: &str = "settings.json";
 const BOOK_FILE: &str = "book.epub";
@@ -595,6 +596,10 @@ fn books_root(root: &Path) -> PathBuf {
     root.join(BOOKS_DIR)
 }
 
+fn delete_tombstones_root(root: &Path) -> PathBuf {
+    root.join(DELETE_TOMBSTONES_DIR)
+}
+
 fn library_path(root: &Path) -> Result<PathBuf, String> {
     Ok(root.join(LIBRARY_FILE))
 }
@@ -780,6 +785,203 @@ fn book_content_still_current(storage: &AppStorage, book: &LibraryBook) -> Resul
         current.content_hash == book.content_hash
             && current.content_version == book.content_version,
     )
+}
+
+fn delete_books_to_tombstones(
+    storage: &AppStorage,
+    ids: &[String],
+) -> Result<Vec<PathBuf>, String> {
+    let ids = ids
+        .iter()
+        .filter(|id| !id.is_empty())
+        .cloned()
+        .collect::<HashSet<_>>();
+
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        state.library.books.retain(|book| !ids.contains(&book.id));
+        for id in &ids {
+            state.book_states.remove(id);
+        }
+    }
+    storage.mark_library_dirty();
+
+    let mut tombstones = Vec::new();
+    for id in &ids {
+        storage.unload_search_text_cache(id);
+        if let Some(tombstone) = move_book_dir_to_tombstone(storage, id) {
+            tombstones.push(tombstone);
+        }
+    }
+
+    Ok(tombstones)
+}
+
+fn move_book_dir_to_tombstone(storage: &AppStorage, id: &str) -> Option<PathBuf> {
+    let book_dir = storage.book_dir(id);
+    if !book_dir.exists() {
+        return None;
+    }
+
+    let tombstones_root = delete_tombstones_root(storage.root());
+    if let Err(error) = fs::create_dir_all(&tombstones_root) {
+        eprintln!("Failed to prepare deleted book tombstone directory: {error}");
+        remove_book_dir_directly(&book_dir);
+        return None;
+    }
+    let tombstone = next_delete_tombstone_path(&tombstones_root, id);
+
+    match fs::rename(&book_dir, &tombstone) {
+        Ok(()) => Some(tombstone),
+        Err(error) => {
+            eprintln!("Failed to move deleted book directory to tombstone: {error}");
+            remove_book_dir_directly(&book_dir);
+            None
+        }
+    }
+}
+
+fn remove_book_dir_directly(book_dir: &Path) {
+    if let Err(error) = fs::remove_dir_all(book_dir) {
+        eprintln!("Failed to delete book directory: {error}");
+    }
+}
+
+fn next_delete_tombstone_path(root: &Path, id: &str) -> PathBuf {
+    let stamp = now_ms();
+    let pid = std::process::id();
+    let id = sanitize_tombstone_name(id);
+    for index in 0.. {
+        let suffix = if index == 0 {
+            String::new()
+        } else {
+            format!("-{index}")
+        };
+        let path = root.join(format!("{id}-{pid}-{stamp}{suffix}"));
+        if !path.exists() {
+            return path;
+        }
+    }
+
+    unreachable!("tombstone path loop should return")
+}
+
+fn sanitize_tombstone_name(value: &str) -> String {
+    let name = value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+
+    if name.is_empty() {
+        "book".to_string()
+    } else {
+        name
+    }
+}
+
+#[cfg(test)]
+fn cleanup_delete_tombstones(storage: &AppStorage) -> Result<(), String> {
+    let tombstones = list_delete_tombstones(storage)?;
+    for tombstone in tombstones {
+        cleanup_delete_tombstone_path(&tombstone)?;
+    }
+
+    let root = delete_tombstones_root(storage.root());
+    if root.exists() {
+        let is_empty = fs::read_dir(&root)
+            .map_err(|error| error.to_string())?
+            .next()
+            .is_none();
+        if is_empty {
+            fs::remove_dir(&root).map_err(|error| error.to_string())?;
+        }
+    }
+
+    Ok(())
+}
+
+fn list_delete_tombstones(storage: &AppStorage) -> Result<Vec<PathBuf>, String> {
+    let root = delete_tombstones_root(storage.root());
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+
+    fs::read_dir(root)
+        .map_err(|error| error.to_string())?
+        .map(|entry| {
+            entry
+                .map(|entry| entry.path())
+                .map_err(|error| error.to_string())
+        })
+        .collect()
+}
+
+fn cleanup_delete_tombstone_path(path: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
+    if metadata.is_dir() {
+        fs::remove_dir_all(path).map_err(|error| error.to_string())
+    } else {
+        fs::remove_file(path).map_err(|error| error.to_string())
+    }
+}
+
+fn enqueue_delete_tombstone_cleanup(tasks: &TaskService, tombstones: Vec<PathBuf>) {
+    if tombstones.is_empty() {
+        return;
+    }
+
+    let tasks = tasks.clone();
+    std::thread::spawn(move || {
+        for tombstone in tombstones {
+            let key = TaskKey::new(
+                TaskKind::TombstoneCleanup,
+                tombstone.to_string_lossy().into_owned(),
+            );
+            let runner = tasks.clone();
+            let cleanup_path = tombstone.clone();
+            if let Err(error) = tasks.get_or_run(key, TaskPriority::Background, move || {
+                runner.run_background(|| cleanup_delete_tombstone_path(&cleanup_path))
+            }) {
+                eprintln!("Failed to cleanup deleted book tombstone: {error}");
+            }
+        }
+    });
+}
+
+fn delete_books_impl(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    let tombstones = delete_books_to_tombstones(storage, &ids)?;
+    storage.flush_dirty()?;
+    enqueue_delete_tombstone_cleanup(tasks, tombstones);
+    Ok(())
+}
+
+pub fn schedule_existing_delete_tombstone_cleanup(storage: &AppStorage, tasks: &TaskService) {
+    match list_delete_tombstones(storage) {
+        Ok(tombstones) => enqueue_delete_tombstone_cleanup(tasks, tombstones),
+        Err(error) => eprintln!("Failed to list deleted book tombstones: {error}"),
+    }
 }
 
 fn id_from_hash(hash: &str) -> String {
@@ -1991,13 +2193,15 @@ pub(super) fn export_book_impl(
 mod tests {
     use super::commands::{record_reading_position_impl, ReadingPositionInput};
     use super::{
-        book_is_export_dirty, decode_text_bytes, empty_object, encoded_txt_source_update,
-        ensure_book_package_path_with_unpacker, library_path, mark_book_exported,
-        normalize_publication_date, parse_text_import_document,
+        book_is_export_dirty, cleanup_delete_tombstones, decode_text_bytes,
+        delete_books_to_tombstones, delete_tombstones_root, empty_object,
+        encoded_txt_source_update, ensure_book_package_path_with_unpacker, library_path,
+        mark_book_exported, normalize_publication_date, parse_text_import_document,
         read_search_text_sections_from_unpacked, replace_generated_txt_source_text,
-        replace_xhtml_text_node, search_text_cache_from_bytes, search_text_cache_to_bytes,
-        search_text_in_cache, sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml,
-        text_section_xhtml, visible_search_text_from_xhtml, write_epub_from_original_and_unpacked,
+        replace_xhtml_text_node, schedule_existing_delete_tombstone_cleanup,
+        search_text_cache_from_bytes, search_text_cache_to_bytes, search_text_in_cache,
+        sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml, text_section_xhtml,
+        visible_search_text_from_xhtml, write_epub_from_original_and_unpacked,
         write_epub_from_unpacked_dir, write_source_text_update, AppStorage, BookExportFormat,
         BookSourceFormat, BookState, BookTextReplaceTarget, DirtyState, Library, LibraryBook,
         ReadingStatus, SearchTextCache, SearchTextSection, SourceParagraphRange,
@@ -2011,7 +2215,7 @@ mod tests {
         collections::{HashMap, VecDeque},
         fs,
         io::{Read, Write},
-        path::Path,
+        path::{Path, PathBuf},
         sync::{
             atomic::{AtomicUsize, Ordering},
             Arc, Mutex,
@@ -2037,14 +2241,21 @@ mod tests {
     }
 
     fn test_storage_with_book(root: &Path, book: LibraryBook) -> AppStorage {
-        let book_state = BookState {
-            cfi: book.cfi.clone(),
-            percentage: book.percentage,
-            ..Default::default()
-        };
-        let book_id = book.id.clone();
+        test_storage_with_books(root, vec![book])
+    }
+
+    fn test_storage_with_books(root: &Path, books: Vec<LibraryBook>) -> AppStorage {
         let mut book_states = HashMap::new();
-        book_states.insert(book_id, book_state);
+        for book in &books {
+            book_states.insert(
+                book.id.clone(),
+                BookState {
+                    cfi: book.cfi.clone(),
+                    percentage: book.percentage,
+                    ..Default::default()
+                },
+            );
+        }
 
         AppStorage {
             inner: Arc::new(StorageInner {
@@ -2052,7 +2263,7 @@ mod tests {
                 state: Mutex::new(StorageState {
                     library: Library {
                         version: 1,
-                        books: vec![book],
+                        books,
                         tags: Vec::new(),
                     },
                     settings: json!({}),
@@ -2064,6 +2275,171 @@ mod tests {
                 search_text_cache_order: Mutex::new(VecDeque::new()),
             }),
         }
+    }
+
+    fn test_library_book_with_id(id: &str, source_format: BookSourceFormat) -> LibraryBook {
+        let mut book = test_library_book(source_format);
+        book.id = id.to_string();
+        book.name = format!("{id}.epub");
+        book
+    }
+
+    fn write_book_dir(storage: &AppStorage, id: &str, marker: &str) {
+        let dir = storage.book_dir(id);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("marker.txt"), marker).unwrap();
+    }
+
+    fn tombstone_entries(root: &Path) -> Vec<PathBuf> {
+        let tombstones = delete_tombstones_root(root);
+        if !tombstones.exists() {
+            return Vec::new();
+        }
+        fs::read_dir(tombstones)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect()
+    }
+
+    #[test]
+    fn delete_books_moves_book_directories_to_tombstones_before_cleanup() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-delete-tombstone-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let storage = test_storage_with_books(
+            &root,
+            vec![
+                test_library_book_with_id("book-a", BookSourceFormat::Epub),
+                test_library_book_with_id("book-b", BookSourceFormat::Txt),
+            ],
+        );
+        write_book_dir(&storage, "book-a", "A");
+        write_book_dir(&storage, "book-b", "B");
+        storage.inner.search_text_caches.lock().unwrap().insert(
+            "book-a".to_string(),
+            Arc::new(SearchTextCache {
+                version: SEARCH_TEXT_CACHE_VERSION,
+                extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
+                book_hash: "hash".to_string(),
+                content_version: 1,
+                sections: Vec::new(),
+            }),
+        );
+
+        let tombstones =
+            delete_books_to_tombstones(&storage, &["book-a".to_string(), "book-b".to_string()])
+                .unwrap();
+
+        {
+            let state = storage.inner.state.lock().unwrap();
+            assert!(state.library.books.is_empty());
+            assert!(state.book_states.is_empty());
+        }
+        assert!(!storage.book_dir("book-a").exists());
+        assert!(!storage.book_dir("book-b").exists());
+        assert_eq!(tombstones.len(), 2);
+        assert_eq!(tombstone_entries(&root).len(), 2);
+        assert!(tombstones
+            .iter()
+            .any(|path| path.join("marker.txt").exists()));
+        assert!(!storage
+            .inner
+            .search_text_caches
+            .lock()
+            .unwrap()
+            .contains_key("book-a"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delete_books_falls_back_when_tombstone_root_is_unavailable() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-delete-tombstone-fallback-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let storage = test_storage_with_books(
+            &root,
+            vec![test_library_book_with_id("book-a", BookSourceFormat::Epub)],
+        );
+        write_book_dir(&storage, "book-a", "A");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(delete_tombstones_root(&root), "blocked").unwrap();
+
+        let tombstones = delete_books_to_tombstones(&storage, &["book-a".to_string()]).unwrap();
+
+        {
+            let state = storage.inner.state.lock().unwrap();
+            assert!(state.library.books.is_empty());
+            assert!(state.book_states.is_empty());
+        }
+        assert!(storage.inner.dirty.lock().unwrap().library);
+        assert!(!storage.book_dir("book-a").exists());
+        assert!(tombstones.is_empty());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delete_tombstone_cleanup_removes_existing_tombstones() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-delete-cleanup-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
+        let tombstone = delete_tombstones_root(&root).join("book-a-deleted");
+        fs::create_dir_all(&tombstone).unwrap();
+        fs::write(tombstone.join("marker.txt"), "deleted").unwrap();
+
+        cleanup_delete_tombstones(&storage).unwrap();
+
+        assert!(!tombstone.exists());
+        assert!(tombstone_entries(&root).is_empty());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn startup_tombstone_cleanup_removes_leftover_tombstones() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-startup-cleanup-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
+        let tombstone = delete_tombstones_root(&root).join("book-a-leftover");
+        fs::create_dir_all(&tombstone).unwrap();
+        fs::write(tombstone.join("marker.txt"), "leftover").unwrap();
+        let tasks = TaskService::default();
+
+        schedule_existing_delete_tombstone_cleanup(&storage, &tasks);
+        for _ in 0..100 {
+            if !tombstone.exists() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        assert!(!tombstone.exists());
+        assert!(tombstone_entries(&root).is_empty());
+
+        let _ = fs::remove_dir_all(root);
     }
 
     fn reading_position_input(

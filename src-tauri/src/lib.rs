@@ -101,7 +101,10 @@ pub fn run() {
         }))
         .setup(|app| {
             let storage = storage::AppStorage::load(app.handle()).map_err(std::io::Error::other)?;
-            app.manage(storage);
+            app.manage(storage.clone());
+            if let Some(tasks) = app.try_state::<tasks::TaskService>() {
+                storage::schedule_existing_delete_tombstone_cleanup(&storage, &tasks);
+            }
 
             if let Some(window) = app.get_webview_window("main") {
                 storage::restore_window_state(&window);
