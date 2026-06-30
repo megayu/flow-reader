@@ -1227,8 +1227,11 @@ pub(super) fn load_or_prepare_text_import(
                 return Ok(prepared);
             }
             storage.note_text_import_prepare_run();
+            storage.begin_text_import_prepare();
             let prepared =
-                prepare_text_import_entry(&path, encoding.as_deref(), rules.as_ref(), key)?;
+                prepare_text_import_entry(&path, encoding.as_deref(), rules.as_ref(), key);
+            storage.end_text_import_prepare();
+            let prepared = prepared?;
             storage.insert_prepared_text_import(Arc::clone(&prepared));
             Ok(prepared)
         })

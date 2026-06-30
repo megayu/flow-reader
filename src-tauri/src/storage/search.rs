@@ -1057,6 +1057,9 @@ mod tests {
                 search_text_cache_order: Mutex::new(VecDeque::new()),
                 text_import_prepared_cache: Mutex::new(TextImportPreparedCache::new()),
                 text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
+                text_import_prepare_active: std::sync::atomic::AtomicUsize::new(0),
+                text_import_prepare_max_active: std::sync::atomic::AtomicUsize::new(0),
+                text_import_prepare_delay_ms: std::sync::atomic::AtomicU64::new(0),
             }),
         }
     }

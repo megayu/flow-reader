@@ -99,6 +99,12 @@ struct StorageInner {
     text_import_prepared_cache: Mutex<TextImportPreparedCache>,
     #[cfg(test)]
     text_import_prepare_runs: std::sync::atomic::AtomicUsize,
+    #[cfg(test)]
+    text_import_prepare_active: std::sync::atomic::AtomicUsize,
+    #[cfg(test)]
+    text_import_prepare_max_active: std::sync::atomic::AtomicUsize,
+    #[cfg(test)]
+    text_import_prepare_delay_ms: std::sync::atomic::AtomicU64,
 }
 
 struct StorageState {
@@ -336,6 +342,12 @@ impl AppStorage {
                 text_import_prepared_cache: Mutex::new(TextImportPreparedCache::new()),
                 #[cfg(test)]
                 text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
+                #[cfg(test)]
+                text_import_prepare_active: std::sync::atomic::AtomicUsize::new(0),
+                #[cfg(test)]
+                text_import_prepare_max_active: std::sync::atomic::AtomicUsize::new(0),
+                #[cfg(test)]
+                text_import_prepare_delay_ms: std::sync::atomic::AtomicU64::new(0),
             }),
         })
     }
@@ -412,6 +424,46 @@ impl AppStorage {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 
+    fn begin_text_import_prepare(&self) {
+        #[cfg(test)]
+        {
+            let active = self
+                .inner
+                .text_import_prepare_active
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                + 1;
+            let mut current = self
+                .inner
+                .text_import_prepare_max_active
+                .load(std::sync::atomic::Ordering::SeqCst);
+            while active > current {
+                match self.inner.text_import_prepare_max_active.compare_exchange(
+                    current,
+                    active,
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                ) {
+                    Ok(_) => break,
+                    Err(next) => current = next,
+                }
+            }
+            let delay_ms = self
+                .inner
+                .text_import_prepare_delay_ms
+                .load(std::sync::atomic::Ordering::SeqCst);
+            if delay_ms > 0 {
+                std::thread::sleep(Duration::from_millis(delay_ms));
+            }
+        }
+    }
+
+    fn end_text_import_prepare(&self) {
+        #[cfg(test)]
+        self.inner
+            .text_import_prepare_active
+            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
     #[cfg(test)]
     fn text_import_prepare_run_count(&self) -> usize {
         self.inner
@@ -440,6 +492,21 @@ impl AppStorage {
             .lock()
             .unwrap()
             .bytes()
+    }
+
+    #[cfg(test)]
+    fn set_text_import_prepare_delay(&self, delay: Duration) {
+        self.inner.text_import_prepare_delay_ms.store(
+            delay.as_millis() as u64,
+            std::sync::atomic::Ordering::SeqCst,
+        );
+    }
+
+    #[cfg(test)]
+    fn text_import_prepare_max_active(&self) -> usize {
+        self.inner
+            .text_import_prepare_max_active
+            .load(std::sync::atomic::Ordering::SeqCst)
     }
 
     fn read_book_state_uncached(&self, id: &str) -> Result<BookState, String> {
@@ -2354,6 +2421,9 @@ mod tests {
                 search_text_cache_order: Mutex::new(VecDeque::new()),
                 text_import_prepared_cache: Mutex::new(TextImportPreparedCache::new()),
                 text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
+                text_import_prepare_active: std::sync::atomic::AtomicUsize::new(0),
+                text_import_prepare_max_active: std::sync::atomic::AtomicUsize::new(0),
+                text_import_prepare_delay_ms: std::sync::atomic::AtomicU64::new(0),
             }),
         }
     }
@@ -2663,6 +2733,92 @@ mod tests {
         assert_eq!(storage.text_import_prepare_run_count(), 2);
         assert!(storage.text_import_prepared_cache_bytes() <= 32);
         assert!(storage.text_import_prepared_cache_len() <= 1);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn text_preview_prepares_files_concurrently() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-text-prepare-concurrent-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let first = root.join("first.txt");
+        let second = root.join("second.txt");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&first, "第1章 第一\n第一段。\n").unwrap();
+        fs::write(&second, "第1章 第二\n第二段。\n").unwrap();
+        let storage = test_storage_with_books(&root, Vec::new());
+        storage.set_text_import_prepare_delay(Duration::from_millis(80));
+        let tasks = TaskService::default();
+
+        let previews = preview_text_import_paths_impl(
+            &storage,
+            &tasks,
+            vec![
+                first.to_string_lossy().to_string(),
+                second.to_string_lossy().to_string(),
+            ],
+            HashMap::new(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(previews.len(), 2);
+        assert!(storage.text_import_prepare_max_active() > 1);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn text_import_prepares_files_concurrently_before_ordered_commit() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-text-import-concurrent-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let first = root.join("first.txt");
+        let second = root.join("second.txt");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&first, "第1章 第一\n第一段。\n").unwrap();
+        fs::write(&second, "第1章 第二\n第二段。\n").unwrap();
+        let storage = test_storage_with_books(&root, Vec::new());
+        storage.set_text_import_prepare_delay(Duration::from_millis(80));
+        let tasks = TaskService::default();
+
+        let books = import_text_paths_impl(
+            &storage,
+            &tasks,
+            vec![
+                TextImportSelection {
+                    path: first.to_string_lossy().to_string(),
+                    encoding: None,
+                    title: None,
+                    creator: None,
+                },
+                TextImportSelection {
+                    path: second.to_string_lossy().to_string(),
+                    encoding: None,
+                    title: None,
+                    creator: None,
+                },
+            ],
+            true,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(books.len(), 2);
+        assert_eq!(books[0].name, "first.txt");
+        assert_eq!(books[1].name, "second.txt");
+        assert!(storage.text_import_prepare_max_active() > 1);
 
         let _ = fs::remove_dir_all(root);
     }

@@ -1,6 +1,7 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
 use serde::Deserialize;
@@ -372,26 +373,92 @@ pub(super) fn preview_text_import_paths_impl(
     encodings: HashMap<String, String>,
     rules: Option<TextImportRulesInput>,
 ) -> Result<Vec<TextImportPreview>, String> {
-    let rules = rules.as_ref();
-    Ok(paths
+    let paths = paths
         .into_iter()
         .map(PathBuf::from)
         .filter(|path| is_txt_file(path))
-        .map(|path| {
-            let key = path_to_client_string(&path);
-            let encoding = encodings.get(&key).map(String::as_str);
-            let prepared = match load_or_prepare_text_import(storage, tasks, &path, encoding, rules)
-            {
-                Ok(prepared) => prepared,
-                Err(error) => return create_text_import_error_preview(&path, error),
-            };
-            if should_skip_prepared_text_import_preview(storage, &prepared).unwrap_or(false) {
-                create_skipped_text_import_preview(&path)
-            } else {
-                create_text_import_preview_from_prepared(&prepared)
-            }
+        .collect::<Vec<_>>();
+    let rules = rules.as_ref();
+    if paths.len() <= 1 {
+        return Ok(paths
+            .iter()
+            .map(|path| preview_text_import_path(storage, tasks, path, &encodings, rules))
+            .collect());
+    }
+
+    let queue = Arc::new(Mutex::new(
+        paths.into_iter().enumerate().collect::<VecDeque<_>>(),
+    ));
+    let results = Arc::new(Mutex::new(
+        std::iter::repeat_with(|| None)
+            .take(
+                queue
+                    .lock()
+                    .map_err(|_| "text import queue lock poisoned".to_string())?
+                    .len(),
+            )
+            .collect::<Vec<Option<TextImportPreview>>>(),
+    ));
+    let workers = text_import_prepare_worker_count(results.lock().unwrap().len());
+
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            let queue = Arc::clone(&queue);
+            let results = Arc::clone(&results);
+            let encodings = &encodings;
+            let storage = storage;
+            let tasks = tasks;
+            scope.spawn(move || loop {
+                let item = queue.lock().ok().and_then(|mut queue| queue.pop_front());
+                let Some((index, path)) = item else {
+                    break;
+                };
+                let preview = preview_text_import_path(storage, tasks, &path, &encodings, rules);
+                if let Ok(mut results) = results.lock() {
+                    results[index] = Some(preview);
+                }
+            });
+        }
+    });
+
+    let previews = results
+        .lock()
+        .map_err(|_| "text import results lock poisoned".to_string())?
+        .iter_mut()
+        .map(|result| {
+            result
+                .take()
+                .ok_or_else(|| "text import preview worker did not produce a result".to_string())
         })
-        .collect())
+        .collect();
+    previews
+}
+
+fn preview_text_import_path(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    path: &Path,
+    encodings: &HashMap<String, String>,
+    rules: Option<&TextImportRulesInput>,
+) -> TextImportPreview {
+    let key = path_to_client_string(path);
+    let encoding = encodings.get(&key).map(String::as_str);
+    let prepared = match load_or_prepare_text_import(storage, tasks, path, encoding, rules) {
+        Ok(prepared) => prepared,
+        Err(error) => return create_text_import_error_preview(path, error),
+    };
+    if should_skip_prepared_text_import_preview(storage, &prepared).unwrap_or(false) {
+        create_skipped_text_import_preview(path)
+    } else {
+        create_text_import_preview_from_prepared(&prepared)
+    }
+}
+
+fn text_import_prepare_worker_count(file_count: usize) -> usize {
+    let cpus = std::thread::available_parallelism()
+        .map(|cpus| cpus.get())
+        .unwrap_or(1);
+    file_count.min(cpus.saturating_mul(2).max(1)).max(1)
 }
 
 #[tauri::command]
@@ -420,21 +487,13 @@ pub(super) fn import_text_paths_impl(
 ) -> Result<Vec<BookRecord>, String> {
     let mut books = Vec::new();
     let rules = rules.as_ref();
+    let imports = imports
+        .into_iter()
+        .filter(|import| is_txt_file(Path::new(&import.path)))
+        .collect::<Vec<_>>();
+    let prepared_imports = prepare_text_imports_for_import(storage, tasks, imports, rules)?;
 
-    for import in imports {
-        let path = PathBuf::from(&import.path);
-        if !is_txt_file(&path) {
-            continue;
-        }
-
-        let prepared = consume_or_prepare_text_import(
-            storage,
-            tasks,
-            &path,
-            import.encoding.as_deref(),
-            rules,
-        )?;
-
+    for (import, prepared) in prepared_imports {
         books.push(import_text_path_impl(
             storage,
             prepared,
@@ -446,6 +505,83 @@ pub(super) fn import_text_paths_impl(
     }
 
     Ok(books)
+}
+
+fn prepare_text_imports_for_import(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    imports: Vec<TextImportSelection>,
+    rules: Option<&TextImportRulesInput>,
+) -> Result<Vec<(TextImportSelection, Arc<PreparedTextImport>)>, String> {
+    if imports.len() <= 1 {
+        return imports
+            .into_iter()
+            .map(|import| {
+                let path = PathBuf::from(&import.path);
+                let prepared = consume_or_prepare_text_import(
+                    storage,
+                    tasks,
+                    &path,
+                    import.encoding.as_deref(),
+                    rules,
+                )?;
+                Ok((import, prepared))
+            })
+            .collect();
+    }
+
+    let queue = Arc::new(Mutex::new(
+        imports.into_iter().enumerate().collect::<VecDeque<_>>(),
+    ));
+    let result_len = queue
+        .lock()
+        .map_err(|_| "text import queue lock poisoned".to_string())?
+        .len();
+    let results = Arc::new(Mutex::new(
+        std::iter::repeat_with(|| None)
+            .take(result_len)
+            .collect::<Vec<Option<Result<(TextImportSelection, Arc<PreparedTextImport>), String>>>>(
+            ),
+    ));
+    let workers = text_import_prepare_worker_count(result_len);
+
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            let queue = Arc::clone(&queue);
+            let results = Arc::clone(&results);
+            let storage = storage;
+            let tasks = tasks;
+            scope.spawn(move || loop {
+                let item = queue.lock().ok().and_then(|mut queue| queue.pop_front());
+                let Some((index, import)) = item else {
+                    break;
+                };
+                let path = PathBuf::from(&import.path);
+                let prepared = consume_or_prepare_text_import(
+                    storage,
+                    tasks,
+                    &path,
+                    import.encoding.as_deref(),
+                    rules,
+                );
+                if let Ok(mut results) = results.lock() {
+                    results[index] = Some(prepared.map(|prepared| (import, prepared)));
+                }
+            });
+        }
+    });
+
+    let prepared = results
+        .lock()
+        .map_err(|_| "text import results lock poisoned".to_string())?
+        .iter_mut()
+        .map(|result| {
+            result
+                .take()
+                .ok_or_else(|| "text import prepare worker did not produce a result".to_string())?
+        })
+        .collect();
+    prepared
 }
 
 #[tauri::command]
