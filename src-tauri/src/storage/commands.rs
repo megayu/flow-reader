@@ -342,9 +342,15 @@ pub(super) fn import_epub_paths_impl(
             continue;
         }
 
-        books.push(tasks.run_io(TaskPriority::Foreground, || {
-            import_epub_path_impl(storage, &path, replace_existing)
-        })?);
+        let bytes = std::fs::metadata(&path)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        books.push(tasks.run_io_observed(
+            storage.root(),
+            bytes,
+            TaskPriority::Foreground,
+            || import_epub_path_impl(storage, &path, replace_existing),
+        )?);
     }
 
     diagnostics::record_timing(
@@ -561,16 +567,22 @@ fn import_text_paths_direct(
             import.encoding.as_deref(),
             rules,
         )?;
-        books.push(tasks.run_io(TaskPriority::Foreground, || {
-            import_text_path_impl(
-                storage,
-                prepared,
-                import.title.as_deref(),
-                import.creator.as_deref(),
-                replace_existing,
-                rules,
-            )
-        })?);
+        let bytes = prepared.size;
+        books.push(tasks.run_io_observed(
+            storage.root(),
+            bytes,
+            TaskPriority::Foreground,
+            || {
+                import_text_path_impl(
+                    storage,
+                    prepared,
+                    import.title.as_deref(),
+                    import.creator.as_deref(),
+                    replace_existing,
+                    rules,
+                )
+            },
+        )?);
     }
     Ok(books)
 }
@@ -642,16 +654,22 @@ fn import_text_paths_with_pipeline(
                 .map_err(|_| "text import prepare worker stopped before completing".to_string())?;
             match message.prepared {
                 Ok(prepared) => {
-                    let book = tasks.run_io(TaskPriority::Foreground, || {
-                        import_text_path_impl(
-                            storage,
-                            prepared,
-                            message.import.title.as_deref(),
-                            message.import.creator.as_deref(),
-                            replace_existing,
-                            rules,
-                        )
-                    });
+                    let bytes = prepared.size;
+                    let book = tasks.run_io_observed(
+                        storage.root(),
+                        bytes,
+                        TaskPriority::Foreground,
+                        || {
+                            import_text_path_impl(
+                                storage,
+                                prepared,
+                                message.import.title.as_deref(),
+                                message.import.creator.as_deref(),
+                                replace_existing,
+                                rules,
+                            )
+                        },
+                    );
                     storage.end_text_import_prepared_handoff();
                     books[message.index] = Some(book?);
                 }

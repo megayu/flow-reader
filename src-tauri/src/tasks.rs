@@ -6,10 +6,11 @@ use std::{
     env,
     path::Path,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Condvar, Mutex,
     },
     thread::ThreadId,
+    time::{Duration, Instant},
 };
 
 #[cfg(windows)]
@@ -65,6 +66,8 @@ impl TaskKind {
 const DEFAULT_IO_WRITERS: usize = 1;
 const MAX_IO_WRITERS: usize = 4;
 const IO_WRITERS_ENV: &str = "FLOW_READER_IO_WRITERS";
+const IO_ADAPT_MIN_SAMPLES: usize = 2;
+const IO_ADAPT_IMPROVEMENT_RATIO: f64 = 1.10;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum TaskPriority {
@@ -182,7 +185,9 @@ struct TaskServiceInner {
     cpu: ResourceGate,
     io: ResourceGate,
     io_writer_override: bool,
+    io_adaptation: Mutex<HashMap<String, IoAdaptationState>>,
     background: ResourceGate,
+    background_cancel_epoch: AtomicU64,
     book_locks: Mutex<HashMap<String, Arc<BookOperationLock>>>,
 }
 
@@ -214,6 +219,15 @@ enum IoVolumeClass {
     Unknown,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+struct IoAdaptationState {
+    best_limit: usize,
+    best_throughput_bytes_per_ms: f64,
+    current_limit: usize,
+    current_samples: usize,
+    current_throughput_total: f64,
+}
+
 struct BookOperationLock {
     state: Mutex<BookOperationLockState>,
     ready: Condvar,
@@ -231,10 +245,15 @@ struct BookOperationPermit {
 
 impl Default for TaskService {
     fn default() -> Self {
+        Self::with_io_writer_config(initial_io_writer_config())
+    }
+}
+
+impl TaskService {
+    fn with_io_writer_config(io_config: IoWriterConfig) -> Self {
         let logical_cpus = std::thread::available_parallelism()
             .map(|cpus| cpus.get())
             .unwrap_or(1);
-        let io_config = initial_io_writer_config();
         Self {
             inner: Arc::new(TaskServiceInner {
                 shutdown: AtomicBool::new(false),
@@ -242,19 +261,25 @@ impl Default for TaskService {
                 cpu: ResourceGate::new(logical_cpus.saturating_mul(2).max(1)),
                 io: ResourceGate::new(io_config.limit),
                 io_writer_override: io_config.overridden,
+                io_adaptation: Mutex::new(HashMap::new()),
                 background: ResourceGate::new(1),
+                background_cancel_epoch: AtomicU64::new(0),
                 book_locks: Mutex::new(HashMap::new()),
             }),
         }
     }
-}
 
-impl TaskService {
     pub(crate) fn begin_shutdown(&self) {
         self.inner.shutdown.store(true, Ordering::SeqCst);
+        self.inner.background.notify_all();
     }
 
-    pub(crate) fn cancel_background(&self) {}
+    pub(crate) fn cancel_background(&self) {
+        self.inner
+            .background_cancel_epoch
+            .fetch_add(1, Ordering::SeqCst);
+        self.inner.background.notify_all();
+    }
 
     pub(crate) fn set_io_writer_limit(&self, max: usize) {
         self.inner.io.set_max(max.clamp(1, MAX_IO_WRITERS));
@@ -271,6 +296,73 @@ impl TaskService {
         self.inner
             .io
             .set_max(io_writer_limit_for_volume_class(classify_io_volume(path)));
+    }
+
+    pub(crate) fn record_io_observation(
+        &self,
+        volume_root: impl Into<String>,
+        bytes: u64,
+        elapsed: Duration,
+    ) {
+        if self.inner.io_writer_override || bytes == 0 || elapsed.is_zero() {
+            return;
+        }
+
+        let current_limit = self.io_writer_limit();
+        let throughput = bytes as f64 / elapsed.as_millis().max(1) as f64;
+        let mut adaptations = match self.inner.io_adaptation.lock() {
+            Ok(adaptations) => adaptations,
+            Err(_) => return,
+        };
+        let state = adaptations
+            .entry(volume_root.into())
+            .or_insert_with(|| IoAdaptationState {
+                best_limit: current_limit,
+                best_throughput_bytes_per_ms: 0.0,
+                current_limit,
+                current_samples: 0,
+                current_throughput_total: 0.0,
+            });
+
+        if state.current_limit != current_limit {
+            state.current_limit = current_limit;
+            state.current_samples = 0;
+            state.current_throughput_total = 0.0;
+        }
+
+        state.current_samples += 1;
+        state.current_throughput_total += throughput;
+        let average = state.current_throughput_total / state.current_samples as f64;
+
+        if state.best_throughput_bytes_per_ms == 0.0
+            || average >= state.best_throughput_bytes_per_ms * IO_ADAPT_IMPROVEMENT_RATIO
+        {
+            state.best_throughput_bytes_per_ms = average;
+            state.best_limit = current_limit;
+        }
+
+        if state.current_samples < IO_ADAPT_MIN_SAMPLES {
+            return;
+        }
+
+        if current_limit > state.best_limit
+            && average < state.best_throughput_bytes_per_ms * IO_ADAPT_IMPROVEMENT_RATIO
+        {
+            let next_limit = state.best_limit.max(1);
+            self.inner.io.set_max(next_limit);
+            state.current_limit = next_limit;
+            state.current_samples = 0;
+            state.current_throughput_total = 0.0;
+            return;
+        }
+
+        if current_limit == state.best_limit && current_limit < MAX_IO_WRITERS {
+            let next_limit = current_limit + 1;
+            self.inner.io.set_max(next_limit);
+            state.current_limit = next_limit;
+            state.current_samples = 0;
+            state.current_throughput_total = 0.0;
+        }
     }
 
     pub(crate) fn get_or_run<T>(
@@ -313,12 +405,37 @@ impl TaskService {
         task()
     }
 
+    pub(crate) fn run_io_observed<T>(
+        &self,
+        volume_path: impl AsRef<Path>,
+        bytes: u64,
+        priority: TaskPriority,
+        task: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String> {
+        let volume = io_volume_identity(volume_path.as_ref());
+        let started = Instant::now();
+        let result = self.run_io(priority, task);
+        if result.is_ok() {
+            self.record_io_observation(volume, bytes, started.elapsed());
+        }
+        result
+    }
+
     pub(crate) fn run_background<T>(
         &self,
         task: impl FnOnce() -> Result<T, String>,
     ) -> Result<T, String> {
         self.ensure_accepting(TaskPriority::Background)?;
-        let _permit = self.inner.background.acquire()?;
+        let cancel_epoch = self.inner.background_cancel_epoch.load(Ordering::SeqCst);
+        let _permit = self.inner.background.acquire_interruptible(|| {
+            self.inner.shutdown.load(Ordering::SeqCst)
+                || self.inner.background_cancel_epoch.load(Ordering::SeqCst) != cancel_epoch
+        })?;
+        if self.inner.shutdown.load(Ordering::SeqCst)
+            || self.inner.background_cancel_epoch.load(Ordering::SeqCst) != cancel_epoch
+        {
+            return Err("background work was cancelled".to_string());
+        }
         task()
     }
 
@@ -368,15 +485,31 @@ impl ResourceGate {
     }
 
     fn acquire(&self) -> Result<ResourcePermit<'_>, String> {
+        self.acquire_interruptible(|| false)
+    }
+
+    fn acquire_interruptible(
+        &self,
+        should_cancel: impl Fn() -> bool,
+    ) -> Result<ResourcePermit<'_>, String> {
+        if should_cancel() {
+            return Err("task resource gate wait cancelled".to_string());
+        }
         let mut state = self
             .state
             .lock()
             .map_err(|_| "task resource gate lock poisoned".to_string())?;
         while state.active >= state.max {
+            if should_cancel() {
+                return Err("task resource gate wait cancelled".to_string());
+            }
             state = self
                 .ready
                 .wait(state)
                 .map_err(|_| "task resource gate lock poisoned".to_string())?;
+            if should_cancel() {
+                return Err("task resource gate wait cancelled".to_string());
+            }
         }
         state.active += 1;
         Ok(ResourcePermit { gate: self })
@@ -394,6 +527,10 @@ impl ResourceGate {
             .lock()
             .map(|state| state.max)
             .unwrap_or(DEFAULT_IO_WRITERS)
+    }
+
+    fn notify_all(&self) {
+        self.ready.notify_all();
     }
 }
 
@@ -446,6 +583,11 @@ fn classify_io_volume(_path: &Path) -> IoVolumeClass {
     IoVolumeClass::Unknown
 }
 
+#[cfg(not(windows))]
+fn io_volume_identity(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
+}
+
 #[cfg(windows)]
 fn classify_io_volume(path: &Path) -> IoVolumeClass {
     let Some(root) = windows_volume_root(path) else {
@@ -465,6 +607,11 @@ fn classify_io_volume(path: &Path) -> IoVolumeClass {
         }
         _ => IoVolumeClass::Unknown,
     }
+}
+
+#[cfg(windows)]
+fn io_volume_identity(path: &Path) -> String {
+    windows_volume_root(path).unwrap_or_else(|| path.to_string_lossy().into_owned())
 }
 
 #[cfg(windows)]
@@ -639,7 +786,7 @@ mod tests {
             mpsc, Arc,
         },
         thread,
-        time::Duration,
+        time::{Duration, Instant},
     };
 
     #[test]
@@ -688,6 +835,50 @@ mod tests {
         let result = service.run_background(|| Ok("started"));
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn cancel_background_rejects_waiting_background_work_before_it_starts() {
+        let service = Arc::new(TaskService::default());
+        let executed = Arc::new(AtomicUsize::new(0));
+        let (first_started_tx, first_started_rx) = mpsc::channel();
+        let (release_first_tx, release_first_rx) = mpsc::channel();
+
+        let first = {
+            let service = Arc::clone(&service);
+            thread::spawn(move || {
+                service.run_background(|| {
+                    first_started_tx.send(()).unwrap();
+                    release_first_rx
+                        .recv_timeout(Duration::from_secs(1))
+                        .unwrap();
+                    Ok(())
+                })
+            })
+        };
+
+        first_started_rx
+            .recv_timeout(Duration::from_millis(100))
+            .unwrap();
+
+        let second = {
+            let service = Arc::clone(&service);
+            let executed = Arc::clone(&executed);
+            thread::spawn(move || {
+                service.run_background(|| {
+                    executed.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                })
+            })
+        };
+
+        thread::sleep(Duration::from_millis(30));
+        service.cancel_background();
+        release_first_tx.send(()).unwrap();
+
+        first.join().unwrap().unwrap();
+        assert!(second.join().unwrap().is_err());
+        assert_eq!(executed.load(Ordering::SeqCst), 0);
     }
 
     #[test]
@@ -805,6 +996,81 @@ mod tests {
 
         service.set_io_writer_limit(0);
         assert_eq!(service.io_writer_limit(), 1);
+    }
+
+    #[test]
+    fn io_feedback_probes_higher_writer_limit_after_stable_single_writer_samples() {
+        let service = TaskService::with_io_writer_config(super::IoWriterConfig {
+            limit: 1,
+            overridden: false,
+        });
+
+        service.record_io_observation("C:\\", 1_000_000, Duration::from_millis(100));
+        assert_eq!(service.io_writer_limit(), 1);
+
+        service.record_io_observation("C:\\", 1_000_000, Duration::from_millis(100));
+        assert_eq!(service.io_writer_limit(), 2);
+    }
+
+    #[test]
+    fn io_feedback_reduces_writer_limit_when_probe_does_not_improve_throughput() {
+        let service = TaskService::with_io_writer_config(super::IoWriterConfig {
+            limit: 1,
+            overridden: false,
+        });
+
+        service.record_io_observation("C:\\", 1_000_000, Duration::from_millis(100));
+        service.record_io_observation("C:\\", 1_000_000, Duration::from_millis(100));
+        assert_eq!(service.io_writer_limit(), 2);
+
+        service.record_io_observation("C:\\", 1_000_000, Duration::from_millis(130));
+        assert_eq!(service.io_writer_limit(), 2);
+
+        service.record_io_observation("C:\\", 1_000_000, Duration::from_millis(130));
+        assert_eq!(service.io_writer_limit(), 1);
+    }
+
+    #[test]
+    fn io_feedback_keeps_explicit_writer_override_unchanged() {
+        let service = TaskService::with_io_writer_config(super::IoWriterConfig {
+            limit: 3,
+            overridden: true,
+        });
+
+        let started = Instant::now();
+        while started.elapsed() < Duration::from_millis(10) {
+            service.record_io_observation("C:\\", 1_000_000, Duration::from_millis(150));
+        }
+
+        assert_eq!(service.io_writer_limit(), 3);
+    }
+
+    #[test]
+    fn observed_io_work_feeds_adaptive_writer_policy() {
+        let service = TaskService::with_io_writer_config(super::IoWriterConfig {
+            limit: 1,
+            overridden: false,
+        });
+
+        service
+            .run_io_observed(
+                "C:\\",
+                1_000_000,
+                super::TaskPriority::Foreground,
+                || Ok(()),
+            )
+            .unwrap();
+        assert_eq!(service.io_writer_limit(), 1);
+
+        service
+            .run_io_observed(
+                "C:\\",
+                1_000_000,
+                super::TaskPriority::Foreground,
+                || Ok(()),
+            )
+            .unwrap();
+        assert_eq!(service.io_writer_limit(), 2);
     }
 
     #[test]
