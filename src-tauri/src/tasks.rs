@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::{
+    any::Any,
     collections::HashMap,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -143,12 +144,14 @@ where
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct TaskService {
     inner: Arc<TaskServiceInner>,
 }
 
 struct TaskServiceInner {
     shutdown: AtomicBool,
+    in_flight: TaskRegistry<Arc<dyn Any + Send + Sync>>,
     cpu: ResourceGate,
     io: ResourceGate,
     background: ResourceGate,
@@ -172,6 +175,7 @@ impl Default for TaskService {
         Self {
             inner: Arc::new(TaskServiceInner {
                 shutdown: AtomicBool::new(false),
+                in_flight: TaskRegistry::new(),
                 cpu: ResourceGate::new(logical_cpus.saturating_mul(2).max(1)),
                 io: ResourceGate::new(1),
                 background: ResourceGate::new(1),
@@ -186,6 +190,26 @@ impl TaskService {
     }
 
     pub(crate) fn cancel_background(&self) {}
+
+    pub(crate) fn get_or_run<T>(
+        &self,
+        key: TaskKey,
+        priority: TaskPriority,
+        task: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String>
+    where
+        T: Clone + Send + Sync + 'static,
+    {
+        self.ensure_accepting(priority)?;
+        let value = self.inner.in_flight.get_or_run(key, || {
+            task().map(|value| Arc::new(value) as Arc<dyn Any + Send + Sync>)
+        })?;
+        value
+            .as_ref()
+            .downcast_ref::<T>()
+            .cloned()
+            .ok_or_else(|| "task result type mismatch".to_string())
+    }
 
     pub(crate) fn run_cpu<T>(
         &self,

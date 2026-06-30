@@ -6,7 +6,11 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use crate::tasks::{TaskKey, TaskKind, TaskPriority, TaskService};
+
 use super::*;
+
+const SEARCH_TEXT_MEMORY_CACHE_LIMIT: usize = 8;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct SearchTextCache {
@@ -84,11 +88,16 @@ fn search_text_cache_matches_book(cache: &SearchTextCache, book: &LibraryBook) -
         && cache.content_version == book.content_version
 }
 
-fn write_search_text_cache(
+fn write_search_text_cache_if_current(
     storage: &AppStorage,
     id: &str,
     cache: &SearchTextCache,
-) -> Result<(), String> {
+) -> Result<bool, String> {
+    let current_book = storage.library_book(id)?;
+    if !search_text_cache_matches_book(cache, &current_book) {
+        return Ok(false);
+    }
+
     let path = storage.search_text_cache_path(id);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
@@ -97,7 +106,85 @@ fn write_search_text_cache(
     let bytes = search_text_cache_to_bytes(cache)?;
     let tmp = path.with_extension("tmp");
     fs::write(&tmp, bytes).map_err(|error| error.to_string())?;
-    fs::rename(&tmp, path).map_err(|error| error.to_string())
+
+    let current_book = storage.library_book(id)?;
+    if !search_text_cache_matches_book(cache, &current_book) {
+        let _ = fs::remove_file(&tmp);
+        return Ok(false);
+    }
+
+    fs::rename(&tmp, path).map_err(|error| error.to_string())?;
+    Ok(true)
+}
+
+fn store_search_text_memory_cache(
+    storage: &AppStorage,
+    id: String,
+    cache: Arc<SearchTextCache>,
+) -> Result<(), String> {
+    let mut caches = storage
+        .inner
+        .search_text_caches
+        .lock()
+        .map_err(|_| "search text cache lock poisoned".to_string())?;
+    let mut order = storage
+        .inner
+        .search_text_cache_order
+        .lock()
+        .map_err(|_| "search text cache order lock poisoned".to_string())?;
+
+    caches.insert(id.clone(), cache);
+    order.retain(|cache_id| cache_id != &id);
+    order.push_back(id.clone());
+
+    while caches.len() > SEARCH_TEXT_MEMORY_CACHE_LIMIT {
+        let Some(evicted_id) = order.pop_front() else {
+            break;
+        };
+        if evicted_id != id {
+            caches.remove(&evicted_id);
+        }
+    }
+
+    Ok(())
+}
+
+fn load_search_text_memory_cache(
+    storage: &AppStorage,
+    book: &LibraryBook,
+) -> Result<Option<Arc<SearchTextCache>>, String> {
+    let mut stale = false;
+    let cache = {
+        let mut caches = storage
+            .inner
+            .search_text_caches
+            .lock()
+            .map_err(|_| "search text cache lock poisoned".to_string())?;
+        let cache = caches.get(&book.id).cloned();
+        match cache {
+            Some(cache) if search_text_cache_matches_book(&cache, book) => Some(cache),
+            Some(_) => {
+                caches.remove(&book.id);
+                stale = true;
+                None
+            }
+            None => None,
+        }
+    };
+
+    if cache.is_some() || stale {
+        let mut order = storage
+            .inner
+            .search_text_cache_order
+            .lock()
+            .map_err(|_| "search text cache order lock poisoned".to_string())?;
+        order.retain(|cache_id| cache_id != &book.id);
+        if cache.is_some() {
+            order.push_back(book.id.clone());
+        }
+    }
+
+    Ok(cache)
 }
 
 fn read_search_text_cache(
@@ -116,47 +203,55 @@ fn read_search_text_cache(
 
 pub(super) fn load_or_build_search_text_cache(
     storage: &AppStorage,
+    tasks: &TaskService,
     book: &LibraryBook,
 ) -> Result<Arc<SearchTextCache>, String> {
-    if let Some(cache) = storage
-        .inner
-        .search_text_caches
-        .lock()
-        .map_err(|_| "search text cache lock poisoned".to_string())?
-        .get(&book.id)
-        .filter(|cache| search_text_cache_matches_book(cache, book))
-        .cloned()
-    {
+    load_or_build_search_text_cache_with_builder(storage, tasks, book, build_search_text_cache)
+}
+
+fn load_or_build_search_text_cache_with_builder(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    book: &LibraryBook,
+    builder: impl FnOnce(&AppStorage, &LibraryBook) -> Result<SearchTextCache, String>,
+) -> Result<Arc<SearchTextCache>, String> {
+    if let Some(cache) = load_search_text_memory_cache(storage, book)? {
         return Ok(cache);
     }
 
     if let Ok(cache) = read_search_text_cache(storage, book) {
         let cache = Arc::new(cache);
-        storage
-            .inner
-            .search_text_caches
-            .lock()
-            .map_err(|_| "search text cache lock poisoned".to_string())?
-            .insert(book.id.clone(), cache.clone());
+        store_search_text_memory_cache(storage, book.id.clone(), cache.clone())?;
         return Ok(cache);
     }
 
-    build_and_store_search_text_cache(storage, book)
+    let key = search_index_task_key(book);
+    let task_storage = storage.clone();
+    let task_book = book.clone();
+    let task_runner = tasks.clone();
+    let cache: Arc<SearchTextCache> =
+        tasks.get_or_run(key, TaskPriority::Foreground, move || {
+            task_runner.run_cpu(TaskPriority::Foreground, || {
+                let cache = builder(&task_storage, &task_book)?;
+                if !write_search_text_cache_if_current(&task_storage, &task_book.id, &cache)? {
+                    return Err("Search text cache is stale".to_string());
+                }
+                Ok(Arc::new(cache))
+            })
+        })?;
+
+    if !search_text_cache_matches_book(&cache, book) {
+        return Err("Search text cache is stale".to_string());
+    }
+    store_search_text_memory_cache(storage, book.id.clone(), cache.clone())?;
+    Ok(cache)
 }
 
-fn build_and_store_search_text_cache(
-    storage: &AppStorage,
-    book: &LibraryBook,
-) -> Result<Arc<SearchTextCache>, String> {
-    let cache = build_and_write_search_text_cache(storage, book)?;
-    let cache = Arc::new(cache);
-    storage
-        .inner
-        .search_text_caches
-        .lock()
-        .map_err(|_| "search text cache lock poisoned".to_string())?
-        .insert(book.id.clone(), cache.clone());
-    Ok(cache)
+fn search_index_task_key(book: &LibraryBook) -> TaskKey {
+    TaskKey::new(
+        TaskKind::SearchIndex,
+        format!("{}:{}", book.id, book.content_version),
+    )
 }
 
 pub(super) fn build_and_write_search_text_cache(
@@ -164,7 +259,9 @@ pub(super) fn build_and_write_search_text_cache(
     book: &LibraryBook,
 ) -> Result<SearchTextCache, String> {
     let cache = build_search_text_cache(storage, book)?;
-    write_search_text_cache(storage, &book.id, &cache)?;
+    if !write_search_text_cache_if_current(storage, &book.id, &cache)? {
+        return Err("Search text cache is stale".to_string());
+    }
     Ok(cache)
 }
 
@@ -897,4 +994,188 @@ fn search_text_excerpt(text: &str, offset: usize, keyword: &str) -> String {
     }
 
     excerpt
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::{
+        collections::{HashMap, VecDeque},
+        path::Path,
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Mutex,
+        },
+        thread,
+        time::{Duration, SystemTime, UNIX_EPOCH},
+    };
+
+    fn temp_root(label: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "flow-reader-{label}-{}-{nonce}",
+            std::process::id()
+        ))
+    }
+
+    fn test_book(id: &str, content_version: u32) -> LibraryBook {
+        LibraryBook {
+            id: id.to_string(),
+            name: format!("{id}.epub"),
+            size: 1,
+            reading_status: None,
+            source_format: Some(BookSourceFormat::Epub),
+            exported_versions: Default::default(),
+            content_edited_at: None,
+            content_hash: format!("hash-{content_version}"),
+            content_version,
+            metadata: empty_object(),
+            created_at: 1,
+            updated_at: None,
+            last_read_at: None,
+            cfi: None,
+            percentage: None,
+            tag_ids: Vec::new(),
+        }
+    }
+
+    fn test_storage(root: &Path, books: Vec<LibraryBook>) -> AppStorage {
+        AppStorage {
+            inner: Arc::new(StorageInner {
+                root: root.to_path_buf(),
+                state: Mutex::new(StorageState {
+                    library: Library {
+                        version: 1,
+                        books,
+                        tags: Vec::new(),
+                    },
+                    settings: json!({}),
+                    book_states: HashMap::new(),
+                }),
+                dirty: Mutex::new(DirtyState::default()),
+                reading_position_sequences: Mutex::new(HashMap::new()),
+                search_text_caches: Mutex::new(HashMap::new()),
+                search_text_cache_order: Mutex::new(VecDeque::new()),
+            }),
+        }
+    }
+
+    fn test_cache(book: &LibraryBook, text: &str) -> SearchTextCache {
+        SearchTextCache {
+            version: SEARCH_TEXT_CACHE_VERSION,
+            extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
+            book_hash: book.content_hash.clone(),
+            content_version: book.content_version,
+            sections: vec![SearchTextSection {
+                section_index: 0,
+                href: "Text/chapter.xhtml".to_string(),
+                title: Some("Chapter".to_string()),
+                nav_path: Vec::new(),
+                text: text.to_string(),
+            }],
+        }
+    }
+
+    #[test]
+    fn search_index_reuses_in_flight_build_for_same_book_version() {
+        let root = temp_root("search-idempotent-test");
+        let storage = Arc::new(test_storage(&root, vec![test_book("book", 1)]));
+        let tasks = Arc::new(TaskService::default());
+        let runs = Arc::new(AtomicUsize::new(0));
+        let book = storage.library_book("book").unwrap();
+
+        let first = {
+            let storage = Arc::clone(&storage);
+            let tasks = Arc::clone(&tasks);
+            let runs = Arc::clone(&runs);
+            let book = book.clone();
+            thread::spawn(move || {
+                load_or_build_search_text_cache_with_builder(&storage, &tasks, &book, |_, book| {
+                    runs.fetch_add(1, Ordering::SeqCst);
+                    thread::sleep(Duration::from_millis(100));
+                    Ok(test_cache(book, "first build"))
+                })
+            })
+        };
+
+        thread::sleep(Duration::from_millis(20));
+
+        let second = {
+            let storage = Arc::clone(&storage);
+            let tasks = Arc::clone(&tasks);
+            let runs = Arc::clone(&runs);
+            thread::spawn(move || {
+                load_or_build_search_text_cache_with_builder(&storage, &tasks, &book, |_, book| {
+                    runs.fetch_add(1, Ordering::SeqCst);
+                    Ok(test_cache(book, "second build"))
+                })
+            })
+        };
+
+        let first = first.join().unwrap().unwrap();
+        let second = second.join().unwrap().unwrap();
+
+        assert_eq!(first.sections[0].text, "first build");
+        assert_eq!(second.sections[0].text, "first build");
+        assert_eq!(runs.load(Ordering::SeqCst), 1);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn stale_search_index_result_is_not_written() {
+        let root = temp_root("search-stale-publish-test");
+        let storage = test_storage(&root, vec![test_book("book", 1)]);
+        let book = storage.library_book("book").unwrap();
+        let cache = test_cache(&book, "old content");
+
+        {
+            let mut state = storage.inner.state.lock().unwrap();
+            let book = state
+                .library
+                .books
+                .iter_mut()
+                .find(|book| book.id == "book")
+                .unwrap();
+            book.content_hash = "hash-2".to_string();
+            book.content_version = 2;
+        }
+
+        let published = write_search_text_cache_if_current(&storage, "book", &cache).unwrap();
+
+        assert!(!published);
+        assert!(!storage.search_text_cache_path("book").exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn search_memory_cache_is_bounded_by_book_count() {
+        let root = temp_root("search-memory-bound-test");
+        let books = (0..=SEARCH_TEXT_MEMORY_CACHE_LIMIT)
+            .map(|index| test_book(&format!("book-{index}"), 1))
+            .collect::<Vec<_>>();
+        let storage = test_storage(&root, books.clone());
+
+        for book in &books {
+            store_search_text_memory_cache(
+                &storage,
+                book.id.clone(),
+                Arc::new(test_cache(book, &book.id)),
+            )
+            .unwrap();
+        }
+
+        let caches = storage.inner.search_text_caches.lock().unwrap();
+
+        assert!(caches.len() <= SEARCH_TEXT_MEMORY_CACHE_LIMIT);
+        assert!(!caches.contains_key("book-0"));
+        assert!(caches.contains_key(&format!("book-{SEARCH_TEXT_MEMORY_CACHE_LIMIT}")));
+
+        let _ = fs::remove_dir_all(root);
+    }
 }

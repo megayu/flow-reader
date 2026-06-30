@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     fs,
     io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
@@ -89,6 +89,7 @@ struct StorageInner {
     dirty: Mutex<DirtyState>,
     reading_position_sequences: Mutex<HashMap<String, u64>>,
     search_text_caches: Mutex<HashMap<String, Arc<SearchTextCache>>>,
+    search_text_cache_order: Mutex<VecDeque<String>>,
 }
 
 struct StorageState {
@@ -322,6 +323,7 @@ impl AppStorage {
                 dirty: Mutex::new(DirtyState::default()),
                 reading_position_sequences: Mutex::new(HashMap::new()),
                 search_text_caches: Mutex::new(HashMap::new()),
+                search_text_cache_order: Mutex::new(VecDeque::new()),
             }),
         })
     }
@@ -357,6 +359,9 @@ impl AppStorage {
     fn unload_search_text_cache(&self, id: &str) {
         if let Ok(mut caches) = self.inner.search_text_caches.lock() {
             caches.remove(id);
+        }
+        if let Ok(mut order) = self.inner.search_text_cache_order.lock() {
+            order.retain(|cache_id| cache_id != id);
         }
     }
 
@@ -1888,7 +1893,7 @@ mod tests {
     };
     use serde_json::json;
     use std::{
-        collections::HashMap,
+        collections::{HashMap, VecDeque},
         fs,
         io::{Read, Write},
         path::Path,
@@ -1937,6 +1942,7 @@ mod tests {
                 dirty: Mutex::new(DirtyState::default()),
                 reading_position_sequences: Mutex::new(HashMap::new()),
                 search_text_caches: Mutex::new(HashMap::new()),
+                search_text_cache_order: Mutex::new(VecDeque::new()),
             }),
         }
     }

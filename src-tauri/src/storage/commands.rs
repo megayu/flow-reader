@@ -7,6 +7,8 @@ use serde::Deserialize;
 use serde_json::Value;
 use tauri::State;
 
+use crate::tasks::TaskService;
+
 use super::*;
 
 fn clean_tag_name(value: &str) -> String {
@@ -404,14 +406,16 @@ pub fn get_book_package_path(storage: State<'_, AppStorage>, id: String) -> Resu
 #[tauri::command]
 pub async fn search_book_text(
     storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
     id: String,
     keyword: String,
     limit: Option<usize>,
 ) -> Result<Vec<SearchTextResult>, String> {
     let storage = (*storage).clone();
+    let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
         let book = storage.library_book(&id)?;
-        let cache = load_or_build_search_text_cache(&storage, &book)?;
+        let cache = load_or_build_search_text_cache(&storage, &tasks, &book)?;
         Ok(search_text_in_cache(&cache, &keyword, limit))
     })
     .await
