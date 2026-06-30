@@ -6,6 +6,7 @@ use std::{
 use serde::Serialize;
 use tauri::{Emitter, Manager, WindowEvent};
 
+mod diagnostics;
 mod storage;
 mod tasks;
 

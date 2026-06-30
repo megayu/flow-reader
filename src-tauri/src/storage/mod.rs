@@ -4,7 +4,7 @@ use std::{
     io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,10 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager};
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
-use crate::tasks::{TaskKey, TaskKind, TaskPriority, TaskService};
+use crate::{
+    diagnostics,
+    tasks::{TaskKey, TaskKind, TaskPriority, TaskService},
+};
 
 mod book_assets;
 mod commands;
@@ -494,6 +497,22 @@ impl AppStorage {
             .bytes()
     }
 
+    fn text_import_prepared_cache_stats(&self) -> (usize, usize) {
+        self.inner
+            .text_import_prepared_cache
+            .lock()
+            .map(|mut cache| (cache.len(), cache.bytes()))
+            .unwrap_or_default()
+    }
+
+    fn search_text_memory_cache_len(&self) -> usize {
+        self.inner
+            .search_text_caches
+            .lock()
+            .map(|cache| cache.len())
+            .unwrap_or_default()
+    }
+
     #[cfg(test)]
     fn set_text_import_prepare_delay(&self, delay: Duration) {
         self.inner.text_import_prepare_delay_ms.store(
@@ -825,19 +844,51 @@ fn ensure_book_package_path_with_unpacker(
     book: &LibraryBook,
     unpacker: impl FnOnce(&Path, &Path) -> Result<(), String>,
 ) -> Result<PathBuf, String> {
+    let started = Instant::now();
     if let Ok(opf_path) = find_unpacked_opf_path(&storage.book_dir(&book.id).join(UNPACKED_DIR)) {
+        diagnostics::record_timing(
+            "epub-unpack",
+            started.elapsed(),
+            &[
+                ("book", book.id.clone()),
+                ("cache", "hit".to_string()),
+                (
+                    "search_memory_caches",
+                    storage.search_text_memory_cache_len().to_string(),
+                ),
+            ],
+        );
         return Ok(opf_path);
     }
 
     let key = unpack_epub_task_key(book);
     let storage = storage.clone();
     let book = book.clone();
+    let diagnostics_storage = storage.clone();
+    let diagnostics_book_id = book.id.clone();
     let task_runner = tasks.clone();
-    tasks.get_or_run(key, TaskPriority::Foreground, move || {
+    let result = tasks.get_or_run(key, TaskPriority::Foreground, move || {
         task_runner.run_io(TaskPriority::Foreground, || {
             publish_unpacked_book_package(&storage, &book, unpacker)
         })
-    })
+    });
+    if result.is_ok() {
+        diagnostics::record_timing(
+            "epub-unpack",
+            started.elapsed(),
+            &[
+                ("book", diagnostics_book_id),
+                ("cache", "miss".to_string()),
+                (
+                    "search_memory_caches",
+                    diagnostics_storage
+                        .search_text_memory_cache_len()
+                        .to_string(),
+                ),
+            ],
+        );
+    }
+    result
 }
 
 fn ensure_book_package_path(
@@ -1113,9 +1164,24 @@ fn delete_books_impl(
     tasks: &TaskService,
     ids: Vec<String>,
 ) -> Result<(), String> {
+    let started = Instant::now();
+    let source_count = ids.len();
     let tombstones = delete_books_to_tombstones(storage, &ids)?;
+    let tombstone_count = tombstones.len();
     storage.flush_dirty()?;
     enqueue_delete_tombstone_cleanup(tasks, tombstones);
+    diagnostics::record_timing(
+        "delete-books",
+        started.elapsed(),
+        &[
+            ("sources", source_count.to_string()),
+            ("tombstones", tombstone_count.to_string()),
+            (
+                "search_memory_caches",
+                storage.search_text_memory_cache_len().to_string(),
+            ),
+        ],
+    );
     Ok(())
 }
 

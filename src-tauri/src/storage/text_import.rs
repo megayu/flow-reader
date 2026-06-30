@@ -207,13 +207,11 @@ impl TextImportPreparedCache {
         self.enforce_limit();
     }
 
-    #[cfg(test)]
     pub(super) fn len(&mut self) -> usize {
         self.remove_expired();
         self.entries.len()
     }
 
-    #[cfg(test)]
     pub(super) fn bytes(&mut self) -> usize {
         self.remove_expired();
         self.bytes

@@ -2,13 +2,17 @@ use std::{
     collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    time::Instant,
 };
 
 use serde::Deserialize;
 use serde_json::Value;
 use tauri::State;
 
-use crate::tasks::{TaskPriority, TaskService};
+use crate::{
+    diagnostics,
+    tasks::{TaskPriority, TaskService},
+};
 
 use super::*;
 
@@ -328,6 +332,8 @@ pub(super) fn import_epub_paths_impl(
     paths: Vec<String>,
     replace_existing: bool,
 ) -> Result<Vec<BookRecord>, String> {
+    let started = Instant::now();
+    let source_count = paths.len();
     let mut books = Vec::new();
 
     for path in paths {
@@ -341,6 +347,14 @@ pub(super) fn import_epub_paths_impl(
         })?);
     }
 
+    diagnostics::record_timing(
+        "epub-import",
+        started.elapsed(),
+        &[
+            ("sources", source_count.to_string()),
+            ("imported", books.len().to_string()),
+        ],
+    );
     Ok(books)
 }
 
@@ -373,65 +387,82 @@ pub(super) fn preview_text_import_paths_impl(
     encodings: HashMap<String, String>,
     rules: Option<TextImportRulesInput>,
 ) -> Result<Vec<TextImportPreview>, String> {
+    let started = Instant::now();
     let paths = paths
         .into_iter()
         .map(PathBuf::from)
         .filter(|path| is_txt_file(path))
         .collect::<Vec<_>>();
+    let source_count = paths.len();
     let rules = rules.as_ref();
-    if paths.len() <= 1 {
-        return Ok(paths
+    let result = if paths.len() <= 1 {
+        Ok(paths
             .iter()
             .map(|path| preview_text_import_path(storage, tasks, path, &encodings, rules))
-            .collect());
+            .collect::<Vec<_>>())
+    } else {
+        let queue = Arc::new(Mutex::new(
+            paths.into_iter().enumerate().collect::<VecDeque<_>>(),
+        ));
+        let results = Arc::new(Mutex::new(
+            std::iter::repeat_with(|| None)
+                .take(
+                    queue
+                        .lock()
+                        .map_err(|_| "text import queue lock poisoned".to_string())?
+                        .len(),
+                )
+                .collect::<Vec<Option<TextImportPreview>>>(),
+        ));
+        let workers = text_import_prepare_worker_count(results.lock().unwrap().len());
+
+        std::thread::scope(|scope| {
+            for _ in 0..workers {
+                let queue = Arc::clone(&queue);
+                let results = Arc::clone(&results);
+                let encodings = &encodings;
+                let storage = storage;
+                let tasks = tasks;
+                scope.spawn(move || loop {
+                    let item = queue.lock().ok().and_then(|mut queue| queue.pop_front());
+                    let Some((index, path)) = item else {
+                        break;
+                    };
+                    let preview =
+                        preview_text_import_path(storage, tasks, &path, &encodings, rules);
+                    if let Ok(mut results) = results.lock() {
+                        results[index] = Some(preview);
+                    }
+                });
+            }
+        });
+
+        let previews = results
+            .lock()
+            .map_err(|_| "text import results lock poisoned".to_string())?
+            .iter_mut()
+            .map(|result| {
+                result.take().ok_or_else(|| {
+                    "text import preview worker did not produce a result".to_string()
+                })
+            })
+            .collect();
+        previews
+    };
+    if let Ok(previews) = &result {
+        let (cache_entries, cache_bytes) = storage.text_import_prepared_cache_stats();
+        diagnostics::record_timing(
+            "txt-preview",
+            started.elapsed(),
+            &[
+                ("sources", source_count.to_string()),
+                ("previews", previews.len().to_string()),
+                ("cache_entries", cache_entries.to_string()),
+                ("cache_bytes", cache_bytes.to_string()),
+            ],
+        );
     }
-
-    let queue = Arc::new(Mutex::new(
-        paths.into_iter().enumerate().collect::<VecDeque<_>>(),
-    ));
-    let results = Arc::new(Mutex::new(
-        std::iter::repeat_with(|| None)
-            .take(
-                queue
-                    .lock()
-                    .map_err(|_| "text import queue lock poisoned".to_string())?
-                    .len(),
-            )
-            .collect::<Vec<Option<TextImportPreview>>>(),
-    ));
-    let workers = text_import_prepare_worker_count(results.lock().unwrap().len());
-
-    std::thread::scope(|scope| {
-        for _ in 0..workers {
-            let queue = Arc::clone(&queue);
-            let results = Arc::clone(&results);
-            let encodings = &encodings;
-            let storage = storage;
-            let tasks = tasks;
-            scope.spawn(move || loop {
-                let item = queue.lock().ok().and_then(|mut queue| queue.pop_front());
-                let Some((index, path)) = item else {
-                    break;
-                };
-                let preview = preview_text_import_path(storage, tasks, &path, &encodings, rules);
-                if let Ok(mut results) = results.lock() {
-                    results[index] = Some(preview);
-                }
-            });
-        }
-    });
-
-    let previews = results
-        .lock()
-        .map_err(|_| "text import results lock poisoned".to_string())?
-        .iter_mut()
-        .map(|result| {
-            result
-                .take()
-                .ok_or_else(|| "text import preview worker did not produce a result".to_string())
-        })
-        .collect();
-    previews
+    result
 }
 
 fn preview_text_import_path(
@@ -485,6 +516,8 @@ pub(super) fn import_text_paths_impl(
     replace_existing: bool,
     rules: Option<TextImportRulesInput>,
 ) -> Result<Vec<BookRecord>, String> {
+    let started = Instant::now();
+    let source_count = imports.len();
     let mut books = Vec::new();
     let rules = rules.as_ref();
     let imports = imports
@@ -504,6 +537,17 @@ pub(super) fn import_text_paths_impl(
         )?);
     }
 
+    let (cache_entries, cache_bytes) = storage.text_import_prepared_cache_stats();
+    diagnostics::record_timing(
+        "txt-import",
+        started.elapsed(),
+        &[
+            ("sources", source_count.to_string()),
+            ("imported", books.len().to_string()),
+            ("cache_entries", cache_entries.to_string()),
+            ("cache_bytes", cache_bytes.to_string()),
+        ],
+    );
     Ok(books)
 }
 
