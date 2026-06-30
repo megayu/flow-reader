@@ -797,6 +797,7 @@ export class BookTab extends BaseTab {
   private navRefreshGeneration = 0
   private layoutOperationId = 0
   private layoutOperationPromise = Promise.resolve()
+  private readingPositionSequence = 0
   rejectedLocationEventCount = 0
 
   get container() {
@@ -1342,10 +1343,12 @@ export class BookTab extends BaseTab {
 
   updateBook(changes: Partial<BookRecord>) {
     const readingPositionOnly = isReadingPositionOnlyUpdate(changes, this.book)
+    const updatedAt = Date.now()
 
     changes = {
       ...changes,
-      updatedAt: Date.now(),
+      updatedAt,
+      ...(readingPositionOnly ? { lastReadAt: updatedAt } : {}),
     }
     // don't wait promise resolve to make valtio batch updates
     this.book = { ...this.book, ...changes }
@@ -1354,7 +1357,7 @@ export class BookTab extends BaseTab {
     db.books.remember(this.book)
 
     if (readingPositionOnly) {
-      void db.books.update(this.book.id, changes).catch((error) => {
+      void this.recordReadingPosition(changes).catch((error) => {
         console.error(error)
       })
       return
@@ -1417,6 +1420,17 @@ export class BookTab extends BaseTab {
     }
   }
 
+  private recordReadingPosition(changes: Partial<BookRecord>) {
+    return db.books.recordReadingPosition({
+      bookId: this.book.id,
+      cfi: changes.cfi,
+      percentage: changes.percentage,
+      spread: changes.configuration?.spread ?? null,
+      updatedAt: changes.updatedAt ?? Date.now(),
+      sequence: ++this.readingPositionSequence,
+    })
+  }
+
   async flushForClose({ flushStorage = true } = {}) {
     try {
       await this.navigationPromise
@@ -1426,13 +1440,15 @@ export class BookTab extends BaseTab {
 
     const positionUpdate = this.createCurrentPositionUpdate()
     if (positionUpdate) {
+      const updatedAt = Date.now()
       const changes = {
         ...positionUpdate,
-        updatedAt: Date.now(),
+        updatedAt,
+        lastReadAt: updatedAt,
       }
       this.setBook({ ...this.book, ...changes })
       db.books.remember(this.book)
-      await db.books.update(this.book.id, changes)
+      await this.recordReadingPosition(changes)
     }
 
     await this.flushPendingBookUpdate({ flushStorage: false })

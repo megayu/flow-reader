@@ -3,6 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use serde::Deserialize;
 use serde_json::Value;
 use tauri::State;
 
@@ -468,6 +469,105 @@ fn configuration_without_spread(value: Option<&Value>) -> Value {
 
 fn is_spread_only_configuration_update(current: Option<&Value>, incoming: &Value) -> bool {
     configuration_without_spread(current) == configuration_without_spread(Some(incoming))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadingPositionInput {
+    pub book_id: String,
+    pub cfi: Option<String>,
+    pub percentage: Option<f64>,
+    #[serde(default)]
+    pub spread: Option<Value>,
+    pub updated_at: u64,
+    pub sequence: u64,
+}
+
+pub(super) fn record_reading_position_impl(
+    storage: &AppStorage,
+    position: ReadingPositionInput,
+) -> Result<bool, String> {
+    let mut sequences = storage
+        .inner
+        .reading_position_sequences
+        .lock()
+        .map_err(|_| "reading position sequence lock poisoned".to_string())?;
+
+    if sequences
+        .get(&position.book_id)
+        .is_some_and(|current| position.sequence < *current)
+    {
+        return Ok(false);
+    }
+
+    {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let Some(book_index) = state
+            .library
+            .books
+            .iter()
+            .position(|book| book.id == position.book_id)
+        else {
+            return Ok(false);
+        };
+
+        {
+            let Some(book_state) = state.book_states.get_mut(&position.book_id) else {
+                return Err("Book state is not loaded for reading position".to_string());
+            };
+            book_state.cfi = position.cfi.clone();
+            book_state.percentage = position.percentage;
+            book_state.configuration = Some(configuration_with_recorded_spread(
+                book_state.configuration.as_ref(),
+                position.spread,
+            ));
+        }
+
+        let book = &mut state.library.books[book_index];
+        book.cfi = position.cfi;
+        book.percentage = position.percentage;
+        book.updated_at = Some(position.updated_at);
+        book.last_read_at = Some(position.updated_at);
+    }
+
+    sequences.insert(position.book_id.clone(), position.sequence);
+    drop(sequences);
+
+    storage.mark_library_dirty();
+    storage.mark_book_state_dirty(&position.book_id);
+    storage.schedule_reading_position_flush();
+
+    Ok(true)
+}
+
+fn configuration_with_recorded_spread(current: Option<&Value>, spread: Option<Value>) -> Value {
+    let mut object = current
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+
+    match spread {
+        Some(spread) if !spread.is_null() => {
+            object.insert("spread".to_string(), spread);
+        }
+        _ => {
+            object.remove("spread");
+        }
+    }
+
+    Value::Object(object)
+}
+
+#[tauri::command]
+pub fn record_reading_position(
+    storage: State<'_, AppStorage>,
+    position: ReadingPositionInput,
+) -> Result<bool, String> {
+    record_reading_position_impl(&storage, position)
 }
 
 #[tauri::command]

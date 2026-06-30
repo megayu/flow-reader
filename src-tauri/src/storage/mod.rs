@@ -87,6 +87,7 @@ struct StorageInner {
     root: PathBuf,
     state: Mutex<StorageState>,
     dirty: Mutex<DirtyState>,
+    reading_position_sequences: Mutex<HashMap<String, u64>>,
     search_text_caches: Mutex<HashMap<String, Arc<SearchTextCache>>>,
 }
 
@@ -319,6 +320,7 @@ impl AppStorage {
                     book_states: HashMap::new(),
                 }),
                 dirty: Mutex::new(DirtyState::default()),
+                reading_position_sequences: Mutex::new(HashMap::new()),
                 search_text_caches: Mutex::new(HashMap::new()),
             }),
         })
@@ -1870,22 +1872,27 @@ pub(super) fn export_book_impl(
 
 #[cfg(test)]
 mod tests {
+    use super::commands::{record_reading_position_impl, ReadingPositionInput};
     use super::{
         book_is_export_dirty, decode_text_bytes, empty_object, encoded_txt_source_update,
-        mark_book_exported, normalize_publication_date, parse_text_import_document,
+        library_path, mark_book_exported, normalize_publication_date, parse_text_import_document,
         read_search_text_sections_from_unpacked, replace_generated_txt_source_text,
         replace_xhtml_text_node, search_text_cache_from_bytes, search_text_cache_to_bytes,
         search_text_in_cache, sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml,
         text_section_xhtml, visible_search_text_from_xhtml, write_epub_from_original_and_unpacked,
-        write_epub_from_unpacked_dir, write_source_text_update, BookExportFormat, BookSourceFormat,
-        BookTextReplaceTarget, LibraryBook, ReadingStatus, SearchTextCache, SearchTextSection,
-        SourceParagraphRange, SourceTextReplacement, SourceTextUpdate, TextImportRulesInput,
-        SEARCH_TEXT_CACHE_VERSION, SEARCH_TEXT_EXTRACTOR_VERSION,
+        write_epub_from_unpacked_dir, write_source_text_update, AppStorage, BookExportFormat,
+        BookSourceFormat, BookState, BookTextReplaceTarget, DirtyState, Library, LibraryBook,
+        ReadingStatus, SearchTextCache, SearchTextSection, SourceParagraphRange,
+        SourceTextReplacement, SourceTextUpdate, StorageInner, StorageState, TextImportRulesInput,
+        SEARCH_TEXT_CACHE_VERSION, SEARCH_TEXT_EXTRACTOR_VERSION, STATE_FILE,
     };
     use serde_json::json;
     use std::{
+        collections::HashMap,
         fs,
         io::{Read, Write},
+        path::Path,
+        sync::{Arc, Mutex},
         time::{Duration, SystemTime, UNIX_EPOCH},
     };
     use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
@@ -1903,6 +1910,136 @@ mod tests {
         {
             std::thread::sleep(Duration::from_millis(20));
         }
+    }
+
+    fn test_storage_with_book(root: &Path, book: LibraryBook) -> AppStorage {
+        let book_state = BookState {
+            cfi: book.cfi.clone(),
+            percentage: book.percentage,
+            ..Default::default()
+        };
+        let book_id = book.id.clone();
+        let mut book_states = HashMap::new();
+        book_states.insert(book_id, book_state);
+
+        AppStorage {
+            inner: Arc::new(StorageInner {
+                root: root.to_path_buf(),
+                state: Mutex::new(StorageState {
+                    library: Library {
+                        version: 1,
+                        books: vec![book],
+                        tags: Vec::new(),
+                    },
+                    settings: json!({}),
+                    book_states,
+                }),
+                dirty: Mutex::new(DirtyState::default()),
+                reading_position_sequences: Mutex::new(HashMap::new()),
+                search_text_caches: Mutex::new(HashMap::new()),
+            }),
+        }
+    }
+
+    fn reading_position_input(
+        sequence: u64,
+        cfi: &str,
+        percentage: f64,
+        spread: serde_json::Value,
+        updated_at: u64,
+    ) -> ReadingPositionInput {
+        ReadingPositionInput {
+            book_id: "book".to_string(),
+            cfi: Some(cfi.to_string()),
+            percentage: Some(percentage),
+            spread: Some(spread),
+            updated_at,
+            sequence,
+        }
+    }
+
+    #[test]
+    fn record_reading_position_keeps_latest_sequence_in_memory() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-position-memory-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Txt));
+
+        let accepted = record_reading_position_impl(
+            &storage,
+            reading_position_input(2, "epubcfi(/6/4)", 0.4, json!({"version": 1}), 200),
+        )
+        .expect("new sequence should not error");
+        assert!(accepted);
+
+        let stale = record_reading_position_impl(
+            &storage,
+            reading_position_input(1, "epubcfi(/6/2)", 0.2, json!({"version": 1}), 100),
+        )
+        .expect("stale sequence should not error");
+        assert!(!stale);
+
+        let mut state = storage.inner.state.lock().unwrap();
+        let book = state
+            .library
+            .books
+            .iter()
+            .find(|book| book.id == "book")
+            .unwrap()
+            .clone();
+        let book_state = storage
+            .ensure_book_state(&mut state, "book")
+            .unwrap()
+            .clone();
+
+        assert_eq!(book.cfi.as_deref(), Some("epubcfi(/6/4)"));
+        assert_eq!(book_state.cfi.as_deref(), Some("epubcfi(/6/4)"));
+        assert_eq!(book.percentage, Some(0.4));
+        assert_eq!(book_state.percentage, Some(0.4));
+        assert_eq!(book.updated_at, Some(200));
+        assert_eq!(book.last_read_at, Some(200));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn record_reading_position_marks_dirty_without_disk_write_until_flush() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-position-flush-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Txt));
+
+        let accepted = record_reading_position_impl(
+            &storage,
+            reading_position_input(1, "epubcfi(/6/8)", 0.8, json!({"version": 1}), 300),
+        )
+        .expect("position update should not error");
+        assert!(accepted);
+
+        assert!(!library_path(&root).unwrap().exists());
+        assert!(!root.join("books").join("book").join(STATE_FILE).exists());
+
+        storage.flush_dirty().expect("dirty position should flush");
+
+        let library = fs::read_to_string(library_path(&root).unwrap()).unwrap();
+        assert!(library.contains(r#""cfi": "epubcfi(/6/8)""#));
+        assert!(library.contains(r#""percentage": 0.8"#));
+
+        let state = fs::read_to_string(root.join("books").join("book").join(STATE_FILE)).unwrap();
+        assert!(state.contains(r#""cfi": "epubcfi(/6/8)""#));
+        assert!(state.contains(r#""percentage": 0.8"#));
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

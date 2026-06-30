@@ -124,6 +124,15 @@ export interface BookRecord {
   stateLoaded?: boolean
 }
 
+export interface ReadingPositionInput {
+  bookId: string
+  cfi?: string
+  percentage?: number
+  spread?: ReadingSpreadRecord | null
+  updatedAt: number
+  sequence: number
+}
+
 export interface BookSearchHit {
   id: string
   excerpt: string
@@ -410,6 +419,11 @@ export const db = {
     },
     remember(book: BookRecord) {
       rememberBook(book)
+    },
+    recordReadingPosition(position: ReadingPositionInput) {
+      return trackNativeWrite(
+        invoke<boolean>('record_reading_position', { position }),
+      )
     },
     async update(id: string, changes: Partial<BookRecord>) {
       const cached = bookCache.get(id)

@@ -7,6 +7,7 @@ use serde::Serialize;
 use tauri::{Emitter, Manager, WindowEvent};
 
 mod storage;
+mod tasks;
 
 const OPEN_FILES_EVENT: &str = "flow-open-files";
 
@@ -79,6 +80,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(PendingOpenFiles(Mutex::new(pending_open_files)))
+        .manage(tasks::TaskService::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             let paths = collect_epub_paths(argv);
@@ -113,9 +115,21 @@ pub fn run() {
             }
 
             match event {
-                WindowEvent::CloseRequested { .. } => {
-                    storage::flush_app_storage(window);
-                    storage::save_window_state(window);
+                WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
+                    let _ = window.hide();
+
+                    let app = window.app_handle().clone();
+                    let window = window.clone();
+                    std::thread::spawn(move || {
+                        if let Some(tasks) = app.try_state::<tasks::TaskService>() {
+                            tasks.begin_shutdown();
+                            tasks.cancel_background();
+                        }
+                        storage::flush_app_storage(&window);
+                        storage::save_window_state(&window);
+                        app.exit(0);
+                    });
                 }
                 WindowEvent::Destroyed => {
                     storage::flush_app_storage(window);
@@ -147,6 +161,7 @@ pub fn run() {
             storage::replace_book_text,
             storage::export_book,
             storage::unload_book_search_text,
+            storage::record_reading_position,
             storage::update_book,
             storage::delete_books,
             storage::get_settings,
