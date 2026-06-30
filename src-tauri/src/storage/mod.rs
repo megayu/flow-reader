@@ -42,10 +42,7 @@ use epub_import::{
     normalize_zip_path, parent_zip_path, unpack_epub,
 };
 
-use search::{
-    build_and_write_search_text_cache, load_or_build_search_text_cache, search_text_in_cache,
-    SearchTextCache,
-};
+use search::{load_or_build_search_text_cache, search_text_in_cache, SearchTextCache};
 #[cfg(test)]
 use search::{
     read_search_text_sections_from_unpacked, search_text_cache_from_bytes,
@@ -2885,6 +2882,45 @@ mod tests {
         assert_eq!(books[0].name, "first.txt");
         assert_eq!(books[1].name, "second.txt");
         assert!(storage.text_import_prepare_max_active() > 1);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn text_import_does_not_build_search_cache_in_visible_path() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-text-import-no-search-cache-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("novel.txt");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&source, "第1章 开始\n第一段。\n第二段。\n").unwrap();
+        let storage = test_storage_with_books(&root, Vec::new());
+        let tasks = TaskService::default();
+
+        let books = import_text_paths_impl(
+            &storage,
+            &tasks,
+            vec![TextImportSelection {
+                path: source.to_string_lossy().to_string(),
+                encoding: None,
+                title: None,
+                creator: None,
+            }],
+            true,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(books.len(), 1);
+        assert!(!storage
+            .book_dir(&books[0].id)
+            .join(SEARCH_TEXT_CACHE_FILE)
+            .exists());
 
         let _ = fs::remove_dir_all(root);
     }

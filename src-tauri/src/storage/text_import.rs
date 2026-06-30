@@ -1679,9 +1679,6 @@ pub(super) fn import_text_path_impl(
         }
         write_metadata(storage, &id, &book.metadata)?;
         write_cover(storage, &id, cover)?;
-        if let Err(error) = build_and_write_search_text_cache(storage, &book) {
-            eprintln!("Failed to build search text cache for {}: {error}", book.id);
-        }
     }
 
     storage.mark_library_dirty();

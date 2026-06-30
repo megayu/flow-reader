@@ -298,18 +298,6 @@ fn search_index_task_key(book: &LibraryBook) -> TaskKey {
     )
 }
 
-pub(super) fn build_and_write_search_text_cache(
-    storage: &AppStorage,
-    book: &LibraryBook,
-) -> Result<SearchTextCache, String> {
-    let tasks = TaskService::default();
-    let cache = build_search_text_cache(storage, &tasks, book)?;
-    if !write_search_text_cache_if_current(storage, &book.id, &cache)? {
-        return Err("Search text cache is stale".to_string());
-    }
-    Ok(cache)
-}
-
 fn build_search_text_cache(
     storage: &AppStorage,
     tasks: &TaskService,
