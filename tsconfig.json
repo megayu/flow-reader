@@ -20,12 +20,11 @@
     "noUncheckedIndexedAccess": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@flow/reader/*": ["src/*"],
-      "@flow/reader/locales": ["locales/index.ts"],
-      "@flow/epubjs/*": ["packages/epubjs/*"]
+      "@/*": ["./src/*"],
+      "@flow/reader/*": ["./src/*"],
+      "@flow/reader/locales": ["./locales/index.ts"],
+      "@flow/epubjs/*": ["./packages/epubjs/*"]
     }
   },
   "include": ["next-env.d.ts", "src", "locales"],
