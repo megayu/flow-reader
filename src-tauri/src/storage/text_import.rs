@@ -1,4 +1,10 @@
-use std::{fs, path::Path};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use encoding_rs::{
     Encoding, BIG5, EUC_KR, GB18030, SHIFT_JIS, UTF_16BE, UTF_16LE, UTF_8, WINDOWS_1252,
@@ -6,6 +12,7 @@ use encoding_rs::{
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 use super::*;
 #[derive(Debug, Clone, Serialize)]
@@ -109,6 +116,163 @@ pub(super) struct TextImportSection {
     pub(super) parent: Option<String>,
     pub(super) paragraphs: Vec<String>,
     pub(super) prefix_parent_title: bool,
+}
+
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+pub(super) struct TextImportPreparedKey {
+    identity: String,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct PreparedTextImport {
+    pub(super) key: TextImportPreparedKey,
+    pub(super) path: PathBuf,
+    pub(super) filename: String,
+    pub(super) fallback_title: String,
+    pub(super) size: u64,
+    pub(super) hash: String,
+    pub(super) bytes: Arc<Vec<u8>>,
+    pub(super) decoded: DecodedText,
+    pub(super) sample: String,
+    pub(super) document: TextImportDocument,
+}
+
+struct PreparedTextImportCacheEntry {
+    prepared: Arc<PreparedTextImport>,
+    inserted_at: u64,
+}
+
+pub(super) struct TextImportPreparedCache {
+    entries: HashMap<TextImportPreparedKey, PreparedTextImportCacheEntry>,
+    order: VecDeque<TextImportPreparedKey>,
+    bytes: usize,
+    max_bytes: usize,
+}
+
+const TEXT_IMPORT_PREPARED_CACHE_MAX_BYTES: usize = 256 * 1024 * 1024;
+const TEXT_IMPORT_PREPARED_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+
+impl TextImportPreparedKey {
+    pub(super) fn task_identity(&self) -> &str {
+        &self.identity
+    }
+}
+
+impl TextImportPreparedCache {
+    pub(super) fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            order: VecDeque::new(),
+            bytes: 0,
+            max_bytes: TEXT_IMPORT_PREPARED_CACHE_MAX_BYTES,
+        }
+    }
+
+    pub(super) fn get(&mut self, key: &TextImportPreparedKey) -> Option<Arc<PreparedTextImport>> {
+        self.remove_expired();
+        let prepared = self.entries.get(key)?.prepared.clone();
+        self.touch(key);
+        Some(prepared)
+    }
+
+    pub(super) fn insert(&mut self, prepared: Arc<PreparedTextImport>) {
+        self.remove_expired();
+        let key = prepared.key.clone();
+        let bytes = prepared.bytes.len();
+        self.remove_key(&key);
+        if bytes > self.max_bytes {
+            return;
+        }
+
+        self.bytes = self.bytes.saturating_add(bytes);
+        self.order.push_back(key.clone());
+        self.entries.insert(
+            key,
+            PreparedTextImportCacheEntry {
+                prepared,
+                inserted_at: text_import_cache_now_ms(),
+            },
+        );
+        self.enforce_limit();
+    }
+
+    pub(super) fn take(&mut self, key: &TextImportPreparedKey) -> Option<Arc<PreparedTextImport>> {
+        self.remove_expired();
+        self.remove_key(key).map(|entry| entry.prepared)
+    }
+
+    #[cfg(test)]
+    pub(super) fn set_max_bytes(&mut self, max_bytes: usize) {
+        self.max_bytes = max_bytes;
+        self.enforce_limit();
+    }
+
+    #[cfg(test)]
+    pub(super) fn len(&mut self) -> usize {
+        self.remove_expired();
+        self.entries.len()
+    }
+
+    #[cfg(test)]
+    pub(super) fn bytes(&mut self) -> usize {
+        self.remove_expired();
+        self.bytes
+    }
+
+    fn touch(&mut self, key: &TextImportPreparedKey) {
+        self.order.retain(|candidate| candidate != key);
+        self.order.push_back(key.clone());
+    }
+
+    fn enforce_limit(&mut self) {
+        while self.bytes > self.max_bytes {
+            let Some(key) = self.order.pop_front() else {
+                break;
+            };
+            if let Some(entry) = self.entries.remove(&key) {
+                self.bytes = self.bytes.saturating_sub(entry.prepared.bytes.len());
+            }
+        }
+    }
+
+    fn remove_expired(&mut self) {
+        let now = text_import_cache_now_ms();
+        let ttl_ms = TEXT_IMPORT_PREPARED_CACHE_TTL.as_millis() as u64;
+        let expired = self
+            .entries
+            .iter()
+            .filter_map(|(key, entry)| {
+                if now.saturating_sub(entry.inserted_at) > ttl_ms {
+                    Some(key.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        for key in expired {
+            self.remove_key(&key);
+        }
+    }
+
+    fn remove_key(&mut self, key: &TextImportPreparedKey) -> Option<PreparedTextImportCacheEntry> {
+        self.order.retain(|candidate| candidate != key);
+        let entry = self.entries.remove(key)?;
+        self.bytes = self.bytes.saturating_sub(entry.prepared.bytes.len());
+        Some(entry)
+    }
+}
+
+impl Default for TextImportPreparedCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn text_import_cache_now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or_default()
 }
 
 fn create_text_cover_svg(title: &str, creator: &str) -> String {
@@ -847,56 +1011,117 @@ pub(super) fn create_skipped_text_import_preview(path: &Path) -> TextImportPrevi
     }
 }
 
-pub(super) fn should_skip_text_import_preview(
-    storage: &AppStorage,
-    path: &Path,
-) -> Result<bool, String> {
-    let name = path
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_else(|| "book.txt".to_string());
-    let hash = hash_file(path)?;
-    let state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
-
-    Ok(state.library.books.iter().any(|book| {
-        book.name == name && !book.content_hash.is_empty() && book.content_hash == hash
-    }))
+fn normalized_text_import_encoding(encoding: Option<&str>) -> String {
+    encoding
+        .map(str::trim)
+        .filter(|encoding| !encoding.is_empty())
+        .unwrap_or("auto")
+        .to_string()
 }
 
-pub(super) fn create_text_import_preview(
+fn text_import_rules_hash(rules: Option<&TextImportRulesInput>) -> String {
+    let mut hasher = Sha256::new();
+    if let Some(rules) = rules {
+        for pattern in &rules.group_patterns {
+            hasher.update(b"group\0");
+            hasher.update(pattern.as_bytes());
+            hasher.update(b"\0");
+        }
+        for pattern in &rules.chapter_patterns {
+            hasher.update(b"chapter\0");
+            hasher.update(pattern.as_bytes());
+            hasher.update(b"\0");
+        }
+    }
+    let digest = hasher.finalize();
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn text_import_modified_nanos(metadata: &fs::Metadata) -> u128 {
+    metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default()
+}
+
+fn text_import_prepared_key_from_metadata(
     path: &Path,
     encoding: Option<&str>,
     rules: Option<&TextImportRulesInput>,
-) -> TextImportPreview {
+    metadata: &fs::Metadata,
+) -> TextImportPreparedKey {
+    TextImportPreparedKey {
+        identity: format!(
+            "{}:{}:{}:{}:{}",
+            path_to_client_string(path),
+            metadata.len(),
+            text_import_modified_nanos(metadata),
+            normalized_text_import_encoding(encoding),
+            text_import_rules_hash(rules)
+        ),
+    }
+}
+
+pub(super) fn text_import_prepared_key(
+    path: &Path,
+    encoding: Option<&str>,
+    rules: Option<&TextImportRulesInput>,
+) -> Result<TextImportPreparedKey, String> {
+    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
+    Ok(text_import_prepared_key_from_metadata(
+        path, encoding, rules, &metadata,
+    ))
+}
+
+fn hash_text_import_bytes(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let digest = hasher.finalize();
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+pub(super) fn create_text_import_error_preview(path: &Path, message: String) -> TextImportPreview {
     let filename = path
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| "book.txt".to_string());
     let title = text_import_file_title(path, &filename);
 
-    let bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(error) => {
-            return TextImportPreview {
-                path: path_to_client_string(path),
-                filename,
-                title,
-                encoding: "auto".to_string(),
-                encoding_label: "Auto".to_string(),
-                confidence: "failed".to_string(),
-                status: TextImportStatus::Error.as_str().to_string(),
-                selected: false,
-                message: Some(error.to_string()),
-                sample: String::new(),
-                chapters: Vec::new(),
-            };
-        }
-    };
+    TextImportPreview {
+        path: path_to_client_string(path),
+        filename,
+        title,
+        encoding: "auto".to_string(),
+        encoding_label: "Auto".to_string(),
+        confidence: "failed".to_string(),
+        status: TextImportStatus::Error.as_str().to_string(),
+        selected: false,
+        message: Some(message),
+        sample: String::new(),
+        chapters: Vec::new(),
+    }
+}
 
+pub(super) fn prepare_text_import_entry(
+    path: &Path,
+    encoding: Option<&str>,
+    rules: Option<&TextImportRulesInput>,
+    key: TextImportPreparedKey,
+) -> Result<Arc<PreparedTextImport>, String> {
+    let bytes = fs::read(path).map_err(|error| error.to_string())?;
+    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
+    let latest_key = text_import_prepared_key_from_metadata(path, encoding, rules, &metadata);
+    if latest_key != key {
+        return Err("Text file changed while preparing import".to_string());
+    }
+
+    let filename = path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| "book.txt".to_string());
+    let fallback_title = text_import_file_title(path, &filename);
     let decoded = decode_text_bytes(&bytes, encoding);
     let sample = decoded
         .text
@@ -906,23 +1131,41 @@ pub(super) fn create_text_import_preview(
         .take(8)
         .collect::<Vec<_>>()
         .join("\n");
-    let document = parse_text_import_document(&decoded.text, &title, rules);
-    let has_text = decoded.text.chars().any(|ch| !ch.is_whitespace());
-    let status = if !has_text || decoded.confidence == TextEncodingConfidence::Failed {
+    let document = parse_text_import_document(&decoded.text, &fallback_title, rules);
+
+    Ok(Arc::new(PreparedTextImport {
+        key,
+        path: path.to_path_buf(),
+        filename,
+        fallback_title,
+        size: metadata.len(),
+        hash: hash_text_import_bytes(&bytes),
+        bytes: Arc::new(bytes),
+        decoded,
+        sample,
+        document,
+    }))
+}
+
+pub(super) fn create_text_import_preview_from_prepared(
+    prepared: &PreparedTextImport,
+) -> TextImportPreview {
+    let has_text = prepared.decoded.text.chars().any(|ch| !ch.is_whitespace());
+    let status = if !has_text || prepared.decoded.confidence == TextEncodingConfidence::Failed {
         TextImportStatus::Error
-    } else if decoded.confidence == TextEncodingConfidence::Low {
+    } else if prepared.decoded.confidence == TextEncodingConfidence::Low {
         TextImportStatus::NeedsReview
     } else {
         TextImportStatus::Ready
     };
 
     TextImportPreview {
-        path: path_to_client_string(path),
-        filename,
-        title,
-        encoding: decoded.encoding,
-        encoding_label: decoded.encoding_label,
-        confidence: match decoded.confidence {
+        path: path_to_client_string(&prepared.path),
+        filename: prepared.filename.clone(),
+        title: prepared.fallback_title.clone(),
+        encoding: prepared.decoded.encoding.clone(),
+        encoding_label: prepared.decoded.encoding_label.clone(),
+        confidence: match prepared.decoded.confidence {
             TextEncodingConfidence::High => "high",
             TextEncodingConfidence::Medium => "medium",
             TextEncodingConfidence::Low => "low",
@@ -933,14 +1176,91 @@ pub(super) fn create_text_import_preview(
         selected: status == TextImportStatus::Ready,
         message: if status == TextImportStatus::Error {
             Some("Unable to decode text file".to_string())
-        } else if document.chapters.is_empty() {
+        } else if prepared.document.chapters.is_empty() {
             Some("No chapters detected; sections will be generated by length".to_string())
         } else {
             None
         },
-        sample,
-        chapters: document.chapters,
+        sample: prepared.sample.clone(),
+        chapters: prepared.document.chapters.clone(),
     }
+}
+
+pub(super) fn should_skip_prepared_text_import_preview(
+    storage: &AppStorage,
+    prepared: &PreparedTextImport,
+) -> Result<bool, String> {
+    let state = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?;
+
+    Ok(state.library.books.iter().any(|book| {
+        book.name == prepared.filename
+            && !book.content_hash.is_empty()
+            && book.content_hash == prepared.hash
+    }))
+}
+
+pub(super) fn load_or_prepare_text_import(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    path: &Path,
+    encoding: Option<&str>,
+    rules: Option<&TextImportRulesInput>,
+) -> Result<Arc<PreparedTextImport>, String> {
+    let key = text_import_prepared_key(path, encoding, rules)?;
+    if let Some(prepared) = storage.get_prepared_text_import(&key) {
+        return Ok(prepared);
+    }
+
+    let storage = storage.clone();
+    let tasks_runner = tasks.clone();
+    let path = path.to_path_buf();
+    let encoding = encoding.map(str::to_string);
+    let rules = rules.cloned();
+    let task_key = TaskKey::new(TaskKind::TxtPreview, key.task_identity().to_string());
+    tasks.get_or_run(task_key, TaskPriority::Foreground, move || {
+        tasks_runner.run_cpu(TaskPriority::Foreground, || {
+            if let Some(prepared) = storage.get_prepared_text_import(&key) {
+                return Ok(prepared);
+            }
+            storage.note_text_import_prepare_run();
+            let prepared =
+                prepare_text_import_entry(&path, encoding.as_deref(), rules.as_ref(), key)?;
+            storage.insert_prepared_text_import(Arc::clone(&prepared));
+            Ok(prepared)
+        })
+    })
+}
+
+pub(super) fn consume_or_prepare_text_import(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    path: &Path,
+    encoding: Option<&str>,
+    rules: Option<&TextImportRulesInput>,
+) -> Result<Arc<PreparedTextImport>, String> {
+    let key = text_import_prepared_key(path, encoding, rules)?;
+    if let Some(prepared) = storage.take_prepared_text_import(&key) {
+        return Ok(prepared);
+    }
+
+    let encoding_id = normalized_text_import_encoding(encoding);
+    if encoding_id != "auto" {
+        let auto_key = text_import_prepared_key(path, None, rules)?;
+        if let Some(prepared) = storage.take_prepared_text_import(&auto_key) {
+            if prepared.decoded.encoding == encoding_id {
+                return Ok(prepared);
+            }
+            storage.insert_prepared_text_import(prepared);
+        }
+    }
+
+    let prepared = load_or_prepare_text_import(storage, tasks, path, encoding, rules)?;
+    storage.take_prepared_text_import(&prepared.key);
+    Ok(prepared)
 }
 
 fn write_text_publication(
@@ -1217,8 +1537,7 @@ fn escape_svg(value: &str) -> String {
 
 pub(super) fn import_text_path_impl(
     storage: &AppStorage,
-    path: &Path,
-    encoding: Option<&str>,
+    prepared: Arc<PreparedTextImport>,
     import_title: Option<&str>,
     import_creator: Option<&str>,
     replace_existing: bool,
@@ -1226,23 +1545,16 @@ pub(super) fn import_text_path_impl(
 ) -> Result<BookRecord, String> {
     fs::create_dir_all(books_root(storage.root())).map_err(|error| error.to_string())?;
 
-    let bytes = fs::read(path).map_err(|error| error.to_string())?;
-    let decoded = decode_text_bytes(&bytes, encoding);
+    let path = &prepared.path;
+    let decoded = &prepared.decoded;
     if decoded.confidence == TextEncodingConfidence::Failed {
         return Err("Unable to decode text file".to_string());
     }
 
-    let hash = hash_file(path)?;
-    let size = fs::metadata(path).map_err(|error| error.to_string())?.len();
-    let name = path
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_else(|| "book.txt".to_string());
-    let fallback_title = path
-        .file_stem()
-        .map(|name| name.to_string_lossy().to_string())
-        .filter(|title| !title.is_empty())
-        .unwrap_or_else(|| name.trim_end_matches(".txt").to_string());
+    let hash = prepared.hash.clone();
+    let size = prepared.size;
+    let name = prepared.filename.clone();
+    let fallback_title = prepared.fallback_title.clone();
     let title = import_title
         .map(str::trim)
         .filter(|title| !title.is_empty())
@@ -1254,7 +1566,11 @@ pub(super) fn import_text_path_impl(
         .map(str::to_string)
         .unwrap_or_default();
 
-    let mut document = parse_text_import_document(&decoded.text, &title, rules);
+    let mut document = if title == prepared.document.title {
+        prepared.document.clone()
+    } else {
+        parse_text_import_document(&decoded.text, &title, rules)
+    };
     document.creator = creator.clone();
     let metadata = json!({
         "title": title,
@@ -1289,7 +1605,7 @@ pub(super) fn import_text_path_impl(
 
             let book = &mut state.library.books[index];
             book.size = size;
-            book.content_hash = hash;
+            book.content_hash = hash.clone();
             book.content_version = book.content_version.saturating_add(1).max(1);
             book.updated_at = Some(now_ms());
             book.last_read_at = book.updated_at;
@@ -1313,7 +1629,7 @@ pub(super) fn import_text_path_impl(
                 source_format: Some(BookSourceFormat::Txt),
                 exported_versions: Default::default(),
                 content_edited_at: None,
-                content_hash: hash,
+                content_hash: hash.clone(),
                 content_version: 1,
                 metadata: metadata.clone(),
                 created_at,
@@ -1338,7 +1654,8 @@ pub(super) fn import_text_path_impl(
         if dir.join(BOOK_FILE).exists() {
             let _ = fs::remove_file(dir.join(BOOK_FILE));
         }
-        fs::copy(path, dir.join(SOURCE_TEXT_FILE)).map_err(|error| error.to_string())?;
+        fs::write(dir.join(SOURCE_TEXT_FILE), prepared.bytes.as_slice())
+            .map_err(|error| error.to_string())?;
         let cover =
             create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str()));
         write_text_publication(

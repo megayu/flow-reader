@@ -49,9 +49,12 @@ use search::{
     search_text_cache_to_bytes, visible_search_text_from_xhtml, SearchTextSection,
 };
 use text_import::{
-    create_skipped_text_import_preview, create_text_cover_input, create_text_import_preview,
+    consume_or_prepare_text_import, create_skipped_text_import_preview, create_text_cover_input,
+    create_text_import_error_preview, create_text_import_preview_from_prepared,
     decode_source_text_bytes, decode_text_bytes, encode_text_bytes, import_text_path_impl,
-    should_skip_text_import_preview, text_import_encoding_options, write_text_cover_to_unpacked,
+    load_or_prepare_text_import, should_skip_prepared_text_import_preview,
+    text_import_encoding_options, write_text_cover_to_unpacked, PreparedTextImport,
+    TextImportPreparedCache, TextImportPreparedKey,
 };
 #[cfg(test)]
 use text_import::{
@@ -93,6 +96,9 @@ struct StorageInner {
     reading_position_sequences: Mutex<HashMap<String, u64>>,
     search_text_caches: Mutex<HashMap<String, Arc<SearchTextCache>>>,
     search_text_cache_order: Mutex<VecDeque<String>>,
+    text_import_prepared_cache: Mutex<TextImportPreparedCache>,
+    #[cfg(test)]
+    text_import_prepare_runs: std::sync::atomic::AtomicUsize,
 }
 
 struct StorageState {
@@ -327,6 +333,9 @@ impl AppStorage {
                 reading_position_sequences: Mutex::new(HashMap::new()),
                 search_text_caches: Mutex::new(HashMap::new()),
                 search_text_cache_order: Mutex::new(VecDeque::new()),
+                text_import_prepared_cache: Mutex::new(TextImportPreparedCache::new()),
+                #[cfg(test)]
+                text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
             }),
         })
     }
@@ -366,6 +375,71 @@ impl AppStorage {
         if let Ok(mut order) = self.inner.search_text_cache_order.lock() {
             order.retain(|cache_id| cache_id != id);
         }
+    }
+
+    fn get_prepared_text_import(
+        &self,
+        key: &TextImportPreparedKey,
+    ) -> Option<Arc<PreparedTextImport>> {
+        self.inner
+            .text_import_prepared_cache
+            .lock()
+            .ok()
+            .and_then(|mut cache| cache.get(key))
+    }
+
+    fn insert_prepared_text_import(&self, prepared: Arc<PreparedTextImport>) {
+        if let Ok(mut cache) = self.inner.text_import_prepared_cache.lock() {
+            cache.insert(prepared);
+        }
+    }
+
+    fn take_prepared_text_import(
+        &self,
+        key: &TextImportPreparedKey,
+    ) -> Option<Arc<PreparedTextImport>> {
+        self.inner
+            .text_import_prepared_cache
+            .lock()
+            .ok()
+            .and_then(|mut cache| cache.take(key))
+    }
+
+    fn note_text_import_prepare_run(&self) {
+        #[cfg(test)]
+        self.inner
+            .text_import_prepare_runs
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[cfg(test)]
+    fn text_import_prepare_run_count(&self) -> usize {
+        self.inner
+            .text_import_prepare_runs
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    #[cfg(test)]
+    fn set_text_import_prepared_cache_limit(&self, max_bytes: usize) {
+        self.inner
+            .text_import_prepared_cache
+            .lock()
+            .unwrap()
+            .set_max_bytes(max_bytes);
+    }
+
+    #[cfg(test)]
+    fn text_import_prepared_cache_len(&self) -> usize {
+        self.inner.text_import_prepared_cache.lock().unwrap().len()
+    }
+
+    #[cfg(test)]
+    fn text_import_prepared_cache_bytes(&self) -> usize {
+        self.inner
+            .text_import_prepared_cache
+            .lock()
+            .unwrap()
+            .bytes()
     }
 
     fn read_book_state_uncached(&self, id: &str) -> Result<BookState, String> {
@@ -2191,7 +2265,10 @@ pub(super) fn export_book_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::commands::{record_reading_position_impl, ReadingPositionInput};
+    use super::commands::{
+        import_text_paths_impl, preview_text_import_paths_impl, record_reading_position_impl,
+        ReadingPositionInput,
+    };
     use super::{
         book_is_export_dirty, cleanup_delete_tombstones, decode_text_bytes,
         delete_books_to_tombstones, delete_tombstones_root, empty_object,
@@ -2205,8 +2282,9 @@ mod tests {
         write_epub_from_unpacked_dir, write_source_text_update, AppStorage, BookExportFormat,
         BookSourceFormat, BookState, BookTextReplaceTarget, DirtyState, Library, LibraryBook,
         ReadingStatus, SearchTextCache, SearchTextSection, SourceParagraphRange,
-        SourceTextReplacement, SourceTextUpdate, StorageInner, StorageState, TextImportRulesInput,
-        BOOK_FILE, SEARCH_TEXT_CACHE_VERSION, SEARCH_TEXT_EXTRACTOR_VERSION, STATE_FILE,
+        SourceTextReplacement, SourceTextUpdate, StorageInner, StorageState,
+        TextImportPreparedCache, TextImportRulesInput, TextImportSelection, BOOK_FILE,
+        SEARCH_TEXT_CACHE_VERSION, SEARCH_TEXT_EXTRACTOR_VERSION, SOURCE_TEXT_FILE, STATE_FILE,
         UNPACKED_DIR,
     };
     use crate::tasks::TaskService;
@@ -2273,6 +2351,8 @@ mod tests {
                 reading_position_sequences: Mutex::new(HashMap::new()),
                 search_text_caches: Mutex::new(HashMap::new()),
                 search_text_cache_order: Mutex::new(VecDeque::new()),
+                text_import_prepared_cache: Mutex::new(TextImportPreparedCache::new()),
+                text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
             }),
         }
     }
@@ -2438,6 +2518,150 @@ mod tests {
 
         assert!(!tombstone.exists());
         assert!(tombstone_entries(&root).is_empty());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn text_preview_then_import_consumes_prepared_entry_without_repreparing() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-text-prepare-reuse-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("novel.txt");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&source, "第1章 开始\n第一段。\n第二段。\n").unwrap();
+        let storage = test_storage_with_books(&root, Vec::new());
+        let tasks = TaskService::default();
+
+        let previews = preview_text_import_paths_impl(
+            &storage,
+            &tasks,
+            vec![source.to_string_lossy().to_string()],
+            HashMap::new(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(previews.len(), 1);
+        assert_eq!(storage.text_import_prepare_run_count(), 1);
+        assert_eq!(storage.text_import_prepared_cache_len(), 1);
+
+        let books = import_text_paths_impl(
+            &storage,
+            &tasks,
+            vec![TextImportSelection {
+                path: source.to_string_lossy().to_string(),
+                encoding: Some(previews[0].encoding.clone()),
+                title: Some(previews[0].title.clone()),
+                creator: Some("作者".to_string()),
+            }],
+            true,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(books.len(), 1);
+        assert_eq!(storage.text_import_prepare_run_count(), 1);
+        assert_eq!(storage.text_import_prepared_cache_len(), 0);
+        assert_eq!(
+            fs::read_to_string(storage.book_dir(&books[0].id).join(SOURCE_TEXT_FILE)).unwrap(),
+            "第1章 开始\n第一段。\n第二段。\n"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn text_import_reprepares_when_prepared_file_metadata_changes() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-text-prepare-stale-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("novel.txt");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&source, "第1章 旧内容\n旧段落。\n").unwrap();
+        let storage = test_storage_with_books(&root, Vec::new());
+        let tasks = TaskService::default();
+
+        let previews = preview_text_import_paths_impl(
+            &storage,
+            &tasks,
+            vec![source.to_string_lossy().to_string()],
+            HashMap::new(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(storage.text_import_prepare_run_count(), 1);
+
+        fs::write(&source, "第1章 新内容\n新段落。\n新增段落。\n").unwrap();
+
+        let books = import_text_paths_impl(
+            &storage,
+            &tasks,
+            vec![TextImportSelection {
+                path: source.to_string_lossy().to_string(),
+                encoding: Some(previews[0].encoding.clone()),
+                title: Some(previews[0].title.clone()),
+                creator: None,
+            }],
+            true,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(books.len(), 1);
+        assert_eq!(storage.text_import_prepare_run_count(), 2);
+        assert_eq!(
+            fs::read_to_string(storage.book_dir(&books[0].id).join(SOURCE_TEXT_FILE)).unwrap(),
+            "第1章 新内容\n新段落。\n新增段落。\n"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn text_prepare_cache_enforces_configured_byte_limit() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-text-prepare-limit-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let first = root.join("first.txt");
+        let second = root.join("second.txt");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&first, "第1章 第一\n第一段。\n").unwrap();
+        fs::write(&second, "第1章 第二\n第二段。\n").unwrap();
+        let storage = test_storage_with_books(&root, Vec::new());
+        storage.set_text_import_prepared_cache_limit(32);
+        let tasks = TaskService::default();
+
+        let previews = preview_text_import_paths_impl(
+            &storage,
+            &tasks,
+            vec![
+                first.to_string_lossy().to_string(),
+                second.to_string_lossy().to_string(),
+            ],
+            HashMap::new(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(previews.len(), 2);
+        assert_eq!(storage.text_import_prepare_run_count(), 2);
+        assert!(storage.text_import_prepared_cache_bytes() <= 32);
+        assert!(storage.text_import_prepared_cache_len() <= 1);
 
         let _ = fs::remove_dir_all(root);
     }

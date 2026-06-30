@@ -331,8 +331,25 @@ pub fn get_text_import_encodings() -> Vec<TextImportEncodingOption> {
 }
 
 #[tauri::command]
-pub fn preview_text_import_paths(
+pub async fn preview_text_import_paths(
     storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
+    paths: Vec<String>,
+    encodings: HashMap<String, String>,
+    rules: Option<TextImportRulesInput>,
+) -> Result<Vec<TextImportPreview>, String> {
+    let storage = (*storage).clone();
+    let tasks = (*tasks).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        preview_text_import_paths_impl(&storage, &tasks, paths, encodings, rules)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+pub(super) fn preview_text_import_paths_impl(
+    storage: &AppStorage,
+    tasks: &TaskService,
     paths: Vec<String>,
     encodings: HashMap<String, String>,
     rules: Option<TextImportRulesInput>,
@@ -344,18 +361,41 @@ pub fn preview_text_import_paths(
         .filter(|path| is_txt_file(path))
         .map(|path| {
             let key = path_to_client_string(&path);
-            if should_skip_text_import_preview(&storage, &path).unwrap_or(false) {
-                return create_skipped_text_import_preview(&path);
+            let encoding = encodings.get(&key).map(String::as_str);
+            let prepared = match load_or_prepare_text_import(storage, tasks, &path, encoding, rules)
+            {
+                Ok(prepared) => prepared,
+                Err(error) => return create_text_import_error_preview(&path, error),
+            };
+            if should_skip_prepared_text_import_preview(storage, &prepared).unwrap_or(false) {
+                create_skipped_text_import_preview(&path)
+            } else {
+                create_text_import_preview_from_prepared(&prepared)
             }
-
-            create_text_import_preview(&path, encodings.get(&key).map(String::as_str), rules)
         })
         .collect())
 }
 
 #[tauri::command]
-pub fn import_text_paths(
+pub async fn import_text_paths(
     storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
+    imports: Vec<TextImportSelection>,
+    replace_existing: bool,
+    rules: Option<TextImportRulesInput>,
+) -> Result<Vec<BookRecord>, String> {
+    let storage = (*storage).clone();
+    let tasks = (*tasks).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        import_text_paths_impl(&storage, &tasks, imports, replace_existing, rules)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+pub(super) fn import_text_paths_impl(
+    storage: &AppStorage,
+    tasks: &TaskService,
     imports: Vec<TextImportSelection>,
     replace_existing: bool,
     rules: Option<TextImportRulesInput>,
@@ -369,10 +409,17 @@ pub fn import_text_paths(
             continue;
         }
 
-        books.push(import_text_path_impl(
-            &storage,
+        let prepared = consume_or_prepare_text_import(
+            storage,
+            tasks,
             &path,
             import.encoding.as_deref(),
+            rules,
+        )?;
+
+        books.push(import_text_path_impl(
+            storage,
+            prepared,
             import.title.as_deref(),
             import.creator.as_deref(),
             replace_existing,
