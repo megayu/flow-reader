@@ -104,6 +104,7 @@ pub fn run() {
             let storage = storage::AppStorage::load(app.handle()).map_err(std::io::Error::other)?;
             app.manage(storage.clone());
             if let Some(tasks) = app.try_state::<tasks::TaskService>() {
+                tasks.configure_io_for_path(storage.root());
                 storage::schedule_existing_delete_tombstone_cleanup(&storage, &tasks);
             }
 

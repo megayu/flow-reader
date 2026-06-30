@@ -360,7 +360,7 @@ impl AppStorage {
         })
     }
 
-    fn root(&self) -> &Path {
+    pub(crate) fn root(&self) -> &Path {
         &self.inner.root
     }
 

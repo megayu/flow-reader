@@ -4,11 +4,32 @@ use std::{
     any::Any,
     collections::HashMap,
     env,
+    path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Condvar, Mutex,
     },
     thread::ThreadId,
+};
+
+#[cfg(windows)]
+use std::ptr;
+
+#[cfg(windows)]
+use windows_sys::Win32::{
+    Foundation::{CloseHandle, INVALID_HANDLE_VALUE},
+    Storage::FileSystem::{
+        CreateFileW, GetDriveTypeW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    },
+    System::{
+        Ioctl::{
+            PropertyStandardQuery, StorageDeviceSeekPenaltyProperty, StorageDeviceTrimProperty,
+            DEVICE_SEEK_PENALTY_DESCRIPTOR, DEVICE_TRIM_DESCRIPTOR, IOCTL_STORAGE_QUERY_PROPERTY,
+            STORAGE_PROPERTY_ID, STORAGE_PROPERTY_QUERY,
+        },
+        WindowsProgramming::{DRIVE_FIXED, DRIVE_RAMDISK, DRIVE_REMOTE, DRIVE_REMOVABLE},
+        IO::DeviceIoControl,
+    },
 };
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -160,6 +181,7 @@ struct TaskServiceInner {
     in_flight: TaskRegistry<Arc<dyn Any + Send + Sync>>,
     cpu: ResourceGate,
     io: ResourceGate,
+    io_writer_override: bool,
     background: ResourceGate,
     book_locks: Mutex<HashMap<String, Arc<BookOperationLock>>>,
 }
@@ -176,6 +198,20 @@ struct ResourceGateState {
 
 struct ResourcePermit<'a> {
     gate: &'a ResourceGate,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct IoWriterConfig {
+    limit: usize,
+    overridden: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum IoVolumeClass {
+    FastLocal,
+    FixedLocal,
+    SlowOrRemote,
+    Unknown,
 }
 
 struct BookOperationLock {
@@ -198,12 +234,14 @@ impl Default for TaskService {
         let logical_cpus = std::thread::available_parallelism()
             .map(|cpus| cpus.get())
             .unwrap_or(1);
+        let io_config = initial_io_writer_config();
         Self {
             inner: Arc::new(TaskServiceInner {
                 shutdown: AtomicBool::new(false),
                 in_flight: TaskRegistry::new(),
                 cpu: ResourceGate::new(logical_cpus.saturating_mul(2).max(1)),
-                io: ResourceGate::new(initial_io_writer_limit()),
+                io: ResourceGate::new(io_config.limit),
+                io_writer_override: io_config.overridden,
                 background: ResourceGate::new(1),
                 book_locks: Mutex::new(HashMap::new()),
             }),
@@ -219,11 +257,20 @@ impl TaskService {
     pub(crate) fn cancel_background(&self) {}
 
     pub(crate) fn set_io_writer_limit(&self, max: usize) {
-        self.inner.io.set_max(max.min(MAX_IO_WRITERS));
+        self.inner.io.set_max(max.clamp(1, MAX_IO_WRITERS));
     }
 
     pub(crate) fn io_writer_limit(&self) -> usize {
         self.inner.io.max()
+    }
+
+    pub(crate) fn configure_io_for_path(&self, path: &Path) {
+        if self.inner.io_writer_override {
+            return;
+        }
+        self.inner
+            .io
+            .set_max(io_writer_limit_for_volume_class(classify_io_volume(path)));
     }
 
     pub(crate) fn get_or_run<T>(
@@ -360,14 +407,175 @@ impl Drop for ResourcePermit<'_> {
 }
 
 fn initial_io_writer_limit() -> usize {
-    normalize_io_writer_limit(env::var(IO_WRITERS_ENV).ok().as_deref())
+    initial_io_writer_config().limit
+}
+
+fn initial_io_writer_config() -> IoWriterConfig {
+    io_writer_config_from_input(env::var(IO_WRITERS_ENV).ok().as_deref())
 }
 
 fn normalize_io_writer_limit(input: Option<&str>) -> usize {
-    input
-        .and_then(|value| value.trim().parse::<usize>().ok())
-        .unwrap_or(DEFAULT_IO_WRITERS)
-        .clamp(1, MAX_IO_WRITERS)
+    io_writer_config_from_input(input).limit
+}
+
+fn io_writer_config_from_input(input: Option<&str>) -> IoWriterConfig {
+    let parsed = input.and_then(|value| value.trim().parse::<usize>().ok());
+    match parsed {
+        Some(limit) => IoWriterConfig {
+            limit: limit.clamp(1, MAX_IO_WRITERS),
+            overridden: true,
+        },
+        None => IoWriterConfig {
+            limit: DEFAULT_IO_WRITERS,
+            overridden: false,
+        },
+    }
+}
+
+fn io_writer_limit_for_volume_class(class: IoVolumeClass) -> usize {
+    match class {
+        IoVolumeClass::FastLocal => 2,
+        IoVolumeClass::FixedLocal | IoVolumeClass::SlowOrRemote | IoVolumeClass::Unknown => {
+            DEFAULT_IO_WRITERS
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn classify_io_volume(_path: &Path) -> IoVolumeClass {
+    IoVolumeClass::Unknown
+}
+
+#[cfg(windows)]
+fn classify_io_volume(path: &Path) -> IoVolumeClass {
+    let Some(root) = windows_volume_root(path) else {
+        return IoVolumeClass::Unknown;
+    };
+
+    let root_wide = wide_null(&root);
+    match unsafe { GetDriveTypeW(root_wide.as_ptr()) } {
+        DRIVE_REMOTE | DRIVE_REMOVABLE => IoVolumeClass::SlowOrRemote,
+        DRIVE_RAMDISK => IoVolumeClass::FastLocal,
+        DRIVE_FIXED => {
+            if windows_fixed_volume_is_fast(&root).unwrap_or(false) {
+                IoVolumeClass::FastLocal
+            } else {
+                IoVolumeClass::FixedLocal
+            }
+        }
+        _ => IoVolumeClass::Unknown,
+    }
+}
+
+#[cfg(windows)]
+fn windows_volume_root(path: &Path) -> Option<String> {
+    let text = path.to_string_lossy().replace('/', "\\");
+    let mut chars = text.chars();
+    let first = chars.next()?;
+    if chars.next() == Some(':') {
+        return Some(format!("{}:\\", first.to_ascii_uppercase()));
+    }
+
+    if !text.starts_with("\\\\") {
+        return None;
+    }
+
+    let mut parts = text
+        .trim_start_matches('\\')
+        .split('\\')
+        .filter(|part| !part.is_empty());
+    let server = parts.next()?;
+    let share = parts.next()?;
+    Some(format!("\\\\{server}\\{share}\\"))
+}
+
+#[cfg(windows)]
+fn windows_volume_handle_path(root: &str) -> Option<String> {
+    let mut chars = root.chars();
+    let letter = chars.next()?;
+    if chars.next() == Some(':') {
+        Some(format!("\\\\.\\{letter}:"))
+    } else {
+        None
+    }
+}
+
+#[cfg(windows)]
+fn windows_fixed_volume_is_fast(root: &str) -> Option<bool> {
+    let handle_path = windows_volume_handle_path(root)?;
+    let handle_path_wide = wide_null(&handle_path);
+    let handle = unsafe {
+        CreateFileW(
+            handle_path_wide.as_ptr(),
+            0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            ptr::null(),
+            OPEN_EXISTING,
+            0,
+            ptr::null_mut(),
+        )
+    };
+    if handle == INVALID_HANDLE_VALUE {
+        return None;
+    }
+
+    let no_seek_penalty = query_storage_property::<DEVICE_SEEK_PENALTY_DESCRIPTOR>(
+        handle,
+        StorageDeviceSeekPenaltyProperty,
+    )
+    .map(|descriptor| !descriptor.IncursSeekPenalty);
+    let trim_enabled =
+        query_storage_property::<DEVICE_TRIM_DESCRIPTOR>(handle, StorageDeviceTrimProperty)
+            .map(|descriptor| descriptor.TrimEnabled);
+
+    unsafe {
+        CloseHandle(handle);
+    }
+
+    match (no_seek_penalty, trim_enabled) {
+        (Some(true), _) | (_, Some(true)) => Some(true),
+        (Some(false), _) | (None, Some(false)) => Some(false),
+        (None, None) => None,
+    }
+}
+
+#[cfg(windows)]
+fn query_storage_property<T>(
+    handle: windows_sys::Win32::Foundation::HANDLE,
+    property: STORAGE_PROPERTY_ID,
+) -> Option<T>
+where
+    T: Default,
+{
+    let query = STORAGE_PROPERTY_QUERY {
+        PropertyId: property,
+        QueryType: PropertyStandardQuery,
+        AdditionalParameters: [0],
+    };
+    let mut output = T::default();
+    let mut bytes_returned = 0u32;
+    let ok = unsafe {
+        DeviceIoControl(
+            handle,
+            IOCTL_STORAGE_QUERY_PROPERTY,
+            &query as *const _ as *const _,
+            std::mem::size_of::<STORAGE_PROPERTY_QUERY>() as u32,
+            &mut output as *mut _ as *mut _,
+            std::mem::size_of::<T>() as u32,
+            &mut bytes_returned,
+            ptr::null_mut(),
+        )
+    };
+    if ok == 0 {
+        None
+    } else {
+        Some(output)
+    }
+}
+
+#[cfg(windows)]
+fn wide_null(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
 impl BookOperationLock {
@@ -552,6 +760,37 @@ mod tests {
         assert_eq!(super::normalize_io_writer_limit(Some("2")), 2);
         assert_eq!(super::normalize_io_writer_limit(Some("99")), 4);
         assert_eq!(super::normalize_io_writer_limit(Some("invalid")), 1);
+    }
+
+    #[test]
+    fn io_writer_limit_policy_uses_disk_hint_conservatively() {
+        assert_eq!(
+            super::io_writer_limit_for_volume_class(super::IoVolumeClass::FastLocal),
+            2
+        );
+        assert_eq!(
+            super::io_writer_limit_for_volume_class(super::IoVolumeClass::FixedLocal),
+            1
+        );
+        assert_eq!(
+            super::io_writer_limit_for_volume_class(super::IoVolumeClass::SlowOrRemote),
+            1
+        );
+        assert_eq!(
+            super::io_writer_limit_for_volume_class(super::IoVolumeClass::Unknown),
+            1
+        );
+    }
+
+    #[test]
+    fn io_writer_env_config_overrides_disk_hint() {
+        let configured = super::io_writer_config_from_input(Some("3"));
+        assert_eq!(configured.limit, 3);
+        assert!(configured.overridden);
+
+        let defaulted = super::io_writer_config_from_input(None);
+        assert_eq!(defaulted.limit, 1);
+        assert!(!defaulted.overridden);
     }
 
     #[test]
