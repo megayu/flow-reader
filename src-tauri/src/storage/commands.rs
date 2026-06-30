@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{mpsc, Arc, Mutex},
     time::Instant,
 };
 
@@ -524,20 +524,11 @@ pub(super) fn import_text_paths_impl(
         .into_iter()
         .filter(|import| is_txt_file(Path::new(&import.path)))
         .collect::<Vec<_>>();
-    let prepared_imports = prepare_text_imports_for_import(storage, tasks, imports, rules)?;
-
-    for (import, prepared) in prepared_imports {
-        books.push(tasks.run_io(TaskPriority::Foreground, || {
-            import_text_path_impl(
-                storage,
-                prepared,
-                import.title.as_deref(),
-                import.creator.as_deref(),
-                replace_existing,
-                rules,
-            )
-        })?);
-    }
+    books.extend(if imports.len() <= 1 {
+        import_text_paths_direct(storage, tasks, imports, replace_existing, rules)?
+    } else {
+        import_text_paths_with_pipeline(storage, tasks, imports, replace_existing, rules)?
+    });
 
     let (cache_entries, cache_bytes) = storage.text_import_prepared_cache_stats();
     diagnostics::record_timing(
@@ -553,29 +544,50 @@ pub(super) fn import_text_paths_impl(
     Ok(books)
 }
 
-fn prepare_text_imports_for_import(
+fn import_text_paths_direct(
     storage: &AppStorage,
     tasks: &TaskService,
     imports: Vec<TextImportSelection>,
+    replace_existing: bool,
     rules: Option<&TextImportRulesInput>,
-) -> Result<Vec<(TextImportSelection, Arc<PreparedTextImport>)>, String> {
-    if imports.len() <= 1 {
-        return imports
-            .into_iter()
-            .map(|import| {
-                let path = PathBuf::from(&import.path);
-                let prepared = consume_or_prepare_text_import(
-                    storage,
-                    tasks,
-                    &path,
-                    import.encoding.as_deref(),
-                    rules,
-                )?;
-                Ok((import, prepared))
-            })
-            .collect();
+) -> Result<Vec<BookRecord>, String> {
+    let mut books = Vec::new();
+    for import in imports {
+        let path = PathBuf::from(&import.path);
+        let prepared = consume_or_prepare_text_import(
+            storage,
+            tasks,
+            &path,
+            import.encoding.as_deref(),
+            rules,
+        )?;
+        books.push(tasks.run_io(TaskPriority::Foreground, || {
+            import_text_path_impl(
+                storage,
+                prepared,
+                import.title.as_deref(),
+                import.creator.as_deref(),
+                replace_existing,
+                rules,
+            )
+        })?);
     }
+    Ok(books)
+}
 
+struct TextImportPrepareMessage {
+    index: usize,
+    import: TextImportSelection,
+    prepared: Result<Arc<PreparedTextImport>, String>,
+}
+
+fn import_text_paths_with_pipeline(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    imports: Vec<TextImportSelection>,
+    replace_existing: bool,
+    rules: Option<&TextImportRulesInput>,
+) -> Result<Vec<BookRecord>, String> {
     let queue = Arc::new(Mutex::new(
         imports.into_iter().enumerate().collect::<VecDeque<_>>(),
     ));
@@ -583,18 +595,16 @@ fn prepare_text_imports_for_import(
         .lock()
         .map_err(|_| "text import queue lock poisoned".to_string())?
         .len();
-    let results = Arc::new(Mutex::new(
-        std::iter::repeat_with(|| None)
-            .take(result_len)
-            .collect::<Vec<Option<Result<(TextImportSelection, Arc<PreparedTextImport>), String>>>>(
-            ),
-    ));
     let workers = text_import_prepare_worker_count(result_len);
+    let (sender, receiver) = mpsc::sync_channel::<TextImportPrepareMessage>(0);
+    let mut books = std::iter::repeat_with(|| None)
+        .take(result_len)
+        .collect::<Vec<Option<BookRecord>>>();
 
     std::thread::scope(|scope| {
         for _ in 0..workers {
             let queue = Arc::clone(&queue);
-            let results = Arc::clone(&results);
+            let sender = sender.clone();
             let storage = storage;
             let tasks = tasks;
             scope.spawn(move || loop {
@@ -610,24 +620,55 @@ fn prepare_text_imports_for_import(
                     import.encoding.as_deref(),
                     rules,
                 );
-                if let Ok(mut results) = results.lock() {
-                    results[index] = Some(prepared.map(|prepared| (import, prepared)));
+                storage.begin_text_import_prepared_handoff();
+                if sender
+                    .send(TextImportPrepareMessage {
+                        index,
+                        import,
+                        prepared,
+                    })
+                    .is_err()
+                {
+                    storage.end_text_import_prepared_handoff();
+                    break;
                 }
             });
         }
-    });
+        drop(sender);
 
-    let prepared = results
-        .lock()
-        .map_err(|_| "text import results lock poisoned".to_string())?
-        .iter_mut()
-        .map(|result| {
-            result
-                .take()
-                .ok_or_else(|| "text import prepare worker did not produce a result".to_string())?
-        })
-        .collect();
-    prepared
+        for _ in 0..result_len {
+            let message = receiver
+                .recv()
+                .map_err(|_| "text import prepare worker stopped before completing".to_string())?;
+            match message.prepared {
+                Ok(prepared) => {
+                    let book = tasks.run_io(TaskPriority::Foreground, || {
+                        import_text_path_impl(
+                            storage,
+                            prepared,
+                            message.import.title.as_deref(),
+                            message.import.creator.as_deref(),
+                            replace_existing,
+                            rules,
+                        )
+                    });
+                    storage.end_text_import_prepared_handoff();
+                    books[message.index] = Some(book?);
+                }
+                Err(error) => {
+                    storage.end_text_import_prepared_handoff();
+                    return Err(error);
+                }
+            }
+        }
+
+        Ok(())
+    })?;
+
+    books
+        .into_iter()
+        .map(|book| book.ok_or_else(|| "text import worker did not produce a result".to_string()))
+        .collect()
 }
 
 #[tauri::command]

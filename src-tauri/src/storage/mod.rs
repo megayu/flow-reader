@@ -105,6 +105,10 @@ struct StorageInner {
     text_import_prepare_max_active: std::sync::atomic::AtomicUsize,
     #[cfg(test)]
     text_import_prepare_delay_ms: std::sync::atomic::AtomicU64,
+    #[cfg(test)]
+    text_import_prepared_handoff_active: std::sync::atomic::AtomicUsize,
+    #[cfg(test)]
+    text_import_prepared_handoff_max_active: std::sync::atomic::AtomicUsize,
 }
 
 struct StorageState {
@@ -348,6 +352,10 @@ impl AppStorage {
                 text_import_prepare_max_active: std::sync::atomic::AtomicUsize::new(0),
                 #[cfg(test)]
                 text_import_prepare_delay_ms: std::sync::atomic::AtomicU64::new(0),
+                #[cfg(test)]
+                text_import_prepared_handoff_active: std::sync::atomic::AtomicUsize::new(0),
+                #[cfg(test)]
+                text_import_prepared_handoff_max_active: std::sync::atomic::AtomicUsize::new(0),
             }),
         })
     }
@@ -464,6 +472,42 @@ impl AppStorage {
             .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
     }
 
+    fn begin_text_import_prepared_handoff(&self) {
+        #[cfg(test)]
+        {
+            let active = self
+                .inner
+                .text_import_prepared_handoff_active
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                + 1;
+            let mut current = self
+                .inner
+                .text_import_prepared_handoff_max_active
+                .load(std::sync::atomic::Ordering::SeqCst);
+            while active > current {
+                match self
+                    .inner
+                    .text_import_prepared_handoff_max_active
+                    .compare_exchange(
+                        current,
+                        active,
+                        std::sync::atomic::Ordering::SeqCst,
+                        std::sync::atomic::Ordering::SeqCst,
+                    ) {
+                    Ok(_) => break,
+                    Err(next) => current = next,
+                }
+            }
+        }
+    }
+
+    fn end_text_import_prepared_handoff(&self) {
+        #[cfg(test)]
+        self.inner
+            .text_import_prepared_handoff_active
+            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
     #[cfg(test)]
     fn text_import_prepare_run_count(&self) -> usize {
         self.inner
@@ -522,6 +566,13 @@ impl AppStorage {
     fn text_import_prepare_max_active(&self) -> usize {
         self.inner
             .text_import_prepare_max_active
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    #[cfg(test)]
+    fn text_import_prepared_handoff_max_active(&self) -> usize {
+        self.inner
+            .text_import_prepared_handoff_max_active
             .load(std::sync::atomic::Ordering::SeqCst)
     }
 
@@ -2489,6 +2540,8 @@ mod tests {
                 text_import_prepare_active: std::sync::atomic::AtomicUsize::new(0),
                 text_import_prepare_max_active: std::sync::atomic::AtomicUsize::new(0),
                 text_import_prepare_delay_ms: std::sync::atomic::AtomicU64::new(0),
+                text_import_prepared_handoff_active: std::sync::atomic::AtomicUsize::new(0),
+                text_import_prepared_handoff_max_active: std::sync::atomic::AtomicUsize::new(0),
             }),
         }
     }
@@ -2884,6 +2937,54 @@ mod tests {
         assert_eq!(books[0].name, "first.txt");
         assert_eq!(books[1].name, "second.txt");
         assert!(storage.text_import_prepare_max_active() > 1);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn text_import_materializes_prepared_files_with_bounded_handoff() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-text-import-bounded-handoff-test-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let worker_limit = std::thread::available_parallelism()
+            .map(|cpus| cpus.get())
+            .unwrap_or(1)
+            .saturating_mul(2)
+            .max(1);
+        let file_count = worker_limit + 4;
+        let imports = (0..file_count)
+            .map(|index| {
+                let path = root.join(format!("book-{index:03}.txt"));
+                fs::write(&path, format!("第1章 标题{index}\n正文{index}。\n")).unwrap();
+                TextImportSelection {
+                    path: path.to_string_lossy().to_string(),
+                    encoding: None,
+                    title: None,
+                    creator: None,
+                }
+            })
+            .collect::<Vec<_>>();
+        let storage = test_storage_with_books(&root, Vec::new());
+        let tasks = TaskService::default();
+
+        let books = import_text_paths_impl(&storage, &tasks, imports, true, None).unwrap();
+
+        assert_eq!(books.len(), file_count);
+        assert_eq!(books[0].name, "book-000.txt");
+        assert_eq!(
+            books[file_count - 1].name,
+            format!("book-{:03}.txt", file_count - 1)
+        );
+        let max_handoff = storage.text_import_prepared_handoff_max_active();
+        assert!(max_handoff > 0);
+        assert!(max_handoff <= worker_limit + 1);
+        assert!(max_handoff < file_count);
 
         let _ = fs::remove_dir_all(root);
     }
