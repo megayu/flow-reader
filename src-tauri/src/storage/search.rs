@@ -221,38 +221,34 @@ fn load_or_build_search_text_cache_with_builder(
 ) -> Result<Arc<SearchTextCache>, String> {
     let started = Instant::now();
     if let Some(cache) = load_search_text_memory_cache(storage, book)? {
-        diagnostics::record_timing(
-            "search-index",
-            started.elapsed(),
-            &[
-                ("book", book.id.clone()),
-                ("cache", "memory".to_string()),
-                ("sections", cache.sections.len().to_string()),
-                (
-                    "search_memory_caches",
-                    storage.search_text_memory_cache_len().to_string(),
-                ),
-            ],
-        );
+        let mut fields = vec![
+            ("book", book.id.clone()),
+            ("cache", "memory".to_string()),
+            ("sections", cache.sections.len().to_string()),
+            (
+                "search_memory_caches",
+                storage.search_text_memory_cache_len().to_string(),
+            ),
+        ];
+        fields.extend(tasks.diagnostic_fields());
+        diagnostics::record_timing("search-index", started.elapsed(), &fields);
         return Ok(cache);
     }
 
     if let Ok(cache) = read_search_text_cache(storage, book) {
         let cache = Arc::new(cache);
         store_search_text_memory_cache(storage, book.id.clone(), cache.clone())?;
-        diagnostics::record_timing(
-            "search-index",
-            started.elapsed(),
-            &[
-                ("book", book.id.clone()),
-                ("cache", "disk".to_string()),
-                ("sections", cache.sections.len().to_string()),
-                (
-                    "search_memory_caches",
-                    storage.search_text_memory_cache_len().to_string(),
-                ),
-            ],
-        );
+        let mut fields = vec![
+            ("book", book.id.clone()),
+            ("cache", "disk".to_string()),
+            ("sections", cache.sections.len().to_string()),
+            (
+                "search_memory_caches",
+                storage.search_text_memory_cache_len().to_string(),
+            ),
+        ];
+        fields.extend(tasks.diagnostic_fields());
+        diagnostics::record_timing("search-index", started.elapsed(), &fields);
         return Ok(cache);
     }
 
@@ -277,19 +273,17 @@ fn load_or_build_search_text_cache_with_builder(
         return Err("Search text cache is stale".to_string());
     }
     store_search_text_memory_cache(storage, book.id.clone(), cache.clone())?;
-    diagnostics::record_timing(
-        "search-index",
-        started.elapsed(),
-        &[
-            ("book", book.id.clone()),
-            ("cache", "built".to_string()),
-            ("sections", cache.sections.len().to_string()),
-            (
-                "search_memory_caches",
-                storage.search_text_memory_cache_len().to_string(),
-            ),
-        ],
-    );
+    let mut fields = vec![
+        ("book", book.id.clone()),
+        ("cache", "built".to_string()),
+        ("sections", cache.sections.len().to_string()),
+        (
+            "search_memory_caches",
+            storage.search_text_memory_cache_len().to_string(),
+        ),
+    ];
+    fields.extend(tasks.diagnostic_fields());
+    diagnostics::record_timing("search-index", started.elapsed(), &fields);
     Ok(cache)
 }
 

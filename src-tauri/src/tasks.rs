@@ -96,6 +96,13 @@ impl<T> TaskRegistry<T> {
             in_flight: Mutex::new(HashMap::new()),
         }
     }
+
+    fn len(&self) -> usize {
+        self.in_flight
+            .lock()
+            .map(|in_flight| in_flight.len())
+            .unwrap_or_default()
+    }
 }
 
 impl<T> Default for TaskRegistry<T> {
@@ -186,6 +193,7 @@ struct TaskServiceInner {
     io: ResourceGate,
     io_writer_override: bool,
     io_adaptation: Mutex<HashMap<String, IoAdaptationState>>,
+    io_in_flight_bytes: AtomicU64,
     background: ResourceGate,
     background_cancel_epoch: AtomicU64,
     book_locks: Mutex<HashMap<String, Arc<BookOperationLock>>>,
@@ -199,10 +207,23 @@ struct ResourceGate {
 struct ResourceGateState {
     max: usize,
     active: usize,
+    waiting: usize,
 }
 
 struct ResourcePermit<'a> {
     gate: &'a ResourceGate,
+}
+
+struct IoBytesPermit<'a> {
+    bytes: u64,
+    counter: &'a AtomicU64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ResourceGateSnapshot {
+    limit: usize,
+    active: usize,
+    waiting: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -262,6 +283,7 @@ impl TaskService {
                 io: ResourceGate::new(io_config.limit),
                 io_writer_override: io_config.overridden,
                 io_adaptation: Mutex::new(HashMap::new()),
+                io_in_flight_bytes: AtomicU64::new(0),
                 background: ResourceGate::new(1),
                 background_cancel_epoch: AtomicU64::new(0),
                 book_locks: Mutex::new(HashMap::new()),
@@ -365,6 +387,31 @@ impl TaskService {
         }
     }
 
+    pub(crate) fn diagnostic_fields(&self) -> Vec<(&'static str, String)> {
+        let cpu = self.inner.cpu.snapshot();
+        let io = self.inner.io.snapshot();
+        let background = self.inner.background.snapshot();
+        vec![
+            ("task_in_flight", self.inner.in_flight.len().to_string()),
+            ("cpu_limit", cpu.limit.to_string()),
+            ("cpu_active", cpu.active.to_string()),
+            ("cpu_waiting", cpu.waiting.to_string()),
+            ("io_limit", io.limit.to_string()),
+            ("io_active", io.active.to_string()),
+            ("io_waiting", io.waiting.to_string()),
+            (
+                "io_in_flight_bytes",
+                self.inner
+                    .io_in_flight_bytes
+                    .load(Ordering::SeqCst)
+                    .to_string(),
+            ),
+            ("background_limit", background.limit.to_string()),
+            ("background_active", background.active.to_string()),
+            ("background_waiting", background.waiting.to_string()),
+        ]
+    }
+
     pub(crate) fn get_or_run<T>(
         &self,
         key: TaskKey,
@@ -412,9 +459,12 @@ impl TaskService {
         priority: TaskPriority,
         task: impl FnOnce() -> Result<T, String>,
     ) -> Result<T, String> {
+        self.ensure_accepting(priority)?;
         let volume = io_volume_identity(volume_path.as_ref());
         let started = Instant::now();
-        let result = self.run_io(priority, task);
+        let _permit = self.inner.io.acquire()?;
+        let _bytes_permit = IoBytesPermit::new(&self.inner.io_in_flight_bytes, bytes);
+        let result = task();
         if result.is_ok() {
             self.record_io_observation(volume, bytes, started.elapsed());
         }
@@ -479,6 +529,7 @@ impl ResourceGate {
             state: Mutex::new(ResourceGateState {
                 max: max.max(1),
                 active: 0,
+                waiting: 0,
             }),
             ready: Condvar::new(),
         }
@@ -503,10 +554,12 @@ impl ResourceGate {
             if should_cancel() {
                 return Err("task resource gate wait cancelled".to_string());
             }
+            state.waiting += 1;
             state = self
                 .ready
                 .wait(state)
                 .map_err(|_| "task resource gate lock poisoned".to_string())?;
+            state.waiting = state.waiting.saturating_sub(1);
             if should_cancel() {
                 return Err("task resource gate wait cancelled".to_string());
             }
@@ -529,6 +582,21 @@ impl ResourceGate {
             .unwrap_or(DEFAULT_IO_WRITERS)
     }
 
+    fn snapshot(&self) -> ResourceGateSnapshot {
+        self.state
+            .lock()
+            .map(|state| ResourceGateSnapshot {
+                limit: state.max,
+                active: state.active,
+                waiting: state.waiting,
+            })
+            .unwrap_or(ResourceGateSnapshot {
+                limit: DEFAULT_IO_WRITERS,
+                active: 0,
+                waiting: 0,
+            })
+    }
+
     fn notify_all(&self) {
         self.ready.notify_all();
     }
@@ -540,6 +608,19 @@ impl Drop for ResourcePermit<'_> {
             state.active = state.active.saturating_sub(1);
             self.gate.ready.notify_all();
         }
+    }
+}
+
+impl<'a> IoBytesPermit<'a> {
+    fn new(counter: &'a AtomicU64, bytes: u64) -> Self {
+        counter.fetch_add(bytes, Ordering::SeqCst);
+        Self { bytes, counter }
+    }
+}
+
+impl Drop for IoBytesPermit<'_> {
+    fn drop(&mut self) {
+        self.counter.fetch_sub(self.bytes, Ordering::SeqCst);
     }
 }
 
@@ -944,6 +1025,35 @@ mod tests {
     }
 
     #[test]
+    fn resource_gate_snapshot_reports_active_waiting_and_limit() {
+        let gate = Arc::new(super::ResourceGate::new(1));
+        let first = gate.acquire().unwrap();
+        let (started_tx, started_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+
+        let waiter = {
+            let gate = Arc::clone(&gate);
+            thread::spawn(move || {
+                started_tx.send(()).unwrap();
+                let _permit = gate.acquire().unwrap();
+                release_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+            })
+        };
+
+        started_rx.recv_timeout(Duration::from_millis(100)).unwrap();
+        thread::sleep(Duration::from_millis(30));
+
+        let snapshot = gate.snapshot();
+        assert_eq!(snapshot.limit, 1);
+        assert_eq!(snapshot.active, 1);
+        assert_eq!(snapshot.waiting, 1);
+
+        drop(first);
+        release_tx.send(()).unwrap();
+        waiter.join().unwrap();
+    }
+
+    #[test]
     fn io_writer_limit_input_uses_conservative_bounds() {
         assert_eq!(super::normalize_io_writer_limit(None), 1);
         assert_eq!(super::normalize_io_writer_limit(Some("")), 1);
@@ -1071,6 +1181,32 @@ mod tests {
             )
             .unwrap();
         assert_eq!(service.io_writer_limit(), 2);
+    }
+
+    #[test]
+    fn observed_io_work_reports_in_flight_bytes_while_task_runs() {
+        let service = TaskService::with_io_writer_config(super::IoWriterConfig {
+            limit: 1,
+            overridden: false,
+        });
+        let observed = Arc::new(AtomicUsize::new(0));
+        let observed_for_task = Arc::clone(&observed);
+        let service_for_task = service.clone();
+
+        service
+            .run_io_observed("C:\\", 2048, super::TaskPriority::Foreground, move || {
+                let fields = service_for_task.diagnostic_fields();
+                let bytes = fields
+                    .iter()
+                    .find(|(key, _)| *key == "io_in_flight_bytes")
+                    .and_then(|(_, value)| value.parse::<usize>().ok())
+                    .unwrap_or(0);
+                observed_for_task.store(bytes, Ordering::SeqCst);
+                Ok(())
+            })
+            .unwrap();
+
+        assert_eq!(observed.load(Ordering::SeqCst), 2048);
     }
 
     #[test]

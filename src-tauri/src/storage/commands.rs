@@ -353,14 +353,12 @@ pub(super) fn import_epub_paths_impl(
         )?);
     }
 
-    diagnostics::record_timing(
-        "epub-import",
-        started.elapsed(),
-        &[
-            ("sources", source_count.to_string()),
-            ("imported", books.len().to_string()),
-        ],
-    );
+    let mut fields = vec![
+        ("sources", source_count.to_string()),
+        ("imported", books.len().to_string()),
+    ];
+    fields.extend(tasks.diagnostic_fields());
+    diagnostics::record_timing("epub-import", started.elapsed(), &fields);
     Ok(books)
 }
 
@@ -457,16 +455,14 @@ pub(super) fn preview_text_import_paths_impl(
     };
     if let Ok(previews) = &result {
         let (cache_entries, cache_bytes) = storage.text_import_prepared_cache_stats();
-        diagnostics::record_timing(
-            "txt-preview",
-            started.elapsed(),
-            &[
-                ("sources", source_count.to_string()),
-                ("previews", previews.len().to_string()),
-                ("cache_entries", cache_entries.to_string()),
-                ("cache_bytes", cache_bytes.to_string()),
-            ],
-        );
+        let mut fields = vec![
+            ("sources", source_count.to_string()),
+            ("previews", previews.len().to_string()),
+            ("cache_entries", cache_entries.to_string()),
+            ("cache_bytes", cache_bytes.to_string()),
+        ];
+        fields.extend(tasks.diagnostic_fields());
+        diagnostics::record_timing("txt-preview", started.elapsed(), &fields);
     }
     result
 }
@@ -537,16 +533,14 @@ pub(super) fn import_text_paths_impl(
     });
 
     let (cache_entries, cache_bytes) = storage.text_import_prepared_cache_stats();
-    diagnostics::record_timing(
-        "txt-import",
-        started.elapsed(),
-        &[
-            ("sources", source_count.to_string()),
-            ("imported", books.len().to_string()),
-            ("cache_entries", cache_entries.to_string()),
-            ("cache_bytes", cache_bytes.to_string()),
-        ],
-    );
+    let mut fields = vec![
+        ("sources", source_count.to_string()),
+        ("imported", books.len().to_string()),
+        ("cache_entries", cache_entries.to_string()),
+        ("cache_bytes", cache_bytes.to_string()),
+    ];
+    fields.extend(tasks.diagnostic_fields());
+    diagnostics::record_timing("txt-import", started.elapsed(), &fields);
     Ok(books)
 }
 

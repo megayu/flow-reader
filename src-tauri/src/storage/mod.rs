@@ -894,18 +894,16 @@ fn ensure_book_package_path_with_unpacker(
 ) -> Result<PathBuf, String> {
     let started = Instant::now();
     if let Ok(opf_path) = find_unpacked_opf_path(&storage.book_dir(&book.id).join(UNPACKED_DIR)) {
-        diagnostics::record_timing(
-            "epub-unpack",
-            started.elapsed(),
-            &[
-                ("book", book.id.clone()),
-                ("cache", "hit".to_string()),
-                (
-                    "search_memory_caches",
-                    storage.search_text_memory_cache_len().to_string(),
-                ),
-            ],
-        );
+        let mut fields = vec![
+            ("book", book.id.clone()),
+            ("cache", "hit".to_string()),
+            (
+                "search_memory_caches",
+                storage.search_text_memory_cache_len().to_string(),
+            ),
+        ];
+        fields.extend(tasks.diagnostic_fields());
+        diagnostics::record_timing("epub-unpack", started.elapsed(), &fields);
         return Ok(opf_path);
     }
 
@@ -923,20 +921,18 @@ fn ensure_book_package_path_with_unpacker(
         })
     });
     if result.is_ok() {
-        diagnostics::record_timing(
-            "epub-unpack",
-            started.elapsed(),
-            &[
-                ("book", diagnostics_book_id),
-                ("cache", "miss".to_string()),
-                (
-                    "search_memory_caches",
-                    diagnostics_storage
-                        .search_text_memory_cache_len()
-                        .to_string(),
-                ),
-            ],
-        );
+        let mut fields = vec![
+            ("book", diagnostics_book_id),
+            ("cache", "miss".to_string()),
+            (
+                "search_memory_caches",
+                diagnostics_storage
+                    .search_text_memory_cache_len()
+                    .to_string(),
+            ),
+        ];
+        fields.extend(tasks.diagnostic_fields());
+        diagnostics::record_timing("epub-unpack", started.elapsed(), &fields);
     }
     result
 }
@@ -1220,18 +1216,16 @@ fn delete_books_impl(
     let tombstone_count = tombstones.len();
     storage.flush_dirty()?;
     enqueue_delete_tombstone_cleanup(tasks, tombstones);
-    diagnostics::record_timing(
-        "delete-books",
-        started.elapsed(),
-        &[
-            ("sources", source_count.to_string()),
-            ("tombstones", tombstone_count.to_string()),
-            (
-                "search_memory_caches",
-                storage.search_text_memory_cache_len().to_string(),
-            ),
-        ],
-    );
+    let mut fields = vec![
+        ("sources", source_count.to_string()),
+        ("tombstones", tombstone_count.to_string()),
+        (
+            "search_memory_caches",
+            storage.search_text_memory_cache_len().to_string(),
+        ),
+    ];
+    fields.extend(tasks.diagnostic_fields());
+    diagnostics::record_timing("delete-books", started.elapsed(), &fields);
     Ok(())
 }
 
