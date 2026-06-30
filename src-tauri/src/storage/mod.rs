@@ -734,6 +734,7 @@ fn path_to_client_string(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+#[cfg(test)]
 fn hash_file(path: &Path) -> Result<String, String> {
     let mut file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut hasher = Sha256::new();
@@ -2272,23 +2273,23 @@ mod tests {
     use super::{
         book_is_export_dirty, cleanup_delete_tombstones, decode_text_bytes,
         delete_books_to_tombstones, delete_tombstones_root, empty_object,
-        encoded_txt_source_update, ensure_book_package_path_with_unpacker, library_path,
-        mark_book_exported, normalize_publication_date, parse_text_import_document,
-        read_search_text_sections_from_unpacked, replace_generated_txt_source_text,
-        replace_xhtml_text_node, schedule_existing_delete_tombstone_cleanup,
-        search_text_cache_from_bytes, search_text_cache_to_bytes, search_text_in_cache,
-        sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml, text_section_xhtml,
-        visible_search_text_from_xhtml, write_epub_from_original_and_unpacked,
-        write_epub_from_unpacked_dir, write_source_text_update, AppStorage, BookExportFormat,
-        BookSourceFormat, BookState, BookTextReplaceTarget, DirtyState, Library, LibraryBook,
-        ReadingStatus, SearchTextCache, SearchTextSection, SourceParagraphRange,
-        SourceTextReplacement, SourceTextUpdate, StorageInner, StorageState,
-        TextImportPreparedCache, TextImportRulesInput, TextImportSelection, BOOK_FILE,
-        SEARCH_TEXT_CACHE_VERSION, SEARCH_TEXT_EXTRACTOR_VERSION, SOURCE_TEXT_FILE, STATE_FILE,
-        UNPACKED_DIR,
+        encoded_txt_source_update, ensure_book_package_path_with_unpacker, hash_file,
+        import_epub_path_impl, library_path, mark_book_exported, normalize_publication_date,
+        parse_text_import_document, read_search_text_sections_from_unpacked,
+        replace_generated_txt_source_text, replace_xhtml_text_node,
+        schedule_existing_delete_tombstone_cleanup, search_text_cache_from_bytes,
+        search_text_cache_to_bytes, search_text_in_cache, sync_unpacked_opf_metadata,
+        text_content_opf, text_nav_xhtml, text_section_xhtml, visible_search_text_from_xhtml,
+        write_epub_from_original_and_unpacked, write_epub_from_unpacked_dir,
+        write_source_text_update, AppStorage, BookExportFormat, BookSourceFormat, BookState,
+        BookTextReplaceTarget, DirtyState, Library, LibraryBook, ReadingStatus, SearchTextCache,
+        SearchTextSection, SourceParagraphRange, SourceTextReplacement, SourceTextUpdate,
+        StorageInner, StorageState, TextImportPreparedCache, TextImportRulesInput,
+        TextImportSelection, BOOK_FILE, SEARCH_TEXT_CACHE_FILE, SEARCH_TEXT_CACHE_VERSION,
+        SEARCH_TEXT_EXTRACTOR_VERSION, SOURCE_TEXT_FILE, STATE_FILE, UNPACKED_DIR,
     };
     use crate::tasks::TaskService;
-    use serde_json::json;
+    use serde_json::{json, Value};
     use std::{
         collections::{HashMap, VecDeque},
         fs,
@@ -2698,6 +2699,128 @@ mod tests {
             format!(r#"<?xml version="1.0" encoding="UTF-8"?><package>{marker}</package>"#),
         )
         .unwrap();
+    }
+
+    fn write_minimal_epub_file(path: &Path, title: &str, body: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        let file = fs::File::create(path).unwrap();
+        let mut writer = ZipWriter::new(file);
+        let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+        let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+
+        writer.start_file("mimetype", stored).unwrap();
+        writer.write_all(b"application/epub+zip").unwrap();
+        writer
+            .start_file("META-INF/container.xml", deflated)
+            .unwrap();
+        writer
+            .write_all(
+                br#"<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"#,
+            )
+            .unwrap();
+        writer.start_file("OEBPS/content.opf", deflated).unwrap();
+        writer
+            .write_all(
+                format!(
+                    r#"<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="3.0">
+  <metadata>
+    <dc:title>{title}</dc:title>
+    <dc:creator>Author</dc:creator>
+  </metadata>
+  <manifest>
+    <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="chapter"/>
+  </spine>
+</package>"#
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        writer.start_file("OEBPS/chapter.xhtml", deflated).unwrap();
+        writer
+            .write_all(
+                format!(
+                    r#"<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><body><p>{body}</p></body></html>"#
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        writer.finish().unwrap();
+    }
+
+    #[test]
+    fn epub_import_copies_source_without_unpacking_or_indexing() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-epub-stream-import-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("streamed.epub");
+        write_minimal_epub_file(&source, "Streamed Book", "streamed body");
+        let storage = test_storage_with_books(&root, Vec::new());
+
+        let book = import_epub_path_impl(&storage, &source, true).unwrap();
+
+        let book_dir = storage.book_dir(&book.id);
+        assert_eq!(
+            hash_file(&source).unwrap(),
+            hash_file(&book_dir.join(BOOK_FILE)).unwrap()
+        );
+        assert_eq!(
+            book.metadata.get("title").and_then(Value::as_str),
+            Some("Streamed Book")
+        );
+        assert!(!book_dir.join(UNPACKED_DIR).exists());
+        assert!(!book_dir.join(SEARCH_TEXT_CACHE_FILE).exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn epub_replace_import_removes_stale_unpacked_and_search_artifacts() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-epub-replace-cleanup-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("replace.epub");
+        write_minimal_epub_file(&source, "Old Book", "old body");
+        let storage = test_storage_with_books(&root, Vec::new());
+        let old_book = import_epub_path_impl(&storage, &source, true).unwrap();
+        let book_dir = storage.book_dir(&old_book.id);
+        fs::create_dir_all(book_dir.join(UNPACKED_DIR)).unwrap();
+        fs::write(book_dir.join(UNPACKED_DIR).join("stale.txt"), "stale").unwrap();
+        fs::write(book_dir.join(SEARCH_TEXT_CACHE_FILE), "stale").unwrap();
+
+        write_minimal_epub_file(&source, "New Book", "new body");
+        let new_book = import_epub_path_impl(&storage, &source, true).unwrap();
+
+        assert_eq!(old_book.id, new_book.id);
+        assert_eq!(
+            new_book.metadata.get("title").and_then(Value::as_str),
+            Some("New Book")
+        );
+        assert!(!book_dir.join(UNPACKED_DIR).exists());
+        assert!(!book_dir.join(SEARCH_TEXT_CACHE_FILE).exists());
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

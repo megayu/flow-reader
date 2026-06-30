@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tauri::State;
 
-use crate::tasks::TaskService;
+use crate::tasks::{TaskPriority, TaskService};
 
 use super::*;
 
@@ -306,8 +306,24 @@ pub fn update_cover(
 }
 
 #[tauri::command]
-pub fn import_epub_paths(
+pub async fn import_epub_paths(
     storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
+    paths: Vec<String>,
+    replace_existing: bool,
+) -> Result<Vec<BookRecord>, String> {
+    let storage = (*storage).clone();
+    let tasks = (*tasks).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        import_epub_paths_impl(&storage, &tasks, paths, replace_existing)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+pub(super) fn import_epub_paths_impl(
+    storage: &AppStorage,
+    tasks: &TaskService,
     paths: Vec<String>,
     replace_existing: bool,
 ) -> Result<Vec<BookRecord>, String> {
@@ -319,7 +335,9 @@ pub fn import_epub_paths(
             continue;
         }
 
-        books.push(import_epub_path_impl(&storage, &path, replace_existing)?);
+        books.push(tasks.run_io(TaskPriority::Foreground, || {
+            import_epub_path_impl(storage, &path, replace_existing)
+        })?);
     }
 
     Ok(books)
