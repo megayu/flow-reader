@@ -2444,8 +2444,8 @@ pub(super) fn export_book_impl(
 #[cfg(test)]
 mod tests {
     use super::commands::{
-        import_text_paths_impl, preview_text_import_paths_impl, record_reading_position_impl,
-        ReadingPositionInput,
+        import_epub_paths_impl, import_text_paths_impl, preview_text_import_paths_impl,
+        record_reading_position_impl, ReadingPositionInput,
     };
     use super::{
         book_is_export_dirty, cleanup_delete_tombstones, decode_text_bytes,
@@ -3141,6 +3141,38 @@ mod tests {
         );
         assert!(!book_dir.join(UNPACKED_DIR).exists());
         assert!(!book_dir.join(SEARCH_TEXT_CACHE_FILE).exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn epub_import_command_records_timing_for_generated_fixture() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-epub-command-import-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("command.epub");
+        write_minimal_epub_file(&source, "Command Book", "command body");
+        let storage = test_storage_with_books(&root, Vec::new());
+        let tasks = TaskService::default();
+
+        let books = import_epub_paths_impl(
+            &storage,
+            &tasks,
+            vec![source.to_string_lossy().to_string()],
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(books.len(), 1);
+        assert_eq!(
+            books[0].metadata.get("title").and_then(Value::as_str),
+            Some("Command Book")
+        );
 
         let _ = fs::remove_dir_all(root);
     }
