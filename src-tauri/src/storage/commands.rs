@@ -527,14 +527,16 @@ pub(super) fn import_text_paths_impl(
     let prepared_imports = prepare_text_imports_for_import(storage, tasks, imports, rules)?;
 
     for (import, prepared) in prepared_imports {
-        books.push(import_text_path_impl(
-            storage,
-            prepared,
-            import.title.as_deref(),
-            import.creator.as_deref(),
-            replace_existing,
-            rules,
-        )?);
+        books.push(tasks.run_io(TaskPriority::Foreground, || {
+            import_text_path_impl(
+                storage,
+                prepared,
+                import.title.as_deref(),
+                import.creator.as_deref(),
+                replace_existing,
+                rules,
+            )
+        })?);
     }
 
     let (cache_entries, cache_bytes) = storage.text_import_prepared_cache_stats();
@@ -667,14 +669,19 @@ pub async fn search_book_text(
 #[tauri::command]
 pub async fn replace_book_text(
     storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
     id: String,
     target: BookTextReplaceTarget,
     old_text: String,
     new_text: String,
 ) -> Result<BookTextReplaceResult, String> {
     let storage = (*storage).clone();
+    let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        replace_book_text_impl(&storage, id, target, old_text, new_text)
+        let lock_id = id.clone();
+        tasks.run_book_exclusive(&lock_id, TaskPriority::Foreground, || {
+            replace_book_text_impl(&storage, id, target, old_text, new_text)
+        })
     })
     .await
     .map_err(|error| error.to_string())?
@@ -683,13 +690,18 @@ pub async fn replace_book_text(
 #[tauri::command]
 pub async fn export_book(
     storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
     id: String,
     format: BookExportFormat,
     output_path: String,
 ) -> Result<Option<BookRecord>, String> {
     let storage = (*storage).clone();
+    let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        export_book_impl(&storage, id, format, PathBuf::from(output_path))
+        let lock_id = id.clone();
+        tasks.run_book_exclusive(&lock_id, TaskPriority::Foreground, || {
+            export_book_impl(&storage, id, format, PathBuf::from(output_path))
+        })
     })
     .await
     .map_err(|error| error.to_string())?

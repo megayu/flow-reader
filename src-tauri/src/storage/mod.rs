@@ -865,8 +865,10 @@ fn ensure_book_package_path_with_unpacker(
     let diagnostics_book_id = book.id.clone();
     let task_runner = tasks.clone();
     let result = tasks.get_or_run(key, TaskPriority::Foreground, move || {
-        task_runner.run_io(TaskPriority::Foreground, || {
-            publish_unpacked_book_package(&storage, &book, unpacker)
+        task_runner.run_book_exclusive(&book.id, TaskPriority::Foreground, || {
+            task_runner.run_io(TaskPriority::Foreground, || {
+                publish_unpacked_book_package(&storage, &book, unpacker)
+            })
         })
     });
     if result.is_ok() {

@@ -7,6 +7,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc, Condvar, Mutex,
     },
+    thread::ThreadId,
 };
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -155,6 +156,7 @@ struct TaskServiceInner {
     cpu: ResourceGate,
     io: ResourceGate,
     background: ResourceGate,
+    book_locks: Mutex<HashMap<String, Arc<BookOperationLock>>>,
 }
 
 struct ResourceGate {
@@ -165,6 +167,21 @@ struct ResourceGate {
 
 struct ResourcePermit<'a> {
     gate: &'a ResourceGate,
+}
+
+struct BookOperationLock {
+    state: Mutex<BookOperationLockState>,
+    ready: Condvar,
+}
+
+#[derive(Default)]
+struct BookOperationLockState {
+    owner: Option<ThreadId>,
+    depth: usize,
+}
+
+struct BookOperationPermit {
+    lock: Arc<BookOperationLock>,
 }
 
 impl Default for TaskService {
@@ -179,6 +196,7 @@ impl Default for TaskService {
                 cpu: ResourceGate::new(logical_cpus.saturating_mul(2).max(1)),
                 io: ResourceGate::new(1),
                 background: ResourceGate::new(1),
+                book_locks: Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -240,12 +258,37 @@ impl TaskService {
         task()
     }
 
+    pub(crate) fn run_book_exclusive<T>(
+        &self,
+        book_id: impl AsRef<str>,
+        priority: TaskPriority,
+        task: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String> {
+        self.ensure_accepting(priority)?;
+        let lock = self.book_lock(book_id.as_ref())?;
+        let _permit = lock.acquire()?;
+        task()
+    }
+
     fn ensure_accepting(&self, priority: TaskPriority) -> Result<(), String> {
         if priority != TaskPriority::Critical && self.inner.shutdown.load(Ordering::SeqCst) {
             Err("task service is shutting down".to_string())
         } else {
             Ok(())
         }
+    }
+
+    fn book_lock(&self, book_id: &str) -> Result<Arc<BookOperationLock>, String> {
+        let mut locks = self
+            .inner
+            .book_locks
+            .lock()
+            .map_err(|_| "book operation lock map poisoned".to_string())?;
+        Ok(Arc::clone(
+            locks
+                .entry(book_id.to_string())
+                .or_insert_with(|| Arc::new(BookOperationLock::new())),
+        ))
     }
 }
 
@@ -279,6 +322,58 @@ impl Drop for ResourcePermit<'_> {
         if let Ok(mut active) = self.gate.active.lock() {
             *active = active.saturating_sub(1);
             self.gate.ready.notify_one();
+        }
+    }
+}
+
+impl BookOperationLock {
+    fn new() -> Self {
+        Self {
+            state: Mutex::new(BookOperationLockState::default()),
+            ready: Condvar::new(),
+        }
+    }
+
+    fn acquire(self: &Arc<Self>) -> Result<BookOperationPermit, String> {
+        let current_thread = std::thread::current().id();
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| "book operation lock poisoned".to_string())?;
+        loop {
+            match state.owner {
+                None => {
+                    state.owner = Some(current_thread);
+                    state.depth = 1;
+                    return Ok(BookOperationPermit {
+                        lock: Arc::clone(self),
+                    });
+                }
+                Some(owner) if owner == current_thread => {
+                    state.depth += 1;
+                    return Ok(BookOperationPermit {
+                        lock: Arc::clone(self),
+                    });
+                }
+                Some(_) => {
+                    state = self
+                        .ready
+                        .wait(state)
+                        .map_err(|_| "book operation lock poisoned".to_string())?;
+                }
+            }
+        }
+    }
+}
+
+impl Drop for BookOperationPermit {
+    fn drop(&mut self) {
+        if let Ok(mut state) = self.lock.state.lock() {
+            state.depth = state.depth.saturating_sub(1);
+            if state.depth == 0 {
+                state.owner = None;
+                self.lock.ready.notify_one();
+            }
         }
     }
 }
@@ -341,5 +436,102 @@ mod tests {
         let result = service.run_background(|| Ok("started"));
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn book_exclusive_work_serializes_matching_book_ids() {
+        let service = Arc::new(TaskService::default());
+        let active = Arc::new(AtomicUsize::new(0));
+        let max_active = Arc::new(AtomicUsize::new(0));
+
+        let first = {
+            let service = Arc::clone(&service);
+            let active = Arc::clone(&active);
+            let max_active = Arc::clone(&max_active);
+            thread::spawn(move || {
+                service.run_book_exclusive("book", super::TaskPriority::Foreground, || {
+                    let now = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    max_active.fetch_max(now, Ordering::SeqCst);
+                    thread::sleep(Duration::from_millis(80));
+                    active.fetch_sub(1, Ordering::SeqCst);
+                    Ok(())
+                })
+            })
+        };
+
+        thread::sleep(Duration::from_millis(10));
+
+        let second = {
+            let service = Arc::clone(&service);
+            let active = Arc::clone(&active);
+            let max_active = Arc::clone(&max_active);
+            thread::spawn(move || {
+                service.run_book_exclusive("book", super::TaskPriority::Foreground, || {
+                    let now = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    max_active.fetch_max(now, Ordering::SeqCst);
+                    active.fetch_sub(1, Ordering::SeqCst);
+                    Ok(())
+                })
+            })
+        };
+
+        first.join().unwrap().unwrap();
+        second.join().unwrap().unwrap();
+
+        assert_eq!(max_active.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn book_exclusive_work_allows_different_book_ids() {
+        let service = Arc::new(TaskService::default());
+        let active = Arc::new(AtomicUsize::new(0));
+        let max_active = Arc::new(AtomicUsize::new(0));
+
+        let first = {
+            let service = Arc::clone(&service);
+            let active = Arc::clone(&active);
+            let max_active = Arc::clone(&max_active);
+            thread::spawn(move || {
+                service.run_book_exclusive("book-a", super::TaskPriority::Foreground, || {
+                    let now = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    max_active.fetch_max(now, Ordering::SeqCst);
+                    thread::sleep(Duration::from_millis(80));
+                    active.fetch_sub(1, Ordering::SeqCst);
+                    Ok(())
+                })
+            })
+        };
+
+        thread::sleep(Duration::from_millis(10));
+
+        let second = {
+            let service = Arc::clone(&service);
+            let active = Arc::clone(&active);
+            let max_active = Arc::clone(&max_active);
+            thread::spawn(move || {
+                service.run_book_exclusive("book-b", super::TaskPriority::Foreground, || {
+                    let now = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    max_active.fetch_max(now, Ordering::SeqCst);
+                    active.fetch_sub(1, Ordering::SeqCst);
+                    Ok(())
+                })
+            })
+        };
+
+        first.join().unwrap().unwrap();
+        second.join().unwrap().unwrap();
+
+        assert!(max_active.load(Ordering::SeqCst) > 1);
+    }
+
+    #[test]
+    fn book_exclusive_work_is_reentrant_on_same_thread() {
+        let service = TaskService::default();
+
+        let result = service.run_book_exclusive("book", super::TaskPriority::Foreground, || {
+            service.run_book_exclusive("book", super::TaskPriority::Foreground, || Ok(42))
+        });
+
+        assert_eq!(result, Ok(42));
     }
 }

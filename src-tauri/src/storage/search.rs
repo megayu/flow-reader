@@ -262,12 +262,14 @@ fn load_or_build_search_text_cache_with_builder(
     let task_runner = tasks.clone();
     let cache: Arc<SearchTextCache> =
         tasks.get_or_run(key, TaskPriority::Foreground, move || {
-            task_runner.run_cpu(TaskPriority::Foreground, || {
-                let cache = builder(&task_storage, &task_runner, &task_book)?;
-                if !write_search_text_cache_if_current(&task_storage, &task_book.id, &cache)? {
-                    return Err("Search text cache is stale".to_string());
-                }
-                Ok(Arc::new(cache))
+            task_runner.run_book_exclusive(&task_book.id, TaskPriority::Foreground, || {
+                task_runner.run_cpu(TaskPriority::Foreground, || {
+                    let cache = builder(&task_storage, &task_runner, &task_book)?;
+                    if !write_search_text_cache_if_current(&task_storage, &task_book.id, &cache)? {
+                        return Err("Search text cache is stale".to_string());
+                    }
+                    Ok(Arc::new(cache))
+                })
             })
         })?;
 
