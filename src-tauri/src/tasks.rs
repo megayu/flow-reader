@@ -3,6 +3,7 @@
 use std::{
     any::Any,
     collections::HashMap,
+    env,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Condvar, Mutex,
@@ -39,6 +40,10 @@ impl TaskKind {
         }
     }
 }
+
+const DEFAULT_IO_WRITERS: usize = 1;
+const MAX_IO_WRITERS: usize = 4;
+const IO_WRITERS_ENV: &str = "FLOW_READER_IO_WRITERS";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum TaskPriority {
@@ -160,9 +165,13 @@ struct TaskServiceInner {
 }
 
 struct ResourceGate {
-    max: usize,
-    active: Mutex<usize>,
+    state: Mutex<ResourceGateState>,
     ready: Condvar,
+}
+
+struct ResourceGateState {
+    max: usize,
+    active: usize,
 }
 
 struct ResourcePermit<'a> {
@@ -194,7 +203,7 @@ impl Default for TaskService {
                 shutdown: AtomicBool::new(false),
                 in_flight: TaskRegistry::new(),
                 cpu: ResourceGate::new(logical_cpus.saturating_mul(2).max(1)),
-                io: ResourceGate::new(1),
+                io: ResourceGate::new(initial_io_writer_limit()),
                 background: ResourceGate::new(1),
                 book_locks: Mutex::new(HashMap::new()),
             }),
@@ -208,6 +217,14 @@ impl TaskService {
     }
 
     pub(crate) fn cancel_background(&self) {}
+
+    pub(crate) fn set_io_writer_limit(&self, max: usize) {
+        self.inner.io.set_max(max.min(MAX_IO_WRITERS));
+    }
+
+    pub(crate) fn io_writer_limit(&self) -> usize {
+        self.inner.io.max()
+    }
 
     pub(crate) fn get_or_run<T>(
         &self,
@@ -295,35 +312,62 @@ impl TaskService {
 impl ResourceGate {
     fn new(max: usize) -> Self {
         Self {
-            max: max.max(1),
-            active: Mutex::new(0),
+            state: Mutex::new(ResourceGateState {
+                max: max.max(1),
+                active: 0,
+            }),
             ready: Condvar::new(),
         }
     }
 
     fn acquire(&self) -> Result<ResourcePermit<'_>, String> {
-        let mut active = self
-            .active
+        let mut state = self
+            .state
             .lock()
             .map_err(|_| "task resource gate lock poisoned".to_string())?;
-        while *active >= self.max {
-            active = self
+        while state.active >= state.max {
+            state = self
                 .ready
-                .wait(active)
+                .wait(state)
                 .map_err(|_| "task resource gate lock poisoned".to_string())?;
         }
-        *active += 1;
+        state.active += 1;
         Ok(ResourcePermit { gate: self })
+    }
+
+    fn set_max(&self, max: usize) {
+        if let Ok(mut state) = self.state.lock() {
+            state.max = max.max(1);
+            self.ready.notify_all();
+        }
+    }
+
+    fn max(&self) -> usize {
+        self.state
+            .lock()
+            .map(|state| state.max)
+            .unwrap_or(DEFAULT_IO_WRITERS)
     }
 }
 
 impl Drop for ResourcePermit<'_> {
     fn drop(&mut self) {
-        if let Ok(mut active) = self.gate.active.lock() {
-            *active = active.saturating_sub(1);
-            self.gate.ready.notify_one();
+        if let Ok(mut state) = self.gate.state.lock() {
+            state.active = state.active.saturating_sub(1);
+            self.gate.ready.notify_all();
         }
     }
+}
+
+fn initial_io_writer_limit() -> usize {
+    normalize_io_writer_limit(env::var(IO_WRITERS_ENV).ok().as_deref())
+}
+
+fn normalize_io_writer_limit(input: Option<&str>) -> usize {
+    input
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(DEFAULT_IO_WRITERS)
+        .clamp(1, MAX_IO_WRITERS)
 }
 
 impl BookOperationLock {
@@ -384,7 +428,7 @@ mod tests {
     use std::{
         sync::{
             atomic::{AtomicUsize, Ordering},
-            Arc,
+            mpsc, Arc,
         },
         thread,
         time::Duration,
@@ -436,6 +480,92 @@ mod tests {
         let result = service.run_background(|| Ok("started"));
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn resource_gate_limit_increase_releases_waiting_work() {
+        let gate = Arc::new(super::ResourceGate::new(1));
+        let _first = gate.acquire().unwrap();
+        let (started_tx, started_rx) = mpsc::channel();
+        let (acquired_tx, acquired_rx) = mpsc::channel();
+
+        let waiter = {
+            let gate = Arc::clone(&gate);
+            thread::spawn(move || {
+                started_tx.send(()).unwrap();
+                let _permit = gate.acquire().unwrap();
+                acquired_tx.send(()).unwrap();
+                thread::sleep(Duration::from_millis(20));
+            })
+        };
+
+        started_rx.recv_timeout(Duration::from_millis(100)).unwrap();
+        assert!(acquired_rx.recv_timeout(Duration::from_millis(30)).is_err());
+
+        gate.set_max(2);
+
+        acquired_rx
+            .recv_timeout(Duration::from_millis(100))
+            .unwrap();
+        waiter.join().unwrap();
+    }
+
+    #[test]
+    fn resource_gate_limit_decrease_waits_until_active_count_fits_new_limit() {
+        let gate = Arc::new(super::ResourceGate::new(2));
+        let first = gate.acquire().unwrap();
+        let second = gate.acquire().unwrap();
+        gate.set_max(1);
+        let (started_tx, started_rx) = mpsc::channel();
+        let (acquired_tx, acquired_rx) = mpsc::channel();
+
+        let waiter = {
+            let gate = Arc::clone(&gate);
+            thread::spawn(move || {
+                started_tx.send(()).unwrap();
+                let _permit = gate.acquire().unwrap();
+                acquired_tx.send(()).unwrap();
+                thread::sleep(Duration::from_millis(20));
+            })
+        };
+
+        started_rx.recv_timeout(Duration::from_millis(100)).unwrap();
+        assert!(acquired_rx.recv_timeout(Duration::from_millis(30)).is_err());
+
+        drop(first);
+
+        assert!(acquired_rx.recv_timeout(Duration::from_millis(30)).is_err());
+
+        drop(second);
+
+        acquired_rx
+            .recv_timeout(Duration::from_millis(100))
+            .unwrap();
+        waiter.join().unwrap();
+    }
+
+    #[test]
+    fn io_writer_limit_input_uses_conservative_bounds() {
+        assert_eq!(super::normalize_io_writer_limit(None), 1);
+        assert_eq!(super::normalize_io_writer_limit(Some("")), 1);
+        assert_eq!(super::normalize_io_writer_limit(Some("0")), 1);
+        assert_eq!(super::normalize_io_writer_limit(Some("2")), 2);
+        assert_eq!(super::normalize_io_writer_limit(Some("99")), 4);
+        assert_eq!(super::normalize_io_writer_limit(Some("invalid")), 1);
+    }
+
+    #[test]
+    fn task_service_io_writer_limit_can_be_adjusted_with_bounds() {
+        let service = TaskService::default();
+
+        service.set_io_writer_limit(3);
+        assert_eq!(service.io_writer_limit(), 3);
+
+        service.set_io_writer_limit(99);
+        assert_eq!(service.io_writer_limit(), 4);
+
+        service.set_io_writer_limit(0);
+        assert_eq!(service.io_writer_limit(), 1);
     }
 
     #[test]
