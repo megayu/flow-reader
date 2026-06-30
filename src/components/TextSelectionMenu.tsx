@@ -287,6 +287,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const replaceTarget = editing
     ? replacementSnapshotRef.current
     : currentReplaceTarget
+  const textEditingDisabled = tab.book.contentMode === 'archiveOnly'
 
   useEffect(() => {
     if (!editing) return
@@ -440,9 +441,11 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               }}
             />
             <IconButton
-              title={t('edit_text')}
+              title={t(
+                textEditingDisabled ? 'edit_text_archive_only' : 'edit_text',
+              )}
               Icon={FilePenLineIcon}
-              disabled={!currentReplaceTarget}
+              disabled={textEditingDisabled || !currentReplaceTarget}
               size={ICON_SIZE}
               className={actionIconClassName}
               style={{

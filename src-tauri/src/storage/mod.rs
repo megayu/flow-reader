@@ -40,8 +40,8 @@ use book_assets::{is_generated_text_cover, read_cover, write_cover, write_metada
 #[cfg(test)]
 use epub_import::normalize_publication_date;
 use epub_import::{
-    clean_xml_text, find_unpacked_opf_path, import_epub_path_impl, join_zip_path,
-    normalize_zip_path, parent_zip_path, unpack_epub,
+    clean_xml_text, find_unpacked_opf_path, import_epub_path_impl, inspect_epub_access,
+    join_zip_path, normalize_zip_path, parent_zip_path, unpack_epub,
 };
 
 #[cfg(test)]
@@ -171,6 +171,10 @@ struct LibraryBook {
     content_hash: String,
     #[serde(default)]
     content_version: u32,
+    #[serde(default, skip_serializing_if = "BookContentMode::is_normal")]
+    content_mode: BookContentMode,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    content_flags: Vec<BookContentFlag>,
     #[serde(default = "empty_object")]
     metadata: Value,
     created_at: u64,
@@ -222,6 +226,10 @@ pub struct BookRecord {
     content_hash: String,
     #[serde(default)]
     content_version: u32,
+    #[serde(default, skip_serializing_if = "BookContentMode::is_normal")]
+    content_mode: BookContentMode,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    content_flags: Vec<BookContentFlag>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -266,6 +274,32 @@ pub enum BookSourceFormat {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum BookContentMode {
+    Normal,
+    ArchiveOnly,
+}
+
+impl Default for BookContentMode {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
+
+impl BookContentMode {
+    fn is_normal(value: &Self) -> bool {
+        *value == Self::Normal
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum BookContentFlag {
+    NonPortableArchivePaths,
+    DeclaresEncryption,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BookExportFormat {
     Epub,
@@ -299,6 +333,20 @@ pub struct BookTextReplaceResult {
     book: BookRecord,
     section_href: String,
     changed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BookReaderSource {
+    mode: BookReaderSourceMode,
+    path: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BookReaderSourceMode {
+    Opf,
+    Epub,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -640,6 +688,8 @@ impl AppStorage {
             configuration: book_state.configuration,
             content_hash: book.content_hash.clone(),
             content_version: book.content_version,
+            content_mode: book.content_mode,
+            content_flags: book.content_flags.clone(),
         })
     }
 
@@ -664,6 +714,8 @@ impl AppStorage {
             configuration: None,
             content_hash: book.content_hash.clone(),
             content_version: book.content_version,
+            content_mode: book.content_mode,
+            content_flags: book.content_flags.clone(),
         }
     }
 
@@ -960,6 +1012,91 @@ fn ensure_book_package_path(
     book: &LibraryBook,
 ) -> Result<PathBuf, String> {
     ensure_book_package_path_with_unpacker(storage, tasks, book, unpack_epub)
+}
+
+fn set_book_content_access(
+    storage: &AppStorage,
+    id: &str,
+    mode: BookContentMode,
+    flags: Vec<BookContentFlag>,
+) -> Result<(), String> {
+    let changed = {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let Some(book) = state.library.books.iter_mut().find(|book| book.id == id) else {
+            return Err("Book not found".to_string());
+        };
+        if book.content_mode == mode && book.content_flags == flags {
+            false
+        } else {
+            book.content_mode = mode;
+            book.content_flags = flags;
+            true
+        }
+    };
+
+    if changed {
+        storage.mark_library_dirty();
+        storage.flush_dirty()?;
+    }
+
+    Ok(())
+}
+
+fn inspect_and_store_book_content_access(
+    storage: &AppStorage,
+    book: &LibraryBook,
+) -> Result<BookContentMode, String> {
+    if book.content_mode == BookContentMode::ArchiveOnly {
+        return Ok(BookContentMode::ArchiveOnly);
+    }
+    if storage.book_source_format(book) != BookSourceFormat::Epub {
+        return Ok(BookContentMode::Normal);
+    }
+
+    let book_path = storage.book_dir(&book.id).join(BOOK_FILE);
+    if !book_path.exists() {
+        return Ok(BookContentMode::Normal);
+    }
+
+    let access = inspect_epub_access(&book_path)?;
+    set_book_content_access(storage, &book.id, access.mode, access.flags)?;
+    Ok(access.mode)
+}
+
+fn get_book_reader_source_impl(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    book: &LibraryBook,
+) -> Result<BookReaderSource, String> {
+    let book_dir = storage.book_dir(&book.id);
+    let unpacked_dir = book_dir.join(UNPACKED_DIR);
+    if let Ok(opf_path) = find_unpacked_opf_path(&unpacked_dir) {
+        return Ok(BookReaderSource {
+            mode: BookReaderSourceMode::Opf,
+            path: path_to_client_string(&opf_path),
+        });
+    }
+
+    if inspect_and_store_book_content_access(storage, book)? == BookContentMode::ArchiveOnly {
+        let book_path = book_dir.join(BOOK_FILE);
+        if !book_path.exists() {
+            return Err("Book package is unavailable".to_string());
+        }
+        return Ok(BookReaderSource {
+            mode: BookReaderSourceMode::Epub,
+            path: path_to_client_string(&book_path),
+        });
+    }
+
+    let opf_path = ensure_book_package_path(storage, tasks, book)?;
+    Ok(BookReaderSource {
+        mode: BookReaderSourceMode::Opf,
+        path: path_to_client_string(&opf_path),
+    })
 }
 
 fn publish_unpacked_book_package(
@@ -2271,6 +2408,10 @@ pub(super) fn replace_book_text_impl(
 ) -> Result<BookTextReplaceResult, String> {
     let initial_book = storage.library_book(&id)?;
     let source_format = storage.book_source_format(&initial_book);
+    let content_mode = inspect_and_store_book_content_access(storage, &initial_book)?;
+    if source_format == BookSourceFormat::Epub && content_mode == BookContentMode::ArchiveOnly {
+        return Err("Archive-only EPUB text editing is not supported".to_string());
+    }
     let book_dir = storage.book_dir(&id);
     let unpacked_dir = book_dir.join(UNPACKED_DIR);
     if !unpacked_dir.exists() {
@@ -2398,27 +2539,41 @@ pub(super) fn export_book_impl(
 ) -> Result<Option<BookRecord>, String> {
     let initial_book = storage.library_book(&id)?;
     let source_format = storage.book_source_format(&initial_book);
+    let content_mode = inspect_and_store_book_content_access(storage, &initial_book)?;
     let book_dir = storage.book_dir(&id);
 
     match format {
         BookExportFormat::Epub => {
-            let unpacked_dir = book_dir.join(UNPACKED_DIR);
-            if !unpacked_dir.exists() {
+            if source_format == BookSourceFormat::Epub
+                && content_mode == BookContentMode::ArchiveOnly
+            {
                 let book_path = book_dir.join(BOOK_FILE);
-                if book_path.exists() {
-                    unpack_epub(&book_path, &unpacked_dir)?;
+                if !book_path.exists() {
+                    return Err("Book package is unavailable".to_string());
                 }
-            }
-            let book_path = book_dir.join(BOOK_FILE);
-            if source_format == BookSourceFormat::Epub && book_path.exists() {
-                write_epub_from_original_and_unpacked(&book_path, &unpacked_dir, &output_path)?;
+                if let Some(parent) = output_path.parent() {
+                    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+                }
+                fs::copy(&book_path, &output_path).map_err(|error| error.to_string())?;
             } else {
-                let deflate_level = if source_format == BookSourceFormat::Txt {
-                    Some(TXT_EPUB_DEFLATE_LEVEL)
+                let unpacked_dir = book_dir.join(UNPACKED_DIR);
+                if !unpacked_dir.exists() {
+                    let book_path = book_dir.join(BOOK_FILE);
+                    if book_path.exists() {
+                        unpack_epub(&book_path, &unpacked_dir)?;
+                    }
+                }
+                let book_path = book_dir.join(BOOK_FILE);
+                if source_format == BookSourceFormat::Epub && book_path.exists() {
+                    write_epub_from_original_and_unpacked(&book_path, &unpacked_dir, &output_path)?;
                 } else {
-                    None
-                };
-                write_epub_from_unpacked_dir(&unpacked_dir, &output_path, deflate_level)?;
+                    let deflate_level = if source_format == BookSourceFormat::Txt {
+                        Some(TXT_EPUB_DEFLATE_LEVEL)
+                    } else {
+                        None
+                    };
+                    write_epub_from_unpacked_dir(&unpacked_dir, &output_path, deflate_level)?;
+                }
             }
         }
         BookExportFormat::Txt => {
@@ -2467,24 +2622,26 @@ mod tests {
     use super::{
         book_is_export_dirty, cleanup_delete_tombstones, decode_text_bytes,
         delete_books_to_tombstones, delete_tombstones_root, empty_object,
-        encoded_txt_source_update, ensure_book_package_path_with_unpacker, hash_file,
-        image_index_cache_from_bytes, image_index_cache_to_bytes, import_epub_path_impl,
-        library_path, mark_book_exported, normalize_publication_date, parse_text_import_document,
-        read_image_index_cache, read_search_text_sections_from_unpacked,
+        encoded_txt_source_update, ensure_book_package_path_with_unpacker, export_book_impl,
+        get_book_reader_source_impl, hash_file, image_index_cache_from_bytes,
+        image_index_cache_to_bytes, import_epub_path_impl, library_path,
+        load_or_build_search_text_cache, mark_book_exported, normalize_publication_date,
+        parse_text_import_document, path_to_client_string, read_image_index_cache,
+        read_search_text_sections_from_unpacked, replace_book_text_impl,
         replace_generated_txt_source_text, replace_xhtml_text_node,
         schedule_existing_delete_tombstone_cleanup, search_text_cache_from_bytes,
         search_text_cache_to_bytes, search_text_in_cache, sync_unpacked_opf_metadata,
         text_content_opf, text_nav_xhtml, text_section_xhtml, visible_search_text_from_xhtml,
         write_epub_from_original_and_unpacked, write_epub_from_unpacked_dir,
-        write_image_index_cache_if_current, write_source_text_update, AppStorage, BookExportFormat,
-        BookSourceFormat, BookState, BookTextReplaceTarget, DirtyState, ImageIndexCache,
-        ImageIndexCacheInput, ImageIndexEntry, ImageIndexEntryInput, ImageIndexSection,
-        ImageIndexSectionInput, Library, LibraryBook, ReadingStatus, SearchTextCache,
-        SearchTextSection, SourceParagraphRange, SourceTextReplacement, SourceTextUpdate,
-        StorageInner, StorageState, TextImportPreparedCache, TextImportRulesInput,
-        TextImportSelection, BOOK_FILE, IMAGE_INDEX_CACHE_VERSION, IMAGE_INDEX_EXTRACTOR_VERSION,
-        SEARCH_TEXT_CACHE_FILE, SEARCH_TEXT_CACHE_VERSION, SEARCH_TEXT_EXTRACTOR_VERSION,
-        SOURCE_TEXT_FILE, STATE_FILE, UNPACKED_DIR,
+        write_image_index_cache_if_current, write_source_text_update, AppStorage, BookContentMode,
+        BookExportFormat, BookReaderSourceMode, BookSourceFormat, BookState, BookTextReplaceTarget,
+        DirtyState, ImageIndexCache, ImageIndexCacheInput, ImageIndexEntry, ImageIndexEntryInput,
+        ImageIndexSection, ImageIndexSectionInput, Library, LibraryBook, ReadingStatus,
+        SearchTextCache, SearchTextSection, SourceParagraphRange, SourceTextReplacement,
+        SourceTextUpdate, StorageInner, StorageState, TextImportPreparedCache,
+        TextImportRulesInput, TextImportSelection, BOOK_FILE, IMAGE_INDEX_CACHE_VERSION,
+        IMAGE_INDEX_EXTRACTOR_VERSION, SEARCH_TEXT_CACHE_FILE, SEARCH_TEXT_CACHE_VERSION,
+        SEARCH_TEXT_EXTRACTOR_VERSION, SOURCE_TEXT_FILE, STATE_FILE, UNPACKED_DIR,
     };
     use crate::tasks::TaskService;
     use serde_json::{json, Value};
@@ -3135,6 +3292,82 @@ mod tests {
         writer.finish().unwrap();
     }
 
+    fn write_minimal_epub_with_invalid_windows_entry(path: &Path) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        let file = fs::File::create(path).unwrap();
+        let mut writer = ZipWriter::new(file);
+        let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+        let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+
+        writer.start_file("mimetype", stored).unwrap();
+        writer.write_all(b"application/epub+zip").unwrap();
+        writer
+            .start_file("META-INF/container.xml", deflated)
+            .unwrap();
+        writer
+            .write_all(
+                br#"<?xml version="1.0" encoding="UTF-8"?>
+<container>
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"#,
+            )
+            .unwrap();
+        writer.start_file("OEBPS/content.opf", deflated).unwrap();
+        writer
+            .write_all(
+                br#"<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata><dc:title>Archive Only</dc:title></metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="chap1" href="Text/chapter.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chap2" href="Text/invalid:path.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="chap1"/>
+    <itemref idref="chap2"/>
+  </spine>
+</package>"#,
+            )
+            .unwrap();
+        writer.start_file("OEBPS/nav.xhtml", deflated).unwrap();
+        writer
+            .write_all(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><body><nav epub:type="toc"><ol>
+  <li><a href="Text/chapter.xhtml">正常章节</a></li>
+  <li><a href="Text/invalid:path.xhtml">兼容章节</a></li>
+</ol></nav></body></html>"#
+                    .as_bytes(),
+            )
+            .unwrap();
+        writer
+            .start_file("OEBPS/Text/chapter.xhtml", deflated)
+            .unwrap();
+        writer
+            .write_all(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>正常章节</h1><p>普通正文 keyword。</p></body></html>"#
+                    .as_bytes(),
+            )
+            .unwrap();
+        writer
+            .start_file("OEBPS/Text/invalid:path.xhtml", deflated)
+            .unwrap();
+        writer
+            .write_all(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>兼容章节</h1><p>非法路径章节 keyword。</p></body></html>"#
+                    .as_bytes(),
+            )
+            .unwrap();
+        writer.finish().unwrap();
+    }
+
     #[test]
     fn epub_import_copies_source_without_unpacking_or_indexing() {
         let nonce = SystemTime::now()
@@ -3351,6 +3584,139 @@ mod tests {
 
         assert!(result.is_err());
         assert!(!storage.book_dir("book").join(UNPACKED_DIR).exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn archive_only_epub_reader_source_returns_original_package_without_unpacking() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-archive-reader-source-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
+        let book_dir = storage.book_dir("book");
+        let book_path = book_dir.join(BOOK_FILE);
+        write_minimal_epub_with_invalid_windows_entry(&book_path);
+        let tasks = TaskService::default();
+        let book = storage.library_book("book").unwrap();
+
+        let source = get_book_reader_source_impl(&storage, &tasks, &book).unwrap();
+
+        assert_eq!(source.mode, BookReaderSourceMode::Epub);
+        assert_eq!(source.path, path_to_client_string(&book_path));
+        assert!(!book_dir.join(UNPACKED_DIR).exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn archive_only_epub_search_reads_sections_from_package() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-archive-search-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
+        let book_dir = storage.book_dir("book");
+        write_minimal_epub_with_invalid_windows_entry(&book_dir.join(BOOK_FILE));
+        let tasks = TaskService::default();
+        let book = storage.library_book("book").unwrap();
+
+        let cache = load_or_build_search_text_cache(&storage, &tasks, &book).unwrap();
+        let hits = search_text_in_cache(&cache, "非法路径章节", None);
+
+        assert_eq!(cache.sections.len(), 2);
+        assert!(cache
+            .sections
+            .iter()
+            .any(|section| section.href == "Text/invalid:path.xhtml"
+                && section.text.contains("非法路径章节 keyword")));
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].subitems[0].href, "Text/invalid:path.xhtml");
+        assert!(book_dir.join(SEARCH_TEXT_CACHE_FILE).exists());
+        assert!(!book_dir.join(UNPACKED_DIR).exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn archive_only_epub_text_replacement_is_not_supported() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-archive-replace-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut book = test_library_book(BookSourceFormat::Epub);
+        book.content_mode = BookContentMode::ArchiveOnly;
+        let storage = test_storage_with_book(&root, book);
+        let book_dir = storage.book_dir("book");
+        write_minimal_epub_with_invalid_windows_entry(&book_dir.join(BOOK_FILE));
+        let target = BookTextReplaceTarget {
+            section_href: "Text/invalid:path.xhtml".to_string(),
+            text_node_index: 0,
+            text_node_text: "非法路径章节 keyword。".to_string(),
+            start_offset: 0,
+            end_offset: 2,
+            paragraph_index: None,
+        };
+
+        let error = replace_book_text_impl(
+            &storage,
+            "book".to_string(),
+            target,
+            "非法".to_string(),
+            "替换".to_string(),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("Archive-only EPUB"));
+        assert!(!book_dir.join(UNPACKED_DIR).exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn archive_only_epub_export_copies_original_package_without_unpacking() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-archive-export-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut book = test_library_book(BookSourceFormat::Epub);
+        book.content_mode = BookContentMode::ArchiveOnly;
+        let storage = test_storage_with_book(&root, book);
+        let book_dir = storage.book_dir("book");
+        let book_path = book_dir.join(BOOK_FILE);
+        write_minimal_epub_with_invalid_windows_entry(&book_path);
+        let original = fs::read(&book_path).unwrap();
+        let output = root.join("exported.epub");
+
+        let exported = export_book_impl(
+            &storage,
+            "book".to_string(),
+            BookExportFormat::Epub,
+            output.clone(),
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(fs::read(output).unwrap(), original);
+        assert_eq!(exported.exported_versions.get("epub"), Some(&1));
+        assert!(!book_dir.join(UNPACKED_DIR).exists());
 
         let _ = fs::remove_dir_all(root);
     }
@@ -4637,6 +5003,8 @@ mod tests {
             content_edited_at: None,
             content_hash: "hash".to_string(),
             content_version: 1,
+            content_mode: BookContentMode::Normal,
+            content_flags: Vec::new(),
             metadata: empty_object(),
             created_at: 1,
             updated_at: None,

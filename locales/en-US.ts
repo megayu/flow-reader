@@ -24,6 +24,9 @@ export default {
   'home.context.export': 'Export',
   'home.context.delete': 'Delete',
   'home.context.confirm_delete': 'Confirm delete',
+  'home.compat.archive_only': 'Archive mode',
+  'home.compat.archive_only_description':
+    'Reads directly from the EPUB archive; text editing and modified export are unavailable.',
   'home.edit.title': 'Title',
   'home.edit.creator': 'Author',
   'home.edit.dialog_title': 'Edit book',
@@ -182,6 +185,7 @@ export default {
   'menu.search_in_book': 'Search in book',
   'menu.annotate': 'Annotate',
   'menu.edit_text': 'Edit text',
+  'menu.edit_text_archive_only': 'Text editing is unavailable in archive mode',
   'menu.edit_text_error_empty': 'Select text to edit',
   'menu.edit_text_error_stale':
     'The original text changed. Select the text again and retry.',

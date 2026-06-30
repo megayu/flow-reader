@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  ArchiveIcon,
   BookTextIcon,
   BookOpenIcon,
   BookImageIcon,
@@ -196,6 +197,13 @@ function bookSourceFormat(book: BookRecord) {
 
 function bookExportFormats(book: BookRecord): BookExportFormat[] {
   return bookSourceFormat(book) === 'txt' ? ['txt', 'epub'] : ['epub']
+}
+
+function isArchiveOnlyBook(book: BookRecord) {
+  return (
+    book.contentMode === 'archiveOnly' ||
+    book.contentFlags?.includes('nonPortableArchivePaths') === true
+  )
 }
 
 function isBookExportDirty(book: BookRecord, format: BookExportFormat) {
@@ -1337,6 +1345,29 @@ const Book: React.FC<BookProps> = ({
             className="block h-full w-full rounded-[inherit] object-cover"
             draggable={false}
           />
+          {isArchiveOnlyBook(book) && (
+            <AppTooltip
+              label={t('compat.archive_only')}
+              contentStyle={{ maxWidth: 'calc(50vw - 2rem)' }}
+              content={
+                <span className="flex w-max max-w-[calc(50vw-2rem)] min-w-0 flex-col gap-1">
+                  <span className="min-w-0 text-base font-medium break-words">
+                    {t('compat.archive_only')}
+                  </span>
+                  <span className="text-muted-foreground min-w-0 text-base break-words">
+                    {t('compat.archive_only_description')}
+                  </span>
+                </span>
+              }
+            >
+              <div
+                aria-label={t('compat.archive_only')}
+                className="absolute top-2 left-2 z-10 flex size-8 items-center justify-center rounded-lg bg-zinc-950/75 text-white shadow-sm ring-1 ring-white/20 ring-inset"
+              >
+                <ArchiveIcon className="size-[18px]" />
+              </div>
+            </AppTooltip>
+          )}
           {!select && progressPercent !== undefined && (
             <BookProgress
               percent={progressPercent}

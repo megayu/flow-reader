@@ -17,6 +17,7 @@ import {
   normalizeDefinition,
 } from '../annotation'
 import {
+  BookReaderSource,
   BookTextReplaceTarget,
   BookRecord,
   ReadingSpreadPageRecord,
@@ -2900,23 +2901,44 @@ export class BookTab extends BaseTab {
       this.setBook(loadedBook)
     }
 
-    const fileUrl = await db.files.getPackageUrl(this.book.id)
+    let source: BookReaderSource
+    try {
+      source = await db.files.getReaderSource(this.book.id)
+    } catch (error) {
+      console.error(error)
+      clearRendering()
+      return
+    }
     if (generation !== this.renderGeneration) {
       clearRendering()
       return
     }
-    if (!fileUrl) {
+    if (!source.url) {
       clearRendering()
       return
+    }
+    if (source.mode === 'epub' && this.book.contentMode !== 'archiveOnly') {
+      const refreshedBook = await db.books.get(this.book.id)
+      if (generation !== this.renderGeneration) {
+        clearRendering()
+        return
+      }
+      if (refreshedBook) {
+        this.setBook(refreshedBook)
+      }
     }
 
     let epub: Book
     try {
-      epub = ref(
-        await ePub(fileUrl, {
-          requestMethod: createVersionedEpubRequest(this.book.contentVersion),
-        } as any),
-      )
+      const options =
+        source.mode === 'epub'
+          ? { openAs: 'epub' }
+          : {
+              requestMethod: createVersionedEpubRequest(
+                this.book.contentVersion,
+              ),
+            }
+      epub = ref(await ePub(source.url, options as any))
     } catch (error) {
       console.error(error)
       clearRendering()

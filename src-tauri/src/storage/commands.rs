@@ -701,6 +701,22 @@ pub async fn get_book_package_path(
 }
 
 #[tauri::command]
+pub async fn get_book_reader_source(
+    storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
+    id: String,
+) -> Result<BookReaderSource, String> {
+    let storage = (*storage).clone();
+    let tasks = (*tasks).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let book = storage.library_book(&id)?;
+        get_book_reader_source_impl(&storage, &tasks, &book)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub async fn search_book_text(
     storage: State<'_, AppStorage>,
     tasks: State<'_, TaskService>,
@@ -964,7 +980,9 @@ pub fn update_book(
             if let Some(value) = object.get("metadata") {
                 book.metadata = value.clone();
                 write_metadata(&storage, &id, value)?;
-                sync_unpacked_opf_metadata(&storage.book_dir(&id).join(UNPACKED_DIR), value)?;
+                if book.content_mode != BookContentMode::ArchiveOnly {
+                    sync_unpacked_opf_metadata(&storage.book_dir(&id).join(UNPACKED_DIR), value)?;
+                }
                 if is_generated_text_cover(&storage, &id)? {
                     let cover = create_text_cover_input(
                         value,

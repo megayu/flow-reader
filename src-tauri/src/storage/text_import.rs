@@ -1608,6 +1608,8 @@ pub(super) fn import_text_path_impl(
             book.size = size;
             book.content_hash = hash.clone();
             book.content_version = book.content_version.saturating_add(1).max(1);
+            book.content_mode = BookContentMode::Normal;
+            book.content_flags.clear();
             book.updated_at = Some(now_ms());
             book.last_read_at = book.updated_at;
             book.metadata = metadata.clone();
@@ -1616,6 +1618,8 @@ pub(super) fn import_text_path_impl(
             let book = &mut state.library.books[index];
             book.name = name;
             book.size = size;
+            book.content_mode = BookContentMode::Normal;
+            book.content_flags.clear();
             book.updated_at = Some(now_ms());
             book.metadata = metadata.clone();
             (index, false)
@@ -1632,6 +1636,8 @@ pub(super) fn import_text_path_impl(
                 content_edited_at: None,
                 content_hash: hash.clone(),
                 content_version: 1,
+                content_mode: BookContentMode::Normal,
+                content_flags: Vec::new(),
                 metadata: metadata.clone(),
                 created_at,
                 updated_at: None,

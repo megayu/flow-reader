@@ -24,6 +24,9 @@ export default {
   'home.context.export': '导出',
   'home.context.delete': '删除',
   'home.context.confirm_delete': '确认删除',
+  'home.compat.archive_only': '原包模式',
+  'home.compat.archive_only_description':
+    '直接读取 EPUB 压缩包，正文编辑和修改导出不可用。',
   'home.edit.title': '标题',
   'home.edit.creator': '作者',
   'home.edit.dialog_title': '编辑书籍',
@@ -180,6 +183,7 @@ export default {
   'menu.search_in_book': '书内搜索',
   'menu.annotate': '标注',
   'menu.edit_text': '修改',
+  'menu.edit_text_archive_only': '原包模式不支持正文修改',
   'menu.edit_text_error_empty': '请选择要修改的文本',
   'menu.edit_text_error_stale': '原文已经变化，请重新选择后再修改',
   'menu.edit_text_error_generic': '修改失败，请重新选择后再试',

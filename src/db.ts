@@ -58,6 +58,18 @@ export interface TextImportRulesInput {
 
 export type BookSourceFormat = 'epub' | 'txt'
 export type BookExportFormat = 'epub' | 'txt'
+export type BookContentMode = 'normal' | 'archiveOnly'
+export type BookContentFlag = 'nonPortableArchivePaths' | 'declaresEncryption'
+
+export interface BookReaderSource {
+  mode: 'opf' | 'epub'
+  url: string
+}
+
+interface NativeBookReaderSource {
+  mode: BookReaderSource['mode']
+  path: string
+}
 
 export interface BookTextReplaceTarget {
   sectionHref: string
@@ -121,6 +133,8 @@ export interface BookRecord {
   }
   contentHash?: string
   contentVersion?: number
+  contentMode?: BookContentMode
+  contentFlags?: BookContentFlag[]
   stateLoaded?: boolean
 }
 
@@ -554,6 +568,16 @@ export const db = {
     async getPackageUrl(id: string) {
       const path = await invoke<string>('get_book_package_path', { id })
       return filePathToUrl(path)
+    },
+    async getReaderSource(id: string): Promise<BookReaderSource> {
+      const source = await invoke<NativeBookReaderSource>(
+        'get_book_reader_source',
+        { id },
+      )
+      return {
+        mode: source.mode,
+        url: await filePathToUrl(source.path),
+      }
     },
     async bulkDelete(ids: string[]) {
       await db.books.bulkDelete(ids)

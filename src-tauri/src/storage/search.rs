@@ -1,11 +1,13 @@
 use std::{
     fs,
+    io::{Read, Seek},
     path::{Path, PathBuf},
     sync::Arc,
     time::Instant,
 };
 
 use serde::{Deserialize, Serialize};
+use zip::ZipArchive;
 
 use crate::{
     diagnostics,
@@ -299,10 +301,15 @@ fn build_search_text_cache(
     tasks: &TaskService,
     book: &LibraryBook,
 ) -> Result<SearchTextCache, String> {
-    ensure_book_package_path(storage, tasks, book)?;
-
-    let unpacked_dir = storage.book_dir(&book.id).join(UNPACKED_DIR);
-    let sections = read_search_text_sections_from_unpacked(&unpacked_dir)?;
+    let book_dir = storage.book_dir(&book.id);
+    let unpacked_dir = book_dir.join(UNPACKED_DIR);
+    let sections =
+        if inspect_and_store_book_content_access(storage, book)? == BookContentMode::ArchiveOnly {
+            read_search_text_sections_from_epub_package(&book_dir.join(BOOK_FILE))?
+        } else {
+            ensure_book_package_path(storage, tasks, book)?;
+            read_search_text_sections_from_unpacked(&unpacked_dir)?
+        };
     Ok(SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
         extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
@@ -315,10 +322,103 @@ fn build_search_text_cache(
 pub(super) fn read_search_text_sections_from_unpacked(
     unpacked_dir: &Path,
 ) -> Result<Vec<SearchTextSection>, String> {
-    let opf_path = find_unpacked_opf_path(unpacked_dir)?;
-    let opf = fs::read_to_string(&opf_path).map_err(|error| error.to_string())?;
+    let mut source = UnpackedSearchTextSource { root: unpacked_dir };
+    read_search_text_sections_from_source(&mut source)
+}
+
+fn read_search_text_sections_from_epub_package(
+    path: &Path,
+) -> Result<Vec<SearchTextSection>, String> {
+    let file = fs::File::open(path).map_err(|error| error.to_string())?;
+    let archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
+    let mut source = ArchiveSearchTextSource { archive };
+    read_search_text_sections_from_source(&mut source)
+}
+
+trait SearchTextSource {
+    fn read_text(&mut self, path: &str) -> Result<String, String>;
+}
+
+struct UnpackedSearchTextSource<'a> {
+    root: &'a Path,
+}
+
+impl SearchTextSource for UnpackedSearchTextSource<'_> {
+    fn read_text(&mut self, path: &str) -> Result<String, String> {
+        read_text_file_lossy(&join_relative_unpacked_path(self.root, path))
+    }
+}
+
+struct ArchiveSearchTextSource<R: Read + Seek> {
+    archive: ZipArchive<R>,
+}
+
+impl<R: Read + Seek> SearchTextSource for ArchiveSearchTextSource<R> {
+    fn read_text(&mut self, path: &str) -> Result<String, String> {
+        let bytes = read_archive_bytes(&mut self.archive, path)?;
+        Ok(text_from_bytes_lossy(bytes))
+    }
+}
+
+fn read_archive_bytes<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    path: &str,
+) -> Result<Vec<u8>, String> {
+    let decoded = percent_decode_zip_path(path);
+    let candidates = if decoded == path {
+        vec![path.to_string()]
+    } else {
+        vec![path.to_string(), decoded]
+    };
+    let mut last_error = "EPUB entry not found".to_string();
+
+    for candidate in candidates {
+        match archive.by_name(&candidate) {
+            Ok(mut file) => {
+                let mut data = Vec::with_capacity(file.size() as usize);
+                file.read_to_end(&mut data)
+                    .map_err(|error| error.to_string())?;
+                return Ok(data);
+            }
+            Err(error) => {
+                last_error = error.to_string();
+            }
+        }
+    }
+
+    Err(last_error)
+}
+
+fn percent_decode_zip_path(path: &str) -> String {
+    path.split('/')
+        .map(percent_decode_path_segment)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn text_from_bytes_lossy(bytes: Vec<u8>) -> String {
+    String::from_utf8(bytes.clone()).unwrap_or_else(|_| decode_text_bytes(&bytes, None).text)
+}
+
+fn read_search_text_sections_from_source(
+    source: &mut impl SearchTextSource,
+) -> Result<Vec<SearchTextSection>, String> {
+    let container = source.read_text("META-INF/container.xml")?;
+    let container_doc =
+        roxmltree::Document::parse(&container).map_err(|error| error.to_string())?;
+    let opf_path = container_doc
+        .descendants()
+        .find(|node| node.has_tag_name("rootfile"))
+        .and_then(|node| node.attribute("full-path"))
+        .ok_or_else(|| "EPUB container has no rootfile".to_string())?;
+    let opf_path = normalize_zip_path(opf_path.replace('\\', "/"));
+    if opf_path.is_empty() {
+        return Err("EPUB container has invalid rootfile".to_string());
+    }
+
+    let opf = source.read_text(&opf_path)?;
     let opf_doc = roxmltree::Document::parse(&opf).map_err(|error| error.to_string())?;
-    let opf_dir = opf_path.parent().unwrap_or(unpacked_dir);
+    let opf_dir = parent_zip_path(&opf_path).to_string();
 
     let manifest = opf_doc
         .descendants()
@@ -336,7 +436,7 @@ pub(super) fn read_search_text_sections_from_unpacked(
             ))
         })
         .collect::<HashMap<_, _>>();
-    let nav_items = read_search_text_nav_items(&opf_doc, &manifest, opf_dir);
+    let nav_items = read_search_text_nav_items(source, &opf_doc, &manifest, &opf_dir);
 
     let mut sections = Vec::new();
     for (section_index, itemref) in opf_doc
@@ -360,8 +460,8 @@ pub(super) fn read_search_text_sections_from_unpacked(
             continue;
         }
 
-        let section_path = join_relative_unpacked_path(opf_dir, &normalized_href);
-        let xhtml = read_text_file_lossy(&section_path)?;
+        let section_path = normalize_zip_path(join_zip_path(&opf_dir, &normalized_href));
+        let xhtml = source.read_text(&section_path)?;
         let (text, title) = search_text_and_title_from_xhtml(&xhtml);
         if text.is_empty() {
             continue;
@@ -388,16 +488,17 @@ pub(super) fn read_search_text_sections_from_unpacked(
 }
 
 fn read_search_text_nav_items(
+    source: &mut impl SearchTextSource,
     opf_doc: &roxmltree::Document,
     manifest: &HashMap<String, SearchManifestItem>,
-    opf_dir: &Path,
+    opf_dir: &str,
 ) -> Vec<SearchTextNavItem> {
     if let Some(item) = manifest.values().find(|item| {
         item.properties
             .split_whitespace()
             .any(|value| value == "nav")
     }) {
-        if let Ok(items) = read_epub3_search_nav_items(opf_dir, &item.href) {
+        if let Ok(items) = read_epub3_search_nav_items(source, opf_dir, &item.href) {
             if !items.is_empty() {
                 return items;
             }
@@ -415,12 +516,13 @@ fn read_search_text_nav_items(
     });
 
     ncx_item
-        .and_then(|item| read_ncx_search_nav_items(opf_dir, &item.href).ok())
+        .and_then(|item| read_ncx_search_nav_items(source, opf_dir, &item.href).ok())
         .unwrap_or_default()
 }
 
 fn read_epub3_search_nav_items(
-    opf_dir: &Path,
+    source: &mut impl SearchTextSource,
+    opf_dir: &str,
     nav_href: &str,
 ) -> Result<Vec<SearchTextNavItem>, String> {
     let normalized_href = normalize_zip_path(href_without_fragment(nav_href).replace('\\', "/"));
@@ -428,8 +530,8 @@ fn read_epub3_search_nav_items(
         return Ok(Vec::new());
     }
 
-    let nav_path = join_relative_unpacked_path(opf_dir, &normalized_href);
-    let nav_text = read_text_file_lossy(&nav_path)?;
+    let nav_path = normalize_zip_path(join_zip_path(opf_dir, &normalized_href));
+    let nav_text = source.read_text(&nav_path)?;
     let nav_text = remove_doctype_declaration(&nav_text);
     let nav_doc = roxmltree::Document::parse(&nav_text).map_err(|error| error.to_string())?;
     let Some(nav_node) = nav_doc
@@ -515,7 +617,8 @@ fn collect_epub3_search_nav_items(
 }
 
 fn read_ncx_search_nav_items(
-    opf_dir: &Path,
+    source: &mut impl SearchTextSource,
+    opf_dir: &str,
     ncx_href: &str,
 ) -> Result<Vec<SearchTextNavItem>, String> {
     let normalized_href = normalize_zip_path(href_without_fragment(ncx_href).replace('\\', "/"));
@@ -523,8 +626,8 @@ fn read_ncx_search_nav_items(
         return Ok(Vec::new());
     }
 
-    let ncx_path = join_relative_unpacked_path(opf_dir, &normalized_href);
-    let ncx_text = read_text_file_lossy(&ncx_path)?;
+    let ncx_path = normalize_zip_path(join_zip_path(opf_dir, &normalized_href));
+    let ncx_text = source.read_text(&ncx_path)?;
     let ncx_text = remove_doctype_declaration(&ncx_text);
     let ncx_doc = roxmltree::Document::parse(&ncx_text).map_err(|error| error.to_string())?;
     let Some(nav_map) = ncx_doc
@@ -1056,6 +1159,8 @@ mod tests {
             content_edited_at: None,
             content_hash: format!("hash-{content_version}"),
             content_version,
+            content_mode: BookContentMode::Normal,
+            content_flags: Vec::new(),
             metadata: empty_object(),
             created_at: 1,
             updated_at: None,

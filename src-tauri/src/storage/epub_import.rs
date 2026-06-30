@@ -9,9 +9,96 @@ use sha2::{Digest, Sha256};
 use zip::ZipArchive;
 
 use super::*;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct EpubAccessInfo {
+    pub(super) mode: BookContentMode,
+    pub(super) flags: Vec<BookContentFlag>,
+}
+
 struct ParsedEpubInfo {
     metadata: Value,
     cover: Option<CoverInput>,
+}
+
+pub(super) fn inspect_epub_access(path: &Path) -> Result<EpubAccessInfo, String> {
+    let file = fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
+    let mut flags = Vec::new();
+    let mut has_non_portable_path = false;
+    let mut declares_encryption = false;
+
+    for index in 0..archive.len() {
+        let file = archive.by_index(index).map_err(|error| error.to_string())?;
+        let name = file.name().replace('\\', "/");
+        if non_portable_zip_path(&name) {
+            has_non_portable_path = true;
+        }
+        if name.eq_ignore_ascii_case("META-INF/encryption.xml") {
+            declares_encryption = true;
+        }
+    }
+
+    if has_non_portable_path {
+        flags.push(BookContentFlag::NonPortableArchivePaths);
+    }
+    if declares_encryption {
+        flags.push(BookContentFlag::DeclaresEncryption);
+    }
+
+    Ok(EpubAccessInfo {
+        mode: if has_non_portable_path {
+            BookContentMode::ArchiveOnly
+        } else {
+            BookContentMode::Normal
+        },
+        flags,
+    })
+}
+
+fn non_portable_zip_path(path: &str) -> bool {
+    path.split('/')
+        .filter(|segment| !segment.is_empty())
+        .any(non_portable_path_segment)
+}
+
+fn non_portable_path_segment(segment: &str) -> bool {
+    let invalid_character = segment
+        .chars()
+        .any(|character| matches!(character, '<' | '>' | ':' | '"' | '|' | '?' | '*'));
+    if invalid_character || segment.ends_with(' ') || segment.ends_with('.') {
+        return true;
+    }
+
+    let stem = segment
+        .split_once('.')
+        .map(|(stem, _)| stem)
+        .unwrap_or(segment)
+        .to_ascii_uppercase();
+    matches!(
+        stem.as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    )
 }
 
 pub(super) fn unpack_epub(path: &Path, dest: &Path) -> Result<(), String> {
@@ -502,6 +589,7 @@ pub(super) fn import_epub_path_impl(
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| "book.epub".to_string());
     let parsed = parse_epub_info_result(path)?;
+    let access = inspect_epub_access(path)?;
     let temp_path = epub_import_temp_path(&books_root, &name);
     let hash = match copy_epub_and_hash(path, &temp_path) {
         Ok(hash) => hash,
@@ -547,6 +635,8 @@ pub(super) fn import_epub_path_impl(
                     book.size = size;
                     book.content_hash = hash.clone();
                     book.content_version = book.content_version.saturating_add(1).max(1);
+                    book.content_mode = access.mode;
+                    book.content_flags = access.flags.clone();
                     book.updated_at = Some(now_ms());
                     book.last_read_at = book.updated_at;
                     let book = state.library.books[index].clone();
@@ -561,6 +651,8 @@ pub(super) fn import_epub_path_impl(
                 let book = &mut state.library.books[index];
                 book.name = name.clone();
                 book.size = size;
+                book.content_mode = access.mode;
+                book.content_flags = access.flags.clone();
                 book.updated_at = Some(now_ms());
                 let book = state.library.books[index].clone();
                 let id = book.id.clone();
@@ -582,6 +674,8 @@ pub(super) fn import_epub_path_impl(
                     content_edited_at: None,
                     content_hash: hash.clone(),
                     content_version: 1,
+                    content_mode: access.mode,
+                    content_flags: access.flags.clone(),
                     metadata: empty_object(),
                     created_at,
                     updated_at: None,
