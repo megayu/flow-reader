@@ -4,7 +4,7 @@ use std::{
     io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,8 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager};
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
+
+use crate::tasks::{TaskKey, TaskKind, TaskPriority, TaskService};
 
 mod book_assets;
 mod commands;
@@ -668,6 +670,116 @@ fn hash_file(path: &Path) -> Result<String, String> {
 
     let digest = hasher.finalize();
     Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+fn ensure_book_package_path_with_unpacker(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    book: &LibraryBook,
+    unpacker: impl FnOnce(&Path, &Path) -> Result<(), String>,
+) -> Result<PathBuf, String> {
+    if let Ok(opf_path) = find_unpacked_opf_path(&storage.book_dir(&book.id).join(UNPACKED_DIR)) {
+        return Ok(opf_path);
+    }
+
+    let key = unpack_epub_task_key(book);
+    let storage = storage.clone();
+    let book = book.clone();
+    let task_runner = tasks.clone();
+    tasks.get_or_run(key, TaskPriority::Foreground, move || {
+        task_runner.run_io(TaskPriority::Foreground, || {
+            publish_unpacked_book_package(&storage, &book, unpacker)
+        })
+    })
+}
+
+fn ensure_book_package_path(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    book: &LibraryBook,
+) -> Result<PathBuf, String> {
+    ensure_book_package_path_with_unpacker(storage, tasks, book, unpack_epub)
+}
+
+fn publish_unpacked_book_package(
+    storage: &AppStorage,
+    book: &LibraryBook,
+    unpacker: impl FnOnce(&Path, &Path) -> Result<(), String>,
+) -> Result<PathBuf, String> {
+    let book_dir = storage.book_dir(&book.id);
+    let unpacked_dir = book_dir.join(UNPACKED_DIR);
+
+    if let Ok(opf_path) = find_unpacked_opf_path(&unpacked_dir) {
+        return Ok(opf_path);
+    }
+
+    let book_path = book_dir.join(BOOK_FILE);
+    if !book_path.exists() {
+        return Err("Book package is unavailable".to_string());
+    }
+
+    let temp_dir = unpack_temp_dir(&unpacked_dir);
+    let _ = fs::remove_dir_all(&temp_dir);
+    if let Err(error) = unpacker(&book_path, &temp_dir) {
+        let _ = fs::remove_dir_all(&temp_dir);
+        return Err(error);
+    }
+
+    let temp_opf_path = match find_unpacked_opf_path(&temp_dir) {
+        Ok(path) => path,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&temp_dir);
+            return Err(error);
+        }
+    };
+    let opf_relative_path = temp_opf_path
+        .strip_prefix(&temp_dir)
+        .map_err(|error| error.to_string())?
+        .to_path_buf();
+
+    if !book_content_still_current(storage, book)? {
+        let _ = fs::remove_dir_all(&temp_dir);
+        return Err("Unpacked package is stale".to_string());
+    }
+
+    if unpacked_dir.exists() {
+        fs::remove_dir_all(&unpacked_dir).map_err(|error| error.to_string())?;
+    }
+    fs::rename(&temp_dir, &unpacked_dir).map_err(|error| error.to_string())?;
+
+    if !book_content_still_current(storage, book)? {
+        let _ = fs::remove_dir_all(&unpacked_dir);
+        return Err("Unpacked package is stale".to_string());
+    }
+
+    Ok(unpacked_dir.join(opf_relative_path))
+}
+
+fn unpack_epub_task_key(book: &LibraryBook) -> TaskKey {
+    TaskKey::new(
+        TaskKind::EpubUnpack,
+        format!("{}:{}:{}", book.id, book.content_hash, book.content_version),
+    )
+}
+
+fn unpack_temp_dir(unpacked_dir: &Path) -> PathBuf {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let name = unpacked_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("unpacked");
+    unpacked_dir.with_file_name(format!("{name}.tmp-{}-{nonce}", std::process::id()))
+}
+
+fn book_content_still_current(storage: &AppStorage, book: &LibraryBook) -> Result<bool, String> {
+    let current = storage.library_book(&book.id)?;
+    Ok(
+        current.content_hash == book.content_hash
+            && current.content_version == book.content_version,
+    )
 }
 
 fn id_from_hash(hash: &str) -> String {
@@ -1880,7 +1992,8 @@ mod tests {
     use super::commands::{record_reading_position_impl, ReadingPositionInput};
     use super::{
         book_is_export_dirty, decode_text_bytes, empty_object, encoded_txt_source_update,
-        library_path, mark_book_exported, normalize_publication_date, parse_text_import_document,
+        ensure_book_package_path_with_unpacker, library_path, mark_book_exported,
+        normalize_publication_date, parse_text_import_document,
         read_search_text_sections_from_unpacked, replace_generated_txt_source_text,
         replace_xhtml_text_node, search_text_cache_from_bytes, search_text_cache_to_bytes,
         search_text_in_cache, sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml,
@@ -1889,15 +2002,21 @@ mod tests {
         BookSourceFormat, BookState, BookTextReplaceTarget, DirtyState, Library, LibraryBook,
         ReadingStatus, SearchTextCache, SearchTextSection, SourceParagraphRange,
         SourceTextReplacement, SourceTextUpdate, StorageInner, StorageState, TextImportRulesInput,
-        SEARCH_TEXT_CACHE_VERSION, SEARCH_TEXT_EXTRACTOR_VERSION, STATE_FILE,
+        BOOK_FILE, SEARCH_TEXT_CACHE_VERSION, SEARCH_TEXT_EXTRACTOR_VERSION, STATE_FILE,
+        UNPACKED_DIR,
     };
+    use crate::tasks::TaskService;
     use serde_json::json;
     use std::{
         collections::{HashMap, VecDeque},
         fs,
         io::{Read, Write},
         path::Path,
-        sync::{Arc, Mutex},
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Mutex,
+        },
+        thread,
         time::{Duration, SystemTime, UNIX_EPOCH},
     };
     use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
@@ -1962,6 +2081,147 @@ mod tests {
             updated_at,
             sequence,
         }
+    }
+
+    fn write_minimal_unpacked_package(root: &Path, marker: &str) {
+        let meta_inf = root.join("META-INF");
+        let oebps = root.join("OEBPS");
+        fs::create_dir_all(&meta_inf).unwrap();
+        fs::create_dir_all(&oebps).unwrap();
+        fs::write(
+            meta_inf.join("container.xml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>"#,
+        )
+        .unwrap();
+        fs::write(
+            oebps.join("content.opf"),
+            format!(r#"<?xml version="1.0" encoding="UTF-8"?><package>{marker}</package>"#),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn unpack_package_reuses_in_flight_task_for_same_book_version() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-unpack-idempotent-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let storage = Arc::new(test_storage_with_book(
+            &root,
+            test_library_book(BookSourceFormat::Epub),
+        ));
+        fs::create_dir_all(storage.book_dir("book")).unwrap();
+        fs::write(storage.book_dir("book").join(BOOK_FILE), b"placeholder").unwrap();
+        let tasks = Arc::new(TaskService::default());
+        let runs = Arc::new(AtomicUsize::new(0));
+        let book = storage.library_book("book").unwrap();
+
+        let first = {
+            let storage = Arc::clone(&storage);
+            let tasks = Arc::clone(&tasks);
+            let runs = Arc::clone(&runs);
+            let book = book.clone();
+            thread::spawn(move || {
+                ensure_book_package_path_with_unpacker(&storage, &tasks, &book, |_, dest| {
+                    runs.fetch_add(1, Ordering::SeqCst);
+                    thread::sleep(Duration::from_millis(100));
+                    write_minimal_unpacked_package(dest, "first");
+                    Ok(())
+                })
+            })
+        };
+
+        thread::sleep(Duration::from_millis(20));
+
+        let second = {
+            let storage = Arc::clone(&storage);
+            let tasks = Arc::clone(&tasks);
+            let runs = Arc::clone(&runs);
+            thread::spawn(move || {
+                ensure_book_package_path_with_unpacker(&storage, &tasks, &book, |_, dest| {
+                    runs.fetch_add(1, Ordering::SeqCst);
+                    write_minimal_unpacked_package(dest, "second");
+                    Ok(())
+                })
+            })
+        };
+
+        let first_path = first.join().unwrap().unwrap();
+        let second_path = second.join().unwrap().unwrap();
+
+        assert_eq!(first_path, second_path);
+        assert_eq!(runs.load(Ordering::SeqCst), 1);
+        assert!(fs::read_to_string(first_path).unwrap().contains("first"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn stale_unpack_result_is_not_published() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-unpack-stale-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
+        fs::create_dir_all(storage.book_dir("book")).unwrap();
+        fs::write(storage.book_dir("book").join(BOOK_FILE), b"placeholder").unwrap();
+        let tasks = TaskService::default();
+        let book = storage.library_book("book").unwrap();
+
+        let result = ensure_book_package_path_with_unpacker(&storage, &tasks, &book, |_, dest| {
+            write_minimal_unpacked_package(dest, "stale");
+            let mut state = storage.inner.state.lock().unwrap();
+            let book = state
+                .library
+                .books
+                .iter_mut()
+                .find(|book| book.id == "book")
+                .unwrap();
+            book.content_hash = "changed".to_string();
+            book.content_version = book.content_version.saturating_add(1);
+            Ok(())
+        });
+
+        assert!(result.is_err());
+        assert!(!storage.book_dir("book").join(UNPACKED_DIR).exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn failed_unpack_does_not_expose_partial_directory() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-unpack-atomic-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
+        fs::create_dir_all(storage.book_dir("book")).unwrap();
+        fs::write(storage.book_dir("book").join(BOOK_FILE), b"placeholder").unwrap();
+        let tasks = TaskService::default();
+        let book = storage.library_book("book").unwrap();
+
+        let result = ensure_book_package_path_with_unpacker(&storage, &tasks, &book, |_, dest| {
+            fs::create_dir_all(dest.join("OEBPS")).unwrap();
+            fs::write(dest.join("OEBPS").join("partial.xhtml"), "partial").unwrap();
+            Err("unpack failed".to_string())
+        });
+
+        assert!(result.is_err());
+        assert!(!storage.book_dir("book").join(UNPACKED_DIR).exists());
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

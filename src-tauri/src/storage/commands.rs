@@ -384,23 +384,20 @@ pub fn import_text_paths(
 }
 
 #[tauri::command]
-pub fn get_book_package_path(storage: State<'_, AppStorage>, id: String) -> Result<String, String> {
-    let dir = storage.book_dir(&id);
-    let unpacked_dir = dir.join(UNPACKED_DIR);
-
-    if let Ok(opf_path) = find_unpacked_opf_path(&unpacked_dir) {
-        return Ok(path_to_client_string(&opf_path));
-    }
-
-    let book_path = dir.join(BOOK_FILE);
-    if book_path.exists() {
-        unpack_epub(&dir.join(BOOK_FILE), &unpacked_dir)?;
-        return Ok(path_to_client_string(&find_unpacked_opf_path(
-            &unpacked_dir,
-        )?));
-    }
-
-    Err("Book package is unavailable".to_string())
+pub async fn get_book_package_path(
+    storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
+    id: String,
+) -> Result<String, String> {
+    let storage = (*storage).clone();
+    let tasks = (*tasks).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let book = storage.library_book(&id)?;
+        let opf_path = ensure_book_package_path(&storage, &tasks, &book)?;
+        Ok(path_to_client_string(&opf_path))
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]

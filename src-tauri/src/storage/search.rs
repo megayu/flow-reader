@@ -213,7 +213,7 @@ fn load_or_build_search_text_cache_with_builder(
     storage: &AppStorage,
     tasks: &TaskService,
     book: &LibraryBook,
-    builder: impl FnOnce(&AppStorage, &LibraryBook) -> Result<SearchTextCache, String>,
+    builder: impl FnOnce(&AppStorage, &TaskService, &LibraryBook) -> Result<SearchTextCache, String>,
 ) -> Result<Arc<SearchTextCache>, String> {
     if let Some(cache) = load_search_text_memory_cache(storage, book)? {
         return Ok(cache);
@@ -232,7 +232,7 @@ fn load_or_build_search_text_cache_with_builder(
     let cache: Arc<SearchTextCache> =
         tasks.get_or_run(key, TaskPriority::Foreground, move || {
             task_runner.run_cpu(TaskPriority::Foreground, || {
-                let cache = builder(&task_storage, &task_book)?;
+                let cache = builder(&task_storage, &task_runner, &task_book)?;
                 if !write_search_text_cache_if_current(&task_storage, &task_book.id, &cache)? {
                     return Err("Search text cache is stale".to_string());
                 }
@@ -258,7 +258,8 @@ pub(super) fn build_and_write_search_text_cache(
     storage: &AppStorage,
     book: &LibraryBook,
 ) -> Result<SearchTextCache, String> {
-    let cache = build_search_text_cache(storage, book)?;
+    let tasks = TaskService::default();
+    let cache = build_search_text_cache(storage, &tasks, book)?;
     if !write_search_text_cache_if_current(storage, &book.id, &cache)? {
         return Err("Search text cache is stale".to_string());
     }
@@ -267,18 +268,12 @@ pub(super) fn build_and_write_search_text_cache(
 
 fn build_search_text_cache(
     storage: &AppStorage,
+    tasks: &TaskService,
     book: &LibraryBook,
 ) -> Result<SearchTextCache, String> {
-    let book_dir = storage.book_dir(&book.id);
-    let unpacked_dir = book_dir.join(UNPACKED_DIR);
+    ensure_book_package_path(storage, tasks, book)?;
 
-    if !unpacked_dir.exists() {
-        let book_path = book_dir.join(BOOK_FILE);
-        if book_path.exists() {
-            unpack_epub(&book_path, &unpacked_dir)?;
-        }
-    }
-
+    let unpacked_dir = storage.book_dir(&book.id).join(UNPACKED_DIR);
     let sections = read_search_text_sections_from_unpacked(&unpacked_dir)?;
     Ok(SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
@@ -1094,11 +1089,16 @@ mod tests {
             let runs = Arc::clone(&runs);
             let book = book.clone();
             thread::spawn(move || {
-                load_or_build_search_text_cache_with_builder(&storage, &tasks, &book, |_, book| {
-                    runs.fetch_add(1, Ordering::SeqCst);
-                    thread::sleep(Duration::from_millis(100));
-                    Ok(test_cache(book, "first build"))
-                })
+                load_or_build_search_text_cache_with_builder(
+                    &storage,
+                    &tasks,
+                    &book,
+                    |_, _, book| {
+                        runs.fetch_add(1, Ordering::SeqCst);
+                        thread::sleep(Duration::from_millis(100));
+                        Ok(test_cache(book, "first build"))
+                    },
+                )
             })
         };
 
@@ -1109,10 +1109,15 @@ mod tests {
             let tasks = Arc::clone(&tasks);
             let runs = Arc::clone(&runs);
             thread::spawn(move || {
-                load_or_build_search_text_cache_with_builder(&storage, &tasks, &book, |_, book| {
-                    runs.fetch_add(1, Ordering::SeqCst);
-                    Ok(test_cache(book, "second build"))
-                })
+                load_or_build_search_text_cache_with_builder(
+                    &storage,
+                    &tasks,
+                    &book,
+                    |_, _, book| {
+                        runs.fetch_add(1, Ordering::SeqCst);
+                        Ok(test_cache(book, "second build"))
+                    },
+                )
             })
         };
 
