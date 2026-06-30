@@ -1238,7 +1238,7 @@ const Book: React.FC<BookProps> = ({
                 <BookContextMenuButton
                   key={format}
                   Icon={DownloadIcon}
-                  label={`${t('context.export')} ${format.toUpperCase()}${dirty ? '*' : ''}`}
+                  label={`${t('context.export')} ${format.toUpperCase()}${dirty ? ' *' : ''}`}
                   disabled={exportingFormat === format}
                   onClick={() => {
                     closeContextMenu()
