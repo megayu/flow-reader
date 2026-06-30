@@ -9,6 +9,44 @@ const alicePackageUrl = '/test-assets/alice.epub'
 const longPackageUrl = '/test-assets/long/OPS/package.opf'
 const findShortcut = process.platform === 'darwin' ? 'Meta+F' : 'Control+F'
 
+interface BookTabState {
+  id: string
+  rendered: boolean
+  turning: boolean
+  bookCfi?: string
+  currentTarget?: unknown
+  renditionStartCfi?: string
+  rejectedLocationEventCount: number
+  startCfi?: string
+  endCfi?: string
+  startIndex?: number
+  endIndex?: number
+  visibleSectionIndexes: number[]
+}
+
+interface BookTabRuntimeCounters {
+  id: string
+  display?: number
+  next?: number
+  prev?: number
+  relayoutCurrentView?: number
+  resizeRendition?: number
+  setActive?: number
+}
+
+interface TabStripMotion {
+  animated: Array<{ label: string; target: string }>
+  frames: Array<
+    Array<{
+      label: string
+      height: number
+      left: number
+      top: number
+      width: number
+    }>
+  >
+}
+
 function createBook(id: string, title: string): BookRecord {
   return {
     id,
@@ -17,7 +55,18 @@ function createBook(id: string, title: string): BookRecord {
     metadata: {
       title,
       creator: 'Lewis Carroll',
+      description: '',
+      pubdate: '',
+      publisher: '',
+      identifier: id,
       language: 'en',
+      rights: '',
+      modified_date: '',
+      layout: '',
+      orientation: '',
+      flow: '',
+      viewport: '',
+      spread: '',
     },
     createdAt: 1,
     updatedAt: 1,
@@ -25,7 +74,7 @@ function createBook(id: string, title: string): BookRecord {
     definitions: [],
     annotations: [],
     stateLoaded: true,
-  } as BookRecord
+  }
 }
 
 async function installReaderBooksMock(
@@ -67,14 +116,15 @@ async function installReaderBooksMock(
       type TauriEventInternals = {
         unregisterListener?: (event: string, eventId: number) => void
       }
-
-      const globalWindow = window as typeof window & {
+      type TestWindow = {
         __TAURI_EVENT_PLUGIN_INTERNALS__?: TauriEventInternals
         __FLOW_TEST_TAURI__?: {
           settingsStore: Record<string, unknown>
         }
         __TAURI_INTERNALS__?: TauriInternals
       }
+
+      const globalWindow = window as unknown as TestWindow
       const bookStore = new Map<string, BookRecord>(
         fixtureBooks.map((book) => [book.id, book]),
       )
@@ -596,7 +646,7 @@ async function addVisibleAnnotation(page: Page) {
 
     const doc = tab.iframe.document
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
-      acceptNode(node) {
+      acceptNode(node: Node) {
         const text = node.textContent ?? ''
         return /\bAlice\b/.test(text)
           ? NodeFilter.FILTER_ACCEPT
@@ -794,7 +844,7 @@ async function expectFocusedTabId(page: Page, tabId: string) {
     .toBe(tabId)
 }
 
-async function readAllBookTabStates(page: Page) {
+async function readAllBookTabStates(page: Page): Promise<BookTabState[]> {
   return page.evaluate(() => {
     const group = (window as any).reader.focusedGroup
 
@@ -881,7 +931,9 @@ async function resetBookTabRuntimeCounters(page: Page) {
   })
 }
 
-async function readBookTabRuntimeCounters(page: Page) {
+async function readBookTabRuntimeCounters(
+  page: Page,
+): Promise<BookTabRuntimeCounters[]> {
   return page.evaluate(() => {
     const group = (window as any).reader.focusedGroup
 
@@ -892,7 +944,7 @@ async function readBookTabRuntimeCounters(page: Page) {
   })
 }
 
-async function readTabStripMotion(page: Page) {
+async function readTabStripMotion(page: Page): Promise<TabStripMotion> {
   return page.evaluate(async () => {
     const motionProperties = new Set([
       'all',
@@ -956,7 +1008,7 @@ async function readTabStripMotion(page: Page) {
     const animated = tabElements.flatMap((tab) => {
       const label = tab.getAttribute('aria-label') ?? ''
       const items: Array<{ label: string; target: string }> = []
-      const targets: Array<[string, Element | HTMLElement]> = [
+      const targets: Array<readonly [string, Element]> = [
         ['self', tab],
         ...Array.from(tab.querySelectorAll('*')).map(
           (element, index) => [`child:${index}`, element] as const,
@@ -1117,7 +1169,7 @@ async function addRightPageDefinitionAndAnnotation(
     const viewportHeight =
       doc.documentElement.clientHeight || window.innerHeight
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
-      acceptNode(node) {
+      acceptNode(node: Node) {
         return /[A-Za-z]{4,}/.test(node.textContent ?? '')
           ? NodeFilter.FILTER_ACCEPT
           : NodeFilter.FILTER_SKIP
@@ -1296,6 +1348,124 @@ test('reapplies zoom layout when switching from double page to single page', asy
       spread: 'none',
       viewSignatures: expect.arrayContaining([expect.stringContaining('none')]),
     })
+})
+
+test('keeps zoomed images inside the current page column in double page mode', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+
+  await page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    tab.updateBook({
+      configuration: {
+        ...tab.book.configuration,
+        typography: {
+          ...tab.book.configuration?.typography,
+          spread: 'auto',
+          zoom: 2,
+        },
+      },
+    })
+  })
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const tab = (window as any).reader.focusedBookTab
+        const layout = tab?.rendition?.manager?.layout
+        return {
+          divisor: layout?.divisor,
+          zoom: tab?.book?.configuration?.typography?.zoom,
+        }
+      }),
+    )
+    .toMatchObject({ divisor: 2, zoom: 2 })
+
+  await page.evaluate(async () => {
+    const frame = Array.from(document.querySelectorAll('iframe')).find(
+      (candidate) =>
+        !candidate.closest('[aria-hidden="true"]') &&
+        candidate.contentDocument?.body,
+    )
+    const doc = frame?.contentDocument
+    if (!doc?.body) throw new Error('Missing active reader document')
+
+    const image = doc.createElement('img')
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1200">' +
+      '<rect width="2400" height="1200" fill="#334155"/>' +
+      '<text x="1200" y="640" text-anchor="middle" font-size="180" fill="#f8fafc">wide image</text>' +
+      '</svg>'
+    image.src = `data:image/svg+xml,${encodeURIComponent(svg)}`
+    image.alt = 'Wide zoom layout target'
+    image.style.display = 'block'
+    doc.body.prepend(image)
+
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve()
+      image.onerror = () => reject(new Error('Zoom layout test image failed'))
+      if (image.complete) resolve()
+    })
+  })
+
+  let metrics:
+    | {
+        bodyTransform?: string
+        columnWidth: number
+        imageMaxInlineSize?: string
+        imageMaxWidth?: string
+        imageWidth: number
+        maxVisualWidth: number
+      }
+    | undefined
+  await expect
+    .poll(async () => {
+      metrics = await page.evaluate(() => {
+        const tab = (window as any).reader.focusedBookTab
+        const layout = tab?.rendition?.manager?.layout
+        const frame = Array.from(document.querySelectorAll('iframe')).find(
+          (candidate) =>
+            !candidate.closest('[aria-hidden="true"]') &&
+            candidate.contentDocument?.body,
+        )
+        const doc = frame?.contentDocument
+        const image = doc?.querySelector(
+          'img[alt="Wide zoom layout target"]',
+        ) as HTMLImageElement | null
+        const rect = image?.getBoundingClientRect()
+        const style = image ? getComputedStyle(image) : undefined
+        const bodyStyle = doc?.body ? getComputedStyle(doc.body) : undefined
+        const paddingLeft = bodyStyle
+          ? Number.parseFloat(bodyStyle.paddingLeft) || 0
+          : 0
+        const paddingRight = bodyStyle
+          ? Number.parseFloat(bodyStyle.paddingRight) || 0
+          : 0
+        const zoom = tab?.book?.configuration?.typography?.zoom ?? 1
+        const columnWidth =
+          typeof layout?.columnWidth === 'number' ? layout.columnWidth : 0
+        const maxVisualWidth = columnWidth - (paddingLeft + paddingRight) * zoom
+
+        return {
+          bodyTransform: bodyStyle?.transform,
+          columnWidth,
+          imageMaxInlineSize: style?.maxInlineSize,
+          imageMaxWidth: style?.maxWidth,
+          imageWidth: rect?.width ?? 0,
+          maxVisualWidth,
+        }
+      })
+      return metrics.imageWidth > 0 && metrics.maxVisualWidth > 0
+    })
+    .toBe(true)
+
+  expect(metrics).toBeDefined()
+  expect(metrics!.imageWidth, JSON.stringify(metrics)).toBeLessThanOrEqual(
+    metrics!.maxVisualWidth + 1,
+  )
 })
 
 test('long-book does not expose next-chapter body under stale header while page turn is pending', async ({

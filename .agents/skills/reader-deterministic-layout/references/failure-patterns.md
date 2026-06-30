@@ -83,6 +83,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: for the edited active tab, patch the currently rendered section text node in place using the same section/text-node/offset target used by storage, then reformat/expand the view and commit a fresh location snapshot. Fall back to full reload only when the rendered node cannot be verified.
 - Verification gate: a real Tauri release client edit must keep active reader iframes mounted and the loading cover hidden while the visible text changes.
 
+### Zoomed media crosses into the adjacent spread page
+
+- Symptom: in double-page mode, increasing reader zoom lets a large image draw over the adjacent page while text continues to reflow inside the page columns.
+- Reproduction path: open a reflowable book in double-page mode, set reader zoom above 1, and render an image wider than the current page column.
+- Root cause: epubjs image adjustment constrained media with the unzoomed layout column width, while Flow Reader applies zoom using a scaled body with inverse column dimensions.
+- Fix direction: when injecting zoom styles into iframe content, constrain media max inline size to the current single-page content column in unscaled coordinates.
+- Verification gate: browser Playwright coverage must assert a wide image's rendered width stays within the zoomed single-page content column in double-page mode; final client layout changes still require the deterministic verifier on a Tauri client.
+
 ## Rejected Approaches
 
 ### Visibility-only hidden panes

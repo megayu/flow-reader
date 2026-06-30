@@ -150,6 +150,19 @@ type ZoomLayoutStyleSource = {
   name?: unknown
 }
 
+const zoomConstrainedMediaSelector = [
+  'html body img',
+  'html body svg',
+  'html body video',
+  'html body canvas',
+].join(',\n')
+
+const zoomIntrinsicMediaSelector = [
+  'html body img',
+  'html body video',
+  'html body canvas',
+].join(',\n')
+
 function readCssPixelValue(value: unknown) {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : undefined
@@ -183,6 +196,44 @@ export function createZoomBodyStyles(
   })
 
   return styles
+}
+
+function formatCssPixelValue(value: number) {
+  return `${Math.round(value * 1000) / 1000}px`
+}
+
+export function createZoomMediaMaxInlineSize(
+  source: ZoomBodyStyleSource,
+  zoom: number,
+) {
+  if (!Number.isFinite(zoom) || zoom <= 0) return
+
+  const columnWidth = readCssPixelValue(source.columnWidth)
+  if (columnWidth === undefined) return
+
+  const paddingLeft = readCssPixelValue(source.paddingLeft) ?? 0
+  const paddingRight = readCssPixelValue(source.paddingRight) ?? 0
+  const contentWidth = columnWidth - paddingLeft - paddingRight
+  if (!Number.isFinite(contentWidth) || contentWidth <= 0) return
+
+  return contentWidth / zoom
+}
+
+export function createZoomMediaCss(source: ZoomBodyStyleSource, zoom: number) {
+  const maxInlineSize = createZoomMediaMaxInlineSize(source, zoom)
+  if (maxInlineSize === undefined) return ''
+
+  const maxInlineSizeCss = formatCssPixelValue(maxInlineSize)
+
+  return `${zoomConstrainedMediaSelector} {
+    max-width: ${maxInlineSizeCss} !important;
+    max-inline-size: ${maxInlineSizeCss} !important;
+    box-sizing: border-box !important;
+    object-fit: contain !important;
+  }
+  ${zoomIntrinsicMediaSelector} {
+    height: auto !important;
+  }`
 }
 
 function cssPixelValue(value: unknown) {
@@ -267,6 +318,7 @@ export function updateCustomStyle(
       layoutView?.layout,
       layoutView?.axis,
     )
+    css += createZoomMediaCss(layoutStyles, zoom)
     css += `body {
       ${mapToCss(
         createZoomBodyStyles(
