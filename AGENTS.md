@@ -34,6 +34,7 @@
 - Prettier enforces 2-space indentation, single quotes, trailing commas, and no semicolons (`prettier.config.js`).
 - ESLint extends Next.js defaults; fix warnings instead of suppressing unless documented.
 - Components use PascalCase, hooks use camelCase with a `use` prefix, route files follow path-based kebab-case.
+- Code comments must explain durable behavior, constraints, or non-obvious decisions; never include session context, revision history.
 
 ## Testing Guidelines
 

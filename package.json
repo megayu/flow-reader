@@ -11,7 +11,6 @@
     "tauri:build": "tauri build --no-bundle",
     "release:local": "node scripts/release-local.mjs",
     "analyze:turbopack": "next experimental-analyze --output",
-    "start": "next start -p 7127",
     "lint": "eslint src locales scripts test .agents/skills next.config.js tailwind.config.js postcss.config.js eslint.config.mjs playwright.config.ts",
     "test:theme": "node test/theme-tokens.js",
     "test:reader-optimization": "node test/reader-optimization.js",

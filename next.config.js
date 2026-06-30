@@ -4,7 +4,7 @@
 const config = {
   output: 'export',
   pageExtensions: ['ts', 'tsx'],
-  transpilePackages: ['@flow/epubjs', '@material/material-color-utilities'],
+  transpilePackages: ['@flow/epubjs'],
   turbopack: {
     root: __dirname,
   },
