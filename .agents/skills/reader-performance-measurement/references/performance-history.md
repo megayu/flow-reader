@@ -94,6 +94,13 @@ Read this before proposing or testing a Flow Reader performance change. Search f
 - Decision: keep as a functional cache and regression-smoke pass, but do not claim a measured release-client performance win from this entry.
 - Constraint: before making further performance claims or broadening image sidebar ownership, run a comparable `tauri-release` baseline/after set including the image sidebar and at least one closed-sidebar scenario.
 
+### Conservative section document trimming
+
+- Change: track section document access in `BookTab` and trim old loaded section documents only after a delayed high-watermark check. Current visible sections, rendered views, the active section, and in-flight section loads are protected.
+- Measured effect: after-only `browser-smoke` with `tab-switch/sidebar-closed`, `tab-switch/sidebar-image`, `tab-click/sidebar-image`, `page-turn/sidebar-closed`, and `page-turn/sidebar-toc` passed with zero long tasks. No comparable pre-change or `tauri-release` baseline was available for this implementation batch.
+- Decision: keep as a conservative memory-control mechanism and regression-smoke pass, but do not claim a measured release-client performance win from this entry.
+- Constraint: keep trimming delayed and watermarked; do not introduce per-click, per-panel, or per-page-turn unload rules without comparable release-client measurements.
+
 ## Rejected Approaches
 
 ### Row CSS containment

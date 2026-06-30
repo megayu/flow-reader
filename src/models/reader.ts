@@ -205,6 +205,9 @@ function elementName(element: Element) {
 }
 
 const NON_TEXT_SIBLING_TAGS = new Set(['IMG', 'SVG', 'PICTURE'])
+const SECTION_DOCUMENT_HIGH_WATERMARK = 48
+const SECTION_DOCUMENT_LOW_WATERMARK = 32
+const SECTION_DOCUMENT_TRIM_DELAY_MS = 5000
 
 function siblingTextLength(element: Element) {
   let length = 0
@@ -798,6 +801,10 @@ export class BookTab extends BaseTab {
   private layoutOperationId = 0
   private layoutOperationPromise = Promise.resolve()
   private readingPositionSequence = 0
+  private sectionDocumentAccessSeq = 0
+  private sectionDocumentAccess = new Map<number, number>()
+  private pendingSectionInfoIndexes = new Set<number>()
+  private sectionDocumentTrimTimer?: ReturnType<typeof setTimeout>
   rejectedLocationEventCount = 0
 
   get container() {
@@ -2477,7 +2484,13 @@ export class BookTab extends BaseTab {
     this.rendered = false
     this._el = undefined
     this.renderingEl = undefined
+    if (this.sectionDocumentTrimTimer) {
+      clearTimeout(this.sectionDocumentTrimTimer)
+      this.sectionDocumentTrimTimer = undefined
+    }
     this.sectionInfoPromises.clear()
+    this.sectionDocumentAccess.clear()
+    this.pendingSectionInfoIndexes.clear()
     this.bodyTextCache = ref(new Map())
   }
 
@@ -2556,6 +2569,93 @@ export class BookTab extends BaseTab {
     if (navitem) section.navitem = navitem
   }
 
+  private sectionInfoIndex(section: ISection) {
+    return section.index ?? this.sections?.indexOf(section) ?? -1
+  }
+
+  private markSectionDocumentAccess(section: ISection) {
+    if (!section.document?.body) return
+
+    const index = this.sectionInfoIndex(section)
+    if (index < 0) return
+
+    this.sectionDocumentAccess.set(index, ++this.sectionDocumentAccessSeq)
+    this.scheduleSectionDocumentTrim()
+  }
+
+  private loadedSectionDocumentCount() {
+    return (
+      this.sections?.filter((section) => !!section.document?.body).length ?? 0
+    )
+  }
+
+  private protectedSectionDocumentIndexes() {
+    const indexes = new Set<number>([
+      ...this.visibleSectionIndexes,
+      ...this.pendingSectionInfoIndexes,
+    ])
+
+    if (this.section?.index !== undefined) {
+      indexes.add(this.section.index)
+    }
+
+    const views = this.rendition?.manager?.views?._views as
+      | Array<{ section?: ISection }>
+      | undefined
+    views?.forEach((view) => {
+      if (view.section?.index !== undefined) {
+        indexes.add(view.section.index)
+      }
+    })
+
+    return indexes
+  }
+
+  private scheduleSectionDocumentTrim() {
+    if (this.sectionDocumentTrimTimer) return
+    if (this.loadedSectionDocumentCount() <= SECTION_DOCUMENT_HIGH_WATERMARK) {
+      return
+    }
+
+    this.sectionDocumentTrimTimer = setTimeout(() => {
+      this.sectionDocumentTrimTimer = undefined
+      this.trimSectionDocuments()
+    }, SECTION_DOCUMENT_TRIM_DELAY_MS)
+  }
+
+  private trimSectionDocuments() {
+    const sections = this.sections
+    if (!sections) return
+
+    const loaded = sections.filter((section) => !!section.document?.body)
+    if (loaded.length <= SECTION_DOCUMENT_HIGH_WATERMARK) return
+
+    const protectedIndexes = this.protectedSectionDocumentIndexes()
+    const candidates = loaded
+      .filter((section) => !protectedIndexes.has(section.index))
+      .sort(
+        (a, b) =>
+          (this.sectionDocumentAccess.get(a.index) ?? 0) -
+          (this.sectionDocumentAccess.get(b.index) ?? 0),
+      )
+
+    let loadedCount = loaded.length
+    for (const section of candidates) {
+      if (loadedCount <= SECTION_DOCUMENT_LOW_WATERMARK) break
+
+      try {
+        section.unload()
+      } catch (error) {
+        console.error(error)
+        continue
+      }
+
+      this.sectionInfoPromises.delete(section.index)
+      this.sectionDocumentAccess.delete(section.index)
+      loadedCount -= 1
+    }
+  }
+
   async ensureSectionInfo(section: ISection) {
     if (!this.epub) return
 
@@ -2563,24 +2663,35 @@ export class BookTab extends BaseTab {
       section.images = collectSectionImages(section)
       section.imageInfoLoaded = true
       this.assignSectionNavItem(section)
+      this.markSectionDocumentAccess(section)
       return
     }
 
-    const index = section.index ?? this.sections?.indexOf(section) ?? -1
+    const index = this.sectionInfoIndex(section)
     const cached = this.sectionInfoPromises.get(index)
     if (cached) return cached
 
+    if (index >= 0) this.pendingSectionInfoIndexes.add(index)
+    let loaded = false
     const promise = Promise.resolve(
       section.load(this.epub.load.bind(this.epub)),
     )
       .then(() => {
+        loaded = true
         section.length = section.document?.body?.textContent?.length ?? 0
         section.images = collectSectionImages(section)
         section.imageInfoLoaded = true
         this.assignSectionNavItem(section)
+        this.markSectionDocumentAccess(section)
       })
       .catch((error) => {
         console.error('Failed to load section info', error)
+      })
+      .finally(() => {
+        if (index >= 0) {
+          this.pendingSectionInfoIndexes.delete(index)
+          if (!loaded) this.sectionInfoPromises.delete(index)
+        }
       })
 
     if (index >= 0) this.sectionInfoPromises.set(index, promise)
