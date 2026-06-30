@@ -21,11 +21,13 @@ use crate::{
 mod book_assets;
 mod commands;
 mod epub_import;
+mod image_index;
 mod search;
 mod text_import;
 mod window_state;
 
 pub use commands::*;
+pub use image_index::ImageIndexCache;
 pub use search::SearchTextResult;
 pub use text_import::{
     is_epub_file, is_txt_file, TextImportEncodingOption, TextImportPreview, TextImportRulesInput,
@@ -42,6 +44,14 @@ use epub_import::{
     normalize_zip_path, parent_zip_path, unpack_epub,
 };
 
+#[cfg(test)]
+use image_index::{
+    image_index_cache_from_bytes, image_index_cache_to_bytes, ImageIndexEntry,
+    ImageIndexEntryInput, ImageIndexSection, ImageIndexSectionInput,
+};
+use image_index::{
+    read_image_index_cache, write_image_index_cache_if_current, ImageIndexCacheInput,
+};
 use search::{load_or_build_search_text_cache, search_text_in_cache, SearchTextCache};
 #[cfg(test)]
 use search::{
@@ -71,9 +81,12 @@ const BOOK_FILE: &str = "book.epub";
 const SOURCE_TEXT_FILE: &str = "source.txt";
 const UNPACKED_DIR: &str = "unpacked";
 const SEARCH_TEXT_CACHE_FILE: &str = "search-text.v1.json.zst";
+const IMAGE_INDEX_CACHE_FILE: &str = "image-index.v1.json.zst";
 const SEARCH_TEXT_EXCERPT_RADIUS: usize = 60;
 pub const SEARCH_TEXT_CACHE_VERSION: u32 = 1;
 pub const SEARCH_TEXT_EXTRACTOR_VERSION: u32 = 1;
+pub const IMAGE_INDEX_CACHE_VERSION: u32 = 1;
+pub const IMAGE_INDEX_EXTRACTOR_VERSION: u32 = 1;
 const COVER_STEM: &str = "cover";
 const GENERATED_TEXT_COVER_MARKER: &str = r#"data-flow-generated-cover="true""#;
 const METADATA_FILE: &str = "metadata.json";
@@ -370,6 +383,10 @@ impl AppStorage {
 
     fn search_text_cache_path(&self, id: &str) -> PathBuf {
         self.book_dir(id).join(SEARCH_TEXT_CACHE_FILE)
+    }
+
+    fn image_index_cache_path(&self, id: &str) -> PathBuf {
+        self.book_dir(id).join(IMAGE_INDEX_CACHE_FILE)
     }
 
     fn library_book(&self, id: &str) -> Result<LibraryBook, String> {
@@ -2451,19 +2468,23 @@ mod tests {
         book_is_export_dirty, cleanup_delete_tombstones, decode_text_bytes,
         delete_books_to_tombstones, delete_tombstones_root, empty_object,
         encoded_txt_source_update, ensure_book_package_path_with_unpacker, hash_file,
-        import_epub_path_impl, library_path, mark_book_exported, normalize_publication_date,
-        parse_text_import_document, read_search_text_sections_from_unpacked,
+        image_index_cache_from_bytes, image_index_cache_to_bytes, import_epub_path_impl,
+        library_path, mark_book_exported, normalize_publication_date, parse_text_import_document,
+        read_image_index_cache, read_search_text_sections_from_unpacked,
         replace_generated_txt_source_text, replace_xhtml_text_node,
         schedule_existing_delete_tombstone_cleanup, search_text_cache_from_bytes,
         search_text_cache_to_bytes, search_text_in_cache, sync_unpacked_opf_metadata,
         text_content_opf, text_nav_xhtml, text_section_xhtml, visible_search_text_from_xhtml,
         write_epub_from_original_and_unpacked, write_epub_from_unpacked_dir,
-        write_source_text_update, AppStorage, BookExportFormat, BookSourceFormat, BookState,
-        BookTextReplaceTarget, DirtyState, Library, LibraryBook, ReadingStatus, SearchTextCache,
+        write_image_index_cache_if_current, write_source_text_update, AppStorage, BookExportFormat,
+        BookSourceFormat, BookState, BookTextReplaceTarget, DirtyState, ImageIndexCache,
+        ImageIndexCacheInput, ImageIndexEntry, ImageIndexEntryInput, ImageIndexSection,
+        ImageIndexSectionInput, Library, LibraryBook, ReadingStatus, SearchTextCache,
         SearchTextSection, SourceParagraphRange, SourceTextReplacement, SourceTextUpdate,
         StorageInner, StorageState, TextImportPreparedCache, TextImportRulesInput,
-        TextImportSelection, BOOK_FILE, SEARCH_TEXT_CACHE_FILE, SEARCH_TEXT_CACHE_VERSION,
-        SEARCH_TEXT_EXTRACTOR_VERSION, SOURCE_TEXT_FILE, STATE_FILE, UNPACKED_DIR,
+        TextImportSelection, BOOK_FILE, IMAGE_INDEX_CACHE_VERSION, IMAGE_INDEX_EXTRACTOR_VERSION,
+        SEARCH_TEXT_CACHE_FILE, SEARCH_TEXT_CACHE_VERSION, SEARCH_TEXT_EXTRACTOR_VERSION,
+        SOURCE_TEXT_FILE, STATE_FILE, UNPACKED_DIR,
     };
     use crate::tasks::TaskService;
     use serde_json::{json, Value};
@@ -3577,6 +3598,81 @@ mod tests {
         let restored = search_text_cache_from_bytes(&bytes).expect("cache should decode");
 
         assert_eq!(restored, cache);
+    }
+
+    #[test]
+    fn persists_image_index_cache_as_zstd_payload() {
+        let cache = ImageIndexCache {
+            version: IMAGE_INDEX_CACHE_VERSION,
+            extractor_version: IMAGE_INDEX_EXTRACTOR_VERSION,
+            book_hash: "abc123".to_string(),
+            content_version: 2,
+            sections: vec![ImageIndexSection {
+                section_index: 0,
+                href: "Text/chapter.xhtml".to_string(),
+                title: Some("Chapter One".to_string()),
+                nav_path: vec!["Part One".to_string()],
+                images: vec![ImageIndexEntry {
+                    src: "../Images/p001.jpg".to_string(),
+                    index: 0,
+                    hidden_by_default: false,
+                    reason: None,
+                }],
+            }],
+        };
+
+        let bytes = image_index_cache_to_bytes(&cache).expect("cache should encode");
+        let restored = image_index_cache_from_bytes(&bytes).expect("cache should decode");
+
+        assert_eq!(restored, cache);
+    }
+
+    #[test]
+    fn writes_image_index_cache_only_for_current_book_version() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-image-index-cache-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let book = test_library_book_with_id("book", BookSourceFormat::Epub);
+        let storage = test_storage_with_book(&root, book.clone());
+        fs::create_dir_all(storage.book_dir(&book.id)).unwrap();
+
+        let input = ImageIndexCacheInput {
+            book_hash: book.content_hash.clone(),
+            content_version: book.content_version,
+            sections: vec![ImageIndexSectionInput {
+                section_index: 0,
+                href: "Text/chapter.xhtml".to_string(),
+                title: Some("Chapter One".to_string()),
+                nav_path: Vec::new(),
+                images: vec![ImageIndexEntryInput {
+                    src: "../Images/p001.jpg".to_string(),
+                    index: 0,
+                    hidden_by_default: false,
+                    reason: None,
+                }],
+            }],
+        };
+
+        assert!(write_image_index_cache_if_current(&storage, &book.id, input).unwrap());
+        let cache = read_image_index_cache(&storage, &book).unwrap();
+        assert_eq!(cache.sections.len(), 1);
+        assert_eq!(cache.sections[0].images[0].src, "../Images/p001.jpg");
+
+        let stale = ImageIndexCacheInput {
+            book_hash: "old-hash".to_string(),
+            content_version: book.content_version,
+            sections: Vec::new(),
+        };
+        assert!(!write_image_index_cache_if_current(&storage, &book.id, stale).unwrap());
+        let cache = read_image_index_cache(&storage, &book).unwrap();
+        assert_eq!(cache.sections.len(), 1);
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

@@ -87,6 +87,13 @@ Read this before proposing or testing a Flow Reader performance change. Search f
 - Decision: keep. It removes the user-visible blank interval caused by destroying the rendition before the replacement render finishes.
 - Constraint: only use this for the edited active tab when section href, text-node index, original text, and offsets all match. Other tabs or stale targets should continue to use the conservative reload path.
 
+### Image sidebar persisted index cache
+
+- Change: keep image classification in the WebView, but persist the section image index through Rust using the same serde JSON plus zstd cache pattern as search text cache. Cache hits populate `section.images` without loading section DOM.
+- Measured effect: after-only `browser-smoke` with `tab-switch/sidebar-image`, `tab-click/sidebar-image`, and `tab-switch/sidebar-closed` passed with zero long tasks. No comparable pre-change or `tauri-release` baseline was available for this implementation batch.
+- Decision: keep as a functional cache and regression-smoke pass, but do not claim a measured release-client performance win from this entry.
+- Constraint: before making further performance claims or broadening image sidebar ownership, run a comparable `tauri-release` baseline/after set including the image sidebar and at least one closed-sidebar scenario.
+
 ## Rejected Approaches
 
 ### Row CSS containment

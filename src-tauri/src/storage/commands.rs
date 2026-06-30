@@ -720,6 +720,37 @@ pub async fn search_book_text(
 }
 
 #[tauri::command]
+pub async fn load_book_image_index(
+    storage: State<'_, AppStorage>,
+    id: String,
+) -> Result<Option<ImageIndexCache>, String> {
+    let storage = (*storage).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let book = storage.library_book(&id)?;
+        match read_image_index_cache(&storage, &book) {
+            Ok(cache) => Ok(Some(cache)),
+            Err(_) => Ok(None),
+        }
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn store_book_image_index(
+    storage: State<'_, AppStorage>,
+    id: String,
+    cache: ImageIndexCacheInput,
+) -> Result<bool, String> {
+    let storage = (*storage).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        write_image_index_cache_if_current(&storage, &id, cache)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub async fn replace_book_text(
     storage: State<'_, AppStorage>,
     tasks: State<'_, TaskService>,

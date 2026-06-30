@@ -163,6 +163,8 @@ pub fn run() {
             storage::import_text_paths,
             storage::get_book_package_path,
             storage::search_book_text,
+            storage::load_book_image_index,
+            storage::store_book_image_index,
             storage::replace_book_text,
             storage::export_book,
             storage::unload_book_search_text,

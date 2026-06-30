@@ -10,6 +10,11 @@ import {
   useState,
 } from 'react'
 
+import { loadBookImageIndex, storeBookImageIndex } from '@flow/reader/db'
+import type {
+  BookImageIndexCache,
+  BookImageIndexCacheInput,
+} from '@flow/reader/db'
 import { useAction } from '@flow/reader/hooks/useAction'
 import { LIST_ITEM_SIZE } from '@flow/reader/hooks/useList'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
@@ -127,6 +132,67 @@ function createImageAssetLookup(resources: any): ImageAssetLookup | undefined {
     blobs,
     entries,
     indexesByHref,
+  }
+}
+
+function applyImageIndexCache(
+  tab: typeof reader.focusedBookTab,
+  sections: ISection[],
+  cache: BookImageIndexCache,
+) {
+  if (!tab) return false
+
+  let applied = 0
+  cache.sections.forEach((cachedSection) => {
+    const section =
+      sections[cachedSection.sectionIndex] ??
+      sections.find((item) => item.href === cachedSection.href)
+
+    if (!section || section.href !== cachedSection.href) return
+
+    section.images = cachedSection.images.map((image): ImageEntry => {
+      const reason = image.reason ?? undefined
+      return {
+        hiddenByDefault: image.hiddenByDefault,
+        index: image.index,
+        ...(reason ? { reason } : {}),
+        src: image.src,
+      }
+    })
+    section.imageInfoLoaded = true
+    section.navitem ??= tab.mapSectionToNavItem(section.href)
+    applied += 1
+  })
+
+  return applied > 0
+}
+
+function createImageIndexCacheInput(
+  tab: typeof reader.focusedBookTab,
+  sections: ISection[],
+): BookImageIndexCacheInput | undefined {
+  if (!tab) return
+
+  return {
+    bookHash: tab.book.contentHash ?? '',
+    contentVersion: tab.book.contentVersion ?? 0,
+    sections: sections.map((section, index) => {
+      const navitem = section.navitem ?? tab.mapSectionToNavItem(section.href)
+      return {
+        sectionIndex: section.index ?? index,
+        href: section.href,
+        title: navitem?.label ?? null,
+        navPath: navitem
+          ? tab.getNavPath(navitem).map((item) => item.label)
+          : [],
+        images: imageEntries(section).map((image) => ({
+          src: image.src,
+          index: image.index,
+          hiddenByDefault: image.hiddenByDefault,
+          reason: image.reason ?? null,
+        })),
+      }
+    }),
   }
 }
 
@@ -310,6 +376,16 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
       assignImageSectionNavItems(tab, liveSections)
       refreshImages()
 
+      try {
+        const cache = await loadBookImageIndex(tab.book.id)
+        if (cancelled || reader.focusedBookTab !== tab) return
+        if (cache && applyImageIndexCache(tab, liveSections, cache)) {
+          refreshImages()
+        }
+      } catch (error) {
+        console.error(error)
+      }
+
       let nextSectionIndex = 0
       const sectionsToScan = liveSections.filter(
         (section) => !knownImageEntries(section),
@@ -341,6 +417,17 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
           scanNextSection,
         ),
       )
+
+      if (
+        !cancelled &&
+        reader.focusedBookTab === tab &&
+        liveSections.every(knownImageEntries)
+      ) {
+        const cache = createImageIndexCacheInput(tab, liveSections)
+        if (cache) {
+          void storeBookImageIndex(tab.book.id, cache).catch(console.error)
+        }
+      }
     })()
 
     return () => {

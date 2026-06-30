@@ -151,6 +151,41 @@ export interface BookSearchResult {
   expanded: boolean
 }
 
+export type ImageFilterReason =
+  | 'decorative'
+  | 'icon'
+  | 'inlineGlyph'
+  | 'titleArt'
+
+export interface BookImageIndexEntry {
+  src: string
+  index: number
+  hiddenByDefault: boolean
+  reason?: ImageFilterReason | null
+}
+
+export interface BookImageIndexSection {
+  sectionIndex: number
+  href: string
+  title?: string | null
+  navPath?: string[]
+  images: BookImageIndexEntry[]
+}
+
+export interface BookImageIndexCache {
+  version: number
+  extractorVersion: number
+  bookHash: string
+  contentVersion: number
+  sections: BookImageIndexSection[]
+}
+
+export interface BookImageIndexCacheInput {
+  bookHash: string
+  contentVersion: number
+  sections: BookImageIndexSection[]
+}
+
 type NativeInvoke = <T>(
   command: string,
   args?: Record<string, unknown>,
@@ -629,6 +664,17 @@ export function searchBookText(id: string, keyword: string, limit?: number) {
     keyword,
     limit,
   })
+}
+
+export function loadBookImageIndex(id: string) {
+  return invoke<BookImageIndexCache | null>('load_book_image_index', { id })
+}
+
+export function storeBookImageIndex(
+  id: string,
+  cache: BookImageIndexCacheInput,
+) {
+  return invoke<boolean>('store_book_image_index', { id, cache })
 }
 
 export async function replaceBookText({
