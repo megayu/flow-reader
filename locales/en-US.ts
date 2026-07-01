@@ -91,6 +91,7 @@ export default {
   'text_import.status.skipped': 'Already imported',
 
   'import.success': 'Imported ',
+  'import.progress_title': 'Importing books',
   'import.partial_failed': 'Some books failed to import',
   'import.failed': 'Book import failed',
   'import.imported_count': 'Imported ',

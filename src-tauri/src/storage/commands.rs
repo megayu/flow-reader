@@ -7,7 +7,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::{
     diagnostics,
@@ -312,15 +312,24 @@ pub fn update_cover(
 
 #[tauri::command]
 pub async fn import_epub_paths(
+    app: AppHandle,
     storage: State<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     paths: Vec<String>,
     replace_existing: bool,
+    import_id: Option<String>,
 ) -> Result<EpubImportResult, String> {
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        import_epub_paths_impl(&storage, &tasks, paths, replace_existing)
+        import_epub_paths_impl(
+            &storage,
+            &tasks,
+            paths,
+            replace_existing,
+            Some(app),
+            import_id,
+        )
     })
     .await
     .map_err(|error| error.to_string())?
@@ -331,11 +340,18 @@ pub(super) fn import_epub_paths_impl(
     tasks: &TaskService,
     paths: Vec<String>,
     replace_existing: bool,
+    app: Option<AppHandle>,
+    import_id: Option<String>,
 ) -> Result<EpubImportResult, String> {
     let started = Instant::now();
     let source_count = paths.len();
+    let total = paths
+        .iter()
+        .filter(|path| is_epub_file(Path::new(path)))
+        .count();
     let mut books = Vec::new();
     let mut failures = Vec::new();
+    let mut progress = EpubImportProgressReporter::new(app, import_id, total);
 
     for path in paths {
         let path = PathBuf::from(path);
@@ -354,14 +370,18 @@ pub(super) fn import_epub_paths_impl(
         let bytes = std::fs::metadata(&path)
             .map(|metadata| metadata.len())
             .unwrap_or(0);
-        match tasks.run_io_observed(
-            storage.root(),
-            bytes,
-            TaskPriority::Foreground,
-            || import_epub_path_impl(storage, &path, replace_existing),
-        ) {
-            Ok(book) => books.push(book),
-            Err(error) => failures.push(failure(error)),
+        match tasks.run_io_observed(storage.root(), bytes, TaskPriority::Foreground, || {
+            import_epub_path_impl(storage, &path, replace_existing)
+        }) {
+            Ok(book) => {
+                books.push(book.clone());
+                progress.emit(Some(book), None);
+            }
+            Err(error) => {
+                let failure = failure(error);
+                failures.push(failure.clone());
+                progress.emit(None, Some(failure));
+            }
         }
     }
 
@@ -388,6 +408,71 @@ pub struct EpubImportFailure {
 pub struct EpubImportResult {
     pub books: Vec<BookRecord>,
     pub failures: Vec<EpubImportFailure>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EpubImportProgress {
+    import_id: String,
+    total: usize,
+    completed: usize,
+    imported: usize,
+    failed: usize,
+    book: Option<BookRecord>,
+    failure: Option<EpubImportFailure>,
+}
+
+struct EpubImportProgressReporter {
+    app: Option<AppHandle>,
+    import_id: Option<String>,
+    total: usize,
+    completed: usize,
+    imported: usize,
+    failed: usize,
+}
+
+impl EpubImportProgressReporter {
+    fn new(app: Option<AppHandle>, import_id: Option<String>, total: usize) -> Self {
+        Self {
+            app,
+            import_id: import_id.filter(|value| !value.is_empty()),
+            total,
+            completed: 0,
+            imported: 0,
+            failed: 0,
+        }
+    }
+
+    fn emit(&mut self, book: Option<BookRecord>, failure: Option<EpubImportFailure>) {
+        self.completed += 1;
+        if book.is_some() {
+            self.imported += 1;
+        }
+        if failure.is_some() {
+            self.failed += 1;
+        }
+
+        let Some(import_id) = &self.import_id else {
+            return;
+        };
+
+        let Some(app) = &self.app else {
+            return;
+        };
+
+        let _ = app.emit(
+            "flow-epub-import-progress",
+            EpubImportProgress {
+                import_id: import_id.clone(),
+                total: self.total,
+                completed: self.completed,
+                imported: self.imported,
+                failed: self.failed,
+                book,
+                failure,
+            },
+        );
+    }
 }
 
 #[tauri::command]

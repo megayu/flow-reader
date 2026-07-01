@@ -66,6 +66,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '../components/ui/popover'
+import { Progress } from '../components/ui/progress'
 import {
   Select,
   SelectContent,
@@ -77,6 +78,7 @@ import {
   BookRecord,
   BookExportFormat,
   CoverRecord,
+  EpubImportProgress,
   EpubImportResult,
   LibraryTagRecord,
   ReadingStatus,
@@ -442,6 +444,8 @@ function IndexContent() {
     paths: string[]
     openAfterImport: boolean
   }>()
+  const [epubImportProgress, setEpubImportProgress] =
+    useState<EpubImportProgress>()
   const notifyEpubImportResult = useEpubImportNotifications()
   const focusedBookId = focusedBookTab?.book.id
 
@@ -471,6 +475,21 @@ function IndexContent() {
       setViewMode('reader')
     },
     [setViewMode],
+  )
+
+  const handleEpubImportProgress = useCallback(
+    (progress: EpubImportProgress) => {
+      setEpubImportProgress(progress)
+    },
+    [],
+  )
+
+  const handleEpubImportResult = useCallback(
+    (result: EpubImportResult) => {
+      setEpubImportProgress(undefined)
+      notifyEpubImportResult(result)
+    },
+    [notifyEpubImportResult],
   )
 
   const tryRestoreStartupSession = useEffectEvent(() => {
@@ -534,7 +553,8 @@ function IndexContent() {
     let unlisten: (() => void) | undefined
 
     setupNativeOpenFiles({
-      onImportResult: notifyEpubImportResult,
+      onImportProgress: handleEpubImportProgress,
+      onImportResult: handleEpubImportResult,
       onOpen: (books) => {
         openedFromNativeRef.current = true
         reader.addTab(books[0]!)
@@ -563,7 +583,12 @@ function IndexContent() {
       disposed = true
       unlisten?.()
     }
-  }, [notifyEpubImportResult, openTextImportDialog, setViewMode])
+  }, [
+    handleEpubImportProgress,
+    handleEpubImportResult,
+    openTextImportDialog,
+    setViewMode,
+  ])
 
   useEffect(() => {
     tryRestoreStartupSession()
@@ -638,7 +663,8 @@ function IndexContent() {
   const library = (
     <Library
       onOpenBook={() => setViewMode('reader')}
-      onEpubImportResult={notifyEpubImportResult}
+      onEpubImportProgress={handleEpubImportProgress}
+      onEpubImportResult={handleEpubImportResult}
       onTextPaths={(paths) => openTextImportDialog(paths, false)}
     />
   )
@@ -652,6 +678,8 @@ function IndexContent() {
       {!contentReady ? null : groups.length ? (
         <ReaderGridView
           content={viewMode === 'library' ? library : undefined}
+          onEpubImportProgress={handleEpubImportProgress}
+          onEpubImportResult={handleEpubImportResult}
         />
       ) : (
         library
@@ -664,17 +692,60 @@ function IndexContent() {
           onImported={handleTextImported}
         />
       )}
+      {epubImportProgress && (
+        <EpubImportProgressPanel progress={epubImportProgress} />
+      )}
     </>
   )
 }
 
+function EpubImportProgressPanel({
+  progress,
+}: {
+  progress: EpubImportProgress
+}) {
+  const t = useTranslation('import')
+  const total = Math.max(progress.total, 1)
+
+  return (
+    <div className="fixed inset-0 z-[9998] grid place-items-center bg-black/10 backdrop-blur-[1px]">
+      <section
+        aria-live="polite"
+        className="bg-popover text-popover-foreground ring-foreground/10 w-[min(calc(100vw-2rem),24rem)] rounded-lg p-4 text-base shadow-xl ring-1"
+        role="status"
+      >
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-foreground leading-tight font-medium">
+            {t('progress_title')}
+          </h2>
+          <span className="text-muted-foreground tabular-nums">
+            {progress.completed} / {progress.total}
+          </span>
+        </div>
+        <Progress max={total} value={progress.completed} />
+        <p className="text-muted-foreground mt-3 leading-snug">
+          {t('imported_count')}
+          {progress.imported}
+          {t('books_unit')}
+          {', '}
+          {t('failed_count')}
+          {progress.failed}
+          {t('books_unit')}
+        </p>
+      </section>
+    </div>
+  )
+}
+
 interface LibraryProps {
+  onEpubImportProgress: (progress: EpubImportProgress) => void
   onEpubImportResult: (result: EpubImportResult) => void
   onOpenBook: () => void
   onTextPaths: (paths: string[]) => void
 }
 
 const Library: React.FC<LibraryProps> = ({
+  onEpubImportProgress,
   onEpubImportResult,
   onOpenBook,
   onTextPaths,
@@ -847,6 +918,7 @@ const Library: React.FC<LibraryProps> = ({
 
         if (e.dataTransfer.files.length) {
           handleFiles(e.dataTransfer.files, {
+            onImportProgress: onEpubImportProgress,
             onImportResult: onEpubImportResult,
             onTextPaths,
           })
@@ -1062,6 +1134,7 @@ const Library: React.FC<LibraryProps> = ({
                 className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                 onClick={() => {
                   void openImportDialog({
+                    onImportProgress: onEpubImportProgress,
                     onImportResult: onEpubImportResult,
                     onTextPaths,
                   })

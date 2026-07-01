@@ -36,6 +36,10 @@
 - Components use PascalCase, hooks use camelCase with a `use` prefix, route files follow path-based kebab-case.
 - Code comments must explain durable behavior, constraints, or non-obvious decisions; never include session context, revision history.
 
+## UI Guidelines
+
+- Text inside UI controls, list rows, toolbar items, notifications, and similar interface elements should be vertically centered unless a design or functional requirement explicitly calls for another alignment.
+
 ## Testing Guidelines
 
 - Prefer targeted automated checks for changed behavior: Playwright for UI flows, `pnpm lint` for TS/React rules, `pnpm build` for production type/build coverage.

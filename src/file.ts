@@ -1,8 +1,16 @@
-import { BookRecord, EpubImportResult, importBookPaths } from './db'
+import {
+  BookRecord,
+  EpubImportProgress,
+  EpubImportResult,
+  db,
+  importBookPaths,
+} from './db'
 
 const nativeOpenEvent = 'flow-open-files'
+const epubImportProgressEvent = 'flow-epub-import-progress'
 
 interface HandleFilesOptions {
+  onImportProgress?: (progress: EpubImportProgress) => void
   replaceExisting?: boolean
   onTextPaths?: (paths: string[]) => void
   onImportResult?: (result: EpubImportResult) => void
@@ -38,6 +46,7 @@ export async function handleFiles(
 export async function handleFilePaths(
   paths: string[],
   {
+    onImportProgress,
     replaceExisting = true,
     onImportResult,
     onTextPaths,
@@ -51,9 +60,21 @@ export async function handleFilePaths(
   if (textPaths.length) onTextPaths?.(textPaths)
   if (!epubPaths.length) return []
 
-  const result = await importBookPaths(epubPaths, { replaceExisting })
-  onImportResult?.(result)
-  return result.books
+  const importId = createEpubImportId()
+  const unlisten = onImportProgress
+    ? await listenEpubImportProgress(importId, onImportProgress)
+    : undefined
+
+  try {
+    const result = await importBookPaths(epubPaths, {
+      importId,
+      replaceExisting,
+    })
+    onImportResult?.(result)
+    return result.books
+  } finally {
+    unlisten?.()
+  }
 }
 
 export async function openImportDialog(options: HandleFilesOptions = {}) {
@@ -70,11 +91,13 @@ export async function openImportDialog(options: HandleFilesOptions = {}) {
 export async function setupNativeOpenFiles({
   onOpen,
   onDrop,
+  onImportProgress,
   onImportResult,
   onDropTextPaths,
 }: {
   onOpen?: (books: BookRecord[]) => void
   onDrop?: (books: BookRecord[]) => void
+  onImportProgress?: (progress: EpubImportProgress) => void
   onImportResult?: (result: EpubImportResult) => void
   onDropTextPaths?: (paths: string[]) => void
 }) {
@@ -93,6 +116,7 @@ export async function setupNativeOpenFiles({
       if (!paths.length) return
 
       const books = await handleFilePaths(paths, {
+        onImportProgress,
         onImportResult,
         replaceExisting,
       })
@@ -115,6 +139,7 @@ export async function setupNativeOpenFiles({
         (event) => {
           if (event.payload.type !== 'drop') return
           void handleFilePaths(event.payload.paths, {
+            onImportProgress,
             onImportResult,
             replaceExisting: true,
             onTextPaths: onDropTextPaths,
@@ -138,4 +163,25 @@ export async function setupNativeOpenFiles({
 
 export function isTauriRuntime() {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+}
+
+function createEpubImportId() {
+  return `epub-import-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+async function listenEpubImportProgress(
+  importId: string,
+  onImportProgress: (progress: EpubImportProgress) => void,
+) {
+  const { listen } = await import('@tauri-apps/api/event')
+  return listen<EpubImportProgress>(epubImportProgressEvent, (event) => {
+    const progress = event.payload
+    if (progress.importId !== importId) return
+
+    if (progress.book) {
+      db.books.remember(progress.book)
+      db.notify('books')
+    }
+    onImportProgress(progress)
+  })
 }

@@ -149,6 +149,16 @@ export interface EpubImportResult {
   failures: EpubImportFailure[]
 }
 
+export interface EpubImportProgress {
+  importId: string
+  total: number
+  completed: number
+  imported: number
+  failed: number
+  book?: BookRecord | null
+  failure?: EpubImportFailure | null
+}
+
 export interface ReadingPositionInput {
   bookId: string
   cfi?: string
@@ -643,10 +653,14 @@ export const db = {
 
 export async function importBookPaths(
   paths: string[],
-  { replaceExisting = true }: { replaceExisting?: boolean } = {},
+  {
+    importId,
+    replaceExisting = true,
+  }: { importId?: string; replaceExisting?: boolean } = {},
 ) {
   const result = await trackNativeWrite(
     invoke<EpubImportResult>('import_epub_paths', {
+      importId,
       paths,
       replaceExisting,
     }),

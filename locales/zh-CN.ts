@@ -90,6 +90,7 @@ export default {
   'text_import.status.skipped': '已存在',
 
   'import.success': '成功导入 ',
+  'import.progress_title': '正在导入书籍',
   'import.partial_failed': '部分书籍导入失败',
   'import.failed': '书籍导入失败',
   'import.imported_count': '已导入 ',

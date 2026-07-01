@@ -42,13 +42,17 @@ import {
 } from '@flow/reader/state'
 
 import { getBookDisplayTitle, getBookTooltip } from '../book'
-import { db, type BookRecord } from '../db'
+import {
+  db,
+  type BookRecord,
+  type EpubImportProgress,
+  type EpubImportResult,
+} from '../db'
 import { isDevtoolsShortcutEnabled, toggleDevtools } from '../devtools'
 import { handleFiles } from '../file'
 import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
 import { useAction, type Action as ReaderPanelAction } from '../hooks/useAction'
-import { useEpubImportNotifications } from '../hooks/useEpubImportNotifications'
 import { useEventListener } from '../hooks/useEventListener'
 import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
@@ -702,9 +706,15 @@ function getSelectedText(windows: readonly Window[]) {
 
 interface ReaderGridViewProps {
   content?: React.ReactNode
+  onEpubImportProgress?: (progress: EpubImportProgress) => void
+  onEpubImportResult?: (result: EpubImportResult) => void
 }
 
-export function ReaderGridView({ content }: ReaderGridViewProps) {
+export function ReaderGridView({
+  content,
+  onEpubImportProgress,
+  onEpubImportResult,
+}: ReaderGridViewProps) {
   const { groups } = useReaderSnapshot()
   const [action, setAction] = useAction()
   const setViewMode = useSetViewMode()
@@ -748,6 +758,8 @@ export function ReaderGridView({ content }: ReaderGridViewProps) {
         key={group.id}
         index={index}
         content={content}
+        onEpubImportProgress={onEpubImportProgress}
+        onEpubImportResult={onEpubImportResult}
         onEnterReaderMode={enterReaderMode}
       />
     </div>
@@ -757,13 +769,20 @@ export function ReaderGridView({ content }: ReaderGridViewProps) {
 interface ReaderGroupProps {
   index: number
   content?: React.ReactNode
+  onEpubImportProgress?: (progress: EpubImportProgress) => void
+  onEpubImportResult?: (result: EpubImportResult) => void
   onEnterReaderMode: () => void
 }
-function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
+function ReaderGroup({
+  index,
+  content,
+  onEpubImportProgress,
+  onEpubImportResult,
+  onEnterReaderMode,
+}: ReaderGroupProps) {
   const group = reader.groups[index]!
   const { tabs, selectedIndex } = useSnapshot(group)
   const [backgroundClassName] = useBackground()
-  const notifyEpubImportResult = useEpubImportNotifications()
   const zenMode = useZenModeValue()
   const tabWheelDelta = useRef(0)
   const [hoveredTabIndex, setHoveredTabIndex] = useState<number | undefined>()
@@ -841,7 +860,8 @@ function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
 
             if (files.length) {
               tabs = await handleFiles(files, {
-                onImportResult: notifyEpubImportResult,
+                onImportProgress: onEpubImportProgress,
+                onImportResult: onEpubImportResult,
               })
             } else {
               const text = e.dataTransfer.getData('text/plain')

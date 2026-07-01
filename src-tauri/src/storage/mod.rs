@@ -3419,13 +3419,18 @@ mod tests {
             &tasks,
             vec![source.to_string_lossy().to_string()],
             true,
+            None,
+            None,
         )
         .unwrap();
 
         assert_eq!(result.books.len(), 1);
         assert!(result.failures.is_empty());
         assert_eq!(
-            result.books[0].metadata.get("title").and_then(Value::as_str),
+            result.books[0]
+                .metadata
+                .get("title")
+                .and_then(Value::as_str),
             Some("Command Book")
         );
 
@@ -3457,6 +3462,8 @@ mod tests {
                 broken.to_string_lossy().to_string(),
             ],
             true,
+            None,
+            None,
         )
         .unwrap();
 
@@ -3464,7 +3471,10 @@ mod tests {
         assert_eq!(result.failures.len(), 1);
         assert_eq!(result.failures[0].filename, "broken.epub");
         assert_eq!(
-            result.books[0].metadata.get("title").and_then(Value::as_str),
+            result.books[0]
+                .metadata
+                .get("title")
+                .and_then(Value::as_str),
             Some("Valid Book")
         );
 

@@ -122,7 +122,7 @@ function NotificationToast({
   return (
     <section
       className={cn(
-        'bg-popover text-popover-foreground ring-foreground/10 grid grid-cols-[auto_1fr_auto] gap-2 rounded-lg p-3 text-base shadow-lg ring-1',
+        'bg-popover text-popover-foreground ring-foreground/10 grid grid-cols-[auto_1fr_auto] items-center gap-2 rounded-lg p-3 text-base shadow-lg ring-1',
         notification.type === 'success'
           ? 'border-l-4 border-l-[var(--flow-accent)]'
           : 'border-l-4 border-l-[var(--flow-danger)]',
@@ -132,7 +132,7 @@ function NotificationToast({
       <Icon
         aria-hidden
         className={cn(
-          'mt-0.5 size-4',
+          'size-4',
           notification.type === 'success'
             ? 'text-[var(--flow-accent)]'
             : 'text-[var(--flow-danger)]',
@@ -159,7 +159,7 @@ function NotificationToast({
       </div>
       <Button
         aria-label="Close"
-        className="-mt-1 -mr-1"
+        className="-mr-1"
         onClick={() => onDismiss(notification.id)}
         size="icon-sm"
         variant="ghost"
