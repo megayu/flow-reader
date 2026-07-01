@@ -170,6 +170,13 @@ function paragraph(className, text, child) {
   return p
 }
 
+function styledParagraph(className, text, style, child) {
+  const p = new FakeElement('p', { className, style })
+  p.append(text)
+  if (child) p.append(child)
+  return p
+}
+
 function span(className, text) {
   return new FakeElement('span', { className }).append(text)
 }
@@ -250,5 +257,40 @@ function testInlineClassAnnotationPayloadIsNotCountedAsParentBodyText() {
   assert.deepStrictEqual(selectedClasses, ['main', 'main', 'main'])
 }
 
+function testSameBaseStyleParagraphsAreCountedAsBodyText() {
+  const body = new FakeElement('body')
+  const firstParagraph = styledParagraph(
+    'first',
+    '这是第一段正文内容。',
+    { textIndent: '0px' },
+    span('first', '一'),
+  )
+  const bodyParagraphs = [
+    styledParagraph(
+      '',
+      '这是第二段正文内容，仍然是普通正文，应当被识别为主体文字。',
+      { textIndent: '32px' },
+    ),
+    styledParagraph(
+      '',
+      '这是第三段正文内容，和前面段落保持相同的基础字体样式。',
+      { textIndent: '32px' },
+    ),
+  ]
+
+  body.append(firstParagraph, ...bodyParagraphs)
+
+  const contents = createContents(body)
+  const candidates = getBodyTextCandidates(contents.document)
+  const bodyIndexes = detectBodyTextIndexes(contents, candidates)
+
+  const selectedClasses = bodyIndexes.map(
+    (index) => candidates[index].className,
+  )
+
+  assert.deepStrictEqual(selectedClasses, ['first', '', ''])
+}
+
 testInlineClassAnnotationPayloadIsNotCountedAsParentBodyText()
+testSameBaseStyleParagraphsAreCountedAsBodyText()
 console.log('body-text tests passed')

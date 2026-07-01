@@ -112,6 +112,7 @@ export function detectBodyTextIndexes(
 
     return [
       {
+        baseSignature: createBodyTextBaseSignature(el, style),
         index,
         inlineMargin: getInlineMargin(style),
         textLength: text.length,
@@ -124,12 +125,26 @@ export function detectBodyTextIndexes(
 
   const clusters = createBodyTextClusters(bodyTextCandidates)
   const bodyClusters = selectBodyTextClusters(clusters)
+  const clusterCounts = new Map(
+    clusters.map((cluster) => [cluster.signature, cluster.count]),
+  )
   const selectedSignatures = new Set(
     bodyClusters.map((cluster) => cluster.signature),
   )
+  const selectedBaseSignatures = new Set(
+    bodyTextCandidates.flatMap((candidate) =>
+      selectedSignatures.has(candidate.signature)
+        ? [candidate.baseSignature]
+        : [],
+    ),
+  )
 
   return bodyTextCandidates.flatMap((candidate) =>
-    selectedSignatures.has(candidate.signature) ? [candidate.index] : [],
+    selectedSignatures.has(candidate.signature) ||
+    (selectedBaseSignatures.has(candidate.baseSignature) &&
+      clusterCounts.get(candidate.signature) === 1)
+      ? [candidate.index]
+      : [],
   )
 }
 
@@ -156,6 +171,7 @@ function applyBodyTextIndexes(
 }
 
 interface BodyTextCandidate {
+  baseSignature: string
   index: number
   inlineMargin: number
   textLength: number
@@ -262,6 +278,22 @@ function createBodyTextSignature(el: HTMLElement, style: CSSStyleDeclaration) {
     style.marginRight,
     style.marginTop,
     style.marginBottom,
+  ].join('|')
+}
+
+function createBodyTextBaseSignature(
+  el: HTMLElement,
+  style: CSSStyleDeclaration,
+) {
+  return [
+    el.tagName.toLowerCase(),
+    style.fontFamily,
+    style.fontSize,
+    style.fontWeight,
+    style.lineHeight,
+    style.color,
+    style.backgroundColor,
+    style.textAlign,
   ].join('|')
 }
 
