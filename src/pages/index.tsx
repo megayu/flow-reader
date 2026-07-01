@@ -889,9 +889,26 @@ const Library: React.FC<LibraryProps> = ({
 
   if (!books) return null
 
-  const allSelected = selectedBookIds.size === books.length
-  const selectedBooks = books.filter((book) => selectedBookIds.has(book.id))
+  const visibleSelectedCount = sortedBooks.filter((book) =>
+    selectedBookIds.has(book.id),
+  ).length
+  const allSelected =
+    !!sortedBooks.length && visibleSelectedCount === sortedBooks.length
+  const selectedBooks = sortedBooks.filter((book) =>
+    selectedBookIds.has(book.id),
+  )
   const DirectionIcon = sortDirection === 'asc' ? ArrowUpIcon : ArrowDownIcon
+  const LibraryCountIcon = select ? SquareCheckBigIcon : BookOpenIcon
+  const libraryCountText = select
+    ? `${visibleSelectedCount} / ${sortedBooks.length}`
+    : sortedBooks.length === books.length
+      ? String(books.length)
+      : `${sortedBooks.length} / ${books.length}`
+  const libraryCountTooltip = select
+    ? t('book_count.selected')
+    : sortedBooks.length === books.length
+      ? t('book_count.total')
+      : t('book_count.filtered')
   const bookCardGap = clamp(Math.round(bookCardWidth * 0.08), 10, 20)
   const bookGridPadding = clamp(Math.round(bookCardWidth * 0.04), 4, 10)
   const bookGridStyle = {
@@ -926,7 +943,7 @@ const Library: React.FC<LibraryProps> = ({
       }}
     >
       <div className="mb-4 space-y-2.5">
-        <div className="flex items-center justify-between gap-4">
+        <div className="relative flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             {!!books.length && !select && (
               <div className="flex items-center">
@@ -1095,7 +1112,7 @@ const Library: React.FC<LibraryProps> = ({
                 <Button
                   variant="secondary"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
-                  onClick={() => books.forEach((b) => add(b.id))}
+                  onClick={() => sortedBooks.forEach((b) => add(b.id))}
                 >
                   <ListChecksIcon aria-hidden className="size-4" />
                   <span className="leading-none">{t('select_all')}</span>
@@ -1103,13 +1120,28 @@ const Library: React.FC<LibraryProps> = ({
               ))}
           </div>
 
+          <AppTooltip label={libraryCountTooltip}>
+            <div
+              aria-label={libraryCountTooltip}
+              className={clsx(
+                'absolute top-1/2 left-1/2 flex h-8 max-w-[35%] -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-1.5 overflow-hidden text-base leading-none tabular-nums',
+                select
+                  ? 'text-foreground font-medium'
+                  : 'text-muted-foreground',
+              )}
+            >
+              <LibraryCountIcon aria-hidden className="size-4 shrink-0" />
+              <span className="min-w-0 truncate">{libraryCountText}</span>
+            </div>
+          </AppTooltip>
+
           <div className="space-x-2">
             {select ? (
               <>
                 <Button
                   variant="secondary"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
-                  disabled={!selectedBookIds.size}
+                  disabled={!selectedBooks.length}
                   onClick={() => setBatchTagsOpen(true)}
                 >
                   <TagIcon aria-hidden className="size-4" />
@@ -1120,7 +1152,7 @@ const Library: React.FC<LibraryProps> = ({
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                   onClick={() => {
                     toggleSelect()
-                    const bookIds = [...selectedBookIds]
+                    const bookIds = selectedBooks.map((book) => book.id)
 
                     db.books.bulkDelete(bookIds)
                   }}
