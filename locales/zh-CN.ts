@@ -89,6 +89,13 @@ export default {
   'text_import.status.error': '不可导入',
   'text_import.status.skipped': '已存在',
 
+  'import.success': '成功导入 ',
+  'import.partial_failed': '部分书籍导入失败',
+  'import.failed': '书籍导入失败',
+  'import.imported_count': '已导入 ',
+  'import.failed_count': '失败 ',
+  'import.books_unit': ' 本',
+
   'toc.title': '目录',
   'toc.library': '图书馆',
 

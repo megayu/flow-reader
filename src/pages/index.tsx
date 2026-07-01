@@ -60,6 +60,7 @@ import {
   DialogTitle,
 } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
+import { NotificationProvider } from '../components/ui/notification'
 import {
   Popover,
   PopoverContent,
@@ -76,6 +77,7 @@ import {
   BookRecord,
   BookExportFormat,
   CoverRecord,
+  EpubImportResult,
   LibraryTagRecord,
   ReadingStatus,
   db,
@@ -84,6 +86,7 @@ import {
 import { handleFiles, openImportDialog, setupNativeOpenFiles } from '../file'
 import { useAction, useLibraryAction } from '../hooks/useAction'
 import { useBoolean } from '../hooks/useBoolean'
+import { useEpubImportNotifications } from '../hooks/useEpubImportNotifications'
 import { useCovers, useLibrary, useLibraryTags } from '../hooks/useLibrary'
 import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
@@ -415,6 +418,14 @@ function useStringSet() {
 }
 
 export default function Index() {
+  return (
+    <NotificationProvider>
+      <IndexContent />
+    </NotificationProvider>
+  )
+}
+
+function IndexContent() {
   const { focusedBookTab, focusedTab, groups } = useReaderSnapshot()
   const [viewMode, setViewMode] = useViewMode()
   const [readerAction, setReaderAction] = useAction()
@@ -431,6 +442,7 @@ export default function Index() {
     paths: string[]
     openAfterImport: boolean
   }>()
+  const notifyEpubImportResult = useEpubImportNotifications()
   const focusedBookId = focusedBookTab?.book.id
 
   const applySavedSidebarState = useCallback(() => {
@@ -522,6 +534,7 @@ export default function Index() {
     let unlisten: (() => void) | undefined
 
     setupNativeOpenFiles({
+      onImportResult: notifyEpubImportResult,
       onOpen: (books) => {
         openedFromNativeRef.current = true
         reader.addTab(books[0]!)
@@ -550,7 +563,7 @@ export default function Index() {
       disposed = true
       unlisten?.()
     }
-  }, [openTextImportDialog, setViewMode])
+  }, [notifyEpubImportResult, openTextImportDialog, setViewMode])
 
   useEffect(() => {
     tryRestoreStartupSession()
@@ -625,6 +638,7 @@ export default function Index() {
   const library = (
     <Library
       onOpenBook={() => setViewMode('reader')}
+      onEpubImportResult={notifyEpubImportResult}
       onTextPaths={(paths) => openTextImportDialog(paths, false)}
     />
   )
@@ -655,11 +669,16 @@ export default function Index() {
 }
 
 interface LibraryProps {
+  onEpubImportResult: (result: EpubImportResult) => void
   onOpenBook: () => void
   onTextPaths: (paths: string[]) => void
 }
 
-const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
+const Library: React.FC<LibraryProps> = ({
+  onEpubImportResult,
+  onOpenBook,
+  onTextPaths,
+}) => {
   const books = useLibrary()
   const covers = useCovers()
   const tags = useLibraryTags()
@@ -827,7 +846,10 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
         }
 
         if (e.dataTransfer.files.length) {
-          handleFiles(e.dataTransfer.files, { onTextPaths })
+          handleFiles(e.dataTransfer.files, {
+            onImportResult: onEpubImportResult,
+            onTextPaths,
+          })
         }
       }}
     >
@@ -1039,7 +1061,10 @@ const Library: React.FC<LibraryProps> = ({ onOpenBook, onTextPaths }) => {
               <Button
                 className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                 onClick={() => {
-                  void openImportDialog({ onTextPaths })
+                  void openImportDialog({
+                    onImportResult: onEpubImportResult,
+                    onTextPaths,
+                  })
                 }}
               >
                 <FileInputIcon aria-hidden className="size-4" />

@@ -1,10 +1,11 @@
-import { BookRecord, importBookPaths } from './db'
+import { BookRecord, EpubImportResult, importBookPaths } from './db'
 
 const nativeOpenEvent = 'flow-open-files'
 
 interface HandleFilesOptions {
   replaceExisting?: boolean
   onTextPaths?: (paths: string[]) => void
+  onImportResult?: (result: EpubImportResult) => void
 }
 
 function isEpubPath(path: string) {
@@ -36,7 +37,11 @@ export async function handleFiles(
 
 export async function handleFilePaths(
   paths: string[],
-  { replaceExisting = true, onTextPaths }: HandleFilesOptions = {},
+  {
+    replaceExisting = true,
+    onImportResult,
+    onTextPaths,
+  }: HandleFilesOptions = {},
 ) {
   if (!paths.length) return []
 
@@ -46,7 +51,9 @@ export async function handleFilePaths(
   if (textPaths.length) onTextPaths?.(textPaths)
   if (!epubPaths.length) return []
 
-  return importBookPaths(epubPaths, { replaceExisting })
+  const result = await importBookPaths(epubPaths, { replaceExisting })
+  onImportResult?.(result)
+  return result.books
 }
 
 export async function openImportDialog(options: HandleFilesOptions = {}) {
@@ -63,10 +70,12 @@ export async function openImportDialog(options: HandleFilesOptions = {}) {
 export async function setupNativeOpenFiles({
   onOpen,
   onDrop,
+  onImportResult,
   onDropTextPaths,
 }: {
   onOpen?: (books: BookRecord[]) => void
   onDrop?: (books: BookRecord[]) => void
+  onImportResult?: (result: EpubImportResult) => void
   onDropTextPaths?: (paths: string[]) => void
 }) {
   if (typeof window === 'undefined') return
@@ -83,7 +92,10 @@ export async function setupNativeOpenFiles({
     ) => {
       if (!paths.length) return
 
-      const books = await handleFilePaths(paths, { replaceExisting })
+      const books = await handleFilePaths(paths, {
+        onImportResult,
+        replaceExisting,
+      })
       if (books.length) onOpen?.(books)
     }
 
@@ -103,6 +115,7 @@ export async function setupNativeOpenFiles({
         (event) => {
           if (event.payload.type !== 'drop') return
           void handleFilePaths(event.payload.paths, {
+            onImportResult,
             replaceExisting: true,
             onTextPaths: onDropTextPaths,
           }).then((books) => {

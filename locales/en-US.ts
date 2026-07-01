@@ -90,6 +90,13 @@ export default {
   'text_import.status.error': 'Cannot import',
   'text_import.status.skipped': 'Already imported',
 
+  'import.success': 'Imported ',
+  'import.partial_failed': 'Some books failed to import',
+  'import.failed': 'Book import failed',
+  'import.imported_count': 'Imported ',
+  'import.failed_count': 'Failed ',
+  'import.books_unit': ' books',
+
   'toc.title': 'TOC',
   'toc.library': 'Library',
 

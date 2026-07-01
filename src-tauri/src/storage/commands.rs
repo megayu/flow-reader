@@ -5,7 +5,7 @@ use std::{
     time::Instant,
 };
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::State;
 
@@ -316,7 +316,7 @@ pub async fn import_epub_paths(
     tasks: State<'_, TaskService>,
     paths: Vec<String>,
     replace_existing: bool,
-) -> Result<Vec<BookRecord>, String> {
+) -> Result<EpubImportResult, String> {
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -331,10 +331,11 @@ pub(super) fn import_epub_paths_impl(
     tasks: &TaskService,
     paths: Vec<String>,
     replace_existing: bool,
-) -> Result<Vec<BookRecord>, String> {
+) -> Result<EpubImportResult, String> {
     let started = Instant::now();
     let source_count = paths.len();
     let mut books = Vec::new();
+    let mut failures = Vec::new();
 
     for path in paths {
         let path = PathBuf::from(path);
@@ -342,24 +343,51 @@ pub(super) fn import_epub_paths_impl(
             continue;
         }
 
+        let failure = |error: String| EpubImportFailure {
+            filename: path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.to_string_lossy().to_string()),
+            path: path.to_string_lossy().to_string(),
+            error,
+        };
         let bytes = std::fs::metadata(&path)
             .map(|metadata| metadata.len())
             .unwrap_or(0);
-        books.push(tasks.run_io_observed(
+        match tasks.run_io_observed(
             storage.root(),
             bytes,
             TaskPriority::Foreground,
             || import_epub_path_impl(storage, &path, replace_existing),
-        )?);
+        ) {
+            Ok(book) => books.push(book),
+            Err(error) => failures.push(failure(error)),
+        }
     }
 
     let mut fields = vec![
         ("sources", source_count.to_string()),
         ("imported", books.len().to_string()),
+        ("failed", failures.len().to_string()),
     ];
     fields.extend(tasks.diagnostic_fields());
     diagnostics::record_timing("epub-import", started.elapsed(), &fields);
-    Ok(books)
+    Ok(EpubImportResult { books, failures })
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EpubImportFailure {
+    pub path: String,
+    pub filename: String,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EpubImportResult {
+    pub books: Vec<BookRecord>,
+    pub failures: Vec<EpubImportFailure>,
 }
 
 #[tauri::command]

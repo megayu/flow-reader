@@ -138,6 +138,17 @@ export interface BookRecord {
   stateLoaded?: boolean
 }
 
+export interface EpubImportFailure {
+  path: string
+  filename: string
+  error: string
+}
+
+export interface EpubImportResult {
+  books: BookRecord[]
+  failures: EpubImportFailure[]
+}
+
 export interface ReadingPositionInput {
   bookId: string
   cfi?: string
@@ -634,16 +645,18 @@ export async function importBookPaths(
   paths: string[],
   { replaceExisting = true }: { replaceExisting?: boolean } = {},
 ) {
-  const books = await trackNativeWrite(
-    invoke<BookRecord[]>('import_epub_paths', {
+  const result = await trackNativeWrite(
+    invoke<EpubImportResult>('import_epub_paths', {
       paths,
       replaceExisting,
     }),
   )
-  books.forEach((book) => rememberBook(book))
-  invalidateCovers()
-  notify('books', 'covers', 'files')
-  return books
+  result.books.forEach((book) => rememberBook(book))
+  if (result.books.length) {
+    invalidateCovers()
+    notify('books', 'covers', 'files')
+  }
+  return result
 }
 
 export function getTextImportEncodings() {

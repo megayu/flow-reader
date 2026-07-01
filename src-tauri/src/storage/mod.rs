@@ -3414,7 +3414,7 @@ mod tests {
         let storage = test_storage_with_books(&root, Vec::new());
         let tasks = TaskService::default();
 
-        let books = import_epub_paths_impl(
+        let result = import_epub_paths_impl(
             &storage,
             &tasks,
             vec![source.to_string_lossy().to_string()],
@@ -3422,10 +3422,50 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(books.len(), 1);
+        assert_eq!(result.books.len(), 1);
+        assert!(result.failures.is_empty());
         assert_eq!(
-            books[0].metadata.get("title").and_then(Value::as_str),
+            result.books[0].metadata.get("title").and_then(Value::as_str),
             Some("Command Book")
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn epub_import_command_returns_successes_when_later_source_fails() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-epub-partial-import-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("valid.epub");
+        let broken = root.join("broken.epub");
+        write_minimal_epub_file(&source, "Valid Book", "valid body");
+        fs::write(&broken, b"not an epub").unwrap();
+        let storage = test_storage_with_books(&root, Vec::new());
+        let tasks = TaskService::default();
+
+        let result = import_epub_paths_impl(
+            &storage,
+            &tasks,
+            vec![
+                source.to_string_lossy().to_string(),
+                broken.to_string_lossy().to_string(),
+            ],
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(result.books.len(), 1);
+        assert_eq!(result.failures.len(), 1);
+        assert_eq!(result.failures[0].filename, "broken.epub");
+        assert_eq!(
+            result.books[0].metadata.get("title").and_then(Value::as_str),
+            Some("Valid Book")
         );
 
         let _ = fs::remove_dir_all(root);

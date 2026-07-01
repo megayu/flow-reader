@@ -48,6 +48,7 @@ import { handleFiles } from '../file'
 import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
 import { useAction, type Action as ReaderPanelAction } from '../hooks/useAction'
+import { useEpubImportNotifications } from '../hooks/useEpubImportNotifications'
 import { useEventListener } from '../hooks/useEventListener'
 import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
@@ -762,6 +763,7 @@ function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
   const group = reader.groups[index]!
   const { tabs, selectedIndex } = useSnapshot(group)
   const [backgroundClassName] = useBackground()
+  const notifyEpubImportResult = useEpubImportNotifications()
   const zenMode = useZenModeValue()
   const tabWheelDelta = useRef(0)
   const [hoveredTabIndex, setHoveredTabIndex] = useState<number | undefined>()
@@ -838,7 +840,9 @@ function ReaderGroup({ index, content, onEnterReaderMode }: ReaderGroupProps) {
             let tabs = []
 
             if (files.length) {
-              tabs = await handleFiles(files)
+              tabs = await handleFiles(files, {
+                onImportResult: notifyEpubImportResult,
+              })
             } else {
               const text = e.dataTransfer.getData('text/plain')
               const tabParam =
