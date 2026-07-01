@@ -2000,7 +2000,7 @@ interface ReaderImagePreviewState {
     x: number
     y: number
   }
-  rotation: ReaderImagePreviewRotation
+  rotation: number
   scale: number
 }
 
@@ -2027,6 +2027,7 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
     createReaderImagePreviewState,
   )
   const { mode, naturalSize, pan, rotation, scale } = previewState
+  const normalizedRotation = normalizeImagePreviewRotation(rotation)
   const dragState = useRef<
     | {
         pointerId: number
@@ -2047,14 +2048,14 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
 
   const rotatedSize = useMemo(() => {
     if (!naturalSize) return undefined
-    if (rotation === 90 || rotation === 270) {
+    if (normalizedRotation === 90 || normalizedRotation === 270) {
       return {
         width: naturalSize.height,
         height: naturalSize.width,
       }
     }
     return naturalSize
-  }, [naturalSize, rotation])
+  }, [naturalSize, normalizedRotation])
 
   const fitScale = useMemo(() => {
     if (!rotatedSize || !stageSize.width || !stageSize.height) return 1
@@ -2175,7 +2176,7 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
     setPreviewState((current) => ({
       ...current,
       pan: { x: 0, y: 0 },
-      rotation: normalizeImagePreviewRotation(current.rotation + delta),
+      rotation: current.rotation + delta,
     }))
   }, [])
 
