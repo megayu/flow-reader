@@ -101,6 +101,12 @@ export default {
   'import.failed_count': 'Failed ',
   'import.books_unit': ' books',
 
+  'error.export_failed': 'Export failed',
+  'error.txt_preview_failed': 'TXT preview failed',
+  'error.txt_import_failed': 'TXT import failed',
+  'error.reader_open_failed': 'Failed to open book',
+  'error.reader_render_failed': 'Failed to render book',
+
   'toc.title': 'TOC',
   'toc.library': 'Library',
 

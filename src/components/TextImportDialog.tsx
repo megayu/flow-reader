@@ -21,6 +21,7 @@ import type {
   TextImportPreview,
   TextImportRulesInput,
 } from '../db'
+import { formatErrorMessage } from '../errorMessage'
 import { useTranslation } from '../hooks/useTranslation'
 import { defaultTextImportRules, useSettings } from '../state'
 
@@ -28,6 +29,7 @@ import { AppTooltip } from './AppTooltip'
 import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogTitle } from './ui/dialog'
 import { Input } from './ui/input'
+import { useNotify } from './ui/notification'
 import {
   Select,
   SelectContent,
@@ -55,6 +57,8 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
   onImported,
 }) => {
   const t = useTranslation('text_import')
+  const errorT = useTranslation('error')
+  const notify = useNotify()
   const titleId = useId()
   const [settings] = useSettings()
   const [encodings, setEncodings] = useState<TextImportEncodingOption[]>([])
@@ -151,7 +155,16 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
         )
       })
       .catch((error) => {
-        if (!disposed) setError(String(error))
+        if (!disposed) {
+          const message = formatErrorMessage(error)
+          setError(message)
+          notify({
+            autoCloseMs: false,
+            description: message,
+            title: errorT('txt_preview_failed'),
+            type: 'error',
+          })
+        }
       })
       .finally(() => {
         if (!disposed) setLoading(false)
@@ -160,7 +173,14 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     return () => {
       disposed = true
     }
-  }, [encodingOverrides, paths, textImportRules, textImportRulesKey])
+  }, [
+    encodingOverrides,
+    errorT,
+    notify,
+    paths,
+    textImportRules,
+    textImportRulesKey,
+  ])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -267,7 +287,14 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
       onImported?.(books, openAfterImport)
       onClose()
     } catch (error) {
-      setError(String(error))
+      const message = formatErrorMessage(error)
+      setError(message)
+      notify({
+        autoCloseMs: false,
+        description: message,
+        title: errorT('txt_import_failed'),
+        type: 'error',
+      })
     } finally {
       setImporting(false)
     }

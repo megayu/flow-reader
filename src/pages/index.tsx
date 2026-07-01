@@ -60,7 +60,7 @@ import {
   DialogTitle,
 } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
-import { NotificationProvider } from '../components/ui/notification'
+import { NotificationProvider, useNotify } from '../components/ui/notification'
 import {
   Popover,
   PopoverContent,
@@ -85,6 +85,7 @@ import {
   db,
   exportBook,
 } from '../db'
+import { formatErrorMessage } from '../errorMessage'
 import { handleFiles, openImportDialog, setupNativeOpenFiles } from '../file'
 import { useAction, useLibraryAction } from '../hooks/useAction'
 import { useBoolean } from '../hooks/useBoolean'
@@ -98,6 +99,7 @@ import {
   sameLibraryTagName,
 } from '../libraryFilters'
 import { reader, useReaderSnapshot } from '../models/reader'
+import { subscribeReaderOpenErrors } from '../readerErrorEvents'
 import {
   defaultLibrarySort,
   defaultLibraryDisplay,
@@ -446,7 +448,9 @@ function IndexContent() {
   }>()
   const [epubImportProgress, setEpubImportProgress] =
     useState<EpubImportProgress>()
+  const notify = useNotify()
   const notifyEpubImportResult = useEpubImportNotifications()
+  const errorT = useTranslation('error')
   const focusedBookId = focusedBookTab?.book.id
 
   const applySavedSidebarState = useCallback(() => {
@@ -491,6 +495,21 @@ function IndexContent() {
     },
     [notifyEpubImportResult],
   )
+
+  useEffect(() => {
+    return subscribeReaderOpenErrors(({ bookTitle, error, stage }) => {
+      notify({
+        autoCloseMs: false,
+        description: `${bookTitle}: ${formatErrorMessage(error)}`,
+        title: errorT(
+          stage === 'source' || stage === 'open'
+            ? 'reader_open_failed'
+            : 'reader_render_failed',
+        ),
+        type: 'error',
+      })
+    })
+  }, [errorT, notify])
 
   const tryRestoreStartupSession = useEffectEvent(() => {
     if (
@@ -1223,6 +1242,8 @@ const Book: React.FC<BookProps> = ({
   onOpenBook,
 }) => {
   const t = useTranslation('home')
+  const errorT = useTranslation('error')
+  const notify = useNotify()
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number }>()
   const [statusMenuOpen, setStatusMenuOpen] = useState(false)
@@ -1382,7 +1403,15 @@ const Book: React.FC<BookProps> = ({
                     closeContextMenu()
                     setExportingFormat(format)
                     void exportBookWithDialog(book, format)
-                      .catch((error) => console.error(error))
+                      .catch((error) => {
+                        console.error(error)
+                        notify({
+                          autoCloseMs: false,
+                          description: `${getBookDisplayTitle(book)} · ${format.toUpperCase()}: ${formatErrorMessage(error)}`,
+                          title: errorT('export_failed'),
+                          type: 'error',
+                        })
+                      })
                       .finally(() => setExportingFormat(undefined))
                   }}
                 />

@@ -16,6 +16,7 @@ import {
   createAnnotationSpine,
   normalizeDefinition,
 } from '../annotation'
+import { getBookDisplayTitle } from '../book'
 import {
   BookReaderSource,
   BookTextReplaceTarget,
@@ -27,6 +28,10 @@ import {
   unloadBookSearchText,
 } from '../db'
 import { createId } from '../id'
+import {
+  emitReaderOpenError,
+  type ReaderOpenErrorStage,
+} from '../readerErrorEvents'
 import { BodyTextDetectionCache, defaultStyle } from '../styles'
 
 import { dfs, find, INode } from './tree'
@@ -2905,7 +2910,7 @@ export class BookTab extends BaseTab {
     try {
       source = await db.files.getReaderSource(this.book.id)
     } catch (error) {
-      console.error(error)
+      this.reportOpenError('source', error)
       clearRendering()
       return
     }
@@ -2940,7 +2945,7 @@ export class BookTab extends BaseTab {
             }
       epub = ref(await ePub(source.url, options as any))
     } catch (error) {
-      console.error(error)
+      this.reportOpenError('open', error)
       clearRendering()
       return
     }
@@ -2994,7 +2999,7 @@ export class BookTab extends BaseTab {
         renditionManager.suspendResize = true
       }
     } catch (error) {
-      console.error(error)
+      this.reportOpenError('render', error)
       try {
         ;(epub as any)?.destroy?.()
       } catch (destroyError) {
@@ -3034,7 +3039,7 @@ export class BookTab extends BaseTab {
       this.sections = ref(sections)
     } catch (error) {
       if (generation === this.renderGeneration) {
-        console.error(error)
+        this.reportOpenError('spine', error)
       }
       return
     }
@@ -3068,9 +3073,18 @@ export class BookTab extends BaseTab {
       await this.displayInitialPosition()
     } catch (error) {
       if (generation === this.renderGeneration) {
-        console.error(error)
+        this.reportOpenError('position', error)
       }
     }
+  }
+
+  private reportOpenError(stage: ReaderOpenErrorStage, error: unknown) {
+    console.error(error)
+    emitReaderOpenError({
+      bookTitle: getBookDisplayTitle(this.book),
+      error,
+      stage,
+    })
   }
 
   constructor(public book: BookRecord) {

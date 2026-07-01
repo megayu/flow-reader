@@ -100,6 +100,12 @@ export default {
   'import.failed_count': '失败 ',
   'import.books_unit': ' 本',
 
+  'error.export_failed': '导出失败',
+  'error.txt_preview_failed': 'TXT 预览失败',
+  'error.txt_import_failed': 'TXT 导入失败',
+  'error.reader_open_failed': '打开书籍失败',
+  'error.reader_render_failed': '渲染书籍失败',
+
   'toc.title': '目录',
   'toc.library': '图书馆',
 
