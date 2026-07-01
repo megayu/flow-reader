@@ -7,6 +7,7 @@ import { Action, ActionBar } from './ActionBar'
 import { SplitView, useSplitViewItem } from './SplitView'
 
 const COLLAPSED_STORAGE_SUFFIX = ':collapsed'
+const PANE_HEADER_SIZE = 28
 
 interface PaneProps extends ComponentProps<'div'> {
   headline: string
@@ -32,6 +33,7 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
 ) {
   const [expanded, setExpanded] = useState(() => readPaneExpanded(storageKey))
   const { size } = useSplitViewItem(headline, {
+    dragMinSize: PANE_HEADER_SIZE,
     maxSize,
     minSize,
     preferredSize,
@@ -53,7 +55,7 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
         size || !expanded ? 'shrink-0' : 'flex-1',
       )}
       style={{
-        height: expanded ? size : 28,
+        height: expanded ? size : PANE_HEADER_SIZE,
       }}
     >
       <div

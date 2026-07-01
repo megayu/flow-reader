@@ -17,8 +17,11 @@ import { clamp } from '@flow/reader/utils'
 import { Overlay } from './Overlay'
 
 interface ISplitViewItem {
+  dragMinSize?: number
   fixed?: boolean
   key: string
+  maxSize?: number
+  minSize?: number
   reset?: () => void
   visible?: boolean
   resize?: (size: number) => void
@@ -112,7 +115,9 @@ export function useSplitViewItem(
     maxSize = Number.POSITIVE_INFINITY,
     storageKey,
     visible = true,
+    dragMinSize,
   }: {
+    dragMinSize?: number
     preferredSize?: number
     minSize?: number
     maxSize?: number
@@ -132,12 +137,15 @@ export function useSplitViewItem(
   const view = useMemo(
     () => ({
       fixed,
+      dragMinSize,
       key: stringKey,
+      maxSize,
+      minSize,
       reset,
       resize,
       visible,
     }),
-    [fixed, reset, stringKey, resize, visible],
+    [dragMinSize, fixed, maxSize, minSize, reset, stringKey, resize, visible],
   )
   useRegisterView(stringKey, view)
 
@@ -229,9 +237,13 @@ const Sash: React.FC<SashProps> = ({ vertical, views }) => {
       onMouseDown={(event) => {
         event.preventDefault()
         setActive(true)
+        const sash = event.currentTarget
 
         function handleMouseMove(e: MouseEvent) {
-          const delta = vertical ? e.movementY : e.movementX
+          const rawDelta = vertical ? e.movementY : e.movementX
+          const delta = constrainedResizeDelta(rawDelta, vertical, views, sash)
+          if (!delta) return
+
           views.forEach((v, i) => {
             v?.resize?.(delta * (-1) ** i)
           })
@@ -265,4 +277,46 @@ const Sash: React.FC<SashProps> = ({ vertical, views }) => {
       {active && <Overlay className="!bg-transparent" />}
     </div>
   )
+}
+
+function constrainedResizeDelta(
+  delta: number,
+  vertical: boolean,
+  views: (ISplitViewItem | undefined)[],
+  sash: HTMLElement,
+) {
+  if (!delta) return 0
+
+  const [previousView, nextView] = views
+  const previousElement = sash.previousElementSibling
+  const nextElement = sash.nextElementSibling
+  if (!previousElement || !nextElement) return delta
+
+  const previousSize = elementSplitSize(previousElement, vertical)
+  const nextSize = elementSplitSize(nextElement, vertical)
+  const previousMin = dragMinSize(previousView)
+  const nextMin = dragMinSize(nextView)
+  const previousMax = previousView?.maxSize ?? Number.POSITIVE_INFINITY
+  const nextMax = nextView?.maxSize ?? Number.POSITIVE_INFINITY
+
+  if (delta > 0) {
+    return Math.max(
+      0,
+      Math.min(delta, nextSize - nextMin, previousMax - previousSize),
+    )
+  }
+
+  return Math.min(
+    0,
+    Math.max(delta, -(previousSize - previousMin), -(nextMax - nextSize)),
+  )
+}
+
+function elementSplitSize(element: Element, vertical: boolean) {
+  const rect = element.getBoundingClientRect()
+  return vertical ? rect.height : rect.width
+}
+
+function dragMinSize(view?: ISplitViewItem) {
+  return view?.dragMinSize ?? view?.minSize ?? 0
 }
