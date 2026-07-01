@@ -6,6 +6,8 @@ import { Twisty } from '../Row'
 import { Action, ActionBar } from './ActionBar'
 import { SplitView, useSplitViewItem } from './SplitView'
 
+const COLLAPSED_STORAGE_SUFFIX = ':collapsed'
+
 interface PaneProps extends ComponentProps<'div'> {
   headline: string
   maxSize?: number
@@ -28,7 +30,7 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
   },
   ref,
 ) {
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(() => readPaneExpanded(storageKey))
   const { size } = useSplitViewItem(headline, {
     maxSize,
     minSize,
@@ -36,6 +38,14 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
     storageKey,
     visible: expanded,
   })
+  const toggleExpanded = () => {
+    setExpanded((current) => {
+      const next = !current
+      writePaneExpanded(storageKey, next)
+      return next
+    })
+  }
+
   return (
     <div
       className={clsx(
@@ -50,7 +60,7 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
         role="button"
         tabIndex={0}
         className="border-border/70 bg-foreground/[0.035] hover:bg-foreground/[0.055] flex h-7 shrink-0 items-center border-y px-0.5 transition-colors"
-        onClick={() => setExpanded((e) => !e)}
+        onClick={toggleExpanded}
         onKeyDown={(event) => {
           if (event.key !== 'Enter' && event.key !== ' ') return
           event.preventDefault()
@@ -82,6 +92,25 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
     </div>
   )
 })
+
+function readPaneExpanded(storageKey?: string) {
+  if (!storageKey || typeof window === 'undefined') return true
+
+  return window.localStorage.getItem(collapsedStorageKey(storageKey)) !== '1'
+}
+
+function writePaneExpanded(storageKey: string | undefined, expanded: boolean) {
+  if (!storageKey || typeof window === 'undefined') return
+
+  window.localStorage.setItem(
+    collapsedStorageKey(storageKey),
+    expanded ? '0' : '1',
+  )
+}
+
+function collapsedStorageKey(storageKey: string) {
+  return `${storageKey}${COLLAPSED_STORAGE_SUFFIX}`
+}
 
 export interface PaneViewProps extends ComponentProps<'div'> {
   active?: boolean
