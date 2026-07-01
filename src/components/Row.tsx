@@ -102,7 +102,7 @@ export const Row: React.FC<RowProps> = ({
           marginLeft: 0,
         }}
       >
-        <span className="block min-w-0 truncate whitespace-nowrap">
+        <span className="flex h-full min-w-0 items-center truncate whitespace-nowrap">
           {t || trans('untitled')}
           {description && (
             <span
