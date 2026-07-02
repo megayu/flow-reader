@@ -99,6 +99,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: filter navigation entries in epubjs before publishing navigation, make spine lookups and `prev`/`next` return only readable sections, and treat confirmed missing section resources as zero-page sections so adjacent navigation keeps scanning.
 - Verification gate: targeted reader checks should cover TOC filtering plus next/previous spread navigation across non-readable and missing sections; real-client layout verification is still required for final desktop spread acceptance.
 
+### Single-page special section content offset outside first page
+
+- Symptom: short reflowable sections such as title, inscription, or part-title pages report as one natural page, but their visible text is clipped or shifted outside the first page.
+- Reproduction path: open a Kindle-converted EPUB whose short section body uses old `-webkit-box`/`box` centering with viewport-height sizing inside a horizontally paginated reflowable iframe.
+- Root cause: epubjs measures the range width as one page, but the author CSS can place the content rect outside the first page's horizontal bounds. Tail blank trimming does not apply because no extra natural page is reported.
+- Fix direction: during iframe expansion, only for one-page LTR reflowable horizontal sections, measure the first-page content rect and apply a per-iframe horizontal `translate` when the rect is mostly outside the first page.
+- Verification gate: epubjs unit coverage must prove one-page clipped content is corrected while multi-page sections and content already inside the first page are ignored; final desktop layout acceptance still requires real-client verification.
+
 ## Rejected Approaches
 
 ### Visibility-only hidden panes

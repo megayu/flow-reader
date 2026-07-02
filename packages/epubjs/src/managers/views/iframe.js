@@ -453,6 +453,147 @@ class IframeView {
     return false
   }
 
+  contentBounds() {
+    let doc = this.document
+    let root = this.contents && this.contents.content
+
+    if (!doc || !root) {
+      return
+    }
+
+    let contentBounds
+    let addRect = (rect) => {
+      if (!rect || rect.width <= 0 || rect.height <= 0) {
+        return
+      }
+
+      if (!contentBounds) {
+        contentBounds = {
+          left: rect.left,
+          right: rect.right,
+          top: rect.top,
+          bottom: rect.bottom,
+        }
+        return
+      }
+
+      contentBounds.left = Math.min(contentBounds.left, rect.left)
+      contentBounds.right = Math.max(contentBounds.right, rect.right)
+      contentBounds.top = Math.min(contentBounds.top, rect.top)
+      contentBounds.bottom = Math.max(contentBounds.bottom, rect.bottom)
+    }
+
+    let nodeFilter = doc.defaultView.NodeFilter
+    let walker = doc.createTreeWalker(
+      root,
+      nodeFilter.SHOW_TEXT,
+      {
+        acceptNode(node) {
+          return node.data && node.data.trim().length > 0
+            ? nodeFilter.FILTER_ACCEPT
+            : nodeFilter.FILTER_REJECT
+        },
+      },
+      false,
+    )
+    let node
+    let range = doc.createRange()
+
+    while ((node = walker.nextNode())) {
+      range.selectNodeContents(node)
+      let rects = range.getClientRects()
+
+      for (let i = 0; i < rects.length; i++) {
+        addRect(rects[i])
+      }
+    }
+
+    range.detach && range.detach()
+
+    let media = root.querySelectorAll('img, svg, math, video, audio, canvas')
+    for (let i = 0; i < media.length; i++) {
+      addRect(media[i].getBoundingClientRect())
+    }
+
+    return contentBounds
+  }
+
+  clearSinglePageFirstPageOffset() {
+    let content = this.contents && this.contents.content
+
+    if (!content || !this._singlePageFirstPageOffset) {
+      return
+    }
+
+    content.style.removeProperty('translate')
+    this._singlePageFirstPageOffset = undefined
+  }
+
+  singlePageFirstPageOffset(width) {
+    if (
+      !this.layout ||
+      !this.layout.pageWidth ||
+      this.layout.name !== 'reflowable' ||
+      this.settings.axis !== 'horizontal' ||
+      this.settings.direction === 'rtl' ||
+      this._contentPageCount !== 1
+    ) {
+      return 0
+    }
+
+    let pageWidth = Math.min(this.layout.pageWidth, width)
+    if (!pageWidth || pageWidth <= 0) {
+      return 0
+    }
+
+    let rect = this.contentBounds()
+    if (!rect) {
+      return 0
+    }
+
+    let rectWidth = rect.right - rect.left
+    if (rectWidth <= 0 || rectWidth > pageWidth * 1.5) {
+      return 0
+    }
+
+    let overlap = Math.min(rect.right, pageWidth) - Math.max(rect.left, 0)
+    let visibleRatio = overlap > 0 ? overlap / rectWidth : 0
+    let center = (rect.left + rect.right) / 2
+    let centerOutside = center < 0 || center > pageWidth
+    let startsLate = rect.left > pageWidth * 0.4 && rect.right > pageWidth
+
+    if (!centerOutside && visibleRatio >= 0.75 && !startsLate) {
+      return 0
+    }
+
+    let pageCenter = pageWidth / 2
+    let offset = pageCenter - center
+
+    if (rectWidth >= pageWidth) {
+      let rightOverflow = rect.right - pageWidth
+      let leftOverflow = -rect.left
+      offset = rightOverflow > leftOverflow ? -rightOverflow : leftOverflow
+    }
+
+    if (Math.abs(offset) < 2 || Math.abs(offset) > pageWidth) {
+      return 0
+    }
+
+    return offset
+  }
+
+  applySinglePageFirstPageOffset(width) {
+    let content = this.contents && this.contents.content
+    let offset = this.singlePageFirstPageOffset(width)
+
+    if (!content || !offset) {
+      return
+    }
+
+    content.style.setProperty('translate', offset + 'px 0')
+    this._singlePageFirstPageOffset = offset
+  }
+
   fitMediaBeforeMeasure() {
     if (
       !this.contents ||
@@ -543,23 +684,27 @@ class IframeView {
     var height = this.lockedHeight
 
     var textWidth, textHeight
+    let horizontal = this.settings.axis === 'horizontal'
+    let displayWidth = width
 
     if (!this.iframe || this._expanding) return
 
     this._expanding = true
+    this.clearSinglePageFirstPageOffset()
 
     if (this.layout.name === 'pre-paginated') {
       width = this.layout.columnWidth
       height = this.layout.height
     }
     // Expand Horizontally
-    else if (this.settings.axis === 'horizontal') {
+    else if (horizontal) {
       // Get the width of the text
       width = this.contents.textWidth()
 
       if (width % this.layout.pageWidth > 0) {
         width = Math.ceil(width / this.layout.pageWidth) * this.layout.pageWidth
       }
+      displayWidth = width
     } // Expand Vertically
     else if (this.settings.axis === 'vertical') {
       height = this.contents.textHeight()
@@ -582,10 +727,14 @@ class IframeView {
       this._measureWidth = width
 
       let trimmedWidth = this.trimTrailingBlankPages(width)
-      let displayWidth = this.displayWidthForContentWidth(trimmedWidth)
+      displayWidth = this.displayWidthForContentWidth(trimmedWidth)
       if (displayWidth != width) {
         this.reframe(displayWidth, height)
       }
+    }
+
+    if (horizontal) {
+      this.applySinglePageFirstPageOffset(displayWidth)
     }
 
     this._expanding = false
