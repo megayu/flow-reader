@@ -102,6 +102,7 @@ export default {
   'import.books_unit': ' books',
 
   'error.export_failed': 'Export failed',
+  'error.open_book_directory_failed': 'Failed to open book folder',
   'error.txt_preview_failed': 'TXT preview failed',
   'error.txt_import_failed': 'TXT import failed',
   'error.reader_open_failed': 'Failed to open book',

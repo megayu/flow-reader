@@ -1280,6 +1280,26 @@ const Book: React.FC<BookProps> = ({
     onOpenBook()
   }, [book, onOpenBook])
 
+  const openBookDirectory = useCallback(
+    (e: React.MouseEvent) => {
+      if (select || e.button !== 0 || (!e.metaKey && !e.ctrlKey)) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      closeContextMenu()
+      void db.books.openDirectory(book.id).catch((error) => {
+        console.error(error)
+        notify({
+          autoCloseMs: false,
+          description: `${getBookDisplayTitle(book)}: ${formatErrorMessage(error)}`,
+          title: errorT('open_book_directory_failed'),
+          type: 'error',
+        })
+      })
+    },
+    [book, closeContextMenu, errorT, notify, select],
+  )
+
   const updateReadingStatus = useCallback(
     (readingStatus: ReadingStatus | null) => {
       setStatusMenuOpen(false)
@@ -1440,6 +1460,7 @@ const Book: React.FC<BookProps> = ({
         <div
           className="border-border relative mx-auto aspect-[9/12] w-full overflow-hidden rounded-md border shadow-sm"
           style={{ maxWidth: 'var(--library-book-card-width)' }}
+          onClick={openBookDirectory}
         >
           {book.readingStatus && (
             <ReadingStatusBadge

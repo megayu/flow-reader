@@ -488,6 +488,9 @@ export const db = {
     peekAll() {
       return booksCache
     },
+    openDirectory(id: string) {
+      return invoke('open_book_directory', { id })
+    },
     remember(book: BookRecord) {
       rememberBook(book)
     },

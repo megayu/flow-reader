@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
+    process::Command,
     sync::{mpsc, Arc, Mutex},
     time::Instant,
 };
@@ -22,6 +23,37 @@ fn clean_tag_name(value: &str) -> String {
 
 fn same_tag_name(a: &str, b: &str) -> bool {
     a.eq_ignore_ascii_case(b)
+}
+
+fn spawn_directory_command(program: &str, path: &Path) -> Result<(), String> {
+    Command::new(program)
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open directory: {error}"))
+}
+
+fn open_directory_in_file_manager(path: &Path) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        return spawn_directory_command("explorer", path);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        return spawn_directory_command("open", path);
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        return spawn_directory_command("xdg-open", path);
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", unix)))]
+    {
+        let _ = path;
+        Err("opening directories is not supported on this platform".to_string())
+    }
 }
 
 fn tag_id_from_name(name: &str, created_at: u64) -> String {
@@ -262,6 +294,29 @@ pub fn get_book(storage: State<'_, AppStorage>, id: String) -> Result<Option<Boo
 
     book.map(|book| storage.compose_book(&mut state, &book))
         .transpose()
+}
+
+#[tauri::command]
+pub fn open_book_directory(storage: State<'_, AppStorage>, id: String) -> Result<(), String> {
+    let path = {
+        let state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+
+        if !state.library.books.iter().any(|book| book.id == id) {
+            return Err("book not found".to_string());
+        }
+
+        storage.book_dir(&id)
+    };
+
+    if !path.is_dir() {
+        return Err(format!("book directory does not exist: {}", path.display()));
+    }
+
+    open_directory_in_file_manager(&path)
 }
 
 #[tauri::command]
