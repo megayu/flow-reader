@@ -1,14 +1,19 @@
 use std::{
+    collections::{HashMap, HashSet},
     fs,
     io::{BufReader, BufWriter, Read, Seek, Write},
     path::{Path, PathBuf},
 };
 
+use regex::Regex;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use zip::ZipArchive;
 
 use super::*;
+
+const EPUB_SECTION_SPLIT_MIN_BYTES: u64 = 512 * 1024;
+const EPUB_SECTION_SPLIT_MIN_NAV_POINTS: usize = 8;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct EpubAccessInfo {
     pub(super) mode: BookContentMode,
@@ -149,6 +154,639 @@ pub(super) fn find_unpacked_opf_path(unpacked_dir: &Path) -> Result<PathBuf, Str
     }
 
     Ok(unpacked_dir.join(normalized))
+}
+
+#[derive(Debug, Clone)]
+struct OpfManifestItem {
+    id: String,
+    href: String,
+    media_type: String,
+}
+
+#[derive(Debug, Clone)]
+struct OpfSpineItem {
+    idref: String,
+}
+
+#[derive(Debug, Clone)]
+struct NcxReference {
+    raw_src: String,
+    path: String,
+    fragment: String,
+}
+
+#[derive(Debug, Clone)]
+struct SplitSection {
+    original_id: String,
+    original_abs_path: String,
+    original_file_path: PathBuf,
+    replacements: Vec<(String, String)>,
+    split_items: Vec<SplitItem>,
+}
+
+#[derive(Debug, Clone)]
+struct SplitItem {
+    id: String,
+    href: String,
+    abs_path: String,
+    content: String,
+}
+
+pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<(), String> {
+    let opf_path = find_unpacked_opf_path(unpacked_dir)?;
+    let opf_xml = fs::read_to_string(&opf_path).map_err(|_| "skip".to_string());
+    let Ok(opf_xml) = opf_xml else {
+        return Ok(());
+    };
+    let opf_doc = match roxmltree::Document::parse(&opf_xml) {
+        Ok(doc) => doc,
+        Err(_) => return Ok(()),
+    };
+    if opf_declares_fixed_layout(&opf_doc) {
+        return Ok(());
+    }
+
+    let opf_zip_path = opf_path
+        .strip_prefix(unpacked_dir)
+        .map_err(|error| error.to_string())?
+        .to_string_lossy()
+        .replace('\\', "/");
+    let opf_parent = parent_zip_path(&opf_zip_path).to_string();
+    let manifest = opf_manifest_items(&opf_doc);
+    let spine = opf_spine_items(&opf_doc);
+    let manifest_by_id = manifest
+        .iter()
+        .map(|item| (item.id.as_str(), item))
+        .collect::<HashMap<_, _>>();
+
+    let Some(ncx_item) = find_ncx_manifest_item(&opf_doc, &manifest) else {
+        return Ok(());
+    };
+    let ncx_abs_path = normalize_zip_path(join_zip_path(&opf_parent, &ncx_item.href));
+    let ncx_file_path = unpacked_resource_path(unpacked_dir, &ncx_abs_path);
+    let Ok(ncx_xml) = fs::read_to_string(&ncx_file_path) else {
+        return Ok(());
+    };
+    let ncx_parent = parent_zip_path(&ncx_abs_path).to_string();
+    let ncx_references = ncx_content_references(&ncx_xml);
+    if ncx_references.len() < EPUB_SECTION_SPLIT_MIN_NAV_POINTS {
+        return Ok(());
+    }
+
+    let used_ids = manifest
+        .iter()
+        .map(|item| item.id.clone())
+        .collect::<HashSet<_>>();
+    let mut split_sections = Vec::new();
+
+    for spine_item in spine {
+        let Some(item) = manifest_by_id.get(spine_item.idref.as_str()) else {
+            continue;
+        };
+        if !is_html_manifest_item(item) {
+            continue;
+        }
+
+        let section_abs_path = normalize_zip_path(join_zip_path(&opf_parent, &item.href));
+        let section_refs = ncx_references
+            .iter()
+            .filter(|reference| {
+                let reference_abs = normalize_zip_path(join_zip_path(&ncx_parent, &reference.path));
+                percent_decode_zip_path(&reference_abs)
+                    == percent_decode_zip_path(&section_abs_path)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if section_refs.len() < EPUB_SECTION_SPLIT_MIN_NAV_POINTS {
+            continue;
+        }
+
+        let section_path = unpacked_resource_path(unpacked_dir, &section_abs_path);
+        let Ok(metadata) = fs::metadata(&section_path) else {
+            continue;
+        };
+        if metadata.len() < EPUB_SECTION_SPLIT_MIN_BYTES {
+            continue;
+        }
+        let Ok(xhtml) = fs::read_to_string(&section_path) else {
+            continue;
+        };
+        if !xhtml_is_safe_to_split(&xhtml) {
+            continue;
+        }
+
+        if let Some(split) = plan_split_section(
+            &xhtml,
+            item,
+            &section_abs_path,
+            &section_path,
+            &section_refs,
+            &ncx_parent,
+            &opf_parent,
+            &used_ids,
+        ) {
+            split_sections.push(split);
+        }
+    }
+
+    if split_sections.is_empty() {
+        return Ok(());
+    }
+
+    let mut updated_opf = opf_xml;
+    for split in &split_sections {
+        updated_opf = replace_manifest_item(&updated_opf, split)?;
+        updated_opf = replace_spine_itemref(&updated_opf, split)?;
+    }
+
+    let replacements = split_sections
+        .iter()
+        .flat_map(|split| split.replacements.iter().cloned())
+        .collect::<Vec<_>>();
+    let updated_ncx = replace_quoted_values(&ncx_xml, &replacements);
+    update_existing_html_links(unpacked_dir, &replacements, &split_sections)?;
+
+    fs::write(&opf_path, updated_opf).map_err(|error| error.to_string())?;
+    fs::write(&ncx_file_path, updated_ncx).map_err(|error| error.to_string())?;
+
+    for split in &split_sections {
+        for item in &split.split_items {
+            let path = unpacked_resource_path(unpacked_dir, &item.abs_path);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+            }
+            fs::write(path, item.content.as_bytes()).map_err(|error| error.to_string())?;
+        }
+        if split.original_file_path.exists() {
+            fs::remove_file(&split.original_file_path).map_err(|error| error.to_string())?;
+        }
+    }
+
+    Ok(())
+}
+
+fn opf_declares_fixed_layout(doc: &roxmltree::Document) -> bool {
+    doc.descendants().any(|node| {
+        node.is_element()
+            && node.has_tag_name("meta")
+            && node.attribute("property") == Some("rendition:layout")
+            && node.text().is_some_and(|text| {
+                text.split_whitespace()
+                    .any(|value| value.eq_ignore_ascii_case("pre-paginated"))
+            })
+    })
+}
+
+fn opf_manifest_items(doc: &roxmltree::Document) -> Vec<OpfManifestItem> {
+    doc.descendants()
+        .filter(|node| node.is_element() && node.has_tag_name("item"))
+        .filter_map(|node| {
+            Some(OpfManifestItem {
+                id: node.attribute("id")?.to_string(),
+                href: node.attribute("href")?.to_string(),
+                media_type: node.attribute("media-type").unwrap_or("").to_string(),
+            })
+        })
+        .collect()
+}
+
+fn opf_spine_items(doc: &roxmltree::Document) -> Vec<OpfSpineItem> {
+    doc.descendants()
+        .filter(|node| node.is_element() && node.has_tag_name("itemref"))
+        .filter_map(|node| {
+            Some(OpfSpineItem {
+                idref: node.attribute("idref")?.to_string(),
+            })
+        })
+        .collect()
+}
+
+fn find_ncx_manifest_item(
+    doc: &roxmltree::Document,
+    manifest: &[OpfManifestItem],
+) -> Option<OpfManifestItem> {
+    let spine_toc = doc
+        .descendants()
+        .find(|node| node.is_element() && node.has_tag_name("spine"))
+        .and_then(|node| node.attribute("toc"));
+
+    spine_toc
+        .and_then(|toc| manifest.iter().find(|item| item.id == toc))
+        .cloned()
+        .or_else(|| {
+            manifest
+                .iter()
+                .find(|item| item.media_type == "application/x-dtbncx+xml")
+                .cloned()
+        })
+}
+
+fn is_html_manifest_item(item: &OpfManifestItem) -> bool {
+    item.media_type == "application/xhtml+xml"
+        || item.media_type == "text/html"
+        || matches!(
+            extension_from_path(&item.href).as_str(),
+            "html" | "htm" | "xhtml"
+        )
+}
+
+fn ncx_content_references(ncx: &str) -> Vec<NcxReference> {
+    let Ok(regex) = Regex::new(r#"(?is)<content\b[^>]*\bsrc\s*=\s*['"]([^'"]+)['"][^>]*/?>"#)
+    else {
+        return Vec::new();
+    };
+
+    regex
+        .captures_iter(ncx)
+        .filter_map(|captures| {
+            let raw_src = captures.get(1)?.as_str().to_string();
+            let (path, fragment) = split_href_fragment(&raw_src);
+            if path.is_empty() || fragment.is_empty() {
+                return None;
+            }
+
+            Some(NcxReference {
+                raw_src,
+                path,
+                fragment,
+            })
+        })
+        .collect()
+}
+
+fn split_href_fragment(href: &str) -> (String, String) {
+    href.split_once('#')
+        .map(|(path, fragment)| (path.to_string(), fragment.to_string()))
+        .unwrap_or_else(|| (href.to_string(), String::new()))
+}
+
+fn unpacked_resource_path(unpacked_dir: &Path, zip_path: &str) -> PathBuf {
+    unpacked_dir.join(zip_path.replace('/', std::path::MAIN_SEPARATOR_STR))
+}
+
+fn xhtml_is_safe_to_split(xhtml: &str) -> bool {
+    let lower = xhtml.to_ascii_lowercase();
+    let unsafe_tokens = [
+        "<base",
+        "<script",
+        "<form",
+        "<input",
+        "<textarea",
+        "<select",
+        "<iframe",
+        "<object",
+        "<embed",
+        "<canvas",
+        "<svg",
+        "<math",
+        "<table",
+    ];
+    if unsafe_tokens.iter().any(|token| lower.contains(token)) {
+        return false;
+    }
+
+    !(lower.contains("<a") && lower.contains("href"))
+}
+
+fn local_body_content_range(xhtml: &str) -> Option<(usize, usize)> {
+    let lower = xhtml.to_ascii_lowercase();
+    let body_tag_start = lower.find("<body")?;
+    let body_content_start = lower[body_tag_start..].find('>')? + body_tag_start + 1;
+    let body_content_end = lower[body_content_start..]
+        .find("</body")
+        .map(|index| body_content_start + index)
+        .unwrap_or(xhtml.len());
+
+    Some((body_content_start, body_content_end))
+}
+
+fn plan_split_section(
+    xhtml: &str,
+    item: &OpfManifestItem,
+    section_abs_path: &str,
+    section_path: &Path,
+    section_refs: &[NcxReference],
+    ncx_parent: &str,
+    opf_parent: &str,
+    used_ids: &HashSet<String>,
+) -> Option<SplitSection> {
+    let (body_start, body_end) = local_body_content_range(xhtml)?;
+    let mut anchor_positions = Vec::new();
+
+    for reference in section_refs {
+        let fragment = percent_decode_path(&reference.fragment);
+        let position = find_anchor_start(xhtml, body_start, body_end, &fragment)?;
+        anchor_positions.push((reference, position));
+    }
+
+    anchor_positions.sort_by_key(|(_, position)| *position);
+    anchor_positions.dedup_by_key(|(_, position)| *position);
+    if anchor_positions.len() < EPUB_SECTION_SPLIT_MIN_NAV_POINTS {
+        return None;
+    }
+
+    let prefix = &xhtml[..body_start];
+    let suffix = &xhtml[body_end..];
+    let split_starts = std::iter::once(body_start)
+        .chain(
+            anchor_positions
+                .iter()
+                .skip(1)
+                .map(|(_, position)| *position),
+        )
+        .collect::<Vec<_>>();
+    let stem = item
+        .href
+        .rsplit_once('.')
+        .map(|(stem, _)| stem)
+        .unwrap_or(item.href.as_str());
+    let extension = extension_from_path(&item.href);
+    let extension = if extension.is_empty() {
+        "xhtml".to_string()
+    } else {
+        extension
+    };
+
+    let mut split_items = Vec::new();
+    for (index, start) in split_starts.iter().enumerate() {
+        let end = split_starts.get(index + 1).copied().unwrap_or(body_end);
+        if *start >= end {
+            return None;
+        }
+
+        let href = format!(
+            "{stem}-flow-split-{index:04}.{extension}",
+            index = index + 1
+        );
+        let id = unique_split_id(&item.id, index + 1, used_ids);
+        let abs_path = normalize_zip_path(join_zip_path(opf_parent, &href));
+        let mut content = String::with_capacity(prefix.len() + (end - *start) + suffix.len());
+        content.push_str(prefix);
+        content.push_str(&xhtml[*start..end]);
+        content.push_str(suffix);
+
+        split_items.push(SplitItem {
+            id,
+            href,
+            abs_path,
+            content,
+        });
+    }
+
+    let mut replacements = Vec::new();
+    for reference in section_refs {
+        let fragment = percent_decode_path(&reference.fragment);
+        let position = find_anchor_start(xhtml, body_start, body_end, &fragment)?;
+        let split_index = split_starts.partition_point(|start| *start <= position) - 1;
+        let split = split_items.get(split_index)?;
+        let relative = relative_zip_path(ncx_parent, &split.abs_path);
+        replacements.push((
+            reference.raw_src.clone(),
+            format!("{relative}#{}", reference.fragment),
+        ));
+    }
+
+    Some(SplitSection {
+        original_id: item.id.clone(),
+        original_abs_path: section_abs_path.to_string(),
+        original_file_path: section_path.to_path_buf(),
+        replacements,
+        split_items,
+    })
+}
+
+fn find_anchor_start(xhtml: &str, body_start: usize, body_end: usize, id: &str) -> Option<usize> {
+    if id.is_empty() {
+        return None;
+    }
+
+    let escaped = regex::escape(id);
+    let pattern = format!(
+        r#"(?is)<[^>]+(?:\bid\s*=\s*["']{escaped}["']|\bname\s*=\s*["']{escaped}["'])[^>]*>"#
+    );
+    let regex = Regex::new(&pattern).ok()?;
+    regex
+        .find(&xhtml[body_start..body_end])
+        .map(|match_| body_start + match_.start())
+}
+
+fn unique_split_id(original_id: &str, index: usize, used_ids: &HashSet<String>) -> String {
+    let base = original_id
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    let mut id = format!("{base}_flow_split_{index:04}");
+    let mut suffix = 1usize;
+    while used_ids.contains(&id) {
+        id = format!("{base}_flow_split_{index:04}_{suffix}");
+        suffix += 1;
+    }
+    id
+}
+
+fn relative_zip_path(from_parent: &str, target: &str) -> String {
+    let from = from_parent
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    let target_parts = target
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    let mut common = 0usize;
+    while common < from.len() && common < target_parts.len() && from[common] == target_parts[common]
+    {
+        common += 1;
+    }
+
+    let mut relative = Vec::new();
+    relative.extend(std::iter::repeat("..").take(from.len() - common));
+    relative.extend(target_parts.iter().skip(common).copied());
+    relative.join("/")
+}
+
+fn replace_manifest_item(opf: &str, split: &SplitSection) -> Result<String, String> {
+    let Some((start, end)) = find_xml_start_tag_range(opf, "item", "id", &split.original_id) else {
+        return Ok(opf.to_string());
+    };
+    let indent = line_indent_before(opf, start);
+    let replacement = split
+        .split_items
+        .iter()
+        .map(|item| {
+            format!(
+                r#"{indent}<item id="{}" href="{}" media-type="application/xhtml+xml"/>"#,
+                escape_xml_attr_local(&item.id),
+                escape_xml_attr_local(&item.href)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let mut updated = String::with_capacity(opf.len() + replacement.len());
+    updated.push_str(&opf[..start]);
+    updated.push_str(&replacement);
+    updated.push_str(&opf[end..]);
+    Ok(updated)
+}
+
+fn replace_spine_itemref(opf: &str, split: &SplitSection) -> Result<String, String> {
+    let Some((start, end)) = find_xml_start_tag_range(opf, "itemref", "idref", &split.original_id)
+    else {
+        return Ok(opf.to_string());
+    };
+    let indent = line_indent_before(opf, start);
+    let replacement = split
+        .split_items
+        .iter()
+        .map(|item| {
+            format!(
+                r#"{indent}<itemref idref="{}"/>"#,
+                escape_xml_attr_local(&item.id)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let mut updated = String::with_capacity(opf.len() + replacement.len());
+    updated.push_str(&opf[..start]);
+    updated.push_str(&replacement);
+    updated.push_str(&opf[end..]);
+    Ok(updated)
+}
+
+fn find_xml_start_tag_range(
+    xml: &str,
+    tag: &str,
+    attr_name: &str,
+    attr_value: &str,
+) -> Option<(usize, usize)> {
+    let lower = xml.to_ascii_lowercase();
+    let needle = format!("<{}", tag.to_ascii_lowercase());
+    let mut cursor = 0usize;
+    while let Some(relative_start) = lower[cursor..].find(&needle) {
+        let start = cursor + relative_start;
+        let after_tag = start + needle.len();
+        let next = lower[after_tag..].chars().next();
+        if next.is_some_and(|character| {
+            !(character.is_whitespace() || character == '>' || character == '/')
+        }) {
+            cursor = after_tag;
+            continue;
+        }
+
+        let end = lower[start..].find('>')? + start + 1;
+        let tag_xml = &xml[start..end];
+        if xml_tag_has_attr_value(tag_xml, attr_name, attr_value) {
+            return Some((start, end));
+        }
+        cursor = end;
+    }
+
+    None
+}
+
+fn xml_tag_has_attr_value(tag: &str, attr_name: &str, attr_value: &str) -> bool {
+    let pattern = format!(
+        r#"(?is)\b{}\s*=\s*['"]{}['"]"#,
+        regex::escape(attr_name),
+        regex::escape(attr_value)
+    );
+    Regex::new(&pattern)
+        .ok()
+        .is_some_and(|regex| regex.is_match(tag))
+}
+
+fn line_indent_before(text: &str, index: usize) -> &str {
+    let line_start = text[..index]
+        .rfind('\n')
+        .map(|index| index + 1)
+        .unwrap_or(0);
+    &text[line_start..index]
+}
+
+fn escape_xml_attr_local(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn replace_quoted_values(text: &str, replacements: &[(String, String)]) -> String {
+    replacements
+        .iter()
+        .fold(text.to_string(), |current, (from, to)| {
+            current
+                .replace(&format!(r#""{from}""#), &format!(r#""{to}""#))
+                .replace(&format!("'{from}'"), &format!("'{to}'"))
+        })
+}
+
+fn update_existing_html_links(
+    unpacked_dir: &Path,
+    replacements: &[(String, String)],
+    split_sections: &[SplitSection],
+) -> Result<(), String> {
+    let removed_paths = split_sections
+        .iter()
+        .map(|split| split.original_abs_path.clone())
+        .collect::<HashSet<_>>();
+
+    for path in collect_unpacked_html_files(unpacked_dir)? {
+        let relative = path
+            .strip_prefix(unpacked_dir)
+            .map_err(|error| error.to_string())?
+            .to_string_lossy()
+            .replace('\\', "/");
+        if removed_paths.contains(&relative) {
+            continue;
+        }
+
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let updated = replace_quoted_values(&text, replacements);
+        if updated != text {
+            fs::write(path, updated).map_err(|error| error.to_string())?;
+        }
+    }
+
+    Ok(())
+}
+
+fn collect_unpacked_html_files(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut files = Vec::new();
+    collect_unpacked_html_files_into(root, &mut files)?;
+    files.sort();
+    Ok(files)
+}
+
+fn collect_unpacked_html_files_into(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+    for entry in fs::read_dir(dir).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_unpacked_html_files_into(&path, files)?;
+            continue;
+        }
+
+        let extension = path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| extension.to_ascii_lowercase());
+        if matches!(extension.as_deref(), Some("html" | "htm" | "xhtml")) {
+            files.push(path);
+        }
+    }
+
+    Ok(())
 }
 
 fn parse_epub_info_result(path: &Path) -> Result<ParsedEpubInfo, String> {

@@ -41,7 +41,8 @@ use book_assets::{is_generated_text_cover, read_cover, write_cover, write_metada
 use epub_import::normalize_publication_date;
 use epub_import::{
     clean_xml_text, find_unpacked_opf_path, import_epub_path_impl, inspect_epub_access,
-    join_zip_path, normalize_zip_path, parent_zip_path, unpack_epub,
+    join_zip_path, normalize_unpacked_epub_structure, normalize_zip_path, parent_zip_path,
+    unpack_epub,
 };
 
 #[cfg(test)]
@@ -1122,6 +1123,7 @@ fn publish_unpacked_book_package(
         let _ = fs::remove_dir_all(&temp_dir);
         return Err(error);
     }
+    normalize_unpacked_epub_structure(&temp_dir)?;
 
     let temp_opf_path = match find_unpacked_opf_path(&temp_dir) {
         Ok(path) => path,
@@ -2272,14 +2274,7 @@ fn epub_entry_is_editable_text(relative: &str) -> bool {
         .rsplit_once('.')
         .map(|(_, extension)| extension.to_ascii_lowercase())
         .unwrap_or_default();
-    matches!(extension.as_str(), "htm" | "html" | "xhtml" | "opf")
-}
-
-fn system_time_epoch_seconds(time: std::time::SystemTime) -> i128 {
-    match time.duration_since(std::time::UNIX_EPOCH) {
-        Ok(duration) => duration.as_secs() as i128,
-        Err(error) => -(error.duration().as_secs() as i128),
-    }
+    matches!(extension.as_str(), "htm" | "html" | "xhtml" | "opf" | "ncx")
 }
 
 fn unpacked_file_was_modified(path: &Path) -> Result<bool, String> {
@@ -2290,7 +2285,7 @@ fn unpacked_file_was_modified(path: &Path) -> Result<bool, String> {
         Err(_) => return Ok(true),
     };
 
-    Ok(system_time_epoch_seconds(created) != system_time_epoch_seconds(modified))
+    Ok(created != modified)
 }
 
 fn should_copy_original_zip_entry(relative: &str, path: &Path) -> Result<bool, String> {
@@ -2299,6 +2294,26 @@ fn should_copy_original_zip_entry(relative: &str, path: &Path) -> Result<bool, S
     }
 
     Ok(!unpacked_file_was_modified(path)?)
+}
+
+fn original_epub_file_count<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Result<usize, String> {
+    let mut count = 0usize;
+    for index in 0..archive.len() {
+        let name = archive
+            .name_for_index(index)
+            .ok_or_else(|| "Invalid EPUB entry index".to_string())?
+            .to_string();
+        let relative = normalize_zip_path(name.replace('\\', "/"));
+        if relative.is_empty() {
+            continue;
+        }
+
+        let entry = archive.by_index(index).map_err(|error| error.to_string())?;
+        if !entry.is_dir() {
+            count += 1;
+        }
+    }
+    Ok(count)
 }
 
 fn write_epub_from_unpacked_dir(
@@ -2353,6 +2368,10 @@ fn write_epub_from_original_and_unpacked(
 
     let source = fs::File::open(original_epub).map_err(|error| error.to_string())?;
     let mut archive = ZipArchive::new(source).map_err(|error| error.to_string())?;
+    if original_epub_file_count(&mut archive)? != collect_files_sorted(unpacked_dir)?.len() {
+        return write_epub_from_unpacked_dir(unpacked_dir, output_path, None);
+    }
+
     let tmp = output_path.with_extension("tmp");
     let file = fs::File::create(&tmp).map_err(|error| error.to_string())?;
     let mut writer = ZipWriter::new(BufWriter::with_capacity(EPUB_ZIP_WRITER_BUFFER_SIZE, file));
@@ -2466,6 +2485,7 @@ pub(super) fn replace_book_text_impl(
         let book_path = book_dir.join(BOOK_FILE);
         if book_path.exists() {
             unpack_epub(&book_path, &unpacked_dir)?;
+            normalize_unpacked_epub_structure(&unpacked_dir)?;
         }
     }
 
@@ -2609,6 +2629,7 @@ pub(super) fn export_book_impl(
                     let book_path = book_dir.join(BOOK_FILE);
                     if book_path.exists() {
                         unpack_epub(&book_path, &unpacked_dir)?;
+                        normalize_unpacked_epub_structure(&unpacked_dir)?;
                     }
                 }
                 let book_path = book_dir.join(BOOK_FILE);
@@ -2674,8 +2695,8 @@ mod tests {
         get_book_reader_source_impl, hash_file, image_index_cache_from_bytes,
         image_index_cache_to_bytes, import_epub_path_impl, library_path,
         load_or_build_search_text_cache, mark_book_exported, normalize_publication_date,
-        parse_text_import_document, path_to_client_string, read_image_index_cache,
-        read_search_text_sections_from_unpacked, replace_book_text_impl,
+        normalize_unpacked_epub_structure, parse_text_import_document, path_to_client_string,
+        read_image_index_cache, read_search_text_sections_from_unpacked, replace_book_text_impl,
         replace_generated_txt_source_text, replace_xhtml_text_node,
         schedule_existing_delete_tombstone_cleanup, search_text_cache_from_bytes,
         search_text_cache_to_bytes, search_text_in_cache, sync_unpacked_opf_metadata,
@@ -4855,6 +4876,7 @@ mod tests {
             "<package>original</package>",
         )
         .unwrap();
+        fs::write(unpacked.join("OEBPS/toc.ncx"), "<ncx>same</ncx>").unwrap();
         fs::write(unpacked.join("OEBPS/chapter.xhtml"), "<p>same</p>").unwrap();
         fs::write(unpacked.join("OEBPS/styles/book.css"), "p{color:red}").unwrap();
         fs::write(unpacked.join("OEBPS/images/page.jpg"), [9u8; 128]).unwrap();
@@ -4867,6 +4889,8 @@ mod tests {
         writer.write_all(b"application/epub+zip").unwrap();
         writer.start_file("OEBPS/content.opf", stored).unwrap();
         writer.write_all(b"<package>original</package>").unwrap();
+        writer.start_file("OEBPS/toc.ncx", stored).unwrap();
+        writer.write_all(b"<ncx>same</ncx>").unwrap();
         writer.start_file("OEBPS/chapter.xhtml", stored).unwrap();
         writer.write_all(b"<p>same</p>").unwrap();
         writer.start_file("OEBPS/styles/book.css", stored).unwrap();
@@ -4883,6 +4907,7 @@ mod tests {
             "<package>changed</package>",
         )
         .unwrap();
+        fs::write(unpacked.join("OEBPS/toc.ncx"), "<ncx>changed</ncx>").unwrap();
         fs::write(unpacked.join("OEBPS/chapter.xhtml"), "<p>tame</p>").unwrap();
         fs::write(unpacked.join("OEBPS/styles/book.css"), "p{color:blue}").unwrap();
         fs::write(unpacked.join("OEBPS/images/page.jpg"), [8u8; 128]).unwrap();
@@ -4907,6 +4932,10 @@ mod tests {
                 .by_name("OEBPS/chapter.xhtml")
                 .unwrap()
                 .compression(),
+            CompressionMethod::Deflated
+        );
+        assert_eq!(
+            archive.by_name("OEBPS/toc.ncx").unwrap().compression(),
             CompressionMethod::Deflated
         );
         assert_eq!(
@@ -4939,6 +4968,13 @@ mod tests {
         assert_eq!(content, "<p>tame</p>");
         content.clear();
         archive
+            .by_name("OEBPS/toc.ncx")
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
+        assert_eq!(content, "<ncx>changed</ncx>");
+        content.clear();
+        archive
             .by_name("OEBPS/styles/book.css")
             .unwrap()
             .read_to_string(&mut content)
@@ -4953,6 +4989,168 @@ mod tests {
         assert_eq!(image, vec![9u8; 128]);
 
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn exports_epub_from_unpacked_when_file_count_changes() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-export-unpacked-count-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let original = root.join("original.epub");
+        let unpacked = root.join("unpacked");
+        let output = root.join("exported.epub");
+        fs::create_dir_all(unpacked.join("OEBPS")).unwrap();
+        fs::write(unpacked.join("mimetype"), "application/epub+zip").unwrap();
+        fs::write(
+            unpacked.join("OEBPS/content.opf"),
+            "<package>unpacked</package>",
+        )
+        .unwrap();
+        fs::write(unpacked.join("OEBPS/toc.ncx"), "<ncx>unpacked</ncx>").unwrap();
+
+        let file = fs::File::create(&original).unwrap();
+        let mut writer = ZipWriter::new(file);
+        let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+        writer.start_file("mimetype", stored).unwrap();
+        writer.write_all(b"application/epub+zip").unwrap();
+        writer.start_file("OEBPS/content.opf", stored).unwrap();
+        writer.write_all(b"<package>original</package>").unwrap();
+        writer.finish().unwrap();
+
+        write_epub_from_original_and_unpacked(&original, &unpacked, &output)
+            .expect("export succeeds");
+
+        let file = fs::File::open(&output).unwrap();
+        let mut archive = ZipArchive::new(file).unwrap();
+        let mut content = String::new();
+        archive
+            .by_name("OEBPS/content.opf")
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
+        assert_eq!(content, "<package>unpacked</package>");
+        content.clear();
+        archive
+            .by_name("OEBPS/toc.ncx")
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
+        assert_eq!(content, "<ncx>unpacked</ncx>");
+
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn normalizes_large_ncx_anchored_spine_section() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-epub-normalize-test-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("META-INF")).unwrap();
+        fs::create_dir_all(root.join("OEBPS")).unwrap();
+        fs::write(root.join("mimetype"), "application/epub+zip").unwrap();
+        fs::write(
+            root.join("META-INF/container.xml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<container>
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf"/>
+  </rootfiles>
+</container>"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("OEBPS/content.opf"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata/>
+  <manifest>
+    <item id="big" href="text00000.html" media-type="application/xhtml+xml"/>
+    <item id="tocpage" href="text00001.html" media-type="application/xhtml+xml"/>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+  </manifest>
+  <spine toc="ncx">
+    <itemref idref="big"/>
+    <itemref idref="tocpage"/>
+  </spine>
+</package>"#,
+        )
+        .unwrap();
+
+        let mut ncx = String::from(
+            r#"<?xml version="1.0" encoding="UTF-8"?><ncx><navMap>
+"#,
+        );
+        let mut toc_page = String::from(
+            r#"<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><body>
+"#,
+        );
+        let mut body = String::from("<p>preface</p>\n");
+        for index in 1..=9 {
+            ncx.push_str(&format!(
+                r#"<navPoint id="nav{index}"><navLabel><text>Chapter {index}</text></navLabel><content src="text00000.html#c{index:03}"/></navPoint>
+"#
+            ));
+            toc_page.push_str(&format!(
+                r#"<p><a href="text00000.html#c{index:03}">Chapter {index}</a></p>
+"#
+            ));
+            body.push_str(&format!(
+                r#"<span id="c{index:03}"></span><p>Chapter {index}</p><p>{}</p>
+"#,
+                "正文".repeat(40_000)
+            ));
+        }
+        ncx.push_str("</navMap></ncx>");
+        toc_page.push_str("</body></html>");
+        let xhtml = format!(
+            r#"<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Big</title></head><body>{body}</body></html>"#
+        );
+        fs::write(root.join("OEBPS/toc.ncx"), ncx).unwrap();
+        fs::write(root.join("OEBPS/text00001.html"), toc_page).unwrap();
+        fs::write(root.join("OEBPS/text00000.html"), xhtml).unwrap();
+
+        normalize_unpacked_epub_structure(&root).expect("normalization succeeds");
+
+        let opf = fs::read_to_string(root.join("OEBPS/content.opf")).unwrap();
+        assert!(opf.contains(r#"id="big_flow_split_0001""#));
+        assert!(opf.contains(r#"href="text00000-flow-split-0001.html""#));
+        assert!(opf.contains(r#"<itemref idref="big_flow_split_0001"/>"#));
+        assert!(!opf.contains(r#"<itemref idref="big"/>"#));
+
+        let ncx = fs::read_to_string(root.join("OEBPS/toc.ncx")).unwrap();
+        assert!(ncx.contains(r#"src="text00000-flow-split-0001.html#c001""#));
+        assert!(ncx.contains(r#"src="text00000-flow-split-0009.html#c009""#));
+        let toc_page = fs::read_to_string(root.join("OEBPS/text00001.html")).unwrap();
+        assert!(toc_page.contains(r#"href="text00000-flow-split-0001.html#c001""#));
+        assert!(toc_page.contains(r#"href="text00000-flow-split-0009.html#c009""#));
+        assert!(!root.join("OEBPS/text00000.html").exists());
+        assert!(root.join("OEBPS/text00000-flow-split-0001.html").exists());
+        assert!(root.join("OEBPS/text00000-flow-split-0009.html").exists());
+
+        let output = root.with_extension("epub");
+        write_epub_from_unpacked_dir(&root, &output, None).expect("export succeeds");
+        let file = fs::File::open(&output).unwrap();
+        let mut archive = ZipArchive::new(file).unwrap();
+        assert!(archive.by_name("OEBPS/text00000.html").is_err());
+        assert!(archive
+            .by_name("OEBPS/text00000-flow-split-0001.html")
+            .is_ok());
+        assert!(archive
+            .by_name("OEBPS/text00000-flow-split-0009.html")
+            .is_ok());
+
+        fs::remove_dir_all(&root).unwrap();
+        fs::remove_file(output).unwrap();
     }
 
     #[test]

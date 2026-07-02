@@ -107,6 +107,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: during iframe expansion, only for one-page LTR reflowable horizontal sections, measure the first-page content rect and apply a per-iframe horizontal `translate` when the rect is mostly outside the first page.
 - Verification gate: epubjs unit coverage must prove one-page clipped content is corrected while multi-page sections and content already inside the first page are ignored; final desktop layout acceptance still requires real-client verification.
 
+### Oversized NCX-anchored spine section
+
+- Symptom: opening a text-heavy EPUB can stall and sharply increase memory even when the book has many visible TOC chapters.
+- Reproduction path: import an EPUB whose OPF spine contains one very large XHTML/HTML section while the NCX has many `content src="large.html#anchor"` entries into that same section.
+- Root cause: the TOC chapters are anchors, not spine sections, so epubjs must load and paginate the whole large DOM as one reflowable section.
+- Fix direction: during first unpack publication, conservatively normalize safe NCX-anchored oversized sections into multiple XHTML/HTML spine items and rewrite OPF, NCX, and existing HTML TOC links.
+- Verification gate: Rust coverage must prove OPF spine/manifest, NCX entries, HTML TOC links, and exported EPUB contents use the split files; final desktop performance acceptance still requires release-client before/after measurement on an affected native EPUB.
+
 ## Rejected Approaches
 
 ### Visibility-only hidden panes
