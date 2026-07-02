@@ -142,8 +142,8 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
                   )}
                 />
               )}
-              <span className="relative z-10 flex h-full min-w-0 flex-1 items-center truncate">
-                {displayTitle}
+              <span className="relative z-10 flex h-full min-w-0 flex-1 items-center">
+                <span className="block min-w-0 truncate">{displayTitle}</span>
               </span>
             </button>
           )
@@ -395,8 +395,10 @@ const TocRow: React.FC<TocRowProps> = memo(
             marginLeft: 0,
           }}
         >
-          <span className="flex h-full min-w-0 items-center truncate whitespace-nowrap">
-            {title || untitledLabel}
+          <span className="flex h-full min-w-0 items-center whitespace-nowrap">
+            <span className="block min-w-0 truncate">
+              {title || untitledLabel}
+            </span>
           </span>
         </div>
         <div className="relative z-10 ml-auto flex h-full items-center" />

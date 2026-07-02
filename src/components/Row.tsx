@@ -102,18 +102,20 @@ export const Row: React.FC<RowProps> = ({
           marginLeft: 0,
         }}
       >
-        <span className="flex h-full min-w-0 items-center truncate whitespace-nowrap">
-          {t || trans('untitled')}
-          {description && (
-            <span
-              className="text-muted-foreground/60"
-              style={{
-                marginLeft: 4,
-              }}
-            >
-              {description}
-            </span>
-          )}
+        <span className="flex h-full min-w-0 items-center whitespace-nowrap">
+          <span className="block min-w-0 truncate">
+            {t || trans('untitled')}
+            {description && (
+              <span
+                className="text-muted-foreground/60"
+                style={{
+                  marginLeft: 4,
+                }}
+              >
+                {description}
+              </span>
+            )}
+          </span>
         </span>
       </div>
       <div className="relative z-10 ml-auto flex h-full items-center">
