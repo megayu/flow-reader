@@ -3025,6 +3025,8 @@ const NOTE_POPOVER_TEXT_STYLE_PROPERTIES = [
 ]
 const NOTE_CONTAINER_PATTERN =
   /(?:footnote|endnote|noteref|note|annotation|comment|reference|fn|ftn)/i
+const INLINE_NOTE_REFERENCE_CONTEXT_PATTERN =
+  /(?:footnote|endnote|noteref|note|fn|ftn)/i
 const NOTE_CIRCLED_MARKER_PATTERN = /^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]$/
 const NOTE_NUMBER_MARKER_PATTERN = /^[0-9一二三四五六七八九十]+$/
 const NOTE_MARKER_OPENERS = '([〔［（【'
@@ -3459,10 +3461,32 @@ function isPotentialNoteLink(anchor: HTMLAnchorElement) {
   if (NOTE_CONTAINER_PATTERN.test(attrs)) return true
 
   return (
+    hasInlineNoteReferenceContext(anchor) ||
     !!anchor.closest('sup') ||
     !!anchor.querySelector('sup') ||
     isNoteMarkerText(anchor.textContent)
   )
+}
+
+function hasInlineNoteReferenceContext(anchor: HTMLAnchorElement) {
+  let cur = anchor.parentElement
+
+  while (cur && cur !== cur.ownerDocument.body) {
+    if (isTagName(cur, 'P', 'LI', 'BLOCKQUOTE', 'DIV', 'SECTION', 'ARTICLE')) {
+      return false
+    }
+
+    if (
+      isTagName(cur, 'SUP', 'SUB') ||
+      INLINE_NOTE_REFERENCE_CONTEXT_PATTERN.test(getNoteAttrs(cur))
+    ) {
+      return true
+    }
+
+    cur = cur.parentElement
+  }
+
+  return false
 }
 
 function stripScriptsFromNoteSectionHtml(html: string) {
@@ -3480,6 +3504,16 @@ function findNoteElement(el: HTMLElement, anchor: HTMLAnchorElement) {
   const segmentedNote = createSegmentedNoteElement(el, anchor)
   if (segmentedNote) return segmentedNote
 
+  const regularNote = findRegularNoteElement(el)
+  if (hasUsefulNoteElementContent(regularNote)) return regularNote
+
+  const adjacentNote = findAdjacentBacklinkedNoteElement(el, anchor)
+  if (adjacentNote) return adjacentNote
+
+  return regularNote ?? el
+}
+
+function findRegularNoteElement(el: HTMLElement) {
   let cur: HTMLElement | null = el
   let fallback: HTMLElement | undefined
 
@@ -3496,6 +3530,94 @@ function findNoteElement(el: HTMLElement, anchor: HTMLAnchorElement) {
   }
 
   return fallback ?? el
+}
+
+function hasUsefulNoteElementContent(el: HTMLElement | undefined) {
+  if (!el || isEmptyFilePositionTarget(el)) return false
+
+  const text = el.textContent?.trim() ?? ''
+  if (text && !isNoteMarkerText(text)) return true
+
+  return !!el.querySelector('img, svg, math')
+}
+
+function findAdjacentBacklinkedNoteElement(
+  target: HTMLElement,
+  anchor: HTMLAnchorElement,
+) {
+  if (!isEmptyFilePositionTarget(target)) return
+
+  for (const candidate of getAdjacentNoteElementCandidates(target)) {
+    const backlink = findLeadingBacklink(candidate, anchor)
+    if (!backlink || !hasNoteContentAfterBacklink(candidate, backlink)) continue
+
+    return candidate
+  }
+}
+
+function isEmptyFilePositionTarget(el: HTMLElement) {
+  const id = el.id || el.getAttribute('name') || ''
+
+  return (
+    isTagName(el, 'A', 'SPAN') &&
+    /^filepos\d+$/i.test(id) &&
+    !el.textContent?.trim()
+  )
+}
+
+function getAdjacentNoteElementCandidates(target: HTMLElement) {
+  const candidates = [
+    target.nextElementSibling,
+    target.parentElement?.nextElementSibling,
+  ]
+  const seen = new Set<Element>()
+
+  return candidates.filter((candidate): candidate is HTMLElement => {
+    if (
+      !candidate ||
+      seen.has(candidate) ||
+      !isTagName(candidate, 'P', 'LI', 'BLOCKQUOTE', 'DIV')
+    ) {
+      return false
+    }
+
+    seen.add(candidate)
+    return true
+  })
+}
+
+function findLeadingBacklink(
+  candidate: HTMLElement,
+  anchor: HTMLAnchorElement,
+) {
+  const firstElement = Array.from(candidate.childNodes).find(
+    (child) =>
+      isElementNode(child) || (child.textContent?.trim()?.length ?? 0) > 0,
+  )
+  if (!isElementNode(firstElement)) return
+
+  const firstHtmlElement = firstElement as HTMLElement
+  const link = isTagName(firstHtmlElement, 'A')
+    ? firstHtmlElement
+    : firstHtmlElement.querySelector<HTMLAnchorElement>('a[href]')
+
+  return link &&
+    isTagName(link, 'A') &&
+    isBacklink(link as HTMLAnchorElement, anchor)
+    ? (link as HTMLAnchorElement)
+    : undefined
+}
+
+function hasNoteContentAfterBacklink(
+  candidate: HTMLElement,
+  backlink: HTMLAnchorElement,
+) {
+  const text = (candidate.textContent ?? '').replace(
+    backlink.textContent ?? '',
+    '',
+  )
+
+  return !!text.trim() || !!candidate.querySelector('img, svg, math')
 }
 
 function createSegmentedNoteElement(
@@ -3592,7 +3714,15 @@ function findNoteContainer(el: HTMLElement) {
 }
 
 function isNoteContainer(el: HTMLElement) {
+  if (isInlineNoteMarker(el)) return false
+
   return isTagName(el, 'ASIDE') || NOTE_CONTAINER_PATTERN.test(getNoteAttrs(el))
+}
+
+function isInlineNoteMarker(el: HTMLElement) {
+  return (
+    isTagName(el, 'A', 'SPAN', 'SUP', 'SUB') && isNoteMarkerText(el.textContent)
+  )
 }
 
 function isTagName(el: Element, ...names: string[]) {
@@ -3820,13 +3950,41 @@ function isBacklink(link: HTMLAnchorElement, anchor: HTMLAnchorElement) {
   const text = link.textContent?.trim() ?? ''
   const role = link.getAttribute('role') ?? ''
   const type = link.getAttribute('epub:type') ?? ''
-  const anchorId = anchor.id || anchor.closest('[id]')?.id
+  const anchorId = getBacklinkTargetId(anchor)
 
   return (
     /(?:doc-backlink|backlink)/i.test(`${role} ${type}`) ||
     /^[↩←↑返回back]+$/i.test(text) ||
     !!(anchorId && href.endsWith(`#${anchorId}`))
   )
+}
+
+function getBacklinkTargetId(anchor: HTMLAnchorElement) {
+  return (
+    anchor.id ||
+    findNearbyFilePositionTargetId(anchor) ||
+    anchor.closest('[id]')?.id
+  )
+}
+
+function findNearbyFilePositionTargetId(anchor: HTMLAnchorElement) {
+  let cur: HTMLElement | null = anchor
+
+  while (cur?.parentElement && cur.parentElement !== cur.ownerDocument.body) {
+    const previous = cur.previousElementSibling
+    if (
+      isElementNode(previous as ChildNode | undefined) &&
+      isEmptyFilePositionTarget(previous as HTMLElement)
+    ) {
+      const target = previous as HTMLElement
+      return target.id || target.getAttribute('name') || undefined
+    }
+
+    cur = cur.parentElement
+    if (isTagName(cur, 'P', 'LI', 'BLOCKQUOTE', 'DIV', 'SECTION', 'ARTICLE')) {
+      return
+    }
+  }
 }
 
 function unwrapBacklink(link: HTMLAnchorElement) {
@@ -3929,6 +4087,7 @@ function isLikelyNoteLink(
     return true
   }
   if (target.closest('aside')) return true
+  if (findAdjacentBacklinkedNoteElement(target, anchor)) return true
 
   return item?.parentElement?.tagName === 'OL'
 }
