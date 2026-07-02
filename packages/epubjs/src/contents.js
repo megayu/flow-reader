@@ -1883,7 +1883,8 @@ class Contents {
     // Fixes Safari column cut offs, but causes RTL issues
     // this.css("display", "inline-block");
 
-    this.css('overflow-y', 'hidden')
+    this.overflow('hidden')
+    this.css('overflow', 'visible')
     this.css('margin', '0', true)
 
     if (axis === 'vertical') {

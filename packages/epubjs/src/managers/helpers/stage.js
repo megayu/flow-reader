@@ -8,6 +8,42 @@ import {
   extend,
 } from '../../utils/core'
 
+const HIDDEN_HORIZONTAL_SCROLLBAR_CLASS =
+  'epub-container-horizontal-scrollbar-hidden'
+const HIDDEN_HORIZONTAL_SCROLLBAR_STYLE_ID =
+  'epub-container-horizontal-scrollbar-style'
+
+function ensureHorizontalScrollbarStyle(ownerDocument) {
+  if (
+    !ownerDocument ||
+    ownerDocument.getElementById(HIDDEN_HORIZONTAL_SCROLLBAR_STYLE_ID)
+  ) {
+    return
+  }
+
+  let style = ownerDocument.createElement('style')
+  style.id = HIDDEN_HORIZONTAL_SCROLLBAR_STYLE_ID
+  style.textContent = `.${HIDDEN_HORIZONTAL_SCROLLBAR_CLASS}::-webkit-scrollbar{display:none;width:0;height:0;}`
+  ownerDocument.head.appendChild(style)
+}
+
+function setHorizontalScrollbarHidden(container, hidden) {
+  if (!container) {
+    return
+  }
+
+  container.classList.toggle(HIDDEN_HORIZONTAL_SCROLLBAR_CLASS, hidden)
+
+  if (hidden) {
+    ensureHorizontalScrollbarStyle(container.ownerDocument)
+    container.style.scrollbarWidth = 'none'
+    container.style.msOverflowStyle = 'none'
+  } else {
+    container.style.scrollbarWidth = ''
+    container.style.msOverflowStyle = ''
+  }
+}
+
 class Stage {
   constructor(_options) {
     this.settings = _options || {}
@@ -76,8 +112,10 @@ class Stage {
       } else if (overflow === 'scroll' && axis === 'horizontal') {
         container.style['overflow-y'] = 'hidden'
         container.style['overflow-x'] = overflow
+        setHorizontalScrollbarHidden(container, true)
       } else {
         container.style['overflow'] = overflow
+        setHorizontalScrollbarHidden(container, false)
       }
     }
 
@@ -325,8 +363,10 @@ class Stage {
       } else if (overflow === 'scroll' && this.settings.axis === 'horizontal') {
         this.container.style['overflow-y'] = 'hidden'
         this.container.style['overflow-x'] = overflow
+        setHorizontalScrollbarHidden(this.container, true)
       } else {
         this.container.style['overflow'] = overflow
+        setHorizontalScrollbarHidden(this.container, false)
       }
     }
     this.settings.overflow = overflow

@@ -26,6 +26,21 @@ function createContents(markup = '') {
 }
 
 describe('Contents page backgrounds', function () {
+  it('keeps paginated column fragments paintable when author CSS sets overflow auto', function () {
+    const { contents, doc, cleanup } = createContents('<p>Readable body</p>')
+    doc.documentElement.style.overflow = 'auto'
+    doc.body.style.overflow = 'auto'
+
+    try {
+      contents.columns(800, 600, 380, 40, 'ltr')
+
+      assert.equal(doc.documentElement.style.overflow, 'hidden')
+      assert.equal(doc.body.style.overflow, 'visible')
+    } finally {
+      cleanup()
+    }
+  })
+
   it('ignores comments and non-content text when detecting readable text', function () {
     const { contents, cleanup } = createContents(
       '<!-- comment --><script>var ignored = true</script><style>body { color: red }</style>',

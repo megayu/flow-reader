@@ -123,6 +123,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: detect readable body text with a text-node scan that ignores comments, script/style content, hidden heading text, and hidden elements; keep textless sections on a forced no-repeat fit-inside-page path, and render readable sections with one no-repeat background layer per measured page, each stretched to the current page box. Override fixed background attachment after normalization because paginated columns can otherwise repaint the same page background per viewport.
 - Verification gate: epubjs unit coverage must prove comments and hidden headings do not count as readable text, readable sections use page-sized no-repeat scroll backgrounds, multi-page readable sections get one stretched no-repeat scroll layer per page, repeated textless backgrounds are forced to display once, and cover-like textless backgrounds still fit inside the page; final desktop layout acceptance still requires real-client verification.
 
+### Author overflow clips horizontal paginated columns
+
+- Symptom: a reflowable EPUB can show a horizontal scrollbar on the first visible page, then render blank pages after horizontal page turns even though DOM range rects exist in later columns.
+- Reproduction path: open a horizontal paginated reflowable section whose author CSS sets `html, body { height: 100%; overflow: auto; }`, then display a later exact spread such as section page 2/3.
+- Root cause: paginated layout only forced body `overflow-y: hidden`, leaving body `overflow-x: auto`; Chromium can keep later CSS column fragments measurable but clip their paint when the outer stage scrolls across the expanded iframe.
+- Fix direction: in `Contents.columns()`, make the iframe document element the clipped viewport and keep the body overflow visible so horizontal column fragments can paint across the expanded iframe. Hide the stage's native horizontal scrollbar without changing its scrollable surface.
+- Verification gate: epubjs unit coverage must prove paginated columns override author overflow to `html { overflow: hidden }` and `body { overflow: visible }`, and browser pixel reproduction should show later exact-spread pages are nonblank.
+
 ### Oversized NCX-anchored spine section
 
 - Symptom: opening a text-heavy EPUB can stall and sharply increase memory even when the book has many visible TOC chapters. A malformed implementation of this normalization can also make page turns jump back to the preface or advance only through the last split of each volume.
