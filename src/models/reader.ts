@@ -2665,8 +2665,10 @@ export class BookTab extends BaseTab {
     }
 
     if (section.document?.body && section.length !== undefined) {
-      section.images = collectSectionImages(section)
-      section.imageInfoLoaded = true
+      if (!section.imageInfoLoaded) {
+        section.images = collectSectionImages(section)
+        section.imageInfoLoaded = true
+      }
       this.assignSectionNavItem(section)
       this.markSectionDocumentAccess(section)
       return
@@ -2683,8 +2685,10 @@ export class BookTab extends BaseTab {
       .then(() => {
         loaded = true
         section.length = section.document?.body?.textContent?.length ?? 0
-        section.images = collectSectionImages(section)
-        section.imageInfoLoaded = true
+        if (!section.imageInfoLoaded) {
+          section.images = collectSectionImages(section)
+          section.imageInfoLoaded = true
+        }
         this.assignSectionNavItem(section)
         this.markSectionDocumentAccess(section)
       })

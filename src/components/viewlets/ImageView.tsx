@@ -385,6 +385,10 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
 
         return changed
       }
+      const replayDuplicateFilterForKnownSections = () => {
+        duplicateFilter.reset()
+        return applyDuplicateFilterToKnownSections()
+      }
 
       assignImageSectionNavItems(tab, liveSections)
       applyDuplicateFilterToKnownSections()
@@ -394,8 +398,7 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
         const cache = await loadBookImageIndex(tab.book.id)
         if (cancelled || reader.focusedBookTab !== tab) return
         if (cache && applyImageIndexCache(tab, liveSections, cache)) {
-          duplicateFilter.reset()
-          applyDuplicateFilterToKnownSections()
+          replayDuplicateFilterForKnownSections()
           refreshImages()
         }
       } catch (error) {
@@ -443,6 +446,8 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
         reader.focusedBookTab === tab &&
         liveSections.every(knownImageEntries)
       ) {
+        if (replayDuplicateFilterForKnownSections()) refreshImages()
+
         const cache = createImageIndexCacheInput(tab, liveSections)
         if (cache) {
           void storeBookImageIndex(tab.book.id, cache).catch(console.error)
