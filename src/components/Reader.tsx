@@ -3040,8 +3040,8 @@ const INLINE_NOTE_REFERENCE_CONTEXT_PATTERN =
   /(?:footnote|endnote|noteref|note|fn|ftn)/i
 const NOTE_CIRCLED_MARKER_PATTERN = /^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]$/
 const NOTE_NUMBER_MARKER_PATTERN = /^[0-9一二三四五六七八九十]+$/
-const NOTE_MARKER_OPENERS = '([〔［（【'
-const NOTE_MARKER_CLOSERS = ')]〕］）】'
+const NOTE_MARKER_OPENERS = '([〔［（【〚'
+const NOTE_MARKER_CLOSERS = ')]〕］）】〛'
 
 function createNotePopoverState(
   anchor: HTMLAnchorElement,
