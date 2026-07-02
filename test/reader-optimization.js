@@ -47,6 +47,7 @@ const styles = loadTsModule('src/styles.ts', {
 })
 
 const annotation = loadTsModule('src/annotation.ts')
+const noteLinks = loadTsModule('src/noteLinks.ts')
 const imageFilters = loadTsModule('src/imageFilters.ts')
 
 function testTextAlignIsNonPaginationStyle() {
@@ -251,6 +252,32 @@ function testAnnotationSpineDoesNotRequireNavItem() {
   )
 }
 
+function testEpubHrefComparisonHandlesEncodedSpinePaths() {
+  assert.strictEqual(
+    typeof noteLinks.sameHref,
+    'function',
+    'Expected one shared href comparison helper for reader paths',
+  )
+
+  assert.strictEqual(
+    noteLinks.sameHref(
+      'Text/%2A%3Achapter%3Aone.xhtml',
+      'Text/*:chapter:one.xhtml',
+    ),
+    true,
+    'decoded NCX targets must match encoded OPF spine hrefs',
+  )
+
+  assert.strictEqual(
+    noteLinks.sameHref(
+      'http://localhost:7127/OEBPS/Images/%2A%3Aplate%3A1.jpg',
+      'Images/*:plate:1.jpg',
+    ),
+    true,
+    'absolute image URLs must match package-relative resource hrefs',
+  )
+}
+
 function testDuplicateIllustrationFilterHidesFirstAndRepeatedCandidates() {
   assert.strictEqual(
     typeof imageFilters.createDuplicateIllustrationFilter,
@@ -403,6 +430,7 @@ testZoomBodyStylesCanUseCurrentLayout()
 testZoomMediaUsesScaledContentColumnWidth()
 testDefinitionsAreNormalizedConsistently()
 testAnnotationSpineDoesNotRequireNavItem()
+testEpubHrefComparisonHandlesEncodedSpinePaths()
 testDuplicateIllustrationFilterHidesFirstAndRepeatedCandidates()
 testDuplicateIllustrationFilterIgnoresAlreadyHiddenImages()
 testDuplicateIllustrationFilterRebuildsFromHiddenDuplicates()

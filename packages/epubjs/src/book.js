@@ -35,17 +35,93 @@ function normalizedNavigationHref(href) {
   return href.split('#')[0]
 }
 
+function decodeNavigationHref(href) {
+  return href
+    .split('/')
+    .map((part) => {
+      try {
+        return decodeURIComponent(part)
+      } catch (_error) {
+        return part
+      }
+    })
+    .join('/')
+}
+
+function encodeNavigationHref(href) {
+  return href
+    .split('/')
+    .map((part) => {
+      if (!part || part === '.' || part === '..') {
+        return part
+      }
+
+      return encodeURIComponent(part).replace(/\*/g, '%2A')
+    })
+    .join('/')
+}
+
+function splitHrefSuffix(href) {
+  let hashIndex = href.indexOf('#')
+  let queryIndex = href.indexOf('?')
+  let suffixIndex =
+    hashIndex === -1
+      ? queryIndex
+      : queryIndex === -1
+        ? hashIndex
+        : Math.min(hashIndex, queryIndex)
+
+  return suffixIndex === -1
+    ? { path: href, suffix: '' }
+    : { path: href.slice(0, suffixIndex), suffix: href.slice(suffixIndex) }
+}
+
+function normalizePathSegments(path) {
+  let parts = []
+
+  path
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+    .split('/')
+    .forEach((part) => {
+      if (!part || part === '.') return
+      if (part === '..') {
+        parts.pop()
+        return
+      }
+      parts.push(part)
+    })
+
+  return parts.join('/')
+}
+
+function resolveNavigationHrefFromNavPath(href, navPath) {
+  if (!href || !navPath || href.charAt(0) === '#') return href
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.indexOf('//') === 0) {
+    return href
+  }
+
+  let { path, suffix } = splitHrefSuffix(href)
+  if (!path || path.charAt(0) === '/')
+    return normalizePathSegments(path) + suffix
+
+  let navDir = normalizedNavigationHref(navPath)
+  navDir =
+    navDir && navDir.indexOf('/') > -1
+      ? navDir.slice(0, navDir.lastIndexOf('/'))
+      : ''
+
+  return normalizePathSegments(navDir ? `${navDir}/${path}` : path) + suffix
+}
+
 function addReadableSectionHref(index, href) {
   let normalized = normalizedNavigationHref(href)
   if (!normalized) return
 
   index.add(normalized)
   index.add(encodeURI(normalized))
-  try {
-    index.add(decodeURI(normalized))
-  } catch (_error) {
-    // Keep encoded hrefs when decoding fails.
-  }
+  index.add(encodeNavigationHref(normalized))
+  index.add(decodeNavigationHref(normalized))
 }
 
 function readableSectionHrefIndex(sections) {
@@ -66,16 +142,32 @@ function navigationHrefMatchesReadableSection(readableHrefs, href) {
 
   if (
     readableHrefs.has(normalized) ||
-    readableHrefs.has(encodeURI(normalized))
+    readableHrefs.has(encodeURI(normalized)) ||
+    readableHrefs.has(encodeNavigationHref(normalized)) ||
+    readableHrefs.has(decodeNavigationHref(normalized))
   ) {
     return true
   }
 
-  try {
-    return readableHrefs.has(decodeURI(normalized))
-  } catch (_error) {
-    return false
-  }
+  return false
+}
+
+function normalizeNavigationHrefsBySpine(items, readableHrefs, navPath) {
+  if (!items || !navPath) return
+
+  items.forEach((item) => {
+    if (
+      item.href &&
+      !navigationHrefMatchesReadableSection(readableHrefs, item.href)
+    ) {
+      let resolved = resolveNavigationHrefFromNavPath(item.href, navPath)
+      if (navigationHrefMatchesReadableSection(readableHrefs, resolved)) {
+        item.href = resolved
+      }
+    }
+
+    normalizeNavigationHrefsBySpine(item.subitems, readableHrefs, navPath)
+  })
 }
 
 /**
@@ -535,7 +627,7 @@ class Book {
     }
 
     this.loadNavigation(this.packaging).then(() => {
-      this.filterNavigationBySpine()
+      this.filterNavigationBySpine(this.packaging)
       // this.toc = this.navigation.toc;
       this.loading.navigation.resolve(this.navigation)
     })
@@ -616,12 +708,15 @@ class Book {
    * Remove navigation entries that do not point at readable spine sections.
    * @private
    */
-  filterNavigationBySpine() {
+  filterNavigationBySpine(packaging) {
     if (!this.navigation || !this.navigation.filter || !this.spine) {
       return
     }
 
     let readableHrefs = readableSectionHrefIndex(this.spine.spineItems)
+    let navPath = packaging && (packaging.navPath || packaging.ncxPath)
+
+    normalizeNavigationHrefsBySpine(this.navigation.toc, readableHrefs, navPath)
 
     this.navigation.filter((item) => {
       if (!item.href) {

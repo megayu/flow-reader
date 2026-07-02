@@ -229,7 +229,15 @@ class Resources {
     return textResponse.then(
       (text) => {
         // Replacements in the css text
-        text = substitute(text, relUrls, this.replacementUrls)
+        var cssSubstitutions = createSubstitutionUrls(
+          relUrls,
+          this.replacementUrls,
+        )
+        text = substitute(
+          text,
+          cssSubstitutions.urls,
+          cssSubstitutions.replacements,
+        )
 
         // Get the new url
         if (this.settings.replacements === 'base64') {
@@ -303,7 +311,8 @@ class Resources {
     } else {
       relUrls = this.urls
     }
-    return substitute(content, relUrls, this.replacementUrls)
+    var substitutions = createSubstitutionUrls(relUrls, this.replacementUrls)
+    return substitute(content, substitutions.urls, substitutions.replacements)
   }
 
   /**
@@ -571,6 +580,85 @@ function decodeUrlPath(src) {
     return decodeURI(src)
   } catch {
     return src
+  }
+}
+
+function decodeUrlPathSegments(src) {
+  return src
+    .split('/')
+    .map((part) => {
+      try {
+        return decodeURIComponent(part)
+      } catch {
+        return part
+      }
+    })
+    .join('/')
+}
+
+function encodeUrlPathSegments(src) {
+  return src
+    .split('/')
+    .map((part) => {
+      if (!part || part === '.' || part === '..') {
+        return part
+      }
+
+      return encodeURIComponent(part).replace(/\*/g, '%2A')
+    })
+    .join('/')
+}
+
+function addResourceUrlVariant(result, seen, url) {
+  if (!url || seen[url]) {
+    return
+  }
+
+  seen[url] = true
+  result.push(url)
+}
+
+function resourceUrlVariants(url) {
+  var variants = []
+  var seen = Object.create(null)
+  var path = stripUrlSuffix(url)
+  var suffix = getUrlSuffix(url)
+  var decoded = decodeUrlPathSegments(path)
+  var encoded = encodeUrlPathSegments(decoded)
+
+  addResourceUrlVariant(variants, seen, url)
+  addResourceUrlVariant(variants, seen, decoded + suffix)
+  addResourceUrlVariant(variants, seen, encoded + suffix)
+
+  return variants
+}
+
+function createSubstitutionUrls(urls, replacements) {
+  var nextUrls = []
+  var nextReplacements = []
+  var seen = Object.create(null)
+
+  urls.forEach((url, index) => {
+    var replacement = replacements[index]
+    if (!url || !replacement) {
+      return
+    }
+
+    resourceUrlVariants(url).forEach((variant) => {
+      var key = variant + '\u0000' + replacement
+      if (seen[key]) {
+        return
+      }
+
+      seen[key] = true
+      nextUrls.push(variant)
+      nextReplacements.push(replacement)
+    })
+  })
+
+  return {
+    replacements: nextReplacements,
+    urls: nextUrls,
   }
 }
 

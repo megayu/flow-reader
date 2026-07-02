@@ -28,6 +28,7 @@ import {
   unloadBookSearchText,
 } from '../db'
 import { createId } from '../id'
+import { normalizeHrefPath, sameHref } from '../noteLinks'
 import {
   emitReaderOpenError,
   type ReaderOpenErrorStage,
@@ -45,15 +46,7 @@ export function compareHref(
   sectionHref: string | undefined,
   navitemHref: string | undefined,
 ) {
-  if (sectionHref && navitemHref) {
-    const [target] = navitemHref.split('#')
-
-    return (
-      sectionHref.endsWith(target!) ||
-      // fix for relative nav path `../Text/example.html`
-      target?.endsWith(sectionHref)
-    )
-  }
+  return sameHref(sectionHref, navitemHref)
 }
 
 function splitHrefTarget(href: string | undefined) {
@@ -1968,12 +1961,35 @@ export class BookTab extends BaseTab {
     const entriesBySectionIndex = new Map<number, SectionNavEntry[]>()
     const entries: SectionNavIndex['entries'] = []
     let order = 0
+    const normalizedSections = sections.map((section) => ({
+      href: normalizeHrefPath(section.href),
+      section,
+    }))
+    const sectionsByHref = new Map<string, ISection>()
+    normalizedSections.forEach((entry) => {
+      if (entry.href && !sectionsByHref.has(entry.href)) {
+        sectionsByHref.set(entry.href, entry.section)
+      }
+    })
+
+    const matchSection = (href: string | undefined) => {
+      const normalizedHref = normalizeHrefPath(href)
+      if (!normalizedHref) return
+
+      return (
+        sectionsByHref.get(normalizedHref) ??
+        normalizedSections.find(
+          (entry) =>
+            entry.href &&
+            (entry.href.endsWith(`/${normalizedHref}`) ||
+              normalizedHref.endsWith(`/${entry.href}`)),
+        )?.section
+      )
+    }
 
     this.nav.toc.forEach((item) =>
       dfs(item as INavItem, (navItem) => {
-        const matchedSection = sections.find((section) =>
-          compareHref(section.href, navItem.href),
-        )
+        const matchedSection = matchSection(navItem.href)
 
         if (matchedSection) {
           const { hash, path } = splitHrefTarget(navItem.href)
@@ -2567,6 +2583,37 @@ export class BookTab extends BaseTab {
     if (navitem) section.navitem = navitem
   }
 
+  private assignSectionNavItems(sections = this.sections) {
+    if (!this.nav || !sections) return
+
+    const index = this.getSectionNavIndex(sections)
+    if (!index) return
+
+    const orderedSections = [...sections].sort(
+      (a, b) => (a.index ?? 0) - (b.index ?? 0),
+    )
+    let entryIndex = 0
+    let nearestNavItem: INavItem | undefined
+
+    orderedSections.forEach((section) => {
+      const exact = index.exactBySectionHref.get(section.href)
+      if (exact) {
+        section.navitem = exact
+        return
+      }
+
+      while (
+        entryIndex < index.entries.length &&
+        index.entries[entryIndex]!.sectionIndex <= section.index
+      ) {
+        nearestNavItem = index.entries[entryIndex]!.item
+        entryIndex++
+      }
+
+      if (nearestNavItem) section.navitem = nearestNavItem
+    })
+  }
+
   private sectionInfoIndex(section: ISection) {
     return section.index ?? this.sections?.indexOf(section) ?? -1
   }
@@ -3031,6 +3078,7 @@ export class BookTab extends BaseTab {
       const previousTocVersion = this.tocVersion
       this.nav = nav
       this.expandNavPath(this.currentNavItem)
+      this.assignSectionNavItems()
       if (this.tocVersion === previousTocVersion) this.tocVersion++
     })
     try {
@@ -3041,6 +3089,7 @@ export class BookTab extends BaseTab {
         s.length ??= 0
         s.images ??= []
       })
+      this.assignSectionNavItems(sections)
       this.sections = ref(sections)
     } catch (error) {
       if (generation === this.renderGeneration) {

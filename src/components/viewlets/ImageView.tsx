@@ -25,6 +25,7 @@ import {
   reader,
   useReaderSnapshot,
 } from '@flow/reader/models/reader'
+import { normalizeHrefPath, sameHref } from '@flow/reader/noteLinks'
 
 import { Row } from '../Row'
 import { PaneView, PaneViewProps } from '../base/PaneView'
@@ -88,24 +89,7 @@ function imageSignature(section: ISection) {
 }
 
 function normalizePath(value: string | undefined) {
-  if (!value) return
-
-  try {
-    return decodeURI(value)
-  } catch {
-    return value
-  }
-}
-
-function assignImageSectionNavItems(
-  tab: typeof reader.focusedBookTab,
-  sections: ISection[],
-) {
-  if (!tab) return
-
-  sections.forEach((section) => {
-    section.navitem ??= tab.mapSectionToNavItem(section.href)
-  })
+  return normalizeHrefPath(value)
 }
 
 function createImageAssetLookup(resources: any): ImageAssetLookup | undefined {
@@ -390,7 +374,6 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
         return applyDuplicateFilterToKnownSections()
       }
 
-      assignImageSectionNavItems(tab, liveSections)
       applyDuplicateFilterToKnownSections()
       refreshImages()
 
@@ -699,11 +682,11 @@ function imageSourceMatchesAsset(
 ) {
   const href = asset.href
   if (!href) return false
-  if (src.includes(href)) return true
+  if (sameHref(src, href)) return true
 
   return !!(
     normalizedSrc &&
     asset.normalizedHref &&
-    normalizedSrc.includes(asset.normalizedHref)
+    sameHref(normalizedSrc, asset.normalizedHref)
   )
 }

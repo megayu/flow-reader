@@ -6,6 +6,13 @@ import {
   getParentByTagName,
 } from './utils/core'
 
+function isListElement(element) {
+  if (!element) return false
+
+  let name = element.localName || element.nodeName || ''
+  return name.toLowerCase().split(':').pop() === 'ol'
+}
+
 /**
  * Navigation Parser
  * @param {document} xml navigation html / xhtml / ncx
@@ -213,10 +220,15 @@ class Navigation {
     if (!navListHtml.children) return result
 
     for (let i = 0; i < navListHtml.children.length; i++) {
-      const item = this.navItem(navListHtml.children[i], parent)
+      const child = navListHtml.children[i]
+      const item = this.navItem(child, parent)
 
       if (item) {
         result.push(item)
+      } else if (result.length && isListElement(child)) {
+        const previous = result[result.length - 1]
+        const subitems = this.parseNavList(child, previous.id)
+        previous.subitems = previous.subitems.concat(subitems)
       }
     }
 
