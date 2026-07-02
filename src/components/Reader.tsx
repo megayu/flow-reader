@@ -1715,6 +1715,17 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
         }
 
         if (!isPotentialNoteLink(anchor)) {
+          const target = getBookLinkDisplayTarget(tab, anchor)
+          if (target) {
+            e.preventDefault()
+            e.stopPropagation()
+            e.stopImmediatePropagation()
+            closeChapterFindEvent()
+            noteRequestId.current += 1
+            setNotePopover(undefined)
+            tab.display(target)
+          }
+
           return
         }
 
@@ -3210,6 +3221,29 @@ function getAnchorFromEvent(e: MouseEvent) {
       (node): node is HTMLAnchorElement =>
         node instanceof HTMLAnchorElement && node.hasAttribute('href'),
     )
+}
+
+function getBookLinkDisplayTarget(tab: BookTab, anchor: HTMLAnchorElement) {
+  const href = anchor.getAttribute('href')?.trim()
+  if (!href || isExternalBookLinkHref(href)) return
+
+  const [path = '', hash = ''] = href.split('#')
+  if (!path && !hash) return
+
+  const anchorSection =
+    findRenderedSectionByDocument(tab, anchor.ownerDocument) ?? tab.section
+  const targetSection = path
+    ? findSectionByLinkedHref(tab.sections, anchorSection?.href, path)
+    : anchorSection
+  if (!targetSection?.href) return
+
+  return hash
+    ? `${targetSection.href}#${safeDecodeHref(hash)}`
+    : targetSection.href
+}
+
+function isExternalBookLinkHref(href: string) {
+  return /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(href)
 }
 
 interface ClosestTarget {
