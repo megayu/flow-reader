@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { type LucideIcon, XIcon } from 'lucide-react'
-import { ComponentProps, ReactNode } from 'react'
+import { ComponentProps, MouseEvent, ReactNode } from 'react'
 
 import { useTranslation } from '../hooks/useTranslation'
 import { activeClass } from '../styles'
@@ -27,10 +27,19 @@ export function Tab({
   onDelete,
   tooltipContent,
   title,
+  onAuxClick,
+  onMouseDown,
   ...props
 }: TabProps) {
   const t = useTranslation()
   const tooltip = typeof title === 'string' ? title : children
+  const closeOnMiddleClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 1 || !onDelete) return false
+
+    event.preventDefault()
+    event.stopPropagation()
+    return true
+  }
 
   if (!children) return null
   const tab = (
@@ -49,6 +58,16 @@ export function Tab({
         focused && '!text-foreground',
         className,
       )}
+      onMouseDown={(event) => {
+        onMouseDown?.(event)
+        if (!event.defaultPrevented) closeOnMiddleClick(event)
+      }}
+      onAuxClick={(event) => {
+        onAuxClick?.(event)
+        if (event.defaultPrevented || !closeOnMiddleClick(event)) return
+
+        onDelete?.()
+      }}
       {...props}
     >
       {focused && (
