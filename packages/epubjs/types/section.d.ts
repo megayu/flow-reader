@@ -34,6 +34,7 @@ export default class Section {
   href: string
   url: string
   canonical: string
+  resourceAvailable?: boolean
   next: () => SpineItem
   prev: () => SpineItem
   cfiBase: string

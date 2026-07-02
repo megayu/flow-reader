@@ -23,6 +23,7 @@ class Section {
     this.href = item.href
     this.url = item.url
     this.canonical = item.canonical
+    this.resourceAvailable = item.resourceAvailable
     this.next = item.next
     this.prev = item.prev
 

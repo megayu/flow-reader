@@ -60,19 +60,23 @@ class Spine {
         item.id,
       )
 
-      if (item.href) {
-        item.url = resolver(item.href, true)
-        item.canonical = canonical(item.href)
-      }
-
       if (manifestItem) {
-        item.href = manifestItem.href
-        item.url = resolver(item.href, true)
-        item.canonical = canonical(item.href)
+        if (manifestItem.href) {
+          item.href = manifestItem.href
+        } else {
+          item.resourceAvailable = false
+        }
 
         if (manifestItem.properties.length) {
           item.properties.push.apply(item.properties, manifestItem.properties)
         }
+      } else if (!item.href) {
+        item.resourceAvailable = false
+      }
+
+      if (item.href) {
+        item.url = resolver(item.href, true)
+        item.canonical = canonical(item.href)
       }
 
       item.prev = function () {
@@ -121,7 +125,7 @@ class Spine {
     if (typeof target === 'undefined') {
       while (index < this.spineItems.length) {
         let next = this.spineItems[index]
-        if (next && next.linear) {
+        if (this.isReadable(next)) {
           break
         }
         index += 1
@@ -169,9 +173,11 @@ class Spine {
 
     // Encode and Decode href lookups
     // see pr for details: https://github.com/futurepress/epub.js/pull/358
-    this.spineByHref[decodeURI(section.href)] = index
-    this.spineByHref[encodeURI(section.href)] = index
-    this.spineByHref[section.href] = index
+    if (section.href) {
+      this.spineByHref[decodeURI(section.href)] = index
+      this.spineByHref[encodeURI(section.href)] = index
+      this.spineByHref[section.href] = index
+    }
 
     this.spineById[section.idref] = index
 

@@ -521,6 +521,7 @@ export interface ISection extends Section {
   length: number
   images: ImageEntry[]
   navitem?: INavItem
+  resourceAvailable?: boolean
 }
 
 export type ImageFilterReason =
@@ -2656,6 +2657,13 @@ export class BookTab extends BaseTab {
   async ensureSectionInfo(section: ISection) {
     if (!this.epub) return
 
+    if (section.resourceAvailable === false || !section.url) {
+      section.length = 0
+      section.images = []
+      section.imageInfoLoaded = true
+      return
+    }
+
     if (section.document?.body && section.length !== undefined) {
       section.images = collectSectionImages(section)
       section.imageInfoLoaded = true
@@ -2670,9 +2678,8 @@ export class BookTab extends BaseTab {
 
     if (index >= 0) this.pendingSectionInfoIndexes.add(index)
     let loaded = false
-    const promise = Promise.resolve(
-      section.load(this.epub.load.bind(this.epub)),
-    )
+    const promise = Promise.resolve()
+      .then(() => section.load(this.epub!.load.bind(this.epub)))
       .then(() => {
         loaded = true
         section.length = section.document?.body?.textContent?.length ?? 0
