@@ -68,6 +68,11 @@ import {
   type ISection,
 } from '../models/reader'
 import { findSectionByLinkedHref, safeDecodeHref, sameHref } from '../noteLinks'
+import {
+  isNoteMarkerText,
+  NOTE_CONTAINER_PATTERN,
+  startsWithNoteMarkerText,
+} from '../noteSemantics'
 import { revealScrollbars } from '../scrollbar'
 import { getShortcutChords } from '../shortcuts'
 import {
@@ -3034,14 +3039,8 @@ const NOTE_POPOVER_TEXT_STYLE_PROPERTIES = [
   'word-spacing',
   'writing-mode',
 ]
-const NOTE_CONTAINER_PATTERN =
-  /(?:footnote|endnote|noteref|note|annotation|comment|reference|fn|ftn)/i
 const INLINE_NOTE_REFERENCE_CONTEXT_PATTERN =
   /(?:footnote|endnote|noteref|note|fn|ftn)/i
-const NOTE_CIRCLED_MARKER_PATTERN = /^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]$/
-const NOTE_NUMBER_MARKER_PATTERN = /^[0-9一二三四五六七八九十]+$/
-const NOTE_MARKER_OPENERS = '([〔［（【〚'
-const NOTE_MARKER_CLOSERS = ')]〕］）】〛'
 
 function createNotePopoverState(
   anchor: HTMLAnchorElement,
@@ -3771,43 +3770,6 @@ function getNoteAttrs(el: HTMLElement) {
     el.getAttribute('type'),
     el.getAttribute('role'),
   ].join(' ')
-}
-
-function isNoteMarkerText(text: string | null | undefined) {
-  const marker = (text ?? '').trim()
-  if (!marker) return false
-  if (/^[*＊]+$/.test(marker)) return true
-  if (NOTE_CIRCLED_MARKER_PATTERN.test(marker)) return true
-
-  const normalized = stripNoteMarkerWrapper(marker)
-  return NOTE_NUMBER_MARKER_PATTERN.test(normalized)
-}
-
-function stripNoteMarkerWrapper(text: string) {
-  let marker = text.trim()
-
-  if (NOTE_MARKER_OPENERS.includes(marker[0] ?? '')) {
-    marker = marker.slice(1)
-  }
-  if (NOTE_MARKER_CLOSERS.includes(marker[marker.length - 1] ?? '')) {
-    marker = marker.slice(0, -1)
-  }
-
-  return marker.trim()
-}
-
-function startsWithNoteMarkerText(text: string | null | undefined) {
-  const marker = (text ?? '').trim()
-  if (!marker) return false
-  if (isNoteMarkerText(marker)) return true
-
-  const firstToken = marker.split(/\s+/)[0]
-  if (isNoteMarkerText(firstToken)) return true
-
-  const firstChar = Array.from(marker)[0]
-  if (isNoteMarkerText(firstChar)) return true
-
-  return /^[0-9一二三四五六七八九十]+[.．、]/.test(marker)
 }
 
 function cloneNoteElement(el: HTMLElement, anchor: HTMLAnchorElement) {

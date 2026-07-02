@@ -39,6 +39,10 @@ const styles = loadTsModule('src/styles.ts', {
     ensureBodyTextMarkers: () => undefined,
     getBodyTypographyBaseline: () => ({}),
     notePopoverClass: 'flow-note-popover',
+    noteTextSelector: '[data-flow-note-text]',
+  },
+  './noteSemantics': {
+    createHiddenNoteContentSelector: () => 'aside[type*="note"]',
   },
   './state': {},
   './utils': {
@@ -48,6 +52,7 @@ const styles = loadTsModule('src/styles.ts', {
 
 const annotation = loadTsModule('src/annotation.ts')
 const noteLinks = loadTsModule('src/noteLinks.ts')
+const noteSemantics = loadTsModule('src/noteSemantics.ts')
 const imageFilters = loadTsModule('src/imageFilters.ts')
 
 function testTextAlignIsNonPaginationStyle() {
@@ -278,6 +283,39 @@ function testEpubHrefComparisonHandlesEncodedSpinePaths() {
   )
 }
 
+function testNoteMarkersSupportCjkBrackets() {
+  assert.strictEqual(
+    typeof noteSemantics.isNoteMarkerText,
+    'function',
+    'Expected note marker recognition to be shared',
+  )
+
+  assert.strictEqual(noteSemantics.isNoteMarkerText('[67]'), true)
+  assert.strictEqual(noteSemantics.isNoteMarkerText('〚95〛'), true)
+  assert.strictEqual(noteSemantics.isNoteMarkerText('〖95〗'), true)
+  assert.strictEqual(noteSemantics.isNoteMarkerText('【零】'), true)
+  assert.strictEqual(noteSemantics.isNoteMarkerText('【九】'), true)
+  assert.strictEqual(noteSemantics.isNoteMarkerText('【壹拾貳】'), true)
+  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('零、注释'), true)
+  assert.strictEqual(
+    noteSemantics.startsWithNoteMarkerText('壹拾貳、注释'),
+    true,
+  )
+  assert.strictEqual(noteSemantics.isNoteMarkerText('〚note〛'), false)
+  const hiddenNoteSelector =
+    noteSemantics.createHiddenNoteContentSelector('flow-note-popover')
+  assert.match(
+    hiddenNoteSelector,
+    /:is\([^)]*\bp\b[^)]*\):is\([^)]*\[class\*="note" i\]/,
+    'hidden note selector must use the shared note semantics',
+  )
+  assert.match(
+    hiddenNoteSelector,
+    /:is\([^)]*\bdl\b[^)]*\):is\([^)]*\[class\*="note" i\]/,
+    'definition-list footnotes must use the shared note semantics',
+  )
+}
+
 function testDuplicateIllustrationFilterHidesFirstAndRepeatedCandidates() {
   assert.strictEqual(
     typeof imageFilters.createDuplicateIllustrationFilter,
@@ -431,6 +469,7 @@ testZoomMediaUsesScaledContentColumnWidth()
 testDefinitionsAreNormalizedConsistently()
 testAnnotationSpineDoesNotRequireNavItem()
 testEpubHrefComparisonHandlesEncodedSpinePaths()
+testNoteMarkersSupportCjkBrackets()
 testDuplicateIllustrationFilterHidesFirstAndRepeatedCandidates()
 testDuplicateIllustrationFilterIgnoresAlreadyHiddenImages()
 testDuplicateIllustrationFilterRebuildsFromHiddenDuplicates()

@@ -1,11 +1,20 @@
 import { Contents } from '@flow/epubjs'
 
+import {
+  isNoteMarkerText,
+  noteContentBlockSelector,
+  noteContentContainerSelector,
+} from './noteSemantics'
+
 export const notePopoverClass = 'flow-note-popover'
 
 export const bodyTextAttribute = 'data-flow-body-text'
 export const bodyTextSelector = `[${bodyTextAttribute}="true"]`
 export const bodyTextCandidateSelector = 'p, blockquote > p, div'
 const bodyTextDetectedAttribute = 'data-flow-body-text-detected'
+export const noteTextAttribute = 'data-flow-note-text'
+export const noteTextSelector = `[${noteTextAttribute}="true"]`
+const noteTextDetectedAttribute = 'data-flow-note-text-detected'
 
 export interface BodyTextDetectionCacheEntry {
   candidateCount: number
@@ -55,39 +64,45 @@ export function ensureBodyTextMarkers(
   const body = document?.body
   if (!document || !body) return
 
-  if (body.getAttribute(bodyTextDetectedAttribute) === 'true') {
-    return
+  const bodyTextDetected =
+    body.getAttribute(bodyTextDetectedAttribute) === 'true'
+  const noteTextDetected =
+    body.getAttribute(noteTextDetectedAttribute) === 'true'
+  if (bodyTextDetected && noteTextDetected) return
+
+  if (!bodyTextDetected) {
+    const candidates = getBodyTextCandidates(document)
+    const cacheKey = getBodyTextCacheKey(contents)
+    const cached = cacheKey ? bodyTextCache?.get(cacheKey) : undefined
+
+    clearBodyTextMarkers(candidates)
+
+    if (
+      cached &&
+      cached.candidateCount === candidates.length &&
+      cached.bodyIndexes.length
+    ) {
+      applyBodyTextIndexes(candidates, cached.bodyIndexes)
+      body.setAttribute(bodyTextDetectedAttribute, 'true')
+    } else {
+      const bodyIndexes = detectBodyTextIndexes(contents, candidates)
+      if (bodyIndexes.length) {
+        applyBodyTextIndexes(candidates, bodyIndexes)
+        body.setAttribute(bodyTextDetectedAttribute, 'true')
+
+        if (cacheKey) {
+          bodyTextCache?.set(cacheKey, {
+            candidateCount: candidates.length,
+            bodyIndexes,
+          })
+        }
+      }
+    }
   }
 
-  const candidates = getBodyTextCandidates(document)
-  if (!candidates.length) return
-
-  const cacheKey = getBodyTextCacheKey(contents)
-  const cached = cacheKey ? bodyTextCache?.get(cacheKey) : undefined
-
-  clearBodyTextMarkers(candidates)
-
-  if (
-    cached &&
-    cached.candidateCount === candidates.length &&
-    cached.bodyIndexes.length
-  ) {
-    applyBodyTextIndexes(candidates, cached.bodyIndexes)
-    body.setAttribute(bodyTextDetectedAttribute, 'true')
-    return
-  }
-
-  const bodyIndexes = detectBodyTextIndexes(contents, candidates)
-  if (!bodyIndexes.length) return
-
-  applyBodyTextIndexes(candidates, bodyIndexes)
-  body.setAttribute(bodyTextDetectedAttribute, 'true')
-
-  if (cacheKey) {
-    bodyTextCache?.set(cacheKey, {
-      candidateCount: candidates.length,
-      bodyIndexes,
-    })
+  if (!noteTextDetected) {
+    applyNoteTextMarkers(document)
+    body.setAttribute(noteTextDetectedAttribute, 'true')
   }
 }
 
@@ -170,6 +185,24 @@ function applyBodyTextIndexes(
   })
 }
 
+function applyNoteTextMarkers(document: Document) {
+  document
+    .querySelectorAll<HTMLElement>(`[${noteTextAttribute}]`)
+    .forEach((el) => el.removeAttribute(noteTextAttribute))
+
+  const candidates = [
+    ...document.querySelectorAll<HTMLElement>(noteContentBlockSelector),
+    ...getBodyTextCandidates(document).filter(hasNoteBacklinkContentAncestor),
+  ]
+  const seen = new Set<HTMLElement>()
+
+  candidates.forEach((el) => {
+    if (seen.has(el)) return
+    seen.add(el)
+    el.setAttribute(noteTextAttribute, 'true')
+  })
+}
+
 interface BodyTextCandidate {
   baseSignature: string
   index: number
@@ -189,32 +222,95 @@ interface BodyTextCluster {
 }
 
 function isFactuallyExcludedElement(el: HTMLElement) {
-  return !!el.closest(
-    [
-      `.${notePopoverClass}`,
-      '[role="doc-footnote"]',
-      '[role="doc-endnote"]',
-      '[epub\\:type*="footnote"]',
-      '[epub\\:type*="endnote"]',
-      '[epub\\:type*="rearnote"]',
-      '[type*="footnote"]',
-      '[type*="endnote"]',
-      '[type*="rearnote"]',
-      'table',
-      'thead',
-      'tbody',
-      'tfoot',
-      'tr',
-      'td',
-      'th',
-      'caption',
-      'figure',
-      'figcaption',
-      'nav',
-      'aside',
-      'ol',
-      'ul',
-    ].join(','),
+  if (
+    !!el.closest(
+      [
+        `.${notePopoverClass}`,
+        noteContentContainerSelector,
+        'table',
+        'thead',
+        'tbody',
+        'tfoot',
+        'tr',
+        'td',
+        'th',
+        'caption',
+        'figure',
+        'figcaption',
+        'nav',
+        'aside',
+        'ol',
+        'ul',
+      ].join(','),
+    )
+  ) {
+    return true
+  }
+
+  return hasNoteBacklinkContentAncestor(el)
+}
+
+function hasNoteBacklinkContentAncestor(el: HTMLElement) {
+  let cur: HTMLElement | null = el
+
+  while (cur && cur !== cur.ownerDocument.body) {
+    if (isNoteBacklinkContentElement(cur)) return true
+    cur = cur.parentElement
+  }
+
+  return false
+}
+
+function isNoteBacklinkContentElement(el: HTMLElement) {
+  if (!isElementWithTag(el, 'p') && !isElementWithTag(el, 'li')) return false
+
+  const marker = findLeadingNoteMarkerAnchor(el)
+  if (!marker) return false
+
+  const [, hash = ''] = marker.getAttribute('href')?.split('#') ?? []
+  return !!hash
+}
+
+function findLeadingNoteMarkerAnchor(el: HTMLElement) {
+  const first = getFirstMeaningfulChild(el)
+  if (!first || !isHTMLElement(first)) return
+
+  return findLeadingNoteMarkerAnchorInElement(first)
+}
+
+function findLeadingNoteMarkerAnchorInElement(
+  el: HTMLElement,
+): HTMLAnchorElement | undefined {
+  if (isElementWithTag(el, 'a')) {
+    return isNoteMarkerAnchor(el) ? (el as HTMLAnchorElement) : undefined
+  }
+
+  if (isElementWithTag(el, 'sup') || isElementWithTag(el, 'sub')) return
+  if (!isElementWithTag(el, 'span')) return
+
+  const first = getFirstMeaningfulChild(el)
+  if (!first || !isHTMLElement(first)) return
+
+  return findLeadingNoteMarkerAnchorInElement(first)
+}
+
+function isNoteMarkerAnchor(el: HTMLElement) {
+  const href = el.getAttribute('href')?.trim()
+  if (!href || href.startsWith('mailto:') || href.includes('://')) return false
+
+  return isNoteMarkerText(el.textContent)
+}
+
+function getFirstMeaningfulChild(el: HTMLElement) {
+  return [...el.childNodes].find((node) => {
+    if (isHTMLElement(node)) return true
+    return !!normalizeText(node.textContent)
+  })
+}
+
+function isHTMLElement(node: Node): node is HTMLElement {
+  return (
+    node.nodeType === 1 && typeof (node as HTMLElement).tagName === 'string'
   )
 }
 
