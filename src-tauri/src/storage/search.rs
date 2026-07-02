@@ -364,15 +364,9 @@ fn read_archive_bytes<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     path: &str,
 ) -> Result<Vec<u8>, String> {
-    let decoded = percent_decode_zip_path(path);
-    let candidates = if decoded == path {
-        vec![path.to_string()]
-    } else {
-        vec![path.to_string(), decoded]
-    };
     let mut last_error = "EPUB entry not found".to_string();
 
-    for candidate in candidates {
+    for candidate in zip_path_candidates(path) {
         match archive.by_name(&candidate) {
             Ok(mut file) => {
                 let mut data = Vec::with_capacity(file.size() as usize);
@@ -387,13 +381,6 @@ fn read_archive_bytes<R: Read + Seek>(
     }
 
     Err(last_error)
-}
-
-fn percent_decode_zip_path(path: &str) -> String {
-    path.split('/')
-        .map(percent_decode_path_segment)
-        .collect::<Vec<_>>()
-        .join("/")
 }
 
 fn text_from_bytes_lossy(bytes: Vec<u8>) -> String {
@@ -746,38 +733,6 @@ fn join_relative_unpacked_path(base: &Path, href: &str) -> PathBuf {
         }
     }
     path
-}
-
-fn percent_decode_path_segment(segment: &str) -> String {
-    let bytes = segment.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-
-    while index < bytes.len() {
-        if bytes[index] == b'%' && index + 2 < bytes.len() {
-            if let (Some(high), Some(low)) =
-                (hex_value(bytes[index + 1]), hex_value(bytes[index + 2]))
-            {
-                decoded.push((high << 4) | low);
-                index += 3;
-                continue;
-            }
-        }
-
-        decoded.push(bytes[index]);
-        index += 1;
-    }
-
-    String::from_utf8(decoded).unwrap_or_else(|_| segment.to_string())
-}
-
-fn hex_value(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
 }
 
 fn read_text_file_lossy(path: &Path) -> Result<String, String> {

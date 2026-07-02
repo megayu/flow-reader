@@ -2139,6 +2139,54 @@ fn percent_decode_path(value: &str) -> String {
     String::from_utf8_lossy(&decoded).to_string()
 }
 
+fn zip_path_candidates(path: &str) -> Vec<String> {
+    let decoded = percent_decode_zip_path(path);
+    if decoded == path {
+        vec![path.to_string()]
+    } else {
+        vec![path.to_string(), decoded]
+    }
+}
+
+fn percent_decode_zip_path(path: &str) -> String {
+    path.split('/')
+        .map(percent_decode_path_segment)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn percent_decode_path_segment(segment: &str) -> String {
+    let bytes = segment.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+
+    while index < bytes.len() {
+        if bytes[index] == b'%' && index + 2 < bytes.len() {
+            if let (Some(high), Some(low)) =
+                (hex_value(bytes[index + 1]), hex_value(bytes[index + 2]))
+            {
+                decoded.push((high << 4) | low);
+                index += 3;
+                continue;
+            }
+        }
+
+        decoded.push(bytes[index]);
+        index += 1;
+    }
+
+    String::from_utf8(decoded).unwrap_or_else(|_| segment.to_string())
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
 fn resolve_unpacked_resource_path(unpacked_dir: &Path, href: &str) -> Result<PathBuf, String> {
     let opf_path = find_unpacked_opf_path(unpacked_dir)?;
     let opf_dir = opf_path.parent().unwrap_or(unpacked_dir);
@@ -3368,6 +3416,63 @@ mod tests {
         writer.finish().unwrap();
     }
 
+    fn write_minimal_epub_with_percent_encoded_cover(path: &Path, cover_bytes: &[u8]) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        let file = fs::File::create(path).unwrap();
+        let mut writer = ZipWriter::new(file);
+        let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+        let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+
+        writer.start_file("mimetype", stored).unwrap();
+        writer.write_all(b"application/epub+zip").unwrap();
+        writer
+            .start_file("META-INF/container.xml", deflated)
+            .unwrap();
+        writer
+            .write_all(
+                br#"<?xml version="1.0" encoding="UTF-8"?>
+<container>
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"#,
+            )
+            .unwrap();
+        writer.start_file("OEBPS/content.opf", deflated).unwrap();
+        writer
+            .write_all(
+                br#"<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata>
+    <dc:title>Encoded Cover</dc:title>
+    <meta name="cover" content="cover.jpg"/>
+  </metadata>
+  <manifest>
+    <item id="cover.jpg" href="Images/%2Acover.jpg" media-type="image/jpeg"/>
+    <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="chapter"/>
+  </spine>
+</package>"#,
+            )
+            .unwrap();
+        writer
+            .start_file("OEBPS/Images/*cover.jpg", deflated)
+            .unwrap();
+        writer.write_all(cover_bytes).unwrap();
+        writer.start_file("OEBPS/chapter.xhtml", deflated).unwrap();
+        writer
+            .write_all(
+                br#"<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><body><p>body</p></body></html>"#,
+            )
+            .unwrap();
+        writer.finish().unwrap();
+    }
+
     #[test]
     fn epub_import_copies_source_without_unpacking_or_indexing() {
         let nonce = SystemTime::now()
@@ -3395,6 +3500,30 @@ mod tests {
         );
         assert!(!book_dir.join(UNPACKED_DIR).exists());
         assert!(!book_dir.join(SEARCH_TEXT_CACHE_FILE).exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn epub_import_extracts_cover_from_percent_encoded_zip_path() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-epub-encoded-cover-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("encoded-cover.epub");
+        let cover_bytes = b"encoded-cover-bytes";
+        write_minimal_epub_with_percent_encoded_cover(&source, cover_bytes);
+        let storage = test_storage_with_books(&root, Vec::new());
+
+        let book = import_epub_path_impl(&storage, &source, true).unwrap();
+
+        let book_dir = storage.book_dir(&book.id);
+        assert_eq!(fs::read(book_dir.join("cover.jpg")).unwrap(), cover_bytes);
+        assert!(!book_dir.join("cover.svg").exists());
 
         let _ = fs::remove_dir_all(root);
     }

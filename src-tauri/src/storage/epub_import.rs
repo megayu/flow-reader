@@ -169,14 +169,16 @@ fn parse_epub_info_result(path: &Path) -> Result<ParsedEpubInfo, String> {
     let cover = find_cover_path(&opf_doc)
         .and_then(|(href, mime_type)| {
             let cover_path = normalize_zip_path(join_zip_path(parent_zip_path(&opf_path), &href));
-            read_zip_bytes(&mut archive, &cover_path).ok().map(|data| {
-                let extension = extension_from_path(&cover_path);
-                CoverInput {
-                    mime_type,
-                    extension,
-                    data,
-                }
-            })
+            read_zip_bytes_with_path_candidates(&mut archive, &cover_path)
+                .ok()
+                .map(|data| {
+                    let extension = extension_from_path(&cover_path);
+                    CoverInput {
+                        mime_type,
+                        extension,
+                        data,
+                    }
+                })
         })
         .or_else(|| {
             create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str()))
@@ -205,6 +207,24 @@ fn read_zip_bytes<R: Read + Seek>(
     file.read_to_end(&mut data)
         .map_err(|error| error.to_string())?;
     Ok(data)
+}
+
+fn read_zip_bytes_with_path_candidates<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    name: &str,
+) -> Result<Vec<u8>, String> {
+    let mut last_error = "EPUB entry not found".to_string();
+
+    for candidate in zip_path_candidates(name) {
+        match read_zip_bytes(archive, &candidate) {
+            Ok(data) => return Ok(data),
+            Err(error) => {
+                last_error = error;
+            }
+        }
+    }
+
+    Err(last_error)
 }
 
 fn parse_opf_metadata(doc: &roxmltree::Document) -> Value {
