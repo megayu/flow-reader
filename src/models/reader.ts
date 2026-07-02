@@ -3024,7 +3024,10 @@ export class BookTab extends BaseTab {
     clearRendering()
     this.epub.loaded.navigation.then((nav) => {
       if (generation !== this.renderGeneration) return
+      const previousTocVersion = this.tocVersion
       this.nav = nav
+      this.expandNavPath(this.currentNavItem)
+      if (this.tocVersion === previousTocVersion) this.tocVersion++
     })
     try {
       const spine = await this.epub.loaded.spine
