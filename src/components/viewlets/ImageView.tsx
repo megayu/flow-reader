@@ -18,6 +18,7 @@ import type {
 import { useAction } from '@flow/reader/hooks/useAction'
 import { LIST_ITEM_SIZE } from '@flow/reader/hooks/useList'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
+import { createDuplicateIllustrationFilter } from '@flow/reader/imageFilters'
 import {
   ImageEntry,
   ISection,
@@ -373,13 +374,28 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
     }
 
     void (async () => {
+      const duplicateFilter = createDuplicateIllustrationFilter()
+      const applyDuplicateFilterToKnownSections = () => {
+        let changed = false
+
+        for (const section of liveSections) {
+          if (!knownImageEntries(section)) continue
+          changed = duplicateFilter.applyToSection(section) || changed
+        }
+
+        return changed
+      }
+
       assignImageSectionNavItems(tab, liveSections)
+      applyDuplicateFilterToKnownSections()
       refreshImages()
 
       try {
         const cache = await loadBookImageIndex(tab.book.id)
         if (cancelled || reader.focusedBookTab !== tab) return
         if (cache && applyImageIndexCache(tab, liveSections, cache)) {
+          duplicateFilter.reset()
+          applyDuplicateFilterToKnownSections()
           refreshImages()
         }
       } catch (error) {
@@ -405,7 +421,11 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
 
           if (cancelled || reader.focusedBookTab !== tab) return
 
-          if (imageSignature(section) !== previousImageSignature) {
+          const duplicatesChanged = duplicateFilter.applyToSection(section)
+          if (
+            duplicatesChanged ||
+            imageSignature(section) !== previousImageSignature
+          ) {
             refreshImages()
           }
         }

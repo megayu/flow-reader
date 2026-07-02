@@ -525,6 +525,7 @@ export interface ISection extends Section {
 
 export type ImageFilterReason =
   | 'decorative'
+  | 'duplicate'
   | 'icon'
   | 'inlineGlyph'
   | 'titleArt'

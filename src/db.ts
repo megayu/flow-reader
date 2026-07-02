@@ -188,6 +188,7 @@ export interface BookSearchResult {
 
 export type ImageFilterReason =
   | 'decorative'
+  | 'duplicate'
   | 'icon'
   | 'inlineGlyph'
   | 'titleArt'

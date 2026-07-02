@@ -47,6 +47,7 @@ const styles = loadTsModule('src/styles.ts', {
 })
 
 const annotation = loadTsModule('src/annotation.ts')
+const imageFilters = loadTsModule('src/imageFilters.ts')
 
 function testTextAlignIsNonPaginationStyle() {
   assert.strictEqual(
@@ -250,10 +251,159 @@ function testAnnotationSpineDoesNotRequireNavItem() {
   )
 }
 
+function testDuplicateIllustrationFilterHidesFirstAndRepeatedCandidates() {
+  assert.strictEqual(
+    typeof imageFilters.createDuplicateIllustrationFilter,
+    'function',
+    'Expected duplicate illustration filtering to be testable',
+  )
+
+  const firstSection = {
+    images: [
+      {
+        hiddenByDefault: false,
+        index: 0,
+        src: '../Images/repeated%20art.jpg',
+      },
+      {
+        hiddenByDefault: false,
+        index: 1,
+        src: '../Images/unique.jpg',
+      },
+    ],
+  }
+  const secondSection = {
+    images: [
+      {
+        hiddenByDefault: false,
+        index: 0,
+        src: '../Images/repeated art.jpg',
+      },
+    ],
+  }
+
+  const filter = imageFilters.createDuplicateIllustrationFilter()
+  assert.strictEqual(filter.applyToSection(firstSection), false)
+  assert.strictEqual(filter.applyToSection(secondSection), true)
+
+  assert.deepStrictEqual(firstSection.images[0], {
+    hiddenByDefault: true,
+    index: 0,
+    reason: 'duplicate',
+    src: '../Images/repeated%20art.jpg',
+  })
+  assert.deepStrictEqual(secondSection.images[0], {
+    hiddenByDefault: true,
+    index: 0,
+    reason: 'duplicate',
+    src: '../Images/repeated art.jpg',
+  })
+  assert.strictEqual(firstSection.images[1].hiddenByDefault, false)
+}
+
+function testDuplicateIllustrationFilterIgnoresAlreadyHiddenImages() {
+  const section = {
+    images: [
+      {
+        hiddenByDefault: true,
+        index: 0,
+        reason: 'icon',
+        src: '../Images/logo.png',
+      },
+      {
+        hiddenByDefault: false,
+        index: 1,
+        src: '../Images/logo.png',
+      },
+    ],
+  }
+
+  const filter = imageFilters.createDuplicateIllustrationFilter()
+  assert.strictEqual(filter.applyToSection(section), false)
+  assert.deepStrictEqual(section.images, [
+    {
+      hiddenByDefault: true,
+      index: 0,
+      reason: 'icon',
+      src: '../Images/logo.png',
+    },
+    {
+      hiddenByDefault: false,
+      index: 1,
+      src: '../Images/logo.png',
+    },
+  ])
+}
+
+function testDuplicateIllustrationFilterRebuildsFromHiddenDuplicates() {
+  const firstSection = {
+    images: [
+      {
+        hiddenByDefault: false,
+        index: 0,
+        src: '../Images/repeated.png',
+      },
+    ],
+  }
+  const secondSection = {
+    images: [
+      {
+        hiddenByDefault: true,
+        index: 0,
+        reason: 'duplicate',
+        src: '../Images/repeated.png',
+      },
+    ],
+  }
+
+  const filter = imageFilters.createDuplicateIllustrationFilter()
+  assert.strictEqual(filter.applyToSection(firstSection), false)
+  assert.strictEqual(filter.applyToSection(secondSection), true)
+  assert.deepStrictEqual(firstSection.images[0], {
+    hiddenByDefault: true,
+    index: 0,
+    reason: 'duplicate',
+    src: '../Images/repeated.png',
+  })
+
+  const reverseFirstSection = {
+    images: [
+      {
+        hiddenByDefault: true,
+        index: 0,
+        reason: 'duplicate',
+        src: '../Images/repeated.png',
+      },
+    ],
+  }
+  const reverseSecondSection = {
+    images: [
+      {
+        hiddenByDefault: false,
+        index: 0,
+        src: '../Images/repeated.png',
+      },
+    ],
+  }
+
+  const reverseFilter = imageFilters.createDuplicateIllustrationFilter()
+  assert.strictEqual(reverseFilter.applyToSection(reverseFirstSection), false)
+  assert.strictEqual(reverseFilter.applyToSection(reverseSecondSection), true)
+  assert.deepStrictEqual(reverseSecondSection.images[0], {
+    hiddenByDefault: true,
+    index: 0,
+    reason: 'duplicate',
+    src: '../Images/repeated.png',
+  })
+}
+
 testTextAlignIsNonPaginationStyle()
 testZoomBodyStylesSkipNonNumericValues()
 testZoomBodyStylesCanUseCurrentLayout()
 testZoomMediaUsesScaledContentColumnWidth()
 testDefinitionsAreNormalizedConsistently()
 testAnnotationSpineDoesNotRequireNavItem()
+testDuplicateIllustrationFilterHidesFirstAndRepeatedCandidates()
+testDuplicateIllustrationFilterIgnoresAlreadyHiddenImages()
+testDuplicateIllustrationFilterRebuildsFromHiddenDuplicates()
 console.log('reader optimization tests passed')
