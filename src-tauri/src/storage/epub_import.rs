@@ -1133,11 +1133,16 @@ fn find_cover_path(doc: &roxmltree::Document) -> Option<(String, String)> {
         .find(|node| {
             node.attribute("media-type")
                 .is_some_and(|media_type| media_type.starts_with("image/"))
-                && node
+                && (node
                     .attribute("href")
                     .is_some_and(|href| href.to_ascii_lowercase().contains("cover"))
+                    || node.attribute("id").is_some_and(cover_id_starts_with_cover))
         })
         .and_then(cover_item_to_path)
+}
+
+fn cover_id_starts_with_cover(id: &str) -> bool {
+    id.to_ascii_lowercase().split('.').next() == Some("cover")
 }
 
 fn cover_item_to_path(node: roxmltree::Node) -> Option<(String, String)> {
@@ -1420,4 +1425,29 @@ pub(super) fn import_epub_path_impl(
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn find_cover_path_falls_back_to_image_manifest_id_prefix() {
+        let doc = roxmltree::Document::parse(
+            r#"<package>
+  <manifest>
+    <item id="cover.jpg" href="Images/obfuscated-image.jpg" media-type="image/jpeg"/>
+  </manifest>
+</package>"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            find_cover_path(&doc),
+            Some((
+                "Images/obfuscated-image.jpg".to_string(),
+                "image/jpeg".to_string()
+            ))
+        );
+    }
 }
