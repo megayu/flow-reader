@@ -3441,9 +3441,8 @@ async function renderLinkedSectionElement(
       cleanup()
       return
     }
-    const element = findNoteElement(target, anchor)
 
-    return { element, cleanup }
+    return { element: target, cleanup }
   } catch (error) {
     cleanup()
     return
