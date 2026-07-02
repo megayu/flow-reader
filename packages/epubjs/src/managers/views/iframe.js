@@ -812,6 +812,18 @@ class IframeView {
     }
 
     if (horizontal) {
+      if (
+        this.contents &&
+        typeof this.contents.fillReadablePageBackgrounds === 'function'
+      ) {
+        this.contents.fillReadablePageBackgrounds(
+          this.layout.pageWidth,
+          this.lockedHeight || this.layout.height,
+          displayWidth,
+          this.settings.direction,
+        )
+      }
+
       this.applySinglePageFirstPageOffset(displayWidth)
     }
 

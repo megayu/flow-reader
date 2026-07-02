@@ -115,6 +115,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: keep the correction inside `trimTrailingBlankPages()`: reuse the existing text/media rect scan, collapse only two-page LTR horizontal sections that have page-sized visual backgrounds or small content crossing the page boundary, reject collapse when any meaningful rect starts inside the second page, and leave real two-page bounds unchanged.
 - Verification gate: epubjs unit coverage must prove background-only and centered single-page visual sections collapse to one page while real two-page content and compact second-page-start content remain two pages; final desktop layout acceptance still requires real-client verification.
 
+### Text-bearing page backgrounds fitted like covers
+
+- Symptom: EPUB sections with a page background plus readable body text keep the background fitted like a cover image, so later paginated text pages do not each get a full-page background.
+- Reproduction path: open a reflowable section with a body/html background image and non-empty body text spanning one or more horizontal pages.
+- Root cause: page background normalization only checked the background image geometry and image dimensions; it did not distinguish textless cover-like sections from sections where the background is page decoration behind text.
+- Fix direction: detect readable body text with a text-node scan that ignores comments, script/style content, hidden heading text, and hidden elements; keep textless sections on a forced no-repeat fit-inside-page path, and render readable sections with one no-repeat background layer per measured page, each stretched to the current page box. Override fixed background attachment after normalization because paginated columns can otherwise repaint the same page background per viewport.
+- Verification gate: epubjs unit coverage must prove comments and hidden headings do not count as readable text, readable sections use page-sized no-repeat scroll backgrounds, multi-page readable sections get one stretched no-repeat scroll layer per page, repeated textless backgrounds are forced to display once, and cover-like textless backgrounds still fit inside the page; final desktop layout acceptance still requires real-client verification.
+
 ### Oversized NCX-anchored spine section
 
 - Symptom: opening a text-heavy EPUB can stall and sharply increase memory even when the book has many visible TOC chapters.

@@ -916,7 +916,7 @@ class Contents {
     return true
   }
 
-  normalizePageBackgrounds(width, height) {
+  normalizePageBackgrounds(width, height, direction) {
     if (
       !this.document ||
       !this.documentElement ||
@@ -942,6 +942,13 @@ class Contents {
     }
 
     var backgrounds = this.findPageBackgrounds(width, height)
+    var hasReadableText = this.hasReadableTextContent()
+    this._readablePageBackgrounds = hasReadableText
+      ? backgrounds.map((background) => ({
+          element: background.element,
+          backgroundImage: background.computed.backgroundImage,
+        }))
+      : undefined
     this._pageBackgroundSources = backgrounds.map((background) => {
       background.element.setAttribute(PAGE_BACKGROUND_SOURCE_ATTRIBUTE, 'true')
       return background.element
@@ -961,7 +968,11 @@ class Contents {
     var version = this._pageBackgroundVersion
 
     backgrounds.forEach((background) => {
-      this.fitOversizedPageBackground(background, width, height, version)
+      if (hasReadableText) {
+        this.fillPageBackground(background, width, height, width, direction)
+      } else {
+        this.fitOversizedPageBackground(background, width, height, version)
+      }
     })
 
     return true
@@ -988,6 +999,7 @@ class Contents {
     }
 
     this._pageBackgroundSources = undefined
+    this._readablePageBackgrounds = undefined
     this.addStylesheetCss(' ', PAGE_BACKGROUND_STYLE)
 
     return true
@@ -1001,16 +1013,64 @@ class Contents {
 
       if (override.value) {
         override.element.style.setProperty(
-          'background-size',
+          override.property,
           override.value,
           override.priority,
         )
       } else {
-        override.element.style.removeProperty('background-size')
+        override.element.style.removeProperty(override.property)
       }
     })
 
     this._pageBackgroundOverrides = undefined
+  }
+
+  hasReadableTextContent() {
+    if (!this.document || !this.content) return false
+
+    var nodeFilter = this.window && this.window.NodeFilter
+    if (!nodeFilter || !this.document.createTreeWalker) return false
+
+    var ignoredParents = {
+      SCRIPT: true,
+      STYLE: true,
+      NOSCRIPT: true,
+      TEMPLATE: true,
+    }
+    var walker = this.document.createTreeWalker(
+      this.content,
+      nodeFilter.SHOW_TEXT,
+      {
+        acceptNode(node) {
+          var parent = node.parentElement
+          while (parent) {
+            if (
+              ignoredParents[parent.tagName] ||
+              parent.hidden ||
+              parent.getAttribute('aria-hidden') === 'true'
+            ) {
+              return nodeFilter.FILTER_REJECT
+            }
+
+            var style = node.ownerDocument.defaultView.getComputedStyle(parent)
+            if (
+              style &&
+              (style.display === 'none' || style.visibility === 'hidden')
+            ) {
+              return nodeFilter.FILTER_REJECT
+            }
+            parent = parent.parentElement
+          }
+
+          return node.data && node.data.trim().length > 0
+            ? nodeFilter.FILTER_ACCEPT
+            : nodeFilter.FILTER_REJECT
+        },
+      },
+      false,
+    )
+
+    return Boolean(walker.nextNode())
   }
 
   findPageBackgrounds(width, height) {
@@ -1069,10 +1129,21 @@ class Contents {
       return
     }
 
-    var repeat = (computed.backgroundRepeat || '').trim()
-    if (repeat && repeat !== 'no-repeat' && repeat !== 'no-repeat no-repeat') {
-      return
-    }
+    this.setPageBackgroundProperty(
+      background.element,
+      'background-repeat',
+      'no-repeat',
+    )
+    this.setPageBackgroundProperty(
+      background.element,
+      'background-position',
+      'center center',
+    )
+    this.setPageBackgroundProperty(
+      background.element,
+      'background-attachment',
+      'scroll',
+    )
 
     this.backgroundImageSize(imageUrl, (imageSize) => {
       if (
@@ -1094,6 +1165,106 @@ class Contents {
 
       this.setPageBackgroundSize(background.element, nextSize)
     })
+  }
+
+  fillPageBackground(background, width, height, totalWidth, direction) {
+    var computed = background.computed
+    if (
+      !computed ||
+      !this.backgroundImageUrl(computed.backgroundImage) ||
+      this.hasMultipleBackgroundImages(computed.backgroundImage)
+    ) {
+      return
+    }
+
+    this.setPageBackgroundLayers(
+      background.element,
+      computed.backgroundImage,
+      width,
+      height,
+      totalWidth,
+      direction,
+    )
+  }
+
+  fillReadablePageBackgrounds(width, height, totalWidth, direction) {
+    if (
+      !this._readablePageBackgrounds ||
+      !isNumber(width) ||
+      !isNumber(height) ||
+      !isNumber(totalWidth) ||
+      width <= 0 ||
+      height <= 0 ||
+      totalWidth <= 0
+    ) {
+      return false
+    }
+
+    this._readablePageBackgrounds.forEach((background) => {
+      this.setPageBackgroundLayers(
+        background.element,
+        background.backgroundImage,
+        width,
+        height,
+        totalWidth,
+        direction,
+      )
+    })
+
+    return true
+  }
+
+  setPageBackgroundLayers(
+    element,
+    backgroundImage,
+    width,
+    height,
+    totalWidth,
+    direction,
+  ) {
+    if (!element || !backgroundImage) return
+
+    var pageCount = Math.max(1, Math.ceil(totalWidth / width))
+    var pageSize = `${Math.round(width)}px ${Math.round(height)}px`
+    var images = []
+    var sizes = []
+    var repeats = []
+    var positions = []
+    var attachments = []
+
+    for (var i = 0; i < pageCount; i++) {
+      images.push(backgroundImage)
+      sizes.push(pageSize)
+      repeats.push('no-repeat')
+      attachments.push('scroll')
+      positions.push(
+        direction === 'rtl'
+          ? `right ${Math.round(i * width)}px top 0px`
+          : `${Math.round(i * width)}px top`,
+      )
+    }
+
+    this.setPageBackgroundProperty(
+      element,
+      'background-image',
+      images.join(', '),
+    )
+    this.setPageBackgroundProperty(element, 'background-size', sizes.join(', '))
+    this.setPageBackgroundProperty(
+      element,
+      'background-repeat',
+      repeats.join(', '),
+    )
+    this.setPageBackgroundProperty(
+      element,
+      'background-position',
+      positions.join(', '),
+    )
+    this.setPageBackgroundProperty(
+      element,
+      'background-attachment',
+      attachments.join(', '),
+    )
   }
 
   nextPageBackgroundSize(background, imageSize, width, height) {
@@ -1283,21 +1454,27 @@ class Contents {
   }
 
   setPageBackgroundSize(element, value) {
+    this.setPageBackgroundProperty(element, 'background-size', value)
+  }
+
+  setPageBackgroundProperty(element, property, value) {
     this._pageBackgroundOverrides = this._pageBackgroundOverrides || []
 
     var existing = this._pageBackgroundOverrides.find(
-      (override) => override.element === element,
+      (override) =>
+        override.element === element && override.property === property,
     )
 
     if (!existing) {
       this._pageBackgroundOverrides.push({
         element,
-        value: element.style.getPropertyValue('background-size'),
-        priority: element.style.getPropertyPriority('background-size'),
+        property,
+        value: element.style.getPropertyValue(property),
+        priority: element.style.getPropertyPriority(property),
       })
     }
 
-    element.style.setProperty('background-size', value, 'important')
+    element.style.setProperty(property, value, 'important')
   }
 
   findSpreadBackground(width, height) {
@@ -1730,7 +1907,12 @@ class Contents {
 
     this.css(COLUMN_GAP, gap + 'px')
     this.css(COLUMN_WIDTH, columnWidth + 'px')
-    this.normalizePageBackgrounds(columnWidth, height)
+
+    var pageBackgroundWidth =
+      axis === 'horizontal' && width > columnWidth + gap
+        ? columnWidth + gap
+        : columnWidth
+    this.normalizePageBackgrounds(pageBackgroundWidth, height, dir)
 
     // Fix glyph clipping in WebKit
     // https://github.com/futurepress/epub.js/issues/983
