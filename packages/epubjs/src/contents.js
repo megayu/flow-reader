@@ -21,6 +21,14 @@ const SPREAD_BACKGROUND_STYLE = 'spread-background-fit'
 const SPREAD_BACKGROUND_ATTRIBUTE = 'data-epubjs-spread-background-fit'
 const SPREAD_BACKGROUND_SOURCE_ATTRIBUTE =
   'data-epubjs-spread-background-source'
+const PAGE_BACKGROUND_CONSTRAINT_PROPERTIES = [
+  'background-size',
+  'background-repeat',
+  'background-position',
+  'background-position-x',
+  'background-position-y',
+  'background-attachment',
+]
 
 /**
  * Handles DOM manipulation, queries and events for View contents
@@ -943,11 +951,20 @@ class Contents {
 
     var backgrounds = this.findPageBackgrounds(width, height)
     var hasReadableText = this.hasReadableTextContent()
+    if (hasReadableText) {
+      backgrounds.forEach((background) => {
+        background.hasAuthoredConstraints =
+          this.hasAuthoredPageBackgroundConstraints(background.element)
+      })
+    }
+
     this._readablePageBackgrounds = hasReadableText
-      ? backgrounds.map((background) => ({
-          element: background.element,
-          backgroundImage: background.computed.backgroundImage,
-        }))
+      ? backgrounds
+          .filter((background) => !background.hasAuthoredConstraints)
+          .map((background) => ({
+            element: background.element,
+            backgroundImage: background.computed.backgroundImage,
+          }))
       : undefined
     this._pageBackgroundSources = backgrounds.map((background) => {
       background.element.setAttribute(PAGE_BACKGROUND_SOURCE_ATTRIBUTE, 'true')
@@ -969,7 +986,9 @@ class Contents {
 
     backgrounds.forEach((background) => {
       if (hasReadableText) {
-        this.fillPageBackground(background, width, height, width, direction)
+        if (!background.hasAuthoredConstraints) {
+          this.fillPageBackground(background, width, height, width, direction)
+        }
       } else {
         this.fitOversizedPageBackground(background, width, height, version)
       }
@@ -1427,6 +1446,94 @@ class Contents {
     if (!value) return false
     var first = this.firstBackgroundLayer(value)
     return first.length < value.length
+  }
+
+  hasAuthoredPageBackgroundConstraints(element) {
+    if (!element) return false
+
+    if (this.styleDeclaresPageBackgroundConstraints(element.style)) {
+      return true
+    }
+
+    var styleSheets = this.document && this.document.styleSheets
+    if (!styleSheets) return false
+
+    for (var i = 0; i < styleSheets.length; i++) {
+      if (
+        this.styleSheetDeclaresPageBackgroundConstraints(
+          styleSheets[i],
+          element,
+        )
+      ) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  styleSheetDeclaresPageBackgroundConstraints(styleSheet, element) {
+    var rules
+    try {
+      rules = styleSheet.cssRules
+    } catch (_error) {
+      return false
+    }
+
+    return this.cssRulesDeclarePageBackgroundConstraints(rules, element)
+  }
+
+  cssRulesDeclarePageBackgroundConstraints(rules, element) {
+    if (!rules) return false
+
+    for (var i = 0; i < rules.length; i++) {
+      var rule = rules[i]
+
+      if (
+        rule.type === 1 &&
+        rule.selectorText &&
+        this.elementMatchesPageBackgroundRule(element, rule.selectorText) &&
+        this.styleDeclaresPageBackgroundConstraints(rule.style)
+      ) {
+        return true
+      }
+
+      if (rule.cssRules) {
+        var condition = rule.conditionText || rule.media?.mediaText
+        if (
+          condition &&
+          this.window &&
+          this.window.matchMedia &&
+          !this.window.matchMedia(condition).matches
+        ) {
+          continue
+        }
+
+        if (
+          this.cssRulesDeclarePageBackgroundConstraints(rule.cssRules, element)
+        ) {
+          return true
+        }
+      }
+    }
+
+    return false
+  }
+
+  elementMatchesPageBackgroundRule(element, selectorText) {
+    try {
+      return element.matches(selectorText)
+    } catch (_error) {
+      return false
+    }
+  }
+
+  styleDeclaresPageBackgroundConstraints(style) {
+    if (!style) return false
+
+    return PAGE_BACKGROUND_CONSTRAINT_PROPERTIES.some(
+      (property) => !!style.getPropertyValue(property),
+    )
   }
 
   backgroundImageSize(url, callback) {

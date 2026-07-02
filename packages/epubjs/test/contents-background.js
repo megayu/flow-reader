@@ -75,7 +75,7 @@ describe('Contents page backgrounds', function () {
     }
   })
 
-  it('stretches readable section backgrounds without CSS repeat', function () {
+  it('preserves authored readable section background constraints', function () {
     const { contents, doc, cleanup } = createContents('<p>Readable body</p>')
     doc.body.style.backgroundImage = 'url("data:image/png;base64,iVBORw0KGgo=")'
     doc.body.style.backgroundRepeat = 'no-repeat'
@@ -85,10 +85,10 @@ describe('Contents page backgrounds', function () {
 
     try {
       assert.equal(contents.normalizePageBackgrounds(400, 600, 'ltr'), true)
-      assert.equal(doc.body.style.backgroundSize, '400px 600px')
+      assert.equal(doc.body.style.backgroundSize, 'cover')
       assert.equal(doc.body.style.backgroundRepeat, 'no-repeat')
-      assert.equal(doc.body.style.backgroundPosition, '0px top')
-      assert.equal(doc.body.style.backgroundAttachment, 'scroll')
+      assert.equal(doc.body.style.backgroundPosition, 'center center')
+      assert.equal(doc.body.style.backgroundAttachment, 'fixed')
 
       contents.clearPageBackgroundNormalization()
       assert.equal(doc.body.style.backgroundSize, 'cover')
@@ -100,12 +100,51 @@ describe('Contents page backgrounds', function () {
     }
   })
 
+  it('fills readable section backgrounds when css has no layout constraints', function () {
+    const { contents, doc, cleanup } = createContents('<p>Readable body</p>')
+    doc.body.style.backgroundImage = 'url("data:image/png;base64,iVBORw0KGgo=")'
+
+    try {
+      assert.equal(contents.normalizePageBackgrounds(400, 600, 'ltr'), true)
+      assert.equal(doc.body.style.backgroundSize, '400px 600px')
+      assert.equal(doc.body.style.backgroundRepeat, 'no-repeat')
+      assert.equal(doc.body.style.backgroundPosition, '0px top')
+      assert.equal(doc.body.style.backgroundAttachment, 'scroll')
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('preserves stylesheet-authored readable background constraints', function () {
+    const { contents, doc, cleanup } = createContents('<p>Readable body</p>')
+    const style = doc.createElement('style')
+    style.textContent = `
+      body {
+        background-image: url("data:image/png;base64,iVBORw0KGgo=");
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center center;
+      }
+    `
+    doc.head.appendChild(style)
+
+    try {
+      assert.equal(contents.normalizePageBackgrounds(400, 600, 'ltr'), true)
+      const computed = doc.defaultView.getComputedStyle(doc.body)
+      assert.equal(computed.backgroundSize, 'contain')
+      assert.equal(computed.backgroundRepeat, 'no-repeat')
+      assert.equal(computed.backgroundPosition, '50% 50%')
+      assert.equal(doc.body.style.backgroundSize, '')
+      assert.equal(doc.body.style.backgroundRepeat, '')
+      assert.equal(doc.body.style.backgroundPosition, '')
+    } finally {
+      cleanup()
+    }
+  })
+
   it('uses one stretched no-repeat background layer per text page', function () {
     const { contents, doc, cleanup } = createContents('<p>Readable body</p>')
     doc.body.style.backgroundImage = 'url("data:image/png;base64,iVBORw0KGgo=")'
-    doc.body.style.backgroundRepeat = 'repeat'
-    doc.body.style.backgroundSize = 'auto'
-    doc.body.style.backgroundAttachment = 'fixed'
 
     try {
       assert.equal(contents.normalizePageBackgrounds(400, 600, 'ltr'), true)
@@ -138,8 +177,6 @@ describe('Contents page backgrounds', function () {
   it('uses the layout page width for paginated readable backgrounds', function () {
     const { contents, doc, cleanup } = createContents('<p>Readable body</p>')
     doc.body.style.backgroundImage = 'url("data:image/png;base64,iVBORw0KGgo=")'
-    doc.body.style.backgroundRepeat = 'no-repeat'
-    doc.body.style.backgroundSize = 'cover'
 
     try {
       contents.columns(1000, 600, 460, 40, 'ltr')

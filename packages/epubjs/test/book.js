@@ -131,6 +131,11 @@ describe('Book', function () {
 
         assert.equal(book.navigation.toc.length, 1)
         assert.equal(book.navigation.toc[0].label, 'Decoded Chapter')
+
+        const output = await book.spine.spineItems[0].render(
+          book.load.bind(book),
+        )
+        assert.ok(output.includes('Body'))
       } finally {
         book.destroy()
         URL.revokeObjectURL(url)

@@ -118,6 +118,19 @@ function patchDocumentTextNode(
   return false
 }
 
+function markSectionRuntime(section: ISection | undefined) {
+  return section ? ref(section) : section
+}
+
+function markSectionsRuntime(sections: ISection[]) {
+  sections.forEach(markSectionRuntime)
+  return ref(sections)
+}
+
+function markRuntimeObject<T extends object>(value: T) {
+  return ref(value)
+}
+
 function createVersionedEpubRequest(contentVersion?: number) {
   if (!contentVersion) return undefined
 
@@ -1950,12 +1963,15 @@ export class BookTab extends BaseTab {
 
   private getSectionNavIndex(sections = this.sections) {
     if (!this.nav || !sections) return
+
     if (
       this.sectionNavIndex?.nav === this.nav &&
       this.sectionNavIndex.sections === sections
     ) {
       return this.sectionNavIndex
     }
+
+    markSectionsRuntime(sections)
 
     const exactBySectionHref = new Map<string, INavItem>()
     const entriesBySectionIndex = new Map<number, SectionNavEntry[]>()
@@ -2029,8 +2045,8 @@ export class BookTab extends BaseTab {
     }
 
     try {
-      this.sectionNavIndex = nextIndex
-      return this.sectionNavIndex
+      this.sectionNavIndex = markRuntimeObject(nextIndex)
+      return nextIndex
     } catch (error) {
       return nextIndex
     }
@@ -2213,7 +2229,7 @@ export class BookTab extends BaseTab {
     location: Location,
     visibleSections = this.visibleSectionsForLocation(location),
   ) {
-    this.visibleSections = ref(visibleSections)
+    this.visibleSections = markSectionsRuntime(visibleSections)
     this.visibleSectionIndexes = visibleSections.map((section) => section.index)
 
     const preferredSection =
@@ -2227,8 +2243,9 @@ export class BookTab extends BaseTab {
       preferredSection ?? startSection ?? visibleSections[0] ?? this.section
 
     if (activeSection) {
+      markSectionRuntime(activeSection)
       this.assignSectionNavItem(activeSection)
-      this.section = ref(activeSection)
+      this.section = activeSection
     }
 
     return activeSection
@@ -3076,7 +3093,7 @@ export class BookTab extends BaseTab {
     this.epub.loaded.navigation.then((nav) => {
       if (generation !== this.renderGeneration) return
       const previousTocVersion = this.tocVersion
-      this.nav = nav
+      this.nav = markRuntimeObject(nav)
       this.expandNavPath(this.currentNavItem)
       this.assignSectionNavItems()
       if (this.tocVersion === previousTocVersion) this.tocVersion++
@@ -3089,8 +3106,9 @@ export class BookTab extends BaseTab {
         s.length ??= 0
         s.images ??= []
       })
+      const runtimeSections = markSectionsRuntime(sections)
       this.assignSectionNavItems(sections)
-      this.sections = ref(sections)
+      this.sections = runtimeSections
     } catch (error) {
       if (generation === this.renderGeneration) {
         this.reportOpenError('spine', error)
@@ -3111,9 +3129,10 @@ export class BookTab extends BaseTab {
     )
 
     this.rendition.on('rendered', (section: ISection) => {
-      if (!this.section) this.section = ref(section)
+      markSectionRuntime(section)
+      if (!this.section) this.section = section
       if (!this.visibleSections.length) {
-        this.visibleSections = ref([section])
+        this.visibleSections = markSectionsRuntime([section])
         this.visibleSectionIndexes = [section.index]
       }
       void this.ensureSectionInfo(section)

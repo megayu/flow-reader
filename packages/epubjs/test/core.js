@@ -113,6 +113,26 @@ describe('Core', function () {
       assert.equal(path.filename, 'derf.html')
     })
 
+    it('ignores query strings and hashes when parsing file type', function () {
+      var path = new Path('fred/chasen/derf.xhtml?flowContentVersion=1#page')
+
+      assert.equal(path.path, 'fred/chasen/derf.xhtml')
+      assert.equal(path.directory, 'fred/chasen/')
+      assert.equal(path.extension, 'xhtml')
+      assert.equal(path.filename, 'derf.xhtml')
+    })
+
+    it('ignores URL query strings when parsing file type', function () {
+      var path = new Path(
+        'http://example.com/fred/chasen/derf.xhtml?flowContentVersion=1',
+      )
+
+      assert.equal(path.path, '/fred/chasen/derf.xhtml')
+      assert.equal(path.directory, '/fred/chasen/')
+      assert.equal(path.extension, 'xhtml')
+      assert.equal(path.filename, 'derf.xhtml')
+    })
+
     describe('#parse()', function () {
       it('should parse a path', function () {
         var path = Path.prototype.parse('/fred/chasen/derf.html')

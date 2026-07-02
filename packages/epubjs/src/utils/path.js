@@ -8,6 +8,22 @@ function hasEncodedPathSeparators(pathname) {
   return /%2f|%5c/i.test(pathname)
 }
 
+function stripPathSuffix(pathString) {
+  var end = pathString.length
+  var query = pathString.indexOf('?')
+  var hash = pathString.indexOf('#')
+
+  if (query > -1) {
+    end = Math.min(end, query)
+  }
+
+  if (hash > -1) {
+    end = Math.min(end, hash)
+  }
+
+  return pathString.slice(0, end)
+}
+
 /**
  * Creates a Path object for parsing and manipulation of a path strings
  *
@@ -27,6 +43,8 @@ class Path {
         isTauriAssetUrl(url) && hasEncodedPathSeparators(url.pathname)
           ? window.decodeURIComponent(url.pathname).replace(/\\/g, '/')
           : url.pathname
+    } else {
+      pathString = stripPathSuffix(pathString)
     }
 
     parsed = this.parse(pathString)
