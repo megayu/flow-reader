@@ -107,6 +107,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: during iframe expansion, only for one-page LTR reflowable horizontal sections, measure the first-page content rect and apply a per-iframe horizontal `translate` when the rect is mostly outside the first page.
 - Verification gate: epubjs unit coverage must prove one-page clipped content is corrected while multi-page sections and content already inside the first page are ignored; final desktop layout acceptance still requires real-client verification.
 
+### Short visual section measured as two pages
+
+- Symptom: short front-matter or title-like reflowable sections are reported as two pages even though the useful visual content is a single page.
+- Reproduction path: open an EPUB section whose page is mostly a body/html background or whose small centered content crosses the first horizontal page boundary after column layout.
+- Root cause: iframe expansion rounds `textWidth()` to page multiples, while trailing blank trimming previously treated only non-empty text/media in the final range as decisive and kept background-only sections at the rounded width.
+- Fix direction: keep the correction inside `trimTrailingBlankPages()`: reuse the existing text/media rect scan, collapse only two-page LTR horizontal sections that have page-sized visual backgrounds or small content crossing the page boundary, reject collapse when any meaningful rect starts inside the second page, and leave real two-page bounds unchanged.
+- Verification gate: epubjs unit coverage must prove background-only and centered single-page visual sections collapse to one page while real two-page content and compact second-page-start content remain two pages; final desktop layout acceptance still requires real-client verification.
+
 ### Oversized NCX-anchored spine section
 
 - Symptom: opening a text-heavy EPUB can stall and sharply increase memory even when the book has many visible TOC chapters.

@@ -65,3 +65,55 @@ describe('IframeView first page positioning', function () {
     assert.equal(view.contents.content.style.translate, '')
   })
 })
+
+describe('IframeView trailing blank page trimming', function () {
+  it('treats a two-page background-only visual section as one page', function () {
+    const view = createView({})
+    view.hasContentInRange = () => false
+    view.hasPageVisualBackground = () => true
+
+    assert.equal(view.trimTrailingBlankPages(1000), 500)
+  })
+
+  it('treats centered single-page content crossing the page edge as one page', function () {
+    const view = createView({
+      rect: { left: 300, right: 650, top: 0, bottom: 100 },
+    })
+    view.hasContentInRange = (start) => start >= 500
+    view.contentRangeSummary = () => ({
+      bounds: { left: 300, right: 650, top: 0, bottom: 100 },
+      crossesPageBoundary: true,
+      startsInsideSecondPage: false,
+    })
+
+    assert.equal(view.trimTrailingBlankPages(1000), 500)
+  })
+
+  it('keeps real two-page content as two pages', function () {
+    const view = createView({
+      rect: { left: 24, right: 960, top: 0, bottom: 700 },
+    })
+    view.hasContentInRange = (start) => start >= 500
+    view.contentRangeSummary = () => ({
+      bounds: { left: 24, right: 960, top: 0, bottom: 700 },
+      crossesPageBoundary: true,
+      startsInsideSecondPage: false,
+    })
+
+    assert.equal(view.trimTrailingBlankPages(1000), 1000)
+  })
+
+  it('keeps compact content that starts inside the second page as two pages', function () {
+    const view = createView({
+      rect: { left: 24, right: 700, top: 0, bottom: 700 },
+    })
+    view.hasContentInRange = (start) => start >= 500
+    view.contentRangeSummary = () => ({
+      bounds: { left: 24, right: 700, top: 0, bottom: 700 },
+      crossesPageBoundary: true,
+      startsInsideSecondPage: true,
+    })
+
+    assert.equal(view.trimTrailingBlankPages(1000), 1000)
+  })
+})

@@ -392,8 +392,7 @@ class IframeView {
     }
   }
 
-  // Resize a single axis based on content dimensions
-  hasContentInRange(start, end) {
+  eachContentRect(callback) {
     let doc = this.document
     let root = this.contents && this.contents.content
 
@@ -422,13 +421,7 @@ class IframeView {
       let rects = range.getClientRects()
 
       for (let i = 0; i < rects.length; i++) {
-        let rect = rects[i]
-        if (
-          rect.width > 0 &&
-          rect.height > 0 &&
-          rect.right > start + 1 &&
-          rect.left < end - 1
-        ) {
+        if (callback(rects[i])) {
           range.detach && range.detach()
           return true
         }
@@ -439,7 +432,17 @@ class IframeView {
 
     let media = root.querySelectorAll('img, svg, math, video, audio, canvas')
     for (let i = 0; i < media.length; i++) {
-      let rect = media[i].getBoundingClientRect()
+      if (callback(media[i].getBoundingClientRect())) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  // Resize a single axis based on content dimensions
+  hasContentInRange(start, end) {
+    return this.eachContentRect((rect) => {
       if (
         rect.width > 0 &&
         rect.height > 0 &&
@@ -448,19 +451,11 @@ class IframeView {
       ) {
         return true
       }
-    }
-
-    return false
+      return false
+    })
   }
 
   contentBounds() {
-    let doc = this.document
-    let root = this.contents && this.contents.content
-
-    if (!doc || !root) {
-      return
-    }
-
     let contentBounds
     let addRect = (rect) => {
       if (!rect || rect.width <= 0 || rect.height <= 0) {
@@ -483,39 +478,111 @@ class IframeView {
       contentBounds.bottom = Math.max(contentBounds.bottom, rect.bottom)
     }
 
-    let nodeFilter = doc.defaultView.NodeFilter
-    let walker = doc.createTreeWalker(
-      root,
-      nodeFilter.SHOW_TEXT,
-      {
-        acceptNode(node) {
-          return node.data && node.data.trim().length > 0
-            ? nodeFilter.FILTER_ACCEPT
-            : nodeFilter.FILTER_REJECT
-        },
-      },
-      false,
-    )
-    let node
-    let range = doc.createRange()
+    this.eachContentRect((rect) => {
+      addRect(rect)
+      return false
+    })
 
-    while ((node = walker.nextNode())) {
-      range.selectNodeContents(node)
-      let rects = range.getClientRects()
+    return contentBounds
+  }
 
-      for (let i = 0; i < rects.length; i++) {
-        addRect(rects[i])
+  pageBoundaryThreshold(pageWidth) {
+    return Math.min(Math.max(pageWidth * 0.02, 2), 24)
+  }
+
+  contentRangeSummary(pageWidth) {
+    let threshold = this.pageBoundaryThreshold(pageWidth)
+    let summary
+
+    let addRect = (rect) => {
+      if (!rect || rect.width <= 0 || rect.height <= 0) {
+        return
+      }
+
+      if (!summary) {
+        summary = {
+          bounds: {
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            bottom: rect.bottom,
+          },
+          crossesPageBoundary: false,
+          startsInsideSecondPage: false,
+        }
+      } else {
+        summary.bounds.left = Math.min(summary.bounds.left, rect.left)
+        summary.bounds.right = Math.max(summary.bounds.right, rect.right)
+        summary.bounds.top = Math.min(summary.bounds.top, rect.top)
+        summary.bounds.bottom = Math.max(summary.bounds.bottom, rect.bottom)
+      }
+
+      if (
+        rect.left < pageWidth - threshold &&
+        rect.right > pageWidth + threshold
+      ) {
+        summary.crossesPageBoundary = true
+      }
+
+      if (rect.left >= pageWidth + threshold && rect.width > threshold) {
+        summary.startsInsideSecondPage = true
       }
     }
 
-    range.detach && range.detach()
+    this.eachContentRect((rect) => {
+      addRect(rect)
+      return false
+    })
 
-    let media = root.querySelectorAll('img, svg, math, video, audio, canvas')
-    for (let i = 0; i < media.length; i++) {
-      addRect(media[i].getBoundingClientRect())
+    return summary
+  }
+
+  hasPageVisualBackground() {
+    if (!this.contents || !this.layout || !this.layout.pageWidth) {
+      return false
     }
 
-    return contentBounds
+    if (typeof this.contents.findPageBackgrounds === 'function') {
+      let height = this.lockedHeight || this.layout.height || 0
+      let width = this.layout.columnWidth || this.layout.pageWidth
+      return this.contents.findPageBackgrounds(width, height).length > 0
+    }
+
+    return false
+  }
+
+  shouldTreatTwoPageWidthAsSinglePage(width) {
+    if (
+      !this.layout ||
+      !this.layout.pageWidth ||
+      this.layout.name !== 'reflowable' ||
+      this.settings.axis !== 'horizontal' ||
+      this.settings.direction === 'rtl'
+    ) {
+      return false
+    }
+
+    let pageWidth = this.layout.pageWidth
+    if (Math.max(1, Math.ceil(width / pageWidth)) !== 2) {
+      return false
+    }
+
+    let summary = this.contentRangeSummary(pageWidth)
+    if (!summary) {
+      return this.hasPageVisualBackground()
+    }
+
+    if (summary.startsInsideSecondPage) {
+      return false
+    }
+
+    let rect = summary.bounds
+    let rectWidth = rect.right - rect.left
+    if (rectWidth <= 0 || rectWidth > pageWidth * 1.5) {
+      return false
+    }
+
+    return summary.crossesPageBoundary
   }
 
   clearSinglePageFirstPageOffset() {
@@ -654,8 +721,19 @@ class IframeView {
 
     for (let i = pages - 1; i >= 0; i--) {
       if (this.hasContentInRange(i * pageWidth, (i + 1) * pageWidth)) {
+        if (
+          i === 1 &&
+          pages === 2 &&
+          this.shouldTreatTwoPageWidthAsSinglePage(width)
+        ) {
+          return pageWidth
+        }
         return (i + 1) * pageWidth
       }
+    }
+
+    if (pages === 2 && this.hasPageVisualBackground()) {
+      return pageWidth
     }
 
     return width
