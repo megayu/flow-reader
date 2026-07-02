@@ -125,11 +125,11 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 
 ### Oversized NCX-anchored spine section
 
-- Symptom: opening a text-heavy EPUB can stall and sharply increase memory even when the book has many visible TOC chapters.
-- Reproduction path: import an EPUB whose OPF spine contains one very large XHTML/HTML section while the NCX has many `content src="large.html#anchor"` entries into that same section.
-- Root cause: the TOC chapters are anchors, not spine sections, so epubjs must load and paginate the whole large DOM as one reflowable section.
-- Fix direction: during first unpack publication, conservatively normalize safe NCX-anchored oversized sections into multiple XHTML/HTML spine items and rewrite OPF, NCX, and existing HTML TOC links.
-- Verification gate: Rust coverage must prove OPF spine/manifest, NCX entries, HTML TOC links, and exported EPUB contents use the split files; final desktop performance acceptance still requires release-client before/after measurement on an affected native EPUB.
+- Symptom: opening a text-heavy EPUB can stall and sharply increase memory even when the book has many visible TOC chapters. A malformed implementation of this normalization can also make page turns jump back to the preface or advance only through the last split of each volume.
+- Reproduction path: import an EPUB whose OPF spine contains one very large XHTML/HTML section while the NCX has many `content src="large.html#anchor"` entries into that same section. Include minified single-line OPF packages and nested OPF/NCX/content directories in coverage.
+- Root cause: the TOC chapters are anchors, not spine sections, so epubjs must load and paginate the whole large DOM as one reflowable section. When rewriting split manifest/spine entries, indentation must not be inferred from non-whitespace text before the matched tag; minified OPFs otherwise duplicate package/manifest prefixes into each split item.
+- Fix direction: during first unpack publication, conservatively normalize safe NCX-anchored oversized sections into multiple XHTML/HTML spine items and rewrite OPF, NCX, and existing HTML TOC links. Treat pre-tag text as indentation only when it is whitespace; otherwise insert split manifest and spine entries with empty indentation.
+- Verification gate: Rust coverage must parse the rewritten OPF and prove a single package/manifest/spine, correct OPF spine/manifest, NCX entries, HTML TOC links, split file creation, and exported EPUB contents for both single-level and nested directory structures; final desktop performance acceptance still requires release-client before/after measurement on an affected native EPUB.
 
 ## Rejected Approaches
 

@@ -708,7 +708,15 @@ fn line_indent_before(text: &str, index: usize) -> &str {
         .rfind('\n')
         .map(|index| index + 1)
         .unwrap_or(0);
-    &text[line_start..index]
+    let indent = &text[line_start..index];
+    if indent
+        .chars()
+        .all(|character| character.is_ascii_whitespace())
+    {
+        indent
+    } else {
+        ""
+    }
 }
 
 fn escape_xml_attr_local(value: &str) -> String {

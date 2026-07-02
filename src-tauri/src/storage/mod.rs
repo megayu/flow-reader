@@ -5154,6 +5154,141 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_minified_large_ncx_anchored_spine_section() {
+        assert_minified_large_ncx_anchored_spine_section_normalizes(
+            &["OEBPS"],
+            "content.opf",
+            "toc.ncx",
+            "intro.html",
+            "text00000.html",
+            "text00001.html",
+            "text00000-flow-split-0001.html#c001",
+            "text00000-flow-split-0009.html#c009",
+            "OEBPS/text00000-flow-split-0001.html",
+        );
+    }
+
+    #[test]
+    fn normalizes_minified_large_ncx_anchored_spine_section_in_nested_directories() {
+        assert_minified_large_ncx_anchored_spine_section_normalizes(
+            &["OPS", "Books"],
+            "content.opf",
+            "toc/toc.ncx",
+            "front/intro.html",
+            "chapters/text00000.html",
+            "chapters/text00001.html",
+            "../chapters/text00000-flow-split-0001.html#c001",
+            "../chapters/text00000-flow-split-0009.html#c009",
+            "OPS/Books/chapters/text00000-flow-split-0001.html",
+        );
+    }
+
+    fn assert_minified_large_ncx_anchored_spine_section_normalizes(
+        opf_dir_segments: &[&str],
+        opf_file: &str,
+        ncx_href: &str,
+        intro_href: &str,
+        big_href: &str,
+        toc_page_href: &str,
+        first_ncx_src: &str,
+        last_ncx_src: &str,
+        first_split_path: &str,
+    ) {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-epub-minified-normalize-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let opf_dir = opf_dir_segments
+            .iter()
+            .fold(root.clone(), |path, segment| path.join(segment));
+        let full_opf_path = opf_dir.join(opf_file);
+        let full_opf_zip_path = opf_dir_segments
+            .iter()
+            .copied()
+            .chain(std::iter::once(opf_file))
+            .collect::<Vec<_>>()
+            .join("/");
+        fs::create_dir_all(root.join("META-INF")).unwrap();
+        fs::create_dir_all(&opf_dir).unwrap();
+        fs::write(root.join("mimetype"), "application/epub+zip").unwrap();
+        fs::write(
+            root.join("META-INF/container.xml"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?><container><rootfiles><rootfile full-path="{full_opf_zip_path}"/></rootfiles></container>"#
+            ),
+        )
+        .unwrap();
+        fs::write(
+            &full_opf_path,
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="2.0"><metadata/><manifest><item id="intro" href="{intro_href}" media-type="application/xhtml+xml"/><item id="big" href="{big_href}" media-type="application/xhtml+xml"/><item id="tocpage" href="{toc_page_href}" media-type="application/xhtml+xml"/><item id="ncx" href="{ncx_href}" media-type="application/x-dtbncx+xml"/></manifest><spine toc="ncx"><itemref idref="intro"/><itemref idref="big"/><itemref idref="tocpage"/></spine></package>"#
+            ),
+        )
+        .unwrap();
+
+        let mut ncx = String::from(r#"<?xml version="1.0" encoding="UTF-8"?><ncx><navMap>"#);
+        let mut toc_page = String::from(r#"<!DOCTYPE html><html><body>"#);
+        let mut body = String::from("<p>preface</p>");
+        for index in 1..=9 {
+            ncx.push_str(&format!(
+                r#"<navPoint id="nav{index}"><navLabel><text>Chapter {index}</text></navLabel><content src="{big_href}#c{index:03}"/></navPoint>"#
+            ));
+            toc_page.push_str(&format!(
+                r#"<p><a href="{big_href}#c{index:03}">Chapter {index}</a></p>"#
+            ));
+            body.push_str(&format!(
+                r#"<span id="c{index:03}"></span><p>Chapter {index}</p><p>{}</p>"#,
+                "正文".repeat(40_000)
+            ));
+        }
+        ncx.push_str("</navMap></ncx>");
+        toc_page.push_str("</body></html>");
+        let xhtml = format!(
+            r#"<!DOCTYPE html><html><head><title>Big</title></head><body>{body}</body></html>"#
+        );
+        let ncx_path = opf_dir.join(ncx_href.replace('/', std::path::MAIN_SEPARATOR_STR));
+        let intro_path = opf_dir.join(intro_href.replace('/', std::path::MAIN_SEPARATOR_STR));
+        let toc_page_path = opf_dir.join(toc_page_href.replace('/', std::path::MAIN_SEPARATOR_STR));
+        let big_path = opf_dir.join(big_href.replace('/', std::path::MAIN_SEPARATOR_STR));
+        for path in [&ncx_path, &intro_path, &toc_page_path, &big_path] {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+        }
+        fs::write(ncx_path, ncx).unwrap();
+        fs::write(intro_path, "<html><body>Intro</body></html>").unwrap();
+        fs::write(toc_page_path, toc_page).unwrap();
+        fs::write(big_path, xhtml).unwrap();
+
+        normalize_unpacked_epub_structure(&root).expect("normalization succeeds");
+
+        let opf = fs::read_to_string(&full_opf_path).unwrap();
+        roxmltree::Document::parse(&opf).expect("normalized OPF parses");
+        assert_eq!(opf.matches("<package").count(), 1);
+        assert_eq!(opf.matches("<manifest").count(), 1);
+        assert_eq!(opf.matches("<spine").count(), 1);
+        assert!(opf.contains(r#"id="big_flow_split_0001""#));
+        assert!(opf.contains(&format!(
+            r#"href="{}""#,
+            big_href.replace(".html", "-flow-split-0001.html")
+        )));
+        assert!(opf.contains(r#"<itemref idref="big_flow_split_0009"/>"#));
+        assert!(!opf.contains(r#"<itemref idref="big"/>"#));
+        let ncx =
+            fs::read_to_string(opf_dir.join(ncx_href.replace('/', std::path::MAIN_SEPARATOR_STR)))
+                .unwrap();
+        assert!(ncx.contains(&format!(r#"src="{first_ncx_src}""#)));
+        assert!(ncx.contains(&format!(r#"src="{last_ncx_src}""#)));
+        assert!(root
+            .join(first_split_path.replace('/', std::path::MAIN_SEPARATOR_STR))
+            .exists());
+
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
     fn syncs_unpacked_opf_title_and_first_creator_metadata() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
