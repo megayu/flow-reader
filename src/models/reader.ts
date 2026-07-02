@@ -829,20 +829,10 @@ export class BookTab extends BaseTab {
     if (!target) return
 
     try {
-      const section = this.epub?.spine?.get(target) as ISection | undefined
-      if (section) return section
+      return this.epub?.spine?.get(target) as ISection | undefined
     } catch (error) {
-      // Invalid CFIs and stale hrefs are handled by falling back below.
+      // Invalid CFIs are ignored so callers can fall back to the current flow.
     }
-
-    const [href] = target.split('#')
-    return this.sections?.find(
-      (section) =>
-        section.href === target ||
-        section.href === href ||
-        compareHref(section.href, target) ||
-        compareHref(section.href, href),
-    )
   }
 
   private locationAnchorCfi(location = this.currentLocation) {
@@ -866,7 +856,7 @@ export class BookTab extends BaseTab {
     const candidates = [
       this.currentAnchorCfi(),
       this.book.cfi,
-      this.sections?.[0]?.href,
+      (this.epub?.spine?.get() as ISection | undefined)?.href,
     ]
 
     return candidates.find((target) => this.sectionForDisplayTarget(target))

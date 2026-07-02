@@ -75,37 +75,28 @@ class Spine {
         }
       }
 
-      if (item.linear === 'yes') {
-        item.prev = function () {
-          let prevIndex = item.index
-          while (prevIndex > 0) {
-            let prev = this.get(prevIndex - 1)
-            if (prev && prev.linear) {
-              return prev
-            }
-            prevIndex -= 1
+      item.prev = function () {
+        let prevIndex = item.index
+        while (prevIndex > 0) {
+          let prev = this.get(prevIndex - 1)
+          if (prev) {
+            return prev
           }
-          return
-        }.bind(this)
-        item.next = function () {
-          let nextIndex = item.index
-          while (nextIndex < this.spineItems.length - 1) {
-            let next = this.get(nextIndex + 1)
-            if (next && next.linear) {
-              return next
-            }
-            nextIndex += 1
+          prevIndex -= 1
+        }
+        return
+      }.bind(this)
+      item.next = function () {
+        let nextIndex = item.index
+        while (nextIndex < this.spineItems.length - 1) {
+          let next = this.get(nextIndex + 1)
+          if (next) {
+            return next
           }
-          return
-        }.bind(this)
-      } else {
-        item.prev = function () {
-          return
+          nextIndex += 1
         }
-        item.next = function () {
-          return
-        }
-      }
+        return
+      }.bind(this)
 
       spineItem = new Section(item, this.hooks)
 
@@ -148,7 +139,21 @@ class Spine {
       index = this.spineByHref[target] || this.spineByHref[encodeURI(target)]
     }
 
-    return this.spineItems[index] || null
+    return this.isReadable(this.spineItems[index])
+      ? this.spineItems[index]
+      : null
+  }
+
+  /**
+   * Check whether a section is part of the readable spine.
+   * @private
+   * @param {Section} section
+   * @return {boolean}
+   */
+  isReadable(section) {
+    return Boolean(
+      section && section.linear && section.resourceAvailable !== false,
+    )
   }
 
   /**

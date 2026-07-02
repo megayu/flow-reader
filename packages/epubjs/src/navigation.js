@@ -81,6 +81,41 @@ class Navigation {
   }
 
   /**
+   * Filter navigation items and rebuild lookup indexes.
+   * @param {(item: object) => boolean} predicate
+   */
+  filter(predicate) {
+    this.toc = this.filterItems(this.toc, predicate)
+    this.tocByHref = {}
+    this.tocById = {}
+    this.length = 0
+    this.unpack(this.toc)
+  }
+
+  /**
+   * Filter a navigation item tree.
+   * @private
+   * @param {array} items
+   * @param {(item: object) => boolean} predicate
+   * @return {array}
+   */
+  filterItems(items, predicate) {
+    return items.reduce((result, item) => {
+      item.subitems = this.filterItems(item.subitems || [], predicate)
+      let keepItem = predicate(item)
+
+      if (keepItem || item.subitems.length) {
+        if (!keepItem) {
+          item.href = ''
+        }
+        result.push(item)
+      }
+
+      return result
+    }, [])
+  }
+
+  /**
    * Get an item from the navigation
    * @param  {string} target
    * @return {object} navItem

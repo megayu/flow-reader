@@ -29,6 +29,55 @@ const INPUT_TYPE = {
   DIRECTORY: 'directory',
 }
 
+function normalizedNavigationHref(href) {
+  if (!href) return
+
+  return href.split('#')[0]
+}
+
+function addReadableSectionHref(index, href) {
+  let normalized = normalizedNavigationHref(href)
+  if (!normalized) return
+
+  index.add(normalized)
+  index.add(encodeURI(normalized))
+  try {
+    index.add(decodeURI(normalized))
+  } catch (_error) {
+    // Keep encoded hrefs when decoding fails.
+  }
+}
+
+function readableSectionHrefIndex(sections) {
+  let index = new Set()
+
+  sections.forEach((section) => {
+    if (section && section.linear && section.resourceAvailable !== false) {
+      addReadableSectionHref(index, section.href)
+    }
+  })
+
+  return index
+}
+
+function navigationHrefMatchesReadableSection(readableHrefs, href) {
+  let normalized = normalizedNavigationHref(href)
+  if (!normalized) return false
+
+  if (
+    readableHrefs.has(normalized) ||
+    readableHrefs.has(encodeURI(normalized))
+  ) {
+    return true
+  }
+
+  try {
+    return readableHrefs.has(decodeURI(normalized))
+  } catch (_error) {
+    return false
+  }
+}
+
 /**
  * An Epub representation with methods for the loading, parsing and manipulation
  * of its contents.
@@ -486,6 +535,7 @@ class Book {
     }
 
     this.loadNavigation(this.packaging).then(() => {
+      this.filterNavigationBySpine()
       // this.toc = this.navigation.toc;
       this.loading.navigation.resolve(this.navigation)
     })
@@ -559,6 +609,26 @@ class Book {
       this.navigation = new Navigation(xml)
       this.pageList = new PageList(xml)
       return this.navigation
+    })
+  }
+
+  /**
+   * Remove navigation entries that do not point at readable spine sections.
+   * @private
+   */
+  filterNavigationBySpine() {
+    if (!this.navigation || !this.navigation.filter || !this.spine) {
+      return
+    }
+
+    let readableHrefs = readableSectionHrefIndex(this.spine.spineItems)
+
+    this.navigation.filter((item) => {
+      if (!item.href) {
+        return true
+      }
+
+      return navigationHrefMatchesReadableSection(readableHrefs, item.href)
     })
   }
 

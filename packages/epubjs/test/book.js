@@ -21,6 +21,35 @@ describe('Book', function () {
         'cover url is available',
       )
     })
+    it('should filter non-readable navigation entries', async function () {
+      await book.opened
+      await book.loaded.navigation
+
+      assert.equal(
+        book.navigation.get('cover.xhtml'),
+        undefined,
+        'linear=no cover is not exposed in navigation',
+      )
+      assert.equal(
+        book.navigation.get('toc.xhtml'),
+        undefined,
+        'linear=no toc is not exposed in navigation',
+      )
+    })
+    it('should skip non-readable spine entries', async function () {
+      await book.opened
+
+      const first = book.spine.get()
+      const cover = book.spine.spineItems[0]
+      const toc = book.spine.spineItems[1]
+
+      assert.equal(first.href, 'titlepage.xhtml')
+      assert.equal(book.spine.get('cover.xhtml'), null)
+      assert.equal(book.spine.get('toc.xhtml'), null)
+      assert.equal(cover.next().href, 'titlepage.xhtml')
+      assert.equal(toc.next().href, 'titlepage.xhtml')
+      assert.equal(first.prev(), undefined)
+    })
   })
 
   describe('Archived epub', function () {

@@ -8,6 +8,13 @@ import scrollType from '../../utils/scrolltype'
 import Stage from '../helpers/stage'
 import Views from '../helpers/views'
 
+function isUnavailableSectionError(error) {
+  let status = error && error.status
+  let message = String((error && error.message) || '')
+
+  return status === 404 || /file not found|not found/i.test(message)
+}
+
 class DefaultViewManager {
   constructor(options) {
     this.name = 'default'
@@ -372,6 +379,14 @@ class DefaultViewManager {
     try {
       await view.display(this.request)
       return this.cacheReflowablePageCount(view)
+    } catch (err) {
+      if (!isUnavailableSectionError(err)) {
+        throw err
+      }
+
+      section.resourceAvailable = false
+      console.warn('Skipping unavailable reflowable section', section.href, err)
+      return 0
     } finally {
       this.views.remove(view)
       this.scrollTo(scrollLeft, 0, true)

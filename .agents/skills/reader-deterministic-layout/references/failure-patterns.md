@@ -91,6 +91,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: when injecting zoom styles into iframe content, constrain media max inline size to the current single-page content column in unscaled coordinates.
 - Verification gate: browser Playwright coverage must assert a wide image's rendered width stays within the zoomed single-page content column in double-page mode; final client layout changes still require the deterministic verifier on a Tauri client.
 
+### Non-readable navigation entries block adjacent spread navigation
+
+- Symptom: in double-page mode, TOC entries can point at non-readable resources such as missing XHTML files or `linear="no"` pages, and clicking them can leave navigation stuck at the edge of the readable flow.
+- Reproduction path: open a reflowable EPUB whose NCX contains a missing `book-toc.html` entry and a `linear="no"` cover before the first readable section.
+- Root cause: navigation entries were exposed even when they did not resolve to readable spine sections; reflowable spread measurement also rejected on missing section resources and aborted page construction.
+- Fix direction: filter navigation entries in epubjs before publishing navigation, make spine lookups and `prev`/`next` return only readable sections, and treat confirmed missing section resources as zero-page sections so adjacent navigation keeps scanning.
+- Verification gate: targeted reader checks should cover TOC filtering plus next/previous spread navigation across non-readable and missing sections; real-client layout verification is still required for final desktop spread acceptance.
+
 ## Rejected Approaches
 
 ### Visibility-only hidden panes
