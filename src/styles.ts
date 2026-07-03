@@ -7,11 +7,11 @@ import {
   bodyTextCandidateSelector,
   bodyTextSelector,
   bodyTextTypographySelector,
+  createHiddenNoteContentSelector,
   ensureBodyTextMarkers,
   notePopoverClass,
   noteTextSelector,
 } from './bodyText'
-import { createHiddenNoteContentSelector } from './noteSemantics'
 import { Settings } from './state'
 import { keys } from './utils'
 
@@ -256,10 +256,14 @@ export function updateCustomStyle(
   const { zoom } = settings
   const bodyTypography = pickBodyTypography(settings)
   const hasBodyTypography = keys(bodyTypography).length > 0
+  const needsTextMarkers = hasBodyTypography || settings.hideEndnotes
   let css = ' '
 
-  if (hasBodyTypography) {
+  if (needsTextMarkers) {
     ensureBodyTextMarkers(contents, bodyTextCache)
+  }
+
+  if (hasBodyTypography) {
     css += `${bodyTextTypographySelector} {
       ${mapToCss(bodyTypography)}
     }`

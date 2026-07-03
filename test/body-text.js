@@ -19,14 +19,35 @@ const { outputText } = ts.transpileModule(source, {
 const moduleShim = { exports: {} }
 const requireShim = (id) => {
   if (id === '@flow/epubjs') return {}
+  if (id === './noteIndex') return loadSourceModule('src/noteIndex.ts')
   if (id === './noteSemantics') {
+    const isMarker = (text) => /^\[?\d+\]?$/.test((text || '').trim())
     return {
-      isNoteMarkerText: () => false,
-      noteContentBlockSelector: '[data-flow-note-content]',
-      noteContentContainerSelector: '[data-flow-note-container]',
+      isNoteBacklinkMarkerText: (text) =>
+        isMarker((text || '').replace(/[←↩]/g, '')),
+      isNoteMarkerText: isMarker,
     }
   }
   return require(id)
+}
+
+function loadSourceModule(relativePath) {
+  const localSourcePath = path.join(__dirname, '..', relativePath)
+  const localSource = fs.readFileSync(localSourcePath, 'utf8')
+  const { outputText: localOutputText } = ts.transpileModule(localSource, {
+    compilerOptions: {
+      esModuleInterop: true,
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2019,
+    },
+    fileName: localSourcePath,
+  })
+  const compiled = new Module(localSourcePath, module)
+  compiled.filename = localSourcePath
+  compiled.paths = Module._nodeModulePaths(path.dirname(localSourcePath))
+  compiled.require = requireShim
+  compiled._compile(localOutputText, localSourcePath)
+  return compiled.exports
 }
 
 const compiledModule = new Module(sourcePath, module)
@@ -36,12 +57,16 @@ compiledModule.require = requireShim
 compiledModule._compile(outputText, sourcePath)
 moduleShim.exports = compiledModule.exports
 
+const { findReciprocalNoteItem } = loadSourceModule('src/noteIndex.ts')
+
 const {
   bodyTextAttribute,
   bodyTextInlineWrapperAttribute,
   detectBodyTextIndexes,
   ensureBodyTextMarkers,
   getBodyTextCandidates,
+  noteContentAttribute,
+  noteTextAttribute,
 } = moduleShim.exports
 
 class FakeTextNode {
@@ -120,6 +145,15 @@ class FakeElement {
     }
   }
 
+  contains(target) {
+    if (target === this) return true
+
+    return this.childNodes.some(
+      (node) =>
+        node === target || (node.nodeType === 1 && node.contains(target)),
+    )
+  }
+
   querySelector(selector) {
     return this.querySelectorAll(selector)[0]
   }
@@ -177,6 +211,21 @@ function matchesSelector(el, selector) {
     return el.getAttribute(attrName.replace('\\:', ':')) === expected
   }
 
+  const attrExists = selector.match(/^\[(.+)\]$/)
+  if (attrExists) {
+    const [, attrName] = attrExists
+    return el.getAttribute(attrName.replace('\\:', ':')) !== null
+  }
+
+  const tagAttrExists = selector.match(/^([a-z]+)\[(.+)\]$/)
+  if (tagAttrExists) {
+    const [, expectedTag, attrName] = tagAttrExists
+    return (
+      tagName === expectedTag &&
+      el.getAttribute(attrName.replace('\\:', ':')) !== null
+    )
+  }
+
   return selector === tagName
 }
 
@@ -198,9 +247,22 @@ function span(className, text) {
   return new FakeElement('span', { className }).append(text)
 }
 
+function anchor(href, text, attributes = {}) {
+  return new FakeElement('a', { attributes: { href, ...attributes } }).append(
+    text,
+  )
+}
+
 function createContents(body) {
   const document = {
     body,
+    getElementById: (id) => {
+      let result
+      walkElements(body, (el) => {
+        if (!result && el.getAttribute('id') === id) result = el
+      })
+      return result
+    },
     querySelectorAll: (selector) => body.querySelectorAll(selector),
   }
   walkElements(body, (el) => {
@@ -348,7 +410,105 @@ function testInlineWrappedBodyParagraphsAreMarkedForTypographyPiercing() {
   )
 }
 
+function testLinkedNoteContentIsMarkedStructurally() {
+  const body = new FakeElement('body')
+  const bodyParagraph = paragraph(
+    'main',
+    '这是普通正文内容，正文里的脚注引用不应该让整段被标记成注释内容。',
+    new FakeElement('sup').append(anchor('notes.html#note-1', '1')),
+  )
+  const linkedNote = new FakeElement('p', { className: 'footnote' }).append(
+    anchor('chapter.html#back-note-1', '[1]'),
+    ' 这是通过结构识别出来的注释内容。',
+  )
+  const classOnlyFootnote = paragraph(
+    'footnote',
+    '这段只有 footnote class，没有链接关系，不应该被当作可操作注释。',
+  )
+  const definitionNote = new FakeElement('dl', {
+    className: 'footnote',
+  }).append(
+    new FakeElement('dt').append(
+      '[',
+      anchor('chapter.html#back-note-2', '←2'),
+      ']',
+    ),
+    new FakeElement('dd').append(
+      new FakeElement('p').append('这是定义列表形式的注释内容。'),
+    ),
+  )
+
+  body.append(bodyParagraph, linkedNote, classOnlyFootnote, definitionNote)
+
+  const contents = createContents(body)
+  ensureBodyTextMarkers(contents)
+
+  assert.strictEqual(linkedNote.getAttribute(noteContentAttribute), 'true')
+  assert.strictEqual(linkedNote.getAttribute(noteTextAttribute), 'true')
+  assert.strictEqual(definitionNote.getAttribute(noteContentAttribute), 'true')
+  assert.strictEqual(definitionNote.getAttribute(noteTextAttribute), 'true')
+  assert.strictEqual(classOnlyFootnote.getAttribute(noteContentAttribute), null)
+  assert.strictEqual(bodyParagraph.getAttribute(noteContentAttribute), null)
+}
+
+function testReciprocalNoteItemRequiresBacklinkToSourceAnchor() {
+  const body = new FakeElement('body')
+  const source = anchor('notes.html#note-1', '[1]', { id: 'back-note-1' })
+  const sourceParagraph = new FakeElement('p').append(
+    '正文带有注释引用',
+    source,
+  )
+  const noteLink = anchor('chapter.html#back-note-1', '[1]', { id: 'note-1' })
+  const noteItem = new FakeElement('p').append(
+    noteLink,
+    ' 这是双向链接确认后的注释。',
+  )
+  const wrongBacklink = anchor('chapter.html#other-ref', '[2]', {
+    id: 'note-2',
+  })
+  const wrongNoteItem = new FakeElement('p').append(
+    wrongBacklink,
+    ' 这条没有指回正文引用。',
+  )
+  const definitionSource = anchor('notes.html#note-3', '3')
+  const definitionMarker = new FakeElement('sup', {
+    attributes: { id: 'back-note-3' },
+  }).append(definitionSource)
+  const definitionSourceParagraph = new FakeElement('p').append(
+    '正文里的定义列表注释引用',
+    definitionMarker,
+  )
+  const definitionNote = new FakeElement('dl', {
+    attributes: { id: 'note-3' },
+  }).append(
+    new FakeElement('dt').append(
+      '[',
+      anchor('chapter.html#back-note-3', '←3'),
+      ']',
+    ),
+    new FakeElement('dd').append(new FakeElement('p').append('定义列表注释。')),
+  )
+
+  body.append(
+    sourceParagraph,
+    noteItem,
+    wrongNoteItem,
+    definitionSourceParagraph,
+    definitionNote,
+  )
+  createContents(body)
+
+  assert.strictEqual(findReciprocalNoteItem(source, noteLink), noteItem)
+  assert.strictEqual(findReciprocalNoteItem(source, wrongBacklink), undefined)
+  assert.strictEqual(
+    findReciprocalNoteItem(definitionSource, definitionNote),
+    definitionNote,
+  )
+}
+
 testInlineClassAnnotationPayloadIsNotCountedAsParentBodyText()
 testSameBaseStyleParagraphsAreCountedAsBodyText()
 testInlineWrappedBodyParagraphsAreMarkedForTypographyPiercing()
+testLinkedNoteContentIsMarkedStructurally()
+testReciprocalNoteItemRequiresBacklinkToSourceAnchor()
 console.log('body-text tests passed')

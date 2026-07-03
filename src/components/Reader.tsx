@@ -71,12 +71,9 @@ import {
   useReaderSnapshot,
   type ISection,
 } from '../models/reader'
+import { findReciprocalNoteItem, getNoteIndex } from '../noteIndex'
 import { findSectionByLinkedHref, safeDecodeHref, sameHref } from '../noteLinks'
-import {
-  isNoteMarkerText,
-  NOTE_CONTAINER_PATTERN,
-  startsWithNoteMarkerText,
-} from '../noteSemantics'
+import { isNoteMarkerText } from '../noteSemantics'
 import { revealScrollbars } from '../scrollbar'
 import { getShortcutChords } from '../shortcuts'
 import {
@@ -1092,6 +1089,11 @@ interface NotePopoverState {
   content: HTMLElement
 }
 
+interface NotePopoverTypography {
+  fontSize?: string
+  lineHeight?: number
+}
+
 const initialChapterFind: ChapterFindState = {
   open: false,
   query: '',
@@ -1744,7 +1746,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
           return
         }
 
-        if (!isPotentialNoteLink(anchor)) {
+        if (!isInternalBookHashLink(anchor)) {
           const target = getBookLinkDisplayTarget(tab, anchor)
           if (target) {
             e.preventDefault()
@@ -1765,6 +1767,13 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
         closeChapterFindEvent()
         setNotePopover(undefined)
 
+        const displayTarget = getBookLinkDisplayTarget(tab, anchor)
+        if (getNoteIndex(anchor.ownerDocument).getItemForAnchor(anchor)) {
+          noteRequestId.current += 1
+          if (displayTarget) tab.display(displayTarget)
+          return
+        }
+
         const requestId = (noteRequestId.current += 1)
         let note: LinkedNoteResult | undefined
 
@@ -1772,6 +1781,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
           try {
             note = await getLinkedNote(tab, anchor, ref.current)
             if (!note) {
+              if (displayTarget) tab.display(displayTarget)
               return
             }
             if (requestId !== noteRequestId.current) {
@@ -1786,6 +1796,10 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
               note.element,
               ref.current,
               rendition,
+              {
+                fontSize: typography.fontSize,
+                lineHeight: typography.lineHeight,
+              },
             )
             if (!popover) {
               return
@@ -1819,7 +1833,15 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
     return () => {
       cleanups.forEach((cleanup) => cleanup())
     }
-  }, [active, frameWindows, rendition, tab, zenMode])
+  }, [
+    active,
+    frameWindows,
+    rendition,
+    tab,
+    typography.fontSize,
+    typography.lineHeight,
+    zenMode,
+  ])
 
   const handleFrameClick = useCallback(
     (e: MouseEvent) => {
@@ -3066,14 +3088,12 @@ const NOTE_POPOVER_TEXT_STYLE_PROPERTIES = [
   'word-spacing',
   'writing-mode',
 ]
-const INLINE_NOTE_REFERENCE_CONTEXT_PATTERN =
-  /(?:footnote|endnote|noteref|note|fn|ftn)/i
-
 function createNotePopoverState(
   anchor: HTMLAnchorElement,
   noteElement: HTMLElement,
   container: HTMLElement | null,
   rendition: unknown,
+  typography?: NotePopoverTypography,
 ): NotePopoverState | undefined {
   const win = anchor.ownerDocument.defaultView
   const frame = win?.frameElement
@@ -3108,7 +3128,7 @@ function createNotePopoverState(
   return {
     anchorRect: anchorRectInContainer,
     pageRect: getVisiblePageRect(visibleRect, anchorRectInContainer, rendition),
-    content: cloneNoteElement(noteElement, anchor),
+    content: cloneNoteElement(noteElement, anchor, typography),
   }
 }
 
@@ -3294,12 +3314,13 @@ async function getLinkedNote(
 
   const id = safeDecodeHref(hash)
   const target = await findLinkedElement(tab, anchor, path, id, container)
-  if (!target || !isLikelyNoteLink(anchor, target.element, href, id)) {
+  const noteItem = target && findReciprocalNoteItem(anchor, target.element)
+  if (!target || !noteItem) {
     target?.cleanup?.()
     return
   }
 
-  const noteElement = findNoteElement(target.element, anchor)
+  const noteElement = findNoteElement(noteItem, anchor)
   return noteElement
     ? {
         element: noteElement,
@@ -3509,43 +3530,12 @@ async function waitForNoteDocumentStyles(doc: Document) {
   await new Promise((resolve) => window.requestAnimationFrame(resolve))
 }
 
-function isPotentialNoteLink(anchor: HTMLAnchorElement) {
+function isInternalBookHashLink(anchor: HTMLAnchorElement) {
   const href = anchor.getAttribute('href')
   if (!href || href.startsWith('mailto:') || href.includes('://')) return false
 
   const [, hash = ''] = href.split('#')
-  if (!hash) return false
-
-  const attrs = [href, safeDecodeHref(hash), getNoteAttrs(anchor)].join(' ')
-  if (NOTE_CONTAINER_PATTERN.test(attrs)) return true
-
-  return (
-    hasInlineNoteReferenceContext(anchor) ||
-    !!anchor.closest('sup') ||
-    !!anchor.querySelector('sup') ||
-    isNoteMarkerText(anchor.textContent)
-  )
-}
-
-function hasInlineNoteReferenceContext(anchor: HTMLAnchorElement) {
-  let cur = anchor.parentElement
-
-  while (cur && cur !== cur.ownerDocument.body) {
-    if (isTagName(cur, 'P', 'LI', 'BLOCKQUOTE', 'DIV', 'SECTION', 'ARTICLE')) {
-      return false
-    }
-
-    if (
-      isTagName(cur, 'SUP', 'SUB') ||
-      INLINE_NOTE_REFERENCE_CONTEXT_PATTERN.test(getNoteAttrs(cur))
-    ) {
-      return true
-    }
-
-    cur = cur.parentElement
-  }
-
-  return false
+  return !!hash
 }
 
 function stripScriptsFromNoteSectionHtml(html: string) {
@@ -3775,7 +3765,7 @@ function findNoteContainer(el: HTMLElement) {
 function isNoteContainer(el: HTMLElement) {
   if (isInlineNoteMarker(el)) return false
 
-  return isTagName(el, 'ASIDE') || NOTE_CONTAINER_PATTERN.test(getNoteAttrs(el))
+  return isTagName(el, 'ASIDE') || hasStandardNoteSemantics(el)
 }
 
 function isInlineNoteMarker(el: HTMLElement) {
@@ -3789,17 +3779,33 @@ function isTagName(el: Element, ...names: string[]) {
   return names.some((name) => tagName === name)
 }
 
-function getNoteAttrs(el: HTMLElement) {
-  return [
-    el.id,
-    el.className,
-    el.getAttribute('epub:type'),
-    el.getAttribute('type'),
-    el.getAttribute('role'),
-  ].join(' ')
+function hasStandardNoteSemantics(el: HTMLElement) {
+  const role = el.getAttribute('role')
+  if (hasToken(role, 'doc-footnote', 'doc-endnote', 'doc-note', 'note')) {
+    return true
+  }
+
+  return hasToken(
+    el.getAttribute('epub:type') ?? el.getAttribute('type'),
+    'footnote',
+    'endnote',
+    'rearnote',
+    'note',
+  )
 }
 
-function cloneNoteElement(el: HTMLElement, anchor: HTMLAnchorElement) {
+function hasToken(value: string | null | undefined, ...tokens: string[]) {
+  if (!value) return false
+
+  const normalized = value.toLowerCase().split(/\s+/)
+  return tokens.some((token) => normalized.includes(token))
+}
+
+function cloneNoteElement(
+  el: HTMLElement,
+  anchor: HTMLAnchorElement,
+  typography?: NotePopoverTypography,
+) {
   const clone = cloneNoteContentElement(el)
 
   clone.querySelectorAll('script, style').forEach((node) => node.remove())
@@ -3809,8 +3815,32 @@ function cloneNoteElement(el: HTMLElement, anchor: HTMLAnchorElement) {
     }
   })
   normalizeNotePopoverContent(clone)
+  applyNotePopoverTypography(clone, typography)
 
   return clone
+}
+
+function applyNotePopoverTypography(
+  root: HTMLElement,
+  typography?: NotePopoverTypography,
+) {
+  if (!typography?.fontSize && typography?.lineHeight === undefined) return
+
+  const nodes = [root, ...Array.from(root.querySelectorAll<HTMLElement>('*'))]
+  nodes.forEach((node) => {
+    if (typography.fontSize) {
+      node.style.setProperty('font-size', typography.fontSize, 'important')
+    }
+    if (typography.lineHeight !== undefined) {
+      node.style.setProperty(
+        'line-height',
+        String(typography.lineHeight),
+        'important',
+      )
+    } else if (typography.fontSize) {
+      node.style.setProperty('line-height', 'normal', 'important')
+    }
+  })
 }
 
 function cloneNoteContentElement(el: HTMLElement) {
@@ -4076,42 +4106,6 @@ function getNextImagePreviewZoomOut(current: number) {
     const step = IMAGE_PREVIEW_ZOOM_STEPS[index]
     if (step !== undefined && step < current - 0.001) return step
   }
-}
-
-function isLikelyNoteLink(
-  anchor: HTMLAnchorElement,
-  target: HTMLElement,
-  href: string,
-  id: string,
-) {
-  const noteContainer = findNoteContainer(target)
-  const item = target.closest('li')
-  const attrs = [
-    href,
-    id,
-    getNoteAttrs(anchor),
-    getNoteAttrs(target),
-    noteContainer && getNoteAttrs(noteContainer),
-  ].join(' ')
-  const anchorLooksLikeNote =
-    !!anchor.closest('sup') ||
-    !!anchor.querySelector('sup') ||
-    startsWithNoteMarkerText(anchor.textContent)
-
-  if (NOTE_CONTAINER_PATTERN.test(attrs)) return true
-  if (anchorLooksLikeNote && startsWithNoteMarkerText(target.textContent)) {
-    return true
-  }
-  if (anchorLooksLikeNote && (noteContainer || target.closest('aside'))) {
-    return true
-  }
-  if (isNoteMarkerText(anchor.textContent) && noteContainer) {
-    return true
-  }
-  if (target.closest('aside')) return true
-  if (findAdjacentBacklinkedNoteElement(target, anchor)) return true
-
-  return item?.parentElement?.tagName === 'OL'
 }
 
 interface ReaderPaneHeaderProps {

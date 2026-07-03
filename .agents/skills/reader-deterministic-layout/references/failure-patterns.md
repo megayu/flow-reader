@@ -139,6 +139,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: keep body detection at paragraph granularity, mark only selected body paragraphs that have no direct text and only direct text-bearing inline wrapper children, then pierce typography CSS to those direct children.
 - Verification gate: focused body-text tests must prove inline-wrapped paragraphs receive the wrapper marker without expanding detection to arbitrary descendant inline nodes; final desktop layout acceptance still requires real-client verification when claiming visual/page-count stability.
 
+### Cross-section note popovers keep author font size
+
+- Symptom: after increasing reader font size, note popovers opened from cross-section footnotes can stay at the EPUB author's smaller footnote size.
+- Reproduction path: open an EPUB whose body note reference links to a split footnote section, increase typography font size, then open a footnote whose source CSS sets the note block to `0.75em` or `0.8em`.
+- Root cause: Flow Reader clones popover content from the linked note element. For cross-section notes, the hidden render path loads the raw section document and does not pass through the active rendition typography injection before computed styles are copied.
+- Fix direction: identify note content from linked note/backlink structure instead of expanding class or id term lists, and apply the active reader font size to the cloned popover content tree after normalizing the note clone.
+- Verification gate: focused note marker and body-text tests must cover backlink-marked note content; UI or client verification should confirm the popover font changes with the reader typography setting.
+
 ### Oversized NCX-anchored spine section
 
 - Symptom: opening a text-heavy EPUB can stall and sharply increase memory even when the book has many visible TOC chapters. A malformed implementation of this normalization can also make page turns jump back to the preface or advance only through the last split of each volume.

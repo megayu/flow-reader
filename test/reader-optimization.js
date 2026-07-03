@@ -36,13 +36,11 @@ const styles = loadTsModule('src/styles.ts', {
   './bodyText': {
     bodyTextCandidateSelector: 'p',
     bodyTextSelector: '[data-flow-body-text]',
+    createHiddenNoteContentSelector: () => '[data-flow-note-content="true"]',
     ensureBodyTextMarkers: () => undefined,
     getBodyTypographyBaseline: () => ({}),
     notePopoverClass: 'flow-note-popover',
     noteTextSelector: '[data-flow-note-text]',
-  },
-  './noteSemantics': {
-    createHiddenNoteContentSelector: () => 'aside[type*="note"]',
   },
   './state': {},
   './utils': {
@@ -315,18 +313,9 @@ function testNoteMarkersSupportCjkBrackets() {
     noteSemantics.startsWithNoteMarkerText('[note].正文'),
     false,
   )
-  const hiddenNoteSelector =
-    noteSemantics.createHiddenNoteContentSelector('flow-note-popover')
-  assert.match(
-    hiddenNoteSelector,
-    /:is\([^)]*\bp\b[^)]*\):is\([^)]*\[class\*="note" i\]/,
-    'hidden note selector must use the shared note semantics',
-  )
-  assert.match(
-    hiddenNoteSelector,
-    /:is\([^)]*\bdl\b[^)]*\):is\([^)]*\[class\*="note" i\]/,
-    'definition-list footnotes must use the shared note semantics',
-  )
+  assert.strictEqual(noteSemantics.isNoteBacklinkMarkerText('[←1]'), true)
+  assert.strictEqual(noteSemantics.isNoteBacklinkMarkerText('←12'), true)
+  assert.strictEqual(noteSemantics.isNoteBacklinkMarkerText('[note]'), false)
 }
 
 function testDuplicateIllustrationFilterHidesFirstAndRepeatedCandidates() {

@@ -1,10 +1,7 @@
 import { Contents } from '@flow/epubjs'
 
-import {
-  isNoteMarkerText,
-  noteContentBlockSelector,
-  noteContentContainerSelector,
-} from './noteSemantics'
+import { getNoteIndex } from './noteIndex'
+import { isNoteMarkerText } from './noteSemantics'
 
 export const notePopoverClass = 'flow-note-popover'
 
@@ -24,7 +21,16 @@ export const bodyTextCandidateSelector = 'p, blockquote > p, div'
 const bodyTextDetectedAttribute = 'data-flow-body-text-detected'
 export const noteTextAttribute = 'data-flow-note-text'
 export const noteTextSelector = `[${noteTextAttribute}="true"]`
+export const noteContentAttribute = 'data-flow-note-content'
+export const noteContentSelector = `[${noteContentAttribute}="true"]`
 const noteTextDetectedAttribute = 'data-flow-note-text-detected'
+
+export function createHiddenNoteContentSelector(excludedClass: string) {
+  return [
+    `body > ${noteContentSelector}`,
+    `body > :not(.${excludedClass}) ${noteContentSelector}`,
+  ].join(',\n')
+}
 
 export interface BodyTextDetectionCacheEntry {
   candidateCount: number
@@ -229,16 +235,16 @@ function applyNoteTextMarkers(document: Document) {
   document
     .querySelectorAll<HTMLElement>(`[${noteTextAttribute}]`)
     .forEach((el) => el.removeAttribute(noteTextAttribute))
+  document
+    .querySelectorAll<HTMLElement>(`[${noteContentAttribute}]`)
+    .forEach((el) => el.removeAttribute(noteContentAttribute))
 
-  const candidates = [
-    ...document.querySelectorAll<HTMLElement>(noteContentBlockSelector),
-    ...getBodyTextCandidates(document).filter(hasNoteBacklinkContentAncestor),
-  ]
-  const seen = new Set<HTMLElement>()
+  const noteIndex = getNoteIndex(document)
 
-  candidates.forEach((el) => {
-    if (seen.has(el)) return
-    seen.add(el)
+  noteIndex.getHideTargets().forEach((el) => {
+    el.setAttribute(noteContentAttribute, 'true')
+  })
+  noteIndex.getTextTargets().forEach((el) => {
     el.setAttribute(noteTextAttribute, 'true')
   })
 }
@@ -266,7 +272,7 @@ function isFactuallyExcludedElement(el: HTMLElement) {
     !!el.closest(
       [
         `.${notePopoverClass}`,
-        noteContentContainerSelector,
+        noteContentSelector,
         'table',
         'thead',
         'tbody',

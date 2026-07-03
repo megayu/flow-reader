@@ -12,85 +12,7 @@ const NOTE_WRAPPED_NUMBER_MARKER_PREFIX_PATTERN = new RegExp(
 )
 const NOTE_MARKER_OPENERS = '([〔［（【〚〖'
 const NOTE_MARKER_CLOSERS = ')]〕］）】〛〗'
-
-export const NOTE_CONTAINER_PATTERN =
-  /(?:footnote|endnote|rearnote|noteref|note|annotation|comment|reference|fn|ftn)/i
-
-export const noteContentAttributeSelectors = [
-  '[role="doc-footnote"]',
-  '[role="doc-footnotes"]',
-  '[role="doc-endnote"]',
-  '[role="doc-endnotes"]',
-  '[role="doc-note"]',
-  '[role="doc-notes"]',
-  '[role="note"]',
-  '[epub\\:type*="footnote"]',
-  '[epub\\:type*="footnotes"]',
-  '[epub\\:type*="endnote"]',
-  '[epub\\:type*="endnotes"]',
-  '[epub\\:type*="rearnote"]',
-  '[epub\\:type*="rearnotes"]',
-  '[epub\\:type*="note"]',
-  '[epub\\:type*="notes"]',
-  '[epub\\:type*="annotation"]',
-  '[epub\\:type*="comment"]',
-  '[epub\\:type*="reference"]',
-  '[type*="footnote"]',
-  '[type*="footnotes"]',
-  '[type*="endnote"]',
-  '[type*="endnotes"]',
-  '[type*="rearnote"]',
-  '[type*="rearnotes"]',
-  '[type*="note"]',
-  '[type*="notes"]',
-  '[type*="annotation"]',
-  '[type*="comment"]',
-  '[type*="reference"]',
-  '[class*="note" i]',
-  '[class*="annotation" i]',
-  '[class*="comment" i]',
-  '[class*="reference" i]',
-  '[id*="note" i]',
-  '[id*="annotation" i]',
-  '[id*="comment" i]',
-  '[id*="reference" i]',
-]
-
-export const noteContentContainerSelector =
-  noteContentAttributeSelectors.join(',\n')
-
-const noteContentBlockTags = [
-  'aside',
-  'section',
-  'div',
-  'ol',
-  'ul',
-  'li',
-  'dl',
-  'dt',
-  'dd',
-  'p',
-]
-
-export const noteContentBlockSelector =
-  createNoteContentBlockSelectors().join(',\n')
-
-export function createNoteContentBlockSelectors() {
-  return [
-    `:is(${noteContentBlockTags.join(', ')}):is(${noteContentAttributeSelectors.join(', ')})`,
-  ]
-}
-
-export function createHiddenNoteContentSelector(excludedClass: string) {
-  const selectors = createNoteContentBlockSelectors()
-
-  return [
-    ...selectors.map((selector) => `body > ${selector}`),
-    ...selectors.map(
-      (selector) => `body > :not(.${excludedClass}) ${selector}`,
-    ),
-  ].join(',\n')
-}
+const NOTE_BACKLINK_MARKER_PREFIX_PATTERN = /^[←↩↵↑\s]+/
 
 export function isNoteMarkerText(text: string | null | undefined) {
   const marker = (text ?? '').trim()
@@ -100,6 +22,15 @@ export function isNoteMarkerText(text: string | null | undefined) {
 
   const normalized = stripNoteMarkerWrapper(marker)
   return NOTE_NUMBER_MARKER_PATTERN.test(normalized)
+}
+
+export function isNoteBacklinkMarkerText(text: string | null | undefined) {
+  const marker = stripNoteMarkerWrapper(text ?? '').replace(
+    NOTE_BACKLINK_MARKER_PREFIX_PATTERN,
+    '',
+  )
+
+  return isNoteMarkerText(marker)
 }
 
 export function startsWithNoteMarkerText(text: string | null | undefined) {
