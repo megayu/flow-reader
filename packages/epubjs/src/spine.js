@@ -1,11 +1,22 @@
 import EpubCFI from './epubcfi'
 import Section from './section'
 import Hook from './utils/hook'
+import { decodeHref } from './utils/href'
 import {
   replaceBase,
   replaceCanonical,
   replaceMeta,
 } from './utils/replacements'
+
+function lookupHrefIndex(index, href) {
+  if (!href) {
+    return
+  }
+
+  if (Object.prototype.hasOwnProperty.call(index, href)) {
+    return index[href]
+  }
+}
 
 /**
  * A collection of Spine Items
@@ -140,7 +151,10 @@ class Spine {
     } else if (typeof target === 'string') {
       // Remove fragments
       target = target.split('#')[0]
-      index = this.spineByHref[target] || this.spineByHref[encodeURI(target)]
+      index =
+        lookupHrefIndex(this.spineByHref, target) ??
+        lookupHrefIndex(this.spineByHref, decodeHref(target)) ??
+        lookupHrefIndex(this.spineByHref, encodeURI(target))
     }
 
     return this.isReadable(this.spineItems[index])

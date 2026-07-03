@@ -6,6 +6,7 @@ import {
   indexOfSorted,
   locationOf,
 } from './utils/core'
+import { decodeHref } from './utils/href'
 
 /**
  * Page List Parser
@@ -104,7 +105,7 @@ class PageList {
     var pageText = navLabelText.textContent
     var content = qs(item, 'content')
 
-    var href = content.getAttribute('src')
+    var href = decodeHref(content.getAttribute('src'))
     var page = parseInt(pageText, 10)
 
     return {
@@ -121,7 +122,7 @@ class PageList {
    */
   item(item) {
     var content = qs(item, 'a'),
-      href = content.getAttribute('href') || '',
+      href = decodeHref(content.getAttribute('href') || ''),
       text = content.textContent || '',
       page = parseInt(text),
       isCfi = href.indexOf('epubcfi'),

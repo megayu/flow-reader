@@ -1,4 +1,5 @@
 import { qs, qsa, qsp, indexOfElementNode } from './utils/core'
+import { decodeHref } from './utils/href'
 
 /**
  * Open Packaging Format Parser
@@ -128,7 +129,7 @@ class Packaging {
     //-- Create an object with the id as key
     items.forEach(function (item) {
       var id = item.getAttribute('id'),
-        href = item.getAttribute('href') || '',
+        href = decodeHref(item.getAttribute('href') || ''),
         type = item.getAttribute('media-type') || '',
         overlay = item.getAttribute('media-overlay') || '',
         properties = item.getAttribute('properties') || ''
@@ -225,7 +226,7 @@ class Packaging {
     // Should catch nav regardless of order
     // var node = manifestNode.querySelector("item[properties$='nav'], item[properties^='nav '], item[properties*=' nav ']");
     var node = qsp(manifestNode, 'item', { properties: 'nav' })
-    return node ? node.getAttribute('href') : false
+    return node ? decodeHref(node.getAttribute('href')) : false
   }
 
   /**
@@ -254,7 +255,7 @@ class Packaging {
       }
     }
 
-    return node ? node.getAttribute('href') : false
+    return node ? decodeHref(node.getAttribute('href')) : false
   }
 
   /**
@@ -272,7 +273,7 @@ class Packaging {
     // Try parsing cover with epub 3.
     // var node = packageXml.querySelector("item[properties='cover-image']");
     var node = qsp(packageXml, 'item', { properties: 'cover-image' })
-    if (node) return node.getAttribute('href')
+    if (node) return decodeHref(node.getAttribute('href'))
 
     // Fallback to epub 2.
     var metaCover = qsp(packageXml, 'meta', { name: 'cover' })
@@ -281,7 +282,7 @@ class Packaging {
       var coverId = metaCover.getAttribute('content')
       // var cover = packageXml.querySelector("item[id='" + coverId + "']");
       var cover = packageXml.getElementById(coverId)
-      return cover ? cover.getAttribute('href') : ''
+      return cover ? decodeHref(cover.getAttribute('href')) : ''
     } else {
       return false
     }
@@ -345,10 +346,13 @@ class Packaging {
     })
 
     json.resources.forEach((item, index) => {
-      this.manifest[index] = item
+      this.manifest[index] = {
+        ...item,
+        href: decodeHref(item.href),
+      }
 
       if (item.rel && item.rel[0] === 'cover') {
-        this.coverPath = item.href
+        this.coverPath = decodeHref(item.href)
       }
     })
 

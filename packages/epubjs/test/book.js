@@ -65,9 +65,9 @@ describe('Book', function () {
       assert.equal(book.navigation.toc[0].href, 'Text/chapter.xhtml')
     })
 
-    it('keeps NCX links decoded differently from encoded spine hrefs', async function () {
+    it('decodes package and NCX hrefs before resolving sections', async function () {
       const zip = new JSZip()
-      const sectionHref = 'Text/%2A%3Achapter%3Aone.xhtml'
+      const sectionHref = 'Text%2Fchapter%20one.xhtml'
       const decodedSectionHref = decodeURIComponent(sectionHref)
 
       zip.file('mimetype', 'application/epub+zip')
@@ -105,7 +105,7 @@ describe('Book', function () {
           <navMap>
             <navPoint id="chapter" playOrder="1">
               <navLabel><text>Decoded Chapter</text></navLabel>
-              <content src="${decodedSectionHref}"/>
+              <content src="${sectionHref}"/>
             </navPoint>
           </navMap>
         </ncx>`,
@@ -131,6 +131,8 @@ describe('Book', function () {
 
         assert.equal(book.navigation.toc.length, 1)
         assert.equal(book.navigation.toc[0].label, 'Decoded Chapter')
+        assert.equal(book.navigation.toc[0].href, decodedSectionHref)
+        assert.equal(book.spine.spineItems[0].href, decodedSectionHref)
 
         const output = await book.spine.spineItems[0].render(
           book.load.bind(book),

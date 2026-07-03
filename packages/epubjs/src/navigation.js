@@ -5,6 +5,7 @@ import {
   filterChildren,
   getParentByTagName,
 } from './utils/core'
+import { decodeHref } from './utils/href'
 
 function isListElement(element) {
   if (!element) return false
@@ -250,7 +251,7 @@ class Navigation {
       return
     }
 
-    let src = content.getAttribute('href') || ''
+    let src = decodeHref(content.getAttribute('href') || '')
 
     if (!id) {
       id = src
@@ -315,7 +316,7 @@ class Navigation {
     let type =
       content.getAttributeNS('http://www.idpf.org/2007/ops', 'type') ||
       undefined
-    let href = content.getAttribute('href') || ''
+    let href = decodeHref(content.getAttribute('href') || '')
     let text = content.textContent || ''
 
     return {
@@ -364,7 +365,7 @@ class Navigation {
   ncxItem(item) {
     var id = item.getAttribute('id') || false,
       content = qs(item, 'content'),
-      src = content.getAttribute('src'),
+      src = decodeHref(content.getAttribute('src')),
       navLabel = qs(item, 'navLabel'),
       text = navLabel.textContent ? navLabel.textContent : '',
       subitems = [],
