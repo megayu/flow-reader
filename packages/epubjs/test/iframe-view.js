@@ -27,6 +27,49 @@ function createView({ pageCount = 1, direction = 'ltr', rect }) {
   return view
 }
 
+function createTitleImageView({
+  blockWidth = 100,
+  marginBottom = -100,
+  withHeading = true,
+} = {}) {
+  const view = createView({})
+  const body = document.createElement('body')
+  const block = document.createElement('div')
+  const image = document.createElement('img')
+
+  image.setAttribute('src', '../Images/ch.png')
+  block.appendChild(image)
+  body.appendChild(block)
+
+  if (withHeading) {
+    const heading = document.createElement('h2')
+    heading.textContent = '第一章'
+    body.appendChild(heading)
+  }
+
+  view.contents = {
+    content: body,
+    document,
+    window: {
+      getComputedStyle(element) {
+        if (element === block) {
+          return {
+            marginBottom: `${marginBottom}px`,
+            width: `${blockWidth}px`,
+          }
+        }
+
+        return {
+          marginBottom: '0px',
+          width: '500px',
+        }
+      },
+    },
+  }
+
+  return { block, image, view }
+}
+
 describe('IframeView first page positioning', function () {
   it('centers clipped first-page content for single-page sections', function () {
     const view = createView({
@@ -63,6 +106,42 @@ describe('IframeView first page positioning', function () {
 
     view.clearSinglePageFirstPageOffset()
     assert.equal(view.contents.content.style.translate, '')
+  })
+})
+
+describe('IframeView leading title image fitting', function () {
+  it('clamps narrow negative-margin title images before measurement', function () {
+    const { image, view } = createTitleImageView()
+
+    assert.equal(view.fitLeadingTitleImagesBeforeMeasure(), true)
+    assert.equal(
+      image.getAttribute('data-epubjs-leading-title-image-clamped'),
+      'true',
+    )
+    assert.equal(image.style.getPropertyValue('max-width'), '100%')
+    assert.equal(image.style.getPropertyPriority('max-width'), 'important')
+    assert.equal(image.style.getPropertyValue('height'), 'auto')
+    assert.equal(image.style.getPropertyPriority('height'), 'important')
+  })
+
+  it('does not clamp normal-width leading images', function () {
+    const { image, view } = createTitleImageView({ blockWidth: 360 })
+
+    assert.equal(view.fitLeadingTitleImagesBeforeMeasure(), false)
+    assert.equal(
+      image.hasAttribute('data-epubjs-leading-title-image-clamped'),
+      false,
+    )
+  })
+
+  it('does not clamp leading images without following headings', function () {
+    const { image, view } = createTitleImageView({ withHeading: false })
+
+    assert.equal(view.fitLeadingTitleImagesBeforeMeasure(), false)
+    assert.equal(
+      image.hasAttribute('data-epubjs-leading-title-image-clamped'),
+      false,
+    )
   })
 })
 

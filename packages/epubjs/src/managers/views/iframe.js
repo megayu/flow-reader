@@ -16,6 +16,10 @@ import {
 } from '../../utils/core'
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
+const LEADING_TITLE_IMAGE_MAX_SCAN = 10
+const LEADING_TITLE_IMAGE_HEADING_SCAN = 8
+const LEADING_TITLE_IMAGE_MAX_BLOCK_WIDTH = 180
+const LEADING_TITLE_IMAGE_ATTRIBUTE = 'data-epubjs-leading-title-image-clamped'
 
 class WavyUnderline extends Highlight {
   render() {
@@ -104,6 +108,51 @@ function wavyUnderlinePath(x, width, y, amplitude, period) {
   }
 
   return path
+}
+
+function textLength(value) {
+  return value ? value.replace(/\s+/g, '').length : 0
+}
+
+function elementName(element) {
+  return element.localName.toUpperCase()
+}
+
+function numericCssValue(value) {
+  if (!value) return undefined
+
+  let match = String(value).match(/-?\d+(?:\.\d+)?/)
+  if (!match) return undefined
+
+  let numeric = Number(match[0])
+  return Number.isFinite(numeric) ? numeric : undefined
+}
+
+function isHeadingElement(element) {
+  return /^H[1-6]$/.test(elementName(element))
+}
+
+function nextHeadingTextLength(element) {
+  let sibling = element.nextElementSibling
+  let scanned = 0
+
+  while (sibling && scanned < LEADING_TITLE_IMAGE_HEADING_SCAN) {
+    if (isHeadingElement(sibling)) {
+      return textLength(sibling.textContent)
+    }
+
+    let heading = sibling.querySelector('h1,h2,h3,h4,h5,h6')
+    if (heading) {
+      return textLength(heading.textContent)
+    }
+
+    if (textLength(sibling.textContent)) {
+      scanned += 1
+    }
+    sibling = sibling.nextElementSibling
+  }
+
+  return 0
 }
 
 class IframeView {
@@ -297,6 +346,7 @@ class IframeView {
 
           // apply the layout function to the contents
           this.layout.format(this.contents, this.section, this.axis)
+          this.fitLeadingTitleImagesBeforeMeasure()
           this.fitMediaBeforeMeasure()
 
           // Listen for events that require an expansion of the iframe
@@ -659,6 +709,65 @@ class IframeView {
 
     content.style.setProperty('translate', offset + 'px 0')
     this._singlePageFirstPageOffset = offset
+  }
+
+  fitLeadingTitleImagesBeforeMeasure() {
+    if (
+      !this.contents ||
+      !this.contents.content ||
+      !this.contents.window ||
+      !this.layout ||
+      this.layout.name === 'pre-paginated'
+    ) {
+      return false
+    }
+
+    let root = this.contents.content
+    let children = Array.prototype.slice
+      .call(root.children || [], 0, LEADING_TITLE_IMAGE_MAX_SCAN)
+      .filter((element) => element && element.querySelector)
+    let changed = false
+
+    for (let i = 0; i < children.length; i++) {
+      let block = children[i]
+      let image =
+        elementName(block) === 'IMG'
+          ? block
+          : block.querySelector(':scope > img, img')
+
+      if (!image || image.getAttribute(LEADING_TITLE_IMAGE_ATTRIBUTE)) {
+        continue
+      }
+
+      if (textLength(block.textContent)) {
+        continue
+      }
+
+      if (nextHeadingTextLength(block) <= 0) {
+        continue
+      }
+
+      let style = this.contents.window.getComputedStyle(block, null)
+      let blockWidth = numericCssValue(style && style.width)
+      let marginBottom = numericCssValue(style && style.marginBottom) || 0
+      if (
+        blockWidth === undefined ||
+        blockWidth <= 0 ||
+        blockWidth > LEADING_TITLE_IMAGE_MAX_BLOCK_WIDTH ||
+        marginBottom >= -1
+      ) {
+        continue
+      }
+
+      image.setAttribute(LEADING_TITLE_IMAGE_ATTRIBUTE, 'true')
+      image.style.setProperty('max-width', '100%', 'important')
+      image.style.setProperty('max-inline-size', '100%', 'important')
+      image.style.setProperty('height', 'auto', 'important')
+      image.style.setProperty('box-sizing', 'border-box', 'important')
+      changed = true
+    }
+
+    return changed
   }
 
   fitMediaBeforeMeasure() {
