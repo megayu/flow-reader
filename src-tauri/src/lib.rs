@@ -1,5 +1,6 @@
 use std::{
     path::{Path, PathBuf},
+    process::Command,
     sync::Mutex,
 };
 
@@ -57,6 +58,60 @@ fn toggle_devtools(window: tauri::WebviewWindow) {
     {
         let _ = window;
     }
+}
+
+fn valid_external_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    !url.is_empty()
+        && url.len() <= 8192
+        && !url.chars().any(char::is_control)
+        && (lower.starts_with("http://")
+            || lower.starts_with("https://")
+            || lower.starts_with("mailto:"))
+}
+
+fn spawn_external_url_command(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        return Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", url])
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("failed to open external URL: {error}"));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        return Command::new("open")
+            .arg(url)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("failed to open external URL: {error}"));
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        return Command::new("xdg-open")
+            .arg(url)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("failed to open external URL: {error}"));
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", unix)))]
+    {
+        let _ = url;
+        Err("opening external URLs is not supported on this platform".to_string())
+    }
+}
+
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    if !valid_external_url(&url) {
+        return Err("only http, https, and mailto URLs can be opened externally".to_string());
+    }
+
+    spawn_external_url_command(&url)
 }
 
 fn collect_epub_paths<I, P>(paths: I) -> Vec<PathBuf>
@@ -145,6 +200,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             is_devtools_enabled,
             list_system_fonts,
+            open_external_url,
             take_pending_open_paths,
             toggle_devtools,
             storage::list_books,

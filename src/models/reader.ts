@@ -27,6 +27,7 @@ import {
   searchBookText,
   unloadBookSearchText,
 } from '../db'
+import { openSupportedExternalUrl } from '../externalLink'
 import { createId } from '../id'
 import { normalizeHrefPath, sameHref } from '../noteLinks'
 import {
@@ -3140,6 +3141,11 @@ export class BookTab extends BaseTab {
     })
     this.rendition.on('removed', () => {
       if (!this.syncFrames()) this.bumpViewVersion()
+    })
+    this.rendition.on('externalLinkClicked', (href: string) => {
+      void openSupportedExternalUrl(href).catch((error) => {
+        console.error(error)
+      })
     })
 
     try {

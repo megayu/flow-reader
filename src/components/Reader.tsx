@@ -49,6 +49,10 @@ import {
   type EpubImportResult,
 } from '../db'
 import { isDevtoolsShortcutEnabled, toggleDevtools } from '../devtools'
+import {
+  isSupportedExternalUrl,
+  openSupportedExternalUrl,
+} from '../externalLink'
 import { handleFiles } from '../file'
 import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
@@ -688,6 +692,21 @@ function useFrameEvent<K extends keyof WindowEventMap>(
 
 function preventContextMenu(e: Event) {
   e.preventDefault()
+}
+
+function consumeExternalLinkClick(e: MouseEvent, anchor: HTMLAnchorElement) {
+  const href = anchor.getAttribute('href')?.trim()
+  if (!href || !isSupportedExternalUrl(href)) return false
+
+  e.preventDefault()
+  e.stopPropagation()
+  e.stopImmediatePropagation()
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+    void openSupportedExternalUrl(href).catch((error) => {
+      console.error(error)
+    })
+  }
+  return true
 }
 
 function getSelectedText(windows: readonly Window[]) {
@@ -1719,6 +1738,12 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
           return
         }
 
+        if (consumeExternalLinkClick(e, anchor)) {
+          noteRequestId.current += 1
+          setNotePopover(undefined)
+          return
+        }
+
         if (!isPotentialNoteLink(anchor)) {
           const target = getBookLinkDisplayTarget(tab, anchor)
           if (target) {
@@ -1804,6 +1829,8 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
       for (const el of e.composedPath() as any) {
         // `instanceof` may not work in iframe
         if (el.tagName === 'A' && el.href) {
+          if (consumeExternalLinkClick(e, el)) return
+
           tab.showPrevLocation()
           return
         }

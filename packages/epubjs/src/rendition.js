@@ -1111,7 +1111,12 @@ class Rendition {
    */
   handleLinks(contents) {
     if (contents) {
-      contents.on(EVENTS.CONTENTS.LINK_CLICKED, (href) => {
+      contents.on(EVENTS.CONTENTS.LINK_CLICKED, (href, meta) => {
+        if (meta && meta.external) {
+          this.emit(EVENTS.RENDITION.EXTERNAL_LINK_CLICKED, href)
+          return
+        }
+
         let relative = this.book.path.relative(href)
         this.display(relative).catch((err) => {
           this.emit(EVENTS.RENDITION.DISPLAY_ERROR, err)

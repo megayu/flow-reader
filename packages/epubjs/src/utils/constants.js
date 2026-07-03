@@ -60,6 +60,7 @@ export const EVENTS = {
     ORIENTATION_CHANGE: 'orientationchange',
     LOCATION_CHANGED: 'locationChanged',
     RELOCATED: 'relocated',
+    EXTERNAL_LINK_CLICKED: 'externalLinkClicked',
     MARK_CLICKED: 'markClicked',
     SELECTED: 'selected',
     LAYOUT: 'layout',

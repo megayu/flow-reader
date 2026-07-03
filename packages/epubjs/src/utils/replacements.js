@@ -2,6 +2,23 @@ import { qs, qsa } from './core'
 import Path from './path'
 import Url from './url'
 
+function isSupportedExternalHref(href) {
+  return /^(?:https?:\/\/|mailto:)/i.test(href)
+}
+
+function isPrimaryClick(event) {
+  return event && event.button === 0
+}
+
+function isModifiedClick(event) {
+  return (
+    event &&
+    (event.metaKey || event.ctrlKey) &&
+    !event.altKey &&
+    !event.shiftKey
+  )
+}
+
 export function replaceBase(doc, section) {
   var base
   var head
@@ -84,14 +101,35 @@ export function replaceLinks(contents, fn) {
   var replaceLink = function (link) {
     var href = link.getAttribute('href')
 
-    if (href.indexOf('mailto:') === 0) {
-      return
-    }
-
     var absolute = href.indexOf('://') > -1
+    var supportedExternal = isSupportedExternalHref(href)
 
-    if (absolute) {
-      link.setAttribute('target', '_blank')
+    if (absolute || supportedExternal) {
+      if (absolute) {
+        link.setAttribute('target', '_blank')
+      }
+      link.onclick = function (event) {
+        if (!supportedExternal || !isPrimaryClick(event)) {
+          return
+        }
+
+        event.preventDefault()
+        event.stopPropagation()
+        if (event.stopImmediatePropagation) {
+          event.stopImmediatePropagation()
+        }
+
+        if (isModifiedClick(event)) {
+          fn(href, {
+            button: event.button,
+            ctrlKey: event.ctrlKey,
+            external: true,
+            metaKey: event.metaKey,
+          })
+        }
+
+        return false
+      }
     } else {
       var linkUrl
       try {
