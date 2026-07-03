@@ -464,6 +464,73 @@ function testDuplicateIllustrationFilterRebuildsFromHiddenDuplicates() {
   })
 }
 
+function testDuplicateIllustrationFilterRestoresUniqueLeadingTitleArt() {
+  const section = {
+    images: [
+      {
+        hiddenByDefault: true,
+        index: 0,
+        reason: 'titleArt',
+        src: '../Images/chapter-portrait.jpg',
+      },
+    ],
+  }
+
+  const filter = imageFilters.createDuplicateIllustrationFilter()
+  assert.strictEqual(
+    typeof filter.finalize,
+    'function',
+    'Expected duplicate illustration filter to expose full-scan finalization',
+  )
+  assert.strictEqual(filter.applyToSection(section), false)
+  assert.strictEqual(filter.finalize(), true)
+  assert.deepStrictEqual(section.images[0], {
+    hiddenByDefault: false,
+    index: 0,
+    src: '../Images/chapter-portrait.jpg',
+  })
+}
+
+function testDuplicateIllustrationFilterKeepsRepeatedLeadingTitleArtHidden() {
+  const firstSection = {
+    images: [
+      {
+        hiddenByDefault: true,
+        index: 0,
+        reason: 'titleArt',
+        src: '../Images/chapter-start.png',
+      },
+    ],
+  }
+  const secondSection = {
+    images: [
+      {
+        hiddenByDefault: true,
+        index: 0,
+        reason: 'titleArt',
+        src: '../Images/chapter-start.png',
+      },
+    ],
+  }
+
+  const filter = imageFilters.createDuplicateIllustrationFilter()
+  assert.strictEqual(filter.applyToSection(firstSection), false)
+  assert.strictEqual(filter.applyToSection(secondSection), false)
+  assert.strictEqual(filter.finalize(), false)
+  assert.deepStrictEqual(firstSection.images[0], {
+    hiddenByDefault: true,
+    index: 0,
+    reason: 'titleArt',
+    src: '../Images/chapter-start.png',
+  })
+  assert.deepStrictEqual(secondSection.images[0], {
+    hiddenByDefault: true,
+    index: 0,
+    reason: 'titleArt',
+    src: '../Images/chapter-start.png',
+  })
+}
+
 testTextAlignIsNonPaginationStyle()
 testZoomBodyStylesSkipNonNumericValues()
 testZoomBodyStylesCanUseCurrentLayout()
@@ -475,4 +542,6 @@ testNoteMarkersSupportCjkBrackets()
 testDuplicateIllustrationFilterHidesFirstAndRepeatedCandidates()
 testDuplicateIllustrationFilterIgnoresAlreadyHiddenImages()
 testDuplicateIllustrationFilterRebuildsFromHiddenDuplicates()
+testDuplicateIllustrationFilterRestoresUniqueLeadingTitleArt()
+testDuplicateIllustrationFilterKeepsRepeatedLeadingTitleArtHidden()
 console.log('reader optimization tests passed')
