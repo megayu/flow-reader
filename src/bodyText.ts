@@ -407,10 +407,10 @@ function isStructuralDiv(el: HTMLElement) {
 function createBodyTextSignature(el: HTMLElement, style: CSSStyleDeclaration) {
   return [
     el.tagName.toLowerCase(),
-    normalizedClassName(el),
     style.fontFamily,
     style.fontSize,
     style.fontWeight,
+    style.fontStyle,
     style.lineHeight,
     style.color,
     style.backgroundColor,
@@ -418,8 +418,6 @@ function createBodyTextSignature(el: HTMLElement, style: CSSStyleDeclaration) {
     style.textIndent,
     style.marginLeft,
     style.marginRight,
-    style.marginTop,
-    style.marginBottom,
   ].join('|')
 }
 

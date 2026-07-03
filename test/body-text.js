@@ -99,6 +99,7 @@ class FakeElement {
       display: 'block',
       fontFamily: 'serif',
       fontSize: '16px',
+      fontStyle: 'normal',
       fontWeight: '400',
       lineHeight: '24px',
       marginBottom: '0px',
@@ -295,33 +296,37 @@ function testInlineClassAnnotationPayloadIsNotCountedAsParentBodyText() {
     ),
   ]
   const annotationParagraphs = [
-    paragraph(
+    styledParagraph(
       'commentary-title',
       '校记',
+      { fontWeight: '700' },
       span(
         'commentary-body',
         '这里是一大段夹在子元素里的说明文字，它属于注释正文，不应该让父级短标题段落被识别为正文。',
       ),
     ),
-    paragraph(
+    styledParagraph(
       'commentary-title',
       '笺注',
+      { fontWeight: '700' },
       span(
         'commentary-body',
         '这里还是一大段夹在子元素里的说明文字，用来模拟注释文本数量很多但父级本身很短的结构。',
       ),
     ),
-    paragraph(
+    styledParagraph(
       'commentary-title',
       '考订',
+      { fontWeight: '700' },
       span(
         'commentary-body',
         '这段说明继续提供大量子元素文本，如果统计父级 textContent 就会错误压过真正正文。',
       ),
     ),
-    paragraph(
+    styledParagraph(
       'commentary-title',
       '补注',
+      { fontWeight: '700' },
       span(
         'commentary-body',
         '最后一段说明仍然只应该属于子元素，不应该参与父级段落的正文聚类。',
@@ -374,6 +379,148 @@ function testSameBaseStyleParagraphsAreCountedAsBodyText() {
   )
 
   assert.deepStrictEqual(selectedClasses, ['first', '', ''])
+}
+
+function testBodyTextIgnoresClassNameWhenComputedStyleMatches() {
+  const body = new FakeElement('body')
+  const dominantText =
+    '这是正文主段落，内容较长，用来形成当前聚类算法中的明显赢家。'.repeat(4)
+  const paragraphs = [
+    paragraph('calibre1', dominantText),
+    paragraph('calibre1', dominantText),
+    paragraph(
+      'calibre2',
+      '这是第三段正文，class 名称不同，但不应该因此被拆成另一个正文候选族群。',
+    ),
+    paragraph(
+      'calibre2',
+      '这是第四段正文，继续使用第二个 class，用来避免单例兜底掩盖问题。',
+    ),
+    paragraph(
+      'calibre3',
+      '这是第五段正文，视觉特征才应该决定正文聚类，而不是 class 命名。',
+    ),
+    paragraph(
+      'calibre3',
+      '这是第六段正文，继续使用第三个 class，但 computed CSS 与其他段落一致。',
+    ),
+    paragraph(
+      'calibre4',
+      '这是第七段正文，用来保证多个不同 class 的同样式段落都能被识别。',
+    ),
+    paragraph(
+      'calibre4',
+      '这是第八段正文，继续使用第四个 class，防止只选前三个聚类。',
+    ),
+  ]
+
+  body.append(...paragraphs)
+
+  const contents = createContents(body)
+  const candidates = getBodyTextCandidates(contents.document)
+  const bodyIndexes = detectBodyTextIndexes(contents, candidates)
+
+  assert.deepStrictEqual(
+    bodyIndexes.map((index) => candidates[index].className),
+    [
+      'calibre1',
+      'calibre1',
+      'calibre2',
+      'calibre2',
+      'calibre3',
+      'calibre3',
+      'calibre4',
+      'calibre4',
+    ],
+  )
+}
+
+function testBodyTextIgnoresBlockMarginsWhenComputedStyleMatches() {
+  const body = new FakeElement('body')
+  const dominantText =
+    '这是正文主段落，内容较长，用来形成当前聚类算法中的明显赢家。'.repeat(4)
+  const paragraphs = [
+    styledParagraph('main', dominantText, {
+      marginTop: '24px',
+      marginBottom: '0px',
+    }),
+    styledParagraph('main', dominantText, {
+      marginTop: '24px',
+      marginBottom: '0px',
+    }),
+    styledParagraph(
+      'main',
+      '这是第三段正文，段间距可能来自出版样式，不应该拆分正文聚类。',
+      { marginTop: '0px', marginBottom: '12px' },
+    ),
+    styledParagraph(
+      'main',
+      '这是第四段正文，继续使用第二组上下 margin，但仍然是同一类正文。',
+      { marginTop: '0px', marginBottom: '12px' },
+    ),
+    styledParagraph(
+      'main',
+      '这是第五段正文，保持相同字体和排版，只改变块方向 margin。',
+      { marginTop: '8px', marginBottom: '8px' },
+    ),
+    styledParagraph(
+      'main',
+      '这是第六段正文，继续使用第三组上下 margin，视觉文本特征不变。',
+      { marginTop: '8px', marginBottom: '8px' },
+    ),
+    styledParagraph(
+      'main',
+      '这是第七段正文，末段也可能有额外下边距，但仍然是正文。',
+      { marginTop: '0px', marginBottom: '24px' },
+    ),
+    styledParagraph(
+      'main',
+      '这是第八段正文，继续使用末段式下边距，应该仍然被标为正文。',
+      { marginTop: '0px', marginBottom: '24px' },
+    ),
+  ]
+
+  body.append(...paragraphs)
+
+  const contents = createContents(body)
+  const candidates = getBodyTextCandidates(contents.document)
+  const bodyIndexes = detectBodyTextIndexes(contents, candidates)
+
+  assert.deepStrictEqual(bodyIndexes, [0, 1, 2, 3, 4, 5, 6, 7])
+}
+
+function testBodyTextDistinguishesLargeItalicBlocksByFontStyle() {
+  const body = new FakeElement('body')
+  const normalParagraphs = [
+    styledParagraph(
+      'main',
+      '这是普通正文第一段，包含足够长的叙述内容，用来形成稳定的正文主聚类，避免短文本造成误判。',
+      { fontStyle: 'normal' },
+    ),
+    styledParagraph(
+      'main',
+      '这是普通正文第二段，继续提供较长的主体文本，让普通正文在总字数和数量上明显占优。',
+      { fontStyle: 'normal' },
+    ),
+    styledParagraph(
+      'main',
+      '这是普通正文第三段，仍然保持普通字体样式，应该被识别为主体正文。',
+      { fontStyle: 'normal' },
+    ),
+  ]
+  const italicParagraphs = [
+    styledParagraph('main', '短斜体题词。', { fontStyle: 'italic' }),
+    styledParagraph('main', '短斜体引语。', { fontStyle: 'italic' }),
+    styledParagraph('main', '短斜体注记。', { fontStyle: 'italic' }),
+  ]
+
+  body.append(...normalParagraphs, ...italicParagraphs)
+
+  const contents = createContents(body)
+  const candidates = getBodyTextCandidates(contents.document)
+  const bodyIndexes = detectBodyTextIndexes(contents, candidates)
+
+  assert.deepStrictEqual(bodyIndexes, [0, 1, 2])
 }
 
 function testInlineWrappedBodyParagraphsAreMarkedForTypographyPiercing() {
@@ -508,6 +655,9 @@ function testReciprocalNoteItemRequiresBacklinkToSourceAnchor() {
 
 testInlineClassAnnotationPayloadIsNotCountedAsParentBodyText()
 testSameBaseStyleParagraphsAreCountedAsBodyText()
+testBodyTextIgnoresClassNameWhenComputedStyleMatches()
+testBodyTextIgnoresBlockMarginsWhenComputedStyleMatches()
+testBodyTextDistinguishesLargeItalicBlocksByFontStyle()
 testInlineWrappedBodyParagraphsAreMarkedForTypographyPiercing()
 testLinkedNoteContentIsMarkedStructurally()
 testReciprocalNoteItemRequiresBacklinkToSourceAnchor()
