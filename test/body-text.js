@@ -19,6 +19,13 @@ const { outputText } = ts.transpileModule(source, {
 const moduleShim = { exports: {} }
 const requireShim = (id) => {
   if (id === '@flow/epubjs') return {}
+  if (id === './noteSemantics') {
+    return {
+      isNoteMarkerText: () => false,
+      noteContentBlockSelector: '[data-flow-note-content]',
+      noteContentContainerSelector: '[data-flow-note-container]',
+    }
+  }
   return require(id)
 }
 
@@ -29,7 +36,13 @@ compiledModule.require = requireShim
 compiledModule._compile(outputText, sourcePath)
 moduleShim.exports = compiledModule.exports
 
-const { detectBodyTextIndexes, getBodyTextCandidates } = moduleShim.exports
+const {
+  bodyTextAttribute,
+  bodyTextInlineWrapperAttribute,
+  detectBodyTextIndexes,
+  ensureBodyTextMarkers,
+  getBodyTextCandidates,
+} = moduleShim.exports
 
 class FakeTextNode {
   constructor(text) {
@@ -91,9 +104,13 @@ class FakeElement {
     return this.attributes[name] || null
   }
 
-  removeAttribute() {}
+  removeAttribute(name) {
+    delete this.attributes[name]
+  }
 
-  setAttribute() {}
+  setAttribute(name, value) {
+    this.attributes[name] = String(value)
+  }
 
   closest(selector) {
     if (matchesAnySelector(this, selector)) return this
@@ -182,11 +199,17 @@ function span(className, text) {
 }
 
 function createContents(body) {
+  const document = {
+    body,
+    querySelectorAll: (selector) => body.querySelectorAll(selector),
+  }
+  walkElements(body, (el) => {
+    el.ownerDocument = document
+  })
+  body.ownerDocument = document
+
   return {
-    document: {
-      body,
-      querySelectorAll: (selector) => body.querySelectorAll(selector),
-    },
+    document,
     window: {
       getComputedStyle: (el) => el.style,
     },
@@ -291,6 +314,41 @@ function testSameBaseStyleParagraphsAreCountedAsBodyText() {
   assert.deepStrictEqual(selectedClasses, ['first', '', ''])
 }
 
+function testInlineWrappedBodyParagraphsAreMarkedForTypographyPiercing() {
+  const body = new FakeElement('body')
+  const paragraphs = [
+    new FakeElement('p', { className: 'calibre7' }).append(
+      span(
+        'calibre10',
+        '这是第一段由直接子级行内容器承载的正文文本，用来模拟转换工具生成的段落结构。',
+      ),
+    ),
+    new FakeElement('p', { className: 'calibre7' }).append(
+      span(
+        'calibre10',
+        '这是第二段由直接子级行内容器承载的正文文本，父级段落本身没有直接文本。',
+      ),
+    ),
+  ]
+
+  body.append(...paragraphs)
+
+  const contents = createContents(body)
+  ensureBodyTextMarkers(contents)
+
+  assert.strictEqual(paragraphs[0].getAttribute(bodyTextAttribute), 'true')
+  assert.strictEqual(
+    paragraphs[0].getAttribute(bodyTextInlineWrapperAttribute),
+    'true',
+  )
+  assert.strictEqual(paragraphs[1].getAttribute(bodyTextAttribute), 'true')
+  assert.strictEqual(
+    paragraphs[1].getAttribute(bodyTextInlineWrapperAttribute),
+    'true',
+  )
+}
+
 testInlineClassAnnotationPayloadIsNotCountedAsParentBodyText()
 testSameBaseStyleParagraphsAreCountedAsBodyText()
+testInlineWrappedBodyParagraphsAreMarkedForTypographyPiercing()
 console.log('body-text tests passed')

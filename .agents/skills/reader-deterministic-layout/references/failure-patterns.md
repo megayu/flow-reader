@@ -131,6 +131,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: in `Contents.columns()`, make the iframe document element the clipped viewport and keep the body overflow visible so horizontal column fragments can paint across the expanded iframe. Hide the stage's native horizontal scrollbar without changing its scrollable surface.
 - Verification gate: epubjs unit coverage must prove paginated columns override author overflow to `html { overflow: hidden }` and `body { overflow: visible }`, and browser pixel reproduction should show later exact-spread pages are nonblank.
 
+### Inline-wrapper paragraphs ignore body typography
+
+- Symptom: EPUB text appears readable, but custom body typography does not affect the visible text in chapters where every paragraph is shaped like `p > span` or `p > b`.
+- Reproduction path: open a Calibre/Sigil-like reflowable EPUB whose paragraph nodes have no direct text and all visible text is inside direct inline children with their own classes.
+- Root cause: Flow Reader marks paragraph candidates as body text, but injected body typography only targets the marked paragraph; classed child inline elements keep their authored font styles.
+- Fix direction: keep body detection at paragraph granularity, mark only selected body paragraphs that have no direct text and only direct text-bearing inline wrapper children, then pierce typography CSS to those direct children.
+- Verification gate: focused body-text tests must prove inline-wrapped paragraphs receive the wrapper marker without expanding detection to arbitrary descendant inline nodes; final desktop layout acceptance still requires real-client verification when claiming visual/page-count stability.
+
 ### Oversized NCX-anchored spine section
 
 - Symptom: opening a text-heavy EPUB can stall and sharply increase memory even when the book has many visible TOC chapters. A malformed implementation of this normalization can also make page turns jump back to the preface or advance only through the last split of each volume.

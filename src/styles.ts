@@ -6,6 +6,7 @@ import {
   type BodyTextDetectionCache,
   bodyTextCandidateSelector,
   bodyTextSelector,
+  bodyTextTypographySelector,
   ensureBodyTextMarkers,
   notePopoverClass,
   noteTextSelector,
@@ -259,7 +260,7 @@ export function updateCustomStyle(
 
   if (hasBodyTypography) {
     ensureBodyTextMarkers(contents, bodyTextCache)
-    css += `${bodyTextSelector} {
+    css += `${bodyTextTypographySelector} {
       ${mapToCss(bodyTypography)}
     }`
 

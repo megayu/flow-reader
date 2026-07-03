@@ -10,6 +10,16 @@ export const notePopoverClass = 'flow-note-popover'
 
 export const bodyTextAttribute = 'data-flow-body-text'
 export const bodyTextSelector = `[${bodyTextAttribute}="true"]`
+export const bodyTextInlineWrapperAttribute =
+  'data-flow-body-text-inline-wrapper'
+const bodyTextInlineWrapperSelector = `${bodyTextSelector}[${bodyTextInlineWrapperAttribute}="true"]`
+const bodyTextInlineWrapperChildSelector = 'span, b, strong, em, i'
+export const bodyTextTypographySelector = [
+  bodyTextSelector,
+  ...bodyTextInlineWrapperChildSelector
+    .split(', ')
+    .map((selector) => `${bodyTextInlineWrapperSelector} > ${selector}`),
+].join(',\n')
 export const bodyTextCandidateSelector = 'p, blockquote > p, div'
 const bodyTextDetectedAttribute = 'data-flow-body-text-detected'
 export const noteTextAttribute = 'data-flow-note-text'
@@ -173,6 +183,7 @@ function getBodyTextCacheKey(contents: Contents) {
 function clearBodyTextMarkers(candidates: HTMLElement[]) {
   candidates.forEach((el) => {
     el.removeAttribute(bodyTextAttribute)
+    el.removeAttribute(bodyTextInlineWrapperAttribute)
   })
 }
 
@@ -181,8 +192,37 @@ function applyBodyTextIndexes(
   bodyIndexes: number[],
 ) {
   bodyIndexes.forEach((index) => {
-    candidates[index]?.setAttribute(bodyTextAttribute, 'true')
+    const candidate = candidates[index]
+    if (!candidate) return
+
+    candidate.setAttribute(bodyTextAttribute, 'true')
+    if (isInlineWrappedBodyTextElement(candidate)) {
+      candidate.setAttribute(bodyTextInlineWrapperAttribute, 'true')
+    }
   })
+}
+
+function isInlineWrappedBodyTextElement(el: HTMLElement) {
+  if (getDirectText(el)) return false
+
+  const meaningfulChildren = [...el.childNodes].filter((node) => {
+    return node.nodeType === 1 || !!normalizeText(node.textContent)
+  })
+  if (!meaningfulChildren.length) return false
+
+  return meaningfulChildren.every((node) => {
+    if (!isHTMLElement(node)) return false
+    if (isElementWithTag(node, 'br')) return true
+    if (!isBodyTextInlineWrapperChild(node)) return false
+
+    return !!normalizeText(node.textContent)
+  })
+}
+
+function isBodyTextInlineWrapperChild(el: HTMLElement) {
+  return bodyTextInlineWrapperChildSelector
+    .split(', ')
+    .some((tagName) => isElementWithTag(el, tagName))
 }
 
 function applyNoteTextMarkers(document: Document) {
