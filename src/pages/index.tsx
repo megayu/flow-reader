@@ -388,6 +388,40 @@ function toggleSortDirection(
   return direction === 'asc' ? 'desc' : 'asc'
 }
 
+interface LibraryRangeSelectionSession {
+  anchorId: string
+  baseSelectedIds: Set<string>
+}
+
+type LibraryBookSelectionEvent =
+  | React.MouseEvent<Element>
+  | React.KeyboardEvent<Element>
+
+function getBookIdRange(
+  bookIds: readonly string[],
+  anchorId: string,
+  targetId: string,
+) {
+  const anchorIndex = bookIds.indexOf(anchorId)
+  const targetIndex = bookIds.indexOf(targetId)
+
+  if (anchorIndex < 0 || targetIndex < 0) return [targetId]
+
+  const start = Math.min(anchorIndex, targetIndex)
+  const end = Math.max(anchorIndex, targetIndex)
+
+  return bookIds.slice(start, end + 1)
+}
+
+function selectBookIdRange(
+  baseSelectedIds: ReadonlySet<string>,
+  rangeIds: readonly string[],
+) {
+  const next = new Set(baseSelectedIds)
+  rangeIds.forEach((id) => next.add(id))
+  return next
+}
+
 function useStringSet() {
   const [values, setValues] = useState(() => new Set<string>())
 
@@ -414,11 +448,15 @@ function useStringSet() {
     })
   }, [])
 
+  const replace = useCallback((nextValues: Iterable<string>) => {
+    setValues(new Set(nextValues))
+  }, [])
+
   const reset = useCallback(() => {
     setValues((current) => (current.size ? new Set() : current))
   }, [])
 
-  return [values, { add, has, toggle, reset }] as const
+  return [values, { add, has, toggle, replace, reset }] as const
 }
 
 export default function Index() {
@@ -786,9 +824,33 @@ const Library: React.FC<LibraryProps> = ({
   const [tagFilters] = useLibraryTagFilter()
   const [, setLibraryAction] = useLibraryAction()
 
-  const [select, toggleSelect] = useBoolean(false)
-  const [selectedBookIds, { add, has, toggle, reset }] = useStringSet()
+  const [select, , setSelect] = useBoolean(false)
+  const [selectedBookIds, { add, has, toggle, replace, reset }] = useStringSet()
   const [batchTagsOpen, setBatchTagsOpen] = useState(false)
+  const selectionAnchorIdRef = useRef<string | undefined>(undefined)
+  const rangeSelectionSessionRef = useRef<
+    LibraryRangeSelectionSession | undefined
+  >(undefined)
+
+  const clearBookSelection = useCallback(() => {
+    reset()
+    selectionAnchorIdRef.current = undefined
+    rangeSelectionSessionRef.current = undefined
+  }, [reset])
+
+  const exitSelectMode = useCallback(() => {
+    setSelect(false)
+    clearBookSelection()
+  }, [clearBookSelection, setSelect])
+
+  const toggleSelectMode = useCallback(() => {
+    if (select) {
+      exitSelectMode()
+      return
+    }
+
+    setSelect(true)
+  }, [exitSelectMode, select, setSelect])
 
   const setBookCardWidth = useCallback(
     (bookCardWidth: number) => {
@@ -833,19 +895,23 @@ const Library: React.FC<LibraryProps> = ({
     })
   }, [setSettings])
 
-  useEffect(() => {
-    if (!select) reset()
-  }, [reset, select])
+  const handleCancelSelectionKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return
+    if (isGlobalKeyboardShortcutBlocked(e)) return
+
+    e.preventDefault()
+    if (selectedBookIds.size) {
+      clearBookSelection()
+    } else {
+      exitSelectMode()
+    }
+  })
 
   useEffect(() => {
     if (!select) return
 
     const cancelSelectionOnEscape = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      if (isGlobalKeyboardShortcutBlocked(e)) return
-
-      e.preventDefault()
-      toggleSelect()
+      handleCancelSelectionKeyDown(e)
     }
 
     document.addEventListener('keydown', cancelSelectionOnEscape)
@@ -853,7 +919,26 @@ const Library: React.FC<LibraryProps> = ({
     return () => {
       document.removeEventListener('keydown', cancelSelectionOnEscape)
     }
-  }, [select, toggleSelect])
+  }, [select])
+
+  useEffect(() => {
+    if (!select) return
+
+    const endRangeSelectionSession = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') rangeSelectionSessionRef.current = undefined
+    }
+    const clearRangeSelectionSession = () => {
+      rangeSelectionSessionRef.current = undefined
+    }
+
+    document.addEventListener('keyup', endRangeSelectionSession)
+    window.addEventListener('blur', clearRangeSelectionSession)
+
+    return () => {
+      document.removeEventListener('keyup', endRangeSelectionSession)
+      window.removeEventListener('blur', clearRangeSelectionSession)
+    }
+  }, [select])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -904,6 +989,36 @@ const Library: React.FC<LibraryProps> = ({
         tagFilters,
       ),
     [authorFilters, books, sortDirection, sortField, statusFilters, tagFilters],
+  )
+  const visibleBookIds = useMemo(
+    () => sortedBooks.map((book) => book.id),
+    [sortedBooks],
+  )
+
+  const selectBook = useCallback(
+    (bookId: string, e: LibraryBookSelectionEvent) => {
+      if (!e.shiftKey) {
+        rangeSelectionSessionRef.current = undefined
+        selectionAnchorIdRef.current = bookId
+        toggle(bookId)
+        return
+      }
+
+      const session = rangeSelectionSessionRef.current ?? {
+        anchorId: selectionAnchorIdRef.current ?? bookId,
+        baseSelectedIds: new Set(selectedBookIds),
+      }
+      rangeSelectionSessionRef.current = session
+      selectionAnchorIdRef.current = session.anchorId
+
+      replace(
+        selectBookIdRange(
+          session.baseSelectedIds,
+          getBookIdRange(visibleBookIds, session.anchorId, bookId),
+        ),
+      )
+    },
+    [replace, selectedBookIds, toggle, visibleBookIds],
   )
 
   if (!books) return null
@@ -1105,7 +1220,7 @@ const Library: React.FC<LibraryProps> = ({
               <Button
                 variant="secondary"
                 className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
-                onClick={toggleSelect}
+                onClick={toggleSelectMode}
               >
                 {select ? (
                   <SquareXIcon aria-hidden className="size-4" />
@@ -1170,7 +1285,7 @@ const Library: React.FC<LibraryProps> = ({
                   variant="destructive"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                   onClick={() => {
-                    toggleSelect()
+                    exitSelectMode()
                     const bookIds = selectedBooks.map((book) => book.id)
 
                     db.books.bulkDelete(bookIds)
@@ -1208,7 +1323,7 @@ const Library: React.FC<LibraryProps> = ({
               covers={covers}
               select={select}
               selected={has(book.id)}
-              toggle={toggle}
+              onSelectBook={selectBook}
               onOpenBook={onOpenBook}
             />
           ))}
@@ -1230,7 +1345,7 @@ interface BookProps {
   covers?: CoverRecord[]
   select?: boolean
   selected?: boolean
-  toggle: (id: string) => void
+  onSelectBook: (id: string, e: LibraryBookSelectionEvent) => void
   onOpenBook: () => void
 }
 const Book: React.FC<BookProps> = ({
@@ -1238,7 +1353,7 @@ const Book: React.FC<BookProps> = ({
   covers,
   select,
   selected,
-  toggle,
+  onSelectBook,
   onOpenBook,
 }) => {
   const t = useTranslation('home')
@@ -1308,20 +1423,23 @@ const Book: React.FC<BookProps> = ({
     [book.id],
   )
 
-  const activateBook = useCallback(() => {
-    if (select) {
-      toggle(book.id)
-    } else {
-      void openBook()
-    }
-  }, [book.id, openBook, select, toggle])
+  const activateBook = useCallback(
+    (e: LibraryBookSelectionEvent) => {
+      if (select) {
+        onSelectBook(book.id, e)
+      } else {
+        void openBook()
+      }
+    },
+    [book.id, onSelectBook, openBook, select],
+  )
 
   const onBookKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key !== 'Enter' && e.key !== ' ') return
 
       e.preventDefault()
-      activateBook()
+      activateBook(e)
     },
     [activateBook],
   )
