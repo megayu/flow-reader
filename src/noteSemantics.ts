@@ -7,6 +7,9 @@ const NOTE_NUMBER_MARKER_PATTERN = new RegExp(
 const NOTE_NUMBER_MARKER_PREFIX_PATTERN = new RegExp(
   `^[${NOTE_NUMBER_MARKER_CHARS}]+[.．、]`,
 )
+const NOTE_WRAPPED_NUMBER_MARKER_PREFIX_PATTERN = new RegExp(
+  `^[\\(\\[〔［（【〚〖][${NOTE_NUMBER_MARKER_CHARS}]+[\\)\\]〕］）】〛〗][.．、]`,
+)
 const NOTE_MARKER_OPENERS = '([〔［（【〚〖'
 const NOTE_MARKER_CLOSERS = ')]〕］）】〛〗'
 
@@ -109,6 +112,8 @@ export function startsWithNoteMarkerText(text: string | null | undefined) {
 
   const firstChar = Array.from(marker)[0]
   if (isNoteMarkerText(firstChar)) return true
+
+  if (NOTE_WRAPPED_NUMBER_MARKER_PREFIX_PATTERN.test(marker)) return true
 
   return NOTE_NUMBER_MARKER_PREFIX_PATTERN.test(marker)
 }

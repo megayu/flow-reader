@@ -301,7 +301,20 @@ function testNoteMarkersSupportCjkBrackets() {
     noteSemantics.startsWithNoteMarkerText('壹拾貳、注释'),
     true,
   )
+  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('[1].译者注'), true)
+  assert.strictEqual(
+    noteSemantics.startsWithNoteMarkerText('[12]. Translator note'),
+    true,
+  )
+  assert.strictEqual(
+    noteSemantics.startsWithNoteMarkerText('[1]. 原作者在邮件中指出'),
+    true,
+  )
   assert.strictEqual(noteSemantics.isNoteMarkerText('〚note〛'), false)
+  assert.strictEqual(
+    noteSemantics.startsWithNoteMarkerText('[note].正文'),
+    false,
+  )
   const hiddenNoteSelector =
     noteSemantics.createHiddenNoteContentSelector('flow-note-popover')
   assert.match(
