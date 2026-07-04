@@ -24,8 +24,26 @@ const _URL =
   typeof URL != 'undefined'
     ? URL
     : typeof window != 'undefined'
-    ? window.URL || window.webkitURL || window.mozURL
-    : undefined
+      ? window.URL || window.webkitURL || window.mozURL
+      : undefined
+
+function looksLikeNcxMarkup(markup, mime) {
+  return (
+    mime === 'text/xml' &&
+    typeof markup === 'string' &&
+    /<\s*ncx(?:\s|>)/i.test(markup) &&
+    /<\s*navMap(?:\s|>)/i.test(markup)
+  )
+}
+
+function sanitizeNcxNavLabelText(markup) {
+  return markup.replace(
+    /(<\s*text\b[^>]*>)([\s\S]*?)(<\s*\/\s*text\s*>)/gi,
+    function (_match, open, text, close) {
+      return open + text.replace(/</g, '&lt;') + close
+    },
+  )
+}
 
 /**
  * Generates a UUID
@@ -38,7 +56,7 @@ export function uuid() {
   var uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(
     /[xy]/g,
     function (c) {
-      var r = (d + Math.random() * 16) % 16 | 0
+      var r = ((d + Math.random() * 16) % 16) | 0
       d = Math.floor(d / 16)
       return (c == 'x' ? r : (r & 0x7) | 0x8).toString(16)
     },
@@ -531,6 +549,10 @@ export function parse(markup, mime, forceXMLDom) {
   // https://www.w3.org/International/questions/qa-byte-order-mark
   if (markup.charCodeAt(0) === 0xfeff) {
     markup = markup.slice(1)
+  }
+
+  if (looksLikeNcxMarkup(markup, mime)) {
+    markup = sanitizeNcxNavLabelText(markup)
   }
 
   doc = new Parser().parseFromString(markup, mime)

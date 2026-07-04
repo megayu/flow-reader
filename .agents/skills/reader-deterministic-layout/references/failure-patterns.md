@@ -163,6 +163,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: during first unpack publication, conservatively normalize safe NCX-anchored oversized sections into multiple XHTML/HTML spine items and rewrite OPF, NCX, generated split-file internal links, and existing HTML TOC links. Do not reject solely because the oversized section contains tables, normal anchor links, or XHTML DTD declarations; choose a recoverable block boundary for each NCX anchor, synthesize required open and close ancestor tags around generated fragments, and validate every generated XHTML document with DTD allowed before replacing the original section. Treat pre-tag text as indentation only when it is whitespace; otherwise insert split manifest and spine entries with empty indentation.
 - Verification gate: Rust coverage must parse the rewritten OPF and prove a single package/manifest/spine, correct OPF spine/manifest, NCX entries, HTML TOC links, split file creation, exported EPUB contents for both single-level and nested directory structures, wrapped-anchor oversized sections, and XML-parseable generated split files; final desktop performance acceptance still requires release-client before/after measurement on an affected native EPUB.
 
+### Malformed NCX navLabel text removes navPoint content
+
+- Symptom: opening an EPUB fails before the reader renders with `Cannot read properties of null (reading 'getAttribute')` from `Navigation.ncxItem`.
+- Reproduction path: open a MOBI-converted EPUB whose `toc.ncx` has a `navLabel/text` containing unescaped angle-bracket command notation such as `<Key-x>{arg}` while the matching XHTML heading correctly escapes it as `&lt;Key-x&gt;`.
+- Root cause: the invalid NCX text can corrupt or truncate the parsed `navPoint` subtree before epubjs builds navigation, so later siblings disappear or a `navPoint` appears without a direct `content src`. The old NCX parser assumed every `navPoint` had a descendant `content`, and could also incorrectly use a child navPoint's `content` as the parent's target.
+- Fix direction: keep this compatibility inside epubjs NCX handling: before XML parsing, escape raw `<` characters inside NCX `navLabel/text`; after parsing, require a direct child `content src`, skip malformed navPoints instead of throwing, and promote valid child navPoints when their parent was skipped. Do not alter pagination or add reader reload fallbacks.
+- Verification gate: epubjs Navigation tests must cover unescaped angle brackets in raw NCX labels, missing direct NCX `content`, child promotion after a malformed parent, and preservation of valid sibling navigation entries.
+
 ## Rejected Approaches
 
 ### Visibility-only hidden panes

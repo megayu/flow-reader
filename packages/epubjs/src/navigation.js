@@ -14,6 +14,23 @@ function isListElement(element) {
   return name.toLowerCase().split(':').pop() === 'ol'
 }
 
+function directChildByName(element, name) {
+  if (!element || !element.childNodes) return undefined
+
+  let child
+  let childName
+
+  for (let i = 0; i < element.childNodes.length; i++) {
+    child = element.childNodes[i]
+    if (!child || child.nodeType !== 1) continue
+
+    childName = child.localName || child.nodeName || ''
+    if (childName.toLowerCase().split(':').pop() === name) {
+      return child
+    }
+  }
+}
+
 /**
  * Navigation Parser
  * @param {document} xml navigation html / xhtml / ncx
@@ -344,12 +361,20 @@ class Navigation {
 
     for (i = 0; i < length; ++i) {
       item = this.ncxItem(navPoints[i])
+      if (!item) {
+        continue
+      }
       toc[item.id] = item
       if (!item.parent) {
         list.push(item)
       } else {
         parent = toc[item.parent]
-        parent.subitems.push(item)
+        if (parent) {
+          parent.subitems.push(item)
+        } else {
+          item.parent = undefined
+          list.push(item)
+        }
       }
     }
 
@@ -364,13 +389,18 @@ class Navigation {
    */
   ncxItem(item) {
     var id = item.getAttribute('id') || false,
-      content = qs(item, 'content'),
-      src = decodeHref(content.getAttribute('src')),
+      content = directChildByName(item, 'content'),
       navLabel = qs(item, 'navLabel'),
-      text = navLabel.textContent ? navLabel.textContent : '',
+      text = navLabel && navLabel.textContent ? navLabel.textContent : '',
       subitems = [],
       parentNode = item.parentNode,
       parent
+
+    if (!content || !content.getAttribute('src')) {
+      return undefined
+    }
+
+    var src = decodeHref(content.getAttribute('src'))
 
     if (
       parentNode &&
