@@ -357,9 +357,6 @@ pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<(
         let Ok(xhtml) = fs::read_to_string(&section_path) else {
             continue;
         };
-        if !xhtml_is_safe_to_split(&xhtml) {
-            continue;
-        }
 
         if let Some(split) = plan_split_section(
             &xhtml,
@@ -807,29 +804,6 @@ fn unpacked_resource_path(unpacked_dir: &Path, zip_path: &str) -> PathBuf {
     unpacked_dir.join(zip_path.replace('/', std::path::MAIN_SEPARATOR_STR))
 }
 
-fn xhtml_is_safe_to_split(xhtml: &str) -> bool {
-    let lower = xhtml.to_ascii_lowercase();
-    let unsafe_tokens = [
-        "<base",
-        "<script",
-        "<form",
-        "<input",
-        "<textarea",
-        "<select",
-        "<iframe",
-        "<object",
-        "<embed",
-        "<canvas",
-        "<svg",
-        "<math",
-    ];
-    if unsafe_tokens.iter().any(|token| lower.contains(token)) {
-        return false;
-    }
-
-    true
-}
-
 fn local_body_content_range(xhtml: &str) -> Option<(usize, usize)> {
     let lower = xhtml.to_ascii_lowercase();
     let body_tag_start = lower.find("<body")?;
@@ -974,12 +948,6 @@ fn plan_split_section(
     }
 
     rewrite_split_item_links(&mut split_items, section_abs_path, &all_link_targets);
-    if split_items
-        .iter()
-        .any(|item| parse_split_xhtml(&item.content).is_err())
-    {
-        return None;
-    }
 
     Some(SplitSection {
         original_id: item.id.clone(),
@@ -989,16 +957,6 @@ fn plan_split_section(
         link_targets: all_link_targets,
         split_items,
     })
-}
-
-fn parse_split_xhtml(xhtml: &str) -> Result<roxmltree::Document<'_>, roxmltree::Error> {
-    roxmltree::Document::parse_with_options(
-        xhtml,
-        roxmltree::ParsingOptions {
-            allow_dtd: true,
-            ..roxmltree::ParsingOptions::default()
-        },
-    )
 }
 
 fn rewrite_split_item_links(
@@ -2514,6 +2472,58 @@ mod tests {
     }
 
     #[test]
+    fn normalize_splits_html_compatible_named_entities() {
+        let root = split_test_root("split-html-entities");
+        write_split_fixture(&root, 2);
+        let xhtml_path = root.join("OEBPS/Text/part0000.xhtml");
+        let xhtml = fs::read_to_string(&xhtml_path).unwrap();
+        fs::write(
+            &xhtml_path,
+            xhtml.replacen(
+                r#"<h1 id="nav_point_0">Section 0</h1>"#,
+                r#"<h1 id="nav_point_0">Section&nbsp;0</h1>"#,
+                1,
+            ),
+        )
+        .unwrap();
+
+        normalize_unpacked_epub_structure(&root).unwrap();
+
+        assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
+        let first_split =
+            fs::read_to_string(root.join("OEBPS/Text/part0000-flow-split-0001.xhtml")).unwrap();
+        assert!(first_split.contains("Section&nbsp;0"));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn normalize_splits_html_compatible_embedded_svg() {
+        let root = split_test_root("split-embedded-svg");
+        write_split_fixture(&root, 2);
+        let xhtml_path = root.join("OEBPS/Text/part0000.xhtml");
+        let xhtml = fs::read_to_string(&xhtml_path).unwrap();
+        fs::write(
+            &xhtml_path,
+            xhtml.replacen(
+                r#"<h1 id="nav_point_0">Section 0</h1>"#,
+                r#"<svg width="1" height="1"><title>marker</title></svg><h1 id="nav_point_0">Section 0</h1>"#,
+                1,
+            ),
+        )
+        .unwrap();
+
+        normalize_unpacked_epub_structure(&root).unwrap();
+
+        assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
+        let first_split =
+            fs::read_to_string(root.join("OEBPS/Text/part0000-flow-split-0001.xhtml")).unwrap();
+        assert!(first_split.contains("<svg"));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn normalize_splits_rewrites_existing_nav_and_guide_links() {
         let root = split_test_root("split-nav-links");
         write_split_fixture(&root, 3);
@@ -2613,7 +2623,6 @@ mod tests {
         for index in 1..=8 {
             let split_path = root.join(format!("OEBPS/Text/part0000-flow-split-{index:04}.xhtml"));
             let split = fs::read_to_string(split_path).unwrap();
-            roxmltree::Document::parse(&split).expect("split XHTML should be well formed");
             assert!(
                 !split.contains("</body></html></div>"),
                 "split should not contain trailing orphan closing tags"
@@ -2624,7 +2633,7 @@ mod tests {
     }
 
     #[test]
-    fn normalize_skips_split_when_generated_xhtml_has_undeclared_namespace_prefix() {
+    fn normalize_splits_html_compatible_namespace_prefixed_tags() {
         let root = split_test_root("split-undeclared-prefix");
         fs::write(
             root.join("OEBPS/content.opf"),
@@ -2659,8 +2668,8 @@ mod tests {
 
         normalize_unpacked_epub_structure(&root).unwrap();
 
-        assert!(root.join("OEBPS/Text/part0000.xhtml").exists());
-        assert!(!root
+        assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
+        assert!(root
             .join("OEBPS/Text/part0000-flow-split-0002.xhtml")
             .exists());
 
