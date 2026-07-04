@@ -1176,23 +1176,9 @@ fn parse_epub_info_result(path: &Path) -> Result<ParsedEpubInfo, String> {
     let opf = read_zip_text(&mut archive, &opf_path)?;
     let opf_doc = roxmltree::Document::parse(&opf).map_err(|error| error.to_string())?;
     let metadata = parse_opf_metadata(&opf_doc);
-    let cover = find_cover_path(&opf_doc)
-        .and_then(|(href, mime_type)| {
-            let cover_path = normalize_zip_path(join_zip_path(parent_zip_path(&opf_path), &href));
-            read_zip_bytes_with_path_candidates(&mut archive, &cover_path)
-                .ok()
-                .map(|data| {
-                    let extension = extension_from_path(&cover_path);
-                    CoverInput {
-                        mime_type,
-                        extension,
-                        data,
-                    }
-                })
-        })
-        .or_else(|| {
-            create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str()))
-        });
+    let cover = find_cover_input(&mut archive, &opf_doc, &opf_path).or_else(|| {
+        create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str()))
+    });
 
     Ok(ParsedEpubInfo { metadata, cover })
 }
@@ -1235,6 +1221,14 @@ fn read_zip_bytes_with_path_candidates<R: Read + Seek>(
     }
 
     Err(last_error)
+}
+
+fn read_zip_text_with_path_candidates<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    name: &str,
+) -> Result<String, String> {
+    let data = read_zip_bytes_with_path_candidates(archive, name)?;
+    Ok(String::from_utf8_lossy(&data).into_owned())
 }
 
 fn parse_opf_metadata(doc: &roxmltree::Document) -> Value {
@@ -1511,6 +1505,219 @@ fn find_cover_path(doc: &roxmltree::Document) -> Option<(String, String)> {
                     || node.attribute("id").is_some_and(cover_id_starts_with_cover))
         })
         .and_then(cover_item_to_path)
+}
+
+fn find_cover_input<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    doc: &roxmltree::Document,
+    opf_path: &str,
+) -> Option<CoverInput> {
+    let opf_parent = parent_zip_path(opf_path);
+    let manifest = doc
+        .descendants()
+        .filter(|node| node.is_element() && node.has_tag_name("item"))
+        .filter_map(|node| {
+            Some(OpfManifestItem {
+                id: node.attribute("id")?.to_string(),
+                href: node.attribute("href")?.to_string(),
+                media_type: node.attribute("media-type").unwrap_or("").to_string(),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    if let Some(input) = find_cover_path(doc).and_then(|(href, mime_type)| {
+        read_cover_image_input(archive, opf_parent, &href, &mime_type)
+    }) {
+        return Some(input);
+    }
+
+    if let Some(input) = find_declared_cover_item(doc)
+        .and_then(|item| cover_input_from_manifest_item(archive, opf_parent, item, &manifest))
+    {
+        return Some(input);
+    }
+
+    if let Some(input) = manifest
+        .iter()
+        .filter(|item| is_html_media_type(&item.media_type))
+        .find(|item| is_cover_name(&item.id) || is_cover_name(&item.href))
+        .and_then(|item| cover_input_from_html_item(archive, opf_parent, item, &manifest))
+    {
+        return Some(input);
+    }
+
+    first_spine_image_page(doc, &manifest)
+        .and_then(|item| cover_input_from_html_item(archive, opf_parent, item, &manifest))
+}
+
+fn find_declared_cover_item<'a>(doc: &'a roxmltree::Document) -> Option<roxmltree::Node<'a, 'a>> {
+    let cover_id = doc.descendants().find_map(|node| {
+        if !node.is_element() || !node.has_tag_name("meta") {
+            return None;
+        }
+        node.attribute("name")
+            .is_some_and(|name| name.eq_ignore_ascii_case("cover"))
+            .then(|| node.attribute("content").map(str::to_string))
+            .flatten()
+    })?;
+
+    doc.descendants().find(|node| {
+        node.is_element() && node.has_tag_name("item") && node.attribute("id") == Some(&cover_id)
+    })
+}
+
+fn cover_input_from_manifest_item<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    opf_parent: &str,
+    item: roxmltree::Node,
+    manifest: &[OpfManifestItem],
+) -> Option<CoverInput> {
+    let (href, mime_type) = cover_item_to_path(item)?;
+    if is_image_media_type(&mime_type) || image_extension_from_href(&href).is_some() {
+        return read_cover_image_input(archive, opf_parent, &href, &mime_type);
+    }
+    if is_html_media_type(&mime_type) || is_html_href(&href) {
+        let item = OpfManifestItem {
+            id: item.attribute("id").unwrap_or("").to_string(),
+            href,
+            media_type: mime_type,
+        };
+        return cover_input_from_html_item(archive, opf_parent, &item, manifest);
+    }
+    None
+}
+
+fn cover_input_from_html_item<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    opf_parent: &str,
+    item: &OpfManifestItem,
+    manifest: &[OpfManifestItem],
+) -> Option<CoverInput> {
+    let html_path = normalize_zip_path(join_zip_path(opf_parent, &item.href));
+    let html = read_zip_text_with_path_candidates(archive, &html_path).ok()?;
+    let image_href = find_first_html_image_href(&html)?;
+    let image_path = normalize_zip_path(join_zip_path(parent_zip_path(&html_path), &image_href));
+    let mime_type = manifest
+        .iter()
+        .find(|manifest_item| {
+            let candidate = normalize_zip_path(join_zip_path(opf_parent, &manifest_item.href));
+            candidate == image_path
+        })
+        .map(|manifest_item| manifest_item.media_type.as_str())
+        .filter(|mime_type| !mime_type.is_empty())
+        .unwrap_or_else(|| mime_type_from_image_href(&image_path));
+
+    read_cover_image_input(archive, "", &image_path, mime_type)
+}
+
+fn first_spine_image_page<'a>(
+    doc: &roxmltree::Document,
+    manifest: &'a [OpfManifestItem],
+) -> Option<&'a OpfManifestItem> {
+    doc.descendants()
+        .filter(|node| node.is_element() && node.has_tag_name("itemref"))
+        .filter_map(|node| node.attribute("idref"))
+        .filter_map(|idref| manifest.iter().find(|item| item.id == idref))
+        .take(3)
+        .find(|item| is_html_media_type(&item.media_type) || is_html_href(&item.href))
+}
+
+fn read_cover_image_input<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    parent: &str,
+    href: &str,
+    mime_type: &str,
+) -> Option<CoverInput> {
+    if !is_image_media_type(mime_type) && image_extension_from_href(href).is_none() {
+        return None;
+    }
+
+    let cover_path = normalize_zip_path(join_zip_path(parent, href));
+    let data = read_zip_bytes_with_path_candidates(archive, &cover_path).ok()?;
+    Some(CoverInput {
+        mime_type: if mime_type.is_empty() {
+            mime_type_from_image_href(&cover_path).to_string()
+        } else {
+            mime_type.to_string()
+        },
+        extension: extension_from_path(&cover_path),
+        data,
+    })
+}
+
+fn find_first_html_image_href(html: &str) -> Option<String> {
+    let doc = roxmltree::Document::parse_with_options(
+        html,
+        roxmltree::ParsingOptions {
+            allow_dtd: true,
+            ..roxmltree::ParsingOptions::default()
+        },
+    )
+    .ok()?;
+
+    doc.descendants()
+        .find(|node| node.is_element() && node.has_tag_name("img"))
+        .and_then(|node| node.attribute("src"))
+        .or_else(|| {
+            doc.descendants()
+                .find(|node| node.is_element() && node.has_tag_name("image"))
+                .and_then(|node| {
+                    node.attributes()
+                        .find(|attribute| attribute.name().eq_ignore_ascii_case("href"))
+                        .map(|attribute| attribute.value())
+                })
+        })
+        .map(str::to_string)
+        .filter(|href| !href.is_empty() && !is_absolute_url(href))
+}
+
+fn is_cover_name(value: &str) -> bool {
+    value.to_ascii_lowercase().contains("cover")
+}
+
+fn is_image_media_type(media_type: &str) -> bool {
+    media_type.trim().to_ascii_lowercase().starts_with("image/")
+}
+
+fn is_html_media_type(media_type: &str) -> bool {
+    matches!(
+        media_type.trim().to_ascii_lowercase().as_str(),
+        "application/xhtml+xml" | "text/html"
+    )
+}
+
+fn is_html_href(href: &str) -> bool {
+    matches!(extension_from_path(href).as_str(), "xhtml" | "html" | "htm")
+}
+
+fn image_extension_from_href(href: &str) -> Option<&'static str> {
+    match extension_from_path(href).as_str() {
+        "jpg" | "jpeg" => Some("jpg"),
+        "png" => Some("png"),
+        "gif" => Some("gif"),
+        "webp" => Some("webp"),
+        "svg" => Some("svg"),
+        _ => None,
+    }
+}
+
+fn mime_type_from_image_href(href: &str) -> &'static str {
+    match extension_from_path(href).as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        _ => "",
+    }
+}
+
+fn is_absolute_url(value: &str) -> bool {
+    value
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_alphabetic())
+        && value.contains(':')
 }
 
 fn cover_id_starts_with_cover(id: &str) -> bool {

@@ -3494,6 +3494,151 @@ mod tests {
         writer.finish().unwrap();
     }
 
+    fn write_minimal_epub_with_xhtml_cover_image(
+        path: &Path,
+        cover_page_body: &str,
+        cover_bytes: &[u8],
+    ) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        let file = fs::File::create(path).unwrap();
+        let mut writer = ZipWriter::new(file);
+        let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+        let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+
+        writer.start_file("mimetype", stored).unwrap();
+        writer.write_all(b"application/epub+zip").unwrap();
+        writer
+            .start_file("META-INF/container.xml", deflated)
+            .unwrap();
+        writer
+            .write_all(
+                br#"<?xml version="1.0" encoding="UTF-8"?>
+<container>
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"#,
+            )
+            .unwrap();
+        writer.start_file("OEBPS/content.opf", deflated).unwrap();
+        writer
+            .write_all(
+                br#"<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata>
+    <dc:title>XHTML Cover</dc:title>
+  </metadata>
+  <manifest>
+    <item id="x_coverpage" href="Text/cover.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chapter" href="Text/chapter.xhtml" media-type="application/xhtml+xml"/>
+    <item id="image-cover" href="Images/real-cover.jpeg" media-type="image/jpeg"/>
+  </manifest>
+  <spine>
+    <itemref idref="x_coverpage" linear="yes"/>
+    <itemref idref="chapter"/>
+  </spine>
+</package>"#,
+            )
+            .unwrap();
+        writer
+            .start_file("OEBPS/Text/cover.xhtml", deflated)
+            .unwrap();
+        writer
+            .write_all(
+                format!(
+                    r#"<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><body>{cover_page_body}</body></html>"#
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        writer
+            .start_file("OEBPS/Text/chapter.xhtml", deflated)
+            .unwrap();
+        writer
+            .write_all(
+                br#"<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><body><p>body</p></body></html>"#,
+            )
+            .unwrap();
+        writer
+            .start_file("OEBPS/Images/real-cover.jpeg", deflated)
+            .unwrap();
+        writer.write_all(cover_bytes).unwrap();
+        writer.finish().unwrap();
+    }
+
+    fn write_minimal_epub_with_first_image_spine_page(path: &Path, cover_bytes: &[u8]) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        let file = fs::File::create(path).unwrap();
+        let mut writer = ZipWriter::new(file);
+        let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+        let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+
+        writer.start_file("mimetype", stored).unwrap();
+        writer.write_all(b"application/epub+zip").unwrap();
+        writer
+            .start_file("META-INF/container.xml", deflated)
+            .unwrap();
+        writer
+            .write_all(
+                br#"<?xml version="1.0" encoding="UTF-8"?>
+<container>
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"#,
+            )
+            .unwrap();
+        writer.start_file("OEBPS/content.opf", deflated).unwrap();
+        writer
+            .write_all(
+                br#"<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata>
+    <dc:title>First Image Page</dc:title>
+  </metadata>
+  <manifest>
+    <item id="preface" href="Text/part0000.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chapter" href="Text/chapter.xhtml" media-type="application/xhtml+xml"/>
+    <item id="item27" href="Images/image00220.jpeg" media-type="image/jpeg"/>
+  </manifest>
+  <spine>
+    <itemref idref="preface" linear="yes"/>
+    <itemref idref="chapter"/>
+  </spine>
+</package>"#,
+            )
+            .unwrap();
+        writer
+            .start_file("OEBPS/Text/part0000.xhtml", deflated)
+            .unwrap();
+        writer
+            .write_all(
+                br#"<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><body><p><img src="../Images/image00220.jpeg" alt=""/></p></body></html>"#,
+            )
+            .unwrap();
+        writer
+            .start_file("OEBPS/Text/chapter.xhtml", deflated)
+            .unwrap();
+        writer
+            .write_all(
+                br#"<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><body><p>body</p></body></html>"#,
+            )
+            .unwrap();
+        writer
+            .start_file("OEBPS/Images/image00220.jpeg", deflated)
+            .unwrap();
+        writer.write_all(cover_bytes).unwrap();
+        writer.finish().unwrap();
+    }
+
     #[test]
     fn epub_import_copies_source_without_unpacking_or_indexing() {
         let nonce = SystemTime::now()
@@ -3544,6 +3689,86 @@ mod tests {
 
         let book_dir = storage.book_dir(&book.id);
         assert_eq!(fs::read(book_dir.join("cover.jpg")).unwrap(), cover_bytes);
+        assert!(!book_dir.join("cover.svg").exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn epub_import_extracts_cover_from_xhtml_img_cover_page() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-epub-xhtml-img-cover-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("xhtml-img-cover.epub");
+        let cover_bytes = b"xhtml-img-cover-bytes";
+        write_minimal_epub_with_xhtml_cover_image(
+            &source,
+            r#"<div><img src="../Images/real-cover.jpeg" alt=""/></div>"#,
+            cover_bytes,
+        );
+        let storage = test_storage_with_books(&root, Vec::new());
+
+        let book = import_epub_path_impl(&storage, &source, true).unwrap();
+
+        let book_dir = storage.book_dir(&book.id);
+        assert_eq!(fs::read(book_dir.join("cover.jpeg")).unwrap(), cover_bytes);
+        assert!(!book_dir.join("cover.svg").exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn epub_import_extracts_cover_from_xhtml_svg_image_cover_page() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-epub-xhtml-svg-cover-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("xhtml-svg-cover.epub");
+        let cover_bytes = b"xhtml-svg-cover-bytes";
+        write_minimal_epub_with_xhtml_cover_image(
+            &source,
+            r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><image xlink:href="../Images/real-cover.jpeg"/></svg>"#,
+            cover_bytes,
+        );
+        let storage = test_storage_with_books(&root, Vec::new());
+
+        let book = import_epub_path_impl(&storage, &source, true).unwrap();
+
+        let book_dir = storage.book_dir(&book.id);
+        assert_eq!(fs::read(book_dir.join("cover.jpeg")).unwrap(), cover_bytes);
+        assert!(!book_dir.join("cover.svg").exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn epub_import_uses_first_image_spine_page_when_cover_metadata_is_missing() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-epub-first-image-cover-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("first-image-page.epub");
+        let cover_bytes = b"first-image-cover-bytes";
+        write_minimal_epub_with_first_image_spine_page(&source, cover_bytes);
+        let storage = test_storage_with_books(&root, Vec::new());
+
+        let book = import_epub_path_impl(&storage, &source, true).unwrap();
+
+        let book_dir = storage.book_dir(&book.id);
+        assert_eq!(fs::read(book_dir.join("cover.jpeg")).unwrap(), cover_bytes);
         assert!(!book_dir.join("cover.svg").exists());
 
         let _ = fs::remove_dir_all(root);
