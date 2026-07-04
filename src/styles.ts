@@ -4,6 +4,7 @@ import { Contents } from '@flow/epubjs'
 
 import {
   type BodyTextDetectionCache,
+  bodyTextFontTypographySelector,
   bodyTextCandidateSelector,
   bodyTextSelector,
   bodyTextTypographySelector,
@@ -264,9 +265,18 @@ export function updateCustomStyle(
   }
 
   if (hasBodyTypography) {
-    css += `${bodyTextTypographySelector} {
-      ${mapToCss(bodyTypography)}
-    }`
+    const { fontFamily, ...bodyTypographyWithoutFontFamily } = bodyTypography
+    if (keys(bodyTypographyWithoutFontFamily).length) {
+      css += `${bodyTextTypographySelector} {
+        ${mapToCss(bodyTypographyWithoutFontFamily)}
+      }`
+    }
+
+    if (fontFamily) {
+      css += `${bodyTextFontTypographySelector} {
+        ${mapToCss({ fontFamily })}
+      }`
+    }
 
     if (settings.fontSize) {
       css += `${noteTextSelector}, ${noteTextSelector} * {

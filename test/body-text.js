@@ -61,6 +61,7 @@ const { findReciprocalNoteItem, getNoteIndex } =
 const {
   bodyTextAttribute,
   bodyTextInlineWrapperAttribute,
+  bodyTextPreserveFontAttribute,
   detectBodyTextIndexes,
   ensureBodyTextMarkers,
   getBodyTextCandidates,
@@ -528,7 +529,7 @@ function testBodyTextIgnoresBlockMarginsWhenComputedStyleMatches() {
   assert.deepStrictEqual(bodyIndexes, [0, 1, 2, 3, 4, 5, 6, 7])
 }
 
-function testBodyTextDistinguishesLargeItalicBlocksByFontStyle() {
+function testBodyTextIncludesSameFontStyleVariants() {
   const body = new FakeElement('body')
   const normalParagraphs = [
     styledParagraph(
@@ -559,7 +560,99 @@ function testBodyTextDistinguishesLargeItalicBlocksByFontStyle() {
   const candidates = getBodyTextCandidates(contents.document)
   const bodyIndexes = detectBodyTextIndexes(contents, candidates)
 
-  assert.deepStrictEqual(bodyIndexes, [0, 1, 2])
+  assert.deepStrictEqual(bodyIndexes, [0, 1, 2, 3, 4, 5])
+}
+
+function testBodyTextIncludesLeadingDifferentFontCandidates() {
+  const body = new FakeElement('body')
+  const mainText =
+    '这是主正文段落，包含连续叙述内容，用来形成稳定的正文赢家。'.repeat(4)
+  const variantText =
+    '这是另一组正文段落，出版样式略有不同，但仍然应当获得正文排版。'.repeat(3)
+  const paragraphs = [
+    styledParagraph('main', mainText, { fontFamily: 'serif' }),
+    styledParagraph('main', mainText, { fontFamily: 'serif' }),
+    styledParagraph('main', mainText, { fontFamily: 'serif' }),
+    styledParagraph('quote', '短引。', {
+      fontFamily: 'fantasy',
+      marginLeft: '64px',
+      marginRight: '64px',
+    }),
+    styledParagraph('quote', '短注。', {
+      fontFamily: 'fantasy',
+      marginLeft: '64px',
+      marginRight: '64px',
+    }),
+    styledParagraph('quote', '落款。', {
+      fontFamily: 'fantasy',
+      marginLeft: '64px',
+      marginRight: '64px',
+    }),
+    styledParagraph('quote', '题记。', {
+      fontFamily: 'fantasy',
+      marginLeft: '64px',
+      marginRight: '64px',
+    }),
+    styledParagraph('variant', variantText, { fontFamily: 'monospace' }),
+    styledParagraph('variant', variantText, { fontFamily: 'monospace' }),
+  ]
+
+  body.append(...paragraphs)
+
+  const contents = createContents(body)
+  const candidates = getBodyTextCandidates(contents.document)
+  const bodyIndexes = detectBodyTextIndexes(contents, candidates)
+
+  assert.deepStrictEqual(bodyIndexes, [0, 1, 2, 3, 4, 5, 6, 7, 8])
+}
+
+function testBodyTextVariantsPreserveOriginalFontFamily() {
+  const body = new FakeElement('body')
+  const mainText =
+    '这是主正文段落，承载大部分连续叙述内容，用来确定完整字体排版的字体来源。'.repeat(
+      4,
+    )
+  const variantText =
+    '这是另一组正文段落，使用不同字体承载正文内容，字号行高等阅读排版仍应生效。'.repeat(
+      3,
+    )
+  const sameFontVariantText =
+    '这是同字体但缩进不同的正文段落，应当和主正文一样允许应用用户选择的字体。'.repeat(
+      3,
+    )
+  const paragraphs = [
+    styledParagraph('main', mainText, { fontFamily: 'serif' }),
+    styledParagraph('main', mainText, { fontFamily: 'serif' }),
+    styledParagraph('main', mainText, { fontFamily: 'serif' }),
+    styledParagraph('variant', variantText, { fontFamily: 'fantasy' }),
+    styledParagraph('variant', variantText, { fontFamily: 'fantasy' }),
+    styledParagraph('same-font', sameFontVariantText, {
+      fontFamily: 'serif',
+      textIndent: '32px',
+    }),
+    styledParagraph('same-font', sameFontVariantText, {
+      fontFamily: 'serif',
+      textIndent: '32px',
+    }),
+  ]
+
+  body.append(...paragraphs)
+
+  const contents = createContents(body)
+  ensureBodyTextMarkers(contents)
+
+  paragraphs.slice(0, 3).forEach((el) => {
+    assert.strictEqual(el.getAttribute(bodyTextAttribute), 'true')
+    assert.strictEqual(el.getAttribute(bodyTextPreserveFontAttribute), null)
+  })
+  paragraphs.slice(3, 5).forEach((el) => {
+    assert.strictEqual(el.getAttribute(bodyTextAttribute), 'true')
+    assert.strictEqual(el.getAttribute(bodyTextPreserveFontAttribute), 'true')
+  })
+  paragraphs.slice(5).forEach((el) => {
+    assert.strictEqual(el.getAttribute(bodyTextAttribute), 'true')
+    assert.strictEqual(el.getAttribute(bodyTextPreserveFontAttribute), null)
+  })
 }
 
 function testInlineWrappedBodyParagraphsAreMarkedForTypographyPiercing() {
@@ -907,7 +1000,9 @@ testInlineClassAnnotationPayloadIsNotCountedAsParentBodyText()
 testSameBaseStyleParagraphsAreCountedAsBodyText()
 testBodyTextIgnoresClassNameWhenComputedStyleMatches()
 testBodyTextIgnoresBlockMarginsWhenComputedStyleMatches()
-testBodyTextDistinguishesLargeItalicBlocksByFontStyle()
+testBodyTextIncludesSameFontStyleVariants()
+testBodyTextIncludesLeadingDifferentFontCandidates()
+testBodyTextVariantsPreserveOriginalFontFamily()
 testInlineWrappedBodyParagraphsAreMarkedForTypographyPiercing()
 testReciprocalNoteContentIsMarkedStructurally()
 testSemanticNoteFallbackMarksNamedNoteContent()

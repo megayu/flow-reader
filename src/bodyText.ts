@@ -9,13 +9,22 @@ export const bodyTextAttribute = 'data-flow-body-text'
 export const bodyTextSelector = `[${bodyTextAttribute}="true"]`
 export const bodyTextInlineWrapperAttribute =
   'data-flow-body-text-inline-wrapper'
+export const bodyTextPreserveFontAttribute = 'data-flow-body-text-preserve-font'
 const bodyTextInlineWrapperSelector = `${bodyTextSelector}[${bodyTextInlineWrapperAttribute}="true"]`
 const bodyTextInlineWrapperChildSelector = 'span, b, strong, em, i'
+const bodyTextFontSelector = `${bodyTextSelector}:not([${bodyTextPreserveFontAttribute}="true"])`
+const bodyTextFontInlineWrapperSelector = `${bodyTextFontSelector}[${bodyTextInlineWrapperAttribute}="true"]`
 export const bodyTextTypographySelector = [
   bodyTextSelector,
   ...bodyTextInlineWrapperChildSelector
     .split(', ')
     .map((selector) => `${bodyTextInlineWrapperSelector} > ${selector}`),
+].join(',\n')
+export const bodyTextFontTypographySelector = [
+  bodyTextFontSelector,
+  ...bodyTextInlineWrapperChildSelector
+    .split(', ')
+    .map((selector) => `${bodyTextFontInlineWrapperSelector} > ${selector}`),
 ].join(',\n')
 export const bodyTextCandidateSelector = 'p, blockquote > p, div'
 const bodyTextDetectedAttribute = 'data-flow-body-text-detected'
@@ -34,10 +43,15 @@ export function createHiddenNoteContentSelector(excludedClass: string) {
 
 export interface BodyTextDetectionCacheEntry {
   candidateCount: number
-  bodyIndexes: number[]
+  bodyMarkers: BodyTextMarker[]
 }
 
 export type BodyTextDetectionCache = Map<string, BodyTextDetectionCacheEntry>
+
+export interface BodyTextMarker {
+  index: number
+  preserveFont: boolean
+}
 
 export interface BodyTypographyBaseline {
   fontSize?: number
@@ -96,20 +110,20 @@ export function ensureBodyTextMarkers(
     if (
       cached &&
       cached.candidateCount === candidates.length &&
-      cached.bodyIndexes.length
+      cached.bodyMarkers.length
     ) {
-      applyBodyTextIndexes(candidates, cached.bodyIndexes)
+      applyBodyTextMarkers(candidates, cached.bodyMarkers)
       body.setAttribute(bodyTextDetectedAttribute, 'true')
     } else {
-      const bodyIndexes = detectBodyTextIndexes(contents, candidates)
-      if (bodyIndexes.length) {
-        applyBodyTextIndexes(candidates, bodyIndexes)
+      const bodyMarkers = detectBodyTextMarkers(contents, candidates)
+      if (bodyMarkers.length) {
+        applyBodyTextMarkers(candidates, bodyMarkers)
         body.setAttribute(bodyTextDetectedAttribute, 'true')
 
         if (cacheKey) {
           bodyTextCache?.set(cacheKey, {
             candidateCount: candidates.length,
-            bodyIndexes,
+            bodyMarkers,
           })
         }
       }
@@ -130,11 +144,18 @@ export function detectBodyTextIndexes(
   contents: Contents,
   candidates: HTMLElement[],
 ) {
+  return detectBodyTextMarkers(contents, candidates).map(
+    (marker) => marker.index,
+  )
+}
+
+function detectBodyTextMarkers(contents: Contents, candidates: HTMLElement[]) {
   const window = contents.window
   const bodyTextCandidates = candidates.flatMap((el, index) => {
     const text = getBodyTextCandidateText(el)
     if (!text) return []
     if (isFactuallyExcludedElement(el)) return []
+    if (isInlineClassPayloadLabel(el)) return []
     if (isImageOnlyElement(el)) return []
     if (isStructuralDiv(el)) return []
 
@@ -144,8 +165,13 @@ export function detectBodyTextIndexes(
     return [
       {
         baseSignature: createBodyTextBaseSignature(el, style),
+        fontSignature: createBodyTextFontSignature(style),
         index,
         inlineMargin: getInlineMargin(style),
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        textAlign: style.textAlign,
+        textIndent: style.textIndent,
         textLength: text.length,
         signature: createBodyTextSignature(el, style),
       },
@@ -162,6 +188,7 @@ export function detectBodyTextIndexes(
   const selectedSignatures = new Set(
     bodyClusters.map((cluster) => cluster.signature),
   )
+  const fontTypographySignature = selectFontTypographySignature(bodyClusters)
   const selectedBaseSignatures = new Set(
     bodyTextCandidates.flatMap((candidate) =>
       selectedSignatures.has(candidate.signature)
@@ -174,7 +201,14 @@ export function detectBodyTextIndexes(
     selectedSignatures.has(candidate.signature) ||
     (selectedBaseSignatures.has(candidate.baseSignature) &&
       clusterCounts.get(candidate.signature) === 1)
-      ? [candidate.index]
+      ? [
+          {
+            index: candidate.index,
+            preserveFont:
+              !!fontTypographySignature &&
+              candidate.fontSignature !== fontTypographySignature,
+          },
+        ]
       : [],
   )
 }
@@ -190,18 +224,22 @@ function clearBodyTextMarkers(candidates: HTMLElement[]) {
   candidates.forEach((el) => {
     el.removeAttribute(bodyTextAttribute)
     el.removeAttribute(bodyTextInlineWrapperAttribute)
+    el.removeAttribute(bodyTextPreserveFontAttribute)
   })
 }
 
-function applyBodyTextIndexes(
+function applyBodyTextMarkers(
   candidates: HTMLElement[],
-  bodyIndexes: number[],
+  bodyMarkers: BodyTextMarker[],
 ) {
-  bodyIndexes.forEach((index) => {
-    const candidate = candidates[index]
+  bodyMarkers.forEach((marker) => {
+    const candidate = candidates[marker.index]
     if (!candidate) return
 
     candidate.setAttribute(bodyTextAttribute, 'true')
+    if (marker.preserveFont) {
+      candidate.setAttribute(bodyTextPreserveFontAttribute, 'true')
+    }
     if (isInlineWrappedBodyTextElement(candidate)) {
       candidate.setAttribute(bodyTextInlineWrapperAttribute, 'true')
     }
@@ -251,19 +289,29 @@ function applyNoteTextMarkers(document: Document) {
 
 interface BodyTextCandidate {
   baseSignature: string
+  fontSignature: string
   index: number
   inlineMargin: number
+  fontSize: string
+  fontWeight: string
+  textAlign: string
+  textIndent: string
   textLength: number
   signature: string
 }
 
 interface BodyTextCluster {
   signature: string
+  fontSignature: string
   indexes: number[]
   count: number
   totalText: number
   avgText: number
   inlineMargin: number
+  fontSize: string
+  fontWeight: string
+  textAlign: string
+  textIndent: string
   score: number
 }
 
@@ -421,6 +469,10 @@ function createBodyTextSignature(el: HTMLElement, style: CSSStyleDeclaration) {
   ].join('|')
 }
 
+function createBodyTextFontSignature(style: CSSStyleDeclaration) {
+  return style.fontFamily
+}
+
 function createBodyTextBaseSignature(
   el: HTMLElement,
   style: CSSStyleDeclaration,
@@ -439,6 +491,26 @@ function createBodyTextBaseSignature(
 
 function normalizedClassName(el: HTMLElement) {
   return [...el.classList].sort().join(' ')
+}
+
+function isInlineClassPayloadLabel(el: HTMLElement) {
+  const directText = getDirectText(el)
+  if (!directText || directText.length > 12) return false
+
+  const descendantText = collectClassedDescendantText(el)
+  return descendantText.length >= Math.max(30, directText.length * 4)
+}
+
+function collectClassedDescendantText(el: HTMLElement): string {
+  return [...el.childNodes]
+    .map((node) => {
+      if (!isHTMLElement(node)) return ''
+      const text = normalizedClassName(node)
+        ? normalizeText(node.textContent)
+        : ''
+      return text + collectClassedDescendantText(node)
+    })
+    .join('')
 }
 
 function getInlineMargin(style: CSSStyleDeclaration) {
@@ -493,11 +565,16 @@ function createBodyTextClusters(candidates: BodyTextCandidate[]) {
   candidates.forEach((candidate) => {
     const cluster = clusters.get(candidate.signature) ?? {
       signature: candidate.signature,
+      fontSignature: candidate.fontSignature,
       indexes: [],
       count: 0,
       totalText: 0,
       avgText: 0,
       inlineMargin: candidate.inlineMargin,
+      fontSize: candidate.fontSize,
+      fontWeight: candidate.fontWeight,
+      textAlign: candidate.textAlign,
+      textIndent: candidate.textIndent,
       score: 0,
     }
 
@@ -530,27 +607,26 @@ function selectBodyTextClusters(clusters: BodyTextCluster[]) {
   const rest = candidates
     .filter((cluster) => cluster !== winner)
     .sort((a, b) => b.score - a.score)
-  const runnerUp = rest[0]
+  const sameFontRest = rest.filter(
+    (cluster) => cluster.fontSignature === winner.fontSignature,
+  )
+  const differentFontRest = rest.filter(
+    (cluster) => cluster.fontSignature !== winner.fontSignature,
+  )
 
-  if (runnerUp && runnerUp.inlineMargin > winner.inlineMargin) {
-    return selected
-  }
+  // Same-font clusters are treated as the winner's body family. Their margins,
+  // size, weight, or indentation may differ by publisher style, but applying the
+  // full reader typography will not erase a distinct font-family design.
+  selected.push(...sameFontRest)
 
-  for (const cluster of rest) {
-    if (selected.length >= 3) break
+  // The strongest different-font groups usually cover the main alternate body
+  // streams in a section: letters, bilingual text, inset narration, or quoted
+  // passages. Include the first two directly; if they are short headings, the
+  // section lacks enough competing body evidence for a safer distinction.
+  selected.push(...differentFontRest.slice(0, 2))
 
-    const totalTextRatio = cluster.totalText / winner.totalText
-    const countRatio = cluster.count / winner.count
-    const avgTextRatio = cluster.avgText / winner.avgText
-    if (
-      shouldIncludeBodyTextCluster(
-        cluster,
-        winner,
-        totalTextRatio,
-        countRatio,
-        avgTextRatio,
-      )
-    ) {
+  for (const cluster of differentFontRest.slice(2)) {
+    if (shouldIncludeAdditionalBodyTextCluster(cluster, winner)) {
       selected.push(cluster)
     }
   }
@@ -558,18 +634,43 @@ function selectBodyTextClusters(clusters: BodyTextCluster[]) {
   return selected
 }
 
-function shouldIncludeBodyTextCluster(
+function shouldIncludeAdditionalBodyTextCluster(
   cluster: BodyTextCluster,
   winner: BodyTextCluster,
-  totalTextRatio: number,
-  countRatio: number,
-  avgTextRatio: number,
 ) {
-  if (totalTextRatio >= 0.35) return true
+  const totalTextRatio = cluster.totalText / winner.totalText
+  const countRatio = cluster.count / winner.count
+  const avgTextRatio = cluster.avgText / winner.avgText
 
-  if (cluster.totalText < 100 || totalTextRatio < 0.2) return false
+  // Long independent content blocks are usually real reading material: letters,
+  // extended quotations, inserts, or another body-text style. At this size,
+  // preserving font-family is enough protection; excluding it would leave a
+  // visibly small or cramped run inside otherwise reader-controlled text.
+  if (cluster.totalText >= Math.max(600, winner.totalText * 0.25)) return true
 
-  return countRatio >= 0.35 && avgTextRatio >= 0.5
+  // Parallel body flows appear repeatedly with paragraph lengths near the
+  // winner: bilingual text, Q&A, alternating narration, or translation/commentary
+  // blocks. They may not dominate total text, but their recurrence and length
+  // show they are a body stream rather than a decorative fragment.
+  if (
+    cluster.count >= Math.max(3, winner.count * 0.35) &&
+    avgTextRatio >= 0.45
+  ) {
+    return true
+  }
+
+  // Short-line books need a different shape test. Only when the winner itself is
+  // short-line body text do other repeated short-line groups look like poetry,
+  // aphorisms, scripts, or list-like prose that should share reader sizing.
+  if (winner.avgText < 35 && cluster.count >= 3 && cluster.avgText < 60) {
+    return true
+  }
+
+  return countRatio >= 0.35 && avgTextRatio >= 0.5 && totalTextRatio >= 0.2
+}
+
+function selectFontTypographySignature(clusters: BodyTextCluster[]) {
+  return clusters[0]?.fontSignature
 }
 
 function selectBodyTextWinner(clusters: BodyTextCluster[]) {
