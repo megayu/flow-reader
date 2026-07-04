@@ -23,8 +23,6 @@ const requireShim = (id) => {
   if (id === './noteSemantics') {
     const isMarker = (text) => /^\[?\d+\]?$/.test((text || '').trim())
     return {
-      isNoteBacklinkMarkerText: (text) =>
-        isMarker((text || '').replace(/[←↩]/g, '')),
       isNoteMarkerText: isMarker,
     }
   }
@@ -57,7 +55,8 @@ compiledModule.require = requireShim
 compiledModule._compile(outputText, sourcePath)
 moduleShim.exports = compiledModule.exports
 
-const { findReciprocalNoteItem } = loadSourceModule('src/noteIndex.ts')
+const { findReciprocalNoteItem, getNoteIndex } =
+  loadSourceModule('src/noteIndex.ts')
 
 const {
   bodyTextAttribute,
@@ -126,6 +125,10 @@ class FakeElement {
     return this.childNodes.map((node) => node.textContent || '').join('')
   }
 
+  get id() {
+    return this.getAttribute('id') || ''
+  }
+
   getAttribute(name) {
     return this.attributes[name] || null
   }
@@ -155,6 +158,36 @@ class FakeElement {
     )
   }
 
+  get previousElementSibling() {
+    const siblings = this.parentElement?.childNodes.filter(
+      (node) => node.nodeType === 1,
+    )
+    const index = siblings?.indexOf(this) ?? -1
+    return index > 0 ? siblings[index - 1] : null
+  }
+
+  get nextElementSibling() {
+    const siblings = this.parentElement?.childNodes.filter(
+      (node) => node.nodeType === 1,
+    )
+    const index = siblings?.indexOf(this) ?? -1
+    return index >= 0 ? siblings[index + 1] || null : null
+  }
+
+  compareDocumentPosition(target) {
+    const root = getRootElement(this)
+    const elements = []
+    walkElements(root, (el) => elements.push(el))
+    const sourceIndex = elements.indexOf(this)
+    const targetIndex = elements.indexOf(target)
+
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+      return 0
+    }
+
+    return targetIndex > sourceIndex ? 4 : 2
+  }
+
   querySelector(selector) {
     return this.querySelectorAll(selector)[0]
   }
@@ -166,6 +199,12 @@ class FakeElement {
     })
     return result
   }
+}
+
+function getRootElement(el) {
+  let root = el
+  while (root.parentElement) root = root.parentElement
+  return root
 }
 
 function walkElements(root, visit) {
@@ -557,14 +596,17 @@ function testInlineWrappedBodyParagraphsAreMarkedForTypographyPiercing() {
   )
 }
 
-function testLinkedNoteContentIsMarkedStructurally() {
+function testReciprocalNoteContentIsMarkedStructurally() {
   const body = new FakeElement('body')
-  const bodyParagraph = paragraph(
-    'main',
+  const source = anchor('notes.html#note-1', '1', { id: 'back-note-1' })
+  const bodyParagraph = new FakeElement('p').append(
     '这是普通正文内容，正文里的脚注引用不应该让整段被标记成注释内容。',
-    new FakeElement('sup').append(anchor('notes.html#note-1', '1')),
+    new FakeElement('sup').append(source),
   )
-  const linkedNote = new FakeElement('p', { className: 'footnote' }).append(
+  const linkedNote = new FakeElement('p', {
+    attributes: { id: 'note-1' },
+    className: 'footnote',
+  }).append(
     anchor('chapter.html#back-note-1', '[1]'),
     ' 这是通过结构识别出来的注释内容。',
   )
@@ -572,30 +614,77 @@ function testLinkedNoteContentIsMarkedStructurally() {
     'footnote',
     '这段只有 footnote class，没有链接关系，不应该被当作可操作注释。',
   )
-  const definitionNote = new FakeElement('dl', {
-    className: 'footnote',
-  }).append(
-    new FakeElement('dt').append(
-      '[',
-      anchor('chapter.html#back-note-2', '←2'),
-      ']',
-    ),
-    new FakeElement('dd').append(
-      new FakeElement('p').append('这是定义列表形式的注释内容。'),
-    ),
-  )
 
-  body.append(bodyParagraph, linkedNote, classOnlyFootnote, definitionNote)
+  body.append(bodyParagraph, linkedNote, classOnlyFootnote)
 
   const contents = createContents(body)
   ensureBodyTextMarkers(contents)
 
   assert.strictEqual(linkedNote.getAttribute(noteContentAttribute), 'true')
   assert.strictEqual(linkedNote.getAttribute(noteTextAttribute), 'true')
-  assert.strictEqual(definitionNote.getAttribute(noteContentAttribute), 'true')
-  assert.strictEqual(definitionNote.getAttribute(noteTextAttribute), 'true')
   assert.strictEqual(classOnlyFootnote.getAttribute(noteContentAttribute), null)
   assert.strictEqual(bodyParagraph.getAttribute(noteContentAttribute), null)
+}
+
+function testSemanticNoteFallbackMarksNamedNoteContent() {
+  const body = new FakeElement('body')
+  const source = new FakeElement('a', {
+    attributes: {
+      class: 'duokan-footnote',
+      href: 'notes.html#semantic-note',
+    },
+    className: 'duokan-footnote',
+  }).append(new FakeElement('img'))
+  const bodyParagraph = new FakeElement('p').append('正文图片脚注', source)
+  const footnoteList = new FakeElement('ol', {
+    className: 'duokan-footnote-content',
+  })
+  const footnoteItem = new FakeElement('li', {
+    attributes: { id: 'semantic-note' },
+    className: 'duokan-footnote-item',
+  }).append(new FakeElement('p').append('这是没有回链的命名兜底脚注内容。'))
+
+  footnoteList.append(footnoteItem)
+  body.append(bodyParagraph, footnoteList)
+
+  const contents = createContents(body)
+  ensureBodyTextMarkers(contents)
+
+  assert.strictEqual(findReciprocalNoteItem(source, footnoteItem), footnoteItem)
+  assert.strictEqual(footnoteItem.getAttribute(noteTextAttribute), 'true')
+  assert.strictEqual(footnoteList.getAttribute(noteContentAttribute), 'true')
+  assert.strictEqual(bodyParagraph.getAttribute(noteContentAttribute), null)
+}
+
+function testLinkedNoteResolutionUsesHashTargetItem() {
+  const body = new FakeElement('body')
+  const chapter = new FakeElement('div', { className: 'chapter' })
+  const heading = new FakeElement('h1').append(
+    '第5卷　比例',
+    anchor('part0007.xhtml#ft1_142', '[1]', { id: 'fn1_142' }),
+  )
+  const bodyParagraph = paragraph(
+    '',
+    '这是章节正文内容，正文容器不应该被当作尾注隐藏。',
+  )
+  const footnotes = new FakeElement('div', { className: 'footnotes' })
+  const footnote = new FakeElement('p', { className: 'footnote' }).append(
+    anchor('part0007.xhtml#fn1_142', '[1]', { id: 'ft1_142' }),
+    ' 这是标题脚注正文。',
+  )
+
+  footnotes.append(footnote)
+  chapter.append(heading, bodyParagraph, footnotes)
+  body.append(chapter)
+
+  const contents = createContents(body)
+  ensureBodyTextMarkers(contents)
+
+  assert.strictEqual(chapter.getAttribute(noteContentAttribute), null)
+  assert.strictEqual(heading.getAttribute(noteContentAttribute), null)
+  assert.strictEqual(bodyParagraph.getAttribute(noteContentAttribute), null)
+  assert.strictEqual(footnotes.getAttribute(noteContentAttribute), 'true')
+  assert.strictEqual(footnote.getAttribute(noteTextAttribute), 'true')
 }
 
 function testReciprocalNoteItemRequiresBacklinkToSourceAnchor() {
@@ -653,12 +742,179 @@ function testReciprocalNoteItemRequiresBacklinkToSourceAnchor() {
   )
 }
 
+function testReciprocalNoteItemUsesBoundedTargetStructures() {
+  const body = new FakeElement('body')
+  const kindleSource = anchor('chapter.html#note-span', '[1]')
+  const kindleSourceMarker = new FakeElement('sup').append(
+    new FakeElement('span', { attributes: { id: 'back-span' } }),
+    new FakeElement('small').append(kindleSource),
+  )
+  const kindleSourceParagraph = new FakeElement('p').append(
+    '正文里的 Kindle filepos 形式注释引用',
+    kindleSourceMarker,
+  )
+  const kindleTarget = new FakeElement('span', {
+    attributes: { id: 'note-span' },
+  })
+  const kindleNote = new FakeElement('p').append(
+    new FakeElement('sup').append(
+      kindleTarget,
+      new FakeElement('small').append(anchor('chapter.html#back-span', '[1]')),
+    ),
+    ' 这是空 span 目标后面的尾注正文。',
+  )
+
+  const tableSource = anchor('chapter.html#note-table', '[2]')
+  const tableSourceParagraph = new FakeElement('p', {
+    attributes: { id: 'back-table' },
+  }).append('正文里的表格注释引用', tableSource)
+  const tableTarget = new FakeElement('a', {
+    attributes: { id: 'note-table' },
+  })
+  const chapterWrapper = new FakeElement('div', { className: 'chapter-like' })
+  const tableNote = new FakeElement('table').append(
+    new FakeElement('tr').append(
+      new FakeElement('td').append(anchor('chapter.html#back-table', '[2]')),
+      new FakeElement('td').append('这是表格尾注正文。'),
+    ),
+  )
+  chapterWrapper.append(
+    paragraph('', '章节包装里还有普通正文，不能被当作尾注。'),
+    tableTarget,
+    tableNote,
+  )
+
+  const formulaSource = anchor('chapter.html#formula-1', '(1)')
+  const formulaSourceParagraph = new FakeElement('p').append(
+    '正文里的公式编号引用',
+    formulaSource,
+  )
+  const formula = paragraph('', '(1) 这是公式内容，不是尾注。')
+  formula.setAttribute('id', 'formula-1')
+
+  body.append(
+    kindleSourceParagraph,
+    kindleNote,
+    tableSourceParagraph,
+    chapterWrapper,
+    formulaSourceParagraph,
+    formula,
+  )
+  createContents(body)
+
+  assert.strictEqual(
+    findReciprocalNoteItem(kindleSource, kindleTarget),
+    kindleNote,
+  )
+  assert.strictEqual(
+    findReciprocalNoteItem(tableSource, tableTarget),
+    tableNote,
+  )
+  assert.notStrictEqual(
+    findReciprocalNoteItem(tableSource, tableTarget),
+    chapterWrapper,
+  )
+  assert.strictEqual(findReciprocalNoteItem(formulaSource, formula), undefined)
+}
+
+function testNoteIndexMapsBacklinksOnlyInsideRecognizedNoteItems() {
+  const body = new FakeElement('body')
+  const source = anchor('chapter.html#note-table', '[1]')
+  const sourceParagraph = new FakeElement('p', {
+    attributes: { id: 'back-table' },
+  }).append('正文', source)
+  const tableTarget = new FakeElement('a', {
+    attributes: { id: 'note-table' },
+  })
+  const wrapper = new FakeElement('div', { className: 'chapter-like' })
+  const backlink = anchor('chapter.html#back-table', '[1]')
+  const tableNote = new FakeElement('table').append(
+    new FakeElement('tr').append(
+      new FakeElement('td').append(backlink),
+      new FakeElement('td').append('表格注释正文。'),
+    ),
+  )
+
+  wrapper.append(paragraph('', '普通正文。'), tableTarget, tableNote)
+  body.append(sourceParagraph, wrapper)
+  const contents = createContents(body)
+
+  const index = getNoteIndex(contents.document)
+
+  assert.strictEqual(index.getItemForAnchor(backlink), tableNote)
+  assert.strictEqual(index.getHideTargets().includes(wrapper), false)
+  assert.strictEqual(index.getHideTargets().includes(tableNote), true)
+}
+
+function testReciprocalLinksDoNotDependOnNoteMarkerText() {
+  const body = new FakeElement('body')
+  const source = new FakeElement('a', {
+    attributes: {
+      class: 'duokan-footnote',
+      href: 'chapter.html#note-duokan',
+      id: 'noteref-duokan',
+    },
+    className: 'duokan-footnote',
+  }).append(new FakeElement('img'))
+  const sourceParagraph = new FakeElement('p').append('正文图片脚注', source)
+  const footnoteList = new FakeElement('ol', {
+    className: 'duokan-footnote-content',
+  })
+  const footnoteItem = new FakeElement('li', {
+    attributes: { id: 'note-duokan' },
+    className: 'duokan-footnote-item',
+  }).append(
+    new FakeElement('p', { className: 'footnote' }).append(
+      anchor('chapter.html#noteref-duokan', '※'),
+      ' 这是多看图片脚注正文。',
+    ),
+  )
+  footnoteList.append(footnoteItem)
+  body.append(sourceParagraph, footnoteList)
+  const contents = createContents(body)
+
+  const index = getNoteIndex(contents.document)
+  const backlink = footnoteItem.querySelector('a[href]')
+
+  assert.strictEqual(findReciprocalNoteItem(source, footnoteItem), footnoteItem)
+  assert.strictEqual(index.getItemForAnchor(backlink), footnoteItem)
+  assert.strictEqual(index.getHideTargets().includes(footnoteList), true)
+}
+
+function testReciprocalLinkContentMayLiveInsideBacklinkAnchor() {
+  const body = new FakeElement('body')
+  const source = anchor('chapter.html#piano-note', '入口', {
+    id: 'piano-ref',
+  })
+  const sourceParagraph = new FakeElement('p').append('正文注释入口', source)
+  const noteLink = anchor(
+    'chapter.html#piano-ref',
+    '回到正文。整条尾注正文都在这个链接里。',
+    { id: 'piano-note' },
+  )
+  const noteItem = new FakeElement('p').append(noteLink)
+  body.append(sourceParagraph, noteItem)
+  const contents = createContents(body)
+
+  const index = getNoteIndex(contents.document)
+
+  assert.strictEqual(findReciprocalNoteItem(source, noteLink), noteItem)
+  assert.strictEqual(index.getItemForAnchor(noteLink), noteItem)
+  assert.strictEqual(index.getHideTargets().includes(noteItem), true)
+}
+
 testInlineClassAnnotationPayloadIsNotCountedAsParentBodyText()
 testSameBaseStyleParagraphsAreCountedAsBodyText()
 testBodyTextIgnoresClassNameWhenComputedStyleMatches()
 testBodyTextIgnoresBlockMarginsWhenComputedStyleMatches()
 testBodyTextDistinguishesLargeItalicBlocksByFontStyle()
 testInlineWrappedBodyParagraphsAreMarkedForTypographyPiercing()
-testLinkedNoteContentIsMarkedStructurally()
+testReciprocalNoteContentIsMarkedStructurally()
+testSemanticNoteFallbackMarksNamedNoteContent()
+testLinkedNoteResolutionUsesHashTargetItem()
 testReciprocalNoteItemRequiresBacklinkToSourceAnchor()
+testReciprocalNoteItemUsesBoundedTargetStructures()
+testNoteIndexMapsBacklinksOnlyInsideRecognizedNoteItems()
+testReciprocalLinksDoNotDependOnNoteMarkerText()
+testReciprocalLinkContentMayLiveInsideBacklinkAnchor()
 console.log('body-text tests passed')

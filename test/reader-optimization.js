@@ -313,9 +313,6 @@ function testNoteMarkersSupportCjkBrackets() {
     noteSemantics.startsWithNoteMarkerText('[note].正文'),
     false,
   )
-  assert.strictEqual(noteSemantics.isNoteBacklinkMarkerText('[←1]'), true)
-  assert.strictEqual(noteSemantics.isNoteBacklinkMarkerText('←12'), true)
-  assert.strictEqual(noteSemantics.isNoteBacklinkMarkerText('[note]'), false)
 }
 
 function testDuplicateIllustrationFilterHidesFirstAndRepeatedCandidates() {

@@ -12,7 +12,6 @@ const NOTE_WRAPPED_NUMBER_MARKER_PREFIX_PATTERN = new RegExp(
 )
 const NOTE_MARKER_OPENERS = '([〔［（【〚〖'
 const NOTE_MARKER_CLOSERS = ')]〕］）】〛〗'
-const NOTE_BACKLINK_MARKER_PREFIX_PATTERN = /^[←↩↵↑\s]+/
 
 export function isNoteMarkerText(text: string | null | undefined) {
   const marker = (text ?? '').trim()
@@ -22,15 +21,6 @@ export function isNoteMarkerText(text: string | null | undefined) {
 
   const normalized = stripNoteMarkerWrapper(marker)
   return NOTE_NUMBER_MARKER_PATTERN.test(normalized)
-}
-
-export function isNoteBacklinkMarkerText(text: string | null | undefined) {
-  const marker = stripNoteMarkerWrapper(text ?? '').replace(
-    NOTE_BACKLINK_MARKER_PREFIX_PATTERN,
-    '',
-  )
-
-  return isNoteMarkerText(marker)
 }
 
 export function startsWithNoteMarkerText(text: string | null | undefined) {

@@ -3556,9 +3556,6 @@ function findNoteElement(el: HTMLElement, anchor: HTMLAnchorElement) {
   const regularNote = findRegularNoteElement(el)
   if (hasUsefulNoteElementContent(regularNote)) return regularNote
 
-  const adjacentNote = findAdjacentBacklinkedNoteElement(el, anchor)
-  if (adjacentNote) return adjacentNote
-
   return regularNote ?? el
 }
 
@@ -3571,7 +3568,7 @@ function findRegularNoteElement(el: HTMLElement) {
       return cur
     }
 
-    if (!fallback && isTagName(cur, 'P', 'LI', 'BLOCKQUOTE', 'DIV')) {
+    if (!fallback && isTagName(cur, 'P', 'LI', 'BLOCKQUOTE', 'DIV', 'TABLE')) {
       fallback = cur
     }
 
@@ -3582,7 +3579,7 @@ function findRegularNoteElement(el: HTMLElement) {
 }
 
 function hasUsefulNoteElementContent(el: HTMLElement | undefined) {
-  if (!el || isEmptyFilePositionTarget(el)) return false
+  if (!el || isEmptyPositionTarget(el)) return false
 
   const text = el.textContent?.trim() ?? ''
   if (text && !isNoteMarkerText(text)) return true
@@ -3590,83 +3587,12 @@ function hasUsefulNoteElementContent(el: HTMLElement | undefined) {
   return !!el.querySelector('img, svg, math')
 }
 
-function findAdjacentBacklinkedNoteElement(
-  target: HTMLElement,
-  anchor: HTMLAnchorElement,
-) {
-  if (!isEmptyFilePositionTarget(target)) return
-
-  for (const candidate of getAdjacentNoteElementCandidates(target)) {
-    const backlink = findLeadingBacklink(candidate, anchor)
-    if (!backlink || !hasNoteContentAfterBacklink(candidate, backlink)) continue
-
-    return candidate
-  }
-}
-
-function isEmptyFilePositionTarget(el: HTMLElement) {
-  const id = el.id || el.getAttribute('name') || ''
-
+function isEmptyPositionTarget(el: HTMLElement) {
   return (
     isTagName(el, 'A', 'SPAN') &&
-    /^filepos\d+$/i.test(id) &&
+    !!(el.id || el.getAttribute('name')) &&
     !el.textContent?.trim()
   )
-}
-
-function getAdjacentNoteElementCandidates(target: HTMLElement) {
-  const candidates = [
-    target.nextElementSibling,
-    target.parentElement?.nextElementSibling,
-  ]
-  const seen = new Set<Element>()
-
-  return candidates.filter((candidate): candidate is HTMLElement => {
-    if (
-      !candidate ||
-      seen.has(candidate) ||
-      !isTagName(candidate, 'P', 'LI', 'BLOCKQUOTE', 'DIV')
-    ) {
-      return false
-    }
-
-    seen.add(candidate)
-    return true
-  })
-}
-
-function findLeadingBacklink(
-  candidate: HTMLElement,
-  anchor: HTMLAnchorElement,
-) {
-  const firstElement = Array.from(candidate.childNodes).find(
-    (child) =>
-      isElementNode(child) || (child.textContent?.trim()?.length ?? 0) > 0,
-  )
-  if (!isElementNode(firstElement)) return
-
-  const firstHtmlElement = firstElement as HTMLElement
-  const link = isTagName(firstHtmlElement, 'A')
-    ? firstHtmlElement
-    : firstHtmlElement.querySelector<HTMLAnchorElement>('a[href]')
-
-  return link &&
-    isTagName(link, 'A') &&
-    isBacklink(link as HTMLAnchorElement, anchor)
-    ? (link as HTMLAnchorElement)
-    : undefined
-}
-
-function hasNoteContentAfterBacklink(
-  candidate: HTMLElement,
-  backlink: HTMLAnchorElement,
-) {
-  const text = (candidate.textContent ?? '').replace(
-    backlink.textContent ?? '',
-    '',
-  )
-
-  return !!text.trim() || !!candidate.querySelector('img, svg, math')
 }
 
 function createSegmentedNoteElement(
@@ -4014,19 +3940,19 @@ function isBacklink(link: HTMLAnchorElement, anchor: HTMLAnchorElement) {
 function getBacklinkTargetId(anchor: HTMLAnchorElement) {
   return (
     anchor.id ||
-    findNearbyFilePositionTargetId(anchor) ||
+    findNearbyEmptyPositionTargetId(anchor) ||
     anchor.closest('[id]')?.id
   )
 }
 
-function findNearbyFilePositionTargetId(anchor: HTMLAnchorElement) {
+function findNearbyEmptyPositionTargetId(anchor: HTMLAnchorElement) {
   let cur: HTMLElement | null = anchor
 
   while (cur?.parentElement && cur.parentElement !== cur.ownerDocument.body) {
     const previous = cur.previousElementSibling
     if (
       isElementNode(previous as ChildNode | undefined) &&
-      isEmptyFilePositionTarget(previous as HTMLElement)
+      isEmptyPositionTarget(previous as HTMLElement)
     ) {
       const target = previous as HTMLElement
       return target.id || target.getAttribute('name') || undefined
