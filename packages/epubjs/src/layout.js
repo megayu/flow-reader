@@ -197,7 +197,12 @@ class Layout {
     var formating
 
     if (this.name === 'pre-paginated') {
-      formating = contents.fit(this.columnWidth, this.height, section)
+      formating = contents.fit(
+        this.columnWidth,
+        this.height,
+        section,
+        this.settings.viewport,
+      )
     } else if (this._flow === 'paginated') {
       formating = contents.columns(
         this.width,

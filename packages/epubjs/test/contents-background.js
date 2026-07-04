@@ -229,3 +229,39 @@ describe('Contents page backgrounds', function () {
     }
   })
 })
+
+describe('Contents fixed layout viewport fallback', function () {
+  it('fits fixed-layout content using a fallback viewport when the page omits one', function () {
+    const { contents, doc, cleanup } = createContents(
+      '<img src="../Images/page.jpeg" width="1200" height="1920"/>',
+    )
+
+    try {
+      contents.fit(600, 960, undefined, 'width=1200,height=1920')
+
+      assert.equal(doc.body.style.width, '1200px')
+      assert.equal(doc.body.style.height, '1920px')
+      assert.match(doc.body.style.transform, /scale\(0\.5\)/)
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('keeps the page viewport when both page and fallback viewport exist', function () {
+    const { contents, doc, cleanup } = createContents()
+    const viewport = doc.createElement('meta')
+    viewport.setAttribute('name', 'viewport')
+    viewport.setAttribute('content', 'width=800,height=1000')
+    doc.head.appendChild(viewport)
+
+    try {
+      contents.fit(400, 500, undefined, 'width=1200,height=1920')
+
+      assert.equal(doc.body.style.width, '800px')
+      assert.equal(doc.body.style.height, '1000px')
+      assert.match(doc.body.style.transform, /scale\(0\.5\)/)
+    } finally {
+      cleanup()
+    }
+  })
+})

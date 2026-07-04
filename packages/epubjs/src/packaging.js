@@ -102,6 +102,9 @@ class Packaging {
     metadata.orientation = this.getPropertyText(xml, 'rendition:orientation')
     metadata.flow = this.getPropertyText(xml, 'rendition:flow')
     metadata.viewport = this.getPropertyText(xml, 'rendition:viewport')
+    if (!metadata.viewport && metadata.layout === 'pre-paginated') {
+      metadata.viewport = this.getOriginalResolutionViewport(xml)
+    }
     metadata.media_active_class = this.getPropertyText(
       xml,
       'media:active-class',
@@ -110,6 +113,31 @@ class Packaging {
     // metadata.page_prog_dir = packageXml.querySelector("spine").getAttribute("page-progression-direction");
 
     return metadata
+  }
+
+  /**
+   * Kindle fixed-layout conversions can omit per-page viewport tags and keep
+   * the authored page size only in OPF original-resolution metadata.
+   */
+  getOriginalResolutionViewport(xml) {
+    var metas = qsa(xml, 'meta')
+    var items = Array.prototype.slice.call(metas)
+
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].getAttribute('name') !== 'original-resolution') {
+        continue
+      }
+
+      var content = items[i].getAttribute('content') || ''
+      var match = content.match(
+        /^\s*(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*$/i,
+      )
+      if (!match) return ''
+
+      return 'width=' + match[1] + ',height=' + match[2]
+    }
+
+    return ''
   }
 
   /**

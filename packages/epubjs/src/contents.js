@@ -30,6 +30,44 @@ const PAGE_BACKGROUND_CONSTRAINT_PROPERTIES = [
   'background-attachment',
 ]
 
+function parseViewportContent(content) {
+  var parsed = {
+    width: undefined,
+    height: undefined,
+    scale: undefined,
+    minimum: undefined,
+    maximum: undefined,
+    scalable: undefined,
+  }
+  var _width = content.match(/width\s*=\s*([^,]*)/)
+  var _height = content.match(/height\s*=\s*([^,]*)/)
+  var _scale = content.match(/initial-scale\s*=\s*([^,]*)/)
+  var _minimum = content.match(/minimum-scale\s*=\s*([^,]*)/)
+  var _maximum = content.match(/maximum-scale\s*=\s*([^,]*)/)
+  var _scalable = content.match(/user-scalable\s*=\s*([^,]*)/)
+
+  if (_width && _width.length && typeof _width[1] !== 'undefined') {
+    parsed.width = _width[1]
+  }
+  if (_height && _height.length && typeof _height[1] !== 'undefined') {
+    parsed.height = _height[1]
+  }
+  if (_scale && _scale.length && typeof _scale[1] !== 'undefined') {
+    parsed.scale = _scale[1]
+  }
+  if (_minimum && _minimum.length && typeof _minimum[1] !== 'undefined') {
+    parsed.minimum = _minimum[1]
+  }
+  if (_maximum && _maximum.length && typeof _maximum[1] !== 'undefined') {
+    parsed.maximum = _maximum[1]
+  }
+  if (_scalable && _scalable.length && typeof _scalable[1] !== 'undefined') {
+    parsed.scalable = _scalable[1]
+  }
+
+  return parsed
+}
+
 /**
  * Handles DOM manipulation, queries and events for View contents
  * @class
@@ -277,17 +315,9 @@ class Contents {
    * @param {string} [options.scalable]
    */
   viewport(options) {
-    var _width, _height, _scale, _minimum, _maximum, _scalable
     // var width, height, scale, minimum, maximum, scalable;
     var $viewport = this.document.querySelector("meta[name='viewport']")
-    var parsed = {
-      width: undefined,
-      height: undefined,
-      scale: undefined,
-      minimum: undefined,
-      maximum: undefined,
-      scalable: undefined,
-    }
+    var parsed = parseViewportContent('')
     var newContent = []
     var settings = {}
 
@@ -297,35 +327,7 @@ class Contents {
      */
     if ($viewport && $viewport.hasAttribute('content')) {
       let content = $viewport.getAttribute('content')
-      let _width = content.match(/width\s*=\s*([^,]*)/)
-      let _height = content.match(/height\s*=\s*([^,]*)/)
-      let _scale = content.match(/initial-scale\s*=\s*([^,]*)/)
-      let _minimum = content.match(/minimum-scale\s*=\s*([^,]*)/)
-      let _maximum = content.match(/maximum-scale\s*=\s*([^,]*)/)
-      let _scalable = content.match(/user-scalable\s*=\s*([^,]*)/)
-
-      if (_width && _width.length && typeof _width[1] !== 'undefined') {
-        parsed.width = _width[1]
-      }
-      if (_height && _height.length && typeof _height[1] !== 'undefined') {
-        parsed.height = _height[1]
-      }
-      if (_scale && _scale.length && typeof _scale[1] !== 'undefined') {
-        parsed.scale = _scale[1]
-      }
-      if (_minimum && _minimum.length && typeof _minimum[1] !== 'undefined') {
-        parsed.minimum = _minimum[1]
-      }
-      if (_maximum && _maximum.length && typeof _maximum[1] !== 'undefined') {
-        parsed.maximum = _maximum[1]
-      }
-      if (
-        _scalable &&
-        _scalable.length &&
-        typeof _scalable[1] !== 'undefined'
-      ) {
-        parsed.scalable = _scalable[1]
-      }
+      parsed = parseViewportContent(content)
     }
 
     settings = defaults(options || {}, parsed)
@@ -2052,8 +2054,11 @@ class Contents {
    * @param {number} width
    * @param {number} height
    */
-  fit(width, height, section) {
+  fit(width, height, section, fallbackViewport) {
     var viewport = this.viewport()
+    if ((!viewport.width || !viewport.height) && fallbackViewport) {
+      viewport = defaults(viewport, parseViewportContent(fallbackViewport))
+    }
     var viewportWidth = parseInt(viewport.width)
     var viewportHeight = parseInt(viewport.height)
     var widthScale = width / viewportWidth

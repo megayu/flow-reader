@@ -11,6 +11,7 @@ function loadTsModule(relativePath, mocks = {}) {
   const { outputText } = ts.transpileModule(source, {
     compilerOptions: {
       esModuleInterop: true,
+      experimentalDecorators: true,
       module: ts.ModuleKind.CommonJS,
       target: ts.ScriptTarget.ES2019,
     },
@@ -52,6 +53,62 @@ const annotation = loadTsModule('src/annotation.ts')
 const noteLinks = loadTsModule('src/noteLinks.ts')
 const noteSemantics = loadTsModule('src/noteSemantics.ts')
 const imageFilters = loadTsModule('src/imageFilters.ts')
+const readerModel = loadTsModule('src/models/reader.ts', {
+  '@github/mini-throttle/decorators': {
+    debounce: () => () => undefined,
+  },
+  '@flow/epubjs': () => ({}),
+  '@flow/epubjs/src/utils/request': () => Promise.resolve(''),
+  '@flow/epubjs/types/navigation': {},
+  '@flow/epubjs/types/section': {},
+  '@flow/reader/env': {
+    IS_SERVER: true,
+  },
+  '../annotation': {
+    AnnotationColor: {},
+    AnnotationType: {},
+    compareDefinition: () => 0,
+    createAnnotationSpine: () => [],
+    normalizeDefinition: (value) => value,
+  },
+  '../book': {
+    getBookDisplayTitle: () => '',
+  },
+  '../db': {
+    db: {},
+    searchBookText: () => [],
+    unloadBookSearchText: () => undefined,
+  },
+  '../externalLink': {
+    openSupportedExternalUrl: () => undefined,
+  },
+  '../id': {
+    createId: () => 'test-id',
+  },
+  '../noteLinks': {
+    normalizeHrefPath: (value) => value,
+    sameHref: (a, b) => a === b,
+  },
+  '../readerErrorEvents': {
+    emitReaderOpenError: () => undefined,
+  },
+  '../styles': {
+    BodyTextDetectionCache: class {},
+    defaultStyle: {},
+  },
+  './tree': {
+    BaseTab: class {},
+    dfs: () => undefined,
+    find: () => undefined,
+  },
+  react: {},
+  valtio: {
+    proxy: (value) => value,
+    ref: (value) => value,
+    snapshot: (value) => value,
+    useSnapshot: (value) => value,
+  },
+})
 
 function testTextAlignIsNonPaginationStyle() {
   assert.strictEqual(
@@ -624,6 +681,58 @@ function testDuplicateIllustrationFilterKeepsRepeatedLeadingTitleArtHidden() {
   })
 }
 
+function testNearDocumentStartHandlesDocumentsWithoutBody() {
+  assert.strictEqual(
+    typeof readerModel.isNearDocumentStart,
+    'function',
+    'Expected reader image classification to expose its start-position helper for regression coverage',
+  )
+
+  const documentElement = {}
+  const image = {}
+  const fakeDocument = {
+    body: null,
+    documentElement,
+    getElementsByTagName: () => [],
+    createTreeWalker(root) {
+      assert.strictEqual(
+        root,
+        documentElement,
+        'missing body must fall back to documentElement before createTreeWalker',
+      )
+      return {
+        nextNode: () => image,
+      }
+    },
+  }
+
+  const originalNode = global.Node
+  const originalNodeFilter = global.NodeFilter
+  const originalElement = global.Element
+
+  try {
+    global.Node = { TEXT_NODE: 3 }
+    global.NodeFilter = {
+      FILTER_ACCEPT: 1,
+      FILTER_REJECT: 2,
+      FILTER_SKIP: 3,
+      SHOW_ELEMENT: 1,
+      SHOW_TEXT: 4,
+    }
+    global.Element = class {}
+    Object.setPrototypeOf(image, global.Element.prototype)
+    image.ownerDocument = fakeDocument
+    image.closest = () => null
+    image.localName = 'img'
+
+    assert.strictEqual(readerModel.isNearDocumentStart(image), true)
+  } finally {
+    global.Node = originalNode
+    global.NodeFilter = originalNodeFilter
+    global.Element = originalElement
+  }
+}
+
 testTextAlignIsNonPaginationStyle()
 testZoomBodyStylesSkipNonNumericValues()
 testZoomBodyStylesCanUseCurrentLayout()
@@ -639,4 +748,5 @@ testDuplicateIllustrationFilterIgnoresAlreadyHiddenImages()
 testDuplicateIllustrationFilterRebuildsFromHiddenDuplicates()
 testDuplicateIllustrationFilterRestoresUniqueLeadingTitleArt()
 testDuplicateIllustrationFilterKeepsRepeatedLeadingTitleArtHidden()
+testNearDocumentStartHandlesDocumentsWithoutBody()
 console.log('reader optimization tests passed')

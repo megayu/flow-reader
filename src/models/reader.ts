@@ -260,8 +260,10 @@ function imageDeclaredSize(image: HTMLImageElement) {
   return { height, width }
 }
 
-function isNearDocumentStart(element: Element) {
-  const body = element.ownerDocument.body
+export function isNearDocumentStart(element: Element) {
+  const body = documentBody(element.ownerDocument)
+  if (!body) return false
+
   const walker = element.ownerDocument.createTreeWalker(
     body,
     NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,

@@ -145,6 +145,63 @@ describe('Book', function () {
     })
   })
 
+  describe('Fixed layout metadata', function () {
+    it('uses original-resolution as a fallback viewport for fixed layout books', async function () {
+      const zip = new JSZip()
+
+      zip.file('mimetype', 'application/epub+zip')
+      zip.file(
+        'META-INF/container.xml',
+        `<?xml version="1.0"?>
+        <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+          <rootfiles>
+            <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+          </rootfiles>
+        </container>`,
+      )
+      zip.file(
+        'OEBPS/content.opf',
+        `<?xml version="1.0" encoding="UTF-8"?>
+        <package xmlns="http://www.idpf.org/2007/opf" version="3.0" prefix="rendition: http://www.idpf.org/vocab/rendition/#">
+          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <dc:title>Fixed Layout</dc:title>
+            <dc:identifier id="id">fixed-layout</dc:identifier>
+            <dc:language>en</dc:language>
+            <meta name="original-resolution" content="1200x1920"/>
+            <meta property="rendition:layout">pre-paginated</meta>
+          </metadata>
+          <manifest>
+            <item id="page" href="Text/page.xhtml" media-type="application/xhtml+xml"/>
+          </manifest>
+          <spine><itemref idref="page"/></spine>
+        </package>`,
+      )
+      zip.file(
+        'OEBPS/Text/page.xhtml',
+        `<?xml version="1.0" encoding="utf-8"?>
+        <html xmlns="http://www.w3.org/1999/xhtml">
+          <head><title>Page</title></head>
+          <body><img src="../Images/page.jpeg" width="1200" height="1920"/></body>
+        </html>`,
+      )
+
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' })
+      const url = URL.createObjectURL(
+        new Blob([buffer], { type: 'application/epub+zip' }),
+      )
+      const book = new Book(url, { openAs: 'epub' })
+
+      try {
+        await book.opened
+        assert.equal(book.package.metadata.layout, 'pre-paginated')
+        assert.equal(book.package.metadata.viewport, 'width=1200,height=1920')
+      } finally {
+        book.destroy()
+        URL.revokeObjectURL(url)
+      }
+    })
+  })
+
   describe('Archived epub', function () {
     var book = new Book('/fixtures/alice.epub')
 

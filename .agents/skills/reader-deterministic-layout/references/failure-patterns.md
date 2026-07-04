@@ -171,6 +171,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: keep this compatibility inside epubjs NCX handling: before XML parsing, escape raw `<` characters inside NCX `navLabel/text`; after parsing, require a direct child `content src`, skip malformed navPoints instead of throwing, and promote valid child navPoints when their parent was skipped. Do not alter pagination or add reader reload fallbacks.
 - Verification gate: epubjs Navigation tests must cover unescaped angle brackets in raw NCX labels, missing direct NCX `content`, child promotion after a malformed parent, and preservation of valid sibling navigation entries.
 
+### Fixed-layout pages omit viewport but declare original resolution
+
+- Symptom: an image-only fixed-layout EPUB renders each page partially clipped even though the source image is complete; opening the image directly shows the full page. Image indexing can also throw from `createTreeWalker` when a parsed section document has no `body`.
+- Reproduction path: open a Kindle Comic Creator style EPUB whose OPF metadata declares `rendition:layout` as `pre-paginated`, `fixed-layout` as true, and `original-resolution` such as `1200x1920`, while individual XHTML pages contain a single large image and omit `meta name="viewport"`.
+- Root cause: epubjs fixed-layout `fit()` scales pages from the per-page viewport meta. Without that tag it has no stable authored coordinate system, so large image pages can be laid out against the iframe size and clipped. Flow Reader image classification also assumed every section document has `document.body`.
+- Fix direction: parse OPF `original-resolution` as a fixed-layout fallback viewport only when `rendition:viewport` is absent and the book is pre-paginated; pass that fallback into `Contents.fit()` and use it only when the page itself omits viewport dimensions. Do not scan image dimensions, rewrite unpacked XHTML, or override page-authored viewport tags. In image classification, fall back from `document.body` to the document element before creating a tree walker.
+- Verification gate: epubjs tests must prove `original-resolution` becomes a fallback viewport, fixed-layout fitting uses it only when page viewport is missing, and page viewport wins when present; reader optimization tests must prove missing `body` does not make start-position image classification throw.
+
 ## Rejected Approaches
 
 ### Visibility-only hidden panes
