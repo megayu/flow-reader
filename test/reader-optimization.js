@@ -201,6 +201,102 @@ function testZoomMediaUsesScaledContentColumnWidth() {
   )
 }
 
+function testZoomPinsExplicitDecorativeBackgroundsToViewport() {
+  assert.strictEqual(
+    typeof styles.createZoomDecorativeBackgroundStyles,
+    'function',
+    'Expected zoom background compensation to be testable',
+  )
+
+  assert.deepStrictEqual(
+    styles.createZoomDecorativeBackgroundStyles(
+      {
+        backgroundImage: 'url("../Images/back.png")',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: '100% 100%',
+        backgroundPositionX: '100%',
+        backgroundPositionY: '100%',
+        backgroundSize: '50% auto',
+      },
+      1.5,
+    ),
+    {
+      backgroundAttachment: 'fixed',
+    },
+    'bottom decorative backgrounds should use the iframe viewport as their zoom anchor',
+  )
+
+  assert.deepStrictEqual(
+    styles.createZoomDecorativeBackgroundStyles(
+      {
+        backgroundImage: 'url("../Images/header.png")',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: '0% 0%',
+        backgroundPositionX: '0%',
+        backgroundPositionY: '0%',
+        backgroundSize: '40% auto',
+      },
+      1.5,
+    ),
+    {
+      backgroundAttachment: 'fixed',
+    },
+    'top-left decorative backgrounds with explicit positioning should also use the viewport as their zoom anchor',
+  )
+
+  assert.deepStrictEqual(
+    styles.createZoomDecorativeBackgroundStyles(
+      {
+        backgroundImage: 'url("../Images/side.png")',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: '100% 50%',
+        backgroundPositionX: '100%',
+        backgroundPositionY: '50%',
+        backgroundSize: '12em auto',
+      },
+      1.5,
+    ),
+    {
+      backgroundAttachment: 'fixed',
+    },
+    'right-center decorative backgrounds with explicit positioning should also use the viewport as their zoom anchor',
+  )
+}
+
+function testZoomLeavesNonDecorativeBackgroundsAlone() {
+  assert.deepStrictEqual(
+    styles.createZoomDecorativeBackgroundStyles(
+      {
+        backgroundImage: 'url("../Images/paper.png")',
+        backgroundRepeat: 'repeat-y',
+        backgroundPosition: '0% 0%',
+        backgroundPositionX: '0%',
+        backgroundPositionY: '0%',
+        backgroundSize: 'contain',
+      },
+      1.5,
+    ),
+    {},
+    'repeated or fitted page backgrounds must keep authored sizing',
+  )
+
+  assert.deepStrictEqual(
+    styles.createZoomDecorativeBackgroundStyles(
+      {
+        backgroundImage: 'url("../Images/header.png")',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: '50% 0%',
+        backgroundPositionX: '50%',
+        backgroundPositionY: '0%',
+        backgroundSize: 'contain',
+      },
+      1.5,
+    ),
+    {},
+    'fitted page backgrounds must keep authored sizing',
+  )
+}
+
 function testDefinitionsAreNormalizedConsistently() {
   assert.strictEqual(
     typeof annotation.normalizeDefinition,
@@ -532,6 +628,8 @@ testTextAlignIsNonPaginationStyle()
 testZoomBodyStylesSkipNonNumericValues()
 testZoomBodyStylesCanUseCurrentLayout()
 testZoomMediaUsesScaledContentColumnWidth()
+testZoomPinsExplicitDecorativeBackgroundsToViewport()
+testZoomLeavesNonDecorativeBackgroundsAlone()
 testDefinitionsAreNormalizedConsistently()
 testAnnotationSpineDoesNotRequireNavItem()
 testEpubHrefComparisonHandlesEncodedSpinePaths()

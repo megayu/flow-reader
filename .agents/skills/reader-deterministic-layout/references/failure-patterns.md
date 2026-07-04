@@ -91,6 +91,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: when injecting zoom styles into iframe content, constrain media max inline size to the current single-page content column in unscaled coordinates.
 - Verification gate: browser Playwright coverage must assert a wide image's rendered width stays within the zoomed single-page content column in double-page mode; final client layout changes still require the deterministic verifier on a Tauri client.
 
+### Zoomed positioned body background drifts from authored anchor
+
+- Symptom: in a decorated title section, increasing reader zoom makes a positioned body background image drift away from the author's intended corner or edge anchor.
+- Reproduction path: open a reflowable EPUB section whose `body` has a single explicitly positioned `no-repeat` background with simple percentage or length `background-size`, then set reader zoom above 1.
+- Root cause: Flow Reader zoom scales the body while inversely resizing its layout box. CSS background size and position are resolved against that pre-transform box, so a decorative body background can drift from the visible page anchor.
+- Fix direction: during zoom CSS injection, keep the authored background size and pin single-layer explicitly positioned no-repeat body backgrounds with simple numeric `background-size` to the iframe viewport via fixed attachment; leave repeated, fitted, and multi-layer backgrounds untouched.
+- Verification gate: focused reader optimization tests must prove explicit positioned decorative backgrounds are viewport-anchored and repeated or fitted backgrounds are ignored; final desktop visual acceptance still requires real-client layout verification.
+
 ### Non-readable navigation entries block adjacent spread navigation
 
 - Symptom: in double-page mode, TOC entries can point at non-readable resources such as missing XHTML files or `linear="no"` pages, and clicking them can leave navigation stuck at the edge of the readable flow.

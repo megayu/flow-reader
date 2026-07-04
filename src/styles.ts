@@ -102,6 +102,17 @@ const zoomBodyProperties = [
 
 type ZoomBodyProperty = (typeof zoomBodyProperties)[number]
 type ZoomBodyStyleSource = Partial<Record<ZoomBodyProperty, unknown>>
+type ZoomDecorativeBackgroundStyleSource = Partial<
+  Record<
+    | 'backgroundImage'
+    | 'backgroundPosition'
+    | 'backgroundPositionX'
+    | 'backgroundPositionY'
+    | 'backgroundRepeat'
+    | 'backgroundSize',
+    unknown
+  >
+>
 type ZoomLayoutStyleSource = {
   width?: unknown
   height?: unknown
@@ -194,6 +205,99 @@ export function createZoomMediaCss(source: ZoomBodyStyleSource, zoom: number) {
   ${zoomIntrinsicMediaSelector} {
     height: auto !important;
   }`
+}
+
+function readCssTextValue(value: unknown) {
+  return typeof value === 'string' ? value.trim() : undefined
+}
+
+function isNoRepeatBackground(source: ZoomDecorativeBackgroundStyleSource) {
+  const repeat = readCssTextValue(source.backgroundRepeat)?.toLowerCase()
+  if (repeat === 'no-repeat' || repeat === 'no-repeat no-repeat') return true
+  return false
+}
+
+function isBackgroundPositionToken(token: string) {
+  if (['top', 'right', 'bottom', 'left', 'center'].includes(token)) return true
+  return /^-?\d+(?:\.\d+)?(px|%|em|rem|vw|vh|vmin|vmax)$/.test(token)
+}
+
+function isExplicitDecorativeBackgroundPosition(
+  source: ZoomDecorativeBackgroundStyleSource,
+) {
+  const position = readCssTextValue(source.backgroundPosition)?.toLowerCase()
+  if (position) {
+    if (position.includes(',')) return false
+
+    const tokens = position.split(/\s+/)
+    return (
+      tokens.length >= 1 &&
+      tokens.length <= 4 &&
+      tokens.every(isBackgroundPositionToken)
+    )
+  }
+
+  const positionX = readCssTextValue(source.backgroundPositionX)?.toLowerCase()
+  const positionY = readCssTextValue(source.backgroundPositionY)?.toLowerCase()
+
+  return (
+    !!positionX &&
+    !!positionY &&
+    isBackgroundPositionToken(positionX) &&
+    isBackgroundPositionToken(positionY)
+  )
+}
+
+function isSimpleDecorativeBackgroundSize(value: string) {
+  if (value.includes(',')) return
+
+  const tokens = value.trim().split(/\s+/)
+  if (tokens.length < 1 || tokens.length > 2) return
+
+  let hasNumericSize = false
+  const valid = tokens.every((token) => {
+    const normalized = token.toLowerCase()
+    if (normalized === 'auto') return true
+
+    hasNumericSize = /^(\d+(?:\.\d+)?)(px|%|em|rem|vw|vh|vmin|vmax)$/.test(
+      normalized,
+    )
+    return hasNumericSize
+  })
+
+  return valid && hasNumericSize
+}
+
+export function createZoomDecorativeBackgroundStyles(
+  source: ZoomDecorativeBackgroundStyleSource,
+  zoom: number,
+) {
+  if (!Number.isFinite(zoom) || zoom <= 0 || zoom === 1) return {}
+
+  const backgroundImage = readCssTextValue(source.backgroundImage)
+  const backgroundSize = readCssTextValue(source.backgroundSize)
+  if (
+    !backgroundImage ||
+    backgroundImage === 'none' ||
+    !backgroundSize ||
+    !isSimpleDecorativeBackgroundSize(backgroundSize)
+  ) {
+    return {}
+  }
+
+  // Body zoom changes the layout box that positioned backgrounds use as their
+  // anchor. Pin no-repeat decorations with resolved explicit positioning to
+  // the iframe viewport without touching repeated page textures.
+  if (
+    !isNoRepeatBackground(source) ||
+    !isExplicitDecorativeBackgroundPosition(source)
+  ) {
+    return {}
+  }
+
+  return {
+    backgroundAttachment: 'fixed',
+  } satisfies CSSProperties
 }
 
 function cssPixelValue(value: unknown) {
@@ -298,13 +402,23 @@ export function updateCustomStyle(
       layoutView?.axis,
     )
     css += createZoomMediaCss(layoutStyles, zoom)
+    const computedBodyStyle = contents.window.getComputedStyle(body)
+    const backgroundStyleSource: ZoomDecorativeBackgroundStyleSource = {
+      backgroundImage: computedBodyStyle.backgroundImage,
+      backgroundPosition: computedBodyStyle.backgroundPosition,
+      backgroundPositionX: computedBodyStyle.backgroundPositionX,
+      backgroundPositionY: computedBodyStyle.backgroundPositionY,
+      backgroundRepeat: computedBodyStyle.backgroundRepeat,
+      backgroundSize: computedBodyStyle.backgroundSize,
+    }
     css += `body {
-      ${mapToCss(
-        createZoomBodyStyles(
+      ${mapToCss({
+        ...createZoomBodyStyles(
           createZoomBodyStyleSource(body.style, layoutStyles),
           zoom,
         ),
-      )}
+        ...createZoomDecorativeBackgroundStyles(backgroundStyleSource, zoom),
+      })}
     }`
   }
 
