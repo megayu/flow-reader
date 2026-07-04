@@ -13,7 +13,7 @@ use zip::ZipArchive;
 use super::*;
 
 const EPUB_SECTION_SPLIT_MIN_BYTES: u64 = 512 * 1024;
-const EPUB_SECTION_SPLIT_MIN_NAV_POINTS: usize = 8;
+const EPUB_SECTION_SPLIT_MIN_NAV_POINTS: usize = 2;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct EpubAccessInfo {
     pub(super) mode: BookContentMode,
@@ -181,6 +181,7 @@ struct SplitSection {
     original_abs_path: String,
     original_file_path: PathBuf,
     replacements: Vec<(String, String)>,
+    link_targets: Vec<(String, String)>,
     split_items: Vec<SplitItem>,
 }
 
@@ -190,6 +191,20 @@ struct SplitItem {
     href: String,
     abs_path: String,
     content: String,
+}
+
+#[derive(Debug, Clone)]
+struct OpenElement {
+    name: String,
+    open_tag: String,
+    start: usize,
+}
+
+#[derive(Debug, Clone)]
+struct AnchorSplitPoint {
+    anchor_position: usize,
+    split_start_position: usize,
+    open_ancestors: Vec<OpenElement>,
 }
 
 pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<(), String> {
@@ -298,13 +313,14 @@ pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<(
         updated_opf = replace_manifest_item(&updated_opf, split)?;
         updated_opf = replace_spine_itemref(&updated_opf, split)?;
     }
+    updated_opf = rewrite_current_package_link_values(&updated_opf, &opf_parent, &split_sections);
 
     let replacements = split_sections
         .iter()
         .flat_map(|split| split.replacements.iter().cloned())
         .collect::<Vec<_>>();
     let updated_ncx = replace_quoted_values(&ncx_xml, &replacements);
-    update_existing_html_links(unpacked_dir, &replacements, &split_sections)?;
+    rewrite_current_package_html_links(unpacked_dir, &split_sections)?;
 
     fs::write(&opf_path, updated_opf).map_err(|error| error.to_string())?;
     fs::write(&ncx_file_path, updated_ncx).map_err(|error| error.to_string())?;
@@ -470,31 +486,35 @@ fn plan_split_section(
     used_ids: &HashSet<String>,
 ) -> Option<SplitSection> {
     let (body_start, body_end) = local_body_content_range(xhtml)?;
-    let anchor_starts = collect_anchor_starts(xhtml, body_start, body_end)?;
+    let anchor_split_points = collect_anchor_split_points(xhtml, body_start, body_end)?;
     let mut anchor_positions = Vec::new();
 
     for reference in section_refs {
         let fragment = percent_decode_path(&reference.fragment);
-        let position = *anchor_starts.get(&fragment)?;
-        anchor_positions.push((reference, position));
+        let split_point = anchor_split_points.get(&fragment)?.clone();
+        anchor_positions.push((reference, split_point));
     }
 
-    anchor_positions.sort_by_key(|(_, position)| *position);
-    anchor_positions.dedup_by_key(|(_, position)| *position);
+    anchor_positions.sort_by_key(|(_, split_point)| split_point.split_start_position);
+    anchor_positions.dedup_by_key(|(_, split_point)| split_point.split_start_position);
     if anchor_positions.len() < EPUB_SECTION_SPLIT_MIN_NAV_POINTS {
         return None;
     }
 
     let prefix = &xhtml[..body_start];
     let suffix = &xhtml[body_end..];
-    let split_starts = std::iter::once(body_start)
-        .chain(
-            anchor_positions
-                .iter()
-                .skip(1)
-                .map(|(_, position)| *position),
-        )
-        .collect::<Vec<_>>();
+    let mut split_starts = Vec::with_capacity(anchor_positions.len());
+    split_starts.push(AnchorSplitPoint {
+        anchor_position: body_start,
+        split_start_position: body_start,
+        open_ancestors: Vec::new(),
+    });
+    split_starts.extend(
+        anchor_positions
+            .iter()
+            .skip(1)
+            .map(|(_, split_point)| (*split_point).clone()),
+    );
     let stem = item
         .href
         .rsplit_once('.')
@@ -509,8 +529,11 @@ fn plan_split_section(
 
     let mut split_items = Vec::new();
     for (index, start) in split_starts.iter().enumerate() {
-        let end = split_starts.get(index + 1).copied().unwrap_or(body_end);
-        if *start >= end {
+        let end = split_starts
+            .get(index + 1)
+            .map(|split_start| split_start.split_start_position)
+            .unwrap_or(body_end);
+        if start.split_start_position >= end {
             return None;
         }
 
@@ -520,9 +543,36 @@ fn plan_split_section(
         );
         let id = unique_split_id(&item.id, index + 1, used_ids);
         let abs_path = normalize_zip_path(join_zip_path(opf_parent, &href));
-        let mut content = String::with_capacity(prefix.len() + (end - *start) + suffix.len());
+        let close_ancestors = split_starts
+            .get(index + 1)
+            .map(|split_start| split_start.open_ancestors.as_slice())
+            .unwrap_or(&[]);
+        let synthetic_open_len = start
+            .open_ancestors
+            .iter()
+            .map(|ancestor| ancestor.open_tag.len())
+            .sum::<usize>();
+        let synthetic_close_len = close_ancestors
+            .iter()
+            .map(|ancestor| ancestor.name.len() + 3)
+            .sum::<usize>();
+        let mut content = String::with_capacity(
+            prefix.len()
+                + synthetic_open_len
+                + (end - start.split_start_position)
+                + synthetic_close_len
+                + suffix.len(),
+        );
         content.push_str(prefix);
-        content.push_str(&xhtml[*start..end]);
+        for ancestor in &start.open_ancestors {
+            content.push_str(&ancestor.open_tag);
+        }
+        content.push_str(&xhtml[start.split_start_position..end]);
+        for ancestor in close_ancestors.iter().rev() {
+            content.push_str("</");
+            content.push_str(&ancestor.name);
+            content.push('>');
+        }
         content.push_str(suffix);
 
         split_items.push(SplitItem {
@@ -534,39 +584,60 @@ fn plan_split_section(
     }
 
     let mut replacements = Vec::new();
-    let mut split_link_targets = Vec::new();
     for reference in section_refs {
         let fragment = percent_decode_path(&reference.fragment);
-        let position = *anchor_starts.get(&fragment)?;
-        let split_index = split_starts.partition_point(|start| *start <= position) - 1;
+        let position = anchor_split_points.get(&fragment)?.anchor_position;
+        let split_index =
+            split_starts.partition_point(|start| start.split_start_position <= position) - 1;
         let split = split_items.get(split_index)?;
         let relative = relative_zip_path(ncx_parent, &split.abs_path);
         replacements.push((
             reference.raw_src.clone(),
             format!("{relative}#{}", reference.fragment),
         ));
-        split_link_targets.push((
-            reference.raw_src.clone(),
-            reference.fragment.clone(),
-            split.abs_path.clone(),
-        ));
     }
 
-    rewrite_split_item_links(&mut split_items, section_abs_path, &split_link_targets);
+    let mut all_link_targets = Vec::new();
+    for (fragment, split_point) in &anchor_split_points {
+        let split_index = split_starts
+            .partition_point(|start| start.split_start_position <= split_point.anchor_position)
+            - 1;
+        let split = split_items.get(split_index)?;
+        all_link_targets.push((fragment.clone(), split.abs_path.clone()));
+    }
+
+    rewrite_split_item_links(&mut split_items, section_abs_path, &all_link_targets);
+    if split_items
+        .iter()
+        .any(|item| parse_split_xhtml(&item.content).is_err())
+    {
+        return None;
+    }
 
     Some(SplitSection {
         original_id: item.id.clone(),
         original_abs_path: section_abs_path.to_string(),
         original_file_path: section_path.to_path_buf(),
         replacements,
+        link_targets: all_link_targets,
         split_items,
     })
+}
+
+fn parse_split_xhtml(xhtml: &str) -> Result<roxmltree::Document<'_>, roxmltree::Error> {
+    roxmltree::Document::parse_with_options(
+        xhtml,
+        roxmltree::ParsingOptions {
+            allow_dtd: true,
+            ..roxmltree::ParsingOptions::default()
+        },
+    )
 }
 
 fn rewrite_split_item_links(
     split_items: &mut [SplitItem],
     section_abs_path: &str,
-    link_targets: &[(String, String, String)],
+    link_targets: &[(String, String)],
 ) {
     let section_file_name = section_abs_path
         .rsplit_once('/')
@@ -578,13 +649,12 @@ fn rewrite_split_item_links(
         let original_relative = relative_zip_path(item_parent, section_abs_path);
         let mut replacements = HashMap::new();
 
-        for (raw_src, fragment, target_abs_path) in link_targets {
+        for (fragment, target_abs_path) in link_targets {
             let target = format!(
                 "{}#{}",
                 relative_zip_path(item_parent, target_abs_path),
                 fragment
             );
-            replacements.insert(raw_src.clone(), target.clone());
             replacements.insert(format!("{original_relative}#{fragment}"), target.clone());
             replacements.insert(format!("{section_file_name}#{fragment}"), target.clone());
             replacements.insert(format!("./{section_file_name}#{fragment}"), target.clone());
@@ -598,6 +668,165 @@ fn rewrite_split_item_links(
     }
 }
 
+fn collect_anchor_split_points(
+    xhtml: &str,
+    body_start: usize,
+    body_end: usize,
+) -> Option<HashMap<String, AnchorSplitPoint>> {
+    let tag_regex = Regex::new(r#"(?is)<[^>]+>"#).ok()?;
+    let anchor_regex =
+        Regex::new(r#"(?is)(?:\bid\s*=\s*["']([^"']+)["']|\bname\s*=\s*["']([^"']+)["'])"#).ok()?;
+    let mut anchors = HashMap::new();
+    let mut stack: Vec<OpenElement> = Vec::new();
+
+    for tag_match in tag_regex.find_iter(&xhtml[body_start..body_end]) {
+        let tag = tag_match.as_str();
+        let tag_start = body_start + tag_match.start();
+        let trimmed = tag.trim_start();
+        if is_ignored_split_tag(trimmed) {
+            continue;
+        }
+
+        if trimmed.starts_with("</") {
+            if let Some(name) = xml_tag_name(trimmed) {
+                let name = name.to_ascii_lowercase();
+                if let Some(index) = stack
+                    .iter()
+                    .rposition(|element| element.name.eq_ignore_ascii_case(&name))
+                {
+                    stack.truncate(index);
+                }
+            }
+            continue;
+        }
+
+        let Some(name) = xml_tag_name(trimmed) else {
+            continue;
+        };
+        let name = name.to_ascii_lowercase();
+        let current = OpenElement {
+            name: name.clone(),
+            open_tag: tag.to_string(),
+            start: tag_start,
+        };
+
+        if let Some(captures) = anchor_regex.captures(tag) {
+            if let Some(anchor) = captures.get(1).or_else(|| captures.get(2)) {
+                let (split_start_position, open_ancestors) =
+                    split_boundary_for_anchor(&stack, &current);
+                anchors
+                    .entry(anchor.as_str().to_string())
+                    .or_insert(AnchorSplitPoint {
+                        anchor_position: tag_start,
+                        split_start_position,
+                        open_ancestors,
+                    });
+            }
+        }
+
+        if !is_self_closing_split_tag(trimmed, &name) {
+            stack.push(current);
+        }
+    }
+
+    Some(anchors)
+}
+
+fn split_boundary_for_anchor(
+    stack: &[OpenElement],
+    current: &OpenElement,
+) -> (usize, Vec<OpenElement>) {
+    if let Some(parent_index) = stack.iter().rposition(|element| {
+        is_split_container_tag(&element.name) && is_split_text_block_tag(&current.name)
+    }) {
+        return (stack[parent_index].start, stack[..parent_index].to_vec());
+    }
+
+    if is_split_block_tag(&current.name) {
+        return (current.start, stack.to_vec());
+    }
+
+    if let Some(parent_index) = stack
+        .iter()
+        .rposition(|element| is_split_block_tag(&element.name))
+    {
+        return (stack[parent_index].start, stack[..parent_index].to_vec());
+    }
+
+    (current.start, stack.to_vec())
+}
+
+fn is_ignored_split_tag(tag: &str) -> bool {
+    tag.starts_with("<!--")
+        || tag.starts_with("<!")
+        || tag.starts_with("<?")
+        || tag.starts_with("</!")
+        || tag.starts_with("</?")
+}
+
+fn xml_tag_name(tag: &str) -> Option<String> {
+    let tag = tag.trim_start_matches('<').trim_start_matches('/');
+    let name = tag
+        .chars()
+        .take_while(|character| {
+            character.is_ascii_alphanumeric() || matches!(*character, '_' | '-' | ':' | '.')
+        })
+        .collect::<String>();
+    (!name.is_empty()).then_some(name)
+}
+
+fn is_self_closing_split_tag(tag: &str, name: &str) -> bool {
+    tag.trim_end().ends_with("/>")
+        || matches!(
+            name,
+            "area"
+                | "base"
+                | "br"
+                | "col"
+                | "embed"
+                | "hr"
+                | "img"
+                | "input"
+                | "link"
+                | "meta"
+                | "param"
+                | "source"
+                | "track"
+                | "wbr"
+        )
+}
+
+fn is_split_text_block_tag(name: &str) -> bool {
+    matches!(
+        name,
+        "p" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "dt" | "dd" | "figcaption"
+    )
+}
+
+fn is_split_container_tag(name: &str) -> bool {
+    matches!(
+        name,
+        "div"
+            | "section"
+            | "article"
+            | "main"
+            | "nav"
+            | "aside"
+            | "blockquote"
+            | "figure"
+            | "li"
+            | "td"
+            | "th"
+    )
+}
+
+fn is_split_block_tag(name: &str) -> bool {
+    is_split_text_block_tag(name)
+        || is_split_container_tag(name)
+        || matches!(name, "table" | "ul" | "ol" | "dl" | "pre")
+}
+
+#[cfg(test)]
 fn collect_anchor_starts(
     xhtml: &str,
     body_start: usize,
@@ -835,9 +1064,8 @@ fn replace_quoted_values_by_lookup(text: &str, replacements: &HashMap<String, St
     updated
 }
 
-fn update_existing_html_links(
+fn rewrite_current_package_html_links(
     unpacked_dir: &Path,
-    replacements: &[(String, String)],
     split_sections: &[SplitSection],
 ) -> Result<(), String> {
     let removed_paths = split_sections
@@ -858,13 +1086,51 @@ fn update_existing_html_links(
         let Ok(text) = fs::read_to_string(&path) else {
             continue;
         };
-        let updated = replace_quoted_values(&text, replacements);
+        let parent = parent_zip_path(&relative);
+        let updated = rewrite_current_package_link_values(&text, parent, split_sections);
         if updated != text {
             fs::write(path, updated).map_err(|error| error.to_string())?;
         }
     }
 
     Ok(())
+}
+
+fn rewrite_current_package_link_values(
+    text: &str,
+    current_parent: &str,
+    split_sections: &[SplitSection],
+) -> String {
+    let mut replacements = HashMap::new();
+
+    for split in split_sections {
+        let original_relative = relative_zip_path(current_parent, &split.original_abs_path);
+        let section_file_name = split
+            .original_abs_path
+            .rsplit_once('/')
+            .map(|(_, name)| name)
+            .unwrap_or(split.original_abs_path.as_str());
+
+        if let Some(first_split) = split.split_items.first() {
+            let target = relative_zip_path(current_parent, &first_split.abs_path);
+            replacements.insert(original_relative.clone(), target.clone());
+            replacements.insert(section_file_name.to_string(), target.clone());
+            replacements.insert(format!("./{section_file_name}"), target);
+        }
+
+        for (fragment, target_abs_path) in &split.link_targets {
+            let target = format!(
+                "{}#{}",
+                relative_zip_path(current_parent, target_abs_path),
+                fragment
+            );
+            replacements.insert(format!("{original_relative}#{fragment}"), target.clone());
+            replacements.insert(format!("{section_file_name}#{fragment}"), target.clone());
+            replacements.insert(format!("./{section_file_name}#{fragment}"), target);
+        }
+    }
+
+    replace_quoted_values_by_lookup(text, &replacements)
 }
 
 fn collect_unpacked_html_files(root: &Path) -> Result<Vec<PathBuf>, String> {
@@ -1550,7 +1816,7 @@ mod tests {
         root
     }
 
-    fn write_split_fixture(root: &Path) {
+    fn write_split_fixture(root: &Path, nav_point_count: usize) {
         fs::write(
             root.join("OEBPS/content.opf"),
             r#"<package>
@@ -1566,7 +1832,7 @@ mod tests {
         .unwrap();
 
         let mut ncx = String::from("<ncx><navMap>");
-        for index in 0..EPUB_SECTION_SPLIT_MIN_NAV_POINTS {
+        for index in 0..nav_point_count {
             ncx.push_str(&format!(
                 r#"<navPoint id="nav{index}"><content src="Text/part0000.xhtml#nav_point_{index}"/></navPoint>"#
             ));
@@ -1581,7 +1847,7 @@ mod tests {
 "##,
         );
         let filler = "x".repeat(70_000);
-        for index in 0..EPUB_SECTION_SPLIT_MIN_NAV_POINTS {
+        for index in 0..nav_point_count {
             xhtml.push_str(&format!(
                 r#"<h1 id="nav_point_{index}">Section {index}</h1><p>{filler}</p>"#
             ));
@@ -1593,7 +1859,7 @@ mod tests {
     #[test]
     fn normalize_splits_table_sections_and_rewrites_internal_links() {
         let root = split_test_root("split-table-links");
-        write_split_fixture(&root);
+        write_split_fixture(&root, 8);
 
         normalize_unpacked_epub_structure(&root).unwrap();
 
@@ -1615,6 +1881,201 @@ mod tests {
 
         let ncx = fs::read_to_string(root.join("OEBPS/toc.ncx")).unwrap();
         assert!(ncx.contains("Text/part0000-flow-split-0008.xhtml#nav_point_7"));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn normalize_splits_two_anchor_oversized_section() {
+        let root = split_test_root("split-two-anchors");
+        write_split_fixture(&root, 2);
+
+        normalize_unpacked_epub_structure(&root).unwrap();
+
+        assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
+        assert!(root
+            .join("OEBPS/Text/part0000-flow-split-0002.xhtml")
+            .exists());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn normalize_splits_xhtml_doctype_section() {
+        let root = split_test_root("split-xhtml-doctype");
+        write_split_fixture(&root, 2);
+        let xhtml_path = root.join("OEBPS/Text/part0000.xhtml");
+        let xhtml = fs::read_to_string(&xhtml_path).unwrap();
+        fs::write(
+            &xhtml_path,
+            xhtml.replacen(
+                r#"<?xml version="1.0" encoding="utf-8"?>"#,
+                r#"<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">"#,
+                1,
+            ),
+        )
+        .unwrap();
+
+        normalize_unpacked_epub_structure(&root).unwrap();
+
+        assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
+        assert!(root
+            .join("OEBPS/Text/part0000-flow-split-0002.xhtml")
+            .exists());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn normalize_splits_rewrites_existing_nav_and_guide_links() {
+        let root = split_test_root("split-nav-links");
+        write_split_fixture(&root, 3);
+        fs::write(
+            root.join("OEBPS/content.opf"),
+            r#"<package>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="nav" href="Text/nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="part" href="Text/part0000.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine toc="ncx">
+    <itemref idref="part"/>
+  </spine>
+  <guide>
+    <reference type="toc" href="Text/part0000.xhtml#book_toc"/>
+  </guide>
+</package>"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("OEBPS/Text/nav.xhtml"),
+            r#"<?xml version="1.0" encoding="utf-8"?><html><body>
+<nav><ol>
+  <li><a href="part0000.xhtml#book_toc">Contents</a></li>
+  <li><a href="part0000.xhtml#nav_point_0">One</a></li>
+  <li><a href="part0000.xhtml#nav_point_1">Two</a></li>
+  <li><a href="part0000.xhtml#nav_point_2">Three</a></li>
+</ol></nav>
+</body></html>"#,
+        )
+        .unwrap();
+
+        let xhtml_path = root.join("OEBPS/Text/part0000.xhtml");
+        let xhtml = fs::read_to_string(&xhtml_path).unwrap();
+        fs::write(
+            &xhtml_path,
+            xhtml.replacen("<body>", r#"<body><div id="book_toc">Contents</div>"#, 1),
+        )
+        .unwrap();
+
+        normalize_unpacked_epub_structure(&root).unwrap();
+
+        let nav = fs::read_to_string(root.join("OEBPS/Text/nav.xhtml")).unwrap();
+        assert!(!nav.contains("part0000.xhtml#"));
+        assert!(nav.contains("part0000-flow-split-0001.xhtml#book_toc"));
+        assert!(nav.contains("part0000-flow-split-0001.xhtml#nav_point_0"));
+        assert!(nav.contains("part0000-flow-split-0002.xhtml#nav_point_1"));
+        assert!(nav.contains("part0000-flow-split-0003.xhtml#nav_point_2"));
+
+        let opf = fs::read_to_string(root.join("OEBPS/content.opf")).unwrap();
+        assert!(opf.contains(r#"href="Text/part0000-flow-split-0001.xhtml#book_toc""#));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn normalize_splits_from_block_boundaries_when_anchor_is_wrapped() {
+        let root = split_test_root("split-block-boundary");
+        fs::write(
+            root.join("OEBPS/content.opf"),
+            r#"<package>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="part" href="Text/part0000.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine toc="ncx">
+    <itemref idref="part"/>
+  </spine>
+</package>"#,
+        )
+        .unwrap();
+
+        let mut ncx = String::from("<ncx><navMap>");
+        for index in 0..8 {
+            ncx.push_str(&format!(
+                r#"<navPoint id="nav{index}"><content src="Text/part0000.xhtml#nav_point_{index}"/></navPoint>"#
+            ));
+        }
+        ncx.push_str("</navMap></ncx>");
+        fs::write(root.join("OEBPS/toc.ncx"), ncx).unwrap();
+
+        let filler = "x".repeat(70_000);
+        let mut xhtml =
+            String::from(r#"<?xml version="1.0" encoding="utf-8"?><html><body><div id="book">"#);
+        for index in 0..8 {
+            xhtml.push_str(&format!(
+                r#"<div class="text"><p id="nav_point_{index}">Section {index}</p><p>{filler}</p></div>"#
+            ));
+        }
+        xhtml.push_str("</div></body></html>");
+        fs::write(root.join("OEBPS/Text/part0000.xhtml"), xhtml).unwrap();
+
+        normalize_unpacked_epub_structure(&root).unwrap();
+
+        assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
+        for index in 1..=8 {
+            let split_path = root.join(format!("OEBPS/Text/part0000-flow-split-{index:04}.xhtml"));
+            let split = fs::read_to_string(split_path).unwrap();
+            roxmltree::Document::parse(&split).expect("split XHTML should be well formed");
+            assert!(
+                !split.contains("</body></html></div>"),
+                "split should not contain trailing orphan closing tags"
+            );
+        }
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn normalize_skips_split_when_generated_xhtml_has_undeclared_namespace_prefix() {
+        let root = split_test_root("split-undeclared-prefix");
+        fs::write(
+            root.join("OEBPS/content.opf"),
+            r#"<package>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="part" href="Text/part0000.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine toc="ncx">
+    <itemref idref="part"/>
+  </spine>
+</package>"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("OEBPS/toc.ncx"),
+            r#"<ncx><navMap>
+  <navPoint id="nav0"><content src="Text/part0000.xhtml#nav_point_0"/></navPoint>
+  <navPoint id="nav1"><content src="Text/part0000.xhtml#nav_point_1"/></navPoint>
+</navMap></ncx>"#,
+        )
+        .unwrap();
+
+        let filler = "x".repeat(270_000);
+        fs::write(
+            root.join("OEBPS/Text/part0000.xhtml"),
+            format!(
+                r#"<?xml version="1.0" encoding="utf-8"?><html><body><div><mbp:pagebreak/><h1 id="nav_point_0">One</h1><p>{filler}</p><h1 id="nav_point_1">Two</h1><p>{filler}</p></div></body></html>"#
+            ),
+        )
+        .unwrap();
+
+        normalize_unpacked_epub_structure(&root).unwrap();
+
+        assert!(root.join("OEBPS/Text/part0000.xhtml").exists());
+        assert!(!root
+            .join("OEBPS/Text/part0000-flow-split-0002.xhtml")
+            .exists());
 
         fs::remove_dir_all(root).unwrap();
     }
