@@ -163,6 +163,7 @@ struct OpfManifestItem {
     id: String,
     href: String,
     media_type: String,
+    properties: String,
 }
 
 #[derive(Debug, Clone)]
@@ -244,6 +245,35 @@ pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<(
             return Ok(());
         };
         let ncx_parent = parent_zip_path(&ncx_abs_path).to_string();
+        let mut toc_target_abs_paths = ncx_content_paths(&ncx_xml)
+            .into_iter()
+            .map(|path| normalize_zip_path(join_zip_path(&ncx_parent, &path)))
+            .collect::<Vec<_>>();
+
+        if let Some(nav_item) = find_nav_manifest_item(&manifest) {
+            let nav_abs_path = normalize_zip_path(join_zip_path(&opf_parent, &nav_item.href));
+            let nav_file_path = unpacked_resource_path(unpacked_dir, &nav_abs_path);
+            if let Ok(nav_xml) = fs::read_to_string(&nav_file_path) {
+                let nav_parent = parent_zip_path(&nav_abs_path);
+                toc_target_abs_paths.extend(
+                    nav_toc_href_paths(&nav_xml)
+                        .into_iter()
+                        .map(|path| normalize_zip_path(join_zip_path(nav_parent, &path))),
+                );
+            }
+        }
+        for guide_toc_href in opf_guide_toc_hrefs(&opf_doc) {
+            let toc_abs_path = normalize_zip_path(join_zip_path(&opf_parent, &guide_toc_href));
+            let toc_file_path = unpacked_resource_path(unpacked_dir, &toc_abs_path);
+            if let Ok(toc_html) = fs::read_to_string(&toc_file_path) {
+                let toc_parent = parent_zip_path(&toc_abs_path);
+                toc_target_abs_paths.extend(
+                    html_href_paths(&toc_html)
+                        .into_iter()
+                        .map(|path| normalize_zip_path(join_zip_path(toc_parent, &path))),
+                );
+            }
+        }
 
         drop(opf_doc);
         if let Some(updated_opf) = repair_missing_spine_nav_targets(
@@ -254,6 +284,17 @@ pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<(
             &spine,
             &ncx_xml,
             &ncx_parent,
+        ) {
+            fs::write(&opf_path, updated_opf.as_bytes()).map_err(|error| error.to_string())?;
+            opf_xml = updated_opf;
+        }
+        if let Some(updated_opf) = repair_linear_no_toc_targets(
+            &opf_xml,
+            unpacked_dir,
+            &opf_parent,
+            &manifest,
+            &spine,
+            &toc_target_abs_paths,
         ) {
             fs::write(&opf_path, updated_opf.as_bytes()).map_err(|error| error.to_string())?;
             opf_xml = updated_opf;
@@ -391,6 +432,7 @@ fn opf_manifest_items(doc: &roxmltree::Document) -> Vec<OpfManifestItem> {
                 id: node.attribute("id")?.to_string(),
                 href: node.attribute("href")?.to_string(),
                 media_type: node.attribute("media-type").unwrap_or("").to_string(),
+                properties: node.attribute("properties").unwrap_or("").to_string(),
             })
         })
         .collect()
@@ -428,6 +470,29 @@ fn find_ncx_manifest_item(
         })
 }
 
+fn find_nav_manifest_item(manifest: &[OpfManifestItem]) -> Option<OpfManifestItem> {
+    manifest
+        .iter()
+        .find(|item| {
+            item.properties
+                .split_whitespace()
+                .any(|property| property.eq_ignore_ascii_case("nav"))
+        })
+        .cloned()
+}
+
+fn opf_guide_toc_hrefs(doc: &roxmltree::Document) -> Vec<String> {
+    doc.descendants()
+        .filter(|node| node.is_element() && node.has_tag_name("reference"))
+        .filter(|node| {
+            node.attribute("type")
+                .is_some_and(|type_| type_.eq_ignore_ascii_case("toc"))
+        })
+        .filter_map(|node| node.attribute("href"))
+        .filter_map(normalize_local_href_path)
+        .collect()
+}
+
 fn is_html_manifest_item(item: &OpfManifestItem) -> bool {
     item.media_type == "application/xhtml+xml"
         || item.media_type == "text/html"
@@ -435,6 +500,54 @@ fn is_html_manifest_item(item: &OpfManifestItem) -> bool {
             extension_from_path(&item.href).as_str(),
             "html" | "htm" | "xhtml"
         )
+}
+
+fn repair_linear_no_toc_targets(
+    opf: &str,
+    unpacked_dir: &Path,
+    opf_parent: &str,
+    manifest: &[OpfManifestItem],
+    spine: &[OpfSpineItem],
+    toc_target_abs_paths: &[String],
+) -> Option<String> {
+    let manifest_by_abs_path = manifest
+        .iter()
+        .filter(|item| is_html_manifest_item(item))
+        .map(|item| {
+            let abs_path = normalize_zip_path(join_zip_path(opf_parent, &item.href));
+            (percent_decode_zip_path(&abs_path), item)
+        })
+        .collect::<HashMap<_, _>>();
+    let spine_by_id = spine
+        .iter()
+        .map(|item| (item.idref.as_str(), item))
+        .collect::<HashMap<_, _>>();
+
+    let mut target_ids = Vec::new();
+    let mut seen_ids = HashSet::new();
+    for abs_path in toc_target_abs_paths {
+        let decoded_abs_path = percent_decode_zip_path(abs_path);
+        let Some(item) = manifest_by_abs_path.get(&decoded_abs_path) else {
+            continue;
+        };
+        let Some(spine_item) = spine_by_id.get(item.id.as_str()) else {
+            continue;
+        };
+        if !spine_item_is_linear_no(spine_item) || !seen_ids.insert(item.id.clone()) {
+            continue;
+        }
+        if !unpacked_resource_path(unpacked_dir, abs_path).exists() {
+            continue;
+        }
+
+        target_ids.push(item.id.clone());
+    }
+
+    if target_ids.is_empty() {
+        return None;
+    }
+
+    Some(set_spine_itemrefs_linear_yes(opf, &target_ids))
 }
 
 fn repair_missing_spine_nav_targets(
@@ -504,10 +617,104 @@ fn repair_missing_spine_nav_targets(
     append_spine_itemrefs(opf, &missing_ids)
 }
 
+fn set_spine_itemrefs_linear_yes(opf: &str, idrefs: &[String]) -> String {
+    let mut updated = opf.to_string();
+    for idref in idrefs {
+        let Some((start, end)) = find_xml_start_tag_range(&updated, "itemref", "idref", idref)
+        else {
+            continue;
+        };
+        let replacement = set_xml_start_tag_attr(&updated[start..end], "linear", "yes");
+        updated.replace_range(start..end, &replacement);
+    }
+
+    updated
+}
+
+fn set_xml_start_tag_attr(tag: &str, attr_name: &str, attr_value: &str) -> String {
+    let pattern = format!(
+        r#"(?is)\b{}\s*=\s*['"][^'"]*['"]"#,
+        regex::escape(attr_name)
+    );
+    if let Ok(regex) = Regex::new(&pattern) {
+        if let Some(match_) = regex.find(tag) {
+            let mut updated = String::with_capacity(tag.len() + attr_value.len());
+            updated.push_str(&tag[..match_.start()]);
+            updated.push_str(attr_name);
+            updated.push_str(r#"=""#);
+            updated.push_str(&escape_xml_attr_local(attr_value));
+            updated.push('"');
+            updated.push_str(&tag[match_.end()..]);
+            return updated;
+        }
+    }
+
+    let Some(end) = tag.rfind('>') else {
+        return tag.to_string();
+    };
+    let insert_at = if tag[..end].trim_end().ends_with('/') {
+        tag[..end].rfind('/').unwrap_or(end)
+    } else {
+        end
+    };
+    let mut updated = String::with_capacity(tag.len() + attr_name.len() + attr_value.len() + 4);
+    updated.push_str(&tag[..insert_at]);
+    if !updated.ends_with(char::is_whitespace) {
+        updated.push(' ');
+    }
+    updated.push_str(attr_name);
+    updated.push_str(r#"=""#);
+    updated.push_str(&escape_xml_attr_local(attr_value));
+    updated.push('"');
+    updated.push_str(&tag[insert_at..]);
+    updated
+}
+
 fn spine_item_is_linear_no(item: &OpfSpineItem) -> bool {
     item.linear
         .as_deref()
         .is_some_and(|value| value.eq_ignore_ascii_case("no"))
+}
+
+fn nav_toc_href_paths(nav: &str) -> Vec<String> {
+    let Ok(nav_start_regex) =
+        Regex::new(r#"(?is)<nav\b(?=[^>]*(?:epub:)?type\s*=\s*['"][^'"]*\btoc\b)[^>]*>"#)
+    else {
+        return Vec::new();
+    };
+
+    let Some(start_match) = nav_start_regex.find(nav) else {
+        return Vec::new();
+    };
+    let content_start = start_match.end();
+    let content_end = nav[content_start..]
+        .to_ascii_lowercase()
+        .find("</nav>")
+        .map(|index| content_start + index)
+        .unwrap_or(nav.len());
+
+    html_href_paths(&nav[content_start..content_end])
+}
+
+fn html_href_paths(html: &str) -> Vec<String> {
+    let Ok(regex) = Regex::new(r#"(?is)<a\b[^>]*\bhref\s*=\s*['"]([^'"]+)['"][^>]*>"#) else {
+        return Vec::new();
+    };
+
+    regex
+        .captures_iter(html)
+        .filter_map(|captures| captures.get(1).map(|match_| match_.as_str()))
+        .filter_map(normalize_local_href_path)
+        .collect()
+}
+
+fn normalize_local_href_path(href: &str) -> Option<String> {
+    let (path, _) = split_href_fragment(href.trim());
+    if path.is_empty() || is_absolute_url(&path) {
+        return None;
+    }
+
+    Some(path)
 }
 
 fn ncx_content_paths(ncx: &str) -> Vec<String> {
@@ -1681,6 +1888,7 @@ fn find_cover_input<R: Read + Seek>(
                 id: node.attribute("id")?.to_string(),
                 href: node.attribute("href")?.to_string(),
                 media_type: node.attribute("media-type").unwrap_or("").to_string(),
+                properties: node.attribute("properties").unwrap_or("").to_string(),
             })
         })
         .collect::<Vec<_>>();
@@ -1741,6 +1949,7 @@ fn cover_input_from_manifest_item<R: Read + Seek>(
             id: item.attribute("id").unwrap_or("").to_string(),
             href,
             media_type: mime_type,
+            properties: item.attribute("properties").unwrap_or("").to_string(),
         };
         return cover_input_from_html_item(archive, opf_parent, &item, manifest);
     }
@@ -2550,6 +2759,80 @@ mod tests {
 
         let opf = fs::read_to_string(root.join("OEBPS/content.opf")).unwrap();
         assert!(!opf.contains(r#"<itemref idref="appendix"/>"#));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn normalize_marks_only_toc_linear_no_targets_readable() {
+        let root = split_test_root("linear-no-toc-targets");
+        fs::write(
+            root.join("OEBPS/content.opf"),
+            r#"<package>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="nav" href="Text/nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="book-toc" href="Text/part0000.xhtml" media-type="application/xhtml+xml"/>
+    <item id="cover" href="Text/cover_page.xhtml" media-type="application/xhtml+xml"/>
+    <item id="volume-cover-ncx" href="Text/part0001.xhtml" media-type="application/xhtml+xml"/>
+    <item id="volume-cover-nav" href="Text/part0002.xhtml" media-type="application/xhtml+xml"/>
+    <item id="volume-cover-html-toc" href="Text/part0003.xhtml" media-type="application/xhtml+xml"/>
+    <item id="untouched-linear-no" href="Text/part0004.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine toc="ncx">
+    <itemref idref="cover" linear="no"/>
+    <itemref idref="book-toc" linear="yes"/>
+    <itemref idref="volume-cover-ncx" linear="no"/>
+    <itemref idref="volume-cover-nav" linear="no"/>
+    <itemref idref="volume-cover-html-toc" linear="no"/>
+    <itemref idref="untouched-linear-no" linear="no"/>
+  </spine>
+  <guide>
+    <reference type="toc" href="Text/part0000.xhtml"/>
+    <reference type="cover" href="Text/cover_page.xhtml"/>
+  </guide>
+</package>"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("OEBPS/toc.ncx"),
+            r#"<ncx><navMap>
+  <navPoint id="toc"><content src="Text/part0000.xhtml"/></navPoint>
+  <navPoint id="from-ncx"><content src="Text/part0001.xhtml"/></navPoint>
+</navMap></ncx>"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("OEBPS/Text/nav.xhtml"),
+            r#"<?xml version="1.0" encoding="utf-8"?><html><body>
+<nav epub:type="landmarks"><ol><li><a href="cover_page.xhtml">Cover</a></li></ol></nav>
+<nav epub:type="toc"><ol><li><a href="part0002.xhtml">Volume from nav</a></li></ol></nav>
+</body></html>"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("OEBPS/Text/part0000.xhtml"),
+            r#"<?xml version="1.0" encoding="utf-8"?><html><body>
+<p><a href="part0003.xhtml">Volume from HTML TOC</a></p>
+</body></html>"#,
+        )
+        .unwrap();
+        for name in ["cover_page", "part0001", "part0002", "part0003", "part0004"] {
+            fs::write(
+                root.join(format!("OEBPS/Text/{name}.xhtml")),
+                format!(r#"<html><body><h1>{name}</h1></body></html>"#),
+            )
+            .unwrap();
+        }
+
+        normalize_unpacked_epub_structure(&root).unwrap();
+
+        let opf = fs::read_to_string(root.join("OEBPS/content.opf")).unwrap();
+        assert!(opf.contains(r#"<itemref idref="volume-cover-ncx" linear="yes"/>"#));
+        assert!(opf.contains(r#"<itemref idref="volume-cover-nav" linear="yes"/>"#));
+        assert!(opf.contains(r#"<itemref idref="volume-cover-html-toc" linear="yes"/>"#));
+        assert!(opf.contains(r#"<itemref idref="cover" linear="no"/>"#));
+        assert!(opf.contains(r#"<itemref idref="untouched-linear-no" linear="no"/>"#));
 
         fs::remove_dir_all(root).unwrap();
     }

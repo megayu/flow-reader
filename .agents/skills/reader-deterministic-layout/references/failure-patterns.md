@@ -123,6 +123,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: keep the compatibility at first-unpack normalization. When multiple NCX targets resolve to existing manifest HTML resources missing from a suspiciously tiny readable spine, append those manifest IDs to the OPF spine before pagination. Do not add a runtime fallback that displays arbitrary non-spine resources.
 - Verification gate: Rust import-normalization coverage should prove missing manifest chapters are added to spine, while isolated missing targets in an otherwise complete spine are left untouched; final reader layout verification is required only when claiming desktop visual navigation acceptance.
 
+### TOC targets marked non-linear
+
+- Symptom: a multi-volume converted EPUB can show an empty or incomplete sidebar TOC, and links from the book's top-level contents page do not navigate.
+- Reproduction path: import a Kindle/MOBI-converted EPUB whose NCX, EPUB3 nav toc, or OPF guide toc page points at volume start XHTML files that are present in the spine but marked `linear="no"`.
+- Root cause: Flow Reader filters navigation to readable spine sections, and epubjs treats `linear="no"` itemrefs as non-readable even when the book's official TOC points at them.
+- Fix direction: keep this repair at first-unpack normalization. Only for targets reached from official TOC sources, change the matching existing spine itemref from `linear="no"` to `linear="yes"`; do not rewrite arbitrary body links and do not change cover or other non-linear resources that are not TOC targets.
+- Verification gate: Rust import-normalization coverage should prove NCX, EPUB3 nav toc, and OPF guide toc page targets are made readable while landmark cover entries and unrelated `linear="no"` spine items are preserved.
+
 ### Single-page special section content offset outside first page
 
 - Symptom: short reflowable sections such as title, inscription, or part-title pages report as one natural page, but their visible text is clipped or shifted outside the first page.
