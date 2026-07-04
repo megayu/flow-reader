@@ -542,6 +542,7 @@ class IframeView {
 
   contentRangeSummary(pageWidth) {
     let threshold = this.pageBoundaryThreshold(pageWidth)
+    let compactWidthLimit = pageWidth * 0.5
     let summary
 
     let addRect = (rect) => {
@@ -558,6 +559,7 @@ class IframeView {
             bottom: rect.bottom,
           },
           crossesPageBoundary: false,
+          compactNearPageBoundary: false,
           startsInsideSecondPage: false,
         }
       } else {
@@ -572,6 +574,14 @@ class IframeView {
         rect.right > pageWidth + threshold
       ) {
         summary.crossesPageBoundary = true
+      }
+
+      if (
+        rect.width <= compactWidthLimit &&
+        rect.left <= pageWidth + threshold &&
+        rect.right > pageWidth + threshold
+      ) {
+        summary.compactNearPageBoundary = true
       }
 
       if (rect.left >= pageWidth + threshold && rect.width > threshold) {
@@ -628,11 +638,15 @@ class IframeView {
 
     let rect = summary.bounds
     let rectWidth = rect.right - rect.left
-    if (rectWidth <= 0 || rectWidth > pageWidth * 1.5) {
+    if (rectWidth <= 0) {
       return false
     }
 
-    return summary.crossesPageBoundary
+    if (rectWidth > pageWidth * 1.5) {
+      return summary.compactNearPageBoundary
+    }
+
+    return summary.crossesPageBoundary || summary.compactNearPageBoundary
   }
 
   clearSinglePageFirstPageOffset() {

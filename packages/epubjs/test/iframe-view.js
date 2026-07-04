@@ -27,6 +27,18 @@ function createView({ pageCount = 1, direction = 'ltr', rect }) {
   return view
 }
 
+function setContentRects(view, rects) {
+  view.eachContentRect = (callback) => {
+    for (const rect of rects) {
+      if (callback(rect)) {
+        return true
+      }
+    }
+
+    return false
+  }
+}
+
 function createTitleImageView({
   blockWidth = 100,
   marginBottom = -100,
@@ -168,6 +180,25 @@ describe('IframeView trailing blank page trimming', function () {
     assert.equal(view.trimTrailingBlankPages(1000), 500)
   })
 
+  it('treats compact content pinned to the page edge as one page', function () {
+    const view = createView({})
+    setContentRects(view, [
+      { left: 500, right: 548, top: 0, bottom: 24, width: 48, height: 24 },
+    ])
+
+    assert.equal(view.trimTrailingBlankPages(1000), 500)
+  })
+
+  it('treats a spread-wide wrapper with compact boundary content as one page', function () {
+    const view = createView({})
+    setContentRects(view, [
+      { left: 0, right: 1000, top: 0, bottom: 80, width: 1000, height: 80 },
+      { left: 500, right: 548, top: 28, bottom: 52, width: 48, height: 24 },
+    ])
+
+    assert.equal(view.trimTrailingBlankPages(1000), 500)
+  })
+
   it('keeps real two-page content as two pages', function () {
     const view = createView({
       rect: { left: 24, right: 960, top: 0, bottom: 700 },
@@ -178,6 +209,16 @@ describe('IframeView trailing blank page trimming', function () {
       crossesPageBoundary: true,
       startsInsideSecondPage: false,
     })
+
+    assert.equal(view.trimTrailingBlankPages(1000), 1000)
+  })
+
+  it('keeps compact content that starts inside the second page with a spread-wide wrapper as two pages', function () {
+    const view = createView({})
+    setContentRects(view, [
+      { left: 0, right: 1000, top: 0, bottom: 80, width: 1000, height: 80 },
+      { left: 520, right: 568, top: 28, bottom: 52, width: 48, height: 24 },
+    ])
 
     assert.equal(view.trimTrailingBlankPages(1000), 1000)
   })
