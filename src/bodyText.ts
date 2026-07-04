@@ -699,10 +699,11 @@ function selectBodyTextWinner(clusters: BodyTextCluster[]) {
 
   const byScore = [...clusters].sort((a, b) => b.score - a.score)
   const scoreWinner = byScore[0]!
-  const scoreRunnerUp = byScore[1]!
-  if (scoreWinner.score >= scoreRunnerUp.score * 1.35) {
-    return scoreWinner
-  }
+
+  // A weak winner is still safer than widening back to every raw cluster:
+  // selected related clusters can still be added below, but non-viable single
+  // chapter titles stay excluded from body text.
+  return scoreWinner
 }
 
 function isElementWithTag(node: Node, tagName: string) {
