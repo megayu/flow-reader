@@ -82,6 +82,62 @@ function createTitleImageView({
   return { block, image, view }
 }
 
+function createLeadingBackgroundBlockView({
+  backgroundColor = 'rgb(72, 117, 185)',
+  backgroundImage = 'none',
+  direction = 'ltr',
+  marginLeft = '-64px',
+  marginRight = '-64px',
+  paddingLeft = '20px',
+  paddingRight = '22px',
+} = {}) {
+  const view = createView({ direction })
+  view.layout.columnWidth = 460
+
+  const body = document.createElement('body')
+  const heading = document.createElement('h1')
+  const paragraph = document.createElement('p')
+
+  heading.className = 'chapter-title'
+  heading.textContent = 'Chapter'
+  paragraph.textContent = 'Synthetic paragraph.'
+  body.appendChild(heading)
+  body.appendChild(paragraph)
+
+  view.contents = {
+    content: body,
+    document,
+    window: {
+      getComputedStyle(element) {
+        if (element === body) {
+          return {
+            paddingLeft,
+            paddingRight,
+          }
+        }
+
+        if (element === heading) {
+          return {
+            backgroundColor,
+            backgroundImage,
+            marginLeft,
+            marginRight,
+          }
+        }
+
+        return {
+          backgroundColor: 'rgba(0, 0, 0, 0)',
+          backgroundImage: 'none',
+          marginLeft: '0px',
+          marginRight: '0px',
+        }
+      },
+    },
+  }
+
+  return { heading, view }
+}
+
 describe('IframeView first page positioning', function () {
   it('centers clipped first-page content for single-page sections', function () {
     const view = createView({
@@ -154,6 +210,58 @@ describe('IframeView leading title image fitting', function () {
       image.hasAttribute('data-epubjs-leading-title-image-clamped'),
       false,
     )
+  })
+})
+
+describe('IframeView leading background block fitting', function () {
+  it('exposes a leading background block fitting pass', function () {
+    const view = createView({})
+
+    assert.equal(
+      typeof view.fitLeadingBlockBackgroundsBeforeMeasure,
+      'function',
+    )
+  })
+
+  it('clamps leading background heading margins to page padding before measurement', function () {
+    const { heading, view } = createLeadingBackgroundBlockView()
+
+    assert.equal(view.fitLeadingBlockBackgroundsBeforeMeasure(), true)
+    assert.equal(heading.style.getPropertyValue('margin-left'), '-20px')
+    assert.equal(heading.style.getPropertyPriority('margin-left'), 'important')
+    assert.equal(heading.style.getPropertyValue('margin-right'), '-22px')
+    assert.equal(heading.style.getPropertyPriority('margin-right'), 'important')
+  })
+
+  it('does not clamp leading headings without a visible background', function () {
+    const { heading, view } = createLeadingBackgroundBlockView({
+      backgroundColor: 'rgba(0, 0, 0, 0)',
+    })
+
+    assert.equal(view.fitLeadingBlockBackgroundsBeforeMeasure(), false)
+    assert.equal(heading.style.getPropertyValue('margin-left'), '')
+    assert.equal(heading.style.getPropertyValue('margin-right'), '')
+  })
+
+  it('does not clamp leading background headings whose margins stay within page padding', function () {
+    const { heading, view } = createLeadingBackgroundBlockView({
+      marginLeft: '-12px',
+      marginRight: '-16px',
+    })
+
+    assert.equal(view.fitLeadingBlockBackgroundsBeforeMeasure(), false)
+    assert.equal(heading.style.getPropertyValue('margin-left'), '')
+    assert.equal(heading.style.getPropertyValue('margin-right'), '')
+  })
+
+  it('does not clamp rtl background headings', function () {
+    const { heading, view } = createLeadingBackgroundBlockView({
+      direction: 'rtl',
+    })
+
+    assert.equal(view.fitLeadingBlockBackgroundsBeforeMeasure(), false)
+    assert.equal(heading.style.getPropertyValue('margin-left'), '')
+    assert.equal(heading.style.getPropertyValue('margin-right'), '')
   })
 })
 

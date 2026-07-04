@@ -20,6 +20,7 @@ const LEADING_TITLE_IMAGE_MAX_SCAN = 10
 const LEADING_TITLE_IMAGE_HEADING_SCAN = 8
 const LEADING_TITLE_IMAGE_MAX_BLOCK_WIDTH = 180
 const LEADING_TITLE_IMAGE_ATTRIBUTE = 'data-epubjs-leading-title-image-clamped'
+const LEADING_BLOCK_BACKGROUND_MAX_SCAN = 10
 
 class WavyUnderline extends Highlight {
   render() {
@@ -130,6 +131,39 @@ function numericCssValue(value) {
 
 function isHeadingElement(element) {
   return /^H[1-6]$/.test(elementName(element))
+}
+
+function isTitleLikeElement(element) {
+  if (isHeadingElement(element)) return true
+
+  let className = typeof element.className === 'string' ? element.className : ''
+  return /(^|[\s_-])(chapter|heading|title)([\s_-]|$)/i.test(className)
+}
+
+function isTransparentBackgroundColor(value) {
+  if (!value) return true
+
+  let color = String(value).trim().toLowerCase()
+  if (!color || color === 'transparent') return true
+
+  let rgba = color.match(
+    /^rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+(?:\s*,\s*([\d.]+))?\s*\)$/,
+  )
+  if (rgba) {
+    return rgba[1] !== undefined && Number(rgba[1]) <= 0
+  }
+
+  return false
+}
+
+function hasVisibleBackground(style) {
+  if (!style) return false
+
+  if (style.backgroundImage && style.backgroundImage !== 'none') {
+    return true
+  }
+
+  return !isTransparentBackgroundColor(style.backgroundColor)
 }
 
 function nextHeadingTextLength(element) {
@@ -346,6 +380,7 @@ class IframeView {
 
           // apply the layout function to the contents
           this.layout.format(this.contents, this.section, this.axis)
+          this.fitLeadingBlockBackgroundsBeforeMeasure()
           this.fitLeadingTitleImagesBeforeMeasure()
           this.fitMediaBeforeMeasure()
 
@@ -779,6 +814,68 @@ class IframeView {
       image.style.setProperty('height', 'auto', 'important')
       image.style.setProperty('box-sizing', 'border-box', 'important')
       changed = true
+    }
+
+    return changed
+  }
+
+  fitLeadingBlockBackgroundsBeforeMeasure() {
+    if (
+      !this.contents ||
+      !this.contents.content ||
+      !this.contents.window ||
+      !this.layout ||
+      this.layout.name === 'pre-paginated' ||
+      this.settings.axis !== 'horizontal' ||
+      this.settings.direction === 'rtl'
+    ) {
+      return false
+    }
+
+    let root = this.contents.content
+    let rootStyle = this.contents.window.getComputedStyle(root, null)
+    let paddingLeft = Math.max(
+      0,
+      numericCssValue(rootStyle && rootStyle.paddingLeft) || 0,
+    )
+    let paddingRight = Math.max(
+      0,
+      numericCssValue(rootStyle && rootStyle.paddingRight) || 0,
+    )
+    let children = Array.prototype.slice.call(
+      root.children || [],
+      0,
+      LEADING_BLOCK_BACKGROUND_MAX_SCAN,
+    )
+    let changed = false
+
+    for (let i = 0; i < children.length; i++) {
+      let block = children[i]
+      if (!block || !block.style || !isTitleLikeElement(block)) {
+        continue
+      }
+
+      let style = this.contents.window.getComputedStyle(block, null)
+      if (!hasVisibleBackground(style)) {
+        continue
+      }
+
+      let marginLeft = numericCssValue(style && style.marginLeft) || 0
+      let marginRight = numericCssValue(style && style.marginRight) || 0
+
+      if (marginLeft < -paddingLeft - 1) {
+        block.style.setProperty('margin-left', -paddingLeft + 'px', 'important')
+        changed = true
+      }
+
+      if (marginRight < -paddingRight - 1) {
+        block.style.setProperty(
+          'margin-right',
+          -paddingRight + 'px',
+          'important',
+        )
+        changed = true
+      }
     }
 
     return changed

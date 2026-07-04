@@ -91,6 +91,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: when injecting zoom styles into iframe content, constrain media max inline size to the current single-page content column in unscaled coordinates.
 - Verification gate: browser Playwright coverage must assert a wide image's rendered width stays within the zoomed single-page content column in double-page mode; final client layout changes still require the deterministic verifier on a Tauri client.
 
+### Negative-margin heading background crosses into adjacent spread page
+
+- Symptom: in double-page mode, a colored chapter/title heading background can extend beyond the current page and cover the adjacent page's text.
+- Reproduction path: open a reflowable EPUB section whose leading heading has a visible background and author CSS like `margin: -2em -2em 1.5em -2em` while horizontal pagination uses columns for spread mode.
+- Root cause: the negative inline margins are authored to make the heading background reach the single-page edge, but in a multi-column spread they expand the heading beyond the current page column and into the next page. Clipping the whole body or iframe is not acceptable because the horizontal column renderer needs later column fragments to remain paintable.
+- Fix direction: before measuring a reflowable horizontal LTR section, inspect only the first few direct body children and clamp visible-background title-like blocks' negative inline margins to the current page padding. Do not rewrite unpacked XHTML/CSS, do not add book-specific selectors, and do not change global overflow.
+- Verification gate: epubjs unit coverage must prove leading visible-background headings with excessive negative inline margins are clamped to page padding, while headings without visible backgrounds, headings whose margins already fit within page padding, and RTL sections are left unchanged; final client layout verification is still required before claiming desktop visual acceptance.
+
 ### Zoomed positioned body background drifts from authored anchor
 
 - Symptom: in a decorated title section, increasing reader zoom makes a positioned body background image drift away from the author's intended corner or edge anchor.
