@@ -115,6 +115,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: filter navigation entries in epubjs before publishing navigation, make spine lookups and `prev`/`next` return only readable sections, and treat confirmed missing section resources as zero-page sections so adjacent navigation keeps scanning.
 - Verification gate: targeted reader checks should cover TOC filtering plus next/previous spread navigation across non-readable and missing sections; real-client layout verification is still required for final desktop spread acceptance.
 
+### TOC targets omitted from package spine
+
+- Symptom: an EPUB opens to its contents page, but clicking chapter entries does not navigate and page turns cannot reach the chapters.
+- Reproduction path: import a converter-broken EPUB whose NCX points at real manifest XHTML chapter files while the OPF spine contains only cover/toc-like entries.
+- Root cause: epubjs navigation resolves through readable spine sections; manifest resources that are not referenced by `spine/itemref` have no stable reading-order location, progress, or adjacent page-turn state.
+- Fix direction: keep the compatibility at first-unpack normalization. When multiple NCX targets resolve to existing manifest HTML resources missing from a suspiciously tiny readable spine, append those manifest IDs to the OPF spine before pagination. Do not add a runtime fallback that displays arbitrary non-spine resources.
+- Verification gate: Rust import-normalization coverage should prove missing manifest chapters are added to spine, while isolated missing targets in an otherwise complete spine are left untouched; final reader layout verification is required only when claiming desktop visual navigation acceptance.
+
 ### Single-page special section content offset outside first page
 
 - Symptom: short reflowable sections such as title, inscription, or part-title pages report as one natural page, but their visible text is clipped or shifted outside the first page.
