@@ -80,8 +80,16 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Symptom: after editing TXT content, the source file timestamp updates quickly but the reader turns blank for several seconds before the updated text appears.
 - Reproduction path: open a generated TXT book, edit a visible text node, and sample the active reader immediately after pressing save.
 - Root cause: the save callback called `reloadContentAfterEdit`, which destroyed the current rendition and iframe before the new package/rendition/display path finished. Large generated TXT books made the blank interval visible; EPUB books often completed fast enough to hide the issue.
-- Fix direction: for the edited active tab, patch the currently rendered section text node in place using the same section/text-node/offset target used by storage, then reformat/expand the view and commit a fresh location snapshot. Fall back to full reload only when the rendered node cannot be verified.
+- Fix direction: for the edited active tab, patch the currently rendered section text node in place using the same section/text-node/offset target used by storage, then reformat/expand the view and commit a fresh location snapshot. If the rendered node cannot be verified, report the edit as inconsistent immediately.
 - Verification gate: a real Tauri release client edit must keep active reader iframes mounted and the loading cover hidden while the visible text changes.
+
+### TXT text edits depend on unstable rendered text-node indexes
+
+- Symptom: editing any generated TXT paragraph or chapter title reports stale text even though the visible text and `source.txt` still match.
+- Reproduction path: open a generated TXT book after reader/epubjs DOM or layout changes, select a body paragraph or generated `h2.flow-txt-chapter`, and save a replacement.
+- Root cause: storage verified the edit by replaying the rendered iframe's global text-node index against the unpacked XHTML file. The rendered DOM can gain, lose, reorder, or move generated TXT markers relative to the source XHTML, such as epubjs rendering `div[data-flow-body-text] > p` as `p[data-flow-body-text]`, so storage checks the wrong node or receives no paragraph index and returns `TEXT_REPLACE_NODE_STALE`.
+- Fix direction: use one XHTML replacement path with structural strategies for generated TXT paragraphs and headings before the generic EPUB text-node strategy. Capture paragraph indexes from the actual rendered TXT paragraph shape, including `p[data-flow-body-text]`, and keep TXT-specific work limited to syncing `source.txt` and `nav.xhtml`; locate source edits by streaming encoded lines to the target chapter and paragraph instead of building full-book line ranges.
+- Verification gate: Rust storage coverage must prove paragraph and heading replacements succeed with an intentionally stale rendered `textNodeIndex`; active-tab patching should use the same structural target and report inconsistency if verification fails.
 
 ### Zoomed media crosses into the adjacent spread page
 

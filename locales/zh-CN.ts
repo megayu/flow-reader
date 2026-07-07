@@ -203,7 +203,7 @@ export default {
   'menu.edit_text': '修改',
   'menu.edit_text_archive_only': '原包模式不支持正文修改',
   'menu.edit_text_error_empty': '请选择要修改的文本',
-  'menu.edit_text_error_stale': '原文已经变化，请重新选择后再修改',
+  'menu.edit_text_error_stale': '无法确认所选文本，请重新选择后再修改',
   'menu.edit_text_error_generic': '修改失败，请重新选择后再试',
   'menu.edit_text_error_reason': '原因：',
   'menu.define': '定义',
@@ -211,6 +211,7 @@ export default {
   'menu.create': '创建',
   'menu.cancel': '取消',
   'menu.save': '保存',
+  'menu.saving': '保存中',
   'menu.delete': '删除',
   'menu.update': '更新',
 

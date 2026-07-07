@@ -84,32 +84,94 @@ function documentBody(document: Document) {
   )
 }
 
+function patchTextNode(
+  textNode: Text | undefined,
+  target: BookTextReplaceTarget,
+  oldText: string,
+  newText: string,
+) {
+  if (!textNode?.isConnected) return false
+  const text = textNode.textContent ?? ''
+  if (text !== target.textNodeText) return false
+  if (text.slice(target.startOffset, target.endOffset) !== oldText) {
+    return false
+  }
+
+  const updatedText =
+    text.slice(0, target.startOffset) + newText + text.slice(target.endOffset)
+  textNode.textContent = updatedText
+
+  const parent = textNode.parentElement
+  const title = parent?.ownerDocument.querySelector('title')
+  if (parent?.closest('h2.flow-txt-chapter') && title?.textContent === text) {
+    title.textContent = updatedText
+  }
+  return true
+}
+
+function matchingTextNodeInElement(
+  element: Element | undefined,
+  targetText: string,
+) {
+  if (!element) return undefined
+  const walker = element.ownerDocument.createTreeWalker(
+    element,
+    NodeFilter.SHOW_TEXT,
+  )
+  const matches: Text[] = []
+  let current = walker.nextNode()
+  while (current) {
+    if ((current.textContent ?? '') === targetText) {
+      matches.push(current as Text)
+      if (matches.length > 1) return undefined
+    }
+    current = walker.nextNode()
+  }
+  return matches[0]
+}
+
 function patchDocumentTextNode(
   document: Document | undefined,
   target: BookTextReplaceTarget,
   oldText: string,
   newText: string,
+  selectedTextNode?: Text,
 ) {
   const body = document && documentBody(document)
   const view = document?.defaultView ?? window
   if (!body || !view) return false
+
+  if (selectedTextNode?.ownerDocument === document) {
+    if (patchTextNode(selectedTextNode, target, oldText, newText)) return true
+  }
+
+  const generatedParagraphs = Array.from(
+    body.querySelectorAll<HTMLElement>(
+      '[data-flow-body-text="true"] > p, p[data-flow-body-text="true"]',
+    ),
+  )
+  if (target.paragraphIndex !== undefined) {
+    const paragraph = generatedParagraphs[target.paragraphIndex]
+    const textNode = matchingTextNodeInElement(paragraph, target.textNodeText)
+    if (patchTextNode(textNode, target, oldText, newText)) return true
+    return false
+  } else {
+    const heading = body.querySelector<HTMLElement>('h2.flow-txt-chapter')
+    const textNode = matchingTextNodeInElement(
+      heading ?? undefined,
+      target.textNodeText,
+    )
+    if (patchTextNode(textNode, target, oldText, newText)) return true
+
+    if (heading) return false
+  }
 
   const walker = document.createTreeWalker(body, view.NodeFilter.SHOW_TEXT)
   let textNodeIndex = 0
   let current = walker.nextNode()
   while (current) {
     if (textNodeIndex === target.textNodeIndex) {
-      const text = current.textContent ?? ''
-      if (text !== target.textNodeText) return false
-      if (text.slice(target.startOffset, target.endOffset) !== oldText) {
-        return false
-      }
-
-      current.textContent =
-        text.slice(0, target.startOffset) +
-        newText +
-        text.slice(target.endOffset)
-      return true
+      return patchTextNode(current as Text, target, oldText, newText)
     }
 
     textNodeIndex += 1
@@ -1277,6 +1339,8 @@ export class BookTab extends BaseTab {
     target: BookTextReplaceTarget,
     oldText: string,
     newText: string,
+    selectionDocument?: Document,
+    selectionTextNode?: Text,
   ) {
     const manager = this.rendition?.manager as any
     const views = manager?.views?._views as
@@ -1284,33 +1348,50 @@ export class BookTab extends BaseTab {
           section?: ISection
           document?: Document
           contents?: { document?: Document }
+          window?: Window
           layout?: { format?: (...args: any[]) => void }
           axis?: string
           expand?: () => void
           _contentPageCount?: number
         }>
       | undefined
-    const view = views?.find(
-      (view) =>
-        view.section?.href &&
-        (view.section.href === target.sectionHref ||
-          compareHref(view.section.href, target.sectionHref) ||
-          compareHref(target.sectionHref, view.section.href)),
-    )
+    const selectionView = selectionDocument?.defaultView
+      ? this.viewForWindow(selectionDocument.defaultView)
+      : undefined
+    const view =
+      selectionView ??
+      views?.find(
+        (view) =>
+          view.section?.href &&
+          (view.section.href === target.sectionHref ||
+            compareHref(view.section.href, target.sectionHref) ||
+            compareHref(target.sectionHref, view.section.href)),
+      )
     if (!view) return false
 
-    const patchedFrame = patchDocumentTextNode(
-      view.document ?? view.contents?.document,
-      target,
-      oldText,
-      newText,
+    const frameDocuments = [
+      selectionDocument,
+      view.contents?.document,
+      view.window?.document,
+      view.document,
+    ].filter((document, index, documents): document is Document => {
+      return !!document && documents.indexOf(document) === index
+    })
+    const patchedFrame = frameDocuments.some((document) =>
+      patchDocumentTextNode(
+        document,
+        target,
+        oldText,
+        newText,
+        selectionTextNode,
+      ),
     )
     if (!patchedFrame) return false
 
     const sectionDocument = (view.section as any)?.document as
       | Document
       | undefined
-    if (sectionDocument && sectionDocument !== view.document) {
+    if (sectionDocument && !frameDocuments.includes(sectionDocument)) {
       patchDocumentTextNode(sectionDocument, target, oldText, newText)
     }
 
@@ -3195,6 +3276,8 @@ interface BookContentEditPatch {
   target: BookTextReplaceTarget
   oldText: string
   newText: string
+  document?: Document
+  textNode?: Text
 }
 
 function resolveTabParam(param: TabParam | Tab) {
@@ -3376,27 +3459,34 @@ export class Reader {
     }
   }
 
-  applyBookContentEdit(
+  async applyBookContentEdit(
     book: BookRecord,
     reloadTarget?: string,
     editedTab?: BookTab,
     patch?: BookContentEditPatch,
   ) {
     db.books.remember(book)
+    const patchTasks: Array<Promise<void>> = []
     for (const group of this.groups) {
       for (const tab of group.bookTabs) {
         if (tab.book.id === book.id) {
           if (tab === editedTab && patch) {
-            void tab
-              .applyRenderedTextEdit(
-                book,
-                patch.target,
-                patch.oldText,
-                patch.newText,
-              )
-              .then((patched) => {
-                if (!patched) tab.reloadContentAfterEdit(book, reloadTarget)
-              })
+            patchTasks.push(
+              tab
+                .applyRenderedTextEdit(
+                  book,
+                  patch.target,
+                  patch.oldText,
+                  patch.newText,
+                  patch.document,
+                  patch.textNode,
+                )
+                .then((patched) => {
+                  if (!patched) {
+                    throw new Error('TEXT_REPLACE_RENDER_PATCH_FAILED')
+                  }
+                }),
+            )
             continue
           }
 
@@ -3407,6 +3497,7 @@ export class Reader {
         }
       }
     }
+    await Promise.all(patchTasks)
   }
 
   selectFocusedTab(index: number) {

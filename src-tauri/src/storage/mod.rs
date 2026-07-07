@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fs,
-    io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
+    io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -61,9 +61,9 @@ use search::{
 };
 use text_import::{
     consume_or_prepare_text_import, create_skipped_text_import_preview, create_text_cover_input,
-    create_text_import_error_preview, create_text_import_preview_from_prepared,
-    decode_source_text_bytes, decode_text_bytes, encode_text_bytes, import_text_path_impl,
-    load_or_prepare_text_import, should_skip_prepared_text_import_preview,
+    create_text_import_error_preview, create_text_import_preview_from_prepared, decode_text_bytes,
+    encode_text_bytes, import_text_path_impl, load_or_prepare_text_import,
+    should_skip_prepared_text_import_preview, source_encoding_id_from_metadata,
     text_import_encoding_options, write_text_cover_to_unpacked, PreparedTextImport,
     TextImportPreparedCache, TextImportPreparedKey,
 };
@@ -1774,24 +1774,194 @@ fn replace_xhtml_text_node(
     Err(TEXT_REPLACE_NODE_NOT_FOUND_ERROR.to_string())
 }
 
+struct XhtmlTextReplacement {
+    xhtml: String,
+    heading_update: Option<(String, String)>,
+    paragraph_index: Option<usize>,
+}
+
+fn replace_generated_txt_paragraph_xhtml(
+    xhtml: &str,
+    target: &BookTextReplaceTarget,
+    old_text: &str,
+    new_text: &str,
+    paragraph_index: usize,
+) -> Result<Option<String>, String> {
+    let Some(body_marker) = xhtml.find("data-flow-body-text") else {
+        return Ok(None);
+    };
+    let body = &xhtml[body_marker..];
+    let body_end = body
+        .find("</div>")
+        .map(|index| body_marker + index)
+        .unwrap_or(xhtml.len());
+    let mut cursor = body_marker;
+    let mut current_paragraph_index = 0usize;
+
+    while let Some(relative_start) = xhtml[cursor..body_end].find("<p>") {
+        let start = cursor + relative_start + "<p>".len();
+        let Some(relative_end) = xhtml[start..body_end].find("</p>") else {
+            break;
+        };
+        let end = start + relative_end;
+        if current_paragraph_index == paragraph_index {
+            let decoded_text = unescape_xml_text(&xhtml[start..end]);
+            if decoded_text != target.text_node_text {
+                return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
+            }
+
+            let updated_text = replace_text_by_utf16_offsets(
+                &decoded_text,
+                target.start_offset,
+                target.end_offset,
+                old_text,
+                new_text,
+            )?;
+
+            let mut updated = String::with_capacity(xhtml.len() + new_text.len());
+            updated.push_str(&xhtml[..start]);
+            updated.push_str(&escape_xml_text(&updated_text));
+            updated.push_str(&xhtml[end..]);
+            return Ok(Some(updated));
+        }
+
+        current_paragraph_index += 1;
+        cursor = end + "</p>".len();
+    }
+
+    Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string())
+}
+
+fn replace_first_tag_text(
+    xhtml: &str,
+    tag_name: &str,
+    expected_text: &str,
+    updated_text: &str,
+) -> Result<Option<String>, String> {
+    let open_tag = format!("<{tag_name}");
+    let close_tag = format!("</{tag_name}>");
+    let Some(tag_start) = xhtml.find(&open_tag) else {
+        return Ok(None);
+    };
+    let content_start = xhtml[tag_start..]
+        .find('>')
+        .map(|index| tag_start + index + 1)
+        .ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
+    let content_end = xhtml[content_start..]
+        .find(&close_tag)
+        .map(|index| content_start + index)
+        .ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
+    let decoded_text = unescape_xml_text(&xhtml[content_start..content_end]);
+    if decoded_text != expected_text {
+        return Ok(None);
+    }
+
+    let mut updated = String::with_capacity(xhtml.len() + updated_text.len());
+    updated.push_str(&xhtml[..content_start]);
+    updated.push_str(&escape_xml_text(updated_text));
+    updated.push_str(&xhtml[content_end..]);
+    Ok(Some(updated))
+}
+
+fn replace_generated_txt_heading_xhtml(
+    xhtml: &str,
+    target: &BookTextReplaceTarget,
+    old_text: &str,
+    new_text: &str,
+) -> Result<Option<XhtmlTextReplacement>, String> {
+    if !xhtml.contains("flow-txt-chapter") {
+        return Ok(None);
+    }
+
+    let Some(heading) = extract_first_tag_text(xhtml, "h2") else {
+        return Ok(None);
+    };
+    if heading != target.text_node_text {
+        return Ok(None);
+    }
+
+    let updated_heading = replace_text_by_utf16_offsets(
+        &heading,
+        target.start_offset,
+        target.end_offset,
+        old_text,
+        new_text,
+    )?;
+    let Some(mut updated_xhtml) = replace_first_tag_text(xhtml, "h2", &heading, &updated_heading)?
+    else {
+        return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
+    };
+    if let Some(with_title) =
+        replace_first_tag_text(&updated_xhtml, "title", &heading, &updated_heading)?
+    {
+        updated_xhtml = with_title;
+    }
+
+    Ok(Some(XhtmlTextReplacement {
+        xhtml: updated_xhtml,
+        heading_update: Some((heading, updated_heading)),
+        paragraph_index: None,
+    }))
+}
+
+fn replace_xhtml_text(
+    xhtml: &str,
+    source_format: BookSourceFormat,
+    target: &BookTextReplaceTarget,
+    old_text: &str,
+    new_text: &str,
+) -> Result<XhtmlTextReplacement, String> {
+    if old_text.is_empty() {
+        return Err(TEXT_REPLACE_EMPTY_ERROR.to_string());
+    }
+    if old_text == new_text {
+        return Ok(XhtmlTextReplacement {
+            xhtml: xhtml.to_string(),
+            heading_update: None,
+            paragraph_index: None,
+        });
+    }
+
+    if source_format != BookSourceFormat::Txt {
+        return replace_xhtml_text_node(xhtml, target, old_text, new_text).map(|xhtml| {
+            XhtmlTextReplacement {
+                xhtml,
+                heading_update: None,
+                paragraph_index: None,
+            }
+        });
+    }
+
+    if let Some(paragraph_index) = target.paragraph_index {
+        if let Some(xhtml) = replace_generated_txt_paragraph_xhtml(
+            xhtml,
+            target,
+            old_text,
+            new_text,
+            paragraph_index,
+        )? {
+            return Ok(XhtmlTextReplacement {
+                xhtml,
+                heading_update: None,
+                paragraph_index: Some(paragraph_index),
+            });
+        }
+    }
+
+    if let Some(replacement) =
+        replace_generated_txt_heading_xhtml(xhtml, target, old_text, new_text)?
+    {
+        return Ok(replacement);
+    }
+
+    Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string())
+}
+
 const TEXT_REPLACE_EMPTY_ERROR: &str = "TEXT_REPLACE_EMPTY";
 const TEXT_REPLACE_SECTION_BODY_NOT_FOUND: &str = "TEXT_REPLACE_SECTION_BODY_NOT_FOUND";
 const TEXT_REPLACE_NODE_STALE_ERROR: &str = "TEXT_REPLACE_NODE_STALE";
 const TEXT_REPLACE_TEXT_STALE_ERROR: &str = "TEXT_REPLACE_TEXT_STALE";
 const TEXT_REPLACE_NODE_NOT_FOUND_ERROR: &str = "TEXT_REPLACE_NODE_NOT_FOUND";
-
-#[derive(Debug, Clone)]
-struct SourceParagraphRange {
-    text: String,
-    start: usize,
-    end: usize,
-}
-
-#[derive(Debug, Clone)]
-struct SourceTextReplacement {
-    range: SourceParagraphRange,
-    updated_paragraph: String,
-}
 
 #[derive(Debug, Clone)]
 enum SourceTextUpdate {
@@ -1804,53 +1974,6 @@ enum SourceTextUpdate {
         old_len: u64,
         bytes: Vec<u8>,
     },
-    Rewrite(Vec<u8>),
-}
-
-enum GeneratedTextItem {
-    Heading(String),
-    Paragraph(String),
-}
-
-fn normalized_source_line_ranges(source: &str) -> Vec<SourceParagraphRange> {
-    let mut ranges = Vec::new();
-    let mut cursor = 0usize;
-
-    for line in source.split_inclusive('\n') {
-        let line_start = cursor;
-        cursor += line.len();
-
-        let without_newline = line.strip_suffix('\n').unwrap_or(line);
-        let without_line_ending = without_newline
-            .strip_suffix('\r')
-            .unwrap_or(without_newline);
-        let trimmed_start = without_line_ending.len() - without_line_ending.trim_start().len();
-        let trimmed_end = without_line_ending.trim_end().len();
-        if trimmed_start >= trimmed_end {
-            continue;
-        }
-
-        ranges.push(SourceParagraphRange {
-            text: without_line_ending[trimmed_start..trimmed_end].to_string(),
-            start: line_start + trimmed_start,
-            end: line_start + trimmed_end,
-        });
-    }
-
-    if cursor < source.len() {
-        let line = &source[cursor..];
-        let trimmed_start = line.len() - line.trim_start().len();
-        let trimmed_end = line.trim_end().len();
-        if trimmed_start < trimmed_end {
-            ranges.push(SourceParagraphRange {
-                text: line[trimmed_start..trimmed_end].to_string(),
-                start: cursor + trimmed_start,
-                end: cursor + trimmed_end,
-            });
-        }
-    }
-
-    ranges
 }
 
 fn generated_text_section_index(href: &str) -> Option<usize> {
@@ -1872,199 +1995,357 @@ fn extract_first_tag_text(xhtml: &str, tag_name: &str) -> Option<String> {
     Some(unescape_xml_text(&xhtml[content_start..content_end]))
 }
 
-fn extract_generated_text_paragraphs(xhtml: &str) -> Vec<String> {
-    let Some(body_marker) = xhtml.find("data-flow-body-text") else {
-        return Vec::new();
-    };
-    let body = &xhtml[body_marker..];
-    let body_end = body.find("</div>").unwrap_or(body.len());
-    let body = &body[..body_end];
-    let mut paragraphs = Vec::new();
-    let mut cursor = 0usize;
+struct SourceTextLine {
+    text: String,
+    offset: u64,
+    old_len: u64,
+}
 
-    while let Some(relative_start) = body[cursor..].find("<p>") {
-        let start = cursor + relative_start + "<p>".len();
-        let Some(relative_end) = body[start..].find("</p>") else {
+fn source_bom_len(bytes: &[u8]) -> usize {
+    if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
+        3
+    } else if bytes.starts_with(&[0xff, 0xfe]) || bytes.starts_with(&[0xfe, 0xff]) {
+        2
+    } else {
+        0
+    }
+}
+
+fn streaming_source_encoding(metadata: &Value) -> Result<String, String> {
+    source_encoding_id_from_metadata(metadata)
+        .ok_or_else(|| "TXT_SOURCE_ENCODING_MISSING".to_string())
+}
+
+fn encoded_line_delimiter(encoding: &str) -> &'static [u8] {
+    match encoding {
+        "utf-16le" => &[0x0a, 0x00],
+        "utf-16be" => &[0x00, 0x0a],
+        _ => b"\n",
+    }
+}
+
+fn read_until_encoded_newline<R: Read>(
+    reader: &mut BufReader<R>,
+    encoding: &str,
+    buffer: &mut Vec<u8>,
+) -> io::Result<usize> {
+    let delimiter = encoded_line_delimiter(encoding);
+    if delimiter.len() == 1 {
+        return reader.read_until(delimiter[0], buffer);
+    }
+
+    let mut total = 0usize;
+    let mut byte = [0u8; 1];
+    while reader.read(&mut byte)? != 0 {
+        buffer.push(byte[0]);
+        total += 1;
+        if buffer.ends_with(delimiter) {
             break;
-        };
-        let end = start + relative_end;
-        paragraphs.push(unescape_xml_text(&body[start..end]));
-        cursor = end + "</p>".len();
-    }
-
-    paragraphs
-}
-
-fn generated_text_items_before_target(
-    text_dir: &Path,
-    target_section_index: usize,
-    target_paragraph_index: usize,
-) -> Result<Vec<GeneratedTextItem>, String> {
-    let mut items = Vec::new();
-    for section_index in 0..=target_section_index {
-        let path = text_dir.join(format!("part{:04}.xhtml", section_index + 1));
-        let xhtml =
-            fs::read_to_string(path).map_err(|_| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
-        if let Some(heading) = extract_first_tag_text(&xhtml, "h2") {
-            items.push(GeneratedTextItem::Heading(heading));
-        }
-        let section_paragraphs = extract_generated_text_paragraphs(&xhtml);
-        if section_index == target_section_index {
-            if target_paragraph_index >= section_paragraphs.len() {
-                return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
-            }
-            items.extend(
-                section_paragraphs
-                    .into_iter()
-                    .take(target_paragraph_index + 1)
-                    .map(GeneratedTextItem::Paragraph),
-            );
-        } else {
-            items.extend(
-                section_paragraphs
-                    .into_iter()
-                    .map(GeneratedTextItem::Paragraph),
-            );
         }
     }
-
-    Ok(items)
+    Ok(total)
 }
 
-fn source_range_for_generated_paragraph(
-    source: &str,
-    generated_items: &[GeneratedTextItem],
-) -> Result<SourceParagraphRange, String> {
-    let source_ranges = normalized_source_line_ranges(source);
-    let mut source_index = 0usize;
-    let mut selected_range: Option<SourceParagraphRange> = None;
-
-    for item in generated_items {
-        match item {
-            GeneratedTextItem::Heading(heading) => {
-                if source_ranges
-                    .get(source_index)
-                    .is_some_and(|range| range.text == *heading)
-                {
-                    source_index += 1;
-                }
-            }
-            GeneratedTextItem::Paragraph(paragraph) => {
-                while source_index < source_ranges.len()
-                    && source_ranges[source_index].text != *paragraph
-                {
-                    source_index += 1;
-                }
-                if source_index >= source_ranges.len() {
-                    return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
-                }
-                selected_range = Some(source_ranges[source_index].clone());
-                source_index += 1;
-            }
-        }
+fn strip_encoded_line_end<'a>(bytes: &'a [u8], encoding: &str) -> &'a [u8] {
+    match encoding {
+        "utf-16le" => bytes
+            .strip_suffix(&[0x0a, 0x00])
+            .unwrap_or(bytes)
+            .strip_suffix(&[0x0d, 0x00])
+            .unwrap_or_else(|| bytes.strip_suffix(&[0x0a, 0x00]).unwrap_or(bytes)),
+        "utf-16be" => bytes
+            .strip_suffix(&[0x00, 0x0a])
+            .unwrap_or(bytes)
+            .strip_suffix(&[0x00, 0x0d])
+            .unwrap_or_else(|| bytes.strip_suffix(&[0x00, 0x0a]).unwrap_or(bytes)),
+        _ => bytes
+            .strip_suffix(b"\n")
+            .unwrap_or(bytes)
+            .strip_suffix(b"\r")
+            .unwrap_or_else(|| bytes.strip_suffix(b"\n").unwrap_or(bytes)),
     }
-
-    selected_range.ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())
 }
 
-fn generated_txt_source_replacement(
-    source: &str,
-    text_dir: &Path,
-    target: &BookTextReplaceTarget,
-    old_text: &str,
-    new_text: &str,
-) -> Result<Option<SourceTextReplacement>, String> {
-    if old_text.is_empty() {
-        return Err(TEXT_REPLACE_EMPTY_ERROR.to_string());
-    }
-    if old_text == new_text {
+fn decode_source_line(
+    bytes: &[u8],
+    encoding: &str,
+    first_line: bool,
+) -> Result<Option<SourceTextLine>, String> {
+    let line_end = strip_encoded_line_end(bytes, encoding);
+    let bom_len = if first_line {
+        source_bom_len(line_end)
+    } else {
+        0
+    };
+    let decoded = decode_text_bytes(&line_end[bom_len..], Some(encoding)).text;
+    let trimmed_start = decoded.len() - decoded.trim_start().len();
+    let trimmed_end = decoded.trim_end().len();
+    if trimmed_start >= trimmed_end {
         return Ok(None);
     }
 
-    let section_index = generated_text_section_index(&target.section_href)
+    let prefix_len = encode_text_bytes(&decoded[..trimmed_start], encoding, false)?.len();
+    let trimmed_len =
+        encode_text_bytes(&decoded[trimmed_start..trimmed_end], encoding, false)?.len();
+    Ok(Some(SourceTextLine {
+        text: decoded[trimmed_start..trimmed_end].to_string(),
+        offset: (bom_len + prefix_len) as u64,
+        old_len: trimmed_len as u64,
+    }))
+}
+
+fn push_unique_text(values: &mut Vec<String>, value: Option<String>) {
+    let Some(value) = value else {
+        return;
+    };
+    if !value.is_empty() && !values.iter().any(|existing| existing == &value) {
+        values.push(value);
+    }
+}
+
+fn generated_txt_section_source_heading_candidates(
+    text_dir: &Path,
+    section_index: usize,
+    section_href: &str,
+) -> Result<Vec<String>, String> {
+    let mut candidates = Vec::new();
+    let path = text_dir.join(format!("part{:04}.xhtml", section_index + 1));
+    let xhtml = fs::read_to_string(path).map_err(|_| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
+    push_unique_text(&mut candidates, extract_first_tag_text(&xhtml, "h2"));
+
+    let nav_path = text_dir
+        .parent()
+        .map(|oebps| oebps.join("nav.xhtml"))
         .ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
-    let paragraph_index = target
-        .paragraph_index
-        .ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
-    let generated_items =
-        generated_text_items_before_target(text_dir, section_index, paragraph_index)?;
-    let source_range = source_range_for_generated_paragraph(source, &generated_items)?;
-    if source_range.text != target.text_node_text {
-        return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
+    if nav_path.exists() {
+        let nav_xhtml = fs::read_to_string(nav_path).map_err(|error| error.to_string())?;
+        push_unique_text(
+            &mut candidates,
+            generated_txt_nav_heading(&nav_xhtml, section_href),
+        );
     }
 
-    let updated_paragraph = replace_text_by_utf16_offsets(
-        &source_range.text,
+    if candidates.is_empty() {
+        return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
+    }
+    Ok(candidates)
+}
+
+fn generated_txt_matching_heading_occurrences_before(
+    text_dir: &Path,
+    target_section_index: usize,
+    target_candidates: &[String],
+) -> Result<usize, String> {
+    let mut occurrences = 0usize;
+    for section_index in 0..target_section_index {
+        let href = format!("Text/part{:04}.xhtml", section_index + 1);
+        let candidates =
+            generated_txt_section_source_heading_candidates(text_dir, section_index, &href)?;
+        if candidates
+            .iter()
+            .any(|candidate| target_candidates.iter().any(|target| target == candidate))
+        {
+            occurrences += 1;
+        }
+    }
+    Ok(occurrences)
+}
+
+fn source_update_for_streamed_line(
+    line: SourceTextLine,
+    old_text: &str,
+    new_text: &str,
+    encoding: &str,
+    target: &BookTextReplaceTarget,
+) -> Result<SourceTextUpdate, String> {
+    if line.text != target.text_node_text {
+        return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
+    }
+    let updated_line = replace_text_by_utf16_offsets(
+        &line.text,
         target.start_offset,
         target.end_offset,
         old_text,
         new_text,
     )?;
-    Ok(Some(SourceTextReplacement {
-        range: source_range,
-        updated_paragraph,
-    }))
+    let bytes = encode_text_bytes(&updated_line, encoding, false)?;
+    if bytes.len() as u64 == line.old_len {
+        Ok(SourceTextUpdate::Patch {
+            offset: line.offset,
+            bytes,
+        })
+    } else {
+        Ok(SourceTextUpdate::Splice {
+            offset: line.offset,
+            old_len: line.old_len,
+            bytes,
+        })
+    }
 }
 
-#[cfg(test)]
-fn replace_generated_txt_source_text(
-    source: &str,
+fn generated_txt_source_update_streaming(
+    source_path: &Path,
+    metadata: &Value,
     text_dir: &Path,
     target: &BookTextReplaceTarget,
     old_text: &str,
     new_text: &str,
-) -> Result<Option<String>, String> {
-    let Some(replacement) =
-        generated_txt_source_replacement(source, text_dir, target, old_text, new_text)?
-    else {
-        return Ok(None);
-    };
+    heading_update: Option<&(String, String)>,
+) -> Result<SourceTextUpdate, String> {
+    if old_text.is_empty() {
+        return Err(TEXT_REPLACE_EMPTY_ERROR.to_string());
+    }
+    if old_text == new_text {
+        return Err(TEXT_REPLACE_TEXT_STALE_ERROR.to_string());
+    }
 
-    let mut updated = String::with_capacity(source.len() + new_text.len());
-    updated.push_str(&source[..replacement.range.start]);
-    updated.push_str(&replacement.updated_paragraph);
-    updated.push_str(&source[replacement.range.end..]);
-    Ok(Some(updated))
+    let encoding = streaming_source_encoding(metadata)?;
+    let target_section_index = generated_text_section_index(&target.section_href)
+        .ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
+    let target_heading_candidates = generated_txt_section_source_heading_candidates(
+        text_dir,
+        target_section_index,
+        &target.section_href,
+    )?;
+    let mut matching_heading_occurrences_before =
+        generated_txt_matching_heading_occurrences_before(
+            text_dir,
+            target_section_index,
+            &target_heading_candidates,
+        )?;
+    let target_paragraph_index = target.paragraph_index;
+    let mut paragraph_index = 0usize;
+    let mut inside_target_section = false;
+    let mut first_line = true;
+    let mut line_offset = 0u64;
+    let mut reader =
+        BufReader::new(fs::File::open(source_path).map_err(|error| error.to_string())?);
+    let mut bytes = Vec::new();
+
+    loop {
+        bytes.clear();
+        let read = read_until_encoded_newline(&mut reader, &encoding, &mut bytes)
+            .map_err(|error| error.to_string())?;
+        if read == 0 {
+            break;
+        }
+
+        if let Some(mut line) = decode_source_line(&bytes, &encoding, first_line)? {
+            line.offset = line.offset.saturating_add(line_offset);
+            if !inside_target_section {
+                if target_heading_candidates
+                    .iter()
+                    .any(|heading| line.text == *heading)
+                {
+                    if matching_heading_occurrences_before > 0 {
+                        matching_heading_occurrences_before -= 1;
+                    } else {
+                        inside_target_section = true;
+                        if heading_update.is_some() {
+                            return source_update_for_streamed_line(
+                                line, old_text, new_text, &encoding, target,
+                            );
+                        }
+                    }
+                }
+            } else if target_paragraph_index == Some(paragraph_index) {
+                return source_update_for_streamed_line(
+                    line, old_text, new_text, &encoding, target,
+                );
+            } else {
+                paragraph_index += 1;
+            }
+        }
+
+        first_line = false;
+        line_offset = line_offset.saturating_add(read as u64);
+    }
+
+    Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string())
 }
 
-fn encoded_txt_source_update(
-    source: &str,
-    source_bytes: &[u8],
-    encoding: &str,
-    had_bom: bool,
-    replacement: SourceTextReplacement,
-) -> Result<Option<SourceTextUpdate>, String> {
-    if replacement.range.text == replacement.updated_paragraph {
-        return Ok(None);
-    }
-
-    let old_bytes = encode_text_bytes(&replacement.range.text, encoding, false)?;
-    let new_bytes = encode_text_bytes(&replacement.updated_paragraph, encoding, false)?;
-    let prefix_bytes = encode_text_bytes(&source[..replacement.range.start], encoding, had_bom)?;
-    let offset = prefix_bytes.len();
-    let end = offset.saturating_add(old_bytes.len());
-    if old_bytes.len() == new_bytes.len() {
-        if source_bytes.get(offset..end) == Some(old_bytes.as_slice()) {
-            return Ok(Some(SourceTextUpdate::Patch {
-                offset: offset as u64,
-                bytes: new_bytes,
-            }));
+fn quoted_attr_value(text: &str, attr: &str) -> Option<String> {
+    for quote in ['"', '\''] {
+        let marker = format!("{attr}={quote}");
+        if let Some(value_start) = text.find(&marker).map(|start| start + marker.len()) {
+            let value_end = text[value_start..].find(quote)? + value_start;
+            return Some(unescape_xml_text(&text[value_start..value_end]));
         }
-    } else if source_bytes.get(offset..end) == Some(old_bytes.as_slice()) {
-        return Ok(Some(SourceTextUpdate::Splice {
-            offset: offset as u64,
-            old_len: old_bytes.len() as u64,
-            bytes: new_bytes,
-        }));
     }
 
-    let mut updated = String::with_capacity(source.len() + replacement.updated_paragraph.len());
-    updated.push_str(&source[..replacement.range.start]);
-    updated.push_str(&replacement.updated_paragraph);
-    updated.push_str(&source[replacement.range.end..]);
-    Ok(Some(SourceTextUpdate::Rewrite(encode_text_bytes(
-        &updated, encoding, had_bom,
-    )?)))
+    None
+}
+
+fn same_generated_txt_href(left: &str, right: &str) -> bool {
+    let left = normalize_zip_path(percent_decode_path(left.split('#').next().unwrap_or("")));
+    let right = normalize_zip_path(percent_decode_path(right.split('#').next().unwrap_or("")));
+    if left.trim_start_matches('/') == right.trim_start_matches('/') {
+        return true;
+    }
+    generated_text_section_index(&left)
+        .zip(generated_text_section_index(&right))
+        .is_some_and(|(left_index, right_index)| left_index == right_index)
+}
+
+fn generated_txt_nav_heading(nav_xhtml: &str, target_href: &str) -> Option<String> {
+    let mut cursor = 0usize;
+    while let Some(relative_anchor_start) = nav_xhtml[cursor..].find("<a") {
+        let anchor_start = cursor + relative_anchor_start;
+        let relative_tag_end = nav_xhtml[anchor_start..].find('>')?;
+        let content_start = anchor_start + relative_tag_end + 1;
+        let tag = &nav_xhtml[anchor_start..content_start];
+        let Some(href) = quoted_attr_value(tag, "href") else {
+            cursor = content_start;
+            continue;
+        };
+        let relative_anchor_end = nav_xhtml[content_start..].find("</a>")?;
+        let content_end = content_start + relative_anchor_end;
+        if same_generated_txt_href(&href, target_href) {
+            return Some(unescape_xml_text(&nav_xhtml[content_start..content_end]));
+        }
+
+        cursor = content_end + "</a>".len();
+    }
+
+    None
+}
+
+fn replace_generated_txt_nav_heading(
+    nav_xhtml: &str,
+    target_href: &str,
+    old_heading: &str,
+    new_heading: &str,
+) -> Result<String, String> {
+    let mut cursor = 0usize;
+    while let Some(relative_anchor_start) = nav_xhtml[cursor..].find("<a") {
+        let anchor_start = cursor + relative_anchor_start;
+        let Some(relative_tag_end) = nav_xhtml[anchor_start..].find('>') else {
+            break;
+        };
+        let content_start = anchor_start + relative_tag_end + 1;
+        let tag = &nav_xhtml[anchor_start..content_start];
+        let Some(href) = quoted_attr_value(tag, "href") else {
+            cursor = content_start;
+            continue;
+        };
+        let Some(relative_anchor_end) = nav_xhtml[content_start..].find("</a>") else {
+            break;
+        };
+        let content_end = content_start + relative_anchor_end;
+        if same_generated_txt_href(&href, target_href)
+            && unescape_xml_text(&nav_xhtml[content_start..content_end]) == old_heading
+        {
+            let mut updated = String::with_capacity(nav_xhtml.len() + new_heading.len());
+            updated.push_str(&nav_xhtml[..content_start]);
+            updated.push_str(&escape_xml_text(new_heading));
+            updated.push_str(&nav_xhtml[content_end..]);
+            return Ok(updated);
+        }
+
+        cursor = content_end + "</a>".len();
+    }
+
+    Ok(nav_xhtml.to_string())
 }
 
 fn source_text_temp_path(path: &Path) -> PathBuf {
@@ -2115,9 +2396,6 @@ fn write_source_text_update(path: &Path, update: &SourceTextUpdate) -> Result<()
             old_len,
             bytes,
         } => write_source_text_splice(path, *offset, *old_len, bytes),
-        SourceTextUpdate::Rewrite(bytes) => {
-            fs::write(path, bytes).map_err(|error| error.to_string())
-        }
     }
 }
 
@@ -2437,33 +2715,15 @@ fn write_epub_from_original_and_unpacked(
     fs::rename(&tmp, output_path).map_err(|error| error.to_string())
 }
 
-fn hash_book_content(
-    storage: &AppStorage,
-    book: &LibraryBook,
-    source_format: BookSourceFormat,
-) -> Result<String, String> {
+fn edited_book_content_hash(id: &str, content_version: u32, edited_at: u64) -> String {
     let mut hasher = Sha256::new();
-    let unpacked_dir = storage.book_dir(&book.id).join(UNPACKED_DIR);
-    if unpacked_dir.exists() {
-        for path in collect_files_sorted(&unpacked_dir)? {
-            let relative = zip_relative_path(&unpacked_dir, &path)?;
-            hasher.update(relative.as_bytes());
-            hasher.update([0]);
-            hasher.update(fs::read(&path).map_err(|error| error.to_string())?);
-            hasher.update([0]);
-        }
-    }
-    if source_format == BookSourceFormat::Txt {
-        let source_path = storage.book_dir(&book.id).join(SOURCE_TEXT_FILE);
-        if source_path.exists() {
-            hasher.update(SOURCE_TEXT_FILE.as_bytes());
-            hasher.update([0]);
-            hasher.update(fs::read(source_path).map_err(|error| error.to_string())?);
-        }
-    }
-
+    hasher.update(b"edited\0");
+    hasher.update(id.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(content_version.to_le_bytes());
+    hasher.update(edited_at.to_le_bytes());
     let digest = hasher.finalize();
-    Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 pub(super) fn replace_book_text_impl(
@@ -2491,7 +2751,13 @@ pub(super) fn replace_book_text_impl(
 
     let section_path = resolve_unpacked_resource_path(&unpacked_dir, &target.section_href)?;
     let xhtml = fs::read_to_string(&section_path).map_err(|error| error.to_string())?;
-    let updated_xhtml = replace_xhtml_text_node(&xhtml, &target, &old_text, &new_text)?;
+    let xhtml_update = replace_xhtml_text(&xhtml, source_format, &target, &old_text, &new_text)?;
+    let heading_update = xhtml_update.heading_update.clone();
+    let mut source_target = target.clone();
+    if source_target.paragraph_index.is_none() {
+        source_target.paragraph_index = xhtml_update.paragraph_index;
+    }
+    let updated_xhtml = xhtml_update.xhtml;
     if updated_xhtml == xhtml {
         let mut state = storage
             .inner
@@ -2507,36 +2773,50 @@ pub(super) fn replace_book_text_impl(
 
     let source_update = if source_format == BookSourceFormat::Txt {
         let source_path = book_dir.join(SOURCE_TEXT_FILE);
-        let source_bytes = fs::read(&source_path).map_err(|error| error.to_string())?;
-        let decoded_source = decode_source_text_bytes(&source_bytes, &initial_book.metadata);
         let text_dir = section_path
             .parent()
             .ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
-        generated_txt_source_replacement(
-            &decoded_source.text,
+        let source_update = generated_txt_source_update_streaming(
+            &source_path,
+            &initial_book.metadata,
             text_dir,
-            &target,
+            &source_target,
             &old_text,
             &new_text,
-        )?
-        .map(|replacement| {
-            encoded_txt_source_update(
-                &decoded_source.text,
-                &source_bytes,
-                &decoded_source.encoding,
-                decoded_source.had_bom,
-                replacement,
-            )
-            .map(|update| update.map(|update| (source_path, update)))
-        })
-        .transpose()?
-        .flatten()
+            heading_update.as_ref(),
+        )?;
+        Some((source_path, source_update))
+    } else {
+        None
+    };
+
+    let nav_update = if let Some((old_heading, new_heading)) = &heading_update {
+        let nav_path = section_path
+            .parent()
+            .and_then(Path::parent)
+            .map(|oebps| oebps.join("nav.xhtml"))
+            .ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
+        if nav_path.exists() {
+            let nav_xhtml = fs::read_to_string(&nav_path).map_err(|error| error.to_string())?;
+            let updated_nav = replace_generated_txt_nav_heading(
+                &nav_xhtml,
+                &target.section_href,
+                old_heading,
+                new_heading,
+            )?;
+            (updated_nav != nav_xhtml).then_some((nav_path, updated_nav))
+        } else {
+            None
+        }
     } else {
         None
     };
 
     if let Some((path, update)) = &source_update {
         write_source_text_update(path, update)?;
+    }
+    if let Some((path, updated_nav)) = &nav_update {
+        fs::write(path, updated_nav).map_err(|error| error.to_string())?;
     }
     fs::write(&section_path, updated_xhtml).map_err(|error| error.to_string())?;
 
@@ -2553,12 +2833,12 @@ pub(super) fn replace_book_text_impl(
         book.source_format = Some(source_format);
         book.content_version = book.content_version.saturating_add(1).max(1);
         book.content_edited_at = Some(now);
+        book.content_hash = edited_book_content_hash(&book.id, book.content_version, now);
         book.updated_at = Some(now);
         book.last_read_at = book.last_read_at.or(Some(now));
         book.clone()
     };
 
-    book.content_hash = hash_book_content(storage, &book, source_format)?;
     if source_format == BookSourceFormat::Txt {
         book.size = fs::metadata(book_dir.join(SOURCE_TEXT_FILE))
             .map_err(|error| error.to_string())?
@@ -2691,13 +2971,12 @@ mod tests {
     use super::{
         book_is_export_dirty, cleanup_delete_tombstones, decode_text_bytes,
         delete_books_to_tombstones, delete_tombstones_root, empty_object,
-        encoded_txt_source_update, ensure_book_package_path_with_unpacker, export_book_impl,
-        get_book_reader_source_impl, hash_file, image_index_cache_from_bytes,
-        image_index_cache_to_bytes, import_epub_path_impl, library_path,
-        load_or_build_search_text_cache, mark_book_exported, normalize_publication_date,
-        normalize_unpacked_epub_structure, parse_text_import_document, path_to_client_string,
-        read_image_index_cache, read_search_text_sections_from_unpacked, replace_book_text_impl,
-        replace_generated_txt_source_text, replace_xhtml_text_node,
+        ensure_book_package_path_with_unpacker, export_book_impl, get_book_reader_source_impl,
+        hash_file, image_index_cache_from_bytes, image_index_cache_to_bytes, import_epub_path_impl,
+        library_path, load_or_build_search_text_cache, mark_book_exported,
+        normalize_publication_date, normalize_unpacked_epub_structure, parse_text_import_document,
+        path_to_client_string, read_image_index_cache, read_search_text_sections_from_unpacked,
+        replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node,
         schedule_existing_delete_tombstone_cleanup, search_text_cache_from_bytes,
         search_text_cache_to_bytes, search_text_in_cache, sync_unpacked_opf_metadata,
         text_content_opf, text_nav_xhtml, text_section_xhtml, visible_search_text_from_xhtml,
@@ -2706,11 +2985,11 @@ mod tests {
         BookExportFormat, BookReaderSourceMode, BookSourceFormat, BookState, BookTextReplaceTarget,
         DirtyState, ImageIndexCache, ImageIndexCacheInput, ImageIndexEntry, ImageIndexEntryInput,
         ImageIndexSection, ImageIndexSectionInput, Library, LibraryBook, ReadingStatus,
-        SearchTextCache, SearchTextSection, SourceParagraphRange, SourceTextReplacement,
-        SourceTextUpdate, StorageInner, StorageState, TextImportPreparedCache,
-        TextImportRulesInput, TextImportSelection, BOOK_FILE, IMAGE_INDEX_CACHE_VERSION,
-        IMAGE_INDEX_EXTRACTOR_VERSION, SEARCH_TEXT_CACHE_FILE, SEARCH_TEXT_CACHE_VERSION,
-        SEARCH_TEXT_EXTRACTOR_VERSION, SOURCE_TEXT_FILE, STATE_FILE, UNPACKED_DIR,
+        SearchTextCache, SearchTextSection, SourceTextUpdate, StorageInner, StorageState,
+        TextImportPreparedCache, TextImportRulesInput, TextImportSelection, BOOK_FILE,
+        IMAGE_INDEX_CACHE_VERSION, IMAGE_INDEX_EXTRACTOR_VERSION, SEARCH_TEXT_CACHE_FILE,
+        SEARCH_TEXT_CACHE_VERSION, SEARCH_TEXT_EXTRACTOR_VERSION, SOURCE_TEXT_FILE, STATE_FILE,
+        UNPACKED_DIR,
     };
     use crate::tasks::TaskService;
     use serde_json::{json, Value};
@@ -4156,7 +4435,9 @@ mod tests {
             "flow-reader-position-memory-test-{}-{nonce}",
             std::process::id()
         ));
-        let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Txt));
+        let mut book = test_library_book(BookSourceFormat::Txt);
+        book.metadata = json!({ "sourceEncodingId": "utf-8" });
+        let storage = test_storage_with_book(&root, book);
 
         let accepted = record_reading_position_impl(
             &storage,
@@ -4205,7 +4486,9 @@ mod tests {
             "flow-reader-position-flush-test-{}-{nonce}",
             std::process::id()
         ));
-        let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Txt));
+        let mut book = test_library_book(BookSourceFormat::Txt);
+        book.metadata = json!({ "sourceEncodingId": "utf-8" });
+        let storage = test_storage_with_book(&root, book);
 
         let accepted = record_reading_position_impl(
             &storage,
@@ -4881,104 +5164,305 @@ mod tests {
     }
 
     #[test]
-    fn replaces_repeated_txt_source_text_by_section_paragraph_and_offsets() {
+    fn txt_xhtml_replacement_does_not_fall_back_to_rendered_text_node_index() {
+        let xhtml = r#"<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><body><h2 class="flow-txt-chapter">第001章 测试</h2><div class="flow-txt-body" data-flow-body-text="true"><p>重复错字。</p><p>重复错字。</p></div></body></html>"#;
+        let target = BookTextReplaceTarget {
+            section_href: "Text/part0001.xhtml".to_string(),
+            text_node_index: 2,
+            text_node_text: "重复错字。".to_string(),
+            start_offset: 2,
+            end_offset: 4,
+            paragraph_index: None,
+        };
+
+        let result = replace_xhtml_text(xhtml, BookSourceFormat::Txt, &target, "错字", "正字");
+
+        assert!(matches!(
+            result,
+            Err(error) if error == "TEXT_REPLACE_NODE_STALE"
+        ));
+    }
+
+    #[test]
+    fn txt_replacement_uses_paragraph_index_when_rendered_text_node_index_is_stale() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
         let root = std::env::temp_dir().join(format!(
-            "flow-reader-source-replace-test-{}-{nonce}",
+            "flow-reader-txt-paragraph-replace-test-{}-{nonce}",
             std::process::id()
         ));
-        let text_dir = root.join("Text");
+        let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Txt));
+        let book_dir = storage.book_dir("book");
+        let unpacked = book_dir.join(UNPACKED_DIR);
+        let text_dir = unpacked.join("OEBPS").join("Text");
         fs::create_dir_all(&text_dir).unwrap();
+        fs::create_dir_all(unpacked.join("META-INF")).unwrap();
+        fs::write(
+            unpacked.join("META-INF").join("container.xml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>"#,
+        )
+        .unwrap();
+        fs::write(unpacked.join("OEBPS").join("content.opf"), "<package/>").unwrap();
+        fs::write(unpacked.join("OEBPS").join("nav.xhtml"), "<nav/>").unwrap();
         fs::write(
             text_dir.join("part0001.xhtml"),
-            r#"<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><body><h2 class="flow-txt-chapter">重复 MD4_A_RED</h2><div class="flow-txt-body" data-flow-body-text="true"><p>重复 MD4_A_RED</p><p>重复 MD4_A_RED</p></div></body></html>"#,
+            r#"<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>第001章 测试</title></head><body>
+<h2 class="flow-txt-chapter">第001章 测试</h2><div class="flow-txt-body" data-flow-body-text="true"><p>第一段原文。</p><p>第二段错字。</p></div></body></html>"#,
+        )
+        .unwrap();
+        fs::write(
+            book_dir.join(SOURCE_TEXT_FILE),
+            "第001章 测试\n第一段原文。\n第二段错字。\n",
         )
         .unwrap();
 
-        let source = "重复 MD4_A_RED\n重复 MD4_A_RED\n重复 MD4_A_RED\n";
         let target = BookTextReplaceTarget {
             section_href: "Text/part0001.xhtml".to_string(),
-            text_node_index: 2,
-            text_node_text: "重复 MD4_A_RED".to_string(),
+            text_node_index: 99,
+            text_node_text: "第二段错字。".to_string(),
             start_offset: 3,
-            end_offset: 12,
+            end_offset: 5,
             paragraph_index: Some(1),
         };
 
-        let updated =
-            replace_generated_txt_source_text(source, &text_dir, &target, "MD4_A_RED", "MD5_A_RED")
-                .expect("direct source replacement succeeds")
-                .expect("source is changed");
+        let result = replace_book_text_impl(
+            &storage,
+            "book".to_string(),
+            target,
+            "错字".to_string(),
+            "正字".to_string(),
+        )
+        .expect("paragraph replacement succeeds without rendered node index");
 
-        assert_eq!(updated, "重复 MD4_A_RED\n重复 MD4_A_RED\n重复 MD5_A_RED\n");
+        assert!(result.changed);
+        assert!(fs::read_to_string(text_dir.join("part0001.xhtml"))
+            .unwrap()
+            .contains("<p>第二段正字。</p>"));
+        assert_eq!(
+            fs::read_to_string(book_dir.join(SOURCE_TEXT_FILE)).unwrap(),
+            "第001章 测试\n第一段原文。\n第二段正字。\n"
+        );
 
         fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
-    fn builds_patch_for_equal_byte_txt_source_replacement() {
-        let source = "第一段 MD4_A_RED\n第二段。\n";
-        let replacement = SourceTextReplacement {
-            range: SourceParagraphRange {
-                text: "第一段 MD4_A_RED".to_string(),
-                start: 0,
-                end: "第一段 MD4_A_RED".len(),
-            },
-            updated_paragraph: "第一段 MD5_A_RED".to_string(),
+    fn txt_replacement_fails_fast_without_paragraph_index() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-txt-missing-paragraph-index-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut book = test_library_book(BookSourceFormat::Txt);
+        book.metadata = json!({ "sourceEncodingId": "utf-8" });
+        let storage = test_storage_with_book(&root, book);
+        let book_dir = storage.book_dir("book");
+        let unpacked = book_dir.join(UNPACKED_DIR);
+        let oebps = unpacked.join("OEBPS");
+        let text_dir = oebps.join("Text");
+        fs::create_dir_all(&text_dir).unwrap();
+        fs::create_dir_all(unpacked.join("META-INF")).unwrap();
+        fs::write(
+            unpacked.join("META-INF").join("container.xml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>"#,
+        )
+        .unwrap();
+        fs::write(oebps.join("content.opf"), "<package/>").unwrap();
+        fs::write(
+            oebps.join("nav.xhtml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><html><body><nav><ol><li><a href="Text/part0001.xhtml">第001章 测试</a></li></ol></nav></body></html>"#,
+        )
+        .unwrap();
+        fs::write(
+            text_dir.join("part0001.xhtml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>第001章 测试</title></head><body>
+<h2 class="flow-txt-chapter">第001章 测试</h2><div class="flow-txt-body" data-flow-body-text="true"><p>第一段原文。</p><p>第二段错字。</p></div></body></html>"#,
+        )
+        .unwrap();
+        fs::write(
+            book_dir.join(SOURCE_TEXT_FILE),
+            "第001章 测试\n第一段原文。\n第二段错字。\n",
+        )
+        .unwrap();
+
+        let target = BookTextReplaceTarget {
+            section_href: "Text/part0001.xhtml".to_string(),
+            text_node_index: 99,
+            text_node_text: "第二段错字。".to_string(),
+            start_offset: 3,
+            end_offset: 5,
+            paragraph_index: None,
         };
-        let source_bytes = source.as_bytes();
 
-        let update = encoded_txt_source_update(source, source_bytes, "utf-8", false, replacement)
-            .expect("source update is encoded")
-            .expect("source is changed");
+        let error = match replace_book_text_impl(
+            &storage,
+            "book".to_string(),
+            target,
+            "错字".to_string(),
+            "正字".to_string(),
+        ) {
+            Ok(_) => panic!("paragraph replacement requires a structural paragraph index"),
+            Err(error) => error,
+        };
 
-        match update {
-            SourceTextUpdate::Patch { offset, bytes } => {
-                assert_eq!(offset, 0);
-                assert_eq!(bytes, "第一段 MD5_A_RED".as_bytes());
-            }
-            SourceTextUpdate::Splice { .. } => {
-                panic!("equal byte replacement should patch in place")
-            }
-            SourceTextUpdate::Rewrite(_) => panic!("equal byte replacement should patch in place"),
-        }
+        assert_eq!(error, "TEXT_REPLACE_NODE_STALE");
+        assert!(fs::read_to_string(text_dir.join("part0001.xhtml"))
+            .unwrap()
+            .contains("<p>第二段错字。</p>"));
+        assert_eq!(
+            fs::read_to_string(book_dir.join(SOURCE_TEXT_FILE)).unwrap(),
+            "第001章 测试\n第一段原文。\n第二段错字。\n"
+        );
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
-    fn builds_splice_for_different_byte_txt_source_replacement() {
-        let source = "第一段 MD4_A_RED\n第二段。\n";
-        let replacement = SourceTextReplacement {
-            range: SourceParagraphRange {
-                text: "第一段 MD4_A_RED".to_string(),
-                start: 0,
-                end: "第一段 MD4_A_RED".len(),
-            },
-            updated_paragraph: "第一段 MD55_A_RED".to_string(),
+    fn txt_replacement_streams_to_target_heading_when_previous_generated_heading_has_parent() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-txt-stream-heading-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut book = test_library_book(BookSourceFormat::Txt);
+        book.metadata = json!({ "sourceEncodingId": "utf-8" });
+        let storage = test_storage_with_book(&root, book);
+        let book_dir = storage.book_dir("book");
+        let unpacked = book_dir.join(UNPACKED_DIR);
+        let oebps = unpacked.join("OEBPS");
+        let text_dir = oebps.join("Text");
+        fs::create_dir_all(&text_dir).unwrap();
+        fs::create_dir_all(unpacked.join("META-INF")).unwrap();
+        fs::write(
+            unpacked.join("META-INF").join("container.xml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>"#,
+        )
+        .unwrap();
+        fs::write(oebps.join("content.opf"), "<package/>").unwrap();
+        fs::write(
+            oebps.join("nav.xhtml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><html><body><nav><ol><li><a href="Text/part0001.xhtml">第001章 开始</a></li><li><a href="Text/part0002.xhtml">第002章 目标</a></li></ol></nav></body></html>"#,
+        )
+        .unwrap();
+        fs::write(
+            text_dir.join("part0001.xhtml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><html><head><title>第一卷 第001章 开始</title></head><body><h2 class="flow-txt-chapter">第一卷 第001章 开始</h2><div class="flow-txt-body" data-flow-body-text="true"><p>前文。</p></div></body></html>"#,
+        )
+        .unwrap();
+        fs::write(
+            text_dir.join("part0002.xhtml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><html><head><title>第002章 目标</title></head><body><h2 class="flow-txt-chapter">第002章 目标</h2><div class="flow-txt-body" data-flow-body-text="true"><p>目标段错字。</p></div></body></html>"#,
+        )
+        .unwrap();
+        fs::write(
+            book_dir.join(SOURCE_TEXT_FILE),
+            "第一卷\n第001章 开始\n前文。\n第002章 目标\n目标段错字。\n",
+        )
+        .unwrap();
+
+        let target = BookTextReplaceTarget {
+            section_href: "Text/part0002.xhtml".to_string(),
+            text_node_index: 99,
+            text_node_text: "目标段错字。".to_string(),
+            start_offset: 3,
+            end_offset: 5,
+            paragraph_index: Some(0),
         };
-        let source_bytes = source.as_bytes();
 
-        let update = encoded_txt_source_update(source, source_bytes, "utf-8", false, replacement)
-            .expect("source update is encoded")
-            .expect("source is changed");
+        replace_book_text_impl(
+            &storage,
+            "book".to_string(),
+            target,
+            "错字".to_string(),
+            "正字".to_string(),
+        )
+        .expect("streaming source replacement skips parent-prefixed generated heading");
 
-        match update {
-            SourceTextUpdate::Patch { .. } => panic!("different byte replacement must splice"),
-            SourceTextUpdate::Splice {
-                offset,
-                old_len,
-                bytes,
-            } => {
-                assert_eq!(offset, 0);
-                assert_eq!(old_len, "第一段 MD4_A_RED".len() as u64);
-                assert_eq!(bytes, "第一段 MD55_A_RED".as_bytes());
-            }
-            SourceTextUpdate::Rewrite(bytes) => {
-                panic!("different byte replacement should splice, got {bytes:?}")
-            }
-        }
+        assert_eq!(
+            fs::read_to_string(book_dir.join(SOURCE_TEXT_FILE)).unwrap(),
+            "第一卷\n第001章 开始\n前文。\n第002章 目标\n目标段正字。\n"
+        );
+        assert!(fs::read_to_string(text_dir.join("part0002.xhtml"))
+            .unwrap()
+            .contains("<p>目标段正字。</p>"));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn txt_replacement_updates_generated_heading_and_source_title_line() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-txt-heading-replace-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Txt));
+        let book_dir = storage.book_dir("book");
+        let unpacked = book_dir.join(UNPACKED_DIR);
+        let oebps = unpacked.join("OEBPS");
+        let text_dir = oebps.join("Text");
+        fs::create_dir_all(&text_dir).unwrap();
+        fs::create_dir_all(unpacked.join("META-INF")).unwrap();
+        fs::write(
+            unpacked.join("META-INF").join("container.xml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>"#,
+        )
+        .unwrap();
+        fs::write(oebps.join("content.opf"), "<package/>").unwrap();
+        fs::write(
+            oebps.join("nav.xhtml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><html><body><nav><ol><li><a href="Text/part0001.xhtml">第001章测试</a></li></ol></nav></body></html>"#,
+        )
+        .unwrap();
+        fs::write(
+            text_dir.join("part0001.xhtml"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>第001章测试</title></head><body>
+<h2 class="flow-txt-chapter">第001章测试</h2><div class="flow-txt-body" data-flow-body-text="true"><p>正文。</p></div></body></html>"#,
+        )
+        .unwrap();
+        fs::write(book_dir.join(SOURCE_TEXT_FILE), "第001章测试\n正文。\n").unwrap();
+
+        let target = BookTextReplaceTarget {
+            section_href: "Text/part0001.xhtml".to_string(),
+            text_node_index: 99,
+            text_node_text: "第001章测试".to_string(),
+            start_offset: 5,
+            end_offset: 7,
+            paragraph_index: None,
+        };
+
+        replace_book_text_impl(
+            &storage,
+            "book".to_string(),
+            target,
+            "测试".to_string(),
+            " 测试".to_string(),
+        )
+        .expect("heading replacement succeeds without rendered node index");
+
+        let updated_xhtml = fs::read_to_string(text_dir.join("part0001.xhtml")).unwrap();
+        assert!(updated_xhtml.contains("<title>第001章 测试</title>"));
+        assert!(updated_xhtml.contains(r#"<h2 class="flow-txt-chapter">第001章 测试</h2>"#));
+        assert!(fs::read_to_string(oebps.join("nav.xhtml"))
+            .unwrap()
+            .contains(r#"<a href="Text/part0001.xhtml">第001章 测试</a>"#));
+        assert_eq!(
+            fs::read_to_string(book_dir.join(SOURCE_TEXT_FILE)).unwrap(),
+            "第001章 测试\n正文。\n"
+        );
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

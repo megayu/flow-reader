@@ -80,12 +80,19 @@ Read this before proposing or testing a Flow Reader performance change. Search f
 - Decision: keep as a correctness/performance prerequisite.
 - Constraint: performance work must not reintroduce stale layout reuse after real reading-position changes.
 
-### Live patch active text edit before full reload
+### Live patch active text edit after save
 
-- Change: after a text edit succeeds, patch the edited active tab's rendered section text node in place and re-report the current location. Reload is kept as a fallback when the rendered node cannot be verified.
+- Change: after a text edit succeeds, patch the edited active tab's rendered section text node in place and re-report the current location. If the edited active tab cannot be verified and patched, report an inconsistency instead of destroying and reloading the active rendition.
 - Measured effect: in `tauri-release` custom UI verification on a generated TXT book, the active reader kept 2 iframes mounted, the loading cover stayed hidden, and visible text changed within about 55ms after save sampling started.
 - Decision: keep. It removes the user-visible blank interval caused by destroying the rendition before the replacement render finishes.
-- Constraint: only use this for the edited active tab when section href, text-node index, original text, and offsets all match. Other tabs or stale targets should continue to use the conservative reload path.
+- Constraint: only use this for the edited active tab when the selected live text node or structural paragraph/heading target verifies against the original text and offsets. Other tabs should reload after an edit; the edited active tab should fail visibly if verification does not match.
+
+### Fail-fast generated TXT text edits
+
+- Change: generated TXT paragraph edits require the structural paragraph index captured from the rendered paragraph and no longer infer it from generated XHTML. The client supports both generated-source shape (`div[data-flow-body-text] > p`) and rendered epubjs shape (`p[data-flow-body-text]`). Text-edit saves also stop synchronously hashing the full unpacked EPUB/source TXT after a one-node edit; they update the content version and a lightweight edit revision hash instead.
+- Measured effect: after-only `tauri-release` custom client verification on generated TXT books passed. A visible small-book edit reported about 21ms native replacement time and about 32ms active-iframe patch time; a direct replacement in chapter 300 reported about 323ms native replacement time. No comparable pre-change baseline was available for this implementation batch.
+- Decision: keep as a fast-fail/fast-return correctness change, but do not claim a measured percentage improvement without a comparable baseline.
+- Constraint: TXT paragraph edit targets must include `paragraphIndex`; missing structural targets should fail instead of falling back to whole-document inference. Different-byte-length TXT source edits can still require tail rewriting of `source.txt`.
 
 ### Image sidebar persisted index cache
 

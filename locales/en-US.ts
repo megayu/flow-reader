@@ -206,7 +206,7 @@ export default {
   'menu.edit_text_archive_only': 'Text editing is unavailable in archive mode',
   'menu.edit_text_error_empty': 'Select text to edit',
   'menu.edit_text_error_stale':
-    'The original text changed. Select the text again and retry.',
+    'Could not verify the selected text. Select it again and retry.',
   'menu.edit_text_error_generic':
     'Could not update the text. Select it again and retry.',
   'menu.edit_text_error_reason': 'Reason: ',
@@ -215,6 +215,7 @@ export default {
   'menu.create': 'Create',
   'menu.cancel': 'Cancel',
   'menu.save': 'Save',
+  'menu.saving': 'Saving',
   'menu.delete': 'Delete',
   'menu.update': 'Update',
 

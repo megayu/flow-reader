@@ -58,15 +58,27 @@ function clearWindowSelections(windows: readonly Window[]) {
 
 interface TextReplaceTarget extends BookTextReplaceTarget {
   selectedText: string
+  textNode: Text
 }
 
 function paragraphIndexForTextNode(node: Node) {
   const paragraph = node.parentElement?.closest('p')
-  const body = paragraph?.closest('[data-flow-body-text="true"]')
-  if (!paragraph || !body) return
+  if (!paragraph) return
 
-  const paragraphs = Array.from(body.children).filter(
-    (element) => element.tagName.toLowerCase() === 'p',
+  const marker = paragraph.closest('[data-flow-body-text="true"]')
+  const container =
+    marker === paragraph
+      ? paragraph.parentElement
+      : marker instanceof HTMLElement
+        ? marker
+        : paragraph.closest('.flow-txt-body')
+  if (!container) return
+
+  const paragraphs = Array.from(container.children).filter(
+    (element) =>
+      element.tagName.toLowerCase() === 'p' &&
+      (marker !== paragraph ||
+        element.getAttribute('data-flow-body-text') === 'true'),
   )
   const index = paragraphs.indexOf(paragraph)
   return index >= 0 ? index : undefined
@@ -80,7 +92,7 @@ function createTextReplaceTarget(
   if (range.startContainer !== range.endContainer) return
   if (range.startContainer.nodeType !== Node.TEXT_NODE) return
 
-  const node = range.startContainer
+  const node = range.startContainer as Text
   const selectedText = range.toString()
   if (!selectedText) return
 
@@ -102,6 +114,7 @@ function createTextReplaceTarget(
         endOffset: range.endOffset,
         paragraphIndex: paragraphIndexForTextNode(node),
         selectedText,
+        textNode: node,
       }
     }
     textNodeIndex += 1
@@ -120,6 +133,7 @@ const textReplacementErrorKeys = [
       'TEXT_REPLACE_NODE_STALE',
       'TEXT_REPLACE_TEXT_STALE',
       'TEXT_REPLACE_NODE_NOT_FOUND',
+      'TEXT_REPLACE_RENDER_PATCH_FAILED',
       'no longer matches',
       'no longer exists',
       'node was not found',
@@ -282,12 +296,17 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   )
   const [editing, setEditing] = useState(false)
   const [savingReplacement, setSavingReplacement] = useState(false)
+  const savingReplacementRef = useRef(false)
   const [replacementError, setReplacementError] =
     useState<TextReplacementError>()
   const replaceTarget = editing
     ? replacementSnapshotRef.current
     : currentReplaceTarget
   const textEditingDisabled = tab.book.contentMode === 'archiveOnly'
+  const closeMenu = () => {
+    if (savingReplacementRef.current) return
+    hide()
+  }
 
   useEffect(() => {
     if (!editing) return
@@ -334,9 +353,9 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
       <Overlay
         // cover `sash`
         className="!z-50 !bg-transparent"
-        onClick={hide}
-        onMouseDown={hide}
-        onPointerDown={hide}
+        onClick={closeMenu}
+        onMouseDown={closeMenu}
+        onPointerDown={closeMenu}
       />
       <div
         data-flow-keyboard-capture="true"
@@ -368,7 +387,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           e.stopPropagation()
           if (e.key === 'Escape') {
             e.preventDefault()
-            hide()
+            closeMenu()
             return
           }
           if (e.key === 'c' && e.ctrlKey) {
@@ -549,6 +568,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               variant="secondary"
               disabled={savingReplacement}
               onClick={() => {
+                if (savingReplacement) return
                 setEditing(false)
                 setReplacementError(undefined)
               }}
@@ -561,13 +581,14 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               disabled={!replaceTarget || savingReplacement}
               onClick={() => {
                 if (!replaceTarget) return
-                const { selectedText, ...target } = replaceTarget
+                const { selectedText, textNode, ...target } = replaceTarget
                 const newText = replacementRef.current?.value ?? selectedText
                 if (newText === selectedText) {
                   hide()
                   return
                 }
 
+                savingReplacementRef.current = true
                 setSavingReplacement(true)
                 setReplacementError(undefined)
                 void replaceBookText({
@@ -576,8 +597,8 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                   oldText: selectedText,
                   newText,
                 })
-                  .then((result) => {
-                    reader.applyBookContentEdit(
+                  .then(async (result) => {
+                    await reader.applyBookContentEdit(
                       result.book,
                       result.sectionHref,
                       tab,
@@ -585,6 +606,9 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                         target,
                         oldText: selectedText,
                         newText,
+                        document:
+                          range.startContainer.ownerDocument ?? undefined,
+                        textNode,
                       },
                     )
                     hide()
@@ -592,10 +616,13 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                   .catch((error) => {
                     setReplacementError(textReplacementErrorMessage(error, t))
                   })
-                  .finally(() => setSavingReplacement(false))
+                  .finally(() => {
+                    savingReplacementRef.current = false
+                    setSavingReplacement(false)
+                  })
               }}
             >
-              {savingReplacement ? '...' : t('save')}
+              {savingReplacement ? t('saving') : t('save')}
             </Button>
           </div>
         )}
