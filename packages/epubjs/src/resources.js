@@ -1,6 +1,11 @@
 import path from './utils/posix-path'
 
-import { createBase64Url, createBlobUrl, blob2base64 } from './utils/core'
+import {
+  createBase64Url,
+  createBlobUrl,
+  revokeBlobUrl,
+  blob2base64,
+} from './utils/core'
 import mime from './utils/mime'
 import Path from './utils/path'
 import { substitute } from './utils/replacements'
@@ -24,8 +29,17 @@ class Resources {
       request: options && options.request,
       rootUrl: options && options.rootUrl,
     }
+    this.ownedBlobUrls = new Set()
 
     this.process(manifest)
+  }
+
+  createOwnedBlobUrl(content, mime) {
+    var url = createBlobUrl(content, mime)
+    if (url) {
+      this.ownedBlobUrls.add(url)
+    }
+    return url
   }
 
   /**
@@ -122,7 +136,7 @@ class Resources {
           })
       } else {
         return this.settings.request(url, 'blob').then((blob) => {
-          return createBlobUrl(blob, mimeType)
+          return this.createOwnedBlobUrl(blob, mimeType)
         })
       }
     }
@@ -243,7 +257,7 @@ class Resources {
         if (this.settings.replacements === 'base64') {
           newUrl = createBase64Url(text, 'text/css')
         } else {
-          newUrl = createBlobUrl(text, 'text/css')
+          newUrl = this.createOwnedBlobUrl(text, 'text/css')
         }
 
         return newUrl
@@ -404,12 +418,14 @@ class Resources {
 
     return this.createResolvedCssText(absolute, rootUrl, seen)
       .then((rewritten) => {
-        var objectUrl = createBlobUrl(rewritten, 'text/css')
+        var objectUrl = this.createOwnedBlobUrl(rewritten, 'text/css')
         this.resolvedCssUrls[absolute] = objectUrl
         return objectUrl
       })
       .catch((error) => {
-        return createBlobUrl('', 'text/css')
+        var objectUrl = this.createOwnedBlobUrl('', 'text/css')
+        this.resolvedCssUrls[absolute] = objectUrl
+        return objectUrl
       })
   }
 
@@ -482,6 +498,17 @@ class Resources {
   }
 
   destroy() {
+    if (this.ownedBlobUrls) {
+      this.ownedBlobUrls.forEach((url) => {
+        try {
+          revokeBlobUrl(url)
+        } catch (error) {
+          // Ignore URLs already released by the browser.
+        }
+      })
+      this.ownedBlobUrls.clear()
+    }
+
     this.settings = undefined
     this.manifest = undefined
     this.resources = undefined
@@ -493,6 +520,7 @@ class Resources {
     this.urls = undefined
     this.cssUrls = undefined
     this.resolvedCssUrls = undefined
+    this.ownedBlobUrls = undefined
   }
 }
 

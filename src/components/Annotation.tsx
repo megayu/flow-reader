@@ -132,6 +132,34 @@ interface DefinitionMatch {
   index: number
 }
 
+const DEFINITION_MATCH_CACHE_LIMIT = 64
+
+function getCachedDefinitionMatches(
+  cache: Map<string, DefinitionMatch[]>,
+  key: string,
+) {
+  const matches = cache.get(key)
+  if (!matches) return
+
+  cache.delete(key)
+  cache.set(key, matches)
+  return matches
+}
+
+function setCachedDefinitionMatches(
+  cache: Map<string, DefinitionMatch[]>,
+  key: string,
+  matches: DefinitionMatch[],
+) {
+  cache.set(key, matches)
+
+  while (cache.size > DEFINITION_MATCH_CACHE_LIMIT) {
+    const oldestKey = cache.keys().next().value
+    if (oldestKey === undefined) break
+    cache.delete(oldestKey)
+  }
+}
+
 interface DefinitionsProps {
   active: boolean
   definitions: readonly string[]
@@ -145,6 +173,7 @@ const Definitions: React.FC<DefinitionsProps> = ({
   dark,
 }) => {
   const {
+    book,
     rendition,
     rendered,
     visibleSectionIndexes,
@@ -155,6 +184,7 @@ const Definitions: React.FC<DefinitionsProps> = ({
   const matchCacheRef = useRef<Map<string, DefinitionMatch[]> | undefined>(
     undefined,
   )
+  const matchCacheScopeRef = useRef<string | undefined>(undefined)
   matchCacheRef.current ??= new Map()
   const definitionItems = useMemo(
     () =>
@@ -169,7 +199,15 @@ const Definitions: React.FC<DefinitionsProps> = ({
     () => definitionItems.map((item) => item.definition).join('\u0000'),
     [definitionItems],
   )
+  const matchCacheScope = `${book.id}:${book.contentVersion}:${definitionKey}`
   const visibleSectionKey = visibleSectionIndexes.join('|')
+
+  useEffect(() => {
+    if (matchCacheScopeRef.current === matchCacheScope) return
+
+    matchCacheScopeRef.current = matchCacheScope
+    matchCacheRef.current?.clear()
+  }, [matchCacheScope])
 
   useEffect(() => {
     const annotations = rendition?.annotations
@@ -193,7 +231,9 @@ const Definitions: React.FC<DefinitionsProps> = ({
       const matchesBySection = await Promise.all(
         currentSections.map(async (currentSection) => {
           const cacheKey = `${currentSection.index}:${definitionKey}`
-          let sectionMatches = matchCacheRef.current?.get(cacheKey)
+          let sectionMatches = matchCacheRef.current
+            ? getCachedDefinitionMatches(matchCacheRef.current, cacheKey)
+            : undefined
 
           if (!sectionMatches) {
             await tab.ensureSectionInfo(currentSection)
@@ -209,7 +249,13 @@ const Definitions: React.FC<DefinitionsProps> = ({
                 )
               },
             )
-            matchCacheRef.current?.set(cacheKey, sectionMatches)
+            if (matchCacheRef.current) {
+              setCachedDefinitionMatches(
+                matchCacheRef.current,
+                cacheKey,
+                sectionMatches,
+              )
+            }
           }
 
           return sectionMatches

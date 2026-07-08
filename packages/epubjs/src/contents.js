@@ -97,6 +97,11 @@ class Contents {
     this.epubReadingSystem('epub.js', EPUBJS_VERSION)
     this.called = 0
     this.active = true
+    this.mediaQueryListenerCleanup = []
+    this.mediaQueryTimeouts = new Set()
+    this.imageLoadListenerCleanup = []
+    this.visibilityListenerCleanup = undefined
+    this.resizeCheckFrame = undefined
     this.listeners()
   }
 
@@ -422,12 +427,29 @@ class Contents {
     this.removeEventListeners()
 
     this.removeSelectionListeners()
+    this.removeMediaQueryListeners()
+    this.clearMediaQueryTimeouts()
+    this.removeImageLoadListeners()
+
+    if (this.visibilityListenerCleanup) {
+      this.visibilityListenerCleanup()
+      this.visibilityListenerCleanup = undefined
+    }
 
     if (this.observer) {
       this.observer.disconnect()
+      this.observer = undefined
+    }
+
+    if (this.resizeCheckFrame) {
+      cancelAnimationFrame(this.resizeCheckFrame)
+      this.resizeCheckFrame = undefined
     }
 
     clearTimeout(this.expanding)
+    clearTimeout(this.selectionEndTimeout)
+    this.expanding = undefined
+    this.selectionEndTimeout = undefined
   }
 
   /**
@@ -450,6 +472,17 @@ class Contents {
     }
   }
 
+  scheduleResizeCheck() {
+    if (this.resizeCheckFrame) {
+      return
+    }
+
+    this.resizeCheckFrame = requestAnimationFrame(() => {
+      this.resizeCheckFrame = undefined
+      this.resizeCheck()
+    })
+  }
+
   /**
    * Poll for resize detection
    * @private
@@ -458,7 +491,7 @@ class Contents {
     var width, height
     // Test size again
     clearTimeout(this.expanding)
-    requestAnimationFrame(this.resizeCheck.bind(this))
+    this.scheduleResizeCheck()
     this.expanding = setTimeout(this.resizeListeners.bind(this), 350)
   }
 
@@ -467,7 +500,11 @@ class Contents {
    * @private
    */
   visibilityListeners() {
-    document.addEventListener('visibilitychange', () => {
+    if (this.visibilityListenerCleanup) {
+      this.visibilityListenerCleanup()
+    }
+
+    var handler = () => {
       if (document.visibilityState === 'visible' && this.active === false) {
         this.active = true
         this.resizeListeners()
@@ -475,7 +512,12 @@ class Contents {
         this.active = false
         clearTimeout(this.expanding)
       }
-    })
+    }
+
+    document.addEventListener('visibilitychange', handler)
+    this.visibilityListenerCleanup = () => {
+      document.removeEventListener('visibilitychange', handler)
+    }
   }
 
   /**
@@ -501,10 +543,16 @@ class Contents {
    * @private
    */
   mediaQueryListeners() {
+    this.removeMediaQueryListeners()
+
     var sheets = this.document.styleSheets
     var mediaChangeHandler = function (m) {
       if (m.matches && !this._expanding) {
-        setTimeout(this.expand.bind(this), 1)
+        var timeout = setTimeout(() => {
+          this.mediaQueryTimeouts.delete(timeout)
+          this.expand()
+        }, 1)
+        this.mediaQueryTimeouts.add(timeout)
       }
     }.bind(this)
 
@@ -520,12 +568,39 @@ class Contents {
       for (var j = 0; j < rules.length; j += 1) {
         //if (rules[j].constructor === CSSMediaRule) {
         if (rules[j].media) {
-          var mql = this.window.matchMedia(rules[j].media.mediaText)
-          mql.addListener(mediaChangeHandler)
-          //mql.onchange = mediaChangeHandler;
+          let mql = this.window.matchMedia(rules[j].media.mediaText)
+          if (mql.addEventListener) {
+            mql.addEventListener('change', mediaChangeHandler)
+            this.mediaQueryListenerCleanup.push(() => {
+              mql.removeEventListener('change', mediaChangeHandler)
+            })
+          } else {
+            mql.addListener(mediaChangeHandler)
+            this.mediaQueryListenerCleanup.push(() => {
+              mql.removeListener(mediaChangeHandler)
+            })
+          }
         }
       }
     }
+  }
+
+  removeMediaQueryListeners() {
+    if (!this.mediaQueryListenerCleanup) {
+      return
+    }
+
+    this.mediaQueryListenerCleanup.forEach((cleanup) => cleanup())
+    this.mediaQueryListenerCleanup = []
+  }
+
+  clearMediaQueryTimeouts() {
+    if (!this.mediaQueryTimeouts) {
+      return
+    }
+
+    this.mediaQueryTimeouts.forEach((timeout) => clearTimeout(timeout))
+    this.mediaQueryTimeouts.clear()
   }
 
   /**
@@ -535,7 +610,7 @@ class Contents {
   resizeObservers() {
     // create an observer instance
     this.observer = new ResizeObserver((e) => {
-      requestAnimationFrame(this.resizeCheck.bind(this))
+      this.scheduleResizeCheck()
     })
 
     // pass in the target node
@@ -569,15 +644,30 @@ class Contents {
    * @private
    */
   imageLoadListeners() {
+    this.removeImageLoadListeners()
+
     var images = this.document.querySelectorAll('img')
     var img
     for (var i = 0; i < images.length; i++) {
       img = images[i]
 
       if (typeof img.naturalWidth !== 'undefined' && img.naturalWidth === 0) {
-        img.onload = this.expand.bind(this)
+        var handler = this.expand.bind(this)
+        img.addEventListener('load', handler)
+        this.imageLoadListenerCleanup.push(
+          img.removeEventListener.bind(img, 'load', handler),
+        )
       }
     }
+  }
+
+  removeImageLoadListeners() {
+    if (!this.imageLoadListenerCleanup) {
+      return
+    }
+
+    this.imageLoadListenerCleanup.forEach((cleanup) => cleanup())
+    this.imageLoadListenerCleanup = []
   }
 
   /**
