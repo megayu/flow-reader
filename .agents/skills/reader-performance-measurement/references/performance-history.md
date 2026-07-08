@@ -212,6 +212,13 @@ Read this before proposing or testing a Flow Reader performance change. Search f
 - Measured effect: one single-step TOC page-turn metric improved, but rapid TOC tab switching and rapid TOC page turns regressed.
 - Decision: rejected. Do not trade rapid interactions for a single-step metric.
 
+### Coalesced reader page-width sync scheduler
+
+- Attempt: coalesce `--flow-reader-page-width` / `--flow-reader-spread-width` sync work in `BookPane` by replacing per-callback immediate update plus RAF plus timeout with RAF-only scheduling, and then with a conservative immediate update plus one pending RAF/timeout.
+- Measured effect: `tauri-release` native-book comparison with page-turn, rapid-page-turn, tab-switch, and rapid-tab-click scenarios showed unacceptable rapid-path regressions. RAF-only regressed `rapid-tab-click/sidebar-closed` burst p95 by about 39% and settled p95 by about 37%. The conservative variant still regressed `rapid-tab-click/sidebar-closed` settled p95 by about 21%, while `rapid-tab-click/sidebar-toc` long-task total rose about 12%.
+- Decision: rejected. The scheduler cleanup reduced some single-step or max-step frame metrics, but moved cost into required rapid tab-click paths.
+- Constraint: do not coalesce this sync path without a new approach that preserves rapid tab-click settled p95 and TOC long-task totals. Compare closed-sidebar and TOC rapid tab-click together with page-turn scenarios.
+
 ### Remove TOC row aria-label
 
 - Attempt: remove TOC row `aria-label` after diagnostics showed many attribute mutations.
