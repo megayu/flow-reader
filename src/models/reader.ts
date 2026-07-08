@@ -660,6 +660,7 @@ interface SectionNavIndex {
   nav: Navigation
   sections: ISection[]
   exactBySectionHref: Map<string, INavItem>
+  firstNavItemById: Map<string, INavItem>
   entriesBySectionIndex: Map<number, SectionNavEntry[]>
   anchorEntriesBySectionIndex: Map<number, SectionNavAnchorEntry[]>
   anchorPromisesBySectionIndex: Map<number, Promise<SectionNavAnchorEntry[]>>
@@ -2058,6 +2059,7 @@ export class BookTab extends BaseTab {
     markSectionsRuntime(sections)
 
     const exactBySectionHref = new Map<string, INavItem>()
+    const firstNavItemById = new Map<string, INavItem>()
     const entriesBySectionIndex = new Map<number, SectionNavEntry[]>()
     const entries: SectionNavIndex['entries'] = []
     let order = 0
@@ -2089,6 +2091,10 @@ export class BookTab extends BaseTab {
 
     this.nav.toc.forEach((item) =>
       dfs(item as INavItem, (navItem) => {
+        if (navItem.id && !firstNavItemById.has(navItem.id)) {
+          firstNavItemById.set(navItem.id, navItem)
+        }
+
         const matchedSection = matchSection(navItem.href)
 
         if (matchedSection) {
@@ -2125,6 +2131,7 @@ export class BookTab extends BaseTab {
       nav: this.nav,
       sections,
       exactBySectionHref,
+      firstNavItemById,
       entries,
     }
 
@@ -2256,11 +2263,24 @@ export class BookTab extends BaseTab {
 
     let selected = anchors[0]
     for (const anchor of anchors) {
-      if (this.compareCfi(anchor.cfi, cfi) > 0) break
+      const comparison = this.compareCfi(anchor.cfi, cfi)
+      if (comparison > 0) break
+      if (selected && this.sameNavAnchorTarget(selected, anchor)) continue
       selected = anchor
     }
 
     return selected
+  }
+
+  private sameNavAnchorTarget(
+    a: SectionNavAnchorEntry,
+    b: SectionNavAnchorEntry,
+  ) {
+    return (
+      a.sectionIndex === b.sectionIndex &&
+      a.href === b.href &&
+      a.hash === b.hash
+    )
   }
 
   private async navAnchorForLocationPoint(
@@ -2617,7 +2637,7 @@ export class BookTab extends BaseTab {
       const seenIds = new Set<string>()
       while (navItem) {
         const itemId = navItem.id
-        if (seenItems.has(navItem) || (itemId && seenIds.has(itemId))) break
+        if (seenItems.has(navItem)) break
         seenItems.add(navItem)
         if (itemId) seenIds.add(itemId)
 
@@ -2626,8 +2646,23 @@ export class BookTab extends BaseTab {
         if (!parentId) {
           navItem = undefined
         } else {
-          const index = this.nav.tocById[parentId]!
-          navItem = this.nav.getByIndex(parentId, index, this.nav.toc)
+          const firstParent =
+            this.getSectionNavIndex()?.firstNavItemById.get(parentId)
+          if (firstParent) {
+            if (
+              firstParent === navItem ||
+              (firstParent.id === navItem.id &&
+                firstParent.parent === navItem.parent)
+            ) {
+              break
+            }
+            navItem = firstParent
+          } else {
+            const index = this.nav.tocById[parentId]!
+            const parent = this.nav.getByIndex(parentId, index, this.nav.toc)
+            if (parent?.id && seenIds.has(parent.id)) break
+            navItem = parent
+          }
         }
       }
     }

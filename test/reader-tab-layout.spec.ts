@@ -1280,35 +1280,117 @@ test('guards reader nav path expansion against cyclic parent links', async ({
     const tab = (window as any).reader.focusedBookTab
     if (!tab) throw new Error('Missing focused book tab')
 
-    const root = { id: 'root', label: 'Root' }
-    const child = { id: 'child', label: 'Child', parent: 'root' }
-    const leaf = { id: 'leaf', label: 'Leaf', parent: 'child' }
-    const cyclic = { id: 'cyclic', label: 'Cyclic', parent: 'cyclic' }
-    const fresh = { id: 'fresh', label: 'Fresh', parent: 'fresh' }
-    const items: Record<string, unknown> = { root, child, leaf, cyclic, fresh }
+    const other = { id: 'other', label: 'Other', subitems: [] }
+    const root: any = { id: 'root', label: 'Root', subitems: [] }
+    const child: any = {
+      id: 'child',
+      label: 'Child',
+      parent: 'root',
+      subitems: [],
+    }
+    const leaf = { id: 'leaf', label: 'Leaf', parent: 'child', subitems: [] }
+    const cyclic = {
+      id: 'cyclic',
+      label: 'Cyclic',
+      parent: 'cyclic',
+      subitems: [],
+    }
+    const fresh = {
+      id: 'fresh',
+      label: 'Fresh',
+      parent: 'fresh',
+      subitems: [],
+    }
+    const group: any = {
+      id: 'same.xhtml',
+      href: 'same.xhtml',
+      label: 'Group',
+      subitems: [],
+    }
+    const duplicate = {
+      id: 'same.xhtml',
+      href: 'same.xhtml',
+      label: 'First duplicate',
+      parent: 'same.xhtml',
+      subitems: [],
+    }
+    root.subitems = [child]
+    child.subitems = [leaf]
+    group.subitems = [duplicate]
+    const items: Record<string, unknown> = {
+      child,
+      cyclic,
+      fresh,
+      leaf,
+      root,
+      same: duplicate,
+    }
     const previousNav = tab.nav
+    const previousSections = tab.sections
+    const previousSectionNavIndex = tab.sectionNavIndex
 
     tab.nav = {
-      toc: [root],
+      toc: [other, root, cyclic, fresh, group],
       tocById: {
         child: 0,
         cyclic: 0,
         fresh: 0,
         leaf: 0,
         root: 0,
+        'same.xhtml': 0,
       },
       getByIndex(id: string) {
+        function findByIndex(index: number, navItems: any[]): unknown {
+          if (!navItems?.length) return
+
+          const item = navItems[index]
+          if (item && (id === item.id || id === item.href)) return item
+
+          for (const candidate of navItems) {
+            const result = findByIndex(index, candidate.subitems)
+            if (result) return result
+          }
+        }
+
         if (id === 'fresh') {
           return { id: 'fresh', label: 'Fresh duplicate', parent: 'fresh' }
+        }
+        if (id === 'same.xhtml') {
+          return findByIndex(0, this.toc)
         }
 
         return items[id]
       },
     }
+    tab.sections = [{ href: 'same.xhtml', index: 0, length: 1 }]
+    tab.sectionNavIndex = undefined
 
     try {
       tab.expandNavPath(cyclic)
       tab.expandNavPath(leaf)
+      tab.expandNavPath(duplicate)
+      const anchors = [
+        {
+          cfi: 'a',
+          hash: undefined,
+          href: 'same.xhtml',
+          item: group,
+          order: 0,
+          sectionIndex: 0,
+        },
+        {
+          cfi: 'a',
+          hash: undefined,
+          href: 'same.xhtml',
+          item: duplicate,
+          order: 1,
+          sectionIndex: 0,
+        },
+      ]
+      const previousCompareCfi = tab.compareCfi
+      tab.compareCfi = (a: string, b: string) => a.localeCompare(b)
+      const pickedDuplicateAnchor = tab.pickNavAnchorForCfi(anchors, 'z')
+      tab.compareCfi = previousCompareCfi
 
       return {
         cyclic: tab
@@ -1320,16 +1402,29 @@ test('guards reader nav path expansion against cyclic parent links', async ({
         regular: tab
           .getNavPath(leaf)
           .map((item: { label: string }) => item.label),
+        duplicate: tab
+          .getNavPath(duplicate)
+          .map((item: { label: string }) => item.label),
+        mappedDuplicate:
+          tab.mapSectionToNavItem('same.xhtml')?.label ?? undefined,
+        pickedDuplicateAnchor: pickedDuplicateAnchor?.item?.label,
+        groupExpanded: group.expanded === true,
         rootExpanded: (root as { expanded?: boolean }).expanded === true,
       }
     } finally {
       tab.nav = previousNav
+      tab.sections = previousSections
+      tab.sectionNavIndex = previousSectionNavIndex
     }
   })
 
   expect(paths).toEqual({
     cyclic: ['Cyclic'],
+    duplicate: ['Group', 'First duplicate'],
     fresh: ['Fresh'],
+    groupExpanded: true,
+    mappedDuplicate: 'Group',
+    pickedDuplicateAnchor: 'Group',
     regular: ['Root', 'Child', 'Leaf'],
     rootExpanded: true,
   })
