@@ -2613,7 +2613,14 @@ export class BookTab extends BaseTab {
     const path: INavItem[] = []
 
     if (this.nav) {
+      const seenItems = new Set<INavItem>()
+      const seenIds = new Set<string>()
       while (navItem) {
+        const itemId = navItem.id
+        if (seenItems.has(navItem) || (itemId && seenIds.has(itemId))) break
+        seenItems.add(navItem)
+        if (itemId) seenIds.add(itemId)
+
         path.unshift(navItem)
         const parentId = navItem.parent
         if (!parentId) {

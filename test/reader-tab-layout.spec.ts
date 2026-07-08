@@ -177,6 +177,9 @@ async function installReaderBooksMock(
         if (command === 'list_covers') return []
         if (command === 'get_cover') return null
         if (command === 'get_book_package_path') return packageUrl
+        if (command === 'get_book_reader_source') {
+          return { mode: 'epub', path: packageUrl }
+        }
         if (command === 'take_pending_open_paths') return []
         if (command === 'flush_storage') return null
         if (command === 'search_book_text') return []
@@ -1265,6 +1268,71 @@ test.beforeEach(async ({ page }, testInfo) => {
   })
   await expect(page.locator('#layout')).toBeVisible()
   await expect(page.locator('ul.grid [role="button"]')).toHaveCount(3)
+})
+
+test('guards reader nav path expansion against cyclic parent links', async ({
+  page,
+}) => {
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+
+  const paths = await page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    if (!tab) throw new Error('Missing focused book tab')
+
+    const root = { id: 'root', label: 'Root' }
+    const child = { id: 'child', label: 'Child', parent: 'root' }
+    const leaf = { id: 'leaf', label: 'Leaf', parent: 'child' }
+    const cyclic = { id: 'cyclic', label: 'Cyclic', parent: 'cyclic' }
+    const fresh = { id: 'fresh', label: 'Fresh', parent: 'fresh' }
+    const items: Record<string, unknown> = { root, child, leaf, cyclic, fresh }
+    const previousNav = tab.nav
+
+    tab.nav = {
+      toc: [root],
+      tocById: {
+        child: 0,
+        cyclic: 0,
+        fresh: 0,
+        leaf: 0,
+        root: 0,
+      },
+      getByIndex(id: string) {
+        if (id === 'fresh') {
+          return { id: 'fresh', label: 'Fresh duplicate', parent: 'fresh' }
+        }
+
+        return items[id]
+      },
+    }
+
+    try {
+      tab.expandNavPath(cyclic)
+      tab.expandNavPath(leaf)
+
+      return {
+        cyclic: tab
+          .getNavPath(cyclic)
+          .map((item: { label: string }) => item.label),
+        fresh: tab
+          .getNavPath(fresh)
+          .map((item: { label: string }) => item.label),
+        regular: tab
+          .getNavPath(leaf)
+          .map((item: { label: string }) => item.label),
+        rootExpanded: (root as { expanded?: boolean }).expanded === true,
+      }
+    } finally {
+      tab.nav = previousNav
+    }
+  })
+
+  expect(paths).toEqual({
+    cyclic: ['Cyclic'],
+    fresh: ['Fresh'],
+    regular: ['Root', 'Child', 'Leaf'],
+    rootExpanded: true,
+  })
 })
 
 test('reapplies zoom layout when switching from double page to single page', async ({
