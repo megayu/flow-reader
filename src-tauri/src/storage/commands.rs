@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, VecDeque},
+    fs,
     path::{Path, PathBuf},
     process::Command,
     sync::{mpsc, Arc, Mutex},
@@ -280,20 +281,26 @@ pub fn update_book_tags(
 
 #[tauri::command]
 pub fn get_book(storage: State<'_, AppStorage>, id: String) -> Result<Option<BookRecord>, String> {
+    get_book_impl(&storage, id)
+}
+
+pub(super) fn get_book_impl(
+    storage: &AppStorage,
+    id: String,
+) -> Result<Option<BookRecord>, String> {
+    let book = match storage.library_book(&id) {
+        Ok(book) => book,
+        Err(error) if error == "Book not found" => return Ok(None),
+        Err(error) => return Err(error),
+    };
+
     let mut state = storage
         .inner
         .state
         .lock()
         .map_err(|_| "storage state lock poisoned".to_string())?;
-    let book = state
-        .library
-        .books
-        .iter()
-        .find(|book| book.id == id)
-        .cloned();
 
-    book.map(|book| storage.compose_book(&mut state, &book))
-        .transpose()
+    storage.compose_book(&mut state, &book).map(Some)
 }
 
 #[tauri::command]
@@ -447,6 +454,66 @@ pub(super) fn import_epub_paths_impl(
     ];
     fields.extend(tasks.diagnostic_fields());
     diagnostics::record_timing("epub-import", started.elapsed(), &fields);
+    Ok(EpubImportResult { books, failures })
+}
+
+#[tauri::command]
+pub async fn open_external_epub_paths(
+    storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
+    paths: Vec<String>,
+) -> Result<EpubImportResult, String> {
+    let storage = (*storage).clone();
+    let tasks = (*tasks).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        open_external_epub_paths_impl(&storage, &tasks, paths)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+pub(super) fn open_external_epub_paths_impl(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    paths: Vec<String>,
+) -> Result<EpubImportResult, String> {
+    let started = Instant::now();
+    let source_count = paths.len();
+    let mut books = Vec::new();
+    let mut failures = Vec::new();
+
+    for path in paths {
+        let path = PathBuf::from(path);
+        if !is_epub_file(&path) {
+            continue;
+        }
+
+        let failure = |error: String| EpubImportFailure {
+            filename: path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.to_string_lossy().to_string()),
+            path: path.to_string_lossy().to_string(),
+            error,
+        };
+        let bytes = std::fs::metadata(&path)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        match tasks.run_io_observed(storage.root(), bytes, TaskPriority::Foreground, || {
+            open_external_epub_path_impl(storage, &path)
+        }) {
+            Ok(book) => books.push(book),
+            Err(error) => failures.push(failure(error)),
+        }
+    }
+
+    let mut fields = vec![
+        ("sources", source_count.to_string()),
+        ("opened", books.len().to_string()),
+        ("failed", failures.len().to_string()),
+    ];
+    fields.extend(tasks.diagnostic_fields());
+    diagnostics::record_timing("epub-open-external", started.elapsed(), &fields);
     Ok(EpubImportResult { books, failures })
 }
 
@@ -981,6 +1048,41 @@ pub fn unload_book_search_text(storage: State<'_, AppStorage>, id: String) -> Re
     Ok(())
 }
 
+#[tauri::command]
+pub fn cleanup_external_book(storage: State<'_, AppStorage>, id: String) -> Result<(), String> {
+    cleanup_external_book_heavy_files(&storage, &id)
+}
+
+#[tauri::command]
+pub fn cleanup_all_external_books(storage: State<'_, AppStorage>) -> Result<(), String> {
+    cleanup_all_external_book_heavy_files(&storage)
+}
+
+#[tauri::command]
+pub fn delete_external_book(storage: State<'_, AppStorage>, id: String) -> Result<(), String> {
+    if !is_external_book_id(&id) {
+        return Ok(());
+    }
+
+    {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        state.external.books.retain(|book| book.id != id);
+        state.book_states.remove(&id);
+    }
+    storage.mark_external_dirty();
+    storage.unload_search_text_cache(&id);
+
+    let dir = storage.external_book_dir(&id);
+    if dir.exists() {
+        fs::remove_dir_all(dir).map_err(|error| error.to_string())?;
+    }
+    storage.flush_dirty()
+}
+
 fn configuration_without_spread(value: Option<&Value>) -> Value {
     match value {
         Some(Value::Object(object)) => {
@@ -1032,15 +1134,6 @@ pub(super) fn record_reading_position_impl(
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        let Some(book_index) = state
-            .library
-            .books
-            .iter()
-            .position(|book| book.id == position.book_id)
-        else {
-            return Ok(false);
-        };
-
         {
             let Some(book_state) = state.book_states.get_mut(&position.book_id) else {
                 return Err("Book state is not loaded for reading position".to_string());
@@ -1053,17 +1146,36 @@ pub(super) fn record_reading_position_impl(
             ));
         }
 
-        let book = &mut state.library.books[book_index];
-        book.cfi = position.cfi;
-        book.percentage = position.percentage;
-        book.updated_at = Some(position.updated_at);
-        book.last_read_at = Some(position.updated_at);
+        if let Some(book) = state
+            .library
+            .books
+            .iter_mut()
+            .find(|book| book.id == position.book_id)
+        {
+            book.cfi = position.cfi;
+            book.percentage = position.percentage;
+            book.updated_at = Some(position.updated_at);
+            book.last_read_at = Some(position.updated_at);
+        } else if let Some(book) = state
+            .external
+            .books
+            .iter_mut()
+            .find(|book| book.id == position.book_id)
+        {
+            book.last_opened_at = position.updated_at;
+        } else {
+            return Ok(false);
+        }
     }
 
     sequences.insert(position.book_id.clone(), position.sequence);
     drop(sequences);
 
-    storage.mark_library_dirty();
+    if is_external_book_id(&position.book_id) {
+        storage.mark_external_dirty();
+    } else {
+        storage.mark_library_dirty();
+    }
     storage.mark_book_state_dirty(&position.book_id);
     storage.schedule_reading_position_flush();
 
@@ -1102,6 +1214,10 @@ pub fn update_book(
     id: String,
     changes: Value,
 ) -> Result<Option<BookRecord>, String> {
+    if is_external_book_id(&id) {
+        return update_external_book(&storage, id, changes);
+    }
+
     let mut library_changed = false;
     let mut state_changed = false;
     let mut immediate_flush = false;
@@ -1272,6 +1388,114 @@ pub fn update_book(
         .lock()
         .map_err(|_| "storage state lock poisoned".to_string())?;
     storage.compose_book(&mut state, &book).map(Some)
+}
+
+fn update_external_book(
+    storage: &AppStorage,
+    id: String,
+    changes: Value,
+) -> Result<Option<BookRecord>, String> {
+    let mut external_changed = false;
+    let mut state_changed = false;
+    let mut immediate_flush = false;
+    let mut metadata_update: Option<Value> = None;
+
+    {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let Some(book) = state.external.books.iter_mut().find(|book| book.id == id) else {
+            return Ok(None);
+        };
+
+        if let Some(object) = changes.as_object() {
+            if let Some(value) = object.get("name").and_then(Value::as_str) {
+                book.name = value.to_string();
+                external_changed = true;
+                immediate_flush = true;
+            }
+            if let Some(value) = object.get("size").and_then(Value::as_u64) {
+                book.size = value;
+                external_changed = true;
+                immediate_flush = true;
+            }
+            if let Some(value) = object.get("metadata") {
+                metadata_update = Some(value.clone());
+                immediate_flush = true;
+            }
+            if let Some(value) = object.get("updatedAt").and_then(Value::as_u64) {
+                book.last_opened_at = value;
+                external_changed = true;
+            }
+            if let Some(value) = object.get("lastReadAt").and_then(Value::as_u64) {
+                book.last_opened_at = value;
+                external_changed = true;
+            }
+
+            {
+                let book_state = storage.ensure_book_state(&mut state, &id)?;
+                if let Some(value) = object.get("cfi") {
+                    book_state.cfi = value.as_str().map(str::to_string);
+                    state_changed = true;
+                }
+                if let Some(value) = object.get("percentage") {
+                    book_state.percentage = value.as_f64();
+                    state_changed = true;
+                }
+                if let Some(value) = object.get("definitions") {
+                    book_state.definitions =
+                        serde_json::from_value(value.clone()).unwrap_or_default();
+                    state_changed = true;
+                    immediate_flush = true;
+                }
+                if let Some(value) = object.get("annotations") {
+                    book_state.annotations =
+                        serde_json::from_value(value.clone()).unwrap_or_default();
+                    state_changed = true;
+                    immediate_flush = true;
+                }
+                if let Some(value) = object.get("configuration") {
+                    book_state.configuration = Some(value.clone());
+                    state_changed = true;
+                    immediate_flush = true;
+                }
+            }
+        }
+    }
+
+    if let Some(metadata) = metadata_update {
+        write_metadata(storage, &id, &metadata)?;
+    }
+    if external_changed {
+        storage.mark_external_dirty();
+    }
+    if state_changed {
+        storage.mark_book_state_dirty(&id);
+    }
+    if immediate_flush {
+        storage.flush_dirty()?;
+    } else if state_changed || external_changed {
+        storage.schedule_reading_position_flush();
+    }
+
+    let mut state = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let book = state
+        .external
+        .books
+        .iter()
+        .find(|book| book.id == id)
+        .cloned()
+        .map(|book| storage.external_to_library_book(&book))
+        .transpose()?;
+
+    book.map(|book| storage.compose_book(&mut state, &book))
+        .transpose()
 }
 
 #[tauri::command]

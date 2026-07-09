@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 import { expect, test } from '@playwright/test'
 
 import { getExportedBooks, installTauriMock } from './tauri-mock'
@@ -5,6 +7,8 @@ import { getExportedBooks, installTauriMock } from './tauri-mock'
 test('TXT book context menu exports TXT and EPUB with per-format dirty markers', async ({
   page,
 }) => {
+  const outputPath = path.join('tmp', 'Correctable.txt')
+
   await installTauriMock(page, {
     books: [
       {
@@ -27,7 +31,7 @@ test('TXT book context menu exports TXT and EPUB with per-format dirty markers',
         annotations: [],
       },
     ],
-    saveDialogPath: 'C:/tmp/Correctable.txt',
+    saveDialogPath: outputPath,
   })
   await page.goto('/')
   await page.addStyleTag({
@@ -38,21 +42,22 @@ test('TXT book context menu exports TXT and EPUB with per-format dirty markers',
   await expect(page.getByText('Correctable')).toBeVisible()
   await page.getByText('Correctable').click({ button: 'right' })
 
-  await expect(
-    page.getByRole('menuitem', { name: 'Export TXT*' }),
-  ).toBeVisible()
+  const exportTxtMenuItem = page.getByRole('menuitem', {
+    name: /Export TXT\s*\*/,
+  })
+  await expect(exportTxtMenuItem).toBeVisible()
   await expect(
     page.getByRole('menuitem', { name: 'Export EPUB' }),
   ).toBeVisible()
 
-  await page.getByRole('menuitem', { name: 'Export TXT*' }).click()
+  await exportTxtMenuItem.click()
   await expect
     .poll(() => getExportedBooks(page))
     .toEqual([
       {
         id: 'txt-book',
         format: 'txt',
-        outputPath: 'C:/tmp/Correctable.txt',
+        outputPath,
       },
     ])
 

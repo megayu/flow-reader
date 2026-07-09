@@ -187,6 +187,13 @@ pub fn run() {
                             tasks.cancel_background();
                         }
                         storage::flush_app_storage(&window);
+                        if let Some(storage) = app.try_state::<storage::AppStorage>() {
+                            if let Err(error) =
+                                storage::cleanup_all_external_book_heavy_files(&storage)
+                            {
+                                eprintln!("Failed to cleanup external book files: {error}");
+                            }
+                        }
                         storage::save_window_state(&window);
                         app.exit(0);
                     });
@@ -215,6 +222,7 @@ pub fn run() {
             storage::get_cover,
             storage::update_cover,
             storage::import_epub_paths,
+            storage::open_external_epub_paths,
             storage::get_text_import_encodings,
             storage::preview_text_import_paths,
             storage::import_text_paths,
@@ -226,6 +234,9 @@ pub fn run() {
             storage::replace_book_text,
             storage::export_book,
             storage::unload_book_search_text,
+            storage::cleanup_external_book,
+            storage::cleanup_all_external_books,
+            storage::delete_external_book,
             storage::record_reading_position,
             storage::update_book,
             storage::delete_books,

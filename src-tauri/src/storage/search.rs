@@ -1136,6 +1136,7 @@ mod tests {
                         books,
                         tags: Vec::new(),
                     },
+                    external: ExternalBookIndex::default(),
                     settings: json!({}),
                     book_states: HashMap::new(),
                 }),

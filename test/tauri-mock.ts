@@ -252,7 +252,10 @@ export async function installTauriMock(
           const paths = Array.isArray(args?.paths) ? args.paths : []
           const imported = importQueue.splice(0, Math.max(paths.length, 1))
           imported.forEach((book) => bookStore.set(book.id, book))
-          return imported
+          return {
+            books: imported,
+            failures: [],
+          }
         }
         if (command === 'get_text_import_encodings') {
           return fixtureTextImportEncodings

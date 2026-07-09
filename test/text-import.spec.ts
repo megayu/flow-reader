@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 import { expect, test } from '@playwright/test'
 
 import { getImportedTextSelections, installTauriMock } from './tauri-mock'
@@ -5,7 +7,7 @@ import { getImportedTextSelections, installTauriMock } from './tauri-mock'
 test('TXT import dialog sends edited title and author metadata', async ({
   page,
 }) => {
-  const path = 'C:/tmp/Original Title.txt'
+  const filePath = path.join('tmp', 'Original Title.txt')
 
   await installTauriMock(page, {
     importedBooks: [
@@ -24,10 +26,10 @@ test('TXT import dialog sends edited title and author metadata', async ({
         annotations: [],
       },
     ],
-    openDialogPaths: [path],
+    openDialogPaths: [filePath],
     textImportPreviews: [
       {
-        path,
+        path: filePath,
         filename: 'Original Title.txt',
         title: 'Original Title',
         encoding: 'utf-8',
@@ -92,7 +94,7 @@ test('TXT import dialog sends edited title and author metadata', async ({
     .poll(() => getImportedTextSelections(page))
     .toEqual([
       {
-        path,
+        path: filePath,
         encoding: 'utf-8',
         title: 'Edited Title',
         creator: 'Edited Author',

@@ -23,6 +23,7 @@ import {
   BookRecord,
   ReadingSpreadPageRecord,
   ReadingSpreadRecord,
+  cleanupExternalBook,
   db,
   searchBookText,
   unloadBookSearchText,
@@ -498,6 +499,16 @@ function isReadingPositionOnlyUpdate(
       ].includes(key),
     )
   )
+}
+
+function reassignAnnotationBookIds(
+  annotations: BookRecord['annotations'],
+  bookId: string,
+) {
+  return annotations.map((annotation) => ({
+    ...annotation,
+    bookId,
+  }))
 }
 
 function displayLocationPercentage(location?: Location['end']) {
@@ -1335,6 +1346,41 @@ export class BookTab extends BaseTab {
     this.bumpViewVersion()
   }
 
+  async promoteExternalBook(libraryBook: BookRecord) {
+    if (this.book.scope !== 'external') return
+    if (
+      !this.book.contentHash ||
+      this.book.contentHash !== libraryBook.contentHash
+    ) {
+      return
+    }
+
+    const reloadTarget = this.getCurrentDisplayTarget()
+    await this.flushForClose({
+      flushStorage: false,
+      recordReadingPosition: false,
+    })
+
+    const stateChanges: Partial<BookRecord> = {
+      annotations: reassignAnnotationBookIds(
+        this.book.annotations,
+        libraryBook.id,
+      ),
+      cfi: this.book.cfi,
+      configuration: this.book.configuration,
+      definitions: this.book.definitions,
+      percentage: this.book.percentage,
+    }
+    const promotedBook = {
+      ...libraryBook,
+      ...stateChanges,
+      scope: 'library' as const,
+    }
+    db.books.remember(promotedBook)
+    await db.books.update(libraryBook.id, stateChanges)
+    this.reloadContentAfterEdit(promotedBook, reloadTarget)
+  }
+
   async applyRenderedTextEdit(
     book: BookRecord,
     target: BookTextReplaceTarget,
@@ -1527,7 +1573,10 @@ export class BookTab extends BaseTab {
     })
   }
 
-  async flushForClose({ flushStorage = true } = {}) {
+  async flushForClose({
+    flushStorage = true,
+    recordReadingPosition = true,
+  } = {}) {
     try {
       await this.navigationPromise
     } catch (error) {
@@ -1544,7 +1593,7 @@ export class BookTab extends BaseTab {
       }
       this.setBook({ ...this.book, ...changes })
       db.books.remember(this.book)
-      await this.recordReadingPosition(changes)
+      if (recordReadingPosition) await this.recordReadingPosition(changes)
     }
 
     await this.flushPendingBookUpdate({ flushStorage: false })
@@ -2583,6 +2632,9 @@ export class BookTab extends BaseTab {
     } finally {
       void unloadBookSearchText(this.book.id).catch(console.error)
       this.destroyRendering()
+      if (this.book.scope === 'external') {
+        await cleanupExternalBook(this.book.id).catch(console.error)
+      }
     }
   }
 
@@ -3542,6 +3594,33 @@ export class Reader {
       }
     }
     await Promise.all(patchTasks)
+  }
+
+  promoteExternalBooks(libraryBooks: BookRecord[]) {
+    const booksByHash = new Map(
+      libraryBooks
+        .filter((book) => book.scope !== 'external' && book.contentHash)
+        .map((book) => [book.contentHash, book]),
+    )
+    if (!booksByHash.size) return Promise.resolve(new Set<string>())
+
+    const promotedBookIds = new Set<string>()
+    const tasks = this.groups.flatMap(({ bookTabs }) =>
+      bookTabs
+        .map((tab) => {
+          const book =
+            tab.book.scope === 'external' && tab.book.contentHash
+              ? booksByHash.get(tab.book.contentHash)
+              : undefined
+          if (!book) return
+
+          promotedBookIds.add(book.id)
+          return tab.promoteExternalBook(book)
+        })
+        .filter((task): task is Promise<void> => !!task),
+    )
+
+    return Promise.all(tasks).then(() => promotedBookIds)
   }
 
   selectFocusedTab(index: number) {

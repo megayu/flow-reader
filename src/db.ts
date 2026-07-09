@@ -114,6 +114,7 @@ export interface BookRecord {
   id: string
   name: string
   size: number
+  scope?: 'library' | 'external'
   readingStatus?: ReadingStatus | null
   sourceFormat?: BookSourceFormat
   exportedVersions?: Partial<Record<BookExportFormat, number>>
@@ -287,12 +288,20 @@ function rememberBook(book: BookRecord, { full = true } = {}) {
 
   const index = booksCache.findIndex((item) => item.id === book.id)
   if (index >= 0) {
+    if (normalized.scope === 'external') {
+      booksCache = [
+        ...booksCache.slice(0, index),
+        ...booksCache.slice(index + 1),
+      ]
+      return
+    }
+
     booksCache = [
       ...booksCache.slice(0, index),
       normalized,
       ...booksCache.slice(index + 1),
     ]
-  } else {
+  } else if (normalized.scope !== 'external') {
     booksCache = [...booksCache, normalized]
   }
 }
@@ -677,6 +686,14 @@ export async function importBookPaths(
   return result
 }
 
+export async function openExternalBookPaths(paths: string[]) {
+  const result = await trackNativeWrite(
+    invoke<EpubImportResult>('open_external_epub_paths', { paths }),
+  )
+  result.books.forEach((book) => rememberBook(book))
+  return result
+}
+
 export function getTextImportEncodings() {
   return invoke<TextImportEncodingOption[]>('get_text_import_encodings')
 }
@@ -773,6 +790,20 @@ export async function exportBook(
 
 export function unloadBookSearchText(id: string) {
   return invoke('unload_book_search_text', { id })
+}
+
+export function cleanupExternalBook(id: string) {
+  return trackNativeWrite(invoke('cleanup_external_book', { id }))
+}
+
+export function cleanupAllExternalBooks() {
+  return trackNativeWrite(invoke('cleanup_all_external_books'))
+}
+
+export function deleteExternalBook(id: string) {
+  forgetBooks([id])
+  forgetCovers([id])
+  return trackNativeWrite(invoke('delete_external_book', { id }))
 }
 
 export async function getSettingsFromStorage<T>() {

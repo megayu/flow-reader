@@ -302,7 +302,8 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const replaceTarget = editing
     ? replacementSnapshotRef.current
     : currentReplaceTarget
-  const textEditingDisabled = tab.book.contentMode === 'archiveOnly'
+  const textEditingDisabled =
+    tab.book.scope === 'external' || tab.book.contentMode === 'archiveOnly'
   const closeMenu = () => {
     if (savingReplacementRef.current) return
     hide()

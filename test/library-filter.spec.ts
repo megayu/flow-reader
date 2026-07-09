@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 import { expect, test, type Page } from '@playwright/test'
 
 import type { BookRecord, ReadingStatus } from '../src/db'
@@ -82,7 +84,7 @@ async function setupLibrary(page: Page) {
   await installTauriMock(page, {
     books: fixtureBooks,
     importedBooks,
-    openDialogPaths: ['C:\\books\\delta.epub'],
+    openDialogPaths: [path.join('books', 'delta.epub')],
     settings: {
       librarySidebarOpen: false,
     },
@@ -245,8 +247,8 @@ test('library author filters pin authors and refresh when books change', async (
     .locator('ul.grid [role="button"]')
     .filter({ hasText: 'Beta Read' })
     .click({ button: 'right' })
-  await page.getByRole('button', { name: /^Delete$/ }).click()
-  await page.getByRole('button', { name: /^Confirm delete$/ }).click()
+  await page.getByRole('menuitem', { name: /^Delete$/ }).click()
+  await page.getByRole('menuitem', { name: /^Confirm delete$/ }).click()
   await expect(page.getByText('Beta Read')).toHaveCount(0)
   await expect(authorChip(page, longAuthor)).toHaveCount(0)
   await expect.poll(() => pinnedAuthors(page)).toEqual([longAuthor])

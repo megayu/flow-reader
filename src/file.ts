@@ -4,6 +4,7 @@ import {
   EpubImportResult,
   db,
   importBookPaths,
+  openExternalBookPaths,
 } from './db'
 
 const nativeOpenEvent = 'flow-open-files'
@@ -13,7 +14,9 @@ interface HandleFilesOptions {
   onImportProgress?: (progress: EpubImportProgress) => void
   replaceExisting?: boolean
   onTextPaths?: (paths: string[]) => void
-  onImportResult?: (result: EpubImportResult) => void
+  onImportResult?: (
+    result: EpubImportResult,
+  ) => Set<string> | void | Promise<Set<string> | void>
 }
 
 function isEpubPath(path: string) {
@@ -70,8 +73,9 @@ export async function handleFilePaths(
       importId,
       replaceExisting,
     })
-    onImportResult?.(result)
-    return result.books
+    const openedBookIds = await onImportResult?.(result)
+    if (!openedBookIds?.size) return result.books
+    return result.books.filter((book) => !openedBookIds.has(book.id))
   } finally {
     unlisten?.()
   }
@@ -98,7 +102,9 @@ export async function setupNativeOpenFiles({
   onOpen?: (books: BookRecord[]) => void
   onDrop?: (books: BookRecord[]) => void
   onImportProgress?: (progress: EpubImportProgress) => void
-  onImportResult?: (result: EpubImportResult) => void
+  onImportResult?: (
+    result: EpubImportResult,
+  ) => Set<string> | void | Promise<Set<string> | void>
   onDropTextPaths?: (paths: string[]) => void
 }) {
   if (typeof window === 'undefined') return
@@ -109,26 +115,31 @@ export async function setupNativeOpenFiles({
       import('@tauri-apps/api/event'),
     ])
 
-    const openPaths = async (
-      paths: string[],
-      { replaceExisting = false }: HandleFilesOptions = {},
-    ) => {
+    const openPaths = async (paths: string[]) => {
       if (!paths.length) return
 
-      const books = await handleFilePaths(paths, {
-        onImportProgress,
-        onImportResult,
-        replaceExisting,
-      })
-      if (books.length) onOpen?.(books)
+      const epubPaths = paths.filter(isEpubPath)
+      const textPaths = paths.filter(isTxtPath)
+      if (textPaths.length) {
+        const books = await handleFilePaths(textPaths, {
+          onImportProgress,
+          onImportResult,
+          replaceExisting: false,
+        })
+        if (books.length) onOpen?.(books)
+      }
+
+      if (epubPaths.length) {
+        const result = await openExternalBookPaths(epubPaths)
+        if (result.failures.length) onImportResult?.(result)
+        if (result.books.length) onOpen?.(result.books)
+      }
     }
 
-    await openPaths(await invoke<string[]>('take_pending_open_paths'), {
-      replaceExisting: false,
-    })
+    await openPaths(await invoke<string[]>('take_pending_open_paths'))
 
     const unlistenOpen = await listen<string[]>(nativeOpenEvent, (event) => {
-      void openPaths(event.payload, { replaceExisting: false })
+      void openPaths(event.payload)
     })
 
     let unlistenDrop: (() => void) | undefined

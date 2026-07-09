@@ -728,7 +728,9 @@ function getSelectedText(windows: readonly Window[]) {
 interface ReaderGridViewProps {
   content?: React.ReactNode
   onEpubImportProgress?: (progress: EpubImportProgress) => void
-  onEpubImportResult?: (result: EpubImportResult) => void
+  onEpubImportResult?: (
+    result: EpubImportResult,
+  ) => Set<string> | void | Promise<Set<string> | void>
 }
 
 export function ReaderGridView({
@@ -791,7 +793,9 @@ interface ReaderGroupProps {
   index: number
   content?: React.ReactNode
   onEpubImportProgress?: (progress: EpubImportProgress) => void
-  onEpubImportResult?: (result: EpubImportResult) => void
+  onEpubImportResult?: (
+    result: EpubImportResult,
+  ) => Set<string> | void | Promise<Set<string> | void>
   onEnterReaderMode: () => void
 }
 function ReaderGroup({
@@ -988,7 +992,7 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
       onMouseLeave={handleMouseLeave}
       onClick={handleClick}
       onDelete={handleDelete}
-      Icon={tab instanceof BookTab ? BookOpenIcon : PanelTopIcon}
+      Icon={getReaderTabIcon(tab)}
     >
       {label}
     </Tab>
@@ -1009,6 +1013,23 @@ function getReaderTabTooltipContent(tab: BookTab | { title: string }) {
 
   const book = tab.book as unknown as BookRecord
   return <BookTooltipContent book={book} />
+}
+
+type TemporaryBookOpenIconProps = React.ComponentProps<typeof BookOpenIcon> & {
+  ref?: React.Ref<SVGSVGElement>
+}
+
+const TemporaryBookOpenIcon = function TemporaryBookOpenIcon({
+  ref,
+  ...props
+}: TemporaryBookOpenIconProps) {
+  return <BookOpenIcon {...props} ref={ref} strokeDasharray="1 2.5" />
+} as typeof BookOpenIcon
+
+function getReaderTabIcon(tab: BookTab | { title: string }) {
+  if (!(tab instanceof BookTab)) return PanelTopIcon
+
+  return tab.book.scope === 'external' ? TemporaryBookOpenIcon : BookOpenIcon
 }
 
 interface PaneContainerProps {

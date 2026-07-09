@@ -527,9 +527,16 @@ function IndexContent() {
   )
 
   const handleEpubImportResult = useCallback(
-    (result: EpubImportResult) => {
+    async (result: EpubImportResult) => {
       setEpubImportProgress(undefined)
+      let openedBookIds: Set<string> | undefined
+      try {
+        openedBookIds = await reader.promoteExternalBooks(result.books)
+      } catch (error) {
+        console.error(error)
+      }
       notifyEpubImportResult(result)
+      return openedBookIds
     },
     [notifyEpubImportResult],
   )
@@ -655,14 +662,17 @@ function IndexContent() {
     if (!settingsReady || !startupRestoreDone) return
 
     const nextSession =
-      viewMode === 'reader' && focusedBookId
+      viewMode === 'reader' &&
+      focusedBookId &&
+      focusedBookTab?.book.scope !== 'external'
         ? {
             viewMode,
             bookId: focusedBookId,
           }
-        : viewMode === 'library'
+        : viewMode === 'library' ||
+            (viewMode === 'reader' && focusedBookTab?.book.scope === 'external')
           ? {
-              viewMode,
+              viewMode: 'library' as const,
             }
           : undefined
 
@@ -681,7 +691,14 @@ function IndexContent() {
         startupSession: nextSession,
       }
     })
-  }, [focusedBookId, setSettings, settingsReady, startupRestoreDone, viewMode])
+  }, [
+    focusedBookId,
+    focusedBookTab?.book.scope,
+    setSettings,
+    settingsReady,
+    startupRestoreDone,
+    viewMode,
+  ])
 
   useEffect(() => {
     if (!settingsReady || !startupRestoreDone) return
@@ -796,7 +813,9 @@ function EpubImportProgressPanel({
 
 interface LibraryProps {
   onEpubImportProgress: (progress: EpubImportProgress) => void
-  onEpubImportResult: (result: EpubImportResult) => void
+  onEpubImportResult: (
+    result: EpubImportResult,
+  ) => Set<string> | void | Promise<Set<string> | void>
   onOpenBook: () => void
   onTextPaths: (paths: string[]) => void
 }
@@ -826,6 +845,9 @@ const Library: React.FC<LibraryProps> = ({
 
   const [select, , setSelect] = useBoolean(false)
   const [selectedBookIds, { add, has, toggle, replace, reset }] = useStringSet()
+  const [highlightedBookIds, setHighlightedBookIds] = useState<Set<string>>(
+    () => new Set(),
+  )
   const [batchTagsOpen, setBatchTagsOpen] = useState(false)
   const selectionAnchorIdRef = useRef<string | undefined>(undefined)
   const rangeSelectionSessionRef = useRef<
@@ -894,6 +916,33 @@ const Library: React.FC<LibraryProps> = ({
       }
     })
   }, [setSettings])
+
+  const handleEpubImportResult = useCallback(
+    async (result: EpubImportResult) => {
+      const importedIds: string[] = []
+      for (const book of result.books) {
+        if (book.scope !== 'external') importedIds.push(book.id)
+      }
+
+      if (importedIds.length) {
+        setHighlightedBookIds((current) => {
+          const next = new Set(current)
+          importedIds.forEach((id) => next.add(id))
+          return next
+        })
+        window.setTimeout(() => {
+          setHighlightedBookIds((current) => {
+            const next = new Set(current)
+            importedIds.forEach((id) => next.delete(id))
+            return next
+          })
+        }, 5000)
+      }
+
+      return onEpubImportResult(result)
+    },
+    [onEpubImportResult],
+  )
 
   const handleCancelSelectionKeyDown = useEffectEvent((e: KeyboardEvent) => {
     if (e.key !== 'Escape') return
@@ -1070,7 +1119,7 @@ const Library: React.FC<LibraryProps> = ({
         if (e.dataTransfer.files.length) {
           handleFiles(e.dataTransfer.files, {
             onImportProgress: onEpubImportProgress,
-            onImportResult: onEpubImportResult,
+            onImportResult: handleEpubImportResult,
             onTextPaths,
           })
         }
@@ -1301,7 +1350,7 @@ const Library: React.FC<LibraryProps> = ({
                 onClick={() => {
                   void openImportDialog({
                     onImportProgress: onEpubImportProgress,
-                    onImportResult: onEpubImportResult,
+                    onImportResult: handleEpubImportResult,
                     onTextPaths,
                   })
                 }}
@@ -1323,6 +1372,7 @@ const Library: React.FC<LibraryProps> = ({
               covers={covers}
               select={select}
               selected={has(book.id)}
+              highlighted={highlightedBookIds.has(book.id)}
               onSelectBook={selectBook}
               onOpenBook={onOpenBook}
             />
@@ -1343,6 +1393,7 @@ const Library: React.FC<LibraryProps> = ({
 interface BookProps {
   book: BookRecord
   covers?: CoverRecord[]
+  highlighted?: boolean
   select?: boolean
   selected?: boolean
   onSelectBook: (id: string, e: LibraryBookSelectionEvent) => void
@@ -1351,6 +1402,7 @@ interface BookProps {
 const Book: React.FC<BookProps> = ({
   book,
   covers,
+  highlighted,
   select,
   selected,
   onSelectBook,
@@ -1481,7 +1533,9 @@ const Book: React.FC<BookProps> = ({
           'group focus-visible:ring-ring/50 relative flex cursor-pointer flex-col rounded-md p-1 transition-colors outline-none focus-visible:ring-2',
           select && selected
             ? 'bg-[var(--flow-accent-bg)] ring-2 ring-[var(--flow-accent)] hover:bg-[var(--flow-accent-bg)]'
-            : 'hover:bg-popover/70',
+            : highlighted
+              ? 'ring-2 ring-[var(--flow-accent)]'
+              : 'hover:bg-popover/70',
         )}
         onClick={activateBook}
         onContextMenu={openContextMenu}

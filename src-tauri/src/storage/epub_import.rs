@@ -2144,6 +2144,21 @@ fn remove_epub_import_temp(path: &Path) {
     }
 }
 
+fn reassign_book_state_annotations(state: &mut BookState, from_id: &str, to_id: &str) {
+    for annotation in &mut state.annotations {
+        let Some(object) = annotation.as_object_mut() else {
+            continue;
+        };
+        if object
+            .get("bookId")
+            .and_then(Value::as_str)
+            .is_some_and(|book_id| book_id == from_id)
+        {
+            object.insert("bookId".to_string(), json!(to_id));
+        }
+    }
+}
+
 pub(super) fn import_epub_path_impl(
     storage: &AppStorage,
     path: &Path,
@@ -2174,7 +2189,13 @@ pub(super) fn import_epub_path_impl(
             book: LibraryBook,
             id: String,
             should_copy: bool,
+            external_promotion: Option<ExternalPromotion>,
         },
+    }
+
+    struct ExternalPromotion {
+        book: ExternalBook,
+        state: Option<BookState>,
     }
 
     let result = (|| -> Result<BookRecord, String> {
@@ -2194,11 +2215,31 @@ pub(super) fn import_epub_path_impl(
                 .books
                 .iter()
                 .position(|book| !book.content_hash.is_empty() && book.content_hash == hash);
+            let external_promotion = state
+                .external
+                .books
+                .iter()
+                .find(|book| !book.content_hash.is_empty() && book.content_hash == hash)
+                .cloned()
+                .map(|book| ExternalPromotion {
+                    state: state.book_states.get(&book.id).cloned(),
+                    book,
+                });
 
             if let Some(index) = filename_index {
                 if !replace_existing || state.library.books[index].content_hash == hash {
                     let book = state.library.books[index].clone();
-                    ImportDecision::Existing(storage.compose_book(&mut state, &book)?)
+                    if external_promotion.is_none() {
+                        ImportDecision::Existing(storage.compose_book(&mut state, &book)?)
+                    } else {
+                        let id = book.id.clone();
+                        ImportDecision::Commit {
+                            book,
+                            id,
+                            should_copy: false,
+                            external_promotion,
+                        }
+                    }
                 } else {
                     let book = &mut state.library.books[index];
                     book.size = size;
@@ -2214,6 +2255,7 @@ pub(super) fn import_epub_path_impl(
                         book,
                         id,
                         should_copy: true,
+                        external_promotion,
                     }
                 }
             } else if let Some(index) = hash_index {
@@ -2229,6 +2271,7 @@ pub(super) fn import_epub_path_impl(
                     book,
                     id,
                     should_copy: false,
+                    external_promotion,
                 }
             } else {
                 let created_at = now_ms();
@@ -2264,11 +2307,12 @@ pub(super) fn import_epub_path_impl(
                     book,
                     id,
                     should_copy: true,
+                    external_promotion,
                 }
             }
         };
 
-        let (mut book, id, should_copy) = match decision {
+        let (mut book, id, should_copy, external_promotion) = match decision {
             ImportDecision::Existing(record) => {
                 remove_epub_import_temp(&temp_path);
                 return Ok(record);
@@ -2277,8 +2321,22 @@ pub(super) fn import_epub_path_impl(
                 book,
                 id,
                 should_copy,
-            } => (book, id, should_copy),
+                external_promotion,
+            } => (book, id, should_copy, external_promotion),
         };
+
+        let promotion = external_promotion
+            .map(|promotion| {
+                let external_dir = storage.external_book_dir(&promotion.book.id);
+                let metadata = read_json_value_or_default(&external_dir.join(METADATA_FILE))?;
+                let state = match promotion.state {
+                    Some(state) => state,
+                    None => read_json_or_default(&external_dir.join(STATE_FILE))?,
+                };
+                Ok::<_, String>((promotion.book, metadata, state))
+            })
+            .transpose()?;
+        let promoted_metadata = promotion.as_ref().map(|(_, metadata, _)| metadata.clone());
 
         if should_copy {
             let dir = storage.book_dir(&id);
@@ -2297,22 +2355,60 @@ pub(super) fn import_epub_path_impl(
                 fs::remove_file(&book_path).map_err(|error| error.to_string())?;
             }
             fs::rename(&temp_path, &book_path).map_err(|error| error.to_string())?;
-            if parsed.metadata != json!({}) {
-                book.metadata = parsed.metadata;
+            write_cover(storage, &id, parsed.cover)?;
+        } else {
+            remove_epub_import_temp(&temp_path);
+        }
+
+        let metadata = promoted_metadata
+            .filter(|metadata| *metadata != json!({}))
+            .or_else(|| (parsed.metadata != json!({})).then(|| parsed.metadata.clone()));
+        if let Some(metadata) = metadata {
+            book.metadata = metadata;
+            let mut state = storage
+                .inner
+                .state
+                .lock()
+                .map_err(|_| "storage state lock poisoned".to_string())?;
+            if let Some(stored_book) = state.library.books.iter_mut().find(|book| book.id == id) {
+                stored_book.metadata = book.metadata.clone();
+            }
+            drop(state);
+            write_metadata(storage, &id, &book.metadata)?;
+        }
+
+        if let Some((external_book, _, mut external_state)) = promotion {
+            let external_id = external_book.id.clone();
+            let last_opened_at = external_book.last_opened_at;
+            reassign_book_state_annotations(&mut external_state, &external_id, &id);
+            {
                 let mut state = storage
                     .inner
                     .state
                     .lock()
                     .map_err(|_| "storage state lock poisoned".to_string())?;
+                state.external.books.retain(|book| book.id != external_id);
+                state.book_states.remove(&external_id);
+                state.book_states.insert(id.clone(), external_state.clone());
                 if let Some(stored_book) = state.library.books.iter_mut().find(|book| book.id == id)
                 {
-                    stored_book.metadata = book.metadata.clone();
+                    stored_book.cfi = external_state.cfi.clone();
+                    stored_book.percentage = external_state.percentage;
+                    stored_book.last_read_at = Some(last_opened_at);
+                    stored_book.updated_at = Some(now_ms());
+                    book.cfi = stored_book.cfi.clone();
+                    book.percentage = stored_book.percentage;
+                    book.last_read_at = stored_book.last_read_at;
+                    book.updated_at = stored_book.updated_at;
                 }
             }
-            write_metadata(storage, &id, &book.metadata)?;
-            write_cover(storage, &id, parsed.cover)?;
-        } else {
-            remove_epub_import_temp(&temp_path);
+            storage.unload_search_text_cache(&external_id);
+            storage.mark_external_dirty();
+            storage.mark_book_state_dirty(&id);
+            let external_dir = storage.external_book_dir(&external_id);
+            if external_dir.exists() {
+                fs::remove_dir_all(&external_dir).map_err(|error| error.to_string())?;
+            }
         }
 
         storage.mark_library_dirty();
@@ -2323,6 +2419,136 @@ pub(super) fn import_epub_path_impl(
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
+        storage.compose_book(&mut state, &book)
+    })();
+
+    if result.is_err() {
+        remove_epub_import_temp(&temp_path);
+    }
+
+    result
+}
+
+pub(super) fn open_external_epub_path_impl(
+    storage: &AppStorage,
+    path: &Path,
+) -> Result<BookRecord, String> {
+    let external_root = external_books_root(storage.root());
+    fs::create_dir_all(&external_root).map_err(|error| error.to_string())?;
+
+    let size = fs::metadata(path).map_err(|error| error.to_string())?.len();
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| "book.epub".to_string());
+    let parsed = parse_epub_info_result(path)?;
+    let access = inspect_epub_access(path)?;
+    let temp_path = epub_import_temp_path(&external_root, &name);
+    let hash = match copy_epub_and_hash(path, &temp_path) {
+        Ok(hash) => hash,
+        Err(error) => {
+            remove_epub_import_temp(&temp_path);
+            return Err(error);
+        }
+    };
+
+    enum OpenDecision {
+        Library(BookRecord),
+        External { book: ExternalBook, is_new: bool },
+    }
+
+    let result = (|| -> Result<BookRecord, String> {
+        let decision = {
+            let mut state = storage
+                .inner
+                .state
+                .lock()
+                .map_err(|_| "storage state lock poisoned".to_string())?;
+
+            if let Some(book) = state
+                .library
+                .books
+                .iter()
+                .find(|book| !book.content_hash.is_empty() && book.content_hash == hash)
+                .cloned()
+            {
+                OpenDecision::Library(storage.compose_book(&mut state, &book)?)
+            } else if let Some(index) = state
+                .external
+                .books
+                .iter()
+                .position(|book| !book.content_hash.is_empty() && book.content_hash == hash)
+            {
+                let book = &mut state.external.books[index];
+                book.name = name.clone();
+                book.size = size;
+                book.content_mode = access.mode;
+                book.content_flags = access.flags.clone();
+                book.content_version = book.content_version.max(1);
+                book.last_opened_at = now_ms();
+                OpenDecision::External {
+                    book: book.clone(),
+                    is_new: false,
+                }
+            } else {
+                let now = now_ms();
+                let id = format!("ext-{}", id_from_hash(&hash));
+                let book = ExternalBook {
+                    id,
+                    name: name.clone(),
+                    size,
+                    content_hash: hash.clone(),
+                    content_version: 1,
+                    content_mode: access.mode,
+                    content_flags: access.flags.clone(),
+                    created_at: now,
+                    last_opened_at: now,
+                };
+                state.external.books.push(book.clone());
+                OpenDecision::External { book, is_new: true }
+            }
+        };
+
+        let (book, is_new) = match decision {
+            OpenDecision::Library(book) => {
+                remove_epub_import_temp(&temp_path);
+                return Ok(book);
+            }
+            OpenDecision::External { book, is_new } => (book, is_new),
+        };
+
+        let dir = storage.external_book_dir(&book.id);
+        storage.unload_search_text_cache(&book.id);
+        fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+        let book_path = dir.join(BOOK_FILE);
+        let unpacked_dir = dir.join(UNPACKED_DIR);
+        if unpacked_dir.exists() {
+            fs::remove_dir_all(&unpacked_dir).map_err(|error| error.to_string())?;
+        }
+        let search_cache_path = dir.join(SEARCH_TEXT_CACHE_FILE);
+        if search_cache_path.exists() {
+            fs::remove_file(&search_cache_path).map_err(|error| error.to_string())?;
+        }
+        let image_cache_path = dir.join(IMAGE_INDEX_CACHE_FILE);
+        if image_cache_path.exists() {
+            fs::remove_file(&image_cache_path).map_err(|error| error.to_string())?;
+        }
+        if book_path.exists() {
+            fs::remove_file(&book_path).map_err(|error| error.to_string())?;
+        }
+        fs::rename(&temp_path, &book_path).map_err(|error| error.to_string())?;
+        if is_new || parsed.metadata != json!({}) {
+            write_metadata(storage, &book.id, &parsed.metadata)?;
+        }
+        storage.mark_external_dirty();
+        storage.flush_dirty()?;
+
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let book = storage.external_to_library_book(&book)?;
         storage.compose_book(&mut state, &book)
     })();
 
