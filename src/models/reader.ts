@@ -2608,6 +2608,8 @@ export class BookTab extends BaseTab {
     this.section = undefined
     this.sections = undefined
     this.sectionNavIndex = undefined
+    this.annotationRange = undefined
+    this.annotationCfi = undefined
     this.visibleSections = []
     this.visibleSectionIndexes = []
     this.preferredSectionIndex = undefined
