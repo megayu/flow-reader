@@ -169,6 +169,55 @@ describe('Contents page backgrounds', function () {
     }
   })
 
+  it('keeps authored root margins from shifting horizontal paginated pages', function () {
+    const layouts = [
+      { columnWidth: 800, label: 'single page' },
+      { columnWidth: 360, label: 'double page' },
+    ]
+
+    layouts.forEach(({ columnWidth, label }) => {
+      const { contents, doc, cleanup } = createContents(
+        '<p>Readable body text for the current page.</p>',
+      )
+      const style = doc.createElement('style')
+      style.textContent = 'html, body { margin: 0 1%; }'
+      doc.head.appendChild(style)
+      const authoredRootMargin = doc.defaultView.getComputedStyle(
+        doc.documentElement,
+      ).marginLeft
+
+      try {
+        assert.notEqual(authoredRootMargin, '0px')
+
+        contents.columns(800, 600, columnWidth, 40, 'ltr')
+
+        const paginatedRootStyle = doc.defaultView.getComputedStyle(
+          doc.documentElement,
+        )
+        assert.equal(
+          paginatedRootStyle.marginLeft,
+          '0px',
+          `${label} must start at the physical page edge`,
+        )
+        assert.equal(
+          paginatedRootStyle.marginRight,
+          '0px',
+          `${label} must end at the physical page edge`,
+        )
+
+        contents.size(800, 600)
+
+        assert.equal(
+          doc.defaultView.getComputedStyle(doc.documentElement).marginLeft,
+          authoredRootMargin,
+          `${label} must restore the authored margin outside pagination`,
+        )
+      } finally {
+        cleanup()
+      }
+    })
+  })
+
   it('ignores comments and non-content text when detecting readable text', function () {
     const { contents, cleanup } = createContents(
       '<!-- comment --><script>var ignored = true</script><style>body { color: red }</style>',

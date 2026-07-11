@@ -14,6 +14,7 @@ const isWebkit =
 
 const ELEMENT_NODE = 1
 const TEXT_NODE = 3
+const PAGINATED_ROOT_STYLE = 'paginated-root-normalize'
 const PAGE_BACKGROUND_STYLE = 'page-background-normalize'
 const PAGE_BACKGROUND_ATTRIBUTE = 'data-epubjs-page-background'
 const PAGE_BACKGROUND_SOURCE_ATTRIBUTE = 'data-epubjs-page-background-source'
@@ -2083,6 +2084,7 @@ class Contents {
     var viewport = { scale: 1.0, scalable: 'no' }
 
     this.layoutStyle('scrolling')
+    this.addStylesheetCss(' ', PAGINATED_ROOT_STYLE)
 
     if (width >= 0) {
       this.width(width)
@@ -2127,6 +2129,10 @@ class Contents {
     let axis = 'horizontal'
 
     this.layoutStyle('paginated')
+    this.addStylesheetCss(
+      ':root { margin: 0 !important; }',
+      PAGINATED_ROOT_STYLE,
+    )
 
     if (dir === 'rtl' && !verticalRtl) {
       this.direction(dir)

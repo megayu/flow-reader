@@ -195,6 +195,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: in `Contents.columns()`, make the iframe document element the clipped viewport and keep the body overflow visible so horizontal column fragments can paint across the expanded iframe. Hide the stage's native horizontal scrollbar without changing its scrollable surface.
 - Verification gate: epubjs unit coverage must prove paginated columns override author overflow to `html { overflow: hidden }` and `body { overflow: visible }`, and browser pixel reproduction should show later exact-spread pages are nonblank.
 
+### Author root margins shift horizontal paginated pages
+
+- Symptom: horizontal reflowable text can sit almost flush with the reader's right edge or be clipped there, especially in single-page mode; the same book can look less obviously wrong in a spread because the center gap masks the offset.
+- Reproduction path: open an EPUB whose stylesheet applies a physical inline margin to both roots, such as `html, body { margin: 0 1%; }`, then compare single-page and double-page text bounds.
+- Root cause: `Contents.columns()` fixed the body to the full pagination width and normalized the body margin, but left the document element's authored margin active. The root margin shifted the fixed-width body without reducing its width, consuming the physical right page padding.
+- Fix direction: apply a reversible pagination-only stylesheet that clears the document element margin while horizontal columns are active, and remove that override when the contents return to scrolling layout. Do not rewrite the EPUB stylesheet or permanently remove the author's root margin.
+- Verification gate: epubjs browser coverage must prove single-page and double-page columns start at the physical page edge and that switching back to scrolling restores the authored root margin; final desktop acceptance still requires real-client verification with an affected EPUB.
+
 ### Vertical-rl Level 1 columns collapse a spread into one continuous page
 
 - Symptom: a vertical-rl section reports the same `width`, `pageWidth`, `columnWidth`, `gap`, and padding as a horizontal spread, but real-client pixels show one continuous sheet with text crossing the physical middle gap; inline text can also run bottom-to-top when OPF page progression is copied into CSS `direction`.
