@@ -9,6 +9,7 @@ import { AppTooltip } from './AppTooltip'
 import { IconButton } from './Button'
 
 interface TabProps extends ComponentProps<'div'> {
+  dropIndicator?: 'before' | 'after'
   onDelete?: () => void
   selected?: boolean
   focused?: boolean
@@ -18,6 +19,7 @@ interface TabProps extends ComponentProps<'div'> {
   tooltipContent?: ReactNode
 }
 export function Tab({
+  dropIndicator,
   selected,
   focused,
   showSeparator,
@@ -74,6 +76,16 @@ export function Tab({
         <div
           className={clsx(
             'absolute inset-x-2 top-0 h-px rounded-full',
+            activeClass,
+          )}
+        />
+      )}
+      {dropIndicator && (
+        <div
+          data-flow-tab-drop-indicator={dropIndicator}
+          className={clsx(
+            'pointer-events-none absolute top-1/2 z-20 h-5 w-0.5 -translate-y-1/2 rounded-full',
+            dropIndicator === 'before' ? 'left-[-3px]' : 'right-[-3px]',
             activeClass,
           )}
         />

@@ -1129,6 +1129,163 @@ async function readBookTabRuntimeCounters(
   })
 }
 
+async function installFullTabRuntimeProbe(page: Page) {
+  await page.evaluate(() => {
+    const group = (window as any).reader.focusedGroup
+    const valueSignature = (tab: any) => {
+      const manager = tab.rendition?.manager
+      const spread = manager?.currentReflowableSpread
+      const location = tab.paginationSnapshot?.location
+
+      return JSON.stringify({
+        active: tab.active,
+        activeResultID: tab.activeResultID,
+        images: (tab.sections ?? []).map((section: any) =>
+          (section.images ?? []).map((image: any) => ({
+            hiddenByDefault: image.hiddenByDefault,
+            index: image.index,
+            reason: image.reason,
+            src: image.src,
+          })),
+        ),
+        keyword: tab.keyword,
+        layout: {
+          columnWidth: manager?.layout?.columnWidth,
+          divisor: manager?.layout?.divisor,
+          gap: manager?.layout?.gap,
+          height: manager?.layout?.height,
+          pageWidth: manager?.layout?.pageWidth,
+          width: manager?.layout?.width,
+          writingMode: manager?.writingMode,
+        },
+        overlayState: tab.overlayState,
+        pagination: tab.paginationSnapshot && {
+          endCfi: location?.end?.cfi,
+          endIndex: location?.end?.index,
+          headerPath: tab.paginationSnapshot.headerPath,
+          layoutVersion: tab.paginationSnapshot.layoutVersion,
+          paginationVersion: tab.paginationSnapshot.paginationVersion,
+          percentage: tab.paginationSnapshot.percentage,
+          spreadDivisor: tab.paginationSnapshot.spreadDivisor,
+          spreadSlotOrder: tab.paginationSnapshot.spreadSlotOrder,
+          startCfi: location?.start?.cfi,
+          startIndex: location?.start?.index,
+          writingMode: tab.paginationSnapshot.writingMode,
+        },
+        results: tab.results,
+        spread: spread && {
+          anchor: spread.anchor,
+          endsAtSectionEnd: spread.endsAtSectionEnd,
+          leftPageIndex: spread.left?.pageIndex,
+          leftSectionIndex: spread.left?.section?.index,
+          rightPageIndex: spread.right?.pageIndex,
+          rightSectionIndex: spread.right?.section?.index,
+        },
+        typography: {
+          book: tab.book.configuration?.typography,
+          runtime: tab.typographyConfiguration,
+        },
+        versions: {
+          layout: tab.layoutVersion,
+          overlay: tab.overlayVersion,
+          pagination: tab.paginationVersion,
+          toc: tab.tocVersion,
+          view: tab.viewVersion,
+        },
+        visibleSectionIndexes: [...(tab.visibleSectionIndexes ?? [])],
+      })
+    }
+
+    ;(window as any).__flowFullTabRuntimeProbe = {
+      tabs: (group?.bookTabs ?? []).map((tab: any) => {
+        const manager = tab.rendition?.manager
+        const views = manager?.views?._views ?? []
+
+        return {
+          bodyTextCache: tab.bodyTextCache,
+          container: manager?.container,
+          currentLocation: tab.currentLocation,
+          epub: tab.epub,
+          iframe: tab.iframe,
+          iframes: tab.iframes,
+          iframeItems: [...(tab.iframes ?? [])],
+          id: tab.id,
+          manager,
+          nav: tab.nav,
+          overlayState: tab.overlayState,
+          paginationSnapshot: tab.paginationSnapshot,
+          rendition: tab.rendition,
+          results: tab.results,
+          section: tab.section,
+          sectionImages: (tab.sections ?? []).map(
+            (section: any) => section.images,
+          ),
+          sections: tab.sections,
+          signature: valueSignature(tab),
+          tab,
+          typographyConfiguration: tab.typographyConfiguration,
+          views,
+          viewItems: [...views],
+          visibleSections: tab.visibleSections,
+        }
+      }),
+      valueSignature,
+    }
+  })
+}
+
+async function readFullTabRuntimeStability(page: Page) {
+  return page.evaluate(() => {
+    const group = (window as any).reader.focusedGroup
+    const probeState = (window as any).__flowFullTabRuntimeProbe
+    const probes = probeState?.tabs ?? []
+    const valueSignature = probeState?.valueSignature
+    const sameItems = (current: any[] | undefined, before: any[]) =>
+      !!current &&
+      current.length === before.length &&
+      current.every((item, index) => item === before[index])
+    return probes.map((probe: any) => {
+      const tab = group.bookTabs.find(
+        (candidate: any) => candidate.id === probe.id,
+      )
+      const manager = tab?.rendition?.manager
+      const views = manager?.views?._views ?? []
+
+      return {
+        bodyTextCache: tab?.bodyTextCache === probe.bodyTextCache,
+        container: manager?.container === probe.container,
+        currentLocation: tab?.currentLocation === probe.currentLocation,
+        epub: tab?.epub === probe.epub,
+        iframe: tab?.iframe === probe.iframe,
+        iframes:
+          tab?.iframes === probe.iframes &&
+          sameItems(tab?.iframes, probe.iframeItems),
+        manager: manager === probe.manager,
+        nav: tab?.nav === probe.nav,
+        overlayState: tab?.overlayState === probe.overlayState,
+        paginationSnapshot:
+          tab?.paginationSnapshot === probe.paginationSnapshot,
+        rendition: tab?.rendition === probe.rendition,
+        results: tab?.results === probe.results,
+        section: tab?.section === probe.section,
+        sectionImages:
+          tab?.sections?.length === probe.sectionImages.length &&
+          tab.sections.every(
+            (section: any, index: number) =>
+              section.images === probe.sectionImages[index],
+          ),
+        sections: tab?.sections === probe.sections,
+        signature: !!tab && valueSignature(tab) === probe.signature,
+        tab: tab === probe.tab,
+        typographyConfiguration:
+          tab?.typographyConfiguration === probe.typographyConfiguration,
+        views: views === probe.views && sameItems(views, probe.viewItems),
+        visibleSections: tab?.visibleSections === probe.visibleSections,
+      }
+    })
+  })
+}
+
 async function readTabStripMotion(page: Page): Promise<TabStripMotion> {
   return page.evaluate(async () => {
     const motionProperties = new Set([
@@ -3661,6 +3818,7 @@ test('replays multi-tab mixed layout states deterministically', async ({
 
   await page.locator('.SideBar button[aria-label*="Tab Layout C"]').click()
   await waitForStableReaderLayout(page, { sidebarVisible: true })
+  await installFullTabRuntimeProbe(page)
   await advanceFocusedTabPages(page, 5)
   await waitForStableReaderLayout(page, {
     header: false,
@@ -3781,6 +3939,327 @@ test('switches adjacent tabs immediately with wheel and keyboard input', async (
   await expectFocusedTabId(page, 'tab-layout-b')
   await page.keyboard.press('Control+ArrowRight')
   await expectFocusedTabId(page, 'tab-layout-c')
+})
+
+test('reorders tabs without changing the focused reader runtime', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 })
+
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { sidebarVisible: true })
+  await page.locator('.SideBar button[aria-label*="Tab Layout B"]').click()
+  await waitForStableReaderLayout(page, { sidebarVisible: true })
+  await page.locator('.SideBar button[aria-label*="Tab Layout C"]').click()
+  await waitForStableReaderLayout(page, { sidebarVisible: true })
+  await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+  await expectFocusedTabId(page, 'tab-layout-b')
+
+  await installBookTabRuntimeCounters(page)
+  await resetBookTabRuntimeCounters(page)
+
+  await page.keyboard.press('Control+Shift+ArrowRight')
+
+  await expect
+    .poll(() =>
+      page
+        .getByRole('tab')
+        .evaluateAll((tabs) =>
+          tabs.map((tab) => tab.getAttribute('aria-label')),
+        ),
+    )
+    .toEqual(['Tab Layout A', 'Tab Layout C', 'Tab Layout B'])
+  await expectFocusedTabId(page, 'tab-layout-b')
+
+  const counters = await readBookTabRuntimeCounters(page)
+  counters.forEach((counter) =>
+    expect(counter).toMatchObject({
+      display: 0,
+      next: 0,
+      prev: 0,
+      relayoutCurrentView: 0,
+      resizeRendition: 0,
+      setActive: 0,
+    }),
+  )
+})
+
+test('commits pointer tab reordering only inside the tab strip', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 })
+
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { sidebarVisible: true })
+  await page.locator('.SideBar button[aria-label*="Tab Layout B"]').click()
+  await waitForStableReaderLayout(page, { sidebarVisible: true })
+  await page.locator('.SideBar button[aria-label*="Tab Layout C"]').click()
+  await waitForStableReaderLayout(page, { sidebarVisible: true })
+
+  await page.evaluate(() => {
+    const panes = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-flow-reader-pane]'),
+    )
+    const parent = panes[0]?.parentElement
+    if (!parent) throw new Error('Missing reader pane parent')
+
+    const movedPaneIds: string[] = []
+    panes.forEach((pane, index) => {
+      pane.dataset.flowPaneIdentity = String(index)
+    })
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of [...record.removedNodes, ...record.addedNodes]) {
+          if (!(node instanceof HTMLElement)) continue
+          if (!node.matches('[data-flow-reader-pane]')) continue
+          movedPaneIds.push(node.dataset.flowPaneIdentity ?? '')
+        }
+      }
+    })
+    observer.observe(parent, { childList: true })
+    ;(window as any).__flowTabReorderPaneProbe = {
+      activePane: document.querySelector(
+        '[data-flow-reader-pane][aria-hidden="false"]',
+      ),
+      movedPaneIds,
+      observer,
+      panes,
+    }
+  })
+
+  const tabA = page.getByRole('tab', { name: 'Tab Layout A' })
+  const tabC = page.getByRole('tab', { name: 'Tab Layout C' })
+  const tabABox = await tabA.boundingBox()
+  const tabCBox = await tabC.boundingBox()
+  if (!tabABox || !tabCBox) throw new Error('Missing tab bounds')
+
+  await page.mouse.move(
+    tabABox.x + tabABox.width / 2,
+    tabABox.y + tabABox.height / 2,
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    tabCBox.x + tabCBox.width - 2,
+    tabCBox.y + tabCBox.height / 2,
+    { steps: 5 },
+  )
+
+  const dropIndicator = page.locator('[data-flow-tab-drop-indicator]')
+  await expect(dropIndicator).toHaveAttribute(
+    'data-flow-tab-drop-indicator',
+    'after',
+  )
+  await expect(tabC).not.toHaveClass(/ring-ring/)
+  const indicatorBox = await dropIndicator.boundingBox()
+  if (!indicatorBox) throw new Error('Missing tab drop indicator bounds')
+  expect(indicatorBox.width).toBe(2)
+  expect(indicatorBox.height).toBe(20)
+  expect(
+    Math.abs(
+      indicatorBox.x + indicatorBox.width / 2 - (tabCBox.x + tabCBox.width),
+    ),
+  ).toBeLessThanOrEqual(6)
+
+  await page.mouse.up()
+
+  const tabOrder = () =>
+    page
+      .getByRole('tab')
+      .evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('aria-label')))
+  await expect
+    .poll(tabOrder)
+    .toEqual(['Tab Layout B', 'Tab Layout C', 'Tab Layout A'])
+  await expectFocusedTabId(page, 'tab-layout-c')
+
+  const paneStability = await page.evaluate(() => {
+    const probe = (window as any).__flowTabReorderPaneProbe
+    probe.observer.disconnect()
+    const panes = Array.from(
+      document.querySelectorAll('[data-flow-reader-pane]'),
+    )
+
+    return {
+      activePaneStable:
+        document.querySelector(
+          '[data-flow-reader-pane][aria-hidden="false"]',
+        ) === probe.activePane,
+      movedPaneIds: probe.movedPaneIds,
+      paneOrderStable:
+        panes.length === probe.panes.length &&
+        panes.every((pane, index) => pane === probe.panes[index]),
+    }
+  })
+  expect(paneStability).toEqual({
+    activePaneStable: true,
+    movedPaneIds: [],
+    paneOrderStable: true,
+  })
+  const runtimeStability = await readFullTabRuntimeStability(page)
+  runtimeStability.forEach((state, tabIndex) => {
+    Object.entries(state).forEach(([name, stable]) => {
+      expect(stable, `tab ${tabIndex} runtime ${name}`).toBe(true)
+    })
+  })
+
+  const tabB = page.getByRole('tab', { name: 'Tab Layout B' })
+  const tabBBox = await tabB.boundingBox()
+  const reorderedTabABox = await tabA.boundingBox()
+  if (!tabBBox || !reorderedTabABox) throw new Error('Missing tab bounds')
+
+  await page.mouse.move(
+    tabBBox.x + tabBBox.width / 2,
+    tabBBox.y + tabBBox.height / 2,
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    reorderedTabABox.x + reorderedTabABox.width / 2,
+    reorderedTabABox.y + reorderedTabABox.height + 80,
+    { steps: 5 },
+  )
+  await page.mouse.up()
+
+  await expect
+    .poll(tabOrder)
+    .toEqual(['Tab Layout B', 'Tab Layout C', 'Tab Layout A'])
+})
+
+test('[vertical-rl] preserves double-page and panel runtime across tab reordering', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await openVerticalFixtureBook(page)
+  await page.locator('.SideBar button[aria-label*="Tab Layout C"]').click()
+  await waitForVerticalReaderLoaded(page)
+
+  await page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    tab.updateBook({
+      configuration: {
+        ...tab.book.configuration,
+        typography: {
+          ...tab.book.configuration?.typography,
+          fontSize: '18px',
+          spread: 'auto',
+        },
+      },
+    })
+    tab.define(['FLOW-RUNTIME-DEFINITION-C'])
+    tab.setKeyword('VERTICAL-CHAPTER-01-29')
+  })
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as any).reader.focusedBookTab?.results?.length,
+      ),
+    )
+    .toBe(1)
+  await waitForStableReaderLayout(page, { header: false })
+
+  const activityBar = page.locator('.ActivityBar')
+  const sidebar = page.locator('.SideBar')
+  await activityBar.getByRole('button', { name: 'Image' }).click()
+  await sidebar.getByRole('button', { name: 'All', exact: true }).click()
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).reader.focusedBookTab?.sections?.every((section: any) =>
+          Array.isArray(section.images),
+        ),
+      ),
+    )
+    .toBe(true)
+
+  await activityBar.getByRole('button', { name: 'Typography' }).click()
+  await expect(sidebar.locator('input[name="Font Size"]')).toHaveValue('18')
+  await expect(
+    page.locator(
+      '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
+    ),
+  ).toHaveAttribute('data-flow-reader-spread', 'double')
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).reader.focusedBookTab?.rendition?.manager?.layout
+            ?.divisor,
+      ),
+    )
+    .toBe(2)
+
+  await installBookTabRuntimeCounters(page)
+  await resetBookTabRuntimeCounters(page)
+  await installFullTabRuntimeProbe(page)
+
+  const tabC = page.getByRole('tab', { name: 'Tab Layout C' })
+  const tabA = page.getByRole('tab', { name: 'Tab Layout A' })
+  const tabCBox = await tabC.boundingBox()
+  const tabABox = await tabA.boundingBox()
+  if (!tabCBox || !tabABox) throw new Error('Missing tab bounds')
+
+  await page.mouse.move(
+    tabCBox.x + tabCBox.width / 2,
+    tabCBox.y + tabCBox.height / 2,
+  )
+  await page.mouse.down()
+  await page.mouse.move(tabABox.x + 2, tabABox.y + tabABox.height / 2, {
+    steps: 5,
+  })
+  await page.mouse.up()
+
+  await expect
+    .poll(() =>
+      page
+        .getByRole('tab')
+        .evaluateAll((tabs) =>
+          tabs.map((tab) => tab.getAttribute('aria-label')),
+        ),
+    )
+    .toEqual(['Tab Layout C', 'Tab Layout A', 'Tab Layout B'])
+  await expectFocusedTabId(page, 'tab-layout-c')
+  await expect(
+    page.locator(
+      '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
+    ),
+  ).toHaveAttribute('data-flow-reader-spread', 'double')
+
+  const runtimeStability = await readFullTabRuntimeStability(page)
+  runtimeStability.forEach((state, tabIndex) => {
+    Object.entries(state).forEach(([name, stable]) => {
+      expect(stable, `vertical tab ${tabIndex} runtime ${name}`).toBe(true)
+    })
+  })
+  const counters = await readBookTabRuntimeCounters(page)
+  counters.forEach((counter) =>
+    expect(counter).toMatchObject({
+      display: 0,
+      next: 0,
+      prev: 0,
+      relayoutCurrentView: 0,
+      resizeRendition: 0,
+      setActive: 0,
+    }),
+  )
+
+  await activityBar.getByRole('button', { name: 'Search' }).click()
+  await expect(sidebar.getByRole('textbox', { name: 'Search' })).toHaveValue(
+    'VERTICAL-CHAPTER-01-29',
+  )
+  await activityBar.getByRole('button', { name: 'Annotation' }).click()
+  await expect(sidebar.getByText('FLOW-RUNTIME-DEFINITION-C')).toBeVisible()
+  await activityBar.getByRole('button', { name: 'Image' }).click()
+  await expect
+    .poll(() =>
+      sidebar
+        .getByRole('button', { name: 'All', exact: true })
+        .evaluate((element) =>
+          element.className.includes('bg-[var(--flow-accent-bg)]'),
+        ),
+    )
+    .toBe(true)
+  await activityBar.getByRole('button', { name: 'Typography' }).click()
+  await expect(sidebar.locator('input[name="Font Size"]')).toHaveValue('18')
+  await activityBar.getByRole('button', { name: 'TOC' }).click()
+  await expect(sidebar.getByText('VERTICAL-CHAPTER-01')).toBeVisible()
 })
 
 test('does not paginate during unchanged-size tab switches', async ({

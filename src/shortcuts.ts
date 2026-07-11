@@ -17,6 +17,8 @@ export type ShortcutActionId =
   | 'libraryFilterReading'
   | 'libraryFilterToRead'
   | 'libraryReaderToggle'
+  | 'moveTabLeft'
+  | 'moveTabRight'
   | 'nextChapter'
   | 'nextFindResult'
   | 'nextPage'
@@ -111,6 +113,14 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
       [commandToken, '←'],
       [commandToken, '→'],
     ],
+  },
+  moveTabLeft: {
+    labelKey: 'move_tab_left',
+    shortcuts: [[commandToken, 'Shift', '←']],
+  },
+  moveTabRight: {
+    labelKey: 'move_tab_right',
+    shortcuts: [[commandToken, 'Shift', '→']],
   },
   increaseFontSize: {
     labelKey: 'increase_font_size',
@@ -219,6 +229,8 @@ const shortcutGroups: ShortcutGroupDefinition[] = [
       shortcutDefinitions.switchTabIndex,
       shortcutDefinitions.switchLastTab,
       shortcutDefinitions.switchAdjacentTab,
+      shortcutDefinitions.moveTabLeft,
+      shortcutDefinitions.moveTabRight,
     ],
   },
   {

@@ -75,6 +75,22 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: keep active-state ownership in the group/tab model; pane components should only clear active state on unmount.
 - Verification gate: pure tab switching should have exactly the expected active flips and zero reader pagination counters.
 
+### Tab drag target outline overlaps selected tab chrome
+
+- Symptom: dragging a tab toward the currently selected tab makes the two tabs look stacked or merged even though their layout rectangles remain separate.
+- Reproduction path: open at least three tabs, keep the destination tab selected, then drag another tab across its midpoint without releasing.
+- Root cause: the selected tab chrome extends into adjacent slots with rounded `before` and `after` pseudo-elements. Drawing a full inset ring around that selected destination emphasizes the extended chrome and reads as a second tab occupying the same slot.
+- Fix direction: keep tab rectangles stationary during drag and show one insertion marker at the destination boundary using the normal tab separator's exact width, height, and vertical alignment. Do not outline the destination tab or change tab-strip geometry.
+- Verification gate: pointer interaction coverage must prove there is one 2px by 20px centered boundary marker, no destination ring, in-strip release commits the order, out-of-strip release cancels, and reader pagination/activation counters remain unchanged.
+
+### Tab reorder moves mounted reader panes
+
+- Symptom: after dragging a tab, the selected view-mode value can remain double-page while the iframe renders with single-page geometry; other symptoms can include changed pagination, stale search/image/typography state, or inconsistent reader visuals without an obvious pattern.
+- Reproduction path: open multiple mounted reader tabs, keep a vertical-rl tab in double-page mode, then drag a tab across the strip and observe child-list mutations on the reader pane parent.
+- Root cause: the same reordered `tabs` array drove both tab-strip order and reader pane DOM order. React preserved keyed pane identity but moved the existing pane node with `insertBefore`, which removes and reinserts the node; moving a mounted iframe can invalidate WebView layout/compositor state without changing Flow Reader's view-mode value.
+- Fix direction: keep tab-strip navigation order separate from a stable, append-only pane mount order. Reordering tabs must update only tab chrome order and the selected navigation index; mounted pane and iframe DOM nodes must stay in place.
+- Verification gate: browser interaction coverage must observe zero reader-pane child-list moves during reorder and preserve pane/iframe/rendition/manager/view references, double-page divisor and spread geometry, pagination snapshots and counters, TOC, search, annotations/definitions, image indexes, and typography state for every tab.
+
 ### Stale layout spread cache after real position change
 
 - Symptom: after turning pages with the sidebar closed, reopening the TOC/sidebar can combine a new snapshot/header with an old iframe body from a previous section.

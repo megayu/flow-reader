@@ -248,6 +248,8 @@ export default {
   'shortcuts.switch_tab_index': 'Switch to tab 1-8',
   'shortcuts.switch_last_tab': 'Switch to rightmost tab',
   'shortcuts.switch_adjacent_tab': 'Switch adjacent tab',
+  'shortcuts.move_tab_left': 'Move tab left',
+  'shortcuts.move_tab_right': 'Move tab right',
   'shortcuts.previous_page': 'Previous page',
   'shortcuts.next_page': 'Next page',
   'shortcuts.previous_chapter': 'Previous chapter',

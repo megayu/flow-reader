@@ -11,6 +11,13 @@ Read this before proposing or testing a Flow Reader performance change. Search f
 
 ## Retained Approaches
 
+### Keep mounted reader pane order independent from tab-strip order
+
+- Change: maintain a stable, append-only pane mount order separately from the user-visible tab navigation order. Tab reordering updates tab chrome and the selected navigation index without moving mounted pane or iframe DOM nodes.
+- Measured effect: focused browser Playwright reproduction changed reader-pane child-list moves during one drag reorder from two (remove plus reinsert) to zero. Horizontal and vertical-rl coverage preserved every tab's pane, iframe, rendition, manager, views, pagination snapshot, TOC, search, annotations/definitions, image index, and typography state; double-page divisor remained 2 and reader `display`, `next`, `prev`, `resizeRendition`, `relayoutCurrentView`, and `setActive` counters remained zero. Six related reader-tab tests passed. The `tauri-release` deterministic verifier also passed all standard keyboard/wheel, hidden-input isolation, pending page-turn, resize/sidebar, and return scenarios. The release performance script's imported mock tabs did not settle, so no comparable timing artifact or timing improvement is claimed.
+- Decision: keep as a correctness fix. Moving a keyed iframe node is still a WebView lifecycle/layout mutation even when React preserves component identity.
+- Constraint: pane mount order must remain stable across tab reorder. New panes may append and closed panes may be removed, but navigation sorting must never drive existing pane DOM order.
+
 ### Keep optional page appearance in a static reader-shell overlay
 
 - Change: render card frames, a book seam, or a dashed divider in one pointer-inert overlay outside EPUB iframes. Read the already-computed rendition divisor, column width, and gap during the existing page-width sync; do not add the appearance value to iframe style or pagination signatures.

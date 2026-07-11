@@ -3465,6 +3465,7 @@ function setTabRuntimeActive(tab: Tab | undefined, active: boolean) {
 
 export class Group {
   id = createId()
+  paneTabs: Tab[] = []
   tabs: Tab[] = []
 
   constructor(
@@ -3477,6 +3478,7 @@ export class Group {
       const isPage = typeof t === 'function'
       return isPage ? new PageTab(t) : new BookTab(t)
     })
+    this.paneTabs = [...this.tabs]
     this.setSelectedRuntimeActive(true)
   }
 
@@ -3495,6 +3497,8 @@ export class Group {
   removeTab(index: number) {
     const wasSelected = index === this.selectedIndex
     const tab = this.tabs.splice(index, 1)
+    const paneIndex = this.paneTabs.findIndex((item) => item.id === tab[0]?.id)
+    if (paneIndex > -1) this.paneTabs.splice(paneIndex, 1)
     setTabRuntimeActive(tab[0], false)
     this.selectedIndex = updateIndex(this.tabs, index)
     if (wasSelected) this.setSelectedRuntimeActive(true)
@@ -3522,6 +3526,7 @@ export class Group {
 
     this.setSelectedRuntimeActive(false)
     this.tabs.splice(++this.selectedIndex, 0, tab)
+    this.paneTabs.push(tab)
     setTabRuntimeActive(tab, true)
     return tab
   }
@@ -3554,6 +3559,32 @@ export class Group {
     }
 
     this.selectTab(index)
+  }
+
+  moveTab(fromIndex: number, toIndex: number) {
+    if (
+      fromIndex < 0 ||
+      fromIndex >= this.tabs.length ||
+      toIndex < 0 ||
+      toIndex >= this.tabs.length ||
+      fromIndex === toIndex
+    ) {
+      return
+    }
+
+    const selectedTabId = this.selectedTab?.id
+    const [tab] = this.tabs.splice(fromIndex, 1)
+    if (!tab) return
+
+    this.tabs.splice(toIndex, 0, tab)
+    this.selectedIndex = this.tabs.findIndex(
+      (item) => item.id === selectedTabId,
+    )
+  }
+
+  moveSelectedTab(delta: -1 | 1) {
+    const toIndex = this.selectedIndex + delta
+    this.moveTab(this.selectedIndex, toIndex)
   }
 }
 
@@ -3704,6 +3735,10 @@ export class Reader {
 
   selectAdjacentFocusedTab(delta: -1 | 1, loop = false) {
     this.focusedGroup?.selectAdjacentTab(delta, loop)
+  }
+
+  moveFocusedTab(delta: -1 | 1) {
+    this.focusedGroup?.moveSelectedTab(delta)
   }
 
   replaceTab(

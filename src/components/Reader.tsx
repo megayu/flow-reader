@@ -237,6 +237,7 @@ function handleCommandShortcut(
     return true
   }
 
+  if (handleTabMoveShortcut(e, enterReaderMode)) return true
   if (handleTabSwitchShortcut(e, enterReaderMode)) return true
 
   return handleFontSizeShortcut(e, viewMode)
@@ -395,6 +396,23 @@ function handleZenFontSizeShortcut(
     clearZenBookFontSize(tab, setZenTypographyOverrides)
   } else {
     updateZenBookFontSize(tab, fontSizeDelta, setZenTypographyOverrides)
+  }
+  return true
+}
+
+function handleTabMoveShortcut(e: KeyboardEvent, enterReaderMode: () => void) {
+  if (!e.shiftKey) return false
+
+  const direction = getCommandTabDirection(e)
+  if (!direction) return false
+
+  e.preventDefault()
+  e.stopPropagation()
+  e.stopImmediatePropagation?.()
+
+  if (!isReaderShortcutTargetBlocked(e)) {
+    reader.moveFocusedTab(direction)
+    enterReaderMode()
   }
   return true
 }
@@ -800,6 +818,16 @@ interface ReaderGroupProps {
   ) => Set<string> | void | Promise<Set<string> | void>
   onEnterReaderMode: () => void
 }
+
+interface TabPointerDrag {
+  dragging: boolean
+  pointerId: number
+  sourceIndex: number
+  startX: number
+  startY: number
+  targetIndex?: number
+}
+
 function ReaderGroup({
   index,
   content,
@@ -808,11 +836,18 @@ function ReaderGroup({
   onEnterReaderMode,
 }: ReaderGroupProps) {
   const group = reader.groups[index]!
-  const { tabs, selectedIndex } = useSnapshot(group)
+  const { paneTabs, tabs, selectedIndex } = useSnapshot(group)
+  const selectedTabId = tabs[selectedIndex]?.id
   const [backgroundClassName] = useBackground()
   const zenMode = useZenModeValue()
   const tabWheelDelta = useRef(0)
+  const tabPointerDrag = useRef<TabPointerDrag | undefined>(undefined)
+  const suppressTabClick = useRef(false)
   const [hoveredTabIndex, setHoveredTabIndex] = useState<number | undefined>()
+  const [tabDragPreview, setTabDragPreview] = useState<{
+    sourceIndex: number
+    targetIndex?: number
+  }>()
 
   const handleMouseDown = useCallback(() => {
     reader.selectGroup(index)
@@ -839,6 +874,131 @@ function ReaderGroup({
     [group, index, onEnterReaderMode],
   )
 
+  const clearTabPointerDrag = useCallback(() => {
+    tabPointerDrag.current = undefined
+    setTabDragPreview(undefined)
+  }, [])
+
+  const handleTabPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLUListElement>) => {
+      if (event.button !== 0) return
+      if (!(event.target instanceof Element)) return
+      if (event.target.closest('button')) return
+
+      const tabElement = event.target.closest<HTMLElement>(
+        '[data-flow-reader-tab-index]',
+      )
+      const sourceIndex = Number(
+        tabElement?.dataset.flowReaderTabIndex ?? Number.NaN,
+      )
+      if (!Number.isInteger(sourceIndex)) return
+
+      tabPointerDrag.current = {
+        dragging: false,
+        pointerId: event.pointerId,
+        sourceIndex,
+        startX: event.clientX,
+        startY: event.clientY,
+      }
+    },
+    [],
+  )
+
+  const handleTabPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLUListElement>) => {
+      const drag = tabPointerDrag.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+
+      const list = event.currentTarget
+      const listRect = list.getBoundingClientRect()
+      const inside =
+        event.clientX >= listRect.left &&
+        event.clientX <= listRect.right &&
+        event.clientY >= listRect.top &&
+        event.clientY <= listRect.bottom
+      const distance = Math.hypot(
+        event.clientX - drag.startX,
+        event.clientY - drag.startY,
+      )
+
+      if (!drag.dragging) {
+        if (!inside || distance < 5) return
+        drag.dragging = true
+        list.setPointerCapture(event.pointerId)
+      }
+
+      event.preventDefault()
+      let targetIndex: number | undefined
+      if (inside) {
+        const tabElements = Array.from(
+          list.querySelectorAll<HTMLElement>('[data-flow-reader-tab-index]'),
+        )
+        targetIndex = Math.max(0, tabElements.length - 1)
+        for (const tabElement of tabElements) {
+          const index = Number(tabElement.dataset.flowReaderTabIndex)
+          const rect = tabElement.getBoundingClientRect()
+          if (event.clientX < rect.left + rect.width / 2) {
+            targetIndex = index
+            break
+          }
+        }
+      }
+
+      if (drag.targetIndex === targetIndex) return
+      drag.targetIndex = targetIndex
+      setTabDragPreview({ sourceIndex: drag.sourceIndex, targetIndex })
+    },
+    [],
+  )
+
+  const handleTabPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLUListElement>) => {
+      const drag = tabPointerDrag.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId)
+      }
+
+      if (drag.dragging) {
+        suppressTabClick.current = true
+        window.setTimeout(() => {
+          suppressTabClick.current = false
+        }, 0)
+
+        const rect = event.currentTarget.getBoundingClientRect()
+        const releasedInside =
+          event.clientX >= rect.left &&
+          event.clientX <= rect.right &&
+          event.clientY >= rect.top &&
+          event.clientY <= rect.bottom
+        if (releasedInside && drag.targetIndex !== undefined) {
+          group.moveTab(drag.sourceIndex, drag.targetIndex)
+        }
+      }
+
+      clearTabPointerDrag()
+    },
+    [clearTabPointerDrag, group],
+  )
+
+  const handleTabPointerCancel = useCallback(
+    (event: React.PointerEvent<HTMLUListElement>) => {
+      if (tabPointerDrag.current?.pointerId !== event.pointerId) return
+      clearTabPointerDrag()
+    },
+    [clearTabPointerDrag],
+  )
+
+  const handleTabSelect = useCallback(
+    (tabIndex: number) => {
+      if (suppressTabClick.current) return
+      group.selectTab(tabIndex)
+      onEnterReaderMode()
+    },
+    [group, onEnterReaderMode],
+  )
+
   return (
     <div
       className="ReaderGroup flex h-full min-h-0 flex-1 flex-col overflow-hidden focus:outline-none"
@@ -847,13 +1007,16 @@ function ReaderGroup({
       <Tab.List
         className={clsx('flex', zenMode && '!hidden')}
         onWheel={handleTabWheel}
+        onPointerDown={handleTabPointerDown}
+        onPointerMove={handleTabPointerMove}
+        onPointerUp={handleTabPointerUp}
+        onPointerCancel={handleTabPointerCancel}
       >
         {tabs.map((tab, i) => {
           const selected = i === selectedIndex
           const focused = selected
           return (
             <ReaderTabItem
-              group={group}
               groupIndex={index}
               index={i}
               key={tab.id}
@@ -867,8 +1030,17 @@ function ReaderGroup({
                 hoveredTabIndex !== i + 1
               }
               tab={tab}
-              onEnterReaderMode={onEnterReaderMode}
               onHoverChange={setHoveredTabIndex}
+              onSelect={handleTabSelect}
+              dragging={tabDragPreview?.sourceIndex === i}
+              dropIndicator={
+                tabDragPreview?.targetIndex === i &&
+                tabDragPreview.sourceIndex !== i
+                  ? tabDragPreview.sourceIndex < i
+                    ? 'after'
+                    : 'before'
+                  : undefined
+              }
             />
           )
         })}
@@ -904,19 +1076,24 @@ function ReaderGroup({
             }
           }}
         >
-          {group.tabs.map((tab, i) => (
-            <PaneContainer active={i === selectedIndex} key={tab.id}>
-              {tab instanceof BookTab ? (
-                <BookPane
-                  active={i === selectedIndex}
-                  tab={tab}
-                  onMouseDown={handleMouseDown}
-                />
-              ) : (
-                <tab.Component />
-              )}
-            </PaneContainer>
-          ))}
+          {paneTabs.map((paneTab, paneIndex) => {
+            const tab = group.paneTabs[paneIndex]!
+            const active = paneTab.id === selectedTabId
+
+            return (
+              <PaneContainer active={active} key={paneTab.id}>
+                {tab instanceof BookTab ? (
+                  <BookPane
+                    active={active}
+                    tab={tab}
+                    onMouseDown={handleMouseDown}
+                  />
+                ) : (
+                  <tab.Component />
+                )}
+              </PaneContainer>
+            )
+          })}
         </DropZone>
         {content && (
           <div
@@ -943,26 +1120,26 @@ function getReaderTabLabel(
 }
 
 interface ReaderTabItemProps {
+  dragging: boolean
+  dropIndicator?: 'before' | 'after'
   focused: boolean
-  group: {
-    selectTab(index: number): void
-  }
   groupIndex: number
   index: number
-  onEnterReaderMode: () => void
   onHoverChange: React.Dispatch<React.SetStateAction<number | undefined>>
+  onSelect: (index: number) => void
   selected: boolean
   showSeparator: boolean
   tab: BookTab | { id: string; title: string }
 }
 
 const ReaderTabItem = React.memo(function ReaderTabItem({
+  dragging,
+  dropIndicator,
   focused,
-  group,
   groupIndex,
   index,
-  onEnterReaderMode,
   onHoverChange,
+  onSelect,
   selected,
   showSeparator,
   tab,
@@ -976,15 +1153,18 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
     onHoverChange((current) => (current === index ? undefined : current))
   }, [index, onHoverChange])
   const handleClick = useCallback(() => {
-    group.selectTab(index)
-    onEnterReaderMode()
-  }, [group, index, onEnterReaderMode])
+    onSelect(index)
+  }, [index, onSelect])
   const handleDelete = useCallback(() => {
     reader.removeTab(index, groupIndex)
   }, [groupIndex, index])
 
   return (
     <Tab
+      className={clsx(dragging && 'opacity-50')}
+      data-flow-reader-tab-index={index}
+      draggable={false}
+      dropIndicator={dropIndicator}
       selected={selected}
       focused={focused}
       showSeparator={showSeparator}

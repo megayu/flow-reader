@@ -244,6 +244,8 @@ export default {
   'shortcuts.switch_tab_index': '切换到第 1-8 个标签页',
   'shortcuts.switch_last_tab': '切换到最右侧标签页',
   'shortcuts.switch_adjacent_tab': '切换到相邻标签页',
+  'shortcuts.move_tab_left': '向左移动标签页',
+  'shortcuts.move_tab_right': '向右移动标签页',
   'shortcuts.previous_page': '上一页',
   'shortcuts.next_page': '下一页',
   'shortcuts.previous_chapter': '上一章',
