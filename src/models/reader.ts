@@ -3589,6 +3589,29 @@ export class Reader {
     return this.focusedTab instanceof BookTab ? this.focusedTab : undefined
   }
 
+  openBookTab(book: BookRecord) {
+    for (let groupIndex = 0; groupIndex < this.groups.length; groupIndex++) {
+      const group = this.groups[groupIndex]
+      if (!group) continue
+      const tabIndex = group.tabs.findIndex(
+        (tab) => tab instanceof BookTab && tab.book.id === book.id,
+      )
+      if (tabIndex < 0) continue
+
+      if (groupIndex === this.focusedIndex) {
+        group.selectTab(tabIndex)
+      } else {
+        this.focusedGroup?.setSelectedRuntimeActive(false)
+        group.selectedIndex = tabIndex
+        this.focusedIndex = groupIndex
+        group.setSelectedRuntimeActive(true)
+      }
+      return group.tabs[tabIndex] as BookTab
+    }
+
+    return this.addTab(book)
+  }
+
   addTab(param: TabParam | Tab, groupIdx = this.focusedIndex) {
     let group = this.groups[groupIdx]
     if (group) {

@@ -477,9 +477,15 @@ function IndexContent() {
   const viewModeRef = useRef(viewMode)
   const openedFromNativeRef = useRef(false)
   const nativeOpenReadyRef = useRef(false)
+  const nativeOpenSetupPromiseRef =
+    useRef<ReturnType<typeof setupNativeOpenFiles>>(undefined)
+  const nativeOpenCleanupRef = useRef<() => void>(undefined)
   const startupRestoreStartedRef = useRef(false)
   const router = useRouter()
   const [startupRestoreDone, setStartupRestoreDone] = useState(false)
+  const [nativeStartupPending, setNativeStartupPending] = useState(false)
+  const [nativeStartupReaderFailed, setNativeStartupReaderFailed] =
+    useState(false)
   const [textImportDialog, setTextImportDialog] = useState<{
     paths: string[]
     openAfterImport: boolean
@@ -543,6 +549,7 @@ function IndexContent() {
 
   useEffect(() => {
     return subscribeReaderOpenErrors(({ bookTitle, error, stage }) => {
+      setNativeStartupReaderFailed(true)
       notify({
         autoCloseMs: false,
         description: `${bookTitle}: ${formatErrorMessage(error)}`,
@@ -566,8 +573,13 @@ function IndexContent() {
     }
 
     startupRestoreStartedRef.current = true
+    if (openedFromNativeRef.current) {
+      applySavedSidebarState()
+      setStartupRestoreDone(true)
+      return
+    }
+
     if (
-      openedFromNativeRef.current ||
       !settings.restoreLastReadingOnStartup ||
       settings.startupSession?.viewMode !== 'reader' ||
       !settings.startupSession.bookId
@@ -612,16 +624,16 @@ function IndexContent() {
     })
   }, [router])
 
-  useEffect(() => {
-    let disposed = false
-    let unlisten: (() => void) | undefined
-
+  const startNativeOpenSetup = useEffectEvent(() =>
     setupNativeOpenFiles({
       onImportProgress: handleEpubImportProgress,
       onImportResult: handleEpubImportResult,
-      onOpen: (books) => {
+      onOpenRequest: () => {
         openedFromNativeRef.current = true
-        reader.addTab(books[0]!)
+        setNativeStartupPending(true)
+      },
+      onOpen: (books) => {
+        books.forEach((book) => reader.openBookTab(book))
         setViewMode('reader')
       },
       onDrop: (books) => {
@@ -633,30 +645,52 @@ function IndexContent() {
       onDropTextPaths: (paths) => {
         openTextImportDialog(paths, viewModeRef.current !== 'library')
       },
-    }).then((handler) => {
-      if (disposed) {
-        handler?.()
-      } else {
-        unlisten = handler
-        nativeOpenReadyRef.current = true
-        tryRestoreStartupSession()
-      }
+    }),
+  )
+
+  useEffect(() => {
+    let disposed = false
+
+    nativeOpenSetupPromiseRef.current ??= startNativeOpenSetup()
+
+    nativeOpenSetupPromiseRef.current.then((result) => {
+      if (disposed || !result) return
+
+      nativeOpenCleanupRef.current = result.cleanup
+      nativeOpenReadyRef.current = true
+      tryRestoreStartupSession()
     })
 
     return () => {
       disposed = true
-      unlisten?.()
+      nativeOpenCleanupRef.current?.()
+      nativeOpenCleanupRef.current = undefined
     }
-  }, [
-    handleEpubImportProgress,
-    handleEpubImportResult,
-    openTextImportDialog,
-    setViewMode,
-  ])
+  }, [])
 
   useEffect(() => {
     tryRestoreStartupSession()
   })
+
+  useEffect(() => {
+    if (!nativeStartupPending || !startupRestoreDone) return
+    if (
+      groups.length &&
+      (!focusedBookTab?.rendered || viewMode !== 'reader') &&
+      !nativeStartupReaderFailed
+    ) {
+      return
+    }
+
+    setNativeStartupPending(false)
+  }, [
+    focusedBookTab?.rendered,
+    groups.length,
+    nativeStartupPending,
+    nativeStartupReaderFailed,
+    startupRestoreDone,
+    viewMode,
+  ])
 
   useEffect(() => {
     if (!settingsReady || !startupRestoreDone) return
@@ -742,21 +776,32 @@ function IndexContent() {
       onTextPaths={(paths) => openTextImportDialog(paths, false)}
     />
   )
-  const contentReady = startupRestoreDone
+  const nativeStartupContentReady =
+    !nativeStartupPending ||
+    !groups.length ||
+    focusedBookTab?.rendered ||
+    nativeStartupReaderFailed
+  const contentReady = startupRestoreDone && nativeStartupContentReady
 
   return (
     <>
       <Head>
         <title>{focusedTab?.title ?? 'Flow Reader'}</title>
       </Head>
-      {!contentReady ? null : groups.length ? (
+      {startupRestoreDone && groups.length ? (
         <ReaderGridView
           content={viewMode === 'library' ? library : undefined}
           onEpubImportProgress={handleEpubImportProgress}
           onEpubImportResult={handleEpubImportResult}
         />
-      ) : (
+      ) : startupRestoreDone ? (
         library
+      ) : null}
+      {!contentReady && (
+        <div
+          className="bg-background fixed inset-0 z-50"
+          data-testid="native-startup-surface"
+        />
       )}
       {textImportDialog && (
         <TextImportDialog

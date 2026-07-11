@@ -94,12 +94,14 @@ export async function openImportDialog(options: HandleFilesOptions = {}) {
 
 export async function setupNativeOpenFiles({
   onOpen,
+  onOpenRequest,
   onDrop,
   onImportProgress,
   onImportResult,
   onDropTextPaths,
 }: {
   onOpen?: (books: BookRecord[]) => void
+  onOpenRequest?: (paths: string[]) => void
   onDrop?: (books: BookRecord[]) => void
   onImportProgress?: (progress: EpubImportProgress) => void
   onImportResult?: (
@@ -120,6 +122,7 @@ export async function setupNativeOpenFiles({
 
       const epubPaths = paths.filter(isEpubPath)
       const textPaths = paths.filter(isTxtPath)
+      if (epubPaths.length) onOpenRequest?.(epubPaths)
       if (textPaths.length) {
         const books = await handleFilePaths(textPaths, {
           onImportProgress,
@@ -136,7 +139,8 @@ export async function setupNativeOpenFiles({
       }
     }
 
-    await openPaths(await invoke<string[]>('take_pending_open_paths'))
+    const pendingOpenPaths = await invoke<string[]>('take_pending_open_paths')
+    await openPaths(pendingOpenPaths)
 
     const unlistenOpen = await listen<string[]>(nativeOpenEvent, (event) => {
       void openPaths(event.payload)
@@ -163,9 +167,11 @@ export async function setupNativeOpenFiles({
       console.debug('Native file drop is unavailable', error)
     }
 
-    return () => {
-      unlistenOpen()
-      unlistenDrop?.()
+    return {
+      cleanup: () => {
+        unlistenOpen()
+        unlistenDrop?.()
+      },
     }
   } catch (error) {
     console.debug('Native file open is unavailable', error)

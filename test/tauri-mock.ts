@@ -16,8 +16,11 @@ export interface TestLibraryTagRecord {
 
 interface TauriMockOptions {
   books?: BookRecord[]
+  externallyOpenedBooks?: BookRecord[]
   importedBooks?: BookRecord[]
   openDialogPaths?: string[]
+  pendingOpenPaths?: string[]
+  deferReaderSource?: boolean
   saveDialogPath?: string | null
   settings?: Record<string, unknown>
   tags?: TestLibraryTagRecord[]
@@ -29,8 +32,11 @@ export async function installTauriMock(
   page: Page,
   {
     books = [],
+    externallyOpenedBooks = [],
     importedBooks = [],
     openDialogPaths = [],
+    pendingOpenPaths = [],
+    deferReaderSource = false,
     saveDialogPath = null,
     settings = {},
     tags = [],
@@ -45,8 +51,11 @@ export async function installTauriMock(
   await page.addInitScript(
     ({
       fixtureBooks,
+      fixtureExternallyOpenedBooks,
       fixtureImportedBooks,
       fixtureOpenDialogPaths,
+      fixturePendingOpenPaths,
+      fixtureDeferReaderSource,
       fixtureSaveDialogPath,
       fixtureSettings,
       fixtureTags,
@@ -80,6 +89,7 @@ export async function installTauriMock(
             outputPath: string
           }>
           fullscreen: boolean
+          takePendingOpenPathsCalls: number
           settingsStore: Record<string, unknown>
           textImports: TextImportSelection[]
         }
@@ -102,6 +112,7 @@ export async function installTauriMock(
         fixtureTags.map((tag) => [tag.id, tag]),
       )
       const importQueue = [...fixtureImportedBooks]
+      const externalOpenQueue = [...fixtureExternallyOpenedBooks]
       const textImportPreviewStore = new Map<string, TextImportPreview>(
         fixtureTextImportPreviews.map((preview) => [preview.path, preview]),
       )
@@ -124,6 +135,7 @@ export async function installTauriMock(
         get fullscreen() {
           return fullscreen
         },
+        takePendingOpenPathsCalls: 0,
         settingsStore,
         textImports: [],
       }
@@ -231,6 +243,9 @@ export async function installTauriMock(
         }
         if (command === 'get_book')
           return bookStore.get(String(args?.id)) ?? null
+        if (command === 'get_book_reader_source' && fixtureDeferReaderSource) {
+          return new Promise(() => undefined)
+        }
         if (command === 'update_book') {
           const id = String(args?.id)
           const current = bookStore.get(id)
@@ -256,6 +271,12 @@ export async function installTauriMock(
             books: imported,
             failures: [],
           }
+        }
+        if (command === 'open_external_epub_paths') {
+          const paths = Array.isArray(args?.paths) ? args.paths : []
+          const opened = externalOpenQueue.splice(0, Math.max(paths.length, 1))
+          opened.forEach((book) => bookStore.set(book.id, book))
+          return { books: opened, failures: [] }
         }
         if (command === 'get_text_import_encodings') {
           return fixtureTextImportEncodings
@@ -315,7 +336,12 @@ export async function installTauriMock(
         }
         if (command === 'list_covers') return []
         if (command === 'get_cover') return null
-        if (command === 'take_pending_open_paths') return []
+        if (command === 'take_pending_open_paths') {
+          if (globalWindow.__FLOW_TEST_TAURI__) {
+            globalWindow.__FLOW_TEST_TAURI__.takePendingOpenPathsCalls += 1
+          }
+          return fixturePendingOpenPaths
+        }
         if (command === 'plugin:dialog|open') return fixtureOpenDialogPaths
         if (command === 'plugin:dialog|save') return fixtureSaveDialogPath
         if (command === 'flush_storage') return null
@@ -335,8 +361,11 @@ export async function installTauriMock(
     },
     {
       fixtureBooks: books,
+      fixtureExternallyOpenedBooks: externallyOpenedBooks,
       fixtureImportedBooks: importedBooks,
       fixtureOpenDialogPaths: openDialogPaths,
+      fixturePendingOpenPaths: pendingOpenPaths,
+      fixtureDeferReaderSource: deferReaderSource,
       fixtureSaveDialogPath: saveDialogPath,
       fixtureSettings: settings,
       fixtureTags: tags,
