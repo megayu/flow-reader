@@ -1390,6 +1390,11 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
     const selectedText = getSelectedText(activeFrameWindows)
 
     setNotePopover(undefined)
+    activeFrameWindows.forEach((frame) =>
+      frame.getSelection()?.removeAllRanges(),
+    )
+    tab.annotationRange = undefined
+    tab.annotationCfi = undefined
     setChapterFind((state) => ({
       ...state,
       open: true,
@@ -1398,7 +1403,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
       activeIndex: 0,
     }))
     focusChapterFindInput()
-  }, [activeFrameWindows, findScopeSectionIndex, focusChapterFindInput])
+  }, [activeFrameWindows, findScopeSectionIndex, focusChapterFindInput, tab])
 
   const closeChapterFind = useCallback(() => {
     setChapterFind((state) => ({
@@ -2024,7 +2029,9 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
             background,
           )}
         />
-        {!zenMode && active && <TextSelectionMenu tab={tab} />}
+        {!zenMode && active && (
+          <TextSelectionMenu tab={tab} onChapterFind={openChapterFind} />
+        )}
         <Annotations active={active} tab={tab} />
         {!zenMode && (
           <NotePopover

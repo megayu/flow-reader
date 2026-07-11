@@ -7,7 +7,7 @@ import {
   SquareMinusIcon,
   SquarePlusIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import FocusLock from 'react-focus-lock'
 import { useSnapshot } from 'valtio'
 
@@ -33,6 +33,7 @@ import { Overlay } from './base/Overlay'
 
 interface TextSelectionMenuProps {
   tab: BookTab
+  onChapterFind: () => void
 }
 
 function getSelectionRange(selection?: Selection) {
@@ -165,6 +166,7 @@ function textReplacementErrorMessage(
 
 export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
   tab,
+  onChapterFind,
 }) => {
   const { iframe, iframes, annotationRange, annotationCfi } = useSnapshot(
     tab,
@@ -200,6 +202,30 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
   // are set when select end within an annotation
   const menuSelection = menuOpen ? selection : undefined
   const range = getSelectionRange(menuSelection) ?? annotationRange
+  const onChapterFindEvent = useEffectEvent(onChapterFind)
+
+  useEffect(() => {
+    if (!range) return
+
+    const handleFindShortcut = (event: KeyboardEvent) => {
+      if (
+        !(event.metaKey || event.ctrlKey) ||
+        event.altKey ||
+        (event.key.toLowerCase() !== 'f' && event.code !== 'KeyF')
+      ) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation()
+      onChapterFindEvent()
+    }
+
+    window.addEventListener('keydown', handleFindShortcut, true)
+    return () => window.removeEventListener('keydown', handleFindShortcut, true)
+  }, [range])
+
   if (!range) return null
 
   const view = tab.viewForRange(range)
