@@ -111,7 +111,7 @@ export default class Contents {
   width(): number
   width(w: number): number
 
-  writingMode(mode: string): string
+  writingMode(mode?: string): string
 
   // Event emitters
   emit(type: any, ...args: any[]): void

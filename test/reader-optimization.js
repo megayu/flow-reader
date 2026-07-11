@@ -50,6 +50,7 @@ const styles = loadTsModule('src/styles.ts', {
 })
 
 const annotation = loadTsModule('src/annotation.ts')
+const contextView = loadTsModule('src/components/base/ContextView.tsx')
 const noteLinks = loadTsModule('src/noteLinks.ts')
 const noteSemantics = loadTsModule('src/noteSemantics.ts')
 const imageFilters = loadTsModule('src/imageFilters.ts')
@@ -159,6 +160,123 @@ function testTextAlignIsNonPaginationStyle() {
   )
 }
 
+function testVerticalOverlayPlacementStaysInsidePageAndAvoidsSelection() {
+  assert.strictEqual(
+    typeof contextView.layoutBesideRect,
+    'function',
+    'Expected vertical overlays to share a testable side-placement contract',
+  )
+
+  const page = { left: 0, top: 0, width: 500, height: 700 }
+  const size = { width: 160, height: 220 }
+
+  assert.deepStrictEqual(
+    contextView.layoutBesideRect(
+      page,
+      { left: 300, top: 200, width: 20, height: 80 },
+      size,
+      { preferredSide: 'left', gap: 12, margin: 10 },
+    ),
+    { left: 128, top: 130, side: 'left' },
+    'note popovers should use the physical left side when it fits',
+  )
+
+  assert.deepStrictEqual(
+    contextView.layoutBesideRect(
+      page,
+      { left: 20, top: 200, width: 20, height: 80 },
+      size,
+      { preferredSide: 'left', gap: 12, margin: 10 },
+    ),
+    { left: 52, top: 130, side: 'right' },
+    'note popovers should fall back to the physical right side before clipping',
+  )
+
+  assert.deepStrictEqual(
+    contextView.layoutBesideRect(
+      page,
+      { left: 250, top: 240, width: 20, height: 20 },
+      size,
+      { preferredSide: 'right', gap: 12, margin: 10 },
+    ),
+    { left: 282, top: 140, side: 'right' },
+    'selection menus should prefer the right side when both sides fit',
+  )
+
+  const avoidingSelection = contextView.layoutBesideRect(
+    page,
+    { left: 320, top: 240, width: 1, height: 1 },
+    size,
+    {
+      preferredSide: 'right',
+      gap: 12,
+      margin: 10,
+      avoidRects: [{ left: 325, top: 100, width: 165, height: 300 }],
+    },
+  )
+  assert.deepStrictEqual(avoidingSelection, {
+    left: 148,
+    top: 130.5,
+    side: 'left',
+  })
+}
+
+function testVerticalRangeRectsFollowReadingOrder() {
+  assert.strictEqual(
+    typeof annotation.orderRangeRectsForWritingMode,
+    'function',
+    'Expected vertical range geometry to have an explicit reading-order contract',
+  )
+
+  const ordered = annotation.orderRangeRectsForWritingMode(
+    [
+      { id: 'left-bottom', left: 100, top: 80, width: 20, height: 40 },
+      { id: 'right-bottom', left: 300, top: 80, width: 20, height: 40 },
+      { id: 'left-top', left: 100, top: 10, width: 20, height: 40 },
+      { id: 'right-top', left: 300, top: 10, width: 20, height: 40 },
+    ],
+    'vertical-rl',
+  )
+
+  assert.deepStrictEqual(
+    ordered.map((rect) => rect.id),
+    ['right-top', 'right-bottom', 'left-top', 'left-bottom'],
+  )
+}
+
+function testVerticalTypographyCssOverridesAuthorPunctuation() {
+  assert.strictEqual(
+    typeof styles.createVerticalWritingCss,
+    'function',
+    'Expected vertical writing overrides to be generated explicitly',
+  )
+
+  const css = styles.createVerticalWritingCss('vertical-rl')
+  assert.match(css, /writing-mode:\s*vertical-rl\s*!important/)
+  assert.match(css, /text-orientation:\s*mixed\s*!important/)
+  assert.match(css, /text-indent:\s*var\(--flow-text-indent\)/)
+}
+
+function testCustomStyleReusesResolvedViewWritingMode() {
+  let contentProbes = 0
+  const writingMode = styles.resolveWritingMode(
+    {
+      writingMode() {
+        contentProbes += 1
+        return 'vertical-rl'
+      },
+    },
+    { writingMode: 'horizontal-tb' },
+  )
+
+  assert.strictEqual(writingMode, 'horizontal-tb')
+  assert.strictEqual(
+    contentProbes,
+    0,
+    'beforeLayout should reuse the writing mode already resolved by the view',
+  )
+}
+
 function testZoomBodyStylesSkipNonNumericValues() {
   assert.strictEqual(
     typeof styles.createZoomBodyStyles,
@@ -225,6 +343,53 @@ function testZoomBodyStylesCanUseCurrentLayout() {
     paddingLeft: '10px',
     paddingRight: '10px',
   })
+}
+
+function testZoomBodyStylesUseVerticalPhysicalAxes() {
+  const source = styles.createZoomLayoutBodyStyleSource(
+    {
+      name: 'reflowable',
+      width: 1000,
+      height: 800,
+      columnWidth: 460,
+      gap: 40,
+    },
+    'horizontal',
+    'vertical-rl',
+  )
+  const result = styles.createZoomBodyStyles(source, 2, 'vertical-rl')
+
+  assert.deepStrictEqual(result, {
+    transformOrigin: 'top right',
+    transform: 'scale(2)',
+    width: '500px',
+    height: '400px',
+    columnWidth: '390px',
+    columnHeight: '230px',
+    columnGap: '0px',
+    rowGap: '20px',
+    paddingTop: '5px',
+    paddingBottom: '5px',
+    paddingLeft: '10px',
+    paddingRight: '10px',
+  })
+}
+
+function testZoomBodyStylesUseSinglePageVerticalStride() {
+  const source = styles.createZoomLayoutBodyStyleSource(
+    {
+      name: 'reflowable',
+      width: 1000,
+      height: 800,
+      columnWidth: 1000,
+      gap: 40,
+    },
+    'horizontal',
+    'vertical-rl',
+  )
+
+  assert.strictEqual(source.columnHeight, '960px')
+  assert.strictEqual(source.rowGap, '40px')
 }
 
 function testZoomMediaUsesScaledContentColumnWidth() {
@@ -736,6 +901,8 @@ function testNearDocumentStartHandlesDocumentsWithoutBody() {
 testTextAlignIsNonPaginationStyle()
 testZoomBodyStylesSkipNonNumericValues()
 testZoomBodyStylesCanUseCurrentLayout()
+testZoomBodyStylesUseVerticalPhysicalAxes()
+testZoomBodyStylesUseSinglePageVerticalStride()
 testZoomMediaUsesScaledContentColumnWidth()
 testZoomPinsExplicitDecorativeBackgroundsToViewport()
 testZoomLeavesNonDecorativeBackgroundsAlone()
@@ -749,4 +916,8 @@ testDuplicateIllustrationFilterRebuildsFromHiddenDuplicates()
 testDuplicateIllustrationFilterRestoresUniqueLeadingTitleArt()
 testDuplicateIllustrationFilterKeepsRepeatedLeadingTitleArtHidden()
 testNearDocumentStartHandlesDocumentsWithoutBody()
+testVerticalOverlayPlacementStaysInsidePageAndAvoidsSelection()
+testVerticalRangeRectsFollowReadingOrder()
+testVerticalTypographyCssOverridesAuthorPunctuation()
+testCustomStyleReusesResolvedViewWritingMode()
 console.log('reader optimization tests passed')

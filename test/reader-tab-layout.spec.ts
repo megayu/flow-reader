@@ -7,6 +7,7 @@ import type { BookRecord } from '../src/db'
 const aliceEpubPath = path.resolve('packages/epubjs/test/fixtures/alice.epub')
 const alicePackageUrl = '/test-assets/alice.epub'
 const longPackageUrl = '/test-assets/long/OPS/package.opf'
+const verticalPackageUrl = '/test-assets/vertical/OPS/package.opf'
 const findShortcut = process.platform === 'darwin' ? 'Meta+F' : 'Control+F'
 
 interface BookTabState {
@@ -80,25 +81,32 @@ function createBook(id: string, title: string): BookRecord {
 async function installReaderBooksMock(
   page: Page,
   titles = ['Tab Layout A', 'Tab Layout B', 'Tab Layout C'],
-  packageUrl = alicePackageUrl,
+  packageUrl: string | string[] = alicePackageUrl,
 ) {
   const books = titles.map((title, index) =>
     createBook(`tab-layout-${String.fromCharCode(97 + index)}`, title),
   )
+  const packageUrls = Array.isArray(packageUrl)
+    ? packageUrl
+    : books.map(() => packageUrl)
 
-  if (packageUrl === alicePackageUrl) {
+  if (packageUrls.includes(alicePackageUrl)) {
     await page.route(`**${alicePackageUrl}`, (route) =>
       route.fulfill({
         path: aliceEpubPath,
         contentType: 'application/epub+zip',
       }),
     )
-  } else {
+  }
+  if (packageUrls.includes(longPackageUrl)) {
     await installLongBookRoutes(page)
+  }
+  if (packageUrls.includes(verticalPackageUrl)) {
+    await installVerticalBookRoutes(page)
   }
 
   await page.addInitScript(
-    ({ fixtureBooks, packageUrl }) => {
+    ({ fixtureBooks, packageUrls }) => {
       type TauriInternals = {
         callbacks?: Record<number, (...args: unknown[]) => unknown>
         convertFileSrc?: (filePath: string) => string
@@ -127,6 +135,9 @@ async function installReaderBooksMock(
       const globalWindow = window as unknown as TestWindow
       const bookStore = new Map<string, BookRecord>(
         fixtureBooks.map((book) => [book.id, book]),
+      )
+      const packageUrlByBookId = new Map(
+        fixtureBooks.map((book, index) => [book.id, packageUrls[index]]),
       )
       const settingsStore: Record<string, unknown> = { locale: 'en-US' }
       let nextCallbackId = 1
@@ -176,13 +187,42 @@ async function installReaderBooksMock(
         }
         if (command === 'list_covers') return []
         if (command === 'get_cover') return null
-        if (command === 'get_book_package_path') return packageUrl
+        if (command === 'get_book_package_path') {
+          return packageUrlByBookId.get(String(args?.id)) ?? ''
+        }
         if (command === 'get_book_reader_source') {
-          return { mode: 'epub', path: packageUrl }
+          const path = packageUrlByBookId.get(String(args?.id)) ?? ''
+          return {
+            mode: path.toLowerCase().endsWith('.epub') ? 'epub' : 'opf',
+            path,
+          }
         }
         if (command === 'take_pending_open_paths') return []
         if (command === 'flush_storage') return null
-        if (command === 'search_book_text') return []
+        if (command === 'search_book_text') {
+          const keyword = String(args?.keyword ?? '')
+          if (keyword === 'VERTICAL-CHAPTER-01-29') {
+            return [
+              {
+                id: 'vertical-search-section-1',
+                excerpt: 'VERTICAL-CHAPTER-01',
+                description: 'Synthetic Vertical Reader',
+                expanded: true,
+                subitems: [
+                  {
+                    id: 'vertical-search-hit-1',
+                    excerpt: keyword,
+                    sectionIndex: 0,
+                    href: 'chapter_001.xhtml',
+                    occurrence: 0,
+                    offset: 0,
+                  },
+                ],
+              },
+            ]
+          }
+          return []
+        }
         if (command === 'unload_book_search_text') return null
         if (command === 'plugin:event|listen') return nextEventId++
         if (command === 'plugin:event|unlisten') return null
@@ -193,7 +233,7 @@ async function installReaderBooksMock(
         return null
       }
     },
-    { fixtureBooks: books, packageUrl },
+    { fixtureBooks: books, packageUrls },
   )
 }
 
@@ -288,6 +328,146 @@ function longBookResource(pathname: string) {
 async function installLongBookRoutes(page: Page) {
   await page.route('**/test-assets/long/OPS/**', (route) => {
     const resource = longBookResource(new URL(route.request().url()).pathname)
+
+    if (!resource) {
+      return route.fulfill({
+        status: 404,
+        contentType: 'text/plain',
+        body: 'not found',
+      })
+    }
+
+    return route.fulfill(resource)
+  })
+}
+
+function verticalChapterMarkup(index: number, paragraphCount = 56) {
+  const marker = `VERTICAL-CHAPTER-${String(index).padStart(2, '0')}`
+  const paragraphs = Array.from(
+    { length: paragraphCount },
+    (_, paragraphIndex) => {
+      const token = `${marker}-${String(paragraphIndex + 1).padStart(2, '0')}`
+      const note =
+        index === 1 && paragraphIndex === 0
+          ? '<a id="note-ref" epub:type="noteref" href="#note-1">〔1〕</a>'
+          : ''
+      const selection =
+        index === 1 && paragraphIndex === 1
+          ? '<span id="vertical-selection-target">甲乙丙丁戊己庚辛</span>'
+          : token
+
+      const anchor =
+        index === 1 && paragraphIndex === 28
+          ? ' id="vertical-chapter-01-part-2"'
+          : ''
+
+      return `<p${anchor}>${selection}${note}　${token}　天地玄黄宇宙洪荒日月盈昃辰宿列张。${token}</p>`
+    },
+  ).join('\n')
+  const note =
+    index === 1
+      ? '<aside epub:type="footnote" id="note-1"><p data-flow-note-text="true">注释甲乙丙丁，内容按直排阅读。</p></aside>'
+      : ''
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <title>${marker}</title>
+    <link rel="stylesheet" href="style.css" type="text/css"/>
+  </head>
+  <body>
+    <section>
+      <h1 id="vertical-chapter-${String(index).padStart(2, '0')}-start">${marker}<span id="vertical-punctuation" class="punctuation">（甲）</span></h1>
+      ${paragraphs}
+      ${note}
+    </section>
+  </body>
+</html>`
+}
+
+function verticalBookResource(pathname: string) {
+  const normalized = pathname.replace(/^\/test-assets\/vertical\/OPS\//, '')
+
+  if (normalized === 'package.opf') {
+    return {
+      contentType: 'application/oebps-package+xml',
+      body: `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="pub-id">flow.reader.vertical.synthetic</dc:identifier>
+    <dc:title>Synthetic Vertical Reader</dc:title>
+    <dc:language>zh-Hant</dc:language>
+    <meta property="dcterms:modified">2026-07-10T00:00:00Z</meta>
+  </metadata>
+  <manifest>
+    <item id="toc" properties="nav" href="toc.xhtml" media-type="application/xhtml+xml"/>
+    <item id="style" href="style.css" media-type="text/css"/>
+    <item id="chapter-1" href="chapter_001.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chapter-2" href="chapter_002.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chapter-3" href="chapter_003.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chapter-4" href="chapter_004.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chapter-5" href="chapter_005.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine page-progression-direction="rtl">
+    <itemref idref="chapter-1"/>
+    <itemref idref="chapter-2"/>
+    <itemref idref="chapter-3"/>
+    <itemref idref="chapter-4"/>
+    <itemref idref="chapter-5"/>
+  </spine>
+</package>`,
+    }
+  }
+
+  if (normalized === 'toc.xhtml') {
+    return {
+      contentType: 'application/xhtml+xml',
+      body: `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head><title>Contents</title></head>
+  <body><nav epub:type="toc"><ol>
+    <li><a href="chapter_001.xhtml#vertical-chapter-01-start">VERTICAL-CHAPTER-01</a><ol>
+      <li><a href="chapter_001.xhtml#vertical-chapter-01-part-2">VERTICAL-CHAPTER-01-PART-2</a></li>
+    </ol></li>
+    <li><a href="chapter_002.xhtml">VERTICAL-CHAPTER-02</a></li>
+    <li><a href="chapter_003.xhtml">VERTICAL-CHAPTER-03-SHORT</a></li>
+    <li><a href="chapter_004.xhtml">VERTICAL-CHAPTER-04-TWO-PAGES</a></li>
+    <li><a href="chapter_005.xhtml">VERTICAL-CHAPTER-05-AFTER</a></li>
+  </ol></nav></body>
+</html>`,
+    }
+  }
+
+  if (normalized === 'style.css') {
+    return {
+      contentType: 'text/css',
+      body: `html, body { writing-mode: vertical-rl; }
+body { margin: 0; font-family: serif; }
+p { margin: 0 0 0 1em; text-indent: 2em; line-height: 1.8; }
+.punctuation { text-orientation: upright !important; }`,
+    }
+  }
+
+  const chapterMatch = /^chapter_(00[1-5])\.xhtml$/.exec(normalized)
+  if (chapterMatch) {
+    const index = Number(chapterMatch[1])
+    const paragraphCounts: Record<number, number> = {
+      3: 2,
+      4: 6,
+      5: 2,
+    }
+    return {
+      contentType: 'application/xhtml+xml',
+      body: verticalChapterMarkup(index, paragraphCounts[index]),
+    }
+  }
+}
+
+async function installVerticalBookRoutes(page: Page) {
+  await page.route('**/test-assets/vertical/OPS/**', (route) => {
+    const resource = verticalBookResource(
+      new URL(route.request().url()).pathname,
+    )
 
     if (!resource) {
       return route.fulfill({
@@ -1256,11 +1436,12 @@ async function waitForStableReaderLayout(
 }
 
 test.beforeEach(async ({ page }, testInfo) => {
-  await installReaderBooksMock(
-    page,
-    undefined,
-    testInfo.title.includes('long-book') ? longPackageUrl : alicePackageUrl,
-  )
+  const packageUrl = testInfo.title.includes('[vertical-rl]')
+    ? [alicePackageUrl, verticalPackageUrl, verticalPackageUrl]
+    : testInfo.title.includes('long-book')
+      ? longPackageUrl
+      : alicePackageUrl
+  await installReaderBooksMock(page, undefined, packageUrl)
   await page.goto('/')
   await page.addStyleTag({
     content:
@@ -1268,6 +1449,947 @@ test.beforeEach(async ({ page }, testInfo) => {
   })
   await expect(page.locator('#layout')).toBeVisible()
   await expect(page.locator('ul.grid [role="button"]')).toHaveCount(3)
+})
+
+async function openVerticalFixtureBook(page: Page) {
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+  await page.locator('.SideBar button[aria-label*="Tab Layout B"]').click()
+  await waitForVerticalReaderLoaded(page)
+}
+
+async function waitForVerticalReaderLoaded(page: Page) {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const tab = (window as any).reader.focusedBookTab
+          const pane = document.querySelector(
+            '[data-flow-reader-pane][aria-hidden="false"]',
+          )
+          const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
+            (candidate) => candidate.getBoundingClientRect().width > 0,
+          ) as HTMLIFrameElement | undefined
+
+          return Boolean(
+            tab?.rendered &&
+            tab?.rendition?.manager?.writingMode === 'vertical-rl' &&
+            frame?.contentDocument?.body,
+          )
+        }),
+      { timeout: 10000 },
+    )
+    .toBe(true)
+}
+
+async function readActivePageFrameMetrics(page: Page) {
+  return page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    const manager = tab?.rendition?.manager
+    const pane = document.querySelector(
+      '[data-flow-reader-pane][aria-hidden="false"]',
+    )
+    const content = pane?.querySelector('[data-flow-reader-content]')
+    const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
+      (candidate) => {
+        const rect = candidate.getBoundingClientRect()
+        const style = getComputedStyle(candidate)
+        return (
+          rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden'
+        )
+      },
+    ) as HTMLIFrameElement | undefined
+    const body = frame?.contentDocument?.body
+    const bodyStyle = body
+      ? frame.contentWindow?.getComputedStyle(body)
+      : undefined
+    const contentRect = content?.getBoundingClientRect()
+    const frameRect = frame?.getBoundingClientRect()
+    const bodyRect = body?.getBoundingClientRect()
+    const vertical = bodyStyle?.writingMode === 'vertical-rl'
+    const physicalPageWidth = bodyStyle
+      ? Number.parseFloat(
+          vertical
+            ? bodyStyle.getPropertyValue('column-height')
+            : bodyStyle.columnWidth,
+        )
+      : undefined
+    const physicalGap = bodyStyle
+      ? Number.parseFloat(vertical ? bodyStyle.rowGap : bodyStyle.columnGap)
+      : undefined
+    let middleGapTextRectCount: number | undefined
+    if (
+      body &&
+      bodyStyle &&
+      bodyRect &&
+      Number.isFinite(physicalPageWidth) &&
+      Number.isFinite(physicalGap)
+    ) {
+      const gapStart =
+        bodyRect.left +
+        Number.parseFloat(bodyStyle.paddingLeft) +
+        (physicalPageWidth ?? 0)
+      const gapEnd = gapStart + (physicalGap ?? 0)
+      const walker = body.ownerDocument.createTreeWalker(
+        body,
+        NodeFilter.SHOW_TEXT,
+      )
+      let textNode = walker.nextNode()
+      middleGapTextRectCount = 0
+      while (textNode) {
+        if (textNode.textContent?.trim()) {
+          const range = body.ownerDocument.createRange()
+          range.selectNodeContents(textNode)
+          middleGapTextRectCount += Array.from(range.getClientRects()).filter(
+            (rect) => rect.left < gapEnd && rect.right > gapStart,
+          ).length
+        }
+        textNode = walker.nextNode()
+      }
+    }
+
+    return {
+      axis: manager?.settings?.axis,
+      writingMode: manager?.writingMode,
+      layout: {
+        width: manager?.layout?.width,
+        height: manager?.layout?.height,
+        pageWidth: manager?.layout?.pageWidth,
+        columnWidth: manager?.layout?.columnWidth,
+        gap: manager?.layout?.gap,
+        divisor: manager?.layout?.divisor,
+      },
+      contentRect: contentRect
+        ? {
+            width: Math.round(contentRect.width),
+            height: Math.round(contentRect.height),
+          }
+        : undefined,
+      frameRect: frameRect
+        ? {
+            width: Math.round(frameRect.width),
+            height: Math.round(frameRect.height),
+          }
+        : undefined,
+      body: bodyStyle
+        ? {
+            writingMode: bodyStyle.writingMode,
+            paddingTop: bodyStyle.paddingTop,
+            paddingRight: bodyStyle.paddingRight,
+            paddingBottom: bodyStyle.paddingBottom,
+            paddingLeft: bodyStyle.paddingLeft,
+            direction: bodyStyle.direction,
+            columnGap: bodyStyle.columnGap,
+            columnWidth: bodyStyle.columnWidth,
+            columnHeight: bodyStyle.getPropertyValue('column-height'),
+            rowGap: bodyStyle.rowGap,
+            physicalPageWidth,
+            physicalGap,
+            middleGapTextRectCount,
+          }
+        : undefined,
+    }
+  })
+}
+
+async function setSyntheticVerticalFooterSnapshot(
+  page: Page,
+  start: { page: number; total: number; slot: 'left' | 'right' },
+  end: { page: number; total: number; slot: 'left' | 'right' },
+  percentage: number,
+) {
+  await page.evaluate(
+    ({ start, end, percentage }) => {
+      const tab = (window as any).reader.focusedBookTab
+      if (!tab) throw new Error('Missing focused book tab')
+      const current = tab.paginationSnapshot
+      tab.paginationSnapshot = {
+        ...current,
+        location: {
+          start: {
+            cfi: 'epubcfi(/6/2!/4/2:0)',
+            href: 'chapter_001.xhtml',
+            index: 0,
+            displayed: start,
+          },
+          end: {
+            cfi: 'epubcfi(/6/2!/4/2:8)',
+            href: 'chapter_001.xhtml',
+            index: 0,
+            displayed: end,
+          },
+        },
+        percentage,
+        spreadDivisor: 2,
+        writingMode: 'vertical-rl',
+        pageProgressionDirection: 'rtl',
+        spreadSlotOrder: 'right-first',
+      }
+      tab.paginationVersion += 1
+    },
+    { start, end, percentage },
+  )
+  await page.waitForTimeout(50)
+}
+
+async function readActiveFooterSlots(page: Page) {
+  return page.evaluate(() => {
+    const pane = document.querySelector(
+      '[data-flow-reader-pane][aria-hidden="false"]',
+    )
+    if (!pane) throw new Error('Missing active reader pane')
+    const paneRect = pane.getBoundingClientRect()
+    const footer = Array.from(pane.querySelectorAll<HTMLElement>('div')).find(
+      (element) => {
+        const rect = element.getBoundingClientRect()
+        const style = getComputedStyle(element)
+        return (
+          style.display === 'grid' &&
+          element.children.length === 2 &&
+          rect.height > 0 &&
+          Math.abs(rect.bottom - paneRect.bottom) <= 2
+        )
+      },
+    )
+    if (!footer) throw new Error('Missing two-slot reader footer')
+
+    return Array.from(footer.children).map((element) =>
+      (element.textContent ?? '').replace(/\s+/g, ' ').trim(),
+    )
+  })
+}
+
+test('[vertical-rl] keeps the horizontal physical page frame', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1500, height: 900 })
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+  const horizontal = await readActivePageFrameMetrics(page)
+
+  await page.locator('.SideBar button[aria-label*="Tab Layout B"]').click()
+  await waitForVerticalReaderLoaded(page)
+  const vertical = await readActivePageFrameMetrics(page)
+
+  expect(vertical.writingMode).toBe('vertical-rl')
+  expect(vertical.axis).toBe('horizontal')
+  expect(vertical.layout).toEqual(horizontal.layout)
+  expect(vertical.contentRect).toEqual(horizontal.contentRect)
+  expect(vertical.frameRect?.height).toBe(horizontal.frameRect?.height)
+  expect(vertical.body?.paddingTop).toBe(horizontal.body?.paddingTop)
+  expect(vertical.body?.paddingRight).toBe(horizontal.body?.paddingRight)
+  expect(vertical.body?.paddingBottom).toBe(horizontal.body?.paddingBottom)
+  expect(vertical.body?.paddingLeft).toBe(horizontal.body?.paddingLeft)
+  expect(vertical.body?.direction).toBe('ltr')
+  expect(vertical.body?.physicalPageWidth).toBe(
+    horizontal.body?.physicalPageWidth,
+  )
+  expect(vertical.body?.physicalGap).toBe(horizontal.body?.physicalGap)
+  expect(vertical.body?.rowGap).toBe(horizontal.body?.columnGap)
+  expect(vertical.body?.middleGapTextRectCount).toBe(0)
+})
+
+test('[vertical-rl] maps footer pages to physical right-first slots', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+
+  await setSyntheticVerticalFooterSnapshot(
+    page,
+    { page: 1, total: 3, slot: 'right' },
+    { page: 2, total: 3, slot: 'left' },
+    2 / 3,
+  )
+  expect(await readActiveFooterSlots(page)).toEqual(['2 · 3 (66.67%)', '1 · 3'])
+
+  await setSyntheticVerticalFooterSnapshot(
+    page,
+    { page: 3, total: 3, slot: 'right' },
+    { page: 3, total: 3, slot: 'right' },
+    1,
+  )
+  expect(await readActiveFooterSlots(page)).toEqual(['', '3 · 3'])
+})
+
+async function readVerticalReadingState(page: Page) {
+  return page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    const manager = tab?.rendition?.manager
+    const location = tab?.paginationSnapshot?.location
+    const spread = manager?.currentReflowableSpread
+
+    return {
+      startIndex: location?.start?.index,
+      startPage: location?.start?.displayed?.page,
+      startTotal: location?.start?.displayed?.total,
+      startSlot: location?.start?.displayed?.slot,
+      endIndex: location?.end?.index,
+      endPage: location?.end?.displayed?.page,
+      endTotal: location?.end?.displayed?.total,
+      endSlot: location?.end?.displayed?.slot,
+      rightIndex: spread?.right?.section?.index,
+      rightPageIndex: spread?.right?.pageIndex,
+      leftIndex: spread?.left?.section?.index,
+      leftPageIndex: spread?.left?.pageIndex,
+    }
+  })
+}
+
+async function readVerticalPhysicalSectionSlots(page: Page) {
+  return page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    const manager = tab?.rendition?.manager
+    const content = document.querySelector(
+      '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
+    )
+    const contentRect = content?.getBoundingClientRect()
+    if (!contentRect) throw new Error('Missing active reader content')
+
+    const visible = (manager?.views?._views ?? [])
+      .map((view: any) => {
+        const rect = view.element?.getBoundingClientRect()
+        if (!rect) return undefined
+
+        const left = Math.max(rect.left, contentRect.left)
+        const right = Math.min(rect.right, contentRect.right)
+        if (right - left <= 1) return undefined
+
+        return {
+          sectionIndex: view.section?.index,
+          href: view.section?.href,
+          marker: (
+            view.contents?.document?.querySelector('h1')?.textContent ?? ''
+          ).trim(),
+          visibleLeft: left,
+          visibleRight: right,
+          visibleCenter: (left + right) / 2,
+        }
+      })
+      .filter(Boolean)
+      .sort((left: any, right: any) => right.visibleCenter - left.visibleCenter)
+
+    return {
+      right: visible[0],
+      left: visible.length > 1 ? visible[visible.length - 1] : visible[0],
+      visible,
+    }
+  })
+}
+
+test('[vertical-rl] keeps page shortcuts logical and returns to the same right-first spread', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+  const initial = await readVerticalReadingState(page)
+
+  await page.keyboard.press('ArrowRight')
+  await page.waitForTimeout(300)
+  const forward = await readVerticalReadingState(page)
+
+  await page.keyboard.press('ArrowLeft')
+  await page.waitForTimeout(300)
+  const returned = await readVerticalReadingState(page)
+
+  expect(initial.startPage).toBe(1)
+  expect(initial.startSlot).toBe('right')
+  expect(initial.rightPageIndex).toBe(0)
+  expect(initial.leftPageIndex).toBe(1)
+  expect(forward.startPage).toBeGreaterThan(initial.startPage ?? 0)
+  expect(forward.startSlot).toBe('right')
+  expect(returned).toEqual(initial)
+})
+
+test('[vertical-rl] places a TOC chapter start in the physical right slot', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+  const target = page.getByRole('button', {
+    name: 'VERTICAL-CHAPTER-02',
+    exact: true,
+  })
+  if (!(await target.isVisible())) {
+    await page.locator('.ActivityBar button[aria-label="TOC"]').click()
+  }
+  await expect(target).toBeVisible()
+  await target.click()
+  await page.waitForTimeout(400)
+
+  const state = await readVerticalReadingState(page)
+  expect(state.startIndex).toBe(1)
+  expect(state.startPage).toBe(1)
+  expect(state.startSlot).toBe('right')
+  expect(state.rightIndex).toBe(1)
+  expect(state.rightPageIndex).toBe(0)
+})
+
+test('[vertical-rl] keeps one-page chapter jumps physically right and skips a next chapter already visible on the left', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+  const chapter4 = page.getByRole('button', {
+    name: 'VERTICAL-CHAPTER-04-TWO-PAGES',
+    exact: true,
+  })
+  const chapter3 = page.getByRole('button', {
+    name: 'VERTICAL-CHAPTER-03-SHORT',
+    exact: true,
+  })
+  await expect(chapter4).toBeVisible()
+
+  await chapter4.click()
+  await expect
+    .poll(() => readVerticalReadingState(page))
+    .toMatchObject({
+      startIndex: 3,
+      startPage: 1,
+      startTotal: 2,
+      startSlot: 'right',
+      endIndex: 3,
+      endPage: 2,
+      rightIndex: 3,
+      leftIndex: 3,
+    })
+
+  await chapter3.click()
+  await expect
+    .poll(() => readVerticalReadingState(page))
+    .toMatchObject({
+      startIndex: 2,
+      startPage: 1,
+      startTotal: 1,
+      startSlot: 'right',
+      endIndex: 3,
+      endPage: 1,
+      endSlot: 'left',
+      rightIndex: 2,
+      leftIndex: 3,
+    })
+  await expect
+    .poll(() => readVerticalPhysicalSectionSlots(page))
+    .toMatchObject({
+      right: {
+        sectionIndex: 2,
+        marker: expect.stringContaining('VERTICAL-CHAPTER-03'),
+      },
+      left: {
+        sectionIndex: 3,
+        marker: expect.stringContaining('VERTICAL-CHAPTER-04'),
+      },
+    })
+
+  await page.keyboard.press(']')
+  await expect
+    .poll(() => readVerticalReadingState(page))
+    .toMatchObject({
+      startIndex: 4,
+      startPage: 1,
+      startSlot: 'right',
+      rightIndex: 4,
+      rightPageIndex: 0,
+    })
+  await expect
+    .poll(() => readVerticalPhysicalSectionSlots(page))
+    .toMatchObject({
+      right: {
+        sectionIndex: 4,
+        marker: expect.stringContaining('VERTICAL-CHAPTER-05'),
+      },
+    })
+
+  await page.keyboard.press('[')
+  await expect
+    .poll(() => readVerticalReadingState(page))
+    .toMatchObject({
+      startIndex: 3,
+      startPage: 1,
+      startSlot: 'right',
+      rightIndex: 3,
+      rightPageIndex: 0,
+    })
+})
+
+test('[vertical-rl] resolves nested TOC anchors and chapter shortcuts on the right page', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+  const parent = page.getByRole('button', {
+    name: 'VERTICAL-CHAPTER-01',
+    exact: true,
+  })
+  await expect(parent).toBeVisible()
+  await parent.locator('svg').click()
+  const target = page.getByRole('button', {
+    name: 'VERTICAL-CHAPTER-01-PART-2',
+    exact: true,
+  })
+  await expect(target).toBeVisible()
+  await target.click()
+
+  await expect
+    .poll(() => readVerticalReadingState(page))
+    .toMatchObject({
+      startIndex: 0,
+      startSlot: 'right',
+      rightIndex: 0,
+    })
+  const nested = await readVerticalReadingState(page)
+  expect(nested.rightPageIndex).toBeGreaterThan(0)
+  expect(nested.startPage).toBe((nested.rightPageIndex ?? 0) + 1)
+
+  await page.keyboard.press(']')
+  await expect
+    .poll(() => readVerticalReadingState(page))
+    .toMatchObject({
+      startIndex: 1,
+      startPage: 1,
+      startSlot: 'right',
+      rightIndex: 1,
+      rightPageIndex: 0,
+    })
+
+  await page.keyboard.press('[')
+  await expect
+    .poll(() => readVerticalReadingState(page))
+    .toMatchObject({
+      startIndex: 0,
+      startSlot: 'right',
+      rightIndex: 0,
+      rightPageIndex: nested.rightPageIndex,
+    })
+
+  await page.keyboard.press('[')
+  await expect
+    .poll(() => readVerticalReadingState(page))
+    .toMatchObject({
+      startIndex: 0,
+      startPage: 1,
+      startSlot: 'right',
+      rightIndex: 0,
+      rightPageIndex: 0,
+    })
+})
+
+test('[vertical-rl] advances chapter find within the visible page before turning', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+  const initial = await readVerticalReadingState(page)
+
+  await page.keyboard.press(findShortcut)
+  const input = page.getByRole('textbox', { name: /Find in chapter/ })
+  await expect(input).toBeVisible()
+  await input.fill('VERTICAL-CHAPTER-01-01')
+  await expect(page.getByText('1/3', { exact: true })).toBeVisible()
+
+  await input.press('Enter')
+  await expect(page.getByText('2/3', { exact: true })).toBeVisible()
+  expect(await readVerticalReadingState(page)).toEqual(initial)
+
+  const activeHighlight = await page.evaluate(() => {
+    const content = document.querySelector(
+      '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
+    )
+    const contentRect = content?.getBoundingClientRect()
+    if (!contentRect) return false
+
+    return Array.from(document.querySelectorAll('[ref="epubjs-hl"]')).some(
+      (mark) => {
+        const rect = mark.getBoundingClientRect()
+        const fill = mark.getAttribute('fill') ?? getComputedStyle(mark).fill
+        return (
+          fill.includes('59') &&
+          fill.includes('130') &&
+          rect.right > contentRect.left &&
+          rect.left < contentRect.right &&
+          rect.bottom > contentRect.top &&
+          rect.top < contentRect.bottom
+        )
+      },
+    )
+  })
+  expect(activeHighlight).toBe(true)
+})
+
+test('[vertical-rl] keeps a clicked sidebar search result active and visible', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+  await page.locator('.ActivityBar button[aria-label="Search"]').click()
+  const input = page.getByRole('textbox', { name: 'Search', exact: true })
+  await input.fill('VERTICAL-CHAPTER-01-29')
+
+  const result = page.getByRole('button', {
+    name: 'VERTICAL-CHAPTER-01-29',
+    exact: true,
+  })
+  await expect(result).toBeVisible()
+  await result.click()
+  await expect(result).toHaveAttribute('aria-current', 'true')
+
+  const state = await readVerticalReadingState(page)
+  expect(state.startIndex).toBe(0)
+  expect(state.startSlot).toBe('right')
+  expect(state.rightPageIndex).toBeGreaterThan(0)
+  await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
+})
+
+test('[vertical-rl] keeps one physical page frame in single-page and zoomed layouts', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+  await page
+    .getByRole('button', {
+      name: 'VERTICAL-CHAPTER-04-TWO-PAGES',
+      exact: true,
+    })
+    .click()
+  await page
+    .getByRole('button', {
+      name: 'VERTICAL-CHAPTER-03-SHORT',
+      exact: true,
+    })
+    .click()
+  await expect
+    .poll(() => readVerticalReadingState(page))
+    .toMatchObject({
+      rightIndex: 2,
+      leftIndex: 3,
+    })
+
+  const setTypography = async (spread: 'none' | 'auto', zoom?: number) => {
+    await page.evaluate(
+      ({ nextSpread, nextZoom }) => {
+        const tab = (window as any).reader.focusedBookTab
+        tab.updateBook({
+          configuration: {
+            ...tab.book.configuration,
+            typography: {
+              ...tab.book.configuration?.typography,
+              spread: nextSpread,
+              zoom: nextZoom,
+            },
+          },
+        })
+      },
+      { nextSpread: spread, nextZoom: zoom },
+    )
+  }
+  const readGeometry = () =>
+    page.evaluate(() => {
+      const tab = (window as any).reader.focusedBookTab
+      const manager = tab?.rendition?.manager
+      const spread = manager?.currentReflowableSpread
+      const views = manager?.views?._views ?? []
+      const view =
+        views.find(
+          (candidate: any) =>
+            candidate.section?.index === spread?.right?.section?.index,
+        ) ?? views[0]
+      const body = view?.contents?.document?.body ?? view?.document?.body
+      const style = body && getComputedStyle(body)
+      const bodyRect = body?.getBoundingClientRect()
+      const frameWidth = view?.iframe?.contentWindow?.innerWidth
+      let textCrossesBodyLeft = 0
+      if (body && bodyRect) {
+        const walker = body.ownerDocument.createTreeWalker(
+          body,
+          NodeFilter.SHOW_TEXT,
+        )
+        let textNode = walker.nextNode()
+        while (textNode) {
+          if (textNode.textContent?.trim()) {
+            const range = body.ownerDocument.createRange()
+            range.selectNodeContents(textNode)
+            textCrossesBodyLeft += Array.from(range.getClientRects()).filter(
+              (rect) =>
+                rect.left < bodyRect.left - 1 && rect.right > bodyRect.left + 1,
+            ).length
+          }
+          textNode = walker.nextNode()
+        }
+      }
+
+      return {
+        divisor: manager?.layout?.divisor,
+        pageWidth: manager?.layout?.pageWidth,
+        pageHeight: manager?.layout?.height,
+        displayedViewCount: views.length,
+        viewSectionIndexes: views.map(
+          (candidate: any) => candidate.section?.index,
+        ),
+        rightPageIndex: spread?.right?.pageIndex,
+        hasLeftPage: !!spread?.left,
+        bodyInsideFrame:
+          !!bodyRect &&
+          typeof frameWidth === 'number' &&
+          bodyRect.left >= -1 &&
+          bodyRect.right <= frameWidth + 1,
+        textCrossesBodyLeft,
+        body: style && {
+          columnWidth: parseFloat(style.columnWidth),
+          columnHeight: parseFloat(style.columnHeight),
+          columnGap: parseFloat(style.columnGap),
+          rowGap: parseFloat(style.rowGap),
+          transform: style.transform,
+          transformOrigin: style.transformOrigin,
+        },
+      }
+    })
+
+  await setTypography('none')
+  await expect.poll(readGeometry).toMatchObject({
+    divisor: 1,
+    displayedViewCount: 1,
+    viewSectionIndexes: [2],
+    hasLeftPage: false,
+    bodyInsideFrame: true,
+    textCrossesBodyLeft: 0,
+  })
+
+  await setTypography('auto')
+  await page
+    .getByRole('button', {
+      name: 'VERTICAL-CHAPTER-04-TWO-PAGES',
+      exact: true,
+    })
+    .click()
+  await expect
+    .poll(() => readVerticalReadingState(page))
+    .toMatchObject({
+      rightIndex: 3,
+      rightPageIndex: 0,
+    })
+  await setTypography('none', 1.5)
+  await expect.poll(readGeometry).toMatchObject({
+    divisor: 1,
+    displayedViewCount: 1,
+    viewSectionIndexes: [3],
+    hasLeftPage: false,
+    bodyInsideFrame: true,
+    textCrossesBodyLeft: 0,
+  })
+  await expect
+    .poll(async () => (await readGeometry()).body?.transform)
+    .not.toBeUndefined()
+  const zoomed = await readGeometry()
+  expect(zoomed.body?.columnWidth).toBeCloseTo(
+    ((zoomed.pageHeight ?? 0) - 20) / 1.5,
+    1,
+  )
+  expect(zoomed.body?.columnHeight).toBeCloseTo(
+    ((zoomed.pageWidth ?? 0) - 48) / 1.5,
+    1,
+  )
+  expect(zoomed.body?.columnGap).toBe(0)
+  expect(zoomed.body?.rowGap).toBeCloseTo(48 / 1.5, 1)
+  expect(zoomed.body?.transform).not.toBe('none')
+})
+
+test('[vertical-rl] restores the committed right-first spread across tab and sidebar changes', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+  const initial = await readVerticalReadingState(page)
+  await installBookTabRuntimeCounters(page)
+  await resetBookTabRuntimeCounters(page)
+
+  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await waitForStableReaderLayout(page, { header: false })
+  await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+  await waitForVerticalReaderLoaded(page)
+  const afterTabSwitch = await readVerticalReadingState(page)
+  const counters = (await readBookTabRuntimeCounters(page)).find(
+    (entry) => entry.id === 'tab-layout-b',
+  )
+
+  await toggleTocSidebar(page)
+  await page.waitForTimeout(250)
+  await toggleTocSidebar(page)
+  await page.waitForTimeout(250)
+  const afterSidebar = await readVerticalReadingState(page)
+
+  expect(initial.startSlot).toBe('right')
+  expect(afterTabSwitch).toEqual(initial)
+  expect(afterSidebar).toEqual(initial)
+  expect(counters).toMatchObject({
+    display: 0,
+    next: 0,
+    prev: 0,
+    relayoutCurrentView: 0,
+    resizeRendition: 0,
+  })
+})
+
+test('[vertical-rl] overrides punctuation while preserving vertical indent and line height', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+
+  const typography = await page.evaluate(() => {
+    const pane = document.querySelector(
+      '[data-flow-reader-pane][aria-hidden="false"]',
+    )
+    const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
+      (candidate) => candidate.getBoundingClientRect().width > 0,
+    ) as HTMLIFrameElement | undefined
+    const doc = frame?.contentDocument
+    const punctuation = doc?.querySelector('#vertical-punctuation')
+    const paragraph = doc?.querySelector('p')
+    if (!frame?.contentWindow || !punctuation || !paragraph) {
+      throw new Error('Missing vertical typography fixture')
+    }
+    const punctuationStyle = frame.contentWindow.getComputedStyle(punctuation)
+    const paragraphStyle = frame.contentWindow.getComputedStyle(paragraph)
+
+    return {
+      punctuationOrientation: punctuationStyle.textOrientation,
+      writingMode: paragraphStyle.writingMode,
+      textIndent: paragraphStyle.textIndent,
+      lineHeight: paragraphStyle.lineHeight,
+    }
+  })
+
+  expect(typography.writingMode).toBe('vertical-rl')
+  expect(typography.punctuationOrientation).toBe('mixed')
+  expect(parseFloat(typography.textIndent)).toBeGreaterThan(0)
+  expect(parseFloat(typography.lineHeight)).toBeGreaterThan(0)
+})
+
+test('[vertical-rl] places note popover on the physical left with vertical content', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+  const activeFrame = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .filter({ visible: true })
+    .first()
+  const noteRef = activeFrame.contentFrame().locator('#note-ref')
+  await noteRef.click()
+  const popover = page.locator('.flow-note-popover')
+  await expect(popover).toBeVisible()
+
+  const geometry = await page.evaluate(() => {
+    const pane = document.querySelector(
+      '[data-flow-reader-pane][aria-hidden="false"]',
+    )
+    const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
+      (candidate) => candidate.getBoundingClientRect().width > 0,
+    ) as HTMLIFrameElement | undefined
+    const anchor = frame?.contentDocument?.querySelector('#note-ref')
+    const popover = pane?.querySelector('.flow-note-popover')
+    const content = popover?.firstElementChild
+    if (!frame || !anchor || !popover || !content) {
+      throw new Error('Missing note popover geometry')
+    }
+    const frameRect = frame.getBoundingClientRect()
+    const anchorRect = anchor.getBoundingClientRect()
+    const popoverRect = popover.getBoundingClientRect()
+
+    return {
+      anchorLeft: frameRect.left + anchorRect.left,
+      popoverLeft: popoverRect.left,
+      popoverRight: popoverRect.right,
+      writingMode: getComputedStyle(content).writingMode,
+    }
+  })
+
+  expect(geometry.popoverRight).toBeLessThan(geometry.anchorLeft)
+  expect(geometry.writingMode).toBe('vertical-rl')
+})
+
+test('[vertical-rl] keeps the selection menu complete and beside the selection', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+  await page.evaluate(() => {
+    const pane = document.querySelector(
+      '[data-flow-reader-pane][aria-hidden="false"]',
+    )
+    const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
+      (candidate) => candidate.getBoundingClientRect().width > 0,
+    ) as HTMLIFrameElement | undefined
+    const target = frame?.contentDocument?.querySelector(
+      '#vertical-selection-target',
+    )
+    const text = target?.firstChild
+    if (!frame?.contentWindow || !target || !text) {
+      throw new Error('Missing selection fixture')
+    }
+    const range = frame.contentDocument!.createRange()
+    range.setStart(text, 1)
+    range.setEnd(text, Math.min(7, text.textContent?.length ?? 0))
+    const selection = frame.contentWindow.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+    const rect = range.getBoundingClientRect()
+    frame.contentWindow.dispatchEvent(
+      new frame.contentWindow.MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+      }),
+    )
+  })
+
+  await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible()
+  const result = await page.evaluate(() => {
+    const pane = document.querySelector(
+      '[data-flow-reader-pane][aria-hidden="false"]',
+    )
+    const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
+      (candidate) => candidate.getBoundingClientRect().width > 0,
+    ) as HTMLIFrameElement | undefined
+    const selection = frame?.contentWindow?.getSelection()
+    const selectionRect = selection?.rangeCount
+      ? selection.getRangeAt(0).getBoundingClientRect()
+      : undefined
+    const frameRect = frame?.getBoundingClientRect()
+    const copyButton = Array.from(pane?.querySelectorAll('button') ?? []).find(
+      (button) => button.getAttribute('aria-label') === 'Copy',
+    )
+    const menu = copyButton?.closest('[data-flow-keyboard-capture="true"]')
+    const menuRect = menu?.getBoundingClientRect()
+    const contentRect = pane
+      ?.querySelector('[data-flow-reader-content]')
+      ?.getBoundingClientRect()
+    const actionCount = pane?.querySelectorAll(
+      'button[aria-label^="highlight "], button[aria-label^="underline "]',
+    ).length
+    if (!selectionRect || !frameRect || !menuRect || !contentRect) {
+      throw new Error('Missing selection menu geometry')
+    }
+    const outerSelection = {
+      left: frameRect.left + selectionRect.left,
+      right: frameRect.left + selectionRect.right,
+      top: frameRect.top + selectionRect.top,
+      bottom: frameRect.top + selectionRect.bottom,
+    }
+    const overlaps = !(
+      menuRect.right <= outerSelection.left ||
+      menuRect.left >= outerSelection.right ||
+      menuRect.bottom <= outerSelection.top ||
+      menuRect.top >= outerSelection.bottom
+    )
+
+    return {
+      actionCount,
+      overlaps,
+      inside:
+        menuRect.left >= contentRect.left &&
+        menuRect.right <= contentRect.right &&
+        menuRect.top >= contentRect.top &&
+        menuRect.bottom <= contentRect.bottom,
+      beside:
+        menuRect.right <= outerSelection.left ||
+        menuRect.left >= outerSelection.right,
+    }
+  })
+
+  expect(result.actionCount).toBe(5)
+  expect(result.inside).toBe(true)
+  expect(result.overlaps).toBe(false)
+  expect(result.beside).toBe(true)
 })
 
 test('guards reader nav path expansion against cyclic parent links', async ({

@@ -61,3 +61,76 @@ export function layout(
     return 0 // sad case, lay it over the anchor
   }
 }
+
+interface RectLike {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+interface LayoutBesideRectOptions {
+  preferredSide: 'left' | 'right'
+  gap: number
+  margin: number
+  avoidRects?: readonly RectLike[]
+}
+
+function rectsOverlap(a: RectLike, b: RectLike) {
+  return !(
+    a.left + a.width <= b.left ||
+    a.left >= b.left + b.width ||
+    a.top + a.height <= b.top ||
+    a.top >= b.top + b.height
+  )
+}
+
+export function layoutBesideRect(
+  viewport: RectLike,
+  anchor: RectLike,
+  view: { width: number; height: number },
+  options: LayoutBesideRectOptions,
+) {
+  const minLeft = viewport.left + options.margin
+  const maxLeft = viewport.left + viewport.width - options.margin - view.width
+  const minTop = viewport.top + options.margin
+  const maxTop = viewport.top + viewport.height - options.margin - view.height
+  const top = Math.min(
+    Math.max(anchor.top + anchor.height / 2 - view.height / 2, minTop),
+    Math.max(minTop, maxTop),
+  )
+  const sides = [
+    options.preferredSide,
+    options.preferredSide === 'left' ? 'right' : 'left',
+  ] as const
+  const candidates = sides.map((side) => {
+    const left =
+      side === 'left'
+        ? anchor.left - options.gap - view.width
+        : anchor.left + anchor.width + options.gap
+    const rect = { left, top, width: view.width, height: view.height }
+
+    return {
+      left,
+      top,
+      side,
+      fits: left >= minLeft && left <= maxLeft,
+      avoids: !(options.avoidRects ?? []).some((avoid) =>
+        rectsOverlap(rect, avoid),
+      ),
+    }
+  })
+  const candidate =
+    candidates.find(({ fits, avoids }) => fits && avoids) ??
+    candidates.find(({ fits }) => fits) ??
+    candidates[0]!
+
+  return {
+    left: Math.min(
+      Math.max(candidate.left, minLeft),
+      Math.max(minLeft, maxLeft),
+    ),
+    top: candidate.top,
+    side: candidate.side,
+  }
+}

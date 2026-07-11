@@ -51,6 +51,7 @@ const SearchPane: React.FC = () => {
   const [keyword, setKeyword] = useIntermediateKeyword()
 
   const results = focusedBookTab?.results
+  const activeResultID = focusedBookTab?.activeResultID
   const expanded = results?.some((r) => r.expanded)
   const toggleResults = () => {
     reader.focusedBookTab?.results?.forEach((r) => (r.expanded = !expanded))
@@ -104,7 +105,11 @@ const SearchPane: React.FC = () => {
         </div>
       </div>
       {keyword && results && (
-        <ResultList results={results as IMatch[]} keyword={keyword} />
+        <ResultList
+          results={results as IMatch[]}
+          keyword={keyword}
+          activeResultID={activeResultID}
+        />
       )}
     </div>
   )
@@ -113,8 +118,13 @@ const SearchPane: React.FC = () => {
 interface ResultListProps {
   results: IMatch[]
   keyword: string
+  activeResultID?: string
 }
-const ResultList: React.FC<ResultListProps> = ({ results, keyword }) => {
+const ResultList: React.FC<ResultListProps> = ({
+  results,
+  keyword,
+  activeResultID,
+}) => {
   const rows = useMemo(
     () => results.flatMap((r) => flatTree(r)) ?? [],
     [results],
@@ -143,7 +153,11 @@ const ResultList: React.FC<ResultListProps> = ({ results, keyword }) => {
                 transform: `translateY(${start}px)`,
               }}
             >
-              <ResultRow result={rows[index]} keyword={keyword} />
+              <ResultRow
+                result={rows[index]}
+                keyword={keyword}
+                active={rows[index]?.id === activeResultID}
+              />
             </div>
           ))}
         </div>
@@ -155,8 +169,9 @@ const ResultList: React.FC<ResultListProps> = ({ results, keyword }) => {
 interface ResultRowProps {
   result?: IMatch
   keyword: string
+  active: boolean
 }
-const ResultRow: React.FC<ResultRowProps> = ({ result, keyword }) => {
+const ResultRow: React.FC<ResultRowProps> = ({ result, keyword, active }) => {
   if (!result) return null
   const { depth, expanded, subitems, id } = result
   let { excerpt, description } = result
@@ -172,7 +187,8 @@ const ResultRow: React.FC<ResultRowProps> = ({ result, keyword }) => {
       label={excerpt}
       description={description}
       depth={depth}
-      active={tab?.activeResultID === id}
+      active={active}
+      aria-current={active ? 'true' : undefined}
       expanded={expanded}
       subitems={subitems}
       badge={isGroup}

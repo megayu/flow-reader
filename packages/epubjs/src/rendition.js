@@ -311,7 +311,7 @@ class Rendition {
    * @param  {string} target Url or EpubCFI
    * @return {Promise}
    */
-  display(target) {
+  display(target, options) {
     if (this.displaying) {
       this.displaying.resolve()
     }
@@ -322,7 +322,7 @@ class Rendition {
     const locationRequestId = this._locationRequestId
 
     return this.q
-      .enqueue(this._display, target, displayRequestId)
+      .enqueue(this._display, target, displayRequestId, options)
       .then((section) => {
         if (displayRequestId !== this._displayRequestId) {
           return section
@@ -338,7 +338,7 @@ class Rendition {
    * @param  {string} target Url or EpubCFI
    * @return {Promise}
    */
-  _display(target, requestId) {
+  _display(target, requestId, options) {
     if (!this.book) {
       return
     }
@@ -368,7 +368,7 @@ class Rendition {
       return displayed
     }
 
-    this.manager.display(section, target).then(
+    this.manager.display(section, target, options).then(
       () => {
         if (requestId !== this._displayRequestId) {
           displaying.resolve(section)

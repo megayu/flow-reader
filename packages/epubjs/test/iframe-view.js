@@ -3,6 +3,7 @@
 import assert from 'assert'
 
 import IframeView from '../src/managers/views/iframe'
+import { EVENTS } from '../src/utils/constants'
 
 function createView({ pageCount = 1, direction = 'ltr', rect }) {
   const view = new IframeView(
@@ -137,6 +138,100 @@ function createLeadingBackgroundBlockView({
 
   return { heading, view }
 }
+
+describe('IframeView vertical writing pagination', function () {
+  it('reports vertical-rl writing independently from the horizontal page axis', async function () {
+    let formattedAxis
+    let emittedAxis
+    const layout = {
+      name: 'reflowable',
+      height: 800,
+      pageWidth: 500,
+      delta: 500,
+      format(_contents, _section, axis) {
+        formattedAxis = axis
+      },
+    }
+    const view = new IframeView(
+      {
+        index: 0,
+        render: async () =>
+          '<html><body>Synthetic vertical text.</body></html>',
+      },
+      {
+        axis: 'horizontal',
+        direction: 'rtl',
+        flow: 'paginated',
+        height: 800,
+        width: 1000,
+        layout,
+      },
+    )
+
+    view.create = () => {
+      view.iframe = document.createElement('iframe')
+      return view.iframe
+    }
+    view.size = () => undefined
+    view.load = async () => {
+      view.contents = {
+        writingMode: () => 'vertical-rl',
+      }
+    }
+    view.fitLeadingBlockBackgroundsBeforeMeasure = () => false
+    view.fitLeadingTitleImagesBeforeMeasure = () => false
+    view.fitMediaBeforeMeasure = () => undefined
+    view.addListeners = () => undefined
+    view.expand = () => undefined
+    view.on(EVENTS.VIEWS.AXIS, (axis) => {
+      emittedAxis = axis
+    })
+
+    await view.render(() => undefined)
+
+    assert.equal(view.writingMode, 'vertical-rl')
+    assert.equal(view.settings.axis, 'horizontal')
+    assert.equal(emittedAxis, 'horizontal')
+    assert.equal(formattedAxis, 'horizontal')
+    assert.equal(layout.delta, 500)
+  })
+
+  it('places a vertical-rl wavy definition line on the glyph left side', function () {
+    const view = createView({})
+
+    assert.equal(
+      typeof view.wavyUnderlineGeometry,
+      'function',
+      'vertical underline geometry must be exposed by the rendered view',
+    )
+
+    const geometry = view.wavyUnderlineGeometry(
+      { left: 300, top: 100, width: 24, height: 180 },
+      { amplitude: 2, gap: 2, period: 8, writingMode: 'vertical-rl' },
+    )
+
+    assert.equal(geometry.orientation, 'vertical')
+    assert.equal(geometry.side, 'left')
+    assert.equal(geometry.x < 300, true)
+    assert.equal(geometry.start, 100)
+    assert.equal(geometry.length, 180)
+  })
+
+  it('places a vertical-rl annotation underline on the glyph left side', function () {
+    const view = createView({})
+
+    const geometry = view.underlineGeometry(
+      { left: 300, top: 100, width: 24, height: 180 },
+      { gap: 1.5, writingMode: 'vertical-rl' },
+    )
+
+    assert.equal(geometry.orientation, 'vertical')
+    assert.equal(geometry.side, 'left')
+    assert.equal(geometry.x < 300, true)
+    assert.equal(geometry.start, 100)
+    assert.equal(geometry.length, 180)
+  })
+})
 
 describe('IframeView first page positioning', function () {
   it('centers clipped first-page content for single-page sections', function () {

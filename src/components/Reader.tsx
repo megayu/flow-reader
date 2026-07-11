@@ -89,6 +89,7 @@ import { BookTooltipContent } from './BookTooltipContent'
 import { ShortcutChord } from './ShortcutChord'
 import { Tab } from './Tab'
 import { TextSelectionMenu } from './TextSelectionMenu'
+import { layoutBesideRect } from './base/ContextView'
 import { DropZone, useDndContext } from './base/DropZone'
 import { Settings } from './pages/settings'
 
@@ -1108,6 +1109,7 @@ interface NotePopoverState {
   anchorRect: RectLike
   pageRect: RectLike
   content: HTMLElement
+  writingMode: string
 }
 
 interface NotePopoverTypography {
@@ -2885,10 +2887,16 @@ const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) => {
 
   if (!popover) return null
 
-  const maxWidth = Math.max(
-    NOTE_POPOVER_MIN_WIDTH,
-    popover.pageRect.width - NOTE_POPOVER_MARGIN * 2,
-  )
+  const vertical = popover.writingMode === 'vertical-rl'
+  const maxWidth = vertical
+    ? Math.max(
+        NOTE_POPOVER_MIN_WIDTH,
+        Math.min(320, popover.pageRect.width / 2 - NOTE_POPOVER_MARGIN * 2),
+      )
+    : Math.max(
+        NOTE_POPOVER_MIN_WIDTH,
+        popover.pageRect.width - NOTE_POPOVER_MARGIN * 2,
+      )
   const placement = getNoteOverlayPlacement(
     popover.anchorRect,
     popover.pageRect,
@@ -2896,6 +2904,7 @@ const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) => {
       width: size.width || maxWidth,
       height: size.height,
     },
+    popover.writingMode,
   )
 
   return (
@@ -2936,33 +2945,57 @@ const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) => {
         style={{
           margin: 0,
           maxWidth: '100%',
+          maxHeight: popover.pageRect.height - NOTE_POPOVER_MARGIN * 2,
+          overflow: 'auto',
           whiteSpace: 'normal',
           overflowWrap: 'break-word',
           textAlign: 'justify',
+          writingMode:
+            popover.writingMode === 'vertical-rl' ? 'vertical-rl' : undefined,
+          textOrientation:
+            popover.writingMode === 'vertical-rl' ? 'mixed' : undefined,
           color: 'inherit',
         }}
       />
       <div
         style={{
           position: 'absolute',
-          left: placement.arrowLeft,
-          top: placement.placeAbove ? undefined : -6,
-          bottom: placement.placeAbove ? -6 : undefined,
+          left:
+            placement.side === 'right'
+              ? -6
+              : placement.side === 'left'
+                ? undefined
+                : placement.arrowLeft,
+          right: placement.side === 'left' ? -6 : undefined,
+          top: placement.side
+            ? placement.arrowTop
+            : placement.placeAbove
+              ? undefined
+              : -6,
+          bottom: placement.side || !placement.placeAbove ? undefined : -6,
           width: 12,
           height: 12,
           background: 'var(--flow-bg-panel)',
-          borderRight: placement.placeAbove
-            ? '1px solid var(--flow-border)'
-            : undefined,
-          borderBottom: placement.placeAbove
-            ? '1px solid var(--flow-border)'
-            : undefined,
-          borderLeft: placement.placeAbove
-            ? undefined
-            : '1px solid var(--flow-border)',
-          borderTop: placement.placeAbove
-            ? undefined
-            : '1px solid var(--flow-border)',
+          borderRight:
+            placement.side === 'left' ||
+            (!placement.side && placement.placeAbove)
+              ? '1px solid var(--flow-border)'
+              : undefined,
+          borderBottom:
+            placement.side === 'left' ||
+            (!placement.side && placement.placeAbove)
+              ? '1px solid var(--flow-border)'
+              : undefined,
+          borderLeft:
+            placement.side === 'right' ||
+            (!placement.side && !placement.placeAbove)
+              ? '1px solid var(--flow-border)'
+              : undefined,
+          borderTop:
+            placement.side === 'right' ||
+            (!placement.side && !placement.placeAbove)
+              ? '1px solid var(--flow-border)'
+              : undefined,
           transform: 'rotate(45deg)',
         }}
       />
@@ -3146,10 +3179,13 @@ function createNotePopoverState(
 
   if (!visibleRect) return
 
+  const writingMode = win.getComputedStyle(anchor).writingMode
+
   return {
     anchorRect: anchorRectInContainer,
     pageRect: getVisiblePageRect(visibleRect, anchorRectInContainer, rendition),
-    content: cloneNoteElement(noteElement, anchor, typography),
+    content: cloneNoteElement(noteElement, anchor, typography, writingMode),
+    writingMode,
   }
 }
 
@@ -3224,9 +3260,29 @@ function getNoteOverlayPlacement(
   anchorRect: RectLike,
   pageRect: RectLike,
   size: { width: number; height: number },
+  writingMode = 'horizontal-tb',
 ) {
   const margin = NOTE_POPOVER_MARGIN
   const gap = 10
+  if (writingMode === 'vertical-rl') {
+    const placement = layoutBesideRect(pageRect, anchorRect, size, {
+      preferredSide: 'left',
+      gap,
+      margin,
+    })
+
+    return {
+      ...placement,
+      placeAbove: false,
+      arrowLeft: 0,
+      arrowTop: clamp(
+        anchorRect.top + anchorRect.height / 2 - placement.top - 6,
+        18,
+        Math.max(18, size.height - 18),
+      ),
+    }
+  }
+
   const pageRight = pageRect.left + pageRect.width
   const pageBottom = pageRect.top + pageRect.height
   const anchorCenter = anchorRect.left + anchorRect.width / 2
@@ -3246,8 +3302,10 @@ function getNoteOverlayPlacement(
   return {
     left,
     top,
+    side: undefined,
     placeAbove,
     arrowLeft: clamp(anchorCenter - left - 6, 18, size.width - 18),
+    arrowTop: 0,
   }
 }
 
@@ -3752,6 +3810,7 @@ function cloneNoteElement(
   el: HTMLElement,
   anchor: HTMLAnchorElement,
   typography?: NotePopoverTypography,
+  writingMode?: string,
 ) {
   const clone = cloneNoteContentElement(el)
 
@@ -3763,8 +3822,19 @@ function cloneNoteElement(
   })
   normalizeNotePopoverContent(clone)
   applyNotePopoverTypography(clone, typography)
+  applyNotePopoverWritingMode(clone, writingMode)
 
   return clone
+}
+
+function applyNotePopoverWritingMode(root: HTMLElement, writingMode?: string) {
+  if (writingMode !== 'vertical-rl') return
+
+  const nodes = [root, ...Array.from(root.querySelectorAll<HTMLElement>('*'))]
+  nodes.forEach((node) => {
+    node.style.setProperty('writing-mode', 'vertical-rl', 'important')
+    node.style.setProperty('text-orientation', 'mixed', 'important')
+  })
 }
 
 function applyNotePopoverTypography(
@@ -4098,6 +4168,19 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
       : ''
   const startDisplayed = location?.start.displayed
   const endDisplayed = location?.end.displayed
+  const rightFirst = paginationSnapshot?.spreadSlotOrder === 'right-first'
+  const rightDisplayed =
+    startDisplayed?.slot === 'right'
+      ? startDisplayed
+      : endDisplayed?.slot === 'right'
+        ? endDisplayed
+        : undefined
+  const leftDisplayed =
+    startDisplayed?.slot === 'left'
+      ? startDisplayed
+      : endDisplayed?.slot === 'left'
+        ? endDisplayed
+        : undefined
   const singleVisiblePageOnRight =
     spread && !!startDisplayed && startDisplayed.slot === 'right'
   const hasTwoVisiblePages =
@@ -4156,21 +4239,32 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
         </Bar>
       ) : spread ? (
         <div className="text-muted-foreground grid h-6 grid-cols-2 items-center px-2 text-center text-base">
-          <div>
-            {!singleVisiblePageOnRight &&
-              startDisplayed &&
-              formatFooterPage(
-                startDisplayed,
-                hasTwoVisiblePages ? '' : percentage,
-              )}
-          </div>
-          <div>
-            {singleVisiblePageOnRight
-              ? formatFooterPage(startDisplayed, percentage)
-              : hasTwoVisiblePages &&
-                endDisplayed &&
-                formatFooterPage(endDisplayed, percentage)}
-          </div>
+          {rightFirst ? (
+            <>
+              <div>
+                {leftDisplayed && formatFooterPage(leftDisplayed, percentage)}
+              </div>
+              <div>{rightDisplayed && formatFooterPage(rightDisplayed)}</div>
+            </>
+          ) : (
+            <>
+              <div>
+                {!singleVisiblePageOnRight &&
+                  startDisplayed &&
+                  formatFooterPage(
+                    startDisplayed,
+                    hasTwoVisiblePages ? '' : percentage,
+                  )}
+              </div>
+              <div>
+                {singleVisiblePageOnRight
+                  ? formatFooterPage(startDisplayed, percentage)
+                  : hasTwoVisiblePages &&
+                    endDisplayed &&
+                    formatFooterPage(endDisplayed, percentage)}
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="text-muted-foreground flex h-6 items-center justify-center px-2 text-base">

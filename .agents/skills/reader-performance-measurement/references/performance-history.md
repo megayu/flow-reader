@@ -11,6 +11,21 @@ Read this before proposing or testing a Flow Reader performance change. Search f
 
 ## Retained Approaches
 
+### Keep vertical target mapping and relayout ownership off steady horizontal page turns
+
+- Change: map vertical-rl targets from the rendered view's right edge, explicitly align chapter targets to the reading-order first slot, trim views outside the resolved spread, serialize view-mode relayout requests, and derive zoom row geometry from writing mode. Horizontal target math and ordinary next/previous paths retain their existing behavior.
+- Evidence correction: the earlier retained note for this change relied on inconsistent full/isolated runs and dismissed 20%+ operation and first-frame regressions because settled p95 was below 10%. That was not a valid no-regression conclusion and is superseded by the measurements below.
+- Measured effect: the final `tauri-release` native-book comparison used a verified isolated library copy under `perf-results`, the existing release baseline, 12 single runs, and 4 burst runs. All page-turn operation and first-frame p50/p95 values were unchanged or faster; rapid page-turn burst p95 improved 25-43%; rapid tab-click burst p95 improved 29-43%; no page-turn long tasks were introduced. The full run's only positive delta above 10% was `tab-switch/sidebar-closed` operation p50 at +11.6%, while its p95 and settled metrics improved. An isolated repeat made that same operation p50 -7.5%, operation p95 -45.9%, first-frame p50 -6.3%, settled p50 -7.1%, and long tasks 1 -> 0, so the full-run p50 increase was not stable. Artifacts: `perf-results/vertical-rl-followup-final-horizontal-compare.{txt,json}` and `perf-results/vertical-rl-followup-tab-switch-isolated-compare.{txt,json}`.
+- Decision: keep. The corrected release evidence shows no stable horizontal performance regression and no new long tasks.
+- Constraint: keep target glyph probing vertical-only, use explicit spread-start alignment only for chapter/TOC navigation, and keep ordinary horizontal next/previous operations on their existing phase-preserving path. Re-run the same complete release scenarios if target resolution, view trimming, or shared relayout ownership changes again.
+
+### Reuse the iframe view writing mode during style injection
+
+- Change: when epubjs calls the reader's `beforeLayout` hook, use the writing mode already resolved by `IframeView` instead of probing computed styles and walking the dominant content chain a second time. Keep the contents probe only for style refreshes that have no view context.
+- Measured effect: `tauri-release` native-book comparison used the same 12 page-turn, rapid-page-turn, tab-switch, tab-click, and rapid-tab-click scenarios as the pre-change baseline, with 12 single runs and 4 burst runs. Page-turn first-frame p50 improved about 11-26%, rapid page-turn burst p95 improved about 26-45%, and rapid tab-click burst p95 improved about 29-48%. No page-turn long tasks were introduced. A full-run `tab-click/sidebar-toc` p95 outlier was not stable: an isolated 12-run repeat improved operation p95 from 91.8ms to 79.6ms, first-frame p95 from 99.6ms to 89.9ms, settled p95 from 337.9ms to 280.4ms, and long-task count from 2 to 0.
+- Decision: keep. It removes duplicate synchronous layout inspection and preserves the vertical style branch without adding horizontal page-turn work.
+- Constraint: only trust `view.writingMode` after epubjs has resolved and set it. Code paths that refresh existing contents without a view must retain the contents-based fallback.
+
 ### Virtual list overscan 4
 
 - Change: reduce virtual list overscan from 8 to 4.

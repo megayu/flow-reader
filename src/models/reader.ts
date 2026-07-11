@@ -633,6 +633,9 @@ export interface PaginationSnapshot {
   location: Location
   percentage?: number
   spreadDivisor: number
+  writingMode?: string
+  pageProgressionDirection?: 'ltr' | 'rtl'
+  spreadSlotOrder?: 'left-first' | 'right-first'
   layoutVersion: number
   paginationVersion: number
   headerPath: HeaderPathItem[]
@@ -1032,9 +1035,14 @@ export class BookTab extends BaseTab {
   private async displayResolvedTarget(
     target?: string,
     {
+      alignTargetAsSpreadStart = false,
       preferredSection,
       returnable = true,
-    }: { preferredSection?: ISection; returnable?: boolean } = {},
+    }: {
+      alignTargetAsSpreadStart?: boolean
+      preferredSection?: ISection
+      returnable?: boolean
+    } = {},
   ) {
     const resolvedTarget = this.resolveDisplayTarget(
       target,
@@ -1052,7 +1060,9 @@ export class BookTab extends BaseTab {
 
     try {
       const previousRequestId = this.currentRenditionLocationRequestId()
-      const display = this.rendition.display(resolvedTarget)
+      const display = this.rendition.display(resolvedTarget, {
+        alignTargetAsSpreadStart,
+      })
       const requestId = this.trackRenditionLocationRequest(previousRequestId, {
         anchorTarget: resolvedTarget,
         updateAnchor: true,
@@ -1083,14 +1093,21 @@ export class BookTab extends BaseTab {
     })
   }
   async displaySectionStart(section: ISection) {
-    return this.displayTarget(section)
+    return this.displayTarget(section, undefined, {
+      alignTargetAsSpreadStart: true,
+    })
   }
-  async displayTarget(section: ISection, target?: string) {
+  async displayTarget(
+    section: ISection,
+    target?: string,
+    { alignTargetAsSpreadStart = false } = {},
+  ) {
     await this.displayResolvedTarget(
       target?.startsWith('#')
         ? `${section.href}${target}`
         : (target ?? section.href),
       {
+        alignTargetAsSpreadStart,
         preferredSection: section,
         returnable: false,
       },
@@ -1101,6 +1118,7 @@ export class BookTab extends BaseTab {
     selector: string,
     section: ISection,
     returnable = true,
+    alignTargetAsSpreadStart = false,
   ) {
     try {
       await this.ensureSectionInfo(section)
@@ -1110,7 +1128,7 @@ export class BookTab extends BaseTab {
           ? selector
           : section.cfiFromElement(el)
         if (returnable) this.showPrevLocation()
-        await this.displayTarget(section, cfi)
+        await this.displayTarget(section, cfi, { alignTargetAsSpreadStart })
       } else {
         await this.displaySectionStart(section)
       }
@@ -1248,7 +1266,10 @@ export class BookTab extends BaseTab {
     const spread = manager?.currentReflowableSpread
 
     if (manager?.canUseLogicalReflowableSpread?.() && spread) {
-      const page = spread.left ?? spread.right
+      const page =
+        manager.reflowableSpreadEarlierPage?.(spread) ??
+        spread.left ??
+        spread.right
       if (page?.section && page.pageIndex > 0) {
         await this.displaySectionStart(page.section)
         return true
@@ -1273,13 +1294,21 @@ export class BookTab extends BaseTab {
 
   private async navigateNavItem(direction: -1 | 1) {
     const point = direction > 0 ? this.location?.end : this.location?.start
-    const anchor = await this.navAnchorForLocationPoint(point)
-    if (!anchor) return false
-
-    const entries = this.getSectionNavIndex()?.entries
+    const navIndex = this.getSectionNavIndex()
+    const entries = navIndex?.entries
     if (!entries?.length) return false
 
-    const index = entries.findIndex((entry) => entry.item === anchor.item)
+    const anchor = await this.navAnchorForLocationPoint(point)
+    const pointSection = this.sectionFromLocationPoint(point)
+    const singleSectionEntry = pointSection
+      ? navIndex?.entriesBySectionIndex.get(pointSection.index)?.length === 1
+        ? navIndex.entriesBySectionIndex.get(pointSection.index)?.[0]
+        : undefined
+      : undefined
+    const anchorItem = anchor?.item ?? singleSectionEntry?.item
+    if (!anchorItem) return false
+
+    const index = entries.findIndex((entry) => entry.item === anchorItem)
     const target = index < 0 ? undefined : entries[index + direction]
     if (!target) return false
 
@@ -1291,6 +1320,7 @@ export class BookTab extends BaseTab {
     await this.displayTarget(
       section,
       target.hash ? `#${target.hash}` : undefined,
+      { alignTargetAsSpreadStart: true },
     )
     return true
   }
@@ -1665,7 +1695,9 @@ export class BookTab extends BaseTab {
     percentage?: number,
     activeSection = this.section,
   ) {
-    const divisor = this.rendition?.manager?.layout?.divisor
+    const manager = this.rendition?.manager
+    const divisor = manager?.layout?.divisor
+    const paginationModel = manager?.paginationModel?.()
 
     this.paginationVersion++
     this.paginationSnapshot = {
@@ -1675,6 +1707,9 @@ export class BookTab extends BaseTab {
         typeof divisor === 'number' && Number.isFinite(divisor) && divisor > 0
           ? divisor
           : 1,
+      writingMode: paginationModel?.writingMode,
+      pageProgressionDirection: paginationModel?.pageProgressionDirection,
+      spreadSlotOrder: paginationModel?.spreadSlotOrder,
       layoutVersion: this.layoutVersion,
       paginationVersion: this.paginationVersion,
       headerPath: this.snapshotHeaderPath(activeSection),
@@ -3050,7 +3085,25 @@ export class BookTab extends BaseTab {
     )
   }
 
-  async relayoutCurrentView(target = this.committedDisplayTarget()) {
+  relayoutCurrentView(target = this.committedDisplayTarget()) {
+    const operationId = ++this.layoutOperationId
+    const operation = this.layoutOperationPromise
+      .catch(() => undefined)
+      .then(() => this.runRelayoutCurrentView(operationId, target))
+
+    this.layoutOperationPromise = operation.then(
+      () => undefined,
+      () => undefined,
+    )
+    return operation
+  }
+
+  private async runRelayoutCurrentView(
+    operationId: number,
+    target: string | undefined,
+  ) {
+    if (operationId !== this.layoutOperationId) return
+
     const generation = this.renderGeneration
     const resolvedTarget = this.resolveDisplayTarget(target)
     if (!resolvedTarget) return

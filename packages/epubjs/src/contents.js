@@ -704,6 +704,8 @@ class Contents {
   locationOf(target, ignoreClass) {
     var position
     var targetPos = { left: 0, top: 0 }
+    var logicalStartNode
+    var logicalStartOffset = 0
 
     if (!this.document) return targetPos
 
@@ -739,9 +741,13 @@ class Contents {
 
         if (range.startContainer.nodeType === Node.ELEMENT_NODE) {
           position = range.startContainer.getBoundingClientRect()
+          logicalStartNode = range.startContainer
+          logicalStartOffset = range.startOffset
           targetPos.left = position.left
           targetPos.top = position.top
         } else {
+          logicalStartNode = range.startContainer
+          logicalStartOffset = range.startOffset
           // Webkit does not handle collapsed range bounds correctly
           // https://bugs.webkit.org/show_bug.cgi?id=138949
 
@@ -776,6 +782,7 @@ class Contents {
       let id = target.substring(target.indexOf('#') + 1)
       let el = this.document.getElementById(id)
       if (el) {
+        logicalStartNode = el
         if (isWebkit) {
           // Webkit reports incorrect bounding rects in Columns
           let newRange = new Range()
@@ -787,12 +794,62 @@ class Contents {
       }
     }
 
+    if (this.writingMode().indexOf('vertical-rl') === 0 && logicalStartNode) {
+      position =
+        this.verticalLogicalStartPosition(
+          logicalStartNode,
+          logicalStartOffset,
+        ) || position
+    }
+
     if (position) {
       targetPos.left = position.left
       targetPos.top = position.top
     }
 
     return targetPos
+  }
+
+  verticalLogicalStartPosition(node, offset) {
+    if (!node || !this.document) return
+
+    let textNode
+    let textOffset = 0
+    if (node.nodeType === Node.TEXT_NODE) {
+      textNode = node
+      textOffset = Math.min(Math.max(offset || 0, 0), node.length || 0)
+    } else {
+      let root = node
+      if (node.nodeType === Node.ELEMENT_NODE && offset > 0) {
+        root = node.childNodes[offset] || node
+      }
+      let walker = this.document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      textNode = walker.nextNode()
+    }
+
+    while (textNode) {
+      let text = textNode.textContent || ''
+      let start = textOffset
+      while (start < text.length && /\s/.test(text[start])) start++
+      if (start < text.length) {
+        let range = this.document.createRange()
+        range.setStart(textNode, start)
+        range.setEnd(textNode, Math.min(start + 1, text.length))
+        let rect = Array.from(range.getClientRects()).find(
+          (candidate) => candidate.width > 0 && candidate.height > 0,
+        )
+        if (rect) return rect
+      }
+
+      let walker = this.document.createTreeWalker(node, NodeFilter.SHOW_TEXT)
+      walker.currentNode = textNode
+      textNode = walker.nextNode()
+      textOffset = 0
+    }
+
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      return node.getBoundingClientRect()
+    }
   }
 
   /**
@@ -2062,13 +2119,16 @@ class Contents {
     let COLUMN_GAP = prefixed('column-gap')
     let COLUMN_WIDTH = prefixed('column-width')
     let COLUMN_FILL = prefixed('column-fill')
-
     let writingMode = this.writingMode()
-    let axis = writingMode.indexOf('vertical') === 0 ? 'vertical' : 'horizontal'
+    let verticalRtl = writingMode.indexOf('vertical-rl') === 0
+
+    // Paginated reflowable content always advances across physical columns.
+    // Writing mode controls glyph flow inside each column, not the page axis.
+    let axis = 'horizontal'
 
     this.layoutStyle('paginated')
 
-    if (dir === 'rtl' && axis === 'horizontal') {
+    if (dir === 'rtl' && !verticalRtl) {
       this.direction(dir)
     }
 
@@ -2086,32 +2146,41 @@ class Contents {
     this.css('overflow', 'visible')
     this.css('margin', '0', true)
 
-    if (axis === 'vertical') {
-      this.css('padding-top', gap / 2 + 'px')
-      this.css('padding-bottom', gap / 2 + 'px')
-      this.css('padding-left', '10px')
-      this.css('padding-right', '10px')
-      this.css(COLUMN_AXIS, 'vertical')
-    } else {
-      this.css('padding-top', '10px')
-      this.css('padding-bottom', '10px')
-      this.css('padding-left', gap / 2 + 'px')
-      this.css('padding-right', gap / 2 + 'px')
-      this.css(COLUMN_AXIS, 'horizontal')
-    }
-
+    this.css('padding-top', '10px')
+    this.css('padding-bottom', '10px')
+    this.css('padding-left', gap / 2 + 'px')
+    this.css('padding-right', gap / 2 + 'px')
     this.css('box-sizing', 'border-box')
     this.css('max-width', 'inherit')
 
     this.css(COLUMN_FILL, 'auto')
 
-    this.css(COLUMN_GAP, gap + 'px')
-    this.css(COLUMN_WIDTH, columnWidth + 'px')
+    if (verticalRtl) {
+      let rowHeight =
+        width > columnWidth + gap ? columnWidth : Math.max(columnWidth - gap, 1)
+      // CSS Multicol Level 2 maps column-width to the vertical inline size
+      // and column-height to the horizontal block size. Wrapping rows in the
+      // block direction creates real right-to-left physical pages and keeps
+      // the row gap clear of text.
+      this.css(COLUMN_AXIS, null)
+      this.css(COLUMN_WIDTH, Math.max(height - 20, 1) + 'px')
+      this.css('column-height', rowHeight + 'px')
+      this.css('column-count', '1')
+      this.css('column-wrap', 'wrap')
+      this.css(COLUMN_GAP, '0px')
+      this.css('row-gap', gap + 'px')
+    } else {
+      this.css('column-height', null)
+      this.css('column-count', null)
+      this.css('column-wrap', null)
+      this.css('row-gap', null)
+      this.css(COLUMN_AXIS, axis)
+      this.css(COLUMN_GAP, gap + 'px')
+      this.css(COLUMN_WIDTH, columnWidth + 'px')
+    }
 
     var pageBackgroundWidth =
-      axis === 'horizontal' && width > columnWidth + gap
-        ? columnWidth + gap
-        : columnWidth
+      width > columnWidth + gap ? columnWidth + gap : columnWidth
     this.normalizePageBackgrounds(pageBackgroundWidth, height, dir)
 
     // Fix glyph clipping in WebKit
@@ -2224,9 +2293,53 @@ class Contents {
       this.documentElement.style[WRITING_MODE] = mode
     }
 
-    return (
-      this.window.getComputedStyle(this.documentElement)[WRITING_MODE] || ''
-    )
+    let readWritingMode = (element) =>
+      element ? this.window.getComputedStyle(element)[WRITING_MODE] || '' : ''
+    let documentMode = readWritingMode(this.documentElement)
+    if (mode || documentMode.indexOf('vertical') === 0) {
+      return documentMode
+    }
+
+    let body = this.document && this.document.body
+    let bodyMode = readWritingMode(body)
+    if (bodyMode.indexOf('vertical') === 0) {
+      return bodyMode
+    }
+
+    // Some EPUBs put writing-mode on one dominant wrapper instead of html or
+    // body. Follow only the main text-bearing chain so a local vertical label
+    // cannot reclassify an otherwise horizontal chapter.
+    let current = body
+    for (let depth = 0; current && depth < 5; depth++) {
+      let children = Array.prototype.slice.call(current.children || 0, 0, 16)
+      if (!children.length) break
+
+      let parentLength = String(current.textContent || '').replace(
+        /\s+/g,
+        '',
+      ).length
+      let candidates = children.map((element) => ({
+        element,
+        length: String(element.textContent || '').replace(/\s+/g, '').length,
+        mode: readWritingMode(element),
+      }))
+      let dominant = candidates.reduce(
+        (largest, candidate) =>
+          !largest || candidate.length > largest.length ? candidate : largest,
+        undefined,
+      )
+      let threshold = Math.max(parentLength * 0.5, 1)
+      let vertical = candidates.find(
+        (candidate) =>
+          candidate.length >= threshold &&
+          candidate.mode.indexOf('vertical') === 0,
+      )
+      if (vertical) return vertical.mode
+      if (!dominant || dominant.length < threshold) break
+      current = dominant.element
+    }
+
+    return bodyMode || documentMode
   }
 
   /**

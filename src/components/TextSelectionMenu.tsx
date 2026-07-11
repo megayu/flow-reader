@@ -11,7 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import FocusLock from 'react-focus-lock'
 import { useSnapshot } from 'valtio'
 
-import { typeMap, colorMap } from '../annotation'
+import { typeMap, colorMap, orderRangeRectsForWritingMode } from '../annotation'
 import { BookTextReplaceTarget, replaceBookText } from '../db'
 import { useSetAction } from '../hooks/useAction'
 import { isForwardSelection, useTextSelection } from '../hooks/useTextSelection'
@@ -27,6 +27,7 @@ import {
   layout,
   LayoutAnchorMode,
   LayoutAnchorPosition,
+  layoutBesideRect,
 } from './base/ContextView'
 import { Overlay } from './base/Overlay'
 
@@ -207,7 +208,18 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
 
   const forward = menuSelection ? isForwardSelection(menuSelection) : true
 
-  const rects = [...range.getClientRects()].filter((r) => Math.round(r.width))
+  const rangeElement =
+    range.startContainer.nodeType === Node.ELEMENT_NODE
+      ? (range.startContainer as Element)
+      : range.startContainer.parentElement
+  const writingMode = rangeElement
+    ? rangeElement.ownerDocument.defaultView?.getComputedStyle(rangeElement)
+        .writingMode
+    : undefined
+  const rects = orderRangeRectsForWritingMode(
+    [...range.getClientRects()].filter((r) => Math.round(r.width)),
+    writingMode ?? 'horizontal-tb',
+  )
   const anchorRect = rects && (forward ? last(rects) : rects[0])
   if (!anchorRect) return null
 
@@ -221,12 +233,14 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
       tab={tab}
       range={range as Range}
       anchorRect={anchorRect}
+      rangeRects={rects}
       containerRect={el.parentElement!.getBoundingClientRect()}
       viewRect={el.getBoundingClientRect()}
       releasePoint={menuSelection ? releasePoint : undefined}
       text={text}
       cfi={menuSelection ? undefined : annotationCfi}
       forward={forward}
+      writingMode={writingMode}
       hide={() => {
         if (menuSelection) {
           try {
@@ -256,22 +270,26 @@ interface TextSelectionMenuRendererProps {
   tab: BookTab
   range: Range
   anchorRect: DOMRect
+  rangeRects: readonly DOMRect[]
   containerRect: DOMRect
   viewRect: DOMRect
   releasePoint?: { x: number; y: number }
   text: string
   cfi?: string
   forward: boolean
+  writingMode?: string
   hide: () => void
 }
 const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   tab,
   range,
   anchorRect,
+  rangeRects,
   containerRect,
   viewRect,
   releasePoint,
   forward,
+  writingMode,
   text,
   cfi: annotationCfi,
   hide,
@@ -348,6 +366,47 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
       }
     : anchorRect
   const layoutLineHeight = releasePoint ? layoutAnchor.height : lineHeight
+  const vertical = writingMode === 'vertical-rl'
+  const outerRangeRects = rangeRects.map((rect) => ({
+    left: rect.left + viewRect.left - containerRect.left,
+    top: rect.top + viewRect.top - containerRect.top,
+    width: rect.width,
+    height: rect.height,
+  }))
+  const rangeLeft = Math.min(...outerRangeRects.map((rect) => rect.left))
+  const rangeRight = Math.max(
+    ...outerRangeRects.map((rect) => rect.left + rect.width),
+  )
+  const rangeTop = Math.min(...outerRangeRects.map((rect) => rect.top))
+  const rangeBottom = Math.max(
+    ...outerRangeRects.map((rect) => rect.top + rect.height),
+  )
+  const verticalAnchor = {
+    left: rangeLeft,
+    top: releasePoint
+      ? releasePoint.y + viewRect.top - containerRect.top
+      : rangeTop,
+    width: rangeRight - rangeLeft,
+    height: releasePoint ? 1 : rangeBottom - rangeTop,
+  }
+  const verticalPlacement = vertical
+    ? layoutBesideRect(
+        {
+          left: 0,
+          top: 0,
+          width: containerRect.width,
+          height: containerRect.height,
+        },
+        verticalAnchor,
+        { width, height },
+        {
+          preferredSide: 'right',
+          gap: 12,
+          margin: 10,
+          avoidRects: outerRangeRects,
+        },
+      )
+    : undefined
 
   return (
     <FocusLock>
@@ -370,18 +429,23 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           'border-border bg-popover text-popover-foreground absolute z-50 rounded-lg border p-2 shadow-lg shadow-black/10 focus:outline-none',
         )}
         style={{
-          left: layout(containerRect.width, width, {
-            offset: layoutAnchor.left + viewRect.left - containerRect.left,
-            size: layoutAnchor.width,
-            mode: LayoutAnchorMode.ALIGN,
-            position,
-          }),
-          top: layout(containerRect.height, height, {
-            offset:
-              layoutAnchor.top - (layoutLineHeight - layoutAnchor.height) / 2,
-            size: layoutLineHeight,
-            position,
-          }),
+          left:
+            verticalPlacement?.left ??
+            layout(containerRect.width, width, {
+              offset: layoutAnchor.left + viewRect.left - containerRect.left,
+              size: layoutAnchor.width,
+              mode: LayoutAnchorMode.ALIGN,
+              position,
+            }),
+          top:
+            verticalPlacement?.top ??
+            layout(containerRect.height, height, {
+              offset:
+                layoutAnchor.top - (layoutLineHeight - layoutAnchor.height) / 2,
+              size: layoutLineHeight,
+              position,
+            }),
+          visibility: width && height ? 'visible' : 'hidden',
         }}
         tabIndex={-1}
         onKeyDown={(e) => {

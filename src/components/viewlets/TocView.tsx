@@ -356,7 +356,7 @@ const TocRow: React.FC<TocRowProps> = memo(
       }
 
       if (id) {
-        void tab.displayFromSelector(`#${id}`, section, false)
+        void tab.displayFromSelector(`#${id}`, section, false, true)
       } else {
         void tab.displaySectionStart(section)
       }

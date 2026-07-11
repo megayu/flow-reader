@@ -26,6 +26,134 @@ function createContents(markup = '') {
 }
 
 describe('Contents page backgrounds', function () {
+  it('detects vertical writing declared on the body or dominant content wrapper', function () {
+    const bodyVertical = createContents('<p>Synthetic body text.</p>')
+    const wrapperVertical = createContents(
+      '<main id="primary"><p>Synthetic wrapper text.</p></main><aside>Short note.</aside>',
+    )
+    bodyVertical.doc.body.style.writingMode = 'vertical-rl'
+    wrapperVertical.doc.querySelector('#primary').style.writingMode =
+      'vertical-rl'
+
+    try {
+      assert.equal(bodyVertical.contents.writingMode(), 'vertical-rl')
+      assert.equal(wrapperVertical.contents.writingMode(), 'vertical-rl')
+    } finally {
+      bodyVertical.cleanup()
+      wrapperVertical.cleanup()
+    }
+  })
+
+  it('keeps the horizontal physical page frame when content uses vertical-rl', function () {
+    const horizontal = createContents('<p>Synthetic horizontal text.</p>')
+    const vertical = createContents(
+      `<p>${'Synthetic vertical pagination text. '.repeat(300)}</p>`,
+    )
+    vertical.doc.documentElement.style.writingMode = 'vertical-rl'
+    vertical.doc.body.style.writingMode = 'vertical-rl'
+
+    try {
+      horizontal.contents.columns(1000, 600, 460, 40, 'ltr')
+      vertical.contents.columns(1000, 600, 460, 40, 'rtl')
+
+      const horizontalStyle = horizontal.doc.defaultView.getComputedStyle(
+        horizontal.doc.body,
+      )
+      const verticalStyle = vertical.doc.defaultView.getComputedStyle(
+        vertical.doc.body,
+      )
+      const frameProperties = [
+        'width',
+        'height',
+        'boxSizing',
+        'paddingTop',
+        'paddingRight',
+        'paddingBottom',
+        'paddingLeft',
+      ]
+
+      frameProperties.forEach((property) => {
+        assert.equal(
+          verticalStyle[property],
+          horizontalStyle[property],
+          `${property} must remain a physical page-frame property`,
+        )
+      })
+      assert.equal(verticalStyle.writingMode, 'vertical-rl')
+      assert.equal(verticalStyle.direction, 'ltr')
+      assert.equal(verticalStyle.columnWidth, '580px')
+      assert.equal(verticalStyle.getPropertyValue('column-height'), '460px')
+      assert.equal(verticalStyle.columnCount, '1')
+      assert.equal(verticalStyle.getPropertyValue('column-wrap'), 'wrap')
+      assert.equal(verticalStyle.columnGap, '0px')
+      assert.equal(verticalStyle.rowGap, '40px')
+
+      const text = vertical.doc.querySelector('p').firstChild
+      const first = vertical.doc.createRange()
+      const second = vertical.doc.createRange()
+      first.setStart(text, 0)
+      first.setEnd(text, 1)
+      second.setStart(text, 1)
+      second.setEnd(text, 2)
+      assert.ok(
+        second.getBoundingClientRect().top > first.getBoundingClientRect().top,
+        'inline text must advance from top to bottom',
+      )
+
+      const allText = vertical.doc.createRange()
+      allText.selectNodeContents(text)
+      const rects = Array.prototype.slice.call(allText.getClientRects())
+      const bodyRect = vertical.doc.body.getBoundingClientRect()
+      assert.ok(
+        rects.some(
+          (rect) =>
+            rect.left >= bodyRect.left + 520 &&
+            rect.right <= bodyRect.left + 980,
+        ),
+        'the earlier page must occupy the physical right slot',
+      )
+      assert.ok(
+        rects.some(
+          (rect) =>
+            rect.left >= bodyRect.left + 20 &&
+            rect.right <= bodyRect.left + 480,
+        ),
+        'the later page must occupy the physical left slot',
+      )
+      assert.equal(
+        rects.some(
+          (rect) =>
+            rect.left < bodyRect.left + 520 && rect.right > bodyRect.left + 480,
+        ),
+        false,
+        'no vertical text may cross the physical middle gap',
+      )
+      assert.ok(vertical.doc.body.scrollWidth > 1000)
+      assert.equal(vertical.doc.body.scrollHeight, 600)
+    } finally {
+      horizontal.cleanup()
+      vertical.cleanup()
+    }
+  })
+
+  it('keeps a single-page vertical row stride equal to the physical page width', function () {
+    const vertical = createContents(
+      `<p>${'Synthetic vertical pagination text. '.repeat(300)}</p>`,
+    )
+    vertical.doc.documentElement.style.writingMode = 'vertical-rl'
+    vertical.doc.body.style.writingMode = 'vertical-rl'
+
+    try {
+      vertical.contents.columns(1000, 600, 1000, 40, 'rtl')
+      const style = vertical.doc.defaultView.getComputedStyle(vertical.doc.body)
+
+      assert.equal(style.getPropertyValue('column-height'), '960px')
+      assert.equal(style.rowGap, '40px')
+    } finally {
+      vertical.cleanup()
+    }
+  })
+
   it('keeps paginated column fragments paintable when author CSS sets overflow auto', function () {
     const { contents, doc, cleanup } = createContents('<p>Readable body</p>')
     doc.documentElement.style.overflow = 'auto'

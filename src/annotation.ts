@@ -5,10 +5,6 @@ export const typeMap = {
     style: 'backgroundColor',
     class: 'rounded',
   },
-  // underline: {
-  //   style: 'border-bottom-color',
-  //   class: 'border-b-2',
-  // },
 }
 
 export type AnnotationColor = keyof typeof colorMap
@@ -35,6 +31,15 @@ export function compareDefinition(a: string, b: string) {
   const keyA = definitionComparisonKey(a)
   const keyB = definitionComparisonKey(b)
   return !!keyA && keyA === keyB
+}
+
+export function orderRangeRectsForWritingMode<T extends DOMRectReadOnly>(
+  rects: readonly T[],
+  writingMode: string,
+) {
+  if (writingMode !== 'vertical-rl') return [...rects]
+
+  return [...rects].sort((a, b) => b.left - a.left || a.top - b.top)
 }
 
 export interface AnnotationSpine {

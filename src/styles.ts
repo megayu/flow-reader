@@ -89,11 +89,37 @@ export function createTypographyStyleSignature(settings: Settings) {
   return [settings.textAlign].map((value) => value ?? '').join('|')
 }
 
+export function createVerticalWritingCss(
+  writingMode: string | undefined,
+  textIndent?: number,
+) {
+  if (writingMode !== 'vertical-rl') return ''
+
+  const indentVariable =
+    textIndent === undefined
+      ? ''
+      : `:root { --flow-text-indent: ${textIndent}em; }`
+
+  return `${indentVariable}
+  html, body {
+    writing-mode: vertical-rl !important;
+    text-orientation: mixed !important;
+  }
+  html:root body * {
+    text-orientation: mixed !important;
+  }
+  ${bodyTextTypographySelector} {
+    text-indent: var(--flow-text-indent) !important;
+  }`
+}
+
 const zoomBodyProperties = [
   'width',
   'height',
   'columnWidth',
+  'columnHeight',
   'columnGap',
+  'rowGap',
   'paddingTop',
   'paddingBottom',
   'paddingLeft',
@@ -119,6 +145,12 @@ type ZoomLayoutStyleSource = {
   columnWidth?: unknown
   gap?: unknown
   name?: unknown
+}
+
+type LayoutViewStyleSource = {
+  axis?: string
+  layout?: ZoomLayoutStyleSource
+  writingMode?: string
 }
 
 const zoomConstrainedMediaSelector = [
@@ -151,9 +183,10 @@ function readCssPixelValue(value: unknown) {
 export function createZoomBodyStyles(
   source: ZoomBodyStyleSource,
   zoom: number,
+  writingMode?: string,
 ) {
-  const styles: CSSProperties = {
-    transformOrigin: 'top left',
+  const styles: CSSProperties & { columnHeight?: string } = {
+    transformOrigin: writingMode === 'vertical-rl' ? 'top right' : 'top left',
     transform: `scale(${zoom})`,
   }
 
@@ -176,22 +209,32 @@ function formatCssPixelValue(value: number) {
 export function createZoomMediaMaxInlineSize(
   source: ZoomBodyStyleSource,
   zoom: number,
+  writingMode?: string,
 ) {
   if (!Number.isFinite(zoom) || zoom <= 0) return
 
   const columnWidth = readCssPixelValue(source.columnWidth)
   if (columnWidth === undefined) return
 
-  const paddingLeft = readCssPixelValue(source.paddingLeft) ?? 0
-  const paddingRight = readCssPixelValue(source.paddingRight) ?? 0
-  const contentWidth = columnWidth - paddingLeft - paddingRight
+  const vertical = writingMode === 'vertical-rl'
+  const startPadding = readCssPixelValue(
+    vertical ? source.paddingTop : source.paddingLeft,
+  )
+  const endPadding = readCssPixelValue(
+    vertical ? source.paddingBottom : source.paddingRight,
+  )
+  const contentWidth = columnWidth - (startPadding ?? 0) - (endPadding ?? 0)
   if (!Number.isFinite(contentWidth) || contentWidth <= 0) return
 
   return contentWidth / zoom
 }
 
-export function createZoomMediaCss(source: ZoomBodyStyleSource, zoom: number) {
-  const maxInlineSize = createZoomMediaMaxInlineSize(source, zoom)
+export function createZoomMediaCss(
+  source: ZoomBodyStyleSource,
+  zoom: number,
+  writingMode?: string,
+) {
+  const maxInlineSize = createZoomMediaMaxInlineSize(source, zoom, writingMode)
   if (maxInlineSize === undefined) return ''
 
   const maxInlineSizeCss = formatCssPixelValue(maxInlineSize)
@@ -309,6 +352,7 @@ function cssPixelValue(value: unknown) {
 export function createZoomLayoutBodyStyleSource(
   layout: ZoomLayoutStyleSource | undefined,
   axis?: string,
+  writingMode?: string,
 ): ZoomBodyStyleSource {
   if (!layout || layout.name !== 'reflowable') return {}
 
@@ -317,6 +361,45 @@ export function createZoomLayoutBodyStyleSource(
       ? layout.gap
       : undefined
   const horizontal = axis !== 'vertical'
+  const verticalRtl = writingMode === 'vertical-rl'
+
+  if (verticalRtl) {
+    const width =
+      typeof layout.width === 'number' && Number.isFinite(layout.width)
+        ? layout.width
+        : undefined
+    const height =
+      typeof layout.height === 'number' && Number.isFinite(layout.height)
+        ? layout.height
+        : undefined
+    const columnWidth =
+      typeof layout.columnWidth === 'number' &&
+      Number.isFinite(layout.columnWidth)
+        ? layout.columnWidth
+        : undefined
+    const rowHeight =
+      width !== undefined &&
+      columnWidth !== undefined &&
+      gap !== undefined &&
+      width <= columnWidth + gap
+        ? Math.max(columnWidth - gap, 1)
+        : columnWidth
+
+    return {
+      width: cssPixelValue(layout.width),
+      height: cssPixelValue(layout.height),
+      columnWidth: cssPixelValue(
+        height === undefined ? undefined : Math.max(height - 20, 1),
+      ),
+      columnHeight: cssPixelValue(rowHeight),
+      columnGap: '0px',
+      rowGap: cssPixelValue(gap),
+      paddingTop: '10px',
+      paddingBottom: '10px',
+      paddingLeft: cssPixelValue((gap ?? 0) / 2),
+      paddingRight: cssPixelValue((gap ?? 0) / 2),
+    }
+  }
 
   return {
     width: cssPixelValue(layout.width),
@@ -342,7 +425,10 @@ function createZoomBodyStyleSource(
     width: layoutStyles.width ?? bodyStyle.width,
     height: layoutStyles.height ?? bodyStyle.height,
     columnWidth: layoutStyles.columnWidth ?? bodyStyle.columnWidth,
+    columnHeight:
+      layoutStyles.columnHeight ?? bodyStyle.getPropertyValue('column-height'),
     columnGap: layoutStyles.columnGap ?? bodyStyle.columnGap,
+    rowGap: layoutStyles.rowGap ?? bodyStyle.rowGap,
     paddingTop: layoutStyles.paddingTop ?? bodyStyle.paddingTop,
     paddingBottom: layoutStyles.paddingBottom ?? bodyStyle.paddingBottom,
     paddingLeft: layoutStyles.paddingLeft ?? bodyStyle.paddingLeft,
@@ -354,7 +440,7 @@ export function updateCustomStyle(
   contents: Contents | undefined,
   settings: Settings | undefined,
   bodyTextCache?: BodyTextDetectionCache,
-  layoutView?: { axis?: string; layout?: ZoomLayoutStyleSource },
+  layoutView?: LayoutViewStyleSource,
 ) {
   if (!contents || !settings) return
 
@@ -363,6 +449,9 @@ export function updateCustomStyle(
   const hasBodyTypography = keys(bodyTypography).length > 0
   const needsTextMarkers = hasBodyTypography || settings.hideEndnotes
   let css = ' '
+  const writingMode = resolveWritingMode(contents, layoutView)
+
+  css += createVerticalWritingCss(writingMode, settings.textIndent)
 
   if (needsTextMarkers) {
     ensureBodyTextMarkers(contents, bodyTextCache)
@@ -400,8 +489,9 @@ export function updateCustomStyle(
     const layoutStyles = createZoomLayoutBodyStyleSource(
       layoutView?.layout,
       layoutView?.axis,
+      writingMode,
     )
-    css += createZoomMediaCss(layoutStyles, zoom)
+    css += createZoomMediaCss(layoutStyles, zoom, writingMode)
     const computedBodyStyle = contents.window.getComputedStyle(body)
     const backgroundStyleSource: ZoomDecorativeBackgroundStyleSource = {
       backgroundImage: computedBodyStyle.backgroundImage,
@@ -416,6 +506,7 @@ export function updateCustomStyle(
         ...createZoomBodyStyles(
           createZoomBodyStyleSource(body.style, layoutStyles),
           zoom,
+          writingMode,
         ),
         ...createZoomDecorativeBackgroundStyles(backgroundStyleSource, zoom),
       })}
@@ -434,6 +525,13 @@ export function updateCustomStyle(
   })
 
   return applied
+}
+
+export function resolveWritingMode(
+  contents: Pick<Contents, 'writingMode'>,
+  layoutView?: LayoutViewStyleSource,
+) {
+  return layoutView?.writingMode ?? contents.writingMode()
 }
 
 function logStyleDiagnostics(

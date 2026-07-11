@@ -43,6 +43,20 @@ class WavyUnderline extends Highlight {
       let r = filtered[i]
       let x = r.left - offset.left + container.left
       let y = r.top - offset.top + container.top + r.height + gap
+      let geometry = wavyUnderlineGeometry(
+        {
+          left: x,
+          top: r.top - offset.top + container.top,
+          width: r.width,
+          height: r.height,
+        },
+        {
+          amplitude,
+          gap,
+          period,
+          writingMode: this.attributes['data-writing-mode'],
+        },
+      )
 
       let rect = createSvgElement(this.element.ownerDocument, 'rect')
       rect.setAttribute('x', x)
@@ -55,7 +69,15 @@ class WavyUnderline extends Highlight {
       let path = createSvgElement(this.element.ownerDocument, 'path')
       path.setAttribute(
         'd',
-        wavyUnderlinePath(x, r.width, y, amplitude, period),
+        geometry.orientation === 'vertical'
+          ? wavyVerticalPath(
+              geometry.x,
+              geometry.start,
+              geometry.length,
+              amplitude,
+              period,
+            )
+          : wavyUnderlinePath(x, r.width, y, amplitude, period),
       )
       path.setAttribute('fill', 'none')
       path.setAttribute('stroke', stroke)
@@ -66,6 +88,59 @@ class WavyUnderline extends Highlight {
 
       docFrag.appendChild(rect)
       docFrag.appendChild(path)
+    }
+
+    this.element.appendChild(docFrag)
+  }
+}
+
+class VerticalUnderline extends Highlight {
+  render() {
+    while (this.element.firstChild) {
+      this.element.removeChild(this.element.firstChild)
+    }
+
+    let docFrag = this.element.ownerDocument.createDocumentFragment()
+    let filtered = this.filteredRanges()
+    let offset = this.element.getBoundingClientRect()
+    let container = this.container.getBoundingClientRect()
+    let stroke = this.attributes.stroke || 'black'
+    let strokeOpacity = this.attributes['stroke-opacity'] || '0.3'
+    let strokeWidth = numberAttribute(this.attributes, 'stroke-width', 1)
+    let gap = numberAttribute(this.attributes, 'data-underline-gap', 1.5)
+
+    for (let i = 0, len = filtered.length; i < len; i++) {
+      let r = filtered[i]
+      let rect = {
+        left: r.left - offset.left + container.left,
+        top: r.top - offset.top + container.top,
+        width: r.width,
+        height: r.height,
+      }
+      let geometry = underlineGeometry(rect, {
+        gap,
+        writingMode: 'vertical-rl',
+      })
+      let hitRect = createSvgElement(this.element.ownerDocument, 'rect')
+      hitRect.setAttribute('x', rect.left)
+      hitRect.setAttribute('y', rect.top)
+      hitRect.setAttribute('height', rect.height)
+      hitRect.setAttribute('width', rect.width)
+      hitRect.setAttribute('fill', 'none')
+      hitRect.setAttribute('stroke', 'none')
+
+      let line = createSvgElement(this.element.ownerDocument, 'line')
+      line.setAttribute('x1', geometry.x)
+      line.setAttribute('x2', geometry.x)
+      line.setAttribute('y1', geometry.start)
+      line.setAttribute('y2', geometry.start + geometry.length)
+      line.setAttribute('stroke', stroke)
+      line.setAttribute('stroke-opacity', strokeOpacity)
+      line.setAttribute('stroke-width', strokeWidth)
+      line.setAttribute('stroke-linecap', 'round')
+
+      docFrag.appendChild(hitRect)
+      docFrag.appendChild(line)
     }
 
     this.element.appendChild(docFrag)
@@ -109,6 +184,67 @@ function wavyUnderlinePath(x, width, y, amplitude, period) {
   }
 
   return path
+}
+
+function wavyVerticalPath(x, y, height, amplitude, period) {
+  let halfPeriod = Math.max(period / 2, 1)
+  let remaining = Math.max(height, 0)
+  let cursor = 0
+  let direction = -1
+  let path = `M${x} ${y}`
+
+  while (remaining > 0) {
+    let segment = Math.min(halfPeriod, remaining)
+    let controlY = y + cursor + segment / 2
+    let endY = y + cursor + segment
+
+    path += ` Q${x + direction * amplitude} ${controlY} ${x} ${endY}`
+    cursor += segment
+    remaining -= segment
+    direction *= -1
+  }
+
+  return path
+}
+
+function wavyUnderlineGeometry(rect, options = {}) {
+  if (options.writingMode === 'vertical-rl') {
+    return {
+      orientation: 'vertical',
+      side: 'left',
+      x: rect.left - (options.gap || 0),
+      start: rect.top,
+      length: rect.height,
+    }
+  }
+
+  return {
+    orientation: 'horizontal',
+    side: 'bottom',
+    y: rect.top + rect.height + (options.gap || 0),
+    start: rect.left,
+    length: rect.width,
+  }
+}
+
+function underlineGeometry(rect, options = {}) {
+  if (options.writingMode === 'vertical-rl') {
+    return {
+      orientation: 'vertical',
+      side: 'left',
+      x: rect.left - (options.gap || 0),
+      start: rect.top,
+      length: rect.height,
+    }
+  }
+
+  return {
+    orientation: 'horizontal',
+    side: 'bottom',
+    y: rect.top + rect.height + (options.gap || 0),
+    start: rect.left,
+    length: rect.width,
+  }
 }
 
 function textLength(value) {
@@ -351,22 +487,14 @@ class IframeView {
           // find and report the writingMode axis
           let writingMode = this.contents.writingMode()
 
-          // Set the axis based on the flow and writing mode
-          let axis
-          if (this.settings.flow === 'scrolled') {
-            axis =
-              writingMode.indexOf('vertical') === 0 ? 'horizontal' : 'vertical'
-          } else {
-            axis =
-              writingMode.indexOf('vertical') === 0 ? 'vertical' : 'horizontal'
-          }
-
-          if (
-            writingMode.indexOf('vertical') === 0 &&
-            this.settings.flow === 'paginated'
-          ) {
-            this.layout.delta = this.layout.height
-          }
+          // A paginated page frame always advances horizontally. Vertical
+          // writing only changes flow inside that unchanged physical frame.
+          let axis =
+            this.settings.flow === 'scrolled'
+              ? writingMode.indexOf('vertical') === 0
+                ? 'horizontal'
+                : 'vertical'
+              : 'horizontal'
 
           this.setAxis(axis)
           this.emit(EVENTS.VIEWS.AXIS, axis)
@@ -1212,6 +1340,7 @@ class IframeView {
   }
 
   setAxis(axis) {
+    this.axis = axis
     this.settings.axis = axis
 
     if (axis == 'horizontal') {
@@ -1226,6 +1355,20 @@ class IframeView {
   setWritingMode(mode) {
     // this.element.style.writingMode = writingMode;
     this.writingMode = mode
+  }
+
+  wavyUnderlineGeometry(rect, options = {}) {
+    return wavyUnderlineGeometry(rect, {
+      ...options,
+      writingMode: options.writingMode || this.writingMode,
+    })
+  }
+
+  underlineGeometry(rect, options = {}) {
+    return underlineGeometry(rect, {
+      ...options,
+      writingMode: options.writingMode || this.writingMode,
+    })
   }
 
   addListeners() {
@@ -1404,8 +1547,15 @@ class IframeView {
       this.pane = new Pane(this.iframe, this.element)
     }
 
-    let Mark =
-      attributes['data-underline-style'] === 'wavy' ? WavyUnderline : Underline
+    let Mark = Underline
+    if (attributes['data-underline-style'] === 'wavy') {
+      Mark = WavyUnderline
+    } else if (this.writingMode === 'vertical-rl') {
+      Mark = VerticalUnderline
+    }
+    if (Mark === WavyUnderline || Mark === VerticalUnderline) {
+      attributes['data-writing-mode'] = this.writingMode
+    }
     let m = new Mark(range, className, data, attributes)
     let h = this.pane.addMark(m)
 

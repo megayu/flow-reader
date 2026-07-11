@@ -9,6 +9,7 @@ const browserChannel =
 export default defineConfig({
   testDir: './test',
   testMatch: '**/*.spec.ts',
+  outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? 'test-results',
   timeout: 30_000,
   expect: {
     timeout: 5_000,

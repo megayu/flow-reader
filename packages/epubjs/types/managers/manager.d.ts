@@ -30,7 +30,11 @@ export default class Manager {
 
   private createView(section: Section): View
 
-  display(section: Section, target: string | number): Promise<void>
+  display(
+    section: Section,
+    target: string | number,
+    options?: { alignTargetAsSpreadStart?: boolean },
+  ): Promise<void>
 
   private afterDisplayed(view: View): void
 

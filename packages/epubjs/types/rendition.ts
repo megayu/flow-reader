@@ -15,6 +15,10 @@ export enum RenditionSpread {
   Always = 'always',
 }
 
+export interface RenditionDisplayOptions {
+  alignTargetAsSpreadStart?: boolean
+}
+
 export interface RenditionOptions {
   width?: number | string
   height?: number | string
@@ -96,8 +100,8 @@ export declare class Rendition {
 
   direction(dir: string): void
 
-  display(target?: string): Promise<void>
-  display(target?: number): Promise<void>
+  display(target?: string, options?: RenditionDisplayOptions): Promise<void>
+  display(target?: number, options?: RenditionDisplayOptions): Promise<void>
 
   flow(flow: string): void
 
