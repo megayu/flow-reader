@@ -5,6 +5,19 @@ import assert from 'assert'
 import ePub from '../src/epub'
 
 describe('section', function () {
+  it('excludes document metadata from section text results', function () {
+    var book = ePub('./fixtures/alice/', { width: 400, height: 400 })
+    return book.ready.then(function () {
+      var section = book.section('chapter_001.xhtml')
+      return section.load().then(function () {
+        const queryString = "Alice's Adventures in Wonderland"
+
+        assert.equal(section.find(queryString).length, 0)
+        assert.equal(section.search(queryString).length, 0)
+      })
+    })
+  })
+
   it('finds a single result in a section', function () {
     var book = ePub('./fixtures/alice/', { width: 400, height: 400 })
     return book.ready.then(function () {

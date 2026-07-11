@@ -11,6 +11,13 @@ Read this before proposing or testing a Flow Reader performance change. Search f
 
 ## Retained Approaches
 
+### Invalidate iframe page counts only when physical page width changes
+
+- Change: keep the last applied `pageWidth` on each iframe view and clear content width/page-count caches only when that value changes. This makes any relayout with changed physical page geometry, including relayouts that remain in double-page mode, remeasure vertical pages without adding work to ordinary same-width page turns.
+- Measured effect: final `tauri-release` native-book comparison against `perf-results/vertical-rl-horizontal-baseline/result.json`, with 12 single runs and 4 bursts, covered the closed-sidebar steady paths. `page-turn` operation p50/p95 changed +2.6%/-22.2%, first-frame p95 -9.9%, and settled p95 +3.1%. `page-turn-api` operation p50/p95 changed -13.1%/+5.3%, first-frame p95 -0.4%, and settled p95 -2.7%. Rapid page-turn burst p95 improved 36.5%. No long tasks were introduced. Artifact: `perf-results/cmdf-next-page-horizontal-after/reader-performance-2026-07-11T02-36-51-587Z.json`.
+- Decision: keep. The targeted release comparison shows no stable horizontal page-turn regression; unmeasured sidebar and tab scenarios are not part of this conclusion.
+- Constraint: do not clear these caches on same-width `setLayout()` calls. Re-run view-mode correctness plus steady page-turn measurements if the invalidation condition broadens.
+
 ### Keep vertical target mapping and relayout ownership off steady horizontal page turns
 
 - Change: map vertical-rl targets from the rendered view's right edge, explicitly align chapter targets to the reading-order first slot, trim views outside the resolved spread, serialize view-mode relayout requests, and derive zoom row geometry from writing mode. Horizontal target math and ordinary next/previous paths retain their existing behavior.

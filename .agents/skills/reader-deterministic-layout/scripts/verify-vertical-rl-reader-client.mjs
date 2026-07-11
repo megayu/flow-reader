@@ -10,6 +10,8 @@ const INVENTORY_FILE =
 const OUT_DIR =
   process.env.FLOW_READER_VERTICAL_OUT_DIR ??
   path.join(process.cwd(), 'test-results', 'reader-layout-vertical-rl-release')
+const TITLE_SEARCH_ONLY =
+  process.env.FLOW_READER_VERTICAL_TITLE_SEARCH_ONLY === '1'
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 function assert(condition, message, detail) {
@@ -727,6 +729,363 @@ async function verifySearches(page, screenshotFile) {
   return { chapter, sidebar, repeated, queryLength: query.length }
 }
 
+async function inspectChapterFindMatch(page, query) {
+  return page.evaluate(async (value) => {
+    const tab = window.reader.focusedBookTab
+    const section =
+      tab.rendition.manager.currentReflowableSpread?.right?.section ??
+      tab.currentSection ??
+      tab.section
+    const view = tab.rendition.manager.views._views.find(
+      (candidate) => candidate.section.index === section.index,
+    )
+    const body = view?.contents?.document?.body
+    const matches = section.find(value)
+    const pageIndexes = await Promise.all(
+      matches.map((match) => tab.pageIndexForCfi(section.index, match.cfi)),
+    )
+    const ranges = matches.map((match, index) => {
+      const range = view?.contents?.range(match.cfi)
+      return {
+        cfi: match.cfi,
+        inBody: !!range && !!body?.contains(range.startContainer),
+        pageIndex: pageIndexes[index],
+        text: range?.toString(),
+      }
+    })
+
+    return {
+      count: matches.length,
+      ranges,
+      sectionIndex: section.index,
+    }
+  }, query)
+}
+
+async function waitForVisibleActiveChapterFindHighlight(page) {
+  await page.waitForFunction(() => {
+    const content = document.querySelector(
+      '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
+    )
+    const contentRect = content?.getBoundingClientRect()
+    if (!contentRect) return false
+
+    return Array.from(document.querySelectorAll('[ref="epubjs-hl"]')).some(
+      (mark) => {
+        const rect = mark.getBoundingClientRect()
+        const fill = mark.getAttribute('fill') ?? getComputedStyle(mark).fill
+        return (
+          fill.includes('59') &&
+          fill.includes('130') &&
+          rect.right > contentRect.left &&
+          rect.left < contentRect.right &&
+          rect.bottom > contentRect.top &&
+          rect.top < contentRect.bottom
+        )
+      },
+    )
+  })
+}
+
+async function verifyKnownChapterTitleFinds(page, title, screenshotFile) {
+  const cases = title.includes('聊斋志异')
+    ? [
+        { chapter: '偷桃', query: '偷' },
+        { chapter: '勞山道士', query: '道士', startAtLastPage: true },
+      ]
+      : title.includes('史記')
+        ? [
+            { chapter: '秦始皇本紀第六', query: '史記' },
+            { chapter: '秦始皇本紀第六', query: '秦始皇' },
+          ]
+      : []
+  const results = []
+
+  for (const [caseIndex, item] of cases.entries()) {
+    await page.evaluate(async (chapter) => {
+      const tab = window.reader.focusedBookTab
+      const flatten = (items) =>
+        items.flatMap((entry) => [entry, ...flatten(entry.subitems ?? [])])
+      const navItem = flatten(tab.nav.toc).find(
+        (entry) => entry.label.trim() === chapter,
+      )
+      if (!navItem) throw new Error(`Missing chapter ${chapter}`)
+      const section = tab.epub.spine.get(navItem.href)
+      if (!section) throw new Error(`Missing section for ${chapter}`)
+      const hash = navItem.href.split('#')[1]
+      if (hash) {
+        await tab.displayFromSelector(`#${hash}`, section, false, true)
+      } else {
+        await tab.displaySectionStart(section)
+      }
+    }, item.chapter)
+    await wait(800)
+
+    const match = await inspectChapterFindMatch(page, item.query)
+    assert(match.count > 0, 'known title query has no body matches', {
+      item,
+      match,
+    })
+    assert(
+      match.ranges.every(
+        (range) => range.inBody && range.text?.includes(item.query),
+      ),
+      'chapter find included a non-body or unresolved match',
+      { item, match },
+    )
+
+    let initialIndex = 0
+    let visiblePageIndexes
+    if (item.startAtLastPage) {
+      const lastPage = Math.max(
+        ...match.ranges.map((range) => range.pageIndex ?? 0),
+      )
+      initialIndex = match.ranges.findIndex(
+        (range) => range.pageIndex === lastPage,
+      )
+      const target = match.ranges[initialIndex]
+      assert(target?.cfi, 'last-page title match has no CFI', { item, match })
+      await page.evaluate(
+        async ({ sectionIndex, cfi }) => {
+          await window.reader.focusedBookTab.displayReflowableTarget(
+            sectionIndex,
+            cfi,
+          )
+        },
+        { sectionIndex: match.sectionIndex, cfi: target.cfi },
+      )
+      await wait(800)
+      visiblePageIndexes = await page.evaluate((sectionIndex) => {
+        const spread =
+          window.reader.focusedBookTab.rendition.manager.currentReflowableSpread
+        return [spread?.right, spread?.left]
+          .filter((address) => address?.section?.index === sectionIndex)
+          .map((address) => address.pageIndex)
+      }, match.sectionIndex)
+      initialIndex = match.ranges.findIndex((range) =>
+        visiblePageIndexes.includes(range.pageIndex),
+      )
+    }
+
+    await page
+      .locator(
+        '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
+      )
+      .click({ position: { x: 80, y: 80 } })
+    await page.keyboard.press('Control+f')
+    const input = page.getByRole('textbox', { name: '当前章节搜索' })
+    await input.fill(item.query)
+    const bar = page.locator('[data-flow-chapter-find-bar]')
+    await page.waitForFunction(
+      ({ count, ordinal }) =>
+        document
+          .querySelector('[data-flow-chapter-find-bar]')
+          ?.innerText.includes(`${ordinal}/${count}`),
+      { count: match.count, ordinal: initialIndex + 1 },
+    )
+    assert(
+      (await bar.locator('button').nth(0).isDisabled()) === (initialIndex === 0),
+      'previous title match boundary state is incorrect',
+      { item, match },
+    )
+    await waitForVisibleActiveChapterFindHighlight(page)
+
+    if (initialIndex + 1 < match.count) {
+      if (item.startAtLastPage) {
+        assert(
+          visiblePageIndexes.includes(
+            match.ranges[initialIndex + 1]?.pageIndex,
+          ),
+          'next known title match is not on the same terminal spread',
+          { item, initialIndex, match, visiblePageIndexes },
+        )
+      }
+      await input.press('Enter')
+      await page.waitForFunction(
+        ({ count, ordinal }) =>
+          document
+            .querySelector('[data-flow-chapter-find-bar]')
+            ?.innerText.includes(`${ordinal}/${count}`),
+        { count: match.count, ordinal: initialIndex + 2 },
+      )
+      await waitForVisibleActiveChapterFindHighlight(page)
+    } else {
+      assert(
+        await bar.locator('button').nth(1).isDisabled(),
+        'next title match is enabled for a single body result',
+        { item, match },
+      )
+    }
+    results.push({
+      ...item,
+      advanced: initialIndex + 1 < match.count,
+      initialIndex,
+      match,
+      visiblePageIndexes,
+    })
+    if (caseIndex === cases.length - 1) {
+      await page.screenshot({ path: screenshotFile })
+    } else {
+      await page.keyboard.press('Escape')
+    }
+  }
+
+  return { applicable: results.length > 0, results }
+}
+
+async function verifyChapterFindPageTurnMode(
+  page,
+  spreadMode,
+  chapter,
+  query,
+) {
+  await page.evaluate((spread) => {
+    const tab = window.reader.focusedBookTab
+    tab.updateBook({
+      configuration: {
+        ...tab.book.configuration,
+        typography: {
+          ...tab.book.configuration?.typography,
+          spread,
+        },
+      },
+    })
+  }, spreadMode)
+  await page.waitForFunction(
+    (divisor) =>
+      window.reader.focusedBookTab.rendition.manager.layout.divisor === divisor,
+    spreadMode === 'none' ? 1 : 2,
+  )
+
+  const prepared = await page.evaluate(async ({ chapter, query }) => {
+    const tab = window.reader.focusedBookTab
+    const flatten = (items) =>
+      items.flatMap((entry) => [entry, ...flatten(entry.subitems ?? [])])
+    const navItem = flatten(tab.nav.toc).find(
+      (entry) => entry.label.trim() === chapter,
+    )
+    if (!navItem) throw new Error(`Missing chapter ${chapter}`)
+    const section = tab.epub.spine.get(navItem.href)
+    await tab.displaySectionStart(section)
+    const matches = section.find(query)
+    const pageIndexes = await Promise.all(
+      matches.map((match) => tab.pageIndexForCfi(section.index, match.cfi)),
+    )
+    const manager = tab.rendition.manager
+    const visiblePages = [
+      manager.currentReflowableSpread?.right,
+      manager.currentReflowableSpread?.left,
+    ]
+      .filter((address) => address?.section?.index === section.index)
+      .map((address) => address.pageIndex)
+    const initialIndex = pageIndexes.findIndex((pageIndex) =>
+      visiblePages.includes(pageIndex),
+    )
+    const firstOffPageIndex = pageIndexes.findIndex(
+      (pageIndex, index) =>
+        index > initialIndex && !visiblePages.includes(pageIndex),
+    )
+    return {
+      count: matches.length,
+      firstOffPageIndex,
+      initialIndex,
+      pageIndexes,
+      sectionIndex: section.index,
+      visiblePages,
+    }
+  }, { chapter, query })
+  assert(
+    prepared.initialIndex >= 0 &&
+      prepared.firstOffPageIndex > prepared.initialIndex,
+    'known chapter has no off-page find transition',
+    { spreadMode, prepared },
+  )
+
+  await page
+    .locator(
+      '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
+    )
+    .click({ position: { x: 80, y: 80 } })
+  await page.keyboard.press('Control+f')
+  const input = page.getByRole('textbox', { name: '当前章节搜索' })
+  await input.fill(query)
+  const waitForOrdinal = (ordinal) =>
+    page.waitForFunction(
+      ({ count, ordinal: expected }) =>
+        document
+          .querySelector('[data-flow-chapter-find-bar]')
+          ?.innerText.includes(`${expected}/${count}`),
+      { count: prepared.count, ordinal },
+    )
+  await waitForOrdinal(prepared.initialIndex + 1)
+
+  for (
+    let index = prepared.initialIndex + 1;
+    index < prepared.firstOffPageIndex;
+    index += 1
+  ) {
+    await input.press('Enter')
+    await waitForOrdinal(index + 1)
+  }
+  const before = await spreadSignature(page)
+  await input.press('Enter')
+  await waitForOrdinal(prepared.firstOffPageIndex + 1)
+  await page.waitForFunction(
+    ({ pageIndex, sectionIndex }) => {
+      const spread =
+        window.reader.focusedBookTab.rendition.manager.currentReflowableSpread
+      return [spread?.right, spread?.left].some(
+        (address) =>
+          address?.section?.index === sectionIndex &&
+          address.pageIndex === pageIndex,
+      )
+    },
+    {
+      pageIndex: prepared.pageIndexes[prepared.firstOffPageIndex],
+      sectionIndex: prepared.sectionIndex,
+    },
+  )
+  await waitForVisibleActiveChapterFindHighlight(page)
+  const after = await spreadSignature(page)
+  assert(
+    JSON.stringify(before) !== JSON.stringify(after),
+    'off-page chapter find did not turn the spread',
+    { spreadMode, prepared, before, after },
+  )
+  await page.keyboard.press('Escape')
+  return {
+    spreadMode,
+    prepared,
+    before,
+    after,
+    activeHighlightVisible: true,
+  }
+}
+
+async function verifyKnownChapterFindPageTurns(page, title) {
+  const target = title.includes('聊斋志异')
+    ? { chapter: '勞山道士', query: '道士' }
+    : title.includes('史記')
+      ? { chapter: '秦始皇本紀第六', query: '秦始皇' }
+      : undefined
+  if (!target) return { applicable: false }
+
+  await closeTransientUi(page)
+  const doublePage = await verifyChapterFindPageTurnMode(
+    page,
+    'auto',
+    target.chapter,
+    target.query,
+  )
+  const singlePage = await verifyChapterFindPageTurnMode(
+    page,
+    'none',
+    target.chapter,
+    target.query,
+  )
+  return { applicable: true, ...target, doublePage, singlePage }
+}
+
 async function verifyChapterNavigation(page, book) {
   const target = await page.evaluate((preferredLabel) => {
     const tab = window.reader.focusedBookTab
@@ -1220,6 +1579,11 @@ async function verifyBook(page, book) {
     page,
     path.join(OUT_DIR, `${book.id}-search.png`),
   )
+  const knownChapterTitleFinds = await verifyKnownChapterTitleFinds(
+    page,
+    title,
+    path.join(OUT_DIR, `${book.id}-title-search.png`),
+  )
 
   return {
     id: book.id,
@@ -1235,6 +1599,42 @@ async function verifyBook(page, book) {
     knownCrossSectionNavigation,
     singleAndZoom,
     searches,
+    knownChapterTitleFinds,
+  }
+}
+
+async function verifyTitleSearchBook(page, book) {
+  const title = await openBook(page, book)
+  await closeTransientUi(page)
+  const sidebar = page.locator('.SideBar')
+  const tocOpen = await sidebar
+    .getByText('目录', { exact: true })
+    .isVisible()
+    .catch(() => false)
+  if (!tocOpen) {
+    await page.locator('.ActivityBar button[aria-label="目录"]').click()
+  }
+  await wait(300)
+  const knownChapterTitleFinds = await verifyKnownChapterTitleFinds(
+    page,
+    title,
+    path.join(OUT_DIR, `${book.id}-title-search.png`),
+  )
+  const knownChapterFindPageTurns = await verifyKnownChapterFindPageTurns(
+    page,
+    title,
+  )
+  assert(
+    knownChapterTitleFinds.applicable,
+    'book has no known chapter title search cases',
+    { book, knownChapterTitleFinds },
+  )
+
+  return {
+    id: book.id,
+    title,
+    knownChapterTitleFinds,
+    knownChapterFindPageTurns,
   }
 }
 
@@ -1252,11 +1652,24 @@ try {
   assert(page, 'no Flow Reader CDP page found')
   const results = []
   for (const book of inventory.books) {
-    results.push(await verifyBook(page, book))
+    results.push(
+      TITLE_SEARCH_ONLY
+        ? await verifyTitleSearchBook(page, book)
+        : await verifyBook(page, book),
+    )
   }
   fs.writeFileSync(
     path.join(OUT_DIR, 'result.json'),
-    JSON.stringify({ mode: 'tauri-release', books: results }, null, 2),
+    JSON.stringify(
+      {
+        mode: TITLE_SEARCH_ONLY
+          ? 'tauri-release-title-search'
+          : 'tauri-release',
+        books: results,
+      },
+      null,
+      2,
+    ),
   )
   console.log(`vertical-rl release verification passed: ${OUT_DIR}`)
 } finally {

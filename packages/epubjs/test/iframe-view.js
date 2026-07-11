@@ -231,6 +231,32 @@ describe('IframeView vertical writing pagination', function () {
     assert.equal(geometry.start, 100)
     assert.equal(geometry.length, 180)
   })
+
+  it('invalidates cached page geometry when the physical page width changes', function () {
+    const view = createView({ pageCount: 4 })
+    view._contentWidth = 2000
+    view._needsReframe = false
+    let stateDuringExpand
+    view.expand = () => {
+      stateDuringExpand = {
+        contentPageCount: view._contentPageCount,
+        contentWidth: view._contentWidth,
+        needsReframe: view._needsReframe,
+      }
+    }
+
+    view.setLayout({
+      name: 'reflowable',
+      pageWidth: 1000,
+      format: () => undefined,
+    })
+
+    assert.deepEqual(stateDuringExpand, {
+      contentPageCount: undefined,
+      contentWidth: undefined,
+      needsReframe: true,
+    })
+  })
 })
 
 describe('IframeView first page positioning', function () {

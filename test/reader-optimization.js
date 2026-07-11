@@ -898,6 +898,31 @@ function testNearDocumentStartHandlesDocumentsWithoutBody() {
   }
 }
 
+function testChapterFindUsesTheReadingOrderStartSection() {
+  assert.strictEqual(
+    typeof readerModel.readingOrderStartSectionIndex,
+    'function',
+    'Expected chapter find to share the pagination-model reading order',
+  )
+
+  const spread = {
+    left: { section: { index: 11 } },
+    right: { section: { index: 12 } },
+  }
+  assert.strictEqual(
+    readerModel.readingOrderStartSectionIndex(spread, 'left-first', 20),
+    11,
+  )
+  assert.strictEqual(
+    readerModel.readingOrderStartSectionIndex(spread, 'right-first', 20),
+    12,
+  )
+  assert.strictEqual(
+    readerModel.readingOrderStartSectionIndex(undefined, undefined, 20),
+    20,
+  )
+}
+
 testTextAlignIsNonPaginationStyle()
 testZoomBodyStylesSkipNonNumericValues()
 testZoomBodyStylesCanUseCurrentLayout()
@@ -916,6 +941,7 @@ testDuplicateIllustrationFilterRebuildsFromHiddenDuplicates()
 testDuplicateIllustrationFilterRestoresUniqueLeadingTitleArt()
 testDuplicateIllustrationFilterKeepsRepeatedLeadingTitleArtHidden()
 testNearDocumentStartHandlesDocumentsWithoutBody()
+testChapterFindUsesTheReadingOrderStartSection()
 testVerticalOverlayPlacementStaysInsidePageAndAvoidsSelection()
 testVerticalRangeRectsFollowReadingOrder()
 testVerticalTypographyCssOverridesAuthorPunctuation()

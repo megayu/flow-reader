@@ -183,9 +183,12 @@ class Section {
       }
     }
 
-    sprint(section.document, function (node) {
-      find(node)
-    })
+    sprint(
+      section.document.body || section.document.documentElement,
+      function (node) {
+        find(node)
+      },
+    )
 
     return matches
   }
@@ -263,7 +266,7 @@ class Section {
     }
 
     const treeWalker = document.createTreeWalker(
-      section.document,
+      section.document.body || section.document.documentElement,
       NodeFilter.SHOW_TEXT,
       null,
       false,

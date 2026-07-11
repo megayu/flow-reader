@@ -67,6 +67,7 @@ import {
 } from '../keyboard'
 import {
   BookTab,
+  readingOrderStartSectionIndex,
   reader,
   useReaderSnapshot,
   type ISection,
@@ -1065,6 +1066,9 @@ interface BookPaneProps {
 interface ReflowableManager {
   reflowablePageCountCache?: Record<string, number>
   currentReflowableSpread?: ReflowableSpread
+  paginationModel?: () => {
+    spreadSlotOrder?: 'left-first' | 'right-first'
+  }
   viewSettings?: {
     beforeLayout?: (contents: unknown, view?: unknown) => void
     layoutStyleSignature?: string
@@ -1367,11 +1371,11 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
 
   const findScopeSectionIndex = useCallback(() => {
     const manager = rendition?.manager as ReflowableManager | undefined
-    const spread = manager?.currentReflowableSpread
-    const rightIndex = spread?.right?.section?.index
-    const leftIndex = spread?.left?.section?.index
-
-    return rightIndex ?? leftIndex ?? tab.currentSection?.index
+    return readingOrderStartSectionIndex(
+      manager?.currentReflowableSpread,
+      manager?.paginationModel?.().spreadSlotOrder,
+      tab.currentSection?.index,
+    )
   }, [rendition?.manager, tab])
 
   const focusChapterFindInput = useCallback(() => {

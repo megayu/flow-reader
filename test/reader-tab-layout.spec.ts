@@ -305,6 +305,7 @@ function longBookResource(pathname: string) {
   if (chapterMatch) {
     const number = Number(chapterMatch[1])
     const title = longChapterName(number - 1)
+    const searchTitle = `FLOW-SEARCH-TITLE-${String(number).padStart(3, '0')}`
     const paragraphs = Array.from({ length: 18 }, (_, index) => {
       return `<p>${title} paragraph ${index + 1}. The deterministic layout marker for this chapter is ${title}. This text is deliberately repeated to create several columns and stable pagination for stress testing.</p>`
     }).join('\n')
@@ -314,11 +315,11 @@ function longBookResource(pathname: string) {
       body: `<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
   <head>
-    <title>${title}</title>
+    <title>${title} ${searchTitle}</title>
     <link rel="stylesheet" href="style.css" type="text/css"/>
   </head>
   <body>
-    <section><h1>${title}</h1>${paragraphs}</section>
+    <section><h1>${title} <span>${searchTitle}</span></h1>${paragraphs}</section>
   </body>
 </html>`,
     }
@@ -343,6 +344,7 @@ async function installLongBookRoutes(page: Page) {
 
 function verticalChapterMarkup(index: number, paragraphCount = 56) {
   const marker = `VERTICAL-CHAPTER-${String(index).padStart(2, '0')}`
+  const searchTitle = `VERTICAL-SEARCH-TITLE-${String(index).padStart(2, '0')}`
   const paragraphs = Array.from(
     { length: paragraphCount },
     (_, paragraphIndex) => {
@@ -372,12 +374,12 @@ function verticalChapterMarkup(index: number, paragraphCount = 56) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
   <head>
-    <title>${marker}</title>
+    <title>${marker} ${searchTitle}</title>
     <link rel="stylesheet" href="style.css" type="text/css"/>
   </head>
   <body>
     <section>
-      <h1 id="vertical-chapter-${String(index).padStart(2, '0')}-start">${marker}<span id="vertical-punctuation" class="punctuation">（甲）</span></h1>
+      <h1 id="vertical-chapter-${String(index).padStart(2, '0')}-start">${marker}<span id="vertical-punctuation" class="punctuation">（甲）</span><span>${searchTitle}</span></h1>
       ${paragraphs}
       ${note}
     </section>
@@ -1926,15 +1928,23 @@ test('[vertical-rl] resolves nested TOC anchors and chapter shortcuts on the rig
   await target.click()
 
   await expect
-    .poll(() => readVerticalReadingState(page))
+    .poll(async () => {
+      const state = await readVerticalReadingState(page)
+      return {
+        aligned: state.startPage === (state.rightPageIndex ?? Number.NaN) + 1,
+        rightIndex: state.rightIndex,
+        startIndex: state.startIndex,
+        startSlot: state.startSlot,
+      }
+    })
     .toMatchObject({
+      aligned: true,
+      rightIndex: 0,
       startIndex: 0,
       startSlot: 'right',
-      rightIndex: 0,
     })
   const nested = await readVerticalReadingState(page)
   expect(nested.rightPageIndex).toBeGreaterThan(0)
-  expect(nested.startPage).toBe((nested.rightPageIndex ?? 0) + 1)
 
   await page.keyboard.press(']')
   await expect
@@ -2008,6 +2018,86 @@ test('[vertical-rl] advances chapter find within the visible page before turning
     )
   })
   expect(activeHighlight).toBe(true)
+})
+
+test('[vertical-rl] turns to the next spread for an off-page chapter find result', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+  const query = '天地玄黄宇宙洪荒'
+  const search = await page.evaluate(async (value) => {
+    const tab = (window as any).reader.focusedBookTab
+    const manager = tab.rendition.manager
+    const section = manager.currentReflowableSpread.right.section
+    const matches = section.find(value)
+    const pageIndexes = await Promise.all(
+      matches.map((match: { cfi: string }) =>
+        tab.pageIndexForCfi(section.index, match.cfi),
+      ),
+    )
+    const visiblePages = [
+      manager.currentReflowableSpread.right,
+      manager.currentReflowableSpread.left,
+    ]
+      .filter(
+        (address: { section: { index: number } }) =>
+          address?.section?.index === section.index,
+      )
+      .map((address: { pageIndex: number }) => address.pageIndex)
+    const initialIndex = pageIndexes.findIndex((pageIndex) =>
+      visiblePages.includes(pageIndex),
+    )
+    const firstOffPageIndex = pageIndexes.findIndex(
+      (pageIndex, index) =>
+        index > initialIndex && !visiblePages.includes(pageIndex),
+    )
+
+    return { firstOffPageIndex, initialIndex, pageIndexes, visiblePages }
+  }, query)
+  expect(search.initialIndex).toBeGreaterThanOrEqual(0)
+  expect(search.firstOffPageIndex).toBeGreaterThan(search.initialIndex)
+
+  await page.keyboard.press(findShortcut)
+  const input = page.getByRole('textbox', { name: /Find in chapter/ })
+  await input.fill(query)
+  await expect(
+    page.getByText(`${search.initialIndex + 1}/${search.pageIndexes.length}`, {
+      exact: true,
+    }),
+  ).toBeVisible()
+
+  for (
+    let index = search.initialIndex + 1;
+    index < search.firstOffPageIndex;
+    index += 1
+  ) {
+    await input.press('Enter')
+  }
+  const beforeTurn = await readVerticalReadingState(page)
+  await input.press('Enter')
+  await expect(
+    page.getByText(
+      `${search.firstOffPageIndex + 1}/${search.pageIndexes.length}`,
+      { exact: true },
+    ),
+  ).toBeVisible()
+  await expect
+    .poll(() => readVerticalReadingState(page))
+    .not.toEqual(beforeTurn)
+  await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
+})
+
+test('[vertical-rl] excludes document title metadata from chapter find', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+  await page.keyboard.press(findShortcut)
+
+  const input = page.getByRole('textbox', { name: /Find in chapter/ })
+  await input.fill('VERTICAL-SEARCH-TITLE-01')
+
+  await expect(page.getByText('1/1', { exact: true })).toBeVisible()
+  await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
 })
 
 test('[vertical-rl] keeps a clicked sidebar search result active and visible', async ({
@@ -2897,6 +2987,20 @@ test('long-book keeps chapter find bar out of the reading content', async ({
 
   expect(metrics.findBarTop).toBeGreaterThanOrEqual(metrics.paneTop)
   expect(metrics.findBarBottom).toBeLessThanOrEqual(metrics.contentTop)
+})
+
+test('long-book excludes document title metadata from chapter find', async ({
+  page,
+}) => {
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+  await page.keyboard.press(findShortcut)
+
+  const input = page.getByRole('textbox', { name: /Find in chapter/ })
+  await input.fill('FLOW-SEARCH-TITLE-001')
+
+  await expect(page.getByText('1/1', { exact: true })).toBeVisible()
+  await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
 })
 
 async function displayFocusedSectionIndex(page: Page, sectionIndex: number) {

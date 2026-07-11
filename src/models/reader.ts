@@ -642,6 +642,24 @@ export interface PaginationSnapshot {
   visibleSectionIndexes: number[]
 }
 
+interface ReadingOrderSpread {
+  left?: { section?: { index?: number } }
+  right?: { section?: { index?: number } }
+}
+
+export function readingOrderStartSectionIndex(
+  spread: ReadingOrderSpread | undefined,
+  spreadSlotOrder: PaginationSnapshot['spreadSlotOrder'],
+  fallback?: number,
+) {
+  const primary =
+    spreadSlotOrder === 'right-first' ? spread?.right : spread?.left
+  const secondary =
+    spreadSlotOrder === 'right-first' ? spread?.left : spread?.right
+
+  return primary?.section?.index ?? secondary?.section?.index ?? fallback
+}
+
 export interface HeaderPathItem {
   id?: string
   href?: string

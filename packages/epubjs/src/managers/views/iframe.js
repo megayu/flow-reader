@@ -364,6 +364,7 @@ class IframeView {
     this.epubcfi = new EpubCFI()
 
     this.layout = this.settings.layout
+    this._layoutPageWidth = this.layout && this.layout.pageWidth
     // Dom events to listen for
     // this.listenedEvents = ["keydown", "keyup", "keypressed", "mouseup", "mousedown", "click", "touchend", "touchstart"];
 
@@ -1328,7 +1329,21 @@ class IframeView {
   }
 
   setLayout(layout) {
+    let previousPageWidth = this._layoutPageWidth
+    let nextPageWidth = layout && layout.pageWidth
+    let pageWidthChanged =
+      previousPageWidth !== undefined &&
+      nextPageWidth !== undefined &&
+      previousPageWidth !== nextPageWidth
+
     this.layout = layout
+    this._layoutPageWidth = nextPageWidth
+
+    if (pageWidthChanged) {
+      this._contentWidth = undefined
+      this._contentPageCount = undefined
+      this._needsReframe = true
+    }
 
     if (this.contents) {
       if (typeof this.settings.beforeLayout === 'function') {
