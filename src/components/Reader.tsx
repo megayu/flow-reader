@@ -1322,6 +1322,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
     useState<ChapterFindState>(initialChapterFind)
   const [notePopover, setNotePopover] = useState<NotePopoverState>()
   const typography = useTypography(tab)
+  const pageAppearance = typography.pageAppearance
   const currentSpread = typography.spread ?? RenditionSpread.Auto
   const typographyLayoutSignature = useMemo(
     () => createTypographyLayoutSignature(typography),
@@ -1533,6 +1534,8 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
       const width = getCurrentReaderPageWidth(rendition, ref.current)
       if (!width) return
       const spreadWidth = getCurrentReaderSpreadWidth(rendition, ref.current)
+      const layout = getRenditionLayout(rendition)
+      const container = ref.current
 
       document.documentElement.style.setProperty(
         '--flow-reader-page-width',
@@ -1542,6 +1545,25 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
         document.documentElement.style.setProperty(
           '--flow-reader-spread-width',
           `${spreadWidth}px`,
+        )
+      }
+      if (container) {
+        const divisor = getRenditionDivisor(rendition)
+        const gap = getFiniteLayoutValue(layout?.gap, 0)
+        const columnWidth = getFiniteLayoutValue(
+          layout?.columnWidth,
+          divisor > 1 ? Math.max((container.clientWidth - gap) / 2, 0) : width,
+        )
+
+        container.dataset.flowReaderSpread = divisor > 1 ? 'double' : 'single'
+        container.style.setProperty(
+          '--flow-reader-column-width',
+          `${columnWidth}px`,
+        )
+        container.style.setProperty('--flow-reader-page-gap', `${gap}px`)
+        container.style.setProperty(
+          '--flow-reader-page-half-gap',
+          `${gap / 2}px`,
         )
       }
     }
@@ -1987,7 +2009,10 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
   useFrameEvent(activeFrameWindows, 'keydown', handleFrameKeyDown)
 
   return (
-    <div className="flex h-full flex-col">
+    <div
+      className="flex h-full flex-col"
+      data-flow-page-appearance={pageAppearance}
+    >
       <ReaderImagePreview
         openKey={!zenMode ? imagePreview?.key : undefined}
         src={!zenMode ? imagePreview?.src : undefined}
@@ -2019,6 +2044,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
         // `color-scheme: dark` will make iframe background white
         style={{ colorScheme: 'auto' }}
       >
+        {pageAppearance && <ReaderPageDecoration />}
         <div
           data-flow-reader-loading-cover
           className={clsx(
@@ -2048,6 +2074,20 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
     </div>
   )
 })
+
+const ReaderPageDecoration: React.FC = () => {
+  return (
+    <div
+      aria-hidden="true"
+      data-flow-reader-page-decoration
+      className="pointer-events-none absolute inset-0 z-10"
+    >
+      <div data-flow-reader-page-frame="start" />
+      <div data-flow-reader-page-frame="end" />
+      <div data-flow-reader-page-seam />
+    </div>
+  )
+}
 
 interface ReaderEdgeNavigationProps {
   tab: BookTab
@@ -3234,6 +3274,14 @@ function getRenditionPageWidth(rendition: unknown) {
     : undefined
 }
 
+function getRenditionLayout(rendition: unknown) {
+  return (rendition as any)?.manager?.layout
+}
+
+function getFiniteLayoutValue(value: unknown, fallback: number) {
+  return Number.isFinite(value) && Number(value) >= 0 ? Number(value) : fallback
+}
+
 function getCurrentReaderPageWidth(
   rendition: unknown,
   container?: HTMLElement | null,
@@ -4145,7 +4193,7 @@ const ReaderPaneHeader: React.FC<ReaderPaneHeaderProps> = ({ tab }) => {
   const navPath = paginationSnapshot?.headerPath ?? []
 
   return (
-    <Bar>
+    <Bar data-flow-reader-header>
       <div className="scroll-h flex">
         {navPath.map((item, i) => (
           <button
@@ -4204,7 +4252,7 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
   const dismissReturnShortcut = getShortcutChords('dismissReturn')[0]
 
   return (
-    <>
+    <div data-flow-reader-footer>
       {locationToReturn ? (
         <Bar>
           <div className="flex min-w-0 items-center gap-2">
@@ -4283,7 +4331,7 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
           {startDisplayed && formatFooterPage(startDisplayed, percentage)}
         </div>
       )}
-    </>
+    </div>
   )
 }
 

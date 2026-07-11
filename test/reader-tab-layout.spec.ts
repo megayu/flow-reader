@@ -1484,6 +1484,240 @@ async function waitForVerticalReaderLoaded(page: Page) {
     .toBe(true)
 }
 
+test('toggles page appearance without changing reader pagination geometry', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+  await page.locator('.ActivityBar button[aria-label="Typography"]').click()
+
+  const sidebar = page.locator('.SideBar')
+  const activePane = page.locator(
+    '[data-flow-reader-pane][aria-hidden="false"]',
+  )
+  const content = activePane.locator('[data-flow-reader-content]')
+  const paneRoot = activePane.locator('[data-flow-page-appearance]')
+
+  await expect(
+    sidebar.getByText('Page Appearance', { exact: true }),
+  ).toBeVisible()
+  await expect(paneRoot).toHaveCount(0)
+  await installBookTabRuntimeCounters(page)
+  await resetBookTabRuntimeCounters(page)
+
+  await sidebar.getByRole('button', { name: 'Cards', exact: true }).click()
+  await expect(paneRoot).toHaveAttribute('data-flow-page-appearance', 'cards')
+  await expect(content).toHaveAttribute('data-flow-reader-spread', 'double')
+
+  const cardGeometry = await content.evaluate((element) => {
+    const start = element.querySelector('[data-flow-reader-page-frame="start"]')
+    const end = element.querySelector('[data-flow-reader-page-frame="end"]')
+    if (!start || !end) throw new Error('Missing card page frames')
+    const startRect = start.getBoundingClientRect()
+    const endRect = end.getBoundingClientRect()
+    const style = getComputedStyle(element)
+
+    return {
+      actualGap: Math.round(endRect.left - startRect.right),
+      expectedGap: Math.round(
+        Number.parseFloat(style.getPropertyValue('--flow-reader-page-gap')),
+      ),
+      startRadius: getComputedStyle(start).borderRadius,
+      endRadius: getComputedStyle(end).borderRadius,
+      headerShadow: getComputedStyle(
+        document.querySelector('[data-flow-reader-header]')!,
+      ).boxShadow,
+      footerShadow: getComputedStyle(
+        document.querySelector('[data-flow-reader-footer]')!,
+      ).boxShadow,
+    }
+  })
+  expect(cardGeometry).toEqual({
+    actualGap: cardGeometry.expectedGap,
+    expectedGap: cardGeometry.expectedGap,
+    startRadius: '16px',
+    endRadius: '16px',
+    headerShadow: 'none',
+    footerShadow: 'none',
+  })
+
+  const darkCardGeometry = await content.evaluate((element) => {
+    const root = document.documentElement
+    const frame = element.querySelector('[data-flow-reader-page-frame="start"]')
+    if (!frame) throw new Error('Missing card page frame')
+    const lightStyle = getComputedStyle(frame)
+    const lightBorderColor = lightStyle.borderColor
+    const lightShadow = lightStyle.boxShadow
+    root.classList.add('dark')
+    const darkStyle = getComputedStyle(frame)
+    const result = {
+      borderColorChanged: darkStyle.borderColor !== lightBorderColor,
+      shadowChanged: darkStyle.boxShadow !== lightShadow,
+      shadow: darkStyle.boxShadow,
+    }
+    root.classList.remove('dark')
+    return result
+  })
+  expect(darkCardGeometry).toMatchObject({
+    borderColorChanged: true,
+    shadowChanged: true,
+  })
+  expect(darkCardGeometry.shadow).toContain('0px 6px 18px')
+
+  await sidebar.getByRole('button', { name: 'Cards', exact: true }).click()
+  await expect(paneRoot).toHaveCount(0)
+  await expect(
+    content.locator('[data-flow-reader-page-decoration]'),
+  ).toHaveCount(0)
+
+  await sidebar.getByRole('button', { name: 'Book', exact: true }).click()
+  await expect(paneRoot).toHaveAttribute('data-flow-page-appearance', 'book')
+  await expect(content.locator('[data-flow-reader-page-seam]')).toHaveCSS(
+    'display',
+    'block',
+  )
+  const bookDecoration = await content.evaluate((element) => {
+    const frame = element.querySelector('[data-flow-reader-page-frame="start"]')
+    const seam = element.querySelector('[data-flow-reader-page-seam]')
+    if (!frame || !seam) throw new Error('Missing book decoration')
+    const frameStyle = getComputedStyle(frame)
+    const seamStyle = getComputedStyle(seam)
+    const contentRect = element.getBoundingClientRect()
+    const frameRect = frame.getBoundingClientRect()
+
+    return {
+      borderTopWidth: frameStyle.borderTopWidth,
+      frameInsets: {
+        left: frameRect.left - contentRect.left,
+        right: contentRect.right - frameRect.right,
+      },
+      frameBackground: frameStyle.backgroundImage,
+      frameBackgroundSize: frameStyle.backgroundSize,
+      seamBackground: seamStyle.backgroundImage,
+      seamWidth: seamStyle.width,
+    }
+  })
+  expect(bookDecoration.borderTopWidth).toBe('0px')
+  expect(bookDecoration.frameInsets.left).toBeCloseTo(0, 5)
+  expect(bookDecoration.frameInsets.right).toBeCloseTo(0, 5)
+  expect(bookDecoration.frameBackground.match(/linear-gradient/g)).toHaveLength(
+    4,
+  )
+  expect(bookDecoration.frameBackgroundSize).toContain('12px 100%')
+  expect(bookDecoration.seamBackground).toContain('linear-gradient')
+  expect(bookDecoration.seamWidth).toBe('96px')
+
+  await sidebar.getByRole('button', { name: 'Divider', exact: true }).click()
+  await expect(paneRoot).toHaveAttribute('data-flow-page-appearance', 'divider')
+  const dividerGeometry = await content.evaluate((element) => {
+    const seam = element.querySelector('[data-flow-reader-page-seam]')
+    if (!seam) throw new Error('Missing divider seam')
+    const contentRect = element.getBoundingClientRect()
+    const seamRect = seam.getBoundingClientRect()
+
+    return {
+      top: Math.round(seamRect.top - contentRect.top),
+      bottom: Math.round(contentRect.bottom - seamRect.bottom),
+      width: Number.parseFloat(getComputedStyle(seam).width),
+    }
+  })
+  expect(dividerGeometry).toEqual({ top: 0, bottom: 0, width: 1.5 })
+  const appearanceCounters = (await readBookTabRuntimeCounters(page)).find(
+    (entry) => entry.id === 'tab-layout-a',
+  )
+  expect(appearanceCounters).toMatchObject({
+    display: 0,
+    next: 0,
+    prev: 0,
+    relayoutCurrentView: 0,
+    resizeRendition: 0,
+  })
+
+  await sidebar
+    .getByRole('button', { name: 'Single Page', exact: true })
+    .click()
+  await expect(content).toHaveAttribute('data-flow-reader-spread', 'single')
+  await expect(content.locator('[data-flow-reader-page-seam]')).toHaveCSS(
+    'display',
+    'none',
+  )
+
+  await sidebar.getByRole('button', { name: 'Divider', exact: true }).click()
+  await expect(paneRoot).toHaveCount(0)
+})
+
+test('[vertical-rl] page appearance follows actual spread geometry', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await openVerticalFixtureBook(page)
+
+  await page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    tab.updateBook({
+      configuration: {
+        ...tab.book.configuration,
+        typography: {
+          ...tab.book.configuration?.typography,
+          pageAppearance: 'divider',
+        },
+      },
+    })
+  })
+
+  const content = page.locator(
+    '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
+  )
+  await expect(content).toHaveAttribute('data-flow-reader-spread', 'double')
+  await expect(content.locator('[data-flow-reader-page-seam]')).toHaveCSS(
+    'display',
+    'block',
+  )
+
+  const doubleState = await content.evaluate((element) => {
+    const tab = (window as any).reader.focusedBookTab
+    const seam = element.querySelector('[data-flow-reader-page-seam]')
+    const contentRect = element.getBoundingClientRect()
+    const seamRect = seam?.getBoundingClientRect()
+
+    return {
+      divisor: tab?.rendition?.manager?.layout?.divisor,
+      writingMode: tab?.rendition?.manager?.writingMode,
+      seamOffset: seamRect
+        ? Math.round(seamRect.left + seamRect.width / 2 - contentRect.left)
+        : 0,
+      contentCenter: Math.round(contentRect.width / 2),
+    }
+  })
+  expect(doubleState).toMatchObject({
+    divisor: 2,
+    writingMode: 'vertical-rl',
+  })
+  expect(
+    Math.abs(doubleState.seamOffset - doubleState.contentCenter),
+  ).toBeLessThanOrEqual(1)
+
+  await page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    tab.updateBook({
+      configuration: {
+        ...tab.book.configuration,
+        typography: {
+          ...tab.book.configuration?.typography,
+          spread: 'none',
+        },
+      },
+    })
+  })
+
+  await expect(content).toHaveAttribute('data-flow-reader-spread', 'single')
+  await expect(content.locator('[data-flow-reader-page-seam]')).toHaveCSS(
+    'display',
+    'none',
+  )
+})
+
 async function readActivePageFrameMetrics(page: Page) {
   return page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab

@@ -147,6 +147,22 @@ function testTextAlignIsNonPaginationStyle() {
     'textAlign must still update current iframe styles immediately',
   )
 
+  for (const pageAppearance of ['cards', 'book', 'divider']) {
+    assert.strictEqual(
+      styles.createTypographyLayoutSignature({
+        ...layoutBase,
+        pageAppearance,
+      }),
+      styles.createTypographyLayoutSignature(layoutBase),
+      'page appearance must not invalidate pagination layout cache',
+    )
+    assert.strictEqual(
+      styles.createTypographyStyleSignature({ pageAppearance }),
+      styles.createTypographyStyleSignature({}),
+      'page appearance must not inject styles into reader iframes',
+    )
+  }
+
   assert.notStrictEqual(
     styles.createTypographyLayoutSignature({
       ...layoutBase,

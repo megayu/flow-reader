@@ -11,6 +11,13 @@ Read this before proposing or testing a Flow Reader performance change. Search f
 
 ## Retained Approaches
 
+### Keep optional page appearance in a static reader-shell overlay
+
+- Change: render card frames, a book seam, or a dashed divider in one pointer-inert overlay outside EPUB iframes. Read the already-computed rendition divisor, column width, and gap during the existing page-width sync; do not add the appearance value to iframe style or pagination signatures.
+- Measured effect: focused browser Playwright coverage toggled all three appearances and cleared the selection with zero `display`, `next`, `prev`, `resizeRendition`, or `relayoutCurrentView` calls. Horizontal and vertical-rl geometry checks passed. The bundled browser performance and deterministic scripts could not produce baseline/after results because their imported mock tabs did not settle before or after this change, so no timing improvement or release-client performance claim is made.
+- Decision: keep. The optional decoration adds only three static child elements while selected and does not enter steady page-turn or tab-switch operation paths.
+- Constraint: keep the overlay pointer-inert and outside iframe content. If decoration later adds observers, blurred shadows, iframe clipping, or state subscriptions, collect comparable `tauri-release` baseline/after measurements across page-turn and tab-switch scenarios.
+
 ### Invalidate iframe page counts only when physical page width changes
 
 - Change: keep the last applied `pageWidth` on each iframe view and clear content width/page-count caches only when that value changes. This makes any relayout with changed physical page geometry, including relayouts that remain in double-page mode, remeasure vertical pages without adding work to ordinary same-width page turns.

@@ -144,6 +144,159 @@ body,
   --sidebar-ring: var(--flow-focus-ring);
 }
 
+[data-flow-page-appearance='book'] [data-flow-reader-header],
+[data-flow-page-appearance='divider'] [data-flow-reader-header] {
+  box-shadow: inset 0 -1px 0 var(--flow-border);
+}
+
+[data-flow-page-appearance='book'] [data-flow-reader-footer],
+[data-flow-page-appearance='divider'] [data-flow-reader-footer] {
+  box-shadow: inset 0 1px 0 var(--flow-border);
+}
+
+[data-flow-reader-page-frame],
+[data-flow-reader-page-seam] {
+  position: absolute;
+  display: none;
+}
+
+[data-flow-page-appearance='cards'] [data-flow-reader-page-frame='start'] {
+  inset: 4px var(--flow-reader-page-half-gap, 8px);
+  display: block;
+  border: 1.2px solid var(--flow-border);
+  border-radius: 16px;
+  box-shadow:
+    0 4px 12px rgb(0 0 0 / 12%),
+    inset 0 0 0 1px color-mix(in srgb, var(--flow-border) 25%, transparent);
+}
+
+[data-flow-page-appearance='cards']
+  [data-flow-reader-content][data-flow-reader-spread='double']
+  [data-flow-reader-page-frame='start'],
+[data-flow-page-appearance='cards']
+  [data-flow-reader-content][data-flow-reader-spread='double']
+  [data-flow-reader-page-frame='end'] {
+  top: 4px;
+  bottom: 4px;
+  right: auto;
+  display: block;
+  width: var(--flow-reader-column-width, 100%);
+  border: 1.2px solid var(--flow-border);
+  border-radius: 16px;
+  box-shadow:
+    0 4px 12px rgb(0 0 0 / 12%),
+    inset 0 0 0 1.5px color-mix(in srgb, var(--flow-border) 25%, transparent);
+}
+
+[data-flow-page-appearance='cards']
+  [data-flow-reader-content][data-flow-reader-spread='double']
+  [data-flow-reader-page-frame='start'] {
+  left: calc(
+    50% - var(--flow-reader-page-half-gap, 0px) -
+      var(--flow-reader-column-width, 100%)
+  );
+}
+
+[data-flow-page-appearance='cards']
+  [data-flow-reader-content][data-flow-reader-spread='double']
+  [data-flow-reader-page-frame='end'] {
+  left: calc(50% + var(--flow-reader-page-half-gap, 0px));
+}
+
+.dark
+  [data-flow-page-appearance='cards']
+  [data-flow-reader-content][data-flow-reader-spread]
+  [data-flow-reader-page-frame] {
+  border-color: color-mix(in srgb, var(--flow-border-strong) 78%, white 22%);
+  box-shadow:
+    0 6px 18px rgb(0 0 0 / 55%),
+    0 0 0 1px rgb(255 255 255 / 10%),
+    inset 0 0 0 1px
+      color-mix(in srgb, var(--flow-border-strong) 55%, transparent);
+}
+
+[data-flow-page-appearance='book'] [data-flow-reader-page-frame='start'] {
+  inset: 0;
+  display: block;
+  background:
+    linear-gradient(
+        to bottom,
+        color-mix(in srgb, var(--flow-border-strong) 78%, transparent) 0%,
+        color-mix(in srgb, var(--flow-border-strong) 34%, transparent) 28%,
+        color-mix(in srgb, var(--flow-border-strong) 12%, transparent) 58%,
+        transparent 100%
+      )
+      top / 100% 12px no-repeat,
+    linear-gradient(
+        to top,
+        color-mix(in srgb, var(--flow-border-strong) 78%, transparent) 0%,
+        color-mix(in srgb, var(--flow-border-strong) 34%, transparent) 28%,
+        color-mix(in srgb, var(--flow-border-strong) 12%, transparent) 58%,
+        transparent 100%
+      )
+      bottom / 100% 12px no-repeat,
+    linear-gradient(
+        to right,
+        color-mix(in srgb, var(--flow-border-strong) 78%, transparent) 0%,
+        color-mix(in srgb, var(--flow-border-strong) 34%, transparent) 28%,
+        color-mix(in srgb, var(--flow-border-strong) 12%, transparent) 58%,
+        transparent 100%
+      )
+      left / 12px 100% no-repeat,
+    linear-gradient(
+        to left,
+        color-mix(in srgb, var(--flow-border-strong) 78%, transparent) 0%,
+        color-mix(in srgb, var(--flow-border-strong) 34%, transparent) 28%,
+        color-mix(in srgb, var(--flow-border-strong) 12%, transparent) 58%,
+        transparent 100%
+      )
+      right / 12px 100% no-repeat;
+}
+
+[data-flow-page-appearance='book']
+  [data-flow-reader-content][data-flow-reader-spread='double']
+  [data-flow-reader-page-seam] {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  display: block;
+  width: 96px;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    color-mix(in srgb, var(--flow-border-strong) 2%, transparent) 10%,
+    color-mix(in srgb, var(--flow-border-strong) 4%, transparent) 18%,
+    color-mix(in srgb, var(--flow-border-strong) 14%, transparent) 32%,
+    color-mix(in srgb, var(--flow-border-strong) 24%, transparent) 38%,
+    color-mix(in srgb, var(--flow-border-strong) 48%, transparent) 42%,
+    color-mix(in srgb, var(--flow-border-strong) 90%, transparent) 49%,
+    color-mix(in srgb, var(--flow-border-strong) 99%, var(--flow-text) 5%) 50%,
+    color-mix(in srgb, var(--flow-border-strong) 90%, transparent) 51%,
+    color-mix(in srgb, var(--flow-border-strong) 48%, transparent) 58%,
+    color-mix(in srgb, var(--flow-border-strong) 24%, transparent) 62%,
+    color-mix(in srgb, var(--flow-border-strong) 14%, transparent) 68%,
+    color-mix(in srgb, var(--flow-border-strong) 4%, transparent) 82%,
+    color-mix(in srgb, var(--flow-border-strong) 2%, transparent) 90%,
+    transparent 100%
+  );
+}
+
+[data-flow-page-appearance='divider']
+  [data-flow-reader-content][data-flow-reader-spread='double']
+  [data-flow-reader-page-seam] {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  display: block;
+  width: 1.5px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--flow-border-strong) 0 8px,
+    transparent 8px 12px
+  );
+}
+
 .checkbox,
 .textfield,
 select {

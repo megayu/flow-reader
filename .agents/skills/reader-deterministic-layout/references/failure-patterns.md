@@ -11,6 +11,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 
 ## Known Failure Patterns
 
+### Reader page decoration follows configured spread instead of actual geometry
+
+- Symptom: a page frame can retain a center seam after responsive double-page mode has fallen back to one page, or vertical-rl can receive writing-direction-specific decoration offsets.
+- Reproduction path: enable a page appearance in a wide double-page reader, then switch to single page or narrow the reader; repeat with a vertical-rl book.
+- Root cause: presentation state can be derived from the requested spread or writing direction instead of the rendition's current physical `layout.divisor`, column width, and gap.
+- Fix direction: keep page decoration in a pointer-inert application-layer overlay, derive its physical geometry from the active rendition layout, and keep it out of EPUB iframe styles and typography signatures.
+- Verification gate: UI coverage must prove card frames use the rendition gap, divider/book seams appear only at physical double-page center, vertical-rl uses the same physical geometry, and appearance toggles call no display, resize, or relayout operations.
+
 ### Header/body mismatch during pending page turn
 
 - Symptom: during a page turn, the iframe body advances to the next chapter while the header/footer still belong to the previous committed snapshot.

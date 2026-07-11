@@ -16,7 +16,11 @@ import { createPortal } from 'react-dom'
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
 import { reader, useReaderSnapshot } from '@flow/reader/models/reader'
-import { TypographyConfiguration, useSettings } from '@flow/reader/state'
+import {
+  PageAppearance,
+  TypographyConfiguration,
+  useSettings,
+} from '@flow/reader/state'
 
 import { getBodyTypographyBaseline } from '../../styles'
 import { IconButton } from '../Button'
@@ -153,6 +157,13 @@ const TypographyPane: React.FC = () => {
             unsetOnSelected
             onChange={(value) => {
               setTypography('textAlign', value)
+            }}
+          />
+          <PageAppearanceField
+            name={t('page_appearance')}
+            value={bookTypography?.pageAppearance}
+            onChange={(value) => {
+              setTypography('pageAppearance', value)
             }}
           />
           <NumberField
@@ -406,6 +417,34 @@ const TextAlignField: React.FC<TextAlignFieldProps> = ({
       options={[
         { label: t('text_align.default'), value: 'default' },
         { label: t('text_align.justify'), value: 'justify' },
+      ]}
+      onChange={onChange}
+    />
+  )
+}
+
+interface PageAppearanceFieldProps {
+  name: string
+  value?: PageAppearance
+  onChange: (value?: PageAppearance) => void
+}
+
+const PageAppearanceField: React.FC<PageAppearanceFieldProps> = ({
+  name,
+  value,
+  onChange,
+}) => {
+  const t = useTranslation('typography')
+
+  return (
+    <SegmentedField
+      name={name}
+      value={value}
+      unsetOnSelected
+      options={[
+        { label: t('page_appearance.cards'), value: 'cards' },
+        { label: t('page_appearance.book'), value: 'book' },
+        { label: t('page_appearance.divider'), value: 'divider' },
       ]}
       onChange={onChange}
     />

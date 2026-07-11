@@ -20,6 +20,7 @@ export type SetterOrUpdater<T> = (value: T | ((prev: T) => T)) => void
 
 export type ViewMode = 'reader' | 'library'
 export type Action = 'toc' | 'search' | 'annotation' | 'typography' | 'image'
+export type PageAppearance = 'cards' | 'book' | 'divider'
 export type LibraryAction = 'libraryFilter'
 export type LibrarySortField = 'title' | 'creator' | 'updatedAt' | 'createdAt'
 export type LibrarySortDirection = 'asc' | 'desc'
@@ -50,6 +51,7 @@ export interface TypographyConfiguration {
   textAlign?: 'default' | 'justify'
   spread?: RenditionSpread
   zoom?: number
+  pageAppearance?: PageAppearance
 }
 
 interface UiConfiguration {
