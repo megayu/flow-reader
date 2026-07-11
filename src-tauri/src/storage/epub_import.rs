@@ -2433,6 +2433,10 @@ pub(super) fn open_external_epub_path_impl(
     storage: &AppStorage,
     path: &Path,
 ) -> Result<BookRecord, String> {
+    if let Some(book) = managed_library_book_for_epub_path(storage, path)? {
+        return Ok(book);
+    }
+
     let external_root = external_books_root(storage.root());
     fs::create_dir_all(&external_root).map_err(|error| error.to_string())?;
 
@@ -2557,6 +2561,54 @@ pub(super) fn open_external_epub_path_impl(
     }
 
     result
+}
+
+fn managed_library_book_for_epub_path(
+    storage: &AppStorage,
+    path: &Path,
+) -> Result<Option<BookRecord>, String> {
+    let Ok(path) = fs::canonicalize(path) else {
+        return Ok(None);
+    };
+    if !path.is_file() || !is_epub_file(&path) {
+        return Ok(None);
+    }
+    let Ok(root) = fs::canonicalize(books_root(storage.root())) else {
+        return Ok(None);
+    };
+    let Ok(relative) = path.strip_prefix(root) else {
+        return Ok(None);
+    };
+    let mut components = relative.components();
+    let Some(id) = components.next() else {
+        return Ok(None);
+    };
+    let Some(filename) = components.next() else {
+        return Ok(None);
+    };
+    if components.next().is_some() || filename.as_os_str() != BOOK_FILE {
+        return Ok(None);
+    }
+    let Some(id) = id.as_os_str().to_str() else {
+        return Ok(None);
+    };
+
+    let mut state = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?;
+    let Some(book) = state
+        .library
+        .books
+        .iter()
+        .find(|book| book.id == id)
+        .cloned()
+    else {
+        return Ok(None);
+    };
+
+    storage.compose_book(&mut state, &book).map(Some)
 }
 
 #[cfg(test)]

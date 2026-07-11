@@ -4354,6 +4354,48 @@ mod tests {
     }
 
     #[test]
+    fn opening_managed_book_epub_uses_existing_book_without_hash_matching() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-managed-open-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("source.epub");
+        write_minimal_epub_file(&source, "Managed Original", "original body");
+        let storage = test_storage_with_books(&root, Vec::new());
+        let imported = import_epub_path_impl(&storage, &source, true).unwrap();
+        let managed_epub = storage.book_dir(&imported.id).join(BOOK_FILE);
+        write_minimal_epub_file(&managed_epub, "Managed Edited", "edited body");
+        write_metadata(
+            &storage,
+            &imported.id,
+            &json!({"title": "Edited Metadata", "custom": "kept"}),
+        )
+        .unwrap();
+
+        let opened = open_external_epub_path_impl(&storage, &managed_epub).unwrap();
+
+        assert_eq!(opened.id, imported.id);
+        assert!(matches!(opened.scope, BookScope::Library));
+        assert_eq!(
+            opened.metadata.get("title").and_then(Value::as_str),
+            Some("Edited Metadata")
+        );
+        assert_eq!(
+            opened.metadata.get("custom").and_then(Value::as_str),
+            Some("kept")
+        );
+        let state = storage.inner.state.lock().unwrap();
+        assert_eq!(state.library.books.len(), 1);
+        assert!(state.external.books.is_empty());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn importing_open_external_epub_promotes_metadata_state_and_removes_external_record() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
