@@ -68,9 +68,7 @@ const readerModel = loadTsModule('src/models/reader.ts', {
   '../annotation': {
     AnnotationColor: {},
     AnnotationType: {},
-    compareDefinition: () => 0,
     createAnnotationSpine: () => [],
-    normalizeDefinition: (value) => value,
   },
   '../book': {
     getBookDisplayTitle: () => '',
@@ -535,28 +533,6 @@ function testZoomLeavesNonDecorativeBackgroundsAlone() {
   )
 }
 
-function testDefinitionsAreNormalizedConsistently() {
-  assert.strictEqual(
-    typeof annotation.normalizeDefinition,
-    'function',
-    'Expected shared definition normalization',
-  )
-  assert.strictEqual(
-    typeof annotation.compareDefinition,
-    'function',
-    'Expected shared definition comparison',
-  )
-
-  assert.strictEqual(
-    annotation.normalizeDefinition('  Café\n\tAU   Lait  '),
-    'Café AU Lait',
-  )
-  assert.strictEqual(
-    annotation.compareDefinition(' café au lait ', 'CAFÉ\nAU\tLAIT'),
-    true,
-  )
-}
-
 function testAnnotationSpineDoesNotRequireNavItem() {
   assert.strictEqual(
     typeof annotation.createAnnotationSpine,
@@ -947,7 +923,6 @@ testZoomBodyStylesUseSinglePageVerticalStride()
 testZoomMediaUsesScaledContentColumnWidth()
 testZoomPinsExplicitDecorativeBackgroundsToViewport()
 testZoomLeavesNonDecorativeBackgroundsAlone()
-testDefinitionsAreNormalizedConsistently()
 testAnnotationSpineDoesNotRequireNavItem()
 testEpubHrefComparisonHandlesEncodedSpinePaths()
 testNoteMarkersSupportCjkBrackets()

@@ -12,9 +12,7 @@ import { IS_SERVER } from '@flow/reader/env'
 import {
   AnnotationColor,
   AnnotationType,
-  compareDefinition,
   createAnnotationSpine,
-  normalizeDefinition,
 } from '../annotation'
 import { getBookDisplayTitle } from '../book'
 import {
@@ -460,6 +458,10 @@ function classifyImage(image: HTMLImageElement, index: number): ImageEntry {
     ...(reason ? { reason } : {}),
     src,
   }
+}
+
+function compareDefinition(d1: string, d2: string) {
+  return d1.toLowerCase() === d2.toLowerCase()
 }
 
 function withoutReadingSpread(
@@ -1935,25 +1937,7 @@ export class BookTab extends BaseTab {
   }
 
   define(def: string[]) {
-    const definitions = [...this.book.definitions]
-    let changed = false
-
-    def.forEach((item) => {
-      const definition = normalizeDefinition(item)
-      if (!definition) return
-      if (
-        definitions.some((current) => compareDefinition(current, definition))
-      ) {
-        return
-      }
-
-      definitions.push(definition)
-      changed = true
-    })
-
-    if (!changed) return
-
-    this.updateBook({ definitions })
+    this.updateBook({ definitions: [...this.book.definitions, ...def] })
     this.bumpOverlayVersion()
   }
   undefine(def: string) {

@@ -4765,6 +4765,24 @@ test('keeps three tabs stable and redraws same-chapter overlays immediately', as
   await page.getByRole('tab', { name: 'Tab Layout C' }).click()
   await expectVisibleFrameStamp(page, 'tab-c-narrow')
 
+  const originalDefinition = '原书，ＡＢＣ'
+  await page.evaluate((definition) => {
+    ;(window as any).reader.focusedBookTab?.define([definition])
+  }, originalDefinition)
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (definition) =>
+          (
+            window as any
+          ).reader.focusedBookTab?.overlayState.definitions.includes(
+            definition,
+          ) ?? false,
+        originalDefinition,
+      ),
+    )
+    .toBe(true)
+
   await page.evaluate(() => {
     ;(window as any).reader.focusedBookTab?.define(['Alice'])
   })
@@ -4776,9 +4794,11 @@ test('keeps three tabs stable and redraws same-chapter overlays immediately', as
   await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
   await expectReaderMarkCursor(page, 'epubjs-hl')
 
-  await page.evaluate(() => {
-    ;(window as any).reader.focusedBookTab?.undefine(' alice ')
-  })
+  await page.evaluate((definition) => {
+    const tab = (window as any).reader.focusedBookTab
+    tab?.undefine('Alice')
+    tab?.undefine(definition)
+  }, originalDefinition)
   await expect
     .poll(() => countVisibleReaderMarks(page, 'flow-definition-underline'))
     .toBe(0)

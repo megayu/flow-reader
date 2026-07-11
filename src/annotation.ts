@@ -19,20 +19,6 @@ export const colorMap = {
   purple: 'rgba(126, 34, 206, 0.36)',
 }
 
-export function normalizeDefinition(definition: string) {
-  return definition.normalize('NFKC').replace(/\s+/g, ' ').trim()
-}
-
-function definitionComparisonKey(definition: string) {
-  return normalizeDefinition(definition).toLowerCase()
-}
-
-export function compareDefinition(a: string, b: string) {
-  const keyA = definitionComparisonKey(a)
-  const keyB = definitionComparisonKey(b)
-  return !!keyA && keyA === keyB
-}
-
 export function orderRangeRectsForWritingMode<T extends DOMRectReadOnly>(
   rects: readonly T[],
   writingMode: string,
