@@ -30,7 +30,8 @@ export type ShortcutActionId =
   | 'returnPrevious'
   | 'returnStart'
   | 'searchPanel'
-  | 'switchAdjacentTab'
+  | 'switchNextTab'
+  | 'switchPreviousTab'
   | 'switchLastTab'
   | 'switchTabIndex'
   | 'tocPanel'
@@ -107,12 +108,13 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
     labelKey: 'switch_last_tab',
     shortcuts: [[commandToken, '9']],
   },
-  switchAdjacentTab: {
-    labelKey: 'switch_adjacent_tab',
-    shortcuts: [
-      [commandToken, '←'],
-      [commandToken, '→'],
-    ],
+  switchPreviousTab: {
+    labelKey: 'switch_previous_tab',
+    shortcuts: [[commandToken, '←']],
+  },
+  switchNextTab: {
+    labelKey: 'switch_next_tab',
+    shortcuts: [[commandToken, '→']],
   },
   moveTabLeft: {
     labelKey: 'move_tab_left',
@@ -228,7 +230,8 @@ const shortcutGroups: ShortcutGroupDefinition[] = [
       shortcutDefinitions.closeAllTabs,
       shortcutDefinitions.switchTabIndex,
       shortcutDefinitions.switchLastTab,
-      shortcutDefinitions.switchAdjacentTab,
+      shortcutDefinitions.switchPreviousTab,
+      shortcutDefinitions.switchNextTab,
       shortcutDefinitions.moveTabLeft,
       shortcutDefinitions.moveTabRight,
     ],
