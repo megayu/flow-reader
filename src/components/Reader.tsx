@@ -3091,6 +3091,7 @@ const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) => {
   const popoverRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
+  const [scrollable, setScrollable] = useState(false)
 
   useLayoutEffect(() => {
     const content = contentRef.current
@@ -3104,6 +3105,12 @@ const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) => {
         width: Math.ceil(rect?.width ?? 0),
         height: Math.ceil(rect?.height ?? 0),
       })
+      setScrollable(
+        popover.writingMode === 'vertical-rl'
+          ? content.scrollWidth > content.clientWidth + 1
+          : content.scrollHeight >
+              popover.pageRect.height - NOTE_POPOVER_MARGIN * 2 + 1,
+      )
     }
 
     updateSize()
@@ -3178,7 +3185,18 @@ const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) => {
           margin: 0,
           maxWidth: '100%',
           maxHeight: popover.pageRect.height - NOTE_POPOVER_MARGIN * 2,
-          overflow: 'auto',
+          overflowX:
+            popover.writingMode === 'vertical-rl'
+              ? scrollable
+                ? 'auto'
+                : 'visible'
+              : 'clip',
+          overflowY:
+            popover.writingMode === 'vertical-rl'
+              ? 'clip'
+              : scrollable
+                ? 'auto'
+                : 'visible',
           whiteSpace: 'normal',
           overflowWrap: 'break-word',
           textAlign: 'justify',

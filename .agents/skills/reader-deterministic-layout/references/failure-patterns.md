@@ -117,11 +117,11 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 
 ### Zoomed media crosses into the adjacent spread page
 
-- Symptom: in double-page mode, increasing reader zoom lets a large image draw over the adjacent page while text continues to reflow inside the page columns.
-- Reproduction path: open a reflowable book in double-page mode, set reader zoom above 1, and render an image wider than the current page column.
-- Root cause: epubjs image adjustment constrained media with the unzoomed layout column width, while Flow Reader applies zoom using a scaled body with inverse column dimensions.
-- Fix direction: when injecting zoom styles into iframe content, constrain media max inline size to the current single-page content column in unscaled coordinates.
-- Verification gate: browser Playwright coverage must assert a wide image's rendered width stays within the zoomed single-page content column in double-page mode; final client layout changes still require the deterministic verifier on a Tauri client.
+- Symptom: in double-page mode, increasing reader zoom lets a large image draw over the adjacent page while text continues to reflow inside the page columns. A related regression can make an authored inline note icon expand to its large intrinsic bitmap size as soon as zoom is explicitly set, including zoom `1`.
+- Reproduction path: open a reflowable book in double-page mode, set reader zoom above 1, and render an image wider than the current page column. Also render a large intrinsic image under `sup` or `sub` with an authored relative height such as `0.9em`, then explicitly set zoom.
+- Root cause: epubjs image adjustment constrained media with the unzoomed layout column width, while Flow Reader applies zoom using a scaled body with inverse column dimensions. The resulting zoom rule also forced `height: auto !important` on every image, overriding author-sized superscript and subscript icons.
+- Fix direction: when injecting zoom styles into iframe content, constrain media max inline size to the current single-page content column in unscaled coordinates. Keep automatic intrinsic height for ordinary images, video, and canvas, but preserve authored heights for images nested under `sup` or `sub` without scanning media nodes or reading computed styles.
+- Verification gate: browser Playwright coverage must assert a wide image's rendered width stays within the zoomed single-page content column in double-page mode and a 512-by-512 superscript icon remains at its authored relative height; final client layout changes still require the deterministic verifier on a Tauri client.
 
 ### Negative-margin heading background crosses into adjacent spread page
 
@@ -258,6 +258,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Root cause: Flow Reader clones popover content from the linked note element. For cross-section notes, the hidden render path loads the raw section document and does not pass through the active rendition typography injection before computed styles are copied.
 - Fix direction: identify note content from linked note/backlink structure instead of expanding class or id term lists, and apply the active reader font size to the cloned popover content tree after normalizing the note clone.
 - Verification gate: focused note marker and body-text tests must cover backlink-marked note content; UI or client verification should confirm the popover font changes with the reader typography setting.
+
+### Note popovers show scrollbars without content overflow
+
+- Symptom: a short linked note fits inside its page-bounded popover but still shows scroll chrome, while long horizontal or vertical notes must remain scrollable.
+- Reproduction path: open a short reciprocal linked note and compare its physical client and scroll dimensions, then extend the same note beyond the available physical width or height.
+- Root cause: the note content container was always declared `overflow: auto`, so WebView scrollbar presentation could appear even when neither physical axis overflowed. The first conditional attempt compared `scrollHeight` with rounded `clientHeight`; in WebView2, glyph ink can extend a few pixels beyond a complete line box, so a source note measured `clientHeight = 72` and `scrollHeight = 75` even though all content fit naturally and the page allowed `675.5px`. Treating either physical axis as scrollable also lets an unrelated cross-axis difference create the wrong scrollbar. Pairing `overflow-x: hidden` with `overflow-y: visible` is invalid for this purpose because CSS computes the visible axis to `auto` when the other axis is hidden, scroll, or auto.
+- Fix direction: reuse the popover's existing resize measurement and follow the writing direction. Horizontal notes scroll only when physical content height exceeds the configured page-bounded `maxHeight`, clip the horizontal axis, and otherwise leave vertical overflow visible. Vertical-rl notes scroll only when physical width exceeds client width, clip the vertical axis, and otherwise leave horizontal overflow visible. Use `clip`, not `hidden`, for the inactive non-scrolling axis. Do not add a document-wide observer or remove scrolling from genuinely long notes.
+- Verification gate: focused browser interaction coverage must prove glyph overflow can make `scrollHeight` exceed `clientHeight` without enabling scrolling while it remains below `maxHeight`, and that content above `maxHeight` still enables vertical scrolling. Final acceptance must use a real Tauri release client with an affected native EPUB and record client/scroll/max dimensions plus computed overflow; vertical coverage must retain its physical horizontal scroll path and clipped vertical axis.
 
 ### Oversized NCX-anchored spine section
 

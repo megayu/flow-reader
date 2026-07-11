@@ -161,7 +161,7 @@ const zoomConstrainedMediaSelector = [
 ].join(',\n')
 
 const zoomIntrinsicMediaSelector = [
-  'html body img',
+  'html body img:not(:is(sup, sub) img)',
   'html body video',
   'html body canvas',
 ].join(',\n')

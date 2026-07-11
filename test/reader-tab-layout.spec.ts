@@ -2785,6 +2785,12 @@ test('[vertical-rl] places note popover on the physical left with vertical conte
 
     return {
       anchorLeft: frameRect.left + anchorRect.left,
+      contentClientHeight: content.clientHeight,
+      contentClientWidth: content.clientWidth,
+      contentOverflowX: getComputedStyle(content).overflowX,
+      contentOverflowY: getComputedStyle(content).overflowY,
+      contentScrollHeight: content.scrollHeight,
+      contentScrollWidth: content.scrollWidth,
       popoverLeft: popoverRect.left,
       popoverRight: popoverRect.right,
       writingMode: getComputedStyle(content).writingMode,
@@ -2793,6 +2799,150 @@ test('[vertical-rl] places note popover on the physical left with vertical conte
 
   expect(geometry.popoverRight).toBeLessThan(geometry.anchorLeft)
   expect(geometry.writingMode).toBe('vertical-rl')
+  expect(geometry.contentOverflowX).toBe('visible')
+  expect(geometry.contentOverflowY).toBe('clip')
+  expect(
+    Math.max(
+      geometry.contentScrollHeight - geometry.contentClientHeight,
+      geometry.contentScrollWidth - geometry.contentClientWidth,
+    ),
+  ).toBeLessThanOrEqual(1)
+
+  await page.evaluate(() => {
+    const content = document.querySelector(
+      '.flow-note-popover > div',
+    ) as HTMLElement | null
+    if (!content) throw new Error('Missing note popover content')
+
+    const paragraph = document.createElement('p')
+    paragraph.textContent = '用于验证长注释滚动能力。'.repeat(500)
+    content.appendChild(paragraph)
+  })
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const content = document.querySelector(
+          '.flow-note-popover > div',
+        ) as HTMLElement | null
+        if (!content) throw new Error('Missing note popover content')
+
+        return {
+          clientHeight: content.clientHeight,
+          overflowX: getComputedStyle(content).overflowX,
+          overflowY: getComputedStyle(content).overflowY,
+          scrollHeight: content.scrollHeight,
+        }
+      }),
+    )
+    .toMatchObject({ overflowX: 'auto', overflowY: 'hidden' })
+
+  const longNoteGeometry = await page.evaluate(() => {
+    const content = document.querySelector(
+      '.flow-note-popover > div',
+    ) as HTMLElement | null
+    if (!content) throw new Error('Missing note popover content')
+
+    return {
+      clientHeight: content.clientHeight,
+      clientWidth: content.clientWidth,
+      scrollHeight: content.scrollHeight,
+      scrollWidth: content.scrollWidth,
+    }
+  })
+  expect(
+    Math.max(
+      longNoteGeometry.scrollHeight - longNoteGeometry.clientHeight,
+      longNoteGeometry.scrollWidth - longNoteGeometry.clientWidth,
+    ),
+  ).toBeGreaterThan(1)
+})
+
+test('does not scroll a horizontal note for glyph overflow inside the available height', async ({
+  page,
+}) => {
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+
+  await page.evaluate(() => {
+    const pane = document.querySelector(
+      '[data-flow-reader-pane][aria-hidden="false"]',
+    )
+    const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
+      (candidate) => candidate.getBoundingClientRect().width > 0,
+    ) as HTMLIFrameElement | undefined
+    const doc = frame?.contentDocument
+    if (!doc?.body) throw new Error('Missing horizontal note fixture')
+
+    const paragraph = doc.createElement('p')
+    paragraph.innerHTML =
+      '<a id="horizontal-note-ref" role="doc-noteref" href="#horizontal-note">〔1〕</a>'
+    const note = doc.createElement('aside')
+    note.id = 'horizontal-note'
+    note.setAttribute('role', 'doc-footnote')
+    note.style.fontSize = '28px'
+    note.style.lineHeight = '10px'
+    note.innerHTML =
+      'Short horizontal note.<a href="#horizontal-note-ref">↩</a>'
+    doc.body.prepend(paragraph, note)
+  })
+
+  const activeFrame = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .filter({ visible: true })
+    .first()
+  await activeFrame.contentFrame().locator('#horizontal-note-ref').click()
+  const popover = page.locator('.flow-note-popover')
+  await expect(popover).toBeVisible()
+
+  const overflow = await popover
+    .locator(':scope > div')
+    .first()
+    .evaluate((content) => {
+      const style = getComputedStyle(content)
+      return {
+        clientHeight: content.clientHeight,
+        clientWidth: content.clientWidth,
+        overflowX: style.overflowX,
+        overflowY: style.overflowY,
+        scrollHeight: content.scrollHeight,
+        scrollWidth: content.scrollWidth,
+        maxHeight: Number.parseFloat(style.maxHeight),
+      }
+    })
+
+  expect(overflow.scrollHeight).toBeGreaterThan(overflow.clientHeight + 1)
+  expect(overflow.scrollHeight).toBeLessThan(overflow.maxHeight)
+  expect(overflow.overflowX).toBe('clip')
+  expect(overflow.overflowY).toBe('visible')
+
+  await page.keyboard.press('Escape')
+  await expect(popover).toBeHidden()
+  await activeFrame
+    .contentFrame()
+    .locator('#horizontal-note')
+    .evaluate((note) => {
+      note.removeAttribute('style')
+      note.innerHTML =
+        `${'Long horizontal note content. '.repeat(800)}` +
+        '<a href="#horizontal-note-ref">↩</a>'
+    })
+  await activeFrame.contentFrame().locator('#horizontal-note-ref').click()
+  await expect(popover).toBeVisible()
+
+  const longOverflow = await popover
+    .locator(':scope > div')
+    .first()
+    .evaluate((content) => {
+      const style = getComputedStyle(content)
+      return {
+        overflowY: style.overflowY,
+        scrollHeight: content.scrollHeight,
+        maxHeight: Number.parseFloat(style.maxHeight),
+      }
+    })
+  expect(longOverflow.scrollHeight).toBeGreaterThan(longOverflow.maxHeight)
+  expect(longOverflow.overflowY).toBe('auto')
 })
 
 test('[vertical-rl] keeps the selection menu complete and beside the selection', async ({
@@ -3230,13 +3380,30 @@ test('keeps zoomed images inside the current page column in double page mode', a
     image.src = `data:image/svg+xml,${encodeURIComponent(svg)}`
     image.alt = 'Wide zoom layout target'
     image.style.display = 'block'
-    doc.body.prepend(image)
+    const inlineIcon = doc.createElement('img')
+    inlineIcon.src = `data:image/svg+xml,${encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><circle cx="256" cy="256" r="220" fill="#111827"/></svg>',
+    )}`
+    inlineIcon.alt = 'Inline zoom footnote icon'
+    inlineIcon.style.height = '0.9em'
+    inlineIcon.style.width = 'auto'
+    const inlineAnchor = doc.createElement('a')
+    inlineAnchor.appendChild(inlineIcon)
+    const inlineSup = doc.createElement('sup')
+    inlineSup.appendChild(inlineAnchor)
+    doc.body.prepend(image, inlineSup)
 
-    await new Promise<void>((resolve, reject) => {
-      image.onload = () => resolve()
-      image.onerror = () => reject(new Error('Zoom layout test image failed'))
-      if (image.complete) resolve()
-    })
+    await Promise.all(
+      [image, inlineIcon].map(
+        (target) =>
+          new Promise<void>((resolve, reject) => {
+            target.onload = () => resolve()
+            target.onerror = () =>
+              reject(new Error('Zoom layout test image failed'))
+            if (target.complete) resolve()
+          }),
+      ),
+    )
   })
 
   let metrics:
@@ -3246,6 +3413,8 @@ test('keeps zoomed images inside the current page column in double page mode', a
         imageMaxInlineSize?: string
         imageMaxWidth?: string
         imageWidth: number
+        inlineIconHeight: number
+        inlineIconMaxHeight: number
         maxVisualWidth: number
       }
     | undefined
@@ -3264,6 +3433,13 @@ test('keeps zoomed images inside the current page column in double page mode', a
           'img[alt="Wide zoom layout target"]',
         ) as HTMLImageElement | null
         const rect = image?.getBoundingClientRect()
+        const inlineIcon = doc?.querySelector(
+          'img[alt="Inline zoom footnote icon"]',
+        ) as HTMLImageElement | null
+        const inlineIconRect = inlineIcon?.getBoundingClientRect()
+        const inlineIconStyle = inlineIcon
+          ? getComputedStyle(inlineIcon)
+          : undefined
         const style = image ? getComputedStyle(image) : undefined
         const bodyStyle = doc?.body ? getComputedStyle(doc.body) : undefined
         const paddingLeft = bodyStyle
@@ -3283,6 +3459,11 @@ test('keeps zoomed images inside the current page column in double page mode', a
           imageMaxInlineSize: style?.maxInlineSize,
           imageMaxWidth: style?.maxWidth,
           imageWidth: rect?.width ?? 0,
+          inlineIconHeight: inlineIconRect?.height ?? 0,
+          inlineIconMaxHeight:
+            (Number.parseFloat(inlineIconStyle?.fontSize ?? '') || 0) *
+            0.9 *
+            zoom,
           maxVisualWidth,
         }
       })
@@ -3294,6 +3475,10 @@ test('keeps zoomed images inside the current page column in double page mode', a
   expect(metrics!.imageWidth, JSON.stringify(metrics)).toBeLessThanOrEqual(
     metrics!.maxVisualWidth + 1,
   )
+  expect(
+    metrics!.inlineIconHeight,
+    JSON.stringify(metrics),
+  ).toBeLessThanOrEqual(metrics!.inlineIconMaxHeight + 1)
 })
 
 test('long-book does not expose next-chapter body under stale header while page turn is pending', async ({
