@@ -1,8 +1,9 @@
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
+  renameSync,
+  rmSync,
   statSync,
 } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
@@ -13,14 +14,21 @@ const scriptDir = dirname(fileURLToPath(import.meta.url))
 const rootDir = resolve(scriptDir, '..')
 const targetDir = join(rootDir, 'src-tauri', 'target', 'release')
 const distDir = join(rootDir, 'dist')
+const localReleaseCargoProfile = {
+  CARGO_PROFILE_RELEASE_OPT_LEVEL: '3',
+  CARGO_PROFILE_RELEASE_LTO: 'true',
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '1',
+  CARGO_PROFILE_RELEASE_STRIP: 'true',
+  CARGO_PROFILE_RELEASE_PANIC: 'abort',
+}
 
 function runPnpmScript(scriptName) {
   const pnpmExecPath = process.env.npm_execpath
   const command = pnpmExecPath
     ? process.execPath
     : process.platform === 'win32'
-    ? 'pnpm.cmd'
-    : 'pnpm'
+      ? 'pnpm.cmd'
+      : 'pnpm'
   const args = pnpmExecPath
     ? [pnpmExecPath, 'run', scriptName]
     : ['run', scriptName]
@@ -28,7 +36,10 @@ function runPnpmScript(scriptName) {
     cwd: rootDir,
     stdio: 'inherit',
     shell: false,
-    env: process.env,
+    env: {
+      ...process.env,
+      ...localReleaseCargoProfile,
+    },
   })
 
   if (result.status !== 0) {
@@ -101,5 +112,6 @@ mkdirSync(distDir, { recursive: true })
 const sourceBinary = findReleaseBinary()
 const destinationBinary = join(distDir, basename(sourceBinary))
 
-copyFileSync(sourceBinary, destinationBinary)
-console.log(`Copied ${sourceBinary} to ${destinationBinary}`)
+rmSync(destinationBinary, { force: true })
+renameSync(sourceBinary, destinationBinary)
+console.log(`Moved ${sourceBinary} to ${destinationBinary}`)
