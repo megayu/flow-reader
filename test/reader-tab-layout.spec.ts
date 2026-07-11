@@ -2020,6 +2020,23 @@ test('[vertical-rl] advances chapter find within the visible page before turning
   expect(activeHighlight).toBe(true)
 })
 
+test('[vertical-rl] wraps chapter find navigation in both directions', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+
+  await page.keyboard.press(findShortcut)
+  const input = page.getByRole('textbox', { name: /Find in chapter/ })
+  await input.fill('VERTICAL-CHAPTER-01-01')
+  await expect(page.getByText('1/3', { exact: true })).toBeVisible()
+
+  await input.press('Shift+Enter')
+  await expect(page.getByText('3/3', { exact: true })).toBeVisible()
+
+  await input.press('Enter')
+  await expect(page.getByText('1/3', { exact: true })).toBeVisible()
+})
+
 test('[vertical-rl] turns to the next spread for an off-page chapter find result', async ({
   page,
 }) => {

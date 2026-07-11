@@ -1681,7 +1681,8 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
         return
       }
 
-      const nextIndex = clamp(index, 0, chapterFind.results.length - 1)
+      const count = chapterFind.results.length
+      const nextIndex = ((index % count) + count) % count
       const result = chapterFind.results[nextIndex]
       if (!result) return
 
@@ -2751,7 +2752,7 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
         type="button"
         aria-label={t('previous_find_result')}
         className="text-muted-foreground hover:text-foreground p-1 disabled:opacity-40"
-        disabled={disabled || find.activeIndex <= 0}
+        disabled={disabled}
         onClick={onPrevious}
       >
         <ChevronUpIcon className="size-[22px]" />
@@ -2760,7 +2761,7 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
         type="button"
         aria-label={t('next_find_result')}
         className="text-muted-foreground hover:text-foreground p-1 disabled:opacity-40"
-        disabled={disabled || find.activeIndex >= count - 1}
+        disabled={disabled}
         onClick={onNext}
       >
         <ChevronDownIcon className="size-[22px]" />
