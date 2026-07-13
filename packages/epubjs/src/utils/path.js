@@ -1,11 +1,22 @@
 import path from './posix-path'
 
 function isTauriAssetUrl(url) {
-  return url && url.protocol === 'http:' && url.hostname === 'asset.localhost'
+  return (
+    url &&
+    ((url.protocol === 'asset:' && url.hostname === 'localhost') ||
+      (url.protocol === 'http:' && url.hostname === 'asset.localhost'))
+  )
 }
 
 function hasEncodedPathSeparators(pathname) {
   return /%2f|%5c/i.test(pathname)
+}
+
+function decodeAssetPath(pathname) {
+  var encodedPath = pathname.charAt(0) === '/' ? pathname.slice(1) : pathname
+  var decodedPath = window.decodeURIComponent(encodedPath).replace(/\\/g, '/')
+
+  return decodedPath.charAt(0) === '/' ? decodedPath : '/' + decodedPath
 }
 
 function stripPathSuffix(pathString) {
@@ -41,7 +52,7 @@ class Path {
       const url = new URL(pathString)
       pathString =
         isTauriAssetUrl(url) && hasEncodedPathSeparators(url.pathname)
-          ? window.decodeURIComponent(url.pathname).replace(/\\/g, '/')
+          ? decodeAssetPath(url.pathname)
           : url.pathname
     } else {
       pathString = stripPathSuffix(pathString)

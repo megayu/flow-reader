@@ -1,10 +1,9 @@
-import assert from 'assert'
+import { assert } from 'vitest'
 
 import EpubCFI from '../src/epubcfi.js'
-// var fs = require('fs');
-if (typeof DOMParser === 'undefined') {
-  global.DOMParser = require('xmldom').DOMParser
-}
+import chapterHighlights from './fixtures/chapter1-highlights.xhtml?raw'
+import chapter from './fixtures/chapter1.xhtml?raw'
+import highlight from './fixtures/highlight.xhtml?raw'
 
 describe('EpubCFI', function () {
   it('parse a cfi on init', function () {
@@ -288,7 +287,7 @@ describe('EpubCFI', function () {
   describe('#fromNode()', function () {
     var base = '/6/4[chap01ref]'
     // var contents = fs.readFileSync(__dirname + '/fixtures/chapter1-highlights.xhtml', 'utf8');
-    var contents = require('./fixtures/chapter1-highlights.xhtml').default
+    var contents = chapterHighlights
 
     // var serializer = new XMLSerializer();
     // var doc = serializer.serializeToString(contents);
@@ -343,7 +342,7 @@ describe('EpubCFI', function () {
     var base = '/6/4[chap01ref]'
 
     // var contentsClean = fs.readFileSync(__dirname + '/fixtures/chapter1.xhtml', 'utf8');
-    var contentsClean = require('./fixtures/chapter1.xhtml').default
+    var contentsClean = chapter
 
     var doc = new DOMParser().parseFromString(
       contentsClean,
@@ -351,15 +350,14 @@ describe('EpubCFI', function () {
     )
 
     // var contentsHighlights = fs.readFileSync(__dirname + '/fixtures/chapter1-highlights.xhtml', 'utf8');
-    var contentsHighlights =
-      require('./fixtures/chapter1-highlights.xhtml').default
+    var contentsHighlights = chapterHighlights
     var docHighlights = new DOMParser().parseFromString(
       contentsHighlights,
       'application/xhtml+xml',
     )
 
     // var highlightContents = fs.readFileSync(__dirname + '/fixtures/highlight.xhtml', 'utf8');
-    var highlightContents = require('./fixtures/highlight.xhtml').default
+    var highlightContents = highlight
     var docHighlightsAlice = new DOMParser().parseFromString(
       highlightContents,
       'application/xhtml+xml',
@@ -475,7 +473,7 @@ describe('EpubCFI', function () {
   describe('#toRange()', function () {
     var base = '/6/4[chap01ref]'
     // var contents = fs.readFileSync(__dirname + '/fixtures/chapter1-highlights.xhtml', 'utf8');
-    var contents = require('./fixtures/chapter1-highlights.xhtml').default
+    var contents = chapterHighlights
 
     var doc = new DOMParser().parseFromString(contents, 'application/xhtml+xml')
 

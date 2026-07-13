@@ -1,13 +1,14 @@
-import assert from 'assert'
+import { assert } from 'vitest'
 
 import Locations from '../src/locations'
 import * as core from '../src/utils/core'
+import locationsChapter from './fixtures/locations.xhtml?raw'
 
 describe('Locations', function () {
   describe('#parse', function () {
-    var chapter = require('./fixtures/locations.xhtml').default
+    var chapter = locationsChapter
 
-    it('parse locations from a document', function () {
+    it('parses locations with the browser XML parser', function () {
       var doc = core.parse(chapter, 'application/xhtml+xml')
       var contents = doc.documentElement
       var locations = new Locations()
@@ -15,7 +16,7 @@ describe('Locations', function () {
       assert.equal(result.length, 15)
     })
 
-    it('parse locations from xmldom', function () {
+    it('parses locations with the fallback XML parser', function () {
       var doc = core.parse(chapter, 'application/xhtml+xml', true)
       var contents = doc.documentElement
 

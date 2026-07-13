@@ -1,6 +1,4 @@
-/* eslint-env mocha */
-
-import assert from 'assert'
+import { assert } from 'vitest'
 
 import IframeView from '../src/managers/views/iframe'
 import { EVENTS } from '../src/utils/constants'

@@ -1,6 +1,4 @@
-/* eslint-env mocha */
-
-import assert from 'assert'
+import { assert } from 'vitest'
 import JSZip from 'jszip'
 
 import Book from '../src/book'
@@ -99,7 +97,7 @@ describe('Resources', function () {
         false,
         'decoded stylesheet href must not remain in rendered output',
       )
-      assert.match(output, /href="blob:http:\/\/localhost:9876\//)
+      assert.include(output, `href="blob:${location.origin}/`)
     } finally {
       book.destroy()
       URL.revokeObjectURL(url)

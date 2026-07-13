@@ -1,6 +1,4 @@
-/* eslint-env mocha */
-
-import assert from 'assert'
+import { assert } from 'vitest'
 
 import DefaultViewManager from '../src/managers/default'
 

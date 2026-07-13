@@ -3,7 +3,11 @@ import path from './posix-path'
 import Path from './path'
 
 function isTauriAssetUrl(url) {
-  return url && url.protocol === 'http:' && url.hostname === 'asset.localhost'
+  return (
+    url &&
+    ((url.protocol === 'asset:' && url.hostname === 'localhost') ||
+      (url.protocol === 'http:' && url.hostname === 'asset.localhost'))
+  )
 }
 
 function hasEncodedPathSeparators(pathname) {
@@ -11,13 +15,16 @@ function hasEncodedPathSeparators(pathname) {
 }
 
 function decodeAssetPath(pathname) {
-  return window.decodeURIComponent(pathname).replace(/\\/g, '/')
+  var encodedPath = pathname.charAt(0) === '/' ? pathname.slice(1) : pathname
+  var decodedPath = window.decodeURIComponent(encodedPath).replace(/\\/g, '/')
+
+  return decodedPath.charAt(0) === '/' ? decodedPath : '/' + decodedPath
 }
 
-function encodeAssetPath(pathname) {
+function encodeAssetPath(pathname, encodeLeadingSlash) {
   var normalized = pathname.replace(/\\/g, '/')
 
-  if (normalized.charAt(0) === '/') {
+  if (!encodeLeadingSlash && normalized.charAt(0) === '/') {
     normalized = normalized.slice(1)
   }
 
@@ -68,7 +75,10 @@ class Url {
         this.href = this.Url.href
 
         this.protocol = this.Url.protocol
-        this.origin = this.Url.origin
+        this.origin =
+          this.Url.origin === 'null' && this.Url.protocol === 'asset:'
+            ? `${this.Url.protocol}//${this.Url.host}`
+            : this.Url.origin
         this.hash = this.Url.hash
         this.search = this.Url.search
 
@@ -122,7 +132,7 @@ class Url {
     fullpath = path.resolve(this.directory, what)
 
     if (this.encodedAssetPath) {
-      return this.origin + encodeAssetPath(fullpath)
+      return this.origin + encodeAssetPath(fullpath, this.protocol === 'asset:')
     }
 
     return this.origin + fullpath

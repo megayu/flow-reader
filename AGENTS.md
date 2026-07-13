@@ -19,7 +19,7 @@
 - `pnpm test:smoke` - run the app smoke suite.
 - `pnpm exec playwright test <spec>` - run targeted Playwright tests; set `PLAYWRIGHT_PORT` if 7127 is busy.
 - `pnpm doctor:lines` - run after non-trivial React component/hook changes to catch render, hook, and state-flow issues on changed lines.
-- `pnpm --filter @flow/epubjs test` - run the vendored EPUB engine Karma/Mocha suite; Chrome headless is required.
+- `pnpm --filter @flow/epubjs test` - run the vendored EPUB engine Vitest Browser Mode suite in headless Chromium.
 - `cargo test --manifest-path src-tauri/Cargo.toml` - run native storage/Tauri tests.
 
 ## Repository Skills

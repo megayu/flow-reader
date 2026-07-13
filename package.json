@@ -11,7 +11,7 @@
     "tauri:build": "tauri build --no-bundle",
     "release:local": "node scripts/release-local.mjs",
     "analyze:turbopack": "next experimental-analyze --output",
-    "lint": "eslint src locales scripts test .agents/skills next.config.js tailwind.config.js postcss.config.js eslint.config.mjs playwright.config.ts",
+    "lint": "eslint src locales scripts test .agents/skills next.config.mjs tailwind.config.js postcss.config.js eslint.config.mjs playwright.config.ts",
     "test:theme": "node test/theme-tokens.js",
     "test:reader-optimization": "node test/reader-optimization.js",
     "test:smoke": "node scripts/test-smoke.mjs",
@@ -27,7 +27,8 @@
     "*.{yml,yaml}": "prettier --write",
     "{src,locales,test}/**/*.{js,ts,tsx}": "eslint --fix",
     "{scripts,.agents/skills}/**/*.mjs": "eslint --fix",
-    "{next,tailwind,postcss}.config.js": "eslint --fix",
+    "{tailwind,postcss}.config.js": "eslint --fix",
+    "next.config.mjs": "eslint --fix",
     "playwright.config.ts": "eslint --fix",
     "eslint.config.mjs": "eslint --fix"
   },

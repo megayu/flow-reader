@@ -1,24 +1,29 @@
-import assert from 'assert'
+import { assert } from 'vitest'
 import JSZip from 'jszip'
 
 import Book from '../src/book'
+import ePub from '../src/epub'
 
 describe('Book', function () {
-  describe('Unarchived', function () {
-    var book = new Book('/fixtures/alice/OPS/package.opf')
-    it('should open a epub', async function () {
+  describe('Unpacked EPUB', function () {
+    var book = ePub('/fixtures/alice/OPS/package.opf')
+    it('opens through the ePub factory', async function () {
       await book.opened
+      assert.instanceOf(book, Book, 'the ePub factory returns a Book')
       assert.equal(book.isOpen, true, 'book is opened')
       assert.equal(
         book.url.toString(),
-        'http://localhost:9876/fixtures/alice/OPS/package.opf',
+        new URL('/fixtures/alice/OPS/package.opf', location.origin).toString(),
         'book url is passed to new Book',
       )
     })
-    it('should have a local coverUrl', async function () {
+    it('resolves the local cover URL', async function () {
       assert.equal(
         await book.coverUrl(),
-        'http://localhost:9876/fixtures/alice/OPS/images/cover_th.jpg',
+        new URL(
+          '/fixtures/alice/OPS/images/cover_th.jpg',
+          location.origin,
+        ).toString(),
         'cover url is available',
       )
     })
@@ -202,56 +207,56 @@ describe('Book', function () {
     })
   })
 
-  describe('Archived epub', function () {
+  describe('Archived EPUB', function () {
     var book = new Book('/fixtures/alice.epub')
 
-    it('should open a archived epub', async function () {
+    it('opens the archive', async function () {
       await book.opened
       assert.equal(book.isOpen, true, 'book is opened')
       assert(book.archive, 'book is unarchived')
     })
-    it('should have a blob coverUrl', async function () {
+    it('creates a blob cover URL', async function () {
       let coverUrl = await book.coverUrl()
       assert(
-        /^blob:http:\/\/localhost:9876\/[^\/]+$/.test(coverUrl),
+        coverUrl.startsWith(`blob:${location.origin}/`),
         'cover url is available and a blob: url',
       )
     })
   })
 
-  describe('Archived epub in array buffer without options', function () {
+  describe('Archived EPUB supplied as an ArrayBuffer', function () {
     let book
 
-    before(async function () {
+    beforeAll(async function () {
       const response = await fetch('/fixtures/alice.epub')
       const buffer = await response.arrayBuffer()
       book = new Book(buffer)
     })
 
-    it('should open a archived epub', async function () {
+    it('detects and opens the archive without explicit options', async function () {
       await book.opened
       assert.equal(book.isOpen, true, 'book is opened')
       assert(book.archive, 'book is unarchived')
     })
 
-    it('should have a blob coverUrl', async function () {
+    it('creates a blob cover URL', async function () {
       let coverUrl = await book.coverUrl()
       assert(
-        /^blob:http:\/\/localhost:9876\/[^\/]+$/.test(coverUrl),
+        coverUrl.startsWith(`blob:${location.origin}/`),
         'cover url is available and a blob: url',
       )
     })
   })
 
-  describe('Archived epub without cover', function () {
+  describe('Archived EPUB without a cover', function () {
     var book = new Book('/fixtures/alice_without_cover.epub')
 
-    it('should open a archived epub', async function () {
+    it('opens the archive', async function () {
       await book.opened
       assert.equal(book.isOpen, true, 'book is opened')
       assert(book.archive, 'book is unarchived')
     })
-    it('should have a empty coverUrl', async function () {
+    it('returns no cover URL', async function () {
       let coverUrl = await book.coverUrl()
       assert.equal(coverUrl, null, 'cover url should be null')
     })

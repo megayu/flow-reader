@@ -1,44 +1,26 @@
 {
   "name": "@flow/epubjs",
   "version": "0.3.93",
-  "description": "Parse and Render Epubs",
+  "description": "Flow Reader's internal EPUB parser and renderer",
   "main": "src/index.js",
   "module": "src/index.js",
   "types": "types/index.d.ts",
-  "repository": "https://github.com/futurepress/epub.js",
   "directories": {
     "test": "test"
   },
   "scripts": {
-    "test": "karma start --single-run --browsers ChromeHeadlessNoSandbox",
-    "build": "cross-env NODE_ENV=production webpack --mode production --progress",
-    "minify": "cross-env NODE_ENV=production MINIMIZE=true webpack --mode production --progress",
-    "legacy": "cross-env NODE_ENV=production LEGACY=true webpack --mode production --progress",
-    "productionLegacy": "cross-env NODE_ENV=production MINIMIZE=true LEGACY=true webpack --mode production --progress"
+    "test": "vitest run && pnpm test:types",
+    "test:types": "tsc -p types/tsconfig.json",
+    "test:watch": "vitest"
   },
-  "author": "fchasen@gmail.com",
   "license": "BSD-2-Clause",
   "devDependencies": {
-    "@babel/core": "^7.15.8",
-    "@babel/preset-env": "^7.15.8",
-    "assert": "2.1.0",
-    "babel-loader": "^9.2.1",
-    "cross-env": "7.0.3",
-    "karma": "^6.4.4",
-    "karma-chrome-launcher": "^3.1.0",
-    "karma-mocha": "^2.0.1",
-    "karma-mocha-reporter": "^2.2.5",
-    "karma-sourcemap-loader": "^0.3.7",
-    "karma-webpack": "^5.0.1",
-    "mocha": "^11.7.6",
-    "process": "0.11.10",
-    "raw-loader": "^4.0.2",
-    "webpack": "^5.107.2",
-    "webpack-cli": "^7.0.3"
+    "@vitest/browser-playwright": "^4.1.10",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.10",
-    "core-js": "^3.49.0",
     "eventemitter3": "^5.0.4",
     "jszip": "^3.10.1",
     "localforage": "^1.10.0",

@@ -1,5 +1,6 @@
 # Dependencies
 /node_modules/
 
-# Webpack bundles
-/dist/
+# Vitest browser failure artifacts
+/.vitest-attachments/
+/test/__screenshots__/

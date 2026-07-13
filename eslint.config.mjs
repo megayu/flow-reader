@@ -64,12 +64,7 @@ export default defineConfig([
     },
   },
   {
-    files: [
-      '*.config.js',
-      'next.config.js',
-      'postcss.config.js',
-      'tailwind.config.js',
-    ],
+    files: ['*.config.js', 'postcss.config.js', 'tailwind.config.js'],
     languageOptions: {
       sourceType: 'commonjs',
       globals: {

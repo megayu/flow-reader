@@ -1,4 +1,4 @@
-import assert from 'assert'
+import { assert } from 'vitest'
 
 import Navigation from '../src/navigation'
 import { parse } from '../src/utils/core'

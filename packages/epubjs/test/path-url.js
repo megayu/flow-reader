@@ -1,11 +1,9 @@
-import assert from 'assert'
+import { assert } from 'vitest'
 
 import Path from '../src/utils/path'
 import Url from '../src/utils/url'
 
-describe('Core', function () {
-  before(function () {})
-
+describe('Path and URL utilities', function () {
   describe('Url', function () {
     it('Url()', function () {
       var url = new Url('http://example.com/fred/chasen/derf.html')
@@ -52,43 +50,47 @@ describe('Core', function () {
         assert.equal(resolved, 'http://example.com/derf.html')
       })
 
-      // Doesn't work with path.parse
-      xit('should handle directory with a dot', function () {
-        var a = 'http://example.com/fred/chasen/index.epub/'
-
-        var url = new Url(a)
-        assert.equal(url.directory, '/fred/chasen/index.epub/')
-        assert.equal(url.extension, '')
-      })
-
       it('should handle file urls', function () {
-        var url = new Url(
-          'file:///var/mobile/Containers/Data/Application/F47E4434-9B98-4654-93F1-702336B08EE6/Documents/books/moby-dick/derf.html',
-        )
+        var url = new Url('file:///library/sample/OPS/Text/chapter.xhtml')
 
-        assert.equal(
-          url.href,
-          'file:///var/mobile/Containers/Data/Application/F47E4434-9B98-4654-93F1-702336B08EE6/Documents/books/moby-dick/derf.html',
-        )
-        assert.equal(
-          url.directory,
-          '/var/mobile/Containers/Data/Application/F47E4434-9B98-4654-93F1-702336B08EE6/Documents/books/moby-dick/',
-        )
-        assert.equal(url.extension, 'html')
-        assert.equal(url.filename, 'derf.html')
-        assert.equal(url.origin, 'file://') // origin should be blank
+        assert.equal(url.href, 'file:///library/sample/OPS/Text/chapter.xhtml')
+        assert.equal(url.directory, '/library/sample/OPS/Text/')
+        assert.equal(url.extension, 'xhtml')
+        assert.equal(url.filename, 'chapter.xhtml')
+        assert.equal(url.origin, 'file://')
         assert.equal(url.protocol, 'file:')
         assert.equal(url.search, '')
       })
 
       it('should resolve with file urls', function () {
-        var a = 'file:///var/mobile/Containers/Data/Application/books/'
-        var b = 'derf.html'
+        var a = 'file:///books/sample/OPS/Text/'
+        var b = '../Images/cover.jpg'
 
         var resolved = new Url(a).resolve(b)
+        assert.equal(resolved, 'file:///books/sample/OPS/Images/cover.jpg')
+      })
+
+      it('resolves encoded resources from the cross-platform Tauri asset protocol', function () {
+        const chapter = new Url(
+          'asset://localhost/%2Fbooks%2Fsample.epub%2FOPS%2FText%2Fchapter.xhtml',
+        )
+
+        assert.equal(chapter.directory, '/books/sample.epub/OPS/Text/')
         assert.equal(
-          resolved,
-          'file:///var/mobile/Containers/Data/Application/books/derf.html',
+          chapter.resolve('../Images/cover.jpg'),
+          'asset://localhost/%2Fbooks%2Fsample.epub%2FOPS%2FImages%2Fcover.jpg',
+        )
+      })
+
+      it('resolves encoded Windows resources from the Tauri HTTP asset host', function () {
+        const chapter = new Url(
+          'http://asset.localhost/C%3A%5Cbooks%5Csample.epub%5COPS%5CText%5Cchapter.xhtml',
+        )
+
+        assert.equal(chapter.directory, '/C:/books/sample.epub/OPS/Text/')
+        assert.equal(
+          chapter.resolve('../Images/cover.jpg'),
+          'http://asset.localhost/C%3A%2Fbooks%2Fsample.epub%2FOPS%2FImages%2Fcover.jpg',
         )
       })
     })
