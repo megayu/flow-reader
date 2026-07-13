@@ -17,15 +17,9 @@ const exitCode = await new Promise((resolve) => {
   child.on('close', (code) => resolve(code ?? 1))
 })
 
-await Promise.all([
-  rm(path.join(process.cwd(), 'test-results'), {
-    force: true,
-    recursive: true,
-  }),
-  rm(path.join(process.cwd(), 'playwright-report'), {
-    force: true,
-    recursive: true,
-  }),
-])
+await rm(path.join(process.cwd(), 'test-results'), {
+  force: true,
+  recursive: true,
+})
 
 process.exit(exitCode)
