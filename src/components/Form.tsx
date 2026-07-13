@@ -8,7 +8,7 @@ import {
   RefObject,
   ComponentProps,
 } from 'react'
-import { PolymorphicPropsWithoutRef } from 'react-polymorphic-types'
+import type { PolymorphicPropsWithoutRef } from 'react-polymorphic-types'
 
 import { useTranslation } from '../hooks/useTranslation'
 
