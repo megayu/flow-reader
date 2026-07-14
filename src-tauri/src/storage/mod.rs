@@ -5063,10 +5063,11 @@ mod tests {
             "第一卷 起始\n第001章 开端\n第一段正文。\n第二段正文。\n第002章 继续\n第三段正文。";
         let document = parse_text_import_document(text, "测试书", None);
 
-        assert_eq!(document.sections.len(), 2);
-        assert_eq!(document.sections[0].parent.as_deref(), Some("第一卷 起始"));
-        assert_eq!(document.sections[0].title, "第001章 开端");
-        assert_eq!(document.sections[1].title, "第002章 继续");
+        assert_eq!(document.sections.len(), 3);
+        assert_eq!(document.sections[0].title, "第一卷 起始");
+        assert_eq!(document.sections[1].parent.as_deref(), Some("第一卷 起始"));
+        assert_eq!(document.sections[1].title, "第001章 开端");
+        assert_eq!(document.sections[2].title, "第002章 继续");
         assert_eq!(document.chapters[0].role, "group");
         assert_eq!(document.chapters[1].role, "chapter");
     }
@@ -5108,16 +5109,36 @@ mod tests {
     }
 
     #[test]
-    fn only_prefixes_group_name_on_first_child_section() {
-        let text = "第一卷 起始\n第001章 开端\n第一段正文。\n第002章 继续\n第二段正文。";
+    fn creates_standalone_centered_group_section_before_its_first_chapter() {
+        let text = "第一卷 分组甲\n\n第一章 章节甲\n示例正文。";
         let document = parse_text_import_document(text, "测试书", None);
-        let first = text_section_xhtml(&document.sections[0]);
-        let second = text_section_xhtml(&document.sections[1]);
 
-        assert!(first.contains(r#"<h2 class="flow-txt-chapter">第一卷 起始 第001章 开端</h2>"#));
-        assert!(!first.contains(r#"<h1 class="flow-txt-volume">"#));
-        assert!(second.contains(r#"<h2 class="flow-txt-chapter">第002章 继续</h2>"#));
-        assert!(!second.contains("第一卷 起始"));
+        assert_eq!(document.sections.len(), 2);
+
+        let group = text_section_xhtml(&document.sections[0]);
+        let chapter = text_section_xhtml(&document.sections[1]);
+        let css = super::text_import::text_import_css();
+        let nav = text_nav_xhtml(&document);
+        let opf = text_content_opf(&document, "UTF-8");
+
+        assert!(document.sections[0].paragraphs.is_empty());
+        assert_eq!(
+            document.sections[1].paragraphs,
+            vec!["示例正文。".to_string()]
+        );
+        assert!(group.contains(r#"<body class="flow-txt-volume-page">"#));
+        assert!(group.contains(r#"<h1 class="flow-txt-volume">第一卷 分组甲</h1>"#));
+        assert!(chapter.contains(r#"<h2 class="flow-txt-chapter">第一章 章节甲</h2>"#));
+        assert!(!chapter.contains("第一卷 分组甲 第一章 章节甲"));
+        assert!(css.contains("align-items: center;"));
+        assert!(css.contains("justify-content: center;"));
+        assert!(css.contains(".flow-txt-volume {\n  font-size: 1.45em;"));
+        assert!(css.contains(".flow-txt-chapter {\n  font-size: 1.25em;"));
+        assert!(nav.contains(
+            r#"<li id="txt-group-0001"><a href="Text/part0001.xhtml">第一卷 分组甲</a><ol><li><a href="Text/part0002.xhtml">第一章 章节甲</a></li>"#
+        ));
+        assert!(opf.contains(r#"<itemref idref="part0001"/>"#));
+        assert!(opf.contains(r#"<itemref idref="part0002"/>"#));
     }
 
     #[test]
@@ -5129,10 +5150,11 @@ mod tests {
         let text = "幕 1\n场 1\n第一段正文。\n场 2\n第二段正文。";
         let document = parse_text_import_document(text, "测试书", Some(&rules));
 
-        assert_eq!(document.sections.len(), 2);
-        assert_eq!(document.sections[0].parent.as_deref(), Some("幕 1"));
-        assert_eq!(document.sections[0].title, "场 1");
-        assert_eq!(document.sections[1].title, "场 2");
+        assert_eq!(document.sections.len(), 3);
+        assert_eq!(document.sections[0].title, "幕 1");
+        assert_eq!(document.sections[1].parent.as_deref(), Some("幕 1"));
+        assert_eq!(document.sections[1].title, "场 1");
+        assert_eq!(document.sections[2].title, "场 2");
     }
 
     #[test]
@@ -5141,7 +5163,9 @@ mod tests {
         let document = parse_text_import_document(text, "测试书", None);
         let nav = text_nav_xhtml(&document);
 
-        assert!(nav.contains(r#"<li id="txt-group-0001"><span>第一卷 起始</span><ol>"#));
+        assert!(nav.contains(
+            r#"<li id="txt-group-0001"><a href="Text/part0001.xhtml">第一卷 起始</a><ol>"#
+        ));
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
     fs,
     path::{Path, PathBuf},
     sync::Arc,
@@ -115,7 +115,7 @@ pub(super) struct TextImportSection {
     pub(super) title: String,
     pub(super) parent: Option<String>,
     pub(super) paragraphs: Vec<String>,
-    pub(super) prefix_parent_title: bool,
+    pub(super) is_group: bool,
 }
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
@@ -734,7 +734,7 @@ pub(super) fn parse_text_import_document(
             title,
             parent: current_parent.clone(),
             paragraphs: std::mem::take(paragraphs),
-            prefix_parent_title: false,
+            is_group: false,
         });
     };
 
@@ -754,6 +754,12 @@ pub(super) fn parse_text_import_document(
             );
             match rule.role {
                 TextImportRuleRole::Group => {
+                    sections.push(TextImportSection {
+                        title: line.to_string(),
+                        parent: None,
+                        paragraphs: Vec::new(),
+                        is_group: true,
+                    });
                     current_parent = Some(line.to_string());
                     current_title = None;
                 }
@@ -798,7 +804,7 @@ pub(super) fn parse_text_import_document(
                 title: title.to_string(),
                 parent: None,
                 paragraphs: Vec::new(),
-                prefix_parent_title: false,
+                is_group: false,
             });
         }
         let generated_chapters = text_sections_to_chapter_previews(&generated_sections);
@@ -810,20 +816,23 @@ pub(super) fn parse_text_import_document(
         };
     }
 
-    let mut sections = sections
+    let sections = sections
         .into_iter()
         .flat_map(|section| {
-            split_paragraphs_into_sections(
-                &section.title,
-                section.parent,
-                section.paragraphs,
-                TARGET_SECTION_CHARS,
-                MAX_SECTION_CHARS,
-            )
+            if section.is_group {
+                vec![section]
+            } else {
+                split_paragraphs_into_sections(
+                    &section.title,
+                    section.parent,
+                    section.paragraphs,
+                    TARGET_SECTION_CHARS,
+                    MAX_SECTION_CHARS,
+                )
+            }
         })
         .collect::<Vec<_>>();
 
-    mark_first_group_children(&mut sections);
     let chapters = text_sections_to_chapter_previews(&sections);
 
     TextImportDocument {
@@ -834,40 +843,24 @@ pub(super) fn parse_text_import_document(
     }
 }
 
-fn mark_first_group_children(sections: &mut [TextImportSection]) {
-    let mut seen = HashSet::new();
-
-    for section in sections {
-        if let Some(parent) = &section.parent {
-            if seen.insert(parent.clone()) {
-                section.prefix_parent_title = true;
-            }
-        }
-    }
-}
-
 fn text_sections_to_chapter_previews(
     sections: &[TextImportSection],
 ) -> Vec<TextImportChapterPreview> {
     let mut chapters = Vec::new();
-    let mut current_parent: Option<&str> = None;
 
     for section in sections {
-        if section.parent.as_deref() != current_parent {
-            current_parent = section.parent.as_deref();
-            if let Some(parent) = current_parent {
-                chapters.push(TextImportChapterPreview {
-                    title: parent.to_string(),
-                    level: 1,
-                    role: "group".to_string(),
-                });
-            }
-        }
-
         chapters.push(TextImportChapterPreview {
             title: section.title.clone(),
-            level: if section.parent.is_some() { 2 } else { 1 },
-            role: "chapter".to_string(),
+            level: if section.is_group || section.parent.is_none() {
+                1
+            } else {
+                2
+            },
+            role: if section.is_group {
+                "group".to_string()
+            } else {
+                "chapter".to_string()
+            },
         });
     }
 
@@ -887,7 +880,7 @@ fn split_paragraphs_into_sections(
             title: title.to_string(),
             parent,
             paragraphs,
-            prefix_parent_title: false,
+            is_group: false,
         }];
     }
 
@@ -903,7 +896,7 @@ fn split_paragraphs_into_sections(
                 title: split_section_title(title, index),
                 parent: parent.clone(),
                 paragraphs: std::mem::take(&mut current),
-                prefix_parent_title: false,
+                is_group: false,
             });
             index += 1;
             current_chars = 0;
@@ -917,7 +910,7 @@ fn split_paragraphs_into_sections(
             title: split_section_title(title, index),
             parent,
             paragraphs: current,
-            prefix_parent_title: false,
+            is_group: false,
         });
     }
 
@@ -1275,7 +1268,7 @@ fn write_text_publication(
     Ok(())
 }
 
-fn text_import_css() -> &'static str {
+pub(super) fn text_import_css() -> &'static str {
     r#"html, body {
   margin: 0;
   padding: 0;
@@ -1289,9 +1282,19 @@ fn text_import_css() -> &'static str {
   line-height: 1.5;
 }
 
+.flow-txt-volume-page {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  width: 100%;
+}
+
 .flow-txt-volume {
   font-size: 1.45em;
-  margin: 2.2em 0 1.6em;
+  margin: 0;
 }
 
 .flow-txt-chapter {
@@ -1312,20 +1315,18 @@ fn text_import_css() -> &'static str {
 }
 
 pub(super) fn text_section_xhtml(section: &TextImportSection) -> String {
-    let mut body = String::new();
-    let heading = if section.prefix_parent_title {
-        section
-            .parent
-            .as_ref()
-            .map(|parent| format!("{parent} {}", section.title))
-            .unwrap_or_else(|| section.title.clone())
+    let heading = section.title.clone();
+    let mut body = if section.is_group {
+        format!(
+            r#"<h1 class="flow-txt-volume">{}</h1>"#,
+            escape_xml(&heading)
+        )
     } else {
-        section.title.clone()
+        format!(
+            r#"<h2 class="flow-txt-chapter">{}</h2>"#,
+            escape_xml(&heading)
+        )
     };
-    body.push_str(&format!(
-        r#"<h2 class="flow-txt-chapter">{}</h2>"#,
-        escape_xml(&heading)
-    ));
 
     if !section.paragraphs.is_empty() {
         body.push_str(r#"<div class="flow-txt-body" data-flow-body-text="true">"#);
@@ -1343,33 +1344,43 @@ pub(super) fn text_section_xhtml(section: &TextImportSection) -> String {
   <title>{}</title>
   <link rel="stylesheet" type="text/css" href="../Styles/txt.css"/>
 </head>
-<body>
+<body{}>
 {}
 </body>
 </html>"#,
         escape_xml(&heading),
+        if section.is_group {
+            r#" class="flow-txt-volume-page""#
+        } else {
+            ""
+        },
         body
     )
 }
 
 pub(super) fn text_nav_xhtml(document: &TextImportDocument) -> String {
     let mut nav = String::new();
-    let mut open_group: Option<String> = None;
+    let mut group_open = false;
     let mut group_index = 0usize;
 
     for (index, section) in document.sections.iter().enumerate() {
-        if section.parent != open_group {
-            if open_group.is_some() {
+        if section.is_group {
+            if group_open {
                 nav.push_str("</ol></li>");
             }
-            open_group = section.parent.clone();
-            if let Some(parent) = &open_group {
-                group_index += 1;
-                nav.push_str(&format!(
-                    r#"<li id="txt-group-{group_index:04}"><span>{}</span><ol>"#,
-                    escape_xml(parent)
-                ));
-            }
+            group_index += 1;
+            group_open = true;
+            nav.push_str(&format!(
+                r#"<li id="txt-group-{group_index:04}"><a href="Text/part{:04}.xhtml">{}</a><ol>"#,
+                index + 1,
+                escape_xml(&section.title)
+            ));
+            continue;
+        }
+
+        if section.parent.is_none() && group_open {
+            nav.push_str("</ol></li>");
+            group_open = false;
         }
 
         nav.push_str(&format!(
@@ -1379,7 +1390,7 @@ pub(super) fn text_nav_xhtml(document: &TextImportDocument) -> String {
         ));
     }
 
-    if open_group.is_some() {
+    if group_open {
         nav.push_str("</ol></li>");
     }
 
