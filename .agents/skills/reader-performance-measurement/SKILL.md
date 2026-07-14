@@ -20,7 +20,11 @@ Before planning, implementing, or accepting performance work, read [Performance 
 
 If retrying a rejected idea, first write down what changed since the recorded rejection and measure the same affected scenarios again.
 
-After a measured conclusion is accepted or rejected, update [Performance History](references/performance-history.md) in the same change. Add retained conclusions under `Retained Approaches` and rejected conclusions under `Rejected Approaches`, including the scenario set, key deltas, decision, and reason.
+Treat [Performance History](references/performance-history.md) as a record of performance optimization experiments, not a changelog or a general performance-regression ledger. Add an entry only when the change's primary purpose is to improve runtime performance and matched baseline and after runs at the same evidence level produce concrete timing or long-task deltas that justify a retained or rejected decision. A feature or correctness change may require the same baseline/after workflow for no-regression acceptance, but do not add it to the history merely because performance was measured or did not regress. Do not add after-only results, smoke passes, correctness outcomes, diagnostic observations, or unquantified claims. `perf-results/` is gitignored and ephemeral; never cite its paths as durable evidence in the history. Copy the necessary run conditions and numeric comparison into the entry itself.
+
+Before editing the history, verify that the proposed entry names the compared scenario, metric, baseline/after relationship or numeric delta, evidence level, and decision. If any of these are missing, do not add the entry.
+
+Place an accepted performance optimization under `Retained Approaches` only when the measured comparison justifies keeping it. Place an attempted performance optimization under `Rejected Approaches` only when the comparison justifies removing or not adopting it; state what measurement or code-path change would make a future retry meaningful. Let the final decision determine the section: do not record the same attempt in both sections. If later evidence reverses a recorded decision, update and move the existing entry instead of leaving contradictory entries.
 
 ## Decide Whether This Skill Applies
 
@@ -68,8 +72,9 @@ Do not compare results across evidence levels. A `browser-smoke` baseline cannot
 6. Collect an after-run with the same evidence level, executable, window size, run count, scenario filter, book source, and data setup.
 7. Compare baseline and after with the bundled compare script.
 8. Accept the change only if the measured tradeoff is justified.
+9. Update performance history only when the change was a performance optimization experiment; do not record feature or correctness work whose measurements served only as a no-regression gate.
 
-If the worktree was already changed before you started and no reliable baseline exists, say that clearly. Do not invent a baseline. Run the current measurement anyway if it is still useful for regression evidence.
+If the worktree was already changed before you started and no reliable baseline exists, say that clearly. Do not invent a baseline or add a performance-history entry. Run the current measurement only when it is useful for the current investigation.
 
 ## Bundled Scripts
 
@@ -133,7 +138,7 @@ node .agents/skills/reader-performance-measurement/scripts/compare-reader-perfor
 node .agents/skills/reader-performance-measurement/scripts/compare-reader-performance.mjs <baseline.json> <after.json> --json > perf-results/reader-performance-compare.json
 ```
 
-Keep output under `perf-results/`.
+Keep output under gitignored `perf-results/` as temporary local evidence. Do not reference those paths from versioned performance history; preserve the relevant conditions and numeric deltas in the history entry itself.
 
 ## Browser Smoke Procedure
 
@@ -189,10 +194,11 @@ State:
 
 - Whether the performance workflow was required.
 - Which evidence level was used.
-- Baseline and after artifact paths.
-- Compare artifact path.
+- Baseline, after, and compare artifact paths only when those local files were actually produced and remain useful for the current handoff.
 - The key deltas that justify keeping or rejecting the change.
 - Any reason the result is only smoke evidence rather than final acceptance.
+
+Do not use local `perf-results/` paths as a substitute for reporting the actual comparison or as evidence in a versioned history entry.
 
 ## Skill Resources
 

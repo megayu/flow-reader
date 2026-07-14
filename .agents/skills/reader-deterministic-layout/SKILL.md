@@ -19,7 +19,9 @@ Before diagnosing, implementing, or accepting deterministic layout work, read [F
 
 If a new bug resembles an existing pattern, reproduce the recorded path before adding new fallback logic. If a rejected approach now looks viable, first state what changed since the rejection.
 
-After a new layout conclusion is proven, update [Failure Patterns](references/failure-patterns.md) in the same change. If the current fix revises, narrows, broadens, or overturns an existing pattern or approach, update that existing entry in place so its symptom, path, root cause, decision, and verification gate reflect the latest understanding. Add a new entry only when the issue is meaningfully distinct from existing patterns. Add successful fixes or reproducible bug patterns under `Known Failure Patterns` and rejected directions under `Rejected Approaches`.
+Treat [Failure Patterns](references/failure-patterns.md) as a curated reusable reference, not a changelog. Update an existing entry when the current work changes its conclusion. Add a new entry only when the finding is non-obvious and likely to guide multiple future books, code paths, or layout changes. Do not record one-off implementation omissions, localized visual tweaks, issue-specific prose, or fixes already explained completely by a focused regression test. Put reusable successful patterns under `Known Failure Patterns` and reusable failed strategies under `Rejected Approaches`.
+
+Before editing the reference, name the future engineering decision the entry would change beyond the current bug or fixture. If there is no such decision, do not edit the reference.
 
 ## Decide Whether This Skill Applies
 

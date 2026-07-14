@@ -2,13 +2,6 @@
 
 Read this before changing Flow Reader layout, pagination, tab-pane, or reader-header/footer logic. Search for symptoms that match the bug before adding new fallback behavior.
 
-## How To Use This File
-
-- Start from a recorded reproduction path when the symptom matches.
-- Verify the same invariant after fixing: body, header, footer, page number, percentage, and visible section indexes must come from one committed pagination snapshot.
-- Do not hide a mismatch by falling back to persisted CFI, first section, nearest valid section, delayed retry loops, or broad event acceptance.
-- When a new deterministic bug is fixed or an approach is rejected, add a compact entry in the matching section: successful fixes or reproducible bug patterns under `Known Failure Patterns`, rejected directions under `Rejected Approaches`. Include symptom, path, root cause, decision, and verification gate.
-
 ## Known Failure Patterns
 
 ### Reader page decoration follows configured spread instead of actual geometry
@@ -74,14 +67,6 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Root cause: tab group selection owned active state synchronously, while a `BookPane` layout effect repeated active writes during cleanup/setup.
 - Fix direction: keep active-state ownership in the group/tab model; pane components should only clear active state on unmount.
 - Verification gate: pure tab switching should have exactly the expected active flips and zero reader pagination counters.
-
-### Tab drag target outline overlaps selected tab chrome
-
-- Symptom: dragging a tab toward the currently selected tab makes the two tabs look stacked or merged even though their layout rectangles remain separate.
-- Reproduction path: open at least three tabs, keep the destination tab selected, then drag another tab across its midpoint without releasing.
-- Root cause: the selected tab chrome extends into adjacent slots with rounded `before` and `after` pseudo-elements. Drawing a full inset ring around that selected destination emphasizes the extended chrome and reads as a second tab occupying the same slot.
-- Fix direction: keep tab rectangles stationary during drag and show one insertion marker at the destination boundary using the normal tab separator's exact width, height, and vertical alignment. Do not outline the destination tab or change tab-strip geometry.
-- Verification gate: pointer interaction coverage must prove there is one 2px by 20px centered boundary marker, no destination ring, in-strip release commits the order, out-of-strip release cancels, and reader pagination/activation counters remain unchanged.
 
 ### Tab reorder moves mounted reader panes
 
