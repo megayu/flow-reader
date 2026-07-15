@@ -131,7 +131,14 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
                 e.dataTransfer.setData('text/plain', book.id)
               }}
             >
-              <StateLayer className="transition-colors group-hover/library-row:bg-[var(--flow-bg-control-hover)]" />
+              <StateLayer
+                className={clsx(
+                  'transition-colors',
+                  active
+                    ? 'group-hover/library-row:bg-[var(--flow-bg-active-hover)]'
+                    : 'group-hover/library-row:bg-[var(--flow-bg-control-hover)]',
+                )}
+              />
               {(opened || active) && (
                 <span
                   className={clsx(
@@ -194,7 +201,9 @@ function useFocusedBookTabReference() {
 const EmptyTocPane: React.FC = () => {
   const t = useTranslation()
 
-  return <Pane headline={t('toc.title')} />
+  return (
+    <Pane headline={t('toc.title')} storageKey="flow-reader:pane:toc:toc" />
+  )
 }
 
 interface BookTocPaneProps {
@@ -377,7 +386,14 @@ const TocRow: React.FC<TocRowProps> = memo(
         }}
         onClick={handleClick}
       >
-        <StateLayer className="transition-colors group-hover/row:bg-[var(--flow-bg-control-hover)]" />
+        <StateLayer
+          className={clsx(
+            'transition-colors',
+            active
+              ? 'group-hover/row:bg-[var(--flow-bg-active-hover)]'
+              : 'group-hover/row:bg-[var(--flow-bg-control-hover)]',
+          )}
+        />
         <Twisty
           expanded={itemExpanded}
           className={clsx(!hasSubitems && 'invisible')}

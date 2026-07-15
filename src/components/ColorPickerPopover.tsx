@@ -92,7 +92,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
   return (
     <div
       className={clsx(
-        'text-muted-foreground ring-border bg-background w-72 rounded-sm p-3 shadow-lg ring-1 ring-inset',
+        'text-muted-foreground ring-border bg-background w-72 rounded-lg p-3 shadow-lg ring-1 ring-inset',
         className,
       )}
       onClick={(e) => e.stopPropagation()}
@@ -109,6 +109,9 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
         />
         <input
           aria-label={t('hex')}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
           value={input}
           spellCheck={false}
           className="textfield text-muted-foreground h-8 min-w-0 flex-1 bg-transparent px-2 font-mono text-base"

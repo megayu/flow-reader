@@ -93,7 +93,7 @@ export function Tab({
       <Icon size={16} className="text-muted-foreground relative z-10" />
       <span className="relative z-10 max-w-[200px] truncate">{children}</span>
       <IconButton
-        className="relative z-10 transition-none active:translate-y-0"
+        className="relative z-10 size-6 transition-none active:translate-y-0"
         aria-label={t('action.close')}
         Icon={XIcon}
         onClick={(e) => {

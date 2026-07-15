@@ -244,7 +244,7 @@ test('library author filters pin authors and refresh when books change', async (
   await expect.poll(() => pinnedAuthors(page)).toEqual([longAuthor])
 
   await page
-    .locator('ul.grid [role="button"]')
+    .locator('ul.grid [data-flow-library-book-card]')
     .filter({ hasText: 'Beta Read' })
     .click({ button: 'right' })
   await page.getByRole('menuitem', { name: /^Delete$/ }).click()

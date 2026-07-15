@@ -462,7 +462,7 @@ p {
 }
 
 .list-row:hover .action {
-  display: block;
+  visibility: visible;
 }
 
 .dark {

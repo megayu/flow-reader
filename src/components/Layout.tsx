@@ -655,17 +655,24 @@ function getPrimaryShortcut(shortcutId: ShortcutActionId | undefined) {
 }
 
 const SideBar: React.FC = () => {
+  const viewMode = useViewModeValue()
+
+  return <SideBarForMode key={viewMode} viewMode={viewMode} />
+}
+
+const SideBarForMode: React.FC<{
+  viewMode: ReturnType<typeof useViewModeValue>
+}> = ({ viewMode }) => {
   const [action] = useAction()
   const [libraryAction] = useLibraryAction()
-  const t = useTranslation()
-  const viewMode = useViewModeValue()
   const [, , background] = useBackground()
   const activeAction = viewMode === 'library' ? libraryAction : action
   const actions = viewMode === 'library' ? libraryViewActions : viewActions
 
-  const { size } = useSplitViewItem(SideBar, {
+  const { size } = useSplitViewItem('SideBar', {
     preferredSize: 240,
     minSize: 160,
+    storageKey: `flow-reader:sidebar:${viewMode}:width`,
     visible: !!activeAction,
   })
 
@@ -678,12 +685,10 @@ const SideBar: React.FC = () => {
       )}
       style={{ width: size }}
     >
-      {actions.map(({ name, title, View }) => (
+      {actions.map(({ name, View }) => (
         <View
           active={name === activeAction}
           key={name}
-          name={t(`${name}.title`)}
-          title={t(`${title}.title`)}
           className={clsx(name !== activeAction && '!hidden')}
         />
       ))}
@@ -892,11 +897,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
   }, [libraryAction])
 
   return (
-    <PaneView
-      name={t('library_filter.title')}
-      title={t('library_filter.title')}
-      className={clsx('p-3', className)}
-    >
+    <PaneView className={clsx('p-3', className)}>
       <div
         className="flex h-full min-h-0 flex-col gap-2"
         data-testid="library-filter-panel"
@@ -1469,6 +1470,7 @@ const EditLibraryTagDialog: React.FC<LibraryTagDialogProps> = ({
         }}
       >
         <form
+          autoComplete="off"
           className="grid gap-4"
           onSubmit={(e) => {
             e.preventDefault()

@@ -51,7 +51,7 @@ Read this before proposing or testing a Flow Reader performance optimization. Se
 - Change: use a TOC-specific lightweight row instead of the generic row shell where the generic features are not needed.
 - Measured effect: steady TOC tab-switch operation improved 51.7%, first frame improved 50.6%, settled time improved 21.1%, and long-task total changed from 753ms to 0ms. Required closed-sidebar and page-turn scenarios stayed within the accepted tradeoff.
 - Decision: keep.
-- Constraint: preserve accessibility and keyboard behavior; do not remove semantics for a performance-only goal without separate evidence.
+- Constraint: preserve the established mouse behavior and product shortcuts. Do not add or remove interaction semantics for a performance-only goal without separate product evidence.
 
 ### TOC viewport slot reuse
 

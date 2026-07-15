@@ -2957,6 +2957,10 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
       <input
         ref={inputRef}
         aria-label={t('chapter_find')}
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
         className="text-foreground w-40 bg-transparent px-1 py-0.5 text-base outline-none"
         value={find.query}
         onChange={(e) => onChange(e.target.value)}
@@ -4394,16 +4398,15 @@ const ReaderPaneHeader: React.FC<ReaderPaneHeaderProps> = ({ tab }) => {
     <Bar data-flow-reader-header>
       <div className="scroll-h flex">
         {navPath.map((item, i) => (
-          <button
+          <span
             key={item.id ?? item.href ?? item.label}
-            type="button"
-            className="hover:text-foreground flex shrink-0 items-center"
+            className="flex shrink-0 items-center"
           >
             {item.label}
             {i !== navPath.length - 1 && (
               <ChevronRightIcon className="size-5" />
             )}
-          </button>
+          </span>
         ))}
       </div>
     </Bar>

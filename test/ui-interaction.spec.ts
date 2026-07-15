@@ -59,7 +59,7 @@ test('app UI font size changes app chrome without changing reading font size', a
   const fontSizeInput = dialog.getByRole('textbox', {
     name: /App Font Size/,
   })
-  const basicTab = dialog.getByRole('tab', { name: /Basic/ })
+  const basicTab = dialog.getByRole('button', { name: /Basic/ })
 
   await expect(fontSizeInput).toHaveValue('15')
   await fontSizeInput.focus()
@@ -165,7 +165,7 @@ test('accent color updates primary bridge and selected controls', async ({
   page,
 }) => {
   const dialog = await openSettings(page)
-  const selectedTab = dialog.getByRole('tab', { name: /Basic/ })
+  const selectedTab = dialog.getByRole('button', { name: /Basic/ })
   const primaryBefore = await readCssVariable(page, '--primary')
   const accentBgBefore = await readCssVariable(page, '--flow-accent-bg')
 
@@ -215,8 +215,8 @@ test('theme color pickers close before the background theme panel on escape', as
 test('disables browser autofill on app input controls', async ({ page }) => {
   const dialog = await openSettings(page)
 
-  await dialog.getByRole('tab', { name: /TXT/ }).click()
-  await dialog.getByRole('tab', { name: /Basic/ }).click()
+  await dialog.getByRole('button', { name: /TXT/ }).click()
+  await dialog.getByRole('button', { name: /Basic/ }).click()
   await dialog.getByRole('button', { name: /#0EA5E9/i }).click()
   await expect(page.getByRole('textbox', { name: /Hex color/ })).toBeVisible()
 
@@ -262,7 +262,7 @@ test('TXT import rules preserve enter input and persist by line', async ({
 }) => {
   const dialog = await openSettings(page)
 
-  await dialog.getByRole('tab', { name: /TXT/ }).click()
+  await dialog.getByRole('button', { name: /TXT/ }).click()
 
   const groupRules = dialog.getByRole('textbox', {
     name: /Group rules/,
@@ -334,12 +334,12 @@ test('settings shortcut list hides internal developer tools shortcut', async ({
 }) => {
   const dialog = await openSettings(page)
 
-  await dialog.getByRole('tab', { name: /Shortcuts/ }).click()
+  await dialog.getByRole('button', { name: /Shortcuts/ }).click()
 
   await expect(dialog.getByText(/Developer Tools/)).toHaveCount(0)
 
   const shortcutText = (
-    (await dialog.getByRole('tabpanel').textContent()) ?? ''
+    (await dialog.locator('[data-flow-settings-panel]').textContent()) ?? ''
   ).replace(/\s+/g, '')
 
   expect(shortcutText).toMatch(/ClosealltabsCtrl\+Shift\+W/)

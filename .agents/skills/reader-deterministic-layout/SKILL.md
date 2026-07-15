@@ -1,12 +1,13 @@
 ---
 name: reader-deterministic-layout
 description: >-
-  Use when working in the Flow Reader repository on deterministic reader layout
-  and rendering correctness: zoom, single-page or spread mode, tab isolation,
-  sidebar open/close, window resize, iframe pane geometry, hidden pane
-  compositing, reader header/footer/page alignment, epubjs layout transactions,
-  pagination snapshots, generated reader content that can alter layout, or visual
-  correctness of cover/reader surfaces under size changes.
+  Use when a Flow Reader source change can alter pagination inputs, reader
+  geometry, layout transactions, iframe sizing or compositing, committed
+  body/header/footer snapshots, or size-dependent reader rendering. Do not use
+  merely because code is located in a reader, typography, sidebar, or zoom UI;
+  local validation, formatting, persistence, and state plumbing are excluded when
+  they only constrain values before the existing layout API and do not change its
+  update timing or layout semantics.
 ---
 
 # Reader Deterministic Layout
@@ -25,6 +26,12 @@ Before editing the reference, name the future engineering decision the entry wou
 
 ## Decide Whether This Skill Applies
 
+Classify the changed mechanism, not the feature label or the eventual consumer of
+the value. Writing a setting that the reader later consumes is not enough. The
+workflow applies only when the change can alter layout inputs after validation,
+the timing or ownership of layout work, geometry, pagination, compositing, or the
+committed visible snapshot.
+
 Run this workflow for changes touching:
 
 - Zoom behavior, single-page mode, spread mode, page width, typography layout, or responsive reader sizing.
@@ -39,6 +46,8 @@ Run this workflow for changes touching:
 
 Do not run the full reader deterministic layout workflow for:
 
+- Local input validation, number normalization, parsing, or persistence that feeds
+  the same valid value type into the same existing layout update path.
 - Pure storage, path, permission, logging, or error-text changes.
 - Rust changes that only store or copy cover resources without changing the generated content consumed by reader layout or the UI surface under test.
 - Translation-only changes.

@@ -154,7 +154,9 @@ async function openLibraryFilterPanel(page: Page) {
 }
 
 function bookCard(page: Page, title: string) {
-  return page.locator('ul.grid [role="button"]').filter({ hasText: title })
+  return page
+    .locator('ul.grid [data-flow-library-book-card]')
+    .filter({ hasText: title })
 }
 
 function tagChip(page: Page, tag: string) {
@@ -206,7 +208,7 @@ test('library tags can be filtered, pinned, edited, batch-applied, renamed, dele
 
   await tagChip(page, 'Research').click()
   await bookCard(page, 'Beta Plain').click({ button: 'right' })
-  await page.getByRole('button', { name: /^Edit$/ }).click()
+  await page.getByRole('menuitem', { name: /^Edit$/ }).click()
   let editDialog = page.getByRole('dialog')
   await expect(
     editDialog.getByRole('heading', { name: /^Edit book$/ }),
@@ -217,7 +219,7 @@ test('library tags can be filtered, pinned, edited, batch-applied, renamed, dele
   await editDialog.getByRole('button', { name: /^Cancel$/ }).click()
 
   await bookCard(page, 'Beta Plain').click({ button: 'right' })
-  await page.getByRole('button', { name: /^Tags$/ }).click()
+  await page.getByRole('menuitem', { name: /^Tags$/ }).click()
   editDialog = page.getByRole('dialog')
   await expect(
     editDialog.getByRole('heading', { name: /^Edit tags$/ }),
@@ -231,7 +233,7 @@ test('library tags can be filtered, pinned, edited, batch-applied, renamed, dele
   await expect(tagChip(page, 'Scratch')).toHaveCount(0)
 
   await bookCard(page, 'Beta Plain').click({ button: 'right' })
-  await page.getByRole('button', { name: /^Tags$/ }).click()
+  await page.getByRole('menuitem', { name: /^Tags$/ }).click()
   editDialog = page.getByRole('dialog')
   await editDialog
     .getByRole('textbox', { name: /^New tag$/ })

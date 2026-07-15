@@ -9,6 +9,7 @@ import {
   useEffect,
   isValidElement,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 
@@ -25,6 +26,7 @@ interface ISplitViewItem {
   reset?: () => void
   visible?: boolean
   resize?: (size: number) => void
+  commitSize?: () => void
 }
 interface SplitViewContext {
   registerView(key: string, view: ISplitViewItem): void
@@ -74,6 +76,7 @@ function useSize(
       ? clamp(parsed, minSize, maxSize)
       : preferredSize
   })
+  const sizeRef = useRef(size)
   const persistSize = useCallback(
     (size: number | undefined) => {
       if (!storageKey || typeof window === 'undefined') return
@@ -88,23 +91,25 @@ function useSize(
   )
   const resize = useCallback(
     (delta: number) => {
-      setSize((size) => {
-        const current = size ?? preferredSize
-        if (current === undefined) return size
+      const current = sizeRef.current ?? preferredSize
+      if (current === undefined) return
 
-        const next = clamp(current + delta, minSize, maxSize)
-        persistSize(next)
-        return next
-      })
+      const next = clamp(current + delta, minSize, maxSize)
+      sizeRef.current = next
+      setSize(next)
     },
-    [maxSize, minSize, persistSize, preferredSize],
+    [maxSize, minSize, preferredSize],
   )
+  const commitSize = useCallback(() => {
+    persistSize(sizeRef.current)
+  }, [persistSize])
   const reset = useCallback(() => {
     persistSize(undefined)
+    sizeRef.current = preferredSize
     setSize(preferredSize)
   }, [persistSize, preferredSize])
 
-  return [size, resize, reset] as const
+  return [size, resize, reset, commitSize] as const
 }
 
 export function useSplitViewItem(
@@ -125,7 +130,7 @@ export function useSplitViewItem(
     visible?: boolean
   } = {},
 ) {
-  const [size, _resize, reset] = useSize(
+  const [size, _resize, reset, commitSize] = useSize(
     preferredSize,
     minSize,
     maxSize,
@@ -136,6 +141,7 @@ export function useSplitViewItem(
   const stringKey = typeof key === 'string' ? key : key.name
   const view = useMemo(
     () => ({
+      commitSize,
       fixed,
       dragMinSize,
       key: stringKey,
@@ -145,7 +151,17 @@ export function useSplitViewItem(
       resize,
       visible,
     }),
-    [dragMinSize, fixed, maxSize, minSize, reset, stringKey, resize, visible],
+    [
+      commitSize,
+      dragMinSize,
+      fixed,
+      maxSize,
+      minSize,
+      reset,
+      stringKey,
+      resize,
+      visible,
+    ],
   )
   useRegisterView(stringKey, view)
 
@@ -166,8 +182,9 @@ export const SplitView = ({
 
   const registerView = useCallback((key: string, view: ISplitViewItem) => {
     setViewMap((map) => {
-      map.set(key, view)
-      return new Map(map)
+      const next = new Map(map)
+      next.set(key, view)
+      return next
     })
   }, [])
   const contextValue = useMemo(() => ({ registerView }), [registerView])
@@ -238,11 +255,21 @@ const Sash: React.FC<SashProps> = ({ vertical, views }) => {
         event.preventDefault()
         setActive(true)
         const sash = event.currentTarget
+        const startPosition = vertical ? event.clientY : event.clientX
+        const bounds = resizeDeltaBounds(vertical, views, sash)
+        let appliedDelta = 0
 
         function handleMouseMove(e: MouseEvent) {
-          const rawDelta = vertical ? e.movementY : e.movementX
-          const delta = constrainedResizeDelta(rawDelta, vertical, views, sash)
+          const position = vertical ? e.clientY : e.clientX
+          const delta =
+            clamp(
+              position - startPosition,
+              bounds?.min ?? Number.NEGATIVE_INFINITY,
+              bounds?.max ?? Number.POSITIVE_INFINITY,
+            ) - appliedDelta
           if (!delta) return
+
+          appliedDelta += delta
 
           views.forEach((v, i) => {
             v?.resize?.(delta * (-1) ** i)
@@ -254,6 +281,7 @@ const Sash: React.FC<SashProps> = ({ vertical, views }) => {
           // `mouseleave` not fire when `mousedown`
           setHover(false)
           setActive(false)
+          views.forEach((view) => view?.commitSize?.())
           window.removeEventListener('mousemove', handleMouseMove)
           window.removeEventListener('mouseup', handleMouseUp)
         })
@@ -279,37 +307,29 @@ const Sash: React.FC<SashProps> = ({ vertical, views }) => {
   )
 }
 
-function constrainedResizeDelta(
-  delta: number,
+function resizeDeltaBounds(
   vertical: boolean,
   views: (ISplitViewItem | undefined)[],
   sash: HTMLElement,
 ) {
-  if (!delta) return 0
-
   const [previousView, nextView] = views
   const previousElement = sash.previousElementSibling
   const nextElement = sash.nextElementSibling
-  if (!previousElement || !nextElement) return delta
+  if (!previousElement || !nextElement) return undefined
 
   const previousSize = elementSplitSize(previousElement, vertical)
   const nextSize = elementSplitSize(nextElement, vertical)
-  const previousMin = dragMinSize(previousView)
-  const nextMin = dragMinSize(nextView)
-  const previousMax = previousView?.maxSize ?? Number.POSITIVE_INFINITY
-  const nextMax = nextView?.maxSize ?? Number.POSITIVE_INFINITY
 
-  if (delta > 0) {
-    return Math.max(
-      0,
-      Math.min(delta, nextSize - nextMin, previousMax - previousSize),
-    )
+  return {
+    min: Math.max(
+      dragMinSize(previousView) - previousSize,
+      nextSize - (nextView?.maxSize ?? Number.POSITIVE_INFINITY),
+    ),
+    max: Math.min(
+      (previousView?.maxSize ?? Number.POSITIVE_INFINITY) - previousSize,
+      nextSize - dragMinSize(nextView),
+    ),
   }
-
-  return Math.min(
-    0,
-    Math.max(delta, -(previousSize - previousMin), -(nextMax - nextSize)),
-  )
 }
 
 function elementSplitSize(element: Element, vertical: boolean) {

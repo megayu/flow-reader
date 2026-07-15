@@ -1280,6 +1280,10 @@ const Library: React.FC<LibraryProps> = ({
                   </div>
                   <input
                     type="range"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
                     min={libraryBookCardWidthMin}
                     max={libraryBookCardWidthMax}
                     step={libraryBookCardWidthStep}
@@ -1531,15 +1535,6 @@ const Book: React.FC<BookProps> = ({
     [book.id, onSelectBook, openBook, select],
   )
 
-  const onBookKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key !== 'Enter' && e.key !== ' ') return
-
-      e.preventDefault()
-      activateBook(e)
-    },
-    [activateBook],
-  )
   const handleContextMenuPointerDown = useEffectEvent((e: PointerEvent) => {
     if (contextMenuRef.current?.contains(e.target as Node)) return
     closeContextMenu()
@@ -1572,10 +1567,9 @@ const Book: React.FC<BookProps> = ({
   return (
     <div className="relative" onContextMenu={openContextMenu}>
       <div
-        role="button"
-        tabIndex={0}
+        data-flow-library-book-card
         className={clsx(
-          'group focus-visible:ring-ring/50 relative flex cursor-pointer flex-col rounded-md p-1 transition-colors outline-none focus-visible:ring-2',
+          'group relative flex cursor-pointer flex-col rounded-md p-1 transition-colors',
           select && selected
             ? 'bg-[var(--flow-accent-bg)] ring-2 ring-[var(--flow-accent)] hover:bg-[var(--flow-accent-bg)]'
             : highlighted
@@ -1584,7 +1578,6 @@ const Book: React.FC<BookProps> = ({
         )}
         onClick={activateBook}
         onContextMenu={openContextMenu}
-        onKeyDown={onBookKeyDown}
       >
         {contextMenu && (
           <div
@@ -2472,6 +2465,7 @@ const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
         }}
       >
         <form
+          autoComplete="off"
           className="grid gap-4"
           onSubmit={(e) => {
             e.preventDefault()

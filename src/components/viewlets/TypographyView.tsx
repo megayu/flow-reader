@@ -221,7 +221,7 @@ const TypographyPane: React.FC = () => {
             step={0.5}
             value={textIndent}
             onChange={(v) => {
-              setTypography('textIndent', v || undefined)
+              setTypography('textIndent', v)
             }}
           />
         </div>
@@ -765,7 +765,13 @@ const NumberField: React.FC<NumberFieldProps> = ({
           className="h-full flex-1 rounded-none border-0 bg-transparent px-2.5 py-0 leading-none focus-visible:border-transparent focus-visible:ring-0"
           // lazy render
           onBlur={(e) => {
-            onChange(e.target.value === '' ? undefined : Number(e.target.value))
+            const normalized = normalizeNumberFieldValue(e.target.value, {
+              min: props.min,
+              max: props.max,
+              step: props.step,
+            })
+            e.target.value = normalized === undefined ? '' : String(normalized)
+            onChange(normalized)
           }}
           {...props}
         />
@@ -817,4 +823,36 @@ function parseNumberInputProp(value: string | number | undefined) {
 
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function normalizeNumberFieldValue(
+  input: string,
+  constraints: Pick<ComponentProps<'input'>, 'min' | 'max' | 'step'>,
+) {
+  if (input === '') return undefined
+
+  const parsed = Number(input)
+  if (!Number.isFinite(parsed)) return undefined
+
+  const min = parseNumberInputProp(constraints.min)
+  const max = parseNumberInputProp(constraints.max)
+  const step =
+    constraints.step === 'any'
+      ? undefined
+      : (parseNumberInputProp(constraints.step) ?? 1)
+  let normalized = parsed
+
+  if (min !== undefined) normalized = Math.max(min, normalized)
+  if (max !== undefined) normalized = Math.min(max, normalized)
+
+  if (step !== undefined && step > 0) {
+    const base = min ?? 0
+    normalized = base + Math.round((normalized - base) / step) * step
+    normalized = Number(normalized.toFixed(12))
+  }
+
+  if (min !== undefined) normalized = Math.max(min, normalized)
+  if (max !== undefined) normalized = Math.min(max, normalized)
+
+  return Object.is(normalized, -0) ? 0 : normalized
 }

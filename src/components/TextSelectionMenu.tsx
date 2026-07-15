@@ -8,7 +8,6 @@ import {
   SquarePlusIcon,
 } from 'lucide-react'
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
-import FocusLock from 'react-focus-lock'
 import { useSnapshot } from 'valtio'
 
 import { typeMap, colorMap, orderRangeRectsForWritingMode } from '../annotation'
@@ -435,7 +434,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     : undefined
 
   return (
-    <FocusLock>
+    <>
       <Overlay
         // cover `sash`
         className="!z-50 !bg-transparent"
@@ -492,6 +491,10 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               ref={replacementRef}
               name="replacement"
               aria-label={t('edit_text')}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
               defaultValue={replaceTarget?.selectedText ?? text}
               className="textfield bg-background text-foreground scroll h-40 w-72 resize-none px-1.5 py-1 text-base outline-none"
             />
@@ -630,7 +633,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                       fontSize: 18,
                     }}
                     className={clsx(
-                      'border-border text-muted-foreground hover:bg-muted flex cursor-pointer appearance-none items-center justify-center rounded-md border bg-transparent p-0 text-base',
+                      'border-border text-muted-foreground flex cursor-pointer appearance-none items-center justify-center rounded-md border bg-transparent p-0 text-base transition-[box-shadow,filter] outline-none hover:shadow-[inset_0_0_0_2px_var(--flow-accent-border)] hover:brightness-110 active:brightness-95',
                       typeMap[type].class,
                     )}
                     onClick={() => {
@@ -751,6 +754,6 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           </div>
         )}
       </div>
-    </FocusLock>
+    </>
   )
 }

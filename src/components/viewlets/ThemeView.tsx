@@ -21,15 +21,6 @@ import {
 } from '@flow/reader/styles/theme'
 
 import { ColorPickerPopover } from '../ColorPickerPopover'
-import { PaneView, PaneViewProps } from '../base/PaneView'
-
-export const ThemeView: React.FC<PaneViewProps> = (props) => {
-  return (
-    <PaneView {...props}>
-      <ThemePanel />
-    </PaneView>
-  )
-}
 
 interface ThemePanelProps {
   className?: string
@@ -152,8 +143,9 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({
 
   return (
     <div
+      data-flow-theme-panel
       className={clsx(
-        'text-muted-foreground ring-border z-[100] w-80 rounded-xl bg-[var(--flow-bg-panel)] p-3 text-base shadow-xl ring-1 backdrop-blur-sm ring-inset',
+        'text-muted-foreground ring-border z-[100] w-80 rounded-xl bg-[var(--flow-bg-panel)] p-3 text-base shadow-xl ring-1 ring-inset',
         positioned || 'relative',
         className,
       )}
@@ -173,7 +165,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({
           aria-pressed={selectedBackground === 'custom'}
           aria-label={t('background_color')}
           className={clsx(
-            'group relative h-12 overflow-hidden rounded-lg border border-dashed text-left shadow-sm transition-all outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-focus-ring)]',
+            'group relative h-12 overflow-hidden rounded-lg border border-dashed text-left shadow-sm transition-[color,background-color,border-color,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-focus-ring)]',
             selectedBackground === 'custom'
               ? 'border-[var(--flow-accent)] ring-2 ring-[var(--flow-accent-border)]'
               : 'border-[var(--flow-border-strong)] hover:border-[var(--flow-accent-border)]',
@@ -293,7 +285,7 @@ const BackgroundSwatch: React.FC<BackgroundSwatchProps> = ({
       aria-pressed={selected}
       aria-label={label}
       className={clsx(
-        'group relative h-12 overflow-hidden rounded-lg border text-left shadow-sm transition-all outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-focus-ring)]',
+        'group relative h-12 overflow-hidden rounded-lg border text-left shadow-sm transition-[color,background-color,border-color,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-focus-ring)]',
         selected
           ? 'border-[var(--flow-accent)] ring-2 ring-[var(--flow-accent-border)]'
           : 'border-[var(--flow-border)] hover:border-[var(--flow-accent-border)]',

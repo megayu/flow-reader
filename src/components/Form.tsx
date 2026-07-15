@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { CheckIcon, type LucideIcon, XIcon } from 'lucide-react'
+import { type LucideIcon, XIcon } from 'lucide-react'
 import {
   ElementType,
   useRef,
@@ -112,72 +112,6 @@ export function TextField<T extends ElementType = 'input'>({
           </div>
         )}
       </div>
-    </div>
-  )
-}
-
-interface CheckboxProps extends ComponentProps<'input'> {
-  name: string
-}
-export const Checkbox: React.FC<CheckboxProps> = ({ name, ...props }) => {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="checkbox bg-background relative shrink-0 rounded-sm">
-        <input
-          type="checkbox"
-          name={name}
-          id={name}
-          className="peer block h-4 w-4 appearance-none"
-          {...props}
-        />
-        <CheckIcon className="text-muted-foreground pointer-events-none invisible absolute top-0 size-4 peer-checked:visible" />
-      </div>
-      <Label name={name} className="!mb-0" />
-    </div>
-  )
-}
-
-interface SelectProps extends ComponentProps<'select'> {
-  name?: string
-}
-export const Select: React.FC<SelectProps> = ({
-  name,
-  className,
-  ...props
-}) => {
-  return (
-    <div className={clsx('flex flex-col', className)}>
-      {name && <Label name={name} />}
-      <select
-        name={name}
-        id={name}
-        className={clsx(
-          'text-muted-foreground bg-background w-full px-0.5 py-1 text-base',
-        )}
-        {...props}
-      ></select>
-    </div>
-  )
-}
-
-interface ColorPickerProps extends ComponentProps<'input'> {
-  name?: string
-}
-export const ColorPicker: React.FC<ColorPickerProps> = ({
-  name,
-  className,
-  ...props
-}) => {
-  return (
-    <div className={clsx('flex flex-col', className)}>
-      {name && <Label name={name} />}
-      <input
-        type="color"
-        name={name}
-        id={name}
-        className="h-6 w-12"
-        {...props}
-      />
     </div>
   )
 }

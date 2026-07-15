@@ -484,7 +484,7 @@ async function installVerticalBookRoutes(page: Page) {
 }
 
 async function openFixtureBook(page: Page, index: number) {
-  await page.locator('ul.grid [role="button"]').nth(index).click()
+  await page.locator('ul.grid [data-flow-library-book-card]').nth(index).click()
 }
 
 async function expectRightEdgeNavigation(page: Page) {
@@ -1607,7 +1607,9 @@ test.beforeEach(async ({ page }, testInfo) => {
       'nextjs-portal{display:none!important;pointer-events:none!important}',
   })
   await expect(page.locator('#layout')).toBeVisible()
-  await expect(page.locator('ul.grid [role="button"]')).toHaveCount(3)
+  await expect(
+    page.locator('ul.grid [data-flow-library-book-card]'),
+  ).toHaveCount(3)
 })
 
 async function openVerticalFixtureBook(page: Page) {
@@ -1640,6 +1642,29 @@ async function waitForVerticalReaderLoaded(page: Page) {
     )
     .toBe(true)
 }
+
+test('normalizes typography number fields when editing ends', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+  await page.locator('.ActivityBar button[aria-label="Typography"]').click()
+
+  const sidebar = page.locator('.SideBar')
+  const setAndBlur = async (name: string, input: string, expected: string) => {
+    const field = sidebar.locator(`input[name="${name}"]`)
+    await field.fill(input)
+    await field.blur()
+    await expect(field).toHaveValue(expected)
+  }
+
+  await setAndBlur('Zoom', '0', '1')
+  await setAndBlur('Font Size', '40', '28')
+  await setAndBlur('Font Weight', '155', '200')
+  await setAndBlur('Line Height', '0.5', '1')
+  await setAndBlur('First Line Indent', '-2', '0')
+})
 
 test('toggles page appearance without changing reader pagination geometry', async ({
   page,

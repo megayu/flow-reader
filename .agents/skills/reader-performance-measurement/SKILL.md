@@ -1,13 +1,13 @@
 ---
 name: reader-performance-measurement
 description: >-
-  Use when working in the Flow Reader repository on changes that may affect
-  reader runtime performance: tab switching, page turns, zoom, spread or
-  single-page layout cost, iframe rendering, epubjs manager/view/rendition code,
-  reader pane CSS, annotation or definition overlays, sidebar panels tied to the
-  active reader, generated book resources consumed by pagination, or state-flow
-  changes that can affect first frame, settled time, long tasks, or reader
-  counters.
+  Use before editing Flow Reader source when the change can alter the amount,
+  timing, frequency, or lifetime of work in reader runtime paths such as tab
+  switching, page turns, pagination, iframe rendering, epubjs layout, active
+  overlays, or focused-reader subscriptions. Do not use merely because a control
+  belongs to reader, typography, zoom, or a sidebar; local validation, formatting,
+  persistence, and state plumbing are excluded when they keep the same runtime
+  update path and timing.
 ---
 
 # Reader Performance Measurement
@@ -26,7 +26,33 @@ Before editing the history, verify that the proposed entry names the compared sc
 
 Place an accepted performance optimization under `Retained Approaches` only when the measured comparison justifies keeping it. Place an attempted performance optimization under `Rejected Approaches` only when the comparison justifies removing or not adopting it; state what measurement or code-path change would make a future retry meaningful. Let the final decision determine the section: do not record the same attempt in both sections. If later evidence reverses a recorded decision, update and move the existing entry instead of leaving contradictory entries.
 
+## Pre-Edit Gate
+
+For every source change that triggers this skill, a trustworthy baseline is a
+prerequisite, not an optional verification step. Before editing source code:
+
+1. Name the runtime mechanism that may change and select the matching scenarios.
+2. Build and measure the current worktree at the required evidence level.
+3. Record the source state, build profile, scenario filter, run count, window size,
+   book source, data setup, command, and baseline artifact path.
+4. Inspect the result metadata and samples. A launched client, screenshot, passing
+   smoke test, or after-only measurement is not a baseline.
+
+If a reliable baseline cannot be produced, do not edit the performance-sensitive
+source. Report the concrete blocker. If the source was already edited, do not call
+the edited state a baseline: remove only the agent's own edit or reconstruct the
+pre-edit source in an isolated worktree without disturbing user changes, then
+measure it. If neither is safe, stop.
+
+Diagnostics, documentation, test-only work, and measurement-script maintenance do
+not require a runtime baseline unless they also change application runtime code.
+
 ## Decide Whether This Skill Applies
+
+Classify the changed mechanism, not the component name or the fact that a value is
+eventually consumed by the reader. A reader setting does not trigger measurement
+unless the change can alter runtime work, update timing, subscriptions, DOM or
+resource cost, layout invalidation, or object lifetime.
 
 Run the performance workflow for changes touching:
 
@@ -41,6 +67,8 @@ Run the performance workflow for changes touching:
 
 Do not run the reader performance workflow for changes that cannot affect reader runtime cost:
 
+- Local input validation, number normalization, parsing, or persistence that keeps
+  the same commit event and existing reader update path.
 - Pure Rust storage plumbing, path handling, command permissions, or error text.
 - Cover resource import or generation when the cover is only shown in library/metadata surfaces and is not part of opening, paginating, or rendering the reader body.
 - Translations, labels, and i18n-only text changes.
@@ -67,14 +95,16 @@ Do not compare results across evidence levels. A `browser-smoke` baseline cannot
 1. Read [Performance History](references/performance-history.md) and search for similar retained or rejected attempts.
 2. Classify the change using the trigger rules above.
 3. If measurement is not required, record the reason in the final response.
-4. If measurement is required, collect a baseline before the code change whenever possible.
+4. If measurement is required, pass the pre-edit baseline gate above before changing source.
 5. Make the change.
-6. Collect an after-run with the same evidence level, executable, window size, run count, scenario filter, book source, and data setup.
+6. Build the changed source with the same profile and collect an after-run with the same evidence level, window size, run count, scenario filter, book source, and data setup.
 7. Compare baseline and after with the bundled compare script.
 8. Accept the change only if the measured tradeoff is justified.
 9. Update performance history only when the change was a performance optimization experiment; do not record feature or correctness work whose measurements served only as a no-regression gate.
 
-If the worktree was already changed before you started and no reliable baseline exists, say that clearly. Do not invent a baseline or add a performance-history entry. Run the current measurement only when it is useful for the current investigation.
+If unrelated user changes were already present before the task, preserve them in
+both source states. A clean `HEAD` measurement is not a valid baseline for a dirty
+worktree when those existing changes reach the measured path.
 
 ## Bundled Scripts
 
@@ -111,7 +141,7 @@ pnpm build
 pnpm tauri:build
 ```
 
-Launch the compiled executable for the current platform with isolated storage and a CDP-compatible debug endpoint. Use the actual executable path for that platform. Keep the same executable, data directory, CDP URL, window size, run count, scenario filter, and book source for baseline and after.
+Launch the compiled executable for the current platform with isolated storage and a CDP-compatible debug endpoint. Use the actual executable path for that platform. Build separate baseline and after executables from the corresponding source states with the same release profile and launch configuration; keep the data setup, CDP URL, window size, run count, scenario filter, and book source matched.
 
 Platform-specific launch details belong to the local environment, not this skill. The launch must satisfy:
 

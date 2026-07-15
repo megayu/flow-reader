@@ -31,7 +31,7 @@ export function IconButton({
       aria-label={ariaLabel ?? title}
       variant="ghost"
       size="icon-sm"
-      className={cn('h-auto w-auto rounded-sm p-0.5', className)}
+      className={cn('rounded-sm', className)}
       {...props}
     >
       <Icon size={size} />
@@ -53,11 +53,6 @@ const variantMap = {
   destructive: 'destructive',
 } as const
 
-const compactClassMap = {
-  true: 'h-auto px-2 py-1',
-  false: 'h-auto px-3 py-1.5',
-}
-
 export interface ButtonProps extends Omit<ComponentProps<'button'>, 'title'> {
   variant?: keyof typeof variantMap
   compact?: boolean
@@ -77,7 +72,8 @@ export const Button: React.FC<ButtonProps> = ({
     <ShadcnButton
       aria-label={ariaLabel ?? title}
       variant={variantMap[variant]}
-      className={cn(compactClassMap[`${compact}`], className)}
+      size={compact ? 'sm' : 'default'}
+      className={className}
       {...props}
     />
   )

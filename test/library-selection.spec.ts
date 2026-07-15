@@ -44,7 +44,7 @@ async function setupLibrary(page: Page) {
 
 function bookCard(page: Page, index: number) {
   return page
-    .locator('ul.grid [role="button"]')
+    .locator('ul.grid [data-flow-library-book-card]')
     .filter({ hasText: `Selection Book ${String(index).padStart(2, '0')}` })
 }
 

@@ -194,30 +194,26 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
   }, [onClose])
 
   useEffect(() => {
-    const onPointerMove = (event: PointerEvent) => {
-      const drag = splitDragRef.current
-      if (!drag || event.pointerId !== drag.pointerId) return
-      const delta = ((event.clientX - drag.startX) / drag.width) * 100
-      setPreviewSplit(Math.min(72, Math.max(28, drag.startSplit + delta)))
-    }
-    const onPointerUp = (event: PointerEvent) => {
-      if (splitDragRef.current?.pointerId !== event.pointerId) return
-      splitDragRef.current = undefined
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-    }
-
-    window.addEventListener('pointermove', onPointerMove)
-    window.addEventListener('pointerup', onPointerUp)
-    window.addEventListener('pointercancel', onPointerUp)
     return () => {
-      window.removeEventListener('pointermove', onPointerMove)
-      window.removeEventListener('pointerup', onPointerUp)
-      window.removeEventListener('pointercancel', onPointerUp)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
     }
   }, [])
+
+  const resizePreviewSplit = (pointerId: number, clientX: number) => {
+    const drag = splitDragRef.current
+    if (!drag || pointerId !== drag.pointerId) return
+
+    const delta = ((clientX - drag.startX) / drag.width) * 100
+    setPreviewSplit(Math.min(72, Math.max(28, drag.startSplit + delta)))
+  }
+  const finishPreviewSplit = (pointerId: number) => {
+    if (splitDragRef.current?.pointerId !== pointerId) return
+
+    splitDragRef.current = undefined
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+  }
 
   const activePreview = useMemo(
     () =>
@@ -495,10 +491,9 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                   />
                 </div>
               </section>
-              <button
-                type="button"
-                aria-label={`${t('chapters')} / ${t('sample')}`}
-                className="group flex h-full cursor-col-resize items-stretch justify-center outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-ring)]"
+              <div
+                data-flow-text-import-splitter
+                className="group flex h-full cursor-col-resize items-stretch justify-center"
                 onPointerDown={(event) => {
                   const width = previewAreaRef.current?.clientWidth
                   if (!width) return
@@ -513,24 +508,17 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                   document.body.style.userSelect = 'none'
                   event.preventDefault()
                 }}
-                onKeyDown={(event) => {
-                  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
-                    return
-                  }
-                  event.preventDefault()
-                  setPreviewSplit((current) =>
-                    Math.min(
-                      72,
-                      Math.max(
-                        28,
-                        current + (event.key === 'ArrowLeft' ? -4 : 4),
-                      ),
-                    ),
-                  )
-                }}
+                onPointerMove={(event) =>
+                  resizePreviewSplit(event.pointerId, event.clientX)
+                }
+                onPointerUp={(event) => finishPreviewSplit(event.pointerId)}
+                onPointerCancel={(event) => finishPreviewSplit(event.pointerId)}
+                onLostPointerCapture={(event) =>
+                  finishPreviewSplit(event.pointerId)
+                }
               >
                 <div className="bg-border group-hover:bg-ring/60 h-full w-px transition-colors" />
-              </button>
+              </div>
               <section className="flex min-h-0 min-w-0 flex-col py-4 pr-4 pl-2">
                 <h3 className="mb-2 text-base font-semibold">{t('sample')}</h3>
                 <pre className="scroll min-h-0 flex-1 overflow-auto rounded-lg bg-[var(--flow-bg-panel)] p-3 font-sans text-base whitespace-pre-wrap">

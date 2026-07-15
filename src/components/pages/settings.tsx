@@ -27,7 +27,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 import { Textarea } from '../ui/textarea'
 
 interface SettingsDialogProps {
@@ -83,186 +82,193 @@ export const Settings: React.FC = () => {
   }
 
   return (
-    <Tabs
-      orientation="vertical"
-      value={activeTab}
-      onValueChange={(value) => setActiveTab(value as SettingsTab)}
-      className="flex h-full min-h-0 flex-row gap-0"
-    >
+    <div className="flex h-full min-h-0 flex-row gap-0">
       <aside className="border-border w-40 shrink-0 border-r bg-[var(--flow-bg-sidebar)] p-2">
         <DialogTitle className="text-muted-foreground px-3 py-3 text-lg font-semibold">
           {t('title')}
         </DialogTitle>
-        <TabsList
-          variant="line"
-          className="mt-1 flex h-auto w-full flex-col items-stretch gap-1 rounded-none bg-transparent p-0"
-        >
+        <div className="mt-1 flex h-auto w-full flex-col items-stretch gap-1 rounded-none bg-transparent p-0">
           {SETTINGS_TABS.map((tab) => {
+            const active = tab === activeTab
             return (
-              <TabsTrigger
+              <button
+                type="button"
                 key={tab}
-                value={tab}
                 data-flow-settings-tab
-                className="text-muted-foreground h-9 justify-start rounded-sm px-3 text-left data-[state=active]:bg-[var(--flow-accent-bg)] data-[state=active]:text-[var(--flow-text)] data-[state=active]:ring-1 data-[state=active]:ring-[var(--flow-accent-border)] data-[state=active]:ring-inset data-[state=active]:after:opacity-0"
+                className={clsx(
+                  'text-muted-foreground h-9 cursor-pointer rounded-sm px-3 text-left transition-colors',
+                  active
+                    ? 'bg-[var(--flow-accent-bg)] text-[var(--flow-text)] ring-1 ring-[var(--flow-accent-border)] ring-inset'
+                    : 'hover:bg-[var(--flow-bg-control-hover)]',
+                )}
                 style={{ fontSize: 'var(--app-font-size-md)' }}
+                onClick={() => setActiveTab(tab)}
               >
                 {t(`tabs.${tab}`)}
-              </TabsTrigger>
+              </button>
             )
           })}
-        </TabsList>
+        </div>
       </aside>
       <section className="scroll min-w-0 flex-1 overflow-y-auto px-5 py-4">
         <h2 className="text-muted-foreground text-lg font-semibold">
           {t(`tabs.${activeTab}`)}
         </h2>
         <div className="mt-5 space-y-5">
-          <TabsContent value="basic" className="m-0 space-y-5">
-            <Item title={t('language')}>
-              <Select
-                value={locale}
-                onValueChange={(value) => setLocale(value as AppLocale)}
-              >
-                <SelectTrigger
-                  aria-label={t('language')}
-                  className="h-8 w-44 rounded-sm"
+          {activeTab === 'basic' && (
+            <div data-flow-settings-panel className="m-0 space-y-5">
+              <Item title={t('language')}>
+                <Select
+                  value={locale}
+                  onValueChange={(value) => setLocale(value as AppLocale)}
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {locales?.map((loc) => (
-                    <SelectItem key={loc} value={loc}>
-                      {localeNames[loc] || loc}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Item>
-            <AccentColorSetting />
-            <UiFontSizeSetting />
-          </TabsContent>
-          <TabsContent value="reading" className="m-0 space-y-5">
-            <Item title={t('default_page_view')}>
-              <SegmentedField
-                value={settings.spread ?? RenditionSpread.Auto}
-                options={[
-                  {
-                    label: typographyT('page_view.single_page'),
-                    value: RenditionSpread.None,
-                  },
-                  {
-                    label: typographyT('page_view.double_page'),
-                    value: RenditionSpread.Auto,
-                  },
-                ]}
-                onChange={(spread) => {
-                  setSettings((prev) => ({
-                    ...prev,
-                    spread,
-                  }))
-                }}
-              />
-            </Item>
-            <Item title={t('default_text_align')}>
-              <SegmentedField
-                value={settings.textAlign ?? 'default'}
-                options={[
-                  {
-                    label: typographyT('text_align.default'),
-                    value: 'default',
-                  },
-                  {
-                    label: typographyT('text_align.justify'),
-                    value: 'justify',
-                  },
-                ]}
-                onChange={(textAlign) => {
-                  setSettings((prev) => ({
-                    ...prev,
-                    textAlign,
-                  }))
-                }}
-              />
-            </Item>
-            <Item title={t('restore_last_reading')}>
-              <SettingsCheckbox
-                label={t('restore_last_reading.enable')}
-                checked={settings.restoreLastReadingOnStartup === true}
-                onCheckedChange={(checked) => {
-                  setSettings({
-                    ...settings,
-                    restoreLastReadingOnStartup: checked,
-                  })
-                }}
-              />
-            </Item>
-            <Item title={t('text_selection_menu')}>
-              <SettingsCheckbox
-                label={t('text_selection_menu.enable')}
-                checked={settings.enableTextSelectionMenu !== false}
-                onCheckedChange={(checked) => {
-                  setSettings({
-                    ...settings,
-                    enableTextSelectionMenu: checked,
-                  })
-                }}
-              />
-            </Item>
-            <Item title={t('hide_endnotes')}>
-              <SettingsCheckbox
-                label={t('hide_endnotes.enable')}
-                checked={settings.hideEndnotes === true}
-                onCheckedChange={(checked) => {
-                  setSettings({
-                    ...settings,
-                    hideEndnotes: checked,
-                  })
-                }}
-              />
-            </Item>
-          </TabsContent>
-          <TabsContent value="txt" className="m-0 space-y-5">
-            <Item title={t('txt_import.group_rules')}>
-              <PatternTextarea
-                label={t('txt_import.group_rules')}
-                value={textImportRules.groupPatterns}
-                onChange={(patterns) =>
-                  updateTextImportRules({ groupPatterns: patterns })
-                }
-              />
-            </Item>
-            <Item title={t('txt_import.chapter_rules')}>
-              <PatternTextarea
-                label={t('txt_import.chapter_rules')}
-                value={textImportRules.chapterPatterns}
-                onChange={(patterns) =>
-                  updateTextImportRules({ chapterPatterns: patterns })
-                }
-              />
-            </Item>
-            <div className="flex justify-end">
-              <UiButton
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:bg-muted hover:text-muted-foreground h-8 rounded-sm px-3 text-base"
-                onClick={() => {
-                  setSettings((prev) => ({
-                    ...prev,
-                    textImportRules: defaultTextImportRules,
-                  }))
-                }}
-              >
-                {t('txt_import.restore_defaults')}
-              </UiButton>
+                  <SelectTrigger
+                    aria-label={t('language')}
+                    className="h-8 w-44 rounded-lg"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locales?.map((loc) => (
+                      <SelectItem key={loc} value={loc}>
+                        {localeNames[loc] || loc}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Item>
+              <AccentColorSetting />
+              <UiFontSizeSetting />
             </div>
-          </TabsContent>
-          <TabsContent value="shortcuts" className="m-0">
-            <ShortcutSettings />
-          </TabsContent>
+          )}
+          {activeTab === 'reading' && (
+            <div data-flow-settings-panel className="m-0 space-y-5">
+              <Item title={t('default_page_view')}>
+                <SegmentedField
+                  value={settings.spread ?? RenditionSpread.Auto}
+                  options={[
+                    {
+                      label: typographyT('page_view.single_page'),
+                      value: RenditionSpread.None,
+                    },
+                    {
+                      label: typographyT('page_view.double_page'),
+                      value: RenditionSpread.Auto,
+                    },
+                  ]}
+                  onChange={(spread) => {
+                    setSettings((prev) => ({
+                      ...prev,
+                      spread,
+                    }))
+                  }}
+                />
+              </Item>
+              <Item title={t('default_text_align')}>
+                <SegmentedField
+                  value={settings.textAlign ?? 'default'}
+                  options={[
+                    {
+                      label: typographyT('text_align.default'),
+                      value: 'default',
+                    },
+                    {
+                      label: typographyT('text_align.justify'),
+                      value: 'justify',
+                    },
+                  ]}
+                  onChange={(textAlign) => {
+                    setSettings((prev) => ({
+                      ...prev,
+                      textAlign,
+                    }))
+                  }}
+                />
+              </Item>
+              <Item title={t('restore_last_reading')}>
+                <SettingsCheckbox
+                  label={t('restore_last_reading.enable')}
+                  checked={settings.restoreLastReadingOnStartup === true}
+                  onCheckedChange={(checked) => {
+                    setSettings({
+                      ...settings,
+                      restoreLastReadingOnStartup: checked,
+                    })
+                  }}
+                />
+              </Item>
+              <Item title={t('text_selection_menu')}>
+                <SettingsCheckbox
+                  label={t('text_selection_menu.enable')}
+                  checked={settings.enableTextSelectionMenu !== false}
+                  onCheckedChange={(checked) => {
+                    setSettings({
+                      ...settings,
+                      enableTextSelectionMenu: checked,
+                    })
+                  }}
+                />
+              </Item>
+              <Item title={t('hide_endnotes')}>
+                <SettingsCheckbox
+                  label={t('hide_endnotes.enable')}
+                  checked={settings.hideEndnotes === true}
+                  onCheckedChange={(checked) => {
+                    setSettings({
+                      ...settings,
+                      hideEndnotes: checked,
+                    })
+                  }}
+                />
+              </Item>
+            </div>
+          )}
+          {activeTab === 'txt' && (
+            <div data-flow-settings-panel className="m-0 space-y-5">
+              <Item title={t('txt_import.group_rules')}>
+                <PatternTextarea
+                  label={t('txt_import.group_rules')}
+                  value={textImportRules.groupPatterns}
+                  onChange={(patterns) =>
+                    updateTextImportRules({ groupPatterns: patterns })
+                  }
+                />
+              </Item>
+              <Item title={t('txt_import.chapter_rules')}>
+                <PatternTextarea
+                  label={t('txt_import.chapter_rules')}
+                  value={textImportRules.chapterPatterns}
+                  onChange={(patterns) =>
+                    updateTextImportRules({ chapterPatterns: patterns })
+                  }
+                />
+              </Item>
+              <div className="flex justify-end">
+                <UiButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:bg-muted hover:text-muted-foreground h-8 rounded-sm px-3 text-base"
+                  onClick={() => {
+                    setSettings((prev) => ({
+                      ...prev,
+                      textImportRules: defaultTextImportRules,
+                    }))
+                  }}
+                >
+                  {t('txt_import.restore_defaults')}
+                </UiButton>
+              </div>
+            </div>
+          )}
+          {activeTab === 'shortcuts' && (
+            <div data-flow-settings-panel className="m-0">
+              <ShortcutSettings />
+            </div>
+          )}
         </div>
       </section>
-    </Tabs>
+    </div>
   )
 }
 
@@ -441,6 +447,10 @@ const UiFontSizeSetting: React.FC = () => {
         <input
           type="text"
           aria-label={t('ui_font_size')}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           readOnly
           value={uiFontSize}
           className="text-muted-foreground min-w-0 flex-1 bg-transparent px-2.5 text-base leading-none outline-none"
@@ -450,7 +460,7 @@ const UiFontSizeSetting: React.FC = () => {
           <button
             type="button"
             aria-label={`${t('ui_font_size')} +`}
-            className="hover:bg-muted flex h-1/2 items-center justify-center text-[10px] leading-none disabled:opacity-35"
+            className="hover:bg-muted flex h-1/2 items-center justify-center text-[12px] leading-none disabled:opacity-35"
             disabled={uiFontSize >= maxUiFontSize}
             onClick={() => setUiFontSize(uiFontSize + 1)}
           >
@@ -459,7 +469,7 @@ const UiFontSizeSetting: React.FC = () => {
           <button
             type="button"
             aria-label={`${t('ui_font_size')} -`}
-            className="border-input hover:bg-muted flex h-1/2 items-center justify-center border-t text-[10px] leading-none disabled:opacity-35"
+            className="border-input hover:bg-muted flex h-1/2 items-center justify-center border-t text-[12px] leading-none disabled:opacity-35"
             disabled={uiFontSize <= minUiFontSize}
             onClick={() => setUiFontSize(uiFontSize - 1)}
           >

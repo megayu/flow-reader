@@ -14,7 +14,7 @@ interface PaneProps extends ComponentProps<'div'> {
   maxSize?: number
   minSize?: number
   preferredSize?: number
-  storageKey?: string
+  storageKey: string
   actions?: Action[]
 }
 export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
@@ -32,7 +32,7 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
   ref,
 ) {
   const [expanded, setExpanded] = useState(() => readPaneExpanded(storageKey))
-  const { size } = useSplitViewItem(headline, {
+  const { size } = useSplitViewItem(storageKey, {
     dragMinSize: PANE_HEADER_SIZE,
     maxSize,
     minSize,
@@ -59,18 +59,11 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
       }}
     >
       <div
-        role="button"
-        tabIndex={0}
         className="border-border/70 bg-foreground/[0.035] hover:bg-foreground/[0.055] flex h-7 shrink-0 items-center border-y px-0.5 transition-colors"
         onClick={toggleExpanded}
-        onKeyDown={(event) => {
-          if (event.key !== 'Enter' && event.key !== ' ') return
-          event.preventDefault()
-          event.currentTarget.click()
-        }}
       >
         <Twisty expanded={expanded} className="text-muted-foreground/80" />
-        <div className="text-muted-foreground/85 text-base leading-none font-semibold tracking-normal">
+        <div className="text-muted-foreground/85 flex h-full items-center text-base leading-none font-semibold tracking-normal">
           {headline.toUpperCase()}
         </div>
         {actions && (
@@ -116,16 +109,10 @@ function collapsedStorageKey(storageKey: string) {
 
 export interface PaneViewProps extends ComponentProps<'div'> {
   active?: boolean
-  name: string
-  title: string
-  actions?: Action[]
 }
 export function PaneView({
   active: _active,
   className,
-  name: _name,
-  title: _title,
-  actions: _actions,
   ...props
 }: PaneViewProps) {
   return (
