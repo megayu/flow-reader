@@ -129,7 +129,7 @@ test.describe('Merriam-Webster response contract', () => {
                   [
                     'sense',
                     {
-                      sn: '1',
+                      sn: '10 a (1)',
                       dt: [
                         [
                           'text',
@@ -227,7 +227,14 @@ test.describe('Merriam-Webster response contract', () => {
     })
     expect(
       result.content.entries[0].senses.map((sense) => sense.marker),
-    ).toEqual(['1', '2', '(1)'])
+    ).toEqual(['10 a (1)', '2', '(1)'])
+    expect(
+      result.content.entries[0].senses.map((sense) => sense.markerParts),
+    ).toEqual([
+      { letter: 'a', number: '10', subnumber: '(1)' },
+      { number: '2' },
+      { subnumber: '(1)' },
+    ])
     expect(result.content.entries[0].senses[0].definition).toEqual({
       kind: 'runs',
       runs: [

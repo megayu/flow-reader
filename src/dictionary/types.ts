@@ -29,6 +29,13 @@ export interface DictionarySense {
   examples?: DictionaryText[]
   level?: number
   marker?: string
+  markerParts?: DictionarySenseMarkerParts
+}
+
+export interface DictionarySenseMarkerParts {
+  letter?: string
+  number?: string
+  subnumber?: string
 }
 
 export type DictionaryText =

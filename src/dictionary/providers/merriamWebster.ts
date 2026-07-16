@@ -212,14 +212,31 @@ function parseSense(value: unknown, level: number): DictionarySense[] {
   }
 
   if (!definition) return []
+  const marker = typeof value.sn === 'string' ? value.sn : undefined
   return [
     {
       definition,
       examples: examples.length ? examples : undefined,
       level: level || undefined,
-      marker: typeof value.sn === 'string' ? value.sn : undefined,
+      marker,
+      markerParts: marker ? parseSenseMarker(marker) : undefined,
     },
   ]
+}
+
+function parseSenseMarker(marker: string) {
+  const match = marker.match(
+    /^(?<number>\d+)?\s*(?<letter>[a-z])?\s*(?<subnumber>\(\d+\))?$/iu,
+  )
+  if (!match?.groups) return
+
+  const { letter, number, subnumber } = match.groups
+  if (!letter && !number && !subnumber) return
+  return {
+    ...(letter ? { letter } : {}),
+    ...(number ? { number } : {}),
+    ...(subnumber ? { subnumber } : {}),
+  }
 }
 
 function senseLabels(value: Record<string, unknown>) {

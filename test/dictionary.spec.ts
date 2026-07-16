@@ -381,7 +381,21 @@ test('looks up an English selection only in Merriam-Webster', async ({
                   'sense',
                   {
                     sn: 'b',
-                    dt: [['text', '{bc}a place or condition beyond reach']],
+                    dt: [
+                      [
+                        'text',
+                        '{bc}a place or condition beyond reach {sx|heaven||}',
+                      ],
+                    ],
+                  },
+                ],
+              ],
+              [
+                [
+                  'sense',
+                  {
+                    sn: '10 a',
+                    dt: [['text', '{bc}a definition with a two-digit number']],
                   },
                 ],
               ],
@@ -438,26 +452,61 @@ test('looks up an English selection only in Merriam-Webster', async ({
   const layout = await popup.locator('article').evaluateAll((articles) => {
     const noun = articles[0]
     const verb = articles[1]
-    const topLevel = noun?.querySelector<HTMLElement>(
-      '[data-dictionary-sense-level="0"] [data-dictionary-sense-content]',
-    )
-    const nested = noun?.querySelector<HTMLElement>(
-      '[data-dictionary-sense-level="1"] [data-dictionary-sense-content]',
-    )
+    const markerLefts = (kind: string) =>
+      Array.from(
+        noun?.querySelectorAll<HTMLElement>(
+          `[data-dictionary-sense-marker="${kind}"]`,
+        ) ?? [],
+      ).map((marker) => marker.getBoundingClientRect().left)
+    const definitionLefts = (depth: string) =>
+      Array.from(
+        noun?.querySelectorAll<HTMLElement>(
+          `[data-dictionary-marker-depth="${depth}"] [data-dictionary-sense-content]`,
+        ) ?? [],
+      ).map((content) => content.getBoundingClientRect().left)
     const verbHeading = verb?.querySelector<HTMLElement>('h3')
     const verbDefinition = verb?.querySelector<HTMLElement>(
       '[data-dictionary-sense-content]',
     )
+    const reference = noun?.querySelector<HTMLElement>(
+      '[data-dictionary-text-kind="reference"]',
+    )
+    const referenceContainer = reference?.closest<HTMLElement>(
+      '[data-dictionary-sense-content]',
+    )
     return {
-      nestedIndent:
-        (nested?.getBoundingClientRect().left ?? 0) -
-        (topLevel?.getBoundingClientRect().left ?? 0),
+      definitionLefts: {
+        letter: definitionLefts('letter'),
+        subnumber: definitionLefts('subnumber'),
+      },
+      markerLefts: {
+        letter: markerLefts('letter'),
+        number: markerLefts('number'),
+        subnumber: markerLefts('subnumber'),
+      },
+      referenceColor: reference ? getComputedStyle(reference).color : null,
+      referenceContainerColor: referenceContainer
+        ? getComputedStyle(referenceContainer).color
+        : null,
       unnumberedOffset:
         (verbDefinition?.getBoundingClientRect().left ?? 0) -
         (verbHeading?.getBoundingClientRect().left ?? 0),
     }
   })
-  expect(layout.nestedIndent).toBeGreaterThanOrEqual(12)
+  expect(layout.markerLefts.number).toHaveLength(2)
+  expect(layout.markerLefts.letter).toHaveLength(3)
+  expect(layout.markerLefts.subnumber).toHaveLength(2)
+  for (const markerGroup of Object.values(layout.markerLefts)) {
+    expect(
+      Math.max(...markerGroup) - Math.min(...markerGroup),
+    ).toBeLessThanOrEqual(1)
+  }
+  for (const definitionGroup of Object.values(layout.definitionLefts)) {
+    expect(
+      Math.max(...definitionGroup) - Math.min(...definitionGroup),
+    ).toBeLessThanOrEqual(1)
+  }
+  expect(layout.referenceColor).toBe(layout.referenceContainerColor)
   expect(Math.abs(layout.unnumberedOffset)).toBeLessThanOrEqual(1)
   await expect(popup.getByRole('heading', { name: 'Han Dian' })).toHaveCount(0)
   await popup.getByRole('button', { name: 'View on Merriam-Webster' }).click()

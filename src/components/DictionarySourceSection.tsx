@@ -1,7 +1,11 @@
 import { ExternalLinkIcon } from 'lucide-react'
 
 import type { DictionarySourceState } from '../dictionary/coordinator'
-import type { DictionaryText } from '../dictionary/types'
+import type {
+  DictionarySense,
+  DictionarySenseMarkerParts,
+  DictionaryText,
+} from '../dictionary/types'
 import { openSupportedExternalUrl } from '../externalLink'
 import { useTranslation } from '../hooks/useTranslation'
 
@@ -88,45 +92,60 @@ export function DictionarySourceSection({
                 )}
               </div>
               <ol className="space-y-3">
-                {entry.senses.map((sense, senseIndex) => (
-                  <li
-                    key={`${sense.marker ?? 'plain'}-${senseIndex}`}
-                    className={`flex items-start gap-x-2 ${sense.level ? 'pl-4' : ''}`}
-                    data-dictionary-sense-level={sense.level ?? 0}
-                  >
-                    {sense.marker ? (
-                      <span
-                        data-dictionary-sense-marker="true"
-                        className="w-8 shrink-0 text-right font-medium whitespace-nowrap text-[var(--flow-accent)]"
-                      >
-                        {sense.marker}
-                      </span>
-                    ) : entry.senses.some((item) => item.marker) ? (
-                      <span aria-hidden="true" className="w-8 shrink-0" />
-                    ) : null}
-                    <div
-                      className="min-w-0 flex-1 space-y-1.5 leading-relaxed"
-                      data-dictionary-sense-content="true"
+                {entry.senses.map((sense, senseIndex) => {
+                  const markerParts = senseMarkerParts(sense)
+                  const markerDepth = senseMarkerDepth(markerParts)
+
+                  return (
+                    <li
+                      key={`${sense.marker ?? 'plain'}-${senseIndex}`}
+                      className={
+                        markerDepth
+                          ? 'grid grid-cols-[2rem_1.5rem_2.5rem_minmax(0,1fr)] items-start'
+                          : undefined
+                      }
+                      data-dictionary-marker-depth={markerDepth ?? 'none'}
+                      data-dictionary-sense-level={sense.level ?? 0}
                     >
-                      <div>
-                        <DictionaryTextView text={sense.definition} />
-                      </div>
-                      {sense.examples?.map((example, exampleIndex) => (
-                        <div
-                          key={exampleIndex}
-                          className="text-muted-foreground text-sm leading-relaxed"
-                        >
-                          <span className="bg-muted mr-2 inline-flex rounded px-1.5 py-0.5 text-xs font-medium">
-                            {t('example')}
-                          </span>
-                          <span>
-                            <DictionaryTextView text={example} />
-                          </span>
+                      {markerParts?.number && (
+                        <SenseMarker kind="number">
+                          {markerParts.number}
+                        </SenseMarker>
+                      )}
+                      {markerParts?.letter && (
+                        <SenseMarker kind="letter">
+                          {markerParts.letter}
+                        </SenseMarker>
+                      )}
+                      {markerParts?.subnumber && (
+                        <SenseMarker kind="subnumber">
+                          {markerParts.subnumber}
+                        </SenseMarker>
+                      )}
+                      <div
+                        className={`${senseContentColumn(markerDepth)} min-w-0 space-y-1.5 leading-relaxed`}
+                        data-dictionary-sense-content="true"
+                      >
+                        <div>
+                          <DictionaryTextView text={sense.definition} />
                         </div>
-                      ))}
-                    </div>
-                  </li>
-                ))}
+                        {sense.examples?.map((example, exampleIndex) => (
+                          <div
+                            key={exampleIndex}
+                            className="text-muted-foreground text-sm leading-relaxed"
+                          >
+                            <span className="bg-muted mr-2 inline-flex rounded px-1.5 py-0.5 text-xs font-medium">
+                              {t('example')}
+                            </span>
+                            <span>
+                              <DictionaryTextView text={example} />
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </li>
+                  )
+                })}
               </ol>
             </article>
           ))}
@@ -144,14 +163,13 @@ function DictionaryTextView({ text }: { text: DictionaryText }) {
       {text.runs.map((run, index) => (
         <span
           key={index}
+          data-dictionary-text-kind={run.kind}
           className={
             run.kind === 'emphasis'
               ? 'italic'
               : run.kind === 'label'
                 ? 'text-muted-foreground italic'
-                : run.kind === 'reference'
-                  ? 'font-medium text-[var(--flow-accent)]'
-                  : undefined
+                : undefined
           }
         >
           {run.text}
@@ -159,4 +177,56 @@ function DictionaryTextView({ text }: { text: DictionaryText }) {
       ))}
     </>
   )
+}
+
+type SenseMarkerKind = keyof DictionarySenseMarkerParts
+
+function SenseMarker({
+  children,
+  kind,
+}: {
+  children: string
+  kind: SenseMarkerKind
+}) {
+  const column =
+    kind === 'number'
+      ? 'col-start-1'
+      : kind === 'letter'
+        ? 'col-start-2'
+        : 'col-start-3'
+  const appearance =
+    kind === 'number'
+      ? 'font-semibold tabular-nums text-foreground'
+      : kind === 'subnumber'
+        ? 'font-medium tabular-nums text-muted-foreground'
+        : 'font-medium text-muted-foreground'
+
+  return (
+    <span
+      className={`${column} ${appearance} justify-self-start whitespace-nowrap`}
+      data-dictionary-sense-marker={kind}
+    >
+      {children}
+    </span>
+  )
+}
+
+function senseMarkerParts(
+  sense: DictionarySense,
+): DictionarySenseMarkerParts | undefined {
+  if (sense.markerParts) return sense.markerParts
+  return sense.marker ? { number: sense.marker } : undefined
+}
+
+function senseMarkerDepth(parts?: DictionarySenseMarkerParts) {
+  if (parts?.subnumber) return 'subnumber'
+  if (parts?.letter) return 'letter'
+  if (parts?.number) return 'number'
+}
+
+function senseContentColumn(depth: ReturnType<typeof senseMarkerDepth>) {
+  if (depth === 'subnumber') return 'col-start-4 col-end-5'
+  if (depth === 'letter') return 'col-start-3 col-end-5'
+  if (depth === 'number') return 'col-start-2 col-end-5'
+  return ''
 }
