@@ -70,11 +70,11 @@ export function DictionarySourceSection({
           {t('no_result')}
         </div>
       ) : source.result?.content.kind === 'entries' ? (
-        <div className="space-y-6 px-5 py-4">
+        <div className="space-y-[1em] px-5 py-4">
           {source.result.content.entries.map((entry, entryIndex) => (
             <article
               key={`${entry.pronunciation ?? entry.headword ?? ''}-${entryIndex}`}
-              className="space-y-3"
+              className="space-y-[0.5em]"
             >
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 {entry.headword && (
@@ -91,7 +91,7 @@ export function DictionarySourceSection({
                   </span>
                 )}
               </div>
-              <ol className="space-y-3">
+              <ol className="space-y-[0.45em]">
                 {entry.senses.map((sense, senseIndex) => {
                   const markerParts = senseMarkerParts(sense)
                   const markerDepth = senseMarkerDepth(markerParts)
@@ -101,8 +101,8 @@ export function DictionarySourceSection({
                       key={`${sense.marker ?? 'plain'}-${senseIndex}`}
                       className={
                         markerDepth
-                          ? 'grid grid-cols-[2rem_1.5rem_2.5rem_minmax(0,1fr)] items-start'
-                          : undefined
+                          ? 'grid grid-cols-[1.75em_1.4em_2.4em_minmax(0,1fr)] items-baseline leading-snug'
+                          : 'leading-snug'
                       }
                       data-dictionary-marker-depth={markerDepth ?? 'none'}
                       data-dictionary-sense-level={sense.level ?? 0}
@@ -123,7 +123,7 @@ export function DictionarySourceSection({
                         </SenseMarker>
                       )}
                       <div
-                        className={`${senseContentColumn(markerDepth)} min-w-0 space-y-1.5 leading-relaxed`}
+                        className={`${senseContentColumn(markerDepth)} min-w-0 space-y-[0.25em]`}
                         data-dictionary-sense-content="true"
                       >
                         <div>
@@ -132,7 +132,7 @@ export function DictionarySourceSection({
                         {sense.examples?.map((example, exampleIndex) => (
                           <div
                             key={exampleIndex}
-                            className="text-muted-foreground text-sm leading-relaxed"
+                            className="text-muted-foreground text-sm leading-snug"
                           >
                             <span className="bg-muted mr-2 inline-flex rounded px-1.5 py-0.5 text-xs font-medium">
                               {t('example')}
