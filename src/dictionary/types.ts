@@ -27,6 +27,7 @@ export interface DictionaryEntry {
 export interface DictionarySense {
   definition: DictionaryText
   examples?: DictionaryText[]
+  level?: number
   marker?: string
 }
 

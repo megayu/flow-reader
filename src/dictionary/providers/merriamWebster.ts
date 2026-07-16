@@ -106,6 +106,7 @@ export function parseMerriamWebsterResponse(
   if (value.every((item) => typeof item === 'string')) return null
 
   const entries = value.flatMap<DictionaryEntry>((entry) => {
+    if (!matchesMerriamWebsterEntry(entry, query)) return []
     try {
       const parsed = parseEntry(entry)
       return parsed ? [parsed] : []
@@ -130,7 +131,7 @@ function parseEntry(value: unknown): DictionaryEntry | undefined {
   const definitions = Array.isArray(value.def) ? value.def : []
   definitions.forEach((definition) => {
     if (!isRecord(definition)) return
-    walkSenseTree(definition.sseq, 0, context)
+    walkSenseTree(definition.sseq, 0, 0, context)
   })
   if (!context.senses.length) return
 
@@ -153,7 +154,12 @@ interface WalkContext {
   senses: DictionarySense[]
 }
 
-function walkSenseTree(value: unknown, depth: number, context: WalkContext) {
+function walkSenseTree(
+  value: unknown,
+  depth: number,
+  level: number,
+  context: WalkContext,
+) {
   context.nodes += 1
   if (depth > MAX_WALK_DEPTH || context.nodes > MAX_WALK_NODES) {
     throw new Error('Merriam-Webster definition tree is too complex')
@@ -163,50 +169,57 @@ function walkSenseTree(value: unknown, depth: number, context: WalkContext) {
   if (typeof value[0] === 'string') {
     const [kind, payload] = value
     if (kind === 'sense' || kind === 'sen') {
-      parseSense(payload).forEach((sense) => context.senses.push(sense))
+      parseSense(payload, level).forEach((sense) => context.senses.push(sense))
       return
     }
     if (kind === 'bs' && isRecord(payload)) {
-      parseSense(payload.sense).forEach((sense) => context.senses.push(sense))
+      parseSense(payload.sense, level).forEach((sense) =>
+        context.senses.push(sense),
+      )
       return
     }
     if (kind === 'pseq') {
-      walkSenseTree(payload, depth + 1, context)
+      walkSenseTree(payload, depth + 1, level + 1, context)
       return
     }
   }
 
-  value.forEach((child) => walkSenseTree(child, depth + 1, context))
+  value.forEach((child) => walkSenseTree(child, depth + 1, level, context))
 }
 
-function parseSense(value: unknown): DictionarySense[] {
+function parseSense(value: unknown, level: number): DictionarySense[] {
   if (!isRecord(value)) return []
 
-  const definition = parseDefiningText(value.dt)
+  const parsed = parseDefiningText(value.dt)
   const labels = senseLabels(value)
-  const senses: DictionarySense[] = []
-  if (definition) {
-    senses.push({
-      definition: prependLabels(definition, labels),
-      marker: typeof value.sn === 'string' ? value.sn : undefined,
-    })
-  }
+  let definition = parsed ? prependLabels(parsed.definition, labels) : undefined
+  let examples = parsed?.examples ?? []
 
   if (isRecord(value.sdsense)) {
     const divided = parseDefiningText(value.sdsense.dt)
     if (divided) {
       const divider =
         typeof value.sdsense.sd === 'string' ? [value.sdsense.sd] : []
-      senses.push({
-        definition: prependLabels(divided, [
-          ...divider,
-          ...senseLabels(value.sdsense),
-        ]),
-      })
+      const dividedDefinition = prependLabels(divided.definition, [
+        ...divider,
+        ...senseLabels(value.sdsense),
+      ])
+      definition = definition
+        ? joinDictionaryText(definition, '; ', dividedDefinition)
+        : dividedDefinition
+      examples = [...examples, ...divided.examples]
     }
   }
 
-  return senses
+  if (!definition) return []
+  return [
+    {
+      definition,
+      examples: examples.length ? examples : undefined,
+      level: level || undefined,
+      marker: typeof value.sn === 'string' ? value.sn : undefined,
+    },
+  ]
 }
 
 function senseLabels(value: Record<string, unknown>) {
@@ -217,15 +230,37 @@ function senseLabels(value: Record<string, unknown>) {
   return labels
 }
 
-function parseDefiningText(value: unknown): DictionaryText | undefined {
+interface ParsedDefiningText {
+  definition: DictionaryText
+  examples: DictionaryText[]
+}
+
+function parseDefiningText(value: unknown): ParsedDefiningText | undefined {
   if (!Array.isArray(value)) return
 
-  const runs = value.flatMap<DictionaryTextRun>((item) => {
-    if (!Array.isArray(item) || item[0] !== 'text') return []
-    return typeof item[1] === 'string' ? parseMwTokens(item[1]) : []
+  const runs: DictionaryTextRun[] = []
+  const examples: DictionaryText[] = []
+  value.forEach((item) => {
+    if (!Array.isArray(item)) return
+    if (item[0] === 'text' && typeof item[1] === 'string') {
+      runs.push(...parseMwTokens(item[1]))
+    } else if (item[0] === 'vis' && Array.isArray(item[1])) {
+      examples.push(...parseVerbalIllustrations(item[1]))
+    }
   })
   if (!runs.some((run) => run.text.trim())) return
-  return { kind: 'runs', runs: mergeRuns(runs) }
+  return {
+    definition: { kind: 'runs', runs: mergeRuns(runs) },
+    examples,
+  }
+}
+
+function parseVerbalIllustrations(value: unknown[]): DictionaryText[] {
+  return value.flatMap<DictionaryText>((illustration) => {
+    if (!isRecord(illustration) || typeof illustration.t !== 'string') return []
+    const runs = parseMwTokens(illustration.t)
+    return runs.some((run) => run.text.trim()) ? [{ kind: 'runs', runs }] : []
+  })
 }
 
 function parseMwTokens(value: string): DictionaryTextRun[] {
@@ -287,6 +322,25 @@ function prependLabels(text: DictionaryText, labels: string[]): DictionaryText {
   }
 }
 
+function joinDictionaryText(
+  left: DictionaryText,
+  separator: string,
+  right: DictionaryText,
+): DictionaryText {
+  return {
+    kind: 'runs',
+    runs: mergeRuns([
+      ...dictionaryTextRuns(left),
+      { kind: 'plain', text: separator },
+      ...dictionaryTextRuns(right),
+    ]),
+  }
+}
+
+function dictionaryTextRuns(text: DictionaryText): DictionaryTextRun[] {
+  return text.kind === 'runs' ? text.runs : [{ kind: 'plain', text: text.text }]
+}
+
 function mergeRuns(runs: DictionaryTextRun[]) {
   return runs.reduce<DictionaryTextRun[]>((merged, run) => {
     const previous = merged.at(-1)
@@ -294,6 +348,35 @@ function mergeRuns(runs: DictionaryTextRun[]) {
     else merged.push({ ...run })
     return merged
   }, [])
+}
+
+function matchesMerriamWebsterEntry(value: unknown, query: string) {
+  if (!isRecord(value)) return false
+  const normalizedQuery = normalizeMerriamWebsterText(query)
+  const meta = isRecord(value.meta) ? value.meta : undefined
+  const stems = Array.isArray(meta?.stems)
+    ? meta.stems.filter((stem): stem is string => typeof stem === 'string')
+    : []
+  if (
+    stems.some((stem) => normalizeMerriamWebsterText(stem) === normalizedQuery)
+  ) {
+    return true
+  }
+
+  const hwi = isRecord(value.hwi) ? value.hwi : undefined
+  return (
+    typeof hwi?.hw === 'string' &&
+    normalizeMerriamWebsterText(hwi.hw) === normalizedQuery
+  )
+}
+
+function normalizeMerriamWebsterText(value: string) {
+  return value
+    .normalize('NFKC')
+    .replaceAll('*', '')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .toLocaleLowerCase('en-US')
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

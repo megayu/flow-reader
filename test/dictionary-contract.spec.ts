@@ -117,7 +117,7 @@ test.describe('Merriam-Webster response contract', () => {
     const result = parseMerriamWebsterResponse(
       JSON.stringify([
         {
-          meta: { id: 'sky:1' },
+          meta: { id: 'sky:1', stems: ['sky', 'skies'] },
           hom: 1,
           hwi: { hw: 'sky' },
           fl: 'noun',
@@ -134,6 +134,10 @@ test.describe('Merriam-Webster response contract', () => {
                         [
                           'text',
                           '{bc}the upper atmosphere {it}seen{/it} from earth',
+                        ],
+                        [
+                          'vis',
+                          [{ t: 'the {wi}sky{/wi} grew dark before rain' }],
                         ],
                       ],
                       sdsense: {
@@ -172,7 +176,7 @@ test.describe('Merriam-Webster response contract', () => {
           ],
         },
         {
-          meta: { id: 'sky:2' },
+          meta: { id: 'sky:2', stems: ['sky', 'skied', 'skying'] },
           hom: 2,
           hwi: { hw: 'sky' },
           fl: 'verb',
@@ -183,6 +187,23 @@ test.describe('Merriam-Webster response contract', () => {
                   [
                     'sense',
                     { sn: '1', dt: [['text', '{bc}to hit high into the air']] },
+                  ],
+                ],
+              ],
+            },
+          ],
+        },
+        {
+          meta: { id: 'sky blue', stems: ['sky blue'] },
+          hwi: { hw: 'sky blue' },
+          fl: 'adjective',
+          def: [
+            {
+              sseq: [
+                [
+                  [
+                    'sense',
+                    { dt: [['text', '{bc}a phrase that must be excluded']] },
                   ],
                 ],
               ],
@@ -206,23 +227,28 @@ test.describe('Merriam-Webster response contract', () => {
     })
     expect(
       result.content.entries[0].senses.map((sense) => sense.marker),
-    ).toEqual(['1', undefined, '2', '(1)'])
+    ).toEqual(['1', '2', '(1)'])
     expect(result.content.entries[0].senses[0].definition).toEqual({
       kind: 'runs',
       runs: [
         { kind: 'plain', text: 'the upper atmosphere ' },
         { kind: 'emphasis', text: 'seen' },
-        { kind: 'plain', text: ' from earth' },
-      ],
-    })
-    expect(result.content.entries[0].senses[1].definition).toEqual({
-      kind: 'runs',
-      runs: [
+        { kind: 'plain', text: ' from earth; ' },
         { kind: 'label', text: 'specifically' },
         { kind: 'plain', text: ' the region of clouds' },
       ],
     })
-    expect(result.content.entries[0].senses[2].definition).toEqual({
+    expect(result.content.entries[0].senses[0].examples).toEqual([
+      {
+        kind: 'runs',
+        runs: [
+          { kind: 'plain', text: 'the ' },
+          { kind: 'emphasis', text: 'sky' },
+          { kind: 'plain', text: ' grew dark before rain' },
+        ],
+      },
+    ])
+    expect(result.content.entries[0].senses[1].definition).toEqual({
       kind: 'runs',
       runs: [
         { kind: 'label', text: 'informal' },
@@ -230,6 +256,40 @@ test.describe('Merriam-Webster response contract', () => {
         { kind: 'reference', text: 'heaven' },
       ],
     })
+    expect(result.content.entries[0].senses[2]).toMatchObject({
+      level: 1,
+      marker: '(1)',
+    })
+  })
+
+  test('keeps exact and inflected headword entries while excluding returned phrases', () => {
+    const response = (headword: string, stems: string[]) => ({
+      meta: { id: headword, stems },
+      hwi: { hw: headword.replaceAll(' ', '* ') },
+      def: [
+        {
+          sseq: [
+            [['sense', { dt: [['text', `{bc}definition of ${headword}`]] }]],
+          ],
+        },
+      ],
+    })
+    const body = JSON.stringify([
+      response('company', ['company', 'companies']),
+      response('company man', ['company man', 'company men']),
+      response('company officer', ['company officer', 'company officers']),
+    ])
+    const result = parseMerriamWebsterResponse(body, 'companies')
+
+    if (result?.content.kind !== 'entries') return
+    expect(result.content.entries.map((entry) => entry.headword)).toEqual([
+      'company',
+    ])
+    const phraseResult = parseMerriamWebsterResponse(body, 'company man')
+    if (phraseResult?.content.kind !== 'entries') return
+    expect(phraseResult.content.entries.map((entry) => entry.headword)).toEqual(
+      ['company man'],
+    )
   })
 
   test('preserves controlled formatting and cross-reference token text', () => {

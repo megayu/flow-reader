@@ -336,6 +336,7 @@ test('looks up an English selection only in Merriam-Webster', async ({
   await setupDictionaryReader(page, {}, 0, {
     sky: [
       {
+        meta: { id: 'sky:1', stems: ['sky', 'skies'] },
         hom: 1,
         hwi: { hw: 'sky' },
         fl: 'noun',
@@ -344,11 +345,73 @@ test('looks up an English selection only in Merriam-Webster', async ({
             sseq: [
               [
                 [
+                  'bs',
+                  {
+                    sense: {
+                      sn: '1 a',
+                      dt: [
+                        ['text', '{bc}the upper atmosphere seen from earth'],
+                        ['vis', [{ t: 'the {wi}sky{/wi} grew dark' }]],
+                      ],
+                    },
+                  },
+                ],
+                [
+                  'pseq',
+                  [
+                    [
+                      'sense',
+                      {
+                        sn: '(1)',
+                        dt: [['text', '{bc}the region above the clouds']],
+                      },
+                    ],
+                    [
+                      'sense',
+                      {
+                        sn: '(2)',
+                        dt: [['text', '{bc}weather conditions']],
+                      },
+                    ],
+                  ],
+                ],
+              ],
+              [
+                [
                   'sense',
                   {
-                    sn: '1',
-                    dt: [['text', '{bc}the upper atmosphere seen from earth']],
+                    sn: 'b',
+                    dt: [['text', '{bc}a place or condition beyond reach']],
                   },
+                ],
+              ],
+            ],
+          },
+        ],
+      },
+      {
+        meta: { id: 'sky:2', stems: ['sky', 'skied', 'skying'] },
+        hwi: { hw: 'sky' },
+        fl: 'verb',
+        def: [
+          {
+            sseq: [
+              [['sense', { dt: [['text', '{bc}to hit high into the air']] }]],
+            ],
+          },
+        ],
+      },
+      {
+        meta: { id: 'sky blue', stems: ['sky blue'] },
+        hwi: { hw: 'sky blue' },
+        fl: 'adjective',
+        def: [
+          {
+            sseq: [
+              [
+                [
+                  'sense',
+                  { dt: [['text', '{bc}a returned phrase to exclude']] },
                 ],
               ],
             ],
@@ -367,6 +430,35 @@ test('looks up an English selection only in Merriam-Webster', async ({
   await expect(
     popup.getByText('the upper atmosphere seen from earth'),
   ).toBeVisible()
+  await expect(popup.getByText('the sky grew dark')).toBeVisible()
+  await expect(popup.getByText('sky blue', { exact: true })).toHaveCount(0)
+  await expect(popup.locator('[data-dictionary-sense-level="1"]')).toHaveCount(
+    2,
+  )
+  const layout = await popup.locator('article').evaluateAll((articles) => {
+    const noun = articles[0]
+    const verb = articles[1]
+    const topLevel = noun?.querySelector<HTMLElement>(
+      '[data-dictionary-sense-level="0"] [data-dictionary-sense-content]',
+    )
+    const nested = noun?.querySelector<HTMLElement>(
+      '[data-dictionary-sense-level="1"] [data-dictionary-sense-content]',
+    )
+    const verbHeading = verb?.querySelector<HTMLElement>('h3')
+    const verbDefinition = verb?.querySelector<HTMLElement>(
+      '[data-dictionary-sense-content]',
+    )
+    return {
+      nestedIndent:
+        (nested?.getBoundingClientRect().left ?? 0) -
+        (topLevel?.getBoundingClientRect().left ?? 0),
+      unnumberedOffset:
+        (verbDefinition?.getBoundingClientRect().left ?? 0) -
+        (verbHeading?.getBoundingClientRect().left ?? 0),
+    }
+  })
+  expect(layout.nestedIndent).toBeGreaterThanOrEqual(12)
+  expect(Math.abs(layout.unnumberedOffset)).toBeLessThanOrEqual(1)
   await expect(popup.getByRole('heading', { name: 'Han Dian' })).toHaveCount(0)
   await popup.getByRole('button', { name: 'View on Merriam-Webster' }).click()
 

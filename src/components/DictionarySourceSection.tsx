@@ -91,19 +91,23 @@ export function DictionarySourceSection({
                 {entry.senses.map((sense, senseIndex) => (
                   <li
                     key={`${sense.marker ?? 'plain'}-${senseIndex}`}
-                    className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-x-2"
+                    className={`flex items-start gap-x-2 ${sense.level ? 'pl-4' : ''}`}
+                    data-dictionary-sense-level={sense.level ?? 0}
                   >
                     {sense.marker ? (
                       <span
                         data-dictionary-sense-marker="true"
-                        className="text-right font-medium text-[var(--flow-accent)]"
+                        className="w-8 shrink-0 text-right font-medium whitespace-nowrap text-[var(--flow-accent)]"
                       >
                         {sense.marker}
                       </span>
-                    ) : (
-                      <span aria-hidden="true" />
-                    )}
-                    <div className="min-w-0 space-y-1.5 leading-relaxed">
+                    ) : entry.senses.some((item) => item.marker) ? (
+                      <span aria-hidden="true" className="w-8 shrink-0" />
+                    ) : null}
+                    <div
+                      className="min-w-0 flex-1 space-y-1.5 leading-relaxed"
+                      data-dictionary-sense-content="true"
+                    >
                       <div>
                         <DictionaryTextView text={sense.definition} />
                       </div>
@@ -142,10 +146,12 @@ function DictionaryTextView({ text }: { text: DictionaryText }) {
           key={index}
           className={
             run.kind === 'emphasis'
-              ? 'font-medium'
+              ? 'italic'
               : run.kind === 'label'
-                ? 'text-muted-foreground'
-                : undefined
+                ? 'text-muted-foreground italic'
+                : run.kind === 'reference'
+                  ? 'font-medium text-[var(--flow-accent)]'
+                  : undefined
           }
         >
           {run.text}
