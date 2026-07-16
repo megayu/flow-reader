@@ -26,6 +26,7 @@ interface TauriMockOptions {
   tags?: TestLibraryTagRecord[]
   textImportEncodings?: TextImportEncodingOption[]
   textImportPreviews?: TextImportPreview[]
+  zdicResponses?: Record<string, string>
 }
 
 export async function installTauriMock(
@@ -46,6 +47,7 @@ export async function installTauriMock(
       { id: 'gb18030', label: 'GB18030' },
     ],
     textImportPreviews = [],
+    zdicResponses = {},
   }: TauriMockOptions = {},
 ) {
   await page.addInitScript(
@@ -61,6 +63,7 @@ export async function installTauriMock(
       fixtureTags,
       fixtureTextImportEncodings,
       fixtureTextImportPreviews,
+      fixtureZdicResponses,
     }) => {
       type TauriInternals = {
         callbacks?: Record<number, (...args: unknown[]) => unknown>
@@ -89,6 +92,9 @@ export async function installTauriMock(
             outputPath: string
           }>
           fullscreen: boolean
+          cancelledDictionarySessions: number[]
+          dictionaryRequests: Array<{ query: string; sessionId: number }>
+          openedExternalUrls: string[]
           takePendingOpenPathsCalls: number
           settingsStore: Record<string, unknown>
           textImports: TextImportSelection[]
@@ -131,12 +137,15 @@ export async function installTauriMock(
       const callbacks = (internals.callbacks ??= {})
 
       globalWindow.__FLOW_TEST_TAURI__ = {
+        cancelledDictionarySessions: [],
+        dictionaryRequests: [],
         exports: [],
         get fullscreen() {
           return fullscreen
         },
         takePendingOpenPathsCalls: 0,
         settingsStore,
+        openedExternalUrls: [],
         textImports: [],
       }
       internals.metadata = {
@@ -155,6 +164,31 @@ export async function installTauriMock(
       internals.runCallback = (id, ...args) => callbacks[id]?.(...args)
       eventInternals.unregisterListener = () => undefined
       internals.invoke = async (command, args) => {
+        if (command === 'fetch_zdic') {
+          const query = String(args?.query ?? '')
+          const sessionId = Number(args?.sessionId ?? 0)
+          globalWindow.__FLOW_TEST_TAURI__?.dictionaryRequests.push({
+            query,
+            sessionId,
+          })
+          return {
+            body: fixtureZdicResponses[query] ?? '',
+            finalUrl: `https://www.zdic.net/hans/${encodeURIComponent(query)}`,
+            status: 200,
+          }
+        }
+        if (command === 'cancel_dictionary_session') {
+          globalWindow.__FLOW_TEST_TAURI__?.cancelledDictionarySessions.push(
+            Number(args?.sessionId ?? 0),
+          )
+          return null
+        }
+        if (command === 'open_external_url') {
+          globalWindow.__FLOW_TEST_TAURI__?.openedExternalUrls.push(
+            String(args?.url ?? ''),
+          )
+          return null
+        }
         if (command === 'get_settings') return { ...settingsStore }
         if (command === 'update_settings') {
           Object.assign(settingsStore, args?.settings ?? {})
@@ -371,6 +405,7 @@ export async function installTauriMock(
       fixtureTags: tags,
       fixtureTextImportEncodings: textImportEncodings,
       fixtureTextImportPreviews: textImportPreviews,
+      fixtureZdicResponses: zdicResponses,
     },
   )
 }

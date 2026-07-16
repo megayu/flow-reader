@@ -8,6 +8,7 @@ use serde::Serialize;
 use tauri::{Emitter, Manager, WindowEvent};
 
 mod diagnostics;
+pub mod dictionary;
 mod storage;
 mod tasks;
 
@@ -137,6 +138,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(PendingOpenFiles(Mutex::new(pending_open_files)))
         .manage(tasks::TaskService::default())
+        .manage(dictionary::create_http_client().expect("dictionary HTTP client"))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             let paths = collect_epub_paths(argv);
@@ -211,6 +213,9 @@ pub fn run() {
             open_external_url,
             take_pending_open_paths,
             toggle_devtools,
+            dictionary::fetch_zdic,
+            dictionary::fetch_merriam_webster,
+            dictionary::cancel_dictionary_session,
             storage::list_books,
             storage::get_book,
             storage::open_book_directory,
