@@ -28,7 +28,13 @@ export function DictionarySourceSection({
           <button
             type="button"
             className="text-muted-foreground hover:text-foreground ml-auto inline-flex cursor-pointer items-center gap-1 rounded-sm px-1 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-accent-border)]"
-            aria-label={t('view_on_zdic')}
+            aria-label={
+              source.providerId === 'zdic'
+                ? t('view_on_zdic')
+                : source.providerId === 'merriam-webster'
+                  ? t('view_on_merriam_webster')
+                  : t('view_source')
+            }
             onClick={() => {
               void openSupportedExternalUrl(externalUrl).catch(() => undefined)
             }}

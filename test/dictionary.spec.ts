@@ -67,6 +67,7 @@ async function setupDictionaryReader(
   page: Page,
   zdicResponses: Record<string, string>,
   zdicResponseDelayMs = 0,
+  merriamWebsterResponses: Record<string, unknown> = {},
 ) {
   await page.route(`**${alicePackageUrl}`, (route) =>
     route.fulfill({
@@ -77,7 +78,18 @@ async function setupDictionaryReader(
   await installTauriMock(page, {
     books: [dictionaryBook()],
     readerSources: { 'dictionary-book': alicePackageUrl },
-    settings: { librarySidebarOpen: false },
+    settings: {
+      librarySidebarOpen: false,
+      dictionary: {
+        merriamWebster: {
+          apiKey: Object.keys(merriamWebsterResponses).length
+            ? 'test-only-mw-key'
+            : '',
+          enabled: Object.keys(merriamWebsterResponses).length > 0,
+        },
+      },
+    },
+    merriamWebsterResponses,
     zdicResponses,
     zdicResponseDelayMs,
   })
@@ -316,4 +328,55 @@ test('keeps the larger popup inside a narrow horizontal reader', async ({
   await expect(
     popup.locator('.overflow-y-auto.overscroll-contain'),
   ).toHaveCount(1)
+})
+
+test('looks up an English selection only in Merriam-Webster', async ({
+  page,
+}) => {
+  await setupDictionaryReader(page, {}, 0, {
+    sky: [
+      {
+        hom: 1,
+        hwi: { hw: 'sky' },
+        fl: 'noun',
+        def: [
+          {
+            sseq: [
+              [
+                [
+                  'sense',
+                  {
+                    sn: '1',
+                    dt: [['text', '{bc}the upper atmosphere seen from earth']],
+                  },
+                ],
+              ],
+            ],
+          },
+        ],
+      },
+    ],
+  })
+  await selectFixtureText(page, 'sky')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+
+  const popup = page.getByRole('dialog', { name: 'Dictionary: sky' })
+  await expect(
+    popup.getByRole('heading', { name: 'Merriam-Webster' }),
+  ).toBeVisible()
+  await expect(
+    popup.getByText('the upper atmosphere seen from earth'),
+  ).toBeVisible()
+  await expect(popup.getByRole('heading', { name: 'Han Dian' })).toHaveCount(0)
+  await popup.getByRole('button', { name: 'View on Merriam-Webster' }).click()
+
+  const state = await getDictionaryMockState(page)
+  expect(state.merriamWebsterRequests).toHaveLength(1)
+  expect(state.merriamWebsterRequests[0]).toEqual({
+    query: 'sky',
+    sessionId: expect.any(Number),
+  })
+  expect(state.openedExternalUrls).toEqual([
+    'https://www.merriam-webster.com/dictionary/sky',
+  ])
 })

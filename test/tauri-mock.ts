@@ -27,6 +27,7 @@ interface TauriMockOptions {
   tags?: TestLibraryTagRecord[]
   textImportEncodings?: TextImportEncodingOption[]
   textImportPreviews?: TextImportPreview[]
+  merriamWebsterResponses?: Record<string, unknown>
   zdicResponses?: Record<string, string>
   zdicResponseDelayMs?: number
 }
@@ -50,6 +51,7 @@ export async function installTauriMock(
       { id: 'gb18030', label: 'GB18030' },
     ],
     textImportPreviews = [],
+    merriamWebsterResponses = {},
     zdicResponses = {},
     zdicResponseDelayMs = 0,
   }: TauriMockOptions = {},
@@ -68,6 +70,7 @@ export async function installTauriMock(
       fixtureTags,
       fixtureTextImportEncodings,
       fixtureTextImportPreviews,
+      fixtureMerriamWebsterResponses,
       fixtureZdicResponses,
       fixtureZdicResponseDelayMs,
     }) => {
@@ -100,6 +103,7 @@ export async function installTauriMock(
           fullscreen: boolean
           cancelledDictionarySessions: number[]
           dictionaryRequests: Array<{ query: string; sessionId: number }>
+          merriamWebsterRequests: Array<{ query: string; sessionId: number }>
           openedExternalUrls: string[]
           takePendingOpenPathsCalls: number
           settingsStore: Record<string, unknown>
@@ -145,6 +149,7 @@ export async function installTauriMock(
       globalWindow.__FLOW_TEST_TAURI__ = {
         cancelledDictionarySessions: [],
         dictionaryRequests: [],
+        merriamWebsterRequests: [],
         exports: [],
         get fullscreen() {
           return fullscreen
@@ -185,6 +190,19 @@ export async function installTauriMock(
           return {
             body: fixtureZdicResponses[query] ?? '',
             finalUrl: `https://zdic.net/hans/${encodeURIComponent(query)}`,
+            status: 200,
+          }
+        }
+        if (command === 'fetch_merriam_webster') {
+          const query = String(args?.query ?? '')
+          const sessionId = Number(args?.sessionId ?? 0)
+          globalWindow.__FLOW_TEST_TAURI__?.merriamWebsterRequests.push({
+            query,
+            sessionId,
+          })
+          return {
+            body: JSON.stringify(fixtureMerriamWebsterResponses[query] ?? []),
+            finalUrl: `https://www.dictionaryapi.com/api/v3/references/collegiate/json/${encodeURIComponent(query)}`,
             status: 200,
           }
         }
@@ -429,6 +447,7 @@ export async function installTauriMock(
       fixtureTags: tags,
       fixtureTextImportEncodings: textImportEncodings,
       fixtureTextImportPreviews: textImportPreviews,
+      fixtureMerriamWebsterResponses: merriamWebsterResponses,
       fixtureZdicResponses: zdicResponses,
       fixtureZdicResponseDelayMs: zdicResponseDelayMs,
     },
@@ -493,6 +512,7 @@ export async function getDictionaryMockState(page: Page) {
       __FLOW_TEST_TAURI__?: {
         cancelledDictionarySessions: number[]
         dictionaryRequests: Array<{ query: string; sessionId: number }>
+        merriamWebsterRequests: Array<{ query: string; sessionId: number }>
         openedExternalUrls: string[]
       }
     }
@@ -502,6 +522,8 @@ export async function getDictionaryMockState(page: Page) {
         globalWindow.__FLOW_TEST_TAURI__?.cancelledDictionarySessions ?? [],
       dictionaryRequests:
         globalWindow.__FLOW_TEST_TAURI__?.dictionaryRequests ?? [],
+      merriamWebsterRequests:
+        globalWindow.__FLOW_TEST_TAURI__?.merriamWebsterRequests ?? [],
       openedExternalUrls:
         globalWindow.__FLOW_TEST_TAURI__?.openedExternalUrls ?? [],
     }

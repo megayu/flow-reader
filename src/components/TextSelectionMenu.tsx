@@ -328,6 +328,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const [height, setHeight] = useState(0)
   const t = useTranslation('menu')
   const dictionaryT = useTranslation('dictionary')
+  const [settings] = useSettings()
   const [view, setView] = useState<'actions' | 'dictionary'>('actions')
 
   const cfi = annotationCfi ?? tab.rangeToCfi(range)
@@ -369,7 +370,10 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     closeMenu()
   }
   const dictionaryQuery = normalizeDictionaryQuery(text)
-  const dictionaryAvailable = dictionaryQuery?.language === 'zh'
+  const dictionaryAvailable =
+    dictionaryQuery?.language === 'zh' ||
+    (dictionaryQuery?.language === 'en' &&
+      settings.dictionary?.merriamWebster?.enabled === true)
 
   useEffect(() => {
     if (!editing) return

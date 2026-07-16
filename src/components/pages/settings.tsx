@@ -1,4 +1,5 @@
 import clsx from 'clsx'
+import { EyeIcon, EyeOffIcon, ExternalLinkIcon } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -8,18 +9,24 @@ import { useLocale } from '@flow/reader/hooks/useLocale'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
 import { AppLocale, localeNames } from '@flow/reader/locales'
 import { createShortcutGroups } from '@flow/reader/shortcuts'
-import { defaultTextImportRules, useSettings } from '@flow/reader/state'
+import {
+  defaultDictionarySettings,
+  defaultTextImportRules,
+  useSettings,
+} from '@flow/reader/state'
 import {
   maxUiFontSize,
   minUiFontSize,
   normalizeUiFontSize,
 } from '@flow/reader/styles/ui'
 
+import { openSupportedExternalUrl } from '../../externalLink'
 import { ColorPickerPopover, normalizeHexColor } from '../ColorPickerPopover'
 import { ShortcutChord } from '../ShortcutChord'
 import { Button as UiButton } from '../ui/button'
 import { Checkbox as UiCheckbox } from '../ui/checkbox'
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog'
+import { Input } from '../ui/input'
 import {
   Select,
   SelectContent,
@@ -50,8 +57,14 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   )
 }
 
-type SettingsTab = 'basic' | 'reading' | 'txt' | 'shortcuts'
-const SETTINGS_TABS: SettingsTab[] = ['basic', 'reading', 'txt', 'shortcuts']
+type SettingsTab = 'basic' | 'reading' | 'dictionary' | 'txt' | 'shortcuts'
+const SETTINGS_TABS: SettingsTab[] = [
+  'basic',
+  'reading',
+  'dictionary',
+  'txt',
+  'shortcuts',
+]
 const TEXTAREA_SIZE_STYLE = {
   fieldSizing: 'fixed',
   maxHeight: '22rem',
@@ -64,6 +77,27 @@ export const Settings: React.FC = () => {
   const t = useTranslation('settings')
   const typographyT = useTranslation('typography')
   const [activeTab, setActiveTab] = useState<SettingsTab>('basic')
+  const [showMerriamWebsterKey, setShowMerriamWebsterKey] = useState(false)
+  const merriamWebster = {
+    ...defaultDictionarySettings.merriamWebster,
+    ...settings.dictionary?.merriamWebster,
+  }
+  const updateMerriamWebster = (
+    patch: Partial<typeof defaultDictionarySettings.merriamWebster>,
+  ) => {
+    setSettings((prev) => ({
+      ...prev,
+      dictionary: {
+        ...defaultDictionarySettings,
+        ...prev.dictionary,
+        merriamWebster: {
+          ...defaultDictionarySettings.merriamWebster,
+          ...prev.dictionary?.merriamWebster,
+          ...patch,
+        },
+      },
+    }))
+  }
   const textImportRules = {
     ...defaultTextImportRules,
     ...settings.textImportRules,
@@ -259,6 +293,77 @@ export const Settings: React.FC = () => {
                   {t('txt_import.restore_defaults')}
                 </UiButton>
               </div>
+            </div>
+          )}
+          {activeTab === 'dictionary' && (
+            <div data-flow-settings-panel className="m-0 space-y-5">
+              <section className="space-y-4">
+                <div>
+                  <h3 className="text-base font-semibold">
+                    {t('dictionary.merriam_webster')}
+                  </h3>
+                  <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+                    {t('dictionary.merriam_webster_description')}
+                  </p>
+                </div>
+                <Item title={t('dictionary.status')}>
+                  <SettingsCheckbox
+                    label={t('dictionary.merriam_webster_enable')}
+                    checked={merriamWebster.enabled}
+                    onCheckedChange={(enabled) =>
+                      updateMerriamWebster({ enabled })
+                    }
+                  />
+                </Item>
+                <Item title={t('dictionary.api_key')}>
+                  <div className="flex max-w-md items-center gap-2">
+                    <Input
+                      type={showMerriamWebsterKey ? 'text' : 'password'}
+                      aria-label={t('dictionary.merriam_webster_api_key')}
+                      value={merriamWebster.apiKey}
+                      onChange={(event) =>
+                        updateMerriamWebster({ apiKey: event.target.value })
+                      }
+                    />
+                    <UiButton
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 shrink-0 rounded-lg"
+                      aria-label={
+                        showMerriamWebsterKey
+                          ? t('dictionary.hide_api_key')
+                          : t('dictionary.show_api_key')
+                      }
+                      onClick={() =>
+                        setShowMerriamWebsterKey((current) => !current)
+                      }
+                    >
+                      {showMerriamWebsterKey ? (
+                        <EyeOffIcon className="size-4" />
+                      ) : (
+                        <EyeIcon className="size-4" />
+                      )}
+                    </UiButton>
+                  </div>
+                </Item>
+                <div className="flex justify-end">
+                  <UiButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground h-8 gap-1.5 rounded-sm px-3 text-base"
+                    onClick={() => {
+                      void openSupportedExternalUrl(
+                        'https://dictionaryapi.com/',
+                      ).catch(() => undefined)
+                    }}
+                  >
+                    {t('dictionary.get_api_key')}
+                    <ExternalLinkIcon className="size-4" />
+                  </UiButton>
+                </div>
+              </section>
             </div>
           )}
           {activeTab === 'shortcuts' && (

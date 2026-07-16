@@ -5,8 +5,10 @@ import {
   DictionaryCoordinator,
   type DictionarySourceState,
 } from '../dictionary/coordinator'
+import { createMerriamWebsterProvider } from '../dictionary/providers/merriamWebster'
 import { zdicProvider } from '../dictionary/providers/zdic'
 import { useTranslation } from '../hooks/useTranslation'
+import { useSettings } from '../state'
 
 import { IconButton } from './Button'
 import { DictionarySourceSection } from './DictionarySourceSection'
@@ -25,22 +27,27 @@ export function DictionaryPopup({
   query,
 }: DictionaryPopupProps) {
   const t = useTranslation('dictionary')
+  const [settings] = useSettings()
   const coordinator = useMemo(() => new DictionaryCoordinator(), [])
-  const [sources, setSources] = useState<DictionarySourceState[]>([
-    {
-      providerId: zdicProvider.id,
-      providerName: zdicProvider.name,
-      status: 'loading',
-    },
-  ])
+  const merriamWebster = settings.dictionary?.merriamWebster
+  const providers = useMemo(
+    () => [
+      zdicProvider,
+      ...(merriamWebster?.enabled
+        ? [createMerriamWebsterProvider(merriamWebster.apiKey)]
+        : []),
+    ],
+    [merriamWebster],
+  )
+  const [sources, setSources] = useState<DictionarySourceState[]>([])
 
   useEffect(() => {
-    const session = coordinator.lookup(query, [zdicProvider], setSources)
+    const session = coordinator.lookup(query, providers, setSources)
     return () => {
       session.cancel()
       coordinator.cancelActive()
     }
-  }, [coordinator, query])
+  }, [coordinator, providers, query])
 
   return (
     <div className="flex min-h-0 flex-col">

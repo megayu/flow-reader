@@ -186,6 +186,7 @@ export default {
   'settings.title': 'Settings',
   'settings.tabs.basic': 'Basic',
   'settings.tabs.reading': 'Reading',
+  'settings.tabs.dictionary': 'Dictionary',
   'settings.tabs.txt': 'TXT',
   'settings.tabs.shortcuts': 'Shortcuts',
   'settings.language': 'Language',
@@ -202,6 +203,16 @@ export default {
   'settings.txt_import.group_rules': 'Group rules',
   'settings.txt_import.chapter_rules': 'Chapter rules',
   'settings.txt_import.restore_defaults': 'Restore default rules',
+  'settings.dictionary.merriam_webster': 'Merriam-Webster',
+  'settings.dictionary.merriam_webster_description':
+    "Uses the Collegiate Dictionary API. The key is stored only in this app's local settings.",
+  'settings.dictionary.status': 'Status',
+  'settings.dictionary.merriam_webster_enable': 'Enable Merriam-Webster',
+  'settings.dictionary.api_key': 'API key',
+  'settings.dictionary.merriam_webster_api_key': 'Merriam-Webster API key',
+  'settings.dictionary.show_api_key': 'Show API key',
+  'settings.dictionary.hide_api_key': 'Hide API key',
+  'settings.dictionary.get_api_key': 'Get a free API key',
 
   'menu.copy': 'Copy',
   'menu.search_in_book': 'Search in book',
@@ -234,6 +245,7 @@ export default {
   'dictionary.example': 'For example',
   'dictionary.view_source': 'View source',
   'dictionary.view_on_zdic': 'View on Han Dian',
+  'dictionary.view_on_merriam_webster': 'View on Merriam-Webster',
 
   'action.expand_all': 'Expand All',
   'action.collapse_all': 'Collapse All',

@@ -185,6 +185,7 @@ export default {
   'settings.title': '设置',
   'settings.tabs.basic': '基础',
   'settings.tabs.reading': '阅读',
+  'settings.tabs.dictionary': '词典',
   'settings.tabs.txt': 'TXT',
   'settings.tabs.shortcuts': '快捷键',
   'settings.language': '语言',
@@ -200,6 +201,16 @@ export default {
   'settings.txt_import.group_rules': '分组规则',
   'settings.txt_import.chapter_rules': '章节规则',
   'settings.txt_import.restore_defaults': '恢复默认规则',
+  'settings.dictionary.merriam_webster': 'Merriam-Webster',
+  'settings.dictionary.merriam_webster_description':
+    '使用 Collegiate Dictionary API，API key 只保存在本机应用设置中。',
+  'settings.dictionary.status': '状态',
+  'settings.dictionary.merriam_webster_enable': '启用 Merriam-Webster',
+  'settings.dictionary.api_key': 'API key',
+  'settings.dictionary.merriam_webster_api_key': 'Merriam-Webster API key',
+  'settings.dictionary.show_api_key': '显示 API key',
+  'settings.dictionary.hide_api_key': '隐藏 API key',
+  'settings.dictionary.get_api_key': '获取免费 API key',
 
   'menu.copy': '复制',
   'menu.search_in_book': '书内搜索',
@@ -230,6 +241,7 @@ export default {
   'dictionary.example': '例如',
   'dictionary.view_source': '查看原文',
   'dictionary.view_on_zdic': '在汉典中查看',
+  'dictionary.view_on_merriam_webster': '在 Merriam-Webster 中查看',
 
   'action.expand_all': '展开全部',
   'action.collapse_all': '折叠全部',

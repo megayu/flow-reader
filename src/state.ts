@@ -26,6 +26,7 @@ export type LibrarySortField = 'title' | 'creator' | 'updatedAt' | 'createdAt'
 export type LibrarySortDirection = 'asc' | 'desc'
 
 export interface Settings extends TypographyConfiguration {
+  dictionary?: DictionarySettingsConfiguration
   theme?: ThemeConfiguration
   ui?: UiConfiguration
   enableTextSelectionMenu?: boolean
@@ -40,6 +41,15 @@ export interface Settings extends TypographyConfiguration {
   libraryPinnedTags?: string[]
   textImportRules?: TextImportRulesConfiguration
   locale?: AppLocale
+}
+
+export interface DictionarySettingsConfiguration {
+  merriamWebster: MerriamWebsterSettingsConfiguration
+}
+
+export interface MerriamWebsterSettingsConfiguration {
+  apiKey: string
+  enabled: boolean
 }
 
 export interface TypographyConfiguration {
@@ -110,7 +120,15 @@ export const defaultTextImportRules: TextImportRulesConfiguration = {
   ],
 }
 
+export const defaultDictionarySettings: DictionarySettingsConfiguration = {
+  merriamWebster: {
+    apiKey: '',
+    enabled: false,
+  },
+}
+
 export const defaultSettings: Settings = {
+  dictionary: defaultDictionarySettings,
   enableTextSelectionMenu: true,
   hideEndnotes: false,
   readerSidebarOpen: true,
@@ -320,10 +338,27 @@ function normalizeSettings(value: Partial<Settings> | undefined): Settings {
       ...defaultTextImportRules,
       ...settings.textImportRules,
     },
+    dictionary: normalizeDictionarySettings(settings.dictionary),
     ui: {
       ...defaultSettings.ui,
       ...settings.ui,
       fontSize: normalizeUiFontSize(settings.ui?.fontSize),
+    },
+  }
+}
+
+function normalizeDictionarySettings(
+  value: Partial<DictionarySettingsConfiguration> | undefined,
+): DictionarySettingsConfiguration {
+  return {
+    merriamWebster: {
+      ...defaultDictionarySettings.merriamWebster,
+      ...value?.merriamWebster,
+      apiKey:
+        typeof value?.merriamWebster?.apiKey === 'string'
+          ? value.merriamWebster.apiKey
+          : '',
+      enabled: value?.merriamWebster?.enabled === true,
     },
   }
 }

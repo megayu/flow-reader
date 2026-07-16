@@ -5,6 +5,11 @@ import {
   type DictionaryProvider,
 } from '../src/dictionary/coordinator'
 import {
+  MerriamWebsterParseError,
+  merriamWebsterExternalUrl,
+  parseMerriamWebsterResponse,
+} from '../src/dictionary/providers/merriamWebster'
+import {
   classifyDictionaryQuery,
   normalizeDictionaryQuery,
 } from '../src/dictionary/query'
@@ -104,6 +109,201 @@ test.describe('dictionary coordinator contract', () => {
     expect(oldSnapshots).toEqual([['loading']])
     expect(newCompleted.cancelled).toBe(false)
     expect(newSnapshots.at(-1)).toEqual(['success'])
+  })
+})
+
+test.describe('Merriam-Webster response contract', () => {
+  test('flattens official sense, bs, pseq, and divided-sense structures', () => {
+    const result = parseMerriamWebsterResponse(
+      JSON.stringify([
+        {
+          meta: { id: 'sky:1' },
+          hom: 1,
+          hwi: { hw: 'sky' },
+          fl: 'noun',
+          shortdef: ['must not be used as the primary definition'],
+          def: [
+            {
+              sseq: [
+                [
+                  [
+                    'sense',
+                    {
+                      sn: '1',
+                      dt: [
+                        [
+                          'text',
+                          '{bc}the upper atmosphere {it}seen{/it} from earth',
+                        ],
+                      ],
+                      sdsense: {
+                        sd: 'specifically',
+                        dt: [['text', '{bc}the region of clouds']],
+                      },
+                    },
+                  ],
+                  [
+                    'bs',
+                    {
+                      sense: {
+                        sn: '2',
+                        sls: ['informal'],
+                        dt: [['text', '{bc}{d_link|heaven|heaven}']],
+                      },
+                    },
+                  ],
+                ],
+                [
+                  [
+                    'pseq',
+                    [
+                      [
+                        'sense',
+                        {
+                          sn: '(1)',
+                          dt: [['text', '{bc}weather conditions']],
+                        },
+                      ],
+                    ],
+                  ],
+                ],
+              ],
+            },
+          ],
+        },
+        {
+          meta: { id: 'sky:2' },
+          hom: 2,
+          hwi: { hw: 'sky' },
+          fl: 'verb',
+          def: [
+            {
+              sseq: [
+                [
+                  [
+                    'sense',
+                    { sn: '1', dt: [['text', '{bc}to hit high into the air']] },
+                  ],
+                ],
+              ],
+            },
+          ],
+        },
+      ]),
+      'sky',
+    )
+
+    expect(result.externalUrl).toBe(
+      'https://www.merriam-webster.com/dictionary/sky',
+    )
+    expect(result.content.kind).toBe('entries')
+    if (result.content.kind !== 'entries') return
+    expect(result.content.entries).toHaveLength(2)
+    expect(result.content.entries[0]).toMatchObject({
+      headword: 'sky',
+      homograph: 1,
+      partOfSpeech: 'noun',
+    })
+    expect(
+      result.content.entries[0].senses.map((sense) => sense.marker),
+    ).toEqual(['1', undefined, '2', '(1)'])
+    expect(result.content.entries[0].senses[0].definition).toEqual({
+      kind: 'runs',
+      runs: [
+        { kind: 'plain', text: 'the upper atmosphere ' },
+        { kind: 'emphasis', text: 'seen' },
+        { kind: 'plain', text: ' from earth' },
+      ],
+    })
+    expect(result.content.entries[0].senses[1].definition).toEqual({
+      kind: 'runs',
+      runs: [
+        { kind: 'label', text: 'specifically' },
+        { kind: 'plain', text: ' the region of clouds' },
+      ],
+    })
+    expect(result.content.entries[0].senses[2].definition).toEqual({
+      kind: 'runs',
+      runs: [
+        { kind: 'label', text: 'informal' },
+        { kind: 'plain', text: ' ' },
+        { kind: 'reference', text: 'heaven' },
+      ],
+    })
+  })
+
+  test('preserves controlled formatting and cross-reference token text', () => {
+    const result = parseMerriamWebsterResponse(
+      JSON.stringify([
+        {
+          hwi: { hw: 'act' },
+          def: [
+            {
+              sseq: [
+                [
+                  [
+                    'sense',
+                    {
+                      dt: [
+                        [
+                          'text',
+                          '{bc}to {it}do{/it}; {dx}see also {dxt|perform||}{/dx}',
+                        ],
+                      ],
+                    },
+                  ],
+                ],
+              ],
+            },
+          ],
+        },
+      ]),
+      'act',
+    )
+
+    if (result.content.kind !== 'entries') return
+    expect(result.content.entries[0].senses[0].definition).toEqual({
+      kind: 'runs',
+      runs: [
+        { kind: 'plain', text: 'to ' },
+        { kind: 'emphasis', text: 'do' },
+        { kind: 'plain', text: '; see also ' },
+        { kind: 'reference', text: 'perform' },
+      ],
+    })
+  })
+
+  test('degrades suggestions and malformed entries without using shortdef', () => {
+    expect(
+      parseMerriamWebsterResponse(JSON.stringify(['skies', 'sky']), 'ski'),
+    ).toBeNull()
+    expect(
+      parseMerriamWebsterResponse(
+        JSON.stringify([
+          { hwi: { hw: 'broken' }, shortdef: ['fallback is forbidden'] },
+          {
+            hwi: { hw: 'valid' },
+            def: [
+              {
+                sseq: [
+                  [['sense', { dt: [['text', '{bc}a valid definition']] }]],
+                ],
+              },
+            ],
+          },
+        ]),
+        'valid',
+      ).content,
+    ).toMatchObject({ entries: [{ headword: 'valid' }] })
+    expect(() => parseMerriamWebsterResponse('{', 'sky')).toThrow(
+      MerriamWebsterParseError,
+    )
+    expect(() =>
+      parseMerriamWebsterResponse('x'.repeat(2_000_001), 'sky'),
+    ).toThrow(MerriamWebsterParseError)
+    expect(merriamWebsterExternalUrl('blue sky')).toBe(
+      'https://www.merriam-webster.com/dictionary/blue%20sky',
+    )
   })
 })
 
