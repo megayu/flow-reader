@@ -1,5 +1,6 @@
 import clsx from 'clsx'
 import {
+  BookOpenTextIcon,
   CopyIcon,
   FilePenLineIcon,
   PencilIcon,
@@ -12,6 +13,7 @@ import { useSnapshot } from 'valtio'
 
 import { typeMap, colorMap, orderRangeRectsForWritingMode } from '../annotation'
 import { BookTextReplaceTarget, replaceBookText } from '../db'
+import { normalizeDictionaryQuery } from '../dictionary/query'
 import { useSetAction } from '../hooks/useAction'
 import { isForwardSelection, useTextSelection } from '../hooks/useTextSelection'
 import { useTranslation } from '../hooks/useTranslation'
@@ -21,6 +23,7 @@ import { useSettings } from '../state'
 import { copy, keys, last } from '../utils'
 
 import { Button, IconButton } from './Button'
+import { DictionaryPopup } from './DictionaryPopup'
 import { TextField } from './Form'
 import {
   layout,
@@ -324,6 +327,8 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const [width, setWidth] = useState(0)
   const [height, setHeight] = useState(0)
   const t = useTranslation('menu')
+  const dictionaryT = useTranslation('dictionary')
+  const [view, setView] = useState<'actions' | 'dictionary'>('actions')
 
   const cfi = annotationCfi ?? tab.rangeToCfi(range)
   const section = tab.sectionForRange(range)
@@ -351,6 +356,20 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     if (savingReplacementRef.current) return
     hide()
   }
+  const switchView = (nextView: 'actions' | 'dictionary') => {
+    setWidth(0)
+    setHeight(0)
+    setView(nextView)
+  }
+  const dismissOverlay = () => {
+    if (view === 'dictionary') {
+      switchView('actions')
+      return
+    }
+    closeMenu()
+  }
+  const dictionaryQuery = normalizeDictionaryQuery(text)
+  const dictionaryAvailable = dictionaryQuery?.language === 'zh'
 
   useEffect(() => {
     if (!editing) return
@@ -438,22 +457,27 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
       <Overlay
         // cover `sash`
         className="!z-50 !bg-transparent"
-        onClick={closeMenu}
-        onMouseDown={closeMenu}
-        onPointerDown={closeMenu}
+        onPointerDown={dismissOverlay}
       />
       <div
+        key={view}
         data-flow-keyboard-capture="true"
+        data-flow-dictionary-popup={view === 'dictionary' ? 'true' : undefined}
         ref={(el) => {
           if (!el) return
-          setWidth(el.clientWidth)
-          setHeight(el.clientHeight)
+          setWidth(el.offsetWidth)
+          setHeight(el.offsetHeight)
           el.focus()
         }}
         className={clsx(
-          'border-border bg-popover text-popover-foreground absolute z-50 rounded-lg border p-2 shadow-lg shadow-black/10 focus:outline-none',
+          'border-border bg-popover text-popover-foreground absolute z-50 box-border rounded-lg border shadow-lg shadow-black/10 focus:outline-none',
+          view === 'dictionary' ? 'overflow-hidden p-0' : 'p-2',
         )}
         style={{
+          width:
+            view === 'dictionary'
+              ? Math.min(544, Math.max(0, containerRect.width - 20))
+              : undefined,
           left:
             verticalPlacement?.left ??
             layout(containerRect.width, width, {
@@ -472,12 +496,16 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             }),
           visibility: width && height ? 'visible' : 'hidden',
         }}
+        role={view === 'dictionary' ? 'dialog' : undefined}
+        aria-label={
+          view === 'dictionary' ? `${dictionaryT('title')}: ${text}` : undefined
+        }
         tabIndex={-1}
         onKeyDown={(e) => {
           e.stopPropagation()
           if (e.key === 'Escape') {
             e.preventDefault()
-            closeMenu()
+            dismissOverlay()
             return
           }
           if (e.key === 'c' && e.ctrlKey) {
@@ -485,7 +513,17 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           }
         }}
       >
-        {editing ? (
+        {view === 'dictionary' ? (
+          <DictionaryPopup
+            query={dictionaryQuery?.text ?? text}
+            maxBodyHeight={Math.max(
+              120,
+              Math.floor(containerRect.height * 0.65) - 48,
+            )}
+            onBack={() => switchView('actions')}
+            onClose={closeMenu}
+          />
+        ) : editing ? (
           <div className="mb-3 space-y-2">
             <textarea
               ref={replacementRef}
@@ -538,6 +576,19 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 copy(text)
               }}
             />
+            {dictionaryAvailable && (
+              <IconButton
+                title={t('dictionary')}
+                Icon={BookOpenTextIcon}
+                size={ICON_SIZE}
+                className={actionIconClassName}
+                style={{
+                  width: ANNOTATION_SIZE,
+                  height: ANNOTATION_SIZE,
+                }}
+                onClick={() => switchView('dictionary')}
+              />
+            )}
             <IconButton
               title={t('search_in_book')}
               Icon={SearchIcon}
@@ -617,7 +668,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             )}
           </div>
         )}
-        {!editing && (
+        {view === 'actions' && !editing && (
           <div className="space-y-2">
             {keys(typeMap).map((type) => (
               <div key={type} className="flex gap-2">
@@ -655,7 +706,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             ))}
           </div>
         )}
-        {editing && (
+        {view === 'actions' && editing && (
           <div className="mt-3 flex gap-2">
             <Button
               compact
@@ -720,7 +771,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             </Button>
           </div>
         )}
-        {annotate && !editing && (
+        {view === 'actions' && annotate && !editing && (
           <div className="mt-3 flex">
             {annotation && (
               <Button

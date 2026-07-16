@@ -21,12 +21,14 @@ interface TauriMockOptions {
   openDialogPaths?: string[]
   pendingOpenPaths?: string[]
   deferReaderSource?: boolean
+  readerSources?: Record<string, string>
   saveDialogPath?: string | null
   settings?: Record<string, unknown>
   tags?: TestLibraryTagRecord[]
   textImportEncodings?: TextImportEncodingOption[]
   textImportPreviews?: TextImportPreview[]
   zdicResponses?: Record<string, string>
+  zdicResponseDelayMs?: number
 }
 
 export async function installTauriMock(
@@ -38,6 +40,7 @@ export async function installTauriMock(
     openDialogPaths = [],
     pendingOpenPaths = [],
     deferReaderSource = false,
+    readerSources = {},
     saveDialogPath = null,
     settings = {},
     tags = [],
@@ -48,6 +51,7 @@ export async function installTauriMock(
     ],
     textImportPreviews = [],
     zdicResponses = {},
+    zdicResponseDelayMs = 0,
   }: TauriMockOptions = {},
 ) {
   await page.addInitScript(
@@ -58,12 +62,14 @@ export async function installTauriMock(
       fixtureOpenDialogPaths,
       fixturePendingOpenPaths,
       fixtureDeferReaderSource,
+      fixtureReaderSources,
       fixtureSaveDialogPath,
       fixtureSettings,
       fixtureTags,
       fixtureTextImportEncodings,
       fixtureTextImportPreviews,
       fixtureZdicResponses,
+      fixtureZdicResponseDelayMs,
     }) => {
       type TauriInternals = {
         callbacks?: Record<number, (...args: unknown[]) => unknown>
@@ -171,9 +177,14 @@ export async function installTauriMock(
             query,
             sessionId,
           })
+          if (fixtureZdicResponseDelayMs > 0) {
+            await new Promise((resolve) =>
+              window.setTimeout(resolve, fixtureZdicResponseDelayMs),
+            )
+          }
           return {
             body: fixtureZdicResponses[query] ?? '',
-            finalUrl: `https://www.zdic.net/hans/${encodeURIComponent(query)}`,
+            finalUrl: `https://zdic.net/hans/${encodeURIComponent(query)}`,
             status: 200,
           }
         }
@@ -279,6 +290,18 @@ export async function installTauriMock(
           return bookStore.get(String(args?.id)) ?? null
         if (command === 'get_book_reader_source' && fixtureDeferReaderSource) {
           return new Promise(() => undefined)
+        }
+        if (command === 'get_book_package_path') {
+          return fixtureReaderSources[String(args?.id)] ?? null
+        }
+        if (command === 'get_book_reader_source') {
+          const path = fixtureReaderSources[String(args?.id)] ?? ''
+          return path
+            ? {
+                mode: path.toLowerCase().endsWith('.epub') ? 'epub' : 'opf',
+                path,
+              }
+            : null
         }
         if (command === 'update_book') {
           const id = String(args?.id)
@@ -400,12 +423,14 @@ export async function installTauriMock(
       fixtureOpenDialogPaths: openDialogPaths,
       fixturePendingOpenPaths: pendingOpenPaths,
       fixtureDeferReaderSource: deferReaderSource,
+      fixtureReaderSources: readerSources,
       fixtureSaveDialogPath: saveDialogPath,
       fixtureSettings: settings,
       fixtureTags: tags,
       fixtureTextImportEncodings: textImportEncodings,
       fixtureTextImportPreviews: textImportPreviews,
       fixtureZdicResponses: zdicResponses,
+      fixtureZdicResponseDelayMs: zdicResponseDelayMs,
     },
   )
 }
@@ -459,5 +484,26 @@ export async function getImportedTextSelections(page: Page) {
     }
 
     return globalWindow.__FLOW_TEST_TAURI__?.textImports ?? []
+  })
+}
+
+export async function getDictionaryMockState(page: Page) {
+  return page.evaluate(() => {
+    const globalWindow = window as typeof window & {
+      __FLOW_TEST_TAURI__?: {
+        cancelledDictionarySessions: number[]
+        dictionaryRequests: Array<{ query: string; sessionId: number }>
+        openedExternalUrls: string[]
+      }
+    }
+
+    return {
+      cancelledDictionarySessions:
+        globalWindow.__FLOW_TEST_TAURI__?.cancelledDictionarySessions ?? [],
+      dictionaryRequests:
+        globalWindow.__FLOW_TEST_TAURI__?.dictionaryRequests ?? [],
+      openedExternalUrls:
+        globalWindow.__FLOW_TEST_TAURI__?.openedExternalUrls ?? [],
+    }
   })
 }

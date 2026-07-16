@@ -27,6 +27,7 @@ export type DictionarySourceStatus =
 
 export interface DictionarySourceState {
   error?: string
+  externalUrl?: string
   providerId: string
   providerName: string
   result?: DictionaryResult
@@ -98,6 +99,7 @@ export class DictionaryCoordinator {
 
           sources = replaceSource(sources, index, {
             error: error instanceof Error ? error.message : String(error),
+            externalUrl: externalUrlFromError(error),
             providerId: provider.id,
             providerName: provider.name,
             status: 'error',
@@ -132,6 +134,17 @@ export class DictionaryCoordinator {
 
   private isCurrent(id: number) {
     return this.activeSession?.id === id
+  }
+}
+
+function externalUrlFromError(error: unknown) {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'externalUrl' in error &&
+    typeof error.externalUrl === 'string'
+  ) {
+    return error.externalUrl
   }
 }
 

@@ -9,6 +9,12 @@ const alicePackageUrl = '/test-assets/alice.epub'
 const longPackageUrl = '/test-assets/long/OPS/package.opf'
 const verticalPackageUrl = '/test-assets/vertical/OPS/package.opf'
 const findShortcut = process.platform === 'darwin' ? 'Meta+F' : 'Control+F'
+const dictionaryLayoutHtml = `<!doctype html><html><body>
+  <section id="xxjs" data-section="词语解释">
+    <div class="xxjs-reading-head">jiǎ yǐ bǐng dīng</div>
+    <ol class="xxjs-list"><li class="xxjs-item"><span class="xxjs-item__def">用于浮层布局测试的合成释义。</span></li></ol>
+  </section>
+</body></html>`
 
 interface BookTabState {
   id: string
@@ -106,7 +112,7 @@ async function installReaderBooksMock(
   }
 
   await page.addInitScript(
-    ({ fixtureBooks, packageUrls }) => {
+    ({ fixtureBooks, packageUrls, fixtureDictionaryHtml }) => {
       type TauriInternals = {
         callbacks?: Record<number, (...args: unknown[]) => unknown>
         convertFileSrc?: (filePath: string) => string
@@ -165,6 +171,16 @@ async function installReaderBooksMock(
       internals.runCallback = (id, ...args) => callbacks[id]?.(...args)
       eventInternals.unregisterListener = () => undefined
       internals.invoke = async (command, args) => {
+        if (command === 'fetch_zdic') {
+          const query = String(args?.query ?? '')
+          return {
+            body: fixtureDictionaryHtml,
+            finalUrl: `https://zdic.net/hans/${encodeURIComponent(query)}`,
+            status: 200,
+          }
+        }
+        if (command === 'cancel_dictionary_session') return null
+        if (command === 'open_external_url') return null
         if (command === 'get_settings') return { ...settingsStore }
         if (command === 'update_settings') {
           Object.assign(settingsStore, args?.settings ?? {})
@@ -233,7 +249,11 @@ async function installReaderBooksMock(
         return null
       }
     },
-    { fixtureBooks: books, packageUrls },
+    {
+      fixtureBooks: books,
+      packageUrls,
+      fixtureDictionaryHtml: dictionaryLayoutHtml,
+    },
   )
 }
 
@@ -3063,6 +3083,82 @@ test('[vertical-rl] keeps the selection menu complete and beside the selection',
   expect(result.inside).toBe(true)
   expect(result.overlaps).toBe(false)
   expect(result.beside).toBe(true)
+})
+
+test('[vertical-rl] keeps the dictionary popup inside the reader without repagination', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+  const before = await readFocusedTabState(page)
+  await page.evaluate(() => {
+    const pane = document.querySelector(
+      '[data-flow-reader-pane][aria-hidden="false"]',
+    )
+    const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
+      (candidate) => candidate.getBoundingClientRect().width > 0,
+    ) as HTMLIFrameElement | undefined
+    const target = frame?.contentDocument?.querySelector(
+      '#vertical-selection-target',
+    )
+    const text = target?.firstChild
+    if (!frame?.contentWindow || !target || !text) {
+      throw new Error('Missing dictionary selection fixture')
+    }
+
+    const range = frame.contentDocument!.createRange()
+    range.setStart(text, 1)
+    range.setEnd(text, Math.min(7, text.textContent?.length ?? 0))
+    const selection = frame.contentWindow.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+    const rect = range.getBoundingClientRect()
+    frame.contentWindow.dispatchEvent(
+      new frame.contentWindow.MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+      }),
+    )
+  })
+
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  const popup = page.getByRole('dialog', {
+    name: /Dictionary: /,
+  })
+  await expect(popup).toBeVisible()
+  await expect(
+    popup.getByText('用于浮层布局测试的合成释义。', { exact: true }),
+  ).toBeVisible()
+
+  const geometry = await popup.evaluate((element) => {
+    const popupRect = element.getBoundingClientRect()
+    const contentRect = element
+      .closest('[data-flow-reader-pane]')
+      ?.querySelector('[data-flow-reader-content]')
+      ?.getBoundingClientRect()
+    if (!contentRect) throw new Error('Missing reader content geometry')
+
+    return {
+      height: popupRect.height,
+      inside:
+        popupRect.left >= contentRect.left &&
+        popupRect.right <= contentRect.right &&
+        popupRect.top >= contentRect.top &&
+        popupRect.bottom <= contentRect.bottom,
+      width: popupRect.width,
+    }
+  })
+  const after = await readFocusedTabState(page)
+
+  expect(geometry.inside).toBe(true)
+  expect(geometry.width).toBeGreaterThanOrEqual(440)
+  expect(geometry.height).toBeGreaterThan(100)
+  expect(after.startCfi).toBe(before.startCfi)
+  expect(after.endCfi).toBe(before.endCfi)
+  expect(after.visibleSectionIndexes).toEqual(before.visibleSectionIndexes)
+  expect(after.renditionStartCfi).toBe(before.renditionStartCfi)
+  expect(after.renditionEndCfi).toBe(before.renditionEndCfi)
 })
 
 test('[vertical-rl] closes the selection menu before opening chapter find', async ({
