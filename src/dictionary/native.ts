@@ -69,6 +69,24 @@ export interface StarDictLookupResponse {
   }>
 }
 
+export interface MdictLookupResponse {
+  diagnostics: {
+    loadedResourceKeys: string[]
+    recordBytes: number
+    resourceBytes: number
+  }
+  entry: null | {
+    headword: string
+    html: string
+  }
+  resourceUrlPrefix: string
+}
+
+export interface MdictStylesheetResponse {
+  key: string
+  text: string
+}
+
 let localDictionaryListCache: Promise<LocalDictionaryRecord[]> | undefined
 
 export function fetchZdic(query: string, sessionId: number) {
@@ -152,6 +170,30 @@ export function lookupStarDict(
   return invoke<StarDictLookupResponse>('lookup_stardict', {
     dictionaryId,
     query,
+    sessionId,
+  })
+}
+
+export function lookupMdict(
+  dictionaryId: string,
+  query: string,
+  sessionId: number,
+) {
+  return invoke<MdictLookupResponse>('lookup_mdict', {
+    dictionaryId,
+    query,
+    sessionId,
+  })
+}
+
+export function loadMdictStylesheet(
+  dictionaryId: string,
+  key: string,
+  sessionId: number,
+) {
+  return invoke<MdictStylesheetResponse | null>('load_mdict_stylesheet', {
+    dictionaryId,
+    key,
     sessionId,
   })
 }

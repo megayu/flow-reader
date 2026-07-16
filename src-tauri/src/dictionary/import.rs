@@ -63,7 +63,7 @@ pub struct DictionaryImportError {
 }
 
 impl DictionaryImportError {
-    fn new(code: &str, message: impl Into<String>) -> Self {
+    pub(crate) fn new(code: &str, message: impl Into<String>) -> Self {
         Self {
             code: code.to_string(),
             message: message.into(),
@@ -184,20 +184,14 @@ fn inspect_stardict(path: &Path) -> Result<InspectedDictionary, DictionaryImport
 
 fn inspect_mdict(path: &Path) -> Result<InspectedDictionary, DictionaryImportError> {
     let source_path = canonical_file(path)?;
-    if fs::metadata(&source_path)
-        .map(|metadata| metadata.len())
-        .unwrap_or(0)
-        == 0
-    {
-        return Err(DictionaryImportError::new(
-            "invalidMdict",
-            "The selected .mdx file is empty.",
-        ));
-    }
+    let metadata = super::mdict::inspect_metadata(&source_path)
+        .map_err(|error| DictionaryImportError::new(&error.code, error.message))?;
 
     let mut files = Vec::new();
     let resources = companion_path(&source_path, "mdd")?;
     if resources.is_file() {
+        super::mdict::inspect_resources(&resources)
+            .map_err(|error| DictionaryImportError::new(&error.code, error.message))?;
         files.push(file_reference(
             DictionaryFileKind::Resources,
             resources,
@@ -214,9 +208,12 @@ fn inspect_mdict(path: &Path) -> Result<InspectedDictionary, DictionaryImportErr
 
     Ok(InspectedDictionary {
         format: DictionaryFormat::MDict,
-        name: source_stem(&source_path),
-        fingerprint: fingerprint(&source_path)?,
-        metadata_language: None,
+        name: metadata.title.unwrap_or_else(|| source_stem(&source_path)),
+        fingerprint: fingerprint_group(
+            std::iter::once(&source_path)
+                .chain(files.iter().filter(|file| file.used).map(|file| &file.path)),
+        )?,
+        metadata_language: metadata.language,
         source_path,
         files,
     })
@@ -397,6 +394,27 @@ mod tests {
         ifo
     }
 
+    fn write_mdict_header(path: &std::path::Path, tag: &str) {
+        let header = format!(
+            r#"<{tag} GeneratedByEngineVersion="2.0" RequiredEngineVersion="2.0" Encoding="UTF-8" Encrypted="No"/>"#
+        );
+        let header = header
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect::<Vec<_>>();
+        let mut a = 1_u32;
+        let mut b = 0_u32;
+        for byte in &header {
+            a = (a + u32::from(*byte)) % 65_521;
+            b = (b + a) % 65_521;
+        }
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&(header.len() as u32).to_be_bytes());
+        bytes.extend_from_slice(&header);
+        bytes.extend_from_slice(&((b << 16) | a).to_le_bytes());
+        fs::write(path, bytes).unwrap();
+    }
+
     #[test]
     fn accepts_only_master_files_and_requires_stardict_companions() {
         let root = temp_dir("master");
@@ -453,8 +471,8 @@ mod tests {
     fn mdict_associates_only_same_stem_mdd_and_cover() {
         let root = temp_dir("mdict-group");
         let mdx = root.join("source.mdx");
-        fs::write(&mdx, b"mdict fixture").unwrap();
-        fs::write(root.join("source.mdd"), b"resources").unwrap();
+        write_mdict_header(&mdx, "Dictionary");
+        write_mdict_header(&root.join("source.mdd"), "Library_Data");
         fs::write(root.join("source.jpg"), b"cover").unwrap();
         fs::write(root.join("source.css"), b"ignored").unwrap();
         fs::write(root.join("source.ttf"), b"ignored").unwrap();

@@ -136,6 +136,9 @@ pub fn run() {
     let pending_open_files = collect_epub_paths(std::env::args_os().skip(1));
 
     tauri::Builder::default()
+        .register_uri_scheme_protocol("dictionary", |context, request| {
+            dictionary::mdict::resource_protocol_response(context.app_handle(), request)
+        })
         .manage(PendingOpenFiles(Mutex::new(pending_open_files)))
         .manage(tasks::TaskService::default())
         .manage(dictionary::create_http_client().expect("dictionary HTTP client"))
@@ -222,6 +225,8 @@ pub fn run() {
             dictionary::cancel_dictionary_session,
             dictionary::list_local_dictionaries,
             dictionary::lookup_stardict,
+            dictionary::lookup_mdict,
+            dictionary::load_mdict_stylesheet,
             dictionary::register_local_dictionary,
             dictionary::update_local_dictionary,
             dictionary::relocate_local_dictionary,

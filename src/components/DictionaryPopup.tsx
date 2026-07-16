@@ -6,6 +6,7 @@ import {
   type DictionarySourceState,
 } from '../dictionary/coordinator'
 import type { LocalDictionaryRecord } from '../dictionary/native'
+import { createMdictProvider } from '../dictionary/providers/mdict'
 import { createMerriamWebsterProvider } from '../dictionary/providers/merriamWebster'
 import { createStarDictProvider } from '../dictionary/providers/stardict'
 import { zdicProvider } from '../dictionary/providers/zdic'
@@ -31,6 +32,7 @@ export function DictionaryPopup({
   localDictionaries,
 }: DictionaryPopupProps) {
   const t = useTranslation('dictionary')
+  const [activeQuery, setActiveQuery] = useState(query)
   const [settings] = useSettings()
   const coordinator = useMemo(() => new DictionaryCoordinator(), [])
   const merriamWebster = settings.dictionary?.merriamWebster
@@ -40,19 +42,23 @@ export function DictionaryPopup({
       ...(merriamWebster?.enabled
         ? [createMerriamWebsterProvider(merriamWebster.apiKey)]
         : []),
-      ...localDictionaries.map(createStarDictProvider),
+      ...localDictionaries.map((dictionary) =>
+        dictionary.format === 'mdict'
+          ? createMdictProvider(dictionary)
+          : createStarDictProvider(dictionary),
+      ),
     ],
     [localDictionaries, merriamWebster],
   )
   const [sources, setSources] = useState<DictionarySourceState[]>([])
 
   useEffect(() => {
-    const session = coordinator.lookup(query, providers, setSources)
+    const session = coordinator.lookup(activeQuery, providers, setSources)
     return () => {
       session.cancel()
       coordinator.cancelActive()
     }
-  }, [coordinator, providers, query])
+  }, [activeQuery, coordinator, providers])
 
   return (
     <div className="flex min-h-0 flex-col">
@@ -64,7 +70,7 @@ export function DictionaryPopup({
           onClick={onBack}
         />
         <div className="min-w-0 flex-1 truncate text-center font-medium">
-          {query}
+          {activeQuery}
         </div>
         <IconButton
           title={t('close')}
@@ -79,7 +85,11 @@ export function DictionaryPopup({
       >
         {sources.length ? (
           sources.map((source) => (
-            <DictionarySourceSection key={source.providerId} source={source} />
+            <DictionarySourceSection
+              key={source.providerId}
+              onEntryNavigate={setActiveQuery}
+              source={source}
+            />
           ))
         ) : (
           <div className="text-muted-foreground px-5 py-6 text-sm">

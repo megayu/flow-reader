@@ -1066,6 +1066,7 @@ dependencies = [
  "encoding_rs",
  "flate2",
  "futures-util",
+ "mdict-rs",
  "memmap2",
  "regex",
  "reqwest",
@@ -2127,6 +2128,16 @@ dependencies = [
  "log",
  "tendril",
  "web_atoms",
+]
+
+[[package]]
+name = "mdict-rs"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0affda41b39511d522de4474f6191d7a6f5571b42a1e09a5c552bd265b4c917"
+dependencies = [
+ "encoding_rs",
+ "miniz_oxide",
 ]
 
 [[package]]

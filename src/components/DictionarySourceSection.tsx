@@ -9,11 +9,15 @@ import type {
 import { openSupportedExternalUrl } from '../externalLink'
 import { useTranslation } from '../hooks/useTranslation'
 
+import { DictionaryRichContent } from './DictionaryRichContent'
+
 interface DictionarySourceSectionProps {
+  onEntryNavigate: (entry: string) => void
   source: DictionarySourceState
 }
 
 export function DictionarySourceSection({
+  onEntryNavigate,
   source,
 }: DictionarySourceSectionProps) {
   const t = useTranslation('dictionary')
@@ -150,6 +154,12 @@ export function DictionarySourceSection({
             </article>
           ))}
         </div>
+      ) : source.result?.content.kind === 'rich' ? (
+        <DictionaryRichContent
+          document={source.result.content.document}
+          onEntryNavigate={onEntryNavigate}
+          title={source.providerName}
+        />
       ) : null}
     </section>
   )

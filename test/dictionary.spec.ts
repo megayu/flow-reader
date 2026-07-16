@@ -71,6 +71,8 @@ async function setupDictionaryReader(
   merriamWebsterResponses: Record<string, unknown> = {},
   localDictionaries: LocalDictionaryRecord[] = [],
   stardictResponses: Record<string, Record<string, unknown>> = {},
+  mdictResponses: Record<string, Record<string, unknown>> = {},
+  mdictStylesheets: Record<string, Record<string, string>> = {},
 ) {
   await page.route(`**${alicePackageUrl}`, (route) =>
     route.fulfill({
@@ -94,6 +96,8 @@ async function setupDictionaryReader(
     },
     merriamWebsterResponses,
     localDictionaries,
+    mdictResponses,
+    mdictStylesheets,
     stardictResponses,
     zdicResponses,
     zdicResponseDelayMs,
@@ -135,6 +139,23 @@ function localStarDict(): LocalDictionaryRecord {
     name: 'Oxford English-Chinese Dictionary',
     order: 0,
     sourcePath: 'C:\\fixture\\oxford.ifo',
+    sourceStatus: 'available',
+    updatedAt: 1,
+  }
+}
+
+function localMdict(): LocalDictionaryRecord {
+  return {
+    createdAt: 1,
+    enabled: true,
+    files: [],
+    fingerprint: { modifiedMs: 1, sampleHash: 'fixture', size: 1 },
+    format: 'mdict',
+    id: 'dict-ciyuan',
+    language: { source: 'manual', value: 'zh' },
+    name: 'Synthetic Chinese MDict',
+    order: 0,
+    sourcePath: 'C:\\fixture\\ciyuan.mdx',
     sourceStatus: 'available',
     updatedAt: 1,
   }
@@ -584,4 +605,149 @@ test('looks up an English selection in an enabled StarDict and releases its sess
   expect(state.cancelledDictionarySessions).toContain(
     state.stardictRequests[0]!.sessionId,
   )
+})
+
+test('MDict renders sanitized rich content and follows internal entry links', async ({
+  page,
+}) => {
+  await page.route('http://dictionary.localhost/**', async (route) => {
+    const url = decodeURIComponent(route.request().url())
+    if (url.endsWith('/figure.png') || url.endsWith('/waveline.png')) {
+      await route.fulfill({
+        body: Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+          'base64',
+        ),
+        contentType: 'image/png',
+      })
+      return
+    }
+    await route.fulfill({ status: 404 })
+  })
+  const richHtml = `
+    <link rel="stylesheet" href="cy3.css">
+    <main onclick="window.evil = true">
+      <p class="sense">安全释义</p>
+      <a href="entry://新词">跳到新词</a>
+      <img src="figure.png" alt="本地图">
+      <img src="https://tracker.invalid/pixel.png" alt="外部图">
+      <script>window.evil = true</script>
+      <iframe src="https://tracker.invalid/frame"></iframe>
+      <audio src="sound.mp3"></audio>
+    </main>`
+  await setupDictionaryReader(
+    page,
+    { 词: wordHtml },
+    0,
+    {},
+    [localMdict()],
+    {},
+    {
+      'dict-ciyuan': {
+        词: {
+          diagnostics: { recordBytes: richHtml.length, resourceBytes: 0 },
+          entry: { headword: '词', html: richHtml },
+        },
+        新词: {
+          diagnostics: { recordBytes: 16, resourceBytes: 0 },
+          entry: { headword: '新词', html: '<p>内部跳转结果</p>' },
+        },
+      },
+    },
+    {
+      'dict-ciyuan': {
+        'cy3.css': `
+          @import url("https://tracker.invalid/import.css");
+          @font-face { font-family: Fixture; src: url("fixture.ttf"); }
+          .sense { background: url("waveline.png"); behavior: url("evil.htc"); }
+          .escape { background: url("../secret.png"); }
+          .remote { background: url("https://tracker.invalid/remote.png"); }
+        `,
+      },
+    },
+  )
+  await selectFixtureText(page, '词')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+
+  const popup = page.getByRole('dialog', { name: 'Dictionary: 词' })
+  await expect(
+    popup.getByRole('heading', { name: 'Synthetic Chinese MDict' }),
+  ).toBeVisible()
+  const iframe = popup.locator('[data-dictionary-rich-content]')
+  await expect(iframe).toHaveAttribute('sandbox', 'allow-same-origin')
+  await expect(iframe).toHaveAttribute('scrolling', 'no')
+  const frame = iframe.contentFrame()
+  await expect(frame.getByText('安全释义', { exact: true })).toBeVisible()
+  await expect(frame.locator('script, iframe, audio, [onclick]')).toHaveCount(0)
+  await expect(frame.getByAltText('外部图')).toHaveCount(0)
+  await expect(frame.getByAltText('本地图')).toHaveAttribute(
+    'src',
+    /http:\/\/dictionary\.localhost\/.*\/figure\.png$/,
+  )
+  const documentSafety = await frame.locator('html').evaluate((element) => ({
+    csp:
+      element
+        .querySelector('meta[http-equiv="Content-Security-Policy"]')
+        ?.getAttribute('content') ?? '',
+    style: Array.from(element.querySelectorAll('style'))
+      .map((node) => node.textContent ?? '')
+      .join('\n'),
+  }))
+  expect(documentSafety.csp).toContain("default-src 'none'")
+  expect(documentSafety.csp).toContain("script-src 'none'")
+  expect(documentSafety.style).toContain('dictionary.localhost')
+  expect(documentSafety.style).not.toMatch(
+    /@import|behavior|tracker\.invalid|\.\.\/secret/,
+  )
+
+  await frame.getByText('跳到新词', { exact: true }).click()
+  await expect(popup.getByText('新词', { exact: true })).toBeVisible()
+  await expect
+    .poll(async () => (await getDictionaryMockState(page)).mdictRequests)
+    .toHaveLength(2)
+  await expect(frame.getByText('内部跳转结果', { exact: true })).toBeVisible()
+
+  await popup.getByRole('button', { name: 'Close' }).click()
+  const state = await getDictionaryMockState(page)
+  expect(state.mdictStylesheetRequests).toEqual([
+    {
+      dictionaryId: 'dict-ciyuan',
+      key: 'cy3.css',
+      sessionId: state.mdictRequests[0]!.sessionId,
+    },
+  ])
+  expect(state.cancelledDictionarySessions).toContain(
+    state.mdictRequests.at(-1)!.sessionId,
+  )
+})
+
+test('MDict keeps readable text when an optional stylesheet is missing', async ({
+  page,
+}) => {
+  await setupDictionaryReader(
+    page,
+    { 词: wordHtml },
+    0,
+    {},
+    [localMdict()],
+    {},
+    {
+      'dict-ciyuan': {
+        词: {
+          diagnostics: { recordBytes: 64, resourceBytes: 0 },
+          entry: {
+            headword: '词',
+            html: '<link rel="stylesheet" href="missing.css"><p>无样式仍可阅读</p>',
+          },
+        },
+      },
+    },
+  )
+  await selectFixtureText(page, '词')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+
+  const popup = page.getByRole('dialog', { name: 'Dictionary: 词' })
+  const frame = popup.locator('[data-dictionary-rich-content]').contentFrame()
+  await expect(frame.getByText('无样式仍可阅读', { exact: true })).toBeVisible()
+  await expect(popup.getByText('Lookup failed.')).toHaveCount(0)
 })

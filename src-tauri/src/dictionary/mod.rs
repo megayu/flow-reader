@@ -1,10 +1,12 @@
 pub mod http;
 pub mod import;
+pub mod mdict;
 pub mod registry;
 pub mod session;
 pub mod stardict;
 
 use http::{DictionaryHttpClient, DictionaryHttpError, DictionaryHttpResponse};
+use mdict::{MdictError, MdictLookupResponse, MdictReader, MdictTextResource};
 use registry::{
     DictionaryRegistryError, DictionaryRegistryStore, LocalDictionaryRecord, LocalDictionaryUpdate,
 };
@@ -124,4 +126,67 @@ pub fn lookup_stardict(
         StarDictReader::open(&record.source_path, &cache)
     })?;
     reader.lookup(&query)
+}
+
+#[tauri::command]
+pub fn lookup_mdict(
+    registry: tauri::State<'_, DictionaryRegistryStore>,
+    sessions: tauri::State<'_, DictionarySessionManager>,
+    dictionary_id: String,
+    query: String,
+    session_id: u64,
+) -> Result<MdictLookupResponse, MdictError> {
+    let record = mdict_record(&registry, &dictionary_id)?;
+    let reader = sessions.get_or_open_mdict(session_id, &dictionary_id, || {
+        MdictReader::open(&record.source_path)
+    })?;
+    let entry = reader.lookup(&query)?;
+    Ok(MdictLookupResponse {
+        diagnostics: reader.diagnostics()?,
+        entry,
+        resource_url_prefix: mdict::resource_url_prefix(session_id, &dictionary_id),
+    })
+}
+
+#[tauri::command]
+pub fn load_mdict_stylesheet(
+    registry: tauri::State<'_, DictionaryRegistryStore>,
+    sessions: tauri::State<'_, DictionarySessionManager>,
+    dictionary_id: String,
+    key: String,
+    session_id: u64,
+) -> Result<Option<MdictTextResource>, MdictError> {
+    let record = mdict_record(&registry, &dictionary_id)?;
+    let reader = sessions.get_or_open_mdict(session_id, &dictionary_id, || {
+        MdictReader::open(&record.source_path)
+    })?;
+    reader.load_stylesheet(&key)
+}
+
+fn mdict_record(
+    registry: &DictionaryRegistryStore,
+    dictionary_id: &str,
+) -> Result<LocalDictionaryRecord, MdictError> {
+    let record = registry
+        .get(dictionary_id)
+        .map_err(|error| MdictError::new(&error.code, error.message))?;
+    if !record.enabled {
+        return Err(MdictError::new(
+            "dictionaryDisabled",
+            "The local dictionary is disabled.",
+        ));
+    }
+    if record.source_status != registry::DictionarySourceStatus::Available {
+        return Err(MdictError::new(
+            "sourceChanged",
+            "The local dictionary source is missing or changed.",
+        ));
+    }
+    if record.format != import::DictionaryFormat::MDict {
+        return Err(MdictError::new(
+            "formatMismatch",
+            "The selected local dictionary is not MDict.",
+        ));
+    }
+    Ok(record)
 }

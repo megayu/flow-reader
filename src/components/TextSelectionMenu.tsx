@@ -384,10 +384,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         if (!active) return
         setLocalDictionaries(
           records.filter(
-            (record) =>
-              record.format === 'stardict' &&
-              record.enabled &&
-              record.sourceStatus === 'available',
+            (record) => record.enabled && record.sourceStatus === 'available',
           ),
         )
       })

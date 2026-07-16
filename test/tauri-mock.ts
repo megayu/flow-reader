@@ -34,6 +34,8 @@ interface TauriMockOptions {
   textImportEncodings?: TextImportEncodingOption[]
   textImportPreviews?: TextImportPreview[]
   merriamWebsterResponses?: Record<string, unknown>
+  mdictResponses?: Record<string, Record<string, unknown>>
+  mdictStylesheets?: Record<string, Record<string, string>>
   stardictResponses?: Record<string, Record<string, unknown>>
   zdicResponses?: Record<string, string>
   zdicResponseDelayMs?: number
@@ -61,6 +63,8 @@ export async function installTauriMock(
     ],
     textImportPreviews = [],
     merriamWebsterResponses = {},
+    mdictResponses = {},
+    mdictStylesheets = {},
     stardictResponses = {},
     zdicResponses = {},
     zdicResponseDelayMs = 0,
@@ -83,6 +87,8 @@ export async function installTauriMock(
       fixtureTextImportEncodings,
       fixtureTextImportPreviews,
       fixtureMerriamWebsterResponses,
+      fixtureMdictResponses,
+      fixtureMdictStylesheets,
       fixtureStardictResponses,
       fixtureZdicResponses,
       fixtureZdicResponseDelayMs,
@@ -118,6 +124,16 @@ export async function installTauriMock(
           dictionaryRequests: Array<{ query: string; sessionId: number }>
           dialogOpenCalls: unknown[]
           merriamWebsterRequests: Array<{ query: string; sessionId: number }>
+          mdictRequests: Array<{
+            dictionaryId: string
+            query: string
+            sessionId: number
+          }>
+          mdictStylesheetRequests: Array<{
+            dictionaryId: string
+            key: string
+            sessionId: number
+          }>
           stardictRequests: Array<{
             dictionaryId: string
             query: string
@@ -174,6 +190,8 @@ export async function installTauriMock(
         dictionaryRequests: [],
         dialogOpenCalls: [],
         merriamWebsterRequests: [],
+        mdictRequests: [],
+        mdictStylesheetRequests: [],
         stardictRequests: [],
         localDictionaries: localDictionaryStore,
         exports: [],
@@ -247,6 +265,40 @@ export async function installTauriMock(
               entries: [],
             }
           )
+        }
+        if (command === 'lookup_mdict') {
+          const dictionaryId = String(args?.dictionaryId ?? '')
+          const query = String(args?.query ?? '')
+          const sessionId = Number(args?.sessionId ?? 0)
+          globalWindow.__FLOW_TEST_TAURI__?.mdictRequests.push({
+            dictionaryId,
+            query,
+            sessionId,
+          })
+          const response = fixtureMdictResponses[dictionaryId]?.[query]
+          if (!response) {
+            return {
+              diagnostics: { recordBytes: 0, resourceBytes: 0 },
+              entry: null,
+              resourceUrlPrefix: `http://dictionary.localhost/${sessionId}/${encodeURIComponent(dictionaryId)}/`,
+            }
+          }
+          return {
+            ...(response as Record<string, unknown>),
+            resourceUrlPrefix: `http://dictionary.localhost/${sessionId}/${encodeURIComponent(dictionaryId)}/`,
+          }
+        }
+        if (command === 'load_mdict_stylesheet') {
+          const dictionaryId = String(args?.dictionaryId ?? '')
+          const key = String(args?.key ?? '')
+          const sessionId = Number(args?.sessionId ?? 0)
+          globalWindow.__FLOW_TEST_TAURI__?.mdictStylesheetRequests.push({
+            dictionaryId,
+            key,
+            sessionId,
+          })
+          const text = fixtureMdictStylesheets[dictionaryId]?.[key]
+          return text === undefined ? null : { key, text }
         }
         if (command === 'cancel_dictionary_session') {
           globalWindow.__FLOW_TEST_TAURI__?.cancelledDictionarySessions.push(
@@ -582,6 +634,8 @@ export async function installTauriMock(
       fixtureTextImportEncodings: textImportEncodings,
       fixtureTextImportPreviews: textImportPreviews,
       fixtureMerriamWebsterResponses: merriamWebsterResponses,
+      fixtureMdictResponses: mdictResponses,
+      fixtureMdictStylesheets: mdictStylesheets,
       fixtureStardictResponses: stardictResponses,
       fixtureZdicResponses: zdicResponses,
       fixtureZdicResponseDelayMs: zdicResponseDelayMs,
@@ -665,6 +719,16 @@ export async function getDictionaryMockState(page: Page) {
         cancelledDictionarySessions: number[]
         dictionaryRequests: Array<{ query: string; sessionId: number }>
         merriamWebsterRequests: Array<{ query: string; sessionId: number }>
+        mdictRequests: Array<{
+          dictionaryId: string
+          query: string
+          sessionId: number
+        }>
+        mdictStylesheetRequests: Array<{
+          dictionaryId: string
+          key: string
+          sessionId: number
+        }>
         stardictRequests: Array<{
           dictionaryId: string
           query: string
@@ -681,6 +745,9 @@ export async function getDictionaryMockState(page: Page) {
         globalWindow.__FLOW_TEST_TAURI__?.dictionaryRequests ?? [],
       merriamWebsterRequests:
         globalWindow.__FLOW_TEST_TAURI__?.merriamWebsterRequests ?? [],
+      mdictRequests: globalWindow.__FLOW_TEST_TAURI__?.mdictRequests ?? [],
+      mdictStylesheetRequests:
+        globalWindow.__FLOW_TEST_TAURI__?.mdictStylesheetRequests ?? [],
       stardictRequests:
         globalWindow.__FLOW_TEST_TAURI__?.stardictRequests ?? [],
       openedExternalUrls:

@@ -3,11 +3,15 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use super::stardict::{StarDictError, StarDictReader};
+use super::{
+    mdict::{MdictBinaryResource, MdictError, MdictReader},
+    stardict::{StarDictError, StarDictReader},
+};
 
 enum DictionarySessionResource {
     #[cfg(test)]
     Marker,
+    Mdict(Arc<MdictReader>),
     StarDict(Arc<StarDictReader>),
 }
 
@@ -59,6 +63,52 @@ impl DictionarySessionManager {
         Ok(reader)
     }
 
+    pub fn get_or_open_mdict(
+        &self,
+        session_id: u64,
+        dictionary_id: &str,
+        open: impl FnOnce() -> Result<MdictReader, MdictError>,
+    ) -> Result<Arc<MdictReader>, MdictError> {
+        let mut resources = self
+            .resources
+            .lock()
+            .map_err(|_| MdictError::new("sessionLockFailed", "Dictionary session lock failed."))?;
+        let session = resources.entry(session_id).or_default();
+        if let Some(DictionarySessionResource::Mdict(reader)) = session.get(dictionary_id) {
+            return Ok(Arc::clone(reader));
+        }
+        let reader = Arc::new(open()?);
+        session.insert(
+            dictionary_id.to_string(),
+            DictionarySessionResource::Mdict(Arc::clone(&reader)),
+        );
+        Ok(reader)
+    }
+
+    pub fn load_mdict_resource(
+        &self,
+        session_id: u64,
+        dictionary_id: &str,
+        key: &str,
+    ) -> Result<Option<MdictBinaryResource>, MdictError> {
+        let reader = {
+            let resources = self.resources.lock().map_err(|_| {
+                MdictError::new("sessionLockFailed", "Dictionary session lock failed.")
+            })?;
+            let Some(DictionarySessionResource::Mdict(reader)) = resources
+                .get(&session_id)
+                .and_then(|session| session.get(dictionary_id))
+            else {
+                return Err(MdictError::new(
+                    "mdictSessionReleased",
+                    "The MDict session is no longer available.",
+                ));
+            };
+            Arc::clone(reader)
+        };
+        reader.load_binary_resource(key)
+    }
+
     pub fn release(&self, session_id: u64) -> Result<usize, String> {
         let mut resources = self
             .resources
@@ -88,6 +138,9 @@ impl DictionarySessionManager {
         };
         for resource in resources.values().flat_map(HashMap::values) {
             diagnostics.resource_count += 1;
+            if let DictionarySessionResource::Mdict(reader) = resource {
+                diagnostics.file_count += reader.source_file_count();
+            }
             if matches!(resource, DictionarySessionResource::StarDict(_)) {
                 diagnostics.file_count += 1;
                 diagnostics.mmap_count += 2;
