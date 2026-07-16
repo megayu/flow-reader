@@ -185,6 +185,63 @@ test('shows master-file validation errors without adding a partial record', asyn
   )
 })
 
+test('displays native Windows and Unix dictionary paths without changing stored paths', async ({
+  page,
+}) => {
+  const windowsExtended =
+    '\\\\?\\C:\\Users\\reader\\Dictionaries\\Oxford\\oxford.ifo'
+  const windowsUnc =
+    '\\\\?\\UNC\\dictionary-server\\shared\\Chinese\\source.mdx'
+  const unix = '/home/reader/dictionaries/english/source.ifo'
+  await installTauriMock(page, {
+    localDictionaries: [
+      localDictionary({
+        id: 'dict-11111111111111111111',
+        name: 'Windows Dictionary',
+        sourcePath: windowsExtended,
+      }),
+      localDictionary({
+        id: 'dict-22222222222222222222',
+        name: 'UNC Dictionary',
+        order: 1,
+        sourcePath: windowsUnc,
+      }),
+      localDictionary({
+        id: 'dict-33333333333333333333',
+        name: 'Unix Dictionary',
+        order: 2,
+        sourcePath: unix,
+      }),
+    ],
+  })
+  await page.goto('/')
+  const dialog = await openDictionarySettings(page)
+
+  const expected = [
+    [
+      'dict-11111111111111111111',
+      'C:\\Users\\reader\\Dictionaries\\Oxford\\oxford.ifo',
+    ],
+    [
+      'dict-22222222222222222222',
+      '\\\\dictionary-server\\shared\\Chinese\\source.mdx',
+    ],
+    ['dict-33333333333333333333', unix],
+  ] as const
+  for (const [id, path] of expected) {
+    const row = dialog.locator(`[data-local-dictionary-id="${id}"]`)
+    await expect(row.getByText(path, { exact: true })).toBeVisible()
+    await expect(
+      row.locator('[title]').filter({ hasText: path }),
+    ).toHaveAttribute('title', path)
+  }
+
+  const stored = await getLocalDictionaryMockState(page)
+  expect(
+    stored.localDictionaries.map((dictionary) => dictionary.sourcePath),
+  ).toEqual([windowsExtended, windowsUnc, unix])
+})
+
 function localDictionary(
   overrides: Partial<LocalDictionaryRecord> &
     Pick<LocalDictionaryRecord, 'id' | 'name' | 'sourcePath'>,

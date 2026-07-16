@@ -34,6 +34,7 @@ interface TauriMockOptions {
   textImportEncodings?: TextImportEncodingOption[]
   textImportPreviews?: TextImportPreview[]
   merriamWebsterResponses?: Record<string, unknown>
+  stardictResponses?: Record<string, Record<string, unknown>>
   zdicResponses?: Record<string, string>
   zdicResponseDelayMs?: number
 }
@@ -60,6 +61,7 @@ export async function installTauriMock(
     ],
     textImportPreviews = [],
     merriamWebsterResponses = {},
+    stardictResponses = {},
     zdicResponses = {},
     zdicResponseDelayMs = 0,
   }: TauriMockOptions = {},
@@ -81,6 +83,7 @@ export async function installTauriMock(
       fixtureTextImportEncodings,
       fixtureTextImportPreviews,
       fixtureMerriamWebsterResponses,
+      fixtureStardictResponses,
       fixtureZdicResponses,
       fixtureZdicResponseDelayMs,
     }) => {
@@ -115,6 +118,11 @@ export async function installTauriMock(
           dictionaryRequests: Array<{ query: string; sessionId: number }>
           dialogOpenCalls: unknown[]
           merriamWebsterRequests: Array<{ query: string; sessionId: number }>
+          stardictRequests: Array<{
+            dictionaryId: string
+            query: string
+            sessionId: number
+          }>
           localDictionaries: LocalDictionaryRecord[]
           openedExternalUrls: string[]
           takePendingOpenPathsCalls: number
@@ -166,6 +174,7 @@ export async function installTauriMock(
         dictionaryRequests: [],
         dialogOpenCalls: [],
         merriamWebsterRequests: [],
+        stardictRequests: [],
         localDictionaries: localDictionaryStore,
         exports: [],
         get fullscreen() {
@@ -222,6 +231,22 @@ export async function installTauriMock(
             finalUrl: `https://www.dictionaryapi.com/api/v3/references/collegiate/json/${encodeURIComponent(query)}`,
             status: 200,
           }
+        }
+        if (command === 'lookup_stardict') {
+          const dictionaryId = String(args?.dictionaryId ?? '')
+          const query = String(args?.query ?? '')
+          const sessionId = Number(args?.sessionId ?? 0)
+          globalWindow.__FLOW_TEST_TAURI__?.stardictRequests.push({
+            dictionaryId,
+            query,
+            sessionId,
+          })
+          return (
+            fixtureStardictResponses[dictionaryId]?.[query] ?? {
+              diagnostics: { bytesRead: 0, decompressedBlocks: 0 },
+              entries: [],
+            }
+          )
         }
         if (command === 'cancel_dictionary_session') {
           globalWindow.__FLOW_TEST_TAURI__?.cancelledDictionarySessions.push(
@@ -557,6 +582,7 @@ export async function installTauriMock(
       fixtureTextImportEncodings: textImportEncodings,
       fixtureTextImportPreviews: textImportPreviews,
       fixtureMerriamWebsterResponses: merriamWebsterResponses,
+      fixtureStardictResponses: stardictResponses,
       fixtureZdicResponses: zdicResponses,
       fixtureZdicResponseDelayMs: zdicResponseDelayMs,
     },
@@ -639,6 +665,11 @@ export async function getDictionaryMockState(page: Page) {
         cancelledDictionarySessions: number[]
         dictionaryRequests: Array<{ query: string; sessionId: number }>
         merriamWebsterRequests: Array<{ query: string; sessionId: number }>
+        stardictRequests: Array<{
+          dictionaryId: string
+          query: string
+          sessionId: number
+        }>
         openedExternalUrls: string[]
       }
     }
@@ -650,6 +681,8 @@ export async function getDictionaryMockState(page: Page) {
         globalWindow.__FLOW_TEST_TAURI__?.dictionaryRequests ?? [],
       merriamWebsterRequests:
         globalWindow.__FLOW_TEST_TAURI__?.merriamWebsterRequests ?? [],
+      stardictRequests:
+        globalWindow.__FLOW_TEST_TAURI__?.stardictRequests ?? [],
       openedExternalUrls:
         globalWindow.__FLOW_TEST_TAURI__?.openedExternalUrls ?? [],
     }

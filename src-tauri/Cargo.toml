@@ -21,6 +21,8 @@ tauri = { version = "2", features = ["protocol-asset"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+memmap2 = "0.9.11"
+flate2 = { version = "1.1.9", default-features = false, features = ["zlib-rs"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-dialog = "2"
 roxmltree = "0.21"

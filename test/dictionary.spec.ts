@@ -3,6 +3,7 @@ import path from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 
 import type { BookRecord } from '../src/db'
+import type { LocalDictionaryRecord } from '../src/dictionary/native'
 
 import { getDictionaryMockState, installTauriMock } from './tauri-mock'
 
@@ -68,6 +69,8 @@ async function setupDictionaryReader(
   zdicResponses: Record<string, string>,
   zdicResponseDelayMs = 0,
   merriamWebsterResponses: Record<string, unknown> = {},
+  localDictionaries: LocalDictionaryRecord[] = [],
+  stardictResponses: Record<string, Record<string, unknown>> = {},
 ) {
   await page.route(`**${alicePackageUrl}`, (route) =>
     route.fulfill({
@@ -90,6 +93,8 @@ async function setupDictionaryReader(
       },
     },
     merriamWebsterResponses,
+    localDictionaries,
+    stardictResponses,
     zdicResponses,
     zdicResponseDelayMs,
   })
@@ -116,6 +121,23 @@ async function setupDictionaryReader(
       }),
     )
     .toBe(true)
+}
+
+function localStarDict(): LocalDictionaryRecord {
+  return {
+    createdAt: 1,
+    enabled: true,
+    files: [],
+    fingerprint: { modifiedMs: 1, sampleHash: 'fixture', size: 1 },
+    format: 'stardict',
+    id: 'dict-oxford',
+    language: { source: 'manual', value: 'en' },
+    name: 'Oxford English-Chinese Dictionary',
+    order: 0,
+    sourcePath: 'C:\\fixture\\oxford.ifo',
+    sourceStatus: 'available',
+    updatedAt: 1,
+  }
 }
 
 async function selectFixtureText(
@@ -520,4 +542,46 @@ test('looks up an English selection only in Merriam-Webster', async ({
   expect(state.openedExternalUrls).toEqual([
     'https://www.merriam-webster.com/dictionary/sky',
   ])
+})
+
+test('looks up an English selection in an enabled StarDict and releases its session', async ({
+  page,
+}) => {
+  await setupDictionaryReader(page, {}, 0, {}, [localStarDict()], {
+    'dict-oxford': {
+      sky: {
+        diagnostics: { bytesRead: 48, decompressedBlocks: 1 },
+        entries: [
+          {
+            definitions: ['the region of the atmosphere seen from earth'],
+            headword: 'sky',
+          },
+        ],
+      },
+    },
+  })
+  await selectFixtureText(page, 'sky')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+
+  const popup = page.getByRole('dialog', { name: 'Dictionary: sky' })
+  await expect(
+    popup.getByRole('heading', { name: 'Oxford English-Chinese Dictionary' }),
+  ).toBeVisible()
+  await expect(
+    popup.getByText('the region of the atmosphere seen from earth'),
+  ).toBeVisible()
+
+  await popup.getByRole('button', { name: 'Close' }).click()
+  await expect
+    .poll(async () => (await getDictionaryMockState(page)).stardictRequests)
+    .toHaveLength(1)
+  const state = await getDictionaryMockState(page)
+  expect(state.stardictRequests[0]).toEqual({
+    dictionaryId: 'dict-oxford',
+    query: 'sky',
+    sessionId: expect.any(Number),
+  })
+  expect(state.cancelledDictionarySessions).toContain(
+    state.stardictRequests[0]!.sessionId,
+  )
 })

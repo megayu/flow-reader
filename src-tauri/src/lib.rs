@@ -221,6 +221,7 @@ pub fn run() {
             dictionary::fetch_merriam_webster,
             dictionary::cancel_dictionary_session,
             dictionary::list_local_dictionaries,
+            dictionary::lookup_stardict,
             dictionary::register_local_dictionary,
             dictionary::update_local_dictionary,
             dictionary::relocate_local_dictionary,

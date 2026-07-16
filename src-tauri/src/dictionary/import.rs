@@ -167,10 +167,15 @@ fn inspect_stardict(path: &Path) -> Result<InspectedDictionary, DictionaryImport
         )?);
     }
 
+    let fingerprint = fingerprint_group(
+        std::iter::once(&source_path)
+            .chain(files.iter().filter(|file| file.used).map(|file| &file.path)),
+    )?;
+
     Ok(InspectedDictionary {
         format: DictionaryFormat::StarDict,
         name: metadata_value(&metadata, "bookname").unwrap_or_else(|| source_stem(&source_path)),
-        fingerprint: fingerprint(&source_path)?,
+        fingerprint,
         metadata_language: infer_stardict_language(&metadata),
         source_path,
         files,
@@ -290,6 +295,33 @@ fn fingerprint(path: &Path) -> Result<SourceFingerprint, DictionaryImportError> 
 
     Ok(SourceFingerprint {
         size: metadata.len(),
+        modified_ms,
+        sample_hash: format!("{:x}", hasher.finalize()),
+    })
+}
+
+fn fingerprint_group<'a>(
+    paths: impl Iterator<Item = &'a PathBuf>,
+) -> Result<SourceFingerprint, DictionaryImportError> {
+    let mut size = 0_u64;
+    let mut modified_ms = 0_u64;
+    let mut hasher = Sha256::new();
+    for path in paths {
+        let current = fingerprint(path)?;
+        size = size.saturating_add(current.size);
+        modified_ms = modified_ms.max(current.modified_ms);
+        hasher.update(
+            path.file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .as_bytes(),
+        );
+        hasher.update(current.size.to_le_bytes());
+        hasher.update(current.modified_ms.to_le_bytes());
+        hasher.update(current.sample_hash.as_bytes());
+    }
+    Ok(SourceFingerprint {
+        size,
         modified_ms,
         sample_hash: format!("{:x}", hasher.finalize()),
     })

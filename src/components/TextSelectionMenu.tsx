@@ -13,6 +13,10 @@ import { useSnapshot } from 'valtio'
 
 import { typeMap, colorMap, orderRangeRectsForWritingMode } from '../annotation'
 import { BookTextReplaceTarget, replaceBookText } from '../db'
+import {
+  listLocalDictionariesCached,
+  type LocalDictionaryRecord,
+} from '../dictionary/native'
 import { normalizeDictionaryQuery } from '../dictionary/query'
 import { useSetAction } from '../hooks/useAction'
 import { isForwardSelection, useTextSelection } from '../hooks/useTextSelection'
@@ -330,6 +334,9 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const dictionaryT = useTranslation('dictionary')
   const [settings] = useSettings()
   const [view, setView] = useState<'actions' | 'dictionary'>('actions')
+  const [localDictionaries, setLocalDictionaries] = useState<
+    LocalDictionaryRecord[]
+  >([])
 
   const cfi = annotationCfi ?? tab.rangeToCfi(range)
   const section = tab.sectionForRange(range)
@@ -370,10 +377,43 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     closeMenu()
   }
   const dictionaryQuery = normalizeDictionaryQuery(text)
+  useEffect(() => {
+    let active = true
+    void listLocalDictionariesCached()
+      .then((records) => {
+        if (!active) return
+        setLocalDictionaries(
+          records.filter(
+            (record) =>
+              record.format === 'stardict' &&
+              record.enabled &&
+              record.sourceStatus === 'available',
+          ),
+        )
+      })
+      .catch(() => {
+        if (active) setLocalDictionaries([])
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+  const dictionaryLanguage = dictionaryQuery?.language
+  const eligibleLocalDictionaries = useMemo(
+    () =>
+      localDictionaries.filter(
+        (dictionary) =>
+          dictionaryLanguage &&
+          (dictionary.language.value === 'unknown' ||
+            dictionary.language.value === dictionaryLanguage),
+      ),
+    [dictionaryLanguage, localDictionaries],
+  )
   const dictionaryAvailable =
     dictionaryQuery?.language === 'zh' ||
     (dictionaryQuery?.language === 'en' &&
-      settings.dictionary?.merriamWebster?.enabled === true)
+      settings.dictionary?.merriamWebster?.enabled === true) ||
+    eligibleLocalDictionaries.length > 0
 
   useEffect(() => {
     if (!editing) return
@@ -520,6 +560,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         {view === 'dictionary' ? (
           <DictionaryPopup
             query={dictionaryQuery?.text ?? text}
+            localDictionaries={eligibleLocalDictionaries}
             maxBodyHeight={Math.max(
               120,
               Math.floor(containerRect.height * 0.65) - 48,

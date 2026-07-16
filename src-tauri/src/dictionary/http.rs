@@ -301,10 +301,7 @@ mod tests {
     #[test]
     fn constructs_provider_urls_without_accepting_an_arbitrary_target() {
         let zdic = zdic_lookup_url("天 空").expect("zdic URL");
-        assert_eq!(
-            zdic.as_str(),
-            "https://zdic.net/hans/%E5%A4%A9%20%E7%A9%BA"
-        );
+        assert_eq!(zdic.as_str(), "https://zdic.net/hans/%E5%A4%A9%20%E7%A9%BA");
 
         let merriam_webster = merriam_webster_lookup_url("well being", "free-key").expect("MW URL");
         assert_eq!(merriam_webster.scheme(), "https");

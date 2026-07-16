@@ -5,7 +5,9 @@ import {
   DictionaryCoordinator,
   type DictionarySourceState,
 } from '../dictionary/coordinator'
+import type { LocalDictionaryRecord } from '../dictionary/native'
 import { createMerriamWebsterProvider } from '../dictionary/providers/merriamWebster'
+import { createStarDictProvider } from '../dictionary/providers/stardict'
 import { zdicProvider } from '../dictionary/providers/zdic'
 import { useTranslation } from '../hooks/useTranslation'
 import { useSettings } from '../state'
@@ -18,6 +20,7 @@ interface DictionaryPopupProps {
   onBack: () => void
   onClose: () => void
   query: string
+  localDictionaries: LocalDictionaryRecord[]
 }
 
 export function DictionaryPopup({
@@ -25,6 +28,7 @@ export function DictionaryPopup({
   onBack,
   onClose,
   query,
+  localDictionaries,
 }: DictionaryPopupProps) {
   const t = useTranslation('dictionary')
   const [settings] = useSettings()
@@ -36,8 +40,9 @@ export function DictionaryPopup({
       ...(merriamWebster?.enabled
         ? [createMerriamWebsterProvider(merriamWebster.apiKey)]
         : []),
+      ...localDictionaries.map(createStarDictProvider),
     ],
-    [merriamWebster],
+    [localDictionaries, merriamWebster],
   )
   const [sources, setSources] = useState<DictionarySourceState[]>([])
 

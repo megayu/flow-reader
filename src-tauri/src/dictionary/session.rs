@@ -1,18 +1,62 @@
-use std::{collections::HashMap, sync::Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
+
+use super::stardict::{StarDictError, StarDictReader};
+
+enum DictionarySessionResource {
+    #[cfg(test)]
+    Marker,
+    StarDict(Arc<StarDictReader>),
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DictionarySessionDiagnostics {
+    pub file_count: usize,
+    pub mmap_count: usize,
+    pub resource_count: usize,
+    pub session_count: usize,
+}
 
 #[derive(Default)]
 pub struct DictionarySessionManager {
-    resources: Mutex<HashMap<u64, Vec<String>>>,
+    resources: Mutex<HashMap<u64, HashMap<String, DictionarySessionResource>>>,
 }
 
 impl DictionarySessionManager {
+    #[cfg(test)]
     pub fn attach(&self, session_id: u64, dictionary_id: String) -> Result<(), String> {
         let mut resources = self
             .resources
             .lock()
             .map_err(|_| "dictionary session lock failed".to_string())?;
-        resources.entry(session_id).or_default().push(dictionary_id);
+        resources
+            .entry(session_id)
+            .or_default()
+            .insert(dictionary_id, DictionarySessionResource::Marker);
         Ok(())
+    }
+
+    pub fn get_or_open_stardict(
+        &self,
+        session_id: u64,
+        dictionary_id: &str,
+        open: impl FnOnce() -> Result<StarDictReader, StarDictError>,
+    ) -> Result<Arc<StarDictReader>, StarDictError> {
+        let mut resources = self.resources.lock().map_err(|_| {
+            StarDictError::new("sessionLockFailed", "Dictionary session lock failed.")
+        })?;
+        let session = resources.entry(session_id).or_default();
+        if let Some(DictionarySessionResource::StarDict(reader)) = session.get(dictionary_id) {
+            return Ok(Arc::clone(reader));
+        }
+        let reader = Arc::new(open()?);
+        session.insert(
+            dictionary_id.to_string(),
+            DictionarySessionResource::StarDict(Arc::clone(&reader)),
+        );
+        Ok(reader)
     }
 
     pub fn release(&self, session_id: u64) -> Result<usize, String> {
@@ -28,9 +72,28 @@ impl DictionarySessionManager {
             .resources
             .lock()
             .map_err(|_| "dictionary session lock failed".to_string())?;
-        let count = resources.values().map(Vec::len).sum();
+        let count = resources.values().map(HashMap::len).sum();
         resources.clear();
         Ok(count)
+    }
+
+    pub fn diagnostics(&self) -> Result<DictionarySessionDiagnostics, String> {
+        let resources = self
+            .resources
+            .lock()
+            .map_err(|_| "dictionary session lock failed".to_string())?;
+        let mut diagnostics = DictionarySessionDiagnostics {
+            session_count: resources.len(),
+            ..DictionarySessionDiagnostics::default()
+        };
+        for resource in resources.values().flat_map(HashMap::values) {
+            diagnostics.resource_count += 1;
+            if matches!(resource, DictionarySessionResource::StarDict(_)) {
+                diagnostics.file_count += 1;
+                diagnostics.mmap_count += 2;
+            }
+        }
+        Ok(diagnostics)
     }
 }
 
@@ -46,5 +109,6 @@ mod tests {
         sessions.attach(2, "third".to_string()).unwrap();
         assert_eq!(sessions.release(1).unwrap(), 2);
         assert_eq!(sessions.release_all().unwrap(), 1);
+        assert_eq!(sessions.diagnostics().unwrap().resource_count, 0);
     }
 }

@@ -13,6 +13,7 @@ use super::import::{
     inspect_dictionary_file, DictionaryFileReference, DictionaryFormat, DictionaryImportError,
     InspectedDictionary, SourceFingerprint,
 };
+use super::stardict::{prepare_index, StarDictError};
 
 const REGISTRY_VERSION: u32 = 1;
 const DICTIONARIES_DIR: &str = "dictionaries";
@@ -132,6 +133,15 @@ impl From<DictionaryImportError> for DictionaryRegistryError {
     }
 }
 
+impl From<StarDictError> for DictionaryRegistryError {
+    fn from(error: StarDictError) -> Self {
+        Self {
+            code: error.code,
+            message: error.message,
+        }
+    }
+}
+
 impl std::fmt::Display for DictionaryRegistryError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(formatter, "{}", self.message)
@@ -216,6 +226,40 @@ impl DictionaryRegistryStore {
         Ok(dictionaries)
     }
 
+    pub fn get(&self, id: &str) -> Result<LocalDictionaryRecord, DictionaryRegistryError> {
+        self.ensure_available()?;
+        if !valid_dictionary_id(id) {
+            return Err(DictionaryRegistryError::new(
+                "invalidDictionaryId",
+                "The dictionary identifier is invalid.",
+            ));
+        }
+        let state = self.lock()?;
+        let mut record = state
+            .dictionaries
+            .iter()
+            .find(|record| record.id == id)
+            .cloned()
+            .ok_or_else(|| {
+                DictionaryRegistryError::new(
+                    "dictionaryNotFound",
+                    "The dictionary is not registered.",
+                )
+            })?;
+        refresh_source_status(&mut record);
+        Ok(record)
+    }
+
+    pub fn cache_path(&self, id: &str) -> Result<PathBuf, DictionaryRegistryError> {
+        if !valid_dictionary_id(id) {
+            return Err(DictionaryRegistryError::new(
+                "invalidDictionaryId",
+                "The dictionary identifier is invalid.",
+            ));
+        }
+        Ok(self.cache_root.join(id))
+    }
+
     pub fn register(
         &self,
         source_path: &Path,
@@ -254,6 +298,14 @@ impl DictionaryRegistryStore {
                 format!("Cannot prepare the dictionary cache folder: {error}"),
             )
         })?;
+        if record.format == DictionaryFormat::StarDict {
+            if let Err(error) = prepare_index(&record.source_path, &cache) {
+                if !cache_existed {
+                    let _ = fs::remove_dir_all(&cache);
+                }
+                return Err(error.into());
+            }
+        }
         if let Err(error) = persist_registry(&self.registry_path, &next) {
             if !cache_existed {
                 let _ = fs::remove_dir_all(&cache);
@@ -321,6 +373,9 @@ impl DictionaryRegistryStore {
         }
         apply_inspection(record, inspected, unix_time_ms());
         let result = record.clone();
+        if result.format == DictionaryFormat::StarDict {
+            prepare_index(&result.source_path, &self.cache_root.join(id))?;
+        }
         persist_registry(&self.registry_path, &next)?;
         *state = next;
         Ok(result)
@@ -569,22 +624,15 @@ fn automatic_language(inspected: &InspectedDictionary) -> DictionaryLanguageSett
 }
 
 fn refresh_source_status(record: &mut LocalDictionaryRecord) {
-    let Ok(metadata) = fs::metadata(&record.source_path) else {
+    if !record.source_path.is_file() {
         record.source_status = DictionarySourceStatus::Missing;
         return;
-    };
-    let modified_ms = metadata
-        .modified()
-        .ok()
-        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
-        .map(|duration| duration.as_millis() as u64)
-        .unwrap_or_default();
-    record.source_status = if metadata.len() == record.fingerprint.size
-        && modified_ms == record.fingerprint.modified_ms
-    {
-        DictionarySourceStatus::Available
-    } else {
-        DictionarySourceStatus::Changed
+    }
+    record.source_status = match inspect_dictionary_file(&record.source_path) {
+        Ok(inspected) if inspected.fingerprint == record.fingerprint => {
+            DictionarySourceStatus::Available
+        }
+        _ => DictionarySourceStatus::Changed,
     };
 }
 
@@ -646,10 +694,13 @@ mod tests {
         let ifo = root.join(format!("{stem}.ifo"));
         fs::write(
             &ifo,
-            "StarDict's dict ifo file\nversion=2.4.2\nbookname=Registry Test\nlang_from=English\n",
+            "StarDict's dict ifo file\nversion=2.4.2\nwordcount=1\nidxfilesize=13\nbookname=Registry Test\nlang_from=English\nsametypesequence=m\n",
         )
         .unwrap();
-        fs::write(root.join(format!("{stem}.idx")), b"index").unwrap();
+        let mut index = b"entry\0".to_vec();
+        index.extend_from_slice(&0_u32.to_be_bytes());
+        index.extend_from_slice(&11_u32.to_be_bytes());
+        fs::write(root.join(format!("{stem}.idx")), index).unwrap();
         fs::write(root.join(format!("{stem}.dict")), b"source body").unwrap();
         ifo
     }

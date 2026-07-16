@@ -16,6 +16,7 @@ import {
   removeLocalDictionary,
   updateLocalDictionary,
 } from '../dictionary/native'
+import { formatLocalPathForDisplay } from '../dictionary/path'
 import { useTranslation } from '../hooks/useTranslation'
 
 import { Button as UiButton } from './ui/button'
@@ -143,9 +144,9 @@ export function LocalDictionarySettings() {
   }
 
   return (
-    <section className="border-border space-y-4 border-t pt-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+    <section className="border-border min-w-0 space-y-4 border-t pt-5">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0 flex-[1_1_28rem]">
           <h3 className="text-base font-semibold">
             {t('dictionary.local_title')}
           </h3>
@@ -156,7 +157,7 @@ export function LocalDictionarySettings() {
         <UiButton
           type="button"
           size="sm"
-          className="h-8 shrink-0 gap-1.5 rounded-lg px-3"
+          className="ml-auto h-8 max-w-full shrink-0 gap-1.5 rounded-lg px-3"
           onClick={() => void addDictionary()}
         >
           <PlusIcon className="size-4" />
@@ -182,14 +183,14 @@ export function LocalDictionarySettings() {
           {t('dictionary.local_empty')}
         </div>
       ) : (
-        <div className="border-border divide-border divide-y overflow-hidden rounded-md border">
+        <div className="border-border divide-border max-w-full min-w-0 divide-y overflow-hidden rounded-md border">
           {dictionaries.map((dictionary, index) => (
             <div
               key={dictionary.id}
-              className="bg-[var(--flow-bg)] px-3 py-3"
+              className="min-w-0 bg-[var(--flow-bg)] px-3 py-3"
               data-local-dictionary-id={dictionary.id}
             >
-              <div className="flex min-w-0 items-center gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
                 <UiCheckbox
                   aria-label={`${t('dictionary.local_enable')} ${dictionary.name}`}
                   checked={dictionary.enabled}
@@ -199,19 +200,19 @@ export function LocalDictionarySettings() {
                     })
                   }
                 />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-base font-medium">
+                <div className="min-w-0 flex-[1_1_18rem]">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="min-w-0 truncate text-base font-medium">
                       {dictionary.name}
                     </span>
-                    <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-xs uppercase">
+                    <span className="bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-xs uppercase">
                       {dictionary.format}
                     </span>
                     <span
                       className={
                         dictionary.sourceStatus === 'available'
-                          ? 'text-muted-foreground text-xs'
-                          : 'text-destructive text-xs'
+                          ? 'text-muted-foreground shrink-0 text-xs'
+                          : 'text-destructive shrink-0 text-xs'
                       }
                     >
                       {t(`dictionary.local_status.${dictionary.sourceStatus}`)}
@@ -219,9 +220,9 @@ export function LocalDictionarySettings() {
                   </div>
                   <div
                     className="text-muted-foreground mt-0.5 truncate text-xs"
-                    title={dictionary.sourcePath}
+                    title={formatLocalPathForDisplay(dictionary.sourcePath)}
                   >
-                    {dictionary.sourcePath}
+                    {formatLocalPathForDisplay(dictionary.sourcePath)}
                   </div>
                 </div>
                 <Select
@@ -234,7 +235,7 @@ export function LocalDictionarySettings() {
                 >
                   <SelectTrigger
                     aria-label={`${t('dictionary.local_language')} ${dictionary.name}`}
-                    className="h-8 w-28 rounded-lg"
+                    className="h-8 w-28 shrink-0 rounded-lg"
                   >
                     <SelectValue />
                   </SelectTrigger>
