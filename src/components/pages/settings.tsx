@@ -22,6 +22,7 @@ import {
 
 import { openSupportedExternalUrl } from '../../externalLink'
 import { ColorPickerPopover, normalizeHexColor } from '../ColorPickerPopover'
+import { LocalDictionarySettings } from '../LocalDictionarySettings'
 import { ShortcutChord } from '../ShortcutChord'
 import { Button as UiButton } from '../ui/button'
 import { Checkbox as UiCheckbox } from '../ui/checkbox'
@@ -364,6 +365,7 @@ export const Settings: React.FC = () => {
                   </UiButton>
                 </div>
               </section>
+              <LocalDictionarySettings />
             </div>
           )}
           {activeTab === 'shortcuts' && (

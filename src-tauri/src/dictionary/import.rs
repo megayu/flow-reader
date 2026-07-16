@@ -1,0 +1,444 @@
+use std::{
+    fs::{self, File},
+    io::{Read, Seek, SeekFrom},
+    path::{Path, PathBuf},
+    time::UNIX_EPOCH,
+};
+
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+const FINGERPRINT_SAMPLE_BYTES: usize = 4 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DictionaryFormat {
+    #[serde(rename = "stardict")]
+    StarDict,
+    #[serde(rename = "mdict")]
+    MDict,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DictionaryFileKind {
+    Index,
+    Data,
+    CompressedData,
+    Synonyms,
+    Resources,
+    Cover,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DictionaryFileReference {
+    pub kind: DictionaryFileKind,
+    pub path: PathBuf,
+    pub used: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceFingerprint {
+    pub size: u64,
+    pub modified_ms: u64,
+    pub sample_hash: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InspectedDictionary {
+    pub format: DictionaryFormat,
+    pub name: String,
+    pub source_path: PathBuf,
+    pub fingerprint: SourceFingerprint,
+    pub files: Vec<DictionaryFileReference>,
+    pub metadata_language: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DictionaryImportError {
+    pub code: String,
+    pub message: String,
+}
+
+impl DictionaryImportError {
+    fn new(code: &str, message: impl Into<String>) -> Self {
+        Self {
+            code: code.to_string(),
+            message: message.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for DictionaryImportError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}", self.message)
+    }
+}
+
+impl std::error::Error for DictionaryImportError {}
+
+pub fn inspect_dictionary_file(path: &Path) -> Result<InspectedDictionary, DictionaryImportError> {
+    if path.as_os_str().is_empty() {
+        return Err(DictionaryImportError::new(
+            "invalidMasterFile",
+            "Choose a StarDict .ifo or MDict .mdx master file.",
+        ));
+    }
+    if path.is_dir() || path.parent().is_none() {
+        return Err(DictionaryImportError::new(
+            "directoryNotAllowed",
+            "Dictionary import accepts one master file, not a directory.",
+        ));
+    }
+    if !path.is_file() {
+        return Err(DictionaryImportError::new(
+            "sourceMissing",
+            "The selected dictionary master file is unavailable.",
+        ));
+    }
+
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    match extension.as_str() {
+        "ifo" => inspect_stardict(path),
+        "mdx" => inspect_mdict(path),
+        _ => Err(DictionaryImportError::new(
+            "unsupportedMasterFile",
+            "Choose a StarDict .ifo or MDict .mdx master file.",
+        )),
+    }
+}
+
+fn inspect_stardict(path: &Path) -> Result<InspectedDictionary, DictionaryImportError> {
+    let source_path = canonical_file(path)?;
+    let metadata = fs::read_to_string(&source_path).map_err(|error| {
+        DictionaryImportError::new(
+            "sourceUnreadable",
+            format!("Cannot read .ifo file: {error}"),
+        )
+    })?;
+    if !metadata.contains("StarDict") {
+        return Err(DictionaryImportError::new(
+            "invalidStarDict",
+            "The selected .ifo file is not a readable StarDict dictionary.",
+        ));
+    }
+
+    let index = companion_path(&source_path, "idx")?;
+    if !index.is_file() {
+        return Err(DictionaryImportError::new(
+            "missingStarDictIndex",
+            "The matching .idx file is required.",
+        ));
+    }
+    let data = companion_path(&source_path, "dict")?;
+    let compressed_data = companion_path(&source_path, "dict.dz")?;
+    if !data.is_file() && !compressed_data.is_file() {
+        return Err(DictionaryImportError::new(
+            "missingStarDictData",
+            "A matching .dict or .dict.dz file is required.",
+        ));
+    }
+
+    let mut files = vec![file_reference(DictionaryFileKind::Index, index, true)?];
+    if data.is_file() {
+        files.push(file_reference(DictionaryFileKind::Data, data, true)?);
+    }
+    if compressed_data.is_file() {
+        files.push(file_reference(
+            DictionaryFileKind::CompressedData,
+            compressed_data,
+            !files
+                .iter()
+                .any(|file| file.kind == DictionaryFileKind::Data),
+        )?);
+    }
+    let synonyms = companion_path(&source_path, "syn")?;
+    if synonyms.is_file() {
+        files.push(file_reference(
+            DictionaryFileKind::Synonyms,
+            synonyms,
+            true,
+        )?);
+    }
+
+    Ok(InspectedDictionary {
+        format: DictionaryFormat::StarDict,
+        name: metadata_value(&metadata, "bookname").unwrap_or_else(|| source_stem(&source_path)),
+        fingerprint: fingerprint(&source_path)?,
+        metadata_language: infer_stardict_language(&metadata),
+        source_path,
+        files,
+    })
+}
+
+fn inspect_mdict(path: &Path) -> Result<InspectedDictionary, DictionaryImportError> {
+    let source_path = canonical_file(path)?;
+    if fs::metadata(&source_path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0)
+        == 0
+    {
+        return Err(DictionaryImportError::new(
+            "invalidMdict",
+            "The selected .mdx file is empty.",
+        ));
+    }
+
+    let mut files = Vec::new();
+    let resources = companion_path(&source_path, "mdd")?;
+    if resources.is_file() {
+        files.push(file_reference(
+            DictionaryFileKind::Resources,
+            resources,
+            true,
+        )?);
+    }
+    for extension in ["jpg", "png"] {
+        let cover = companion_path(&source_path, extension)?;
+        if cover.is_file() {
+            files.push(file_reference(DictionaryFileKind::Cover, cover, true)?);
+            break;
+        }
+    }
+
+    Ok(InspectedDictionary {
+        format: DictionaryFormat::MDict,
+        name: source_stem(&source_path),
+        fingerprint: fingerprint(&source_path)?,
+        metadata_language: None,
+        source_path,
+        files,
+    })
+}
+
+fn canonical_file(path: &Path) -> Result<PathBuf, DictionaryImportError> {
+    fs::canonicalize(path).map_err(|error| {
+        DictionaryImportError::new(
+            "sourceUnreadable",
+            format!("Cannot resolve dictionary file: {error}"),
+        )
+    })
+}
+
+fn companion_path(path: &Path, extension: &str) -> Result<PathBuf, DictionaryImportError> {
+    let parent = path.parent().ok_or_else(|| {
+        DictionaryImportError::new("invalidMasterFile", "The master file has no parent folder.")
+    })?;
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| {
+            DictionaryImportError::new("invalidMasterFile", "The master file name is invalid.")
+        })?;
+    Ok(parent.join(format!("{stem}.{extension}")))
+}
+
+fn file_reference(
+    kind: DictionaryFileKind,
+    path: PathBuf,
+    used: bool,
+) -> Result<DictionaryFileReference, DictionaryImportError> {
+    Ok(DictionaryFileReference {
+        kind,
+        path: canonical_file(&path)?,
+        used,
+    })
+}
+
+fn fingerprint(path: &Path) -> Result<SourceFingerprint, DictionaryImportError> {
+    let metadata = fs::metadata(path).map_err(|error| {
+        DictionaryImportError::new("sourceUnreadable", format!("Cannot inspect file: {error}"))
+    })?;
+    let modified_ms = metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or_default();
+    let mut file = File::open(path).map_err(|error| {
+        DictionaryImportError::new("sourceUnreadable", format!("Cannot read file: {error}"))
+    })?;
+    let mut hasher = Sha256::new();
+    hasher.update(metadata.len().to_le_bytes());
+    let mut buffer = vec![0; FINGERPRINT_SAMPLE_BYTES.min(metadata.len() as usize)];
+    if !buffer.is_empty() {
+        file.read_exact(&mut buffer).map_err(|error| {
+            DictionaryImportError::new("sourceUnreadable", format!("Cannot read file: {error}"))
+        })?;
+        hasher.update(&buffer);
+        if metadata.len() > FINGERPRINT_SAMPLE_BYTES as u64 {
+            file.seek(SeekFrom::End(-(FINGERPRINT_SAMPLE_BYTES as i64)))
+                .map_err(|error| {
+                    DictionaryImportError::new(
+                        "sourceUnreadable",
+                        format!("Cannot seek file: {error}"),
+                    )
+                })?;
+            buffer.resize(FINGERPRINT_SAMPLE_BYTES, 0);
+            file.read_exact(&mut buffer).map_err(|error| {
+                DictionaryImportError::new("sourceUnreadable", format!("Cannot read file: {error}"))
+            })?;
+            hasher.update(&buffer);
+        }
+    }
+
+    Ok(SourceFingerprint {
+        size: metadata.len(),
+        modified_ms,
+        sample_hash: format!("{:x}", hasher.finalize()),
+    })
+}
+
+fn metadata_value(metadata: &str, key: &str) -> Option<String> {
+    metadata.lines().find_map(|line| {
+        let (name, value) = line.split_once('=')?;
+        (name.eq_ignore_ascii_case(key) && !value.trim().is_empty())
+            .then(|| value.trim().to_string())
+    })
+}
+
+fn infer_stardict_language(metadata: &str) -> Option<String> {
+    let languages = ["lang", "lang_from", "lang_to"]
+        .into_iter()
+        .filter_map(|key| metadata_value(metadata, key))
+        .map(|value| value.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    if languages.iter().any(|language| {
+        matches!(
+            language.as_str(),
+            "zh" | "zho" | "chi" | "chinese" | "zh-cn" | "zh-tw"
+        )
+    }) {
+        Some("zh".to_string())
+    } else if languages.iter().any(|language| {
+        matches!(
+            language.as_str(),
+            "en" | "eng" | "english" | "en-us" | "en-gb"
+        )
+    }) {
+        Some("en".to_string())
+    } else {
+        None
+    }
+}
+
+fn source_stem(path: &Path) -> String {
+    path.file_stem()
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Dictionary".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs, path::PathBuf};
+
+    use super::{inspect_dictionary_file, DictionaryFileKind, DictionaryFormat};
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-dictionary-import-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn write_stardict(root: &std::path::Path, stem: &str) -> PathBuf {
+        let ifo = root.join(format!("{stem}.ifo"));
+        fs::write(
+            &ifo,
+            "StarDict's dict ifo file\nversion=2.4.2\nbookname=Test Dictionary\nlang_from=English\n",
+        )
+        .unwrap();
+        fs::write(root.join(format!("{stem}.idx")), b"index").unwrap();
+        fs::write(root.join(format!("{stem}.dict")), b"data").unwrap();
+        ifo
+    }
+
+    #[test]
+    fn accepts_only_master_files_and_requires_stardict_companions() {
+        let root = temp_dir("master");
+        let ifo = write_stardict(&root, "alpha");
+        assert_eq!(
+            inspect_dictionary_file(&ifo).unwrap().format,
+            DictionaryFormat::StarDict
+        );
+        assert_eq!(
+            inspect_dictionary_file(&root.join("alpha.idx"))
+                .unwrap_err()
+                .code,
+            "unsupportedMasterFile"
+        );
+        assert_eq!(
+            inspect_dictionary_file(&root).unwrap_err().code,
+            "directoryNotAllowed"
+        );
+        fs::remove_file(root.join("alpha.idx")).unwrap();
+        assert_eq!(
+            inspect_dictionary_file(&ifo).unwrap_err().code,
+            "missingStarDictIndex"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn discovers_only_same_stem_known_stardict_companions() {
+        let root = temp_dir("stardict-group");
+        let ifo = write_stardict(&root, "alpha");
+        let _other = write_stardict(&root, "beta");
+        fs::write(root.join("alpha.dict.dz"), b"compressed").unwrap();
+        fs::write(root.join("alpha.syn"), b"synonyms").unwrap();
+        fs::write(root.join("alpha.ttf"), b"not a companion").unwrap();
+
+        let inspected = inspect_dictionary_file(&ifo).unwrap();
+        assert_eq!(inspected.files.len(), 4);
+        assert!(inspected
+            .files
+            .iter()
+            .any(|file| file.kind == DictionaryFileKind::Data && file.used));
+        assert!(inspected
+            .files
+            .iter()
+            .any(|file| { file.kind == DictionaryFileKind::CompressedData && !file.used }));
+        assert!(inspected
+            .files
+            .iter()
+            .all(|file| !file.path.to_string_lossy().contains("beta")));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn mdict_associates_only_same_stem_mdd_and_cover() {
+        let root = temp_dir("mdict-group");
+        let mdx = root.join("source.mdx");
+        fs::write(&mdx, b"mdict fixture").unwrap();
+        fs::write(root.join("source.mdd"), b"resources").unwrap();
+        fs::write(root.join("source.jpg"), b"cover").unwrap();
+        fs::write(root.join("source.css"), b"ignored").unwrap();
+        fs::write(root.join("source.ttf"), b"ignored").unwrap();
+        fs::write(root.join("other.mdd"), b"ignored").unwrap();
+
+        let inspected = inspect_dictionary_file(&mdx).unwrap();
+        assert_eq!(inspected.format, DictionaryFormat::MDict);
+        assert_eq!(inspected.files.len(), 2);
+        assert!(inspected
+            .files
+            .iter()
+            .any(|file| file.kind == DictionaryFileKind::Resources));
+        assert!(inspected
+            .files
+            .iter()
+            .any(|file| file.kind == DictionaryFileKind::Cover));
+        let _ = fs::remove_dir_all(root);
+    }
+}

@@ -160,6 +160,10 @@ pub fn run() {
         }))
         .setup(|app| {
             let storage = storage::AppStorage::load(app.handle()).map_err(std::io::Error::other)?;
+            let dictionary_registry =
+                dictionary::registry::DictionaryRegistryStore::open_for_app(storage.root());
+            app.manage(dictionary_registry);
+            app.manage(dictionary::session::DictionarySessionManager::default());
             app.manage(storage.clone());
             if let Some(tasks) = app.try_state::<tasks::TaskService>() {
                 tasks.configure_io_for_path(storage.root());
@@ -216,6 +220,11 @@ pub fn run() {
             dictionary::fetch_zdic,
             dictionary::fetch_merriam_webster,
             dictionary::cancel_dictionary_session,
+            dictionary::list_local_dictionaries,
+            dictionary::register_local_dictionary,
+            dictionary::update_local_dictionary,
+            dictionary::relocate_local_dictionary,
+            dictionary::remove_local_dictionary,
             storage::list_books,
             storage::get_book,
             storage::open_book_directory,
