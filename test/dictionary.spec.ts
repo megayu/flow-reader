@@ -151,11 +151,11 @@ function localMdict(): LocalDictionaryRecord {
     files: [],
     fingerprint: { modifiedMs: 1, sampleHash: 'fixture', size: 1 },
     format: 'mdict',
-    id: 'dict-ciyuan',
+    id: 'dict-synthetic-zh',
     language: { source: 'manual', value: 'zh' },
     name: 'Synthetic Chinese MDict',
     order: 0,
-    sourcePath: 'C:\\fixture\\ciyuan.mdx',
+    sourcePath: 'C:\\fixture\\synthetic-zh.mdx',
     sourceStatus: 'available',
     updatedAt: 1,
   }
@@ -634,6 +634,48 @@ test('looks up an English selection in an enabled StarDict and releases its sess
   )
 })
 
+test('MDict follows an exact mixed-script internal key in the originating dictionary', async ({
+  page,
+}) => {
+  await setupDictionaryReader(
+    page,
+    {},
+    0,
+    {},
+    [localMdict()],
+    {},
+    {
+      'dict-synthetic-zh': {
+        合成查询: {
+          diagnostics: { recordBytes: 48, resourceBytes: 0 },
+          entry: {
+            headword: '合成查询',
+            html: '<a href="entry://internal-42 合成">打开合成索引</a>',
+          },
+        },
+        'internal-42 合成': {
+          diagnostics: { recordBytes: 48, resourceBytes: 0 },
+          entry: {
+            headword: 'internal-42 合成',
+            html: '<h1>合成索引</h1><p>这是合成的内部索引内容。</p>',
+          },
+        },
+      },
+    },
+  )
+  await selectFixtureText(page, '合成查询')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+
+  const popup = page.getByRole('dialog', { name: 'Dictionary: 合成查询' })
+  const frame = popup.locator('[data-dictionary-rich-content]').contentFrame()
+  await frame.getByText('打开合成索引', { exact: true }).click()
+
+  await expect(frame.getByRole('heading', { name: '合成索引' })).toBeVisible()
+  await expect(
+    frame.getByText('这是合成的内部索引内容。', { exact: true }),
+  ).toBeVisible()
+})
+
 test('MDict keeps internal links in a source-only bounded detail history', async ({
   page,
 }) => {
@@ -671,7 +713,7 @@ test('MDict keeps internal links in a source-only bounded detail history', async
     [localMdict()],
     {},
     {
-      'dict-ciyuan': {
+      'dict-synthetic-zh': {
         词: {
           diagnostics: { recordBytes: richHtml.length, resourceBytes: 0 },
           entry: { headword: '词', html: richHtml },
@@ -690,7 +732,7 @@ test('MDict keeps internal links in a source-only bounded detail history', async
       },
     },
     {
-      'dict-ciyuan': {
+      'dict-synthetic-zh': {
         'cy3.css': `
           @import url("https://tracker.invalid/import.css");
           @font-face { font-family: Fixture; src: url("fixture.ttf"); }
@@ -811,7 +853,7 @@ test('MDict keeps internal links in a source-only bounded detail history', async
   const state = await getDictionaryMockState(page)
   expect(state.mdictStylesheetRequests).toEqual([
     {
-      dictionaryId: 'dict-ciyuan',
+      dictionaryId: 'dict-synthetic-zh',
       key: 'cy3.css',
       sessionId: state.mdictRequests[0]!.sessionId,
     },
@@ -832,7 +874,7 @@ test('MDict keeps readable text when an optional stylesheet is missing', async (
     [localMdict()],
     {},
     {
-      'dict-ciyuan': {
+      'dict-synthetic-zh': {
         词: {
           diagnostics: { recordBytes: 64, resourceBytes: 0 },
           entry: {
@@ -863,7 +905,7 @@ test('outside dismissal releases the local dictionary session before showing act
     [localMdict()],
     {},
     {
-      'dict-ciyuan': {
+      'dict-synthetic-zh': {
         词: {
           diagnostics: { recordBytes: 32, resourceBytes: 0 },
           entry: { headword: '词', html: '<p>关闭路径测试</p>' },

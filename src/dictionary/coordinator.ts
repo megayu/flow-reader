@@ -1,4 +1,8 @@
-import { normalizeDictionaryQuery } from './query'
+import {
+  classifyDictionaryQuery,
+  MAX_DICTIONARY_QUERY_LENGTH,
+  normalizeDictionaryQuery,
+} from './query'
 import type {
   DictionaryQuery,
   DictionaryQueryLanguage,
@@ -60,18 +64,34 @@ export class DictionaryCoordinator {
     providers: DictionaryProvider[],
     onUpdate?: SourceUpdateListener,
   ): DictionaryLookupSession {
-    this.activeSession?.controller.abort()
-
-    const id = this.nextSessionId++
-    const controller = new AbortController()
     const query = normalizeDictionaryQuery(rawText)
-    this.activeSession = { controller, id }
-
     const eligibleProviders = query
       ? providers.filter((provider) =>
           isProviderEligible(provider, query.language),
         )
       : []
+    return this.startLookup(query, eligibleProviders, onUpdate)
+  }
+
+  lookupInternalEntry(
+    entry: string,
+    provider: DictionaryProvider,
+    onUpdate?: SourceUpdateListener,
+  ): DictionaryLookupSession {
+    const query = exactInternalEntryQuery(entry)
+    return this.startLookup(query, query ? [provider] : [], onUpdate)
+  }
+
+  private startLookup(
+    query: DictionaryQuery | null,
+    eligibleProviders: DictionaryProvider[],
+    onUpdate?: SourceUpdateListener,
+  ) {
+    this.activeSession?.controller.abort()
+
+    const id = this.nextSessionId++
+    const controller = new AbortController()
+    this.activeSession = { controller, id }
     let sources = eligibleProviders.map<DictionarySourceState>((provider) => ({
       providerId: provider.id,
       providerName: provider.name,
@@ -161,6 +181,22 @@ export class DictionaryCoordinator {
   private cancelSession(id: number, controller: AbortController) {
     controller.abort()
     if (this.isCurrent(id)) this.activeSession = undefined
+  }
+}
+
+function exactInternalEntryQuery(entry: string): DictionaryQuery | null {
+  const characters = Array.from(entry)
+  if (
+    !characters.length ||
+    characters.length > MAX_DICTIONARY_QUERY_LENGTH ||
+    /[\u0000-\u001f\u007f]/u.test(entry)
+  ) {
+    return null
+  }
+
+  return {
+    language: classifyDictionaryQuery(entry),
+    text: entry,
   }
 }
 

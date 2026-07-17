@@ -98,9 +98,9 @@ export function DictionaryPopup({
     if (!currentDetail || !detailKey || !detailProvider) return
 
     setDetailState({ key: detailKey, sources: [] })
-    const session = detailCoordinator.lookup(
+    const session = detailCoordinator.lookupInternalEntry(
       currentDetail.query,
-      [detailProvider],
+      detailProvider,
       (sources) => setDetailState({ key: detailKey, sources }),
     )
     return () => {
