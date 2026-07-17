@@ -119,13 +119,19 @@ export function DictionaryPopup({
     () => mergedRootSources.filter((source) => source.status !== 'cancelled'),
     [mergedRootSources],
   )
+  const selectableNavigationSources = useMemo(
+    () => navigationSources.filter((source) => source.status !== 'empty'),
+    [navigationSources],
+  )
   const currentSource = currentDetail
     ? navigationSources.find(
         (source) => source.providerId === currentDetail.providerId,
       )
-    : (navigationSources.find(
+    : (selectableNavigationSources.find(
         (source) => source.providerId === currentSourceId,
-      ) ?? navigationSources[0])
+      ) ??
+      selectableNavigationSources[0] ??
+      navigationSources[0])
   const queryLanguage = normalizeDictionaryQuery(query)?.language ?? 'unknown'
   const speech = useSelectionSpeech({
     bookLanguage,
@@ -240,11 +246,13 @@ export function DictionaryPopup({
   useEffect(() => {
     if (currentDetail) return
     setCurrentSourceId((current) =>
-      navigationSources.some((source) => source.providerId === current)
+      selectableNavigationSources.some(
+        (source) => source.providerId === current,
+      )
         ? current
-        : navigationSources[0]?.providerId,
+        : selectableNavigationSources[0]?.providerId,
     )
-  }, [currentDetail, navigationSources])
+  }, [currentDetail, selectableNavigationSources])
 
   const pruneDetailCaches = useCallback(
     (history: readonly DictionaryDetailLocation[]) => {
@@ -368,6 +376,10 @@ export function DictionaryPopup({
     if (currentDetail) return
     const sources = Array.from(
       scroll.querySelectorAll<HTMLElement>('[data-dictionary-source-id]'),
+    ).filter(
+      (source) =>
+        source.dataset.dictionarySourceStatus !== 'cancelled' &&
+        source.dataset.dictionarySourceStatus !== 'empty',
     )
     if (!sources.length) return
 
@@ -389,6 +401,13 @@ export function DictionaryPopup({
 
   const locateSource = (sourceId: string) => {
     if (currentDetail) return
+    if (
+      !selectableNavigationSources.some(
+        (source) => source.providerId === sourceId,
+      )
+    ) {
+      return
+    }
     const scroll = scrollRef.current
     const source = Array.from(
       scroll?.querySelectorAll<HTMLElement>('[data-dictionary-source-id]') ??
@@ -456,6 +475,7 @@ export function DictionaryPopup({
             {navigationSources.map((source) => {
               const active =
                 !currentDetail &&
+                source.status !== 'empty' &&
                 source.providerId === currentSource?.providerId
               return (
                 <button
@@ -463,12 +483,12 @@ export function DictionaryPopup({
                   type="button"
                   aria-label={source.providerName}
                   aria-pressed={active}
-                  className={`enabled:hover:border-border enabled:hover:bg-muted enabled:hover:text-foreground inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-sm border text-sm leading-none font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-accent-border)] disabled:cursor-default disabled:opacity-35 ${
+                  className={`enabled:hover:border-border enabled:hover:bg-muted enabled:hover:text-foreground inline-flex size-7 shrink-0 items-center justify-center rounded-sm border text-sm leading-none font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-accent-border)] enabled:cursor-pointer disabled:cursor-default disabled:opacity-35 ${
                     active
                       ? 'text-foreground border-transparent bg-[var(--flow-accent-bg)] ring-1 ring-[var(--flow-accent-border)] ring-inset'
                       : 'text-muted-foreground border-transparent'
                   }`}
-                  disabled={Boolean(currentDetail)}
+                  disabled={Boolean(currentDetail) || source.status === 'empty'}
                   onClick={() => locateSource(source.providerId)}
                 >
                   {sourceShortcut(source)}

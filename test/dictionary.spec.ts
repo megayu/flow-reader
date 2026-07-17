@@ -817,7 +817,7 @@ test('retries a failed online source without displacing the scrolled dictionary 
     .toHaveLength(2)
 })
 
-test('offers a compact external action when Merriam-Webster has no matching entry', async ({
+test('keeps the external action available while disabling empty source navigation', async ({
   page,
 }) => {
   await setupDictionaryReader(
@@ -836,10 +836,17 @@ test('offers a compact external action when Merriam-Webster has no matching entr
 
   const popup = page.getByRole('dialog', { name: 'Dictionary: sample' })
   const section = popup.locator('[data-dictionary-source-id="merriam-webster"]')
+  const sourceButton = popup.getByRole('button', {
+    name: 'Merriam-Webster',
+    exact: true,
+  })
   await expect(section.getByText('No definition found.')).toBeVisible()
   const source = section.locator('[data-dictionary-external="merriam-webster"]')
   await expect(section.locator('[data-dictionary-retry]')).toHaveCount(0)
   await expect(source).toBeVisible()
+  await expect(source).toBeEnabled()
+  await expect(sourceButton).toBeDisabled()
+  await expect(sourceButton).toHaveAttribute('aria-pressed', 'false')
   expect(await source.getAttribute('title')).toBeNull()
   expect(
     await section.evaluate((element) => element.getBoundingClientRect().height),
@@ -1133,12 +1140,18 @@ test('keeps empty dictionary sources visible beside successful results', async (
   await expect(
     popup.getByText('No definition found.', { exact: true }),
   ).toBeVisible()
-  await expect(
-    popup.getByRole('button', {
-      name: 'Oxford English-Chinese Dictionary',
-      exact: true,
-    }),
-  ).toBeVisible()
+  const empty = popup.getByRole('button', {
+    name: 'Merriam-Webster',
+    exact: true,
+  })
+  const successful = popup.getByRole('button', {
+    name: 'Oxford English-Chinese Dictionary',
+    exact: true,
+  })
+  await expect(empty).toBeDisabled()
+  await expect(empty).toHaveAttribute('aria-pressed', 'false')
+  await expect(successful).toBeEnabled()
+  await expect(successful).toHaveAttribute('aria-pressed', 'true')
 })
 
 test('uses fixed source buttons to locate flat results and track scrolling', async ({
