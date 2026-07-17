@@ -44,6 +44,7 @@
 
 - Prefer targeted automated checks for changed behavior: Playwright for UI flows, `pnpm lint` for TS/React rules, `pnpm build` for production type/build coverage.
 - Use synthetic fixture text in tests; do not copy book text, user-provided context, or investigation-specific prose into test cases unless the exact text is required to reproduce a parser or encoding bug.
+- Keep test fixtures platform-neutral. Do not use Windows- or Unix-specific drive letters, absolute paths, path separators, shell syntax, or other operating-system characteristics unless the test explicitly verifies platform-specific path handling or system integration.
 - For reader rendering, selection, keyboard, layout, or performance-sensitive changes, use the repository skills above to choose the required client checks.
 
 ## Commit & Pull Request Guidelines

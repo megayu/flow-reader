@@ -26,8 +26,15 @@ export function DictionarySourceSection({
   const externalUrl = source.result?.externalUrl ?? source.externalUrl
 
   return (
-    <section aria-labelledby={`dictionary-source-${source.providerId}`}>
-      <div className="border-border flex min-h-10 items-center border-b px-5">
+    <section
+      aria-labelledby={`dictionary-source-${source.providerId}`}
+      data-dictionary-source-id={source.providerId}
+      data-dictionary-source-status={source.status}
+    >
+      <div
+        className="bg-muted/45 flex min-h-10 items-center px-5"
+        data-dictionary-source-header="true"
+      >
         <h2
           id={`dictionary-source-${source.providerId}`}
           className="text-muted-foreground text-sm font-medium"
@@ -72,7 +79,7 @@ export function DictionarySourceSection({
             : t('lookup_error')}
         </div>
       ) : source.status === 'empty' ? (
-        <div className="text-muted-foreground min-h-24 px-5 py-4 text-sm">
+        <div className="text-muted-foreground px-5 py-3 text-sm">
           {t('no_result')}
         </div>
       ) : source.result?.content.kind === 'entries' ? (

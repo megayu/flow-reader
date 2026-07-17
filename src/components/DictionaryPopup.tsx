@@ -1,4 +1,5 @@
 import { ArrowLeftIcon, SquareIcon, Volume2Icon, XIcon } from 'lucide-react'
+import { ScrollArea as ScrollAreaPrimitive } from 'radix-ui'
 import {
   useCallback,
   useEffect,
@@ -73,6 +74,7 @@ export function DictionaryPopup({
     key?: string
     sources: DictionarySourceState[]
   }>({ sources: [] })
+  const [currentSourceId, setCurrentSourceId] = useState<string>()
   const scrollRef = useRef<HTMLDivElement>(null)
   const rootScrollTopRef = useRef(0)
   const restoreRootScrollRef = useRef(false)
@@ -88,6 +90,17 @@ export function DictionaryPopup({
       ? detailState.sources
       : []
     : rootSources
+  const navigationSources = useMemo(
+    () => rootSources.filter((source) => source.status !== 'cancelled'),
+    [rootSources],
+  )
+  const currentSource = currentDetail
+    ? navigationSources.find(
+        (source) => source.providerId === currentDetail.providerId,
+      )
+    : (navigationSources.find(
+        (source) => source.providerId === currentSourceId,
+      ) ?? navigationSources[0])
   const backLabel = currentDetail ? t('back_entry') : t('back')
   const queryLanguage = normalizeDictionaryQuery(query)?.language ?? 'unknown'
   const speech = useSelectionSpeech({
@@ -108,6 +121,15 @@ export function DictionaryPopup({
       rootCoordinator.cancelActive()
     }
   }, [providers, query, rootCoordinator])
+
+  useEffect(() => {
+    if (currentDetail) return
+    setCurrentSourceId((current) =>
+      navigationSources.some((source) => source.providerId === current)
+        ? current
+        : navigationSources[0]?.providerId,
+    )
+  }, [currentDetail, navigationSources])
 
   useEffect(() => {
     if (!currentDetail || !detailKey || !detailProvider) return
@@ -168,6 +190,48 @@ export function DictionaryPopup({
     setDetailHistory((history) => history.slice(0, -1))
   }
 
+  const updateCurrentSource = (scroll: HTMLDivElement) => {
+    if (currentDetail) return
+    const sources = Array.from(
+      scroll.querySelectorAll<HTMLElement>('[data-dictionary-source-id]'),
+    )
+    if (!sources.length) return
+
+    const scrollTop = scroll.getBoundingClientRect().top + 1
+    const atEnd =
+      scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 1
+    const current = atEnd
+      ? sources.at(-1)
+      : sources.reduce(
+          (candidate, source) =>
+            source.getBoundingClientRect().top <= scrollTop
+              ? source
+              : candidate,
+          sources[0],
+        )
+    const sourceId = current?.dataset.dictionarySourceId
+    if (sourceId) setCurrentSourceId(sourceId)
+  }
+
+  const locateSource = (sourceId: string) => {
+    if (currentDetail) return
+    const scroll = scrollRef.current
+    const source = Array.from(
+      scroll?.querySelectorAll<HTMLElement>('[data-dictionary-source-id]') ??
+        [],
+    ).find((element) => element.dataset.dictionarySourceId === sourceId)
+    if (!scroll || !source) return
+
+    const header = source.querySelector<HTMLElement>(
+      '[data-dictionary-source-header]',
+    )
+    const targetTop = header
+      ? header.getBoundingClientRect().bottom + 1
+      : source.getBoundingClientRect().top
+    scroll.scrollTop += targetTop - scroll.getBoundingClientRect().top
+    setCurrentSourceId(sourceId)
+  }
+
   return (
     <div className="flex min-h-0 flex-col">
       <header className="border-border flex h-12 shrink-0 items-center gap-2 border-b px-2">
@@ -179,9 +243,7 @@ export function DictionaryPopup({
           onClick={handleBack}
         />
         <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
-          <div className="truncate text-center font-medium">
-            {currentDetail?.query ?? query}
-          </div>
+          <div className="truncate text-center font-medium">{query}</div>
           <IconButton
             title={speechLabel}
             aria-label={speechLabel}
@@ -199,26 +261,82 @@ export function DictionaryPopup({
           onClick={onClose}
         />
       </header>
-      <div
-        ref={scrollRef}
-        className="scroll min-h-0 overflow-y-auto overscroll-contain"
+      {navigationSources.length > 0 && (
+        <div className="border-border grid min-h-10 shrink-0 grid-cols-[minmax(0,7fr)_minmax(0,3fr)] items-center border-b">
+          <div
+            className="truncate px-5 text-sm font-medium"
+            data-dictionary-current-source="true"
+          >
+            {currentSource?.providerName}
+          </div>
+          <nav
+            className="flex min-w-0 items-center justify-end gap-1 px-2"
+            data-dictionary-navigator="true"
+          >
+            {navigationSources.map((source) => {
+              const active =
+                !currentDetail &&
+                source.providerId === currentSource?.providerId
+              return (
+                <button
+                  key={source.providerId}
+                  type="button"
+                  aria-label={source.providerName}
+                  aria-pressed={active}
+                  className={`enabled:hover:border-border enabled:hover:bg-muted enabled:hover:text-foreground inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-sm border text-sm leading-none font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-accent-border)] disabled:cursor-default disabled:opacity-35 ${
+                    active
+                      ? 'text-foreground border-transparent bg-[var(--flow-accent-bg)] ring-1 ring-[var(--flow-accent-border)] ring-inset'
+                      : 'text-muted-foreground border-transparent'
+                  }`}
+                  disabled={Boolean(currentDetail)}
+                  onClick={() => locateSource(source.providerId)}
+                >
+                  {sourceShortcut(source)}
+                </button>
+              )
+            })}
+          </nav>
+        </div>
+      )}
+      <ScrollAreaPrimitive.Root
+        className="relative min-h-0 overflow-hidden"
         style={{ maxHeight: maxBodyHeight }}
       >
-        {visibleSources.length ? (
-          visibleSources.map((source) => (
-            <DictionarySourceSection
-              key={source.providerId}
-              onContentResize={currentDetail ? undefined : restoreRootScroll}
-              onEntryNavigate={navigateToEntry}
-              source={source}
-            />
-          ))
-        ) : (
-          <div className="text-muted-foreground px-5 py-6 text-sm">
-            {t('no_result')}
-          </div>
-        )}
-      </div>
+        <ScrollAreaPrimitive.Viewport
+          ref={scrollRef}
+          className="min-h-0 w-full overscroll-contain"
+          data-dictionary-scroll="true"
+          style={{ maxHeight: maxBodyHeight }}
+          onScroll={(event) => updateCurrentSource(event.currentTarget)}
+        >
+          {visibleSources.length ? (
+            visibleSources.map((source) => (
+              <DictionarySourceSection
+                key={source.providerId}
+                onContentResize={currentDetail ? undefined : restoreRootScroll}
+                onEntryNavigate={navigateToEntry}
+                source={source}
+              />
+            ))
+          ) : (
+            <div className="text-muted-foreground px-5 py-6 text-sm">
+              {t('no_result')}
+            </div>
+          )}
+        </ScrollAreaPrimitive.Viewport>
+        <ScrollAreaPrimitive.Scrollbar
+          className="flex w-2.5 touch-none bg-transparent p-0.5 select-none"
+          orientation="vertical"
+        >
+          <ScrollAreaPrimitive.Thumb className="bg-muted-foreground/20 hover:bg-muted-foreground/30 active:bg-muted-foreground/40 relative flex-1 rounded-full" />
+        </ScrollAreaPrimitive.Scrollbar>
+      </ScrollAreaPrimitive.Root>
     </div>
   )
+}
+
+function sourceShortcut(source: DictionarySourceState) {
+  if (source.providerId === 'zdic') return '汉'
+  if (source.providerId === 'merriam-webster') return 'M'
+  return Array.from(source.providerName.trim())[0]?.toLocaleUpperCase() ?? '·'
 }

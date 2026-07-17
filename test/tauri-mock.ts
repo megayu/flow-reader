@@ -344,6 +344,7 @@ export async function installTauriMock(
           const changes = (args?.changes ?? {}) as {
             enabled?: boolean
             language?: 'en' | 'unknown' | 'zh'
+            name?: string
             order?: number
           }
           const current = localDictionaryStore[index]!
@@ -354,6 +355,9 @@ export async function installTauriMock(
               : {}),
             ...(typeof changes.order === 'number'
               ? { order: changes.order }
+              : {}),
+            ...(typeof changes.name === 'string'
+              ? { name: changes.name.trim() }
               : {}),
             ...(changes.language
               ? {

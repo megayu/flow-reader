@@ -161,6 +161,36 @@ test('manages local dictionary order, status, language, enablement, relocation, 
   ).toHaveLength(1)
 })
 
+test('renames a local dictionary inline and hides language provenance', async ({
+  page,
+}) => {
+  const dictionary = localDictionary({
+    id: 'dict-renameable000000000',
+    name: 'Fixture Lexicon',
+    sourcePath: 'fixture-dictionary.mdx',
+  })
+  await installTauriMock(page, { localDictionaries: [dictionary] })
+  await page.goto('/')
+  const dialog = await openDictionarySettings(page)
+  const row = dialog.locator(`[data-local-dictionary-id="${dictionary.id}"]`)
+
+  await expect(row.getByText('Language source')).toHaveCount(0)
+  await row.getByRole('button', { name: 'Rename Fixture Lexicon' }).click()
+  const input = row.getByRole('textbox', { name: 'Dictionary name' })
+  await input.fill('  Reader Lexicon  ')
+  await input.press('Enter')
+
+  await expect(row.getByText('Reader Lexicon', { exact: true })).toBeVisible()
+  await expect
+    .poll(async () => {
+      const state = await getLocalDictionaryMockState(page)
+      return state.localDictionaries.find(
+        (record) => record.id === dictionary.id,
+      )?.name
+    })
+    .toBe('Reader Lexicon')
+})
+
 test('shows master-file validation errors without adding a partial record', async ({
   page,
 }) => {

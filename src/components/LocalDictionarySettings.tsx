@@ -2,6 +2,7 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   FolderSearchIcon,
+  PencilIcon,
   PlusIcon,
   Trash2Icon,
 } from 'lucide-react'
@@ -11,6 +12,7 @@ import {
   listLocalDictionaries,
   type LocalDictionaryLanguage,
   type LocalDictionaryRecord,
+  type LocalDictionaryUpdate,
   registerLocalDictionary,
   relocateLocalDictionary,
   removeLocalDictionary,
@@ -21,6 +23,7 @@ import { useTranslation } from '../hooks/useTranslation'
 
 import { Button as UiButton } from './ui/button'
 import { Checkbox as UiCheckbox } from './ui/checkbox'
+import { Input } from './ui/input'
 import {
   Select,
   SelectContent,
@@ -35,6 +38,7 @@ export function LocalDictionarySettings() {
   const [error, setError] = useState<string>()
   const [loading, setLoading] = useState(true)
   const [confirmRemoveId, setConfirmRemoveId] = useState<string>()
+  const [editingNameId, setEditingNameId] = useState<string>()
 
   const refresh = useCallback(async () => {
     try {
@@ -78,10 +82,7 @@ export function LocalDictionarySettings() {
     }
   }
 
-  const updateRecord = async (
-    id: string,
-    changes: { enabled?: boolean; language?: LocalDictionaryLanguage },
-  ) => {
+  const updateRecord = async (id: string, changes: LocalDictionaryUpdate) => {
     try {
       const record = await updateLocalDictionary(id, changes)
       setDictionaries((current) => upsertDictionary(current, record))
@@ -89,6 +90,13 @@ export function LocalDictionarySettings() {
     } catch (reason) {
       setError(errorMessage(reason, t('dictionary.local_error')))
     }
+  }
+
+  const finishRename = (dictionary: LocalDictionaryRecord, value: string) => {
+    setEditingNameId(undefined)
+    const name = value.trim()
+    if (!name || name === dictionary.name) return
+    void updateRecord(dictionary.id, { name })
   }
 
   const moveDictionary = async (index: number, direction: -1 | 1) => {
@@ -202,9 +210,41 @@ export function LocalDictionarySettings() {
                 />
                 <div className="min-w-0 flex-[1_1_18rem]">
                   <div className="flex min-w-0 items-center gap-2">
-                    <span className="min-w-0 truncate text-base font-medium">
-                      {dictionary.name}
-                    </span>
+                    {editingNameId === dictionary.id ? (
+                      <Input
+                        autoFocus
+                        aria-label={t('dictionary.local_name')}
+                        className="h-7 max-w-72 text-base font-medium"
+                        defaultValue={dictionary.name}
+                        onBlur={(event) =>
+                          finishRename(dictionary, event.currentTarget.value)
+                        }
+                        onFocus={(event) => event.currentTarget.select()}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') event.currentTarget.blur()
+                          if (event.key === 'Escape') {
+                            event.currentTarget.value = dictionary.name
+                            event.currentTarget.blur()
+                          }
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <span className="min-w-0 truncate text-base font-medium">
+                          {dictionary.name}
+                        </span>
+                        <UiButton
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground size-7 shrink-0"
+                          aria-label={`${t('dictionary.local_rename')} ${dictionary.name}`}
+                          onClick={() => setEditingNameId(dictionary.id)}
+                        >
+                          <PencilIcon className="size-3.5" />
+                        </UiButton>
+                      </>
+                    )}
                     <span className="bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-xs uppercase">
                       {dictionary.format}
                     </span>
@@ -297,12 +337,6 @@ export function LocalDictionarySettings() {
                     <Trash2Icon className="size-4" />
                   </UiButton>
                 </div>
-              </div>
-              <div className="text-muted-foreground mt-2 pl-7 text-xs">
-                {t('dictionary.local_language_source')}:{' '}
-                {t(
-                  `dictionary.local_language_source.${dictionary.language.source}`,
-                )}
               </div>
             </div>
           ))}

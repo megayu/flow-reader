@@ -307,6 +307,36 @@ function localMdict(): LocalDictionaryRecord {
   }
 }
 
+function merriamWebsterEntry(query: string, definitions: readonly string[]) {
+  return [
+    {
+      def: [
+        {
+          sseq: definitions.map((definition, index) => [
+            [
+              'sense',
+              {
+                dt: [['text', `{bc}${definition}`]],
+                sn: String(index + 1),
+              },
+            ],
+          ]),
+        },
+      ],
+      fl: 'noun',
+      hwi: { hw: query },
+      meta: { id: `${query}:1`, stems: [query] },
+    },
+  ]
+}
+
+function starDictEntry(query: string, definitions: readonly string[]) {
+  return {
+    diagnostics: { bytesRead: 64, decompressedBlocks: 1 },
+    entries: [{ definitions, headword: query }],
+  }
+}
+
 async function selectFixtureText(
   page: Page,
   query: string,
@@ -611,7 +641,11 @@ test('falls back to cleaned item text without exposing active or raw HTML', asyn
   const popup = page.getByRole('dialog', { name: 'Dictionary: 测' })
   await expect(popup.getByText('缺少内部 class 的回退文本')).toBeVisible()
   await expect(popup.getByText('危险脚本')).toHaveCount(0)
-  await expect(popup.locator('script, style, [onclick]')).toHaveCount(0)
+  await expect(
+    popup.locator(
+      '[data-dictionary-source-id] script, [data-dictionary-source-id] style, [data-dictionary-source-id] [onclick]',
+    ),
+  ).toHaveCount(0)
 })
 
 test('keeps the source link on parse failure and uses two-stage outside dismissal', async ({
@@ -702,9 +736,7 @@ test('keeps the larger popup inside a narrow horizontal reader', async ({
 
   expect(geometry).toMatchObject({ inside: true })
   expect(geometry.width).toBeGreaterThan(280)
-  await expect(
-    popup.locator('.overflow-y-auto.overscroll-contain'),
-  ).toHaveCount(1)
+  await expect(popup.locator('[data-dictionary-scroll]')).toHaveCount(1)
 })
 
 test('looks up an English selection only in Merriam-Webster', async ({
@@ -899,6 +931,139 @@ test('looks up an English selection only in Merriam-Webster', async ({
   ])
 })
 
+test('keeps empty dictionary sources visible beside successful results', async ({
+  page,
+}) => {
+  await setupDictionaryReader(
+    page,
+    {},
+    0,
+    { sample: [] },
+    [localStarDict()],
+    {
+      'dict-oxford': {
+        sample: starDictEntry('sample', ['a synthetic local explanation']),
+      },
+    },
+    {},
+    {},
+    'en-US',
+  )
+  await selectFixtureText(page, 'sample')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+
+  const popup = page.getByRole('dialog', { name: 'Dictionary: sample' })
+  await expect(
+    popup.getByText('a synthetic local explanation', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    popup.getByRole('heading', { name: 'Merriam-Webster', exact: true }),
+  ).toBeVisible()
+  await expect(
+    popup.getByText('No definition found.', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    popup.getByRole('button', {
+      name: 'Oxford English-Chinese Dictionary',
+      exact: true,
+    }),
+  ).toBeVisible()
+})
+
+test('uses fixed source buttons to locate flat results and track scrolling', async ({
+  page,
+}) => {
+  const onlineDefinitions = Array.from(
+    { length: 18 },
+    (_, index) => `synthetic online explanation ${index + 1}`,
+  )
+  await setupDictionaryReader(
+    page,
+    {},
+    0,
+    {
+      sample: merriamWebsterEntry('sample', onlineDefinitions),
+    },
+    [localStarDict()],
+    {
+      'dict-oxford': {
+        sample: starDictEntry(
+          'sample',
+          Array.from(
+            { length: 18 },
+            (_, index) => `synthetic local explanation ${index + 1}`,
+          ),
+        ),
+      },
+    },
+    {},
+    {},
+    'en-US',
+  )
+  await selectFixtureText(page, 'sample')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+
+  const popup = page.getByRole('dialog', { name: 'Dictionary: sample' })
+  const online = popup.getByRole('button', {
+    name: 'Merriam-Webster',
+    exact: true,
+  })
+  const local = popup.getByRole('button', {
+    name: 'Oxford English-Chinese Dictionary',
+    exact: true,
+  })
+  await expect(online).toHaveAttribute('aria-pressed', 'true')
+  await expect(local).toHaveAttribute('aria-pressed', 'false')
+  await expect(popup.locator('[data-dictionary-current-source]')).toHaveText(
+    'Merriam-Webster',
+  )
+  await expect(
+    popup.getByText('synthetic online explanation 1', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    popup.getByText('synthetic local explanation 1', { exact: true }),
+  ).toBeAttached()
+
+  await local.click()
+  await expect(online).toHaveAttribute('aria-pressed', 'false')
+  await expect(local).toHaveAttribute('aria-pressed', 'true')
+  await expect(popup.locator('[data-dictionary-current-source]')).toHaveText(
+    'Oxford English-Chinese Dictionary',
+  )
+  await expect(
+    popup.getByText('synthetic local explanation 1', { exact: true }),
+  ).toBeVisible()
+  const localHeaderOffset = await popup
+    .getByRole('heading', {
+      name: 'Oxford English-Chinese Dictionary',
+      exact: true,
+    })
+    .evaluate((heading) => {
+      const header = heading.parentElement
+      const scroll = heading.closest('[data-dictionary-scroll]')
+      if (!header || !scroll) throw new Error('Missing dictionary geometry')
+      return (
+        header.getBoundingClientRect().bottom -
+        scroll.getBoundingClientRect().top
+      )
+    })
+  expect(localHeaderOffset).toBeLessThanOrEqual(1)
+
+  const scroll = popup.locator('[data-dictionary-scroll]')
+  const reservedScrollbarWidth = await scroll.evaluate(
+    (element) => element.getBoundingClientRect().width - element.clientWidth,
+  )
+  expect(reservedScrollbarWidth).toBeLessThanOrEqual(1)
+  await scroll.evaluate((element) => {
+    element.scrollTop = 0
+    element.dispatchEvent(new Event('scroll', { bubbles: true }))
+  })
+  await expect(online).toHaveAttribute('aria-pressed', 'true')
+  await expect(popup.locator('[data-dictionary-current-source]')).toHaveText(
+    'Merriam-Webster',
+  )
+})
+
 test('looks up an English selection in an enabled StarDict and releases its session', async ({
   page,
 }) => {
@@ -1004,8 +1169,9 @@ test('MDict keeps internal links in a source-only bounded detail history', async
     <link rel="stylesheet" href="cy3.css">
     <main onclick="window.evil = true">
       <p class="sense">安全释义</p>
+      ${'<p>用于形成总览滚动区域的安全文本。</p>'.repeat(8)}
       <a href="entry://新词">跳到新词</a>
-      ${'<p>用于形成总览滚动区域的安全文本。</p>'.repeat(32)}
+      ${'<p>用于形成总览滚动区域的安全文本。</p>'.repeat(24)}
       <img src="figure.png" alt="本地图">
       <img src="https://tracker.invalid/pixel.png" alt="外部图">
       <script>window.evil = true</script>
@@ -1083,13 +1249,32 @@ test('MDict keeps internal links in a source-only bounded detail history', async
   expect(documentSafety.style).not.toMatch(
     /@import|behavior|tracker\.invalid|\.\.\/secret/,
   )
+  const contextMenu = await frame.locator('body').evaluate((body) => {
+    const event = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+    })
+    const dispatchResult = body.dispatchEvent(event)
+    return {
+      defaultPrevented: event.defaultPrevented,
+      dispatchResult,
+    }
+  })
+  expect(contextMenu).toEqual({
+    defaultPrevented: true,
+    dispatchResult: false,
+  })
 
-  const scroll = popup.locator('.overflow-y-auto.overscroll-contain')
+  const scroll = popup.locator('[data-dictionary-scroll]')
   const rootScrollTop = await scroll.evaluate((element) => {
     element.scrollTop = 180
     return element.scrollTop
   })
   expect(rootScrollTop).toBeGreaterThan(0)
+  const sourceButtons = popup.locator('[data-dictionary-navigator] button')
+  await expect(sourceButtons).toHaveCount(2)
+  await expect(sourceButtons.nth(0)).toBeEnabled()
+  await expect(sourceButtons.nth(1)).toBeEnabled()
 
   await frame.getByText('跳到新词', { exact: true }).evaluate((anchor) => {
     const selection = anchor.ownerDocument.defaultView?.getSelection()
@@ -1107,11 +1292,17 @@ test('MDict keeps internal links in a source-only bounded detail history', async
   await frame.locator('body').evaluate((body) => {
     body.ownerDocument.defaultView?.getSelection()?.removeAllRanges()
   })
+  await frame.getByText('跳到新词', { exact: true }).scrollIntoViewIfNeeded()
+  const navigationScrollTop = await scroll.evaluate(
+    (element) => element.scrollTop,
+  )
 
   await frame.getByText('跳到新词', { exact: true }).click()
   await expect(
-    popup.locator('header').getByText('新词', { exact: true }),
+    popup.locator('header').getByText('词', { exact: true }),
   ).toBeVisible()
+  await expect(sourceButtons.nth(0)).toBeDisabled()
+  await expect(sourceButtons.nth(1)).toBeDisabled()
   await expect
     .poll(async () => (await getDictionaryMockState(page)).mdictRequests)
     .toHaveLength(2)
@@ -1126,7 +1317,7 @@ test('MDict keeps internal links in a source-only bounded detail history', async
 
   await frame.getByText('继续跳转', { exact: true }).click()
   await expect(
-    popup.locator('header').getByText('第三词', { exact: true }),
+    popup.locator('header').getByText('词', { exact: true }),
   ).toBeVisible()
   await expect(
     frame.getByText('第二层内部跳转结果', { exact: true }),
@@ -1135,7 +1326,7 @@ test('MDict keeps internal links in a source-only bounded detail history', async
 
   await popup.getByRole('button', { name: 'Back to previous entry' }).click()
   await expect(
-    popup.locator('header').getByText('新词', { exact: true }),
+    popup.locator('header').getByText('词', { exact: true }),
   ).toBeVisible()
   await expect(
     frame.getByText('第一层内部跳转结果', { exact: true }),
@@ -1143,10 +1334,12 @@ test('MDict keeps internal links in a source-only bounded detail history', async
 
   await popup.getByRole('button', { name: 'Back to previous entry' }).click()
   await expect(popup.getByRole('heading', { name: '汉典' })).toBeVisible()
+  await expect(sourceButtons.nth(0)).toBeEnabled()
+  await expect(sourceButtons.nth(1)).toBeEnabled()
   await expect(frame.getByText('安全释义', { exact: true })).toBeVisible()
   await expect
     .poll(() => scroll.evaluate((element) => element.scrollTop))
-    .toBe(rootScrollTop)
+    .toBe(navigationScrollTop)
   const navigationState = await getDictionaryMockState(page)
   expect(navigationState.dictionaryRequests).toHaveLength(1)
   expect(navigationState.mdictRequests.map(({ query }) => query)).toEqual([

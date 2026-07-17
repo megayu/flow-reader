@@ -68,6 +68,7 @@ export interface LocalDictionaryRecord {
 export interface LocalDictionaryUpdate {
   enabled?: boolean
   language?: LocalDictionaryLanguage
+  name?: string
   order?: number
 }
 

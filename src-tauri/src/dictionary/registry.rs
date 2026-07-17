@@ -106,6 +106,7 @@ pub struct LocalDictionaryUpdate {
     pub enabled: Option<bool>,
     pub order: Option<u32>,
     pub language: Option<DictionaryLanguage>,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -336,6 +337,16 @@ impl DictionaryRegistryStore {
                 value: language,
                 source: DictionaryLanguageSource::Manual,
             };
+        }
+        if let Some(name) = update.name {
+            let name = name.trim();
+            if name.is_empty() {
+                return Err(DictionaryRegistryError::new(
+                    "invalidDictionaryName",
+                    "Dictionary name cannot be empty.",
+                ));
+            }
+            record.name = name.to_string();
         }
         record.updated_at = unix_time_ms();
         let result = record.clone();
@@ -792,6 +803,38 @@ mod tests {
         assert_eq!(refreshed.name, "Refreshed");
         assert_eq!(refreshed.language.value, DictionaryLanguage::Zh);
         assert_eq!(store.list().unwrap().len(), 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn renamed_dictionary_name_is_trimmed_and_persisted() {
+        let root = temp_dir("rename");
+        let sources = root.join("sources");
+        fs::create_dir_all(&sources).unwrap();
+        let ifo = write_stardict(&sources, "fixture");
+        let store = DictionaryRegistryStore::open(&root).unwrap();
+        let record = store.register(&ifo).unwrap();
+
+        let renamed = store
+            .update(
+                &record.id,
+                LocalDictionaryUpdate {
+                    name: Some("  Reader Lexicon  ".to_string()),
+                    ..LocalDictionaryUpdate::default()
+                },
+            )
+            .unwrap();
+
+        assert_eq!(renamed.name, "Reader Lexicon");
+        drop(store);
+        assert_eq!(
+            DictionaryRegistryStore::open(&root)
+                .unwrap()
+                .list()
+                .unwrap()[0]
+                .name,
+            "Reader Lexicon"
+        );
         let _ = fs::remove_dir_all(root);
     }
 

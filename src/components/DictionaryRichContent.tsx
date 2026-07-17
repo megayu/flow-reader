@@ -2,6 +2,7 @@ import {
   type SyntheticEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -28,6 +29,10 @@ export function DictionaryRichContent({
   const cleanupRef = useRef<() => void>(() => undefined)
   const srcDoc = useMemo(() => richSource(document), [document])
 
+  useLayoutEffect(() => {
+    onContentResize?.()
+  }, [height, onContentResize])
+
   const handleLoad = useCallback(
     (event: SyntheticEvent<HTMLIFrameElement>) => {
       cleanupRef.current()
@@ -46,7 +51,6 @@ export function DictionaryRichContent({
           Math.ceil(frameDocument.documentElement.scrollHeight),
         )
         setHeight(nextHeight)
-        onContentResize?.()
       }
       const handleClick = (clickEvent: MouseEvent) => {
         const anchor = (clickEvent.target as Element | null)?.closest(
@@ -64,7 +68,11 @@ export function DictionaryRichContent({
           resourceEvent.target.hidden = true
         }
       }
+      const handleContextMenu = (contextMenuEvent: MouseEvent) => {
+        contextMenuEvent.preventDefault()
+      }
       frameDocument.addEventListener('click', handleClick)
+      frameDocument.addEventListener('contextmenu', handleContextMenu)
       frameDocument.addEventListener('error', handleResourceError, true)
       const resizeObserver = new ResizeObserver(updateHeight)
       resizeObserver.observe(frameDocument.documentElement)
@@ -73,11 +81,12 @@ export function DictionaryRichContent({
 
       cleanupRef.current = () => {
         frameDocument.removeEventListener('click', handleClick)
+        frameDocument.removeEventListener('contextmenu', handleContextMenu)
         frameDocument.removeEventListener('error', handleResourceError, true)
         resizeObserver.disconnect()
       }
     },
-    [onContentResize, onEntryNavigate],
+    [onEntryNavigate],
   )
 
   useEffect(
