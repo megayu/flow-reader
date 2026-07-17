@@ -11,6 +11,7 @@ import type { DictionaryRichDocument } from '../dictionary/types'
 
 interface DictionaryRichContentProps {
   document: DictionaryRichDocument
+  onContentResize?: () => void
   onEntryNavigate: (entry: string) => void
   title: string
 }
@@ -19,6 +20,7 @@ const MIN_HEIGHT = 96
 
 export function DictionaryRichContent({
   document,
+  onContentResize,
   onEntryNavigate,
   title,
 }: DictionaryRichContentProps) {
@@ -39,12 +41,12 @@ export function DictionaryRichContent({
       frameDocument.body.style.fontSize = parentStyle.fontSize
 
       const updateHeight = () => {
-        setHeight(
-          Math.max(
-            MIN_HEIGHT,
-            Math.ceil(frameDocument.documentElement.scrollHeight),
-          ),
+        const nextHeight = Math.max(
+          MIN_HEIGHT,
+          Math.ceil(frameDocument.documentElement.scrollHeight),
         )
+        setHeight(nextHeight)
+        onContentResize?.()
       }
       const handleClick = (clickEvent: MouseEvent) => {
         const anchor = (clickEvent.target as Element | null)?.closest(
@@ -53,6 +55,8 @@ export function DictionaryRichContent({
         const entry = anchor?.getAttribute('data-mdict-entry')
         if (!entry) return
         clickEvent.preventDefault()
+        const selection = frameDocument.getSelection()
+        if (selection && !selection.isCollapsed) return
         onEntryNavigate(entry)
       }
       const handleResourceError = (resourceEvent: Event) => {
@@ -73,7 +77,7 @@ export function DictionaryRichContent({
         resizeObserver.disconnect()
       }
     },
-    [onEntryNavigate],
+    [onContentResize, onEntryNavigate],
   )
 
   useEffect(
@@ -107,7 +111,7 @@ function richSource(document: DictionaryRichDocument) {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src dictionary: http://dictionary.localhost https://dictionary.localhost; font-src dictionary: http://dictionary.localhost https://dictionary.localhost; media-src 'none'; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'">
 <style>
 html { overflow: hidden; color-scheme: light dark; }
-body { box-sizing: border-box; margin: 0; padding: 16px 20px; background: transparent; line-height: 1.6; overflow: hidden; overflow-wrap: anywhere; }
+body { box-sizing: border-box; margin: 0; padding: 16px 20px; background: transparent; line-height: 1.6; overflow: hidden; overflow-wrap: anywhere; user-select: text; }
 *, *::before, *::after { box-sizing: border-box; }
 img { max-width: 100%; height: auto; }
 a[data-mdict-entry] { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 0.16em; cursor: pointer; }

@@ -263,6 +263,7 @@ export default {
 
   'dictionary.title': 'Dictionary',
   'dictionary.back': 'Back to selection actions',
+  'dictionary.back_entry': 'Back to previous entry',
   'dictionary.close': 'Close dictionary',
   'dictionary.loading': 'Looking up definition',
   'dictionary.no_result': 'No definition found.',

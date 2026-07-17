@@ -259,6 +259,7 @@ export default {
 
   'dictionary.title': '词典',
   'dictionary.back': '返回文本操作',
+  'dictionary.back_entry': '返回上一词条',
   'dictionary.close': '关闭词典',
   'dictionary.loading': '正在查询释义',
   'dictionary.no_result': '未找到释义',

@@ -5,12 +5,15 @@ pub mod registry;
 pub mod session;
 pub mod stardict;
 
-use http::{DictionaryHttpClient, DictionaryHttpError, DictionaryHttpResponse};
+use http::{
+    DictionaryHttpClient, DictionaryHttpDiagnostics, DictionaryHttpError, DictionaryHttpResponse,
+};
 use mdict::{MdictError, MdictLookupResponse, MdictReader, MdictTextResource};
 use registry::{
     DictionaryRegistryError, DictionaryRegistryStore, LocalDictionaryRecord, LocalDictionaryUpdate,
 };
-use session::DictionarySessionManager;
+use serde::Serialize;
+use session::{DictionarySessionDiagnostics, DictionarySessionManager};
 use stardict::{prepare_index, StarDictError, StarDictLookupResult, StarDictReader};
 
 pub fn create_http_client() -> Result<DictionaryHttpClient, DictionaryHttpError> {
@@ -44,6 +47,24 @@ pub fn cancel_dictionary_session(
 ) {
     client.cancel_session(session_id);
     let _ = sessions.release(session_id);
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DictionaryRuntimeDiagnostics {
+    http: DictionaryHttpDiagnostics,
+    local: DictionarySessionDiagnostics,
+}
+
+#[tauri::command]
+pub fn dictionary_runtime_diagnostics(
+    client: tauri::State<'_, DictionaryHttpClient>,
+    sessions: tauri::State<'_, DictionarySessionManager>,
+) -> Result<DictionaryRuntimeDiagnostics, String> {
+    Ok(DictionaryRuntimeDiagnostics {
+        http: client.diagnostics(),
+        local: sessions.diagnostics()?,
+    })
 }
 
 #[tauri::command]

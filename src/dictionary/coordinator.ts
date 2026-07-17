@@ -22,6 +22,7 @@ export type DictionarySourceStatus =
   | 'cancelled'
   | 'empty'
   | 'error'
+  | 'idle'
   | 'loading'
   | 'success'
 
@@ -51,6 +52,7 @@ type SourceUpdateListener = (sources: DictionarySourceState[]) => void
 
 export class DictionaryCoordinator {
   private activeSession?: { controller: AbortController; id: number }
+  private readonly localTasks = new AbortableTaskLimiter(2)
   private nextSessionId = 1
 
   lookup(
@@ -73,7 +75,7 @@ export class DictionaryCoordinator {
     let sources = eligibleProviders.map<DictionarySourceState>((provider) => ({
       providerId: provider.id,
       providerName: provider.name,
-      status: 'loading',
+      status: provider.scope === 'local' ? 'idle' : 'loading',
     }))
 
     if (sources.length > 0) onUpdate?.(sources)
@@ -81,9 +83,21 @@ export class DictionaryCoordinator {
     const done = Promise.all(
       eligibleProviders.map(async (provider, index) => {
         try {
-          const result = await provider.lookup(query!, {
-            signal: controller.signal,
-          })
+          const lookup = () =>
+            provider.lookup(query!, {
+              signal: controller.signal,
+            })
+          const result = await (provider.scope === 'local'
+            ? this.localTasks.run(controller.signal, lookup, () => {
+                if (!this.isCurrent(id) || controller.signal.aborted) return
+                sources = replaceSource(sources, index, {
+                  providerId: provider.id,
+                  providerName: provider.name,
+                  status: 'loading',
+                })
+                onUpdate?.(sources)
+              })
+            : lookup())
           if (!this.isCurrent(id) || controller.signal.aborted) return
 
           sources = replaceSource(sources, index, {
@@ -109,7 +123,6 @@ export class DictionaryCoordinator {
       }),
     ).then<DictionaryLookupCompletion>(() => {
       const cancelled = controller.signal.aborted || !this.isCurrent(id)
-      if (this.isCurrent(id)) this.activeSession = undefined
 
       return {
         cancelled,
@@ -121,7 +134,7 @@ export class DictionaryCoordinator {
     })
 
     return {
-      cancel: () => controller.abort(),
+      cancel: () => this.cancelSession(id, controller),
       done,
       id,
       query,
@@ -129,12 +142,98 @@ export class DictionaryCoordinator {
   }
 
   cancelActive() {
-    this.activeSession?.controller.abort()
+    const session = this.activeSession
+    if (session) this.cancelSession(session.id, session.controller)
+  }
+
+  diagnostics() {
+    return {
+      activeSessionId: this.activeSession?.id,
+      localQueriesRunning: this.localTasks.running,
+      localQueriesWaiting: this.localTasks.waiting,
+    }
   }
 
   private isCurrent(id: number) {
     return this.activeSession?.id === id
   }
+
+  private cancelSession(id: number, controller: AbortController) {
+    controller.abort()
+    if (this.isCurrent(id)) this.activeSession = undefined
+  }
+}
+
+class AbortableTaskLimiter {
+  private activeCount = 0
+  private readonly queue: Array<{
+    reject: (reason?: unknown) => void
+    resolve: (value: unknown) => void
+    signal: AbortSignal
+    start: () => Promise<unknown>
+    started: () => void
+    stopListening: () => void
+  }> = []
+
+  constructor(private readonly limit: number) {}
+
+  get running() {
+    return this.activeCount
+  }
+
+  get waiting() {
+    return this.queue.length
+  }
+
+  run<T>(signal: AbortSignal, task: () => Promise<T>, onStart: () => void) {
+    if (signal.aborted) return Promise.reject(abortError())
+
+    return new Promise<T>((resolve, reject) => {
+      const queuedTask = {
+        reject,
+        resolve: resolve as (value: unknown) => void,
+        signal,
+        start: task as () => Promise<unknown>,
+        started: onStart,
+        stopListening: () => signal.removeEventListener('abort', handleAbort),
+      }
+      const handleAbort = () => {
+        const index = this.queue.indexOf(queuedTask)
+        if (index < 0) return
+        this.queue.splice(index, 1)
+        reject(abortError())
+      }
+      signal.addEventListener('abort', handleAbort, { once: true })
+      this.queue.push(queuedTask)
+      this.drain()
+    })
+  }
+
+  private drain() {
+    while (this.activeCount < this.limit) {
+      const task = this.queue.shift()
+      if (!task) return
+      if (task.signal.aborted) {
+        task.reject(abortError())
+        continue
+      }
+
+      task.stopListening()
+      task.started()
+      this.activeCount += 1
+      void task
+        .start()
+        .then(task.resolve, task.reject)
+        .finally(() => {
+          this.activeCount -= 1
+          this.drain()
+        })
+    }
+  }
+}
+
+function abortError() {
+  return new DOMException('Request cancelled', 'AbortError')
 }
 
 function externalUrlFromError(error: unknown) {

@@ -28,6 +28,13 @@ pub struct DictionaryHttpError {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DictionaryHttpDiagnostics {
+    pub active_request_count: usize,
+    pub session_count: usize,
+}
+
 impl DictionaryHttpError {
     fn new(code: &str, message: &str) -> Self {
         Self {
@@ -115,6 +122,20 @@ impl DictionaryHttpClient {
             .remove(&session_id)
         {
             session.cancellation.cancel();
+        }
+    }
+
+    pub fn diagnostics(&self) -> DictionaryHttpDiagnostics {
+        let sessions = self
+            .sessions
+            .lock()
+            .expect("dictionary session lock poisoned");
+        DictionaryHttpDiagnostics {
+            active_request_count: sessions
+                .values()
+                .map(|session| session.active_requests)
+                .sum(),
+            session_count: sessions.len(),
         }
     }
 
@@ -317,6 +338,27 @@ mod tests {
                 .map(|(_, value)| value.into_owned()),
             Some("free-key".to_string())
         );
+    }
+
+    #[test]
+    fn reports_and_releases_active_http_sessions() {
+        let base_url = Url::parse("http://127.0.0.1:1/hans/").expect("test URL");
+        let client = DictionaryHttpClient::for_test(base_url, 32, Duration::from_secs(1))
+            .expect("test client");
+
+        let cancellation = client.begin_request(41);
+        assert_eq!(
+            client.diagnostics(),
+            DictionaryHttpDiagnostics {
+                active_request_count: 1,
+                session_count: 1,
+            }
+        );
+
+        client.cancel_session(41);
+        assert_eq!(client.diagnostics(), DictionaryHttpDiagnostics::default());
+        client.finish_request(41, &cancellation);
+        assert_eq!(client.diagnostics(), DictionaryHttpDiagnostics::default());
     }
 
     #[tokio::test]

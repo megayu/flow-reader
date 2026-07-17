@@ -5,6 +5,10 @@ import {
   type DictionaryProvider,
 } from '../src/dictionary/coordinator'
 import {
+  DICTIONARY_DETAIL_HISTORY_LIMIT,
+  pushDictionaryDetailHistory,
+} from '../src/dictionary/detailHistory'
+import {
   MerriamWebsterParseError,
   merriamWebsterExternalUrl,
   parseMerriamWebsterResponse,
@@ -109,6 +113,137 @@ test.describe('dictionary coordinator contract', () => {
     expect(oldSnapshots).toEqual([['loading']])
     expect(newCompleted.cancelled).toBe(false)
     expect(newSnapshots.at(-1)).toEqual(['success'])
+  })
+
+  test('limits local lookups to two without serializing online providers', async () => {
+    const localHarness = deferredLocalProviders(3)
+    let onlineStarted = false
+    const onlineProvider: DictionaryProvider = {
+      id: 'online',
+      name: 'Online dictionary',
+      scope: 'online',
+      sourceLanguage: 'en',
+      async lookup(query) {
+        onlineStarted = true
+        return result('online', 'Online dictionary', query.text)
+      },
+    }
+    const coordinator = new DictionaryCoordinator()
+
+    const session = coordinator.lookup('sky', [
+      ...localHarness.providers,
+      onlineProvider,
+    ])
+
+    await expect.poll(() => localHarness.started).toBe(2)
+    expect(localHarness.maxActive).toBe(2)
+    expect(onlineStarted).toBe(true)
+    expect(coordinator.diagnostics()).toMatchObject({
+      localQueriesRunning: 2,
+      localQueriesWaiting: 1,
+    })
+
+    localHarness.releaseNext()
+    await expect.poll(() => localHarness.started).toBe(3)
+    expect(localHarness.maxActive).toBe(2)
+    localHarness.releaseAll()
+
+    const completed = await session.done
+    expect(completed.cancelled).toBe(false)
+    expect(completed.sources.map((source) => source.status)).toEqual([
+      'success',
+      'success',
+      'success',
+      'success',
+    ])
+    expect(coordinator.diagnostics()).toEqual({
+      activeSessionId: session.id,
+      localQueriesRunning: 0,
+      localQueriesWaiting: 0,
+    })
+    session.cancel()
+    expect(coordinator.diagnostics().activeSessionId).toBeUndefined()
+  })
+
+  test('does not start a queued local lookup after cancellation', async () => {
+    const localHarness = deferredLocalProviders(3)
+    const coordinator = new DictionaryCoordinator()
+
+    const session = coordinator.lookup('sky', localHarness.providers)
+    await expect.poll(() => localHarness.started).toBe(2)
+
+    session.cancel()
+    localHarness.releaseAll()
+
+    const completed = await session.done
+    expect(completed.cancelled).toBe(true)
+    expect(localHarness.started).toBe(2)
+    expect(localHarness.active).toBe(0)
+  })
+
+  test('isolates provider errors and empty results from successful sources', async () => {
+    const providers: DictionaryProvider[] = [
+      {
+        id: 'failure',
+        name: 'Failed dictionary',
+        scope: 'online',
+        sourceLanguage: 'en',
+        async lookup() {
+          throw new Error('provider failed')
+        },
+      },
+      {
+        id: 'empty',
+        name: 'Empty dictionary',
+        scope: 'online',
+        sourceLanguage: 'en',
+        async lookup() {
+          return null
+        },
+      },
+      provider('success', 'en', 0, 'Successful dictionary'),
+    ]
+
+    const completed = await new DictionaryCoordinator().lookup('sky', providers)
+      .done
+
+    expect(completed.sources.map((source) => source.status)).toEqual([
+      'error',
+      'empty',
+      'success',
+    ])
+    expect(completed.sources[0]?.error).toBe('provider failed')
+  })
+})
+
+test.describe('dictionary detail history contract', () => {
+  test('ignores the current entry and bounds cyclic internal navigation', () => {
+    let history = pushDictionaryDetailHistory([], {
+      providerId: 'mdict',
+      query: 'root',
+    })
+    const unchanged = pushDictionaryDetailHistory(history, {
+      providerId: 'mdict',
+      query: 'root',
+    })
+    expect(unchanged).toBe(history)
+
+    for (
+      let index = 1;
+      index <= DICTIONARY_DETAIL_HISTORY_LIMIT + 4;
+      index += 1
+    ) {
+      history = pushDictionaryDetailHistory(history, {
+        providerId: 'mdict',
+        query: `entry-${index}`,
+      })
+    }
+
+    expect(history).toHaveLength(DICTIONARY_DETAIL_HISTORY_LIMIT)
+    expect(history.at(-1)?.query).toBe(
+      `entry-${DICTIONARY_DETAIL_HISTORY_LIMIT + 4}`,
+    )
+    expect(history[0]?.query).toBe('entry-5')
   })
 })
 
@@ -409,5 +544,49 @@ function result(sourceId: string, sourceName: string, headword: string) {
     },
     sourceId,
     sourceName,
+  }
+}
+
+function deferredLocalProviders(count: number) {
+  let active = 0
+  let maxActive = 0
+  let started = 0
+  const releases: Array<() => void> = []
+  const providers = Array.from({ length: count }, (_, index) => {
+    const id = `local-${index + 1}`
+    const sourceName = `Local dictionary ${index + 1}`
+    return {
+      id,
+      name: sourceName,
+      scope: 'local' as const,
+      sourceLanguage: 'en' as const,
+      async lookup(query) {
+        started += 1
+        active += 1
+        maxActive = Math.max(maxActive, active)
+        await new Promise<void>((resolve) => releases.push(resolve))
+        active -= 1
+        return result(id, sourceName, query.text)
+      },
+    }
+  })
+
+  return {
+    get active() {
+      return active
+    },
+    get maxActive() {
+      return maxActive
+    },
+    providers,
+    releaseAll() {
+      releases.splice(0).forEach((release) => release())
+    },
+    releaseNext() {
+      releases.shift()?.()
+    },
+    get started() {
+      return started
+    },
   }
 }

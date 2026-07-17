@@ -238,6 +238,33 @@ test('parses only the first Han Dian character explanation into semantic groups'
   ])
 })
 
+test('copies a dictionary body selection instead of the original book selection', async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await setupDictionaryReader(page, { 天: characterHtml })
+  await selectFixtureText(page, '天')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+
+  const popup = page.getByRole('dialog', { name: 'Dictionary: 天' })
+  const definition = popup.getByText('高处的空间。', { exact: true })
+  await expect(definition).toBeVisible()
+  await definition.evaluate((element) => {
+    const selection = window.getSelection()
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  })
+  await popup.focus()
+  await page.keyboard.press('Control+c')
+
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe('高处的空间。')
+})
+
 test('parses adjacent Han Dian word reading groups and respects unnumbered senses', async ({
   page,
 }) => {
@@ -551,7 +578,7 @@ test('looks up an English selection only in Merriam-Webster', async ({
   }
   expect(layout.referenceColor).toBe(layout.referenceContainerColor)
   expect(Math.abs(layout.unnumberedOffset)).toBeLessThanOrEqual(1)
-  await expect(popup.getByRole('heading', { name: 'Han Dian' })).toHaveCount(0)
+  await expect(popup.getByRole('heading', { name: '汉典' })).toHaveCount(0)
   await popup.getByRole('button', { name: 'View on Merriam-Webster' }).click()
 
   const state = await getDictionaryMockState(page)
@@ -607,7 +634,7 @@ test('looks up an English selection in an enabled StarDict and releases its sess
   )
 })
 
-test('MDict renders sanitized rich content and follows internal entry links', async ({
+test('MDict keeps internal links in a source-only bounded detail history', async ({
   page,
 }) => {
   await page.route('http://dictionary.localhost/**', async (route) => {
@@ -629,6 +656,7 @@ test('MDict renders sanitized rich content and follows internal entry links', as
     <main onclick="window.evil = true">
       <p class="sense">安全释义</p>
       <a href="entry://新词">跳到新词</a>
+      ${'<p>用于形成总览滚动区域的安全文本。</p>'.repeat(32)}
       <img src="figure.png" alt="本地图">
       <img src="https://tracker.invalid/pixel.png" alt="外部图">
       <script>window.evil = true</script>
@@ -650,7 +678,14 @@ test('MDict renders sanitized rich content and follows internal entry links', as
         },
         新词: {
           diagnostics: { recordBytes: 16, resourceBytes: 0 },
-          entry: { headword: '新词', html: '<p>内部跳转结果</p>' },
+          entry: {
+            headword: '新词',
+            html: '<p>第一层内部跳转结果</p><a href="entry://第三词">继续跳转</a>',
+          },
+        },
+        第三词: {
+          diagnostics: { recordBytes: 16, resourceBytes: 0 },
+          entry: { headword: '第三词', html: '<p>第二层内部跳转结果</p>' },
         },
       },
     },
@@ -700,12 +735,77 @@ test('MDict renders sanitized rich content and follows internal entry links', as
     /@import|behavior|tracker\.invalid|\.\.\/secret/,
   )
 
+  const scroll = popup.locator('.overflow-y-auto.overscroll-contain')
+  const rootScrollTop = await scroll.evaluate((element) => {
+    element.scrollTop = 180
+    return element.scrollTop
+  })
+  expect(rootScrollTop).toBeGreaterThan(0)
+
+  await frame.getByText('跳到新词', { exact: true }).evaluate((anchor) => {
+    const selection = anchor.ownerDocument.defaultView?.getSelection()
+    const range = anchor.ownerDocument.createRange()
+    range.selectNodeContents(anchor)
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+    anchor.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true }),
+    )
+  })
+  await expect
+    .poll(async () => (await getDictionaryMockState(page)).mdictRequests)
+    .toHaveLength(1)
+  await frame.locator('body').evaluate((body) => {
+    body.ownerDocument.defaultView?.getSelection()?.removeAllRanges()
+  })
+
   await frame.getByText('跳到新词', { exact: true }).click()
-  await expect(popup.getByText('新词', { exact: true })).toBeVisible()
+  await expect(
+    popup.locator('header').getByText('新词', { exact: true }),
+  ).toBeVisible()
   await expect
     .poll(async () => (await getDictionaryMockState(page)).mdictRequests)
     .toHaveLength(2)
-  await expect(frame.getByText('内部跳转结果', { exact: true })).toBeVisible()
+  await expect(popup.getByRole('heading', { name: '汉典' })).toHaveCount(0)
+  await expect(popup.locator('[data-dictionary-rich-content]')).toHaveCount(1)
+  await expect(
+    frame.getByText('第一层内部跳转结果', { exact: true }),
+  ).toBeVisible()
+  expect((await getDictionaryMockState(page)).dictionaryRequests).toHaveLength(
+    1,
+  )
+
+  await frame.getByText('继续跳转', { exact: true }).click()
+  await expect(
+    popup.locator('header').getByText('第三词', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    frame.getByText('第二层内部跳转结果', { exact: true }),
+  ).toBeVisible()
+  await expect(popup.locator('[data-dictionary-rich-content]')).toHaveCount(1)
+
+  await popup.getByRole('button', { name: 'Back to previous entry' }).click()
+  await expect(
+    popup.locator('header').getByText('新词', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    frame.getByText('第一层内部跳转结果', { exact: true }),
+  ).toBeVisible()
+
+  await popup.getByRole('button', { name: 'Back to previous entry' }).click()
+  await expect(popup.getByRole('heading', { name: '汉典' })).toBeVisible()
+  await expect(frame.getByText('安全释义', { exact: true })).toBeVisible()
+  await expect
+    .poll(() => scroll.evaluate((element) => element.scrollTop))
+    .toBe(rootScrollTop)
+  const navigationState = await getDictionaryMockState(page)
+  expect(navigationState.dictionaryRequests).toHaveLength(1)
+  expect(navigationState.mdictRequests.map(({ query }) => query)).toEqual([
+    '词',
+    '新词',
+    '第三词',
+    '新词',
+  ])
 
   await popup.getByRole('button', { name: 'Close' }).click()
   const state = await getDictionaryMockState(page)
@@ -716,8 +816,8 @@ test('MDict renders sanitized rich content and follows internal entry links', as
       sessionId: state.mdictRequests[0]!.sessionId,
     },
   ])
-  expect(state.cancelledDictionarySessions).toContain(
-    state.mdictRequests.at(-1)!.sessionId,
+  expect(new Set(state.cancelledDictionarySessions)).toEqual(
+    new Set(state.mdictRequests.map(({ sessionId }) => sessionId)),
   )
 })
 
@@ -750,4 +850,47 @@ test('MDict keeps readable text when an optional stylesheet is missing', async (
   const frame = popup.locator('[data-dictionary-rich-content]').contentFrame()
   await expect(frame.getByText('无样式仍可阅读', { exact: true })).toBeVisible()
   await expect(popup.getByText('Lookup failed.')).toHaveCount(0)
+})
+
+test('outside dismissal releases the local dictionary session before showing actions', async ({
+  page,
+}) => {
+  await setupDictionaryReader(
+    page,
+    { 词: wordHtml },
+    0,
+    {},
+    [localMdict()],
+    {},
+    {
+      'dict-ciyuan': {
+        词: {
+          diagnostics: { recordBytes: 32, resourceBytes: 0 },
+          entry: { headword: '词', html: '<p>关闭路径测试</p>' },
+        },
+      },
+    },
+  )
+  await selectFixtureText(page, '词')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await expect(
+    page
+      .getByRole('dialog', { name: 'Dictionary: 词' })
+      .locator('[data-dictionary-rich-content]'),
+  ).toBeVisible()
+  const sessionId = (await getDictionaryMockState(page)).mdictRequests[0]!
+    .sessionId
+
+  await page.mouse.click(2, 2)
+
+  await expect(
+    page.getByRole('button', { name: 'Dictionary', exact: true }),
+  ).toBeVisible()
+  await expect
+    .poll(async () =>
+      (await getDictionaryMockState(page)).cancelledDictionarySessions.includes(
+        sessionId,
+      ),
+    )
+    .toBe(true)
 })

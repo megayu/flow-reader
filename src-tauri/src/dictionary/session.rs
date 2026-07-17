@@ -3,6 +3,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use serde::Serialize;
+
 use super::{
     mdict::{MdictBinaryResource, MdictError, MdictReader},
     stardict::{StarDictError, StarDictReader},
@@ -15,7 +17,8 @@ enum DictionarySessionResource {
     StarDict(Arc<StarDictReader>),
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DictionarySessionDiagnostics {
     pub file_count: usize,
     pub mmap_count: usize,
@@ -160,7 +163,13 @@ mod tests {
         sessions.attach(1, "first".to_string()).unwrap();
         sessions.attach(1, "second".to_string()).unwrap();
         sessions.attach(2, "third".to_string()).unwrap();
+        let before_release = sessions.diagnostics().unwrap();
+        assert_eq!(before_release.session_count, 2);
+        assert_eq!(before_release.resource_count, 3);
         assert_eq!(sessions.release(1).unwrap(), 2);
+        let after_release = sessions.diagnostics().unwrap();
+        assert_eq!(after_release.session_count, 1);
+        assert_eq!(after_release.resource_count, 1);
         assert_eq!(sessions.release_all().unwrap(), 1);
         assert_eq!(sessions.diagnostics().unwrap().resource_count, 0);
     }

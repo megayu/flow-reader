@@ -549,13 +549,18 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             dismissOverlay()
             return
           }
-          if (e.key === 'c' && e.ctrlKey) {
+          if (
+            e.key.toLowerCase() === 'c' &&
+            (e.ctrlKey || e.metaKey) &&
+            !window.getSelection()?.toString()
+          ) {
             copy(text)
           }
         }}
       >
         {view === 'dictionary' ? (
           <DictionaryPopup
+            key={dictionaryQuery?.text ?? text}
             query={dictionaryQuery?.text ?? text}
             localDictionaries={eligibleLocalDictionaries}
             maxBodyHeight={Math.max(

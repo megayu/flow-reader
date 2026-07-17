@@ -12,11 +12,13 @@ import { useTranslation } from '../hooks/useTranslation'
 import { DictionaryRichContent } from './DictionaryRichContent'
 
 interface DictionarySourceSectionProps {
-  onEntryNavigate: (entry: string) => void
+  onContentResize?: () => void
+  onEntryNavigate: (providerId: string, entry: string) => void
   source: DictionarySourceState
 }
 
 export function DictionarySourceSection({
+  onContentResize,
   onEntryNavigate,
   source,
 }: DictionarySourceSectionProps) {
@@ -53,7 +55,7 @@ export function DictionarySourceSection({
         )}
       </div>
 
-      {source.status === 'loading' ? (
+      {source.status === 'idle' || source.status === 'loading' ? (
         <div
           role="status"
           aria-label={t('loading')}
@@ -74,7 +76,7 @@ export function DictionarySourceSection({
           {t('no_result')}
         </div>
       ) : source.result?.content.kind === 'entries' ? (
-        <div className="space-y-[1em] px-5 py-4">
+        <div className="cursor-text space-y-[1em] px-5 py-4 select-text">
           {source.result.content.entries.map((entry, entryIndex) => (
             <article
               key={`${entry.pronunciation ?? entry.headword ?? ''}-${entryIndex}`}
@@ -157,7 +159,8 @@ export function DictionarySourceSection({
       ) : source.result?.content.kind === 'rich' ? (
         <DictionaryRichContent
           document={source.result.content.document}
-          onEntryNavigate={onEntryNavigate}
+          onContentResize={onContentResize}
+          onEntryNavigate={(entry) => onEntryNavigate(source.providerId, entry)}
           title={source.providerName}
         />
       ) : null}
