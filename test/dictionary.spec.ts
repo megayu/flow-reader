@@ -1488,6 +1488,9 @@ test('MDict keeps internal links in a source-only bounded detail history', async
   await expect(
     frame.getByText('第一层内部跳转结果', { exact: true }),
   ).toBeVisible()
+  await iframe.evaluate((element) => {
+    element.dataset.mdictInstance = 'first-detail'
+  })
   expect((await getDictionaryMockState(page)).dictionaryRequests).toHaveLength(
     1,
   )
@@ -1501,15 +1504,25 @@ test('MDict keeps internal links in a source-only bounded detail history', async
   ).toBeVisible()
   await expect(popup.locator('[data-dictionary-rich-content]')).toHaveCount(1)
 
-  await popup.getByRole('button', { name: 'Back to previous entry' }).click()
+  await iframe.evaluate((element: HTMLIFrameElement) => {
+    const frameWindow = element.contentWindow
+    frameWindow?.document.body.dispatchEvent(
+      new frameWindow.MouseEvent('mousedown', {
+        bubbles: true,
+        button: 3,
+        cancelable: true,
+      }),
+    )
+  })
   await expect(
     popup.locator('header').getByText('词', { exact: true }),
   ).toBeVisible()
   await expect(
     frame.getByText('第一层内部跳转结果', { exact: true }),
   ).toBeVisible()
+  await expect(iframe).toHaveAttribute('data-mdict-instance', 'first-detail')
 
-  await popup.getByRole('button', { name: 'Back to previous entry' }).click()
+  await popup.locator('header').dispatchEvent('mousedown', { button: 3 })
   await expect(popup.getByRole('heading', { name: '汉典' })).toBeVisible()
   await expect(sourceButtons.nth(0)).toBeEnabled()
   await expect(sourceButtons.nth(1)).toBeEnabled()
@@ -1523,7 +1536,6 @@ test('MDict keeps internal links in a source-only bounded detail history', async
     '词',
     '新词',
     '第三词',
-    '新词',
   ])
 
   await popup.getByRole('button', { name: 'Close' }).click()

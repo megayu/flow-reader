@@ -84,19 +84,20 @@ export function DictionaryPopup({
   const [detailHistory, setDetailHistory] = useState<
     readonly DictionaryDetailLocation[]
   >([])
-  const [detailState, setDetailState] = useState<{
-    key?: string
-    sources: DictionarySourceState[]
-  }>({ sources: [] })
+  const [detailSourcesByKey, setDetailSourcesByKey] = useState<
+    Record<string, DictionarySourceState[]>
+  >({})
   const [currentSourceId, setCurrentSourceId] = useState<string>()
   const scrollRef = useRef<HTMLDivElement>(null)
   const retryCoordinatorsRef = useRef(new Map<string, DictionaryCoordinator>())
+  const detailLookupKeysRef = useRef(new Set<string>())
+  const detailScrollTopsRef = useRef(new Map<string, number>())
   const pendingScrollAnchorRef = useRef<DictionaryScrollAnchor>(undefined)
   const rootScrollTopRef = useRef(0)
   const restoreRootScrollRef = useRef(false)
   const currentDetail = detailHistory.at(-1)
   const detailKey = currentDetail
-    ? `${currentDetail.providerId}\u0000${currentDetail.query}`
+    ? dictionaryDetailKey(currentDetail)
     : undefined
   const detailProvider = currentDetail
     ? providers.find((provider) => provider.id === currentDetail.providerId)
@@ -106,11 +107,14 @@ export function DictionaryPopup({
       rootSources.map((source) => retrySources[source.providerId] ?? source),
     [retrySources, rootSources],
   )
-  const visibleSources = currentDetail
-    ? detailState.key === detailKey
-      ? detailState.sources
-      : []
-    : mergedRootSources
+  const retainedDetailViews = useMemo(() => {
+    const views = new Map<string, DictionaryDetailLocation>()
+    detailHistory.forEach((location) => {
+      const key = dictionaryDetailKey(location)
+      if (!views.has(key)) views.set(key, location)
+    })
+    return Array.from(views, ([key, location]) => ({ key, location }))
+  }, [detailHistory])
   const navigationSources = useMemo(
     () => mergedRootSources.filter((source) => source.status !== 'cancelled'),
     [mergedRootSources],
@@ -249,14 +253,54 @@ export function DictionaryPopup({
     )
   }, [currentDetail, navigationSources])
 
-  useEffect(() => {
-    if (!currentDetail || !detailKey || !detailProvider) return
+  const pruneDetailCaches = useCallback(
+    (history: readonly DictionaryDetailLocation[]) => {
+      const retainedKeys = new Set(
+        history.map((location) => dictionaryDetailKey(location)),
+      )
+      detailLookupKeysRef.current.forEach((key) => {
+        if (!retainedKeys.has(key)) detailLookupKeysRef.current.delete(key)
+      })
+      detailScrollTopsRef.current.forEach((_, key) => {
+        if (!retainedKeys.has(key)) detailScrollTopsRef.current.delete(key)
+      })
+      setDetailSourcesByKey((current) => {
+        const entries = Object.entries(current).filter(([key]) =>
+          retainedKeys.has(key),
+        )
+        return entries.length === Object.keys(current).length
+          ? current
+          : Object.fromEntries(entries)
+      })
+    },
+    [],
+  )
 
-    setDetailState({ key: detailKey, sources: [] })
+  useEffect(() => {
+    if (
+      !currentDetail ||
+      !detailKey ||
+      !detailProvider ||
+      detailLookupKeysRef.current.has(detailKey)
+    ) {
+      return
+    }
+
+    detailLookupKeysRef.current.add(detailKey)
+    setDetailSourcesByKey((current) => ({
+      ...current,
+      [detailKey]: [],
+    }))
     const session = detailCoordinator.lookupInternalEntry(
       currentDetail.query,
       detailProvider,
-      (sources) => setDetailState({ key: detailKey, sources }),
+      (sources) => {
+        if (!detailLookupKeysRef.current.has(detailKey)) return
+        setDetailSourcesByKey((current) => ({
+          ...current,
+          [detailKey]: sources,
+        }))
+      },
     )
     return () => {
       session.cancel()
@@ -277,36 +321,55 @@ export function DictionaryPopup({
   useLayoutEffect(() => {
     const scroll = scrollRef.current
     if (!scroll) return
-    if (currentDetail) {
-      scroll.scrollTop = 0
+    if (detailKey) {
+      scroll.scrollTop = detailScrollTopsRef.current.get(detailKey) ?? 0
       return
     }
     restoreRootScroll()
-  }, [currentDetail, restoreRootScroll])
+  }, [detailKey, restoreRootScroll])
 
   const navigateToEntry = useCallback(
     (providerId: string, entry: string) => {
-      if (!currentDetail) {
+      if (detailKey) {
+        detailScrollTopsRef.current.set(
+          detailKey,
+          scrollRef.current?.scrollTop ?? 0,
+        )
+      } else {
         rootScrollTopRef.current = scrollRef.current?.scrollTop ?? 0
       }
-      setDetailHistory((history) =>
-        pushDictionaryDetailHistory(history, { providerId, query: entry }),
-      )
+      const nextHistory = pushDictionaryDetailHistory(detailHistory, {
+        providerId,
+        query: entry,
+      })
+      pruneDetailCaches(nextHistory)
+      setDetailHistory(nextHistory)
     },
-    [currentDetail],
+    [detailHistory, detailKey, pruneDetailCaches],
   )
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     if (!currentDetail) {
       onBack()
       return
     }
 
+    if (detailKey) {
+      detailScrollTopsRef.current.set(
+        detailKey,
+        scrollRef.current?.scrollTop ?? 0,
+      )
+    }
     if (detailHistory.length === 1) {
       restoreRootScrollRef.current = true
     }
-    setDetailHistory((history) => history.slice(0, -1))
-  }
+    const nextHistory = detailHistory.slice(0, -1)
+    pruneDetailCaches(nextHistory)
+    setDetailHistory(nextHistory)
+  }, [currentDetail, detailHistory, detailKey, onBack, pruneDetailCaches])
+
+  const canNavigateDetailBack =
+    currentDetail?.providerId.startsWith('mdict:') ?? false
 
   const updateCurrentSource = (scroll: HTMLDivElement) => {
     if (currentDetail) return
@@ -351,7 +414,15 @@ export function DictionaryPopup({
   }
 
   return (
-    <div className="flex min-h-0 flex-col">
+    <div
+      className="flex min-h-0 flex-col"
+      onMouseDownCapture={(event) => {
+        if (event.button !== 3 || !canNavigateDetailBack) return
+        event.preventDefault()
+        event.stopPropagation()
+        handleBack()
+      }}
+    >
       <header className="border-border flex h-12 shrink-0 items-center gap-2 border-b px-2">
         <IconButton
           title={backLabel}
@@ -427,33 +498,57 @@ export function DictionaryPopup({
           style={{ maxHeight: maxBodyHeight, overflowAnchor: 'none' }}
           onScroll={(event) => updateCurrentSource(event.currentTarget)}
         >
-          {visibleSources.length ? (
-            visibleSources.map((source) => {
-              const provider = providers.find(
-                (candidate) => candidate.id === source.providerId,
-              )
-              return (
-                <DictionarySourceSection
-                  key={source.providerId}
-                  isRetrying={Boolean(retryingSourceIds[source.providerId])}
-                  onContentResize={
-                    currentDetail ? undefined : restoreRootScroll
-                  }
-                  onEntryNavigate={navigateToEntry}
-                  onRetry={
-                    !currentDetail && provider?.scope === 'online'
-                      ? () => retrySource(provider)
-                      : undefined
-                  }
-                  source={source}
-                />
-              )
-            })
-          ) : (
-            <div className="text-muted-foreground px-5 py-3 text-sm">
-              {t('no_result')}
-            </div>
-          )}
+          <div hidden={Boolean(currentDetail)}>
+            {mergedRootSources.length ? (
+              mergedRootSources.map((source) => {
+                const provider = providers.find(
+                  (candidate) => candidate.id === source.providerId,
+                )
+                return (
+                  <DictionarySourceSection
+                    key={source.providerId}
+                    activeRichContent={!currentDetail}
+                    isRetrying={Boolean(retryingSourceIds[source.providerId])}
+                    onContentResize={restoreRootScroll}
+                    onEntryNavigate={navigateToEntry}
+                    onRetry={
+                      provider?.scope === 'online'
+                        ? () => retrySource(provider)
+                        : undefined
+                    }
+                    source={source}
+                  />
+                )
+              })
+            ) : (
+              <div className="text-muted-foreground px-5 py-3 text-sm">
+                {t('no_result')}
+              </div>
+            )}
+          </div>
+          {retainedDetailViews.map(({ key }) => {
+            const active = key === detailKey
+            const sources = detailSourcesByKey[key] ?? []
+            return (
+              <div key={key} hidden={!active}>
+                {sources.length ? (
+                  sources.map((source) => (
+                    <DictionarySourceSection
+                      key={source.providerId}
+                      activeRichContent={active}
+                      onEntryNavigate={navigateToEntry}
+                      onNavigateBack={handleBack}
+                      source={source}
+                    />
+                  ))
+                ) : (
+                  <div className="text-muted-foreground px-5 py-3 text-sm">
+                    {t('no_result')}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </ScrollAreaPrimitive.Viewport>
         <ScrollAreaPrimitive.Scrollbar
           className="flex w-2.5 touch-none bg-transparent p-0.5 select-none"
@@ -470,4 +565,8 @@ function sourceShortcut(source: DictionarySourceState) {
   if (source.providerId === 'zdic') return '汉'
   if (source.providerId === 'merriam-webster') return 'M'
   return Array.from(source.providerName.trim())[0]?.toLocaleUpperCase() ?? '·'
+}
+
+function dictionaryDetailKey(location: DictionaryDetailLocation) {
+  return `${location.providerId}\u0000${location.query}`
 }

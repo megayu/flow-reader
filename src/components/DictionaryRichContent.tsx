@@ -11,18 +11,22 @@ import {
 import type { DictionaryRichDocument } from '../dictionary/types'
 
 interface DictionaryRichContentProps {
+  active?: boolean
   document: DictionaryRichDocument
   onContentResize?: () => void
   onEntryNavigate: (entry: string) => void
+  onNavigateBack?: () => void
   title: string
 }
 
 const MIN_HEIGHT = 96
 
 export function DictionaryRichContent({
+  active = true,
   document,
   onContentResize,
   onEntryNavigate,
+  onNavigateBack,
   title,
 }: DictionaryRichContentProps) {
   const [height, setHeight] = useState(MIN_HEIGHT)
@@ -71,8 +75,17 @@ export function DictionaryRichContent({
       const handleContextMenu = (contextMenuEvent: MouseEvent) => {
         contextMenuEvent.preventDefault()
       }
+      const handleMouseDown = (mouseEvent: MouseEvent) => {
+        if (mouseEvent.button !== 3 || !onNavigateBack) return
+        mouseEvent.preventDefault()
+        mouseEvent.stopPropagation()
+        onNavigateBack()
+      }
       frameDocument.addEventListener('click', handleClick)
       frameDocument.addEventListener('contextmenu', handleContextMenu)
+      if (onNavigateBack) {
+        frameDocument.addEventListener('mousedown', handleMouseDown, true)
+      }
       frameDocument.addEventListener('error', handleResourceError, true)
       const resizeObserver = new ResizeObserver(updateHeight)
       resizeObserver.observe(frameDocument.documentElement)
@@ -82,11 +95,14 @@ export function DictionaryRichContent({
       cleanupRef.current = () => {
         frameDocument.removeEventListener('click', handleClick)
         frameDocument.removeEventListener('contextmenu', handleContextMenu)
+        if (onNavigateBack) {
+          frameDocument.removeEventListener('mousedown', handleMouseDown, true)
+        }
         frameDocument.removeEventListener('error', handleResourceError, true)
         resizeObserver.disconnect()
       }
     },
-    [onEntryNavigate],
+    [onEntryNavigate, onNavigateBack],
   )
 
   useEffect(
@@ -99,7 +115,7 @@ export function DictionaryRichContent({
   return (
     <iframe
       className="text-foreground block w-full border-0 bg-transparent text-base"
-      data-dictionary-rich-content="true"
+      data-dictionary-rich-content={active ? 'true' : undefined}
       height={height}
       onLoad={handleLoad}
       sandbox="allow-same-origin"

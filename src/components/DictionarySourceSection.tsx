@@ -12,17 +12,21 @@ import { useTranslation } from '../hooks/useTranslation'
 import { DictionaryRichContent } from './DictionaryRichContent'
 
 interface DictionarySourceSectionProps {
+  activeRichContent?: boolean
   isRetrying?: boolean
   onContentResize?: () => void
   onEntryNavigate: (providerId: string, entry: string) => void
+  onNavigateBack?: () => void
   onRetry?: () => void
   source: DictionarySourceState
 }
 
 export function DictionarySourceSection({
+  activeRichContent = true,
   isRetrying = false,
   onContentResize,
   onEntryNavigate,
+  onNavigateBack,
   onRetry,
   source,
 }: DictionarySourceSectionProps) {
@@ -181,9 +185,11 @@ export function DictionarySourceSection({
         </div>
       ) : source.result?.content.kind === 'rich' ? (
         <DictionaryRichContent
+          active={activeRichContent}
           document={source.result.content.document}
           onContentResize={onContentResize}
           onEntryNavigate={(entry) => onEntryNavigate(source.providerId, entry)}
+          onNavigateBack={onNavigateBack}
           title={source.providerName}
         />
       ) : null}
