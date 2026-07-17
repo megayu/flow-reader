@@ -45,6 +45,23 @@ const wordHtml = `<!doctype html><html><body>
   <section id="cyjs" data-section="成语解释"><ol><li>不应显示的成语解释</li></ol></section>
 </body></html>`
 
+const modernWordHtml = `<!doctype html><html><body>
+  <section id="xxjs" data-section="词语解释">
+    <div class="dict-section__body">
+      <div class="sense-group">
+        <div class="xxjs-reading-head"><span class="xxjs-reading__word">样词</span><span class="xxjs-reading__py">yàng cí</span></div>
+        <ol class="xxjs-list">
+          <li class="xxjs-item">
+            <div class="xxjs-item__def">合成的新版释义。</div>
+            <div class="xxjs-also"><span class="xxjs-block-label xxjs-block-label--also">例如</span><span class="xxjs-also__text">这是合成的中文例句。</span></div>
+            <div class="xxjs-english"><span class="xxjs-block-label xxjs-block-label--en">英文</span><span class="xxjs-english__text">synthetic English gloss</span></div>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </section>
+</body></html>`
+
 function dictionaryBook(language = 'zh-CN'): BookRecord {
   return {
     id: 'dictionary-book',
@@ -626,6 +643,24 @@ test('parses adjacent Han Dian word reading groups and respects unnumbered sense
     '1',
     '1',
   ])
+})
+
+test('keeps modern Han Dian Chinese examples while excluding English glosses', async ({
+  page,
+}) => {
+  await setupDictionaryReader(page, { 样词: modernWordHtml })
+  await selectFixtureText(page, '样词')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+
+  const popup = page.getByRole('dialog', { name: 'Dictionary: 样词' })
+  await expect(
+    popup.getByText('合成的新版释义。', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    popup.getByText('这是合成的中文例句。', { exact: true }),
+  ).toBeVisible()
+  await expect(popup.getByText('synthetic English gloss')).toHaveCount(0)
+  await expect(popup.getByText('英文', { exact: true })).toHaveCount(0)
 })
 
 test('falls back to cleaned item text without exposing active or raw HTML', async ({

@@ -154,14 +154,17 @@ function parseSenseItems(items: NodeListOf<Element>, variant: 'jbjs' | 'xxjs') {
   return Array.from(items).flatMap<DictionarySense>((item, index) => {
     const definitionClass =
       variant === 'jbjs' ? '.jbjs-item__def' : '.xxjs-item__def'
-    const exampleClass =
-      variant === 'jbjs' ? '.jbjs-item__eg' : '.xxjs-item__eg'
+    const exampleSelector =
+      variant === 'jbjs' ? '.jbjs-item__eg' : '.xxjs-item__eg, .xxjs-also__text'
     const definition = cleanElementText(item.querySelector(definitionClass))
-    const examples = Array.from(item.querySelectorAll(exampleClass))
+    const examples = Array.from(item.querySelectorAll(exampleSelector))
       .map(cleanElementText)
       .filter((text): text is string => Boolean(text))
       .map(plainText)
-    const fallback = definition ?? fallbackItemText(item, exampleClass)
+    const excludedFallbackContent =
+      variant === 'xxjs' ? `${exampleSelector}, .xxjs-english` : exampleSelector
+    const fallback =
+      definition ?? fallbackItemText(item, excludedFallbackContent)
     if (!fallback) return []
 
     return [
@@ -177,10 +180,10 @@ function parseSenseItems(items: NodeListOf<Element>, variant: 'jbjs' | 'xxjs') {
   })
 }
 
-function fallbackItemText(item: Element, exampleClass: string) {
+function fallbackItemText(item: Element, excludedSelector: string) {
   const clone = item.cloneNode(true) as Element
   clone
-    .querySelectorAll(`${exampleClass}, script, style, noscript, template`)
+    .querySelectorAll(`${excludedSelector}, script, style, noscript, template`)
     .forEach((element) => element.remove())
   return cleanText(clone.textContent)
 }
