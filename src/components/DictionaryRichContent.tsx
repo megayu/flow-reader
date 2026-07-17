@@ -16,7 +16,6 @@ interface DictionaryRichContentProps {
   onContentResize?: () => void
   onEntryNavigate: (entry: string) => void
   onNavigateBack?: () => void
-  title: string
 }
 
 const MIN_HEIGHT = 96
@@ -27,7 +26,6 @@ export function DictionaryRichContent({
   onContentResize,
   onEntryNavigate,
   onNavigateBack,
-  title,
 }: DictionaryRichContentProps) {
   const [height, setHeight] = useState(MIN_HEIGHT)
   const cleanupRef = useRef<() => void>(() => undefined)
@@ -122,7 +120,6 @@ export function DictionaryRichContent({
       scrolling="no"
       srcDoc={srcDoc}
       style={{ height }}
-      title={title}
     />
   )
 }

@@ -126,19 +126,12 @@ export function DictionaryPopup({
     : (navigationSources.find(
         (source) => source.providerId === currentSourceId,
       ) ?? navigationSources[0])
-  const backLabel = currentDetail ? t('back_entry') : t('back')
   const queryLanguage = normalizeDictionaryQuery(query)?.language ?? 'unknown'
   const speech = useSelectionSpeech({
     bookLanguage,
     queryLanguage,
     text: query,
   })
-  const speechLabel = speech.isSupported
-    ? speech.isSpeaking
-      ? t('stop_speaking')
-      : t('speak')
-    : t('speech_unavailable')
-
   useEffect(() => {
     const retryCoordinators = retryCoordinatorsRef.current
     retryCoordinators.forEach((coordinator) => coordinator.cancelActive())
@@ -425,28 +418,26 @@ export function DictionaryPopup({
     >
       <header className="border-border flex h-12 shrink-0 items-center gap-2 border-b px-2">
         <IconButton
-          title={backLabel}
           Icon={ArrowLeftIcon}
           className="shrink-0"
-          aria-label={backLabel}
+          data-dictionary-back="true"
           onClick={handleBack}
         />
         <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
           <div className="truncate text-center font-medium">{query}</div>
           <IconButton
-            title={speechLabel}
-            aria-label={speechLabel}
             aria-pressed={speech.isSpeaking}
             Icon={speech.isSpeaking ? SquareIcon : Volume2Icon}
             className="shrink-0"
+            data-dictionary-speech="true"
             disabled={!speech.isSupported}
             onClick={speech.toggle}
           />
         </div>
         <IconButton
-          title={t('close')}
           Icon={XIcon}
           className="shrink-0"
+          data-dictionary-close="true"
           onClick={onClose}
         />
       </header>

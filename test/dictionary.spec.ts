@@ -415,13 +415,11 @@ test('selection speech reads Chinese with the matching system voice and toggles 
   await selectFixtureText(page, '测试')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
 
-  const speak = page.getByRole('button', { name: 'Read selection aloud' })
+  const speak = page.locator('[data-dictionary-speech]')
   await speak.focus()
   await speak.press('Enter')
 
-  await expect(
-    page.getByRole('button', { name: 'Stop reading aloud' }),
-  ).toHaveAttribute('aria-pressed', 'true')
+  await expect(speak).toHaveAttribute('aria-pressed', 'true')
   await expect
     .poll(() => speechState(page))
     .toEqual({
@@ -436,7 +434,7 @@ test('selection speech reads Chinese with the matching system voice and toggles 
       ],
     })
 
-  await page.getByRole('button', { name: 'Stop reading aloud' }).click()
+  await speak.click()
   await expect(speak).toHaveAttribute('aria-pressed', 'false')
   await expect.poll(() => speechState(page)).toMatchObject({ cancelCalls: 2 })
 })
@@ -463,7 +461,8 @@ test('prefers the exact book language and resets after a speech error', async ({
   )
   await selectFixtureText(page, 'sample')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
-  await page.getByRole('button', { name: 'Read selection aloud' }).click()
+  const speak = page.locator('[data-dictionary-speech]')
+  await speak.click()
 
   await expect
     .poll(() => speechState(page))
@@ -477,9 +476,7 @@ test('prefers the exact book language and resets after a speech error', async ({
       ],
     })
   await finishSpeech(page, 'error')
-  await expect(
-    page.getByRole('button', { name: 'Read selection aloud' }),
-  ).toHaveAttribute('aria-pressed', 'false')
+  await expect(speak).toHaveAttribute('aria-pressed', 'false')
 })
 
 test('selection speech falls back to a same-language voice when no exact locale exists', async ({
@@ -501,7 +498,8 @@ test('selection speech falls back to a same-language voice when no exact locale 
   )
   await selectFixtureText(page, 'sample')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
-  await page.getByRole('button', { name: 'Read selection aloud' }).click()
+  const speak = page.locator('[data-dictionary-speech]')
+  await speak.click()
 
   await expect
     .poll(() => speechState(page))
@@ -515,9 +513,7 @@ test('selection speech falls back to a same-language voice when no exact locale 
       ],
     })
   await finishSpeech(page, 'end')
-  await expect(
-    page.getByRole('button', { name: 'Read selection aloud' }),
-  ).toHaveAttribute('aria-pressed', 'false')
+  await expect(speak).toHaveAttribute('aria-pressed', 'false')
 })
 
 test('selection speech is disabled when the system API is unavailable', async ({
@@ -528,9 +524,7 @@ test('selection speech is disabled when the system API is unavailable', async ({
   await selectFixtureText(page, '测试')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
 
-  const unavailable = page.getByRole('button', {
-    name: 'System reading is unavailable',
-  })
+  const unavailable = page.locator('[data-dictionary-speech]')
   await expect(unavailable).toBeDisabled()
   await expect(unavailable).toHaveAttribute('aria-pressed', 'false')
 })
@@ -546,11 +540,11 @@ test('stops active speech on every dictionary popup exit path', async ({
 
   const openDictionary = async () => {
     await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
-    await page.getByRole('button', { name: 'Read selection aloud' }).click()
+    await page.locator('[data-dictionary-speech]').click()
   }
 
   await openDictionary()
-  await page.getByRole('button', { name: 'Back to selection actions' }).click()
+  await page.locator('[data-dictionary-back]').click()
   await expect.poll(() => speechState(page)).toMatchObject({ cancelCalls: 2 })
 
   await openDictionary()
@@ -558,7 +552,7 @@ test('stops active speech on every dictionary popup exit path', async ({
   await expect.poll(() => speechState(page)).toMatchObject({ cancelCalls: 4 })
 
   await openDictionary()
-  await page.getByRole('button', { name: 'Close dictionary' }).click()
+  await page.locator('[data-dictionary-close]').click()
   await expect.poll(() => speechState(page)).toMatchObject({ cancelCalls: 6 })
   await expect(page.getByRole('button', { name: 'Copy' })).toHaveCount(0)
 })
@@ -870,7 +864,7 @@ test('back cancels an active native lookup and restores the action menu', async 
   const latestSessionId = (
     await getDictionaryMockState(page)
   ).dictionaryRequests.at(-1)!.sessionId
-  await page.getByRole('button', { name: 'Back to selection actions' }).click()
+  await page.locator('[data-dictionary-back]').click()
 
   await expect(
     page.getByRole('button', { name: 'Dictionary', exact: true }),
@@ -1268,7 +1262,7 @@ test('looks up an English selection in an enabled StarDict and releases its sess
     popup.getByText('the region of the atmosphere seen from earth'),
   ).toBeVisible()
 
-  await popup.getByRole('button', { name: 'Close' }).click()
+  await popup.locator('[data-dictionary-close]').click()
   await expect
     .poll(async () => (await getDictionaryMockState(page)).stardictRequests)
     .toHaveLength(1)
@@ -1538,7 +1532,7 @@ test('MDict keeps internal links in a source-only bounded detail history', async
     '第三词',
   ])
 
-  await popup.getByRole('button', { name: 'Close' }).click()
+  await popup.locator('[data-dictionary-close]').click()
   const state = await getDictionaryMockState(page)
   expect(state.mdictStylesheetRequests).toEqual([
     {

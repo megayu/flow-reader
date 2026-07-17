@@ -83,11 +83,7 @@ export function DictionarySourceSection({
       </div>
 
       {source.status === 'idle' || source.status === 'loading' ? (
-        <div
-          role="status"
-          aria-label={t('loading')}
-          className="min-h-32 space-y-3 px-5 py-4"
-        >
+        <div role="status" className="min-h-32 space-y-3 px-5 py-4">
           <div className="bg-muted h-5 w-28 animate-pulse rounded" />
           <div className="bg-muted h-4 w-11/12 animate-pulse rounded" />
           <div className="bg-muted h-4 w-4/5 animate-pulse rounded" />
@@ -190,7 +186,6 @@ export function DictionarySourceSection({
           onContentResize={onContentResize}
           onEntryNavigate={(entry) => onEntryNavigate(source.providerId, entry)}
           onNavigateBack={onNavigateBack}
-          title={source.providerName}
         />
       ) : null}
     </section>

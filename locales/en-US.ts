@@ -259,13 +259,6 @@ export default {
   'menu.update': 'Update',
 
   'dictionary.title': 'Dictionary',
-  'dictionary.back': 'Back to selection actions',
-  'dictionary.back_entry': 'Back to previous entry',
-  'dictionary.close': 'Close dictionary',
-  'dictionary.speak': 'Read selection aloud',
-  'dictionary.stop_speaking': 'Stop reading aloud',
-  'dictionary.speech_unavailable': 'System reading is unavailable',
-  'dictionary.loading': 'Looking up definition',
   'dictionary.no_result': 'No definition found.',
   'dictionary.parse_error': 'Could not parse this entry.',
   'dictionary.lookup_error': 'Could not load this dictionary.',
