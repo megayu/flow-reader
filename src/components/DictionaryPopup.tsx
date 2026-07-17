@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, XIcon } from 'lucide-react'
+import { ArrowLeftIcon, SquareIcon, Volume2Icon, XIcon } from 'lucide-react'
 import {
   useCallback,
   useEffect,
@@ -21,6 +21,8 @@ import { createMdictProvider } from '../dictionary/providers/mdict'
 import { createMerriamWebsterProvider } from '../dictionary/providers/merriamWebster'
 import { createStarDictProvider } from '../dictionary/providers/stardict'
 import { zdicProvider } from '../dictionary/providers/zdic'
+import { normalizeDictionaryQuery } from '../dictionary/query'
+import { useSelectionSpeech } from '../hooks/useSelectionSpeech'
 import { useTranslation } from '../hooks/useTranslation'
 import { useSettings } from '../state'
 
@@ -28,6 +30,7 @@ import { IconButton } from './Button'
 import { DictionarySourceSection } from './DictionarySourceSection'
 
 interface DictionaryPopupProps {
+  bookLanguage?: string
   maxBodyHeight: number
   onBack: () => void
   onClose: () => void
@@ -36,6 +39,7 @@ interface DictionaryPopupProps {
 }
 
 export function DictionaryPopup({
+  bookLanguage,
   maxBodyHeight,
   onBack,
   onClose,
@@ -85,6 +89,17 @@ export function DictionaryPopup({
       : []
     : rootSources
   const backLabel = currentDetail ? t('back_entry') : t('back')
+  const queryLanguage = normalizeDictionaryQuery(query)?.language ?? 'unknown'
+  const speech = useSelectionSpeech({
+    bookLanguage,
+    queryLanguage,
+    text: query,
+  })
+  const speechLabel = speech.isSupported
+    ? speech.isSpeaking
+      ? t('stop_speaking')
+      : t('speak')
+    : t('speech_unavailable')
 
   useEffect(() => {
     const session = rootCoordinator.lookup(query, providers, setRootSources)
@@ -163,8 +178,19 @@ export function DictionaryPopup({
           aria-label={backLabel}
           onClick={handleBack}
         />
-        <div className="min-w-0 flex-1 truncate text-center font-medium">
-          {currentDetail?.query ?? query}
+        <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
+          <div className="truncate text-center font-medium">
+            {currentDetail?.query ?? query}
+          </div>
+          <IconButton
+            title={speechLabel}
+            aria-label={speechLabel}
+            aria-pressed={speech.isSpeaking}
+            Icon={speech.isSpeaking ? SquareIcon : Volume2Icon}
+            className="shrink-0"
+            disabled={!speech.isSupported}
+            onClick={speech.toggle}
+          />
         </div>
         <IconButton
           title={t('close')}

@@ -561,6 +561,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         {view === 'dictionary' ? (
           <DictionaryPopup
             key={dictionaryQuery?.text ?? text}
+            bookLanguage={tab.book.metadata.language}
             query={dictionaryQuery?.text ?? text}
             localDictionaries={eligibleLocalDictionaries}
             maxBodyHeight={Math.max(

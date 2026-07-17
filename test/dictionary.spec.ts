@@ -45,7 +45,7 @@ const wordHtml = `<!doctype html><html><body>
   <section id="cyjs" data-section="成语解释"><ol><li>不应显示的成语解释</li></ol></section>
 </body></html>`
 
-function dictionaryBook(): BookRecord {
+function dictionaryBook(language = 'zh-CN'): BookRecord {
   return {
     id: 'dictionary-book',
     name: 'Dictionary Fixture.epub',
@@ -53,7 +53,7 @@ function dictionaryBook(): BookRecord {
     metadata: {
       title: 'Dictionary Fixture',
       creator: 'Flow Test',
-      language: 'zh-CN',
+      language,
     },
     createdAt: 1,
     updatedAt: 1,
@@ -73,6 +73,7 @@ async function setupDictionaryReader(
   stardictResponses: Record<string, Record<string, unknown>> = {},
   mdictResponses: Record<string, Record<string, unknown>> = {},
   mdictStylesheets: Record<string, Record<string, string>> = {},
+  bookLanguage = 'zh-CN',
 ) {
   await page.route(`**${alicePackageUrl}`, (route) =>
     route.fulfill({
@@ -81,7 +82,7 @@ async function setupDictionaryReader(
     }),
   )
   await installTauriMock(page, {
-    books: [dictionaryBook()],
+    books: [dictionaryBook(bookLanguage)],
     readerSources: { 'dictionary-book': alicePackageUrl },
     settings: {
       librarySidebarOpen: false,
@@ -125,6 +126,151 @@ async function setupDictionaryReader(
       }),
     )
     .toBe(true)
+}
+
+interface SpeechVoiceFixture {
+  default?: boolean
+  lang: string
+  name: string
+}
+
+async function installSpeechSynthesisMock(
+  page: Page,
+  options: { supported?: boolean; voices?: SpeechVoiceFixture[] } = {},
+) {
+  await page.addInitScript(
+    ({ supported, voices }) => {
+      type TestUtterance = {
+        lang: string
+        onend: ((event: Event) => void) | null
+        onerror: ((event: Event) => void) | null
+        text: string
+        voice: SpeechVoiceFixture | null
+      }
+      type SpeechTestState = {
+        cancelCalls: number
+        endLatest: () => void
+        errorLatest: () => void
+        events: string[]
+        speakCalls: Array<{ lang: string; text: string; voiceName?: string }>
+      }
+      const testWindow = window as typeof window & {
+        __FLOW_TEST_SPEECH__?: SpeechTestState
+      }
+
+      if (!supported) {
+        Object.defineProperty(window, 'speechSynthesis', {
+          configurable: true,
+          value: undefined,
+        })
+        Object.defineProperty(window, 'SpeechSynthesisUtterance', {
+          configurable: true,
+          value: undefined,
+        })
+        return
+      }
+
+      let latest: TestUtterance | undefined
+      class TestSpeechSynthesisUtterance implements TestUtterance {
+        lang = ''
+        onend: ((event: Event) => void) | null = null
+        onerror: ((event: Event) => void) | null = null
+        text: string
+        voice: SpeechVoiceFixture | null = null
+
+        constructor(text: string) {
+          this.text = text
+        }
+      }
+      const state: SpeechTestState = {
+        cancelCalls: 0,
+        endLatest() {
+          latest?.onend?.(new Event('end'))
+        },
+        errorLatest() {
+          latest?.onerror?.(new Event('error'))
+        },
+        events: [],
+        speakCalls: [],
+      }
+      Object.defineProperty(window, 'SpeechSynthesisUtterance', {
+        configurable: true,
+        value: TestSpeechSynthesisUtterance,
+      })
+      Object.defineProperty(window, 'speechSynthesis', {
+        configurable: true,
+        value: {
+          cancel() {
+            state.cancelCalls += 1
+            state.events.push('cancel')
+          },
+          getVoices() {
+            return voices.map((voice) => ({
+              default: voice.default ?? false,
+              lang: voice.lang,
+              localService: true,
+              name: voice.name,
+              voiceURI: voice.name,
+            }))
+          },
+          speak(utterance: TestUtterance) {
+            latest = utterance
+            state.events.push('speak')
+            state.speakCalls.push({
+              lang: utterance.lang,
+              text: utterance.text,
+              voiceName: utterance.voice?.name,
+            })
+          },
+        },
+      })
+      testWindow.__FLOW_TEST_SPEECH__ = state
+    },
+    {
+      supported: options.supported !== false,
+      voices: options.voices ?? [],
+    },
+  )
+}
+
+async function speechState(page: Page) {
+  return page.evaluate(() => {
+    const state = (
+      window as typeof window & {
+        __FLOW_TEST_SPEECH__?: {
+          cancelCalls: number
+          events: string[]
+          speakCalls: Array<{
+            lang: string
+            text: string
+            voiceName?: string
+          }>
+        }
+      }
+    ).__FLOW_TEST_SPEECH__
+    return state
+      ? {
+          cancelCalls: state.cancelCalls,
+          events: [...state.events],
+          speakCalls: [...state.speakCalls],
+        }
+      : undefined
+  })
+}
+
+async function finishSpeech(page: Page, outcome: 'end' | 'error') {
+  await page.evaluate((nextOutcome) => {
+    const state = (
+      window as typeof window & {
+        __FLOW_TEST_SPEECH__?: {
+          endLatest: () => void
+          errorLatest: () => void
+        }
+      }
+    ).__FLOW_TEST_SPEECH__
+    if (nextOutcome === 'end') state?.endLatest()
+    else state?.errorLatest()
+  }, outcome)
 }
 
 function localStarDict(): LocalDictionaryRecord {
@@ -204,6 +350,167 @@ async function selectFixtureText(
     ).toBeVisible()
   }
 }
+
+test('selection speech reads Chinese with the matching system voice and toggles stop', async ({
+  page,
+}) => {
+  await installSpeechSynthesisMock(page, {
+    voices: [
+      { default: true, lang: 'en-US', name: 'System English' },
+      { lang: 'zh-CN', name: 'System Chinese' },
+    ],
+  })
+  await setupDictionaryReader(page, { 测试: wordHtml })
+  await selectFixtureText(page, '测试')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+
+  const speak = page.getByRole('button', { name: 'Read selection aloud' })
+  await speak.focus()
+  await speak.press('Enter')
+
+  await expect(
+    page.getByRole('button', { name: 'Stop reading aloud' }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  await expect
+    .poll(() => speechState(page))
+    .toEqual({
+      cancelCalls: 1,
+      events: ['cancel', 'speak'],
+      speakCalls: [
+        {
+          lang: 'zh-CN',
+          text: '测试',
+          voiceName: 'System Chinese',
+        },
+      ],
+    })
+
+  await page.getByRole('button', { name: 'Stop reading aloud' }).click()
+  await expect(speak).toHaveAttribute('aria-pressed', 'false')
+  await expect.poll(() => speechState(page)).toMatchObject({ cancelCalls: 2 })
+})
+
+test('prefers the exact book language and resets after a speech error', async ({
+  page,
+}) => {
+  await installSpeechSynthesisMock(page, {
+    voices: [
+      { default: true, lang: 'en-US', name: 'System American' },
+      { lang: 'en-GB', name: 'System British' },
+    ],
+  })
+  await setupDictionaryReader(
+    page,
+    {},
+    0,
+    { sample: [] },
+    [],
+    {},
+    {},
+    {},
+    'en-GB',
+  )
+  await selectFixtureText(page, 'sample')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: 'Read selection aloud' }).click()
+
+  await expect
+    .poll(() => speechState(page))
+    .toMatchObject({
+      speakCalls: [
+        {
+          lang: 'en-GB',
+          text: 'sample',
+          voiceName: 'System British',
+        },
+      ],
+    })
+  await finishSpeech(page, 'error')
+  await expect(
+    page.getByRole('button', { name: 'Read selection aloud' }),
+  ).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('selection speech falls back to a same-language voice when no exact locale exists', async ({
+  page,
+}) => {
+  await installSpeechSynthesisMock(page, {
+    voices: [{ lang: 'en-US', name: 'System English' }],
+  })
+  await setupDictionaryReader(
+    page,
+    {},
+    0,
+    { sample: [] },
+    [],
+    {},
+    {},
+    {},
+    'en-AU',
+  )
+  await selectFixtureText(page, 'sample')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: 'Read selection aloud' }).click()
+
+  await expect
+    .poll(() => speechState(page))
+    .toMatchObject({
+      speakCalls: [
+        {
+          lang: 'en-US',
+          text: 'sample',
+          voiceName: 'System English',
+        },
+      ],
+    })
+  await finishSpeech(page, 'end')
+  await expect(
+    page.getByRole('button', { name: 'Read selection aloud' }),
+  ).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('selection speech is disabled when the system API is unavailable', async ({
+  page,
+}) => {
+  await installSpeechSynthesisMock(page, { supported: false })
+  await setupDictionaryReader(page, { 测试: wordHtml })
+  await selectFixtureText(page, '测试')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+
+  const unavailable = page.getByRole('button', {
+    name: 'System reading is unavailable',
+  })
+  await expect(unavailable).toBeDisabled()
+  await expect(unavailable).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('stops active speech on every dictionary popup exit path', async ({
+  page,
+}) => {
+  await installSpeechSynthesisMock(page, {
+    voices: [{ lang: 'zh-CN', name: 'System Chinese' }],
+  })
+  await setupDictionaryReader(page, { 测试: wordHtml })
+  await selectFixtureText(page, '测试')
+
+  const openDictionary = async () => {
+    await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+    await page.getByRole('button', { name: 'Read selection aloud' }).click()
+  }
+
+  await openDictionary()
+  await page.getByRole('button', { name: 'Back to selection actions' }).click()
+  await expect.poll(() => speechState(page)).toMatchObject({ cancelCalls: 2 })
+
+  await openDictionary()
+  await page.mouse.click(2, 2)
+  await expect.poll(() => speechState(page)).toMatchObject({ cancelCalls: 4 })
+
+  await openDictionary()
+  await page.getByRole('button', { name: 'Close dictionary' }).click()
+  await expect.poll(() => speechState(page)).toMatchObject({ cancelCalls: 6 })
+  await expect(page.getByRole('button', { name: 'Copy' })).toHaveCount(0)
+})
 
 test('does not offer Han Dian for an English selection', async ({ page }) => {
   await setupDictionaryReader(page, {})
