@@ -266,9 +266,6 @@ export default {
   'dictionary.parse_error': '无法解析该词条',
   'dictionary.lookup_error': '无法加载该词典',
   'dictionary.example': '例如',
-  'dictionary.view_source': '查看原文',
-  'dictionary.view_on_zdic': '在汉典中查看',
-  'dictionary.view_on_merriam_webster': '在 Merriam-Webster 中查看',
 
   'action.expand_all': '展开全部',
   'action.collapse_all': '折叠全部',

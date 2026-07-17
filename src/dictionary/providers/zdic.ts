@@ -32,6 +32,7 @@ class ZdicLookupError extends Error {
 }
 
 export const zdicProvider: DictionaryProvider = {
+  externalUrl: (query) => zdicExternalUrl(query.text),
   id: SOURCE_ID,
   name: SOURCE_NAME,
   scope: 'online',
@@ -55,12 +56,22 @@ export const zdicProvider: DictionaryProvider = {
       return parseZdicHtml(response.body, query.text)
     } catch (error) {
       if (signal.aborted || error instanceof ZdicParseError) throw error
+      if (isNotFoundError(error)) return null
       const message = error instanceof Error ? error.message : String(error)
       throw new ZdicLookupError(message, zdicExternalUrl(query.text))
     } finally {
       signal.removeEventListener('abort', cancel)
     }
   },
+}
+
+function isNotFoundError(error: unknown) {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 'not_found'
+  )
 }
 
 export function zdicExternalUrl(query: string) {

@@ -72,7 +72,7 @@ test('opens the official page for acquiring a Merriam-Webster API key', async ({
 test('adds one local dictionary from an ifo or mdx master-file chooser', async ({
   page,
 }) => {
-  const sourcePath = 'C:\\Dictionaries\\Oxford\\oxford.ifo'
+  const sourcePath = 'fixture-oxford.ifo'
   const record = localDictionary({
     id: 'dict-11111111111111111111',
     name: 'Oxford Test',
@@ -101,13 +101,13 @@ test('manages local dictionary order, status, language, enablement, relocation, 
   const alpha = localDictionary({
     id: 'dict-aaaaaaaaaaaaaaaaaaaa',
     name: 'Alpha Dictionary',
-    sourcePath: 'C:\\Dictionaries\\Alpha\\alpha.mdx',
+    sourcePath: 'fixture-alpha.mdx',
   })
   const beta = localDictionary({
     id: 'dict-bbbbbbbbbbbbbbbbbbbb',
     name: 'Beta Dictionary',
     order: 1,
-    sourcePath: 'C:\\Dictionaries\\Beta\\beta.ifo',
+    sourcePath: 'fixture-beta.ifo',
     sourceStatus: 'missing',
   })
   await installTauriMock(page, {
@@ -194,7 +194,7 @@ test('renames a local dictionary inline and hides language provenance', async ({
 test('shows master-file validation errors without adding a partial record', async ({
   page,
 }) => {
-  const sourcePath = 'C:\\Dictionaries\\broken.idx'
+  const sourcePath = 'fixture-broken.idx'
   await installTauriMock(page, {
     openDialogPaths: [sourcePath],
     localDictionaryFiles: {

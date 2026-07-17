@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Mutex, time::Duration};
 
 use futures_util::StreamExt;
-use reqwest::{redirect::Policy, Client, Url};
+use reqwest::{redirect::Policy, Client, StatusCode, Url};
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
@@ -168,6 +168,12 @@ impl DictionaryHttpClient {
             .map_err(map_request_error)?;
         let status = response.status();
         if !status.is_success() {
+            if status == StatusCode::NOT_FOUND {
+                return Err(DictionaryHttpError::new(
+                    "not_found",
+                    "Dictionary entry was not found",
+                ));
+            }
             return Err(DictionaryHttpError::new(
                 "http_status",
                 &format!("Dictionary service returned HTTP {}", status.as_u16()),
@@ -392,7 +398,21 @@ mod tests {
             .await
             .expect_err("status error");
         status_server.join().expect("status server thread");
-        assert_eq!(status_error.code, "http_status");
+        assert_eq!(status_error.code, "not_found");
+
+        let (failure_base_url, failure_server) = serve_once(
+            "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n",
+            Duration::ZERO,
+        );
+        let failure_client =
+            DictionaryHttpClient::for_test(failure_base_url, 32, Duration::from_secs(1))
+                .expect("failure client");
+        let failure_error = failure_client
+            .fetch_zdic("天空", 3)
+            .await
+            .expect_err("failure error");
+        failure_server.join().expect("failure server thread");
+        assert_eq!(failure_error.code, "http_status");
 
         let (size_base_url, size_server) = serve_once(
             "HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\ndefinition",
@@ -401,7 +421,7 @@ mod tests {
         let size_client = DictionaryHttpClient::for_test(size_base_url, 4, Duration::from_secs(1))
             .expect("size client");
         let size_error = size_client
-            .fetch_zdic("天空", 3)
+            .fetch_zdic("天空", 4)
             .await
             .expect_err("size error");
         size_server.join().expect("size server thread");

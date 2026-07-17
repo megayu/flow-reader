@@ -38,6 +38,8 @@ interface TauriMockOptions {
   mdictStylesheets?: Record<string, Record<string, string>>
   stardictResponses?: Record<string, Record<string, unknown>>
   zdicResponses?: Record<string, string>
+  zdicResponseSequences?: Record<string, string[]>
+  zdicResponseStatuses?: Record<string, number>
   zdicResponseDelayMs?: number
 }
 
@@ -67,6 +69,8 @@ export async function installTauriMock(
     mdictStylesheets = {},
     stardictResponses = {},
     zdicResponses = {},
+    zdicResponseSequences = {},
+    zdicResponseStatuses = {},
     zdicResponseDelayMs = 0,
   }: TauriMockOptions = {},
 ) {
@@ -91,6 +95,8 @@ export async function installTauriMock(
       fixtureMdictStylesheets,
       fixtureStardictResponses,
       fixtureZdicResponses,
+      fixtureZdicResponseSequences,
+      fixtureZdicResponseStatuses,
       fixtureZdicResponseDelayMs,
     }) => {
       type TauriInternals = {
@@ -231,8 +237,18 @@ export async function installTauriMock(
               window.setTimeout(resolve, fixtureZdicResponseDelayMs),
             )
           }
+          const status = fixtureZdicResponseStatuses[query] ?? 200
+          if (status >= 400) {
+            throw {
+              code: status === 404 ? 'not_found' : 'http_status',
+              message: `Dictionary service returned HTTP ${status}`,
+            }
+          }
           return {
-            body: fixtureZdicResponses[query] ?? '',
+            body:
+              fixtureZdicResponseSequences[query]?.shift() ??
+              fixtureZdicResponses[query] ??
+              '',
             finalUrl: `https://zdic.net/hans/${encodeURIComponent(query)}`,
             status: 200,
           }
@@ -642,6 +658,8 @@ export async function installTauriMock(
       fixtureMdictStylesheets: mdictStylesheets,
       fixtureStardictResponses: stardictResponses,
       fixtureZdicResponses: zdicResponses,
+      fixtureZdicResponseSequences: zdicResponseSequences,
+      fixtureZdicResponseStatuses: zdicResponseStatuses,
       fixtureZdicResponseDelayMs: zdicResponseDelayMs,
     },
   )

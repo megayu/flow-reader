@@ -74,6 +74,8 @@ async function setupDictionaryReader(
   mdictResponses: Record<string, Record<string, unknown>> = {},
   mdictStylesheets: Record<string, Record<string, string>> = {},
   bookLanguage = 'zh-CN',
+  zdicResponseSequences: Record<string, string[]> = {},
+  zdicResponseStatuses: Record<string, number> = {},
 ) {
   await page.route(`**${alicePackageUrl}`, (route) =>
     route.fulfill({
@@ -101,6 +103,8 @@ async function setupDictionaryReader(
     mdictStylesheets,
     stardictResponses,
     zdicResponses,
+    zdicResponseSequences,
+    zdicResponseStatuses,
     zdicResponseDelayMs,
   })
   await page.goto('/')
@@ -284,7 +288,7 @@ function localStarDict(): LocalDictionaryRecord {
     language: { source: 'manual', value: 'en' },
     name: 'Oxford English-Chinese Dictionary',
     order: 0,
-    sourcePath: 'C:\\fixture\\oxford.ifo',
+    sourcePath: 'fixture-english.ifo',
     sourceStatus: 'available',
     updatedAt: 1,
   }
@@ -301,7 +305,7 @@ function localMdict(): LocalDictionaryRecord {
     language: { source: 'manual', value: 'zh' },
     name: 'Synthetic Chinese MDict',
     order: 0,
-    sourcePath: 'C:\\fixture\\synthetic-zh.mdx',
+    sourcePath: 'fixture-chinese.mdx',
     sourceStatus: 'available',
     updatedAt: 1,
   }
@@ -659,7 +663,7 @@ test('keeps the source link on parse failure and uses two-stage outside dismissa
 
   const popup = page.getByRole('dialog', { name: 'Dictionary: 词' })
   await expect(popup.getByText('Could not parse this entry.')).toBeVisible()
-  await popup.getByRole('button', { name: 'View on Han Dian' }).click()
+  await popup.locator('[data-dictionary-external="zdic"]').click()
   await expect
     .poll(async () => (await getDictionaryMockState(page)).openedExternalUrls)
     .toEqual(['https://zdic.net/hans/%E8%AF%8D'])
@@ -673,6 +677,144 @@ test('keeps the source link on parse failure and uses two-stage outside dismissa
   await expect(
     page.getByRole('button', { name: 'Dictionary', exact: true }),
   ).toBeHidden()
+})
+
+test('treats a Han Dian 404 as a compact missing entry without retry', async ({
+  page,
+}) => {
+  await setupDictionaryReader(
+    page,
+    {},
+    0,
+    {},
+    [],
+    {},
+    {},
+    {},
+    'zh-CN',
+    {},
+    { 测: 404 },
+  )
+  await selectFixtureText(page, '测')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+
+  const popup = page.getByRole('dialog', { name: 'Dictionary: 测' })
+  const section = popup.locator('[data-dictionary-source-id="zdic"]')
+  await expect(section.getByText('No definition found.')).toBeVisible()
+  await expect(section.locator('[data-dictionary-retry]')).toHaveCount(0)
+  await expect(
+    section.locator('[data-dictionary-external="zdic"]'),
+  ).toBeVisible()
+  expect(
+    await section.evaluate((element) => element.getBoundingClientRect().height),
+  ).toBeLessThan(100)
+})
+
+test('retries a failed online source without displacing the scrolled dictionary content', async ({
+  page,
+}) => {
+  const localDictionary: LocalDictionaryRecord = {
+    ...localStarDict(),
+    id: 'dict-synthetic-local',
+    language: { source: 'manual', value: 'zh' },
+    name: 'Synthetic Local Dictionary',
+  }
+  await setupDictionaryReader(
+    page,
+    {},
+    600,
+    {},
+    [localDictionary],
+    {
+      'dict-synthetic-local': {
+        测: starDictEntry(
+          '测',
+          Array.from(
+            { length: 24 },
+            (_, index) => `synthetic local explanation ${index + 1}`,
+          ),
+        ),
+      },
+    },
+    {},
+    {},
+    'zh-CN',
+    {
+      测: [
+        '<html><body><p>synthetic unavailable response</p></body></html>',
+        characterHtml,
+      ],
+    },
+  )
+  await selectFixtureText(page, '测')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+
+  const popup = page.getByRole('dialog', { name: 'Dictionary: 测' })
+  await expect(popup.getByText('Could not parse this entry.')).toBeVisible()
+  const retry = popup.locator('[data-dictionary-retry="zdic"]')
+  const source = popup.locator('[data-dictionary-external="zdic"]')
+  await expect(retry).toBeVisible()
+  expect(await retry.getAttribute('title')).toBeNull()
+  expect(await source.getAttribute('title')).toBeNull()
+  await expect(retry).toHaveText('')
+  await expect(source).toHaveText('')
+
+  await retry.click()
+  await expect(retry).toBeDisabled()
+  await expect
+    .poll(() =>
+      retry
+        .locator('svg')
+        .evaluate((icon) => getComputedStyle(icon).animationName),
+    )
+    .not.toBe('none')
+
+  const readingTarget = popup.getByText('synthetic local explanation 12', {
+    exact: true,
+  })
+  await readingTarget.scrollIntoViewIfNeeded()
+  const topBefore = await readingTarget.evaluate(
+    (element) => element.getBoundingClientRect().top,
+  )
+
+  await expect(popup.getByText('高处的空间。', { exact: true })).toBeVisible()
+  await expect(retry).toHaveCount(0)
+  const topAfter = await readingTarget.evaluate(
+    (element) => element.getBoundingClientRect().top,
+  )
+  expect(Math.abs(topAfter - topBefore)).toBeLessThanOrEqual(1)
+  await expect
+    .poll(async () => (await getDictionaryMockState(page)).dictionaryRequests)
+    .toHaveLength(2)
+})
+
+test('offers a compact external action when Merriam-Webster has no matching entry', async ({
+  page,
+}) => {
+  await setupDictionaryReader(
+    page,
+    {},
+    0,
+    { sample: [] },
+    [],
+    {},
+    {},
+    {},
+    'en-US',
+  )
+  await selectFixtureText(page, 'sample')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+
+  const popup = page.getByRole('dialog', { name: 'Dictionary: sample' })
+  const section = popup.locator('[data-dictionary-source-id="merriam-webster"]')
+  await expect(section.getByText('No definition found.')).toBeVisible()
+  const source = section.locator('[data-dictionary-external="merriam-webster"]')
+  await expect(section.locator('[data-dictionary-retry]')).toHaveCount(0)
+  await expect(source).toBeVisible()
+  expect(await source.getAttribute('title')).toBeNull()
+  expect(
+    await section.evaluate((element) => element.getBoundingClientRect().height),
+  ).toBeLessThan(100)
 })
 
 test('back cancels an active native lookup and restores the action menu', async ({
@@ -918,7 +1060,7 @@ test('looks up an English selection only in Merriam-Webster', async ({
   expect(layout.referenceColor).toBe(layout.referenceContainerColor)
   expect(Math.abs(layout.unnumberedOffset)).toBeLessThanOrEqual(1)
   await expect(popup.getByRole('heading', { name: '汉典' })).toHaveCount(0)
-  await popup.getByRole('button', { name: 'View on Merriam-Webster' }).click()
+  await popup.locator('[data-dictionary-external="merriam-webster"]').click()
 
   const state = await getDictionaryMockState(page)
   expect(state.merriamWebsterRequests).toHaveLength(1)

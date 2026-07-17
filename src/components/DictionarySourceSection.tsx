@@ -1,4 +1,4 @@
-import { ExternalLinkIcon } from 'lucide-react'
+import { ExternalLinkIcon, RefreshCwIcon } from 'lucide-react'
 
 import type { DictionarySourceState } from '../dictionary/coordinator'
 import type {
@@ -12,18 +12,24 @@ import { useTranslation } from '../hooks/useTranslation'
 import { DictionaryRichContent } from './DictionaryRichContent'
 
 interface DictionarySourceSectionProps {
+  isRetrying?: boolean
   onContentResize?: () => void
   onEntryNavigate: (providerId: string, entry: string) => void
+  onRetry?: () => void
   source: DictionarySourceState
 }
 
 export function DictionarySourceSection({
+  isRetrying = false,
   onContentResize,
   onEntryNavigate,
+  onRetry,
   source,
 }: DictionarySourceSectionProps) {
   const t = useTranslation('dictionary')
   const externalUrl = source.result?.externalUrl ?? source.externalUrl
+  const retryVisible =
+    Boolean(onRetry) && (isRetrying || source.status === 'error')
 
   return (
     <section
@@ -41,25 +47,35 @@ export function DictionarySourceSection({
         >
           {source.providerName}
         </h2>
-        {externalUrl && source.status !== 'loading' && (
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground ml-auto inline-flex cursor-pointer items-center gap-1 rounded-sm px-1 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-accent-border)]"
-            aria-label={
-              source.providerId === 'zdic'
-                ? t('view_on_zdic')
-                : source.providerId === 'merriam-webster'
-                  ? t('view_on_merriam_webster')
-                  : t('view_source')
-            }
-            onClick={() => {
-              void openSupportedExternalUrl(externalUrl).catch(() => undefined)
-            }}
-          >
-            <span>{t('view_source')}</span>
-            <ExternalLinkIcon className="size-3.5" />
-          </button>
-        )}
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {retryVisible && (
+            <button
+              type="button"
+              className="text-muted-foreground enabled:hover:bg-muted enabled:hover:text-foreground inline-flex size-7 cursor-pointer items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-accent-border)] disabled:cursor-default"
+              data-dictionary-retry={source.providerId}
+              disabled={isRetrying}
+              onClick={onRetry}
+            >
+              <RefreshCwIcon
+                className={`size-4 ${isRetrying ? 'animate-spin' : ''}`}
+              />
+            </button>
+          )}
+          {externalUrl && (source.status !== 'loading' || isRetrying) && (
+            <button
+              type="button"
+              className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-7 cursor-pointer items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-accent-border)]"
+              data-dictionary-external={source.providerId}
+              onClick={() => {
+                void openSupportedExternalUrl(externalUrl).catch(
+                  () => undefined,
+                )
+              }}
+            >
+              <ExternalLinkIcon className="size-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {source.status === 'idle' || source.status === 'loading' ? (
@@ -73,13 +89,13 @@ export function DictionarySourceSection({
           <div className="bg-muted h-4 w-4/5 animate-pulse rounded" />
         </div>
       ) : source.status === 'error' ? (
-        <div className="text-muted-foreground min-h-24 px-5 py-4 text-sm">
+        <div className="text-muted-foreground px-5 py-2 text-sm leading-snug">
           {source.error === 'Could not parse this entry.'
             ? t('parse_error')
             : t('lookup_error')}
         </div>
       ) : source.status === 'empty' ? (
-        <div className="text-muted-foreground px-5 py-3 text-sm">
+        <div className="text-muted-foreground px-5 py-2 text-sm leading-snug">
           {t('no_result')}
         </div>
       ) : source.result?.content.kind === 'entries' ? (

@@ -39,6 +39,7 @@ export function createMerriamWebsterProvider(
   apiKey: string,
 ): DictionaryProvider {
   return {
+    externalUrl: (query) => merriamWebsterExternalUrl(query.text),
     id: SOURCE_ID,
     name: SOURCE_NAME,
     scope: 'online',

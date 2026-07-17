@@ -11,6 +11,7 @@ import {
 
 import {
   DictionaryCoordinator,
+  type DictionaryProvider,
   type DictionarySourceState,
 } from '../dictionary/coordinator'
 import {
@@ -37,6 +38,13 @@ interface DictionaryPopupProps {
   onClose: () => void
   query: string
   localDictionaries: LocalDictionaryRecord[]
+}
+
+interface DictionaryScrollAnchor {
+  element?: HTMLElement
+  offset: number
+  scrollTop: number
+  sourceId?: string
 }
 
 export function DictionaryPopup({
@@ -67,6 +75,12 @@ export function DictionaryPopup({
     [localDictionaries, merriamWebster],
   )
   const [rootSources, setRootSources] = useState<DictionarySourceState[]>([])
+  const [retrySources, setRetrySources] = useState<
+    Record<string, DictionarySourceState>
+  >({})
+  const [retryingSourceIds, setRetryingSourceIds] = useState<
+    Record<string, boolean>
+  >({})
   const [detailHistory, setDetailHistory] = useState<
     readonly DictionaryDetailLocation[]
   >([])
@@ -76,6 +90,8 @@ export function DictionaryPopup({
   }>({ sources: [] })
   const [currentSourceId, setCurrentSourceId] = useState<string>()
   const scrollRef = useRef<HTMLDivElement>(null)
+  const retryCoordinatorsRef = useRef(new Map<string, DictionaryCoordinator>())
+  const pendingScrollAnchorRef = useRef<DictionaryScrollAnchor>(undefined)
   const rootScrollTopRef = useRef(0)
   const restoreRootScrollRef = useRef(false)
   const currentDetail = detailHistory.at(-1)
@@ -85,14 +101,19 @@ export function DictionaryPopup({
   const detailProvider = currentDetail
     ? providers.find((provider) => provider.id === currentDetail.providerId)
     : undefined
+  const mergedRootSources = useMemo(
+    () =>
+      rootSources.map((source) => retrySources[source.providerId] ?? source),
+    [retrySources, rootSources],
+  )
   const visibleSources = currentDetail
     ? detailState.key === detailKey
       ? detailState.sources
       : []
-    : rootSources
+    : mergedRootSources
   const navigationSources = useMemo(
-    () => rootSources.filter((source) => source.status !== 'cancelled'),
-    [rootSources],
+    () => mergedRootSources.filter((source) => source.status !== 'cancelled'),
+    [mergedRootSources],
   )
   const currentSource = currentDetail
     ? navigationSources.find(
@@ -115,12 +136,109 @@ export function DictionaryPopup({
     : t('speech_unavailable')
 
   useEffect(() => {
+    const retryCoordinators = retryCoordinatorsRef.current
+    retryCoordinators.forEach((coordinator) => coordinator.cancelActive())
+    retryCoordinators.clear()
+    setRetrySources({})
+    setRetryingSourceIds({})
     const session = rootCoordinator.lookup(query, providers, setRootSources)
     return () => {
       session.cancel()
       rootCoordinator.cancelActive()
+      retryCoordinators.forEach((coordinator) => coordinator.cancelActive())
+      retryCoordinators.clear()
     }
   }, [providers, query, rootCoordinator])
+
+  const captureScrollAnchor = useCallback((): DictionaryScrollAnchor | null => {
+    const scroll = scrollRef.current
+    if (!scroll) return null
+
+    const scrollRect = scroll.getBoundingClientRect()
+    const source = Array.from(
+      scroll.querySelectorAll<HTMLElement>('[data-dictionary-source-id]'),
+    ).find((element) => element.getBoundingClientRect().bottom > scrollRect.top)
+    const hit = document.elementFromPoint(
+      Math.min(scrollRect.right - 1, scrollRect.left + 20),
+      Math.min(scrollRect.bottom - 1, scrollRect.top + 8),
+    )
+    const element =
+      hit instanceof HTMLElement && hit !== scroll && scroll.contains(hit)
+        ? hit
+        : source
+    const anchorSource = element?.closest<HTMLElement>(
+      '[data-dictionary-source-id]',
+    )
+    const anchorRect = element?.getBoundingClientRect()
+
+    return {
+      element,
+      offset: anchorRect ? anchorRect.top - scrollRect.top : 0,
+      scrollTop: scroll.scrollTop,
+      sourceId:
+        anchorSource?.dataset.dictionarySourceId ??
+        source?.dataset.dictionarySourceId,
+    }
+  }, [])
+
+  useLayoutEffect(() => {
+    const anchor = pendingScrollAnchorRef.current
+    const scroll = scrollRef.current
+    if (!anchor || !scroll) return
+    pendingScrollAnchorRef.current = undefined
+
+    const element = anchor.element?.isConnected
+      ? anchor.element
+      : Array.from(
+          scroll.querySelectorAll<HTMLElement>('[data-dictionary-source-id]'),
+        ).find(
+          (source) => source.dataset.dictionarySourceId === anchor.sourceId,
+        )
+    if (!element) {
+      scroll.scrollTop = anchor.scrollTop
+      return
+    }
+    const nextOffset =
+      element.getBoundingClientRect().top - scroll.getBoundingClientRect().top
+    scroll.scrollTop += nextOffset - anchor.offset
+  }, [retrySources])
+
+  const retrySource = useCallback(
+    (provider: DictionaryProvider) => {
+      if (currentDetail || provider.scope !== 'online') return
+
+      const coordinator =
+        retryCoordinatorsRef.current.get(provider.id) ??
+        new DictionaryCoordinator()
+      retryCoordinatorsRef.current.set(provider.id, coordinator)
+      setRetryingSourceIds((current) => ({
+        ...current,
+        [provider.id]: true,
+      }))
+      coordinator.lookup(query, [provider], (sources) => {
+        const source = sources[0]
+        if (!source) return
+        const terminal =
+          source.status === 'empty' ||
+          source.status === 'error' ||
+          source.status === 'success'
+        if (terminal) {
+          pendingScrollAnchorRef.current = captureScrollAnchor() ?? undefined
+        }
+        setRetrySources((current) => ({
+          ...current,
+          [provider.id]: source,
+        }))
+        if (terminal) {
+          setRetryingSourceIds((current) => ({
+            ...current,
+            [provider.id]: false,
+          }))
+        }
+      })
+    },
+    [captureScrollAnchor, currentDetail, query],
+  )
 
   useEffect(() => {
     if (currentDetail) return
@@ -306,20 +424,33 @@ export function DictionaryPopup({
           ref={scrollRef}
           className="min-h-0 w-full overscroll-contain"
           data-dictionary-scroll="true"
-          style={{ maxHeight: maxBodyHeight }}
+          style={{ maxHeight: maxBodyHeight, overflowAnchor: 'none' }}
           onScroll={(event) => updateCurrentSource(event.currentTarget)}
         >
           {visibleSources.length ? (
-            visibleSources.map((source) => (
-              <DictionarySourceSection
-                key={source.providerId}
-                onContentResize={currentDetail ? undefined : restoreRootScroll}
-                onEntryNavigate={navigateToEntry}
-                source={source}
-              />
-            ))
+            visibleSources.map((source) => {
+              const provider = providers.find(
+                (candidate) => candidate.id === source.providerId,
+              )
+              return (
+                <DictionarySourceSection
+                  key={source.providerId}
+                  isRetrying={Boolean(retryingSourceIds[source.providerId])}
+                  onContentResize={
+                    currentDetail ? undefined : restoreRootScroll
+                  }
+                  onEntryNavigate={navigateToEntry}
+                  onRetry={
+                    !currentDetail && provider?.scope === 'online'
+                      ? () => retrySource(provider)
+                      : undefined
+                  }
+                  source={source}
+                />
+              )
+            })
           ) : (
-            <div className="text-muted-foreground px-5 py-6 text-sm">
+            <div className="text-muted-foreground px-5 py-3 text-sm">
               {t('no_result')}
             </div>
           )}

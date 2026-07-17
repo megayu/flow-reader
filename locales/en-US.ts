@@ -270,9 +270,6 @@ export default {
   'dictionary.parse_error': 'Could not parse this entry.',
   'dictionary.lookup_error': 'Could not load this dictionary.',
   'dictionary.example': 'For example',
-  'dictionary.view_source': 'View source',
-  'dictionary.view_on_zdic': 'View on Han Dian',
-  'dictionary.view_on_merriam_webster': 'View on Merriam-Webster',
 
   'action.expand_all': 'Expand All',
   'action.collapse_all': 'Collapse All',

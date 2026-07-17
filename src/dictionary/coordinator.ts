@@ -12,6 +12,7 @@ import type {
 export type DictionaryProviderScope = 'local' | 'online'
 
 export interface DictionaryProvider {
+  externalUrl?: (query: DictionaryQuery) => string
   id: string
   lookup: (
     query: DictionaryQuery,
@@ -93,6 +94,7 @@ export class DictionaryCoordinator {
     const controller = new AbortController()
     this.activeSession = { controller, id }
     let sources = eligibleProviders.map<DictionarySourceState>((provider) => ({
+      externalUrl: query ? provider.externalUrl?.(query) : undefined,
       providerId: provider.id,
       providerName: provider.name,
       status: provider.scope === 'local' ? 'idle' : 'loading',
@@ -111,6 +113,7 @@ export class DictionaryCoordinator {
             ? this.localTasks.run(controller.signal, lookup, () => {
                 if (!this.isCurrent(id) || controller.signal.aborted) return
                 sources = replaceSource(sources, index, {
+                  externalUrl: provider.externalUrl?.(query!),
                   providerId: provider.id,
                   providerName: provider.name,
                   status: 'loading',
@@ -121,6 +124,7 @@ export class DictionaryCoordinator {
           if (!this.isCurrent(id) || controller.signal.aborted) return
 
           sources = replaceSource(sources, index, {
+            externalUrl: result?.externalUrl ?? provider.externalUrl?.(query!),
             providerId: provider.id,
             providerName: provider.name,
             ...(result
@@ -133,7 +137,8 @@ export class DictionaryCoordinator {
 
           sources = replaceSource(sources, index, {
             error: error instanceof Error ? error.message : String(error),
-            externalUrl: externalUrlFromError(error),
+            externalUrl:
+              externalUrlFromError(error) ?? provider.externalUrl?.(query!),
             providerId: provider.id,
             providerName: provider.name,
             status: 'error',
