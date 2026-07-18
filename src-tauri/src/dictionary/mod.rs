@@ -140,7 +140,7 @@ pub fn lookup_stardict(
     let cache = registry
         .cache_path(&dictionary_id)
         .map_err(|error| StarDictError::new(&error.code, error.message))?;
-    if !cache.join("index.json").is_file() {
+    if !cache.join("offsets.bin").is_file() {
         prepare_index(&record.source_path, &cache)?;
     }
     let reader = sessions.get_or_open_stardict(session_id, &dictionary_id, || {

@@ -144,9 +144,9 @@ impl DictionarySessionManager {
             if let DictionarySessionResource::Mdict(reader) = resource {
                 diagnostics.file_count += reader.source_file_count();
             }
-            if matches!(resource, DictionarySessionResource::StarDict(_)) {
+            if let DictionarySessionResource::StarDict(reader) = resource {
                 diagnostics.file_count += 1;
-                diagnostics.mmap_count += 2;
+                diagnostics.mmap_count += reader.mmap_count();
             }
         }
         Ok(diagnostics)

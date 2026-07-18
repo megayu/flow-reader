@@ -15,6 +15,7 @@ use super::import::{
 };
 
 const INDEX_VERSION: u32 = 1;
+const HEADER_LENGTH_BYTES: usize = 4;
 const MAX_ENTRIES: usize = 10_000_000;
 const MAX_WORD_BYTES: usize = 16 * 1024;
 const MAX_DEFINITION_BYTES: usize = 1024 * 1024;
@@ -66,21 +67,29 @@ pub struct StarDictLookupResult {
     pub diagnostics: StarDictLookupDiagnostics,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct DerivedMetadata {
-    version: u32,
-    fingerprint: SourceFingerprint,
-    entry_count: u64,
-}
-
 #[derive(Debug, Clone)]
 struct SourceEntry {
     key: String,
     headword: String,
     offset: u64,
     length: u32,
-    ordinal: usize,
+    index_offset: u32,
+}
+
+#[derive(Debug, Clone)]
+struct SynonymEntry {
+    key: String,
+    synonym_offset: u32,
+    target_index_offset: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DerivedMetadata {
+    version: u32,
+    fingerprint: SourceFingerprint,
+    entry_count: u32,
+    synonym_count: u32,
 }
 
 pub fn prepare_index(master: &Path, cache: &Path) -> Result<(), StarDictError> {
@@ -95,101 +104,131 @@ pub fn prepare_index(master: &Path, cache: &Path) -> Result<(), StarDictError> {
             "This StarDict uses definition fields that are not supported yet.",
         ));
     }
-    let offset_bytes = match metadata.get("idxoffsetbits").map(String::as_str) {
-        Some("64") => 8,
-        Some("32") | None => 4,
-        _ => {
-            return Err(StarDictError::new(
-                "invalidIndex",
-                "The StarDict offset width is invalid.",
-            ))
-        }
-    };
+    let offset_bytes = index_data_offset_bytes(&metadata)?;
     let index_path = used_file(&inspected, DictionaryFileKind::Index)?;
     let data_size = dictionary_uncompressed_size(&inspected)?;
     let mut entries = parse_index(&index_path, offset_bytes, data_size)?;
-    if let Some(synonyms) = optional_used_file(&inspected, DictionaryFileKind::Synonyms) {
-        let aliases = parse_synonyms(&synonyms, &entries)?;
-        entries.extend(aliases);
-    }
+    let mut synonyms = optional_used_file(&inspected, DictionaryFileKind::Synonyms)
+        .map(|path| parse_synonyms(&path, &entries))
+        .transpose()?
+        .unwrap_or_default();
     entries.sort_by(|left, right| {
         left.key
             .cmp(&right.key)
-            .then_with(|| left.ordinal.cmp(&right.ordinal))
+            .then_with(|| left.index_offset.cmp(&right.index_offset))
             .then_with(|| left.headword.cmp(&right.headword))
+    });
+    synonyms.sort_by(|left, right| {
+        left.key
+            .cmp(&right.key)
+            .then_with(|| left.target_index_offset.cmp(&right.target_index_offset))
+            .then_with(|| left.synonym_offset.cmp(&right.synonym_offset))
     });
 
     fs::create_dir_all(cache).map_err(|error| io_error("cacheCreateFailed", error))?;
-    let mut entry_bytes = Vec::new();
-    let mut offset_bytes = Vec::with_capacity(entries.len() * 8);
-    for entry in &entries {
-        offset_bytes.extend_from_slice(&(entry_bytes.len() as u64).to_le_bytes());
-        write_string(&mut entry_bytes, &entry.key)?;
-        write_string(&mut entry_bytes, &entry.headword)?;
-        entry_bytes.extend_from_slice(&entry.offset.to_le_bytes());
-        entry_bytes.extend_from_slice(&entry.length.to_le_bytes());
-    }
-    atomic_write(&cache.join("entries.bin"), &entry_bytes)?;
-    atomic_write(&cache.join("offsets.bin"), &offset_bytes)?;
-    let derived = DerivedMetadata {
+    let metadata = DerivedMetadata {
         version: INDEX_VERSION,
         fingerprint: inspected.fingerprint,
-        entry_count: entries.len() as u64,
+        entry_count: entries.len() as u32,
+        synonym_count: synonyms.len() as u32,
     };
-    let encoded = serde_json::to_vec(&derived)
+    let encoded = serde_json::to_vec(&metadata)
         .map_err(|error| StarDictError::new("indexWriteFailed", error.to_string()))?;
-    atomic_write(&cache.join("index.json"), &encoded)
+    let header_length = u32::try_from(encoded.len())
+        .map_err(|_| invalid_derived("The derived StarDict header is too large."))?;
+    let mut offset_bytes = Vec::with_capacity(
+        HEADER_LENGTH_BYTES + encoded.len() + entries.len() * 4 + synonyms.len() * 8,
+    );
+    offset_bytes.extend_from_slice(&header_length.to_le_bytes());
+    offset_bytes.extend_from_slice(&encoded);
+    for entry in &entries {
+        offset_bytes.extend_from_slice(&entry.index_offset.to_le_bytes());
+    }
+    for synonym in &synonyms {
+        offset_bytes.extend_from_slice(&synonym.synonym_offset.to_le_bytes());
+        offset_bytes.extend_from_slice(&synonym.target_index_offset.to_le_bytes());
+    }
+    atomic_write(&cache.join("offsets.bin"), &offset_bytes)
 }
 
 #[derive(Debug)]
 pub struct StarDictReader {
-    entries: Mmap,
+    index: Mmap,
     offsets: Mmap,
+    synonyms: Option<Mmap>,
     entry_count: usize,
+    synonym_count: usize,
+    entry_table_start: usize,
+    synonym_table_start: usize,
+    data_offset_bytes: usize,
     data: DictionaryData,
 }
 
 impl StarDictReader {
     pub fn open(master: &Path, cache: &Path) -> Result<Self, StarDictError> {
         let inspected = inspect_stardict(master)?;
-        let derived: DerivedMetadata = serde_json::from_slice(
-            &fs::read(cache.join("index.json"))
-                .map_err(|error| io_error("indexUnavailable", error))?,
-        )
-        .map_err(|error| StarDictError::new("invalidDerivedIndex", error.to_string()))?;
-        if derived.version != INDEX_VERSION || derived.fingerprint != inspected.fingerprint {
+        let metadata = read_ifo(&inspected.source_path)?;
+        let data_offset_bytes = index_data_offset_bytes(&metadata)?;
+        let offsets_file = File::open(cache.join("offsets.bin"))
+            .map_err(|error| io_error("indexUnavailable", error))?;
+        // App-generated cache files and registered source files remain immutable
+        // for the lifetime of a dictionary lookup session.
+        let offsets = unsafe { MmapOptions::new().map(&offsets_file) }
+            .map_err(|error| io_error("indexUnavailable", error))?;
+        let (header, entry_table_start) = read_index_header(&offsets)?;
+        if header.fingerprint != inspected.fingerprint {
             return Err(StarDictError::new(
                 "staleIndex",
                 "The StarDict source changed after its index was prepared.",
             ));
         }
-        if derived.entry_count == 0 || derived.entry_count as usize > MAX_ENTRIES {
+        let entry_count = header.entry_count as usize;
+        let synonym_count = header.synonym_count as usize;
+        if entry_count == 0 || entry_count > MAX_ENTRIES || synonym_count > MAX_ENTRIES {
             return Err(StarDictError::new(
                 "invalidDerivedIndex",
                 "The derived StarDict index has an invalid entry count.",
             ));
         }
-        let entries_file = File::open(cache.join("entries.bin"))
+        let synonym_table_start = table_offset(entry_table_start, entry_count, 4)?;
+        let expected_len = table_offset(synonym_table_start, synonym_count, 8)?;
+        if offsets.len() != expected_len {
+            return Err(invalid_derived(
+                "The derived StarDict offset table has an invalid size.",
+            ));
+        }
+        let index_path = used_file(&inspected, DictionaryFileKind::Index)?;
+        let index_file =
+            File::open(index_path).map_err(|error| io_error("indexUnavailable", error))?;
+        let index = unsafe { MmapOptions::new().map(&index_file) }
             .map_err(|error| io_error("indexUnavailable", error))?;
-        let offsets_file = File::open(cache.join("offsets.bin"))
-            .map_err(|error| io_error("indexUnavailable", error))?;
-        // These app-generated files are immutable for the lifetime of a lookup
-        // session; registration prepares them before a reader can open them.
-        let entries = unsafe { MmapOptions::new().map(&entries_file) }
-            .map_err(|error| io_error("indexUnavailable", error))?;
-        let offsets = unsafe { MmapOptions::new().map(&offsets_file) }
-            .map_err(|error| io_error("indexUnavailable", error))?;
-        if offsets.len() != derived.entry_count as usize * 8 {
-            return Err(StarDictError::new(
-                "invalidDerivedIndex",
-                "The derived StarDict offset table is truncated.",
+        let synonyms = if synonym_count == 0 {
+            None
+        } else {
+            optional_used_file(&inspected, DictionaryFileKind::Synonyms)
+                .map(|path| {
+                    let file =
+                        File::open(path).map_err(|error| io_error("invalidSynonym", error))?;
+                    unsafe { MmapOptions::new().map(&file) }
+                        .map_err(|error| io_error("invalidSynonym", error))
+                })
+                .transpose()?
+        };
+        if synonym_count > 0 && synonyms.is_none() {
+            return Err(invalid_derived(
+                "The derived StarDict synonym table has no source file.",
             ));
         }
         let data = DictionaryData::open(&inspected)?;
         Ok(Self {
-            entries,
+            index,
             offsets,
-            entry_count: derived.entry_count as usize,
+            synonyms,
+            entry_count,
+            synonym_count,
+            entry_table_start,
+            synonym_table_start,
+            data_offset_bytes,
             data,
         })
     }
@@ -202,24 +241,18 @@ impl StarDictReader {
                 diagnostics: StarDictLookupDiagnostics::default(),
             });
         }
-        let mut low = 0_usize;
-        let mut high = self.entry_count;
-        while low < high {
-            let middle = low + (high - low) / 2;
-            let entry = self.entry_at(middle)?;
-            if entry.key.as_str() < query.as_str() {
-                low = middle + 1;
-            } else {
-                high = middle;
-            }
-        }
-        let mut matches = Vec::new();
+        let mut source_matches = self.regular_matches(&query)?;
+        source_matches.extend(self.synonym_matches(&query)?);
+        source_matches.sort_by(|left, right| {
+            left.index_offset
+                .cmp(&right.index_offset)
+                .then_with(|| left.headword.cmp(&right.headword))
+        });
+        source_matches.truncate(MAX_MATCHES);
+
+        let mut matches: Vec<StarDictEntry> = Vec::new();
         let mut diagnostics = StarDictLookupDiagnostics::default();
-        for index in low..self.entry_count.min(low + MAX_MATCHES) {
-            let entry = self.entry_at(index)?;
-            if entry.key != query {
-                break;
-            }
+        for entry in source_matches {
             let (bytes, read_diagnostics) = self.data.read(entry.offset, entry.length)?;
             diagnostics.bytes_read = diagnostics
                 .bytes_read
@@ -249,28 +282,77 @@ impl StarDictReader {
         })
     }
 
-    fn entry_at(&self, index: usize) -> Result<SourceEntry, StarDictError> {
-        let offset_start = index
-            .checked_mul(8)
-            .ok_or_else(|| invalid_derived("The offset table overflowed."))?;
-        let offset = read_u64_le(&self.offsets, offset_start)? as usize;
-        let mut cursor = offset;
-        let key = read_string(&self.entries, &mut cursor)?;
-        let headword = read_string(&self.entries, &mut cursor)?;
-        let data_offset = read_u64_le(&self.entries, cursor)?;
-        cursor += 8;
-        let length = read_u32_le(&self.entries, cursor)?;
-        if length as usize > MAX_DEFINITION_BYTES {
-            return Err(invalid_derived("A definition exceeds the size limit."));
-        }
-        Ok(SourceEntry {
-            key,
-            headword,
-            offset: data_offset,
-            length,
-            ordinal: index,
-        })
+    pub fn mmap_count(&self) -> usize {
+        2 + usize::from(self.synonyms.is_some())
     }
+
+    fn regular_matches(&self, query: &str) -> Result<Vec<SourceEntry>, StarDictError> {
+        let low = lower_bound(self.entry_count, query, |index| {
+            Ok(self.regular_entry_at(index)?.key)
+        })?;
+        let mut matches = Vec::new();
+        for index in low..self.entry_count.min(low + MAX_MATCHES) {
+            let entry = self.regular_entry_at(index)?;
+            if entry.key != query {
+                break;
+            }
+            matches.push(entry);
+        }
+        Ok(matches)
+    }
+
+    fn synonym_matches(&self, query: &str) -> Result<Vec<SourceEntry>, StarDictError> {
+        let Some(synonyms) = &self.synonyms else {
+            return Ok(Vec::new());
+        };
+        let low = lower_bound(self.synonym_count, query, |index| {
+            Ok(self.synonym_entry_at(synonyms, index)?.0)
+        })?;
+        let mut matches = Vec::new();
+        for index in low..self.synonym_count.min(low + MAX_MATCHES) {
+            let (key, target_offset) = self.synonym_entry_at(synonyms, index)?;
+            if key != query {
+                break;
+            }
+            matches.push(parse_index_entry(&self.index, target_offset, self.data_offset_bytes)?.0);
+        }
+        Ok(matches)
+    }
+
+    fn regular_entry_at(&self, index: usize) -> Result<SourceEntry, StarDictError> {
+        let offset_position = table_offset(self.entry_table_start, index, 4)?;
+        let source_offset = read_u32_le(&self.offsets, offset_position)?;
+        Ok(parse_index_entry(&self.index, source_offset, self.data_offset_bytes)?.0)
+    }
+
+    fn synonym_entry_at(
+        &self,
+        synonyms: &[u8],
+        index: usize,
+    ) -> Result<(String, u32), StarDictError> {
+        let record_start = table_offset(self.synonym_table_start, index, 8)?;
+        let synonym_offset = read_u32_le(&self.offsets, record_start)?;
+        let target_offset = read_u32_le(&self.offsets, record_start + 4)?;
+        let key = parse_synonym_key(synonyms, synonym_offset)?;
+        Ok((normalize_key(&key), target_offset))
+    }
+}
+
+fn lower_bound(
+    length: usize,
+    query: &str,
+    mut key_at: impl FnMut(usize) -> Result<String, StarDictError>,
+) -> Result<usize, StarDictError> {
+    let (mut low, mut high) = (0, length);
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if key_at(middle)?.as_str() < query {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    Ok(low)
 }
 
 #[derive(Debug)]
@@ -522,47 +604,22 @@ fn parse_index(
     data_size: u64,
 ) -> Result<Vec<SourceEntry>, StarDictError> {
     let bytes = fs::read(path).map_err(|error| io_error("indexUnavailable", error))?;
+    if bytes.len() > u32::MAX as usize {
+        return Err(invalid_index(
+            "The StarDict index exceeds the supported size.",
+        ));
+    }
     let mut cursor = 0_usize;
     let mut entries = Vec::new();
     while cursor < bytes.len() {
         if entries.len() >= MAX_ENTRIES {
             return Err(invalid_index("The StarDict index has too many entries."));
         }
-        let end = bytes[cursor..]
-            .iter()
-            .position(|byte| *byte == 0)
-            .map(|relative| cursor + relative)
-            .ok_or_else(|| invalid_index("A StarDict headword is not terminated."))?;
-        if end == cursor || end - cursor > MAX_WORD_BYTES {
-            return Err(invalid_index("A StarDict headword has an invalid length."));
-        }
-        let headword = std::str::from_utf8(&bytes[cursor..end])
-            .map_err(|_| invalid_index("A StarDict headword is not UTF-8."))?
-            .to_string();
-        cursor = end + 1;
-        let numeric_end = cursor
-            .checked_add(offset_bytes + 4)
-            .ok_or_else(|| invalid_index("A StarDict index offset overflowed."))?;
-        if numeric_end > bytes.len() {
-            return Err(invalid_index("A StarDict index record is truncated."));
-        }
-        let offset = if offset_bytes == 8 {
-            u64::from_be_bytes(bytes[cursor..cursor + 8].try_into().unwrap())
-        } else {
-            u32::from_be_bytes(bytes[cursor..cursor + 4].try_into().unwrap()) as u64
-        };
-        cursor += offset_bytes;
-        let length = u32::from_be_bytes(bytes[cursor..cursor + 4].try_into().unwrap());
-        cursor += 4;
-        validate_range(offset, length, data_size)
+        let (entry, next) = parse_index_entry(&bytes, cursor as u32, offset_bytes)?;
+        validate_range(entry.offset, entry.length, data_size)
             .map_err(|_| invalid_index("A StarDict entry points outside dictionary data."))?;
-        entries.push(SourceEntry {
-            key: normalize_key(&headword),
-            headword,
-            offset,
-            length,
-            ordinal: entries.len(),
-        });
+        entries.push(entry);
+        cursor = next;
     }
     if entries.is_empty() {
         return Err(invalid_index("The StarDict index is empty."));
@@ -570,14 +627,20 @@ fn parse_index(
     Ok(entries)
 }
 
-fn parse_synonyms(path: &Path, source: &[SourceEntry]) -> Result<Vec<SourceEntry>, StarDictError> {
+fn parse_synonyms(path: &Path, source: &[SourceEntry]) -> Result<Vec<SynonymEntry>, StarDictError> {
     let bytes = fs::read(path).map_err(|error| io_error("invalidSynonym", error))?;
+    if bytes.len() > u32::MAX as usize {
+        return Err(invalid_synonym(
+            "The StarDict synonym list exceeds the supported size.",
+        ));
+    }
     let mut cursor = 0_usize;
     let mut aliases = Vec::new();
     while cursor < bytes.len() {
         if aliases.len() >= MAX_ENTRIES {
             return Err(invalid_synonym("The StarDict synonym list is too large."));
         }
+        let synonym_offset = cursor as u32;
         let end = bytes[cursor..]
             .iter()
             .position(|byte| *byte == 0)
@@ -594,12 +657,10 @@ fn parse_synonyms(path: &Path, source: &[SourceEntry]) -> Result<Vec<SourceEntry
         let target = source
             .get(ordinal)
             .ok_or_else(|| invalid_synonym("A StarDict synonym target is out of bounds."))?;
-        aliases.push(SourceEntry {
+        aliases.push(SynonymEntry {
             key: normalize_key(alias),
-            headword: target.headword.clone(),
-            offset: target.offset,
-            length: target.length,
-            ordinal: target.ordinal,
+            synonym_offset,
+            target_index_offset: target.index_offset,
         });
     }
     Ok(aliases)
@@ -644,25 +705,106 @@ fn optional_used_file(
         .map(|file| file.path.clone())
 }
 
-fn write_string(buffer: &mut Vec<u8>, value: &str) -> Result<(), StarDictError> {
-    let length =
-        u32::try_from(value.len()).map_err(|_| invalid_index("A StarDict string is too long."))?;
-    buffer.extend_from_slice(&length.to_le_bytes());
-    buffer.extend_from_slice(value.as_bytes());
-    Ok(())
+fn read_index_header(bytes: &[u8]) -> Result<(DerivedMetadata, usize), StarDictError> {
+    let header_length = read_u32_le(bytes, 0)? as usize;
+    let header_end = HEADER_LENGTH_BYTES
+        .checked_add(header_length)
+        .filter(|end| *end <= bytes.len())
+        .ok_or_else(|| invalid_derived("The derived StarDict header is truncated."))?;
+    let metadata: DerivedMetadata = serde_json::from_slice(&bytes[HEADER_LENGTH_BYTES..header_end])
+        .map_err(|error| {
+            invalid_derived(&format!("The derived StarDict header is invalid: {error}"))
+        })?;
+    if metadata.version != INDEX_VERSION {
+        return Err(invalid_derived(
+            "The derived StarDict index version is unsupported.",
+        ));
+    }
+    Ok((metadata, header_end))
 }
 
-fn read_string(bytes: &[u8], cursor: &mut usize) -> Result<String, StarDictError> {
-    let length = read_u32_le(bytes, *cursor)? as usize;
-    *cursor += 4;
-    if length > MAX_WORD_BYTES || *cursor + length > bytes.len() {
-        return Err(invalid_derived("A derived StarDict string is invalid."));
+fn table_offset(start: usize, count: usize, width: usize) -> Result<usize, StarDictError> {
+    count
+        .checked_mul(width)
+        .and_then(|length| start.checked_add(length))
+        .ok_or_else(|| invalid_derived("The derived StarDict table size overflowed."))
+}
+
+fn index_data_offset_bytes(
+    metadata: &std::collections::HashMap<String, String>,
+) -> Result<usize, StarDictError> {
+    match metadata.get("idxoffsetbits").map(String::as_str) {
+        Some("64") => Ok(8),
+        Some("32") | None => Ok(4),
+        _ => Err(invalid_index("The StarDict offset width is invalid.")),
     }
-    let value = std::str::from_utf8(&bytes[*cursor..*cursor + length])
-        .map_err(|_| invalid_derived("A derived StarDict string is not UTF-8."))?
+}
+
+fn parse_index_entry(
+    bytes: &[u8],
+    source_offset: u32,
+    data_offset_bytes: usize,
+) -> Result<(SourceEntry, usize), StarDictError> {
+    let start = source_offset as usize;
+    let end = bytes
+        .get(start..)
+        .and_then(|remaining| remaining.iter().position(|byte| *byte == 0))
+        .map(|relative| start + relative)
+        .ok_or_else(|| invalid_derived("A cached StarDict headword is not terminated."))?;
+    if end == start || end - start > MAX_WORD_BYTES {
+        return Err(invalid_derived(
+            "A cached StarDict headword has an invalid length.",
+        ));
+    }
+    let headword = std::str::from_utf8(&bytes[start..end])
+        .map_err(|_| invalid_derived("A cached StarDict headword is not UTF-8."))?
         .to_string();
-    *cursor += length;
-    Ok(value)
+    let numeric_start = end + 1;
+    let numeric_end = numeric_start
+        .checked_add(data_offset_bytes + 4)
+        .ok_or_else(|| invalid_derived("A cached StarDict index record overflowed."))?;
+    if numeric_end > bytes.len() {
+        return Err(invalid_derived(
+            "A cached StarDict index record is truncated.",
+        ));
+    }
+    let offset = if data_offset_bytes == 8 {
+        u64::from_be_bytes(bytes[numeric_start..numeric_start + 8].try_into().unwrap())
+    } else {
+        u32::from_be_bytes(bytes[numeric_start..numeric_start + 4].try_into().unwrap()) as u64
+    };
+    let length_start = numeric_start + data_offset_bytes;
+    let length = u32::from_be_bytes(bytes[length_start..numeric_end].try_into().unwrap());
+    if length as usize > MAX_DEFINITION_BYTES {
+        return Err(invalid_derived("A definition exceeds the size limit."));
+    }
+    Ok((
+        SourceEntry {
+            key: normalize_key(&headword),
+            headword,
+            offset,
+            length,
+            index_offset: source_offset,
+        },
+        numeric_end,
+    ))
+}
+
+fn parse_synonym_key(bytes: &[u8], source_offset: u32) -> Result<String, StarDictError> {
+    let start = source_offset as usize;
+    let end = bytes
+        .get(start..)
+        .and_then(|remaining| remaining.iter().position(|byte| *byte == 0))
+        .map(|relative| start + relative)
+        .ok_or_else(|| invalid_derived("A cached StarDict synonym is not terminated."))?;
+    if end == start || end - start > MAX_WORD_BYTES || end + 5 > bytes.len() {
+        return Err(invalid_derived(
+            "A cached StarDict synonym record is invalid.",
+        ));
+    }
+    std::str::from_utf8(&bytes[start..end])
+        .map(str::to_string)
+        .map_err(|_| invalid_derived("A cached StarDict synonym is not UTF-8."))
 }
 
 fn read_u32_le(bytes: &[u8], offset: usize) -> Result<u32, StarDictError> {
@@ -673,16 +815,6 @@ fn read_u32_le(bytes: &[u8], offset: usize) -> Result<u32, StarDictError> {
         .get(offset..end)
         .ok_or_else(|| invalid_derived("The derived index is truncated."))?;
     Ok(u32::from_le_bytes(slice.try_into().unwrap()))
-}
-
-fn read_u64_le(bytes: &[u8], offset: usize) -> Result<u64, StarDictError> {
-    let end = offset
-        .checked_add(8)
-        .ok_or_else(|| invalid_derived("A derived index offset overflowed."))?;
-    let slice = bytes
-        .get(offset..end)
-        .ok_or_else(|| invalid_derived("The derived index is truncated."))?;
-    Ok(u64::from_le_bytes(slice.try_into().unwrap()))
 }
 
 fn validate_range(offset: u64, length: u32, size: u64) -> Result<(), StarDictError> {
@@ -780,7 +912,7 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use super::{prepare_index, StarDictReader};
+    use super::{prepare_index, read_index_header, StarDictReader};
     use crate::dictionary::session::DictionarySessionManager;
 
     struct Fixture {
@@ -862,13 +994,13 @@ mod tests {
         let second = write_fixture("deterministic-b", &[("b", "2"), ("a", "1")], 32);
         prepare_index(&first.ifo, &first.cache).unwrap();
         prepare_index(&second.ifo, &second.cache).unwrap();
+        let first_offsets = fs::read(first.cache.join("offsets.bin")).unwrap();
+        let second_offsets = fs::read(second.cache.join("offsets.bin")).unwrap();
+        let first_start = read_index_header(&first_offsets).unwrap().1;
+        let second_start = read_index_header(&second_offsets).unwrap().1;
         assert_eq!(
-            fs::read(first.cache.join("entries.bin")).unwrap(),
-            fs::read(second.cache.join("entries.bin")).unwrap(),
-        );
-        assert_eq!(
-            fs::read(first.cache.join("offsets.bin")).unwrap(),
-            fs::read(second.cache.join("offsets.bin")).unwrap(),
+            &first_offsets[first_start..],
+            &second_offsets[second_start..],
         );
     }
 
@@ -969,11 +1101,7 @@ mod tests {
             .unwrap()
             .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
             .collect::<Vec<_>>();
-        assert!(names.contains(&"entries.bin".to_string()));
-        assert!(names.contains(&"offsets.bin".to_string()));
-        assert!(!names
-            .iter()
-            .any(|name| name.ends_with(".dict") || name.ends_with(".dict.dz")));
+        assert_eq!(names, ["offsets.bin"]);
         assert!(Path::new(&fixture.root.join("fixture.dict")).is_file());
     }
 
