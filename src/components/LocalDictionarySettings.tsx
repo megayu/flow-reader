@@ -373,24 +373,22 @@ export function LocalDictionarySettings({
         }
       }}
     >
-      <div className="flex min-w-0 items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <h3 className="text-base font-semibold">
-            {t('dictionary.sources_title')}
-          </h3>
-          <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
-            {t('dictionary.sources_description')}
-          </p>
-        </div>
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1">
+        <h3 className="text-base font-semibold">
+          {t('dictionary.sources_title')}
+        </h3>
         <UiButton
           type="button"
           size="sm"
-          className="ml-auto h-8 shrink-0 gap-1.5 px-3"
+          className="h-8 shrink-0 gap-1.5 px-3"
           onClick={() => void addDictionary()}
         >
           <PlusIcon className="size-4" />
           {t('dictionary.local_add')}
         </UiButton>
+        <p className="text-muted-foreground col-span-2 text-sm leading-relaxed">
+          {t('dictionary.sources_description')}
+        </p>
       </div>
 
       {error && (
