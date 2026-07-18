@@ -201,7 +201,7 @@ export default {
   'settings.dictionary.sources_title': 'Dictionary sources',
   'settings.dictionary.sources_description':
     'Choose one .ifo or .mdx master file to add a local dictionary. Companion files must use the same name and stay in the same folder; keeping each dictionary in its own folder is recommended.',
-  'settings.dictionary.zdic_metadata': 'Chinese · Online',
+  'settings.dictionary.online': 'Online',
   'settings.dictionary.configured': 'Configured',
   'settings.dictionary.not_configured': 'Not configured',
   'settings.dictionary.local_add': 'Add local dictionary',

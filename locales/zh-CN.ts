@@ -199,7 +199,7 @@ export default {
   'settings.dictionary.sources_title': '词典来源',
   'settings.dictionary.sources_description':
     '选择 .ifo 或 .mdx 主文件添加本地词典；配套文件需与主文件同名并放在同一文件夹。建议每部词典使用独立文件夹。',
-  'settings.dictionary.zdic_metadata': '中文 · 在线',
+  'settings.dictionary.online': '在线',
   'settings.dictionary.configured': '已配置',
   'settings.dictionary.not_configured': '未配置',
   'settings.dictionary.local_add': '添加本地词典',

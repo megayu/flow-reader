@@ -98,7 +98,10 @@ test('shows every dictionary source in one reorderable persisted list', async ({
 
   await expect(sources).toHaveCount(3)
   await expect(sources.nth(0)).toContainText('汉典')
+  await expect(sources.nth(0)).toContainText('Online')
+  await expect(sources.nth(0)).toContainText('中文')
   await expect(sources.nth(1)).toContainText('Merriam-Webster')
+  await expect(sources.nth(1)).toContainText('Online')
   await expect(sources.nth(2)).toContainText('Fixture Lexicon')
 
   const sidebar = dialog.locator('aside')

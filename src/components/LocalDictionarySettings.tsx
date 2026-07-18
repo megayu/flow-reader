@@ -605,10 +605,15 @@ function DictionarySourceRow({
                 {source.dictionary.format}
               </span>
             )}
+            {(source.kind === 'zdic' || source.kind === 'merriam-webster') && (
+              <span className="bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-xs uppercase">
+                {t('dictionary.online')}
+              </span>
+            )}
           </div>
           <div className="text-muted-foreground mt-0.5 truncate text-sm">
             {source.kind === 'zdic'
-              ? t('dictionary.zdic_metadata')
+              ? '中文'
               : source.kind === 'merriam-webster'
                 ? `English · Collegiate Dictionary · ${t(
                     configured
