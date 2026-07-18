@@ -827,7 +827,7 @@ function EpubImportProgressPanel({
   const total = Math.max(progress.total, 1)
 
   return (
-    <div className="fixed inset-0 z-[9998] grid place-items-center bg-black/10 backdrop-blur-[1px]">
+    <div className="fixed inset-0 z-[9998] grid place-items-center bg-black/20">
       <section
         aria-live="polite"
         className="bg-popover text-popover-foreground ring-foreground/10 w-[min(calc(100vw-2rem),24rem)] rounded-lg p-4 text-base shadow-xl ring-1"

@@ -2706,7 +2706,7 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
       aria-modal="true"
       data-flow-keyboard-capture="true"
       tabIndex={-1}
-      className="fixed inset-0 z-[9999] overflow-hidden bg-neutral-500/45 text-white backdrop-blur-2xl backdrop-saturate-75 outline-none"
+      className="fixed inset-0 z-[9999] overflow-hidden bg-neutral-500 text-white outline-none"
       onWheel={handleWheel}
       onPointerDown={handlePreviewBackdropPointerDown}
       onMouseDown={(event) => {
