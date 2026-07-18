@@ -13,8 +13,10 @@ export type AnnotationColor = keyof typeof colorMap
 // across both light and dark reader backgrounds.
 export const colorMap = {
   yellow: 'rgba(202, 138, 4, 0.42)',
+  brown: 'rgba(120, 53, 15, 0.46)',
   red: 'rgba(225, 29, 72, 0.36)',
   green: 'rgba(22, 163, 74, 0.38)',
+  cyan: 'rgba(6, 182, 212, 0.46)',
   blue: 'rgba(37, 99, 235, 0.34)',
   purple: 'rgba(126, 34, 206, 0.36)',
 }
