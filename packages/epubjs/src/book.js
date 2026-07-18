@@ -484,16 +484,17 @@ class Book {
   /**
    * Load a resource from the Book
    * @param  {string} path path to the resource to load
+   * @param  {string} [type] resource type override
    * @return {Promise}     returns a promise with the requested resource
    */
-  load(path) {
+  load(path, type) {
     var resolved = this.resolve(path)
     if (this.archived) {
-      return this.archive.request(resolved)
+      return this.archive.request(resolved, type)
     } else {
       return this.request(
         resolved,
-        null,
+        type,
         this.settings.requestCredentials,
         this.settings.requestHeaders,
       )

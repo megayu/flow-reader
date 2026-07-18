@@ -150,6 +150,72 @@ describe('Book', function () {
     })
   })
 
+  describe('Spine document media types', function () {
+    it('parses .html spine documents declared as XHTML with XHTML semantics', async function () {
+      const zip = new JSZip()
+
+      zip.file('mimetype', 'application/epub+zip')
+      zip.file(
+        'META-INF/container.xml',
+        `<?xml version="1.0"?>
+        <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+          <rootfiles>
+            <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+          </rootfiles>
+        </container>`,
+      )
+      zip.file(
+        'OEBPS/content.opf',
+        `<?xml version="1.0" encoding="UTF-8"?>
+        <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <dc:title>XHTML HTML Extension</dc:title>
+            <dc:identifier id="id">xhtml-html-extension</dc:identifier>
+            <dc:language>en</dc:language>
+          </metadata>
+          <manifest>
+            <item id="chapter" href="chapter.html" media-type="application/xhtml+xml"/>
+          </manifest>
+          <spine><itemref idref="chapter"/></spine>
+        </package>`,
+      )
+      zip.file(
+        'OEBPS/chapter.html',
+        `<?xml version="1.0" encoding="utf-8"?>
+        <html xmlns="http://www.w3.org/1999/xhtml">
+          <head><title>Chapter</title></head>
+          <body>
+            <p>Lead<a data-type="indexterm"/> database text</p>
+          </body>
+        </html>`,
+      )
+
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' })
+      const url = URL.createObjectURL(
+        new Blob([buffer], { type: 'application/epub+zip' }),
+      )
+      const book = new Book(url, { openAs: 'epub' })
+
+      try {
+        await book.opened
+        const section = book.spine.spineItems[0]
+        await section.load(book.load.bind(book))
+
+        const paragraph = section.document.querySelector('p')
+        const indexMarker = section.document.querySelector(
+          'a[data-type="indexterm"]',
+        )
+
+        assert.equal(section.document.contentType, 'application/xhtml+xml')
+        assert.equal(indexMarker.textContent, '')
+        assert.equal(paragraph.textContent.trim(), 'Lead database text')
+      } finally {
+        book.destroy()
+        URL.revokeObjectURL(url)
+      }
+    })
+  })
+
   describe('Fixed layout metadata', function () {
     it('uses original-resolution as a fallback viewport for fixed layout books', async function () {
       const zip = new JSZip()

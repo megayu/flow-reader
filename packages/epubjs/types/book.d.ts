@@ -79,7 +79,7 @@ export default class Book {
 
   key(identifier?: string): string
 
-  load(path: string): Promise<object>
+  load(path: string, type?: string): Promise<object>
 
   loadNavigation(opf: XMLDocument): Promise<Navigation>
 

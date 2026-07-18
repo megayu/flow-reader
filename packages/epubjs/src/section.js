@@ -7,6 +7,11 @@ import Hook from './utils/hook'
 import { replaceBase } from './utils/replacements'
 import Request from './utils/request'
 
+function requestType(mediaType) {
+  if (mediaType === 'application/xhtml+xml') return 'xhtml'
+  if (mediaType === 'text/html') return 'html'
+}
+
 /**
  * Represents a Section of the Book
  *
@@ -21,6 +26,7 @@ class Section {
     this.properties = item.properties
     this.index = item.index
     this.href = item.href
+    this.type = item.type
     this.url = item.url
     this.canonical = item.canonical
     this.resourceAvailable = item.resourceAvailable
@@ -55,7 +61,7 @@ class Section {
     if (this.contents) {
       loading.resolve(this.contents)
     } else {
-      request(this.url)
+      request(this.url, requestType(this.type))
         .then(
           function (xml) {
             // var directory = new Url(this.url).directory;

@@ -78,6 +78,8 @@ class Spine {
           item.resourceAvailable = false
         }
 
+        item.type = manifestItem.type
+
         if (manifestItem.properties.length) {
           item.properties.push.apply(item.properties, manifestItem.properties)
         }
