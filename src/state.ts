@@ -44,7 +44,13 @@ export interface Settings extends TypographyConfiguration {
 }
 
 export interface DictionarySettingsConfiguration {
+  zdic: ZdicSettingsConfiguration
   merriamWebster: MerriamWebsterSettingsConfiguration
+  sourceOrder: string[]
+}
+
+export interface ZdicSettingsConfiguration {
+  enabled: boolean
 }
 
 export interface MerriamWebsterSettingsConfiguration {
@@ -121,10 +127,14 @@ export const defaultTextImportRules: TextImportRulesConfiguration = {
 }
 
 export const defaultDictionarySettings: DictionarySettingsConfiguration = {
+  zdic: {
+    enabled: true,
+  },
   merriamWebster: {
     apiKey: '',
     enabled: false,
   },
+  sourceOrder: ['zdic', 'merriam-webster'],
 }
 
 export const defaultSettings: Settings = {
@@ -351,6 +361,9 @@ function normalizeDictionarySettings(
   value: Partial<DictionarySettingsConfiguration> | undefined,
 ): DictionarySettingsConfiguration {
   return {
+    zdic: {
+      enabled: value?.zdic?.enabled !== false,
+    },
     merriamWebster: {
       ...defaultDictionarySettings.merriamWebster,
       ...value?.merriamWebster,
@@ -360,7 +373,31 @@ function normalizeDictionarySettings(
           : '',
       enabled: value?.merriamWebster?.enabled === true,
     },
+    sourceOrder: normalizeDictionarySourceOrder(value?.sourceOrder),
   }
+}
+
+function normalizeDictionarySourceOrder(value: unknown) {
+  if (!Array.isArray(value)) return [...defaultDictionarySettings.sourceOrder]
+
+  const defaultSourceIds = new Set(defaultDictionarySettings.sourceOrder)
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const sourceId of value) {
+    if (
+      typeof sourceId !== 'string' ||
+      (!defaultSourceIds.has(sourceId) && !sourceId.startsWith('local:')) ||
+      seen.has(sourceId)
+    ) {
+      continue
+    }
+    seen.add(sourceId)
+    result.push(sourceId)
+  }
+  for (const sourceId of defaultDictionarySettings.sourceOrder) {
+    if (!seen.has(sourceId)) result.push(sourceId)
+  }
+  return result
 }
 
 export function normalizeLibraryBookCardWidth(value: unknown) {

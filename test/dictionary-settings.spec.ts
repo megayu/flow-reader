@@ -18,7 +18,7 @@ async function openDictionarySettings(page: import('@playwright/test').Page) {
   return dialog
 }
 
-test('stores Merriam-Webster configuration locally with a masked key field', async ({
+test('configures Merriam-Webster inline with the key actions in one row', async ({
   page,
 }) => {
   await installTauriMock(page)
@@ -27,11 +27,39 @@ test('stores Merriam-Webster configuration locally with a masked key field', asy
   const enabled = dialog.getByRole('checkbox', {
     name: 'Enable Merriam-Webster',
   })
-  await enabled.click()
+  await expect(enabled).toBeDisabled()
+  await dialog.getByRole('button', { name: 'Edit Merriam-Webster' }).click()
+  await expect(
+    dialog.getByRole('button', { name: 'Save Merriam-Webster' }),
+  ).toBeVisible()
+  await dialog.getByLabel('Merriam-Webster API key').press('Escape')
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator('[data-merriam-webster-key-row]')).toHaveCount(0)
+
+  await dialog.getByRole('button', { name: 'Edit Merriam-Webster' }).click()
   const keyInput = dialog.getByLabel('Merriam-Webster API key')
   await expect(keyInput).toHaveAttribute('type', 'password')
+  const keyRow = dialog.locator('[data-merriam-webster-key-row]')
+  const visibility = keyRow.getByRole('button', { name: 'Show API key' })
+  const getKey = keyRow.getByRole('button', { name: 'Get a free API key' })
+  const [inputBox, visibilityBox, getKeyBox] = await Promise.all([
+    keyInput.boundingBox(),
+    visibility.boundingBox(),
+    getKey.boundingBox(),
+  ])
+  expect(inputBox).not.toBeNull()
+  expect(visibilityBox).not.toBeNull()
+  expect(getKeyBox).not.toBeNull()
+  expect(visibilityBox!.x).toBeGreaterThan(inputBox!.x)
+  expect(visibilityBox!.x + visibilityBox!.width).toBeLessThanOrEqual(
+    inputBox!.x + inputBox!.width,
+  )
+  expect(Math.abs(getKeyBox!.y - inputBox!.y)).toBeLessThan(2)
   await keyInput.fill(testApiKey)
-  await keyInput.blur()
+  await dialog.getByRole('button', { name: 'Save Merriam-Webster' }).click()
+  await expect(keyRow).toHaveCount(0)
+  await expect(enabled).toBeEnabled()
+  await enabled.click()
 
   await expect
     .poll(async () => {
@@ -44,7 +72,86 @@ test('stores Merriam-Webster configuration locally with a masked key field', asy
     })
     .toEqual({ apiKey: testApiKey, enabled: true })
 
-  await expect(keyInput).toHaveValue(testApiKey)
+  await dialog.getByRole('button', { name: 'Edit Merriam-Webster' }).click()
+  await expect(dialog.getByLabel('Merriam-Webster API key')).toHaveValue(
+    testApiKey,
+  )
+})
+
+test('shows every dictionary source in one reorderable persisted list', async ({
+  page,
+}) => {
+  const local = localDictionary({
+    id: 'dict-unified00000000000',
+    name: 'Fixture Lexicon',
+    sourcePath: 'fixture-' + 'dictionary-segment'.repeat(40) + '.mdx',
+    language: {
+      source: 'manual',
+      value: ['zh', 'en', 'ru', 'fr', 'de', 'es', 'pt', 'it'],
+    },
+  })
+  await installTauriMock(page, {
+    localDictionaries: [local],
+    settings: { ui: { fontSize: 18 } },
+  })
+  await page.goto('/')
+  const dialog = await openDictionarySettings(page)
+  const sources = dialog.locator('[data-dictionary-source-id]')
+
+  await expect(sources).toHaveCount(3)
+  await expect(sources.nth(0)).toContainText('汉典')
+  await expect(sources.nth(1)).toContainText('Merriam-Webster')
+  await expect(sources.nth(2)).toContainText('Fixture Lexicon')
+
+  const sidebar = dialog.locator('aside')
+  const content = dialog.locator('section').first()
+  const [dialogBox, sidebarBox, contentBox] = await Promise.all([
+    dialog.boundingBox(),
+    sidebar.boundingBox(),
+    content.boundingBox(),
+  ])
+  expect(dialogBox).not.toBeNull()
+  expect(sidebarBox).not.toBeNull()
+  expect(contentBox).not.toBeNull()
+  expect(sidebarBox!.x).toBeGreaterThanOrEqual(dialogBox!.x)
+  expect(contentBox!.x).toBeGreaterThanOrEqual(
+    sidebarBox!.x + sidebarBox!.width - 1,
+  )
+  expect(contentBox!.x + contentBox!.width).toBeLessThanOrEqual(
+    dialogBox!.x + dialogBox!.width + 1,
+  )
+  expect(
+    await dialog.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true)
+
+  const target = sources.nth(2)
+  const handle = sources.nth(0).locator('[data-dictionary-drag-handle]')
+  const handleBox = await handle.boundingBox()
+  const targetBox = await target.boundingBox()
+  expect(handleBox).not.toBeNull()
+  expect(targetBox).not.toBeNull()
+  await page.mouse.move(
+    handleBox!.x + handleBox!.width / 2,
+    handleBox!.y + handleBox!.height / 2,
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    targetBox!.x + targetBox!.width / 2,
+    targetBox!.y + targetBox!.height - 2,
+    { steps: 6 },
+  )
+  await page.mouse.up()
+
+  await expect
+    .poll(async () => {
+      const stored = (await getStoredSettings(page)) as {
+        dictionary?: { sourceOrder?: string[] }
+      }
+      return stored.dictionary?.sourceOrder
+    })
+    .toEqual(['merriam-webster', `local:${local.id}`, 'zdic'])
 })
 
 test('opens the official page for acquiring a Merriam-Webster API key', async ({
@@ -53,6 +160,7 @@ test('opens the official page for acquiring a Merriam-Webster API key', async ({
   await installTauriMock(page)
   await page.goto('/')
   const dialog = await openDictionarySettings(page)
+  await dialog.getByRole('button', { name: 'Edit Merriam-Webster' }).click()
   await dialog.getByRole('button', { name: 'Get a free API key' }).click()
 
   await expect
@@ -120,29 +228,49 @@ test('manages local dictionary order, status, language, enablement, relocation, 
   await expect(dialog.getByText('Source unavailable')).toBeVisible()
   await expect(dialog.getByText('Available', { exact: true })).toHaveCount(0)
 
-  await dialog
+  const alphaRow = dialog.locator(`[data-local-dictionary-id="${alpha.id}"]`)
+  await expect(
+    alphaRow.getByRole('checkbox', { name: 'Enable Alpha Dictionary' }),
+  ).toBeDisabled()
+  await alphaRow
+    .getByRole('button', { name: 'Rename Alpha Dictionary' })
+    .click()
+  const firstLanguageRow = await Promise.all(
+    ['中文', 'English', 'Русский', 'Français'].map((language) =>
+      alphaRow.getByText(language, { exact: true }).boundingBox(),
+    ),
+  )
+  expect(firstLanguageRow.every(Boolean)).toBe(true)
+  expect(
+    Math.max(...firstLanguageRow.map((box) => box!.y)) -
+      Math.min(...firstLanguageRow.map((box) => box!.y)),
+  ).toBeLessThan(2)
+  expect(
+    await alphaRow.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true)
+  const chinese = alphaRow.getByRole('checkbox', { name: '中文' })
+  const english = alphaRow.getByRole('checkbox', { name: 'English' })
+  await chinese.click()
+  await expect(chinese).toBeChecked()
+  await english.click()
+  await expect(english).toBeChecked()
+  await expect(alphaRow.getByText(/^中文, English ·/)).toBeVisible()
+  expect(
+    (await getLocalDictionaryMockState(page)).localDictionaries.find(
+      (dictionary) => dictionary.id === alpha.id,
+    )?.language,
+  ).toEqual({ source: 'unknown', value: [] })
+  await alphaRow.getByRole('button', { name: 'Save Alpha Dictionary' }).click()
+  await expect(
+    alphaRow.getByRole('checkbox', { name: 'Enable Alpha Dictionary' }),
+  ).toBeEnabled()
+  await alphaRow
     .getByRole('checkbox', { name: 'Enable Alpha Dictionary' })
     .click()
-  await dialog
-    .getByRole('button', { name: 'Language Alpha Dictionary' })
-    .click()
-  const languageMenu = page.locator('[data-slot="popover-content"]')
-  await expect
-    .poll(() =>
-      languageMenu.evaluate(
-        (element) => element.scrollHeight > element.clientHeight,
-      ),
-    )
-    .toBe(true)
-  await languageMenu.hover()
-  await page.mouse.wheel(0, 100)
-  await expect
-    .poll(() => languageMenu.evaluate((element) => element.scrollTop))
-    .toBeGreaterThan(0)
-  await page.getByRole('checkbox', { name: '中文' }).click()
-  await page.getByRole('checkbox', { name: 'English' }).click()
-  await dialog
-    .getByRole('button', { name: 'Move down Alpha Dictionary' })
+  await alphaRow
+    .getByRole('button', { name: 'Rename Alpha Dictionary' })
     .click()
   await dialog
     .getByRole('button', { name: 'Relocate Alpha Dictionary' })
@@ -157,15 +285,14 @@ test('manages local dictionary order, status, language, enablement, relocation, 
       return {
         enabled: current?.enabled,
         language: current?.language,
-        order: current?.order,
       }
     })
     .toEqual({
       enabled: false,
       language: { source: 'manual', value: ['zh', 'en'] },
-      order: 1,
     })
 
+  await dialog.getByRole('button', { name: 'Rename Beta Dictionary' }).click()
   await dialog.getByRole('button', { name: 'Remove Beta Dictionary' }).click()
   const confirmRemove = dialog.getByRole('button', {
     name: 'Confirm remove Beta Dictionary',
@@ -196,8 +323,9 @@ test('renames a local dictionary inline and hides language provenance', async ({
   await row.getByRole('button', { name: 'Rename Fixture Lexicon' }).click()
   const input = row.getByRole('textbox', { name: 'Dictionary name' })
   await input.fill('  Reader Lexicon  ')
-  await input.press('Enter')
+  await row.getByRole('button', { name: 'Save Fixture Lexicon' }).click()
 
+  await expect(input).toHaveCount(0)
   await expect(row.getByText('Reader Lexicon', { exact: true })).toBeVisible()
   await expect
     .poll(async () => {
@@ -225,11 +353,15 @@ test('cancels an inline dictionary rename with Escape without closing settings',
   await row.getByRole('button', { name: 'Rename Fixture Lexicon' }).click()
   const input = row.getByRole('textbox', { name: 'Dictionary name' })
   await input.fill('Changed name')
+  await row.getByRole('checkbox', { name: 'English' }).click()
   await input.press('Escape')
 
   await expect(dialog).toBeVisible()
   await expect(input).toHaveCount(0)
   await expect(row.getByText('Fixture Lexicon', { exact: true })).toBeVisible()
+  const stored = (await getLocalDictionaryMockState(page)).localDictionaries[0]
+  expect(stored?.name).toBe('Fixture Lexicon')
+  expect(stored?.language).toEqual({ source: 'unknown', value: [] })
 })
 
 test('dismisses open settings dropdowns before closing settings', async ({
@@ -254,12 +386,13 @@ test('dismisses open settings dropdowns before closing settings', async ({
   await expect(dialog).toBeVisible()
 
   await dialog.getByRole('button', { name: 'Dictionary', exact: true }).click()
-  await dialog.getByRole('button', { name: 'Language Fixture Lexicon' }).click()
-  const languages = page.locator('[data-slot="popover-content"]')
-  await expect(languages).toBeVisible()
-  await page.mouse.click(4, 4)
-
-  await expect(languages).toHaveCount(0)
+  const row = dialog.locator(`[data-local-dictionary-id="${dictionary.id}"]`)
+  await row.getByRole('button', { name: 'Rename Fixture Lexicon' }).click()
+  await row.getByRole('textbox', { name: 'Dictionary name' }).fill('Draft name')
+  await dialog.getByText('Dictionary sources').click()
+  await expect(
+    row.getByRole('textbox', { name: 'Dictionary name' }),
+  ).toHaveCount(0)
   await expect(dialog).toBeVisible()
 })
 
@@ -332,10 +465,7 @@ test('displays native Windows and Unix dictionary paths without changing stored 
   ] as const
   for (const [id, path] of expected) {
     const row = dialog.locator(`[data-local-dictionary-id="${id}"]`)
-    await expect(row.getByText(path, { exact: true })).toBeVisible()
-    await expect(
-      row.locator('[title]').filter({ hasText: path }),
-    ).toHaveAttribute('title', path)
+    await expect(row.getByText(path, { exact: false })).toBeVisible()
   }
 
   const stored = await getLocalDictionaryMockState(page)

@@ -24,6 +24,13 @@ import { createMerriamWebsterProvider } from '../dictionary/providers/merriamWeb
 import { createStarDictProvider } from '../dictionary/providers/stardict'
 import { zdicProvider } from '../dictionary/providers/zdic'
 import { normalizeDictionaryQuery } from '../dictionary/query'
+import {
+  localDictionarySourceId,
+  merriamWebsterSourceId,
+  orderByDictionarySource,
+  reconcileDictionarySourceOrder,
+  zdicSourceId,
+} from '../dictionary/sourceOrder'
 import { useSelectionSpeech } from '../hooks/useSelectionSpeech'
 import { useTranslation } from '../hooks/useTranslation'
 import { useSettings } from '../state'
@@ -59,21 +66,44 @@ export function DictionaryPopup({
   const [settings] = useSettings()
   const rootCoordinator = useMemo(() => new DictionaryCoordinator(), [])
   const detailCoordinator = useMemo(() => new DictionaryCoordinator(), [])
+  const zdic = settings.dictionary?.zdic
   const merriamWebster = settings.dictionary?.merriamWebster
-  const providers = useMemo(
-    () => [
-      zdicProvider,
-      ...(merriamWebster?.enabled
-        ? [createMerriamWebsterProvider(merriamWebster.apiKey)]
+  const providers = useMemo(() => {
+    const sourceOrder = reconcileDictionarySourceOrder(
+      settings.dictionary?.sourceOrder,
+      localDictionaries.map((dictionary) => dictionary.id),
+    )
+    const providerSources = [
+      ...(zdic?.enabled !== false
+        ? [{ sourceId: zdicSourceId, provider: zdicProvider }]
         : []),
-      ...localDictionaries.map((dictionary) =>
-        dictionary.format === 'mdict'
-          ? createMdictProvider(dictionary)
-          : createStarDictProvider(dictionary),
-      ),
-    ],
-    [localDictionaries, merriamWebster],
-  )
+      ...(merriamWebster?.enabled && merriamWebster.apiKey
+        ? [
+            {
+              sourceId: merriamWebsterSourceId,
+              provider: createMerriamWebsterProvider(merriamWebster.apiKey),
+            },
+          ]
+        : []),
+      ...localDictionaries.map((dictionary) => ({
+        sourceId: localDictionarySourceId(dictionary.id),
+        provider:
+          dictionary.format === 'mdict'
+            ? createMdictProvider(dictionary)
+            : createStarDictProvider(dictionary),
+      })),
+    ]
+    return orderByDictionarySource(
+      providerSources,
+      sourceOrder,
+      (source) => source.sourceId,
+    ).map((source) => source.provider)
+  }, [
+    localDictionaries,
+    merriamWebster,
+    settings.dictionary?.sourceOrder,
+    zdic,
+  ])
   const [rootSources, setRootSources] = useState<DictionarySourceState[]>([])
   const [retrySources, setRetrySources] = useState<
     Record<string, DictionarySourceState>

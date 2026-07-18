@@ -213,6 +213,14 @@ export default {
   'settings.dictionary.show_api_key': 'Show API key',
   'settings.dictionary.hide_api_key': 'Hide API key',
   'settings.dictionary.get_api_key': 'Get a free API key',
+  'settings.dictionary.sources_title': 'Dictionary sources',
+  'settings.dictionary.sources_description':
+    'Choose one .ifo or .mdx master file to add a local dictionary. Companion files must use the same name and stay in the same folder; keeping each dictionary in its own folder is recommended.',
+  'settings.dictionary.zdic_metadata': 'Chinese · Online',
+  'settings.dictionary.configured': 'Configured',
+  'settings.dictionary.not_configured': 'Not configured',
+  'settings.dictionary.edit': 'Edit',
+  'settings.dictionary.save': 'Save',
   'settings.dictionary.local_title': 'Local dictionaries',
   'settings.dictionary.local_description':
     'Choose one .ifo or .mdx master file per dictionary. Companion files are found by matching the name in the same folder; keeping each dictionary in its own folder is recommended.',

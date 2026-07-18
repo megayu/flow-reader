@@ -415,7 +415,8 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     [dictionaryLanguage, localDictionaries],
   )
   const dictionaryAvailable =
-    dictionaryQuery?.language === 'zh' ||
+    (dictionaryQuery?.language === 'zh' &&
+      settings.dictionary?.zdic?.enabled !== false) ||
     (dictionaryQuery?.language === 'en' &&
       settings.dictionary?.merriamWebster?.enabled === true) ||
     eligibleLocalDictionaries.length > 0

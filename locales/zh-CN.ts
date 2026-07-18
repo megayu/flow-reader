@@ -211,6 +211,14 @@ export default {
   'settings.dictionary.show_api_key': '显示 API key',
   'settings.dictionary.hide_api_key': '隐藏 API key',
   'settings.dictionary.get_api_key': '获取免费 API key',
+  'settings.dictionary.sources_title': '词典来源',
+  'settings.dictionary.sources_description':
+    '选择 .ifo 或 .mdx 主文件添加本地词典；配套文件需与主文件同名并放在同一文件夹。建议每部词典使用独立文件夹。',
+  'settings.dictionary.zdic_metadata': '中文 · 在线',
+  'settings.dictionary.configured': '已配置',
+  'settings.dictionary.not_configured': '未配置',
+  'settings.dictionary.edit': '编辑',
+  'settings.dictionary.save': '保存',
   'settings.dictionary.local_title': '本地词典',
   'settings.dictionary.local_description':
     '每次选择一部词典的 .ifo 或 .mdx 主文件，应用只在同一文件夹按同名查找配套文件。建议每部词典使用独立文件夹。',

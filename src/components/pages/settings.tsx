@@ -1,5 +1,4 @@
 import clsx from 'clsx'
-import { EyeIcon, EyeOffIcon, ExternalLinkIcon } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -9,25 +8,19 @@ import { useLocale } from '@flow/reader/hooks/useLocale'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
 import { AppLocale, localeNames } from '@flow/reader/locales'
 import { createShortcutGroups } from '@flow/reader/shortcuts'
-import {
-  defaultDictionarySettings,
-  defaultTextImportRules,
-  useSettings,
-} from '@flow/reader/state'
+import { defaultTextImportRules, useSettings } from '@flow/reader/state'
 import {
   maxUiFontSize,
   minUiFontSize,
   normalizeUiFontSize,
 } from '@flow/reader/styles/ui'
 
-import { openSupportedExternalUrl } from '../../externalLink'
 import { ColorPickerPopover, normalizeHexColor } from '../ColorPickerPopover'
 import { LocalDictionarySettings } from '../LocalDictionarySettings'
 import { ShortcutChord } from '../ShortcutChord'
 import { Button as UiButton } from '../ui/button'
 import { Checkbox as UiCheckbox } from '../ui/checkbox'
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog'
-import { Input } from '../ui/input'
 import {
   Select,
   SelectContent,
@@ -64,7 +57,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
         onEscapeKeyDown={(event) => {
           if (
             event.target instanceof Element &&
-            event.target.closest('[data-local-dictionary-name-editor]')
+            event.target.closest('[data-dictionary-inline-editor]')
           ) {
             event.preventDefault()
           }
@@ -117,27 +110,6 @@ export const Settings: React.FC<SettingsProps> = ({
   const t = useTranslation('settings')
   const typographyT = useTranslation('typography')
   const [activeTab, setActiveTab] = useState<SettingsTab>('basic')
-  const [showMerriamWebsterKey, setShowMerriamWebsterKey] = useState(false)
-  const merriamWebster = {
-    ...defaultDictionarySettings.merriamWebster,
-    ...settings.dictionary?.merriamWebster,
-  }
-  const updateMerriamWebster = (
-    patch: Partial<typeof defaultDictionarySettings.merriamWebster>,
-  ) => {
-    setSettings((prev) => ({
-      ...prev,
-      dictionary: {
-        ...defaultDictionarySettings,
-        ...prev.dictionary,
-        merriamWebster: {
-          ...defaultDictionarySettings.merriamWebster,
-          ...prev.dictionary?.merriamWebster,
-          ...patch,
-        },
-      },
-    }))
-  }
   const textImportRules = {
     ...defaultTextImportRules,
     ...settings.textImportRules,
@@ -156,8 +128,8 @@ export const Settings: React.FC<SettingsProps> = ({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-row gap-0">
-      <aside className="border-border w-40 shrink-0 border-r bg-[var(--flow-bg-sidebar)] p-2">
+    <div className="flex h-full w-full max-w-full min-w-0 flex-row gap-0 overflow-hidden">
+      <aside className="border-border w-40 min-w-40 shrink-0 overflow-hidden border-r bg-[var(--flow-bg-sidebar)] p-2">
         <DialogTitle className="text-muted-foreground px-3 py-3 text-lg font-semibold">
           {t('title')}
         </DialogTitle>
@@ -184,7 +156,7 @@ export const Settings: React.FC<SettingsProps> = ({
           })}
         </div>
       </aside>
-      <section className="scroll min-w-0 flex-1 overflow-y-auto px-5 py-4">
+      <section className="scroll w-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-5 py-4">
         <h2 className="text-muted-foreground text-lg font-semibold">
           {t(`tabs.${activeTab}`)}
         </h2>
@@ -343,77 +315,13 @@ export const Settings: React.FC<SettingsProps> = ({
             </div>
           )}
           {activeTab === 'dictionary' && (
-            <div data-flow-settings-panel className="m-0 space-y-5">
-              <section className="space-y-4">
-                <div>
-                  <h3 className="text-base font-semibold">
-                    {t('dictionary.merriam_webster')}
-                  </h3>
-                  <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
-                    {t('dictionary.merriam_webster_description')}
-                  </p>
-                </div>
-                <Item title={t('dictionary.status')}>
-                  <SettingsCheckbox
-                    label={t('dictionary.merriam_webster_enable')}
-                    checked={merriamWebster.enabled}
-                    onCheckedChange={(enabled) =>
-                      updateMerriamWebster({ enabled })
-                    }
-                  />
-                </Item>
-                <Item title={t('dictionary.api_key')}>
-                  <div className="flex max-w-md items-center gap-2">
-                    <Input
-                      type={showMerriamWebsterKey ? 'text' : 'password'}
-                      aria-label={t('dictionary.merriam_webster_api_key')}
-                      value={merriamWebster.apiKey}
-                      onChange={(event) =>
-                        updateMerriamWebster({ apiKey: event.target.value })
-                      }
-                    />
-                    <UiButton
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 shrink-0 rounded-lg"
-                      aria-label={
-                        showMerriamWebsterKey
-                          ? t('dictionary.hide_api_key')
-                          : t('dictionary.show_api_key')
-                      }
-                      onClick={() =>
-                        setShowMerriamWebsterKey((current) => !current)
-                      }
-                    >
-                      {showMerriamWebsterKey ? (
-                        <EyeOffIcon className="size-4" />
-                      ) : (
-                        <EyeIcon className="size-4" />
-                      )}
-                    </UiButton>
-                  </div>
-                </Item>
-                <div className="flex justify-end">
-                  <UiButton
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-muted-foreground h-8 gap-1.5 rounded-sm px-3 text-base"
-                    onClick={() => {
-                      void openSupportedExternalUrl(
-                        'https://dictionaryapi.com/',
-                      ).catch(() => undefined)
-                    }}
-                  >
-                    {t('dictionary.get_api_key')}
-                    <ExternalLinkIcon className="size-4" />
-                  </UiButton>
-                </div>
-              </section>
+            <div
+              data-flow-settings-panel
+              className="m-0 min-w-0 overflow-hidden"
+            >
               <LocalDictionarySettings
-                onPopupOpenChange={onPopupOpenChange}
-                onPopupPointerDownOutside={onPopupPointerDownOutside}
+                settings={settings}
+                setSettings={setSettings}
               />
             </div>
           )}
