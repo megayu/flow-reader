@@ -93,6 +93,7 @@ async function setupDictionaryReader(
   bookLanguage = 'zh-CN',
   zdicResponseSequences: Record<string, string[]> = {},
   zdicResponseStatuses: Record<string, number> = {},
+  translationOptions: { delayMs?: number; error?: string } = {},
 ) {
   await page.route(`**${alicePackageUrl}`, (route) =>
     route.fulfill({
@@ -123,6 +124,8 @@ async function setupDictionaryReader(
     zdicResponseSequences,
     zdicResponseStatuses,
     zdicResponseDelayMs,
+    translationResponseDelayMs: translationOptions.delayMs,
+    translationError: translationOptions.error,
   })
   await page.goto('/')
   await page.addStyleTag({
@@ -147,6 +150,26 @@ async function setupDictionaryReader(
       }),
     )
     .toBe(true)
+}
+
+async function setupTranslationReader(
+  page: Page,
+  options: { delayMs?: number; error?: string } = {},
+) {
+  return setupDictionaryReader(
+    page,
+    {},
+    0,
+    {},
+    [],
+    {},
+    {},
+    {},
+    'zh-CN',
+    {},
+    {},
+    options,
+  )
 }
 
 interface SpeechVoiceFixture {
@@ -599,6 +622,165 @@ test('stops active speech on every dictionary popup exit path', async ({
   await page.locator('[data-dictionary-close]').click()
   await expect.poll(() => speechState(page)).toMatchObject({ cancelCalls: 6 })
   await expect(page.getByRole('button', { name: 'Copy' })).toHaveCount(0)
+})
+
+test('opens the compact translation popup and Escape returns to the text menu', async ({
+  page,
+}) => {
+  await setupTranslationReader(page, { delayMs: 150 })
+  await selectFixtureText(page, 'sample')
+
+  await page.getByRole('button', { name: '翻译', exact: true }).click()
+  const popup = page.locator('[data-flow-translation-popup="true"]')
+  await expect(popup).toBeVisible()
+  await expect(popup.getByRole('combobox', { name: '源语言' })).toContainText(
+    '简体中文',
+  )
+  await expect(popup.getByRole('combobox', { name: '目标语言' })).toContainText(
+    'English',
+  )
+  await expect(popup.getByRole('button', { name: '复制' })).toBeDisabled()
+  await expect(popup.getByText('Google: sample', { exact: true })).toBeVisible()
+  await expect(popup.getByRole('button', { name: '复制' })).toBeEnabled()
+  await expect(popup.getByRole('separator')).toBeVisible()
+  await expect(popup).toHaveCSS('width', '600px')
+  await expect(page.getByRole('tooltip')).toHaveCount(0)
+  const compactGeometry = await popup.evaluate((element) => {
+    const source = element.querySelector('[data-flow-translation-source]')
+    const result = element.querySelector('[data-flow-translation-result]')
+    if (!(source instanceof HTMLElement) || !(result instanceof HTMLElement)) {
+      throw new Error('Missing translation regions')
+    }
+    const sourceStyle = getComputedStyle(source)
+    const resultStyle = getComputedStyle(result)
+    return {
+      height: element.getBoundingClientRect().height,
+      resultPadding: [resultStyle.paddingTop, resultStyle.paddingBottom],
+      sourcePadding: [sourceStyle.paddingTop, sourceStyle.paddingBottom],
+    }
+  })
+  expect(compactGeometry.height).toBeLessThan(150)
+  expect(compactGeometry.sourcePadding).toEqual(['8px', '8px'])
+  expect(compactGeometry.resultPadding).toEqual(['8px', '8px'])
+  const toolbarGeometry = await popup
+    .locator('[data-flow-translation-toolbar]')
+    .evaluate((toolbar) => {
+      const toolbarRect = toolbar.getBoundingClientRect()
+      const controls = Array.from(
+        toolbar.querySelectorAll('button, [role="combobox"]'),
+      ).map((control) => control.getBoundingClientRect())
+      return {
+        height: toolbarRect.height,
+        oneRow: controls.every(
+          (control) =>
+            control.top >= toolbarRect.top &&
+            control.bottom <= toolbarRect.bottom,
+        ),
+      }
+    })
+  expect(toolbarGeometry).toEqual({ height: 40, oneRow: true })
+
+  await page.keyboard.press('Escape')
+  await expect(popup).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible()
+})
+
+test('switches translation providers in place', async ({ page }) => {
+  await setupTranslationReader(page)
+  await selectFixtureText(page, 'sample')
+  await page.getByRole('button', { name: '翻译', exact: true }).click()
+
+  const popup = page.locator('[data-flow-translation-popup="true"]')
+  await popup.getByRole('button', { name: 'Azure', exact: true }).click()
+  await expect(popup.getByText('Azure: sample', { exact: true })).toBeVisible()
+})
+
+test('allows copying and retrying a failed translation record', async ({
+  page,
+}) => {
+  await setupTranslationReader(page, {
+    delayMs: 150,
+    error: 'Synthetic translation failure',
+  })
+  await selectFixtureText(page, 'sample')
+  await page.getByRole('button', { name: '翻译', exact: true }).click()
+
+  const popup = page.locator('[data-flow-translation-popup="true"]')
+  await expect(popup.getByText('Synthetic translation failure')).toBeVisible()
+  await expect(popup.getByRole('button', { name: '复制' })).toBeEnabled()
+  const errorAlignment = await popup
+    .getByRole('button', { name: '重新翻译' })
+    .evaluate((button) => {
+      const row = button.parentElement
+      const text = row?.querySelector('span')
+      if (!row || !text) throw new Error('Missing translation error row')
+      const buttonRect = button.getBoundingClientRect()
+      const textRect = text.getBoundingClientRect()
+      return {
+        alignItems: getComputedStyle(row).alignItems,
+        buttonColor: getComputedStyle(button).color,
+        textColor: getComputedStyle(text).color,
+        centerDelta: Math.abs(
+          buttonRect.top +
+            buttonRect.height / 2 -
+            (textRect.top + textRect.height / 2),
+        ),
+      }
+    })
+  expect(errorAlignment.alignItems).toBe('center')
+  expect(errorAlignment.buttonColor).not.toBe(errorAlignment.textColor)
+  expect(errorAlignment.centerDelta).toBeLessThanOrEqual(1)
+  await popup.getByRole('button', { name: '重新翻译' }).click()
+  await expect(popup.getByRole('button', { name: '复制' })).toBeDisabled()
+  await expect(popup.getByText('Synthetic translation failure')).toBeVisible()
+})
+
+test('resizes the source and translation regions with the splitter', async ({
+  page,
+}) => {
+  await setupTranslationReader(page)
+  await selectFixtureText(page, 'synthetic text '.repeat(100), false)
+  await page.getByRole('button', { name: '翻译', exact: true }).click()
+
+  const popup = page.locator('[data-flow-translation-popup="true"]')
+  await expect(popup.getByText(/Google: synthetic text/)).toBeVisible()
+  const source = popup.locator('[data-flow-translation-source]')
+  const splitter = popup.locator('[data-flow-translation-splitter]')
+  const before = await source.boundingBox()
+  const handle = await splitter.boundingBox()
+  if (!before || !handle) throw new Error('Missing translation split geometry')
+  const popupBottom = await popup.evaluate(
+    (element) => element.getBoundingClientRect().bottom,
+  )
+  expect(popupBottom).toBeLessThanOrEqual(
+    await page.evaluate(() => innerHeight),
+  )
+  const allocation = await popup.evaluate((element) => {
+    const source = element.querySelector('[data-flow-translation-source]')
+    const result = element.querySelector('[data-flow-translation-result]')
+    if (!(source instanceof HTMLElement) || !(result instanceof HTMLElement)) {
+      throw new Error('Missing translation regions')
+    }
+    return {
+      resultFullyVisible: result.scrollHeight <= result.clientHeight,
+      sourceScrolls: source.scrollHeight > source.clientHeight,
+    }
+  })
+  expect(allocation).toEqual({ resultFullyVisible: true, sourceScrolls: true })
+
+  await page.mouse.move(
+    handle.x + handle.width / 2,
+    handle.y + handle.height / 2,
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    handle.x + handle.width / 2,
+    handle.y + handle.height / 2 + 30,
+  )
+  await page.mouse.up()
+
+  const after = await source.boundingBox()
+  expect(after?.height).toBeGreaterThan(before.height)
 })
 
 test('keeps the dictionary action disabled when no source matches the selection', async ({

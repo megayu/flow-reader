@@ -11,6 +11,7 @@ mod diagnostics;
 pub mod dictionary;
 mod storage;
 mod tasks;
+mod translation;
 
 const OPEN_FILES_EVENT: &str = "flow-open-files";
 
@@ -142,6 +143,7 @@ pub fn run() {
         .manage(PendingOpenFiles(Mutex::new(pending_open_files)))
         .manage(tasks::TaskService::default())
         .manage(dictionary::create_http_client().expect("dictionary HTTP client"))
+        .manage(translation::TranslationHttpClient::new().expect("translation HTTP client"))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             let paths = collect_epub_paths(argv);
@@ -223,6 +225,8 @@ pub fn run() {
             dictionary::fetch_zdic,
             dictionary::fetch_merriam_webster,
             dictionary::cancel_dictionary_session,
+            translation::fetch_translation,
+            translation::cancel_translation_session,
             dictionary::list_local_dictionaries,
             dictionary::lookup_stardict,
             dictionary::lookup_mdict,

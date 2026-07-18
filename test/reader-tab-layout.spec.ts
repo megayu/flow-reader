@@ -3150,7 +3150,7 @@ test('[vertical-rl] keeps the dictionary popup inside the reader without repagin
   const after = await readFocusedTabState(page)
 
   expect(geometry.inside).toBe(true)
-  expect(geometry.width).toBeGreaterThanOrEqual(440)
+  expect(geometry.width).toBe(600)
   expect(geometry.height).toBeGreaterThan(100)
   expect(after.startCfi).toBe(before.startCfi)
   expect(after.endCfi).toBe(before.endCfi)

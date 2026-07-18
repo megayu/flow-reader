@@ -15,6 +15,11 @@ import {
   updateSettingsInStorage,
   type ReadingStatus,
 } from './db'
+import {
+  TRANSLATION_LANGUAGES,
+  type TranslationLanguage,
+  type TranslationProvider,
+} from './translation/languages'
 
 export type SetterOrUpdater<T> = (value: T | ((prev: T) => T)) => void
 
@@ -27,6 +32,7 @@ export type LibrarySortDirection = 'asc' | 'desc'
 
 export interface Settings extends TypographyConfiguration {
   dictionary?: DictionarySettingsConfiguration
+  translation?: TranslationSettingsConfiguration
   theme?: ThemeConfiguration
   ui?: UiConfiguration
   enableTextSelectionMenu?: boolean
@@ -41,6 +47,12 @@ export interface Settings extends TypographyConfiguration {
   libraryPinnedTags?: string[]
   textImportRules?: TextImportRulesConfiguration
   locale?: AppLocale
+}
+
+export interface TranslationSettingsConfiguration {
+  mainLanguage: TranslationLanguage
+  secondaryLanguage: TranslationLanguage
+  defaultProvider: TranslationProvider
 }
 
 export interface DictionarySettingsConfiguration {
@@ -137,8 +149,15 @@ export const defaultDictionarySettings: DictionarySettingsConfiguration = {
   sourceOrder: ['zdic', 'merriam-webster'],
 }
 
+export const defaultTranslationSettings: TranslationSettingsConfiguration = {
+  mainLanguage: 'zh-Hans',
+  secondaryLanguage: 'en',
+  defaultProvider: 'google',
+}
+
 export const defaultSettings: Settings = {
   dictionary: defaultDictionarySettings,
+  translation: defaultTranslationSettings,
   enableTextSelectionMenu: true,
   hideEndnotes: false,
   readerSidebarOpen: true,
@@ -349,11 +368,32 @@ function normalizeSettings(value: Partial<Settings> | undefined): Settings {
       ...settings.textImportRules,
     },
     dictionary: normalizeDictionarySettings(settings.dictionary),
+    translation: normalizeTranslationSettings(settings.translation),
     ui: {
       ...defaultSettings.ui,
       ...settings.ui,
       fontSize: normalizeUiFontSize(settings.ui?.fontSize),
     },
+  }
+}
+
+function normalizeTranslationSettings(
+  value: Partial<TranslationSettingsConfiguration> | undefined,
+): TranslationSettingsConfiguration {
+  const supported = new Set<string>(TRANSLATION_LANGUAGES.map(({ id }) => id))
+  const mainLanguage = supported.has(value?.mainLanguage ?? '')
+    ? value!.mainLanguage!
+    : defaultTranslationSettings.mainLanguage
+  let secondaryLanguage = supported.has(value?.secondaryLanguage ?? '')
+    ? value!.secondaryLanguage!
+    : defaultTranslationSettings.secondaryLanguage
+  if (secondaryLanguage === mainLanguage) {
+    secondaryLanguage = mainLanguage === 'en' ? 'zh-Hans' : 'en'
+  }
+  return {
+    mainLanguage,
+    secondaryLanguage,
+    defaultProvider: value?.defaultProvider === 'azure' ? 'azure' : 'google',
   }
 }
 

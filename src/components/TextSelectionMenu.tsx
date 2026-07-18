@@ -3,6 +3,7 @@ import {
   BookOpenTextIcon,
   CopyIcon,
   FilePenLineIcon,
+  LanguagesIcon,
   PencilIcon,
   SearchIcon,
   SquareMinusIcon,
@@ -24,11 +25,17 @@ import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
 import { BookTab, reader } from '../models/reader'
 import { useSettings } from '../state'
+import {
+  resolveTranslationDirection,
+  type TranslationLanguage,
+} from '../translation/languages'
+import { serializeTranslationFragment } from '../translation/serialize'
 import { copy, keys, last } from '../utils'
 
 import { Button, IconButton } from './Button'
 import { DictionaryPopup } from './DictionaryPopup'
 import { TextField } from './Form'
+import { TranslationPopup } from './TranslationPopup'
 import {
   layout,
   LayoutAnchorMode,
@@ -258,6 +265,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
   const contents = range.cloneContents()
   const text = contents.textContent?.trim()
   if (!text) return null
+  const translationText = serializeTranslationFragment(contents) || text
 
   return (
     // to reset inner state
@@ -270,6 +278,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
       viewRect={el.getBoundingClientRect()}
       releasePoint={menuSelection ? releasePoint : undefined}
       text={text}
+      translationText={translationText}
       cfi={menuSelection ? undefined : annotationCfi}
       forward={forward}
       writingMode={writingMode}
@@ -307,6 +316,7 @@ interface TextSelectionMenuRendererProps {
   viewRect: DOMRect
   releasePoint?: { x: number; y: number }
   text: string
+  translationText: string
   cfi?: string
   forward: boolean
   writingMode?: string
@@ -323,6 +333,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   forward,
   writingMode,
   text,
+  translationText,
   cfi: annotationCfi,
   hide,
 }) => {
@@ -330,9 +341,12 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const ref = useRef<HTMLInputElement>(null)
   const [width, setWidth] = useState(0)
   const [height, setHeight] = useState(0)
+  const popupResizeObserverRef = useRef<ResizeObserver | undefined>(undefined)
   const t = useTranslation('menu')
   const [settings] = useSettings()
-  const [view, setView] = useState<'actions' | 'dictionary'>('actions')
+  const [view, setView] = useState<'actions' | 'dictionary' | 'translation'>(
+    'actions',
+  )
   const [localDictionaries, setLocalDictionaries] = useState<
     LocalDictionaryRecord[]
   >([])
@@ -363,13 +377,13 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     if (savingReplacementRef.current) return
     hide()
   }
-  const switchView = (nextView: 'actions' | 'dictionary') => {
+  const switchView = (nextView: 'actions' | 'dictionary' | 'translation') => {
     setWidth(0)
     setHeight(0)
     setView(nextView)
   }
   const dismissOverlay = () => {
-    if (view === 'dictionary') {
+    if (view === 'dictionary' || view === 'translation') {
       switchView('actions')
       return
     }
@@ -379,6 +393,17 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     range,
     tab.book.metadata.language,
   )
+  const translationSettings = settings.translation ?? {
+    mainLanguage: 'zh-Hans' as TranslationLanguage,
+    secondaryLanguage: 'en' as TranslationLanguage,
+    defaultProvider: 'google' as const,
+  }
+  const translationDirection = resolveTranslationDirection({
+    declaredLanguage: dictionaryMetadataLanguage,
+    mainLanguage: translationSettings.mainLanguage,
+    secondaryLanguage: translationSettings.secondaryLanguage,
+    text: translationText,
+  })
   const dictionaryQuery = normalizeDictionaryQuery(
     text,
     dictionaryMetadataLanguage,
@@ -512,20 +537,32 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         key={view}
         data-flow-keyboard-capture="true"
         data-flow-dictionary-popup={view === 'dictionary' ? 'true' : undefined}
+        data-flow-translation-popup={
+          view === 'translation' ? 'true' : undefined
+        }
         ref={(el) => {
+          popupResizeObserverRef.current?.disconnect()
+          popupResizeObserverRef.current = undefined
           if (!el) return
-          setWidth(el.offsetWidth)
-          setHeight(el.offsetHeight)
+          const updateSize = () => {
+            setWidth(el.offsetWidth)
+            setHeight(el.offsetHeight)
+          }
+          updateSize()
+          popupResizeObserverRef.current = new ResizeObserver(updateSize)
+          popupResizeObserverRef.current.observe(el)
           el.focus()
         }}
         className={clsx(
           'border-border bg-popover text-popover-foreground absolute z-50 box-border rounded-lg border shadow-lg shadow-black/10 focus:outline-none',
-          view === 'dictionary' ? 'overflow-hidden p-0' : 'p-2',
+          view === 'dictionary' || view === 'translation'
+            ? 'overflow-hidden p-0'
+            : 'p-2',
         )}
         style={{
           width:
-            view === 'dictionary'
-              ? Math.min(544, Math.max(0, containerRect.width - 20))
+            view === 'dictionary' || view === 'translation'
+              ? Math.min(600, Math.max(0, containerRect.width - 20))
               : undefined,
           left:
             verticalPlacement?.left ??
@@ -545,7 +582,9 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             }),
           visibility: width && height ? 'visible' : 'hidden',
         }}
-        role={view === 'dictionary' ? 'dialog' : undefined}
+        role={
+          view === 'dictionary' || view === 'translation' ? 'dialog' : undefined
+        }
         tabIndex={-1}
         onKeyDown={(e) => {
           e.stopPropagation()
@@ -569,10 +608,20 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             metadataLanguage={dictionaryMetadataLanguage}
             query={dictionaryQuery?.text ?? text}
             localDictionaries={eligibleLocalDictionaries}
-            maxBodyHeight={Math.max(
-              120,
-              Math.floor(containerRect.height * 0.65) - 48,
-            )}
+            maxPopupHeight={Math.max(0, containerRect.height - 22)}
+            onBack={() => switchView('actions')}
+            onClose={closeMenu}
+          />
+        ) : view === 'translation' ? (
+          <TranslationPopup
+            key={translationText}
+            text={translationText}
+            mainLanguage={translationSettings.mainLanguage}
+            secondaryLanguage={translationSettings.secondaryLanguage}
+            initialProvider={translationSettings.defaultProvider}
+            initialSourceLanguage={translationDirection.sourceLanguage}
+            initialTargetLanguage={translationDirection.targetLanguage}
+            maxPopupHeight={Math.max(0, containerRect.height - 22)}
             onBack={() => switchView('actions')}
             onClose={closeMenu}
           />
@@ -640,6 +689,14 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               }}
               disabled={!dictionaryAvailable}
               onClick={() => switchView('dictionary')}
+            />
+            <IconButton
+              aria-label="翻译"
+              Icon={LanguagesIcon}
+              size={ICON_SIZE}
+              className={actionIconClassName}
+              style={{ width: ANNOTATION_SIZE, height: ANNOTATION_SIZE }}
+              onClick={() => switchView('translation')}
             />
             <IconButton
               title={t('search_in_book')}

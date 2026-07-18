@@ -41,6 +41,8 @@ interface TauriMockOptions {
   zdicResponseSequences?: Record<string, string[]>
   zdicResponseStatuses?: Record<string, number>
   zdicResponseDelayMs?: number
+  translationResponseDelayMs?: number
+  translationError?: string
 }
 
 export async function installTauriMock(
@@ -72,6 +74,8 @@ export async function installTauriMock(
     zdicResponseSequences = {},
     zdicResponseStatuses = {},
     zdicResponseDelayMs = 0,
+    translationResponseDelayMs = 0,
+    translationError,
   }: TauriMockOptions = {},
 ) {
   await page.addInitScript(
@@ -98,6 +102,8 @@ export async function installTauriMock(
       fixtureZdicResponseSequences,
       fixtureZdicResponseStatuses,
       fixtureZdicResponseDelayMs,
+      fixtureTranslationResponseDelayMs,
+      fixtureTranslationError,
     }) => {
       type TauriInternals = {
         callbacks?: Record<number, (...args: unknown[]) => unknown>
@@ -225,6 +231,39 @@ export async function installTauriMock(
       internals.runCallback = (id, ...args) => callbacks[id]?.(...args)
       eventInternals.unregisterListener = () => undefined
       internals.invoke = async (command, args) => {
+        if (command === 'fetch_translation') {
+          if (fixtureTranslationResponseDelayMs > 0) {
+            await new Promise((resolve) =>
+              window.setTimeout(resolve, fixtureTranslationResponseDelayMs),
+            )
+          }
+          if (fixtureTranslationError) {
+            throw {
+              code: 'translation_error',
+              message: fixtureTranslationError,
+            }
+          }
+          const request = (args?.request ?? {}) as {
+            provider?: string
+            texts?: string[]
+          }
+          const texts = request.texts ?? []
+          return {
+            bodies:
+              request.provider === 'azure'
+                ? [
+                    JSON.stringify(
+                      texts.map((text) => ({
+                        translations: [{ text: `Azure: ${text}`, to: 'en' }],
+                      })),
+                    ),
+                  ]
+                : texts.map((text) =>
+                    JSON.stringify([[[`Google: ${text}`, text]]]),
+                  ),
+          }
+        }
+        if (command === 'cancel_translation_session') return null
         if (command === 'fetch_zdic') {
           const query = String(args?.query ?? '')
           const sessionId = Number(args?.sessionId ?? 0)
@@ -666,6 +705,8 @@ export async function installTauriMock(
       fixtureZdicResponseSequences: zdicResponseSequences,
       fixtureZdicResponseStatuses: zdicResponseStatuses,
       fixtureZdicResponseDelayMs: zdicResponseDelayMs,
+      fixtureTranslationResponseDelayMs: translationResponseDelayMs,
+      fixtureTranslationError: translationError,
     },
   )
 }

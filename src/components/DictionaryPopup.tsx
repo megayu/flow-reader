@@ -39,7 +39,7 @@ import { IconButton } from './Button'
 import { DictionarySourceSection } from './DictionarySourceSection'
 
 interface DictionaryPopupProps {
-  maxBodyHeight: number
+  maxPopupHeight: number
   metadataLanguage?: string
   onBack: () => void
   onClose: () => void
@@ -55,7 +55,7 @@ interface DictionaryScrollAnchor {
 }
 
 export function DictionaryPopup({
-  maxBodyHeight,
+  maxPopupHeight,
   metadataLanguage,
   onBack,
   onClose,
@@ -465,9 +465,15 @@ export function DictionaryPopup({
     setCurrentSourceId(sourceId)
   }
 
+  const maxBodyHeight = Math.max(
+    0,
+    maxPopupHeight - 48 - (navigationSources.length > 0 ? 40 : 0),
+  )
+
   return (
     <div
       className="flex min-h-0 flex-col"
+      style={{ maxHeight: maxPopupHeight }}
       onMouseDownCapture={(event) => {
         if (event.button !== 3 || !canNavigateDetailBack) return
         event.preventDefault()

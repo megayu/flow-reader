@@ -47,6 +47,48 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('#layout')).toBeVisible()
 })
 
+test('configures one shared main language, secondary language, and translation service', async ({
+  page,
+}) => {
+  const dialog = await openSettings(page)
+  await dialog.getByRole('button', { name: '翻译', exact: true }).click()
+
+  await expect(dialog.getByRole('combobox', { name: '主语言' })).toContainText(
+    '简体中文',
+  )
+  await expect(dialog.getByRole('combobox', { name: '次语言' })).toContainText(
+    'English',
+  )
+  await dialog.getByRole('combobox', { name: '主语言' }).click()
+  await expect(page.getByRole('option')).toHaveText([
+    '简体中文',
+    'English',
+    'Deutsch',
+    'Español',
+    'Français',
+    'Italiano',
+    'Nederlands',
+    'Polski',
+    'Português',
+    'Русский',
+    'Українська',
+    '日本語',
+    '한국어',
+    '繁體中文',
+  ])
+  await page.keyboard.press('Escape')
+  await dialog.getByRole('button', { name: 'Azure', exact: true }).click()
+
+  await expect
+    .poll(async () => {
+      const settings = (await getStoredSettings(page)) as {
+        translation?: { defaultProvider?: string }
+      }
+      return settings.translation?.defaultProvider
+    })
+    .toBe('azure')
+})
+
 test('app UI font size changes app chrome without changing reading font size', async ({
   page,
 }) => {
