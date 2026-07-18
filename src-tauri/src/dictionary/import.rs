@@ -190,8 +190,7 @@ fn inspect_mdict(path: &Path) -> Result<InspectedDictionary, DictionaryImportErr
         .map_err(|error| DictionaryImportError::new(&error.code, error.message))?;
 
     let mut files = Vec::new();
-    let resources = companion_path(&source_path, "mdd")?;
-    if resources.is_file() {
+    for resources in super::mdict::resource_paths(&source_path) {
         super::mdict::inspect_resources(&resources)
             .map_err(|error| DictionaryImportError::new(&error.code, error.message))?;
         files.push(file_reference(
@@ -469,11 +468,13 @@ mod tests {
     }
 
     #[test]
-    fn mdict_associates_only_same_stem_mdd_and_cover() {
+    fn mdict_associates_same_stem_numbered_mdd_volumes_and_cover() {
         let root = temp_dir("mdict-group");
         let mdx = root.join("source.mdx");
         write_mdict_header(&mdx, "Dictionary");
         write_mdict_header(&root.join("source.mdd"), "Library_Data");
+        write_mdict_header(&root.join("source.1.mdd"), "Library_Data");
+        write_mdict_header(&root.join("source.2.mdd"), "Library_Data");
         fs::write(root.join("source.jpg"), b"cover").unwrap();
         fs::write(root.join("source.css"), b"ignored").unwrap();
         fs::write(root.join("source.ttf"), b"ignored").unwrap();
@@ -481,11 +482,15 @@ mod tests {
 
         let inspected = inspect_dictionary_file(&mdx).unwrap();
         assert_eq!(inspected.format, DictionaryFormat::MDict);
-        assert_eq!(inspected.files.len(), 2);
-        assert!(inspected
-            .files
-            .iter()
-            .any(|file| file.kind == DictionaryFileKind::Resources));
+        assert_eq!(inspected.files.len(), 4);
+        assert_eq!(
+            inspected
+                .files
+                .iter()
+                .filter(|file| file.kind == DictionaryFileKind::Resources)
+                .count(),
+            3
+        );
         assert!(inspected
             .files
             .iter()

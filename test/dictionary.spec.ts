@@ -1651,6 +1651,79 @@ test('MDict keeps readable text when an optional stylesheet is missing', async (
   await expect(popup.getByText('Lookup failed.')).toHaveCount(0)
 })
 
+test('MDict does not enlarge or navigate linked images', async ({ page }) => {
+  await page.route('http://dictionary.localhost/**/page.png', (route) =>
+    route.fulfill({
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        'base64',
+      ),
+      contentType: 'image/png',
+    }),
+  )
+  await setupDictionaryReader(
+    page,
+    {},
+    0,
+    {},
+    [localMdict()],
+    {},
+    {
+      'dict-synthetic-zh': {
+        图片词: {
+          diagnostics: { recordBytes: 96, resourceBytes: 0 },
+          entry: {
+            headword: '图片词',
+            html: `
+              <link rel="stylesheet" href="fixture.css">
+              <p class="entry">图片词条</p>
+              <a href="entry://不应跳转"><img class="page" src="/page.png" alt="词典页"></a>
+            `,
+          },
+        },
+        不应跳转: {
+          diagnostics: { recordBytes: 16, resourceBytes: 0 },
+          entry: { headword: '不应跳转', html: '<p>错误跳转结果</p>' },
+        },
+      },
+    },
+    {
+      'dict-synthetic-zh': {
+        'fixture.css': `
+          .page { width: 100%; cursor: pointer; }
+          .entry { background-image: url("./page.png"); }
+        `,
+      },
+    },
+  )
+  await selectFixtureText(page, '图片词')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+
+  const popup = page.getByRole('dialog', { name: 'Dictionary: 图片词' })
+  const frame = popup.locator('[data-dictionary-rich-content]').contentFrame()
+  const image = frame.getByAltText('词典页')
+  await expect(image).toBeVisible()
+  await expect
+    .poll(() =>
+      frame
+        .getByText('图片词条', { exact: true })
+        .evaluate((element) => getComputedStyle(element).backgroundImage),
+    )
+    .toContain('dictionary.localhost')
+  await expect
+    .poll(() =>
+      image.evaluate((element) => element.getBoundingClientRect().width),
+    )
+    .toBe(1)
+
+  await image.click()
+  await expect(frame.getByText('图片词条', { exact: true })).toBeVisible()
+  await expect(frame.getByText('错误跳转结果', { exact: true })).toHaveCount(0)
+  await expect
+    .poll(async () => (await getDictionaryMockState(page)).mdictRequests)
+    .toHaveLength(1)
+})
+
 test('outside dismissal releases the local dictionary session before showing actions', async ({
   page,
 }) => {

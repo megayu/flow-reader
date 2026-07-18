@@ -55,9 +55,12 @@ export function DictionaryRichContent({
         setHeight(nextHeight)
       }
       const handleClick = (clickEvent: MouseEvent) => {
-        const anchor = (clickEvent.target as Element | null)?.closest(
-          'a[data-mdict-entry]',
-        )
+        const target = clickEvent.target as Element | null
+        if (target?.closest('img')) {
+          clickEvent.preventDefault()
+          return
+        }
+        const anchor = target?.closest('a[data-mdict-entry]')
         const entry = anchor?.getAttribute('data-mdict-entry')
         if (!entry) return
         clickEvent.preventDefault()

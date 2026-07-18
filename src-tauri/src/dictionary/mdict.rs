@@ -13,9 +13,10 @@ use super::language::infer_language;
 
 const MAX_HEADER_BYTES: u64 = 1024 * 1024;
 const MAX_ENTRY_BYTES: usize = 2 * 1024 * 1024;
+const MAX_LINK_DEPTH: usize = 16;
+const MAX_NUMBERED_RESOURCE_VOLUMES: usize = 256;
 const MAX_STYLESHEET_BYTES: usize = 512 * 1024;
 const MAX_RESOURCE_BYTES: usize = 32 * 1024 * 1024;
-const MAX_SESSION_RESOURCE_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -94,7 +95,7 @@ struct MutableDiagnostics {
 #[derive(Debug)]
 pub struct MdictReader {
     diagnostics: Mutex<MutableDiagnostics>,
-    mdd: Option<MddFile>,
+    mdd: Vec<MddFile>,
     mdx: MdxFile,
     root: PathBuf,
 }
@@ -132,6 +133,22 @@ pub fn inspect_resources(path: &Path) -> Result<(), MdictError> {
         .map_err(map_parser_error)?
         .header;
     reject_encrypted(header.encrypted)
+}
+
+pub(crate) fn resource_paths(master: &Path) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    let primary = master.with_extension("mdd");
+    if primary.is_file() {
+        paths.push(primary);
+    }
+    for volume in 1..=MAX_NUMBERED_RESOURCE_VOLUMES {
+        let path = master.with_extension(format!("{volume}.mdd"));
+        if !path.is_file() {
+            break;
+        }
+        paths.push(path);
+    }
+    paths
 }
 
 pub fn resource_protocol_response<R: tauri::Runtime>(
@@ -199,15 +216,13 @@ impl MdictReader {
         let mdx = MdxFile::open(&master).map_err(map_parser_error)?;
         reject_encrypted(mdx.header().encrypted)?;
 
-        let mdd_path = master.with_extension("mdd");
-        let mdd = if mdd_path.is_file() {
-            preflight_header(&mdd_path)?;
-            let reader = MddFile::open(&mdd_path).map_err(map_parser_error)?;
+        let mut mdd = Vec::new();
+        for path in resource_paths(&master) {
+            preflight_header(&path)?;
+            let reader = MddFile::open(&path).map_err(map_parser_error)?;
             reject_encrypted(reader.header().encrypted)?;
-            Some(reader)
-        } else {
-            None
-        };
+            mdd.push(reader);
+        }
         Ok(Self {
             diagnostics: Mutex::new(MutableDiagnostics::default()),
             mdd,
@@ -221,24 +236,48 @@ impl MdictReader {
         if query.is_empty() || query.len() > 16 * 1024 {
             return Ok(None);
         }
-        let Some(record) = self.mdx.lookup(query).map_err(map_parser_error)? else {
-            return Ok(None);
-        };
-        if record.text.len() > MAX_ENTRY_BYTES {
-            return Err(MdictError::new(
-                "mdictEntryTooLarge",
-                "The MDict entry exceeds the supported size limit.",
-            ));
+        let mut key = query.to_string();
+        let mut headword = None;
+        let mut visited = BTreeSet::new();
+        for depth in 0..=MAX_LINK_DEPTH {
+            if !visited.insert(key.clone()) {
+                return Err(MdictError::new(
+                    "mdictLinkCycle",
+                    "The MDict entry contains a cyclic internal link.",
+                ));
+            }
+            let Some(record) = self.mdx.lookup(&key).map_err(map_parser_error)? else {
+                return Ok(None);
+            };
+            if record.text.len() > MAX_ENTRY_BYTES {
+                return Err(MdictError::new(
+                    "mdictEntryTooLarge",
+                    "The MDict entry exceeds the supported size limit.",
+                ));
+            }
+            self.with_diagnostics(|diagnostics| {
+                diagnostics.record_bytes = diagnostics
+                    .record_bytes
+                    .saturating_add(record.text.len() as u64);
+            })?;
+            if headword.is_none() {
+                headword = Some(record.key.clone());
+            }
+            let Some(target) = internal_link_target(&record.text) else {
+                return Ok(Some(MdictEntry {
+                    headword: headword.unwrap_or(record.key),
+                    html: record.text,
+                }));
+            };
+            if depth == MAX_LINK_DEPTH {
+                return Err(MdictError::new(
+                    "mdictLinkDepthExceeded",
+                    "The MDict internal link chain is too deep.",
+                ));
+            }
+            key = target.to_string();
         }
-        self.with_diagnostics(|diagnostics| {
-            diagnostics.record_bytes = diagnostics
-                .record_bytes
-                .saturating_add(record.text.len() as u64);
-        })?;
-        Ok(Some(MdictEntry {
-            headword: record.key,
-            html: record.text,
-        }))
+        unreachable!()
     }
 
     pub fn load_stylesheet(&self, key: &str) -> Result<Option<MdictTextResource>, MdictError> {
@@ -308,11 +347,11 @@ impl MdictReader {
     }
 
     pub fn source_file_count(&self) -> usize {
-        1 + usize::from(self.mdd.is_some())
+        1 + self.mdd.len()
     }
 
     fn read_resource_bytes(&self, key: &str, limit: usize) -> Result<Option<Vec<u8>>, MdictError> {
-        if let Some(mdd) = &self.mdd {
+        for mdd in &self.mdd {
             let mdd_key = format!("\\{}", key.replace('/', "\\"));
             if let Some(span) = mdd.lookup_span(&mdd_key).map_err(map_parser_error)? {
                 if span.len() as usize > limit {
@@ -361,15 +400,8 @@ impl MdictReader {
         let mut diagnostics = self.diagnostics.lock().map_err(|_| {
             MdictError::new("mdictLockFailed", "The MDict diagnostics lock failed.")
         })?;
-        let next_bytes = diagnostics.resource_bytes.saturating_add(bytes as u64);
-        if next_bytes > MAX_SESSION_RESOURCE_BYTES {
-            return Err(MdictError::new(
-                "mdictSessionResourceLimit",
-                "The MDict session resource limit was exceeded.",
-            ));
-        }
         diagnostics.loaded_resource_keys.insert(key.to_string());
-        diagnostics.resource_bytes = next_bytes;
+        diagnostics.resource_bytes = diagnostics.resource_bytes.saturating_add(bytes as u64);
         Ok(())
     }
 
@@ -432,8 +464,8 @@ fn normalize_resource_key(value: &str) -> Result<String, MdictError> {
         return Err(invalid_resource_key());
     }
     let normalized = decoded.replace('\\', "/");
+    let normalized = normalized.trim_start_matches('/');
     if normalized.is_empty()
-        || normalized.starts_with('/')
         || normalized.contains("://")
         || normalized.chars().any(char::is_control)
     {
@@ -442,6 +474,7 @@ fn normalize_resource_key(value: &str) -> Result<String, MdictError> {
     let mut segments = Vec::new();
     for component in Path::new(&normalized).components() {
         match component {
+            Component::CurDir => {}
             Component::Normal(segment) => {
                 let segment = segment.to_string_lossy();
                 if segment.is_empty() || segment.contains(':') {
@@ -456,6 +489,15 @@ fn normalize_resource_key(value: &str) -> Result<String, MdictError> {
         return Err(invalid_resource_key());
     }
     Ok(segments.join("/"))
+}
+
+fn internal_link_target(value: &str) -> Option<&str> {
+    let value = value.trim_start_matches('\u{feff}').trim();
+    let target = value.strip_prefix("@@@LINK=")?.trim();
+    if target.is_empty() || target.len() > 16 * 1024 || target.chars().any(char::is_control) {
+        return None;
+    }
+    Some(target)
 }
 
 fn percent_decode(value: &str) -> Result<String, MdictError> {
@@ -742,6 +784,43 @@ mod tests {
     }
 
     #[test]
+    fn resolves_bounded_internal_alias_records() {
+        let root = temp_dir("aliases");
+        let mdx = root.join("fixture.mdx");
+        write_fixture(
+            &mdx,
+            FixtureKind::Mdx,
+            &[
+                ("alias", b"@@@LINK=target\r\n"),
+                ("target", b"<p>resolved entry</p>"),
+            ],
+            false,
+        );
+
+        let reader = MdictReader::open(&mdx).unwrap();
+        let entry = reader.lookup("alias").unwrap().unwrap();
+        assert_eq!(entry.headword, "alias");
+        assert_eq!(entry.html, "<p>resolved entry</p>");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rejects_internal_alias_cycles() {
+        let root = temp_dir("alias-cycle");
+        let mdx = root.join("fixture.mdx");
+        write_fixture(
+            &mdx,
+            FixtureKind::Mdx,
+            &[("first", b"@@@LINK=second"), ("second", b"@@@LINK=first")],
+            false,
+        );
+
+        let reader = MdictReader::open(&mdx).unwrap();
+        assert_eq!(reader.lookup("first").unwrap_err().code, "mdictLinkCycle");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn resolves_only_supported_mdd_or_exact_loose_resources() {
         let root = temp_dir("resources");
         let mdx = root.join("fixture.mdx");
@@ -776,9 +855,14 @@ mod tests {
             reader.load_stylesheet("loose.css").unwrap().unwrap().text,
             "p{font-weight:600}"
         );
+        assert_eq!(
+            reader.load_stylesheet("./loose.css").unwrap().unwrap().text,
+            "p{font-weight:600}"
+        );
         let image = reader.load_binary_resource("image.png").unwrap().unwrap();
         assert_eq!(image.mime_type, "image/png");
         assert!(image.data.starts_with(b"\x89PNG"));
+        assert!(reader.load_binary_resource("/image.png").unwrap().is_some());
         assert!(reader
             .load_binary_resource("missing.png")
             .unwrap()
@@ -802,6 +886,56 @@ mod tests {
         assert_eq!(
             diagnostics.loaded_resource_keys,
             ["cy3.css", "image.png", "loose.css"]
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolves_resources_from_numbered_mdd_volumes() {
+        let root = temp_dir("numbered-resources");
+        let mdx = root.join("fixture.mdx");
+        let numbered_mdd = root.join("fixture.1.mdd");
+        write_fixture(
+            &mdx,
+            FixtureKind::Mdx,
+            &[("entry", b"<img src=\"page.png\">")],
+            false,
+        );
+        write_fixture(
+            &numbered_mdd,
+            FixtureKind::Mdd,
+            &[("\\page.png", b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDRfixture")],
+            false,
+        );
+
+        let reader = MdictReader::open(&mdx).unwrap();
+        assert_eq!(reader.source_file_count(), 2);
+        assert!(reader.load_binary_resource("page.png").unwrap().is_some());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn repeated_resource_reads_are_not_rejected_by_cumulative_bytes() {
+        let root = temp_dir("repeated-resources");
+        let mdx = root.join("fixture.mdx");
+        let mdd = root.join("fixture.mdd");
+        write_fixture(
+            &mdx,
+            FixtureKind::Mdx,
+            &[("entry", b"<img src=\"page.png\">")],
+            false,
+        );
+        let mut image = vec![0_u8; 1024 * 1024];
+        image[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        write_fixture(&mdd, FixtureKind::Mdd, &[("\\page.png", &image)], false);
+
+        let reader = MdictReader::open(&mdx).unwrap();
+        for _ in 0..65 {
+            assert!(reader.load_binary_resource("page.png").unwrap().is_some());
+        }
+        assert_eq!(
+            reader.diagnostics().unwrap().resource_bytes,
+            65 * 1024 * 1024
         );
         let _ = fs::remove_dir_all(root);
     }

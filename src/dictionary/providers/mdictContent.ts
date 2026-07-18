@@ -105,6 +105,10 @@ function sanitizeChildren(
       }
       resourceKeys.add(key)
       element.setAttribute('src', resourceUrl(resourceUrlPrefix, key))
+      element.setAttribute(
+        'style',
+        'width:auto!important;height:auto!important;max-width:100%!important;cursor:default!important',
+      )
       const alt = attributes.get('alt')?.trim()
       if (alt) element.setAttribute('alt', alt.slice(0, 256))
       restoreDimension(element, 'height', attributes.get('height'))
@@ -198,15 +202,15 @@ function normalizeResourceKey(value: string) {
     if (decoded.includes('%') && decodeURIComponent(decoded) !== decoded) {
       return
     }
-    const normalized = decoded.replaceAll('\\', '/')
+    const normalized = decoded.replaceAll('\\', '/').replace(/^\/+/, '')
     if (
-      normalized.startsWith('/') ||
+      !normalized ||
       /^[a-z][a-z0-9+.-]*:/i.test(normalized) ||
       /[\u0000-\u001f\u007f]/.test(normalized)
     ) {
       return
     }
-    const segments = normalized.split('/')
+    const segments = normalized.split('/').filter((segment) => segment !== '.')
     if (
       !segments.length ||
       segments.some(
