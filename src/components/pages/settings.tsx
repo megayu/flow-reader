@@ -46,16 +46,52 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   open,
   onClose,
 }) => {
+  const [popupOpen, setPopupOpen] = useState(false)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const popupPointerDownOutsideRef = useRef(false)
+
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && !popupOpen) onClose()
+      }}
+    >
       <DialogContent
+        ref={contentRef}
         data-flow-keyboard-capture="true"
         className="h-[min(38rem,calc(100vh-4rem))] w-[min(56rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-lg p-0"
+        onEscapeKeyDown={(event) => {
+          if (
+            event.target instanceof Element &&
+            event.target.closest('[data-local-dictionary-name-editor]')
+          ) {
+            event.preventDefault()
+          }
+        }}
+        onPointerDownOutside={(event) => {
+          if (popupPointerDownOutsideRef.current) {
+            popupPointerDownOutsideRef.current = false
+            event.preventDefault()
+          }
+        }}
       >
-        <Settings />
+        <Settings
+          onPopupOpenChange={setPopupOpen}
+          onPopupPointerDownOutside={(target) => {
+            popupPointerDownOutsideRef.current = !(
+              target instanceof Node && contentRef.current?.contains(target)
+            )
+          }}
+        />
       </DialogContent>
     </Dialog>
   )
+}
+
+interface SettingsProps {
+  onPopupOpenChange: (open: boolean) => void
+  onPopupPointerDownOutside: (target: EventTarget | null) => void
 }
 
 type SettingsTab = 'basic' | 'reading' | 'dictionary' | 'txt' | 'shortcuts'
@@ -72,7 +108,10 @@ const TEXTAREA_SIZE_STYLE = {
   minHeight: '8.5rem',
 } satisfies CSSProperties
 
-export const Settings: React.FC = () => {
+export const Settings: React.FC<SettingsProps> = ({
+  onPopupOpenChange,
+  onPopupPointerDownOutside,
+}) => {
   const { locale, locales, setLocale } = useLocale()
   const [settings, setSettings] = useSettings()
   const t = useTranslation('settings')
@@ -155,6 +194,7 @@ export const Settings: React.FC = () => {
               <Item title={t('language')}>
                 <Select
                   value={locale}
+                  onOpenChange={onPopupOpenChange}
                   onValueChange={(value) => setLocale(value as AppLocale)}
                 >
                   <SelectTrigger
@@ -163,7 +203,13 @@ export const Settings: React.FC = () => {
                   >
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent
+                    onPointerDownOutside={(event) =>
+                      onPopupPointerDownOutside(
+                        event.detail.originalEvent.target,
+                      )
+                    }
+                  >
                     {locales?.map((loc) => (
                       <SelectItem key={loc} value={loc}>
                         {localeNames[loc] || loc}
@@ -365,7 +411,10 @@ export const Settings: React.FC = () => {
                   </UiButton>
                 </div>
               </section>
-              <LocalDictionarySettings />
+              <LocalDictionarySettings
+                onPopupOpenChange={onPopupOpenChange}
+                onPopupPointerDownOutside={onPopupPointerDownOutside}
+              />
             </div>
           )}
           {activeTab === 'shortcuts' && (

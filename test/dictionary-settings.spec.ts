@@ -118,6 +118,7 @@ test('manages local dictionary order, status, language, enablement, relocation, 
   await page.goto('/')
   const dialog = await openDictionarySettings(page)
   await expect(dialog.getByText('Source unavailable')).toBeVisible()
+  await expect(dialog.getByText('Available', { exact: true })).toHaveCount(0)
 
   await dialog
     .getByRole('checkbox', { name: 'Enable Alpha Dictionary' })
@@ -166,9 +167,12 @@ test('manages local dictionary order, status, language, enablement, relocation, 
     })
 
   await dialog.getByRole('button', { name: 'Remove Beta Dictionary' }).click()
-  await dialog
-    .getByRole('button', { name: 'Confirm remove Beta Dictionary' })
-    .click()
+  const confirmRemove = dialog.getByRole('button', {
+    name: 'Confirm remove Beta Dictionary',
+  })
+  await expect(confirmRemove).toHaveAttribute('data-variant', 'destructive')
+  await expect(confirmRemove.locator('.lucide-check')).toBeVisible()
+  await confirmRemove.click()
   await expect(dialog.getByText('Beta Dictionary')).toHaveCount(0)
   expect(
     (await getLocalDictionaryMockState(page)).localDictionaries,
@@ -203,6 +207,60 @@ test('renames a local dictionary inline and hides language provenance', async ({
       )?.name
     })
     .toBe('Reader Lexicon')
+})
+
+test('cancels an inline dictionary rename with Escape without closing settings', async ({
+  page,
+}) => {
+  const dictionary = localDictionary({
+    id: 'dict-cancel-rename000000',
+    name: 'Fixture Lexicon',
+    sourcePath: 'fixture-dictionary.mdx',
+  })
+  await installTauriMock(page, { localDictionaries: [dictionary] })
+  await page.goto('/')
+  const dialog = await openDictionarySettings(page)
+  const row = dialog.locator(`[data-local-dictionary-id="${dictionary.id}"]`)
+
+  await row.getByRole('button', { name: 'Rename Fixture Lexicon' }).click()
+  const input = row.getByRole('textbox', { name: 'Dictionary name' })
+  await input.fill('Changed name')
+  await input.press('Escape')
+
+  await expect(dialog).toBeVisible()
+  await expect(input).toHaveCount(0)
+  await expect(row.getByText('Fixture Lexicon', { exact: true })).toBeVisible()
+})
+
+test('dismisses open settings dropdowns before closing settings', async ({
+  page,
+}) => {
+  const dictionary = localDictionary({
+    id: 'dict-dropdown0000000000',
+    name: 'Fixture Lexicon',
+    sourcePath: 'fixture-dictionary.mdx',
+  })
+  await installTauriMock(page, { localDictionaries: [dictionary] })
+  await page.goto('/')
+  const dialog = await openDictionarySettings(page)
+  await dialog.getByRole('button', { name: 'Basic', exact: true }).click()
+
+  await dialog.getByRole('combobox', { name: 'Language' }).click()
+  const options = page.locator('[data-slot="select-content"]')
+  await expect(options).toBeVisible()
+  await page.mouse.click(4, 4)
+
+  await expect(options).toHaveCount(0)
+  await expect(dialog).toBeVisible()
+
+  await dialog.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Language Fixture Lexicon' }).click()
+  const languages = page.locator('[data-slot="popover-content"]')
+  await expect(languages).toBeVisible()
+  await page.mouse.click(4, 4)
+
+  await expect(languages).toHaveCount(0)
+  await expect(dialog).toBeVisible()
 })
 
 test('shows master-file validation errors without adding a partial record', async ({

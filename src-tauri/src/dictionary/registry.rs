@@ -13,6 +13,7 @@ use super::import::{
     inspect_dictionary_file, DictionaryFileReference, DictionaryFormat, DictionaryImportError,
     InspectedDictionary, SourceFingerprint,
 };
+use super::mdict::{MdictError, MdictReader};
 use super::stardict::{prepare_index, StarDictError};
 
 const REGISTRY_VERSION: u32 = 1;
@@ -154,6 +155,15 @@ impl From<StarDictError> for DictionaryRegistryError {
     }
 }
 
+impl From<MdictError> for DictionaryRegistryError {
+    fn from(error: MdictError) -> Self {
+        Self {
+            code: error.code,
+            message: error.message,
+        }
+    }
+}
+
 impl std::fmt::Display for DictionaryRegistryError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(formatter, "{}", self.message)
@@ -278,6 +288,9 @@ impl DictionaryRegistryStore {
     ) -> Result<LocalDictionaryRecord, DictionaryRegistryError> {
         self.ensure_available()?;
         let inspected = inspect_dictionary_file(source_path)?;
+        if inspected.format == DictionaryFormat::MDict {
+            MdictReader::open(&inspected.source_path)?;
+        }
         let mut state = self.lock()?;
         let mut next = state.clone();
         let now = unix_time_ms();
@@ -373,6 +386,9 @@ impl DictionaryRegistryStore {
     ) -> Result<LocalDictionaryRecord, DictionaryRegistryError> {
         self.ensure_available()?;
         let inspected = inspect_dictionary_file(source_path)?;
+        if inspected.format == DictionaryFormat::MDict {
+            MdictReader::open(&inspected.source_path)?;
+        }
         let mut state = self.lock()?;
         if state
             .dictionaries
@@ -776,6 +792,39 @@ mod tests {
         fs::write(root.join(format!("{stem}.idx")), index).unwrap();
         fs::write(root.join(format!("{stem}.dict")), b"source body").unwrap();
         ifo
+    }
+
+    fn write_mdict_header(path: &std::path::Path) {
+        let header =
+            r#"<Dictionary GeneratedByEngineVersion="2.0" RequiredEngineVersion="2.0" Encoding="UTF-8" Encrypted="No"/>"#
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes)
+                .collect::<Vec<_>>();
+        let mut a = 1_u32;
+        let mut b = 0_u32;
+        for byte in &header {
+            a = (a + u32::from(*byte)) % 65_521;
+            b = (b + a) % 65_521;
+        }
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&(header.len() as u32).to_be_bytes());
+        bytes.extend_from_slice(&header);
+        bytes.extend_from_slice(&((b << 16) | a).to_le_bytes());
+        fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn rejects_mdict_registration_without_a_readable_entry_index() {
+        let root = temp_dir("incomplete-mdict");
+        let sources = root.join("sources");
+        fs::create_dir_all(&sources).unwrap();
+        let mdx = sources.join("source.mdx");
+        write_mdict_header(&mdx);
+        let store = DictionaryRegistryStore::open(&root).unwrap();
+
+        assert_eq!(store.register(&mdx).unwrap_err().code, "invalidMdict");
+        assert!(store.list().unwrap().is_empty());
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

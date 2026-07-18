@@ -1,6 +1,7 @@
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  CheckIcon,
   FolderSearchIcon,
   PencilIcon,
   PlusIcon,
@@ -43,7 +44,15 @@ const languageLabels: Record<LocalDictionaryLanguage, string> = {
   zh: '中文',
 }
 
-export function LocalDictionarySettings() {
+interface LocalDictionarySettingsProps {
+  onPopupOpenChange: (open: boolean) => void
+  onPopupPointerDownOutside: (target: EventTarget | null) => void
+}
+
+export function LocalDictionarySettings({
+  onPopupOpenChange,
+  onPopupPointerDownOutside,
+}: LocalDictionarySettingsProps) {
   const t = useTranslation('settings')
   const [dictionaries, setDictionaries] = useState<LocalDictionaryRecord[]>([])
   const [error, setError] = useState<string>()
@@ -226,6 +235,7 @@ export function LocalDictionarySettings() {
                         autoFocus
                         aria-label={t('dictionary.local_name')}
                         className="h-7 max-w-72 text-base font-medium"
+                        data-local-dictionary-name-editor
                         defaultValue={dictionary.name}
                         onBlur={(event) =>
                           finishRename(dictionary, event.currentTarget.value)
@@ -234,8 +244,10 @@ export function LocalDictionarySettings() {
                         onKeyDown={(event) => {
                           if (event.key === 'Enter') event.currentTarget.blur()
                           if (event.key === 'Escape') {
+                            event.preventDefault()
+                            event.stopPropagation()
                             event.currentTarget.value = dictionary.name
-                            event.currentTarget.blur()
+                            setEditingNameId(undefined)
                           }
                         }}
                       />
@@ -259,15 +271,13 @@ export function LocalDictionarySettings() {
                     <span className="bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-xs uppercase">
                       {dictionary.format}
                     </span>
-                    <span
-                      className={
-                        dictionary.sourceStatus === 'available'
-                          ? 'text-muted-foreground shrink-0 text-xs'
-                          : 'text-destructive shrink-0 text-xs'
-                      }
-                    >
-                      {t(`dictionary.local_status.${dictionary.sourceStatus}`)}
-                    </span>
+                    {dictionary.sourceStatus !== 'available' && (
+                      <span className="text-destructive shrink-0 text-xs">
+                        {t(
+                          `dictionary.local_status.${dictionary.sourceStatus}`,
+                        )}
+                      </span>
+                    )}
                   </div>
                   <div
                     className="text-muted-foreground mt-0.5 truncate text-xs"
@@ -276,7 +286,7 @@ export function LocalDictionarySettings() {
                     {formatLocalPathForDisplay(dictionary.sourcePath)}
                   </div>
                 </div>
-                <Popover>
+                <Popover onOpenChange={onPopupOpenChange}>
                   <PopoverTrigger asChild>
                     <UiButton
                       type="button"
@@ -297,6 +307,11 @@ export function LocalDictionarySettings() {
                   <PopoverContent
                     align="end"
                     className="scroll scrollbar-visible max-h-[min(18rem,var(--radix-popover-content-available-height))] w-48 gap-0 overflow-y-auto p-1"
+                    onPointerDownOutside={(event) =>
+                      onPopupPointerDownOutside(
+                        event.detail.originalEvent.target,
+                      )
+                    }
                     onWheel={(event) => {
                       event.preventDefault()
                       event.stopPropagation()
@@ -370,13 +385,12 @@ export function LocalDictionarySettings() {
                   </UiButton>
                   <UiButton
                     type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className={
+                    variant={
                       confirmRemoveId === dictionary.id
-                        ? 'text-destructive ring-destructive/40 ring-1'
-                        : undefined
+                        ? 'destructive'
+                        : 'ghost'
                     }
+                    size="icon-sm"
                     aria-label={`${
                       confirmRemoveId === dictionary.id
                         ? t('dictionary.local_confirm_remove')
@@ -385,7 +399,11 @@ export function LocalDictionarySettings() {
                     onBlur={() => setConfirmRemoveId(undefined)}
                     onClick={() => void remove(dictionary.id)}
                   >
-                    <Trash2Icon className="size-4" />
+                    {confirmRemoveId === dictionary.id ? (
+                      <CheckIcon className="size-4" />
+                    ) : (
+                      <Trash2Icon className="size-4" />
+                    )}
                   </UiButton>
                 </div>
               </div>
