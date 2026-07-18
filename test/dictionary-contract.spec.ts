@@ -19,25 +19,49 @@ import {
 } from '../src/dictionary/query'
 
 test.describe('dictionary query contract', () => {
-  test('normalizes a short lookup while rejecting selections that are not words', () => {
-    expect(normalizeDictionaryQuery('  “天空。”  ')).toEqual({
+  test('trims before validation while preserving internal punctuation and spacing', () => {
+    expect(normalizeDictionaryQuery('  “合成词条。”  ')).toEqual({
       language: 'zh',
-      text: '天空',
+      text: '“合成词条。”',
     })
     expect(normalizeDictionaryQuery("  'well-being'  ")).toEqual({
       language: 'en',
-      text: 'well-being',
+      text: "'well-being'",
+    })
+    expect(normalizeDictionaryQuery(`  ${'a'.repeat(16)}  `)).toEqual({
+      language: 'en',
+      text: 'a'.repeat(16),
     })
     expect(normalizeDictionaryQuery('first\nsecond')).toBeNull()
-    expect(normalizeDictionaryQuery('😀')).toBeNull()
-    expect(normalizeDictionaryQuery('a'.repeat(129))).toBeNull()
+    expect(normalizeDictionaryQuery('first\tsecond')).toBeNull()
+    expect(normalizeDictionaryQuery('a'.repeat(17))).toBeNull()
+    expect(
+      normalizeDictionaryQuery(`“${'a'.repeat(16)}${'，'.repeat(7)}”`),
+    ).toBeNull()
   })
 
-  test('classifies Chinese, English, mixed, and unknown query text', () => {
-    expect(classifyDictionaryQuery('天空')).toBe('zh')
-    expect(classifyDictionaryQuery('sky')).toBe('en')
-    expect(classifyDictionaryQuery('天空 sky')).toBe('mixed')
-    expect(classifyDictionaryQuery('123')).toBe('unknown')
+  test('ignores numbers and punctuation for language analysis but rejects neutral-only text', () => {
+    expect(normalizeDictionaryQuery('第，一')).toEqual({
+      language: 'zh',
+      text: '第，一',
+    })
+    expect(normalizeDictionaryQuery('word-2')).toEqual({
+      language: 'en',
+      text: 'word-2',
+    })
+    expect(normalizeDictionaryQuery('123，。')).toBeNull()
+    expect(normalizeDictionaryQuery('😀')).toBeNull()
+  })
+
+  test('uses metadata as a candidate and corrects obvious script conflicts', () => {
+    expect(classifyDictionaryQuery('词条', 'zh-CN')).toBe('zh')
+    expect(classifyDictionaryQuery('entry', '中文')).toBe('en')
+    expect(classifyDictionaryQuery('词条entry', 'zh')).toBe('mixed')
+    expect(classifyDictionaryQuery('空を見る', 'ja')).toBe('ja')
+    expect(classifyDictionaryQuery('été', 'fr')).toBe('fr')
+    expect(classifyDictionaryQuery('e\u0301te\u0301', 'fr')).toBe('fr')
+    expect(classifyDictionaryQuery('слово', 'uk')).toBe('uk')
+    expect(classifyDictionaryQuery('123，。', 'en')).toBe('unknown')
   })
 })
 
@@ -80,7 +104,7 @@ test.describe('dictionary coordinator contract', () => {
       id: 'old',
       name: 'Old dictionary',
       scope: 'online',
-      sourceLanguage: 'zh',
+      sourceLanguages: ['zh'],
       async lookup(query) {
         await new Promise<void>((resolve) => {
           releaseOldLookup = resolve
@@ -122,7 +146,7 @@ test.describe('dictionary coordinator contract', () => {
       id: 'online',
       name: 'Online dictionary',
       scope: 'online',
-      sourceLanguage: 'en',
+      sourceLanguages: ['en'],
       async lookup(query) {
         onlineStarted = true
         return result('online', 'Online dictionary', query.text)
@@ -187,7 +211,7 @@ test.describe('dictionary coordinator contract', () => {
         id: 'failure',
         name: 'Failed dictionary',
         scope: 'online',
-        sourceLanguage: 'en',
+        sourceLanguages: ['en'],
         async lookup() {
           throw new Error('provider failed')
         },
@@ -196,7 +220,7 @@ test.describe('dictionary coordinator contract', () => {
         id: 'empty',
         name: 'Empty dictionary',
         scope: 'online',
-        sourceLanguage: 'en',
+        sourceLanguages: ['en'],
         async lookup() {
           return null
         },
@@ -519,7 +543,7 @@ function provider(
     id,
     name: sourceName,
     scope: 'online',
-    sourceLanguage,
+    sourceLanguages: [sourceLanguage],
     async lookup(query) {
       await new Promise((resolve) => setTimeout(resolve, delayMs))
       return result(id, sourceName, query.text)
@@ -559,7 +583,7 @@ function deferredLocalProviders(count: number) {
       id,
       name: sourceName,
       scope: 'local' as const,
-      sourceLanguage: 'en' as const,
+      sourceLanguages: ['en'] as const,
       async lookup(query) {
         started += 1
         active += 1

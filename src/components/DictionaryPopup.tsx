@@ -32,8 +32,8 @@ import { IconButton } from './Button'
 import { DictionarySourceSection } from './DictionarySourceSection'
 
 interface DictionaryPopupProps {
-  bookLanguage?: string
   maxBodyHeight: number
+  metadataLanguage?: string
   onBack: () => void
   onClose: () => void
   query: string
@@ -48,8 +48,8 @@ interface DictionaryScrollAnchor {
 }
 
 export function DictionaryPopup({
-  bookLanguage,
   maxBodyHeight,
+  metadataLanguage,
   onBack,
   onClose,
   query,
@@ -132,9 +132,9 @@ export function DictionaryPopup({
       ) ??
       selectableNavigationSources[0] ??
       navigationSources[0])
-  const queryLanguage = normalizeDictionaryQuery(query)?.language ?? 'unknown'
+  const queryLanguage =
+    normalizeDictionaryQuery(query, metadataLanguage)?.language ?? 'unknown'
   const speech = useSelectionSpeech({
-    bookLanguage,
     queryLanguage,
     text: query,
   })
@@ -144,14 +144,19 @@ export function DictionaryPopup({
     retryCoordinators.clear()
     setRetrySources({})
     setRetryingSourceIds({})
-    const session = rootCoordinator.lookup(query, providers, setRootSources)
+    const session = rootCoordinator.lookup(
+      query,
+      providers,
+      setRootSources,
+      metadataLanguage,
+    )
     return () => {
       session.cancel()
       rootCoordinator.cancelActive()
       retryCoordinators.forEach((coordinator) => coordinator.cancelActive())
       retryCoordinators.clear()
     }
-  }, [providers, query, rootCoordinator])
+  }, [metadataLanguage, providers, query, rootCoordinator])
 
   const captureScrollAnchor = useCallback((): DictionaryScrollAnchor | null => {
     const scroll = scrollRef.current
@@ -218,29 +223,34 @@ export function DictionaryPopup({
         ...current,
         [provider.id]: true,
       }))
-      coordinator.lookup(query, [provider], (sources) => {
-        const source = sources[0]
-        if (!source) return
-        const terminal =
-          source.status === 'empty' ||
-          source.status === 'error' ||
-          source.status === 'success'
-        if (terminal) {
-          pendingScrollAnchorRef.current = captureScrollAnchor() ?? undefined
-        }
-        setRetrySources((current) => ({
-          ...current,
-          [provider.id]: source,
-        }))
-        if (terminal) {
-          setRetryingSourceIds((current) => ({
+      coordinator.lookup(
+        query,
+        [provider],
+        (sources) => {
+          const source = sources[0]
+          if (!source) return
+          const terminal =
+            source.status === 'empty' ||
+            source.status === 'error' ||
+            source.status === 'success'
+          if (terminal) {
+            pendingScrollAnchorRef.current = captureScrollAnchor() ?? undefined
+          }
+          setRetrySources((current) => ({
             ...current,
-            [provider.id]: false,
+            [provider.id]: source,
           }))
-        }
-      })
+          if (terminal) {
+            setRetryingSourceIds((current) => ({
+              ...current,
+              [provider.id]: false,
+            }))
+          }
+        },
+        metadataLanguage,
+      )
     },
-    [captureScrollAnchor, currentDetail, query],
+    [captureScrollAnchor, currentDetail, metadataLanguage, query],
   )
 
   useEffect(() => {
@@ -444,14 +454,15 @@ export function DictionaryPopup({
         />
         <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
           <div className="truncate text-center font-medium">{query}</div>
-          <IconButton
-            aria-pressed={speech.isSpeaking}
-            Icon={speech.isSpeaking ? SquareIcon : Volume2Icon}
-            className="shrink-0"
-            data-dictionary-speech="true"
-            disabled={!speech.isSupported}
-            onClick={speech.toggle}
-          />
+          {speech.isSupported && (
+            <IconButton
+              aria-pressed={speech.isSpeaking}
+              Icon={speech.isSpeaking ? SquareIcon : Volume2Icon}
+              className="shrink-0"
+              data-dictionary-speech="true"
+              onClick={speech.toggle}
+            />
+          )}
         </div>
         <IconButton
           Icon={XIcon}

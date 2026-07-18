@@ -376,7 +376,14 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     }
     closeMenu()
   }
-  const dictionaryQuery = normalizeDictionaryQuery(text)
+  const dictionaryMetadataLanguage = selectionLanguage(
+    range,
+    tab.book.metadata.language,
+  )
+  const dictionaryQuery = normalizeDictionaryQuery(
+    text,
+    dictionaryMetadataLanguage,
+  )
   useEffect(() => {
     let active = true
     void listLocalDictionariesCached()
@@ -401,8 +408,9 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
       localDictionaries.filter(
         (dictionary) =>
           dictionaryLanguage &&
-          (dictionary.language.value === 'unknown' ||
-            dictionary.language.value === dictionaryLanguage),
+          dictionary.language.value.some(
+            (language) => language === dictionaryLanguage,
+          ),
       ),
     [dictionaryLanguage, localDictionaries],
   )
@@ -561,7 +569,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         {view === 'dictionary' ? (
           <DictionaryPopup
             key={dictionaryQuery?.text ?? text}
-            bookLanguage={tab.book.metadata.language}
+            metadataLanguage={dictionaryMetadataLanguage}
             query={dictionaryQuery?.text ?? text}
             localDictionaries={eligibleLocalDictionaries}
             maxBodyHeight={Math.max(
@@ -624,19 +632,18 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 copy(text)
               }}
             />
-            {dictionaryAvailable && (
-              <IconButton
-                title={t('dictionary')}
-                Icon={BookOpenTextIcon}
-                size={ICON_SIZE}
-                className={actionIconClassName}
-                style={{
-                  width: ANNOTATION_SIZE,
-                  height: ANNOTATION_SIZE,
-                }}
-                onClick={() => switchView('dictionary')}
-              />
-            )}
+            <IconButton
+              title={t('dictionary')}
+              Icon={BookOpenTextIcon}
+              size={ICON_SIZE}
+              className={actionIconClassName}
+              style={{
+                width: ANNOTATION_SIZE,
+                height: ANNOTATION_SIZE,
+              }}
+              disabled={!dictionaryAvailable}
+              onClick={() => switchView('dictionary')}
+            />
             <IconButton
               title={t('search_in_book')}
               Icon={SearchIcon}
@@ -855,4 +862,20 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
       </div>
     </>
   )
+}
+
+function selectionLanguage(range: Range, bookLanguage?: string) {
+  const container = range.commonAncestorContainer
+  let element =
+    container.nodeType === Node.ELEMENT_NODE
+      ? (container as Element)
+      : container.parentElement
+  while (element) {
+    const language =
+      element.getAttribute('lang') ??
+      element.getAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang')
+    if (language?.trim()) return language
+    element = element.parentElement
+  }
+  return bookLanguage
 }

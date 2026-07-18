@@ -8,6 +8,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use super::language::infer_language;
+
 const FINGERPRINT_SAMPLE_BYTES: usize = 4 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,7 +54,7 @@ pub struct InspectedDictionary {
     pub source_path: PathBuf,
     pub fingerprint: SourceFingerprint,
     pub files: Vec<DictionaryFileReference>,
-    pub metadata_language: Option<String>,
+    pub metadata_languages: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -176,7 +178,7 @@ fn inspect_stardict(path: &Path) -> Result<InspectedDictionary, DictionaryImport
         format: DictionaryFormat::StarDict,
         name: metadata_value(&metadata, "bookname").unwrap_or_else(|| source_stem(&source_path)),
         fingerprint,
-        metadata_language: infer_stardict_language(&metadata),
+        metadata_languages: infer_stardict_languages(&metadata),
         source_path,
         files,
     })
@@ -213,7 +215,7 @@ fn inspect_mdict(path: &Path) -> Result<InspectedDictionary, DictionaryImportErr
             std::iter::once(&source_path)
                 .chain(files.iter().filter(|file| file.used).map(|file| &file.path)),
         )?,
-        metadata_language: metadata.language,
+        metadata_languages: metadata.language.into_iter().collect(),
         source_path,
         files,
     })
@@ -332,29 +334,18 @@ fn metadata_value(metadata: &str, key: &str) -> Option<String> {
     })
 }
 
-fn infer_stardict_language(metadata: &str) -> Option<String> {
-    let languages = ["lang", "lang_from", "lang_to"]
+fn infer_stardict_languages(metadata: &str) -> Vec<String> {
+    let mut languages = Vec::new();
+    for language in ["lang", "lang_from", "lang_to"]
         .into_iter()
         .filter_map(|key| metadata_value(metadata, key))
-        .map(|value| value.to_ascii_lowercase())
-        .collect::<Vec<_>>();
-    if languages.iter().any(|language| {
-        matches!(
-            language.as_str(),
-            "zh" | "zho" | "chi" | "chinese" | "zh-cn" | "zh-tw"
-        )
-    }) {
-        Some("zh".to_string())
-    } else if languages.iter().any(|language| {
-        matches!(
-            language.as_str(),
-            "en" | "eng" | "english" | "en-us" | "en-gb"
-        )
-    }) {
-        Some("en".to_string())
-    } else {
-        None
+        .filter_map(|value| infer_language(&value))
+    {
+        if !languages.contains(&language) {
+            languages.push(language);
+        }
     }
+    languages
 }
 
 fn source_stem(path: &Path) -> String {
@@ -367,7 +358,17 @@ fn source_stem(path: &Path) -> String {
 mod tests {
     use std::{fs, path::PathBuf};
 
-    use super::{inspect_dictionary_file, DictionaryFileKind, DictionaryFormat};
+    use super::{
+        infer_stardict_languages, inspect_dictionary_file, DictionaryFileKind, DictionaryFormat,
+    };
+
+    #[test]
+    fn recognizes_explicit_dictionary_language_metadata() {
+        assert_eq!(
+            infer_stardict_languages("lang_from=English\nlang_to=中文\n"),
+            vec!["en".to_string(), "zh".to_string()]
+        );
+    }
 
     fn temp_dir(name: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!(

@@ -9,6 +9,8 @@ use std::{
 use mdict_rs::{MddFile, MdxFile};
 use serde::Serialize;
 
+use super::language::infer_language;
+
 const MAX_HEADER_BYTES: u64 = 1024 * 1024;
 const MAX_ENTRY_BYTES: usize = 2 * 1024 * 1024;
 const MAX_STYLESHEET_BYTES: usize = 512 * 1024;
@@ -498,20 +500,6 @@ fn mime_from_extension(key: &str) -> Option<&'static str> {
         "woff" => Some("font/woff"),
         "woff2" => Some("font/woff2"),
         _ => None,
-    }
-}
-
-fn infer_language(value: &str) -> Option<String> {
-    let value = value.trim().to_ascii_lowercase();
-    if matches!(
-        value.as_str(),
-        "zh" | "zho" | "chi" | "chinese" | "zh-cn" | "zh-tw"
-    ) {
-        Some("zh".to_string())
-    } else if matches!(value.as_str(), "en" | "eng" | "english" | "en-us" | "en-gb") {
-        Some("en".to_string())
-    } else {
-        None
     }
 }
 

@@ -19,18 +19,29 @@ import {
   updateLocalDictionary,
 } from '../dictionary/native'
 import { formatLocalPathForDisplay } from '../dictionary/path'
+import { supportedDictionaryLanguages } from '../dictionary/types'
 import { useTranslation } from '../hooks/useTranslation'
 
 import { Button as UiButton } from './ui/button'
 import { Checkbox as UiCheckbox } from './ui/checkbox'
 import { Input } from './ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from './ui/select'
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
+
+const languageLabels: Record<LocalDictionaryLanguage, string> = {
+  de: 'Deutsch',
+  en: 'English',
+  es: 'Español',
+  fr: 'Français',
+  it: 'Italiano',
+  ja: '日本語',
+  ko: '한국어',
+  nl: 'Nederlands',
+  pl: 'Polski',
+  pt: 'Português',
+  ru: 'Русский',
+  uk: 'Українська',
+  zh: '中文',
+}
 
 export function LocalDictionarySettings() {
   const t = useTranslation('settings')
@@ -265,28 +276,68 @@ export function LocalDictionarySettings() {
                     {formatLocalPathForDisplay(dictionary.sourcePath)}
                   </div>
                 </div>
-                <Select
-                  value={dictionary.language.value}
-                  onValueChange={(value) =>
-                    void updateRecord(dictionary.id, {
-                      language: value as LocalDictionaryLanguage,
-                    })
-                  }
-                >
-                  <SelectTrigger
-                    aria-label={`${t('dictionary.local_language')} ${dictionary.name}`}
-                    className="h-8 w-28 shrink-0 rounded-lg"
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <UiButton
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-label={`${t('dictionary.local_language')} ${dictionary.name}`}
+                      className="w-36 min-w-0 justify-start px-2 font-normal"
+                    >
+                      <span className="truncate">
+                        {dictionary.language.value.length > 0
+                          ? dictionary.language.value
+                              .map((language) => languageLabels[language])
+                              .join(', ')
+                          : t('dictionary.local_language.unknown')}
+                      </span>
+                    </UiButton>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="end"
+                    className="scroll scrollbar-visible max-h-[min(18rem,var(--radix-popover-content-available-height))] w-48 gap-0 overflow-y-auto p-1"
+                    onWheel={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+
+                      const scrollUnit =
+                        event.deltaMode === WheelEvent.DOM_DELTA_LINE
+                          ? 32
+                          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+                            ? event.currentTarget.clientHeight
+                            : 1
+                      event.currentTarget.scrollTop += event.deltaY * scrollUnit
+                    }}
                   >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(['unknown', 'zh', 'en'] as const).map((language) => (
-                      <SelectItem key={language} value={language}>
-                        {t(`dictionary.local_language.${language}`)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                    {supportedDictionaryLanguages.map((language) => {
+                      const checked =
+                        dictionary.language.value.includes(language)
+                      return (
+                        <label
+                          key={language}
+                          className="hover:bg-accent flex h-8 cursor-pointer items-center gap-2 rounded-md px-2"
+                        >
+                          <UiCheckbox
+                            checked={checked}
+                            onCheckedChange={() =>
+                              void updateRecord(dictionary.id, {
+                                language: checked
+                                  ? dictionary.language.value.filter(
+                                      (current) => current !== language,
+                                    )
+                                  : [...dictionary.language.value, language],
+                              })
+                            }
+                          />
+                          <span className="truncate">
+                            {languageLabels[language]}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </PopoverContent>
+                </Popover>
                 <div className="flex shrink-0 items-center gap-0.5">
                   <UiButton
                     type="button"

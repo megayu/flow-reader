@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { DictionaryQueryLanguage } from '../dictionary/types'
+import { normalizeDictionaryLanguage } from '../dictionary/query'
+import type {
+  DictionaryQueryLanguage,
+  SupportedDictionaryLanguage,
+} from '../dictionary/types'
 
 interface UseSelectionSpeechOptions {
-  bookLanguage?: string
   queryLanguage: DictionaryQueryLanguage
   text: string
 }
@@ -12,54 +15,44 @@ function normalizeLocale(locale?: string) {
   return locale?.trim().replaceAll('_', '-').toLowerCase()
 }
 
-function primaryLanguage(locale?: string) {
-  return normalizeLocale(locale)?.split('-')[0]
-}
-
-function queryFallbackLocale(language: DictionaryQueryLanguage) {
-  if (language === 'zh') return 'zh-CN'
-  if (language === 'en') return 'en-US'
-}
-
 function selectVoice(
   voices: readonly SpeechSynthesisVoice[],
   queryLanguage: DictionaryQueryLanguage,
-  bookLanguage?: string,
 ) {
-  const queryPrimary =
-    queryLanguage === 'zh' || queryLanguage === 'en' ? queryLanguage : undefined
-  const bookLocale = normalizeLocale(bookLanguage)
-  const bookPrimary = primaryLanguage(bookLanguage)
-  const preferredPrimary = queryPrimary ?? bookPrimary
-  const preferredLocale =
-    bookLocale && (!queryPrimary || bookPrimary === queryPrimary)
-      ? bookLocale
-      : normalizeLocale(queryFallbackLocale(queryLanguage))
-
-  return (
-    voices.find((voice) => normalizeLocale(voice.lang) === preferredLocale) ??
-    voices.find((voice) => primaryLanguage(voice.lang) === preferredPrimary) ??
-    voices.find((voice) => voice.default) ??
-    voices[0]
+  if (queryLanguage === 'mixed' || queryLanguage === 'unknown') return
+  const matching = voices.filter(
+    (voice) => speechLanguage(voice.lang) === queryLanguage,
   )
+  return matching.find((voice) => voice.default) ?? matching[0]
 }
 
 export function useSelectionSpeech({
-  bookLanguage,
   queryLanguage,
   text,
 }: UseSelectionSpeechOptions) {
-  const [isSupported, setIsSupported] = useState(false)
+  const [voices, setVoices] = useState<readonly SpeechSynthesisVoice[]>([])
   const [isSpeaking, setIsSpeaking] = useState(false)
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
 
   useEffect(() => {
-    setIsSupported(
-      typeof window !== 'undefined' &&
-        Boolean(window.speechSynthesis) &&
-        typeof window.SpeechSynthesisUtterance === 'function',
-    )
+    if (
+      typeof window === 'undefined' ||
+      !window.speechSynthesis ||
+      typeof window.SpeechSynthesisUtterance !== 'function'
+    ) {
+      setVoices([])
+      return
+    }
+
+    const synthesis = window.speechSynthesis
+    const refreshVoices = () => setVoices([...synthesis.getVoices()])
+    refreshVoices()
+    synthesis.addEventListener('voiceschanged', refreshVoices)
+    return () => synthesis.removeEventListener('voiceschanged', refreshVoices)
   }, [])
+
+  const voice = selectVoice(voices, queryLanguage)
+  const isSupported = Boolean(voice)
 
   const stop = useCallback(() => {
     const utterance = utteranceRef.current
@@ -84,21 +77,10 @@ export function useSelectionSpeech({
     const synthesis = window.speechSynthesis
     synthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(text)
-    const voice = selectVoice(
-      synthesis.getVoices(),
-      queryLanguage,
-      bookLanguage,
-    )
-    const fallbackLocale =
-      bookLanguage &&
-      (!primaryLanguage(queryFallbackLocale(queryLanguage)) ||
-        primaryLanguage(bookLanguage) ===
-          primaryLanguage(queryFallbackLocale(queryLanguage)))
-        ? bookLanguage
-        : queryFallbackLocale(queryLanguage)
-
-    if (voice) utterance.voice = voice
-    utterance.lang = voice?.lang ?? fallbackLocale ?? ''
+    const currentVoice = selectVoice(synthesis.getVoices(), queryLanguage)
+    if (!currentVoice) return
+    utterance.voice = currentVoice
+    utterance.lang = currentVoice.lang
 
     const finish = () => {
       if (utteranceRef.current !== utterance) return
@@ -114,11 +96,19 @@ export function useSelectionSpeech({
     } catch {
       finish()
     }
-  }, [bookLanguage, isSupported, queryLanguage, stop, text])
+  }, [isSupported, queryLanguage, stop, text])
 
   return {
     isSpeaking,
     isSupported,
     toggle: speak,
   }
+}
+
+function speechLanguage(
+  locale: string,
+): SupportedDictionaryLanguage | undefined {
+  const normalized = normalizeLocale(locale)
+  if (!normalized) return
+  return normalizeDictionaryLanguage(normalized.split('-')[0])
 }

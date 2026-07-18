@@ -1,12 +1,9 @@
-import {
-  classifyDictionaryQuery,
-  MAX_DICTIONARY_QUERY_LENGTH,
-  normalizeDictionaryQuery,
-} from './query'
+import { classifyDictionaryQuery, normalizeDictionaryQuery } from './query'
 import type {
   DictionaryQuery,
   DictionaryQueryLanguage,
   DictionaryResult,
+  SupportedDictionaryLanguage,
 } from './types'
 
 export type DictionaryProviderScope = 'local' | 'online'
@@ -20,7 +17,7 @@ export interface DictionaryProvider {
   ) => Promise<DictionaryResult | null>
   name: string
   scope: DictionaryProviderScope
-  sourceLanguage: 'en' | 'unknown' | 'zh'
+  sourceLanguages: readonly SupportedDictionaryLanguage[]
 }
 
 export type DictionarySourceStatus =
@@ -54,6 +51,7 @@ export interface DictionaryLookupSession {
 }
 
 type SourceUpdateListener = (sources: DictionarySourceState[]) => void
+const MAX_DICTIONARY_INTERNAL_ENTRY_LENGTH = 128
 
 export class DictionaryCoordinator {
   private activeSession?: { controller: AbortController; id: number }
@@ -64,8 +62,9 @@ export class DictionaryCoordinator {
     rawText: string,
     providers: DictionaryProvider[],
     onUpdate?: SourceUpdateListener,
+    metadataLanguage?: string,
   ): DictionaryLookupSession {
-    const query = normalizeDictionaryQuery(rawText)
+    const query = normalizeDictionaryQuery(rawText, metadataLanguage)
     const eligibleProviders = query
       ? providers.filter((provider) =>
           isProviderEligible(provider, query.language),
@@ -193,7 +192,7 @@ function exactInternalEntryQuery(entry: string): DictionaryQuery | null {
   const characters = Array.from(entry)
   if (
     !characters.length ||
-    characters.length > MAX_DICTIONARY_QUERY_LENGTH ||
+    characters.length > MAX_DICTIONARY_INTERNAL_ENTRY_LENGTH ||
     /[\u0000-\u001f\u007f]/u.test(entry)
   ) {
     return null
@@ -289,17 +288,10 @@ function externalUrlFromError(error: unknown) {
 }
 
 export function isProviderEligible(
-  provider: Pick<DictionaryProvider, 'scope' | 'sourceLanguage'>,
+  provider: Pick<DictionaryProvider, 'scope' | 'sourceLanguages'>,
   queryLanguage: DictionaryQueryLanguage,
 ) {
-  if (provider.scope === 'online') {
-    return queryLanguage === provider.sourceLanguage
-  }
-
-  return (
-    provider.sourceLanguage === 'unknown' ||
-    provider.sourceLanguage === queryLanguage
-  )
+  return provider.sourceLanguages.some((language) => language === queryLanguage)
 }
 
 function replaceSource(

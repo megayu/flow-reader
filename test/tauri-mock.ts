@@ -359,7 +359,7 @@ export async function installTauriMock(
           if (index < 0) throw new Error('Dictionary not found')
           const changes = (args?.changes ?? {}) as {
             enabled?: boolean
-            language?: 'en' | 'unknown' | 'zh'
+            language?: LocalDictionaryRecord['language']['value']
             name?: string
             order?: number
           }
@@ -399,7 +399,14 @@ export async function installTauriMock(
               ? fixture
               : new Error('Dictionary cannot be relocated')
           }
-          localDictionaryStore[index] = { ...fixture, id }
+          const current = localDictionaryStore[index]!
+          localDictionaryStore[index] = {
+            ...fixture,
+            enabled: current.enabled,
+            id,
+            language: current.language,
+            order: current.order,
+          }
           return localDictionaryStore[index]
         }
         if (command === 'remove_local_dictionary') {

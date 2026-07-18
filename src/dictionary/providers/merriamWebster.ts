@@ -43,7 +43,7 @@ export function createMerriamWebsterProvider(
     id: SOURCE_ID,
     name: SOURCE_NAME,
     scope: 'online',
-    sourceLanguage: 'en',
+    sourceLanguages: ['en'],
     async lookup(query, { signal }) {
       const externalUrl = merriamWebsterExternalUrl(query.text)
       const key = apiKey.trim()

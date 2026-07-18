@@ -223,7 +223,7 @@ export default {
   'settings.dictionary.local_error': 'Could not update local dictionaries.',
   'settings.dictionary.local_enable': 'Enable',
   'settings.dictionary.local_language': 'Language',
-  'settings.dictionary.local_language.unknown': 'Unknown',
+  'settings.dictionary.local_language.unknown': 'Not set',
   'settings.dictionary.local_language.zh': 'Chinese',
   'settings.dictionary.local_language.en': 'English',
   'settings.dictionary.local_name': 'Dictionary name',

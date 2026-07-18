@@ -221,7 +221,7 @@ export default {
   'settings.dictionary.local_error': '无法更新本地词典',
   'settings.dictionary.local_enable': '启用',
   'settings.dictionary.local_language': '语言',
-  'settings.dictionary.local_language.unknown': '未知',
+  'settings.dictionary.local_language.unknown': '未设置',
   'settings.dictionary.local_language.zh': '中文',
   'settings.dictionary.local_language.en': '英文',
   'settings.dictionary.local_name': '词典名称',

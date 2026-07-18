@@ -14,7 +14,7 @@ export function createStarDictProvider(
     id: `stardict:${dictionary.id}`,
     name: dictionary.name,
     scope: 'local',
-    sourceLanguage: dictionary.language.value,
+    sourceLanguages: dictionary.language.value,
     async lookup(query, { signal }) {
       const sessionId = nextNativeSessionId++
       const release = () => {

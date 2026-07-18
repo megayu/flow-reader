@@ -36,7 +36,7 @@ export const zdicProvider: DictionaryProvider = {
   id: SOURCE_ID,
   name: SOURCE_NAME,
   scope: 'online',
-  sourceLanguage: 'zh',
+  sourceLanguages: ['zh'],
   async lookup(query, { signal }) {
     const sessionId = nextNativeSessionId++
     const cancel = () => {

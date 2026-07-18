@@ -174,6 +174,7 @@ async function installSpeechSynthesisMock(
         errorLatest: () => void
         events: string[]
         speakCalls: Array<{ lang: string; text: string; voiceName?: string }>
+        setVoices: (voices: SpeechVoiceFixture[]) => void
       }
       const testWindow = window as typeof window & {
         __FLOW_TEST_SPEECH__?: SpeechTestState
@@ -192,6 +193,8 @@ async function installSpeechSynthesisMock(
       }
 
       let latest: TestUtterance | undefined
+      let currentVoices = voices
+      const voiceListeners = new Set<EventListenerOrEventListenerObject>()
       class TestSpeechSynthesisUtterance implements TestUtterance {
         lang = ''
         onend: ((event: Event) => void) | null = null
@@ -212,6 +215,14 @@ async function installSpeechSynthesisMock(
           latest?.onerror?.(new Event('error'))
         },
         events: [],
+        setVoices(nextVoices) {
+          currentVoices = nextVoices
+          const event = new Event('voiceschanged')
+          voiceListeners.forEach((listener) => {
+            if (typeof listener === 'function') listener(event)
+            else listener.handleEvent(event)
+          })
+        },
         speakCalls: [],
       }
       Object.defineProperty(window, 'SpeechSynthesisUtterance', {
@@ -221,18 +232,30 @@ async function installSpeechSynthesisMock(
       Object.defineProperty(window, 'speechSynthesis', {
         configurable: true,
         value: {
+          addEventListener(
+            type: string,
+            listener: EventListenerOrEventListenerObject,
+          ) {
+            if (type === 'voiceschanged') voiceListeners.add(listener)
+          },
           cancel() {
             state.cancelCalls += 1
             state.events.push('cancel')
           },
           getVoices() {
-            return voices.map((voice) => ({
+            return currentVoices.map((voice) => ({
               default: voice.default ?? false,
               lang: voice.lang,
               localService: true,
               name: voice.name,
               voiceURI: voice.name,
             }))
+          },
+          removeEventListener(
+            type: string,
+            listener: EventListenerOrEventListenerObject,
+          ) {
+            if (type === 'voiceschanged') voiceListeners.delete(listener)
           },
           speak(utterance: TestUtterance) {
             latest = utterance
@@ -302,7 +325,7 @@ function localStarDict(): LocalDictionaryRecord {
     fingerprint: { modifiedMs: 1, sampleHash: 'fixture', size: 1 },
     format: 'stardict',
     id: 'dict-oxford',
-    language: { source: 'manual', value: 'en' },
+    language: { source: 'manual', value: ['en'] },
     name: 'Oxford English-Chinese Dictionary',
     order: 0,
     sourcePath: 'fixture-english.ifo',
@@ -319,7 +342,7 @@ function localMdict(): LocalDictionaryRecord {
     fingerprint: { modifiedMs: 1, sampleHash: 'fixture', size: 1 },
     format: 'mdict',
     id: 'dict-synthetic-zh',
-    language: { source: 'manual', value: 'zh' },
+    language: { source: 'manual', value: ['zh'] },
     name: 'Synthetic Chinese MDict',
     order: 0,
     sourcePath: 'fixture-chinese.mdx',
@@ -439,7 +462,7 @@ test('selection speech reads Chinese with the matching system voice and toggles 
   await expect.poll(() => speechState(page)).toMatchObject({ cancelCalls: 2 })
 })
 
-test('prefers the exact book language and resets after a speech error', async ({
+test('prefers the default voice for the detected language and resets after an error', async ({
   page,
 }) => {
   await installSpeechSynthesisMock(page, {
@@ -469,9 +492,9 @@ test('prefers the exact book language and resets after a speech error', async ({
     .toMatchObject({
       speakCalls: [
         {
-          lang: 'en-GB',
+          lang: 'en-US',
           text: 'sample',
-          voiceName: 'System British',
+          voiceName: 'System American',
         },
       ],
     })
@@ -516,7 +539,7 @@ test('selection speech falls back to a same-language voice when no exact locale 
   await expect(speak).toHaveAttribute('aria-pressed', 'false')
 })
 
-test('selection speech is disabled when the system API is unavailable', async ({
+test('selection speech is hidden when the system API is unavailable', async ({
   page,
 }) => {
   await installSpeechSynthesisMock(page, { supported: false })
@@ -525,8 +548,30 @@ test('selection speech is disabled when the system API is unavailable', async ({
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
 
   const unavailable = page.locator('[data-dictionary-speech]')
-  await expect(unavailable).toBeDisabled()
-  await expect(unavailable).toHaveAttribute('aria-pressed', 'false')
+  await expect(unavailable).toHaveCount(0)
+})
+
+test('selection speech reacts when the system voice list becomes available', async ({
+  page,
+}) => {
+  await installSpeechSynthesisMock(page)
+  await setupDictionaryReader(page, { 测试: wordHtml })
+  await selectFixtureText(page, '测试')
+  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+
+  const speak = page.locator('[data-dictionary-speech]')
+  await expect(speak).toHaveCount(0)
+  await page.evaluate(() => {
+    const state = (
+      window as typeof window & {
+        __FLOW_TEST_SPEECH__?: {
+          setVoices: (voices: SpeechVoiceFixture[]) => void
+        }
+      }
+    ).__FLOW_TEST_SPEECH__
+    state?.setVoices([{ lang: 'zh-CN', name: 'Installed Chinese' }])
+  })
+  await expect(speak).toBeVisible()
 })
 
 test('stops active speech on every dictionary popup exit path', async ({
@@ -557,14 +602,30 @@ test('stops active speech on every dictionary popup exit path', async ({
   await expect(page.getByRole('button', { name: 'Copy' })).toHaveCount(0)
 })
 
-test('does not offer Han Dian for an English selection', async ({ page }) => {
+test('keeps the dictionary action disabled when no source matches the selection', async ({
+  page,
+}) => {
   await setupDictionaryReader(page, {})
   await selectFixtureText(page, 'sky', false)
 
   await expect(
     page.getByRole('button', { name: 'Dictionary', exact: true }),
-  ).toHaveCount(0)
+  ).toBeDisabled()
   expect((await getDictionaryMockState(page)).dictionaryRequests).toEqual([])
+})
+
+test('keeps the dictionary action disabled for a selection containing only numbers and punctuation', async ({
+  page,
+}) => {
+  await setupDictionaryReader(page, {})
+  await selectFixtureText(page, '123，。', false)
+
+  const dictionary = page.getByRole('button', {
+    name: 'Dictionary',
+    exact: true,
+  })
+  await expect(dictionary).toBeVisible()
+  await expect(dictionary).toBeDisabled()
 })
 
 test('parses only the first Han Dian character explanation into semantic groups', async ({
@@ -745,7 +806,7 @@ test('retries a failed online source without displacing the scrolled dictionary 
   const localDictionary: LocalDictionaryRecord = {
     ...localStarDict(),
     id: 'dict-synthetic-local',
-    language: { source: 'manual', value: 'zh' },
+    language: { source: 'manual', value: ['zh'] },
     name: 'Synthetic Local Dictionary',
   }
   await setupDictionaryReader(

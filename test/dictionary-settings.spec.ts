@@ -123,9 +123,23 @@ test('manages local dictionary order, status, language, enablement, relocation, 
     .getByRole('checkbox', { name: 'Enable Alpha Dictionary' })
     .click()
   await dialog
-    .getByRole('combobox', { name: 'Language Alpha Dictionary' })
+    .getByRole('button', { name: 'Language Alpha Dictionary' })
     .click()
-  await page.getByRole('option', { name: 'Chinese' }).click()
+  const languageMenu = page.locator('[data-slot="popover-content"]')
+  await expect
+    .poll(() =>
+      languageMenu.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(true)
+  await languageMenu.hover()
+  await page.mouse.wheel(0, 100)
+  await expect
+    .poll(() => languageMenu.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0)
+  await page.getByRole('checkbox', { name: '中文' }).click()
+  await page.getByRole('checkbox', { name: 'English' }).click()
   await dialog
     .getByRole('button', { name: 'Move down Alpha Dictionary' })
     .click()
@@ -147,7 +161,7 @@ test('manages local dictionary order, status, language, enablement, relocation, 
     })
     .toEqual({
       enabled: false,
-      language: { source: 'manual', value: 'zh' },
+      language: { source: 'manual', value: ['zh', 'en'] },
       order: 1,
     })
 
@@ -282,7 +296,7 @@ function localDictionary(
     files: [],
     fingerprint: { modifiedMs: 1, sampleHash: 'fixture', size: 1 },
     format: 'mdict',
-    language: { source: 'unknown', value: 'unknown' },
+    language: { source: 'unknown', value: [] },
     order: 0,
     sourceStatus: 'available',
     updatedAt: 1,

@@ -1,4 +1,26 @@
-export type DictionaryQueryLanguage = 'en' | 'mixed' | 'unknown' | 'zh'
+export const supportedDictionaryLanguages = [
+  'zh',
+  'en',
+  'ru',
+  'fr',
+  'de',
+  'es',
+  'pt',
+  'it',
+  'pl',
+  'uk',
+  'nl',
+  'ja',
+  'ko',
+] as const
+
+export type SupportedDictionaryLanguage =
+  (typeof supportedDictionaryLanguages)[number]
+
+export type DictionaryQueryLanguage =
+  | SupportedDictionaryLanguage
+  | 'mixed'
+  | 'unknown'
 
 export interface DictionaryQuery {
   language: DictionaryQueryLanguage

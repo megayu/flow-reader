@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 
+import type { SupportedDictionaryLanguage } from './types'
+
 export interface DictionaryHttpResponse {
   body: string
   finalUrl: string
@@ -25,7 +27,7 @@ export interface DictionaryRuntimeDiagnostics {
 }
 
 export type LocalDictionaryFormat = 'mdict' | 'stardict'
-export type LocalDictionaryLanguage = 'en' | 'unknown' | 'zh'
+export type LocalDictionaryLanguage = SupportedDictionaryLanguage
 export type LocalDictionaryLanguageSource =
   | 'manual'
   | 'metadata'
@@ -56,7 +58,7 @@ export interface LocalDictionaryRecord {
   id: string
   language: {
     source: LocalDictionaryLanguageSource
-    value: LocalDictionaryLanguage
+    value: LocalDictionaryLanguage[]
   }
   name: string
   order: number
@@ -67,7 +69,7 @@ export interface LocalDictionaryRecord {
 
 export interface LocalDictionaryUpdate {
   enabled?: boolean
-  language?: LocalDictionaryLanguage
+  language?: LocalDictionaryLanguage[]
   name?: string
   order?: number
 }

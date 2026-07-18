@@ -23,7 +23,18 @@ const CACHE_DIR: &str = "cache";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DictionaryLanguage {
+    De,
     En,
+    Es,
+    Fr,
+    It,
+    Ja,
+    Ko,
+    Nl,
+    Pl,
+    Pt,
+    Ru,
+    Uk,
     Zh,
     Unknown,
 }
@@ -52,8 +63,8 @@ impl Default for DictionaryLanguageSource {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct DictionaryLanguageSetting {
-    #[serde(default)]
-    pub value: DictionaryLanguage,
+    #[serde(default, deserialize_with = "deserialize_dictionary_languages")]
+    pub value: Vec<DictionaryLanguage>,
     #[serde(default)]
     pub source: DictionaryLanguageSource,
 }
@@ -105,7 +116,7 @@ fn enabled_by_default() -> bool {
 pub struct LocalDictionaryUpdate {
     pub enabled: Option<bool>,
     pub order: Option<u32>,
-    pub language: Option<DictionaryLanguage>,
+    pub language: Option<Vec<DictionaryLanguage>>,
     pub name: Option<String>,
 }
 
@@ -334,7 +345,7 @@ impl DictionaryRegistryStore {
         }
         if let Some(language) = update.language {
             record.language = DictionaryLanguageSetting {
-                value: language,
+                value: normalized_languages(language),
                 source: DictionaryLanguageSource::Manual,
             };
         }
@@ -619,19 +630,70 @@ fn apply_inspection(record: &mut LocalDictionaryRecord, inspected: InspectedDict
 }
 
 fn automatic_language(inspected: &InspectedDictionary) -> DictionaryLanguageSetting {
-    let value = match inspected.metadata_language.as_deref() {
-        Some("en") => DictionaryLanguage::En,
-        Some("zh") => DictionaryLanguage::Zh,
-        _ => DictionaryLanguage::Unknown,
-    };
+    let value = normalized_languages(
+        inspected
+            .metadata_languages
+            .iter()
+            .filter_map(|language| dictionary_language(language))
+            .collect(),
+    );
     DictionaryLanguageSetting {
-        source: if value == DictionaryLanguage::Unknown {
+        source: if value.is_empty() {
             DictionaryLanguageSource::Unknown
         } else {
             DictionaryLanguageSource::Metadata
         },
         value,
     }
+}
+
+fn dictionary_language(value: &str) -> Option<DictionaryLanguage> {
+    match value {
+        "de" => Some(DictionaryLanguage::De),
+        "en" => Some(DictionaryLanguage::En),
+        "es" => Some(DictionaryLanguage::Es),
+        "fr" => Some(DictionaryLanguage::Fr),
+        "it" => Some(DictionaryLanguage::It),
+        "ja" => Some(DictionaryLanguage::Ja),
+        "ko" => Some(DictionaryLanguage::Ko),
+        "nl" => Some(DictionaryLanguage::Nl),
+        "pl" => Some(DictionaryLanguage::Pl),
+        "pt" => Some(DictionaryLanguage::Pt),
+        "ru" => Some(DictionaryLanguage::Ru),
+        "uk" => Some(DictionaryLanguage::Uk),
+        "zh" => Some(DictionaryLanguage::Zh),
+        _ => None,
+    }
+}
+
+fn normalized_languages(languages: Vec<DictionaryLanguage>) -> Vec<DictionaryLanguage> {
+    let mut normalized = Vec::new();
+    for language in languages {
+        if language != DictionaryLanguage::Unknown && !normalized.contains(&language) {
+            normalized.push(language);
+        }
+    }
+    normalized
+}
+
+fn deserialize_dictionary_languages<'de, D>(
+    deserializer: D,
+) -> Result<Vec<DictionaryLanguage>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StoredLanguages {
+        Many(Vec<DictionaryLanguage>),
+        One(DictionaryLanguage),
+    }
+
+    let stored = StoredLanguages::deserialize(deserializer)?;
+    Ok(normalized_languages(match stored {
+        StoredLanguages::Many(languages) => languages,
+        StoredLanguages::One(language) => vec![language],
+    }))
 }
 
 fn refresh_source_status(record: &mut LocalDictionaryRecord) {
@@ -786,12 +848,17 @@ mod tests {
         let ifo = write_stardict(&sources, "alpha");
         let store = DictionaryRegistryStore::open(&root).unwrap();
         let first = store.register(&ifo).unwrap();
-        assert_eq!(first.language.value, DictionaryLanguage::En);
+        assert_eq!(first.language.value, vec![DictionaryLanguage::En]);
         let manual = store
             .update(
                 &first.id,
                 LocalDictionaryUpdate {
-                    language: Some(DictionaryLanguage::Zh),
+                    language: Some(vec![
+                        DictionaryLanguage::Zh,
+                        DictionaryLanguage::En,
+                        DictionaryLanguage::Zh,
+                        DictionaryLanguage::Unknown,
+                    ]),
                     ..LocalDictionaryUpdate::default()
                 },
             )
@@ -801,7 +868,10 @@ mod tests {
         let refreshed = store.register(&ifo).unwrap();
         assert_eq!(refreshed.id, first.id);
         assert_eq!(refreshed.name, "Refreshed");
-        assert_eq!(refreshed.language.value, DictionaryLanguage::Zh);
+        assert_eq!(
+            refreshed.language.value,
+            vec![DictionaryLanguage::Zh, DictionaryLanguage::En]
+        );
         assert_eq!(store.list().unwrap().len(), 1);
         let _ = fs::remove_dir_all(root);
     }
