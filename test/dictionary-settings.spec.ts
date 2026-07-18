@@ -24,23 +24,21 @@ test('configures Merriam-Webster inline with the key actions in one row', async 
   await installTauriMock(page)
   await page.goto('/')
   const dialog = await openDictionarySettings(page)
-  const enabled = dialog.getByRole('checkbox', {
-    name: 'Enable Merriam-Webster',
-  })
+  const source = dialog.locator('[data-dictionary-source-id="merriam-webster"]')
+  const enabled = source.getByRole('checkbox')
+  const edit = source.getByRole('button').first()
   await expect(enabled).toBeDisabled()
-  await dialog.getByRole('button', { name: 'Edit Merriam-Webster' }).click()
-  await expect(
-    dialog.getByRole('button', { name: 'Save Merriam-Webster' }),
-  ).toBeVisible()
-  await dialog.getByLabel('Merriam-Webster API key').press('Escape')
+  await edit.click()
+  await expect(edit.locator('.lucide-check')).toBeVisible()
+  await source.locator('[data-merriam-webster-key-row] input').press('Escape')
   await expect(dialog).toBeVisible()
   await expect(dialog.locator('[data-merriam-webster-key-row]')).toHaveCount(0)
 
-  await dialog.getByRole('button', { name: 'Edit Merriam-Webster' }).click()
-  const keyInput = dialog.getByLabel('Merriam-Webster API key')
+  await edit.click()
+  const keyInput = source.locator('[data-merriam-webster-key-row] input')
   await expect(keyInput).toHaveAttribute('type', 'password')
   const keyRow = dialog.locator('[data-merriam-webster-key-row]')
-  const visibility = keyRow.getByRole('button', { name: 'Show API key' })
+  const visibility = keyRow.getByRole('button').first()
   const getKey = keyRow.getByRole('button', { name: 'Get a free API key' })
   const [inputBox, visibilityBox, getKeyBox] = await Promise.all([
     keyInput.boundingBox(),
@@ -56,7 +54,7 @@ test('configures Merriam-Webster inline with the key actions in one row', async 
   )
   expect(Math.abs(getKeyBox!.y - inputBox!.y)).toBeLessThan(2)
   await keyInput.fill(testApiKey)
-  await dialog.getByRole('button', { name: 'Save Merriam-Webster' }).click()
+  await edit.click()
   await expect(keyRow).toHaveCount(0)
   await expect(enabled).toBeEnabled()
   await enabled.click()
@@ -72,10 +70,10 @@ test('configures Merriam-Webster inline with the key actions in one row', async 
     })
     .toEqual({ apiKey: testApiKey, enabled: true })
 
-  await dialog.getByRole('button', { name: 'Edit Merriam-Webster' }).click()
-  await expect(dialog.getByLabel('Merriam-Webster API key')).toHaveValue(
-    testApiKey,
-  )
+  await edit.click()
+  await expect(
+    source.locator('[data-merriam-webster-key-row] input'),
+  ).toHaveValue(testApiKey)
 })
 
 test('shows every dictionary source in one reorderable persisted list', async ({
@@ -160,7 +158,11 @@ test('opens the official page for acquiring a Merriam-Webster API key', async ({
   await installTauriMock(page)
   await page.goto('/')
   const dialog = await openDictionarySettings(page)
-  await dialog.getByRole('button', { name: 'Edit Merriam-Webster' }).click()
+  await dialog
+    .locator('[data-dictionary-source-id="merriam-webster"]')
+    .getByRole('button')
+    .first()
+    .click()
   await dialog.getByRole('button', { name: 'Get a free API key' }).click()
 
   await expect
@@ -229,12 +231,10 @@ test('manages local dictionary order, status, language, enablement, relocation, 
   await expect(dialog.getByText('Available', { exact: true })).toHaveCount(0)
 
   const alphaRow = dialog.locator(`[data-local-dictionary-id="${alpha.id}"]`)
-  await expect(
-    alphaRow.getByRole('checkbox', { name: 'Enable Alpha Dictionary' }),
-  ).toBeDisabled()
-  await alphaRow
-    .getByRole('button', { name: 'Rename Alpha Dictionary' })
-    .click()
+  const alphaToggle = alphaRow.getByRole('checkbox').first()
+  const alphaEdit = alphaRow.getByRole('button').first()
+  await expect(alphaToggle).toBeDisabled()
+  await alphaEdit.click()
   const firstLanguageRow = await Promise.all(
     ['中文', 'English', 'Русский', 'Français'].map((language) =>
       alphaRow.getByText(language, { exact: true }).boundingBox(),
@@ -262,19 +262,11 @@ test('manages local dictionary order, status, language, enablement, relocation, 
       (dictionary) => dictionary.id === alpha.id,
     )?.language,
   ).toEqual({ source: 'unknown', value: [] })
-  await alphaRow.getByRole('button', { name: 'Save Alpha Dictionary' }).click()
-  await expect(
-    alphaRow.getByRole('checkbox', { name: 'Enable Alpha Dictionary' }),
-  ).toBeEnabled()
-  await alphaRow
-    .getByRole('checkbox', { name: 'Enable Alpha Dictionary' })
-    .click()
-  await alphaRow
-    .getByRole('button', { name: 'Rename Alpha Dictionary' })
-    .click()
-  await dialog
-    .getByRole('button', { name: 'Relocate Alpha Dictionary' })
-    .click()
+  await alphaEdit.click()
+  await expect(alphaToggle).toBeEnabled()
+  await alphaToggle.click()
+  await alphaEdit.click()
+  await alphaRow.getByRole('button').nth(1).click()
 
   await expect
     .poll(async () => {
@@ -292,11 +284,10 @@ test('manages local dictionary order, status, language, enablement, relocation, 
       language: { source: 'manual', value: ['zh', 'en'] },
     })
 
-  await dialog.getByRole('button', { name: 'Rename Beta Dictionary' }).click()
-  await dialog.getByRole('button', { name: 'Remove Beta Dictionary' }).click()
-  const confirmRemove = dialog.getByRole('button', {
-    name: 'Confirm remove Beta Dictionary',
-  })
+  const betaRow = dialog.locator(`[data-local-dictionary-id="${beta.id}"]`)
+  await betaRow.getByRole('button').first().click()
+  const confirmRemove = betaRow.getByRole('button').nth(2)
+  await confirmRemove.click()
   await expect(confirmRemove).toHaveAttribute('data-variant', 'destructive')
   await expect(confirmRemove.locator('.lucide-check')).toBeVisible()
   await confirmRemove.click()
@@ -320,10 +311,11 @@ test('renames a local dictionary inline and hides language provenance', async ({
   const row = dialog.locator(`[data-local-dictionary-id="${dictionary.id}"]`)
 
   await expect(row.getByText('Language source')).toHaveCount(0)
-  await row.getByRole('button', { name: 'Rename Fixture Lexicon' }).click()
-  const input = row.getByRole('textbox', { name: 'Dictionary name' })
+  const edit = row.getByRole('button').first()
+  await edit.click()
+  const input = row.locator('input').first()
   await input.fill('  Reader Lexicon  ')
-  await row.getByRole('button', { name: 'Save Fixture Lexicon' }).click()
+  await edit.click()
 
   await expect(input).toHaveCount(0)
   await expect(row.getByText('Reader Lexicon', { exact: true })).toBeVisible()
@@ -350,8 +342,8 @@ test('cancels an inline dictionary rename with Escape without closing settings',
   const dialog = await openDictionarySettings(page)
   const row = dialog.locator(`[data-local-dictionary-id="${dictionary.id}"]`)
 
-  await row.getByRole('button', { name: 'Rename Fixture Lexicon' }).click()
-  const input = row.getByRole('textbox', { name: 'Dictionary name' })
+  await row.getByRole('button').first().click()
+  const input = row.locator('input').first()
   await input.fill('Changed name')
   await row.getByRole('checkbox', { name: 'English' }).click()
   await input.press('Escape')
@@ -387,12 +379,10 @@ test('dismisses open settings dropdowns before closing settings', async ({
 
   await dialog.getByRole('button', { name: 'Dictionary', exact: true }).click()
   const row = dialog.locator(`[data-local-dictionary-id="${dictionary.id}"]`)
-  await row.getByRole('button', { name: 'Rename Fixture Lexicon' }).click()
-  await row.getByRole('textbox', { name: 'Dictionary name' }).fill('Draft name')
+  await row.getByRole('button').first().click()
+  await row.locator('input').first().fill('Draft name')
   await dialog.getByText('Dictionary sources').click()
-  await expect(
-    row.getByRole('textbox', { name: 'Dictionary name' }),
-  ).toHaveCount(0)
+  await expect(row.locator('input').first()).toHaveCount(0)
   await expect(dialog).toBeVisible()
 })
 

@@ -163,7 +163,6 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({
         <button
           type="button"
           aria-pressed={selectedBackground === 'custom'}
-          aria-label={t('background_color')}
           className={clsx(
             'group relative h-12 overflow-hidden rounded-lg border border-dashed text-left shadow-sm transition-[color,background-color,border-color,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-focus-ring)]',
             selectedBackground === 'custom'

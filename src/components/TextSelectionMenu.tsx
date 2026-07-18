@@ -331,7 +331,6 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const [width, setWidth] = useState(0)
   const [height, setHeight] = useState(0)
   const t = useTranslation('menu')
-  const dictionaryT = useTranslation('dictionary')
   const [settings] = useSettings()
   const [view, setView] = useState<'actions' | 'dictionary'>('actions')
   const [localDictionaries, setLocalDictionaries] = useState<
@@ -547,9 +546,6 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           visibility: width && height ? 'visible' : 'hidden',
         }}
         role={view === 'dictionary' ? 'dialog' : undefined}
-        aria-label={
-          view === 'dictionary' ? `${dictionaryT('title')}: ${text}` : undefined
-        }
         tabIndex={-1}
         onKeyDown={(e) => {
           e.stopPropagation()

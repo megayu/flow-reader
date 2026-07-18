@@ -3123,9 +3123,7 @@ test('[vertical-rl] keeps the dictionary popup inside the reader without repagin
   })
 
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
-  const popup = page.getByRole('dialog', {
-    name: /Dictionary: /,
-  })
+  const popup = page.getByRole('dialog')
   await expect(popup).toBeVisible()
   await expect(
     popup.getByText('用于浮层布局测试的合成释义。', { exact: true }),
@@ -3697,7 +3695,9 @@ test('long-book closes image preview when clicking outside the visible image', a
     )
   })
 
-  const preview = page.getByRole('dialog', { name: /Image preview/ })
+  const preview = page
+    .locator('div[role="dialog"][aria-modal="true"]')
+    .filter({ has: page.locator('img') })
   await expect(preview).toBeVisible()
 
   const image = preview.locator('img')

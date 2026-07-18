@@ -108,7 +108,6 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
           style={{ backgroundColor: draft }}
         />
         <input
-          aria-label={t('hex')}
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"

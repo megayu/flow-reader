@@ -558,7 +558,6 @@ function DictionarySourceRow({
       )}
       <div className="flex w-full max-w-full min-w-0 items-center gap-3 overflow-hidden">
         <UiCheckbox
-          aria-label={`${t('dictionary.local_enable')} ${name}`}
           checked={checked}
           disabled={disabled}
           onCheckedChange={(value) => {
@@ -586,13 +585,6 @@ function DictionarySourceRow({
                 variant="ghost"
                 size="icon-sm"
                 className="text-muted-foreground size-7"
-                aria-label={`${
-                  editing
-                    ? t('dictionary.save')
-                    : source.kind === 'merriam-webster'
-                      ? t('dictionary.edit')
-                      : t('dictionary.local_rename')
-                } ${name}`}
                 onClick={() => {
                   if (editing) {
                     onSaveEdit()
@@ -673,7 +665,6 @@ function DictionarySourceRow({
             <Input
               autoFocus
               type={showMerriamWebsterKey ? 'text' : 'password'}
-              aria-label={t('dictionary.merriam_webster_api_key')}
               className="w-full max-w-full pr-9"
               data-dictionary-inline-editor
               value={merriamWebsterKey}
@@ -696,11 +687,6 @@ function DictionarySourceRow({
               variant="ghost"
               size="icon-sm"
               className="absolute top-0.5 right-0.5 size-7"
-              aria-label={t(
-                showMerriamWebsterKey
-                  ? 'dictionary.hide_api_key'
-                  : 'dictionary.show_api_key',
-              )}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() =>
                 onShowMerriamWebsterKeyChange(!showMerriamWebsterKey)
@@ -737,7 +723,6 @@ function DictionarySourceRow({
           name={localNameDraft}
           languages={localLanguagesDraft}
           confirmRemoveId={confirmRemoveId}
-          t={t}
           onCancel={onCancelEdit}
           onSave={onSaveEdit}
           onNameChange={onLocalNameChange}
@@ -756,7 +741,6 @@ function LocalDictionaryEditor({
   name,
   languages,
   confirmRemoveId,
-  t,
   onCancel,
   onSave,
   onNameChange,
@@ -769,7 +753,6 @@ function LocalDictionaryEditor({
   name: string
   languages: LocalDictionaryLanguage[]
   confirmRemoveId?: string
-  t: Translation
   onCancel: () => void
   onSave: () => void
   onNameChange: (value: string) => void
@@ -784,7 +767,6 @@ function LocalDictionaryEditor({
     <div className="border-border mt-3 w-full max-w-full min-w-0 space-y-2 overflow-hidden border-t pt-3 pl-7">
       <Input
         autoFocus
-        aria-label={t('dictionary.local_name')}
         className="w-full max-w-full"
         data-dictionary-inline-editor
         data-local-dictionary-name-editor
@@ -834,7 +816,6 @@ function LocalDictionaryEditor({
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label={`${t('dictionary.local_relocate')} ${dictionary.name}`}
           onClick={() => void onRelocate(dictionary.id)}
         >
           <FolderSearchIcon className="size-4" />
@@ -843,11 +824,6 @@ function LocalDictionaryEditor({
           type="button"
           variant={confirmRemoveId === dictionary.id ? 'destructive' : 'ghost'}
           size="icon-sm"
-          aria-label={`${
-            confirmRemoveId === dictionary.id
-              ? t('dictionary.local_confirm_remove')
-              : t('dictionary.local_remove')
-          } ${dictionary.name}`}
           onBlur={() => onConfirmRemoveChange(undefined)}
           onClick={() => void onRemove(dictionary.id)}
         >

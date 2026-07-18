@@ -170,7 +170,11 @@ test('accent color updates primary bridge and selected controls', async ({
   const accentBgBefore = await readCssVariable(page, '--flow-accent-bg')
 
   await dialog.getByRole('button', { name: /#0EA5E9/i }).click()
-  await page.getByRole('textbox', { name: /Hex color/ }).fill(accentColor)
+  await page
+    .locator('.react-colorful')
+    .locator('..')
+    .getByRole('textbox')
+    .fill(accentColor)
   await page.getByRole('button', { name: /Apply/ }).click()
 
   await expect
@@ -193,9 +197,13 @@ test('theme color pickers close before the background theme panel on escape', as
   await expect(page.getByText(/Accent Color/)).toBeVisible()
 
   await page.getByRole('button', { name: /Accent Color/ }).click()
-  await expect(page.getByRole('textbox', { name: /Hex color/ })).toBeVisible()
+  await expect(
+    page.locator('.react-colorful').locator('..').getByRole('textbox'),
+  ).toBeVisible()
   await page.keyboard.press('Escape')
-  await expect(page.getByRole('textbox', { name: /Hex color/ })).toBeHidden()
+  await expect(
+    page.locator('.react-colorful').locator('..').getByRole('textbox'),
+  ).toBeHidden()
   await expect(page.getByText(/Accent Color/)).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByText(/Accent Color/)).toBeHidden()
@@ -203,10 +211,17 @@ test('theme color pickers close before the background theme panel on escape', as
   await page.getByRole('button', { name: /Background Theme/ }).click()
   await expect(page.getByText(/Accent Color/)).toBeVisible()
 
-  await page.getByRole('button', { name: /Background Color/ }).click()
-  await expect(page.getByRole('textbox', { name: /Hex color/ })).toBeVisible()
+  await page
+    .locator('[data-flow-theme-panel]')
+    .getByRole('button', { name: /Custom/ })
+    .click()
+  await expect(
+    page.locator('.react-colorful').locator('..').getByRole('textbox'),
+  ).toBeVisible()
   await page.keyboard.press('Escape')
-  await expect(page.getByRole('textbox', { name: /Hex color/ })).toBeHidden()
+  await expect(
+    page.locator('.react-colorful').locator('..').getByRole('textbox'),
+  ).toBeHidden()
   await expect(page.getByText(/Accent Color/)).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByText(/Accent Color/)).toBeHidden()
@@ -218,7 +233,9 @@ test('disables browser autofill on app input controls', async ({ page }) => {
   await dialog.getByRole('button', { name: /TXT/ }).click()
   await dialog.getByRole('button', { name: /Basic/ }).click()
   await dialog.getByRole('button', { name: /#0EA5E9/i }).click()
-  await expect(page.getByRole('textbox', { name: /Hex color/ })).toBeVisible()
+  await expect(
+    page.locator('.react-colorful').locator('..').getByRole('textbox'),
+  ).toBeVisible()
 
   const invalidControls = await page.evaluate(() => {
     return Array.from(document.querySelectorAll('form, input, textarea'))

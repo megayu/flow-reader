@@ -2,7 +2,6 @@ import clsx from 'clsx'
 import { type LucideIcon, XIcon } from 'lucide-react'
 import { ComponentProps, MouseEvent, ReactNode } from 'react'
 
-import { useTranslation } from '../hooks/useTranslation'
 import { activeClass } from '../styles'
 
 import { AppTooltip } from './AppTooltip'
@@ -33,7 +32,6 @@ export function Tab({
   onMouseDown,
   ...props
 }: TabProps) {
-  const t = useTranslation()
   const tooltip = typeof title === 'string' ? title : children
   const closeOnMiddleClick = (event: MouseEvent<HTMLDivElement>) => {
     if (event.button !== 1 || !onDelete) return false
@@ -94,7 +92,6 @@ export function Tab({
       <span className="relative z-10 max-w-[200px] truncate">{children}</span>
       <IconButton
         className="relative z-10 size-6 transition-none active:translate-y-0"
-        aria-label={t('action.close')}
         Icon={XIcon}
         onClick={(e) => {
           e.stopPropagation()
@@ -121,8 +118,6 @@ const List: React.FC<ListProps> = ({
   onWheel,
   ...props
 }) => {
-  const t = useTranslation()
-
   return (
     <div
       className={clsx(
@@ -135,7 +130,6 @@ const List: React.FC<ListProps> = ({
       {onDelete && (
         <IconButton
           className="mx-2"
-          aria-label={t('action.close')}
           Icon={XIcon}
           onClick={(e) => {
             e.stopPropagation()

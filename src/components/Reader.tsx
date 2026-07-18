@@ -2704,7 +2704,6 @@ const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
       ref={previewRef}
       role="dialog"
       aria-modal="true"
-      aria-label={t('title')}
       data-flow-keyboard-capture="true"
       tabIndex={-1}
       className="fixed inset-0 z-[9999] overflow-hidden bg-neutral-500/45 text-white backdrop-blur-2xl backdrop-saturate-75 outline-none"
@@ -2936,7 +2935,6 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
   onPrevious,
 }) => {
   const t = useTranslation('shortcuts')
-  const actionT = useTranslation('action')
   const count = find.results.length
   const current = count ? find.activeIndex + 1 : 0
   const disabled = !count || find.searching
@@ -2999,7 +2997,6 @@ const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
       </button>
       <button
         type="button"
-        aria-label={actionT('close')}
         className="text-muted-foreground hover:text-foreground p-1"
         onClick={onClose}
       >

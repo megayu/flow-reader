@@ -55,7 +55,11 @@ test('loads without client exceptions and persists accent color settings', async
   await expect(dialog.getByText(/Accent Color/)).toBeVisible()
 
   await dialog.getByRole('button', { name: /#0EA5E9/i }).click()
-  await page.getByRole('textbox', { name: /Hex color/ }).fill(accentColor)
+  await page
+    .locator('.react-colorful')
+    .locator('..')
+    .getByRole('textbox')
+    .fill(accentColor)
   await page.getByRole('button', { name: /Apply/ }).click()
 
   await expect(
