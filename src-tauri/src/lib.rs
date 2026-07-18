@@ -223,7 +223,6 @@ pub fn run() {
             dictionary::fetch_zdic,
             dictionary::fetch_merriam_webster,
             dictionary::cancel_dictionary_session,
-            dictionary::dictionary_runtime_diagnostics,
             dictionary::list_local_dictionaries,
             dictionary::lookup_stardict,
             dictionary::lookup_mdict,

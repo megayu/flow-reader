@@ -170,14 +170,6 @@ export class DictionaryCoordinator {
     if (session) this.cancelSession(session.id, session.controller)
   }
 
-  diagnostics() {
-    return {
-      activeSessionId: this.activeSession?.id,
-      localQueriesRunning: this.localTasks.running,
-      localQueriesWaiting: this.localTasks.waiting,
-    }
-  }
-
   private isCurrent(id: number) {
     return this.activeSession?.id === id
   }
@@ -216,14 +208,6 @@ class AbortableTaskLimiter {
   }> = []
 
   constructor(private readonly limit: number) {}
-
-  get running() {
-    return this.activeCount
-  }
-
-  get waiting() {
-    return this.queue.length
-  }
 
   run<T>(signal: AbortSignal, task: () => Promise<T>, onStart: () => void) {
     if (signal.aborted) return Promise.reject(abortError())

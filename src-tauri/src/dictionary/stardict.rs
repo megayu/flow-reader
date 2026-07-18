@@ -53,18 +53,10 @@ pub struct StarDictEntry {
     pub definitions: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StarDictLookupDiagnostics {
-    pub bytes_read: u64,
-    pub decompressed_blocks: u32,
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StarDictLookupResult {
     pub entries: Vec<StarDictEntry>,
-    pub diagnostics: StarDictLookupDiagnostics,
 }
 
 #[derive(Debug, Clone)]
@@ -238,7 +230,6 @@ impl StarDictReader {
         if query.is_empty() || query.len() > MAX_WORD_BYTES {
             return Ok(StarDictLookupResult {
                 entries: Vec::new(),
-                diagnostics: StarDictLookupDiagnostics::default(),
             });
         }
         let mut source_matches = self.regular_matches(&query)?;
@@ -251,15 +242,8 @@ impl StarDictReader {
         source_matches.truncate(MAX_MATCHES);
 
         let mut matches: Vec<StarDictEntry> = Vec::new();
-        let mut diagnostics = StarDictLookupDiagnostics::default();
         for entry in source_matches {
-            let (bytes, read_diagnostics) = self.data.read(entry.offset, entry.length)?;
-            diagnostics.bytes_read = diagnostics
-                .bytes_read
-                .saturating_add(read_diagnostics.bytes_read);
-            diagnostics.decompressed_blocks = diagnostics
-                .decompressed_blocks
-                .saturating_add(read_diagnostics.decompressed_blocks);
+            let bytes = self.data.read(entry.offset, entry.length)?;
             let definition = controlled_text(&bytes)?;
             if definition.is_empty() {
                 continue;
@@ -276,14 +260,7 @@ impl StarDictReader {
                 });
             }
         }
-        Ok(StarDictLookupResult {
-            entries: matches,
-            diagnostics,
-        })
-    }
-
-    pub fn mmap_count(&self) -> usize {
-        2 + usize::from(self.synonyms.is_some())
+        Ok(StarDictLookupResult { entries: matches })
     }
 
     fn regular_matches(&self, query: &str) -> Result<Vec<SourceEntry>, StarDictError> {
@@ -389,11 +366,7 @@ impl DictionaryData {
         })
     }
 
-    fn read(
-        &self,
-        offset: u64,
-        length: u32,
-    ) -> Result<(Vec<u8>, StarDictLookupDiagnostics), StarDictError> {
+    fn read(&self, offset: u64, length: u32) -> Result<Vec<u8>, StarDictError> {
         if length as usize > MAX_DEFINITION_BYTES {
             return Err(StarDictError::new(
                 "definitionTooLarge",
@@ -410,13 +383,7 @@ impl DictionaryData {
                 file.seek(SeekFrom::Start(offset))
                     .and_then(|_| file.read_exact(&mut buffer))
                     .map_err(|error| io_error("dataReadFailed", error))?;
-                Ok((
-                    buffer,
-                    StarDictLookupDiagnostics {
-                        bytes_read: length as u64,
-                        decompressed_blocks: 0,
-                    },
-                ))
+                Ok(buffer)
             }
             Self::DictZip { file, table } => table.read_range(file, offset, length),
         }
@@ -526,10 +493,10 @@ impl DictZipTable {
         file: &Mutex<File>,
         offset: u64,
         length: u32,
-    ) -> Result<(Vec<u8>, StarDictLookupDiagnostics), StarDictError> {
+    ) -> Result<Vec<u8>, StarDictError> {
         validate_range(offset, length, self.uncompressed_size)?;
         if length == 0 {
-            return Ok((Vec::new(), StarDictLookupDiagnostics::default()));
+            return Ok(Vec::new());
         }
         let first = (offset / self.chunk_length) as usize;
         let last = ((offset + length as u64 - 1) / self.chunk_length) as usize;
@@ -539,7 +506,6 @@ impl DictZipTable {
             ));
         }
         let mut decoded = Vec::with_capacity((last - first + 1) * self.chunk_length as usize);
-        let mut bytes_read = 0_u64;
         let mut file = file
             .lock()
             .map_err(|_| StarDictError::new("dataLockFailed", "Dictionary data lock failed."))?;
@@ -549,7 +515,6 @@ impl DictZipTable {
             file.seek(SeekFrom::Start(self.compressed_offsets[block]))
                 .and_then(|_| file.read_exact(&mut compressed))
                 .map_err(|error| io_error("dataReadFailed", error))?;
-            bytes_read += compressed_size as u64;
             let mut decoder = DeflateDecoder::new(compressed.as_slice());
             decoder
                 .read_to_end(&mut decoded)
@@ -567,13 +532,7 @@ impl DictZipTable {
         if end > decoded.len() {
             return Err(invalid_dictzip("The requested dictzip data is truncated."));
         }
-        Ok((
-            decoded[start..end].to_vec(),
-            StarDictLookupDiagnostics {
-                bytes_read,
-                decompressed_blocks: (last - first + 1) as u32,
-            },
-        ))
+        Ok(decoded[start..end].to_vec())
     }
 }
 
@@ -1067,8 +1026,6 @@ mod tests {
             result.entries[0].definitions,
             ["middle definition crosses chunks"]
         );
-        assert_eq!(result.diagnostics.decompressed_blocks, 2);
-        assert!(result.diagnostics.bytes_read < dictzip_fixture().len() as u64);
     }
 
     fn dictzip_fixture() -> &'static [u8] {
@@ -1118,12 +1075,7 @@ mod tests {
                 .unwrap();
             assert_eq!(definitions(&reader, "alpha"), ["first"]);
         }
-        let open = sessions.diagnostics().unwrap();
-        assert_eq!(open.session_count, 1);
-        assert_eq!(open.resource_count, 1);
-        assert_eq!(open.mmap_count, 2);
-        assert_eq!(open.file_count, 1);
         assert_eq!(sessions.release(7).unwrap(), 1);
-        assert_eq!(sessions.diagnostics().unwrap().resource_count, 0);
+        assert_eq!(sessions.release(7).unwrap(), 0);
     }
 }

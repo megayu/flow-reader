@@ -277,7 +277,6 @@ export async function installTauriMock(
           })
           return (
             fixtureStardictResponses[dictionaryId]?.[query] ?? {
-              diagnostics: { bytesRead: 0, decompressedBlocks: 0 },
               entries: [],
             }
           )
@@ -294,7 +293,6 @@ export async function installTauriMock(
           const response = fixtureMdictResponses[dictionaryId]?.[query]
           if (!response) {
             return {
-              diagnostics: { recordBytes: 0, resourceBytes: 0 },
               entry: null,
               resourceUrlPrefix: `http://dictionary.localhost/${sessionId}/${encodeURIComponent(dictionaryId)}/`,
             }

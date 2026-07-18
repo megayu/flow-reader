@@ -1,6 +1,5 @@
 use std::{collections::HashMap, sync::Mutex, time::Duration};
 
-use futures_util::StreamExt;
 use reqwest::{redirect::Policy, Client, StatusCode, Url};
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
@@ -26,13 +25,6 @@ pub struct DictionaryHttpResponse {
 pub struct DictionaryHttpError {
     pub code: String,
     pub message: String,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DictionaryHttpDiagnostics {
-    pub active_request_count: usize,
-    pub session_count: usize,
 }
 
 impl DictionaryHttpError {
@@ -125,20 +117,6 @@ impl DictionaryHttpClient {
         }
     }
 
-    pub fn diagnostics(&self) -> DictionaryHttpDiagnostics {
-        let sessions = self
-            .sessions
-            .lock()
-            .expect("dictionary session lock poisoned");
-        DictionaryHttpDiagnostics {
-            active_request_count: sessions
-                .values()
-                .map(|session| session.active_requests)
-                .sum(),
-            session_count: sessions.len(),
-        }
-    }
-
     async fn fetch(
         &self,
         transport: &ProviderTransport,
@@ -160,7 +138,7 @@ impl DictionaryHttpClient {
         transport: &ProviderTransport,
         url: Url,
     ) -> Result<DictionaryHttpResponse, DictionaryHttpError> {
-        let response = transport
+        let mut response = transport
             .client
             .get(url)
             .send()
@@ -194,9 +172,7 @@ impl DictionaryHttpClient {
                 .unwrap_or_default()
                 .min(self.max_response_bytes as u64) as usize,
         );
-        let mut stream = response.bytes_stream();
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(map_request_error)?;
+        while let Some(chunk) = response.chunk().await.map_err(map_request_error)? {
             if body.len().saturating_add(chunk.len()) > self.max_response_bytes {
                 return Err(response_too_large());
             }
@@ -353,18 +329,9 @@ mod tests {
             .expect("test client");
 
         let cancellation = client.begin_request(41);
-        assert_eq!(
-            client.diagnostics(),
-            DictionaryHttpDiagnostics {
-                active_request_count: 1,
-                session_count: 1,
-            }
-        );
-
         client.cancel_session(41);
-        assert_eq!(client.diagnostics(), DictionaryHttpDiagnostics::default());
         client.finish_request(41, &cancellation);
-        assert_eq!(client.diagnostics(), DictionaryHttpDiagnostics::default());
+        assert!(client.sessions.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

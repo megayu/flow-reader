@@ -3,8 +3,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use serde::Serialize;
-
 use super::{
     mdict::{MdictBinaryResource, MdictError, MdictReader},
     stardict::{StarDictError, StarDictReader},
@@ -15,15 +13,6 @@ enum DictionarySessionResource {
     Marker,
     Mdict(Arc<MdictReader>),
     StarDict(Arc<StarDictReader>),
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DictionarySessionDiagnostics {
-    pub file_count: usize,
-    pub mmap_count: usize,
-    pub resource_count: usize,
-    pub session_count: usize,
 }
 
 #[derive(Default)]
@@ -129,28 +118,6 @@ impl DictionarySessionManager {
         resources.clear();
         Ok(count)
     }
-
-    pub fn diagnostics(&self) -> Result<DictionarySessionDiagnostics, String> {
-        let resources = self
-            .resources
-            .lock()
-            .map_err(|_| "dictionary session lock failed".to_string())?;
-        let mut diagnostics = DictionarySessionDiagnostics {
-            session_count: resources.len(),
-            ..DictionarySessionDiagnostics::default()
-        };
-        for resource in resources.values().flat_map(HashMap::values) {
-            diagnostics.resource_count += 1;
-            if let DictionarySessionResource::Mdict(reader) = resource {
-                diagnostics.file_count += reader.source_file_count();
-            }
-            if let DictionarySessionResource::StarDict(reader) = resource {
-                diagnostics.file_count += 1;
-                diagnostics.mmap_count += reader.mmap_count();
-            }
-        }
-        Ok(diagnostics)
-    }
 }
 
 #[cfg(test)]
@@ -163,14 +130,8 @@ mod tests {
         sessions.attach(1, "first".to_string()).unwrap();
         sessions.attach(1, "second".to_string()).unwrap();
         sessions.attach(2, "third".to_string()).unwrap();
-        let before_release = sessions.diagnostics().unwrap();
-        assert_eq!(before_release.session_count, 2);
-        assert_eq!(before_release.resource_count, 3);
         assert_eq!(sessions.release(1).unwrap(), 2);
-        let after_release = sessions.diagnostics().unwrap();
-        assert_eq!(after_release.session_count, 1);
-        assert_eq!(after_release.resource_count, 1);
         assert_eq!(sessions.release_all().unwrap(), 1);
-        assert_eq!(sessions.diagnostics().unwrap().resource_count, 0);
+        assert_eq!(sessions.release_all().unwrap(), 0);
     }
 }

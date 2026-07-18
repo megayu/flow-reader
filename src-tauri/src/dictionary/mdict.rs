@@ -3,7 +3,6 @@ use std::{
     fs::{self, File},
     io::Read,
     path::{Component, Path, PathBuf},
-    sync::Mutex,
 };
 
 use mdict_rs::{MddFile, MdxFile};
@@ -58,7 +57,6 @@ pub struct MdictMetadata {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MdictLookupResponse {
-    pub diagnostics: MdictDiagnostics,
     pub entry: Option<MdictEntry>,
     pub resource_url_prefix: String,
 }
@@ -77,24 +75,8 @@ pub struct MdictBinaryResource {
     pub mime_type: &'static str,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MdictDiagnostics {
-    pub loaded_resource_keys: Vec<String>,
-    pub record_bytes: u64,
-    pub resource_bytes: u64,
-}
-
-#[derive(Debug, Default)]
-struct MutableDiagnostics {
-    loaded_resource_keys: BTreeSet<String>,
-    record_bytes: u64,
-    resource_bytes: u64,
-}
-
 #[derive(Debug)]
 pub struct MdictReader {
-    diagnostics: Mutex<MutableDiagnostics>,
     mdd: Vec<MddFile>,
     mdx: MdxFile,
     root: PathBuf,
@@ -223,12 +205,7 @@ impl MdictReader {
             reject_encrypted(reader.header().encrypted)?;
             mdd.push(reader);
         }
-        Ok(Self {
-            diagnostics: Mutex::new(MutableDiagnostics::default()),
-            mdd,
-            mdx,
-            root,
-        })
+        Ok(Self { mdd, mdx, root })
     }
 
     pub fn lookup(&self, query: &str) -> Result<Option<MdictEntry>, MdictError> {
@@ -255,11 +232,6 @@ impl MdictReader {
                     "The MDict entry exceeds the supported size limit.",
                 ));
             }
-            self.with_diagnostics(|diagnostics| {
-                diagnostics.record_bytes = diagnostics
-                    .record_bytes
-                    .saturating_add(record.text.len() as u64);
-            })?;
             if headword.is_none() {
                 headword = Some(record.key.clone());
             }
@@ -297,7 +269,6 @@ impl MdictReader {
                 "The referenced MDict stylesheet is not valid UTF-8.",
             )
         })?;
-        self.record_resource(&key, text.len())?;
         Ok(Some(MdictTextResource { key, text }))
     }
 
@@ -327,27 +298,11 @@ impl MdictReader {
                 "The referenced MDict resource does not match its declared type.",
             ));
         }
-        self.record_resource(&key, data.len())?;
         Ok(Some(MdictBinaryResource {
             data,
             key,
             mime_type: expected_mime,
         }))
-    }
-
-    pub fn diagnostics(&self) -> Result<MdictDiagnostics, MdictError> {
-        let diagnostics = self.diagnostics.lock().map_err(|_| {
-            MdictError::new("mdictLockFailed", "The MDict diagnostics lock failed.")
-        })?;
-        Ok(MdictDiagnostics {
-            loaded_resource_keys: diagnostics.loaded_resource_keys.iter().cloned().collect(),
-            record_bytes: diagnostics.record_bytes,
-            resource_bytes: diagnostics.resource_bytes,
-        })
-    }
-
-    pub fn source_file_count(&self) -> usize {
-        1 + self.mdd.len()
     }
 
     fn read_resource_bytes(&self, key: &str, limit: usize) -> Result<Option<Vec<u8>>, MdictError> {
@@ -394,26 +349,6 @@ impl MdictReader {
         fs::read(candidate)
             .map(Some)
             .map_err(|error| io_error("mdictResourceUnavailable", error))
-    }
-
-    fn record_resource(&self, key: &str, bytes: usize) -> Result<(), MdictError> {
-        let mut diagnostics = self.diagnostics.lock().map_err(|_| {
-            MdictError::new("mdictLockFailed", "The MDict diagnostics lock failed.")
-        })?;
-        diagnostics.loaded_resource_keys.insert(key.to_string());
-        diagnostics.resource_bytes = diagnostics.resource_bytes.saturating_add(bytes as u64);
-        Ok(())
-    }
-
-    fn with_diagnostics(
-        &self,
-        update: impl FnOnce(&mut MutableDiagnostics),
-    ) -> Result<(), MdictError> {
-        let mut diagnostics = self.diagnostics.lock().map_err(|_| {
-            MdictError::new("mdictLockFailed", "The MDict diagnostics lock failed.")
-        })?;
-        update(&mut diagnostics);
-        Ok(())
     }
 }
 
@@ -776,10 +711,6 @@ mod tests {
         assert!(entry.html.contains("cy3.css"));
         assert!(entry.html.contains("\u{5929}\u{7a7a}"));
         assert!(reader.lookup("\u{5929}\u{5730}").unwrap().is_none());
-        let diagnostics = reader.diagnostics().unwrap();
-        assert_eq!(diagnostics.record_bytes, entry.html.len() as u64);
-        assert_eq!(diagnostics.resource_bytes, 0);
-        assert!(diagnostics.loaded_resource_keys.is_empty());
         let _ = fs::remove_dir_all(root);
     }
 
@@ -882,11 +813,6 @@ mod tests {
             reader.load_binary_resource("sound.mp3").unwrap_err().code,
             "unsupportedMdictResource"
         );
-        let diagnostics = reader.diagnostics().unwrap();
-        assert_eq!(
-            diagnostics.loaded_resource_keys,
-            ["cy3.css", "image.png", "loose.css"]
-        );
         let _ = fs::remove_dir_all(root);
     }
 
@@ -909,7 +835,6 @@ mod tests {
         );
 
         let reader = MdictReader::open(&mdx).unwrap();
-        assert_eq!(reader.source_file_count(), 2);
         assert!(reader.load_binary_resource("page.png").unwrap().is_some());
         let _ = fs::remove_dir_all(root);
     }
@@ -933,10 +858,6 @@ mod tests {
         for _ in 0..65 {
             assert!(reader.load_binary_resource("page.png").unwrap().is_some());
         }
-        assert_eq!(
-            reader.diagnostics().unwrap().resource_bytes,
-            65 * 1024 * 1024
-        );
         let _ = fs::remove_dir_all(root);
     }
 
@@ -990,9 +911,8 @@ mod tests {
             .get_or_open_mdict(7, "fixture", || MdictReader::open(&mdx))
             .unwrap();
         assert_eq!(reader.lookup("entry").unwrap().unwrap().html, "visible");
-        assert_eq!(sessions.diagnostics().unwrap().resource_count, 1);
         assert_eq!(sessions.release(7).unwrap(), 1);
-        assert_eq!(sessions.diagnostics().unwrap().resource_count, 0);
+        assert_eq!(sessions.release(7).unwrap(), 0);
         assert_eq!(
             sessions
                 .load_mdict_resource(7, "fixture", "missing.png")

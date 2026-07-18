@@ -376,7 +376,6 @@ function merriamWebsterEntry(query: string, definitions: readonly string[]) {
 
 function starDictEntry(query: string, definitions: readonly string[]) {
   return {
-    diagnostics: { bytesRead: 64, decompressedBlocks: 1 },
     entries: [{ definitions, headword: query }],
   }
 }
@@ -1315,7 +1314,6 @@ test('looks up an English selection in an enabled StarDict and releases its sess
   await setupDictionaryReader(page, {}, 0, {}, [localStarDict()], {
     'dict-oxford': {
       sky: {
-        diagnostics: { bytesRead: 48, decompressedBlocks: 1 },
         entries: [
           {
             definitions: ['the region of the atmosphere seen from earth'],
@@ -1364,14 +1362,12 @@ test('MDict follows an exact mixed-script internal key in the originating dictio
     {
       'dict-synthetic-zh': {
         合成查询: {
-          diagnostics: { recordBytes: 48, resourceBytes: 0 },
           entry: {
             headword: '合成查询',
             html: '<a href="entry://internal-42 合成">打开合成索引</a>',
           },
         },
         'internal-42 合成': {
-          diagnostics: { recordBytes: 48, resourceBytes: 0 },
           entry: {
             headword: 'internal-42 合成',
             html: '<h1>合成索引</h1><p>这是合成的内部索引内容。</p>',
@@ -1433,18 +1429,15 @@ test('MDict keeps internal links in a source-only bounded detail history', async
     {
       'dict-synthetic-zh': {
         词: {
-          diagnostics: { recordBytes: richHtml.length, resourceBytes: 0 },
           entry: { headword: '词', html: richHtml },
         },
         新词: {
-          diagnostics: { recordBytes: 16, resourceBytes: 0 },
           entry: {
             headword: '新词',
             html: '<p>第一层内部跳转结果</p><a href="entry://第三词">继续跳转</a>',
           },
         },
         第三词: {
-          diagnostics: { recordBytes: 16, resourceBytes: 0 },
           entry: { headword: '第三词', html: '<p>第二层内部跳转结果</p>' },
         },
       },
@@ -1633,7 +1626,6 @@ test('MDict keeps readable text when an optional stylesheet is missing', async (
     {
       'dict-synthetic-zh': {
         词: {
-          diagnostics: { recordBytes: 64, resourceBytes: 0 },
           entry: {
             headword: '词',
             html: '<link rel="stylesheet" href="missing.css"><p>无样式仍可阅读</p>',
@@ -1671,7 +1663,6 @@ test('MDict does not enlarge or navigate linked images', async ({ page }) => {
     {
       'dict-synthetic-zh': {
         图片词: {
-          diagnostics: { recordBytes: 96, resourceBytes: 0 },
           entry: {
             headword: '图片词',
             html: `
@@ -1682,7 +1673,6 @@ test('MDict does not enlarge or navigate linked images', async ({ page }) => {
           },
         },
         不应跳转: {
-          diagnostics: { recordBytes: 16, resourceBytes: 0 },
           entry: { headword: '不应跳转', html: '<p>错误跳转结果</p>' },
         },
       },
@@ -1737,7 +1727,6 @@ test('outside dismissal releases the local dictionary session before showing act
     {
       'dict-synthetic-zh': {
         词: {
-          diagnostics: { recordBytes: 32, resourceBytes: 0 },
           entry: { headword: '词', html: '<p>关闭路径测试</p>' },
         },
       },

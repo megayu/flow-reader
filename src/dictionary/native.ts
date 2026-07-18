@@ -13,19 +13,6 @@ export interface DictionaryHttpError {
   message: string
 }
 
-export interface DictionaryRuntimeDiagnostics {
-  http: {
-    activeRequestCount: number
-    sessionCount: number
-  }
-  local: {
-    fileCount: number
-    mmapCount: number
-    resourceCount: number
-    sessionCount: number
-  }
-}
-
 export type LocalDictionaryFormat = 'mdict' | 'stardict'
 export type LocalDictionaryLanguage = SupportedDictionaryLanguage
 export type LocalDictionaryLanguageSource =
@@ -75,10 +62,6 @@ export interface LocalDictionaryUpdate {
 }
 
 export interface StarDictLookupResponse {
-  diagnostics: {
-    bytesRead: number
-    decompressedBlocks: number
-  }
   entries: Array<{
     definitions: string[]
     headword: string
@@ -86,11 +69,6 @@ export interface StarDictLookupResponse {
 }
 
 export interface MdictLookupResponse {
-  diagnostics: {
-    loadedResourceKeys: string[]
-    recordBytes: number
-    resourceBytes: number
-  }
   entry: null | {
     headword: string
     html: string
@@ -123,10 +101,6 @@ export function fetchMerriamWebster(
 
 export function cancelDictionarySession(sessionId: number) {
   return invoke<void>('cancel_dictionary_session', { sessionId })
-}
-
-export function dictionaryRuntimeDiagnostics() {
-  return invoke<DictionaryRuntimeDiagnostics>('dictionary_runtime_diagnostics')
 }
 
 export function listLocalDictionaries() {

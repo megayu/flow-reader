@@ -162,11 +162,6 @@ test.describe('dictionary coordinator contract', () => {
     await expect.poll(() => localHarness.started).toBe(2)
     expect(localHarness.maxActive).toBe(2)
     expect(onlineStarted).toBe(true)
-    expect(coordinator.diagnostics()).toMatchObject({
-      localQueriesRunning: 2,
-      localQueriesWaiting: 1,
-    })
-
     localHarness.releaseNext()
     await expect.poll(() => localHarness.started).toBe(3)
     expect(localHarness.maxActive).toBe(2)
@@ -180,13 +175,7 @@ test.describe('dictionary coordinator contract', () => {
       'success',
       'success',
     ])
-    expect(coordinator.diagnostics()).toEqual({
-      activeSessionId: session.id,
-      localQueriesRunning: 0,
-      localQueriesWaiting: 0,
-    })
     session.cancel()
-    expect(coordinator.diagnostics().activeSessionId).toBeUndefined()
   })
 
   test('does not start a queued local lookup after cancellation', async () => {
