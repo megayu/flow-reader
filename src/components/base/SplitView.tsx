@@ -8,6 +8,7 @@ import {
   useContext,
   useEffect,
   isValidElement,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -67,16 +68,20 @@ function useSize(
   maxSize = Number.POSITIVE_INFINITY,
   storageKey?: string,
 ) {
-  const [size, setSize] = useState(() => {
-    if (!storageKey || typeof window === 'undefined') return preferredSize
-
+  const [size, setSize] = useState(preferredSize)
+  const sizeRef = useRef(size)
+  useLayoutEffect(() => {
+    if (!storageKey) return
     const stored = window.localStorage.getItem(storageKey)
     const parsed = stored ? Number(stored) : Number.NaN
-    return Number.isFinite(parsed)
+    const restoredSize = Number.isFinite(parsed)
       ? clamp(parsed, minSize, maxSize)
       : preferredSize
-  })
-  const sizeRef = useRef(size)
+    if (restoredSize === sizeRef.current) return
+
+    sizeRef.current = restoredSize
+    setSize(restoredSize)
+  }, [maxSize, minSize, preferredSize, storageKey])
   const persistSize = useCallback(
     (size: number | undefined) => {
       if (!storageKey || typeof window === 'undefined') return
