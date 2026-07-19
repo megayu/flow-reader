@@ -1675,15 +1675,20 @@ export class BookTab extends BaseTab {
   annotationRange?: Range
   annotationCfi?: string
   setAnnotationRange(cfi: string, target?: EventTarget | null) {
+    const views = this.rendition?.manager?.views?._views ?? []
+    const targetNode =
+      target && 'nodeType' in target ? (target as unknown as Node) : undefined
     const doc =
       target && 'ownerDocument' in target
         ? (target.ownerDocument as Document | undefined)
         : undefined
-    const targetView = doc?.defaultView
-      ? this.viewForWindow(doc.defaultView)
-      : undefined
-    const views = this.rendition?.manager?.views?._views ?? []
-    const candidates = [targetView, this.view, ...views].filter(Boolean)
+    // epubjs mark callbacks originate from SVG overlays beside the iframe.
+    const targetView =
+      (targetNode
+        ? views.find((view: any) => view.element?.contains(targetNode))
+        : undefined) ??
+      (doc?.defaultView ? this.viewForWindow(doc.defaultView) : undefined)
+    const candidates = targetView ? [targetView] : [this.view, ...views]
 
     for (const view of [...new Set(candidates)] as any[]) {
       try {

@@ -226,6 +226,7 @@ export default {
   'menu.define': 'Define',
   'menu.undefine': 'Undefine',
   'menu.dictionary': 'Dictionary',
+  'menu.translate': 'Translate',
   'menu.create': 'Create',
   'menu.cancel': 'Cancel',
   'menu.save': 'Save',

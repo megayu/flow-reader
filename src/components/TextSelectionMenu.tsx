@@ -551,13 +551,14 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           updateSize()
           popupResizeObserverRef.current = new ResizeObserver(updateSize)
           popupResizeObserverRef.current.observe(el)
-          el.focus()
+          el.focus({ preventScroll: true })
         }}
         className={clsx(
           'border-border bg-popover text-popover-foreground absolute z-50 box-border rounded-lg border shadow-lg shadow-black/10 focus:outline-none',
           view === 'dictionary' || view === 'translation'
             ? 'overflow-hidden p-0'
             : 'p-2',
+          view === 'actions' && (editing || annotate) && 'space-y-2',
         )}
         style={{
           width:
@@ -626,7 +627,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             onClose={closeMenu}
           />
         ) : editing ? (
-          <div className="mb-3 space-y-2">
+          <div className="space-y-2">
             <textarea
               ref={replacementRef}
               name="replacement"
@@ -636,10 +637,10 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               autoCapitalize="off"
               spellCheck={false}
               defaultValue={replaceTarget?.selectedText ?? text}
-              className="textfield bg-background text-foreground scroll h-40 w-72 resize-none px-1.5 py-1 text-base outline-none"
+              className="textfield bg-background text-foreground scroll block h-40 w-68 resize-none px-1.5 py-1 text-base outline-none"
             />
             {replacementError && (
-              <div className="text-destructive w-72 text-sm leading-snug">
+              <div className="text-destructive w-68 text-sm leading-snug">
                 <div>{replacementError.message}</div>
                 {replacementError.detail && (
                   <div className="mt-1 text-xs break-words">
@@ -651,14 +652,14 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             )}
           </div>
         ) : annotate ? (
-          <div className="mb-3">
+          <div>
             <TextField
               mRef={ref}
               as="textarea"
               name="notes"
               defaultValue={annotation?.notes}
               hideLabel
-              className="h-40 w-72"
+              className="h-40 w-68"
               autoFocus
             />
           </div>
@@ -691,7 +692,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               onClick={() => switchView('dictionary')}
             />
             <IconButton
-              aria-label="翻译"
+              title={t('translate')}
               Icon={LanguagesIcon}
               size={ICON_SIZE}
               className={actionIconClassName}
@@ -816,7 +817,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           </div>
         )}
         {view === 'actions' && editing && (
-          <div className="mt-3 flex gap-2">
+          <div className="flex gap-2">
             <Button
               compact
               variant="secondary"
@@ -881,8 +882,8 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           </div>
         )}
         {view === 'actions' && annotate && !editing && (
-          <div className="mt-3 flex">
-            {annotation && (
+          <div className="flex">
+            {annotation ? (
               <Button
                 compact
                 variant="secondary"
@@ -892,6 +893,14 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 }}
               >
                 {t('delete')}
+              </Button>
+            ) : (
+              <Button
+                compact
+                variant="secondary"
+                onClick={() => setAnnotate(false)}
+              >
+                {t('cancel')}
               </Button>
             )}
             <Button

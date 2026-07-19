@@ -222,6 +222,7 @@ export default {
   'menu.define': '定义',
   'menu.undefine': '取消定义',
   'menu.dictionary': '词典',
+  'menu.translate': '翻译',
   'menu.create': '创建',
   'menu.cancel': '取消',
   'menu.save': '保存',
