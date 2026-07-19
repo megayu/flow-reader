@@ -1565,7 +1565,7 @@ const Book: React.FC<BookProps> = ({
   const progressPercent = getBookProgressPercent(book.percentage)
 
   return (
-    <div className="relative" onContextMenu={openContextMenu}>
+    <div className="relative">
       <div
         data-flow-library-book-card
         className={clsx(
