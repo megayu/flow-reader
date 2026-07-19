@@ -953,7 +953,11 @@ mod tests {
             })
         };
 
-        thread::sleep(Duration::from_millis(30));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while service.inner.background.snapshot().waiting == 0 && Instant::now() < deadline {
+            thread::yield_now();
+        }
+        assert_eq!(service.inner.background.snapshot().waiting, 1);
         service.cancel_background();
         release_first_tx.send(()).unwrap();
 
@@ -1257,6 +1261,8 @@ mod tests {
         let service = Arc::new(TaskService::default());
         let active = Arc::new(AtomicUsize::new(0));
         let max_active = Arc::new(AtomicUsize::new(0));
+        let (first_entered_tx, first_entered_rx) = mpsc::channel();
+        let (release_first_tx, release_first_rx) = mpsc::channel();
 
         let first = {
             let service = Arc::clone(&service);
@@ -1266,14 +1272,16 @@ mod tests {
                 service.run_book_exclusive("book-a", super::TaskPriority::Foreground, || {
                     let now = active.fetch_add(1, Ordering::SeqCst) + 1;
                     max_active.fetch_max(now, Ordering::SeqCst);
-                    thread::sleep(Duration::from_millis(80));
+                    first_entered_tx.send(()).unwrap();
+                    release_first_rx.recv().unwrap();
                     active.fetch_sub(1, Ordering::SeqCst);
                     Ok(())
                 })
             })
         };
 
-        thread::sleep(Duration::from_millis(10));
+        first_entered_rx.recv().unwrap();
+        let (second_entered_tx, second_entered_rx) = mpsc::channel();
 
         let second = {
             let service = Arc::clone(&service);
@@ -1283,15 +1291,21 @@ mod tests {
                 service.run_book_exclusive("book-b", super::TaskPriority::Foreground, || {
                     let now = active.fetch_add(1, Ordering::SeqCst) + 1;
                     max_active.fetch_max(now, Ordering::SeqCst);
+                    second_entered_tx.send(()).unwrap();
                     active.fetch_sub(1, Ordering::SeqCst);
                     Ok(())
                 })
             })
         };
 
+        let overlapped = second_entered_rx
+            .recv_timeout(Duration::from_secs(5))
+            .is_ok();
+        release_first_tx.send(()).unwrap();
         first.join().unwrap().unwrap();
         second.join().unwrap().unwrap();
 
+        assert!(overlapped);
         assert!(max_active.load(Ordering::SeqCst) > 1);
     }
 

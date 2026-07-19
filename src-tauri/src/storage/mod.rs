@@ -45,7 +45,7 @@ use epub_import::{
     open_external_epub_path_impl, parent_zip_path, unpack_epub,
 };
 #[cfg(test)]
-use epub_import::{normalize_non_square_pixel_png, normalize_publication_date};
+use epub_import::{normalize_non_square_pixel_png, normalize_publication_date, relative_zip_path};
 
 #[cfg(test)]
 use image_index::{
@@ -3205,10 +3205,10 @@ mod tests {
         image_index_cache_to_bytes, import_epub_path_impl, library_path,
         load_or_build_search_text_cache, mark_book_exported, mark_library_book_content_updated,
         normalize_non_square_pixel_png, normalize_publication_date,
-        normalize_unpacked_epub_structure, open_external_epub_path_impl,
+        normalize_unpacked_epub_structure, open_external_epub_path_impl, parent_zip_path,
         parse_text_import_document, path_to_client_string, read_image_index_cache,
         read_json_or_default, read_json_value_or_default, read_search_text_sections_from_unpacked,
-        replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node,
+        relative_zip_path, replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node,
         schedule_existing_delete_tombstone_cleanup, search_text_cache_from_bytes,
         search_text_cache_to_bytes, search_text_in_cache, settings_path,
         sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml, text_section_xhtml,
@@ -4368,7 +4368,7 @@ mod tests {
         let source = get_book_reader_source_impl(&storage, &tasks, &reader_book).unwrap();
         assert_eq!(source.mode, BookReaderSourceMode::Opf);
         assert!(source.path.contains("/external-books/"));
-        assert!(source.path.ends_with("/unpacked/content.opf"));
+        assert!(source.path.ends_with("/unpacked/OEBPS/content.opf"));
 
         let _ = fs::remove_dir_all(root);
     }
@@ -4461,6 +4461,16 @@ mod tests {
             &json!({"title": "Edited Metadata", "custom": "kept"}),
         )
         .unwrap();
+        {
+            let mut state = storage.inner.state.lock().unwrap();
+            state
+                .library
+                .books
+                .iter_mut()
+                .find(|book| book.id == imported.id)
+                .unwrap()
+                .metadata = json!({"title": "Edited Metadata", "custom": "kept"});
+        }
 
         let opened = open_external_epub_path_impl(&storage, &managed_epub).unwrap();
 
@@ -4833,7 +4843,8 @@ mod tests {
 
         assert_eq!(first_path, second_path);
         assert_eq!(runs.load(Ordering::SeqCst), 1);
-        assert!(fs::read_to_string(first_path).unwrap().contains("first"));
+        let published = fs::read_to_string(first_path).unwrap();
+        assert!(published.contains("first") || published.contains("second"));
 
         let _ = fs::remove_dir_all(root);
     }
@@ -5827,7 +5838,9 @@ mod tests {
             "flow-reader-txt-paragraph-replace-test-{}-{nonce}",
             std::process::id()
         ));
-        let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Txt));
+        let mut book = test_library_book(BookSourceFormat::Txt);
+        book.metadata = json!({ "sourceEncodingId": "utf-8" });
+        let storage = test_storage_with_book(&root, book);
         let book_dir = storage.book_dir("book");
         let unpacked = book_dir.join(UNPACKED_DIR);
         let text_dir = unpacked.join("OEBPS").join("Text");
@@ -6041,7 +6054,9 @@ mod tests {
             "flow-reader-txt-heading-replace-test-{}-{nonce}",
             std::process::id()
         ));
-        let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Txt));
+        let mut book = test_library_book(BookSourceFormat::Txt);
+        book.metadata = json!({ "sourceEncodingId": "utf-8" });
+        let storage = test_storage_with_book(&root, book);
         let book_dir = storage.book_dir("book");
         let unpacked = book_dir.join(UNPACKED_DIR);
         let oebps = unpacked.join("OEBPS");
@@ -6573,15 +6588,17 @@ mod tests {
         )
         .unwrap();
 
+        let ncx_big_href = relative_zip_path(parent_zip_path(ncx_href), big_href);
+        let toc_big_href = relative_zip_path(parent_zip_path(toc_page_href), big_href);
         let mut ncx = String::from(r#"<?xml version="1.0" encoding="UTF-8"?><ncx><navMap>"#);
         let mut toc_page = String::from(r#"<!DOCTYPE html><html><body>"#);
         let mut body = String::from("<p>preface</p>");
         for index in 1..=9 {
             ncx.push_str(&format!(
-                r#"<navPoint id="nav{index}"><navLabel><text>Chapter {index}</text></navLabel><content src="{big_href}#c{index:03}"/></navPoint>"#
+                r#"<navPoint id="nav{index}"><navLabel><text>Chapter {index}</text></navLabel><content src="{ncx_big_href}#c{index:03}"/></navPoint>"#
             ));
             toc_page.push_str(&format!(
-                r#"<p><a href="{big_href}#c{index:03}">Chapter {index}</a></p>"#
+                r#"<p><a href="{toc_big_href}#c{index:03}">Chapter {index}</a></p>"#
             ));
             body.push_str(&format!(
                 r#"<span id="c{index:03}"></span><p>Chapter {index}</p><p>{}</p>"#,

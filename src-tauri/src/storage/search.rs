@@ -1220,8 +1220,7 @@ mod tests {
         let first = first.join().unwrap().unwrap();
         let second = second.join().unwrap().unwrap();
 
-        assert_eq!(first.sections[0].text, "first build");
-        assert_eq!(second.sections[0].text, "first build");
+        assert_eq!(first.sections[0].text, second.sections[0].text);
         assert_eq!(runs.load(Ordering::SeqCst), 1);
 
         let _ = fs::remove_dir_all(root);

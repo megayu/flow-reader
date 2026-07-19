@@ -511,6 +511,8 @@ fn validate_registry(registry: &RegistryFile) -> Result<(), DictionaryRegistryEr
                 "The dictionary registry contains a duplicate or invalid identifier.",
             ));
         }
+    }
+    for record in &registry.dictionaries {
         if !record.source_path.is_absolute() {
             return Err(DictionaryRegistryError::new(
                 "invalidSourcePath",

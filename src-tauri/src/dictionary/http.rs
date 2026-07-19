@@ -267,11 +267,15 @@ fn map_request_error(error: reqwest::Error) -> DictionaryHttpError {
     if error.is_timeout() {
         return DictionaryHttpError::new("timeout", "Dictionary request timed out");
     }
-    if error.to_string().contains(REDIRECT_FORBIDDEN_MARKER) {
-        return DictionaryHttpError::new(
-            "redirect_forbidden",
-            "Dictionary service redirected to an unexpected host",
-        );
+    let mut cause: Option<&(dyn std::error::Error + 'static)> = Some(&error);
+    while let Some(error) = cause {
+        if error.to_string().contains(REDIRECT_FORBIDDEN_MARKER) {
+            return DictionaryHttpError::new(
+                "redirect_forbidden",
+                "Dictionary service redirected to an unexpected host",
+            );
+        }
+        cause = error.source();
     }
     DictionaryHttpError::new("network", "Dictionary request failed")
 }

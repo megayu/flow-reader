@@ -574,7 +574,8 @@ fn parse_index(
         if entries.len() >= MAX_ENTRIES {
             return Err(invalid_index("The StarDict index has too many entries."));
         }
-        let (entry, next) = parse_index_entry(&bytes, cursor as u32, offset_bytes)?;
+        let (entry, next) = parse_index_entry(&bytes, cursor as u32, offset_bytes)
+            .map_err(|error| invalid_index(&error.message))?;
         validate_range(entry.offset, entry.length, data_size)
             .map_err(|_| invalid_index("A StarDict entry points outside dictionary data."))?;
         entries.push(entry);

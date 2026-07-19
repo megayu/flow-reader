@@ -682,13 +682,24 @@ fn spine_item_is_linear_no(item: &OpfSpineItem) -> bool {
 }
 
 fn nav_toc_href_paths(nav: &str) -> Vec<String> {
-    let Ok(nav_start_regex) =
-        Regex::new(r#"(?is)<nav\b(?=[^>]*(?:epub:)?type\s*=\s*['"][^'"]*\btoc\b)[^>]*>"#)
-    else {
+    let (Ok(nav_start_regex), Ok(type_regex)) = (
+        Regex::new(r#"(?is)<nav\b[^>]*>"#),
+        Regex::new(r#"(?is)\b(?:epub:)?type\s*=\s*['"]([^'"]*)['"]"#),
+    ) else {
         return Vec::new();
     };
 
-    let Some(start_match) = nav_start_regex.find(nav) else {
+    let Some(start_match) = nav_start_regex.find_iter(nav).find(|nav_match| {
+        type_regex
+            .captures(nav_match.as_str())
+            .and_then(|captures| captures.get(1))
+            .is_some_and(|types| {
+                types
+                    .as_str()
+                    .split_whitespace()
+                    .any(|value| value == "toc")
+            })
+    }) else {
         return Vec::new();
     };
     let content_start = start_match.end();
@@ -955,7 +966,12 @@ fn plan_split_section(
         all_link_targets.push((fragment.clone(), split.abs_path.clone()));
     }
 
-    rewrite_split_item_links(&mut split_items, section_abs_path, &all_link_targets);
+    rewrite_split_item_links(
+        &mut split_items,
+        section_abs_path,
+        opf_parent,
+        &all_link_targets,
+    );
 
     Some(SplitSection {
         original_id: item.id.clone(),
@@ -970,6 +986,7 @@ fn plan_split_section(
 fn rewrite_split_item_links(
     split_items: &mut [SplitItem],
     section_abs_path: &str,
+    opf_parent: &str,
     link_targets: &[(String, String)],
 ) {
     let section_file_name = section_abs_path
@@ -980,6 +997,7 @@ fn rewrite_split_item_links(
     for item in split_items {
         let item_parent = parent_zip_path(&item.abs_path);
         let original_relative = relative_zip_path(item_parent, section_abs_path);
+        let original_opf_relative = relative_zip_path(opf_parent, section_abs_path);
         let mut replacements = HashMap::new();
 
         for (fragment, target_abs_path) in link_targets {
@@ -989,6 +1007,10 @@ fn rewrite_split_item_links(
                 fragment
             );
             replacements.insert(format!("{original_relative}#{fragment}"), target.clone());
+            replacements.insert(
+                format!("{original_opf_relative}#{fragment}"),
+                target.clone(),
+            );
             replacements.insert(format!("{section_file_name}#{fragment}"), target.clone());
             replacements.insert(format!("./{section_file_name}#{fragment}"), target.clone());
 
@@ -1206,7 +1228,7 @@ fn unique_split_id(original_id: &str, index: usize, used_ids: &HashSet<String>) 
     id
 }
 
-fn relative_zip_path(from_parent: &str, target: &str) -> String {
+pub(super) fn relative_zip_path(from_parent: &str, target: &str) -> String {
     let from = from_parent
         .split('/')
         .filter(|segment| !segment.is_empty())
@@ -2776,7 +2798,8 @@ mod tests {
 <table><tr><td>table should not block splitting</td></tr></table>
 "##,
         );
-        let filler = "x".repeat(70_000);
+        let filler =
+            "x".repeat(EPUB_SECTION_SPLIT_MIN_BYTES as usize / nav_point_count.max(1) + 1_024);
         for index in 0..nav_point_count {
             xhtml.push_str(&format!(
                 r#"<h1 id="nav_point_{index}">Section {index}</h1><p>{filler}</p>"#
@@ -3046,7 +3069,7 @@ mod tests {
         fs::write(
             root.join("OEBPS/Text/part0000.xhtml"),
             format!(
-                r#"<?xml version="1.0" encoding="utf-8"?><html><body><div><mbp:pagebreak/><h1 id="nav_point_0">One</h1><p>{filler}</p><h1 id="nav_point_1">Two</h1><p>{filler}</p></div></body></html>"#
+                r#"<?xml version="1.0" encoding="utf-8"?><html><body><mbp:pagebreak/><h1 id="nav_point_0">One</h1><p>{filler}</p><h1 id="nav_point_1">Two</h1><p>{filler}</p></body></html>"#
             ),
         )
         .unwrap();
