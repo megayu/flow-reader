@@ -377,6 +377,12 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     if (savingReplacementRef.current) return
     hide()
   }
+  const cancelEditing = () => {
+    if (savingReplacementRef.current) return
+    setEditing(false)
+    setReplacementError(undefined)
+  }
+  const cancelAnnotation = () => setAnnotate(false)
   const switchView = (nextView: 'actions' | 'dictionary' | 'translation') => {
     setWidth(0)
     setHeight(0)
@@ -591,6 +597,14 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           e.stopPropagation()
           if (e.key === 'Escape') {
             e.preventDefault()
+            if (editing) {
+              cancelEditing()
+              return
+            }
+            if (annotate) {
+              cancelAnnotation()
+              return
+            }
             dismissOverlay()
             return
           }
@@ -822,11 +836,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               compact
               variant="secondary"
               disabled={savingReplacement}
-              onClick={() => {
-                if (savingReplacement) return
-                setEditing(false)
-                setReplacementError(undefined)
-              }}
+              onClick={cancelEditing}
             >
               {t('cancel')}
             </Button>
@@ -895,11 +905,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 {t('delete')}
               </Button>
             ) : (
-              <Button
-                compact
-                variant="secondary"
-                onClick={() => setAnnotate(false)}
-              >
+              <Button compact variant="secondary" onClick={cancelAnnotation}>
                 {t('cancel')}
               </Button>
             )}
