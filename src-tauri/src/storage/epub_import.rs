@@ -216,12 +216,13 @@ struct AnchorSplitPoint {
     open_ancestors: Vec<OpenElement>,
 }
 
-pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<(), String> {
+pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<bool, String> {
     let opf_path = find_unpacked_opf_path(unpacked_dir)?;
     let opf_xml = fs::read_to_string(&opf_path).map_err(|_| "skip".to_string());
     let Ok(mut opf_xml) = opf_xml else {
-        return Ok(());
+        return Ok(false);
     };
+    let mut changed = false;
 
     let opf_zip_path = opf_path
         .strip_prefix(unpacked_dir)
@@ -233,21 +234,21 @@ pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<(
     let ncx_context = {
         let opf_doc = match roxmltree::Document::parse(&opf_xml) {
             Ok(doc) => doc,
-            Err(_) => return Ok(()),
+            Err(_) => return Ok(false),
         };
         if opf_declares_fixed_layout(&opf_doc) {
-            return Ok(());
+            return Ok(false);
         }
 
         let manifest = opf_manifest_items(&opf_doc);
         let spine = opf_spine_items(&opf_doc);
         let Some(ncx_item) = find_ncx_manifest_item(&opf_doc, &manifest) else {
-            return Ok(());
+            return Ok(false);
         };
         let ncx_abs_path = normalize_zip_path(join_zip_path(&opf_parent, &ncx_item.href));
         let ncx_file_path = unpacked_resource_path(unpacked_dir, &ncx_abs_path);
         let Ok(ncx_xml) = fs::read_to_string(&ncx_file_path) else {
-            return Ok(());
+            return Ok(false);
         };
         let ncx_parent = parent_zip_path(&ncx_abs_path).to_string();
         let mut toc_target_abs_paths = ncx_content_paths(&ncx_xml)
@@ -292,6 +293,7 @@ pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<(
         ) {
             fs::write(&opf_path, updated_opf.as_bytes()).map_err(|error| error.to_string())?;
             opf_xml = updated_opf;
+            changed = true;
         }
         if let Some(updated_opf) = repair_linear_no_toc_targets(
             &opf_xml,
@@ -303,6 +305,7 @@ pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<(
         ) {
             fs::write(&opf_path, updated_opf.as_bytes()).map_err(|error| error.to_string())?;
             opf_xml = updated_opf;
+            changed = true;
         }
 
         (ncx_file_path, ncx_xml, ncx_parent)
@@ -310,7 +313,7 @@ pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<(
 
     let opf_doc = match roxmltree::Document::parse(&opf_xml) {
         Ok(doc) => doc,
-        Err(_) => return Ok(()),
+        Err(_) => return Ok(changed),
     };
     let manifest = opf_manifest_items(&opf_doc);
     let spine = opf_spine_items(&opf_doc);
@@ -321,7 +324,7 @@ pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<(
     let (ncx_file_path, ncx_xml, ncx_parent) = ncx_context;
     let ncx_references = ncx_content_references(&ncx_xml);
     if ncx_references.len() < EPUB_SECTION_SPLIT_MIN_NAV_POINTS {
-        return Ok(());
+        return Ok(changed);
     }
 
     let used_ids = manifest
@@ -378,7 +381,7 @@ pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<(
     }
 
     if split_sections.is_empty() {
-        return Ok(());
+        return Ok(changed);
     }
 
     let mut updated_opf = opf_xml;
@@ -411,7 +414,7 @@ pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<(
         }
     }
 
-    Ok(())
+    Ok(true)
 }
 
 fn opf_declares_fixed_layout(doc: &roxmltree::Document) -> bool {
@@ -2399,6 +2402,7 @@ pub(super) fn import_epub_path_impl(
             } => (book, id, should_copy, external_promotion),
         };
         let normalize_new_cover = should_copy && book.updated_at.is_none();
+        let mut publication_changed = false;
 
         let promotion = external_promotion
             .map(|promotion| {
@@ -2448,6 +2452,7 @@ pub(super) fn import_epub_path_impl(
                             )
                             .map_err(|error| error.to_string())?;
                             parsed_cover.input.data = normalized;
+                            publication_changed = true;
                         }
                     }
                 }
@@ -2506,6 +2511,11 @@ pub(super) fn import_epub_path_impl(
             if external_dir.exists() {
                 fs::remove_dir_all(&external_dir).map_err(|error| error.to_string())?;
             }
+        }
+
+        if publication_changed {
+            book = mark_library_book_content_updated(storage, &id)?
+                .ok_or_else(|| "Book not found".to_string())?;
         }
 
         storage.mark_library_dirty();
@@ -2781,7 +2791,7 @@ mod tests {
         let root = split_test_root("split-table-links");
         write_split_fixture(&root, 8);
 
-        normalize_unpacked_epub_structure(&root).unwrap();
+        assert!(normalize_unpacked_epub_structure(&root).unwrap());
 
         assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
         assert!(root
@@ -2810,7 +2820,7 @@ mod tests {
         let root = split_test_root("split-two-anchors");
         write_split_fixture(&root, 2);
 
-        normalize_unpacked_epub_structure(&root).unwrap();
+        assert!(normalize_unpacked_epub_structure(&root).unwrap());
 
         assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
         assert!(root
@@ -2836,7 +2846,7 @@ mod tests {
         )
         .unwrap();
 
-        normalize_unpacked_epub_structure(&root).unwrap();
+        assert!(normalize_unpacked_epub_structure(&root).unwrap());
 
         assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
         assert!(root
@@ -2862,7 +2872,7 @@ mod tests {
         )
         .unwrap();
 
-        normalize_unpacked_epub_structure(&root).unwrap();
+        assert!(normalize_unpacked_epub_structure(&root).unwrap());
 
         assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
         let first_split =
@@ -2888,7 +2898,7 @@ mod tests {
         )
         .unwrap();
 
-        normalize_unpacked_epub_structure(&root).unwrap();
+        assert!(normalize_unpacked_epub_structure(&root).unwrap());
 
         assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
         let first_split =
@@ -3088,7 +3098,7 @@ mod tests {
             .unwrap();
         }
 
-        normalize_unpacked_epub_structure(&root).unwrap();
+        assert!(normalize_unpacked_epub_structure(&root).unwrap());
 
         let opf = fs::read_to_string(root.join("OEBPS/content.opf")).unwrap();
         assert!(opf.contains(r#"<itemref idref="toc"/>"#));
@@ -3139,7 +3149,7 @@ mod tests {
             .unwrap();
         }
 
-        normalize_unpacked_epub_structure(&root).unwrap();
+        assert!(!normalize_unpacked_epub_structure(&root).unwrap());
 
         let opf = fs::read_to_string(root.join("OEBPS/content.opf")).unwrap();
         assert!(!opf.contains(r#"<itemref idref="appendix"/>"#));
@@ -3209,7 +3219,7 @@ mod tests {
             .unwrap();
         }
 
-        normalize_unpacked_epub_structure(&root).unwrap();
+        assert!(normalize_unpacked_epub_structure(&root).unwrap());
 
         let opf = fs::read_to_string(root.join("OEBPS/content.opf")).unwrap();
         assert!(opf.contains(r#"<itemref idref="volume-cover-ncx" linear="yes"/>"#));

@@ -69,6 +69,7 @@ export interface BookReaderSource {
 interface NativeBookReaderSource {
   mode: BookReaderSource['mode']
   path: string
+  book?: BookRecord
 }
 
 export interface BookTextReplaceTarget {
@@ -608,6 +609,10 @@ export const db = {
         'get_book_reader_source',
         { id },
       )
+      if (source.book) {
+        rememberBook(source.book)
+        notify('books')
+      }
       return {
         mode: source.mode,
         url: await filePathToUrl(source.path),

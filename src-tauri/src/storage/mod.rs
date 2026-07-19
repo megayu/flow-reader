@@ -380,11 +380,13 @@ pub struct BookTextReplaceResult {
     changed: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BookReaderSource {
     mode: BookReaderSourceMode,
     path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    book: Option<BookRecord>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -1223,6 +1225,7 @@ fn get_book_reader_source_impl(
         return Ok(BookReaderSource {
             mode: BookReaderSourceMode::Opf,
             path: path_to_client_string(&opf_path),
+            book: None,
         });
     }
 
@@ -1234,13 +1237,21 @@ fn get_book_reader_source_impl(
         return Ok(BookReaderSource {
             mode: BookReaderSourceMode::Epub,
             path: path_to_client_string(&book_path),
+            book: None,
         });
     }
 
     let opf_path = ensure_book_package_path(storage, tasks, book)?;
+    let current_book = storage.library_book(&book.id)?;
+    let updated_book = (current_book.content_version != book.content_version
+        || current_book.content_hash != book.content_hash)
+        .then(|| commands::get_book_impl(storage, book.id.clone()))
+        .transpose()?
+        .flatten();
     Ok(BookReaderSource {
         mode: BookReaderSourceMode::Opf,
         path: path_to_client_string(&opf_path),
+        book: updated_book,
     })
 }
 
@@ -1267,7 +1278,7 @@ fn publish_unpacked_book_package(
         let _ = fs::remove_dir_all(&temp_dir);
         return Err(error);
     }
-    normalize_unpacked_epub_structure(&temp_dir)?;
+    let normalized = normalize_unpacked_epub_structure(&temp_dir)?;
 
     let temp_opf_path = match find_unpacked_opf_path(&temp_dir) {
         Ok(path) => path,
@@ -1294,6 +1305,10 @@ fn publish_unpacked_book_package(
     if !book_content_still_current(storage, book)? {
         let _ = fs::remove_dir_all(&unpacked_dir);
         return Err("Unpacked package is stale".to_string());
+    }
+
+    if normalized && mark_library_book_content_updated(storage, &book.id)?.is_some() {
+        storage.flush_dirty()?;
     }
 
     Ok(unpacked_dir.join(opf_relative_path))
@@ -2916,6 +2931,30 @@ fn edited_book_content_hash(id: &str, content_version: u32, edited_at: u64) -> S
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+fn mark_library_book_content_updated(
+    storage: &AppStorage,
+    id: &str,
+) -> Result<Option<LibraryBook>, String> {
+    let updated = {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let Some(book) = state.library.books.iter_mut().find(|book| book.id == id) else {
+            return Ok(None);
+        };
+        let now = now_ms();
+        book.content_version = book.content_version.saturating_add(1).max(1);
+        book.content_edited_at = Some(now);
+        book.content_hash = edited_book_content_hash(&book.id, book.content_version, now);
+        book.updated_at = Some(now);
+        book.clone()
+    };
+    storage.mark_library_dirty();
+    Ok(Some(updated))
+}
+
 pub(super) fn replace_book_text_impl(
     storage: &AppStorage,
     id: String,
@@ -3164,15 +3203,16 @@ mod tests {
         ensure_book_package_path_with_unpacker, export_book_impl, external_books_root,
         external_index_path, get_book_reader_source_impl, hash_file, image_index_cache_from_bytes,
         image_index_cache_to_bytes, import_epub_path_impl, library_path,
-        load_or_build_search_text_cache, mark_book_exported, normalize_non_square_pixel_png,
-        normalize_publication_date, normalize_unpacked_epub_structure,
-        open_external_epub_path_impl, parse_text_import_document, path_to_client_string,
-        read_image_index_cache, read_json_or_default, read_json_value_or_default,
-        read_search_text_sections_from_unpacked, replace_book_text_impl, replace_xhtml_text,
-        replace_xhtml_text_node, schedule_existing_delete_tombstone_cleanup,
-        search_text_cache_from_bytes, search_text_cache_to_bytes, search_text_in_cache,
-        settings_path, sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml,
-        text_section_xhtml, visible_search_text_from_xhtml, write_epub_from_original_and_unpacked,
+        load_or_build_search_text_cache, mark_book_exported, mark_library_book_content_updated,
+        normalize_non_square_pixel_png, normalize_publication_date,
+        normalize_unpacked_epub_structure, open_external_epub_path_impl,
+        parse_text_import_document, path_to_client_string, read_image_index_cache,
+        read_json_or_default, read_json_value_or_default, read_search_text_sections_from_unpacked,
+        replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node,
+        schedule_existing_delete_tombstone_cleanup, search_text_cache_from_bytes,
+        search_text_cache_to_bytes, search_text_in_cache, settings_path,
+        sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml, text_section_xhtml,
+        visible_search_text_from_xhtml, write_epub_from_original_and_unpacked,
         write_epub_from_unpacked_dir, write_image_index_cache_if_current, write_metadata,
         write_source_text_update, AppStorage, BookContentMode, BookExportFormat,
         BookReaderSourceMode, BookRecord, BookScope, BookSourceFormat, BookState,
@@ -3902,6 +3942,20 @@ mod tests {
             format!(r#"<?xml version="1.0" encoding="UTF-8"?><package>{marker}</package>"#),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn unchanged_unpacked_package_is_not_reported_as_normalized() {
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-normalize-noop-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        write_minimal_unpacked_package(&root, "unchanged");
+
+        assert!(!normalize_unpacked_epub_structure(&root).unwrap());
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     fn write_minimal_epub_file(path: &Path, title: &str, body: &str) {
@@ -6791,6 +6845,25 @@ mod tests {
         assert_eq!(book.exported_versions.get("txt"), Some(&3));
         assert!(book_is_export_dirty(&book, BookExportFormat::Epub));
         assert!(!book_is_export_dirty(&book, BookExportFormat::Txt));
+    }
+
+    #[test]
+    fn imported_content_repair_marks_epub_export_dirty() {
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-import-repair-dirty-test-{}",
+            std::process::id()
+        ));
+        let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
+
+        let updated = mark_library_book_content_updated(&storage, "book")
+            .unwrap()
+            .expect("library book should be updated");
+
+        assert_eq!(updated.content_version, 2);
+        assert!(updated.content_edited_at.is_some());
+        assert!(book_is_export_dirty(&updated, BookExportFormat::Epub));
+
+        let _ = fs::remove_dir_all(root);
     }
 
     fn test_library_book(source_format: BookSourceFormat) -> LibraryBook {
