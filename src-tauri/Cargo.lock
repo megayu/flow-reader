@@ -1029,6 +1029,7 @@ dependencies = [
  "flate2",
  "mdict-rs",
  "memmap2",
+ "png 0.17.16",
  "regex",
  "reqwest",
  "roxmltree",

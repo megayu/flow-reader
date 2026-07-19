@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    io::{BufReader, BufWriter, Read, Seek, Write},
+    io::{BufReader, BufWriter, Cursor, Read, Seek, Write},
     path::{Path, PathBuf},
 };
 
@@ -24,7 +24,12 @@ pub(super) struct EpubAccessInfo {
 
 struct ParsedEpubInfo {
     metadata: Value,
-    cover: Option<CoverInput>,
+    cover: Option<ParsedEpubCover>,
+}
+
+struct ParsedEpubCover {
+    input: CoverInput,
+    archive_path: Option<String>,
 }
 
 pub(super) fn inspect_epub_access(path: &Path) -> Result<EpubAccessInfo, String> {
@@ -1502,7 +1507,12 @@ fn parse_epub_info_result(path: &Path) -> Result<ParsedEpubInfo, String> {
     let opf_doc = roxmltree::Document::parse(&opf).map_err(|error| error.to_string())?;
     let metadata = parse_opf_metadata(&opf_doc);
     let cover = find_cover_input(&mut archive, &opf_doc, &opf_path).or_else(|| {
-        create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str()))
+        create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str())).map(
+            |input| ParsedEpubCover {
+                input,
+                archive_path: None,
+            },
+        )
     });
 
     Ok(ParsedEpubInfo { metadata, cover })
@@ -1534,11 +1544,18 @@ fn read_zip_bytes_with_path_candidates<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     name: &str,
 ) -> Result<Vec<u8>, String> {
+    read_zip_bytes_with_resolved_path(archive, name).map(|(data, _)| data)
+}
+
+fn read_zip_bytes_with_resolved_path<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    name: &str,
+) -> Result<(Vec<u8>, String), String> {
     let mut last_error = "EPUB entry not found".to_string();
 
     for candidate in zip_path_candidates(name) {
         match read_zip_bytes(archive, &candidate) {
-            Ok(data) => return Ok(data),
+            Ok(data) => return Ok((data, candidate)),
             Err(error) => {
                 last_error = error;
             }
@@ -1836,7 +1853,7 @@ fn find_cover_input<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     doc: &roxmltree::Document,
     opf_path: &str,
-) -> Option<CoverInput> {
+) -> Option<ParsedEpubCover> {
     let opf_parent = parent_zip_path(opf_path);
     let manifest = doc
         .descendants()
@@ -1897,7 +1914,7 @@ fn cover_input_from_manifest_item<R: Read + Seek>(
     opf_parent: &str,
     item: roxmltree::Node,
     manifest: &[OpfManifestItem],
-) -> Option<CoverInput> {
+) -> Option<ParsedEpubCover> {
     let (href, mime_type) = cover_item_to_path(item)?;
     if is_image_media_type(&mime_type) || image_extension_from_href(&href).is_some() {
         return read_cover_image_input(archive, opf_parent, &href, &mime_type);
@@ -1919,7 +1936,7 @@ fn cover_input_from_html_item<R: Read + Seek>(
     opf_parent: &str,
     item: &OpfManifestItem,
     manifest: &[OpfManifestItem],
-) -> Option<CoverInput> {
+) -> Option<ParsedEpubCover> {
     let html_path = normalize_zip_path(join_zip_path(opf_parent, &item.href));
     let html = read_zip_text_with_path_candidates(archive, &html_path).ok()?;
     let image_href = find_first_html_image_href(&html)?;
@@ -1954,22 +1971,79 @@ fn read_cover_image_input<R: Read + Seek>(
     parent: &str,
     href: &str,
     mime_type: &str,
-) -> Option<CoverInput> {
+) -> Option<ParsedEpubCover> {
     if !is_image_media_type(mime_type) && image_extension_from_href(href).is_none() {
         return None;
     }
 
     let cover_path = normalize_zip_path(join_zip_path(parent, href));
-    let data = read_zip_bytes_with_path_candidates(archive, &cover_path).ok()?;
-    Some(CoverInput {
-        mime_type: if mime_type.is_empty() {
-            mime_type_from_image_href(&cover_path).to_string()
-        } else {
-            mime_type.to_string()
+    let (data, resolved_cover_path) =
+        read_zip_bytes_with_resolved_path(archive, &cover_path).ok()?;
+    Some(ParsedEpubCover {
+        input: CoverInput {
+            mime_type: if mime_type.is_empty() {
+                mime_type_from_image_href(&cover_path).to_string()
+            } else {
+                mime_type.to_string()
+            },
+            extension: extension_from_path(&cover_path),
+            data,
         },
-        extension: extension_from_path(&cover_path),
-        data,
+        archive_path: Some(resolved_cover_path),
     })
+}
+
+pub(super) fn normalize_non_square_pixel_png(data: &[u8]) -> Option<Vec<u8>> {
+    let mut decoder = png::Decoder::new(Cursor::new(data));
+    decoder.set_transformations(png::Transformations::normalize_to_color8());
+    let mut reader = decoder.read_info().ok()?;
+    let info = reader.info();
+    let dimensions = info.pixel_dims?;
+    let (xppu, yppu) = (dimensions.xppu, dimensions.yppu);
+    if xppu == 0 || yppu == 0 || xppu == yppu {
+        return None;
+    }
+    let (source_width, height) = (info.width, info.height);
+    let target_width = u64::from(source_width)
+        .checked_mul(u64::from(yppu))?
+        .checked_add(u64::from(xppu) / 2)?
+        / u64::from(xppu);
+    let target_width = u32::try_from(target_width).ok()?;
+    if target_width == 0 || target_width == source_width {
+        return None;
+    }
+
+    let mut source = vec![0; reader.output_buffer_size()];
+    let frame = reader.next_frame(&mut source).ok()?;
+    source.truncate(frame.buffer_size());
+    let channels = match frame.color_type {
+        png::ColorType::Grayscale => 1,
+        png::ColorType::GrayscaleAlpha => 2,
+        png::ColorType::Rgb => 3,
+        png::ColorType::Rgba => 4,
+        png::ColorType::Indexed => return None,
+    };
+    let output_len = (target_width as usize)
+        .checked_mul(height as usize)?
+        .checked_mul(channels)?;
+    let mut resized = vec![0; output_len];
+    for row in 0..height as usize {
+        for x in 0..target_width as usize {
+            let source_x = x * source_width as usize / target_width as usize;
+            let from = (row * source_width as usize + source_x) * channels;
+            let to = (row * target_width as usize + x) * channels;
+            resized[to..to + channels].copy_from_slice(&source[from..from + channels]);
+        }
+    }
+
+    let mut output = Vec::new();
+    let mut encoder = png::Encoder::new(&mut output, target_width, height);
+    encoder.set_color(frame.color_type);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().ok()?;
+    writer.write_image_data(&resized).ok()?;
+    drop(writer);
+    Some(output)
 }
 
 fn find_first_html_image_href(html: &str) -> Option<String> {
@@ -2324,6 +2398,7 @@ pub(super) fn import_epub_path_impl(
                 external_promotion,
             } => (book, id, should_copy, external_promotion),
         };
+        let normalize_new_cover = should_copy && book.updated_at.is_none();
 
         let promotion = external_promotion
             .map(|promotion| {
@@ -2355,7 +2430,29 @@ pub(super) fn import_epub_path_impl(
                 fs::remove_file(&book_path).map_err(|error| error.to_string())?;
             }
             fs::rename(&temp_path, &book_path).map_err(|error| error.to_string())?;
-            write_cover(storage, &id, parsed.cover)?;
+            let mut cover = parsed.cover;
+            if normalize_new_cover && !access.flags.contains(&BookContentFlag::DeclaresEncryption) {
+                if let Some(parsed_cover) = cover.as_mut() {
+                    if parsed_cover.input.mime_type == "image/png"
+                        || parsed_cover.input.extension.eq_ignore_ascii_case("png")
+                    {
+                        if let (Some(archive_path), Some(normalized)) = (
+                            parsed_cover.archive_path.as_deref(),
+                            normalize_non_square_pixel_png(&parsed_cover.input.data),
+                        ) {
+                            unpack_epub(&book_path, &unpacked_dir)?;
+                            normalize_unpacked_epub_structure(&unpacked_dir)?;
+                            fs::write(
+                                unpacked_resource_path(&unpacked_dir, archive_path),
+                                &normalized,
+                            )
+                            .map_err(|error| error.to_string())?;
+                            parsed_cover.input.data = normalized;
+                        }
+                    }
+                }
+            }
+            write_cover(storage, &id, cover.map(|cover| cover.input))?;
         } else {
             remove_epub_import_temp(&temp_path);
         }

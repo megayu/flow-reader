@@ -39,13 +39,13 @@ use book_assets::{
     is_generated_text_cover, read_cover, remove_cover_files, write_cover, write_metadata,
 };
 
-#[cfg(test)]
-use epub_import::normalize_publication_date;
 use epub_import::{
     clean_xml_text, find_unpacked_opf_path, import_epub_path_impl, inspect_epub_access,
     join_zip_path, normalize_unpacked_epub_structure, normalize_zip_path,
     open_external_epub_path_impl, parent_zip_path, unpack_epub,
 };
+#[cfg(test)]
+use epub_import::{normalize_non_square_pixel_png, normalize_publication_date};
 
 #[cfg(test)]
 use image_index::{
@@ -3164,15 +3164,15 @@ mod tests {
         ensure_book_package_path_with_unpacker, export_book_impl, external_books_root,
         external_index_path, get_book_reader_source_impl, hash_file, image_index_cache_from_bytes,
         image_index_cache_to_bytes, import_epub_path_impl, library_path,
-        load_or_build_search_text_cache, mark_book_exported, normalize_publication_date,
-        normalize_unpacked_epub_structure, open_external_epub_path_impl,
-        parse_text_import_document, path_to_client_string, read_image_index_cache,
-        read_json_or_default, read_json_value_or_default, read_search_text_sections_from_unpacked,
-        replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node,
-        schedule_existing_delete_tombstone_cleanup, search_text_cache_from_bytes,
-        search_text_cache_to_bytes, search_text_in_cache, settings_path,
-        sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml, text_section_xhtml,
-        visible_search_text_from_xhtml, write_epub_from_original_and_unpacked,
+        load_or_build_search_text_cache, mark_book_exported, normalize_non_square_pixel_png,
+        normalize_publication_date, normalize_unpacked_epub_structure,
+        open_external_epub_path_impl, parse_text_import_document, path_to_client_string,
+        read_image_index_cache, read_json_or_default, read_json_value_or_default,
+        read_search_text_sections_from_unpacked, replace_book_text_impl, replace_xhtml_text,
+        replace_xhtml_text_node, schedule_existing_delete_tombstone_cleanup,
+        search_text_cache_from_bytes, search_text_cache_to_bytes, search_text_in_cache,
+        settings_path, sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml,
+        text_section_xhtml, visible_search_text_from_xhtml, write_epub_from_original_and_unpacked,
         write_epub_from_unpacked_dir, write_image_index_cache_if_current, write_metadata,
         write_source_text_update, AppStorage, BookContentMode, BookExportFormat,
         BookReaderSourceMode, BookRecord, BookScope, BookSourceFormat, BookState,
@@ -3200,6 +3200,38 @@ mod tests {
         time::{Duration, SystemTime, UNIX_EPOCH},
     };
     use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
+
+    fn synthetic_non_square_pixel_png() -> Vec<u8> {
+        let width = 4u32;
+        let height = 2u32;
+        let mut pixels = Vec::new();
+        for row in 0..height {
+            for column in 0..width {
+                pixels.extend_from_slice(&[(column * 50) as u8, (row * 100) as u8, 160]);
+            }
+        }
+        let mut output = Vec::new();
+        let mut encoder = png::Encoder::new(&mut output, width, height);
+        encoder.set_color(png::ColorType::Rgb);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder.set_pixel_dims(Some(png::PixelDimensions {
+            xppu: 2,
+            yppu: 1,
+            unit: png::Unit::Meter,
+        }));
+        let mut writer = encoder.write_header().unwrap();
+        writer.write_image_data(&pixels).unwrap();
+        drop(writer);
+        output
+    }
+
+    fn png_dimensions(bytes: &[u8]) -> (u32, u32) {
+        assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
+        (
+            u32::from_be_bytes(bytes[16..20].try_into().unwrap()),
+            u32::from_be_bytes(bytes[20..24].try_into().unwrap()),
+        )
+    }
 
     fn wait_until_next_epoch_second() {
         let start = SystemTime::now()
@@ -4488,6 +4520,13 @@ mod tests {
         assert!(!book_dir.join("cover.svg").exists());
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn normalizes_non_square_pixel_png_dimensions() {
+        let source_cover = synthetic_non_square_pixel_png();
+        let normalized = normalize_non_square_pixel_png(&source_cover).unwrap();
+        assert_eq!(png_dimensions(&normalized), (2, 2));
     }
 
     #[test]
