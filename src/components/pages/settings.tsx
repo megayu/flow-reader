@@ -204,6 +204,18 @@ export const Settings: React.FC<SettingsProps> = ({
               </Item>
               <AccentColorSetting />
               <UiFontSizeSetting />
+              <Item title={t('library_modified_indicator')}>
+                <SettingsCheckbox
+                  label={t('library_modified_indicator.enable')}
+                  checked={settings.showModifiedBookExportIndicator === true}
+                  onCheckedChange={(checked) => {
+                    setSettings((prev) => ({
+                      ...prev,
+                      showModifiedBookExportIndicator: checked,
+                    }))
+                  }}
+                />
+              </Item>
             </div>
           )}
           {activeTab === 'reading' && (

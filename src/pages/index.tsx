@@ -220,6 +220,12 @@ function isBookExportDirty(book: BookRecord, format: BookExportFormat) {
   )
 }
 
+function hasUnexportedBookChanges(book: BookRecord) {
+  return bookExportFormats(book).every((format) =>
+    isBookExportDirty(book, format),
+  )
+}
+
 function exportFormatExtension(format: BookExportFormat) {
   return format === 'txt' ? 'txt' : 'epub'
 }
@@ -1422,6 +1428,9 @@ const Library: React.FC<LibraryProps> = ({
               select={select}
               selected={has(book.id)}
               highlighted={highlightedBookIds.has(book.id)}
+              showModifiedExportIndicator={
+                settings.showModifiedBookExportIndicator === true
+              }
               onSelectBook={selectBook}
               onOpenBook={onOpenBook}
             />
@@ -1445,6 +1454,7 @@ interface BookProps {
   highlighted?: boolean
   select?: boolean
   selected?: boolean
+  showModifiedExportIndicator: boolean
   onSelectBook: (id: string, e: LibraryBookSelectionEvent) => void
   onOpenBook: () => void
 }
@@ -1454,6 +1464,7 @@ const Book: React.FC<BookProps> = ({
   highlighted,
   select,
   selected,
+  showModifiedExportIndicator,
   onSelectBook,
   onOpenBook,
 }) => {
@@ -1758,6 +1769,18 @@ const Book: React.FC<BookProps> = ({
               </div>
             </AppTooltip>
           )}
+          {showModifiedExportIndicator &&
+            !isArchiveOnlyBook(book) &&
+            hasUnexportedBookChanges(book) && (
+              <AppTooltip label={t('modified_export_indicator')}>
+                <div
+                  aria-label={t('modified_export_indicator')}
+                  className="absolute top-2 left-2 z-10 flex size-8 items-center justify-center rounded-lg bg-[var(--flow-accent)] text-[var(--flow-accent-text)] shadow-sm ring-1 ring-white/20 ring-inset"
+                >
+                  <DownloadIcon className="size-[18px]" />
+                </div>
+              </AppTooltip>
+            )}
           {!select && progressPercent !== undefined && (
             <BookProgress
               percent={progressPercent}

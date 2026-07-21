@@ -30,6 +30,7 @@ export default {
   'home.compat.archive_only': '原包模式',
   'home.compat.archive_only_description':
     '直接读取 EPUB 压缩包，正文编辑和修改导出不可用。',
+  'home.modified_export_indicator': '内容已修改，可导出',
   'home.edit.title': '标题',
   'home.edit.creator': '作者',
   'home.edit.dialog_title': '编辑书籍',
@@ -184,6 +185,8 @@ export default {
   'settings.tabs.shortcuts': '快捷键',
   'settings.language': '语言',
   'settings.ui_font_size': '界面字号',
+  'settings.library_modified_indicator': '图书馆修改提示',
+  'settings.library_modified_indicator.enable': '标记有未导出修改的图书',
   'settings.default_page_view': '默认视图',
   'settings.default_text_align': '默认对齐方式',
   'settings.restore_last_reading': '启动时恢复上次阅读',

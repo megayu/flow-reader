@@ -38,6 +38,7 @@ export interface Settings extends TypographyConfiguration {
   enableTextSelectionMenu?: boolean
   hideEndnotes?: boolean
   restoreLastReadingOnStartup?: boolean
+  showModifiedBookExportIndicator?: boolean
   startupSession?: StartupSession
   readerSidebarOpen?: boolean
   librarySidebarOpen?: boolean
@@ -160,6 +161,7 @@ export const defaultSettings: Settings = {
   translation: defaultTranslationSettings,
   enableTextSelectionMenu: true,
   hideEndnotes: false,
+  showModifiedBookExportIndicator: false,
   readerSidebarOpen: true,
   librarySidebarOpen: false,
   libraryDisplay: defaultLibraryDisplay,

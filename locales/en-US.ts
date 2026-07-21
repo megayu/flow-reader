@@ -30,6 +30,7 @@ export default {
   'home.compat.archive_only': 'Archive mode',
   'home.compat.archive_only_description':
     'Reads directly from the EPUB archive; text editing and modified export are unavailable.',
+  'home.modified_export_indicator': 'Modified content can be exported',
   'home.edit.title': 'Title',
   'home.edit.creator': 'Author',
   'home.edit.dialog_title': 'Edit book',
@@ -185,6 +186,9 @@ export default {
   'settings.tabs.shortcuts': 'Shortcuts',
   'settings.language': 'Language',
   'settings.ui_font_size': 'App Font Size',
+  'settings.library_modified_indicator': 'Library export reminder',
+  'settings.library_modified_indicator.enable':
+    'Mark books with unexported changes',
   'settings.default_page_view': 'Default View',
   'settings.default_text_align': 'Default Alignment',
   'settings.restore_last_reading': 'Restore last reading on startup',
