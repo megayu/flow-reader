@@ -29,15 +29,17 @@ const DefinitionPane: React.FC = () => {
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation('annotation')
   const definitions = focusedBookTab?.overlayState.definitions ?? []
-  const { outerRef, items, totalSize } = useList(definitions)
+  const { outerRef, items, scrollbar, totalSize } = useList(definitions)
 
   return (
     <Pane
-      className="scrollbar-visible"
       headline={t('definitions')}
       minSize={72}
+      overlayScroll
       preferredSize={120}
       ref={outerRef}
+      reserveScrollbarWidth
+      scrollbar={{ ...scrollbar, scrollRef: outerRef }}
       storageKey="flow-reader:pane:annotation:definitions"
     >
       <div className="relative" style={{ height: totalSize }}>
@@ -146,7 +148,7 @@ const AnnotationPane: React.FC = () => {
       }),
     [collapsedSections, groupedAnnotation, sectionIds],
   )
-  const { outerRef, items, totalSize } = useList(rows)
+  const { outerRef, items, scrollbar, totalSize } = useList(rows)
   const toggleSections = () => {
     setCollapsedSections(() => (expanded ? new Set(sectionIds) : new Set()))
   }
@@ -191,10 +193,12 @@ const AnnotationPane: React.FC = () => {
 
   return (
     <Pane
-      className="scrollbar-visible"
       headline={annotationT('annotations')}
       minSize={160}
+      overlayScroll
       ref={outerRef}
+      reserveScrollbarWidth
+      scrollbar={{ ...scrollbar, scrollRef: outerRef }}
       storageKey="flow-reader:pane:annotation:annotations"
       actions={
         annotations.length > 0

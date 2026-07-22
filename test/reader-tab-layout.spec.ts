@@ -1632,6 +1632,249 @@ test.beforeEach(async ({ page }, testInfo) => {
   ).toHaveCount(3)
 })
 
+test('applies overlay and reserved scrollbar width to the matching sidebars', async ({
+  page,
+}) => {
+  const activityBar = page.locator('.ActivityBar')
+  const sidebar = page.locator('.SideBar')
+
+  await page.setViewportSize({ width: 1000, height: 1200 })
+  await openFixtureBook(page, 0)
+  if (!(await sidebar.isVisible())) {
+    await activityBar.getByRole('button', { name: 'TOC' }).click()
+  }
+  await expect(sidebar).toBeVisible()
+
+  const tocPane = sidebar.locator('.Pane').last()
+  const tocScroll = tocPane.locator('[data-pane-scroll]')
+  await expect
+    .poll(() =>
+      tocScroll.evaluate((element) => ({
+        fullWidth: element.clientWidth === element.offsetWidth,
+        overflowing: element.scrollHeight > element.clientHeight,
+      })),
+    )
+    .toEqual({ fullWidth: true, overflowing: false })
+  await tocPane.hover()
+  await expect(tocPane.locator('[data-orientation="vertical"]')).toHaveCount(0)
+
+  await page.setViewportSize({ width: 1000, height: 420 })
+  await expect
+    .poll(() =>
+      tocScroll.evaluate((element) => ({
+        fullWidth: element.clientWidth === element.offsetWidth,
+        overflowing: element.scrollHeight > element.clientHeight,
+      })),
+    )
+    .toEqual({ fullWidth: true, overflowing: true })
+  await tocScroll.locator('.list-row').first().hover()
+  const scrollbar = tocPane.locator('[data-orientation="vertical"]')
+  await expect
+    .poll(() =>
+      scrollbar.evaluate((element) => getComputedStyle(element).opacity),
+    )
+    .toBe('1')
+  await expect
+    .poll(() =>
+      tocScroll.evaluate((element) => {
+        const row = element.querySelector('.list-row')
+        if (!row) return false
+        return (
+          Math.abs(
+            row.getBoundingClientRect().right -
+              element.getBoundingClientRect().right,
+          ) < 0.5
+        )
+      }),
+    )
+    .toBe(true)
+  const thumb = tocPane.locator('[data-pane-scrollbar-thumb]')
+  const thumbBox = await thumb.boundingBox()
+  if (!thumbBox) throw new Error('Missing TOC scrollbar thumb bounds')
+  expect(thumbBox.width).toBe(10)
+  const scrollTopBeforeDrag = await tocScroll.evaluate(
+    (element) => element.scrollTop,
+  )
+  await page.mouse.move(
+    thumbBox.x + thumbBox.width / 2,
+    thumbBox.y + thumbBox.height / 2,
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    thumbBox.x + thumbBox.width / 2,
+    thumbBox.y + thumbBox.height / 2 + 20,
+  )
+  await page.mouse.up()
+  await expect
+    .poll(() => tocScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(scrollTopBeforeDrag)
+  await page.mouse.move(500, 200)
+  await expect
+    .poll(() =>
+      scrollbar.evaluate((element) => getComputedStyle(element).opacity),
+    )
+    .toBe('0')
+  await page.setViewportSize({ width: 1000, height: 220 })
+
+  await page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    tab.keyword = 'needle'
+    tab.results = Array.from({ length: 8 }, (_, groupIndex) => ({
+      id: `group-${groupIndex}`,
+      excerpt: `Synthetic group ${groupIndex + 1}`,
+      expanded: groupIndex === 0,
+      subitems: Array.from({ length: 55 }, (_, resultIndex) => ({
+        id: `result-${groupIndex}-${resultIndex}`,
+        excerpt: `Synthetic needle result ${resultIndex + 1}`,
+      })),
+    }))
+    tab.activeResultID = 'result-0-0'
+  })
+  await activityBar.getByRole('button', { name: 'Search' }).click()
+  const searchScroll = sidebar.locator('[data-pane-scroll]').last()
+  const resultCount = searchScroll.getByText('55', { exact: true }).first()
+  await expect(resultCount).toBeVisible()
+  await resultCount.hover()
+  const selectedSearchRow = searchScroll.locator('[aria-current="true"]')
+  await expect(selectedSearchRow).toBeVisible()
+  await selectedSearchRow.click()
+  await expect
+    .poll(async () => {
+      const [scrollBox, countBox, clientWidth] = await Promise.all([
+        searchScroll.boundingBox(),
+        resultCount.boundingBox(),
+        searchScroll.evaluate((element) => element.clientWidth),
+      ])
+      if (!scrollBox || !countBox) return false
+      return countBox.x + countBox.width <= scrollBox.x + clientWidth - 10 + 0.5
+    })
+    .toBe(true)
+  await expect
+    .poll(() =>
+      searchScroll.evaluate((element) => {
+        const row = element.querySelector('[aria-current="true"]')
+        if (!row) return false
+        return (
+          Math.abs(
+            row.getBoundingClientRect().right -
+              element.getBoundingClientRect().right,
+          ) < 0.5
+        )
+      }),
+    )
+    .toBe(true)
+  await expect
+    .poll(() =>
+      searchScroll.evaluate(
+        (element) => element.clientWidth === element.offsetWidth,
+      ),
+    )
+    .toBe(true)
+  const searchScrollbar = searchScroll
+    .locator('..')
+    .locator('[data-orientation="vertical"]')
+  await expect(searchScrollbar).toHaveCSS('opacity', '1')
+  await expect
+    .poll(() =>
+      searchScrollbar.evaluate(
+        (element) => element.getBoundingClientRect().width,
+      ),
+    )
+    .toBe(10)
+
+  await page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    tab.updateBook({
+      definitions: Array.from(
+        { length: 20 },
+        (_, index) => `Synthetic definition ${index + 1}`,
+      ),
+    })
+  })
+  await activityBar.getByRole('button', { name: 'Annotation' }).click()
+  await expect
+    .poll(() =>
+      sidebar
+        .locator('[data-pane-scroll]')
+        .evaluateAll((elements) =>
+          elements.every(
+            (element) => element.offsetWidth === element.clientWidth,
+          ),
+        ),
+    )
+    .toBe(true)
+  const annotationScroll = sidebar.locator('[data-pane-scroll]').first()
+  await annotationScroll.locator('.list-row').first().hover()
+  await expect
+    .poll(() =>
+      annotationScroll.evaluate((element) => {
+        const row = element.querySelector('.list-row')
+        const action = row?.querySelector('.action')
+        if (!row || !action) return false
+        const scrollRight = element.getBoundingClientRect().right
+        return (
+          Math.abs(row.getBoundingClientRect().right - scrollRight) < 0.5 &&
+          action.getBoundingClientRect().right <= scrollRight - 10 + 0.5
+        )
+      }),
+    )
+    .toBe(true)
+  const annotationScrollbar = annotationScroll
+    .locator('..')
+    .locator('[data-orientation="vertical"]')
+  await expect(annotationScrollbar).toHaveCSS('opacity', '1')
+  await expect
+    .poll(() =>
+      annotationScrollbar.evaluate(
+        (element) => element.getBoundingClientRect().width,
+      ),
+    )
+    .toBe(10)
+
+  await activityBar.getByRole('button', { name: 'Image' }).click()
+  const imageScroll = sidebar.locator('[data-pane-scroll]').last()
+  await expect
+    .poll(() =>
+      imageScroll.evaluate(
+        (element) => element.offsetWidth === element.clientWidth,
+      ),
+    )
+    .toBe(true)
+  await imageScroll.locator('.list-row').first().hover()
+  await expect
+    .poll(() =>
+      imageScroll.evaluate((element) => {
+        const row = element.querySelector('.list-row')
+        const badge = row?.querySelector('.rounded-full')
+        if (!row || !badge) return false
+        const scrollRight = element.getBoundingClientRect().right
+        return (
+          Math.abs(row.getBoundingClientRect().right - scrollRight) < 0.5 &&
+          badge.getBoundingClientRect().right <= scrollRight - 10 + 0.5
+        )
+      }),
+    )
+    .toBe(true)
+  await imageScroll.locator('.list-row').first().click()
+  const selectedImage = imageScroll.locator('[data-image-result]').first()
+  await expect(selectedImage).toBeVisible()
+  await selectedImage.click()
+  await expect
+    .poll(() =>
+      imageScroll.evaluate((element) => {
+        const selected = element.querySelector('[data-image-result]')
+        const image = selected?.querySelector('img')
+        if (!selected || !image) return false
+        const scrollRight = element.getBoundingClientRect().right
+        return (
+          Math.abs(selected.getBoundingClientRect().right - scrollRight) <
+            0.5 && image.getBoundingClientRect().right <= scrollRight - 10 + 0.5
+        )
+      }),
+    )
+    .toBe(true)
+})
+
 test('long-book ignores stale fixed height for the flexible TOC pane', async ({
   page,
 }) => {
@@ -1648,7 +1891,7 @@ test('long-book ignores stale fixed height for the flexible TOC pane', async ({
 
   const geometry = await page.locator('.SideBar').evaluate((sidebar) => {
     const pane = Array.from(sidebar.querySelectorAll('.Pane')).at(-1)
-    const scroll = pane?.querySelector(':scope > .scroll')
+    const scroll = pane?.querySelector('[data-pane-scroll]')
     const rect = (element: Element | null | undefined) => {
       const value = element?.getBoundingClientRect()
       return value
@@ -1671,7 +1914,7 @@ test('long-book ignores stale fixed height for the flexible TOC pane', async ({
   const scroll = page
     .locator('.SideBar .Pane')
     .last()
-    .locator(':scope > .scroll')
+    .locator('[data-pane-scroll]')
   await expect(
     scroll.getByRole('button', { name: 'FLOW-CHAPTER-001' }),
   ).toBeVisible()

@@ -61,7 +61,7 @@ export const Row: React.FC<RowProps> = ({
       )}
       style={{
         paddingLeft: indent,
-        paddingRight: 0,
+        paddingRight: 'var(--flow-row-end-inset, 0px)',
         height: LIST_ITEM_SIZE,
       }}
       tabIndex={onClick ? -1 : undefined}

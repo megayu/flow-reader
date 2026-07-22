@@ -409,6 +409,9 @@ input[type='color']::-webkit-color-swatch {
 .scroll.scrollbar-visible::-webkit-scrollbar-thumb {
   @apply bg-muted-foreground/20 hover:bg-muted-foreground/30 active:bg-muted-foreground/40;
 }
+.sidebar-scroll-content-reserved {
+  --flow-row-end-inset: 10px;
+}
 .scroll-parent {
   @apply flex min-h-0 flex-col overflow-hidden;
 }

@@ -32,7 +32,7 @@ import {
 import { normalizeHrefPath, sameHref } from '@flow/reader/noteLinks'
 
 import { Row } from '../Row'
-import { PaneView, PaneViewProps } from '../base/PaneView'
+import { OverlayScroll, PaneView, PaneViewProps } from '../base/PaneView'
 
 const IMAGE_SCAN_CONCURRENCY = 4
 const IMAGE_LIST_OVERSCAN = 6
@@ -324,6 +324,11 @@ function useVirtualImageSections(
 
   return {
     outerRef,
+    scrollbar: {
+      scrollTop: viewport.scrollTop,
+      totalSize: totalSize + IMAGE_LIST_TOP_PADDING,
+      viewportHeight: viewport.height,
+    },
     setMeasuredHeight,
     totalSize,
     visibleItems,
@@ -500,7 +505,7 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
     setExpandedState({ keys: expandedKeys, mode })
   }
 
-  const { outerRef, setMeasuredHeight, totalSize, visibleItems } =
+  const { outerRef, scrollbar, setMeasuredHeight, totalSize, visibleItems } =
     useVirtualImageSections(sections, expandedKeys)
 
   const toggleSection = useCallback(
@@ -546,9 +551,12 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
             : `${visibleImageCount}/${allImages.length}`}
         </span>
       </div>
-      <div
+      <OverlayScroll
         ref={outerRef}
-        className="scroll scrollbar-visible text-muted-foreground min-h-0 flex-1 text-base"
+        className="text-muted-foreground text-base"
+        containerClassName="min-h-0 flex-1"
+        reserveScrollbarWidth
+        scrollbar={{ ...scrollbar, scrollRef: outerRef }}
       >
         {sections.length ? (
           <div
@@ -582,7 +590,7 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
             {t('image.empty')}
           </div>
         )}
-      </div>
+      </OverlayScroll>
     </div>
   )
 }
@@ -675,9 +683,10 @@ const Block: React.FC<BlockProps> = ({
             return (
               <button
                 type="button"
+                data-image-result="true"
                 key={`${src}:${image.index}`}
                 className={clsx(
-                  'focus:ring-ring block w-full cursor-pointer border-0 bg-transparent p-0 text-left outline-none focus:ring-1 focus:ring-inset',
+                  'focus:ring-ring block w-full cursor-pointer border-0 bg-transparent py-0 pr-2.5 pl-0 text-left outline-none focus:ring-1 focus:ring-inset',
                   active
                     ? 'flow-bg-active hover:bg-[var(--flow-bg-active-hover)]'
                     : 'hover:bg-[var(--flow-bg-control-hover)]',

@@ -10,7 +10,7 @@ import { flatTree } from '@flow/reader/models/tree'
 import { readerPageTooltipContentStyle } from '../AppTooltip'
 import { IconButton } from '../Button'
 import { Row } from '../Row'
-import { PaneView, PaneViewProps } from '../base/PaneView'
+import { OverlayScroll, PaneView, PaneViewProps } from '../base/PaneView'
 import { Input } from '../ui/input'
 
 // When inputting with IME and storing state in `valtio`,
@@ -129,7 +129,7 @@ const ResultList: React.FC<ResultListProps> = ({
     () => results.flatMap((r) => flatTree(r)) ?? [],
     [results],
   )
-  const { outerRef, items, totalSize } = useList(rows)
+  const { outerRef, items, scrollbar, totalSize } = useList(rows)
   const t = useTranslation('search')
 
   const sectionCount = results.length
@@ -142,7 +142,13 @@ const ResultList: React.FC<ResultListProps> = ({
           .replace('{n}', '' + resultCount)
           .replace('{m}', '' + sectionCount)}
       </div>
-      <div ref={outerRef} className="scroll scrollbar-visible flex-1">
+      <OverlayScroll
+        ref={outerRef}
+        className="text-muted-foreground text-base"
+        containerClassName="min-h-0 flex-1"
+        reserveScrollbarWidth
+        scrollbar={{ ...scrollbar, scrollRef: outerRef }}
+      >
         <div className="relative" style={{ height: totalSize }}>
           {items.map(({ index, start, size }) => (
             <div
@@ -161,7 +167,7 @@ const ResultList: React.FC<ResultListProps> = ({
             </div>
           ))}
         </div>
-      </div>
+      </OverlayScroll>
     </>
   )
 }

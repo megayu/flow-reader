@@ -59,7 +59,8 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
     () => books?.slice().sort(compareBookDisplayTitle) ?? [],
     [books],
   )
-  const { outerRef, items, scrollToItem, totalSize } = useList(sortedBooks)
+  const { outerRef, items, scrollbar, scrollToItem, totalSize } =
+    useList(sortedBooks)
   const openedBookIds = useMemo(
     () =>
       new Set(
@@ -90,7 +91,9 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
       ref={outerRef}
       headline={t('library')}
       minSize={120}
+      overlayScroll
       preferredSize={220}
+      scrollbar={{ ...scrollbar, scrollRef: outerRef }}
       storageKey="flow-reader:pane:toc:library"
     >
       <div className="relative" style={{ height: totalSize }}>
@@ -199,7 +202,11 @@ const EmptyTocPane: React.FC = () => {
   const t = useTranslation()
 
   return (
-    <Pane headline={t('toc.title')} storageKey="flow-reader:pane:toc:toc" />
+    <Pane
+      headline={t('toc.title')}
+      overlayScroll
+      storageKey="flow-reader:pane:toc:toc"
+    />
   )
 }
 
@@ -218,7 +225,7 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
     void tocVersion
     return flattenToc(toc)
   }, [toc, tocVersion])
-  const { outerRef, items, scrollToItem, totalSize } = useList(rows)
+  const { outerRef, items, scrollbar, scrollToItem, totalSize } = useList(rows)
   const expanded = toc?.some((r) => r.expanded)
   const currentNavItem = tabSnapshot.currentNavItem
   const currentKey = tocItemIdentity(currentNavItem)
@@ -243,6 +250,8 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
     <Pane
       headline={t('toc.title')}
       minSize={160}
+      overlayScroll
+      scrollbar={{ ...scrollbar, scrollRef: outerRef }}
       storageKey="flow-reader:pane:toc:toc"
       actions={[
         {

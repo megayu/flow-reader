@@ -609,7 +609,7 @@ export function DictionaryPopup({
           })}
         </ScrollAreaPrimitive.Viewport>
         <ScrollAreaPrimitive.Scrollbar
-          className="flex w-2.5 touch-none bg-transparent p-0.5 select-none"
+          className="flex w-2.5 touch-none bg-transparent select-none"
           orientation="vertical"
         >
           <ScrollAreaPrimitive.Thumb className="bg-muted-foreground/20 hover:bg-muted-foreground/30 active:bg-muted-foreground/40 relative flex-1 rounded-full" />

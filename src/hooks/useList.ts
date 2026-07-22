@@ -147,5 +147,15 @@ export function useList(array: Readonly<any[]> = []) {
     [array.length, totalSize],
   )
 
-  return { outerRef, items, scrollToItem, totalSize }
+  return {
+    outerRef,
+    items,
+    scrollbar: {
+      scrollTop: viewport.scrollTop,
+      totalSize,
+      viewportHeight: viewport.height,
+    },
+    scrollToItem,
+    totalSize,
+  }
 }
