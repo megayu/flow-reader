@@ -27,7 +27,7 @@ import { useSetViewMode } from '@flow/reader/state'
 
 import { AppTooltip, readerPageTooltipContentStyle } from '../AppTooltip'
 import { BookTooltipContent } from '../BookTooltipContent'
-import { Twisty } from '../Row'
+import { TREE_INDENT_SIZE, Twisty } from '../Row'
 import { Pane, PaneView, PaneViewProps } from '../base/PaneView'
 import { StateLayer } from '../base/StateLayer'
 
@@ -342,7 +342,7 @@ const TocRow: React.FC<TocRowProps> = memo(
     const { label, subitems, href = '' } = item
     const hasSubitems = !!subitems?.length
     const title = label.trim()
-    const indent = Math.max(0, depth - 1) * 20
+    const indent = Math.max(0, depth - 1) * TREE_INDENT_SIZE
     const toggleItem = () => {
       tab.toggleNavItem({
         id: item.id,

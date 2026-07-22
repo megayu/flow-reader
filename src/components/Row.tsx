@@ -10,6 +10,8 @@ import { AppTooltip } from './AppTooltip'
 import { IconButton } from './Button'
 import { StateLayer } from './base/StateLayer'
 
+export const TREE_INDENT_SIZE = 10
+
 interface RowProps extends ComponentProps<'div'> {
   expanded?: boolean
   active?: boolean
@@ -47,7 +49,7 @@ export const Row: React.FC<RowProps> = ({
   const childCount = subitems?.length
   const t = children || label || title
   const tooltip = typeof title === 'string' ? title : undefined
-  const indent = Math.max(0, depth - 1) * 20
+  const indent = Math.max(0, depth - 1) * TREE_INDENT_SIZE
   const row = (
     <div
       aria-label={tooltip}
