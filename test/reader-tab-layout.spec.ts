@@ -2881,6 +2881,97 @@ test('[vertical-rl] keeps a clicked sidebar search result active and visible', a
   await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
 })
 
+test('[vertical-rl] locates and expands the current search-result chapter', async ({
+  page,
+}) => {
+  await openVerticalFixtureBook(page)
+  await page.locator('.ActivityBar button[aria-label="Search"]').click()
+
+  const setSearchResults = async (targetResultCount: number) => {
+    await page.evaluate((resultCount) => {
+      const tab = (window as any).reader.focusedBookTab
+      const currentSectionIndex = tab.currentSection?.index ?? 0
+      const groups = Array.from({ length: 9 }, (_, groupIndex) => ({
+        id: `locate-group-${groupIndex}`,
+        excerpt:
+          groupIndex === 8
+            ? 'Current locate chapter'
+            : `Earlier chapter ${groupIndex}`,
+        sectionIndex:
+          groupIndex === 8
+            ? currentSectionIndex
+            : currentSectionIndex + groupIndex + 1,
+        expanded: groupIndex !== 8,
+        subitems: Array.from(
+          { length: groupIndex === 8 ? resultCount : 2 },
+          (_, resultIndex) => ({
+            id: `locate-result-${groupIndex}-${resultIndex}`,
+            excerpt: `Locate result ${groupIndex}-${resultIndex}`,
+            occurrence: resultIndex,
+          }),
+        ),
+      }))
+
+      tab.keyword = 'Locate result'
+      tab.results = groups
+    }, targetResultCount)
+  }
+
+  const sidebar = page.locator('.SideBar')
+  const searchScroll = sidebar.locator('[data-pane-scroll]').last()
+  const locate = sidebar.getByRole('button', { name: 'Locate Current Page' })
+
+  await setSearchResults(3)
+  await searchScroll.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await locate.click()
+
+  await expect(page.getByLabel('Locate result 8-2')).toBeVisible()
+  const smallGroupVisibility = await searchScroll.evaluate((element) => {
+    const group = element.querySelector('[aria-label="Current locate chapter"]')
+    const lastResult = element.querySelector('[aria-label="Locate result 8-2"]')
+    if (!group || !lastResult) return null
+
+    const viewport = element.getBoundingClientRect()
+    const groupRect = group.getBoundingClientRect()
+    const resultRect = lastResult.getBoundingClientRect()
+    return {
+      groupTop: groupRect.top,
+      resultBottom: resultRect.bottom,
+      scrollTop: element.scrollTop,
+      viewportBottom: viewport.bottom,
+      viewportTop: viewport.top,
+    }
+  })
+  expect(smallGroupVisibility).toMatchObject({
+    groupTop: expect.any(Number),
+  })
+  expect(smallGroupVisibility!.groupTop).toBeGreaterThanOrEqual(
+    smallGroupVisibility!.viewportTop - 1,
+  )
+  expect(smallGroupVisibility!.resultBottom).toBeLessThanOrEqual(
+    smallGroupVisibility!.viewportBottom + 1,
+  )
+
+  await setSearchResults(30)
+  await searchScroll.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await locate.click()
+
+  await expect(page.getByLabel('Locate result 8-0')).toBeVisible()
+  const largeGroupTopOffset = await searchScroll.evaluate((element) => {
+    const group = element.querySelector('[aria-label="Current locate chapter"]')
+    if (!group) return Number.POSITIVE_INFINITY
+
+    return (
+      group.getBoundingClientRect().top - element.getBoundingClientRect().top
+    )
+  })
+  expect(Math.abs(largeGroupTopOffset)).toBeLessThan(1)
+})
+
 test('[vertical-rl] keeps one physical page frame in single-page and zoomed layouts', async ({
   page,
 }) => {
