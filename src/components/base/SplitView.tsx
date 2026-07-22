@@ -72,6 +72,14 @@ function useSize(
   const sizeRef = useRef(size)
   useLayoutEffect(() => {
     if (!storageKey) return
+    if (preferredSize === undefined) {
+      if (sizeRef.current === undefined) return
+
+      sizeRef.current = undefined
+      setSize(undefined)
+      return
+    }
+
     const stored = window.localStorage.getItem(storageKey)
     const parsed = stored ? Number(stored) : Number.NaN
     const restoredSize = Number.isFinite(parsed)

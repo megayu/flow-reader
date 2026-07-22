@@ -47,6 +47,32 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('#layout')).toBeVisible()
 })
 
+test('uses the app display language for the global UI font family', async ({
+  page,
+}) => {
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en-US')
+  await expect
+    .poll(() =>
+      page
+        .locator('#layout')
+        .evaluate((element) => getComputedStyle(element).fontFamily),
+    )
+    .toBe('Roboto, sans-serif')
+
+  const dialog = await openSettings(page)
+  await dialog.getByRole('combobox', { name: 'Language' }).click()
+  await page.getByRole('option', { name: '简体中文' }).click()
+
+  await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN')
+  await expect
+    .poll(() =>
+      page
+        .locator('#layout')
+        .evaluate((element) => getComputedStyle(element).fontFamily),
+    )
+    .toContain('Microsoft YaHei UI')
+})
+
 test('configures one shared main language, secondary language, and translation service', async ({
   page,
 }) => {

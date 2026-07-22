@@ -1632,6 +1632,60 @@ test.beforeEach(async ({ page }, testInfo) => {
   ).toHaveCount(3)
 })
 
+test('long-book ignores stale fixed height for the flexible TOC pane', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await page.evaluate(() => {
+    window.localStorage.setItem('flow-reader:pane:toc:toc', '1800')
+  })
+  await page.reload()
+  await expect(
+    page.locator('ul.grid [data-flow-library-book-card]'),
+  ).toHaveCount(3)
+  await openFixtureBook(page, 0)
+  await expect(page.locator('.SideBar .Pane').last()).toBeVisible()
+
+  const geometry = await page.locator('.SideBar').evaluate((sidebar) => {
+    const pane = Array.from(sidebar.querySelectorAll('.Pane')).at(-1)
+    const scroll = pane?.querySelector(':scope > .scroll')
+    const rect = (element: Element | null | undefined) => {
+      const value = element?.getBoundingClientRect()
+      return value
+        ? { bottom: value.bottom, height: value.height, top: value.top }
+        : undefined
+    }
+    return {
+      pane: rect(pane),
+      scroll: rect(scroll),
+      sidebar: rect(sidebar),
+    }
+  })
+  expect(geometry.pane?.bottom).toBeLessThanOrEqual(
+    (geometry.sidebar?.bottom ?? 0) + 0.5,
+  )
+  expect(geometry.scroll?.bottom).toBeLessThanOrEqual(
+    (geometry.sidebar?.bottom ?? 0) + 0.5,
+  )
+
+  const scroll = page
+    .locator('.SideBar .Pane')
+    .last()
+    .locator(':scope > .scroll')
+  await expect(
+    scroll.getByRole('button', { name: 'FLOW-CHAPTER-001' }),
+  ).toBeVisible()
+  await expect
+    .poll(() => scroll.evaluate((element) => element.scrollHeight))
+    .toBe(620 * 24)
+  await scroll.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await expect(
+    scroll.getByRole('button', { name: 'FLOW-CHAPTER-620' }),
+  ).toBeVisible()
+})
+
 async function openVerticalFixtureBook(page: Page) {
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })

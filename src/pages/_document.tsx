@@ -1,11 +1,13 @@
 import { Html, Head, Main, NextScript } from 'next/document'
 
+import { defaultLocale } from '../../locales'
+
 export default function Document() {
   return (
     // https://github.com/vercel/next.js/issues/10285
     // Next injects `<style data-next-hide-fouc="true">body{display:none}</style>`,
     // so we should set background on `html`
-    <Html className="bg-background">
+    <Html className="bg-background" lang={defaultLocale}>
       <Head>
         <PreventFlash />
       </Head>
