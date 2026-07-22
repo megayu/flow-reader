@@ -31,7 +31,6 @@ const exactLanguageAliases: Partial<
   pl: ['pl', 'pol', 'polish', 'polski'],
   pt: ['pt', 'por', 'portuguese', 'português'],
   ru: ['ru', 'rus', 'russian', 'русский'],
-  uk: ['uk', 'ukr', 'ukrainian', 'українська'],
 }
 
 export function normalizeDictionaryLanguage(
@@ -127,9 +126,7 @@ function scriptsMatchLanguage(
   if (language === 'zh') return isExactScriptSet(scripts, ['han'])
   if (language === 'ja') return isJapaneseScriptSet(scripts)
   if (language === 'ko') return isKoreanScriptSet(scripts)
-  if (language === 'ru' || language === 'uk') {
-    return isExactScriptSet(scripts, ['cyrillic'])
-  }
+  if (language === 'ru') return isExactScriptSet(scripts, ['cyrillic'])
   return isExactScriptSet(scripts, ['latin'])
 }
 

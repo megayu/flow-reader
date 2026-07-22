@@ -1,8 +1,9 @@
 import clsx from 'clsx'
 import type { CSSProperties, ReactNode } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
+import { openSupportedExternalUrl } from '@flow/reader/externalLink'
 import { useAccentColor } from '@flow/reader/hooks/theme/useSourceColor'
 import { useLocale } from '@flow/reader/hooks/useLocale'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
@@ -112,6 +113,7 @@ const TEXTAREA_SIZE_STYLE = {
   maxHeight: '22rem',
   minHeight: '8.5rem',
 } satisfies CSSProperties
+const REGEX_TESTER_URL = 'https://regex101.com/?flavor=rust'
 
 export const Settings: React.FC<SettingsProps> = ({
   onPopupOpenChange,
@@ -204,9 +206,14 @@ export const Settings: React.FC<SettingsProps> = ({
               </Item>
               <AccentColorSetting />
               <UiFontSizeSetting />
-              <Item title={t('source_storage')}>
+              <Item
+                title={t('source_storage')}
+                description={t('source_storage.description')}
+                controlId="settings-source-storage"
+              >
                 <SettingsCheckbox
-                  label={t('source_storage.reference')}
+                  id="settings-source-storage"
+                  label={t('source_storage')}
                   checked={settings.importSourceStorage === 'referenced'}
                   onCheckedChange={(checked) => {
                     setSettings((prev) => ({
@@ -216,9 +223,14 @@ export const Settings: React.FC<SettingsProps> = ({
                   }}
                 />
               </Item>
-              <Item title={t('library_modified_indicator')}>
+              <Item
+                title={t('library_modified_indicator')}
+                description={t('library_modified_indicator.description')}
+                controlId="settings-library-export-reminder"
+              >
                 <SettingsCheckbox
-                  label={t('library_modified_indicator.enable')}
+                  id="settings-library-export-reminder"
+                  label={t('library_modified_indicator')}
                   checked={settings.showModifiedBookExportIndicator === true}
                   onCheckedChange={(checked) => {
                     setSettings((prev) => ({
@@ -232,7 +244,10 @@ export const Settings: React.FC<SettingsProps> = ({
           )}
           {activeTab === 'reading' && (
             <div data-flow-settings-panel className="m-0 space-y-5">
-              <Item title={t('default_page_view')}>
+              <Item
+                title={t('default_page_view')}
+                description={t('default_page_view.description')}
+              >
                 <SegmentedField
                   value={settings.spread ?? RenditionSpread.Auto}
                   options={[
@@ -253,7 +268,10 @@ export const Settings: React.FC<SettingsProps> = ({
                   }}
                 />
               </Item>
-              <Item title={t('default_text_align')}>
+              <Item
+                title={t('default_text_align')}
+                description={t('default_text_align.description')}
+              >
                 <SegmentedField
                   value={settings.textAlign ?? 'default'}
                   options={[
@@ -274,9 +292,14 @@ export const Settings: React.FC<SettingsProps> = ({
                   }}
                 />
               </Item>
-              <Item title={t('restore_last_reading')}>
+              <Item
+                title={t('restore_last_reading')}
+                description={t('restore_last_reading.description')}
+                controlId="settings-restore-last-reading"
+              >
                 <SettingsCheckbox
-                  label={t('restore_last_reading.enable')}
+                  id="settings-restore-last-reading"
+                  label={t('restore_last_reading')}
                   checked={settings.restoreLastReadingOnStartup === true}
                   onCheckedChange={(checked) => {
                     setSettings({
@@ -286,9 +309,14 @@ export const Settings: React.FC<SettingsProps> = ({
                   }}
                 />
               </Item>
-              <Item title={t('text_selection_menu')}>
+              <Item
+                title={t('text_selection_menu')}
+                description={t('text_selection_menu.description')}
+                controlId="settings-text-selection-menu"
+              >
                 <SettingsCheckbox
-                  label={t('text_selection_menu.enable')}
+                  id="settings-text-selection-menu"
+                  label={t('text_selection_menu')}
                   checked={settings.enableTextSelectionMenu !== false}
                   onCheckedChange={(checked) => {
                     setSettings({
@@ -298,9 +326,14 @@ export const Settings: React.FC<SettingsProps> = ({
                   }}
                 />
               </Item>
-              <Item title={t('hide_endnotes')}>
+              <Item
+                title={t('hide_endnotes')}
+                description={t('hide_endnotes.description')}
+                controlId="settings-hide-endnotes"
+              >
                 <SettingsCheckbox
-                  label={t('hide_endnotes.enable')}
+                  id="settings-hide-endnotes"
+                  label={t('hide_endnotes')}
                   checked={settings.hideEndnotes === true}
                   onCheckedChange={(checked) => {
                     setSettings({
@@ -313,8 +346,14 @@ export const Settings: React.FC<SettingsProps> = ({
             </div>
           )}
           {activeTab === 'txt' && (
-            <div data-flow-settings-panel className="m-0 space-y-5">
-              <Item title={t('txt_import.group_rules')}>
+            <div data-flow-settings-panel className="m-0 space-y-4">
+              <Item
+                title={t('txt_import.group_rules')}
+                description={
+                  <RegexDescription descriptionKey="txt_import.group_rules.description" />
+                }
+                wideControl
+              >
                 <PatternTextarea
                   label={t('txt_import.group_rules')}
                   value={textImportRules.groupPatterns}
@@ -323,7 +362,13 @@ export const Settings: React.FC<SettingsProps> = ({
                   }
                 />
               </Item>
-              <Item title={t('txt_import.chapter_rules')}>
+              <Item
+                title={t('txt_import.chapter_rules')}
+                description={
+                  <RegexDescription descriptionKey="txt_import.chapter_rules.description" />
+                }
+                wideControl
+              >
                 <PatternTextarea
                   label={t('txt_import.chapter_rules')}
                   value={textImportRules.chapterPatterns}
@@ -447,21 +492,30 @@ function TranslationSettings({
 
   return (
     <div data-flow-settings-panel className="m-0 space-y-5">
-      <Item title={t('main_language')}>
+      <Item
+        title={t('main_language')}
+        description={t('main_language.description')}
+      >
         {languageSelect(
           t('main_language'),
           translation.mainLanguage,
           'mainLanguage',
         )}
       </Item>
-      <Item title={t('secondary_language')}>
+      <Item
+        title={t('secondary_language')}
+        description={t('secondary_language.description')}
+      >
         {languageSelect(
           t('secondary_language'),
           translation.secondaryLanguage,
           'secondaryLanguage',
         )}
       </Item>
-      <Item title={t('default_provider')}>
+      <Item
+        title={t('default_provider')}
+        description={t('default_provider.description')}
+      >
         <SegmentedField
           value={translation.defaultProvider}
           options={[
@@ -545,6 +599,40 @@ function parsePatternText(value: string) {
   return patterns
 }
 
+function RegexDescription({ descriptionKey }: { descriptionKey: string }) {
+  const t = useTranslation('settings')
+
+  return renderRichText(t(descriptionKey), {
+    regex: (
+      <button
+        type="button"
+        className="cursor-pointer text-[var(--flow-accent)] underline decoration-current/50 underline-offset-2 hover:decoration-current"
+        onClick={() => {
+          void openSupportedExternalUrl(REGEX_TESTER_URL).catch(() => undefined)
+        }}
+      >
+        {t('txt_import.regular_expression')}
+      </button>
+    ),
+  })
+}
+
+function renderRichText(
+  message: string,
+  replacements: Record<string, ReactNode>,
+) {
+  return message.split(/(\{[a-z][a-z0-9_]*\})/g).map((part, index) => {
+    const name = part.match(/^\{(.+)\}$/)?.[1]
+    const replacement = name ? replacements[name] : undefined
+
+    return (
+      <Fragment key={index}>
+        {replacement === undefined ? part : replacement}
+      </Fragment>
+    )
+  })
+}
+
 interface SegmentedFieldOption<T extends string> {
   label: string
   value: T
@@ -591,11 +679,15 @@ const AccentColorSetting: React.FC = () => {
   const [open, setOpen] = useState(false)
   const [displayColor, setDisplayColor] = useState(accentColor)
   const t = useTranslation('theme')
+  const settingsT = useTranslation('settings')
 
   const color = normalizeHexColor(displayColor) ?? accentColor
 
   return (
-    <Item title={t('source_color')}>
+    <Item
+      title={t('source_color')}
+      description={settingsT('accent_color.description')}
+    >
       <div className="relative inline-block">
         <button
           type="button"
@@ -650,7 +742,7 @@ const UiFontSizeSetting: React.FC = () => {
   }
 
   return (
-    <Item title={t('ui_font_size')}>
+    <Item title={t('ui_font_size')} description={t('ui_font_size.description')}>
       <div className="border-input focus-within:border-ring focus-within:ring-ring/50 dark:bg-input/30 flex h-8 w-24 overflow-hidden rounded-lg border bg-transparent transition-colors focus-within:ring-3">
         <input
           type="text"
@@ -691,35 +783,74 @@ const UiFontSizeSetting: React.FC = () => {
 
 interface SettingsCheckboxProps {
   checked: boolean
+  id: string
   label: string
   onCheckedChange: (checked: boolean) => void
 }
 
 const SettingsCheckbox: React.FC<SettingsCheckboxProps> = ({
   checked,
+  id,
   label,
   onCheckedChange,
 }) => {
   return (
-    <label className="text-muted-foreground inline-flex items-center gap-2 text-base">
-      <UiCheckbox
-        checked={checked}
-        onCheckedChange={(value) => onCheckedChange(value === true)}
-      />
-      <span>{label}</span>
-    </label>
+    <UiCheckbox
+      id={id}
+      aria-label={label}
+      className="size-5 after:inset-x-0"
+      checked={checked}
+      onCheckedChange={(value) => onCheckedChange(value === true)}
+    />
   )
 }
 
 interface PartProps {
   children?: ReactNode
+  controlId?: string
+  description?: ReactNode
   title: string
+  wideControl?: boolean
 }
-const Item: React.FC<PartProps> = ({ title, children }) => {
+const Item: React.FC<PartProps> = ({
+  title,
+  children,
+  controlId,
+  description,
+  wideControl = false,
+}) => {
+  const information = (
+    <>
+      <h3 className="text-base leading-tight font-semibold text-[var(--flow-text)]">
+        {title}
+      </h3>
+      {description && (
+        <p className="text-muted-foreground mt-0 py-0 text-sm leading-snug">
+          {description}
+        </p>
+      )}
+    </>
+  )
+
   return (
-    <div className="grid grid-cols-[10rem_minmax(0,1fr)] items-center gap-2">
-      <h3 className="text-muted-foreground text-base font-semibold">{title}</h3>
-      <div className="min-w-0">{children}</div>
+    <div
+      className={clsx(
+        'grid min-h-8 items-center gap-x-6',
+        wideControl
+          ? 'grid-cols-[minmax(0,1fr)_minmax(14rem,28rem)]'
+          : 'grid-cols-[minmax(0,1fr)_auto]',
+      )}
+    >
+      {controlId ? (
+        <label htmlFor={controlId} className="min-w-0 cursor-pointer">
+          {information}
+        </label>
+      ) : (
+        <div className="min-w-0">{information}</div>
+      )}
+      <div className="flex min-h-8 min-w-0 items-center justify-end">
+        {children}
+      </div>
     </div>
   )
 }

@@ -98,7 +98,6 @@ test('configures one shared main language, secondary language, and translation s
     'Polski',
     'Português',
     'Русский',
-    'Українська',
     '日本語',
     '한국어',
     '繁體中文',

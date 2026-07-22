@@ -35,8 +35,8 @@ pub enum DictionaryLanguage {
     Pl,
     Pt,
     Ru,
-    Uk,
     Zh,
+    #[serde(other)]
     Unknown,
 }
 
@@ -678,7 +678,6 @@ fn dictionary_language(value: &str) -> Option<DictionaryLanguage> {
         "pl" => Some(DictionaryLanguage::Pl),
         "pt" => Some(DictionaryLanguage::Pt),
         "ru" => Some(DictionaryLanguage::Ru),
-        "uk" => Some(DictionaryLanguage::Uk),
         "zh" => Some(DictionaryLanguage::Zh),
         _ => None,
     }

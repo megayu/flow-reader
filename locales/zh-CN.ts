@@ -190,29 +190,52 @@ export default {
   'settings.tabs.txt': 'TXT',
   'settings.tabs.shortcuts': '快捷键',
   'settings.translation.main_language': '主语言',
+  'settings.translation.main_language.description':
+    '所选文本不是主语言时，默认翻译为主语言。',
   'settings.translation.secondary_language': '次语言',
+  'settings.translation.secondary_language.description':
+    '所选文本是主语言时，默认翻译为次语言。',
   'settings.translation.default_provider': '默认翻译服务',
+  'settings.translation.default_provider.description':
+    '翻译窗口打开时默认使用此服务。',
   'settings.language': '语言',
   'settings.ui_font_size': '界面字号',
-  'settings.source_storage': '原文件处理',
-  'settings.source_storage.reference': '导入时不复制原文件',
-  'settings.library_modified_indicator': '图书馆修改提示',
-  'settings.library_modified_indicator.enable': '标记有未导出修改的图书',
+  'settings.ui_font_size.description':
+    '仅调整应用界面的文字大小，不影响阅读正文。',
+  'settings.accent_color.description':
+    '用于突出显示选中、活动、焦点等界面状态。',
+  'settings.source_storage': '导入时不复制原文件',
+  'settings.source_storage.description':
+    '直接使用原文件，不在图书馆中保存副本；原文件移动、重命名或删除后，图书可能无法打开。',
+  'settings.library_modified_indicator': '显示图书馆导出提醒',
+  'settings.library_modified_indicator.description':
+    '正文修改后尚未导出的图书会显示标记。',
   'settings.default_page_view': '默认视图',
+  'settings.default_page_view.description':
+    '未为图书单独设置页面视图时，使用此设置。',
   'settings.default_text_align': '默认对齐方式',
+  'settings.default_text_align.description':
+    '未为图书单独设置对齐方式时，使用此设置；选择“缺省”会沿用图书原有的对齐方式。',
   'settings.restore_last_reading': '启动时恢复上次阅读',
-  'settings.restore_last_reading.enable': '启用',
-  'settings.text_selection_menu': '选中文本自动显示菜单',
-  'settings.text_selection_menu.enable': '启用',
-  'settings.hide_endnotes': '尾注',
-  'settings.hide_endnotes.enable': '隐藏尾注',
+  'settings.restore_last_reading.description':
+    '启动 Flow Reader 时，自动打开上次阅读的图书。',
+  'settings.text_selection_menu': '自动显示文本选择菜单',
+  'settings.text_selection_menu.description':
+    '关闭后，选中文本不会自动弹出菜单，仍可通过右键打开。',
+  'settings.hide_endnotes': '隐藏尾注',
+  'settings.hide_endnotes.description': '在阅读页面中隐藏识别为尾注的内容。',
   'settings.txt_import.group_rules': '分组规则',
+  'settings.txt_import.group_rules.description':
+    '每行输入一个{regex}，匹配的标题会作为卷、部或篇等顶层分组。',
   'settings.txt_import.chapter_rules': '章节规则',
+  'settings.txt_import.chapter_rules.description':
+    '每行输入一个{regex}，匹配的标题会作为当前分组下的章节。',
+  'settings.txt_import.regular_expression': '正则表达式',
   'settings.txt_import.restore_defaults': '恢复默认规则',
-  'settings.dictionary.get_api_key': '获取免费 API key',
+  'settings.dictionary.get_api_key': '获取免费 API Key',
   'settings.dictionary.sources_title': '词典来源',
   'settings.dictionary.sources_description':
-    '选择 .ifo 或 .mdx 主文件添加本地词典；配套文件需与主文件同名并放在同一文件夹。建议每部词典使用独立文件夹。',
+    '选择 .ifo 或 .mdx 主文件添加本地词典。配套文件需与主文件同名，并存放在同一文件夹中。建议每部词典使用独立文件夹。',
   'settings.dictionary.online': '在线',
   'settings.dictionary.configured': '已配置',
   'settings.dictionary.not_configured': '未配置',

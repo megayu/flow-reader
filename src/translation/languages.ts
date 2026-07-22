@@ -8,7 +8,6 @@ export const TRANSLATION_LANGUAGES = [
   { id: 'pl', label: 'Polski' },
   { id: 'pt', label: 'Português' },
   { id: 'ru', label: 'Русский' },
-  { id: 'uk', label: 'Українська' },
   { id: 'ja', label: '日本語' },
   { id: 'ko', label: '한국어' },
   { id: 'zh-Hans', label: '简体中文' },

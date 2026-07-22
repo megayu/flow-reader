@@ -8,7 +8,6 @@ export const supportedDictionaryLanguages = [
   'pt',
   'it',
   'pl',
-  'uk',
   'nl',
   'ja',
   'ko',

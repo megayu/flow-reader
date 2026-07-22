@@ -53,7 +53,6 @@ const languageLabels: Record<LocalDictionaryLanguage, string> = {
   pl: 'Polski',
   pt: 'Português',
   ru: 'Русский',
-  uk: 'Українська',
   zh: '中文',
 }
 
@@ -373,7 +372,7 @@ export function LocalDictionarySettings({
         }
       }}
     >
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1">
         <h3 className="text-base font-semibold">
           {t('dictionary.sources_title')}
         </h3>

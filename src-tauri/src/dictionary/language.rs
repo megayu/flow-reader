@@ -27,7 +27,6 @@ pub(super) fn infer_language(value: &str) -> Option<String> {
         "pl" | "pol" | "polish" | "polski" => Some("pl"),
         "pt" | "por" | "portuguese" | "português" => Some("pt"),
         "ru" | "rus" | "russian" | "русский" => Some("ru"),
-        "uk" | "ukr" | "ukrainian" | "українська" => Some("uk"),
         _ => None,
     }
     .map(str::to_string)
@@ -42,8 +41,6 @@ mod tests {
         assert_eq!(infer_language("zh_Hant"), Some("zh".to_string()));
         assert_eq!(infer_language("English"), Some("en".to_string()));
         assert_eq!(infer_language("Français"), Some("fr".to_string()));
-        assert_eq!(infer_language("Українська"), Some("uk".to_string()));
         assert_eq!(infer_language("fr-FR"), None);
-        assert_eq!(infer_language("uk-UA"), None);
     }
 }

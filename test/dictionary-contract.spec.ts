@@ -60,7 +60,6 @@ test.describe('dictionary query contract', () => {
     expect(classifyDictionaryQuery('空を見る', 'ja')).toBe('ja')
     expect(classifyDictionaryQuery('été', 'fr')).toBe('fr')
     expect(classifyDictionaryQuery('e\u0301te\u0301', 'fr')).toBe('fr')
-    expect(classifyDictionaryQuery('слово', 'uk')).toBe('uk')
     expect(classifyDictionaryQuery('123，。', 'en')).toBe('unknown')
   })
 })

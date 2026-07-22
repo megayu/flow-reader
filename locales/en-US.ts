@@ -193,31 +193,53 @@ export default {
   'settings.tabs.txt': 'TXT',
   'settings.tabs.shortcuts': 'Shortcuts',
   'settings.translation.main_language': 'Main Language',
+  'settings.translation.main_language.description':
+    'Translations target this language unless the selected text is already in it.',
   'settings.translation.secondary_language': 'Secondary Language',
+  'settings.translation.secondary_language.description':
+    'Used as the target when the selected text is in your main language.',
   'settings.translation.default_provider': 'Default Translation Service',
+  'settings.translation.default_provider.description':
+    'Used when the translation popup opens by default.',
   'settings.language': 'Language',
   'settings.ui_font_size': 'App Font Size',
-  'settings.source_storage': 'Original files',
-  'settings.source_storage.reference': 'Do not copy files when importing',
-  'settings.library_modified_indicator': 'Library export reminder',
-  'settings.library_modified_indicator.enable':
-    'Mark books with unexported changes',
+  'settings.ui_font_size.description':
+    'Changes interface text only. Reading text is controlled separately in Typography.',
+  'settings.accent_color.description':
+    'Used for interface emphasis, such as selected states, active controls, and focus indicators.',
+  'settings.source_storage': 'Do Not Copy Source Files on Import',
+  'settings.source_storage.description':
+    'Imports books without copying the source file into the library. Moving, renaming, or deleting the source file may make the book unavailable.',
+  'settings.library_modified_indicator': 'Show Library Export Reminder',
+  'settings.library_modified_indicator.description':
+    'Shows a badge on books with content changes that have not been exported.',
   'settings.default_page_view': 'Default View',
+  'settings.default_page_view.description':
+    'Sets the page view for books that do not have their own setting.',
   'settings.default_text_align': 'Default Alignment',
-  'settings.restore_last_reading': 'Restore last reading on startup',
-  'settings.restore_last_reading.enable': 'Enable',
-  'settings.text_selection_menu':
-    'Automatically show menu after selecting text',
-  'settings.text_selection_menu.enable': 'Enable',
-  'settings.hide_endnotes': 'Endnotes',
-  'settings.hide_endnotes.enable': 'Hide endnotes',
-  'settings.txt_import.group_rules': 'Group rules',
-  'settings.txt_import.chapter_rules': 'Chapter rules',
+  'settings.default_text_align.description':
+    "Sets the alignment for books that do not have their own setting. Default follows the book's original alignment.",
+  'settings.restore_last_reading': 'Restore Last Reading on Startup',
+  'settings.restore_last_reading.description':
+    'Reopens the last book and reading view when Flow Reader starts.',
+  'settings.text_selection_menu': 'Automatically Show Selection Menu',
+  'settings.text_selection_menu.description':
+    'When disabled, right-click selected text to open the menu.',
+  'settings.hide_endnotes': 'Hide Endnotes',
+  'settings.hide_endnotes.description':
+    'Hides content identified as endnotes from reading pages.',
+  'settings.txt_import.group_rules': 'Group Rules',
+  'settings.txt_import.group_rules.description':
+    'Enter one {regex} per line. Matching headings create top-level groups.',
+  'settings.txt_import.chapter_rules': 'Chapter Rules',
+  'settings.txt_import.chapter_rules.description':
+    'Enter one {regex} per line. Matching headings create chapters under the current group.',
+  'settings.txt_import.regular_expression': 'regular expression',
   'settings.txt_import.restore_defaults': 'Restore default rules',
-  'settings.dictionary.get_api_key': 'Get a free API key',
-  'settings.dictionary.sources_title': 'Dictionary sources',
+  'settings.dictionary.get_api_key': 'Get a free API Key',
+  'settings.dictionary.sources_title': 'Dictionary Sources',
   'settings.dictionary.sources_description':
-    'Choose one .ifo or .mdx master file to add a local dictionary. Companion files must use the same name and stay in the same folder; keeping each dictionary in its own folder is recommended.',
+    'Select an .ifo or .mdx dictionary file to add a local dictionary. Companion files must share the same base name and be kept in the same folder. We recommend keeping each dictionary in a separate folder.',
   'settings.dictionary.online': 'Online',
   'settings.dictionary.configured': 'Configured',
   'settings.dictionary.not_configured': 'Not configured',
