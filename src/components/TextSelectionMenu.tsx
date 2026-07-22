@@ -725,7 +725,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               onClick={() => {
                 hide()
                 setAction('search')
-                tab.setKeyword(text)
+                void tab.searchKeywordImmediately(text)
               }}
             />
             <IconButton

@@ -42,6 +42,8 @@ function updateIndex(array: any[], deletedItemIndex: number) {
   return deletedItemIndex > last ? last : deletedItemIndex
 }
 
+const searchRequestVersions = new WeakMap<object, number>()
+
 export function compareHref(
   sectionHref: string | undefined,
   navitemHref: string | undefined,
@@ -1185,11 +1187,17 @@ export class BookTab extends BaseTab {
     }
   }
 
-  async displaySearchResult(result: IMatch, keyword = this.keyword) {
+  async displaySearchResult(
+    result: IMatch,
+    keyword = this.keyword,
+    sectionContext?: Pick<IMatch, 'sectionIndex' | 'href'>,
+  ) {
+    const sectionIndex = result.sectionIndex ?? sectionContext?.sectionIndex
+    const href = result.href ?? sectionContext?.href
     if (result.cfi) {
       const section =
-        this.sections?.find((s) => s.index === result.sectionIndex) ??
-        this.sections?.find((s) => s.href === result.href)
+        this.sections?.find((s) => s.index === sectionIndex) ??
+        this.sections?.find((s) => s.href === href)
 
       if (section) {
         this.showPrevLocation()
@@ -1201,11 +1209,11 @@ export class BookTab extends BaseTab {
     }
 
     const section =
-      this.sections?.find((s) => s.index === result.sectionIndex) ??
-      this.sections?.find((s) => s.href === result.href)
+      this.sections?.find((s) => s.index === sectionIndex) ??
+      this.sections?.find((s) => s.href === href)
 
     if (!section) {
-      this.display(result.href)
+      if (href) this.display(href)
       return
     }
 
@@ -2031,15 +2039,42 @@ export class BookTab extends BaseTab {
     if (this.keyword === keyword) return
     this.keyword = keyword
     this.activeResultID = undefined
-    this.onKeywordChange()
+    const requestVersion = this.nextSearchRequestVersion()
+    this.onKeywordChange(keyword, requestVersion)
+  }
+
+  async searchKeywordImmediately(keyword: string) {
+    if (this.keyword !== keyword) {
+      this.keyword = keyword
+      this.activeResultID = undefined
+    }
+    const requestVersion = this.nextSearchRequestVersion()
+    await this.updateSearchResults(keyword, requestVersion)
   }
 
   // only use throttle/debounce for side effects
-  @debounce(1000)
-  async onKeywordChange() {
-    const keyword = this.keyword
+  @debounce(500)
+  async onKeywordChange(keyword: string, requestVersion: number) {
+    if (!this.isCurrentSearchRequest(keyword, requestVersion)) return
+    await this.updateSearchResults(keyword, requestVersion)
+  }
+
+  private nextSearchRequestVersion() {
+    const version = (searchRequestVersions.get(this) ?? 0) + 1
+    searchRequestVersions.set(this, version)
+    return version
+  }
+
+  private isCurrentSearchRequest(keyword: string, requestVersion: number) {
+    return (
+      this.keyword === keyword &&
+      searchRequestVersions.get(this) === requestVersion
+    )
+  }
+
+  private async updateSearchResults(keyword: string, requestVersion: number) {
     const results = await this.search(keyword)
-    if (this.keyword === keyword) {
+    if (this.isCurrentSearchRequest(keyword, requestVersion)) {
       this.results = results
     }
   }

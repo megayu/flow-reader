@@ -2,10 +2,9 @@ import { FoldVerticalIcon, UnfoldVerticalIcon, XIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Highlighter from 'react-highlight-words'
 
-import { useList } from '@flow/reader/hooks/useList'
+import { useListSize } from '@flow/reader/hooks/useList'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
 import { IMatch, reader, useReaderSnapshot } from '@flow/reader/models/reader'
-import { flatTree } from '@flow/reader/models/tree'
 
 import { readerPageTooltipContentStyle } from '../AppTooltip'
 import { IconButton } from '../Button'
@@ -125,11 +124,8 @@ const ResultList: React.FC<ResultListProps> = ({
   keyword,
   activeResultID,
 }) => {
-  const rows = useMemo(
-    () => results.flatMap((r) => flatTree(r)) ?? [],
-    [results],
-  )
-  const { outerRef, items, scrollbar, totalSize } = useList(rows)
+  const rowIndex = useMemo(() => createSearchRowIndex(results), [results])
+  const { outerRef, items, scrollbar, totalSize } = useListSize(rowIndex.length)
   const t = useTranslation('search')
 
   const sectionCount = results.length
@@ -150,22 +146,28 @@ const ResultList: React.FC<ResultListProps> = ({
         scrollbar={{ ...scrollbar, scrollRef: outerRef }}
       >
         <div className="relative" style={{ height: totalSize }}>
-          {items.map(({ index, start, size }) => (
-            <div
-              key={rows[index]?.id ?? index}
-              className="absolute top-0 right-0 left-0"
-              style={{
-                height: size,
-                transform: `translateY(${start}px)`,
-              }}
-            >
-              <ResultRow
-                result={rows[index]}
-                keyword={keyword}
-                active={rows[index]?.id === activeResultID}
-              />
-            </div>
-          ))}
+          {items.map(({ index, start, size }) => {
+            const row = searchRowAt(rowIndex, index)
+            return (
+              <div
+                key={row?.result?.id ?? index}
+                className="absolute top-0 right-0 left-0"
+                style={{
+                  height: size,
+                  transform: `translateY(${start}px)`,
+                }}
+              >
+                <ResultRow
+                  result={row?.result}
+                  depth={row?.depth}
+                  sectionIndex={row?.sectionIndex}
+                  href={row?.href}
+                  keyword={keyword}
+                  active={row?.result?.id === activeResultID}
+                />
+              </div>
+            )
+          })}
         </div>
       </OverlayScroll>
     </>
@@ -174,12 +176,22 @@ const ResultList: React.FC<ResultListProps> = ({
 
 interface ResultRowProps {
   result?: IMatch
+  depth?: number
+  sectionIndex?: number
+  href?: string
   keyword: string
   active: boolean
 }
-const ResultRow: React.FC<ResultRowProps> = ({ result, keyword, active }) => {
+const ResultRow: React.FC<ResultRowProps> = ({
+  result,
+  depth,
+  sectionIndex,
+  href,
+  keyword,
+  active,
+}) => {
   if (!result) return null
-  const { depth, expanded, subitems, id } = result
+  const { expanded, subitems, id } = result
   let { excerpt, description } = result
   const tab = reader.focusedBookTab
   const isGroup = !!subitems?.length
@@ -203,7 +215,10 @@ const ResultRow: React.FC<ResultRowProps> = ({ result, keyword, active }) => {
         onClick: () => {
           if (tab) {
             tab.activeResultID = id
-            void tab.displaySearchResult(result, keyword)
+            void tab.displaySearchResult(result, keyword, {
+              sectionIndex,
+              href,
+            })
           }
         },
       })}
@@ -219,4 +234,58 @@ const ResultRow: React.FC<ResultRowProps> = ({ result, keyword, active }) => {
       )}
     </Row>
   )
+}
+
+interface SearchRowGroup {
+  result: IMatch
+  start: number
+  childCount: number
+}
+
+interface SearchRowIndex {
+  groups: SearchRowGroup[]
+  length: number
+}
+
+function createSearchRowIndex(results: IMatch[]): SearchRowIndex {
+  const groups: SearchRowGroup[] = []
+  let length = 0
+
+  results.forEach((result) => {
+    const childCount = result.expanded ? (result.subitems?.length ?? 0) : 0
+    groups.push({ result, start: length, childCount })
+    length += childCount + 1
+  })
+
+  return { groups, length }
+}
+
+function searchRowAt(index: SearchRowIndex, rowIndex: number) {
+  let low = 0
+  let high = index.groups.length - 1
+
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2)
+    const group = index.groups[middle]!
+    if (rowIndex < group.start) {
+      high = middle - 1
+    } else if (rowIndex > group.start + group.childCount) {
+      low = middle + 1
+    } else {
+      const childIndex = rowIndex - group.start - 1
+      return childIndex < 0
+        ? {
+            result: group.result,
+            depth: 1,
+            sectionIndex: group.result.sectionIndex,
+            href: group.result.href ?? group.result.id,
+          }
+        : {
+            result: group.result.subitems?.[childIndex],
+            depth: 2,
+            sectionIndex: group.result.sectionIndex,
+            href: group.result.href ?? group.result.id,
+          }
+    }
+  }
 }

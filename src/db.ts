@@ -187,16 +187,14 @@ export interface BookSearchHit {
   id: string
   excerpt: string
   cfi?: string | null
-  sectionIndex: number
-  href: string
   occurrence: number
-  offset: number
 }
 
 export interface BookSearchResult {
   id: string
   excerpt: string
   description?: string | null
+  sectionIndex: number
   subitems: BookSearchHit[]
   expanded: boolean
 }

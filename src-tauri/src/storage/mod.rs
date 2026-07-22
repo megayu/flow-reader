@@ -5351,7 +5351,7 @@ mod tests {
             .any(|section| section.href == "Text/invalid:path.xhtml"
                 && section.text.contains("非法路径章节 keyword")));
         assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].subitems[0].href, "Text/invalid:path.xhtml");
+        assert_eq!(hits[0].id, "Text/invalid:path.xhtml");
         assert!(book_dir.join(SEARCH_TEXT_CACHE_FILE).exists());
         assert!(!book_dir.join(UNPACKED_DIR).exists());
 
@@ -5812,14 +5812,61 @@ mod tests {
         assert_eq!(results[0].id, "Text/two.xhtml");
         assert_eq!(results[0].excerpt, "Chapter Two");
         assert_eq!(results[0].subitems.len(), 2);
-        assert_eq!(results[0].subitems[0].section_index, 1);
-        assert_eq!(results[0].subitems[0].href, "Text/two.xhtml");
+        assert_eq!(results[0].section_index, 1);
         assert_eq!(results[0].subitems[0].occurrence, 0);
-        assert_eq!(results[0].subitems[0].offset, 4);
+        assert!(results[0].subitems[0].id.ends_with(":0:4"));
         assert!(results[0].subitems[0]
             .excerpt
             .contains("target phrase appears"));
         assert_eq!(results[0].subitems[1].occurrence, 1);
+    }
+
+    #[test]
+    fn search_results_serialize_section_context_once_per_group() {
+        let cache = SearchTextCache {
+            version: SEARCH_TEXT_CACHE_VERSION,
+            extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
+            book_hash: "abc123".to_string(),
+            content_version: 1,
+            sections: vec![SearchTextSection {
+                section_index: 7,
+                href: "Text/chapter.xhtml".to_string(),
+                title: Some("Chapter".to_string()),
+                nav_path: Vec::new(),
+                text: "target phrase".to_string(),
+            }],
+        };
+
+        let value = serde_json::to_value(search_text_in_cache(&cache, "target", None)).unwrap();
+        let group = &value[0];
+        let hit = &group["subitems"][0];
+
+        assert_eq!(group["sectionIndex"], 7);
+        assert!(hit.get("sectionIndex").is_none());
+        assert!(hit.get("href").is_none());
+        assert!(hit.get("offset").is_none());
+    }
+
+    #[test]
+    fn search_offsets_reference_original_text_when_lowercase_expands() {
+        let cache = SearchTextCache {
+            version: SEARCH_TEXT_CACHE_VERSION,
+            extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
+            book_hash: "abc123".to_string(),
+            content_version: 1,
+            sections: vec![SearchTextSection {
+                section_index: 0,
+                href: "Text/chapter.xhtml".to_string(),
+                title: Some("Chapter".to_string()),
+                nav_path: Vec::new(),
+                text: "İx target phrase".to_string(),
+            }],
+        };
+
+        let results = search_text_in_cache(&cache, "TARGET", None);
+
+        assert!(results[0].subitems[0].id.ends_with(":0:3"));
+        assert!(results[0].subitems[0].excerpt.contains("target phrase"));
     }
 
     #[test]

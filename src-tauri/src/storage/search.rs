@@ -3,7 +3,7 @@ use std::{
     io::{Read, Seek},
     path::{Path, PathBuf},
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use serde::{Deserialize, Serialize};
@@ -60,6 +60,7 @@ pub struct SearchTextResult {
     pub(super) excerpt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) description: Option<String>,
+    pub(super) section_index: usize,
     pub(super) subitems: Vec<SearchTextHit>,
     pub(super) expanded: bool,
 }
@@ -71,10 +72,7 @@ pub struct SearchTextHit {
     pub(super) excerpt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) cfi: Option<String>,
-    pub(super) section_index: usize,
-    pub(super) href: String,
     pub(super) occurrence: usize,
-    pub(super) offset: usize,
 }
 
 pub(super) fn search_text_cache_to_bytes(cache: &SearchTextCache) -> Result<Vec<u8>, String> {
@@ -938,55 +936,73 @@ pub(super) fn search_text_in_cache(
     keyword: &str,
     limit: Option<usize>,
 ) -> Vec<SearchTextResult> {
+    let started = Instant::now();
     let keyword = keyword.trim();
     if keyword.is_empty() || limit == Some(0) {
         return Vec::new();
     }
 
     let folded_keyword = keyword.to_lowercase();
+    let keyword_char_len = keyword.chars().count().max(1);
     let mut results = Vec::new();
     let mut total = 0usize;
+    let diagnostics_enabled = diagnostics::enabled();
+    let mut fold_elapsed = Duration::ZERO;
+    let mut locate_elapsed = Duration::ZERO;
+    let mut excerpt_elapsed = Duration::ZERO;
 
     'sections: for section in &cache.sections {
-        let folded_text = section.text.to_lowercase();
-        let mut cursor = 0usize;
+        let fold_started = diagnostics_enabled.then(Instant::now);
+        let (folded_text, original_char_offsets) =
+            lowercase_with_original_char_offsets(&section.text);
+        if let Some(fold_started) = fold_started {
+            fold_elapsed += fold_started.elapsed();
+        }
+        let mut previous_folded_byte_offset = 0usize;
+        let mut folded_char_offset = 0usize;
         let mut occurrence = 0usize;
         let mut subitems = Vec::new();
+        let mut text_chars = None;
 
-        while cursor <= folded_text.len() {
-            let Some(relative_offset) = folded_text[cursor..].find(&folded_keyword) else {
-                break;
-            };
-            let folded_byte_offset = cursor + relative_offset;
-            let char_offset = folded_text[..folded_byte_offset].chars().count();
-            let original_byte_offset = byte_index_for_char_offset(&section.text, char_offset);
-            let excerpt = search_text_excerpt(&section.text, char_offset, keyword);
+        for (folded_byte_offset, _) in folded_text.match_indices(&folded_keyword) {
+            let locate_started = diagnostics_enabled.then(Instant::now);
+            folded_char_offset += folded_text[previous_folded_byte_offset..folded_byte_offset]
+                .chars()
+                .count();
+            previous_folded_byte_offset = folded_byte_offset;
+            let char_offset = original_char_offsets
+                .as_ref()
+                .and_then(|offsets| offsets.get(folded_char_offset))
+                .copied()
+                .or_else(|| {
+                    original_char_offsets
+                        .is_none()
+                        .then_some(folded_char_offset)
+                })
+                .unwrap_or_else(|| section.text.chars().count());
+            if let Some(locate_started) = locate_started {
+                locate_elapsed += locate_started.elapsed();
+            }
+
+            let excerpt_started = diagnostics_enabled.then(Instant::now);
+            let text_chars =
+                text_chars.get_or_insert_with(|| section.text.chars().collect::<Vec<_>>());
+            let excerpt = search_text_excerpt(text_chars, char_offset, keyword_char_len);
+            if let Some(excerpt_started) = excerpt_started {
+                excerpt_elapsed += excerpt_started.elapsed();
+            }
             let id = format!("{}:{}:{}", section.href, occurrence, char_offset);
 
             subitems.push(SearchTextHit {
                 id,
                 excerpt,
                 cfi: None,
-                section_index: section.section_index,
-                href: section.href.clone(),
                 occurrence,
-                offset: char_offset,
             });
 
             total += 1;
             occurrence += 1;
             if limit.is_some_and(|limit| total >= limit) {
-                break;
-            }
-
-            let next_cursor = folded_byte_offset + folded_keyword.len();
-            cursor = if next_cursor > folded_byte_offset {
-                next_cursor
-            } else {
-                folded_byte_offset + 1
-            };
-
-            if original_byte_offset >= section.text.len() {
                 break;
             }
         }
@@ -999,6 +1015,7 @@ pub(super) fn search_text_in_cache(
                     .clone()
                     .unwrap_or_else(|| section.href.clone()),
                 description: (!section.nav_path.is_empty()).then(|| section.nav_path.join(" / ")),
+                section_index: section.section_index,
                 subitems,
                 expanded: true,
             });
@@ -1009,23 +1026,53 @@ pub(super) fn search_text_in_cache(
         }
     }
 
+    if diagnostics_enabled {
+        diagnostics::record_timing(
+            "search-query",
+            started.elapsed(),
+            &[
+                ("sections", cache.sections.len().to_string()),
+                ("matched_sections", results.len().to_string()),
+                ("hits", total.to_string()),
+                (
+                    "fold_ms",
+                    format!("{:.2}", fold_elapsed.as_secs_f64() * 1000.0),
+                ),
+                (
+                    "locate_ms",
+                    format!("{:.2}", locate_elapsed.as_secs_f64() * 1000.0),
+                ),
+                (
+                    "excerpt_ms",
+                    format!("{:.2}", excerpt_elapsed.as_secs_f64() * 1000.0),
+                ),
+            ],
+        );
+    }
+
     results
 }
 
-fn byte_index_for_char_offset(text: &str, char_offset: usize) -> usize {
-    text.char_indices()
-        .nth(char_offset)
-        .map(|(index, _)| index)
-        .unwrap_or(text.len())
+fn lowercase_with_original_char_offsets(text: &str) -> (String, Option<Vec<usize>>) {
+    let folded = text.to_lowercase();
+    if !text.chars().any(|ch| ch.to_lowercase().count() != 1) {
+        return (folded, None);
+    }
+
+    let original_char_offsets = text
+        .chars()
+        .enumerate()
+        .flat_map(|(original_char_offset, ch)| ch.to_lowercase().map(move |_| original_char_offset))
+        .collect();
+
+    (folded, Some(original_char_offsets))
 }
 
-fn search_text_excerpt(text: &str, offset: usize, keyword: &str) -> String {
-    let chars = text.chars().collect::<Vec<_>>();
+fn search_text_excerpt(chars: &[char], offset: usize, keyword_len: usize) -> String {
     if chars.is_empty() {
         return String::new();
     }
 
-    let keyword_len = keyword.chars().count().max(1);
     let offset = offset.min(chars.len());
     let keyword_end = (offset + keyword_len).min(chars.len());
     let mut paragraph_start = chars[..offset]

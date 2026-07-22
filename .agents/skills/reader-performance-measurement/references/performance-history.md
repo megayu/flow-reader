@@ -4,6 +4,13 @@ Read this before proposing or testing a Flow Reader performance optimization. Se
 
 ## Retained Approaches
 
+### Single-pass cached-text search results
+
+- Change: advance folded-text character offsets once per section, reuse one character buffer for every excerpt in that section, serialize section navigation context once per result group, and let the search virtual list index groups without cloning every expanded hit. Selection-menu searches bypass the input debounce while typed searches keep the existing debounce.
+- Measured effect: matched `tauri-release` native synthetic-book runs used 120 chapters, 20 paragraphs per chapter, 9,600 broad-query hits, a 1280×800 client area at 1.5 device scale, six runs with the first two excluded from steady summaries, and the same `search-query/sidebar-search`, `tab-switch/sidebar-search`, and `tab-switch/sidebar-closed` filters. Steady broad-query operation p50 improved 48.6% and p95 improved 50.8%; settled p50 improved 28.8% and p95 improved 33.3%. Long-task total fell 32.8% and max duration fell 27.4%. A separate matched TOC run stayed within about 5% on first-frame p50/p95 and settled p50/p95, with zero long tasks. A 12-run search-sidebar repeat kept first-frame p50 within 1% and settled p50 improved within 1%; its steady operation and first-frame p95 increased about 11% and 18% respectively, while settled p95 stayed within 8% and no long tasks appeared.
+- Decision: keep. The release-client improvement comes from less repeated search and result-materialization work, while all results and exact counts remain available and shared sidebar paths retain their no-long-task baseline.
+- Constraint: keep typed-input debounce behavior independent from explicit selection-menu search, preserve stale-result rejection, and do not restore per-hit section metadata or eager full-tree row cloning without remeasuring broad queries and sidebar switching.
+
 ### Reuse the iframe view writing mode during style injection
 
 - Change: when epubjs calls the reader's `beforeLayout` hook, use the writing mode already resolved by `IframeView` instead of probing computed styles and walking the dominant content chain a second time. Keep the contents probe only for style refreshes that have no view context.

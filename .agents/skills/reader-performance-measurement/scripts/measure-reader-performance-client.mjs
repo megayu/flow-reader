@@ -1787,6 +1787,25 @@ async function main() {
     }
   }
 
+  await ensureSidebar(page, true, 'search')
+  const searchQueryOperation = {
+    name: 'broad-query',
+    run: () =>
+      page.evaluate(async () => {
+        const tab = window.reader.focusedBookTab
+        if (!tab) throw new Error('focused book tab missing')
+        tab.results = undefined
+        const results = await tab.search('性能测量')
+        if (tab.keyword === '') tab.results = results
+      }),
+  }
+  await page.evaluate(async () => {
+    const tab = window.reader.focusedBookTab
+    if (!tab) throw new Error('focused book tab missing')
+    await tab.search('性能测量')
+  })
+  await recordScenario('search-query/sidebar-search', [searchQueryOperation])
+
   await page.evaluate((book) => {
     window.reader.closeAllTabs?.()
     window.reader.addTab(book)

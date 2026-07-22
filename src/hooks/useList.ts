@@ -15,12 +15,16 @@ interface ListViewport {
 }
 
 export function useList(array: Readonly<any[]> = []) {
+  return useListSize(array.length)
+}
+
+export function useListSize(count = 0) {
   const outerRef = useRef<HTMLDivElement | null>(null)
   const [viewport, setViewport] = useState<ListViewport>({
     height: 0,
     scrollTop: 0,
   })
-  const totalSize = array.length * LIST_ITEM_SIZE
+  const totalSize = count * LIST_ITEM_SIZE
 
   const updateViewport = useCallback(() => {
     const el = outerRef.current
@@ -76,10 +80,9 @@ export function useList(array: Readonly<any[]> = []) {
 
   useLayoutEffect(() => {
     updateViewport()
-  }, [array.length, updateViewport])
+  }, [count, updateViewport])
 
   const items = useMemo(() => {
-    const count = array.length
     if (!count) return []
 
     const startIndex = Math.min(
@@ -107,7 +110,7 @@ export function useList(array: Readonly<any[]> = []) {
         start: index * LIST_ITEM_SIZE,
       }
     })
-  }, [array.length, viewport.height, viewport.scrollTop])
+  }, [count, viewport.height, viewport.scrollTop])
 
   const scrollToItem = useCallback(
     (options: number | ScrollToItemOptions) => {
@@ -116,11 +119,11 @@ export function useList(array: Readonly<any[]> = []) {
       const behavior =
         typeof options === 'number' || !options.smooth ? 'auto' : 'smooth'
       const el = outerRef.current
-      if (!el || !array.length) return
+      if (!el || !count) return
 
       const viewportHeight = el.clientHeight
       const maxScrollTop = Math.max(0, totalSize - viewportHeight)
-      const clampedIndex = Math.max(0, Math.min(array.length - 1, index))
+      const clampedIndex = Math.max(0, Math.min(count - 1, index))
       const start = clampedIndex * LIST_ITEM_SIZE
       const end = start + LIST_ITEM_SIZE
       const currentStart = el.scrollTop
@@ -144,7 +147,7 @@ export function useList(array: Readonly<any[]> = []) {
 
       el.scrollTo({ top: nextScrollTop, behavior })
     },
-    [array.length, totalSize],
+    [count, totalSize],
   )
 
   return {
