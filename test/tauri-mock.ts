@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test'
 
 import type {
   BookRecord,
+  BookSourceStatus,
   TextImportEncodingOption,
   TextImportPreview,
   TextImportSelection,
@@ -27,7 +28,9 @@ interface TauriMockOptions {
   openDialogPaths?: string[]
   pendingOpenPaths?: string[]
   deferReaderSource?: boolean
+  readerSourceErrors?: Record<string, string>
   readerSources?: Record<string, string>
+  sourceStatuses?: Record<string, BookSourceStatus>
   saveDialogPath?: string | null
   settings?: Record<string, unknown>
   tags?: TestLibraryTagRecord[]
@@ -56,7 +59,9 @@ export async function installTauriMock(
     openDialogPaths = [],
     pendingOpenPaths = [],
     deferReaderSource = false,
+    readerSourceErrors = {},
     readerSources = {},
+    sourceStatuses = {},
     saveDialogPath = null,
     settings = {},
     tags = [],
@@ -88,7 +93,9 @@ export async function installTauriMock(
       fixtureOpenDialogPaths,
       fixturePendingOpenPaths,
       fixtureDeferReaderSource,
+      fixtureReaderSourceErrors,
       fixtureReaderSources,
+      fixtureSourceStatuses,
       fixtureSaveDialogPath,
       fixtureSettings,
       fixtureTags,
@@ -548,8 +555,20 @@ export async function installTauriMock(
         }
         if (command === 'get_book')
           return bookStore.get(String(args?.id)) ?? null
+        if (command === 'check_book_source_statuses') {
+          const ids = Array.isArray(args?.ids) ? args.ids.map(String) : []
+          return ids.map((id) => ({
+            id,
+            status: fixtureSourceStatuses[id] ?? 'available',
+          }))
+        }
         if (command === 'get_book_reader_source' && fixtureDeferReaderSource) {
           return new Promise(() => undefined)
+        }
+        if (command === 'get_book_reader_source') {
+          const id = String(args?.id)
+          const message = fixtureReaderSourceErrors[id]
+          if (message) throw new Error(message)
         }
         if (command === 'get_book_package_path') {
           return fixtureReaderSources[String(args?.id)] ?? null
@@ -691,7 +710,9 @@ export async function installTauriMock(
       fixtureOpenDialogPaths: openDialogPaths,
       fixturePendingOpenPaths: pendingOpenPaths,
       fixtureDeferReaderSource: deferReaderSource,
+      fixtureReaderSourceErrors: readerSourceErrors,
       fixtureReaderSources: readerSources,
+      fixtureSourceStatuses: sourceStatuses,
       fixtureSaveDialogPath: saveDialogPath,
       fixtureSettings: settings,
       fixtureTags: tags,

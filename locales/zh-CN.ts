@@ -30,6 +30,11 @@ export default {
   'home.compat.archive_only': '原包模式',
   'home.compat.archive_only_description':
     '直接读取 EPUB 压缩包，正文编辑和修改导出不可用。',
+  'home.source_unavailable': '原文件不可用',
+  'home.source_missing_description': '原文件已移动或删除，无法打开。',
+  'home.source_unreadable_description': '当前无权访问原文件，无法打开。',
+  'home.source_changed_description':
+    '原文件内容已更改，与导入时不一致，无法打开。',
   'home.modified_export_indicator': '内容已修改，可导出',
   'home.edit.title': '标题',
   'home.edit.creator': '作者',
@@ -189,6 +194,8 @@ export default {
   'settings.translation.default_provider': '默认翻译服务',
   'settings.language': '语言',
   'settings.ui_font_size': '界面字号',
+  'settings.source_storage': '原文件处理',
+  'settings.source_storage.reference': '导入时不复制原文件',
   'settings.library_modified_indicator': '图书馆修改提示',
   'settings.library_modified_indicator.enable': '标记有未导出修改的图书',
   'settings.default_page_view': '默认视图',

@@ -204,6 +204,18 @@ export const Settings: React.FC<SettingsProps> = ({
               </Item>
               <AccentColorSetting />
               <UiFontSizeSetting />
+              <Item title={t('source_storage')}>
+                <SettingsCheckbox
+                  label={t('source_storage.reference')}
+                  checked={settings.importSourceStorage === 'referenced'}
+                  onCheckedChange={(checked) => {
+                    setSettings((prev) => ({
+                      ...prev,
+                      importSourceStorage: checked ? 'referenced' : 'managed',
+                    }))
+                  }}
+                />
+              </Item>
               <Item title={t('library_modified_indicator')}>
                 <SettingsCheckbox
                   label={t('library_modified_indicator.enable')}

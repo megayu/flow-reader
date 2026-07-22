@@ -3240,17 +3240,26 @@ export class BookTab extends BaseTab {
     }
 
     let epub: Book
+    let openingBook: Book | undefined
     try {
-      const options =
-        source.mode === 'epub'
-          ? { openAs: 'epub' }
-          : {
-              requestMethod: createVersionedEpubRequest(
-                this.book.contentVersion,
-              ),
-            }
-      epub = ref(await ePub(source.url, options as any))
+      if (source.mode === 'epub') {
+        openingBook = ePub()
+        await openingBook.open(source.url, 'epub')
+        epub = ref(openingBook)
+        openingBook = undefined
+      } else {
+        epub = ref(
+          await ePub(source.url, {
+            requestMethod: createVersionedEpubRequest(this.book.contentVersion),
+          } as any),
+        )
+      }
     } catch (error) {
+      try {
+        openingBook?.destroy()
+      } catch (destroyError) {
+        console.error(destroyError)
+      }
       this.reportOpenError('open', error)
       clearRendering()
       return
@@ -3393,13 +3402,29 @@ export class BookTab extends BaseTab {
       if (generation === this.renderGeneration) {
         this.reportOpenError('position', error)
       }
+      return
+    }
+
+    if (
+      this.book.sourceStorage === 'referenced' &&
+      this.book.contentMode === 'archiveOnly'
+    ) {
+      this.rendition.on('displayError', (error: unknown) => {
+        if (generation === this.renderGeneration) {
+          this.reportOpenError('render', error)
+        }
+      })
     }
   }
 
   private reportOpenError(stage: ReaderOpenErrorStage, error: unknown) {
     console.error(error)
     emitReaderOpenError({
+      bookId: this.book.id,
       bookTitle: getBookDisplayTitle(this.book),
+      closeTab:
+        this.book.sourceStorage === 'referenced' &&
+        this.book.contentMode === 'archiveOnly',
       error,
       stage,
     })

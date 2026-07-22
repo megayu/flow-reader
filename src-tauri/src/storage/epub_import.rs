@@ -2266,15 +2266,24 @@ pub(super) fn import_epub_path_impl(
     let books_root = books_root(storage.root());
     fs::create_dir_all(&books_root).map_err(|error| error.to_string())?;
 
-    let size = fs::metadata(path).map_err(|error| error.to_string())?.len();
-    let name = path
+    let source_path = path.to_path_buf();
+    let source_storage = storage.import_source_storage();
+    let size = fs::metadata(&source_path)
+        .map_err(|error| error.to_string())?
+        .len();
+    let name = source_path
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| "book.epub".to_string());
-    let parsed = parse_epub_info_result(path)?;
-    let access = inspect_epub_access(path)?;
+    let parsed = parse_epub_info_result(&source_path)?;
+    let access = inspect_epub_access(&source_path)?;
     let temp_path = epub_import_temp_path(&books_root, &name);
-    let hash = match copy_epub_and_hash(path, &temp_path) {
+    let hash_result = if source_storage == SourceStorage::Managed {
+        copy_epub_and_hash(&source_path, &temp_path)
+    } else {
+        hash_file(&source_path)
+    };
+    let hash = match hash_result {
         Ok(hash) => hash,
         Err(error) => {
             remove_epub_import_temp(&temp_path);
@@ -2326,7 +2335,11 @@ pub(super) fn import_epub_path_impl(
                 });
 
             if let Some(index) = filename_index {
-                if !replace_existing || state.library.books[index].content_hash == hash {
+                let storage_changed = state.library.books[index].source_storage != source_storage;
+                if !replace_existing
+                    || (state.library.books[index].content_hash == hash && !storage_changed)
+                {
+                    state.library.books[index].source_path = Some(source_path.clone());
                     let book = state.library.books[index].clone();
                     if external_promotion.is_none() {
                         ImportDecision::Existing(storage.compose_book(&mut state, &book)?)
@@ -2346,6 +2359,8 @@ pub(super) fn import_epub_path_impl(
                     book.content_version = book.content_version.saturating_add(1).max(1);
                     book.content_mode = access.mode;
                     book.content_flags = access.flags.clone();
+                    book.source_storage = source_storage;
+                    book.source_path = Some(source_path.clone());
                     book.updated_at = Some(now_ms());
                     book.last_read_at = book.updated_at;
                     let book = state.library.books[index].clone();
@@ -2363,13 +2378,16 @@ pub(super) fn import_epub_path_impl(
                 book.size = size;
                 book.content_mode = access.mode;
                 book.content_flags = access.flags.clone();
+                let storage_changed = book.source_storage != source_storage;
+                book.source_storage = source_storage;
+                book.source_path = Some(source_path.clone());
                 book.updated_at = Some(now_ms());
                 let book = state.library.books[index].clone();
                 let id = book.id.clone();
                 ImportDecision::Commit {
                     book,
                     id,
-                    should_copy: false,
+                    should_copy: storage_changed,
                     external_promotion,
                 }
             } else {
@@ -2387,6 +2405,8 @@ pub(super) fn import_epub_path_impl(
                     content_version: 1,
                     content_mode: access.mode,
                     content_flags: access.flags.clone(),
+                    source_storage,
+                    source_path: Some(source_path.clone()),
                     metadata: empty_object(),
                     created_at,
                     updated_at: None,
@@ -2414,6 +2434,8 @@ pub(super) fn import_epub_path_impl(
         let (mut book, id, should_copy, external_promotion) = match decision {
             ImportDecision::Existing(record) => {
                 remove_epub_import_temp(&temp_path);
+                storage.mark_library_dirty();
+                storage.flush_dirty()?;
                 return Ok(record);
             }
             ImportDecision::Commit {
@@ -2455,9 +2477,22 @@ pub(super) fn import_epub_path_impl(
             if book_path.exists() {
                 fs::remove_file(&book_path).map_err(|error| error.to_string())?;
             }
-            fs::rename(&temp_path, &book_path).map_err(|error| error.to_string())?;
+            let package_path = if source_storage == SourceStorage::Managed {
+                fs::rename(&temp_path, &book_path).map_err(|error| error.to_string())?;
+                book_path.as_path()
+            } else {
+                source_path.as_path()
+            };
+            if source_storage == SourceStorage::Referenced && access.mode == BookContentMode::Normal
+            {
+                unpack_epub(package_path, &unpacked_dir)?;
+                publication_changed |= normalize_unpacked_epub_structure(&unpacked_dir)?;
+            }
             let mut cover = parsed.cover;
-            if normalize_new_cover && !access.flags.contains(&BookContentFlag::DeclaresEncryption) {
+            if normalize_new_cover
+                && access.mode == BookContentMode::Normal
+                && !access.flags.contains(&BookContentFlag::DeclaresEncryption)
+            {
                 if let Some(parsed_cover) = cover.as_mut() {
                     if parsed_cover.input.mime_type == "image/png"
                         || parsed_cover.input.extension.eq_ignore_ascii_case("png")
@@ -2466,8 +2501,10 @@ pub(super) fn import_epub_path_impl(
                             parsed_cover.archive_path.as_deref(),
                             normalize_non_square_pixel_png(&parsed_cover.input.data),
                         ) {
-                            unpack_epub(&book_path, &unpacked_dir)?;
-                            normalize_unpacked_epub_structure(&unpacked_dir)?;
+                            if !unpacked_dir.exists() {
+                                unpack_epub(package_path, &unpacked_dir)?;
+                                normalize_unpacked_epub_structure(&unpacked_dir)?;
+                            }
                             fs::write(
                                 unpacked_resource_path(&unpacked_dir, archive_path),
                                 &normalized,
@@ -2569,21 +2606,17 @@ pub(super) fn open_external_epub_path_impl(
     let external_root = external_books_root(storage.root());
     fs::create_dir_all(&external_root).map_err(|error| error.to_string())?;
 
-    let size = fs::metadata(path).map_err(|error| error.to_string())?.len();
-    let name = path
+    let source_path = path.to_path_buf();
+    let size = fs::metadata(&source_path)
+        .map_err(|error| error.to_string())?
+        .len();
+    let name = source_path
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| "book.epub".to_string());
-    let parsed = parse_epub_info_result(path)?;
-    let access = inspect_epub_access(path)?;
-    let temp_path = epub_import_temp_path(&external_root, &name);
-    let hash = match copy_epub_and_hash(path, &temp_path) {
-        Ok(hash) => hash,
-        Err(error) => {
-            remove_epub_import_temp(&temp_path);
-            return Err(error);
-        }
-    };
+    let parsed = parse_epub_info_result(&source_path)?;
+    let access = inspect_epub_access(&source_path)?;
+    let hash = hash_file(&source_path)?;
 
     enum OpenDecision {
         Library(BookRecord),
@@ -2618,6 +2651,8 @@ pub(super) fn open_external_epub_path_impl(
                 book.content_mode = access.mode;
                 book.content_flags = access.flags.clone();
                 book.content_version = book.content_version.max(1);
+                book.source_storage = SourceStorage::Referenced;
+                book.source_path = Some(source_path.clone());
                 book.last_opened_at = now_ms();
                 OpenDecision::External {
                     book: book.clone(),
@@ -2634,6 +2669,8 @@ pub(super) fn open_external_epub_path_impl(
                     content_version: 1,
                     content_mode: access.mode,
                     content_flags: access.flags.clone(),
+                    source_storage: SourceStorage::Referenced,
+                    source_path: Some(source_path.clone()),
                     created_at: now,
                     last_opened_at: now,
                 };
@@ -2644,7 +2681,6 @@ pub(super) fn open_external_epub_path_impl(
 
         let (book, is_new) = match decision {
             OpenDecision::Library(book) => {
-                remove_epub_import_temp(&temp_path);
                 return Ok(book);
             }
             OpenDecision::External { book, is_new } => (book, is_new),
@@ -2669,7 +2705,10 @@ pub(super) fn open_external_epub_path_impl(
         if book_path.exists() {
             fs::remove_file(&book_path).map_err(|error| error.to_string())?;
         }
-        fs::rename(&temp_path, &book_path).map_err(|error| error.to_string())?;
+        if access.mode == BookContentMode::Normal {
+            unpack_epub(&source_path, &unpacked_dir)?;
+            normalize_unpacked_epub_structure(&unpacked_dir)?;
+        }
         if is_new || parsed.metadata != json!({}) {
             write_metadata(storage, &book.id, &parsed.metadata)?;
         }
@@ -2684,10 +2723,6 @@ pub(super) fn open_external_epub_path_impl(
         let book = storage.external_to_library_book(&book)?;
         storage.compose_book(&mut state, &book)
     })();
-
-    if result.is_err() {
-        remove_epub_import_temp(&temp_path);
-    }
 
     result
 }

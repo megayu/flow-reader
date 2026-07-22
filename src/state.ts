@@ -13,6 +13,7 @@ import { defaultUiFontSize, normalizeUiFontSize } from '@flow/reader/styles/ui'
 import {
   getSettingsFromStorage,
   updateSettingsInStorage,
+  type BookSourceStorage,
   type ReadingStatus,
 } from './db'
 import {
@@ -39,6 +40,7 @@ export interface Settings extends TypographyConfiguration {
   hideEndnotes?: boolean
   restoreLastReadingOnStartup?: boolean
   showModifiedBookExportIndicator?: boolean
+  importSourceStorage?: BookSourceStorage
   startupSession?: StartupSession
   readerSidebarOpen?: boolean
   librarySidebarOpen?: boolean
@@ -162,6 +164,7 @@ export const defaultSettings: Settings = {
   enableTextSelectionMenu: true,
   hideEndnotes: false,
   showModifiedBookExportIndicator: false,
+  importSourceStorage: 'managed',
   readerSidebarOpen: true,
   librarySidebarOpen: false,
   libraryDisplay: defaultLibraryDisplay,
@@ -371,6 +374,8 @@ function normalizeSettings(value: Partial<Settings> | undefined): Settings {
     },
     dictionary: normalizeDictionarySettings(settings.dictionary),
     translation: normalizeTranslationSettings(settings.translation),
+    importSourceStorage:
+      settings.importSourceStorage === 'referenced' ? 'referenced' : 'managed',
     ui: {
       ...defaultSettings.ui,
       ...settings.ui,

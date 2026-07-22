@@ -1510,6 +1510,8 @@ pub(super) fn import_text_path_impl(
     fs::create_dir_all(books_root(storage.root())).map_err(|error| error.to_string())?;
 
     let path = &prepared.path;
+    let source_path = path.to_path_buf();
+    let source_storage = storage.import_source_storage();
     let decoded = &prepared.decoded;
     if decoded.confidence == TextEncodingConfidence::Failed {
         return Err("Unable to decode text file".to_string());
@@ -1561,9 +1563,17 @@ pub(super) fn import_text_path_impl(
             .position(|book| !book.content_hash.is_empty() && book.content_hash == hash);
 
         let (index, should_copy) = if let Some(index) = filename_index {
-            if !replace_existing || state.library.books[index].content_hash == hash {
+            let storage_changed = state.library.books[index].source_storage != source_storage;
+            if !replace_existing
+                || (state.library.books[index].content_hash == hash && !storage_changed)
+            {
+                state.library.books[index].source_path = Some(source_path.clone());
                 let book = state.library.books[index].clone();
-                return storage.compose_book(&mut state, &book);
+                let book = storage.compose_book(&mut state, &book)?;
+                drop(state);
+                storage.mark_library_dirty();
+                storage.flush_dirty()?;
+                return Ok(book);
             }
 
             let book = &mut state.library.books[index];
@@ -1572,6 +1582,8 @@ pub(super) fn import_text_path_impl(
             book.content_version = book.content_version.saturating_add(1).max(1);
             book.content_mode = BookContentMode::Normal;
             book.content_flags.clear();
+            book.source_storage = source_storage;
+            book.source_path = Some(source_path.clone());
             book.updated_at = Some(now_ms());
             book.last_read_at = book.updated_at;
             book.metadata = metadata.clone();
@@ -1582,9 +1594,12 @@ pub(super) fn import_text_path_impl(
             book.size = size;
             book.content_mode = BookContentMode::Normal;
             book.content_flags.clear();
+            let storage_changed = book.source_storage != source_storage;
+            book.source_storage = source_storage;
+            book.source_path = Some(source_path.clone());
             book.updated_at = Some(now_ms());
             book.metadata = metadata.clone();
-            (index, false)
+            (index, storage_changed)
         } else {
             let created_at = now_ms();
             let id = id_from_hash(&hash);
@@ -1600,6 +1615,8 @@ pub(super) fn import_text_path_impl(
                 content_version: 1,
                 content_mode: BookContentMode::Normal,
                 content_flags: Vec::new(),
+                source_storage,
+                source_path: Some(source_path.clone()),
                 metadata: metadata.clone(),
                 created_at,
                 updated_at: None,
@@ -1623,8 +1640,13 @@ pub(super) fn import_text_path_impl(
         if dir.join(BOOK_FILE).exists() {
             let _ = fs::remove_file(dir.join(BOOK_FILE));
         }
-        fs::write(dir.join(SOURCE_TEXT_FILE), prepared.bytes.as_slice())
-            .map_err(|error| error.to_string())?;
+        let source_text_path = dir.join(SOURCE_TEXT_FILE);
+        if source_storage == SourceStorage::Managed {
+            fs::write(&source_text_path, prepared.bytes.as_slice())
+                .map_err(|error| error.to_string())?;
+        } else if source_text_path.exists() {
+            fs::remove_file(&source_text_path).map_err(|error| error.to_string())?;
+        }
         let cover =
             create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str()));
         write_text_publication(

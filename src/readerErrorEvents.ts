@@ -6,7 +6,9 @@ export type ReaderOpenErrorStage =
   | 'position'
 
 export interface ReaderOpenErrorEvent {
+  bookId: string
   bookTitle: string
+  closeTab: boolean
   error: unknown
   stage: ReaderOpenErrorStage
 }

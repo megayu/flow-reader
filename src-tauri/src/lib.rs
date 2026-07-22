@@ -253,6 +253,7 @@ pub fn run() {
             storage::import_text_paths,
             storage::get_book_package_path,
             storage::get_book_reader_source,
+            storage::check_book_source_statuses,
             storage::search_book_text,
             storage::load_book_image_index,
             storage::store_book_image_index,

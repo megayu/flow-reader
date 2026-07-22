@@ -58,6 +58,12 @@ export interface TextImportRulesInput {
 
 export type BookSourceFormat = 'epub' | 'txt'
 export type BookExportFormat = 'epub' | 'txt'
+export type BookSourceStorage = 'managed' | 'referenced'
+export type BookSourceStatus =
+  | 'available'
+  | 'changed'
+  | 'missing'
+  | 'unreadable'
 export type BookContentMode = 'normal' | 'archiveOnly'
 export type BookContentFlag = 'nonPortableArchivePaths' | 'declaresEncryption'
 
@@ -137,7 +143,14 @@ export interface BookRecord {
   contentVersion?: number
   contentMode?: BookContentMode
   contentFlags?: BookContentFlag[]
+  sourceStorage?: BookSourceStorage
+  sourcePath?: string
   stateLoaded?: boolean
+}
+
+export interface BookSourceStatusRecord {
+  id: string
+  status: BookSourceStatus
 }
 
 export interface EpubImportFailure {
@@ -534,6 +547,11 @@ export const db = {
       }
       return book ?? undefined
     },
+    checkSourceStatuses(ids: string[]) {
+      return invoke<BookSourceStatusRecord[]>('check_book_source_statuses', {
+        ids,
+      })
+    },
     async bulkDelete(ids: string[]) {
       await trackNativeWrite(invoke('delete_books', { ids }))
       forgetBooks(ids)
@@ -676,6 +694,7 @@ export async function importBookPaths(
     replaceExisting = true,
   }: { importId?: string; replaceExisting?: boolean } = {},
 ) {
+  await waitForPendingNativeWrites()
   const result = await trackNativeWrite(
     invoke<EpubImportResult>('import_epub_paths', {
       importId,
@@ -722,6 +741,7 @@ export async function importTextPaths(
     rules,
   }: { replaceExisting?: boolean; rules?: TextImportRulesInput } = {},
 ) {
+  await waitForPendingNativeWrites()
   const books = await trackNativeWrite(
     invoke<BookRecord[]>('import_text_paths', {
       imports,

@@ -30,6 +30,13 @@ export default {
   'home.compat.archive_only': 'Archive mode',
   'home.compat.archive_only_description':
     'Reads directly from the EPUB archive; text editing and modified export are unavailable.',
+  'home.source_unavailable': 'Original file unavailable',
+  'home.source_missing_description':
+    'The original file was moved or deleted and cannot be opened.',
+  'home.source_unreadable_description':
+    'The original file cannot be accessed with the current permissions.',
+  'home.source_changed_description':
+    'The original file has changed since it was imported and cannot be opened.',
   'home.modified_export_indicator': 'Modified content can be exported',
   'home.edit.title': 'Title',
   'home.edit.creator': 'Author',
@@ -190,6 +197,8 @@ export default {
   'settings.translation.default_provider': 'Default Translation Service',
   'settings.language': 'Language',
   'settings.ui_font_size': 'App Font Size',
+  'settings.source_storage': 'Original files',
+  'settings.source_storage.reference': 'Do not copy files when importing',
   'settings.library_modified_indicator': 'Library export reminder',
   'settings.library_modified_indicator.enable':
     'Mark books with unexported changes',

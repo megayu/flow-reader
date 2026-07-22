@@ -952,6 +952,17 @@ pub async fn get_book_reader_source(
 }
 
 #[tauri::command]
+pub async fn check_book_source_statuses(
+    storage: State<'_, AppStorage>,
+    ids: Vec<String>,
+) -> Result<Vec<BookSourceStatusRecord>, String> {
+    let storage = (*storage).clone();
+    tauri::async_runtime::spawn_blocking(move || check_book_source_statuses_impl(&storage, ids))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub async fn search_book_text(
     storage: State<'_, AppStorage>,
     tasks: State<'_, TaskService>,

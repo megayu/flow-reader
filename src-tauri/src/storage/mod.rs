@@ -186,6 +186,10 @@ struct ExternalBook {
     content_mode: BookContentMode,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     content_flags: Vec<BookContentFlag>,
+    #[serde(default, skip_serializing_if = "SourceStorage::is_managed")]
+    source_storage: SourceStorage,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_path: Option<PathBuf>,
     created_at: u64,
     last_opened_at: u64,
 }
@@ -212,6 +216,10 @@ struct LibraryBook {
     content_mode: BookContentMode,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     content_flags: Vec<BookContentFlag>,
+    #[serde(default, skip_serializing_if = "SourceStorage::is_managed")]
+    source_storage: SourceStorage,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_path: Option<PathBuf>,
     #[serde(default = "empty_object")]
     metadata: Value,
     created_at: u64,
@@ -268,6 +276,10 @@ pub struct BookRecord {
     content_mode: BookContentMode,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     content_flags: Vec<BookContentFlag>,
+    #[serde(default, skip_serializing_if = "SourceStorage::is_managed")]
+    source_storage: SourceStorage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -316,6 +328,36 @@ enum ReadingStatus {
 pub enum BookSourceFormat {
     Epub,
     Txt,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BookSourceStatus {
+    Available,
+    Changed,
+    Missing,
+    Unreadable,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BookSourceStatusRecord {
+    id: String,
+    status: BookSourceStatus,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum SourceStorage {
+    #[default]
+    Managed,
+    Referenced,
+}
+
+impl SourceStorage {
+    fn is_managed(value: &Self) -> bool {
+        *value == Self::Managed
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -764,6 +806,8 @@ impl AppStorage {
             content_version: book.content_version,
             content_mode: book.content_mode,
             content_flags: book.content_flags.clone(),
+            source_storage: book.source_storage,
+            source_path: book.source_path.as_deref().map(path_to_client_string),
         })
     }
 
@@ -791,6 +835,8 @@ impl AppStorage {
             content_version: book.content_version,
             content_mode: book.content_mode,
             content_flags: book.content_flags.clone(),
+            source_storage: book.source_storage,
+            source_path: book.source_path.as_deref().map(path_to_client_string),
         }
     }
 
@@ -825,6 +871,8 @@ impl AppStorage {
             content_version: book.content_version.max(1),
             content_mode: book.content_mode,
             content_flags: book.content_flags.clone(),
+            source_storage: book.source_storage,
+            source_path: book.source_path.clone(),
             metadata: read_json_value_or_default(
                 &self.external_book_dir(&book.id).join(METADATA_FILE),
             )?,
@@ -847,6 +895,23 @@ impl AppStorage {
         if let Ok(mut dirty) = self.inner.dirty.lock() {
             dirty.external = true;
         }
+    }
+
+    fn import_source_storage(&self) -> SourceStorage {
+        self.inner
+            .state
+            .lock()
+            .ok()
+            .and_then(|state| {
+                state
+                    .settings
+                    .get("importSourceStorage")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            })
+            .filter(|value| value == "referenced")
+            .map(|_| SourceStorage::Referenced)
+            .unwrap_or_default()
     }
 
     fn mark_settings_dirty(&self) {
@@ -1070,7 +1135,6 @@ fn path_to_client_string(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-#[cfg(test)]
 fn hash_file(path: &Path) -> Result<String, String> {
     let mut file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut hasher = Sha256::new();
@@ -1214,6 +1278,113 @@ fn inspect_and_store_book_content_access(
     Ok(access.mode)
 }
 
+fn book_original_source_path(storage: &AppStorage, book: &LibraryBook) -> Option<PathBuf> {
+    match book.source_storage {
+        SourceStorage::Managed => Some(storage.book_dir(&book.id).join(BOOK_FILE)),
+        SourceStorage::Referenced => book.source_path.clone(),
+    }
+}
+
+const BOOK_SOURCE_MISSING_ERROR: &str = "BOOK_SOURCE_MISSING";
+const BOOK_SOURCE_UNREADABLE_ERROR: &str = "BOOK_SOURCE_UNREADABLE";
+const BOOK_SOURCE_CHANGED_ERROR: &str = "BOOK_SOURCE_CHANGED";
+
+fn source_path_status(
+    path: Option<&Path>,
+    expected_source: Option<(u64, &str)>,
+) -> BookSourceStatus {
+    let Some(path) = path else {
+        return BookSourceStatus::Missing;
+    };
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => metadata,
+        Ok(_) => return BookSourceStatus::Unreadable,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return BookSourceStatus::Missing;
+        }
+        Err(_) => return BookSourceStatus::Unreadable,
+    };
+    let Some((expected_size, expected_hash)) = expected_source else {
+        return BookSourceStatus::Available;
+    };
+    if metadata.len() != expected_size {
+        return BookSourceStatus::Changed;
+    }
+    match hash_file(path) {
+        Ok(hash) if expected_hash.is_empty() || hash == expected_hash => {
+            BookSourceStatus::Available
+        }
+        Ok(_) => BookSourceStatus::Changed,
+        Err(_) => BookSourceStatus::Unreadable,
+    }
+}
+
+fn source_status_error(status: BookSourceStatus) -> Option<&'static str> {
+    match status {
+        BookSourceStatus::Available => None,
+        BookSourceStatus::Changed => Some(BOOK_SOURCE_CHANGED_ERROR),
+        BookSourceStatus::Missing => Some(BOOK_SOURCE_MISSING_ERROR),
+        BookSourceStatus::Unreadable => Some(BOOK_SOURCE_UNREADABLE_ERROR),
+    }
+}
+
+fn archive_only_source_path(storage: &AppStorage, book: &LibraryBook) -> Result<PathBuf, String> {
+    let path = book_original_source_path(storage, book);
+    let expected_source = (book.source_storage == SourceStorage::Referenced)
+        .then_some((book.size, book.content_hash.as_str()));
+    let status = source_path_status(path.as_deref(), expected_source);
+    if let Some(error) = source_status_error(status) {
+        return Err(error.to_string());
+    }
+    let path = path.expect("available source status requires a file path");
+    Ok(path)
+}
+
+fn referenced_archive_source_status(book: &LibraryBook) -> BookSourceStatus {
+    source_path_status(
+        book.source_path.as_deref(),
+        Some((book.size, book.content_hash.as_str())),
+    )
+}
+
+fn check_book_source_statuses_impl(
+    storage: &AppStorage,
+    ids: Vec<String>,
+) -> Result<Vec<BookSourceStatusRecord>, String> {
+    let books = {
+        let state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        ids.into_iter()
+            .filter_map(|id| {
+                state
+                    .library
+                    .books
+                    .iter()
+                    .find(|book| book.id == id)
+                    .cloned()
+            })
+            .collect::<Vec<_>>()
+    };
+
+    Ok(books
+        .into_iter()
+        .filter(|book| {
+            book.source_storage == SourceStorage::Referenced
+                && book.content_mode == BookContentMode::ArchiveOnly
+        })
+        .map(|book| {
+            let status = referenced_archive_source_status(&book);
+            BookSourceStatusRecord {
+                id: book.id,
+                status,
+            }
+        })
+        .collect())
+}
+
 fn get_book_reader_source_impl(
     storage: &AppStorage,
     tasks: &TaskService,
@@ -1230,10 +1401,7 @@ fn get_book_reader_source_impl(
     }
 
     if inspect_and_store_book_content_access(storage, book)? == BookContentMode::ArchiveOnly {
-        let book_path = book_dir.join(BOOK_FILE);
-        if !book_path.exists() {
-            return Err("Book package is unavailable".to_string());
-        }
+        let book_path = archive_only_source_path(storage, book)?;
         return Ok(BookReaderSource {
             mode: BookReaderSourceMode::Epub,
             path: path_to_client_string(&book_path),
@@ -3000,7 +3168,9 @@ pub(super) fn replace_book_text_impl(
         });
     }
 
-    let source_update = if source_format == BookSourceFormat::Txt {
+    let source_update = if source_format == BookSourceFormat::Txt
+        && initial_book.source_storage == SourceStorage::Managed
+    {
         let source_path = book_dir.join(SOURCE_TEXT_FILE);
         let text_dir = section_path
             .parent()
@@ -3068,7 +3238,9 @@ pub(super) fn replace_book_text_impl(
         book.clone()
     };
 
-    if source_format == BookSourceFormat::Txt {
+    if source_format == BookSourceFormat::Txt
+        && initial_book.source_storage == SourceStorage::Managed
+    {
         book.size = fs::metadata(book_dir.join(SOURCE_TEXT_FILE))
             .map_err(|error| error.to_string())?
             .len();
@@ -3124,10 +3296,7 @@ pub(super) fn export_book_impl(
             if source_format == BookSourceFormat::Epub
                 && content_mode == BookContentMode::ArchiveOnly
             {
-                let book_path = book_dir.join(BOOK_FILE);
-                if !book_path.exists() {
-                    return Err("Book package is unavailable".to_string());
-                }
+                let book_path = archive_only_source_path(storage, &initial_book)?;
                 if let Some(parent) = output_path.parent() {
                     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
                 }
@@ -3135,15 +3304,30 @@ pub(super) fn export_book_impl(
             } else {
                 let unpacked_dir = book_dir.join(UNPACKED_DIR);
                 if !unpacked_dir.exists() {
-                    let book_path = book_dir.join(BOOK_FILE);
-                    if book_path.exists() {
-                        unpack_epub(&book_path, &unpacked_dir)?;
-                        normalize_unpacked_epub_structure(&unpacked_dir)?;
+                    if let Some(book_path) = book_original_source_path(storage, &initial_book) {
+                        if book_path.exists() {
+                            unpack_epub(&book_path, &unpacked_dir)?;
+                            normalize_unpacked_epub_structure(&unpacked_dir)?;
+                        }
                     }
                 }
-                let book_path = book_dir.join(BOOK_FILE);
-                if source_format == BookSourceFormat::Epub && book_path.exists() {
-                    write_epub_from_original_and_unpacked(&book_path, &unpacked_dir, &output_path)?;
+                let original_epub =
+                    book_original_source_path(storage, &initial_book).filter(|path| {
+                        path.is_file()
+                            && (initial_book.source_storage == SourceStorage::Managed
+                                || hash_file(path)
+                                    .is_ok_and(|hash| hash == initial_book.content_hash))
+                    });
+                if source_format == BookSourceFormat::Epub {
+                    if let Some(book_path) = original_epub {
+                        write_epub_from_original_and_unpacked(
+                            &book_path,
+                            &unpacked_dir,
+                            &output_path,
+                        )?;
+                    } else {
+                        write_epub_from_unpacked_dir(&unpacked_dir, &output_path, None)?;
+                    }
                 } else {
                     let deflate_level = if source_format == BookSourceFormat::Txt {
                         Some(TXT_EPUB_DEFLATE_LEVEL)
@@ -3157,6 +3341,9 @@ pub(super) fn export_book_impl(
         BookExportFormat::Txt => {
             if source_format != BookSourceFormat::Txt {
                 return Err("Only TXT imports can be exported as TXT".to_string());
+            }
+            if initial_book.source_storage == SourceStorage::Referenced {
+                return Err("A referenced TXT can only be exported as EPUB".to_string());
             }
             if let Some(parent) = output_path.parent() {
                 fs::create_dir_all(parent).map_err(|error| error.to_string())?;
@@ -3198,32 +3385,33 @@ mod tests {
         preview_text_import_paths_impl, record_reading_position_impl, ReadingPositionInput,
     };
     use super::{
-        book_is_export_dirty, cleanup_delete_tombstones, cleanup_external_book_heavy_files,
-        decode_text_bytes, delete_books_to_tombstones, delete_tombstones_root, empty_object,
-        ensure_book_package_path_with_unpacker, export_book_impl, external_books_root,
-        external_index_path, get_book_reader_source_impl, hash_file, image_index_cache_from_bytes,
-        image_index_cache_to_bytes, import_epub_path_impl, library_path,
-        load_or_build_search_text_cache, mark_book_exported, mark_library_book_content_updated,
-        normalize_non_square_pixel_png, normalize_publication_date,
-        normalize_unpacked_epub_structure, open_external_epub_path_impl, parent_zip_path,
-        parse_text_import_document, path_to_client_string, read_image_index_cache,
-        read_json_or_default, read_json_value_or_default, read_search_text_sections_from_unpacked,
-        relative_zip_path, replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node,
+        book_is_export_dirty, check_book_source_statuses_impl, cleanup_delete_tombstones,
+        cleanup_external_book_heavy_files, decode_text_bytes, delete_books_to_tombstones,
+        delete_tombstones_root, empty_object, ensure_book_package_path_with_unpacker,
+        export_book_impl, external_books_root, external_index_path, get_book_reader_source_impl,
+        hash_file, image_index_cache_from_bytes, image_index_cache_to_bytes, import_epub_path_impl,
+        library_path, load_or_build_search_text_cache, mark_book_exported,
+        mark_library_book_content_updated, normalize_non_square_pixel_png,
+        normalize_publication_date, normalize_unpacked_epub_structure,
+        open_external_epub_path_impl, parent_zip_path, parse_text_import_document,
+        path_to_client_string, read_image_index_cache, read_json_or_default,
+        read_json_value_or_default, read_search_text_sections_from_unpacked, relative_zip_path,
+        replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node,
         schedule_existing_delete_tombstone_cleanup, search_text_cache_from_bytes,
         search_text_cache_to_bytes, search_text_in_cache, settings_path,
         sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml, text_section_xhtml,
         visible_search_text_from_xhtml, write_epub_from_original_and_unpacked,
         write_epub_from_unpacked_dir, write_image_index_cache_if_current, write_metadata,
         write_source_text_update, AppStorage, BookContentMode, BookExportFormat,
-        BookReaderSourceMode, BookRecord, BookScope, BookSourceFormat, BookState,
+        BookReaderSourceMode, BookRecord, BookScope, BookSourceFormat, BookSourceStatus, BookState,
         BookTextReplaceTarget, DirtyState, ExternalBookIndex, ImageIndexCache,
         ImageIndexCacheInput, ImageIndexEntry, ImageIndexEntryInput, ImageIndexSection,
         ImageIndexSectionInput, Library, LibraryBook, ReadingStatus, SearchTextCache,
-        SearchTextSection, SourceTextUpdate, StorageInner, StorageState, TextImportPreparedCache,
-        TextImportRulesInput, TextImportSelection, BOOK_FILE, IMAGE_INDEX_CACHE_FILE,
-        IMAGE_INDEX_CACHE_VERSION, IMAGE_INDEX_EXTRACTOR_VERSION, METADATA_FILE,
-        SEARCH_TEXT_CACHE_FILE, SEARCH_TEXT_CACHE_VERSION, SEARCH_TEXT_EXTRACTOR_VERSION,
-        SOURCE_TEXT_FILE, STATE_FILE, UNPACKED_DIR,
+        SearchTextSection, SourceStorage, SourceTextUpdate, StorageInner, StorageState,
+        TextImportPreparedCache, TextImportRulesInput, TextImportSelection, BOOK_FILE,
+        IMAGE_INDEX_CACHE_FILE, IMAGE_INDEX_CACHE_VERSION, IMAGE_INDEX_EXTRACTOR_VERSION,
+        METADATA_FILE, SEARCH_TEXT_CACHE_FILE, SEARCH_TEXT_CACHE_VERSION,
+        SEARCH_TEXT_EXTRACTOR_VERSION, SOURCE_TEXT_FILE, STATE_FILE, UNPACKED_DIR,
     };
     use crate::tasks::TaskService;
     use serde_json::{json, Value};
@@ -3647,6 +3835,76 @@ mod tests {
     }
 
     #[test]
+    fn referenced_text_import_uses_only_unpacked_and_exports_only_epub() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-text-reference-import-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("referenced.txt");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&source, "第1章 开始\n第一段。\n第二段。\n").unwrap();
+        let storage = test_storage_with_books(&root, Vec::new());
+        use_referenced_import_sources(&storage);
+        let tasks = TaskService::default();
+
+        let books = import_text_paths_impl(
+            &storage,
+            &tasks,
+            vec![TextImportSelection {
+                path: source.to_string_lossy().to_string(),
+                encoding: None,
+                title: None,
+                creator: None,
+            }],
+            true,
+            None,
+        )
+        .unwrap();
+        let book = &books[0];
+        let book_dir = storage.book_dir(&book.id);
+
+        assert!(!book_dir.join(SOURCE_TEXT_FILE).exists());
+        assert!(book_dir
+            .join(UNPACKED_DIR)
+            .join("OEBPS/content.opf")
+            .exists());
+        let persisted = serde_json::to_value(book).unwrap();
+        assert_eq!(
+            persisted.get("sourceStorage").and_then(Value::as_str),
+            Some("referenced")
+        );
+        assert_eq!(
+            persisted.get("sourcePath").and_then(Value::as_str),
+            Some(path_to_client_string(&source).as_str())
+        );
+
+        let txt_error = export_book_impl(
+            &storage,
+            book.id.clone(),
+            BookExportFormat::Txt,
+            root.join("blocked.txt"),
+        )
+        .unwrap_err();
+        assert!(txt_error.contains("referenced TXT"));
+
+        let output = root.join("referenced.epub");
+        export_book_impl(
+            &storage,
+            book.id.clone(),
+            BookExportFormat::Epub,
+            output.clone(),
+        )
+        .unwrap();
+        assert!(output.exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn text_import_reprepares_when_prepared_file_metadata_changes() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -4016,6 +4274,12 @@ mod tests {
         writer.finish().unwrap();
     }
 
+    fn use_referenced_import_sources(storage: &AppStorage) {
+        storage.inner.state.lock().unwrap().settings = json!({
+            "importSourceStorage": "referenced",
+        });
+    }
+
     fn write_minimal_epub_with_invalid_windows_entry(path: &Path) {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).unwrap();
@@ -4321,6 +4585,54 @@ mod tests {
         );
         assert!(!book_dir.join(UNPACKED_DIR).exists());
         assert!(!book_dir.join(SEARCH_TEXT_CACHE_FILE).exists());
+        let persisted = serde_json::to_value(&book).unwrap();
+        assert_eq!(
+            persisted.get("sourcePath").and_then(Value::as_str),
+            Some(path_to_client_string(&source).as_str())
+        );
+        assert!(persisted.get("sourceStorage").is_none());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn referenced_epub_import_keeps_source_in_place_and_publishes_unpacked_package() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-epub-reference-import-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("referenced.epub");
+        write_minimal_epub_file(&source, "Referenced Book", "referenced body");
+        let storage = test_storage_with_books(&root, Vec::new());
+        use_referenced_import_sources(&storage);
+
+        let book = import_epub_path_impl(&storage, &source, true).unwrap();
+        let book_dir = storage.book_dir(&book.id);
+
+        assert!(!book_dir.join(BOOK_FILE).exists());
+        assert!(book_dir
+            .join(UNPACKED_DIR)
+            .join("OEBPS/content.opf")
+            .exists());
+        let persisted = serde_json::to_value(&book).unwrap();
+        assert_eq!(
+            persisted.get("sourceStorage").and_then(Value::as_str),
+            Some("referenced")
+        );
+        assert_eq!(
+            persisted.get("sourcePath").and_then(Value::as_str),
+            Some(path_to_client_string(&source).as_str())
+        );
+
+        let tasks = TaskService::default();
+        let reader_book = storage.library_book(&book.id).unwrap();
+        let reader_source = get_book_reader_source_impl(&storage, &tasks, &reader_book).unwrap();
+        assert_eq!(reader_source.mode, BookReaderSourceMode::Opf);
+        assert!(reader_source.path.ends_with("/unpacked/OEBPS/content.opf"));
 
         let _ = fs::remove_dir_all(root);
     }
@@ -4353,9 +4665,12 @@ mod tests {
         drop(state);
 
         let external_dir = external_books_root(storage.root()).join(&book.id);
-        assert!(external_dir.join(BOOK_FILE).exists());
+        assert!(!external_dir.join(BOOK_FILE).exists());
         assert!(external_dir.join(METADATA_FILE).exists());
-        assert!(!external_dir.join(UNPACKED_DIR).exists());
+        assert!(external_dir
+            .join(UNPACKED_DIR)
+            .join("OEBPS/content.opf")
+            .exists());
 
         let loaded = get_book_impl(&storage, book.id.clone())
             .unwrap()
@@ -4369,6 +4684,77 @@ mod tests {
         assert_eq!(source.mode, BookReaderSourceMode::Opf);
         assert!(source.path.contains("/external-books/"));
         assert!(source.path.ends_with("/unpacked/OEBPS/content.opf"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn referenced_archive_only_epub_fails_after_source_disappears() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-archive-reference-missing-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("archive-only.epub");
+        write_minimal_epub_with_invalid_windows_entry(&source);
+        let storage = test_storage_with_books(&root, Vec::new());
+        use_referenced_import_sources(&storage);
+
+        let imported = import_epub_path_impl(&storage, &source, true).unwrap();
+        assert!(!storage.book_dir(&imported.id).join(BOOK_FILE).exists());
+        let available =
+            check_book_source_statuses_impl(&storage, vec![imported.id.clone()]).unwrap();
+        assert_eq!(available.len(), 1);
+        assert_eq!(available[0].status, BookSourceStatus::Available);
+        fs::remove_file(&source).unwrap();
+
+        let missing = check_book_source_statuses_impl(&storage, vec![imported.id.clone()]).unwrap();
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].status, BookSourceStatus::Missing);
+
+        let tasks = TaskService::default();
+        let book = storage.library_book(&imported.id).unwrap();
+        let error = get_book_reader_source_impl(&storage, &tasks, &book).unwrap_err();
+
+        assert_eq!(error, "BOOK_SOURCE_MISSING");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn referenced_archive_only_epub_reports_changed_source() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-archive-reference-changed-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("archive-only.epub");
+        write_minimal_epub_with_invalid_windows_entry(&source);
+        let storage = test_storage_with_books(&root, Vec::new());
+        use_referenced_import_sources(&storage);
+
+        let imported = import_epub_path_impl(&storage, &source, true).unwrap();
+        fs::OpenOptions::new()
+            .append(true)
+            .open(&source)
+            .unwrap()
+            .write_all(b"changed")
+            .unwrap();
+
+        let statuses =
+            check_book_source_statuses_impl(&storage, vec![imported.id.clone()]).unwrap();
+        assert_eq!(statuses.len(), 1);
+        assert_eq!(statuses[0].status, BookSourceStatus::Changed);
+
+        let tasks = TaskService::default();
+        let book = storage.library_book(&imported.id).unwrap();
+        let error = get_book_reader_source_impl(&storage, &tasks, &book).unwrap_err();
+        assert_eq!(error, "BOOK_SOURCE_CHANGED");
 
         let _ = fs::remove_dir_all(root);
     }
@@ -6896,6 +7282,8 @@ mod tests {
             content_version: 1,
             content_mode: BookContentMode::Normal,
             content_flags: Vec::new(),
+            source_storage: SourceStorage::Managed,
+            source_path: None,
             metadata: empty_object(),
             created_at: 1,
             updated_at: None,

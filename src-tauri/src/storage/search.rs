@@ -305,7 +305,7 @@ fn build_search_text_cache(
     let unpacked_dir = book_dir.join(UNPACKED_DIR);
     let sections =
         if inspect_and_store_book_content_access(storage, book)? == BookContentMode::ArchiveOnly {
-            read_search_text_sections_from_epub_package(&book_dir.join(BOOK_FILE))?
+            read_search_text_sections_from_epub_package(&archive_only_source_path(storage, book)?)?
         } else {
             ensure_book_package_path(storage, tasks, book)?;
             read_search_text_sections_from_unpacked(&unpacked_dir)?
@@ -1116,6 +1116,8 @@ mod tests {
             content_version,
             content_mode: BookContentMode::Normal,
             content_flags: Vec::new(),
+            source_storage: SourceStorage::Managed,
+            source_path: None,
             metadata: empty_object(),
             created_at: 1,
             updated_at: None,

@@ -10,6 +10,7 @@ import {
   CheckIcon,
   DownloadIcon,
   FileInputIcon,
+  FileX2Icon,
   HistoryIcon,
   InfoIcon,
   ListChecksIcon,
@@ -77,6 +78,7 @@ import {
 import {
   BookRecord,
   BookExportFormat,
+  BookSourceStatus,
   CoverRecord,
   EpubImportProgress,
   EpubImportResult,
@@ -203,7 +205,9 @@ function bookSourceFormat(book: BookRecord) {
 }
 
 function bookExportFormats(book: BookRecord): BookExportFormat[] {
-  return bookSourceFormat(book) === 'txt' ? ['txt', 'epub'] : ['epub']
+  return bookSourceFormat(book) === 'txt' && book.sourceStorage !== 'referenced'
+    ? ['txt', 'epub']
+    : ['epub']
 }
 
 function isArchiveOnlyBook(book: BookRecord) {
@@ -211,6 +215,33 @@ function isArchiveOnlyBook(book: BookRecord) {
     book.contentMode === 'archiveOnly' ||
     book.contentFlags?.includes('nonPortableArchivePaths') === true
   )
+}
+
+const bookCoverCornerBadgeClassName =
+  'flex size-8 items-center justify-center rounded-lg shadow-sm ring-1 ring-inset'
+const bookCoverCornerIconSize = 18
+const bookCoverCornerIconStrokeWidth = 2.2
+const bookSourceStatusRefreshEvent = 'flow-reader:book-source-status-refresh'
+
+function isBookSourceUnavailable(status?: BookSourceStatus) {
+  return status !== undefined && status !== 'available'
+}
+
+function bookSourceDescriptionKey(
+  status: Exclude<BookSourceStatus, 'available'>,
+) {
+  if (status === 'missing') return 'source_missing_description' as const
+  if (status === 'changed') return 'source_changed_description' as const
+  return 'source_unreadable_description' as const
+}
+
+function bookSourceStatusFromError(
+  errorMessage: string,
+): Exclude<BookSourceStatus, 'available'> | undefined {
+  if (errorMessage === 'BOOK_SOURCE_MISSING') return 'missing'
+  if (errorMessage === 'BOOK_SOURCE_UNREADABLE') return 'unreadable'
+  if (errorMessage === 'BOOK_SOURCE_CHANGED') return 'changed'
+  return undefined
 }
 
 function isBookExportDirty(book: BookRecord, format: BookExportFormat) {
@@ -501,6 +532,7 @@ function IndexContent() {
   const notify = useNotify()
   const notifyEpubImportResult = useEpubImportNotifications()
   const errorT = useTranslation('error')
+  const homeT = useTranslation('home')
   const focusedBookId = focusedBookTab?.book.id
 
   const applySavedSidebarState = useCallback(() => {
@@ -554,20 +586,33 @@ function IndexContent() {
   )
 
   useEffect(() => {
-    return subscribeReaderOpenErrors(({ bookTitle, error, stage }) => {
-      setNativeStartupReaderFailed(true)
-      notify({
-        autoCloseMs: false,
-        description: `${bookTitle}: ${formatErrorMessage(error)}`,
-        title: errorT(
-          stage === 'source' || stage === 'open'
-            ? 'reader_open_failed'
-            : 'reader_render_failed',
-        ),
-        type: 'error',
-      })
-    })
-  }, [errorT, notify])
+    return subscribeReaderOpenErrors(
+      ({ bookId, bookTitle, closeTab, error, stage }) => {
+        setNativeStartupReaderFailed(true)
+        if (closeTab) {
+          reader.closeBookTabs(bookId)
+          window.dispatchEvent(new Event(bookSourceStatusRefreshEvent))
+        }
+        const errorMessage = formatErrorMessage(error)
+        const sourceErrorStatus = bookSourceStatusFromError(errorMessage)
+        const sourceErrorDescription = sourceErrorStatus
+          ? homeT(bookSourceDescriptionKey(sourceErrorStatus))
+          : undefined
+        notify({
+          autoCloseMs: false,
+          description: `${bookTitle}: ${sourceErrorDescription ?? errorMessage}`,
+          title: sourceErrorDescription
+            ? homeT('source_unavailable')
+            : errorT(
+                stage === 'source' || stage === 'open'
+                  ? 'reader_open_failed'
+                  : 'reader_render_failed',
+              ),
+          type: 'error',
+        })
+      },
+    )
+  }, [errorT, homeT, notify])
 
   const tryRestoreStartupSession = useEffectEvent(() => {
     if (
@@ -899,11 +944,54 @@ const Library: React.FC<LibraryProps> = ({
   const [highlightedBookIds, setHighlightedBookIds] = useState<Set<string>>(
     () => new Set(),
   )
+  const [sourceStatuses, setSourceStatuses] = useState(
+    () => new Map<string, BookSourceStatus>(),
+  )
   const [batchTagsOpen, setBatchTagsOpen] = useState(false)
   const selectionAnchorIdRef = useRef<string | undefined>(undefined)
   const rangeSelectionSessionRef = useRef<
     LibraryRangeSelectionSession | undefined
   >(undefined)
+  const referencedArchiveIds = useMemo(
+    () =>
+      (books ?? []).reduce<string[]>((ids, book) => {
+        if (book.sourceStorage === 'referenced' && isArchiveOnlyBook(book)) {
+          ids.push(book.id)
+        }
+        return ids
+      }, []),
+    [books],
+  )
+  useEffect(() => {
+    if (!referencedArchiveIds.length) {
+      setSourceStatuses((current) =>
+        current.size ? new Map<string, BookSourceStatus>() : current,
+      )
+      return
+    }
+
+    let active = true
+    const refresh = () => {
+      void db.books
+        .checkSourceStatuses(referencedArchiveIds)
+        .then((records) => {
+          if (!active) return
+          setSourceStatuses(
+            new Map(records.map((record) => [record.id, record.status])),
+          )
+        })
+        .catch(console.error)
+    }
+
+    refresh()
+    window.addEventListener('focus', refresh)
+    window.addEventListener(bookSourceStatusRefreshEvent, refresh)
+    return () => {
+      active = false
+      window.removeEventListener('focus', refresh)
+      window.removeEventListener(bookSourceStatusRefreshEvent, refresh)
+    }
+  }, [referencedArchiveIds])
 
   const clearBookSelection = useCallback(() => {
     reset()
@@ -1424,6 +1512,7 @@ const Library: React.FC<LibraryProps> = ({
             <Book
               key={book.id}
               book={book}
+              sourceStatus={sourceStatuses.get(book.id)}
               covers={covers}
               select={select}
               selected={has(book.id)}
@@ -1455,6 +1544,7 @@ interface BookProps {
   select?: boolean
   selected?: boolean
   showModifiedExportIndicator: boolean
+  sourceStatus?: BookSourceStatus
   onSelectBook: (id: string, e: LibraryBookSelectionEvent) => void
   onOpenBook: () => void
 }
@@ -1465,6 +1555,7 @@ const Book: React.FC<BookProps> = ({
   select,
   selected,
   showModifiedExportIndicator,
+  sourceStatus,
   onSelectBook,
   onOpenBook,
 }) => {
@@ -1503,9 +1594,18 @@ const Book: React.FC<BookProps> = ({
   )
 
   const openBook = useCallback(async () => {
+    if (isBookSourceUnavailable(sourceStatus)) {
+      notify({
+        autoCloseMs: false,
+        description: t(bookSourceDescriptionKey(sourceStatus)),
+        title: t('source_unavailable'),
+        type: 'error',
+      })
+      return
+    }
     reader.addTab((await db.books.get(book.id)) ?? book)
     onOpenBook()
-  }, [book, onOpenBook])
+  }, [book, notify, onOpenBook, sourceStatus, t])
 
   const openBookDirectory = useCallback(
     (e: React.MouseEvent) => {
@@ -1707,7 +1807,8 @@ const Book: React.FC<BookProps> = ({
                       type="button"
                       aria-label={t('reading_status.change')}
                       className={clsx(
-                        'flex size-8 items-center justify-center rounded-lg opacity-0 shadow-sm ring-1 transition-opacity ring-inset group-hover:opacity-100',
+                        bookCoverCornerBadgeClassName,
+                        'opacity-0 transition-opacity group-hover:opacity-100',
                         readingStatusEditButtonClassName[
                           book.readingStatus ?? 'unmarked'
                         ],
@@ -1717,7 +1818,7 @@ const Book: React.FC<BookProps> = ({
                       <ReadingStatusIcon
                         intent="edit"
                         status={book.readingStatus ?? null}
-                        size={18}
+                        size={bookCoverCornerIconSize}
                         tone="current"
                       />
                     </button>
@@ -1746,38 +1847,80 @@ const Book: React.FC<BookProps> = ({
             className="block h-full w-full rounded-[inherit] object-cover"
             draggable={false}
           />
-          {isArchiveOnlyBook(book) && (
+          {isBookSourceUnavailable(sourceStatus) && (
             <AppTooltip
-              label={t('compat.archive_only')}
+              label={t('source_unavailable')}
               contentStyle={{ maxWidth: 'calc(50vw - 2rem)' }}
               content={
                 <span className="flex w-max max-w-[calc(50vw-2rem)] min-w-0 flex-col gap-1">
                   <span className="min-w-0 text-base font-medium break-words">
-                    {t('compat.archive_only')}
+                    {t('source_unavailable')}
                   </span>
                   <span className="text-muted-foreground min-w-0 text-base break-words">
-                    {t('compat.archive_only_description')}
+                    {t(bookSourceDescriptionKey(sourceStatus))}
                   </span>
                 </span>
               }
             >
               <div
-                aria-label={t('compat.archive_only')}
-                className="absolute top-2 left-2 z-10 flex size-8 items-center justify-center rounded-lg bg-zinc-950/75 text-white shadow-sm ring-1 ring-white/20 ring-inset"
+                aria-label={t('source_unavailable')}
+                className={clsx(
+                  bookCoverCornerBadgeClassName,
+                  'absolute top-2 left-2 z-10 bg-zinc-950/90 text-white ring-white/50',
+                )}
               >
-                <ArchiveIcon className="size-[18px]" />
+                <FileX2Icon
+                  size={bookCoverCornerIconSize}
+                  strokeWidth={bookCoverCornerIconStrokeWidth}
+                />
               </div>
             </AppTooltip>
           )}
+          {!isBookSourceUnavailable(sourceStatus) &&
+            isArchiveOnlyBook(book) && (
+              <AppTooltip
+                label={t('compat.archive_only')}
+                contentStyle={{ maxWidth: 'calc(50vw - 2rem)' }}
+                content={
+                  <span className="flex w-max max-w-[calc(50vw-2rem)] min-w-0 flex-col gap-1">
+                    <span className="min-w-0 text-base font-medium break-words">
+                      {t('compat.archive_only')}
+                    </span>
+                    <span className="text-muted-foreground min-w-0 text-base break-words">
+                      {t('compat.archive_only_description')}
+                    </span>
+                  </span>
+                }
+              >
+                <div
+                  aria-label={t('compat.archive_only')}
+                  className={clsx(
+                    bookCoverCornerBadgeClassName,
+                    'absolute top-2 left-2 z-10 bg-zinc-950/90 text-white ring-white/50',
+                  )}
+                >
+                  <ArchiveIcon
+                    size={bookCoverCornerIconSize}
+                    strokeWidth={bookCoverCornerIconStrokeWidth}
+                  />
+                </div>
+              </AppTooltip>
+            )}
           {showModifiedExportIndicator &&
             !isArchiveOnlyBook(book) &&
             hasUnexportedBookChanges(book) && (
               <AppTooltip label={t('modified_export_indicator')}>
                 <div
                   aria-label={t('modified_export_indicator')}
-                  className="absolute top-2 left-2 z-10 flex size-8 items-center justify-center rounded-lg bg-[var(--flow-accent)] text-[var(--flow-accent-text)] shadow-sm ring-1 ring-white/20 ring-inset"
+                  className={clsx(
+                    bookCoverCornerBadgeClassName,
+                    'absolute top-2 left-2 z-10 bg-[var(--flow-accent)] text-[var(--flow-accent-text)] ring-white/40',
+                  )}
                 >
-                  <DownloadIcon className="size-[18px]" />
+                  <DownloadIcon
+                    size={bookCoverCornerIconSize}
+                    strokeWidth={bookCoverCornerIconStrokeWidth}
+                  />
                 </div>
               </AppTooltip>
             )}
@@ -1948,14 +2091,15 @@ const ReadingStatusBadge: React.FC<ReadingStatusBadgeProps> = ({
     <div
       aria-label={title}
       className={clsx(
-        'absolute top-2 right-2 z-10 flex size-8 items-center justify-center rounded-lg shadow-sm ring-1 transition-opacity ring-inset group-hover:opacity-0',
+        bookCoverCornerBadgeClassName,
+        'absolute top-2 right-2 z-10 transition-opacity group-hover:opacity-0',
         readingStatusBadgeClassName[status],
         hidden && 'opacity-0',
       )}
     >
       <ReadingStatusIcon
         status={status}
-        size={18}
+        size={bookCoverCornerIconSize}
         tone="current"
         className="text-white"
       />
