@@ -145,7 +145,7 @@ export function useSplitViewItem(
 ) {
   const [size, _resize, reset, commitSize] = useSize(
     preferredSize,
-    minSize,
+    dragMinSize ?? minSize,
     maxSize,
     storageKey,
   )

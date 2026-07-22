@@ -1686,6 +1686,69 @@ test('long-book ignores stale fixed height for the flexible TOC pane', async ({
   ).toBeVisible()
 })
 
+test('lets TOC and annotation splits reach both bounds without overflowing', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await openFixtureBook(page, 0)
+
+  const sidebar = page.locator('.SideBar')
+  const expectBoundaryDragInBounds = async () => {
+    const panes = sidebar.locator('.Pane:visible')
+    const sash = sidebar.locator('.sash.cursor-ns-resize:visible')
+    await expect(panes).toHaveCount(2)
+    await expect(sash).toHaveCount(1)
+
+    const sidebarBox = await sidebar.boundingBox()
+    const sashBox = await sash.boundingBox()
+    expect(sidebarBox).not.toBeNull()
+    expect(sashBox).not.toBeNull()
+    if (!sidebarBox || !sashBox) return
+
+    const x = sashBox.x + sashBox.width / 2
+    await page.mouse.move(x, sashBox.y + sashBox.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(x, sidebarBox.y - 200)
+
+    await expect
+      .poll(() =>
+        panes.first().evaluate((pane) => pane.getBoundingClientRect().height),
+      )
+      .toBeCloseTo(28, 0)
+
+    await page.mouse.move(x, sidebarBox.y + sidebarBox.height + 200)
+
+    const geometry = await sidebar.evaluate((element) => {
+      const paneRects = Array.from(element.querySelectorAll('.Pane'))
+        .filter((pane) => (pane as HTMLElement).checkVisibility())
+        .map((pane) => pane.getBoundingClientRect())
+      const sidebarRect = element.getBoundingClientRect()
+      return {
+        paneHeights: paneRects.map((rect) => rect.height),
+        paneBottoms: paneRects.map((rect) => rect.bottom),
+        paneTops: paneRects.map((rect) => rect.top),
+        sidebarBottom: sidebarRect.bottom,
+        sidebarTop: sidebarRect.top,
+      }
+    })
+
+    await page.mouse.up()
+
+    expect(geometry.paneHeights.at(-1)).toBeCloseTo(28, 0)
+    expect(geometry.paneBottoms.at(-1)).toBeCloseTo(geometry.sidebarBottom, 0)
+    expect(Math.min(...geometry.paneTops)).toBeGreaterThanOrEqual(
+      geometry.sidebarTop - 0.5,
+    )
+    expect(Math.max(...geometry.paneBottoms)).toBeLessThanOrEqual(
+      geometry.sidebarBottom + 0.5,
+    )
+  }
+
+  await expectBoundaryDragInBounds()
+  await page.locator('.ActivityBar button[aria-label="Annotation"]').click()
+  await expectBoundaryDragInBounds()
+})
+
 async function openVerticalFixtureBook(page: Page) {
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })
