@@ -189,6 +189,7 @@ pub fn run() {
             match event {
                 WindowEvent::CloseRequested { api, .. } => {
                     api.prevent_close();
+                    storage::save_window_state(window);
                     let _ = window.hide();
 
                     let app = window.app_handle().clone();
@@ -206,7 +207,6 @@ pub fn run() {
                                 eprintln!("Failed to cleanup external book files: {error}");
                             }
                         }
-                        storage::save_window_state(&window);
                         app.exit(0);
                     });
                 }

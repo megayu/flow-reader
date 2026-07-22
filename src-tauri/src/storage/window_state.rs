@@ -59,6 +59,11 @@ pub fn save_window_state(window: &Window) {
 
     let state = if maximized {
         let monitors = window_monitor_bounds(window);
+        let current_monitor = window
+            .current_monitor()
+            .ok()
+            .flatten()
+            .map(|monitor| monitor_bounds(&monitor));
         let existing = read_json_or_default::<Option<WindowState>>(&path)
             .ok()
             .flatten()
@@ -78,6 +83,7 @@ pub fn save_window_state(window: &Window) {
             existing,
             default_centered_window_state_from_monitors(&monitors),
             maximized,
+            current_monitor,
         )
     } else {
         let Ok(position) = window.outer_position() else {
@@ -164,9 +170,27 @@ fn window_state_with_display_flags(
     existing: Option<WindowState>,
     fallback: WindowState,
     maximized: bool,
+    current_monitor: Option<MonitorBounds>,
 ) -> WindowState {
     let mut state = existing.unwrap_or(fallback);
     state.maximized = maximized;
+
+    if let Some(monitor) = current_monitor {
+        let restored_bounds = WindowBounds {
+            x: state.x,
+            y: state.y,
+            width: state.width,
+            height: state.height,
+        };
+        if !contains_window(&monitor, &restored_bounds) {
+            let relocated = center_bounds(Some(monitor), state.width, state.height);
+            state.x = relocated.x;
+            state.y = relocated.y;
+            state.width = relocated.width;
+            state.height = relocated.height;
+        }
+    }
+
     state
 }
 
@@ -207,7 +231,15 @@ mod tests {
             maximized: false,
         };
 
-        let state = window_state_with_display_flags(Some(existing), fallback, true);
+        let current_monitor = MonitorBounds {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+
+        let state =
+            window_state_with_display_flags(Some(existing), fallback, true, Some(current_monitor));
 
         assert_eq!(state.x, 120);
         assert_eq!(state.y, 80);
