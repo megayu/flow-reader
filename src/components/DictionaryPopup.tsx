@@ -485,7 +485,6 @@ export function DictionaryPopup({
         <IconButton
           Icon={ArrowLeftIcon}
           className="shrink-0"
-          data-dictionary-back="true"
           onClick={handleBack}
         />
         <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
@@ -495,17 +494,11 @@ export function DictionaryPopup({
               aria-pressed={speech.isSpeaking}
               Icon={speech.isSpeaking ? SquareIcon : Volume2Icon}
               className="shrink-0"
-              data-dictionary-speech="true"
               onClick={speech.toggle}
             />
           )}
         </div>
-        <IconButton
-          Icon={XIcon}
-          className="shrink-0"
-          data-dictionary-close="true"
-          onClick={onClose}
-        />
+        <IconButton Icon={XIcon} className="shrink-0" onClick={onClose} />
       </header>
       {navigationSources.length > 0 && (
         <div className="border-border grid min-h-10 shrink-0 grid-cols-[minmax(0,7fr)_minmax(0,3fr)] items-center border-b">

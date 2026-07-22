@@ -683,7 +683,6 @@ const Block: React.FC<BlockProps> = ({
             return (
               <button
                 type="button"
-                data-image-result="true"
                 key={`${src}:${image.index}`}
                 className={clsx(
                   'focus:ring-ring block w-full cursor-pointer border-0 bg-transparent py-0 pr-2.5 pl-0 text-left outline-none focus:ring-1 focus:ring-inset',

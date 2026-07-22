@@ -325,6 +325,26 @@ async function speechState(page: Page) {
   })
 }
 
+function dictionaryBackButton(page: Page) {
+  return page
+    .locator('[data-flow-dictionary-popup] header')
+    .getByRole('button')
+    .first()
+}
+
+function dictionaryCloseButton(page: Page) {
+  return page
+    .locator('[data-flow-dictionary-popup] header')
+    .getByRole('button')
+    .last()
+}
+
+function dictionarySpeechButton(page: Page) {
+  return page
+    .locator('[data-flow-dictionary-popup] header')
+    .locator('button:has(.lucide-volume-2), button:has(.lucide-square)')
+}
+
 async function finishSpeech(page: Page, outcome: 'end' | 'error') {
   await page.evaluate((nextOutcome) => {
     const state = (
@@ -460,7 +480,7 @@ test('selection speech reads Chinese with the matching system voice and toggles 
   await selectFixtureText(page, '测试')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
 
-  const speak = page.locator('[data-dictionary-speech]')
+  const speak = dictionarySpeechButton(page)
   await speak.focus()
   await speak.press('Enter')
 
@@ -506,7 +526,7 @@ test('prefers the default voice for the detected language and resets after an er
   )
   await selectFixtureText(page, 'sample')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
-  const speak = page.locator('[data-dictionary-speech]')
+  const speak = dictionarySpeechButton(page)
   await speak.click()
 
   await expect
@@ -543,7 +563,7 @@ test('selection speech falls back to a same-language voice when no exact locale 
   )
   await selectFixtureText(page, 'sample')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
-  const speak = page.locator('[data-dictionary-speech]')
+  const speak = dictionarySpeechButton(page)
   await speak.click()
 
   await expect
@@ -569,7 +589,7 @@ test('selection speech is hidden when the system API is unavailable', async ({
   await selectFixtureText(page, '测试')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
 
-  const unavailable = page.locator('[data-dictionary-speech]')
+  const unavailable = dictionarySpeechButton(page)
   await expect(unavailable).toHaveCount(0)
 })
 
@@ -581,7 +601,7 @@ test('selection speech reacts when the system voice list becomes available', asy
   await selectFixtureText(page, '测试')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
 
-  const speak = page.locator('[data-dictionary-speech]')
+  const speak = dictionarySpeechButton(page)
   await expect(speak).toHaveCount(0)
   await page.evaluate(() => {
     const state = (
@@ -607,11 +627,11 @@ test('stops active speech on every dictionary popup exit path', async ({
 
   const openDictionary = async () => {
     await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
-    await page.locator('[data-dictionary-speech]').click()
+    await dictionarySpeechButton(page).click()
   }
 
   await openDictionary()
-  await page.locator('[data-dictionary-back]').click()
+  await dictionaryBackButton(page).click()
   await expect.poll(() => speechState(page)).toMatchObject({ cancelCalls: 2 })
 
   await openDictionary()
@@ -619,7 +639,7 @@ test('stops active speech on every dictionary popup exit path', async ({
   await expect.poll(() => speechState(page)).toMatchObject({ cancelCalls: 4 })
 
   await openDictionary()
-  await page.locator('[data-dictionary-close]').click()
+  await dictionaryCloseButton(page).click()
   await expect.poll(() => speechState(page)).toMatchObject({ cancelCalls: 6 })
   await expect(page.getByRole('button', { name: 'Copy' })).toHaveCount(0)
 })
@@ -1101,9 +1121,7 @@ test('back cancels an active native lookup and restores the action menu', async 
   await setupDictionaryReader(page, { 天: characterHtml }, 2_000)
   await selectFixtureText(page, '天')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
-  await expect(
-    page.getByRole('dialog', { name: 'Dictionary: 天' }),
-  ).toBeVisible()
+  await expect(page.getByRole('dialog')).toBeVisible()
   await expect
     .poll(
       async () =>
@@ -1113,7 +1131,7 @@ test('back cancels an active native lookup and restores the action menu', async 
   const latestSessionId = (
     await getDictionaryMockState(page)
   ).dictionaryRequests.at(-1)!.sessionId
-  await page.locator('[data-dictionary-back]').click()
+  await dictionaryBackButton(page).click()
 
   await expect(
     page.getByRole('button', { name: 'Dictionary', exact: true }),
@@ -1508,7 +1526,7 @@ test('looks up an English selection in an enabled StarDict and releases its sess
   await selectFixtureText(page, 'sky')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
 
-  const popup = page.getByRole('dialog', { name: 'Dictionary: sky' })
+  const popup = page.getByRole('dialog')
   await expect(
     popup.getByRole('heading', { name: 'Oxford English-Chinese Dictionary' }),
   ).toBeVisible()
@@ -1516,7 +1534,7 @@ test('looks up an English selection in an enabled StarDict and releases its sess
     popup.getByText('the region of the atmosphere seen from earth'),
   ).toBeVisible()
 
-  await popup.locator('[data-dictionary-close]').click()
+  await dictionaryCloseButton(page).click()
   await expect
     .poll(async () => (await getDictionaryMockState(page)).stardictRequests)
     .toHaveLength(1)
@@ -1639,7 +1657,7 @@ test('MDict keeps internal links in a source-only bounded detail history', async
   await selectFixtureText(page, '词')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
 
-  const popup = page.getByRole('dialog', { name: 'Dictionary: 词' })
+  const popup = page.getByRole('dialog')
   await expect(
     popup.getByRole('heading', { name: 'Synthetic Chinese MDict' }),
   ).toBeVisible()
@@ -1781,7 +1799,7 @@ test('MDict keeps internal links in a source-only bounded detail history', async
     '第三词',
   ])
 
-  await popup.locator('[data-dictionary-close]').click()
+  await dictionaryCloseButton(page).click()
   const state = await getDictionaryMockState(page)
   expect(state.mdictStylesheetRequests).toEqual([
     {

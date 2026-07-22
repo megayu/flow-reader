@@ -1,6 +1,6 @@
 import path from 'node:path'
 
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 import type { BookRecord } from '../src/db'
 
@@ -1632,6 +1632,65 @@ test.beforeEach(async ({ page }, testInfo) => {
   ).toHaveCount(3)
 })
 
+const SIDEBAR_SCROLLBAR_WIDTH = 10
+const SIDEBAR_EDGE_EPSILON = 0.5
+
+async function expectFullWidthScroll(scroll: Locator) {
+  await expect
+    .poll(() =>
+      scroll.evaluate((element) => element.clientWidth === element.offsetWidth),
+    )
+    .toBe(true)
+}
+
+async function expectFullWidthRow(
+  scroll: Locator,
+  row: Locator,
+  reservedContent?: Locator,
+) {
+  await expect
+    .poll(async () => {
+      const [scrollBox, rowBox, contentBox] = await Promise.all([
+        scroll.boundingBox(),
+        row.boundingBox(),
+        reservedContent?.boundingBox(),
+      ])
+      if (!scrollBox || !rowBox || (reservedContent && !contentBox)) {
+        return false
+      }
+
+      const scrollRight = scrollBox.x + scrollBox.width
+      const rowRight = rowBox.x + rowBox.width
+      const contentRight = contentBox
+        ? contentBox.x + contentBox.width
+        : undefined
+
+      return (
+        Math.abs(rowRight - scrollRight) < SIDEBAR_EDGE_EPSILON &&
+        (contentRight === undefined ||
+          contentRight <=
+            scrollRight - SIDEBAR_SCROLLBAR_WIDTH + SIDEBAR_EDGE_EPSILON)
+      )
+    })
+    .toBe(true)
+}
+
+async function expectVisibleOverlayScrollbar(scroll: Locator) {
+  await expectFullWidthScroll(scroll)
+  const scrollbar = scroll
+    .locator('..')
+    .locator('[data-orientation="vertical"]')
+
+  await expect(scrollbar).toHaveCSS('opacity', '1')
+  await expect
+    .poll(() =>
+      scrollbar.evaluate((element) => element.getBoundingClientRect().width),
+    )
+    .toBe(SIDEBAR_SCROLLBAR_WIDTH)
+
+  return scrollbar
+}
+
 test('applies overlay and reserved scrollbar width to the matching sidebars', async ({
   page,
 }) => {
@@ -1667,27 +1726,10 @@ test('applies overlay and reserved scrollbar width to the matching sidebars', as
       })),
     )
     .toEqual({ fullWidth: true, overflowing: true })
-  await tocScroll.locator('.list-row').first().hover()
-  const scrollbar = tocPane.locator('[data-orientation="vertical"]')
-  await expect
-    .poll(() =>
-      scrollbar.evaluate((element) => getComputedStyle(element).opacity),
-    )
-    .toBe('1')
-  await expect
-    .poll(() =>
-      tocScroll.evaluate((element) => {
-        const row = element.querySelector('.list-row')
-        if (!row) return false
-        return (
-          Math.abs(
-            row.getBoundingClientRect().right -
-              element.getBoundingClientRect().right,
-          ) < 0.5
-        )
-      }),
-    )
-    .toBe(true)
+  const tocRow = tocScroll.locator('.list-row').first()
+  await tocRow.hover()
+  const scrollbar = await expectVisibleOverlayScrollbar(tocScroll)
+  await expectFullWidthRow(tocScroll, tocRow)
   const thumb = tocPane.locator('[data-pane-scrollbar-thumb]')
   const thumbBox = await thumb.boundingBox()
   if (!thumbBox) throw new Error('Missing TOC scrollbar thumb bounds')
@@ -1738,49 +1780,8 @@ test('applies overlay and reserved scrollbar width to the matching sidebars', as
   const selectedSearchRow = searchScroll.locator('[aria-current="true"]')
   await expect(selectedSearchRow).toBeVisible()
   await selectedSearchRow.click()
-  await expect
-    .poll(async () => {
-      const [scrollBox, countBox, clientWidth] = await Promise.all([
-        searchScroll.boundingBox(),
-        resultCount.boundingBox(),
-        searchScroll.evaluate((element) => element.clientWidth),
-      ])
-      if (!scrollBox || !countBox) return false
-      return countBox.x + countBox.width <= scrollBox.x + clientWidth - 10 + 0.5
-    })
-    .toBe(true)
-  await expect
-    .poll(() =>
-      searchScroll.evaluate((element) => {
-        const row = element.querySelector('[aria-current="true"]')
-        if (!row) return false
-        return (
-          Math.abs(
-            row.getBoundingClientRect().right -
-              element.getBoundingClientRect().right,
-          ) < 0.5
-        )
-      }),
-    )
-    .toBe(true)
-  await expect
-    .poll(() =>
-      searchScroll.evaluate(
-        (element) => element.clientWidth === element.offsetWidth,
-      ),
-    )
-    .toBe(true)
-  const searchScrollbar = searchScroll
-    .locator('..')
-    .locator('[data-orientation="vertical"]')
-  await expect(searchScrollbar).toHaveCSS('opacity', '1')
-  await expect
-    .poll(() =>
-      searchScrollbar.evaluate(
-        (element) => element.getBoundingClientRect().width,
-      ),
-    )
-    .toBe(10)
+  await expectFullWidthRow(searchScroll, selectedSearchRow, resultCount)
+  await expectVisibleOverlayScrollbar(searchScroll)
 
   await page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab
@@ -1792,87 +1793,31 @@ test('applies overlay and reserved scrollbar width to the matching sidebars', as
     })
   })
   await activityBar.getByRole('button', { name: 'Annotation' }).click()
-  await expect
-    .poll(() =>
-      sidebar
-        .locator('[data-pane-scroll]')
-        .evaluateAll((elements) =>
-          elements.every(
-            (element) => element.offsetWidth === element.clientWidth,
-          ),
-        ),
-    )
-    .toBe(true)
+  for (const scroll of await sidebar.locator('[data-pane-scroll]').all()) {
+    await expectFullWidthScroll(scroll)
+  }
   const annotationScroll = sidebar.locator('[data-pane-scroll]').first()
-  await annotationScroll.locator('.list-row').first().hover()
-  await expect
-    .poll(() =>
-      annotationScroll.evaluate((element) => {
-        const row = element.querySelector('.list-row')
-        const action = row?.querySelector('.action')
-        if (!row || !action) return false
-        const scrollRight = element.getBoundingClientRect().right
-        return (
-          Math.abs(row.getBoundingClientRect().right - scrollRight) < 0.5 &&
-          action.getBoundingClientRect().right <= scrollRight - 10 + 0.5
-        )
-      }),
-    )
-    .toBe(true)
-  const annotationScrollbar = annotationScroll
-    .locator('..')
-    .locator('[data-orientation="vertical"]')
-  await expect(annotationScrollbar).toHaveCSS('opacity', '1')
-  await expect
-    .poll(() =>
-      annotationScrollbar.evaluate(
-        (element) => element.getBoundingClientRect().width,
-      ),
-    )
-    .toBe(10)
+  const annotationRow = annotationScroll.locator('.list-row').first()
+  const annotationAction = annotationRow.locator('.action')
+  await annotationRow.hover()
+  await expectFullWidthRow(annotationScroll, annotationRow, annotationAction)
+  await expectVisibleOverlayScrollbar(annotationScroll)
 
   await activityBar.getByRole('button', { name: 'Image' }).click()
   const imageScroll = sidebar.locator('[data-pane-scroll]').last()
-  await expect
-    .poll(() =>
-      imageScroll.evaluate(
-        (element) => element.offsetWidth === element.clientWidth,
-      ),
-    )
-    .toBe(true)
-  await imageScroll.locator('.list-row').first().hover()
-  await expect
-    .poll(() =>
-      imageScroll.evaluate((element) => {
-        const row = element.querySelector('.list-row')
-        const badge = row?.querySelector('.rounded-full')
-        if (!row || !badge) return false
-        const scrollRight = element.getBoundingClientRect().right
-        return (
-          Math.abs(row.getBoundingClientRect().right - scrollRight) < 0.5 &&
-          badge.getBoundingClientRect().right <= scrollRight - 10 + 0.5
-        )
-      }),
-    )
-    .toBe(true)
-  await imageScroll.locator('.list-row').first().click()
-  const selectedImage = imageScroll.locator('[data-image-result]').first()
+  const imageRow = imageScroll.locator('.list-row').first()
+  const imageBadge = imageRow.locator('.rounded-full')
+  await imageRow.hover()
+  await expectFullWidthRow(imageScroll, imageRow, imageBadge)
+  await imageRow.click()
+  const selectedImage = imageScroll.locator('button:has(img)').first()
   await expect(selectedImage).toBeVisible()
   await selectedImage.click()
-  await expect
-    .poll(() =>
-      imageScroll.evaluate((element) => {
-        const selected = element.querySelector('[data-image-result]')
-        const image = selected?.querySelector('img')
-        if (!selected || !image) return false
-        const scrollRight = element.getBoundingClientRect().right
-        return (
-          Math.abs(selected.getBoundingClientRect().right - scrollRight) <
-            0.5 && image.getBoundingClientRect().right <= scrollRight - 10 + 0.5
-        )
-      }),
-    )
-    .toBe(true)
+  await expectFullWidthRow(
+    imageScroll,
+    selectedImage,
+    selectedImage.locator('img'),
+  )
 })
 
 test('long-book ignores stale fixed height for the flexible TOC pane', async ({
