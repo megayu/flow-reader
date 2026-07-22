@@ -505,7 +505,7 @@ export default function Index() {
 }
 
 function IndexContent() {
-  const { focusedBookTab, focusedTab, groups } = useReaderSnapshot()
+  const { focusedBookTab, groups } = useReaderSnapshot()
   const [viewMode, setViewMode] = useViewMode()
   const [readerAction, setReaderAction] = useAction()
   const [libraryAction, setLibraryAction] = useLibraryAction()
@@ -837,7 +837,7 @@ function IndexContent() {
   return (
     <>
       <Head>
-        <title>{focusedTab?.title ?? 'Flow Reader'}</title>
+        <title>Flow Reader</title>
       </Head>
       {startupRestoreDone && groups.length ? (
         <ReaderGridView
