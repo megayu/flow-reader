@@ -162,7 +162,7 @@ export const Settings: React.FC<SettingsProps> = ({
                 style={{ fontSize: 'var(--app-font-size-md)' }}
                 onClick={() => setActiveTab(tab)}
               >
-                {tab === 'translation' ? '翻译' : t(`tabs.${tab}`)}
+                {t(`tabs.${tab}`)}
               </button>
             )
           })}
@@ -170,7 +170,7 @@ export const Settings: React.FC<SettingsProps> = ({
       </aside>
       <section className="scroll w-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-5 py-4">
         <h2 className="text-muted-foreground text-lg font-semibold">
-          {activeTab === 'translation' ? '翻译' : t(`tabs.${activeTab}`)}
+          {t(`tabs.${activeTab}`)}
         </h2>
         <div className="mt-5 space-y-5">
           {activeTab === 'basic' && (
@@ -379,6 +379,7 @@ function TranslationSettings({
   onPopupOpenChange: (open: boolean) => void
   onPopupPointerDownOutside: (target: EventTarget | null) => void
 }) {
+  const t = useTranslation('settings.translation')
   const translation = settings.translation ?? {
     mainLanguage: 'zh-Hans' as const,
     secondaryLanguage: 'en' as const,
@@ -434,17 +435,21 @@ function TranslationSettings({
 
   return (
     <div data-flow-settings-panel className="m-0 space-y-5">
-      <Item title="主语言">
-        {languageSelect('主语言', translation.mainLanguage, 'mainLanguage')}
-      </Item>
-      <Item title="次语言">
+      <Item title={t('main_language')}>
         {languageSelect(
-          '次语言',
+          t('main_language'),
+          translation.mainLanguage,
+          'mainLanguage',
+        )}
+      </Item>
+      <Item title={t('secondary_language')}>
+        {languageSelect(
+          t('secondary_language'),
           translation.secondaryLanguage,
           'secondaryLanguage',
         )}
       </Item>
-      <Item title="默认翻译服务">
+      <Item title={t('default_provider')}>
         <SegmentedField
           value={translation.defaultProvider}
           options={[

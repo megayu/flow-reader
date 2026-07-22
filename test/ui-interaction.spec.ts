@@ -77,15 +77,16 @@ test('configures one shared main language, secondary language, and translation s
   page,
 }) => {
   const dialog = await openSettings(page)
-  await dialog.getByRole('button', { name: '翻译', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Translation', exact: true }).click()
 
-  await expect(dialog.getByRole('combobox', { name: '主语言' })).toContainText(
-    '简体中文',
-  )
-  await expect(dialog.getByRole('combobox', { name: '次语言' })).toContainText(
-    'English',
-  )
-  await dialog.getByRole('combobox', { name: '主语言' }).click()
+  await expect(
+    dialog.getByRole('combobox', { name: 'Main Language' }),
+  ).toContainText('简体中文')
+  await expect(
+    dialog.getByRole('combobox', { name: 'Secondary Language' }),
+  ).toContainText('English')
+  await expect(dialog.getByText('Default Translation Service')).toBeVisible()
+  await dialog.getByRole('combobox', { name: 'Main Language' }).click()
   await expect(page.getByRole('option')).toHaveText([
     '简体中文',
     'English',
