@@ -545,7 +545,7 @@ function SegmentedField<T extends string>({
   onChange,
 }: SegmentedFieldProps<T>) {
   return (
-    <div className="text-muted-foreground ring-border flex h-8 items-center overflow-hidden rounded-lg bg-[var(--flow-bg-control)] p-0.5 ring-1 ring-inset">
+    <div className="text-muted-foreground ring-border inline-flex h-8 items-center overflow-hidden rounded-lg bg-[var(--flow-bg-control)] p-0.5 ring-1 ring-inset">
       {options.map((option) => {
         const selected = option.value === value
 
@@ -556,7 +556,7 @@ function SegmentedField<T extends string>({
             variant={selected ? 'default' : 'ghost'}
             size="sm"
             className={clsx(
-              'h-full flex-1 rounded-lg px-2 text-base leading-none',
+              'h-full rounded-lg px-5 text-base',
               selected || 'text-muted-foreground',
             )}
             onClick={() => onChange(option.value)}
