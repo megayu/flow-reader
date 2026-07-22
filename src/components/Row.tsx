@@ -40,6 +40,7 @@ export const Row: React.FC<RowProps> = ({
   badge,
   onClick,
   onDelete,
+  onPointerDown,
   tooltipContentStyle,
   ...props
 }) => {
@@ -54,7 +55,7 @@ export const Row: React.FC<RowProps> = ({
     <div
       aria-label={tooltip}
       className={clsx(
-        'list-row group/row relative flex cursor-pointer items-center text-left',
+        'list-row group/row focus:ring-ring relative flex cursor-pointer items-center text-left outline-none focus:ring-1 focus:ring-inset',
         active && background.rowActiveClassName,
         className,
       )}
@@ -63,7 +64,14 @@ export const Row: React.FC<RowProps> = ({
         paddingRight: 0,
         height: LIST_ITEM_SIZE,
       }}
+      tabIndex={onClick ? -1 : undefined}
       onClick={onClick ?? toggle}
+      onPointerDown={(event) => {
+        if (onClick && event.button === 0) {
+          event.currentTarget.focus({ preventScroll: true })
+        }
+        onPointerDown?.(event)
+      }}
       {...props}
     >
       <StateLayer

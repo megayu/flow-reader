@@ -107,15 +107,12 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
             <button
               type="button"
               className={clsx(
-                'group/library-row relative flex w-full items-center truncate py-0 pr-3 pl-5 text-left leading-none outline-none',
+                'group/library-row focus:ring-ring relative flex w-full items-center truncate py-0 pr-3 pl-5 text-left leading-none outline-none focus:ring-1 focus:ring-inset',
                 opened &&
                   !active &&
                   'text-foreground/85 bg-[var(--flow-bg-control)]',
                 active &&
-                  clsx(
-                    background.rowActiveClassName,
-                    'text-foreground ring-1 ring-[var(--flow-accent-border)] ring-inset',
-                  ),
+                  clsx(background.rowActiveClassName, 'text-foreground'),
               )}
               style={{
                 height: LIST_ITEM_SIZE,
@@ -377,7 +374,7 @@ const TocRow: React.FC<TocRowProps> = memo(
         type="button"
         aria-label={title}
         className={clsx(
-          'list-row group/row relative flex w-full cursor-pointer appearance-none items-center border-0 bg-transparent p-0 text-left',
+          'list-row group/row focus:ring-ring relative flex w-full cursor-pointer appearance-none items-center border-0 bg-transparent p-0 text-left outline-none focus:ring-1 focus:ring-inset',
           active && activeClassName,
         )}
         style={{

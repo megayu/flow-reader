@@ -92,6 +92,7 @@ const AnnotationPane: React.FC = () => {
   const [collapsedSections, setCollapsedSections] = useState(
     () => new Set<string>(),
   )
+  const [activeRowKey, setActiveRowKey] = useState<string>()
 
   const annotations = useMemo(
     () => (focusedBookTab?.overlayState.annotations as Annotation[]) ?? [],
@@ -224,10 +225,12 @@ const AnnotationPane: React.FC = () => {
         {items.map(({ index, start, size }) => {
           const row = rows[index]
           if (!row) return null
+          const rowKey = annotationRowKey(row)
+          const activeKey = `${focusedBookTab?.id}:${rowKey}`
 
           return (
             <div
-              key={annotationRowKey(row)}
+              key={rowKey}
               className="absolute top-0 right-0 left-0"
               style={{
                 height: size,
@@ -248,8 +251,10 @@ const AnnotationPane: React.FC = () => {
                 </Row>
               ) : row.type === 'annotation' ? (
                 <Row
+                  active={activeRowKey === activeKey}
                   depth={2}
                   onClick={() => {
+                    setActiveRowKey(activeKey)
                     reader.focusedBookTab?.display(row.annotation.cfi)
                   }}
                   onDelete={() => {
@@ -260,8 +265,10 @@ const AnnotationPane: React.FC = () => {
                 </Row>
               ) : (
                 <Row
+                  active={activeRowKey === activeKey}
                   depth={3}
                   onClick={() => {
+                    setActiveRowKey(activeKey)
                     reader.focusedBookTab?.display(row.annotation.cfi)
                   }}
                 >

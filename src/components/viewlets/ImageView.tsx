@@ -1,8 +1,12 @@
+import clsx from 'clsx'
 import {
+  createContext,
   CSSProperties,
   Dispatch,
+  PropsWithChildren,
   SetStateAction,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -59,6 +63,26 @@ interface VirtualImageSection {
   index: number
   section: ImageSection
   start: number
+}
+
+const ImageSelectionContext = createContext<
+  [string | undefined, Dispatch<SetStateAction<string | undefined>>] | null
+>(null)
+
+const ImageSelectionProvider: React.FC<PropsWithChildren> = ({ children }) => {
+  const selection = useState<string>()
+
+  return (
+    <ImageSelectionContext.Provider value={selection}>
+      {children}
+    </ImageSelectionContext.Provider>
+  )
+}
+
+function useImageSelection() {
+  const value = useContext(ImageSelectionContext)
+  if (!value) throw new Error('Image selection requires its provider')
+  return value
 }
 
 function normalizeImageEntry(image: ImageEntry | string, index: number) {
@@ -312,7 +336,11 @@ export const ImageView: React.FC<PaneViewProps> = (props) => {
 
   return (
     <PaneView {...props}>
-      {active && <ImagePane mode={mode} setMode={setMode} />}
+      {active && (
+        <ImageSelectionProvider>
+          <ImagePane mode={mode} setMode={setMode} />
+        </ImageSelectionProvider>
+      )}
     </PaneView>
   )
 }
@@ -624,7 +652,8 @@ const Block: React.FC<BlockProps> = ({
   onToggle,
   section,
 }) => {
-  useReaderSnapshot()
+  const { focusedBookTab } = useReaderSnapshot()
+  const [activeKey, setActiveKey] = useImageSelection()
 
   return (
     <div>
@@ -636,17 +665,25 @@ const Block: React.FC<BlockProps> = ({
         <div>
           {images.map((image) => {
             const { src } = image
+            const key = imageSelectionKey(focusedBookTab?.id, section, image)
             const i = findImageAssetIndex(src, assetLookup)
             const asset = assetLookup?.assets[i]
             const imageSrc = assetLookup?.blobs[i] ?? src
+            const active = key === activeKey
 
             if (!imageSrc) return null
             return (
               <button
                 type="button"
                 key={`${src}:${image.index}`}
-                className="block w-full cursor-pointer border-0 bg-transparent p-0 text-left"
+                className={clsx(
+                  'focus:ring-ring block w-full cursor-pointer border-0 bg-transparent p-0 text-left outline-none focus:ring-1 focus:ring-inset',
+                  active
+                    ? 'flow-bg-active hover:bg-[var(--flow-bg-active-hover)]'
+                    : 'hover:bg-[var(--flow-bg-control-hover)]',
+                )}
                 onClick={() => {
+                  setActiveKey(key)
                   void reader.focusedBookTab?.displayImage(
                     section,
                     src,
@@ -666,6 +703,14 @@ const Block: React.FC<BlockProps> = ({
       )}
     </div>
   )
+}
+
+function imageSelectionKey(
+  tabId: string | undefined,
+  section: ISection,
+  image: ImageEntry,
+) {
+  return `${tabId ?? ''}:${section.href}:${image.src}:${image.index}`
 }
 
 function findImageAssetIndex(src: string, lookup?: ImageAssetLookup) {
