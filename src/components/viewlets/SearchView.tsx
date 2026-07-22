@@ -142,7 +142,7 @@ const ResultList: React.FC<ResultListProps> = ({
           .replace('{n}', '' + resultCount)
           .replace('{m}', '' + sectionCount)}
       </div>
-      <div ref={outerRef} className="scroll flex-1">
+      <div ref={outerRef} className="scroll scrollbar-visible flex-1">
         <div className="relative" style={{ height: totalSize }}>
           {items.map(({ index, start, size }) => (
             <div

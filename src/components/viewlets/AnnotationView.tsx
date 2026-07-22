@@ -33,6 +33,7 @@ const DefinitionPane: React.FC = () => {
 
   return (
     <Pane
+      className="scrollbar-visible"
       headline={t('definitions')}
       minSize={72}
       preferredSize={120}
@@ -189,6 +190,7 @@ const AnnotationPane: React.FC = () => {
 
   return (
     <Pane
+      className="scrollbar-visible"
       headline={annotationT('annotations')}
       minSize={160}
       ref={outerRef}

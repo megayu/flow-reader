@@ -520,7 +520,7 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
       </div>
       <div
         ref={outerRef}
-        className="scroll text-muted-foreground min-h-0 flex-1 text-base"
+        className="scroll scrollbar-visible text-muted-foreground min-h-0 flex-1 text-base"
       >
         {sections.length ? (
           <div
