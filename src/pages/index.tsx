@@ -87,6 +87,7 @@ import {
   db,
   exportBook,
 } from '../db'
+import { formatLocalDirectoryForDisplay } from '../dictionary/path'
 import { formatErrorMessage } from '../errorMessage'
 import { handleFiles, openImportDialog, setupNativeOpenFiles } from '../file'
 import { useAction, useLibraryAction } from '../hooks/useAction'
@@ -180,7 +181,13 @@ function formatDateTime(value?: number) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
 
-  return date.toLocaleString()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const seconds = String(date.getSeconds()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }
 
 function formatPercentage(value?: number) {
@@ -2696,6 +2703,14 @@ const BookInfoDialog: React.FC<BookInfoDialogProps> = ({
     [t('info.language'), formatLanguage(book.metadata.language)],
     [t('info.publisher'), cleanBookText(book.metadata.publisher)],
     [t('info.pubdate'), cleanBookText(book.metadata.pubdate)],
+    ...(book.sourceStorage === 'referenced' && book.sourcePath
+      ? [
+          [
+            t('info.sourcePath'),
+            formatLocalDirectoryForDisplay(book.sourcePath),
+          ],
+        ]
+      : []),
     [t('info.filename'), cleanBookText(book.name)],
     [t('info.size'), formatFileSize(book.size)],
     [t('info.createdAt'), formatDateTime(book.createdAt)],

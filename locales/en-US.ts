@@ -50,6 +50,7 @@ export default {
   'home.info.language': 'Language',
   'home.info.publisher': 'Publisher',
   'home.info.pubdate': 'Publication date',
+  'home.info.sourcePath': 'Original file path',
   'home.info.filename': 'File name',
   'home.info.size': 'Size',
   'home.info.createdAt': 'Added',

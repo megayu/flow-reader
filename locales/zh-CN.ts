@@ -48,6 +48,7 @@ export default {
   'home.info.language': '语言',
   'home.info.publisher': '出版社',
   'home.info.pubdate': '出版日期',
+  'home.info.sourcePath': '原文件路径',
   'home.info.filename': '文件名',
   'home.info.size': '大小',
   'home.info.createdAt': '添加时间',
