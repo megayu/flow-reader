@@ -694,6 +694,21 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               }}
             />
             <IconButton
+              title={t('search_in_book')}
+              Icon={SearchIcon}
+              size={ICON_SIZE}
+              className={actionIconClassName}
+              style={{
+                width: ANNOTATION_SIZE,
+                height: ANNOTATION_SIZE,
+              }}
+              onClick={() => {
+                hide()
+                setAction('search')
+                void tab.searchKeywordImmediately(text)
+              }}
+            />
+            <IconButton
               title={t('dictionary')}
               Icon={BookOpenTextIcon}
               size={ICON_SIZE}
@@ -712,21 +727,6 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               className={actionIconClassName}
               style={{ width: ANNOTATION_SIZE, height: ANNOTATION_SIZE }}
               onClick={() => switchView('translation')}
-            />
-            <IconButton
-              title={t('search_in_book')}
-              Icon={SearchIcon}
-              size={ICON_SIZE}
-              className={actionIconClassName}
-              style={{
-                width: ANNOTATION_SIZE,
-                height: ANNOTATION_SIZE,
-              }}
-              onClick={() => {
-                hide()
-                setAction('search')
-                void tab.searchKeywordImmediately(text)
-              }}
             />
             <IconButton
               title={t(
