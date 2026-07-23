@@ -262,7 +262,7 @@ function handleAppShortcut(
     return true
   }
 
-  if (key === 'l') {
+  if (key === 'c') {
     e.preventDefault()
     e.stopPropagation()
     e.stopImmediatePropagation?.()
@@ -299,10 +299,10 @@ function getPanelShortcutAction(
 ): ReaderPanelAction | undefined {
   const key = e.key.toLowerCase()
   if (key === 't') return 'toc'
-  if (e.key === '/') return 'search'
+  if (key === 's') return 'search'
   if (key === 'a') return 'annotation'
-  if (key === 'i') return 'image'
-  if (key === 'p') return 'typography'
+  if (key === 'g') return 'image'
+  if (key === 'v') return 'typography'
 }
 
 function handleFontSizeShortcut(e: KeyboardEvent, viewMode: ViewMode) {
@@ -635,7 +635,7 @@ function handleReturnShortcut(e: KeyboardEvent, tab?: BookTab) {
   if (!tab?.locationToReturn) return false
 
   const key = e.key.toLowerCase()
-  if (key !== 'b' && key !== 'r' && key !== 's') return false
+  if (key !== 'b' && key !== 'r' && key !== 'q') return false
   if (shouldIgnoreReaderShortcut(e)) return false
 
   e.preventDefault()

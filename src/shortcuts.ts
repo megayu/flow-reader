@@ -78,7 +78,7 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
   },
   dismissReturn: {
     labelKey: 'dismiss_return',
-    shortcuts: [['S']],
+    shortcuts: [['Q']],
   },
   chapterFind: {
     labelKey: 'chapter_find',
@@ -150,7 +150,7 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
   },
   searchPanel: {
     labelKey: 'search_panel',
-    shortcuts: [['/']],
+    shortcuts: [['S']],
   },
   annotationPanel: {
     labelKey: 'annotation_panel',
@@ -158,15 +158,15 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
   },
   imagePanel: {
     labelKey: 'image_panel',
-    shortcuts: [['I']],
+    shortcuts: [['G']],
   },
   typographyPanel: {
     labelKey: 'typography_panel',
-    shortcuts: [['P']],
+    shortcuts: [['V']],
   },
   libraryReaderToggle: {
     labelKey: 'library_reader_toggle',
-    shortcuts: [['L']],
+    shortcuts: [['C']],
   },
   openSettings: {
     labelKey: 'open_settings',
