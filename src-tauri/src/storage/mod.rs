@@ -3382,7 +3382,8 @@ pub(super) fn export_book_impl(
 mod tests {
     use super::commands::{
         get_book_impl, import_epub_paths_impl, import_text_paths_impl,
-        preview_text_import_paths_impl, record_reading_position_impl, ReadingPositionInput,
+        preview_text_import_paths_impl, record_reading_position_impl, revealable_book_source_path,
+        ReadingPositionInput,
     };
     use super::{
         book_is_export_dirty, check_book_source_statuses_impl, cleanup_delete_tombstones,
@@ -7314,6 +7315,28 @@ mod tests {
         assert!(book_is_export_dirty(&updated, BookExportFormat::Epub));
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn only_existing_referenced_sources_can_be_revealed() {
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-reveal-source-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("source.epub");
+        fs::write(&source, b"source").unwrap();
+
+        let mut book = test_library_book(BookSourceFormat::Epub);
+        book.source_path = Some(source.clone());
+        assert!(revealable_book_source_path(&book).is_none());
+
+        book.source_storage = SourceStorage::Referenced;
+        assert_eq!(revealable_book_source_path(&book), Some(source.as_path()));
+
+        fs::remove_file(&source).unwrap();
+        assert!(revealable_book_source_path(&book).is_none());
+        fs::remove_dir_all(&root).unwrap();
     }
 
     fn test_library_book(source_format: BookSourceFormat) -> LibraryBook {

@@ -30,6 +30,7 @@ interface TauriMockOptions {
   deferReaderSource?: boolean
   readerSourceErrors?: Record<string, string>
   readerSources?: Record<string, string>
+  revealableBookSourceIds?: string[]
   sourceStatuses?: Record<string, BookSourceStatus>
   saveDialogPath?: string | null
   settings?: Record<string, unknown>
@@ -61,6 +62,7 @@ export async function installTauriMock(
     deferReaderSource = false,
     readerSourceErrors = {},
     readerSources = {},
+    revealableBookSourceIds = [],
     sourceStatuses = {},
     saveDialogPath = null,
     settings = {},
@@ -95,6 +97,7 @@ export async function installTauriMock(
       fixtureDeferReaderSource,
       fixtureReaderSourceErrors,
       fixtureReaderSources,
+      fixtureRevealableBookSourceIds,
       fixtureSourceStatuses,
       fixtureSaveDialogPath,
       fixtureSettings,
@@ -160,6 +163,7 @@ export async function installTauriMock(
           }>
           localDictionaries: LocalDictionaryRecord[]
           openedExternalUrls: string[]
+          revealedBookSourceIds: string[]
           takePendingOpenPathsCalls: number
           settingsStore: Record<string, unknown>
           textImports: TextImportSelection[]
@@ -220,6 +224,7 @@ export async function installTauriMock(
         takePendingOpenPathsCalls: 0,
         settingsStore,
         openedExternalUrls: [],
+        revealedBookSourceIds: [],
         textImports: [],
       }
       internals.metadata = {
@@ -555,6 +560,12 @@ export async function installTauriMock(
         }
         if (command === 'get_book')
           return bookStore.get(String(args?.id)) ?? null
+        if (command === 'reveal_book_source') {
+          const id = String(args?.id)
+          if (!fixtureRevealableBookSourceIds.includes(id)) return false
+          globalWindow.__FLOW_TEST_TAURI__?.revealedBookSourceIds.push(id)
+          return true
+        }
         if (command === 'check_book_source_statuses') {
           const ids = Array.isArray(args?.ids) ? args.ids.map(String) : []
           return ids.map((id) => ({
@@ -712,6 +723,7 @@ export async function installTauriMock(
       fixtureDeferReaderSource: deferReaderSource,
       fixtureReaderSourceErrors: readerSourceErrors,
       fixtureReaderSources: readerSources,
+      fixtureRevealableBookSourceIds: revealableBookSourceIds,
       fixtureSourceStatuses: sourceStatuses,
       fixtureSaveDialogPath: saveDialogPath,
       fixtureSettings: settings,

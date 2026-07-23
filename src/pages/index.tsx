@@ -1614,13 +1614,23 @@ const Book: React.FC<BookProps> = ({
     onOpenBook()
   }, [book, notify, onOpenBook, sourceStatus, t])
 
-  const openBookDirectory = useCallback(
+  const handleCoverClick = useCallback(
     (e: React.MouseEvent) => {
-      if (select || e.button !== 0 || (!e.metaKey && !e.ctrlKey)) return
+      if (select || e.button !== 0) return
+
+      const revealSource = e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey
+      const openDirectory = e.metaKey || e.ctrlKey
+      if (!revealSource && !openDirectory) return
 
       e.preventDefault()
       e.stopPropagation()
       closeContextMenu()
+
+      if (revealSource) {
+        void db.books.revealSource(book.id).catch(console.error)
+        return
+      }
+
       void db.books.openDirectory(book.id).catch((error) => {
         console.error(error)
         notify({
@@ -1788,7 +1798,7 @@ const Book: React.FC<BookProps> = ({
         <div
           className="border-border relative mx-auto aspect-[9/12] w-full overflow-hidden rounded-md border shadow-sm"
           style={{ maxWidth: 'var(--library-book-card-width)' }}
-          onClick={openBookDirectory}
+          onClick={handleCoverClick}
         >
           {book.readingStatus && (
             <ReadingStatusBadge

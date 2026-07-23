@@ -18,6 +18,52 @@ const missingArchiveBook: BookRecord = {
   stateLoaded: true,
 }
 
+const referencedBook: BookRecord = {
+  ...missingArchiveBook,
+  id: 'referenced-book',
+  name: 'referenced.epub',
+  metadata: { title: 'Referenced Book' },
+  contentMode: 'normal',
+  sourcePath: '/fixtures/referenced.epub',
+}
+
+const managedBook: BookRecord = {
+  ...referencedBook,
+  id: 'managed-book',
+  name: 'managed.epub',
+  metadata: { title: 'Managed Book' },
+  sourceStorage: 'managed',
+  sourcePath: undefined,
+}
+
+test('shift click reveals only an available referenced source in normal mode', async ({
+  page,
+}) => {
+  await installTauriMock(page, {
+    books: [referencedBook, missingArchiveBook, managedBook],
+    revealableBookSourceIds: [referencedBook.id],
+    sourceStatuses: { [missingArchiveBook.id]: 'missing' },
+  })
+  await page.goto('/')
+
+  const cover = (title: string) =>
+    page
+      .locator('[data-flow-library-book-card]')
+      .filter({ hasText: title })
+      .locator('img[alt="Cover"]')
+
+  await cover('Referenced Book').click({ modifiers: ['Shift'] })
+  await cover('Missing Archive').click({ modifiers: ['Shift'] })
+  await cover('Managed Book').click({ modifiers: ['Shift'] })
+
+  const revealedIds = await page.evaluate(
+    () =>
+      (window as any).__FLOW_TEST_TAURI__?.revealedBookSourceIds as string[],
+  )
+  expect(revealedIds).toEqual([referencedBook.id])
+  await expect(page.locator('[data-flow-reader]')).toHaveCount(0)
+})
+
 test('replaces the archive badge and warns when its referenced source is missing', async ({
   page,
 }) => {

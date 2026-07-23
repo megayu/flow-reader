@@ -57,6 +57,50 @@ fn open_directory_in_file_manager(path: &Path) -> Result<(), String> {
     }
 }
 
+fn reveal_file_in_file_manager(path: &Path) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        return Command::new("explorer")
+            .arg("/select,")
+            .arg(path)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("failed to reveal file: {error}"));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        return Command::new("open")
+            .args(["-R"])
+            .arg(path)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("failed to reveal file: {error}"));
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let Some(parent) = path.parent() else {
+            return Err("source file has no parent directory".to_string());
+        };
+        return spawn_directory_command("xdg-open", parent);
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", unix)))]
+    {
+        let _ = path;
+        Err("revealing files is not supported on this platform".to_string())
+    }
+}
+
+pub(super) fn revealable_book_source_path(book: &LibraryBook) -> Option<&Path> {
+    if book.source_storage != SourceStorage::Referenced {
+        return None;
+    }
+
+    book.source_path.as_deref().filter(|path| path.is_file())
+}
+
 fn tag_id_from_name(name: &str, created_at: u64) -> String {
     let slug = name
         .chars()
@@ -324,6 +368,28 @@ pub fn open_book_directory(storage: State<'_, AppStorage>, id: String) -> Result
     }
 
     open_directory_in_file_manager(&path)
+}
+
+#[tauri::command]
+pub fn reveal_book_source(storage: State<'_, AppStorage>, id: String) -> Result<bool, String> {
+    let path = {
+        let state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        let Some(book) = state.library.books.iter().find(|book| book.id == id) else {
+            return Ok(false);
+        };
+
+        revealable_book_source_path(book).map(Path::to_path_buf)
+    };
+
+    let Some(path) = path else {
+        return Ok(false);
+    };
+    reveal_file_in_file_manager(&path)?;
+    Ok(true)
 }
 
 #[tauri::command]

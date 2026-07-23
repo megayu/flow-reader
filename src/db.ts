@@ -512,6 +512,9 @@ export const db = {
     openDirectory(id: string) {
       return invoke('open_book_directory', { id })
     },
+    revealSource(id: string) {
+      return invoke<boolean>('reveal_book_source', { id })
+    },
     remember(book: BookRecord) {
       rememberBook(book)
     },
