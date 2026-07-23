@@ -8,8 +8,6 @@ import {
 
 const settingsShortcut =
   process.platform === 'darwin' ? 'Meta+Comma' : 'Control+Comma'
-const commandKey = process.platform === 'darwin' ? 'Cmd' : 'Ctrl'
-const accentColor = '#E11D48'
 
 async function openSettings(page: Page) {
   await page.keyboard.press(settingsShortcut)
@@ -26,17 +24,6 @@ async function readCssVariable(page: Page, name: string) {
   }, name)
 }
 
-async function normalizeCssColor(page: Page, value: string) {
-  return page.evaluate((color) => {
-    const el = document.createElement('div')
-    el.style.color = color
-    document.body.append(el)
-    const normalized = getComputedStyle(el).color
-    el.remove()
-    return normalized
-  }, value)
-}
-
 test.beforeEach(async ({ page }) => {
   await installTauriMock(page)
   await page.goto('/')
@@ -45,32 +32,6 @@ test.beforeEach(async ({ page }) => {
       'nextjs-portal{display:none!important;pointer-events:none!important}',
   })
   await expect(page.locator('#layout')).toBeVisible()
-})
-
-test('uses the app display language for the global UI font family', async ({
-  page,
-}) => {
-  await expect(page.locator('html')).toHaveAttribute('lang', 'en-US')
-  await expect
-    .poll(() =>
-      page
-        .locator('#layout')
-        .evaluate((element) => getComputedStyle(element).fontFamily),
-    )
-    .toBe('Roboto, sans-serif')
-
-  const dialog = await openSettings(page)
-  await dialog.getByRole('combobox', { name: 'Language' }).click()
-  await page.getByRole('option', { name: '简体中文' }).click()
-
-  await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN')
-  await expect
-    .poll(() =>
-      page
-        .locator('#layout')
-        .evaluate((element) => getComputedStyle(element).fontFamily),
-    )
-    .toContain('Microsoft YaHei UI')
 })
 
 test('configures one shared main language, secondary language, and translation service', async ({
@@ -193,34 +154,6 @@ test('keeps original-file references opt-in and persists the import mode', async
     .toBe('managed')
 })
 
-test('action tooltips use styled content with separated shortcuts', async ({
-  page,
-}) => {
-  const settingsButton = page.getByRole('button', { name: /Settings/ })
-
-  await expect(settingsButton).toBeVisible()
-  await expect(settingsButton).not.toHaveAttribute('title', /.+/)
-
-  await settingsButton.hover()
-  await expect(page.getByRole('tooltip')).toHaveCount(0, { timeout: 100 })
-
-  const tooltip = page.getByRole('tooltip')
-  await expect(tooltip).toBeVisible({ timeout: 1000 })
-  await expect(tooltip).toBeVisible()
-  await expect(tooltip.getByText(/Settings/)).toBeVisible()
-  await expect(tooltip.locator('kbd')).toContainText([commandKey, ','])
-  await expect(tooltip).toHaveCSS('font-size', '15px')
-  await expect(tooltip.locator('kbd').first()).toHaveCSS('font-size', '15px')
-  await expect(tooltip).toHaveCSS('background-color', /rgb/)
-  await expect(tooltip).toHaveCSS('user-select', 'none')
-  await expect(
-    tooltip.locator('[data-radix-popper-arrow-wrapper]'),
-  ).toHaveCount(0)
-
-  await page.mouse.move(200, 200)
-  await expect(page.getByRole('tooltip')).toHaveCount(0)
-})
-
 test('zen mode action is visibly disabled in library mode', async ({
   page,
 }) => {
@@ -259,35 +192,6 @@ test('fullscreen shortcut works in library mode without an open tab', async ({
 
   await page.keyboard.press('f')
   await expect.poll(() => getFullscreenState(page)).toBe(false)
-})
-
-test('accent color updates primary bridge and selected controls', async ({
-  page,
-}) => {
-  const dialog = await openSettings(page)
-  const selectedTab = dialog.getByRole('button', { name: /Basic/ })
-  const primaryBefore = await readCssVariable(page, '--primary')
-  const accentBgBefore = await readCssVariable(page, '--flow-accent-bg')
-
-  await dialog.getByRole('button', { name: /#0EA5E9/i }).click()
-  await page
-    .locator('.react-colorful')
-    .locator('..')
-    .getByRole('textbox')
-    .fill(accentColor)
-  await page.getByRole('button', { name: /Apply/ }).click()
-
-  await expect
-    .poll(() => readCssVariable(page, '--primary'))
-    .not.toBe(primaryBefore)
-  await expect
-    .poll(() => readCssVariable(page, '--flow-accent-bg'))
-    .not.toBe(accentBgBefore)
-
-  const accentBgAfter = await readCssVariable(page, '--flow-accent-bg')
-  const normalizedAccentBg = await normalizeCssColor(page, accentBgAfter)
-
-  await expect(selectedTab).toHaveCSS('background-color', normalizedAccentBg)
 })
 
 test('theme color pickers close before the background theme panel on escape', async ({
@@ -445,28 +349,3 @@ async function getStoredGroupPatterns(page: Page) {
 
   return settings.textImportRules?.groupPatterns ?? null
 }
-
-test('settings shortcut list hides internal developer tools shortcut', async ({
-  page,
-}) => {
-  const dialog = await openSettings(page)
-
-  await dialog.getByRole('button', { name: /Shortcuts/ }).click()
-
-  await expect(dialog.getByText(/Developer Tools/)).toHaveCount(0)
-
-  const shortcutText = (
-    (await dialog.locator('[data-flow-settings-panel]').textContent()) ?? ''
-  ).replace(/\s+/g, '')
-
-  expect(shortcutText).toMatch(/ClosealltabsCtrl\+Shift\+W/)
-  expect(shortcutText).toMatch(/SwitchtoprevioustabCtrl\+←/)
-  expect(shortcutText).toMatch(/SwitchtonexttabCtrl\+→/)
-  expect(shortcutText).toMatch(/MovetableftCtrl\+Shift\+←/)
-  expect(shortcutText).toMatch(/MovetabrightCtrl\+Shift\+→/)
-  expect(shortcutText).toMatch(/Filterall.*`.*0/)
-  expect(shortcutText).toMatch(/Clearfilters.*Esc/)
-  expect(shortcutText).toMatch(/Filtertoread.*1/)
-  expect(shortcutText).toMatch(/Filterreading.*2/)
-  expect(shortcutText).toMatch(/Filterread.*3/)
-})

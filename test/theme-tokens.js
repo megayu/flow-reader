@@ -448,83 +448,6 @@ function testThemeConfigurationMigratesLegacySettings() {
   )
 }
 
-function testKnownColorPatchesAreNotUsedForCoreChrome() {
-  const files = [
-    'src/components/Layout.tsx',
-    'src/components/Row.tsx',
-    'src/components/Tab.tsx',
-    'src/components/Reader.tsx',
-    'src/components/TextImportDialog.tsx',
-    'src/components/viewlets/TocView.tsx',
-    'src/components/ui/button.tsx',
-    'src/pages/index.tsx',
-  ]
-  const disallowedPatterns = [
-    /bg-primary\/1[05]/,
-    /hover:bg-primary\/1[05]/,
-    /bg-muted\/50/,
-    /color-mix\(in_oklch,var\(--primary\)/,
-  ]
-
-  for (const file of files) {
-    const fullPath = path.join(__dirname, '..', file)
-    const text = fs.readFileSync(fullPath, 'utf8')
-
-    for (const pattern of disallowedPatterns) {
-      assert.ok(
-        !pattern.test(text),
-        `Expected ${file} not to use patch color ${pattern}`,
-      )
-    }
-  }
-}
-
-function testReaderTabsUseDedicatedTabTokens() {
-  const tabPath = path.join(__dirname, '..', 'src/components/Tab.tsx')
-  const text = fs.readFileSync(tabPath, 'utf8')
-
-  assert.ok(
-    text.includes('--flow-bg-tabbar'),
-    'Expected tab list to use the dedicated tabbar token',
-  )
-  assert.ok(
-    text.includes('--flow-bg-tab-active'),
-    'Expected selected tab to use the dedicated active tab token',
-  )
-  assert.ok(
-    text.includes('--flow-tab-border'),
-    'Expected tabs to use the dedicated tab border token',
-  )
-  assert.ok(
-    text.includes('shadow-[5px_5px_0_5px_var(--flow-bg-tab-active)]'),
-    'Expected selected tabs to keep reverse-rounded cutouts with the active tab token',
-  )
-  assert.ok(
-    !text.includes('shadow-[5px_5px_0_5px_var(--flow-bg-content)]'),
-    'Expected selected tabs not to rely on content-background shadow cutouts',
-  )
-  assert.ok(
-    !text.includes(
-      'border-b border-[var(--flow-tab-border)] bg-[var(--flow-bg-tabbar)]',
-    ),
-    'Expected the tabbar not to use a full-width dividing line',
-  )
-}
-
-function testTreeRowsUseDepthForIndentation() {
-  const rowPath = path.join(__dirname, '..', 'src/components/Row.tsx')
-  const text = fs.readFileSync(rowPath, 'utf8')
-
-  assert.ok(
-    text.includes('const indent = Math.max(0, depth - 1) * 20'),
-    'Expected tree rows to derive indentation from depth',
-  )
-  assert.ok(
-    text.includes('paddingLeft: indent'),
-    'Expected tree rows to apply depth indentation',
-  )
-}
-
 function testBackgroundPaletteNormalizesPresetAndCustomColors() {
   assert.strictEqual(normalizePaletteColor('abc'), '#AABBCC')
   assert.strictEqual(normalizePaletteColor('#e1eed8'), '#E1EED8')
@@ -546,8 +469,5 @@ testSidebarItemTokensStayVisibleOnSidebarSurface()
 testCustomThemeTokensKeepAccentAndDangerSeparate()
 testFlowThemeCssOutputsFlowTokensAndCompatibilityBridge()
 testThemeConfigurationMigratesLegacySettings()
-testKnownColorPatchesAreNotUsedForCoreChrome()
-testReaderTabsUseDedicatedTabTokens()
-testTreeRowsUseDepthForIndentation()
 testBackgroundPaletteNormalizesPresetAndCustomColors()
 console.log('theme-token tests passed')

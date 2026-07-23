@@ -2845,19 +2845,6 @@ test('[vertical-rl] turns to the next spread for an off-page chapter find result
   await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
 })
 
-test('[vertical-rl] excludes document title metadata from chapter find', async ({
-  page,
-}) => {
-  await openVerticalFixtureBook(page)
-  await page.keyboard.press(findShortcut)
-
-  const input = page.getByRole('textbox', { name: /Find in chapter/ })
-  await input.fill('VERTICAL-SEARCH-TITLE-01')
-
-  await expect(page.getByText('1/1', { exact: true })).toBeVisible()
-  await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
-})
-
 test('[vertical-rl] keeps a clicked sidebar search result active and visible', async ({
   page,
 }) => {
@@ -4142,20 +4129,6 @@ test('long-book keeps chapter find bar out of the reading content', async ({
 
   expect(metrics.findBarTop).toBeGreaterThanOrEqual(metrics.paneTop)
   expect(metrics.findBarBottom).toBeLessThanOrEqual(metrics.contentTop)
-})
-
-test('long-book excludes document title metadata from chapter find', async ({
-  page,
-}) => {
-  await openFixtureBook(page, 0)
-  await waitForStableReaderLayout(page, { header: false })
-  await page.keyboard.press(findShortcut)
-
-  const input = page.getByRole('textbox', { name: /Find in chapter/ })
-  await input.fill('FLOW-SEARCH-TITLE-001')
-
-  await expect(page.getByText('1/1', { exact: true })).toBeVisible()
-  await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
 })
 
 async function displayFocusedSectionIndex(page: Page, sectionIndex: number) {

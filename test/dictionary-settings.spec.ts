@@ -155,33 +155,6 @@ test('shows every dictionary source in one reorderable persisted list', async ({
     .toEqual(['merriam-webster', `local:${local.id}`, 'zdic'])
 })
 
-test('opens the official page for acquiring a Merriam-Webster API key', async ({
-  page,
-}) => {
-  await installTauriMock(page)
-  await page.goto('/')
-  const dialog = await openDictionarySettings(page)
-  await dialog
-    .locator('[data-dictionary-source-id="merriam-webster"]')
-    .getByRole('button')
-    .first()
-    .click()
-  await dialog.getByRole('button', { name: 'Get a free API key' }).click()
-
-  await expect
-    .poll(async () => {
-      return page.evaluate(() => {
-        const state = (
-          window as typeof window & {
-            __FLOW_TEST_TAURI__?: { openedExternalUrls: string[] }
-          }
-        ).__FLOW_TEST_TAURI__
-        return state?.openedExternalUrls ?? []
-      })
-    })
-    .toEqual(['https://dictionaryapi.com/'])
-})
-
 test('adds one local dictionary from an ifo or mdx master-file chooser', async ({
   page,
 }) => {

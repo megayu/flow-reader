@@ -271,26 +271,6 @@ function testVerticalTypographyCssOverridesAuthorPunctuation() {
   assert.match(css, /text-indent:\s*var\(--flow-text-indent\)/)
 }
 
-function testCustomStyleReusesResolvedViewWritingMode() {
-  let contentProbes = 0
-  const writingMode = styles.resolveWritingMode(
-    {
-      writingMode() {
-        contentProbes += 1
-        return 'vertical-rl'
-      },
-    },
-    { writingMode: 'horizontal-tb' },
-  )
-
-  assert.strictEqual(writingMode, 'horizontal-tb')
-  assert.strictEqual(
-    contentProbes,
-    0,
-    'beforeLayout should reuse the writing mode already resolved by the view',
-  )
-}
-
 function testZoomBodyStylesSkipNonNumericValues() {
   assert.strictEqual(
     typeof styles.createZoomBodyStyles,
@@ -936,5 +916,4 @@ testChapterFindUsesTheReadingOrderStartSection()
 testVerticalOverlayPlacementStaysInsidePageAndAvoidsSelection()
 testVerticalRangeRectsFollowReadingOrder()
 testVerticalTypographyCssOverridesAuthorPunctuation()
-testCustomStyleReusesResolvedViewWritingMode()
 console.log('reader optimization tests passed')

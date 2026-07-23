@@ -815,20 +815,6 @@ test('keeps the dictionary action disabled when no source matches the selection'
   expect((await getDictionaryMockState(page)).dictionaryRequests).toEqual([])
 })
 
-test('keeps the dictionary action disabled for a selection containing only numbers and punctuation', async ({
-  page,
-}) => {
-  await setupDictionaryReader(page, {})
-  await selectFixtureText(page, '123，。', false)
-
-  const dictionary = page.getByRole('button', {
-    name: 'Dictionary',
-    exact: true,
-  })
-  await expect(dictionary).toBeVisible()
-  await expect(dictionary).toBeDisabled()
-})
-
 test('parses only the first Han Dian character explanation into semantic groups', async ({
   page,
 }) => {

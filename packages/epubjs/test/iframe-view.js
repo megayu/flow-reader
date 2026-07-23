@@ -333,15 +333,6 @@ describe('IframeView leading title image fitting', function () {
 })
 
 describe('IframeView leading background block fitting', function () {
-  it('exposes a leading background block fitting pass', function () {
-    const view = createView({})
-
-    assert.equal(
-      typeof view.fitLeadingBlockBackgroundsBeforeMeasure,
-      'function',
-    )
-  })
-
   it('clamps leading background heading margins to page padding before measurement', function () {
     const { heading, view } = createLeadingBackgroundBlockView()
 

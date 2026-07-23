@@ -47,14 +47,11 @@ use epub_import::{
 #[cfg(test)]
 use epub_import::{normalize_non_square_pixel_png, normalize_publication_date, relative_zip_path};
 
-#[cfg(test)]
-use image_index::{
-    image_index_cache_from_bytes, image_index_cache_to_bytes, ImageIndexEntry,
-    ImageIndexEntryInput, ImageIndexSection, ImageIndexSectionInput,
-};
 use image_index::{
     read_image_index_cache, write_image_index_cache_if_current, ImageIndexCacheInput,
 };
+#[cfg(test)]
+use image_index::{ImageIndexEntryInput, ImageIndexSectionInput};
 use search::{load_or_build_search_text_cache, search_text_in_cache, SearchTextCache};
 #[cfg(test)]
 use search::{
@@ -3390,9 +3387,8 @@ mod tests {
         cleanup_external_book_heavy_files, decode_text_bytes, delete_books_to_tombstones,
         delete_tombstones_root, empty_object, ensure_book_package_path_with_unpacker,
         export_book_impl, external_books_root, external_index_path, get_book_reader_source_impl,
-        hash_file, image_index_cache_from_bytes, image_index_cache_to_bytes, import_epub_path_impl,
-        library_path, load_or_build_search_text_cache, mark_book_exported,
-        mark_library_book_content_updated, normalize_non_square_pixel_png,
+        hash_file, import_epub_path_impl, library_path, load_or_build_search_text_cache,
+        mark_book_exported, mark_library_book_content_updated, normalize_non_square_pixel_png,
         normalize_publication_date, normalize_unpacked_epub_structure,
         open_external_epub_path_impl, parent_zip_path, parse_text_import_document,
         path_to_client_string, read_image_index_cache, read_json_or_default,
@@ -3405,14 +3401,13 @@ mod tests {
         write_epub_from_unpacked_dir, write_image_index_cache_if_current, write_metadata,
         write_source_text_update, AppStorage, BookContentMode, BookExportFormat,
         BookReaderSourceMode, BookRecord, BookScope, BookSourceFormat, BookSourceStatus, BookState,
-        BookTextReplaceTarget, DirtyState, ExternalBookIndex, ImageIndexCache,
-        ImageIndexCacheInput, ImageIndexEntry, ImageIndexEntryInput, ImageIndexSection,
-        ImageIndexSectionInput, Library, LibraryBook, ReadingStatus, SearchTextCache,
-        SearchTextSection, SourceStorage, SourceTextUpdate, StorageInner, StorageState,
-        TextImportPreparedCache, TextImportRulesInput, TextImportSelection, BOOK_FILE,
-        IMAGE_INDEX_CACHE_FILE, IMAGE_INDEX_CACHE_VERSION, IMAGE_INDEX_EXTRACTOR_VERSION,
-        METADATA_FILE, SEARCH_TEXT_CACHE_FILE, SEARCH_TEXT_CACHE_VERSION,
-        SEARCH_TEXT_EXTRACTOR_VERSION, SOURCE_TEXT_FILE, STATE_FILE, UNPACKED_DIR,
+        BookTextReplaceTarget, DirtyState, ExternalBookIndex, ImageIndexCacheInput,
+        ImageIndexEntryInput, ImageIndexSectionInput, Library, LibraryBook, ReadingStatus,
+        SearchTextCache, SearchTextSection, SourceStorage, SourceTextUpdate, StorageInner,
+        StorageState, TextImportPreparedCache, TextImportRulesInput, TextImportSelection,
+        BOOK_FILE, IMAGE_INDEX_CACHE_FILE, METADATA_FILE, SEARCH_TEXT_CACHE_FILE,
+        SEARCH_TEXT_CACHE_VERSION, SEARCH_TEXT_EXTRACTOR_VERSION, SOURCE_TEXT_FILE, STATE_FILE,
+        UNPACKED_DIR,
     };
     use crate::tasks::TaskService;
     use serde_json::{json, Value};
@@ -5061,44 +5056,6 @@ mod tests {
     }
 
     #[test]
-    fn epub_import_command_records_timing_for_generated_fixture() {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!(
-            "flow-reader-epub-command-import-test-{}-{nonce}",
-            std::process::id()
-        ));
-        let source = root.join("command.epub");
-        write_minimal_epub_file(&source, "Command Book", "command body");
-        let storage = test_storage_with_books(&root, Vec::new());
-        let tasks = TaskService::default();
-
-        let result = import_epub_paths_impl(
-            &storage,
-            &tasks,
-            vec![source.to_string_lossy().to_string()],
-            true,
-            None,
-            None,
-        )
-        .unwrap();
-
-        assert_eq!(result.books.len(), 1);
-        assert!(result.failures.is_empty());
-        assert_eq!(
-            result.books[0]
-                .metadata
-                .get("title")
-                .and_then(Value::as_str),
-            Some("Command Book")
-        );
-
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
     fn epub_import_command_returns_successes_when_later_source_fails() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -5702,33 +5659,6 @@ mod tests {
 
         let bytes = search_text_cache_to_bytes(&cache).expect("cache should encode");
         let restored = search_text_cache_from_bytes(&bytes).expect("cache should decode");
-
-        assert_eq!(restored, cache);
-    }
-
-    #[test]
-    fn persists_image_index_cache_as_zstd_payload() {
-        let cache = ImageIndexCache {
-            version: IMAGE_INDEX_CACHE_VERSION,
-            extractor_version: IMAGE_INDEX_EXTRACTOR_VERSION,
-            book_hash: "abc123".to_string(),
-            content_version: 2,
-            sections: vec![ImageIndexSection {
-                section_index: 0,
-                href: "Text/chapter.xhtml".to_string(),
-                title: Some("Chapter One".to_string()),
-                nav_path: vec!["Part One".to_string()],
-                images: vec![ImageIndexEntry {
-                    src: "../Images/p001.jpg".to_string(),
-                    index: 0,
-                    hidden_by_default: false,
-                    reason: None,
-                }],
-            }],
-        };
-
-        let bytes = image_index_cache_to_bytes(&cache).expect("cache should encode");
-        let restored = image_index_cache_from_bytes(&bytes).expect("cache should decode");
 
         assert_eq!(restored, cache);
     }

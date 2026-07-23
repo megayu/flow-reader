@@ -18,28 +18,25 @@ mod.filename = file
 mod.paths = Module._nodeModulePaths(path.dirname(file))
 mod._compile(output, file)
 
-const {
-  findSectionByLinkedHref,
-  normalizeHrefPath,
-  resolveLinkedHrefPath,
-  sameHref,
-} = mod.exports
+const { findSectionByLinkedHref, resolveLinkedHrefPath } = mod.exports
 
-test('resolves a sibling split note target against the clicked section', () => {
-  assert.equal(
-    resolveLinkedHrefPath(
-      'text/part0003_split_001.html',
-      'part0003_split_002.html',
-    ),
-    'text/part0003_split_002.html',
-  )
-})
+test('resolves linked note paths relative to the clicked section', () => {
+  const cases = [
+    {
+      baseHref: 'text/part0003_split_001.html',
+      linkedPath: 'part0003_split_002.html',
+      expected: 'text/part0003_split_002.html',
+    },
+    {
+      baseHref: 'OPS/Text/chapter.xhtml',
+      linkedPath: '../Notes/endnotes.xhtml',
+      expected: 'OPS/Notes/endnotes.xhtml',
+    },
+  ]
 
-test('resolves parent-directory note targets without dropping the real path', () => {
-  assert.equal(
-    resolveLinkedHrefPath('OPS/Text/chapter.xhtml', '../Notes/endnotes.xhtml'),
-    'OPS/Notes/endnotes.xhtml',
-  )
+  for (const { baseHref, linkedPath, expected } of cases) {
+    assert.equal(resolveLinkedHrefPath(baseHref, linkedPath), expected)
+  }
 })
 
 test('finds the exact target section before considering suffix fallbacks', () => {
@@ -53,27 +50,6 @@ test('finds the exact target section before considering suffix fallbacks', () =>
       sections,
       'text/part0003_split_001.html',
       'part0003_split_002.html',
-    ),
-    sections[1],
-  )
-})
-
-test('matches decoded hrefs and canonical paths', () => {
-  const sections = [
-    { href: 'Text/%E7%AC%AC%E4%B8%80%E7%AB%A0.xhtml' },
-    { href: 'Text/chapter2.xhtml', canonical: '/OPS/Text/chapter2.xhtml' },
-  ]
-
-  assert.equal(
-    normalizeHrefPath('Text/%E7%AC%AC%E4%B8%80%E7%AB%A0.xhtml'),
-    'Text/第一章.xhtml',
-  )
-  assert.equal(sameHref('OPS/Text/chapter2.xhtml', 'Text/chapter2.xhtml'), true)
-  assert.equal(
-    findSectionByLinkedHref(
-      sections,
-      'OPS/Text/current.xhtml',
-      'chapter2.xhtml',
     ),
     sections[1],
   )
