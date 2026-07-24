@@ -41,6 +41,10 @@ interface SystemFont {
   label: string
 }
 
+const ZOOM_MAX = 2
+const LINE_HEIGHT_MAX = 3
+const TEXT_INDENT_MAX = 4
+
 export const TypographyView: React.FC<PaneViewProps> = (props) => {
   const active = props.active ?? true
 
@@ -169,6 +173,7 @@ const TypographyPane: React.FC = () => {
           <NumberField
             name={t('zoom')}
             min={1}
+            max={ZOOM_MAX}
             step={0.1}
             value={zoom}
             onChange={(v) => {
@@ -208,6 +213,7 @@ const TypographyPane: React.FC = () => {
           <NumberField
             name={t('line_height')}
             min={1}
+            max={LINE_HEIGHT_MAX}
             step={0.1}
             value={lineHeight}
             baseValue={() => getCurrentBodyBaseline().lineHeight}
@@ -218,6 +224,7 @@ const TypographyPane: React.FC = () => {
           <NumberField
             name={t('text_indent')}
             min={0}
+            max={TEXT_INDENT_MAX}
             step={0.5}
             value={textIndent}
             onChange={(v) => {
@@ -468,18 +475,18 @@ const FontField: React.FC<FontFieldProps> = ({
 }) => {
   const t = useTranslation('typography')
   const actionT = useTranslation('action')
-  const [inputState, setInputState] = useState({ inputValue: value, value })
+  const [inputValue, setInputValue] = useState(value)
   const [open, setOpen] = useState(false)
   const [popoverStyle, setPopoverStyle] = useState<CSSProperties>()
   const rootRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
+  const editingRef = useRef(false)
+  const editStartValueRef = useRef(value)
 
-  if (inputState.value !== value) {
-    setInputState({ inputValue: value, value })
-  }
-
-  const inputValue = inputState.value === value ? inputState.inputValue : value
+  useEffect(() => {
+    if (!editingRef.current) setInputValue(value)
+  }, [value])
 
   const query = inputValue.trim().toLowerCase()
   const filteredOptions = useMemo(() => {
@@ -511,8 +518,18 @@ const FontField: React.FC<FontFieldProps> = ({
     closePicker()
   })
   const handleDocumentKeyDown = useEffectEvent((e: KeyboardEvent) => {
-    if (e.key === 'Escape') closePicker()
+    if (e.key === 'Escape' && e.target !== inputRef.current) closePicker()
   })
+
+  const finishEditing = useCallback(
+    (nextValue: string) => {
+      editingRef.current = false
+      editStartValueRef.current = nextValue
+      setInputValue(nextValue)
+      if (nextValue !== value) onChange(nextValue)
+    },
+    [onChange, value],
+  )
 
   const estimatedPopoverWidth = useMemo(() => {
     const longestLabel = filteredOptions.reduce(
@@ -632,14 +649,43 @@ const FontField: React.FC<FontFieldProps> = ({
             value={inputValue}
             placeholder={t('default_value')}
             className="h-full flex-1 rounded-none border-0 bg-transparent px-2.5 py-0 leading-none focus-visible:border-transparent focus-visible:ring-0"
-            onFocus={openPicker}
+            onFocus={() => {
+              if (!editingRef.current) {
+                editingRef.current = true
+                editStartValueRef.current = value
+              }
+              openPicker()
+            }}
             onClick={openPicker}
             onChange={(e) => {
               const nextValue = e.target.value
-              setInputState((state) => ({ ...state, inputValue: nextValue }))
-              onChange(nextValue)
+              setInputValue(nextValue)
               setOpen(true)
               loadOptions()
+            }}
+            onBlur={(e) => {
+              if (!editingRef.current) return
+              finishEditing(e.currentTarget.value)
+              closePicker()
+            }}
+            onKeyDown={(e) => {
+              if (
+                e.key !== 'Escape' ||
+                e.nativeEvent.isComposing ||
+                !editingRef.current
+              ) {
+                return
+              }
+
+              e.preventDefault()
+              e.stopPropagation()
+              const restoredValue = editStartValueRef.current
+              e.currentTarget.value = restoredValue
+              setInputValue(restoredValue)
+              e.currentTarget.setSelectionRange(
+                restoredValue.length,
+                restoredValue.length,
+              )
             }}
           />
           {inputValue && (
@@ -648,10 +694,13 @@ const FontField: React.FC<FontFieldProps> = ({
                 className="text-muted-foreground"
                 title={actionT('clear')}
                 Icon={XIcon}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                }}
                 onClick={() => {
-                  setInputState((state) => ({ ...state, inputValue: '' }))
-                  onChange('')
+                  finishEditing('')
                   closePicker()
+                  inputRef.current?.blur()
                 }}
               />
             </div>
@@ -683,13 +732,9 @@ const FontField: React.FC<FontFieldProps> = ({
                   e.preventDefault()
                 }}
                 onClick={() => {
-                  setInputState((state) => ({
-                    ...state,
-                    inputValue: option.family,
-                  }))
-                  onChange(option.family)
+                  finishEditing(option.family)
                   closePicker()
-                  inputRef.current?.focus()
+                  inputRef.current?.blur()
                 }}
               >
                 {option.label}
@@ -722,6 +767,7 @@ const NumberField: React.FC<NumberFieldProps> = ({
   ...props
 }) => {
   const ref = useRef<HTMLInputElement>(null)
+  const editStartValueRef = useRef<string | undefined>(undefined)
   const actionT = useTranslation('action')
   const typographyT = useTranslation('typography')
   const min = parseNumberInputProp(props.min)
@@ -764,6 +810,9 @@ const NumberField: React.FC<NumberFieldProps> = ({
           defaultValue={value}
           className="h-full flex-1 rounded-none border-0 bg-transparent px-2.5 py-0 leading-none focus-visible:border-transparent focus-visible:ring-0"
           // lazy render
+          onFocus={(e) => {
+            editStartValueRef.current = e.currentTarget.value
+          }}
           onBlur={(e) => {
             const normalized = normalizeNumberFieldValue(e.target.value, {
               min: props.min,
@@ -771,7 +820,21 @@ const NumberField: React.FC<NumberFieldProps> = ({
               step: props.step,
             })
             e.target.value = normalized === undefined ? '' : String(normalized)
+            editStartValueRef.current = undefined
             onChange(normalized)
+          }}
+          onKeyDown={(e) => {
+            if (
+              e.key !== 'Escape' ||
+              e.nativeEvent.isComposing ||
+              editStartValueRef.current === undefined
+            ) {
+              return
+            }
+
+            e.preventDefault()
+            e.stopPropagation()
+            e.currentTarget.value = editStartValueRef.current
           }}
           {...props}
         />
