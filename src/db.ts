@@ -70,11 +70,13 @@ export type BookContentFlag = 'nonPortableArchivePaths' | 'declaresEncryption'
 export interface BookReaderSource {
   mode: 'opf' | 'epub'
   url: string
+  rootUrl?: string
 }
 
 interface NativeBookReaderSource {
   mode: BookReaderSource['mode']
   path: string
+  rootPath?: string
   book?: BookRecord
 }
 
@@ -635,6 +637,9 @@ export const db = {
       return {
         mode: source.mode,
         url: await filePathToUrl(source.path),
+        rootUrl: source.rootPath
+          ? await filePathToUrl(source.rootPath)
+          : undefined,
       }
     },
     async bulkDelete(ids: string[]) {

@@ -56,6 +56,8 @@ class DefaultViewManager {
     this.rendered = false
     this.reflowablePageCountCache = {}
     this.currentReflowableSpread = undefined
+    this.prePaginatedSlotCache = new WeakMap()
+    this.currentPrePaginatedSpread = undefined
   }
 
   resetReflowablePageState(clearCache) {
@@ -270,18 +272,134 @@ class DefaultViewManager {
     )
   }
 
-  createView(section, forceRight) {
-    return new this.View(section, extend(this.viewSettings, { forceRight }))
+  createView(section, forceRight, forceLeft, spreadSlot) {
+    return new this.View(
+      section,
+      extend(this.viewSettings, { forceRight, forceLeft, spreadSlot }),
+    )
+  }
+
+  isPrePaginatedSpread() {
+    return this.layout.name === 'pre-paginated' && this.layout.divisor > 1
+  }
+
+  prePaginatedExplicitSlot(section) {
+    let properties = section && section.properties
+    if (!properties) return
+    if (properties.includes('page-spread-left')) return 'left'
+    if (properties.includes('page-spread-right')) return 'right'
+  }
+
+  oppositeSpreadSlot(slot) {
+    return slot === 'right' ? 'left' : 'right'
+  }
+
+  prePaginatedSlot(section) {
+    if (!section) return
+
+    let cached = this.prePaginatedSlotCache.get(section)
+    if (cached) return cached
+
+    let first = section
+    let previous = first.prev()
+    while (previous) {
+      first = previous
+      previous = first.prev()
+    }
+
+    let firstSlot = this.prePaginatedExplicitSlot(first)
+    if (!firstSlot) {
+      let distance = 1
+      let next = first.next()
+      while (next) {
+        let explicit = this.prePaginatedExplicitSlot(next)
+        if (explicit) {
+          firstSlot =
+            distance % 2 === 0 ? explicit : this.oppositeSpreadSlot(explicit)
+          break
+        }
+        distance += 1
+        next = next.next()
+      }
+    }
+
+    if (!firstSlot) {
+      firstSlot = this.isRightFirstPagination() ? 'right' : 'left'
+    }
+
+    let current = first
+    let slot = firstSlot
+    this.prePaginatedSlotCache.set(current, slot)
+
+    while (current !== section) {
+      let next = current.next()
+      if (!next) return
+      slot =
+        this.prePaginatedExplicitSlot(next) || this.oppositeSpreadSlot(slot)
+      this.prePaginatedSlotCache.set(next, slot)
+      current = next
+    }
+
+    return slot
+  }
+
+  prePaginatedSpreadContaining(section) {
+    let slot = this.prePaginatedSlot(section)
+    let earlierSlot = this.isRightFirstPagination() ? 'right' : 'left'
+    let companion = slot === earlierSlot ? section.next() : section.prev()
+
+    if (
+      companion &&
+      this.prePaginatedSlot(companion) !== this.oppositeSpreadSlot(slot)
+    ) {
+      companion = undefined
+    }
+
+    return slot === 'left'
+      ? { left: section, right: companion }
+      : { left: companion, right: section }
+  }
+
+  async renderPrePaginatedSpread(spread) {
+    this.clear()
+    this.updateLayout()
+
+    let rightFirst = this.isRightFirstPagination()
+    let entries = rightFirst
+      ? [
+          ['right', spread.right],
+          ['left', spread.left],
+        ]
+      : [
+          ['left', spread.left],
+          ['right', spread.right],
+        ]
+    entries = entries.filter((entry) => entry[1])
+
+    for (let index = 0; index < entries.length; index += 1) {
+      let [slot, section] = entries[index]
+      let onlyPage = entries.length === 1
+      let forceRight = onlyPage && slot === 'right' && !rightFirst
+      let forceLeft = onlyPage && slot === 'left' && rightFirst
+      let action = index === 0 ? this.add : this.append
+      await action.call(this, section, forceRight, forceLeft, slot)
+    }
+
+    this.currentPrePaginatedSpread = spread
+    this.views.show()
+  }
+
+  displayPrePaginatedSpread(section) {
+    return this.renderPrePaginatedSpread(
+      this.prePaginatedSpreadContaining(section),
+    )
   }
 
   handleNextPrePaginated(forceRight, section, action) {
     let next
 
     if (this.layout.name === 'pre-paginated' && this.layout.divisor > 1) {
-      if (forceRight || section.index === 0) {
-        // First page (cover) should stand alone for pre-paginated books
-        return
-      }
+      if (forceRight) return
       next = section.next()
       if (next && !next.properties.includes('page-spread-left')) {
         return action.call(this, next)
@@ -305,18 +423,26 @@ class DefaultViewManager {
   paginationModel() {
     let writingMode =
       this.writingMode || this.settings.writingMode || 'horizontal-tb'
-    let verticalRtl =
-      writingMode === 'vertical-rl' && this.settings.direction === 'rtl'
+    let pageProgressionDirection = this.settings.direction || 'ltr'
 
     return {
       writingMode,
       pageProgressionAxis: this.settings.axis,
-      pageProgressionDirection: this.settings.direction || 'ltr',
-      spreadSlotOrder: verticalRtl ? 'right-first' : 'left-first',
+      pageProgressionDirection,
+      spreadSlotOrder:
+        pageProgressionDirection === 'rtl' ? 'right-first' : 'left-first',
     }
   }
 
-  isVerticalRtlPagination() {
+  isRightFirstPagination() {
+    let model = this.paginationModel()
+    return (
+      model.pageProgressionAxis === 'horizontal' &&
+      model.pageProgressionDirection === 'rtl'
+    )
+  }
+
+  isVerticalRtlGeometry() {
     let model = this.paginationModel()
     return (
       model.writingMode === 'vertical-rl' &&
@@ -327,16 +453,16 @@ class DefaultViewManager {
 
   reflowableSpreadEarlierPage(spread) {
     if (!spread) return
-    return this.isVerticalRtlPagination() ? spread.right : spread.left
+    return this.isRightFirstPagination() ? spread.right : spread.left
   }
 
   reflowableSpreadLaterPage(spread) {
     if (!spread) return
-    return this.isVerticalRtlPagination() ? spread.left : spread.right
+    return this.isRightFirstPagination() ? spread.left : spread.right
   }
 
   reflowableSpreadFromLogicalPages(earlier, later, properties) {
-    let spread = this.isVerticalRtlPagination()
+    let spread = this.isRightFirstPagination()
       ? { right: earlier, left: later, anchor: 'right' }
       : { left: earlier, right: later, anchor: 'left' }
 
@@ -344,17 +470,10 @@ class DefaultViewManager {
   }
 
   canUseLogicalReflowableSpread() {
-    let model = this.paginationModel()
-    let verticalRtl =
-      model.writingMode === 'vertical-rl' &&
-      model.pageProgressionDirection === 'rtl'
-
     return (
       this.isReflowablePagination() &&
       !this.settings.fullsize &&
-      (verticalRtl ||
-        (this.layout.divisor > 1 &&
-          (!this.settings.direction || this.settings.direction === 'ltr')))
+      (this.isRightFirstPagination() || this.layout.divisor > 1)
     )
   }
 
@@ -583,7 +702,7 @@ class DefaultViewManager {
     let pageIndex = 0
     if (target) {
       let targetOffset = view.locationOf(target)
-      let physicalOffset = this.isVerticalRtlPagination()
+      let physicalOffset = this.isVerticalRtlGeometry()
         ? Math.max(view.width() - targetOffset.left - 1, 0)
         : Math.max(targetOffset.left, 0)
       pageIndex = Math.floor(physicalOffset / this.layout.pageWidth)
@@ -668,7 +787,7 @@ class DefaultViewManager {
   }
 
   async reflowableSpreadFromLeft(left) {
-    if (this.isVerticalRtlPagination()) {
+    if (this.isRightFirstPagination()) {
       return this.reflowableSpreadFromEarlier(left)
     }
 
@@ -709,7 +828,7 @@ class DefaultViewManager {
   }
 
   async reflowableSpreadEndingAt(right) {
-    if (this.isVerticalRtlPagination()) {
+    if (this.isRightFirstPagination()) {
       right = await this.normalizeReflowablePage(right)
       if (!right) {
         return
@@ -748,7 +867,7 @@ class DefaultViewManager {
       earlier = await this.previousReflowablePage(page)
     }
 
-    return this.isVerticalRtlPagination()
+    return this.isRightFirstPagination()
       ? this.reflowableSpreadFromEarlier(earlier || page)
       : this.reflowableSpreadFromLeft(earlier || page)
   }
@@ -792,14 +911,14 @@ class DefaultViewManager {
     }
 
     let start = this.reflowablePage(page.section, startPageIndex)
-    return this.isVerticalRtlPagination()
+    return this.isRightFirstPagination()
       ? this.reflowableSpreadFromEarlier(start)
       : this.reflowableSpreadFromLeft(start)
   }
 
   async reflowableSpreadForTarget(page, options) {
     if (options && options.alignTargetAsSpreadStart) {
-      return this.isVerticalRtlPagination()
+      return this.isRightFirstPagination()
         ? this.reflowableSpreadFromEarlier(page)
         : this.reflowableSpreadFromLeft(page)
     }
@@ -858,8 +977,8 @@ class DefaultViewManager {
   }
 
   async renderReflowableSpread(spread) {
-    if (this.isVerticalRtlPagination()) {
-      return this.renderVerticalRtlReflowableSpread(spread)
+    if (this.isRightFirstPagination()) {
+      return this.renderRightFirstReflowableSpread(spread)
     }
 
     if (spread && spread.exact) {
@@ -923,14 +1042,23 @@ class DefaultViewManager {
       let leftView = await this.add(resolvedSpread.left.section)
       viewBySectionIndex[resolvedSpread.left.section.index] = leftView
       let leftPageCount = this.cacheReflowablePageCount(leftView)
+      let keepTerminalInLeftSlot =
+        resolvedSpread.endsAtSectionEnd &&
+        resolvedSpread.anchor === 'left' &&
+        !resolvedSpread.right
+      let leftPageIndex = keepTerminalInLeftSlot
+        ? leftPageCount - 1
+        : resolvedSpread.left.pageIndex
       resolvedSpread.left = this.clampReflowablePageToCount(
-        resolvedSpread.left,
+        this.reflowablePage(resolvedSpread.left.section, leftPageIndex),
         leftPageCount,
       )
-      resolvedSpread.right = await this.reflowablePageAfterRenderedLeft(
-        resolvedSpread.left,
-        leftPageCount,
-      )
+      resolvedSpread.right = keepTerminalInLeftSlot
+        ? undefined
+        : await this.reflowablePageAfterRenderedLeft(
+            resolvedSpread.left,
+            leftPageCount,
+          )
     } else if (resolvedSpread.right) {
       resolvedSpread.right = await this.normalizeReflowablePage(
         resolvedSpread.right,
@@ -952,7 +1080,7 @@ class DefaultViewManager {
     this.applyReflowableSpreadPosition(resolvedSpread, viewBySectionIndex)
   }
 
-  async renderVerticalRtlReflowableSpread(spread) {
+  async renderRightFirstReflowableSpread(spread) {
     let resolvedSpread = { ...spread }
     let viewBySectionIndex = {}
 
@@ -975,17 +1103,37 @@ class DefaultViewManager {
       return
     }
 
+    if (resolvedSpread.endsAtSectionEnd) {
+      let terminalSlot = resolvedSpread.left ? 'left' : 'right'
+      let terminalPage = resolvedSpread[terminalSlot]
+      let terminalPageCount = await this.measureReflowableSectionPageCount(
+        terminalPage.section,
+      )
+      terminalPage = this.reflowablePage(
+        terminalPage.section,
+        Math.max(terminalPageCount - 1, 0),
+      )
+
+      if (terminalSlot === 'left') {
+        resolvedSpread.left = terminalPage
+        resolvedSpread.right =
+          this.layout.divisor > 1
+            ? await this.previousReflowablePage(terminalPage)
+            : undefined
+      } else {
+        resolvedSpread.right = terminalPage
+        resolvedSpread.left = undefined
+      }
+      resolvedSpread.anchor = terminalSlot
+    }
+
     let rightPageCount
     if (resolvedSpread.right) {
       let rightView = await this.add(resolvedSpread.right.section)
       viewBySectionIndex[resolvedSpread.right.section.index] = rightView
       rightPageCount = this.cacheReflowablePageCount(rightView)
-      let rightPageIndex =
-        resolvedSpread.endsAtSectionEnd && !resolvedSpread.left
-          ? rightPageCount - 1
-          : resolvedSpread.right.pageIndex
       resolvedSpread.right = this.clampReflowablePageToCount(
-        this.reflowablePage(resolvedSpread.right.section, rightPageIndex),
+        resolvedSpread.right,
         rightPageCount,
       )
     }
@@ -1134,7 +1282,7 @@ class DefaultViewManager {
     }
 
     if (spread.left && !viewBySectionIndex[spread.left.section.index]) {
-      let leftView = this.isVerticalRtlPagination()
+      let leftView = this.isRightFirstPagination()
         ? await this.append(spread.left.section)
         : await this.prepend(spread.left.section)
       viewBySectionIndex[spread.left.section.index] = leftView
@@ -1162,7 +1310,7 @@ class DefaultViewManager {
     let leftView = left && viewBySectionIndex[left.section.index]
     let rightView = right && viewBySectionIndex[right.section.index]
 
-    if (this.isVerticalRtlPagination()) {
+    if (this.isRightFirstPagination()) {
       if (leftView) {
         leftView.element.style.marginLeft = ''
         leftView.element.style.marginRight = ''
@@ -1220,7 +1368,7 @@ class DefaultViewManager {
       return
     }
 
-    let nextSpread = this.isVerticalRtlPagination()
+    let nextSpread = this.isRightFirstPagination()
       ? await this.reflowableSpreadFromEarlier(nextEarlier)
       : await this.reflowableSpreadFromLeft(nextEarlier)
     if (!nextSpread) {
@@ -1245,7 +1393,7 @@ class DefaultViewManager {
     }
 
     let previousSpread =
-      this.isVerticalRtlPagination() && this.layout.divisor <= 1
+      this.isRightFirstPagination() && this.layout.divisor <= 1
         ? await this.reflowableSpreadFromEarlier(previousPage)
         : await this.reflowableSpreadEndingAt(previousPage)
     if (!previousSpread) {
@@ -1333,6 +1481,18 @@ class DefaultViewManager {
 
     if (this.canUseLogicalReflowableSpread()) {
       this.displayReflowableSpread(section, target, options).then(
+        function () {
+          displaying.resolve()
+        },
+        function (err) {
+          displaying.reject(err)
+        },
+      )
+      return displayed
+    }
+
+    if (this.isPrePaginatedSpread()) {
+      this.displayPrePaginatedSpread(section).then(
         function () {
           displaying.resolve()
         },
@@ -1480,8 +1640,8 @@ class DefaultViewManager {
     this.scrollTo(distX, distY, true)
   }
 
-  add(section, forceRight) {
-    var view = this.createView(section, forceRight)
+  add(section, forceRight, forceLeft, spreadSlot) {
+    var view = this.createView(section, forceRight, forceLeft, spreadSlot)
 
     this.views.append(view)
 
@@ -1500,8 +1660,8 @@ class DefaultViewManager {
     return view.display(this.request)
   }
 
-  append(section, forceRight) {
-    var view = this.createView(section, forceRight)
+  append(section, forceRight, forceLeft, spreadSlot) {
+    var view = this.createView(section, forceRight, forceLeft, spreadSlot)
     this.views.append(view)
 
     view.onDisplayed = this.afterDisplayed.bind(this)
@@ -1518,8 +1678,8 @@ class DefaultViewManager {
     return view.display(this.request)
   }
 
-  prepend(section, forceRight) {
-    var view = this.createView(section, forceRight)
+  prepend(section, forceRight, forceLeft, spreadSlot) {
+    var view = this.createView(section, forceRight, forceLeft, spreadSlot)
 
     view.on(EVENTS.VIEWS.RESIZED, (bounds) => {
       this.counter(bounds)
@@ -1570,6 +1730,16 @@ class DefaultViewManager {
 
     if (this.canUseLogicalReflowableSpread()) {
       return this.nextReflowableSpread()
+    }
+
+    if (this.isPrePaginatedSpread()) {
+      let spread = this.currentPrePaginatedSpread
+      let later =
+        this.reflowableSpreadLaterPage(spread) ||
+        this.reflowableSpreadEarlierPage(spread)
+      let next = later && later.next()
+      if (next) return this.displayPrePaginatedSpread(next)
+      return
     }
 
     if (
@@ -1623,6 +1793,10 @@ class DefaultViewManager {
       } else {
         next = this.views.last().section.next()
       }
+    } else if (!this.isPaginated && this.settings.axis === 'horizontal') {
+      if (!this.scrollHorizontalByReadingDirection(this.layout.width, true)) {
+        next = this.views.last().section.next()
+      }
     } else {
       next = this.views.last().section.next()
     }
@@ -1652,14 +1826,8 @@ class DefaultViewManager {
         )
         .then(
           function () {
-            // Reset position to start for scrolled-doc vertical-rl in default mode
-            if (
-              !this.isPaginated &&
-              this.settings.axis === 'horizontal' &&
-              this.settings.direction === 'rtl' &&
-              this.settings.rtlScrollType === 'default'
-            ) {
-              this.scrollTo(this.container.scrollWidth, 0, true)
+            if (!this.isPaginated && this.settings.axis === 'horizontal') {
+              this.scrollHorizontalToReadingBoundary(false, true)
             }
             this.views.show()
           }.bind(this),
@@ -1676,6 +1844,16 @@ class DefaultViewManager {
 
     if (this.canUseLogicalReflowableSpread()) {
       return this.previousReflowableSpread()
+    }
+
+    if (this.isPrePaginatedSpread()) {
+      let spread = this.currentPrePaginatedSpread
+      let earlier =
+        this.reflowableSpreadEarlierPage(spread) ||
+        this.reflowableSpreadLaterPage(spread)
+      let previous = earlier && earlier.prev()
+      if (previous) return this.displayPrePaginatedSpread(previous)
+      return
     }
 
     if (
@@ -1724,6 +1902,10 @@ class DefaultViewManager {
         top = Math.max(top - this.layout.height, 0)
         this.scrollTo(0, top, true)
       } else {
+        prev = this.views.first().section.prev()
+      }
+    } else if (!this.isPaginated && this.settings.axis === 'horizontal') {
+      if (!this.scrollHorizontalByReadingDirection(-this.layout.width, true)) {
         prev = this.views.first().section.prev()
       }
     } else {
@@ -1782,6 +1964,11 @@ class DefaultViewManager {
                   true,
                 )
               }
+            } else if (
+              !this.isPaginated &&
+              this.settings.axis === 'horizontal'
+            ) {
+              this.scrollHorizontalToReadingBoundary(true, true)
             }
             this.views.show()
           }.bind(this),
@@ -1813,12 +2000,47 @@ class DefaultViewManager {
     this.updateLayout()
     if (this.canUseLogicalReflowableSpread() && this.currentReflowableSpread) {
       this.location = this.reflowableSpreadLocation()
+    } else if (this.isPrePaginatedSpread() && this.currentPrePaginatedSpread) {
+      this.location = this.prePaginatedSpreadLocation()
     } else if (this.isPaginated && this.settings.axis === 'horizontal') {
       this.location = this.paginatedLocation()
     } else {
       this.location = this.scrolledLocation()
     }
     return this.location
+  }
+
+  prePaginatedSpreadLocation() {
+    let spread = this.currentPrePaginatedSpread
+    let firstSlot = this.isRightFirstPagination() ? 'right' : 'left'
+    let secondSlot = this.oppositeSpreadSlot(firstSlot)
+
+    return [firstSlot, secondSlot]
+      .map((slot) => {
+        let section = spread && spread[slot]
+        let view = section && this.views.find(section)
+        if (!view) {
+          return
+        }
+
+        let mapping = this.mapping.page(
+          view.contents,
+          section.cfiBase,
+          0,
+          view.width(),
+        )
+
+        return {
+          index: section.index,
+          href: section.href,
+          pages: [1],
+          totalPages: this.viewPageCount(view),
+          mapping,
+          startSlot: slot,
+          endSlot: slot,
+        }
+      })
+      .filter(Boolean)
   }
 
   reflowableSpreadLocation() {
@@ -1828,7 +2050,7 @@ class DefaultViewManager {
     }
 
     let addresses = []
-    let firstSlot = this.isVerticalRtlPagination() ? 'right' : 'left'
+    let firstSlot = this.isRightFirstPagination() ? 'right' : 'left'
     let secondSlot = firstSlot === 'right' ? 'left' : 'right'
     let first = spread[firstSlot]
     let second = spread[secondSlot]
@@ -1864,7 +2086,7 @@ class DefaultViewManager {
         let pageWidth = this.layout.pageWidth
         let start
         let end
-        if (this.isVerticalRtlPagination()) {
+        if (this.isVerticalRtlGeometry()) {
           start = Math.max(
             view.width() - (group.endPageIndex + 1) * pageWidth,
             0,
@@ -1900,6 +2122,9 @@ class DefaultViewManager {
   scrolledLocation() {
     let visible = this.visible()
     let container = this.container.getBoundingClientRect()
+    let documentAsSinglePage =
+      this.optsSettings.globalLayoutProperties &&
+      this.optsSettings.globalLayoutProperties.flow === 'scrolled-doc'
     let pageHeight =
       container.height < window.innerHeight
         ? container.height
@@ -1966,8 +2191,8 @@ class DefaultViewManager {
       return {
         index,
         href,
-        pages,
-        totalPages,
+        pages: documentAsSinglePage ? [1] : pages,
+        totalPages: documentAsSinglePage ? 1 : totalPages,
         mapping,
       }
     })
@@ -2003,7 +2228,11 @@ class DefaultViewManager {
         let viewStart = view.offset().left
         let viewEnd = viewStart + width
         let viewportStart = this.container.scrollLeft
-        let viewportEnd = viewportStart + this.layout.width
+        let viewportWidth =
+          this.layout.name === 'pre-paginated'
+            ? this.layout.spreadWidth
+            : this.layout.width
+        let viewportEnd = viewportStart + viewportWidth
 
         let intersectionStart = Math.max(viewportStart, viewStart)
         let intersectionEnd = Math.min(viewportEnd, viewEnd)
@@ -2074,12 +2303,19 @@ class DefaultViewManager {
         pages.push(pg)
       }
 
+      let spreadSlot =
+        this.layout.name === 'pre-paginated' && this.layout.divisor > 1
+          ? view.settings && view.settings.spreadSlot
+          : undefined
+
       sections.push({
         index,
         href,
         pages,
         totalPages,
         mapping,
+        startSlot: spreadSlot,
+        endSlot: spreadSlot,
       })
     })
 
@@ -2125,6 +2361,91 @@ class DefaultViewManager {
       }
     }
     return visible
+  }
+
+  horizontalScrollMaximum() {
+    if (!this.container) return 0
+    return Math.max(this.container.scrollWidth - this.container.clientWidth, 0)
+  }
+
+  horizontalPhysicalOffset() {
+    if (!this.container) return 0
+
+    let maximum = this.horizontalScrollMaximum()
+    let offset = this.container.scrollLeft
+
+    if (this.settings.direction === 'rtl') {
+      if (this.settings.rtlScrollType === 'negative') {
+        offset = maximum + offset
+      } else if (this.settings.rtlScrollType === 'reverse') {
+        offset = maximum - offset
+      }
+    }
+
+    return Math.max(0, Math.min(maximum, offset))
+  }
+
+  scrollToHorizontalPhysicalOffset(offset, silent) {
+    if (!this.container) return
+
+    let maximum = this.horizontalScrollMaximum()
+    let physicalOffset = Math.max(0, Math.min(maximum, offset))
+    let scrollLeft = physicalOffset
+
+    if (this.settings.direction === 'rtl') {
+      if (this.settings.rtlScrollType === 'negative') {
+        scrollLeft = physicalOffset - maximum
+      } else if (this.settings.rtlScrollType === 'reverse') {
+        scrollLeft = maximum - physicalOffset
+      }
+    }
+
+    this.scrollTo(scrollLeft, this.container.scrollTop, silent)
+  }
+
+  scrollHorizontalByReadingDirection(distance, silent) {
+    if (
+      this.isPaginated ||
+      this.settings.axis !== 'horizontal' ||
+      !this.container
+    ) {
+      return false
+    }
+
+    let before = this.horizontalPhysicalOffset()
+    let writingMode =
+      this.writingMode || this.settings.writingMode || 'vertical-lr'
+    let physicalDirection = writingMode.indexOf('vertical-rl') === 0 ? -1 : 1
+    let target = Math.max(
+      0,
+      Math.min(
+        this.horizontalScrollMaximum(),
+        before + distance * physicalDirection,
+      ),
+    )
+
+    if (Math.abs(target - before) <= 0.5) return false
+
+    this.scrollToHorizontalPhysicalOffset(target, silent)
+    return Math.abs(this.horizontalPhysicalOffset() - before) > 0.5
+  }
+
+  scrollHorizontalToReadingBoundary(end, silent) {
+    if (
+      this.isPaginated ||
+      this.settings.axis !== 'horizontal' ||
+      !this.container
+    ) {
+      return
+    }
+
+    let maximum = this.horizontalScrollMaximum()
+    let writingMode =
+      this.writingMode || this.settings.writingMode || 'vertical-lr'
+    let startsAtRight = writingMode.indexOf('vertical-rl') === 0
+    let offset = end === startsAtRight ? 0 : maximum
+
+    this.scrollToHorizontalPhysicalOffset(offset, silent)
   }
 
   scrollBy(x, y, silent) {
@@ -2278,7 +2599,12 @@ class DefaultViewManager {
 
     this.settings.axis = axis
 
-    this.stage && this.stage.axis(axis)
+    if (this.stage) {
+      this.stage.axis(axis)
+      if (!this.isPaginated && this.overflow) {
+        this.stage.overflow(this.overflow)
+      }
+    }
 
     this.viewSettings.axis = axis
 

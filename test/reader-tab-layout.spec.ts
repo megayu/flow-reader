@@ -7,6 +7,7 @@ import type { BookRecord } from '../src/db'
 const aliceEpubPath = path.resolve('packages/epubjs/test/fixtures/alice.epub')
 const alicePackageUrl = '/test-assets/alice.epub'
 const longPackageUrl = '/test-assets/long/OPS/package.opf'
+const scrolledPackageUrl = '/test-assets/scrolled/OPS/package.opf'
 const verticalPackageUrl = '/test-assets/vertical/OPS/package.opf'
 const findShortcut = process.platform === 'darwin' ? 'Meta+F' : 'Control+F'
 const dictionaryLayoutHtml = `<!doctype html><html><body>
@@ -106,6 +107,9 @@ async function installReaderBooksMock(
   }
   if (packageUrls.includes(longPackageUrl)) {
     await installLongBookRoutes(page)
+  }
+  if (packageUrls.includes(scrolledPackageUrl)) {
+    await installScrolledBookRoutes(page)
   }
   if (packageUrls.includes(verticalPackageUrl)) {
     await installVerticalBookRoutes(page)
@@ -349,6 +353,105 @@ function longBookResource(pathname: string) {
 async function installLongBookRoutes(page: Page) {
   await page.route('**/test-assets/long/OPS/**', (route) => {
     const resource = longBookResource(new URL(route.request().url()).pathname)
+
+    if (!resource) {
+      return route.fulfill({
+        status: 404,
+        contentType: 'text/plain',
+        body: 'not found',
+      })
+    }
+
+    return route.fulfill(resource)
+  })
+}
+
+function scrolledBookResource(pathname: string) {
+  const normalized = pathname.replace(/^\/test-assets\/scrolled\/OPS\//, '')
+
+  if (normalized === 'package.opf') {
+    return {
+      contentType: 'application/oebps-package+xml',
+      body: `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="pub-id">flow.reader.scrolled.synthetic</dc:identifier>
+    <dc:title>Synthetic Scrolled Reader</dc:title>
+    <dc:language>en</dc:language>
+    <meta property="rendition:layout">reflowable</meta>
+    <meta property="rendition:flow">scrolled-continuous</meta>
+    <meta property="dcterms:modified">2026-07-25T00:00:00Z</meta>
+  </metadata>
+  <manifest>
+    <item id="toc" properties="nav" href="toc.xhtml" media-type="application/xhtml+xml"/>
+    <item id="style" href="style.css" media-type="text/css"/>
+    <item id="chapter-1" href="chapter_001.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chapter-2" href="chapter_002.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="chapter-1"/>
+    <itemref idref="chapter-2"/>
+  </spine>
+</package>`,
+    }
+  }
+
+  if (normalized === 'toc.xhtml') {
+    return {
+      contentType: 'application/xhtml+xml',
+      body: `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head><title>Contents</title></head>
+  <body><nav epub:type="toc"><ol>
+    <li><a href="chapter_001.xhtml">SCROLLED-CHAPTER-01</a></li>
+    <li><a href="chapter_002.xhtml">SCROLLED-CHAPTER-02</a></li>
+  </ol></nav></body>
+</html>`,
+    }
+  }
+
+  if (normalized === 'style.css') {
+    return {
+      contentType: 'text/css',
+      body: `html, body { margin: 0; }
+body { font: 24px/1.6 serif; }
+main, svg { display: block; width: 100%; }
+svg { height: auto; }`,
+    }
+  }
+
+  const chapterMatch = /^chapter_(00[12])\.xhtml$/.exec(normalized)
+  if (chapterMatch) {
+    const chapter = Number(chapterMatch[1])
+    const marker = `SCROLLED-CHAPTER-${String(chapter).padStart(2, '0')}`
+    const screens =
+      chapter === 1
+        ? `<div style="height: 1000px">${marker}</div>`
+        : Array.from(
+            { length: 10 },
+            (_, index) =>
+              `<svg viewBox="0 0 2 1" role="img" aria-label="${marker} screen ${index + 1}"><text x="0.1" y="0.2">${marker}</text></svg>`,
+          ).join('')
+
+    return {
+      contentType: 'application/xhtml+xml',
+      body: `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <title>${marker}</title>
+    <link rel="stylesheet" href="style.css" type="text/css"/>
+  </head>
+  <body><main>${screens}</main></body>
+</html>`,
+    }
+  }
+}
+
+async function installScrolledBookRoutes(page: Page) {
+  await page.route('**/test-assets/scrolled/OPS/**', (route) => {
+    const resource = scrolledBookResource(
+      new URL(route.request().url()).pathname,
+    )
 
     if (!resource) {
       return route.fulfill({
@@ -1617,9 +1720,11 @@ async function waitForStableReaderLayout(
 test.beforeEach(async ({ page }, testInfo) => {
   const packageUrl = testInfo.title.includes('[vertical-rl]')
     ? [alicePackageUrl, verticalPackageUrl, verticalPackageUrl]
-    : testInfo.title.includes('long-book')
-      ? longPackageUrl
-      : alicePackageUrl
+    : testInfo.title.includes('[scrolled-doc]')
+      ? scrolledPackageUrl
+      : testInfo.title.includes('long-book')
+        ? longPackageUrl
+        : alicePackageUrl
   await installReaderBooksMock(page, undefined, packageUrl)
   await page.goto('/')
   await page.addStyleTag({
@@ -2451,7 +2556,7 @@ test('[vertical-rl] maps footer pages to physical right-first slots', async ({
     { page: 3, total: 3, slot: 'right' },
     1,
   )
-  expect(await readActiveFooterSlots(page)).toEqual(['', '3 · 3'])
+  expect(await readActiveFooterSlots(page)).toEqual(['', '3 · 3 (100.00%)'])
 })
 
 async function readVerticalReadingState(page: Page) {
@@ -4614,6 +4719,110 @@ test('switches adjacent tabs immediately with wheel and keyboard input', async (
   await expectFocusedTabId(page, 'tab-layout-b')
   await page.keyboard.press('Control+ArrowRight')
   await expectFocusedTabId(page, 'tab-layout-c')
+})
+
+test('[scrolled-doc] keeps one-page footer and turns chapters only at scroll boundaries', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1200, height: 700 })
+  await openFixtureBook(page, 0)
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const tab = (window as any).reader.focusedBookTab
+        const manager = tab?.rendition?.manager
+        const container = manager?.container
+        const location = tab?.paginationSnapshot?.location?.start
+
+        return {
+          flow: tab?.rendition?.settings?.globalLayoutProperties?.flow,
+          index: location?.index,
+          page: location?.displayed?.page,
+          total: location?.displayed?.total,
+          divisor: manager?.layout?.divisor,
+          maxScrollTop: container
+            ? container.scrollHeight - container.clientHeight
+            : 0,
+          overflowX: container ? getComputedStyle(container).overflowX : null,
+        }
+      }),
+    )
+    .toMatchObject({
+      flow: 'scrolled-doc',
+      index: 0,
+      page: 1,
+      total: 1,
+      divisor: 1,
+      maxScrollTop: expect.any(Number),
+      overflowX: 'hidden',
+    })
+
+  const initialPercentage = await page.evaluate(
+    () => (window as any).reader.focusedBookTab.paginationSnapshot.percentage,
+  )
+  expect(initialPercentage).toBeCloseTo(0.5, 5)
+
+  const activeFrame = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .last()
+  await activeFrame.hover()
+  await page.mouse.wheel(0, 240)
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const tab = (window as any).reader.focusedBookTab
+        const manager = tab?.rendition?.manager
+
+        return {
+          index: tab?.paginationSnapshot?.location?.start?.index,
+          percentage: tab?.paginationSnapshot?.percentage,
+          scrollTop: manager?.container?.scrollTop ?? 0,
+        }
+      }),
+    )
+    .toMatchObject({
+      index: 0,
+      percentage: initialPercentage,
+      scrollTop: expect.any(Number),
+    })
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).reader.focusedBookTab.rendition.manager.container
+          .scrollTop,
+    ),
+  ).toBeGreaterThan(0)
+
+  await page.evaluate(() => {
+    const container = (window as any).reader.focusedBookTab.rendition.manager
+      .container
+    container.scrollTop = container.scrollHeight
+  })
+  await activeFrame.hover()
+  await page.mouse.wheel(0, 240)
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const tab = (window as any).reader.focusedBookTab
+        const location = tab?.paginationSnapshot?.location?.start
+
+        return {
+          index: location?.index,
+          page: location?.displayed?.page,
+          total: location?.displayed?.total,
+          scrollTop: tab?.rendition?.manager?.container?.scrollTop,
+        }
+      }),
+    )
+    .toEqual({
+      index: 1,
+      page: 1,
+      total: 1,
+      scrollTop: 0,
+    })
 })
 
 test('reorders tabs without changing the focused reader runtime', async ({

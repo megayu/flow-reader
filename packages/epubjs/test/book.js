@@ -151,6 +151,88 @@ describe('Book', function () {
   })
 
   describe('Spine document media types', function () {
+    it('uses direct supported fallbacks for spine documents and images', async function () {
+      const zip = new JSZip()
+
+      zip.file('mimetype', 'application/epub+zip')
+      zip.file(
+        'META-INF/container.xml',
+        `<?xml version="1.0"?>
+        <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+          <rootfiles>
+            <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+          </rootfiles>
+        </container>`,
+      )
+      zip.file(
+        'OEBPS/content.opf',
+        `<?xml version="1.0" encoding="UTF-8"?>
+        <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <dc:title>Direct Fallbacks</dc:title>
+            <dc:identifier id="id">direct-fallbacks</dc:identifier>
+            <dc:language>en</dc:language>
+          </metadata>
+          <manifest>
+            <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+            <item id="data" href="chapter.json" media-type="application/json" fallback="chapter"/>
+            <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+            <item id="art" href="art.psd" media-type="image/psd" fallback="art-png"/>
+            <item id="art-png" href="art.png" media-type="image/png"/>
+          </manifest>
+          <spine><itemref idref="data"/></spine>
+        </package>`,
+      )
+      zip.file(
+        'OEBPS/nav.xhtml',
+        `<?xml version="1.0" encoding="utf-8"?>
+        <html xmlns="http://www.w3.org/1999/xhtml">
+          <head><title>Navigation</title></head>
+          <body>
+            <nav epub:type="toc" xmlns:epub="http://www.idpf.org/2007/ops">
+              <ol><li><a href="chapter.json">Chapter</a></li></ol>
+            </nav>
+          </body>
+        </html>`,
+      )
+      zip.file('OEBPS/chapter.json', '{}')
+      zip.file(
+        'OEBPS/chapter.xhtml',
+        `<?xml version="1.0" encoding="utf-8"?>
+        <html xmlns="http://www.w3.org/1999/xhtml">
+          <head><title>Chapter</title></head>
+          <body><img src="art.psd" alt="fallback image"/></body>
+        </html>`,
+      )
+      zip.file('OEBPS/art.psd', 'unsupported')
+      zip.file(
+        'OEBPS/art.png',
+        new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+      )
+
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' })
+      const url = URL.createObjectURL(
+        new Blob([buffer], { type: 'application/epub+zip' }),
+      )
+      const book = new Book(url, { openAs: 'epub' })
+
+      try {
+        await book.opened
+        await book.loaded.navigation
+
+        const section = book.spine.get('chapter.json')
+        assert.equal(section.href, 'chapter.xhtml')
+        assert.equal(book.navigation.toc[0].href, 'chapter.json')
+
+        const output = await section.render(book.load.bind(book))
+        assert.notInclude(output, 'art.psd')
+        assert.include(output, `src="blob:${location.origin}/`)
+      } finally {
+        book.destroy()
+        URL.revokeObjectURL(url)
+      }
+    })
+
     it('parses .html spine documents declared as XHTML with XHTML semantics', async function () {
       const zip = new JSZip()
 

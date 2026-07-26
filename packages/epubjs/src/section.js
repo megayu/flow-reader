@@ -1,4 +1,7 @@
-import { DOMParser as XMLDOMSerializer } from '@xmldom/xmldom'
+import {
+  DOMParser as XMLDOMParser,
+  XMLSerializer as XMLDOMSerializer,
+} from '@xmldom/xmldom'
 
 import EpubCFI from './epubcfi'
 import { defer } from './utils/core'
@@ -10,6 +13,81 @@ import Request from './utils/request'
 function requestType(mediaType) {
   if (mediaType === 'application/xhtml+xml') return 'xhtml'
   if (mediaType === 'text/html') return 'html'
+}
+
+const bitmapMediaTypes = [
+  'image/avif',
+  'image/gif',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]
+
+function isBitmapMediaType(mediaType) {
+  return bitmapMediaTypes.includes(
+    typeof mediaType === 'string' ? mediaType.toLowerCase() : '',
+  )
+}
+
+export function isRenderableSpineMediaType(mediaType) {
+  return Boolean(
+    requestType(mediaType) ||
+    mediaType === 'image/svg+xml' ||
+    isBitmapMediaType(mediaType),
+  )
+}
+
+function createBitmapDocument(url) {
+  var Parser = typeof DOMParser === 'undefined' ? XMLDOMParser : DOMParser
+  var doc = new Parser().parseFromString(
+    `<html xmlns="http://www.w3.org/1999/xhtml">
+      <head>
+        <style>
+          html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+          img { display: block; width: 100%; height: 100%; object-fit: contain; }
+        </style>
+      </head>
+      <body><img alt="" /></body>
+    </html>`,
+    'application/xhtml+xml',
+  )
+  doc.getElementsByTagName('img')[0].setAttribute('src', url)
+  return doc
+}
+
+function processingInstructionAttribute(data, name) {
+  var match = data.match(
+    new RegExp('(?:^|\\s)' + name + '\\s*=\\s*([\'"])(.*?)\\1', 'i'),
+  )
+  return match && match[2]
+}
+
+function preserveSvgXmlStylesheets(doc, contents) {
+  var anchor = contents.firstChild
+  var nodes = doc.childNodes
+
+  for (var i = 0; i < nodes.length; i++) {
+    var node = nodes[i]
+    if (
+      node.nodeType !== 7 ||
+      (node.target || node.nodeName).toLowerCase() !== 'xml-stylesheet'
+    ) {
+      continue
+    }
+
+    var type = processingInstructionAttribute(node.data, 'type')
+    var href = processingInstructionAttribute(node.data, 'href')
+    if (!href || (type && type.toLowerCase() !== 'text/css')) {
+      continue
+    }
+
+    // Section output serializes only the SVG root, so document-level
+    // stylesheet processing instructions must move inside that root.
+    var style = doc.createElementNS(contents.namespaceURI, 'style')
+    style.setAttribute('type', 'text/css')
+    style.textContent = '@import url(' + JSON.stringify(href) + ');'
+    contents.insertBefore(style, anchor)
+  }
 }
 
 /**
@@ -26,6 +104,7 @@ class Section {
     this.properties = item.properties
     this.index = item.index
     this.href = item.href
+    this.hrefAliases = item.hrefAliases || []
     this.type = item.type
     this.url = item.url
     this.canonical = item.canonical
@@ -60,6 +139,14 @@ class Section {
 
     if (this.contents) {
       loading.resolve(this.contents)
+    } else if (isBitmapMediaType(this.type)) {
+      this.document = createBitmapDocument(this.url)
+      this.contents = this.document.documentElement
+
+      this.hooks.content
+        .trigger(this.document, this)
+        .then(() => loading.resolve(this.contents))
+        .catch((error) => loading.reject(error))
     } else {
       request(this.url, requestType(this.type))
         .then(
@@ -68,6 +155,10 @@ class Section {
 
             this.document = xml
             this.contents = xml.documentElement
+
+            if (this.type === 'image/svg+xml') {
+              preserveSvgXmlStylesheets(this.document, this.contents)
+            }
 
             return this.hooks.content.trigger(this.document, this)
           }.bind(this),

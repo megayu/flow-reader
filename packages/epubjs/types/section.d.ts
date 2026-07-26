@@ -16,6 +16,7 @@ export interface SpineItem {
   index: number
   cfiBase: string
   href?: string
+  hrefAliases?: Array<string>
   type?: string
   url?: string
   canonical?: string
@@ -33,6 +34,7 @@ export default class Section {
   properties: Array<string>
   index: number
   href: string
+  hrefAliases: Array<string>
   type?: string
   url: string
   canonical: string

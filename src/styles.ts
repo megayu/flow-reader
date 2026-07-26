@@ -441,6 +441,7 @@ export function updateCustomStyle(
   settings: Settings | undefined,
   bodyTextCache?: BodyTextDetectionCache,
   layoutView?: LayoutViewStyleSource,
+  layoutName?: string,
 ) {
   if (!contents || !settings) return
 
@@ -449,7 +450,7 @@ export function updateCustomStyle(
   const hasBodyTypography = keys(bodyTypography).length > 0
   const needsTextMarkers = hasBodyTypography || settings.hideEndnotes
   let css = ' '
-  const writingMode = resolveWritingMode(contents, layoutView)
+  const writingMode = resolveWritingMode(contents, layoutView, layoutName)
 
   css += createVerticalWritingCss(writingMode, settings.textIndent)
 
@@ -530,8 +531,16 @@ export function updateCustomStyle(
 export function resolveWritingMode(
   contents: Pick<Contents, 'writingMode'>,
   layoutView?: LayoutViewStyleSource,
+  layoutName?: string,
 ) {
-  return layoutView?.writingMode ?? contents.writingMode()
+  const viewLayoutName = layoutView?.layout?.name
+  const resolvedLayoutName =
+    typeof viewLayoutName === 'string' ? viewLayoutName : layoutName
+
+  return (
+    layoutView?.writingMode ??
+    contents.writingMode(undefined, resolvedLayoutName)
+  )
 }
 
 function logStyleDiagnostics(

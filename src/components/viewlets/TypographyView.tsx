@@ -16,6 +16,7 @@ import { createPortal } from 'react-dom'
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
 import { reader, useReaderSnapshot } from '@flow/reader/models/reader'
+import { resolveBookSpreadPolicy } from '@flow/reader/readerSpreadPolicy'
 import {
   PageAppearance,
   TypographyConfiguration,
@@ -62,10 +63,15 @@ const TypographyPane: React.FC = () => {
   >(undefined)
   const bookTypography = focusedBookTab?.book.configuration?.typography
   const typography = bookTypography ?? {}
+  const isScrolledDocument = focusedBookTab?.isScrolledDocument ?? false
 
   const { fontFamily, fontSize, fontWeight, lineHeight, textIndent, zoom } =
     typography
   const globalSpread = settings.spread ?? RenditionSpread.Auto
+  const inheritedSpread = resolveBookSpreadPolicy({
+    publicationSpread: focusedBookTab?.book.metadata.spread,
+    applicationDefault: globalSpread,
+  })
   const globalTextAlign: TextAlignOption = settings.textAlign ?? 'default'
 
   const setTypography = useCallback(
@@ -145,15 +151,24 @@ const TypographyPane: React.FC = () => {
           className="space-y-3 pt-2 pr-1.5 pb-4 pl-4"
           key={focusedBookTab?.id}
         >
-          <SpreadField
-            name={t('page_view')}
-            value={bookTypography?.spread}
-            inheritedValue={globalSpread}
-            unsetOnSelected
-            onChange={(value) => {
-              setTypography('spread', value)
-            }}
-          />
+          <fieldset
+            className="m-0 min-w-0 border-0 p-0"
+            disabled={isScrolledDocument}
+          >
+            <SpreadField
+              name={t('page_view')}
+              value={
+                isScrolledDocument
+                  ? RenditionSpread.None
+                  : bookTypography?.spread
+              }
+              inheritedValue={inheritedSpread}
+              unsetOnSelected
+              onChange={(value) => {
+                setTypography('spread', value)
+              }}
+            />
+          </fieldset>
           <TextAlignField
             name={t('text_align')}
             value={bookTypography?.textAlign}

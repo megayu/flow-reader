@@ -1,6 +1,7 @@
 import EpubCFI from './epubcfi'
-import Section from './section'
+import Section, { isRenderableSpineMediaType } from './section'
 import Hook from './utils/hook'
+import { resolveDirectFallback } from './utils/fallback'
 import { decodeHref } from './utils/href'
 import {
   replaceBase,
@@ -18,6 +19,20 @@ function lookupHrefIndex(index, href) {
   }
 }
 
+function indexFirstHrefOccurrence(index, href, sectionIndex) {
+  if (!href) {
+    return
+  }
+
+  var variants = [decodeURI(href), encodeURI(href), href]
+
+  variants.forEach((variant) => {
+    if (!Object.prototype.hasOwnProperty.call(index, variant)) {
+      index[variant] = sectionIndex
+    }
+  })
+}
+
 /**
  * A collection of Spine Items
  */
@@ -26,6 +41,7 @@ class Spine {
     this.spineItems = []
     this.spineByHref = {}
     this.spineById = {}
+    this.spineByIndex = {}
 
     this.hooks = {}
     this.hooks.serialize = new Hook()
@@ -54,17 +70,27 @@ class Spine {
    * @param  {method} canonical Resolve canonical url
    */
   unpack(_package, resolver, canonical) {
-    this.items = _package.spine
     this.manifest = _package.manifest
     this.spineNodeIndex = _package.spineNodeIndex
     this.baseUrl = _package.baseUrl || _package.basePath || ''
-    this.length = this.items.length
+    this.length = _package.spine.length
+    this.items = []
 
-    this.items.forEach((item, index) => {
-      var manifestItem = this.manifest[item.idref]
+    _package.spine.forEach((item, index) => {
+      var originalManifestItem = this.manifest[item.idref]
+      var manifestItem = resolveDirectFallback(
+        this.manifest,
+        originalManifestItem,
+        isRenderableSpineMediaType,
+      )
       var spineItem
 
       item.index = index
+      if (originalManifestItem && originalManifestItem.type && !manifestItem) {
+        return
+      }
+      this.items.push(item)
+
       item.cfiBase = this.epubcfi.generateChapterComponent(
         this.spineNodeIndex,
         item.index,
@@ -72,6 +98,14 @@ class Spine {
       )
 
       if (manifestItem) {
+        if (
+          originalManifestItem &&
+          originalManifestItem !== manifestItem &&
+          originalManifestItem.href
+        ) {
+          item.hrefAliases = [originalManifestItem.href]
+        }
+
         if (manifestItem.href) {
           item.href = manifestItem.href
         } else {
@@ -105,7 +139,7 @@ class Spine {
       }.bind(this)
       item.next = function () {
         let nextIndex = item.index
-        while (nextIndex < this.spineItems.length - 1) {
+        while (nextIndex < this.length - 1) {
           let next = this.get(nextIndex + 1)
           if (next) {
             return next
@@ -136,18 +170,12 @@ class Spine {
     var index = 0
 
     if (typeof target === 'undefined') {
-      while (index < this.spineItems.length) {
-        let next = this.spineItems[index]
-        if (this.isReadable(next)) {
-          break
-        }
-        index += 1
-      }
+      return this.first()
     } else if (this.epubcfi.isCfiString(target)) {
       let cfi = new EpubCFI(target)
-      index = cfi.spinePos
+      index = this.spineByIndex[cfi.spinePos]
     } else if (typeof target === 'number' || isNaN(target) === false) {
-      index = target
+      index = this.spineByIndex[target]
     } else if (typeof target === 'string' && target.indexOf('#') === 0) {
       index = this.spineById[target.substring(1)]
     } else if (typeof target === 'string') {
@@ -183,17 +211,21 @@ class Spine {
    */
   append(section) {
     var index = this.spineItems.length
-    section.index = index
+    if (typeof section.index !== 'number') {
+      section.index = this.length
+    }
 
     this.spineItems.push(section)
+    this.spineByIndex[section.index] = index
+    this.length = Math.max(this.length, section.index + 1)
 
     // Encode and Decode href lookups
     // see pr for details: https://github.com/futurepress/epub.js/pull/358
-    if (section.href) {
-      this.spineByHref[decodeURI(section.href)] = index
-      this.spineByHref[encodeURI(section.href)] = index
-      this.spineByHref[section.href] = index
-    }
+    indexFirstHrefOccurrence(this.spineByHref, section.href, index)
+
+    section.hrefAliases.forEach((href) => {
+      indexFirstHrefOccurrence(this.spineByHref, href, index)
+    })
 
     this.spineById[section.idref] = index
 
@@ -251,16 +283,7 @@ class Spine {
    * @return {Section} first section
    */
   first() {
-    let index = 0
-
-    do {
-      let next = this.get(index)
-
-      if (next && next.linear) {
-        return next
-      }
-      index += 1
-    } while (index < this.spineItems.length)
+    return this.spineItems.find((section) => this.isReadable(section))
   }
 
   /**
@@ -268,15 +291,12 @@ class Spine {
    * @return {Section} last section
    */
   last() {
-    let index = this.spineItems.length - 1
-
-    do {
-      let prev = this.get(index)
-      if (prev && prev.linear) {
-        return prev
+    for (let index = this.spineItems.length - 1; index >= 0; index -= 1) {
+      let section = this.spineItems[index]
+      if (this.isReadable(section)) {
+        return section
       }
-      index -= 1
-    } while (index >= 0)
+    }
   }
 
   destroy() {
@@ -285,6 +305,7 @@ class Spine {
     this.spineItems = undefined
     this.spineByHref = undefined
     this.spineById = undefined
+    this.spineByIndex = undefined
 
     this.hooks.serialize.clear()
     this.hooks.content.clear()

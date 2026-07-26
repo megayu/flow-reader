@@ -1,10 +1,4 @@
-import {
-  qs,
-  qsa,
-  querySelectorByType,
-  filterChildren,
-  getParentByTagName,
-} from './utils/core'
+import { qs, qsa, querySelectorByType, filterChildren } from './utils/core'
 import { decodeHref } from './utils/href'
 
 function isListElement(element) {
@@ -221,8 +215,45 @@ class Navigation {
     let navList = filterChildren(navElement, 'ol', true)
     if (!navList) return list
 
+    this._hasMissingNavItemIds = false
     list = this.parseNavList(navList)
+    if (this._hasMissingNavItemIds) {
+      this.prepareNavItemIds(list)
+      this.assignMissingNavItemIds(list)
+    }
     return list
+  }
+
+  prepareNavItemIds(items) {
+    this._navItemIds = new Set()
+    this._generatedNavItemId = 0
+    this.collectNavItemIds(items)
+  }
+
+  collectNavItemIds(items) {
+    items.forEach((item) => {
+      if (item.id) this._navItemIds.add(item.id)
+      this.collectNavItemIds(item.subitems)
+    })
+  }
+
+  nextNavItemId() {
+    let id
+
+    do {
+      id = `epubjs-nav-item-${this._generatedNavItemId++}`
+    } while (this._navItemIds.has(id))
+
+    this._navItemIds.add(id)
+    return id
+  }
+
+  assignMissingNavItemIds(items, parent) {
+    items.forEach((item) => {
+      if (!item.id) item.id = this.nextNavItemId()
+      item.parent = parent
+      this.assignMissingNavItemIds(item.subitems, item.id)
+    })
   }
 
   /**
@@ -270,9 +301,8 @@ class Navigation {
 
     let src = decodeHref(content.getAttribute('href') || '')
 
-    if (!id) {
-      id = src
-    }
+    if (!id) id = src
+    if (!id) this._hasMissingNavItemIds = true
     let text = content.textContent || ''
 
     let subitems = []

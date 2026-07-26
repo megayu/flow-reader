@@ -486,7 +486,10 @@ class IframeView {
       .then(
         function () {
           // find and report the writingMode axis
-          let writingMode = this.contents.writingMode()
+          let writingMode = this.contents.writingMode(
+            undefined,
+            this.layout && this.layout.name,
+          )
 
           // A paginated page frame always advances horizontally. Vertical
           // writing only changes flow inside that unchanged physical frame.
@@ -508,7 +511,12 @@ class IframeView {
           }
 
           // apply the layout function to the contents
-          this.layout.format(this.contents, this.section, this.axis)
+          this.layout.format(
+            this.contents,
+            this.section,
+            this.axis,
+            this.settings.spreadSlot,
+          )
           this.fitLeadingBlockBackgroundsBeforeMeasure()
           this.fitLeadingTitleImagesBeforeMeasure()
           this.fitMediaBeforeMeasure()
@@ -522,6 +530,8 @@ class IframeView {
 
             if (this.settings.forceRight) {
               this.element.style.marginLeft = this.width() + 'px'
+            } else if (this.settings.forceLeft) {
+              this.element.style.marginRight = this.width() + 'px'
             }
             resolve()
           })
@@ -704,7 +714,7 @@ class IframeView {
     return Math.min(Math.max(pageWidth * 0.02, 2), 24)
   }
 
-  contentRangeSummary(pageWidth) {
+  contentRangeSummary(pageWidth, contentWidth = pageWidth * 2) {
     let threshold = this.pageBoundaryThreshold(pageWidth)
     let compactWidthLimit = pageWidth * 0.5
     let summary
@@ -714,41 +724,58 @@ class IframeView {
         return
       }
 
+      // DOM ranges use physical left-to-right coordinates. Mirror horizontal
+      // RTL content so page-boundary checks follow logical reading order.
+      let left =
+        this.settings.direction === 'rtl'
+          ? contentWidth - rect.right
+          : rect.left
+      let right =
+        this.settings.direction === 'rtl'
+          ? contentWidth - rect.left
+          : rect.right
+
       if (!summary) {
         summary = {
           bounds: {
-            left: rect.left,
-            right: rect.right,
+            left,
+            right,
             top: rect.top,
             bottom: rect.bottom,
           },
           crossesPageBoundary: false,
+          compactInFirstPage: false,
           compactNearPageBoundary: false,
           startsInsideSecondPage: false,
         }
       } else {
-        summary.bounds.left = Math.min(summary.bounds.left, rect.left)
-        summary.bounds.right = Math.max(summary.bounds.right, rect.right)
+        summary.bounds.left = Math.min(summary.bounds.left, left)
+        summary.bounds.right = Math.max(summary.bounds.right, right)
         summary.bounds.top = Math.min(summary.bounds.top, rect.top)
         summary.bounds.bottom = Math.max(summary.bounds.bottom, rect.bottom)
       }
 
-      if (
-        rect.left < pageWidth - threshold &&
-        rect.right > pageWidth + threshold
-      ) {
+      if (left < pageWidth - threshold && right > pageWidth + threshold) {
         summary.crossesPageBoundary = true
       }
 
       if (
         rect.width <= compactWidthLimit &&
-        rect.left <= pageWidth + threshold &&
-        rect.right > pageWidth + threshold
+        left < pageWidth - threshold &&
+        right <= pageWidth + threshold
+      ) {
+        summary.compactInFirstPage = true
+      }
+
+      if (
+        rect.width <= compactWidthLimit &&
+        left <= pageWidth + threshold &&
+        right > pageWidth + threshold
       ) {
         summary.compactNearPageBoundary = true
       }
 
-      if (rect.left >= pageWidth + threshold && rect.width > threshold) {
+      if (left >= pageWidth + threshold && rect.width > threshold) {
         summary.startsInsideSecondPage = true
       }
     }
@@ -780,8 +807,7 @@ class IframeView {
       !this.layout ||
       !this.layout.pageWidth ||
       this.layout.name !== 'reflowable' ||
-      this.settings.axis !== 'horizontal' ||
-      this.settings.direction === 'rtl'
+      this.settings.axis !== 'horizontal'
     ) {
       return false
     }
@@ -791,7 +817,7 @@ class IframeView {
       return false
     }
 
-    let summary = this.contentRangeSummary(pageWidth)
+    let summary = this.contentRangeSummary(pageWidth, width)
     if (!summary) {
       return this.hasPageVisualBackground()
     }
@@ -808,6 +834,10 @@ class IframeView {
 
     if (rectWidth > pageWidth * 1.5) {
       return summary.compactNearPageBoundary
+    }
+
+    if (this.settings.direction === 'rtl' && summary.compactInFirstPage) {
+      return true
     }
 
     return summary.crossesPageBoundary || summary.compactNearPageBoundary
@@ -1031,7 +1061,7 @@ class IframeView {
     let horizontalPadding =
       parseFloat(computed.paddingLeft) + parseFloat(computed.paddingRight)
     let maxWidth = this.layout.columnWidth
-      ? this.layout.columnWidth - horizontalPadding + 'px'
+      ? `min(100%, ${this.layout.columnWidth - horizontalPadding}px)`
       : '100%'
 
     this.contents.addStylesheetRules(
@@ -1311,7 +1341,12 @@ class IframeView {
       if (this.displayed && this.iframe) {
         this.expand()
         if (this.contents) {
-          this.layout.format(this.contents)
+          this.layout.format(
+            this.contents,
+            this.section,
+            this.axis,
+            this.settings.spreadSlot,
+          )
         }
       }
     })
@@ -1320,7 +1355,12 @@ class IframeView {
       if (this.displayed && this.iframe) {
         this.expand()
         if (this.contents) {
-          this.layout.format(this.contents)
+          this.layout.format(
+            this.contents,
+            this.section,
+            this.axis,
+            this.settings.spreadSlot,
+          )
         }
       }
     })
@@ -1349,7 +1389,12 @@ class IframeView {
       if (typeof this.settings.beforeLayout === 'function') {
         this.settings.beforeLayout(this.contents, this)
       }
-      this.layout.format(this.contents)
+      this.layout.format(
+        this.contents,
+        this.section,
+        this.axis,
+        this.settings.spreadSlot,
+      )
       this.expand()
     }
   }

@@ -36,6 +36,10 @@ describe('Contents page backgrounds', function () {
     try {
       assert.equal(bodyVertical.contents.writingMode(), 'vertical-rl')
       assert.equal(wrapperVertical.contents.writingMode(), 'vertical-rl')
+      assert.equal(
+        wrapperVertical.contents.writingMode(undefined, 'pre-paginated'),
+        'horizontal-tb',
+      )
     } finally {
       bodyVertical.cleanup()
       wrapperVertical.cleanup()
@@ -363,6 +367,31 @@ describe('Contents page backgrounds', function () {
     }
   })
 
+  it('preserves a local vertical block height without forcing a new page', function () {
+    const { contents, doc, cleanup } = createContents(
+      `<p id="before">${'Horizontal text. '.repeat(
+        12,
+      )}</p><div id="vertical" style="writing-mode: vertical-rl; height: 60px">Vertical block with enough text to require its intrinsic height.</div>`,
+    )
+
+    try {
+      assert.equal(contents.writingMode(), 'horizontal-tb')
+      contents.columns(1000, 600, 460, 40, 'ltr')
+
+      const before = doc.querySelector('#before').getBoundingClientRect()
+      const vertical = doc.querySelector('#vertical')
+      const verticalRect = vertical.getBoundingClientRect()
+      const verticalStyle = doc.defaultView.getComputedStyle(vertical)
+
+      assert.ok(before.left < 500)
+      assert.ok(verticalRect.left < 500)
+      assert.ok(verticalRect.height > 60)
+      assert.equal(verticalStyle.writingMode, 'vertical-rl')
+    } finally {
+      cleanup()
+    }
+  })
+
   it('keeps cover-like backgrounds fitted inside a textless page', function () {
     const { contents, cleanup } = createContents()
 
@@ -406,6 +435,52 @@ describe('Contents page backgrounds', function () {
 })
 
 describe('Contents fixed layout viewport fallback', function () {
+  it('centers a fixed-layout page vertically inside its slot', function () {
+    const { contents, doc, cleanup } = createContents()
+    const viewport = doc.createElement('meta')
+    viewport.setAttribute('name', 'viewport')
+    viewport.setAttribute('content', 'width=1600,height=900')
+    doc.head.appendChild(viewport)
+
+    try {
+      contents.fit(800, 800)
+
+      assert.equal(doc.body.style.marginTop, '175px')
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('fits an SVG spine document from its authored viewBox', function () {
+    const { contents, doc, cleanup } = createContents(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 1240 1612"><image width="1240" height="1612"/></svg>',
+    )
+    const section = {
+      type: 'image/svg+xml',
+      properties: ['page-spread-left'],
+    }
+
+    try {
+      contents.fit(700, 800, section, undefined, 2, 'left')
+
+      const scale = 800 / 1612
+      assert.equal(doc.body.style.width, '1240px')
+      assert.equal(doc.body.style.height, '1612px')
+      assert.closeTo(
+        parseFloat(doc.body.style.transform.match(/scale\(([^)]+)/)[1]),
+        scale,
+        0.000001,
+      )
+      assert.closeTo(
+        parseFloat(doc.body.style.marginLeft),
+        700 - 1240 * scale,
+        0.001,
+      )
+    } finally {
+      cleanup()
+    }
+  })
+
   it('fits fixed-layout content using a fallback viewport when the page omits one', function () {
     const { contents, doc, cleanup } = createContents(
       '<img src="../Images/page.jpeg" width="1200" height="1920"/>',

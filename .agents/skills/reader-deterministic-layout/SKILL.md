@@ -16,6 +16,10 @@ Use this skill before implementing or accepting any Flow Reader change that can 
 
 ## Required Reference First
 
+Before EPUB layout or pagination work, read
+[EPUB Layout Policy](references/epub-layout-policy.md) for the product rules and
+deliberate compatibility limits. EPUB conformance alone does not define a bug.
+
 Before diagnosing, implementing, or accepting deterministic layout work, read [Failure Patterns](references/failure-patterns.md). Search it for the touched subsystem and use the recorded symptoms, root causes, and rejected approaches to choose the reproduction path and verification gates.
 
 If a new bug resembles an existing pattern, reproduce the recorded path before adding new fallback logic. If a rejected approach now looks viable, first state what changed since the rejection.
@@ -190,5 +194,6 @@ State:
 
 ## Skill Resources
 
+- Product policy: [EPUB Layout Policy](references/epub-layout-policy.md)
 - Reference: [Failure Patterns](references/failure-patterns.md)
 - Verifier script: [verify-reader-layout-client.mjs](scripts/verify-reader-layout-client.mjs)

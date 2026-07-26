@@ -1,6 +1,7 @@
 import { assert } from 'vitest'
 
 import ePub from '../src/epub'
+import Section from '../src/section'
 
 const fixtureUrl = '/fixtures/search/OPS/package.opf'
 
@@ -67,5 +68,57 @@ describe('Section search', function () {
     } finally {
       book.destroy()
     }
+  })
+})
+
+describe('Section rendering', function () {
+  it('wraps a bitmap spine resource in a renderable XHTML document', async function () {
+    const section = new Section({
+      idref: 'page',
+      linear: 'yes',
+      properties: ['page-spread-right'],
+      index: 0,
+      href: 'Image/page.jpg',
+      type: 'image/jpeg',
+      url: '/EPUB/Image/page.jpg',
+      canonical: '/EPUB/Image/page.jpg',
+    })
+
+    const output = await section.render(() =>
+      Promise.resolve('binary image response'),
+    )
+    const document = new DOMParser().parseFromString(
+      output,
+      'application/xhtml+xml',
+    )
+    const image = document.querySelector('img')
+
+    assert.equal(image?.getAttribute('src'), '/EPUB/Image/page.jpg')
+    assert.equal(image?.getAttribute('alt'), '')
+  })
+
+  it('keeps XML stylesheets usable in SVG spine output', async function () {
+    const document = new DOMParser().parseFromString(
+      `<?xml version="1.0"?>
+      <?xml-stylesheet href="../Style/page.css" type="text/css"?>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <text>Page</text>
+      </svg>`,
+      'image/svg+xml',
+    )
+    const section = new Section({
+      idref: 'page',
+      linear: 'yes',
+      properties: [],
+      index: 0,
+      href: 'Content/page.svg',
+      type: 'image/svg+xml',
+      url: '/EPUB/Content/page.svg',
+      canonical: '/EPUB/Content/page.svg',
+    })
+
+    const output = await section.render(() => Promise.resolve(document))
+
+    assert.include(output, '@import url("../Style/page.css")')
   })
 })

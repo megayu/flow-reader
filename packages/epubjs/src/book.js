@@ -130,6 +130,9 @@ function readableSectionHrefIndex(sections) {
   sections.forEach((section) => {
     if (section && section.linear && section.resourceAvailable !== false) {
       addReadableSectionHref(index, section.href)
+      section.hrefAliases.forEach((href) => {
+        addReadableSectionHref(index, href)
+      })
     }
   })
 
@@ -181,6 +184,7 @@ function normalizeNavigationHrefsBySpine(items, readableHrefs, navPath) {
  * @param {object} [options.requestHeaders=undefined] send the xhr request headers
  * @param {string} [options.encoding=binary] optional to pass 'binary' or base64' for archived Epubs
  * @param {string} [options.replacements=none] use base64, blobUrl, or none for replacing assets in archived Epubs
+ * @param {string} [options.containerRootUrl] root URL that bounds resources in an unarchived EPUB container
  * @param {method} [options.canonical] optional function to determine canonical urls for a path
  * @param {string} [options.openAs] optional string to determine the input type
  * @param {string} [options.store=false] cache the contents in local storage, value should be the name of the reader
@@ -207,6 +211,7 @@ class Book {
       requestHeaders: undefined,
       encoding: undefined,
       replacements: undefined,
+      containerRootUrl: undefined,
       canonical: undefined,
       openAs: undefined,
       store: undefined,
@@ -617,6 +622,7 @@ class Book {
       resolver: this.resolve.bind(this),
       request: this.request.bind(this),
       rootUrl: this.packageRootUrl(),
+      containerRootUrl: this.settings.containerRootUrl,
       replacements:
         this.settings.replacements || (this.archived ? 'blobUrl' : 'none'),
     })

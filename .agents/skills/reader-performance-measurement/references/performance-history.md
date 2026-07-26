@@ -4,6 +4,13 @@ Read this before proposing or testing a Flow Reader performance optimization. Se
 
 ## Retained Approaches
 
+### Stable iframe capture-listener options
+
+- Change: share one immutable `{ capture: true }` options object across iframe shortcut and mouse-button subscriptions instead of allocating a new object during every reader render.
+- Measured effect: matched `tauri-release` native-book runs used eight single runs and four burst runs for closed-sidebar page turns and tab switches. Single page-turn operation p50 improved about 16% and first-frame p50 improved about 15%; tab-switch first-frame p50 improved about 13%. Rapid-path totals varied across repeats, while the per-step worst first frame stayed within about 1% and every run retained zero long tasks.
+- Decision: keep. Stable option identity deterministically prevents effect cleanup and listener reattachment after unrelated renders, does not change event handling, and showed no stable per-event or long-task regression.
+- Constraint: keep the shared object immutable. Dynamic listener options must remain explicit effect dependencies rather than being hidden behind this constant.
+
 ### Single-pass cached-text search results
 
 - Change: advance folded-text character offsets once per section, reuse one character buffer for every excerpt in that section, serialize section navigation context once per result group, and let the search virtual list index groups without cloning every expanded hit. Selection-menu searches bypass the input debounce while typed searches keep the existing debounce.
@@ -75,6 +82,13 @@ Read this before proposing or testing a Flow Reader performance optimization. Se
 - Constraint: keep the outer `PaneView` ownership and visible sidebar model. Do not replace this with a broad "render only active view" change unless ownership is redesigned and remeasured.
 
 ## Rejected Approaches
+
+### Replace iframe listener refs with Effect Events
+
+- Change: replace the listener ref plus synchronization effect in `useFrameEvent` with `useEffectEvent`.
+- Measured effect: the first matched `tauri-release` run improved isolated single operations but regressed rapid page-turn burst p95 about 36% and rapid tab-click burst p95 about 15%, with rapid-path settled p95 also higher. Removing the Effect Event change recovered the per-step worst first-frame measurements.
+- Decision: reject. Reducing hook count did not simplify the hot event execution path and produced unacceptable burst evidence.
+- Constraint: do not remove the listener ref solely to reduce hook count. Any replacement must preserve stable subscriptions and demonstrate matched rapid page-turn and rapid tab-switch results.
 
 ### Row CSS containment
 

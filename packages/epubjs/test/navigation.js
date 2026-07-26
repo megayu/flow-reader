@@ -118,4 +118,40 @@ describe('Navigation', function () {
     assert.equal(nav.toc[0].subitems[0].parent, 'chapter-1')
     assert.equal(nav.toc[1].label, 'Chapter 2')
   })
+
+  it('gives label-only nav groups distinct identities for their child parent links', function () {
+    const xml = new DOMParser().parseFromString(
+      `<?xml version="1.0" encoding="utf-8"?>
+      <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+        <body>
+          <nav epub:type="toc">
+            <ol>
+              <li>
+                <span>First Author</span>
+                <ol>
+                  <li id="chapter-1"><a href="chapter.xhtml#one">Chapter 1</a></li>
+                </ol>
+              </li>
+              <li>
+                <span>Second Author</span>
+                <ol>
+                  <li id="chapter-2"><a href="chapter.xhtml#two">Chapter 2</a></li>
+                </ol>
+              </li>
+            </ol>
+          </nav>
+        </body>
+      </html>`,
+      'application/xhtml+xml',
+    )
+
+    const nav = new Navigation(xml)
+    const [first, second] = nav.toc
+
+    assert.ok(first.id)
+    assert.ok(second.id)
+    assert.notEqual(first.id, second.id)
+    assert.equal(first.subitems[0].parent, first.id)
+    assert.equal(second.subitems[0].parent, second.id)
+  })
 })

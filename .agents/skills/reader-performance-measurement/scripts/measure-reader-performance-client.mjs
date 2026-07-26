@@ -476,7 +476,7 @@ async function ensureReaderMode(page) {
         ),
     )
     if (!libraryOverlay) return
-    await page.keyboard.press('l')
+    await page.keyboard.press('c')
     await wait(700)
   }
   assert(

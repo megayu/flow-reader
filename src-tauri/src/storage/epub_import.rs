@@ -7,6 +7,7 @@ use std::{
 
 use regex::Regex;
 use serde_json::{json, Value};
+use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use zip::ZipArchive;
 
@@ -222,7 +223,7 @@ pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<b
     let Ok(mut opf_xml) = opf_xml else {
         return Ok(false);
     };
-    let mut changed = false;
+    let mut changed = deobfuscate_unpacked_idpf_fonts(unpacked_dir, &opf_xml)?;
 
     let opf_zip_path = opf_path
         .strip_prefix(unpacked_dir)
@@ -234,21 +235,21 @@ pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<b
     let ncx_context = {
         let opf_doc = match roxmltree::Document::parse(&opf_xml) {
             Ok(doc) => doc,
-            Err(_) => return Ok(false),
+            Err(_) => return Ok(changed),
         };
         if opf_declares_fixed_layout(&opf_doc) {
-            return Ok(false);
+            return Ok(changed);
         }
 
         let manifest = opf_manifest_items(&opf_doc);
         let spine = opf_spine_items(&opf_doc);
         let Some(ncx_item) = find_ncx_manifest_item(&opf_doc, &manifest) else {
-            return Ok(false);
+            return Ok(changed);
         };
         let ncx_abs_path = normalize_zip_path(join_zip_path(&opf_parent, &ncx_item.href));
         let ncx_file_path = unpacked_resource_path(unpacked_dir, &ncx_abs_path);
         let Ok(ncx_xml) = fs::read_to_string(&ncx_file_path) else {
-            return Ok(false);
+            return Ok(changed);
         };
         let ncx_parent = parent_zip_path(&ncx_abs_path).to_string();
         let mut toc_target_abs_paths = ncx_content_paths(&ncx_xml)
@@ -415,6 +416,120 @@ pub(super) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<b
     }
 
     Ok(true)
+}
+
+pub(super) fn deobfuscate_unpacked_idpf_fonts(
+    unpacked_dir: &Path,
+    opf_xml: &str,
+) -> Result<bool, String> {
+    const IDPF_EMBEDDING_ALGORITHM: &str = "http://www.idpf.org/2008/embedding";
+    const IDPF_OBFUSCATION_BYTES: usize = 1_040;
+
+    let encryption_path = unpacked_dir.join("META-INF").join("encryption.xml");
+    let Ok(encryption_xml) = fs::read_to_string(&encryption_path) else {
+        return Ok(false);
+    };
+    if !encryption_xml.contains(IDPF_EMBEDDING_ALGORITHM) {
+        return Ok(false);
+    }
+    let Ok(opf_doc) = roxmltree::Document::parse(opf_xml) else {
+        return Ok(false);
+    };
+    let Ok(encryption_doc) = roxmltree::Document::parse(&encryption_xml) else {
+        return Ok(false);
+    };
+    let Some(identifier) = package_unique_identifier(&opf_doc) else {
+        return Ok(false);
+    };
+    let identifier = identifier
+        .chars()
+        .filter(|character| !matches!(character, '\u{0009}' | '\u{000a}' | '\u{000d}' | '\u{0020}'))
+        .collect::<String>();
+    if identifier.is_empty() {
+        return Ok(false);
+    }
+    let key = Sha1::digest(identifier.as_bytes());
+    let mut changed = false;
+    let mut handled_ranges = Vec::new();
+
+    for encrypted_data in encryption_doc
+        .descendants()
+        .filter(|node| node.is_element() && node.has_tag_name("EncryptedData"))
+    {
+        let uses_idpf_embedding = encrypted_data.descendants().any(|node| {
+            node.is_element()
+                && node.has_tag_name("EncryptionMethod")
+                && node.attribute("Algorithm") == Some(IDPF_EMBEDDING_ALGORITHM)
+        });
+        if !uses_idpf_embedding {
+            continue;
+        }
+        let Some(uri) = encrypted_data
+            .descendants()
+            .find(|node| node.is_element() && node.has_tag_name("CipherReference"))
+            .and_then(|node| node.attribute("URI"))
+        else {
+            continue;
+        };
+        let uri = uri.split(['?', '#']).next().unwrap_or("");
+        let path = normalize_zip_path(percent_decode_zip_path(uri));
+        if path.is_empty() {
+            continue;
+        }
+        let font_path = unpacked_resource_path(unpacked_dir, &path);
+        let Ok(mut bytes) = fs::read(&font_path) else {
+            continue;
+        };
+        if has_supported_font_signature(&bytes) {
+            handled_ranges.push(encrypted_data.range());
+            continue;
+        }
+        for (index, byte) in bytes.iter_mut().take(IDPF_OBFUSCATION_BYTES).enumerate() {
+            *byte ^= key[index % key.len()];
+        }
+        if !has_supported_font_signature(&bytes) {
+            continue;
+        }
+        fs::write(&font_path, bytes).map_err(|error| error.to_string())?;
+        handled_ranges.push(encrypted_data.range());
+        changed = true;
+    }
+
+    if !handled_ranges.is_empty() {
+        drop(encryption_doc);
+        let mut updated_encryption = encryption_xml;
+        for range in handled_ranges.into_iter().rev() {
+            updated_encryption.replace_range(range, "");
+        }
+        fs::write(encryption_path, updated_encryption).map_err(|error| error.to_string())?;
+        changed = true;
+    }
+
+    Ok(changed)
+}
+
+fn package_unique_identifier<'a>(doc: &'a roxmltree::Document) -> Option<&'a str> {
+    let package = doc
+        .descendants()
+        .find(|node| node.is_element() && node.has_tag_name("package"))?;
+    let identifier_id = package.attribute("unique-identifier")?;
+
+    doc.descendants()
+        .find(|node| {
+            node.is_element()
+                && node.has_tag_name("identifier")
+                && node.attribute("id") == Some(identifier_id)
+        })
+        .and_then(|node| node.text())
+}
+
+fn has_supported_font_signature(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0x00, 0x01, 0x00, 0x00])
+        || bytes.starts_with(b"OTTO")
+        || bytes.starts_with(b"true")
+        || bytes.starts_with(b"typ1")
+        || bytes.starts_with(b"wOFF")
+        || bytes.starts_with(b"wOF2")
 }
 
 fn opf_declares_fixed_layout(doc: &roxmltree::Document) -> bool {
@@ -2842,6 +2957,55 @@ mod tests {
         }
         xhtml.push_str("</body></html>");
         fs::write(root.join("OEBPS/Text/part0000.xhtml"), xhtml).unwrap();
+    }
+
+    #[test]
+    fn normalize_deobfuscates_idpf_fonts_once() {
+        const KEY: [u8; 20] = [
+            0xb5, 0x62, 0xe8, 0x3e, 0x16, 0x06, 0x57, 0x9a, 0x9c, 0x6c, 0x70, 0xa7, 0x5f, 0x4a,
+            0x14, 0xd2, 0xea, 0x36, 0xb0, 0x9e,
+        ];
+
+        let root = split_test_root("idpf-font");
+        fs::create_dir_all(root.join("OEBPS/fonts")).unwrap();
+        fs::write(
+            root.join("OEBPS/content.opf"),
+            r#"<package unique-identifier="pub-id">
+  <metadata><identifier id="pub-id">ocf-font_obfuscation</identifier></metadata>
+  <manifest><item id="font" href="fonts/Test.ttf" media-type="font/ttf"/></manifest>
+  <spine/>
+</package>"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("META-INF/encryption.xml"),
+            r#"<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:enc="http://www.w3.org/2001/04/xmlenc#">
+  <enc:EncryptedData>
+    <enc:EncryptionMethod Algorithm="http://www.idpf.org/2008/embedding"/>
+    <enc:CipherData><enc:CipherReference URI="OEBPS/fonts/Test.ttf"/></enc:CipherData>
+  </enc:EncryptedData>
+</encryption>"#,
+        )
+        .unwrap();
+
+        let mut clear = (0..1_100).map(|index| index as u8).collect::<Vec<_>>();
+        clear[..4].copy_from_slice(&[0x00, 0x01, 0x00, 0x00]);
+        let mut encrypted = clear.clone();
+        for (index, byte) in encrypted.iter_mut().take(1_040).enumerate() {
+            *byte ^= KEY[index % KEY.len()];
+        }
+        let font_path = root.join("OEBPS/fonts/Test.ttf");
+        fs::write(&font_path, encrypted).unwrap();
+
+        assert!(normalize_unpacked_epub_structure(&root).unwrap());
+        assert_eq!(fs::read(&font_path).unwrap(), clear);
+        assert!(!fs::read_to_string(root.join("META-INF/encryption.xml"))
+            .unwrap()
+            .contains("EncryptedData"));
+        assert!(!normalize_unpacked_epub_structure(&root).unwrap());
+        assert_eq!(fs::read(&font_path).unwrap(), clear);
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

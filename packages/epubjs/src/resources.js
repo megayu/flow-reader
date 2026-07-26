@@ -8,6 +8,7 @@ import {
 } from './utils/core'
 import mime from './utils/mime'
 import Path from './utils/path'
+import { resolveDirectFallback } from './utils/fallback'
 import { substitute } from './utils/replacements'
 import Url from './utils/url'
 
@@ -19,6 +20,8 @@ import Url from './utils/url'
  * @param {string} [options.replacements="base64"]
  * @param {Archive} [options.archive]
  * @param {method} [options.resolver]
+ * @param {string} [options.rootUrl]
+ * @param {string} [options.containerRootUrl]
  */
 class Resources {
   constructor(manifest, options) {
@@ -28,6 +31,7 @@ class Resources {
       resolver: options && options.resolver,
       request: options && options.request,
       rootUrl: options && options.rootUrl,
+      containerRootUrl: options && options.containerRootUrl,
     }
     this.ownedBlobUrls = new Set()
 
@@ -64,6 +68,12 @@ class Resources {
 
     this.split()
     this.splitUrls()
+    this.replacementSourceUrls = this.directImageFallbacks
+      ? this.urls.map((url) => this.directImageFallbacks[url] || url)
+      : this.urls
+    this.fallbackUrlIndexes = this.directImageFallbacks
+      ? Object.create(null)
+      : undefined
   }
 
   /**
@@ -71,24 +81,33 @@ class Resources {
    * @private
    */
   split() {
-    // HTML
-    this.html = this.resources.filter(function (item) {
+    this.directImageFallbacks = undefined
+
+    this.resources.forEach((item) => {
       if (item.type === 'application/xhtml+xml' || item.type === 'text/html') {
-        return true
+        this.html.push(item)
+      } else {
+        this.assets.push(item)
       }
-    })
 
-    // Exclude HTML
-    this.assets = this.resources.filter(function (item) {
-      if (item.type !== 'application/xhtml+xml' && item.type !== 'text/html') {
-        return true
-      }
-    })
-
-    // Only CSS
-    this.css = this.resources.filter(function (item) {
       if (item.type === 'text/css') {
-        return true
+        this.css.push(item)
+      }
+
+      if (!item.fallback) {
+        return
+      }
+
+      var fallback = resolveDirectFallback(
+        this.manifest,
+        item,
+        isSupportedImageMediaType,
+      )
+
+      if (fallback && fallback !== item && item.href && fallback.href) {
+        this.directImageFallbacks =
+          this.directImageFallbacks || Object.create(null)
+        this.directImageFallbacks[item.href] = fallback.href
       }
     })
   }
@@ -155,13 +174,18 @@ class Resources {
       )
     }
 
-    var replacements = this.urls.map((url) => {
+    var replacementsByUrl = Object.create(null)
+    var replacements = this.replacementSourceUrls.map((url) => {
       var absolute = this.settings.resolver(url)
 
-      return this.createUrl(absolute).catch((err) => {
-        console.error(err)
-        return null
-      })
+      if (!replacementsByUrl[absolute]) {
+        replacementsByUrl[absolute] = this.createUrl(absolute).catch((err) => {
+          console.error(err)
+          return null
+        })
+      }
+
+      return replacementsByUrl[absolute]
     })
 
     return Promise.all(replacements).then((replacementUrls) => {
@@ -307,7 +331,7 @@ class Resources {
         }.bind(this),
       )
     } else {
-      return this.createUrl(path)
+      return this.createUrl(this.replacementSourceUrls[indexInUrls])
     }
   }
 
@@ -344,30 +368,79 @@ class Resources {
     }
 
     var sectionUrl = new Url(section.url)
-    var rootUrl = resolvePackageRootUrl(
+    var packageRootUrl = resolvePackageRootUrl(
       this.settings.rootUrl,
       section,
       sectionUrl,
     )
+    var containerRootUrl = resolveContainerRootUrl(
+      this.settings.containerRootUrl,
+      packageRootUrl,
+    )
 
-    if (rootUrl && section.href) {
-      sectionUrl = new Url(rootUrl.resolve(stripUrlPath(section.href)))
+    if (packageRootUrl && section.href) {
+      sectionUrl = new Url(packageRootUrl.resolve(stripUrlPath(section.href)))
     }
 
     var stylesheetTasks = []
+    var resolveResourceUrl = this.directImageFallbacks
+      ? (src) => {
+          return this.resolveResourceFallback(
+            src,
+            sectionUrl,
+            packageRootUrl,
+            containerRootUrl,
+          )
+        }
+      : undefined
 
     eachElement(doc, (element) => {
       var tagName = getTagName(element)
 
-      resolveElementAttribute(element, sectionUrl, rootUrl, 'src')
-      resolveElementAttribute(element, sectionUrl, rootUrl, 'poster')
-      resolveElementAttribute(element, sectionUrl, rootUrl, 'data')
-      resolveElementAttribute(element, sectionUrl, rootUrl, 'xlink:href')
-      resolveSrcsetAttribute(element, sectionUrl, rootUrl)
-      resolveStyleAttribute(element, sectionUrl, rootUrl)
+      resolveElementAttribute(
+        element,
+        sectionUrl,
+        containerRootUrl,
+        'src',
+        resolveResourceUrl,
+      )
+      resolveElementAttribute(
+        element,
+        sectionUrl,
+        containerRootUrl,
+        'poster',
+        resolveResourceUrl,
+      )
+      resolveElementAttribute(
+        element,
+        sectionUrl,
+        containerRootUrl,
+        'data',
+        resolveResourceUrl,
+      )
+      resolveElementAttribute(
+        element,
+        sectionUrl,
+        containerRootUrl,
+        'xlink:href',
+        resolveResourceUrl,
+      )
+      resolveSrcsetAttribute(
+        element,
+        sectionUrl,
+        containerRootUrl,
+        resolveResourceUrl,
+      )
+      resolveStyleAttribute(element, sectionUrl, containerRootUrl)
 
       if (tagName === 'image') {
-        resolveElementAttribute(element, sectionUrl, rootUrl, 'href')
+        resolveElementAttribute(
+          element,
+          sectionUrl,
+          containerRootUrl,
+          'href',
+          resolveResourceUrl,
+        )
       }
 
       if (tagName === 'link') {
@@ -383,22 +456,65 @@ class Resources {
 
         if (isStylesheetLink(element)) {
           stylesheetTasks.push(
-            this.createResolvedCssUrl(href, sectionUrl, rootUrl).then((url) => {
-              element.setAttribute('href', url)
-            }),
+            this.createResolvedCssUrl(href, sectionUrl, containerRootUrl).then(
+              (url) => {
+                element.setAttribute('href', url)
+              },
+            ),
           )
         } else {
           element.setAttribute(
             'href',
-            resolveLocalUrl(href, sectionUrl, rootUrl),
+            resolveLocalUrl(href, sectionUrl, containerRootUrl),
           )
         }
       }
     })
 
     return Promise.all(stylesheetTasks).then(() => {
-      return resolveInlineStyleElements.call(this, doc, sectionUrl, rootUrl)
+      return resolveInlineStyleElements.call(
+        this,
+        doc,
+        sectionUrl,
+        containerRootUrl,
+      )
     })
+  }
+
+  resolveResourceFallback(src, baseUrl, packageRootUrl, containerRootUrl) {
+    var absolute = resolveLocalUrl(src, baseUrl, containerRootUrl)
+
+    if (!packageRootUrl || !shouldResolveUrl(src)) {
+      return absolute
+    }
+
+    var root = packageRootUrl.toString()
+    var index = this.fallbackUrlIndexes[root]
+
+    if (!index) {
+      index = Object.create(null)
+      Object.keys(this.directImageFallbacks).forEach((href) => {
+        var fallbackHref = this.directImageFallbacks[href]
+        var primary = packageRootUrl.resolve(stripUrlPath(href))
+        var fallback = packageRootUrl.resolve(stripUrlPath(fallbackHref))
+
+        resourceUrlVariants(primary).forEach((variant) => {
+          index[variant] = fallback
+        })
+      })
+      this.fallbackUrlIndexes[root] = index
+    }
+
+    var suffix = getUrlSuffix(absolute)
+    var path = stripUrlSuffix(absolute)
+    var fallback
+
+    resourceUrlVariants(path).some((variant) => {
+      fallback = index[variant]
+      return Boolean(fallback)
+    })
+
+    return fallback ? fallback + suffix : absolute
   }
 
   createResolvedCssUrl(href, sectionUrl, rootUrl) {
@@ -520,6 +636,9 @@ class Resources {
     this.urls = undefined
     this.cssUrls = undefined
     this.resolvedCssUrls = undefined
+    this.directImageFallbacks = undefined
+    this.replacementSourceUrls = undefined
+    this.fallbackUrlIndexes = undefined
     this.ownedBlobUrls = undefined
   }
 }
@@ -533,6 +652,20 @@ const CSS_IMPORT_RE =
   /@import\s+(?:url\(\s*)?(['"]?)([^'")\s;]+)\1\s*\)?([^;]*);/gi
 const CSS_URL_RE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi
 const EMPTY_RESOURCE_URL = 'data:,'
+const SUPPORTED_IMAGE_MEDIA_TYPES = [
+  'image/avif',
+  'image/gif',
+  'image/jpeg',
+  'image/png',
+  'image/svg+xml',
+  'image/webp',
+]
+
+function isSupportedImageMediaType(mediaType) {
+  return SUPPORTED_IMAGE_MEDIA_TYPES.includes(
+    typeof mediaType === 'string' ? mediaType.toLowerCase() : '',
+  )
+}
 
 function collectMediaUrls(content) {
   var urls = []
@@ -713,6 +846,12 @@ function resolvePackageRootUrl(rootUrl, section, sectionUrl) {
   return configured || derivePackageRootUrl(section, sectionUrl)
 }
 
+function resolveContainerRootUrl(containerRootUrl, packageRootUrl) {
+  return containerRootUrl
+    ? new Url(ensureDirectoryUrl(containerRootUrl))
+    : packageRootUrl
+}
+
 function derivePackageRootUrl(section, sectionUrl) {
   if (!section || !section.href || !sectionUrl) {
     return
@@ -745,10 +884,27 @@ function resolveLocalUrl(src, baseUrl, rootUrl) {
     return rootUrl.resolve(assetPath.slice(1)) + getUrlSuffix(src)
   }
 
+  if (rootUrl) {
+    return resolveWithinRoot(assetPath, baseUrl, rootUrl) + getUrlSuffix(src)
+  }
+
   return baseUrl.resolve(assetPath) + getUrlSuffix(src)
 }
 
-function resolveSrcsetAttribute(element, baseUrl, rootUrl) {
+function resolveWithinRoot(assetPath, baseUrl, rootUrl) {
+  var relativeBase = path.relative(
+    rootUrl.Path.directory,
+    baseUrl.Path.directory,
+  )
+  var normalized = path
+    .resolve('/', relativeBase, assetPath)
+    .replace(/^\/+/, '')
+
+  // EPUB-local references cannot traverse above the publication container.
+  return rootUrl.resolve(normalized)
+}
+
+function resolveSrcsetAttribute(element, baseUrl, rootUrl, resolver) {
   var srcset = element.getAttribute('srcset')
 
   if (!srcset) {
@@ -769,7 +925,9 @@ function resolveSrcsetAttribute(element, baseUrl, rootUrl) {
           return ''
         }
 
-        parts[0] = resolveLocalUrl(parts[0], baseUrl, rootUrl)
+        parts[0] = resolver
+          ? resolver(parts[0])
+          : resolveLocalUrl(parts[0], baseUrl, rootUrl)
         return parts.join(' ')
       })
       .filter(Boolean)
@@ -777,7 +935,13 @@ function resolveSrcsetAttribute(element, baseUrl, rootUrl) {
   )
 }
 
-function resolveElementAttribute(element, baseUrl, rootUrl, attribute) {
+function resolveElementAttribute(
+  element,
+  baseUrl,
+  rootUrl,
+  attribute,
+  resolver,
+) {
   var value = element.getAttribute(attribute)
 
   if (!value) {
@@ -789,7 +953,10 @@ function resolveElementAttribute(element, baseUrl, rootUrl, attribute) {
     return
   }
 
-  element.setAttribute(attribute, resolveLocalUrl(value, baseUrl, rootUrl))
+  element.setAttribute(
+    attribute,
+    resolver ? resolver(value) : resolveLocalUrl(value, baseUrl, rootUrl),
+  )
 }
 
 function resolveStyleAttribute(element, baseUrl, rootUrl) {

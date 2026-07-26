@@ -1,161 +1,201 @@
 ---
 name: reader-performance-measurement
 description: >-
-  Use before editing Flow Reader source when the change can alter the amount,
-  timing, frequency, or lifetime of work in reader runtime paths such as tab
-  switching, page turns, pagination, iframe rendering, epubjs layout, active
-  overlays, or focused-reader subscriptions. Do not use merely because a control
-  belongs to reader, typography, zoom, or a sidebar; local validation, formatting,
-  persistence, and state plumbing are excluded when they keep the same runtime
-  update path and timing.
+  Use before editing Flow Reader when the task explicitly targets runtime
+  performance, or when a feature/correctness change can plausibly alter the
+  amount, timing, frequency, complexity, or lifetime of reader runtime work.
+  Read the skill to decide whether an existing scenario requires measurement.
+  Do not use for cheap bounded logic, static CSS/property values, or declarative
+  layout-only changes that keep the same runtime work.
 ---
 
 # Reader Performance Measurement
 
-Use this skill before implementing or accepting any Flow Reader change that can affect user-visible reader performance. The goal is to make the accept/reject decision from comparable client measurements, not intuition.
+Use comparable client measurements—not intuition—to decide whether a change is
+performance-safe or whether an optimization should be retained.
 
-## Required Reference First
+## Execution Flow
 
-Before planning, implementing, or accepting performance work, read [Performance History](references/performance-history.md). Search it for the touched subsystem and treat retained/rejected history as the starting evidence unless the current code path or measurement condition has materially changed.
+1. Apply the [measurement gate](#1-apply-the-measurement-gate).
+2. Match the changed operation to the [coverage catalog](#2-match-actual-coverage).
+   If measurement is not required, stop performance work and report why.
+3. Select an evidence level, read relevant performance history, and produce a
+   trustworthy pre-edit baseline.
+4. Implement the change, rebuild with the same profile, and repeat the same
+   measurement conditions.
+5. Compare baseline and after results, decide whether to retain the change, and
+   report the evidence.
+6. Update performance history only for a measured performance-optimization
+   experiment.
 
-If retrying a rejected idea, first write down what changed since the recorded rejection and measure the same affected scenarios again.
+## 1. Apply the Measurement Gate
 
-Treat [Performance History](references/performance-history.md) as a record of performance optimization experiments, not a changelog or a general performance-regression ledger. Add an entry only when the change's primary purpose is to improve runtime performance and matched baseline and after runs at the same evidence level produce concrete timing or long-task deltas that justify a retained or rejected decision. A feature or correctness change may require the same baseline/after workflow for no-regression acceptance, but do not add it to the history merely because performance was measured or did not regress. Do not add after-only results, smoke passes, correctness outcomes, diagnostic observations, or unquantified claims. `perf-results/` is gitignored and ephemeral; never cite its paths as durable evidence in the history. Copy the necessary run conditions and numeric comparison into the entry itself.
+| Work type                     | Measure when                                                                                                                        |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Feature or correctness change | Both conditions hold: the change materially affects runtime work in an operation, and the coverage catalog measures that operation. |
+| Performance optimization      | Always use a targeted baseline and after-run. Add or adapt a scenario first if the catalog lacks the target operation.              |
 
-Before editing the history, verify that the proposed entry names the compared scenario, metric, baseline/after relationship or numeric delta, evidence level, and decision. If any of these are missing, do not add the entry.
+A material effect changes work count, frequency, complexity, resource volume,
+layout invalidation, subscriptions, update timing, or object lifetime. Classify
+the mechanism and trace its data path; a reader component name, a value reaching
+the reader, or a nearby scenario is not sufficient.
 
-Place an accepted performance optimization under `Retained Approaches` only when the measured comparison justifies keeping it. Place an attempted performance optimization under `Rejected Approaches` only when the comparison justifies removing or not adopting it; state what measurement or code-path change would make a future retry meaningful. Let the final decision determine the section: do not record the same attempt in both sections. If later evidence reverses a recorded decision, update and move the existing entry instead of leaving contradictory entries.
+Inspect these paths when the mechanism can materially affect them:
 
-## Pre-Edit Gate
+- Tab selection, tab clicks, or rapid tab interactions.
+- Page turns, `next`, `prev`, display, relocation, pagination, or spread
+  restoration.
+- Zoom, typography, single/spread mode, reader width, iframe sizing, or reader
+  pane CSS that changes render cost.
+- `packages/epubjs` manager, view, rendition, layout, event, resize, or location
+  code.
+- Active annotation or definition overlays that add body hit testing, redraws,
+  DOM nodes, observers, or pointer/mouse handling.
+- TOC, search, annotation, image, typography, or other sidebar panels that
+  observe or render focused-reader state.
+- Generated TXT/EPUB packages, XHTML, CSS, image dimensions, metadata, or
+  resource structure that changes reader DOM size, pagination, loading, or
+  iframe content.
+- React state flow or Valtio subscriptions that affect first frame, settled
+  time, or long tasks in reader interactions.
 
-For every source change that triggers this skill, a trustworthy baseline is a
-prerequisite, not an optional verification step. Before editing source code:
+Skip measurement when runtime work is unchanged, including:
 
-1. Name the runtime mechanism that may change and select the matching scenarios.
-2. Build and measure the current worktree at the required evidence level.
-3. Record the source state, build profile, scenario filter, run count, window size,
-   book source, data setup, command, and baseline artifact path.
-4. Inspect the result metadata and samples. A launched client, screenshot, passing
-   smoke test, or after-only measurement is not a baseline.
+- Cheap bounded conditions or assignments, static CSS/property values, and
+  declarative output changes unless the exact code is known to be hot.
+- Input validation, number normalization, parsing, or persistence that keeps
+  the same commit event and reader update path.
+- Rust storage plumbing, path handling, command permissions, or error text.
+- Covers used only by library/metadata surfaces. Measure generated cover changes
+  only when the measured reader operation loads the cover or the generated
+  resource affects pagination; otherwise use visual/layout verification.
+- Translations, labels, i18n-only text, documentation, and native code outside
+  reader data/resource paths.
+- Script- or test-only changes, except changes to the measurement script itself.
 
-If a reliable baseline cannot be produced, do not edit the performance-sensitive
-source. Report the concrete blocker. If the source was already edited, do not call
-the edited state a baseline: remove only the agent's own edit or reconstruct the
-pre-edit source in an isolated worktree without disturbing user changes, then
-measure it. If neither is safe, stop.
+For feature/correctness work, skip performance measurement if either gate
+condition fails.
 
-Diagnostics, documentation, test-only work, and measurement-script maintenance do
-not require a runtime baseline unless they also change application runtime code.
+## 2. Match Actual Coverage
 
-## Decide Whether This Skill Applies
+Use only scenarios that execute the changed operation:
 
-Classify the changed mechanism, not the component name or the fact that a value is
-eventually consumed by the reader. A reader setting does not trigger measurement
-unless the change can alter runtime work, update timing, subscriptions, DOM or
-resource cost, layout invalidation, or object lifetime.
+| Operation measured                 | Scenario filters                                                                                                                                |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `focusedGroup.selectTab(...)`      | `tab-switch/sidebar-closed`, `tab-switch/sidebar-toc`, `tab-switch/sidebar-search`, `tab-switch/sidebar-annotation`, `tab-switch/sidebar-image` |
+| Reader-tab click and adoption      | `tab-click/sidebar-closed`, `tab-click/sidebar-toc`, `tab-click/sidebar-search`, `tab-click/sidebar-annotation`, `tab-click/sidebar-image`      |
+| Repeated reader-tab clicks         | `rapid-tab-click/sidebar-closed`, `rapid-tab-click/sidebar-toc`                                                                                 |
+| `focusedBookTab.search(...)`       | `search-query/sidebar-search`                                                                                                                   |
+| Arrow-key page turns               | `page-turn/sidebar-closed`, `page-turn/sidebar-toc`                                                                                             |
+| `focusedBookTab.next()` / `prev()` | `page-turn-api/sidebar-closed`, `page-turn-api/sidebar-toc`                                                                                     |
+| Repeated Arrow-key page turns      | `rapid-page-turn/sidebar-closed`, `rapid-page-turn/sidebar-toc`                                                                                 |
 
-Run the performance workflow for changes touching:
+Imports and tab positioning happen before timing. The catalog does not measure
+book import/open, first render, initial pagination, book-authored EPUB
+CSS/images, zoom, typography, resize, view-mode changes, sidebar scrolling, or
+overlay interaction. An open-sidebar variant measures only its table operation
+while that panel is mounted.
 
-- Tab switching, tab click, keyboard tab selection, or rapid tab interactions.
-- Page turns, rapid page turns, `next`, `prev`, display, relocation, pagination, or spread restoration.
-- Zoom, typography changes, single-page/spread mode, reader width, iframe sizing, or reader pane CSS that can alter render cost.
-- `packages/epubjs` manager, view, rendition, layout, event, resize, or location code.
-- Active reader overlays, including annotations and definitions, if they add hit testing, redraw work, DOM nodes, observers, or pointer/mouse handling over the reading body.
-- Sidebar panels that observe or render active reader state: TOC, search, annotations, images, typography, or any focused-tab subscription.
-- Generated TXT/EPUB package, XHTML, CSS, image dimensions, metadata, or resource structure when the reader opens it and the output can change DOM size, pagination, resource loading, or iframe content.
-- React state-flow or Valtio subscription changes that may affect first frame, settled time, or long tasks in reader workflows.
+If the operation is absent, skip measurement for feature/correctness work;
+performance optimization work must add or adapt a scenario. Update this catalog
+whenever the measurement script changes its operations.
 
-Do not run the reader performance workflow for changes that cannot affect reader runtime cost:
+## 3. Establish the Pre-Edit Baseline
 
-- Local input validation, number normalization, parsing, or persistence that keeps
-  the same commit event and existing reader update path.
-- Pure Rust storage plumbing, path handling, command permissions, or error text.
-- Cover resource import or generation when the cover is only shown in library/metadata surfaces and is not part of opening, paginating, or rendering the reader body.
-- Translations, labels, and i18n-only text changes.
-- Documentation-only changes.
-- Script/test-only changes unless the measurement script itself is being changed.
-- Native code outside reader data/resource paths.
+### Choose the evidence level
 
-If a Rust change affects generated cover resources, run reader performance only when the cover is loaded by the reader workflow being measured or changes generated book resources consumed by pagination. If the change only affects library cover display, use visual/layout verification for that UI instead.
+| Level           | Valid use                                                                                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `browser-smoke` | Fast cross-platform validation of the script and deterministic fixture; never final optimization evidence.                   |
+| `tauri-dev`     | Debug client automation or reproduce a client-only issue in the real WebView/desktop shell; never final acceptance evidence. |
+| `tauri-release` | Authoritative comparison for accepting or rejecting a performance-sensitive change: compiled client, isolated data, and CDP. |
 
-When in doubt, inspect the changed data path. If the changed output reaches reader iframe DOM, pagination input, active sidebar reader subscriptions, or reader resource loading, measure it. If it stays outside those paths, explain why performance measurement is not useful.
+Never compare different levels or substitute smoke/dev results for a release
+after-run.
 
-## Evidence Levels
+### Before editing runtime source
 
-Use the right evidence level for the decision being made:
+1. Read [Performance History](references/performance-history.md), search for the
+   affected subsystem, and use applicable retained/rejected findings as starting
+   evidence unless the code path or measurement conditions materially changed.
+2. If retrying a rejected approach, state what changed and remeasure the same
+   affected scenarios.
+3. Name the runtime mechanism, select the exact scenario filters, then build and
+   measure the current worktree at the chosen level.
+4. Record the source state, build profile, filters, run count, window size, book
+   source, data setup, command, and baseline artifact path.
+5. Inspect result metadata and samples. A launched client, screenshot, passing
+   smoke test, or after-only result is not a baseline.
 
-- `browser-smoke`: fast cross-platform script validation. Useful for checking that the script and deterministic fixture still work. Not enough to accept a performance optimization.
-- `tauri-dev`: real WebView and desktop shell with dev build behavior. Useful for debugging client automation and reproducing a client-only issue. Not enough for final performance acceptance.
-- `tauri-release`: compiled Tauri executable with an isolated data directory and CDP enabled. This is the authoritative evidence for accepting, rejecting, or comparing performance-sensitive changes.
+Preserve unrelated user changes in both source states. A clean `HEAD` is not a
+valid baseline when existing worktree changes reach the measured path.
 
-Do not compare results across evidence levels. A `browser-smoke` baseline cannot be compared to a `tauri-release` after-run, and a dev-client run cannot be used as the final replacement for a release-client run.
+If no reliable baseline can be produced, do not edit performance-sensitive
+source; report the blocker. If source was already edited, never relabel it as
+baseline. Remove only the agent's edit or reconstruct the pre-edit state in an
+isolated worktree without disturbing user changes. Stop if neither is safe.
 
-## Required Method
+Diagnostics, documentation, test-only work, and measurement-script maintenance
+need no runtime baseline unless they also change application runtime code.
 
-1. Read [Performance History](references/performance-history.md) and search for similar retained or rejected attempts.
-2. Classify the change using the trigger rules above.
-3. If measurement is not required, record the reason in the final response.
-4. If measurement is required, pass the pre-edit baseline gate above before changing source.
-5. Make the change.
-6. Build the changed source with the same profile and collect an after-run with the same evidence level, window size, run count, scenario filter, book source, and data setup.
-7. Compare baseline and after with the bundled compare script.
-8. Accept the change only if the measured tradeoff is justified.
-9. Update performance history only when the change was a performance optimization experiment; do not record feature or correctness work whose measurements served only as a no-regression gate.
+## 4. Run Matched Measurements
 
-If unrelated user changes were already present before the task, preserve them in
-both source states. A clean `HEAD` measurement is not a valid baseline for a dirty
-worktree when those existing changes reach the measured path.
+Run from the repository root:
 
-## Bundled Scripts
+- Measure:
+  [measure-reader-performance-client.mjs](scripts/measure-reader-performance-client.mjs)
+- Compare:
+  [compare-reader-performance.mjs](scripts/compare-reader-performance.mjs)
 
-Run these scripts from the repository root. They use `process.cwd()` as the app root.
+The scripts use `process.cwd()` as the app root. After editing either script, run
+`node --check` on it.
 
-- Measure: `.agents/skills/reader-performance-measurement/scripts/measure-reader-performance-client.mjs`
-- Compare: `.agents/skills/reader-performance-measurement/scripts/compare-reader-performance.mjs`
-
-Use `node --check` on these scripts after editing them.
-
-## Environment Contract
-
-Configure the scripts with environment variables. Set them using the current shell, CI runner, or a small Node launcher; do not assume PowerShell, Bash, or any one platform.
-
-Core variables:
+Configure them through the current shell, CI runner, or a small Node launcher;
+do not assume a platform-specific shell:
 
 - `FLOW_READER_PERF_MODE`: `browser`, `tauri`, or `auto`.
-- `FLOW_READER_PERF_BOOK_SOURCE`: `mock` or `native`. Use the same value for baseline and after.
+- `FLOW_READER_PERF_BOOK_SOURCE`: `mock` or `native`.
 - `FLOW_READER_PERF_OUT_DIR`: output directory under `perf-results/`.
-- `FLOW_READER_PERF_SCENARIOS`: optional comma-separated scenario filter.
-- `FLOW_READER_PERF_RUNS`: run count. Keep baseline and after identical.
-- `FLOW_READER_CDP_URL`: CDP endpoint for a real Tauri/WebView client, default `http://127.0.0.1:9351`.
-- `FLOW_READER_APP_URL`: browser-smoke app URL, default `http://127.0.0.1:7127`.
-- `FLOW_READER_DATA_DIR`: isolated app data directory. Set this before launching the Tauri client.
+- `FLOW_READER_PERF_SCENARIOS`: optional comma-separated scenario filters.
+- `FLOW_READER_PERF_RUNS`: run count.
+- `FLOW_READER_CDP_URL`: real-client CDP endpoint; default
+  `http://127.0.0.1:9351`.
+- `FLOW_READER_APP_URL`: browser-smoke URL; default
+  `http://127.0.0.1:7127`.
+- `FLOW_READER_DATA_DIR`: isolated app data directory; set before launching
+  Tauri.
 
-The current real-client automation connects through CDP. Use it on platforms where the built app exposes a CDP-compatible debug endpoint. If the current platform cannot expose CDP for its Tauri WebView, do not present browser-smoke results as final performance acceptance; record the limitation and perform the closest available client/manual check separately.
+Keep the evidence level, release profile, window size, run count, scenario
+filters, book source, data setup, and launch configuration identical across
+baseline and after runs.
 
-## Release Client Procedure
+### Release-client acceptance
 
-Use release-client measurements for acceptance:
+Build each source state with the same release profile:
 
 ```text
 pnpm build
 pnpm tauri:build
 ```
 
-Launch the compiled executable for the current platform with isolated storage and a CDP-compatible debug endpoint. Use the actual executable path for that platform. Build separate baseline and after executables from the corresponding source states with the same release profile and launch configuration; keep the data setup, CDP URL, window size, run count, scenario filter, and book source matched.
+Launch the platform's compiled executable—not `pnpm dev` or `pnpm tauri:dev`—so
+that:
 
-Platform-specific launch details belong to the local environment, not this skill. The launch must satisfy:
+- `FLOW_READER_DATA_DIR` points to isolated storage under `perf-results/`;
+- `FLOW_READER_CDP_URL` reaches a CDP-compatible debug endpoint;
+- baseline and after executables use the same launch configuration.
 
-- `FLOW_READER_DATA_DIR` points to an isolated directory under `perf-results/`.
-- A debug endpoint is reachable at `FLOW_READER_CDP_URL`.
-- The client is the compiled release executable, not `pnpm dev` or `pnpm tauri:dev`.
+Platform-specific launch details belong to the local environment. If the Tauri
+WebView cannot expose CDP, record that limitation and perform the closest
+client/manual check separately; browser smoke is still not final acceptance.
 
-Then run the measurement against that client:
+Measure baseline:
 
 ```text
 node --input-type=module -e "process.env.FLOW_READER_CDP_URL='http://127.0.0.1:9351'; process.env.FLOW_READER_PERF_MODE='tauri'; process.env.FLOW_READER_PERF_OUT_DIR='perf-results/reader-performance-baseline'; await import('./.agents/skills/reader-performance-measurement/scripts/measure-reader-performance-client.mjs')"
 ```
 
-For the after-run, change only `FLOW_READER_PERF_OUT_DIR`:
+Measure after, changing only the output directory:
 
 ```text
 node --input-type=module -e "process.env.FLOW_READER_CDP_URL='http://127.0.0.1:9351'; process.env.FLOW_READER_PERF_MODE='tauri'; process.env.FLOW_READER_PERF_OUT_DIR='perf-results/reader-performance-after'; await import('./.agents/skills/reader-performance-measurement/scripts/measure-reader-performance-client.mjs')"
@@ -168,11 +208,11 @@ node .agents/skills/reader-performance-measurement/scripts/compare-reader-perfor
 node .agents/skills/reader-performance-measurement/scripts/compare-reader-performance.mjs <baseline.json> <after.json> --json > perf-results/reader-performance-compare.json
 ```
 
-Keep output under gitignored `perf-results/` as temporary local evidence. Do not reference those paths from versioned performance history; preserve the relevant conditions and numeric deltas in the history entry itself.
+Treat `perf-results/` as temporary local evidence.
 
-## Browser Smoke Procedure
+### Browser smoke
 
-Use this only to validate script behavior or cross-platform support:
+Use only to validate script behavior or cross-platform support:
 
 ```text
 pnpm build
@@ -180,58 +220,69 @@ python -m http.server 7127 -d out
 node --input-type=module -e "process.env.FLOW_READER_PERF_MODE='browser'; process.env.FLOW_READER_PERF_BOOK_SOURCE='mock'; process.env.FLOW_READER_PERF_OUT_DIR='perf-results/reader-performance-browser-smoke'; await import('./.agents/skills/reader-performance-measurement/scripts/measure-reader-performance-client.mjs')"
 ```
 
-Do not use browser-smoke numbers to accept a performance optimization.
+## 5. Compare and Decide
 
-## Scenario Selection
+Before comparing:
 
-Use the smallest scenario set that covers the changed path, then broaden if the code is shared:
+- Use identical scenario filters and matched baseline/after conditions.
+- Reject result JSON with the wrong mode, app URL, book source, or missing client
+  metadata.
+- When changing measurement code, avoid localized UI text, large `innerText`
+  snapshots, locale-specific strings, or enough DOM reads/text
+  extraction/mutations to distort the operation. Prefer selectors, counts,
+  rects, resource IDs, location signatures, reader counters, and timings.
 
-- Tab state, sidebar subscriptions, tab UI, or focused-tab data: include `tab-switch/sidebar-closed`, `tab-switch/sidebar-toc`, `tab-click/sidebar-closed`, `tab-click/sidebar-toc`, `rapid-tab-click/sidebar-closed`, and `rapid-tab-click/sidebar-toc`.
-- Page-turn, pagination, epubjs location, iframe layout, or reader body changes: include `page-turn/sidebar-closed`, `page-turn/sidebar-toc`, `page-turn-api/sidebar-closed`, `page-turn-api/sidebar-toc`, `rapid-page-turn/sidebar-closed`, and `rapid-page-turn/sidebar-toc`.
-- Annotation/definition overlay changes: include annotation sidebar/tab scenarios when available, plus closed-sidebar page-turn or tab-switch scenarios that exercise overlay hit testing over the active body.
-- Search, TOC, annotation, image, or typography sidebar changes: include the matching sidebar scenario and at least one closed-sidebar scenario to catch hidden work regressions.
-- Generated book resource changes: include opening/import setup and at least one page-turn scenario whose body uses the generated content shape.
+Prefer `steadySummary`; use cold samples only for startup, first open, import, or
+first tab adoption. Check:
 
-Keep baseline and after filters identical.
+- `firstFrameMs`, `operationMs`, and `settledMs` p50/p95;
+- long-task count, total duration, and maximum duration;
+- `display`, `next`, `prev`, `resizeRendition`, and `relayoutCurrentView`
+  counters.
 
-## Result Interpretation
+A stable p95 regression above 10% requires explicit UX or correctness
+justification. Reject a stable regression above 20% unless it fixes necessary
+correctness and has a follow-up optimization plan. Treat new long tasks during
+rapid tab or page-turn scenarios as high risk even when averages are acceptable.
 
-Prefer `steadySummary` when present. Use cold samples only when the change specifically targets startup, first open, import, or first tab adoption.
+Do not accept an optimization that merely moves work into another required
+scenario unless that product tradeoff is explicit and measured.
 
-Check at least:
+## 6. Record and Report
 
-- `firstFrameMs` p50 and p95.
-- `operationMs` p50 and p95.
-- `settledMs` p50 and p95.
-- Long task count, total duration, and max duration.
-- Reader counters: `display`, `next`, `prev`, `resizeRendition`, and `relayoutCurrentView`.
+Use [Performance History](references/performance-history.md) only for performance
+optimization experiments, not as a changelog or general regression ledger.
+Feature/correctness measurements used only as a no-regression gate do not belong
+there.
 
-A stable p95 regression above 10% needs an explicit UX or correctness justification. A stable regression above 20% should be rejected unless it fixes a necessary correctness issue and has a follow-up optimization plan. New long tasks in rapid tab switching or rapid page turns are high risk even when average times look acceptable.
+Add an entry only when same-level, matched baseline/after results provide
+quantified timing or long-task evidence for a retained or rejected decision.
+Record timing metrics as baseline-to-after percentage changes, not absolute
+milliseconds. For a count metric whose baseline is zero, record the baseline and
+after counts because a percentage is undefined. Exclude after-only results,
+smoke passes, correctness outcomes, diagnostics, and unquantified claims.
+Include the scenario, metric, percentage change, evidence level, decision, and
+relevant run conditions; local `perf-results/` paths are not durable evidence.
 
-Do not accept an optimization that improves one scenario by moving work into another required scenario unless the product tradeoff is explicit and measured.
+Put accepted optimizations under `Retained Approaches`. Put removed or unadopted
+attempts under `Rejected Approaches` and state what measurement or code-path
+change would justify retrying. Never record one attempt in both sections. If new
+evidence reverses a decision, update and move the existing entry.
 
-## Measurement Integrity
+In the final response, state:
 
-- Do not serialize localized UI text, large `innerText` snapshots, or locale-specific strings into performance assertions.
-- Prefer selectors, counts, rects, resource ids, location signatures, reader counters, and timing values.
-- Do not add measurement code that creates enough DOM reads, text extraction, or mutation work to distort the measured workflow.
-- Keep the same run count, window size, scenario list, book source, executable build, and data setup across baseline and after.
-- If the result JSON shows the wrong mode, app URL, book source, or missing client metadata, do not use it for acceptance.
+- whether performance measurement was required and why;
+- the evidence level;
+- key percentage deltas supporting retention or rejection;
+- artifact paths only when files were produced and remain useful for handoff;
+- why evidence is smoke-only rather than final, when applicable.
 
-## Final Response Requirements
-
-State:
-
-- Whether the performance workflow was required.
-- Which evidence level was used.
-- Baseline, after, and compare artifact paths only when those local files were actually produced and remain useful for the current handoff.
-- The key deltas that justify keeping or rejecting the change.
-- Any reason the result is only smoke evidence rather than final acceptance.
-
-Do not use local `perf-results/` paths as a substitute for reporting the actual comparison or as evidence in a versioned history entry.
+Never substitute local artifact paths for the actual comparison.
 
 ## Skill Resources
 
-- Reference: [Performance History](references/performance-history.md)
-- Measure script: [measure-reader-performance-client.mjs](scripts/measure-reader-performance-client.mjs)
-- Compare script: [compare-reader-performance.mjs](scripts/compare-reader-performance.mjs)
+- History: [Performance History](references/performance-history.md)
+- Measure:
+  [measure-reader-performance-client.mjs](scripts/measure-reader-performance-client.mjs)
+- Compare:
+  [compare-reader-performance.mjs](scripts/compare-reader-performance.mjs)

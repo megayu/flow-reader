@@ -83,7 +83,347 @@ function stubRenderedViews(manager) {
   manager.prepend = async (section) => createView(section)
 }
 
+describe('DefaultViewManager pre-paginated spread', function () {
+  it('pairs and navigates fixed-layout RTL spreads in reading order', async function () {
+    const manager = createManager({ direction: 'rtl' })
+    manager.layout.name = 'pre-paginated'
+    manager.views = { length: 1 }
+    const sections = [
+      ['page-spread-left'],
+      ['page-spread-right'],
+      ['page-spread-left'],
+      ['page-spread-right'],
+    ].map((properties, index) => ({
+      index,
+      properties,
+      next() {
+        return sections[index + 1]
+      },
+      prev() {
+        return sections[index - 1]
+      },
+    }))
+
+    assert.deepEqual(manager.prePaginatedSpreadContaining(sections[0]), {
+      left: sections[0],
+      right: undefined,
+    })
+    assert.deepEqual(manager.prePaginatedSpreadContaining(sections[1]), {
+      left: sections[2],
+      right: sections[1],
+    })
+
+    const displayed = []
+    manager.displayPrePaginatedSpread = async (section) => {
+      const spread = manager.prePaginatedSpreadContaining(section)
+      displayed.push({
+        left: spread.left && spread.left.index,
+        right: spread.right && spread.right.index,
+      })
+    }
+
+    manager.currentPrePaginatedSpread = manager.prePaginatedSpreadContaining(
+      sections[0],
+    )
+    await manager.next()
+    manager.currentPrePaginatedSpread = manager.prePaginatedSpreadContaining(
+      sections[1],
+    )
+    await manager.prev()
+
+    assert.deepEqual(displayed, [
+      { left: 2, right: 1 },
+      { left: 0, right: undefined },
+    ])
+  })
+
+  it('navigates away from fixed-layout spreads with an intentional blank slot', async function () {
+    const cases = [
+      {
+        properties: [
+          ['page-spread-right'],
+          ['page-spread-right'],
+          ['page-spread-left'],
+        ],
+        currentIndex: 1,
+        direction: 'prev',
+        expectedIndex: 0,
+      },
+      {
+        properties: [
+          ['page-spread-left'],
+          ['page-spread-left'],
+          ['page-spread-right'],
+        ],
+        currentIndex: 0,
+        direction: 'next',
+        expectedIndex: 1,
+      },
+    ]
+
+    for (const testCase of cases) {
+      const manager = createManager()
+      manager.layout.name = 'pre-paginated'
+      manager.views = { length: 1 }
+      const sections = testCase.properties.map((properties, index) => ({
+        index,
+        properties,
+        next() {
+          return sections[index + 1]
+        },
+        prev() {
+          return sections[index - 1]
+        },
+      }))
+      const displayed = []
+      manager.currentPrePaginatedSpread = manager.prePaginatedSpreadContaining(
+        sections[testCase.currentIndex],
+      )
+      manager.displayPrePaginatedSpread = async (section) => {
+        displayed.push(section.index)
+      }
+
+      await manager[testCase.direction]()
+
+      assert.deepEqual(displayed, [testCase.expectedIndex])
+    }
+  })
+
+  it('resolves stable fixed-layout pairs from explicit and undecided slots', function () {
+    const manager = createManager()
+    manager.layout.name = 'pre-paginated'
+    const createFixedSections = (properties) => {
+      const sections = properties.map((sectionProperties, index) => ({
+        index,
+        properties: sectionProperties,
+        next() {
+          return sections[index + 1]
+        },
+        prev() {
+          return sections[index - 1]
+        },
+      }))
+      return sections
+    }
+
+    const beforeLeft = createFixedSections([
+      ['page-spread-center'],
+      ['page-spread-left'],
+      ['page-spread-right'],
+    ])
+    const beforeRight = createFixedSections([
+      ['page-spread-center'],
+      ['page-spread-right'],
+    ])
+    const malformed = createFixedSections([
+      ['page-spread-left'],
+      ['page-spread-left'],
+      ['page-spread-right'],
+    ])
+
+    assert.deepEqual(manager.prePaginatedSpreadContaining(beforeLeft[0]), {
+      left: undefined,
+      right: beforeLeft[0],
+    })
+    assert.deepEqual(manager.prePaginatedSpreadContaining(beforeLeft[1]), {
+      left: beforeLeft[1],
+      right: beforeLeft[2],
+    })
+    assert.deepEqual(manager.prePaginatedSpreadContaining(beforeLeft[2]), {
+      left: beforeLeft[1],
+      right: beforeLeft[2],
+    })
+    assert.deepEqual(manager.prePaginatedSpreadContaining(beforeRight[0]), {
+      left: beforeRight[0],
+      right: beforeRight[1],
+    })
+    assert.deepEqual(manager.prePaginatedSpreadContaining(malformed[0]), {
+      left: malformed[0],
+      right: undefined,
+    })
+    assert.deepEqual(manager.prePaginatedSpreadContaining(malformed[1]), {
+      left: malformed[1],
+      right: malformed[2],
+    })
+  })
+
+  it('pairs an ordinary first spine item but preserves an explicit right page', async function () {
+    const manager = createManager()
+    manager.layout.name = 'pre-paginated'
+    const second = {
+      index: 1,
+      properties: [],
+    }
+    const first = {
+      index: 0,
+      properties: [],
+      next() {
+        return second
+      },
+    }
+    const appended = []
+    const append = async (section) => {
+      appended.push(section)
+    }
+
+    await manager.handleNextPrePaginated(false, first, append)
+    await manager.handleNextPrePaginated(true, first, append)
+
+    assert.deepEqual(appended, [second])
+  })
+
+  it('reports both fixed-layout sections in a two-page spread', function () {
+    const manager = createManager()
+    manager.layout.name = 'pre-paginated'
+    manager.layout.width = 500
+    manager.layout.columnWidth = 500
+    manager.layout.pageWidth = 500
+    manager.layout.spreadWidth = 1000
+    manager.container = {
+      scrollLeft: 0,
+      getBoundingClientRect() {
+        return { left: 0, right: 1000 }
+      },
+    }
+    manager.mapping = {
+      page(_contents, cfiBase) {
+        return { start: `${cfiBase}:start`, end: `${cfiBase}:end` }
+      },
+    }
+
+    const views = [0, 1].map((index) => ({
+      section: {
+        index,
+        href: `page-${index + 1}.xhtml`,
+        cfiBase: `/6/${index * 2 + 2}`,
+      },
+      contents: {},
+      offset() {
+        return { left: index * 500 }
+      },
+      position() {
+        return {
+          left: index * 500,
+          right: (index + 1) * 500,
+          width: 500,
+        }
+      },
+      width() {
+        return 500
+      },
+      pageCount() {
+        return 1
+      },
+    }))
+    manager.visible = () => views
+
+    const location = manager.paginatedLocation()
+
+    assert.deepEqual(
+      location.map(({ index, pages, totalPages }) => ({
+        index,
+        pages,
+        totalPages,
+      })),
+      [
+        { index: 0, pages: [1], totalPages: 1 },
+        { index: 1, pages: [1], totalPages: 1 },
+      ],
+    )
+  })
+
+  it('reports a lone fixed-layout RTL left page from the logical spread', function () {
+    const manager = createManager({ direction: 'rtl' })
+    manager.layout.name = 'pre-paginated'
+    manager.updateLayout = function () {}
+    const section = {
+      index: 0,
+      href: 'page-1.xhtml',
+      cfiBase: '/6/2',
+    }
+    const view = {
+      section,
+      contents: {},
+      width() {
+        return 500
+      },
+      pageCount() {
+        return 1
+      },
+    }
+    const mappedRanges = []
+    manager.mapping = {
+      page(_contents, cfiBase, start, end) {
+        mappedRanges.push([start, end])
+        return { start: `${cfiBase}:start`, end: `${cfiBase}:end` }
+      },
+    }
+    manager.views = {
+      find(candidate) {
+        return candidate === section ? view : undefined
+      },
+    }
+    manager.visible = () => []
+    manager.currentPrePaginatedSpread = {
+      left: section,
+      right: undefined,
+    }
+
+    const location = manager.currentLocation()
+
+    assert.deepEqual(location, [
+      {
+        index: 0,
+        href: 'page-1.xhtml',
+        pages: [1],
+        totalPages: 1,
+        mapping: {
+          start: '/6/2:start',
+          end: '/6/2:end',
+        },
+        startSlot: 'left',
+        endSlot: 'left',
+      },
+    ])
+    assert.deepEqual(mappedRanges, [[0, 500]])
+  })
+})
+
 describe('DefaultViewManager reflowable spread', function () {
+  it('uses book page progression for slot order independently of writing mode', async function () {
+    const ltrVertical = createManager({ direction: 'ltr' })
+    ltrVertical.updateWritingMode('vertical-rl')
+    const ltrSections = createSections([2])
+    withMeasuredSections(ltrVertical, ltrSections)
+
+    const rtlHorizontal = createManager({ direction: 'rtl' })
+    rtlHorizontal.updateWritingMode('horizontal-tb')
+    const rtlSections = createSections([2])
+    withMeasuredSections(rtlHorizontal, rtlSections)
+
+    const ltrSpread = await ltrVertical.reflowableSpreadContaining(
+      ltrVertical.reflowablePage(ltrSections[0], 0),
+    )
+    const rtlSpread = await rtlHorizontal.reflowableSpreadContaining(
+      rtlHorizontal.reflowablePage(rtlSections[0], 0),
+    )
+
+    assert.equal(ltrSpread.left.pageIndex, 0)
+    assert.equal(ltrSpread.right.pageIndex, 1)
+    assert.equal(rtlSpread.right.pageIndex, 0)
+    assert.equal(rtlSpread.left.pageIndex, 1)
+
+    stubRenderedViews(rtlHorizontal)
+    let renderedRtlSpread
+    rtlHorizontal.applyReflowableSpreadPosition = (spread) => {
+      renderedRtlSpread = spread
+    }
+    await rtlHorizontal.renderReflowableSpread(rtlSpread)
+
+    assert.equal(renderedRtlSpread.right.pageIndex, 0)
+    assert.equal(renderedRtlSpread.left.pageIndex, 1)
+  })
+
   it('uses logical horizontal pagination for vertical-rl rtl content', function () {
     const singlePageManager = createVerticalRtlManager({ divisor: 1 })
     const spreadManager = createVerticalRtlManager({ divisor: 2 })
@@ -393,6 +733,30 @@ describe('DefaultViewManager reflowable spread', function () {
     assert.equal(renderedSpread.endsAtSectionEnd, true)
   })
 
+  it('keeps a one-page previous section in the right slot when turning backward', async function () {
+    const manager = createManager()
+    const sections = createSections([1, 2])
+    withMeasuredSections(manager, sections)
+    stubRenderedViews(manager)
+
+    let renderedSpread
+    manager.applyReflowableSpreadPosition = (spread) => {
+      renderedSpread = spread
+    }
+    manager.currentReflowableSpread = {
+      left: manager.reflowablePage(sections[1], 0),
+      right: manager.reflowablePage(sections[1], 1),
+    }
+
+    await manager.previousReflowableSpread()
+
+    assert.equal(renderedSpread.left, undefined)
+    assert.equal(renderedSpread.right.section.index, 0)
+    assert.equal(renderedSpread.right.pageIndex, 0)
+    assert.equal(renderedSpread.anchor, 'right')
+    assert.equal(renderedSpread.endsAtSectionEnd, true)
+  })
+
   it('resolves a render spread without mutating the requested spread', async function () {
     const manager = createManager()
     const sections = createSections([9, 10])
@@ -416,5 +780,29 @@ describe('DefaultViewManager reflowable spread', function () {
     assert.equal(requestedSpread.right.pageIndex, 0)
     assert.equal(renderedSpread.right.section.index, 1)
     assert.equal(renderedSpread.right.pageIndex, 9)
+  })
+
+  it('keeps a left-slot terminal page left while resolving the new last page', async function () {
+    const manager = createManager()
+    const sections = createSections([3])
+    withMeasuredSections(manager, sections)
+    stubRenderedViews(manager)
+
+    let renderedSpread
+    manager.applyReflowableSpreadPosition = (spread) => {
+      renderedSpread = spread
+    }
+
+    await manager.renderReflowableSpread({
+      left: manager.reflowablePage(sections[0], 0),
+      anchor: 'left',
+      endsAtSectionEnd: true,
+    })
+
+    assert.equal(renderedSpread.left.section.index, 0)
+    assert.equal(renderedSpread.left.pageIndex, 2)
+    assert.equal(renderedSpread.right, undefined)
+    assert.equal(renderedSpread.anchor, 'left')
+    assert.equal(renderedSpread.endsAtSectionEnd, true)
   })
 })

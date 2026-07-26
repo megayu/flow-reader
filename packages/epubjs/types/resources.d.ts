@@ -9,6 +9,8 @@ export default class Resources {
       archive?: Archive
       resolver?: Function
       request?: Function
+      rootUrl?: string
+      containerRootUrl?: string
     },
   )
 

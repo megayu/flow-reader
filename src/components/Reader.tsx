@@ -707,6 +707,8 @@ function useFrameEvent<K extends keyof WindowEventMap>(
   }, [frames, options, type])
 }
 
+const CAPTURE_EVENT_OPTIONS = { capture: true } as const
+
 function preventContextMenu(e: Event) {
   e.preventDefault()
 }
@@ -1503,11 +1505,6 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
   const [notePopover, setNotePopover] = useState<NotePopoverState>()
   const typography = useTypography(tab)
   const pageAppearance = typography.pageAppearance
-  const currentSpread = typography.spread ?? RenditionSpread.Auto
-  const typographyLayoutSignature = useMemo(
-    () => createTypographyLayoutSignature(typography),
-    [typography],
-  )
   const typographyStyleSignature = useMemo(
     () => createTypographyStyleSignature(typography),
     [typography],
@@ -1516,8 +1513,26 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
   const { dark } = useColorScheme()
   const [background] = useBackground()
 
-  const { iframe, iframes, rendition, rendered, turning, paginationVersion } =
-    useSnapshot(tab)
+  const {
+    iframe,
+    iframes,
+    isScrolledDocument,
+    rendition,
+    rendered,
+    turning,
+    paginationVersion,
+  } = useSnapshot(tab)
+  const currentSpread = isScrolledDocument
+    ? RenditionSpread.None
+    : (typography.spread ?? RenditionSpread.Auto)
+  const typographyLayoutSignature = useMemo(
+    () =>
+      createTypographyLayoutSignature({
+        ...typography,
+        spread: currentSpread,
+      }),
+    [currentSpread, typography],
+  )
   const frameWindows = useMemo(() => {
     void iframe
     void iframes.length
@@ -1625,9 +1640,12 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
       document.removeEventListener('keydown', onKeyDown, true)
     }
   }, [active])
-  useFrameEvent(activeFrameWindows, 'keydown', handleFindShortcut, {
-    capture: true,
-  })
+  useFrameEvent(
+    activeFrameWindows,
+    'keydown',
+    handleFindShortcut,
+    CAPTURE_EVENT_OPTIONS,
+  )
 
   useEffect(() => {
     if (!zenMode) return
@@ -1672,25 +1690,41 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
       document.removeEventListener('auxclick', onMouseButton, true)
     }
   }, [active])
-  useFrameEvent(activeFrameWindows, 'mousedown', handleReturnMouseButton, {
-    capture: true,
-  })
-  useFrameEvent(activeFrameWindows, 'auxclick', handleReturnMouseButton, {
-    capture: true,
-  })
+  useFrameEvent(
+    activeFrameWindows,
+    'mousedown',
+    handleReturnMouseButton,
+    CAPTURE_EVENT_OPTIONS,
+  )
+  useFrameEvent(
+    activeFrameWindows,
+    'auxclick',
+    handleReturnMouseButton,
+    CAPTURE_EVENT_OPTIONS,
+  )
 
   const applyCustomStyle = useCallback(
     (contents?: any, view?: any) => {
       if (contents) {
-        updateCustomStyle(contents, typography, tab.bodyTextCache, view)
+        updateCustomStyle(
+          contents,
+          typography,
+          tab.bodyTextCache,
+          view,
+          rendition?.layout?.name,
+        )
         return
       }
 
-      rendition
-        ?.getContents()
-        .forEach((contents: any) =>
-          updateCustomStyle(contents, typography, tab.bodyTextCache),
+      rendition?.getContents().forEach((contents: any) => {
+        updateCustomStyle(
+          contents,
+          typography,
+          tab.bodyTextCache,
+          undefined,
+          rendition.layout?.name,
         )
+      })
     },
     [rendition, tab.bodyTextCache, typography],
   )
@@ -2122,6 +2156,46 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
 
       const delta =
         Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX
+
+      if (tab.isScrolledDocument && tab.container) {
+        const container = tab.container
+        const manager = (tab.rendition as any)?.manager
+        const horizontal = manager?.settings?.axis === 'horizontal'
+        const scale =
+          e.deltaMode === WheelEvent.DOM_DELTA_LINE
+            ? 16
+            : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+              ? horizontal
+                ? container.clientWidth
+                : container.clientHeight
+              : 1
+        const scrollDelta = delta * scale
+
+        if (horizontal) {
+          if (manager.scrollHorizontalByReadingDirection?.(scrollDelta, true)) {
+            wheelDelta.current = 0
+            return
+          }
+        } else {
+          const maxScrollTop = Math.max(
+            0,
+            container.scrollHeight - container.clientHeight,
+          )
+          const canScrollBackward = delta < 0 && container.scrollTop > 1
+          const canScrollForward =
+            delta > 0 && container.scrollTop < maxScrollTop - 1
+
+          if (canScrollBackward || canScrollForward) {
+            container.scrollTop = Math.max(
+              0,
+              Math.min(maxScrollTop, container.scrollTop + scrollDelta),
+            )
+            wheelDelta.current = 0
+            return
+          }
+        }
+      }
+
       wheelDelta.current += delta
 
       const now = Date.now()
@@ -2156,6 +2230,28 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
       target.removeListener?.('wheel', onWheel)
     }
   }, [active, rendition])
+
+  useEffect(() => {
+    if (!active || !isScrolledDocument || !rendered) return
+
+    const container = tab.container
+    if (!container) return
+
+    const onWheel = (event: WheelEvent) => {
+      const hasVerticalOverflow =
+        container.scrollHeight - container.clientHeight > 1
+      if (hasVerticalOverflow || event.target instanceof HTMLIFrameElement)
+        return
+
+      handleRenditionWheelEvent(event)
+    }
+
+    container.addEventListener('wheel', onWheel, { passive: false })
+
+    return () => {
+      container.removeEventListener('wheel', onWheel)
+    }
+  }, [active, isScrolledDocument, rendered, tab])
 
   const handleFrameKeyDown = useMemo(
     () =>
@@ -4502,7 +4598,13 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
               <div>
                 {leftDisplayed && formatFooterPage(leftDisplayed, percentage)}
               </div>
-              <div>{rightDisplayed && formatFooterPage(rightDisplayed)}</div>
+              <div>
+                {rightDisplayed &&
+                  formatFooterPage(
+                    rightDisplayed,
+                    leftDisplayed ? '' : percentage,
+                  )}
+              </div>
             </>
           ) : (
             <>

@@ -193,7 +193,7 @@ class Layout {
    * @param  {Contents} contents
    * @return {Promise}
    */
-  format(contents, section, axis) {
+  format(contents, section, axis, spreadSlot) {
     var formating
 
     if (this.name === 'pre-paginated') {
@@ -202,6 +202,8 @@ class Layout {
         this.height,
         section,
         this.settings.viewport,
+        this.divisor,
+        spreadSlot,
       )
     } else if (this._flow === 'paginated') {
       formating = contents.columns(

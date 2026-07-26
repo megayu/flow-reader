@@ -29,6 +29,7 @@ export interface BookOptions {
   requestHeaders?: object
   encoding?: string
   replacements?: string
+  containerRootUrl?: string
   canonical?: (path: string) => string
   openAs?: string
   store?: string

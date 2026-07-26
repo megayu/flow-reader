@@ -106,13 +106,19 @@ class Stage {
     }
 
     if (overflow) {
-      if (overflow === 'scroll' && axis === 'vertical') {
+      if (
+        (overflow === 'auto' || overflow === 'scroll') &&
+        axis === 'vertical'
+      ) {
         container.style['overflow-y'] = overflow
         container.style['overflow-x'] = 'hidden'
-      } else if (overflow === 'scroll' && axis === 'horizontal') {
+      } else if (
+        axis === 'horizontal' &&
+        (overflow === 'auto' || overflow === 'scroll')
+      ) {
         container.style['overflow-y'] = 'hidden'
         container.style['overflow-x'] = overflow
-        setHorizontalScrollbarHidden(container, true)
+        setHorizontalScrollbarHidden(container, overflow === 'scroll')
       } else {
         container.style['overflow'] = overflow
         setHorizontalScrollbarHidden(container, false)
@@ -357,13 +363,22 @@ class Stage {
 
   overflow(overflow) {
     if (this.container) {
-      if (overflow === 'scroll' && this.settings.axis === 'vertical') {
+      if (
+        (overflow === 'auto' || overflow === 'scroll') &&
+        this.settings.axis === 'vertical'
+      ) {
+        this.container.style['overflow'] = ''
         this.container.style['overflow-y'] = overflow
         this.container.style['overflow-x'] = 'hidden'
-      } else if (overflow === 'scroll' && this.settings.axis === 'horizontal') {
+        setHorizontalScrollbarHidden(this.container, false)
+      } else if (
+        this.settings.axis === 'horizontal' &&
+        (overflow === 'auto' || overflow === 'scroll')
+      ) {
+        this.container.style['overflow'] = ''
         this.container.style['overflow-y'] = 'hidden'
         this.container.style['overflow-x'] = overflow
-        setHorizontalScrollbarHidden(this.container, true)
+        setHorizontalScrollbarHidden(this.container, overflow === 'scroll')
       } else {
         this.container.style['overflow'] = overflow
         setHorizontalScrollbarHidden(this.container, false)

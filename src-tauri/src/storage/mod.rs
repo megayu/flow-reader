@@ -40,8 +40,8 @@ use book_assets::{
 };
 
 use epub_import::{
-    clean_xml_text, find_unpacked_opf_path, import_epub_path_impl, inspect_epub_access,
-    join_zip_path, normalize_unpacked_epub_structure, normalize_zip_path,
+    clean_xml_text, deobfuscate_unpacked_idpf_fonts, find_unpacked_opf_path, import_epub_path_impl,
+    inspect_epub_access, join_zip_path, normalize_unpacked_epub_structure, normalize_zip_path,
     open_external_epub_path_impl, parent_zip_path, unpack_epub,
 };
 #[cfg(test)]
@@ -424,6 +424,8 @@ pub struct BookTextReplaceResult {
 pub struct BookReaderSource {
     mode: BookReaderSourceMode,
     path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    root_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     book: Option<BookRecord>,
 }
@@ -1390,9 +1392,13 @@ fn get_book_reader_source_impl(
     let book_dir = storage.book_dir(&book.id);
     let unpacked_dir = book_dir.join(UNPACKED_DIR);
     if let Ok(opf_path) = find_unpacked_opf_path(&unpacked_dir) {
+        if let Ok(opf_xml) = fs::read_to_string(&opf_path) {
+            deobfuscate_unpacked_idpf_fonts(&unpacked_dir, &opf_xml)?;
+        }
         return Ok(BookReaderSource {
             mode: BookReaderSourceMode::Opf,
             path: path_to_client_string(&opf_path),
+            root_path: Some(path_to_client_string(&unpacked_dir)),
             book: None,
         });
     }
@@ -1402,6 +1408,7 @@ fn get_book_reader_source_impl(
         return Ok(BookReaderSource {
             mode: BookReaderSourceMode::Epub,
             path: path_to_client_string(&book_path),
+            root_path: None,
             book: None,
         });
     }
@@ -1416,6 +1423,7 @@ fn get_book_reader_source_impl(
     Ok(BookReaderSource {
         mode: BookReaderSourceMode::Opf,
         path: path_to_client_string(&opf_path),
+        root_path: Some(path_to_client_string(&unpacked_dir)),
         book: updated_book,
     })
 }

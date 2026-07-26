@@ -625,6 +625,18 @@ class Rendition {
       this.settings.minSpreadWidth || metadata.minSpreadWidth || 800
     var direction = this.settings.direction || metadata.direction || 'ltr'
 
+    // Image-first publications use "roll" for authored visual plates that
+    // require fixed-page sizing and spread placement.
+    if (layout === 'roll') {
+      layout = 'pre-paginated'
+    }
+    if (flow === 'scrolled-continuous') {
+      flow = 'scrolled-doc'
+    }
+    if (flow === 'scrolled-doc') {
+      spread = 'none'
+    }
+
     if (
       (this.settings.width === 0 || this.settings.width > 0) &&
       (this.settings.height === 0 || this.settings.height > 0)
@@ -647,7 +659,7 @@ class Rendition {
 
   /**
    * Adjust the flow of the rendition to paginated or scrolled
-   * (scrolled-continuous vs scrolled-doc are handled by different view managers)
+   * (package scrolled-continuous is normalized to scrolled-doc)
    * @param  {string} flow
    */
   flow(flow) {
@@ -1060,7 +1072,7 @@ class Rendition {
       img: {
         'max-width':
           (this._layout.columnWidth
-            ? this._layout.columnWidth - horizontalPadding + 'px'
+            ? `min(100%, ${this._layout.columnWidth - horizontalPadding}px)`
             : '100%') + '!important',
         'max-height': height + 'px' + '!important',
         'object-fit': 'contain',
@@ -1071,7 +1083,7 @@ class Rendition {
       svg: {
         'max-width':
           (this._layout.columnWidth
-            ? this._layout.columnWidth - horizontalPadding + 'px'
+            ? `min(100%, ${this._layout.columnWidth - horizontalPadding}px)`
             : '100%') + '!important',
         'max-height': height + 'px' + '!important',
         'page-break-inside': 'avoid',

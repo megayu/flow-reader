@@ -6,6 +6,7 @@ import ePub, { Rendition as EpubRendition } from '@flow/epubjs'
 import type { Rendition, Location, Book } from '@flow/epubjs'
 import epubRequest from '@flow/epubjs/src/utils/request'
 import Navigation, { NavItem } from '@flow/epubjs/types/navigation'
+import type { RenditionSpread } from '@flow/epubjs/types/rendition'
 import Section from '@flow/epubjs/types/section'
 import { IS_SERVER } from '@flow/reader/env'
 
@@ -543,15 +544,22 @@ function calculateReadingPercentage({
   location,
   sections,
   totalLength,
+  sectionAsPage = false,
 }: {
   location: Location
   sections: ISection[]
   totalLength?: number
+  sectionAsPage?: boolean
 }) {
-  if (location.atStart) return 0
   if (location.atEnd) return 1
 
   const end = location.end ?? location.start
+  if (sectionAsPage) {
+    return estimatePercentageFromSpine(end, sections.length)
+  }
+
+  if (location.atStart) return 0
+
   const sectionIndex = sections.findIndex((s) => s.href === end.href)
   const activeSection = sectionIndex >= 0 ? sections[sectionIndex] : undefined
 
@@ -581,8 +589,8 @@ function calculateReadingPercentage({
 }
 
 function fallbackReadingPercentage(location: Location) {
-  if (location.atStart) return 0
   if (location.atEnd) return 1
+  if (location.atStart) return 0
 
   return displayLocationPercentage(location.end ?? location.start)
 }
@@ -742,17 +750,27 @@ function snapshotReflowableSpread(
   const right = snapshotReflowablePage(spread.right)
   const endsAtSectionEnd =
     Boolean(spread.endsAtSectionEnd) || locationEndsAtDisplayedPageEnd(location)
-  const endAnchoredPage = endsAtSectionEnd ? (right ?? left) : undefined
+  const rightFirst =
+    manager.paginationModel?.().spreadSlotOrder === 'right-first'
+  const terminalSlot = endsAtSectionEnd
+    ? rightFirst
+      ? left
+        ? 'left'
+        : 'right'
+      : right
+        ? 'right'
+        : 'left'
+    : undefined
   const anchor =
-    endAnchoredPage || (spread.anchor === 'right' && right)
+    terminalSlot ??
+    (spread.anchor === 'right' && right
       ? 'right'
       : spread.anchor === 'left' && left
         ? 'left'
         : left
           ? 'left'
-          : 'right'
-  const page =
-    endAnchoredPage ?? (anchor === 'right' ? (right ?? left) : (left ?? right))
+          : 'right')
+  const page = anchor === 'right' ? (right ?? left) : (left ?? right)
   if (!page) return
 
   return {
@@ -761,7 +779,7 @@ function snapshotReflowableSpread(
     anchor,
     exact: !endsAtSectionEnd,
     ...(left ? { left } : {}),
-    ...((endAnchoredPage ?? right) ? { right: endAnchoredPage ?? right } : {}),
+    ...(right ? { right } : {}),
     ...(endsAtSectionEnd ? { endsAtSectionEnd: true } : {}),
     ...(layoutStyleSignature ? { layoutStyleSignature } : {}),
   }
@@ -925,6 +943,13 @@ export class BookTab extends BaseTab {
 
   get container() {
     return this?.rendition?.manager?.container as HTMLDivElement | undefined
+  }
+
+  get isScrolledDocument() {
+    return (
+      (this.rendition as any)?.settings?.globalLayoutProperties?.flow ===
+      'scrolled-doc'
+    )
   }
 
   currentLocation?: Location
@@ -1251,14 +1276,6 @@ export class BookTab extends BaseTab {
       })
       await navigation
       this.commitPendingRenditionLocation(requestId)
-      // avoid content flash
-      if (
-        !this.rendition?.manager?.canUseLogicalReflowableSpread?.() &&
-        this.container?.scrollLeft === 0 &&
-        !this.location?.atStart
-      ) {
-        this.rendered = false
-      }
     })
   }
   async next() {
@@ -1606,6 +1623,7 @@ export class BookTab extends BaseTab {
       location: this.currentLocation,
       sections: this.sections,
       totalLength: this.totalLength,
+      sectionAsPage: this.isScrolledDocument,
     })
 
     const cfi = this.locationAnchorCfi(this.currentLocation)
@@ -1661,6 +1679,8 @@ export class BookTab extends BaseTab {
   private async runNavigation(action: () => Promise<void>) {
     if (this.turning) return
 
+    // `turning` owns the transient navigation cover; `rendered` continues to
+    // describe whether a committed page exists after navigation settles.
     this.turning = true
     const navigation = (async () => {
       try {
@@ -1874,6 +1894,7 @@ export class BookTab extends BaseTab {
         location: loc,
         sections: this.sections,
         totalLength: this.totalLength,
+        sectionAsPage: this.isScrolledDocument,
       })
     }
 
@@ -3223,7 +3244,7 @@ export class BookTab extends BaseTab {
 
   async render(
     el: HTMLDivElement,
-    initialSpread?: string,
+    initialSpread?: RenditionSpread,
     beforeLayout?: (contents?: any, view?: any) => void,
     layoutStyleSignature?: string,
   ) {
@@ -3286,6 +3307,7 @@ export class BookTab extends BaseTab {
         epub = ref(
           await ePub(source.url, {
             requestMethod: createVersionedEpubRequest(this.book.contentVersion),
+            containerRootUrl: source.rootUrl,
           } as any),
         )
       }
@@ -3405,7 +3427,7 @@ export class BookTab extends BaseTab {
       this.syncFrames()
     })
     if (initialSpread) {
-      this.rendition.spread(initialSpread)
+      this.rendition.spread(this.isScrolledDocument ? 'none' : initialSpread)
     }
 
     this.rendition.on('relocated', (loc: Location, meta?: RelocatedEventMeta) =>

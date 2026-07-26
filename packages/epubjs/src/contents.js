@@ -15,6 +15,8 @@ const isWebkit =
 const ELEMENT_NODE = 1
 const TEXT_NODE = 3
 const PAGINATED_ROOT_STYLE = 'paginated-root-normalize'
+const ORTHOGONAL_BLOCK_STYLE = 'orthogonal-block-sizing'
+const ORTHOGONAL_BLOCK_ATTRIBUTE = 'data-epubjs-orthogonal-block'
 const PAGE_BACKGROUND_STYLE = 'page-background-normalize'
 const PAGE_BACKGROUND_ATTRIBUTE = 'data-epubjs-page-background'
 const PAGE_BACKGROUND_SOURCE_ATTRIBUTE = 'data-epubjs-page-background-source'
@@ -2085,6 +2087,7 @@ class Contents {
 
     this.layoutStyle('scrolling')
     this.addStylesheetCss(' ', PAGINATED_ROOT_STYLE)
+    this.clearOrthogonalBlockSizing()
 
     if (width >= 0) {
       this.width(width)
@@ -2107,6 +2110,155 @@ class Contents {
     }
 
     this.viewport(viewport)
+  }
+
+  writingModeRuleSelectors() {
+    let selectors = []
+    let seen = {}
+    this._writingModeRulesIncomplete = false
+    let visitRules = (rules) => {
+      if (!rules) return
+
+      for (let i = 0; i < rules.length; i++) {
+        let rule = rules[i]
+        let style = rule && rule.style
+        let selector = rule && rule.selectorText
+        let writingMode =
+          style &&
+          (style.getPropertyValue('writing-mode') ||
+            style.getPropertyValue('-webkit-writing-mode'))
+
+        if (selector && writingMode && !seen[selector]) {
+          seen[selector] = true
+          selectors.push(selector)
+        }
+
+        if (rule) {
+          try {
+            if (rule.cssRules) {
+              visitRules(rule.cssRules)
+            } else if (rule.styleSheet) {
+              visitRules(rule.styleSheet.cssRules)
+            }
+          } catch (error) {
+            this._writingModeRulesIncomplete = true
+          }
+        }
+      }
+    }
+
+    let sheets = (this.document && this.document.styleSheets) || []
+    for (let i = 0; i < sheets.length; i++) {
+      try {
+        visitRules(sheets[i].cssRules)
+      } catch (error) {
+        this._writingModeRulesIncomplete = true
+      }
+    }
+
+    return selectors
+  }
+
+  clearOrthogonalBlockSizing() {
+    if (this.content && this._orthogonalBlockSizingApplied) {
+      let marked = this.content.querySelectorAll(
+        '[' + ORTHOGONAL_BLOCK_ATTRIBUTE + ']',
+      )
+      for (let i = 0; i < marked.length; i++) {
+        marked[i].removeAttribute(ORTHOGONAL_BLOCK_ATTRIBUTE)
+      }
+    }
+
+    this._orthogonalBlockSizingApplied = false
+    this._orthogonalBlockLayoutSignature = undefined
+    this.addStylesheetCss(' ', ORTHOGONAL_BLOCK_STYLE)
+  }
+
+  constrainOrthogonalBlocks(writingMode, availableInlineSize) {
+    if (
+      !this.content ||
+      !this.window ||
+      writingMode.indexOf('vertical') === 0
+    ) {
+      this.clearOrthogonalBlockSizing()
+      return
+    }
+
+    let layoutSignature = writingMode + '|' + availableInlineSize
+    if (this._orthogonalBlockLayoutSignature === layoutSignature) {
+      return
+    }
+
+    let candidates = this._orthogonalWritingModeCandidates
+    if (!candidates) {
+      candidates = []
+      let seen = []
+      let addMatches = (selector) => {
+        let matches
+        try {
+          matches = this.content.querySelectorAll(selector)
+        } catch (error) {
+          return
+        }
+
+        for (let i = 0; i < matches.length; i++) {
+          if (seen.indexOf(matches[i]) === -1) {
+            seen.push(matches[i])
+            candidates.push(matches[i])
+          }
+        }
+      }
+
+      addMatches('[style*="writing-mode"]')
+      let selectors = this.writingModeRuleSelectors()
+      for (let i = 0; i < selectors.length; i++) {
+        addMatches(selectors[i])
+      }
+      if (this._writingModeRulesIncomplete) {
+        addMatches('[class]')
+      }
+      this._orthogonalWritingModeCandidates = candidates
+    }
+
+    let applied = this._orthogonalBlockSizingApplied
+    for (let i = 0; i < candidates.length; i++) {
+      let element = candidates[i]
+      let parent = element.parentElement
+      let style = this.window.getComputedStyle(element)
+      let parentStyle = parent && this.window.getComputedStyle(parent)
+      let mode = style.writingMode || style.webkitWritingMode || ''
+      let parentMode =
+        (parentStyle &&
+          (parentStyle.writingMode || parentStyle.webkitWritingMode)) ||
+        writingMode
+      let blockLevel =
+        style.display !== 'none' &&
+        style.display !== 'contents' &&
+        style.display.indexOf('inline') !== 0
+
+      if (
+        blockLevel &&
+        mode.indexOf('vertical') === 0 &&
+        parentMode.indexOf('vertical') !== 0
+      ) {
+        element.setAttribute(ORTHOGONAL_BLOCK_ATTRIBUTE, 'true')
+        applied = true
+      }
+    }
+
+    // Preserve the block's intrinsic vertical extent without inserting pages.
+    // The resulting natural width must remain the pagination source of truth.
+    this.addStylesheetCss(
+      `
+      [${ORTHOGONAL_BLOCK_ATTRIBUTE}] {
+        inline-size: max-content !important;
+        max-inline-size: ${availableInlineSize}px !important;
+      }
+      `,
+      ORTHOGONAL_BLOCK_STYLE,
+    )
+    this._orthogonalBlockSizingApplied = applied
+    this._orthogonalBlockLayoutSignature = layoutSignature
   }
 
   /**
@@ -2133,6 +2285,7 @@ class Contents {
       ':root { margin: 0 !important; }',
       PAGINATED_ROOT_STYLE,
     )
+    this.constrainOrthogonalBlocks(writingMode, Math.max(height - 20, 1))
 
     if (dir === 'rtl' && !verticalRtl) {
       this.direction(dir)
@@ -2218,9 +2371,56 @@ class Contents {
    * Fit contents into a fixed width and height
    * @param {number} width
    * @param {number} height
+   * @param {object} section
+   * @param {string} fallbackViewport
+   * @param {number} divisor
+   * @param {string} spreadSlot
    */
-  fit(width, height, section, fallbackViewport) {
+  fit(width, height, section, fallbackViewport, divisor, spreadSlot) {
     var viewport = this.viewport()
+    if (
+      (!viewport.width || !viewport.height) &&
+      section &&
+      section.type === 'image/svg+xml'
+    ) {
+      // SVG spine resources are parsed through srcdoc into a body wrapper.
+      var svg = this.content && this.content.firstElementChild
+      var viewBox =
+        svg &&
+        svg.namespaceURI === 'http://www.w3.org/2000/svg' &&
+        svg.getAttribute('viewBox')
+      var viewBoxValues =
+        viewBox &&
+        viewBox
+          .trim()
+          .split(/[\s,]+/)
+          .map(Number)
+      if (
+        viewBoxValues &&
+        viewBoxValues.length === 4 &&
+        viewBoxValues[2] > 0 &&
+        viewBoxValues[3] > 0
+      ) {
+        viewport = defaults(viewport, {
+          width: viewBoxValues[2],
+          height: viewBoxValues[3],
+        })
+      }
+    }
+    if (
+      (!viewport.width || !viewport.height) &&
+      section &&
+      section.type &&
+      section.type.indexOf('image/') === 0
+    ) {
+      var image = this.content && this.content.querySelector('img')
+      if (image && image.naturalWidth > 0 && image.naturalHeight > 0) {
+        viewport = defaults(viewport, {
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        })
+      }
+    }
     if ((!viewport.width || !viewport.height) && fallbackViewport) {
       viewport = defaults(viewport, parseViewportContent(fallbackViewport))
     }
@@ -2243,6 +2443,7 @@ class Contents {
     this.width(viewportWidth)
     this.height(viewportHeight)
     this.overflow('hidden')
+    this.css('overflow', 'hidden')
 
     // Scale to the correct size
     this.scaler(scale, 0, 0)
@@ -2255,11 +2456,28 @@ class Contents {
     )
 
     this.css('background-color', 'transparent')
-    if (section && section.properties.includes('page-spread-left')) {
-      // set margin since scale is weird
-      var marginLeft = width - viewportWidth * scale
-      this.css('margin-left', marginLeft + 'px')
+
+    var remainingWidth = Math.max(width - viewportWidth * scale, 0)
+    var remainingHeight = Math.max(height - viewportHeight * scale, 0)
+    var marginLeft = remainingWidth / 2
+    if (divisor > 1) {
+      var slot = spreadSlot
+      if (!slot && section) {
+        if (section.properties.includes('page-spread-left')) {
+          slot = 'left'
+        } else if (section.properties.includes('page-spread-right')) {
+          slot = 'right'
+        }
+      }
+
+      if (slot === 'left') {
+        marginLeft = remainingWidth
+      } else if (slot === 'right') {
+        marginLeft = 0
+      }
     }
+    this.css('margin-left', marginLeft + 'px')
+    this.css('margin-top', remainingHeight / 2 + 'px')
   }
 
   /**
@@ -2291,8 +2509,9 @@ class Contents {
   /**
    * Set the writingMode of the text
    * @param {string} [mode="horizontal-tb"] "horizontal-tb" | "vertical-rl" | "vertical-lr"
+   * @param {string} [layoutName] "reflowable" | "pre-paginated"
    */
-  writingMode(mode) {
+  writingMode(mode, layoutName) {
     let WRITING_MODE = prefixed('writing-mode')
 
     if (mode && this.documentElement) {
@@ -2310,6 +2529,13 @@ class Contents {
     let bodyMode = readWritingMode(body)
     if (bodyMode.indexOf('vertical') === 0) {
       return bodyMode
+    }
+
+    // A fixed-layout document owns an authored physical canvas. Descendant
+    // writing modes describe content inside that canvas and must not
+    // reclassify or reposition the document itself.
+    if (layoutName === 'pre-paginated') {
+      return bodyMode || documentMode
     }
 
     // Some EPUBs put writing-mode on one dominant wrapper instead of html or

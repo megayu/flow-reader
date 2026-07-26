@@ -1,6 +1,7 @@
 import { assert } from 'vitest'
 
 import IframeView from '../src/managers/views/iframe'
+import Rendition from '../src/rendition'
 import { EVENTS } from '../src/utils/constants'
 
 function createView({ pageCount = 1, direction = 'ltr', rect }) {
@@ -375,6 +376,56 @@ describe('IframeView leading background block fitting', function () {
   })
 })
 
+describe('IframeView media fitting', function () {
+  it('preserves the containing block width cap after rendition hooks', async function () {
+    const view = createView({})
+    const content = document.createElement('div')
+    const section = document.createElement('section')
+    const image = document.createElement('img')
+    const stylesheets = []
+
+    view.layout.columnWidth = 500
+    content.style.width = '500px'
+    section.style.boxSizing = 'border-box'
+    section.style.width = '100%'
+    section.style.padding = '0 40px'
+    image.setAttribute('width', '1000')
+    image.setAttribute('height', '100')
+    section.appendChild(image)
+    content.appendChild(section)
+    document.body.appendChild(content)
+    Object.defineProperty(content, 'offsetHeight', { value: 800 })
+
+    view.contents = {
+      content,
+      window,
+      addStylesheetRules(nextRules) {
+        const stylesheet = document.createElement('style')
+        stylesheet.textContent = `img { max-width: ${nextRules.img['max-width']}; }`
+        document.head.appendChild(stylesheet)
+        stylesheets.push(stylesheet)
+      },
+    }
+
+    try {
+      view.fitMediaBeforeMeasure()
+      await Rendition.prototype.adjustImages.call(
+        { _layout: view.layout },
+        view.contents,
+      )
+
+      const imageBounds = image.getBoundingClientRect()
+      const sectionBounds = section.getBoundingClientRect()
+
+      assert.equal(imageBounds.width, 420)
+      assert.isAtMost(imageBounds.right, sectionBounds.right - 40)
+    } finally {
+      stylesheets.forEach((stylesheet) => stylesheet.remove())
+      content.remove()
+    }
+  })
+})
+
 describe('IframeView trailing blank page trimming', function () {
   it('treats a two-page background-only visual section as one page', function () {
     const view = createView({})
@@ -402,6 +453,15 @@ describe('IframeView trailing blank page trimming', function () {
     const view = createView({})
     setContentRects(view, [
       { left: 500, right: 548, top: 0, bottom: 24, width: 48, height: 24 },
+    ])
+
+    assert.equal(view.trimTrailingBlankPages(1000), 500)
+  })
+
+  it('treats compact rtl content on the logical first page as one page', function () {
+    const view = createView({ direction: 'rtl' })
+    setContentRects(view, [
+      { left: 700, right: 748, top: 0, bottom: 24, width: 48, height: 24 },
     ])
 
     assert.equal(view.trimTrailingBlankPages(1000), 500)

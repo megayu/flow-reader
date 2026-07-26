@@ -5,6 +5,42 @@ import Book from '../src/book'
 import Resources from '../src/resources'
 
 describe('Resources', function () {
+  it('keeps local section resources inside the EPUB container root', async function () {
+    const resources = new Resources(
+      {},
+      {
+        rootUrl: 'https://reader.test/book/OPS/',
+        containerRootUrl: 'https://reader.test/book/',
+      },
+    )
+    const doc = new DOMParser().parseFromString(
+      `<html xmlns="http://www.w3.org/1999/xhtml"><body>
+        <img id="root" src="/media/root.jpg"/>
+        <img id="clamped" src="../../../../media/clamped.jpg"/>
+        <img id="relative" src="../images/relative.jpg"/>
+      </body></html>`,
+      'application/xhtml+xml',
+    )
+
+    await resources.resolveSectionResourceUrls(doc, {
+      href: 'Text/chapter.xhtml',
+      url: 'https://reader.test/book/OPS/Text/chapter.xhtml',
+    })
+
+    assert.equal(
+      doc.getElementById('root').getAttribute('src'),
+      'https://reader.test/book/media/root.jpg',
+    )
+    assert.equal(
+      doc.getElementById('clamped').getAttribute('src'),
+      'https://reader.test/book/media/clamped.jpg',
+    )
+    assert.equal(
+      doc.getElementById('relative').getAttribute('src'),
+      'https://reader.test/book/OPS/images/relative.jpg',
+    )
+  })
+
   it('substitutes decoded resource links for encoded manifest hrefs', function () {
     const sectionHref =
       'Text/%2A%2A%2A%2A%2A%3A%3A%2A%2A%3A%2A%3A%2A%2A%2A%3A%3A%3A%3A%2A%2A%2A%3A%2A%2A%3A%2A%3A%2A%2A%3A%3A%2A%3A%3A%2A%2A%2A%3A%2A%3A%3A%2A%2A%2A%3A%2A%2A%2A%2A%2A%2A%3A%2A%3A%3A%2A%2A%3A%3A%3A%2A%3A.xhtml'

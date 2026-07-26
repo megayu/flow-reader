@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useSnapshot } from 'valtio'
 
 import { BookTab } from '../models/reader'
+import { resolveBookSpreadPolicy } from '../readerSpreadPolicy'
 import { useSettings, useZenTypographyOverrides } from '../state'
 
 function removeUndefinedProperty<T extends Record<string, any>>(obj: T) {
@@ -17,20 +18,26 @@ function removeUndefinedProperty<T extends Record<string, any>>(obj: T) {
 }
 
 export function useTypography(tab: BookTab) {
-  const { typographyConfiguration } = useSnapshot(tab)
+  const { book, typographyConfiguration } = useSnapshot(tab)
   const [settings] = useSettings()
   const zenTypographyOverrides = useZenTypographyOverrides()
   const zenTypography = zenTypographyOverrides[tab.id]
 
   return useMemo(
     () => ({
-      spread: settings.spread,
       textAlign: settings.textAlign,
       hideEndnotes: settings.hideEndnotes,
       ...removeUndefinedProperty(typographyConfiguration ?? {}),
       ...removeUndefinedProperty(zenTypography ?? {}),
+      spread: resolveBookSpreadPolicy({
+        temporaryOverride: zenTypography?.spread,
+        perBookOverride: typographyConfiguration?.spread,
+        publicationSpread: book.metadata.spread,
+        applicationDefault: settings.spread,
+      }),
     }),
     [
+      book.metadata.spread,
       settings.hideEndnotes,
       settings.spread,
       settings.textAlign,
