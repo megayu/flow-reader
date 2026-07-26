@@ -235,6 +235,39 @@ function testVerticalOverlayPlacementStaysInsidePageAndAvoidsSelection() {
   })
 }
 
+function testContextViewLayoutClampsOutsideAnchorsToViewport() {
+  const viewportSize = 500
+  const viewSize = 160
+  const anchors = [
+    {
+      anchor: {
+        offset: -24,
+        size: 1,
+        mode: contextView.LayoutAnchorMode.ALIGN,
+        position: contextView.LayoutAnchorPosition.Before,
+      },
+      expected: 0,
+    },
+    {
+      anchor: {
+        offset: 560,
+        size: 1,
+        mode: contextView.LayoutAnchorMode.ALIGN,
+        position: contextView.LayoutAnchorPosition.After,
+      },
+      expected: viewportSize - viewSize,
+    },
+  ]
+
+  for (const { anchor, expected } of anchors) {
+    assert.strictEqual(
+      contextView.layout(viewportSize, viewSize, anchor),
+      expected,
+      'context views must remain fully inside the viewport when the anchor is outside it',
+    )
+  }
+}
+
 function testVerticalRangeRectsFollowReadingOrder() {
   assert.strictEqual(
     typeof annotation.orderRangeRectsForWritingMode,
@@ -914,6 +947,7 @@ testDuplicateIllustrationFilterKeepsRepeatedLeadingTitleArtHidden()
 testNearDocumentStartHandlesDocumentsWithoutBody()
 testChapterFindUsesTheReadingOrderStartSection()
 testVerticalOverlayPlacementStaysInsidePageAndAvoidsSelection()
+testContextViewLayoutClampsOutsideAnchorsToViewport()
 testVerticalRangeRectsFollowReadingOrder()
 testVerticalTypographyCssOverridesAuthorPunctuation()
 console.log('reader optimization tests passed')

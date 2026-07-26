@@ -39,27 +39,26 @@ export function layout(
       ? anchor.offset + anchor.size
       : anchor.offset
 
+  let offset: number
   if (anchor.position === LayoutAnchorPosition.Before) {
     if (viewSize <= viewportSize - layoutAfterAnchorBoundary) {
-      return layoutAfterAnchorBoundary // happy case, lay it out after the anchor
+      offset = layoutAfterAnchorBoundary // happy case, lay it out after the anchor
+    } else if (viewSize <= layoutBeforeAnchorBoundary) {
+      offset = layoutBeforeAnchorBoundary - viewSize // ok case, lay it out before the anchor
+    } else {
+      offset = viewportSize - viewSize // sad case, lay it over the anchor
     }
-
-    if (viewSize <= layoutBeforeAnchorBoundary) {
-      return layoutBeforeAnchorBoundary - viewSize // ok case, lay it out before the anchor
-    }
-
-    return Math.max(viewportSize - viewSize, 0) // sad case, lay it over the anchor
   } else {
     if (viewSize <= layoutBeforeAnchorBoundary) {
-      return layoutBeforeAnchorBoundary - viewSize // happy case, lay it out before the anchor
+      offset = layoutBeforeAnchorBoundary - viewSize // happy case, lay it out before the anchor
+    } else if (viewSize <= viewportSize - layoutAfterAnchorBoundary) {
+      offset = layoutAfterAnchorBoundary // ok case, lay it out after the anchor
+    } else {
+      offset = 0 // sad case, lay it over the anchor
     }
-
-    if (viewSize <= viewportSize - layoutAfterAnchorBoundary) {
-      return layoutAfterAnchorBoundary // ok case, lay it out after the anchor
-    }
-
-    return 0 // sad case, lay it over the anchor
   }
+
+  return Math.min(Math.max(offset, 0), Math.max(viewportSize - viewSize, 0))
 }
 
 interface RectLike {
