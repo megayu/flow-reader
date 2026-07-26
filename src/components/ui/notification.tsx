@@ -138,7 +138,7 @@ function NotificationToast({
             : 'text-[var(--flow-danger)]',
         )}
       />
-      <div className="min-w-0 space-y-1">
+      <div className="min-w-0 cursor-text space-y-1 select-text">
         <h2 className="text-foreground text-base leading-tight font-medium">
           {notification.title}
         </h2>
