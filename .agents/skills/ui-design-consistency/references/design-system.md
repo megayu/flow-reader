@@ -50,7 +50,7 @@ Inspect these owners and their actual consumers before introducing another patte
 | Dialog and floating surfaces         | `src/components/ui/dialog.tsx`, `popover.tsx`, `tooltip.tsx`  |
 | Product shortcuts and blocking       | `src/shortcuts.ts`, `src/keyboard.ts`                         |
 | Reader interface and page appearance | `src/components/Reader.tsx`, `src/pages/styles.css`           |
-| Theme invariants                     | `test/theme-tokens.js`                                        |
+| Theme invariants                     | `tests/unit/theme-tokens.test.ts`                             |
 
 ## Desktop Interaction Model
 
@@ -274,7 +274,8 @@ Use the 2, 4, 6, 8, 10, 12, 16, and 20 px spacing rhythm:
 - Respect the existing app/activity/sidebar/content/tab/panel/control surface
   hierarchy and use `--flow-text` / `--flow-text-muted` for text hierarchy.
 - Add a theme token only when the value is genuinely shared; generate it for all
-  supported themes and cover it in `test/theme-tokens.js` when appropriate.
+  supported themes and cover it in `tests/unit/theme-tokens.test.ts` when
+  appropriate.
 - Keep the base radius at 10 px and use derived smaller radii for compact nested
   controls. Reserve pills for badges, counters, progress, scrollbars, and established
   compact floating controls.

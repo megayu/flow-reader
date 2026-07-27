@@ -7,7 +7,7 @@ const browserChannel =
   (process.platform === 'win32' ? 'msedge' : 'chrome')
 
 export default defineConfig({
-  testDir: './test',
+  testDir: './tests/integration',
   testMatch: '**/*.spec.ts',
   outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? 'test-results',
   timeout: 30_000,
@@ -27,9 +27,9 @@ export default defineConfig({
     video: 'off',
   },
   webServer: {
-    command: `pnpm exec next dev -p ${port}`,
+    command: 'node tests/support/serve-static-export.ts',
     url: `http://${host}:${port}`,
-    reuseExistingServer: Boolean(process.env.PLAYWRIGHT_REUSE_SERVER),
+    reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
   projects: [

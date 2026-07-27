@@ -5,7 +5,9 @@
 - App code lives in `src/`: pages in `src/pages`, UI in `src/components`, hooks in `src/hooks`, reader models in `src/models`, shared app state in `src/state.ts`.
 - Translations live in `locales/`.
 - Tauri native shell and storage code lives in `src-tauri/`.
-- Workspace packages live in `packages/`; currently `packages/epubjs` is the vendored reader engine.
+- Workspace packages live in `packages/`; currently `packages/epubjs` is the internal reader engine.
+- Node-level unit tests and pure source contracts live in `tests/unit/`; mocked browser integration tests live in `tests/integration/`; shared fixtures, mocks, and test runners live in `tests/support/`.
+- Repository and release automation lives in `scripts/`; do not place tests or test-only helpers there.
 - Desktop icons live in `src-tauri/icons/`; Tauri permissions live in `src-tauri/capabilities/`.
 
 ## Commands
@@ -15,11 +17,12 @@
 - `pnpm tauri:dev` - run the desktop app with devtools enabled.
 - `pnpm lint` - run ESLint across app, locale, script, repository skill, and test files.
 - `pnpm build` - run the production Next.js build.
-- `pnpm check` - run theme/reader optimization tests, lint, and build.
-- `pnpm test:smoke` - run the app smoke suite.
-- `pnpm exec playwright test <spec>` - run targeted Playwright tests; set `PLAYWRIGHT_PORT` if 7127 is busy.
+- `pnpm check` - run Node-level tests, formatting, lint, type checks, and the production web build.
+- `pnpm test:unit` - run Node-level unit tests and pure source contracts.
+- `pnpm test:integration` - run mocked browser integration tests.
+- `pnpm exec playwright test <spec>` - run one Playwright spec under `tests/integration/`; set `PLAYWRIGHT_PORT` if 7127 is busy.
 - `pnpm doctor:lines` - run after non-trivial React component/hook changes to catch render, hook, and state-flow issues on changed lines.
-- `pnpm --filter @flow/epubjs test` - run the vendored EPUB engine Vitest Browser Mode suite in headless Chromium.
+- `pnpm --filter @flow/epubjs test` - run the internal EPUB engine Vitest Browser Mode suite in headless Chromium.
 - `cargo test --manifest-path src-tauri/Cargo.toml` - run native storage/Tauri tests.
 
 ## Repository Skills
@@ -31,7 +34,7 @@
 ## Coding Style & Naming Conventions
 
 - TypeScript-first; prefer `.ts` and `.tsx` files.
-- Prettier enforces 2-space indentation, single quotes, trailing commas, and no semicolons (`prettier.config.js`).
+- Prettier enforces 2-space indentation, single quotes, trailing commas, and no semicolons (`prettier.config.ts`).
 - ESLint extends Next.js defaults; fix warnings instead of suppressing unless documented.
 - Components use PascalCase, hooks use camelCase with a `use` prefix, route files follow path-based kebab-case.
 - Code comments must explain durable behavior, constraints, or non-obvious decisions; never include session context, revision history.

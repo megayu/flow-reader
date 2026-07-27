@@ -27,6 +27,6 @@
       "@flow/epubjs/*": ["./packages/epubjs/*"]
     }
   },
-  "include": ["next-env.d.ts", "src", "locales"],
+  "include": ["next-env.d.ts", "next.config.ts", "src", "locales"],
   "exclude": ["node_modules"]
 }

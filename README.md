@@ -78,7 +78,11 @@ make the app progressively heavier.
 - `src/` - Next.js/React reader UI
 - `src-tauri/` - Tauri shell, native commands, storage, import, and search
 - `locales/` - application translations
-- `packages/epubjs/` - vendored EPUB rendering engine
+- `packages/epubjs/` - internal EPUB rendering engine
+- `tests/unit/` - Node-level unit tests and pure source contracts
+- `tests/integration/` - browser integration tests with the Tauri API mocked
+- `tests/support/` - shared browser mocks and test runners
+- `scripts/` - repository and release automation; tests do not live here
 
 ## Development
 
@@ -109,10 +113,17 @@ Run the source checks and production frontend build:
 pnpm check
 ```
 
-For a focused browser smoke test:
+Run an individual test layer:
 
 ```bash
-pnpm test:smoke
+pnpm test:unit
+pnpm test:integration
+```
+
+Run one Playwright spec:
+
+```bash
+pnpm exec playwright test tests/integration/ui-interaction.spec.ts
 ```
 
 Run the complete browser, EPUB engine, and native quality and test suite:
