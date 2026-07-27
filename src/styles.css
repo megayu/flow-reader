@@ -1,6 +1,6 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import '../styles/shadcn.css';
+@import './styles/shadcn.css';
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
@@ -53,7 +53,7 @@
 
 html,
 body,
-#__next,
+#root,
 #layout {
   height: 100%;
   overflow: hidden;

@@ -1,27 +1,39 @@
 import { defineConfig, globalIgnores } from 'eslint/config'
-import nextVitals from 'eslint-config-next/core-web-vitals'
-import nextTs from 'eslint-config-next/typescript'
 import prettier from 'eslint-config-prettier'
 import importPlugin from 'eslint-plugin-import'
+import react from 'eslint-plugin-react'
+import reactHooks from 'eslint-plugin-react-hooks'
+import globals from 'globals'
+import tseslint from 'typescript-eslint'
 
 export default defineConfig([
-  ...nextVitals,
-  ...nextTs,
   {
-    files: ['**/*.{js,jsx,ts,tsx}'],
-    plugins: {
-      import: importPlugin,
-    },
     settings: {
-      next: {
-        rootDir: '.',
+      react: {
+        version: 'detect',
       },
     },
+  },
+  ...tseslint.configs.recommended,
+  react.configs.flat.recommended,
+  react.configs.flat['jsx-runtime'],
+  {
+    files: ['**/*.{js,jsx,ts,tsx}'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
+    },
+    plugins: {
+      import: importPlugin,
+      'react-hooks': reactHooks,
+    },
     rules: {
-      '@next/next/no-html-link-for-pages': 'off',
-      '@next/next/no-img-element': 'off',
       'react/jsx-key': 'off',
       'react/no-children-prop': 'off',
+      'react/prop-types': 'off',
+      'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': [
@@ -57,12 +69,15 @@ export default defineConfig([
             'sibling',
             'index',
           ],
-          pathGroups: [{ pattern: '@flow/**', group: 'internal' }],
+          pathGroups: [
+            { pattern: '@/**', group: 'internal' },
+            { pattern: '@flow/**', group: 'internal' },
+          ],
           pathGroupsExcludedImportTypes: ['builtin'],
         },
       ],
     },
   },
   prettier,
-  globalIgnores(['.next/**', 'out/**', 'build/**', 'next-env.d.ts']),
+  globalIgnores(['dist/**', 'release/**', 'build/**']),
 ])

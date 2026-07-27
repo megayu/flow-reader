@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 
-import locales, { defaultLocale } from '../../locales'
+import locales, { defaultLocale } from '../locales'
 
 import { useLocale } from './useLocale'
 

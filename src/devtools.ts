@@ -1,4 +1,4 @@
-let devtoolsShortcutEnabled = process.env.NODE_ENV !== 'production'
+let devtoolsShortcutEnabled = import.meta.env.DEV
 let devtoolsShortcutEnabledPromise: Promise<boolean> | undefined
 
 export function isDevtoolsShortcutEnabled() {
@@ -6,7 +6,7 @@ export function isDevtoolsShortcutEnabled() {
 }
 
 export async function loadDevtoolsShortcutEnabled() {
-  if (process.env.NODE_ENV !== 'production') {
+  if (import.meta.env.DEV) {
     devtoolsShortcutEnabled = true
     return true
   }

@@ -1,14 +1,12 @@
 # Dependencies
 node_modules/
 
-# Next.js and TypeScript
-/.next/
-/out/
-/next-env.d.ts
+# Frontend build and TypeScript
+/dist/
 *.tsbuildinfo
 
 # Local desktop release
-/dist/
+/release/
 
 # Tests and measurements
 /test-results/

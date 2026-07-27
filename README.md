@@ -75,14 +75,10 @@ make the app progressively heavier.
 
 ## Project Structure
 
-- `src/` - Next.js/React reader UI
+- `src/` - Vite/React reader UI
 - `src-tauri/` - Tauri shell, native commands, storage, import, and search
-- `locales/` - application translations
 - `packages/epubjs/` - internal EPUB rendering engine
-- `tests/unit/` - Node-level unit tests and pure source contracts
-- `tests/integration/` - browser integration tests with the Tauri API mocked
-- `tests/support/` - shared browser mocks and test runners
-- `scripts/` - repository and release automation; tests do not live here
+- `tests/` - unit and browser integration tests
 
 ## Development
 
@@ -144,4 +140,4 @@ pnpm tauri:build
 - [epub.js](https://github.com/futurepress/epub.js/)
 - [Tauri](https://tauri.app/)
 - [React](https://github.com/facebook/react)
-- [Next.js](https://nextjs.org/)
+- [Vite](https://vite.dev/)

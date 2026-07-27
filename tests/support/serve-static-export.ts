@@ -7,7 +7,7 @@ import buildStaticExport from './build-static-export.ts'
 
 const port = Number(process.env.PLAYWRIGHT_PORT ?? 7127)
 const host = process.env.PLAYWRIGHT_HOST ?? 'localhost'
-const exportRoot = resolve('out')
+const exportRoot = resolve('dist')
 const exportRootPrefix = `${exportRoot}${sep}`
 const contentTypes: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',

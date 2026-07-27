@@ -3,7 +3,6 @@ import { create } from 'zustand'
 
 import { RenditionSpread } from '@flow/epubjs/types/rendition'
 import { IS_SERVER } from '@flow/reader/env'
-import { AppLocale } from '@flow/reader/locales'
 import {
   normalizeThemeConfiguration,
   type ThemeConfiguration,
@@ -16,6 +15,7 @@ import {
   type BookSourceStorage,
   type ReadingStatus,
 } from './db'
+import { AppLocale } from './locales'
 import {
   TRANSLATION_LANGUAGES,
   type TranslationLanguage,

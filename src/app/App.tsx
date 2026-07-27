@@ -24,8 +24,6 @@ import {
   UserRound,
   type LucideIcon,
 } from 'lucide-react'
-import Head from 'next/head'
-import { useRouter } from 'next/router'
 import React, {
   useCallback,
   useEffect,
@@ -525,7 +523,6 @@ function IndexContent() {
     useRef<ReturnType<typeof setupNativeOpenFiles>>(undefined)
   const nativeOpenCleanupRef = useRef<() => void>(undefined)
   const startupRestoreStartedRef = useRef(false)
-  const router = useRouter()
   const [startupRestoreDone, setStartupRestoreDone] = useState(false)
   const [nativeStartupPending, setNativeStartupPending] = useState(false)
   const [nativeStartupReaderFailed, setNativeStartupReaderFailed] =
@@ -672,15 +669,6 @@ function IndexContent() {
   useEffect(() => {
     viewModeRef.current = viewMode
   }, [viewMode])
-
-  useEffect(() => {
-    router.beforePopState(({ url }) => {
-      if (url === '/') {
-        reader.clear()
-      }
-      return true
-    })
-  }, [router])
 
   const startNativeOpenSetup = useEffectEvent(() =>
     setupNativeOpenFiles({
@@ -843,9 +831,6 @@ function IndexContent() {
 
   return (
     <>
-      <Head>
-        <title>Flow Reader</title>
-      </Head>
       {startupRestoreDone && groups.length ? (
         <ReaderGridView
           content={viewMode === 'library' ? library : undefined}

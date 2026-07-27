@@ -2,28 +2,19 @@
 
 ## Project Structure
 
-- App code lives in `src/`: pages in `src/pages`, UI in `src/components`, hooks in `src/hooks`, reader models in `src/models`, shared app state in `src/state.ts`.
-- Translations live in `locales/`.
+- App code lives in `src/`; `src/main.tsx` mounts the application from `src/app`.
 - Tauri native shell and storage code lives in `src-tauri/`.
-- Workspace packages live in `packages/`; currently `packages/epubjs` is the internal reader engine.
+- `packages/epubjs` is the internal EPUB rendering engine.
 - Node-level unit tests and pure source contracts live in `tests/unit/`; mocked browser integration tests live in `tests/integration/`; shared fixtures, mocks, and test runners live in `tests/support/`.
-- Repository and release automation lives in `scripts/`; do not place tests or test-only helpers there.
-- Desktop icons live in `src-tauri/icons/`; Tauri permissions live in `src-tauri/capabilities/`.
+- Keep tests and test-only helpers under `tests/`, not `scripts/`.
 
 ## Commands
 
-- `pnpm install` - install dependencies after checkout or lockfile/package changes.
-- `pnpm dev` - run the Next.js app on port 7127.
-- `pnpm tauri:dev` - run the desktop app with devtools enabled.
-- `pnpm lint` - run ESLint across app, locale, script, repository skill, and test files.
-- `pnpm build` - run the production Next.js build.
-- `pnpm check` - run Node-level tests, formatting, lint, type checks, and the production web build.
-- `pnpm test:unit` - run Node-level unit tests and pure source contracts.
-- `pnpm test:integration` - run mocked browser integration tests.
+- `pnpm check` runs the standard web validation suite; `pnpm check:full` also runs the EPUB engine, Rust, and browser integration suites.
 - `pnpm exec playwright test <spec>` - run one Playwright spec under `tests/integration/`; set `PLAYWRIGHT_PORT` if 7127 is busy.
 - `pnpm doctor:lines` - run after non-trivial React component/hook changes to catch render, hook, and state-flow issues on changed lines.
 - `pnpm --filter @flow/epubjs test` - run the internal EPUB engine Vitest Browser Mode suite in headless Chromium.
-- `cargo test --manifest-path src-tauri/Cargo.toml` - run native storage/Tauri tests.
+- `pnpm rust:test` - run native storage/Tauri tests.
 
 ## Repository Skills
 
@@ -34,9 +25,8 @@
 ## Coding Style & Naming Conventions
 
 - TypeScript-first; prefer `.ts` and `.tsx` files.
-- Prettier enforces 2-space indentation, single quotes, trailing commas, and no semicolons (`prettier.config.ts`).
-- ESLint extends Next.js defaults; fix warnings instead of suppressing unless documented.
-- Components use PascalCase, hooks use camelCase with a `use` prefix, route files follow path-based kebab-case.
+- Fix lint warnings instead of suppressing them unless the exception is documented.
+- Components use PascalCase; hooks use camelCase with a `use` prefix.
 - Code comments must explain durable behavior, constraints, or non-obvious decisions; never include session context, revision history.
 
 ## UI Guidelines
@@ -45,7 +35,7 @@
 
 ## Testing Guidelines
 
-- Prefer targeted automated checks for changed behavior: Playwright for UI flows, `pnpm lint` for TS/React rules, `pnpm build` for production type/build coverage.
+- Run the smallest relevant checks during iteration, then use `pnpm check` for standard web validation or `pnpm check:full` when the EPUB engine, native code, or browser integration is affected.
 - Use synthetic fixture text in tests; do not copy book text, user-provided context, or investigation-specific prose into test cases unless the exact text is required to reproduce a parser or encoding bug.
 - Keep test fixtures platform-neutral. Do not use Windows- or Unix-specific drive letters, absolute paths, path separators, shell syntax, or other operating-system characteristics unless the test explicitly verifies platform-specific path handling or system integration.
 - For reader rendering, selection, keyboard, layout, or performance-sensitive changes, use the repository skills above to choose the required client checks.

@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const rootDir = resolve(scriptDir, '..')
 const targetDir = join(rootDir, 'src-tauri', 'target', 'release')
-const distDir = join(rootDir, 'dist')
+const releaseDir = join(rootDir, 'release')
 const localReleaseCargoProfile = {
   CARGO_PROFILE_RELEASE_OPT_LEVEL: '3',
   CARGO_PROFILE_RELEASE_LTO: 'true',
@@ -112,10 +112,10 @@ function findReleaseBinary() {
 
 runPnpmScript('tauri:build')
 
-mkdirSync(distDir, { recursive: true })
+mkdirSync(releaseDir, { recursive: true })
 
 const sourceBinary = findReleaseBinary()
-const destinationBinary = join(distDir, basename(sourceBinary))
+const destinationBinary = join(releaseDir, basename(sourceBinary))
 
 rmSync(destinationBinary, { force: true })
 renameSync(sourceBinary, destinationBinary)

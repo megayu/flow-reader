@@ -7,7 +7,6 @@ import { openSupportedExternalUrl } from '@flow/reader/externalLink'
 import { useAccentColor } from '@flow/reader/hooks/theme/useSourceColor'
 import { useLocale } from '@flow/reader/hooks/useLocale'
 import { useTranslation } from '@flow/reader/hooks/useTranslation'
-import { AppLocale, localeNames } from '@flow/reader/locales'
 import { createShortcutGroups } from '@flow/reader/shortcuts'
 import { defaultTextImportRules, useSettings } from '@flow/reader/state'
 import {
@@ -21,6 +20,7 @@ import {
   type TranslationLanguage,
 } from '@flow/reader/translation/languages'
 
+import { AppLocale, localeNames } from '../../locales'
 import { ColorPickerPopover, normalizeHexColor } from '../ColorPickerPopover'
 import { LocalDictionarySettings } from '../LocalDictionarySettings'
 import { ShortcutChord } from '../ShortcutChord'

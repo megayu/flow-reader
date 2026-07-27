@@ -1,5 +1,5 @@
-import en_US from '../locales/en-US'
-import zh_CN from '../locales/zh-CN'
+import en_US from './en-US'
+import zh_CN from './zh-CN'
 
 // Locale display names
 export const localeNames: Record<string, string> = {

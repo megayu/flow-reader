@@ -5,7 +5,7 @@ import {
   defaultLocale,
   isAppLocale,
   localeOptions,
-} from '../../locales'
+} from '../locales'
 import { useSettings, useSettingsReady } from '../state'
 
 function getBaseLanguage(locale: string) {

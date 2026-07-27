@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "display": "Next.js",
+  "display": "Vite",
   "compilerOptions": {
     "target": "ES2020",
     "lib": ["dom", "dom.iterable", "esnext"],
@@ -16,6 +16,7 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "strict": true,
+    "types": ["vite/client"],
     "experimentalDecorators": true,
     "noUncheckedIndexedAccess": true,
     "noUnusedLocals": false,
@@ -23,10 +24,9 @@
     "paths": {
       "@/*": ["./src/*"],
       "@flow/reader/*": ["./src/*"],
-      "@flow/reader/locales": ["./locales/index.ts"],
       "@flow/epubjs/*": ["./packages/epubjs/*"]
     }
   },
-  "include": ["next-env.d.ts", "next.config.ts", "src", "locales"],
+  "include": ["vite.config.ts", "src"],
   "exclude": ["node_modules"]
 }
