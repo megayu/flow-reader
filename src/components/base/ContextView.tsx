@@ -19,8 +19,6 @@ interface ILayoutAnchor {
 }
 
 /**
- * {@link ./ContextView.excalidraw}
- *
  * Lays out a one dimensional view next to an anchor in a viewport.
  *
  * @returns The view offset within the viewport.
