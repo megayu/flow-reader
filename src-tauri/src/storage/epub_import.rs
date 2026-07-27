@@ -950,6 +950,8 @@ fn local_body_content_range(xhtml: &str) -> Option<(usize, usize)> {
     Some((body_content_start, body_content_end))
 }
 
+// Split planning keeps path, navigation, and ID inputs explicit so their invariants remain visible.
+#[allow(clippy::too_many_arguments)]
 fn plan_split_section(
     xhtml: &str,
     item: &OpfManifestItem,
@@ -1359,7 +1361,7 @@ pub(super) fn relative_zip_path(from_parent: &str, target: &str) -> String {
     }
 
     let mut relative = Vec::new();
-    relative.extend(std::iter::repeat("..").take(from.len() - common));
+    relative.extend(std::iter::repeat_n("..", from.len() - common));
     relative.extend(target_parts.iter().skip(common).copied());
     relative.join("/")
 }
@@ -1868,9 +1870,7 @@ fn parse_separated_publication_date(text: &str, index: usize) -> Option<String> 
         return Some(format!("{year}-{month:02}"));
     };
 
-    if next == '月' {
-        cursor += next.len_utf8();
-    } else if is_publication_date_separator(next) {
+    if next == '月' || is_publication_date_separator(next) {
         cursor += next.len_utf8();
     } else {
         return Some(format!("{year}-{month:02}"));
@@ -2406,6 +2406,8 @@ pub(super) fn import_epub_path_impl(
         }
     };
 
+    // These values move once through import control flow; boxing would add avoidable allocations.
+    #[allow(clippy::large_enum_variant)]
     enum ImportDecision {
         Existing(BookRecord),
         Commit {
@@ -2733,6 +2735,8 @@ pub(super) fn open_external_epub_path_impl(
     let access = inspect_epub_access(&source_path)?;
     let hash = hash_file(&source_path)?;
 
+    // These values move once through open control flow; boxing would add avoidable allocations.
+    #[allow(clippy::large_enum_variant)]
     enum OpenDecision {
         Library(BookRecord),
         External { book: ExternalBook, is_new: bool },

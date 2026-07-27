@@ -788,7 +788,7 @@ fn remove_doctype_declaration(value: &str) -> String {
     let after_start = &value[start..];
     let end = if let Some(internal_subset_start) = after_start.find('[') {
         let first_tag_end = after_start.find('>');
-        if first_tag_end.map_or(true, |index| internal_subset_start < index) {
+        if first_tag_end.is_none_or(|index| internal_subset_start < index) {
             after_start
                 .find("]>")
                 .map(|index| start + index + 2)
@@ -960,11 +960,12 @@ pub(super) fn search_text_in_cache(
         }
         let mut previous_folded_byte_offset = 0usize;
         let mut folded_char_offset = 0usize;
-        let mut occurrence = 0usize;
         let mut subitems = Vec::new();
         let mut text_chars = None;
 
-        for (folded_byte_offset, _) in folded_text.match_indices(&folded_keyword) {
+        for (occurrence, (folded_byte_offset, _)) in
+            folded_text.match_indices(&folded_keyword).enumerate()
+        {
             let locate_started = diagnostics_enabled.then(Instant::now);
             folded_char_offset += folded_text[previous_folded_byte_offset..folded_byte_offset]
                 .chars()
@@ -1001,7 +1002,6 @@ pub(super) fn search_text_in_cache(
             });
 
             total += 1;
-            occurrence += 1;
             if limit.is_some_and(|limit| total >= limit) {
                 break;
             }

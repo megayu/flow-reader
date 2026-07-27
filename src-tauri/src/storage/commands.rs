@@ -37,17 +37,17 @@ fn spawn_directory_command(program: &str, path: &Path) -> Result<(), String> {
 fn open_directory_in_file_manager(path: &Path) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        return spawn_directory_command("explorer", path);
+        spawn_directory_command("explorer", path)
     }
 
     #[cfg(target_os = "macos")]
     {
-        return spawn_directory_command("open", path);
+        spawn_directory_command("open", path)
     }
 
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        return spawn_directory_command("xdg-open", path);
+        spawn_directory_command("xdg-open", path)
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", unix)))]
@@ -60,22 +60,22 @@ fn open_directory_in_file_manager(path: &Path) -> Result<(), String> {
 fn reveal_file_in_file_manager(path: &Path) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        return Command::new("explorer")
+        Command::new("explorer")
             .arg("/select,")
             .arg(path)
             .spawn()
             .map(|_| ())
-            .map_err(|error| format!("failed to reveal file: {error}"));
+            .map_err(|error| format!("failed to reveal file: {error}"))
     }
 
     #[cfg(target_os = "macos")]
     {
-        return Command::new("open")
+        Command::new("open")
             .args(["-R"])
             .arg(path)
             .spawn()
             .map(|_| ())
-            .map_err(|error| format!("failed to reveal file: {error}"));
+            .map_err(|error| format!("failed to reveal file: {error}"))
     }
 
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -83,7 +83,7 @@ fn reveal_file_in_file_manager(path: &Path) -> Result<(), String> {
         let Some(parent) = path.parent() else {
             return Err("source file has no parent directory".to_string());
         };
-        return spawn_directory_command("xdg-open", parent);
+        spawn_directory_command("xdg-open", parent)
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", unix)))]
@@ -726,15 +726,12 @@ pub(super) fn preview_text_import_paths_impl(
                 let queue = Arc::clone(&queue);
                 let results = Arc::clone(&results);
                 let encodings = &encodings;
-                let storage = storage;
-                let tasks = tasks;
                 scope.spawn(move || loop {
                     let item = queue.lock().ok().and_then(|mut queue| queue.pop_front());
                     let Some((index, path)) = item else {
                         break;
                     };
-                    let preview =
-                        preview_text_import_path(storage, tasks, &path, &encodings, rules);
+                    let preview = preview_text_import_path(storage, tasks, &path, encodings, rules);
                     if let Ok(mut results) = results.lock() {
                         results[index] = Some(preview);
                     }
@@ -912,8 +909,6 @@ fn import_text_paths_with_pipeline(
         for _ in 0..workers {
             let queue = Arc::clone(&queue);
             let sender = sender.clone();
-            let storage = storage;
-            let tasks = tasks;
             scope.spawn(move || loop {
                 let item = queue.lock().ok().and_then(|mut queue| queue.pop_front());
                 let Some((index, import)) = item else {

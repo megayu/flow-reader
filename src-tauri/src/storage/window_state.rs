@@ -160,7 +160,7 @@ fn restorable_bounds_for_monitors(state: &WindowState, monitors: &[MonitorBounds
     }
 
     center_bounds(
-        preferred_monitor(&monitors),
+        preferred_monitor(monitors),
         saved.width.min(DEFAULT_RESTORED_WINDOW_WIDTH),
         saved.height.min(DEFAULT_RESTORED_WINDOW_HEIGHT),
     )
@@ -211,6 +211,8 @@ fn default_centered_window_state_from_monitors(monitors: &[MonitorBounds]) -> Wi
 }
 
 #[cfg(test)]
+// Platform monitor adapters stay below the pure state tests to keep OS calls out of test setup.
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
 

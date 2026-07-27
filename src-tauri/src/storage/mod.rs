@@ -357,17 +357,12 @@ impl SourceStorage {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum BookContentMode {
+    #[default]
     Normal,
     ArchiveOnly,
-}
-
-impl Default for BookContentMode {
-    fn default() -> Self {
-        Self::Normal
-    }
 }
 
 impl BookContentMode {
@@ -2611,10 +2606,7 @@ fn generated_txt_source_update_streaming(
         if let Some(mut line) = decode_source_line(&bytes, &encoding, first_line)? {
             line.offset = line.offset.saturating_add(line_offset);
             if !inside_target_section {
-                if target_heading_candidates
-                    .iter()
-                    .any(|heading| line.text == *heading)
-                {
+                if target_heading_candidates.contains(&line.text) {
                     if matching_heading_occurrences_before > 0 {
                         matching_heading_occurrences_before -= 1;
                     } else {
@@ -6913,6 +6905,8 @@ mod tests {
         );
     }
 
+    // The parameters describe one synthetic EPUB layout and remain explicit at each call site.
+    #[allow(clippy::too_many_arguments)]
     fn assert_minified_large_ncx_anchored_spine_section_normalizes(
         opf_dir_segments: &[&str],
         opf_file: &str,

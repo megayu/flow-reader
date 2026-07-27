@@ -75,29 +75,29 @@ fn valid_external_url(url: &str) -> bool {
 fn spawn_external_url_command(url: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        return Command::new("rundll32")
+        Command::new("rundll32")
             .args(["url.dll,FileProtocolHandler", url])
             .spawn()
             .map(|_| ())
-            .map_err(|error| format!("failed to open external URL: {error}"));
+            .map_err(|error| format!("failed to open external URL: {error}"))
     }
 
     #[cfg(target_os = "macos")]
     {
-        return Command::new("open")
+        Command::new("open")
             .arg(url)
             .spawn()
             .map(|_| ())
-            .map_err(|error| format!("failed to open external URL: {error}"));
+            .map_err(|error| format!("failed to open external URL: {error}"))
     }
 
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        return Command::new("xdg-open")
+        Command::new("xdg-open")
             .arg(url)
             .spawn()
             .map(|_| ())
-            .map_err(|error| format!("failed to open external URL: {error}"));
+            .map_err(|error| format!("failed to open external URL: {error}"))
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", unix)))]
@@ -366,10 +366,7 @@ mod system_fonts {
         let mut name = strip_font_extension(name.trim().trim_matches('"')).to_string();
         name = expand_compact_family_name(&name);
 
-        loop {
-            let Some(cleaned) = strip_style_suffix(&name) else {
-                break;
-            };
+        while let Some(cleaned) = strip_style_suffix(&name) {
             name = cleaned;
         }
 

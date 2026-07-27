@@ -41,7 +41,11 @@ async function main() {
         chapter === deepChapterCount
           ? deepTargetParagraph
           : `深章节性能验证第${chapter}章保持不变。`
-      return [`第${String(chapter).padStart(3, '0')}章 深章节${chapter}`, paragraph, '']
+      return [
+        `第${String(chapter).padStart(3, '0')}章 深章节${chapter}`,
+        paragraph,
+        '',
+      ]
     })
       .flat()
       .join('\n'),
@@ -120,7 +124,8 @@ async function main() {
   )
   const deepSourceText = fs.readFileSync(deepSourcePath, 'utf8')
   assert(
-    deepSourceText.includes(deepNewText) && !deepSourceText.includes(deepOldText),
+    deepSourceText.includes(deepNewText) &&
+      !deepSourceText.includes(deepOldText),
     'deep source.txt did not update',
     { deepSourcePath },
   )

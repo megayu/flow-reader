@@ -793,11 +793,11 @@ async function verifyKnownChapterTitleFinds(page, title, screenshotFile) {
         { chapter: '偷桃', query: '偷' },
         { chapter: '勞山道士', query: '道士', startAtLastPage: true },
       ]
-      : title.includes('史記')
-        ? [
-            { chapter: '秦始皇本紀第六', query: '史記' },
-            { chapter: '秦始皇本紀第六', query: '秦始皇' },
-          ]
+    : title.includes('史記')
+      ? [
+          { chapter: '秦始皇本紀第六', query: '史記' },
+          { chapter: '秦始皇本紀第六', query: '秦始皇' },
+        ]
       : []
   const results = []
 
@@ -884,7 +884,8 @@ async function verifyKnownChapterTitleFinds(page, title, screenshotFile) {
       { count: match.count, ordinal: initialIndex + 1 },
     )
     assert(
-      (await bar.locator('button').nth(0).isDisabled()) === (initialIndex === 0),
+      (await bar.locator('button').nth(0).isDisabled()) ===
+        (initialIndex === 0),
       'previous title match boundary state is incorrect',
       { item, match },
     )
@@ -933,12 +934,7 @@ async function verifyKnownChapterTitleFinds(page, title, screenshotFile) {
   return { applicable: results.length > 0, results }
 }
 
-async function verifyChapterFindPageTurnMode(
-  page,
-  spreadMode,
-  chapter,
-  query,
-) {
+async function verifyChapterFindPageTurnMode(page, spreadMode, chapter, query) {
   await page.evaluate((spread) => {
     const tab = window.reader.focusedBookTab
     tab.updateBook({
@@ -957,43 +953,46 @@ async function verifyChapterFindPageTurnMode(
     spreadMode === 'none' ? 1 : 2,
   )
 
-  const prepared = await page.evaluate(async ({ chapter, query }) => {
-    const tab = window.reader.focusedBookTab
-    const flatten = (items) =>
-      items.flatMap((entry) => [entry, ...flatten(entry.subitems ?? [])])
-    const navItem = flatten(tab.nav.toc).find(
-      (entry) => entry.label.trim() === chapter,
-    )
-    if (!navItem) throw new Error(`Missing chapter ${chapter}`)
-    const section = tab.epub.spine.get(navItem.href)
-    await tab.displaySectionStart(section)
-    const matches = section.find(query)
-    const pageIndexes = await Promise.all(
-      matches.map((match) => tab.pageIndexForCfi(section.index, match.cfi)),
-    )
-    const manager = tab.rendition.manager
-    const visiblePages = [
-      manager.currentReflowableSpread?.right,
-      manager.currentReflowableSpread?.left,
-    ]
-      .filter((address) => address?.section?.index === section.index)
-      .map((address) => address.pageIndex)
-    const initialIndex = pageIndexes.findIndex((pageIndex) =>
-      visiblePages.includes(pageIndex),
-    )
-    const firstOffPageIndex = pageIndexes.findIndex(
-      (pageIndex, index) =>
-        index > initialIndex && !visiblePages.includes(pageIndex),
-    )
-    return {
-      count: matches.length,
-      firstOffPageIndex,
-      initialIndex,
-      pageIndexes,
-      sectionIndex: section.index,
-      visiblePages,
-    }
-  }, { chapter, query })
+  const prepared = await page.evaluate(
+    async ({ chapter, query }) => {
+      const tab = window.reader.focusedBookTab
+      const flatten = (items) =>
+        items.flatMap((entry) => [entry, ...flatten(entry.subitems ?? [])])
+      const navItem = flatten(tab.nav.toc).find(
+        (entry) => entry.label.trim() === chapter,
+      )
+      if (!navItem) throw new Error(`Missing chapter ${chapter}`)
+      const section = tab.epub.spine.get(navItem.href)
+      await tab.displaySectionStart(section)
+      const matches = section.find(query)
+      const pageIndexes = await Promise.all(
+        matches.map((match) => tab.pageIndexForCfi(section.index, match.cfi)),
+      )
+      const manager = tab.rendition.manager
+      const visiblePages = [
+        manager.currentReflowableSpread?.right,
+        manager.currentReflowableSpread?.left,
+      ]
+        .filter((address) => address?.section?.index === section.index)
+        .map((address) => address.pageIndex)
+      const initialIndex = pageIndexes.findIndex((pageIndex) =>
+        visiblePages.includes(pageIndex),
+      )
+      const firstOffPageIndex = pageIndexes.findIndex(
+        (pageIndex, index) =>
+          index > initialIndex && !visiblePages.includes(pageIndex),
+      )
+      return {
+        count: matches.length,
+        firstOffPageIndex,
+        initialIndex,
+        pageIndexes,
+        sectionIndex: section.index,
+        visiblePages,
+      }
+    },
+    { chapter, query },
+  )
   assert(
     prepared.initialIndex >= 0 &&
       prepared.firstOffPageIndex > prepared.initialIndex,

@@ -74,13 +74,21 @@ function assertPromotedOnDisk({
   assert(imported.scope === 'library', 'imported book is not a library book', {
     imported,
   })
-  assert(imported.id !== external.id, 'external id was reused for library book', {
-    imported,
-    external,
-  })
-  assert(fs.existsSync(path.join(bookDir, 'book.epub')), 'library EPUB is missing', {
-    bookDir,
-  })
+  assert(
+    imported.id !== external.id,
+    'external id was reused for library book',
+    {
+      imported,
+      external,
+    },
+  )
+  assert(
+    fs.existsSync(path.join(bookDir, 'book.epub')),
+    'library EPUB is missing',
+    {
+      bookDir,
+    },
+  )
   assert(
     !fs.existsSync(path.join(DATA_DIR, 'external-books', external.id)),
     'external book directory still exists',
@@ -102,9 +110,13 @@ function assertPromotedOnDisk({
     metadata,
     expectedTitle,
   })
-  assert(metadata.clientPromotionMarker === 'kept', 'metadata marker was lost', {
-    metadata,
-  })
+  assert(
+    metadata.clientPromotionMarker === 'kept',
+    'metadata marker was lost',
+    {
+      metadata,
+    },
+  )
 
   const state = readJson(path.join(bookDir, 'state.json'), {})
   if (expectedCfi) {
@@ -123,7 +135,8 @@ function assertPromotedOnDisk({
     state,
   )
   assert(
-    Array.isArray(state.definitions) && state.definitions.includes('client-term'),
+    Array.isArray(state.definitions) &&
+      state.definitions.includes('client-term'),
     'definitions were not migrated',
     state,
   )
@@ -136,20 +149,32 @@ function assertPromotedOnDisk({
     'annotations were not migrated to the library book id',
     state,
   )
-  assert(state.configuration?.theme === 'sepia', 'configuration was not migrated', {
-    state,
-  })
+  assert(
+    state.configuration?.theme === 'sepia',
+    'configuration was not migrated',
+    {
+      state,
+    },
+  )
 }
 
 async function createExternal(page, epubPath, title, cfi) {
   const openResult = await invoke(page, 'open_external_epub_paths', {
     paths: [epubPath],
   })
-  assert(openResult.failures.length === 0, 'open external EPUB failed', openResult)
-  const external = openResult.books[0]
-  assert(external?.scope === 'external', 'open did not create an external book', {
+  assert(
+    openResult.failures.length === 0,
+    'open external EPUB failed',
     openResult,
-  })
+  )
+  const external = openResult.books[0]
+  assert(
+    external?.scope === 'external',
+    'open did not create an external book',
+    {
+      openResult,
+    },
+  )
 
   const updated = await invoke(page, 'update_book', {
     id: external.id,
@@ -166,10 +191,14 @@ async function createExternal(page, epubPath, title, cfi) {
       configuration: { theme: 'sepia', spread: { page: 2 } },
     },
   })
-  assert(updated?.id === external.id, 'external update did not return the book', {
-    updated,
-    external,
-  })
+  assert(
+    updated?.id === external.id,
+    'external update did not return the book',
+    {
+      updated,
+      external,
+    },
+  )
   await invoke(page, 'flush_storage')
   return updated
 }
@@ -184,9 +213,10 @@ async function importAndVerify(page, external, epubPath, title, cfi) {
   const imported = importResult.books[0]
   assert(imported?.id, 'import did not return a book', importResult)
 
-  await page.evaluate((books) => window.reader.promoteExternalBooks(books), [
-    imported,
-  ])
+  await page.evaluate(
+    (books) => window.reader.promoteExternalBooks(books),
+    [imported],
+  )
   await invoke(page, 'flush_storage')
 
   const tabState = await page.evaluate(
@@ -195,7 +225,8 @@ async function importAndVerify(page, external, epubPath, title, cfi) {
       return {
         matchingLibraryTabs: tabs.filter(
           (tab) =>
-            tab.book.scope === 'library' && tab.book.contentHash === contentHash,
+            tab.book.scope === 'library' &&
+            tab.book.contentHash === contentHash,
         ).length,
         externalTabs: tabs.filter((tab) => tab.book.id === externalId).length,
         tabIds: tabs.map((tab) => tab.book.id),
@@ -203,9 +234,13 @@ async function importAndVerify(page, external, epubPath, title, cfi) {
     },
     { contentHash: imported.contentHash, externalId: external.id },
   )
-  assert(tabState.matchingLibraryTabs <= 1, 'promotion created duplicate tabs', {
-    tabState,
-  })
+  assert(
+    tabState.matchingLibraryTabs <= 1,
+    'promotion created duplicate tabs',
+    {
+      tabState,
+    },
+  )
   assert(tabState.externalTabs === 0, 'external tab remained after promotion', {
     tabState,
   })
@@ -219,16 +254,24 @@ async function importAndVerify(page, external, epubPath, title, cfi) {
 
   const loaded = await invoke(page, 'get_book', { id: imported.id })
   assert(loaded?.scope === 'library', 'promoted book cannot be loaded', loaded)
-  assert(loaded.metadata?.title === title, 'loaded book metadata is stale', loaded)
+  assert(
+    loaded.metadata?.title === title,
+    'loaded book metadata is stale',
+    loaded,
+  )
   if (cfi) assert(loaded.cfi === cfi, 'loaded book state is stale', loaded)
   return imported
 }
 
 async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true })
-  assert(fs.existsSync(DATA_DIR), 'data dir does not exist; launch Tauri with it', {
-    DATA_DIR,
-  })
+  assert(
+    fs.existsSync(DATA_DIR),
+    'data dir does not exist; launch Tauri with it',
+    {
+      DATA_DIR,
+    },
+  )
 
   const browser = await chromium.connectOverCDP(CDP_URL)
   const context = browser.contexts()[0]
@@ -242,8 +285,8 @@ async function main() {
     () =>
       Boolean(
         window.__TAURI_INTERNALS__?.invoke &&
-          window.reader &&
-          document.querySelector('#layout'),
+        window.reader &&
+        document.querySelector('#layout'),
       ),
     null,
     { timeout: 30000 },

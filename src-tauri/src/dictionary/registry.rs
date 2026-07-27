@@ -21,7 +21,7 @@ const DICTIONARIES_DIR: &str = "dictionaries";
 const REGISTRY_FILE: &str = "registry.json";
 const CACHE_DIR: &str = "cache";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DictionaryLanguage {
     De,
@@ -37,28 +37,18 @@ pub enum DictionaryLanguage {
     Ru,
     Zh,
     #[serde(other)]
+    #[default]
     Unknown,
 }
 
-impl Default for DictionaryLanguage {
-    fn default() -> Self {
-        Self::Unknown
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DictionaryLanguageSource {
     Manual,
     Metadata,
     Sample,
+    #[default]
     Unknown,
-}
-
-impl Default for DictionaryLanguageSource {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -70,18 +60,13 @@ pub struct DictionaryLanguageSetting {
     pub source: DictionaryLanguageSource,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DictionarySourceStatus {
     Available,
     Changed,
+    #[default]
     Missing,
-}
-
-impl Default for DictionarySourceStatus {
-    fn default() -> Self {
-        Self::Missing
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
