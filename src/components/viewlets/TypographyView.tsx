@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core'
 import clsx from 'clsx'
 import { MinusIcon, PlusIcon, XIcon } from 'lucide-react'
 import {
@@ -254,7 +255,6 @@ const TypographyPane: React.FC = () => {
 
 async function querySystemFonts() {
   try {
-    const { invoke } = await import('@tauri-apps/api/core')
     const fonts = await invoke<SystemFont[]>('list_system_fonts')
     const options = createFontOptions(fonts)
     return options.length ? options : undefined

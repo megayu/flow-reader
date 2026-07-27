@@ -1,3 +1,5 @@
+import { invoke } from '@tauri-apps/api/core'
+
 import {
   BookRecord,
   EpubImportProgress,
@@ -112,10 +114,7 @@ export async function setupNativeOpenFiles({
   if (typeof window === 'undefined') return
 
   try {
-    const [{ invoke }, { listen }] = await Promise.all([
-      import('@tauri-apps/api/core'),
-      import('@tauri-apps/api/event'),
-    ])
+    const { listen } = await import('@tauri-apps/api/event')
 
     const openPaths = async (paths: string[]) => {
       if (!paths.length) return

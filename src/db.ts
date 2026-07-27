@@ -1,3 +1,5 @@
+import { convertFileSrc, invoke as invokeNative } from '@tauri-apps/api/core'
+
 import type { PackagingMetadataObject } from '@flow/epubjs/types/packaging'
 
 import type { Annotation } from './annotation'
@@ -237,11 +239,6 @@ export interface BookImageIndexCacheInput {
   sections: BookImageIndexSection[]
 }
 
-type NativeInvoke = <T>(
-  command: string,
-  args?: Record<string, unknown>,
-) => Promise<T>
-
 type Listener = () => void
 type TableName = 'books' | 'covers' | 'files' | 'settings' | 'tags'
 
@@ -415,22 +412,12 @@ function isReadingPositionOnlyUpdate(
   )
 }
 
-let invokePromise: Promise<NativeInvoke> | undefined
-let convertFileSrcPromise:
-  | Promise<((filePath: string, protocol?: string) => string) | undefined>
-  | undefined
-
-async function getInvoke() {
+async function invoke<T>(command: string, args?: Record<string, unknown>) {
   if (typeof window === 'undefined') {
     throw new Error('Native storage is not available on the server')
   }
 
-  invokePromise ??= import('@tauri-apps/api/core').then(({ invoke }) => invoke)
-  return invokePromise
-}
-
-async function invoke<T>(command: string, args?: Record<string, unknown>) {
-  return (await getInvoke())<T>(command, args)
+  return invokeNative<T>(command, args)
 }
 
 function trackNativeWrite<T>(promise: Promise<T>) {
@@ -450,12 +437,8 @@ async function waitForPendingNativeWrites() {
 
 async function filePathToUrl(path: string) {
   try {
-    convertFileSrcPromise ??= import('@tauri-apps/api/core').then(
-      ({ convertFileSrc }) => convertFileSrc,
-    )
-    const convertFileSrc = await convertFileSrcPromise
     const normalizedPath = path.replace(/\\/g, '/')
-    return convertFileSrc?.(normalizedPath) ?? normalizedPath
+    return convertFileSrc(normalizedPath)
   } catch {
     return path
   }

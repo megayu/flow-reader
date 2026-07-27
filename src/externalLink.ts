@@ -1,3 +1,5 @@
+import { invoke } from '@tauri-apps/api/core'
+
 import { IS_SERVER, isTauriRuntime } from '@flow/reader/env'
 
 export function isSupportedExternalUrl(value: string) {
@@ -21,7 +23,6 @@ export async function openSupportedExternalUrl(url: string) {
     return true
   }
 
-  const { invoke } = await import('@tauri-apps/api/core')
   await invoke('open_external_url', { url })
   return true
 }
