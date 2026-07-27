@@ -5,6 +5,7 @@
   "description": "Tauri desktop EPUB and TXT reader based on pacexy/flow",
   "packageManager": "pnpm@11.8.0",
   "scripts": {
+    "prepare": "husky install",
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tests/tsconfig.json && tsc --noEmit -p scripts/tsconfig.json",
