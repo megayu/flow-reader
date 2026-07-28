@@ -6,8 +6,8 @@ use std::{
     env,
     path::Path,
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Condvar, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread::ThreadId,
     time::{Duration, Instant},
@@ -19,17 +19,15 @@ use std::ptr;
 #[cfg(windows)]
 use windows_sys::Win32::{
     Foundation::{CloseHandle, INVALID_HANDLE_VALUE},
-    Storage::FileSystem::{
-        CreateFileW, GetDriveTypeW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
-    },
+    Storage::FileSystem::{CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, GetDriveTypeW, OPEN_EXISTING},
     System::{
+        IO::DeviceIoControl,
         Ioctl::{
-            PropertyStandardQuery, StorageDeviceSeekPenaltyProperty, StorageDeviceTrimProperty,
             DEVICE_SEEK_PENALTY_DESCRIPTOR, DEVICE_TRIM_DESCRIPTOR, IOCTL_STORAGE_QUERY_PROPERTY,
-            STORAGE_PROPERTY_ID, STORAGE_PROPERTY_QUERY,
+            PropertyStandardQuery, STORAGE_PROPERTY_ID, STORAGE_PROPERTY_QUERY, StorageDeviceSeekPenaltyProperty,
+            StorageDeviceTrimProperty,
         },
         WindowsProgramming::{DRIVE_FIXED, DRIVE_RAMDISK, DRIVE_REMOTE, DRIVE_REMOVABLE},
-        IO::DeviceIoControl,
     },
 };
 
@@ -115,11 +113,7 @@ impl<T> TaskRegistry<T>
 where
     T: Clone,
 {
-    pub(crate) fn get_or_run(
-        &self,
-        key: TaskKey,
-        task: impl FnOnce() -> Result<T, String>,
-    ) -> Result<T, String> {
+    pub(crate) fn get_or_run(&self, key: TaskKey, task: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
         let (entry, should_run) = {
             let mut in_flight = self
                 .in_flight
@@ -141,10 +135,7 @@ where
             let result = task();
 
             {
-                let mut state = entry
-                    .state
-                    .lock()
-                    .map_err(|_| "task entry lock poisoned".to_string())?;
+                let mut state = entry.state.lock().map_err(|_| "task entry lock poisoned".to_string())?;
                 *state = TaskEntryState::Complete(result.clone());
                 entry.ready.notify_all();
             }
@@ -153,20 +144,14 @@ where
                 .in_flight
                 .lock()
                 .map_err(|_| "task registry lock poisoned".to_string())?;
-            if in_flight
-                .get(&key)
-                .is_some_and(|current| Arc::ptr_eq(current, &entry))
-            {
+            if in_flight.get(&key).is_some_and(|current| Arc::ptr_eq(current, &entry)) {
                 in_flight.remove(&key);
             }
 
             return result;
         }
 
-        let mut state = entry
-            .state
-            .lock()
-            .map_err(|_| "task entry lock poisoned".to_string())?;
+        let mut state = entry.state.lock().map_err(|_| "task entry lock poisoned".to_string())?;
         loop {
             match &*state {
                 TaskEntryState::Complete(result) => return result.clone(),
@@ -272,9 +257,7 @@ impl Default for TaskService {
 
 impl TaskService {
     fn with_io_writer_config(io_config: IoWriterConfig) -> Self {
-        let logical_cpus = std::thread::available_parallelism()
-            .map(|cpus| cpus.get())
-            .unwrap_or(1);
+        let logical_cpus = std::thread::available_parallelism().map(|cpus| cpus.get()).unwrap_or(1);
         Self {
             inner: Arc::new(TaskServiceInner {
                 shutdown: AtomicBool::new(false),
@@ -297,9 +280,7 @@ impl TaskService {
     }
 
     pub(crate) fn cancel_background(&self) {
-        self.inner
-            .background_cancel_epoch
-            .fetch_add(1, Ordering::SeqCst);
+        self.inner.background_cancel_epoch.fetch_add(1, Ordering::SeqCst);
         self.inner.background.notify_all();
     }
 
@@ -320,12 +301,7 @@ impl TaskService {
             .set_max(io_writer_limit_for_volume_class(classify_io_volume(path)));
     }
 
-    pub(crate) fn record_io_observation(
-        &self,
-        volume_root: impl Into<String>,
-        bytes: u64,
-        elapsed: Duration,
-    ) {
+    pub(crate) fn record_io_observation(&self, volume_root: impl Into<String>, bytes: u64, elapsed: Duration) {
         if self.inner.io_writer_override || bytes == 0 || elapsed.is_zero() {
             return;
         }
@@ -367,8 +343,7 @@ impl TaskService {
             return;
         }
 
-        if current_limit > state.best_limit
-            && average < state.best_throughput_bytes_per_ms * IO_ADAPT_IMPROVEMENT_RATIO
+        if current_limit > state.best_limit && average < state.best_throughput_bytes_per_ms * IO_ADAPT_IMPROVEMENT_RATIO
         {
             let next_limit = state.best_limit.max(1);
             self.inner.io.set_max(next_limit);
@@ -401,10 +376,7 @@ impl TaskService {
             ("io_waiting", io.waiting.to_string()),
             (
                 "io_in_flight_bytes",
-                self.inner
-                    .io_in_flight_bytes
-                    .load(Ordering::SeqCst)
-                    .to_string(),
+                self.inner.io_in_flight_bytes.load(Ordering::SeqCst).to_string(),
             ),
             ("background_limit", background.limit.to_string()),
             ("background_active", background.active.to_string()),
@@ -471,10 +443,7 @@ impl TaskService {
         result
     }
 
-    pub(crate) fn run_background<T>(
-        &self,
-        task: impl FnOnce() -> Result<T, String>,
-    ) -> Result<T, String> {
+    pub(crate) fn run_background<T>(&self, task: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
         self.ensure_accepting(TaskPriority::Background)?;
         let cancel_epoch = self.inner.background_cancel_epoch.load(Ordering::SeqCst);
         let _permit = self.inner.background.acquire_interruptible(|| {
@@ -539,10 +508,7 @@ impl ResourceGate {
         self.acquire_interruptible(|| false)
     }
 
-    fn acquire_interruptible(
-        &self,
-        should_cancel: impl Fn() -> bool,
-    ) -> Result<ResourcePermit<'_>, String> {
+    fn acquire_interruptible(&self, should_cancel: impl Fn() -> bool) -> Result<ResourcePermit<'_>, String> {
         if should_cancel() {
             return Err("task resource gate wait cancelled".to_string());
         }
@@ -576,10 +542,7 @@ impl ResourceGate {
     }
 
     fn max(&self) -> usize {
-        self.state
-            .lock()
-            .map(|state| state.max)
-            .unwrap_or(DEFAULT_IO_WRITERS)
+        self.state.lock().map(|state| state.max).unwrap_or(DEFAULT_IO_WRITERS)
     }
 
     fn snapshot(&self) -> ResourceGateSnapshot {
@@ -653,9 +616,7 @@ fn io_writer_config_from_input(input: Option<&str>) -> IoWriterConfig {
 fn io_writer_limit_for_volume_class(class: IoVolumeClass) -> usize {
     match class {
         IoVolumeClass::FastLocal => 2,
-        IoVolumeClass::FixedLocal | IoVolumeClass::SlowOrRemote | IoVolumeClass::Unknown => {
-            DEFAULT_IO_WRITERS
-        }
+        IoVolumeClass::FixedLocal | IoVolumeClass::SlowOrRemote | IoVolumeClass::Unknown => DEFAULT_IO_WRITERS,
     }
 }
 
@@ -747,14 +708,11 @@ fn windows_fixed_volume_is_fast(root: &str) -> Option<bool> {
         return None;
     }
 
-    let no_seek_penalty = query_storage_property::<DEVICE_SEEK_PENALTY_DESCRIPTOR>(
-        handle,
-        StorageDeviceSeekPenaltyProperty,
-    )
-    .map(|descriptor| !descriptor.IncursSeekPenalty);
-    let trim_enabled =
-        query_storage_property::<DEVICE_TRIM_DESCRIPTOR>(handle, StorageDeviceTrimProperty)
-            .map(|descriptor| descriptor.TrimEnabled);
+    let no_seek_penalty =
+        query_storage_property::<DEVICE_SEEK_PENALTY_DESCRIPTOR>(handle, StorageDeviceSeekPenaltyProperty)
+            .map(|descriptor| !descriptor.IncursSeekPenalty);
+    let trim_enabled = query_storage_property::<DEVICE_TRIM_DESCRIPTOR>(handle, StorageDeviceTrimProperty)
+        .map(|descriptor| descriptor.TrimEnabled);
 
     unsafe {
         CloseHandle(handle);
@@ -768,10 +726,7 @@ fn windows_fixed_volume_is_fast(root: &str) -> Option<bool> {
 }
 
 #[cfg(windows)]
-fn query_storage_property<T>(
-    handle: windows_sys::Win32::Foundation::HANDLE,
-    property: STORAGE_PROPERTY_ID,
-) -> Option<T>
+fn query_storage_property<T>(handle: windows_sys::Win32::Foundation::HANDLE, property: STORAGE_PROPERTY_ID) -> Option<T>
 where
     T: Default,
 {
@@ -794,11 +749,7 @@ where
             ptr::null_mut(),
         )
     };
-    if ok == 0 {
-        None
-    } else {
-        Some(output)
-    }
+    if ok == 0 { None } else { Some(output) }
 }
 
 #[cfg(windows)]
@@ -825,15 +776,11 @@ impl BookOperationLock {
                 None => {
                     state.owner = Some(current_thread);
                     state.depth = 1;
-                    return Ok(BookOperationPermit {
-                        lock: Arc::clone(self),
-                    });
+                    return Ok(BookOperationPermit { lock: Arc::clone(self) });
                 }
                 Some(owner) if owner == current_thread => {
                     state.depth += 1;
-                    return Ok(BookOperationPermit {
-                        lock: Arc::clone(self),
-                    });
+                    return Ok(BookOperationPermit { lock: Arc::clone(self) });
                 }
                 Some(_) => {
                     state = self
@@ -863,8 +810,9 @@ mod tests {
     use super::{TaskKey, TaskKind, TaskRegistry, TaskService};
     use std::{
         sync::{
+            Arc,
             atomic::{AtomicUsize, Ordering},
-            mpsc, Arc,
+            mpsc,
         },
         thread,
         time::{Duration, Instant},
@@ -930,17 +878,13 @@ mod tests {
             thread::spawn(move || {
                 service.run_background(|| {
                     first_started_tx.send(()).unwrap();
-                    release_first_rx
-                        .recv_timeout(Duration::from_secs(1))
-                        .unwrap();
+                    release_first_rx.recv_timeout(Duration::from_secs(1)).unwrap();
                     Ok(())
                 })
             })
         };
 
-        first_started_rx
-            .recv_timeout(Duration::from_millis(100))
-            .unwrap();
+        first_started_rx.recv_timeout(Duration::from_millis(100)).unwrap();
 
         let second = {
             let service = Arc::clone(&service);
@@ -988,9 +932,7 @@ mod tests {
 
         gate.set_max(2);
 
-        acquired_rx
-            .recv_timeout(Duration::from_millis(100))
-            .unwrap();
+        acquired_rx.recv_timeout(Duration::from_millis(100)).unwrap();
         waiter.join().unwrap();
     }
 
@@ -1022,9 +964,7 @@ mod tests {
 
         drop(second);
 
-        acquired_rx
-            .recv_timeout(Duration::from_millis(100))
-            .unwrap();
+        acquired_rx.recv_timeout(Duration::from_millis(100)).unwrap();
         waiter.join().unwrap();
     }
 
@@ -1167,22 +1107,12 @@ mod tests {
         });
 
         service
-            .run_io_observed(
-                "C:\\",
-                1_000_000,
-                super::TaskPriority::Foreground,
-                || Ok(()),
-            )
+            .run_io_observed("C:\\", 1_000_000, super::TaskPriority::Foreground, || Ok(()))
             .unwrap();
         assert_eq!(service.io_writer_limit(), 1);
 
         service
-            .run_io_observed(
-                "C:\\",
-                1_000_000,
-                super::TaskPriority::Foreground,
-                || Ok(()),
-            )
+            .run_io_observed("C:\\", 1_000_000, super::TaskPriority::Foreground, || Ok(()))
             .unwrap();
         assert_eq!(service.io_writer_limit(), 2);
     }
@@ -1298,9 +1228,7 @@ mod tests {
             })
         };
 
-        let overlapped = second_entered_rx
-            .recv_timeout(Duration::from_secs(5))
-            .is_ok();
+        let overlapped = second_entered_rx.recv_timeout(Duration::from_secs(5)).is_ok();
         release_first_tx.send(()).unwrap();
         first.join().unwrap().unwrap();
         second.join().unwrap().unwrap();

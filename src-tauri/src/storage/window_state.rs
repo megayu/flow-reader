@@ -2,10 +2,10 @@ use tauri::{Manager, PhysicalPosition, PhysicalSize, WebviewWindow, Window};
 
 use super::*;
 pub fn flush_app_storage(window: &Window) {
-    if let Some(storage) = window.try_state::<AppStorage>() {
-        if let Err(error) = storage.flush_dirty() {
-            eprintln!("Failed to flush app storage: {error}");
-        }
+    if let Some(storage) = window.try_state::<AppStorage>()
+        && let Err(error) = storage.flush_dirty()
+    {
+        eprintln!("Failed to flush app storage: {error}");
     }
 }
 
@@ -152,10 +152,7 @@ fn restorable_bounds_for_monitors(state: &WindowState, monitors: &[MonitorBounds
         );
     }
 
-    if monitors
-        .iter()
-        .any(|monitor| contains_window(monitor, &saved))
-    {
+    if monitors.iter().any(|monitor| contains_window(monitor, &saved)) {
         return saved;
     }
 
@@ -240,8 +237,7 @@ mod tests {
             height: 1080,
         };
 
-        let state =
-            window_state_with_display_flags(Some(existing), fallback, true, Some(current_monitor));
+        let state = window_state_with_display_flags(Some(existing), fallback, true, Some(current_monitor));
 
         assert_eq!(state.x, 120);
         assert_eq!(state.y, 80);
@@ -358,10 +354,7 @@ fn contains_window(monitor: &MonitorBounds, window: &WindowBounds) -> bool {
     let window_right = window.x.saturating_add(window.width as i32);
     let window_bottom = window.y.saturating_add(window.height as i32);
 
-    window.x >= monitor.x
-        && window.y >= monitor.y
-        && window_right <= monitor_right
-        && window_bottom <= monitor_bottom
+    window.x >= monitor.x && window.y >= monitor.y && window_right <= monitor_right && window_bottom <= monitor_bottom
 }
 
 fn looks_like_maximized_bounds(monitors: &[MonitorBounds], window: &WindowBounds) -> bool {
@@ -389,10 +382,5 @@ fn center_bounds(monitor: Option<MonitorBounds>, width: u32, height: u32) -> Win
     let x = monitor.x + ((monitor.width.saturating_sub(width)) / 2) as i32;
     let y = monitor.y + ((monitor.height.saturating_sub(height)) / 2) as i32;
 
-    WindowBounds {
-        x,
-        y,
-        width,
-        height,
-    }
+    WindowBounds { x, y, width, height }
 }

@@ -6,12 +6,10 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use encoding_rs::{
-    Encoding, BIG5, EUC_KR, GB18030, SHIFT_JIS, UTF_16BE, UTF_16LE, UTF_8, WINDOWS_1252,
-};
+use encoding_rs::{BIG5, EUC_KR, Encoding, GB18030, SHIFT_JIS, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use super::*;
@@ -299,10 +297,7 @@ fn create_text_cover_svg(title: &str, creator: &str) -> String {
     )
 }
 
-pub(super) fn create_text_cover_input(
-    metadata: &Value,
-    fallback_title: Option<&str>,
-) -> Option<CoverInput> {
+pub(super) fn create_text_cover_input(metadata: &Value, fallback_title: Option<&str>) -> Option<CoverInput> {
     let title = metadata
         .get("title")
         .and_then(Value::as_str)
@@ -400,20 +395,20 @@ pub(super) fn source_encoding_id_from_metadata(metadata: &Value) -> Option<Strin
 }
 
 pub(super) fn decode_text_bytes(bytes: &[u8], encoding: Option<&str>) -> DecodedText {
-    if let Some(encoding) = encoding.filter(|encoding| *encoding != "auto") {
-        if let Some((id, label, encoding)) = text_encoding_by_id(encoding) {
-            let (text, had_errors) = decode_with_encoding(bytes, encoding);
-            return DecodedText {
-                text,
-                encoding: id.to_string(),
-                encoding_label: label.to_string(),
-                confidence: if had_errors {
-                    TextEncodingConfidence::Medium
-                } else {
-                    TextEncodingConfidence::High
-                },
-            };
-        }
+    if let Some(encoding) = encoding.filter(|encoding| *encoding != "auto")
+        && let Some((id, label, encoding)) = text_encoding_by_id(encoding)
+    {
+        let (text, had_errors) = decode_with_encoding(bytes, encoding);
+        return DecodedText {
+            text,
+            encoding: id.to_string(),
+            encoding_label: label.to_string(),
+            confidence: if had_errors {
+                TextEncodingConfidence::Medium
+            } else {
+                TextEncodingConfidence::High
+            },
+        };
     }
 
     if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
@@ -473,10 +468,7 @@ pub(super) fn decode_text_bytes(bytes: &[u8], encoding: Option<&str>) -> Decoded
     ] {
         let (text, had_errors) = decode_with_encoding(&sample, encoding);
         let score = score_decoded_text(&text, had_errors);
-        if best
-            .as_ref()
-            .is_none_or(|(_, _, _, best_score, _)| score > *best_score)
-        {
+        if best.as_ref().is_none_or(|(_, _, _, best_score, _)| score > *best_score) {
             best = Some((id, label, encoding, score, had_errors));
         }
     }
@@ -509,11 +501,7 @@ fn decode_with_encoding(bytes: &[u8], encoding: &'static Encoding) -> (String, b
     (text.into_owned(), had_errors)
 }
 
-pub(super) fn encode_text_bytes(
-    text: &str,
-    encoding: &str,
-    write_bom: bool,
-) -> Result<Vec<u8>, String> {
+pub(super) fn encode_text_bytes(text: &str, encoding: &str, write_bom: bool) -> Result<Vec<u8>, String> {
     match encoding {
         "utf-8" => {
             let mut bytes = Vec::with_capacity(text.len() + if write_bom { 3 } else { 0 });
@@ -658,13 +646,11 @@ struct TextImportRule {
 fn default_text_import_rules_input() -> TextImportRulesInput {
     TextImportRulesInput {
         group_patterns: vec![
-            r"^\s*第[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]+[卷部集篇].*"
-                .to_string(),
+            r"^\s*第[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]+[卷部集篇].*".to_string(),
             r"^\s*(Book|Part|Volume)\s+[0-9IVXLCDM]+.*".to_string(),
         ],
         chapter_patterns: vec![
-            r"^\s*第[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]+[章回节].*"
-                .to_string(),
+            r"^\s*第[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]+[章回节].*".to_string(),
             r"^\s*(简介|序言|序|前言|自序|楔子|后记|尾声|番外|附录).*".to_string(),
             r"^\s*Chapter\s+[0-9IVXLCDM]+.*".to_string(),
         ],
@@ -697,9 +683,7 @@ fn compile_text_import_rules(input: Option<&TextImportRulesInput>) -> Vec<TextIm
                 return None;
             }
 
-            Regex::new(pattern)
-                .ok()
-                .map(|regex| TextImportRule { role, regex })
+            Regex::new(pattern).ok().map(|regex| TextImportRule { role, regex })
         })
         .collect()
 }
@@ -746,12 +730,7 @@ pub(super) fn parse_text_import_document(
 
         if let Some(rule) = rules.iter().find(|rule| rule.regex.is_match(line)) {
             found_heading = true;
-            flush_section(
-                &mut sections,
-                &current_parent,
-                &current_title,
-                &mut paragraphs,
-            );
+            flush_section(&mut sections, &current_parent, &current_title, &mut paragraphs);
             match rule.role {
                 TextImportRuleRole::Group => {
                     sections.push(TextImportSection {
@@ -776,12 +755,7 @@ pub(super) fn parse_text_import_document(
         paragraphs.push(line.to_string());
     }
 
-    flush_section(
-        &mut sections,
-        &current_parent,
-        &current_title,
-        &mut paragraphs,
-    );
+    flush_section(&mut sections, &current_parent, &current_title, &mut paragraphs);
 
     if !found_heading || sections.is_empty() {
         let paragraphs = text
@@ -792,13 +766,8 @@ pub(super) fn parse_text_import_document(
             .filter(|line| !line.is_empty())
             .map(str::to_string)
             .collect::<Vec<_>>();
-        let mut generated_sections = split_paragraphs_into_sections(
-            title,
-            None,
-            paragraphs,
-            TARGET_SECTION_CHARS,
-            MAX_SECTION_CHARS,
-        );
+        let mut generated_sections =
+            split_paragraphs_into_sections(title, None, paragraphs, TARGET_SECTION_CHARS, MAX_SECTION_CHARS);
         if generated_sections.is_empty() {
             generated_sections.push(TextImportSection {
                 title: title.to_string(),
@@ -843,9 +812,7 @@ pub(super) fn parse_text_import_document(
     }
 }
 
-fn text_sections_to_chapter_previews(
-    sections: &[TextImportSection],
-) -> Vec<TextImportChapterPreview> {
+fn text_sections_to_chapter_previews(sections: &[TextImportSection]) -> Vec<TextImportChapterPreview> {
     let mut chapters = Vec::new();
 
     for section in sections {
@@ -1013,9 +980,7 @@ pub(super) fn text_import_prepared_key(
     rules: Option<&TextImportRulesInput>,
 ) -> Result<TextImportPreparedKey, String> {
     let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
-    Ok(text_import_prepared_key_from_metadata(
-        path, encoding, rules, &metadata,
-    ))
+    Ok(text_import_prepared_key_from_metadata(path, encoding, rules, &metadata))
 }
 
 fn hash_text_import_bytes(bytes: &[u8]) -> String {
@@ -1090,9 +1055,7 @@ pub(super) fn prepare_text_import_entry(
     }))
 }
 
-pub(super) fn create_text_import_preview_from_prepared(
-    prepared: &PreparedTextImport,
-) -> TextImportPreview {
+pub(super) fn create_text_import_preview_from_prepared(prepared: &PreparedTextImport) -> TextImportPreview {
     let has_text = prepared.decoded.text.chars().any(|ch| !ch.is_whitespace());
     let status = if !has_text || prepared.decoded.confidence == TextEncodingConfidence::Failed {
         TextImportStatus::Error
@@ -1140,9 +1103,7 @@ pub(super) fn should_skip_prepared_text_import_preview(
         .map_err(|_| "storage state lock poisoned".to_string())?;
 
     Ok(state.library.books.iter().any(|book| {
-        book.name == prepared.filename
-            && !book.content_hash.is_empty()
-            && book.content_hash == prepared.hash
+        book.name == prepared.filename && !book.content_hash.is_empty() && book.content_hash == prepared.hash
     }))
 }
 
@@ -1171,8 +1132,7 @@ pub(super) fn load_or_prepare_text_import(
             }
             storage.note_text_import_prepare_run();
             storage.begin_text_import_prepare();
-            let prepared =
-                prepare_text_import_entry(&path, encoding.as_deref(), rules.as_ref(), key);
+            let prepared = prepare_text_import_entry(&path, encoding.as_deref(), rules.as_ref(), key);
             storage.end_text_import_prepare();
             let prepared = prepared?;
             storage.insert_prepared_text_import(Arc::clone(&prepared));
@@ -1230,8 +1190,7 @@ fn write_text_publication(
     fs::create_dir_all(&images_dir).map_err(|error| error.to_string())?;
     fs::create_dir_all(&text_dir).map_err(|error| error.to_string())?;
     fs::create_dir_all(&styles_dir).map_err(|error| error.to_string())?;
-    fs::write(unpacked_dir.join("mimetype"), "application/epub+zip")
-        .map_err(|error| error.to_string())?;
+    fs::write(unpacked_dir.join("mimetype"), "application/epub+zip").map_err(|error| error.to_string())?;
 
     fs::write(
         meta_inf.join("container.xml"),
@@ -1257,13 +1216,9 @@ fn write_text_publication(
         .map_err(|error| error.to_string())?;
     }
 
-    fs::write(oebps.join("nav.xhtml"), text_nav_xhtml(document))
+    fs::write(oebps.join("nav.xhtml"), text_nav_xhtml(document)).map_err(|error| error.to_string())?;
+    fs::write(oebps.join("content.opf"), text_content_opf(document, encoding_label))
         .map_err(|error| error.to_string())?;
-    fs::write(
-        oebps.join("content.opf"),
-        text_content_opf(document, encoding_label),
-    )
-    .map_err(|error| error.to_string())?;
 
     Ok(())
 }
@@ -1317,15 +1272,9 @@ pub(super) fn text_import_css() -> &'static str {
 pub(super) fn text_section_xhtml(section: &TextImportSection) -> String {
     let heading = section.title.clone();
     let mut body = if section.is_group {
-        format!(
-            r#"<h1 class="flow-txt-volume">{}</h1>"#,
-            escape_xml(&heading)
-        )
+        format!(r#"<h1 class="flow-txt-volume">{}</h1>"#, escape_xml(&heading))
     } else {
-        format!(
-            r#"<h2 class="flow-txt-chapter">{}</h2>"#,
-            escape_xml(&heading)
-        )
+        format!(r#"<h2 class="flow-txt-chapter">{}</h2>"#, escape_xml(&heading))
     };
 
     if !section.paragraphs.is_empty() {
@@ -1466,20 +1415,12 @@ pub(super) fn text_content_opf(document: &TextImportDocument, encoding_label: &s
     )
 }
 
-pub(super) fn write_text_cover_to_unpacked(
-    storage: &AppStorage,
-    id: &str,
-    cover: &CoverInput,
-) -> Result<(), String> {
+pub(super) fn write_text_cover_to_unpacked(storage: &AppStorage, id: &str, cover: &CoverInput) -> Result<(), String> {
     if cover.mime_type != "image/svg+xml" || cover.data.is_empty() {
         return Ok(());
     }
 
-    let images_dir = storage
-        .book_dir(id)
-        .join(UNPACKED_DIR)
-        .join("OEBPS")
-        .join("Images");
+    let images_dir = storage.book_dir(id).join(UNPACKED_DIR).join("OEBPS").join("Images");
     fs::create_dir_all(&images_dir).map_err(|error| error.to_string())?;
     fs::write(images_dir.join("cover.svg"), &cover.data).map_err(|error| error.to_string())
 }
@@ -1493,10 +1434,7 @@ fn escape_xml(value: &str) -> String {
 }
 
 fn escape_svg(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
+    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
 pub(super) fn import_text_path_impl(
@@ -1551,11 +1489,7 @@ pub(super) fn import_text_path_impl(
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        let filename_index = state
-            .library
-            .books
-            .iter()
-            .position(|book| book.name == name);
+        let filename_index = state.library.books.iter().position(|book| book.name == name);
         let hash_index = state
             .library
             .books
@@ -1564,9 +1498,7 @@ pub(super) fn import_text_path_impl(
 
         let (index, should_copy) = if let Some(index) = filename_index {
             let storage_changed = state.library.books[index].source_storage != source_storage;
-            if !replace_existing
-                || (state.library.books[index].content_hash == hash && !storage_changed)
-            {
+            if !replace_existing || (state.library.books[index].content_hash == hash && !storage_changed) {
                 state.library.books[index].source_path = Some(source_path.clone());
                 let book = state.library.books[index].clone();
                 let book = storage.compose_book(&mut state, &book)?;
@@ -1642,20 +1574,12 @@ pub(super) fn import_text_path_impl(
         }
         let source_text_path = dir.join(SOURCE_TEXT_FILE);
         if source_storage == SourceStorage::Managed {
-            fs::write(&source_text_path, prepared.bytes.as_slice())
-                .map_err(|error| error.to_string())?;
+            fs::write(&source_text_path, prepared.bytes.as_slice()).map_err(|error| error.to_string())?;
         } else if source_text_path.exists() {
             fs::remove_file(&source_text_path).map_err(|error| error.to_string())?;
         }
-        let cover =
-            create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str()));
-        write_text_publication(
-            storage,
-            &id,
-            &document,
-            &decoded.encoding_label,
-            cover.as_ref(),
-        )?;
+        let cover = create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str()));
+        write_text_publication(storage, &id, &document, &decoded.encoding_label, cover.as_ref())?;
         book.metadata = metadata;
         {
             let mut state = storage

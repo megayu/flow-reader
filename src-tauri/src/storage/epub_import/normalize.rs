@@ -1,8 +1,6 @@
 use super::*;
 
-pub(in crate::storage) fn normalize_unpacked_epub_structure(
-    unpacked_dir: &Path,
-) -> Result<bool, String> {
+pub(in crate::storage) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<bool, String> {
     let opf_path = find_unpacked_opf_path(unpacked_dir)?;
     let opf_xml = fs::read_to_string(&opf_path).map_err(|_| "skip".to_string());
     let Ok(mut opf_xml) = opf_xml else {
@@ -113,10 +111,7 @@ pub(in crate::storage) fn normalize_unpacked_epub_structure(
         return Ok(changed);
     }
 
-    let used_ids = manifest
-        .iter()
-        .map(|item| item.id.clone())
-        .collect::<HashSet<_>>();
+    let used_ids = manifest.iter().map(|item| item.id.clone()).collect::<HashSet<_>>();
     let mut split_sections = Vec::new();
 
     for spine_item in spine {
@@ -132,8 +127,7 @@ pub(in crate::storage) fn normalize_unpacked_epub_structure(
             .iter()
             .filter(|reference| {
                 let reference_abs = normalize_zip_path(join_zip_path(&ncx_parent, &reference.path));
-                percent_decode_zip_path(&reference_abs)
-                    == percent_decode_zip_path(&section_abs_path)
+                percent_decode_zip_path(&reference_abs) == percent_decode_zip_path(&section_abs_path)
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -203,10 +197,7 @@ pub(in crate::storage) fn normalize_unpacked_epub_structure(
     Ok(true)
 }
 
-pub(in crate::storage) fn deobfuscate_unpacked_idpf_fonts(
-    unpacked_dir: &Path,
-    opf_xml: &str,
-) -> Result<bool, String> {
+pub(in crate::storage) fn deobfuscate_unpacked_idpf_fonts(unpacked_dir: &Path, opf_xml: &str) -> Result<bool, String> {
     const IDPF_EMBEDDING_ALGORITHM: &str = "http://www.idpf.org/2008/embedding";
     const IDPF_OBFUSCATION_BYTES: usize = 1_040;
 
@@ -301,9 +292,7 @@ pub(super) fn package_unique_identifier<'a>(doc: &'a roxmltree::Document) -> Opt
 
     doc.descendants()
         .find(|node| {
-            node.is_element()
-                && node.has_tag_name("identifier")
-                && node.attribute("id") == Some(identifier_id)
+            node.is_element() && node.has_tag_name("identifier") && node.attribute("id") == Some(identifier_id)
         })
         .and_then(|node| node.text())
 }
@@ -401,10 +390,7 @@ pub(super) fn opf_guide_toc_hrefs(doc: &roxmltree::Document) -> Vec<String> {
 pub(super) fn is_html_manifest_item(item: &OpfManifestItem) -> bool {
     item.media_type == "application/xhtml+xml"
         || item.media_type == "text/html"
-        || matches!(
-            extension_from_path(&item.href).as_str(),
-            "html" | "htm" | "xhtml"
-        )
+        || matches!(extension_from_path(&item.href).as_str(), "html" | "htm" | "xhtml")
 }
 
 pub(super) fn repair_linear_no_toc_targets(
@@ -464,10 +450,7 @@ pub(super) fn repair_missing_spine_nav_targets(
     ncx_xml: &str,
     ncx_parent: &str,
 ) -> Option<String> {
-    let spine_ids = spine
-        .iter()
-        .map(|item| item.idref.as_str())
-        .collect::<HashSet<_>>();
+    let spine_ids = spine.iter().map(|item| item.idref.as_str()).collect::<HashSet<_>>();
     let manifest_by_id = manifest
         .iter()
         .map(|item| (item.id.as_str(), item))
@@ -525,8 +508,7 @@ pub(super) fn repair_missing_spine_nav_targets(
 pub(super) fn set_spine_itemrefs_linear_yes(opf: &str, idrefs: &[String]) -> String {
     let mut updated = opf.to_string();
     for idref in idrefs {
-        let Some((start, end)) = find_xml_start_tag_range(&updated, "itemref", "idref", idref)
-        else {
+        let Some((start, end)) = find_xml_start_tag_range(&updated, "itemref", "idref", idref) else {
             continue;
         };
         let replacement = set_xml_start_tag_attr(&updated[start..end], "linear", "yes");
@@ -537,21 +519,18 @@ pub(super) fn set_spine_itemrefs_linear_yes(opf: &str, idrefs: &[String]) -> Str
 }
 
 pub(super) fn set_xml_start_tag_attr(tag: &str, attr_name: &str, attr_value: &str) -> String {
-    let pattern = format!(
-        r#"(?is)\b{}\s*=\s*['"][^'"]*['"]"#,
-        regex::escape(attr_name)
-    );
-    if let Ok(regex) = Regex::new(&pattern) {
-        if let Some(match_) = regex.find(tag) {
-            let mut updated = String::with_capacity(tag.len() + attr_value.len());
-            updated.push_str(&tag[..match_.start()]);
-            updated.push_str(attr_name);
-            updated.push_str(r#"=""#);
-            updated.push_str(&escape_xml_attr_local(attr_value));
-            updated.push('"');
-            updated.push_str(&tag[match_.end()..]);
-            return updated;
-        }
+    let pattern = format!(r#"(?is)\b{}\s*=\s*['"][^'"]*['"]"#, regex::escape(attr_name));
+    if let Ok(regex) = Regex::new(&pattern)
+        && let Some(match_) = regex.find(tag)
+    {
+        let mut updated = String::with_capacity(tag.len() + attr_value.len());
+        updated.push_str(&tag[..match_.start()]);
+        updated.push_str(attr_name);
+        updated.push_str(r#"=""#);
+        updated.push_str(&escape_xml_attr_local(attr_value));
+        updated.push('"');
+        updated.push_str(&tag[match_.end()..]);
+        return updated;
     }
 
     let Some(end) = tag.rfind('>') else {
@@ -593,12 +572,7 @@ pub(super) fn nav_toc_href_paths(nav: &str) -> Vec<String> {
         type_regex
             .captures(nav_match.as_str())
             .and_then(|captures| captures.get(1))
-            .is_some_and(|types| {
-                types
-                    .as_str()
-                    .split_whitespace()
-                    .any(|value| value == "toc")
-            })
+            .is_some_and(|types| types.as_str().split_whitespace().any(|value| value == "toc"))
     }) else {
         return Vec::new();
     };
@@ -634,8 +608,7 @@ pub(super) fn normalize_local_href_path(href: &str) -> Option<String> {
 }
 
 pub(super) fn ncx_content_paths(ncx: &str) -> Vec<String> {
-    let Ok(regex) = Regex::new(r#"(?is)<content\b[^>]*\bsrc\s*=\s*['"]([^'"]+)['"][^>]*/?>"#)
-    else {
+    let Ok(regex) = Regex::new(r#"(?is)<content\b[^>]*\bsrc\s*=\s*['"]([^'"]+)['"][^>]*/?>"#) else {
         return Vec::new();
     };
 
@@ -690,8 +663,7 @@ pub(super) fn spine_itemref_insert_indent(opf: &str, spine_close: usize) -> Stri
 }
 
 pub(super) fn ncx_content_references(ncx: &str) -> Vec<NcxReference> {
-    let Ok(regex) = Regex::new(r#"(?is)<content\b[^>]*\bsrc\s*=\s*['"]([^'"]+)['"][^>]*/?>"#)
-    else {
+    let Ok(regex) = Regex::new(r#"(?is)<content\b[^>]*\bsrc\s*=\s*['"]([^'"]+)['"][^>]*/?>"#) else {
         return Vec::new();
     };
 
@@ -799,10 +771,7 @@ pub(super) fn plan_split_section(
             return None;
         }
 
-        let href = format!(
-            "{stem}-flow-split-{index:04}.{extension}",
-            index = index + 1
-        );
+        let href = format!("{stem}-flow-split-{index:04}.{extension}", index = index + 1);
         let id = unique_split_id(&item.id, index + 1, used_ids);
         let abs_path = normalize_zip_path(join_zip_path(opf_parent, &href));
         let close_ancestors = split_starts
@@ -819,11 +788,7 @@ pub(super) fn plan_split_section(
             .map(|ancestor| ancestor.name.len() + 3)
             .sum::<usize>();
         let mut content = String::with_capacity(
-            prefix.len()
-                + synthetic_open_len
-                + (end - start.split_start_position)
-                + synthetic_close_len
-                + suffix.len(),
+            prefix.len() + synthetic_open_len + (end - start.split_start_position) + synthetic_close_len + suffix.len(),
         );
         content.push_str(prefix);
         for ancestor in &start.open_ancestors {
@@ -849,31 +814,21 @@ pub(super) fn plan_split_section(
     for reference in section_refs {
         let fragment = percent_decode_path(&reference.fragment);
         let position = anchor_split_points.get(&fragment)?.anchor_position;
-        let split_index =
-            split_starts.partition_point(|start| start.split_start_position <= position) - 1;
+        let split_index = split_starts.partition_point(|start| start.split_start_position <= position) - 1;
         let split = split_items.get(split_index)?;
         let relative = relative_zip_path(ncx_parent, &split.abs_path);
-        replacements.push((
-            reference.raw_src.clone(),
-            format!("{relative}#{}", reference.fragment),
-        ));
+        replacements.push((reference.raw_src.clone(), format!("{relative}#{}", reference.fragment)));
     }
 
     let mut all_link_targets = Vec::new();
     for (fragment, split_point) in &anchor_split_points {
-        let split_index = split_starts
-            .partition_point(|start| start.split_start_position <= split_point.anchor_position)
-            - 1;
+        let split_index =
+            split_starts.partition_point(|start| start.split_start_position <= split_point.anchor_position) - 1;
         let split = split_items.get(split_index)?;
         all_link_targets.push((fragment.clone(), split.abs_path.clone()));
     }
 
-    rewrite_split_item_links(
-        &mut split_items,
-        section_abs_path,
-        opf_parent,
-        &all_link_targets,
-    );
+    rewrite_split_item_links(&mut split_items, section_abs_path, opf_parent, &all_link_targets);
 
     Some(SplitSection {
         original_id: item.id.clone(),
@@ -903,16 +858,9 @@ pub(super) fn rewrite_split_item_links(
         let mut replacements = HashMap::new();
 
         for (fragment, target_abs_path) in link_targets {
-            let target = format!(
-                "{}#{}",
-                relative_zip_path(item_parent, target_abs_path),
-                fragment
-            );
+            let target = format!("{}#{}", relative_zip_path(item_parent, target_abs_path), fragment);
             replacements.insert(format!("{original_relative}#{fragment}"), target.clone());
-            replacements.insert(
-                format!("{original_opf_relative}#{fragment}"),
-                target.clone(),
-            );
+            replacements.insert(format!("{original_opf_relative}#{fragment}"), target.clone());
             replacements.insert(format!("{section_file_name}#{fragment}"), target.clone());
             replacements.insert(format!("./{section_file_name}#{fragment}"), target.clone());
 
@@ -931,8 +879,7 @@ pub(super) fn collect_anchor_split_points(
     body_end: usize,
 ) -> Option<HashMap<String, AnchorSplitPoint>> {
     let tag_regex = Regex::new(r#"(?is)<[^>]+>"#).ok()?;
-    let anchor_regex =
-        Regex::new(r#"(?is)(?:\bid\s*=\s*["']([^"']+)["']|\bname\s*=\s*["']([^"']+)["'])"#).ok()?;
+    let anchor_regex = Regex::new(r#"(?is)(?:\bid\s*=\s*["']([^"']+)["']|\bname\s*=\s*["']([^"']+)["'])"#).ok()?;
     let mut anchors = HashMap::new();
     let mut stack: Vec<OpenElement> = Vec::new();
 
@@ -967,18 +914,15 @@ pub(super) fn collect_anchor_split_points(
             start: tag_start,
         };
 
-        if let Some(captures) = anchor_regex.captures(tag) {
-            if let Some(anchor) = captures.get(1).or_else(|| captures.get(2)) {
-                let (split_start_position, open_ancestors) =
-                    split_boundary_for_anchor(&stack, &current);
-                anchors
-                    .entry(anchor.as_str().to_string())
-                    .or_insert(AnchorSplitPoint {
-                        anchor_position: tag_start,
-                        split_start_position,
-                        open_ancestors,
-                    });
-            }
+        if let Some(captures) = anchor_regex.captures(tag)
+            && let Some(anchor) = captures.get(1).or_else(|| captures.get(2))
+        {
+            let (split_start_position, open_ancestors) = split_boundary_for_anchor(&stack, &current);
+            anchors.entry(anchor.as_str().to_string()).or_insert(AnchorSplitPoint {
+                anchor_position: tag_start,
+                split_start_position,
+                open_ancestors,
+            });
         }
 
         if !is_self_closing_split_tag(trimmed, &name) {
@@ -989,13 +933,11 @@ pub(super) fn collect_anchor_split_points(
     Some(anchors)
 }
 
-pub(super) fn split_boundary_for_anchor(
-    stack: &[OpenElement],
-    current: &OpenElement,
-) -> (usize, Vec<OpenElement>) {
-    if let Some(parent_index) = stack.iter().rposition(|element| {
-        is_split_container_tag(&element.name) && is_split_text_block_tag(&current.name)
-    }) {
+pub(super) fn split_boundary_for_anchor(stack: &[OpenElement], current: &OpenElement) -> (usize, Vec<OpenElement>) {
+    if let Some(parent_index) = stack
+        .iter()
+        .rposition(|element| is_split_container_tag(&element.name) && is_split_text_block_tag(&current.name))
+    {
         return (stack[parent_index].start, stack[..parent_index].to_vec());
     }
 
@@ -1003,10 +945,7 @@ pub(super) fn split_boundary_for_anchor(
         return (current.start, stack.to_vec());
     }
 
-    if let Some(parent_index) = stack
-        .iter()
-        .rposition(|element| is_split_block_tag(&element.name))
-    {
+    if let Some(parent_index) = stack.iter().rposition(|element| is_split_block_tag(&element.name)) {
         return (stack[parent_index].start, stack[..parent_index].to_vec());
     }
 
@@ -1025,9 +964,7 @@ pub(super) fn xml_tag_name(tag: &str) -> Option<String> {
     let tag = tag.trim_start_matches('<').trim_start_matches('/');
     let name = tag
         .chars()
-        .take_while(|character| {
-            character.is_ascii_alphanumeric() || matches!(*character, '_' | '-' | ':' | '.')
-        })
+        .take_while(|character| character.is_ascii_alphanumeric() || matches!(*character, '_' | '-' | ':' | '.'))
         .collect::<String>();
     (!name.is_empty()).then_some(name)
 }
@@ -1063,17 +1000,7 @@ pub(super) fn is_split_text_block_tag(name: &str) -> bool {
 pub(super) fn is_split_container_tag(name: &str) -> bool {
     matches!(
         name,
-        "div"
-            | "section"
-            | "article"
-            | "main"
-            | "nav"
-            | "aside"
-            | "blockquote"
-            | "figure"
-            | "li"
-            | "td"
-            | "th"
+        "div" | "section" | "article" | "main" | "nav" | "aside" | "blockquote" | "figure" | "li" | "td" | "th"
     )
 }
 
@@ -1084,15 +1011,8 @@ pub(super) fn is_split_block_tag(name: &str) -> bool {
 }
 
 #[cfg(test)]
-pub(super) fn collect_anchor_starts(
-    xhtml: &str,
-    body_start: usize,
-    body_end: usize,
-) -> Option<HashMap<String, usize>> {
-    let regex = Regex::new(
-        r#"(?is)<[^>]+(?:\bid\s*=\s*["']([^"']+)["']|\bname\s*=\s*["']([^"']+)["'])[^>]*>"#,
-    )
-    .ok()?;
+pub(super) fn collect_anchor_starts(xhtml: &str, body_start: usize, body_end: usize) -> Option<HashMap<String, usize>> {
+    let regex = Regex::new(r#"(?is)<[^>]+(?:\bid\s*=\s*["']([^"']+)["']|\bname\s*=\s*["']([^"']+)["'])[^>]*>"#).ok()?;
     let mut anchors = HashMap::new();
 
     for captures in regex.captures_iter(&xhtml[body_start..body_end]) {
@@ -1110,11 +1030,7 @@ pub(super) fn collect_anchor_starts(
     Some(anchors)
 }
 
-pub(super) fn unique_split_id(
-    original_id: &str,
-    index: usize,
-    used_ids: &HashSet<String>,
-) -> String {
+pub(super) fn unique_split_id(original_id: &str, index: usize, used_ids: &HashSet<String>) -> String {
     let base = original_id
         .chars()
         .map(|character| {
@@ -1144,8 +1060,7 @@ pub(in crate::storage) fn relative_zip_path(from_parent: &str, target: &str) -> 
         .filter(|segment| !segment.is_empty())
         .collect::<Vec<_>>();
     let mut common = 0usize;
-    while common < from.len() && common < target_parts.len() && from[common] == target_parts[common]
-    {
+    while common < from.len() && common < target_parts.len() && from[common] == target_parts[common] {
         common += 1;
     }
 
@@ -1181,20 +1096,14 @@ pub(super) fn replace_manifest_item(opf: &str, split: &SplitSection) -> Result<S
 }
 
 pub(super) fn replace_spine_itemref(opf: &str, split: &SplitSection) -> Result<String, String> {
-    let Some((start, end)) = find_xml_start_tag_range(opf, "itemref", "idref", &split.original_id)
-    else {
+    let Some((start, end)) = find_xml_start_tag_range(opf, "itemref", "idref", &split.original_id) else {
         return Ok(opf.to_string());
     };
     let indent = line_indent_before(opf, start);
     let replacement = split
         .split_items
         .iter()
-        .map(|item| {
-            format!(
-                r#"{indent}<itemref idref="{}"/>"#,
-                escape_xml_attr_local(&item.id)
-            )
-        })
+        .map(|item| format!(r#"{indent}<itemref idref="{}"/>"#, escape_xml_attr_local(&item.id)))
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -1218,9 +1127,7 @@ pub(super) fn find_xml_start_tag_range(
         let start = cursor + relative_start;
         let after_tag = start + needle.len();
         let next = lower[after_tag..].chars().next();
-        if next.is_some_and(|character| {
-            !(character.is_whitespace() || character == '>' || character == '/')
-        }) {
+        if next.is_some_and(|character| !(character.is_whitespace() || character == '>' || character == '/')) {
             cursor = after_tag;
             continue;
         }
@@ -1242,21 +1149,13 @@ pub(super) fn xml_tag_has_attr_value(tag: &str, attr_name: &str, attr_value: &st
         regex::escape(attr_name),
         regex::escape(attr_value)
     );
-    Regex::new(&pattern)
-        .ok()
-        .is_some_and(|regex| regex.is_match(tag))
+    Regex::new(&pattern).ok().is_some_and(|regex| regex.is_match(tag))
 }
 
 pub(super) fn line_indent_before(text: &str, index: usize) -> &str {
-    let line_start = text[..index]
-        .rfind('\n')
-        .map(|index| index + 1)
-        .unwrap_or(0);
+    let line_start = text[..index].rfind('\n').map(|index| index + 1).unwrap_or(0);
     let indent = &text[line_start..index];
-    if indent
-        .chars()
-        .all(|character| character.is_ascii_whitespace())
-    {
+    if indent.chars().all(|character| character.is_ascii_whitespace()) {
         indent
     } else {
         ""
@@ -1272,19 +1171,14 @@ pub(super) fn escape_xml_attr_local(value: &str) -> String {
 }
 
 pub(super) fn replace_quoted_values(text: &str, replacements: &[(String, String)]) -> String {
-    replacements
-        .iter()
-        .fold(text.to_string(), |current, (from, to)| {
-            current
-                .replace(&format!(r#""{from}""#), &format!(r#""{to}""#))
-                .replace(&format!("'{from}'"), &format!("'{to}'"))
-        })
+    replacements.iter().fold(text.to_string(), |current, (from, to)| {
+        current
+            .replace(&format!(r#""{from}""#), &format!(r#""{to}""#))
+            .replace(&format!("'{from}'"), &format!("'{to}'"))
+    })
 }
 
-pub(super) fn replace_quoted_values_by_lookup(
-    text: &str,
-    replacements: &HashMap<String, String>,
-) -> String {
+pub(super) fn replace_quoted_values_by_lookup(text: &str, replacements: &HashMap<String, String>) -> String {
     if replacements.is_empty() {
         return text.to_string();
     }
@@ -1383,11 +1277,7 @@ pub(super) fn rewrite_current_package_link_values(
         }
 
         for (fragment, target_abs_path) in &split.link_targets {
-            let target = format!(
-                "{}#{}",
-                relative_zip_path(current_parent, target_abs_path),
-                fragment
-            );
+            let target = format!("{}#{}", relative_zip_path(current_parent, target_abs_path), fragment);
             replacements.insert(format!("{original_relative}#{fragment}"), target.clone());
             replacements.insert(format!("{section_file_name}#{fragment}"), target.clone());
             replacements.insert(format!("./{section_file_name}#{fragment}"), target);
@@ -1404,10 +1294,7 @@ pub(super) fn collect_unpacked_html_files(root: &Path) -> Result<Vec<PathBuf>, S
     Ok(files)
 }
 
-pub(super) fn collect_unpacked_html_files_into(
-    dir: &Path,
-    files: &mut Vec<PathBuf>,
-) -> Result<(), String> {
+pub(super) fn collect_unpacked_html_files_into(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
     for entry in fs::read_dir(dir).map_err(|error| error.to_string())? {
         let entry = entry.map_err(|error| error.to_string())?;
         let path = entry.path();

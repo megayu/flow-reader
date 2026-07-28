@@ -6,12 +6,13 @@ pub(super) fn percent_decode_path(value: &str) -> String {
     let mut index = 0usize;
 
     while index < bytes.len() {
-        if bytes[index] == b'%' && index + 2 < bytes.len() {
-            if let Ok(byte) = u8::from_str_radix(&value[index + 1..index + 3], 16) {
-                decoded.push(byte);
-                index += 3;
-                continue;
-            }
+        if bytes[index] == b'%'
+            && index + 2 < bytes.len()
+            && let Ok(byte) = u8::from_str_radix(&value[index + 1..index + 3], 16)
+        {
+            decoded.push(byte);
+            index += 3;
+            continue;
         }
         decoded.push(bytes[index]);
         index += 1;
@@ -42,14 +43,13 @@ pub(super) fn percent_decode_path_segment(segment: &str) -> String {
     let mut index = 0;
 
     while index < bytes.len() {
-        if bytes[index] == b'%' && index + 2 < bytes.len() {
-            if let (Some(high), Some(low)) =
-                (hex_value(bytes[index + 1]), hex_value(bytes[index + 2]))
-            {
-                decoded.push((high << 4) | low);
-                index += 3;
-                continue;
-            }
+        if bytes[index] == b'%'
+            && index + 2 < bytes.len()
+            && let (Some(high), Some(low)) = (hex_value(bytes[index + 1]), hex_value(bytes[index + 2]))
+        {
+            decoded.push((high << 4) | low);
+            index += 3;
+            continue;
         }
 
         decoded.push(bytes[index]);
@@ -68,10 +68,7 @@ pub(super) fn hex_value(byte: u8) -> Option<u8> {
     }
 }
 
-pub(super) fn resolve_unpacked_resource_path(
-    unpacked_dir: &Path,
-    href: &str,
-) -> Result<PathBuf, String> {
+pub(super) fn resolve_unpacked_resource_path(unpacked_dir: &Path, href: &str) -> Result<PathBuf, String> {
     let opf_path = find_unpacked_opf_path(unpacked_dir)?;
     let opf_dir = opf_path.parent().unwrap_or(unpacked_dir);
     let href = href.split('#').next().unwrap_or("").replace('\\', "/");
@@ -127,8 +124,8 @@ pub(super) fn epub_entry_compression(relative: &str) -> CompressionMethod {
         .map(|(_, extension)| extension.to_ascii_lowercase())
         .unwrap_or_default();
     match extension.as_str() {
-        "jpg" | "jpeg" | "png" | "gif" | "webp" | "avif" | "mp3" | "mp4" | "m4a" | "ogg"
-        | "opus" | "woff" | "woff2" | "ttf" | "otf" => CompressionMethod::Stored,
+        "jpg" | "jpeg" | "png" | "gif" | "webp" | "avif" | "mp3" | "mp4" | "m4a" | "ogg" | "opus" | "woff"
+        | "woff2" | "ttf" | "otf" => CompressionMethod::Stored,
         _ => CompressionMethod::Deflated,
     }
 }
@@ -178,9 +175,7 @@ pub(super) fn should_copy_original_zip_entry(relative: &str, path: &Path) -> Res
     Ok(!unpacked_file_was_modified(path)?)
 }
 
-pub(super) fn original_epub_file_count<R: Read + Seek>(
-    archive: &mut ZipArchive<R>,
-) -> Result<usize, String> {
+pub(super) fn original_epub_file_count<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Result<usize, String> {
     let mut count = 0usize;
     for index in 0..archive.len() {
         let name = archive
@@ -219,11 +214,8 @@ pub(super) fn write_epub_from_unpacked_dir(
     writer
         .start_file("mimetype", stored)
         .map_err(|error| error.to_string())?;
-    let mimetype = fs::read(unpacked_dir.join("mimetype"))
-        .unwrap_or_else(|_| b"application/epub+zip".to_vec());
-    writer
-        .write_all(&mimetype)
-        .map_err(|error| error.to_string())?;
+    let mimetype = fs::read(unpacked_dir.join("mimetype")).unwrap_or_else(|_| b"application/epub+zip".to_vec());
+    writer.write_all(&mimetype).map_err(|error| error.to_string())?;
 
     for path in collect_files_sorted(unpacked_dir)? {
         let relative = zip_relative_path(unpacked_dir, &path)?;
@@ -266,11 +258,8 @@ pub(super) fn write_epub_from_original_and_unpacked(
     writer
         .start_file("mimetype", stored)
         .map_err(|error| error.to_string())?;
-    let mimetype = fs::read(unpacked_dir.join("mimetype"))
-        .unwrap_or_else(|_| b"application/epub+zip".to_vec());
-    writer
-        .write_all(&mimetype)
-        .map_err(|error| error.to_string())?;
+    let mimetype = fs::read(unpacked_dir.join("mimetype")).unwrap_or_else(|_| b"application/epub+zip".to_vec());
+    writer.write_all(&mimetype).map_err(|error| error.to_string())?;
 
     let mut written = HashSet::from(["mimetype".to_string()]);
     for index in 0..archive.len() {
@@ -296,9 +285,7 @@ pub(super) fn write_epub_from_original_and_unpacked(
 
         if should_copy_original_zip_entry(&relative, &unpacked_path)? {
             let raw_entry = archive.by_index(index).map_err(|error| error.to_string())?;
-            writer
-                .raw_copy_file(raw_entry)
-                .map_err(|error| error.to_string())?;
+            writer.raw_copy_file(raw_entry).map_err(|error| error.to_string())?;
         } else {
             write_epub_file(&mut writer, &relative, &unpacked_path, None)?;
         }
@@ -334,9 +321,7 @@ pub(super) fn export_book_impl(
 
     match format {
         BookExportFormat::Epub => {
-            if source_format == BookSourceFormat::Epub
-                && content_mode == BookContentMode::ArchiveOnly
-            {
+            if source_format == BookSourceFormat::Epub && content_mode == BookContentMode::ArchiveOnly {
                 let book_path = archive_only_source_path(storage, &initial_book)?;
                 if let Some(parent) = output_path.parent() {
                     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
@@ -344,28 +329,21 @@ pub(super) fn export_book_impl(
                 fs::copy(&book_path, &output_path).map_err(|error| error.to_string())?;
             } else {
                 let unpacked_dir = book_dir.join(UNPACKED_DIR);
-                if !unpacked_dir.exists() {
-                    if let Some(book_path) = book_original_source_path(storage, &initial_book) {
-                        if book_path.exists() {
-                            unpack_epub(&book_path, &unpacked_dir)?;
-                            normalize_unpacked_epub_structure(&unpacked_dir)?;
-                        }
-                    }
+                if !unpacked_dir.exists()
+                    && let Some(book_path) = book_original_source_path(storage, &initial_book)
+                    && book_path.exists()
+                {
+                    unpack_epub(&book_path, &unpacked_dir)?;
+                    normalize_unpacked_epub_structure(&unpacked_dir)?;
                 }
-                let original_epub =
-                    book_original_source_path(storage, &initial_book).filter(|path| {
-                        path.is_file()
-                            && (initial_book.source_storage == SourceStorage::Managed
-                                || hash_file(path)
-                                    .is_ok_and(|hash| hash == initial_book.content_hash))
-                    });
+                let original_epub = book_original_source_path(storage, &initial_book).filter(|path| {
+                    path.is_file()
+                        && (initial_book.source_storage == SourceStorage::Managed
+                            || hash_file(path).is_ok_and(|hash| hash == initial_book.content_hash))
+                });
                 if source_format == BookSourceFormat::Epub {
                     if let Some(book_path) = original_epub {
-                        write_epub_from_original_and_unpacked(
-                            &book_path,
-                            &unpacked_dir,
-                            &output_path,
-                        )?;
+                        write_epub_from_original_and_unpacked(&book_path, &unpacked_dir, &output_path)?;
                     } else {
                         write_epub_from_unpacked_dir(&unpacked_dir, &output_path, None)?;
                     }
@@ -389,8 +367,7 @@ pub(super) fn export_book_impl(
             if let Some(parent) = output_path.parent() {
                 fs::create_dir_all(parent).map_err(|error| error.to_string())?;
             }
-            fs::copy(book_dir.join(SOURCE_TEXT_FILE), &output_path)
-                .map_err(|error| error.to_string())?;
+            fs::copy(book_dir.join(SOURCE_TEXT_FILE), &output_path).map_err(|error| error.to_string())?;
         }
     }
 

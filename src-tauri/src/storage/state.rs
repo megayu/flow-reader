@@ -107,9 +107,7 @@ impl AppStorage {
                 .lock()
                 .map_err(|_| "storage state lock poisoned".to_string())?;
             let library = dirty.library.then(|| clone_library(&state.library));
-            let external = dirty
-                .external
-                .then(|| clone_external_index(&state.external));
+            let external = dirty.external.then(|| clone_external_index(&state.external));
             let settings = dirty.settings.then(|| state.settings.clone());
             let book_states = dirty
                 .book_states

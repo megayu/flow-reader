@@ -3,7 +3,7 @@ name = "flow-reader"
 version = "0.1.0"
 description = "Flow Reader desktop EPUB and TXT reader"
 authors = ["Flow"]
-edition = "2021"
+edition = "2024"
 
 [lib]
 name = "flow_reader_lib"

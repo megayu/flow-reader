@@ -1,12 +1,11 @@
 use std::{collections::HashMap, sync::Mutex, time::Duration};
 
-use reqwest::{redirect::Policy, Client, StatusCode, Url};
+use reqwest::{Client, StatusCode, Url, redirect::Policy};
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
 const ZDIC_BASE_URL: &str = "https://zdic.net/hans/";
-const MERRIAM_WEBSTER_BASE_URL: &str =
-    "https://www.dictionaryapi.com/api/v3/references/collegiate/json/";
+const MERRIAM_WEBSTER_BASE_URL: &str = "https://www.dictionaryapi.com/api/v3/references/collegiate/json/";
 const DEFAULT_MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(8);
 const MAX_REDIRECTS: usize = 3;
@@ -64,11 +63,7 @@ impl DictionaryHttpClient {
     }
 
     #[cfg(test)]
-    fn for_test(
-        base_url: Url,
-        max_response_bytes: usize,
-        timeout: Duration,
-    ) -> Result<Self, DictionaryHttpError> {
+    fn for_test(base_url: Url, max_response_bytes: usize, timeout: Duration) -> Result<Self, DictionaryHttpError> {
         Self::with_configuration(base_url.clone(), base_url, max_response_bytes, timeout)
     }
 
@@ -138,19 +133,11 @@ impl DictionaryHttpClient {
         transport: &ProviderTransport,
         url: Url,
     ) -> Result<DictionaryHttpResponse, DictionaryHttpError> {
-        let mut response = transport
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(map_request_error)?;
+        let mut response = transport.client.get(url).send().await.map_err(map_request_error)?;
         let status = response.status();
         if !status.is_success() {
             if status == StatusCode::NOT_FOUND {
-                return Err(DictionaryHttpError::new(
-                    "not_found",
-                    "Dictionary entry was not found",
-                ));
+                return Err(DictionaryHttpError::new("not_found", "Dictionary entry was not found"));
             }
             return Err(DictionaryHttpError::new(
                 "http_status",
@@ -172,7 +159,10 @@ impl DictionaryHttpClient {
                 .unwrap_or_default()
                 .min(self.max_response_bytes as u64) as usize,
         );
-        while let Some(chunk) = response.chunk().await.map_err(map_request_error)? {
+        loop {
+            let Some(chunk) = response.chunk().await.map_err(map_request_error)? else {
+                break;
+            };
             if body.len().saturating_add(chunk.len()) > self.max_response_bytes {
                 return Err(response_too_large());
             }
@@ -187,10 +177,7 @@ impl DictionaryHttpClient {
     }
 
     fn begin_request(&self, session_id: u64) -> CancellationToken {
-        let mut sessions = self
-            .sessions
-            .lock()
-            .expect("dictionary session lock poisoned");
+        let mut sessions = self.sessions.lock().expect("dictionary session lock poisoned");
         let session = sessions.entry(session_id).or_insert_with(|| SessionState {
             active_requests: 0,
             cancellation: CancellationToken::new(),
@@ -200,10 +187,7 @@ impl DictionaryHttpClient {
     }
 
     fn finish_request(&self, session_id: u64, cancellation: &CancellationToken) {
-        let mut sessions = self
-            .sessions
-            .lock()
-            .expect("dictionary session lock poisoned");
+        let mut sessions = self.sessions.lock().expect("dictionary session lock poisoned");
         let Some(session) = sessions.get_mut(&session_id) else {
             return;
         };
@@ -239,10 +223,7 @@ fn provider_lookup_url(base_url: &Url, query: &str) -> Result<Url, DictionaryHtt
     Ok(url)
 }
 
-fn build_transport(
-    base_url: Url,
-    timeout: Duration,
-) -> Result<ProviderTransport, DictionaryHttpError> {
+fn build_transport(base_url: Url, timeout: Duration) -> Result<ProviderTransport, DictionaryHttpError> {
     let allowed_origin = base_url.origin().ascii_serialization();
     let redirect_policy = Policy::custom(move |attempt| {
         if attempt.previous().len() >= MAX_REDIRECTS {
@@ -285,10 +266,7 @@ fn configuration_error() -> DictionaryHttpError {
 }
 
 fn response_too_large() -> DictionaryHttpError {
-    DictionaryHttpError::new(
-        "response_too_large",
-        "Dictionary response exceeded the size limit",
-    )
+    DictionaryHttpError::new("response_too_large", "Dictionary response exceeded the size limit")
 }
 
 #[cfg(test)]
@@ -329,8 +307,7 @@ mod tests {
     #[test]
     fn reports_and_releases_active_http_sessions() {
         let base_url = Url::parse("http://127.0.0.1:1/hans/").expect("test URL");
-        let client = DictionaryHttpClient::for_test(base_url, 32, Duration::from_secs(1))
-            .expect("test client");
+        let client = DictionaryHttpClient::for_test(base_url, 32, Duration::from_secs(1)).expect("test client");
 
         let cancellation = client.begin_request(41);
         client.cancel_session(41);
@@ -344,8 +321,7 @@ mod tests {
             "HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\ndefinition",
             Duration::ZERO,
         );
-        let client = DictionaryHttpClient::for_test(base_url, 32, Duration::from_secs(1))
-            .expect("test client");
+        let client = DictionaryHttpClient::for_test(base_url, 32, Duration::from_secs(1)).expect("test client");
 
         let response = client.fetch_zdic("天空", 1).await.expect("response");
         server.join().expect("server thread");
@@ -362,12 +338,8 @@ mod tests {
             Duration::ZERO,
         );
         let status_client =
-            DictionaryHttpClient::for_test(status_base_url, 32, Duration::from_secs(1))
-                .expect("status client");
-        let status_error = status_client
-            .fetch_zdic("天空", 2)
-            .await
-            .expect_err("status error");
+            DictionaryHttpClient::for_test(status_base_url, 32, Duration::from_secs(1)).expect("status client");
+        let status_error = status_client.fetch_zdic("天空", 2).await.expect_err("status error");
         status_server.join().expect("status server thread");
         assert_eq!(status_error.code, "not_found");
 
@@ -376,12 +348,8 @@ mod tests {
             Duration::ZERO,
         );
         let failure_client =
-            DictionaryHttpClient::for_test(failure_base_url, 32, Duration::from_secs(1))
-                .expect("failure client");
-        let failure_error = failure_client
-            .fetch_zdic("天空", 3)
-            .await
-            .expect_err("failure error");
+            DictionaryHttpClient::for_test(failure_base_url, 32, Duration::from_secs(1)).expect("failure client");
+        let failure_error = failure_client.fetch_zdic("天空", 3).await.expect_err("failure error");
         failure_server.join().expect("failure server thread");
         assert_eq!(failure_error.code, "http_status");
 
@@ -389,12 +357,9 @@ mod tests {
             "HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\ndefinition",
             Duration::ZERO,
         );
-        let size_client = DictionaryHttpClient::for_test(size_base_url, 4, Duration::from_secs(1))
-            .expect("size client");
-        let size_error = size_client
-            .fetch_zdic("天空", 4)
-            .await
-            .expect_err("size error");
+        let size_client =
+            DictionaryHttpClient::for_test(size_base_url, 4, Duration::from_secs(1)).expect("size client");
+        let size_error = size_client.fetch_zdic("天空", 4).await.expect_err("size error");
         size_server.join().expect("size server thread");
         assert_eq!(size_error.code, "response_too_large");
     }
@@ -405,13 +370,9 @@ mod tests {
             "HTTP/1.1 302 Found\r\nLocation: https://example.com/private\r\nContent-Length: 0\r\n\r\n",
             Duration::ZERO,
         );
-        let client = DictionaryHttpClient::for_test(base_url, 32, Duration::from_secs(1))
-            .expect("redirect client");
+        let client = DictionaryHttpClient::for_test(base_url, 32, Duration::from_secs(1)).expect("redirect client");
 
-        let error = client
-            .fetch_zdic("天空", 4)
-            .await
-            .expect_err("redirect error");
+        let error = client.fetch_zdic("天空", 4).await.expect_err("redirect error");
         server.join().expect("server thread");
 
         assert_eq!(error.code, "redirect_forbidden");
@@ -424,12 +385,8 @@ mod tests {
             Duration::from_millis(150),
         );
         let timeout_client =
-            DictionaryHttpClient::for_test(timeout_base_url, 32, Duration::from_millis(20))
-                .expect("timeout client");
-        let timeout_error = timeout_client
-            .fetch_zdic("天空", 5)
-            .await
-            .expect_err("timeout error");
+            DictionaryHttpClient::for_test(timeout_base_url, 32, Duration::from_millis(20)).expect("timeout client");
+        let timeout_error = timeout_client.fetch_zdic("天空", 5).await.expect_err("timeout error");
         timeout_server.join().expect("timeout server thread");
         assert_eq!(timeout_error.code, "timeout");
 
@@ -438,17 +395,13 @@ mod tests {
             Duration::from_millis(150),
         );
         let cancel_client = Arc::new(
-            DictionaryHttpClient::for_test(cancel_base_url, 32, Duration::from_secs(1))
-                .expect("cancel client"),
+            DictionaryHttpClient::for_test(cancel_base_url, 32, Duration::from_secs(1)).expect("cancel client"),
         );
         let request_client = Arc::clone(&cancel_client);
         let request = tokio::spawn(async move { request_client.fetch_zdic("天空", 6).await });
         tokio::time::sleep(Duration::from_millis(20)).await;
         cancel_client.cancel_session(6);
-        let cancel_error = request
-            .await
-            .expect("request task")
-            .expect_err("cancel error");
+        let cancel_error = request.await.expect("request task").expect_err("cancel error");
         cancel_server.join().expect("cancel server thread");
         assert_eq!(cancel_error.code, "cancelled");
     }

@@ -152,12 +152,7 @@ pub fn resource_protocol_response<R: tauri::Runtime>(
         }
         app.state::<super::session::DictionarySessionManager>()
             .load_mdict_resource(session_id, &dictionary_id, key)?
-            .ok_or_else(|| {
-                MdictError::new(
-                    "mdictResourceMissing",
-                    "The requested MDict resource is unavailable.",
-                )
-            })
+            .ok_or_else(|| MdictError::new("mdictResourceMissing", "The requested MDict resource is unavailable."))
     })();
 
     match result {
@@ -189,8 +184,7 @@ pub fn resource_protocol_response<R: tauri::Runtime>(
 impl MdictReader {
     pub fn open(master: &Path) -> Result<Self, MdictError> {
         preflight_header(master)?;
-        let master =
-            fs::canonicalize(master).map_err(|error| io_error("mdictUnavailable", error))?;
+        let master = fs::canonicalize(master).map_err(|error| io_error("mdictUnavailable", error))?;
         let root = master
             .parent()
             .ok_or_else(|| MdictError::new("invalidMdict", "The MDict file has no parent folder."))?
@@ -272,10 +266,7 @@ impl MdictReader {
         Ok(Some(MdictTextResource { key, text }))
     }
 
-    pub fn load_binary_resource(
-        &self,
-        key: &str,
-    ) -> Result<Option<MdictBinaryResource>, MdictError> {
+    pub fn load_binary_resource(&self, key: &str) -> Result<Option<MdictBinaryResource>, MdictError> {
         let key = normalize_resource_key(key)?;
         let Some(expected_mime) = mime_from_extension(&key) else {
             return Err(MdictError::new(
@@ -312,15 +303,10 @@ impl MdictReader {
                 if span.len() as usize > limit {
                     return Err(resource_too_large());
                 }
-                let resource =
-                    mdd.lookup(&mdd_key)
-                        .map_err(map_parser_error)?
-                        .ok_or_else(|| {
-                            MdictError::new(
-                                "mdictResourceUnavailable",
-                                "The MDict resource disappeared.",
-                            )
-                        })?;
+                let resource = mdd
+                    .lookup(&mdd_key)
+                    .map_err(map_parser_error)?
+                    .ok_or_else(|| MdictError::new("mdictResourceUnavailable", "The MDict resource disappeared."))?;
                 return Ok(Some(resource.data));
             }
         }
@@ -331,8 +317,7 @@ impl MdictReader {
         if !candidate.is_file() {
             return Ok(None);
         }
-        let candidate = fs::canonicalize(&candidate)
-            .map_err(|error| io_error("mdictResourceUnavailable", error))?;
+        let candidate = fs::canonicalize(&candidate).map_err(|error| io_error("mdictResourceUnavailable", error))?;
         if !candidate.starts_with(&self.root) {
             return Err(MdictError::new(
                 "invalidResourceKey",
@@ -400,10 +385,7 @@ fn normalize_resource_key(value: &str) -> Result<String, MdictError> {
     }
     let normalized = decoded.replace('\\', "/");
     let normalized = normalized.trim_start_matches('/');
-    if normalized.is_empty()
-        || normalized.contains("://")
-        || normalized.chars().any(char::is_control)
-    {
+    if normalized.is_empty() || normalized.contains("://") || normalized.chars().any(char::is_control) {
         return Err(invalid_resource_key());
     }
     let mut segments = Vec::new();
@@ -520,7 +502,7 @@ mod tests {
         path::{Path, PathBuf},
     };
 
-    use flate2::{write::ZlibEncoder, Compression};
+    use flate2::{Compression, write::ZlibEncoder};
 
     use super::MdictReader;
     use crate::dictionary::session::DictionarySessionManager;
@@ -553,10 +535,7 @@ mod tests {
             r#"<{tag} GeneratedByEngineVersion="2.0" RequiredEngineVersion="2.0" Encoding="UTF-8" Encrypted="{}" KeyCaseSensitive="No" StripKey="No"/>"#,
             if encrypted { "1" } else { "No" }
         );
-        let header_bytes = header
-            .encode_utf16()
-            .flat_map(u16::to_le_bytes)
-            .collect::<Vec<_>>();
+        let header_bytes = header.encode_utf16().flat_map(u16::to_le_bytes).collect::<Vec<_>>();
 
         let mut file = Vec::new();
         file.extend_from_slice(&(header_bytes.len() as u32).to_be_bytes());
@@ -578,12 +557,10 @@ mod tests {
         let last_key_bytes = fixture_key_bytes(kind, last_key);
         let mut key_index_payload = Vec::new();
         key_index_payload.extend_from_slice(&(entries.len() as u64).to_be_bytes());
-        key_index_payload
-            .extend_from_slice(&(fixture_key_units(kind, first_key) as u16).to_be_bytes());
+        key_index_payload.extend_from_slice(&(fixture_key_units(kind, first_key) as u16).to_be_bytes());
         key_index_payload.extend_from_slice(&first_key_bytes);
         key_index_payload.extend(std::iter::repeat_n(0, fixture_key_unit_size(kind)));
-        key_index_payload
-            .extend_from_slice(&(fixture_key_units(kind, last_key) as u16).to_be_bytes());
+        key_index_payload.extend_from_slice(&(fixture_key_units(kind, last_key) as u16).to_be_bytes());
         key_index_payload.extend_from_slice(&last_key_bytes);
         key_index_payload.extend(std::iter::repeat_n(0, fixture_key_unit_size(kind)));
         key_index_payload.extend_from_slice(&(key_block.len() as u64).to_be_bytes());
@@ -623,10 +600,7 @@ mod tests {
 
     fn fixture_key_bytes(kind: FixtureKind, key: &str) -> Vec<u8> {
         match kind {
-            FixtureKind::Mdd => key
-                .encode_utf16()
-                .flat_map(u16::to_le_bytes)
-                .collect::<Vec<_>>(),
+            FixtureKind::Mdd => key.encode_utf16().flat_map(u16::to_le_bytes).collect::<Vec<_>>(),
             FixtureKind::Mdx => key.as_bytes().to_vec(),
         }
     }
@@ -649,10 +623,7 @@ mod tests {
         let header = format!(
             r#"<Dictionary GeneratedByEngineVersion="2.0" RequiredEngineVersion="2.0" Encoding="{encoding}" Encrypted="No"/>"#
         );
-        let header = header
-            .encode_utf16()
-            .flat_map(u16::to_le_bytes)
-            .collect::<Vec<_>>();
+        let header = header.encode_utf16().flat_map(u16::to_le_bytes).collect::<Vec<_>>();
         let mut file = Vec::new();
         file.extend_from_slice(&(header.len() as u32).to_be_bytes());
         file.extend_from_slice(&header);
@@ -721,10 +692,7 @@ mod tests {
         write_fixture(
             &mdx,
             FixtureKind::Mdx,
-            &[
-                ("alias", b"@@@LINK=target\r\n"),
-                ("target", b"<p>resolved entry</p>"),
-            ],
+            &[("alias", b"@@@LINK=target\r\n"), ("target", b"<p>resolved entry</p>")],
             false,
         );
 
@@ -756,12 +724,7 @@ mod tests {
         let root = temp_dir("resources");
         let mdx = root.join("fixture.mdx");
         let mdd = root.join("fixture.mdd");
-        write_fixture(
-            &mdx,
-            FixtureKind::Mdx,
-            &[("entry", b"<img src=\"image.png\">")],
-            false,
-        );
+        write_fixture(&mdx, FixtureKind::Mdx, &[("entry", b"<img src=\"image.png\">")], false);
         write_fixture(
             &mdd,
             FixtureKind::Mdd,
@@ -794,15 +757,9 @@ mod tests {
         assert_eq!(image.mime_type, "image/png");
         assert!(image.data.starts_with(b"\x89PNG"));
         assert!(reader.load_binary_resource("/image.png").unwrap().is_some());
-        assert!(reader
-            .load_binary_resource("missing.png")
-            .unwrap()
-            .is_none());
+        assert!(reader.load_binary_resource("missing.png").unwrap().is_none());
         assert_eq!(
-            reader
-                .load_binary_resource("../secret.png")
-                .unwrap_err()
-                .code,
+            reader.load_binary_resource("../secret.png").unwrap_err().code,
             "invalidResourceKey"
         );
         assert_eq!(
@@ -821,12 +778,7 @@ mod tests {
         let root = temp_dir("numbered-resources");
         let mdx = root.join("fixture.mdx");
         let numbered_mdd = root.join("fixture.1.mdd");
-        write_fixture(
-            &mdx,
-            FixtureKind::Mdx,
-            &[("entry", b"<img src=\"page.png\">")],
-            false,
-        );
+        write_fixture(&mdx, FixtureKind::Mdx, &[("entry", b"<img src=\"page.png\">")], false);
         write_fixture(
             &numbered_mdd,
             FixtureKind::Mdd,
@@ -844,12 +796,7 @@ mod tests {
         let root = temp_dir("repeated-resources");
         let mdx = root.join("fixture.mdx");
         let mdd = root.join("fixture.mdd");
-        write_fixture(
-            &mdx,
-            FixtureKind::Mdx,
-            &[("entry", b"<img src=\"page.png\">")],
-            false,
-        );
+        write_fixture(&mdx, FixtureKind::Mdx, &[("entry", b"<img src=\"page.png\">")], false);
         let mut image = vec![0_u8; 1024 * 1024];
         image[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
         write_fixture(&mdd, FixtureKind::Mdd, &[("\\page.png", &image)], false);
@@ -866,31 +813,19 @@ mod tests {
         let root = temp_dir("invalid-headers");
         let truncated = root.join("truncated.mdx");
         fs::write(&truncated, [0_u8, 1]).unwrap();
-        assert_eq!(
-            MdictReader::open(&truncated).unwrap_err().code,
-            "invalidMdict"
-        );
+        assert_eq!(MdictReader::open(&truncated).unwrap_err().code, "invalidMdict");
 
         let oversized = root.join("oversized.mdx");
         fs::write(&oversized, (1_048_577_u32).to_be_bytes()).unwrap();
-        assert_eq!(
-            MdictReader::open(&oversized).unwrap_err().code,
-            "mdictHeaderTooLarge"
-        );
+        assert_eq!(MdictReader::open(&oversized).unwrap_err().code, "mdictHeaderTooLarge");
 
         let corrupted = root.join("corrupted.mdx");
         write_header_only(&corrupted, "UTF-8", false);
-        assert_eq!(
-            MdictReader::open(&corrupted).unwrap_err().code,
-            "invalidMdict"
-        );
+        assert_eq!(MdictReader::open(&corrupted).unwrap_err().code, "invalidMdict");
 
         let unsupported = root.join("unsupported.mdx");
         write_header_only(&unsupported, "UTF-32", true);
-        assert_eq!(
-            MdictReader::open(&unsupported).unwrap_err().code,
-            "unsupportedMdict"
-        );
+        assert_eq!(MdictReader::open(&unsupported).unwrap_err().code, "unsupportedMdict");
         let _ = fs::remove_dir_all(root);
     }
 
@@ -899,10 +834,7 @@ mod tests {
         let root = temp_dir("lifecycle");
         let encrypted = root.join("encrypted.mdx");
         write_fixture(&encrypted, FixtureKind::Mdx, &[("entry", b"hidden")], true);
-        assert_eq!(
-            MdictReader::open(&encrypted).unwrap_err().code,
-            "encryptedMdict"
-        );
+        assert_eq!(MdictReader::open(&encrypted).unwrap_err().code, "encryptedMdict");
 
         let mdx = root.join("fixture.mdx");
         write_fixture(&mdx, FixtureKind::Mdx, &[("entry", b"visible")], false);

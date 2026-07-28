@@ -3,19 +3,11 @@ use std::{fs, path::Path};
 use serde_json::Value;
 
 use super::*;
-pub(super) fn write_metadata(
-    storage: &AppStorage,
-    id: &str,
-    metadata: &Value,
-) -> Result<(), String> {
+pub(super) fn write_metadata(storage: &AppStorage, id: &str, metadata: &Value) -> Result<(), String> {
     write_json(&storage.book_dir(id).join(METADATA_FILE), metadata)
 }
 
-pub(super) fn write_cover(
-    storage: &AppStorage,
-    id: &str,
-    cover: Option<CoverInput>,
-) -> Result<(), String> {
+pub(super) fn write_cover(storage: &AppStorage, id: &str, cover: Option<CoverInput>) -> Result<(), String> {
     remove_cover_files(storage, id)?;
 
     let Some(cover) = cover else {
@@ -27,9 +19,7 @@ pub(super) fn write_cover(
         return Ok(());
     }
 
-    let path = storage
-        .book_dir(id)
-        .join(format!("{COVER_STEM}.{extension}"));
+    let path = storage.book_dir(id).join(format!("{COVER_STEM}.{extension}"));
     fs::write(path, cover.data).map_err(|error| error.to_string())
 }
 
@@ -64,8 +54,7 @@ pub(super) fn is_generated_text_cover(storage: &AppStorage, id: &str) -> Result<
 
     let svg = fs::read_to_string(path).unwrap_or_default();
     Ok(svg.contains(GENERATED_TEXT_COVER_MARKER)
-        || (svg.contains(r##"<rect width="768" height="1024" fill="#ead7b5"/>"##)
-            && svg.contains("Noto Serif CJK SC")))
+        || (svg.contains(r##"<rect width="768" height="1024" fill="#ead7b5"/>"##) && svg.contains("Noto Serif CJK SC")))
 }
 
 pub(super) fn remove_cover_files(storage: &AppStorage, id: &str) -> Result<(), String> {
@@ -99,10 +88,7 @@ pub(super) fn sanitize_cover_extension(extension: &str, mime_type: &str) -> Stri
         .filter(|ch| ch.is_ascii_alphanumeric())
         .collect::<String>();
 
-    if matches!(
-        extension.as_str(),
-        "jpg" | "jpeg" | "png" | "gif" | "webp" | "svg"
-    ) {
+    if matches!(extension.as_str(), "jpg" | "jpeg" | "png" | "gif" | "webp" | "svg") {
         return extension;
     }
 

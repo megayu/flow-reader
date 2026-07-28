@@ -2,10 +2,7 @@ pub(super) fn infer_language(value: &str) -> Option<String> {
     let value = value.trim().replace('_', "-").to_lowercase();
     if value == "zh"
         || value.starts_with("zh-")
-        || matches!(
-            value.as_str(),
-            "zho" | "chi" | "chinese" | "中文" | "汉语" | "漢語"
-        )
+        || matches!(value.as_str(), "zho" | "chi" | "chinese" | "中文" | "汉语" | "漢語")
     {
         return Some("zh".to_string());
     }

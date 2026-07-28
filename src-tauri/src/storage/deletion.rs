@@ -1,14 +1,7 @@
 use super::*;
 
-pub(super) fn delete_books_to_tombstones(
-    storage: &AppStorage,
-    ids: &[String],
-) -> Result<Vec<PathBuf>, String> {
-    let ids = ids
-        .iter()
-        .filter(|id| !id.is_empty())
-        .cloned()
-        .collect::<HashSet<_>>();
+pub(super) fn delete_books_to_tombstones(storage: &AppStorage, ids: &[String]) -> Result<Vec<PathBuf>, String> {
+    let ids = ids.iter().filter(|id| !id.is_empty()).cloned().collect::<HashSet<_>>();
 
     if ids.is_empty() {
         return Ok(Vec::new());
@@ -73,11 +66,7 @@ fn next_delete_tombstone_path(root: &Path, id: &str) -> PathBuf {
     let pid = std::process::id();
     let id = sanitize_tombstone_name(id);
     for index in 0.. {
-        let suffix = if index == 0 {
-            String::new()
-        } else {
-            format!("-{index}")
-        };
+        let suffix = if index == 0 { String::new() } else { format!("-{index}") };
         let path = root.join(format!("{id}-{pid}-{stamp}{suffix}"));
         if !path.exists() {
             return path;
@@ -99,11 +88,7 @@ fn sanitize_tombstone_name(value: &str) -> String {
         })
         .collect::<String>();
 
-    if name.is_empty() {
-        "book".to_string()
-    } else {
-        name
-    }
+    if name.is_empty() { "book".to_string() } else { name }
 }
 
 #[cfg(test)]
@@ -115,10 +100,7 @@ pub(super) fn cleanup_delete_tombstones(storage: &AppStorage) -> Result<(), Stri
 
     let root = delete_tombstones_root(storage.root());
     if root.exists() {
-        let is_empty = fs::read_dir(&root)
-            .map_err(|error| error.to_string())?
-            .next()
-            .is_none();
+        let is_empty = fs::read_dir(&root).map_err(|error| error.to_string())?.next().is_none();
         if is_empty {
             fs::remove_dir(&root).map_err(|error| error.to_string())?;
         }
@@ -135,11 +117,7 @@ fn list_delete_tombstones(storage: &AppStorage) -> Result<Vec<PathBuf>, String> 
 
     fs::read_dir(root)
         .map_err(|error| error.to_string())?
-        .map(|entry| {
-            entry
-                .map(|entry| entry.path())
-                .map_err(|error| error.to_string())
-        })
+        .map(|entry| entry.map(|entry| entry.path()).map_err(|error| error.to_string()))
         .collect()
 }
 
@@ -164,10 +142,7 @@ fn enqueue_delete_tombstone_cleanup(tasks: &TaskService, tombstones: Vec<PathBuf
     let tasks = tasks.clone();
     std::thread::spawn(move || {
         for tombstone in tombstones {
-            let key = TaskKey::new(
-                TaskKind::TombstoneCleanup,
-                tombstone.to_string_lossy().into_owned(),
-            );
+            let key = TaskKey::new(TaskKind::TombstoneCleanup, tombstone.to_string_lossy().into_owned());
             let runner = tasks.clone();
             let cleanup_path = tombstone.clone();
             if let Err(error) = tasks.get_or_run(key, TaskPriority::Background, move || {
@@ -179,11 +154,7 @@ fn enqueue_delete_tombstone_cleanup(tasks: &TaskService, tombstones: Vec<PathBuf
     });
 }
 
-pub(super) fn delete_books_impl(
-    storage: &AppStorage,
-    tasks: &TaskService,
-    ids: Vec<String>,
-) -> Result<(), String> {
+pub(super) fn delete_books_impl(storage: &AppStorage, tasks: &TaskService, ids: Vec<String>) -> Result<(), String> {
     let started = Instant::now();
     let source_count = ids.len();
     let tombstones = delete_books_to_tombstones(storage, &ids)?;
@@ -203,10 +174,7 @@ pub(super) fn delete_books_impl(
     Ok(())
 }
 
-pub(super) fn cleanup_external_book_heavy_files(
-    storage: &AppStorage,
-    id: &str,
-) -> Result<(), String> {
+pub(super) fn cleanup_external_book_heavy_files(storage: &AppStorage, id: &str) -> Result<(), String> {
     if !is_external_book_id(id) {
         return Ok(());
     }

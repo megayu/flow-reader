@@ -3,7 +3,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
-    sync::{mpsc, Arc, Mutex},
+    sync::{Arc, Mutex, mpsc},
     time::Instant,
 };
 
@@ -163,10 +163,7 @@ pub fn list_tags(storage: State<'_, AppStorage>) -> Result<Vec<LibraryTagRecord>
 }
 
 #[tauri::command]
-pub fn create_tag(
-    storage: State<'_, AppStorage>,
-    name: String,
-) -> Result<Option<LibraryTagRecord>, String> {
+pub fn create_tag(storage: State<'_, AppStorage>, name: String) -> Result<Option<LibraryTagRecord>, String> {
     let name = clean_tag_name(&name);
     if name.is_empty() {
         return Ok(None);
@@ -308,8 +305,7 @@ pub fn update_book_tags(
                 continue;
             }
 
-            book.tag_ids
-                .retain(|tag_id| !remove_tag_ids.contains(tag_id));
+            book.tag_ids.retain(|tag_id| !remove_tag_ids.contains(tag_id));
             for tag_id in &add_tag_ids {
                 if existing_tags.contains(tag_id) && !book.tag_ids.contains(tag_id) {
                     book.tag_ids.push(tag_id.clone());
@@ -328,10 +324,7 @@ pub fn get_book(storage: State<'_, AppStorage>, id: String) -> Result<Option<Boo
     get_book_impl(&storage, id)
 }
 
-pub(super) fn get_book_impl(
-    storage: &AppStorage,
-    id: String,
-) -> Result<Option<BookRecord>, String> {
+pub(super) fn get_book_impl(storage: &AppStorage, id: String) -> Result<Option<BookRecord>, String> {
     let book = match storage.library_book(&id) {
         Ok(book) => book,
         Err(error) if error == "Book not found" => return Ok(None),
@@ -419,10 +412,7 @@ pub fn list_covers(storage: State<'_, AppStorage>) -> Result<Vec<CoverRecord>, S
 }
 
 #[tauri::command]
-pub fn get_cover(
-    storage: State<'_, AppStorage>,
-    id: String,
-) -> Result<Option<CoverRecord>, String> {
+pub fn get_cover(storage: State<'_, AppStorage>, id: String) -> Result<Option<CoverRecord>, String> {
     Ok(Some(CoverRecord {
         id: id.clone(),
         cover: read_cover(&storage, &id)?,
@@ -430,11 +420,7 @@ pub fn get_cover(
 }
 
 #[tauri::command]
-pub fn update_cover(
-    storage: State<'_, AppStorage>,
-    id: String,
-    cover: Option<CoverInput>,
-) -> Result<(), String> {
+pub fn update_cover(storage: State<'_, AppStorage>, id: String, cover: Option<CoverInput>) -> Result<(), String> {
     write_cover(&storage, &id, cover)
 }
 
@@ -450,14 +436,7 @@ pub async fn import_epub_paths(
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        import_epub_paths_impl(
-            &storage,
-            &tasks,
-            paths,
-            replace_existing,
-            Some(app),
-            import_id,
-        )
+        import_epub_paths_impl(&storage, &tasks, paths, replace_existing, Some(app), import_id)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -473,10 +452,7 @@ pub(super) fn import_epub_paths_impl(
 ) -> Result<EpubImportResult, String> {
     let started = Instant::now();
     let source_count = paths.len();
-    let total = paths
-        .iter()
-        .filter(|path| is_epub_file(Path::new(path)))
-        .count();
+    let total = paths.iter().filter(|path| is_epub_file(Path::new(path))).count();
     let mut books = Vec::new();
     let mut failures = Vec::new();
     let mut progress = EpubImportProgressReporter::new(app, import_id, total);
@@ -495,9 +471,7 @@ pub(super) fn import_epub_paths_impl(
             path: path.to_string_lossy().to_string(),
             error,
         };
-        let bytes = std::fs::metadata(&path)
-            .map(|metadata| metadata.len())
-            .unwrap_or(0);
+        let bytes = std::fs::metadata(&path).map(|metadata| metadata.len()).unwrap_or(0);
         match tasks.run_io_observed(storage.root(), bytes, TaskPriority::Foreground, || {
             import_epub_path_impl(storage, &path, replace_existing)
         }) {
@@ -531,11 +505,9 @@ pub async fn open_external_epub_paths(
 ) -> Result<EpubImportResult, String> {
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        open_external_epub_paths_impl(&storage, &tasks, paths)
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || open_external_epub_paths_impl(&storage, &tasks, paths))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 pub(super) fn open_external_epub_paths_impl(
@@ -562,9 +534,7 @@ pub(super) fn open_external_epub_paths_impl(
             path: path.to_string_lossy().to_string(),
             error,
         };
-        let bytes = std::fs::metadata(&path)
-            .map(|metadata| metadata.len())
-            .unwrap_or(0);
+        let bytes = std::fs::metadata(&path).map(|metadata| metadata.len()).unwrap_or(0);
         match tasks.run_io_observed(storage.root(), bytes, TaskPriority::Foreground, || {
             open_external_epub_path_impl(storage, &path)
         }) {
@@ -706,9 +676,7 @@ pub(super) fn preview_text_import_paths_impl(
             .map(|path| preview_text_import_path(storage, tasks, path, &encodings, rules))
             .collect::<Vec<_>>())
     } else {
-        let queue = Arc::new(Mutex::new(
-            paths.into_iter().enumerate().collect::<VecDeque<_>>(),
-        ));
+        let queue = Arc::new(Mutex::new(paths.into_iter().enumerate().collect::<VecDeque<_>>()));
         let results = Arc::new(Mutex::new(
             std::iter::repeat_with(|| None)
                 .take(
@@ -726,30 +694,31 @@ pub(super) fn preview_text_import_paths_impl(
                 let queue = Arc::clone(&queue);
                 let results = Arc::clone(&results);
                 let encodings = &encodings;
-                scope.spawn(move || loop {
-                    let item = queue.lock().ok().and_then(|mut queue| queue.pop_front());
-                    let Some((index, path)) = item else {
-                        break;
-                    };
-                    let preview = preview_text_import_path(storage, tasks, &path, encodings, rules);
-                    if let Ok(mut results) = results.lock() {
-                        results[index] = Some(preview);
+                scope.spawn(move || {
+                    loop {
+                        let item = queue.lock().ok().and_then(|mut queue| queue.pop_front());
+                        let Some((index, path)) = item else {
+                            break;
+                        };
+                        let preview = preview_text_import_path(storage, tasks, &path, encodings, rules);
+                        if let Ok(mut results) = results.lock() {
+                            results[index] = Some(preview);
+                        }
                     }
                 });
             }
         });
 
-        let previews = results
+        results
             .lock()
             .map_err(|_| "text import results lock poisoned".to_string())?
             .iter_mut()
             .map(|result| {
-                result.take().ok_or_else(|| {
-                    "text import preview worker did not produce a result".to_string()
-                })
+                result
+                    .take()
+                    .ok_or_else(|| "text import preview worker did not produce a result".to_string())
             })
-            .collect();
-        previews
+            .collect()
     };
     if let Ok(previews) = &result {
         let (cache_entries, cache_bytes) = storage.text_import_prepared_cache_stats();
@@ -786,9 +755,7 @@ fn preview_text_import_path(
 }
 
 fn text_import_prepare_worker_count(file_count: usize) -> usize {
-    let cpus = std::thread::available_parallelism()
-        .map(|cpus| cpus.get())
-        .unwrap_or(1);
+    let cpus = std::thread::available_parallelism().map(|cpus| cpus.get()).unwrap_or(1);
     file_count.min(cpus.saturating_mul(2).max(1)).max(1)
 }
 
@@ -852,19 +819,10 @@ fn import_text_paths_direct(
     let mut books = Vec::new();
     for import in imports {
         let path = PathBuf::from(&import.path);
-        let prepared = consume_or_prepare_text_import(
-            storage,
-            tasks,
-            &path,
-            import.encoding.as_deref(),
-            rules,
-        )?;
+        let prepared = consume_or_prepare_text_import(storage, tasks, &path, import.encoding.as_deref(), rules)?;
         let bytes = prepared.size;
-        books.push(tasks.run_io_observed(
-            storage.root(),
-            bytes,
-            TaskPriority::Foreground,
-            || {
+        books.push(
+            tasks.run_io_observed(storage.root(), bytes, TaskPriority::Foreground, || {
                 import_text_path_impl(
                     storage,
                     prepared,
@@ -873,8 +831,8 @@ fn import_text_paths_direct(
                     replace_existing,
                     rules,
                 )
-            },
-        )?);
+            })?,
+        );
     }
     Ok(books)
 }
@@ -892,9 +850,7 @@ fn import_text_paths_with_pipeline(
     replace_existing: bool,
     rules: Option<&TextImportRulesInput>,
 ) -> Result<Vec<BookRecord>, String> {
-    let queue = Arc::new(Mutex::new(
-        imports.into_iter().enumerate().collect::<VecDeque<_>>(),
-    ));
+    let queue = Arc::new(Mutex::new(imports.into_iter().enumerate().collect::<VecDeque<_>>()));
     let result_len = queue
         .lock()
         .map_err(|_| "text import queue lock poisoned".to_string())?
@@ -909,30 +865,27 @@ fn import_text_paths_with_pipeline(
         for _ in 0..workers {
             let queue = Arc::clone(&queue);
             let sender = sender.clone();
-            scope.spawn(move || loop {
-                let item = queue.lock().ok().and_then(|mut queue| queue.pop_front());
-                let Some((index, import)) = item else {
-                    break;
-                };
-                let path = PathBuf::from(&import.path);
-                let prepared = consume_or_prepare_text_import(
-                    storage,
-                    tasks,
-                    &path,
-                    import.encoding.as_deref(),
-                    rules,
-                );
-                storage.begin_text_import_prepared_handoff();
-                if sender
-                    .send(TextImportPrepareMessage {
-                        index,
-                        import,
-                        prepared,
-                    })
-                    .is_err()
-                {
-                    storage.end_text_import_prepared_handoff();
-                    break;
+            scope.spawn(move || {
+                loop {
+                    let item = queue.lock().ok().and_then(|mut queue| queue.pop_front());
+                    let Some((index, import)) = item else {
+                        break;
+                    };
+                    let path = PathBuf::from(&import.path);
+                    let prepared =
+                        consume_or_prepare_text_import(storage, tasks, &path, import.encoding.as_deref(), rules);
+                    storage.begin_text_import_prepared_handoff();
+                    if sender
+                        .send(TextImportPrepareMessage {
+                            index,
+                            import,
+                            prepared,
+                        })
+                        .is_err()
+                    {
+                        storage.end_text_import_prepared_handoff();
+                        break;
+                    }
                 }
             });
         }
@@ -945,21 +898,16 @@ fn import_text_paths_with_pipeline(
             match message.prepared {
                 Ok(prepared) => {
                     let bytes = prepared.size;
-                    let book = tasks.run_io_observed(
-                        storage.root(),
-                        bytes,
-                        TaskPriority::Foreground,
-                        || {
-                            import_text_path_impl(
-                                storage,
-                                prepared,
-                                message.import.title.as_deref(),
-                                message.import.creator.as_deref(),
-                                replace_existing,
-                                rules,
-                            )
-                        },
-                    );
+                    let book = tasks.run_io_observed(storage.root(), bytes, TaskPriority::Foreground, || {
+                        import_text_path_impl(
+                            storage,
+                            prepared,
+                            message.import.title.as_deref(),
+                            message.import.creator.as_deref(),
+                            replace_existing,
+                            rules,
+                        )
+                    });
                     storage.end_text_import_prepared_handoff();
                     books[message.index] = Some(book?);
                 }
@@ -1066,11 +1014,9 @@ pub async fn store_book_image_index(
     cache: ImageIndexCacheInput,
 ) -> Result<bool, String> {
     let storage = (*storage).clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        write_image_index_cache_if_current(&storage, &id, cache)
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || write_image_index_cache_if_current(&storage, &id, cache))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -1218,22 +1164,12 @@ pub(super) fn record_reading_position_impl(
             ));
         }
 
-        if let Some(book) = state
-            .library
-            .books
-            .iter_mut()
-            .find(|book| book.id == position.book_id)
-        {
+        if let Some(book) = state.library.books.iter_mut().find(|book| book.id == position.book_id) {
             book.cfi = position.cfi;
             book.percentage = position.percentage;
             book.updated_at = Some(position.updated_at);
             book.last_read_at = Some(position.updated_at);
-        } else if let Some(book) = state
-            .external
-            .books
-            .iter_mut()
-            .find(|book| book.id == position.book_id)
-        {
+        } else if let Some(book) = state.external.books.iter_mut().find(|book| book.id == position.book_id) {
             book.last_opened_at = position.updated_at;
         } else {
             return Ok(false);
@@ -1255,10 +1191,7 @@ pub(super) fn record_reading_position_impl(
 }
 
 fn configuration_with_recorded_spread(current: Option<&Value>, spread: Option<Value>) -> Value {
-    let mut object = current
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
+    let mut object = current.and_then(Value::as_object).cloned().unwrap_or_default();
 
     match spread {
         Some(spread) if !spread.is_null() => {
@@ -1273,19 +1206,12 @@ fn configuration_with_recorded_spread(current: Option<&Value>, spread: Option<Va
 }
 
 #[tauri::command]
-pub fn record_reading_position(
-    storage: State<'_, AppStorage>,
-    position: ReadingPositionInput,
-) -> Result<bool, String> {
+pub fn record_reading_position(storage: State<'_, AppStorage>, position: ReadingPositionInput) -> Result<bool, String> {
     record_reading_position_impl(&storage, position)
 }
 
 #[tauri::command]
-pub fn update_book(
-    storage: State<'_, AppStorage>,
-    id: String,
-    changes: Value,
-) -> Result<Option<BookRecord>, String> {
+pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -> Result<Option<BookRecord>, String> {
     if is_external_book_id(&id) {
         return update_external_book(&storage, id, changes);
     }
@@ -1306,8 +1232,7 @@ pub fn update_book(
         let mut book = state.library.books[book_index].clone();
 
         if let Some(object) = changes.as_object() {
-            let updates_reading_position =
-                object.contains_key("cfi") || object.contains_key("percentage");
+            let updates_reading_position = object.contains_key("cfi") || object.contains_key("percentage");
             let allowed_reading_position_keys = object.keys().all(|key| {
                 matches!(
                     key.as_str(),
@@ -1342,14 +1267,12 @@ pub fn update_book(
                 if is_generated_text_cover(&storage, &id)? {
                     let cover = create_text_cover_input(
                         value,
-                        Path::new(&book.name)
-                            .file_stem()
-                            .and_then(|name| name.to_str()),
+                        Path::new(&book.name).file_stem().and_then(|name| name.to_str()),
                     );
-                    if book.source_format == Some(BookSourceFormat::Txt) {
-                        if let Some(cover) = cover.as_ref() {
-                            write_text_cover_to_unpacked(&storage, &id, cover)?;
-                        }
+                    if book.source_format == Some(BookSourceFormat::Txt)
+                        && let Some(cover) = cover.as_ref()
+                    {
+                        write_text_cover_to_unpacked(&storage, &id, cover)?;
                     }
                     write_cover(&storage, &id, cover)?;
                 }
@@ -1405,22 +1328,17 @@ pub fn update_book(
                     state_changed = true;
                 }
                 if let Some(value) = object.get("definitions") {
-                    book_state.definitions =
-                        serde_json::from_value(value.clone()).unwrap_or_default();
+                    book_state.definitions = serde_json::from_value(value.clone()).unwrap_or_default();
                     state_changed = true;
                     immediate_flush = true;
                 }
                 if let Some(value) = object.get("annotations") {
-                    book_state.annotations =
-                        serde_json::from_value(value.clone()).unwrap_or_default();
+                    book_state.annotations = serde_json::from_value(value.clone()).unwrap_or_default();
                     state_changed = true;
                     immediate_flush = true;
                 }
                 if let Some(value) = object.get("configuration") {
-                    let spread_only = is_spread_only_configuration_update(
-                        book_state.configuration.as_ref(),
-                        value,
-                    );
+                    let spread_only = is_spread_only_configuration_update(book_state.configuration.as_ref(), value);
                     configuration_spread_only_update = spread_only;
                     book_state.configuration = Some(value.clone());
                     state_changed = true;
@@ -1433,8 +1351,7 @@ pub fn update_book(
             let explicit_state_update = object.contains_key("definitions")
                 || object.contains_key("annotations")
                 || (object.contains_key("configuration") && !configuration_spread_only_update);
-            reading_position_only =
-                updates_reading_position && !explicit_state_update && allowed_reading_position_keys;
+            reading_position_only = updates_reading_position && !explicit_state_update && allowed_reading_position_keys;
         }
 
         state.library.books[book_index] = book.clone();
@@ -1462,11 +1379,7 @@ pub fn update_book(
     storage.compose_book(&mut state, &book).map(Some)
 }
 
-fn update_external_book(
-    storage: &AppStorage,
-    id: String,
-    changes: Value,
-) -> Result<Option<BookRecord>, String> {
+fn update_external_book(storage: &AppStorage, id: String, changes: Value) -> Result<Option<BookRecord>, String> {
     let mut external_changed = false;
     let mut state_changed = false;
     let mut immediate_flush = false;
@@ -1517,14 +1430,12 @@ fn update_external_book(
                     state_changed = true;
                 }
                 if let Some(value) = object.get("definitions") {
-                    book_state.definitions =
-                        serde_json::from_value(value.clone()).unwrap_or_default();
+                    book_state.definitions = serde_json::from_value(value.clone()).unwrap_or_default();
                     state_changed = true;
                     immediate_flush = true;
                 }
                 if let Some(value) = object.get("annotations") {
-                    book_state.annotations =
-                        serde_json::from_value(value.clone()).unwrap_or_default();
+                    book_state.annotations = serde_json::from_value(value.clone()).unwrap_or_default();
                     state_changed = true;
                     immediate_flush = true;
                 }
@@ -1566,8 +1477,7 @@ fn update_external_book(
         .map(|book| storage.external_to_library_book(&book))
         .transpose()?;
 
-    book.map(|book| storage.compose_book(&mut state, &book))
-        .transpose()
+    book.map(|book| storage.compose_book(&mut state, &book)).transpose()
 }
 
 #[tauri::command]

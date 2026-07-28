@@ -116,8 +116,7 @@ pub(in crate::storage) fn unpack_epub(path: &Path, dest: &Path) -> Result<(), St
 pub(in crate::storage) fn find_unpacked_opf_path(unpacked_dir: &Path) -> Result<PathBuf, String> {
     let container_path = unpacked_dir.join("META-INF").join("container.xml");
     let container = fs::read_to_string(&container_path).map_err(|error| error.to_string())?;
-    let container_doc =
-        roxmltree::Document::parse(&container).map_err(|error| error.to_string())?;
+    let container_doc = roxmltree::Document::parse(&container).map_err(|error| error.to_string())?;
     let opf_path = container_doc
         .descendants()
         .find(|node| node.has_tag_name("rootfile"))

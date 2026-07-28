@@ -8,11 +8,9 @@ pub mod stardict;
 
 use http::{DictionaryHttpClient, DictionaryHttpError, DictionaryHttpResponse};
 use mdict::{MdictError, MdictLookupResponse, MdictReader, MdictTextResource};
-use registry::{
-    DictionaryRegistryError, DictionaryRegistryStore, LocalDictionaryRecord, LocalDictionaryUpdate,
-};
+use registry::{DictionaryRegistryError, DictionaryRegistryStore, LocalDictionaryRecord, LocalDictionaryUpdate};
 use session::DictionarySessionManager;
-use stardict::{prepare_index, StarDictError, StarDictLookupResult, StarDictReader};
+use stardict::{StarDictError, StarDictLookupResult, StarDictReader, prepare_index};
 
 pub fn create_http_client() -> Result<DictionaryHttpClient, DictionaryHttpError> {
     DictionaryHttpClient::new()
@@ -138,9 +136,7 @@ pub fn lookup_mdict(
     session_id: u64,
 ) -> Result<MdictLookupResponse, MdictError> {
     let record = mdict_record(&registry, &dictionary_id)?;
-    let reader = sessions.get_or_open_mdict(session_id, &dictionary_id, || {
-        MdictReader::open(&record.source_path)
-    })?;
+    let reader = sessions.get_or_open_mdict(session_id, &dictionary_id, || MdictReader::open(&record.source_path))?;
     let entry = reader.lookup(&query)?;
     Ok(MdictLookupResponse {
         entry,
@@ -157,16 +153,11 @@ pub fn load_mdict_stylesheet(
     session_id: u64,
 ) -> Result<Option<MdictTextResource>, MdictError> {
     let record = mdict_record(&registry, &dictionary_id)?;
-    let reader = sessions.get_or_open_mdict(session_id, &dictionary_id, || {
-        MdictReader::open(&record.source_path)
-    })?;
+    let reader = sessions.get_or_open_mdict(session_id, &dictionary_id, || MdictReader::open(&record.source_path))?;
     reader.load_stylesheet(&key)
 }
 
-fn mdict_record(
-    registry: &DictionaryRegistryStore,
-    dictionary_id: &str,
-) -> Result<LocalDictionaryRecord, MdictError> {
+fn mdict_record(registry: &DictionaryRegistryStore, dictionary_id: &str) -> Result<LocalDictionaryRecord, MdictError> {
     let record = registry
         .get(dictionary_id)
         .map_err(|error| MdictError::new(&error.code, error.message))?;

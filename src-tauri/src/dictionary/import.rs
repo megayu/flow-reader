@@ -118,12 +118,8 @@ pub fn inspect_dictionary_file(path: &Path) -> Result<InspectedDictionary, Dicti
 
 fn inspect_stardict(path: &Path) -> Result<InspectedDictionary, DictionaryImportError> {
     let source_path = canonical_file(path)?;
-    let metadata = fs::read_to_string(&source_path).map_err(|error| {
-        DictionaryImportError::new(
-            "sourceUnreadable",
-            format!("Cannot read .ifo file: {error}"),
-        )
-    })?;
+    let metadata = fs::read_to_string(&source_path)
+        .map_err(|error| DictionaryImportError::new("sourceUnreadable", format!("Cannot read .ifo file: {error}")))?;
     if !metadata.contains("StarDict") {
         return Err(DictionaryImportError::new(
             "invalidStarDict",
@@ -155,23 +151,16 @@ fn inspect_stardict(path: &Path) -> Result<InspectedDictionary, DictionaryImport
         files.push(file_reference(
             DictionaryFileKind::CompressedData,
             compressed_data,
-            !files
-                .iter()
-                .any(|file| file.kind == DictionaryFileKind::Data),
+            !files.iter().any(|file| file.kind == DictionaryFileKind::Data),
         )?);
     }
     let synonyms = companion_path(&source_path, "syn")?;
     if synonyms.is_file() {
-        files.push(file_reference(
-            DictionaryFileKind::Synonyms,
-            synonyms,
-            true,
-        )?);
+        files.push(file_reference(DictionaryFileKind::Synonyms, synonyms, true)?);
     }
 
     let fingerprint = fingerprint_group(
-        std::iter::once(&source_path)
-            .chain(files.iter().filter(|file| file.used).map(|file| &file.path)),
+        std::iter::once(&source_path).chain(files.iter().filter(|file| file.used).map(|file| &file.path)),
     )?;
 
     Ok(InspectedDictionary {
@@ -193,11 +182,7 @@ fn inspect_mdict(path: &Path) -> Result<InspectedDictionary, DictionaryImportErr
     for resources in super::mdict::resource_paths(&source_path) {
         super::mdict::inspect_resources(&resources)
             .map_err(|error| DictionaryImportError::new(&error.code, error.message))?;
-        files.push(file_reference(
-            DictionaryFileKind::Resources,
-            resources,
-            true,
-        )?);
+        files.push(file_reference(DictionaryFileKind::Resources, resources, true)?);
     }
     for extension in ["jpg", "png"] {
         let cover = companion_path(&source_path, extension)?;
@@ -211,8 +196,7 @@ fn inspect_mdict(path: &Path) -> Result<InspectedDictionary, DictionaryImportErr
         format: DictionaryFormat::MDict,
         name: metadata.title.unwrap_or_else(|| source_stem(&source_path)),
         fingerprint: fingerprint_group(
-            std::iter::once(&source_path)
-                .chain(files.iter().filter(|file| file.used).map(|file| &file.path)),
+            std::iter::once(&source_path).chain(files.iter().filter(|file| file.used).map(|file| &file.path)),
         )?,
         metadata_languages: metadata.language.into_iter().collect(),
         source_path,
@@ -222,23 +206,18 @@ fn inspect_mdict(path: &Path) -> Result<InspectedDictionary, DictionaryImportErr
 
 fn canonical_file(path: &Path) -> Result<PathBuf, DictionaryImportError> {
     fs::canonicalize(path).map_err(|error| {
-        DictionaryImportError::new(
-            "sourceUnreadable",
-            format!("Cannot resolve dictionary file: {error}"),
-        )
+        DictionaryImportError::new("sourceUnreadable", format!("Cannot resolve dictionary file: {error}"))
     })
 }
 
 fn companion_path(path: &Path, extension: &str) -> Result<PathBuf, DictionaryImportError> {
-    let parent = path.parent().ok_or_else(|| {
-        DictionaryImportError::new("invalidMasterFile", "The master file has no parent folder.")
-    })?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| DictionaryImportError::new("invalidMasterFile", "The master file has no parent folder."))?;
     let stem = path
         .file_stem()
         .and_then(|value| value.to_str())
-        .ok_or_else(|| {
-            DictionaryImportError::new("invalidMasterFile", "The master file name is invalid.")
-        })?;
+        .ok_or_else(|| DictionaryImportError::new("invalidMasterFile", "The master file name is invalid."))?;
     Ok(parent.join(format!("{stem}.{extension}")))
 }
 
@@ -255,33 +234,27 @@ fn file_reference(
 }
 
 fn fingerprint(path: &Path) -> Result<SourceFingerprint, DictionaryImportError> {
-    let metadata = fs::metadata(path).map_err(|error| {
-        DictionaryImportError::new("sourceUnreadable", format!("Cannot inspect file: {error}"))
-    })?;
+    let metadata = fs::metadata(path)
+        .map_err(|error| DictionaryImportError::new("sourceUnreadable", format!("Cannot inspect file: {error}")))?;
     let modified_ms = metadata
         .modified()
         .ok()
         .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or_default();
-    let mut file = File::open(path).map_err(|error| {
-        DictionaryImportError::new("sourceUnreadable", format!("Cannot read file: {error}"))
-    })?;
+    let mut file = File::open(path)
+        .map_err(|error| DictionaryImportError::new("sourceUnreadable", format!("Cannot read file: {error}")))?;
     let mut hasher = Sha256::new();
     hasher.update(metadata.len().to_le_bytes());
     let mut buffer = vec![0; FINGERPRINT_SAMPLE_BYTES.min(metadata.len() as usize)];
     if !buffer.is_empty() {
-        file.read_exact(&mut buffer).map_err(|error| {
-            DictionaryImportError::new("sourceUnreadable", format!("Cannot read file: {error}"))
-        })?;
+        file.read_exact(&mut buffer)
+            .map_err(|error| DictionaryImportError::new("sourceUnreadable", format!("Cannot read file: {error}")))?;
         hasher.update(&buffer);
         if metadata.len() > FINGERPRINT_SAMPLE_BYTES as u64 {
             file.seek(SeekFrom::End(-(FINGERPRINT_SAMPLE_BYTES as i64)))
                 .map_err(|error| {
-                    DictionaryImportError::new(
-                        "sourceUnreadable",
-                        format!("Cannot seek file: {error}"),
-                    )
+                    DictionaryImportError::new("sourceUnreadable", format!("Cannot seek file: {error}"))
                 })?;
             buffer.resize(FINGERPRINT_SAMPLE_BYTES, 0);
             file.read_exact(&mut buffer).map_err(|error| {
@@ -298,9 +271,7 @@ fn fingerprint(path: &Path) -> Result<SourceFingerprint, DictionaryImportError> 
     })
 }
 
-fn fingerprint_group<'a>(
-    paths: impl Iterator<Item = &'a PathBuf>,
-) -> Result<SourceFingerprint, DictionaryImportError> {
+fn fingerprint_group<'a>(paths: impl Iterator<Item = &'a PathBuf>) -> Result<SourceFingerprint, DictionaryImportError> {
     let mut size = 0_u64;
     let mut modified_ms = 0_u64;
     let mut hasher = Sha256::new();
@@ -308,12 +279,7 @@ fn fingerprint_group<'a>(
         let current = fingerprint(path)?;
         size = size.saturating_add(current.size);
         modified_ms = modified_ms.max(current.modified_ms);
-        hasher.update(
-            path.file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .as_bytes(),
-        );
+        hasher.update(path.file_name().unwrap_or_default().to_string_lossy().as_bytes());
         hasher.update(current.size.to_le_bytes());
         hasher.update(current.modified_ms.to_le_bytes());
         hasher.update(current.sample_hash.as_bytes());
@@ -328,8 +294,7 @@ fn fingerprint_group<'a>(
 fn metadata_value(metadata: &str, key: &str) -> Option<String> {
     metadata.lines().find_map(|line| {
         let (name, value) = line.split_once('=')?;
-        (name.eq_ignore_ascii_case(key) && !value.trim().is_empty())
-            .then(|| value.trim().to_string())
+        (name.eq_ignore_ascii_case(key) && !value.trim().is_empty()).then(|| value.trim().to_string())
     })
 }
 
@@ -357,9 +322,7 @@ fn source_stem(path: &Path) -> String {
 mod tests {
     use std::{fs, path::PathBuf};
 
-    use super::{
-        infer_stardict_languages, inspect_dictionary_file, DictionaryFileKind, DictionaryFormat,
-    };
+    use super::{DictionaryFileKind, DictionaryFormat, infer_stardict_languages, inspect_dictionary_file};
 
     #[test]
     fn recognizes_explicit_dictionary_language_metadata() {
@@ -398,10 +361,7 @@ mod tests {
         let header = format!(
             r#"<{tag} GeneratedByEngineVersion="2.0" RequiredEngineVersion="2.0" Encoding="UTF-8" Encrypted="No"/>"#
         );
-        let header = header
-            .encode_utf16()
-            .flat_map(u16::to_le_bytes)
-            .collect::<Vec<_>>();
+        let header = header.encode_utf16().flat_map(u16::to_le_bytes).collect::<Vec<_>>();
         let mut a = 1_u32;
         let mut b = 0_u32;
         for byte in &header {
@@ -424,20 +384,12 @@ mod tests {
             DictionaryFormat::StarDict
         );
         assert_eq!(
-            inspect_dictionary_file(&root.join("alpha.idx"))
-                .unwrap_err()
-                .code,
+            inspect_dictionary_file(&root.join("alpha.idx")).unwrap_err().code,
             "unsupportedMasterFile"
         );
-        assert_eq!(
-            inspect_dictionary_file(&root).unwrap_err().code,
-            "directoryNotAllowed"
-        );
+        assert_eq!(inspect_dictionary_file(&root).unwrap_err().code, "directoryNotAllowed");
         fs::remove_file(root.join("alpha.idx")).unwrap();
-        assert_eq!(
-            inspect_dictionary_file(&ifo).unwrap_err().code,
-            "missingStarDictIndex"
-        );
+        assert_eq!(inspect_dictionary_file(&ifo).unwrap_err().code, "missingStarDictIndex");
         let _ = fs::remove_dir_all(root);
     }
 
@@ -452,18 +404,24 @@ mod tests {
 
         let inspected = inspect_dictionary_file(&ifo).unwrap();
         assert_eq!(inspected.files.len(), 4);
-        assert!(inspected
-            .files
-            .iter()
-            .any(|file| file.kind == DictionaryFileKind::Data && file.used));
-        assert!(inspected
-            .files
-            .iter()
-            .any(|file| { file.kind == DictionaryFileKind::CompressedData && !file.used }));
-        assert!(inspected
-            .files
-            .iter()
-            .all(|file| !file.path.to_string_lossy().contains("beta")));
+        assert!(
+            inspected
+                .files
+                .iter()
+                .any(|file| file.kind == DictionaryFileKind::Data && file.used)
+        );
+        assert!(
+            inspected
+                .files
+                .iter()
+                .any(|file| { file.kind == DictionaryFileKind::CompressedData && !file.used })
+        );
+        assert!(
+            inspected
+                .files
+                .iter()
+                .all(|file| !file.path.to_string_lossy().contains("beta"))
+        );
         let _ = fs::remove_dir_all(root);
     }
 
@@ -491,10 +449,12 @@ mod tests {
                 .count(),
             3
         );
-        assert!(inspected
-            .files
-            .iter()
-            .any(|file| file.kind == DictionaryFileKind::Cover));
+        assert!(
+            inspected
+                .files
+                .iter()
+                .any(|file| file.kind == DictionaryFileKind::Cover)
+        );
         let _ = fs::remove_dir_all(root);
     }
 }

@@ -92,11 +92,7 @@ fn search_text_cache_matches_book(cache: &SearchTextCache, book: &LibraryBook) -
         && cache.content_version == book.content_version
 }
 
-fn write_search_text_cache_if_current(
-    storage: &AppStorage,
-    id: &str,
-    cache: &SearchTextCache,
-) -> Result<bool, String> {
+fn write_search_text_cache_if_current(storage: &AppStorage, id: &str, cache: &SearchTextCache) -> Result<bool, String> {
     let current_book = storage.library_book(id)?;
     if !search_text_cache_matches_book(cache, &current_book) {
         return Ok(false);
@@ -121,11 +117,7 @@ fn write_search_text_cache_if_current(
     Ok(true)
 }
 
-fn store_search_text_memory_cache(
-    storage: &AppStorage,
-    id: String,
-    cache: Arc<SearchTextCache>,
-) -> Result<(), String> {
+fn store_search_text_memory_cache(storage: &AppStorage, id: String, cache: Arc<SearchTextCache>) -> Result<(), String> {
     let mut caches = storage
         .inner
         .search_text_caches
@@ -191,10 +183,7 @@ fn load_search_text_memory_cache(
     Ok(cache)
 }
 
-fn read_search_text_cache(
-    storage: &AppStorage,
-    book: &LibraryBook,
-) -> Result<SearchTextCache, String> {
+fn read_search_text_cache(storage: &AppStorage, book: &LibraryBook) -> Result<SearchTextCache, String> {
     let path = storage.search_text_cache_path(&book.id);
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
     let cache = search_text_cache_from_bytes(&bytes)?;
@@ -256,18 +245,17 @@ fn load_or_build_search_text_cache_with_builder(
     let task_storage = storage.clone();
     let task_book = book.clone();
     let task_runner = tasks.clone();
-    let cache: Arc<SearchTextCache> =
-        tasks.get_or_run(key, TaskPriority::Foreground, move || {
-            task_runner.run_book_exclusive(&task_book.id, TaskPriority::Foreground, || {
-                task_runner.run_cpu(TaskPriority::Foreground, || {
-                    let cache = builder(&task_storage, &task_runner, &task_book)?;
-                    if !write_search_text_cache_if_current(&task_storage, &task_book.id, &cache)? {
-                        return Err("Search text cache is stale".to_string());
-                    }
-                    Ok(Arc::new(cache))
-                })
+    let cache: Arc<SearchTextCache> = tasks.get_or_run(key, TaskPriority::Foreground, move || {
+        task_runner.run_book_exclusive(&task_book.id, TaskPriority::Foreground, || {
+            task_runner.run_cpu(TaskPriority::Foreground, || {
+                let cache = builder(&task_storage, &task_runner, &task_book)?;
+                if !write_search_text_cache_if_current(&task_storage, &task_book.id, &cache)? {
+                    return Err("Search text cache is stale".to_string());
+                }
+                Ok(Arc::new(cache))
             })
-        })?;
+        })
+    })?;
 
     if !search_text_cache_matches_book(&cache, book) {
         return Err("Search text cache is stale".to_string());
@@ -288,10 +276,7 @@ fn load_or_build_search_text_cache_with_builder(
 }
 
 fn search_index_task_key(book: &LibraryBook) -> TaskKey {
-    TaskKey::new(
-        TaskKind::SearchIndex,
-        format!("{}:{}", book.id, book.content_version),
-    )
+    TaskKey::new(TaskKind::SearchIndex, format!("{}:{}", book.id, book.content_version))
 }
 
 fn build_search_text_cache(
@@ -301,13 +286,12 @@ fn build_search_text_cache(
 ) -> Result<SearchTextCache, String> {
     let book_dir = storage.book_dir(&book.id);
     let unpacked_dir = book_dir.join(UNPACKED_DIR);
-    let sections =
-        if inspect_and_store_book_content_access(storage, book)? == BookContentMode::ArchiveOnly {
-            read_search_text_sections_from_epub_package(&archive_only_source_path(storage, book)?)?
-        } else {
-            ensure_book_package_path(storage, tasks, book)?;
-            read_search_text_sections_from_unpacked(&unpacked_dir)?
-        };
+    let sections = if inspect_and_store_book_content_access(storage, book)? == BookContentMode::ArchiveOnly {
+        read_search_text_sections_from_epub_package(&archive_only_source_path(storage, book)?)?
+    } else {
+        ensure_book_package_path(storage, tasks, book)?;
+        read_search_text_sections_from_unpacked(&unpacked_dir)?
+    };
     Ok(SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
         extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
@@ -317,16 +301,12 @@ fn build_search_text_cache(
     })
 }
 
-pub(super) fn read_search_text_sections_from_unpacked(
-    unpacked_dir: &Path,
-) -> Result<Vec<SearchTextSection>, String> {
+pub(super) fn read_search_text_sections_from_unpacked(unpacked_dir: &Path) -> Result<Vec<SearchTextSection>, String> {
     let mut source = UnpackedSearchTextSource { root: unpacked_dir };
     read_search_text_sections_from_source(&mut source)
 }
 
-fn read_search_text_sections_from_epub_package(
-    path: &Path,
-) -> Result<Vec<SearchTextSection>, String> {
+fn read_search_text_sections_from_epub_package(path: &Path) -> Result<Vec<SearchTextSection>, String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
     let mut source = ArchiveSearchTextSource { archive };
@@ -358,18 +338,15 @@ impl<R: Read + Seek> SearchTextSource for ArchiveSearchTextSource<R> {
     }
 }
 
-fn read_archive_bytes<R: Read + Seek>(
-    archive: &mut ZipArchive<R>,
-    path: &str,
-) -> Result<Vec<u8>, String> {
+fn read_archive_bytes<R: Read + Seek>(archive: &mut ZipArchive<R>, path: &str) -> Result<Vec<u8>, String> {
     let mut last_error = "EPUB entry not found".to_string();
 
     for candidate in zip_path_candidates(path) {
-        match archive.by_name(&candidate) {
+        let entry = archive.by_name(&candidate);
+        match entry {
             Ok(mut file) => {
                 let mut data = Vec::with_capacity(file.size() as usize);
-                file.read_to_end(&mut data)
-                    .map_err(|error| error.to_string())?;
+                file.read_to_end(&mut data).map_err(|error| error.to_string())?;
                 return Ok(data);
             }
             Err(error) => {
@@ -385,12 +362,9 @@ fn text_from_bytes_lossy(bytes: Vec<u8>) -> String {
     String::from_utf8(bytes.clone()).unwrap_or_else(|_| decode_text_bytes(&bytes, None).text)
 }
 
-fn read_search_text_sections_from_source(
-    source: &mut impl SearchTextSource,
-) -> Result<Vec<SearchTextSection>, String> {
+fn read_search_text_sections_from_source(source: &mut impl SearchTextSource) -> Result<Vec<SearchTextSection>, String> {
     let container = source.read_text("META-INF/container.xml")?;
-    let container_doc =
-        roxmltree::Document::parse(&container).map_err(|error| error.to_string())?;
+    let container_doc = roxmltree::Document::parse(&container).map_err(|error| error.to_string())?;
     let opf_path = container_doc
         .descendants()
         .find(|node| node.has_tag_name("rootfile"))
@@ -439,8 +413,7 @@ fn read_search_text_sections_from_source(
             continue;
         }
 
-        let normalized_href =
-            normalize_zip_path(href_without_fragment(&item.href).replace('\\', "/"));
+        let normalized_href = normalize_zip_path(href_without_fragment(&item.href).replace('\\', "/"));
         if normalized_href.is_empty() {
             continue;
         }
@@ -478,16 +451,13 @@ fn read_search_text_nav_items(
     manifest: &HashMap<String, SearchManifestItem>,
     opf_dir: &str,
 ) -> Vec<SearchTextNavItem> {
-    if let Some(item) = manifest.values().find(|item| {
-        item.properties
-            .split_whitespace()
-            .any(|value| value == "nav")
-    }) {
-        if let Ok(items) = read_epub3_search_nav_items(source, opf_dir, &item.href) {
-            if !items.is_empty() {
-                return items;
-            }
-        }
+    if let Some(item) = manifest
+        .values()
+        .find(|item| item.properties.split_whitespace().any(|value| value == "nav"))
+        && let Ok(items) = read_epub3_search_nav_items(source, opf_dir, &item.href)
+        && !items.is_empty()
+    {
+        return items;
     }
 
     let ncx_id = opf_doc
@@ -539,12 +509,7 @@ fn read_epub3_search_nav_items(
 
     let mut items = Vec::new();
     let mut path = Vec::new();
-    collect_epub3_search_nav_items(
-        list,
-        parent_zip_path(&normalized_href),
-        &mut path,
-        &mut items,
-    );
+    collect_epub3_search_nav_items(list, parent_zip_path(&normalized_href), &mut path, &mut items);
     Ok(items)
 }
 
@@ -566,9 +531,7 @@ fn collect_epub3_search_nav_items(
         let label_node = item
             .children()
             .find(|node| node.is_element() && matches!(node.tag_name().name(), "a" | "span"));
-        let label = label_node
-            .map(node_search_text)
-            .filter(|label| !label.is_empty());
+        let label = label_node.map(node_search_text).filter(|label| !label.is_empty());
         let href = label_node
             .and_then(|node| node.attribute("href"))
             .map(|href| normalize_nav_href(base_href, href));
@@ -624,12 +587,7 @@ fn read_ncx_search_nav_items(
 
     let mut items = Vec::new();
     let mut path = Vec::new();
-    collect_ncx_search_nav_items(
-        nav_map,
-        parent_zip_path(&normalized_href),
-        &mut path,
-        &mut items,
-    );
+    collect_ncx_search_nav_items(nav_map, parent_zip_path(&normalized_href), &mut path, &mut items);
     Ok(items)
 }
 
@@ -759,13 +717,7 @@ fn search_text_and_title_from_xhtml(xhtml: &str) -> (String, Option<String>) {
 
     let title = body
         .descendants()
-        .find(|node| {
-            node.is_element()
-                && matches!(
-                    node.tag_name().name(),
-                    "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
-                )
-        })
+        .find(|node| node.is_element() && matches!(node.tag_name().name(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6"))
         .and_then(|node| node.text())
         .map(clean_xml_text)
         .filter(|title| !title.is_empty())
@@ -953,8 +905,7 @@ pub(super) fn search_text_in_cache(
 
     'sections: for section in &cache.sections {
         let fold_started = diagnostics_enabled.then(Instant::now);
-        let (folded_text, original_char_offsets) =
-            lowercase_with_original_char_offsets(&section.text);
+        let (folded_text, original_char_offsets) = lowercase_with_original_char_offsets(&section.text);
         if let Some(fold_started) = fold_started {
             fold_elapsed += fold_started.elapsed();
         }
@@ -963,9 +914,7 @@ pub(super) fn search_text_in_cache(
         let mut subitems = Vec::new();
         let mut text_chars = None;
 
-        for (occurrence, (folded_byte_offset, _)) in
-            folded_text.match_indices(&folded_keyword).enumerate()
-        {
+        for (occurrence, (folded_byte_offset, _)) in folded_text.match_indices(&folded_keyword).enumerate() {
             let locate_started = diagnostics_enabled.then(Instant::now);
             folded_char_offset += folded_text[previous_folded_byte_offset..folded_byte_offset]
                 .chars()
@@ -975,19 +924,14 @@ pub(super) fn search_text_in_cache(
                 .as_ref()
                 .and_then(|offsets| offsets.get(folded_char_offset))
                 .copied()
-                .or_else(|| {
-                    original_char_offsets
-                        .is_none()
-                        .then_some(folded_char_offset)
-                })
+                .or_else(|| original_char_offsets.is_none().then_some(folded_char_offset))
                 .unwrap_or_else(|| section.text.chars().count());
             if let Some(locate_started) = locate_started {
                 locate_elapsed += locate_started.elapsed();
             }
 
             let excerpt_started = diagnostics_enabled.then(Instant::now);
-            let text_chars =
-                text_chars.get_or_insert_with(|| section.text.chars().collect::<Vec<_>>());
+            let text_chars = text_chars.get_or_insert_with(|| section.text.chars().collect::<Vec<_>>());
             let excerpt = search_text_excerpt(text_chars, char_offset, keyword_char_len);
             if let Some(excerpt_started) = excerpt_started {
                 excerpt_elapsed += excerpt_started.elapsed();
@@ -1010,10 +954,7 @@ pub(super) fn search_text_in_cache(
         if !subitems.is_empty() {
             results.push(SearchTextResult {
                 id: section.href.clone(),
-                excerpt: section
-                    .title
-                    .clone()
-                    .unwrap_or_else(|| section.href.clone()),
+                excerpt: section.title.clone().unwrap_or_else(|| section.href.clone()),
                 description: (!section.nav_path.is_empty()).then(|| section.nav_path.join(" / ")),
                 section_index: section.section_index,
                 subitems,
@@ -1034,18 +975,9 @@ pub(super) fn search_text_in_cache(
                 ("sections", cache.sections.len().to_string()),
                 ("matched_sections", results.len().to_string()),
                 ("hits", total.to_string()),
-                (
-                    "fold_ms",
-                    format!("{:.2}", fold_elapsed.as_secs_f64() * 1000.0),
-                ),
-                (
-                    "locate_ms",
-                    format!("{:.2}", locate_elapsed.as_secs_f64() * 1000.0),
-                ),
-                (
-                    "excerpt_ms",
-                    format!("{:.2}", excerpt_elapsed.as_secs_f64() * 1000.0),
-                ),
+                ("fold_ms", format!("{:.2}", fold_elapsed.as_secs_f64() * 1000.0)),
+                ("locate_ms", format!("{:.2}", locate_elapsed.as_secs_f64() * 1000.0)),
+                ("excerpt_ms", format!("{:.2}", excerpt_elapsed.as_secs_f64() * 1000.0)),
             ],
         );
     }
@@ -1095,9 +1027,7 @@ fn search_text_excerpt(chars: &[char], offset: usize, keyword_len: usize) -> Str
         return String::new();
     }
 
-    let mut start = offset
-        .saturating_sub(SEARCH_TEXT_EXCERPT_RADIUS)
-        .max(paragraph_start);
+    let mut start = offset.saturating_sub(SEARCH_TEXT_EXCERPT_RADIUS).max(paragraph_start);
     let mut end = (offset + keyword_len + SEARCH_TEXT_EXCERPT_RADIUS).min(paragraph_end);
 
     while start < end && chars[start].is_whitespace() {
@@ -1132,22 +1062,16 @@ mod tests {
         collections::{HashMap, VecDeque},
         path::Path,
         sync::{
-            atomic::{AtomicUsize, Ordering},
             Arc, Mutex,
+            atomic::{AtomicUsize, Ordering},
         },
         thread,
         time::{Duration, SystemTime, UNIX_EPOCH},
     };
 
     fn temp_root(label: &str) -> PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        std::env::temp_dir().join(format!(
-            "flow-reader-{label}-{}-{nonce}",
-            std::process::id()
-        ))
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        std::env::temp_dir().join(format!("flow-reader-{label}-{}-{nonce}", std::process::id()))
     }
 
     fn test_book(id: &str, content_version: u32) -> LibraryBook {
@@ -1234,16 +1158,11 @@ mod tests {
             let runs = Arc::clone(&runs);
             let book = book.clone();
             thread::spawn(move || {
-                load_or_build_search_text_cache_with_builder(
-                    &storage,
-                    &tasks,
-                    &book,
-                    |_, _, book| {
-                        runs.fetch_add(1, Ordering::SeqCst);
-                        thread::sleep(Duration::from_millis(100));
-                        Ok(test_cache(book, "first build"))
-                    },
-                )
+                load_or_build_search_text_cache_with_builder(&storage, &tasks, &book, |_, _, book| {
+                    runs.fetch_add(1, Ordering::SeqCst);
+                    thread::sleep(Duration::from_millis(100));
+                    Ok(test_cache(book, "first build"))
+                })
             })
         };
 
@@ -1254,15 +1173,10 @@ mod tests {
             let tasks = Arc::clone(&tasks);
             let runs = Arc::clone(&runs);
             thread::spawn(move || {
-                load_or_build_search_text_cache_with_builder(
-                    &storage,
-                    &tasks,
-                    &book,
-                    |_, _, book| {
-                        runs.fetch_add(1, Ordering::SeqCst);
-                        Ok(test_cache(book, "second build"))
-                    },
-                )
+                load_or_build_search_text_cache_with_builder(&storage, &tasks, &book, |_, _, book| {
+                    runs.fetch_add(1, Ordering::SeqCst);
+                    Ok(test_cache(book, "second build"))
+                })
             })
         };
 
@@ -1284,12 +1198,7 @@ mod tests {
 
         {
             let mut state = storage.inner.state.lock().unwrap();
-            let book = state
-                .library
-                .books
-                .iter_mut()
-                .find(|book| book.id == "book")
-                .unwrap();
+            let book = state.library.books.iter_mut().find(|book| book.id == "book").unwrap();
             book.content_hash = "hash-2".to_string();
             book.content_version = 2;
         }
@@ -1311,12 +1220,7 @@ mod tests {
         let storage = test_storage(&root, books.clone());
 
         for book in &books {
-            store_search_text_memory_cache(
-                &storage,
-                book.id.clone(),
-                Arc::new(test_cache(book, &book.id)),
-            )
-            .unwrap();
+            store_search_text_memory_cache(&storage, book.id.clone(), Arc::new(test_cache(book, &book.id))).unwrap();
         }
 
         let caches = storage.inner.search_text_caches.lock().unwrap();

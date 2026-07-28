@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use reqwest::{redirect::Policy, Client, Url};
+use reqwest::{Client, Url, redirect::Policy};
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
@@ -78,10 +78,7 @@ impl TranslationHttpClient {
         })
     }
 
-    async fn translate(
-        &self,
-        request: TranslationRequest,
-    ) -> Result<TranslationResponse, TranslationError> {
+    async fn translate(&self, request: TranslationRequest) -> Result<TranslationResponse, TranslationError> {
         validate_request(&request)?;
         let cancellation = CancellationToken::new();
         self.sessions
@@ -105,10 +102,7 @@ impl TranslationHttpClient {
         result
     }
 
-    async fn google(
-        &self,
-        request: &TranslationRequest,
-    ) -> Result<TranslationResponse, TranslationError> {
+    async fn google(&self, request: &TranslationRequest) -> Result<TranslationResponse, TranslationError> {
         let mut bodies = Vec::with_capacity(request.texts.len());
         for text in &request.texts {
             let mut url = Url::parse(GOOGLE_URL).expect("fixed Google translation URL");
@@ -130,28 +124,19 @@ impl TranslationHttpClient {
         Ok(TranslationResponse { bodies })
     }
 
-    async fn azure(
-        &self,
-        request: &TranslationRequest,
-    ) -> Result<TranslationResponse, TranslationError> {
+    async fn azure(&self, request: &TranslationRequest) -> Result<TranslationResponse, TranslationError> {
         let token = self.azure_token().await?;
         let mut url = Url::parse(AZURE_TRANSLATE_URL).expect("fixed Azure translation URL");
         url.query_pairs_mut()
             .append_pair("api-version", "3.0")
             .append_pair("to", &request.target_language);
         if !request.source_language.is_empty() {
-            url.query_pairs_mut()
-                .append_pair("from", &request.source_language);
+            url.query_pairs_mut().append_pair("from", &request.source_language);
         }
         let body = request
             .texts
             .iter()
-            .map(|text| {
-                format!(
-                    "{{\"Text\":{}}}",
-                    serde_json::to_string(text).expect("text JSON")
-                )
-            })
+            .map(|text| format!("{{\"Text\":{}}}", serde_json::to_string(text).expect("text JSON")))
             .collect::<Vec<_>>()
             .join(",");
         let response = self
@@ -168,15 +153,10 @@ impl TranslationHttpClient {
     }
 
     async fn azure_token(&self) -> Result<String, TranslationError> {
-        if let Some(token) = self
-            .azure_token
-            .lock()
-            .expect("Azure token lock poisoned")
-            .as_ref()
+        if let Some(token) = self.azure_token.lock().expect("Azure token lock poisoned").as_ref()
+            && token.expires_at > Instant::now()
         {
-            if token.expires_at > Instant::now() {
-                return Ok(token.value.clone());
-            }
+            return Ok(token.value.clone());
         }
         let requested_at = Instant::now();
         let response = self
@@ -219,17 +199,13 @@ impl TranslationHttpClient {
 
 fn validate_request(request: &TranslationRequest) -> Result<(), TranslationError> {
     let total = request.texts.iter().map(String::len).sum::<usize>();
-    if request.texts.is_empty() || request.texts.len() > 32 || total == 0 || total > MAX_TEXT_BYTES
-    {
+    if request.texts.is_empty() || request.texts.len() > 32 || total == 0 || total > MAX_TEXT_BYTES {
         return Err(TranslationError::new(
             "invalid_request",
             "Translation text is empty or too large",
         ));
     }
-    if request.target_language.is_empty()
-        || request.target_language.len() > 16
-        || request.source_language.len() > 16
-    {
+    if request.target_language.is_empty() || request.target_language.len() > 16 || request.source_language.len() > 16 {
         return Err(TranslationError::new(
             "invalid_request",
             "Translation language is invalid",
@@ -281,10 +257,7 @@ pub async fn fetch_translation(
 }
 
 #[tauri::command]
-pub fn cancel_translation_session(
-    client: tauri::State<'_, TranslationHttpClient>,
-    session_id: u64,
-) {
+pub fn cancel_translation_session(client: tauri::State<'_, TranslationHttpClient>, session_id: u64) {
     client.cancel(session_id)
 }
 
@@ -301,17 +274,11 @@ mod tests {
             target_language: "en".into(),
             session_id: 1,
         };
-        assert_eq!(
-            validate_request(&request).unwrap_err().code,
-            "invalid_request"
-        );
+        assert_eq!(validate_request(&request).unwrap_err().code, "invalid_request");
         let request = TranslationRequest {
             texts: vec!["x".repeat(MAX_TEXT_BYTES + 1)],
             ..request
         };
-        assert_eq!(
-            validate_request(&request).unwrap_err().code,
-            "invalid_request"
-        );
+        assert_eq!(validate_request(&request).unwrap_err().code, "invalid_request");
     }
 }

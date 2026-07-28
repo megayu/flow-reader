@@ -34,10 +34,7 @@ fn list_system_fonts() -> Vec<SystemFont> {
 fn take_pending_open_paths(state: tauri::State<'_, PendingOpenFiles>) -> Vec<String> {
     let mut paths = state.0.lock().expect("pending open file lock poisoned");
 
-    paths
-        .drain(..)
-        .map(|path| path.to_string_lossy().to_string())
-        .collect()
+    paths.drain(..).map(|path| path.to_string_lossy().to_string()).collect()
 }
 
 #[tauri::command]
@@ -67,9 +64,7 @@ fn valid_external_url(url: &str) -> bool {
     !url.is_empty()
         && url.len() <= 8192
         && !url.chars().any(char::is_control)
-        && (lower.starts_with("http://")
-            || lower.starts_with("https://")
-            || lower.starts_with("mailto:"))
+        && (lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("mailto:"))
 }
 
 fn spawn_external_url_command(url: &str) -> Result<(), String> {
@@ -165,8 +160,7 @@ pub fn run() {
         }))
         .setup(|app| {
             let storage = storage::AppStorage::load(app.handle()).map_err(std::io::Error::other)?;
-            let dictionary_registry =
-                dictionary::registry::DictionaryRegistryStore::open_for_app(storage.root());
+            let dictionary_registry = dictionary::registry::DictionaryRegistryStore::open_for_app(storage.root());
             app.manage(dictionary_registry);
             app.manage(dictionary::session::DictionarySessionManager::default());
             app.manage(storage.clone());
@@ -200,12 +194,10 @@ pub fn run() {
                             tasks.cancel_background();
                         }
                         storage::flush_app_storage(&window);
-                        if let Some(storage) = app.try_state::<storage::AppStorage>() {
-                            if let Err(error) =
-                                storage::cleanup_all_external_book_heavy_files(&storage)
-                            {
-                                eprintln!("Failed to cleanup external book files: {error}");
-                            }
+                        if let Some(storage) = app.try_state::<storage::AppStorage>()
+                            && let Err(error) = storage::cleanup_all_external_book_heavy_files(&storage)
+                        {
+                            eprintln!("Failed to cleanup external book files: {error}");
                         }
                         app.exit(0);
                     });
@@ -283,9 +275,9 @@ mod system_fonts {
     };
 
     use winreg::{
+        RegKey,
         enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ},
         types::FromRegValue,
-        RegKey,
     };
 
     use super::SystemFont;
@@ -303,7 +295,8 @@ mod system_fonts {
 
     fn collect_root(root: winreg::HKEY, fonts: &mut BTreeMap<String, SystemFont>) {
         let root = RegKey::predef(root);
-        if let Ok(key) = root.open_subkey_with_flags(FONT_REGISTRY_PATH, KEY_READ) {
+        let font_key = root.open_subkey_with_flags(FONT_REGISTRY_PATH, KEY_READ);
+        if let Ok(key) = font_key {
             collect_key(&key, fonts);
         }
     }
@@ -321,7 +314,8 @@ mod system_fonts {
         }
 
         for subkey_name in key.enum_keys().filter_map(Result::ok) {
-            if let Ok(subkey) = key.open_subkey_with_flags(subkey_name, KEY_READ) {
+            let child_key = key.open_subkey_with_flags(subkey_name, KEY_READ);
+            if let Ok(subkey) = child_key {
                 collect_key(&subkey, fonts);
             }
         }
@@ -347,13 +341,7 @@ mod system_fonts {
 
     fn clean_registry_name(name: &str) -> String {
         let mut name = name.trim().trim_matches('"').to_string();
-        for suffix in [
-            " (TrueType)",
-            " (OpenType)",
-            " (Type 1)",
-            " (Raster)",
-            " (All res)",
-        ] {
+        for suffix in [" (TrueType)", " (OpenType)", " (Type 1)", " (Raster)", " (All res)"] {
             if let Some(cleaned) = name.strip_suffix(suffix) {
                 name = cleaned.trim().to_string();
                 break;
@@ -397,10 +385,10 @@ mod system_fonts {
         let mut prev = None;
 
         for ch in name.chars() {
-            if let Some(prev_ch) = prev {
-                if should_insert_space(prev_ch, ch) {
-                    expanded.push(' ');
-                }
+            if let Some(prev_ch) = prev
+                && should_insert_space(prev_ch, ch)
+            {
+                expanded.push(' ');
             }
             expanded.push(ch);
             prev = Some(ch);

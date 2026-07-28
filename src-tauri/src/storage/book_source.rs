@@ -40,9 +40,7 @@ pub(super) fn ensure_book_package_path_with_unpacker(
             ("cache", "miss".to_string()),
             (
                 "search_memory_caches",
-                diagnostics_storage
-                    .search_text_memory_cache_len()
-                    .to_string(),
+                diagnostics_storage.search_text_memory_cache_len().to_string(),
             ),
         ];
         fields.extend(tasks.diagnostic_fields());
@@ -126,10 +124,7 @@ pub(super) fn inspect_and_store_book_content_access(
     Ok(access.mode)
 }
 
-pub(super) fn book_original_source_path(
-    storage: &AppStorage,
-    book: &LibraryBook,
-) -> Option<PathBuf> {
+pub(super) fn book_original_source_path(storage: &AppStorage, book: &LibraryBook) -> Option<PathBuf> {
     match book.source_storage {
         SourceStorage::Managed => Some(storage.book_dir(&book.id).join(BOOK_FILE)),
         SourceStorage::Referenced => book.source_path.clone(),
@@ -140,10 +135,7 @@ const BOOK_SOURCE_MISSING_ERROR: &str = "BOOK_SOURCE_MISSING";
 const BOOK_SOURCE_UNREADABLE_ERROR: &str = "BOOK_SOURCE_UNREADABLE";
 const BOOK_SOURCE_CHANGED_ERROR: &str = "BOOK_SOURCE_CHANGED";
 
-pub(super) fn source_path_status(
-    path: Option<&Path>,
-    expected_source: Option<(u64, &str)>,
-) -> BookSourceStatus {
+pub(super) fn source_path_status(path: Option<&Path>, expected_source: Option<(u64, &str)>) -> BookSourceStatus {
     let Some(path) = path else {
         return BookSourceStatus::Missing;
     };
@@ -162,9 +154,7 @@ pub(super) fn source_path_status(
         return BookSourceStatus::Changed;
     }
     match hash_file(path) {
-        Ok(hash) if expected_hash.is_empty() || hash == expected_hash => {
-            BookSourceStatus::Available
-        }
+        Ok(hash) if expected_hash.is_empty() || hash == expected_hash => BookSourceStatus::Available,
         Ok(_) => BookSourceStatus::Changed,
         Err(_) => BookSourceStatus::Unreadable,
     }
@@ -179,13 +169,10 @@ pub(super) fn source_status_error(status: BookSourceStatus) -> Option<&'static s
     }
 }
 
-pub(super) fn archive_only_source_path(
-    storage: &AppStorage,
-    book: &LibraryBook,
-) -> Result<PathBuf, String> {
+pub(super) fn archive_only_source_path(storage: &AppStorage, book: &LibraryBook) -> Result<PathBuf, String> {
     let path = book_original_source_path(storage, book);
-    let expected_source = (book.source_storage == SourceStorage::Referenced)
-        .then_some((book.size, book.content_hash.as_str()));
+    let expected_source =
+        (book.source_storage == SourceStorage::Referenced).then_some((book.size, book.content_hash.as_str()));
     let status = source_path_status(path.as_deref(), expected_source);
     if let Some(error) = source_status_error(status) {
         return Err(error.to_string());
@@ -212,29 +199,18 @@ pub(super) fn check_book_source_statuses_impl(
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
         ids.into_iter()
-            .filter_map(|id| {
-                state
-                    .library
-                    .books
-                    .iter()
-                    .find(|book| book.id == id)
-                    .cloned()
-            })
+            .filter_map(|id| state.library.books.iter().find(|book| book.id == id).cloned())
             .collect::<Vec<_>>()
     };
 
     Ok(books
         .into_iter()
         .filter(|book| {
-            book.source_storage == SourceStorage::Referenced
-                && book.content_mode == BookContentMode::ArchiveOnly
+            book.source_storage == SourceStorage::Referenced && book.content_mode == BookContentMode::ArchiveOnly
         })
         .map(|book| {
             let status = referenced_archive_source_status(&book);
-            BookSourceStatusRecord {
-                id: book.id,
-                status,
-            }
+            BookSourceStatusRecord { id: book.id, status }
         })
         .collect())
 }
@@ -361,13 +337,7 @@ pub(super) fn unpack_temp_dir(unpacked_dir: &Path) -> PathBuf {
     unpacked_dir.with_file_name(format!("{name}.tmp-{}-{nonce}", std::process::id()))
 }
 
-pub(super) fn book_content_still_current(
-    storage: &AppStorage,
-    book: &LibraryBook,
-) -> Result<bool, String> {
+pub(super) fn book_content_still_current(storage: &AppStorage, book: &LibraryBook) -> Result<bool, String> {
     let current = storage.library_book(&book.id)?;
-    Ok(
-        current.content_hash == book.content_hash
-            && current.content_version == book.content_version,
-    )
+    Ok(current.content_hash == book.content_hash && current.content_version == book.content_version)
 }

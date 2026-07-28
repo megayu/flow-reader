@@ -6,7 +6,7 @@ use std::{
 };
 
 use regex::Regex;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use zip::ZipArchive;
@@ -24,8 +24,7 @@ use normalize::*;
 
 pub(super) use access::{find_unpacked_opf_path, inspect_epub_access, unpack_epub};
 pub(super) use metadata_cover::{
-    clean_xml_text, join_zip_path, normalize_non_square_pixel_png, normalize_zip_path,
-    parent_zip_path,
+    clean_xml_text, join_zip_path, normalize_non_square_pixel_png, normalize_zip_path, parent_zip_path,
 };
 #[cfg(test)]
 pub(super) use normalize::relative_zip_path;
@@ -112,11 +111,7 @@ mod tests {
     use super::*;
 
     fn split_test_root(name: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!(
-            "flow-reader-{name}-{}-{}",
-            std::process::id(),
-            now_ms()
-        ));
+        let root = std::env::temp_dir().join(format!("flow-reader-{name}-{}-{}", std::process::id(), now_ms()));
         if root.exists() {
             fs::remove_dir_all(&root).unwrap();
         }
@@ -165,8 +160,7 @@ mod tests {
 <table><tr><td>table should not block splitting</td></tr></table>
 "##,
         );
-        let filler =
-            "x".repeat(EPUB_SECTION_SPLIT_MIN_BYTES as usize / nav_point_count.max(1) + 1_024);
+        let filler = "x".repeat(EPUB_SECTION_SPLIT_MIN_BYTES as usize / nav_point_count.max(1) + 1_024);
         for index in 0..nav_point_count {
             xhtml.push_str(&format!(
                 r#"<h1 id="nav_point_{index}">Section {index}</h1><p>{filler}</p>"#
@@ -179,8 +173,8 @@ mod tests {
     #[test]
     fn normalize_deobfuscates_idpf_fonts_once() {
         const KEY: [u8; 20] = [
-            0xb5, 0x62, 0xe8, 0x3e, 0x16, 0x06, 0x57, 0x9a, 0x9c, 0x6c, 0x70, 0xa7, 0x5f, 0x4a,
-            0x14, 0xd2, 0xea, 0x36, 0xb0, 0x9e,
+            0xb5, 0x62, 0xe8, 0x3e, 0x16, 0x06, 0x57, 0x9a, 0x9c, 0x6c, 0x70, 0xa7, 0x5f, 0x4a, 0x14, 0xd2, 0xea, 0x36,
+            0xb0, 0x9e,
         ];
 
         let root = split_test_root("idpf-font");
@@ -216,9 +210,11 @@ mod tests {
 
         assert!(normalize_unpacked_epub_structure(&root).unwrap());
         assert_eq!(fs::read(&font_path).unwrap(), clear);
-        assert!(!fs::read_to_string(root.join("META-INF/encryption.xml"))
-            .unwrap()
-            .contains("EncryptedData"));
+        assert!(
+            !fs::read_to_string(root.join("META-INF/encryption.xml"))
+                .unwrap()
+                .contains("EncryptedData")
+        );
         assert!(!normalize_unpacked_epub_structure(&root).unwrap());
         assert_eq!(fs::read(&font_path).unwrap(), clear);
 
@@ -233,12 +229,9 @@ mod tests {
         assert!(normalize_unpacked_epub_structure(&root).unwrap());
 
         assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
-        assert!(root
-            .join("OEBPS/Text/part0000-flow-split-0008.xhtml")
-            .exists());
+        assert!(root.join("OEBPS/Text/part0000-flow-split-0008.xhtml").exists());
 
-        let first_split =
-            fs::read_to_string(root.join("OEBPS/Text/part0000-flow-split-0001.xhtml")).unwrap();
+        let first_split = fs::read_to_string(root.join("OEBPS/Text/part0000-flow-split-0001.xhtml")).unwrap();
         assert!(first_split.contains("<table>"));
         assert!(!first_split.contains(r#"href="part0000.xhtml#nav_point_7""#));
         assert!(!first_split.contains(r##"href="#nav_point_7""##));
@@ -262,9 +255,7 @@ mod tests {
         assert!(normalize_unpacked_epub_structure(&root).unwrap());
 
         assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
-        assert!(root
-            .join("OEBPS/Text/part0000-flow-split-0002.xhtml")
-            .exists());
+        assert!(root.join("OEBPS/Text/part0000-flow-split-0002.xhtml").exists());
 
         fs::remove_dir_all(root).unwrap();
     }
@@ -288,9 +279,7 @@ mod tests {
         assert!(normalize_unpacked_epub_structure(&root).unwrap());
 
         assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
-        assert!(root
-            .join("OEBPS/Text/part0000-flow-split-0002.xhtml")
-            .exists());
+        assert!(root.join("OEBPS/Text/part0000-flow-split-0002.xhtml").exists());
 
         fs::remove_dir_all(root).unwrap();
     }
@@ -314,8 +303,7 @@ mod tests {
         assert!(normalize_unpacked_epub_structure(&root).unwrap());
 
         assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
-        let first_split =
-            fs::read_to_string(root.join("OEBPS/Text/part0000-flow-split-0001.xhtml")).unwrap();
+        let first_split = fs::read_to_string(root.join("OEBPS/Text/part0000-flow-split-0001.xhtml")).unwrap();
         assert!(first_split.contains("Section&nbsp;0"));
 
         fs::remove_dir_all(root).unwrap();
@@ -340,8 +328,7 @@ mod tests {
         assert!(normalize_unpacked_epub_structure(&root).unwrap());
 
         assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
-        let first_split =
-            fs::read_to_string(root.join("OEBPS/Text/part0000-flow-split-0001.xhtml")).unwrap();
+        let first_split = fs::read_to_string(root.join("OEBPS/Text/part0000-flow-split-0001.xhtml")).unwrap();
         assert!(first_split.contains("<svg"));
 
         fs::remove_dir_all(root).unwrap();
@@ -431,8 +418,7 @@ mod tests {
         fs::write(root.join("OEBPS/toc.ncx"), ncx).unwrap();
 
         let filler = "x".repeat(70_000);
-        let mut xhtml =
-            String::from(r#"<?xml version="1.0" encoding="utf-8"?><html><body><div id="book">"#);
+        let mut xhtml = String::from(r#"<?xml version="1.0" encoding="utf-8"?><html><body><div id="book">"#);
         for index in 0..8 {
             xhtml.push_str(&format!(
                 r#"<div class="text"><p id="nav_point_{index}">Section {index}</p><p>{filler}</p></div>"#
@@ -493,9 +479,7 @@ mod tests {
         normalize_unpacked_epub_structure(&root).unwrap();
 
         assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
-        assert!(root
-            .join("OEBPS/Text/part0000-flow-split-0002.xhtml")
-            .exists());
+        assert!(root.join("OEBPS/Text/part0000-flow-split-0002.xhtml").exists());
 
         fs::remove_dir_all(root).unwrap();
     }
@@ -696,18 +680,13 @@ mod tests {
 
     #[test]
     fn collect_anchor_starts_scans_body_once() {
-        let xhtml = r#"<html><body><p id="first">One</p><a name='second'></a><span id="first">Later</span></body></html>"#;
+        let xhtml =
+            r#"<html><body><p id="first">One</p><a name='second'></a><span id="first">Later</span></body></html>"#;
         let (body_start, body_end) = local_body_content_range(xhtml).unwrap();
         let anchors = collect_anchor_starts(xhtml, body_start, body_end).unwrap();
 
-        assert_eq!(
-            anchors.get("first"),
-            Some(&xhtml.find(r#"<p id="first""#).unwrap())
-        );
-        assert_eq!(
-            anchors.get("second"),
-            Some(&xhtml.find(r#"<a name='second'"#).unwrap())
-        );
+        assert_eq!(anchors.get("first"), Some(&xhtml.find(r#"<p id="first""#).unwrap()));
+        assert_eq!(anchors.get("second"), Some(&xhtml.find(r#"<a name='second'"#).unwrap()));
     }
 
     #[test]
@@ -723,10 +702,7 @@ mod tests {
 
         assert_eq!(
             find_cover_path(&doc),
-            Some((
-                "Images/obfuscated-image.jpg".to_string(),
-                "image/jpeg".to_string()
-            ))
+            Some(("Images/obfuscated-image.jpg".to_string(), "image/jpeg".to_string()))
         );
     }
 }

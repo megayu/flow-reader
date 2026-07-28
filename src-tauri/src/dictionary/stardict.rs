@@ -10,8 +10,7 @@ use memmap2::{Mmap, MmapOptions};
 use serde::{Deserialize, Serialize};
 
 use super::import::{
-    inspect_dictionary_file, DictionaryFileKind, DictionaryFormat, InspectedDictionary,
-    SourceFingerprint,
+    DictionaryFileKind, DictionaryFormat, InspectedDictionary, SourceFingerprint, inspect_dictionary_file,
 };
 
 const INDEX_VERSION: u32 = 1;
@@ -87,10 +86,7 @@ struct DerivedMetadata {
 pub fn prepare_index(master: &Path, cache: &Path) -> Result<(), StarDictError> {
     let inspected = inspect_stardict(master)?;
     let metadata = read_ifo(&inspected.source_path)?;
-    if metadata
-        .get("sametypesequence")
-        .is_some_and(|value| value != "m")
-    {
+    if metadata.get("sametypesequence").is_some_and(|value| value != "m") {
         return Err(StarDictError::new(
             "unsupportedStarDictType",
             "This StarDict uses definition fields that are not supported yet.",
@@ -124,13 +120,12 @@ pub fn prepare_index(master: &Path, cache: &Path) -> Result<(), StarDictError> {
         entry_count: entries.len() as u32,
         synonym_count: synonyms.len() as u32,
     };
-    let encoded = serde_json::to_vec(&metadata)
-        .map_err(|error| StarDictError::new("indexWriteFailed", error.to_string()))?;
-    let header_length = u32::try_from(encoded.len())
-        .map_err(|_| invalid_derived("The derived StarDict header is too large."))?;
-    let mut offset_bytes = Vec::with_capacity(
-        HEADER_LENGTH_BYTES + encoded.len() + entries.len() * 4 + synonyms.len() * 8,
-    );
+    let encoded =
+        serde_json::to_vec(&metadata).map_err(|error| StarDictError::new("indexWriteFailed", error.to_string()))?;
+    let header_length =
+        u32::try_from(encoded.len()).map_err(|_| invalid_derived("The derived StarDict header is too large."))?;
+    let mut offset_bytes =
+        Vec::with_capacity(HEADER_LENGTH_BYTES + encoded.len() + entries.len() * 4 + synonyms.len() * 8);
     offset_bytes.extend_from_slice(&header_length.to_le_bytes());
     offset_bytes.extend_from_slice(&encoded);
     for entry in &entries {
@@ -161,12 +156,12 @@ impl StarDictReader {
         let inspected = inspect_stardict(master)?;
         let metadata = read_ifo(&inspected.source_path)?;
         let data_offset_bytes = index_data_offset_bytes(&metadata)?;
-        let offsets_file = File::open(cache.join("offsets.bin"))
-            .map_err(|error| io_error("indexUnavailable", error))?;
+        let offsets_file =
+            File::open(cache.join("offsets.bin")).map_err(|error| io_error("indexUnavailable", error))?;
         // App-generated cache files and registered source files remain immutable
         // for the lifetime of a dictionary lookup session.
-        let offsets = unsafe { MmapOptions::new().map(&offsets_file) }
-            .map_err(|error| io_error("indexUnavailable", error))?;
+        let offsets =
+            unsafe { MmapOptions::new().map(&offsets_file) }.map_err(|error| io_error("indexUnavailable", error))?;
         let (header, entry_table_start) = read_index_header(&offsets)?;
         if header.fingerprint != inspected.fingerprint {
             return Err(StarDictError::new(
@@ -190,19 +185,16 @@ impl StarDictReader {
             ));
         }
         let index_path = used_file(&inspected, DictionaryFileKind::Index)?;
-        let index_file =
-            File::open(index_path).map_err(|error| io_error("indexUnavailable", error))?;
-        let index = unsafe { MmapOptions::new().map(&index_file) }
-            .map_err(|error| io_error("indexUnavailable", error))?;
+        let index_file = File::open(index_path).map_err(|error| io_error("indexUnavailable", error))?;
+        let index =
+            unsafe { MmapOptions::new().map(&index_file) }.map_err(|error| io_error("indexUnavailable", error))?;
         let synonyms = if synonym_count == 0 {
             None
         } else {
             optional_used_file(&inspected, DictionaryFileKind::Synonyms)
                 .map(|path| {
-                    let file =
-                        File::open(path).map_err(|error| io_error("invalidSynonym", error))?;
-                    unsafe { MmapOptions::new().map(&file) }
-                        .map_err(|error| io_error("invalidSynonym", error))
+                    let file = File::open(path).map_err(|error| io_error("invalidSynonym", error))?;
+                    unsafe { MmapOptions::new().map(&file) }.map_err(|error| io_error("invalidSynonym", error))
                 })
                 .transpose()?
         };
@@ -228,9 +220,7 @@ impl StarDictReader {
     pub fn lookup(&self, query: &str) -> Result<StarDictLookupResult, StarDictError> {
         let query = normalize_key(query);
         if query.is_empty() || query.len() > MAX_WORD_BYTES {
-            return Ok(StarDictLookupResult {
-                entries: Vec::new(),
-            });
+            return Ok(StarDictLookupResult { entries: Vec::new() });
         }
         let mut source_matches = self.regular_matches(&query)?;
         source_matches.extend(self.synonym_matches(&query)?);
@@ -264,9 +254,7 @@ impl StarDictReader {
     }
 
     fn regular_matches(&self, query: &str) -> Result<Vec<SourceEntry>, StarDictError> {
-        let low = lower_bound(self.entry_count, query, |index| {
-            Ok(self.regular_entry_at(index)?.key)
-        })?;
+        let low = lower_bound(self.entry_count, query, |index| Ok(self.regular_entry_at(index)?.key))?;
         let mut matches = Vec::new();
         for index in low..self.entry_count.min(low + MAX_MATCHES) {
             let entry = self.regular_entry_at(index)?;
@@ -302,11 +290,7 @@ impl StarDictReader {
         Ok(parse_index_entry(&self.index, source_offset, self.data_offset_bytes)?.0)
     }
 
-    fn synonym_entry_at(
-        &self,
-        synonyms: &[u8],
-        index: usize,
-    ) -> Result<(String, u32), StarDictError> {
+    fn synonym_entry_at(&self, synonyms: &[u8], index: usize) -> Result<(String, u32), StarDictError> {
         let record_start = table_offset(self.synonym_table_start, index, 8)?;
         let synonym_offset = read_u32_le(&self.offsets, record_start)?;
         let target_offset = read_u32_le(&self.offsets, record_start + 4)?;
@@ -334,14 +318,8 @@ fn lower_bound(
 
 #[derive(Debug)]
 enum DictionaryData {
-    Plain {
-        file: Mutex<File>,
-        size: u64,
-    },
-    DictZip {
-        file: Mutex<File>,
-        table: DictZipTable,
-    },
+    Plain { file: Mutex<File>, size: u64 },
+    DictZip { file: Mutex<File>, table: DictZipTable },
 }
 
 impl DictionaryData {
@@ -377,9 +355,9 @@ impl DictionaryData {
             Self::Plain { file, size } => {
                 validate_range(offset, length, *size)?;
                 let mut buffer = vec![0; length as usize];
-                let mut file = file.lock().map_err(|_| {
-                    StarDictError::new("dataLockFailed", "Dictionary data lock failed.")
-                })?;
+                let mut file = file
+                    .lock()
+                    .map_err(|_| StarDictError::new("dataLockFailed", "Dictionary data lock failed."))?;
                 file.seek(SeekFrom::Start(offset))
                     .and_then(|_| file.read_exact(&mut buffer))
                     .map_err(|error| io_error("dataReadFailed", error))?;
@@ -430,17 +408,13 @@ impl DictZipTable {
             }
             cursor = end;
         }
-        let random_access = random_access
-            .ok_or_else(|| invalid_dictzip("The dictzip random-access table is unavailable."))?;
+        let random_access =
+            random_access.ok_or_else(|| invalid_dictzip("The dictzip random-access table is unavailable."))?;
         if random_access.len() < 6 {
-            return Err(invalid_dictzip(
-                "The dictzip random-access table is truncated.",
-            ));
+            return Err(invalid_dictzip("The dictzip random-access table is truncated."));
         }
         if u16::from_le_bytes([random_access[0], random_access[1]]) != 1 {
-            return Err(invalid_dictzip(
-                "The dictzip random-access version is unsupported.",
-            ));
+            return Err(invalid_dictzip("The dictzip random-access version is unsupported."));
         }
         let chunk_length = u16::from_le_bytes([random_access[2], random_access[3]]) as u64;
         let chunk_count = u16::from_le_bytes([random_access[4], random_access[5]]) as usize;
@@ -454,10 +428,7 @@ impl DictZipTable {
         let mut chunk_sizes = Vec::with_capacity(chunk_count);
         for index in 0..chunk_count {
             let start = 6 + index * 2;
-            chunk_sizes.push(u16::from_le_bytes([
-                random_access[start],
-                random_access[start + 1],
-            ]));
+            chunk_sizes.push(u16::from_le_bytes([random_access[start], random_access[start + 1]]));
         }
         if chunk_sizes.contains(&0) {
             return Err(invalid_dictzip("A dictzip block has an invalid size."));
@@ -488,12 +459,7 @@ impl DictZipTable {
         })
     }
 
-    fn read_range(
-        &self,
-        file: &Mutex<File>,
-        offset: u64,
-        length: u32,
-    ) -> Result<Vec<u8>, StarDictError> {
+    fn read_range(&self, file: &Mutex<File>, offset: u64, length: u32) -> Result<Vec<u8>, StarDictError> {
         validate_range(offset, length, self.uncompressed_size)?;
         if length == 0 {
             return Ok(Vec::new());
@@ -501,9 +467,7 @@ impl DictZipTable {
         let first = (offset / self.chunk_length) as usize;
         let last = ((offset + length as u64 - 1) / self.chunk_length) as usize;
         if last >= self.chunk_sizes.len() || last - first + 1 > MAX_DICTZIP_BLOCKS {
-            return Err(invalid_dictzip(
-                "The requested dictzip block range is invalid.",
-            ));
+            return Err(invalid_dictzip("The requested dictzip block range is invalid."));
         }
         let mut decoded = Vec::with_capacity((last - first + 1) * self.chunk_length as usize);
         let mut file = file
@@ -520,9 +484,7 @@ impl DictZipTable {
                 .read_to_end(&mut decoded)
                 .map_err(|error| io_error("invalidDictzip", error))?;
             if decoded.len() > (last - first + 1) * self.chunk_length as usize {
-                return Err(invalid_dictzip(
-                    "A dictzip block expands beyond its declared size.",
-                ));
+                return Err(invalid_dictzip("A dictzip block expands beyond its declared size."));
             }
         }
         let start = (offset % self.chunk_length) as usize;
@@ -537,8 +499,7 @@ impl DictZipTable {
 }
 
 fn inspect_stardict(master: &Path) -> Result<InspectedDictionary, StarDictError> {
-    let inspected = inspect_dictionary_file(master)
-        .map_err(|error| StarDictError::new(&error.code, error.message))?;
+    let inspected = inspect_dictionary_file(master).map_err(|error| StarDictError::new(&error.code, error.message))?;
     if inspected.format != DictionaryFormat::StarDict {
         return Err(StarDictError::new(
             "formatMismatch",
@@ -557,16 +518,10 @@ fn read_ifo(path: &Path) -> Result<std::collections::HashMap<String, String>, St
         .collect())
 }
 
-fn parse_index(
-    path: &Path,
-    offset_bytes: usize,
-    data_size: u64,
-) -> Result<Vec<SourceEntry>, StarDictError> {
+fn parse_index(path: &Path, offset_bytes: usize, data_size: u64) -> Result<Vec<SourceEntry>, StarDictError> {
     let bytes = fs::read(path).map_err(|error| io_error("indexUnavailable", error))?;
     if bytes.len() > u32::MAX as usize {
-        return Err(invalid_index(
-            "The StarDict index exceeds the supported size.",
-        ));
+        return Err(invalid_index("The StarDict index exceeds the supported size."));
     }
     let mut cursor = 0_usize;
     let mut entries = Vec::new();
@@ -574,8 +529,8 @@ fn parse_index(
         if entries.len() >= MAX_ENTRIES {
             return Err(invalid_index("The StarDict index has too many entries."));
         }
-        let (entry, next) = parse_index_entry(&bytes, cursor as u32, offset_bytes)
-            .map_err(|error| invalid_index(&error.message))?;
+        let (entry, next) =
+            parse_index_entry(&bytes, cursor as u32, offset_bytes).map_err(|error| invalid_index(&error.message))?;
         validate_range(entry.offset, entry.length, data_size)
             .map_err(|_| invalid_index("A StarDict entry points outside dictionary data."))?;
         entries.push(entry);
@@ -590,9 +545,7 @@ fn parse_index(
 fn parse_synonyms(path: &Path, source: &[SourceEntry]) -> Result<Vec<SynonymEntry>, StarDictError> {
     let bytes = fs::read(path).map_err(|error| io_error("invalidSynonym", error))?;
     if bytes.len() > u32::MAX as usize {
-        return Err(invalid_synonym(
-            "The StarDict synonym list exceeds the supported size.",
-        ));
+        return Err(invalid_synonym("The StarDict synonym list exceeds the supported size."));
     }
     let mut cursor = 0_usize;
     let mut aliases = Vec::new();
@@ -642,22 +595,12 @@ fn dictionary_uncompressed_size(inspected: &InspectedDictionary) -> Result<u64, 
     Ok(u32::from_le_bytes(bytes) as u64)
 }
 
-fn used_file(
-    inspected: &InspectedDictionary,
-    kind: DictionaryFileKind,
-) -> Result<PathBuf, StarDictError> {
-    optional_used_file(inspected, kind).ok_or_else(|| {
-        StarDictError::new(
-            "sourceMissing",
-            "A required StarDict companion file is unavailable.",
-        )
-    })
+fn used_file(inspected: &InspectedDictionary, kind: DictionaryFileKind) -> Result<PathBuf, StarDictError> {
+    optional_used_file(inspected, kind)
+        .ok_or_else(|| StarDictError::new("sourceMissing", "A required StarDict companion file is unavailable."))
 }
 
-fn optional_used_file(
-    inspected: &InspectedDictionary,
-    kind: DictionaryFileKind,
-) -> Option<PathBuf> {
+fn optional_used_file(inspected: &InspectedDictionary, kind: DictionaryFileKind) -> Option<PathBuf> {
     inspected
         .files
         .iter()
@@ -672,13 +615,9 @@ fn read_index_header(bytes: &[u8]) -> Result<(DerivedMetadata, usize), StarDictE
         .filter(|end| *end <= bytes.len())
         .ok_or_else(|| invalid_derived("The derived StarDict header is truncated."))?;
     let metadata: DerivedMetadata = serde_json::from_slice(&bytes[HEADER_LENGTH_BYTES..header_end])
-        .map_err(|error| {
-            invalid_derived(&format!("The derived StarDict header is invalid: {error}"))
-        })?;
+        .map_err(|error| invalid_derived(&format!("The derived StarDict header is invalid: {error}")))?;
     if metadata.version != INDEX_VERSION {
-        return Err(invalid_derived(
-            "The derived StarDict index version is unsupported.",
-        ));
+        return Err(invalid_derived("The derived StarDict index version is unsupported."));
     }
     Ok((metadata, header_end))
 }
@@ -690,9 +629,7 @@ fn table_offset(start: usize, count: usize, width: usize) -> Result<usize, StarD
         .ok_or_else(|| invalid_derived("The derived StarDict table size overflowed."))
 }
 
-fn index_data_offset_bytes(
-    metadata: &std::collections::HashMap<String, String>,
-) -> Result<usize, StarDictError> {
+fn index_data_offset_bytes(metadata: &std::collections::HashMap<String, String>) -> Result<usize, StarDictError> {
     match metadata.get("idxoffsetbits").map(String::as_str) {
         Some("64") => Ok(8),
         Some("32") | None => Ok(4),
@@ -712,9 +649,7 @@ fn parse_index_entry(
         .map(|relative| start + relative)
         .ok_or_else(|| invalid_derived("A cached StarDict headword is not terminated."))?;
     if end == start || end - start > MAX_WORD_BYTES {
-        return Err(invalid_derived(
-            "A cached StarDict headword has an invalid length.",
-        ));
+        return Err(invalid_derived("A cached StarDict headword has an invalid length."));
     }
     let headword = std::str::from_utf8(&bytes[start..end])
         .map_err(|_| invalid_derived("A cached StarDict headword is not UTF-8."))?
@@ -724,9 +659,7 @@ fn parse_index_entry(
         .checked_add(data_offset_bytes + 4)
         .ok_or_else(|| invalid_derived("A cached StarDict index record overflowed."))?;
     if numeric_end > bytes.len() {
-        return Err(invalid_derived(
-            "A cached StarDict index record is truncated.",
-        ));
+        return Err(invalid_derived("A cached StarDict index record is truncated."));
     }
     let offset = if data_offset_bytes == 8 {
         u64::from_be_bytes(bytes[numeric_start..numeric_start + 8].try_into().unwrap())
@@ -758,9 +691,7 @@ fn parse_synonym_key(bytes: &[u8], source_offset: u32) -> Result<String, StarDic
         .map(|relative| start + relative)
         .ok_or_else(|| invalid_derived("A cached StarDict synonym is not terminated."))?;
     if end == start || end - start > MAX_WORD_BYTES || end + 5 > bytes.len() {
-        return Err(invalid_derived(
-            "A cached StarDict synonym record is invalid.",
-        ));
+        return Err(invalid_derived("A cached StarDict synonym record is invalid."));
     }
     std::str::from_utf8(&bytes[start..end])
         .map(str::to_string)
@@ -778,10 +709,7 @@ fn read_u32_le(bytes: &[u8], offset: usize) -> Result<u32, StarDictError> {
 }
 
 fn validate_range(offset: u64, length: u32, size: u64) -> Result<(), StarDictError> {
-    if offset
-        .checked_add(length as u64)
-        .is_none_or(|end| end > size)
-    {
+    if offset.checked_add(length as u64).is_none_or(|end| end > size) {
         return Err(StarDictError::new(
             "dataOutOfBounds",
             "A StarDict entry points outside dictionary data.",
@@ -795,9 +723,8 @@ fn normalize_key(value: &str) -> String {
 }
 
 fn controlled_text(bytes: &[u8]) -> Result<String, StarDictError> {
-    let value = std::str::from_utf8(bytes).map_err(|_| {
-        StarDictError::new("invalidDefinition", "A StarDict definition is not UTF-8.")
-    })?;
+    let value = std::str::from_utf8(bytes)
+        .map_err(|_| StarDictError::new("invalidDefinition", "A StarDict definition is not UTF-8."))?;
     Ok(value
         .chars()
         .filter(|character| *character == '\n' || *character == '\t' || !character.is_control())
@@ -872,7 +799,7 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use super::{prepare_index, read_index_header, StarDictReader};
+    use super::{StarDictReader, prepare_index, read_index_header};
     use crate::dictionary::session::DictionarySessionManager;
 
     struct Fixture {
@@ -888,10 +815,7 @@ mod tests {
     }
 
     fn temp_dir(label: &str) -> PathBuf {
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let path = std::env::temp_dir().join(format!("flow-stardict-{label}-{unique}"));
         fs::create_dir_all(&path).unwrap();
         path
@@ -958,10 +882,7 @@ mod tests {
         let second_offsets = fs::read(second.cache.join("offsets.bin")).unwrap();
         let first_start = read_index_header(&first_offsets).unwrap().1;
         let second_start = read_index_header(&second_offsets).unwrap().1;
-        assert_eq!(
-            &first_offsets[first_start..],
-            &second_offsets[second_start..],
-        );
+        assert_eq!(&first_offsets[first_start..], &second_offsets[second_start..],);
     }
 
     #[test]
@@ -1023,22 +944,18 @@ mod tests {
         prepare_index(&fixture.ifo, &fixture.cache).unwrap();
         let reader = StarDictReader::open(&fixture.ifo, &fixture.cache).unwrap();
         let result = reader.lookup("middle").unwrap();
-        assert_eq!(
-            result.entries[0].definitions,
-            ["middle definition crosses chunks"]
-        );
+        assert_eq!(result.entries[0].definitions, ["middle definition crosses chunks"]);
     }
 
     fn dictzip_fixture() -> &'static [u8] {
         &[
-            0x1f, 0x8b, 0x08, 0x04, 0, 0, 0, 0, 0, 0x03, 0x12, 0, 0x52, 0x41, 0x0e, 0, 0x01, 0,
-            0x10, 0, 0x04, 0, 0x16, 0, 0x16, 0, 0x16, 0, 0x11, 0, 0x4a, 0xcb, 0x2c, 0x2a, 0x2e,
-            0x51, 0x48, 0x49, 0x4d, 0xcb, 0xcc, 0xcb, 0x2c, 0xc9, 0xcc, 0xcf, 0x03, 0, 0, 0, 0xff,
-            0xff, 0xca, 0xcd, 0x4c, 0x49, 0xc9, 0x49, 0x55, 0x48, 0x49, 0x4d, 0xcb, 0xcc, 0xcb,
-            0x2c, 0xc9, 0xcc, 0x07, 0, 0, 0, 0xff, 0xff, 0xca, 0x53, 0x48, 0x2e, 0xca, 0x2f, 0x2e,
-            0x4e, 0x2d, 0x56, 0x48, 0xce, 0x28, 0xcd, 0xcb, 0x2e, 0x06, 0, 0, 0, 0xff, 0xff, 0xcb,
-            0x49, 0x2c, 0x2e, 0x51, 0x48, 0x49, 0x4d, 0xcb, 0xcc, 0xcb, 0x2c, 0xc9, 0xcc, 0xcf,
-            0x03, 0, 0x49, 0x61, 0x9f, 0xe5, 0x3f, 0, 0, 0,
+            0x1f, 0x8b, 0x08, 0x04, 0, 0, 0, 0, 0, 0x03, 0x12, 0, 0x52, 0x41, 0x0e, 0, 0x01, 0, 0x10, 0, 0x04, 0, 0x16,
+            0, 0x16, 0, 0x16, 0, 0x11, 0, 0x4a, 0xcb, 0x2c, 0x2a, 0x2e, 0x51, 0x48, 0x49, 0x4d, 0xcb, 0xcc, 0xcb, 0x2c,
+            0xc9, 0xcc, 0xcf, 0x03, 0, 0, 0, 0xff, 0xff, 0xca, 0xcd, 0x4c, 0x49, 0xc9, 0x49, 0x55, 0x48, 0x49, 0x4d,
+            0xcb, 0xcc, 0xcb, 0x2c, 0xc9, 0xcc, 0x07, 0, 0, 0, 0xff, 0xff, 0xca, 0x53, 0x48, 0x2e, 0xca, 0x2f, 0x2e,
+            0x4e, 0x2d, 0x56, 0x48, 0xce, 0x28, 0xcd, 0xcb, 0x2e, 0x06, 0, 0, 0, 0xff, 0xff, 0xcb, 0x49, 0x2c, 0x2e,
+            0x51, 0x48, 0x49, 0x4d, 0xcb, 0xcc, 0xcb, 0x2c, 0xc9, 0xcc, 0xcf, 0x03, 0, 0x49, 0x61, 0x9f, 0xe5, 0x3f, 0,
+            0, 0,
         ]
     }
 
@@ -1070,9 +987,7 @@ mod tests {
         let sessions = DictionarySessionManager::default();
         {
             let reader = sessions
-                .get_or_open_stardict(7, "fixture", || {
-                    StarDictReader::open(&fixture.ifo, &fixture.cache)
-                })
+                .get_or_open_stardict(7, "fixture", || StarDictReader::open(&fixture.ifo, &fixture.cache))
                 .unwrap();
             assert_eq!(definitions(&reader, "alpha"), ["first"]);
         }

@@ -40,9 +40,10 @@ impl DictionarySessionManager {
         dictionary_id: &str,
         open: impl FnOnce() -> Result<StarDictReader, StarDictError>,
     ) -> Result<Arc<StarDictReader>, StarDictError> {
-        let mut resources = self.resources.lock().map_err(|_| {
-            StarDictError::new("sessionLockFailed", "Dictionary session lock failed.")
-        })?;
+        let mut resources = self
+            .resources
+            .lock()
+            .map_err(|_| StarDictError::new("sessionLockFailed", "Dictionary session lock failed."))?;
         let session = resources.entry(session_id).or_default();
         if let Some(DictionarySessionResource::StarDict(reader)) = session.get(dictionary_id) {
             return Ok(Arc::clone(reader));
@@ -84,9 +85,10 @@ impl DictionarySessionManager {
         key: &str,
     ) -> Result<Option<MdictBinaryResource>, MdictError> {
         let reader = {
-            let resources = self.resources.lock().map_err(|_| {
-                MdictError::new("sessionLockFailed", "Dictionary session lock failed.")
-            })?;
+            let resources = self
+                .resources
+                .lock()
+                .map_err(|_| MdictError::new("sessionLockFailed", "Dictionary session lock failed."))?;
             let Some(DictionarySessionResource::Mdict(reader)) = resources
                 .get(&session_id)
                 .and_then(|session| session.get(dictionary_id))

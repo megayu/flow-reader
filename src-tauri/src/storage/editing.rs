@@ -1,10 +1,7 @@
 use super::*;
 
 pub(super) fn escape_xml_text(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
+    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
 pub(super) fn unescape_xml_text(value: &str) -> String {
@@ -59,9 +56,7 @@ pub(super) fn unescape_xml_text(value: &str) -> String {
 }
 
 pub(super) fn escape_xml_attr(value: &str) -> String {
-    escape_xml_text(value)
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
+    escape_xml_text(value).replace('"', "&quot;").replace('\'', "&apos;")
 }
 
 pub(super) fn metadata_string(metadata: &Value, key: &str) -> Option<String> {
@@ -120,28 +115,17 @@ pub(super) fn compact_open_tag(open_tag: &str) -> String {
     }
 }
 
-pub(super) fn replace_metadata_block(
-    block: &str,
-    value: &str,
-    closing: &str,
-    update_file_as: bool,
-) -> String {
+pub(super) fn replace_metadata_block(block: &str, value: &str, closing: &str, update_file_as: bool) -> String {
     let Some(open_start) = block.find('<') else {
         return block.to_string();
     };
     let Some(open_end) = block.find('>') else {
         return block.to_string();
     };
-    let Some(close_start) = block[open_end + 1..]
-        .find(closing)
-        .map(|offset| open_end + 1 + offset)
-    else {
+    let Some(close_start) = block[open_end + 1..].find(closing).map(|offset| open_end + 1 + offset) else {
         return block.to_string();
     };
-    let Some(close_end) = block[close_start..]
-        .find('>')
-        .map(|offset| close_start + offset + 1)
-    else {
+    let Some(close_end) = block[close_start..].find('>').map(|offset| close_start + offset + 1) else {
         return block.to_string();
     };
 
@@ -163,10 +147,7 @@ pub(super) fn remove_block_keep_tail(block: &str, closing: &str) -> String {
     let Some(close_start) = block.find(closing) else {
         return block.to_string();
     };
-    let Some(close_end) = block[close_start..]
-        .find('>')
-        .map(|offset| close_start + offset + 1)
-    else {
+    let Some(close_end) = block[close_start..].find('>').map(|offset| close_start + offset + 1) else {
         return block.to_string();
     };
 
@@ -235,10 +216,7 @@ pub(super) fn update_opf_metadata_xml(xml: &str, metadata: &Value) -> String {
     updated
 }
 
-pub(super) fn sync_unpacked_opf_metadata(
-    unpacked_dir: &Path,
-    metadata: &Value,
-) -> Result<(), String> {
+pub(super) fn sync_unpacked_opf_metadata(unpacked_dir: &Path, metadata: &Value) -> Result<(), String> {
     if !unpacked_dir.exists() {
         return Ok(());
     }
@@ -278,11 +256,7 @@ pub(super) fn utf16_offset_to_byte_index(text: &str, offset: usize) -> Option<us
         }
     }
 
-    if utf16_offset == offset {
-        Some(text.len())
-    } else {
-        None
-    }
+    if utf16_offset == offset { Some(text.len()) } else { None }
 }
 
 pub(super) fn replace_text_by_utf16_offsets(
@@ -295,10 +269,9 @@ pub(super) fn replace_text_by_utf16_offsets(
     if start_offset > end_offset {
         return Err(TEXT_REPLACE_TEXT_STALE_ERROR.to_string());
     }
-    let start = utf16_offset_to_byte_index(text, start_offset)
-        .ok_or_else(|| TEXT_REPLACE_TEXT_STALE_ERROR.to_string())?;
-    let end = utf16_offset_to_byte_index(text, end_offset)
-        .ok_or_else(|| TEXT_REPLACE_TEXT_STALE_ERROR.to_string())?;
+    let start =
+        utf16_offset_to_byte_index(text, start_offset).ok_or_else(|| TEXT_REPLACE_TEXT_STALE_ERROR.to_string())?;
+    let end = utf16_offset_to_byte_index(text, end_offset).ok_or_else(|| TEXT_REPLACE_TEXT_STALE_ERROR.to_string())?;
     if &text[start..end] != old_text {
         return Err(TEXT_REPLACE_TEXT_STALE_ERROR.to_string());
     }
@@ -472,20 +445,12 @@ pub(super) fn replace_generated_txt_heading_xhtml(
         return Ok(None);
     }
 
-    let updated_heading = replace_text_by_utf16_offsets(
-        &heading,
-        target.start_offset,
-        target.end_offset,
-        old_text,
-        new_text,
-    )?;
-    let Some(mut updated_xhtml) = replace_first_tag_text(xhtml, "h2", &heading, &updated_heading)?
-    else {
+    let updated_heading =
+        replace_text_by_utf16_offsets(&heading, target.start_offset, target.end_offset, old_text, new_text)?;
+    let Some(mut updated_xhtml) = replace_first_tag_text(xhtml, "h2", &heading, &updated_heading)? else {
         return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
     };
-    if let Some(with_title) =
-        replace_first_tag_text(&updated_xhtml, "title", &heading, &updated_heading)?
-    {
+    if let Some(with_title) = replace_first_tag_text(&updated_xhtml, "title", &heading, &updated_heading)? {
         updated_xhtml = with_title;
     }
 
@@ -515,34 +480,24 @@ pub(super) fn replace_xhtml_text(
     }
 
     if source_format != BookSourceFormat::Txt {
-        return replace_xhtml_text_node(xhtml, target, old_text, new_text).map(|xhtml| {
-            XhtmlTextReplacement {
-                xhtml,
-                heading_update: None,
-                paragraph_index: None,
-            }
+        return replace_xhtml_text_node(xhtml, target, old_text, new_text).map(|xhtml| XhtmlTextReplacement {
+            xhtml,
+            heading_update: None,
+            paragraph_index: None,
         });
     }
 
-    if let Some(paragraph_index) = target.paragraph_index {
-        if let Some(xhtml) = replace_generated_txt_paragraph_xhtml(
+    if let Some(paragraph_index) = target.paragraph_index
+        && let Some(xhtml) = replace_generated_txt_paragraph_xhtml(xhtml, target, old_text, new_text, paragraph_index)?
+    {
+        return Ok(XhtmlTextReplacement {
             xhtml,
-            target,
-            old_text,
-            new_text,
-            paragraph_index,
-        )? {
-            return Ok(XhtmlTextReplacement {
-                xhtml,
-                heading_update: None,
-                paragraph_index: Some(paragraph_index),
-            });
-        }
+            heading_update: None,
+            paragraph_index: Some(paragraph_index),
+        });
     }
 
-    if let Some(replacement) =
-        replace_generated_txt_heading_xhtml(xhtml, target, old_text, new_text)?
-    {
+    if let Some(replacement) = replace_generated_txt_heading_xhtml(xhtml, target, old_text, new_text)? {
         return Ok(replacement);
     }
 
@@ -557,15 +512,8 @@ pub(super) const TEXT_REPLACE_NODE_NOT_FOUND_ERROR: &str = "TEXT_REPLACE_NODE_NO
 
 #[derive(Debug, Clone)]
 pub(super) enum SourceTextUpdate {
-    Patch {
-        offset: u64,
-        bytes: Vec<u8>,
-    },
-    Splice {
-        offset: u64,
-        old_len: u64,
-        bytes: Vec<u8>,
-    },
+    Patch { offset: u64, bytes: Vec<u8> },
+    Splice { offset: u64, old_len: u64, bytes: Vec<u8> },
 }
 
 pub(super) fn generated_text_section_index(href: &str) -> Option<usize> {
@@ -604,8 +552,7 @@ pub(super) fn source_bom_len(bytes: &[u8]) -> usize {
 }
 
 pub(super) fn streaming_source_encoding(metadata: &Value) -> Result<String, String> {
-    source_encoding_id_from_metadata(metadata)
-        .ok_or_else(|| "TXT_SOURCE_ENCODING_MISSING".to_string())
+    source_encoding_id_from_metadata(metadata).ok_or_else(|| "TXT_SOURCE_ENCODING_MISSING".to_string())
 }
 
 pub(super) fn encoded_line_delimiter(encoding: &str) -> &'static [u8] {
@@ -664,11 +611,7 @@ pub(super) fn decode_source_line(
     first_line: bool,
 ) -> Result<Option<SourceTextLine>, String> {
     let line_end = strip_encoded_line_end(bytes, encoding);
-    let bom_len = if first_line {
-        source_bom_len(line_end)
-    } else {
-        0
-    };
+    let bom_len = if first_line { source_bom_len(line_end) } else { 0 };
     let decoded = decode_text_bytes(&line_end[bom_len..], Some(encoding)).text;
     let trimmed_start = decoded.len() - decoded.trim_start().len();
     let trimmed_end = decoded.trim_end().len();
@@ -677,8 +620,7 @@ pub(super) fn decode_source_line(
     }
 
     let prefix_len = encode_text_bytes(&decoded[..trimmed_start], encoding, false)?.len();
-    let trimmed_len =
-        encode_text_bytes(&decoded[trimmed_start..trimmed_end], encoding, false)?.len();
+    let trimmed_len = encode_text_bytes(&decoded[trimmed_start..trimmed_end], encoding, false)?.len();
     Ok(Some(SourceTextLine {
         text: decoded[trimmed_start..trimmed_end].to_string(),
         offset: (bom_len + prefix_len) as u64,
@@ -711,10 +653,7 @@ pub(super) fn generated_txt_section_source_heading_candidates(
         .ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
     if nav_path.exists() {
         let nav_xhtml = fs::read_to_string(nav_path).map_err(|error| error.to_string())?;
-        push_unique_text(
-            &mut candidates,
-            generated_txt_nav_heading(&nav_xhtml, section_href),
-        );
+        push_unique_text(&mut candidates, generated_txt_nav_heading(&nav_xhtml, section_href));
     }
 
     if candidates.is_empty() {
@@ -731,8 +670,7 @@ pub(super) fn generated_txt_matching_heading_occurrences_before(
     let mut occurrences = 0usize;
     for section_index in 0..target_section_index {
         let href = format!("Text/part{:04}.xhtml", section_index + 1);
-        let candidates =
-            generated_txt_section_source_heading_candidates(text_dir, section_index, &href)?;
+        let candidates = generated_txt_section_source_heading_candidates(text_dir, section_index, &href)?;
         if candidates
             .iter()
             .any(|candidate| target_candidates.iter().any(|target| target == candidate))
@@ -753,13 +691,8 @@ pub(super) fn source_update_for_streamed_line(
     if line.text != target.text_node_text {
         return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
     }
-    let updated_line = replace_text_by_utf16_offsets(
-        &line.text,
-        target.start_offset,
-        target.end_offset,
-        old_text,
-        new_text,
-    )?;
+    let updated_line =
+        replace_text_by_utf16_offsets(&line.text, target.start_offset, target.end_offset, old_text, new_text)?;
     let bytes = encode_text_bytes(&updated_line, encoding, false)?;
     if bytes.len() as u64 == line.old_len {
         Ok(SourceTextUpdate::Patch {
@@ -792,32 +725,23 @@ pub(super) fn generated_txt_source_update_streaming(
     }
 
     let encoding = streaming_source_encoding(metadata)?;
-    let target_section_index = generated_text_section_index(&target.section_href)
-        .ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
-    let target_heading_candidates = generated_txt_section_source_heading_candidates(
-        text_dir,
-        target_section_index,
-        &target.section_href,
-    )?;
+    let target_section_index =
+        generated_text_section_index(&target.section_href).ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
+    let target_heading_candidates =
+        generated_txt_section_source_heading_candidates(text_dir, target_section_index, &target.section_href)?;
     let mut matching_heading_occurrences_before =
-        generated_txt_matching_heading_occurrences_before(
-            text_dir,
-            target_section_index,
-            &target_heading_candidates,
-        )?;
+        generated_txt_matching_heading_occurrences_before(text_dir, target_section_index, &target_heading_candidates)?;
     let target_paragraph_index = target.paragraph_index;
     let mut paragraph_index = 0usize;
     let mut inside_target_section = false;
     let mut first_line = true;
     let mut line_offset = 0u64;
-    let mut reader =
-        BufReader::new(fs::File::open(source_path).map_err(|error| error.to_string())?);
+    let mut reader = BufReader::new(fs::File::open(source_path).map_err(|error| error.to_string())?);
     let mut bytes = Vec::new();
 
     loop {
         bytes.clear();
-        let read = read_until_encoded_newline(&mut reader, &encoding, &mut bytes)
-            .map_err(|error| error.to_string())?;
+        let read = read_until_encoded_newline(&mut reader, &encoding, &mut bytes).map_err(|error| error.to_string())?;
         if read == 0 {
             break;
         }
@@ -831,16 +755,12 @@ pub(super) fn generated_txt_source_update_streaming(
                     } else {
                         inside_target_section = true;
                         if heading_update.is_some() {
-                            return source_update_for_streamed_line(
-                                line, old_text, new_text, &encoding, target,
-                            );
+                            return source_update_for_streamed_line(line, old_text, new_text, &encoding, target);
                         }
                     }
                 }
             } else if target_paragraph_index == Some(paragraph_index) {
-                return source_update_for_streamed_line(
-                    line, old_text, new_text, &encoding, target,
-                );
+                return source_update_for_streamed_line(line, old_text, new_text, &encoding, target);
             } else {
                 paragraph_index += 1;
             }
@@ -938,19 +858,11 @@ pub(super) fn replace_generated_txt_nav_heading(
 }
 
 pub(super) fn source_text_temp_path(path: &Path) -> PathBuf {
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("source.txt");
+    let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or("source.txt");
     path.with_file_name(format!("{file_name}.tmp"))
 }
 
-pub(super) fn write_source_text_splice(
-    path: &Path,
-    offset: u64,
-    old_len: u64,
-    bytes: &[u8],
-) -> Result<(), String> {
+pub(super) fn write_source_text_splice(path: &Path, offset: u64, old_len: u64, bytes: &[u8]) -> Result<(), String> {
     let tmp = source_text_temp_path(path);
     let mut input = BufReader::new(fs::File::open(path).map_err(|error| error.to_string())?);
     let mut output = BufWriter::new(fs::File::create(&tmp).map_err(|error| error.to_string())?);
@@ -969,25 +881,17 @@ pub(super) fn write_source_text_splice(
     fs::rename(&tmp, path).map_err(|error| error.to_string())
 }
 
-pub(super) fn write_source_text_update(
-    path: &Path,
-    update: &SourceTextUpdate,
-) -> Result<(), String> {
+pub(super) fn write_source_text_update(path: &Path, update: &SourceTextUpdate) -> Result<(), String> {
     match update {
         SourceTextUpdate::Patch { offset, bytes } => {
             let mut file = fs::OpenOptions::new()
                 .write(true)
                 .open(path)
                 .map_err(|error| error.to_string())?;
-            file.seek(SeekFrom::Start(*offset))
-                .map_err(|error| error.to_string())?;
+            file.seek(SeekFrom::Start(*offset)).map_err(|error| error.to_string())?;
             file.write_all(bytes).map_err(|error| error.to_string())
         }
-        SourceTextUpdate::Splice {
-            offset,
-            old_len,
-            bytes,
-        } => write_source_text_splice(path, *offset, *old_len, bytes),
+        SourceTextUpdate::Splice { offset, old_len, bytes } => write_source_text_splice(path, *offset, *old_len, bytes),
     }
 }
 
@@ -1002,10 +906,7 @@ pub(super) fn edited_book_content_hash(id: &str, content_version: u32, edited_at
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-pub(super) fn mark_library_book_content_updated(
-    storage: &AppStorage,
-    id: &str,
-) -> Result<Option<LibraryBook>, String> {
+pub(super) fn mark_library_book_content_updated(storage: &AppStorage, id: &str) -> Result<Option<LibraryBook>, String> {
     let updated = {
         let mut state = storage
             .inner
@@ -1071,26 +972,25 @@ pub(super) fn replace_book_text_impl(
         });
     }
 
-    let source_update = if source_format == BookSourceFormat::Txt
-        && initial_book.source_storage == SourceStorage::Managed
-    {
-        let source_path = book_dir.join(SOURCE_TEXT_FILE);
-        let text_dir = section_path
-            .parent()
-            .ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
-        let source_update = generated_txt_source_update_streaming(
-            &source_path,
-            &initial_book.metadata,
-            text_dir,
-            &source_target,
-            &old_text,
-            &new_text,
-            heading_update.as_ref(),
-        )?;
-        Some((source_path, source_update))
-    } else {
-        None
-    };
+    let source_update =
+        if source_format == BookSourceFormat::Txt && initial_book.source_storage == SourceStorage::Managed {
+            let source_path = book_dir.join(SOURCE_TEXT_FILE);
+            let text_dir = section_path
+                .parent()
+                .ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
+            let source_update = generated_txt_source_update_streaming(
+                &source_path,
+                &initial_book.metadata,
+                text_dir,
+                &source_target,
+                &old_text,
+                &new_text,
+                heading_update.as_ref(),
+            )?;
+            Some((source_path, source_update))
+        } else {
+            None
+        };
 
     let nav_update = if let Some((old_heading, new_heading)) = &heading_update {
         let nav_path = section_path
@@ -1100,12 +1000,8 @@ pub(super) fn replace_book_text_impl(
             .ok_or_else(|| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
         if nav_path.exists() {
             let nav_xhtml = fs::read_to_string(&nav_path).map_err(|error| error.to_string())?;
-            let updated_nav = replace_generated_txt_nav_heading(
-                &nav_xhtml,
-                &target.section_href,
-                old_heading,
-                new_heading,
-            )?;
+            let updated_nav =
+                replace_generated_txt_nav_heading(&nav_xhtml, &target.section_href, old_heading, new_heading)?;
             (updated_nav != nav_xhtml).then_some((nav_path, updated_nav))
         } else {
             None
@@ -1141,9 +1037,7 @@ pub(super) fn replace_book_text_impl(
         book.clone()
     };
 
-    if source_format == BookSourceFormat::Txt
-        && initial_book.source_storage == SourceStorage::Managed
-    {
+    if source_format == BookSourceFormat::Txt && initial_book.source_storage == SourceStorage::Managed {
         book.size = fs::metadata(book_dir.join(SOURCE_TEXT_FILE))
             .map_err(|error| error.to_string())?
             .len();
@@ -1155,12 +1049,7 @@ pub(super) fn replace_book_text_impl(
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        let Some(stored_book) = state
-            .library
-            .books
-            .iter_mut()
-            .find(|stored| stored.id == id)
-        else {
+        let Some(stored_book) = state.library.books.iter_mut().find(|stored| stored.id == id) else {
             return Err("Book not found".to_string());
         };
         stored_book.content_hash = book.content_hash.clone();

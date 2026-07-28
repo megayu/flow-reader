@@ -2,7 +2,7 @@ use std::fs;
 
 use serde::{Deserialize, Serialize};
 
-use super::{AppStorage, LibraryBook, IMAGE_INDEX_CACHE_VERSION, IMAGE_INDEX_EXTRACTOR_VERSION};
+use super::{AppStorage, IMAGE_INDEX_CACHE_VERSION, IMAGE_INDEX_EXTRACTOR_VERSION, LibraryBook};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -89,10 +89,7 @@ fn image_index_input_matches_book(input: &ImageIndexCacheInput, book: &LibraryBo
     input.book_hash == book.content_hash && input.content_version == book.content_version
 }
 
-fn image_index_cache_from_input(
-    input: ImageIndexCacheInput,
-    book: &LibraryBook,
-) -> ImageIndexCache {
+fn image_index_cache_from_input(input: ImageIndexCacheInput, book: &LibraryBook) -> ImageIndexCache {
     ImageIndexCache {
         version: IMAGE_INDEX_CACHE_VERSION,
         extractor_version: IMAGE_INDEX_EXTRACTOR_VERSION,
@@ -121,10 +118,7 @@ fn image_index_cache_from_input(
     }
 }
 
-pub(super) fn read_image_index_cache(
-    storage: &AppStorage,
-    book: &LibraryBook,
-) -> Result<ImageIndexCache, String> {
+pub(super) fn read_image_index_cache(storage: &AppStorage, book: &LibraryBook) -> Result<ImageIndexCache, String> {
     let path = storage.image_index_cache_path(&book.id);
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
     let cache = image_index_cache_from_bytes(&bytes)?;

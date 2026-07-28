@@ -4,8 +4,7 @@ pub(super) fn parse_epub_info_result(path: &Path) -> Result<ParsedEpubInfo, Stri
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
     let container = read_zip_text(&mut archive, "META-INF/container.xml")?;
-    let container_doc =
-        roxmltree::Document::parse(&container).map_err(|error| error.to_string())?;
+    let container_doc = roxmltree::Document::parse(&container).map_err(|error| error.to_string())?;
     let opf_path = container_doc
         .descendants()
         .find(|node| node.has_tag_name("rootfile"))
@@ -16,36 +15,28 @@ pub(super) fn parse_epub_info_result(path: &Path) -> Result<ParsedEpubInfo, Stri
     let opf_doc = roxmltree::Document::parse(&opf).map_err(|error| error.to_string())?;
     let metadata = parse_opf_metadata(&opf_doc);
     let cover = find_cover_input(&mut archive, &opf_doc, &opf_path).or_else(|| {
-        create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str())).map(
-            |input| ParsedEpubCover {
+        create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str())).map(|input| {
+            ParsedEpubCover {
                 input,
                 archive_path: None,
-            },
-        )
+            }
+        })
     });
 
     Ok(ParsedEpubInfo { metadata, cover })
 }
 
-pub(super) fn read_zip_text<R: Read + Seek>(
-    archive: &mut ZipArchive<R>,
-    name: &str,
-) -> Result<String, String> {
+pub(super) fn read_zip_text<R: Read + Seek>(archive: &mut ZipArchive<R>, name: &str) -> Result<String, String> {
     let mut file = archive.by_name(name).map_err(|error| error.to_string())?;
     let mut text = String::new();
-    file.read_to_string(&mut text)
-        .map_err(|error| error.to_string())?;
+    file.read_to_string(&mut text).map_err(|error| error.to_string())?;
     Ok(text)
 }
 
-pub(super) fn read_zip_bytes<R: Read + Seek>(
-    archive: &mut ZipArchive<R>,
-    name: &str,
-) -> Result<Vec<u8>, String> {
+pub(super) fn read_zip_bytes<R: Read + Seek>(archive: &mut ZipArchive<R>, name: &str) -> Result<Vec<u8>, String> {
     let mut file = archive.by_name(name).map_err(|error| error.to_string())?;
     let mut data = Vec::with_capacity(file.size() as usize);
-    file.read_to_end(&mut data)
-        .map_err(|error| error.to_string())?;
+    file.read_to_end(&mut data).map_err(|error| error.to_string())?;
     Ok(data)
 }
 
@@ -130,11 +121,7 @@ pub(super) fn parse_opf_metadata(doc: &roxmltree::Document) -> Value {
     for (property, key) in property_mappings {
         if let Some(value) = metadata_node
             .children()
-            .find(|node| {
-                node.is_element()
-                    && node.has_tag_name("meta")
-                    && node.attribute("property") == Some(property)
-            })
+            .find(|node| node.is_element() && node.has_tag_name("meta") && node.attribute("property") == Some(property))
             .and_then(|node| node.text())
             .map(clean_xml_text)
             .filter(|value| !value.is_empty())
@@ -174,12 +161,10 @@ pub(super) fn find_cover_path(doc: &roxmltree::Document) -> Option<(String, Stri
         }
     });
 
-    if let Some(cover_id) = cover_id {
-        if let Some(item) =
-            manifest_items().find(|node| node.attribute("id") == Some(cover_id.as_str()))
-        {
-            return cover_item_to_path(item);
-        }
+    if let Some(cover_id) = cover_id
+        && let Some(item) = manifest_items().find(|node| node.attribute("id") == Some(cover_id.as_str()))
+    {
+        return cover_item_to_path(item);
     }
 
     manifest_items()
@@ -213,9 +198,9 @@ pub(super) fn find_cover_input<R: Read + Seek>(
         })
         .collect::<Vec<_>>();
 
-    if let Some(input) = find_cover_path(doc).and_then(|(href, mime_type)| {
-        read_cover_image_input(archive, opf_parent, &href, &mime_type)
-    }) {
+    if let Some(input) = find_cover_path(doc)
+        .and_then(|(href, mime_type)| read_cover_image_input(archive, opf_parent, &href, &mime_type))
+    {
         return Some(input);
     }
 
@@ -238,9 +223,7 @@ pub(super) fn find_cover_input<R: Read + Seek>(
         .and_then(|item| cover_input_from_html_item(archive, opf_parent, item, &manifest))
 }
 
-pub(super) fn find_declared_cover_item<'a>(
-    doc: &'a roxmltree::Document,
-) -> Option<roxmltree::Node<'a, 'a>> {
+pub(super) fn find_declared_cover_item<'a>(doc: &'a roxmltree::Document) -> Option<roxmltree::Node<'a, 'a>> {
     let cover_id = doc.descendants().find_map(|node| {
         if !node.is_element() || !node.has_tag_name("meta") {
             return None;
@@ -251,9 +234,8 @@ pub(super) fn find_declared_cover_item<'a>(
             .flatten()
     })?;
 
-    doc.descendants().find(|node| {
-        node.is_element() && node.has_tag_name("item") && node.attribute("id") == Some(&cover_id)
-    })
+    doc.descendants()
+        .find(|node| node.is_element() && node.has_tag_name("item") && node.attribute("id") == Some(&cover_id))
 }
 
 pub(super) fn cover_input_from_manifest_item<R: Read + Seek>(
@@ -324,8 +306,7 @@ pub(super) fn read_cover_image_input<R: Read + Seek>(
     }
 
     let cover_path = normalize_zip_path(join_zip_path(parent, href));
-    let (data, resolved_cover_path) =
-        read_zip_bytes_with_resolved_path(archive, &cover_path).ok()?;
+    let (data, resolved_cover_path) = read_zip_bytes_with_resolved_path(archive, &cover_path).ok()?;
     Some(ParsedEpubCover {
         input: CoverInput {
             mime_type: if mime_type.is_empty() {
@@ -461,11 +442,7 @@ pub(super) fn mime_type_from_image_href(href: &str) -> &'static str {
 }
 
 pub(super) fn is_absolute_url(value: &str) -> bool {
-    value
-        .chars()
-        .next()
-        .is_some_and(|ch| ch.is_ascii_alphabetic())
-        && value.contains(':')
+    value.chars().next().is_some_and(|ch| ch.is_ascii_alphabetic()) && value.contains(':')
 }
 
 pub(super) fn cover_id_starts_with_cover(id: &str) -> bool {
@@ -479,9 +456,7 @@ pub(super) fn cover_item_to_path(node: roxmltree::Node) -> Option<(String, Strin
 }
 
 pub(in crate::storage) fn parent_zip_path(path: &str) -> &str {
-    path.rsplit_once('/')
-        .map(|(parent, _)| parent)
-        .unwrap_or("")
+    path.rsplit_once('/').map(|(parent, _)| parent).unwrap_or("")
 }
 
 pub(in crate::storage) fn join_zip_path(parent: &str, child: &str) -> String {

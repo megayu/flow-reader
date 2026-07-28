@@ -2,12 +2,7 @@ use std::{env, time::Duration};
 
 pub(crate) fn enabled() -> bool {
     env::var("FLOW_READER_DIAGNOSTICS")
-        .map(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
+        .map(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
         .unwrap_or(false)
 }
 

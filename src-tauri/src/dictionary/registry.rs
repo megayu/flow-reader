@@ -10,11 +10,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::import::{
-    inspect_dictionary_file, DictionaryFileReference, DictionaryFormat, DictionaryImportError,
-    InspectedDictionary, SourceFingerprint,
+    DictionaryFileReference, DictionaryFormat, DictionaryImportError, InspectedDictionary, SourceFingerprint,
+    inspect_dictionary_file,
 };
 use super::mdict::{MdictError, MdictReader};
-use super::stardict::{prepare_index, StarDictError};
+use super::stardict::{StarDictError, prepare_index};
 
 const REGISTRY_VERSION: u32 = 1;
 const DICTIONARIES_DIR: &str = "dictionaries";
@@ -247,12 +247,7 @@ impl DictionaryRegistryStore {
             .iter()
             .find(|record| record.id == id)
             .cloned()
-            .ok_or_else(|| {
-                DictionaryRegistryError::new(
-                    "dictionaryNotFound",
-                    "The dictionary is not registered.",
-                )
-            })?;
+            .ok_or_else(|| DictionaryRegistryError::new("dictionaryNotFound", "The dictionary is not registered."))?;
         refresh_source_status(&mut record);
         Ok(record)
     }
@@ -267,10 +262,7 @@ impl DictionaryRegistryStore {
         Ok(self.cache_root.join(id))
     }
 
-    pub fn register(
-        &self,
-        source_path: &Path,
-    ) -> Result<LocalDictionaryRecord, DictionaryRegistryError> {
+    pub fn register(&self, source_path: &Path) -> Result<LocalDictionaryRecord, DictionaryRegistryError> {
         self.ensure_available()?;
         let inspected = inspect_dictionary_file(source_path)?;
         if inspected.format == DictionaryFormat::MDict {
@@ -308,13 +300,13 @@ impl DictionaryRegistryStore {
                 format!("Cannot prepare the dictionary cache folder: {error}"),
             )
         })?;
-        if record.format == DictionaryFormat::StarDict {
-            if let Err(error) = prepare_index(&record.source_path, &cache) {
-                if !cache_existed {
-                    let _ = fs::remove_dir_all(&cache);
-                }
-                return Err(error.into());
+        if record.format == DictionaryFormat::StarDict
+            && let Err(error) = prepare_index(&record.source_path, &cache)
+        {
+            if !cache_existed {
+                let _ = fs::remove_dir_all(&cache);
             }
+            return Err(error.into());
         }
         if let Err(error) = persist_registry(&self.registry_path, &next) {
             if !cache_existed {
@@ -364,11 +356,7 @@ impl DictionaryRegistryStore {
         Ok(result)
     }
 
-    pub fn relocate(
-        &self,
-        id: &str,
-        source_path: &Path,
-    ) -> Result<LocalDictionaryRecord, DictionaryRegistryError> {
+    pub fn relocate(&self, id: &str, source_path: &Path) -> Result<LocalDictionaryRecord, DictionaryRegistryError> {
         self.ensure_available()?;
         let inspected = inspect_dictionary_file(source_path)?;
         if inspected.format == DictionaryFormat::MDict {
@@ -437,9 +425,9 @@ impl DictionaryRegistryStore {
     }
 
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, RegistryFile>, DictionaryRegistryError> {
-        self.state.lock().map_err(|_| {
-            DictionaryRegistryError::new("registryLockFailed", "Dictionary registry lock failed.")
-        })
+        self.state
+            .lock()
+            .map_err(|_| DictionaryRegistryError::new("registryLockFailed", "Dictionary registry lock failed."))
     }
 
     fn ensure_available(&self) -> Result<(), DictionaryRegistryError> {
@@ -466,10 +454,7 @@ fn load_registry(path: &Path) -> Result<RegistryFile, DictionaryRegistryError> {
             format!("The dictionary registry is damaged: {error}"),
         )
     })?;
-    let version = value
-        .get("version")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0) as u32;
+    let version = value.get("version").and_then(serde_json::Value::as_u64).unwrap_or(0) as u32;
     if version > REGISTRY_VERSION {
         return Err(DictionaryRegistryError::new(
             "registryVersionUnsupported",
@@ -508,10 +493,7 @@ fn validate_registry(registry: &RegistryFile) -> Result<(), DictionaryRegistryEr
     Ok(())
 }
 
-fn cleanup_orphaned_caches(
-    cache_root: &Path,
-    registry: &RegistryFile,
-) -> Result<(), DictionaryRegistryError> {
+fn cleanup_orphaned_caches(cache_root: &Path, registry: &RegistryFile) -> Result<(), DictionaryRegistryError> {
     if !cache_root.exists() {
         return Ok(());
     }
@@ -533,10 +515,7 @@ fn cleanup_orphaned_caches(
             )
         })?;
         let name = entry.file_name().to_string_lossy().to_string();
-        if entry.path().is_dir()
-            && valid_dictionary_id(&name)
-            && !registered.contains(name.as_str())
-        {
+        if entry.path().is_dir() && valid_dictionary_id(&name) && !registered.contains(name.as_str()) {
             fs::remove_dir_all(entry.path()).map_err(|error| {
                 DictionaryRegistryError::new(
                     "registryCleanupFailed",
@@ -595,12 +574,7 @@ fn persist_registry(path: &Path, registry: &RegistryFile) -> Result<(), Dictiona
     Ok(())
 }
 
-fn record_from_inspection(
-    id: String,
-    inspected: InspectedDictionary,
-    order: u32,
-    now: u64,
-) -> LocalDictionaryRecord {
+fn record_from_inspection(id: String, inspected: InspectedDictionary, order: u32, now: u64) -> LocalDictionaryRecord {
     let language = automatic_language(&inspected);
     LocalDictionaryRecord {
         id,
@@ -678,9 +652,7 @@ fn normalized_languages(languages: Vec<DictionaryLanguage>) -> Vec<DictionaryLan
     normalized
 }
 
-fn deserialize_dictionary_languages<'de, D>(
-    deserializer: D,
-) -> Result<Vec<DictionaryLanguage>, D::Error>
+fn deserialize_dictionary_languages<'de, D>(deserializer: D) -> Result<Vec<DictionaryLanguage>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -704,9 +676,7 @@ fn refresh_source_status(record: &mut LocalDictionaryRecord) {
         return;
     }
     record.source_status = match inspect_dictionary_file(&record.source_path) {
-        Ok(inspected) if inspected.fingerprint == record.fingerprint => {
-            DictionarySourceStatus::Available
-        }
+        Ok(inspected) if inspected.fingerprint == record.fingerprint => DictionarySourceStatus::Available,
         _ => DictionarySourceStatus::Changed,
     };
 }
@@ -719,9 +689,7 @@ fn find_record_mut<'a>(
         .dictionaries
         .iter_mut()
         .find(|record| record.id == id)
-        .ok_or_else(|| {
-            DictionaryRegistryError::new("dictionaryNotFound", "The dictionary is not registered.")
-        })
+        .ok_or_else(|| DictionaryRegistryError::new("dictionaryNotFound", "The dictionary is not registered."))
 }
 
 fn dictionary_id(path: &Path) -> String {
@@ -748,8 +716,8 @@ mod tests {
     use std::{fs, path::PathBuf};
 
     use super::{
-        DictionaryLanguage, DictionaryLanguageSource, DictionaryRegistryStore,
-        DictionarySourceStatus, LocalDictionaryUpdate,
+        DictionaryLanguage, DictionaryLanguageSource, DictionaryRegistryStore, DictionarySourceStatus,
+        LocalDictionaryUpdate,
     };
 
     fn temp_dir(name: &str) -> PathBuf {
@@ -827,23 +795,12 @@ mod tests {
             "registryDamaged"
         );
         assert_eq!(
-            DictionaryRegistryStore::open_for_app(&root)
-                .list()
-                .unwrap_err()
-                .code,
+            DictionaryRegistryStore::open_for_app(&root).list().unwrap_err().code,
             "registryDamaged"
         );
 
-        fs::write(
-            dictionaries.join("registry.json"),
-            r#"{"version":0,"dictionaries":[]}"#,
-        )
-        .unwrap();
-        assert!(DictionaryRegistryStore::open(&root)
-            .unwrap()
-            .list()
-            .unwrap()
-            .is_empty());
+        fs::write(dictionaries.join("registry.json"), r#"{"version":0,"dictionaries":[]}"#).unwrap();
+        assert!(DictionaryRegistryStore::open(&root).unwrap().list().unwrap().is_empty());
 
         fs::write(
             dictionaries.join("registry.json"),
@@ -933,11 +890,7 @@ mod tests {
         assert_eq!(renamed.name, "Reader Lexicon");
         drop(store);
         assert_eq!(
-            DictionaryRegistryStore::open(&root)
-                .unwrap()
-                .list()
-                .unwrap()[0]
-                .name,
+            DictionaryRegistryStore::open(&root).unwrap().list().unwrap()[0].name,
             "Reader Lexicon"
         );
         let _ = fs::remove_dir_all(root);
@@ -953,10 +906,7 @@ mod tests {
         let store = DictionaryRegistryStore::open(&root).unwrap();
         let record = store.register(&ifo).unwrap();
         fs::remove_file(&ifo).unwrap();
-        assert_eq!(
-            store.list().unwrap()[0].source_status,
-            DictionarySourceStatus::Missing
-        );
+        assert_eq!(store.list().unwrap()[0].source_status, DictionarySourceStatus::Missing);
         store.remove(&record.id).unwrap();
         assert!(data.exists());
         assert!(store.list().unwrap().is_empty());
