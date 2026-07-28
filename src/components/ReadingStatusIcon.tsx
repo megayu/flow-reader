@@ -1,12 +1,5 @@
 import clsx from 'clsx'
-import {
-  BookCheck,
-  BookMarked,
-  BookOpen,
-  BookPlus,
-  Circle,
-  CircleX,
-} from 'lucide-react'
+import { BookCheck, BookMarked, BookOpen, BookPlus, Circle, CircleX } from 'lucide-react'
 
 import type { ReadingStatus } from '../storage'
 
@@ -37,13 +30,7 @@ export function ReadingStatusIcon({
   size = 17,
   tone = 'status',
 }: ReadingStatusIconProps) {
-  const Icon = status
-    ? iconMap[status]
-    : intent === 'remove'
-      ? CircleX
-      : intent === 'edit'
-        ? BookPlus
-        : Circle
+  const Icon = status ? iconMap[status] : intent === 'remove' ? CircleX : intent === 'edit' ? BookPlus : Circle
 
   return (
     <Icon

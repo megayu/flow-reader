@@ -22,10 +22,7 @@ function scenarioSummary(scenario) {
 }
 
 function valueAt(object, pathParts) {
-  return pathParts.reduce(
-    (current, part) => (current == null ? undefined : current[part]),
-    object,
-  )
+  return pathParts.reduce((current, part) => (current == null ? undefined : current[part]), object)
 }
 
 function percentChange(baseline, after) {
@@ -35,9 +32,7 @@ function percentChange(baseline, after) {
 }
 
 function formatNumber(value) {
-  return typeof value === 'number' && Number.isFinite(value)
-    ? value.toFixed(1)
-    : 'n/a'
+  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(1) : 'n/a'
 }
 
 function formatPercent(value) {
@@ -58,10 +53,7 @@ function compareMetric(baselineSummary, afterSummary, label, pathParts) {
     metric: label,
     baseline,
     after,
-    delta:
-      typeof baseline === 'number' && typeof after === 'number'
-        ? after - baseline
-        : null,
+    delta: typeof baseline === 'number' && typeof after === 'number' ? after - baseline : null,
     percent: percentChange(baseline, after),
   }
 }
@@ -70,8 +62,7 @@ function compareScenario(name, baselineScenario, afterScenario) {
   const baselineSummary = scenarioSummary(baselineScenario)
   const afterSummary = scenarioSummary(afterScenario)
   const status = {
-    baseline:
-      baselineScenario?.status ?? (baselineScenario ? 'passed' : 'missing'),
+    baseline: baselineScenario?.status ?? (baselineScenario ? 'passed' : 'missing'),
     after: afterScenario?.status ?? (afterScenario ? 'passed' : 'missing'),
   }
 
@@ -81,9 +72,7 @@ function compareScenario(name, baselineScenario, afterScenario) {
       kind: afterScenario?.kind ?? baselineScenario?.kind,
       status,
       metrics: [],
-      note: !baselineSummary
-        ? 'missing baseline summary'
-        : 'missing after summary',
+      note: !baselineSummary ? 'missing baseline summary' : 'missing after summary',
     }
   }
 
@@ -111,24 +100,18 @@ function compareScenario(name, baselineScenario, afterScenario) {
     name,
     kind: afterScenario?.kind ?? baselineScenario?.kind ?? 'single',
     status,
-    metrics: metricSpecs.map(([label, parts]) =>
-      compareMetric(baselineSummary, afterSummary, label, parts),
-    ),
+    metrics: metricSpecs.map(([label, parts]) => compareMetric(baselineSummary, afterSummary, label, parts)),
   }
 }
 
 function scenarioMap(result) {
-  return new Map(
-    (result.scenarios ?? []).map((scenario) => [scenario.name, scenario]),
-  )
+  return new Map((result.scenarios ?? []).map((scenario) => [scenario.name, scenario]))
 }
 
 function printText(comparison, baselineFile, afterFile) {
   console.log(`Baseline: ${path.resolve(baselineFile)}`)
   console.log(`After:    ${path.resolve(afterFile)}`)
-  console.log(
-    `Mode:     ${comparison.baseline.mode ?? 'unknown'} -> ${comparison.after.mode ?? 'unknown'}`,
-  )
+  console.log(`Mode:     ${comparison.baseline.mode ?? 'unknown'} -> ${comparison.after.mode ?? 'unknown'}`)
   console.log('')
 
   const rows = comparison.scenarios.flatMap((scenario) => {
@@ -150,10 +133,7 @@ function printText(comparison, baselineFile, afterFile) {
     return scenario.metrics.map((metric, index) => ({
       scenario: index === 0 ? scenario.name : '',
       kind: index === 0 ? (scenario.kind ?? 'single') : '',
-      status:
-        index === 0
-          ? `${scenario.status.baseline}->${scenario.status.after}`
-          : '',
+      status: index === 0 ? `${scenario.status.baseline}->${scenario.status.after}` : '',
       metric: metric.metric,
       baseline: formatNumber(metric.baseline),
       after: formatNumber(metric.after),
@@ -175,18 +155,13 @@ function printText(comparison, baselineFile, afterFile) {
   const widths = Object.fromEntries(
     Object.keys(headers).map((key) => [
       key,
-      Math.max(
-        headers[key].length,
-        ...rows.map((row) => String(row[key] ?? '').length),
-      ),
+      Math.max(headers[key].length, ...rows.map((row) => String(row[key] ?? '').length)),
     ]),
   )
   const numeric = new Set(['baseline', 'after', 'delta', 'change'])
   const formatRow = (row) =>
     Object.keys(headers)
-      .map((key) =>
-        pad(row[key], widths[key], numeric.has(key) ? 'right' : 'left'),
-      )
+      .map((key) => pad(row[key], widths[key], numeric.has(key) ? 'right' : 'left'))
       .join('  ')
 
   console.log(formatRow(headers))
@@ -208,9 +183,7 @@ const baseline = readResult(baselineFile)
 const after = readResult(afterFile)
 const baselineScenarios = scenarioMap(baseline)
 const afterScenarios = scenarioMap(after)
-const names = [
-  ...new Set([...baselineScenarios.keys(), ...afterScenarios.keys()]),
-].sort()
+const names = [...new Set([...baselineScenarios.keys(), ...afterScenarios.keys()])].sort()
 const comparison = {
   baseline: {
     file: path.resolve(baselineFile),
@@ -226,13 +199,7 @@ const comparison = {
     runsPerScenario: after.runsPerScenario,
     burstRunsPerScenario: after.burstRunsPerScenario,
   },
-  scenarios: names.map((name) =>
-    compareScenario(
-      name,
-      baselineScenarios.get(name),
-      afterScenarios.get(name),
-    ),
-  ),
+  scenarios: names.map((name) => compareScenario(name, baselineScenarios.get(name), afterScenarios.get(name))),
 }
 
 if (json) {

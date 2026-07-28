@@ -1,14 +1,14 @@
 import clsx from 'clsx'
 import {
-  useContext,
-  useState,
   createContext,
-  DragEvent,
-  ReactNode,
+  type DragEvent,
+  type HTMLAttributes,
+  type ReactNode,
   useCallback,
+  useContext,
   useEffect,
-  HTMLAttributes,
   useMemo,
+  useState,
 } from 'react'
 
 interface DropZoneProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onDrop'> {
@@ -34,13 +34,7 @@ function accept(e?: DragEvent) {
   return !!dt && [...dt.types].some((t) => ['text/plain', 'Files'].includes(t))
 }
 
-const DropZoneInner: React.FC<DropZoneProps> = ({
-  children,
-  className,
-  onDrop,
-  split = false,
-  ...props
-}) => {
+const DropZoneInner: React.FC<DropZoneProps> = ({ children, className, onDrop, split = false, ...props }) => {
   const { dragover, setDragEvent } = useDndContext()
   const [position, setPosition] = useState<Position>()
   // console.log(dragover, position)
@@ -135,10 +129,7 @@ const DndProvider: React.FC<{ children?: ReactNode }> = ({ children }) => {
   const setDragEvent = useCallback((e?: DragEvent) => {
     setDragover(accept(e))
   }, [])
-  const value = useMemo(
-    () => ({ dragover, setDragEvent }),
-    [dragover, setDragEvent],
-  )
+  const value = useMemo(() => ({ dragover, setDragEvent }), [dragover, setDragEvent])
 
   return <DndContext.Provider value={value}>{children}</DndContext.Provider>
 }

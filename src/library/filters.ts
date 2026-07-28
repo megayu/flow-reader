@@ -26,16 +26,10 @@ export function cleanLibraryTagName(value: string) {
 }
 
 export function sameLibraryTagName(a: string, b: string) {
-  return (
-    cleanLibraryTagName(a).toLocaleLowerCase() ===
-    cleanLibraryTagName(b).toLocaleLowerCase()
-  )
+  return cleanLibraryTagName(a).toLocaleLowerCase() === cleanLibraryTagName(b).toLocaleLowerCase()
 }
 
-export function matchesLibraryStatusFilter(
-  book: BookRecord,
-  statusFilters: ReadingStatus[],
-) {
+export function matchesLibraryStatusFilter(book: BookRecord, statusFilters: ReadingStatus[]) {
   if (!statusFilters.length) return true
 
   return !!book.readingStatus && statusFilters.includes(book.readingStatus)
@@ -73,13 +67,9 @@ export function getLibraryAuthorOptions(
     if (author) authorNames.add(author)
   })
 
-  const sortedAuthors = Array.from(authorNames).sort((a, b) =>
-    authorCollator.compare(a, b),
-  )
+  const sortedAuthors = Array.from(authorNames).sort((a, b) => authorCollator.compare(a, b))
   const availableAuthors = new Set(sortedAuthors)
-  const pinned = uniqueStrings(pinnedAuthors).filter((author) =>
-    availableAuthors.has(author),
-  )
+  const pinned = uniqueStrings(pinnedAuthors).filter((author) => availableAuthors.has(author))
   const pinnedSet = new Set(pinned)
 
   const options = pinned.map((name) => ({ name, pinned: true }))
@@ -89,15 +79,10 @@ export function getLibraryAuthorOptions(
   return options
 }
 
-export function pruneLibraryAuthorFilters(
-  authorFilters: string[],
-  authorOptions: LibraryAuthorOption[],
-) {
+export function pruneLibraryAuthorFilters(authorFilters: string[], authorOptions: LibraryAuthorOption[]) {
   const availableAuthors = new Set(authorOptions.map((option) => option.name))
 
-  return uniqueStrings(authorFilters).filter((author) =>
-    availableAuthors.has(author),
-  )
+  return uniqueStrings(authorFilters).filter((author) => availableAuthors.has(author))
 }
 
 export function getLibraryTagOptions(
@@ -106,9 +91,7 @@ export function getLibraryTagOptions(
   tags: LibraryTagRecord[],
   pinnedTags: string[] = [],
 ): LibraryTagOption[] {
-  const availableTagIds = new Set<string>(
-    statusFilters.length ? [] : tags.map((tag) => tag.id),
-  )
+  const availableTagIds = new Set<string>(statusFilters.length ? [] : tags.map((tag) => tag.id))
   const tagById = new Map(tags.map((tag) => [tag.id, tag]))
 
   books.forEach((book) => {
@@ -122,9 +105,7 @@ export function getLibraryTagOptions(
     .map((tagId) => tagById.get(tagId)!)
     .sort((a, b) => authorCollator.compare(a.name, b.name))
   const availableTags = new Set(sortedTags.map((tag) => tag.id))
-  const pinned = uniqueStrings(pinnedTags).filter((tagId) =>
-    availableTags.has(tagId),
-  )
+  const pinned = uniqueStrings(pinnedTags).filter((tagId) => availableTags.has(tagId))
   const pinnedSet = new Set(pinned)
 
   const options: LibraryTagOption[] = []
@@ -140,35 +121,22 @@ export function getLibraryTagOptions(
   return options
 }
 
-export function pruneLibraryTagFilters(
-  tagFilters: string[],
-  tagOptions: LibraryTagOption[],
-) {
+export function pruneLibraryTagFilters(tagFilters: string[], tagOptions: LibraryTagOption[]) {
   const availableTags = new Set(tagOptions.map((option) => option.id))
 
   return uniqueStrings(tagFilters).filter((tagId) => availableTags.has(tagId))
 }
 
-export function toggleLibraryAuthorFilter(
-  authorFilters: string[],
-  author: string,
-) {
-  return authorFilters.includes(author)
-    ? authorFilters.filter((item) => item !== author)
-    : [...authorFilters, author]
+export function toggleLibraryAuthorFilter(authorFilters: string[], author: string) {
+  return authorFilters.includes(author) ? authorFilters.filter((item) => item !== author) : [...authorFilters, author]
 }
 
 export function toggleLibraryTagFilter(tagFilters: string[], tagId: string) {
-  return tagFilters.includes(tagId)
-    ? tagFilters.filter((item) => item !== tagId)
-    : [...tagFilters, tagId]
+  return tagFilters.includes(tagId) ? tagFilters.filter((item) => item !== tagId) : [...tagFilters, tagId]
 }
 
 export function pinLibraryAuthor(pinnedAuthors: string[], author: string) {
-  return [
-    author,
-    ...uniqueStrings(pinnedAuthors).filter((item) => item !== author),
-  ]
+  return [author, ...uniqueStrings(pinnedAuthors).filter((item) => item !== author)]
 }
 
 export function unpinLibraryAuthor(pinnedAuthors: string[], author: string) {

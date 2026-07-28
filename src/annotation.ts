@@ -21,10 +21,7 @@ export const colorMap = {
   purple: 'rgba(126, 34, 206, 0.36)',
 }
 
-export function orderRangeRectsForWritingMode<T extends DOMRectReadOnly>(
-  rects: readonly T[],
-  writingMode: string,
-) {
+export function orderRangeRectsForWritingMode<T extends DOMRectReadOnly>(rects: readonly T[], writingMode: string) {
   if (writingMode !== 'vertical-rl') return [...rects]
 
   return [...rects].sort((a, b) => b.left - a.left || a.top - b.top)
@@ -44,15 +41,8 @@ interface AnnotationSectionLike {
   }
 }
 
-export function createAnnotationSpine(
-  section: AnnotationSectionLike | undefined,
-): AnnotationSpine | undefined {
-  if (
-    !section ||
-    typeof section.index !== 'number' ||
-    typeof section.href !== 'string' ||
-    !section.href
-  ) {
+export function createAnnotationSpine(section: AnnotationSectionLike | undefined): AnnotationSpine | undefined {
+  if (!section || typeof section.index !== 'number' || typeof section.href !== 'string' || !section.href) {
     return
   }
 

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useSnapshot } from 'valtio'
 
-import { colorMap, Annotation as IAnnotation } from '../annotation'
+import { colorMap, type Annotation as IAnnotation } from '../annotation'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
-import { BookTab } from '../models/reader'
+import type { BookTab } from '../models/reader'
 
 // avoid click penetration
 let clickedAnnotation = false
@@ -46,8 +46,7 @@ interface FindMatchProps {
   tab: BookTab
 }
 const FindMatches: React.FC<FindMatchProps> = ({ active, tab }) => {
-  const { rendition, results, keyword, paginationVersion, viewVersion } =
-    useSnapshot(tab)
+  const { rendition, results, keyword, paginationVersion, viewVersion } = useSnapshot(tab)
 
   useEffect(() => {
     const query = keyword.trim()
@@ -69,7 +68,7 @@ const FindMatches: React.FC<FindMatchProps> = ({ active, tab }) => {
             'fill-opacity': 'unset',
           },
         )
-      } catch (error) {
+      } catch (_error) {
         // ignore matched text in `<title>`
       }
     })
@@ -78,43 +77,30 @@ const FindMatches: React.FC<FindMatchProps> = ({ active, tab }) => {
       matches.forEach((m) => {
         try {
           rendition?.annotations.remove(m.cfi, 'highlight')
-        } catch (error) {
+        } catch (_error) {
           // ignore removed views
         }
       })
     }
-  }, [
-    active,
-    keyword,
-    paginationVersion,
-    rendition?.annotations,
-    results,
-    tab,
-    viewVersion,
-  ])
+  }, [active, keyword, paginationVersion, rendition?.annotations, results, tab, viewVersion])
 
   return null
 }
 
 function renderedSearchMatches(tab: BookTab, keyword: string) {
-  const views =
-    tab.rendition?.manager?.views?.displayed?.() ??
-    tab.rendition?.manager?.views?._views ??
-    []
+  const views = tab.rendition?.manager?.views?.displayed?.() ?? tab.rendition?.manager?.views?._views ?? []
   const seen = new Set<string>()
   const matches: Array<{ cfi: string }> = []
 
   views.forEach((view: any) => {
     try {
-      ;(view.section.find(keyword) as Array<{ cfi?: string }>).forEach(
-        (match) => {
-          if (!match.cfi || seen.has(match.cfi)) return
+      ;(view.section.find(keyword) as Array<{ cfi?: string }>).forEach((match) => {
+        if (!match.cfi || seen.has(match.cfi)) return
 
-          seen.add(match.cfi)
-          matches.push({ cfi: match.cfi })
-        },
-      )
-    } catch (error) {
+        seen.add(match.cfi)
+        matches.push({ cfi: match.cfi })
+      })
+    } catch (_error) {
       // ignore matched text in unsupported nodes
     }
   })
@@ -134,10 +120,7 @@ interface DefinitionMatch {
 
 const DEFINITION_MATCH_CACHE_LIMIT = 64
 
-function getCachedDefinitionMatches(
-  cache: Map<string, DefinitionMatch[]>,
-  key: string,
-) {
+function getCachedDefinitionMatches(cache: Map<string, DefinitionMatch[]>, key: string) {
   const matches = cache.get(key)
   if (!matches) return
 
@@ -146,11 +129,7 @@ function getCachedDefinitionMatches(
   return matches
 }
 
-function setCachedDefinitionMatches(
-  cache: Map<string, DefinitionMatch[]>,
-  key: string,
-  matches: DefinitionMatch[],
-) {
+function setCachedDefinitionMatches(cache: Map<string, DefinitionMatch[]>, key: string, matches: DefinitionMatch[]) {
   cache.set(key, matches)
 
   while (cache.size > DEFINITION_MATCH_CACHE_LIMIT) {
@@ -166,24 +145,10 @@ interface DefinitionsProps {
   tab: BookTab
   dark: boolean
 }
-const Definitions: React.FC<DefinitionsProps> = ({
-  active,
-  definitions,
-  tab,
-  dark,
-}) => {
-  const {
-    book,
-    rendition,
-    rendered,
-    visibleSectionIndexes,
-    paginationVersion,
-    viewVersion,
-    overlayVersion,
-  } = useSnapshot(tab)
-  const matchCacheRef = useRef<Map<string, DefinitionMatch[]> | undefined>(
-    undefined,
-  )
+const Definitions: React.FC<DefinitionsProps> = ({ active, definitions, tab, dark }) => {
+  const { book, rendition, rendered, visibleSectionIndexes, paginationVersion, viewVersion, overlayVersion } =
+    useSnapshot(tab)
+  const matchCacheRef = useRef<Map<string, DefinitionMatch[]> | undefined>(undefined)
   const matchCacheScopeRef = useRef<string | undefined>(undefined)
   matchCacheRef.current ??= new Map()
   const definitionItems = useMemo(
@@ -195,10 +160,7 @@ const Definitions: React.FC<DefinitionsProps> = ({
       }, []),
     [definitions],
   )
-  const definitionKey = useMemo(
-    () => definitionItems.map((item) => item.definition).join('\u0000'),
-    [definitionItems],
-  )
+  const definitionKey = useMemo(() => definitionItems.map((item) => item.definition).join('\u0000'), [definitionItems])
   const matchCacheScope = `${book.id}:${book.contentVersion}:${definitionKey}`
   const visibleSectionKey = visibleSectionIndexes.join('|')
 
@@ -213,17 +175,9 @@ const Definitions: React.FC<DefinitionsProps> = ({
     const annotations = rendition?.annotations
     let cancelled = false
     const drawnCfis: string[] = []
-    const currentSections = tab.visibleSections.filter((section) =>
-      visibleSectionIndexes.includes(section.index),
-    )
+    const currentSections = tab.visibleSections.filter((section) => visibleSectionIndexes.includes(section.index))
 
-    if (
-      !active ||
-      !rendered ||
-      !annotations ||
-      !currentSections.length ||
-      !definitionItems.length
-    ) {
+    if (!active || !rendered || !annotations || !currentSections.length || !definitionItems.length) {
       return
     }
 
@@ -239,22 +193,12 @@ const Definitions: React.FC<DefinitionsProps> = ({
             await tab.ensureSectionInfo(currentSection)
             if (cancelled) return [] as DefinitionMatch[]
 
-            sectionMatches = definitionItems.flatMap(
-              ({ definition, index }) => {
-                const result = tab.searchInSection(definition, currentSection)
-                return (
-                  result?.subitems.flatMap((match) =>
-                    match.cfi ? [{ cfi: match.cfi, index }] : [],
-                  ) ?? []
-                )
-              },
-            )
+            sectionMatches = definitionItems.flatMap(({ definition, index }) => {
+              const result = tab.searchInSection(definition, currentSection)
+              return result?.subitems.flatMap((match) => (match.cfi ? [{ cfi: match.cfi, index }] : [])) ?? []
+            })
             if (matchCacheRef.current) {
-              setCachedDefinitionMatches(
-                matchCacheRef.current,
-                cacheKey,
-                sectionMatches,
-              )
+              setCachedDefinitionMatches(matchCacheRef.current, cacheKey, sectionMatches)
             }
           }
 
@@ -283,7 +227,7 @@ const Definitions: React.FC<DefinitionsProps> = ({
             styles,
           )
           drawnCfis.push(match.cfi)
-        } catch (error) {
+        } catch (_error) {
           // ignore matched text in `<title>`
         }
       })
@@ -296,7 +240,7 @@ const Definitions: React.FC<DefinitionsProps> = ({
       drawnCfis.forEach((cfi) => {
         try {
           annotations.remove(cfi, 'underline')
-        } catch (error) {
+        } catch (_error) {
           // ignore removed views
         }
       })
@@ -347,15 +291,7 @@ const Annotation: React.FC<AnnotationProps> = ({ tab, annotation }) => {
     return () => {
       rendition?.annotations.remove(annotation.cfi, annotation.type)
     }
-  }, [
-    annotation.cfi,
-    annotation.color,
-    annotation.type,
-    overlayVersion,
-    rendition?.annotations,
-    tab,
-    viewVersion,
-  ])
+  }, [annotation.cfi, annotation.color, annotation.type, overlayVersion, rendition?.annotations, tab, viewVersion])
 
   return null
 }
@@ -365,8 +301,7 @@ interface AnnotationsProps {
   tab: BookTab
 }
 export const Annotations: React.FC<AnnotationsProps> = ({ active, tab }) => {
-  const { overlayState, visibleSectionIndexes, overlayVersion } =
-    useSnapshot(tab)
+  const { overlayState, visibleSectionIndexes, overlayVersion } = useSnapshot(tab)
   const { dark } = useColorScheme()
   void overlayVersion
   const visibleSectionIndexSet = new Set(visibleSectionIndexes)
@@ -379,21 +314,10 @@ export const Annotations: React.FC<AnnotationsProps> = ({ active, tab }) => {
         overlayState.annotations.flatMap((annotation) =>
           // seems to fix annotation flash when executing `next()` and `display()`
           visibleSectionIndexSet.has(annotation.spine.index)
-            ? [
-                <Annotation
-                  key={annotation.id}
-                  tab={tab}
-                  annotation={annotation}
-                />,
-              ]
+            ? [<Annotation key={annotation.id} tab={tab} annotation={annotation} />]
             : [],
         )}
-      <Definitions
-        active={active}
-        definitions={overlayState.definitions}
-        tab={tab}
-        dark={!!dark}
-      />
+      <Definitions active={active} definitions={overlayState.definitions} tab={tab} dark={!!dark} />
     </>
   )
 }

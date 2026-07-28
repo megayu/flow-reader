@@ -298,9 +298,7 @@ export function getCommandKeyLabel() {
   return /mac|iphone|ipad|ipod/i.test(platform) ? 'Cmd' : 'Ctrl'
 }
 
-export function resolveShortcutChord(
-  shortcut: ShortcutChordValue,
-): ShortcutChordValue {
+export function resolveShortcutChord(shortcut: ShortcutChordValue): ShortcutChordValue {
   const commandKey = getCommandKeyLabel()
 
   return shortcut.map((key) => (key === commandToken ? commandKey : key))
@@ -310,9 +308,7 @@ export function getShortcutChords(id: ShortcutActionId) {
   return shortcutDefinitions[id].shortcuts.map(resolveShortcutChord)
 }
 
-export function createShortcutGroups(
-  t: (key: string) => string,
-): ShortcutGroup[] {
+export function createShortcutGroups(t: (key: string) => string): ShortcutGroup[] {
   return shortcutGroups.map((group) => ({
     title: t(group.titleKey),
     items: group.items.map((item) => ({

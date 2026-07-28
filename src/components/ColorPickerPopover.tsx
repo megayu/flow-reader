@@ -32,9 +32,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
   const normalizedDefault = normalizeHexColor(defaultValue) ?? '#0ea5e9'
   const [draft, setDraft] = useState(initialColorRef.current)
   const [input, setInput] = useState(initialColorRef.current)
-  const [slots, setSlots] = useState<(string | undefined)[]>(() =>
-    Array.from({ length: colorSlotCount }),
-  )
+  const [slots, setSlots] = useState<(string | undefined)[]>(() => Array.from({ length: colorSlotCount }))
   const t = useTranslation('color_picker')
 
   const slotItems = useMemo(
@@ -97,16 +95,9 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
       )}
       onClick={(e) => e.stopPropagation()}
     >
-      <HexColorPicker
-        color={draft}
-        onChange={updateDraft}
-        className="!h-36 !w-full"
-      />
+      <HexColorPicker color={draft} onChange={updateDraft} className="!h-36 !w-full" />
       <div className="mt-3 flex items-center gap-2">
-        <div
-          className="ring-border h-8 w-8 shrink-0 rounded-sm ring-1 ring-inset"
-          style={{ backgroundColor: draft }}
-        />
+        <div className="ring-border h-8 w-8 shrink-0 rounded-sm ring-1 ring-inset" style={{ backgroundColor: draft }} />
         <input
           autoComplete="off"
           autoCorrect="off"
@@ -170,11 +161,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
           {t('save_slot')}
         </Button>
         <div className="flex justify-end gap-2">
-          <Button
-            variant="secondary"
-            compact
-            onClick={() => updateDraft(normalizedDefault)}
-          >
+          <Button variant="secondary" compact onClick={() => updateDraft(normalizedDefault)}>
             {t('reset')}
           </Button>
           <Button

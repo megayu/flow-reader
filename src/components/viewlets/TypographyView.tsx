@@ -2,8 +2,8 @@ import { invoke } from '@tauri-apps/api/core'
 import clsx from 'clsx'
 import { MinusIcon, PlusIcon, XIcon } from 'lucide-react'
 import {
-  ComponentProps,
-  CSSProperties,
+  type ComponentProps,
+  type CSSProperties,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -14,15 +14,15 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 
+import { RenditionSpread } from '@flow/epubjs/rendition'
 import { useTranslation } from '@/hooks/useTranslation'
 import { reader, useReaderSnapshot } from '@/models/reader'
 import { resolveBookSpreadPolicy } from '@/reader/spreadPolicy'
-import { PageAppearance, TypographyConfiguration, useSettings } from '@/state'
-import { RenditionSpread } from '@flow/epubjs/rendition'
+import { type PageAppearance, type TypographyConfiguration, useSettings } from '@/state'
 
 import { getBodyTypographyBaseline } from '../../styles'
 import { IconButton } from '../Button'
-import { PaneView, PaneViewProps } from '../base/PaneView'
+import { PaneView, type PaneViewProps } from '../base/PaneView'
 import { Button as UiButton } from '../ui/button'
 import { Input } from '../ui/input'
 
@@ -55,15 +55,12 @@ const TypographyPane: React.FC = () => {
   const t = useTranslation('typography')
 
   const [localFonts, setLocalFonts] = useState<FontOption[]>()
-  const localFontsRequestRef = useRef<
-    Promise<FontOption[] | undefined> | undefined
-  >(undefined)
+  const localFontsRequestRef = useRef<Promise<FontOption[] | undefined> | undefined>(undefined)
   const bookTypography = focusedBookTab?.book.configuration?.typography
   const typography = bookTypography ?? {}
   const isScrolledDocument = focusedBookTab?.isScrolledDocument ?? false
 
-  const { fontFamily, fontSize, fontWeight, lineHeight, textIndent, zoom } =
-    typography
+  const { fontFamily, fontSize, fontWeight, lineHeight, textIndent, zoom } = typography
   const globalSpread = settings.spread ?? RenditionSpread.Auto
   const inheritedSpread = resolveBookSpreadPolicy({
     publicationSpread: focusedBookTab?.book.metadata.spread,
@@ -71,33 +68,27 @@ const TypographyPane: React.FC = () => {
   })
   const globalTextAlign: TextAlignOption = settings.textAlign ?? 'default'
 
-  const setTypography = useCallback(
-    <K extends keyof TypographyConfiguration>(
-      k: K,
-      v: TypographyConfiguration[K],
-    ) => {
-      const tab = reader.focusedBookTab
-      if (!tab) return
+  const setTypography = useCallback(<K extends keyof TypographyConfiguration>(k: K, v: TypographyConfiguration[K]) => {
+    const tab = reader.focusedBookTab
+    if (!tab) return
 
-      const typography = {
-        ...tab.book.configuration?.typography,
-      }
+    const typography = {
+      ...tab.book.configuration?.typography,
+    }
 
-      if (v === undefined) {
-        delete typography[k]
-      } else {
-        typography[k] = v
-      }
+    if (v === undefined) {
+      delete typography[k]
+    } else {
+      typography[k] = v
+    }
 
-      tab.updateBook({
-        configuration: {
-          ...tab.book.configuration,
-          typography,
-        },
-      })
-    },
-    [],
-  )
+    tab.updateBook({
+      configuration: {
+        ...tab.book.configuration,
+        typography,
+      },
+    })
+  }, [])
 
   const queryBrowserFonts = useCallback(async () => {
     if (!('queryLocalFonts' in window)) {
@@ -144,21 +135,11 @@ const TypographyPane: React.FC = () => {
   return (
     <div className="text-muted-foreground flex min-h-0 flex-1 flex-col text-base">
       <div className="scroll min-h-0 flex-1">
-        <div
-          className="space-y-3 pt-2 pr-1.5 pb-4 pl-4"
-          key={focusedBookTab?.id}
-        >
-          <fieldset
-            className="m-0 min-w-0 border-0 p-0"
-            disabled={isScrolledDocument}
-          >
+        <div className="space-y-3 pt-2 pr-1.5 pb-4 pl-4" key={focusedBookTab?.id}>
+          <fieldset className="m-0 min-w-0 border-0 p-0" disabled={isScrolledDocument}>
             <SpreadField
               name={t('page_view')}
-              value={
-                isScrolledDocument
-                  ? RenditionSpread.None
-                  : bookTypography?.spread
-              }
+              value={isScrolledDocument ? RenditionSpread.None : bookTypography?.spread}
               inheritedValue={inheritedSpread}
               unsetOnSelected
               onChange={(value) => {
@@ -205,10 +186,10 @@ const TypographyPane: React.FC = () => {
             name={t('font_size')}
             min={14}
             max={28}
-            value={fontSize ? parseInt(fontSize) : undefined}
+            value={fontSize ? parseInt(fontSize, 10) : undefined}
             baseValue={() => getCurrentBodyBaseline().fontSize}
             onChange={(v) => {
-              setTypography('fontSize', v ? v + 'px' : undefined)
+              setTypography('fontSize', v ? `${v}px` : undefined)
             }}
           />
           <NumberField
@@ -296,10 +277,7 @@ function cleanFontLabel(label: string) {
 function fontOptionKey(label: string) {
   return cleanFontLabel(label)
     .toLowerCase()
-    .replace(
-      /\b(?:bold|italic|oblique|regular|medium|light|semibold|semi bold|semilight|semi light|black)\b/g,
-      '',
-    )
+    .replace(/\b(?:bold|italic|oblique|regular|medium|light|semibold|semi bold|semilight|semi light|black)\b/g, '')
     .replace(/[^a-z0-9\u3400-\u9fff\uf900-\ufaff]+/g, '')
 }
 
@@ -339,8 +317,7 @@ function SegmentedField<T extends string>({
       <div className="text-muted-foreground ring-border bg-background flex h-8 items-center overflow-hidden rounded-lg p-0.5 ring-1 ring-inset">
         {options.map((option) => {
           const selected = option.value === value
-          const inherited =
-            value === undefined && option.value === inheritedValue
+          const inherited = value === undefined && option.value === inheritedValue
 
           return (
             <UiButton
@@ -351,13 +328,9 @@ function SegmentedField<T extends string>({
               className={clsx(
                 'h-full flex-1 rounded-lg px-2 text-base leading-none',
                 selected || 'text-muted-foreground',
-                inherited &&
-                  !selected &&
-                  'bg-muted ring-border ring-1 ring-inset',
+                inherited && !selected && 'bg-muted ring-border ring-1 ring-inset',
               )}
-              onClick={() =>
-                onChange(selected && unsetOnSelected ? undefined : option.value)
-              }
+              onClick={() => onChange(selected && unsetOnSelected ? undefined : option.value)}
             >
               {option.label}
             </UiButton>
@@ -370,10 +343,7 @@ function SegmentedField<T extends string>({
 
 const FieldLabel: React.FC<{ name: string }> = ({ name }) => {
   return (
-    <label
-      htmlFor={name}
-      className="text-muted-foreground mb-1 block text-base font-medium"
-    >
+    <label htmlFor={name} className="text-muted-foreground mb-1 block text-base font-medium">
       {name}
     </label>
   )
@@ -387,13 +357,7 @@ interface SpreadFieldProps {
   onChange: (value?: RenditionSpread) => void
 }
 
-const SpreadField: React.FC<SpreadFieldProps> = ({
-  name,
-  value,
-  inheritedValue,
-  unsetOnSelected,
-  onChange,
-}) => {
+const SpreadField: React.FC<SpreadFieldProps> = ({ name, value, inheritedValue, unsetOnSelected, onChange }) => {
   const t = useTranslation('typography')
 
   return (
@@ -417,13 +381,7 @@ const SpreadField: React.FC<SpreadFieldProps> = ({
   )
 }
 
-const TextAlignField: React.FC<TextAlignFieldProps> = ({
-  name,
-  value,
-  inheritedValue,
-  unsetOnSelected,
-  onChange,
-}) => {
+const TextAlignField: React.FC<TextAlignFieldProps> = ({ name, value, inheritedValue, unsetOnSelected, onChange }) => {
   const t = useTranslation('typography')
 
   return (
@@ -447,11 +405,7 @@ interface PageAppearanceFieldProps {
   onChange: (value?: PageAppearance) => void
 }
 
-const PageAppearanceField: React.FC<PageAppearanceFieldProps> = ({
-  name,
-  value,
-  onChange,
-}) => {
+const PageAppearanceField: React.FC<PageAppearanceFieldProps> = ({ name, value, onChange }) => {
   const t = useTranslation('typography')
 
   return (
@@ -477,13 +431,7 @@ interface FontFieldProps {
   onChange: (value: string) => void
 }
 
-const FontField: React.FC<FontFieldProps> = ({
-  name,
-  value,
-  options,
-  loadOptions,
-  onChange,
-}) => {
+const FontField: React.FC<FontFieldProps> = ({ name, value, options, loadOptions, onChange }) => {
   const t = useTranslation('typography')
   const actionT = useTranslation('action')
   const [inputValue, setInputValue] = useState(value)
@@ -504,9 +452,7 @@ const FontField: React.FC<FontFieldProps> = ({
     if (!query) return options
 
     const keywords = query.split(/\s+/).filter(Boolean)
-    return options.filter((option) =>
-      keywords.every((keyword) => option.searchText.includes(keyword)),
-    )
+    return options.filter((option) => keywords.every((keyword) => option.searchText.includes(keyword)))
   }, [options, query])
 
   const openPicker = useCallback(() => {
@@ -519,10 +465,7 @@ const FontField: React.FC<FontFieldProps> = ({
   }, [])
   const handleDocumentPointerDown = useEffectEvent((e: PointerEvent) => {
     const target = e.target as Node
-    if (
-      rootRef.current?.contains(target) ||
-      popoverRef.current?.contains(target)
-    ) {
+    if (rootRef.current?.contains(target) || popoverRef.current?.contains(target)) {
       return
     }
 
@@ -544,8 +487,7 @@ const FontField: React.FC<FontFieldProps> = ({
 
   const estimatedPopoverWidth = useMemo(() => {
     const longestLabel = filteredOptions.reduce(
-      (longest, option) =>
-        option.label.length > longest.length ? option.label : longest,
+      (longest, option) => (option.label.length > longest.length ? option.label : longest),
       '',
     )
     const estimatedTextWidth = Array.from(longestLabel).reduce((width, ch) => {
@@ -571,20 +513,12 @@ const FontField: React.FC<FontFieldProps> = ({
     const hasQuery = !!query
     const rightSpace = viewportWidth - rect.right - margin
     const maxAvailableWidth = viewportWidth - margin * 2
-    const desiredWidth = Math.min(
-      Math.max(rect.width, 280, estimatedPopoverWidth),
-      Math.min(560, maxAvailableWidth),
-    )
+    const desiredWidth = Math.min(Math.max(rect.width, 280, estimatedPopoverWidth), Math.min(560, maxAvailableWidth))
     const preferSide = !hasQuery && rightSpace >= desiredWidth
-    const width = preferSide
-      ? Math.min(desiredWidth, rightSpace - margin)
-      : desiredWidth
+    const width = preferSide ? Math.min(desiredWidth, rightSpace - margin) : desiredWidth
 
     if (preferSide) {
-      const top = Math.max(
-        margin,
-        Math.min(rect.top - 6, viewportHeight - margin - contentHeight),
-      )
+      const top = Math.max(margin, Math.min(rect.top - 6, viewportHeight - margin - contentHeight))
       setPopoverStyle({
         left: rect.right + margin,
         top,
@@ -597,16 +531,12 @@ const FontField: React.FC<FontFieldProps> = ({
     const belowTop = rect.bottom + margin
     const belowSpace = viewportHeight - belowTop - margin
     const aboveSpace = rect.top - margin * 2
-    const showAbove =
-      belowSpace < Math.min(contentHeight, 180) && aboveSpace > belowSpace
+    const showAbove = belowSpace < Math.min(contentHeight, 180) && aboveSpace > belowSpace
     const maxHeight = showAbove ? aboveSpace : belowSpace
     const height = Math.min(contentHeight, maxHeight)
 
     setPopoverStyle({
-      left: Math.min(
-        viewportWidth - width - margin,
-        Math.max(margin, rect.right - width),
-      ),
+      left: Math.min(viewportWidth - width - margin, Math.max(margin, rect.right - width)),
       top: showAbove ? rect.top - margin - height : belowTop,
       width,
       maxHeight: Math.max(120, maxHeight),
@@ -680,11 +610,7 @@ const FontField: React.FC<FontFieldProps> = ({
               closePicker()
             }}
             onKeyDown={(e) => {
-              if (
-                e.key !== 'Escape' ||
-                e.nativeEvent.isComposing ||
-                !editingRef.current
-              ) {
+              if (e.key !== 'Escape' || e.nativeEvent.isComposing || !editingRef.current) {
                 return
               }
 
@@ -693,10 +619,7 @@ const FontField: React.FC<FontFieldProps> = ({
               const restoredValue = editStartValueRef.current
               e.currentTarget.value = restoredValue
               setInputValue(restoredValue)
-              e.currentTarget.setSelectionRange(
-                restoredValue.length,
-                restoredValue.length,
-              )
+              e.currentTarget.setSelectionRange(restoredValue.length, restoredValue.length)
             }}
           />
           {inputValue && (
@@ -752,9 +675,7 @@ const FontField: React.FC<FontFieldProps> = ({
               </button>
             ))}
             {!filteredOptions.length && (
-              <div className="text-muted-foreground px-5 py-3 text-base">
-                {t('no_matching_fonts')}
-              </div>
+              <div className="text-muted-foreground px-5 py-3 text-base">{t('no_matching_fonts')}</div>
             )}
           </div>,
           document.body,
@@ -763,30 +684,20 @@ const FontField: React.FC<FontFieldProps> = ({
   )
 }
 
-interface NumberFieldProps extends Omit<
-  ComponentProps<'input'>,
-  'onChange' | 'value' | 'defaultValue'
-> {
+interface NumberFieldProps extends Omit<ComponentProps<'input'>, 'onChange' | 'value' | 'defaultValue'> {
   value?: number
   baseValue?: () => number | undefined
   onChange: (v?: number) => void
 }
-const NumberField: React.FC<NumberFieldProps> = ({
-  value,
-  baseValue,
-  onChange,
-  ...props
-}) => {
+const NumberField: React.FC<NumberFieldProps> = ({ value, baseValue, onChange, ...props }) => {
   const ref = useRef<HTMLInputElement>(null)
   const editStartValueRef = useRef<string | undefined>(undefined)
   const actionT = useTranslation('action')
   const typographyT = useTranslation('typography')
   const min = parseNumberInputProp(props.min)
   const max = parseNumberInputProp(props.max)
-  const stepDownDisabled =
-    value !== undefined && min !== undefined && value <= min
-  const stepUpDisabled =
-    value !== undefined && max !== undefined && value >= max
+  const stepDownDisabled = value !== undefined && min !== undefined && value <= min
+  const stepUpDisabled = value !== undefined && max !== undefined && value >= max
 
   useEffect(() => {
     if (!ref.current) return
@@ -835,11 +746,7 @@ const NumberField: React.FC<NumberFieldProps> = ({
             onChange(normalized)
           }}
           onKeyDown={(e) => {
-            if (
-              e.key !== 'Escape' ||
-              e.nativeEvent.isComposing ||
-              editStartValueRef.current === undefined
-            ) {
+            if (e.key !== 'Escape' || e.nativeEvent.isComposing || editStartValueRef.current === undefined) {
               return
             }
 
@@ -868,10 +775,7 @@ const NumberField: React.FC<NumberFieldProps> = ({
               step(1)
             }}
           />
-          <span
-            aria-hidden={value === undefined}
-            className="flex size-6 items-center justify-center"
-          >
+          <span aria-hidden={value === undefined} className="flex size-6 items-center justify-center">
             <IconButton
               className="text-muted-foreground flex size-6 items-center justify-center"
               disabled={value === undefined}
@@ -891,18 +795,14 @@ const NumberField: React.FC<NumberFieldProps> = ({
 }
 
 function parseNumberInputProp(value: string | number | undefined) {
-  if (typeof value === 'number')
-    return Number.isFinite(value) ? value : undefined
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
   if (typeof value !== 'string') return undefined
 
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
-function normalizeNumberFieldValue(
-  input: string,
-  constraints: Pick<ComponentProps<'input'>, 'min' | 'max' | 'step'>,
-) {
+function normalizeNumberFieldValue(input: string, constraints: Pick<ComponentProps<'input'>, 'min' | 'max' | 'step'>) {
   if (input === '') return undefined
 
   const parsed = Number(input)
@@ -910,10 +810,7 @@ function normalizeNumberFieldValue(
 
   const min = parseNumberInputProp(constraints.min)
   const max = parseNumberInputProp(constraints.max)
-  const step =
-    constraints.step === 'any'
-      ? undefined
-      : (parseNumberInputProp(constraints.step) ?? 1)
+  const step = constraints.step === 'any' ? undefined : (parseNumberInputProp(constraints.step) ?? 1)
   let normalized = parsed
 
   if (min !== undefined) normalized = Math.max(min, normalized)

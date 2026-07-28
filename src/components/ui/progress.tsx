@@ -1,4 +1,4 @@
-import * as React from 'react'
+import type * as React from 'react'
 
 import { cn } from '@/utils'
 
@@ -16,10 +16,7 @@ function Progress({
   return (
     <div
       data-slot="progress"
-      className={cn(
-        'bg-muted relative h-2 w-full overflow-hidden rounded-full',
-        className,
-      )}
+      className={cn('bg-muted relative h-2 w-full overflow-hidden rounded-full', className)}
       role="progressbar"
       aria-valuemax={max}
       aria-valuemin={0}

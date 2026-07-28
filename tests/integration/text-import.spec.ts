@@ -3,14 +3,9 @@ import path from 'node:path'
 import { expect, test } from '@playwright/test'
 
 import { createTestBook } from '../support/book-fixtures'
-import {
-  getImportedTextSelections,
-  installTauriMock,
-} from '../support/tauri-mock'
+import { getImportedTextSelections, installTauriMock } from '../support/tauri-mock'
 
-test('TXT import dialog sends edited title and author metadata', async ({
-  page,
-}) => {
+test('TXT import dialog sends edited title and author metadata', async ({ page }) => {
   const filePath = path.join('tmp', 'Original Title.txt')
 
   await installTauriMock(page, {
@@ -58,12 +53,8 @@ test('TXT import dialog sends edited title and author metadata', async ({
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByText('TXT Import Preview')).toBeVisible()
 
-  await page
-    .getByRole('textbox', { exact: true, name: 'Book title' })
-    .fill('Edited Title')
-  await page
-    .getByRole('textbox', { exact: true, name: 'Author' })
-    .fill('Edited Author')
+  await page.getByRole('textbox', { exact: true, name: 'Book title' }).fill('Edited Title')
+  await page.getByRole('textbox', { exact: true, name: 'Author' }).fill('Edited Author')
   await page.getByRole('button', { name: 'Import Selected' }).click()
 
   await expect

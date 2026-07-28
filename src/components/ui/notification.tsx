@@ -1,13 +1,5 @@
 import { CheckCircleIcon, TriangleAlertIcon, XIcon } from 'lucide-react'
-import {
-  createContext,
-  ReactNode,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 
 import { cn } from '@/utils'
 
@@ -33,17 +25,13 @@ interface NotificationContextValue {
   notify: (notification: NotificationInput) => number
 }
 
-const NotificationContext = createContext<NotificationContextValue | undefined>(
-  undefined,
-)
+const NotificationContext = createContext<NotificationContextValue | undefined>(undefined)
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<NotificationRecord[]>([])
 
   const dismiss = useCallback((id: number) => {
-    setNotifications((current) =>
-      current.filter((notification) => notification.id !== id),
-    )
+    setNotifications((current) => current.filter((notification) => notification.id !== id))
   }, [])
 
   const notify = useCallback((notification: NotificationInput) => {
@@ -53,10 +41,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       {
         ...notification,
         autoCloseMs:
-          notification.autoCloseMs ??
-          (notification.type === 'success'
-            ? DEFAULT_NOTIFICATION_AUTO_CLOSE_MS
-            : false),
+          notification.autoCloseMs ?? (notification.type === 'success' ? DEFAULT_NOTIFICATION_AUTO_CLOSE_MS : false),
         id,
       },
     ])
@@ -80,11 +65,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         aria-relevant="additions text"
       >
         {notifications.map((notification) => (
-          <NotificationToast
-            key={notification.id}
-            notification={notification}
-            onDismiss={dismiss}
-          />
+          <NotificationToast key={notification.id} notification={notification} onDismiss={dismiss} />
         ))}
       </div>
     </NotificationContext.Provider>
@@ -116,37 +97,23 @@ function NotificationToast({
     return () => window.clearTimeout(timeout)
   }, [notification.autoCloseMs, notification.id, onDismiss])
 
-  const Icon =
-    notification.type === 'success' ? CheckCircleIcon : TriangleAlertIcon
+  const Icon = notification.type === 'success' ? CheckCircleIcon : TriangleAlertIcon
 
   return (
     <section
       className={cn(
         'bg-popover text-popover-foreground ring-foreground/10 grid grid-cols-[auto_1fr_auto] items-center gap-2 rounded-lg p-3 text-base shadow-lg ring-1',
-        notification.type === 'success'
-          ? 'border-l-4 border-l-(--flow-accent)'
-          : 'border-l-4 border-l-(--flow-danger)',
+        notification.type === 'success' ? 'border-l-4 border-l-(--flow-accent)' : 'border-l-4 border-l-(--flow-danger)',
       )}
       role={notification.type === 'error' ? 'alert' : 'status'}
     >
       <Icon
         aria-hidden
-        className={cn(
-          'size-4',
-          notification.type === 'success'
-            ? 'text-(--flow-accent)'
-            : 'text-(--flow-danger)',
-        )}
+        className={cn('size-4', notification.type === 'success' ? 'text-(--flow-accent)' : 'text-(--flow-danger)')}
       />
       <div className="min-w-0 cursor-text space-y-1 select-text">
-        <h2 className="text-foreground text-base leading-tight font-medium">
-          {notification.title}
-        </h2>
-        {notification.description && (
-          <p className="text-muted-foreground leading-snug">
-            {notification.description}
-          </p>
-        )}
+        <h2 className="text-foreground text-base leading-tight font-medium">{notification.title}</h2>
+        {notification.description && <p className="text-muted-foreground leading-snug">{notification.description}</p>}
         {!!notification.items?.length && (
           <ul className="text-muted-foreground max-h-40 space-y-1 overflow-auto pr-1 leading-snug">
             {notification.items.map((item) => (

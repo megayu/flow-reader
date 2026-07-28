@@ -2,11 +2,7 @@ import { Progress } from '../components/ui/progress'
 import { useTranslation } from '../hooks/useTranslation'
 import type { EpubImportProgress } from '../storage'
 
-export function EpubImportProgressPanel({
-  progress,
-}: {
-  progress: EpubImportProgress
-}) {
+export function EpubImportProgressPanel({ progress }: { progress: EpubImportProgress }) {
   const t = useTranslation('import')
   const total = Math.max(progress.total, 1)
 
@@ -18,9 +14,7 @@ export function EpubImportProgressPanel({
         role="status"
       >
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-foreground leading-tight font-medium">
-            {t('progress_title')}
-          </h2>
+          <h2 className="text-foreground leading-tight font-medium">{t('progress_title')}</h2>
           <span className="text-muted-foreground tabular-nums">
             {progress.completed} / {progress.total}
           </span>

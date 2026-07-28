@@ -1,4 +1,4 @@
-import { Contents } from '@flow/epubjs'
+import type { Contents } from '@flow/epubjs'
 
 import { getNoteIndex } from './noteIndex'
 import { isNoteMarkerText } from './noteSemantics'
@@ -7,8 +7,7 @@ export const notePopoverClass = 'flow-note-popover'
 
 export const bodyTextAttribute = 'data-flow-body-text'
 export const bodyTextSelector = `[${bodyTextAttribute}="true"]`
-export const bodyTextInlineWrapperAttribute =
-  'data-flow-body-text-inline-wrapper'
+export const bodyTextInlineWrapperAttribute = 'data-flow-body-text-inline-wrapper'
 export const bodyTextPreserveFontAttribute = 'data-flow-body-text-preserve-font'
 const bodyTextInlineWrapperSelector = `${bodyTextSelector}[${bodyTextInlineWrapperAttribute}="true"]`
 const bodyTextInlineWrapperChildSelector = 'span, b, strong, em, i'
@@ -16,9 +15,7 @@ const bodyTextFontSelector = `${bodyTextSelector}:not([${bodyTextPreserveFontAtt
 const bodyTextFontInlineWrapperSelector = `${bodyTextFontSelector}[${bodyTextInlineWrapperAttribute}="true"]`
 export const bodyTextTypographySelector = [
   bodyTextSelector,
-  ...bodyTextInlineWrapperChildSelector
-    .split(', ')
-    .map((selector) => `${bodyTextInlineWrapperSelector} > ${selector}`),
+  ...bodyTextInlineWrapperChildSelector.split(', ').map((selector) => `${bodyTextInlineWrapperSelector} > ${selector}`),
 ].join(',\n')
 export const bodyTextFontTypographySelector = [
   bodyTextFontSelector,
@@ -35,10 +32,7 @@ export const noteContentSelector = `[${noteContentAttribute}="true"]`
 const noteTextDetectedAttribute = 'data-flow-note-text-detected'
 
 export function createHiddenNoteContentSelector(excludedClass: string) {
-  return [
-    `body > ${noteContentSelector}`,
-    `body > :not(.${excludedClass}) ${noteContentSelector}`,
-  ].join(',\n')
+  return [`body > ${noteContentSelector}`, `body > :not(.${excludedClass}) ${noteContentSelector}`].join(',\n')
 }
 
 export interface BodyTextDetectionCacheEntry {
@@ -69,9 +63,7 @@ export function getBodyTypographyBaseline(
   const bodyIndexes = detectBodyTextIndexes(contents, candidates)
   const firstBodyIndex = bodyIndexes[0]
 
-  const el =
-    (firstBodyIndex === undefined ? undefined : candidates[firstBodyIndex]) ??
-    contents.document.body
+  const el = (firstBodyIndex === undefined ? undefined : candidates[firstBodyIndex]) ?? contents.document.body
   if (!el) return {}
 
   const style = contents.window.getComputedStyle(el)
@@ -86,18 +78,13 @@ export function getBodyTypographyBaseline(
   }
 }
 
-export function ensureBodyTextMarkers(
-  contents: Contents,
-  bodyTextCache?: BodyTextDetectionCache,
-) {
+export function ensureBodyTextMarkers(contents: Contents, bodyTextCache?: BodyTextDetectionCache) {
   const document = contents.document
   const body = document?.body
   if (!document || !body) return
 
-  const bodyTextDetected =
-    body.getAttribute(bodyTextDetectedAttribute) === 'true'
-  const noteTextDetected =
-    body.getAttribute(noteTextDetectedAttribute) === 'true'
+  const bodyTextDetected = body.getAttribute(bodyTextDetectedAttribute) === 'true'
+  const noteTextDetected = body.getAttribute(noteTextDetectedAttribute) === 'true'
   if (bodyTextDetected && noteTextDetected) return
 
   if (!bodyTextDetected) {
@@ -107,11 +94,7 @@ export function ensureBodyTextMarkers(
 
     clearBodyTextMarkers(candidates)
 
-    if (
-      cached &&
-      cached.candidateCount === candidates.length &&
-      cached.bodyMarkers.length
-    ) {
+    if (cached && cached.candidateCount === candidates.length && cached.bodyMarkers.length) {
       applyBodyTextMarkers(candidates, cached.bodyMarkers)
       body.setAttribute(bodyTextDetectedAttribute, 'true')
     } else {
@@ -140,13 +123,8 @@ export function getBodyTextCandidates(document: Document) {
   return [...document.querySelectorAll<HTMLElement>(bodyTextCandidateSelector)]
 }
 
-export function detectBodyTextIndexes(
-  contents: Contents,
-  candidates: HTMLElement[],
-) {
-  return detectBodyTextMarkers(contents, candidates).map(
-    (marker) => marker.index,
-  )
+export function detectBodyTextIndexes(contents: Contents, candidates: HTMLElement[]) {
+  return detectBodyTextMarkers(contents, candidates).map((marker) => marker.index)
 }
 
 function detectBodyTextMarkers(contents: Contents, candidates: HTMLElement[]) {
@@ -182,31 +160,22 @@ function detectBodyTextMarkers(contents: Contents, candidates: HTMLElement[]) {
 
   const clusters = createBodyTextClusters(bodyTextCandidates)
   const bodyClusters = selectBodyTextClusters(clusters)
-  const clusterCounts = new Map(
-    clusters.map((cluster) => [cluster.signature, cluster.count]),
-  )
-  const selectedSignatures = new Set(
-    bodyClusters.map((cluster) => cluster.signature),
-  )
+  const clusterCounts = new Map(clusters.map((cluster) => [cluster.signature, cluster.count]))
+  const selectedSignatures = new Set(bodyClusters.map((cluster) => cluster.signature))
   const fontTypographySignature = selectFontTypographySignature(bodyClusters)
   const selectedBaseSignatures = new Set(
     bodyTextCandidates.flatMap((candidate) =>
-      selectedSignatures.has(candidate.signature)
-        ? [candidate.baseSignature]
-        : [],
+      selectedSignatures.has(candidate.signature) ? [candidate.baseSignature] : [],
     ),
   )
 
   return bodyTextCandidates.flatMap((candidate) =>
     selectedSignatures.has(candidate.signature) ||
-    (selectedBaseSignatures.has(candidate.baseSignature) &&
-      clusterCounts.get(candidate.signature) === 1)
+    (selectedBaseSignatures.has(candidate.baseSignature) && clusterCounts.get(candidate.signature) === 1)
       ? [
           {
             index: candidate.index,
-            preserveFont:
-              !!fontTypographySignature &&
-              candidate.fontSignature !== fontTypographySignature,
+            preserveFont: !!fontTypographySignature && candidate.fontSignature !== fontTypographySignature,
           },
         ]
       : [],
@@ -215,9 +184,7 @@ function detectBodyTextMarkers(contents: Contents, candidates: HTMLElement[]) {
 
 function getBodyTextCacheKey(contents: Contents) {
   const sectionIndex = (contents as any).sectionIndex
-  return sectionIndex === undefined || sectionIndex === null
-    ? undefined
-    : String(sectionIndex)
+  return sectionIndex === undefined || sectionIndex === null ? undefined : String(sectionIndex)
 }
 
 function clearBodyTextMarkers(candidates: HTMLElement[]) {
@@ -228,10 +195,7 @@ function clearBodyTextMarkers(candidates: HTMLElement[]) {
   })
 }
 
-function applyBodyTextMarkers(
-  candidates: HTMLElement[],
-  bodyMarkers: BodyTextMarker[],
-) {
+function applyBodyTextMarkers(candidates: HTMLElement[], bodyMarkers: BodyTextMarker[]) {
   bodyMarkers.forEach((marker) => {
     const candidate = candidates[marker.index]
     if (!candidate) return
@@ -264,9 +228,7 @@ function isInlineWrappedBodyTextElement(el: HTMLElement) {
 }
 
 function isBodyTextInlineWrapperChild(el: HTMLElement) {
-  return bodyTextInlineWrapperChildSelector
-    .split(', ')
-    .some((tagName) => isElementWithTag(el, tagName))
+  return bodyTextInlineWrapperChildSelector.split(', ').some((tagName) => isElementWithTag(el, tagName))
 }
 
 function applyNoteTextMarkers(document: Document) {
@@ -317,7 +279,7 @@ interface BodyTextCluster {
 
 function isFactuallyExcludedElement(el: HTMLElement) {
   if (
-    !!el.closest(
+    el.closest(
       [
         `.${notePopoverClass}`,
         noteContentSelector,
@@ -372,9 +334,7 @@ function findLeadingNoteMarkerAnchor(el: HTMLElement) {
   return findLeadingNoteMarkerAnchorInElement(first)
 }
 
-function findLeadingNoteMarkerAnchorInElement(
-  el: HTMLElement,
-): HTMLAnchorElement | undefined {
+function findLeadingNoteMarkerAnchorInElement(el: HTMLElement): HTMLAnchorElement | undefined {
   if (isElementWithTag(el, 'a')) {
     return isNoteMarkerAnchor(el) ? (el as HTMLAnchorElement) : undefined
   }
@@ -403,9 +363,7 @@ function getFirstMeaningfulChild(el: HTMLElement) {
 }
 
 function isHTMLElement(node: Node): node is HTMLElement {
-  return (
-    node.nodeType === 1 && typeof (node as HTMLElement).tagName === 'string'
-  )
+  return node.nodeType === 1 && typeof (node as HTMLElement).tagName === 'string'
 }
 
 function isImageOnlyElement(el: HTMLElement) {
@@ -433,22 +391,7 @@ function isStructuralDiv(el: HTMLElement) {
   if (el.tagName.toLowerCase() !== 'div') return false
 
   return !!el.querySelector(
-    [
-      'p',
-      'div',
-      'blockquote',
-      'table',
-      'figure',
-      'img',
-      'h1',
-      'h2',
-      'h3',
-      'h4',
-      'h5',
-      'h6',
-      'ol',
-      'ul',
-    ].join(','),
+    ['p', 'div', 'blockquote', 'table', 'figure', 'img', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ol', 'ul'].join(','),
   )
 }
 
@@ -473,10 +416,7 @@ function createBodyTextFontSignature(style: CSSStyleDeclaration) {
   return style.fontFamily
 }
 
-function createBodyTextBaseSignature(
-  el: HTMLElement,
-  style: CSSStyleDeclaration,
-) {
+function createBodyTextBaseSignature(el: HTMLElement, style: CSSStyleDeclaration) {
   return [
     el.tagName.toLowerCase(),
     style.fontFamily,
@@ -505,19 +445,14 @@ function collectClassedDescendantText(el: HTMLElement): string {
   return [...el.childNodes]
     .map((node) => {
       if (!isHTMLElement(node)) return ''
-      const text = normalizedClassName(node)
-        ? normalizeText(node.textContent)
-        : ''
+      const text = normalizedClassName(node) ? normalizeText(node.textContent) : ''
       return text + collectClassedDescendantText(node)
     })
     .join('')
 }
 
 function getInlineMargin(style: CSSStyleDeclaration) {
-  return (
-    (parseCssPixel(style.marginLeft) ?? 0) +
-    (parseCssPixel(style.marginRight) ?? 0)
-  )
+  return (parseCssPixel(style.marginLeft) ?? 0) + (parseCssPixel(style.marginRight) ?? 0)
 }
 
 function getBodyTextCandidateText(el: HTMLElement) {
@@ -554,9 +489,7 @@ function collectBodyTextCandidateText(
     if (isFactuallyExcludedElement(el)) return ''
   }
 
-  return [...el.childNodes]
-    .map((child) => collectBodyTextCandidateText(child, options))
-    .join('')
+  return [...el.childNodes].map((child) => collectBodyTextCandidateText(child, options)).join('')
 }
 
 function createBodyTextClusters(candidates: BodyTextCandidate[]) {
@@ -595,24 +528,16 @@ function createBodyTextClusters(candidates: BodyTextCandidate[]) {
 }
 
 function selectBodyTextClusters(clusters: BodyTextCluster[]) {
-  const viable = clusters.filter(
-    (cluster) => cluster.count >= 2 || cluster.totalText >= 80,
-  )
+  const viable = clusters.filter((cluster) => cluster.count >= 2 || cluster.totalText >= 80)
   const candidates = viable.length ? viable : clusters
   const winner = selectBodyTextWinner(candidates)
 
   if (!winner) return clusters
 
   const selected = [winner]
-  const rest = candidates
-    .filter((cluster) => cluster !== winner)
-    .sort((a, b) => b.score - a.score)
-  const sameFontRest = rest.filter(
-    (cluster) => cluster.fontSignature === winner.fontSignature,
-  )
-  const differentFontRest = rest.filter(
-    (cluster) => cluster.fontSignature !== winner.fontSignature,
-  )
+  const rest = candidates.filter((cluster) => cluster !== winner).sort((a, b) => b.score - a.score)
+  const sameFontRest = rest.filter((cluster) => cluster.fontSignature === winner.fontSignature)
+  const differentFontRest = rest.filter((cluster) => cluster.fontSignature !== winner.fontSignature)
 
   // Same-font clusters are treated as the winner's body family. Their margins,
   // size, weight, or indentation may differ by publisher style, but applying the
@@ -634,10 +559,7 @@ function selectBodyTextClusters(clusters: BodyTextCluster[]) {
   return selected
 }
 
-function shouldIncludeAdditionalBodyTextCluster(
-  cluster: BodyTextCluster,
-  winner: BodyTextCluster,
-) {
+function shouldIncludeAdditionalBodyTextCluster(cluster: BodyTextCluster, winner: BodyTextCluster) {
   const totalTextRatio = cluster.totalText / winner.totalText
   const countRatio = cluster.count / winner.count
   const avgTextRatio = cluster.avgText / winner.avgText
@@ -652,10 +574,7 @@ function shouldIncludeAdditionalBodyTextCluster(
   // winner: bilingual text, Q&A, alternating narration, or translation/commentary
   // blocks. They may not dominate total text, but their recurrence and length
   // show they are a body stream rather than a decorative fragment.
-  if (
-    cluster.count >= Math.max(3, winner.count * 0.35) &&
-    avgTextRatio >= 0.45
-  ) {
+  if (cluster.count >= Math.max(3, winner.count * 0.35) && avgTextRatio >= 0.45) {
     return true
   }
 
@@ -680,20 +599,14 @@ function selectBodyTextWinner(clusters: BodyTextCluster[]) {
   const byTotalText = [...clusters].sort((a, b) => b.totalText - a.totalText)
   const totalTextWinner = byTotalText[0]!
   const totalTextRunnerUp = byTotalText[1]!
-  if (
-    totalTextWinner.totalText >= totalTextRunnerUp.totalText * 2 &&
-    totalTextWinner.count >= 2
-  ) {
+  if (totalTextWinner.totalText >= totalTextRunnerUp.totalText * 2 && totalTextWinner.count >= 2) {
     return totalTextWinner
   }
 
   const byCount = [...clusters].sort((a, b) => b.count - a.count)
   const countWinner = byCount[0]!
   const countRunnerUp = byCount[1]!
-  if (
-    countWinner.count >= countRunnerUp.count * 2 &&
-    countWinner.totalText >= 200
-  ) {
+  if (countWinner.count >= countRunnerUp.count * 2 && countWinner.totalText >= 200) {
     return countWinner
   }
 
@@ -707,9 +620,7 @@ function selectBodyTextWinner(clusters: BodyTextCluster[]) {
 }
 
 function isElementWithTag(node: Node, tagName: string) {
-  return (
-    node.nodeType === 1 && (node as Element).tagName?.toLowerCase() === tagName
-  )
+  return node.nodeType === 1 && (node as Element).tagName?.toLowerCase() === tagName
 }
 
 function isInvisible(style: CSSStyleDeclaration) {

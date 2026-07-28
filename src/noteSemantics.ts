@@ -1,12 +1,7 @@
 const NOTE_CIRCLED_MARKER_PATTERN = /^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]$/
-const NOTE_NUMBER_MARKER_CHARS =
-  '0-9零〇一二三四五六七八九十壹贰貳叁參肆伍陆陸柒捌玖拾佰仟百千萬万億亿兩两廿卅卌'
-const NOTE_NUMBER_MARKER_PATTERN = new RegExp(
-  `^[${NOTE_NUMBER_MARKER_CHARS}]+$`,
-)
-const NOTE_NUMBER_MARKER_PREFIX_PATTERN = new RegExp(
-  `^[${NOTE_NUMBER_MARKER_CHARS}]+[.．、]`,
-)
+const NOTE_NUMBER_MARKER_CHARS = '0-9零〇一二三四五六七八九十壹贰貳叁參肆伍陆陸柒捌玖拾佰仟百千萬万億亿兩两廿卅卌'
+const NOTE_NUMBER_MARKER_PATTERN = new RegExp(`^[${NOTE_NUMBER_MARKER_CHARS}]+$`)
+const NOTE_NUMBER_MARKER_PREFIX_PATTERN = new RegExp(`^[${NOTE_NUMBER_MARKER_CHARS}]+[.．、]`)
 const NOTE_WRAPPED_NUMBER_MARKER_PREFIX_PATTERN = new RegExp(
   `^[\\(\\[〔［（【〚〖][${NOTE_NUMBER_MARKER_CHARS}]+[\\)\\]〕］）】〛〗][.．、]`,
 )

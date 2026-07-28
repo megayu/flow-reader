@@ -6,17 +6,14 @@ export interface INode {
 }
 
 export function flatTree<T extends INode>(node: T, depth = 1): T[] {
-  if (!node.subitems || !node.subitems.length || !node.expanded) {
+  if (!node.subitems?.length || !node.expanded) {
     return [{ ...node, depth }]
   }
   const children = node.subitems.flatMap((i) => flatTree(i, depth + 1)) as T[]
   return [{ ...node, depth }, ...children]
 }
 
-export function find<T extends INode>(
-  nodes: T[] = [],
-  id: string,
-): T | undefined {
+export function find<T extends INode>(nodes: T[] = [], id: string): T | undefined {
   if (!id) return
 
   const node = nodes.find((n) => n.id === id)

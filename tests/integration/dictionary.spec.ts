@@ -1,6 +1,6 @@
 import path from 'node:path'
 
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 
 import type { LocalDictionaryRecord } from '../../src/dictionary/native'
 import type { BookRecord } from '../../src/storage'
@@ -108,9 +108,7 @@ async function setupDictionaryReader(
       librarySidebarOpen: false,
       dictionary: {
         merriamWebster: {
-          apiKey: Object.keys(merriamWebsterResponses).length
-            ? 'test-only-mw-key'
-            : '',
+          apiKey: Object.keys(merriamWebsterResponses).length ? 'test-only-mw-key' : '',
           enabled: Object.keys(merriamWebsterResponses).length > 0,
         },
       },
@@ -128,44 +126,22 @@ async function setupDictionaryReader(
     translationError: translationOptions.error,
   })
   await page.goto('/')
-  await page
-    .locator('ul.grid [data-flow-library-book-card]')
-    .filter({ hasText: 'Dictionary Fixture' })
-    .click()
+  await page.locator('ul.grid [data-flow-library-book-card]').filter({ hasText: 'Dictionary Fixture' }).click()
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const pane = document.querySelector(
-          '[data-flow-reader-pane][aria-hidden="false"]',
-        )
+        const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
         return Array.from(pane?.querySelectorAll('iframe') ?? []).some(
           (frame) =>
-            frame.getBoundingClientRect().width > 0 &&
-            Boolean((frame as HTMLIFrameElement).contentDocument?.body),
+            frame.getBoundingClientRect().width > 0 && Boolean((frame as HTMLIFrameElement).contentDocument?.body),
         )
       }),
     )
     .toBe(true)
 }
 
-async function setupTranslationReader(
-  page: Page,
-  options: { delayMs?: number; error?: string } = {},
-) {
-  return setupDictionaryReader(
-    page,
-    {},
-    0,
-    {},
-    [],
-    {},
-    {},
-    {},
-    'zh-CN',
-    {},
-    {},
-    options,
-  )
+async function setupTranslationReader(page: Page, options: { delayMs?: number; error?: string } = {}) {
+  return setupDictionaryReader(page, {}, 0, {}, [], {}, {}, {}, 'zh-CN', {}, {}, options)
 }
 
 interface SpeechVoiceFixture {
@@ -251,10 +227,7 @@ async function installSpeechSynthesisMock(
       Object.defineProperty(window, 'speechSynthesis', {
         configurable: true,
         value: {
-          addEventListener(
-            type: string,
-            listener: EventListenerOrEventListenerObject,
-          ) {
+          addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
             if (type === 'voiceschanged') voiceListeners.add(listener)
           },
           cancel() {
@@ -270,10 +243,7 @@ async function installSpeechSynthesisMock(
               voiceURI: voice.name,
             }))
           },
-          removeEventListener(
-            type: string,
-            listener: EventListenerOrEventListenerObject,
-          ) {
+          removeEventListener(type: string, listener: EventListenerOrEventListenerObject) {
             if (type === 'voiceschanged') voiceListeners.delete(listener)
           },
           speak(utterance: TestUtterance) {
@@ -322,17 +292,11 @@ async function speechState(page: Page) {
 }
 
 function dictionaryBackButton(page: Page) {
-  return page
-    .locator('[data-flow-dictionary-popup] header')
-    .getByRole('button')
-    .first()
+  return page.locator('[data-flow-dictionary-popup] header').getByRole('button').first()
 }
 
 function dictionaryCloseButton(page: Page) {
-  return page
-    .locator('[data-flow-dictionary-popup] header')
-    .getByRole('button')
-    .last()
+  return page.locator('[data-flow-dictionary-popup] header').getByRole('button').last()
 }
 
 function dictionaryPopup(page: Page) {
@@ -423,15 +387,9 @@ function starDictEntry(query: string, definitions: readonly string[]) {
   }
 }
 
-async function selectFixtureText(
-  page: Page,
-  query: string,
-  expectDictionary = true,
-) {
+async function selectFixtureText(page: Page, query: string, expectDictionary = true) {
   await page.evaluate((selectedText) => {
-    const pane = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
+    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
       (candidate) => candidate.getBoundingClientRect().width > 0,
     ) as HTMLIFrameElement | undefined
@@ -451,9 +409,7 @@ async function selectFixtureText(
     selection?.addRange(range)
     const rect = range.getBoundingClientRect()
     frame.contentWindow.dispatchEvent(
-      new (
-        frame.contentWindow as Window & { MouseEvent: typeof MouseEvent }
-      ).MouseEvent('contextmenu', {
+      new (frame.contentWindow as Window & { MouseEvent: typeof MouseEvent }).MouseEvent('contextmenu', {
         bubbles: true,
         cancelable: true,
         clientX: rect.left + rect.width / 2,
@@ -463,15 +419,11 @@ async function selectFixtureText(
   }, query)
   await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible()
   if (expectDictionary) {
-    await expect(
-      page.getByRole('button', { name: 'Dictionary', exact: true }),
-    ).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Dictionary', exact: true })).toBeVisible()
   }
 }
 
-test('selection speech reads Chinese with the matching system voice and toggles stop', async ({
-  page,
-}) => {
+test('selection speech reads Chinese with the matching system voice and toggles stop', async ({ page }) => {
   await installSpeechSynthesisMock(page, {
     voices: [
       { default: true, lang: 'en-US', name: 'System English' },
@@ -506,26 +458,14 @@ test('selection speech reads Chinese with the matching system voice and toggles 
   await expect.poll(() => speechState(page)).toMatchObject({ cancelCalls: 2 })
 })
 
-test('prefers the default voice for the detected language and resets after an error', async ({
-  page,
-}) => {
+test('prefers the default voice for the detected language and resets after an error', async ({ page }) => {
   await installSpeechSynthesisMock(page, {
     voices: [
       { default: true, lang: 'en-US', name: 'System American' },
       { lang: 'en-GB', name: 'System British' },
     ],
   })
-  await setupDictionaryReader(
-    page,
-    {},
-    0,
-    { sample: [] },
-    [],
-    {},
-    {},
-    {},
-    'en-GB',
-  )
+  await setupDictionaryReader(page, {}, 0, { sample: [] }, [], {}, {}, {}, 'en-GB')
   await selectFixtureText(page, 'sample')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
   const speak = dictionarySpeechButton(page)
@@ -546,23 +486,11 @@ test('prefers the default voice for the detected language and resets after an er
   await expect(speak).toHaveAttribute('aria-pressed', 'false')
 })
 
-test('selection speech falls back to a same-language voice when no exact locale exists', async ({
-  page,
-}) => {
+test('selection speech falls back to a same-language voice when no exact locale exists', async ({ page }) => {
   await installSpeechSynthesisMock(page, {
     voices: [{ lang: 'en-US', name: 'System English' }],
   })
-  await setupDictionaryReader(
-    page,
-    {},
-    0,
-    { sample: [] },
-    [],
-    {},
-    {},
-    {},
-    'en-AU',
-  )
+  await setupDictionaryReader(page, {}, 0, { sample: [] }, [], {}, {}, {}, 'en-AU')
   await selectFixtureText(page, 'sample')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
   const speak = dictionarySpeechButton(page)
@@ -583,9 +511,7 @@ test('selection speech falls back to a same-language voice when no exact locale 
   await expect(speak).toHaveAttribute('aria-pressed', 'false')
 })
 
-test('selection speech is hidden when the system API is unavailable', async ({
-  page,
-}) => {
+test('selection speech is hidden when the system API is unavailable', async ({ page }) => {
   await installSpeechSynthesisMock(page, { supported: false })
   await setupDictionaryReader(page, { 测试: wordHtml })
   await selectFixtureText(page, '测试')
@@ -595,9 +521,7 @@ test('selection speech is hidden when the system API is unavailable', async ({
   await expect(unavailable).toHaveCount(0)
 })
 
-test('selection speech reacts when the system voice list becomes available', async ({
-  page,
-}) => {
+test('selection speech reacts when the system voice list becomes available', async ({ page }) => {
   await installSpeechSynthesisMock(page)
   await setupDictionaryReader(page, { 测试: wordHtml })
   await selectFixtureText(page, '测试')
@@ -618,9 +542,7 @@ test('selection speech reacts when the system voice list becomes available', asy
   await expect(speak).toBeVisible()
 })
 
-test('stops active speech on every dictionary popup exit path', async ({
-  page,
-}) => {
+test('stops active speech on every dictionary popup exit path', async ({ page }) => {
   await installSpeechSynthesisMock(page, {
     voices: [{ lang: 'zh-CN', name: 'System Chinese' }],
   })
@@ -646,21 +568,15 @@ test('stops active speech on every dictionary popup exit path', async ({
   await expect(page.getByRole('button', { name: 'Copy' })).toHaveCount(0)
 })
 
-test('opens the compact translation popup and Escape returns to the text menu', async ({
-  page,
-}) => {
+test('opens the compact translation popup and Escape returns to the text menu', async ({ page }) => {
   await setupTranslationReader(page, { delayMs: 150 })
   await selectFixtureText(page, 'sample')
 
   await page.getByRole('button', { name: 'Translate', exact: true }).click()
   const popup = page.locator('[data-flow-translation-popup="true"]')
   await expect(popup).toBeVisible()
-  await expect(popup.getByRole('combobox', { name: '源语言' })).toContainText(
-    '简体中文',
-  )
-  await expect(popup.getByRole('combobox', { name: '目标语言' })).toContainText(
-    'English',
-  )
+  await expect(popup.getByRole('combobox', { name: '源语言' })).toContainText('简体中文')
+  await expect(popup.getByRole('combobox', { name: '目标语言' })).toContainText('English')
   await expect(popup.getByRole('button', { name: '复制' })).toBeDisabled()
   await expect(popup.getByText('Google: sample', { exact: true })).toBeVisible()
   await expect(popup.getByRole('button', { name: '复制' })).toBeEnabled()
@@ -684,22 +600,16 @@ test('opens the compact translation popup and Escape returns to the text menu', 
   expect(compactGeometry.height).toBeLessThan(150)
   expect(compactGeometry.sourcePadding).toEqual(['8px', '8px'])
   expect(compactGeometry.resultPadding).toEqual(['8px', '8px'])
-  const toolbarGeometry = await popup
-    .locator('[data-flow-translation-toolbar]')
-    .evaluate((toolbar) => {
-      const toolbarRect = toolbar.getBoundingClientRect()
-      const controls = Array.from(
-        toolbar.querySelectorAll('button, [role="combobox"]'),
-      ).map((control) => control.getBoundingClientRect())
-      return {
-        height: toolbarRect.height,
-        oneRow: controls.every(
-          (control) =>
-            control.top >= toolbarRect.top &&
-            control.bottom <= toolbarRect.bottom,
-        ),
-      }
-    })
+  const toolbarGeometry = await popup.locator('[data-flow-translation-toolbar]').evaluate((toolbar) => {
+    const toolbarRect = toolbar.getBoundingClientRect()
+    const controls = Array.from(toolbar.querySelectorAll('button, [role="combobox"]')).map((control) =>
+      control.getBoundingClientRect(),
+    )
+    return {
+      height: toolbarRect.height,
+      oneRow: controls.every((control) => control.top >= toolbarRect.top && control.bottom <= toolbarRect.bottom),
+    }
+  })
   expect(toolbarGeometry).toEqual({ height: 40, oneRow: true })
 
   await page.keyboard.press('Escape')
@@ -717,9 +627,7 @@ test('switches translation providers in place', async ({ page }) => {
   await expect(popup.getByText('Azure: sample', { exact: true })).toBeVisible()
 })
 
-test('allows copying and retrying a failed translation record', async ({
-  page,
-}) => {
+test('allows copying and retrying a failed translation record', async ({ page }) => {
   await setupTranslationReader(page, {
     delayMs: 150,
     error: 'Synthetic translation failure',
@@ -730,25 +638,19 @@ test('allows copying and retrying a failed translation record', async ({
   const popup = page.locator('[data-flow-translation-popup="true"]')
   await expect(popup.getByText('Synthetic translation failure')).toBeVisible()
   await expect(popup.getByRole('button', { name: '复制' })).toBeEnabled()
-  const errorAlignment = await popup
-    .getByRole('button', { name: '重新翻译' })
-    .evaluate((button) => {
-      const row = button.parentElement
-      const text = row?.querySelector('span')
-      if (!row || !text) throw new Error('Missing translation error row')
-      const buttonRect = button.getBoundingClientRect()
-      const textRect = text.getBoundingClientRect()
-      return {
-        alignItems: getComputedStyle(row).alignItems,
-        buttonColor: getComputedStyle(button).color,
-        textColor: getComputedStyle(text).color,
-        centerDelta: Math.abs(
-          buttonRect.top +
-            buttonRect.height / 2 -
-            (textRect.top + textRect.height / 2),
-        ),
-      }
-    })
+  const errorAlignment = await popup.getByRole('button', { name: '重新翻译' }).evaluate((button) => {
+    const row = button.parentElement
+    const text = row?.querySelector('span')
+    if (!row || !text) throw new Error('Missing translation error row')
+    const buttonRect = button.getBoundingClientRect()
+    const textRect = text.getBoundingClientRect()
+    return {
+      alignItems: getComputedStyle(row).alignItems,
+      buttonColor: getComputedStyle(button).color,
+      textColor: getComputedStyle(text).color,
+      centerDelta: Math.abs(buttonRect.top + buttonRect.height / 2 - (textRect.top + textRect.height / 2)),
+    }
+  })
   expect(errorAlignment.alignItems).toBe('center')
   expect(errorAlignment.buttonColor).not.toBe(errorAlignment.textColor)
   expect(errorAlignment.centerDelta).toBeLessThanOrEqual(1)
@@ -757,9 +659,7 @@ test('allows copying and retrying a failed translation record', async ({
   await expect(popup.getByText('Synthetic translation failure')).toBeVisible()
 })
 
-test('resizes the source and translation regions with the splitter', async ({
-  page,
-}) => {
+test('resizes the source and translation regions with the splitter', async ({ page }) => {
   await setupTranslationReader(page)
   await selectFixtureText(page, 'synthetic text '.repeat(100), false)
   await page.getByRole('button', { name: 'Translate', exact: true }).click()
@@ -771,12 +671,8 @@ test('resizes the source and translation regions with the splitter', async ({
   const before = await source.boundingBox()
   const handle = await splitter.boundingBox()
   if (!before || !handle) throw new Error('Missing translation split geometry')
-  const popupBottom = await popup.evaluate(
-    (element) => element.getBoundingClientRect().bottom,
-  )
-  expect(popupBottom).toBeLessThanOrEqual(
-    await page.evaluate(() => innerHeight),
-  )
+  const popupBottom = await popup.evaluate((element) => element.getBoundingClientRect().bottom)
+  expect(popupBottom).toBeLessThanOrEqual(await page.evaluate(() => innerHeight))
   const allocation = await popup.evaluate((element) => {
     const source = element.querySelector('[data-flow-translation-source]')
     const result = element.querySelector('[data-flow-translation-result]')
@@ -790,36 +686,24 @@ test('resizes the source and translation regions with the splitter', async ({
   })
   expect(allocation).toEqual({ resultFullyVisible: true, sourceScrolls: true })
 
-  await page.mouse.move(
-    handle.x + handle.width / 2,
-    handle.y + handle.height / 2,
-  )
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
   await page.mouse.down()
-  await page.mouse.move(
-    handle.x + handle.width / 2,
-    handle.y + handle.height / 2 + 30,
-  )
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2 + 30)
   await page.mouse.up()
 
   const after = await source.boundingBox()
   expect(after?.height).toBeGreaterThan(before.height)
 })
 
-test('keeps the dictionary action disabled when no source matches the selection', async ({
-  page,
-}) => {
+test('keeps the dictionary action disabled when no source matches the selection', async ({ page }) => {
   await setupDictionaryReader(page, {})
   await selectFixtureText(page, 'sky', false)
 
-  await expect(
-    page.getByRole('button', { name: 'Dictionary', exact: true }),
-  ).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Dictionary', exact: true })).toBeDisabled()
   expect((await getDictionaryMockState(page)).dictionaryRequests).toEqual([])
 })
 
-test('parses only the first Han Dian character explanation into semantic groups', async ({
-  page,
-}) => {
+test('parses only the first Han Dian character explanation into semantic groups', async ({ page }) => {
   await setupDictionaryReader(page, { 天: characterHtml })
   await selectFixtureText(page, '天')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
@@ -829,21 +713,12 @@ test('parses only the first Han Dian character explanation into semantic groups'
   await expect(popup.getByText('tiān', { exact: true })).toBeVisible()
   await expect(popup.getByText('tiàn', { exact: true })).toBeVisible()
   await expect(popup.getByText('高处的空间。', { exact: true })).toBeVisible()
-  await expect(
-    popup.getByText('例如：仰望天空。', { exact: true }),
-  ).toBeVisible()
+  await expect(popup.getByText('例如：仰望天空。', { exact: true })).toBeVisible()
   await expect(popup.getByText('不应显示的详细解释')).toHaveCount(0)
-  await expect(popup.locator('[data-dictionary-sense-marker]')).toHaveText([
-    '1',
-    '2',
-    '1',
-  ])
+  await expect(popup.locator('[data-dictionary-sense-marker]')).toHaveText(['1', '2', '1'])
 })
 
-test('copies a dictionary body selection instead of the original book selection', async ({
-  context,
-  page,
-}) => {
+test('copies a dictionary body selection instead of the original book selection', async ({ context, page }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await setupDictionaryReader(page, { 天: characterHtml })
   await selectFixtureText(page, '天')
@@ -862,14 +737,10 @@ test('copies a dictionary body selection instead of the original book selection'
   await popup.focus()
   await page.keyboard.press('Control+c')
 
-  await expect
-    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
-    .toBe('高处的空间。')
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('高处的空间。')
 })
 
-test('parses adjacent Han Dian word reading groups and respects unnumbered senses', async ({
-  page,
-}) => {
+test('parses adjacent Han Dian word reading groups and respects unnumbered senses', async ({ page }) => {
   await setupDictionaryReader(page, { 天空: wordHtml })
   await selectFixtureText(page, '天空')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
@@ -877,39 +748,26 @@ test('parses adjacent Han Dian word reading groups and respects unnumbered sense
   const popup = dictionaryPopup(page)
   await expect(popup.getByText('tiān kōng', { exact: true })).toBeVisible()
   await expect(popup.getByText('tiān kòng', { exact: true })).toBeVisible()
-  await expect(
-    popup.getByText('地面以上的广阔空间。', { exact: true }),
-  ).toBeVisible()
+  await expect(popup.getByText('地面以上的广阔空间。', { exact: true })).toBeVisible()
   await expect(popup.getByText('合成的无编号补充。')).toBeVisible()
   await expect(popup.getByText('不应显示的详细解释')).toHaveCount(0)
   await expect(popup.getByText('不应显示的成语解释')).toHaveCount(0)
-  await expect(popup.locator('[data-dictionary-sense-marker]')).toHaveText([
-    '1',
-    '1',
-  ])
+  await expect(popup.locator('[data-dictionary-sense-marker]')).toHaveText(['1', '1'])
 })
 
-test('keeps modern Han Dian Chinese examples while excluding English glosses', async ({
-  page,
-}) => {
+test('keeps modern Han Dian Chinese examples while excluding English glosses', async ({ page }) => {
   await setupDictionaryReader(page, { 样词: modernWordHtml })
   await selectFixtureText(page, '样词')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
 
   const popup = dictionaryPopup(page)
-  await expect(
-    popup.getByText('合成的新版释义。', { exact: true }),
-  ).toBeVisible()
-  await expect(
-    popup.getByText('这是合成的中文例句。', { exact: true }),
-  ).toBeVisible()
+  await expect(popup.getByText('合成的新版释义。', { exact: true })).toBeVisible()
+  await expect(popup.getByText('这是合成的中文例句。', { exact: true })).toBeVisible()
   await expect(popup.getByText('synthetic English gloss')).toHaveCount(0)
   await expect(popup.getByText('英文', { exact: true })).toHaveCount(0)
 })
 
-test('falls back to cleaned item text without exposing active or raw HTML', async ({
-  page,
-}) => {
+test('falls back to cleaned item text without exposing active or raw HTML', async ({ page }) => {
   const fallbackHtml = `<!doctype html><html><body>
     <section id="jbjs" data-section="基本解释">
       <div class="jbjs-reading"><div class="jbjs-reading__py">cè</div><ol class="jbjs-list">
@@ -931,9 +789,7 @@ test('falls back to cleaned item text without exposing active or raw HTML', asyn
   ).toHaveCount(0)
 })
 
-test('keeps the source link on parse failure and uses two-stage outside dismissal', async ({
-  page,
-}) => {
+test('keeps the source link on parse failure and uses two-stage outside dismissal', async ({ page }) => {
   await setupDictionaryReader(page, {
     词: '<html><body><section data-section="其他解释">无目标区</section></body></html>',
   })
@@ -949,31 +805,13 @@ test('keeps the source link on parse failure and uses two-stage outside dismissa
 
   await page.mouse.click(2, 2)
   await expect(popup).toBeHidden()
-  await expect(
-    page.getByRole('button', { name: 'Dictionary', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Dictionary', exact: true })).toBeVisible()
   await page.mouse.click(2, 2)
-  await expect(
-    page.getByRole('button', { name: 'Dictionary', exact: true }),
-  ).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Dictionary', exact: true })).toBeHidden()
 })
 
-test('treats a Han Dian 404 as a compact missing entry without retry', async ({
-  page,
-}) => {
-  await setupDictionaryReader(
-    page,
-    {},
-    0,
-    {},
-    [],
-    {},
-    {},
-    {},
-    'zh-CN',
-    {},
-    { 测: 404 },
-  )
+test('treats a Han Dian 404 as a compact missing entry without retry', async ({ page }) => {
+  await setupDictionaryReader(page, {}, 0, {}, [], {}, {}, {}, 'zh-CN', {}, { 测: 404 })
   await selectFixtureText(page, '测')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
 
@@ -981,17 +819,11 @@ test('treats a Han Dian 404 as a compact missing entry without retry', async ({
   const section = popup.locator('[data-dictionary-source-id="zdic"]')
   await expect(section.getByText('No definition found.')).toBeVisible()
   await expect(section.locator('[data-dictionary-retry]')).toHaveCount(0)
-  await expect(
-    section.locator('[data-dictionary-external="zdic"]'),
-  ).toBeVisible()
-  expect(
-    await section.evaluate((element) => element.getBoundingClientRect().height),
-  ).toBeLessThan(100)
+  await expect(section.locator('[data-dictionary-external="zdic"]')).toBeVisible()
+  expect(await section.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(100)
 })
 
-test('retries a failed online source without displacing the scrolled dictionary content', async ({
-  page,
-}) => {
+test('retries a failed online source without displacing the scrolled dictionary content', async ({ page }) => {
   const localDictionary: LocalDictionaryRecord = {
     ...localStarDict(),
     id: 'dict-synthetic-local',
@@ -1008,10 +840,7 @@ test('retries a failed online source without displacing the scrolled dictionary 
       'dict-synthetic-local': {
         测: starDictEntry(
           '测',
-          Array.from(
-            { length: 24 },
-            (_, index) => `synthetic local explanation ${index + 1}`,
-          ),
+          Array.from({ length: 24 }, (_, index) => `synthetic local explanation ${index + 1}`),
         ),
       },
     },
@@ -1019,10 +848,7 @@ test('retries a failed online source without displacing the scrolled dictionary 
     {},
     'zh-CN',
     {
-      测: [
-        '<html><body><p>synthetic unavailable response</p></body></html>',
-        characterHtml,
-      ],
+      测: ['<html><body><p>synthetic unavailable response</p></body></html>', characterHtml],
     },
   )
   await selectFixtureText(page, '测')
@@ -1041,46 +867,24 @@ test('retries a failed online source without displacing the scrolled dictionary 
   await retry.click()
   await expect(retry).toBeDisabled()
   await expect
-    .poll(() =>
-      retry
-        .locator('svg')
-        .evaluate((icon) => getComputedStyle(icon).animationName),
-    )
+    .poll(() => retry.locator('svg').evaluate((icon) => getComputedStyle(icon).animationName))
     .not.toBe('none')
 
   const readingTarget = popup.getByText('synthetic local explanation 12', {
     exact: true,
   })
   await readingTarget.scrollIntoViewIfNeeded()
-  const topBefore = await readingTarget.evaluate(
-    (element) => element.getBoundingClientRect().top,
-  )
+  const topBefore = await readingTarget.evaluate((element) => element.getBoundingClientRect().top)
 
   await expect(popup.getByText('高处的空间。', { exact: true })).toBeVisible()
   await expect(retry).toHaveCount(0)
-  const topAfter = await readingTarget.evaluate(
-    (element) => element.getBoundingClientRect().top,
-  )
+  const topAfter = await readingTarget.evaluate((element) => element.getBoundingClientRect().top)
   expect(Math.abs(topAfter - topBefore)).toBeLessThanOrEqual(1)
-  await expect
-    .poll(async () => (await getDictionaryMockState(page)).dictionaryRequests)
-    .toHaveLength(2)
+  await expect.poll(async () => (await getDictionaryMockState(page)).dictionaryRequests).toHaveLength(2)
 })
 
-test('keeps the external action available while disabling empty source navigation', async ({
-  page,
-}) => {
-  await setupDictionaryReader(
-    page,
-    {},
-    0,
-    { sample: [] },
-    [],
-    {},
-    {},
-    {},
-    'en-US',
-  )
+test('keeps the external action available while disabling empty source navigation', async ({ page }) => {
+  await setupDictionaryReader(page, {}, 0, { sample: [] }, [], {}, {}, {}, 'en-US')
   await selectFixtureText(page, 'sample')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
 
@@ -1098,32 +902,19 @@ test('keeps the external action available while disabling empty source navigatio
   await expect(sourceButton).toBeDisabled()
   await expect(sourceButton).toHaveAttribute('aria-pressed', 'false')
   expect(await source.getAttribute('title')).toBeNull()
-  expect(
-    await section.evaluate((element) => element.getBoundingClientRect().height),
-  ).toBeLessThan(100)
+  expect(await section.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(100)
 })
 
-test('back cancels an active native lookup and restores the action menu', async ({
-  page,
-}) => {
+test('back cancels an active native lookup and restores the action menu', async ({ page }) => {
   await setupDictionaryReader(page, { 天: characterHtml }, 2_000)
   await selectFixtureText(page, '天')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
-  await expect
-    .poll(
-      async () =>
-        (await getDictionaryMockState(page)).dictionaryRequests.length,
-    )
-    .toBeGreaterThan(0)
-  const latestSessionId = (
-    await getDictionaryMockState(page)
-  ).dictionaryRequests.at(-1)!.sessionId
+  await expect.poll(async () => (await getDictionaryMockState(page)).dictionaryRequests.length).toBeGreaterThan(0)
+  const latestSessionId = (await getDictionaryMockState(page)).dictionaryRequests.at(-1)!.sessionId
   await dictionaryBackButton(page).click()
 
-  await expect(
-    page.getByRole('button', { name: 'Dictionary', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Dictionary', exact: true })).toBeVisible()
   await expect
     .poll(async () => {
       const state = await getDictionaryMockState(page)
@@ -1132,9 +923,7 @@ test('back cancels an active native lookup and restores the action menu', async 
     .toBe(true)
 })
 
-test('keeps the larger popup inside a narrow horizontal reader', async ({
-  page,
-}) => {
+test('keeps the larger popup inside a narrow horizontal reader', async ({ page }) => {
   await page.setViewportSize({ width: 620, height: 520 })
   await setupDictionaryReader(page, { 天: characterHtml })
   await selectFixtureText(page, '天')
@@ -1165,9 +954,7 @@ test('keeps the larger popup inside a narrow horizontal reader', async ({
   await expect(popup.locator('[data-dictionary-scroll]')).toHaveCount(1)
 })
 
-test('looks up an English selection only in Merriam-Webster', async ({
-  page,
-}) => {
+test('looks up an English selection only in Merriam-Webster', async ({ page }) => {
   await setupDictionaryReader(page, {}, 0, {
     sky: [
       {
@@ -1216,12 +1003,7 @@ test('looks up an English selection only in Merriam-Webster', async ({
                   'sense',
                   {
                     sn: 'b',
-                    dt: [
-                      [
-                        'text',
-                        '{bc}a place or condition beyond reach {sx|heaven||}',
-                      ],
-                    ],
+                    dt: [['text', '{bc}a place or condition beyond reach {sx|heaven||}']],
                   },
                 ],
               ],
@@ -1244,9 +1026,7 @@ test('looks up an English selection only in Merriam-Webster', async ({
         fl: 'verb',
         def: [
           {
-            sseq: [
-              [['sense', { dt: [['text', '{bc}to hit high into the air']] }]],
-            ],
+            sseq: [[['sense', { dt: [['text', '{bc}to hit high into the air']] }]]],
           },
         ],
       },
@@ -1256,14 +1036,7 @@ test('looks up an English selection only in Merriam-Webster', async ({
         fl: 'adjective',
         def: [
           {
-            sseq: [
-              [
-                [
-                  'sense',
-                  { dt: [['text', '{bc}a returned phrase to exclude']] },
-                ],
-              ],
-            ],
+            sseq: [[['sense', { dt: [['text', '{bc}a returned phrase to exclude']] }]]],
           },
         ],
       },
@@ -1273,26 +1046,18 @@ test('looks up an English selection only in Merriam-Webster', async ({
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
 
   const popup = dictionaryPopup(page)
-  await expect(
-    popup.getByRole('heading', { name: 'Merriam-Webster' }),
-  ).toBeVisible()
-  await expect(
-    popup.getByText('the upper atmosphere seen from earth'),
-  ).toBeVisible()
+  await expect(popup.getByRole('heading', { name: 'Merriam-Webster' })).toBeVisible()
+  await expect(popup.getByText('the upper atmosphere seen from earth')).toBeVisible()
   await expect(popup.getByText('the sky grew dark')).toBeVisible()
   await expect(popup.getByText('sky blue', { exact: true })).toHaveCount(0)
-  await expect(popup.locator('[data-dictionary-sense-level="1"]')).toHaveCount(
-    2,
-  )
+  await expect(popup.locator('[data-dictionary-sense-level="1"]')).toHaveCount(2)
   const layout = await popup.locator('article').evaluateAll((articles) => {
     const noun = articles[0]
     const verb = articles[1]
     const markerLefts = (kind: string) =>
-      Array.from(
-        noun?.querySelectorAll<HTMLElement>(
-          `[data-dictionary-sense-marker="${kind}"]`,
-        ) ?? [],
-      ).map((marker) => marker.getBoundingClientRect().left)
+      Array.from(noun?.querySelectorAll<HTMLElement>(`[data-dictionary-sense-marker="${kind}"]`) ?? []).map(
+        (marker) => marker.getBoundingClientRect().left,
+      )
     const definitionLefts = (depth: string) =>
       Array.from(
         noun?.querySelectorAll<HTMLElement>(
@@ -1300,15 +1065,9 @@ test('looks up an English selection only in Merriam-Webster', async ({
         ) ?? [],
       ).map((content) => content.getBoundingClientRect().left)
     const verbHeading = verb?.querySelector<HTMLElement>('h3')
-    const verbDefinition = verb?.querySelector<HTMLElement>(
-      '[data-dictionary-sense-content]',
-    )
-    const reference = noun?.querySelector<HTMLElement>(
-      '[data-dictionary-text-kind="reference"]',
-    )
-    const referenceContainer = reference?.closest<HTMLElement>(
-      '[data-dictionary-sense-content]',
-    )
+    const verbDefinition = verb?.querySelector<HTMLElement>('[data-dictionary-sense-content]')
+    const reference = noun?.querySelector<HTMLElement>('[data-dictionary-text-kind="reference"]')
+    const referenceContainer = reference?.closest<HTMLElement>('[data-dictionary-sense-content]')
     return {
       definitionLefts: {
         letter: definitionLefts('letter'),
@@ -1320,26 +1079,19 @@ test('looks up an English selection only in Merriam-Webster', async ({
         subnumber: markerLefts('subnumber'),
       },
       referenceColor: reference ? getComputedStyle(reference).color : null,
-      referenceContainerColor: referenceContainer
-        ? getComputedStyle(referenceContainer).color
-        : null,
+      referenceContainerColor: referenceContainer ? getComputedStyle(referenceContainer).color : null,
       unnumberedOffset:
-        (verbDefinition?.getBoundingClientRect().left ?? 0) -
-        (verbHeading?.getBoundingClientRect().left ?? 0),
+        (verbDefinition?.getBoundingClientRect().left ?? 0) - (verbHeading?.getBoundingClientRect().left ?? 0),
     }
   })
   expect(layout.markerLefts.number).toHaveLength(2)
   expect(layout.markerLefts.letter).toHaveLength(3)
   expect(layout.markerLefts.subnumber).toHaveLength(2)
   for (const markerGroup of Object.values(layout.markerLefts)) {
-    expect(
-      Math.max(...markerGroup) - Math.min(...markerGroup),
-    ).toBeLessThanOrEqual(1)
+    expect(Math.max(...markerGroup) - Math.min(...markerGroup)).toBeLessThanOrEqual(1)
   }
   for (const definitionGroup of Object.values(layout.definitionLefts)) {
-    expect(
-      Math.max(...definitionGroup) - Math.min(...definitionGroup),
-    ).toBeLessThanOrEqual(1)
+    expect(Math.max(...definitionGroup) - Math.min(...definitionGroup)).toBeLessThanOrEqual(1)
   }
   expect(layout.referenceColor).toBe(layout.referenceContainerColor)
   expect(Math.abs(layout.unnumberedOffset)).toBeLessThanOrEqual(1)
@@ -1352,14 +1104,10 @@ test('looks up an English selection only in Merriam-Webster', async ({
     query: 'sky',
     sessionId: expect.any(Number),
   })
-  expect(state.openedExternalUrls).toEqual([
-    'https://www.merriam-webster.com/dictionary/sky',
-  ])
+  expect(state.openedExternalUrls).toEqual(['https://www.merriam-webster.com/dictionary/sky'])
 })
 
-test('keeps empty dictionary sources visible beside successful results', async ({
-  page,
-}) => {
+test('keeps empty dictionary sources visible beside successful results', async ({ page }) => {
   await setupDictionaryReader(
     page,
     {},
@@ -1379,15 +1127,9 @@ test('keeps empty dictionary sources visible beside successful results', async (
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
 
   const popup = dictionaryPopup(page)
-  await expect(
-    popup.getByText('a synthetic local explanation', { exact: true }),
-  ).toBeVisible()
-  await expect(
-    popup.getByRole('heading', { name: 'Merriam-Webster', exact: true }),
-  ).toBeVisible()
-  await expect(
-    popup.getByText('No definition found.', { exact: true }),
-  ).toBeVisible()
+  await expect(popup.getByText('a synthetic local explanation', { exact: true })).toBeVisible()
+  await expect(popup.getByRole('heading', { name: 'Merriam-Webster', exact: true })).toBeVisible()
+  await expect(popup.getByText('No definition found.', { exact: true })).toBeVisible()
   const empty = popup.getByRole('button', {
     name: 'Merriam-Webster',
     exact: true,
@@ -1402,13 +1144,8 @@ test('keeps empty dictionary sources visible beside successful results', async (
   await expect(successful).toHaveAttribute('aria-pressed', 'true')
 })
 
-test('uses fixed source buttons to locate flat results and track scrolling', async ({
-  page,
-}) => {
-  const onlineDefinitions = Array.from(
-    { length: 18 },
-    (_, index) => `synthetic online explanation ${index + 1}`,
-  )
+test('uses fixed source buttons to locate flat results and track scrolling', async ({ page }) => {
+  const onlineDefinitions = Array.from({ length: 18 }, (_, index) => `synthetic online explanation ${index + 1}`)
   await setupDictionaryReader(
     page,
     {},
@@ -1421,10 +1158,7 @@ test('uses fixed source buttons to locate flat results and track scrolling', asy
       'dict-oxford': {
         sample: starDictEntry(
           'sample',
-          Array.from(
-            { length: 18 },
-            (_, index) => `synthetic local explanation ${index + 1}`,
-          ),
+          Array.from({ length: 18 }, (_, index) => `synthetic local explanation ${index + 1}`),
         ),
       },
     },
@@ -1446,25 +1180,15 @@ test('uses fixed source buttons to locate flat results and track scrolling', asy
   })
   await expect(online).toHaveAttribute('aria-pressed', 'true')
   await expect(local).toHaveAttribute('aria-pressed', 'false')
-  await expect(popup.locator('[data-dictionary-current-source]')).toHaveText(
-    'Merriam-Webster',
-  )
-  await expect(
-    popup.getByText('synthetic online explanation 1', { exact: true }),
-  ).toBeVisible()
-  await expect(
-    popup.getByText('synthetic local explanation 1', { exact: true }),
-  ).toBeAttached()
+  await expect(popup.locator('[data-dictionary-current-source]')).toHaveText('Merriam-Webster')
+  await expect(popup.getByText('synthetic online explanation 1', { exact: true })).toBeVisible()
+  await expect(popup.getByText('synthetic local explanation 1', { exact: true })).toBeAttached()
 
   await local.click()
   await expect(online).toHaveAttribute('aria-pressed', 'false')
   await expect(local).toHaveAttribute('aria-pressed', 'true')
-  await expect(popup.locator('[data-dictionary-current-source]')).toHaveText(
-    'Oxford English-Chinese Dictionary',
-  )
-  await expect(
-    popup.getByText('synthetic local explanation 1', { exact: true }),
-  ).toBeVisible()
+  await expect(popup.locator('[data-dictionary-current-source]')).toHaveText('Oxford English-Chinese Dictionary')
+  await expect(popup.getByText('synthetic local explanation 1', { exact: true })).toBeVisible()
   const localHeaderOffset = await popup
     .getByRole('heading', {
       name: 'Oxford English-Chinese Dictionary',
@@ -1474,10 +1198,7 @@ test('uses fixed source buttons to locate flat results and track scrolling', asy
       const header = heading.parentElement
       const scroll = heading.closest('[data-dictionary-scroll]')
       if (!header || !scroll) throw new Error('Missing dictionary geometry')
-      return (
-        header.getBoundingClientRect().bottom -
-        scroll.getBoundingClientRect().top
-      )
+      return header.getBoundingClientRect().bottom - scroll.getBoundingClientRect().top
     })
   expect(localHeaderOffset).toBeLessThanOrEqual(1)
 
@@ -1491,14 +1212,10 @@ test('uses fixed source buttons to locate flat results and track scrolling', asy
     element.dispatchEvent(new Event('scroll', { bubbles: true }))
   })
   await expect(online).toHaveAttribute('aria-pressed', 'true')
-  await expect(popup.locator('[data-dictionary-current-source]')).toHaveText(
-    'Merriam-Webster',
-  )
+  await expect(popup.locator('[data-dictionary-current-source]')).toHaveText('Merriam-Webster')
 })
 
-test('looks up an English selection in an enabled StarDict and releases its session', async ({
-  page,
-}) => {
+test('looks up an English selection in an enabled StarDict and releases its session', async ({ page }) => {
   await setupDictionaryReader(page, {}, 0, {}, [localStarDict()], {
     'dict-oxford': {
       sky: {
@@ -1515,31 +1232,21 @@ test('looks up an English selection in an enabled StarDict and releases its sess
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
 
   const popup = page.getByRole('dialog')
-  await expect(
-    popup.getByRole('heading', { name: 'Oxford English-Chinese Dictionary' }),
-  ).toBeVisible()
-  await expect(
-    popup.getByText('the region of the atmosphere seen from earth'),
-  ).toBeVisible()
+  await expect(popup.getByRole('heading', { name: 'Oxford English-Chinese Dictionary' })).toBeVisible()
+  await expect(popup.getByText('the region of the atmosphere seen from earth')).toBeVisible()
 
   await dictionaryCloseButton(page).click()
-  await expect
-    .poll(async () => (await getDictionaryMockState(page)).stardictRequests)
-    .toHaveLength(1)
+  await expect.poll(async () => (await getDictionaryMockState(page)).stardictRequests).toHaveLength(1)
   const state = await getDictionaryMockState(page)
   expect(state.stardictRequests[0]).toEqual({
     dictionaryId: 'dict-oxford',
     query: 'sky',
     sessionId: expect.any(Number),
   })
-  expect(state.cancelledDictionarySessions).toContain(
-    state.stardictRequests[0]!.sessionId,
-  )
+  expect(state.cancelledDictionarySessions).toContain(state.stardictRequests[0]!.sessionId)
 })
 
-test('MDict follows an exact mixed-script internal key in the originating dictionary', async ({
-  page,
-}) => {
+test('MDict follows an exact mixed-script internal key in the originating dictionary', async ({ page }) => {
   await setupDictionaryReader(
     page,
     {},
@@ -1572,14 +1279,10 @@ test('MDict follows an exact mixed-script internal key in the originating dictio
   await frame.getByText('打开合成索引', { exact: true }).click()
 
   await expect(frame.getByRole('heading', { name: '合成索引' })).toBeVisible()
-  await expect(
-    frame.getByText('这是合成的内部索引内容。', { exact: true }),
-  ).toBeVisible()
+  await expect(frame.getByText('这是合成的内部索引内容。', { exact: true })).toBeVisible()
 })
 
-test('MDict keeps internal links in a source-only bounded detail history', async ({
-  page,
-}) => {
+test('MDict keeps internal links in a source-only bounded detail history', async ({ page }) => {
   await page.route('http://dictionary.localhost/**', async (route) => {
     const url = decodeURIComponent(route.request().url())
     if (url.endsWith('/figure.png') || url.endsWith('/waveline.png')) {
@@ -1646,9 +1349,7 @@ test('MDict keeps internal links in a source-only bounded detail history', async
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
 
   const popup = page.getByRole('dialog')
-  await expect(
-    popup.getByRole('heading', { name: 'Synthetic Chinese MDict' }),
-  ).toBeVisible()
+  await expect(popup.getByRole('heading', { name: 'Synthetic Chinese MDict' })).toBeVisible()
   const iframe = popup.locator('[data-dictionary-rich-content]')
   await expect(iframe).toHaveAttribute('sandbox', 'allow-same-origin')
   await expect(iframe).toHaveAttribute('scrolling', 'no')
@@ -1656,15 +1357,9 @@ test('MDict keeps internal links in a source-only bounded detail history', async
   await expect(frame.getByText('安全释义', { exact: true })).toBeVisible()
   await expect(frame.locator('script, iframe, audio, [onclick]')).toHaveCount(0)
   await expect(frame.getByAltText('外部图')).toHaveCount(0)
-  await expect(frame.getByAltText('本地图')).toHaveAttribute(
-    'src',
-    /http:\/\/dictionary\.localhost\/.*\/figure\.png$/,
-  )
+  await expect(frame.getByAltText('本地图')).toHaveAttribute('src', /http:\/\/dictionary\.localhost\/.*\/figure\.png$/)
   const documentSafety = await frame.locator('html').evaluate((element) => ({
-    csp:
-      element
-        .querySelector('meta[http-equiv="Content-Security-Policy"]')
-        ?.getAttribute('content') ?? '',
+    csp: element.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content') ?? '',
     style: Array.from(element.querySelectorAll('style'))
       .map((node) => node.textContent ?? '')
       .join('\n'),
@@ -1672,9 +1367,7 @@ test('MDict keeps internal links in a source-only bounded detail history', async
   expect(documentSafety.csp).toContain("default-src 'none'")
   expect(documentSafety.csp).toContain("script-src 'none'")
   expect(documentSafety.style).toContain('dictionary.localhost')
-  expect(documentSafety.style).not.toMatch(
-    /@import|behavior|tracker\.invalid|\.\.\/secret/,
-  )
+  expect(documentSafety.style).not.toMatch(/@import|behavior|tracker\.invalid|\.\.\/secret/)
   const contextMenu = await frame.locator('body').evaluate((body) => {
     const event = new MouseEvent('contextmenu', {
       bubbles: true,
@@ -1708,69 +1401,45 @@ test('MDict keeps internal links in a source-only bounded detail history', async
     range.selectNodeContents(anchor)
     selection?.removeAllRanges()
     selection?.addRange(range)
-    anchor.dispatchEvent(
-      new MouseEvent('click', { bubbles: true, cancelable: true }),
-    )
+    anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
   })
-  await expect
-    .poll(async () => (await getDictionaryMockState(page)).mdictRequests)
-    .toHaveLength(1)
+  await expect.poll(async () => (await getDictionaryMockState(page)).mdictRequests).toHaveLength(1)
   await frame.locator('body').evaluate((body) => {
     body.ownerDocument.defaultView?.getSelection()?.removeAllRanges()
   })
   await frame.getByText('跳到新词', { exact: true }).scrollIntoViewIfNeeded()
-  const navigationScrollTop = await scroll.evaluate(
-    (element) => element.scrollTop,
-  )
+  const navigationScrollTop = await scroll.evaluate((element) => element.scrollTop)
 
   await frame.getByText('跳到新词', { exact: true }).click()
-  await expect(
-    popup.locator('header').getByText('词', { exact: true }),
-  ).toBeVisible()
+  await expect(popup.locator('header').getByText('词', { exact: true })).toBeVisible()
   await expect(sourceButtons.nth(0)).toBeDisabled()
   await expect(sourceButtons.nth(1)).toBeDisabled()
-  await expect
-    .poll(async () => (await getDictionaryMockState(page)).mdictRequests)
-    .toHaveLength(2)
+  await expect.poll(async () => (await getDictionaryMockState(page)).mdictRequests).toHaveLength(2)
   await expect(popup.getByRole('heading', { name: '汉典' })).toHaveCount(0)
   await expect(popup.locator('[data-dictionary-rich-content]')).toHaveCount(1)
-  await expect(
-    frame.getByText('第一层内部跳转结果', { exact: true }),
-  ).toBeVisible()
+  await expect(frame.getByText('第一层内部跳转结果', { exact: true })).toBeVisible()
   await iframe.evaluate((element) => {
     element.dataset.mdictInstance = 'first-detail'
   })
-  expect((await getDictionaryMockState(page)).dictionaryRequests).toHaveLength(
-    1,
-  )
+  expect((await getDictionaryMockState(page)).dictionaryRequests).toHaveLength(1)
 
   await frame.getByText('继续跳转', { exact: true }).click()
-  await expect(
-    popup.locator('header').getByText('词', { exact: true }),
-  ).toBeVisible()
-  await expect(
-    frame.getByText('第二层内部跳转结果', { exact: true }),
-  ).toBeVisible()
+  await expect(popup.locator('header').getByText('词', { exact: true })).toBeVisible()
+  await expect(frame.getByText('第二层内部跳转结果', { exact: true })).toBeVisible()
   await expect(popup.locator('[data-dictionary-rich-content]')).toHaveCount(1)
 
   await iframe.evaluate((element: HTMLIFrameElement) => {
     const frameWindow = element.contentWindow
     frameWindow?.document.body.dispatchEvent(
-      new (
-        frameWindow as Window & { MouseEvent: typeof MouseEvent }
-      ).MouseEvent('mousedown', {
+      new (frameWindow as Window & { MouseEvent: typeof MouseEvent }).MouseEvent('mousedown', {
         bubbles: true,
         button: 3,
         cancelable: true,
       }),
     )
   })
-  await expect(
-    popup.locator('header').getByText('词', { exact: true }),
-  ).toBeVisible()
-  await expect(
-    frame.getByText('第一层内部跳转结果', { exact: true }),
-  ).toBeVisible()
+  await expect(popup.locator('header').getByText('词', { exact: true })).toBeVisible()
+  await expect(frame.getByText('第一层内部跳转结果', { exact: true })).toBeVisible()
   await expect(iframe).toHaveAttribute('data-mdict-instance', 'first-detail')
 
   await popup.locator('header').dispatchEvent('mousedown', { button: 3 })
@@ -1778,16 +1447,10 @@ test('MDict keeps internal links in a source-only bounded detail history', async
   await expect(sourceButtons.nth(0)).toBeEnabled()
   await expect(sourceButtons.nth(1)).toBeEnabled()
   await expect(frame.getByText('安全释义', { exact: true })).toBeVisible()
-  await expect
-    .poll(() => scroll.evaluate((element) => element.scrollTop))
-    .toBe(navigationScrollTop)
+  await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBe(navigationScrollTop)
   const navigationState = await getDictionaryMockState(page)
   expect(navigationState.dictionaryRequests).toHaveLength(1)
-  expect(navigationState.mdictRequests.map(({ query }) => query)).toEqual([
-    '词',
-    '新词',
-    '第三词',
-  ])
+  expect(navigationState.mdictRequests.map(({ query }) => query)).toEqual(['词', '新词', '第三词'])
 
   await dictionaryCloseButton(page).click()
   const state = await getDictionaryMockState(page)
@@ -1803,9 +1466,7 @@ test('MDict keeps internal links in a source-only bounded detail history', async
   )
 })
 
-test('MDict keeps readable text when an optional stylesheet is missing', async ({
-  page,
-}) => {
+test('MDict keeps readable text when an optional stylesheet is missing', async ({ page }) => {
   await setupDictionaryReader(
     page,
     { 词: wordHtml },
@@ -1885,28 +1546,18 @@ test('MDict does not enlarge or navigate linked images', async ({ page }) => {
   await expect(image).toBeVisible()
   await expect
     .poll(() =>
-      frame
-        .getByText('图片词条', { exact: true })
-        .evaluate((element) => getComputedStyle(element).backgroundImage),
+      frame.getByText('图片词条', { exact: true }).evaluate((element) => getComputedStyle(element).backgroundImage),
     )
     .toContain('dictionary.localhost')
-  await expect
-    .poll(() =>
-      image.evaluate((element) => element.getBoundingClientRect().width),
-    )
-    .toBe(1)
+  await expect.poll(() => image.evaluate((element) => element.getBoundingClientRect().width)).toBe(1)
 
   await image.click()
   await expect(frame.getByText('图片词条', { exact: true })).toBeVisible()
   await expect(frame.getByText('错误跳转结果', { exact: true })).toHaveCount(0)
-  await expect
-    .poll(async () => (await getDictionaryMockState(page)).mdictRequests)
-    .toHaveLength(1)
+  await expect.poll(async () => (await getDictionaryMockState(page)).mdictRequests).toHaveLength(1)
 })
 
-test('outside dismissal releases the local dictionary session before showing actions', async ({
-  page,
-}) => {
+test('outside dismissal releases the local dictionary session before showing actions', async ({ page }) => {
   await setupDictionaryReader(
     page,
     { 词: wordHtml },
@@ -1924,22 +1575,13 @@ test('outside dismissal releases the local dictionary session before showing act
   )
   await selectFixtureText(page, '词')
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
-  await expect(
-    dictionaryPopup(page).locator('[data-dictionary-rich-content]'),
-  ).toBeVisible()
-  const sessionId = (await getDictionaryMockState(page)).mdictRequests[0]!
-    .sessionId
+  await expect(dictionaryPopup(page).locator('[data-dictionary-rich-content]')).toBeVisible()
+  const sessionId = (await getDictionaryMockState(page)).mdictRequests[0]!.sessionId
 
   await page.mouse.click(2, 2)
 
-  await expect(
-    page.getByRole('button', { name: 'Dictionary', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Dictionary', exact: true })).toBeVisible()
   await expect
-    .poll(async () =>
-      (await getDictionaryMockState(page)).cancelledDictionarySessions.includes(
-        sessionId,
-      ),
-    )
+    .poll(async () => (await getDictionaryMockState(page)).cancelledDictionarySessions.includes(sessionId))
     .toBe(true)
 })

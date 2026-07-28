@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react'
 
-import { BookRecord, CoverRecord, LibraryTagRecord, db } from '../storage'
+import { type BookRecord, type CoverRecord, db, type LibraryTagRecord } from '../storage'
 
 export function useLibrary() {
-  const [books, setBooks] = useState<BookRecord[] | undefined>(() =>
-    db.books.peekAll(),
-  )
+  const [books, setBooks] = useState<BookRecord[] | undefined>(() => db.books.peekAll())
 
   useEffect(() => {
     let disposed = false
@@ -29,9 +27,7 @@ export function useLibrary() {
 }
 
 export function useCovers() {
-  const [covers, setCovers] = useState<CoverRecord[] | undefined>(() =>
-    db.covers.peekAll(),
-  )
+  const [covers, setCovers] = useState<CoverRecord[] | undefined>(() => db.covers.peekAll())
 
   useEffect(() => {
     let disposed = false
@@ -55,9 +51,7 @@ export function useCovers() {
 }
 
 export function useLibraryTags() {
-  const [tags, setTags] = useState<LibraryTagRecord[] | undefined>(() =>
-    db.tags.peekAll(),
-  )
+  const [tags, setTags] = useState<LibraryTagRecord[] | undefined>(() => db.tags.peekAll())
 
   useEffect(() => {
     let disposed = false

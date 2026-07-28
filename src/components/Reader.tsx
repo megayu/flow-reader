@@ -3,13 +3,13 @@ import {
   BookOpenIcon,
   ChevronDownIcon,
   ChevronRightIcon,
-  ChevronUpIcon,
   ChevronsDownIcon,
   ChevronsUpIcon,
+  ChevronUpIcon,
   PanelTopIcon,
 } from 'lucide-react'
 import React, {
-  ComponentProps,
+  type ComponentProps,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -20,17 +20,17 @@ import React, {
 } from 'react'
 import { useSnapshot } from 'valtio'
 
+import { RenditionSpread } from '@flow/epubjs/rendition'
 import { SettingsPanel } from '@/settings/SettingsPanel'
 import {
   useSetSettingsDialogOpen,
+  useSettingsReady,
   useSetViewMode,
   useSetZenMode,
   useSetZenTypographyOverrides,
-  useSettingsReady,
   useViewModeValue,
   useZenModeValue,
 } from '@/state'
-import { RenditionSpread } from '@flow/epubjs/rendition'
 
 import { getBookDisplayTitle, getBookTooltip } from '../book'
 import { handleFiles } from '../file'
@@ -41,46 +41,26 @@ import { useEventListener } from '../hooks/useEventListener'
 import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
 import { BookTab, reader, useReaderSnapshot } from '../models/reader'
-import {
-  createReaderKeyDownHandler,
-  hasKeyboardCapturingLayer,
-  isEditableTarget,
-} from '../reader/shortcuts'
+import { createReaderKeyDownHandler, hasKeyboardCapturingLayer, isEditableTarget } from '../reader/shortcuts'
 import { getShortcutChords } from '../shortcuts'
-import {
-  db,
-  type BookRecord,
-  type EpubImportProgress,
-  type EpubImportResult,
-} from '../storage'
-import {
-  createTypographyLayoutSignature,
-  createTypographyStyleSignature,
-  updateCustomStyle,
-} from '../styles'
+import { type BookRecord, db, type EpubImportProgress, type EpubImportResult } from '../storage'
+import { createTypographyLayoutSignature, createTypographyStyleSignature, updateCustomStyle } from '../styles'
 
 import { Annotations } from './Annotation'
 import { BookTooltipContent } from './BookTooltipContent'
-import { ShortcutChord } from './ShortcutChord'
-import { Tab } from './Tab'
-import { TextSelectionMenu } from './TextSelectionMenu'
 import { DropZone } from './base/DropZone'
-import {
-  ChapterFindBar,
-  ChapterFindHighlights,
-  ChapterFindOverlay,
-} from './reader/ChapterFind'
+import { ChapterFindBar, ChapterFindHighlights, ChapterFindOverlay } from './reader/ChapterFind'
 import { NotePopover, type NotePopoverState } from './reader/NotePopover'
 import { ReaderImagePreview } from './reader/ReaderImagePreview'
-import {
-  useBookPaneChapterFind,
-  useBookPaneChapterFindResults,
-} from './reader/useBookPaneChapterFind'
+import { useBookPaneChapterFind, useBookPaneChapterFindResults } from './reader/useBookPaneChapterFind'
 import { useBookPaneFrameContent } from './reader/useBookPaneFrameContent'
 import { useBookPaneWheelNavigation } from './reader/useBookPaneWheelNavigation'
 import { useBookRenditionLifecycle } from './reader/useBookRenditionLifecycle'
 import { CAPTURE_EVENT_OPTIONS, useFrameEvent } from './reader/useFrameEvent'
 import { useReaderPageGeometry } from './reader/useReaderPageGeometry'
+import { ShortcutChord } from './ShortcutChord'
+import { Tab } from './Tab'
+import { TextSelectionMenu } from './TextSelectionMenu'
 
 const pageComponents = [SettingsPanel]
 
@@ -91,16 +71,10 @@ function preventContextMenu(e: Event) {
 interface ReaderGridViewProps {
   content?: React.ReactNode
   onEpubImportProgress?: (progress: EpubImportProgress) => void
-  onEpubImportResult?: (
-    result: EpubImportResult,
-  ) => Set<string> | void | Promise<Set<string> | void>
+  onEpubImportResult?: (result: EpubImportResult) => Set<string> | void | Promise<Set<string> | void>
 }
 
-export function ReaderGridView({
-  content,
-  onEpubImportProgress,
-  onEpubImportResult,
-}: ReaderGridViewProps) {
+export function ReaderGridView({ content, onEpubImportProgress, onEpubImportResult }: ReaderGridViewProps) {
   const { groups } = useReaderSnapshot()
   const [action, setAction] = useAction()
   const setViewMode = useSetViewMode()
@@ -156,9 +130,7 @@ interface ReaderGroupProps {
   index: number
   content?: React.ReactNode
   onEpubImportProgress?: (progress: EpubImportProgress) => void
-  onEpubImportResult?: (
-    result: EpubImportResult,
-  ) => Set<string> | void | Promise<Set<string> | void>
+  onEpubImportResult?: (result: EpubImportResult) => Set<string> | void | Promise<Set<string> | void>
   onEnterReaderMode: () => void
 }
 
@@ -201,8 +173,7 @@ function ReaderGroup({
       e.preventDefault()
       e.stopPropagation()
 
-      const delta =
-        Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX
+      const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX
       if (!delta) return
 
       tabWheelDelta.current += delta
@@ -222,77 +193,62 @@ function ReaderGroup({
     setTabDragPreview(undefined)
   }, [])
 
-  const handleTabPointerDown = useCallback(
-    (event: React.PointerEvent<HTMLUListElement>) => {
-      if (event.button !== 0) return
-      if (!(event.target instanceof Element)) return
-      if (event.target.closest('button')) return
+  const handleTabPointerDown = useCallback((event: React.PointerEvent<HTMLUListElement>) => {
+    if (event.button !== 0) return
+    if (!(event.target instanceof Element)) return
+    if (event.target.closest('button')) return
 
-      const tabElement = event.target.closest<HTMLElement>(
-        '[data-flow-reader-tab-index]',
-      )
-      const sourceIndex = Number(
-        tabElement?.dataset.flowReaderTabIndex ?? Number.NaN,
-      )
-      if (!Number.isInteger(sourceIndex)) return
+    const tabElement = event.target.closest<HTMLElement>('[data-flow-reader-tab-index]')
+    const sourceIndex = Number(tabElement?.dataset.flowReaderTabIndex ?? Number.NaN)
+    if (!Number.isInteger(sourceIndex)) return
 
-      tabPointerDrag.current = {
-        dragging: false,
-        pointerId: event.pointerId,
-        sourceIndex,
-        startX: event.clientX,
-        startY: event.clientY,
-      }
-    },
-    [],
-  )
+    tabPointerDrag.current = {
+      dragging: false,
+      pointerId: event.pointerId,
+      sourceIndex,
+      startX: event.clientX,
+      startY: event.clientY,
+    }
+  }, [])
 
-  const handleTabPointerMove = useCallback(
-    (event: React.PointerEvent<HTMLUListElement>) => {
-      const drag = tabPointerDrag.current
-      if (!drag || drag.pointerId !== event.pointerId) return
+  const handleTabPointerMove = useCallback((event: React.PointerEvent<HTMLUListElement>) => {
+    const drag = tabPointerDrag.current
+    if (!drag || drag.pointerId !== event.pointerId) return
 
-      const list = event.currentTarget
-      const listRect = list.getBoundingClientRect()
-      const inside =
-        event.clientX >= listRect.left &&
-        event.clientX <= listRect.right &&
-        event.clientY >= listRect.top &&
-        event.clientY <= listRect.bottom
-      const distance = Math.hypot(
-        event.clientX - drag.startX,
-        event.clientY - drag.startY,
-      )
+    const list = event.currentTarget
+    const listRect = list.getBoundingClientRect()
+    const inside =
+      event.clientX >= listRect.left &&
+      event.clientX <= listRect.right &&
+      event.clientY >= listRect.top &&
+      event.clientY <= listRect.bottom
+    const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY)
 
-      if (!drag.dragging) {
-        if (!inside || distance < 5) return
-        drag.dragging = true
-        list.setPointerCapture(event.pointerId)
-      }
+    if (!drag.dragging) {
+      if (!inside || distance < 5) return
+      drag.dragging = true
+      list.setPointerCapture(event.pointerId)
+    }
 
-      event.preventDefault()
-      let targetIndex: number | undefined
-      if (inside) {
-        const tabElements = Array.from(
-          list.querySelectorAll<HTMLElement>('[data-flow-reader-tab-index]'),
-        )
-        targetIndex = Math.max(0, tabElements.length - 1)
-        for (const tabElement of tabElements) {
-          const index = Number(tabElement.dataset.flowReaderTabIndex)
-          const rect = tabElement.getBoundingClientRect()
-          if (event.clientX < rect.left + rect.width / 2) {
-            targetIndex = index
-            break
-          }
+    event.preventDefault()
+    let targetIndex: number | undefined
+    if (inside) {
+      const tabElements = Array.from(list.querySelectorAll<HTMLElement>('[data-flow-reader-tab-index]'))
+      targetIndex = Math.max(0, tabElements.length - 1)
+      for (const tabElement of tabElements) {
+        const index = Number(tabElement.dataset.flowReaderTabIndex)
+        const rect = tabElement.getBoundingClientRect()
+        if (event.clientX < rect.left + rect.width / 2) {
+          targetIndex = index
+          break
         }
       }
+    }
 
-      if (drag.targetIndex === targetIndex) return
-      drag.targetIndex = targetIndex
-      setTabDragPreview({ sourceIndex: drag.sourceIndex, targetIndex })
-    },
-    [],
-  )
+    if (drag.targetIndex === targetIndex) return
+    drag.targetIndex = targetIndex
+    setTabDragPreview({ sourceIndex: drag.sourceIndex, targetIndex })
+  }, [])
 
   const handleTabPointerUp = useCallback(
     (event: React.PointerEvent<HTMLUListElement>) => {
@@ -377,8 +333,7 @@ function ReaderGroup({
               onSelect={handleTabSelect}
               dragging={tabDragPreview?.sourceIndex === i}
               dropIndicator={
-                tabDragPreview?.targetIndex === i &&
-                tabDragPreview.sourceIndex !== i
+                tabDragPreview?.targetIndex === i && tabDragPreview.sourceIndex !== i
                   ? tabDragPreview.sourceIndex < i
                     ? 'after'
                     : 'before'
@@ -391,10 +346,7 @@ function ReaderGroup({
 
       <div className="relative min-h-0 flex-1">
         <DropZone
-          className={clsx(
-            'h-full min-h-0',
-            Boolean(content) && 'pointer-events-none opacity-0',
-          )}
+          className={clsx('h-full min-h-0', Boolean(content) && 'pointer-events-none opacity-0')}
           onDrop={async (e) => {
             // read `e.dataTransfer` first to avoid get empty value after `await`
             const files = e.dataTransfer.files
@@ -407,9 +359,7 @@ function ReaderGroup({
               })
             } else {
               const text = e.dataTransfer.getData('text/plain')
-              const tabParam =
-                pageComponents.find((p) => p.displayName === text) ??
-                (await db.books.get(text))
+              const tabParam = pageComponents.find((p) => p.displayName === text) ?? (await db.books.get(text))
               if (tabParam) tabs.push(tabParam)
             }
 
@@ -426,11 +376,7 @@ function ReaderGroup({
             return (
               <PaneContainer active={active} key={paneTab.id}>
                 {tab instanceof BookTab ? (
-                  <BookPane
-                    active={active}
-                    tab={tab}
-                    onMouseDown={handleMouseDown}
-                  />
+                  <BookPane active={active} tab={tab} onMouseDown={handleMouseDown} />
                 ) : (
                   <tab.Component />
                 )}
@@ -439,27 +385,15 @@ function ReaderGroup({
           })}
         </DropZone>
         {content && (
-          <div
-            className={clsx(
-              'absolute inset-0 z-10 min-h-0 overflow-hidden',
-              backgroundClassName,
-            )}
-          >
-            {content}
-          </div>
+          <div className={clsx('absolute inset-0 z-10 min-h-0 overflow-hidden', backgroundClassName)}>{content}</div>
         )}
       </div>
     </div>
   )
 }
 
-function getReaderTabLabel(
-  tab: BookTab | { title: string },
-  t: (key: string) => string,
-) {
-  return tab instanceof BookTab
-    ? getBookDisplayTitle(tab.book)
-    : t(`${tab.title}.title`)
+function getReaderTabLabel(tab: BookTab | { title: string }, t: (key: string) => string) {
+  return tab instanceof BookTab ? getBookDisplayTitle(tab.book) : t(`${tab.title}.title`)
 }
 
 interface ReaderTabItemProps {
@@ -524,13 +458,8 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
   )
 })
 
-function getReaderTabTooltip(
-  tab: BookTab | { title: string },
-  t: (key: string) => string,
-) {
-  return tab instanceof BookTab
-    ? getBookTooltip(tab.book)
-    : getReaderTabLabel(tab, t)
+function getReaderTabTooltip(tab: BookTab | { title: string }, t: (key: string) => string) {
+  return tab instanceof BookTab ? getBookTooltip(tab.book) : getReaderTabLabel(tab, t)
 }
 
 function getReaderTabTooltipContent(tab: BookTab | { title: string }) {
@@ -544,10 +473,7 @@ type TemporaryBookOpenIconProps = React.ComponentProps<typeof BookOpenIcon> & {
   ref?: React.Ref<SVGSVGElement>
 }
 
-const TemporaryBookOpenIcon = function TemporaryBookOpenIcon({
-  ref,
-  ...props
-}: TemporaryBookOpenIconProps) {
+const TemporaryBookOpenIcon = function TemporaryBookOpenIcon({ ref, ...props }: TemporaryBookOpenIconProps) {
   return <BookOpenIcon {...props} ref={ref} strokeDasharray="1 2.5" />
 } as typeof BookOpenIcon
 
@@ -561,24 +487,20 @@ interface PaneContainerProps {
   active: boolean
   children?: React.ReactNode
 }
-const PaneContainer: React.FC<PaneContainerProps> = React.memo(
-  function PaneContainer({ active, children }) {
-    return (
-      <div
-        aria-hidden={!active}
-        data-flow-reader-pane
-        className={clsx(
-          'absolute inset-0 h-full overflow-hidden',
-          active
-            ? 'visible z-10 opacity-100'
-            : 'pointer-events-none invisible z-0 opacity-0',
-        )}
-      >
-        {children}
-      </div>
-    )
-  },
-)
+const PaneContainer: React.FC<PaneContainerProps> = React.memo(function PaneContainer({ active, children }) {
+  return (
+    <div
+      aria-hidden={!active}
+      data-flow-reader-pane
+      className={clsx(
+        'absolute inset-0 h-full overflow-hidden',
+        active ? 'visible z-10 opacity-100' : 'pointer-events-none invisible z-0 opacity-0',
+      )}
+    >
+      {children}
+    </div>
+  )
+})
 
 interface BookPaneProps {
   active: boolean
@@ -586,35 +508,18 @@ interface BookPaneProps {
   onMouseDown: () => void
 }
 
-const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
-  active,
-  tab,
-  onMouseDown,
-}) {
+const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active, tab, onMouseDown }) {
   const ref = useRef<HTMLDivElement>(null)
   const [notePopover, setNotePopover] = useState<NotePopoverState>()
   const typography = useTypography(tab)
   const pageAppearance = typography.pageAppearance
-  const typographyStyleSignature = useMemo(
-    () => createTypographyStyleSignature(typography),
-    [typography],
-  )
+  const typographyStyleSignature = useMemo(() => createTypographyStyleSignature(typography), [typography])
   const settingsReady = useSettingsReady()
   const { dark } = useColorScheme()
   const [background] = useBackground()
 
-  const {
-    iframe,
-    iframes,
-    isScrolledDocument,
-    rendition,
-    rendered,
-    turning,
-    paginationVersion,
-  } = useSnapshot(tab)
-  const currentSpread = isScrolledDocument
-    ? RenditionSpread.None
-    : (typography.spread ?? RenditionSpread.Auto)
+  const { iframe, iframes, isScrolledDocument, rendition, rendered, turning, paginationVersion } = useSnapshot(tab)
+  const currentSpread = isScrolledDocument ? RenditionSpread.None : (typography.spread ?? RenditionSpread.Auto)
   const typographyLayoutSignature = useMemo(
     () =>
       createTypographyLayoutSignature({
@@ -627,16 +532,9 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
     void iframe
     void iframes.length
 
-    return tab.iframes.length
-      ? [...tab.iframes]
-      : tab.iframe
-        ? [tab.iframe]
-        : []
+    return tab.iframes.length ? [...tab.iframes] : tab.iframe ? [tab.iframe] : []
   }, [iframe, iframes, tab])
-  const activeFrameWindows = useMemo(
-    () => (active ? frameWindows : []),
-    [active, frameWindows],
-  )
+  const activeFrameWindows = useMemo(() => (active ? frameWindows : []), [active, frameWindows])
 
   useLayoutEffect(() => {
     return () => {
@@ -714,40 +612,18 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
       document.removeEventListener('auxclick', onMouseButton, true)
     }
   }, [active])
-  useFrameEvent(
-    activeFrameWindows,
-    'mousedown',
-    handleReturnMouseButton,
-    CAPTURE_EVENT_OPTIONS,
-  )
-  useFrameEvent(
-    activeFrameWindows,
-    'auxclick',
-    handleReturnMouseButton,
-    CAPTURE_EVENT_OPTIONS,
-  )
+  useFrameEvent(activeFrameWindows, 'mousedown', handleReturnMouseButton, CAPTURE_EVENT_OPTIONS)
+  useFrameEvent(activeFrameWindows, 'auxclick', handleReturnMouseButton, CAPTURE_EVENT_OPTIONS)
 
   const applyCustomStyle = useCallback(
     (contents?: any, view?: any) => {
       if (contents) {
-        updateCustomStyle(
-          contents,
-          typography,
-          tab.bodyTextCache,
-          view,
-          rendition?.layout?.name,
-        )
+        updateCustomStyle(contents, typography, tab.bodyTextCache, view, rendition?.layout?.name)
         return
       }
 
       rendition?.getContents().forEach((contents: any) => {
-        updateCustomStyle(
-          contents,
-          typography,
-          tab.bodyTextCache,
-          undefined,
-          rendition.layout?.name,
-        )
+        updateCustomStyle(contents, typography, tab.bodyTextCache, undefined, rendition.layout?.name)
       })
     },
     [rendition, tab.bodyTextCache, typography],
@@ -812,20 +688,12 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
 
   const handleFrameKeyDown = useMemo(
     () =>
-      createReaderKeyDownHandler(
-        tab,
-        viewMode,
-        enterReaderMode,
-        zenMode,
-        setZenMode,
-        setZenTypographyOverrides,
-        {
-          action,
-          setAction,
-          setViewMode,
-          setSettingsOpen,
-        },
-      ),
+      createReaderKeyDownHandler(tab, viewMode, enterReaderMode, zenMode, setZenMode, setZenTypographyOverrides, {
+        action,
+        setAction,
+        setViewMode,
+        setSettingsOpen,
+      }),
     [
       action,
       enterReaderMode,
@@ -842,10 +710,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
   useFrameEvent(activeFrameWindows, 'keydown', handleFrameKeyDown)
 
   return (
-    <div
-      className="flex h-full flex-col"
-      data-flow-page-appearance={pageAppearance}
-    >
+    <div className="flex h-full flex-col" data-flow-page-appearance={pageAppearance}>
       <ReaderImagePreview
         openKey={!zenMode ? imagePreview?.key : undefined}
         src={!zenMode ? imagePreview?.src : undefined}
@@ -888,19 +753,10 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
             background,
           )}
         />
-        {!zenMode && active && (
-          <TextSelectionMenu tab={tab} onChapterFind={openChapterFind} />
-        )}
+        {!zenMode && active && <TextSelectionMenu tab={tab} onChapterFind={openChapterFind} />}
         <Annotations active={active} tab={tab} />
-        {!zenMode && (
-          <NotePopover
-            popover={notePopover}
-            onClose={() => setNotePopover(undefined)}
-          />
-        )}
-        {!zenMode && (
-          <ChapterFindHighlights active={active} find={chapterFind} tab={tab} />
-        )}
+        {!zenMode && <NotePopover popover={notePopover} onClose={() => setNotePopover(undefined)} />}
+        {!zenMode && <ChapterFindHighlights active={active} find={chapterFind} tab={tab} />}
         {!zenMode && active && <ReaderEdgeNavigation tab={tab} />}
       </div>
       <ReaderPaneFooter tab={tab} />
@@ -910,11 +766,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({
 
 const ReaderPageDecoration: React.FC = () => {
   return (
-    <div
-      aria-hidden="true"
-      data-flow-reader-page-decoration
-      className="pointer-events-none absolute inset-0 z-10"
-    >
+    <div aria-hidden="true" data-flow-reader-page-decoration className="pointer-events-none absolute inset-0 z-10">
       <div data-flow-reader-page-frame="start" />
       <div data-flow-reader-page-frame="end" />
       <div data-flow-reader-page-seam />
@@ -989,14 +841,9 @@ const ReaderPaneHeader: React.FC<ReaderPaneHeaderProps> = ({ tab }) => {
     <Bar data-flow-reader-header>
       <div className="scroll-h flex">
         {navPath.map((item, i) => (
-          <span
-            key={item.id ?? item.href ?? item.label}
-            className="flex shrink-0 items-center"
-          >
+          <span key={item.id ?? item.href ?? item.label} className="flex shrink-0 items-center">
             {item.label}
-            {i !== navPath.length - 1 && (
-              <ChevronRightIcon className="size-5" />
-            )}
+            {i !== navPath.length - 1 && <ChevronRightIcon className="size-5" />}
           </span>
         ))}
       </div>
@@ -1015,30 +862,18 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
   const divisor = paginationSnapshot?.spreadDivisor ?? 1
   const spread = divisor > 1
   const percentage =
-    typeof paginationSnapshot?.percentage === 'number'
-      ? `${(paginationSnapshot.percentage * 100).toFixed(2)}%`
-      : ''
+    typeof paginationSnapshot?.percentage === 'number' ? `${(paginationSnapshot.percentage * 100).toFixed(2)}%` : ''
   const startDisplayed = location?.start.displayed
   const endDisplayed = location?.end.displayed
   const rightFirst = paginationSnapshot?.spreadSlotOrder === 'right-first'
   const rightDisplayed =
-    startDisplayed?.slot === 'right'
-      ? startDisplayed
-      : endDisplayed?.slot === 'right'
-        ? endDisplayed
-        : undefined
+    startDisplayed?.slot === 'right' ? startDisplayed : endDisplayed?.slot === 'right' ? endDisplayed : undefined
   const leftDisplayed =
-    startDisplayed?.slot === 'left'
-      ? startDisplayed
-      : endDisplayed?.slot === 'left'
-        ? endDisplayed
-        : undefined
-  const singleVisiblePageOnRight =
-    spread && !!startDisplayed && startDisplayed.slot === 'right'
+    startDisplayed?.slot === 'left' ? startDisplayed : endDisplayed?.slot === 'left' ? endDisplayed : undefined
+  const singleVisiblePageOnRight = spread && !!startDisplayed && startDisplayed.slot === 'right'
   const hasTwoVisiblePages =
     !!location &&
-    (location.start.href !== location.end.href ||
-      location.start.displayed.page !== location.end.displayed.page)
+    (location.start.href !== location.end.href || location.start.displayed.page !== location.end.displayed.page)
   const returnStartShortcut = getShortcutChords('returnStart')[0]
   const returnPreviousShortcut = getShortcutChords('returnPrevious')[0]
   const dismissReturnShortcut = getShortcutChords('dismissReturn')[0]
@@ -1057,9 +892,7 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
               }}
             >
               <span>{t('return_to_start')}</span>
-              {returnStartShortcut && (
-                <ShortcutChord compact shortcut={returnStartShortcut} />
-              )}
+              {returnStartShortcut && <ShortcutChord compact shortcut={returnStartShortcut} />}
             </button>
             <button
               type="button"
@@ -1070,9 +903,7 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
               }}
             >
               <span>{t('return_to_previous')}</span>
-              {returnPreviousShortcut && (
-                <ShortcutChord compact shortcut={returnPreviousShortcut} />
-              )}
+              {returnPreviousShortcut && <ShortcutChord compact shortcut={returnPreviousShortcut} />}
             </button>
           </div>
           <button
@@ -1084,42 +915,27 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
             }}
           >
             <span>{t('dismiss_return')}</span>
-            {dismissReturnShortcut && (
-              <ShortcutChord compact shortcut={dismissReturnShortcut} />
-            )}
+            {dismissReturnShortcut && <ShortcutChord compact shortcut={dismissReturnShortcut} />}
           </button>
         </Bar>
       ) : spread ? (
         <div className="text-muted-foreground grid h-6 grid-cols-2 items-center px-2 text-center text-base">
           {rightFirst ? (
             <>
-              <div>
-                {leftDisplayed && formatFooterPage(leftDisplayed, percentage)}
-              </div>
-              <div>
-                {rightDisplayed &&
-                  formatFooterPage(
-                    rightDisplayed,
-                    leftDisplayed ? '' : percentage,
-                  )}
-              </div>
+              <div>{leftDisplayed && formatFooterPage(leftDisplayed, percentage)}</div>
+              <div>{rightDisplayed && formatFooterPage(rightDisplayed, leftDisplayed ? '' : percentage)}</div>
             </>
           ) : (
             <>
               <div>
                 {!singleVisiblePageOnRight &&
                   startDisplayed &&
-                  formatFooterPage(
-                    startDisplayed,
-                    hasTwoVisiblePages ? '' : percentage,
-                  )}
+                  formatFooterPage(startDisplayed, hasTwoVisiblePages ? '' : percentage)}
               </div>
               <div>
                 {singleVisiblePageOnRight
                   ? formatFooterPage(startDisplayed, percentage)
-                  : hasTwoVisiblePages &&
-                    endDisplayed &&
-                    formatFooterPage(endDisplayed, percentage)}
+                  : hasTwoVisiblePages && endDisplayed && formatFooterPage(endDisplayed, percentage)}
               </div>
             </>
           )}
@@ -1133,26 +949,17 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
   )
 }
 
-const returnActionClass =
-  'inline-flex items-center gap-1.5 rounded px-1 hover:bg-muted hover:text-foreground'
+const returnActionClass = 'inline-flex items-center gap-1.5 rounded px-1 hover:bg-muted hover:text-foreground'
 
-function formatFooterPage(
-  displayed: { page: number; total: number },
-  percentage?: string,
-) {
-  return `${displayed.page} · ${displayed.total}${
-    percentage ? ` (${percentage})` : ''
-  }`
+function formatFooterPage(displayed: { page: number; total: number }, percentage?: string) {
+  return `${displayed.page} · ${displayed.total}${percentage ? ` (${percentage})` : ''}`
 }
 
 interface LineProps extends ComponentProps<'div'> {}
 const Bar: React.FC<LineProps> = ({ className, ...props }) => {
   return (
     <div
-      className={clsx(
-        'text-muted-foreground flex h-6 items-center justify-between gap-2 px-2 text-base',
-        className,
-      )}
+      className={clsx('text-muted-foreground flex h-6 items-center justify-between gap-2 px-2 text-base', className)}
       {...props}
     ></div>
   )

@@ -5,10 +5,7 @@ export const maxUiFontSize = 18
 export function normalizeUiFontSize(value: number | undefined) {
   if (!Number.isFinite(value)) return defaultUiFontSize
 
-  return Math.max(
-    minUiFontSize,
-    Math.min(maxUiFontSize, Math.round(value ?? defaultUiFontSize)),
-  )
+  return Math.max(minUiFontSize, Math.min(maxUiFontSize, Math.round(value ?? defaultUiFontSize)))
 }
 
 export function createAppTypographyCss(fontSize: number | undefined) {

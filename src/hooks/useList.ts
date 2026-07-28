@@ -35,11 +35,7 @@ export function useListSize(count = 0) {
       scrollTop: Math.max(0, el.scrollTop),
     }
 
-    setViewport((current) =>
-      current.height === next.height && current.scrollTop === next.scrollTop
-        ? current
-        : next,
-    )
+    setViewport((current) => (current.height === next.height && current.scrollTop === next.scrollTop ? current : next))
   }, [])
 
   useLayoutEffect(() => {
@@ -59,10 +55,7 @@ export function useListSize(count = 0) {
     updateViewport()
     el.addEventListener('scroll', scheduleUpdate, { passive: true })
 
-    const observer =
-      typeof ResizeObserver === 'undefined'
-        ? undefined
-        : new ResizeObserver(scheduleUpdate)
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(scheduleUpdate)
 
     if (observer) {
       observer.observe(el)
@@ -85,20 +78,10 @@ export function useListSize(count = 0) {
   const items = useMemo(() => {
     if (!count) return []
 
-    const startIndex = Math.min(
-      count - 1,
-      Math.max(
-        0,
-        Math.floor(viewport.scrollTop / LIST_ITEM_SIZE) - LIST_OVERSCAN,
-      ),
-    )
+    const startIndex = Math.min(count - 1, Math.max(0, Math.floor(viewport.scrollTop / LIST_ITEM_SIZE) - LIST_OVERSCAN))
     const endIndex = Math.max(
       startIndex,
-      Math.min(
-        count - 1,
-        Math.ceil((viewport.scrollTop + viewport.height) / LIST_ITEM_SIZE) +
-          LIST_OVERSCAN,
-      ),
+      Math.min(count - 1, Math.ceil((viewport.scrollTop + viewport.height) / LIST_ITEM_SIZE) + LIST_OVERSCAN),
     )
 
     return Array.from({ length: endIndex - startIndex + 1 }, (_, offset) => {
@@ -116,8 +99,7 @@ export function useListSize(count = 0) {
     (options: number | ScrollToItemOptions) => {
       const index = typeof options === 'number' ? options : options.index
       const align = typeof options === 'number' ? undefined : options.align
-      const behavior =
-        typeof options === 'number' || !options.smooth ? 'auto' : 'smooth'
+      const behavior = typeof options === 'number' || !options.smooth ? 'auto' : 'smooth'
       const el = outerRef.current
       if (!el || !count) return
 

@@ -88,16 +88,10 @@ export class BookNavigationController {
     })
   }
 
-  private sectionPositionFromLocation(
-    tab: BookTab,
-    location?: Pick<Location['start'], 'index' | 'href'>,
-  ) {
+  private sectionPositionFromLocation(tab: BookTab, location?: Pick<Location['start'], 'index' | 'href'>) {
     if (!tab.sections || !location) return -1
 
-    return tab.sections.findIndex(
-      (section) =>
-        section.index === location.index || section.href === location.href,
-    )
+    return tab.sections.findIndex((section) => section.index === location.index || section.href === location.href)
   }
 
   private async displayCurrentSectionStartBeforePreviousSection(tab: BookTab) {
@@ -105,10 +99,7 @@ export class BookNavigationController {
     const spread = manager?.currentReflowableSpread
 
     if (manager?.canUseLogicalReflowableSpread?.() && spread) {
-      const page =
-        manager.reflowableSpreadEarlierPage?.(spread) ??
-        spread.left ??
-        spread.right
+      const page = manager.reflowableSpreadEarlierPage?.(spread) ?? spread.left ?? spread.right
       if (page?.section && page.pageIndex > 0) {
         await tab.displaySectionStart(page.section)
         return true
@@ -151,16 +142,10 @@ export class BookNavigationController {
     const target = index < 0 ? undefined : entries[index + direction]
     if (!target) return false
 
-    const section = tab.sections?.find(
-      (section) => section.index === target.sectionIndex,
-    )
+    const section = tab.sections?.find((section) => section.index === target.sectionIndex)
     if (!section) return false
 
-    await tab.displayTarget(
-      section,
-      target.hash ? `#${target.hash}` : undefined,
-      { alignTargetAsSpreadStart: true },
-    )
+    await tab.displayTarget(section, target.hash ? `#${target.hash}` : undefined, { alignTargetAsSpreadStart: true })
     return true
   }
 
@@ -170,10 +155,7 @@ export class BookNavigationController {
     return this.run(tab, async () => {
       if (await this.navigateNavItem(tab, direction)) return
 
-      if (
-        direction < 0 &&
-        (await this.displayCurrentSectionStartBeforePreviousSection(tab))
-      ) {
+      if (direction < 0 && (await this.displayCurrentSectionStartBeforePreviousSection(tab))) {
         return
       }
 
@@ -189,11 +171,7 @@ export class BookNavigationController {
   }
 }
 
-export async function pageIndexForCfi(
-  tab: BookTab,
-  sectionIndex: number,
-  cfi: string,
-) {
+export async function pageIndexForCfi(tab: BookTab, sectionIndex: number, cfi: string) {
   const section = tab.sections?.find((item) => item.index === sectionIndex)
   const manager = tab.rendition?.manager
   if (!section || !manager?.reflowablePageForTarget) return 0
@@ -213,33 +191,22 @@ export async function displayFromSelector(
     await tab.ensureSectionInfo(section)
     const element = section.document.querySelector(selector)
     if (element) {
-      const cfi = selector.startsWith('#')
-        ? selector
-        : section.cfiFromElement(element)
+      const cfi = selector.startsWith('#') ? selector : section.cfiFromElement(element)
       if (returnable) tab.showPrevLocation()
       await tab.displayTarget(section, cfi, { alignTargetAsSpreadStart })
     } else {
       await tab.displaySectionStart(section)
     }
-  } catch (error) {
+  } catch (_error) {
     tab.display(section.href, returnable)
   }
 }
 
-export async function displayImage(
-  tab: BookTab,
-  section: ISection,
-  src: string,
-  index: number,
-  returnable = true,
-) {
+export async function displayImage(tab: BookTab, section: ISection, src: string, index: number, returnable = true) {
   try {
     await tab.ensureSectionInfo(section)
-    const images = [
-      ...(section.document?.querySelectorAll('img') ?? []),
-    ] as HTMLImageElement[]
-    const element =
-      images.find((image) => imageSourcesMatch(image.src, src)) ?? images[index]
+    const images = [...(section.document?.querySelectorAll('img') ?? [])] as HTMLImageElement[]
+    const element = images.find((image) => imageSourcesMatch(image.src, src)) ?? images[index]
 
     if (element) {
       const cfi = section.cfiFromElement(element)
@@ -249,7 +216,7 @@ export async function displayImage(
     }
 
     await tab.displaySectionStart(section)
-  } catch (error) {
+  } catch (_error) {
     tab.display(section.href, returnable)
   }
 }

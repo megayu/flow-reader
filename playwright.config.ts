@@ -2,9 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 const port = Number(process.env.PLAYWRIGHT_PORT ?? 7127)
 const host = process.env.PLAYWRIGHT_HOST ?? 'localhost'
-const browserChannel =
-  process.env.PLAYWRIGHT_BROWSER_CHANNEL ??
-  (process.platform === 'win32' ? 'msedge' : 'chrome')
+const browserChannel = process.env.PLAYWRIGHT_BROWSER_CHANNEL ?? (process.platform === 'win32' ? 'msedge' : 'chrome')
 
 export default defineConfig({
   testDir: './tests/integration',

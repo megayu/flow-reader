@@ -1,18 +1,15 @@
 import {
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
   useCallback,
   useEffect,
   useEffectEvent,
   useRef,
   useState,
-  type Dispatch,
-  type RefObject,
-  type SetStateAction,
 } from 'react'
 
-import {
-  isSupportedExternalUrl,
-  openSupportedExternalUrl,
-} from '../../externalLink'
+import { isSupportedExternalUrl, openSupportedExternalUrl } from '../../externalLink'
 import type { BookTab } from '../../models/reader'
 import { getNoteIndex } from '../../noteIndex'
 import { useDndContext } from '../base/DropZone'
@@ -29,10 +26,7 @@ import {
 } from './NotePopover'
 import { useFrameEvent } from './useFrameEvent'
 
-function consumeExternalLinkClick(
-  event: MouseEvent,
-  anchor: HTMLAnchorElement,
-) {
+function consumeExternalLinkClick(event: MouseEvent, anchor: HTMLAnchorElement) {
   const href = anchor.getAttribute('href')?.trim()
   if (!href || !isSupportedExternalUrl(href)) return false
 
@@ -187,16 +181,10 @@ export function useBookPaneFrameContent({
               return
             }
 
-            const popover = createNotePopoverState(
-              anchor,
-              note.element,
-              containerRef.current,
-              rendition,
-              {
-                fontSize: typography.fontSize,
-                lineHeight: typography.lineHeight,
-              },
-            )
+            const popover = createNotePopoverState(anchor, note.element, containerRef.current, rendition, {
+              fontSize: typography.fontSize,
+              lineHeight: typography.lineHeight,
+            })
             if (!popover) {
               return
             }

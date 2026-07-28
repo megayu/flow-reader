@@ -1,13 +1,12 @@
 import path from 'node:path'
 
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 
 import type { BookRecord, ReadingStatus } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
 import { getStoredSettings, installTauriMock } from '../support/tauri-mock'
 
-const longAuthor =
-  'Beatrice Longname With An Extraordinarily Extended Family Name That Should Ellipsize'
+const longAuthor = 'Beatrice Longname With An Extraordinarily Extended Family Name That Should Ellipsize'
 
 function createBook({
   creator,
@@ -124,9 +123,7 @@ async function pinnedAuthors(page: Page) {
   return settings.libraryPinnedAuthors ?? []
 }
 
-test('library author filters pin authors and refresh when books change', async ({
-  page,
-}) => {
+test('library author filters pin authors and refresh when books change', async ({ page }) => {
   await setupLibrary(page)
 
   const nativeContextMenuPrevented = await page.evaluate(() => {
@@ -150,36 +147,25 @@ test('library author filters pin authors and refresh when books change', async (
   await expect(authorChip(page, 'Clara Cove')).toBeVisible()
   await expect(authorChip(page, 'No Author Book')).toHaveCount(0)
 
-  const longChipMetrics = await authorChip(page, longAuthor).evaluate(
-    (chip) => {
-      const label = chip.querySelector(
-        '[data-testid="library-author-chip-label"]',
-      ) as HTMLElement
-      const panel = document.querySelector(
-        '[data-testid="library-filter-panel"]',
-      ) as HTMLElement
-      const labelStyle = getComputedStyle(label)
+  const longChipMetrics = await authorChip(page, longAuthor).evaluate((chip) => {
+    const label = chip.querySelector('[data-testid="library-author-chip-label"]') as HTMLElement
+    const panel = document.querySelector('[data-testid="library-filter-panel"]') as HTMLElement
+    const labelStyle = getComputedStyle(label)
 
-      return {
-        chipWidth: Math.round(chip.getBoundingClientRect().width),
-        labelOverflow: labelStyle.overflow,
-        panelWidth: Math.round(panel.getBoundingClientRect().width),
-        textOverflow: labelStyle.textOverflow,
-        whiteSpace: labelStyle.whiteSpace,
-      }
-    },
-  )
+    return {
+      chipWidth: Math.round(chip.getBoundingClientRect().width),
+      labelOverflow: labelStyle.overflow,
+      panelWidth: Math.round(panel.getBoundingClientRect().width),
+      textOverflow: labelStyle.textOverflow,
+      whiteSpace: labelStyle.whiteSpace,
+    }
+  })
 
-  expect(longChipMetrics.chipWidth).toBeLessThanOrEqual(
-    longChipMetrics.panelWidth,
-  )
+  expect(longChipMetrics.chipWidth).toBeLessThanOrEqual(longChipMetrics.panelWidth)
   expect(longChipMetrics.labelOverflow).toBe('hidden')
   expect(longChipMetrics.textOverflow).toBe('ellipsis')
   expect(longChipMetrics.whiteSpace).toBe('nowrap')
-  await expect(authorChip(page, longAuthor)).toHaveAttribute(
-    'title',
-    longAuthor,
-  )
+  await expect(authorChip(page, longAuthor)).toHaveAttribute('title', longAuthor)
   await expect(authorChip(page, 'Anne Able')).not.toHaveAttribute('title', /.+/)
 
   await authorChip(page, 'Anne Able').click()
@@ -209,22 +195,14 @@ test('library author filters pin authors and refresh when books change', async (
       name: /^Unpin$/,
     }),
   ).toHaveCount(0)
-  await page
-    .getByTestId('library-author-context-menu')
-    .getByRole('menuitem', { name: /^Pin$/ })
-    .click()
+  await page.getByTestId('library-author-context-menu').getByRole('menuitem', { name: /^Pin$/ }).click()
   await expect.poll(() => authorNames(page)).toEqual([longAuthor, 'Anne Able'])
   await expect.poll(() => pinnedAuthors(page)).toEqual([longAuthor])
 
   await authorChip(page, 'Anne Able').click({ button: 'right' })
-  await page
-    .getByTestId('library-author-context-menu')
-    .getByRole('menuitem', { name: /^Pin$/ })
-    .click()
+  await page.getByTestId('library-author-context-menu').getByRole('menuitem', { name: /^Pin$/ }).click()
   await expect.poll(() => authorNames(page)).toEqual(['Anne Able', longAuthor])
-  await expect
-    .poll(() => pinnedAuthors(page))
-    .toEqual(['Anne Able', longAuthor])
+  await expect.poll(() => pinnedAuthors(page)).toEqual(['Anne Able', longAuthor])
 
   await authorChip(page, 'Anne Able').click({ button: 'right' })
   await expect(
@@ -261,9 +239,7 @@ test('library author filters pin authors and refresh when books change', async (
   expect((await authorNames(page))[0]).toBe(longAuthor)
 })
 
-test('library filter panel clears filters on Escape without closing', async ({
-  page,
-}) => {
+test('library filter panel clears filters on Escape without closing', async ({ page }) => {
   await setupLibrary(page)
 
   await authorChip(page, 'Anne Able').click()
@@ -277,10 +253,7 @@ test('library filter panel clears filters on Escape without closing', async ({
 
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('library-filter-panel')).toBeVisible()
-  await expect(authorChip(page, 'Anne Able')).toHaveAttribute(
-    'aria-pressed',
-    'false',
-  )
+  await expect(authorChip(page, 'Anne Able')).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByText('Beta Read')).toBeVisible()
 
   await page.keyboard.press('Escape')

@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { CheckIcon } from 'lucide-react'
-import React from 'react'
+import type React from 'react'
 
 import { AppTooltip } from '../components/AppTooltip'
 import { ReadingStatusIcon } from '../components/ReadingStatusIcon'
@@ -10,11 +10,7 @@ import type { ReadingStatus } from '../storage'
 
 import { bookCoverCornerBadgeClassName, bookCoverCornerIconSize } from './model'
 
-export const readingStatusOptions: ReadingStatus[] = [
-  'toRead',
-  'reading',
-  'read',
-]
+export const readingStatusOptions: ReadingStatus[] = ['toRead', 'reading', 'read']
 
 const readingStatusBadgeClassName: Record<ReadingStatus, string> = {
   toRead: 'bg-amber-500 text-white ring-amber-700/15',
@@ -22,31 +18,21 @@ const readingStatusBadgeClassName: Record<ReadingStatus, string> = {
   read: 'bg-emerald-600 text-white ring-emerald-800/15',
 }
 
-export const readingStatusEditButtonClassName: Record<
-  ReadingStatus | 'unmarked',
-  string
-> = {
-  unmarked:
-    'bg-popover/95 text-muted-foreground ring-border hover:bg-muted hover:text-foreground',
+export const readingStatusEditButtonClassName: Record<ReadingStatus | 'unmarked', string> = {
+  unmarked: 'bg-popover/95 text-muted-foreground ring-border hover:bg-muted hover:text-foreground',
   toRead: 'bg-amber-50/95 text-amber-600 ring-amber-200 hover:bg-amber-100',
   reading: 'bg-sky-50/95 text-sky-600 ring-sky-200 hover:bg-sky-100',
   read: 'bg-emerald-50/95 text-emerald-600 ring-emerald-200 hover:bg-emerald-100',
 }
 
-const readingStatusProgressBarClassName: Record<
-  ReadingStatus | 'unmarked',
-  string
-> = {
+const readingStatusProgressBarClassName: Record<ReadingStatus | 'unmarked', string> = {
   unmarked: 'bg-sky-500',
   toRead: 'bg-amber-500',
   reading: 'bg-sky-500',
   read: 'bg-emerald-500',
 }
 
-const readingStatusProgressPillClassName: Record<
-  ReadingStatus | 'unmarked',
-  string
-> = {
+const readingStatusProgressPillClassName: Record<ReadingStatus | 'unmarked', string> = {
   unmarked: 'bg-sky-50/95 text-sky-600 ring-sky-200',
   toRead: 'bg-amber-50/95 text-amber-600 ring-amber-200',
   reading: 'bg-sky-50/95 text-sky-600 ring-sky-200',
@@ -63,10 +49,7 @@ export const BookProgress: React.FC<{
     <div className="pointer-events-none absolute right-1 bottom-1 left-1 z-10 flex items-center gap-1.5">
       <div className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-white/75 shadow-sm ring-1 ring-black/5">
         <div
-          className={clsx(
-            'h-full rounded-full',
-            readingStatusProgressBarClassName[statusKey],
-          )}
+          className={clsx('h-full rounded-full', readingStatusProgressBarClassName[statusKey])}
           style={{ width: `${percent}%` }}
         />
       </div>
@@ -89,7 +72,6 @@ export const ReadingStatusBadge: React.FC<{
 }> = ({ hidden, status, title }) => {
   const badge = (
     <div
-      aria-label={title}
       className={clsx(
         bookCoverCornerBadgeClassName,
         'absolute top-2 right-2 z-10 transition-opacity group-hover:opacity-0',
@@ -97,12 +79,7 @@ export const ReadingStatusBadge: React.FC<{
         hidden && 'opacity-0',
       )}
     >
-      <ReadingStatusIcon
-        status={status}
-        size={bookCoverCornerIconSize}
-        tone="current"
-        className="text-white"
-      />
+      <ReadingStatusIcon status={status} size={bookCoverCornerIconSize} tone="current" className="text-white" />
     </div>
   )
 
@@ -150,9 +127,7 @@ const ReadingStatusMenuItem: React.FC<{
     size="sm"
     className={clsx(
       'h-8 w-full justify-start gap-2 px-2 text-base leading-none',
-      danger
-        ? 'text-destructive hover:bg-destructive/10 hover:text-destructive'
-        : 'text-muted-foreground',
+      danger ? 'text-destructive hover:bg-destructive/10 hover:text-destructive' : 'text-muted-foreground',
     )}
     style={{ fontSize: 'var(--app-font-size-md)' }}
     onClick={onClick}
@@ -162,9 +137,7 @@ const ReadingStatusMenuItem: React.FC<{
       status={iconStatus}
       className={danger ? 'text-destructive' : undefined}
     />
-    <span className="min-w-0 flex-1 truncate text-left leading-none">
-      {label}
-    </span>
+    <span className="min-w-0 flex-1 truncate text-left leading-none">{label}</span>
     {checked && <CheckIcon className="size-4 shrink-0 text-(--flow-accent)" />}
   </Button>
 )

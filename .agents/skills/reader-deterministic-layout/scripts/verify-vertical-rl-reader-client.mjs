@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+
 import { chromium } from '@playwright/test'
 import sharp from 'sharp'
 
@@ -10,8 +11,7 @@ const INVENTORY_FILE =
 const OUT_DIR =
   process.env.FLOW_READER_VERTICAL_OUT_DIR ??
   path.join(process.cwd(), 'test-results', 'reader-layout-vertical-rl-release')
-const TITLE_SEARCH_ONLY =
-  process.env.FLOW_READER_VERTICAL_TITLE_SEARCH_ONLY === '1'
+const TITLE_SEARCH_ONLY = process.env.FLOW_READER_VERTICAL_TITLE_SEARCH_ONLY === '1'
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 function assert(condition, message, detail) {
@@ -69,9 +69,7 @@ async function closeTransientUi(page) {
   await page.keyboard.press('Escape').catch(() => {})
   await page.keyboard.press('Escape').catch(() => {})
   await page
-    .locator(
-      '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
-    )
+    .locator('[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]')
     .click({ position: { x: 80, y: 80 } })
     .catch(() => {})
   await wait(150)
@@ -80,9 +78,7 @@ async function closeTransientUi(page) {
 async function inspectReader(page) {
   return page.evaluate(() => {
     const tab = window.reader?.focusedBookTab
-    const pane = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
+    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     const content = pane?.querySelector('[data-flow-reader-content]')
     const contentRect = content?.getBoundingClientRect()
     const pageWidth = tab?.rendition?.manager?.layout?.pageWidth
@@ -94,12 +90,8 @@ async function inspectReader(page) {
         const body = frame.contentDocument?.body
         const bodyStyle = body && frame.contentWindow?.getComputedStyle(body)
         const paragraph = frame.contentDocument?.querySelector('p')
-        const paragraphStyle =
-          paragraph && frame.contentWindow?.getComputedStyle(paragraph)
-        const walker = frame.contentDocument?.createTreeWalker(
-          body,
-          NodeFilter.SHOW_TEXT,
-        )
+        const paragraphStyle = paragraph && frame.contentWindow?.getComputedStyle(paragraph)
+        const walker = frame.contentDocument?.createTreeWalker(body, NodeFilter.SHOW_TEXT)
         let flow
         let node
         while ((node = walker?.nextNode())) {
@@ -174,21 +166,13 @@ async function inspectReader(page) {
 
 async function screenshotWithGapCheck(page, file, reader) {
   await page.screenshot({ path: file })
-  const frame = reader.frames.find(
-    (candidate) => candidate.writingMode === 'vertical-rl',
-  )
+  const frame = reader.frames.find((candidate) => candidate.writingMode === 'vertical-rl')
   assert(frame, 'no rendered vertical-rl frame found', reader)
   assert(reader.contentRect, 'reader content rect is missing', reader)
-  assert(
-    reader.pageWidth > 0 && reader.gap > 0,
-    'invalid page geometry',
-    reader,
-  )
+  assert(reader.pageWidth > 0 && reader.gap > 0, 'invalid page geometry', reader)
 
   const dpr = reader.devicePixelRatio || 1
-  const left = Math.round(
-    (reader.contentRect.left + reader.pageWidth - reader.gap / 2) * dpr,
-  )
+  const left = Math.round((reader.contentRect.left + reader.pageWidth - reader.gap / 2) * dpr)
   const top = Math.round(frame.rect.top * dpr)
   const width = Math.max(1, Math.round(reader.gap * dpr))
   const height = Math.max(1, Math.round(frame.rect.height * dpr))
@@ -200,11 +184,7 @@ async function screenshotWithGapCheck(page, file, reader) {
     width: Math.min(width, metadata.width - left),
     height: Math.min(height, metadata.height - top),
   }
-  const { data, info } = await image
-    .extract(extract)
-    .removeAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true })
+  const { data, info } = await image.extract(extract).removeAlpha().raw().toBuffer({ resolveWithObject: true })
   let darkPixels = 0
   for (let index = 0; index < data.length; index += info.channels) {
     if (data[index] < 150 && data[index + 1] < 150 && data[index + 2] < 150) {
@@ -221,9 +201,7 @@ async function screenshotWithGapCheck(page, file, reader) {
 
 async function selectVisibleRange(page, mode) {
   return page.evaluate((selectionMode) => {
-    const pane = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
+    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     const paneRect = pane?.getBoundingClientRect()
     if (!pane || !paneRect) throw new Error('active reader pane is missing')
 
@@ -242,11 +220,7 @@ async function selectVisibleRange(page, mode) {
             candidates.push([match.index, match.index + match[0].length])
           }
         } else if (value.length >= 30) {
-          for (
-            let start = 0;
-            start < Math.min(80, value.length - 30);
-            start += 1
-          ) {
+          for (let start = 0; start < Math.min(80, value.length - 30); start += 1) {
             for (const length of [80, 60, 45, 30]) {
               if (start + length <= value.length) {
                 candidates.push([start, start + length])
@@ -267,10 +241,7 @@ async function selectVisibleRange(page, mode) {
             width: rect.width,
             height: rect.height,
           }))
-          if (
-            !rects.length ||
-            (selectionMode === 'cross' && rects.length < 2)
-          ) {
+          if (!rects.length || (selectionMode === 'cross' && rects.length < 2)) {
             continue
           }
           if (
@@ -312,13 +283,9 @@ async function selectVisibleRange(page, mode) {
 }
 
 async function inspectSelectionMenu(page, selected) {
-  await page
-    .locator('button[aria-label="highlight yellow"]')
-    .waitFor({ state: 'visible' })
+  await page.locator('button[aria-label="highlight yellow"]').waitFor({ state: 'visible' })
   return page.evaluate((selection) => {
-    const action = document.querySelector(
-      'button[aria-label="highlight yellow"]',
-    )
+    const action = document.querySelector('button[aria-label="highlight yellow"]')
     const menu = action?.closest('[data-flow-keyboard-capture="true"]')
     const pane = menu?.closest('[data-flow-reader-pane]')
     const content = pane?.querySelector('[data-flow-reader-content]')
@@ -339,17 +306,14 @@ async function inspectSelectionMenu(page, selected) {
     )
 
     return {
-      actionCount: document.querySelectorAll(
-        'button[aria-label^="highlight "], button[aria-label^="underline "]',
-      ).length,
+      actionCount: document.querySelectorAll('button[aria-label^="highlight "], button[aria-label^="underline "]')
+        .length,
       inside:
         menuRect.left >= contentRect.left &&
         menuRect.right <= contentRect.right &&
         menuRect.top >= contentRect.top &&
         menuRect.bottom <= contentRect.bottom,
-      beside:
-        menuRect.right <= selectionRect.left ||
-        menuRect.left >= selectionRect.right,
+      beside: menuRect.right <= selectionRect.left || menuRect.left >= selectionRect.right,
       overlaps,
     }
   }, selected)
@@ -364,17 +328,11 @@ async function verifyNotePopover(page) {
     ]
     for (const section of ordered) {
       await tab.ensureSectionInfo(section)
-      const link = Array.from(
-        section.document?.querySelectorAll('a[href*="#"]') ?? [],
-      ).find((candidate) => {
+      const link = Array.from(section.document?.querySelectorAll('a[href*="#"]') ?? []).find((candidate) => {
         const marker = candidate.textContent?.trim() ?? ''
         return (
-          /^[[\(（〔【]?[0-9一二三四五六七八九十]+[\]\)）〕】]?$/.test(
-            marker,
-          ) &&
-          !candidate.closest(
-            '.note, aside, [role="doc-footnote"], [epub\\:type~="footnote"]',
-          )
+          /^[[(（〔【]?[0-9一二三四五六七八九十]+[\])）〕】]?$/.test(marker) &&
+          !candidate.closest('.note, aside, [role="doc-footnote"], [epub\\:type~="footnote"]')
         )
       })
       if (!link) continue
@@ -388,24 +346,16 @@ async function verifyNotePopover(page) {
   await wait(800)
 
   const anchor = await page.evaluate(() => {
-    const pane = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
+    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     const paneRect = pane?.getBoundingClientRect()
     if (!pane || !paneRect) throw new Error('reader pane is missing')
     for (const frame of pane.querySelectorAll('iframe')) {
       const frameRect = frame.getBoundingClientRect()
-      for (const link of frame.contentDocument?.querySelectorAll(
-        'a[href*="#"]',
-      ) ?? []) {
+      for (const link of frame.contentDocument?.querySelectorAll('a[href*="#"]') ?? []) {
         const marker = link.textContent?.trim() ?? ''
         if (
-          !/^[[\(（〔【]?[0-9一二三四五六七八九十]+[\]\)）〕】]?$/.test(
-            marker,
-          ) ||
-          link.closest(
-            '.note, aside, [role="doc-footnote"], [epub\\:type~="footnote"]',
-          )
+          !/^[[(（〔【]?[0-9一二三四五六七八九十]+[\])）〕】]?$/.test(marker) ||
+          link.closest('.note, aside, [role="doc-footnote"], [epub\\:type~="footnote"]')
         ) {
           continue
         }
@@ -448,10 +398,7 @@ async function verifyNotePopover(page) {
     if (!rect || !content) throw new Error('note popover is missing')
     return {
       side: rect.right < anchorRect.left ? 'left' : 'right',
-      gap:
-        rect.right < anchorRect.left
-          ? anchorRect.left - rect.right
-          : rect.left - anchorRect.right,
+      gap: rect.right < anchorRect.left ? anchorRect.left - rect.right : rect.left - anchorRect.right,
       writingMode: getComputedStyle(content).writingMode,
       contentLength: content.textContent?.trim().length ?? 0,
     }
@@ -463,17 +410,13 @@ async function verifyDefinition(page, screenshotFile) {
   const selected = await selectVisibleRange(page, 'short')
   const menu = await inspectSelectionMenu(page, selected)
   await page.getByRole('button', { name: '定义', exact: true }).click()
-  await page.waitForFunction(
-    () => document.querySelectorAll('[ref="flow-definition-underline"]').length,
-  )
+  await page.waitForFunction(() => document.querySelectorAll('[ref="flow-definition-underline"]').length)
   const geometry = await page.evaluate((selection) => {
     const selectedLeft = Math.min(...selection.rects.map((rect) => rect.left))
-    const paths = Array.from(
-      document.querySelectorAll('[ref="flow-definition-underline"] path'),
-    ).map((path) => path.getBoundingClientRect())
-    const path = paths.find(
-      (rect) => Math.abs(rect.top - selection.rects[0].top) < 80,
+    const paths = Array.from(document.querySelectorAll('[ref="flow-definition-underline"] path')).map((path) =>
+      path.getBoundingClientRect(),
     )
+    const path = paths.find((rect) => Math.abs(rect.top - selection.rects[0].top) < 80)
     if (!path) throw new Error('definition wave path is missing')
     return {
       pathRight: path.right,
@@ -482,10 +425,7 @@ async function verifyDefinition(page, screenshotFile) {
     }
   }, selected)
   await page.screenshot({ path: screenshotFile })
-  await page.evaluate(
-    (text) => window.reader.focusedBookTab.undefine(text),
-    selected.text,
-  )
+  await page.evaluate((text) => window.reader.focusedBookTab.undefine(text), selected.text)
   return { menu, geometry, queryLength: selected.text.length }
 }
 
@@ -496,19 +436,13 @@ async function verifyAnnotationHighlight(page, screenshotFile) {
   await wait(500)
   const result = await page.evaluate((selection) => {
     const tab = window.reader.focusedBookTab
-    const annotation = [...tab.book.annotations].find(
-      (candidate) => candidate.cfi === selection.cfi,
-    )
+    const annotation = [...tab.book.annotations].find((candidate) => candidate.cfi === selection.cfi)
     if (!annotation) throw new Error('created annotation is missing')
-    const markRects = Array.from(
-      document.querySelectorAll('[ref="epubjs-hl"] rect'),
-    )
+    const markRects = Array.from(document.querySelectorAll('[ref="epubjs-hl"] rect'))
       .map((rect) => rect.getBoundingClientRect())
       .filter((rect) =>
         selection.rects.some(
-          (selected) =>
-            Math.abs(rect.left - selected.left) < 8 &&
-            Math.abs(rect.top - selected.top) < 8,
+          (selected) => Math.abs(rect.left - selected.left) < 8 && Math.abs(rect.top - selected.top) < 8,
         ),
       )
       .map((rect) => ({
@@ -519,35 +453,19 @@ async function verifyAnnotationHighlight(page, screenshotFile) {
       }))
     return { cfi: annotation.cfi, markRects }
   }, selected)
-  assert(
-    result.markRects.length >= 2,
-    'cross-line highlight fragments are missing',
-    {
-      selected,
-      result,
-    },
-  )
+  assert(result.markRects.length >= 2, 'cross-line highlight fragments are missing', {
+    selected,
+    result,
+  })
   const first = selected.rects[0]
   const second = selected.rects[1]
-  assert(
-    first.left > second.left,
-    'vertical range did not advance right-to-left',
-    selected,
-  )
-  assert(
-    first.top > second.top,
-    'cross-line range does not split bottom then top',
-    selected,
-  )
+  assert(first.left > second.left, 'vertical range did not advance right-to-left', selected)
+  assert(first.top > second.top, 'cross-line range does not split bottom then top', selected)
   await page.screenshot({ path: screenshotFile })
 
   await page.evaluate((selection) => {
-    const pane = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
-    const target = Array.from(
-      pane?.querySelectorAll('[ref="epubjs-hl"]') ?? [],
-    ).find((mark) => {
+    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
+    const target = Array.from(pane?.querySelectorAll('[ref="epubjs-hl"]') ?? []).find((mark) => {
       const rect = mark.getBoundingClientRect()
       return selection.rects.some(
         (selected) =>
@@ -569,10 +487,7 @@ async function verifyAnnotationHighlight(page, screenshotFile) {
   }, selected)
   const reopened = await inspectSelectionMenu(page, selected)
   await page.keyboard.press('Escape')
-  await page.evaluate(
-    (cfi) => window.reader.focusedBookTab.removeAnnotation(cfi),
-    result.cfi,
-  )
+  await page.evaluate((cfi) => window.reader.focusedBookTab.removeAnnotation(cfi), result.cfi)
   return {
     menu,
     reopened,
@@ -593,10 +508,7 @@ async function findRepeatedVisibleQuery(page) {
     }
     const candidates = []
     const seen = new Set()
-    const walker = view.document.createTreeWalker(
-      view.document.body,
-      NodeFilter.SHOW_TEXT,
-    )
+    const walker = view.document.createTreeWalker(view.document.body, NodeFilter.SHOW_TEXT)
     let node
     while ((node = walker.nextNode()) && candidates.length < 160) {
       const text = (node.textContent ?? '').replace(/\s+/g, '')
@@ -610,24 +522,17 @@ async function findRepeatedVisibleQuery(page) {
     for (const query of candidates) {
       const matches = section.find(query).filter((match) => match.cfi)
       if (matches.length < 2) continue
-      const pageIndexes = await Promise.all(
-        matches.map((match) => tab.pageIndexForCfi(section.index, match.cfi)),
-      )
+      const pageIndexes = await Promise.all(matches.map((match) => tab.pageIndexForCfi(section.index, match.cfi)))
       const indexesByPage = new Map()
       pageIndexes.forEach((pageIndex, index) => {
         const indexes = indexesByPage.get(pageIndex) ?? []
         indexes.push(index)
         indexesByPage.set(pageIndex, indexes)
       })
-      const samePage = Array.from(indexesByPage.entries()).find(
-        ([, indexes]) => indexes[0] === 0 && indexes[1] === 1,
-      )
+      const samePage = Array.from(indexesByPage.entries()).find(([, indexes]) => indexes[0] === 0 && indexes[1] === 1)
       if (samePage) {
         const [pageIndex, visibleIndexes] = samePage
-        await tab.displayReflowableTarget(
-          section.index,
-          matches[visibleIndexes[0]].cfi,
-        )
+        await tab.displayReflowableTarget(section.index, matches[visibleIndexes[0]].cfi)
         return { query, count: matches.length, pageIndex, visibleIndexes }
       }
     }
@@ -637,8 +542,7 @@ async function findRepeatedVisibleQuery(page) {
 
 async function spreadSignature(page) {
   return page.evaluate(() => {
-    const spread =
-      window.reader.focusedBookTab.rendition.manager.currentReflowableSpread
+    const spread = window.reader.focusedBookTab.rendition.manager.currentReflowableSpread
     return {
       right: spread?.right && {
         sectionIndex: spread.right.section.index,
@@ -660,60 +564,43 @@ async function verifySearches(page, screenshotFile) {
   const beforeFind = await spreadSignature(page)
 
   await page
-    .locator(
-      '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
-    )
+    .locator('[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]')
     .click({ position: { x: 80, y: 80 } })
   await page.keyboard.press('Control+f')
   const chapterInput = page.getByRole('textbox', { name: '当前章节搜索' })
   await chapterInput.fill(query)
   await page.waitForFunction(
     ({ ordinal, count }) =>
-      document
-        .querySelector('[data-flow-chapter-find-bar]')
-        ?.innerText.includes(`${ordinal}/${count}`),
+      document.querySelector('[data-flow-chapter-find-bar]')?.innerText.includes(`${ordinal}/${count}`),
     { ordinal: initialOrdinal, count: repeated.count },
   )
   await chapterInput.press('Enter')
   await page.waitForFunction(
     ({ ordinal, count }) =>
-      document
-        .querySelector('[data-flow-chapter-find-bar]')
-        ?.innerText.includes(`${ordinal}/${count}`),
+      document.querySelector('[data-flow-chapter-find-bar]')?.innerText.includes(`${ordinal}/${count}`),
     { ordinal: nextOrdinal, count: repeated.count },
   )
-  await page.waitForFunction(
-    () => document.querySelectorAll('[ref="epubjs-hl"]').length > 0,
-  )
+  await page.waitForFunction(() => document.querySelectorAll('[ref="epubjs-hl"]').length > 0)
   const chapter = {
     markCount: await page.locator('[ref="epubjs-hl"]').count(),
-    stayedOnSpread:
-      JSON.stringify(await spreadSignature(page)) ===
-      JSON.stringify(beforeFind),
+    stayedOnSpread: JSON.stringify(await spreadSignature(page)) === JSON.stringify(beforeFind),
   }
   await page.keyboard.press('Escape')
 
   await page.getByRole('button', { name: '搜索', exact: true }).click()
   const sidebarInput = page.getByRole('textbox', { name: '搜索' })
   await sidebarInput.fill(query)
-  const result = page
-    .locator('.list-row[role="button"]:has(svg.invisible)')
-    .filter({ hasText: query })
-    .last()
+  const result = page.locator('.list-row[role="button"]:has(svg.invisible)').filter({ hasText: query }).last()
   await result.waitFor({ state: 'visible' })
   await result.click()
   await page.waitForFunction(
     (query) =>
       Array.from(document.querySelectorAll('.list-row[role="button"]')).some(
-        (row) =>
-          row.getAttribute('aria-current') === 'true' &&
-          row.textContent?.includes(query),
+        (row) => row.getAttribute('aria-current') === 'true' && row.textContent?.includes(query),
       ),
     query,
   )
-  await page.waitForFunction(
-    () => document.querySelectorAll('[ref="epubjs-hl"]').length > 0,
-  )
+  await page.waitForFunction(() => document.querySelectorAll('[ref="epubjs-hl"]').length > 0)
   const sidebar = await page.evaluate(() => ({
     markCount: document.querySelectorAll('[ref="epubjs-hl"]').length,
     hasResults: /个结果|results?/i.test(document.body.innerText),
@@ -732,18 +619,11 @@ async function verifySearches(page, screenshotFile) {
 async function inspectChapterFindMatch(page, query) {
   return page.evaluate(async (value) => {
     const tab = window.reader.focusedBookTab
-    const section =
-      tab.rendition.manager.currentReflowableSpread?.right?.section ??
-      tab.currentSection ??
-      tab.section
-    const view = tab.rendition.manager.views._views.find(
-      (candidate) => candidate.section.index === section.index,
-    )
+    const section = tab.rendition.manager.currentReflowableSpread?.right?.section ?? tab.currentSection ?? tab.section
+    const view = tab.rendition.manager.views._views.find((candidate) => candidate.section.index === section.index)
     const body = view?.contents?.document?.body
     const matches = section.find(value)
-    const pageIndexes = await Promise.all(
-      matches.map((match) => tab.pageIndexForCfi(section.index, match.cfi)),
-    )
+    const pageIndexes = await Promise.all(matches.map((match) => tab.pageIndexForCfi(section.index, match.cfi)))
     const ranges = matches.map((match, index) => {
       const range = view?.contents?.range(match.cfi)
       return {
@@ -764,26 +644,22 @@ async function inspectChapterFindMatch(page, query) {
 
 async function waitForVisibleActiveChapterFindHighlight(page) {
   await page.waitForFunction(() => {
-    const content = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
-    )
+    const content = document.querySelector('[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]')
     const contentRect = content?.getBoundingClientRect()
     if (!contentRect) return false
 
-    return Array.from(document.querySelectorAll('[ref="epubjs-hl"]')).some(
-      (mark) => {
-        const rect = mark.getBoundingClientRect()
-        const fill = mark.getAttribute('fill') ?? getComputedStyle(mark).fill
-        return (
-          fill.includes('59') &&
-          fill.includes('130') &&
-          rect.right > contentRect.left &&
-          rect.left < contentRect.right &&
-          rect.bottom > contentRect.top &&
-          rect.top < contentRect.bottom
-        )
-      },
-    )
+    return Array.from(document.querySelectorAll('[ref="epubjs-hl"]')).some((mark) => {
+      const rect = mark.getBoundingClientRect()
+      const fill = mark.getAttribute('fill') ?? getComputedStyle(mark).fill
+      return (
+        fill.includes('59') &&
+        fill.includes('130') &&
+        rect.right > contentRect.left &&
+        rect.left < contentRect.right &&
+        rect.bottom > contentRect.top &&
+        rect.top < contentRect.bottom
+      )
+    })
   })
 }
 
@@ -804,11 +680,8 @@ async function verifyKnownChapterTitleFinds(page, title, screenshotFile) {
   for (const [caseIndex, item] of cases.entries()) {
     await page.evaluate(async (chapter) => {
       const tab = window.reader.focusedBookTab
-      const flatten = (items) =>
-        items.flatMap((entry) => [entry, ...flatten(entry.subitems ?? [])])
-      const navItem = flatten(tab.nav.toc).find(
-        (entry) => entry.label.trim() === chapter,
-      )
+      const flatten = (items) => items.flatMap((entry) => [entry, ...flatten(entry.subitems ?? [])])
+      const navItem = flatten(tab.nav.toc).find((entry) => entry.label.trim() === chapter)
       if (!navItem) throw new Error(`Missing chapter ${chapter}`)
       const section = tab.epub.spine.get(navItem.href)
       if (!section) throw new Error(`Missing section for ${chapter}`)
@@ -827,9 +700,7 @@ async function verifyKnownChapterTitleFinds(page, title, screenshotFile) {
       match,
     })
     assert(
-      match.ranges.every(
-        (range) => range.inBody && range.text?.includes(item.query),
-      ),
+      match.ranges.every((range) => range.inBody && range.text?.includes(item.query)),
       'chapter find included a non-body or unresolved match',
       { item, match },
     )
@@ -837,40 +708,28 @@ async function verifyKnownChapterTitleFinds(page, title, screenshotFile) {
     let initialIndex = 0
     let visiblePageIndexes
     if (item.startAtLastPage) {
-      const lastPage = Math.max(
-        ...match.ranges.map((range) => range.pageIndex ?? 0),
-      )
-      initialIndex = match.ranges.findIndex(
-        (range) => range.pageIndex === lastPage,
-      )
+      const lastPage = Math.max(...match.ranges.map((range) => range.pageIndex ?? 0))
+      initialIndex = match.ranges.findIndex((range) => range.pageIndex === lastPage)
       const target = match.ranges[initialIndex]
       assert(target?.cfi, 'last-page title match has no CFI', { item, match })
       await page.evaluate(
         async ({ sectionIndex, cfi }) => {
-          await window.reader.focusedBookTab.displayReflowableTarget(
-            sectionIndex,
-            cfi,
-          )
+          await window.reader.focusedBookTab.displayReflowableTarget(sectionIndex, cfi)
         },
         { sectionIndex: match.sectionIndex, cfi: target.cfi },
       )
       await wait(800)
       visiblePageIndexes = await page.evaluate((sectionIndex) => {
-        const spread =
-          window.reader.focusedBookTab.rendition.manager.currentReflowableSpread
+        const spread = window.reader.focusedBookTab.rendition.manager.currentReflowableSpread
         return [spread?.right, spread?.left]
           .filter((address) => address?.section?.index === sectionIndex)
           .map((address) => address.pageIndex)
       }, match.sectionIndex)
-      initialIndex = match.ranges.findIndex((range) =>
-        visiblePageIndexes.includes(range.pageIndex),
-      )
+      initialIndex = match.ranges.findIndex((range) => visiblePageIndexes.includes(range.pageIndex))
     }
 
     await page
-      .locator(
-        '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
-      )
+      .locator('[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]')
       .click({ position: { x: 80, y: 80 } })
     await page.keyboard.press('Control+f')
     const input = page.getByRole('textbox', { name: '当前章节搜索' })
@@ -878,14 +737,11 @@ async function verifyKnownChapterTitleFinds(page, title, screenshotFile) {
     const bar = page.locator('[data-flow-chapter-find-bar]')
     await page.waitForFunction(
       ({ count, ordinal }) =>
-        document
-          .querySelector('[data-flow-chapter-find-bar]')
-          ?.innerText.includes(`${ordinal}/${count}`),
+        document.querySelector('[data-flow-chapter-find-bar]')?.innerText.includes(`${ordinal}/${count}`),
       { count: match.count, ordinal: initialIndex + 1 },
     )
     assert(
-      (await bar.locator('button').nth(0).isDisabled()) ===
-        (initialIndex === 0),
+      (await bar.locator('button').nth(0).isDisabled()) === (initialIndex === 0),
       'previous title match boundary state is incorrect',
       { item, match },
     )
@@ -894,9 +750,7 @@ async function verifyKnownChapterTitleFinds(page, title, screenshotFile) {
     if (initialIndex + 1 < match.count) {
       if (item.startAtLastPage) {
         assert(
-          visiblePageIndexes.includes(
-            match.ranges[initialIndex + 1]?.pageIndex,
-          ),
+          visiblePageIndexes.includes(match.ranges[initialIndex + 1]?.pageIndex),
           'next known title match is not on the same terminal spread',
           { item, initialIndex, match, visiblePageIndexes },
         )
@@ -904,18 +758,15 @@ async function verifyKnownChapterTitleFinds(page, title, screenshotFile) {
       await input.press('Enter')
       await page.waitForFunction(
         ({ count, ordinal }) =>
-          document
-            .querySelector('[data-flow-chapter-find-bar]')
-            ?.innerText.includes(`${ordinal}/${count}`),
+          document.querySelector('[data-flow-chapter-find-bar]')?.innerText.includes(`${ordinal}/${count}`),
         { count: match.count, ordinal: initialIndex + 2 },
       )
       await waitForVisibleActiveChapterFindHighlight(page)
     } else {
-      assert(
-        await bar.locator('button').nth(1).isDisabled(),
-        'next title match is enabled for a single body result',
-        { item, match },
-      )
+      assert(await bar.locator('button').nth(1).isDisabled(), 'next title match is enabled for a single body result', {
+        item,
+        match,
+      })
     }
     results.push({
       ...item,
@@ -948,39 +799,27 @@ async function verifyChapterFindPageTurnMode(page, spreadMode, chapter, query) {
     })
   }, spreadMode)
   await page.waitForFunction(
-    (divisor) =>
-      window.reader.focusedBookTab.rendition.manager.layout.divisor === divisor,
+    (divisor) => window.reader.focusedBookTab.rendition.manager.layout.divisor === divisor,
     spreadMode === 'none' ? 1 : 2,
   )
 
   const prepared = await page.evaluate(
     async ({ chapter, query }) => {
       const tab = window.reader.focusedBookTab
-      const flatten = (items) =>
-        items.flatMap((entry) => [entry, ...flatten(entry.subitems ?? [])])
-      const navItem = flatten(tab.nav.toc).find(
-        (entry) => entry.label.trim() === chapter,
-      )
+      const flatten = (items) => items.flatMap((entry) => [entry, ...flatten(entry.subitems ?? [])])
+      const navItem = flatten(tab.nav.toc).find((entry) => entry.label.trim() === chapter)
       if (!navItem) throw new Error(`Missing chapter ${chapter}`)
       const section = tab.epub.spine.get(navItem.href)
       await tab.displaySectionStart(section)
       const matches = section.find(query)
-      const pageIndexes = await Promise.all(
-        matches.map((match) => tab.pageIndexForCfi(section.index, match.cfi)),
-      )
+      const pageIndexes = await Promise.all(matches.map((match) => tab.pageIndexForCfi(section.index, match.cfi)))
       const manager = tab.rendition.manager
-      const visiblePages = [
-        manager.currentReflowableSpread?.right,
-        manager.currentReflowableSpread?.left,
-      ]
+      const visiblePages = [manager.currentReflowableSpread?.right, manager.currentReflowableSpread?.left]
         .filter((address) => address?.section?.index === section.index)
         .map((address) => address.pageIndex)
-      const initialIndex = pageIndexes.findIndex((pageIndex) =>
-        visiblePages.includes(pageIndex),
-      )
+      const initialIndex = pageIndexes.findIndex((pageIndex) => visiblePages.includes(pageIndex))
       const firstOffPageIndex = pageIndexes.findIndex(
-        (pageIndex, index) =>
-          index > initialIndex && !visiblePages.includes(pageIndex),
+        (pageIndex, index) => index > initialIndex && !visiblePages.includes(pageIndex),
       )
       return {
         count: matches.length,
@@ -994,16 +833,13 @@ async function verifyChapterFindPageTurnMode(page, spreadMode, chapter, query) {
     { chapter, query },
   )
   assert(
-    prepared.initialIndex >= 0 &&
-      prepared.firstOffPageIndex > prepared.initialIndex,
+    prepared.initialIndex >= 0 && prepared.firstOffPageIndex > prepared.initialIndex,
     'known chapter has no off-page find transition',
     { spreadMode, prepared },
   )
 
   await page
-    .locator(
-      '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
-    )
+    .locator('[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]')
     .click({ position: { x: 80, y: 80 } })
   await page.keyboard.press('Control+f')
   const input = page.getByRole('textbox', { name: '当前章节搜索' })
@@ -1011,18 +847,12 @@ async function verifyChapterFindPageTurnMode(page, spreadMode, chapter, query) {
   const waitForOrdinal = (ordinal) =>
     page.waitForFunction(
       ({ count, ordinal: expected }) =>
-        document
-          .querySelector('[data-flow-chapter-find-bar]')
-          ?.innerText.includes(`${expected}/${count}`),
+        document.querySelector('[data-flow-chapter-find-bar]')?.innerText.includes(`${expected}/${count}`),
       { count: prepared.count, ordinal },
     )
   await waitForOrdinal(prepared.initialIndex + 1)
 
-  for (
-    let index = prepared.initialIndex + 1;
-    index < prepared.firstOffPageIndex;
-    index += 1
-  ) {
+  for (let index = prepared.initialIndex + 1; index < prepared.firstOffPageIndex; index += 1) {
     await input.press('Enter')
     await waitForOrdinal(index + 1)
   }
@@ -1031,12 +861,9 @@ async function verifyChapterFindPageTurnMode(page, spreadMode, chapter, query) {
   await waitForOrdinal(prepared.firstOffPageIndex + 1)
   await page.waitForFunction(
     ({ pageIndex, sectionIndex }) => {
-      const spread =
-        window.reader.focusedBookTab.rendition.manager.currentReflowableSpread
+      const spread = window.reader.focusedBookTab.rendition.manager.currentReflowableSpread
       return [spread?.right, spread?.left].some(
-        (address) =>
-          address?.section?.index === sectionIndex &&
-          address.pageIndex === pageIndex,
+        (address) => address?.section?.index === sectionIndex && address.pageIndex === pageIndex,
       )
     },
     {
@@ -1046,11 +873,12 @@ async function verifyChapterFindPageTurnMode(page, spreadMode, chapter, query) {
   )
   await waitForVisibleActiveChapterFindHighlight(page)
   const after = await spreadSignature(page)
-  assert(
-    JSON.stringify(before) !== JSON.stringify(after),
-    'off-page chapter find did not turn the spread',
-    { spreadMode, prepared, before, after },
-  )
+  assert(JSON.stringify(before) !== JSON.stringify(after), 'off-page chapter find did not turn the spread', {
+    spreadMode,
+    prepared,
+    before,
+    after,
+  })
   await page.keyboard.press('Escape')
   return {
     spreadMode,
@@ -1070,36 +898,22 @@ async function verifyKnownChapterFindPageTurns(page, title) {
   if (!target) return { applicable: false }
 
   await closeTransientUi(page)
-  const doublePage = await verifyChapterFindPageTurnMode(
-    page,
-    'auto',
-    target.chapter,
-    target.query,
-  )
-  const singlePage = await verifyChapterFindPageTurnMode(
-    page,
-    'none',
-    target.chapter,
-    target.query,
-  )
+  const doublePage = await verifyChapterFindPageTurnMode(page, 'auto', target.chapter, target.query)
+  const singlePage = await verifyChapterFindPageTurnMode(page, 'none', target.chapter, target.query)
   return { applicable: true, ...target, doublePage, singlePage }
 }
 
 async function verifyChapterNavigation(page, book) {
   const target = await page.evaluate((preferredLabel) => {
     const tab = window.reader.focusedBookTab
-    const flatten = (items) =>
-      items.flatMap((item) => [item, ...flatten(item.subitems ?? [])])
+    const flatten = (items) => items.flatMap((item) => [item, ...flatten(item.subitems ?? [])])
     const entries = flatten(tab.nav.toc)
-    const preferred = preferredLabel
-      ? entries.find((item) => item.label.trim() === preferredLabel)
-      : undefined
+    const preferred = preferredLabel ? entries.find((item) => item.label.trim() === preferredLabel) : undefined
     const fallback = entries.find((item, index) => {
       if (index < 2 || !item.href?.includes('#')) return false
       const path = item.href.split('#')[0]
       return entries.some(
-        (candidate, candidateIndex) =>
-          candidateIndex < index && candidate.href?.split('#')[0] === path,
+        (candidate, candidateIndex) => candidateIndex < index && candidate.href?.split('#')[0] === path,
       )
     })
     const item = preferred ?? fallback
@@ -1111,18 +925,15 @@ async function verifyChapterNavigation(page, book) {
   const tocButton = page.locator('.ActivityBar button[aria-label="目录"]')
   const tocOpen = await tocButton.evaluate((button) => {
     const sidebar = document.querySelector('.SideBar')
-    return (
-      !sidebar?.classList.contains('!hidden') &&
-      !button.className.includes('text-muted-foreground/70')
-    )
+    return !sidebar?.classList.contains('!hidden') && !button.className.includes('text-muted-foreground/70')
   })
   if (!tocOpen) {
     await tocButton.click()
   }
   await page.evaluate(() => {
-    const scroll = Array.from(
-      document.querySelectorAll('.SideBar .scroll'),
-    ).sort((a, b) => b.scrollHeight - a.scrollHeight)[0]
+    const scroll = Array.from(document.querySelectorAll('.SideBar .scroll')).sort(
+      (a, b) => b.scrollHeight - a.scrollHeight,
+    )[0]
     if (scroll) {
       scroll.scrollTop = 0
       scroll.dispatchEvent(new Event('scroll'))
@@ -1133,11 +944,10 @@ async function verifyChapterNavigation(page, book) {
   await row.click()
   await wait(800)
   const clicked = await inspectReader(page)
-  assert(
-    clicked.location?.start?.displayed?.slot === 'right',
-    'TOC target did not begin on the right page',
-    { target, clicked },
-  )
+  assert(clicked.location?.start?.displayed?.slot === 'right', 'TOC target did not begin on the right page', {
+    target,
+    clicked,
+  })
 
   const beforeNext = await spreadSignature(page)
   await page.keyboard.press('BracketRight')
@@ -1180,12 +990,9 @@ async function verifyChapterNavigation(page, book) {
       repeatedForward.push({ reader, spread })
     }
     assert(
-      new Set(repeatedForward.map((entry) => entry.spread?.right?.sectionIndex))
-        .size === repeatedForward.length &&
+      new Set(repeatedForward.map((entry) => entry.spread?.right?.sectionIndex)).size === repeatedForward.length &&
         repeatedForward.every(
-          (entry) =>
-            entry.reader.location?.start?.displayed?.slot === 'right' &&
-            entry.spread?.right?.pageIndex === 0,
+          (entry) => entry.reader.location?.start?.displayed?.slot === 'right' && entry.spread?.right?.pageIndex === 0,
         ),
       'repeated next chapter shortcuts became stuck or lost the right-page start',
       repeatedForward,
@@ -1199,13 +1006,9 @@ async function verifyChapterNavigation(page, book) {
       repeatedBackward.push({ reader, spread })
     }
     assert(
-      new Set(
-        repeatedBackward.map((entry) => entry.spread?.right?.sectionIndex),
-      ).size === repeatedBackward.length &&
+      new Set(repeatedBackward.map((entry) => entry.spread?.right?.sectionIndex)).size === repeatedBackward.length &&
         repeatedBackward.every(
-          (entry) =>
-            entry.reader.location?.start?.displayed?.slot === 'right' &&
-            entry.spread?.right?.pageIndex === 0,
+          (entry) => entry.reader.location?.start?.displayed?.slot === 'right' && entry.spread?.right?.pageIndex === 0,
         ),
       'repeated previous chapter shortcuts became stuck or lost the right-page start',
       repeatedBackward,
@@ -1226,9 +1029,7 @@ async function inspectPhysicalSectionSlots(page) {
   return page.evaluate(() => {
     const tab = window.reader.focusedBookTab
     const manager = tab.rendition.manager
-    const content = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
-    )
+    const content = document.querySelector('[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]')
     const contentRect = content?.getBoundingClientRect()
     if (!contentRect) throw new Error('active reader content is missing')
 
@@ -1243,11 +1044,7 @@ async function inspectPhysicalSectionSlots(page) {
         return {
           sectionIndex: view.section.index,
           href: view.section.href,
-          marker: (
-            body?.querySelector('h1, h2, h3')?.textContent ??
-            body?.innerText ??
-            ''
-          )
+          marker: (body?.querySelector('h1, h2, h3')?.textContent ?? body?.innerText ?? '')
             .replace(/\s+/g, ' ')
             .trim()
             .slice(0, 60),
@@ -1277,8 +1074,7 @@ async function verifyKnownCrossSectionChapterNavigation(page, title) {
   await wait(800)
   const longState = await inspectReader(page)
   assert(
-    longState.location?.start?.displayed?.total === 2 &&
-      longState.location?.start?.displayed?.slot === 'right',
+    longState.location?.start?.displayed?.total === 2 && longState.location?.start?.displayed?.slot === 'right',
     'known two-page chapter did not open on the right',
     longState,
   )
@@ -1302,8 +1098,7 @@ async function verifyKnownCrossSectionChapterNavigation(page, title) {
   const afterNext = await inspectReader(page)
   const afterNextPhysical = await inspectPhysicalSectionSlots(page)
   assert(
-    afterNext.location?.start?.displayed?.slot === 'right' &&
-      afterNextPhysical.right?.marker.includes('宅妖'),
+    afterNext.location?.start?.displayed?.slot === 'right' && afterNextPhysical.right?.marker.includes('宅妖'),
     'next chapter shortcut did not skip the chapter already visible on the left',
     { afterNext, afterNextPhysical },
   )
@@ -1353,28 +1148,21 @@ async function verifySingleAndZoom(page, screenshotFile) {
       const manager = tab.rendition.manager
       const spread = manager.currentReflowableSpread
       const views = manager.views._views
-      const view = views.find(
-        (candidate) =>
-          candidate.section.index === spread?.right?.section?.index,
-      )
+      const view = views.find((candidate) => candidate.section.index === spread?.right?.section?.index)
       const body = view?.contents?.document?.body ?? view?.document?.body
       const style = body && getComputedStyle(body)
       const bodyRect = body?.getBoundingClientRect()
       const frameWidth = view?.iframe?.contentWindow?.innerWidth
       let textCrossesBodyLeft = 0
       if (body && bodyRect) {
-        const walker = body.ownerDocument.createTreeWalker(
-          body,
-          NodeFilter.SHOW_TEXT,
-        )
+        const walker = body.ownerDocument.createTreeWalker(body, NodeFilter.SHOW_TEXT)
         let textNode = walker.nextNode()
         while (textNode) {
           if (textNode.textContent?.trim()) {
             const range = body.ownerDocument.createRange()
             range.selectNodeContents(textNode)
             textCrossesBodyLeft += Array.from(range.getClientRects()).filter(
-              (rect) =>
-                rect.left < bodyRect.left - 1 && rect.right > bodyRect.left + 1,
+              (rect) => rect.left < bodyRect.left - 1 && rect.right > bodyRect.left + 1,
             ).length
           }
           textNode = walker.nextNode()
@@ -1391,10 +1179,7 @@ async function verifySingleAndZoom(page, screenshotFile) {
         viewSectionIndexes: views.map((candidate) => candidate.section.index),
         hasLeft: !!spread?.left,
         bodyInsideFrame:
-          !!bodyRect &&
-          typeof frameWidth === 'number' &&
-          bodyRect.left >= -1 &&
-          bodyRect.right <= frameWidth + 1,
+          !!bodyRect && typeof frameWidth === 'number' && bodyRect.left >= -1 && bodyRect.right <= frameWidth + 1,
         textCrossesBodyLeft,
         style: style && {
           columnWidth: parseFloat(style.columnWidth),
@@ -1410,22 +1195,15 @@ async function verifySingleAndZoom(page, screenshotFile) {
   await page.waitForFunction(
     () =>
       window.reader.focusedBookTab.rendition.manager.layout.divisor === 1 &&
-      !window.reader.focusedBookTab.rendition.manager.currentReflowableSpread
-        ?.left,
+      !window.reader.focusedBookTab.rendition.manager.currentReflowableSpread?.left,
   )
   const single = await inspect()
-  assert(
-    single.viewCount === 1 && !single.hasLeft,
-    'single-page view leaked pages',
-    single,
-  )
+  assert(single.viewCount === 1 && !single.hasLeft, 'single-page view leaked pages', single)
 
   await setTypography('none', 1.5)
   await page.waitForFunction(() => {
-    const body =
-      window.reader.focusedBookTab.rendition.manager.views._views.find(
-        (view) => view.document?.body,
-      )?.document?.body
+    const body = window.reader.focusedBookTab.rendition.manager.views._views.find((view) => view.document?.body)
+      ?.document?.body
     return !!body && getComputedStyle(body).transform !== 'none'
   })
   await wait(600)
@@ -1447,9 +1225,7 @@ async function verifySingleAndZoom(page, screenshotFile) {
   )
   await page.screenshot({ path: screenshotFile })
   await setTypography('auto', undefined)
-  await page.waitForFunction(
-    () => window.reader.focusedBookTab.rendition.manager.layout.divisor === 2,
-  )
+  await page.waitForFunction(() => window.reader.focusedBookTab.rendition.manager.layout.divisor === 2)
   await wait(600)
   return { single, zoomed }
 }
@@ -1471,9 +1247,7 @@ async function verifyBook(page, book) {
       },
     })
   })
-  await page.waitForFunction(
-    () => window.reader.focusedBookTab.rendition.manager.layout.divisor === 2,
-  )
+  await page.waitForFunction(() => window.reader.focusedBookTab.rendition.manager.layout.divisor === 2)
   await wait(600)
   const initial = await inspectReader(page)
   assert(
@@ -1483,101 +1257,53 @@ async function verifyBook(page, book) {
     initial,
   )
   assert(
-    initial.frames.some(
-      (frame) =>
-        frame.writingMode === 'vertical-rl' &&
-        frame.flow?.secondTop > frame.flow?.firstTop,
-    ),
+    initial.frames.some((frame) => frame.writingMode === 'vertical-rl' && frame.flow?.secondTop > frame.flow?.firstTop),
     'vertical text does not flow top-to-bottom',
     initial,
   )
-  const initialGap = await screenshotWithGapCheck(
-    page,
-    path.join(OUT_DIR, `${book.id}-initial.png`),
-    initial,
-  )
-  assert(
-    initialGap.darkPixels === 0,
-    'initial spread gap contains dark pixels',
-    initialGap,
-  )
+  const initialGap = await screenshotWithGapCheck(page, path.join(OUT_DIR, `${book.id}-initial.png`), initial)
+  assert(initialGap.darkPixels === 0, 'initial spread gap contains dark pixels', initialGap)
 
   await page.keyboard.press('ArrowRight')
   await wait(600)
   const afterNext = await inspectReader(page)
-  const nextGap = await screenshotWithGapCheck(
-    page,
-    path.join(OUT_DIR, `${book.id}-next.png`),
-    afterNext,
-  )
-  assert(
-    nextGap.darkPixels === 0,
-    'page-turn spread gap contains dark pixels',
-    nextGap,
-  )
+  const nextGap = await screenshotWithGapCheck(page, path.join(OUT_DIR, `${book.id}-next.png`), afterNext)
+  assert(nextGap.darkPixels === 0, 'page-turn spread gap contains dark pixels', nextGap)
   await page.keyboard.press('ArrowLeft')
   await wait(500)
 
   const note = await verifyNotePopover(page)
   if (note.applicable) {
-    assert(
-      note.side === 'left',
-      'note popover did not prefer the physical left',
-      note,
-    )
-    assert(
-      note.writingMode === 'vertical-rl',
-      'note content is not vertical-rl',
-      note,
-    )
+    assert(note.side === 'left', 'note popover did not prefer the physical left', note)
+    assert(note.writingMode === 'vertical-rl', 'note content is not vertical-rl', note)
     assert(note.contentLength > 0, 'note popover content is empty', note)
     await page.screenshot({ path: path.join(OUT_DIR, `${book.id}-note.png`) })
     await page.keyboard.press('Escape')
   } else {
-    assert(
-      note.internalHashLinks === 0,
-      'book has linked notes but none could be opened',
-      note,
-    )
+    assert(note.internalHashLinks === 0, 'book has linked notes but none could be opened', note)
   }
 
-  const definition = await verifyDefinition(
-    page,
-    path.join(OUT_DIR, `${book.id}-definition.png`),
-  )
+  const definition = await verifyDefinition(page, path.join(OUT_DIR, `${book.id}-definition.png`))
   assert(
     definition.menu.actionCount === 5,
     'selection menu does not contain exactly five annotation actions',
     definition,
   )
   assert(
-    definition.menu.inside &&
-      definition.menu.beside &&
-      !definition.menu.overlaps,
+    definition.menu.inside && definition.menu.beside && !definition.menu.overlaps,
     'selection menu is clipped or covers the selection',
     definition,
   )
   assert(
-    definition.geometry.vertical &&
-      definition.geometry.pathRight <= definition.geometry.selectedLeft + 0.75,
+    definition.geometry.vertical && definition.geometry.pathRight <= definition.geometry.selectedLeft + 0.75,
     'definition wave is not on the glyph left side',
     definition,
   )
-  const annotation = await verifyAnnotationHighlight(
-    page,
-    path.join(OUT_DIR, `${book.id}-highlight.png`),
-  )
+  const annotation = await verifyAnnotationHighlight(page, path.join(OUT_DIR, `${book.id}-highlight.png`))
   const chapterNavigation = await verifyChapterNavigation(page, book)
-  const knownCrossSectionNavigation =
-    await verifyKnownCrossSectionChapterNavigation(page, title)
-  const singleAndZoom = await verifySingleAndZoom(
-    page,
-    path.join(OUT_DIR, `${book.id}-single-zoom.png`),
-  )
-  const searches = await verifySearches(
-    page,
-    path.join(OUT_DIR, `${book.id}-search.png`),
-  )
+  const knownCrossSectionNavigation = await verifyKnownCrossSectionChapterNavigation(page, title)
+  const singleAndZoom = await verifySingleAndZoom(page, path.join(OUT_DIR, `${book.id}-single-zoom.png`))
+  const searches = await verifySearches(page, path.join(OUT_DIR, `${book.id}-search.png`))
   const knownChapterTitleFinds = await verifyKnownChapterTitleFinds(
     page,
     title,
@@ -1619,15 +1345,11 @@ async function verifyTitleSearchBook(page, book) {
     title,
     path.join(OUT_DIR, `${book.id}-title-search.png`),
   )
-  const knownChapterFindPageTurns = await verifyKnownChapterFindPageTurns(
-    page,
-    title,
-  )
-  assert(
-    knownChapterTitleFinds.applicable,
-    'book has no known chapter title search cases',
-    { book, knownChapterTitleFinds },
-  )
+  const knownChapterFindPageTurns = await verifyKnownChapterFindPageTurns(page, title)
+  assert(knownChapterTitleFinds.applicable, 'book has no known chapter title search cases', {
+    book,
+    knownChapterTitleFinds,
+  })
 
   return {
     id: book.id,
@@ -1639,11 +1361,7 @@ async function verifyTitleSearchBook(page, book) {
 
 fs.mkdirSync(OUT_DIR, { recursive: true })
 const inventory = JSON.parse(fs.readFileSync(INVENTORY_FILE, 'utf8'))
-assert(
-  inventory.books?.length === 2,
-  'expected exactly two tagged vertical books',
-  inventory,
-)
+assert(inventory.books?.length === 2, 'expected exactly two tagged vertical books', inventory)
 
 const browser = await chromium.connectOverCDP(CDP_URL)
 try {
@@ -1651,19 +1369,13 @@ try {
   assert(page, 'no Flow Reader CDP page found')
   const results = []
   for (const book of inventory.books) {
-    results.push(
-      TITLE_SEARCH_ONLY
-        ? await verifyTitleSearchBook(page, book)
-        : await verifyBook(page, book),
-    )
+    results.push(TITLE_SEARCH_ONLY ? await verifyTitleSearchBook(page, book) : await verifyBook(page, book))
   }
   fs.writeFileSync(
     path.join(OUT_DIR, 'result.json'),
     JSON.stringify(
       {
-        mode: TITLE_SEARCH_ONLY
-          ? 'tauri-release-title-search'
-          : 'tauri-release',
+        mode: TITLE_SEARCH_ONLY ? 'tauri-release-title-search' : 'tauri-release',
         books: results,
       },
       null,

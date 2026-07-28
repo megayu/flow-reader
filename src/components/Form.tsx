@@ -1,13 +1,6 @@
 import clsx from 'clsx'
 import { type LucideIcon, XIcon } from 'lucide-react'
-import {
-  ElementType,
-  useRef,
-  useEffect,
-  useId,
-  RefObject,
-  ComponentProps,
-} from 'react'
+import { type ComponentProps, type ElementType, type RefObject, useEffect, useId, useRef } from 'react'
 import type { PolymorphicPropsWithoutRef } from 'react-polymorphic-types'
 
 import { useTranslation } from '../hooks/useTranslation'
@@ -120,19 +113,11 @@ interface LabelProps extends ComponentProps<'label'> {
   name: string
   hide?: boolean
 }
-export const Label: React.FC<LabelProps> = ({
-  name,
-  hide = false,
-  className,
-}) => {
+export const Label: React.FC<LabelProps> = ({ name, hide = false, className }) => {
   return (
     <label
       htmlFor={name}
-      className={clsx(
-        'text-muted-foreground mb-1 block text-base font-medium',
-        hide && 'hidden',
-        className,
-      )}
+      className={clsx('text-muted-foreground mb-1 block text-base font-medium', hide && 'hidden', className)}
     >
       {name}
     </label>

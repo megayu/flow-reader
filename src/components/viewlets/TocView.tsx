@@ -1,35 +1,21 @@
 import clsx from 'clsx'
-import {
-  FoldVerticalIcon,
-  LocateFixedIcon,
-  UnfoldVerticalIcon,
-} from 'lucide-react'
+import { FoldVerticalIcon, LocateFixedIcon, UnfoldVerticalIcon } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef } from 'react'
 import { useSnapshot } from 'valtio'
 
-import {
-  compareBookDisplayTitle,
-  getBookDisplayTitle,
-  getBookTooltip,
-} from '@/book'
+import { compareBookDisplayTitle, getBookDisplayTitle, getBookTooltip } from '@/book'
 import { useBackground } from '@/hooks/theme/useBackground'
 import { useLibrary } from '@/hooks/useLibrary'
 import { LIST_ITEM_SIZE, useList } from '@/hooks/useList'
 import { useTranslation } from '@/hooks/useTranslation'
-import {
-  BookTab,
-  compareHref,
-  INavItem,
-  reader,
-  useReaderSnapshot,
-} from '@/models/reader'
+import { type BookTab, compareHref, type INavItem, reader, useReaderSnapshot } from '@/models/reader'
 import { useSetViewMode } from '@/state'
 
 import { AppTooltip, readerPageTooltipContentStyle } from '../AppTooltip'
 import { BookTooltipContent } from '../BookTooltipContent'
-import { TREE_INDENT_SIZE, Twisty } from '../Row'
-import { Pane, PaneView, PaneViewProps } from '../base/PaneView'
+import { Pane, PaneView, type PaneViewProps } from '../base/PaneView'
 import { StateLayer } from '../base/StateLayer'
+import { TREE_INDENT_SIZE, Twisty } from '../Row'
 
 export const TocView: React.FC<PaneViewProps> = (props) => {
   const active = props.active ?? true
@@ -55,19 +41,13 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
   const { focusedBookTab, groups } = useReaderSnapshot()
   const setViewMode = useSetViewMode()
   const [, , background] = useBackground()
-  const sortedBooks = useMemo(
-    () => books?.slice().sort(compareBookDisplayTitle) ?? [],
-    [books],
-  )
-  const { outerRef, items, scrollbar, scrollToItem, totalSize } =
-    useList(sortedBooks)
+  const sortedBooks = useMemo(() => books?.slice().sort(compareBookDisplayTitle) ?? [], [books])
+  const { outerRef, items, scrollbar, scrollToItem, totalSize } = useList(sortedBooks)
   const openedBookIds = useMemo(
     () =>
       new Set(
         groups.flatMap((group) =>
-          group.tabs
-            .map((tab) => ('book' in tab ? tab.book?.id : undefined))
-            .filter((id): id is string => !!id),
+          group.tabs.map((tab) => ('book' in tab ? tab.book?.id : undefined)).filter((id): id is string => !!id),
         ),
       ),
     [groups],
@@ -111,11 +91,8 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
               type="button"
               className={clsx(
                 'group/library-row focus:ring-ring relative flex w-full items-center truncate py-0 pr-3 pl-5 text-left leading-none outline-none focus:ring-1 focus:ring-inset',
-                opened &&
-                  !active &&
-                  'text-foreground/85 bg-(--flow-bg-control)',
-                active &&
-                  clsx(background.rowActiveClassName, 'text-foreground'),
+                opened && !active && 'text-foreground/85 bg-(--flow-bg-control)',
+                active && clsx(background.rowActiveClassName, 'text-foreground'),
               )}
               style={{
                 height: LIST_ITEM_SIZE,
@@ -143,9 +120,7 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
                 <span
                   className={clsx(
                     'absolute inset-y-1 left-1 w-0.5 rounded-full',
-                    active
-                      ? 'w-1 bg-(--flow-accent)'
-                      : 'bg-(--flow-accent-border)',
+                    active ? 'w-1 bg-(--flow-accent)' : 'bg-(--flow-accent-border)',
                   )}
                 />
               )}
@@ -201,13 +176,7 @@ function useFocusedBookTabReference() {
 const EmptyTocPane: React.FC = () => {
   const t = useTranslation()
 
-  return (
-    <Pane
-      headline={t('toc.title')}
-      overlayScroll
-      storageKey="flow-reader:pane:toc:toc"
-    />
-  )
+  return <Pane headline={t('toc.title')} overlayScroll storageKey="flow-reader:pane:toc:toc" />
 }
 
 interface BookTocPaneProps {
@@ -267,12 +236,7 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
             tab.expandNavPath(navItem)
             lastScrolledKey.current = undefined
 
-            if (
-              !currentKey ||
-              tab.tocVersion !== tocVersion ||
-              currentIndex < 0
-            )
-              return
+            if (!currentKey || tab.tocVersion !== tocVersion || currentIndex < 0) return
 
             window.requestAnimationFrame(() => {
               if (!active) return
@@ -335,15 +299,7 @@ interface TocRowProps {
   untitledLabel: string
 }
 const TocRow: React.FC<TocRowProps> = memo(
-  ({
-    active,
-    activeClassName,
-    depth,
-    item,
-    itemExpanded,
-    tab,
-    untitledLabel,
-  }) => {
+  ({ active, activeClassName, depth, item, itemExpanded, tab, untitledLabel }) => {
     if (!item) return null
     const { label, subitems, href = '' } = item
     const hasSubitems = !!subitems?.length
@@ -396,9 +352,7 @@ const TocRow: React.FC<TocRowProps> = memo(
         <StateLayer
           className={clsx(
             'transition-colors',
-            active
-              ? 'group-hover/row:bg-(--flow-bg-active-hover)'
-              : 'group-hover/row:bg-(--flow-bg-control-hover)',
+            active ? 'group-hover/row:bg-(--flow-bg-active-hover)' : 'group-hover/row:bg-(--flow-bg-control-hover)',
           )}
         />
         <Twisty
@@ -419,9 +373,7 @@ const TocRow: React.FC<TocRowProps> = memo(
           }}
         >
           <span className="flex h-full min-w-0 items-center whitespace-nowrap">
-            <span className="block min-w-0 truncate">
-              {title || untitledLabel}
-            </span>
+            <span className="block min-w-0 truncate">{title || untitledLabel}</span>
           </span>
         </div>
         <div className="relative z-10 ml-auto flex h-full items-center" />

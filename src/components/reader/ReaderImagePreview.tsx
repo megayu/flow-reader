@@ -1,12 +1,5 @@
 import clsx from 'clsx'
-import {
-  MinusIcon,
-  PlusIcon,
-  RefreshCwIcon,
-  RotateCcwIcon,
-  RotateCwIcon,
-  XIcon,
-} from 'lucide-react'
+import { MinusIcon, PlusIcon, RefreshCwIcon, RotateCcwIcon, RotateCwIcon, XIcon } from 'lucide-react'
 import React, {
   type ComponentProps,
   useCallback,
@@ -23,8 +16,7 @@ import { useTranslation } from '../../hooks/useTranslation'
 
 const IMAGE_PREVIEW_ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 5]
 const IMAGE_PREVIEW_MIN_STEP = IMAGE_PREVIEW_ZOOM_STEPS[0] ?? 0.5
-const IMAGE_PREVIEW_MAX_STEP =
-  IMAGE_PREVIEW_ZOOM_STEPS[IMAGE_PREVIEW_ZOOM_STEPS.length - 1] ?? 5
+const IMAGE_PREVIEW_MAX_STEP = IMAGE_PREVIEW_ZOOM_STEPS[IMAGE_PREVIEW_ZOOM_STEPS.length - 1] ?? 5
 const IMAGE_PREVIEW_SIDE_PADDING = 64
 const IMAGE_PREVIEW_VERTICAL_PADDING = 192
 const IMAGE_PREVIEW_WHEEL_THRESHOLD = 6
@@ -61,19 +53,13 @@ function createReaderImagePreviewState(): ReaderImagePreviewState {
   }
 }
 
-export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
-  openKey,
-  src,
-  onClose,
-}) => {
+export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({ openKey, src, onClose }) => {
   const t = useTranslation('image_preview')
   const previewRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 })
   const [dragging, setDragging] = useState(false)
-  const [previewState, setPreviewState] = useState(
-    createReaderImagePreviewState,
-  )
+  const [previewState, setPreviewState] = useState(createReaderImagePreviewState)
   const { mode, naturalSize, pan, rotation, scale } = previewState
   const normalizedRotation = normalizeImagePreviewRotation(rotation)
   const dragState = useRef<
@@ -108,42 +94,22 @@ export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
   const fitScale = useMemo(() => {
     if (!rotatedSize || !stageSize.width || !stageSize.height) return 1
 
-    return Math.min(
-      1,
-      availableSize.width / rotatedSize.width,
-      availableSize.height / rotatedSize.height,
-    )
-  }, [
-    availableSize.height,
-    availableSize.width,
-    rotatedSize,
-    stageSize.height,
-    stageSize.width,
-  ])
+    return Math.min(1, availableSize.width / rotatedSize.width, availableSize.height / rotatedSize.height)
+  }, [availableSize.height, availableSize.width, rotatedSize, stageSize.height, stageSize.width])
 
   const displayScale = mode === 'fit' ? fitScale : scale
-  const previewReady =
-    !!naturalSize && stageSize.width > 0 && stageSize.height > 0
+  const previewReady = !!naturalSize && stageSize.width > 0 && stageSize.height > 0
 
   const panBounds = useMemo(() => {
     if (!rotatedSize) return { x: 0, y: 0 }
 
     return {
-      x: Math.max(
-        0,
-        (rotatedSize.width * displayScale - availableSize.width) / 2,
-      ),
-      y: Math.max(
-        0,
-        (rotatedSize.height * displayScale - availableSize.height) / 2,
-      ),
+      x: Math.max(0, (rotatedSize.width * displayScale - availableSize.width) / 2),
+      y: Math.max(0, (rotatedSize.height * displayScale - availableSize.height) / 2),
     }
   }, [availableSize.height, availableSize.width, displayScale, rotatedSize])
 
-  const clampedPan = useMemo(
-    () => clampImagePreviewPan(pan, panBounds),
-    [pan, panBounds],
-  )
+  const clampedPan = useMemo(() => clampImagePreviewPan(pan, panBounds), [pan, panBounds])
 
   useLayoutEffect(() => {
     if (!src) return
@@ -233,10 +199,7 @@ export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
       event.preventDefault()
       event.stopPropagation()
 
-      const delta =
-        Math.abs(event.deltaY) >= Math.abs(event.deltaX)
-          ? event.deltaY
-          : event.deltaX
+      const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX
       if (Math.abs(delta) < IMAGE_PREVIEW_WHEEL_THRESHOLD) return
 
       if (delta < 0) zoomIn()
@@ -302,17 +265,14 @@ export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
     [panBounds],
   )
 
-  const endImageDrag = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (dragState.current?.pointerId !== event.pointerId) return
+  const endImageDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (dragState.current?.pointerId !== event.pointerId) return
 
-      event.preventDefault()
-      event.stopPropagation()
-      dragState.current = undefined
-      setDragging(false)
-    },
-    [],
-  )
+    event.preventDefault()
+    event.stopPropagation()
+    dragState.current = undefined
+    setDragging(false)
+  }, [])
 
   const handlePreviewBackdropPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -392,12 +352,8 @@ export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
   if (!src) return null
 
   const zoomPercent = `${Math.round(displayScale * 100)}%`
-  const canZoomOut =
-    getNextImagePreviewZoomOut(displayScale) !== undefined &&
-    displayScale > IMAGE_PREVIEW_MIN_STEP
-  const canZoomIn =
-    getNextImagePreviewZoomIn(displayScale) !== undefined &&
-    displayScale < IMAGE_PREVIEW_MAX_STEP
+  const canZoomOut = getNextImagePreviewZoomOut(displayScale) !== undefined && displayScale > IMAGE_PREVIEW_MIN_STEP
+  const canZoomIn = getNextImagePreviewZoomIn(displayScale) !== undefined && displayScale < IMAGE_PREVIEW_MAX_STEP
   const isOneToOne = Math.abs(displayScale - 1) < 0.001
   const isFit = mode === 'fit'
 
@@ -420,23 +376,13 @@ export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
       onClick={onClose}
     >
       <div className="pointer-events-none absolute inset-0 bg-white/8" />
-      <div
-        ref={stageRef}
-        className="absolute inset-0 flex items-center justify-center overflow-hidden px-8 py-24"
-      >
+      <div ref={stageRef} className="absolute inset-0 flex items-center justify-center overflow-hidden px-8 py-24">
         <div
           className={clsx(
             'pointer-events-auto touch-none select-none',
-            mode === 'zoom' &&
-              previewReady &&
-              !dragging &&
-              'transition-transform duration-100 ease-out',
+            mode === 'zoom' && previewReady && !dragging && 'transition-transform duration-100 ease-out',
             previewReady ? 'opacity-100' : 'opacity-0',
-            canPan
-              ? dragging
-                ? 'cursor-grabbing'
-                : 'cursor-grab'
-              : 'cursor-default',
+            canPan ? (dragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default',
           )}
           style={{
             width: naturalSize ? naturalSize.width : undefined,
@@ -456,9 +402,7 @@ export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
             src={src}
             alt=""
             draggable={false}
-            className={clsx(
-              'max-w-none shadow-2xl shadow-black/35 select-none',
-            )}
+            className={clsx('max-w-none shadow-2xl shadow-black/35 select-none')}
             style={{
               width: naturalSize ? naturalSize.width : undefined,
               height: naturalSize ? naturalSize.height : undefined,
@@ -483,21 +427,11 @@ export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
         onClick={(event) => event.stopPropagation()}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <ReaderImagePreviewButton
-          label={t('zoom_out')}
-          disabled={!canZoomOut}
-          onClick={zoomOut}
-        >
+        <ReaderImagePreviewButton label={t('zoom_out')} disabled={!canZoomOut} onClick={zoomOut}>
           <MinusIcon className="size-5" />
         </ReaderImagePreviewButton>
-        <div className="min-w-16 px-2 text-center text-sm font-medium tabular-nums">
-          {zoomPercent}
-        </div>
-        <ReaderImagePreviewButton
-          label={t('zoom_in')}
-          disabled={!canZoomIn}
-          onClick={zoomIn}
-        >
+        <div className="min-w-16 px-2 text-center text-sm font-medium tabular-nums">{zoomPercent}</div>
+        <ReaderImagePreviewButton label={t('zoom_in')} disabled={!canZoomIn} onClick={zoomIn}>
           <PlusIcon className="size-5" />
         </ReaderImagePreviewButton>
         <div className="mx-1 h-5 w-px bg-white/20" />
@@ -509,24 +443,13 @@ export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({
         >
           <span className="text-xs font-semibold tracking-normal">1:1</span>
         </ReaderImagePreviewButton>
-        <ReaderImagePreviewButton
-          label={t('rotate_left')}
-          onClick={() => rotateImage(-90)}
-        >
+        <ReaderImagePreviewButton label={t('rotate_left')} onClick={() => rotateImage(-90)}>
           <RotateCcwIcon className="size-[1.125rem]" />
         </ReaderImagePreviewButton>
-        <ReaderImagePreviewButton
-          label={t('rotate_right')}
-          onClick={() => rotateImage(90)}
-        >
+        <ReaderImagePreviewButton label={t('rotate_right')} onClick={() => rotateImage(90)}>
           <RotateCwIcon className="size-[1.125rem]" />
         </ReaderImagePreviewButton>
-        <ReaderImagePreviewButton
-          label={t('fit')}
-          active={isFit}
-          disabled={isFit}
-          onClick={resetToFit}
-        >
+        <ReaderImagePreviewButton label={t('fit')} active={isFit} disabled={isFit} onClick={resetToFit}>
           <RefreshCwIcon className="size-[1.125rem]" />
         </ReaderImagePreviewButton>
         <div className="mx-1 h-5 w-px bg-white/20" />
@@ -578,26 +501,16 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
-function clampImagePreviewPan(
-  pan: { x: number; y: number },
-  bounds: { x: number; y: number },
-) {
+function clampImagePreviewPan(pan: { x: number; y: number }, bounds: { x: number; y: number }) {
   return {
     x: clamp(pan.x, -bounds.x, bounds.x),
     y: clamp(pan.y, -bounds.y, bounds.y),
   }
 }
 
-function normalizeImagePreviewRotation(
-  value: number,
-): ReaderImagePreviewRotation {
+function normalizeImagePreviewRotation(value: number): ReaderImagePreviewRotation {
   const normalized = ((value % 360) + 360) % 360
-  if (
-    normalized === 0 ||
-    normalized === 90 ||
-    normalized === 180 ||
-    normalized === 270
-  ) {
+  if (normalized === 0 || normalized === 90 || normalized === 180 || normalized === 270) {
     return normalized
   }
   return 0

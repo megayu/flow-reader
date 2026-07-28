@@ -26,10 +26,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         data-flow-keyboard-capture="true"
         className="h-[min(38rem,calc(100vh-4rem))] w-[min(56rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-lg p-0"
         onEscapeKeyDown={(event) => {
-          if (
-            event.target instanceof Element &&
-            event.target.closest('[data-dictionary-inline-editor]')
-          ) {
+          if (event.target instanceof Element && event.target.closest('[data-dictionary-inline-editor]')) {
             event.preventDefault()
           }
         }}
@@ -43,9 +40,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         <SettingsPanel
           onPopupOpenChange={setPopupOpen}
           onPopupPointerDownOutside={(target) => {
-            popupPointerDownOutsideRef.current = !(
-              target instanceof Node && contentRef.current?.contains(target)
-            )
+            popupPointerDownOutsideRef.current = !(target instanceof Node && contentRef.current?.contains(target))
           }}
         />
       </DialogContent>

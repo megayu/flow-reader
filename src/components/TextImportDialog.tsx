@@ -14,29 +14,19 @@ import { useTranslation } from '../hooks/useTranslation'
 import { defaultTextImportRules, useSettings } from '../state'
 import type {
   BookRecord,
-  TextImportEncodingOption,
   TextImportChapterPreview,
+  TextImportEncodingOption,
   TextImportPreview,
   TextImportRulesInput,
 } from '../storage'
-import {
-  getTextImportEncodings,
-  importTextPaths,
-  previewTextImportPaths,
-} from '../storage'
+import { getTextImportEncodings, importTextPaths, previewTextImportPaths } from '../storage'
 
 import { AppTooltip } from './AppTooltip'
 import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogTitle } from './ui/dialog'
 import { Input } from './ui/input'
 import { useNotify } from './ui/notification'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from './ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 
 interface TextImportDialogProps {
   paths: string[]
@@ -65,15 +55,9 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
   const [previews, setPreviews] = useState<TextImportPreview[]>([])
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
   const [activePath, setActivePath] = useState(paths[0])
-  const [encodingOverrides, setEncodingOverrides] = useState<
-    Record<string, string>
-  >({})
-  const [titleOverrides, setTitleOverrides] = useState<Record<string, string>>(
-    {},
-  )
-  const [creatorOverrides, setCreatorOverrides] = useState<
-    Record<string, string>
-  >({})
+  const [encodingOverrides, setEncodingOverrides] = useState<Record<string, string>>({})
+  const [titleOverrides, setTitleOverrides] = useState<Record<string, string>>({})
+  const [creatorOverrides, setCreatorOverrides] = useState<Record<string, string>>({})
   const [previewSplit, setPreviewSplit] = useState(44)
   const previewAreaRef = useRef<HTMLDivElement>(null)
   const splitDragRef = useRef<
@@ -88,9 +72,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
   const [loading, setLoading] = useState(false)
   const [importing, setImporting] = useState(false)
   const [error, setError] = useState('')
-  const [collapsedChapterKeys, setCollapsedChapterKeys] = useState<Set<string>>(
-    new Set(),
-  )
+  const [collapsedChapterKeys, setCollapsedChapterKeys] = useState<Set<string>>(new Set())
   const initializedSelectionRef = useRef(false)
   const textImportRules = useMemo<TextImportRulesInput>(() => {
     const rules = settings.textImportRules ?? defaultTextImportRules
@@ -99,10 +81,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
       chapterPatterns: normalizePatternList(rules.chapterPatterns),
     }
   }, [settings.textImportRules])
-  const textImportRulesKey = useMemo(
-    () => JSON.stringify(textImportRules),
-    [textImportRules],
-  )
+  const textImportRulesKey = useMemo(() => JSON.stringify(textImportRules), [textImportRules])
 
   useEffect(() => {
     getTextImportEncodings().then(setEncodings).catch(console.error)
@@ -134,11 +113,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
           return next
         })
         setSelectedPaths((current) => {
-          const next = new Set(
-            [...current].filter((path) =>
-              items.some((item) => item.path === path),
-            ),
-          )
+          const next = new Set([...current].filter((path) => items.some((item) => item.path === path)))
           for (const item of items) {
             if (!initializedSelectionRef.current && item.selected) {
               next.add(item.path)
@@ -148,11 +123,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
           initializedSelectionRef.current = true
           return next
         })
-        setActivePath((current) =>
-          current && items.some((item) => item.path === current)
-            ? current
-            : items[0]?.path,
-        )
+        setActivePath((current) => (current && items.some((item) => item.path === current) ? current : items[0]?.path))
       })
       .catch((error) => {
         if (!disposed) {
@@ -173,14 +144,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     return () => {
       disposed = true
     }
-  }, [
-    encodingOverrides,
-    errorT,
-    notify,
-    paths,
-    textImportRules,
-    textImportRulesKey,
-  ])
+  }, [encodingOverrides, errorT, notify, paths, textImportRules, textImportRulesKey])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -216,18 +180,11 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
   }
 
   const activePreview = useMemo(
-    () =>
-      previews.find((preview) => preview.path === activePath) ?? previews[0],
+    () => previews.find((preview) => preview.path === activePath) ?? previews[0],
     [activePath, previews],
   )
-  const chapterTree = useMemo(
-    () => buildChapterTree(activePreview?.chapters ?? []),
-    [activePreview?.chapters],
-  )
-  const collapsibleChapterKeys = useMemo(
-    () => collectCollapsibleChapterKeys(chapterTree),
-    [chapterTree],
-  )
+  const chapterTree = useMemo(() => buildChapterTree(activePreview?.chapters ?? []), [activePreview?.chapters])
+  const collapsibleChapterKeys = useMemo(() => collectCollapsibleChapterKeys(chapterTree), [chapterTree])
   const chapterPreviewExpanded = useMemo(
     () => collapsibleChapterKeys.some((key) => !collapsedChapterKeys.has(key)),
     [collapsibleChapterKeys, collapsedChapterKeys],
@@ -244,11 +201,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     title?: string
   }[] = []
   for (const preview of previews) {
-    if (
-      selectedPaths.has(preview.path) &&
-      preview.status !== 'error' &&
-      preview.status !== 'skipped'
-    ) {
+    if (selectedPaths.has(preview.path) && preview.status !== 'error' && preview.status !== 'skipped') {
       selectedImports.push({
         path: preview.path,
         encoding: encodingOverrides[preview.path] ?? preview.encoding,
@@ -308,10 +261,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
           <div className="border-border border-b px-3 py-3">
             <DialogTitle id={titleId}>{t('title')}</DialogTitle>
           </div>
-          <div
-            className="scroll min-h-0 flex-1 overflow-y-auto p-2"
-            style={{ scrollbarGutter: 'auto' }}
-          >
+          <div className="scroll min-h-0 flex-1 overflow-y-auto p-2" style={{ scrollbarGutter: 'auto' }}>
             {previews.map((preview) => {
               const selected = selectedPaths.has(preview.path)
               const active = activePreview?.path === preview.path
@@ -322,8 +272,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                   type="button"
                   className={clsx(
                     'mb-1 flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-(--flow-bg-control-hover)',
-                    active &&
-                      'text-foreground bg-(--flow-accent-bg) ring-1 ring-(--flow-accent-border) ring-inset',
+                    active && 'text-foreground bg-(--flow-accent-bg) ring-1 ring-(--flow-accent-border) ring-inset',
                   )}
                   onClick={() => setActivePath(preview.path)}
                 >
@@ -331,9 +280,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                     size={18}
                     className={clsx(
                       'mt-0.5 shrink-0',
-                      (preview.status === 'error' ||
-                        preview.status === 'skipped') &&
-                        'opacity-30',
+                      (preview.status === 'error' || preview.status === 'skipped') && 'opacity-30',
                     )}
                     onClick={(event) => {
                       event.stopPropagation()
@@ -341,9 +288,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                     }}
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-base">
-                      {preview.filename}
-                    </span>
+                    <span className="block truncate text-base">{preview.filename}</span>
                     <span className="text-muted-foreground mt-0.5 block truncate text-base">
                       {preview.encodingLabel} · {t(`status.${preview.status}`)}
                     </span>
@@ -352,9 +297,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
               )
             })}
             {!loading && !previews.length && (
-              <div className="text-muted-foreground px-2 py-6 text-base">
-                {t('empty')}
-              </div>
+              <div className="text-muted-foreground px-2 py-6 text-base">{t('empty')}</div>
             )}
           </div>
         </aside>
@@ -369,9 +312,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                 }}
               >
                 <label className="grid gap-1">
-                  <span className="text-muted-foreground text-base">
-                    {t('book_title')}
-                  </span>
+                  <span className="text-muted-foreground text-base">{t('book_title')}</span>
                   <Input
                     value={titleOverrides[activePreview.path] ?? ''}
                     onChange={(event) => {
@@ -383,9 +324,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                   />
                 </label>
                 <label className="grid gap-1">
-                  <span className="text-muted-foreground text-base">
-                    {t('creator')}
-                  </span>
+                  <span className="text-muted-foreground text-base">{t('creator')}</span>
                   <Input
                     value={creatorOverrides[activePreview.path] ?? ''}
                     onChange={(event) => {
@@ -397,9 +336,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                   />
                 </label>
                 <label className="grid gap-1">
-                  <span className="text-muted-foreground text-base">
-                    {t('encoding')}
-                  </span>
+                  <span className="text-muted-foreground text-base">{t('encoding')}</span>
                   <Select
                     value={encodingOverrides[activePreview.path] ?? 'auto'}
                     onValueChange={(value) => {
@@ -433,35 +370,21 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
               data-testid="text-import-preview-grid"
               className="grid min-h-0 flex-1 overflow-hidden"
               style={{
-                gridTemplateColumns: `minmax(0,${previewSplit}fr) 0.75rem minmax(0,${
-                  100 - previewSplit
-                }fr)`,
+                gridTemplateColumns: `minmax(0,${previewSplit}fr) 0.75rem minmax(0,${100 - previewSplit}fr)`,
               }}
             >
               <section className="flex min-h-0 min-w-0 flex-col py-4 pr-2 pl-4">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <h3 className="text-base font-semibold">{t('chapters')}</h3>
                   {!!collapsibleChapterKeys.length && (
-                    <AppTooltip
-                      label={t(
-                        chapterPreviewExpanded ? 'collapse_all' : 'expand_all',
-                      )}
-                    >
+                    <AppTooltip label={t(chapterPreviewExpanded ? 'collapse_all' : 'expand_all')}>
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={t(
-                          chapterPreviewExpanded
-                            ? 'collapse_all'
-                            : 'expand_all',
-                        )}
+                        aria-label={t(chapterPreviewExpanded ? 'collapse_all' : 'expand_all')}
                         onClick={() => {
-                          setCollapsedChapterKeys(
-                            chapterPreviewExpanded
-                              ? new Set(collapsibleChapterKeys)
-                              : new Set(),
-                          )
+                          setCollapsedChapterKeys(chapterPreviewExpanded ? new Set(collapsibleChapterKeys) : new Set())
                         }}
                       >
                         {chapterPreviewExpanded ? (
@@ -508,14 +431,10 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                   document.body.style.userSelect = 'none'
                   event.preventDefault()
                 }}
-                onPointerMove={(event) =>
-                  resizePreviewSplit(event.pointerId, event.clientX)
-                }
+                onPointerMove={(event) => resizePreviewSplit(event.pointerId, event.clientX)}
                 onPointerUp={(event) => finishPreviewSplit(event.pointerId)}
                 onPointerCancel={(event) => finishPreviewSplit(event.pointerId)}
-                onLostPointerCapture={(event) =>
-                  finishPreviewSplit(event.pointerId)
-                }
+                onLostPointerCapture={(event) => finishPreviewSplit(event.pointerId)}
               >
                 <div className="bg-border group-hover:bg-ring/60 h-full w-px transition-colors" />
               </div>
@@ -533,17 +452,12 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
           )}
 
           <div className="border-border flex shrink-0 items-center justify-between gap-3 border-t bg-(--flow-bg-panel) px-4 py-3">
-            <div className="text-destructive min-w-0 text-base">
-              {error || activePreview?.message || ''}
-            </div>
+            <div className="text-destructive min-w-0 text-base">{error || activePreview?.message || ''}</div>
             <div className="flex shrink-0 items-center gap-2">
               <Button variant="secondary" onClick={onClose}>
                 {t('cancel')}
               </Button>
-              <Button
-                disabled={!selectedImports.length || importing}
-                onClick={importSelected}
-              >
+              <Button disabled={!selectedImports.length || importing} onClick={importSelected}>
                 {t('import_selected')}
               </Button>
             </div>
@@ -561,20 +475,12 @@ interface ChapterPreviewTreeProps {
   depth?: number
 }
 
-const ChapterPreviewTree: React.FC<ChapterPreviewTreeProps> = ({
-  nodes,
-  collapsedKeys,
-  onToggle,
-  depth = 0,
-}) => {
+const ChapterPreviewTree: React.FC<ChapterPreviewTreeProps> = ({ nodes, collapsedKeys, onToggle, depth = 0 }) => {
   if (!nodes.length) return null
 
   if (nodes.every((node) => !node.children.length)) {
     return (
-      <pre
-        className="font-sans text-base whitespace-pre-wrap"
-        style={{ paddingLeft: depth ? depth * 16 : 0 }}
-      >
+      <pre className="font-sans text-base whitespace-pre-wrap" style={{ paddingLeft: depth ? depth * 16 : 0 }}>
         {nodes.map((node) => node.title).join('\n')}
       </pre>
     )
@@ -593,22 +499,14 @@ const ChapterPreviewTree: React.FC<ChapterPreviewTreeProps> = ({
               type="button"
               className={clsx(
                 'flex w-full items-center gap-1 rounded-sm py-1 pr-2 text-left hover:bg-(--flow-bg-control-hover)',
-                hasChildren
-                  ? 'text-muted-foreground'
-                  : 'text-muted-foreground/80',
+                hasChildren ? 'text-muted-foreground' : 'text-muted-foreground/80',
               )}
               style={{ paddingLeft: depth * 16 }}
               onClick={() => {
                 if (hasChildren) onToggle(node.key)
               }}
             >
-              <Icon
-                size={18}
-                className={clsx(
-                  'text-muted-foreground shrink-0',
-                  !hasChildren && 'invisible',
-                )}
-              />
+              <Icon size={18} className={clsx('text-muted-foreground shrink-0', !hasChildren && 'invisible')} />
               <span className="min-w-0 flex-1 break-words">{node.title}</span>
             </button>
             {hasChildren && !collapsed && (

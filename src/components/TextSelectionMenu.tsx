@@ -12,37 +12,26 @@ import {
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useSnapshot } from 'valtio'
 
-import { typeMap, colorMap, orderRangeRectsForWritingMode } from '../annotation'
-import {
-  listLocalDictionariesCached,
-  type LocalDictionaryRecord,
-} from '../dictionary/native'
+import { colorMap, orderRangeRectsForWritingMode, typeMap } from '../annotation'
+import { type LocalDictionaryRecord, listLocalDictionariesCached } from '../dictionary/native'
 import { normalizeDictionaryQuery } from '../dictionary/query'
 import { useSetAction } from '../hooks/useAction'
 import { isForwardSelection, useTextSelection } from '../hooks/useTextSelection'
 import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
-import { BookTab, reader } from '../models/reader'
+import { type BookTab, reader } from '../models/reader'
 import { useSettings } from '../state'
-import { BookTextReplaceTarget, replaceBookText } from '../storage'
-import {
-  resolveTranslationDirection,
-  type TranslationLanguage,
-} from '../translation/languages'
+import { type BookTextReplaceTarget, replaceBookText } from '../storage'
+import { resolveTranslationDirection, type TranslationLanguage } from '../translation/languages'
 import { serializeTranslationFragment } from '../translation/serialize'
 import { copy, keys, last } from '../utils'
 
 import { Button, IconButton } from './Button'
+import { LayoutAnchorMode, LayoutAnchorPosition, layout, layoutBesideRect } from './base/contextViewLayout'
+import { Overlay } from './base/Overlay'
 import { DictionaryPopup } from './DictionaryPopup'
 import { TextField } from './Form'
 import { TranslationPopup } from './TranslationPopup'
-import { Overlay } from './base/Overlay'
-import {
-  layout,
-  LayoutAnchorMode,
-  LayoutAnchorPosition,
-  layoutBesideRect,
-} from './base/contextViewLayout'
 
 interface TextSelectionMenuProps {
   tab: BookTab
@@ -56,7 +45,7 @@ function getSelectionRange(selection?: Selection) {
 
   try {
     return selection.getRangeAt(0).cloneRange()
-  } catch (error) {
+  } catch (_error) {
     return
   }
 }
@@ -65,7 +54,7 @@ function clearWindowSelections(windows: readonly Window[]) {
   windows.forEach((win) => {
     try {
       win.getSelection()?.removeAllRanges()
-    } catch (error) {
+    } catch (_error) {
       // The iframe may have been detached since the selection was captured.
     }
   })
@@ -92,8 +81,7 @@ function paragraphIndexForTextNode(node: Node) {
   const paragraphs = Array.from(container.children).filter(
     (element) =>
       element.tagName.toLowerCase() === 'p' &&
-      (marker !== paragraph ||
-        element.getAttribute('data-flow-body-text') === 'true'),
+      (marker !== paragraph || element.getAttribute('data-flow-body-text') === 'true'),
   )
   const index = paragraphs.indexOf(paragraph)
   return index >= 0 ? index : undefined
@@ -162,10 +150,7 @@ interface TextReplacementError {
   detail?: string
 }
 
-function textReplacementErrorMessage(
-  error: unknown,
-  t: (key: string) => string,
-): TextReplacementError {
+function textReplacementErrorMessage(error: unknown, t: (key: string) => string): TextReplacementError {
   const message = error instanceof Error ? error.message : String(error)
   const match = textReplacementErrorKeys.find(({ fragments }) =>
     fragments.some((fragment) => message.includes(fragment)),
@@ -177,13 +162,8 @@ function textReplacementErrorMessage(
   }
 }
 
-export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
-  tab,
-  onChapterFind,
-}) => {
-  const { iframe, iframes, annotationRange, annotationCfi } = useSnapshot(
-    tab,
-  ) as unknown as {
+export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ tab, onChapterFind }) => {
+  const { iframe, iframes, annotationRange, annotationCfi } = useSnapshot(tab) as unknown as {
     iframe?: Window
     iframes: readonly Window[]
     annotationRange?: Range
@@ -206,10 +186,9 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
     ) as Window[]
   }, [iframe, iframes, tab])
 
-  const [selection, setSelection, releasePoint, menuOpen] = useTextSelection(
-    windows,
-    { automatic: settings.enableTextSelectionMenu !== false },
-  )
+  const [selection, setSelection, releasePoint, menuOpen] = useTextSelection(windows, {
+    automatic: settings.enableTextSelectionMenu !== false,
+  })
 
   // it is possible that both `selection` and `tab.annotationRange`
   // are set when select end within an annotation
@@ -252,8 +231,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
       ? (range.startContainer as Element)
       : range.startContainer.parentElement
   const writingMode = rangeElement
-    ? rangeElement.ownerDocument.defaultView?.getComputedStyle(rangeElement)
-        .writingMode
+    ? rangeElement.ownerDocument.defaultView?.getComputedStyle(rangeElement).writingMode
     : undefined
   const rects = orderRangeRectsForWritingMode(
     [...range.getClientRects()].filter((r) => Math.round(r.width)),
@@ -286,7 +264,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
         if (menuSelection) {
           try {
             menuSelection.removeAllRanges()
-          } catch (error) {
+          } catch (_error) {
             // The selection may belong to an iframe that has been replaced.
           }
           setSelection(undefined)
@@ -304,8 +282,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({
 
 const ICON_SIZE = 28
 const ANNOTATION_SIZE = 32
-const actionIconClassName =
-  '!flex items-center justify-center !p-0 [&_svg]:!size-7'
+const actionIconClassName = '!flex items-center justify-center !p-0 [&_svg]:!size-7'
 
 interface TextSelectionMenuRendererProps {
   tab: BookTab
@@ -344,35 +321,22 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const popupResizeObserverRef = useRef<ResizeObserver | undefined>(undefined)
   const t = useTranslation('menu')
   const [settings] = useSettings()
-  const [view, setView] = useState<'actions' | 'dictionary' | 'translation'>(
-    'actions',
-  )
-  const [localDictionaries, setLocalDictionaries] = useState<
-    LocalDictionaryRecord[]
-  >([])
+  const [view, setView] = useState<'actions' | 'dictionary' | 'translation'>('actions')
+  const [localDictionaries, setLocalDictionaries] = useState<LocalDictionaryRecord[]>([])
 
   const cfi = annotationCfi ?? tab.rangeToCfi(range)
   const section = tab.sectionForRange(range)
   const annotation = tab.overlayState.annotations.find((a) => a.cfi === cfi)
   const [annotate, setAnnotate] = useState(!!annotation)
   const replacementRef = useRef<HTMLTextAreaElement>(null)
-  const currentReplaceTarget = useMemo(
-    () => createTextReplaceTarget(range, section),
-    [range, section],
-  )
-  const replacementSnapshotRef = useRef<TextReplaceTarget | undefined>(
-    undefined,
-  )
+  const currentReplaceTarget = useMemo(() => createTextReplaceTarget(range, section), [range, section])
+  const replacementSnapshotRef = useRef<TextReplaceTarget | undefined>(undefined)
   const [editing, setEditing] = useState(false)
   const [savingReplacement, setSavingReplacement] = useState(false)
   const savingReplacementRef = useRef(false)
-  const [replacementError, setReplacementError] =
-    useState<TextReplacementError>()
-  const replaceTarget = editing
-    ? replacementSnapshotRef.current
-    : currentReplaceTarget
-  const textEditingDisabled =
-    tab.book.scope === 'external' || tab.book.contentMode === 'archiveOnly'
+  const [replacementError, setReplacementError] = useState<TextReplacementError>()
+  const replaceTarget = editing ? replacementSnapshotRef.current : currentReplaceTarget
+  const textEditingDisabled = tab.book.scope === 'external' || tab.book.contentMode === 'archiveOnly'
   const closeMenu = () => {
     if (savingReplacementRef.current) return
     hide()
@@ -395,10 +359,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     }
     closeMenu()
   }
-  const dictionaryMetadataLanguage = selectionLanguage(
-    range,
-    tab.book.metadata.language,
-  )
+  const dictionaryMetadataLanguage = selectionLanguage(range, tab.book.metadata.language)
   const translationSettings = settings.translation ?? {
     mainLanguage: 'zh-Hans' as TranslationLanguage,
     secondaryLanguage: 'en' as TranslationLanguage,
@@ -410,20 +371,13 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     secondaryLanguage: translationSettings.secondaryLanguage,
     text: translationText,
   })
-  const dictionaryQuery = normalizeDictionaryQuery(
-    text,
-    dictionaryMetadataLanguage,
-  )
+  const dictionaryQuery = normalizeDictionaryQuery(text, dictionaryMetadataLanguage)
   useEffect(() => {
     let active = true
     void listLocalDictionariesCached()
       .then((records) => {
         if (!active) return
-        setLocalDictionaries(
-          records.filter(
-            (record) => record.enabled && record.sourceStatus === 'available',
-          ),
-        )
+        setLocalDictionaries(records.filter((record) => record.enabled && record.sourceStatus === 'available'))
       })
       .catch(() => {
         if (active) setLocalDictionaries([])
@@ -437,18 +391,13 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     () =>
       localDictionaries.filter(
         (dictionary) =>
-          dictionaryLanguage &&
-          dictionary.language.value.some(
-            (language) => language === dictionaryLanguage,
-          ),
+          dictionaryLanguage && dictionary.language.value.some((language) => language === dictionaryLanguage),
       ),
     [dictionaryLanguage, localDictionaries],
   )
   const dictionaryAvailable =
-    (dictionaryQuery?.language === 'zh' &&
-      settings.dictionary?.zdic?.enabled !== false) ||
-    (dictionaryQuery?.language === 'en' &&
-      settings.dictionary?.merriamWebster?.enabled === true) ||
+    (dictionaryQuery?.language === 'zh' && settings.dictionary?.zdic?.enabled !== false) ||
+    (dictionaryQuery?.language === 'en' && settings.dictionary?.merriamWebster?.enabled === true) ||
     eligibleLocalDictionaries.length > 0
 
   useEffect(() => {
@@ -474,13 +423,9 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
 
   const { zoom } = useTypography(tab)
   const endContainer = forward ? range.endContainer : range.startContainer
-  const _lineHeight = parseFloat(
-    getComputedStyle(endContainer.parentElement!).lineHeight,
-  )
+  const _lineHeight = parseFloat(getComputedStyle(endContainer.parentElement!).lineHeight)
   // no custom line height and the origin is keyword, e.g. 'normal'.
-  const lineHeight = isNaN(_lineHeight)
-    ? anchorRect.height
-    : _lineHeight * (zoom ?? 1)
+  const lineHeight = Number.isNaN(_lineHeight) ? anchorRect.height : _lineHeight * (zoom ?? 1)
   const layoutAnchor = releasePoint
     ? {
         left: releasePoint.x,
@@ -498,18 +443,12 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     height: rect.height,
   }))
   const rangeLeft = Math.min(...outerRangeRects.map((rect) => rect.left))
-  const rangeRight = Math.max(
-    ...outerRangeRects.map((rect) => rect.left + rect.width),
-  )
+  const rangeRight = Math.max(...outerRangeRects.map((rect) => rect.left + rect.width))
   const rangeTop = Math.min(...outerRangeRects.map((rect) => rect.top))
-  const rangeBottom = Math.max(
-    ...outerRangeRects.map((rect) => rect.top + rect.height),
-  )
+  const rangeBottom = Math.max(...outerRangeRects.map((rect) => rect.top + rect.height))
   const verticalAnchor = {
     left: rangeLeft,
-    top: releasePoint
-      ? releasePoint.y + viewRect.top - containerRect.top
-      : rangeTop,
+    top: releasePoint ? releasePoint.y + viewRect.top - containerRect.top : rangeTop,
     width: rangeRight - rangeLeft,
     height: releasePoint ? 1 : rangeBottom - rangeTop,
   }
@@ -543,9 +482,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         key={view}
         data-flow-keyboard-capture="true"
         data-flow-dictionary-popup={view === 'dictionary' ? 'true' : undefined}
-        data-flow-translation-popup={
-          view === 'translation' ? 'true' : undefined
-        }
+        data-flow-translation-popup={view === 'translation' ? 'true' : undefined}
         ref={(el) => {
           popupResizeObserverRef.current?.disconnect()
           popupResizeObserverRef.current = undefined
@@ -561,9 +498,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         }}
         className={clsx(
           'border-border bg-popover text-popover-foreground absolute z-50 box-border rounded-lg border shadow-lg shadow-black/10 focus:outline-none',
-          view === 'dictionary' || view === 'translation'
-            ? 'overflow-hidden p-0'
-            : 'p-2',
+          view === 'dictionary' || view === 'translation' ? 'overflow-hidden p-0' : 'p-2',
           view === 'actions' && (editing || annotate) && 'space-y-2',
         )}
         style={{
@@ -582,16 +517,13 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           top:
             verticalPlacement?.top ??
             layout(containerRect.height, height, {
-              offset:
-                layoutAnchor.top - (layoutLineHeight - layoutAnchor.height) / 2,
+              offset: layoutAnchor.top - (layoutLineHeight - layoutAnchor.height) / 2,
               size: layoutLineHeight,
               position,
             }),
           visibility: width && height ? 'visible' : 'hidden',
         }}
-        role={
-          view === 'dictionary' || view === 'translation' ? 'dialog' : undefined
-        }
+        role={view === 'dictionary' || view === 'translation' ? 'dialog' : undefined}
         tabIndex={-1}
         onKeyDown={(e) => {
           e.stopPropagation()
@@ -608,11 +540,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             dismissOverlay()
             return
           }
-          if (
-            e.key.toLowerCase() === 'c' &&
-            (e.ctrlKey || e.metaKey) &&
-            !window.getSelection()?.toString()
-          ) {
+          if (e.key.toLowerCase() === 'c' && (e.ctrlKey || e.metaKey) && !window.getSelection()?.toString()) {
             copy(text)
           }
         }}
@@ -729,9 +657,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               onClick={() => switchView('translation')}
             />
             <IconButton
-              title={t(
-                textEditingDisabled ? 'edit_text_archive_only' : 'edit_text',
-              )}
+              title={t(textEditingDisabled ? 'edit_text_archive_only' : 'edit_text')}
               Icon={FilePenLineIcon}
               disabled={textEditingDisabled || !currentReplaceTarget}
               size={ICON_SIZE}
@@ -812,14 +738,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                       typeMap[type].class,
                     )}
                     onClick={() => {
-                      tab.putAnnotation(
-                        type,
-                        cfi,
-                        color,
-                        text,
-                        ref.current?.value,
-                        section,
-                      )
+                      tab.putAnnotation(type, cfi, color, text, ref.current?.value, section)
                       hide()
                     }}
                   >
@@ -832,12 +751,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         )}
         {view === 'actions' && editing && (
           <div className="flex gap-2">
-            <Button
-              compact
-              variant="secondary"
-              disabled={savingReplacement}
-              onClick={cancelEditing}
-            >
+            <Button compact variant="secondary" disabled={savingReplacement} onClick={cancelEditing}>
               {t('cancel')}
             </Button>
             <Button
@@ -863,19 +777,13 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                   newText,
                 })
                   .then(async (result) => {
-                    await reader.applyBookContentEdit(
-                      result.book,
-                      result.sectionHref,
-                      tab,
-                      {
-                        target,
-                        oldText: selectedText,
-                        newText,
-                        document:
-                          range.startContainer.ownerDocument ?? undefined,
-                        textNode,
-                      },
-                    )
+                    await reader.applyBookContentEdit(result.book, result.sectionHref, tab, {
+                      target,
+                      oldText: selectedText,
+                      newText,
+                      document: range.startContainer.ownerDocument ?? undefined,
+                      textNode,
+                    })
                     hide()
                   })
                   .catch((error) => {
@@ -935,14 +843,10 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
 
 function selectionLanguage(range: Range, bookLanguage?: string) {
   const container = range.commonAncestorContainer
-  let element =
-    container.nodeType === Node.ELEMENT_NODE
-      ? (container as Element)
-      : container.parentElement
+  let element = container.nodeType === Node.ELEMENT_NODE ? (container as Element) : container.parentElement
   while (element) {
     const language =
-      element.getAttribute('lang') ??
-      element.getAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang')
+      element.getAttribute('lang') ?? element.getAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang')
     if (language?.trim()) return language
     element = element.parentElement
   }

@@ -1,12 +1,6 @@
 import type { DictionaryProvider } from '../coordinator'
 import { cancelDictionarySession, fetchMerriamWebster } from '../native'
-import type {
-  DictionaryEntry,
-  DictionaryResult,
-  DictionarySense,
-  DictionaryText,
-  DictionaryTextRun,
-} from '../types'
+import type { DictionaryEntry, DictionaryResult, DictionarySense, DictionaryText, DictionaryTextRun } from '../types'
 
 const SOURCE_ID = 'merriam-webster'
 const SOURCE_NAME = 'Merriam-Webster'
@@ -35,9 +29,7 @@ class MerriamWebsterLookupError extends Error {
   }
 }
 
-export function createMerriamWebsterProvider(
-  apiKey: string,
-): DictionaryProvider {
+export function createMerriamWebsterProvider(apiKey: string): DictionaryProvider {
   return {
     externalUrl: (query) => merriamWebsterExternalUrl(query.text),
     id: SOURCE_ID,
@@ -48,10 +40,7 @@ export function createMerriamWebsterProvider(
       const externalUrl = merriamWebsterExternalUrl(query.text)
       const key = apiKey.trim()
       if (!key) {
-        throw new MerriamWebsterLookupError(
-          'Merriam-Webster API key is not configured.',
-          externalUrl,
-        )
+        throw new MerriamWebsterLookupError('Merriam-Webster API key is not configured.', externalUrl)
       }
 
       const sessionId = nextNativeSessionId++
@@ -87,10 +76,7 @@ export function merriamWebsterExternalUrl(query: string) {
   return `https://www.merriam-webster.com/dictionary/${encodeURIComponent(query)}`
 }
 
-export function parseMerriamWebsterResponse(
-  body: string,
-  query: string,
-): DictionaryResult | null {
+export function parseMerriamWebsterResponse(body: string, query: string): DictionaryResult | null {
   const externalUrl = merriamWebsterExternalUrl(query)
   if (!body || body.length > MAX_RESPONSE_LENGTH) {
     throw new MerriamWebsterParseError(externalUrl)
@@ -141,10 +127,7 @@ function parseEntry(value: unknown): DictionaryEntry | undefined {
 
   return {
     headword: rawHeadword?.replaceAll('*', ''),
-    homograph:
-      typeof value.hom === 'number' && Number.isFinite(value.hom)
-        ? value.hom
-        : undefined,
+    homograph: typeof value.hom === 'number' && Number.isFinite(value.hom) ? value.hom : undefined,
     partOfSpeech: typeof value.fl === 'string' ? value.fl : undefined,
     senses: context.senses,
   }
@@ -155,12 +138,7 @@ interface WalkContext {
   senses: DictionarySense[]
 }
 
-function walkSenseTree(
-  value: unknown,
-  depth: number,
-  level: number,
-  context: WalkContext,
-) {
+function walkSenseTree(value: unknown, depth: number, level: number, context: WalkContext) {
   context.nodes += 1
   if (depth > MAX_WALK_DEPTH || context.nodes > MAX_WALK_NODES) {
     throw new Error('Merriam-Webster definition tree is too complex')
@@ -174,9 +152,7 @@ function walkSenseTree(
       return
     }
     if (kind === 'bs' && isRecord(payload)) {
-      parseSense(payload.sense, level).forEach((sense) =>
-        context.senses.push(sense),
-      )
+      parseSense(payload.sense, level).forEach((sense) => context.senses.push(sense))
       return
     }
     if (kind === 'pseq') {
@@ -199,15 +175,9 @@ function parseSense(value: unknown, level: number): DictionarySense[] {
   if (isRecord(value.sdsense)) {
     const divided = parseDefiningText(value.sdsense.dt)
     if (divided) {
-      const divider =
-        typeof value.sdsense.sd === 'string' ? [value.sdsense.sd] : []
-      const dividedDefinition = prependLabels(divided.definition, [
-        ...divider,
-        ...senseLabels(value.sdsense),
-      ])
-      definition = definition
-        ? joinDictionaryText(definition, '; ', dividedDefinition)
-        : dividedDefinition
+      const divider = typeof value.sdsense.sd === 'string' ? [value.sdsense.sd] : []
+      const dividedDefinition = prependLabels(divided.definition, [...divider, ...senseLabels(value.sdsense)])
+      definition = definition ? joinDictionaryText(definition, '; ', dividedDefinition) : dividedDefinition
       examples = [...examples, ...divided.examples]
     }
   }
@@ -226,9 +196,7 @@ function parseSense(value: unknown, level: number): DictionarySense[] {
 }
 
 function parseSenseMarker(marker: string) {
-  const match = marker.match(
-    /^(?<number>\d+)?\s*(?<letter>[a-z])?\s*(?<subnumber>\(\d+\))?$/iu,
-  )
+  const match = marker.match(/^(?<number>\d+)?\s*(?<letter>[a-z])?\s*(?<subnumber>\(\d+\))?$/iu)
   if (!match?.groups) return
 
   const { letter, number, subnumber } = match.groups
@@ -304,11 +272,7 @@ function parseMwTokens(value: string): DictionaryTextRun[] {
       emphasisDepth = Math.max(0, emphasisDepth - 1)
     } else if (name === 'bc') {
       if (runs.some((run) => run.text.trim())) push('plain', ': ')
-    } else if (
-      ['a_link', 'd_link', 'i_link', 'et_link', 'mat', 'sx', 'dxt'].includes(
-        name,
-      )
-    ) {
+    } else if (['a_link', 'd_link', 'i_link', 'et_link', 'mat', 'sx', 'dxt'].includes(name)) {
       push('reference', fields[0] ?? '')
     } else if (name === 'ldquo') {
       push('plain', '“')
@@ -326,32 +290,17 @@ function parseMwTokens(value: string): DictionaryTextRun[] {
 
 function prependLabels(text: DictionaryText, labels: string[]): DictionaryText {
   if (!labels.length) return text
-  const runs =
-    text.kind === 'runs'
-      ? text.runs
-      : [{ kind: 'plain' as const, text: text.text }]
+  const runs = text.kind === 'runs' ? text.runs : [{ kind: 'plain' as const, text: text.text }]
   return {
     kind: 'runs',
-    runs: mergeRuns([
-      { kind: 'label', text: labels.join(', ') },
-      { kind: 'plain', text: ' ' },
-      ...runs,
-    ]),
+    runs: mergeRuns([{ kind: 'label', text: labels.join(', ') }, { kind: 'plain', text: ' ' }, ...runs]),
   }
 }
 
-function joinDictionaryText(
-  left: DictionaryText,
-  separator: string,
-  right: DictionaryText,
-): DictionaryText {
+function joinDictionaryText(left: DictionaryText, separator: string, right: DictionaryText): DictionaryText {
   return {
     kind: 'runs',
-    runs: mergeRuns([
-      ...dictionaryTextRuns(left),
-      { kind: 'plain', text: separator },
-      ...dictionaryTextRuns(right),
-    ]),
+    runs: mergeRuns([...dictionaryTextRuns(left), { kind: 'plain', text: separator }, ...dictionaryTextRuns(right)]),
   }
 }
 
@@ -372,29 +321,17 @@ function matchesMerriamWebsterEntry(value: unknown, query: string) {
   if (!isRecord(value)) return false
   const normalizedQuery = normalizeMerriamWebsterText(query)
   const meta = isRecord(value.meta) ? value.meta : undefined
-  const stems = Array.isArray(meta?.stems)
-    ? meta.stems.filter((stem): stem is string => typeof stem === 'string')
-    : []
-  if (
-    stems.some((stem) => normalizeMerriamWebsterText(stem) === normalizedQuery)
-  ) {
+  const stems = Array.isArray(meta?.stems) ? meta.stems.filter((stem): stem is string => typeof stem === 'string') : []
+  if (stems.some((stem) => normalizeMerriamWebsterText(stem) === normalizedQuery)) {
     return true
   }
 
   const hwi = isRecord(value.hwi) ? value.hwi : undefined
-  return (
-    typeof hwi?.hw === 'string' &&
-    normalizeMerriamWebsterText(hwi.hw) === normalizedQuery
-  )
+  return typeof hwi?.hw === 'string' && normalizeMerriamWebsterText(hwi.hw) === normalizedQuery
 }
 
 function normalizeMerriamWebsterText(value: string) {
-  return value
-    .normalize('NFKC')
-    .replaceAll('*', '')
-    .replace(/\s+/gu, ' ')
-    .trim()
-    .toLocaleLowerCase('en-US')
+  return value.normalize('NFKC').replaceAll('*', '').replace(/\s+/gu, ' ').trim().toLocaleLowerCase('en-US')
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,8 +1,7 @@
 export function parseGoogleTranslationResponse(body: string): string[] {
   try {
     const response: unknown = JSON.parse(body)
-    if (!Array.isArray(response) || !Array.isArray(response[0]))
-      throw new Error()
+    if (!Array.isArray(response) || !Array.isArray(response[0])) throw new Error()
 
     const translated = response[0]
       .map((segment) => (Array.isArray(segment) ? segment[0] : undefined))

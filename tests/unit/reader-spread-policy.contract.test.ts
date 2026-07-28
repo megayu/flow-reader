@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 
-import { resolveBookSpreadPolicy } from '@/reader/spreadPolicy'
 import { RenditionSpread } from '@flow/epubjs/rendition'
+import { resolveBookSpreadPolicy } from '@/reader/spreadPolicy'
 
 test('resolves one book-wide spread policy by explicit precedence', () => {
   const cases = [

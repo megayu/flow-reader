@@ -22,9 +22,7 @@ function createBook(id: string, title: string): BookRecord {
   })
 }
 
-test('cold native EPUB request suppresses startup restore even when opening fails', async ({
-  page,
-}) => {
+test('cold native EPUB request suppresses startup restore even when opening fails', async ({ page }) => {
   const restored = createBook('restored-book', 'Restored Book')
   await installTauriMock(page, {
     books: [restored],
@@ -40,16 +38,12 @@ test('cold native EPUB request suppresses startup restore even when opening fail
 
   expect(
     await page.evaluate(() =>
-      (window as any).reader.groups.flatMap((group: any) =>
-        group.bookTabs.map((tab: any) => tab.book.id),
-      ),
+      (window as any).reader.groups.flatMap((group: any) => group.bookTabs.map((tab: any) => tab.book.id)),
     ),
   ).toEqual([])
 })
 
-test('cold native EPUB open opens only the requested book', async ({
-  page,
-}) => {
+test('cold native EPUB open opens only the requested book', async ({ page }) => {
   const restored = createBook('restored-book', 'Restored Book')
   const requested = createBook('requested-book', 'Requested Book')
   await installTauriMock(page, {
@@ -69,9 +63,7 @@ test('cold native EPUB open opens only the requested book', async ({
   await expect
     .poll(() =>
       page.evaluate(() =>
-        (window as any).reader.groups.flatMap((group: any) =>
-          group.bookTabs.map((tab: any) => tab.book.id),
-        ),
+        (window as any).reader.groups.flatMap((group: any) => group.bookTabs.map((tab: any) => tab.book.id)),
       ),
     )
     .toEqual([requested.id])
@@ -82,19 +74,11 @@ test('cold native EPUB open opens only the requested book', async ({
   })
   await expect(page.getByTestId('native-startup-surface')).toHaveCount(0)
   await expect(page.locator('[role="tab"]')).toHaveCount(1)
-  expect(
-    await page.evaluate(
-      () => (window as any).__FLOW_TEST_TAURI__?.takePendingOpenPathsCalls,
-    ),
-  ).toBe(1)
-  await expect
-    .poll(async () => (await getStoredSettings(page)).readerSidebarOpen)
-    .toBe(true)
+  expect(await page.evaluate(() => (window as any).__FLOW_TEST_TAURI__?.takePendingOpenPathsCalls)).toBe(1)
+  await expect.poll(async () => (await getStoredSettings(page)).readerSidebarOpen).toBe(true)
 })
 
-test('native EPUB open focuses an existing tab across reader groups', async ({
-  page,
-}) => {
+test('native EPUB open focuses an existing tab across reader groups', async ({ page }) => {
   await installTauriMock(page)
   await page.goto('/')
 

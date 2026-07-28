@@ -18,9 +18,7 @@ export type TranslationLanguage = (typeof TRANSLATION_LANGUAGES)[number]['id']
 export type TranslationProvider = 'google' | 'azure'
 export type TranslationSourceLanguage = TranslationLanguage | 'auto'
 
-const LANGUAGE_IDS = new Set<string>(
-  TRANSLATION_LANGUAGES.map((language) => language.id),
-)
+const LANGUAGE_IDS = new Set<string>(TRANSLATION_LANGUAGES.map((language) => language.id))
 
 const unique = <T>(values: T[]) => [...new Set(values)]
 
@@ -40,17 +38,10 @@ export function orderedTargetLanguages(
   mainLanguage: TranslationLanguage,
   secondaryLanguage: TranslationLanguage,
 ): TranslationLanguage[] {
-  return unique([
-    mainLanguage,
-    secondaryLanguage,
-    ...TRANSLATION_LANGUAGES.map((language) => language.id),
-  ])
+  return unique([mainLanguage, secondaryLanguage, ...TRANSLATION_LANGUAGES.map((language) => language.id)])
 }
 
-export function providerLanguageCode(
-  provider: TranslationProvider,
-  language: TranslationSourceLanguage,
-): string {
+export function providerLanguageCode(provider: TranslationProvider, language: TranslationSourceLanguage): string {
   if (language === 'auto') return provider === 'google' ? 'auto' : ''
   if (provider === 'google' && language === 'zh-Hans') return 'zh-CN'
   if (provider === 'google' && language === 'zh-Hant') return 'zh-TW'
@@ -64,9 +55,7 @@ function normalizeLanguage(language?: string): TranslationLanguage | undefined {
   if (/^zh-(hans|cn|sg)(-|$)/.test(normalized)) return 'zh-Hans'
   if (/^zh-(hant|tw|hk|mo)(-|$)/.test(normalized)) return 'zh-Hant'
 
-  const exact = TRANSLATION_LANGUAGES.find(
-    ({ id }) => id.toLowerCase() === normalized,
-  )?.id
+  const exact = TRANSLATION_LANGUAGES.find(({ id }) => id.toLowerCase() === normalized)?.id
   if (exact) return exact
 
   const base = normalized.split('-')[0] ?? ''
@@ -82,11 +71,7 @@ function inferScriptLanguage(
   if (/[가-힯]/u.test(text)) return 'ko'
 
   if (/[㐀-鿿]/u.test(text)) {
-    const configuredChinese = unique(
-      [mainLanguage, secondaryLanguage].filter((language) =>
-        language.startsWith('zh-'),
-      ),
-    )
+    const configuredChinese = unique([mainLanguage, secondaryLanguage].filter((language) => language.startsWith('zh-')))
     if (configuredChinese.length === 1) return configuredChinese[0]
   }
 
@@ -108,13 +93,10 @@ export function resolveTranslationDirection({
   targetLanguage: TranslationLanguage
 } {
   const sourceLanguage =
-    normalizeLanguage(declaredLanguage) ??
-    inferScriptLanguage(text, mainLanguage, secondaryLanguage) ??
-    'auto'
+    normalizeLanguage(declaredLanguage) ?? inferScriptLanguage(text, mainLanguage, secondaryLanguage) ?? 'auto'
 
   return {
     sourceLanguage,
-    targetLanguage:
-      sourceLanguage === mainLanguage ? secondaryLanguage : mainLanguage,
+    targetLanguage: sourceLanguage === mainLanguage ? secondaryLanguage : mainLanguage,
   }
 }

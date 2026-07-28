@@ -1,23 +1,17 @@
 import clsx from 'clsx'
-import {
-  ComponentProps,
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-} from 'react'
+import { type ComponentProps, useEffect, useEffectEvent, useRef, useState } from 'react'
 
 import { useAccentColor } from '@/hooks/theme/useSourceColor'
 import { useTranslation } from '@/hooks/useTranslation'
-import { useSettings, type Settings } from '@/state'
+import { type Settings, useSettings } from '@/state'
 import {
+  type BackgroundPreset,
   backgroundPresets,
   defaultAccentColor,
   defaultCustomBackgroundColor,
   isDarkPaletteColor,
   normalizePaletteColor,
   normalizeThemeConfiguration,
-  type BackgroundPreset,
 } from '@/styles/theme'
 
 import { ColorPickerPopover } from '../ColorPickerPopover'
@@ -26,10 +20,7 @@ interface ThemePanelProps {
   className?: string
   onClose?: () => void
 }
-export const ThemePanel: React.FC<ThemePanelProps> = ({
-  className,
-  onClose,
-}) => {
+export const ThemePanel: React.FC<ThemePanelProps> = ({ className, onClose }) => {
   const [{ theme }, setSettings] = useSettings()
   const { accentColor, setAccentColor } = useAccentColor()
   const t = useTranslation('theme')
@@ -40,9 +31,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({
   const customSessionActiveRef = useRef(false)
   const customSessionAppliedRef = useRef(false)
   const selectedBackground = normalizedTheme.backgroundPreset
-  const customBackground =
-    normalizePaletteColor(normalizedTheme.customBackground) ??
-    defaultCustomBackgroundColor
+  const customBackground = normalizePaletteColor(normalizedTheme.customBackground) ?? defaultCustomBackgroundColor
   const positioned = hasPositionClass(className)
 
   const applyBackgroundPreset = (preset: BackgroundPreset) => {
@@ -125,13 +114,9 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({
     }
 
     const targets = [window, ...getIframeWindows()]
-    targets.forEach((target) =>
-      target.addEventListener('keydown', onKeyDown, true),
-    )
+    targets.forEach((target) => target.addEventListener('keydown', onKeyDown, true))
     return () => {
-      targets.forEach((target) =>
-        target.removeEventListener('keydown', onKeyDown, true),
-      )
+      targets.forEach((target) => target.removeEventListener('keydown', onKeyDown, true))
     }
   })
 
@@ -175,9 +160,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({
           <span
             className="absolute inset-x-1.5 top-1/2 -translate-y-1/2 truncate text-center text-base font-medium"
             style={{
-              color: isDarkPaletteColor(customBackground)
-                ? '#F8FAFC'
-                : '#1F2937',
+              color: isDarkPaletteColor(customBackground) ? '#F8FAFC' : '#1F2937',
             }}
           >
             {t('preset.custom')}
@@ -190,9 +173,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({
       </div>
 
       <div className="border-border mt-3 flex items-center justify-between gap-3 border-t pt-3">
-        <span className="text-muted-foreground text-base font-medium">
-          {t('source_color')}
-        </span>
+        <span className="text-muted-foreground text-base font-medium">{t('source_color')}</span>
         <button
           type="button"
           aria-label={t('source_color')}
@@ -202,10 +183,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({
             setAccentPickerOpen(true)
           }}
         >
-          <span
-            className="ring-border h-4 w-8 rounded-md ring-1 ring-inset"
-            style={{ backgroundColor: accentColor }}
-          />
+          <span className="ring-border h-4 w-8 rounded-md ring-1 ring-inset" style={{ backgroundColor: accentColor }} />
           <span className="font-mono text-base">{accentColor}</span>
         </button>
       </div>
@@ -268,13 +246,7 @@ interface BackgroundSwatchProps extends ComponentProps<'button'> {
   label: string
   selected?: boolean
 }
-const BackgroundSwatch: React.FC<BackgroundSwatchProps> = ({
-  preset,
-  label,
-  selected,
-  className,
-  ...props
-}) => {
+const BackgroundSwatch: React.FC<BackgroundSwatchProps> = ({ preset, label, selected, className, ...props }) => {
   const seed = preset.mode === 'dark' ? preset.darkSeed : preset.lightSeed
   const labelColor = isDarkPaletteColor(seed) ? '#F8FAFC' : '#1F2937'
 

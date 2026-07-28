@@ -36,9 +36,7 @@ const LINE_BREAK_ELEMENTS = new Set([
 
 const SECTION_BREAK_ELEMENTS = new Set(['ARTICLE', 'SECTION'])
 
-export function serializeTranslationFragment(
-  fragment: DocumentFragment,
-): string {
+export function serializeTranslationFragment(fragment: DocumentFragment): string {
   let text = ''
   const visit = (node: Node) => {
     if (node.nodeType === Node.TEXT_NODE) {

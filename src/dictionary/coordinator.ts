@@ -1,32 +1,18 @@
 import { classifyDictionaryQuery, normalizeDictionaryQuery } from './query'
-import type {
-  DictionaryQuery,
-  DictionaryQueryLanguage,
-  DictionaryResult,
-  SupportedDictionaryLanguage,
-} from './types'
+import type { DictionaryQuery, DictionaryQueryLanguage, DictionaryResult, SupportedDictionaryLanguage } from './types'
 
 export type DictionaryProviderScope = 'local' | 'online'
 
 export interface DictionaryProvider {
   externalUrl?: (query: DictionaryQuery) => string
   id: string
-  lookup: (
-    query: DictionaryQuery,
-    context: { signal: AbortSignal },
-  ) => Promise<DictionaryResult | null>
+  lookup: (query: DictionaryQuery, context: { signal: AbortSignal }) => Promise<DictionaryResult | null>
   name: string
   scope: DictionaryProviderScope
   sourceLanguages: readonly SupportedDictionaryLanguage[]
 }
 
-export type DictionarySourceStatus =
-  | 'cancelled'
-  | 'empty'
-  | 'error'
-  | 'idle'
-  | 'loading'
-  | 'success'
+export type DictionarySourceStatus = 'cancelled' | 'empty' | 'error' | 'idle' | 'loading' | 'success'
 
 export interface DictionarySourceState {
   error?: string
@@ -65,11 +51,7 @@ export class DictionaryCoordinator {
     metadataLanguage?: string,
   ): DictionaryLookupSession {
     const query = normalizeDictionaryQuery(rawText, metadataLanguage)
-    const eligibleProviders = query
-      ? providers.filter((provider) =>
-          isProviderEligible(provider, query.language),
-        )
-      : []
+    const eligibleProviders = query ? providers.filter((provider) => isProviderEligible(provider, query.language)) : []
     return this.startLookup(query, eligibleProviders, onUpdate)
   }
 
@@ -126,9 +108,7 @@ export class DictionaryCoordinator {
             externalUrl: result?.externalUrl ?? provider.externalUrl?.(query!),
             providerId: provider.id,
             providerName: provider.name,
-            ...(result
-              ? { result, status: 'success' as const }
-              : { status: 'empty' as const }),
+            ...(result ? { result, status: 'success' as const } : { status: 'empty' as const }),
           })
           onUpdate?.(sources)
         } catch (error) {
@@ -136,8 +116,7 @@ export class DictionaryCoordinator {
 
           sources = replaceSource(sources, index, {
             error: error instanceof Error ? error.message : String(error),
-            externalUrl:
-              externalUrlFromError(error) ?? provider.externalUrl?.(query!),
+            externalUrl: externalUrlFromError(error) ?? provider.externalUrl?.(query!),
             providerId: provider.id,
             providerName: provider.name,
             status: 'error',
@@ -151,9 +130,7 @@ export class DictionaryCoordinator {
       return {
         cancelled,
         query,
-        sources: cancelled
-          ? sources.map((source) => ({ ...source, status: 'cancelled' }))
-          : sources,
+        sources: cancelled ? sources.map((source) => ({ ...source, status: 'cancelled' })) : sources,
       }
     })
 
@@ -261,12 +238,7 @@ function abortError() {
 }
 
 function externalUrlFromError(error: unknown) {
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    'externalUrl' in error &&
-    typeof error.externalUrl === 'string'
-  ) {
+  if (typeof error === 'object' && error !== null && 'externalUrl' in error && typeof error.externalUrl === 'string') {
     return error.externalUrl
   }
 }
@@ -278,12 +250,6 @@ export function isProviderEligible(
   return provider.sourceLanguages.some((language) => language === queryLanguage)
 }
 
-function replaceSource(
-  sources: DictionarySourceState[],
-  index: number,
-  source: DictionarySourceState,
-) {
-  return sources.map((current, currentIndex) =>
-    currentIndex === index ? source : current,
-  )
+function replaceSource(sources: DictionarySourceState[], index: number, source: DictionarySourceState) {
+  return sources.map((current, currentIndex) => (currentIndex === index ? source : current))
 }

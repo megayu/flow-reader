@@ -1,8 +1,6 @@
 export function getRenditionPageWidth(rendition: unknown) {
   const pageWidth = (rendition as any)?.manager?.layout?.pageWidth
-  return Number.isFinite(pageWidth) && pageWidth > 0
-    ? Number(pageWidth)
-    : undefined
+  return Number.isFinite(pageWidth) && pageWidth > 0 ? Number(pageWidth) : undefined
 }
 
 export function getRenditionLayout(rendition: unknown) {
@@ -13,10 +11,7 @@ export function getFiniteLayoutValue(value: unknown, fallback: number) {
   return Number.isFinite(value) && Number(value) >= 0 ? Number(value) : fallback
 }
 
-export function getCurrentReaderPageWidth(
-  rendition: unknown,
-  container?: HTMLElement | null,
-) {
+export function getCurrentReaderPageWidth(rendition: unknown, container?: HTMLElement | null) {
   const pageWidth = getRenditionPageWidth(rendition)
   if (pageWidth) return Math.round(pageWidth)
 
@@ -27,10 +22,7 @@ export function getCurrentReaderPageWidth(
   return Math.round(rect.width / divisor)
 }
 
-export function getCurrentReaderSpreadWidth(
-  rendition: unknown,
-  container?: HTMLElement | null,
-) {
+export function getCurrentReaderSpreadWidth(rendition: unknown, container?: HTMLElement | null) {
   const pageWidth = getRenditionPageWidth(rendition)
   const rect = container?.getBoundingClientRect()
   if (!pageWidth) return rect?.width ? Math.round(rect.width) : undefined

@@ -1,19 +1,14 @@
-import React, { useCallback, useState } from 'react'
+import type React from 'react'
+import { useCallback, useState } from 'react'
 
 export interface LibraryRangeSelectionSession {
   anchorId: string
   baseSelectedIds: Set<string>
 }
 
-export type LibraryBookSelectionEvent =
-  | React.MouseEvent<Element>
-  | React.KeyboardEvent<Element>
+export type LibraryBookSelectionEvent = React.MouseEvent<Element> | React.KeyboardEvent<Element>
 
-export function getBookIdRange(
-  bookIds: readonly string[],
-  anchorId: string,
-  targetId: string,
-) {
+export function getBookIdRange(bookIds: readonly string[], anchorId: string, targetId: string) {
   const anchorIndex = bookIds.indexOf(anchorId)
   const targetIndex = bookIds.indexOf(targetId)
 
@@ -25,10 +20,7 @@ export function getBookIdRange(
   return bookIds.slice(start, end + 1)
 }
 
-export function selectBookIdRange(
-  baseSelectedIds: ReadonlySet<string>,
-  rangeIds: readonly string[],
-) {
+export function selectBookIdRange(baseSelectedIds: ReadonlySet<string>, rangeIds: readonly string[]) {
   const next = new Set(baseSelectedIds)
   rangeIds.forEach((id) => next.add(id))
   return next

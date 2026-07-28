@@ -10,22 +10,14 @@ interface ShortcutChordProps {
   variant?: 'default' | 'tooltip'
 }
 
-export const ShortcutChord: FC<ShortcutChordProps> = ({
-  className,
-  compact = false,
-  shortcut,
-}) => {
+export const ShortcutChord: FC<ShortcutChordProps> = ({ className, compact = false, shortcut }) => {
   const textSizeClass = 'text-base'
 
   return (
     <span className={clsx('inline-flex items-center gap-1', className)}>
       {shortcut.map((key, index) => (
         <span className="inline-flex items-center gap-1" key={key}>
-          {index > 0 && (
-            <span className={clsx('text-muted-foreground', textSizeClass)}>
-              +
-            </span>
-          )}
+          {index > 0 && <span className={clsx('text-muted-foreground', textSizeClass)}>+</span>}
           <kbd
             data-slot="kbd"
             className={clsx(

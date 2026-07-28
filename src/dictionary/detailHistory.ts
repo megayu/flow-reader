@@ -10,10 +10,7 @@ export function pushDictionaryDetailHistory(
   location: DictionaryDetailLocation,
 ) {
   const current = history.at(-1)
-  if (
-    current?.providerId === location.providerId &&
-    current.query === location.query
-  ) {
+  if (current?.providerId === location.providerId && current.query === location.query) {
     return history
   }
 

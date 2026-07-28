@@ -1,10 +1,10 @@
 import clsx from 'clsx'
 import {
+  type CSSProperties,
   createContext,
-  CSSProperties,
-  Dispatch,
-  PropsWithChildren,
-  SetStateAction,
+  type Dispatch,
+  type PropsWithChildren,
+  type SetStateAction,
   useCallback,
   useContext,
   useEffect,
@@ -18,18 +18,13 @@ import { useAction } from '@/hooks/useAction'
 import { LIST_ITEM_SIZE } from '@/hooks/useList'
 import { useTranslation } from '@/hooks/useTranslation'
 import { createDuplicateIllustrationFilter } from '@/imageFilters'
-import {
-  ImageEntry,
-  ISection,
-  reader,
-  useReaderSnapshot,
-} from '@/models/reader'
+import { type ImageEntry, type ISection, reader, useReaderSnapshot } from '@/models/reader'
 import { normalizeHrefPath, sameHref } from '@/noteLinks'
 import type { BookImageIndexCache, BookImageIndexCacheInput } from '@/storage'
 import { loadBookImageIndex, storeBookImageIndex } from '@/storage'
 
+import { OverlayScroll, PaneView, type PaneViewProps } from '../base/PaneView'
 import { Row } from '../Row'
-import { OverlayScroll, PaneView, PaneViewProps } from '../base/PaneView'
 
 const IMAGE_SCAN_CONCURRENCY = 4
 const IMAGE_LIST_OVERSCAN = 6
@@ -62,18 +57,14 @@ interface VirtualImageSection {
   start: number
 }
 
-const ImageSelectionContext = createContext<
-  [string | undefined, Dispatch<SetStateAction<string | undefined>>] | null
->(null)
+const ImageSelectionContext = createContext<[string | undefined, Dispatch<SetStateAction<string | undefined>>] | null>(
+  null,
+)
 
 const ImageSelectionProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const selection = useState<string>()
 
-  return (
-    <ImageSelectionContext.Provider value={selection}>
-      {children}
-    </ImageSelectionContext.Provider>
-  )
+  return <ImageSelectionContext.Provider value={selection}>{children}</ImageSelectionContext.Provider>
 }
 
 function useImageSelection() {
@@ -102,10 +93,7 @@ function knownImageEntries(section: ISection) {
 
 function imageSignature(section: ISection) {
   return imageEntries(section)
-    .map(
-      (image) =>
-        `${image.index}:${image.src}:${image.hiddenByDefault ? (image.reason ?? 'hidden') : 'visible'}`,
-    )
+    .map((image) => `${image.index}:${image.src}:${image.hiddenByDefault ? (image.reason ?? 'hidden') : 'visible'}`)
     .join('|')
 }
 
@@ -141,18 +129,12 @@ function createImageAssetLookup(resources: any): ImageAssetLookup | undefined {
   }
 }
 
-function applyImageIndexCache(
-  tab: typeof reader.focusedBookTab,
-  sections: ISection[],
-  cache: BookImageIndexCache,
-) {
+function applyImageIndexCache(tab: typeof reader.focusedBookTab, sections: ISection[], cache: BookImageIndexCache) {
   if (!tab) return false
 
   let applied = 0
   cache.sections.forEach((cachedSection) => {
-    const section =
-      sections[cachedSection.sectionIndex] ??
-      sections.find((item) => item.href === cachedSection.href)
+    const section = sections[cachedSection.sectionIndex] ?? sections.find((item) => item.href === cachedSection.href)
 
     if (!section || section.href !== cachedSection.href) return
 
@@ -188,9 +170,7 @@ function createImageIndexCacheInput(
         sectionIndex: section.index ?? index,
         href: section.href,
         title: navitem?.label ?? null,
-        navPath: navitem
-          ? tab.getNavPath(navitem).map((item) => item.label)
-          : [],
+        navPath: navitem ? tab.getNavPath(navitem).map((item) => item.label) : [],
         images: imageEntries(section).map((image) => ({
           src: image.src,
           index: image.index,
@@ -207,16 +187,10 @@ function sectionKey(section: ISection) {
 }
 
 function estimatedImageSectionHeight(section: ImageSection, expanded: boolean) {
-  return expanded
-    ? LIST_ITEM_SIZE +
-        section.images.length * IMAGE_SECTION_ESTIMATED_THUMBNAIL_HEIGHT
-    : LIST_ITEM_SIZE
+  return expanded ? LIST_ITEM_SIZE + section.images.length * IMAGE_SECTION_ESTIMATED_THUMBNAIL_HEIGHT : LIST_ITEM_SIZE
 }
 
-function useVirtualImageSections(
-  sections: ImageSection[],
-  expandedKeys: ReadonlySet<string>,
-) {
+function useVirtualImageSections(sections: ImageSection[], expandedKeys: ReadonlySet<string>) {
   const outerRef = useRef<HTMLDivElement | null>(null)
   const measuredHeights = useRef<Map<string, number> | null>(null)
   const [measureRevision, setMeasureRevision] = useState(0)
@@ -233,11 +207,7 @@ function useVirtualImageSections(
       scrollTop: Math.max(0, el.scrollTop),
     }
 
-    setViewport((current) =>
-      current.height === next.height && current.scrollTop === next.scrollTop
-        ? current
-        : next,
-    )
+    setViewport((current) => (current.height === next.height && current.scrollTop === next.scrollTop ? current : next))
   }, [])
 
   useLayoutEffect(() => {
@@ -257,10 +227,7 @@ function useVirtualImageSections(
     updateViewport()
     el.addEventListener('scroll', scheduleUpdate, { passive: true })
 
-    const observer =
-      typeof ResizeObserver === 'undefined'
-        ? undefined
-        : new ResizeObserver(scheduleUpdate)
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(scheduleUpdate)
 
     if (observer) {
       observer.observe(el)
@@ -289,9 +256,7 @@ function useVirtualImageSections(
     const key = sectionKey(section.section)
     const expanded = expandedKeys.has(key)
     const measured = measuredHeights.current?.get(key)
-    const height = expanded
-      ? (measured ?? estimatedImageSectionHeight(section, expanded))
-      : LIST_ITEM_SIZE
+    const height = expanded ? (measured ?? estimatedImageSectionHeight(section, expanded)) : LIST_ITEM_SIZE
 
     layoutItems.push({
       index,
@@ -362,16 +327,10 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
     mode,
   }))
   const [, setImageScanRevision] = useState(0)
-  const liveSections = useMemo(
-    () => (tab?.sections as ISection[] | undefined) ?? [],
-    [tab?.sections],
-  )
+  const liveSections = useMemo(() => (tab?.sections as ISection[] | undefined) ?? [], [tab?.sections])
   const snapshotSections = focusedBookTab?.sections as ISection[] | undefined
   const canLoadImages = action === 'image' && !!snapshotSections
-  const imageAssetLookup = useMemo(
-    () => createImageAssetLookup(tab?.epub?.resources),
-    [tab?.epub?.resources],
-  )
+  const imageAssetLookup = useMemo(() => createImageAssetLookup(tab?.epub?.resources), [tab?.epub?.resources])
 
   useEffect(() => {
     if (!canLoadImages || !liveSections.length || !tab) return
@@ -404,9 +363,7 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
         return applyDuplicateFilterToKnownSections()
       }
       const finalizeDuplicateFilterForAllSections = () =>
-        liveSections.every(knownImageEntries)
-          ? duplicateFilter.finalize()
-          : false
+        liveSections.every(knownImageEntries) ? duplicateFilter.finalize() : false
 
       applyDuplicateFilterToKnownSections()
       refreshImages()
@@ -424,9 +381,7 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
       }
 
       let nextSectionIndex = 0
-      const sectionsToScan = liveSections.filter(
-        (section) => !knownImageEntries(section),
-      )
+      const sectionsToScan = liveSections.filter((section) => !knownImageEntries(section))
 
       const scanNextSection = async () => {
         while (!cancelled) {
@@ -443,27 +398,17 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
           if (cancelled || reader.focusedBookTab !== tab) return
 
           const duplicatesChanged = duplicateFilter.applyToSection(section)
-          if (
-            duplicatesChanged ||
-            imageSignature(section) !== previousImageSignature
-          ) {
+          if (duplicatesChanged || imageSignature(section) !== previousImageSignature) {
             refreshImages()
           }
         }
       }
 
       await Promise.all(
-        Array.from(
-          { length: Math.min(IMAGE_SCAN_CONCURRENCY, sectionsToScan.length) },
-          scanNextSection,
-        ),
+        Array.from({ length: Math.min(IMAGE_SCAN_CONCURRENCY, sectionsToScan.length) }, scanNextSection),
       )
 
-      if (
-        !cancelled &&
-        reader.focusedBookTab === tab &&
-        liveSections.every(knownImageEntries)
-      ) {
+      if (!cancelled && reader.focusedBookTab === tab && liveSections.every(knownImageEntries)) {
         const duplicateChanged = replayDuplicateFilterForKnownSections()
         const finalizedChanged = finalizeDuplicateFilterForAllSections()
         const changed = duplicateChanged || finalizedChanged
@@ -485,16 +430,10 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
   const allImages = liveSections.flatMap(imageEntries)
   const sections = liveSections.flatMap((section): ImageSection[] => {
     const entries = imageEntries(section)
-    const images =
-      mode === 'all'
-        ? entries
-        : entries.filter((image) => !image.hiddenByDefault)
+    const images = mode === 'all' ? entries : entries.filter((image) => !image.hiddenByDefault)
     return images.length ? [{ images, section }] : []
   })
-  const visibleImageCount = sections.reduce(
-    (count, section) => count + section.images.length,
-    0,
-  )
+  const visibleImageCount = sections.reduce((count, section) => count + section.images.length, 0)
   let expandedKeys = expandedState.keys
 
   if (expandedState.mode !== mode) {
@@ -502,8 +441,10 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
     setExpandedState({ keys: expandedKeys, mode })
   }
 
-  const { outerRef, scrollbar, setMeasuredHeight, totalSize, visibleItems } =
-    useVirtualImageSections(sections, expandedKeys)
+  const { outerRef, scrollbar, setMeasuredHeight, totalSize, visibleItems } = useVirtualImageSections(
+    sections,
+    expandedKeys,
+  )
 
   const toggleSection = useCallback(
     (key: string) => {
@@ -543,9 +484,7 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
           ))}
         </div>
         <span className="flex h-7 min-w-8 shrink-0 items-center justify-center rounded-full bg-(--flow-sidebar-item-bg) px-1.5 text-sm leading-none font-medium text-(--flow-text-muted) ring-1 ring-(--flow-sidebar-item-border) ring-inset">
-          {mode === 'all'
-            ? visibleImageCount
-            : `${visibleImageCount}/${allImages.length}`}
+          {mode === 'all' ? visibleImageCount : `${visibleImageCount}/${allImages.length}`}
         </span>
       </div>
       <OverlayScroll
@@ -556,10 +495,7 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
         scrollbar={{ ...scrollbar, scrollRef: outerRef }}
       >
         {sections.length ? (
-          <div
-            className="relative pt-1"
-            style={{ height: totalSize + IMAGE_LIST_TOP_PADDING }}
-          >
+          <div className="relative pt-1" style={{ height: totalSize + IMAGE_LIST_TOP_PADDING }}>
             {visibleItems.map(({ section: imageSection, start }) => {
               const key = sectionKey(imageSection.section)
               const expanded = expandedKeys.has(key)
@@ -583,9 +519,7 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
             })}
           </div>
         ) : (
-          <div className="px-5 pt-1 pb-4 text-base text-(--flow-text-muted)">
-            {t('image.empty')}
-          </div>
+          <div className="px-5 pt-1 pb-4 text-base text-(--flow-text-muted)">{t('image.empty')}</div>
         )}
       </OverlayScroll>
     </div>
@@ -605,11 +539,7 @@ interface MeasuredImageBlockProps extends BlockProps {
   style: CSSProperties
 }
 
-const MeasuredImageBlock: React.FC<MeasuredImageBlockProps> = ({
-  onMeasured,
-  style,
-  ...props
-}) => {
+const MeasuredImageBlock: React.FC<MeasuredImageBlockProps> = ({ onMeasured, style, ...props }) => {
   const ref = useRef<HTMLDivElement | null>(null)
 
   useLayoutEffect(() => {
@@ -628,10 +558,7 @@ const MeasuredImageBlock: React.FC<MeasuredImageBlockProps> = ({
 
     measure()
 
-    const observer =
-      typeof ResizeObserver === 'undefined'
-        ? undefined
-        : new ResizeObserver(measure)
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure)
 
     if (observer) {
       observer.observe(el)
@@ -650,13 +577,7 @@ const MeasuredImageBlock: React.FC<MeasuredImageBlockProps> = ({
   )
 }
 
-const Block: React.FC<BlockProps> = ({
-  assetLookup,
-  expanded,
-  images,
-  onToggle,
-  section,
-}) => {
+const Block: React.FC<BlockProps> = ({ assetLookup, expanded, images, onToggle, section }) => {
   const { focusedBookTab } = useReaderSnapshot()
   const [activeKey, setActiveKey] = useImageSelection()
 
@@ -683,24 +604,14 @@ const Block: React.FC<BlockProps> = ({
                 key={`${src}:${image.index}`}
                 className={clsx(
                   'focus:ring-ring block w-full cursor-pointer border-0 bg-transparent py-0 pr-2.5 pl-0 text-left outline-none focus:ring-1 focus:ring-inset',
-                  active
-                    ? 'flow-bg-active hover:bg-(--flow-bg-active-hover)'
-                    : 'hover:bg-(--flow-bg-control-hover)',
+                  active ? 'flow-bg-active hover:bg-(--flow-bg-active-hover)' : 'hover:bg-(--flow-bg-control-hover)',
                 )}
                 onClick={() => {
                   setActiveKey(key)
-                  void reader.focusedBookTab?.displayImage(
-                    section,
-                    src,
-                    image.index,
-                  )
+                  void reader.focusedBookTab?.displayImage(section, src, image.index)
                 }}
               >
-                <img
-                  className="w-full px-5 py-2"
-                  src={imageSrc}
-                  alt={asset?.href ?? src}
-                />
+                <img className="w-full px-5 py-2" src={imageSrc} alt={asset?.href ?? src} />
               </button>
             )
           })}
@@ -710,11 +621,7 @@ const Block: React.FC<BlockProps> = ({
   )
 }
 
-function imageSelectionKey(
-  tabId: string | undefined,
-  section: ISection,
-  image: ImageEntry,
-) {
+function imageSelectionKey(tabId: string | undefined, section: ISection, image: ImageEntry) {
   return `${tabId ?? ''}:${section.href}:${image.src}:${image.index}`
 }
 
@@ -723,28 +630,17 @@ function findImageAssetIndex(src: string, lookup?: ImageAssetLookup) {
 
   const normalizedSrc = normalizePath(src)
   const exactIndex =
-    lookup.indexesByHref.get(src) ??
-    (normalizedSrc ? lookup.indexesByHref.get(normalizedSrc) : undefined)
+    lookup.indexesByHref.get(src) ?? (normalizedSrc ? lookup.indexesByHref.get(normalizedSrc) : undefined)
 
   if (exactIndex !== undefined) return exactIndex
 
-  return lookup.entries.findIndex((entry) =>
-    imageSourceMatchesAsset(src, normalizedSrc, entry),
-  )
+  return lookup.entries.findIndex((entry) => imageSourceMatchesAsset(src, normalizedSrc, entry))
 }
 
-function imageSourceMatchesAsset(
-  src: string,
-  normalizedSrc: string | undefined,
-  asset: ImageAssetEntry,
-) {
+function imageSourceMatchesAsset(src: string, normalizedSrc: string | undefined, asset: ImageAssetEntry) {
   const href = asset.href
   if (!href) return false
   if (sameHref(src, href)) return true
 
-  return !!(
-    normalizedSrc &&
-    asset.normalizedHref &&
-    sameHref(normalizedSrc, asset.normalizedHref)
-  )
+  return !!(normalizedSrc && asset.normalizedHref && sameHref(normalizedSrc, asset.normalizedHref))
 }

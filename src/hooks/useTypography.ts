@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useSnapshot } from 'valtio'
 
-import { BookTab } from '../models/reader'
+import type { BookTab } from '../models/reader'
 import { resolveBookSpreadPolicy } from '../reader/spreadPolicy'
 import { useSettings, useZenTypographyOverrides } from '../state'
 

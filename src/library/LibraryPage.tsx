@@ -2,49 +2,33 @@ import clsx from 'clsx'
 import {
   ArrowDownIcon,
   ArrowUpIcon,
-  BookTextIcon,
-  BookOpenIcon,
   BookImageIcon,
+  BookOpenIcon,
+  BookTextIcon,
   CalendarPlusIcon,
   FileInputIcon,
   HistoryIcon,
   ListChecksIcon,
   ListXIcon,
+  type LucideIcon,
   SquareCheckBigIcon,
   SquareXIcon,
   TagIcon,
   Trash2Icon,
   UserRound,
-  type LucideIcon,
 } from 'lucide-react'
-import React, {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import type React from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
 import { AppTooltip } from '../components/AppTooltip'
 import { Button } from '../components/Button'
+import { DropZone } from '../components/base/DropZone'
 import { ReaderGridView } from '../components/Reader'
 import { TextImportDialog } from '../components/TextImportDialog'
-import { DropZone } from '../components/base/DropZone'
 import { Button as UiButton } from '../components/ui/button'
 import { useNotify } from '../components/ui/notification'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '../components/ui/popover'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select'
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { formatErrorMessage } from '../errorMessage'
 import { handleFiles, openImportDialog, setupNativeOpenFiles } from '../file'
 import { useAction, useLibraryAction } from '../hooks/useAction'
@@ -56,14 +40,14 @@ import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import { reader, useReaderSnapshot } from '../models/reader'
 import { subscribeReaderOpenErrors } from '../reader/errorEvents'
 import {
-  defaultLibrarySort,
   defaultLibraryDisplay,
+  defaultLibrarySort,
+  type LibrarySortField,
   libraryBookCardWidthMax,
   libraryBookCardWidthMin,
   libraryBookCardWidthStep,
   librarySortFieldOptions,
   normalizeLibraryBookCardWidth,
-  type LibrarySortField,
   useLibraryAuthorFilter,
   useLibraryStatusFilter,
   useLibraryTagFilter,
@@ -71,35 +55,29 @@ import {
   useSettingsReady,
   useViewMode,
 } from '../state'
-import {
-  BookRecord,
-  BookSourceStatus,
-  EpubImportProgress,
-  EpubImportResult,
-  db,
-} from '../storage'
+import { type BookRecord, type BookSourceStatus, db, type EpubImportProgress, type EpubImportResult } from '../storage'
 import { clamp } from '../utils'
 
 import { BookCard } from './BookCard'
 import { EpubImportProgressPanel } from './EpubImportProgressPanel'
-import { BatchTagsDialog } from './LibraryDialogs'
-import { readingStatusOptions } from './ReadingStatusControls'
 import { filterBooksByLibraryFilters } from './filters'
+import { BatchTagsDialog } from './LibraryDialogs'
 import {
-  bookSourceStatusFromError,
   bookSourceDescriptionKey,
+  bookSourceStatusFromError,
   bookSourceStatusRefreshEvent,
   isArchiveOnlyBook,
   sortBooks,
   toggleReadingStatusFilter,
   toggleSortDirection,
 } from './model'
+import { readingStatusOptions } from './ReadingStatusControls'
 import {
   getBookIdRange,
-  selectBookIdRange,
-  useStringSet,
   type LibraryBookSelectionEvent,
   type LibraryRangeSelectionSession,
+  selectBookIdRange,
+  useStringSet,
 } from './selection'
 
 const sortFieldIconMap = {
@@ -130,20 +108,17 @@ export function LibraryPage() {
   const viewModeRef = useRef(viewMode)
   const openedFromNativeRef = useRef(false)
   const nativeOpenReadyRef = useRef(false)
-  const nativeOpenSetupPromiseRef =
-    useRef<ReturnType<typeof setupNativeOpenFiles>>(undefined)
+  const nativeOpenSetupPromiseRef = useRef<ReturnType<typeof setupNativeOpenFiles>>(undefined)
   const nativeOpenCleanupRef = useRef<() => void>(undefined)
   const startupRestoreStartedRef = useRef(false)
   const [startupRestoreDone, setStartupRestoreDone] = useState(false)
   const [nativeStartupPending, setNativeStartupPending] = useState(false)
-  const [nativeStartupReaderFailed, setNativeStartupReaderFailed] =
-    useState(false)
+  const [nativeStartupReaderFailed, setNativeStartupReaderFailed] = useState(false)
   const [textImportDialog, setTextImportDialog] = useState<{
     paths: string[]
     openAfterImport: boolean
   }>()
-  const [epubImportProgress, setEpubImportProgress] =
-    useState<EpubImportProgress>()
+  const [epubImportProgress, setEpubImportProgress] = useState<EpubImportProgress>()
   const notify = useNotify()
   const notifyEpubImportResult = useEpubImportNotifications()
   const errorT = useTranslation('error')
@@ -153,20 +128,12 @@ export function LibraryPage() {
   const applySavedSidebarState = useCallback(() => {
     setReaderAction(settings.readerSidebarOpen === false ? undefined : 'toc')
     setLibraryAction(settings.librarySidebarOpen ? 'libraryFilter' : undefined)
-  }, [
-    setLibraryAction,
-    setReaderAction,
-    settings.librarySidebarOpen,
-    settings.readerSidebarOpen,
-  ])
+  }, [setLibraryAction, setReaderAction, settings.librarySidebarOpen, settings.readerSidebarOpen])
 
-  const openTextImportDialog = useCallback(
-    (paths: string[], openAfterImport: boolean) => {
-      if (!paths.length) return
-      setTextImportDialog({ paths, openAfterImport })
-    },
-    [],
-  )
+  const openTextImportDialog = useCallback((paths: string[], openAfterImport: boolean) => {
+    if (!paths.length) return
+    setTextImportDialog({ paths, openAfterImport })
+  }, [])
 
   const handleTextImported = useCallback(
     (books: BookRecord[], openAfterImport: boolean) => {
@@ -178,12 +145,9 @@ export function LibraryPage() {
     [setViewMode],
   )
 
-  const handleEpubImportProgress = useCallback(
-    (progress: EpubImportProgress) => {
-      setEpubImportProgress(progress)
-    },
-    [],
-  )
+  const handleEpubImportProgress = useCallback((progress: EpubImportProgress) => {
+    setEpubImportProgress(progress)
+  }, [])
 
   const handleEpubImportResult = useCallback(
     async (result: EpubImportResult) => {
@@ -201,40 +165,28 @@ export function LibraryPage() {
   )
 
   useEffect(() => {
-    return subscribeReaderOpenErrors(
-      ({ bookId, bookTitle, closeTab, error, stage }) => {
-        setNativeStartupReaderFailed(true)
-        if (closeTab) {
-          reader.closeBookTabs(bookId)
-          window.dispatchEvent(new Event(bookSourceStatusRefreshEvent))
-        }
-        const errorMessage = formatErrorMessage(error)
-        const sourceErrorStatus = bookSourceStatusFromError(errorMessage)
-        const sourceErrorDescription = sourceErrorStatus
-          ? homeT(bookSourceDescriptionKey(sourceErrorStatus))
-          : undefined
-        notify({
-          autoCloseMs: false,
-          description: `${bookTitle}: ${sourceErrorDescription ?? errorMessage}`,
-          title: sourceErrorDescription
-            ? homeT('source_unavailable')
-            : errorT(
-                stage === 'source' || stage === 'open'
-                  ? 'reader_open_failed'
-                  : 'reader_render_failed',
-              ),
-          type: 'error',
-        })
-      },
-    )
+    return subscribeReaderOpenErrors(({ bookId, bookTitle, closeTab, error, stage }) => {
+      setNativeStartupReaderFailed(true)
+      if (closeTab) {
+        reader.closeBookTabs(bookId)
+        window.dispatchEvent(new Event(bookSourceStatusRefreshEvent))
+      }
+      const errorMessage = formatErrorMessage(error)
+      const sourceErrorStatus = bookSourceStatusFromError(errorMessage)
+      const sourceErrorDescription = sourceErrorStatus ? homeT(bookSourceDescriptionKey(sourceErrorStatus)) : undefined
+      notify({
+        autoCloseMs: false,
+        description: `${bookTitle}: ${sourceErrorDescription ?? errorMessage}`,
+        title: sourceErrorDescription
+          ? homeT('source_unavailable')
+          : errorT(stage === 'source' || stage === 'open' ? 'reader_open_failed' : 'reader_render_failed'),
+        type: 'error',
+      })
+    })
   }, [errorT, homeT, notify])
 
   const tryRestoreStartupSession = useEffectEvent(() => {
-    if (
-      !settingsReady ||
-      !nativeOpenReadyRef.current ||
-      startupRestoreStartedRef.current
-    ) {
+    if (!settingsReady || !nativeOpenReadyRef.current || startupRestoreStartedRef.current) {
       return
     }
 
@@ -264,12 +216,8 @@ export function LibraryPage() {
         }
 
         reader.addTab(book)
-        setReaderAction(
-          settings.readerSidebarOpen === false ? undefined : 'toc',
-        )
-        setLibraryAction(
-          settings.librarySidebarOpen ? 'libraryFilter' : undefined,
-        )
+        setReaderAction(settings.readerSidebarOpen === false ? undefined : 'toc')
+        setLibraryAction(settings.librarySidebarOpen ? 'libraryFilter' : undefined)
         setViewMode('reader')
       })
       .finally(() => {
@@ -331,11 +279,7 @@ export function LibraryPage() {
 
   useEffect(() => {
     if (!nativeStartupPending || !startupRestoreDone) return
-    if (
-      groups.length &&
-      (!focusedBookTab?.rendered || viewMode !== 'reader') &&
-      !nativeStartupReaderFailed
-    ) {
+    if (groups.length && (!focusedBookTab?.rendered || viewMode !== 'reader') && !nativeStartupReaderFailed) {
       return
     }
 
@@ -353,15 +297,12 @@ export function LibraryPage() {
     if (!settingsReady || !startupRestoreDone) return
 
     const nextSession =
-      viewMode === 'reader' &&
-      focusedBookId &&
-      focusedBookTab?.book.scope !== 'external'
+      viewMode === 'reader' && focusedBookId && focusedBookTab?.book.scope !== 'external'
         ? {
             viewMode,
             bookId: focusedBookId,
           }
-        : viewMode === 'library' ||
-            (viewMode === 'reader' && focusedBookTab?.book.scope === 'external')
+        : viewMode === 'library' || (viewMode === 'reader' && focusedBookTab?.book.scope === 'external')
           ? {
               viewMode: 'library' as const,
             }
@@ -382,14 +323,7 @@ export function LibraryPage() {
         startupSession: nextSession,
       }
     })
-  }, [
-    focusedBookId,
-    focusedBookTab?.book.scope,
-    setSettings,
-    settingsReady,
-    startupRestoreDone,
-    viewMode,
-  ])
+  }, [focusedBookId, focusedBookTab?.book.scope, setSettings, settingsReady, startupRestoreDone, viewMode])
 
   useEffect(() => {
     if (!settingsReady || !startupRestoreDone) return
@@ -398,10 +332,7 @@ export function LibraryPage() {
     const nextLibrarySidebarOpen = libraryAction !== undefined
 
     setSettings((prev) => {
-      if (
-        prev.readerSidebarOpen === nextReaderSidebarOpen &&
-        prev.librarySidebarOpen === nextLibrarySidebarOpen
-      ) {
+      if (prev.readerSidebarOpen === nextReaderSidebarOpen && prev.librarySidebarOpen === nextLibrarySidebarOpen) {
         return prev
       }
 
@@ -411,13 +342,7 @@ export function LibraryPage() {
         librarySidebarOpen: nextLibrarySidebarOpen,
       }
     })
-  }, [
-    libraryAction,
-    readerAction,
-    setSettings,
-    settingsReady,
-    startupRestoreDone,
-  ])
+  }, [libraryAction, readerAction, setSettings, settingsReady, startupRestoreDone])
 
   useEffect(() => {
     if (!groups.length && viewMode !== 'library') {
@@ -434,10 +359,7 @@ export function LibraryPage() {
     />
   )
   const nativeStartupContentReady =
-    !nativeStartupPending ||
-    !groups.length ||
-    focusedBookTab?.rendered ||
-    nativeStartupReaderFailed
+    !nativeStartupPending || !groups.length || focusedBookTab?.rendered || nativeStartupReaderFailed
   const contentReady = startupRestoreDone && nativeStartupContentReady
 
   return (
@@ -451,12 +373,7 @@ export function LibraryPage() {
       ) : startupRestoreDone ? (
         library
       ) : null}
-      {!contentReady && (
-        <div
-          className="bg-background fixed inset-0 z-50"
-          data-testid="native-startup-surface"
-        />
-      )}
+      {!contentReady && <div className="bg-background fixed inset-0 z-50" data-testid="native-startup-surface" />}
       {textImportDialog && (
         <TextImportDialog
           paths={textImportDialog.paths}
@@ -465,39 +382,28 @@ export function LibraryPage() {
           onImported={handleTextImported}
         />
       )}
-      {epubImportProgress && (
-        <EpubImportProgressPanel progress={epubImportProgress} />
-      )}
+      {epubImportProgress && <EpubImportProgressPanel progress={epubImportProgress} />}
     </>
   )
 }
 
 interface LibraryProps {
   onEpubImportProgress: (progress: EpubImportProgress) => void
-  onEpubImportResult: (
-    result: EpubImportResult,
-  ) => Set<string> | void | Promise<Set<string> | void>
+  onEpubImportResult: (result: EpubImportResult) => Set<string> | void | Promise<Set<string> | void>
   onOpenBook: () => void
   onTextPaths: (paths: string[]) => void
 }
 
-const Library: React.FC<LibraryProps> = ({
-  onEpubImportProgress,
-  onEpubImportResult,
-  onOpenBook,
-  onTextPaths,
-}) => {
+const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportResult, onOpenBook, onTextPaths }) => {
   const books = useLibrary()
   const covers = useCovers()
   const tags = useLibraryTags()
   const t = useTranslation('home')
   const [settings, setSettings] = useSettings()
   const sortField = settings.librarySort?.field ?? defaultLibrarySort.field
-  const sortDirection =
-    settings.librarySort?.direction ?? defaultLibrarySort.direction
+  const sortDirection = settings.librarySort?.direction ?? defaultLibrarySort.direction
   const bookCardWidth = normalizeLibraryBookCardWidth(
-    settings.libraryDisplay?.bookCardWidth ??
-      defaultLibraryDisplay.bookCardWidth,
+    settings.libraryDisplay?.bookCardWidth ?? defaultLibraryDisplay.bookCardWidth,
   )
   const [statusFilters, setStatusFilters] = useLibraryStatusFilter()
   const [authorFilters] = useLibraryAuthorFilter()
@@ -506,17 +412,11 @@ const Library: React.FC<LibraryProps> = ({
 
   const [select, , setSelect] = useBoolean(false)
   const [selectedBookIds, { add, has, toggle, replace, reset }] = useStringSet()
-  const [highlightedBookIds, setHighlightedBookIds] = useState<Set<string>>(
-    () => new Set(),
-  )
-  const [sourceStatuses, setSourceStatuses] = useState(
-    () => new Map<string, BookSourceStatus>(),
-  )
+  const [highlightedBookIds, setHighlightedBookIds] = useState<Set<string>>(() => new Set())
+  const [sourceStatuses, setSourceStatuses] = useState(() => new Map<string, BookSourceStatus>())
   const [batchTagsOpen, setBatchTagsOpen] = useState(false)
   const selectionAnchorIdRef = useRef<string | undefined>(undefined)
-  const rangeSelectionSessionRef = useRef<
-    LibraryRangeSelectionSession | undefined
-  >(undefined)
+  const rangeSelectionSessionRef = useRef<LibraryRangeSelectionSession | undefined>(undefined)
   const referencedArchiveIds = useMemo(
     () =>
       (books ?? []).reduce<string[]>((ids, book) => {
@@ -529,9 +429,7 @@ const Library: React.FC<LibraryProps> = ({
   )
   useEffect(() => {
     if (!referencedArchiveIds.length) {
-      setSourceStatuses((current) =>
-        current.size ? new Map<string, BookSourceStatus>() : current,
-      )
+      setSourceStatuses((current) => (current.size ? new Map<string, BookSourceStatus>() : current))
       return
     }
 
@@ -541,9 +439,7 @@ const Library: React.FC<LibraryProps> = ({
         .checkSourceStatuses(referencedArchiveIds)
         .then((records) => {
           if (!active) return
-          setSourceStatuses(
-            new Map(records.map((record) => [record.id, record.status])),
-          )
+          setSourceStatuses(new Map(records.map((record) => [record.id, record.status])))
         })
         .catch(console.error)
     }
@@ -599,8 +495,7 @@ const Library: React.FC<LibraryProps> = ({
         ...settings,
         librarySort: {
           field,
-          direction:
-            settings.librarySort?.direction ?? defaultLibrarySort.direction,
+          direction: settings.librarySort?.direction ?? defaultLibrarySort.direction,
         },
       }))
     },
@@ -703,9 +598,7 @@ const Library: React.FC<LibraryProps> = ({
       if (key === 's') {
         e.preventDefault()
         e.stopPropagation()
-        setLibraryAction((action) =>
-          action === 'libraryFilter' ? undefined : 'libraryFilter',
-        )
+        setLibraryAction((action) => (action === 'libraryFilter' ? undefined : 'libraryFilter'))
         return
       }
 
@@ -720,9 +613,7 @@ const Library: React.FC<LibraryProps> = ({
       if (status) {
         e.preventDefault()
         e.stopPropagation()
-        setStatusFilters((filters) =>
-          toggleReadingStatusFilter(filters, status),
-        )
+        setStatusFilters((filters) => toggleReadingStatusFilter(filters, status))
       }
     }
 
@@ -743,10 +634,7 @@ const Library: React.FC<LibraryProps> = ({
       ),
     [authorFilters, books, sortDirection, sortField, statusFilters, tagFilters],
   )
-  const visibleBookIds = useMemo(
-    () => sortedBooks.map((book) => book.id),
-    [sortedBooks],
-  )
+  const visibleBookIds = useMemo(() => sortedBooks.map((book) => book.id), [sortedBooks])
 
   const selectBook = useCallback(
     (bookId: string, e: LibraryBookSelectionEvent) => {
@@ -764,26 +652,16 @@ const Library: React.FC<LibraryProps> = ({
       rangeSelectionSessionRef.current = session
       selectionAnchorIdRef.current = session.anchorId
 
-      replace(
-        selectBookIdRange(
-          session.baseSelectedIds,
-          getBookIdRange(visibleBookIds, session.anchorId, bookId),
-        ),
-      )
+      replace(selectBookIdRange(session.baseSelectedIds, getBookIdRange(visibleBookIds, session.anchorId, bookId)))
     },
     [replace, selectedBookIds, toggle, visibleBookIds],
   )
 
   if (!books) return null
 
-  const visibleSelectedCount = sortedBooks.filter((book) =>
-    selectedBookIds.has(book.id),
-  ).length
-  const allSelected =
-    !!sortedBooks.length && visibleSelectedCount === sortedBooks.length
-  const selectedBooks = sortedBooks.filter((book) =>
-    selectedBookIds.has(book.id),
-  )
+  const visibleSelectedCount = sortedBooks.filter((book) => selectedBookIds.has(book.id)).length
+  const allSelected = !!sortedBooks.length && visibleSelectedCount === sortedBooks.length
+  const selectedBooks = sortedBooks.filter((book) => selectedBookIds.has(book.id))
   const DirectionIcon = sortDirection === 'asc' ? ArrowUpIcon : ArrowDownIcon
   const LibraryCountIcon = select ? SquareCheckBigIcon : BookOpenIcon
   const libraryCountText = select
@@ -834,12 +712,7 @@ const Library: React.FC<LibraryProps> = ({
           <div className="flex items-center gap-2">
             {!!books.length && !select && (
               <div className="flex items-center">
-                <Select
-                  value={sortField}
-                  onValueChange={(value) =>
-                    setSortField(value as LibrarySortField)
-                  }
-                >
+                <Select value={sortField} onValueChange={(value) => setSortField(value as LibrarySortField)}>
                   <SelectTrigger
                     aria-label={t(`sort.${sortField}`)}
                     className={clsx(
@@ -850,11 +723,7 @@ const Library: React.FC<LibraryProps> = ({
                   >
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent
-                    align="start"
-                    className="min-w-[7rem] p-1 text-base"
-                    position="popper"
-                  >
+                  <SelectContent align="start" className="min-w-[7rem] p-1 text-base" position="popper">
                     {librarySortFieldOptions.map((field) => {
                       const SortIcon = sortFieldIconMap[field]
 
@@ -864,13 +733,8 @@ const Library: React.FC<LibraryProps> = ({
                           value={field}
                           className="h-8 py-0 pr-7 pl-2 text-base leading-none font-medium"
                         >
-                          <SortIcon
-                            aria-hidden
-                            className="text-muted-foreground size-4"
-                          />
-                          <span className="leading-none">
-                            {t(`sort.${field}`)}
-                          </span>
+                          <SortIcon aria-hidden className="text-muted-foreground size-4" />
+                          <span className="leading-none">{t(`sort.${field}`)}</span>
                         </SelectItem>
                       )
                     })}
@@ -915,9 +779,7 @@ const Library: React.FC<LibraryProps> = ({
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-medium">{t('book_size.title')}</span>
-                    <span className="text-muted-foreground tabular-nums">
-                      {bookCardWidth}px
-                    </span>
+                    <span className="text-muted-foreground tabular-nums">{bookCardWidth}px</span>
                   </div>
                   <div className="grid grid-cols-3 gap-1">
                     {libraryBookCardSizePresets.map((preset) => {
@@ -952,23 +814,17 @@ const Library: React.FC<LibraryProps> = ({
                     onChange={(e) => setBookCardWidth(Number(e.target.value))}
                   />
                   <div className="flex items-center justify-between gap-3 text-base">
-                    <span className="text-muted-foreground">
-                      {libraryBookCardWidthMin}px
-                    </span>
+                    <span className="text-muted-foreground">{libraryBookCardWidthMin}px</span>
                     <UiButton
                       type="button"
                       variant="secondary"
                       size="sm"
                       className="h-7 px-2"
-                      onClick={() =>
-                        setBookCardWidth(defaultLibraryDisplay.bookCardWidth)
-                      }
+                      onClick={() => setBookCardWidth(defaultLibraryDisplay.bookCardWidth)}
                     >
                       {t('book_size.default')}
                     </UiButton>
-                    <span className="text-muted-foreground">
-                      {libraryBookCardWidthMax}px
-                    </span>
+                    <span className="text-muted-foreground">{libraryBookCardWidthMax}px</span>
                   </div>
                 </PopoverContent>
               </Popover>
@@ -984,18 +840,12 @@ const Library: React.FC<LibraryProps> = ({
                 ) : (
                   <SquareCheckBigIcon aria-hidden className="size-4" />
                 )}
-                <span className="leading-none">
-                  {t(select ? 'cancel' : 'select')}
-                </span>
+                <span className="leading-none">{t(select ? 'cancel' : 'select')}</span>
               </Button>
             )}
             {select &&
               (allSelected ? (
-                <Button
-                  variant="secondary"
-                  className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
-                  onClick={reset}
-                >
+                <Button variant="secondary" className={clsx(toolbarButtonClass, 'gap-1.5 px-3')} onClick={reset}>
                   <ListXIcon aria-hidden className="size-4" />
                   <span className="leading-none">{t('deselect_all')}</span>
                 </Button>
@@ -1013,12 +863,9 @@ const Library: React.FC<LibraryProps> = ({
 
           <AppTooltip label={libraryCountTooltip}>
             <div
-              aria-label={libraryCountTooltip}
               className={clsx(
                 'absolute top-1/2 left-1/2 flex h-8 max-w-[35%] -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-1.5 overflow-hidden text-base leading-none tabular-nums',
-                select
-                  ? 'text-foreground font-medium'
-                  : 'text-muted-foreground',
+                select ? 'text-foreground font-medium' : 'text-muted-foreground',
               )}
             >
               <LibraryCountIcon aria-hidden className="size-4 shrink-0" />
@@ -1082,9 +929,7 @@ const Library: React.FC<LibraryProps> = ({
               select={select}
               selected={has(book.id)}
               highlighted={highlightedBookIds.has(book.id)}
-              showModifiedExportIndicator={
-                settings.showModifiedBookExportIndicator === true
-              }
+              showModifiedExportIndicator={settings.showModifiedBookExportIndicator === true}
               onSelectBook={selectBook}
               onOpenBook={onOpenBook}
             />
@@ -1092,11 +937,7 @@ const Library: React.FC<LibraryProps> = ({
         </ul>
       </div>
       {batchTagsOpen && (
-        <BatchTagsDialog
-          books={selectedBooks}
-          tags={tags ?? []}
-          onClose={() => setBatchTagsOpen(false)}
-        />
+        <BatchTagsDialog books={selectedBooks} tags={tags ?? []} onClose={() => setBatchTagsOpen(false)} />
       )}
     </DropZone>
   )

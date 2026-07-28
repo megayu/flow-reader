@@ -59,11 +59,7 @@ export interface TextImportRulesInput {
 export type BookSourceFormat = 'epub' | 'txt'
 export type BookExportFormat = 'epub' | 'txt'
 export type BookSourceStorage = 'managed' | 'referenced'
-export type BookSourceStatus =
-  | 'available'
-  | 'changed'
-  | 'missing'
-  | 'unreadable'
+export type BookSourceStatus = 'available' | 'changed' | 'missing' | 'unreadable'
 export type BookContentMode = 'normal' | 'archiveOnly'
 export type BookContentFlag = 'nonPortableArchivePaths' | 'declaresEncryption'
 
@@ -194,12 +190,7 @@ export interface BookSearchResult {
   expanded: boolean
 }
 
-export type ImageFilterReason =
-  | 'decorative'
-  | 'duplicate'
-  | 'icon'
-  | 'inlineGlyph'
-  | 'titleArt'
+export type ImageFilterReason = 'decorative' | 'duplicate' | 'icon' | 'inlineGlyph' | 'titleArt'
 
 export interface BookImageIndexEntry {
   src: string

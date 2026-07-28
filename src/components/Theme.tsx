@@ -13,14 +13,7 @@ export function Theme() {
     document.documentElement.lang = locale
   }, [locale])
 
-  return (
-    <style
-      id="theme"
-      dangerouslySetInnerHTML={{
-        __html:
-          createFlowThemeCss(settings.theme) +
-          createAppTypographyCss(settings.ui?.fontSize),
-      }}
-    ></style>
-  )
+  const themeCss = createFlowThemeCss(settings.theme) + createAppTypographyCss(settings.ui?.fontSize)
+
+  return <style id="theme">{themeCss}</style>
 }

@@ -6,30 +6,26 @@ import { normalizeThemeConfiguration } from '@/styles/theme'
 import { normalizeUiFontSize } from '@/styles/ui'
 
 import {
+  type DictionarySettingsConfiguration,
   defaultDictionarySettings,
   defaultLibraryBookCardWidth,
   defaultLibrarySort,
   defaultSettings,
   defaultTextImportRules,
   defaultTranslationSettings,
+  type LibraryDisplayConfiguration,
+  type LibrarySortConfiguration,
+  type LibrarySortField,
   libraryBookCardWidthMax,
   libraryBookCardWidthMin,
   libraryBookCardWidthStep,
   librarySortFieldOptions,
-  type DictionarySettingsConfiguration,
-  type LibraryDisplayConfiguration,
-  type LibrarySortConfiguration,
-  type LibrarySortField,
   type Settings,
   type TranslationSettingsConfiguration,
   type TypographyConfiguration,
   type ViewMode,
 } from './settings/configuration'
-import {
-  getSettingsFromStorage,
-  updateSettingsInStorage,
-  type ReadingStatus,
-} from './storage'
+import { getSettingsFromStorage, type ReadingStatus, updateSettingsInStorage } from './storage'
 import { TRANSLATION_LANGUAGES } from './translation/languages'
 
 export * from './settings/configuration'
@@ -61,9 +57,7 @@ interface AppStore {
   setSettingsReady: SetterOrUpdater<boolean>
   setViewMode: SetterOrUpdater<ViewMode>
   setZenMode: SetterOrUpdater<boolean>
-  setZenTypographyOverrides: SetterOrUpdater<
-    Record<string, TypographyConfiguration>
-  >
+  setZenTypographyOverrides: SetterOrUpdater<Record<string, TypographyConfiguration>>
 }
 
 function resolveUpdate<T>(value: T | ((prev: T) => T), prev: T) {
@@ -82,8 +76,7 @@ export const useAppStore = create<AppStore>((set) => ({
   viewMode: 'library',
   zenMode: false,
   zenTypographyOverrides: {},
-  setAction: (value) =>
-    set((state) => ({ action: resolveUpdate(value, state.action) })),
+  setAction: (value) => set((state) => ({ action: resolveUpdate(value, state.action) })),
   setLibraryAction: (value) =>
     set((state) => ({
       libraryAction: resolveUpdate(value, state.libraryAction),
@@ -100,8 +93,7 @@ export const useAppStore = create<AppStore>((set) => ({
     set((state) => ({
       libraryTagFilter: resolveUpdate(value, state.libraryTagFilter),
     })),
-  setSettings: (value) =>
-    set((state) => ({ settings: resolveUpdate(value, state.settings) })),
+  setSettings: (value) => set((state) => ({ settings: resolveUpdate(value, state.settings) })),
   setSettingsDialogOpen: (value) =>
     set((state) => ({
       settingsDialogOpen: resolveUpdate(value, state.settingsDialogOpen),
@@ -110,16 +102,11 @@ export const useAppStore = create<AppStore>((set) => ({
     set((state) => ({
       settingsReady: resolveUpdate(value, state.settingsReady),
     })),
-  setViewMode: (value) =>
-    set((state) => ({ viewMode: resolveUpdate(value, state.viewMode) })),
-  setZenMode: (value) =>
-    set((state) => ({ zenMode: resolveUpdate(value, state.zenMode) })),
+  setViewMode: (value) => set((state) => ({ viewMode: resolveUpdate(value, state.viewMode) })),
+  setZenMode: (value) => set((state) => ({ zenMode: resolveUpdate(value, state.zenMode) })),
   setZenTypographyOverrides: (value) =>
     set((state) => ({
-      zenTypographyOverrides: resolveUpdate(
-        value,
-        state.zenTypographyOverrides,
-      ),
+      zenTypographyOverrides: resolveUpdate(value, state.zenTypographyOverrides),
     })),
 }))
 
@@ -238,8 +225,7 @@ function normalizeSettings(value: Partial<Settings> | undefined): Settings {
     },
     dictionary: normalizeDictionarySettings(settings.dictionary),
     translation: normalizeTranslationSettings(settings.translation),
-    importSourceStorage:
-      settings.importSourceStorage === 'referenced' ? 'referenced' : 'managed',
+    importSourceStorage: settings.importSourceStorage === 'referenced' ? 'referenced' : 'managed',
     ui: {
       ...defaultSettings.ui,
       ...settings.ui,
@@ -278,10 +264,7 @@ function normalizeDictionarySettings(
     merriamWebster: {
       ...defaultDictionarySettings.merriamWebster,
       ...value?.merriamWebster,
-      apiKey:
-        typeof value?.merriamWebster?.apiKey === 'string'
-          ? value.merriamWebster.apiKey
-          : '',
+      apiKey: typeof value?.merriamWebster?.apiKey === 'string' ? value.merriamWebster.apiKey : '',
       enabled: value?.merriamWebster?.enabled === true,
     },
     sourceOrder: normalizeDictionarySourceOrder(value?.sourceOrder),
@@ -312,40 +295,25 @@ function normalizeDictionarySourceOrder(value: unknown) {
 }
 
 export function normalizeLibraryBookCardWidth(value: unknown) {
-  const numeric =
-    typeof value === 'number' && Number.isFinite(value)
-      ? value
-      : defaultLibraryBookCardWidth
+  const numeric = typeof value === 'number' && Number.isFinite(value) ? value : defaultLibraryBookCardWidth
 
-  const stepped =
-    Math.round(numeric / libraryBookCardWidthStep) * libraryBookCardWidthStep
+  const stepped = Math.round(numeric / libraryBookCardWidthStep) * libraryBookCardWidthStep
 
-  return Math.min(
-    Math.max(stepped, libraryBookCardWidthMin),
-    libraryBookCardWidthMax,
-  )
+  return Math.min(Math.max(stepped, libraryBookCardWidthMin), libraryBookCardWidthMax)
 }
 
-function normalizeLibraryDisplay(
-  value: Partial<LibraryDisplayConfiguration> | undefined,
-): LibraryDisplayConfiguration {
+function normalizeLibraryDisplay(value: Partial<LibraryDisplayConfiguration> | undefined): LibraryDisplayConfiguration {
   return {
     bookCardWidth: normalizeLibraryBookCardWidth(value?.bookCardWidth),
   }
 }
 
-function normalizeLibrarySort(
-  value: Partial<LibrarySortConfiguration> | undefined,
-): LibrarySortConfiguration {
-  const field = librarySortFieldOptions.includes(
-    value?.field as LibrarySortField,
-  )
+function normalizeLibrarySort(value: Partial<LibrarySortConfiguration> | undefined): LibrarySortConfiguration {
+  const field = librarySortFieldOptions.includes(value?.field as LibrarySortField)
     ? (value?.field as LibrarySortField)
     : defaultLibrarySort.field
   const direction =
-    value?.direction === 'desc' || value?.direction === 'asc'
-      ? value.direction
-      : defaultLibrarySort.direction
+    value?.direction === 'desc' || value?.direction === 'asc' ? value.direction : defaultLibrarySort.direction
 
   return { field, direction }
 }

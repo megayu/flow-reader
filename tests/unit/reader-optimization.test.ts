@@ -20,10 +20,7 @@ const NodeModule = Module as typeof Module & {
 const loadDependency = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-function loadTsModule(
-  relativePath: string,
-  mocks: Record<string, any> = {},
-): Record<string, any> {
+function loadTsModule(relativePath: string, mocks: Record<string, any> = {}): Record<string, any> {
   const sourcePath = path.join(__dirname, '..', '..', relativePath)
   return loadTsFile(sourcePath, mocks, new Map())
 }
@@ -47,7 +44,7 @@ function loadTsFile(
     fileName: sourcePath,
   })
   const localRequire = (id: string) => {
-    if (Object.prototype.hasOwnProperty.call(mocks, id)) return mocks[id]
+    if (Object.hasOwn(mocks, id)) return mocks[id]
 
     if (id.startsWith('.')) {
       const base = path.resolve(path.dirname(sourcePath), id)
@@ -94,9 +91,7 @@ const styles = loadTsModule('src/styles.ts', {
 })
 
 const annotation = loadTsModule('src/annotation.ts')
-const contextViewLayout = loadTsModule(
-  'src/components/base/contextViewLayout.ts',
-)
+const contextViewLayout = loadTsModule('src/components/base/contextViewLayout.ts')
 const noteLinks = loadTsModule('src/noteLinks.ts')
 const noteSemantics = loadTsModule('src/noteSemantics.ts')
 const imageFilters = loadTsModule('src/imageFilters.ts')
@@ -236,34 +231,31 @@ function testVerticalOverlayPlacementStaysInsidePageAndAvoidsSelection() {
   const size = { width: 160, height: 220 }
 
   assert.deepStrictEqual(
-    contextViewLayout.layoutBesideRect(
-      page,
-      { left: 300, top: 200, width: 20, height: 80 },
-      size,
-      { preferredSide: 'left', gap: 12, margin: 10 },
-    ),
+    contextViewLayout.layoutBesideRect(page, { left: 300, top: 200, width: 20, height: 80 }, size, {
+      preferredSide: 'left',
+      gap: 12,
+      margin: 10,
+    }),
     { left: 128, top: 130, side: 'left' },
     'note popovers should use the physical left side when it fits',
   )
 
   assert.deepStrictEqual(
-    contextViewLayout.layoutBesideRect(
-      page,
-      { left: 20, top: 200, width: 20, height: 80 },
-      size,
-      { preferredSide: 'left', gap: 12, margin: 10 },
-    ),
+    contextViewLayout.layoutBesideRect(page, { left: 20, top: 200, width: 20, height: 80 }, size, {
+      preferredSide: 'left',
+      gap: 12,
+      margin: 10,
+    }),
     { left: 52, top: 130, side: 'right' },
     'note popovers should fall back to the physical right side before clipping',
   )
 
   assert.deepStrictEqual(
-    contextViewLayout.layoutBesideRect(
-      page,
-      { left: 250, top: 240, width: 20, height: 20 },
-      size,
-      { preferredSide: 'right', gap: 12, margin: 10 },
-    ),
+    contextViewLayout.layoutBesideRect(page, { left: 250, top: 240, width: 20, height: 20 }, size, {
+      preferredSide: 'right',
+      gap: 12,
+      margin: 10,
+    }),
     { left: 282, top: 140, side: 'right' },
     'selection menus should prefer the right side when both sides fit',
   )
@@ -384,10 +376,7 @@ function testZoomBodyStylesSkipNonNumericValues() {
     paddingBottom: '10px',
     paddingRight: '0px',
   })
-  assert.ok(
-    !Object.values(result).some((value) => String(value).includes('NaN')),
-    'zoom styles must never emit NaNpx',
-  )
+  assert.ok(!Object.values(result).some((value) => String(value).includes('NaN')), 'zoom styles must never emit NaNpx')
 }
 
 function testZoomBodyStylesCanUseCurrentLayout() {
@@ -637,30 +626,20 @@ function testEpubHrefComparisonHandlesEncodedSpinePaths() {
   )
 
   assert.strictEqual(
-    noteLinks.sameHref(
-      'Text/%2A%3Achapter%3Aone.xhtml',
-      'Text/*:chapter:one.xhtml',
-    ),
+    noteLinks.sameHref('Text/%2A%3Achapter%3Aone.xhtml', 'Text/*:chapter:one.xhtml'),
     true,
     'decoded NCX targets must match encoded OPF spine hrefs',
   )
 
   assert.strictEqual(
-    noteLinks.sameHref(
-      'http://localhost:7127/OEBPS/Images/%2A%3Aplate%3A1.jpg',
-      'Images/*:plate:1.jpg',
-    ),
+    noteLinks.sameHref('http://localhost:7127/OEBPS/Images/%2A%3Aplate%3A1.jpg', 'Images/*:plate:1.jpg'),
     true,
     'absolute image URLs must match package-relative resource hrefs',
   )
 }
 
 function testNoteMarkersSupportCjkBrackets() {
-  assert.strictEqual(
-    typeof noteSemantics.isNoteMarkerText,
-    'function',
-    'Expected note marker recognition to be shared',
-  )
+  assert.strictEqual(typeof noteSemantics.isNoteMarkerText, 'function', 'Expected note marker recognition to be shared')
 
   assert.strictEqual(noteSemantics.isNoteMarkerText('[67]'), true)
   assert.strictEqual(noteSemantics.isNoteMarkerText('〚95〛'), true)
@@ -669,24 +648,12 @@ function testNoteMarkersSupportCjkBrackets() {
   assert.strictEqual(noteSemantics.isNoteMarkerText('【九】'), true)
   assert.strictEqual(noteSemantics.isNoteMarkerText('【壹拾貳】'), true)
   assert.strictEqual(noteSemantics.startsWithNoteMarkerText('零、注释'), true)
-  assert.strictEqual(
-    noteSemantics.startsWithNoteMarkerText('壹拾貳、注释'),
-    true,
-  )
+  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('壹拾貳、注释'), true)
   assert.strictEqual(noteSemantics.startsWithNoteMarkerText('[1].译者注'), true)
-  assert.strictEqual(
-    noteSemantics.startsWithNoteMarkerText('[12]. Translator note'),
-    true,
-  )
-  assert.strictEqual(
-    noteSemantics.startsWithNoteMarkerText('[1]. 原作者在邮件中指出'),
-    true,
-  )
+  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('[12]. Translator note'), true)
+  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('[1]. 原作者在邮件中指出'), true)
   assert.strictEqual(noteSemantics.isNoteMarkerText('〚note〛'), false)
-  assert.strictEqual(
-    noteSemantics.startsWithNoteMarkerText('[note].正文'),
-    false,
-  )
+  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('[note].正文'), false)
 }
 
 function testDuplicateIllustrationFilterHidesFirstAndRepeatedCandidates() {
@@ -969,18 +936,9 @@ function testChapterFindUsesTheReadingOrderStartSection() {
     left: { section: { index: 11 } },
     right: { section: { index: 12 } },
   }
-  assert.strictEqual(
-    readerModel.readingOrderStartSectionIndex(spread, 'left-first', 20),
-    11,
-  )
-  assert.strictEqual(
-    readerModel.readingOrderStartSectionIndex(spread, 'right-first', 20),
-    12,
-  )
-  assert.strictEqual(
-    readerModel.readingOrderStartSectionIndex(undefined, undefined, 20),
-    20,
-  )
+  assert.strictEqual(readerModel.readingOrderStartSectionIndex(spread, 'left-first', 20), 11)
+  assert.strictEqual(readerModel.readingOrderStartSectionIndex(spread, 'right-first', 20), 12)
+  assert.strictEqual(readerModel.readingOrderStartSectionIndex(undefined, undefined, 20), 20)
 }
 
 testTextAlignIsNonPaginationStyle()

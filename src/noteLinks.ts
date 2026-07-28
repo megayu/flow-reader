@@ -22,10 +22,7 @@ export function normalizeHrefPath(href: string | undefined) {
   )
 }
 
-export function resolveLinkedHrefPath(
-  baseHref: string | undefined,
-  linkedPath: string,
-) {
+export function resolveLinkedHrefPath(baseHref: string | undefined, linkedPath: string) {
   const path = normalizeHrefPath(linkedPath)
   if (!path) return normalizeHrefPath(baseHref)
   if (linkedPath.startsWith('/')) return path
@@ -33,9 +30,7 @@ export function resolveLinkedHrefPath(
   const base = normalizeHrefPath(baseHref)
   const baseDir = base.includes('/') ? base.slice(0, base.lastIndexOf('/')) : ''
 
-  return normalizePathSegments(
-    baseDir ? `${baseDir}/${linkedPath}` : linkedPath,
-  )
+  return normalizePathSegments(baseDir ? `${baseDir}/${linkedPath}` : linkedPath)
 }
 
 export function sameHref(a: string | undefined, b: string | undefined) {
@@ -59,14 +54,8 @@ export function findSectionByLinkedHref<T extends HrefSectionLike>(
 
   return (
     sections.find((section) => normalizeHrefPath(section.href) === resolved) ??
-    sections.find(
-      (section) => normalizeHrefPath(section.canonical) === resolved,
-    ) ??
-    sections.find(
-      (section) =>
-        sameHref(section.href, resolved) ||
-        sameHref(section.canonical, resolved),
-    )
+    sections.find((section) => normalizeHrefPath(section.canonical) === resolved) ??
+    sections.find((section) => sameHref(section.href, resolved) || sameHref(section.canonical, resolved))
   )
 }
 

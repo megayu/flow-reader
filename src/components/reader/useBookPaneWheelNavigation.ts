@@ -26,10 +26,7 @@ export function useBookPaneWheelNavigation({
       event.preventDefault()
       revealScrollbars()
 
-      const delta =
-        Math.abs(event.deltaY) >= Math.abs(event.deltaX)
-          ? event.deltaY
-          : event.deltaX
+      const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX
 
       if (tab.isScrolledDocument && tab.container) {
         const container = tab.container
@@ -51,19 +48,12 @@ export function useBookPaneWheelNavigation({
             return
           }
         } else {
-          const maxScrollTop = Math.max(
-            0,
-            container.scrollHeight - container.clientHeight,
-          )
+          const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight)
           const canScrollBackward = delta < 0 && container.scrollTop > 1
-          const canScrollForward =
-            delta > 0 && container.scrollTop < maxScrollTop - 1
+          const canScrollForward = delta > 0 && container.scrollTop < maxScrollTop - 1
 
           if (canScrollBackward || canScrollForward) {
-            container.scrollTop = Math.max(
-              0,
-              Math.min(maxScrollTop, container.scrollTop + scrollDelta),
-            )
+            container.scrollTop = Math.max(0, Math.min(maxScrollTop, container.scrollTop + scrollDelta))
             wheelDelta.current = 0
             return
           }
@@ -112,8 +102,7 @@ export function useBookPaneWheelNavigation({
     if (!container) return
 
     const onWheel = (event: WheelEvent) => {
-      const hasVerticalOverflow =
-        container.scrollHeight - container.clientHeight > 1
+      const hasVerticalOverflow = container.scrollHeight - container.clientHeight > 1
       if (hasVerticalOverflow || event.target instanceof HTMLIFrameElement) {
         return
       }

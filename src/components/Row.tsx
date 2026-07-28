@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { ChevronDownIcon, ChevronRightIcon, XIcon } from 'lucide-react'
-import { ComponentProps, CSSProperties } from 'react'
+import type { ComponentProps, CSSProperties } from 'react'
 
 import { useBackground } from '../hooks/theme/useBackground'
 import { LIST_ITEM_SIZE } from '../hooks/useList'
@@ -53,7 +53,6 @@ export const Row: React.FC<RowProps> = ({
   const indent = Math.max(0, depth - 1) * TREE_INDENT_SIZE
   const row = (
     <div
-      aria-label={tooltip}
       className={clsx(
         'list-row group/row focus:ring-ring relative flex cursor-pointer items-center text-left outline-none focus:ring-1 focus:ring-inset',
         active && background.rowActiveClassName,
@@ -77,9 +76,7 @@ export const Row: React.FC<RowProps> = ({
       <StateLayer
         className={clsx(
           'transition-colors',
-          active
-            ? 'group-hover/row:bg-(--flow-bg-active-hover)'
-            : 'group-hover/row:bg-(--flow-bg-control-hover)',
+          active ? 'group-hover/row:bg-(--flow-bg-active-hover)' : 'group-hover/row:bg-(--flow-bg-control-hover)',
         )}
       />
       <Twisty
@@ -148,19 +145,12 @@ export const Row: React.FC<RowProps> = ({
 interface TwistyProps extends ComponentProps<'svg'> {
   expanded: boolean
 }
-export const Twisty: React.FC<TwistyProps> = ({
-  expanded,
-  className,
-  ...props
-}) => {
+export const Twisty: React.FC<TwistyProps> = ({ expanded, className, ...props }) => {
   const Icon = expanded ? ChevronDownIcon : ChevronRightIcon
   return (
     <Icon
       size={20}
-      className={clsx(
-        'text-muted-foreground relative z-10 shrink-0',
-        className,
-      )}
+      className={clsx('text-muted-foreground relative z-10 shrink-0', className)}
       style={{ padding: 2 }}
       {...props}
     />

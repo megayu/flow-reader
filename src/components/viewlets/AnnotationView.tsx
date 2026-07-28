@@ -1,14 +1,15 @@
 import { CopyIcon, FoldVerticalIcon, UnfoldVerticalIcon } from 'lucide-react'
-import React, { useMemo, useState } from 'react'
+import type React from 'react'
+import { useMemo, useState } from 'react'
 
-import { Annotation, getAnnotationSpineTitle } from '@/annotation'
+import { type Annotation, getAnnotationSpineTitle } from '@/annotation'
 import { useList } from '@/hooks/useList'
 import { useTranslation } from '@/hooks/useTranslation'
 import { reader, useReaderSnapshot } from '@/models/reader'
 import { copy, group, keys } from '@/utils'
 
+import { Pane, PaneView, type PaneViewProps } from '../base/PaneView'
 import { Row } from '../Row'
-import { Pane, PaneView, PaneViewProps } from '../base/PaneView'
 
 export const AnnotationView: React.FC<PaneViewProps> = (props) => {
   const active = props.active ?? true
@@ -91,9 +92,7 @@ const AnnotationPane: React.FC = () => {
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation()
   const annotationT = useTranslation('annotation')
-  const [collapsedSections, setCollapsedSections] = useState(
-    () => new Set<string>(),
-  )
+  const [collapsedSections, setCollapsedSections] = useState(() => new Set<string>())
   const [activeRowKey, setActiveRowKey] = useState<string>()
 
   const annotations = useMemo(
@@ -183,9 +182,7 @@ const AnnotationPane: React.FC = () => {
     // Copy to clipboard as markdown
     const exportedAnnotationsMd = Object.entries(exported)
       .map(([chapter, annotations]) => {
-        return `## ${chapter}\n${annotations
-          .map((a) => `- ${a.text} ${a.notes ? `(${a.notes})` : ''}`)
-          .join('\n')}`
+        return `## ${chapter}\n${annotations.map((a) => `- ${a.text} ${a.notes ? `(${a.notes})` : ''}`).join('\n')}`
       })
       .join('\n\n')
     copy(exportedAnnotationsMd)
@@ -213,9 +210,7 @@ const AnnotationPane: React.FC = () => {
               },
               {
                 id: expanded ? 'collapse-all' : 'expand-all',
-                title: t(
-                  expanded ? 'action.collapse_all' : 'action.expand_all',
-                ),
+                title: t(expanded ? 'action.collapse_all' : 'action.expand_all'),
                 Icon: expanded ? FoldVerticalIcon : UnfoldVerticalIcon,
                 handle() {
                   toggleSections()
@@ -249,9 +244,7 @@ const AnnotationPane: React.FC = () => {
                   toggle={() => toggleSection(row.id)}
                   subitems={row.annotations}
                 >
-                  {row.annotations[0]
-                    ? getAnnotationSpineTitle(row.annotations[0].spine)
-                    : undefined}
+                  {row.annotations[0] ? getAnnotationSpineTitle(row.annotations[0].spine) : undefined}
                 </Row>
               ) : row.type === 'annotation' ? (
                 <Row
@@ -276,9 +269,7 @@ const AnnotationPane: React.FC = () => {
                     reader.focusedBookTab?.display(row.annotation.cfi)
                   }}
                 >
-                  <span className="text-muted-foreground">
-                    {row.annotation.notes}
-                  </span>
+                  <span className="text-muted-foreground">{row.annotation.notes}</span>
                 </Row>
               )}
             </div>

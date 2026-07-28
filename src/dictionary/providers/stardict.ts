@@ -1,15 +1,9 @@
 import type { DictionaryProvider } from '../coordinator'
-import {
-  cancelDictionarySession,
-  lookupStarDict,
-  type LocalDictionaryRecord,
-} from '../native'
+import { cancelDictionarySession, type LocalDictionaryRecord, lookupStarDict } from '../native'
 
 let nextNativeSessionId = 1_000_000
 
-export function createStarDictProvider(
-  dictionary: LocalDictionaryRecord,
-): DictionaryProvider {
+export function createStarDictProvider(dictionary: LocalDictionaryRecord): DictionaryProvider {
   return {
     id: `stardict:${dictionary.id}`,
     name: dictionary.name,
@@ -28,11 +22,7 @@ export function createStarDictProvider(
       // Keep this listener after invoke resolves: the Rust mmap and data file
       // belong to the popup session and are released when the popup closes.
       signal.addEventListener('abort', release, { once: true })
-      const response = await lookupStarDict(
-        dictionary.id,
-        query.text,
-        sessionId,
-      )
+      const response = await lookupStarDict(dictionary.id, query.text, sessionId)
       if (signal.aborted) {
         throw new DOMException('Request cancelled', 'AbortError')
       }

@@ -1,7 +1,4 @@
-import {
-  invokeStorage as invoke,
-  storagePathToUrl as filePathToUrl,
-} from './native'
+import { storagePathToUrl as filePathToUrl, invokeStorage as invoke } from './native'
 import type {
   BookExportFormat,
   BookImageIndexCache,
@@ -81,9 +78,7 @@ function mergeBookSummary(book: BookRecord, existing?: BookRecord) {
 }
 
 function rememberBook(book: BookRecord, { full = true } = {}) {
-  const normalized = full
-    ? asFullBook(book)
-    : mergeBookSummary(book, bookCache.get(book.id))
+  const normalized = full ? asFullBook(book) : mergeBookSummary(book, bookCache.get(book.id))
   bookCache.set(book.id, normalized)
 
   if (!booksCache) return
@@ -91,27 +86,18 @@ function rememberBook(book: BookRecord, { full = true } = {}) {
   const index = booksCache.findIndex((item) => item.id === book.id)
   if (index >= 0) {
     if (normalized.scope === 'external') {
-      booksCache = [
-        ...booksCache.slice(0, index),
-        ...booksCache.slice(index + 1),
-      ]
+      booksCache = [...booksCache.slice(0, index), ...booksCache.slice(index + 1)]
       return
     }
 
-    booksCache = [
-      ...booksCache.slice(0, index),
-      normalized,
-      ...booksCache.slice(index + 1),
-    ]
+    booksCache = [...booksCache.slice(0, index), normalized, ...booksCache.slice(index + 1)]
   } else if (normalized.scope !== 'external') {
     booksCache = [...booksCache, normalized]
   }
 }
 
 function rememberBooks(books: BookRecord[]) {
-  booksCache = books.map((book) =>
-    mergeBookSummary(book, bookCache.get(book.id)),
-  )
+  booksCache = books.map((book) => mergeBookSummary(book, bookCache.get(book.id)))
   bookCache.clear()
   booksCache.forEach((book) => bookCache.set(book.id, book))
 }
@@ -146,11 +132,7 @@ function rememberTag(tag: LibraryTagRecord) {
 
   const index = tagsCache.findIndex((item) => item.id === tag.id)
   if (index >= 0) {
-    tagsCache = [
-      ...tagsCache.slice(0, index),
-      tag,
-      ...tagsCache.slice(index + 1),
-    ]
+    tagsCache = [...tagsCache.slice(0, index), tag, ...tagsCache.slice(index + 1)]
   } else {
     tagsCache = [...tagsCache, tag]
   }
@@ -162,17 +144,12 @@ function forgetTag(id: string) {
   }
 }
 
-function withoutReadingSpread(
-  configuration: BookRecord['configuration'] | undefined,
-) {
+function withoutReadingSpread(configuration: BookRecord['configuration'] | undefined) {
   const { spread, ...rest } = configuration ?? {}
   return rest
 }
 
-function isSpreadOnlyConfigurationUpdate(
-  changes: Partial<BookRecord>,
-  currentBook?: BookRecord,
-) {
+function isSpreadOnlyConfigurationUpdate(changes: Partial<BookRecord>, currentBook?: BookRecord) {
   if (!('configuration' in changes)) return true
   if (!currentBook) return false
 
@@ -182,24 +159,13 @@ function isSpreadOnlyConfigurationUpdate(
   )
 }
 
-function isReadingPositionOnlyUpdate(
-  changes: Partial<BookRecord>,
-  currentBook?: BookRecord,
-) {
+function isReadingPositionOnlyUpdate(changes: Partial<BookRecord>, currentBook?: BookRecord) {
   const keys = Object.keys(changes)
   return (
     keys.length > 0 &&
     keys.some((key) => key === 'cfi' || key === 'percentage') &&
     isSpreadOnlyConfigurationUpdate(changes, currentBook) &&
-    keys.every((key) =>
-      [
-        'cfi',
-        'percentage',
-        'updatedAt',
-        'lastReadAt',
-        'configuration',
-      ].includes(key),
-    )
+    keys.every((key) => ['cfi', 'percentage', 'updatedAt', 'lastReadAt', 'configuration'].includes(key))
   )
 }
 
@@ -219,9 +185,7 @@ async function waitForPendingNativeWrites() {
 }
 
 function addCacheBuster(url: string, version: string | number = Date.now()) {
-  return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(
-    String(version),
-  )}`
+  return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(String(version))}`
 }
 
 async function toCoverRecord(record: CoverRecord | null) {
@@ -278,9 +242,7 @@ export const db = {
       rememberBook(book)
     },
     recordReadingPosition(position: ReadingPositionInput) {
-      return trackNativeWrite(
-        invoke<boolean>('record_reading_position', { position }),
-      )
+      return trackNativeWrite(invoke<boolean>('record_reading_position', { position }))
     },
     async update(id: string, changes: Partial<BookRecord>) {
       const cached = bookCache.get(id)
@@ -299,11 +261,7 @@ export const db = {
 
       if (!readingPositionOnly) {
         if (changes.metadata) invalidateCovers()
-        notify(
-          ...(['books', changes.metadata ? 'covers' : undefined].filter(
-            Boolean,
-          ) as TableName[]),
-        )
+        notify(...(['books', changes.metadata ? 'covers' : undefined].filter(Boolean) as TableName[]))
       }
       return book ?? undefined
     },
@@ -323,10 +281,7 @@ export const db = {
     },
     async updateTags(
       ids: string[],
-      {
-        addTagIds = [],
-        removeTagIds = [],
-      }: { addTagIds?: string[]; removeTagIds?: string[] },
+      { addTagIds = [], removeTagIds = [] }: { addTagIds?: string[]; removeTagIds?: string[] },
     ) {
       const books = await trackNativeWrite(
         invoke<BookRecord[]>('update_book_tags', {
@@ -352,25 +307,19 @@ export const db = {
       return tagsCache
     },
     async create(name: string) {
-      const tag = await trackNativeWrite(
-        invoke<LibraryTagRecord | null>('create_tag', { name }),
-      )
+      const tag = await trackNativeWrite(invoke<LibraryTagRecord | null>('create_tag', { name }))
       if (tag) rememberTag(tag)
       notify('tags')
       return tag ?? undefined
     },
     async update(id: string, name: string) {
-      const tag = await trackNativeWrite(
-        invoke<LibraryTagRecord | null>('update_tag', { id, name }),
-      )
+      const tag = await trackNativeWrite(invoke<LibraryTagRecord | null>('update_tag', { id, name }))
       if (tag) rememberTag(tag)
       notify('tags')
       return tag ?? undefined
     },
     async delete(id: string) {
-      const books = await trackNativeWrite(
-        invoke<BookRecord[]>('delete_tag', { id }),
-      )
+      const books = await trackNativeWrite(invoke<BookRecord[]>('delete_tag', { id }))
       forgetTag(id)
       books.forEach((book) => rememberBook(book, { full: false }))
       notify('tags', 'books')
@@ -383,10 +332,7 @@ export const db = {
       return filePathToUrl(path)
     },
     async getReaderSource(id: string): Promise<BookReaderSource> {
-      const source = await invoke<NativeBookReaderSource>(
-        'get_book_reader_source',
-        { id },
-      )
+      const source = await invoke<NativeBookReaderSource>('get_book_reader_source', { id })
       if (source.book) {
         rememberBook(source.book)
         notify('books')
@@ -394,9 +340,7 @@ export const db = {
       return {
         mode: source.mode,
         url: await filePathToUrl(source.path),
-        rootUrl: source.rootPath
-          ? await filePathToUrl(source.rootPath)
-          : undefined,
+        rootUrl: source.rootPath ? await filePathToUrl(source.rootPath) : undefined,
       }
     },
     async bulkDelete(ids: string[]) {
@@ -414,9 +358,7 @@ export const db = {
       const normalized = await Promise.all(
         covers.map(async (cover) => ({
           ...cover,
-          cover: cover.cover
-            ? addCacheBuster(await filePathToUrl(cover.cover))
-            : null,
+          cover: cover.cover ? addCacheBuster(await filePathToUrl(cover.cover)) : null,
         })),
       )
       rememberCovers(normalized)
@@ -426,9 +368,7 @@ export const db = {
       return coversCache
     },
     get(id: string) {
-      return invoke<CoverRecord | null>('get_cover', { id }).then((cover) =>
-        toCoverRecord(cover),
-      )
+      return invoke<CoverRecord | null>('get_cover', { id }).then((cover) => toCoverRecord(cover))
     },
     async put(record: { id: string; cover: CoverInput | null }) {
       await trackNativeWrite(
@@ -452,10 +392,7 @@ export const db = {
 
 export async function importBookPaths(
   paths: string[],
-  {
-    importId,
-    replaceExisting = true,
-  }: { importId?: string; replaceExisting?: boolean } = {},
+  { importId, replaceExisting = true }: { importId?: string; replaceExisting?: boolean } = {},
 ) {
   await waitForPendingNativeWrites()
   const result = await trackNativeWrite(
@@ -474,9 +411,7 @@ export async function importBookPaths(
 }
 
 export async function openExternalBookPaths(paths: string[]) {
-  const result = await trackNativeWrite(
-    invoke<EpubImportResult>('open_external_epub_paths', { paths }),
-  )
+  const result = await trackNativeWrite(invoke<EpubImportResult>('open_external_epub_paths', { paths }))
   result.books.forEach((book) => rememberBook(book))
   return result
 }
@@ -499,10 +434,7 @@ export function previewTextImportPaths(
 
 export async function importTextPaths(
   imports: TextImportSelection[],
-  {
-    replaceExisting = true,
-    rules,
-  }: { replaceExisting?: boolean; rules?: TextImportRulesInput } = {},
+  { replaceExisting = true, rules }: { replaceExisting?: boolean; rules?: TextImportRulesInput } = {},
 ) {
   await waitForPendingNativeWrites()
   const books = await trackNativeWrite(
@@ -530,10 +462,7 @@ export function loadBookImageIndex(id: string) {
   return invoke<BookImageIndexCache | null>('load_book_image_index', { id })
 }
 
-export function storeBookImageIndex(
-  id: string,
-  cache: BookImageIndexCacheInput,
-) {
+export function storeBookImageIndex(id: string, cache: BookImageIndexCacheInput) {
   return invoke<boolean>('store_book_image_index', { id, cache })
 }
 
@@ -561,14 +490,8 @@ export async function replaceBookText({
   return result
 }
 
-export async function exportBook(
-  id: string,
-  format: BookExportFormat,
-  outputPath: string,
-) {
-  const book = await trackNativeWrite(
-    invoke<BookRecord | null>('export_book', { id, format, outputPath }),
-  )
+export async function exportBook(id: string, format: BookExportFormat, outputPath: string) {
+  const book = await trackNativeWrite(invoke<BookRecord | null>('export_book', { id, format, outputPath }))
   if (book) {
     rememberBook(book)
     notify('books')

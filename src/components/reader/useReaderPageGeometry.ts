@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react'
+import { type RefObject, useEffect } from 'react'
 
 import {
   getCurrentReaderPageWidth,
@@ -29,22 +29,13 @@ export function useReaderPageGeometry({
     const updateReaderPageWidth = () => {
       const width = getCurrentReaderPageWidth(rendition, containerRef.current)
       if (!width) return
-      const spreadWidth = getCurrentReaderSpreadWidth(
-        rendition,
-        containerRef.current,
-      )
+      const spreadWidth = getCurrentReaderSpreadWidth(rendition, containerRef.current)
       const layout = getRenditionLayout(rendition)
       const container = containerRef.current
 
-      document.documentElement.style.setProperty(
-        '--flow-reader-page-width',
-        `${width}px`,
-      )
+      document.documentElement.style.setProperty('--flow-reader-page-width', `${width}px`)
       if (spreadWidth) {
-        document.documentElement.style.setProperty(
-          '--flow-reader-spread-width',
-          `${spreadWidth}px`,
-        )
+        document.documentElement.style.setProperty('--flow-reader-spread-width', `${spreadWidth}px`)
       }
       if (container) {
         const divisor = getRenditionDivisor(rendition)
@@ -55,15 +46,9 @@ export function useReaderPageGeometry({
         )
 
         container.dataset.flowReaderSpread = divisor > 1 ? 'double' : 'single'
-        container.style.setProperty(
-          '--flow-reader-column-width',
-          `${columnWidth}px`,
-        )
+        container.style.setProperty('--flow-reader-column-width', `${columnWidth}px`)
         container.style.setProperty('--flow-reader-page-gap', `${gap}px`)
-        container.style.setProperty(
-          '--flow-reader-page-half-gap',
-          `${gap / 2}px`,
-        )
+        container.style.setProperty('--flow-reader-page-half-gap', `${gap / 2}px`)
       }
     }
     const scheduleReaderPageWidthUpdate = () => {

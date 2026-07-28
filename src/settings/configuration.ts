@@ -1,15 +1,9 @@
 import type { AppLocale } from '../locales'
-import type {
-  PageAppearance,
-  TypographyConfiguration,
-} from '../reader/configuration'
+import type { PageAppearance, TypographyConfiguration } from '../reader/configuration'
 import type { BookSourceStorage } from '../storage/types'
 import type { ThemeConfiguration } from '../styles/theme'
 import { defaultUiFontSize } from '../styles/ui'
-import type {
-  TranslationLanguage,
-  TranslationProvider,
-} from '../translation/languages'
+import type { TranslationLanguage, TranslationProvider } from '../translation/languages'
 
 export type ViewMode = 'reader' | 'library'
 export type LibrarySortField = 'title' | 'creator' | 'updatedAt' | 'createdAt'
@@ -80,12 +74,7 @@ export interface TextImportRulesConfiguration {
   chapterPatterns: string[]
 }
 
-export const librarySortFieldOptions: LibrarySortField[] = [
-  'title',
-  'creator',
-  'updatedAt',
-  'createdAt',
-]
+export const librarySortFieldOptions: LibrarySortField[] = ['title', 'creator', 'updatedAt', 'createdAt']
 
 export const defaultLibrarySort: LibrarySortConfiguration = {
   field: 'title',

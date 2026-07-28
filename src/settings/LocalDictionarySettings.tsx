@@ -1,8 +1,8 @@
 import {
   CheckIcon,
+  ExternalLinkIcon,
   EyeIcon,
   EyeOffIcon,
-  ExternalLinkIcon,
   FolderSearchIcon,
   GripVerticalIcon,
   PencilIcon,
@@ -15,10 +15,10 @@ import { Button as UiButton } from '@/components/ui/button'
 import { Checkbox as UiCheckbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import {
-  listLocalDictionaries,
   type LocalDictionaryLanguage,
   type LocalDictionaryRecord,
   type LocalDictionaryUpdate,
+  listLocalDictionaries,
   registerLocalDictionary,
   relocateLocalDictionary,
   removeLocalDictionary,
@@ -34,11 +34,7 @@ import {
 import { supportedDictionaryLanguages } from '@/dictionary/types'
 import { openSupportedExternalUrl } from '@/externalLink'
 import { useTranslation } from '@/hooks/useTranslation'
-import {
-  defaultDictionarySettings,
-  type Settings,
-  type SetterOrUpdater,
-} from '@/state'
+import { defaultDictionarySettings, type SetterOrUpdater, type Settings } from '@/state'
 
 const languageLabels: Record<LocalDictionaryLanguage, string> = {
   de: 'Deutsch',
@@ -65,10 +61,7 @@ interface LocalDictionarySettingsProps {
   setSettings: SetterOrUpdater<Settings>
 }
 
-export function LocalDictionarySettings({
-  settings,
-  setSettings,
-}: LocalDictionarySettingsProps) {
+export function LocalDictionarySettings({ settings, setSettings }: LocalDictionarySettingsProps) {
   const t = useTranslation('settings')
   const [dictionaries, setDictionaries] = useState<LocalDictionaryRecord[]>([])
   const [error, setError] = useState<string>()
@@ -76,15 +69,11 @@ export function LocalDictionarySettings({
   const [confirmRemoveId, setConfirmRemoveId] = useState<string>()
   const [editingSourceId, setEditingSourceId] = useState<string>()
   const [localNameDraft, setLocalNameDraft] = useState('')
-  const [localLanguagesDraft, setLocalLanguagesDraft] = useState<
-    LocalDictionaryLanguage[]
-  >([])
+  const [localLanguagesDraft, setLocalLanguagesDraft] = useState<LocalDictionaryLanguage[]>([])
   const [merriamWebsterKey, setMerriamWebsterKey] = useState('')
   const [showMerriamWebsterKey, setShowMerriamWebsterKey] = useState(false)
   const draggedSourceIdRef = useRef<string | undefined>(undefined)
-  const dropTargetRef = useRef<
-    { after: boolean; sourceId: string } | undefined
-  >(undefined)
+  const dropTargetRef = useRef<{ after: boolean; sourceId: string } | undefined>(undefined)
   const [dropTarget, setDropTarget] = useState<{
     after: boolean
     sourceId: string
@@ -112,10 +101,7 @@ export function LocalDictionarySettings({
   const sources = useMemo(() => {
     const sourceById = new Map<string, DictionarySource>([
       [zdicSourceId, { id: zdicSourceId, kind: 'zdic' }],
-      [
-        merriamWebsterSourceId,
-        { id: merriamWebsterSourceId, kind: 'merriam-webster' },
-      ],
+      [merriamWebsterSourceId, { id: merriamWebsterSourceId, kind: 'merriam-webster' }],
       ...dictionaries.map(
         (dictionary) =>
           [
@@ -169,9 +155,7 @@ export function LocalDictionarySettings({
     const selected = await open({
       directory: false,
       multiple: false,
-      filters: [
-        { name: t('dictionary.local_file_filter'), extensions: ['ifo', 'mdx'] },
-      ],
+      filters: [{ name: t('dictionary.local_file_filter'), extensions: ['ifo', 'mdx'] }],
     })
     return Array.isArray(selected) ? selected[0] : selected
   }
@@ -181,14 +165,10 @@ export function LocalDictionarySettings({
       const path = await chooseMasterFile()
       if (!path) return
       const record = await registerLocalDictionary(path)
-      setDictionaries((current) =>
-        sortDictionaries(upsertDictionary(current, record)),
-      )
+      setDictionaries((current) => sortDictionaries(upsertDictionary(current, record)))
       updateDictionarySettings({
         sourceOrder: [
-          ...sourceOrder.filter(
-            (sourceId) => sourceId !== localDictionarySourceId(record.id),
-          ),
+          ...sourceOrder.filter((sourceId) => sourceId !== localDictionarySourceId(record.id)),
           localDictionarySourceId(record.id),
         ],
       })
@@ -201,12 +181,7 @@ export function LocalDictionarySettings({
   const updateRecord = async (id: string, changes: LocalDictionaryUpdate) => {
     const previous = dictionaries.find((dictionary) => dictionary.id === id)
     if (previous) {
-      setDictionaries((current) =>
-        upsertDictionary(
-          current,
-          applyLocalDictionaryUpdate(previous, changes),
-        ),
-      )
+      setDictionaries((current) => upsertDictionary(current, applyLocalDictionaryUpdate(previous, changes)))
     }
     try {
       const record = await updateLocalDictionary(id, changes)
@@ -239,13 +214,9 @@ export function LocalDictionarySettings({
     }
     try {
       await removeLocalDictionary(id)
-      setDictionaries((current) =>
-        current.filter((dictionary) => dictionary.id !== id),
-      )
+      setDictionaries((current) => current.filter((dictionary) => dictionary.id !== id))
       updateDictionarySettings({
-        sourceOrder: sourceOrder.filter(
-          (sourceId) => sourceId !== localDictionarySourceId(id),
-        ),
+        sourceOrder: sourceOrder.filter((sourceId) => sourceId !== localDictionarySourceId(id)),
       })
       setConfirmRemoveId(undefined)
       setEditingSourceId(undefined)
@@ -271,9 +242,7 @@ export function LocalDictionarySettings({
     if (sourceId === merriamWebsterSourceId) {
       commitMerriamWebsterKey()
     } else {
-      const dictionary = dictionaries.find(
-        (current) => localDictionarySourceId(current.id) === sourceId,
-      )
+      const dictionary = dictionaries.find((current) => localDictionarySourceId(current.id) === sourceId)
       const name = localNameDraft.trim()
       if (dictionary) {
         const changes: LocalDictionaryUpdate = {}
@@ -291,9 +260,7 @@ export function LocalDictionarySettings({
   }
 
   const cancelEditing = (sourceId = editingSourceId) => {
-    setEditingSourceId((current) =>
-      current === sourceId ? undefined : current,
-    )
+    setEditingSourceId((current) => (current === sourceId ? undefined : current))
   }
 
   const editMerriamWebster = () => {
@@ -319,16 +286,13 @@ export function LocalDictionarySettings({
     if (!draggedSourceId || draggedSourceId === targetSourceId) return
     const next = sourceOrder.filter((sourceId) => sourceId !== draggedSourceId)
     const targetIndex = next.indexOf(targetSourceId)
-    const insertionIndex =
-      targetIndex < 0 ? next.length : targetIndex + (after ? 1 : 0)
+    const insertionIndex = targetIndex < 0 ? next.length : targetIndex + (after ? 1 : 0)
     next.splice(insertionIndex, 0, draggedSourceId)
     updateDictionarySettings({ sourceOrder: next })
   }
 
   const updateDragTarget = (clientX: number, clientY: number) => {
-    const targetRow = document
-      .elementFromPoint(clientX, clientY)
-      ?.closest<HTMLElement>('[data-dictionary-source-id]')
+    const targetRow = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>('[data-dictionary-source-id]')
     const sourceId = targetRow?.dataset.dictionarySourceId
     if (!targetRow || !sourceId || sourceId === draggedSourceIdRef.current) {
       dropTargetRef.current = undefined
@@ -340,10 +304,7 @@ export function LocalDictionarySettings({
       after: clientY >= bounds.top + bounds.height / 2,
       sourceId,
     }
-    if (
-      dropTargetRef.current?.sourceId === nextTarget.sourceId &&
-      dropTargetRef.current.after === nextTarget.after
-    ) {
+    if (dropTargetRef.current?.sourceId === nextTarget.sourceId && dropTargetRef.current.after === nextTarget.after) {
       return
     }
     dropTargetRef.current = nextTarget
@@ -372,15 +333,8 @@ export function LocalDictionarySettings({
       }}
     >
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1">
-        <h3 className="text-base font-semibold">
-          {t('dictionary.sources_title')}
-        </h3>
-        <UiButton
-          type="button"
-          size="sm"
-          className="h-8 shrink-0 gap-1.5 px-3"
-          onClick={() => void addDictionary()}
-        >
+        <h3 className="text-base font-semibold">{t('dictionary.sources_title')}</h3>
+        <UiButton type="button" size="sm" className="h-8 shrink-0 gap-1.5 px-3" onClick={() => void addDictionary()}>
           <PlusIcon className="size-4" />
           {t('dictionary.local_add')}
         </UiButton>
@@ -409,11 +363,7 @@ export function LocalDictionarySettings({
               key={source.id}
               source={source}
               editing={editingSourceId === source.id}
-              dropAfter={
-                dropTarget?.sourceId === source.id
-                  ? dropTarget.after
-                  : undefined
-              }
+              dropAfter={dropTarget?.sourceId === source.id ? dropTarget.after : undefined}
               dictionarySettings={dictionarySettings}
               localNameDraft={localNameDraft}
               localLanguagesDraft={localLanguagesDraft}
@@ -477,9 +427,7 @@ interface DictionarySourceRowProps {
   onLocalLanguagesChange: (value: LocalDictionaryLanguage[]) => void
   onMerriamWebsterKeyChange: (value: string) => void
   onShowMerriamWebsterKeyChange: (value: boolean) => void
-  onUpdateDictionarySettings: (
-    changes: Partial<typeof defaultDictionarySettings>,
-  ) => void
+  onUpdateDictionarySettings: (changes: Partial<typeof defaultDictionarySettings>) => void
   onUpdateRecord: (id: string, changes: LocalDictionaryUpdate) => Promise<void>
   onRelocate: (id: string) => Promise<void>
   onRemove: (id: string) => Promise<void>
@@ -517,27 +465,16 @@ function DictionarySourceRow({
 }: DictionarySourceRowProps) {
   const local = source.kind === 'local' ? source.dictionary : undefined
   const name =
-    source.kind === 'zdic'
-      ? '汉典'
-      : source.kind === 'merriam-webster'
-        ? 'Merriam-Webster'
-        : source.dictionary.name
+    source.kind === 'zdic' ? '汉典' : source.kind === 'merriam-webster' ? 'Merriam-Webster' : source.dictionary.name
   const configured = Boolean(dictionarySettings.merriamWebster.apiKey)
-  const localEligible = Boolean(
-    local?.language.value.length && local.sourceStatus === 'available',
-  )
+  const localEligible = Boolean(local?.language.value.length && local.sourceStatus === 'available')
   const checked =
     source.kind === 'zdic'
       ? dictionarySettings.zdic.enabled
       : source.kind === 'merriam-webster'
         ? configured && dictionarySettings.merriamWebster.enabled
         : Boolean(local?.enabled && localEligible)
-  const disabled =
-    source.kind === 'merriam-webster'
-      ? !configured
-      : source.kind === 'local'
-        ? !localEligible
-        : false
+  const disabled = source.kind === 'merriam-webster' ? !configured : source.kind === 'local' ? !localEligible : false
 
   return (
     <div
@@ -591,11 +528,7 @@ function DictionarySourceRow({
                   }
                 }}
               >
-                {editing ? (
-                  <CheckIcon className="size-3.5" />
-                ) : (
-                  <PencilIcon className="size-3.5" />
-                )}
+                {editing ? <CheckIcon className="size-3.5" /> : <PencilIcon className="size-3.5" />}
               </UiButton>
             )}
             {source.kind === 'local' && (
@@ -614,15 +547,9 @@ function DictionarySourceRow({
               ? '中文'
               : source.kind === 'merriam-webster'
                 ? `English · Collegiate Dictionary · ${t(
-                    configured
-                      ? 'dictionary.configured'
-                      : 'dictionary.not_configured',
+                    configured ? 'dictionary.configured' : 'dictionary.not_configured',
                   )}`
-                : localMetadata(
-                    source.dictionary,
-                    t,
-                    editing ? localLanguagesDraft : undefined,
-                  )}
+                : localMetadata(source.dictionary, t, editing ? localLanguagesDraft : undefined)}
           </div>
         </div>
         <span
@@ -669,9 +596,7 @@ function DictionarySourceRow({
               className="w-full max-w-full pr-9"
               data-dictionary-inline-editor
               value={merriamWebsterKey}
-              onChange={(event) =>
-                onMerriamWebsterKeyChange(event.currentTarget.value)
-              }
+              onChange={(event) => onMerriamWebsterKeyChange(event.currentTarget.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
                   onSaveEdit()
@@ -689,15 +614,9 @@ function DictionarySourceRow({
               size="icon-sm"
               className="absolute top-0.5 right-0.5 size-7"
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() =>
-                onShowMerriamWebsterKeyChange(!showMerriamWebsterKey)
-              }
+              onClick={() => onShowMerriamWebsterKeyChange(!showMerriamWebsterKey)}
             >
-              {showMerriamWebsterKey ? (
-                <EyeOffIcon className="size-4" />
-              ) : (
-                <EyeIcon className="size-4" />
-              )}
+              {showMerriamWebsterKey ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
             </UiButton>
           </div>
           <UiButton
@@ -707,9 +626,7 @@ function DictionarySourceRow({
             className="text-muted-foreground ml-auto h-8 shrink-0 gap-1.5 px-2"
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => {
-              void openSupportedExternalUrl('https://dictionaryapi.com/').catch(
-                () => undefined,
-              )
+              void openSupportedExternalUrl('https://dictionaryapi.com/').catch(() => undefined)
             }}
           >
             {t('dictionary.get_api_key')}
@@ -795,9 +712,7 @@ function LocalDictionaryEditor({
                 checked={checked}
                 onCheckedChange={() => {
                   onLanguagesChange(
-                    checked
-                      ? languages.filter((current) => current !== language)
-                      : [...languages, language],
+                    checked ? languages.filter((current) => current !== language) : [...languages, language],
                   )
                 }}
               />
@@ -813,12 +728,7 @@ function LocalDictionaryEditor({
         >
           {formatLocalPathForDisplay(dictionary.sourcePath)}
         </span>
-        <UiButton
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => void onRelocate(dictionary.id)}
-        >
+        <UiButton type="button" variant="ghost" size="icon-sm" onClick={() => void onRelocate(dictionary.id)}>
           <FolderSearchIcon className="size-4" />
         </UiButton>
         <UiButton
@@ -828,33 +738,18 @@ function LocalDictionaryEditor({
           onBlur={() => onConfirmRemoveChange(undefined)}
           onClick={() => void onRemove(dictionary.id)}
         >
-          {confirmRemoveId === dictionary.id ? (
-            <CheckIcon className="size-4" />
-          ) : (
-            <Trash2Icon className="size-4" />
-          )}
+          {confirmRemoveId === dictionary.id ? <CheckIcon className="size-4" /> : <Trash2Icon className="size-4" />}
         </UiButton>
       </div>
     </div>
   )
 }
 
-function localMetadata(
-  dictionary: LocalDictionaryRecord,
-  t: Translation,
-  languageDraft?: LocalDictionaryLanguage[],
-) {
-  const languages = (languageDraft ?? dictionary.language.value).map(
-    (language) => languageLabels[language],
-  )
-  const language =
-    languages.length > 0
-      ? languages.join(', ')
-      : t('dictionary.local_language.unknown')
+function localMetadata(dictionary: LocalDictionaryRecord, t: Translation, languageDraft?: LocalDictionaryLanguage[]) {
+  const languages = (languageDraft ?? dictionary.language.value).map((language) => languageLabels[language])
+  const language = languages.length > 0 ? languages.join(', ') : t('dictionary.local_language.unknown')
   const status =
-    dictionary.sourceStatus === 'available'
-      ? ''
-      : ` · ${t(`dictionary.local_status.${dictionary.sourceStatus}`)}`
+    dictionary.sourceStatus === 'available' ? '' : ` · ${t(`dictionary.local_status.${dictionary.sourceStatus}`)}`
   return `${language} · ${formatLocalPathForDisplay(dictionary.sourcePath)}${status}`
 }
 
@@ -877,44 +772,23 @@ function applyLocalDictionaryUpdate(
   }
 }
 
-function sameLanguages(
-  left: readonly LocalDictionaryLanguage[],
-  right: readonly LocalDictionaryLanguage[],
-) {
-  return (
-    left.length === right.length &&
-    left.every((language, index) => language === right[index])
-  )
+function sameLanguages(left: readonly LocalDictionaryLanguage[], right: readonly LocalDictionaryLanguage[]) {
+  return left.length === right.length && left.every((language, index) => language === right[index])
 }
 
-function upsertDictionary(
-  dictionaries: LocalDictionaryRecord[],
-  record: LocalDictionaryRecord,
-) {
-  const index = dictionaries.findIndex(
-    (dictionary) => dictionary.id === record.id,
-  )
+function upsertDictionary(dictionaries: LocalDictionaryRecord[], record: LocalDictionaryRecord) {
+  const index = dictionaries.findIndex((dictionary) => dictionary.id === record.id)
   if (index < 0) return [...dictionaries, record]
-  return dictionaries.map((dictionary) =>
-    dictionary.id === record.id ? record : dictionary,
-  )
+  return dictionaries.map((dictionary) => (dictionary.id === record.id ? record : dictionary))
 }
 
 function sortDictionaries(dictionaries: LocalDictionaryRecord[]) {
-  return [...dictionaries].sort(
-    (left, right) =>
-      left.order - right.order || left.createdAt - right.createdAt,
-  )
+  return [...dictionaries].sort((left, right) => left.order - right.order || left.createdAt - right.createdAt)
 }
 
 function errorMessage(reason: unknown, fallback: string) {
   if (reason instanceof Error && reason.message) return reason.message
-  if (
-    typeof reason === 'object' &&
-    reason !== null &&
-    'message' in reason &&
-    typeof reason.message === 'string'
-  ) {
+  if (typeof reason === 'object' && reason !== null && 'message' in reason && typeof reason.message === 'string') {
     return reason.message
   }
   return fallback

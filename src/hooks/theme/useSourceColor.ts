@@ -5,8 +5,7 @@ import { defaultAccentColor, normalizePaletteColor } from '@/styles/theme'
 
 export function useAccentColor() {
   const [{ theme }, setSettings] = useSettings()
-  const accentColor =
-    normalizePaletteColor(theme?.accent ?? theme?.source) ?? defaultAccentColor
+  const accentColor = normalizePaletteColor(theme?.accent ?? theme?.source) ?? defaultAccentColor
 
   const setAccentColor = useCallback(
     (accent: string) => {

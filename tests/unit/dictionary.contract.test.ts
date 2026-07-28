@@ -1,22 +1,13 @@
 import { expect, test } from 'vitest'
 
-import {
-  DictionaryCoordinator,
-  type DictionaryProvider,
-} from '../../src/dictionary/coordinator'
-import {
-  DICTIONARY_DETAIL_HISTORY_LIMIT,
-  pushDictionaryDetailHistory,
-} from '../../src/dictionary/detailHistory'
+import { DictionaryCoordinator, type DictionaryProvider } from '../../src/dictionary/coordinator'
+import { DICTIONARY_DETAIL_HISTORY_LIMIT, pushDictionaryDetailHistory } from '../../src/dictionary/detailHistory'
 import {
   MerriamWebsterParseError,
   merriamWebsterExternalUrl,
   parseMerriamWebsterResponse,
 } from '../../src/dictionary/providers/merriamWebster'
-import {
-  classifyDictionaryQuery,
-  normalizeDictionaryQuery,
-} from '../../src/dictionary/query'
+import { classifyDictionaryQuery, normalizeDictionaryQuery } from '../../src/dictionary/query'
 
 test.describe('dictionary query contract', () => {
   test('trims before validation while preserving internal punctuation and spacing', () => {
@@ -35,9 +26,7 @@ test.describe('dictionary query contract', () => {
     expect(normalizeDictionaryQuery('first\nsecond')).toBeNull()
     expect(normalizeDictionaryQuery('first\tsecond')).toBeNull()
     expect(normalizeDictionaryQuery('a'.repeat(17))).toBeNull()
-    expect(
-      normalizeDictionaryQuery(`“${'a'.repeat(16)}${'，'.repeat(7)}”`),
-    ).toBeNull()
+    expect(normalizeDictionaryQuery(`“${'a'.repeat(16)}${'，'.repeat(7)}”`)).toBeNull()
   })
 
   test('ignores numbers and punctuation for language analysis but rejects neutral-only text', () => {
@@ -76,23 +65,15 @@ test.describe('dictionary coordinator contract', () => {
 
     const session = coordinator.lookup('天空', providers, (sources) => {
       snapshots.push(
-        sources
-          .filter((source) => source.status === 'success')
-          .map((source) => source.result?.sourceName ?? ''),
+        sources.filter((source) => source.status === 'success').map((source) => source.result?.sourceName ?? ''),
       )
     })
 
     const completed = await session.done
 
     expect(completed.cancelled).toBe(false)
-    expect(completed.sources.map((source) => source.providerId)).toEqual([
-      'first',
-      'second',
-    ])
-    expect(completed.sources.map((source) => source.status)).toEqual([
-      'success',
-      'success',
-    ])
+    expect(completed.sources.map((source) => source.providerId)).toEqual(['first', 'second'])
+    expect(completed.sources.map((source) => source.status)).toEqual(['success', 'success'])
     expect(snapshots).toContainEqual(['第二部词典'])
     expect(snapshots.at(-1)).toEqual(['第一部词典', '第二部词典'])
   })
@@ -118,19 +99,12 @@ test.describe('dictionary coordinator contract', () => {
     const oldSession = coordinator.lookup('天空', [oldProvider], (sources) => {
       oldSnapshots.push(sources.map((source) => source.status))
     })
-    const newSession = coordinator.lookup(
-      'sky',
-      [provider('new', 'en', 0, 'New dictionary')],
-      (sources) => {
-        newSnapshots.push(sources.map((source) => source.status))
-      },
-    )
+    const newSession = coordinator.lookup('sky', [provider('new', 'en', 0, 'New dictionary')], (sources) => {
+      newSnapshots.push(sources.map((source) => source.status))
+    })
     releaseOldLookup?.()
 
-    const [oldCompleted, newCompleted] = await Promise.all([
-      oldSession.done,
-      newSession.done,
-    ])
+    const [oldCompleted, newCompleted] = await Promise.all([oldSession.done, newSession.done])
 
     expect(oldCompleted.cancelled).toBe(true)
     expect(oldSnapshots).toEqual([['loading']])
@@ -153,10 +127,7 @@ test.describe('dictionary coordinator contract', () => {
     }
     const coordinator = new DictionaryCoordinator()
 
-    const session = coordinator.lookup('sky', [
-      ...localHarness.providers,
-      onlineProvider,
-    ])
+    const session = coordinator.lookup('sky', [...localHarness.providers, onlineProvider])
 
     await expect.poll(() => localHarness.started).toBe(2)
     expect(localHarness.maxActive).toBe(2)
@@ -168,12 +139,7 @@ test.describe('dictionary coordinator contract', () => {
 
     const completed = await session.done
     expect(completed.cancelled).toBe(false)
-    expect(completed.sources.map((source) => source.status)).toEqual([
-      'success',
-      'success',
-      'success',
-      'success',
-    ])
+    expect(completed.sources.map((source) => source.status)).toEqual(['success', 'success', 'success', 'success'])
     session.cancel()
   })
 
@@ -216,14 +182,9 @@ test.describe('dictionary coordinator contract', () => {
       provider('success', 'en', 0, 'Successful dictionary'),
     ]
 
-    const completed = await new DictionaryCoordinator().lookup('sky', providers)
-      .done
+    const completed = await new DictionaryCoordinator().lookup('sky', providers).done
 
-    expect(completed.sources.map((source) => source.status)).toEqual([
-      'error',
-      'empty',
-      'success',
-    ])
+    expect(completed.sources.map((source) => source.status)).toEqual(['error', 'empty', 'success'])
     expect(completed.sources[0]?.error).toBe('provider failed')
   })
 })
@@ -240,11 +201,7 @@ test.describe('dictionary detail history contract', () => {
     })
     expect(unchanged).toBe(history)
 
-    for (
-      let index = 1;
-      index <= DICTIONARY_DETAIL_HISTORY_LIMIT + 4;
-      index += 1
-    ) {
+    for (let index = 1; index <= DICTIONARY_DETAIL_HISTORY_LIMIT + 4; index += 1) {
       history = pushDictionaryDetailHistory(history, {
         providerId: 'mdict',
         query: `entry-${index}`,
@@ -252,9 +209,7 @@ test.describe('dictionary detail history contract', () => {
     }
 
     expect(history).toHaveLength(DICTIONARY_DETAIL_HISTORY_LIMIT)
-    expect(history.at(-1)?.query).toBe(
-      `entry-${DICTIONARY_DETAIL_HISTORY_LIMIT + 4}`,
-    )
+    expect(history.at(-1)?.query).toBe(`entry-${DICTIONARY_DETAIL_HISTORY_LIMIT + 4}`)
     expect(history[0]?.query).toBe('entry-5')
   })
 })
@@ -278,14 +233,8 @@ test.describe('Merriam-Webster response contract', () => {
                     {
                       sn: '10 a (1)',
                       dt: [
-                        [
-                          'text',
-                          '{bc}the upper atmosphere {it}seen{/it} from earth',
-                        ],
-                        [
-                          'vis',
-                          [{ t: 'the {wi}sky{/wi} grew dark before rain' }],
-                        ],
+                        ['text', '{bc}the upper atmosphere {it}seen{/it} from earth'],
+                        ['vis', [{ t: 'the {wi}sky{/wi} grew dark before rain' }]],
                       ],
                       sdsense: {
                         sd: 'specifically',
@@ -329,14 +278,7 @@ test.describe('Merriam-Webster response contract', () => {
           fl: 'verb',
           def: [
             {
-              sseq: [
-                [
-                  [
-                    'sense',
-                    { sn: '1', dt: [['text', '{bc}to hit high into the air']] },
-                  ],
-                ],
-              ],
+              sseq: [[['sense', { sn: '1', dt: [['text', '{bc}to hit high into the air']] }]]],
             },
           ],
         },
@@ -346,14 +288,7 @@ test.describe('Merriam-Webster response contract', () => {
           fl: 'adjective',
           def: [
             {
-              sseq: [
-                [
-                  [
-                    'sense',
-                    { dt: [['text', '{bc}a phrase that must be excluded']] },
-                  ],
-                ],
-              ],
+              sseq: [[['sense', { dt: [['text', '{bc}a phrase that must be excluded']] }]]],
             },
           ],
         },
@@ -363,9 +298,7 @@ test.describe('Merriam-Webster response contract', () => {
 
     expect(result).not.toBeNull()
     if (!result) throw new Error('Expected parsed dictionary entries')
-    expect(result.externalUrl).toBe(
-      'https://www.merriam-webster.com/dictionary/sky',
-    )
+    expect(result.externalUrl).toBe('https://www.merriam-webster.com/dictionary/sky')
     expect(result.content.kind).toBe('entries')
     if (result.content.kind !== 'entries') return
     expect(result.content.entries).toHaveLength(2)
@@ -376,11 +309,7 @@ test.describe('Merriam-Webster response contract', () => {
       homograph: 1,
       partOfSpeech: 'noun',
     })
-    expect(firstEntry.senses.map((sense) => sense.marker)).toEqual([
-      '10 a (1)',
-      '2',
-      '(1)',
-    ])
+    expect(firstEntry.senses.map((sense) => sense.marker)).toEqual(['10 a (1)', '2', '(1)'])
     expect(firstEntry.senses.map((sense) => sense.markerParts)).toEqual([
       { letter: 'a', number: '10', subnumber: '(1)' },
       { number: '2' },
@@ -426,9 +355,7 @@ test.describe('Merriam-Webster response contract', () => {
       hwi: { hw: headword.replaceAll(' ', '* ') },
       def: [
         {
-          sseq: [
-            [['sense', { dt: [['text', `{bc}definition of ${headword}`]] }]],
-          ],
+          sseq: [[['sense', { dt: [['text', `{bc}definition of ${headword}`]] }]]],
         },
       ],
     })
@@ -440,14 +367,10 @@ test.describe('Merriam-Webster response contract', () => {
     const result = parseMerriamWebsterResponse(body, 'companies')
 
     if (result?.content.kind !== 'entries') return
-    expect(result.content.entries.map((entry) => entry.headword)).toEqual([
-      'company',
-    ])
+    expect(result.content.entries.map((entry) => entry.headword)).toEqual(['company'])
     const phraseResult = parseMerriamWebsterResponse(body, 'company man')
     if (phraseResult?.content.kind !== 'entries') return
-    expect(phraseResult.content.entries.map((entry) => entry.headword)).toEqual(
-      ['company man'],
-    )
+    expect(phraseResult.content.entries.map((entry) => entry.headword)).toEqual(['company man'])
   })
 
   test('preserves controlled formatting and cross-reference token text', () => {
@@ -462,12 +385,7 @@ test.describe('Merriam-Webster response contract', () => {
                   [
                     'sense',
                     {
-                      dt: [
-                        [
-                          'text',
-                          '{bc}to {it}do{/it}; {dx}see also {dxt|perform||}{/dx}',
-                        ],
-                      ],
+                      dt: [['text', '{bc}to {it}do{/it}; {dx}see also {dxt|perform||}{/dx}']],
                     },
                   ],
                 ],
@@ -494,9 +412,7 @@ test.describe('Merriam-Webster response contract', () => {
   })
 
   test('degrades suggestions and malformed entries without using shortdef', () => {
-    expect(
-      parseMerriamWebsterResponse(JSON.stringify(['skies', 'sky']), 'ski'),
-    ).toBeNull()
+    expect(parseMerriamWebsterResponse(JSON.stringify(['skies', 'sky']), 'ski')).toBeNull()
     expect(
       parseMerriamWebsterResponse(
         JSON.stringify([
@@ -505,9 +421,7 @@ test.describe('Merriam-Webster response contract', () => {
             hwi: { hw: 'valid' },
             def: [
               {
-                sseq: [
-                  [['sense', { dt: [['text', '{bc}a valid definition']] }]],
-                ],
+                sseq: [[['sense', { dt: [['text', '{bc}a valid definition']] }]]],
               },
             ],
           },
@@ -515,24 +429,13 @@ test.describe('Merriam-Webster response contract', () => {
         'valid',
       )?.content,
     ).toMatchObject({ entries: [{ headword: 'valid' }] })
-    expect(() => parseMerriamWebsterResponse('{', 'sky')).toThrow(
-      MerriamWebsterParseError,
-    )
-    expect(() =>
-      parseMerriamWebsterResponse('x'.repeat(2_000_001), 'sky'),
-    ).toThrow(MerriamWebsterParseError)
-    expect(merriamWebsterExternalUrl('blue sky')).toBe(
-      'https://www.merriam-webster.com/dictionary/blue%20sky',
-    )
+    expect(() => parseMerriamWebsterResponse('{', 'sky')).toThrow(MerriamWebsterParseError)
+    expect(() => parseMerriamWebsterResponse('x'.repeat(2_000_001), 'sky')).toThrow(MerriamWebsterParseError)
+    expect(merriamWebsterExternalUrl('blue sky')).toBe('https://www.merriam-webster.com/dictionary/blue%20sky')
   })
 })
 
-function provider(
-  id: string,
-  sourceLanguage: 'zh' | 'en',
-  delayMs: number,
-  sourceName: string,
-): DictionaryProvider {
+function provider(id: string, sourceLanguage: 'zh' | 'en', delayMs: number, sourceName: string): DictionaryProvider {
   return {
     id,
     name: sourceName,

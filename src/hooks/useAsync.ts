@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-export function useAsync<T>(
-  func: () => Promise<T> | undefined | null,
-  deps = [],
-) {
+export function useAsync<T>(func: () => Promise<T> | undefined | null, deps = []) {
   const ref = useRef(func)
   ref.current = func
   const [value, setValue] = useState<T>()
@@ -11,7 +8,6 @@ export function useAsync<T>(
   useEffect(() => {
     ref.current()?.then(setValue)
     /* oxlint-disable react-doctor/exhaustive-deps */
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
   /* oxlint-enable react-doctor/exhaustive-deps */
 

@@ -1,11 +1,7 @@
 import { ExternalLinkIcon, RefreshCwIcon } from 'lucide-react'
 
 import type { DictionarySourceState } from '../dictionary/coordinator'
-import type {
-  DictionarySense,
-  DictionarySenseMarkerParts,
-  DictionaryText,
-} from '../dictionary/types'
+import type { DictionarySense, DictionarySenseMarkerParts, DictionaryText } from '../dictionary/types'
 import { openSupportedExternalUrl } from '../externalLink'
 import { useTranslation } from '../hooks/useTranslation'
 
@@ -32,8 +28,7 @@ export function DictionarySourceSection({
 }: DictionarySourceSectionProps) {
   const t = useTranslation('dictionary')
   const externalUrl = source.result?.externalUrl ?? source.externalUrl
-  const retryVisible =
-    Boolean(onRetry) && (isRetrying || source.status === 'error')
+  const retryVisible = Boolean(onRetry) && (isRetrying || source.status === 'error')
 
   return (
     <section
@@ -41,14 +36,8 @@ export function DictionarySourceSection({
       data-dictionary-source-id={source.providerId}
       data-dictionary-source-status={source.status}
     >
-      <div
-        className="bg-muted/45 flex min-h-10 items-center px-5"
-        data-dictionary-source-header="true"
-      >
-        <h2
-          id={`dictionary-source-${source.providerId}`}
-          className="text-muted-foreground text-sm font-medium"
-        >
+      <div className="bg-muted/45 flex min-h-10 items-center px-5" data-dictionary-source-header="true">
+        <h2 id={`dictionary-source-${source.providerId}`} className="text-muted-foreground text-sm font-medium">
           {source.providerName}
         </h2>
         <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -60,9 +49,7 @@ export function DictionarySourceSection({
               disabled={isRetrying}
               onClick={onRetry}
             >
-              <RefreshCwIcon
-                className={`size-4 ${isRetrying ? 'animate-spin' : ''}`}
-              />
+              <RefreshCwIcon className={`size-4 ${isRetrying ? 'animate-spin' : ''}`} />
             </button>
           )}
           {externalUrl && (source.status !== 'loading' || isRetrying) && (
@@ -71,9 +58,7 @@ export function DictionarySourceSection({
               className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-7 cursor-pointer items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-(--flow-accent-border)"
               data-dictionary-external={source.providerId}
               onClick={() => {
-                void openSupportedExternalUrl(externalUrl).catch(
-                  () => undefined,
-                )
+                void openSupportedExternalUrl(externalUrl).catch(() => undefined)
               }}
             >
               <ExternalLinkIcon className="size-4" />
@@ -90,34 +75,21 @@ export function DictionarySourceSection({
         </div>
       ) : source.status === 'error' ? (
         <div className="text-muted-foreground px-5 py-2 text-sm leading-snug">
-          {source.error === 'Could not parse this entry.'
-            ? t('parse_error')
-            : t('lookup_error')}
+          {source.error === 'Could not parse this entry.' ? t('parse_error') : t('lookup_error')}
         </div>
       ) : source.status === 'empty' ? (
-        <div className="text-muted-foreground px-5 py-2 text-sm leading-snug">
-          {t('no_result')}
-        </div>
+        <div className="text-muted-foreground px-5 py-2 text-sm leading-snug">{t('no_result')}</div>
       ) : source.result?.content.kind === 'entries' ? (
         <div className="cursor-text space-y-[1em] px-5 py-4 select-text">
           {source.result.content.entries.map((entry, entryIndex) => (
-            <article
-              key={`${entry.pronunciation ?? entry.headword ?? ''}-${entryIndex}`}
-              className="space-y-[0.5em]"
-            >
+            <article key={`${entry.pronunciation ?? entry.headword ?? ''}-${entryIndex}`} className="space-y-[0.5em]">
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                {entry.headword && (
-                  <h3 className="text-xl font-semibold">{entry.headword}</h3>
-                )}
+                {entry.headword && <h3 className="text-xl font-semibold">{entry.headword}</h3>}
                 {entry.pronunciation && (
-                  <span className="text-base font-medium text-(--flow-accent)">
-                    {entry.pronunciation}
-                  </span>
+                  <span className="text-base font-medium text-(--flow-accent)">{entry.pronunciation}</span>
                 )}
                 {entry.partOfSpeech && (
-                  <span className="text-muted-foreground text-sm italic">
-                    {entry.partOfSpeech}
-                  </span>
+                  <span className="text-muted-foreground text-sm italic">{entry.partOfSpeech}</span>
                 )}
               </div>
               <ol className="space-y-[0.45em]">
@@ -136,21 +108,9 @@ export function DictionarySourceSection({
                       data-dictionary-marker-depth={markerDepth ?? 'none'}
                       data-dictionary-sense-level={sense.level ?? 0}
                     >
-                      {markerParts?.number && (
-                        <SenseMarker kind="number">
-                          {markerParts.number}
-                        </SenseMarker>
-                      )}
-                      {markerParts?.letter && (
-                        <SenseMarker kind="letter">
-                          {markerParts.letter}
-                        </SenseMarker>
-                      )}
-                      {markerParts?.subnumber && (
-                        <SenseMarker kind="subnumber">
-                          {markerParts.subnumber}
-                        </SenseMarker>
-                      )}
+                      {markerParts?.number && <SenseMarker kind="number">{markerParts.number}</SenseMarker>}
+                      {markerParts?.letter && <SenseMarker kind="letter">{markerParts.letter}</SenseMarker>}
+                      {markerParts?.subnumber && <SenseMarker kind="subnumber">{markerParts.subnumber}</SenseMarker>}
                       <div
                         className={`${senseContentColumn(markerDepth)} min-w-0 space-y-[0.25em]`}
                         data-dictionary-sense-content="true"
@@ -159,10 +119,7 @@ export function DictionarySourceSection({
                           <DictionaryTextView text={sense.definition} />
                         </div>
                         {sense.examples?.map((example, exampleIndex) => (
-                          <div
-                            key={exampleIndex}
-                            className="text-muted-foreground text-sm leading-snug"
-                          >
+                          <div key={exampleIndex} className="text-muted-foreground text-sm leading-snug">
                             <span className="bg-muted mr-2 inline-flex rounded px-1.5 py-0.5 text-xs font-medium">
                               {t('example')}
                             </span>
@@ -186,6 +143,7 @@ export function DictionarySourceSection({
           onContentResize={onContentResize}
           onEntryNavigate={(entry) => onEntryNavigate(source.providerId, entry)}
           onNavigateBack={onNavigateBack}
+          title={source.providerName}
         />
       ) : null}
     </section>
@@ -202,11 +160,7 @@ function DictionaryTextView({ text }: { text: DictionaryText }) {
           key={index}
           data-dictionary-text-kind={run.kind}
           className={
-            run.kind === 'emphasis'
-              ? 'italic'
-              : run.kind === 'label'
-                ? 'text-muted-foreground italic'
-                : undefined
+            run.kind === 'emphasis' ? 'italic' : run.kind === 'label' ? 'text-muted-foreground italic' : undefined
           }
         >
           {run.text}
@@ -218,19 +172,8 @@ function DictionaryTextView({ text }: { text: DictionaryText }) {
 
 type SenseMarkerKind = keyof DictionarySenseMarkerParts
 
-function SenseMarker({
-  children,
-  kind,
-}: {
-  children: string
-  kind: SenseMarkerKind
-}) {
-  const column =
-    kind === 'number'
-      ? 'col-start-1'
-      : kind === 'letter'
-        ? 'col-start-2'
-        : 'col-start-3'
+function SenseMarker({ children, kind }: { children: string; kind: SenseMarkerKind }) {
+  const column = kind === 'number' ? 'col-start-1' : kind === 'letter' ? 'col-start-2' : 'col-start-3'
   const appearance =
     kind === 'number'
       ? 'font-semibold tabular-nums text-foreground'
@@ -248,9 +191,7 @@ function SenseMarker({
   )
 }
 
-function senseMarkerParts(
-  sense: DictionarySense,
-): DictionarySenseMarkerParts | undefined {
+function senseMarkerParts(sense: DictionarySense): DictionarySenseMarkerParts | undefined {
   if (sense.markerParts) return sense.markerParts
   return sense.marker ? { number: sense.marker } : undefined
 }

@@ -11,7 +11,5 @@ export function revealScrollbars(target?: EventTarget | null) {
     return
   }
 
-  document
-    .querySelectorAll(`.scroll`)
-    .forEach((el) => el.classList.add(scrollbarVisibleClass))
+  document.querySelectorAll(`.scroll`).forEach((el) => el.classList.add(scrollbarVisibleClass))
 }

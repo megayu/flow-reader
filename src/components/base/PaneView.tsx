@@ -1,16 +1,16 @@
 import clsx from 'clsx'
 import {
-  ComponentProps,
+  type ComponentProps,
   forwardRef,
-  PointerEvent as ReactPointerEvent,
-  RefObject,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
   useRef,
   useState,
 } from 'react'
 
 import { Twisty } from '../Row'
 
-import { Action, ActionBar } from './ActionBar'
+import { type Action, ActionBar } from './ActionBar'
 import { SplitView, useSplitViewItem } from './SplitView'
 
 const COLLAPSED_STORAGE_SUFFIX = ':collapsed'
@@ -63,10 +63,7 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
 
   return (
     <div
-      className={clsx(
-        'Pane scroll-parent group min-h-0',
-        size || !expanded ? 'shrink-0' : 'flex-1',
-      )}
+      className={clsx('Pane scroll-parent group min-h-0', size || !expanded ? 'shrink-0' : 'flex-1')}
       style={{
         height: expanded ? size : PANE_HEADER_SIZE,
       }}
@@ -79,12 +76,7 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
         <div className="text-muted-foreground/85 flex h-full items-center text-base leading-none font-semibold tracking-normal">
           {headline.toUpperCase()}
         </div>
-        {actions && (
-          <ActionBar
-            actions={actions}
-            className="invisible ml-auto flex pr-0.5 group-hover:visible"
-          />
-        )}
+        {actions && <ActionBar actions={actions} className="invisible ml-auto flex pr-0.5 group-hover:visible" />}
       </div>
       {overlayScroll ? (
         <OverlayScroll
@@ -100,11 +92,7 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
       ) : (
         <div
           ref={ref}
-          className={clsx(
-            'scroll text-muted-foreground min-h-0 flex-1 text-base',
-            !expanded && 'hidden',
-            className,
-          )}
+          className={clsx('scroll text-muted-foreground min-h-0 flex-1 text-base', !expanded && 'hidden', className)}
           data-pane-scroll="true"
           {...props}
         >
@@ -136,49 +124,30 @@ interface OverlayScrollProps extends ComponentProps<'div'> {
   scrollbar?: OverlayScrollbarMetrics
 }
 
-export const OverlayScroll = forwardRef<HTMLDivElement, OverlayScrollProps>(
-  function OverlayScroll(
-    {
-      children,
-      className,
-      containerClassName,
-      reserveScrollbarWidth = false,
-      scrollbar,
-      ...props
-    },
-    ref,
-  ) {
-    return (
+export const OverlayScroll = forwardRef<HTMLDivElement, OverlayScrollProps>(function OverlayScroll(
+  { children, className, containerClassName, reserveScrollbarWidth = false, scrollbar, ...props },
+  ref,
+) {
+  return (
+    <div className={clsx('group/pane-scroll relative overflow-hidden', containerClassName)}>
       <div
+        ref={ref}
         className={clsx(
-          'group/pane-scroll relative overflow-hidden',
-          containerClassName,
+          'no-scrollbar h-full w-full overflow-y-auto overscroll-contain',
+          reserveScrollbarWidth && 'sidebar-scroll-content-reserved',
+          className,
         )}
+        data-pane-scroll="true"
+        {...props}
       >
-        <div
-          ref={ref}
-          className={clsx(
-            'no-scrollbar h-full w-full overflow-y-auto overscroll-contain',
-            reserveScrollbarWidth && 'sidebar-scroll-content-reserved',
-            className,
-          )}
-          data-pane-scroll="true"
-          {...props}
-        >
-          {children}
-        </div>
-        {scrollbar && <OverlayScrollbar {...scrollbar} />}
+        {children}
       </div>
-    )
-  },
-)
+      {scrollbar && <OverlayScrollbar {...scrollbar} />}
+    </div>
+  )
+})
 
-export function OverlayScrollbar({
-  scrollRef,
-  scrollTop,
-  totalSize,
-  viewportHeight,
-}: OverlayScrollbarMetrics) {
+export function OverlayScrollbar({ scrollRef, scrollTop, totalSize, viewportHeight }: OverlayScrollbarMetrics) {
   const dragRef = useRef<ScrollbarDrag | undefined>(undefined)
   const maxScrollTop = Math.max(0, totalSize - viewportHeight)
   const trackHeight = viewportHeight
@@ -187,22 +156,15 @@ export function OverlayScrollbar({
 
   const thumbHeight = Math.min(
     trackHeight,
-    Math.max(
-      MIN_SCROLLBAR_THUMB_SIZE,
-      (trackHeight * viewportHeight) / totalSize,
-    ),
+    Math.max(MIN_SCROLLBAR_THUMB_SIZE, (trackHeight * viewportHeight) / totalSize),
   )
   const maxThumbTop = Math.max(0, trackHeight - thumbHeight)
-  const thumbTop = maxThumbTop
-    ? (Math.min(maxScrollTop, scrollTop) / maxScrollTop) * maxThumbTop
-    : 0
+  const thumbTop = maxThumbTop ? (Math.min(maxScrollTop, scrollTop) / maxScrollTop) * maxThumbTop : 0
   const scrollToThumbTop = (nextThumbTop: number) => {
     const scroll = scrollRef.current
     if (!scroll || !maxThumbTop) return
 
-    scroll.scrollTop =
-      (Math.max(0, Math.min(maxThumbTop, nextThumbTop)) / maxThumbTop) *
-      maxScrollTop
+    scroll.scrollTop = (Math.max(0, Math.min(maxThumbTop, nextThumbTop)) / maxThumbTop) * maxScrollTop
   }
   const handleThumbPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     const scroll = scrollRef.current
@@ -224,9 +186,7 @@ export function OverlayScrollbar({
     const scroll = scrollRef.current
     if (!scroll) return
 
-    scroll.scrollTop =
-      drag.startScrollTop +
-      ((event.clientY - drag.startY) / maxThumbTop) * maxScrollTop
+    scroll.scrollTop = drag.startScrollTop + ((event.clientY - drag.startY) / maxThumbTop) * maxScrollTop
   }
   const handleThumbPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (dragRef.current?.pointerId !== event.pointerId) return
@@ -271,10 +231,7 @@ function readPaneExpanded(storageKey?: string) {
 function writePaneExpanded(storageKey: string | undefined, expanded: boolean) {
   if (!storageKey || typeof window === 'undefined') return
 
-  window.localStorage.setItem(
-    collapsedStorageKey(storageKey),
-    expanded ? '0' : '1',
-  )
+  window.localStorage.setItem(collapsedStorageKey(storageKey), expanded ? '0' : '1')
 }
 
 function collapsedStorageKey(storageKey: string) {
@@ -284,16 +241,6 @@ function collapsedStorageKey(storageKey: string) {
 export interface PaneViewProps extends ComponentProps<'div'> {
   active?: boolean
 }
-export function PaneView({
-  active: _active,
-  className,
-  ...props
-}: PaneViewProps) {
-  return (
-    <SplitView
-      vertical
-      className={clsx('scroll-parent min-h-0', className)}
-      {...props}
-    />
-  )
+export function PaneView({ active: _active, className, ...props }: PaneViewProps) {
+  return <SplitView vertical className={clsx('scroll-parent min-h-0', className)} {...props} />
 }

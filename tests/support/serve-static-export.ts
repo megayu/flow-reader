@@ -26,9 +26,7 @@ const contentTypes: Record<string, string> = {
 
 const server = createServer(async (request, response) => {
   try {
-    const pathname = decodeURIComponent(
-      new URL(request.url ?? '/', `http://${host}:${port}`).pathname,
-    )
+    const pathname = decodeURIComponent(new URL(request.url ?? '/', `http://${host}:${port}`).pathname)
     const relativePath = pathname === '/' ? 'index.html' : pathname.slice(1)
     let filePath = resolve(exportRoot, relativePath)
     if (filePath !== exportRoot && !filePath.startsWith(exportRootPrefix)) {
@@ -40,9 +38,7 @@ const server = createServer(async (request, response) => {
     if (metadata.isDirectory()) filePath = join(filePath, 'index.html')
     response.writeHead(200, {
       'Cache-Control': 'no-store',
-      'Content-Type':
-        contentTypes[extname(filePath).toLowerCase()] ??
-        'application/octet-stream',
+      'Content-Type': contentTypes[extname(filePath).toLowerCase()] ?? 'application/octet-stream',
     })
     createReadStream(filePath).pipe(response)
   } catch {

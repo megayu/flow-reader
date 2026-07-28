@@ -1,7 +1,4 @@
-export function parseAzureTranslationResponse(
-  body: string,
-  expectedCount: number,
-): string[] {
+export function parseAzureTranslationResponse(body: string, expectedCount: number): string[] {
   try {
     const response: unknown = JSON.parse(body)
     if (!Array.isArray(response) || response.length !== expectedCount) {
@@ -9,11 +6,7 @@ export function parseAzureTranslationResponse(
     }
 
     return response.map((item) => {
-      if (
-        !item ||
-        typeof item !== 'object' ||
-        !Array.isArray((item as { translations?: unknown }).translations)
-      ) {
+      if (!item || typeof item !== 'object' || !Array.isArray((item as { translations?: unknown }).translations)) {
         throw new Error()
       }
       const translation = (item as { translations: unknown[] }).translations[0]

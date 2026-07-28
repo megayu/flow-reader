@@ -68,8 +68,7 @@ compiledModule.paths = NodeModule._nodeModulePaths(path.dirname(sourcePath))
 compiledModule.require = requireShim
 compiledModule._compile(outputText, sourcePath)
 
-const { findReciprocalNoteItem, getNoteIndex } =
-  loadSourceModule('src/noteIndex.ts')
+const { findReciprocalNoteItem, getNoteIndex } = loadSourceModule('src/noteIndex.ts')
 
 const {
   bodyTextAttribute,
@@ -186,24 +185,17 @@ class FakeElement {
   contains(target: FakeElement | FakeTextNode): boolean {
     if (target === this) return true
 
-    return this.childNodes.some(
-      (node) =>
-        node === target || (node.nodeType === 1 && node.contains(target)),
-    )
+    return this.childNodes.some((node) => node === target || (node.nodeType === 1 && node.contains(target)))
   }
 
   get previousElementSibling() {
-    const siblings = this.parentElement?.childNodes.filter(
-      (node) => node.nodeType === 1,
-    )
+    const siblings = this.parentElement?.childNodes.filter((node) => node.nodeType === 1)
     const index = siblings?.indexOf(this) ?? -1
     return index > 0 ? (siblings?.[index - 1] ?? null) : null
   }
 
   get nextElementSibling() {
-    const siblings = this.parentElement?.childNodes.filter(
-      (node) => node.nodeType === 1,
-    )
+    const siblings = this.parentElement?.childNodes.filter((node) => node.nodeType === 1)
     const index = siblings?.indexOf(this) ?? -1
     return index >= 0 ? (siblings?.[index + 1] ?? null) : null
   }
@@ -241,10 +233,7 @@ function getRootElement(el: FakeElement) {
   return root
 }
 
-function walkElements(
-  root: FakeElement,
-  visit: (element: FakeElement) => void,
-) {
+function walkElements(root: FakeElement, visit: (element: FakeElement) => void) {
   root.childNodes.forEach((node) => {
     if (node.nodeType !== 1) return
     visit(node)
@@ -264,10 +253,7 @@ function matchesSelector(el: FakeElement, selector: string) {
   const tagName = el.tagName.toLowerCase()
 
   if (selector === 'blockquote > p') {
-    return (
-      tagName === 'p' &&
-      el.parentElement?.tagName.toLowerCase() === 'blockquote'
-    )
+    return tagName === 'p' && el.parentElement?.tagName.toLowerCase() === 'blockquote'
   }
 
   if (selector.startsWith('.')) {
@@ -277,9 +263,7 @@ function matchesSelector(el: FakeElement, selector: string) {
   const attrContains = selector.match(/^\[(.+)\*="(.+)"\]$/)
   if (attrContains) {
     const [, attrName = '', expected = ''] = attrContains
-    return (el.getAttribute(attrName.replace('\\:', ':')) || '').includes(
-      expected,
-    )
+    return (el.getAttribute(attrName.replace('\\:', ':')) || '').includes(expected)
   }
 
   const attrEquals = selector.match(/^\[(.+)="(.+)"\]$/)
@@ -297,10 +281,7 @@ function matchesSelector(el: FakeElement, selector: string) {
   const tagAttrExists = selector.match(/^([a-z]+)\[(.+)\]$/)
   if (tagAttrExists) {
     const [, expectedTag = '', attrName = ''] = tagAttrExists
-    return (
-      tagName === expectedTag &&
-      el.getAttribute(attrName.replace('\\:', ':')) !== null
-    )
+    return tagName === expectedTag && el.getAttribute(attrName.replace('\\:', ':')) !== null
   }
 
   return selector === tagName
@@ -313,12 +294,7 @@ function paragraph(className: string, text: string, child?: FakeElement) {
   return p
 }
 
-function styledParagraph(
-  className: string,
-  text: string,
-  style: Record<string, string>,
-  child?: FakeElement,
-) {
+function styledParagraph(className: string, text: string, style: Record<string, string>, child?: FakeElement) {
   const p = new FakeElement('p', { className, style })
   p.append(text)
   if (child) p.append(child)
@@ -329,14 +305,8 @@ function span(className: string, text: string) {
   return new FakeElement('span', { className }).append(text)
 }
 
-function anchor(
-  href: string,
-  text: string,
-  attributes: Record<string, string> = {},
-) {
-  return new FakeElement('a', { attributes: { href, ...attributes } }).append(
-    text,
-  )
+function anchor(href: string, text: string, attributes: Record<string, string> = {}) {
+  return new FakeElement('a', { attributes: { href, ...attributes } }).append(text)
 }
 
 function createContents(body: FakeElement) {
@@ -367,18 +337,9 @@ function createContents(body: FakeElement) {
 function testInlineClassAnnotationPayloadIsNotCountedAsParentBodyText() {
   const body = new FakeElement('body')
   const bodyParagraphs = [
-    paragraph(
-      'main',
-      '这是第一段正文内容，包含足够多的连续叙述文字，用来代表普通正文段落。',
-    ),
-    paragraph(
-      'main',
-      '这是第二段正文内容，仍然是普通正文，应当被识别为主体文字。',
-    ),
-    paragraph(
-      'main',
-      '这是第三段正文内容，和前面段落保持相同的标签、class 与样式。',
-    ),
+    paragraph('main', '这是第一段正文内容，包含足够多的连续叙述文字，用来代表普通正文段落。'),
+    paragraph('main', '这是第二段正文内容，仍然是普通正文，应当被识别为主体文字。'),
+    paragraph('main', '这是第三段正文内容，和前面段落保持相同的标签、class 与样式。'),
   ]
   const annotationParagraphs = [
     styledParagraph(
@@ -394,28 +355,19 @@ function testInlineClassAnnotationPayloadIsNotCountedAsParentBodyText() {
       'commentary-title',
       '笺注',
       { fontWeight: '700' },
-      span(
-        'commentary-body',
-        '这里还是一大段夹在子元素里的说明文字，用来模拟注释文本数量很多但父级本身很短的结构。',
-      ),
+      span('commentary-body', '这里还是一大段夹在子元素里的说明文字，用来模拟注释文本数量很多但父级本身很短的结构。'),
     ),
     styledParagraph(
       'commentary-title',
       '考订',
       { fontWeight: '700' },
-      span(
-        'commentary-body',
-        '这段说明继续提供大量子元素文本，如果统计父级 textContent 就会错误压过真正正文。',
-      ),
+      span('commentary-body', '这段说明继续提供大量子元素文本，如果统计父级 textContent 就会错误压过真正正文。'),
     ),
     styledParagraph(
       'commentary-title',
       '补注',
       { fontWeight: '700' },
-      span(
-        'commentary-body',
-        '最后一段说明仍然只应该属于子元素，不应该参与父级段落的正文聚类。',
-      ),
+      span('commentary-body', '最后一段说明仍然只应该属于子元素，不应该参与父级段落的正文聚类。'),
     ),
   ]
 
@@ -425,32 +377,17 @@ function testInlineClassAnnotationPayloadIsNotCountedAsParentBodyText() {
   const candidates = getBodyTextCandidates(contents.document)
   const bodyIndexes = detectBodyTextIndexes(contents, candidates)
 
-  const selectedClasses = bodyIndexes.map(
-    (index: number) => candidates[index]!.className,
-  )
+  const selectedClasses = bodyIndexes.map((index: number) => candidates[index]!.className)
 
   assert.deepStrictEqual(selectedClasses, ['main', 'main', 'main'])
 }
 
 function testSameBaseStyleParagraphsAreCountedAsBodyText() {
   const body = new FakeElement('body')
-  const firstParagraph = styledParagraph(
-    'first',
-    '这是第一段正文内容。',
-    { textIndent: '0px' },
-    span('first', '一'),
-  )
+  const firstParagraph = styledParagraph('first', '这是第一段正文内容。', { textIndent: '0px' }, span('first', '一'))
   const bodyParagraphs = [
-    styledParagraph(
-      '',
-      '这是第二段正文内容，仍然是普通正文，应当被识别为主体文字。',
-      { textIndent: '32px' },
-    ),
-    styledParagraph(
-      '',
-      '这是第三段正文内容，和前面段落保持相同的基础字体样式。',
-      { textIndent: '32px' },
-    ),
+    styledParagraph('', '这是第二段正文内容，仍然是普通正文，应当被识别为主体文字。', { textIndent: '32px' }),
+    styledParagraph('', '这是第三段正文内容，和前面段落保持相同的基础字体样式。', { textIndent: '32px' }),
   ]
 
   body.append(firstParagraph, ...bodyParagraphs)
@@ -459,44 +396,23 @@ function testSameBaseStyleParagraphsAreCountedAsBodyText() {
   const candidates = getBodyTextCandidates(contents.document)
   const bodyIndexes = detectBodyTextIndexes(contents, candidates)
 
-  const selectedClasses = bodyIndexes.map(
-    (index: number) => candidates[index]!.className,
-  )
+  const selectedClasses = bodyIndexes.map((index: number) => candidates[index]!.className)
 
   assert.deepStrictEqual(selectedClasses, ['first', '', ''])
 }
 
 function testBodyTextIgnoresClassNameWhenComputedStyleMatches() {
   const body = new FakeElement('body')
-  const dominantText =
-    '这是正文主段落，内容较长，用来形成当前聚类算法中的明显赢家。'.repeat(4)
+  const dominantText = '这是正文主段落，内容较长，用来形成当前聚类算法中的明显赢家。'.repeat(4)
   const paragraphs = [
     paragraph('calibre1', dominantText),
     paragraph('calibre1', dominantText),
-    paragraph(
-      'calibre2',
-      '这是第三段正文，class 名称不同，但不应该因此被拆成另一个正文候选族群。',
-    ),
-    paragraph(
-      'calibre2',
-      '这是第四段正文，继续使用第二个 class，用来避免单例兜底掩盖问题。',
-    ),
-    paragraph(
-      'calibre3',
-      '这是第五段正文，视觉特征才应该决定正文聚类，而不是 class 命名。',
-    ),
-    paragraph(
-      'calibre3',
-      '这是第六段正文，继续使用第三个 class，但 computed CSS 与其他段落一致。',
-    ),
-    paragraph(
-      'calibre4',
-      '这是第七段正文，用来保证多个不同 class 的同样式段落都能被识别。',
-    ),
-    paragraph(
-      'calibre4',
-      '这是第八段正文，继续使用第四个 class，防止只选前三个聚类。',
-    ),
+    paragraph('calibre2', '这是第三段正文，class 名称不同，但不应该因此被拆成另一个正文候选族群。'),
+    paragraph('calibre2', '这是第四段正文，继续使用第二个 class，用来避免单例兜底掩盖问题。'),
+    paragraph('calibre3', '这是第五段正文，视觉特征才应该决定正文聚类，而不是 class 命名。'),
+    paragraph('calibre3', '这是第六段正文，继续使用第三个 class，但 computed CSS 与其他段落一致。'),
+    paragraph('calibre4', '这是第七段正文，用来保证多个不同 class 的同样式段落都能被识别。'),
+    paragraph('calibre4', '这是第八段正文，继续使用第四个 class，防止只选前三个聚类。'),
   ]
 
   body.append(...paragraphs)
@@ -507,23 +423,13 @@ function testBodyTextIgnoresClassNameWhenComputedStyleMatches() {
 
   assert.deepStrictEqual(
     bodyIndexes.map((index: number) => candidates[index]!.className),
-    [
-      'calibre1',
-      'calibre1',
-      'calibre2',
-      'calibre2',
-      'calibre3',
-      'calibre3',
-      'calibre4',
-      'calibre4',
-    ],
+    ['calibre1', 'calibre1', 'calibre2', 'calibre2', 'calibre3', 'calibre3', 'calibre4', 'calibre4'],
   )
 }
 
 function testBodyTextIgnoresBlockMarginsWhenComputedStyleMatches() {
   const body = new FakeElement('body')
-  const dominantText =
-    '这是正文主段落，内容较长，用来形成当前聚类算法中的明显赢家。'.repeat(4)
+  const dominantText = '这是正文主段落，内容较长，用来形成当前聚类算法中的明显赢家。'.repeat(4)
   const paragraphs = [
     styledParagraph('main', dominantText, {
       marginTop: '24px',
@@ -533,36 +439,30 @@ function testBodyTextIgnoresBlockMarginsWhenComputedStyleMatches() {
       marginTop: '24px',
       marginBottom: '0px',
     }),
-    styledParagraph(
-      'main',
-      '这是第三段正文，段间距可能来自出版样式，不应该拆分正文聚类。',
-      { marginTop: '0px', marginBottom: '12px' },
-    ),
-    styledParagraph(
-      'main',
-      '这是第四段正文，继续使用第二组上下 margin，但仍然是同一类正文。',
-      { marginTop: '0px', marginBottom: '12px' },
-    ),
-    styledParagraph(
-      'main',
-      '这是第五段正文，保持相同字体和排版，只改变块方向 margin。',
-      { marginTop: '8px', marginBottom: '8px' },
-    ),
-    styledParagraph(
-      'main',
-      '这是第六段正文，继续使用第三组上下 margin，视觉文本特征不变。',
-      { marginTop: '8px', marginBottom: '8px' },
-    ),
-    styledParagraph(
-      'main',
-      '这是第七段正文，末段也可能有额外下边距，但仍然是正文。',
-      { marginTop: '0px', marginBottom: '24px' },
-    ),
-    styledParagraph(
-      'main',
-      '这是第八段正文，继续使用末段式下边距，应该仍然被标为正文。',
-      { marginTop: '0px', marginBottom: '24px' },
-    ),
+    styledParagraph('main', '这是第三段正文，段间距可能来自出版样式，不应该拆分正文聚类。', {
+      marginTop: '0px',
+      marginBottom: '12px',
+    }),
+    styledParagraph('main', '这是第四段正文，继续使用第二组上下 margin，但仍然是同一类正文。', {
+      marginTop: '0px',
+      marginBottom: '12px',
+    }),
+    styledParagraph('main', '这是第五段正文，保持相同字体和排版，只改变块方向 margin。', {
+      marginTop: '8px',
+      marginBottom: '8px',
+    }),
+    styledParagraph('main', '这是第六段正文，继续使用第三组上下 margin，视觉文本特征不变。', {
+      marginTop: '8px',
+      marginBottom: '8px',
+    }),
+    styledParagraph('main', '这是第七段正文，末段也可能有额外下边距，但仍然是正文。', {
+      marginTop: '0px',
+      marginBottom: '24px',
+    }),
+    styledParagraph('main', '这是第八段正文，继续使用末段式下边距，应该仍然被标为正文。', {
+      marginTop: '0px',
+      marginBottom: '24px',
+    }),
   ]
 
   body.append(...paragraphs)
@@ -582,16 +482,12 @@ function testBodyTextIncludesSameFontStyleVariants() {
       '这是普通正文第一段，包含足够长的叙述内容，用来形成稳定的正文主聚类，避免短文本造成误判。',
       { fontStyle: 'normal' },
     ),
-    styledParagraph(
-      'main',
-      '这是普通正文第二段，继续提供较长的主体文本，让普通正文在总字数和数量上明显占优。',
-      { fontStyle: 'normal' },
-    ),
-    styledParagraph(
-      'main',
-      '这是普通正文第三段，仍然保持普通字体样式，应该被识别为主体正文。',
-      { fontStyle: 'normal' },
-    ),
+    styledParagraph('main', '这是普通正文第二段，继续提供较长的主体文本，让普通正文在总字数和数量上明显占优。', {
+      fontStyle: 'normal',
+    }),
+    styledParagraph('main', '这是普通正文第三段，仍然保持普通字体样式，应该被识别为主体正文。', {
+      fontStyle: 'normal',
+    }),
   ]
   const italicParagraphs = [
     styledParagraph('main', '短斜体题词。', { fontStyle: 'italic' }),
@@ -610,10 +506,8 @@ function testBodyTextIncludesSameFontStyleVariants() {
 
 function testBodyTextIncludesLeadingDifferentFontCandidates() {
   const body = new FakeElement('body')
-  const mainText =
-    '这是主正文段落，包含连续叙述内容，用来形成稳定的正文赢家。'.repeat(4)
-  const variantText =
-    '这是另一组正文段落，出版样式略有不同，但仍然应当获得正文排版。'.repeat(3)
+  const mainText = '这是主正文段落，包含连续叙述内容，用来形成稳定的正文赢家。'.repeat(4)
+  const variantText = '这是另一组正文段落，出版样式略有不同，但仍然应当获得正文排版。'.repeat(3)
   const paragraphs = [
     styledParagraph('main', mainText, { fontFamily: 'serif' }),
     styledParagraph('main', mainText, { fontFamily: 'serif' }),
@@ -653,18 +547,9 @@ function testBodyTextIncludesLeadingDifferentFontCandidates() {
 
 function testBodyTextVariantsPreserveOriginalFontFamily() {
   const body = new FakeElement('body')
-  const mainText =
-    '这是主正文段落，承载大部分连续叙述内容，用来确定完整字体排版的字体来源。'.repeat(
-      4,
-    )
-  const variantText =
-    '这是另一组正文段落，使用不同字体承载正文内容，字号行高等阅读排版仍应生效。'.repeat(
-      3,
-    )
-  const sameFontVariantText =
-    '这是同字体但缩进不同的正文段落，应当和主正文一样允许应用用户选择的字体。'.repeat(
-      3,
-    )
+  const mainText = '这是主正文段落，承载大部分连续叙述内容，用来确定完整字体排版的字体来源。'.repeat(4)
+  const variantText = '这是另一组正文段落，使用不同字体承载正文内容，字号行高等阅读排版仍应生效。'.repeat(3)
+  const sameFontVariantText = '这是同字体但缩进不同的正文段落，应当和主正文一样允许应用用户选择的字体。'.repeat(3)
   const paragraphs = [
     styledParagraph('main', mainText, { fontFamily: 'serif' }),
     styledParagraph('main', mainText, { fontFamily: 'serif' }),
@@ -704,16 +589,10 @@ function testInlineWrappedBodyParagraphsAreMarkedForTypographyPiercing() {
   const body = new FakeElement('body')
   const paragraphs = [
     new FakeElement('p', { className: 'calibre7' }).append(
-      span(
-        'calibre10',
-        '这是第一段由直接子级行内容器承载的正文文本，用来模拟转换工具生成的段落结构。',
-      ),
+      span('calibre10', '这是第一段由直接子级行内容器承载的正文文本，用来模拟转换工具生成的段落结构。'),
     ),
     new FakeElement('p', { className: 'calibre7' }).append(
-      span(
-        'calibre10',
-        '这是第二段由直接子级行内容器承载的正文文本，父级段落本身没有直接文本。',
-      ),
+      span('calibre10', '这是第二段由直接子级行内容器承载的正文文本，父级段落本身没有直接文本。'),
     ),
   ]
 
@@ -723,15 +602,9 @@ function testInlineWrappedBodyParagraphsAreMarkedForTypographyPiercing() {
   ensureBodyTextMarkers(contents)
 
   assert.strictEqual(paragraphs[0]!.getAttribute(bodyTextAttribute), 'true')
-  assert.strictEqual(
-    paragraphs[0]!.getAttribute(bodyTextInlineWrapperAttribute),
-    'true',
-  )
+  assert.strictEqual(paragraphs[0]!.getAttribute(bodyTextInlineWrapperAttribute), 'true')
   assert.strictEqual(paragraphs[1]!.getAttribute(bodyTextAttribute), 'true')
-  assert.strictEqual(
-    paragraphs[1]!.getAttribute(bodyTextInlineWrapperAttribute),
-    'true',
-  )
+  assert.strictEqual(paragraphs[1]!.getAttribute(bodyTextInlineWrapperAttribute), 'true')
 }
 
 function testReciprocalNoteContentIsMarkedStructurally() {
@@ -744,14 +617,8 @@ function testReciprocalNoteContentIsMarkedStructurally() {
   const linkedNote = new FakeElement('p', {
     attributes: { id: 'note-1' },
     className: 'footnote',
-  }).append(
-    anchor('chapter.html#back-note-1', '[1]'),
-    ' 这是通过结构识别出来的注释内容。',
-  )
-  const classOnlyFootnote = paragraph(
-    'footnote',
-    '这段只有 footnote class，没有链接关系，不应该被当作可操作注释。',
-  )
+  }).append(anchor('chapter.html#back-note-1', '[1]'), ' 这是通过结构识别出来的注释内容。')
+  const classOnlyFootnote = paragraph('footnote', '这段只有 footnote class，没有链接关系，不应该被当作可操作注释。')
 
   body.append(bodyParagraph, linkedNote, classOnlyFootnote)
 
@@ -801,10 +668,7 @@ function testLinkedNoteResolutionUsesHashTargetItem() {
     '第5卷　比例',
     anchor('part0007.xhtml#ft1_142', '[1]', { id: 'fn1_142' }),
   )
-  const bodyParagraph = paragraph(
-    '',
-    '这是章节正文内容，正文容器不应该被当作尾注隐藏。',
-  )
+  const bodyParagraph = paragraph('', '这是章节正文内容，正文容器不应该被当作尾注隐藏。')
   const footnotes = new FakeElement('div', { className: 'footnotes' })
   const footnote = new FakeElement('p', { className: 'footnote' }).append(
     anchor('part0007.xhtml#fn1_142', '[1]', { id: 'ft1_142' }),
@@ -828,56 +692,31 @@ function testLinkedNoteResolutionUsesHashTargetItem() {
 function testReciprocalNoteItemRequiresBacklinkToSourceAnchor() {
   const body = new FakeElement('body')
   const source = anchor('notes.html#note-1', '[1]', { id: 'back-note-1' })
-  const sourceParagraph = new FakeElement('p').append(
-    '正文带有注释引用',
-    source,
-  )
+  const sourceParagraph = new FakeElement('p').append('正文带有注释引用', source)
   const noteLink = anchor('chapter.html#back-note-1', '[1]', { id: 'note-1' })
-  const noteItem = new FakeElement('p').append(
-    noteLink,
-    ' 这是双向链接确认后的注释。',
-  )
+  const noteItem = new FakeElement('p').append(noteLink, ' 这是双向链接确认后的注释。')
   const wrongBacklink = anchor('chapter.html#other-ref', '[2]', {
     id: 'note-2',
   })
-  const wrongNoteItem = new FakeElement('p').append(
-    wrongBacklink,
-    ' 这条没有指回正文引用。',
-  )
+  const wrongNoteItem = new FakeElement('p').append(wrongBacklink, ' 这条没有指回正文引用。')
   const definitionSource = anchor('notes.html#note-3', '3')
   const definitionMarker = new FakeElement('sup', {
     attributes: { id: 'back-note-3' },
   }).append(definitionSource)
-  const definitionSourceParagraph = new FakeElement('p').append(
-    '正文里的定义列表注释引用',
-    definitionMarker,
-  )
+  const definitionSourceParagraph = new FakeElement('p').append('正文里的定义列表注释引用', definitionMarker)
   const definitionNote = new FakeElement('dl', {
     attributes: { id: 'note-3' },
   }).append(
-    new FakeElement('dt').append(
-      '[',
-      anchor('chapter.html#back-note-3', '←3'),
-      ']',
-    ),
+    new FakeElement('dt').append('[', anchor('chapter.html#back-note-3', '←3'), ']'),
     new FakeElement('dd').append(new FakeElement('p').append('定义列表注释。')),
   )
 
-  body.append(
-    sourceParagraph,
-    noteItem,
-    wrongNoteItem,
-    definitionSourceParagraph,
-    definitionNote,
-  )
+  body.append(sourceParagraph, noteItem, wrongNoteItem, definitionSourceParagraph, definitionNote)
   createContents(body)
 
   assert.strictEqual(findReciprocalNoteItem(source, noteLink), noteItem)
   assert.strictEqual(findReciprocalNoteItem(source, wrongBacklink), undefined)
-  assert.strictEqual(
-    findReciprocalNoteItem(definitionSource, definitionNote),
-    definitionNote,
-  )
+  assert.strictEqual(findReciprocalNoteItem(definitionSource, definitionNote), definitionNote)
 }
 
 function testReciprocalNoteItemUsesBoundedTargetStructures() {
@@ -887,10 +726,7 @@ function testReciprocalNoteItemUsesBoundedTargetStructures() {
     new FakeElement('span', { attributes: { id: 'back-span' } }),
     new FakeElement('small').append(kindleSource),
   )
-  const kindleSourceParagraph = new FakeElement('p').append(
-    '正文里的 Kindle filepos 形式注释引用',
-    kindleSourceMarker,
-  )
+  const kindleSourceParagraph = new FakeElement('p').append('正文里的 Kindle filepos 形式注释引用', kindleSourceMarker)
   const kindleTarget = new FakeElement('span', {
     attributes: { id: 'note-span' },
   })
@@ -916,42 +752,19 @@ function testReciprocalNoteItemUsesBoundedTargetStructures() {
       new FakeElement('td').append('这是表格尾注正文。'),
     ),
   )
-  chapterWrapper.append(
-    paragraph('', '章节包装里还有普通正文，不能被当作尾注。'),
-    tableTarget,
-    tableNote,
-  )
+  chapterWrapper.append(paragraph('', '章节包装里还有普通正文，不能被当作尾注。'), tableTarget, tableNote)
 
   const formulaSource = anchor('chapter.html#formula-1', '(1)')
-  const formulaSourceParagraph = new FakeElement('p').append(
-    '正文里的公式编号引用',
-    formulaSource,
-  )
+  const formulaSourceParagraph = new FakeElement('p').append('正文里的公式编号引用', formulaSource)
   const formula = paragraph('', '(1) 这是公式内容，不是尾注。')
   formula.setAttribute('id', 'formula-1')
 
-  body.append(
-    kindleSourceParagraph,
-    kindleNote,
-    tableSourceParagraph,
-    chapterWrapper,
-    formulaSourceParagraph,
-    formula,
-  )
+  body.append(kindleSourceParagraph, kindleNote, tableSourceParagraph, chapterWrapper, formulaSourceParagraph, formula)
   createContents(body)
 
-  assert.strictEqual(
-    findReciprocalNoteItem(kindleSource, kindleTarget),
-    kindleNote,
-  )
-  assert.strictEqual(
-    findReciprocalNoteItem(tableSource, tableTarget),
-    tableNote,
-  )
-  assert.notStrictEqual(
-    findReciprocalNoteItem(tableSource, tableTarget),
-    chapterWrapper,
-  )
+  assert.strictEqual(findReciprocalNoteItem(kindleSource, kindleTarget), kindleNote)
+  assert.strictEqual(findReciprocalNoteItem(tableSource, tableTarget), tableNote)
+  assert.notStrictEqual(findReciprocalNoteItem(tableSource, tableTarget), chapterWrapper)
   assert.strictEqual(findReciprocalNoteItem(formulaSource, formula), undefined)
 }
 
@@ -1025,11 +838,7 @@ function testReciprocalLinkContentMayLiveInsideBacklinkAnchor() {
     id: 'piano-ref',
   })
   const sourceParagraph = new FakeElement('p').append('正文注释入口', source)
-  const noteLink = anchor(
-    'chapter.html#piano-ref',
-    '回到正文。整条尾注正文都在这个链接里。',
-    { id: 'piano-note' },
-  )
+  const noteLink = anchor('chapter.html#piano-ref', '回到正文。整条尾注正文都在这个链接里。', { id: 'piano-note' })
   const noteItem = new FakeElement('p').append(noteLink)
   body.append(sourceParagraph, noteItem)
   const contents = createContents(body)

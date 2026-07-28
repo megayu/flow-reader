@@ -13,9 +13,7 @@ interface TextSelectionOptions {
   automatic?: boolean
 }
 
-export function hasSelection(
-  selection?: Selection | null,
-): selection is Selection {
+export function hasSelection(selection?: Selection | null): selection is Selection {
   return !(!selection || selection.isCollapsed)
 }
 
@@ -32,21 +30,13 @@ export function isForwardSelection(selection: Selection) {
   return true
 }
 
-export function useTextSelection(
-  target?: Window | Window[],
-  { automatic = true }: TextSelectionOptions = {},
-) {
+export function useTextSelection(target?: Window | Window[], { automatic = true }: TextSelectionOptions = {}) {
   const [selection, setSelection] = useState<Selection | undefined>()
-  const [releasePoint, setReleasePoint] = useState<
-    TextSelectionReleasePoint | undefined
-  >()
+  const [releasePoint, setReleasePoint] = useState<TextSelectionReleasePoint | undefined>()
   const [menuOpen, setMenuOpen] = useState(false)
   const render = useForceRender()
   const windows = useMemo(
-    () =>
-      (Array.isArray(target) ? target : target ? [target] : []).filter(
-        (win): win is Window => !!win,
-      ),
+    () => (Array.isArray(target) ? target : target ? [target] : []).filter((win): win is Window => !!win),
     [target],
   )
 
@@ -93,8 +83,7 @@ export function useTextSelection(
           if (hasSelection(s)) return
 
           setSelection((selection) => {
-            const selectionWindow =
-              selection?.anchorNode?.ownerDocument?.defaultView
+            const selectionWindow = selection?.anchorNode?.ownerDocument?.defaultView
             return selectionWindow === win ? undefined : selection
           })
           setReleasePoint(undefined)
@@ -113,14 +102,8 @@ export function useTextSelection(
         win.removeEventListener('mouseup', updateSelection)
         win.removeEventListener('contextmenu', openContextMenuSelection)
         win.document.removeEventListener('mouseup', updateSelection)
-        win.document.removeEventListener(
-          'contextmenu',
-          openContextMenuSelection,
-        )
-        win.document.removeEventListener(
-          'selectionchange',
-          clearCollapsedSelection,
-        )
+        win.document.removeEventListener('contextmenu', openContextMenuSelection)
+        win.document.removeEventListener('selectionchange', clearCollapsedSelection)
       }
     })
 

@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import {
-  findSectionByLinkedHref,
-  resolveLinkedHrefPath,
-} from '../../src/noteLinks.ts'
+import { findSectionByLinkedHref, resolveLinkedHrefPath } from '../../src/noteLinks.ts'
 
 test('resolves linked note paths relative to the clicked section', () => {
   const cases = [
@@ -26,17 +23,10 @@ test('resolves linked note paths relative to the clicked section', () => {
 })
 
 test('finds the exact target section before considering suffix fallbacks', () => {
-  const sections = [
-    { href: 'text/part0003_split_001.html' },
-    { href: 'text/part0003_split_002.html' },
-  ]
+  const sections = [{ href: 'text/part0003_split_001.html' }, { href: 'text/part0003_split_002.html' }]
 
   assert.equal(
-    findSectionByLinkedHref(
-      sections,
-      'text/part0003_split_001.html',
-      'part0003_split_002.html',
-    ),
+    findSectionByLinkedHref(sections, 'text/part0003_split_001.html', 'part0003_split_002.html'),
     sections[1],
   )
 })

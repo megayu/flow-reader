@@ -4,10 +4,7 @@ type TestBookOverrides = Omit<Partial<BookRecord>, 'metadata'> & {
   metadata?: Partial<BookRecord['metadata']>
 }
 
-export function createTestBook({
-  metadata = {},
-  ...overrides
-}: TestBookOverrides = {}): BookRecord {
+export function createTestBook({ metadata = {}, ...overrides }: TestBookOverrides = {}): BookRecord {
   return {
     id: 'test-book',
     name: 'Test Book.epub',

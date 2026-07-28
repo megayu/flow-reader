@@ -1,4 +1,4 @@
-import { BookRecord } from './storage'
+import type { BookRecord } from './storage'
 
 export type BookTooltipLineKind = 'creator' | 'file' | 'title'
 

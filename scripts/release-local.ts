@@ -1,12 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-} from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -29,14 +22,8 @@ interface TauriConfig {
 
 function runPnpmScript(scriptName: string) {
   const pnpmExecPath = process.env.npm_execpath
-  const command = pnpmExecPath
-    ? process.execPath
-    : process.platform === 'win32'
-      ? 'pnpm.cmd'
-      : 'pnpm'
-  const args = pnpmExecPath
-    ? [pnpmExecPath, 'run', scriptName]
-    : ['run', scriptName]
+  const command = pnpmExecPath ? process.execPath : process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
+  const args = pnpmExecPath ? [pnpmExecPath, 'run', scriptName] : ['run', scriptName]
   const result = spawnSync(command, args, {
     cwd: rootDir,
     stdio: 'inherit',
@@ -57,10 +44,7 @@ function readJson(path: string): TauriConfig {
 }
 
 function readCargoPackageName() {
-  const cargoToml = readFileSync(
-    join(rootDir, 'src-tauri', 'Cargo.toml'),
-    'utf8',
-  )
+  const cargoToml = readFileSync(join(rootDir, 'src-tauri', 'Cargo.toml'), 'utf8')
   const packageSection = cargoToml.match(/\[package\]([\s\S]*?)(?:\n\[|$)/)
   const nameMatch = packageSection?.[1]?.match(/^\s*name\s*=\s*"([^"]+)"/m)
   return nameMatch?.[1]
@@ -90,9 +74,7 @@ function findReleaseBinary() {
   const extension = process.platform === 'win32' ? '.exe' : ''
   const candidates = configuredNames.flatMap((name) => {
     const withExtension = `${name}${extension}`
-    return extension && name.endsWith(extension)
-      ? [name]
-      : [withExtension, name]
+    return extension && name.endsWith(extension) ? [name] : [withExtension, name]
   })
 
   for (const candidate of unique(candidates)) {
@@ -103,10 +85,7 @@ function findReleaseBinary() {
   }
 
   throw new Error(
-    [
-      `Could not find built Tauri binary in ${targetDir}.`,
-      `Checked: ${unique(candidates).join(', ')}`,
-    ].join('\n'),
+    [`Could not find built Tauri binary in ${targetDir}.`, `Checked: ${unique(candidates).join(', ')}`].join('\n'),
   )
 }
 

@@ -1,4 +1,4 @@
-import { db, type BookRecord } from '../../storage'
+import { type BookRecord, db } from '../../storage'
 
 export interface BookPersistenceHost {
   getBook: () => BookRecord
@@ -8,17 +8,12 @@ export interface BookPersistenceHost {
   waitForNavigation: () => Promise<void> | undefined
 }
 
-function withoutReadingSpread(
-  configuration: BookRecord['configuration'] | undefined,
-) {
+function withoutReadingSpread(configuration: BookRecord['configuration'] | undefined) {
   const { spread, ...rest } = configuration ?? {}
   return rest
 }
 
-function isSpreadOnlyConfigurationUpdate(
-  changes: Partial<BookRecord>,
-  currentBook: BookRecord,
-) {
+function isSpreadOnlyConfigurationUpdate(changes: Partial<BookRecord>, currentBook: BookRecord) {
   if (!('configuration' in changes)) return true
 
   return (
@@ -27,23 +22,12 @@ function isSpreadOnlyConfigurationUpdate(
   )
 }
 
-function isReadingPositionOnlyUpdate(
-  changes: Partial<BookRecord>,
-  currentBook: BookRecord,
-) {
+function isReadingPositionOnlyUpdate(changes: Partial<BookRecord>, currentBook: BookRecord) {
   const keys = Object.keys(changes)
   return (
     keys.some((key) => key === 'cfi' || key === 'percentage') &&
     isSpreadOnlyConfigurationUpdate(changes, currentBook) &&
-    keys.every((key) =>
-      [
-        'cfi',
-        'percentage',
-        'updatedAt',
-        'lastReadAt',
-        'configuration',
-      ].includes(key),
-    )
+    keys.every((key) => ['cfi', 'percentage', 'updatedAt', 'lastReadAt', 'configuration'].includes(key))
   )
 }
 
@@ -52,10 +36,7 @@ export class BookPersistenceController {
 
   updateBook(host: BookPersistenceHost, changes: Partial<BookRecord>) {
     const currentBook = host.getBook()
-    const readingPositionOnly = isReadingPositionOnlyUpdate(
-      changes,
-      currentBook,
-    )
+    const readingPositionOnly = isReadingPositionOnlyUpdate(changes, currentBook)
     const updatedAt = Date.now()
     const committedChanges = {
       ...changes,
@@ -79,10 +60,7 @@ export class BookPersistenceController {
     })
   }
 
-  private recordReadingPosition(
-    host: BookPersistenceHost,
-    changes: Partial<BookRecord>,
-  ) {
+  private recordReadingPosition(host: BookPersistenceHost, changes: Partial<BookRecord>) {
     const book = host.getBook()
     return db.books.recordReadingPosition({
       bookId: book.id,

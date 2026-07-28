@@ -21,10 +21,7 @@ interface TauriMockOptions {
   externallyOpenedBooks?: BookRecord[]
   importedBooks?: BookRecord[]
   localDictionaries?: LocalDictionaryRecord[]
-  localDictionaryFiles?: Record<
-    string,
-    LocalDictionaryRecord | { code: string; message: string }
-  >
+  localDictionaryFiles?: Record<string, LocalDictionaryRecord | { code: string; message: string }>
   openDialogPaths?: string[]
   pendingOpenPaths?: string[]
   deferReaderSource?: boolean
@@ -124,9 +121,7 @@ export async function installTauriMock(
           currentWindow: { label: string }
         }
         runCallback?: (id: number, ...args: unknown[]) => unknown
-        transformCallback?: (
-          callback: (...args: unknown[]) => unknown,
-        ) => number
+        transformCallback?: (callback: (...args: unknown[]) => unknown) => number
         unregisterCallback?: (id: number) => void
       }
       type TauriEventInternals = {
@@ -173,19 +168,13 @@ export async function installTauriMock(
       const settingsStorageKey = '__FLOW_TEST_TAURI_SETTINGS__'
       const storedSettings = (() => {
         try {
-          return JSON.parse(
-            localStorage.getItem(settingsStorageKey) ?? '{}',
-          ) as Record<string, unknown> | undefined
+          return JSON.parse(localStorage.getItem(settingsStorageKey) ?? '{}') as Record<string, unknown> | undefined
         } catch {
           return undefined
         }
       })()
-      const bookStore = new Map<string, BookRecord>(
-        fixtureBooks.map((book) => [book.id, book]),
-      )
-      const tagStore = new Map<string, TestLibraryTagRecord>(
-        fixtureTags.map((tag) => [tag.id, tag]),
-      )
+      const bookStore = new Map<string, BookRecord>(fixtureBooks.map((book) => [book.id, book]))
+      const tagStore = new Map<string, TestLibraryTagRecord>(fixtureTags.map((tag) => [tag.id, tag]))
       const importQueue = [...fixtureImportedBooks]
       const externalOpenQueue = [...fixtureExternallyOpenedBooks]
       const localDictionaryStore = fixtureLocalDictionaries.map((record) => ({
@@ -204,8 +193,7 @@ export async function installTauriMock(
       let nextEventId = 1
 
       const internals = (globalWindow.__TAURI_INTERNALS__ ??= {})
-      const eventInternals = (globalWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ ??=
-        {})
+      const eventInternals = (globalWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ ??= {})
       const callbacks = (internals.callbacks ??= {})
 
       globalWindow.__FLOW_TEST_TAURI__ = {
@@ -245,9 +233,7 @@ export async function installTauriMock(
       internals.invoke = async (command, args) => {
         if (command === 'fetch_translation') {
           if (fixtureTranslationResponseDelayMs > 0) {
-            await new Promise((resolve) =>
-              window.setTimeout(resolve, fixtureTranslationResponseDelayMs),
-            )
+            await new Promise((resolve) => window.setTimeout(resolve, fixtureTranslationResponseDelayMs))
           }
           if (fixtureTranslationError) {
             throw {
@@ -270,9 +256,7 @@ export async function installTauriMock(
                       })),
                     ),
                   ]
-                : texts.map((text) =>
-                    JSON.stringify([[[`Google: ${text}`, text]]]),
-                  ),
+                : texts.map((text) => JSON.stringify([[[`Google: ${text}`, text]]])),
           }
         }
         if (command === 'cancel_translation_session') return null
@@ -284,9 +268,7 @@ export async function installTauriMock(
             sessionId,
           })
           if (fixtureZdicResponseDelayMs > 0) {
-            await new Promise((resolve) =>
-              window.setTimeout(resolve, fixtureZdicResponseDelayMs),
-            )
+            await new Promise((resolve) => window.setTimeout(resolve, fixtureZdicResponseDelayMs))
           }
           const status = fixtureZdicResponseStatuses[query] ?? 200
           if (status >= 400) {
@@ -296,10 +278,7 @@ export async function installTauriMock(
             }
           }
           return {
-            body:
-              fixtureZdicResponseSequences[query]?.shift() ??
-              fixtureZdicResponses[query] ??
-              '',
+            body: fixtureZdicResponseSequences[query]?.shift() ?? fixtureZdicResponses[query] ?? '',
             finalUrl: `https://zdic.net/hans/${encodeURIComponent(query)}`,
             status: 200,
           }
@@ -366,15 +345,11 @@ export async function installTauriMock(
           return text === undefined ? null : { key, text }
         }
         if (command === 'cancel_dictionary_session') {
-          globalWindow.__FLOW_TEST_TAURI__?.cancelledDictionarySessions.push(
-            Number(args?.sessionId ?? 0),
-          )
+          globalWindow.__FLOW_TEST_TAURI__?.cancelledDictionarySessions.push(Number(args?.sessionId ?? 0))
           return null
         }
         if (command === 'list_local_dictionaries') {
-          return [...localDictionaryStore].sort(
-            (left, right) => left.order - right.order,
-          )
+          return [...localDictionaryStore].sort((left, right) => left.order - right.order)
         }
         if (command === 'register_local_dictionary') {
           const path = String(args?.path ?? '')
@@ -387,9 +362,7 @@ export async function installTauriMock(
               }
             )
           }
-          const index = localDictionaryStore.findIndex(
-            (record) => record.sourcePath === path,
-          )
+          const index = localDictionaryStore.findIndex((record) => record.sourcePath === path)
           if (index >= 0) {
             localDictionaryStore[index] = {
               ...fixture,
@@ -402,9 +375,7 @@ export async function installTauriMock(
         }
         if (command === 'update_local_dictionary') {
           const id = String(args?.id ?? '')
-          const index = localDictionaryStore.findIndex(
-            (record) => record.id === id,
-          )
+          const index = localDictionaryStore.findIndex((record) => record.id === id)
           if (index < 0) throw new Error('Dictionary not found')
           const changes = (args?.changes ?? {}) as {
             enabled?: boolean
@@ -415,15 +386,9 @@ export async function installTauriMock(
           const current = localDictionaryStore[index]!
           const updated: LocalDictionaryRecord = {
             ...current,
-            ...(typeof changes.enabled === 'boolean'
-              ? { enabled: changes.enabled }
-              : {}),
-            ...(typeof changes.order === 'number'
-              ? { order: changes.order }
-              : {}),
-            ...(typeof changes.name === 'string'
-              ? { name: changes.name.trim() }
-              : {}),
+            ...(typeof changes.enabled === 'boolean' ? { enabled: changes.enabled } : {}),
+            ...(typeof changes.order === 'number' ? { order: changes.order } : {}),
+            ...(typeof changes.name === 'string' ? { name: changes.name.trim() } : {}),
             ...(changes.language
               ? {
                   language: {
@@ -439,14 +404,10 @@ export async function installTauriMock(
         if (command === 'relocate_local_dictionary') {
           const id = String(args?.id ?? '')
           const path = String(args?.path ?? '')
-          const index = localDictionaryStore.findIndex(
-            (record) => record.id === id,
-          )
+          const index = localDictionaryStore.findIndex((record) => record.id === id)
           const fixture = fixtureLocalDictionaryFiles[path]
           if (index < 0 || !fixture || 'code' in fixture) {
-            throw fixture && 'code' in fixture
-              ? fixture
-              : new Error('Dictionary cannot be relocated')
+            throw fixture && 'code' in fixture ? fixture : new Error('Dictionary cannot be relocated')
           }
           const current = localDictionaryStore[index]!
           localDictionaryStore[index] = {
@@ -460,25 +421,18 @@ export async function installTauriMock(
         }
         if (command === 'remove_local_dictionary') {
           const id = String(args?.id ?? '')
-          const index = localDictionaryStore.findIndex(
-            (record) => record.id === id,
-          )
+          const index = localDictionaryStore.findIndex((record) => record.id === id)
           if (index >= 0) localDictionaryStore.splice(index, 1)
           return null
         }
         if (command === 'open_external_url') {
-          globalWindow.__FLOW_TEST_TAURI__?.openedExternalUrls.push(
-            String(args?.url ?? ''),
-          )
+          globalWindow.__FLOW_TEST_TAURI__?.openedExternalUrls.push(String(args?.url ?? ''))
           return null
         }
         if (command === 'get_settings') return { ...settingsStore }
         if (command === 'update_settings') {
           Object.assign(settingsStore, args?.settings ?? {})
-          localStorage.setItem(
-            settingsStorageKey,
-            JSON.stringify(settingsStore),
-          )
+          localStorage.setItem(settingsStorageKey, JSON.stringify(settingsStore))
           return null
         }
         if (command === 'list_books') return Array.from(bookStore.values())
@@ -488,9 +442,7 @@ export async function installTauriMock(
             .replace(/\s+/g, ' ')
             .trim()
           if (!name) return null
-          const existing = Array.from(tagStore.values()).find(
-            (tag) => tag.name.toLowerCase() === name.toLowerCase(),
-          )
+          const existing = Array.from(tagStore.values()).find((tag) => tag.name.toLowerCase() === name.toLowerCase())
           if (existing) return existing
 
           const tag = {
@@ -511,8 +463,7 @@ export async function installTauriMock(
           if (!name) return current
 
           const duplicate = Array.from(tagStore.values()).find(
-            (tag) =>
-              tag.id !== id && tag.name.toLowerCase() === name.toLowerCase(),
+            (tag) => tag.id !== id && tag.name.toLowerCase() === name.toLowerCase(),
           )
           if (duplicate) return current
 
@@ -524,30 +475,22 @@ export async function installTauriMock(
           const id = String(args?.id)
           tagStore.delete(id)
           bookStore.forEach((book, bookId) => {
-            const tagIds = (
-              (book as BookRecord & { tagIds?: string[] }).tagIds ?? []
-            ).filter((tagId) => tagId !== id)
+            const tagIds = ((book as BookRecord & { tagIds?: string[] }).tagIds ?? []).filter((tagId) => tagId !== id)
             bookStore.set(bookId, { ...book, tagIds })
           })
           return Array.from(bookStore.values())
         }
         if (command === 'update_book_tags') {
           const ids = Array.isArray(args?.ids) ? args.ids.map(String) : []
-          const addTagIds = Array.isArray(args?.addTagIds)
-            ? args.addTagIds.map(String)
-            : []
-          const removeTagIds = Array.isArray(args?.removeTagIds)
-            ? args.removeTagIds.map(String)
-            : []
+          const addTagIds = Array.isArray(args?.addTagIds) ? args.addTagIds.map(String) : []
+          const removeTagIds = Array.isArray(args?.removeTagIds) ? args.removeTagIds.map(String) : []
           const updatedBooks: BookRecord[] = []
 
           ids.forEach((id) => {
             const current = bookStore.get(id)
             if (!current) return
 
-            const tagIds = new Set(
-              (current as BookRecord & { tagIds?: string[] }).tagIds ?? [],
-            )
+            const tagIds = new Set((current as BookRecord & { tagIds?: string[] }).tagIds ?? [])
             removeTagIds.forEach((tagId) => tagIds.delete(tagId))
             addTagIds.forEach((tagId) => tagIds.add(tagId))
 
@@ -558,8 +501,7 @@ export async function installTauriMock(
 
           return updatedBooks
         }
-        if (command === 'get_book')
-          return bookStore.get(String(args?.id)) ?? null
+        if (command === 'get_book') return bookStore.get(String(args?.id)) ?? null
         if (command === 'reveal_book_source') {
           const id = String(args?.id)
           if (!fixtureRevealableBookSourceIds.includes(id)) return false
@@ -651,9 +593,7 @@ export async function installTauriMock(
           })
         }
         if (command === 'import_text_paths') {
-          const imports = Array.isArray(args?.imports)
-            ? (args.imports as TextImportSelection[])
-            : []
+          const imports = Array.isArray(args?.imports) ? (args.imports as TextImportSelection[]) : []
           globalWindow.__FLOW_TEST_TAURI__?.textImports.push(...imports)
           const imported = importQueue.splice(0, Math.max(imports.length, 1))
           imported.forEach((book) => bookStore.set(book.id, book))
@@ -692,9 +632,7 @@ export async function installTauriMock(
         if (command === 'plugin:dialog|open') {
           globalWindow.__FLOW_TEST_TAURI__?.dialogOpenCalls.push(args ?? {})
           const options = args?.options as { multiple?: boolean } | undefined
-          return options?.multiple === false
-            ? (fixtureOpenDialogPaths[0] ?? null)
-            : fixtureOpenDialogPaths
+          return options?.multiple === false ? (fixtureOpenDialogPaths[0] ?? null) : fixtureOpenDialogPaths
         }
         if (command === 'plugin:dialog|save') return fixtureSaveDialogPath
         if (command === 'flush_storage') return null
@@ -840,19 +778,13 @@ export async function getDictionaryMockState(page: Page) {
     }
 
     return {
-      cancelledDictionarySessions:
-        globalWindow.__FLOW_TEST_TAURI__?.cancelledDictionarySessions ?? [],
-      dictionaryRequests:
-        globalWindow.__FLOW_TEST_TAURI__?.dictionaryRequests ?? [],
-      merriamWebsterRequests:
-        globalWindow.__FLOW_TEST_TAURI__?.merriamWebsterRequests ?? [],
+      cancelledDictionarySessions: globalWindow.__FLOW_TEST_TAURI__?.cancelledDictionarySessions ?? [],
+      dictionaryRequests: globalWindow.__FLOW_TEST_TAURI__?.dictionaryRequests ?? [],
+      merriamWebsterRequests: globalWindow.__FLOW_TEST_TAURI__?.merriamWebsterRequests ?? [],
       mdictRequests: globalWindow.__FLOW_TEST_TAURI__?.mdictRequests ?? [],
-      mdictStylesheetRequests:
-        globalWindow.__FLOW_TEST_TAURI__?.mdictStylesheetRequests ?? [],
-      stardictRequests:
-        globalWindow.__FLOW_TEST_TAURI__?.stardictRequests ?? [],
-      openedExternalUrls:
-        globalWindow.__FLOW_TEST_TAURI__?.openedExternalUrls ?? [],
+      mdictStylesheetRequests: globalWindow.__FLOW_TEST_TAURI__?.mdictStylesheetRequests ?? [],
+      stardictRequests: globalWindow.__FLOW_TEST_TAURI__?.stardictRequests ?? [],
+      openedExternalUrls: globalWindow.__FLOW_TEST_TAURI__?.openedExternalUrls ?? [],
     }
   })
 }

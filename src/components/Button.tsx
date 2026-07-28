@@ -1,5 +1,5 @@
-import { type LucideIcon } from 'lucide-react'
-import { ComponentProps } from 'react'
+import type { LucideIcon } from 'lucide-react'
+import type { ComponentProps } from 'react'
 
 import { cn } from '@/utils'
 
@@ -8,10 +8,7 @@ import type { ShortcutChordValue } from '../shortcuts'
 import { AppTooltip } from './AppTooltip'
 import { Button as ShadcnButton } from './ui/button'
 
-interface IconButtonProps extends Omit<
-  ComponentProps<'button'>,
-  'size' | 'title'
-> {
+interface IconButtonProps extends Omit<ComponentProps<'button'>, 'size' | 'title'> {
   Icon: LucideIcon
   shortcut?: ShortcutChordValue
   size?: number

@@ -13,13 +13,9 @@ export const supportedDictionaryLanguages = [
   'ko',
 ] as const
 
-export type SupportedDictionaryLanguage =
-  (typeof supportedDictionaryLanguages)[number]
+export type SupportedDictionaryLanguage = (typeof supportedDictionaryLanguages)[number]
 
-export type DictionaryQueryLanguage =
-  | SupportedDictionaryLanguage
-  | 'mixed'
-  | 'unknown'
+export type DictionaryQueryLanguage = SupportedDictionaryLanguage | 'mixed' | 'unknown'
 
 export interface DictionaryQuery {
   language: DictionaryQueryLanguage
@@ -59,9 +55,7 @@ export interface DictionarySenseMarkerParts {
   subnumber?: string
 }
 
-export type DictionaryText =
-  | { kind: 'plain'; text: string }
-  | { kind: 'runs'; runs: DictionaryTextRun[] }
+export type DictionaryText = { kind: 'plain'; text: string } | { kind: 'runs'; runs: DictionaryTextRun[] }
 
 export interface DictionaryTextRun {
   kind: 'emphasis' | 'label' | 'plain' | 'reference'

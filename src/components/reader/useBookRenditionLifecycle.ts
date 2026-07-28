@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, type RefObject } from 'react'
+import { type RefObject, useCallback, useEffect, useRef } from 'react'
 
-import { RenditionSpread } from '@flow/epubjs/rendition'
+import type { RenditionSpread } from '@flow/epubjs/rendition'
 
-import { BookTab } from '../../models/reader'
+import type { BookTab } from '../../models/reader'
 
 interface BookRenditionLifecycleOptions {
   active: boolean
@@ -40,9 +40,7 @@ export function useBookRenditionLifecycle({
 }: BookRenditionLifecycleOptions) {
   const prevSize = useRef<string | undefined>(undefined)
   const previousSpread = useRef<string | undefined>(undefined)
-  const previousTypographyLayoutSignature = useRef<string | undefined>(
-    undefined,
-  )
+  const previousTypographyLayoutSignature = useRef<string | undefined>(undefined)
   const previousTypographyStyleSignature = useRef<string | undefined>(undefined)
   const layoutFrame = useRef<number | undefined>(undefined)
   const applyCustomStyleRef = useRef(applyCustomStyle)
@@ -69,21 +67,8 @@ export function useBookRenditionLifecycle({
     prevSize.current = size.key
     previousTypographyLayoutSignature.current = typographyLayoutSignature
     previousTypographyStyleSignature.current = typographyStyleSignature
-    tab.render(
-      containerRef.current!,
-      currentSpreadRef.current,
-      beforeLayout,
-      typographyLayoutSignature,
-    )
-  }, [
-    active,
-    containerRef,
-    rendition,
-    settingsReady,
-    tab,
-    typographyLayoutSignature,
-    typographyStyleSignature,
-  ])
+    tab.render(containerRef.current!, currentSpreadRef.current, beforeLayout, typographyLayoutSignature)
+  }, [active, containerRef, rendition, settingsReady, tab, typographyLayoutSignature, typographyStyleSignature])
 
   const syncVisibleSize = useCallback(() => {
     if (!active || !settingsReady) return
@@ -163,8 +148,7 @@ export function useBookRenditionLifecycle({
     if (!active || !rendition) return
     tab.setBeforeLayout(applyCustomStyle, typographyLayoutSignature)
 
-    if (previousTypographyLayoutSignature.current === typographyLayoutSignature)
-      return
+    if (previousTypographyLayoutSignature.current === typographyLayoutSignature) return
     previousTypographyLayoutSignature.current = typographyLayoutSignature
 
     void tab.relayoutCurrentView()
@@ -173,8 +157,7 @@ export function useBookRenditionLifecycle({
   useEffect(() => {
     if (!active || !rendition) return
 
-    if (previousTypographyStyleSignature.current === typographyStyleSignature)
-      return
+    if (previousTypographyStyleSignature.current === typographyStyleSignature) return
     previousTypographyStyleSignature.current = typographyStyleSignature
 
     applyCustomStyle()

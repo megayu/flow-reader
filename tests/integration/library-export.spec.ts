@@ -6,8 +6,7 @@ import type { BookRecord } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
 import { getExportedBooks, installTauriMock } from '../support/tauri-mock'
 
-const settingsShortcut =
-  process.platform === 'darwin' ? 'Meta+Comma' : 'Control+Comma'
+const settingsShortcut = process.platform === 'darwin' ? 'Meta+Comma' : 'Control+Comma'
 
 const modifiedBook: BookRecord = createTestBook({
   id: 'txt-book',
@@ -29,9 +28,7 @@ const modifiedBook: BookRecord = createTestBook({
   annotations: [],
 })
 
-test('library modified-book indicator is disabled by default and can be enabled', async ({
-  page,
-}) => {
+test('library modified-book indicator is disabled by default and can be enabled', async ({ page }) => {
   await installTauriMock(page, { books: [modifiedBook] })
   await page.goto('/')
 
@@ -50,9 +47,7 @@ test('library modified-book indicator is disabled by default and can be enabled'
   await expect(indicator).toBeVisible()
 })
 
-test('exporting either TXT format clears the shared indicator but preserves per-format stars', async ({
-  page,
-}) => {
+test('exporting either TXT format clears the shared indicator but preserves per-format stars', async ({ page }) => {
   const outputPath = path.join('tmp', 'Correctable.epub')
   await installTauriMock(page, {
     books: [modifiedBook],
@@ -64,24 +59,16 @@ test('exporting either TXT format clears the shared indicator but preserves per-
   const indicator = page.getByLabel('Modified content can be exported')
   await expect(indicator).toBeVisible()
   await page.getByText('Correctable').click({ button: 'right' })
-  await expect(
-    page.getByRole('menuitem', { name: /Export TXT\s*\*/ }),
-  ).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /Export TXT\s*\*/ })).toBeVisible()
   await page.getByRole('menuitem', { name: /Export EPUB\s*\*/ }).click()
 
   await expect(indicator).toHaveCount(0)
   await page.getByText('Correctable').click({ button: 'right' })
-  await expect(
-    page.getByRole('menuitem', { name: /Export TXT\s*\*/ }),
-  ).toBeVisible()
-  await expect(
-    page.getByRole('menuitem', { name: 'Export EPUB' }),
-  ).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /Export TXT\s*\*/ })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Export EPUB' })).toBeVisible()
 })
 
-test('TXT book context menu exports TXT and EPUB with per-format dirty markers', async ({
-  page,
-}) => {
+test('TXT book context menu exports TXT and EPUB with per-format dirty markers', async ({ page }) => {
   const outputPath = path.join('tmp', 'Correctable.txt')
 
   await installTauriMock(page, {
@@ -117,9 +104,7 @@ test('TXT book context menu exports TXT and EPUB with per-format dirty markers',
     name: /Export TXT\s*\*/,
   })
   await expect(exportTxtMenuItem).toBeVisible()
-  await expect(
-    page.getByRole('menuitem', { name: 'Export EPUB' }),
-  ).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Export EPUB' })).toBeVisible()
 
   await exportTxtMenuItem.click()
   await expect
@@ -134,7 +119,5 @@ test('TXT book context menu exports TXT and EPUB with per-format dirty markers',
 
   await page.getByText('Correctable').click({ button: 'right' })
   await expect(page.getByRole('menuitem', { name: 'Export TXT' })).toBeVisible()
-  await expect(
-    page.getByRole('menuitem', { name: 'Export EPUB' }),
-  ).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Export EPUB' })).toBeVisible()
 })

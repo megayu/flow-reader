@@ -1,11 +1,6 @@
 import type { DictionaryProvider } from '../coordinator'
 import { cancelDictionarySession, fetchZdic } from '../native'
-import type {
-  DictionaryEntry,
-  DictionaryResult,
-  DictionarySense,
-  DictionaryText,
-} from '../types'
+import type { DictionaryEntry, DictionaryResult, DictionarySense, DictionaryText } from '../types'
 
 const SOURCE_ID = 'zdic'
 const SOURCE_NAME = '汉典'
@@ -66,12 +61,7 @@ export const zdicProvider: DictionaryProvider = {
 }
 
 function isNotFoundError(error: unknown) {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === 'not_found'
-  )
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'not_found'
 }
 
 export function zdicExternalUrl(query: string) {
@@ -81,14 +71,10 @@ export function zdicExternalUrl(query: string) {
 export function parseZdicHtml(html: string, query: string): DictionaryResult {
   const externalUrl = zdicExternalUrl(query)
   const document = new DOMParser().parseFromString(html, 'text/html')
-  document
-    .querySelectorAll('script, style, noscript, template')
-    .forEach((element) => element.remove())
+  document.querySelectorAll('script, style, noscript, template').forEach((element) => element.remove())
 
   const entries =
-    Array.from(query).length === 1
-      ? parseCharacterEntries(document, query)
-      : parseWordEntries(document, query)
+    Array.from(query).length === 1 ? parseCharacterEntries(document, query) : parseWordEntries(document, query)
 
   if (!entries.length || entries.every((entry) => !entry.senses.length)) {
     throw new ZdicParseError(externalUrl)
@@ -103,9 +89,7 @@ export function parseZdicHtml(html: string, query: string): DictionaryResult {
 }
 
 function parseCharacterEntries(document: Document, headword: string) {
-  const section = document.querySelector(
-    'section#jbjs[data-section="基本解释"]',
-  )
+  const section = document.querySelector('section#jbjs[data-section="基本解释"]')
   if (!section) return []
 
   const readings = Array.from(section.querySelectorAll('.jbjs-reading'))
@@ -115,23 +99,16 @@ function parseCharacterEntries(document: Document, headword: string) {
     .map<DictionaryEntry>((group) => ({
       headword,
       pronunciation: cleanElementText(group.querySelector('.jbjs-reading__py')),
-      senses: parseSenseItems(
-        group.querySelectorAll('ol.jbjs-list > li.jbjs-item'),
-        'jbjs',
-      ),
+      senses: parseSenseItems(group.querySelectorAll('ol.jbjs-list > li.jbjs-item'), 'jbjs'),
     }))
     .filter((entry) => entry.senses.length > 0)
 }
 
 function parseWordEntries(document: Document, headword: string) {
-  const section = document.querySelector(
-    'section#xxjs[data-section="词语解释"]',
-  )
+  const section = document.querySelector('section#xxjs[data-section="词语解释"]')
   if (!section) return []
 
-  const lists = Array.from(
-    section.querySelectorAll<HTMLOListElement>('ol.xxjs-list'),
-  )
+  const lists = Array.from(section.querySelectorAll<HTMLOListElement>('ol.xxjs-list'))
 
   return lists
     .map<DictionaryEntry>((list) => {
@@ -141,9 +118,7 @@ function parseWordEntries(document: Document, headword: string) {
 
       return {
         headword,
-        pronunciation:
-          cleanElementText(reading?.querySelector('.xxjs-reading__py')) ??
-          cleanElementText(reading),
+        pronunciation: cleanElementText(reading?.querySelector('.xxjs-reading__py')) ?? cleanElementText(reading),
         senses: parseSenseItems(list.querySelectorAll(':scope > li'), 'xxjs'),
       }
     })
@@ -152,29 +127,22 @@ function parseWordEntries(document: Document, headword: string) {
 
 function parseSenseItems(items: NodeListOf<Element>, variant: 'jbjs' | 'xxjs') {
   return Array.from(items).flatMap<DictionarySense>((item, index) => {
-    const definitionClass =
-      variant === 'jbjs' ? '.jbjs-item__def' : '.xxjs-item__def'
-    const exampleSelector =
-      variant === 'jbjs' ? '.jbjs-item__eg' : '.xxjs-item__eg, .xxjs-also__text'
+    const definitionClass = variant === 'jbjs' ? '.jbjs-item__def' : '.xxjs-item__def'
+    const exampleSelector = variant === 'jbjs' ? '.jbjs-item__eg' : '.xxjs-item__eg, .xxjs-also__text'
     const definition = cleanElementText(item.querySelector(definitionClass))
     const examples = Array.from(item.querySelectorAll(exampleSelector))
       .map(cleanElementText)
       .filter((text): text is string => Boolean(text))
       .map(plainText)
-    const excludedFallbackContent =
-      variant === 'xxjs' ? `${exampleSelector}, .xxjs-english` : exampleSelector
-    const fallback =
-      definition ?? fallbackItemText(item, excludedFallbackContent)
+    const excludedFallbackContent = variant === 'xxjs' ? `${exampleSelector}, .xxjs-english` : exampleSelector
+    const fallback = definition ?? fallbackItemText(item, excludedFallbackContent)
     if (!fallback) return []
 
     return [
       {
         definition: plainText(fallback),
         examples: examples.length ? examples : undefined,
-        marker:
-          variant === 'xxjs' && item.classList.contains('xxjs-item--nonum')
-            ? undefined
-            : String(index + 1),
+        marker: variant === 'xxjs' && item.classList.contains('xxjs-item--nonum') ? undefined : String(index + 1),
       },
     ]
   })

@@ -38,13 +38,9 @@ export const storageCommand = {
   updateTag: 'update_tag',
 } as const
 
-export type StorageCommand =
-  (typeof storageCommand)[keyof typeof storageCommand]
+export type StorageCommand = (typeof storageCommand)[keyof typeof storageCommand]
 
-export async function invokeStorage<T>(
-  command: StorageCommand,
-  args?: Record<string, unknown>,
-) {
+export async function invokeStorage<T>(command: StorageCommand, args?: Record<string, unknown>) {
   if (typeof window === 'undefined') {
     throw new Error('Native storage is not available on the server')
   }

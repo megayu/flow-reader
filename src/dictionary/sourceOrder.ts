@@ -9,11 +9,7 @@ export function reconcileDictionarySourceOrder(
   savedOrder: readonly string[] | undefined,
   localDictionaryIds: readonly string[],
 ) {
-  const available = new Set([
-    zdicSourceId,
-    merriamWebsterSourceId,
-    ...localDictionaryIds.map(localDictionarySourceId),
-  ])
+  const available = new Set([zdicSourceId, merriamWebsterSourceId, ...localDictionaryIds.map(localDictionarySourceId)])
   const result: string[] = []
   const seen = new Set<string>()
 
@@ -36,9 +32,7 @@ export function orderByDictionarySource<T>(
   sourceOrder: readonly string[],
   sourceId: (source: T) => string,
 ) {
-  const positions = new Map(
-    sourceOrder.map((currentSourceId, index) => [currentSourceId, index]),
-  )
+  const positions = new Map(sourceOrder.map((currentSourceId, index) => [currentSourceId, index]))
   return [...sources].sort(
     (left, right) =>
       (positions.get(sourceId(left)) ?? Number.MAX_SAFE_INTEGER) -

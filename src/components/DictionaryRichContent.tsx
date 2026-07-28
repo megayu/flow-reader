@@ -1,12 +1,4 @@
-import {
-  type SyntheticEvent,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { type SyntheticEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import type { DictionaryRichDocument } from '../dictionary/types'
 
@@ -16,6 +8,7 @@ interface DictionaryRichContentProps {
   onContentResize?: () => void
   onEntryNavigate: (entry: string) => void
   onNavigateBack?: () => void
+  title: string
 }
 
 const MIN_HEIGHT = 96
@@ -26,6 +19,7 @@ export function DictionaryRichContent({
   onContentResize,
   onEntryNavigate,
   onNavigateBack,
+  title,
 }: DictionaryRichContentProps) {
   const [height, setHeight] = useState(MIN_HEIGHT)
   const cleanupRef = useRef<() => void>(() => undefined)
@@ -48,10 +42,7 @@ export function DictionaryRichContent({
       frameDocument.body.style.fontSize = parentStyle.fontSize
 
       const updateHeight = () => {
-        const nextHeight = Math.max(
-          MIN_HEIGHT,
-          Math.ceil(frameDocument.documentElement.scrollHeight),
-        )
+        const nextHeight = Math.max(MIN_HEIGHT, Math.ceil(frameDocument.documentElement.scrollHeight))
         setHeight(nextHeight)
       }
       const handleClick = (clickEvent: MouseEvent) => {
@@ -123,6 +114,7 @@ export function DictionaryRichContent({
       scrolling="no"
       srcDoc={srcDoc}
       style={{ height }}
+      title={title}
     />
   )
 }

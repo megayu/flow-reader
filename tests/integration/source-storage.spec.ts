@@ -36,9 +36,7 @@ const managedBook: BookRecord = createTestBook({
   sourcePath: undefined,
 })
 
-test('shift click reveals only an available referenced source in normal mode', async ({
-  page,
-}) => {
+test('shift click reveals only an available referenced source in normal mode', async ({ page }) => {
   await installTauriMock(page, {
     books: [referencedBook, missingArchiveBook, managedBook],
     revealableBookSourceIds: [referencedBook.id],
@@ -47,26 +45,18 @@ test('shift click reveals only an available referenced source in normal mode', a
   await page.goto('/')
 
   const cover = (title: string) =>
-    page
-      .locator('[data-flow-library-book-card]')
-      .filter({ hasText: title })
-      .locator('img[alt="Cover"]')
+    page.locator('[data-flow-library-book-card]').filter({ hasText: title }).locator('img[alt="Cover"]')
 
   await cover('Referenced Book').click({ modifiers: ['Shift'] })
   await cover('Missing Archive').click({ modifiers: ['Shift'] })
   await cover('Managed Book').click({ modifiers: ['Shift'] })
 
-  const revealedIds = await page.evaluate(
-    () =>
-      (window as any).__FLOW_TEST_TAURI__?.revealedBookSourceIds as string[],
-  )
+  const revealedIds = await page.evaluate(() => (window as any).__FLOW_TEST_TAURI__?.revealedBookSourceIds as string[])
   expect(revealedIds).toEqual([referencedBook.id])
   await expect(page.locator('[data-flow-reader]')).toHaveCount(0)
 })
 
-test('replaces the archive badge and warns when its referenced source is missing', async ({
-  page,
-}) => {
+test('replaces the archive badge and warns when its referenced source is missing', async ({ page }) => {
   await installTauriMock(page, {
     books: [missingArchiveBook],
     sourceStatuses: { [missingArchiveBook.id]: 'missing' },
@@ -86,9 +76,7 @@ test('replaces the archive badge and warns when its referenced source is missing
   await expect(page.locator('[data-flow-reader]')).toHaveCount(0)
 })
 
-test('closes a referenced archive tab and notifies when its source fails during open', async ({
-  page,
-}) => {
+test('closes a referenced archive tab and notifies when its source fails during open', async ({ page }) => {
   await installTauriMock(page, {
     books: [missingArchiveBook],
     readerSourceErrors: {
@@ -109,9 +97,7 @@ test('closes a referenced archive tab and notifies when its source fails during 
   await expect(page.locator('[data-flow-reader-content]')).toHaveCount(0)
 })
 
-test('keeps a missing source distinct when it disappears during open', async ({
-  page,
-}) => {
+test('keeps a missing source distinct when it disappears during open', async ({ page }) => {
   await installTauriMock(page, {
     books: [missingArchiveBook],
     readerSourceErrors: {
@@ -128,9 +114,7 @@ test('keeps a missing source distinct when it disappears during open', async ({
   await expect(alert).not.toContainText('permissions')
 })
 
-test('shows source changed instead of archive mode on the cover', async ({
-  page,
-}) => {
+test('shows source changed instead of archive mode on the cover', async ({ page }) => {
   await installTauriMock(page, {
     books: [missingArchiveBook],
     sourceStatuses: { [missingArchiveBook.id]: 'changed' },

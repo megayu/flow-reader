@@ -1,27 +1,20 @@
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
+
 import { chromium } from '@playwright/test'
 
 const CDP_URL = process.env.FLOW_READER_CDP_URL ?? 'http://127.0.0.1:9351'
 const APP_URL = process.env.FLOW_READER_APP_URL ?? 'http://127.0.0.1:7127'
 const OUT_DIR =
-  process.env.FLOW_READER_LAYOUT_OUT_DIR ??
-  path.join(process.cwd(), 'test-results', 'reader-layout-client')
+  process.env.FLOW_READER_LAYOUT_OUT_DIR ?? path.join(process.cwd(), 'test-results', 'reader-layout-client')
 const WINDOW_WIDTH = Number(process.env.FLOW_READER_LAYOUT_WINDOW_WIDTH ?? 1600)
-const WINDOW_HEIGHT = Number(
-  process.env.FLOW_READER_LAYOUT_WINDOW_HEIGHT ?? 1000,
-)
-const MAXIMIZED_WIDTH = Number(
-  process.env.FLOW_READER_LAYOUT_MAXIMIZED_WIDTH ?? 1920,
-)
-const MAXIMIZED_HEIGHT = Number(
-  process.env.FLOW_READER_LAYOUT_MAXIMIZED_HEIGHT ?? 1080,
-)
+const WINDOW_HEIGHT = Number(process.env.FLOW_READER_LAYOUT_WINDOW_HEIGHT ?? 1000)
+const MAXIMIZED_WIDTH = Number(process.env.FLOW_READER_LAYOUT_MAXIMIZED_WIDTH ?? 1920)
+const MAXIMIZED_HEIGHT = Number(process.env.FLOW_READER_LAYOUT_MAXIMIZED_HEIGHT ?? 1080)
 const HEADLESS_BROWSER = process.env.FLOW_READER_LAYOUT_HEADLESS === '1'
 const BROWSER_CHANNEL =
-  process.env.FLOW_READER_LAYOUT_BROWSER_CHANNEL ??
-  (process.platform === 'win32' ? 'msedge' : 'chrome')
+  process.env.FLOW_READER_LAYOUT_BROWSER_CHANNEL ?? (process.platform === 'win32' ? 'msedge' : 'chrome')
 const LAYOUT_MODE = resolveLayoutMode(process.env.FLOW_READER_LAYOUT_MODE)
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -29,9 +22,7 @@ function resolveLayoutMode(value) {
   const mode = String(value || 'auto').toLowerCase()
   if (mode === 'auto') return process.platform === 'win32' ? 'tauri' : 'browser'
   if (mode === 'tauri' || mode === 'browser') return mode
-  fail(
-    `unsupported FLOW_READER_LAYOUT_MODE "${value}"; use auto, tauri, or browser`,
-  )
+  fail(`unsupported FLOW_READER_LAYOUT_MODE "${value}"; use auto, tauri, or browser`)
 }
 
 function fail(message, detail) {
@@ -59,9 +50,7 @@ function makeBook(filePath, title, prefix, chapterCount, paragraphs) {
         `${prefix}-${String(i).padStart(3, '0')}-${String(p).padStart(
           2,
           '0',
-        )} ${title} ${prefix} ${prefix} ${prefix} 真实客户端确定性布局验证。`.repeat(
-          3,
-        ),
+        )} ${title} ${prefix} ${prefix} ${prefix} 真实客户端确定性布局验证。`.repeat(3),
       )
     }
     parts.push('')
@@ -70,11 +59,10 @@ function makeBook(filePath, title, prefix, chapterCount, paragraphs) {
 }
 
 function powershell(command) {
-  return execFileSync(
-    'powershell.exe',
-    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-  )
+  return execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
 }
 
 function setFlowWindowBoundsWin32(width, height, x = 40, y = 40) {
@@ -145,10 +133,7 @@ async function readClientWindowMetrics(target) {
 }
 
 function windowBoundsMatch(metrics, width, height) {
-  return (
-    Math.abs(metrics.outerWidth - width) <= 8 &&
-    Math.abs(metrics.outerHeight - height) <= 8
-  )
+  return Math.abs(metrics.outerWidth - width) <= 8 && Math.abs(metrics.outerHeight - height) <= 8
 }
 
 async function maximizeCdpWindow(target) {
@@ -172,12 +157,7 @@ async function setFlowWindowBounds(target, width, height, x = 40, y = 40) {
   if (target.mode === 'browser') {
     await target.page.setViewportSize({ width, height })
     await target.page.evaluate(
-      () =>
-        new Promise((resolve) =>
-          requestAnimationFrame(() =>
-            requestAnimationFrame(() => resolve(null)),
-          ),
-        ),
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(null)))),
     )
     return
   }
@@ -195,9 +175,7 @@ async function setFlowWindowBounds(target, width, height, x = 40, y = 40) {
   }
 
   if (process.platform !== 'win32') {
-    fail(
-      `real Tauri layout verification window resizing could not be controlled through CDP: ${cdpResize.reason}`,
-    )
+    fail(`real Tauri layout verification window resizing could not be controlled through CDP: ${cdpResize.reason}`)
   }
 }
 
@@ -208,12 +186,7 @@ async function maximizeFlowWindow(target) {
       height: MAXIMIZED_HEIGHT,
     })
     await target.page.evaluate(
-      () =>
-        new Promise((resolve) =>
-          requestAnimationFrame(() =>
-            requestAnimationFrame(() => resolve(null)),
-          ),
-        ),
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(null)))),
     )
     return
   }
@@ -231,9 +204,7 @@ async function maximizeFlowWindow(target) {
   }
 
   if (process.platform !== 'win32') {
-    fail(
-      `real Tauri layout verification maximize could not be controlled through CDP: ${cdpMaximize.reason}`,
-    )
+    fail(`real Tauri layout verification maximize could not be controlled through CDP: ${cdpMaximize.reason}`)
   }
 }
 
@@ -326,15 +297,10 @@ function layoutBookResource(pathname, book) {
     const chapter = Number(chapterMatch[1])
     const chapterNumber = String(chapter).padStart(3, '0')
     const title = `${book.layoutPrefix} CHAPTER ${chapter}`
-    const paragraphs = Array.from(
-      { length: book.layoutParagraphCount },
-      (_, index) => {
-        const marker = `${book.layoutPrefix}-${chapterNumber}-${String(
-          index,
-        ).padStart(2, '0')}`
-        return `<p>${marker} ${book.layoutTitle} ${book.layoutPrefix} ${book.layoutPrefix} ${book.layoutPrefix} deterministic layout verification paragraph. ${marker} ${marker}</p>`
-      },
-    ).join('\n')
+    const paragraphs = Array.from({ length: book.layoutParagraphCount }, (_, index) => {
+      const marker = `${book.layoutPrefix}-${chapterNumber}-${String(index).padStart(2, '0')}`
+      return `<p>${marker} ${book.layoutTitle} ${book.layoutPrefix} ${book.layoutPrefix} ${book.layoutPrefix} deterministic layout verification paragraph. ${marker} ${marker}</p>`
+    }).join('\n')
 
     return {
       contentType: 'application/xhtml+xml',
@@ -353,11 +319,7 @@ function layoutBookResource(pathname, book) {
 async function installLayoutBookRoutes(page, books) {
   await page.route('**/flow-layout/**', (route) => {
     const pathname = new URL(route.request().url()).pathname
-    const book = books.find((candidate) =>
-      pathname.startsWith(
-        `/flow-layout/${candidate.id.slice(-1).toUpperCase()}/`,
-      ),
-    )
+    const book = books.find((candidate) => pathname.startsWith(`/flow-layout/${candidate.id.slice(-1).toUpperCase()}/`))
     const resource = book ? layoutBookResource(pathname, book) : undefined
     if (!resource) {
       return route.fulfill({
@@ -379,8 +341,7 @@ async function installBrowserTauriMock(page, books) {
     let nextEventId = 1
 
     const internals = (globalWindow.__TAURI_INTERNALS__ ??= {})
-    const eventInternals = (globalWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ ??=
-      {})
+    const eventInternals = (globalWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ ??= {})
     const callbacks = (internals.callbacks ??= {})
 
     internals.metadata = {
@@ -447,11 +408,7 @@ async function createLayoutTarget() {
   if (LAYOUT_MODE === 'tauri') {
     const browser = await chromium.connectOverCDP(CDP_URL)
     const context = browser.contexts()[0]
-    const page =
-      context
-        .pages()
-        .find((candidate) => candidate.url().includes('localhost:7127')) ||
-      context.pages()[0]
+    const page = context.pages().find((candidate) => candidate.url().includes('localhost:7127')) || context.pages()[0]
     return { browser, context, page, mode: 'tauri', appUrl: CDP_URL }
   }
 
@@ -473,19 +430,13 @@ async function createLayoutTarget() {
 }
 
 async function invoke(page, command, args) {
-  return page.evaluate(
-    ({ command, args }) => window.__TAURI_INTERNALS__.invoke(command, args),
-    { command, args },
-  )
+  return page.evaluate(({ command, args }) => window.__TAURI_INTERNALS__.invoke(command, args), { command, args })
 }
 
 async function ensureReaderMode(page) {
   for (let i = 0; i < 3; i += 1) {
     const libraryOverlay = await page.evaluate(
-      () =>
-        !!document.querySelector(
-          '.absolute.inset-0.z-10.min-h-0.overflow-hidden.flow-bg-content',
-        ),
+      () => !!document.querySelector('.absolute.inset-0.z-10.min-h-0.overflow-hidden.flow-bg-content'),
     )
     if (!libraryOverlay) return
     await page.keyboard.press('c')
@@ -493,10 +444,7 @@ async function ensureReaderMode(page) {
   }
 
   const libraryOverlay = await page.evaluate(
-    () =>
-      !!document.querySelector(
-        '.absolute.inset-0.z-10.min-h-0.overflow-hidden.flow-bg-content',
-      ),
+    () => !!document.querySelector('.absolute.inset-0.z-10.min-h-0.overflow-hidden.flow-bg-content'),
   )
   assert(!libraryOverlay, 'failed to enter reader mode')
 }
@@ -507,12 +455,7 @@ async function isSidebarVisible(page) {
     if (!sidebar) return false
     const rect = sidebar.getBoundingClientRect()
     const style = getComputedStyle(sidebar)
-    return (
-      style.display !== 'none' &&
-      style.visibility !== 'hidden' &&
-      rect.width > 10 &&
-      rect.height > 10
-    )
+    return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 10 && rect.height > 10
   })
 }
 
@@ -521,22 +464,17 @@ async function ensureSidebar(page, visible) {
   for (let i = 0; i < 4; i += 1) {
     if ((await isSidebarVisible(page)) === visible) return
     const clicked = await page.evaluate(() => {
-      const button = Array.from(document.querySelectorAll('button')).find(
-        (el) => {
-          const label = el.getAttribute('aria-label') || ''
-          return label === '目录' || label === 'TOC'
-        },
-      )
+      const button = Array.from(document.querySelectorAll('button')).find((el) => {
+        const label = el.getAttribute('aria-label') || ''
+        return label === '目录' || label === 'TOC'
+      })
       button?.click()
       return !!button
     })
     assert(clicked, 'TOC/sidebar button not found')
     await waitForSettled(page, `sidebar ${visible ? 'open' : 'closed'}`)
   }
-  assert(
-    (await isSidebarVisible(page)) === visible,
-    `sidebar did not become ${visible ? 'open' : 'closed'}`,
-  )
+  assert((await isSidebarVisible(page)) === visible, `sidebar did not become ${visible ? 'open' : 'closed'}`)
 }
 
 async function readState(page) {
@@ -586,28 +524,24 @@ async function readState(page) {
             atEnd: !!location.atEnd,
           }
         : null
-    const panes = Array.from(
-      document.querySelectorAll('[data-flow-reader-pane]'),
-    ).map((pane, index) => {
+    const panes = Array.from(document.querySelectorAll('[data-flow-reader-pane]')).map((pane, index) => {
       const style = getComputedStyle(pane)
-      const frames = Array.from(pane.querySelectorAll('iframe')).map(
-        (iframe, frameIndex) => {
-          let text = ''
-          try {
-            text = iframe.contentDocument?.body?.innerText || ''
-          } catch {}
-          const frameStyle = getComputedStyle(iframe)
-          return {
-            frameIndex,
-            rect: rectOf(iframe),
-            visibility: frameStyle.visibility,
-            opacity: frameStyle.opacity,
-            textPrefix: normalize(text).slice(0, 240),
-            textHash: hash(text),
-            textLength: normalize(text).length,
-          }
-        },
-      )
+      const frames = Array.from(pane.querySelectorAll('iframe')).map((iframe, frameIndex) => {
+        let text = ''
+        try {
+          text = iframe.contentDocument?.body?.innerText || ''
+        } catch {}
+        const frameStyle = getComputedStyle(iframe)
+        return {
+          frameIndex,
+          rect: rectOf(iframe),
+          visibility: frameStyle.visibility,
+          opacity: frameStyle.opacity,
+          textPrefix: normalize(text).slice(0, 240),
+          textHash: hash(text),
+          textLength: normalize(text).length,
+        }
+      })
 
       return {
         index,
@@ -647,9 +581,7 @@ async function readState(page) {
               layoutVersion: snapshot.layoutVersion,
               paginationVersion: snapshot.paginationVersion,
               headerPath: snapshot.headerPath?.map((item) => item.label) || [],
-              visibleSectionIndexes: [
-                ...(snapshot.visibleSectionIndexes || []),
-              ],
+              visibleSectionIndexes: [...(snapshot.visibleSectionIndexes || [])],
             }
           : null,
         managerSpread: spread
@@ -683,28 +615,20 @@ async function readState(page) {
       }
     })
     const activePane = panes.find((pane) => !pane.hidden)
-    const activePaneElement = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
-    const loadingCover = activePaneElement?.querySelector(
-      '[data-flow-reader-loading-cover]',
-    )
-    const loadingCoverStyle = loadingCover
-      ? getComputedStyle(loadingCover)
-      : undefined
+    const activePaneElement = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
+    const loadingCover = activePaneElement?.querySelector('[data-flow-reader-loading-cover]')
+    const loadingCoverStyle = loadingCover ? getComputedStyle(loadingCover) : undefined
     const loadingCoverRect = rectOf(loadingCover)
     const selectedIndex = group?.selectedIndex ?? -1
     const activeTab = tabs[selectedIndex]
     const sidebar = document.querySelector('.SideBar')
     const sidebarRect = rectOf(sidebar)
     const sidebarStyle = sidebar ? getComputedStyle(sidebar) : null
-    const tabRects = Array.from(document.querySelectorAll('[role="tab"]')).map(
-      (tab, index) => ({
-        index,
-        label: tab.getAttribute('aria-label') || normalize(tab.textContent),
-        rect: rectOf(tab),
-      }),
-    )
+    const tabRects = Array.from(document.querySelectorAll('[role="tab"]')).map((tab, index) => ({
+      index,
+      label: tab.getAttribute('aria-label') || normalize(tab.textContent),
+      rect: rectOf(tab),
+    }))
     return {
       selectedIndex,
       tabCount: tabs.length,
@@ -728,9 +652,7 @@ async function readState(page) {
         loadingCoverRect.height > 0,
       activePaneText: activePane?.text || '',
       activeFrameCount: activePane?.frames.length || 0,
-      activeFrameText: (activePane?.frames || [])
-        .map((frame) => frame.textPrefix)
-        .join('\n'),
+      activeFrameText: (activePane?.frames || []).map((frame) => frame.textPrefix).join('\n'),
       tabRects,
     }
   })
@@ -785,26 +707,16 @@ function assertRenderAligned(state, label) {
   assert(state.activeTab, `${label}: no active tab`)
   assert(state.activePane, `${label}: no active pane`)
   assert(
-    state.activePane.opacity === '1' &&
-      state.activePane.visibility === 'visible',
+    state.activePane.opacity === '1' && state.activePane.visibility === 'visible',
     `${label}: active pane is not visible`,
     state.activePane,
   )
   const paintableHidden = state.panes.filter(
-    (pane) =>
-      pane.hidden && (pane.opacity !== '0' || pane.visibility !== 'hidden'),
+    (pane) => pane.hidden && (pane.opacity !== '0' || pane.visibility !== 'hidden'),
   )
-  assert(
-    paintableHidden.length === 0,
-    `${label}: hidden pane can still paint`,
-    paintableHidden,
-  )
+  assert(paintableHidden.length === 0, `${label}: hidden pane can still paint`, paintableHidden)
   assert(state.activeFrameCount > 0, `${label}: no active iframe body`)
-  assert(
-    state.activeFrameCount <= 2,
-    `${label}: active spread has more than two frames`,
-    state.activePane.frames,
-  )
+  assert(state.activeFrameCount <= 2, `${label}: active spread has more than two frames`, state.activePane.frames)
   assert(
     state.activePane.frames.every((frame) => frame.textLength > 0),
     `${label}: blank iframe body`,
@@ -813,8 +725,7 @@ function assertRenderAligned(state, label) {
   const pagination = state.activeTab.pagination
   assert(pagination, `${label}: missing pagination snapshot`, state.activeTab)
   assert(
-    JSON.stringify(pagination.visibleSectionIndexes) ===
-      JSON.stringify(state.activeTab.visibleSectionIndexes),
+    JSON.stringify(pagination.visibleSectionIndexes) === JSON.stringify(state.activeTab.visibleSectionIndexes),
     `${label}: snapshot visible sections diverge from tab visible sections`,
     { pagination, visible: state.activeTab.visibleSectionIndexes },
   )
@@ -827,24 +738,18 @@ function assertRenderAligned(state, label) {
     headers,
     bodyText: state.activeFrameText,
   })
-  const displayed = [
-    pagination.location?.start,
-    pagination.location?.end,
-  ].filter(Boolean)
+  const displayed = [pagination.location?.start, pagination.location?.end].filter(Boolean)
   assert(
-    displayed.some((part) =>
-      state.activePaneText.includes(`${part.page} · ${part.total}`),
-    ),
+    displayed.some((part) => state.activePaneText.includes(`${part.page} · ${part.total}`)),
     `${label}: footer page text does not match pagination snapshot`,
     { paneText: state.activePaneText, displayed },
   )
   if (typeof pagination.percentage === 'number') {
     const percent = `${(pagination.percentage * 100).toFixed(2)}%`
-    assert(
-      state.activePaneText.includes(percent),
-      `${label}: footer percentage does not match pagination snapshot`,
-      { percent, paneText: state.activePaneText },
-    )
+    assert(state.activePaneText.includes(percent), `${label}: footer percentage does not match pagination snapshot`, {
+      percent,
+      paneText: state.activePaneText,
+    })
   }
 }
 
@@ -898,10 +803,7 @@ async function waitForAllTabsReady(page, label, timeout = 30000) {
     }
     lastState = state
     const allReady =
-      state.tabs.length > 0 &&
-      state.tabs.every(
-        (tab) => tab.pagination && tab.pane?.frameCount > 0 && !tab.turning,
-      )
+      state.tabs.length > 0 && state.tabs.every((tab) => tab.pagination && tab.pane?.frameCount > 0 && !tab.turning)
     if (allReady) {
       const signature = state.tabs.map(tabPositionSignature).join('|')
       stable = signature === last ? stable + 1 : 0
@@ -916,13 +818,7 @@ async function waitForAllTabsReady(page, label, timeout = 30000) {
 async function instrumentCounters(page) {
   await page.evaluate(() => {
     window.__flowCounterStore = { counters: {}, wrapped: new WeakSet() }
-    const methods = [
-      'display',
-      'next',
-      'prev',
-      'resizeRendition',
-      'relayoutCurrentView',
-    ]
+    const methods = ['display', 'next', 'prev', 'resizeRendition', 'relayoutCurrentView']
     window.__flowWrapTabCounters = () => {
       const store = window.__flowCounterStore
       ;(window.reader?.focusedGroup?.tabs || []).forEach((tab) => {
@@ -933,8 +829,7 @@ async function instrumentCounters(page) {
           if (typeof tab[method] !== 'function') return
           const original = tab[method].bind(tab)
           tab[method] = (...args) => {
-            store.counters[tab.id][method] =
-              (store.counters[tab.id][method] || 0) + 1
+            store.counters[tab.id][method] = (store.counters[tab.id][method] || 0) + 1
             return original(...args)
           }
         })
@@ -949,8 +844,7 @@ async function instrumentCounters(page) {
         })
       })
     }
-    window.__flowReadCounters = () =>
-      structuredClone(window.__flowCounterStore.counters)
+    window.__flowReadCounters = () => structuredClone(window.__flowCounterStore.counters)
   })
 }
 
@@ -982,57 +876,53 @@ async function injectFrameMarkers(page) {
   await page.evaluate(() => {
     const colors = ['#ff0000', '#0077ff', '#00aa33']
     const labels = ['TAB-A-RED', 'TAB-B-BLUE', 'TAB-C-GREEN']
-    Array.from(document.querySelectorAll('[data-flow-reader-pane]')).forEach(
-      (pane, paneIndex) => {
-        let paneBadge = pane.querySelector(':scope > .__flow_visual_marker')
-        if (!paneBadge) {
-          paneBadge = document.createElement('div')
-          paneBadge.className = '__flow_visual_marker'
-          pane.appendChild(paneBadge)
-        }
-        Object.assign(paneBadge.style, {
-          position: 'absolute',
-          left: '12px',
-          top: '36px',
-          zIndex: '2147483647',
-          padding: '8px 12px',
-          font: '700 28px sans-serif',
-          color: colors[paneIndex] || '#111111',
-          background: '#ffffff',
-          border: `6px solid ${colors[paneIndex] || '#111111'}`,
-          pointerEvents: 'none',
-        })
-        paneBadge.textContent = labels[paneIndex] || `TAB-${paneIndex}`
+    Array.from(document.querySelectorAll('[data-flow-reader-pane]')).forEach((pane, paneIndex) => {
+      let paneBadge = pane.querySelector(':scope > .__flow_visual_marker')
+      if (!paneBadge) {
+        paneBadge = document.createElement('div')
+        paneBadge.className = '__flow_visual_marker'
+        pane.appendChild(paneBadge)
+      }
+      Object.assign(paneBadge.style, {
+        position: 'absolute',
+        left: '12px',
+        top: '36px',
+        zIndex: '2147483647',
+        padding: '8px 12px',
+        font: '700 28px sans-serif',
+        color: colors[paneIndex] || '#111111',
+        background: '#ffffff',
+        border: `6px solid ${colors[paneIndex] || '#111111'}`,
+        pointerEvents: 'none',
+      })
+      paneBadge.textContent = labels[paneIndex] || `TAB-${paneIndex}`
 
-        pane.querySelectorAll('iframe').forEach((iframe, frameIndex) => {
-          try {
-            const doc = iframe.contentDocument
-            if (!doc?.body) return
-            let badge = doc.getElementById('__flow_visual_marker')
-            if (!badge) {
-              badge = doc.createElement('div')
-              badge.id = '__flow_visual_marker'
-              doc.body.appendChild(badge)
-            }
-            Object.assign(badge.style, {
-              position: 'fixed',
-              left: '12px',
-              top: '12px',
-              zIndex: '2147483647',
-              padding: '8px 12px',
-              font: '700 28px sans-serif',
-              color: colors[paneIndex] || '#111111',
-              background: '#ffffff',
-              border: `6px solid ${colors[paneIndex] || '#111111'}`,
-              pointerEvents: 'none',
-            })
-            badge.textContent = `${
-              labels[paneIndex] || `TAB-${paneIndex}`
-            } F${frameIndex}`
-          } catch {}
-        })
-      },
-    )
+      pane.querySelectorAll('iframe').forEach((iframe, frameIndex) => {
+        try {
+          const doc = iframe.contentDocument
+          if (!doc?.body) return
+          let badge = doc.getElementById('__flow_visual_marker')
+          if (!badge) {
+            badge = doc.createElement('div')
+            badge.id = '__flow_visual_marker'
+            doc.body.appendChild(badge)
+          }
+          Object.assign(badge.style, {
+            position: 'fixed',
+            left: '12px',
+            top: '12px',
+            zIndex: '2147483647',
+            padding: '8px 12px',
+            font: '700 28px sans-serif',
+            color: colors[paneIndex] || '#111111',
+            background: '#ffffff',
+            border: `6px solid ${colors[paneIndex] || '#111111'}`,
+            pointerEvents: 'none',
+          })
+          badge.textContent = `${labels[paneIndex] || `TAB-${paneIndex}`} F${frameIndex}`
+        } catch {}
+      })
+    })
   })
 }
 
@@ -1082,10 +972,7 @@ async function navigateTabTo(page, tabIndex, sectionIndex, nextCount = 0) {
       group.selectTab(tabIndex)
       const tab = group.tabs[tabIndex]
       const deadline = Date.now() + 30000
-      while (
-        (!tab.sections || !tab.sections[sectionIndex]) &&
-        Date.now() < deadline
-      ) {
+      while (!tab.sections?.[sectionIndex] && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 100))
       }
       const section = tab.sections?.[sectionIndex]
@@ -1105,7 +992,7 @@ async function navigateTabToEnd(page, tabIndex) {
       group.selectTab(tabIndex)
       const tab = group.tabs[tabIndex]
       const deadline = Date.now() + 30000
-      while ((!tab.sections || !tab.sections.length) && Date.now() < deadline) {
+      while (!tab.sections?.length && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 100))
       }
       const section = tab.sections?.[tab.sections.length - 1]
@@ -1120,8 +1007,7 @@ async function navigateTabToEnd(page, tabIndex) {
   )
   const state = await waitForSettled(page, `navigate tab ${tabIndex} end`)
   assert(
-    state.activeTab.currentLocation?.atEnd ||
-      state.activeTab.pagination?.location?.atEnd,
+    state.activeTab.currentLocation?.atEnd || state.activeTab.pagination?.location?.atEnd,
     'tab did not reach final page',
     state.activeTab,
   )
@@ -1134,10 +1020,7 @@ async function setTabToSectionFinalSpread(page, tabIndex, sectionIndex) {
       group.selectTab(tabIndex)
       const tab = group.tabs[tabIndex]
       const deadline = Date.now() + 30000
-      while (
-        (!tab.sections || !tab.sections[sectionIndex]) &&
-        Date.now() < deadline
-      ) {
+      while (!tab.sections?.[sectionIndex] && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 100))
       }
 
@@ -1173,9 +1056,7 @@ async function setTabToSectionFinalSpread(page, tabIndex, sectionIndex) {
 async function assertPendingPageTurnCover(page, label) {
   await setTabToSectionFinalSpread(page, 0, 38)
   const before = await readState(page)
-  const beforeFrameHashes = before.activePane?.frames.map(
-    (frame) => frame.textHash,
-  )
+  const beforeFrameHashes = before.activePane?.frames.map((frame) => frame.textHash)
   const beforeHeaderPath = before.activeTab?.pagination?.headerPath ?? []
   assert(beforeFrameHashes?.length, `${label}: setup has no active frames`, {
     before,
@@ -1204,26 +1085,21 @@ async function assertPendingPageTurnCover(page, label) {
     let pending
     while (Date.now() - start < 10000) {
       pending = await readState(page)
-      const pendingHashes = pending.activePane?.frames.map(
-        (frame) => frame.textHash,
-      )
+      const pendingHashes = pending.activePane?.frames.map((frame) => frame.textHash)
       if (JSON.stringify(pendingHashes) !== JSON.stringify(beforeFrameHashes)) {
         break
       }
       await wait(50)
     }
 
-    const pendingFrameHashes = pending?.activePane?.frames.map(
-      (frame) => frame.textHash,
-    )
+    const pendingFrameHashes = pending?.activePane?.frames.map((frame) => frame.textHash)
     assert(
       JSON.stringify(pendingFrameHashes) !== JSON.stringify(beforeFrameHashes),
       `${label}: body did not change while reportLocation was pending`,
       { beforeFrameHashes, pendingFrameHashes, pending },
     )
     assert(
-      JSON.stringify(pending.activeTab?.pagination?.headerPath ?? []) ===
-        JSON.stringify(beforeHeaderPath),
+      JSON.stringify(pending.activeTab?.pagination?.headerPath ?? []) === JSON.stringify(beforeHeaderPath),
       `${label}: pending state did not keep the old snapshot`,
       { beforeHeaderPath, pending: pending.activeTab?.pagination },
     )
@@ -1246,9 +1122,7 @@ async function switchByKeyboard(page, targetIndex, label, options = {}) {
   await resetCounters(page)
   const beforeRects = (await readState(page)).tabRects
   await page.keyboard.press(`Control+Digit${targetIndex + 1}`)
-  await page.evaluate(
-    () => new Promise((resolve) => requestAnimationFrame(() => resolve(null))),
-  )
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))))
   const immediate = await readState(page)
   const counters = await readCounters(page)
   const sums = sumCounters(counters)
@@ -1265,11 +1139,10 @@ async function switchByKeyboard(page, targetIndex, label, options = {}) {
   }
   beforeRects.forEach((before, i) => {
     const after = immediate.tabRects[i]
-    assert(
-      after && JSON.stringify(before.rect) === JSON.stringify(after.rect),
-      `${label}: tab-strip geometry moved`,
-      { before, after },
-    )
+    assert(after && JSON.stringify(before.rect) === JSON.stringify(after.rect), `${label}: tab-strip geometry moved`, {
+      before,
+      after,
+    })
   })
   return waitForSettled(page, label)
 }
@@ -1281,9 +1154,7 @@ async function switchByTabWheel(page, delta, expectedIndex, label) {
   assert(firstTab, `${label}: no tab rect`)
   await page.mouse.move(firstTab.x + 30, firstTab.y + 10)
   await page.mouse.wheel(0, delta)
-  await page.evaluate(
-    () => new Promise((resolve) => requestAnimationFrame(() => resolve(null))),
-  )
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))))
   const immediate = await readState(page)
   const counters = await readCounters(page)
   const sums = sumCounters(counters)
@@ -1309,13 +1180,9 @@ async function switchByTabWheel(page, delta, expectedIndex, label) {
 
 async function activeIframeCenter(page) {
   return page.evaluate(() => {
-    const frame = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"] iframe',
-    )
+    const frame = document.querySelector('[data-flow-reader-pane][aria-hidden="false"] iframe')
     const rect = frame?.getBoundingClientRect()
-    return rect
-      ? { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
-      : null
+    return rect ? { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 } : null
   })
 }
 
@@ -1323,9 +1190,7 @@ async function assertHiddenTabsUnchanged(page, operation, label) {
   const before = await waitForAllTabsReady(page, `${label} before`)
   const activeIndex = before.selectedIndex
   const beforeHidden = new Map(
-    before.tabs
-      .filter((tab) => tab.index !== activeIndex)
-      .map((tab) => [tab.id, tabPositionSignature(tab)]),
+    before.tabs.filter((tab) => tab.index !== activeIndex).map((tab) => [tab.id, tabPositionSignature(tab)]),
   )
   await operation()
   await waitForSettled(page, label)
@@ -1335,15 +1200,11 @@ async function assertHiddenTabsUnchanged(page, operation, label) {
     .forEach((tab) => {
       const previous = beforeHidden.get(tab.id)
       if (!previous) return
-      assert(
-        tabPositionSignature(tab) === previous,
-        `${label}: hidden tab changed`,
-        {
-          before: previous,
-          after: tabPositionSignature(tab),
-          tab,
-        },
-      )
+      assert(tabPositionSignature(tab) === previous, `${label}: hidden tab changed`, {
+        before: previous,
+        after: tabPositionSignature(tab),
+        tab,
+      })
     })
 }
 
@@ -1368,11 +1229,9 @@ async function main() {
   await setFlowWindowBounds(target, WINDOW_WIDTH, WINDOW_HEIGHT)
   await wait(1000)
   await page.waitForLoadState('domcontentloaded')
-  await page.waitForFunction(
-    () => Boolean(window.__TAURI_INTERNALS__?.invoke && window.reader),
-    null,
-    { timeout: 30000 },
-  )
+  await page.waitForFunction(() => Boolean(window.__TAURI_INTERNALS__?.invoke && window.reader), null, {
+    timeout: 30000,
+  })
 
   const imported =
     target.mode === 'browser'
@@ -1407,17 +1266,11 @@ async function main() {
   const results = []
 
   let state = await switchByKeyboard(page, 1, 'standard 1 keyboard A->B')
-  let counts = await markerCounts(
-    page,
-    path.join(outDir, 'standard1-keyboard-B.png'),
-  )
+  let counts = await markerCounts(page, path.join(outDir, 'standard1-keyboard-B.png'))
   assertOnlyMarker(counts, 1, 'standard 1 keyboard visual')
   assertRenderAligned(state, 'standard 1 keyboard settled')
   state = await switchByKeyboard(page, 0, 'standard 1 keyboard B->A')
-  counts = await markerCounts(
-    page,
-    path.join(outDir, 'standard1-keyboard-A.png'),
-  )
+  counts = await markerCounts(page, path.join(outDir, 'standard1-keyboard-A.png'))
   assertOnlyMarker(counts, 0, 'standard 1 keyboard visual back')
   await switchByTabWheel(page, 90, 1, 'standard 1 tab wheel A->B')
   counts = await markerCounts(page, path.join(outDir, 'standard1-wheel-B.png'))
@@ -1456,42 +1309,26 @@ async function main() {
   })
   await ensureSidebar(page, true)
   await navigateTabTo(page, 0, 22, 2)
-  const open1 = activeRenderSignature(
-    await waitForSettled(page, 'standard 2 sidebar open first'),
-  )
+  const open1 = activeRenderSignature(await waitForSettled(page, 'standard 2 sidebar open first'))
   await ensureSidebar(page, false)
   await waitForSettled(page, 'standard 2 sidebar closed')
   await ensureSidebar(page, true)
-  const open2 = activeRenderSignature(
-    await waitForSettled(page, 'standard 2 sidebar open second'),
-  )
-  assert(
-    open1 === open2,
-    'standard 2 sidebar open state did not reproduce exactly',
-    {
-      open1,
-      open2,
-    },
-  )
+  const open2 = activeRenderSignature(await waitForSettled(page, 'standard 2 sidebar open second'))
+  assert(open1 === open2, 'standard 2 sidebar open state did not reproduce exactly', {
+    open1,
+    open2,
+  })
 
   await setFlowWindowBounds(target, 1500, 940)
-  const restored1 = activeRenderSignature(
-    await waitForSettled(page, 'standard 2 restored first'),
-  )
+  const restored1 = activeRenderSignature(await waitForSettled(page, 'standard 2 restored first'))
   await maximizeFlowWindow(target)
   await waitForSettled(page, 'standard 2 maximized')
   await setFlowWindowBounds(target, 1500, 940)
-  const restored2 = activeRenderSignature(
-    await waitForSettled(page, 'standard 2 restored second'),
-  )
-  assert(
-    restored1 === restored2,
-    'standard 2 restored state did not reproduce exactly',
-    {
-      restored1,
-      restored2,
-    },
-  )
+  const restored2 = activeRenderSignature(await waitForSettled(page, 'standard 2 restored second'))
+  assert(restored1 === restored2, 'standard 2 restored state did not reproduce exactly', {
+    restored1,
+    restored2,
+  })
   results.push('standard 2 passed')
 
   await assertPendingPageTurnCover(page, 'pending page turn header/body gate')
@@ -1510,10 +1347,7 @@ async function main() {
   ]
   for (let i = 0; i < singleOps.length; i += 1) {
     await singleOps[i]()
-    assertRenderAligned(
-      await waitForSettled(page, `standard 3 op ${i}`),
-      `standard 3 op ${i}`,
-    )
+    assertRenderAligned(await waitForSettled(page, `standard 3 op ${i}`), `standard 3 op ${i}`)
   }
   results.push('standard 3 passed')
 
@@ -1528,44 +1362,27 @@ async function main() {
   await navigateTabTo(page, 1, 46, 1)
   await navigateTabToEnd(page, 2)
   await page.evaluate(() => window.reader.focusedGroup.selectTab(0))
-  const tab0OpenBefore = activeRenderSignature(
-    await waitForSettled(page, 'standard 4 tab0 open before'),
-  )
+  const tab0OpenBefore = activeRenderSignature(await waitForSettled(page, 'standard 4 tab0 open before'))
   await waitForAllTabsReady(page, 'standard 4 positioned')
 
   await switchByKeyboard(page, 1, 'standard 4 tab0->tab1')
   await ensureSidebar(page, false)
   await setFlowWindowBounds(target, 1450, 900)
-  assertRenderAligned(
-    await waitForSettled(page, 'standard 4 tab1 closed resized'),
-    'standard 4 tab1 closed resized',
-  )
+  assertRenderAligned(await waitForSettled(page, 'standard 4 tab1 closed resized'), 'standard 4 tab1 closed resized')
   await switchByKeyboard(page, 2, 'standard 4 tab1->tab2', { pure: false })
   await maximizeFlowWindow(target)
-  assertRenderAligned(
-    await waitForSettled(page, 'standard 4 tab2 maximized'),
-    'standard 4 tab2 maximized',
-  )
+  assertRenderAligned(await waitForSettled(page, 'standard 4 tab2 maximized'), 'standard 4 tab2 maximized')
   await ensureSidebar(page, true)
-  assertRenderAligned(
-    await waitForSettled(page, 'standard 4 tab2 open maximized'),
-    'standard 4 tab2 open maximized',
-  )
+  assertRenderAligned(await waitForSettled(page, 'standard 4 tab2 open maximized'), 'standard 4 tab2 open maximized')
   await setFlowWindowBounds(target, 1600, 1000)
   await switchByKeyboard(page, 0, 'standard 4 switch back tab0')
   await ensureSidebar(page, true)
-  const tab0OpenAfter = activeRenderSignature(
-    await waitForSettled(page, 'standard 4 tab0 open after'),
-  )
-  assert(
-    tab0OpenBefore === tab0OpenAfter,
-    'standard 4 tab0 same open layout did not reproduce exactly',
-    { before: tab0OpenBefore, after: tab0OpenAfter },
-  )
-  counts = await markerCounts(
-    page,
-    path.join(outDir, 'standard4-tab0-return.png'),
-  )
+  const tab0OpenAfter = activeRenderSignature(await waitForSettled(page, 'standard 4 tab0 open after'))
+  assert(tab0OpenBefore === tab0OpenAfter, 'standard 4 tab0 same open layout did not reproduce exactly', {
+    before: tab0OpenBefore,
+    after: tab0OpenAfter,
+  })
+  counts = await markerCounts(page, path.join(outDir, 'standard4-tab0-return.png'))
   assertOnlyMarker(counts, 0, 'standard 4 tab0 return visual')
   results.push('standard 4 passed')
 
@@ -1578,11 +1395,7 @@ async function main() {
     finalSelectedIndex: finalState.selectedIndex,
     finalInnerSize: finalState.innerSize,
   }
-  fs.writeFileSync(
-    path.join(outDir, 'result.json'),
-    `${JSON.stringify(result, null, 2)}\n`,
-    'utf8',
-  )
+  fs.writeFileSync(path.join(outDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`, 'utf8')
   console.log(JSON.stringify(result, null, 2))
   await browser.close()
 }

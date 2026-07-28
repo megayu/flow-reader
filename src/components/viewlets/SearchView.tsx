@@ -1,9 +1,4 @@
-import {
-  FoldVerticalIcon,
-  LocateFixedIcon,
-  UnfoldVerticalIcon,
-  XIcon,
-} from 'lucide-react'
+import { FoldVerticalIcon, LocateFixedIcon, UnfoldVerticalIcon, XIcon } from 'lucide-react'
 import {
   forwardRef,
   useCallback,
@@ -18,12 +13,12 @@ import Highlighter from 'react-highlight-words'
 
 import { useListSize } from '@/hooks/useList'
 import { useTranslation } from '@/hooks/useTranslation'
-import { IMatch, reader, useReaderSnapshot } from '@/models/reader'
+import { type IMatch, reader, useReaderSnapshot } from '@/models/reader'
 
 import { readerPageTooltipContentStyle } from '../AppTooltip'
 import { IconButton } from '../Button'
+import { OverlayScroll, PaneView, type PaneViewProps } from '../base/PaneView'
 import { Row } from '../Row'
-import { OverlayScroll, PaneView, PaneViewProps } from '../base/PaneView'
 import { Input } from '../ui/input'
 
 // When inputting with IME and storing state in `valtio`,
@@ -37,9 +32,7 @@ function useIntermediateKeyword() {
   const [keyword, setLocalKeyword] = useState(modelKeyword)
 
   useEffect(() => {
-    setLocalKeyword((current) =>
-      current === modelKeyword ? current : modelKeyword,
-    )
+    setLocalKeyword((current) => (current === modelKeyword ? current : modelKeyword))
   }, [modelKeyword])
 
   const setKeyword = useCallback((nextKeyword: string) => {
@@ -106,8 +99,7 @@ const SearchPane: React.FC = () => {
               title={t('action.locate_current')}
               Icon={LocateFixedIcon}
               onClick={() => {
-                const sectionIndex =
-                  reader.focusedBookTab?.currentSection?.index
+                const sectionIndex = reader.focusedBookTab?.currentSection?.index
                 if (sectionIndex === undefined) return
 
                 resultListRef.current?.locateSection(sectionIndex)
@@ -151,98 +143,86 @@ interface ResultListHandle {
   locateSection(sectionIndex: number): void
 }
 
-const ResultList = forwardRef<ResultListHandle, ResultListProps>(
-  ({ results, keyword, activeResultID }, ref) => {
-    const rowIndex = useMemo(() => createSearchRowIndex(results), [results])
-    const { outerRef, items, scrollbar, scrollToItem, totalSize } = useListSize(
-      rowIndex.length,
-    )
-    const pendingLocateSectionRef = useRef<number | null>(null)
-    const t = useTranslation('search')
+const ResultList = forwardRef<ResultListHandle, ResultListProps>(({ results, keyword, activeResultID }, ref) => {
+  const rowIndex = useMemo(() => createSearchRowIndex(results), [results])
+  const { outerRef, items, scrollbar, scrollToItem, totalSize } = useListSize(rowIndex.length)
+  const pendingLocateSectionRef = useRef<number | null>(null)
+  const t = useTranslation('search')
 
-    const sectionCount = results.length
-    const resultCount = results.reduce((a, r) => r.subitems!.length + a, 0)
+  const sectionCount = results.length
+  const resultCount = results.reduce((a, r) => r.subitems!.length + a, 0)
 
-    useLayoutEffect(() => {
-      const sectionIndex = pendingLocateSectionRef.current
-      if (sectionIndex === null) return
+  useLayoutEffect(() => {
+    const sectionIndex = pendingLocateSectionRef.current
+    if (sectionIndex === null) return
 
-      const group = rowIndex.groups.find(
-        ({ result }) => result.sectionIndex === sectionIndex,
-      )
-      pendingLocateSectionRef.current = null
-      if (!group || group.childCount === 0) return
+    const group = rowIndex.groups.find(({ result }) => result.sectionIndex === sectionIndex)
+    pendingLocateSectionRef.current = null
+    if (!group || group.childCount === 0) return
 
-      scrollToItem({ index: group.start, align: 'start' })
-    }, [rowIndex, scrollToItem])
+    scrollToItem({ index: group.start, align: 'start' })
+  }, [rowIndex, scrollToItem])
 
-    useImperativeHandle(
-      ref,
-      () => ({
-        locateSection(sectionIndex) {
-          const group = rowIndex.groups.find(
-            ({ result }) => result.sectionIndex === sectionIndex,
-          )
-          const result = reader.focusedBookTab?.results?.find(
-            (result) => result.sectionIndex === sectionIndex,
-          )
-          if (!group || !result) return
+  useImperativeHandle(
+    ref,
+    () => ({
+      locateSection(sectionIndex) {
+        const group = rowIndex.groups.find(({ result }) => result.sectionIndex === sectionIndex)
+        const result = reader.focusedBookTab?.results?.find((result) => result.sectionIndex === sectionIndex)
+        if (!group || !result) return
 
-          if (result.expanded) {
-            scrollToItem({ index: group.start, align: 'start' })
-            return
-          }
+        if (result.expanded) {
+          scrollToItem({ index: group.start, align: 'start' })
+          return
+        }
 
-          pendingLocateSectionRef.current = sectionIndex
-          result.expanded = true
-        },
-      }),
-      [rowIndex, scrollToItem],
-    )
+        pendingLocateSectionRef.current = sectionIndex
+        result.expanded = true
+      },
+    }),
+    [rowIndex, scrollToItem],
+  )
 
-    return (
-      <>
-        <div className="text-muted-foreground px-3 py-2 text-base">
-          {t('files.result')
-            .replace('{n}', '' + resultCount)
-            .replace('{m}', '' + sectionCount)}
+  return (
+    <>
+      <div className="text-muted-foreground px-3 py-2 text-base">
+        {t('files.result').replace('{n}', `${resultCount}`).replace('{m}', `${sectionCount}`)}
+      </div>
+      <OverlayScroll
+        ref={outerRef}
+        className="text-muted-foreground text-base"
+        containerClassName="min-h-0 flex-1"
+        reserveScrollbarWidth
+        scrollbar={{ ...scrollbar, scrollRef: outerRef }}
+      >
+        <div className="relative" style={{ height: totalSize }}>
+          {items.map(({ index, start, size }) => {
+            const row = searchRowAt(rowIndex, index)
+            return (
+              <div
+                key={row?.result?.id ?? index}
+                className="absolute top-0 right-0 left-0"
+                style={{
+                  height: size,
+                  transform: `translateY(${start}px)`,
+                }}
+              >
+                <ResultRow
+                  result={row?.result}
+                  depth={row?.depth}
+                  sectionIndex={row?.sectionIndex}
+                  href={row?.href}
+                  keyword={keyword}
+                  active={row?.result?.id === activeResultID}
+                />
+              </div>
+            )
+          })}
         </div>
-        <OverlayScroll
-          ref={outerRef}
-          className="text-muted-foreground text-base"
-          containerClassName="min-h-0 flex-1"
-          reserveScrollbarWidth
-          scrollbar={{ ...scrollbar, scrollRef: outerRef }}
-        >
-          <div className="relative" style={{ height: totalSize }}>
-            {items.map(({ index, start, size }) => {
-              const row = searchRowAt(rowIndex, index)
-              return (
-                <div
-                  key={row?.result?.id ?? index}
-                  className="absolute top-0 right-0 left-0"
-                  style={{
-                    height: size,
-                    transform: `translateY(${start}px)`,
-                  }}
-                >
-                  <ResultRow
-                    result={row?.result}
-                    depth={row?.depth}
-                    sectionIndex={row?.sectionIndex}
-                    href={row?.href}
-                    keyword={keyword}
-                    active={row?.result?.id === activeResultID}
-                  />
-                </div>
-              )
-            })}
-          </div>
-        </OverlayScroll>
-      </>
-    )
-  },
-)
+      </OverlayScroll>
+    </>
+  )
+})
 ResultList.displayName = 'ResultList'
 
 interface ResultRowProps {
@@ -253,14 +233,7 @@ interface ResultRowProps {
   keyword: string
   active: boolean
 }
-const ResultRow: React.FC<ResultRowProps> = ({
-  result,
-  depth,
-  sectionIndex,
-  href,
-  keyword,
-  active,
-}) => {
+const ResultRow: React.FC<ResultRowProps> = ({ result, depth, sectionIndex, href, keyword, active }) => {
   if (!result) return null
   const { expanded, subitems, id } = result
   let { excerpt, description } = result

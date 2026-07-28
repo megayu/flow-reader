@@ -2,6 +2,8 @@ import { useCallback } from 'react'
 
 import { useSettings } from '@/state'
 import {
+  type BackgroundPalette,
+  type BackgroundPresetId,
   backgroundOptions,
   backgroundPresets,
   createBackgroundPalette,
@@ -10,10 +12,9 @@ import {
   defaultCustomBackgroundColor,
   isDarkPaletteColor,
   normalizePaletteColor,
-  type BackgroundPalette,
-  type BackgroundPresetId,
 } from '@/styles/theme'
 
+export type { BackgroundPalette }
 export {
   backgroundOptions,
   backgroundPresets,
@@ -24,15 +25,14 @@ export {
   isDarkPaletteColor,
   normalizePaletteColor,
 }
-export type { BackgroundPalette }
 
 const legacyBackgroundPresetMap: Record<number, BackgroundPresetId> = {
   [-1]: 'clean',
-  [1]: 'clean',
+  1: 'clean',
   [-2]: 'sepia',
   [-3]: 'sage',
-  [3]: 'mist',
-  [5]: 'mist',
+  3: 'mist',
+  5: 'mist',
   [customBackgroundValue]: 'custom',
 }
 
@@ -65,9 +65,5 @@ export function useBackground() {
     [setSettings],
   )
 
-  return [
-    backgroundClassNames.contentClassName,
-    setBackground,
-    backgroundClassNames,
-  ] as const
+  return [backgroundClassNames.contentClassName, setBackground, backgroundClassNames] as const
 }

@@ -2,21 +2,17 @@ import { useCallback, useRef, useState } from 'react'
 
 import type { BookTab } from '../../models/reader'
 
-import { initialChapterFind, type ChapterFindState } from './ChapterFind'
+import { type ChapterFindState, initialChapterFind } from './ChapterFind'
 
 function getSelectedText(windows: readonly Window[]) {
   for (const win of windows) {
     try {
       const selection = win.getSelection()
       const text = selection?.toString().replace(/\s+/g, ' ').trim()
-      if (
-        text &&
-        !selection?.isCollapsed &&
-        selection?.anchorNode?.isConnected
-      ) {
+      if (text && !selection?.isCollapsed && selection?.anchorNode?.isConnected) {
         return text
       }
-    } catch (error) {
+    } catch (_error) {
       // The iframe may have been detached while handling a shortcut.
     }
   }
@@ -51,9 +47,7 @@ export function useChapterFindController({
     const selectedText = getSelectedText(activeFrameWindows)
 
     onOpen()
-    activeFrameWindows.forEach((frame) =>
-      frame.getSelection()?.removeAllRanges(),
-    )
+    activeFrameWindows.forEach((frame) => frame.getSelection()?.removeAllRanges())
     tab.annotationRange = undefined
     tab.annotationCfi = undefined
     setState((current) => ({

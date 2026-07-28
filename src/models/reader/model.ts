@@ -1,84 +1,63 @@
-import React from 'react'
+import type React from 'react'
 import { proxy, ref, snapshot, useSnapshot } from 'valtio'
 
-import {
-  AnnotationColor,
-  AnnotationType,
-  createAnnotationSpine,
-} from '@/annotation'
+import type { Book, Location, Rendition } from '@flow/epubjs'
+import ePub, { Rendition as EpubRendition } from '@flow/epubjs'
+import type Navigation from '@flow/epubjs/navigation'
+import type { NavItem } from '@flow/epubjs/navigation'
+import type { RenditionSpread } from '@flow/epubjs/rendition'
+import epubRequest from '@flow/epubjs/request'
+import type Section from '@flow/epubjs/section'
+import { type AnnotationColor, type AnnotationType, createAnnotationSpine } from '@/annotation'
 import { getBookDisplayTitle } from '@/book'
 import { IS_SERVER } from '@/env'
 import { openSupportedExternalUrl } from '@/externalLink'
 import { createId } from '@/id'
 import { normalizeHrefPath, sameHref } from '@/noteLinks'
+import { emitReaderOpenError, type ReaderOpenErrorStage } from '@/reader/errorEvents'
 import {
-  emitReaderOpenError,
-  type ReaderOpenErrorStage,
-} from '@/reader/errorEvents'
-import {
-  BookReaderSource,
-  BookTextReplaceTarget,
-  BookRecord,
-  ReadingSpreadRecord,
+  type BookReaderSource,
+  type BookRecord,
+  type BookTextReplaceTarget,
   cleanupExternalBook,
   db,
+  type ReadingSpreadRecord,
   unloadBookSearchText,
 } from '@/storage'
-import { BodyTextDetectionCache, defaultStyle } from '@/styles'
-import type { Rendition, Location, Book } from '@flow/epubjs'
-import ePub, { Rendition as EpubRendition } from '@flow/epubjs'
-import type { NavItem } from '@flow/epubjs/navigation'
-import type Navigation from '@flow/epubjs/navigation'
-import type { RenditionSpread } from '@flow/epubjs/rendition'
-import epubRequest from '@flow/epubjs/request'
-import type Section from '@flow/epubjs/section'
+import { type BodyTextDetectionCache, defaultStyle } from '@/styles'
 
-import { dfs, find, INode } from '../tree'
+import { dfs, find, type INode } from '../tree'
 
 import { BookLayoutTransactionController } from './layoutTransaction'
-import {
-  BookNavigationController,
-  displayFromSelector,
-  displayImage,
-  pageIndexForCfi,
-} from './navigation'
+import { BookNavigationController, displayFromSelector, displayImage, pageIndexForCfi } from './navigation'
 import {
   calculateReadingPercentage,
   fallbackReadingPercentage,
-  hydrateReflowableSpread,
-  mergeConfigurationWithSpread,
-  readingSpreadSectionIndexes,
-  snapshotReflowableSpread,
   type HeaderPathItem,
+  hydrateReflowableSpread,
   type LocationRequestIntent,
+  mergeConfigurationWithSpread,
   type PaginationSnapshot,
   type RelocatedEventMeta,
+  readingSpreadSectionIndexes,
   type SectionNavAnchorEntry,
   type SectionNavEntry,
   type SectionNavIndex,
+  snapshotReflowableSpread,
 } from './pagination'
-import { BookPersistenceController } from './persistence'
 import type { BookPersistenceHost } from './persistence'
-import {
-  BookSearchController,
-  displaySearchResult,
-  searchBook,
-  searchInSection,
-  searchInSectionAsync,
-} from './search'
+import { BookPersistenceController } from './persistence'
+import { BookSearchController, displaySearchResult, searchBook, searchInSection, searchInSectionAsync } from './search'
 
-export { readingOrderStartSectionIndex } from './pagination'
 export type { HeaderPathItem, PaginationSnapshot } from './pagination'
+export { readingOrderStartSectionIndex } from './pagination'
 
 function updateIndex(array: any[], deletedItemIndex: number) {
   const last = array.length - 1
   return deletedItemIndex > last ? last : deletedItemIndex
 }
 
-export function compareHref(
-  sectionHref: string | undefined,
-  navitemHref: string | undefined,
-) {
+export function compareHref(sectionHref: string | undefined, navitemHref: string | undefined) {
   return sameHref(sectionHref, navitemHref)
 }
 
@@ -109,19 +88,10 @@ function appendUrlQuery(url: string, name: string, value: string | number) {
 }
 
 function documentBody(document: Document) {
-  return (
-    document.body ??
-    document.getElementsByTagName('body')[0] ??
-    document.documentElement
-  )
+  return document.body ?? document.getElementsByTagName('body')[0] ?? document.documentElement
 }
 
-function patchTextNode(
-  textNode: Text | undefined,
-  target: BookTextReplaceTarget,
-  oldText: string,
-  newText: string,
-) {
+function patchTextNode(textNode: Text | undefined, target: BookTextReplaceTarget, oldText: string, newText: string) {
   if (!textNode?.isConnected) return false
   const text = textNode.textContent ?? ''
   if (text !== target.textNodeText) return false
@@ -129,8 +99,7 @@ function patchTextNode(
     return false
   }
 
-  const updatedText =
-    text.slice(0, target.startOffset) + newText + text.slice(target.endOffset)
+  const updatedText = text.slice(0, target.startOffset) + newText + text.slice(target.endOffset)
   textNode.textContent = updatedText
 
   const parent = textNode.parentElement
@@ -141,15 +110,9 @@ function patchTextNode(
   return true
 }
 
-function matchingTextNodeInElement(
-  element: Element | undefined,
-  targetText: string,
-) {
+function matchingTextNodeInElement(element: Element | undefined, targetText: string) {
   if (!element) return undefined
-  const walker = element.ownerDocument.createTreeWalker(
-    element,
-    NodeFilter.SHOW_TEXT,
-  )
+  const walker = element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_TEXT)
   const matches: Text[] = []
   let current = walker.nextNode()
   while (current) {
@@ -178,9 +141,7 @@ function patchDocumentTextNode(
   }
 
   const generatedParagraphs = Array.from(
-    body.querySelectorAll<HTMLElement>(
-      '[data-flow-body-text="true"] > p, p[data-flow-body-text="true"]',
-    ),
+    body.querySelectorAll<HTMLElement>('[data-flow-body-text="true"] > p, p[data-flow-body-text="true"]'),
   )
   if (target.paragraphIndex !== undefined) {
     const paragraph = generatedParagraphs[target.paragraphIndex]
@@ -189,10 +150,7 @@ function patchDocumentTextNode(
     return false
   } else {
     const heading = body.querySelector<HTMLElement>('h2.flow-txt-chapter')
-    const textNode = matchingTextNodeInElement(
-      heading ?? undefined,
-      target.textNodeText,
-    )
+    const textNode = matchingTextNodeInElement(heading ?? undefined, target.textNodeText)
     if (patchTextNode(textNode, target, oldText, newText)) return true
 
     if (heading) return false
@@ -229,18 +187,8 @@ function markRuntimeObject<T extends object>(value: T) {
 function createVersionedEpubRequest(contentVersion?: number) {
   if (!contentVersion) return undefined
 
-  return (
-    url: string,
-    type?: string | null,
-    withCredentials?: boolean,
-    headers?: Record<string, string>,
-  ) =>
-    epubRequest(
-      appendUrlQuery(url, 'flowContentVersion', contentVersion),
-      type,
-      withCredentials,
-      headers,
-    )
+  return (url: string, type?: string | null, withCredentials?: boolean, headers?: Record<string, string>) =>
+    epubRequest(appendUrlQuery(url, 'flowContentVersion', contentVersion), type, withCredentials, headers)
 }
 
 const imageArtifactSelector = [
@@ -278,8 +226,7 @@ const imageTitleSelector = [
   '[epub\\:type~="chapter"] > header',
 ].join(',')
 
-const decorativeImagePattern =
-  /(cover|decor|divider|flower|glyph|icon|note|ornament|title|zhu|注|题|章|節|节)/i
+const decorativeImagePattern = /(cover|decor|divider|flower|glyph|icon|note|ornament|title|zhu|注|题|章|節|节)/i
 const metadataElementTags = new Set(['LINK', 'META', 'SCRIPT', 'STYLE'])
 
 function textLength(value: string | null | undefined) {
@@ -302,10 +249,7 @@ function siblingTextLength(element: Element) {
     if (node === element) continue
     if (node.nodeType === Node.TEXT_NODE) {
       length += textLength(node.textContent)
-    } else if (
-      node instanceof Element &&
-      !NON_TEXT_SIBLING_TAGS.has(elementName(node))
-    ) {
+    } else if (node instanceof Element && !NON_TEXT_SIBLING_TAGS.has(elementName(node))) {
       length += textLength(node.textContent)
     }
   }
@@ -323,12 +267,8 @@ function numericDimension(value: string | null) {
 }
 
 function imageDeclaredSize(image: HTMLImageElement) {
-  const width =
-    numericDimension(image.getAttribute('width')) ??
-    numericDimension(image.style.width)
-  const height =
-    numericDimension(image.getAttribute('height')) ??
-    numericDimension(image.style.height)
+  const width = numericDimension(image.getAttribute('width')) ?? numericDimension(image.style.width)
+  const height = numericDimension(image.getAttribute('height')) ?? numericDimension(image.style.height)
 
   return { height, width }
 }
@@ -337,28 +277,22 @@ export function isNearDocumentStart(element: Element) {
   const body = documentBody(element.ownerDocument)
   if (!body) return false
 
-  const walker = element.ownerDocument.createTreeWalker(
-    body,
-    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
-    {
-      acceptNode(node) {
-        if (node.nodeType === Node.TEXT_NODE) {
-          return textLength(node.textContent)
-            ? NodeFilter.FILTER_ACCEPT
-            : NodeFilter.FILTER_REJECT
-        }
+  const walker = element.ownerDocument.createTreeWalker(body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        return textLength(node.textContent) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
+      }
 
-        const current = node as Element
-        if (current === element) return NodeFilter.FILTER_ACCEPT
-        if (current.closest('script, style')) return NodeFilter.FILTER_REJECT
-        if (['IMG', 'SVG', 'PICTURE'].includes(elementName(current))) {
-          return NodeFilter.FILTER_ACCEPT
-        }
+      const current = node as Element
+      if (current === element) return NodeFilter.FILTER_ACCEPT
+      if (current.closest('script, style')) return NodeFilter.FILTER_REJECT
+      if (['IMG', 'SVG', 'PICTURE'].includes(elementName(current))) {
+        return NodeFilter.FILTER_ACCEPT
+      }
 
-        return NodeFilter.FILTER_SKIP
-      },
+      return NodeFilter.FILTER_SKIP
     },
-  )
+  })
 
   let meaningful = 0
   let node = walker.nextNode()
@@ -403,17 +337,11 @@ function isImageOnlyBlock(image: HTMLImageElement) {
 }
 
 function isLeadingTitleImage(image: HTMLImageElement) {
-  return (
-    isNearDocumentStart(image) &&
-    isImageOnlyBlock(image) &&
-    nextHeadingTextLength(image) > 0
-  )
+  return isNearDocumentStart(image) && isImageOnlyBlock(image) && nextHeadingTextLength(image) > 0
 }
 
 function collectSectionImages(section: ISection): ImageEntry[] {
-  return [...(section.document?.querySelectorAll('img') ?? [])].map(
-    (el, index) => classifyImage(el, index),
-  )
+  return [...(section.document?.querySelectorAll('img') ?? [])].map((el, index) => classifyImage(el, index))
 }
 
 function classifyImage(image: HTMLImageElement, index: number): ImageEntry {
@@ -431,25 +359,16 @@ function classifyImage(image: HTMLImageElement, index: number): ImageEntry {
   const siblingText = siblingTextLength(image)
   const parentText = textLength(image.parentElement?.textContent)
   const inlineParent = !!image.closest('p, span, a, em, strong, b, i')
-  const likelyInlineBySize =
-    (height !== undefined && height <= 48) ||
-    (width !== undefined && width <= 48)
+  const likelyInlineBySize = (height !== undefined && height <= 48) || (width !== undefined && width <= 48)
   const likelySmallIcon =
-    (height !== undefined &&
-      height <= 72 &&
-      width !== undefined &&
-      width <= 72) ||
+    (height !== undefined && height <= 72 && width !== undefined && width <= 72) ||
     (likelyInlineBySize && decorativeImagePattern.test(sourceText))
 
   let reason: ImageFilterReason | undefined
 
   if (image.closest(imageArtifactSelector) || likelySmallIcon) {
     reason = 'icon'
-  } else if (
-    inlineParent &&
-    (siblingText > 0 || parentText >= 8) &&
-    (likelyInlineBySize || siblingText > 0)
-  ) {
+  } else if (inlineParent && (siblingText > 0 || parentText >= 8) && (likelyInlineBySize || siblingText > 0)) {
     reason = 'inlineGlyph'
   } else if (
     image.closest(imageTitleSelector) ||
@@ -457,11 +376,6 @@ function classifyImage(image: HTMLImageElement, index: number): ImageEntry {
     (isNearDocumentStart(image) && decorativeImagePattern.test(sourceText))
   ) {
     reason = 'titleArt'
-  } else if (
-    decorativeImagePattern.test(sourceText) &&
-    isNearDocumentStart(image)
-  ) {
-    reason = 'decorative'
   }
 
   return {
@@ -476,10 +390,7 @@ function compareDefinition(d1: string, d2: string) {
   return d1.toLowerCase() === d2.toLowerCase()
 }
 
-function reassignAnnotationBookIds(
-  annotations: BookRecord['annotations'],
-  bookId: string,
-) {
+function reassignAnnotationBookIds(annotations: BookRecord['annotations'], bookId: string) {
   return annotations.map((annotation) => ({
     ...annotation,
     bookId,
@@ -509,12 +420,7 @@ export interface ISection extends Section {
   resourceAvailable?: boolean
 }
 
-export type ImageFilterReason =
-  | 'decorative'
-  | 'duplicate'
-  | 'icon'
-  | 'inlineGlyph'
-  | 'titleArt'
+export type ImageFilterReason = 'decorative' | 'duplicate' | 'icon' | 'inlineGlyph' | 'titleArt'
 
 export interface ImageEntry {
   hiddenByDefault: boolean
@@ -528,9 +434,7 @@ export interface BookOverlayState {
   definitions: BookRecord['definitions']
 }
 
-export type BookTypographyConfiguration = NonNullable<
-  BookRecord['configuration']
->['typography']
+export type BookTypographyConfiguration = NonNullable<BookRecord['configuration']>['typography']
 
 class BaseTab {
   constructor(
@@ -594,9 +498,7 @@ export class BookTab extends BaseTab {
   contentReloadTarget?: string
   private spreadAnchorsByLayout = new Map<string, ReadingSpreadRecord>()
   private navRefreshGeneration = 0
-  private readonly layoutTransactions = ref(
-    new BookLayoutTransactionController(),
-  )
+  private readonly layoutTransactions = ref(new BookLayoutTransactionController())
   private readonly persistence = ref(new BookPersistenceController())
   private sectionDocumentAccessSeq = 0
   private sectionDocumentAccess = new Map<number, number>()
@@ -609,10 +511,7 @@ export class BookTab extends BaseTab {
   }
 
   get isScrolledDocument() {
-    return (
-      (this.rendition as any)?.settings?.globalLayoutProperties?.flow ===
-      'scrolled-doc'
-    )
+    return (this.rendition as any)?.settings?.globalLayoutProperties?.flow === 'scrolled-doc'
   }
 
   currentLocation?: Location
@@ -628,7 +527,7 @@ export class BookTab extends BaseTab {
 
     try {
       return this.epub?.spine?.get(target) as ISection | undefined
-    } catch (error) {
+    } catch (_error) {
       // Invalid CFIs are ignored so callers can fall back to the current flow.
     }
   }
@@ -651,11 +550,7 @@ export class BookTab extends BaseTab {
   }
 
   private initialDisplayTarget() {
-    const candidates = [
-      this.currentAnchorCfi(),
-      this.book.cfi,
-      (this.epub?.spine?.get() as ISection | undefined)?.href,
-    ]
+    const candidates = [this.currentAnchorCfi(), this.book.cfi, (this.epub?.spine?.get() as ISection | undefined)?.href]
 
     return candidates.find((target) => this.sectionForDisplayTarget(target))
   }
@@ -672,10 +567,7 @@ export class BookTab extends BaseTab {
     this.layoutTransactions.resize(this, width, height)
   }
 
-  resolveDisplayTarget(
-    target?: string,
-    fallback: 'current' | 'initial' | false = 'current',
-  ) {
+  resolveDisplayTarget(target?: string, fallback: 'current' | 'initial' | false = 'current') {
     if (target && this.sectionForDisplayTarget(target)) return target
     if (target && /^\d*\.?\d+$/.test(target)) return target
 
@@ -695,14 +587,10 @@ export class BookTab extends BaseTab {
       returnable?: boolean
     } = {},
   ) {
-    const resolvedTarget = this.resolveDisplayTarget(
-      target,
-      target ? false : 'current',
-    )
+    const resolvedTarget = this.resolveDisplayTarget(target, target ? false : 'current')
     if (!resolvedTarget || !this.rendition) return
 
-    const resolvedSection =
-      preferredSection ?? this.sectionForDisplayTarget(resolvedTarget)
+    const resolvedSection = preferredSection ?? this.sectionForDisplayTarget(resolvedTarget)
     this.preferredSectionIndex = resolvedSection?.index
     this.allowLocationJump = true
     this.navigationDirection = undefined
@@ -715,13 +603,10 @@ export class BookTab extends BaseTab {
         const display = this.rendition!.display(resolvedTarget, {
           alignTargetAsSpreadStart,
         })
-        const requestId = this.trackRenditionLocationRequest(
-          previousRequestId,
-          {
-            anchorTarget: resolvedTarget,
-            updateAnchor: true,
-          },
-        )
+        const requestId = this.trackRenditionLocationRequest(previousRequestId, {
+          anchorTarget: resolvedTarget,
+          updateAnchor: true,
+        })
         await display
         this.commitPendingRenditionLocation(requestId)
       } catch (error) {
@@ -750,44 +635,19 @@ export class BookTab extends BaseTab {
       alignTargetAsSpreadStart: true,
     })
   }
-  async displayTarget(
-    section: ISection,
-    target?: string,
-    { alignTargetAsSpreadStart = false } = {},
-  ) {
-    await this.displayResolvedTarget(
-      target?.startsWith('#')
-        ? `${section.href}${target}`
-        : (target ?? section.href),
-      {
-        alignTargetAsSpreadStart,
-        preferredSection: section,
-        returnable: false,
-      },
-    )
-  }
-
-  async displayFromSelector(
-    selector: string,
-    section: ISection,
-    returnable = true,
-    alignTargetAsSpreadStart = false,
-  ) {
-    return displayFromSelector(
-      this,
-      selector,
-      section,
-      returnable,
+  async displayTarget(section: ISection, target?: string, { alignTargetAsSpreadStart = false } = {}) {
+    await this.displayResolvedTarget(target?.startsWith('#') ? `${section.href}${target}` : (target ?? section.href), {
       alignTargetAsSpreadStart,
-    )
+      preferredSection: section,
+      returnable: false,
+    })
   }
 
-  async displayImage(
-    section: ISection,
-    src: string,
-    index: number,
-    returnable = true,
-  ) {
+  async displayFromSelector(selector: string, section: ISection, returnable = true, alignTargetAsSpreadStart = false) {
+    return displayFromSelector(this, selector, section, returnable, alignTargetAsSpreadStart)
+  }
+
+  async displayImage(section: ISection, src: string, index: number, returnable = true) {
     return displayImage(this, section, src, index, returnable)
   }
 
@@ -860,10 +720,7 @@ export class BookTab extends BaseTab {
 
   async promoteExternalBook(libraryBook: BookRecord) {
     if (this.book.scope !== 'external') return
-    if (
-      !this.book.contentHash ||
-      this.book.contentHash !== libraryBook.contentHash
-    ) {
+    if (!this.book.contentHash || this.book.contentHash !== libraryBook.contentHash) {
       return
     }
 
@@ -874,10 +731,7 @@ export class BookTab extends BaseTab {
     })
 
     const stateChanges: Partial<BookRecord> = {
-      annotations: reassignAnnotationBookIds(
-        this.book.annotations,
-        libraryBook.id,
-      ),
+      annotations: reassignAnnotationBookIds(this.book.annotations, libraryBook.id),
       cfi: this.book.cfi,
       configuration: this.book.configuration,
       definitions: this.book.definitions,
@@ -914,9 +768,7 @@ export class BookTab extends BaseTab {
           _contentPageCount?: number
         }>
       | undefined
-    const selectionView = selectionDocument?.defaultView
-      ? this.viewForWindow(selectionDocument.defaultView)
-      : undefined
+    const selectionView = selectionDocument?.defaultView ? this.viewForWindow(selectionDocument.defaultView) : undefined
     const view =
       selectionView ??
       views?.find(
@@ -928,28 +780,17 @@ export class BookTab extends BaseTab {
       )
     if (!view) return false
 
-    const frameDocuments = [
-      selectionDocument,
-      view.contents?.document,
-      view.window?.document,
-      view.document,
-    ].filter((document, index, documents): document is Document => {
-      return !!document && documents.indexOf(document) === index
-    })
+    const frameDocuments = [selectionDocument, view.contents?.document, view.window?.document, view.document].filter(
+      (document, index, documents): document is Document => {
+        return !!document && documents.indexOf(document) === index
+      },
+    )
     const patchedFrame = frameDocuments.some((document) =>
-      patchDocumentTextNode(
-        document,
-        target,
-        oldText,
-        newText,
-        selectionTextNode,
-      ),
+      patchDocumentTextNode(document, target, oldText, newText, selectionTextNode),
     )
     if (!patchedFrame) return false
 
-    const sectionDocument = (view.section as any)?.document as
-      | Document
-      | undefined
+    const sectionDocument = (view.section as any)?.document as Document | undefined
     if (sectionDocument && !frameDocuments.includes(sectionDocument)) {
       patchDocumentTextNode(sectionDocument, target, oldText, newText)
     }
@@ -981,9 +822,7 @@ export class BookTab extends BaseTab {
     this.persistence.updateBook(this.persistenceHost(), changes)
   }
 
-  private createCurrentPositionUpdate(
-    percentage?: number,
-  ): Partial<BookRecord> | undefined {
+  private createCurrentPositionUpdate(percentage?: number): Partial<BookRecord> | undefined {
     if (!this.currentLocation || !this.sections) return
 
     percentage ??= calculateReadingPercentage({
@@ -998,17 +837,11 @@ export class BookTab extends BaseTab {
     return {
       cfi,
       percentage,
-      configuration: mergeConfigurationWithSpread(
-        this.book.configuration,
-        this.currentSpreadState,
-      ),
+      configuration: mergeConfigurationWithSpread(this.book.configuration, this.currentSpreadState),
     }
   }
 
-  async flushForClose({
-    flushStorage = true,
-    recordReadingPosition = true,
-  } = {}) {
+  async flushForClose({ flushStorage = true, recordReadingPosition = true } = {}) {
     await this.persistence.flushForClose({
       host: this.persistenceHost(),
       flushStorage,
@@ -1020,17 +853,11 @@ export class BookTab extends BaseTab {
   annotationCfi?: string
   setAnnotationRange(cfi: string, target?: EventTarget | null) {
     const views = this.rendition?.manager?.views?._views ?? []
-    const targetNode =
-      target && 'nodeType' in target ? (target as unknown as Node) : undefined
-    const doc =
-      target && 'ownerDocument' in target
-        ? (target.ownerDocument as Document | undefined)
-        : undefined
+    const targetNode = target && 'nodeType' in target ? (target as unknown as Node) : undefined
+    const doc = target && 'ownerDocument' in target ? (target.ownerDocument as Document | undefined) : undefined
     // epubjs mark callbacks originate from SVG overlays beside the iframe.
     const targetView =
-      (targetNode
-        ? views.find((view: any) => view.element?.contains(targetNode))
-        : undefined) ??
+      (targetNode ? views.find((view: any) => view.element?.contains(targetNode)) : undefined) ??
       (doc?.defaultView ? this.viewForWindow(doc.defaultView) : undefined)
     const candidates = targetView ? [targetView] : [this.view, ...views]
 
@@ -1042,7 +869,7 @@ export class BookTab extends BaseTab {
           this.annotationCfi = cfi
           return true
         }
-      } catch (error) {
+      } catch (_error) {
         // The CFI only resolves in the view that owns the annotation.
       }
     }
@@ -1059,11 +886,7 @@ export class BookTab extends BaseTab {
     this.bumpOverlayVersion()
   }
 
-  private commitPaginationSnapshot(
-    location: Location,
-    percentage?: number,
-    activeSection = this.section,
-  ) {
+  private commitPaginationSnapshot(location: Location, percentage?: number, activeSection = this.section) {
     const manager = this.rendition?.manager
     const divisor = manager?.layout?.divisor
     const paginationModel = manager?.paginationModel?.()
@@ -1072,10 +895,7 @@ export class BookTab extends BaseTab {
     this.paginationSnapshot = {
       location,
       percentage,
-      spreadDivisor:
-        typeof divisor === 'number' && Number.isFinite(divisor) && divisor > 0
-          ? divisor
-          : 1,
+      spreadDivisor: typeof divisor === 'number' && Number.isFinite(divisor) && divisor > 0 ? divisor : 1,
       writingMode: paginationModel?.writingMode,
       pageProgressionDirection: paginationModel?.pageProgressionDirection,
       spreadSlotOrder: paginationModel?.spreadSlotOrder,
@@ -1095,10 +915,7 @@ export class BookTab extends BaseTab {
     return typeof requestId === 'number' ? requestId : undefined
   }
 
-  trackRenditionLocationRequest(
-    previousRequestId: number | undefined,
-    intent: LocationRequestIntent,
-  ) {
+  trackRenditionLocationRequest(previousRequestId: number | undefined, intent: LocationRequestIntent) {
     const requestId = this.currentRenditionLocationRequestId()
     if (requestId === undefined || requestId === previousRequestId) return
 
@@ -1110,20 +927,14 @@ export class BookTab extends BaseTab {
     const rendition = this.rendition as any
     if (!rendition) return
 
-    const requestId =
-      typeof rendition._locationRequestId === 'number'
-        ? rendition._locationRequestId + 1
-        : 1
+    const requestId = typeof rendition._locationRequestId === 'number' ? rendition._locationRequestId + 1 : 1
     rendition._locationRequestId = requestId
     this.acceptedLocationRequests.set(requestId, intent)
     return requestId
   }
 
   commitPendingRenditionLocation(requestId: number | undefined) {
-    if (
-      typeof requestId !== 'number' ||
-      !this.acceptedLocationRequests.has(requestId)
-    ) {
+    if (typeof requestId !== 'number' || !this.acceptedLocationRequests.has(requestId)) {
       return
     }
 
@@ -1178,11 +989,7 @@ export class BookTab extends BaseTab {
           return
         }
 
-        const currentSpreadState = snapshotReflowableSpread(
-          this.rendition?.manager,
-          this.layoutStyleSignature,
-          loc,
-        )
+        const currentSpreadState = snapshotReflowableSpread(this.rendition?.manager, this.layoutStyleSignature, loc)
         this.currentLocation = loc
         this.currentSpreadState = currentSpreadState
         if (locationIntent.updateAnchor) {
@@ -1195,11 +1002,7 @@ export class BookTab extends BaseTab {
         })
         const activeSection = this.commitVisibleSections(loc, visibleSections)
         this.updateRuntimeAnchorCfi(loc, locationIntent)
-        void this.refreshVisibleNavItems(
-          loc,
-          activeSection,
-          ++this.navRefreshGeneration,
-        )
+        void this.refreshVisibleNavItems(loc, activeSection, ++this.navRefreshGeneration)
         this.commitPaginationSnapshot(loc, percentage, activeSection)
         this.clearLocationIntent()
         this.rendered = true
@@ -1219,11 +1022,7 @@ export class BookTab extends BaseTab {
       return
     }
 
-    const currentSpreadState = snapshotReflowableSpread(
-      this.rendition?.manager,
-      this.layoutStyleSignature,
-      loc,
-    )
+    const currentSpreadState = snapshotReflowableSpread(this.rendition?.manager, this.layoutStyleSignature, loc)
     this.currentLocation = loc
     this.currentSpreadState = currentSpreadState
     if (locationIntent.updateAnchor) {
@@ -1239,18 +1038,12 @@ export class BookTab extends BaseTab {
 
     if (this.sections) {
       const start = loc.start
-      const activeNavItem =
-        activeSection?.navitem ??
-        this.mapSectionToNavItem(activeSection?.href ?? start.href)
+      const activeNavItem = activeSection?.navitem ?? this.mapSectionToNavItem(activeSection?.href ?? start.href)
       if (activeSection && activeNavItem) {
         activeSection.navitem = activeNavItem
       }
       this.expandNavPath(activeNavItem)
-      void this.refreshVisibleNavItems(
-        loc,
-        activeSection,
-        ++this.navRefreshGeneration,
-      )
+      void this.refreshVisibleNavItems(loc, activeSection, ++this.navRefreshGeneration)
 
       const positionUpdate = this.createCurrentPositionUpdate(percentage)
       if (positionUpdate) {
@@ -1263,10 +1056,7 @@ export class BookTab extends BaseTab {
     this.rendered = true
   }
 
-  private updateRuntimeAnchorCfi(
-    location: Location,
-    intent: LocationRequestIntent,
-  ) {
+  private updateRuntimeAnchorCfi(location: Location, intent: LocationRequestIntent) {
     if (!intent.updateAnchor) return
 
     const anchor = this.sectionForDisplayTarget(intent.anchorTarget)
@@ -1291,9 +1081,7 @@ export class BookTab extends BaseTab {
     this.bumpOverlayVersion()
   }
   undefine(def: string) {
-    const definitions = this.book.definitions.filter(
-      (d) => !compareDefinition(d, def),
-    )
+    const definitions = this.book.definitions.filter((d) => !compareDefinition(d, def))
     if (definitions.length === this.book.definitions.length) return
 
     this.updateBook({ definitions })
@@ -1361,9 +1149,7 @@ export class BookTab extends BaseTab {
     this.bumpOverlayVersion()
   }
   removeAnnotation(cfi: string) {
-    const annotations = snapshot(this.book.annotations).filter(
-      (a) => a.cfi !== cfi,
-    )
+    const annotations = snapshot(this.book.annotations).filter((a) => a.cfi !== cfi)
     if (annotations.length === this.book.annotations.length) return
 
     this.updateBook({ annotations })
@@ -1420,10 +1206,7 @@ export class BookTab extends BaseTab {
     if (changed) this.tocVersion++
   }
 
-  findNavItem(
-    target: Pick<INavItem, 'id' | 'href'>,
-    nodes = this.nav?.toc,
-  ): INavItem | undefined {
+  findNavItem(target: Pick<INavItem, 'id' | 'href'>, nodes = this.nav?.toc): INavItem | undefined {
     if (!target.id && !target.href) return
     if (!nodes) return
 
@@ -1476,10 +1259,7 @@ export class BookTab extends BaseTab {
   getSectionNavIndex(sections = this.sections) {
     if (!this.nav || !sections) return
 
-    if (
-      this.sectionNavIndex?.nav === this.nav &&
-      this.sectionNavIndex.sections === sections
-    ) {
+    if (this.sectionNavIndex?.nav === this.nav && this.sectionNavIndex.sections === sections) {
       return this.sectionNavIndex
     }
 
@@ -1509,9 +1289,7 @@ export class BookTab extends BaseTab {
         sectionsByHref.get(normalizedHref) ??
         normalizedSections.find(
           (entry) =>
-            entry.href &&
-            (entry.href.endsWith(`/${normalizedHref}`) ||
-              normalizedHref.endsWith(`/${entry.href}`)),
+            entry.href && (entry.href.endsWith(`/${normalizedHref}`) || normalizedHref.endsWith(`/${entry.href}`)),
         )?.section
       )
     }
@@ -1534,14 +1312,10 @@ export class BookTab extends BaseTab {
             sectionIndex: matchedSection.index,
           }
 
-          exactBySectionHref.set(
-            matchedSection.href,
-            exactBySectionHref.get(matchedSection.href) ?? navItem,
-          )
+          exactBySectionHref.set(matchedSection.href, exactBySectionHref.get(matchedSection.href) ?? navItem)
           entries.push(entry)
 
-          const sectionEntries =
-            entriesBySectionIndex.get(matchedSection.index) ?? []
+          const sectionEntries = entriesBySectionIndex.get(matchedSection.index) ?? []
           sectionEntries.push(entry)
           entriesBySectionIndex.set(matchedSection.index, sectionEntries)
         }
@@ -1565,7 +1339,7 @@ export class BookTab extends BaseTab {
     try {
       this.sectionNavIndex = markRuntimeObject(nextIndex)
       return nextIndex
-    } catch (error) {
+    } catch (_error) {
       return nextIndex
     }
   }
@@ -1574,9 +1348,7 @@ export class BookTab extends BaseTab {
     if (!sectionHref || !sections) return
 
     const index = this.getSectionNavIndex(sections)
-    const section = sections.find(
-      (s) => s.href === sectionHref || compareHref(s.href, sectionHref),
-    )
+    const section = sections.find((s) => s.href === sectionHref || compareHref(s.href, sectionHref))
     if (!section || !index) return
 
     const exact = index.exactBySectionHref.get(section.href)
@@ -1593,9 +1365,7 @@ export class BookTab extends BaseTab {
   private sectionHasMultipleNavItems(section: ISection | undefined) {
     if (!section) return false
 
-    const entries = this.getSectionNavIndex()?.entriesBySectionIndex.get(
-      section.index,
-    )
+    const entries = this.getSectionNavIndex()?.entriesBySectionIndex.get(section.index)
     return !!entries && entries.length > 1
   }
 
@@ -1615,10 +1385,7 @@ export class BookTab extends BaseTab {
     return promise
   }
 
-  private async createNavAnchorsForSection(
-    section: ISection,
-    entries: SectionNavEntry[],
-  ) {
+  private async createNavAnchorsForSection(section: ISection, entries: SectionNavEntry[]) {
     await this.ensureSectionInfo(section)
 
     const anchors = entries.flatMap((entry) => {
@@ -1632,16 +1399,13 @@ export class BookTab extends BaseTab {
             cfi: section.cfiFromElement(element),
           },
         ]
-      } catch (error) {
+      } catch (_error) {
         return []
       }
     })
 
     anchors.sort((a, b) => this.compareCfi(a.cfi, b.cfi) || a.order - b.order)
-    this.getSectionNavIndex()?.anchorEntriesBySectionIndex.set(
-      section.index,
-      anchors,
-    )
+    this.getSectionNavIndex()?.anchorEntriesBySectionIndex.set(section.index, anchors)
     return anchors
   }
 
@@ -1652,12 +1416,7 @@ export class BookTab extends BaseTab {
     const decoded = safeDecode(hash)
     if (!hash) return document.body
 
-    return (
-      document.getElementById(hash) ??
-      (decoded && decoded !== hash
-        ? document.getElementById(decoded)
-        : undefined)
-    )
+    return document.getElementById(hash) ?? (decoded && decoded !== hash ? document.getElementById(decoded) : undefined)
   }
 
   private compareCfi(a: string, b: string) {
@@ -1668,24 +1427,16 @@ export class BookTab extends BaseTab {
     }
   }
 
-  private navItemFromCachedSectionCfi(
-    section: ISection | undefined,
-    cfi: string | undefined,
-  ) {
+  private navItemFromCachedSectionCfi(section: ISection | undefined, cfi: string | undefined) {
     if (!section || !cfi) return
 
-    const anchors = this.getSectionNavIndex()?.anchorEntriesBySectionIndex.get(
-      section.index,
-    )
+    const anchors = this.getSectionNavIndex()?.anchorEntriesBySectionIndex.get(section.index)
     if (!anchors?.length) return
 
     return this.pickNavAnchorForCfi(anchors, cfi)?.item
   }
 
-  private pickNavAnchorForCfi(
-    anchors: SectionNavAnchorEntry[],
-    cfi: string | undefined,
-  ) {
+  private pickNavAnchorForCfi(anchors: SectionNavAnchorEntry[], cfi: string | undefined) {
     if (!cfi) return anchors[0]
 
     let selected = anchors[0]
@@ -1699,20 +1450,11 @@ export class BookTab extends BaseTab {
     return selected
   }
 
-  private sameNavAnchorTarget(
-    a: SectionNavAnchorEntry,
-    b: SectionNavAnchorEntry,
-  ) {
-    return (
-      a.sectionIndex === b.sectionIndex &&
-      a.href === b.href &&
-      a.hash === b.hash
-    )
+  private sameNavAnchorTarget(a: SectionNavAnchorEntry, b: SectionNavAnchorEntry) {
+    return a.sectionIndex === b.sectionIndex && a.href === b.href && a.hash === b.hash
   }
 
-  async navAnchorForLocationPoint(
-    point: Pick<Location['start'], 'index' | 'href' | 'cfi'> | undefined,
-  ) {
+  async navAnchorForLocationPoint(point: Pick<Location['start'], 'index' | 'href' | 'cfi'> | undefined) {
     const section = this.sectionFromLocationPoint(point)
     if (!section || !this.sectionHasMultipleNavItems(section)) return
 
@@ -1754,22 +1496,16 @@ export class BookTab extends BaseTab {
     return sections
   }
 
-  private commitVisibleSections(
-    location: Location,
-    visibleSections = this.visibleSectionsForLocation(location),
-  ) {
+  private commitVisibleSections(location: Location, visibleSections = this.visibleSectionsForLocation(location)) {
     this.visibleSections = markSectionsRuntime(visibleSections)
     this.visibleSectionIndexes = visibleSections.map((section) => section.index)
 
     const preferredSection =
       this.preferredSectionIndex === undefined
         ? undefined
-        : visibleSections.find(
-            (section) => section.index === this.preferredSectionIndex,
-          )
+        : visibleSections.find((section) => section.index === this.preferredSectionIndex)
     const startSection = this.sectionFromLocationPoint(location.start)
-    const activeSection =
-      preferredSection ?? startSection ?? visibleSections[0] ?? this.section
+    const activeSection = preferredSection ?? startSection ?? visibleSections[0] ?? this.section
 
     if (activeSection) {
       markSectionRuntime(activeSection)
@@ -1780,11 +1516,7 @@ export class BookTab extends BaseTab {
     return activeSection
   }
 
-  private async refreshVisibleNavItems(
-    location: Location,
-    activeSection: ISection | undefined,
-    generation: number,
-  ) {
+  private async refreshVisibleNavItems(location: Location, activeSection: ISection | undefined, generation: number) {
     if (!this.sections) return
 
     const [startAnchor, endAnchor] = await Promise.all([
@@ -1806,17 +1538,10 @@ export class BookTab extends BaseTab {
     })
   }
 
-  private shouldAcceptRelocatedLocation(
-    percentage: number | undefined,
-    visibleSections: ISection[],
-  ) {
+  private shouldAcceptRelocatedLocation(percentage: number | undefined, visibleSections: ISection[]) {
     if (this.relayoutAnchorSectionIndexes?.length) {
-      const nextIndexes = new Set(
-        visibleSections.map((section) => section.index),
-      )
-      const stillAnchored = this.relayoutAnchorSectionIndexes.some((index) =>
-        nextIndexes.has(index),
-      )
+      const nextIndexes = new Set(visibleSections.map((section) => section.index))
+      const stillAnchored = this.relayoutAnchorSectionIndexes.some((index) => nextIndexes.has(index))
       if (!stillAnchored) return false
     }
 
@@ -1845,9 +1570,7 @@ export class BookTab extends BaseTab {
   private isNavigationSectionProgressConsistent(visibleSections: ISection[]) {
     if (!this.navigationDirection) return false
 
-    const nextIndexes = visibleSections
-      .map((section) => section.index)
-      .filter((index) => typeof index === 'number')
+    const nextIndexes = visibleSections.map((section) => section.index).filter((index) => typeof index === 'number')
     const currentIndexes = this.paginationSnapshot?.visibleSectionIndexes.length
       ? this.paginationSnapshot.visibleSectionIndexes
       : this.visibleSectionIndexes
@@ -1885,14 +1608,9 @@ export class BookTab extends BaseTab {
     const currentSection = this.currentSection
 
     return (
-      this.navItemFromCachedSectionCfi(
-        currentSection,
-        this.location?.start.cfi,
-      ) ??
+      this.navItemFromCachedSectionCfi(currentSection, this.location?.start.cfi) ??
       currentSection?.navitem ??
-      (this.currentHref
-        ? this.mapSectionToNavItem(this.currentHref)
-        : undefined)
+      (this.currentHref ? this.mapSectionToNavItem(this.currentHref) : undefined)
     )
   }
 
@@ -1906,9 +1624,7 @@ export class BookTab extends BaseTab {
   }
 
   getHeaderPath(section = this.currentSection) {
-    const navItem =
-      section?.navitem ??
-      (section?.href ? this.mapSectionToNavItem(section.href) : undefined)
+    const navItem = section?.navitem ?? (section?.href ? this.mapSectionToNavItem(section.href) : undefined)
     const path = this.getNavPath(navItem)
     const heading = this.sectionHeading(section)
 
@@ -1937,22 +1653,15 @@ export class BookTab extends BaseTab {
   }
 
   get view() {
-    return (
-      this.rendition?.manager?.current?.() ??
-      this.rendition?.manager?.views._views[0]
-    )
+    return this.rendition?.manager?.current?.() ?? this.rendition?.manager?.views._views[0]
   }
 
   viewForWindow(win: Window | null) {
-    return this.rendition?.manager?.views._views.find(
-      (view: any) => view.window === win,
-    )
+    return this.rendition?.manager?.views._views.find((view: any) => view.window === win)
   }
 
   viewForRange(range: Range) {
-    const doc =
-      range.commonAncestorContainer.ownerDocument ??
-      (range.commonAncestorContainer as Document)
+    const doc = range.commonAncestorContainer.ownerDocument ?? (range.commonAncestorContainer as Document)
 
     return this.viewForWindow(doc.defaultView) ?? this.view
   }
@@ -1974,16 +1683,11 @@ export class BookTab extends BaseTab {
       .filter((win: Window | undefined): win is Window => !!win)
     const iframes = this.iframes
 
-    if (
-      windows.length === iframes.length &&
-      windows.every((win, index) => iframes[index] === win)
-    ) {
+    if (windows.length === iframes.length && windows.every((win, index) => iframes[index] === win)) {
       return false
     }
 
-    const nextIframes = windows.map(
-      (win: Window) => ref(win) as unknown as Window & AsRef,
-    )
+    const nextIframes = windows.map((win: Window) => ref(win) as unknown as Window & AsRef)
 
     this.iframes = nextIframes
     this.iframe = nextIframes[0]
@@ -2076,14 +1780,9 @@ export class BookTab extends BaseTab {
         if (!parentId) {
           navItem = undefined
         } else {
-          const firstParent =
-            this.getSectionNavIndex()?.firstNavItemById.get(parentId)
+          const firstParent = this.getSectionNavIndex()?.firstNavItemById.get(parentId)
           if (firstParent) {
-            if (
-              firstParent === navItem ||
-              (firstParent.id === navItem.id &&
-                firstParent.parent === navItem.parent)
-            ) {
+            if (firstParent === navItem || (firstParent.id === navItem.id && firstParent.parent === navItem.parent)) {
               break
             }
             navItem = firstParent
@@ -2135,9 +1834,7 @@ export class BookTab extends BaseTab {
     const index = this.getSectionNavIndex(sections)
     if (!index) return
 
-    const orderedSections = [...sections].sort(
-      (a, b) => (a.index ?? 0) - (b.index ?? 0),
-    )
+    const orderedSections = [...sections].sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
     let entryIndex = 0
     let nearestNavItem: INavItem | undefined
 
@@ -2148,10 +1845,7 @@ export class BookTab extends BaseTab {
         return
       }
 
-      while (
-        entryIndex < index.entries.length &&
-        index.entries[entryIndex]!.sectionIndex <= section.index
-      ) {
+      while (entryIndex < index.entries.length && index.entries[entryIndex]!.sectionIndex <= section.index) {
         nearestNavItem = index.entries[entryIndex]!.item
         entryIndex++
       }
@@ -2175,24 +1869,17 @@ export class BookTab extends BaseTab {
   }
 
   private loadedSectionDocumentCount() {
-    return (
-      this.sections?.filter((section) => !!section.document?.body).length ?? 0
-    )
+    return this.sections?.filter((section) => !!section.document?.body).length ?? 0
   }
 
   private protectedSectionDocumentIndexes() {
-    const indexes = new Set<number>([
-      ...this.visibleSectionIndexes,
-      ...this.pendingSectionInfoIndexes,
-    ])
+    const indexes = new Set<number>([...this.visibleSectionIndexes, ...this.pendingSectionInfoIndexes])
 
     if (this.section?.index !== undefined) {
       indexes.add(this.section.index)
     }
 
-    const views = this.rendition?.manager?.views?._views as
-      | Array<{ section?: ISection }>
-      | undefined
+    const views = this.rendition?.manager?.views?._views as Array<{ section?: ISection }> | undefined
     views?.forEach((view) => {
       if (view.section?.index !== undefined) {
         indexes.add(view.section.index)
@@ -2224,11 +1911,7 @@ export class BookTab extends BaseTab {
     const protectedIndexes = this.protectedSectionDocumentIndexes()
     const candidates = loaded
       .filter((section) => !protectedIndexes.has(section.index))
-      .sort(
-        (a, b) =>
-          (this.sectionDocumentAccess.get(a.index) ?? 0) -
-          (this.sectionDocumentAccess.get(b.index) ?? 0),
-      )
+      .sort((a, b) => (this.sectionDocumentAccess.get(a.index) ?? 0) - (this.sectionDocumentAccess.get(b.index) ?? 0))
 
     let loadedCount = loaded.length
     for (const section of candidates) {
@@ -2304,10 +1987,7 @@ export class BookTab extends BaseTab {
   onBeforeLayout?: (contents?: any, view?: any) => void
   layoutStyleSignature?: string
 
-  setBeforeLayout(
-    beforeLayout?: (contents?: any, view?: any) => void,
-    layoutStyleSignature?: string,
-  ) {
+  setBeforeLayout(beforeLayout?: (contents?: any, view?: any) => void, layoutStyleSignature?: string) {
     if (beforeLayout) {
       this.onBeforeLayout = beforeLayout
     }
@@ -2359,10 +2039,7 @@ export class BookTab extends BaseTab {
 
   rememberCurrentLayoutSpread(
     key = this.layoutAnchorKey(),
-    {
-      replace = true,
-      spread,
-    }: { replace?: boolean; spread?: ReadingSpreadRecord } = {},
+    { replace = true, spread }: { replace?: boolean; spread?: ReadingSpreadRecord } = {},
   ) {
     if (!key) return
     if (!replace && this.spreadAnchorsByLayout.has(key)) return
@@ -2392,11 +2069,7 @@ export class BookTab extends BaseTab {
     const key = this.layoutAnchorKey(width, height)
     if (!key) return
 
-    return hydrateReflowableSpread(
-      this.spreadAnchorsByLayout.get(key),
-      this.sections,
-      this.layoutStyleSignature,
-    )
+    return hydrateReflowableSpread(this.spreadAnchorsByLayout.get(key), this.sections, this.layoutStyleSignature)
   }
 
   relayoutCurrentView(target?: string) {
@@ -2627,10 +2300,7 @@ export class BookTab extends BaseTab {
       return
     }
 
-    if (
-      this.book.sourceStorage === 'referenced' &&
-      this.book.contentMode === 'archiveOnly'
-    ) {
+    if (this.book.sourceStorage === 'referenced' && this.book.contentMode === 'archiveOnly') {
       this.rendition.on('displayError', (error: unknown) => {
         if (generation === this.renderGeneration) {
           this.reportOpenError('render', error)
@@ -2644,9 +2314,7 @@ export class BookTab extends BaseTab {
     emitReaderOpenError({
       bookId: this.book.id,
       bookTitle: getBookDisplayTitle(this.book),
-      closeTab:
-        this.book.sourceStorage === 'referenced' &&
-        this.book.contentMode === 'archiveOnly',
+      closeTab: this.book.sourceStorage === 'referenced' && this.book.contentMode === 'archiveOnly',
       error,
       stage,
     })
@@ -2754,11 +2422,7 @@ export class Group {
       return this.tabs[index]
     }
 
-    const tab = isTab
-      ? resolved
-      : isPage
-        ? new PageTab(resolved)
-        : new BookTab(resolved)
+    const tab = isTab ? resolved : isPage ? new PageTab(resolved) : new BookTab(resolved)
 
     this.setSelectedRuntimeActive(false)
     this.tabs.splice(++this.selectedIndex, 0, tab)
@@ -2813,9 +2477,7 @@ export class Group {
     if (!tab) return
 
     this.tabs.splice(toIndex, 0, tab)
-    this.selectedIndex = this.tabs.findIndex(
-      (item) => item.id === selectedTabId,
-    )
+    this.selectedIndex = this.tabs.findIndex((item) => item.id === selectedTabId)
   }
 
   moveSelectedTab(delta: -1 | 1) {
@@ -2845,9 +2507,7 @@ export class Reader {
     for (let groupIndex = 0; groupIndex < this.groups.length; groupIndex++) {
       const group = this.groups[groupIndex]
       if (!group) continue
-      const tabIndex = group.tabs.findIndex(
-        (tab) => tab instanceof BookTab && tab.book.id === book.id,
-      )
+      const tabIndex = group.tabs.findIndex((tab) => tab instanceof BookTab && tab.book.id === book.id)
       if (tabIndex < 0) continue
 
       if (groupIndex === this.focusedIndex) {
@@ -2899,11 +2559,7 @@ export class Reader {
   }
 
   closeBookTabs(bookId: string) {
-    for (
-      let groupIndex = this.groups.length - 1;
-      groupIndex >= 0;
-      groupIndex--
-    ) {
+    for (let groupIndex = this.groups.length - 1; groupIndex >= 0; groupIndex--) {
       const group = this.groups[groupIndex]
       if (!group) continue
 
@@ -2930,14 +2586,7 @@ export class Reader {
           if (tab === editedTab && patch) {
             patchTasks.push(
               tab
-                .applyRenderedTextEdit(
-                  book,
-                  patch.target,
-                  patch.oldText,
-                  patch.newText,
-                  patch.document,
-                  patch.textNode,
-                )
+                .applyRenderedTextEdit(book, patch.target, patch.oldText, patch.newText, patch.document, patch.textNode)
                 .then((patched) => {
                   if (!patched) {
                     throw new Error('TEXT_REPLACE_RENDER_PATCH_FAILED')
@@ -2947,10 +2596,7 @@ export class Reader {
             continue
           }
 
-          tab.reloadContentAfterEdit(
-            book,
-            !editedTab || tab === editedTab ? reloadTarget : undefined,
-          )
+          tab.reloadContentAfterEdit(book, !editedTab || tab === editedTab ? reloadTarget : undefined)
         }
       }
     }
@@ -2970,9 +2616,7 @@ export class Reader {
       bookTabs
         .map((tab) => {
           const book =
-            tab.book.scope === 'external' && tab.book.contentHash
-              ? booksByHash.get(tab.book.contentHash)
-              : undefined
+            tab.book.scope === 'external' && tab.book.contentHash ? booksByHash.get(tab.book.contentHash) : undefined
           if (!book) return
 
           promotedBookIds.add(book.id)
@@ -3000,11 +2644,7 @@ export class Reader {
     this.focusedGroup?.moveSelectedTab(delta)
   }
 
-  replaceTab(
-    param: TabParam,
-    index = this.focusedIndex,
-    groupIdx = this.focusedIndex,
-  ) {
+  replaceTab(param: TabParam, index = this.focusedIndex, groupIdx = this.focusedIndex) {
     const group = this.groups[groupIdx]
     group?.replaceTab(param, index)
   }
@@ -3032,9 +2672,7 @@ export class Reader {
   }
 
   clear() {
-    this.groups.forEach(({ tabs }) =>
-      tabs.forEach((tab) => this.trackDisposal(disposeTab(tab))),
-    )
+    this.groups.forEach(({ tabs }) => tabs.forEach((tab) => this.trackDisposal(disposeTab(tab))))
     this.groups = []
     this.focusedIndex = -1
   }
@@ -3056,9 +2694,7 @@ export class Reader {
   flushPendingBookUpdates() {
     return Promise.all([
       ...Array.from(this.pendingDisposals),
-      ...this.groups.flatMap(({ bookTabs }) =>
-        bookTabs.map((tab) => tab.flushForClose({ flushStorage: false })),
-      ),
+      ...this.groups.flatMap(({ bookTabs }) => bookTabs.map((tab) => tab.flushForClose({ flushStorage: false }))),
     ]).then(() => db.flush())
   }
 

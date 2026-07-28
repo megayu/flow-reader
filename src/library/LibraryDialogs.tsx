@@ -3,18 +3,12 @@ import React, { useCallback, useMemo, useRef, useState } from 'react'
 
 import { cleanBookText, getBookDisplayTitle } from '../book'
 import { Button as UiButton } from '../components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../components/ui/dialog'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import { formatLocalDirectoryForDisplay } from '../dictionary/path'
 import { useLibraryTags } from '../hooks/useLibrary'
 import { useTranslation } from '../hooks/useTranslation'
-import { db, type BookRecord, type LibraryTagRecord } from '../storage'
+import { type BookRecord, db, type LibraryTagRecord } from '../storage'
 
 import { cleanLibraryTagName, sameLibraryTagName } from './filters'
 import {
@@ -36,8 +30,7 @@ function selectInputOnFocus(e: React.FocusEvent<HTMLInputElement>) {
   e.currentTarget.select()
 }
 
-const tagPickerChipClassName =
-  'h-8 max-w-full justify-start gap-1.5 px-3 text-base leading-none'
+const tagPickerChipClassName = 'h-8 max-w-full justify-start gap-1.5 px-3 text-base leading-none'
 const tagPickerInactiveChipClassName =
   'bg-transparent text-(--flow-text) ring-1 ring-(--flow-sidebar-item-border) ring-inset hover:bg-(--flow-sidebar-item-bg-hover)'
 const tagPickerPartialChipClassName =
@@ -51,9 +44,7 @@ interface TemporaryLibraryTagRecord extends LibraryTagRecord {
 
 interface TagSelectionEditorProps {
   onSelectTag: (tagId: string) => void
-  onTemporaryTagsChange: React.Dispatch<
-    React.SetStateAction<TemporaryLibraryTagRecord[]>
-  >
+  onTemporaryTagsChange: React.Dispatch<React.SetStateAction<TemporaryLibraryTagRecord[]>>
   onToggleTag: (tagId: string) => void
   partialTagIds?: Set<string>
   selectedTagIds: Set<string>
@@ -73,18 +64,13 @@ const TagSelectionEditor: React.FC<TagSelectionEditorProps> = ({
   const t = useTranslation('home')
   const [newTagName, setNewTagName] = useState('')
   const temporaryTagIndexRef = useRef(0)
-  const visibleTags = useMemo(
-    () => mergeLibraryTags(tags, temporaryTags),
-    [tags, temporaryTags],
-  )
+  const visibleTags = useMemo(() => mergeLibraryTags(tags, temporaryTags), [tags, temporaryTags])
   const cleanName = cleanLibraryTagName(newTagName)
 
   const addTag = () => {
     if (!cleanName) return
 
-    const existing = visibleTags.find((tag) =>
-      sameLibraryTagName(tag.name, cleanName),
-    )
+    const existing = visibleTags.find((tag) => sameLibraryTagName(tag.name, cleanName))
     if (existing) {
       onSelectTag(existing.id)
       setNewTagName('')
@@ -99,10 +85,7 @@ const TagSelectionEditor: React.FC<TagSelectionEditorProps> = ({
       temporary: true,
     }
 
-    onTemporaryTagsChange(
-      (current) =>
-        mergeLibraryTags(current, [tag]) as TemporaryLibraryTagRecord[],
-    )
+    onTemporaryTagsChange((current) => mergeLibraryTags(current, [tag]) as TemporaryLibraryTagRecord[])
     onSelectTag(tag.id)
     setNewTagName('')
   }
@@ -111,9 +94,7 @@ const TagSelectionEditor: React.FC<TagSelectionEditorProps> = ({
     <div className="space-y-3">
       <div className="flex items-end gap-2">
         <label className="min-w-0 flex-1">
-          <span className="text-muted-foreground mb-1.5 block leading-none font-medium">
-            {t('edit.new_tag')}
-          </span>
+          <span className="text-muted-foreground mb-1.5 block leading-none font-medium">{t('edit.new_tag')}</span>
           <Input
             value={newTagName}
             onChange={(e) => setNewTagName(e.target.value)}
@@ -153,9 +134,7 @@ const TagSelectionEditor: React.FC<TagSelectionEditorProps> = ({
                 type="button"
                 size="sm"
                 variant={state === 'selected' ? 'default' : 'secondary'}
-                aria-pressed={
-                  state === 'partial' ? 'mixed' : state === 'selected'
-                }
+                aria-pressed={state === 'partial' ? 'mixed' : state === 'selected'}
                 title={tag.name}
                 className={clsx(
                   tagPickerChipClassName,
@@ -164,9 +143,7 @@ const TagSelectionEditor: React.FC<TagSelectionEditorProps> = ({
                 )}
                 onClick={() => onToggleTag(tag.id)}
               >
-                <span className="min-w-0 truncate leading-none">
-                  {tag.name}
-                </span>
+                <span className="min-w-0 truncate leading-none">{tag.name}</span>
               </UiButton>
             )
           })}
@@ -201,21 +178,13 @@ function getTagsInAnyBook(books: BookRecord[], tags: LibraryTagRecord[]) {
   return tagIds
 }
 
-function getPartiallySelectedTags(
-  books: BookRecord[],
-  tags: LibraryTagRecord[],
-) {
+function getPartiallySelectedTags(books: BookRecord[], tags: LibraryTagRecord[]) {
   const allTagIds = getTagsInAllBooks(books, tags)
 
-  return new Set(
-    [...getTagsInAnyBook(books, tags)].filter((tagId) => !allTagIds.has(tagId)),
-  )
+  return new Set([...getTagsInAnyBook(books, tags)].filter((tagId) => !allTagIds.has(tagId)))
 }
 
-async function resolveSelectedTagIds(
-  selectedTagIds: Set<string>,
-  temporaryTags: TemporaryLibraryTagRecord[],
-) {
+async function resolveSelectedTagIds(selectedTagIds: Set<string>, temporaryTags: TemporaryLibraryTagRecord[]) {
   const temporaryById = new Map(temporaryTags.map((tag) => [tag.id, tag]))
   const resolvedIds: string[] = []
 
@@ -239,21 +208,11 @@ interface BatchTagsDialogProps {
   tags: LibraryTagRecord[]
 }
 
-export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({
-  books,
-  onClose,
-  tags,
-}) => {
+export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose, tags }) => {
   const t = useTranslation('home')
-  const [selectedTagIds, setSelectedTagIds] = useState(() =>
-    getTagsInAllBooks(books, tags),
-  )
-  const [partialTagIds, setPartialTagIds] = useState(() =>
-    getPartiallySelectedTags(books, tags),
-  )
-  const [temporaryTags, setTemporaryTags] = useState<
-    TemporaryLibraryTagRecord[]
-  >([])
+  const [selectedTagIds, setSelectedTagIds] = useState(() => getTagsInAllBooks(books, tags))
+  const [partialTagIds, setPartialTagIds] = useState(() => getPartiallySelectedTags(books, tags))
+  const [temporaryTags, setTemporaryTags] = useState<TemporaryLibraryTagRecord[]>([])
 
   const toggleTag = useCallback((tagId: string) => {
     setSelectedTagIds((current) => {
@@ -295,17 +254,12 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({
   const apply = async () => {
     if (!books.length) return
 
-    const persistedSelectedTagIds = new Set(
-      await resolveSelectedTagIds(selectedTagIds, temporaryTags),
-    )
+    const persistedSelectedTagIds = new Set(await resolveSelectedTagIds(selectedTagIds, temporaryTags))
     const initialTagIds = getTagsInAllBooks(books, tags)
     const initialAnyTagIds = getTagsInAnyBook(books, tags)
-    const addTagIds = [...persistedSelectedTagIds].filter(
-      (tagId) => !initialTagIds.has(tagId),
-    )
+    const addTagIds = [...persistedSelectedTagIds].filter((tagId) => !initialTagIds.has(tagId))
     const removeTagIds = [...initialAnyTagIds].filter(
-      (tagId) =>
-        !persistedSelectedTagIds.has(tagId) && !partialTagIds.has(tagId),
+      (tagId) => !persistedSelectedTagIds.has(tagId) && !partialTagIds.has(tagId),
     )
 
     await db.books.updateTags(
@@ -322,10 +276,7 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({
         if (!open) onClose()
       }}
     >
-      <DialogContent
-        data-flow-keyboard-capture="true"
-        className="w-[min(32rem,calc(100vw-2rem))] max-w-none text-base"
-      >
+      <DialogContent data-flow-keyboard-capture="true" className="w-[min(32rem,calc(100vw-2rem))] max-w-none text-base">
         <DialogHeader>
           <DialogTitle>{t('batch_tags.title')}</DialogTitle>
         </DialogHeader>
@@ -357,18 +308,11 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({
   )
 }
 
-export const BookTagsDialog: React.FC<BookDialogProps> = ({
-  book,
-  onClose,
-}) => {
+export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
   const t = useTranslation('home')
   const tags = useLibraryTags()
-  const [tagIds, setTagIds] = useState(
-    () => new Set(uniqueStringValues(book.tagIds ?? [])),
-  )
-  const [temporaryTags, setTemporaryTags] = useState<
-    TemporaryLibraryTagRecord[]
-  >([])
+  const [tagIds, setTagIds] = useState(() => new Set(uniqueStringValues(book.tagIds ?? [])))
+  const [temporaryTags, setTemporaryTags] = useState<TemporaryLibraryTagRecord[]>([])
 
   const toggleTag = useCallback((tagId: string) => {
     setTagIds((current) => {
@@ -395,9 +339,7 @@ export const BookTagsDialog: React.FC<BookDialogProps> = ({
 
   const apply = () => {
     void resolveSelectedTagIds(tagIds, temporaryTags)
-      .then((resolvedTagIds) =>
-        db.books.update(book.id, { tagIds: resolvedTagIds }),
-      )
+      .then((resolvedTagIds) => db.books.update(book.id, { tagIds: resolvedTagIds }))
       .then(() => onClose())
   }
 
@@ -408,10 +350,7 @@ export const BookTagsDialog: React.FC<BookDialogProps> = ({
         if (!open) onClose()
       }}
     >
-      <DialogContent
-        data-flow-keyboard-capture="true"
-        className="w-[min(32rem,calc(100vw-2rem))] max-w-none text-base"
-      >
+      <DialogContent data-flow-keyboard-capture="true" className="w-[min(32rem,calc(100vw-2rem))] max-w-none text-base">
         <DialogHeader>
           <DialogTitle>{t('batch_tags.title')}</DialogTitle>
         </DialogHeader>
@@ -436,16 +375,11 @@ export const BookTagsDialog: React.FC<BookDialogProps> = ({
   )
 }
 
-export const EditBookDialog: React.FC<BookDialogProps> = ({
-  book,
-  onClose,
-}) => {
+export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
   const t = useTranslation('home')
   const titleRef = useRef<HTMLInputElement>(null)
   const [title, setTitle] = useState(() => getBookDisplayTitle(book))
-  const [creator, setCreator] = useState(() =>
-    cleanBookText(book.metadata.creator),
-  )
+  const [creator, setCreator] = useState(() => cleanBookText(book.metadata.creator))
 
   const save = () => {
     void db.books
@@ -488,9 +422,7 @@ export const EditBookDialog: React.FC<BookDialogProps> = ({
           </DialogHeader>
           <div className="space-y-3">
             <label className="block">
-              <span className="text-muted-foreground mb-1.5 block leading-none font-medium">
-                {t('edit.title')}
-              </span>
+              <span className="text-muted-foreground mb-1.5 block leading-none font-medium">{t('edit.title')}</span>
               <Input
                 ref={titleRef}
                 value={title}
@@ -500,9 +432,7 @@ export const EditBookDialog: React.FC<BookDialogProps> = ({
               />
             </label>
             <label className="block">
-              <span className="text-muted-foreground mb-1.5 block leading-none font-medium">
-                {t('edit.creator')}
-              </span>
+              <span className="text-muted-foreground mb-1.5 block leading-none font-medium">{t('edit.creator')}</span>
               <Input
                 value={creator}
                 onChange={(e) => setCreator(e.target.value)}
@@ -527,11 +457,7 @@ interface BookInfoDialogProps extends BookDialogProps {
   cover?: string | null
 }
 
-export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({
-  book,
-  cover,
-  onClose,
-}) => {
+export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({ book, cover, onClose }) => {
   const t = useTranslation('home')
   const title = getBookDisplayTitle(book)
   const description = cleanBookDescription(book.metadata.description)
@@ -541,12 +467,7 @@ export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({
     [t('info.publisher'), cleanBookText(book.metadata.publisher)],
     [t('info.pubdate'), cleanBookText(book.metadata.pubdate)],
     ...(book.sourceStorage === 'referenced' && book.sourcePath
-      ? [
-          [
-            t('info.sourcePath'),
-            formatLocalDirectoryForDisplay(book.sourcePath),
-          ],
-        ]
+      ? [[t('info.sourcePath'), formatLocalDirectoryForDisplay(book.sourcePath)]]
       : []),
     [t('info.filename'), cleanBookText(book.name)],
     [t('info.size'), formatFileSize(book.size)],
@@ -569,18 +490,11 @@ export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({
         <div className="grid grid-cols-[12rem_minmax(0,1fr)] gap-5 p-5 pr-12">
           <div className="w-full">
             {cover && (
-              <img
-                src={cover}
-                alt=""
-                className="aspect-[9/12] w-full object-cover shadow-sm"
-                draggable={false}
-              />
+              <img src={cover} alt="" className="aspect-[9/12] w-full object-cover shadow-sm" draggable={false} />
             )}
           </div>
           <div className="min-w-0 pr-6">
-            <DialogTitle className="text-foreground !text-xl leading-tight font-bold">
-              {title}
-            </DialogTitle>
+            <DialogTitle className="text-foreground !text-xl leading-tight font-bold">{title}</DialogTitle>
             {!!rows.length && (
               <dl className="mt-4 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-2 gap-y-1 text-base">
                 {rows.map(([label, value]) => (

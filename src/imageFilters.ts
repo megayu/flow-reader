@@ -44,8 +44,7 @@ export function createDuplicateIllustrationFilter() {
 
       for (const image of section.images) {
         const duplicateEvidence = image.reason === 'duplicate'
-        const titleArtEvidence =
-          image.hiddenByDefault && image.reason === 'titleArt'
+        const titleArtEvidence = image.hiddenByDefault && image.reason === 'titleArt'
         if ((image.hiddenByDefault && !duplicateEvidence) || !image.src) {
           if (titleArtEvidence && image.src) {
             const key = normalizeImageSourceKey(image.src)
@@ -89,11 +88,7 @@ export function createDuplicateIllustrationFilter() {
       let changed = false
 
       for (const [key, candidates] of titleArtCandidatesBySrc) {
-        if (
-          candidates.length !== 1 ||
-          duplicateSrcs.has(key) ||
-          firstCandidateBySrc.has(key)
-        ) {
+        if (candidates.length !== 1 || duplicateSrcs.has(key) || firstCandidateBySrc.has(key)) {
           continue
         }
 

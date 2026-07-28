@@ -15,24 +15,14 @@ export interface DictionaryHttpError {
 
 export type LocalDictionaryFormat = 'mdict' | 'stardict'
 export type LocalDictionaryLanguage = SupportedDictionaryLanguage
-export type LocalDictionaryLanguageSource =
-  | 'manual'
-  | 'metadata'
-  | 'sample'
-  | 'unknown'
+export type LocalDictionaryLanguageSource = 'manual' | 'metadata' | 'sample' | 'unknown'
 export type LocalDictionarySourceStatus = 'available' | 'changed' | 'missing'
 
 export interface LocalDictionaryRecord {
   createdAt: number
   enabled: boolean
   files: Array<{
-    kind:
-      | 'compressedData'
-      | 'cover'
-      | 'data'
-      | 'index'
-      | 'resources'
-      | 'synonyms'
+    kind: 'compressedData' | 'cover' | 'data' | 'index' | 'resources' | 'synonyms'
     path: string
     used: boolean
   }>
@@ -87,11 +77,7 @@ export function fetchZdic(query: string, sessionId: number) {
   return invoke<DictionaryHttpResponse>('fetch_zdic', { query, sessionId })
 }
 
-export function fetchMerriamWebster(
-  query: string,
-  key: string,
-  sessionId: number,
-) {
+export function fetchMerriamWebster(query: string, key: string, sessionId: number) {
   return invoke<DictionaryHttpResponse>('fetch_merriam_webster', {
     query,
     key,
@@ -127,10 +113,7 @@ export function registerLocalDictionary(path: string) {
   })
 }
 
-export function updateLocalDictionary(
-  id: string,
-  changes: LocalDictionaryUpdate,
-) {
+export function updateLocalDictionary(id: string, changes: LocalDictionaryUpdate) {
   return invoke<LocalDictionaryRecord>('update_local_dictionary', {
     id,
     changes,
@@ -156,11 +139,7 @@ export function removeLocalDictionary(id: string) {
   })
 }
 
-export function lookupStarDict(
-  dictionaryId: string,
-  query: string,
-  sessionId: number,
-) {
+export function lookupStarDict(dictionaryId: string, query: string, sessionId: number) {
   return invoke<StarDictLookupResponse>('lookup_stardict', {
     dictionaryId,
     query,
@@ -168,11 +147,7 @@ export function lookupStarDict(
   })
 }
 
-export function lookupMdict(
-  dictionaryId: string,
-  query: string,
-  sessionId: number,
-) {
+export function lookupMdict(dictionaryId: string, query: string, sessionId: number) {
   return invoke<MdictLookupResponse>('lookup_mdict', {
     dictionaryId,
     query,
@@ -180,11 +155,7 @@ export function lookupMdict(
   })
 }
 
-export function loadMdictStylesheet(
-  dictionaryId: string,
-  key: string,
-  sessionId: number,
-) {
+export function loadMdictStylesheet(dictionaryId: string, key: string, sessionId: number) {
   return invoke<MdictStylesheetResponse | null>('load_mdict_stylesheet', {
     dictionaryId,
     key,

@@ -8,31 +8,13 @@ import {
 } from '../../src/translation/languages'
 import { parseAzureTranslationResponse } from '../../src/translation/providers/azure'
 import { parseGoogleTranslationResponse } from '../../src/translation/providers/google'
-import {
-  joinTranslationSections,
-  splitTranslationSections,
-} from '../../src/translation/serialize'
+import { joinTranslationSections, splitTranslationSections } from '../../src/translation/serialize'
 
 test.describe('translation language contract', () => {
   test('pins automatic detection, main language, and secondary language before the fixed list', () => {
-    expect(orderedSourceLanguages('zh-Hans', 'en').slice(0, 6)).toEqual([
-      'auto',
-      'zh-Hans',
-      'en',
-      'de',
-      'es',
-      'fr',
-    ])
-    expect(orderedTargetLanguages('zh-Hans', 'en').slice(0, 5)).toEqual([
-      'zh-Hans',
-      'en',
-      'de',
-      'es',
-      'fr',
-    ])
-    expect(new Set(orderedSourceLanguages('zh-Hans', 'en')).size).toBe(
-      orderedSourceLanguages('zh-Hans', 'en').length,
-    )
+    expect(orderedSourceLanguages('zh-Hans', 'en').slice(0, 6)).toEqual(['auto', 'zh-Hans', 'en', 'de', 'es', 'fr'])
+    expect(orderedTargetLanguages('zh-Hans', 'en').slice(0, 5)).toEqual(['zh-Hans', 'en', 'de', 'es', 'fr'])
+    expect(new Set(orderedSourceLanguages('zh-Hans', 'en')).size).toBe(orderedSourceLanguages('zh-Hans', 'en').length)
   })
 
   test('maps shared language ids only at the provider boundary', () => {
@@ -82,18 +64,11 @@ test.describe('translation language contract', () => {
 
 test.describe('translation payload contract', () => {
   test('preserves chapter boundaries while discarding empty outer sections', () => {
-    expect(
-      joinTranslationSections([
-        '  first paragraph\nsecond paragraph  ',
-        '',
-        '  next chapter  ',
-      ]),
-    ).toBe('first paragraph\nsecond paragraph\n\nnext chapter')
+    expect(joinTranslationSections(['  first paragraph\nsecond paragraph  ', '', '  next chapter  '])).toBe(
+      'first paragraph\nsecond paragraph\n\nnext chapter',
+    )
 
-    expect(splitTranslationSections('chapter one\n\nchapter two')).toEqual([
-      'chapter one',
-      'chapter two',
-    ])
+    expect(splitTranslationSections('chapter one\n\nchapter two')).toEqual(['chapter one', 'chapter two'])
   })
 
   test('unpacks Google and Azure responses into one result per input', () => {
@@ -122,14 +97,9 @@ test.describe('translation payload contract', () => {
   })
 
   test('rejects malformed or incomplete provider responses', () => {
-    expect(() => parseGoogleTranslationResponse('{}')).toThrow(
-      'Invalid Google translation response',
-    )
+    expect(() => parseGoogleTranslationResponse('{}')).toThrow('Invalid Google translation response')
     expect(() =>
-      parseAzureTranslationResponse(
-        JSON.stringify([{ translations: [{ text: 'Only one', to: 'en' }] }]),
-        2,
-      ),
+      parseAzureTranslationResponse(JSON.stringify([{ translations: [{ text: 'Only one', to: 'en' }] }]), 2),
     ).toThrow('Invalid Azure translation response')
   })
 })

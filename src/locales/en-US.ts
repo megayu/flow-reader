@@ -31,12 +31,9 @@ export default {
   'home.compat.archive_only_description':
     'Reads directly from the EPUB archive; text editing and modified export are unavailable.',
   'home.source_unavailable': 'Original file unavailable',
-  'home.source_missing_description':
-    'The original file was moved or deleted and cannot be opened.',
-  'home.source_unreadable_description':
-    'The original file cannot be accessed with the current permissions.',
-  'home.source_changed_description':
-    'The original file has changed since it was imported and cannot be opened.',
+  'home.source_missing_description': 'The original file was moved or deleted and cannot be opened.',
+  'home.source_unreadable_description': 'The original file cannot be accessed with the current permissions.',
+  'home.source_changed_description': 'The original file has changed since it was imported and cannot be opened.',
   'home.modified_export_indicator': 'Modified content can be exported',
   'home.edit.title': 'Title',
   'home.edit.creator': 'Author',
@@ -69,8 +66,7 @@ export default {
   'home.library_filter.author': 'Author',
   'home.library_filter.clear': 'Clear',
   'home.library_filter.delete_tag': 'Delete tag',
-  'home.library_filter.delete_tag_message':
-    'Delete this tag and remove it from tagged books:',
+  'home.library_filter.delete_tag_message': 'Delete this tag and remove it from tagged books:',
   'home.library_filter.edit_tag': 'Edit tag',
   'home.library_filter.no_authors': 'No authors',
   'home.library_filter.no_tags': 'No tags',
@@ -200,8 +196,7 @@ export default {
   'settings.translation.secondary_language.description':
     'Used as the target when the selected text is in your main language.',
   'settings.translation.default_provider': 'Default Translation Service',
-  'settings.translation.default_provider.description':
-    'Used when the translation popup opens by default.',
+  'settings.translation.default_provider.description': 'Used when the translation popup opens by default.',
   'settings.language': 'Language',
   'settings.ui_font_size': 'App Font Size',
   'settings.ui_font_size.description':
@@ -215,20 +210,16 @@ export default {
   'settings.library_modified_indicator.description':
     'Shows a badge on books with content changes that have not been exported.',
   'settings.default_page_view': 'Default View',
-  'settings.default_page_view.description':
-    'Sets the page view for books that do not have their own setting.',
+  'settings.default_page_view.description': 'Sets the page view for books that do not have their own setting.',
   'settings.default_text_align': 'Default Alignment',
   'settings.default_text_align.description':
     "Sets the alignment for books that do not have their own setting. Default follows the book's original alignment.",
   'settings.restore_last_reading': 'Restore Last Reading on Startup',
-  'settings.restore_last_reading.description':
-    'Reopens the last book and reading view when Flow Reader starts.',
+  'settings.restore_last_reading.description': 'Reopens the last book and reading view when Flow Reader starts.',
   'settings.text_selection_menu': 'Automatically Show Selection Menu',
-  'settings.text_selection_menu.description':
-    'When disabled, right-click selected text to open the menu.',
+  'settings.text_selection_menu.description': 'When disabled, right-click selected text to open the menu.',
   'settings.hide_endnotes': 'Hide Endnotes',
-  'settings.hide_endnotes.description':
-    'Hides content identified as endnotes from reading pages.',
+  'settings.hide_endnotes.description': 'Hides content identified as endnotes from reading pages.',
   'settings.txt_import.group_rules': 'Group Rules',
   'settings.txt_import.group_rules.description':
     'Enter one {regex} per line. Matching headings create top-level groups.',
@@ -258,10 +249,8 @@ export default {
   'menu.edit_text': 'Edit text',
   'menu.edit_text_archive_only': 'Text editing is unavailable in archive mode',
   'menu.edit_text_error_empty': 'Select text to edit',
-  'menu.edit_text_error_stale':
-    'Could not verify the selected text. Select it again and retry.',
-  'menu.edit_text_error_generic':
-    'Could not update the text. Select it again and retry.',
+  'menu.edit_text_error_stale': 'Could not verify the selected text. Select it again and retry.',
+  'menu.edit_text_error_generic': 'Could not update the text. Select it again and retry.',
   'menu.edit_text_error_reason': 'Reason: ',
   'menu.define': 'Define',
   'menu.undefine': 'Undefine',

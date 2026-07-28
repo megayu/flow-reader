@@ -9,10 +9,10 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tests/tsconfig.json && tsc --noEmit -p scripts/tsconfig.json",
-    "lint": "eslint src scripts tests .agents/skills vite.config.ts prettier.config.ts eslint.config.js playwright.config.ts vitest.config.ts",
-    "lint:fix": "pnpm lint --fix",
-    "format": "prettier --write src scripts tests .agents/skills package.json vite.config.ts prettier.config.ts eslint.config.js playwright.config.ts vitest.config.ts index.html",
-    "format:check": "prettier --check src scripts tests .agents/skills package.json vite.config.ts prettier.config.ts eslint.config.js playwright.config.ts vitest.config.ts index.html",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
     "test:unit": "node tests/unit/theme-tokens.test.ts && node tests/unit/reader-optimization.test.ts && node tests/unit/body-text.test.ts && node tests/unit/note-links.test.ts && vitest run",
     "test:integration": "playwright test",
     "rust:format": "cargo fmt --manifest-path src-tauri/Cargo.toml",
@@ -32,15 +32,7 @@
     "doctor:lines": "npx react-doctor@latest --scope lines --base HEAD --no-score --verbose -y"
   },
   "lint-staged": {
-    "*.{js,json,css,ts,tsx,md,mdx}": "prettier --write",
-    "*.{yml,yaml}": "prettier --write",
-    "{src,tests}/**/*.{js,ts,tsx}": "eslint --fix",
-    "{scripts,.agents/skills}/**/*.{mjs,ts}": "eslint --fix",
-    "prettier.config.ts": "eslint --fix",
-    "vite.config.ts": "eslint --fix",
-    "playwright.config.ts": "eslint --fix",
-    "vitest.config.ts": "eslint --fix",
-    "eslint.config.js": "eslint --fix"
+    "*.{js,jsx,json,jsonc,css,ts,tsx,html}": "biome check --write --no-errors-on-unmatched"
   },
   "dependencies": {
     "@flow/epubjs": "workspace:*",
@@ -61,6 +53,7 @@
     "zustand": "5.0.14"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.5",
     "@playwright/test": "1.61.0",
     "@tailwindcss/vite": "4.3.1",
     "@tauri-apps/cli": "2.11.3",
@@ -69,19 +62,10 @@
     "@types/react-dom": "19.2.3",
     "@types/react-highlight-words": "0.20.1",
     "@vitejs/plugin-react": "6.0.4",
-    "eslint": "9.39.4",
-    "eslint-config-prettier": "10.1.8",
-    "eslint-plugin-import": "2.32.0",
-    "eslint-plugin-react": "7.37.5",
-    "eslint-plugin-react-hooks": "7.0.0",
-    "globals": "16.4.0",
     "husky": "7.0.4",
     "lint-staged": "12.3.7",
-    "prettier": "3.8.4",
-    "prettier-plugin-tailwindcss": "0.8.0",
     "tailwindcss": "4.3.1",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.61.1",
     "vite": "8.1.5",
     "vitest": "4.1.10"
   },

@@ -1,11 +1,7 @@
 import type { Location } from '@flow/epubjs'
 import type Navigation from '@flow/epubjs/navigation'
 
-import type {
-  BookRecord,
-  ReadingSpreadPageRecord,
-  ReadingSpreadRecord,
-} from '../../storage'
+import type { BookRecord, ReadingSpreadPageRecord, ReadingSpreadRecord } from '../../storage'
 
 import type { INavItem, ISection } from './model'
 
@@ -16,10 +12,7 @@ function displayLocationPercentage(location?: Location['end']) {
   return percentage
 }
 
-function estimatePercentageFromSpine(
-  location: Location['end'],
-  sectionCount: number,
-) {
+function estimatePercentageFromSpine(location: Location['end'], sectionCount: number) {
   if (!sectionCount) return 0
 
   const sectionIndex = Math.max(0, Math.min(location.index, sectionCount - 1))
@@ -27,10 +20,7 @@ function estimatePercentageFromSpine(
   const page = Math.max(1, Math.min(location.displayed.page || 1, totalPages))
   const sectionProgress = page / totalPages
 
-  return Math.max(
-    0,
-    Math.min(1, (sectionIndex + sectionProgress) / sectionCount),
-  )
+  return Math.max(0, Math.min(1, (sectionIndex + sectionProgress) / sectionCount))
 }
 
 export function calculateReadingPercentage({
@@ -57,22 +47,12 @@ export function calculateReadingPercentage({
   const activeSection = sectionIndex >= 0 ? sections[sectionIndex] : undefined
 
   if (activeSection && totalLength && activeSection.length) {
-    const previousSectionsLength = sections
-      .slice(0, sectionIndex)
-      .reduce((acc, s) => acc + s.length, 0)
+    const previousSectionsLength = sections.slice(0, sectionIndex).reduce((acc, s) => acc + s.length, 0)
     const previousSectionsPercentage = previousSectionsLength / totalLength
     const currentSectionPercentage = activeSection.length / totalLength
-    const displayedPercentage =
-      end.displayed.total > 0 ? end.displayed.page / end.displayed.total : 0
+    const displayedPercentage = end.displayed.total > 0 ? end.displayed.page / end.displayed.total : 0
 
-    return Math.max(
-      0,
-      Math.min(
-        1,
-        previousSectionsPercentage +
-          currentSectionPercentage * displayedPercentage,
-      ),
-    )
+    return Math.max(0, Math.min(1, previousSectionsPercentage + currentSectionPercentage * displayedPercentage))
   }
 
   const estimated = estimatePercentageFromSpine(end, sections.length)
@@ -111,10 +91,8 @@ export function readingOrderStartSectionIndex(
   spreadSlotOrder: PaginationSnapshot['spreadSlotOrder'],
   fallback?: number,
 ) {
-  const primary =
-    spreadSlotOrder === 'right-first' ? spread?.right : spread?.left
-  const secondary =
-    spreadSlotOrder === 'right-first' ? spread?.left : spread?.right
+  const primary = spreadSlotOrder === 'right-first' ? spread?.right : spread?.left
+  const secondary = spreadSlotOrder === 'right-first' ? spread?.left : spread?.right
 
   return primary?.section?.index ?? secondary?.section?.index ?? fallback
 }
@@ -158,14 +136,8 @@ export interface SectionNavIndex {
   entries: SectionNavEntry[]
 }
 
-function snapshotReflowablePage(
-  page: any,
-): ReadingSpreadPageRecord | undefined {
-  if (
-    !page?.section ||
-    typeof page.section.index !== 'number' ||
-    typeof page.pageIndex !== 'number'
-  ) {
+function snapshotReflowablePage(page: any): ReadingSpreadPageRecord | undefined {
+  if (!page?.section || typeof page.section.index !== 'number' || typeof page.pageIndex !== 'number') {
     return
   }
 
@@ -195,10 +167,8 @@ export function snapshotReflowableSpread(
 
   const left = snapshotReflowablePage(spread.left)
   const right = snapshotReflowablePage(spread.right)
-  const endsAtSectionEnd =
-    Boolean(spread.endsAtSectionEnd) || locationEndsAtDisplayedPageEnd(location)
-  const rightFirst =
-    manager.paginationModel?.().spreadSlotOrder === 'right-first'
+  const endsAtSectionEnd = Boolean(spread.endsAtSectionEnd) || locationEndsAtDisplayedPageEnd(location)
+  const rightFirst = manager.paginationModel?.().spreadSlotOrder === 'right-first'
   const terminalSlot = endsAtSectionEnd
     ? rightFirst
       ? left
@@ -210,13 +180,7 @@ export function snapshotReflowableSpread(
     : undefined
   const anchor =
     terminalSlot ??
-    (spread.anchor === 'right' && right
-      ? 'right'
-      : spread.anchor === 'left' && left
-        ? 'left'
-        : left
-          ? 'left'
-          : 'right')
+    (spread.anchor === 'right' && right ? 'right' : spread.anchor === 'left' && left ? 'left' : left ? 'left' : 'right')
   const page = anchor === 'right' ? (right ?? left) : (left ?? right)
   if (!page) return
 
@@ -232,14 +196,9 @@ export function snapshotReflowableSpread(
   }
 }
 
-function hydrateReflowablePage(
-  page: ReadingSpreadPageRecord | undefined,
-  sections: ISection[] | undefined,
-) {
+function hydrateReflowablePage(page: ReadingSpreadPageRecord | undefined, sections: ISection[] | undefined) {
   if (!page || !sections) return
-  const section = sections.find(
-    (candidate) => candidate.index === page.sectionIndex,
-  )
+  const section = sections.find((candidate) => candidate.index === page.sectionIndex)
   if (!section) return
 
   return {
@@ -253,11 +212,8 @@ export function hydrateReflowableSpread(
   sections: ISection[] | undefined,
   layoutStyleSignature?: string,
 ) {
-  if (!spread || spread.version !== 1 || !sections) return
-  if (
-    spread.layoutStyleSignature &&
-    spread.layoutStyleSignature !== layoutStyleSignature
-  ) {
+  if (spread?.version !== 1 || !sections) return
+  if (spread.layoutStyleSignature && spread.layoutStyleSignature !== layoutStyleSignature) {
     return
   }
 
@@ -293,12 +249,9 @@ export function hydrateReflowableSpread(
 }
 
 export function readingSpreadSectionIndexes(spread: ReadingSpreadRecord) {
-  const pages =
-    spread.left || spread.right ? [spread.left, spread.right] : [spread]
+  const pages = spread.left || spread.right ? [spread.left, spread.right] : [spread]
 
-  return pages
-    .filter((page): page is ReadingSpreadPageRecord => Boolean(page))
-    .map((page) => page.sectionIndex)
+  return pages.filter((page): page is ReadingSpreadPageRecord => Boolean(page)).map((page) => page.sectionIndex)
 }
 
 export function mergeConfigurationWithSpread(

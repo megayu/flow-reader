@@ -1,12 +1,8 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 
 import type { BookRecord, ReadingStatus } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
-import {
-  getStoredSettings,
-  installTauriMock,
-  type TestLibraryTagRecord,
-} from '../support/tauri-mock'
+import { getStoredSettings, installTauriMock, type TestLibraryTagRecord } from '../support/tauri-mock'
 
 function createBook({
   creator = 'Author',
@@ -70,9 +66,7 @@ const fixtureBooks = [
   }),
 ]
 
-test('library tag filters refresh from books matching the selected reading status', async ({
-  page,
-}) => {
+test('library tag filters refresh from books matching the selected reading status', async ({ page }) => {
   await installTauriMock(page, {
     books: [
       createBook({
@@ -146,9 +140,7 @@ async function openLibraryFilterPanel(page: Page) {
 }
 
 function bookCard(page: Page, title: string) {
-  return page
-    .locator('ul.grid [data-flow-library-book-card]')
-    .filter({ hasText: title })
+  return page.locator('ul.grid [data-flow-library-book-card]').filter({ hasText: title })
 }
 
 function tagChip(page: Page, tag: string) {
@@ -172,9 +164,7 @@ test('library tags can be filtered, pinned, edited, batch-applied, renamed, dele
   await expect(tagChip(page, 'Research')).toBeVisible()
   await expect(tagChip(page, 'Archive')).toBeVisible()
   await expect(tagChip(page, 'Research')).not.toHaveAttribute('title', /.+/)
-  await expect(
-    tagChip(page, 'A Very Long Tag Name That Should Ellipsize In The Sidebar'),
-  ).toHaveAttribute(
+  await expect(tagChip(page, 'A Very Long Tag Name That Should Ellipsize In The Sidebar')).toHaveAttribute(
     'title',
     'A Very Long Tag Name That Should Ellipsize In The Sidebar',
   )
@@ -192,61 +182,40 @@ test('library tags can be filtered, pinned, edited, batch-applied, renamed, dele
   await expect(page.getByText('Gamma Archive')).toHaveCount(0)
 
   await tagChip(page, 'Research').click({ button: 'right' })
-  await page
-    .getByTestId('library-tag-context-menu')
-    .getByRole('menuitem', { name: /^Pin$/ })
-    .click()
+  await page.getByTestId('library-tag-context-menu').getByRole('menuitem', { name: /^Pin$/ }).click()
   await expect.poll(() => pinnedTags(page)).toEqual(['tag-research'])
 
   await tagChip(page, 'Research').click()
   await bookCard(page, 'Beta Plain').click({ button: 'right' })
   await page.getByRole('menuitem', { name: /^Edit$/ }).click()
   let editDialog = page.getByRole('dialog')
-  await expect(
-    editDialog.getByRole('heading', { name: /^Edit book$/ }),
-  ).toBeVisible()
-  await expect(
-    editDialog.getByRole('textbox', { name: /^New tag$/ }),
-  ).toHaveCount(0)
+  await expect(editDialog.getByRole('heading', { name: /^Edit book$/ })).toBeVisible()
+  await expect(editDialog.getByRole('textbox', { name: /^New tag$/ })).toHaveCount(0)
   await editDialog.getByRole('button', { name: /^Cancel$/ }).click()
 
   await bookCard(page, 'Beta Plain').click({ button: 'right' })
   await page.getByRole('menuitem', { name: /^Tags$/ }).click()
   editDialog = page.getByRole('dialog')
-  await expect(
-    editDialog.getByRole('heading', { name: /^Edit tags$/ }),
-  ).toBeVisible()
+  await expect(editDialog.getByRole('heading', { name: /^Edit tags$/ })).toBeVisible()
   await editDialog.getByRole('textbox', { name: /^New tag$/ }).fill('Scratch')
   await editDialog.getByRole('button', { name: /^Add tag$/ }).click()
-  await expect(
-    editDialog.getByRole('button', { name: /^Scratch$/ }),
-  ).toHaveAttribute('aria-pressed', 'true')
+  await expect(editDialog.getByRole('button', { name: /^Scratch$/ })).toHaveAttribute('aria-pressed', 'true')
   await editDialog.getByRole('button', { name: /^Cancel$/ }).click()
   await expect(tagChip(page, 'Scratch')).toHaveCount(0)
 
   await bookCard(page, 'Beta Plain').click({ button: 'right' })
   await page.getByRole('menuitem', { name: /^Tags$/ }).click()
   editDialog = page.getByRole('dialog')
-  await editDialog
-    .getByRole('textbox', { name: /^New tag$/ })
-    .fill(' research ')
+  await editDialog.getByRole('textbox', { name: /^New tag$/ }).fill(' research ')
   await editDialog.getByRole('button', { name: /^Add tag$/ }).click()
-  await expect(
-    editDialog.getByRole('button', { name: /^Research$/ }),
-  ).toHaveAttribute('aria-pressed', 'true')
-  await expect(
-    editDialog.getByRole('button', { name: /^Research$/ }),
-  ).toHaveCount(1)
+  await expect(editDialog.getByRole('button', { name: /^Research$/ })).toHaveAttribute('aria-pressed', 'true')
+  await expect(editDialog.getByRole('button', { name: /^Research$/ })).toHaveCount(1)
   await editDialog.getByRole('textbox', { name: /^New tag$/ }).fill('Priority')
   await editDialog.getByRole('button', { name: /^Add tag$/ }).click()
   await editDialog.getByRole('textbox', { name: /^New tag$/ }).fill('priority')
   await editDialog.getByRole('button', { name: /^Add tag$/ }).click()
-  await expect(
-    editDialog.getByRole('button', { name: /^Priority$/ }),
-  ).toHaveAttribute('aria-pressed', 'true')
-  await expect(
-    editDialog.getByRole('button', { name: /^Priority$/ }),
-  ).toHaveCount(1)
+  await expect(editDialog.getByRole('button', { name: /^Priority$/ })).toHaveAttribute('aria-pressed', 'true')
+  await expect(editDialog.getByRole('button', { name: /^Priority$/ })).toHaveCount(1)
   await editDialog.getByRole('button', { name: /^Apply$/ }).click()
 
   await expect(tagChip(page, 'Priority')).toBeVisible()
@@ -262,29 +231,17 @@ test('library tags can be filtered, pinned, edited, batch-applied, renamed, dele
   await page.getByRole('button', { name: /^Tags$/ }).click()
 
   const batchDialog = page.getByRole('dialog')
-  await expect(
-    batchDialog.getByRole('heading', { name: /^Edit tags$/ }),
-  ).toBeVisible()
-  await expect(
-    batchDialog.getByRole('button', { name: /^Research$/ }),
-  ).toHaveAttribute('aria-pressed', 'mixed')
-  await expect(
-    batchDialog.getByRole('button', { name: /^Research$/ }).locator('svg'),
-  ).toHaveCount(0)
+  await expect(batchDialog.getByRole('heading', { name: /^Edit tags$/ })).toBeVisible()
+  await expect(batchDialog.getByRole('button', { name: /^Research$/ })).toHaveAttribute('aria-pressed', 'mixed')
+  await expect(batchDialog.getByRole('button', { name: /^Research$/ }).locator('svg')).toHaveCount(0)
   await batchDialog.getByRole('button', { name: /^Research$/ }).click()
-  await expect(
-    batchDialog.getByRole('button', { name: /^Research$/ }),
-  ).toHaveAttribute('aria-pressed', 'true')
+  await expect(batchDialog.getByRole('button', { name: /^Research$/ })).toHaveAttribute('aria-pressed', 'true')
   await batchDialog.getByRole('textbox', { name: /^New tag$/ }).fill('Batch')
   await batchDialog.getByRole('button', { name: /^Add tag$/ }).click()
   await batchDialog.getByRole('textbox', { name: /^New tag$/ }).fill('batch')
   await batchDialog.getByRole('button', { name: /^Add tag$/ }).click()
-  await expect(
-    batchDialog.getByRole('button', { name: /^Batch$/ }),
-  ).toHaveAttribute('aria-pressed', 'true')
-  await expect(
-    batchDialog.getByRole('button', { name: /^Batch$/ }),
-  ).toHaveCount(1)
+  await expect(batchDialog.getByRole('button', { name: /^Batch$/ })).toHaveAttribute('aria-pressed', 'true')
+  await expect(batchDialog.getByRole('button', { name: /^Batch$/ })).toHaveCount(1)
   await batchDialog.getByRole('button', { name: /^Apply$/ }).click()
   await page.getByRole('button', { name: /^Cancel$/ }).click()
 
@@ -301,9 +258,7 @@ test('library tags can be filtered, pinned, edited, batch-applied, renamed, dele
     .getByRole('menuitem', { name: /^Edit tag$/ })
     .click()
   const tagDialog = page.getByRole('dialog')
-  await expect(
-    tagDialog.getByRole('heading', { name: /^Edit tag$/ }),
-  ).toBeVisible()
+  await expect(tagDialog.getByRole('heading', { name: /^Edit tag$/ })).toBeVisible()
   await tagDialog.getByRole('textbox', { name: /^Tag name$/ }).fill('Important')
   await tagDialog.getByRole('button', { name: /^Save$/ }).click()
   await expect(tagChip(page, 'Priority')).toHaveCount(0)

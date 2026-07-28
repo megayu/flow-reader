@@ -13,21 +13,13 @@ export const NOTE_POPOVER_PADDING = 10
 export const NOTE_POPOVER_MIN_WIDTH = 180
 const NOTE_POPOVER_ARROW_EDGE_OFFSET = 24
 
-export function getVisiblePageRect(
-  visibleRect: RectLike,
-  anchorRect: RectLike,
-  rendition: unknown,
-) {
+export function getVisiblePageRect(visibleRect: RectLike, anchorRect: RectLike, rendition: unknown) {
   const pageWidth = getRenditionPageWidth(rendition)
   if (!pageWidth || visibleRect.width <= pageWidth * 1.25) return visibleRect
 
   const anchorCenter = anchorRect.left + anchorRect.width / 2
   const pageCount = Math.max(1, Math.ceil(visibleRect.width / pageWidth))
-  const pageIndex = clamp(
-    Math.floor((anchorCenter - visibleRect.left) / pageWidth),
-    0,
-    pageCount - 1,
-  )
+  const pageIndex = clamp(Math.floor((anchorCenter - visibleRect.left) / pageWidth), 0, pageCount - 1)
   const left = visibleRect.left + pageIndex * pageWidth
   const right = Math.min(visibleRect.left + visibleRect.width, left + pageWidth)
 
@@ -58,11 +50,7 @@ export function getNoteOverlayPlacement(
       ...placement,
       placeAbove: false,
       arrowLeft: 0,
-      arrowTop: clamp(
-        anchorRect.top + anchorRect.height / 2 - placement.top - 6,
-        18,
-        Math.max(18, size.height - 18),
-      ),
+      arrowTop: clamp(anchorRect.top + anchorRect.height / 2 - placement.top - 6, 18, Math.max(18, size.height - 18)),
     }
   }
 
@@ -73,8 +61,7 @@ export function getNoteOverlayPlacement(
   const maxLeft = pageRight - size.width - margin
   const left = getNotePopoverLeft(anchorCenter, size.width, minLeft, maxLeft)
   const roomAbove = anchorRect.top - pageRect.top - margin - gap
-  const roomBelow =
-    pageBottom - (anchorRect.top + anchorRect.height) - margin - gap
+  const roomBelow = pageBottom - (anchorRect.top + anchorRect.height) - margin - gap
   const placeAbove = roomAbove >= size.height || roomAbove >= roomBelow
   const topAbove = anchorRect.top - size.height - gap
   const topBelow = anchorRect.top + anchorRect.height + gap
@@ -117,12 +104,7 @@ export function intersectRects(a: RectLike, b: RectLike): RectLike | undefined {
   }
 }
 
-function getNotePopoverLeft(
-  anchorCenter: number,
-  width: number,
-  minLeft: number,
-  maxLeft: number,
-) {
+function getNotePopoverLeft(anchorCenter: number, width: number, minLeft: number, maxLeft: number) {
   const centeredLeft = anchorCenter - width / 2
   const leftEdgeAligned = anchorCenter - NOTE_POPOVER_ARROW_EDGE_OFFSET
   const rightEdgeAligned = anchorCenter - width + NOTE_POPOVER_ARROW_EDGE_OFFSET

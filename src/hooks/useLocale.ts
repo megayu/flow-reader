@@ -1,28 +1,18 @@
 import { useCallback, useEffect } from 'react'
 
-import {
-  AppLocale,
-  defaultLocale,
-  isAppLocale,
-  localeOptions,
-} from '../locales'
+import { type AppLocale, defaultLocale, isAppLocale, localeOptions } from '../locales'
 import { useSettings, useSettingsReady } from '../state'
 
 function getBaseLanguage(locale: string) {
   return locale.split('-')[0]?.toLowerCase() ?? locale.toLowerCase()
 }
 
-const localeByBaseLanguage = new Map(
-  localeOptions.map((locale) => [getBaseLanguage(locale), locale]),
-)
+const localeByBaseLanguage = new Map(localeOptions.map((locale) => [getBaseLanguage(locale), locale]))
 
 function getBrowserLocale(): AppLocale {
   if (typeof navigator === 'undefined') return defaultLocale
 
-  const languages = [
-    navigator.language,
-    ...(Array.isArray(navigator.languages) ? navigator.languages : []),
-  ]
+  const languages = [navigator.language, ...(Array.isArray(navigator.languages) ? navigator.languages : [])]
 
   for (const language of languages) {
     if (isAppLocale(language)) return language
@@ -45,11 +35,7 @@ export function useLocale() {
     const browserLocale = getBrowserLocale()
     if (browserLocale === defaultLocale) return
 
-    setSettings((settings) =>
-      isAppLocale(settings.locale)
-        ? settings
-        : { ...settings, locale: browserLocale },
-    )
+    setSettings((settings) => (isAppLocale(settings.locale) ? settings : { ...settings, locale: browserLocale }))
   }, [setSettings, settings.locale, settingsReady])
 
   const setLocale = useCallback(

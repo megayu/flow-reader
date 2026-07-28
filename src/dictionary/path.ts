@@ -13,15 +13,9 @@ export function formatLocalPathForDisplay(path: string) {
 
 export function formatLocalDirectoryForDisplay(path: string) {
   const nativePath = formatLocalPathForDisplay(path)
-  const isWindowsPath =
-    /^[A-Za-z]:[\\/]/.test(nativePath) || /^[\\/]{2}[^\\/]/.test(nativePath)
-  const displayPath = isWindowsPath
-    ? nativePath.replaceAll('/', '\\')
-    : nativePath
-  const separatorIndex = Math.max(
-    displayPath.lastIndexOf('/'),
-    displayPath.lastIndexOf('\\'),
-  )
+  const isWindowsPath = /^[A-Za-z]:[\\/]/.test(nativePath) || /^[\\/]{2}[^\\/]/.test(nativePath)
+  const displayPath = isWindowsPath ? nativePath.replaceAll('/', '\\') : nativePath
+  const separatorIndex = Math.max(displayPath.lastIndexOf('/'), displayPath.lastIndexOf('\\'))
 
   if (separatorIndex < 0) return ''
   if (separatorIndex === 0) return displayPath[0]

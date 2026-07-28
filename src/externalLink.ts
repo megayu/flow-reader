@@ -5,11 +5,7 @@ import { IS_SERVER, isTauriRuntime } from '@/env'
 export function isSupportedExternalUrl(value: string) {
   try {
     const url = new URL(value)
-    return (
-      url.protocol === 'http:' ||
-      url.protocol === 'https:' ||
-      url.protocol === 'mailto:'
-    )
+    return url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'mailto:'
   } catch {
     return false
   }

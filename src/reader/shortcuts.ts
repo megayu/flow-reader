@@ -1,30 +1,15 @@
 import { isDevtoolsShortcutEnabled, toggleDevtools } from '../devtools'
-import {
-  hasKeyboardCaptureLayer,
-  isEditableKeyboardTarget,
-  isGlobalKeyboardShortcutBlocked,
-} from '../keyboard'
-import { BookTab, reader } from '../models/reader'
-import {
-  type SetterOrUpdater,
-  type TypographyConfiguration,
-  type ViewMode,
-} from '../state'
+import { hasKeyboardCaptureLayer, isEditableKeyboardTarget, isGlobalKeyboardShortcutBlocked } from '../keyboard'
+import { type BookTab, reader } from '../models/reader'
+import type { SetterOrUpdater, TypographyConfiguration, ViewMode } from '../state'
 import { getBodyTypographyBaseline, notePopoverClass } from '../styles'
 
 const FONT_SIZE_MIN = 14
 const FONT_SIZE_MAX = 28
 const FONT_SIZE_DEFAULT = 16
 
-type ZenTypographyOverridesSetter = SetterOrUpdater<
-  Record<string, TypographyConfiguration>
->
-type ReaderPanelAction =
-  | 'toc'
-  | 'search'
-  | 'annotation'
-  | 'image'
-  | 'typography'
+type ZenTypographyOverridesSetter = SetterOrUpdater<Record<string, TypographyConfiguration>>
+type ReaderPanelAction = 'toc' | 'search' | 'annotation' | 'image' | 'typography'
 type ReaderPanelActionSetter = SetterOrUpdater<ReaderPanelAction | undefined>
 type SettingsOpenSetter = SetterOrUpdater<boolean>
 
@@ -186,9 +171,7 @@ function handleAppShortcut(
   return true
 }
 
-function getPanelShortcutAction(
-  event: KeyboardEvent,
-): ReaderPanelAction | undefined {
+function getPanelShortcutAction(event: KeyboardEvent): ReaderPanelAction | undefined {
   const key = event.key.toLowerCase()
   if (key === 't') return 'toc'
   if (key === 's') return 'search'
@@ -241,9 +224,7 @@ function handleZenShortcut(
   viewMode: ViewMode,
   setZenTypographyOverrides: ZenTypographyOverridesSetter,
 ) {
-  if (
-    handleZenFontSizeShortcut(event, tab, viewMode, setZenTypographyOverrides)
-  ) {
+  if (handleZenFontSizeShortcut(event, tab, viewMode, setZenTypographyOverrides)) {
     return true
   }
   if (handleChapterShortcut(event, tab)) return true
@@ -283,10 +264,7 @@ function handleZenFontSizeShortcut(
   return true
 }
 
-function handleTabMoveShortcut(
-  event: KeyboardEvent,
-  enterReaderMode: () => void,
-) {
+function handleTabMoveShortcut(event: KeyboardEvent, enterReaderMode: () => void) {
   if (!event.shiftKey) return false
 
   const direction = getCommandTabDirection(event)
@@ -300,10 +278,7 @@ function handleTabMoveShortcut(
   return true
 }
 
-function handleTabSwitchShortcut(
-  event: KeyboardEvent,
-  enterReaderMode: () => void,
-) {
+function handleTabSwitchShortcut(event: KeyboardEvent, enterReaderMode: () => void) {
   if (event.shiftKey) return false
 
   const index = getCommandTabIndex(event)
@@ -314,11 +289,7 @@ function handleTabSwitchShortcut(
   if (!isReaderShortcutTargetBlocked(event)) {
     const group = reader.focusedGroup
     const hasTarget =
-      index === 8
-        ? !!group?.tabs.length
-        : index !== undefined
-          ? !!group?.tabs[index]
-          : !!group?.tabs.length
+      index === 8 ? !!group?.tabs.length : index !== undefined ? !!group?.tabs[index] : !!group?.tabs.length
     if (!hasTarget) return true
 
     if (index === 8) {
@@ -350,36 +321,22 @@ function hasCommandModifier(event: KeyboardEvent) {
 }
 
 function getFontSizeShortcutDelta(event: KeyboardEvent) {
-  if (
-    event.code === 'Equal' ||
-    event.code === 'NumpadAdd' ||
-    event.key === '+' ||
-    event.key === '='
-  ) {
+  if (event.code === 'Equal' || event.code === 'NumpadAdd' || event.key === '+' || event.key === '=') {
     return 1
   }
-  if (
-    event.code === 'Minus' ||
-    event.code === 'NumpadSubtract' ||
-    event.key === '-' ||
-    event.key === '_'
-  ) {
+  if (event.code === 'Minus' || event.code === 'NumpadSubtract' || event.key === '-' || event.key === '_') {
     return -1
   }
   return 0
 }
 
 function isFontSizeResetShortcut(event: KeyboardEvent) {
-  return (
-    !event.shiftKey && (event.code === 'Digit0' || event.code === 'Numpad0')
-  )
+  return !event.shiftKey && (event.code === 'Digit0' || event.code === 'Numpad0')
 }
 
 function updateBookFontSize(tab: BookTab, delta: number) {
   const fontSize =
-    parseFontSize(tab.book.configuration?.typography?.fontSize) ??
-    getCurrentBodyFontSize(tab) ??
-    FONT_SIZE_DEFAULT
+    parseFontSize(tab.book.configuration?.typography?.fontSize) ?? getCurrentBodyFontSize(tab) ?? FONT_SIZE_DEFAULT
   const next = clamp(fontSize + delta, FONT_SIZE_MIN, FONT_SIZE_MAX)
 
   tab.updateBook({
@@ -405,11 +362,7 @@ function clearBookFontSize(tab: BookTab) {
   })
 }
 
-function updateZenBookFontSize(
-  tab: BookTab,
-  delta: number,
-  setZenTypographyOverrides: ZenTypographyOverridesSetter,
-) {
+function updateZenBookFontSize(tab: BookTab, delta: number, setZenTypographyOverrides: ZenTypographyOverridesSetter) {
   setZenTypographyOverrides((overrides) => {
     const bookId = tab.book.id
     const typography = overrides[bookId] ?? {}
@@ -430,10 +383,7 @@ function updateZenBookFontSize(
   })
 }
 
-function clearZenBookFontSize(
-  tab: BookTab,
-  setZenTypographyOverrides: ZenTypographyOverridesSetter,
-) {
+function clearZenBookFontSize(tab: BookTab, setZenTypographyOverrides: ZenTypographyOverridesSetter) {
   setZenTypographyOverrides((overrides) => {
     const bookId = tab.book.id
     const typography = { ...overrides[bookId] }
@@ -449,8 +399,7 @@ function clearZenBookFontSize(
 }
 
 function getCurrentBodyFontSize(tab: BookTab) {
-  return getBodyTypographyBaseline(tab.view?.contents, tab.bodyTextCache)
-    .fontSize
+  return getBodyTypographyBaseline(tab.view?.contents, tab.bodyTextCache).fontSize
 }
 
 function parseFontSize(value: string | undefined) {
@@ -463,11 +412,7 @@ function handleChapterShortcut(event: KeyboardEvent, tab?: BookTab) {
   if (!tab) return false
 
   const direction =
-    event.code === 'BracketLeft' || event.key === '['
-      ? -1
-      : event.code === 'BracketRight' || event.key === ']'
-        ? 1
-        : 0
+    event.code === 'BracketLeft' || event.key === '[' ? -1 : event.code === 'BracketRight' || event.key === ']' ? 1 : 0
   if (!direction || shouldIgnoreReaderShortcut(event)) return false
 
   consumeShortcut(event)
@@ -520,10 +465,7 @@ function shouldIgnoreReaderShortcut(event: KeyboardEvent) {
 }
 
 export function isReaderShortcutTargetBlocked(event: KeyboardEvent) {
-  return (
-    isGlobalKeyboardShortcutBlocked(event) ||
-    hasKeyboardCapturingLayer(event.target)
-  )
+  return isGlobalKeyboardShortcutBlocked(event) || hasKeyboardCapturingLayer(event.target)
 }
 
 export function isEditableTarget(target: EventTarget | null) {
@@ -531,11 +473,7 @@ export function isEditableTarget(target: EventTarget | null) {
 }
 
 export function hasKeyboardCapturingLayer(target: EventTarget | null) {
-  return hasKeyboardCaptureLayer(target, [
-    `.${notePopoverClass}`,
-    '[role="dialog"]',
-    '[role="menu"]',
-  ])
+  return hasKeyboardCaptureLayer(target, [`.${notePopoverClass}`, '[role="dialog"]', '[role="menu"]'])
 }
 
 function consumeShortcut(event: KeyboardEvent) {

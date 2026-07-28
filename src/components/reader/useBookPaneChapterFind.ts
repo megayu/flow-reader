@@ -1,23 +1,16 @@
-import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useRef,
-  type Dispatch,
-  type SetStateAction,
-} from 'react'
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useEffectEvent, useRef } from 'react'
 
-import { BookTab, readingOrderStartSectionIndex } from '../../models/reader'
+import { type BookTab, readingOrderStartSectionIndex } from '../../models/reader'
 import { isReaderShortcutTargetBlocked } from '../../reader/shortcuts'
 
 import {
+  type ChapterFindResult,
+  type ChapterFindState,
   findLocationKey,
   firstVisibleFindResultIndex,
   isFindResultVisible,
   isFindShortcut,
   nearestVisibleFindResultIndex,
-  type ChapterFindResult,
-  type ChapterFindState,
   type ReflowableManager,
 } from './ChapterFind'
 import { useChapterFindController } from './useChapterFindController'
@@ -83,12 +76,7 @@ export function useBookPaneChapterFind({
       document.removeEventListener('keydown', onKeyDown, true)
     }
   }, [active])
-  useFrameEvent(
-    activeFrameWindows,
-    'keydown',
-    handleShortcut,
-    CAPTURE_EVENT_OPTIONS,
-  )
+  useFrameEvent(activeFrameWindows, 'keydown', handleShortcut, CAPTURE_EVENT_OPTIONS)
 
   return {
     close,
@@ -183,23 +171,10 @@ export function useBookPaneChapterFindResults({
     return () => {
       cancelled = true
     }
-  }, [
-    active,
-    findOpen,
-    findQuery,
-    findSectionIndex,
-    rendition?.manager,
-    setState,
-    tab,
-  ])
+  }, [active, findOpen, findQuery, findSectionIndex, rendition?.manager, setState, tab])
 
   useEffect(() => {
-    if (
-      !state.open ||
-      !active ||
-      !state.results.length ||
-      state.sectionIndex === undefined
-    ) {
+    if (!state.open || !active || !state.results.length || state.sectionIndex === undefined) {
       return
     }
 
@@ -224,16 +199,7 @@ export function useBookPaneChapterFindResults({
         activeIndex: visibleIndex,
       }
     })
-  }, [
-    state.open,
-    active,
-    state.results,
-    state.sectionIndex,
-    paginationVersion,
-    rendition?.manager,
-    setState,
-    tab,
-  ])
+  }, [state.open, active, state.results, state.sectionIndex, paginationVersion, rendition?.manager, setState, tab])
 
   const goToResult = useCallback(
     (index: number) => {
@@ -251,13 +217,7 @@ export function useBookPaneChapterFindResults({
         activeIndex: nextIndex,
       }))
 
-      if (
-        !isFindResultVisible(
-          result,
-          state.sectionIndex,
-          rendition?.manager as ReflowableManager | undefined,
-        )
-      ) {
+      if (!isFindResultVisible(result, state.sectionIndex, rendition?.manager as ReflowableManager | undefined)) {
         void tab.displayReflowableTarget(state.sectionIndex, result.cfi)
       }
     },

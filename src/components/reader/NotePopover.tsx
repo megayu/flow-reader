@@ -1,9 +1,10 @@
 import clsx from 'clsx'
-import React, { useLayoutEffect, useRef, useState } from 'react'
+import type React from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 
 import { notePopoverClass } from '../../styles'
 
-import { type NotePopoverState } from './noteContent'
+import type { NotePopoverState } from './noteContent'
 import {
   getNoteOverlayPlacement,
   NOTE_POPOVER_MARGIN,
@@ -28,10 +29,7 @@ export interface NotePopoverProps {
   onClose: () => void
 }
 
-export const NotePopover: React.FC<NotePopoverProps> = ({
-  popover,
-  onClose,
-}) => {
+export const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) => {
   const popoverRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
@@ -52,8 +50,7 @@ export const NotePopover: React.FC<NotePopoverProps> = ({
       setScrollable(
         popover.writingMode === 'vertical-rl'
           ? content.scrollWidth > content.clientWidth + 1
-          : content.scrollHeight >
-              popover.pageRect.height - NOTE_POPOVER_MARGIN * 2 + 1,
+          : content.scrollHeight > popover.pageRect.height - NOTE_POPOVER_MARGIN * 2 + 1,
       )
     }
 
@@ -70,14 +67,8 @@ export const NotePopover: React.FC<NotePopoverProps> = ({
 
   const vertical = popover.writingMode === 'vertical-rl'
   const maxWidth = vertical
-    ? Math.max(
-        NOTE_POPOVER_MIN_WIDTH,
-        Math.min(320, popover.pageRect.width / 2 - NOTE_POPOVER_MARGIN * 2),
-      )
-    : Math.max(
-        NOTE_POPOVER_MIN_WIDTH,
-        popover.pageRect.width - NOTE_POPOVER_MARGIN * 2,
-      )
+    ? Math.max(NOTE_POPOVER_MIN_WIDTH, Math.min(320, popover.pageRect.width / 2 - NOTE_POPOVER_MARGIN * 2))
+    : Math.max(NOTE_POPOVER_MIN_WIDTH, popover.pageRect.width - NOTE_POPOVER_MARGIN * 2)
   const placement = getNoteOverlayPlacement(
     popover.anchorRect,
     popover.pageRect,
@@ -127,65 +118,40 @@ export const NotePopover: React.FC<NotePopoverProps> = ({
           margin: 0,
           maxWidth: '100%',
           maxHeight: popover.pageRect.height - NOTE_POPOVER_MARGIN * 2,
-          overflowX:
-            popover.writingMode === 'vertical-rl'
-              ? scrollable
-                ? 'auto'
-                : 'visible'
-              : 'clip',
-          overflowY:
-            popover.writingMode === 'vertical-rl'
-              ? 'clip'
-              : scrollable
-                ? 'auto'
-                : 'visible',
+          overflowX: popover.writingMode === 'vertical-rl' ? (scrollable ? 'auto' : 'visible') : 'clip',
+          overflowY: popover.writingMode === 'vertical-rl' ? 'clip' : scrollable ? 'auto' : 'visible',
           whiteSpace: 'normal',
           overflowWrap: 'break-word',
           textAlign: 'justify',
-          writingMode:
-            popover.writingMode === 'vertical-rl' ? 'vertical-rl' : undefined,
-          textOrientation:
-            popover.writingMode === 'vertical-rl' ? 'mixed' : undefined,
+          writingMode: popover.writingMode === 'vertical-rl' ? 'vertical-rl' : undefined,
+          textOrientation: popover.writingMode === 'vertical-rl' ? 'mixed' : undefined,
           color: 'inherit',
         }}
       />
       <div
         style={{
           position: 'absolute',
-          left:
-            placement.side === 'right'
-              ? -6
-              : placement.side === 'left'
-                ? undefined
-                : placement.arrowLeft,
+          left: placement.side === 'right' ? -6 : placement.side === 'left' ? undefined : placement.arrowLeft,
           right: placement.side === 'left' ? -6 : undefined,
-          top: placement.side
-            ? placement.arrowTop
-            : placement.placeAbove
-              ? undefined
-              : -6,
+          top: placement.side ? placement.arrowTop : placement.placeAbove ? undefined : -6,
           bottom: placement.side || !placement.placeAbove ? undefined : -6,
           width: 12,
           height: 12,
           background: 'var(--flow-bg-panel)',
           borderRight:
-            placement.side === 'left' ||
-            (!placement.side && placement.placeAbove)
+            placement.side === 'left' || (!placement.side && placement.placeAbove)
               ? '1px solid var(--flow-border)'
               : undefined,
           borderBottom:
-            placement.side === 'left' ||
-            (!placement.side && placement.placeAbove)
+            placement.side === 'left' || (!placement.side && placement.placeAbove)
               ? '1px solid var(--flow-border)'
               : undefined,
           borderLeft:
-            placement.side === 'right' ||
-            (!placement.side && !placement.placeAbove)
+            placement.side === 'right' || (!placement.side && !placement.placeAbove)
               ? '1px solid var(--flow-border)'
               : undefined,
           borderTop:
-            placement.side === 'right' ||
-            (!placement.side && !placement.placeAbove)
+            placement.side === 'right' || (!placement.side && !placement.placeAbove)
               ? '1px solid var(--flow-border)'
               : undefined,
           transform: 'rotate(45deg)',

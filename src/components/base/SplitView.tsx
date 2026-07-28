@@ -1,13 +1,13 @@
 import clsx from 'clsx'
 import {
   Children,
-  ComponentProps,
-  Fragment,
+  type ComponentProps,
   createContext,
+  Fragment,
+  isValidElement,
   useCallback,
   useContext,
   useEffect,
-  isValidElement,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -35,14 +35,9 @@ interface SplitViewContext {
 const SplitViewContext = createContext<Partial<SplitViewContext>>({})
 SplitViewContext.displayName = 'SplitViewContext'
 
-function flattenSplitViewChildren(
-  children: React.ReactNode,
-): React.ReactNode[] {
+function flattenSplitViewChildren(children: React.ReactNode): React.ReactNode[] {
   return Children.toArray(children).flatMap((child) => {
-    if (
-      !isValidElement<{ children?: React.ReactNode }>(child) ||
-      child.type !== Fragment
-    ) {
+    if (!isValidElement<{ children?: React.ReactNode }>(child) || child.type !== Fragment) {
       return [child]
     }
 
@@ -62,12 +57,7 @@ function useRegisterView(key: string, view: ISplitViewItem) {
   }, [key, registerView, view])
 }
 
-function useSize(
-  preferredSize?: number,
-  minSize = 0,
-  maxSize = Number.POSITIVE_INFINITY,
-  storageKey?: string,
-) {
+function useSize(preferredSize?: number, minSize = 0, maxSize = Number.POSITIVE_INFINITY, storageKey?: string) {
   const [size, setSize] = useState(preferredSize)
   const sizeRef = useRef(size)
   useLayoutEffect(() => {
@@ -82,9 +72,7 @@ function useSize(
 
     const stored = window.localStorage.getItem(storageKey)
     const parsed = stored ? Number(stored) : Number.NaN
-    const restoredSize = Number.isFinite(parsed)
-      ? clamp(parsed, minSize, maxSize)
-      : preferredSize
+    const restoredSize = Number.isFinite(parsed) ? clamp(parsed, minSize, maxSize) : preferredSize
     if (restoredSize === sizeRef.current) return
 
     sizeRef.current = restoredSize
@@ -143,12 +131,7 @@ export function useSplitViewItem(
     visible?: boolean
   } = {},
 ) {
-  const [size, _resize, reset, commitSize] = useSize(
-    preferredSize,
-    dragMinSize ?? minSize,
-    maxSize,
-    storageKey,
-  )
+  const [size, _resize, reset, commitSize] = useSize(preferredSize, dragMinSize ?? minSize, maxSize, storageKey)
   const fixed = minSize === maxSize
   const resize = fixed ? undefined : _resize
   const stringKey = typeof key === 'string' ? key : key.name
@@ -164,17 +147,7 @@ export function useSplitViewItem(
       resize,
       visible,
     }),
-    [
-      commitSize,
-      dragMinSize,
-      fixed,
-      maxSize,
-      minSize,
-      reset,
-      stringKey,
-      resize,
-      visible,
-    ],
+    [commitSize, dragMinSize, fixed, maxSize, minSize, reset, stringKey, resize, visible],
   )
   useRegisterView(stringKey, view)
 
@@ -185,11 +158,7 @@ interface SplitViewProps extends ComponentProps<'div'> {
   vertical?: boolean
 }
 
-export const SplitView = ({
-  children,
-  className,
-  vertical = false,
-}: SplitViewProps) => {
+export const SplitView = ({ children, className, vertical = false }: SplitViewProps) => {
   const [viewMap, setViewMap] = useState(new Map<string, ISplitViewItem>())
   const views = [...viewMap.values()]
 
@@ -208,12 +177,7 @@ export const SplitView = ({
   return (
     <div className={clsx('SplitView relative h-full min-h-0', className)}>
       <SplitViewContext.Provider value={contextValue}>
-        <div
-          className={clsx(
-            'SplitViewContainer flex h-full min-h-0',
-            vertical && 'flex-col',
-          )}
-        >
+        <div className={clsx('SplitViewContainer flex h-full min-h-0', vertical && 'flex-col')}>
           {childList.reduce((a, c, i) => (
             <>
               {a}
@@ -308,9 +272,7 @@ const Sash: React.FC<SashProps> = ({ vertical, views }) => {
           highlighted && (active ? 'opacity-90' : 'opacity-65'),
         )}
         style={{
-          [vertical ? 'height' : 'width']: highlighted
-            ? SASH_HIGHLIGHT_LINE_SIZE
-            : SASH_LINE_SIZE,
+          [vertical ? 'height' : 'width']: highlighted ? SASH_HIGHLIGHT_LINE_SIZE : SASH_LINE_SIZE,
         }}
       ></div>
       {active && <Overlay className="!bg-transparent" />}
@@ -318,11 +280,7 @@ const Sash: React.FC<SashProps> = ({ vertical, views }) => {
   )
 }
 
-function resizeDeltaBounds(
-  vertical: boolean,
-  views: (ISplitViewItem | undefined)[],
-  sash: HTMLElement,
-) {
+function resizeDeltaBounds(vertical: boolean, views: (ISplitViewItem | undefined)[], sash: HTMLElement) {
   const [previousView, nextView] = views
   const previousElement = sash.previousElementSibling
   const nextElement = sash.nextElementSibling
@@ -332,14 +290,8 @@ function resizeDeltaBounds(
   const nextSize = elementSplitSize(nextElement, vertical)
 
   return {
-    min: Math.max(
-      dragMinSize(previousView) - previousSize,
-      nextSize - (nextView?.maxSize ?? Number.POSITIVE_INFINITY),
-    ),
-    max: Math.min(
-      (previousView?.maxSize ?? Number.POSITIVE_INFINITY) - previousSize,
-      nextSize - dragMinSize(nextView),
-    ),
+    min: Math.max(dragMinSize(previousView) - previousSize, nextSize - (nextView?.maxSize ?? Number.POSITIVE_INFINITY)),
+    max: Math.min((previousView?.maxSize ?? Number.POSITIVE_INFINITY) - previousSize, nextSize - dragMinSize(nextView)),
   }
 }
 

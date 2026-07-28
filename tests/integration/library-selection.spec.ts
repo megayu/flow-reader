@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 
 import type { BookRecord } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
@@ -52,9 +52,7 @@ async function expectSelectedCount(page: Page, count: number) {
   await expect(selectedCount(page)).toContainText(`${count} / 10`)
 }
 
-test('shift selection recomputes the active range until shift is released', async ({
-  page,
-}) => {
+test('shift selection recomputes the active range until shift is released', async ({ page }) => {
   await setupLibrary(page)
 
   await bookCard(page, 5).click()
@@ -77,9 +75,7 @@ test('shift selection recomputes the active range until shift is released', asyn
   await page.keyboard.up('Shift')
 })
 
-test('mod click can set a new anchor before another shift range', async ({
-  page,
-}) => {
+test('mod click can set a new anchor before another shift range', async ({ page }) => {
   await setupLibrary(page)
 
   await bookCard(page, 1).click()
@@ -94,9 +90,7 @@ test('mod click can set a new anchor before another shift range', async ({
   await expectSelectedCount(page, 7)
 })
 
-test('escape clears selection before exiting selection mode', async ({
-  page,
-}) => {
+test('escape clears selection before exiting selection mode', async ({ page }) => {
   await setupLibrary(page)
 
   await bookCard(page, 3).click()

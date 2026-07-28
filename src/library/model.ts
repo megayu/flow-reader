@@ -1,15 +1,10 @@
-import {
-  cleanBookText,
-  compareBookDisplayTitle,
-  getBookDisplayTitle,
-  stripFileExtension,
-} from '../book'
+import { cleanBookText, compareBookDisplayTitle, getBookDisplayTitle, stripFileExtension } from '../book'
 import type { LibrarySortDirection, LibrarySortField } from '../state'
 import {
-  exportBook,
   type BookExportFormat,
   type BookRecord,
   type BookSourceStatus,
+  exportBook,
   type LibraryTagRecord,
   type ReadingStatus,
 } from '../storage'
@@ -19,13 +14,8 @@ const collator = new Intl.Collator(undefined, {
   sensitivity: 'base',
 })
 
-export function toggleReadingStatusFilter(
-  filters: ReadingStatus[],
-  status: ReadingStatus,
-) {
-  return filters.includes(status)
-    ? filters.filter((item) => item !== status)
-    : [...filters, status]
+export function toggleReadingStatusFilter(filters: ReadingStatus[], status: ReadingStatus) {
+  return filters.includes(status) ? filters.filter((item) => item !== status) : [...filters, status]
 }
 
 export function formatFileSize(bytes: number) {
@@ -40,9 +30,7 @@ export function formatFileSize(bytes: number) {
     unitIndex++
   }
 
-  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 2)} ${
-    units[unitIndex]
-  }`
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 2)} ${units[unitIndex]}`
 }
 
 export function formatDateTime(value?: number) {
@@ -82,40 +70,30 @@ export function bookSourceFormat(book: BookRecord) {
 }
 
 export function bookExportFormats(book: BookRecord): BookExportFormat[] {
-  return bookSourceFormat(book) === 'txt' && book.sourceStorage !== 'referenced'
-    ? ['txt', 'epub']
-    : ['epub']
+  return bookSourceFormat(book) === 'txt' && book.sourceStorage !== 'referenced' ? ['txt', 'epub'] : ['epub']
 }
 
 export function isArchiveOnlyBook(book: BookRecord) {
-  return (
-    book.contentMode === 'archiveOnly' ||
-    book.contentFlags?.includes('nonPortableArchivePaths') === true
-  )
+  return book.contentMode === 'archiveOnly' || book.contentFlags?.includes('nonPortableArchivePaths') === true
 }
 
 export const bookCoverCornerBadgeClassName =
   'flex size-8 items-center justify-center rounded-lg shadow-sm ring-1 ring-inset'
 export const bookCoverCornerIconSize = 18
 export const bookCoverCornerIconStrokeWidth = 2.2
-export const bookSourceStatusRefreshEvent =
-  'flow-reader:book-source-status-refresh'
+export const bookSourceStatusRefreshEvent = 'flow-reader:book-source-status-refresh'
 
 export function isBookSourceUnavailable(status?: BookSourceStatus) {
   return status !== undefined && status !== 'available'
 }
 
-export function bookSourceDescriptionKey(
-  status: Exclude<BookSourceStatus, 'available'>,
-) {
+export function bookSourceDescriptionKey(status: Exclude<BookSourceStatus, 'available'>) {
   if (status === 'missing') return 'source_missing_description' as const
   if (status === 'changed') return 'source_changed_description' as const
   return 'source_unreadable_description' as const
 }
 
-export function bookSourceStatusFromError(
-  errorMessage: string,
-): Exclude<BookSourceStatus, 'available'> | undefined {
+export function bookSourceStatusFromError(errorMessage: string): Exclude<BookSourceStatus, 'available'> | undefined {
   if (errorMessage === 'BOOK_SOURCE_MISSING') return 'missing'
   if (errorMessage === 'BOOK_SOURCE_UNREADABLE') return 'unreadable'
   if (errorMessage === 'BOOK_SOURCE_CHANGED') return 'changed'
@@ -123,16 +101,11 @@ export function bookSourceStatusFromError(
 }
 
 export function isBookExportDirty(book: BookRecord, format: BookExportFormat) {
-  return (
-    !!book.contentEditedAt &&
-    (book.exportedVersions?.[format] ?? 0) < (book.contentVersion ?? 0)
-  )
+  return !!book.contentEditedAt && (book.exportedVersions?.[format] ?? 0) < (book.contentVersion ?? 0)
 }
 
 export function hasUnexportedBookChanges(book: BookRecord) {
-  return bookExportFormats(book).every((format) =>
-    isBookExportDirty(book, format),
-  )
+  return bookExportFormats(book).every((format) => isBookExportDirty(book, format))
 }
 
 export function exportFormatExtension(format: BookExportFormat) {
@@ -140,9 +113,7 @@ export function exportFormatExtension(format: BookExportFormat) {
 }
 
 export function exportDialogFilter(format: BookExportFormat) {
-  return format === 'txt'
-    ? { name: 'TXT', extensions: ['txt'] }
-    : { name: 'EPUB', extensions: ['epub'] }
+  return format === 'txt' ? { name: 'TXT', extensions: ['txt'] } : { name: 'EPUB', extensions: ['epub'] }
 }
 
 export function cleanExportFileName(value: string) {
@@ -151,20 +122,12 @@ export function cleanExportFileName(value: string) {
   return cleaned || fallback
 }
 
-export function getExportDefaultPath(
-  book: BookRecord,
-  format: BookExportFormat,
-) {
-  const base = cleanExportFileName(
-    stripFileExtension(book.name) || getBookDisplayTitle(book),
-  )
+export function getExportDefaultPath(book: BookRecord, format: BookExportFormat) {
+  const base = cleanExportFileName(stripFileExtension(book.name) || getBookDisplayTitle(book))
   return `${base}.${exportFormatExtension(format)}`
 }
 
-export async function exportBookWithDialog(
-  book: BookRecord,
-  format: BookExportFormat,
-) {
+export async function exportBookWithDialog(book: BookRecord, format: BookExportFormat) {
   const { save } = await import('@tauri-apps/plugin-dialog')
   const outputPath = await save({
     defaultPath: getExportDefaultPath(book, format),
@@ -222,18 +185,13 @@ export function uniqueStringValues(values: string[]) {
   return result
 }
 
-export function mergeLibraryTags(
-  tags: LibraryTagRecord[],
-  extraTags: LibraryTagRecord[],
-) {
+export function mergeLibraryTags(tags: LibraryTagRecord[], extraTags: LibraryTagRecord[]) {
   const byId = new Map<string, LibraryTagRecord>()
   ;[...tags, ...extraTags].forEach((tag) => {
     byId.set(tag.id, tag)
   })
 
-  return Array.from(byId.values()).sort((a, b) =>
-    collator.compare(a.name, b.name),
-  )
+  return Array.from(byId.values()).sort((a, b) => collator.compare(a.name, b.name))
 }
 
 export function clampMenuPosition(x: number, y: number) {
@@ -249,32 +207,18 @@ function compareBookTitle(a: BookRecord, b: BookRecord) {
   return compareBookDisplayTitle(a, b)
 }
 
-function compareBookString(
-  a: BookRecord,
-  b: BookRecord,
-  getValue: (book: BookRecord) => string,
-) {
+function compareBookString(a: BookRecord, b: BookRecord, getValue: (book: BookRecord) => string) {
   return collator.compare(getValue(a), getValue(b))
 }
 
-function compareBookNumber(
-  a: BookRecord,
-  b: BookRecord,
-  getValue: (book: BookRecord) => number | undefined,
-) {
+function compareBookNumber(a: BookRecord, b: BookRecord, getValue: (book: BookRecord) => number | undefined) {
   return (getValue(a) ?? 0) - (getValue(b) ?? 0)
 }
 
-function compareBooksByField(
-  a: BookRecord,
-  b: BookRecord,
-  field: LibrarySortField,
-) {
+function compareBooksByField(a: BookRecord, b: BookRecord, field: LibrarySortField) {
   if (field === 'title') return compareBookTitle(a, b)
   if (field === 'creator') {
-    return compareBookString(a, b, (book) =>
-      cleanBookText(book.metadata.creator),
-    )
+    return compareBookString(a, b, (book) => cleanBookText(book.metadata.creator))
   }
   if (field === 'updatedAt') {
     return compareBookNumber(a, b, (book) => book.lastReadAt ?? book.updatedAt)
@@ -283,11 +227,7 @@ function compareBooksByField(
   return compareBookNumber(a, b, (book) => book.createdAt)
 }
 
-export function sortBooks(
-  books: BookRecord[],
-  field: LibrarySortField,
-  direction: LibrarySortDirection,
-) {
+export function sortBooks(books: BookRecord[], field: LibrarySortField, direction: LibrarySortDirection) {
   return [...books].sort((a, b) => {
     const primary = compareBooksByField(a, b, field)
     if (primary) return direction === 'asc' ? primary : -primary
@@ -300,8 +240,6 @@ export function sortBooks(
   })
 }
 
-export function toggleSortDirection(
-  direction: LibrarySortDirection,
-): LibrarySortDirection {
+export function toggleSortDirection(direction: LibrarySortDirection): LibrarySortDirection {
   return direction === 'asc' ? 'desc' : 'asc'
 }

@@ -6,18 +6,11 @@ export function normalizeImageSource(src: string) {
   }
 }
 
-export function imageSourcesMatch(
-  a: string | undefined,
-  b: string | undefined,
-) {
+export function imageSourcesMatch(a: string | undefined, b: string | undefined) {
   if (!a || !b) return false
   if (a === b) return true
 
   const normalizedA = normalizeImageSource(a)
   const normalizedB = normalizeImageSource(b)
-  return (
-    normalizedA === normalizedB ||
-    normalizedA.includes(normalizedB) ||
-    normalizedB.includes(normalizedA)
-  )
+  return normalizedA === normalizedB || normalizedA.includes(normalizedB) || normalizedB.includes(normalizedA)
 }

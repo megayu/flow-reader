@@ -16,19 +16,14 @@ export function getNoteIndex(document: Document) {
   return index
 }
 
-export function findReciprocalNoteItem(
-  anchor: HTMLAnchorElement,
-  target: HTMLElement,
-) {
+export function findReciprocalNoteItem(anchor: HTMLAnchorElement, target: HTMLElement) {
   return findNoteItemForTarget(anchor, target)
 }
 
 function createNoteIndex(document: Document): NoteIndex {
   const items = collectLinkedNoteItems(document)
   const itemSet = new Set(items)
-  const hideTargets = uniqueElements(
-    items.map((item) => findNoteHideTarget(item, itemSet)),
-  )
+  const hideTargets = uniqueElements(items.map((item) => findNoteHideTarget(item, itemSet)))
 
   return {
     getHideTargets: () => hideTargets,
@@ -70,10 +65,7 @@ function getLinkedHashTarget(anchor: HTMLAnchorElement) {
   return getElementByIdOrName(anchor.ownerDocument, safeDecode(hash))
 }
 
-function isHashTargetAfterSource(
-  source: HTMLAnchorElement,
-  target: HTMLElement,
-) {
+function isHashTargetAfterSource(source: HTMLAnchorElement, target: HTMLElement) {
   if (source === target) return false
 
   const position = source.compareDocumentPosition?.(target)
@@ -90,19 +82,12 @@ function findNoteItemForTarget(anchor: HTMLAnchorElement, target: HTMLElement) {
   )
 }
 
-function findBacklinkedTargetNoteItem(
-  anchor: HTMLAnchorElement,
-  target: HTMLElement,
-) {
+function findBacklinkedTargetNoteItem(anchor: HTMLAnchorElement, target: HTMLElement) {
   if (isEmptyPositionTarget(target)) return
 
   for (const candidate of getBacklinkedTargetNoteItemCandidates(target)) {
     const backlink = findFirstHashLink(candidate)
-    if (
-      backlink &&
-      isConfirmedNoteBacklink(backlink, anchor) &&
-      hasUsefulReciprocalNoteContent(candidate, backlink)
-    ) {
+    if (backlink && isConfirmedNoteBacklink(backlink, anchor) && hasUsefulReciprocalNoteContent(candidate, backlink)) {
       return candidate
     }
   }
@@ -115,15 +100,9 @@ function getBacklinkedTargetNoteItemCandidates(target: HTMLElement) {
   while (cur && cur !== cur.ownerDocument.body) {
     if (
       isPotentialNoteContentElement(cur) &&
-      (cur === target ||
-        isTargetAtStartOfCandidate(cur, target) ||
-        isSemanticNoteTarget(cur))
+      (cur === target || isTargetAtStartOfCandidate(cur, target) || isSemanticNoteTarget(cur))
     ) {
-      if (
-        isTagName(cur, 'DT') &&
-        cur.parentElement &&
-        isTagName(cur.parentElement, 'DL')
-      ) {
+      if (isTagName(cur, 'DT') && cur.parentElement && isTagName(cur.parentElement, 'DL')) {
         candidates.push(cur.parentElement)
       } else {
         candidates.push(cur)
@@ -137,19 +116,12 @@ function getBacklinkedTargetNoteItemCandidates(target: HTMLElement) {
   return uniqueElements(candidates)
 }
 
-function findEmptyTargetNoteItem(
-  anchor: HTMLAnchorElement,
-  target: HTMLElement,
-) {
+function findEmptyTargetNoteItem(anchor: HTMLAnchorElement, target: HTMLElement) {
   if (!isEmptyPositionTarget(target)) return
 
   for (const candidate of getEmptyTargetNoteItemCandidates(target)) {
     const backlink = findFirstHashLink(candidate)
-    if (
-      backlink &&
-      isConfirmedNoteBacklink(backlink, anchor) &&
-      hasUsefulReciprocalNoteContent(candidate, backlink)
-    ) {
+    if (backlink && isConfirmedNoteBacklink(backlink, anchor) && hasUsefulReciprocalNoteContent(candidate, backlink)) {
       return candidate
     }
   }
@@ -166,20 +138,14 @@ function getEmptyTargetNoteItemCandidates(target: HTMLElement) {
   while (cur?.parentElement && cur.parentElement !== cur.ownerDocument.body) {
     const parent: HTMLElement = cur.parentElement
 
-    if (
-      isPotentialNoteContentElement(parent) &&
-      isTargetAtStartOfCandidate(parent, target)
-    ) {
+    if (isPotentialNoteContentElement(parent) && isTargetAtStartOfCandidate(parent, target)) {
       candidates.push(parent)
       break
     }
 
     if (!isInlineNoteTargetWrapper(parent)) break
     const parentNext = parent.nextElementSibling
-    if (
-      isHTMLElement(parentNext) &&
-      isPotentialNoteContentElement(parentNext)
-    ) {
+    if (isHTMLElement(parentNext) && isPotentialNoteContentElement(parentNext)) {
       candidates.push(parentNext)
     }
 
@@ -189,17 +155,11 @@ function getEmptyTargetNoteItemCandidates(target: HTMLElement) {
   return uniqueElements(candidates)
 }
 
-function isConfirmedNoteBacklink(
-  backlink: HTMLAnchorElement,
-  anchor: HTMLAnchorElement,
-) {
+function isConfirmedNoteBacklink(backlink: HTMLAnchorElement, anchor: HTMLAnchorElement) {
   return backlinkTargetsAnchor(backlink, anchor)
 }
 
-function findSemanticLinkedNoteItem(
-  anchor: HTMLAnchorElement,
-  target: HTMLElement,
-) {
+function findSemanticLinkedNoteItem(anchor: HTMLAnchorElement, target: HTMLElement) {
   if (!isSemanticNoteSourceAnchor(anchor)) return
 
   let cur: HTMLElement | null = target
@@ -212,10 +172,7 @@ function findSemanticLinkedNoteItem(
 function findNoteHideTarget(item: HTMLElement, itemSet: Set<HTMLElement>) {
   let current = item
 
-  while (
-    current.parentElement &&
-    current.parentElement !== current.ownerDocument.body
-  ) {
+  while (current.parentElement && current.parentElement !== current.ownerDocument.body) {
     if (!containsOnlyNoteItems(current.parentElement, itemSet)) break
     current = current.parentElement
   }
@@ -223,10 +180,7 @@ function findNoteHideTarget(item: HTMLElement, itemSet: Set<HTMLElement>) {
   return current
 }
 
-function containsOnlyNoteItems(
-  element: HTMLElement,
-  itemSet: Set<HTMLElement>,
-) {
+function containsOnlyNoteItems(element: HTMLElement, itemSet: Set<HTMLElement>) {
   let hasNote = false
   let hasOtherContent = false
 
@@ -275,36 +229,26 @@ function classifyNodeForNoteContainer(
 
 function findFirstHashLink(el: HTMLElement): HTMLAnchorElement | undefined {
   if (isTagName(el, 'A')) {
-    return isUsableHashLink(el as HTMLAnchorElement)
-      ? (el as HTMLAnchorElement)
-      : undefined
+    return isUsableHashLink(el as HTMLAnchorElement) ? (el as HTMLAnchorElement) : undefined
   }
 
   const first = el.querySelector<HTMLAnchorElement>('a[href]')
   return first && isUsableHashLink(first) ? first : undefined
 }
 
-function hasUsefulReciprocalNoteContent(
-  candidate: HTMLElement,
-  backlink: HTMLAnchorElement,
-) {
+function hasUsefulReciprocalNoteContent(candidate: HTMLElement, backlink: HTMLAnchorElement) {
   if (candidate.querySelector('img, svg, math')) return true
   if (hasTextOutsideElement(candidate, backlink)) return true
 
-  return (
-    !!backlink.textContent?.trim() || !!backlink.querySelector('img, svg, math')
-  )
+  return !!backlink.textContent?.trim() || !!backlink.querySelector('img, svg, math')
 }
 
 function hasTextOutsideElement(root: HTMLElement, excluded: HTMLElement) {
   for (const node of Array.from(root.childNodes)) {
     if (excluded === node || excluded.contains(node)) continue
 
-    if (node.nodeType === 3 && !!node.textContent?.trim()) return true
-    if (
-      isElementNode(node) &&
-      hasTextOutsideElement(node as HTMLElement, excluded)
-    ) {
+    if (node.nodeType === 3 && node.textContent?.trim()) return true
+    if (isElementNode(node) && hasTextOutsideElement(node as HTMLElement, excluded)) {
       return true
     }
   }
@@ -313,16 +257,10 @@ function hasTextOutsideElement(root: HTMLElement, excluded: HTMLElement) {
 }
 
 function hasUsefulNoteContent(candidate: HTMLElement) {
-  return (
-    !!candidate.textContent?.trim() ||
-    !!candidate.querySelector('img, svg, math')
-  )
+  return !!candidate.textContent?.trim() || !!candidate.querySelector('img, svg, math')
 }
 
-function isTargetAtStartOfCandidate(
-  candidate: HTMLElement,
-  target: HTMLElement,
-) {
+function isTargetAtStartOfCandidate(candidate: HTMLElement, target: HTMLElement) {
   if (candidate === target) return true
 
   const path: HTMLElement[] = []
@@ -344,32 +282,15 @@ function isTargetAtStartOfCandidate(
 
 function getFirstMeaningfulChild(el: HTMLElement) {
   return Array.from(el.childNodes).find(
-    (node) =>
-      isElementNode(node) ||
-      (node.nodeType === 3 && !!node.textContent?.trim()),
+    (node) => isElementNode(node) || (node.nodeType === 3 && !!node.textContent?.trim()),
   )
 }
 
 function isInlineNoteTargetWrapper(el: HTMLElement) {
-  return isTagName(
-    el,
-    'A',
-    'B',
-    'EM',
-    'FONT',
-    'I',
-    'SMALL',
-    'SPAN',
-    'STRONG',
-    'SUB',
-    'SUP',
-  )
+  return isTagName(el, 'A', 'B', 'EM', 'FONT', 'I', 'SMALL', 'SPAN', 'STRONG', 'SUB', 'SUP')
 }
 
-function backlinkTargetsAnchor(
-  backlink: HTMLAnchorElement,
-  anchor: HTMLAnchorElement,
-) {
+function backlinkTargetsAnchor(backlink: HTMLAnchorElement, anchor: HTMLAnchorElement) {
   const [, hash = ''] = backlink.getAttribute('href')?.split('#') ?? []
   if (!hash) return false
 
@@ -388,9 +309,7 @@ function backlinkTargetsAnchor(
 function getElementByIdOrName(doc: Document, id: string) {
   return (
     doc.getElementById(id) ??
-    ([...doc.querySelectorAll('[name]')].find(
-      (el) => el.getAttribute('name') === id,
-    ) as HTMLElement | undefined)
+    ([...doc.querySelectorAll('[name]')].find((el) => el.getAttribute('name') === id) as HTMLElement | undefined)
   )
 }
 
@@ -403,48 +322,17 @@ function safeDecode(text: string) {
 }
 
 function isPotentialNoteContentElement(el: HTMLElement) {
-  return isTagName(
-    el,
-    'ASIDE',
-    'BLOCKQUOTE',
-    'DD',
-    'DIV',
-    'DL',
-    'LI',
-    'OL',
-    'P',
-    'SECTION',
-    'TABLE',
-    'UL',
-  )
+  return isTagName(el, 'ASIDE', 'BLOCKQUOTE', 'DD', 'DIV', 'DL', 'LI', 'OL', 'P', 'SECTION', 'TABLE', 'UL')
 }
 
 function isPotentialBodyTextElement(el: HTMLElement) {
-  return isTagName(
-    el,
-    'BLOCKQUOTE',
-    'DD',
-    'DIV',
-    'LI',
-    'OL',
-    'P',
-    'SECTION',
-    'TABLE',
-    'UL',
-  )
+  return isTagName(el, 'BLOCKQUOTE', 'DD', 'DIV', 'LI', 'OL', 'P', 'SECTION', 'TABLE', 'UL')
 }
 
 function isSemanticNoteSourceAnchor(anchor: HTMLAnchorElement) {
   return (
     hasKeywordToken(anchor.className, 'footnote', 'endnote', 'noteref') ||
-    hasKeywordToken(
-      anchor.getAttribute('role'),
-      'doc-noteref',
-      'noteref',
-      'footnote',
-      'endnote',
-      'note',
-    ) ||
+    hasKeywordToken(anchor.getAttribute('role'), 'doc-noteref', 'noteref', 'footnote', 'endnote', 'note') ||
     hasKeywordToken(
       anchor.getAttribute('epub:type') ?? anchor.getAttribute('type'),
       'noteref',
@@ -460,26 +348,12 @@ function isSemanticNoteTarget(el: HTMLElement) {
     return true
   }
 
-  if (
-    hasKeywordToken(
-      el.getAttribute('role'),
-      'doc-footnote',
-      'doc-endnote',
-      'doc-note',
-      'note',
-    )
-  ) {
+  if (hasKeywordToken(el.getAttribute('role'), 'doc-footnote', 'doc-endnote', 'doc-note', 'note')) {
     return true
   }
 
   if (
-    hasKeywordToken(
-      el.getAttribute('epub:type') ?? el.getAttribute('type'),
-      'footnote',
-      'endnote',
-      'rearnote',
-      'note',
-    )
+    hasKeywordToken(el.getAttribute('epub:type') ?? el.getAttribute('type'), 'footnote', 'endnote', 'rearnote', 'note')
   ) {
     return true
   }
@@ -503,17 +377,10 @@ function findNearbyEmptyPositionTarget(anchor: HTMLAnchorElement) {
 }
 
 function isEmptyPositionTarget(el: HTMLElement) {
-  return (
-    isTagName(el, 'A', 'SPAN') &&
-    !!(el.id || el.getAttribute('name')) &&
-    !el.textContent?.trim()
-  )
+  return isTagName(el, 'A', 'SPAN') && !!(el.id || el.getAttribute('name')) && !el.textContent?.trim()
 }
 
-function hasKeywordToken(
-  value: string | null | undefined,
-  ...keywords: string[]
-) {
+function hasKeywordToken(value: string | null | undefined, ...keywords: string[]) {
   if (!value) return false
 
   return value
@@ -530,10 +397,7 @@ function hasKeywordToken(
     )
 }
 
-function findAncestorInSet<T extends HTMLElement>(
-  element: HTMLElement,
-  set: Set<T>,
-) {
+function findAncestorInSet<T extends HTMLElement>(element: HTMLElement, set: Set<T>) {
   let cur: HTMLElement | null = element
 
   while (cur && cur !== cur.ownerDocument.body) {
@@ -547,15 +411,11 @@ function uniqueElements<T extends HTMLElement>(elements: T[]) {
 }
 
 function isElementNode(node: ChildNode | undefined) {
-  return (
-    node?.nodeType === 1 && typeof (node as HTMLElement).tagName === 'string'
-  )
+  return node?.nodeType === 1 && typeof (node as HTMLElement).tagName === 'string'
 }
 
 function isHTMLElement(node: Element | null | undefined): node is HTMLElement {
-  return (
-    node?.nodeType === 1 && typeof (node as HTMLElement).tagName === 'string'
-  )
+  return node?.nodeType === 1 && typeof (node as HTMLElement).tagName === 'string'
 }
 
 function isTagName(el: Element, ...names: string[]) {

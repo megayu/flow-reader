@@ -38,9 +38,7 @@ export async function sanitizeMdictContent({
   resourceUrlPrefix,
 }: SanitizeMdictOptions): Promise<DictionaryRichDocument> {
   const source = new DOMParser().parseFromString(html, 'text/html')
-  const stylesheetKeys = Array.from(
-    source.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"][href]'),
-  )
+  const stylesheetKeys = Array.from(source.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"][href]'))
     .map((link) => normalizeResourceKey(link.getAttribute('href') ?? ''))
     .filter((key): key is string => Boolean(key))
     .filter((key, index, keys) => keys.indexOf(key) === index)
@@ -68,11 +66,7 @@ export async function sanitizeMdictContent({
   }
 }
 
-function sanitizeChildren(
-  root: ParentNode,
-  resourceUrlPrefix: string,
-  resourceKeys: Set<string>,
-) {
+function sanitizeChildren(root: ParentNode, resourceUrlPrefix: string, resourceKeys: Set<string>) {
   for (const element of Array.from(root.children)) {
     const tag = element.tagName.toLowerCase()
     if (BLOCKED_ELEMENTS.has(tag)) {
@@ -81,10 +75,7 @@ function sanitizeChildren(
     }
 
     const attributes = new Map(
-      Array.from(element.attributes).map((attribute) => [
-        attribute.name.toLowerCase(),
-        attribute.value,
-      ]),
+      Array.from(element.attributes).map((attribute) => [attribute.name.toLowerCase(), attribute.value]),
     )
     for (const attribute of Array.from(element.attributes)) {
       element.removeAttribute(attribute.name)
@@ -123,10 +114,7 @@ function sanitizeChildren(
   }
 }
 
-function restoreCommonAttributes(
-  element: Element,
-  attributes: Map<string, string>,
-) {
+function restoreCommonAttributes(element: Element, attributes: Map<string, string>) {
   const className = attributes
     .get('class')
     ?.split(/\s+/)
@@ -144,11 +132,7 @@ function restoreCommonAttributes(
   if (title) element.setAttribute('title', title.slice(0, 256))
 }
 
-function restoreDimension(
-  element: Element,
-  name: 'height' | 'width',
-  value?: string,
-) {
+function restoreDimension(element: Element, name: 'height' | 'width', value?: string) {
   if (value && /^\d{1,4}$/.test(value)) element.setAttribute(name, value)
 }
 
@@ -171,26 +155,19 @@ function internalEntry(href?: string) {
   }
 }
 
-function sanitizeCss(
-  source: string,
-  resourceUrlPrefix: string,
-  resourceKeys: Set<string>,
-) {
+function sanitizeCss(source: string, resourceUrlPrefix: string, resourceKeys: Set<string>) {
   let css = source
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/@import\b[\s\S]*?;/gi, '')
     .replace(/(^|[;{])\s*(?:behavior|-moz-binding)\s*:[^;}]*/gi, '$1')
     .replace(/expression\s*\([^)]*\)/gi, '')
 
-  css = css.replace(
-    /url\(\s*(["']?)(.*?)\1\s*\)/gi,
-    (_match, _quote: string, value: string) => {
-      const key = normalizeResourceKey(value)
-      if (!key || !isBinaryResourceKey(key)) return 'url("")'
-      resourceKeys.add(key)
-      return `url("${resourceUrl(resourceUrlPrefix, key)}")`
-    },
-  )
+  css = css.replace(/url\(\s*(["']?)(.*?)\1\s*\)/gi, (_match, _quote: string, value: string) => {
+    const key = normalizeResourceKey(value)
+    if (!key || !isBinaryResourceKey(key)) return 'url("")'
+    resourceKeys.add(key)
+    return `url("${resourceUrl(resourceUrlPrefix, key)}")`
+  })
   return css.trim()
 }
 
@@ -203,20 +180,11 @@ function normalizeResourceKey(value: string) {
       return
     }
     const normalized = decoded.replaceAll('\\', '/').replace(/^\/+/, '')
-    if (
-      !normalized ||
-      /^[a-z][a-z0-9+.-]*:/i.test(normalized) ||
-      /[\u0000-\u001f\u007f]/.test(normalized)
-    ) {
+    if (!normalized || /^[a-z][a-z0-9+.-]*:/i.test(normalized) || /[\u0000-\u001f\u007f]/.test(normalized)) {
       return
     }
     const segments = normalized.split('/').filter((segment) => segment !== '.')
-    if (
-      !segments.length ||
-      segments.some(
-        (segment) => !segment || segment === '.' || segment === '..',
-      )
-    ) {
+    if (!segments.length || segments.some((segment) => !segment || segment === '.' || segment === '..')) {
       return
     }
     return segments.join('/')

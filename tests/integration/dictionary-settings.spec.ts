@@ -1,11 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import type { LocalDictionaryRecord } from '../../src/dictionary/native'
-import {
-  getLocalDictionaryMockState,
-  getStoredSettings,
-  installTauriMock,
-} from '../support/tauri-mock'
+import { getLocalDictionaryMockState, getStoredSettings, installTauriMock } from '../support/tauri-mock'
 
 const testApiKey = 'test-only-mw-key'
 
@@ -17,9 +13,7 @@ async function openDictionarySettings(page: import('@playwright/test').Page) {
   return dialog
 }
 
-test('configures Merriam-Webster inline with the key actions in one row', async ({
-  page,
-}) => {
+test('configures Merriam-Webster inline with the key actions in one row', async ({ page }) => {
   await installTauriMock(page)
   await page.goto('/')
   const dialog = await openDictionarySettings(page)
@@ -48,9 +42,7 @@ test('configures Merriam-Webster inline with the key actions in one row', async 
   expect(visibilityBox).not.toBeNull()
   expect(getKeyBox).not.toBeNull()
   expect(visibilityBox!.x).toBeGreaterThan(inputBox!.x)
-  expect(visibilityBox!.x + visibilityBox!.width).toBeLessThanOrEqual(
-    inputBox!.x + inputBox!.width,
-  )
+  expect(visibilityBox!.x + visibilityBox!.width).toBeLessThanOrEqual(inputBox!.x + inputBox!.width)
   expect(Math.abs(getKeyBox!.y - inputBox!.y)).toBeLessThan(2)
   await keyInput.fill(testApiKey)
   await edit.click()
@@ -70,18 +62,14 @@ test('configures Merriam-Webster inline with the key actions in one row', async 
     .toEqual({ apiKey: testApiKey, enabled: true })
 
   await edit.click()
-  await expect(
-    source.locator('[data-merriam-webster-key-row] input'),
-  ).toHaveValue(testApiKey)
+  await expect(source.locator('[data-merriam-webster-key-row] input')).toHaveValue(testApiKey)
 })
 
-test('shows every dictionary source in one reorderable persisted list', async ({
-  page,
-}) => {
+test('shows every dictionary source in one reorderable persisted list', async ({ page }) => {
   const local = localDictionary({
     id: 'dict-unified00000000000',
     name: 'Fixture Lexicon',
-    sourcePath: 'fixture-' + 'dictionary-segment'.repeat(40) + '.mdx',
+    sourcePath: `fixture-${'dictionary-segment'.repeat(40)}.mdx`,
     language: {
       source: 'manual',
       value: ['zh', 'en', 'ru', 'fr', 'de', 'es', 'pt', 'it'],
@@ -114,17 +102,9 @@ test('shows every dictionary source in one reorderable persisted list', async ({
   expect(sidebarBox).not.toBeNull()
   expect(contentBox).not.toBeNull()
   expect(sidebarBox!.x).toBeGreaterThanOrEqual(dialogBox!.x)
-  expect(contentBox!.x).toBeGreaterThanOrEqual(
-    sidebarBox!.x + sidebarBox!.width - 1,
-  )
-  expect(contentBox!.x + contentBox!.width).toBeLessThanOrEqual(
-    dialogBox!.x + dialogBox!.width + 1,
-  )
-  expect(
-    await dialog.evaluate(
-      (element) => element.scrollWidth <= element.clientWidth,
-    ),
-  ).toBe(true)
+  expect(contentBox!.x).toBeGreaterThanOrEqual(sidebarBox!.x + sidebarBox!.width - 1)
+  expect(contentBox!.x + contentBox!.width).toBeLessThanOrEqual(dialogBox!.x + dialogBox!.width + 1)
+  expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
 
   const target = sources.nth(2)
   const handle = sources.nth(0).locator('[data-dictionary-drag-handle]')
@@ -132,16 +112,9 @@ test('shows every dictionary source in one reorderable persisted list', async ({
   const targetBox = await target.boundingBox()
   expect(handleBox).not.toBeNull()
   expect(targetBox).not.toBeNull()
-  await page.mouse.move(
-    handleBox!.x + handleBox!.width / 2,
-    handleBox!.y + handleBox!.height / 2,
-  )
+  await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + handleBox!.height / 2)
   await page.mouse.down()
-  await page.mouse.move(
-    targetBox!.x + targetBox!.width / 2,
-    targetBox!.y + targetBox!.height - 2,
-    { steps: 6 },
-  )
+  await page.mouse.move(targetBox!.x + targetBox!.width / 2, targetBox!.y + targetBox!.height - 2, { steps: 6 })
   await page.mouse.up()
 
   await expect
@@ -154,9 +127,7 @@ test('shows every dictionary source in one reorderable persisted list', async ({
     .toEqual(['merriam-webster', `local:${local.id}`, 'zdic'])
 })
 
-test('adds one local dictionary from an ifo or mdx master-file chooser', async ({
-  page,
-}) => {
+test('adds one local dictionary from an ifo or mdx master-file chooser', async ({ page }) => {
   const sourcePath = 'fixture-oxford.ifo'
   const record = localDictionary({
     id: 'dict-11111111111111111111',
@@ -180,9 +151,7 @@ test('adds one local dictionary from an ifo or mdx master-file chooser', async (
   expect(JSON.stringify(state.dialogOpenCalls)).not.toContain('idx')
 })
 
-test('manages local dictionary order, status, language, enablement, relocation, and removal', async ({
-  page,
-}) => {
+test('manages local dictionary order, status, language, enablement, relocation, and removal', async ({ page }) => {
   const alpha = localDictionary({
     id: 'dict-aaaaaaaaaaaaaaaaaaaa',
     name: 'Alpha Dictionary',
@@ -217,14 +186,9 @@ test('manages local dictionary order, status, language, enablement, relocation, 
   )
   expect(firstLanguageRow.every(Boolean)).toBe(true)
   expect(
-    Math.max(...firstLanguageRow.map((box) => box!.y)) -
-      Math.min(...firstLanguageRow.map((box) => box!.y)),
+    Math.max(...firstLanguageRow.map((box) => box!.y)) - Math.min(...firstLanguageRow.map((box) => box!.y)),
   ).toBeLessThan(2)
-  expect(
-    await alphaRow.evaluate(
-      (element) => element.scrollWidth <= element.clientWidth,
-    ),
-  ).toBe(true)
+  expect(await alphaRow.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
   const chinese = alphaRow.getByRole('checkbox', { name: '中文' })
   const english = alphaRow.getByRole('checkbox', { name: 'English' })
   await chinese.click()
@@ -233,9 +197,8 @@ test('manages local dictionary order, status, language, enablement, relocation, 
   await expect(english).toBeChecked()
   await expect(alphaRow.getByText(/^中文, English ·/)).toBeVisible()
   expect(
-    (await getLocalDictionaryMockState(page)).localDictionaries.find(
-      (dictionary) => dictionary.id === alpha.id,
-    )?.language,
+    (await getLocalDictionaryMockState(page)).localDictionaries.find((dictionary) => dictionary.id === alpha.id)
+      ?.language,
   ).toEqual({ source: 'unknown', value: [] })
   await alphaEdit.click()
   await expect(alphaToggle).toBeEnabled()
@@ -246,9 +209,7 @@ test('manages local dictionary order, status, language, enablement, relocation, 
   await expect
     .poll(async () => {
       const state = await getLocalDictionaryMockState(page)
-      const current = state.localDictionaries.find(
-        (dictionary) => dictionary.id === alpha.id,
-      )
+      const current = state.localDictionaries.find((dictionary) => dictionary.id === alpha.id)
       return {
         enabled: current?.enabled,
         language: current?.language,
@@ -267,14 +228,10 @@ test('manages local dictionary order, status, language, enablement, relocation, 
   await expect(confirmRemove.locator('.lucide-check')).toBeVisible()
   await confirmRemove.click()
   await expect(dialog.getByText('Beta Dictionary')).toHaveCount(0)
-  expect(
-    (await getLocalDictionaryMockState(page)).localDictionaries,
-  ).toHaveLength(1)
+  expect((await getLocalDictionaryMockState(page)).localDictionaries).toHaveLength(1)
 })
 
-test('renames a local dictionary inline and hides language provenance', async ({
-  page,
-}) => {
+test('renames a local dictionary inline and hides language provenance', async ({ page }) => {
   const dictionary = localDictionary({
     id: 'dict-renameable000000000',
     name: 'Fixture Lexicon',
@@ -297,16 +254,12 @@ test('renames a local dictionary inline and hides language provenance', async ({
   await expect
     .poll(async () => {
       const state = await getLocalDictionaryMockState(page)
-      return state.localDictionaries.find(
-        (record) => record.id === dictionary.id,
-      )?.name
+      return state.localDictionaries.find((record) => record.id === dictionary.id)?.name
     })
     .toBe('Reader Lexicon')
 })
 
-test('cancels an inline dictionary rename with Escape without closing settings', async ({
-  page,
-}) => {
+test('cancels an inline dictionary rename with Escape without closing settings', async ({ page }) => {
   const dictionary = localDictionary({
     id: 'dict-cancel-rename000000',
     name: 'Fixture Lexicon',
@@ -331,9 +284,7 @@ test('cancels an inline dictionary rename with Escape without closing settings',
   expect(stored?.language).toEqual({ source: 'unknown', value: [] })
 })
 
-test('dismisses open settings dropdowns before closing settings', async ({
-  page,
-}) => {
+test('dismisses open settings dropdowns before closing settings', async ({ page }) => {
   const dictionary = localDictionary({
     id: 'dict-dropdown0000000000',
     name: 'Fixture Lexicon',
@@ -361,9 +312,7 @@ test('dismisses open settings dropdowns before closing settings', async ({
   await expect(dialog).toBeVisible()
 })
 
-test('shows master-file validation errors without adding a partial record', async ({
-  page,
-}) => {
+test('shows master-file validation errors without adding a partial record', async ({ page }) => {
   const sourcePath = 'fixture-broken.idx'
   await installTauriMock(page, {
     openDialogPaths: [sourcePath],
@@ -377,21 +326,13 @@ test('shows master-file validation errors without adding a partial record', asyn
   await page.goto('/')
   const dialog = await openDictionarySettings(page)
   await dialog.getByRole('button', { name: 'Add local dictionary' }).click()
-  await expect(dialog.getByRole('alert')).toContainText(
-    'Choose a StarDict .ifo or MDict .mdx master file.',
-  )
-  expect((await getLocalDictionaryMockState(page)).localDictionaries).toEqual(
-    [],
-  )
+  await expect(dialog.getByRole('alert')).toContainText('Choose a StarDict .ifo or MDict .mdx master file.')
+  expect((await getLocalDictionaryMockState(page)).localDictionaries).toEqual([])
 })
 
-test('displays native Windows and Unix dictionary paths without changing stored paths', async ({
-  page,
-}) => {
-  const windowsExtended =
-    '\\\\?\\C:\\Users\\reader\\Dictionaries\\Oxford\\oxford.ifo'
-  const windowsUnc =
-    '\\\\?\\UNC\\dictionary-server\\shared\\Chinese\\source.mdx'
+test('displays native Windows and Unix dictionary paths without changing stored paths', async ({ page }) => {
+  const windowsExtended = '\\\\?\\C:\\Users\\reader\\Dictionaries\\Oxford\\oxford.ifo'
+  const windowsUnc = '\\\\?\\UNC\\dictionary-server\\shared\\Chinese\\source.mdx'
   const unix = '/home/reader/dictionaries/english/source.ifo'
   await installTauriMock(page, {
     localDictionaries: [
@@ -418,14 +359,8 @@ test('displays native Windows and Unix dictionary paths without changing stored 
   const dialog = await openDictionarySettings(page)
 
   const expected = [
-    [
-      'dict-11111111111111111111',
-      'C:\\Users\\reader\\Dictionaries\\Oxford\\oxford.ifo',
-    ],
-    [
-      'dict-22222222222222222222',
-      '\\\\dictionary-server\\shared\\Chinese\\source.mdx',
-    ],
+    ['dict-11111111111111111111', 'C:\\Users\\reader\\Dictionaries\\Oxford\\oxford.ifo'],
+    ['dict-22222222222222222222', '\\\\dictionary-server\\shared\\Chinese\\source.mdx'],
     ['dict-33333333333333333333', unix],
   ] as const
   for (const [id, path] of expected) {
@@ -434,14 +369,15 @@ test('displays native Windows and Unix dictionary paths without changing stored 
   }
 
   const stored = await getLocalDictionaryMockState(page)
-  expect(
-    stored.localDictionaries.map((dictionary) => dictionary.sourcePath),
-  ).toEqual([windowsExtended, windowsUnc, unix])
+  expect(stored.localDictionaries.map((dictionary) => dictionary.sourcePath)).toEqual([
+    windowsExtended,
+    windowsUnc,
+    unix,
+  ])
 })
 
 function localDictionary(
-  overrides: Partial<LocalDictionaryRecord> &
-    Pick<LocalDictionaryRecord, 'id' | 'name' | 'sourcePath'>,
+  overrides: Partial<LocalDictionaryRecord> & Pick<LocalDictionaryRecord, 'id' | 'name' | 'sourcePath'>,
 ): LocalDictionaryRecord {
   return {
     createdAt: 1,

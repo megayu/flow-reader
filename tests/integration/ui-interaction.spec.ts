@@ -1,13 +1,8 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 
-import {
-  getFullscreenState,
-  getStoredSettings,
-  installTauriMock,
-} from '../support/tauri-mock'
+import { getFullscreenState, getStoredSettings, installTauriMock } from '../support/tauri-mock'
 
-const settingsShortcut =
-  process.platform === 'darwin' ? 'Meta+Comma' : 'Control+Comma'
+const settingsShortcut = process.platform === 'darwin' ? 'Meta+Comma' : 'Control+Comma'
 const accentColor = '#E11D48'
 
 async function openSettings(page: Page) {
@@ -19,9 +14,7 @@ async function openSettings(page: Page) {
 
 async function readCssVariable(page: Page, name: string) {
   return page.evaluate((property) => {
-    return getComputedStyle(document.documentElement)
-      .getPropertyValue(property)
-      .trim()
+    return getComputedStyle(document.documentElement).getPropertyValue(property).trim()
   }, name)
 }
 
@@ -63,10 +56,7 @@ test('restores a persisted sidebar width before the first visible frame without 
     window.requestAnimationFrame(sampleSidebarWidth)
   })
   page.on('console', (message) => {
-    if (
-      message.type() === 'error' &&
-      /hydrated|hydration mismatch/i.test(message.text())
-    ) {
+    if (message.type() === 'error' && /hydrated|hydration mismatch/i.test(message.text())) {
       hydrationErrors.push(message.text())
     }
   })
@@ -96,15 +86,11 @@ test('restores a persisted sidebar width before the first visible frame without 
   )
   const restoredFrame = frameWidths.indexOf(276)
   expect(restoredFrame).toBeGreaterThanOrEqual(0)
-  expect(frameWidths.slice(restoredFrame)).toEqual(
-    Array(frameWidths.length - restoredFrame).fill(276),
-  )
+  expect(frameWidths.slice(restoredFrame)).toEqual(Array(frameWidths.length - restoredFrame).fill(276))
   expect(hydrationErrors).toEqual([])
 })
 
-test('loads without client exceptions and persists accent color settings', async ({
-  page,
-}) => {
+test('loads without client exceptions and persists accent color settings', async ({ page }) => {
   const runtimeErrors: string[] = []
 
   page.on('pageerror', (error) => {
@@ -134,16 +120,10 @@ test('loads without client exceptions and persists accent color settings', async
   await expect(dialog.getByText(/Accent Color/)).toBeVisible()
 
   await dialog.getByRole('button', { name: /#0EA5E9/i }).click()
-  await page
-    .locator('.react-colorful')
-    .locator('..')
-    .getByRole('textbox')
-    .fill(accentColor)
+  await page.locator('.react-colorful').locator('..').getByRole('textbox').fill(accentColor)
   await page.getByRole('button', { name: /Apply/ }).click()
 
-  await expect(
-    dialog.getByRole('button', { name: new RegExp(accentColor, 'i') }),
-  ).toBeVisible()
+  await expect(dialog.getByRole('button', { name: new RegExp(accentColor, 'i') })).toBeVisible()
   await expect.poll(() => getStoredAccentColor(page)).toBe(accentColor)
 
   await page.keyboard.press('Escape')
@@ -151,18 +131,12 @@ test('loads without client exceptions and persists accent color settings', async
   expect(runtimeErrors).toEqual([])
 })
 
-test('configures one shared main language, secondary language, and translation service', async ({
-  page,
-}) => {
+test('configures one shared main language, secondary language, and translation service', async ({ page }) => {
   const dialog = await openSettings(page)
   await dialog.getByRole('button', { name: 'Translation', exact: true }).click()
 
-  await expect(
-    dialog.getByRole('combobox', { name: 'Main Language' }),
-  ).toContainText('简体中文')
-  await expect(
-    dialog.getByRole('combobox', { name: 'Secondary Language' }),
-  ).toContainText('English')
+  await expect(dialog.getByRole('combobox', { name: 'Main Language' })).toContainText('简体中文')
+  await expect(dialog.getByRole('combobox', { name: 'Secondary Language' })).toContainText('English')
   await expect(dialog.getByText('Default Translation Service')).toBeVisible()
   await dialog.getByRole('combobox', { name: 'Main Language' }).click()
   await expect(page.getByRole('option')).toHaveText([
@@ -193,14 +167,10 @@ test('configures one shared main language, secondary language, and translation s
     .toBe('azure')
 })
 
-test('app UI font size changes app chrome without changing reading font size', async ({
-  page,
-}) => {
+test('app UI font size changes app chrome without changing reading font size', async ({ page }) => {
   const dialog = await openSettings(page)
 
-  await expect
-    .poll(() => readCssVariable(page, '--app-font-size-md'))
-    .toBe('15px')
+  await expect.poll(() => readCssVariable(page, '--app-font-size-md')).toBe('15px')
 
   const fontSizeInput = dialog.getByRole('textbox', {
     name: /App Font Size/,
@@ -215,9 +185,7 @@ test('app UI font size changes app chrome without changing reading font size', a
   await dialog.getByRole('button', { name: /App Font Size \+/ }).click()
   await dialog.getByRole('button', { name: /App Font Size \+/ }).click()
 
-  await expect
-    .poll(() => readCssVariable(page, '--app-font-size-md'))
-    .toBe('17px')
+  await expect.poll(() => readCssVariable(page, '--app-font-size-md')).toBe('17px')
   await expect(basicTab).toHaveCSS('font-size', '17px')
   await expect
     .poll(async () => {
@@ -239,9 +207,7 @@ test('app UI font size changes app chrome without changing reading font size', a
     })
 })
 
-test('keeps original-file references opt-in and persists the import mode', async ({
-  page,
-}) => {
+test('keeps original-file references opt-in and persists the import mode', async ({ page }) => {
   const dialog = await openSettings(page)
   const checkbox = dialog.getByRole('checkbox', {
     name: 'Do Not Copy Source Files on Import',
@@ -271,9 +237,7 @@ test('keeps original-file references opt-in and persists the import mode', async
     .toBe('managed')
 })
 
-test('zen mode action is visibly disabled in library mode', async ({
-  page,
-}) => {
+test('zen mode action is visibly disabled in library mode', async ({ page }) => {
   const zenButton = page.getByRole('button', {
     name: /Enter Zen Mode/,
   })
@@ -293,15 +257,9 @@ test('zen mode action is visibly disabled in library mode', async ({
   await expect(page.getByRole('tooltip')).toHaveCount(0)
 })
 
-test('fullscreen shortcut works in library mode without an open tab', async ({
-  page,
-}) => {
-  await expect(
-    page.getByRole('button', { name: /Enter Fullscreen/ }),
-  ).toBeVisible()
-  await expect(
-    page.getByRole('button', { name: /Return to Reading/ }),
-  ).toBeDisabled()
+test('fullscreen shortcut works in library mode without an open tab', async ({ page }) => {
+  await expect(page.getByRole('button', { name: /Enter Fullscreen/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Return to Reading/ })).toBeDisabled()
   await expect.poll(() => getFullscreenState(page)).toBe(false)
 
   await page.keyboard.press('f')
@@ -311,20 +269,14 @@ test('fullscreen shortcut works in library mode without an open tab', async ({
   await expect.poll(() => getFullscreenState(page)).toBe(false)
 })
 
-test('theme color pickers close before the background theme panel on escape', async ({
-  page,
-}) => {
+test('theme color pickers close before the background theme panel on escape', async ({ page }) => {
   await page.getByRole('button', { name: /Background Theme/ }).click()
   await expect(page.getByText(/Accent Color/)).toBeVisible()
 
   await page.getByRole('button', { name: /Accent Color/ }).click()
-  await expect(
-    page.locator('.react-colorful').locator('..').getByRole('textbox'),
-  ).toBeVisible()
+  await expect(page.locator('.react-colorful').locator('..').getByRole('textbox')).toBeVisible()
   await page.keyboard.press('Escape')
-  await expect(
-    page.locator('.react-colorful').locator('..').getByRole('textbox'),
-  ).toBeHidden()
+  await expect(page.locator('.react-colorful').locator('..').getByRole('textbox')).toBeHidden()
   await expect(page.getByText(/Accent Color/)).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByText(/Accent Color/)).toBeHidden()
@@ -336,13 +288,9 @@ test('theme color pickers close before the background theme panel on escape', as
     .locator('[data-flow-theme-panel]')
     .getByRole('button', { name: /Custom/ })
     .click()
-  await expect(
-    page.locator('.react-colorful').locator('..').getByRole('textbox'),
-  ).toBeVisible()
+  await expect(page.locator('.react-colorful').locator('..').getByRole('textbox')).toBeVisible()
   await page.keyboard.press('Escape')
-  await expect(
-    page.locator('.react-colorful').locator('..').getByRole('textbox'),
-  ).toBeHidden()
+  await expect(page.locator('.react-colorful').locator('..').getByRole('textbox')).toBeHidden()
   await expect(page.getByText(/Accent Color/)).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByText(/Accent Color/)).toBeHidden()
@@ -354,9 +302,7 @@ test('disables browser autofill on app input controls', async ({ page }) => {
   await dialog.getByRole('button', { name: /TXT/ }).click()
   await dialog.getByRole('button', { name: /Basic/ }).click()
   await dialog.getByRole('button', { name: /#0EA5E9/i }).click()
-  await expect(
-    page.locator('.react-colorful').locator('..').getByRole('textbox'),
-  ).toBeVisible()
+  await expect(page.locator('.react-colorful').locator('..').getByRole('textbox')).toBeVisible()
 
   const invalidControls = await page.evaluate(() => {
     return Array.from(document.querySelectorAll('form, input, textarea'))
@@ -367,10 +313,7 @@ test('disables browser autofill on app input controls', async ({ page }) => {
 
         if (element.getAttribute('autocomplete') !== 'off') return true
 
-        if (
-          element instanceof HTMLInputElement ||
-          element instanceof HTMLTextAreaElement
-        ) {
+        if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
           return (
             element.getAttribute('autocorrect') !== 'off' ||
             element.getAttribute('autocapitalize') !== 'off' ||
@@ -395,9 +338,7 @@ test('disables browser autofill on app input controls', async ({ page }) => {
   expect(invalidControls).toEqual([])
 })
 
-test('TXT import rules preserve enter input and persist by line', async ({
-  page,
-}) => {
+test('TXT import rules preserve enter input and persist by line', async ({ page }) => {
   const dialog = await openSettings(page)
 
   await dialog.getByRole('button', { name: /TXT/ }).click()

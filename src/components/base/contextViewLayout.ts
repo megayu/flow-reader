@@ -1,4 +1,4 @@
-export const enum LayoutAnchorPosition {
+export enum LayoutAnchorPosition {
   Before,
   After,
 }
@@ -21,19 +21,10 @@ interface ILayoutAnchor {
  *
  * @returns The view offset within the viewport.
  */
-export function layout(
-  viewportSize: number,
-  viewSize: number,
-  anchor: ILayoutAnchor,
-) {
-  const layoutAfterAnchorBoundary =
-    anchor.mode === LayoutAnchorMode.ALIGN
-      ? anchor.offset
-      : anchor.offset + anchor.size
+export function layout(viewportSize: number, viewSize: number, anchor: ILayoutAnchor) {
+  const layoutAfterAnchorBoundary = anchor.mode === LayoutAnchorMode.ALIGN ? anchor.offset : anchor.offset + anchor.size
   const layoutBeforeAnchorBoundary =
-    anchor.mode === LayoutAnchorMode.ALIGN
-      ? anchor.offset + anchor.size
-      : anchor.offset
+    anchor.mode === LayoutAnchorMode.ALIGN ? anchor.offset + anchor.size : anchor.offset
 
   let offset: number
   if (anchor.position === LayoutAnchorPosition.Before) {
@@ -90,19 +81,10 @@ export function layoutBesideRect(
   const maxLeft = viewport.left + viewport.width - options.margin - view.width
   const minTop = viewport.top + options.margin
   const maxTop = viewport.top + viewport.height - options.margin - view.height
-  const top = Math.min(
-    Math.max(anchor.top + anchor.height / 2 - view.height / 2, minTop),
-    Math.max(minTop, maxTop),
-  )
-  const sides = [
-    options.preferredSide,
-    options.preferredSide === 'left' ? 'right' : 'left',
-  ] as const
+  const top = Math.min(Math.max(anchor.top + anchor.height / 2 - view.height / 2, minTop), Math.max(minTop, maxTop))
+  const sides = [options.preferredSide, options.preferredSide === 'left' ? 'right' : 'left'] as const
   const candidates = sides.map((side) => {
-    const left =
-      side === 'left'
-        ? anchor.left - options.gap - view.width
-        : anchor.left + anchor.width + options.gap
+    const left = side === 'left' ? anchor.left - options.gap - view.width : anchor.left + anchor.width + options.gap
     const rect = { left, top, width: view.width, height: view.height }
 
     return {
@@ -110,21 +92,14 @@ export function layoutBesideRect(
       top,
       side,
       fits: left >= minLeft && left <= maxLeft,
-      avoids: !(options.avoidRects ?? []).some((avoid) =>
-        rectsOverlap(rect, avoid),
-      ),
+      avoids: !(options.avoidRects ?? []).some((avoid) => rectsOverlap(rect, avoid)),
     }
   })
   const candidate =
-    candidates.find(({ fits, avoids }) => fits && avoids) ??
-    candidates.find(({ fits }) => fits) ??
-    candidates[0]!
+    candidates.find(({ fits, avoids }) => fits && avoids) ?? candidates.find(({ fits }) => fits) ?? candidates[0]!
 
   return {
-    left: Math.min(
-      Math.max(candidate.left, minLeft),
-      Math.max(minLeft, maxLeft),
-    ),
+    left: Math.min(Math.max(candidate.left, minLeft), Math.max(minLeft, maxLeft)),
     top: candidate.top,
     side: candidate.side,
   }

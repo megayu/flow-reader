@@ -1,6 +1,6 @@
 import path from 'node:path'
 
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, type Locator, type Page, test } from '@playwright/test'
 
 import type { BookRecord } from '../../src/storage'
 
@@ -90,12 +90,8 @@ async function installReaderBooksMock(
   titles = ['Tab Layout A', 'Tab Layout B', 'Tab Layout C'],
   packageUrl: string | string[] = alicePackageUrl,
 ) {
-  const books = titles.map((title, index) =>
-    createBook(`tab-layout-${String.fromCharCode(97 + index)}`, title),
-  )
-  const packageUrls = Array.isArray(packageUrl)
-    ? packageUrl
-    : books.map(() => packageUrl)
+  const books = titles.map((title, index) => createBook(`tab-layout-${String.fromCharCode(97 + index)}`, title))
+  const packageUrls = Array.isArray(packageUrl) ? packageUrl : books.map(() => packageUrl)
 
   if (packageUrls.includes(alicePackageUrl)) {
     await page.route(`**${alicePackageUrl}`, (route) =>
@@ -126,9 +122,7 @@ async function installReaderBooksMock(
           currentWindow: { label: string }
         }
         runCallback?: (id: number, ...args: unknown[]) => unknown
-        transformCallback?: (
-          callback: (...args: unknown[]) => unknown,
-        ) => number
+        transformCallback?: (callback: (...args: unknown[]) => unknown) => number
         unregisterCallback?: (id: number) => void
       }
       type TauriEventInternals = {
@@ -143,19 +137,14 @@ async function installReaderBooksMock(
       }
 
       const globalWindow = window as unknown as TestWindow
-      const bookStore = new Map<string, BookRecord>(
-        fixtureBooks.map((book) => [book.id, book]),
-      )
-      const packageUrlByBookId = new Map(
-        fixtureBooks.map((book, index) => [book.id, packageUrls[index]]),
-      )
+      const bookStore = new Map<string, BookRecord>(fixtureBooks.map((book) => [book.id, book]))
+      const packageUrlByBookId = new Map(fixtureBooks.map((book, index) => [book.id, packageUrls[index]]))
       const settingsStore: Record<string, unknown> = { locale: 'en-US' }
       let nextCallbackId = 1
       let nextEventId = 1
 
       const internals = (globalWindow.__TAURI_INTERNALS__ ??= {})
-      const eventInternals = (globalWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ ??=
-        {})
+      const eventInternals = (globalWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ ??= {})
       const callbacks = (internals.callbacks ??= {})
 
       globalWindow.__FLOW_TEST_TAURI__ = { settingsStore }
@@ -449,9 +438,7 @@ svg { height: auto; }`,
 
 async function installScrolledBookRoutes(page: Page) {
   await page.route('**/test-assets/scrolled/OPS/**', (route) => {
-    const resource = scrolledBookResource(
-      new URL(route.request().url()).pathname,
-    )
+    const resource = scrolledBookResource(new URL(route.request().url()).pathname)
 
     if (!resource) {
       return route.fulfill({
@@ -468,27 +455,17 @@ async function installScrolledBookRoutes(page: Page) {
 function verticalChapterMarkup(index: number, paragraphCount = 56) {
   const marker = `VERTICAL-CHAPTER-${String(index).padStart(2, '0')}`
   const searchTitle = `VERTICAL-SEARCH-TITLE-${String(index).padStart(2, '0')}`
-  const paragraphs = Array.from(
-    { length: paragraphCount },
-    (_, paragraphIndex) => {
-      const token = `${marker}-${String(paragraphIndex + 1).padStart(2, '0')}`
-      const note =
-        index === 1 && paragraphIndex === 0
-          ? '<a id="note-ref" epub:type="noteref" href="#note-1">〔1〕</a>'
-          : ''
-      const selection =
-        index === 1 && paragraphIndex === 1
-          ? '<span id="vertical-selection-target">甲乙丙丁戊己庚辛</span>'
-          : token
+  const paragraphs = Array.from({ length: paragraphCount }, (_, paragraphIndex) => {
+    const token = `${marker}-${String(paragraphIndex + 1).padStart(2, '0')}`
+    const note =
+      index === 1 && paragraphIndex === 0 ? '<a id="note-ref" epub:type="noteref" href="#note-1">〔1〕</a>' : ''
+    const selection =
+      index === 1 && paragraphIndex === 1 ? '<span id="vertical-selection-target">甲乙丙丁戊己庚辛</span>' : token
 
-      const anchor =
-        index === 1 && paragraphIndex === 28
-          ? ' id="vertical-chapter-01-part-2"'
-          : ''
+    const anchor = index === 1 && paragraphIndex === 28 ? ' id="vertical-chapter-01-part-2"' : ''
 
-      return `<p${anchor}>${selection}${note}　${token}　天地玄黄宇宙洪荒日月盈昃辰宿列张。${token}</p>`
-    },
-  ).join('\n')
+    return `<p${anchor}>${selection}${note}　${token}　天地玄黄宇宙洪荒日月盈昃辰宿列张。${token}</p>`
+  }).join('\n')
   const note =
     index === 1
       ? '<aside epub:type="footnote" id="note-1"><p data-flow-note-text="true">注释甲乙丙丁，内容按直排阅读。</p></aside>'
@@ -590,9 +567,7 @@ p { margin: 0 0 0 1em; text-indent: 2em; line-height: 1.8; }
 
 async function installVerticalBookRoutes(page: Page) {
   await page.route('**/test-assets/vertical/OPS/**', (route) => {
-    const resource = verticalBookResource(
-      new URL(route.request().url()).pathname,
-    )
+    const resource = verticalBookResource(new URL(route.request().url()).pathname)
 
     if (!resource) {
       return route.fulfill({
@@ -651,21 +626,13 @@ async function readReaderLayout(page: Page) {
       if (el.closest('[aria-hidden="true"]')) return false
 
       const htmlEl = el as HTMLElement
-      if (
-        typeof htmlEl.checkVisibility === 'function' &&
-        !htmlEl.checkVisibility({ checkVisibilityCSS: true })
-      ) {
+      if (typeof htmlEl.checkVisibility === 'function' && !htmlEl.checkVisibility({ checkVisibilityCSS: true })) {
         return false
       }
 
       const rect = el.getBoundingClientRect()
       const style = getComputedStyle(el)
-      return (
-        rect.width > 0 &&
-        rect.height > 0 &&
-        style.display !== 'none' &&
-        style.visibility !== 'hidden'
-      )
+      return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
     }
 
     const frames = Array.from(document.querySelectorAll('iframe'))
@@ -679,9 +646,7 @@ async function readReaderLayout(page: Page) {
         try {
           const doc = iframe.contentDocument
           bodyText = doc?.body?.innerText?.slice(0, 240) ?? ''
-          const blocks = doc
-            ? Array.from(doc.querySelectorAll('body, section, p, h1, h2'))
-            : []
+          const blocks = doc ? Array.from(doc.querySelectorAll('body, section, p, h1, h2')) : []
           for (const block of blocks) {
             if (!block.textContent?.trim()) continue
             const blockRect = block.getBoundingClientRect()
@@ -703,30 +668,19 @@ async function readReaderLayout(page: Page) {
       })
 
     const footerMatches = [0.35, 0.5, 0.75].flatMap((xRatio) => {
-      const el = document.elementFromPoint(
-        window.innerWidth * xRatio,
-        window.innerHeight - 12,
-      )
+      const el = document.elementFromPoint(window.innerWidth * xRatio, window.innerHeight - 12)
       const text = el?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
       return text.match(/\d+\s*·\s*\d+(?:\s*\([^)]+\))?/g) ?? []
     })
     const footer = Array.from(new Set(footerMatches)).join('|')
-    const header = Array.from(
-      document.querySelectorAll('[data-flow-reader-header]'),
-    )
+    const header = Array.from(document.querySelectorAll('[data-flow-reader-header]'))
       .filter(isVisible)
       .map((el) => el.textContent?.replace(/\s+/g, ' ').trim() ?? '')
       .join(' ')
-    const sidebar =
-      document
-        .querySelector('.SideBar')
-        ?.textContent?.replace(/\s+/g, ' ')
-        .trim() ?? ''
+    const sidebar = document.querySelector('.SideBar')?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
     const sidebarEl = document.querySelector('.SideBar')
     const sidebarVisible = sidebarEl ? isVisible(sidebarEl) : false
-    const activePane = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
+    const activePane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     const activePaneRect = activePane?.getBoundingClientRect()
     const overlappingHiddenPanes = Array.from(
       document.querySelectorAll('[data-flow-reader-pane][aria-hidden="true"]'),
@@ -735,20 +689,13 @@ async function readReaderLayout(page: Page) {
       if (style.display === 'none' || style.opacity === '0') return false
 
       const rect = el.getBoundingClientRect()
-      return (
-        rect.right > 0 &&
-        rect.left < window.innerWidth &&
-        rect.bottom > 0 &&
-        rect.top < window.innerHeight
-      )
+      return rect.right > 0 && rect.left < window.innerWidth && rect.bottom > 0 && rect.top < window.innerHeight
     }).length
-    const tabs = Array.from(document.querySelectorAll('[role="tab"]')).map(
-      (tab) => ({
-        label: tab.getAttribute('aria-label') ?? '',
-        visible: isVisible(tab),
-        selected: tab.className.includes('!text-foreground'),
-      }),
-    )
+    const tabs = Array.from(document.querySelectorAll('[role="tab"]')).map((tab) => ({
+      label: tab.getAttribute('aria-label') ?? '',
+      visible: isVisible(tab),
+      selected: tab.className.includes('!text-foreground'),
+    }))
 
     return {
       frames,
@@ -758,17 +705,15 @@ async function readReaderLayout(page: Page) {
         height: Math.round(activePaneRect?.height ?? 0),
         width: Math.round(activePaneRect?.width ?? 0),
       },
-      hiddenPanePaintStates: Array.from(
-        document.querySelectorAll(
-          '[data-flow-reader-pane][aria-hidden="true"]',
-        ),
-      ).map((el) => {
-        const style = getComputedStyle(el)
-        return {
-          opacity: style.opacity,
-          visibility: style.visibility,
-        }
-      }),
+      hiddenPanePaintStates: Array.from(document.querySelectorAll('[data-flow-reader-pane][aria-hidden="true"]')).map(
+        (el) => {
+          const style = getComputedStyle(el)
+          return {
+            opacity: style.opacity,
+            visibility: style.visibility,
+          }
+        },
+      ),
       overlappingHiddenPanes,
       sidebar,
       sidebarVisible,
@@ -779,26 +724,22 @@ async function readReaderLayout(page: Page) {
 
 async function readReaderPaneGeometry(page: Page) {
   return page.evaluate(() => {
-    return Array.from(document.querySelectorAll('[data-flow-reader-pane]')).map(
-      (pane, index) => {
-        const rect = pane.getBoundingClientRect()
+    return Array.from(document.querySelectorAll('[data-flow-reader-pane]')).map((pane, index) => {
+      const rect = pane.getBoundingClientRect()
 
-        return {
-          index,
-          hidden: pane.getAttribute('aria-hidden') === 'true',
-          left: Math.round(rect.left),
-          top: Math.round(rect.top),
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-        }
-      },
-    )
+      return {
+        index,
+        hidden: pane.getAttribute('aria-hidden') === 'true',
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      }
+    })
   })
 }
 
-function expectStablePaneGeometry(
-  panes: Awaited<ReturnType<typeof readReaderPaneGeometry>>,
-) {
+function expectStablePaneGeometry(panes: Awaited<ReturnType<typeof readReaderPaneGeometry>>) {
   const activePane = panes.find((pane) => !pane.hidden)
   expect(activePane).toBeDefined()
 
@@ -818,21 +759,13 @@ async function stampVisibleFrames(page: Page, stamp: string) {
       if (el.closest('[aria-hidden="true"]')) return false
 
       const htmlEl = el as HTMLElement
-      if (
-        typeof htmlEl.checkVisibility === 'function' &&
-        !htmlEl.checkVisibility({ checkVisibilityCSS: true })
-      ) {
+      if (typeof htmlEl.checkVisibility === 'function' && !htmlEl.checkVisibility({ checkVisibilityCSS: true })) {
         return false
       }
 
       const rect = el.getBoundingClientRect()
       const style = getComputedStyle(el)
-      return (
-        rect.width > 0 &&
-        rect.height > 0 &&
-        style.display !== 'none' &&
-        style.visibility !== 'hidden'
-      )
+      return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
     }
 
     Array.from(document.querySelectorAll('iframe'))
@@ -858,23 +791,15 @@ async function waitForHealthyReaderLayout(
               (layout.sidebar.includes('TOC') &&
                 layout.sidebar.includes('Tab Layout A') &&
                 layout.sidebar.includes('Tab Layout B')))
-      const headerOk =
-        options.header === false
-          ? true
-          : (options.header ?? /Down The Rabbit-Hole/).test(layout.header)
+      const headerOk = options.header === false ? true : (options.header ?? /Down The Rabbit-Hole/).test(layout.header)
 
       return (
         layout.frames.length > 0 &&
         layout.frames.every(
-          (frame) =>
-            frame.width > 250 &&
-            frame.maxTextBlockWidth > 180 &&
-            frame.maxTextBlockWidth <= frame.width + 4,
+          (frame) => frame.width > 250 && frame.maxTextBlockWidth > 180 && frame.maxTextBlockWidth <= frame.width + 4,
         ) &&
         headerOk &&
-        layout.hiddenPanePaintStates.every(
-          (state) => state.opacity === '0' && state.visibility === 'hidden',
-        ) &&
+        layout.hiddenPanePaintStates.every((state) => state.opacity === '0' && state.visibility === 'hidden') &&
         layout.overlappingHiddenPanes === 0 &&
         sidebarOk &&
         /\d+\s*·\s*\d+/.test(layout.footer)
@@ -900,20 +825,12 @@ async function countVisibleReaderMarks(page: Page, ref: string) {
       return !el.closest('[data-flow-reader-pane][aria-hidden="true"]')
     }
 
-    return Array.from(document.querySelectorAll(`[ref="${markRef}"]`)).filter(
-      isInActivePane,
-    ).length
+    return Array.from(document.querySelectorAll(`[ref="${markRef}"]`)).filter(isInActivePane).length
   }, ref)
 }
 
-async function expectVisibleReaderMarks(
-  page: Page,
-  ref: string,
-  minimum: number,
-) {
-  await expect
-    .poll(() => countVisibleReaderMarks(page, ref))
-    .toBeGreaterThanOrEqual(minimum)
+async function expectVisibleReaderMarks(page: Page, ref: string, minimum: number) {
+  await expect.poll(() => countVisibleReaderMarks(page, ref)).toBeGreaterThanOrEqual(minimum)
 }
 
 async function expectReaderMarkCursor(page: Page, ref: string) {
@@ -940,16 +857,13 @@ async function expectReaderMarkCursor(page: Page, ref: string) {
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const activeFrames = Array.from(
-          document.querySelectorAll('iframe'),
-        ).filter((frame) => !frame.closest('[aria-hidden="true"]'))
+        const activeFrames = Array.from(document.querySelectorAll('iframe')).filter(
+          (frame) => !frame.closest('[aria-hidden="true"]'),
+        )
 
         return activeFrames.some((frame) => {
           const doc = (frame as HTMLIFrameElement).contentDocument
-          return (
-            doc?.documentElement?.style.cursor === 'pointer' ||
-            doc?.body?.style.cursor === 'pointer'
-          )
+          return doc?.documentElement?.style.cursor === 'pointer' || doc?.body?.style.cursor === 'pointer'
         })
       }),
     )
@@ -967,9 +881,7 @@ async function addVisibleAnnotation(page: Page) {
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
       acceptNode(node: Node) {
         const text = node.textContent ?? ''
-        return /\bAlice\b/.test(text)
-          ? NodeFilter.FILTER_ACCEPT
-          : NodeFilter.FILTER_SKIP
+        return /\bAlice\b/.test(text) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
       },
     })
     const node = walker.nextNode()
@@ -982,23 +894,13 @@ async function addVisibleAnnotation(page: Page) {
 
     const cfi = tab.rangeToCfi(range)
     const section = tab.sectionForRange(range)
-    tab.putAnnotation(
-      'highlight',
-      cfi,
-      'yellow',
-      range.toString(),
-      undefined,
-      section,
-    )
+    tab.putAnnotation('highlight', cfi, 'yellow', range.toString(), undefined, section)
 
     return { cfi, text: range.toString() }
   })
 }
 
-async function expectHealthyLayoutWithSidebar(
-  page: Page,
-  sidebarVisible: boolean,
-) {
+async function expectHealthyLayoutWithSidebar(page: Page, sidebarVisible: boolean) {
   const layout = await waitForHealthyReaderLayout(page, { sidebarVisible })
   expect(layout.sidebarVisible).toBe(sidebarVisible)
   return layout
@@ -1008,11 +910,7 @@ async function toggleTocSidebar(page: Page) {
   await page.locator('.ActivityBar button[aria-label="TOC"]').click()
 }
 
-async function ensureTocSidebarVisibility(
-  page: Page,
-  visible: boolean,
-  options: { header?: RegExp | false } = {},
-) {
+async function ensureTocSidebarVisibility(page: Page, visible: boolean, options: { header?: RegExp | false } = {}) {
   for (let i = 0; i < 3; i++) {
     const layout = await readReaderLayout(page)
     if (layout.sidebarVisible === visible) {
@@ -1042,9 +940,7 @@ async function readFocusedTabState(page: Page) {
       tabTitle: tab?.title,
       atEnd: !!location?.atEnd,
       footerPercentage: tab?.paginationSnapshot?.percentage,
-      header: tab?.paginationSnapshot?.headerPath
-        ?.map((item: { label?: string }) => item.label ?? '')
-        .join(' '),
+      header: tab?.paginationSnapshot?.headerPath?.map((item: { label?: string }) => item.label ?? '').join(' '),
       bookCfi: tab?.book?.cfi,
       currentTarget: tab?.getCurrentDisplayTarget?.(),
       renditionStartCfi: tab?.rendition?.location?.start?.cfi,
@@ -1084,19 +980,12 @@ async function readFocusedRenderSignature(page: Page) {
 async function readActiveReaderBodyHeaderState(page: Page) {
   return page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab
-    const activePane = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
+    const activePane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     const frames = Array.from(activePane?.querySelectorAll('iframe') ?? [])
       .filter((frame) => {
         const rect = frame.getBoundingClientRect()
         const style = getComputedStyle(frame)
-        return (
-          rect.width > 0 &&
-          rect.height > 0 &&
-          style.display !== 'none' &&
-          style.visibility !== 'hidden'
-        )
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
       })
       .map((frame) => {
         const iframe = frame as HTMLIFrameElement
@@ -1104,17 +993,13 @@ async function readActiveReaderBodyHeaderState(page: Page) {
       })
     const cover = activePane?.querySelector('[data-flow-reader-loading-cover]')
     const coverVisible = cover
-      ? getComputedStyle(cover).display !== 'none' &&
-        getComputedStyle(cover).visibility !== 'hidden'
+      ? getComputedStyle(cover).display !== 'none' && getComputedStyle(cover).visibility !== 'hidden'
       : false
 
     return {
       body: frames.join('\n'),
       coverVisible,
-      header:
-        tab?.paginationSnapshot?.headerPath
-          ?.map((item: { label?: string }) => item.label ?? '')
-          .join(' ') ?? '',
+      header: tab?.paginationSnapshot?.headerPath?.map((item: { label?: string }) => item.label ?? '').join(' ') ?? '',
       rendered: !!tab?.rendered,
       startIndex: tab?.paginationSnapshot?.location?.start?.index,
       turning: !!tab?.turning,
@@ -1123,16 +1008,11 @@ async function readActiveReaderBodyHeaderState(page: Page) {
   })
 }
 
-async function setLongBookAtSectionFinalSpread(
-  page: Page,
-  sectionIndex: number,
-) {
+async function setLongBookAtSectionFinalSpread(page: Page, sectionIndex: number) {
   await page.evaluate(async (index) => {
     const tab = (window as any).reader.focusedBookTab
     const manager = tab?.rendition?.manager
-    const section = tab?.sections?.find(
-      (candidate: { index?: number }) => candidate.index === index,
-    )
+    const section = tab?.sections?.find((candidate: { index?: number }) => candidate.index === index)
     if (!tab || !manager || !section) {
       throw new Error('Missing tab, manager, or section')
     }
@@ -1158,9 +1038,7 @@ async function setLongBookAtSectionFinalSpread(
 }
 
 async function expectFocusedTabId(page: Page, tabId: string) {
-  await expect
-    .poll(async () => (await readFocusedTabState(page)).tabId)
-    .toBe(tabId)
+  await expect.poll(async () => (await readFocusedTabState(page)).tabId).toBe(tabId)
 }
 
 async function readAllBookTabStates(page: Page): Promise<BookTabState[]> {
@@ -1250,9 +1128,7 @@ async function resetBookTabRuntimeCounters(page: Page) {
   })
 }
 
-async function readBookTabRuntimeCounters(
-  page: Page,
-): Promise<BookTabRuntimeCounters[]> {
+async function readBookTabRuntimeCounters(page: Page): Promise<BookTabRuntimeCounters[]> {
   return page.evaluate(() => {
     const group = (window as any).reader.focusedGroup
 
@@ -1351,9 +1227,7 @@ async function installFullTabRuntimeProbe(page: Page) {
           rendition: tab.rendition,
           results: tab.results,
           section: tab.section,
-          sectionImages: (tab.sections ?? []).map(
-            (section: any) => section.images,
-          ),
+          sectionImages: (tab.sections ?? []).map((section: any) => section.images),
           sections: tab.sections,
           signature: valueSignature(tab),
           tab,
@@ -1375,13 +1249,9 @@ async function readFullTabRuntimeStability(page: Page) {
     const probes = probeState?.tabs ?? []
     const valueSignature = probeState?.valueSignature
     const sameItems = (current: any[] | undefined, before: any[]) =>
-      !!current &&
-      current.length === before.length &&
-      current.every((item, index) => item === before[index])
+      !!current && current.length === before.length && current.every((item, index) => item === before[index])
     return probes.map((probe: any) => {
-      const tab = group.bookTabs.find(
-        (candidate: any) => candidate.id === probe.id,
-      )
+      const tab = group.bookTabs.find((candidate: any) => candidate.id === probe.id)
       const manager = tab?.rendition?.manager
       const views = manager?.views?._views ?? []
 
@@ -1391,28 +1261,21 @@ async function readFullTabRuntimeStability(page: Page) {
         currentLocation: tab?.currentLocation === probe.currentLocation,
         epub: tab?.epub === probe.epub,
         iframe: tab?.iframe === probe.iframe,
-        iframes:
-          tab?.iframes === probe.iframes &&
-          sameItems(tab?.iframes, probe.iframeItems),
+        iframes: tab?.iframes === probe.iframes && sameItems(tab?.iframes, probe.iframeItems),
         manager: manager === probe.manager,
         nav: tab?.nav === probe.nav,
         overlayState: tab?.overlayState === probe.overlayState,
-        paginationSnapshot:
-          tab?.paginationSnapshot === probe.paginationSnapshot,
+        paginationSnapshot: tab?.paginationSnapshot === probe.paginationSnapshot,
         rendition: tab?.rendition === probe.rendition,
         results: tab?.results === probe.results,
         section: tab?.section === probe.section,
         sectionImages:
           tab?.sections?.length === probe.sectionImages.length &&
-          tab.sections.every(
-            (section: any, index: number) =>
-              section.images === probe.sectionImages[index],
-          ),
+          tab.sections.every((section: any, index: number) => section.images === probe.sectionImages[index]),
         sections: tab?.sections === probe.sections,
         signature: !!tab && valueSignature(tab) === probe.signature,
         tab: tab === probe.tab,
-        typographyConfiguration:
-          tab?.typographyConfiguration === probe.typographyConfiguration,
+        typographyConfiguration: tab?.typographyConfiguration === probe.typographyConfiguration,
         views: views === probe.views && sameItems(views, probe.viewItems),
         visibleSections: tab?.visibleSections === probe.visibleSections,
       }
@@ -1446,49 +1309,37 @@ async function readTabStripMotion(page: Page): Promise<TabStripMotion> {
         .split(',')
         .map((part) => part.trim())
         .filter(Boolean)
-        .map((part) =>
-          part.endsWith('ms')
-            ? Number(part.slice(0, -2)) / 1000
-            : Number(part.replace(/s$/, '')),
-        )
+        .map((part) => (part.endsWith('ms') ? Number(part.slice(0, -2)) / 1000 : Number(part.replace(/s$/, ''))))
         .filter((value) => Number.isFinite(value))
 
     function hasMotionTransition(style: CSSStyleDeclaration) {
       const durations = parseSeconds(style.transitionDuration)
       if (!durations.some((duration) => duration > 0)) return false
 
-      const properties = style.transitionProperty
-        .split(',')
-        .map((property) => property.trim())
+      const properties = style.transitionProperty.split(',').map((property) => property.trim())
       return properties.some((property) => motionProperties.has(property))
     }
 
     function tabMetrics() {
-      return Array.from(document.querySelectorAll('[role="tab"]')).map(
-        (tab) => {
-          const rect = tab.getBoundingClientRect()
-          return {
-            label: tab.getAttribute('aria-label') ?? '',
-            height: Math.round(rect.height * 100) / 100,
-            left: Math.round(rect.left * 100) / 100,
-            top: Math.round(rect.top * 100) / 100,
-            width: Math.round(rect.width * 100) / 100,
-          }
-        },
-      )
+      return Array.from(document.querySelectorAll('[role="tab"]')).map((tab) => {
+        const rect = tab.getBoundingClientRect()
+        return {
+          label: tab.getAttribute('aria-label') ?? '',
+          height: Math.round(rect.height * 100) / 100,
+          left: Math.round(rect.left * 100) / 100,
+          top: Math.round(rect.top * 100) / 100,
+          width: Math.round(rect.width * 100) / 100,
+        }
+      })
     }
 
-    const tabElements = Array.from(
-      document.querySelectorAll('[role="tab"]'),
-    ) as HTMLElement[]
+    const tabElements = Array.from(document.querySelectorAll('[role="tab"]')) as HTMLElement[]
     const animated = tabElements.flatMap((tab) => {
       const label = tab.getAttribute('aria-label') ?? ''
       const items: Array<{ label: string; target: string }> = []
       const targets: Array<readonly [string, Element]> = [
         ['self', tab],
-        ...Array.from(tab.querySelectorAll('*')).map(
-          (element, index) => [`child:${index}`, element] as const,
-        ),
+        ...Array.from(tab.querySelectorAll('*')).map((element, index) => [`child:${index}`, element] as const),
       ]
 
       for (const [target, element] of targets) {
@@ -1518,8 +1369,7 @@ async function readTabStripMotion(page: Page): Promise<TabStripMotion> {
 
 async function traceTabSwitchInteraction(page: Page, tabLabel: string) {
   return page.evaluate(async (targetLabel) => {
-    const tabElements = () =>
-      Array.from(document.querySelectorAll('[role="tab"]')) as HTMLElement[]
+    const tabElements = () => Array.from(document.querySelectorAll('[role="tab"]')) as HTMLElement[]
     const tabMetrics = () =>
       tabElements().map((tab) => {
         const rect = tab.getBoundingClientRect()
@@ -1557,9 +1407,7 @@ async function traceTabSwitchInteraction(page: Page, tabLabel: string) {
       })
     }
 
-    const target = tabElements().find(
-      (tab) => tab.getAttribute('aria-label') === targetLabel,
-    )
+    const target = tabElements().find((tab) => tab.getAttribute('aria-label') === targetLabel)
     if (!target) throw new Error(`Missing tab ${targetLabel}`)
 
     sample('before')
@@ -1626,29 +1474,21 @@ async function goToCrossSectionSpread(page: Page) {
   })
 }
 
-async function addRightPageDefinitionAndAnnotation(
-  page: Page,
-  sectionIndex: number,
-) {
+async function addRightPageDefinitionAndAnnotation(page: Page, sectionIndex: number) {
   return page.evaluate((targetSectionIndex) => {
     const tab = (window as any).reader.focusedBookTab
     const views = tab?.rendition?.manager?.views?._views ?? []
-    const view = views.find(
-      (candidate: any) => candidate?.section?.index === targetSectionIndex,
-    )
+    const view = views.find((candidate: any) => candidate?.section?.index === targetSectionIndex)
     const doc = view?.document ?? view?.contents?.document
     if (!tab || !view || !doc?.body) {
       throw new Error('Missing target right-page view')
     }
 
     const viewportWidth = doc.documentElement.clientWidth || window.innerWidth
-    const viewportHeight =
-      doc.documentElement.clientHeight || window.innerHeight
+    const viewportHeight = doc.documentElement.clientHeight || window.innerHeight
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
       acceptNode(node: Node) {
-        return /[A-Za-z]{4,}/.test(node.textContent ?? '')
-          ? NodeFilter.FILTER_ACCEPT
-          : NodeFilter.FILTER_SKIP
+        return /[A-Za-z]{4,}/.test(node.textContent ?? '') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
       },
     })
 
@@ -1676,14 +1516,7 @@ async function addRightPageDefinitionAndAnnotation(
         const cfi = tab.rangeToCfi(range)
         const section = tab.sectionForRange(range)
         tab.define([match[0]])
-        tab.putAnnotation(
-          'highlight',
-          cfi,
-          'yellow',
-          range.toString(),
-          undefined,
-          section,
-        )
+        tab.putAnnotation('highlight', cfi, 'yellow', range.toString(), undefined, section)
 
         return {
           cfi,
@@ -1709,9 +1542,7 @@ async function waitForStableReaderLayout(
   while (Date.now() < deadline) {
     await page.waitForTimeout(250)
     const next = await waitForHealthyReaderLayout(page, options)
-    const previousWidths = previous.frames.map((frame) =>
-      Math.round(frame.width),
-    )
+    const previousWidths = previous.frames.map((frame) => Math.round(frame.width))
     const nextWidths = next.frames.map((frame) => Math.round(frame.width))
 
     if (
@@ -1739,14 +1570,10 @@ test.beforeEach(async ({ page }, testInfo) => {
   await installReaderBooksMock(page, undefined, packageUrl)
   await page.goto('/')
   await expect(page.locator('#layout')).toBeVisible()
-  await expect(
-    page.locator('ul.grid [data-flow-library-book-card]'),
-  ).toHaveCount(3)
+  await expect(page.locator('ul.grid [data-flow-library-book-card]')).toHaveCount(3)
 })
 
-test('updates the rendered iframe after a mocked book text replacement', async ({
-  page,
-}) => {
+test('updates the rendered iframe after a mocked book text replacement', async ({ page }) => {
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })
 
@@ -1754,19 +1581,14 @@ test('updates the rendered iframe after a mocked book text replacement', async (
     const reader = (window as any).reader
     const tab = reader.focusedBookTab
     const frame = Array.from(document.querySelectorAll('iframe')).find(
-      (candidate) =>
-        !candidate.closest('[aria-hidden="true"]') &&
-        Boolean(candidate.contentDocument?.body),
+      (candidate) => !candidate.closest('[aria-hidden="true"]') && Boolean(candidate.contentDocument?.body),
     )
     const frameDocument = frame?.contentDocument
     if (!tab || !frameDocument?.body) {
       throw new Error('Missing active reader frame')
     }
 
-    const walker = frameDocument.createTreeWalker(
-      frameDocument.body,
-      NodeFilter.SHOW_TEXT,
-    )
+    const walker = frameDocument.createTreeWalker(frameDocument.body, NodeFilter.SHOW_TEXT)
     let textNodeIndex = 0
     let textNode = walker.nextNode() as Text | null
     while ((textNode?.textContent?.trim().length ?? 0) < 10) {
@@ -1824,20 +1646,11 @@ const SIDEBAR_EDGE_EPSILON = 0.5
 
 async function expectFullWidthScroll(scroll: Locator) {
   await expect
-    .poll(() =>
-      scroll.evaluate(
-        (element) =>
-          element.clientWidth === (element as HTMLElement).offsetWidth,
-      ),
-    )
+    .poll(() => scroll.evaluate((element) => element.clientWidth === (element as HTMLElement).offsetWidth))
     .toBe(true)
 }
 
-async function expectFullWidthRow(
-  scroll: Locator,
-  row: Locator,
-  reservedContent?: Locator,
-) {
+async function expectFullWidthRow(scroll: Locator, row: Locator, reservedContent?: Locator) {
   await expect
     .poll(async () => {
       const [scrollBox, rowBox, contentBox] = await Promise.all([
@@ -1851,15 +1664,11 @@ async function expectFullWidthRow(
 
       const scrollRight = scrollBox.x + scrollBox.width
       const rowRight = rowBox.x + rowBox.width
-      const contentRight = contentBox
-        ? contentBox.x + contentBox.width
-        : undefined
+      const contentRight = contentBox ? contentBox.x + contentBox.width : undefined
 
       return (
         Math.abs(rowRight - scrollRight) < SIDEBAR_EDGE_EPSILON &&
-        (contentRight === undefined ||
-          contentRight <=
-            scrollRight - SIDEBAR_SCROLLBAR_WIDTH + SIDEBAR_EDGE_EPSILON)
+        (contentRight === undefined || contentRight <= scrollRight - SIDEBAR_SCROLLBAR_WIDTH + SIDEBAR_EDGE_EPSILON)
       )
     })
     .toBe(true)
@@ -1867,23 +1676,17 @@ async function expectFullWidthRow(
 
 async function expectVisibleOverlayScrollbar(scroll: Locator) {
   await expectFullWidthScroll(scroll)
-  const scrollbar = scroll
-    .locator('..')
-    .locator('[data-orientation="vertical"]')
+  const scrollbar = scroll.locator('..').locator('[data-orientation="vertical"]')
 
   await expect(scrollbar).toHaveCSS('opacity', '1')
   await expect
-    .poll(() =>
-      scrollbar.evaluate((element) => element.getBoundingClientRect().width),
-    )
+    .poll(() => scrollbar.evaluate((element) => element.getBoundingClientRect().width))
     .toBe(SIDEBAR_SCROLLBAR_WIDTH)
 
   return scrollbar
 }
 
-test('applies overlay and reserved scrollbar width to the matching sidebars', async ({
-  page,
-}) => {
+test('applies overlay and reserved scrollbar width to the matching sidebars', async ({ page }) => {
   const activityBar = page.locator('.ActivityBar')
   const sidebar = page.locator('.SideBar')
 
@@ -1924,28 +1727,14 @@ test('applies overlay and reserved scrollbar width to the matching sidebars', as
   const thumbBox = await thumb.boundingBox()
   if (!thumbBox) throw new Error('Missing TOC scrollbar thumb bounds')
   expect(thumbBox.width).toBe(10)
-  const scrollTopBeforeDrag = await tocScroll.evaluate(
-    (element) => element.scrollTop,
-  )
-  await page.mouse.move(
-    thumbBox.x + thumbBox.width / 2,
-    thumbBox.y + thumbBox.height / 2,
-  )
+  const scrollTopBeforeDrag = await tocScroll.evaluate((element) => element.scrollTop)
+  await page.mouse.move(thumbBox.x + thumbBox.width / 2, thumbBox.y + thumbBox.height / 2)
   await page.mouse.down()
-  await page.mouse.move(
-    thumbBox.x + thumbBox.width / 2,
-    thumbBox.y + thumbBox.height / 2 + 20,
-  )
+  await page.mouse.move(thumbBox.x + thumbBox.width / 2, thumbBox.y + thumbBox.height / 2 + 20)
   await page.mouse.up()
-  await expect
-    .poll(() => tocScroll.evaluate((element) => element.scrollTop))
-    .toBeGreaterThan(scrollTopBeforeDrag)
+  await expect.poll(() => tocScroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(scrollTopBeforeDrag)
   await page.mouse.move(500, 200)
-  await expect
-    .poll(() =>
-      scrollbar.evaluate((element) => getComputedStyle(element).opacity),
-    )
-    .toBe('0')
+  await expect.poll(() => scrollbar.evaluate((element) => getComputedStyle(element).opacity)).toBe('0')
   await page.setViewportSize({ width: 1000, height: 220 })
 
   await page.evaluate(() => {
@@ -1976,10 +1765,7 @@ test('applies overlay and reserved scrollbar width to the matching sidebars', as
   await page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab
     tab.updateBook({
-      definitions: Array.from(
-        { length: 20 },
-        (_, index) => `Synthetic definition ${index + 1}`,
-      ),
+      definitions: Array.from({ length: 20 }, (_, index) => `Synthetic definition ${index + 1}`),
     })
   })
   await activityBar.getByRole('button', { name: 'Annotation' }).click()
@@ -2003,24 +1789,16 @@ test('applies overlay and reserved scrollbar width to the matching sidebars', as
   const selectedImage = imageScroll.locator('button:has(img)').first()
   await expect(selectedImage).toBeVisible()
   await selectedImage.click()
-  await expectFullWidthRow(
-    imageScroll,
-    selectedImage,
-    selectedImage.locator('img'),
-  )
+  await expectFullWidthRow(imageScroll, selectedImage, selectedImage.locator('img'))
 })
 
-test('long-book ignores stale fixed height for the flexible TOC pane', async ({
-  page,
-}) => {
+test('long-book ignores stale fixed height for the flexible TOC pane', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
   await page.evaluate(() => {
     window.localStorage.setItem('flow-reader:pane:toc:toc', '1800')
   })
   await page.reload()
-  await expect(
-    page.locator('ul.grid [data-flow-library-book-card]'),
-  ).toHaveCount(3)
+  await expect(page.locator('ul.grid [data-flow-library-book-card]')).toHaveCount(3)
   await openFixtureBook(page, 0)
   await expect(page.locator('.SideBar .Pane').last()).toBeVisible()
 
@@ -2029,9 +1807,7 @@ test('long-book ignores stale fixed height for the flexible TOC pane', async ({
     const scroll = pane?.querySelector('[data-pane-scroll]')
     const rect = (element: Element | null | undefined) => {
       const value = element?.getBoundingClientRect()
-      return value
-        ? { bottom: value.bottom, height: value.height, top: value.top }
-        : undefined
+      return value ? { bottom: value.bottom, height: value.height, top: value.top } : undefined
     }
     return {
       pane: rect(pane),
@@ -2039,34 +1815,19 @@ test('long-book ignores stale fixed height for the flexible TOC pane', async ({
       sidebar: rect(sidebar),
     }
   })
-  expect(geometry.pane?.bottom).toBeLessThanOrEqual(
-    (geometry.sidebar?.bottom ?? 0) + 0.5,
-  )
-  expect(geometry.scroll?.bottom).toBeLessThanOrEqual(
-    (geometry.sidebar?.bottom ?? 0) + 0.5,
-  )
+  expect(geometry.pane?.bottom).toBeLessThanOrEqual((geometry.sidebar?.bottom ?? 0) + 0.5)
+  expect(geometry.scroll?.bottom).toBeLessThanOrEqual((geometry.sidebar?.bottom ?? 0) + 0.5)
 
-  const scroll = page
-    .locator('.SideBar .Pane')
-    .last()
-    .locator('[data-pane-scroll]')
-  await expect(
-    scroll.getByRole('button', { name: 'FLOW-CHAPTER-001' }),
-  ).toBeVisible()
-  await expect
-    .poll(() => scroll.evaluate((element) => element.scrollHeight))
-    .toBe(620 * 24)
+  const scroll = page.locator('.SideBar .Pane').last().locator('[data-pane-scroll]')
+  await expect(scroll.getByRole('button', { name: 'FLOW-CHAPTER-001' })).toBeVisible()
+  await expect.poll(() => scroll.evaluate((element) => element.scrollHeight)).toBe(620 * 24)
   await scroll.evaluate((element) => {
     element.scrollTop = element.scrollHeight
   })
-  await expect(
-    scroll.getByRole('button', { name: 'FLOW-CHAPTER-620' }),
-  ).toBeVisible()
+  await expect(scroll.getByRole('button', { name: 'FLOW-CHAPTER-620' })).toBeVisible()
 })
 
-test('lets TOC and annotation splits reach both bounds without overflowing', async ({
-  page,
-}) => {
+test('lets TOC and annotation splits reach both bounds without overflowing', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
   await openFixtureBook(page, 0)
 
@@ -2088,11 +1849,7 @@ test('lets TOC and annotation splits reach both bounds without overflowing', asy
     await page.mouse.down()
     await page.mouse.move(x, sidebarBox.y - 200)
 
-    await expect
-      .poll(() =>
-        panes.first().evaluate((pane) => pane.getBoundingClientRect().height),
-      )
-      .toBeCloseTo(28, 0)
+    await expect.poll(() => panes.first().evaluate((pane) => pane.getBoundingClientRect().height)).toBeCloseTo(28, 0)
 
     await page.mouse.move(x, sidebarBox.y + sidebarBox.height + 200)
 
@@ -2114,12 +1871,8 @@ test('lets TOC and annotation splits reach both bounds without overflowing', asy
 
     expect(geometry.paneHeights.at(-1)).toBeCloseTo(28, 0)
     expect(geometry.paneBottoms.at(-1)).toBeCloseTo(geometry.sidebarBottom, 0)
-    expect(Math.min(...geometry.paneTops)).toBeGreaterThanOrEqual(
-      geometry.sidebarTop - 0.5,
-    )
-    expect(Math.max(...geometry.paneBottoms)).toBeLessThanOrEqual(
-      geometry.sidebarBottom + 0.5,
-    )
+    expect(Math.min(...geometry.paneTops)).toBeGreaterThanOrEqual(geometry.sidebarTop - 0.5)
+    expect(Math.max(...geometry.paneBottoms)).toBeLessThanOrEqual(geometry.sidebarBottom + 0.5)
   }
 
   await expectBoundaryDragInBounds()
@@ -2140,17 +1893,13 @@ async function waitForVerticalReaderLoaded(page: Page) {
       () =>
         page.evaluate(() => {
           const tab = (window as any).reader.focusedBookTab
-          const pane = document.querySelector(
-            '[data-flow-reader-pane][aria-hidden="false"]',
-          )
+          const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
           const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
             (candidate) => candidate.getBoundingClientRect().width > 0,
           ) as HTMLIFrameElement | undefined
 
           return Boolean(
-            tab?.rendered &&
-            tab?.rendition?.manager?.writingMode === 'vertical-rl' &&
-            frame?.contentDocument?.body,
+            tab?.rendered && tab?.rendition?.manager?.writingMode === 'vertical-rl' && frame?.contentDocument?.body,
           )
         }),
       { timeout: 10000 },
@@ -2158,9 +1907,7 @@ async function waitForVerticalReaderLoaded(page: Page) {
     .toBe(true)
 }
 
-test('normalizes typography number fields when editing ends', async ({
-  page,
-}) => {
+test('normalizes typography number fields when editing ends', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })
@@ -2181,24 +1928,18 @@ test('normalizes typography number fields when editing ends', async ({
   await setAndBlur('First Line Indent', '-2', '0')
 })
 
-test('toggles page appearance without changing reader pagination geometry', async ({
-  page,
-}) => {
+test('toggles page appearance without changing reader pagination geometry', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })
   await page.locator('.ActivityBar button[aria-label="Typography"]').click()
 
   const sidebar = page.locator('.SideBar')
-  const activePane = page.locator(
-    '[data-flow-reader-pane][aria-hidden="false"]',
-  )
+  const activePane = page.locator('[data-flow-reader-pane][aria-hidden="false"]')
   const content = activePane.locator('[data-flow-reader-content]')
   const paneRoot = activePane.locator('[data-flow-page-appearance]')
 
-  await expect(
-    sidebar.getByText('Page Appearance', { exact: true }),
-  ).toBeVisible()
+  await expect(sidebar.getByText('Page Appearance', { exact: true })).toBeVisible()
   await expect(paneRoot).toHaveCount(0)
   await installBookTabRuntimeCounters(page)
   await resetBookTabRuntimeCounters(page)
@@ -2217,17 +1958,11 @@ test('toggles page appearance without changing reader pagination geometry', asyn
 
     return {
       actualGap: Math.round(endRect.left - startRect.right),
-      expectedGap: Math.round(
-        Number.parseFloat(style.getPropertyValue('--flow-reader-page-gap')),
-      ),
+      expectedGap: Math.round(Number.parseFloat(style.getPropertyValue('--flow-reader-page-gap'))),
       startRadius: getComputedStyle(start).borderRadius,
       endRadius: getComputedStyle(end).borderRadius,
-      headerShadow: getComputedStyle(
-        document.querySelector('[data-flow-reader-header]')!,
-      ).boxShadow,
-      footerShadow: getComputedStyle(
-        document.querySelector('[data-flow-reader-footer]')!,
-      ).boxShadow,
+      headerShadow: getComputedStyle(document.querySelector('[data-flow-reader-header]')!).boxShadow,
+      footerShadow: getComputedStyle(document.querySelector('[data-flow-reader-footer]')!).boxShadow,
     }
   })
   expect(cardGeometry).toEqual({
@@ -2264,16 +1999,11 @@ test('toggles page appearance without changing reader pagination geometry', asyn
 
   await sidebar.getByRole('button', { name: 'Cards', exact: true }).click()
   await expect(paneRoot).toHaveCount(0)
-  await expect(
-    content.locator('[data-flow-reader-page-decoration]'),
-  ).toHaveCount(0)
+  await expect(content.locator('[data-flow-reader-page-decoration]')).toHaveCount(0)
 
   await sidebar.getByRole('button', { name: 'Book', exact: true }).click()
   await expect(paneRoot).toHaveAttribute('data-flow-page-appearance', 'book')
-  await expect(content.locator('[data-flow-reader-page-seam]')).toHaveCSS(
-    'display',
-    'block',
-  )
+  await expect(content.locator('[data-flow-reader-page-seam]')).toHaveCSS('display', 'block')
   const bookDecoration = await content.evaluate((element) => {
     const frame = element.querySelector('[data-flow-reader-page-frame="start"]')
     const seam = element.querySelector('[data-flow-reader-page-seam]')
@@ -2298,9 +2028,7 @@ test('toggles page appearance without changing reader pagination geometry', asyn
   expect(bookDecoration.borderTopWidth).toBe('0px')
   expect(bookDecoration.frameInsets.left).toBeCloseTo(0, 5)
   expect(bookDecoration.frameInsets.right).toBeCloseTo(0, 5)
-  expect(bookDecoration.frameBackground.match(/linear-gradient/g)).toHaveLength(
-    4,
-  )
+  expect(bookDecoration.frameBackground.match(/linear-gradient/g)).toHaveLength(4)
   expect(bookDecoration.frameBackgroundSize).toContain('12px 100%')
   expect(bookDecoration.seamBackground).toContain('linear-gradient')
   expect(bookDecoration.seamWidth).toBe('96px')
@@ -2320,9 +2048,7 @@ test('toggles page appearance without changing reader pagination geometry', asyn
     }
   })
   expect(dividerGeometry).toEqual({ top: 0, bottom: 0, width: 1.5 })
-  const appearanceCounters = (await readBookTabRuntimeCounters(page)).find(
-    (entry) => entry.id === 'tab-layout-a',
-  )
+  const appearanceCounters = (await readBookTabRuntimeCounters(page)).find((entry) => entry.id === 'tab-layout-a')
   expect(appearanceCounters).toMatchObject({
     display: 0,
     next: 0,
@@ -2331,22 +2057,15 @@ test('toggles page appearance without changing reader pagination geometry', asyn
     resizeRendition: 0,
   })
 
-  await sidebar
-    .getByRole('button', { name: 'Single Page', exact: true })
-    .click()
+  await sidebar.getByRole('button', { name: 'Single Page', exact: true }).click()
   await expect(content).toHaveAttribute('data-flow-reader-spread', 'single')
-  await expect(content.locator('[data-flow-reader-page-seam]')).toHaveCSS(
-    'display',
-    'none',
-  )
+  await expect(content.locator('[data-flow-reader-page-seam]')).toHaveCSS('display', 'none')
 
   await sidebar.getByRole('button', { name: 'Divider', exact: true }).click()
   await expect(paneRoot).toHaveCount(0)
 })
 
-test('[vertical-rl] page appearance follows actual spread geometry', async ({
-  page,
-}) => {
+test('[vertical-rl] page appearance follows actual spread geometry', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
   await openVerticalFixtureBook(page)
 
@@ -2363,14 +2082,9 @@ test('[vertical-rl] page appearance follows actual spread geometry', async ({
     })
   })
 
-  const content = page.locator(
-    '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
-  )
+  const content = page.locator('[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]')
   await expect(content).toHaveAttribute('data-flow-reader-spread', 'double')
-  await expect(content.locator('[data-flow-reader-page-seam]')).toHaveCSS(
-    'display',
-    'block',
-  )
+  await expect(content.locator('[data-flow-reader-page-seam]')).toHaveCSS('display', 'block')
 
   const doubleState = await content.evaluate((element) => {
     const tab = (window as any).reader.focusedBookTab
@@ -2381,9 +2095,7 @@ test('[vertical-rl] page appearance follows actual spread geometry', async ({
     return {
       divisor: tab?.rendition?.manager?.layout?.divisor,
       writingMode: tab?.rendition?.manager?.writingMode,
-      seamOffset: seamRect
-        ? Math.round(seamRect.left + seamRect.width / 2 - contentRect.left)
-        : 0,
+      seamOffset: seamRect ? Math.round(seamRect.left + seamRect.width / 2 - contentRect.left) : 0,
       contentCenter: Math.round(contentRect.width / 2),
     }
   })
@@ -2391,9 +2103,7 @@ test('[vertical-rl] page appearance follows actual spread geometry', async ({
     divisor: 2,
     writingMode: 'vertical-rl',
   })
-  expect(
-    Math.abs(doubleState.seamOffset - doubleState.contentCenter),
-  ).toBeLessThanOrEqual(1)
+  expect(Math.abs(doubleState.seamOffset - doubleState.contentCenter)).toBeLessThanOrEqual(1)
 
   await page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab
@@ -2409,64 +2119,35 @@ test('[vertical-rl] page appearance follows actual spread geometry', async ({
   })
 
   await expect(content).toHaveAttribute('data-flow-reader-spread', 'single')
-  await expect(content.locator('[data-flow-reader-page-seam]')).toHaveCSS(
-    'display',
-    'none',
-  )
+  await expect(content.locator('[data-flow-reader-page-seam]')).toHaveCSS('display', 'none')
 })
 
 async function readActivePageFrameMetrics(page: Page) {
   return page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab
     const manager = tab?.rendition?.manager
-    const pane = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
+    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     const content = pane?.querySelector('[data-flow-reader-content]')
-    const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
-      (candidate) => {
-        const rect = candidate.getBoundingClientRect()
-        const style = getComputedStyle(candidate)
-        return (
-          rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden'
-        )
-      },
-    ) as HTMLIFrameElement | undefined
+    const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find((candidate) => {
+      const rect = candidate.getBoundingClientRect()
+      const style = getComputedStyle(candidate)
+      return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden'
+    }) as HTMLIFrameElement | undefined
     const body = frame?.contentDocument?.body
-    const bodyStyle = body
-      ? frame.contentWindow?.getComputedStyle(body)
-      : undefined
+    const bodyStyle = body ? frame.contentWindow?.getComputedStyle(body) : undefined
     const contentRect = content?.getBoundingClientRect()
     const frameRect = frame?.getBoundingClientRect()
     const bodyRect = body?.getBoundingClientRect()
     const vertical = bodyStyle?.writingMode === 'vertical-rl'
     const physicalPageWidth = bodyStyle
-      ? Number.parseFloat(
-          vertical
-            ? bodyStyle.getPropertyValue('column-height')
-            : bodyStyle.columnWidth,
-        )
+      ? Number.parseFloat(vertical ? bodyStyle.getPropertyValue('column-height') : bodyStyle.columnWidth)
       : undefined
-    const physicalGap = bodyStyle
-      ? Number.parseFloat(vertical ? bodyStyle.rowGap : bodyStyle.columnGap)
-      : undefined
+    const physicalGap = bodyStyle ? Number.parseFloat(vertical ? bodyStyle.rowGap : bodyStyle.columnGap) : undefined
     let middleGapTextRectCount: number | undefined
-    if (
-      body &&
-      bodyStyle &&
-      bodyRect &&
-      Number.isFinite(physicalPageWidth) &&
-      Number.isFinite(physicalGap)
-    ) {
-      const gapStart =
-        bodyRect.left +
-        Number.parseFloat(bodyStyle.paddingLeft) +
-        (physicalPageWidth ?? 0)
+    if (body && bodyStyle && bodyRect && Number.isFinite(physicalPageWidth) && Number.isFinite(physicalGap)) {
+      const gapStart = bodyRect.left + Number.parseFloat(bodyStyle.paddingLeft) + (physicalPageWidth ?? 0)
       const gapEnd = gapStart + (physicalGap ?? 0)
-      const walker = body.ownerDocument.createTreeWalker(
-        body,
-        NodeFilter.SHOW_TEXT,
-      )
+      const walker = body.ownerDocument.createTreeWalker(body, NodeFilter.SHOW_TEXT)
       let textNode = walker.nextNode()
       middleGapTextRectCount = 0
       while (textNode) {
@@ -2567,34 +2248,26 @@ async function setSyntheticVerticalFooterSnapshot(
 
 async function readActiveFooterSlots(page: Page) {
   return page.evaluate(() => {
-    const pane = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
+    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     if (!pane) throw new Error('Missing active reader pane')
     const paneRect = pane.getBoundingClientRect()
-    const footer = Array.from(pane.querySelectorAll<HTMLElement>('div')).find(
-      (element) => {
-        const rect = element.getBoundingClientRect()
-        const style = getComputedStyle(element)
-        return (
-          style.display === 'grid' &&
-          element.children.length === 2 &&
-          rect.height > 0 &&
-          Math.abs(rect.bottom - paneRect.bottom) <= 2
-        )
-      },
-    )
+    const footer = Array.from(pane.querySelectorAll<HTMLElement>('div')).find((element) => {
+      const rect = element.getBoundingClientRect()
+      const style = getComputedStyle(element)
+      return (
+        style.display === 'grid' &&
+        element.children.length === 2 &&
+        rect.height > 0 &&
+        Math.abs(rect.bottom - paneRect.bottom) <= 2
+      )
+    })
     if (!footer) throw new Error('Missing two-slot reader footer')
 
-    return Array.from(footer.children).map((element) =>
-      (element.textContent ?? '').replace(/\s+/g, ' ').trim(),
-    )
+    return Array.from(footer.children).map((element) => (element.textContent ?? '').replace(/\s+/g, ' ').trim())
   })
 }
 
-test('[vertical-rl] keeps the horizontal physical page frame', async ({
-  page,
-}) => {
+test('[vertical-rl] keeps the horizontal physical page frame', async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 900 })
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })
@@ -2614,17 +2287,13 @@ test('[vertical-rl] keeps the horizontal physical page frame', async ({
   expect(vertical.body?.paddingBottom).toBe(horizontal.body?.paddingBottom)
   expect(vertical.body?.paddingLeft).toBe(horizontal.body?.paddingLeft)
   expect(vertical.body?.direction).toBe('ltr')
-  expect(vertical.body?.physicalPageWidth).toBe(
-    horizontal.body?.physicalPageWidth,
-  )
+  expect(vertical.body?.physicalPageWidth).toBe(horizontal.body?.physicalPageWidth)
   expect(vertical.body?.physicalGap).toBe(horizontal.body?.physicalGap)
   expect(vertical.body?.rowGap).toBe(horizontal.body?.columnGap)
   expect(vertical.body?.middleGapTextRectCount).toBe(0)
 })
 
-test('[vertical-rl] maps footer pages to physical right-first slots', async ({
-  page,
-}) => {
+test('[vertical-rl] maps footer pages to physical right-first slots', async ({ page }) => {
   await openVerticalFixtureBook(page)
 
   await setSyntheticVerticalFooterSnapshot(
@@ -2672,9 +2341,7 @@ async function readVerticalPhysicalSectionSlots(page: Page) {
   return page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab
     const manager = tab?.rendition?.manager
-    const content = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
-    )
+    const content = document.querySelector('[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]')
     const contentRect = content?.getBoundingClientRect()
     if (!contentRect) throw new Error('Missing active reader content')
 
@@ -2690,9 +2357,7 @@ async function readVerticalPhysicalSectionSlots(page: Page) {
         return {
           sectionIndex: view.section?.index,
           href: view.section?.href,
-          marker: (
-            view.contents?.document?.querySelector('h1')?.textContent ?? ''
-          ).trim(),
+          marker: (view.contents?.document?.querySelector('h1')?.textContent ?? '').trim(),
           visibleLeft: left,
           visibleRight: right,
           visibleCenter: (left + right) / 2,
@@ -2709,9 +2374,7 @@ async function readVerticalPhysicalSectionSlots(page: Page) {
   })
 }
 
-test('[vertical-rl] keeps page shortcuts logical and returns to the same right-first spread', async ({
-  page,
-}) => {
+test('[vertical-rl] keeps page shortcuts logical and returns to the same right-first spread', async ({ page }) => {
   await openVerticalFixtureBook(page)
   const initial = await readVerticalReadingState(page)
 
@@ -2732,9 +2395,7 @@ test('[vertical-rl] keeps page shortcuts logical and returns to the same right-f
   expect(returned).toEqual(initial)
 })
 
-test('[vertical-rl] places a TOC chapter start in the physical right slot', async ({
-  page,
-}) => {
+test('[vertical-rl] places a TOC chapter start in the physical right slot', async ({ page }) => {
   await openVerticalFixtureBook(page)
   const target = page.getByRole('button', {
     name: 'VERTICAL-CHAPTER-02',
@@ -2841,9 +2502,7 @@ test('[vertical-rl] keeps one-page chapter jumps physically right and skips a ne
     })
 })
 
-test('[vertical-rl] resolves nested TOC anchors and chapter shortcuts on the right page', async ({
-  page,
-}) => {
+test('[vertical-rl] resolves nested TOC anchors and chapter shortcuts on the right page', async ({ page }) => {
   await openVerticalFixtureBook(page)
   const parent = page.getByRole('button', {
     name: 'VERTICAL-CHAPTER-01',
@@ -2910,9 +2569,7 @@ test('[vertical-rl] resolves nested TOC anchors and chapter shortcuts on the rig
     })
 })
 
-test('[vertical-rl] advances chapter find within the visible page before turning', async ({
-  page,
-}) => {
+test('[vertical-rl] advances chapter find within the visible page before turning', async ({ page }) => {
   await openVerticalFixtureBook(page)
   const initial = await readVerticalReadingState(page)
 
@@ -2927,33 +2584,27 @@ test('[vertical-rl] advances chapter find within the visible page before turning
   expect(await readVerticalReadingState(page)).toEqual(initial)
 
   const activeHighlight = await page.evaluate(() => {
-    const content = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
-    )
+    const content = document.querySelector('[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]')
     const contentRect = content?.getBoundingClientRect()
     if (!contentRect) return false
 
-    return Array.from(document.querySelectorAll('[ref="epubjs-hl"]')).some(
-      (mark) => {
-        const rect = mark.getBoundingClientRect()
-        const fill = mark.getAttribute('fill') ?? getComputedStyle(mark).fill
-        return (
-          fill.includes('59') &&
-          fill.includes('130') &&
-          rect.right > contentRect.left &&
-          rect.left < contentRect.right &&
-          rect.bottom > contentRect.top &&
-          rect.top < contentRect.bottom
-        )
-      },
-    )
+    return Array.from(document.querySelectorAll('[ref="epubjs-hl"]')).some((mark) => {
+      const rect = mark.getBoundingClientRect()
+      const fill = mark.getAttribute('fill') ?? getComputedStyle(mark).fill
+      return (
+        fill.includes('59') &&
+        fill.includes('130') &&
+        rect.right > contentRect.left &&
+        rect.left < contentRect.right &&
+        rect.bottom > contentRect.top &&
+        rect.top < contentRect.bottom
+      )
+    })
   })
   expect(activeHighlight).toBe(true)
 })
 
-test('[vertical-rl] wraps chapter find navigation in both directions', async ({
-  page,
-}) => {
+test('[vertical-rl] wraps chapter find navigation in both directions', async ({ page }) => {
   await openVerticalFixtureBook(page)
 
   await page.keyboard.press(findShortcut)
@@ -2968,9 +2619,7 @@ test('[vertical-rl] wraps chapter find navigation in both directions', async ({
   await expect(page.getByText('1/3', { exact: true })).toBeVisible()
 })
 
-test('[vertical-rl] turns to the next spread for an off-page chapter find result', async ({
-  page,
-}) => {
+test('[vertical-rl] turns to the next spread for an off-page chapter find result', async ({ page }) => {
   await openVerticalFixtureBook(page)
   const query = '天地玄黄宇宙洪荒'
   const search = await page.evaluate(async (value) => {
@@ -2979,25 +2628,14 @@ test('[vertical-rl] turns to the next spread for an off-page chapter find result
     const section = manager.currentReflowableSpread.right.section
     const matches = section.find(value)
     const pageIndexes = await Promise.all(
-      matches.map((match: { cfi: string }) =>
-        tab.pageIndexForCfi(section.index, match.cfi),
-      ),
+      matches.map((match: { cfi: string }) => tab.pageIndexForCfi(section.index, match.cfi)),
     )
-    const visiblePages = [
-      manager.currentReflowableSpread.right,
-      manager.currentReflowableSpread.left,
-    ]
-      .filter(
-        (address: { section: { index: number } }) =>
-          address?.section?.index === section.index,
-      )
+    const visiblePages = [manager.currentReflowableSpread.right, manager.currentReflowableSpread.left]
+      .filter((address: { section: { index: number } }) => address?.section?.index === section.index)
       .map((address: { pageIndex: number }) => address.pageIndex)
-    const initialIndex = pageIndexes.findIndex((pageIndex) =>
-      visiblePages.includes(pageIndex),
-    )
+    const initialIndex = pageIndexes.findIndex((pageIndex) => visiblePages.includes(pageIndex))
     const firstOffPageIndex = pageIndexes.findIndex(
-      (pageIndex, index) =>
-        index > initialIndex && !visiblePages.includes(pageIndex),
+      (pageIndex, index) => index > initialIndex && !visiblePages.includes(pageIndex),
     )
 
     return { firstOffPageIndex, initialIndex, pageIndexes, visiblePages }
@@ -3014,30 +2652,19 @@ test('[vertical-rl] turns to the next spread for an off-page chapter find result
     }),
   ).toBeVisible()
 
-  for (
-    let index = search.initialIndex + 1;
-    index < search.firstOffPageIndex;
-    index += 1
-  ) {
+  for (let index = search.initialIndex + 1; index < search.firstOffPageIndex; index += 1) {
     await input.press('Enter')
   }
   const beforeTurn = await readVerticalReadingState(page)
   await input.press('Enter')
   await expect(
-    page.getByText(
-      `${search.firstOffPageIndex + 1}/${search.pageIndexes.length}`,
-      { exact: true },
-    ),
+    page.getByText(`${search.firstOffPageIndex + 1}/${search.pageIndexes.length}`, { exact: true }),
   ).toBeVisible()
-  await expect
-    .poll(() => readVerticalReadingState(page))
-    .not.toEqual(beforeTurn)
+  await expect.poll(() => readVerticalReadingState(page)).not.toEqual(beforeTurn)
   await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
 })
 
-test('[vertical-rl] keeps a clicked sidebar search result active and visible', async ({
-  page,
-}) => {
+test('[vertical-rl] keeps a clicked sidebar search result active and visible', async ({ page }) => {
   await openVerticalFixtureBook(page)
   await page.locator('.ActivityBar button[aria-label="Search"]').click()
   const input = page.getByRole('textbox', { name: 'Search', exact: true })
@@ -3055,9 +2682,7 @@ test('[vertical-rl] keeps a clicked sidebar search result active and visible', a
   await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
 })
 
-test('[vertical-rl] locates and expands the current search-result chapter', async ({
-  page,
-}) => {
+test('[vertical-rl] locates and expands the current search-result chapter', async ({ page }) => {
   await openVerticalFixtureBook(page)
   await page.locator('.ActivityBar button[aria-label="Search"]').click()
 
@@ -3067,23 +2692,14 @@ test('[vertical-rl] locates and expands the current search-result chapter', asyn
       const currentSectionIndex = tab.currentSection?.index ?? 0
       const groups = Array.from({ length: 9 }, (_, groupIndex) => ({
         id: `locate-group-${groupIndex}`,
-        excerpt:
-          groupIndex === 8
-            ? 'Current locate chapter'
-            : `Earlier chapter ${groupIndex}`,
-        sectionIndex:
-          groupIndex === 8
-            ? currentSectionIndex
-            : currentSectionIndex + groupIndex + 1,
+        excerpt: groupIndex === 8 ? 'Current locate chapter' : `Earlier chapter ${groupIndex}`,
+        sectionIndex: groupIndex === 8 ? currentSectionIndex : currentSectionIndex + groupIndex + 1,
         expanded: groupIndex !== 8,
-        subitems: Array.from(
-          { length: groupIndex === 8 ? resultCount : 2 },
-          (_, resultIndex) => ({
-            id: `locate-result-${groupIndex}-${resultIndex}`,
-            excerpt: `Locate result ${groupIndex}-${resultIndex}`,
-            occurrence: resultIndex,
-          }),
-        ),
+        subitems: Array.from({ length: groupIndex === 8 ? resultCount : 2 }, (_, resultIndex) => ({
+          id: `locate-result-${groupIndex}-${resultIndex}`,
+          excerpt: `Locate result ${groupIndex}-${resultIndex}`,
+          occurrence: resultIndex,
+        })),
       }))
 
       tab.keyword = 'Locate result'
@@ -3121,12 +2737,8 @@ test('[vertical-rl] locates and expands the current search-result chapter', asyn
   expect(smallGroupVisibility).toMatchObject({
     groupTop: expect.any(Number),
   })
-  expect(smallGroupVisibility!.groupTop).toBeGreaterThanOrEqual(
-    smallGroupVisibility!.viewportTop - 1,
-  )
-  expect(smallGroupVisibility!.resultBottom).toBeLessThanOrEqual(
-    smallGroupVisibility!.viewportBottom + 1,
-  )
+  expect(smallGroupVisibility!.groupTop).toBeGreaterThanOrEqual(smallGroupVisibility!.viewportTop - 1)
+  expect(smallGroupVisibility!.resultBottom).toBeLessThanOrEqual(smallGroupVisibility!.viewportBottom + 1)
 
   await setSearchResults(30)
   await searchScroll.evaluate((element) => {
@@ -3139,16 +2751,12 @@ test('[vertical-rl] locates and expands the current search-result chapter', asyn
     const group = element.querySelector('[aria-label="Current locate chapter"]')
     if (!group) return Number.POSITIVE_INFINITY
 
-    return (
-      group.getBoundingClientRect().top - element.getBoundingClientRect().top
-    )
+    return group.getBoundingClientRect().top - element.getBoundingClientRect().top
   })
   expect(Math.abs(largeGroupTopOffset)).toBeLessThan(1)
 })
 
-test('[vertical-rl] keeps one physical page frame in single-page and zoomed layouts', async ({
-  page,
-}) => {
+test('[vertical-rl] keeps one physical page frame in single-page and zoomed layouts', async ({ page }) => {
   await openVerticalFixtureBook(page)
   await page
     .getByRole('button', {
@@ -3194,30 +2802,21 @@ test('[vertical-rl] keeps one physical page frame in single-page and zoomed layo
       const spread = manager?.currentReflowableSpread
       const views = manager?.views?._views ?? []
       const view =
-        views.find(
-          (candidate: any) =>
-            candidate.section?.index === spread?.right?.section?.index,
-        ) ?? views[0]
+        views.find((candidate: any) => candidate.section?.index === spread?.right?.section?.index) ?? views[0]
       const body = view?.contents?.document?.body ?? view?.document?.body
       const style = body && getComputedStyle(body)
       const bodyRect = body?.getBoundingClientRect()
       const frameWidth = view?.iframe?.contentWindow?.innerWidth
       let textCrossesBodyLeft = 0
       if (body && bodyRect) {
-        const walker = body.ownerDocument.createTreeWalker(
-          body,
-          NodeFilter.SHOW_TEXT,
-        )
+        const walker = body.ownerDocument.createTreeWalker(body, NodeFilter.SHOW_TEXT)
         let textNode = walker.nextNode()
         while (textNode) {
           if (textNode.textContent?.trim()) {
             const range = body.ownerDocument.createRange()
             range.selectNodeContents(textNode)
-            textCrossesBodyLeft += Array.from<DOMRect>(
-              range.getClientRects(),
-            ).filter(
-              (rect) =>
-                rect.left < bodyRect.left - 1 && rect.right > bodyRect.left + 1,
+            textCrossesBodyLeft += Array.from<DOMRect>(range.getClientRects()).filter(
+              (rect) => rect.left < bodyRect.left - 1 && rect.right > bodyRect.left + 1,
             ).length
           }
           textNode = walker.nextNode()
@@ -3229,16 +2828,11 @@ test('[vertical-rl] keeps one physical page frame in single-page and zoomed layo
         pageWidth: manager?.layout?.pageWidth,
         pageHeight: manager?.layout?.height,
         displayedViewCount: views.length,
-        viewSectionIndexes: views.map(
-          (candidate: any) => candidate.section?.index,
-        ),
+        viewSectionIndexes: views.map((candidate: any) => candidate.section?.index),
         rightPageIndex: spread?.right?.pageIndex,
         hasLeftPage: !!spread?.left,
         bodyInsideFrame:
-          !!bodyRect &&
-          typeof frameWidth === 'number' &&
-          bodyRect.left >= -1 &&
-          bodyRect.right <= frameWidth + 1,
+          !!bodyRect && typeof frameWidth === 'number' && bodyRect.left >= -1 && bodyRect.right <= frameWidth + 1,
         textCrossesBodyLeft,
         body: style && {
           columnWidth: parseFloat(style.columnWidth),
@@ -3289,30 +2883,20 @@ test('[vertical-rl] keeps one physical page frame in single-page and zoomed layo
       const geometry = await readGeometry()
       const body = geometry.body
       const ready =
-        Number.isFinite(body?.columnWidth) &&
-        Number.isFinite(body?.columnHeight) &&
-        body?.transform !== 'none'
+        Number.isFinite(body?.columnWidth) && Number.isFinite(body?.columnHeight) && body?.transform !== 'none'
       if (ready) zoomed = geometry
       return ready
     })
     .toBe(true)
   if (!zoomed) throw new Error('Missing stable zoomed geometry')
-  expect(zoomed.body?.columnWidth).toBeCloseTo(
-    ((zoomed.pageHeight ?? 0) - 20) / 1.5,
-    1,
-  )
-  expect(zoomed.body?.columnHeight).toBeCloseTo(
-    ((zoomed.pageWidth ?? 0) - 48) / 1.5,
-    1,
-  )
+  expect(zoomed.body?.columnWidth).toBeCloseTo(((zoomed.pageHeight ?? 0) - 20) / 1.5, 1)
+  expect(zoomed.body?.columnHeight).toBeCloseTo(((zoomed.pageWidth ?? 0) - 48) / 1.5, 1)
   expect(zoomed.body?.columnGap).toBe(0)
   expect(zoomed.body?.rowGap).toBeCloseTo(48 / 1.5, 1)
   expect(zoomed.body?.transform).not.toBe('none')
 })
 
-test('[vertical-rl] restores the committed right-first spread across tab and sidebar changes', async ({
-  page,
-}) => {
+test('[vertical-rl] restores the committed right-first spread across tab and sidebar changes', async ({ page }) => {
   await openVerticalFixtureBook(page)
   const initial = await readVerticalReadingState(page)
   await installBookTabRuntimeCounters(page)
@@ -3323,9 +2907,7 @@ test('[vertical-rl] restores the committed right-first spread across tab and sid
   await page.getByRole('tab', { name: 'Tab Layout B' }).click()
   await waitForVerticalReaderLoaded(page)
   const afterTabSwitch = await readVerticalReadingState(page)
-  const counters = (await readBookTabRuntimeCounters(page)).find(
-    (entry) => entry.id === 'tab-layout-b',
-  )
+  const counters = (await readBookTabRuntimeCounters(page)).find((entry) => entry.id === 'tab-layout-b')
 
   await toggleTocSidebar(page)
   await page.waitForTimeout(250)
@@ -3345,15 +2927,11 @@ test('[vertical-rl] restores the committed right-first spread across tab and sid
   })
 })
 
-test('[vertical-rl] overrides punctuation while preserving vertical indent and line height', async ({
-  page,
-}) => {
+test('[vertical-rl] overrides punctuation while preserving vertical indent and line height', async ({ page }) => {
   await openVerticalFixtureBook(page)
 
   const typography = await page.evaluate(() => {
-    const pane = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
+    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
       (candidate) => candidate.getBoundingClientRect().width > 0,
     ) as HTMLIFrameElement | undefined
@@ -3380,9 +2958,7 @@ test('[vertical-rl] overrides punctuation while preserving vertical indent and l
   expect(parseFloat(typography.lineHeight)).toBeGreaterThan(0)
 })
 
-test('[vertical-rl] places note popover on the physical left with vertical content', async ({
-  page,
-}) => {
+test('[vertical-rl] places note popover on the physical left with vertical content', async ({ page }) => {
   await openVerticalFixtureBook(page)
   const activeFrame = page
     .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
@@ -3394,9 +2970,7 @@ test('[vertical-rl] places note popover on the physical left with vertical conte
   await expect(popover).toBeVisible()
 
   const geometry = await page.evaluate(() => {
-    const pane = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
+    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
       (candidate) => candidate.getBoundingClientRect().width > 0,
     ) as HTMLIFrameElement | undefined
@@ -3436,9 +3010,7 @@ test('[vertical-rl] places note popover on the physical left with vertical conte
   ).toBeLessThanOrEqual(1)
 
   await page.evaluate(() => {
-    const content = document.querySelector(
-      '.flow-note-popover > div',
-    ) as HTMLElement | null
+    const content = document.querySelector('.flow-note-popover > div') as HTMLElement | null
     if (!content) throw new Error('Missing note popover content')
 
     const paragraph = document.createElement('p')
@@ -3449,9 +3021,7 @@ test('[vertical-rl] places note popover on the physical left with vertical conte
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const content = document.querySelector(
-          '.flow-note-popover > div',
-        ) as HTMLElement | null
+        const content = document.querySelector('.flow-note-popover > div') as HTMLElement | null
         if (!content) throw new Error('Missing note popover content')
 
         return {
@@ -3465,9 +3035,7 @@ test('[vertical-rl] places note popover on the physical left with vertical conte
     .toMatchObject({ overflowX: 'auto', overflowY: 'hidden' })
 
   const longNoteGeometry = await page.evaluate(() => {
-    const content = document.querySelector(
-      '.flow-note-popover > div',
-    ) as HTMLElement | null
+    const content = document.querySelector('.flow-note-popover > div') as HTMLElement | null
     if (!content) throw new Error('Missing note popover content')
 
     return {
@@ -3485,16 +3053,12 @@ test('[vertical-rl] places note popover on the physical left with vertical conte
   ).toBeGreaterThan(1)
 })
 
-test('does not scroll a horizontal note for glyph overflow inside the available height', async ({
-  page,
-}) => {
+test('does not scroll a horizontal note for glyph overflow inside the available height', async ({ page }) => {
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })
 
   await page.evaluate(() => {
-    const pane = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
+    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
       (candidate) => candidate.getBoundingClientRect().width > 0,
     ) as HTMLIFrameElement | undefined
@@ -3502,15 +3066,13 @@ test('does not scroll a horizontal note for glyph overflow inside the available 
     if (!doc?.body) throw new Error('Missing horizontal note fixture')
 
     const paragraph = doc.createElement('p')
-    paragraph.innerHTML =
-      '<a id="horizontal-note-ref" role="doc-noteref" href="#horizontal-note">〔1〕</a>'
+    paragraph.innerHTML = '<a id="horizontal-note-ref" role="doc-noteref" href="#horizontal-note">〔1〕</a>'
     const note = doc.createElement('aside')
     note.id = 'horizontal-note'
     note.setAttribute('role', 'doc-footnote')
     note.style.fontSize = '28px'
     note.style.lineHeight = '10px'
-    note.innerHTML =
-      'Short horizontal note.<a href="#horizontal-note-ref">↩</a>'
+    note.innerHTML = 'Short horizontal note.<a href="#horizontal-note-ref">↩</a>'
     doc.body.prepend(paragraph, note)
   })
 
@@ -3550,9 +3112,7 @@ test('does not scroll a horizontal note for glyph overflow inside the available 
     .locator('#horizontal-note')
     .evaluate((note) => {
       note.removeAttribute('style')
-      note.innerHTML =
-        `${'Long horizontal note content. '.repeat(800)}` +
-        '<a href="#horizontal-note-ref">↩</a>'
+      note.innerHTML = `${'Long horizontal note content. '.repeat(800)}<a href="#horizontal-note-ref">↩</a>`
     })
   await activeFrame.contentFrame().locator('#horizontal-note-ref').click()
   await expect(popover).toBeVisible()
@@ -3572,20 +3132,14 @@ test('does not scroll a horizontal note for glyph overflow inside the available 
   expect(longOverflow.overflowY).toBe('auto')
 })
 
-test('[vertical-rl] keeps the selection menu beside the selection', async ({
-  page,
-}) => {
+test('[vertical-rl] keeps the selection menu beside the selection', async ({ page }) => {
   await openVerticalFixtureBook(page)
   await page.evaluate(() => {
-    const pane = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
+    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
       (candidate) => candidate.getBoundingClientRect().width > 0,
     ) as HTMLIFrameElement | undefined
-    const target = frame?.contentDocument?.querySelector(
-      '#vertical-selection-target',
-    )
+    const target = frame?.contentDocument?.querySelector('#vertical-selection-target')
     const text = target?.firstChild
     if (!frame?.contentWindow || !target || !text) {
       throw new Error('Missing selection fixture')
@@ -3598,9 +3152,7 @@ test('[vertical-rl] keeps the selection menu beside the selection', async ({
     selection?.addRange(range)
     const rect = range.getBoundingClientRect()
     frame.contentWindow.dispatchEvent(
-      new (
-        frame.contentWindow as Window & { MouseEvent: typeof MouseEvent }
-      ).MouseEvent('contextmenu', {
+      new (frame.contentWindow as Window & { MouseEvent: typeof MouseEvent }).MouseEvent('contextmenu', {
         bubbles: true,
         cancelable: true,
         clientX: rect.left + rect.width / 2,
@@ -3611,25 +3163,19 @@ test('[vertical-rl] keeps the selection menu beside the selection', async ({
 
   await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible()
   const result = await page.evaluate(() => {
-    const pane = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
+    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
       (candidate) => candidate.getBoundingClientRect().width > 0,
     ) as HTMLIFrameElement | undefined
     const selection = frame?.contentWindow?.getSelection()
-    const selectionRect = selection?.rangeCount
-      ? selection.getRangeAt(0).getBoundingClientRect()
-      : undefined
+    const selectionRect = selection?.rangeCount ? selection.getRangeAt(0).getBoundingClientRect() : undefined
     const frameRect = frame?.getBoundingClientRect()
     const copyButton = Array.from(pane?.querySelectorAll('button') ?? []).find(
       (button) => button.getAttribute('aria-label') === 'Copy',
     )
     const menu = copyButton?.closest('[data-flow-keyboard-capture="true"]')
     const menuRect = menu?.getBoundingClientRect()
-    const contentRect = pane
-      ?.querySelector('[data-flow-reader-content]')
-      ?.getBoundingClientRect()
+    const contentRect = pane?.querySelector('[data-flow-reader-content]')?.getBoundingClientRect()
     if (!selectionRect || !frameRect || !menuRect || !contentRect) {
       throw new Error('Missing selection menu geometry')
     }
@@ -3653,9 +3199,7 @@ test('[vertical-rl] keeps the selection menu beside the selection', async ({
         menuRect.right <= contentRect.right &&
         menuRect.top >= contentRect.top &&
         menuRect.bottom <= contentRect.bottom,
-      beside:
-        menuRect.right <= outerSelection.left ||
-        menuRect.left >= outerSelection.right,
+      beside: menuRect.right <= outerSelection.left || menuRect.left >= outerSelection.right,
     }
   })
 
@@ -3664,21 +3208,15 @@ test('[vertical-rl] keeps the selection menu beside the selection', async ({
   expect(result.beside).toBe(true)
 })
 
-test('[vertical-rl] keeps the dictionary popup inside the reader without repagination', async ({
-  page,
-}) => {
+test('[vertical-rl] keeps the dictionary popup inside the reader without repagination', async ({ page }) => {
   await openVerticalFixtureBook(page)
   const before = await readFocusedTabState(page)
   await page.evaluate(() => {
-    const pane = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
+    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
       (candidate) => candidate.getBoundingClientRect().width > 0,
     ) as HTMLIFrameElement | undefined
-    const target = frame?.contentDocument?.querySelector(
-      '#vertical-selection-target',
-    )
+    const target = frame?.contentDocument?.querySelector('#vertical-selection-target')
     const text = target?.firstChild
     if (!frame?.contentWindow || !target || !text) {
       throw new Error('Missing dictionary selection fixture')
@@ -3692,9 +3230,7 @@ test('[vertical-rl] keeps the dictionary popup inside the reader without repagin
     selection?.addRange(range)
     const rect = range.getBoundingClientRect()
     frame.contentWindow.dispatchEvent(
-      new (
-        frame.contentWindow as Window & { MouseEvent: typeof MouseEvent }
-      ).MouseEvent('contextmenu', {
+      new (frame.contentWindow as Window & { MouseEvent: typeof MouseEvent }).MouseEvent('contextmenu', {
         bubbles: true,
         cancelable: true,
         clientX: rect.left + rect.width / 2,
@@ -3706,9 +3242,7 @@ test('[vertical-rl] keeps the dictionary popup inside the reader without repagin
   await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
   const popup = page.getByRole('dialog')
   await expect(popup).toBeVisible()
-  await expect(
-    popup.getByText('用于浮层布局测试的合成释义。', { exact: true }),
-  ).toBeVisible()
+  await expect(popup.getByText('用于浮层布局测试的合成释义。', { exact: true })).toBeVisible()
 
   const geometry = await popup.evaluate((element) => {
     const popupRect = element.getBoundingClientRect()
@@ -3740,20 +3274,14 @@ test('[vertical-rl] keeps the dictionary popup inside the reader without repagin
   expect(after.renditionEndCfi).toBe(before.renditionEndCfi)
 })
 
-test('[vertical-rl] closes the selection menu before opening chapter find', async ({
-  page,
-}) => {
+test('[vertical-rl] closes the selection menu before opening chapter find', async ({ page }) => {
   await openVerticalFixtureBook(page)
   await page.evaluate(() => {
-    const pane = document.querySelector(
-      '[data-flow-reader-pane][aria-hidden="false"]',
-    )
+    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
       (candidate) => candidate.getBoundingClientRect().width > 0,
     ) as HTMLIFrameElement | undefined
-    const target = frame?.contentDocument?.querySelector(
-      '#vertical-selection-target',
-    )
+    const target = frame?.contentDocument?.querySelector('#vertical-selection-target')
     const text = target?.firstChild
     if (!frame?.contentWindow || !target || !text) {
       throw new Error('Missing selection fixture')
@@ -3767,9 +3295,7 @@ test('[vertical-rl] closes the selection menu before opening chapter find', asyn
     selection?.addRange(range)
     const rect = range.getBoundingClientRect()
     frame.contentWindow.dispatchEvent(
-      new (
-        frame.contentWindow as Window & { MouseEvent: typeof MouseEvent }
-      ).MouseEvent('contextmenu', {
+      new (frame.contentWindow as Window & { MouseEvent: typeof MouseEvent }).MouseEvent('contextmenu', {
         bubbles: true,
         cancelable: true,
         clientX: rect.left + rect.width / 2,
@@ -3782,14 +3308,10 @@ test('[vertical-rl] closes the selection menu before opening chapter find', asyn
   await page.keyboard.press(findShortcut)
 
   await expect(page.getByRole('button', { name: 'Copy' })).toBeHidden()
-  await expect(
-    page.getByRole('textbox', { name: /Find in chapter/ }),
-  ).toBeFocused()
+  await expect(page.getByRole('textbox', { name: /Find in chapter/ })).toBeFocused()
 })
 
-test('guards reader nav path expansion against cyclic parent links', async ({
-  page,
-}) => {
+test('guards reader nav path expansion against cyclic parent links', async ({ page }) => {
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })
 
@@ -3910,20 +3432,11 @@ test('guards reader nav path expansion against cyclic parent links', async ({
       tab.compareCfi = previousCompareCfi
 
       return {
-        cyclic: tab
-          .getNavPath(cyclic)
-          .map((item: { label: string }) => item.label),
-        fresh: tab
-          .getNavPath(fresh)
-          .map((item: { label: string }) => item.label),
-        regular: tab
-          .getNavPath(leaf)
-          .map((item: { label: string }) => item.label),
-        duplicate: tab
-          .getNavPath(duplicate)
-          .map((item: { label: string }) => item.label),
-        mappedDuplicate:
-          tab.mapSectionToNavItem('same.xhtml')?.label ?? undefined,
+        cyclic: tab.getNavPath(cyclic).map((item: { label: string }) => item.label),
+        fresh: tab.getNavPath(fresh).map((item: { label: string }) => item.label),
+        regular: tab.getNavPath(leaf).map((item: { label: string }) => item.label),
+        duplicate: tab.getNavPath(duplicate).map((item: { label: string }) => item.label),
+        mappedDuplicate: tab.mapSectionToNavItem('same.xhtml')?.label ?? undefined,
         pickedDuplicateAnchor: pickedDuplicateAnchor?.item?.label,
         groupExpanded: group.expanded === true,
         rootExpanded: (root as { expanded?: boolean }).expanded === true,
@@ -3947,9 +3460,7 @@ test('guards reader nav path expansion against cyclic parent links', async ({
   })
 })
 
-test('reapplies zoom layout when switching from double page to single page', async ({
-  page,
-}) => {
+test('reapplies zoom layout when switching from double page to single page', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })
@@ -4003,22 +3514,15 @@ test('reapplies zoom layout when switching from double page to single page', asy
         ) as HTMLIFrameElement | undefined
         const body = frame?.contentDocument?.body
         const bodyStyle = body ? getComputedStyle(body) : undefined
-        const bodyColumnWidth = bodyStyle
-          ? Number.parseFloat(bodyStyle.columnWidth)
-          : 0
-        const expectedColumnWidth =
-          typeof layout?.columnWidth === 'number' ? layout.columnWidth / 1.5 : 0
+        const bodyColumnWidth = bodyStyle ? Number.parseFloat(bodyStyle.columnWidth) : 0
+        const expectedColumnWidth = typeof layout?.columnWidth === 'number' ? layout.columnWidth / 1.5 : 0
 
         return {
-          columnMatches:
-            expectedColumnWidth > 0 &&
-            Math.abs(bodyColumnWidth - expectedColumnWidth) <= 1,
+          columnMatches: expectedColumnWidth > 0 && Math.abs(bodyColumnWidth - expectedColumnWidth) <= 1,
           divisor: layout?.divisor,
           signature,
           spread: tab?.rendition?.settings?.spread,
-          viewSignatures: views.map(
-            (view: any) => view?.settings?.layoutStyleSignature,
-          ),
+          viewSignatures: views.map((view: any) => view?.settings?.layoutStyleSignature),
         }
       }),
     )
@@ -4030,9 +3534,7 @@ test('reapplies zoom layout when switching from double page to single page', asy
     })
 })
 
-test('keeps zoomed images inside the current page column in double page mode', async ({
-  page,
-}) => {
+test('keeps zoomed images inside the current page column in double page mode', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })
@@ -4068,9 +3570,7 @@ test('keeps zoomed images inside the current page column in double page mode', a
     .poll(() =>
       page.evaluate(() =>
         Array.from(document.querySelectorAll('iframe')).some(
-          (candidate) =>
-            !candidate.closest('[aria-hidden="true"]') &&
-            Boolean(candidate.contentDocument?.body),
+          (candidate) => !candidate.closest('[aria-hidden="true"]') && Boolean(candidate.contentDocument?.body),
         ),
       ),
     )
@@ -4078,9 +3578,7 @@ test('keeps zoomed images inside the current page column in double page mode', a
 
   await page.evaluate(async () => {
     const frame = Array.from(document.querySelectorAll('iframe')).find(
-      (candidate) =>
-        !candidate.closest('[aria-hidden="true"]') &&
-        candidate.contentDocument?.body,
+      (candidate) => !candidate.closest('[aria-hidden="true"]') && candidate.contentDocument?.body,
     )
     const doc = frame?.contentDocument
     if (!doc?.body) throw new Error('Missing active reader document')
@@ -4112,8 +3610,7 @@ test('keeps zoomed images inside the current page column in double page mode', a
         (target) =>
           new Promise<void>((resolve, reject) => {
             target.onload = () => resolve()
-            target.onerror = () =>
-              reject(new Error('Zoom layout test image failed'))
+            target.onerror = () => reject(new Error('Zoom layout test image failed'))
             if (target.complete) resolve()
           }),
       ),
@@ -4138,33 +3635,20 @@ test('keeps zoomed images inside the current page column in double page mode', a
         const tab = (window as any).reader.focusedBookTab
         const layout = tab?.rendition?.manager?.layout
         const frame = Array.from(document.querySelectorAll('iframe')).find(
-          (candidate) =>
-            !candidate.closest('[aria-hidden="true"]') &&
-            candidate.contentDocument?.body,
+          (candidate) => !candidate.closest('[aria-hidden="true"]') && candidate.contentDocument?.body,
         )
         const doc = frame?.contentDocument
-        const image = doc?.querySelector(
-          'img[alt="Wide zoom layout target"]',
-        ) as HTMLImageElement | null
+        const image = doc?.querySelector('img[alt="Wide zoom layout target"]') as HTMLImageElement | null
         const rect = image?.getBoundingClientRect()
-        const inlineIcon = doc?.querySelector(
-          'img[alt="Inline zoom footnote icon"]',
-        ) as HTMLImageElement | null
+        const inlineIcon = doc?.querySelector('img[alt="Inline zoom footnote icon"]') as HTMLImageElement | null
         const inlineIconRect = inlineIcon?.getBoundingClientRect()
-        const inlineIconStyle = inlineIcon
-          ? getComputedStyle(inlineIcon)
-          : undefined
+        const inlineIconStyle = inlineIcon ? getComputedStyle(inlineIcon) : undefined
         const style = image ? getComputedStyle(image) : undefined
         const bodyStyle = doc?.body ? getComputedStyle(doc.body) : undefined
-        const paddingLeft = bodyStyle
-          ? Number.parseFloat(bodyStyle.paddingLeft) || 0
-          : 0
-        const paddingRight = bodyStyle
-          ? Number.parseFloat(bodyStyle.paddingRight) || 0
-          : 0
+        const paddingLeft = bodyStyle ? Number.parseFloat(bodyStyle.paddingLeft) || 0 : 0
+        const paddingRight = bodyStyle ? Number.parseFloat(bodyStyle.paddingRight) || 0 : 0
         const zoom = tab?.book?.configuration?.typography?.zoom ?? 1
-        const columnWidth =
-          typeof layout?.columnWidth === 'number' ? layout.columnWidth : 0
+        const columnWidth = typeof layout?.columnWidth === 'number' ? layout.columnWidth : 0
         const maxVisualWidth = columnWidth - (paddingLeft + paddingRight) * zoom
 
         return {
@@ -4174,10 +3658,7 @@ test('keeps zoomed images inside the current page column in double page mode', a
           imageMaxWidth: style?.maxWidth,
           imageWidth: rect?.width ?? 0,
           inlineIconHeight: inlineIconRect?.height ?? 0,
-          inlineIconMaxHeight:
-            (Number.parseFloat(inlineIconStyle?.fontSize ?? '') || 0) *
-            0.9 *
-            zoom,
+          inlineIconMaxHeight: (Number.parseFloat(inlineIconStyle?.fontSize ?? '') || 0) * 0.9 * zoom,
           maxVisualWidth,
         }
       })
@@ -4186,18 +3667,11 @@ test('keeps zoomed images inside the current page column in double page mode', a
     .toBe(true)
 
   expect(metrics).toBeDefined()
-  expect(metrics!.imageWidth, JSON.stringify(metrics)).toBeLessThanOrEqual(
-    metrics!.maxVisualWidth + 1,
-  )
-  expect(
-    metrics!.inlineIconHeight,
-    JSON.stringify(metrics),
-  ).toBeLessThanOrEqual(metrics!.inlineIconMaxHeight + 1)
+  expect(metrics!.imageWidth, JSON.stringify(metrics)).toBeLessThanOrEqual(metrics!.maxVisualWidth + 1)
+  expect(metrics!.inlineIconHeight, JSON.stringify(metrics)).toBeLessThanOrEqual(metrics!.inlineIconMaxHeight + 1)
 })
 
-test('long-book does not expose next-chapter body under stale header while page turn is pending', async ({
-  page,
-}) => {
+test('long-book does not expose next-chapter body under stale header while page turn is pending', async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 900 })
 
   await openFixtureBook(page, 0)
@@ -4224,9 +3698,7 @@ test('long-book does not expose next-chapter body under stale header while page 
     }
   })
 
-  const turnPromise = page.evaluate(() =>
-    (window as any).reader.focusedBookTab.next(),
-  )
+  const turnPromise = page.evaluate(() => (window as any).reader.focusedBookTab.next())
 
   try {
     await expect
@@ -4253,9 +3725,7 @@ test('long-book does not expose next-chapter body under stale header while page 
   })
 })
 
-test('long-book closes image preview when clicking outside the visible image', async ({
-  page,
-}) => {
+test('long-book closes image preview when clicking outside the visible image', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })
@@ -4290,28 +3760,21 @@ test('long-book closes image preview when clicking outside the visible image', a
     )
   })
 
-  const preview = page
-    .locator('div[role="dialog"][aria-modal="true"]')
-    .filter({ has: page.locator('img') })
+  const preview = page.locator('div[role="dialog"][aria-modal="true"]').filter({ has: page.locator('img') })
   await expect(preview).toBeVisible()
 
   const image = preview.locator('img')
-  await expect
-    .poll(async () => (await image.boundingBox())?.width ?? 0)
-    .toBeLessThan(1400)
+  await expect.poll(async () => (await image.boundingBox())?.width ?? 0).toBeLessThan(1400)
 
   const imageBox = await image.boundingBox()
   if (!imageBox) throw new Error('Missing preview image bounds')
 
-  const clickX =
-    imageBox.x > 24 ? imageBox.x - 16 : imageBox.x + imageBox.width + 16
+  const clickX = imageBox.x > 24 ? imageBox.x - 16 : imageBox.x + imageBox.width + 16
   await page.mouse.click(clickX, imageBox.y + imageBox.height / 2)
   await expect(preview).toBeHidden()
 })
 
-test('long-book keeps chapter find bar out of the reading content', async ({
-  page,
-}) => {
+test('long-book keeps chapter find bar out of the reading content', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })
@@ -4339,9 +3802,7 @@ test('long-book keeps chapter find bar out of the reading content', async ({
 async function displayFocusedSectionIndex(page: Page, sectionIndex: number) {
   await page.evaluate(async (targetIndex) => {
     const tab = (window as any).reader.focusedBookTab
-    const section = tab?.sections?.find(
-      (candidate: { index?: number }) => candidate.index === targetIndex,
-    )
+    const section = tab?.sections?.find((candidate: { index?: number }) => candidate.index === targetIndex)
     if (!tab || !section) throw new Error(`Missing section ${targetIndex}`)
 
     await tab.displaySectionStart(section)
@@ -4364,24 +3825,20 @@ async function readFocusedLongBookIntegrity(page: Page) {
       return text.replace(/\s+/g, ' ').slice(0, 160)
     })
     const spread = tab?.rendition?.manager?.currentReflowableSpread
-    const spreadIndexes = [
-      spread?.left?.section?.index,
-      spread?.right?.section?.index,
-    ].filter((index): index is number => typeof index === 'number')
+    const spreadIndexes = [spread?.left?.section?.index, spread?.right?.section?.index].filter(
+      (index): index is number => typeof index === 'number',
+    )
 
     return {
       activeTabId: tab?.id,
-      bodySectionIndexes: [...markerNumbers]
-        .map((number) => number - 1)
-        .sort((a, b) => a - b),
+      bodySectionIndexes: [...markerNumbers].map((number) => number - 1).sort((a, b) => a - b),
       frameCount: activeFrames.length,
       frameTexts,
       rendered: tab?.rendered,
       atEnd: location?.atEnd === true,
-      renditionIndexes: [
-        tab?.rendition?.location?.start?.index,
-        tab?.rendition?.location?.end?.index,
-      ].filter((index): index is number => typeof index === 'number'),
+      renditionIndexes: [tab?.rendition?.location?.start?.index, tab?.rendition?.location?.end?.index].filter(
+        (index): index is number => typeof index === 'number',
+      ),
       snapshotIndexes: [location?.start?.index, location?.end?.index].filter(
         (index): index is number => typeof index === 'number',
       ),
@@ -4404,32 +3861,25 @@ async function readLongBookIntegrityByTabId(page: Page, tabId: string) {
     return {
       atEnd: location?.atEnd === true,
       bookCfi: tab.book?.cfi,
-      currentLocationIndexes: [
-        tab.currentLocation?.start?.index,
-        tab.currentLocation?.end?.index,
-      ].filter((index: unknown): index is number => typeof index === 'number'),
+      currentLocationIndexes: [tab.currentLocation?.start?.index, tab.currentLocation?.end?.index].filter(
+        (index: unknown): index is number => typeof index === 'number',
+      ),
       rendered: tab.rendered,
-      renditionIndexes: [
-        tab.rendition?.location?.start?.index,
-        tab.rendition?.location?.end?.index,
-      ].filter((index: unknown): index is number => typeof index === 'number'),
+      renditionIndexes: [tab.rendition?.location?.start?.index, tab.rendition?.location?.end?.index].filter(
+        (index: unknown): index is number => typeof index === 'number',
+      ),
       snapshotIndexes: [location?.start?.index, location?.end?.index].filter(
         (index: unknown): index is number => typeof index === 'number',
       ),
-      spreadIndexes: [
-        spread?.left?.section?.index,
-        spread?.right?.section?.index,
-      ].filter((index: unknown): index is number => typeof index === 'number'),
+      spreadIndexes: [spread?.left?.section?.index, spread?.right?.section?.index].filter(
+        (index: unknown): index is number => typeof index === 'number',
+      ),
       visibleSectionIndexes: [...(tab.visibleSectionIndexes ?? [])],
     }
   }, tabId)
 }
 
-async function expectLongBookTabSection(
-  page: Page,
-  tabId: string,
-  expectedSectionIndex: number,
-) {
+async function expectLongBookTabSection(page: Page, tabId: string, expectedSectionIndex: number) {
   await expect
     .poll(async () => {
       const state = await readLongBookIntegrityByTabId(page, tabId)
@@ -4446,18 +3896,11 @@ async function expectLongBookTabSection(
     .toBe(true)
 }
 
-async function expectFocusedLongBookSection(
-  page: Page,
-  expectedSectionIndex: number,
-) {
+async function expectFocusedLongBookSection(page: Page, expectedSectionIndex: number) {
   await expect
     .poll(async () => {
       const state = await readFocusedLongBookIntegrity(page)
-      const visible = new Set([
-        ...state.visibleSectionIndexes,
-        ...state.snapshotIndexes,
-        ...state.spreadIndexes,
-      ])
+      const visible = new Set([...state.visibleSectionIndexes, ...state.snapshotIndexes, ...state.spreadIndexes])
 
       return (
         state.rendered === true &&
@@ -4476,20 +3919,13 @@ async function expectFocusedLongBookStateConsistent(page: Page) {
   await expect
     .poll(async () => {
       const state = await readFocusedLongBookIntegrity(page)
-      const committed = new Set([
-        ...state.visibleSectionIndexes,
-        ...state.snapshotIndexes,
-        ...state.spreadIndexes,
-      ])
+      const committed = new Set([...state.visibleSectionIndexes, ...state.snapshotIndexes, ...state.spreadIndexes])
       const hasCommittedBody =
-        state.bodySectionIndexes.length > 0 &&
-        state.bodySectionIndexes.every((index) => committed.has(index))
+        state.bodySectionIndexes.length > 0 && state.bodySectionIndexes.every((index) => committed.has(index))
       const locationStillAligned =
         !state.snapshotIndexes.length ||
         !state.renditionIndexes.length ||
-        state.snapshotIndexes.some((index) =>
-          state.renditionIndexes.includes(index),
-        )
+        state.snapshotIndexes.some((index) => state.renditionIndexes.includes(index))
 
       return (
         state.rendered === true &&
@@ -4516,9 +3952,7 @@ async function goFocusedLongBookToEnd(page: Page) {
   })
 }
 
-test('keeps inactive reader panes at the active reader geometry', async ({
-  page,
-}) => {
+test('keeps inactive reader panes at the active reader geometry', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
 
   await openFixtureBook(page, 0)
@@ -4538,9 +3972,7 @@ test('keeps inactive reader panes at the active reader geometry', async ({
   expectStablePaneGeometry(await readReaderPaneGeometry(page))
 })
 
-test('keeps tab layout stable across repeated tab and sidebar changes', async ({
-  page,
-}) => {
+test('keeps tab layout stable across repeated tab and sidebar changes', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
 
   await openFixtureBook(page, 0)
@@ -4628,9 +4060,7 @@ test('keeps tab layout stable across repeated tab and sidebar changes', async ({
   expect(resizedA.footer).not.toBe(initialA.footer)
   expect(resizedB.footer).not.toBe(initialB.footer)
   expect(resizedA.frames.every((frame) => frame.width > 250)).toBe(true)
-  expect(resizedA.frames.every((frame) => frame.maxTextBlockWidth > 180)).toBe(
-    true,
-  )
+  expect(resizedA.frames.every((frame) => frame.maxTextBlockWidth > 180)).toBe(true)
 })
 
 test('replays single-tab layout states without drifting', async ({ page }) => {
@@ -4644,15 +4074,9 @@ test('replays single-tab layout states without drifting', async ({ page }) => {
     sidebarVisible: true,
   })
 
-  const seen = new Map<
-    string,
-    Awaited<ReturnType<typeof readFocusedRenderSignature>>
-  >()
+  const seen = new Map<string, Awaited<ReturnType<typeof readFocusedRenderSignature>>>()
 
-  async function visitLayoutState(
-    viewport: { width: number; height: number },
-    sidebarVisible: boolean,
-  ) {
+  async function visitLayoutState(viewport: { width: number; height: number }, sidebarVisible: boolean) {
     await page.setViewportSize(viewport)
     await ensureTocSidebarVisibility(page, sidebarVisible, { header: false })
     const signature = await readFocusedRenderSignature(page)
@@ -4675,9 +4099,7 @@ test('replays single-tab layout states without drifting', async ({ page }) => {
   await visitLayoutState({ width: 1400, height: 900 }, true)
 })
 
-test('replays multi-tab mixed layout states deterministically', async ({
-  page,
-}) => {
+test('replays multi-tab mixed layout states deterministically', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
 
   await openFixtureBook(page, 0)
@@ -4705,10 +4127,7 @@ test('replays multi-tab mixed layout states deterministically', async ({
     sidebarVisible: true,
   })
 
-  const seen = new Map<
-    string,
-    Awaited<ReturnType<typeof readFocusedRenderSignature>>
-  >()
+  const seen = new Map<string, Awaited<ReturnType<typeof readFocusedRenderSignature>>>()
 
   async function visitMixedState(
     tabName: string,
@@ -4718,11 +4137,7 @@ test('replays multi-tab mixed layout states deterministically', async ({
     await page.getByRole('tab', { name: tabName }).click()
     await expectFocusedTabId(
       page,
-      tabName === 'Tab Layout A'
-        ? 'tab-layout-a'
-        : tabName === 'Tab Layout B'
-          ? 'tab-layout-b'
-          : 'tab-layout-c',
+      tabName === 'Tab Layout A' ? 'tab-layout-a' : tabName === 'Tab Layout B' ? 'tab-layout-b' : 'tab-layout-c',
     )
     await page.setViewportSize(viewport)
     await ensureTocSidebarVisibility(page, sidebarVisible, { header: false })
@@ -4748,9 +4163,7 @@ test('replays multi-tab mixed layout states deterministically', async ({
   await visitMixedState('Tab Layout C', { width: 1400, height: 900 }, false)
 })
 
-test('keeps committed locations stable during rapid tab switches', async ({
-  page,
-}) => {
+test('keeps committed locations stable during rapid tab switches', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
 
   await openFixtureBook(page, 0)
@@ -4766,9 +4179,7 @@ test('keeps committed locations stable during rapid tab switches', async ({
   const before = await readAllBookTabStates(page)
 
   for (let i = 0; i < 12; i++) {
-    await page
-      .getByRole('tab', { name: i % 2 ? 'Tab Layout A' : 'Tab Layout B' })
-      .click()
+    await page.getByRole('tab', { name: i % 2 ? 'Tab Layout A' : 'Tab Layout B' }).click()
   }
 
   await waitForStableReaderLayout(page, { sidebarVisible: true })
@@ -4781,17 +4192,13 @@ test('keeps committed locations stable during rapid tab switches', async ({
     expect(current?.startCfi).toBe(previous.startCfi)
     expect(current?.endCfi).toBe(previous.endCfi)
     expect(current?.currentTarget).toBe(previous.currentTarget)
-    expect(current?.visibleSectionIndexes).toEqual(
-      previous.visibleSectionIndexes,
-    )
+    expect(current?.visibleSectionIndexes).toEqual(previous.visibleSectionIndexes)
     expect(current?.rendered).toBe(true)
     expect(current?.turning).toBe(false)
   }
 })
 
-test('switches adjacent tabs immediately with wheel and keyboard input', async ({
-  page,
-}) => {
+test('switches adjacent tabs immediately with wheel and keyboard input', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
 
   await openFixtureBook(page, 0)
@@ -4821,9 +4228,7 @@ test('switches adjacent tabs immediately with wheel and keyboard input', async (
   await expectFocusedTabId(page, 'tab-layout-c')
 })
 
-test('[scrolled-doc] keeps one-page footer and turns chapters only at scroll boundaries', async ({
-  page,
-}) => {
+test('[scrolled-doc] keeps one-page footer and turns chapters only at scroll boundaries', async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 700 })
   await openFixtureBook(page, 0)
 
@@ -4841,9 +4246,7 @@ test('[scrolled-doc] keeps one-page footer and turns chapters only at scroll bou
           page: location?.displayed?.page,
           total: location?.displayed?.total,
           divisor: manager?.layout?.divisor,
-          maxScrollTop: container
-            ? container.scrollHeight - container.clientHeight
-            : 0,
+          maxScrollTop: container ? container.scrollHeight - container.clientHeight : 0,
           overflowX: container ? getComputedStyle(container).overflowX : null,
         }
       }),
@@ -4863,9 +4266,7 @@ test('[scrolled-doc] keeps one-page footer and turns chapters only at scroll bou
   )
   expect(initialPercentage).toBeCloseTo(0.5, 5)
 
-  const activeFrame = page
-    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
-    .last()
+  const activeFrame = page.locator('[data-flow-reader-pane][aria-hidden="false"] iframe').last()
   await activeFrame.hover()
   await page.mouse.wheel(0, 240)
 
@@ -4888,16 +4289,11 @@ test('[scrolled-doc] keeps one-page footer and turns chapters only at scroll bou
       scrollTop: expect.any(Number),
     })
   expect(
-    await page.evaluate(
-      () =>
-        (window as any).reader.focusedBookTab.rendition.manager.container
-          .scrollTop,
-    ),
+    await page.evaluate(() => (window as any).reader.focusedBookTab.rendition.manager.container.scrollTop),
   ).toBeGreaterThan(0)
 
   await page.evaluate(() => {
-    const container = (window as any).reader.focusedBookTab.rendition.manager
-      .container
+    const container = (window as any).reader.focusedBookTab.rendition.manager.container
     container.scrollTop = container.scrollHeight
   })
   await activeFrame.hover()
@@ -4925,9 +4321,7 @@ test('[scrolled-doc] keeps one-page footer and turns chapters only at scroll bou
     })
 })
 
-test('reorders tabs without changing the focused reader runtime', async ({
-  page,
-}) => {
+test('reorders tabs without changing the focused reader runtime', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
 
   await openFixtureBook(page, 0)
@@ -4945,13 +4339,7 @@ test('reorders tabs without changing the focused reader runtime', async ({
   await page.keyboard.press('Control+Shift+ArrowRight')
 
   await expect
-    .poll(() =>
-      page
-        .getByRole('tab')
-        .evaluateAll((tabs) =>
-          tabs.map((tab) => tab.getAttribute('aria-label')),
-        ),
-    )
+    .poll(() => page.getByRole('tab').evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('aria-label'))))
     .toEqual(['Tab Layout A', 'Tab Layout C', 'Tab Layout B'])
   await expectFocusedTabId(page, 'tab-layout-b')
 
@@ -4968,9 +4356,7 @@ test('reorders tabs without changing the focused reader runtime', async ({
   )
 })
 
-test('commits pointer tab reordering only inside the tab strip', async ({
-  page,
-}) => {
+test('commits pointer tab reordering only inside the tab strip', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
 
   await openFixtureBook(page, 0)
@@ -4981,9 +4367,7 @@ test('commits pointer tab reordering only inside the tab strip', async ({
   await waitForStableReaderLayout(page, { sidebarVisible: true })
 
   await page.evaluate(() => {
-    const panes = Array.from(
-      document.querySelectorAll<HTMLElement>('[data-flow-reader-pane]'),
-    )
+    const panes = Array.from(document.querySelectorAll<HTMLElement>('[data-flow-reader-pane]'))
     const parent = panes[0]?.parentElement
     if (!parent) throw new Error('Missing reader pane parent')
 
@@ -5002,9 +4386,7 @@ test('commits pointer tab reordering only inside the tab strip', async ({
     })
     observer.observe(parent, { childList: true })
     ;(window as any).__flowTabReorderPaneProbe = {
-      activePane: document.querySelector(
-        '[data-flow-reader-pane][aria-hidden="false"]',
-      ),
+      activePane: document.querySelector('[data-flow-reader-pane][aria-hidden="false"]'),
       movedPaneIds,
       observer,
       panes,
@@ -5017,60 +4399,34 @@ test('commits pointer tab reordering only inside the tab strip', async ({
   const tabCBox = await tabC.boundingBox()
   if (!tabABox || !tabCBox) throw new Error('Missing tab bounds')
 
-  await page.mouse.move(
-    tabABox.x + tabABox.width / 2,
-    tabABox.y + tabABox.height / 2,
-  )
+  await page.mouse.move(tabABox.x + tabABox.width / 2, tabABox.y + tabABox.height / 2)
   await page.mouse.down()
-  await page.mouse.move(
-    tabCBox.x + tabCBox.width - 2,
-    tabCBox.y + tabCBox.height / 2,
-    { steps: 5 },
-  )
+  await page.mouse.move(tabCBox.x + tabCBox.width - 2, tabCBox.y + tabCBox.height / 2, { steps: 5 })
 
   const dropIndicator = page.locator('[data-flow-tab-drop-indicator]')
-  await expect(dropIndicator).toHaveAttribute(
-    'data-flow-tab-drop-indicator',
-    'after',
-  )
+  await expect(dropIndicator).toHaveAttribute('data-flow-tab-drop-indicator', 'after')
   await expect(tabC).not.toHaveClass(/ring-ring/)
   const indicatorBox = await dropIndicator.boundingBox()
   if (!indicatorBox) throw new Error('Missing tab drop indicator bounds')
   expect(indicatorBox.width).toBe(2)
   expect(indicatorBox.height).toBe(20)
-  expect(
-    Math.abs(
-      indicatorBox.x + indicatorBox.width / 2 - (tabCBox.x + tabCBox.width),
-    ),
-  ).toBeLessThanOrEqual(6)
+  expect(Math.abs(indicatorBox.x + indicatorBox.width / 2 - (tabCBox.x + tabCBox.width))).toBeLessThanOrEqual(6)
 
   await page.mouse.up()
 
-  const tabOrder = () =>
-    page
-      .getByRole('tab')
-      .evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('aria-label')))
-  await expect
-    .poll(tabOrder)
-    .toEqual(['Tab Layout B', 'Tab Layout C', 'Tab Layout A'])
+  const tabOrder = () => page.getByRole('tab').evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('aria-label')))
+  await expect.poll(tabOrder).toEqual(['Tab Layout B', 'Tab Layout C', 'Tab Layout A'])
   await expectFocusedTabId(page, 'tab-layout-c')
 
   const paneStability = await page.evaluate(() => {
     const probe = (window as any).__flowTabReorderPaneProbe
     probe.observer.disconnect()
-    const panes = Array.from(
-      document.querySelectorAll('[data-flow-reader-pane]'),
-    )
+    const panes = Array.from(document.querySelectorAll('[data-flow-reader-pane]'))
 
     return {
-      activePaneStable:
-        document.querySelector(
-          '[data-flow-reader-pane][aria-hidden="false"]',
-        ) === probe.activePane,
+      activePaneStable: document.querySelector('[data-flow-reader-pane][aria-hidden="false"]') === probe.activePane,
       movedPaneIds: probe.movedPaneIds,
-      paneOrderStable:
-        panes.length === probe.panes.length &&
-        panes.every((pane, index) => pane === probe.panes[index]),
+      paneOrderStable: panes.length === probe.panes.length && panes.every((pane, index) => pane === probe.panes[index]),
     }
   })
   expect(paneStability).toEqual({
@@ -5079,23 +4435,18 @@ test('commits pointer tab reordering only inside the tab strip', async ({
     paneOrderStable: true,
   })
   const runtimeStability = await readFullTabRuntimeStability(page)
-  runtimeStability.forEach(
-    (state: Record<string, boolean>, tabIndex: number) => {
-      Object.entries(state).forEach(([name, stable]) => {
-        expect(stable, `tab ${tabIndex} runtime ${name}`).toBe(true)
-      })
-    },
-  )
+  runtimeStability.forEach((state: Record<string, boolean>, tabIndex: number) => {
+    Object.entries(state).forEach(([name, stable]) => {
+      expect(stable, `tab ${tabIndex} runtime ${name}`).toBe(true)
+    })
+  })
 
   const tabB = page.getByRole('tab', { name: 'Tab Layout B' })
   const tabBBox = await tabB.boundingBox()
   const reorderedTabABox = await tabA.boundingBox()
   if (!tabBBox || !reorderedTabABox) throw new Error('Missing tab bounds')
 
-  await page.mouse.move(
-    tabBBox.x + tabBBox.width / 2,
-    tabBBox.y + tabBBox.height / 2,
-  )
+  await page.mouse.move(tabBBox.x + tabBBox.width / 2, tabBBox.y + tabBBox.height / 2)
   await page.mouse.down()
   await page.mouse.move(
     reorderedTabABox.x + reorderedTabABox.width / 2,
@@ -5104,14 +4455,10 @@ test('commits pointer tab reordering only inside the tab strip', async ({
   )
   await page.mouse.up()
 
-  await expect
-    .poll(tabOrder)
-    .toEqual(['Tab Layout B', 'Tab Layout C', 'Tab Layout A'])
+  await expect.poll(tabOrder).toEqual(['Tab Layout B', 'Tab Layout C', 'Tab Layout A'])
 })
 
-test('[vertical-rl] preserves double-page and panel runtime across tab reordering', async ({
-  page,
-}) => {
+test('[vertical-rl] preserves double-page and panel runtime across tab reordering', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 })
   await openVerticalFixtureBook(page)
   await openFixtureBookByName(page, 'Tab Layout C')
@@ -5132,13 +4479,7 @@ test('[vertical-rl] preserves double-page and panel runtime across tab reorderin
     tab.define(['FLOW-RUNTIME-DEFINITION-C'])
     tab.setKeyword('VERTICAL-CHAPTER-01-29')
   })
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => (window as any).reader.focusedBookTab?.results?.length,
-      ),
-    )
-    .toBe(1)
+  await expect.poll(() => page.evaluate(() => (window as any).reader.focusedBookTab?.results?.length)).toBe(1)
   await waitForStableReaderLayout(page, { header: false })
 
   const activityBar = page.locator('.ActivityBar')
@@ -5148,28 +4489,19 @@ test('[vertical-rl] preserves double-page and panel runtime across tab reorderin
   await expect
     .poll(() =>
       page.evaluate(() =>
-        (window as any).reader.focusedBookTab?.sections?.every((section: any) =>
-          Array.isArray(section.images),
-        ),
+        (window as any).reader.focusedBookTab?.sections?.every((section: any) => Array.isArray(section.images)),
       ),
     )
     .toBe(true)
 
   await activityBar.getByRole('button', { name: 'Typography' }).click()
   await expect(sidebar.locator('input[name="Font Size"]')).toHaveValue('18')
-  await expect(
-    page.locator(
-      '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
-    ),
-  ).toHaveAttribute('data-flow-reader-spread', 'double')
+  await expect(page.locator('[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]')).toHaveAttribute(
+    'data-flow-reader-spread',
+    'double',
+  )
   await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (window as any).reader.focusedBookTab?.rendition?.manager?.layout
-            ?.divisor,
-      ),
-    )
+    .poll(() => page.evaluate(() => (window as any).reader.focusedBookTab?.rendition?.manager?.layout?.divisor))
     .toBe(2)
 
   await installBookTabRuntimeCounters(page)
@@ -5182,10 +4514,7 @@ test('[vertical-rl] preserves double-page and panel runtime across tab reorderin
   const tabABox = await tabA.boundingBox()
   if (!tabCBox || !tabABox) throw new Error('Missing tab bounds')
 
-  await page.mouse.move(
-    tabCBox.x + tabCBox.width / 2,
-    tabCBox.y + tabCBox.height / 2,
-  )
+  await page.mouse.move(tabCBox.x + tabCBox.width / 2, tabCBox.y + tabCBox.height / 2)
   await page.mouse.down()
   await page.mouse.move(tabABox.x + 2, tabABox.y + tabABox.height / 2, {
     steps: 5,
@@ -5193,29 +4522,20 @@ test('[vertical-rl] preserves double-page and panel runtime across tab reorderin
   await page.mouse.up()
 
   await expect
-    .poll(() =>
-      page
-        .getByRole('tab')
-        .evaluateAll((tabs) =>
-          tabs.map((tab) => tab.getAttribute('aria-label')),
-        ),
-    )
+    .poll(() => page.getByRole('tab').evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('aria-label'))))
     .toEqual(['Tab Layout C', 'Tab Layout A', 'Tab Layout B'])
   await expectFocusedTabId(page, 'tab-layout-c')
-  await expect(
-    page.locator(
-      '[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]',
-    ),
-  ).toHaveAttribute('data-flow-reader-spread', 'double')
+  await expect(page.locator('[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]')).toHaveAttribute(
+    'data-flow-reader-spread',
+    'double',
+  )
 
   const runtimeStability = await readFullTabRuntimeStability(page)
-  runtimeStability.forEach(
-    (state: Record<string, boolean>, tabIndex: number) => {
-      Object.entries(state).forEach(([name, stable]) => {
-        expect(stable, `vertical tab ${tabIndex} runtime ${name}`).toBe(true)
-      })
-    },
-  )
+  runtimeStability.forEach((state: Record<string, boolean>, tabIndex: number) => {
+    Object.entries(state).forEach(([name, stable]) => {
+      expect(stable, `vertical tab ${tabIndex} runtime ${name}`).toBe(true)
+    })
+  })
   const counters = await readBookTabRuntimeCounters(page)
   counters.forEach((counter) =>
     expect(counter).toMatchObject({
@@ -5229,9 +4549,7 @@ test('[vertical-rl] preserves double-page and panel runtime across tab reorderin
   )
 
   await activityBar.getByRole('button', { name: 'Search' }).click()
-  await expect(sidebar.getByRole('textbox', { name: 'Search' })).toHaveValue(
-    'VERTICAL-CHAPTER-01-29',
-  )
+  await expect(sidebar.getByRole('textbox', { name: 'Search' })).toHaveValue('VERTICAL-CHAPTER-01-29')
   await activityBar.getByRole('button', { name: 'Annotation' }).click()
   await expect(sidebar.getByText('FLOW-RUNTIME-DEFINITION-C')).toBeVisible()
   await activityBar.getByRole('button', { name: 'Image' }).click()
@@ -5239,9 +4557,7 @@ test('[vertical-rl] preserves double-page and panel runtime across tab reorderin
     .poll(() =>
       sidebar
         .getByRole('button', { name: 'All', exact: true })
-        .evaluate((element) =>
-          element.className.includes('bg-(--flow-accent-bg)'),
-        ),
+        .evaluate((element) => element.className.includes('bg-(--flow-accent-bg)')),
     )
     .toBe(true)
   await activityBar.getByRole('button', { name: 'Typography' }).click()
@@ -5250,9 +4566,7 @@ test('[vertical-rl] preserves double-page and panel runtime across tab reorderin
   await expect(sidebar.getByText('VERTICAL-CHAPTER-01')).toBeVisible()
 })
 
-test('does not paginate during unchanged-size tab switches', async ({
-  page,
-}) => {
+test('does not paginate during unchanged-size tab switches', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
 
   await openFixtureBook(page, 0)
@@ -5272,32 +4586,20 @@ test('does not paginate during unchanged-size tab switches', async ({
     const framesA = await traceTabSwitchInteraction(page, 'Tab Layout A')
     await expectFocusedTabId(page, 'tab-layout-a')
     expect(framesA.at(-1)?.focusedTabId).toBe('tab-layout-a')
-    expect(
-      framesA.find((frame) => frame.phase === 'after-click')?.t,
-    ).toBeLessThan(24)
-    framesA.forEach((frame) =>
-      expect(frame.metrics).toEqual(framesA[0]!.metrics),
-    )
+    expect(framesA.find((frame) => frame.phase === 'after-click')?.t).toBeLessThan(24)
+    framesA.forEach((frame) => expect(frame.metrics).toEqual(framesA[0]!.metrics))
 
     const framesB = await traceTabSwitchInteraction(page, 'Tab Layout B')
     await expectFocusedTabId(page, 'tab-layout-b')
     expect(framesB.at(-1)?.focusedTabId).toBe('tab-layout-b')
-    expect(
-      framesB.find((frame) => frame.phase === 'after-click')?.t,
-    ).toBeLessThan(24)
-    framesB.forEach((frame) =>
-      expect(frame.metrics).toEqual(framesB[0]!.metrics),
-    )
+    expect(framesB.find((frame) => frame.phase === 'after-click')?.t).toBeLessThan(24)
+    framesB.forEach((frame) => expect(frame.metrics).toEqual(framesB[0]!.metrics))
 
     const framesC = await traceTabSwitchInteraction(page, 'Tab Layout C')
     await expectFocusedTabId(page, 'tab-layout-c')
     expect(framesC.at(-1)?.focusedTabId).toBe('tab-layout-c')
-    expect(
-      framesC.find((frame) => frame.phase === 'after-click')?.t,
-    ).toBeLessThan(24)
-    framesC.forEach((frame) =>
-      expect(frame.metrics).toEqual(framesC[0]!.metrics),
-    )
+    expect(framesC.find((frame) => frame.phase === 'after-click')?.t).toBeLessThan(24)
+    framesC.forEach((frame) => expect(frame.metrics).toEqual(framesC[0]!.metrics))
   }
 
   await page.waitForTimeout(250)
@@ -5311,9 +4613,7 @@ test('does not paginate during unchanged-size tab switches', async ({
     expect(counter.next).toBe(0)
     expect(counter.prev).toBe(0)
   }
-  expect(
-    counters.reduce((total, counter) => total + (counter.setActive ?? 0), 0),
-  ).toBe(12)
+  expect(counters.reduce((total, counter) => total + (counter.setActive ?? 0), 0)).toBe(12)
   expect(afterMotion.animated).toEqual([])
 
   for (const frame of afterMotion.frames) {
@@ -5321,9 +4621,7 @@ test('does not paginate during unchanged-size tab switches', async ({
   }
 })
 
-test('long-book keeps distant chapter bodies tied to their committed tab state', async ({
-  page,
-}) => {
+test('long-book keeps distant chapter bodies tied to their committed tab state', async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 900 })
 
   await openFixtureBook(page, 0)
@@ -5395,9 +4693,7 @@ test('long-book keeps distant chapter bodies tied to their committed tab state',
   await expectFocusedLongBookSection(page, nextCommittedSection)
 })
 
-test('long-book inactive tab does not commit stale relayout after rapid switch', async ({
-  page,
-}) => {
+test('long-book inactive tab does not commit stale relayout after rapid switch', async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 900 })
 
   await openFixtureBook(page, 0)
@@ -5443,9 +4739,7 @@ test('long-book inactive tab does not commit stale relayout after rapid switch',
   expect(tabAState.visibleSectionIndexes).toEqual(expect.arrayContaining([38]))
 })
 
-test('long-book keeps final-page tab stable across switches and relayouts', async ({
-  page,
-}) => {
+test('long-book keeps final-page tab stable across switches and relayouts', async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 900 })
 
   await openFixtureBook(page, 0)
@@ -5464,18 +4758,14 @@ test('long-book keeps final-page tab stable across switches and relayouts', asyn
   await displayFocusedSectionIndex(page, 619)
   await goFocusedLongBookToEnd(page)
   await expectFocusedLongBookSection(page, 619)
-  await expect
-    .poll(async () => (await readFocusedLongBookIntegrity(page)).atEnd)
-    .toBe(true)
+  await expect.poll(async () => (await readFocusedLongBookIntegrity(page)).atEnd).toBe(true)
 
   for (let i = 0; i < 3; i++) {
     await page.getByRole('tab', { name: 'Tab Layout A' }).click()
     await expectFocusedLongBookSection(page, 38)
     await page.getByRole('tab', { name: 'Tab Layout B' }).click()
     await expectFocusedLongBookSection(page, 619)
-    await expect
-      .poll(async () => (await readFocusedLongBookIntegrity(page)).atEnd)
-      .toBe(true)
+    await expect.poll(async () => (await readFocusedLongBookIntegrity(page)).atEnd).toBe(true)
   }
 
   await ensureTocSidebarVisibility(page, false, { header: false })
@@ -5485,20 +4775,14 @@ test('long-book keeps final-page tab stable across switches and relayouts', asyn
   await expectFocusedLongBookSection(page, 38)
   await page.getByRole('tab', { name: 'Tab Layout B' }).click()
   await expectFocusedLongBookSection(page, 619)
-  await expect
-    .poll(async () => (await readFocusedLongBookIntegrity(page)).atEnd)
-    .toBe(true)
+  await expect.poll(async () => (await readFocusedLongBookIntegrity(page)).atEnd).toBe(true)
   await ensureTocSidebarVisibility(page, true, { header: false })
   await page.setViewportSize({ width: 1500, height: 900 })
   await expectFocusedLongBookSection(page, 619)
-  await expect
-    .poll(async () => (await readFocusedLongBookIntegrity(page)).atEnd)
-    .toBe(true)
+  await expect.poll(async () => (await readFocusedLongBookIntegrity(page)).atEnd).toBe(true)
 })
 
-test('long-book does not reuse stale sidebar-layout spread after page turns', async ({
-  page,
-}) => {
+test('long-book does not reuse stale sidebar-layout spread after page turns', async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 900 })
 
   await openFixtureBook(page, 0)
@@ -5530,9 +4814,7 @@ test('long-book does not reuse stale sidebar-layout spread after page turns', as
   await expectFocusedLongBookStateConsistent(page)
 })
 
-test('keeps three tabs stable and redraws same-chapter overlays immediately', async ({
-  page,
-}) => {
+test('keeps three tabs stable and redraws same-chapter overlays immediately', async ({ page }) => {
   await page.setViewportSize({ width: 1360, height: 900 })
 
   await openFixtureBook(page, 0)
@@ -5575,12 +4857,7 @@ test('keeps three tabs stable and redraws same-chapter overlays immediately', as
   await expect
     .poll(() =>
       page.evaluate(
-        (definition) =>
-          (
-            window as any
-          ).reader.focusedBookTab?.overlayState.definitions.includes(
-            definition,
-          ) ?? false,
+        (definition) => (window as any).reader.focusedBookTab?.overlayState.definitions.includes(definition) ?? false,
         originalDefinition,
       ),
     )
@@ -5602,9 +4879,7 @@ test('keeps three tabs stable and redraws same-chapter overlays immediately', as
     tab?.undefine('Alice')
     tab?.undefine(definition)
   }, originalDefinition)
-  await expect
-    .poll(() => countVisibleReaderMarks(page, 'flow-definition-underline'))
-    .toBe(0)
+  await expect.poll(() => countVisibleReaderMarks(page, 'flow-definition-underline')).toBe(0)
 
   await page.evaluate((cfi) => {
     ;(window as any).reader.focusedBookTab?.removeAnnotation(cfi)
@@ -5617,9 +4892,7 @@ test('keeps three tabs stable and redraws same-chapter overlays immediately', as
   await expectVisibleFrameStamp(page, 'tab-c-narrow')
 })
 
-test('keeps final-page tabs stable across tab switches and sidebar relayouts', async ({
-  page,
-}) => {
+test('keeps final-page tabs stable across tab switches and sidebar relayouts', async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 900 })
 
   await openFixtureBook(page, 0)
@@ -5628,9 +4901,7 @@ test('keeps final-page tabs stable across tab switches and sidebar relayouts', a
 
   await openFixtureBookByName(page, 'Tab Layout B')
   await waitForStableReaderLayout(page, { sidebarVisible: true })
-  await expect
-    .poll(async () => (await readFocusedTabState(page)).tabId)
-    .toBe('tab-layout-b')
+  await expect.poll(async () => (await readFocusedTabState(page)).tabId).toBe('tab-layout-b')
   await goToLastPage(page)
   const finalB = await waitForStableReaderLayout(page, {
     header: false,
@@ -5675,9 +4946,7 @@ test('keeps final-page tabs stable across tab switches and sidebar relayouts', a
   expect(stableFinalB.frames.every((frame) => frame.width > 250)).toBe(true)
 })
 
-test('keeps right-page cross-section header and overlays in sync', async ({
-  page,
-}) => {
+test('keeps right-page cross-section header and overlays in sync', async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 900 })
 
   await openFixtureBook(page, 0)
@@ -5694,19 +4963,13 @@ test('keeps right-page cross-section header and overlays in sync', async ({
 
   const targetHeader = await page.evaluate(async (sectionIndex) => {
     const tab = (window as any).reader.focusedBookTab
-    const section = tab?.sections?.find(
-      (candidate: { index?: number }) => candidate.index === sectionIndex,
-    )
+    const section = tab?.sections?.find((candidate: { index?: number }) => candidate.index === sectionIndex)
     if (!tab || !section) throw new Error('Missing target section')
 
     await tab.displaySectionStart(section)
     await new Promise((resolve) => window.setTimeout(resolve, 80))
 
-    return (
-      section.navitem?.label ??
-      tab.mapSectionToNavItem(section.href)?.label ??
-      section.href
-    )
+    return section.navitem?.label ?? tab.mapSectionToNavItem(section.href)?.label ?? section.href
   }, spread.rightSectionIndex)
 
   await waitForStableReaderLayout(page, {
@@ -5715,10 +4978,7 @@ test('keeps right-page cross-section header and overlays in sync', async ({
   })
 
   const overlaySpread = await goToCrossSectionSpread(page)
-  const annotation = await addRightPageDefinitionAndAnnotation(
-    page,
-    overlaySpread.rightSectionIndex,
-  )
+  const annotation = await addRightPageDefinitionAndAnnotation(page, overlaySpread.rightSectionIndex)
   expect(annotation.sectionIndex).toBe(overlaySpread.rightSectionIndex)
   expect(annotation.text.length).toBeGreaterThan(3)
 

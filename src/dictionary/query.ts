@@ -1,8 +1,4 @@
-import type {
-  DictionaryQuery,
-  DictionaryQueryLanguage,
-  SupportedDictionaryLanguage,
-} from './types'
+import type { DictionaryQuery, DictionaryQueryLanguage, SupportedDictionaryLanguage } from './types'
 
 export const MAX_DICTIONARY_QUERY_LENGTH = 24
 export const MAX_DICTIONARY_QUERY_LETTER_LENGTH = 16
@@ -18,9 +14,7 @@ const scriptPatterns = {
 } as const
 type QueryScript = keyof typeof scriptPatterns
 
-const exactLanguageAliases: Partial<
-  Record<SupportedDictionaryLanguage, readonly string[]>
-> = {
+const exactLanguageAliases: Partial<Record<SupportedDictionaryLanguage, readonly string[]>> = {
   de: ['de', 'deu', 'ger', 'german', 'deutsch'],
   es: ['es', 'spa', 'spanish', 'español'],
   fr: ['fr', 'fra', 'fre', 'french', 'français'],
@@ -33,9 +27,7 @@ const exactLanguageAliases: Partial<
   ru: ['ru', 'rus', 'russian', 'русский'],
 }
 
-export function normalizeDictionaryLanguage(
-  language?: string,
-): SupportedDictionaryLanguage | undefined {
+export function normalizeDictionaryLanguage(language?: string): SupportedDictionaryLanguage | undefined {
   const normalized = language?.trim().replaceAll('_', '-').toLowerCase()
   if (!normalized) return
 
@@ -54,15 +46,12 @@ export function normalizeDictionaryLanguage(
     return 'en'
   }
 
-  return Object.entries(exactLanguageAliases).find(([, aliases]) =>
-    aliases?.includes(normalized),
-  )?.[0] as SupportedDictionaryLanguage | undefined
+  return Object.entries(exactLanguageAliases).find(([, aliases]) => aliases?.includes(normalized))?.[0] as
+    | SupportedDictionaryLanguage
+    | undefined
 }
 
-export function classifyDictionaryQuery(
-  text: string,
-  metadataLanguage?: string,
-): DictionaryQueryLanguage {
+export function classifyDictionaryQuery(text: string, metadataLanguage?: string): DictionaryQueryLanguage {
   const scripts = queryScripts(text)
   if (scripts.size === 0) return 'unknown'
 
@@ -78,23 +67,15 @@ export function classifyDictionaryQuery(
   return scripts.has('other') ? 'unknown' : 'mixed'
 }
 
-export function normalizeDictionaryQuery(
-  rawText: string,
-  metadataLanguage?: string,
-): DictionaryQuery | null {
+export function normalizeDictionaryQuery(rawText: string, metadataLanguage?: string): DictionaryQuery | null {
   const text = rawText.trim()
   if (!text || /\p{Cc}/u.test(text)) return null
 
   const characters = Array.from(text)
   if (characters.length > MAX_DICTIONARY_QUERY_LENGTH) return null
 
-  const meaningfulLength = characters.filter(
-    (character) => !ignoredLanguageCharacter.test(character),
-  ).length
-  if (
-    meaningfulLength === 0 ||
-    meaningfulLength > MAX_DICTIONARY_QUERY_LETTER_LENGTH
-  ) {
+  const meaningfulLength = characters.filter((character) => !ignoredLanguageCharacter.test(character)).length
+  if (meaningfulLength === 0 || meaningfulLength > MAX_DICTIONARY_QUERY_LETTER_LENGTH) {
     return null
   }
 
@@ -111,18 +92,15 @@ function queryScripts(text: string) {
   const scripts = new Set<QueryScript | 'other'>()
   for (const character of text) {
     if (ignoredLanguageCharacter.test(character)) continue
-    const script = Object.entries(scriptPatterns).find(([, pattern]) =>
-      pattern.test(character),
-    )?.[0] as QueryScript | undefined
+    const script = Object.entries(scriptPatterns).find(([, pattern]) => pattern.test(character))?.[0] as
+      | QueryScript
+      | undefined
     scripts.add(script ?? 'other')
   }
   return scripts
 }
 
-function scriptsMatchLanguage(
-  scripts: ReadonlySet<QueryScript | 'other'>,
-  language: SupportedDictionaryLanguage,
-) {
+function scriptsMatchLanguage(scripts: ReadonlySet<QueryScript | 'other'>, language: SupportedDictionaryLanguage) {
   if (language === 'zh') return isExactScriptSet(scripts, ['han'])
   if (language === 'ja') return isJapaneseScriptSet(scripts)
   if (language === 'ko') return isKoreanScriptSet(scripts)
@@ -138,22 +116,13 @@ function isJapaneseScriptSet(scripts: ReadonlySet<string>) {
 }
 
 function isKoreanScriptSet(scripts: ReadonlySet<string>) {
-  return (
-    hasOnlyScripts(scripts, ['han', 'hangul']) &&
-    (scripts.has('han') || scripts.has('hangul'))
-  )
+  return hasOnlyScripts(scripts, ['han', 'hangul']) && (scripts.has('han') || scripts.has('hangul'))
 }
 
-function isExactScriptSet(
-  scripts: ReadonlySet<string>,
-  expected: readonly string[],
-) {
+function isExactScriptSet(scripts: ReadonlySet<string>, expected: readonly string[]) {
   return scripts.size === expected.length && hasOnlyScripts(scripts, expected)
 }
 
-function hasOnlyScripts(
-  scripts: ReadonlySet<string>,
-  expected: readonly string[],
-) {
+function hasOnlyScripts(scripts: ReadonlySet<string>, expected: readonly string[]) {
   return [...scripts].every((script) => expected.includes(script))
 }

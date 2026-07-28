@@ -194,17 +194,15 @@ export const backgroundOptions: BackgroundOption[] = [
 
 const legacyBackgroundPresetMap: Record<number, BackgroundPresetId> = {
   [-1]: 'clean',
-  [1]: 'clean',
+  1: 'clean',
   [-2]: 'sepia',
   [-3]: 'sage',
-  [3]: 'mist',
-  [5]: 'mist',
+  3: 'mist',
+  5: 'mist',
   [customBackgroundValue]: 'custom',
 }
 
-const presetMap = new Map<BackgroundPresetId, BackgroundPreset>(
-  backgroundPresets.map((preset) => [preset.id, preset]),
-)
+const presetMap = new Map<BackgroundPresetId, BackgroundPreset>(backgroundPresets.map((preset) => [preset.id, preset]))
 
 const flowShadcnBridge: [string, string][] = [
   ['--background', 'var(--flow-bg-content)'],
@@ -242,33 +240,17 @@ const flowShadcnBridge: [string, string][] = [
 ]
 
 function declarationsToCss(declarations: readonly [string, string][]) {
-  return declarations
-    .map(([property, value]) => `${property}:${value};`)
-    .join('')
+  return declarations.map(([property, value]) => `${property}:${value};`).join('')
 }
 
-export function normalizeThemeConfiguration(
-  value: ThemeConfiguration | undefined,
-): NormalizedThemeConfiguration {
-  const legacyPreset =
-    typeof value?.background === 'number'
-      ? legacyBackgroundPresetMap[value.background]
-      : undefined
-  const requestedPreset = isBackgroundPresetId(value?.backgroundPreset)
-    ? value.backgroundPreset
-    : undefined
-  const backgroundPreset =
-    requestedPreset ?? legacyPreset ?? ('clean' as BackgroundPresetId)
+export function normalizeThemeConfiguration(value: ThemeConfiguration | undefined): NormalizedThemeConfiguration {
+  const legacyPreset = typeof value?.background === 'number' ? legacyBackgroundPresetMap[value.background] : undefined
+  const requestedPreset = isBackgroundPresetId(value?.backgroundPreset) ? value.backgroundPreset : undefined
+  const backgroundPreset = requestedPreset ?? legacyPreset ?? ('clean' as BackgroundPresetId)
   const customBackground = normalizePaletteColor(value?.customBackground)
-  const preset =
-    backgroundPreset === 'custom' ? undefined : presetMap.get(backgroundPreset)
-  const accent =
-    normalizePaletteColor(value?.accent ?? value?.source) ??
-    preset?.defaultAccent ??
-    defaultAccentColor
-  const scheme = isFlowThemeScheme(value?.scheme)
-    ? value.scheme
-    : (preset?.mode ?? 'light')
+  const preset = backgroundPreset === 'custom' ? undefined : presetMap.get(backgroundPreset)
+  const accent = normalizePaletteColor(value?.accent ?? value?.source) ?? preset?.defaultAccent ?? defaultAccentColor
+  const scheme = isFlowThemeScheme(value?.scheme) ? value.scheme : (preset?.mode ?? 'light')
   const contrast = value?.contrast === 'high' ? 'high' : 'standard'
 
   return {
@@ -278,9 +260,7 @@ export function normalizeThemeConfiguration(
       ? {
           customBackground:
             customBackground ??
-            (isDarkPaletteColor(value?.customBackground)
-              ? darkBackgroundColor
-              : defaultCustomBackgroundColor),
+            (isDarkPaletteColor(value?.customBackground) ? darkBackgroundColor : defaultCustomBackgroundColor),
         }
       : {}),
     scheme,
@@ -288,21 +268,12 @@ export function normalizeThemeConfiguration(
   }
 }
 
-export function createFlowThemeTokens(
-  configuration?: ThemeConfiguration,
-  forcedScheme?: SchemeName,
-): FlowThemeTokens {
+export function createFlowThemeTokens(configuration?: ThemeConfiguration, forcedScheme?: SchemeName): FlowThemeTokens {
   const normalized = normalizeThemeConfiguration(configuration)
-  const preset =
-    normalized.backgroundPreset === 'custom'
-      ? undefined
-      : presetMap.get(normalized.backgroundPreset)
+  const preset = normalized.backgroundPreset === 'custom' ? undefined : presetMap.get(normalized.backgroundPreset)
   const scheme =
     forcedScheme ??
-    (normalized.scheme === 'dark' ||
-    (normalized.scheme === 'system' && preset?.mode === 'dark')
-      ? 'dark'
-      : 'light')
+    (normalized.scheme === 'dark' || (normalized.scheme === 'system' && preset?.mode === 'dark') ? 'dark' : 'light')
   const seed =
     normalized.backgroundPreset === 'custom'
       ? (normalized.customBackground ?? defaultCustomBackgroundColor)
@@ -312,11 +283,7 @@ export function createFlowThemeTokens(
   const accent = normalizePaletteColor(normalized.accent) ?? defaultAccentColor
 
   return scheme === 'dark'
-    ? createDarkFlowThemeTokens(
-        seed ?? darkBackgroundColor,
-        accent,
-        normalized.contrast,
-      )
+    ? createDarkFlowThemeTokens(seed ?? darkBackgroundColor, accent, normalized.contrast)
     : createLightFlowThemeTokens(seed ?? '#FFFFFF', accent, normalized.contrast)
 }
 
@@ -340,11 +307,7 @@ export function createFlowThemeCss(configuration?: ThemeConfiguration) {
   )
 }
 
-function createLightFlowThemeTokens(
-  seed: string,
-  accent: string,
-  contrast: FlowThemeContrast,
-): FlowThemeTokens {
+function createLightFlowThemeTokens(seed: string, accent: string, contrast: FlowThemeContrast): FlowThemeTokens {
   const content = normalizePaletteColor(seed) ?? '#FFFFFF'
   const highContrast = contrast === 'high'
   const tabbar = ensureLayerContrast(
@@ -363,11 +326,7 @@ function createLightFlowThemeTokens(
     [tabbar, tabActive],
     highContrast ? 1.8 : 1.55,
   )
-  const text = ensureContrast(
-    highContrast ? '#111827' : '#18212A',
-    content,
-    highContrast ? 7 : 4.5,
-  )
+  const text = ensureContrast(highContrast ? '#111827' : '#18212A', content, highContrast ? 7 : 4.5)
   const muted = ensureContrast(
     mixHexColor(content, '#000000', highContrast ? 0.62 : 0.52),
     content,
@@ -378,67 +337,31 @@ function createLightFlowThemeTokens(
   const sidebarItem = createSurfaceItemTokens(sidebar, '#FFFFFF', highContrast)
 
   return {
-    '--flow-bg-app': mixHexColor(
-      content,
-      '#000000',
-      highContrast ? 0.07 : 0.04,
-    ),
-    '--flow-bg-activity': mixHexColor(
-      content,
-      '#000000',
-      highContrast ? 0.16 : 0.12,
-    ),
+    '--flow-bg-app': mixHexColor(content, '#000000', highContrast ? 0.07 : 0.04),
+    '--flow-bg-activity': mixHexColor(content, '#000000', highContrast ? 0.16 : 0.12),
     '--flow-bg-sidebar': sidebar,
     '--flow-bg-content': content,
     '--flow-bg-tabbar': tabbar,
     '--flow-bg-tab-active': tabActive,
     '--flow-bg-panel': mixHexColor(content, '#FFFFFF', 0.44),
-    '--flow-bg-control': mixHexColor(
-      content,
-      '#000000',
-      highContrast ? 0.1 : 0.055,
-    ),
-    '--flow-bg-control-hover': mixHexColor(
-      content,
-      '#000000',
-      highContrast ? 0.15 : 0.095,
-    ),
-    '--flow-bg-control-active': mixHexColor(
-      content,
-      '#000000',
-      highContrast ? 0.2 : 0.14,
-    ),
+    '--flow-bg-control': mixHexColor(content, '#000000', highContrast ? 0.1 : 0.055),
+    '--flow-bg-control-hover': mixHexColor(content, '#000000', highContrast ? 0.15 : 0.095),
+    '--flow-bg-control-active': mixHexColor(content, '#000000', highContrast ? 0.2 : 0.14),
     '--flow-sidebar-item-bg': sidebarItem.bg,
     '--flow-sidebar-item-bg-hover': sidebarItem.hover,
     '--flow-sidebar-item-bg-active': sidebarItem.active,
     '--flow-sidebar-item-border': sidebarItem.border,
     '--flow-text': text,
     '--flow-text-muted': muted,
-    '--flow-border': mixHexColor(
-      content,
-      '#000000',
-      highContrast ? 0.24 : 0.16,
-    ),
-    '--flow-border-strong': mixHexColor(
-      content,
-      '#000000',
-      highContrast ? 0.36 : 0.27,
-    ),
+    '--flow-border': mixHexColor(content, '#000000', highContrast ? 0.24 : 0.16),
+    '--flow-border-strong': mixHexColor(content, '#000000', highContrast ? 0.36 : 0.27),
     '--flow-tab-border': tabBorder,
     '--flow-tab-border-strong': tabBorderStrong,
     '--flow-accent': accent,
     '--flow-accent-text': readableTextForBackground(accent),
     '--flow-accent-bg': accentBg,
-    '--flow-accent-bg-hover': mixHexColor(
-      content,
-      accent,
-      highContrast ? 0.29 : 0.21,
-    ),
-    '--flow-accent-border': mixHexColor(
-      content,
-      accent,
-      highContrast ? 0.58 : 0.42,
-    ),
+    '--flow-accent-bg-hover': mixHexColor(content, accent, highContrast ? 0.29 : 0.21),
+    '--flow-accent-border': mixHexColor(content, accent, highContrast ? 0.58 : 0.42),
     '--flow-focus-ring': accent,
     '--flow-danger': '#DC2626',
     '--flow-danger-bg': '#FEE2E2',
@@ -447,11 +370,7 @@ function createLightFlowThemeTokens(
   }
 }
 
-function createDarkFlowThemeTokens(
-  seed: string,
-  accent: string,
-  contrast: FlowThemeContrast,
-): FlowThemeTokens {
+function createDarkFlowThemeTokens(seed: string, accent: string, contrast: FlowThemeContrast): FlowThemeTokens {
   const content = normalizePaletteColor(seed) ?? darkBackgroundColor
   const highContrast = contrast === 'high'
   const tabbar = ensureLayerContrast(
@@ -470,11 +389,7 @@ function createDarkFlowThemeTokens(
     [tabbar, tabActive],
     highContrast ? 1.85 : 1.58,
   )
-  const text = ensureContrast(
-    highContrast ? '#FFFFFF' : '#EEF3F7',
-    content,
-    highContrast ? 7 : 4.5,
-  )
+  const text = ensureContrast(highContrast ? '#FFFFFF' : '#EEF3F7', content, highContrast ? 7 : 4.5)
   const muted = ensureContrast(
     mixHexColor(content, '#FFFFFF', highContrast ? 0.7 : 0.58),
     content,
@@ -486,66 +401,30 @@ function createDarkFlowThemeTokens(
 
   return {
     '--flow-bg-app': mixHexColor(content, '#000000', highContrast ? 0.42 : 0.3),
-    '--flow-bg-activity': mixHexColor(
-      content,
-      '#000000',
-      highContrast ? 0.25 : 0.16,
-    ),
+    '--flow-bg-activity': mixHexColor(content, '#000000', highContrast ? 0.25 : 0.16),
     '--flow-bg-sidebar': sidebar,
     '--flow-bg-content': content,
     '--flow-bg-tabbar': tabbar,
     '--flow-bg-tab-active': tabActive,
-    '--flow-bg-panel': mixHexColor(
-      content,
-      '#FFFFFF',
-      highContrast ? 0.1 : 0.075,
-    ),
-    '--flow-bg-control': mixHexColor(
-      content,
-      '#FFFFFF',
-      highContrast ? 0.16 : 0.11,
-    ),
-    '--flow-bg-control-hover': mixHexColor(
-      content,
-      '#FFFFFF',
-      highContrast ? 0.24 : 0.17,
-    ),
-    '--flow-bg-control-active': mixHexColor(
-      content,
-      '#FFFFFF',
-      highContrast ? 0.31 : 0.23,
-    ),
+    '--flow-bg-panel': mixHexColor(content, '#FFFFFF', highContrast ? 0.1 : 0.075),
+    '--flow-bg-control': mixHexColor(content, '#FFFFFF', highContrast ? 0.16 : 0.11),
+    '--flow-bg-control-hover': mixHexColor(content, '#FFFFFF', highContrast ? 0.24 : 0.17),
+    '--flow-bg-control-active': mixHexColor(content, '#FFFFFF', highContrast ? 0.31 : 0.23),
     '--flow-sidebar-item-bg': sidebarItem.bg,
     '--flow-sidebar-item-bg-hover': sidebarItem.hover,
     '--flow-sidebar-item-bg-active': sidebarItem.active,
     '--flow-sidebar-item-border': sidebarItem.border,
     '--flow-text': text,
     '--flow-text-muted': muted,
-    '--flow-border': mixHexColor(
-      content,
-      '#FFFFFF',
-      highContrast ? 0.28 : 0.18,
-    ),
-    '--flow-border-strong': mixHexColor(
-      content,
-      '#FFFFFF',
-      highContrast ? 0.42 : 0.31,
-    ),
+    '--flow-border': mixHexColor(content, '#FFFFFF', highContrast ? 0.28 : 0.18),
+    '--flow-border-strong': mixHexColor(content, '#FFFFFF', highContrast ? 0.42 : 0.31),
     '--flow-tab-border': tabBorder,
     '--flow-tab-border-strong': tabBorderStrong,
     '--flow-accent': accent,
     '--flow-accent-text': readableTextForBackground(accent),
     '--flow-accent-bg': accentBg,
-    '--flow-accent-bg-hover': mixHexColor(
-      content,
-      accent,
-      highContrast ? 0.44 : 0.34,
-    ),
-    '--flow-accent-border': mixHexColor(
-      content,
-      accent,
-      highContrast ? 0.66 : 0.52,
-    ),
+    '--flow-accent-bg-hover': mixHexColor(content, accent, highContrast ? 0.44 : 0.34),
+    '--flow-accent-border': mixHexColor(content, accent, highContrast ? 0.66 : 0.52),
     '--flow-focus-ring': accent,
     '--flow-danger': '#F87171',
     '--flow-danger-bg': '#451A1A',
@@ -558,47 +437,20 @@ function flowTokenDeclarations(tokens: FlowThemeTokens): [string, string][] {
   return Object.entries(tokens) as [string, string][]
 }
 
-function flowCompatibilityDeclarations(
-  tokens: FlowThemeTokens,
-): [string, string][] {
+function flowCompatibilityDeclarations(tokens: FlowThemeTokens): [string, string][] {
   return [
     ['--flow-bg-active', tokens['--flow-accent-bg']],
     ['--flow-bg-active-hover', tokens['--flow-accent-bg-hover']],
-    [
-      '--flow-accent-solid-hover',
-      mixHexColor(tokens['--flow-accent'], '#000000', 0.08),
-    ],
+    ['--flow-accent-solid-hover', mixHexColor(tokens['--flow-accent'], '#000000', 0.08)],
     ['--radius', '0.625rem'],
   ]
 }
 
-function createSurfaceItemTokens(
-  surface: string,
-  raisedColor: string,
-  highContrast: boolean,
-) {
+function createSurfaceItemTokens(surface: string, raisedColor: string, highContrast: boolean) {
   const darkSurface = relativeLuminance(surface) < 0.28
-  const normalAmount = darkSurface
-    ? highContrast
-      ? 0.14
-      : 0.08
-    : highContrast
-      ? 0.28
-      : 0.22
-  const hoverAmount = darkSurface
-    ? highContrast
-      ? 0.2
-      : 0.13
-    : highContrast
-      ? 0.38
-      : 0.3
-  const activeAmount = darkSurface
-    ? highContrast
-      ? 0.26
-      : 0.18
-    : highContrast
-      ? 0.48
-      : 0.38
+  const normalAmount = darkSurface ? (highContrast ? 0.14 : 0.08) : highContrast ? 0.28 : 0.22
+  const hoverAmount = darkSurface ? (highContrast ? 0.2 : 0.13) : highContrast ? 0.38 : 0.3
+  const activeAmount = darkSurface ? (highContrast ? 0.26 : 0.18) : highContrast ? 0.48 : 0.38
   const normal = ensureLayerContrastToward(
     mixHexColor(surface, raisedColor, normalAmount),
     surface,
@@ -622,11 +474,7 @@ function createSurfaceItemTokens(
     relativeLuminance(surface) > 0.5 ? '#000000' : '#FFFFFF',
     highContrast ? 0.24 : 0.16,
   )
-  const border = ensureMultiBackgroundContrast(
-    borderBase,
-    [surface, normal, hover, active],
-    highContrast ? 1.24 : 1.14,
-  )
+  const border = ensureMultiBackgroundContrast(borderBase, [surface, normal, hover, active], highContrast ? 1.24 : 1.14)
 
   return {
     bg: normal,
@@ -651,16 +499,12 @@ function darkenHexColor(color: string, amount: number) {
   const rgb = hexToRgb(color)
   if (!rgb) return color
 
-  return rgbToHex(
-    rgb.map((channel) => Math.round(channel * (1 - amount))) as RgbColor,
-  )
+  return rgbToHex(rgb.map((channel) => Math.round(channel * (1 - amount))) as RgbColor)
 }
 
 type RgbColor = [number, number, number]
 
-function isBackgroundPresetId(
-  value: ThemeConfiguration['backgroundPreset'] | undefined,
-): value is BackgroundPresetId {
+function isBackgroundPresetId(value: ThemeConfiguration['backgroundPreset'] | undefined): value is BackgroundPresetId {
   return value === 'custom' || backgroundPresets.some((p) => p.id === value)
 }
 
@@ -706,17 +550,10 @@ function mixHexColor(from: string, to: string, amount: number) {
 function readableTextForBackground(background: string) {
   const darkText = '#082F49'
   const lightText = '#FFFFFF'
-  return contrastRatio(darkText, background) >=
-    contrastRatio(lightText, background)
-    ? darkText
-    : lightText
+  return contrastRatio(darkText, background) >= contrastRatio(lightText, background) ? darkText : lightText
 }
 
-function ensureLayerContrast(
-  color: string,
-  background: string,
-  target: number,
-) {
+function ensureLayerContrast(color: string, background: string, target: number) {
   if (contrastRatio(color, background) >= target) return color
 
   const backgroundLuminance = relativeLuminance(background)
@@ -730,12 +567,7 @@ function ensureLayerContrast(
   return targetColor
 }
 
-function ensureLayerContrastToward(
-  color: string,
-  background: string,
-  target: number,
-  targetColor: string,
-) {
+function ensureLayerContrastToward(color: string, background: string, target: number, targetColor: string) {
   if (contrastRatio(color, background) >= target) return color
 
   for (let amount = 0.04; amount <= 1; amount += 0.04) {
@@ -746,33 +578,18 @@ function ensureLayerContrastToward(
   return targetColor
 }
 
-function ensureMultiBackgroundContrast(
-  color: string,
-  backgrounds: string[],
-  target: number,
-) {
-  if (
-    backgrounds.every(
-      (background) => contrastRatio(color, background) >= target,
-    )
-  ) {
+function ensureMultiBackgroundContrast(color: string, backgrounds: string[], target: number) {
+  if (backgrounds.every((background) => contrastRatio(color, background) >= target)) {
     return color
   }
 
   const averageLuminance =
-    backgrounds.reduce(
-      (sum, background) => sum + relativeLuminance(background),
-      0,
-    ) / backgrounds.length
+    backgrounds.reduce((sum, background) => sum + relativeLuminance(background), 0) / backgrounds.length
   const targetColor = averageLuminance > 0.5 ? '#000000' : '#FFFFFF'
 
   for (let amount = 0.08; amount <= 1; amount += 0.08) {
     const next = mixHexColor(color, targetColor, amount)
-    if (
-      backgrounds.every(
-        (background) => contrastRatio(next, background) >= target,
-      )
-    ) {
+    if (backgrounds.every((background) => contrastRatio(next, background) >= target)) {
       return next
     }
   }
@@ -801,9 +618,7 @@ function relativeLuminance(color: string) {
 
   const [r, g, b] = rgb.map((channel) => {
     const normalized = channel / 255
-    return normalized <= 0.03928
-      ? normalized / 12.92
-      : ((normalized + 0.055) / 1.055) ** 2.4
+    return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4
   }) as RgbColor
 
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
@@ -843,9 +658,7 @@ export function isDarkPaletteColor(color: string | undefined) {
 
   const [r, g, b] = rgb.map((channel) => {
     const normalized = channel / 255
-    return normalized <= 0.03928
-      ? normalized / 12.92
-      : ((normalized + 0.055) / 1.055) ** 2.4
+    return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4
   }) as RgbColor
 
   const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b

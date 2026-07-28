@@ -2,36 +2,23 @@ import clsx from 'clsx'
 import type { CSSProperties, ReactNode } from 'react'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 
-import {
-  ColorPickerPopover,
-  normalizeHexColor,
-} from '@/components/ColorPickerPopover'
+import { RenditionSpread } from '@flow/epubjs/rendition'
+import { ColorPickerPopover, normalizeHexColor } from '@/components/ColorPickerPopover'
 import { ShortcutChord } from '@/components/ShortcutChord'
 import { Button as UiButton } from '@/components/ui/button'
 import { Checkbox as UiCheckbox } from '@/components/ui/checkbox'
 import { DialogTitle } from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { openSupportedExternalUrl } from '@/externalLink'
 import { useAccentColor } from '@/hooks/theme/useSourceColor'
 import { useLocale } from '@/hooks/useLocale'
 import { useTranslation } from '@/hooks/useTranslation'
-import { AppLocale, localeNames } from '@/locales'
+import { type AppLocale, localeNames } from '@/locales'
 import { createShortcutGroups } from '@/shortcuts'
 import { defaultTextImportRules, useSettings } from '@/state'
 import { maxUiFontSize, minUiFontSize, normalizeUiFontSize } from '@/styles/ui'
-import {
-  orderedTargetLanguages,
-  TRANSLATION_LANGUAGES,
-  type TranslationLanguage,
-} from '@/translation/languages'
-import { RenditionSpread } from '@flow/epubjs/rendition'
+import { orderedTargetLanguages, TRANSLATION_LANGUAGES, type TranslationLanguage } from '@/translation/languages'
 
 import { LocalDictionarySettings } from './LocalDictionarySettings'
 
@@ -40,21 +27,8 @@ interface SettingsPanelProps {
   onPopupPointerDownOutside: (target: EventTarget | null) => void
 }
 
-type SettingsTab =
-  | 'basic'
-  | 'reading'
-  | 'dictionary'
-  | 'translation'
-  | 'txt'
-  | 'shortcuts'
-const SETTINGS_TABS: SettingsTab[] = [
-  'basic',
-  'reading',
-  'dictionary',
-  'translation',
-  'txt',
-  'shortcuts',
-]
+type SettingsTab = 'basic' | 'reading' | 'dictionary' | 'translation' | 'txt' | 'shortcuts'
+const SETTINGS_TABS: SettingsTab[] = ['basic', 'reading', 'dictionary', 'translation', 'txt', 'shortcuts']
 const TEXTAREA_SIZE_STYLE = {
   fieldSizing: 'fixed',
   maxHeight: '22rem',
@@ -62,10 +36,7 @@ const TEXTAREA_SIZE_STYLE = {
 } satisfies CSSProperties
 const REGEX_TESTER_URL = 'https://regex101.com/?flavor=rust'
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({
-  onPopupOpenChange,
-  onPopupPointerDownOutside,
-}) => {
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onPopupOpenChange, onPopupPointerDownOutside }) => {
   const { locale, locales, setLocale } = useLocale()
   const [settings, setSettings] = useSettings()
   const t = useTranslation('settings')
@@ -75,9 +46,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     ...defaultTextImportRules,
     ...settings.textImportRules,
   }
-  const updateTextImportRules = (
-    patch: Partial<typeof defaultTextImportRules>,
-  ) => {
+  const updateTextImportRules = (patch: Partial<typeof defaultTextImportRules>) => {
     setSettings((prev) => ({
       ...prev,
       textImportRules: {
@@ -91,9 +60,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   return (
     <div className="flex h-full w-full max-w-full min-w-0 flex-row gap-0 overflow-hidden">
       <aside className="border-border w-40 min-w-40 shrink-0 overflow-hidden border-r bg-(--flow-bg-sidebar) p-2">
-        <DialogTitle className="text-muted-foreground px-3 py-3 text-lg font-semibold">
-          {t('title')}
-        </DialogTitle>
+        <DialogTitle className="text-muted-foreground px-3 py-3 text-lg font-semibold">{t('title')}</DialogTitle>
         <div className="mt-1 flex h-auto w-full flex-col items-stretch gap-1 rounded-none bg-transparent p-0">
           {SETTINGS_TABS.map((tab) => {
             const active = tab === activeTab
@@ -118,9 +85,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
       </aside>
       <section className="scroll w-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-5 py-4">
-        <h2 className="text-muted-foreground text-lg font-semibold">
-          {t(`tabs.${activeTab}`)}
-        </h2>
+        <h2 className="text-muted-foreground text-lg font-semibold">{t(`tabs.${activeTab}`)}</h2>
         <div className="mt-5 space-y-5">
           {activeTab === 'basic' && (
             <div data-flow-settings-panel className="m-0 space-y-5">
@@ -130,18 +95,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   onOpenChange={onPopupOpenChange}
                   onValueChange={(value) => setLocale(value as AppLocale)}
                 >
-                  <SelectTrigger
-                    aria-label={t('language')}
-                    className="h-8 w-44 rounded-lg"
-                  >
+                  <SelectTrigger aria-label={t('language')} className="h-8 w-44 rounded-lg">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent
-                    onPointerDownOutside={(event) =>
-                      onPopupPointerDownOutside(
-                        event.detail.originalEvent.target,
-                      )
-                    }
+                    onPointerDownOutside={(event) => onPopupPointerDownOutside(event.detail.originalEvent.target)}
                   >
                     {locales?.map((loc) => (
                       <SelectItem key={loc} value={loc}>
@@ -191,10 +149,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           )}
           {activeTab === 'reading' && (
             <div data-flow-settings-panel className="m-0 space-y-5">
-              <Item
-                title={t('default_page_view')}
-                description={t('default_page_view.description')}
-              >
+              <Item title={t('default_page_view')} description={t('default_page_view.description')}>
                 <SegmentedField
                   value={settings.spread ?? RenditionSpread.Auto}
                   options={[
@@ -215,10 +170,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   }}
                 />
               </Item>
-              <Item
-                title={t('default_text_align')}
-                description={t('default_text_align.description')}
-              >
+              <Item title={t('default_text_align')} description={t('default_text_align.description')}>
                 <SegmentedField
                   value={settings.textAlign ?? 'default'}
                   options={[
@@ -296,32 +248,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <div data-flow-settings-panel className="m-0 space-y-4">
               <Item
                 title={t('txt_import.group_rules')}
-                description={
-                  <RegexDescription descriptionKey="txt_import.group_rules.description" />
-                }
+                description={<RegexDescription descriptionKey="txt_import.group_rules.description" />}
                 wideControl
               >
                 <PatternTextarea
                   label={t('txt_import.group_rules')}
                   value={textImportRules.groupPatterns}
-                  onChange={(patterns) =>
-                    updateTextImportRules({ groupPatterns: patterns })
-                  }
+                  onChange={(patterns) => updateTextImportRules({ groupPatterns: patterns })}
                 />
               </Item>
               <Item
                 title={t('txt_import.chapter_rules')}
-                description={
-                  <RegexDescription descriptionKey="txt_import.chapter_rules.description" />
-                }
+                description={<RegexDescription descriptionKey="txt_import.chapter_rules.description" />}
                 wideControl
               >
                 <PatternTextarea
                   label={t('txt_import.chapter_rules')}
                   value={textImportRules.chapterPatterns}
-                  onChange={(patterns) =>
-                    updateTextImportRules({ chapterPatterns: patterns })
-                  }
+                  onChange={(patterns) => updateTextImportRules({ chapterPatterns: patterns })}
                 />
               </Item>
               <div className="flex justify-end">
@@ -343,14 +287,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
           )}
           {activeTab === 'dictionary' && (
-            <div
-              data-flow-settings-panel
-              className="m-0 min-w-0 overflow-hidden"
-            >
-              <LocalDictionarySettings
-                settings={settings}
-                setSettings={setSettings}
-              />
+            <div data-flow-settings-panel className="m-0 min-w-0 overflow-hidden">
+              <LocalDictionarySettings settings={settings} setSettings={setSettings} />
             </div>
           )}
           {activeTab === 'translation' && (
@@ -389,11 +327,7 @@ function TranslationSettings({
     secondaryLanguage: 'en' as const,
     defaultProvider: 'google' as const,
   }
-  const languageSelect = (
-    label: string,
-    value: TranslationLanguage,
-    key: 'mainLanguage' | 'secondaryLanguage',
-  ) => (
+  const languageSelect = (label: string, value: TranslationLanguage, key: 'mainLanguage' | 'secondaryLanguage') => (
     <Select
       value={value}
       onOpenChange={onPopupOpenChange}
@@ -401,15 +335,13 @@ function TranslationSettings({
         const language = next as TranslationLanguage
         setSettings((previous) => {
           const current = previous.translation ?? translation
-          const otherKey =
-            key === 'mainLanguage' ? 'secondaryLanguage' : 'mainLanguage'
+          const otherKey = key === 'mainLanguage' ? 'secondaryLanguage' : 'mainLanguage'
           return {
             ...previous,
             translation: {
               ...current,
               [key]: language,
-              [otherKey]:
-                current[otherKey] === language ? value : current[otherKey],
+              [otherKey]: current[otherKey] === language ? value : current[otherKey],
             },
           }
         })
@@ -418,19 +350,10 @@ function TranslationSettings({
       <SelectTrigger aria-label={label} className="h-8 w-44 rounded-lg">
         <SelectValue />
       </SelectTrigger>
-      <SelectContent
-        onPointerDownOutside={(event) =>
-          onPopupPointerDownOutside(event.detail.originalEvent.target)
-        }
-      >
-        {orderedTargetLanguages(
-          translation.mainLanguage,
-          translation.secondaryLanguage,
-        ).map((languageId) => (
+      <SelectContent onPointerDownOutside={(event) => onPopupPointerDownOutside(event.detail.originalEvent.target)}>
+        {orderedTargetLanguages(translation.mainLanguage, translation.secondaryLanguage).map((languageId) => (
           <SelectItem key={languageId} value={languageId}>
-            {TRANSLATION_LANGUAGES.find(
-              (language) => language.id === languageId,
-            )?.label ?? languageId}
+            {TRANSLATION_LANGUAGES.find((language) => language.id === languageId)?.label ?? languageId}
           </SelectItem>
         ))}
       </SelectContent>
@@ -439,30 +362,13 @@ function TranslationSettings({
 
   return (
     <div data-flow-settings-panel className="m-0 space-y-5">
-      <Item
-        title={t('main_language')}
-        description={t('main_language.description')}
-      >
-        {languageSelect(
-          t('main_language'),
-          translation.mainLanguage,
-          'mainLanguage',
-        )}
+      <Item title={t('main_language')} description={t('main_language.description')}>
+        {languageSelect(t('main_language'), translation.mainLanguage, 'mainLanguage')}
       </Item>
-      <Item
-        title={t('secondary_language')}
-        description={t('secondary_language.description')}
-      >
-        {languageSelect(
-          t('secondary_language'),
-          translation.secondaryLanguage,
-          'secondaryLanguage',
-        )}
+      <Item title={t('secondary_language')} description={t('secondary_language.description')}>
+        {languageSelect(t('secondary_language'), translation.secondaryLanguage, 'secondaryLanguage')}
       </Item>
-      <Item
-        title={t('default_provider')}
-        description={t('default_provider.description')}
-      >
+      <Item title={t('default_provider')} description={t('default_provider.description')}>
         <SegmentedField
           value={translation.defaultProvider}
           options={[
@@ -487,11 +393,7 @@ interface PatternTextareaProps {
   onChange: (value: string[]) => void
 }
 
-const PatternTextarea: React.FC<PatternTextareaProps> = ({
-  label,
-  value,
-  onChange,
-}) => {
+const PatternTextarea: React.FC<PatternTextareaProps> = ({ label, value, onChange }) => {
   const valueText = useMemo(() => value.join('\n'), [value])
   const [draft, setDraft] = useState(valueText)
   const focusedRef = useRef(false)
@@ -564,19 +466,12 @@ function RegexDescription({ descriptionKey }: { descriptionKey: string }) {
   })
 }
 
-function renderRichText(
-  message: string,
-  replacements: Record<string, ReactNode>,
-) {
+function renderRichText(message: string, replacements: Record<string, ReactNode>) {
   return message.split(/(\{[a-z][a-z0-9_]*\})/g).map((part, index) => {
     const name = part.match(/^\{(.+)\}$/)?.[1]
     const replacement = name ? replacements[name] : undefined
 
-    return (
-      <Fragment key={index}>
-        {replacement === undefined ? part : replacement}
-      </Fragment>
-    )
+    return <Fragment key={index}>{replacement === undefined ? part : replacement}</Fragment>
   })
 }
 
@@ -591,11 +486,7 @@ interface SegmentedFieldProps<T extends string> {
   onChange: (value: T) => void
 }
 
-function SegmentedField<T extends string>({
-  value,
-  options,
-  onChange,
-}: SegmentedFieldProps<T>) {
+function SegmentedField<T extends string>({ value, options, onChange }: SegmentedFieldProps<T>) {
   return (
     <div className="text-muted-foreground ring-border inline-flex h-8 items-center overflow-hidden rounded-lg bg-(--flow-bg-control) p-0.5 ring-1 ring-inset">
       {options.map((option) => {
@@ -607,10 +498,7 @@ function SegmentedField<T extends string>({
             type="button"
             variant={selected ? 'default' : 'ghost'}
             size="sm"
-            className={clsx(
-              'h-full rounded-lg px-5 text-base',
-              selected || 'text-muted-foreground',
-            )}
+            className={clsx('h-full rounded-lg px-5 text-base', selected || 'text-muted-foreground')}
             onClick={() => onChange(option.value)}
           >
             {option.label}
@@ -631,10 +519,7 @@ const AccentColorSetting: React.FC = () => {
   const color = normalizeHexColor(displayColor) ?? accentColor
 
   return (
-    <Item
-      title={t('source_color')}
-      description={settingsT('accent_color.description')}
-    >
+    <Item title={t('source_color')} description={settingsT('accent_color.description')}>
       <div className="relative inline-block">
         <button
           type="button"
@@ -735,12 +620,7 @@ interface SettingsCheckboxProps {
   onCheckedChange: (checked: boolean) => void
 }
 
-const SettingsCheckbox: React.FC<SettingsCheckboxProps> = ({
-  checked,
-  id,
-  label,
-  onCheckedChange,
-}) => {
+const SettingsCheckbox: React.FC<SettingsCheckboxProps> = ({ checked, id, label, onCheckedChange }) => {
   return (
     <UiCheckbox
       id={id}
@@ -759,23 +639,11 @@ interface PartProps {
   title: string
   wideControl?: boolean
 }
-const Item: React.FC<PartProps> = ({
-  title,
-  children,
-  controlId,
-  description,
-  wideControl = false,
-}) => {
+const Item: React.FC<PartProps> = ({ title, children, controlId, description, wideControl = false }) => {
   const information = (
     <>
-      <h3 className="text-base leading-tight font-semibold text-(--flow-text)">
-        {title}
-      </h3>
-      {description && (
-        <p className="text-muted-foreground mt-0 py-0 text-sm leading-snug">
-          {description}
-        </p>
-      )}
+      <h3 className="text-base leading-tight font-semibold text-(--flow-text)">{title}</h3>
+      {description && <p className="text-muted-foreground mt-0 py-0 text-sm leading-snug">{description}</p>}
     </>
   )
 
@@ -783,9 +651,7 @@ const Item: React.FC<PartProps> = ({
     <div
       className={clsx(
         'grid min-h-8 items-center gap-x-6',
-        wideControl
-          ? 'grid-cols-[minmax(0,1fr)_minmax(14rem,28rem)]'
-          : 'grid-cols-[minmax(0,1fr)_auto]',
+        wideControl ? 'grid-cols-[minmax(0,1fr)_minmax(14rem,28rem)]' : 'grid-cols-[minmax(0,1fr)_auto]',
       )}
     >
       {controlId ? (
@@ -795,9 +661,7 @@ const Item: React.FC<PartProps> = ({
       ) : (
         <div className="min-w-0">{information}</div>
       )}
-      <div className="flex min-h-8 min-w-0 items-center justify-end">
-        {children}
-      </div>
+      <div className="flex min-h-8 min-w-0 items-center justify-end">{children}</div>
     </div>
   )
 }
@@ -810,24 +674,14 @@ const ShortcutSettings: React.FC = () => {
     <div className="space-y-5">
       {groups.map((group) => (
         <section key={group.title}>
-          <h3 className="text-muted-foreground mb-2 text-base font-semibold">
-            {group.title}
-          </h3>
+          <h3 className="text-muted-foreground mb-2 text-base font-semibold">{group.title}</h3>
           <div className="divide-border divide-y">
             {group.items.map((item) => (
-              <div
-                key={item.label}
-                className="flex min-h-9 items-center justify-between gap-4 py-1.5"
-              >
-                <span className="text-muted-foreground min-w-0 text-base">
-                  {item.label}
-                </span>
+              <div key={item.label} className="flex min-h-9 items-center justify-between gap-4 py-1.5">
+                <span className="text-muted-foreground min-w-0 text-base">{item.label}</span>
                 <div className="flex shrink-0 flex-wrap justify-end gap-1">
                   {item.shortcuts.map((shortcut) => (
-                    <ShortcutChord
-                      key={shortcut.join('+')}
-                      shortcut={shortcut}
-                    />
+                    <ShortcutChord key={shortcut.join('+')} shortcut={shortcut} />
                   ))}
                 </div>
               </div>

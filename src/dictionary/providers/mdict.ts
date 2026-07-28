@@ -1,18 +1,11 @@
 import type { DictionaryProvider } from '../coordinator'
-import {
-  cancelDictionarySession,
-  loadMdictStylesheet,
-  lookupMdict,
-  type LocalDictionaryRecord,
-} from '../native'
+import { cancelDictionarySession, type LocalDictionaryRecord, loadMdictStylesheet, lookupMdict } from '../native'
 
 import { sanitizeMdictContent } from './mdictContent'
 
 let nextNativeSessionId = 2_000_000
 
-export function createMdictProvider(
-  dictionary: LocalDictionaryRecord,
-): DictionaryProvider {
+export function createMdictProvider(dictionary: LocalDictionaryRecord): DictionaryProvider {
   return {
     id: `mdict:${dictionary.id}`,
     name: dictionary.name,
@@ -38,11 +31,7 @@ export function createMdictProvider(
         html: response.entry.html,
         resourceUrlPrefix: response.resourceUrlPrefix,
         async loadStylesheet(key) {
-          const stylesheet = await loadMdictStylesheet(
-            dictionary.id,
-            key,
-            sessionId,
-          )
+          const stylesheet = await loadMdictStylesheet(dictionary.id, key, sessionId)
           return stylesheet?.text ?? null
         },
       })

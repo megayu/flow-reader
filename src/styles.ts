@@ -1,11 +1,11 @@
-import { CSSProperties } from 'react'
+import type { CSSProperties } from 'react'
 
-import { Contents } from '@flow/epubjs'
+import type { Contents } from '@flow/epubjs'
 
 import {
   type BodyTextDetectionCache,
-  bodyTextFontTypographySelector,
   bodyTextCandidateSelector,
+  bodyTextFontTypographySelector,
   bodyTextSelector,
   bodyTextTypographySelector,
   createHiddenNoteContentSelector,
@@ -13,24 +13,19 @@ import {
   notePopoverClass,
   noteTextSelector,
 } from './bodyText'
-import { Settings } from './state'
+import type { Settings } from './state'
 import { keys } from './utils'
 
-export { getBodyTypographyBaseline, notePopoverClass } from './bodyText'
 export type { BodyTextDetectionCache, BodyTypographyBaseline } from './bodyText'
+export { getBodyTypographyBaseline, notePopoverClass } from './bodyText'
 
 export const activeClass = 'bg-(--flow-accent)'
 
-const readerLinkSelector = [
-  'body > a:any-link',
-  `body > :not(.${notePopoverClass}) a:any-link`,
-].join(',\n')
+const readerLinkSelector = ['body > a:any-link', `body > :not(.${notePopoverClass}) a:any-link`].join(',\n')
 
-const notePopoverListSelector = [
-  `.${notePopoverClass} ol`,
-  `.${notePopoverClass} ul`,
-  `.${notePopoverClass} li`,
-].join(',\n')
+const notePopoverListSelector = [`.${notePopoverClass} ol`, `.${notePopoverClass} ul`, `.${notePopoverClass} li`].join(
+  ',\n',
+)
 
 const hiddenEndnoteSelector = createHiddenNoteContentSelector(notePopoverClass)
 
@@ -56,8 +51,7 @@ export const defaultStyle = {
   },
 }
 
-const camelToSnake = (str: string) =>
-  str.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
+const camelToSnake = (str: string) => str.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
 
 function mapToCss(o: CSSProperties) {
   return keys(o)
@@ -89,16 +83,10 @@ export function createTypographyStyleSignature(settings: Settings) {
   return [settings.textAlign].map((value) => value ?? '').join('|')
 }
 
-export function createVerticalWritingCss(
-  writingMode: string | undefined,
-  textIndent?: number,
-) {
+export function createVerticalWritingCss(writingMode: string | undefined, textIndent?: number) {
   if (writingMode !== 'vertical-rl') return ''
 
-  const indentVariable =
-    textIndent === undefined
-      ? ''
-      : `:root { --flow-text-indent: ${textIndent}em; }`
+  const indentVariable = textIndent === undefined ? '' : `:root { --flow-text-indent: ${textIndent}em; }`
 
   return `${indentVariable}
   html, body {
@@ -153,18 +141,13 @@ type LayoutViewStyleSource = {
   writingMode?: string
 }
 
-const zoomConstrainedMediaSelector = [
-  'html body img',
-  'html body svg',
-  'html body video',
-  'html body canvas',
-].join(',\n')
+const zoomConstrainedMediaSelector = ['html body img', 'html body svg', 'html body video', 'html body canvas'].join(
+  ',\n',
+)
 
-const zoomIntrinsicMediaSelector = [
-  'html body img:not(:is(sup, sub) img)',
-  'html body video',
-  'html body canvas',
-].join(',\n')
+const zoomIntrinsicMediaSelector = ['html body img:not(:is(sup, sub) img)', 'html body video', 'html body canvas'].join(
+  ',\n',
+)
 
 function readCssPixelValue(value: unknown) {
   if (typeof value === 'number') {
@@ -180,11 +163,7 @@ function readCssPixelValue(value: unknown) {
   return Number.isFinite(numeric) ? numeric : undefined
 }
 
-export function createZoomBodyStyles(
-  source: ZoomBodyStyleSource,
-  zoom: number,
-  writingMode?: string,
-) {
+export function createZoomBodyStyles(source: ZoomBodyStyleSource, zoom: number, writingMode?: string) {
   const styles: CSSProperties & { columnHeight?: string } = {
     transformOrigin: writingMode === 'vertical-rl' ? 'top right' : 'top left',
     transform: `scale(${zoom})`,
@@ -206,34 +185,22 @@ function formatCssPixelValue(value: number) {
   return `${Math.round(value * 1000) / 1000}px`
 }
 
-export function createZoomMediaMaxInlineSize(
-  source: ZoomBodyStyleSource,
-  zoom: number,
-  writingMode?: string,
-) {
+export function createZoomMediaMaxInlineSize(source: ZoomBodyStyleSource, zoom: number, writingMode?: string) {
   if (!Number.isFinite(zoom) || zoom <= 0) return
 
   const columnWidth = readCssPixelValue(source.columnWidth)
   if (columnWidth === undefined) return
 
   const vertical = writingMode === 'vertical-rl'
-  const startPadding = readCssPixelValue(
-    vertical ? source.paddingTop : source.paddingLeft,
-  )
-  const endPadding = readCssPixelValue(
-    vertical ? source.paddingBottom : source.paddingRight,
-  )
+  const startPadding = readCssPixelValue(vertical ? source.paddingTop : source.paddingLeft)
+  const endPadding = readCssPixelValue(vertical ? source.paddingBottom : source.paddingRight)
   const contentWidth = columnWidth - (startPadding ?? 0) - (endPadding ?? 0)
   if (!Number.isFinite(contentWidth) || contentWidth <= 0) return
 
   return contentWidth / zoom
 }
 
-export function createZoomMediaCss(
-  source: ZoomBodyStyleSource,
-  zoom: number,
-  writingMode?: string,
-) {
+export function createZoomMediaCss(source: ZoomBodyStyleSource, zoom: number, writingMode?: string) {
   const maxInlineSize = createZoomMediaMaxInlineSize(source, zoom, writingMode)
   if (maxInlineSize === undefined) return ''
 
@@ -265,30 +232,19 @@ function isBackgroundPositionToken(token: string) {
   return /^-?\d+(?:\.\d+)?(px|%|em|rem|vw|vh|vmin|vmax)$/.test(token)
 }
 
-function isExplicitDecorativeBackgroundPosition(
-  source: ZoomDecorativeBackgroundStyleSource,
-) {
+function isExplicitDecorativeBackgroundPosition(source: ZoomDecorativeBackgroundStyleSource) {
   const position = readCssTextValue(source.backgroundPosition)?.toLowerCase()
   if (position) {
     if (position.includes(',')) return false
 
     const tokens = position.split(/\s+/)
-    return (
-      tokens.length >= 1 &&
-      tokens.length <= 4 &&
-      tokens.every(isBackgroundPositionToken)
-    )
+    return tokens.length >= 1 && tokens.length <= 4 && tokens.every(isBackgroundPositionToken)
   }
 
   const positionX = readCssTextValue(source.backgroundPositionX)?.toLowerCase()
   const positionY = readCssTextValue(source.backgroundPositionY)?.toLowerCase()
 
-  return (
-    !!positionX &&
-    !!positionY &&
-    isBackgroundPositionToken(positionX) &&
-    isBackgroundPositionToken(positionY)
-  )
+  return !!positionX && !!positionY && isBackgroundPositionToken(positionX) && isBackgroundPositionToken(positionY)
 }
 
 function isSimpleDecorativeBackgroundSize(value: string) {
@@ -302,19 +258,14 @@ function isSimpleDecorativeBackgroundSize(value: string) {
     const normalized = token.toLowerCase()
     if (normalized === 'auto') return true
 
-    hasNumericSize = /^(\d+(?:\.\d+)?)(px|%|em|rem|vw|vh|vmin|vmax)$/.test(
-      normalized,
-    )
+    hasNumericSize = /^(\d+(?:\.\d+)?)(px|%|em|rem|vw|vh|vmin|vmax)$/.test(normalized)
     return hasNumericSize
   })
 
   return valid && hasNumericSize
 }
 
-export function createZoomDecorativeBackgroundStyles(
-  source: ZoomDecorativeBackgroundStyleSource,
-  zoom: number,
-) {
+export function createZoomDecorativeBackgroundStyles(source: ZoomDecorativeBackgroundStyleSource, zoom: number) {
   if (!Number.isFinite(zoom) || zoom <= 0 || zoom === 1) return {}
 
   const backgroundImage = readCssTextValue(source.backgroundImage)
@@ -331,10 +282,7 @@ export function createZoomDecorativeBackgroundStyles(
   // Body zoom changes the layout box that positioned backgrounds use as their
   // anchor. Pin no-repeat decorations with resolved explicit positioning to
   // the iframe viewport without touching repeated page textures.
-  if (
-    !isNoRepeatBackground(source) ||
-    !isExplicitDecorativeBackgroundPosition(source)
-  ) {
+  if (!isNoRepeatBackground(source) || !isExplicitDecorativeBackgroundPosition(source)) {
     return {}
   }
 
@@ -344,9 +292,7 @@ export function createZoomDecorativeBackgroundStyles(
 }
 
 function cssPixelValue(value: unknown) {
-  return typeof value === 'number' && Number.isFinite(value)
-    ? `${value}px`
-    : undefined
+  return typeof value === 'number' && Number.isFinite(value) ? `${value}px` : undefined
 }
 
 export function createZoomLayoutBodyStyleSource(
@@ -354,43 +300,26 @@ export function createZoomLayoutBodyStyleSource(
   axis?: string,
   writingMode?: string,
 ): ZoomBodyStyleSource {
-  if (!layout || layout.name !== 'reflowable') return {}
+  if (layout?.name !== 'reflowable') return {}
 
-  const gap =
-    typeof layout.gap === 'number' && Number.isFinite(layout.gap)
-      ? layout.gap
-      : undefined
+  const gap = typeof layout.gap === 'number' && Number.isFinite(layout.gap) ? layout.gap : undefined
   const horizontal = axis !== 'vertical'
   const verticalRtl = writingMode === 'vertical-rl'
 
   if (verticalRtl) {
-    const width =
-      typeof layout.width === 'number' && Number.isFinite(layout.width)
-        ? layout.width
-        : undefined
-    const height =
-      typeof layout.height === 'number' && Number.isFinite(layout.height)
-        ? layout.height
-        : undefined
+    const width = typeof layout.width === 'number' && Number.isFinite(layout.width) ? layout.width : undefined
+    const height = typeof layout.height === 'number' && Number.isFinite(layout.height) ? layout.height : undefined
     const columnWidth =
-      typeof layout.columnWidth === 'number' &&
-      Number.isFinite(layout.columnWidth)
-        ? layout.columnWidth
-        : undefined
+      typeof layout.columnWidth === 'number' && Number.isFinite(layout.columnWidth) ? layout.columnWidth : undefined
     const rowHeight =
-      width !== undefined &&
-      columnWidth !== undefined &&
-      gap !== undefined &&
-      width <= columnWidth + gap
+      width !== undefined && columnWidth !== undefined && gap !== undefined && width <= columnWidth + gap
         ? Math.max(columnWidth - gap, 1)
         : columnWidth
 
     return {
       width: cssPixelValue(layout.width),
       height: cssPixelValue(layout.height),
-      columnWidth: cssPixelValue(
-        height === undefined ? undefined : Math.max(height - 20, 1),
-      ),
+      columnWidth: cssPixelValue(height === undefined ? undefined : Math.max(height - 20, 1)),
       columnHeight: cssPixelValue(rowHeight),
       columnGap: '0px',
       rowGap: cssPixelValue(gap),
@@ -406,12 +335,8 @@ export function createZoomLayoutBodyStyleSource(
     height: cssPixelValue(layout.height),
     columnWidth: cssPixelValue(layout.columnWidth),
     columnGap: cssPixelValue(gap),
-    paddingTop: cssPixelValue(
-      horizontal ? 10 : gap === undefined ? 10 : gap / 2,
-    ),
-    paddingBottom: cssPixelValue(
-      horizontal ? 10 : gap === undefined ? 10 : gap / 2,
-    ),
+    paddingTop: cssPixelValue(horizontal ? 10 : gap === undefined ? 10 : gap / 2),
+    paddingBottom: cssPixelValue(horizontal ? 10 : gap === undefined ? 10 : gap / 2),
     paddingLeft: cssPixelValue(horizontal ? (gap ?? 0) / 2 : 10),
     paddingRight: cssPixelValue(horizontal ? (gap ?? 0) / 2 : 10),
   }
@@ -425,8 +350,7 @@ function createZoomBodyStyleSource(
     width: layoutStyles.width ?? bodyStyle.width,
     height: layoutStyles.height ?? bodyStyle.height,
     columnWidth: layoutStyles.columnWidth ?? bodyStyle.columnWidth,
-    columnHeight:
-      layoutStyles.columnHeight ?? bodyStyle.getPropertyValue('column-height'),
+    columnHeight: layoutStyles.columnHeight ?? bodyStyle.getPropertyValue('column-height'),
     columnGap: layoutStyles.columnGap ?? bodyStyle.columnGap,
     rowGap: layoutStyles.rowGap ?? bodyStyle.rowGap,
     paddingTop: layoutStyles.paddingTop ?? bodyStyle.paddingTop,
@@ -487,11 +411,7 @@ export function updateCustomStyle(
 
   if (zoom) {
     const body = contents.content as HTMLBodyElement
-    const layoutStyles = createZoomLayoutBodyStyleSource(
-      layoutView?.layout,
-      layoutView?.axis,
-      writingMode,
-    )
+    const layoutStyles = createZoomLayoutBodyStyleSource(layoutView?.layout, layoutView?.axis, writingMode)
     css += createZoomMediaCss(layoutStyles, zoom, writingMode)
     const computedBodyStyle = contents.window.getComputedStyle(body)
     const backgroundStyleSource: ZoomDecorativeBackgroundStyleSource = {
@@ -504,11 +424,7 @@ export function updateCustomStyle(
     }
     css += `body {
       ${mapToCss({
-        ...createZoomBodyStyles(
-          createZoomBodyStyleSource(body.style, layoutStyles),
-          zoom,
-          writingMode,
-        ),
+        ...createZoomBodyStyles(createZoomBodyStyleSource(body.style, layoutStyles), zoom, writingMode),
         ...createZoomDecorativeBackgroundStyles(backgroundStyleSource, zoom),
       })}
     }`
@@ -518,9 +434,7 @@ export function updateCustomStyle(
   logStyleDiagnostics(contents, settings, {
     applied,
     bodyTypography,
-    candidateCount: contents.document.querySelectorAll(
-      bodyTextCandidateSelector,
-    ).length,
+    candidateCount: contents.document.querySelectorAll(bodyTextCandidateSelector).length,
     markedCount: contents.document.querySelectorAll(bodyTextSelector).length,
     cssLength: css.length,
   })
@@ -534,13 +448,9 @@ export function resolveWritingMode(
   layoutName?: string,
 ) {
   const viewLayoutName = layoutView?.layout?.name
-  const resolvedLayoutName =
-    typeof viewLayoutName === 'string' ? viewLayoutName : layoutName
+  const resolvedLayoutName = typeof viewLayoutName === 'string' ? viewLayoutName : layoutName
 
-  return (
-    layoutView?.writingMode ??
-    contents.writingMode(undefined, resolvedLayoutName)
-  )
+  return layoutView?.writingMode ?? contents.writingMode(undefined, resolvedLayoutName)
 }
 
 function logStyleDiagnostics(
@@ -589,12 +499,8 @@ function pickBodyTypography(settings: Settings) {
     fontSize: settings.fontSize,
     fontWeight: settings.fontWeight,
     lineHeight: settings.lineHeight,
-    textIndent:
-      settings.textIndent === undefined
-        ? undefined
-        : `${settings.textIndent}em`,
-    textAlign:
-      settings.textAlign === 'default' ? undefined : settings.textAlign,
+    textIndent: settings.textIndent === undefined ? undefined : `${settings.textIndent}em`,
+    textAlign: settings.textAlign === 'default' ? undefined : settings.textAlign,
   })
 }
 

@@ -26,11 +26,7 @@ export class BookSearchController {
 
   // only use throttle/debounce for side effects
   @debounce(500)
-  private async onKeywordChange(
-    tab: BookTab,
-    keyword: string,
-    requestVersion: number,
-  ) {
+  private async onKeywordChange(tab: BookTab, keyword: string, requestVersion: number) {
     if (!this.isCurrent(tab, keyword, requestVersion)) return
     await this.updateResults(tab, keyword, requestVersion)
   }
@@ -43,11 +39,7 @@ export class BookSearchController {
     return tab.keyword === keyword && this.requestVersion === requestVersion
   }
 
-  private async updateResults(
-    tab: BookTab,
-    keyword: string,
-    requestVersion: number,
-  ) {
+  private async updateResults(tab: BookTab, keyword: string, requestVersion: number) {
     const results = await searchBook(tab, keyword)
     if (this.isCurrent(tab, keyword, requestVersion)) {
       tab.results = results
@@ -55,11 +47,7 @@ export class BookSearchController {
   }
 }
 
-export function searchInSection(
-  tab: BookTab,
-  keyword = tab.keyword,
-  section = tab.section,
-) {
+export function searchInSection(tab: BookTab, keyword = tab.keyword, section = tab.section) {
   const query = keyword.trim()
   if (!query || !section?.document?.body) return
 
@@ -80,11 +68,7 @@ export function searchInSection(
   }
 }
 
-export async function searchInSectionAsync(
-  tab: BookTab,
-  keyword = tab.keyword,
-  section = tab.section,
-) {
+export async function searchInSectionAsync(tab: BookTab, keyword = tab.keyword, section = tab.section) {
   if (!section) return
 
   await tab.ensureSectionInfo(section)
@@ -112,8 +96,7 @@ export async function displaySearchResult(
   const href = result.href ?? sectionContext?.href
   if (result.cfi) {
     const section =
-      tab.sections?.find((item) => item.index === sectionIndex) ??
-      tab.sections?.find((item) => item.href === href)
+      tab.sections?.find((item) => item.index === sectionIndex) ?? tab.sections?.find((item) => item.href === href)
 
     if (section) {
       tab.showPrevLocation()
@@ -125,8 +108,7 @@ export async function displaySearchResult(
   }
 
   const section =
-    tab.sections?.find((item) => item.index === sectionIndex) ??
-    tab.sections?.find((item) => item.href === href)
+    tab.sections?.find((item) => item.index === sectionIndex) ?? tab.sections?.find((item) => item.href === href)
 
   if (!section) {
     if (href) tab.display(href)

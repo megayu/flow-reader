@@ -1,10 +1,11 @@
 import { ChevronDownIcon, ChevronUpIcon, XIcon } from 'lucide-react'
-import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import type React from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSnapshot } from 'valtio'
 
 import { useTranslation } from '../../hooks/useTranslation'
-import { BookTab } from '../../models/reader'
+import type { BookTab } from '../../models/reader'
 import { setClickedAnnotation } from '../Annotation'
 
 export interface ReflowableManager {
@@ -68,10 +69,7 @@ export interface ChapterFindOverlayProps {
   children: React.ReactNode
 }
 
-export const ChapterFindOverlay: React.FC<ChapterFindOverlayProps> = ({
-  anchorRef,
-  children,
-}) => {
+export const ChapterFindOverlay: React.FC<ChapterFindOverlayProps> = ({ anchorRef, children }) => {
   const [style, setStyle] = useState<React.CSSProperties>()
 
   useLayoutEffect(() => {
@@ -180,11 +178,7 @@ export const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
       >
         <ChevronDownIcon className="size-[22px]" />
       </button>
-      <button
-        type="button"
-        className="text-muted-foreground hover:text-foreground p-1"
-        onClick={onClose}
-      >
+      <button type="button" className="text-muted-foreground hover:text-foreground p-1" onClick={onClose}>
         <XIcon className="size-[22px]" />
       </button>
     </div>
@@ -196,11 +190,7 @@ export interface ChapterFindHighlightsProps {
   find: ChapterFindState
   tab: BookTab
 }
-export const ChapterFindHighlights: React.FC<ChapterFindHighlightsProps> = ({
-  active,
-  find,
-  tab,
-}) => {
+export const ChapterFindHighlights: React.FC<ChapterFindHighlightsProps> = ({ active, find, tab }) => {
   const { rendition, paginationVersion, viewVersion } = useSnapshot(tab)
   const matches = useMemo(() => {
     if (!find.open) return []
@@ -233,7 +223,7 @@ export const ChapterFindHighlights: React.FC<ChapterFindHighlightsProps> = ({
           undefined,
           styles,
         )
-      } catch (error) {
+      } catch (_error) {
         // ignore matched text in unsupported nodes
       }
     }
@@ -258,7 +248,7 @@ export const ChapterFindHighlights: React.FC<ChapterFindHighlightsProps> = ({
       matches.forEach((match) => {
         try {
           rendition?.annotations.remove(match.cfi, 'highlight')
-        } catch (error) {
+        } catch (_error) {
           // ignore removed views
         }
       })
@@ -269,17 +259,10 @@ export const ChapterFindHighlights: React.FC<ChapterFindHighlightsProps> = ({
 }
 
 export function isFindShortcut(e: KeyboardEvent) {
-  return (
-    (e.ctrlKey || e.metaKey) &&
-    !e.altKey &&
-    (e.key.toLowerCase() === 'f' || e.code === 'KeyF')
-  )
+  return (e.ctrlKey || e.metaKey) && !e.altKey && (e.key.toLowerCase() === 'f' || e.code === 'KeyF')
 }
 
-export function visibleFindPageIndexes(
-  sectionIndex: number,
-  manager: ReflowableManager | undefined,
-) {
+export function visibleFindPageIndexes(sectionIndex: number, manager: ReflowableManager | undefined) {
   const spread = manager?.currentReflowableSpread
   const pages = new Set<number>()
 

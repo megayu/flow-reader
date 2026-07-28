@@ -7,6 +7,7 @@ import {
   Image,
   Library,
   ListFilter,
+  type LucideIcon,
   Maximize,
   Minimize,
   PencilIcon,
@@ -21,13 +22,12 @@ import {
   Trash2Icon,
   Type,
   XIcon,
-  type LucideIcon,
 } from 'lucide-react'
 import {
-  ComponentProps,
-  MouseEvent as ReactMouseEvent,
-  PropsWithChildren,
-  ReactNode,
+  type ComponentProps,
+  type PropsWithChildren,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -40,12 +40,7 @@ import { SettingsDialog } from '@/settings/SettingsDialog'
 
 import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
-import {
-  useAction,
-  useLibraryAction,
-  type Action as ReaderPanelAction,
-  type LibraryAction,
-} from '../hooks/useAction'
+import { type LibraryAction, type Action as ReaderPanelAction, useAction, useLibraryAction } from '../hooks/useAction'
 import { useLibrary, useLibraryTags } from '../hooks/useLibrary'
 import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
@@ -82,17 +77,11 @@ import { db, type LibraryTagRecord } from '../storage'
 import { activeClass } from '../styles'
 
 import { AppTooltip } from './AppTooltip'
-import { ReadingStatusIcon } from './ReadingStatusIcon'
 import { PaneView } from './base/PaneView'
 import { SplitView, useSplitViewItem } from './base/SplitView'
+import { ReadingStatusIcon } from './ReadingStatusIcon'
 import { Button as UiButton } from './ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from './ui/dialog'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import { Input } from './ui/input'
 import { AnnotationView } from './viewlets/AnnotationView'
 import { ImageView } from './viewlets/ImageView'
@@ -142,9 +131,7 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
     const targets = [window, ...getIframeWindows()]
     targets.forEach((target) => target.addEventListener('keydown', onKeyDown))
     return () => {
-      targets.forEach((target) =>
-        target.removeEventListener('keydown', onKeyDown),
-      )
+      targets.forEach((target) => target.removeEventListener('keydown', onKeyDown))
     }
   }, [focusedBookTab?.id, setSettingsOpen])
 
@@ -163,32 +150,17 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
   return (
     <div id="layout" className="select-none">
       <SplitView>
-        {!zenMode && (
-          <ActivityBar
-            settingsOpen={settingsOpen}
-            onSettingsOpenChange={setSettingsOpen}
-          />
-        )}
+        {!zenMode && <ActivityBar settingsOpen={settingsOpen} onSettingsOpenChange={setSettingsOpen} />}
         {!zenMode && <SideBar />}
         <Reader>{children}</Reader>
       </SplitView>
-      {!zenMode && (
-        <SettingsDialog
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-        />
-      )}
+      {!zenMode && <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
     </div>
   )
 }
 
 function isSettingsShortcut(e: KeyboardEvent) {
-  return (
-    (e.ctrlKey || e.metaKey) &&
-    !e.altKey &&
-    !e.shiftKey &&
-    (e.key === ',' || e.code === 'Comma')
-  )
+  return (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === ',' || e.code === 'Comma')
 }
 
 function getIframeWindows() {
@@ -202,13 +174,7 @@ function getIframeWindows() {
 }
 
 function isFullscreenShortcut(e: KeyboardEvent) {
-  return (
-    !e.ctrlKey &&
-    !e.metaKey &&
-    !e.altKey &&
-    !e.shiftKey &&
-    (e.key.toLowerCase() === 'f' || e.code === 'KeyF')
-  )
+  return !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && (e.key.toLowerCase() === 'f' || e.code === 'KeyF')
 }
 
 function isAppShortcutTargetBlocked(e: KeyboardEvent) {
@@ -284,10 +250,7 @@ interface SettingsActionProps {
   onSettingsOpenChange: (open: boolean) => void
 }
 
-const ActivityBar: React.FC<SettingsActionProps> = ({
-  settingsOpen,
-  onSettingsOpenChange,
-}) => {
+const ActivityBar: React.FC<SettingsActionProps> = ({ settingsOpen, onSettingsOpenChange }) => {
   useSplitViewItem('ActivityBar', {
     preferredSize: 48,
     minSize: 48,
@@ -296,31 +259,21 @@ const ActivityBar: React.FC<SettingsActionProps> = ({
   const [, , background] = useBackground()
 
   return (
-    <div
-      className={clsx(
-        'ActivityBar flex flex-col justify-between',
-        background.activityBarClassName,
-      )}
-    >
+    <div className={clsx('ActivityBar flex flex-col justify-between', background.activityBarClassName)}>
       <ViewActionBar />
-      <PageActionBar
-        settingsOpen={settingsOpen}
-        onSettingsOpenChange={onSettingsOpenChange}
-      />
+      <PageActionBar settingsOpen={settingsOpen} onSettingsOpenChange={onSettingsOpenChange} />
     </div>
   )
 }
 
-interface PageActionBarProps
-  extends ComponentProps<'div'>, SettingsActionProps {}
+interface PageActionBarProps extends ComponentProps<'div'>, SettingsActionProps {}
 
 function ViewActionBar({ className }: ComponentProps<'div'>) {
   const [action, setAction] = useAction()
   const [libraryAction, setLibraryAction] = useLibraryAction()
   const viewMode = useViewModeValue()
   const t = useTranslation()
-  const actions: Array<IViewAction | ILibraryViewAction> =
-    viewMode === 'library' ? libraryViewActions : viewActions
+  const actions: Array<IViewAction | ILibraryViewAction> = viewMode === 'library' ? libraryViewActions : viewActions
   const activeAction = viewMode === 'library' ? libraryAction : action
 
   return (
@@ -461,10 +414,7 @@ function useFullscreenAction() {
   return { fullscreen, toggleFullscreen }
 }
 
-function PageActionBar({
-  settingsOpen,
-  onSettingsOpenChange,
-}: PageActionBarProps) {
+function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProps) {
   const [themeOpen, setThemeOpen] = useState(false)
   const [viewMode, setViewMode] = useViewMode()
   const [zenMode, setZenMode] = useZenMode()
@@ -480,8 +430,7 @@ function PageActionBar({
     () => [
       {
         name: 'mode',
-        title:
-          viewMode === 'library' ? 'mode.return_reader' : 'mode.enter_library',
+        title: viewMode === 'library' ? 'mode.return_reader' : 'mode.enter_library',
         Icon: viewMode === 'library' ? BookOpen : Library,
         shortcutId: 'libraryReaderToggle',
         disabled: viewMode === 'library' && !focusedBookTab,
@@ -524,10 +473,7 @@ function PageActionBar({
             (fullscreen && name === 'fullscreen') ||
             (zenMode && name === 'zen') ||
             (settingsOpen && name === 'settings')
-          const titleKey =
-            name === 'mode' || name === 'fullscreen' || name === 'zen'
-              ? title
-              : `${title}.title`
+          const titleKey = name === 'mode' || name === 'fullscreen' || name === 'zen' ? title : `${title}.title`
           const actionButton = (
             <Action
               key={name}
@@ -576,10 +522,7 @@ function PageActionBar({
             return (
               <div className="relative h-12 w-12" key={name}>
                 {themeOpen && (
-                  <ThemePanel
-                    className="absolute bottom-0 left-full ml-1"
-                    onClose={() => setThemeOpen(false)}
-                  />
+                  <ThemePanel className="absolute bottom-0 left-full ml-1" onClose={() => setThemeOpen(false)} />
                 )}
                 {actionButton}
               </div>
@@ -595,9 +538,7 @@ function PageActionBar({
 
 interface ActionBarProps extends ComponentProps<'ul'> {}
 function ActionBar({ className, ...props }: ActionBarProps) {
-  return (
-    <ul className={clsx('ActionBar flex flex-col', className)} {...props} />
-  )
+  return <ul className={clsx('ActionBar flex flex-col', className)} {...props} />
 }
 
 interface ActionProps extends ComponentProps<'button'> {
@@ -606,14 +547,7 @@ interface ActionProps extends ComponentProps<'button'> {
   label: string
   shortcut?: string[]
 }
-const Action: React.FC<ActionProps> = ({
-  className,
-  Icon,
-  active,
-  label,
-  shortcut,
-  ...props
-}) => {
+const Action: React.FC<ActionProps> = ({ className, Icon, active, label, shortcut, ...props }) => {
   const button = (
     <button
       type="button"
@@ -630,22 +564,13 @@ const Action: React.FC<ActionProps> = ({
       )}
       {...props}
     >
-      {active && (
-        <div
-          className={clsx('absolute', 'inset-y-0 left-0 w-0.5', activeClass)}
-        />
-      )}
+      {active && <div className={clsx('absolute', 'inset-y-0 left-0 w-0.5', activeClass)} />}
       <Icon size={28} />
     </button>
   )
 
   return (
-    <AppTooltip
-      disabled={props.disabled}
-      label={label}
-      shortcut={shortcut}
-      side="right"
-    >
+    <AppTooltip disabled={props.disabled} label={label} shortcut={shortcut} side="right">
       {button}
     </AppTooltip>
   )
@@ -679,19 +604,11 @@ const SideBarForMode: React.FC<{
 
   return (
     <div
-      className={clsx(
-        'SideBar flex flex-col',
-        background.sidebarClassName,
-        !activeAction && '!hidden',
-      )}
+      className={clsx('SideBar flex flex-col', background.sidebarClassName, !activeAction && '!hidden')}
       style={{ width: size }}
     >
       {actions.map(({ name, View }) => (
-        <View
-          active={name === activeAction}
-          key={name}
-          className={clsx(name !== activeAction && '!hidden')}
-        />
+        <View active={name === activeAction} key={name} className={clsx(name !== activeAction && '!hidden')} />
       ))}
     </div>
   )
@@ -702,14 +619,11 @@ const libraryFilterPanelClassName =
   'rounded-md bg-(--flow-sidebar-item-bg)/70 p-2 ring-(--flow-sidebar-item-border) ring-inset'
 const libraryFilterPanelHeaderClassName = 'mb-1 flex h-6 items-center gap-1'
 const libraryFilterOptionsClassName = 'flex min-w-0 flex-wrap gap-1'
-const libraryFilterChipClassName =
-  'h-7 max-w-full min-w-0 gap-1 px-2 text-sm leading-none'
+const libraryFilterChipClassName = 'h-7 max-w-full min-w-0 gap-1 px-2 text-sm leading-none'
 const libraryFilterInactiveChipClassName =
   'bg-transparent text-(--flow-text) ring-1 ring-(--flow-sidebar-item-border) ring-inset hover:bg-(--flow-sidebar-item-bg-hover)'
-const libraryFilterSectionHeaderClassName =
-  'text-(--flow-text) text-base leading-none font-semibold'
-const libraryFilterIconButtonClassName =
-  'size-8 rounded-md text-(--flow-text-muted) hover:text-(--flow-text)'
+const libraryFilterSectionHeaderClassName = 'text-(--flow-text) text-base leading-none font-semibold'
+const libraryFilterIconButtonClassName = 'size-8 rounded-md text-(--flow-text-muted) hover:text-(--flow-text)'
 
 function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const t = useTranslation('home')
@@ -728,34 +642,18 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const [deletingTag, setDeletingTag] = useState<LibraryTagRecord>()
   const newTagInputRef = useRef<HTMLInputElement>(null)
   const authorOptions = useMemo(
-    () =>
-      getLibraryAuthorOptions(
-        books ?? [],
-        statusFilters,
-        settings.libraryPinnedAuthors ?? [],
-      ),
+    () => getLibraryAuthorOptions(books ?? [], statusFilters, settings.libraryPinnedAuthors ?? []),
     [books, settings.libraryPinnedAuthors, statusFilters],
   )
   const tagOptions = useMemo(
-    () =>
-      getLibraryTagOptions(
-        books ?? [],
-        statusFilters,
-        tags ?? [],
-        settings.libraryPinnedTags ?? [],
-      ),
+    () => getLibraryTagOptions(books ?? [], statusFilters, tags ?? [], settings.libraryPinnedTags ?? []),
     [books, settings.libraryPinnedTags, statusFilters, tags],
   )
-  const hasFilters =
-    statusFilters.length > 0 ||
-    authorFilters.length > 0 ||
-    tagFilters.length > 0
+  const hasFilters = statusFilters.length > 0 || authorFilters.length > 0 || tagFilters.length > 0
 
   const toggle = (status: (typeof libraryStatusOptions)[number]) => {
     setStatusFilters((current) =>
-      current.includes(status)
-        ? current.filter((item) => item !== status)
-        : [...current, status],
+      current.includes(status) ? current.filter((item) => item !== status) : [...current, status],
     )
   }
 
@@ -804,10 +702,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     (author: string) => {
       setSettings((current) => ({
         ...current,
-        libraryPinnedAuthors: pinLibraryAuthor(
-          current.libraryPinnedAuthors ?? [],
-          author,
-        ),
+        libraryPinnedAuthors: pinLibraryAuthor(current.libraryPinnedAuthors ?? [], author),
       }))
     },
     [setSettings],
@@ -817,10 +712,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     (author: string) => {
       setSettings((current) => ({
         ...current,
-        libraryPinnedAuthors: unpinLibraryAuthor(
-          current.libraryPinnedAuthors ?? [],
-          author,
-        ),
+        libraryPinnedAuthors: unpinLibraryAuthor(current.libraryPinnedAuthors ?? [], author),
       }))
     },
     [setSettings],
@@ -830,10 +722,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     (tagId: string) => {
       setSettings((current) => ({
         ...current,
-        libraryPinnedTags: pinLibraryTag(
-          current.libraryPinnedTags ?? [],
-          tagId,
-        ),
+        libraryPinnedTags: pinLibraryTag(current.libraryPinnedTags ?? [], tagId),
       }))
     },
     [setSettings],
@@ -843,10 +732,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     (tagId: string) => {
       setSettings((current) => ({
         ...current,
-        libraryPinnedTags: unpinLibraryTag(
-          current.libraryPinnedTags ?? [],
-          tagId,
-        ),
+        libraryPinnedTags: unpinLibraryTag(current.libraryPinnedTags ?? [], tagId),
       }))
     },
     [setSettings],
@@ -899,18 +785,10 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
 
   return (
     <PaneView className={clsx('p-3', className)}>
-      <div
-        className="flex h-full min-h-0 flex-col gap-2"
-        data-testid="library-filter-panel"
-      >
+      <div className="flex h-full min-h-0 flex-col gap-2" data-testid="library-filter-panel">
         <div className="flex h-6 items-center justify-between gap-2">
-          <div className="text-foreground text-lg leading-none font-semibold">
-            {t('library_filter.title')}
-          </div>
-          <AppTooltip
-            label={t('library_filter.clear')}
-            shortcut={getPrimaryShortcut('libraryFilterClear')}
-          >
+          <div className="text-foreground text-lg leading-none font-semibold">{t('library_filter.title')}</div>
+          <AppTooltip label={t('library_filter.clear')} shortcut={getPrimaryShortcut('libraryFilterClear')}>
             <UiButton
               type="button"
               variant="ghost"
@@ -925,14 +803,9 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
           </AppTooltip>
         </div>
 
-        <section
-          className={libraryFilterPanelClassName}
-          data-testid="library-status-filter"
-        >
+        <section className={libraryFilterPanelClassName} data-testid="library-status-filter">
           <div className={libraryFilterPanelHeaderClassName}>
-            <div className={libraryFilterSectionHeaderClassName}>
-              {t('library_filter.status')}
-            </div>
+            <div className={libraryFilterSectionHeaderClassName}>{t('library_filter.status')}</div>
           </div>
           <div className={libraryFilterOptionsClassName}>
             <UiButton
@@ -943,20 +816,15 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
               data-testid="library-filter-status-all"
               className={clsx(
                 libraryFilterChipClassName,
-                statusFilters.length !== 0 &&
-                  libraryFilterInactiveChipClassName,
+                statusFilters.length !== 0 && libraryFilterInactiveChipClassName,
               )}
               onClick={() => setStatusFilters([])}
             >
               <ReadingStatusIcon
                 status={null}
-                className={
-                  statusFilters.length === 0 ? 'text-primary-foreground' : ''
-                }
+                className={statusFilters.length === 0 ? 'text-primary-foreground' : ''}
               />
-              <span className="min-w-0 truncate leading-none">
-                {t('library_filter.all')}
-              </span>
+              <span className="min-w-0 truncate leading-none">{t('library_filter.all')}</span>
             </UiButton>
             {libraryStatusOptions.map((status) => {
               const active = statusFilters.includes(status)
@@ -968,19 +836,11 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                   variant={active ? 'default' : 'secondary'}
                   aria-pressed={active}
                   data-testid={`library-filter-status-${status}`}
-                  className={clsx(
-                    libraryFilterChipClassName,
-                    !active && libraryFilterInactiveChipClassName,
-                  )}
+                  className={clsx(libraryFilterChipClassName, !active && libraryFilterInactiveChipClassName)}
                   onClick={() => toggle(status)}
                 >
-                  <ReadingStatusIcon
-                    status={status}
-                    className={active ? 'text-primary-foreground' : ''}
-                  />
-                  <span className="min-w-0 truncate leading-none">
-                    {t(`reading_status.${status}`)}
-                  </span>
+                  <ReadingStatusIcon status={status} className={active ? 'text-primary-foreground' : ''} />
+                  <span className="min-w-0 truncate leading-none">{t(`reading_status.${status}`)}</span>
                 </UiButton>
               )
             })}
@@ -1016,9 +876,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
               ))}
             </div>
           ) : (
-            <div className="text-muted-foreground py-0.5 text-sm leading-tight">
-              {t('library_filter.no_authors')}
-            </div>
+            <div className="text-muted-foreground py-0.5 text-sm leading-tight">{t('library_filter.no_authors')}</div>
           )}
         </FilterSection>
 
@@ -1112,18 +970,12 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
               })}
             </div>
           ) : (
-            <div className="text-muted-foreground py-0.5 text-sm leading-tight">
-              {t('library_filter.no_tags')}
-            </div>
+            <div className="text-muted-foreground py-0.5 text-sm leading-tight">{t('library_filter.no_tags')}</div>
           )}
         </FilterSection>
       </div>
       {editingTag && (
-        <EditLibraryTagDialog
-          key={editingTag.id}
-          tag={editingTag}
-          onClose={() => setEditingTag(undefined)}
-        />
+        <EditLibraryTagDialog key={editingTag.id} tag={editingTag} onClose={() => setEditingTag(undefined)} />
       )}
       {deletingTag && (
         <DeleteLibraryTagDialog
@@ -1131,10 +983,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
           onDeleted={() => {
             setSettings((current) => ({
               ...current,
-              libraryPinnedTags: unpinLibraryTag(
-                current.libraryPinnedTags ?? [],
-                deletingTag.id,
-              ),
+              libraryPinnedTags: unpinLibraryTag(current.libraryPinnedTags ?? [], deletingTag.id),
             }))
             setDeletingTag(undefined)
           }}
@@ -1186,10 +1035,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
           <span className={libraryFilterSectionHeaderClassName}>{title}</span>
           <ChevronDown
             aria-hidden
-            className={clsx(
-              'size-4.5 shrink-0 transition-transform',
-              !expanded && '-rotate-90',
-            )}
+            className={clsx('size-4.5 shrink-0 transition-transform', !expanded && '-rotate-90')}
           />
         </UiButton>
         {actions}
@@ -1340,17 +1186,10 @@ const LibraryFilterChip: React.FC<LibraryFilterChipProps> = ({
         {pinned && (
           <PinIcon
             aria-hidden
-            className={clsx(
-              'size-3.5',
-              active ? 'text-primary-foreground' : 'text-muted-foreground',
-            )}
+            className={clsx('size-3.5', active ? 'text-primary-foreground' : 'text-muted-foreground')}
           />
         )}
-        <span
-          ref={labelRef}
-          className="min-w-0 truncate leading-none"
-          data-testid={labelTestId}
-        >
+        <span ref={labelRef} className="min-w-0 truncate leading-none" data-testid={labelTestId}>
           {label}
         </span>
       </UiButton>
@@ -1410,9 +1249,12 @@ interface LibraryFilterContextMenuButtonProps {
   onClick: () => void
 }
 
-const LibraryFilterContextMenuButton: React.FC<
-  LibraryFilterContextMenuButtonProps
-> = ({ danger, Icon, label, onClick }) => {
+const LibraryFilterContextMenuButton: React.FC<LibraryFilterContextMenuButtonProps> = ({
+  danger,
+  Icon,
+  label,
+  onClick,
+}) => {
   return (
     <button
       type="button"
@@ -1434,10 +1276,7 @@ interface LibraryTagDialogProps {
   tag: LibraryTagRecord
 }
 
-const EditLibraryTagDialog: React.FC<LibraryTagDialogProps> = ({
-  onClose,
-  tag,
-}) => {
+const EditLibraryTagDialog: React.FC<LibraryTagDialogProps> = ({ onClose, tag }) => {
   const t = useTranslation('home')
   const inputRef = useRef<HTMLInputElement>(null)
   const [nameState, setNameState] = useState({ tagId: tag.id, name: tag.name })
@@ -1515,11 +1354,7 @@ interface DeleteLibraryTagDialogProps extends LibraryTagDialogProps {
   onDeleted: () => void
 }
 
-const DeleteLibraryTagDialog: React.FC<DeleteLibraryTagDialogProps> = ({
-  onClose,
-  onDeleted,
-  tag,
-}) => {
+const DeleteLibraryTagDialog: React.FC<DeleteLibraryTagDialogProps> = ({ onClose, onDeleted, tag }) => {
   const t = useTranslation('home')
 
   const remove = () => {
@@ -1533,16 +1368,12 @@ const DeleteLibraryTagDialog: React.FC<DeleteLibraryTagDialogProps> = ({
         if (!open) onClose()
       }}
     >
-      <DialogContent
-        data-flow-keyboard-capture="true"
-        className="w-[min(24rem,calc(100vw-2rem))] max-w-none text-base"
-      >
+      <DialogContent data-flow-keyboard-capture="true" className="w-[min(24rem,calc(100vw-2rem))] max-w-none text-base">
         <DialogHeader>
           <DialogTitle>{t('library_filter.delete_tag')}</DialogTitle>
         </DialogHeader>
         <div className="text-muted-foreground leading-relaxed">
-          {t('library_filter.delete_tag_message')}{' '}
-          <span className="text-foreground font-medium">{tag.name}</span>
+          {t('library_filter.delete_tag_message')} <span className="text-foreground font-medium">{tag.name}</span>
         </div>
         <DialogFooter className="-mx-4 mt-1 -mb-4 px-4 py-3">
           <UiButton type="button" variant="secondary" onClick={onClose}>
@@ -1571,10 +1402,5 @@ const Reader: React.FC<ReaderProps> = ({ className, ...props }) => {
   useSplitViewItem(Reader)
   const [bg] = useBackground()
 
-  return (
-    <div
-      className={clsx('Reader flex-1 overflow-hidden', className, bg)}
-      {...props}
-    />
-  )
+  return <div className={clsx('Reader flex-1 overflow-hidden', className, bg)} {...props} />
 }

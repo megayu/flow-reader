@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { type LucideIcon, XIcon } from 'lucide-react'
-import { ComponentProps, MouseEvent, ReactNode } from 'react'
+import type { ComponentProps, MouseEvent, ReactNode } from 'react'
 
 import { activeClass } from '../styles'
 
@@ -44,8 +44,6 @@ export function Tab({
   if (!children) return null
   const tab = (
     <div
-      role="tab"
-      aria-label={children}
       className={clsx(
         'relative mx-0.5 mt-0.5 mb-0 flex cursor-pointer items-center gap-1 p-2 pr-1 text-base outline-none',
         selected
@@ -70,14 +68,7 @@ export function Tab({
       }}
       {...props}
     >
-      {focused && (
-        <div
-          className={clsx(
-            'absolute inset-x-2 top-0 h-px rounded-full',
-            activeClass,
-          )}
-        />
-      )}
+      {focused && <div className={clsx('absolute inset-x-2 top-0 h-px rounded-full', activeClass)} />}
       {dropIndicator && (
         <div
           data-flow-tab-drop-indicator={dropIndicator}
@@ -112,20 +103,9 @@ interface ListProps extends Omit<ComponentProps<'ul'>, 'onWheel'> {
   onDelete?: () => void
   onWheel?: ComponentProps<'div'>['onWheel']
 }
-const List: React.FC<ListProps> = ({
-  className,
-  onDelete,
-  onWheel,
-  ...props
-}) => {
+const List: React.FC<ListProps> = ({ className, onDelete, onWheel, ...props }) => {
   return (
-    <div
-      className={clsx(
-        'flex items-end justify-between bg-(--flow-bg-tabbar)',
-        className,
-      )}
-      onWheel={onWheel}
-    >
+    <div className={clsx('flex items-end justify-between bg-(--flow-bg-tabbar)', className)} onWheel={onWheel}>
       <ul className={clsx('scroll-h flex items-end px-2.5')} {...props} />
       {onDelete && (
         <IconButton

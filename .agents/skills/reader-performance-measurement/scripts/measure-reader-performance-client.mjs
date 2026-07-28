@@ -1,54 +1,42 @@
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
+
 import { chromium } from '@playwright/test'
 
 const CDP_URL = process.env.FLOW_READER_CDP_URL ?? 'http://127.0.0.1:9351'
 const APP_URL = process.env.FLOW_READER_APP_URL ?? 'http://127.0.0.1:7127'
 const OUT_DIR =
-  process.env.FLOW_READER_PERF_OUT_DIR ??
-  path.join(process.cwd(), 'perf-results', 'reader-performance-client')
+  process.env.FLOW_READER_PERF_OUT_DIR ?? path.join(process.cwd(), 'perf-results', 'reader-performance-client')
 const RUNS = Number(process.env.FLOW_READER_PERF_RUNS ?? 12)
-const BURST_RUNS = Number(
-  process.env.FLOW_READER_PERF_BURST_RUNS ?? Math.max(4, Math.floor(RUNS / 3)),
-)
+const BURST_RUNS = Number(process.env.FLOW_READER_PERF_BURST_RUNS ?? Math.max(4, Math.floor(RUNS / 3)))
 const STEADY_SKIP = Number(process.env.FLOW_READER_PERF_STEADY_SKIP ?? 3)
 const CPU_PROFILE = process.env.FLOW_READER_CPU_PROFILE === '1'
 const DIAGNOSTICS = process.env.FLOW_READER_PERF_DIAGNOSTICS === '1'
 const WINDOW_WIDTH = Number(process.env.FLOW_READER_PERF_WINDOW_WIDTH ?? 1600)
 const WINDOW_HEIGHT = Number(process.env.FLOW_READER_PERF_WINDOW_HEIGHT ?? 1000)
-const SKIP_WINDOW_RESIZE =
-  process.env.FLOW_READER_PERF_SKIP_WINDOW_RESIZE === '1'
-const REQUIRE_WINDOW_RESIZE =
-  process.env.FLOW_READER_PERF_REQUIRE_WINDOW_RESIZE === '1'
-const INCLUDE_TEXT_PREFIX =
-  process.env.FLOW_READER_PERF_INCLUDE_TEXT_PREFIX === '1'
+const SKIP_WINDOW_RESIZE = process.env.FLOW_READER_PERF_SKIP_WINDOW_RESIZE === '1'
+const REQUIRE_WINDOW_RESIZE = process.env.FLOW_READER_PERF_REQUIRE_WINDOW_RESIZE === '1'
+const INCLUDE_TEXT_PREFIX = process.env.FLOW_READER_PERF_INCLUDE_TEXT_PREFIX === '1'
 const HEADLESS_BROWSER = process.env.FLOW_READER_PERF_HEADLESS === '1'
 const BROWSER_CHANNEL =
-  process.env.FLOW_READER_PERF_BROWSER_CHANNEL ??
-  (process.platform === 'win32' ? 'msedge' : 'chrome')
+  process.env.FLOW_READER_PERF_BROWSER_CHANNEL ?? (process.platform === 'win32' ? 'msedge' : 'chrome')
 const BOOK_CHAPTERS = Number(process.env.FLOW_READER_PERF_BOOK_CHAPTERS ?? 120)
-const BOOK_PARAGRAPHS = Number(
-  process.env.FLOW_READER_PERF_BOOK_PARAGRAPHS ?? 20,
-)
+const BOOK_PARAGRAPHS = Number(process.env.FLOW_READER_PERF_BOOK_PARAGRAPHS ?? 20)
 const SCENARIO_FILTERS = (process.env.FLOW_READER_PERF_SCENARIOS ?? '')
   .split(',')
   .map((filter) => filter.trim())
   .filter(Boolean)
 const PERF_MODE = resolvePerfMode(process.env.FLOW_READER_PERF_MODE)
-const BOOK_SOURCE =
-  process.env.FLOW_READER_PERF_BOOK_SOURCE ??
-  (PERF_MODE === 'browser' ? 'mock' : 'native')
+const BOOK_SOURCE = process.env.FLOW_READER_PERF_BOOK_SOURCE ?? (PERF_MODE === 'browser' ? 'mock' : 'native')
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 function resolvePerfMode(value) {
   const mode = String(value || 'auto').toLowerCase()
   if (mode === 'auto') return process.platform === 'win32' ? 'tauri' : 'browser'
   if (mode === 'tauri' || mode === 'browser') return mode
-  fail(
-    `unsupported FLOW_READER_PERF_MODE "${value}"; use auto, tauri, or browser`,
-  )
+  fail(`unsupported FLOW_READER_PERF_MODE "${value}"; use auto, tauri, or browser`)
 }
 
 function fail(message, detail) {
@@ -62,11 +50,10 @@ function assert(condition, message, detail) {
 }
 
 function powershell(command) {
-  return execFileSync(
-    'powershell.exe',
-    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-  )
+  return execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
 }
 
 function setFlowWindowBoundsWin32(width, height, x = 40, y = 40) {
@@ -111,10 +98,7 @@ async function setCdpWindowBounds(target, width, height, x = 40, y = 40) {
 }
 
 function windowBoundsMatch(metrics, width, height) {
-  return (
-    Math.abs(metrics.outerWidth - width) <= 8 &&
-    Math.abs(metrics.outerHeight - height) <= 8
-  )
+  return Math.abs(metrics.outerWidth - width) <= 8 && Math.abs(metrics.outerHeight - height) <= 8
 }
 
 async function applyWindowBounds(target) {
@@ -138,11 +122,7 @@ async function applyWindowBounds(target) {
     return { method: 'win32-user32' }
   }
 
-  const cdpResize = await setCdpWindowBounds(
-    target,
-    WINDOW_WIDTH,
-    WINDOW_HEIGHT,
-  )
+  const cdpResize = await setCdpWindowBounds(target, WINDOW_WIDTH, WINDOW_HEIGHT)
   if (cdpResize.ok) {
     await wait(150)
     const metrics = await readWindowMetrics(target.page)
@@ -175,9 +155,7 @@ function makeBook(filePath, title, prefix, chapterCount, paragraphs) {
         `${prefix}-${String(i).padStart(3, '0')}-${String(p).padStart(
           2,
           '0',
-        )} ${title} ${prefix} 性能测量正文段落，用于真实客户端多标签切换和翻页响应时间量化。`.repeat(
-          4,
-        ),
+        )} ${title} ${prefix} 性能测量正文段落，用于真实客户端多标签切换和翻页响应时间量化。`.repeat(4),
       )
     }
     parts.push('')
@@ -281,10 +259,7 @@ function perfBookResource(pathname, book) {
     const padded = String(number).padStart(3, '0')
     const title = `${book.perfPrefix}-CHAPTER-${padded}`
     const paragraphs = Array.from({ length: BOOK_PARAGRAPHS }, (_, index) => {
-      const marker = `${book.perfPrefix}-${padded}-${String(index).padStart(
-        2,
-        '0',
-      )}`
+      const marker = `${book.perfPrefix}-${padded}-${String(index).padStart(2, '0')}`
       return `<p>${marker} ${book.perfTitle} deterministic reader performance paragraph for cross-platform browser measurement. This text is repeated to create stable columns, page turns, and tab switching load. ${marker} ${marker} ${marker}</p>`
     }).join('\n')
 
@@ -308,9 +283,7 @@ async function installPerfBookRoutes(page, books) {
   await page.route('**/flow-perf/**', (route) => {
     const pathname = new URL(route.request().url()).pathname
     const book = books.find((candidate) =>
-      pathname.startsWith(
-        `/flow-perf/${candidate.id.replace('flow-perf-', '').toUpperCase()}/`,
-      ),
+      pathname.startsWith(`/flow-perf/${candidate.id.replace('flow-perf-', '').toUpperCase()}/`),
     )
     const resource = book ? perfBookResource(pathname, book) : undefined
 
@@ -335,8 +308,7 @@ async function installBrowserTauriMock(page, books) {
     let nextEventId = 1
 
     const internals = (globalWindow.__TAURI_INTERNALS__ ??= {})
-    const eventInternals = (globalWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ ??=
-      {})
+    const eventInternals = (globalWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ ??= {})
     const callbacks = (internals.callbacks ??= {})
 
     globalWindow.__FLOW_PERF_TAURI__ = { settingsStore }
@@ -426,11 +398,7 @@ async function createPerfTarget() {
   if (PERF_MODE === 'tauri') {
     const browser = await chromium.connectOverCDP(CDP_URL)
     const context = browser.contexts()[0]
-    const page =
-      context
-        .pages()
-        .find((candidate) => candidate.url().includes('localhost:7127')) ||
-      context.pages()[0]
+    const page = context.pages().find((candidate) => candidate.url().includes('localhost:7127')) || context.pages()[0]
 
     if (BOOK_SOURCE === 'mock') {
       const books = createPerfBrowserBooks()
@@ -461,19 +429,13 @@ async function createPerfTarget() {
 }
 
 async function invoke(page, command, args) {
-  return page.evaluate(
-    ({ command, args }) => window.__TAURI_INTERNALS__.invoke(command, args),
-    { command, args },
-  )
+  return page.evaluate(({ command, args }) => window.__TAURI_INTERNALS__.invoke(command, args), { command, args })
 }
 
 async function ensureReaderMode(page) {
   for (let i = 0; i < 3; i += 1) {
     const libraryOverlay = await page.evaluate(
-      () =>
-        !!document.querySelector(
-          '.absolute.inset-0.z-10.min-h-0.overflow-hidden.flow-bg-content',
-        ),
+      () => !!document.querySelector('.absolute.inset-0.z-10.min-h-0.overflow-hidden.flow-bg-content'),
     )
     if (!libraryOverlay) return
     await page.keyboard.press('c')
@@ -481,10 +443,7 @@ async function ensureReaderMode(page) {
   }
   assert(
     !(await page.evaluate(
-      () =>
-        !!document.querySelector(
-          '.absolute.inset-0.z-10.min-h-0.overflow-hidden.flow-bg-content',
-        ),
+      () => !!document.querySelector('.absolute.inset-0.z-10.min-h-0.overflow-hidden.flow-bg-content'),
     )),
     'failed to enter reader mode',
   )
@@ -496,12 +455,7 @@ async function isSidebarVisible(page) {
     if (!sidebar) return false
     const rect = sidebar.getBoundingClientRect()
     const style = getComputedStyle(sidebar)
-    return (
-      style.display !== 'none' &&
-      style.visibility !== 'hidden' &&
-      rect.width > 10 &&
-      rect.height > 10
-    )
+    return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 10 && rect.height > 10
   })
 }
 
@@ -542,16 +496,10 @@ async function ensureSidebar(page, visible, panel = 'toc') {
     }
     const clicked = await clickActivityButton(page, labels)
     assert(clicked, `${panel} sidebar button not found`)
-    await waitForSettled(
-      page,
-      `sidebar ${panel} ${visible ? 'open' : 'closed'}`,
-    )
+    await waitForSettled(page, `sidebar ${panel} ${visible ? 'open' : 'closed'}`)
   }
 
-  assert(
-    (await isSidebarVisible(page)) === visible,
-    `sidebar did not become ${visible ? 'open' : 'closed'}`,
-  )
+  assert((await isSidebarVisible(page)) === visible, `sidebar did not become ${visible ? 'open' : 'closed'}`)
 }
 
 async function readState(page) {
@@ -590,40 +538,32 @@ async function readState(page) {
         height: Math.round(rect.height),
       }
     }
-    const panes = Array.from(
-      document.querySelectorAll('[data-flow-reader-pane]'),
-    ).map((pane) => {
+    const panes = Array.from(document.querySelectorAll('[data-flow-reader-pane]')).map((pane) => {
       const style = getComputedStyle(pane)
-      const frames = Array.from(pane.querySelectorAll('iframe')).map(
-        (iframe) => {
-          let text = ''
-          let location = ''
-          let readyState = ''
-          let headings = []
-          try {
-            const doc = iframe.contentDocument
-            text = doc?.body?.textContent || ''
-            location = iframe.contentWindow?.location?.href || ''
-            readyState = doc?.readyState || ''
-            headings = Array.from(
-              doc?.querySelectorAll('h1,h2,h3,[epub\\:type~="title"]') || [],
-            )
-              .map((heading) => normalize(heading.textContent).slice(0, 120))
-              .filter(Boolean)
-              .slice(0, 4)
-          } catch {}
-          return {
-            rect: rectOf(iframe),
-            location,
-            readyState,
-            textLength: normalize(text).length,
-            textPrefix: includeTextPrefix
-              ? normalize(text).slice(0, 180)
-              : undefined,
-            headings,
-          }
-        },
-      )
+      const frames = Array.from(pane.querySelectorAll('iframe')).map((iframe) => {
+        let text = ''
+        let location = ''
+        let readyState = ''
+        let headings = []
+        try {
+          const doc = iframe.contentDocument
+          text = doc?.body?.textContent || ''
+          location = iframe.contentWindow?.location?.href || ''
+          readyState = doc?.readyState || ''
+          headings = Array.from(doc?.querySelectorAll('h1,h2,h3,[epub\\:type~="title"]') || [])
+            .map((heading) => normalize(heading.textContent).slice(0, 120))
+            .filter(Boolean)
+            .slice(0, 4)
+        } catch {}
+        return {
+          rect: rectOf(iframe),
+          location,
+          readyState,
+          textLength: normalize(text).length,
+          textPrefix: includeTextPrefix ? normalize(text).slice(0, 180) : undefined,
+          headings,
+        }
+      })
       return {
         hidden: pane.getAttribute('aria-hidden') === 'true',
         opacity: style.opacity,
@@ -647,12 +587,8 @@ async function readState(page) {
             location: loc(tab.paginationSnapshot.location),
             percentage: tab.paginationSnapshot.percentage,
             spreadDivisor: tab.paginationSnapshot.spreadDivisor,
-            headerPath:
-              tab.paginationSnapshot.headerPath?.map((item) => item.label) ||
-              [],
-            visibleSectionIndexes: [
-              ...(tab.paginationSnapshot.visibleSectionIndexes || []),
-            ],
+            headerPath: tab.paginationSnapshot.headerPath?.map((item) => item.label) || [],
+            visibleSectionIndexes: [...(tab.paginationSnapshot.visibleSectionIndexes || [])],
           }
         : null,
     }))
@@ -664,23 +600,14 @@ async function readState(page) {
       activeTab,
       activePane,
       activeFrameCount: activePane?.frames.length || 0,
-      activeFrameHeadings: (activePane?.frames || []).flatMap(
-        (frame) => frame.headings || [],
-      ),
-      activeFrameText: includeTextPrefix
-        ? (activePane?.frames || []).map((frame) => frame.textPrefix).join('\n')
-        : '',
+      activeFrameHeadings: (activePane?.frames || []).flatMap((frame) => frame.headings || []),
+      activeFrameText: includeTextPrefix ? (activePane?.frames || []).map((frame) => frame.textPrefix).join('\n') : '',
       sidebarVisible: (() => {
         const sidebar = document.querySelector('.SideBar')
         if (!sidebar) return false
         const rect = sidebar.getBoundingClientRect()
         const style = getComputedStyle(sidebar)
-        return (
-          style.display !== 'none' &&
-          style.visibility !== 'hidden' &&
-          rect.width > 10 &&
-          rect.height > 10
-        )
+        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 10 && rect.height > 10
       })(),
     }
   }, INCLUDE_TEXT_PREFIX)
@@ -698,9 +625,7 @@ async function readFastInteractionState(page) {
         height: Math.round(rect.height),
       }
     }
-    const panes = Array.from(
-      document.querySelectorAll('[data-flow-reader-pane]'),
-    ).map((pane) => {
+    const panes = Array.from(document.querySelectorAll('[data-flow-reader-pane]')).map((pane) => {
       const style = getComputedStyle(pane)
       return {
         hidden: pane.getAttribute('aria-hidden') === 'true',
@@ -731,17 +656,12 @@ function assertRenderAligned(state, label) {
   assert(state.activeTab, `${label}: no active tab`)
   assert(state.activePane, `${label}: no active pane`)
   assert(
-    state.activePane.opacity === '1' &&
-      state.activePane.visibility === 'visible',
+    state.activePane.opacity === '1' && state.activePane.visibility === 'visible',
     `${label}: active pane is not visible`,
     state.activePane,
   )
   assert(state.activeFrameCount > 0, `${label}: no active iframe body`)
-  assert(
-    state.activeFrameCount <= 2,
-    `${label}: active spread has more than two frames`,
-    state.activePane,
-  )
+  assert(state.activeFrameCount <= 2, `${label}: active spread has more than two frames`, state.activePane)
   assert(
     state.activePane.frames.every((frame) => frame.textLength > 0),
     `${label}: blank iframe body`,
@@ -750,8 +670,7 @@ function assertRenderAligned(state, label) {
   const pagination = state.activeTab.pagination
   assert(pagination, `${label}: missing pagination snapshot`, state.activeTab)
   assert(
-    JSON.stringify(pagination.visibleSectionIndexes) ===
-      JSON.stringify(state.activeTab.visibleSectionIndexes),
+    JSON.stringify(pagination.visibleSectionIndexes) === JSON.stringify(state.activeTab.visibleSectionIndexes),
     `${label}: visible sections diverge`,
     { pagination, visible: state.activeTab.visibleSectionIndexes },
   )
@@ -774,8 +693,7 @@ function assertFastInteractionVisible(state, label) {
   assert(state.activeTab, `${label}: no active tab`)
   assert(state.activePane, `${label}: no active pane`)
   assert(
-    state.activePane.opacity === '1' &&
-      state.activePane.visibility === 'visible',
+    state.activePane.opacity === '1' && state.activePane.visibility === 'visible',
     `${label}: active pane is not visible`,
     state.activePane,
   )
@@ -838,9 +756,7 @@ async function waitForAllTabsReady(page, label, timeout = 30000) {
     const allReady =
       state.tabCount > 0 &&
       (await page.evaluate(() =>
-        (window.reader?.focusedGroup?.tabs || []).every(
-          (tab) => tab.paginationSnapshot && !tab.turning,
-        ),
+        (window.reader?.focusedGroup?.tabs || []).every((tab) => tab.paginationSnapshot && !tab.turning),
       ))
     if (allReady) return state
     await wait(100)
@@ -881,13 +797,7 @@ async function installPerfInstrumentation(page) {
       } catch {}
     }
 
-    const methods = [
-      'display',
-      'next',
-      'prev',
-      'resizeRendition',
-      'relayoutCurrentView',
-    ]
+    const methods = ['display', 'next', 'prev', 'resizeRendition', 'relayoutCurrentView']
 
     const classifyElement = (node) => {
       if (!(node instanceof Element)) return 'unknown'
@@ -930,43 +840,23 @@ async function installPerfInstrumentation(page) {
         if (!target) return
         const observer = new MutationObserver((mutations) => {
           mutations.forEach((mutation) => {
-            const targetKey =
-              name === 'document' ? classifyElement(mutation.target) : name
-            const detailKey = `${targetKey}:${classifyElementDetail(
-              mutation.target,
-            )}`
+            const targetKey = name === 'document' ? classifyElement(mutation.target) : name
+            const detailKey = `${targetKey}:${classifyElementDetail(mutation.target)}`
             incrementDiagnostic('mutations', `${targetKey}:records`)
             incrementDiagnostic('mutations', `${detailKey}:records`)
             if (mutation.type === 'attributes') {
               incrementDiagnostic('mutations', `${targetKey}:attributes`)
               incrementDiagnostic('mutations', `${detailKey}:attributes`)
-              incrementDiagnostic(
-                'mutations',
-                `${detailKey}:attr:${mutation.attributeName || 'unknown'}`,
-              )
+              incrementDiagnostic('mutations', `${detailKey}:attr:${mutation.attributeName || 'unknown'}`)
             }
             if (mutation.type === 'childList') {
-              incrementDiagnostic(
-                'mutations',
-                `${targetKey}:added`,
-                mutation.addedNodes.length,
-              )
+              incrementDiagnostic('mutations', `${targetKey}:added`, mutation.addedNodes.length)
               mutation.addedNodes.forEach((node) => {
-                incrementDiagnostic(
-                  'mutations',
-                  `${targetKey}:${classifyElementDetail(node)}:added`,
-                )
+                incrementDiagnostic('mutations', `${targetKey}:${classifyElementDetail(node)}:added`)
               })
-              incrementDiagnostic(
-                'mutations',
-                `${targetKey}:removed`,
-                mutation.removedNodes.length,
-              )
+              incrementDiagnostic('mutations', `${targetKey}:removed`, mutation.removedNodes.length)
               mutation.removedNodes.forEach((node) => {
-                incrementDiagnostic(
-                  'mutations',
-                  `${targetKey}:${classifyElementDetail(node)}:removed`,
-                )
+                incrementDiagnostic('mutations', `${targetKey}:${classifyElementDetail(node)}:removed`)
               })
             }
           })
@@ -1091,10 +981,7 @@ async function navigateTabTo(page, tabIndex, sectionIndex, nextCount = 0) {
       group.selectTab(tabIndex)
       const tab = group.tabs[tabIndex]
       const deadline = Date.now() + 30000
-      while (
-        (!tab.sections || !tab.sections[sectionIndex]) &&
-        Date.now() < deadline
-      ) {
+      while (!tab.sections?.[sectionIndex] && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 100))
       }
       const section = tab.sections?.[sectionIndex]
@@ -1112,37 +999,24 @@ function normalizeOperation(operation) {
 }
 
 async function measureOperation(page, label, operation) {
-  const {
-    name: operationName,
-    run,
-    expectedSelectedIndex,
-  } = normalizeOperation(operation)
+  const { name: operationName, run, expectedSelectedIndex } = normalizeOperation(operation)
   await waitForSettled(page, `${label} before`)
   await resetPerf(page)
   const start = await page.evaluate(() => performance.now())
   await run()
   const operationEnd = await page.evaluate(() => performance.now())
   const frame = await page.evaluate(
-    () =>
-      new Promise((resolve) =>
-        requestAnimationFrame(() => resolve(performance.now())),
-      ),
+    () => new Promise((resolve) => requestAnimationFrame(() => resolve(performance.now()))),
   )
   const immediate = await readState(page)
-  if (
-    typeof expectedSelectedIndex === 'number' &&
-    immediate.selectedIndex !== expectedSelectedIndex
-  ) {
+  if (typeof expectedSelectedIndex === 'number' && immediate.selectedIndex !== expectedSelectedIndex) {
     fail(`${label}: operation did not select expected tab`, {
       expectedSelectedIndex,
       state: immediate,
     })
   }
   const settledState = await waitForSettled(page, `${label} settled`)
-  if (
-    typeof expectedSelectedIndex === 'number' &&
-    settledState.selectedIndex !== expectedSelectedIndex
-  ) {
+  if (typeof expectedSelectedIndex === 'number' && settledState.selectedIndex !== expectedSelectedIndex) {
     fail(`${label}: settled on unexpected tab`, {
       expectedSelectedIndex,
       state: settledState,
@@ -1164,14 +1038,9 @@ async function measureOperation(page, label, operation) {
     settlePolls: settledState.__settled?.polls,
     longTaskCount: longtasks.length,
     longTaskTotalMs: longtasks.reduce((sum, entry) => sum + entry.duration, 0),
-    longTaskMaxMs: longtasks.reduce(
-      (max, entry) => Math.max(max, entry.duration),
-      0,
-    ),
+    longTaskMaxMs: longtasks.reduce((max, entry) => Math.max(max, entry.duration), 0),
     counters: sumCounters(perf.counters),
-    diagnostics: perf.diagnostics?.enabled
-      ? summarizeDiagnostics(perf.diagnostics)
-      : undefined,
+    diagnostics: perf.diagnostics?.enabled ? summarizeDiagnostics(perf.diagnostics) : undefined,
   }
 }
 
@@ -1197,15 +1066,12 @@ function cpuProfileNodeLabel(node) {
   const fn = frame.functionName || '(anonymous)'
   const url = frame.url || '(unknown)'
   const line = typeof frame.lineNumber === 'number' ? frame.lineNumber + 1 : 0
-  const column =
-    typeof frame.columnNumber === 'number' ? frame.columnNumber + 1 : 0
+  const column = typeof frame.columnNumber === 'number' ? frame.columnNumber + 1 : 0
   return `${fn} @ ${url}:${line}:${column}`
 }
 
 function summarizeCpuProfile(profile, limit = 30) {
-  const nodesById = new Map(
-    (profile.nodes ?? []).map((node) => [node.id, node]),
-  )
+  const nodesById = new Map((profile.nodes ?? []).map((node) => [node.id, node]))
   const selfTimeById = new Map()
   const samples = profile.samples ?? []
   const timeDeltas = profile.timeDeltas ?? []
@@ -1215,10 +1081,7 @@ function summarizeCpuProfile(profile, limit = 30) {
     selfTimeById.set(nodeId, (selfTimeById.get(nodeId) ?? 0) + deltaMs)
   })
 
-  const totalMs = [...selfTimeById.values()].reduce(
-    (sum, time) => sum + time,
-    0,
-  )
+  const totalMs = [...selfTimeById.values()].reduce((sum, time) => sum + time, 0)
 
   const topSelfTime = [...selfTimeById.entries()]
     .flatMap(([nodeId, selfMs]) => {
@@ -1257,10 +1120,7 @@ async function profileOperation(page, label, operation) {
   const start = await page.evaluate(() => performance.now())
   await run()
   const frame = await page.evaluate(
-    () =>
-      new Promise((resolve) =>
-        requestAnimationFrame(() => resolve(performance.now())),
-      ),
+    () => new Promise((resolve) => requestAnimationFrame(() => resolve(performance.now()))),
   )
   const immediate = await readState(page)
   await waitForSettled(page, `${label} profile settled`)
@@ -1278,10 +1138,7 @@ async function profileOperation(page, label, operation) {
     settledMs: settled - start,
     longTaskCount: longtasks.length,
     longTaskTotalMs: longtasks.reduce((sum, entry) => sum + entry.duration, 0),
-    longTaskMaxMs: longtasks.reduce(
-      (max, entry) => Math.max(max, entry.duration),
-      0,
-    ),
+    longTaskMaxMs: longtasks.reduce((max, entry) => Math.max(max, entry.duration), 0),
     counters: sumCounters(perf.counters),
     cpu: summarizeCpuProfile(profile),
   }
@@ -1290,10 +1147,7 @@ async function profileOperation(page, label, operation) {
 function percentile(values, p) {
   if (!values.length) return 0
   const sorted = [...values].sort((a, b) => a - b)
-  const index = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.ceil((p / 100) * sorted.length) - 1),
-  )
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1))
   return sorted[index]
 }
 
@@ -1397,8 +1251,7 @@ async function measureScenario(page, name, operations) {
     const operation = operations[i % operations.length]
     samples.push(await measureOperation(page, `${name} #${i + 1}`, operation))
   }
-  const steadySamples =
-    samples.length > STEADY_SKIP ? samples.slice(STEADY_SKIP) : samples
+  const steadySamples = samples.length > STEADY_SKIP ? samples.slice(STEADY_SKIP) : samples
   return {
     name,
     summary: summarizeSamples(samples),
@@ -1422,10 +1275,7 @@ async function measureBurstOperation(page, label, operations, options = {}) {
     await operation.run()
     const operationEnd = await page.evaluate(() => performance.now())
     const frame = await page.evaluate(
-      () =>
-        new Promise((resolve) =>
-          requestAnimationFrame(() => resolve(performance.now())),
-        ),
+      () => new Promise((resolve) => requestAnimationFrame(() => resolve(performance.now()))),
     )
     const state = await readFastInteractionState(page)
 
@@ -1468,21 +1318,14 @@ async function measureBurstOperation(page, label, operations, options = {}) {
     postBurstSettleMs: settled - burstEnd,
     settlePolls: settledState.__settled?.polls,
     maxStepOperationMs: Math.max(...steps.map((step) => step.operationMs)),
-    avgStepOperationMs:
-      steps.reduce((sum, step) => sum + step.operationMs, 0) / steps.length,
+    avgStepOperationMs: steps.reduce((sum, step) => sum + step.operationMs, 0) / steps.length,
     maxStepFirstFrameMs: Math.max(...steps.map((step) => step.firstFrameMs)),
-    avgStepFirstFrameMs:
-      steps.reduce((sum, step) => sum + step.firstFrameMs, 0) / steps.length,
+    avgStepFirstFrameMs: steps.reduce((sum, step) => sum + step.firstFrameMs, 0) / steps.length,
     longTaskCount: longtasks.length,
     longTaskTotalMs: longtasks.reduce((sum, entry) => sum + entry.duration, 0),
-    longTaskMaxMs: longtasks.reduce(
-      (max, entry) => Math.max(max, entry.duration),
-      0,
-    ),
+    longTaskMaxMs: longtasks.reduce((max, entry) => Math.max(max, entry.duration), 0),
     counters: sumCounters(perf.counters),
-    diagnostics: perf.diagnostics?.enabled
-      ? summarizeDiagnostics(perf.diagnostics)
-      : undefined,
+    diagnostics: perf.diagnostics?.enabled ? summarizeDiagnostics(perf.diagnostics) : undefined,
     steps,
   }
 }
@@ -1579,14 +1422,7 @@ function summarizeBurstSamples(samples) {
 async function measureBurstScenario(page, name, operations, options = {}) {
   const samples = []
   for (let i = 0; i < BURST_RUNS; i += 1) {
-    samples.push(
-      await measureBurstOperation(
-        page,
-        `${name} #${i + 1}`,
-        operations,
-        options,
-      ),
-    )
+    samples.push(await measureBurstOperation(page, `${name} #${i + 1}`, operations, options))
   }
   return {
     name,
@@ -1597,10 +1433,7 @@ async function measureBurstScenario(page, name, operations, options = {}) {
 }
 
 function repeatOperations(operations, count) {
-  return Array.from(
-    { length: count },
-    (_, index) => operations[index % operations.length],
-  )
+  return Array.from({ length: count }, (_, index) => operations[index % operations.length])
 }
 
 function shouldMeasureScenario(name) {
@@ -1611,31 +1444,11 @@ function shouldMeasureScenario(name) {
 async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true })
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-perf-books-'))
-  const bookPaths = ['A', 'B', 'C'].map((name) =>
-    path.join(tempDir, `FLOW_PERF_${name}.txt`),
-  )
+  const bookPaths = ['A', 'B', 'C'].map((name) => path.join(tempDir, `FLOW_PERF_${name}.txt`))
   if (PERF_MODE === 'tauri') {
-    makeBook(
-      bookPaths[0],
-      'FLOW_PERF_A',
-      'PERF_A',
-      BOOK_CHAPTERS,
-      BOOK_PARAGRAPHS,
-    )
-    makeBook(
-      bookPaths[1],
-      'FLOW_PERF_B',
-      'PERF_B',
-      BOOK_CHAPTERS,
-      BOOK_PARAGRAPHS,
-    )
-    makeBook(
-      bookPaths[2],
-      'FLOW_PERF_C',
-      'PERF_C',
-      BOOK_CHAPTERS,
-      BOOK_PARAGRAPHS,
-    )
+    makeBook(bookPaths[0], 'FLOW_PERF_A', 'PERF_A', BOOK_CHAPTERS, BOOK_PARAGRAPHS)
+    makeBook(bookPaths[1], 'FLOW_PERF_B', 'PERF_B', BOOK_CHAPTERS, BOOK_PARAGRAPHS)
+    makeBook(bookPaths[2], 'FLOW_PERF_C', 'PERF_C', BOOK_CHAPTERS, BOOK_PARAGRAPHS)
   }
 
   const target = await createPerfTarget()
@@ -1645,11 +1458,9 @@ async function main() {
   const windowResize = await applyWindowBounds(target)
   await wait(1000)
   await page.waitForLoadState('domcontentloaded')
-  await page.waitForFunction(
-    () => Boolean(window.__TAURI_INTERNALS__?.invoke && window.reader),
-    null,
-    { timeout: 30000 },
-  )
+  await page.waitForFunction(() => Boolean(window.__TAURI_INTERNALS__?.invoke && window.reader), null, {
+    timeout: 30000,
+  })
 
   const imported =
     BOOK_SOURCE === 'mock'
@@ -1701,9 +1512,7 @@ async function main() {
     if (!shouldMeasureScenario(name)) return
 
     try {
-      scenarios.push(
-        await measureBurstScenario(page, name, operations, options),
-      )
+      scenarios.push(await measureBurstScenario(page, name, operations, options))
     } catch (error) {
       scenarios.push({
         name,
@@ -1721,20 +1530,14 @@ async function main() {
   const selectTabOperation = (index) => ({
     name: `select-tab-${index + 1}`,
     expectedSelectedIndex: index,
-    run: () =>
-      page.evaluate(
-        (index) => window.reader.focusedGroup.selectTab(index),
-        index,
-      ),
+    run: () => page.evaluate((index) => window.reader.focusedGroup.selectTab(index), index),
   })
   const clickTabOperation = (index) => ({
     name: `click-tab-${index + 1}`,
     expectedSelectedIndex: index,
     run: () =>
       page.evaluate((index) => {
-        const tabs = Array.from(
-          document.querySelectorAll('.ReaderGroup [role="tab"]'),
-        )
+        const tabs = Array.from(document.querySelectorAll('.ReaderGroup [role="tab"]'))
         const tab = tabs[index]
         if (!(tab instanceof HTMLElement)) {
           throw new Error(`reader tab ${index} not found`)
@@ -1742,48 +1545,30 @@ async function main() {
         tab.click()
       }, index),
   })
-  const tabSwitchOps = [
-    selectTabOperation(1),
-    selectTabOperation(2),
-    selectTabOperation(0),
-  ]
-  const tabClickOps = [
-    clickTabOperation(1),
-    clickTabOperation(2),
-    clickTabOperation(0),
-  ]
+  const tabSwitchOps = [selectTabOperation(1), selectTabOperation(2), selectTabOperation(0)]
+  const tabClickOps = [clickTabOperation(1), clickTabOperation(2), clickTabOperation(0)]
   const profiles = []
 
   if (CPU_PROFILE) {
     await ensureSidebar(page, true, 'toc')
-    profiles.push(
-      await profileOperation(
-        page,
-        'cpu-profile/tab-switch/sidebar-toc',
-        tabSwitchOps[0],
-      ),
-    )
+    profiles.push(await profileOperation(page, 'cpu-profile/tab-switch/sidebar-toc', tabSwitchOps[0]))
   }
 
   await ensureSidebar(page, false)
   await recordScenario('tab-switch/sidebar-closed', tabSwitchOps)
   await recordScenario('tab-click/sidebar-closed', tabClickOps)
-  await recordBurstScenario(
-    'rapid-tab-click/sidebar-closed',
-    repeatOperations(tabClickOps, 18),
-    { assertEachFrameVisible: true },
-  )
+  await recordBurstScenario('rapid-tab-click/sidebar-closed', repeatOperations(tabClickOps, 18), {
+    assertEachFrameVisible: true,
+  })
 
   for (const panel of ['toc', 'search', 'annotation', 'image']) {
     await ensureSidebar(page, true, panel)
     await recordScenario(`tab-switch/sidebar-${panel}`, tabSwitchOps)
     await recordScenario(`tab-click/sidebar-${panel}`, tabClickOps)
     if (panel === 'toc') {
-      await recordBurstScenario(
-        'rapid-tab-click/sidebar-toc',
-        repeatOperations(tabClickOps, 18),
-        { assertEachFrameVisible: true },
-      )
+      await recordBurstScenario('rapid-tab-click/sidebar-toc', repeatOperations(tabClickOps, 18), {
+        assertEachFrameVisible: true,
+      })
     }
   }
 
@@ -1841,18 +1626,12 @@ async function main() {
   await ensureSidebar(page, false)
   await recordScenario('page-turn/sidebar-closed', pageTurnOps)
   await recordScenario('page-turn-api/sidebar-closed', pageTurnApiOps)
-  await recordBurstScenario(
-    'rapid-page-turn/sidebar-closed',
-    repeatOperations(pageTurnOps, 12),
-  )
+  await recordBurstScenario('rapid-page-turn/sidebar-closed', repeatOperations(pageTurnOps, 12))
   try {
     await ensureSidebar(page, true, 'toc')
     await recordScenario('page-turn/sidebar-toc', pageTurnOps)
     await recordScenario('page-turn-api/sidebar-toc', pageTurnApiOps)
-    await recordBurstScenario(
-      'rapid-page-turn/sidebar-toc',
-      repeatOperations(pageTurnOps, 12),
-    )
+    await recordBurstScenario('rapid-page-turn/sidebar-toc', repeatOperations(pageTurnOps, 12))
   } catch (error) {
     scenarios.push({
       name: 'page-turn/sidebar-toc',
@@ -1882,10 +1661,7 @@ async function main() {
     scenarios,
     profiles,
   }
-  const file = path.join(
-    OUT_DIR,
-    `reader-performance-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
-  )
+  const file = path.join(OUT_DIR, `reader-performance-${new Date().toISOString().replace(/[:.]/g, '-')}.json`)
   fs.writeFileSync(file, `${JSON.stringify(result, null, 2)}\n`, 'utf8')
   console.log(
     JSON.stringify(

@@ -21,18 +21,15 @@ export async function fetchNativeTranslation(request: {
   }
   request.signal?.addEventListener('abort', abort, { once: true })
   try {
-    const response = await invoke<NativeTranslationResponse>(
-      'fetch_translation',
-      {
-        request: {
-          provider: request.provider,
-          texts: request.texts,
-          sourceLanguage: request.sourceLanguage,
-          targetLanguage: request.targetLanguage,
-          sessionId,
-        },
+    const response = await invoke<NativeTranslationResponse>('fetch_translation', {
+      request: {
+        provider: request.provider,
+        texts: request.texts,
+        sourceLanguage: request.sourceLanguage,
+        targetLanguage: request.targetLanguage,
+        sessionId,
       },
-    )
+    })
     return response.bodies
   } finally {
     request.signal?.removeEventListener('abort', abort)

@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { normalizeDictionaryLanguage } from '../dictionary/query'
-import type {
-  DictionaryQueryLanguage,
-  SupportedDictionaryLanguage,
-} from '../dictionary/types'
+import type { DictionaryQueryLanguage, SupportedDictionaryLanguage } from '../dictionary/types'
 
 interface UseSelectionSpeechOptions {
   queryLanguage: DictionaryQueryLanguage
@@ -15,21 +12,13 @@ function normalizeLocale(locale?: string) {
   return locale?.trim().replaceAll('_', '-').toLowerCase()
 }
 
-function selectVoice(
-  voices: readonly SpeechSynthesisVoice[],
-  queryLanguage: DictionaryQueryLanguage,
-) {
+function selectVoice(voices: readonly SpeechSynthesisVoice[], queryLanguage: DictionaryQueryLanguage) {
   if (queryLanguage === 'mixed' || queryLanguage === 'unknown') return
-  const matching = voices.filter(
-    (voice) => speechLanguage(voice.lang) === queryLanguage,
-  )
+  const matching = voices.filter((voice) => speechLanguage(voice.lang) === queryLanguage)
   return matching.find((voice) => voice.default) ?? matching[0]
 }
 
-export function useSelectionSpeech({
-  queryLanguage,
-  text,
-}: UseSelectionSpeechOptions) {
+export function useSelectionSpeech({ queryLanguage, text }: UseSelectionSpeechOptions) {
   const [voices, setVoices] = useState<readonly SpeechSynthesisVoice[]>([])
   const [isSpeaking, setIsSpeaking] = useState(false)
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
@@ -105,9 +94,7 @@ export function useSelectionSpeech({
   }
 }
 
-function speechLanguage(
-  locale: string,
-): SupportedDictionaryLanguage | undefined {
+function speechLanguage(locale: string): SupportedDictionaryLanguage | undefined {
   const normalized = normalizeLocale(locale)
   if (!normalized) return
   return normalizeDictionaryLanguage(normalized.split('-')[0])

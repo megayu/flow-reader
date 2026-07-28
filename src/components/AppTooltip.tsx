@@ -1,9 +1,4 @@
-import type {
-  ComponentProps,
-  CSSProperties,
-  ReactElement,
-  ReactNode,
-} from 'react'
+import type { ComponentProps, CSSProperties, ReactElement, ReactNode } from 'react'
 import { useState } from 'react'
 
 import type { ShortcutChordValue } from '../shortcuts'
@@ -50,29 +45,15 @@ export function AppTooltip({
     <Tooltip onOpenChange={setOpen}>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
       {open && (
-        <TooltipContent
-          align={align}
-          side={side}
-          sideOffset={6}
-          style={contentStyle}
-        >
+        <TooltipContent align={align} side={side} sideOffset={6} style={contentStyle}>
           {content ?? (
             <>
-              <span className="min-w-0 text-base font-medium break-words">
-                {contentLabel}
-              </span>
+              <span className="min-w-0 text-base font-medium break-words">{contentLabel}</span>
               {description && (
-                <span className="text-muted-foreground min-w-0 text-base break-words">
-                  {description}
-                </span>
+                <span className="text-muted-foreground min-w-0 text-base break-words">{description}</span>
               )}
               {!disabled && shortcut && (
-                <ShortcutChord
-                  className="ml-1.5"
-                  compact
-                  shortcut={shortcut}
-                  variant="tooltip"
-                />
+                <ShortcutChord className="ml-1.5" compact shortcut={shortcut} variant="tooltip" />
               )}
             </>
           )}

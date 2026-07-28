@@ -16,16 +16,12 @@ export class BookLayoutTransactionController {
   enqueueResize(run: (operationId: number) => Promise<void>) {
     const operationId = ++this.operationId
 
-    this.operationPromise = this.operationPromise
-      .catch(() => undefined)
-      .then(() => run(operationId))
+    this.operationPromise = this.operationPromise.catch(() => undefined).then(() => run(operationId))
   }
 
   enqueueRelayout(run: (operationId: number) => Promise<void>) {
     const operationId = ++this.operationId
-    const operation = this.operationPromise
-      .catch(() => undefined)
-      .then(() => run(operationId))
+    const operation = this.operationPromise.catch(() => undefined).then(() => run(operationId))
 
     this.operationPromise = operation.then(
       () => undefined,
@@ -35,17 +31,10 @@ export class BookLayoutTransactionController {
   }
 
   resize(tab: BookTab, width: number, height: number) {
-    this.enqueueResize((operationId) =>
-      this.runResize(tab, operationId, width, height),
-    )
+    this.enqueueResize((operationId) => this.runResize(tab, operationId, width, height))
   }
 
-  private async runResize(
-    tab: BookTab,
-    operationId: number,
-    width: number,
-    height: number,
-  ) {
+  private async runResize(tab: BookTab, operationId: number, width: number, height: number) {
     try {
       await tab.waitForPendingNavigation()
     } catch {
@@ -65,11 +54,7 @@ export class BookLayoutTransactionController {
     const layoutKey = tab.layoutAnchorKey(width, height)
     const spread =
       tab.storedSpreadForLayout(width, height) ??
-      hydrateReflowableSpread(
-        tab.runtimeSpreadAnchor,
-        tab.sections,
-        tab.layoutStyleSignature,
-      )
+      hydrateReflowableSpread(tab.runtimeSpreadAnchor, tab.sections, tab.layoutStyleSignature)
 
     if (!rendition || !manager) return
 
@@ -106,16 +91,10 @@ export class BookLayoutTransactionController {
   }
 
   relayout(tab: BookTab, target?: string) {
-    return this.enqueueRelayout((operationId) =>
-      this.runRelayout(tab, operationId, target),
-    )
+    return this.enqueueRelayout((operationId) => this.runRelayout(tab, operationId, target))
   }
 
-  private async runRelayout(
-    tab: BookTab,
-    operationId: number,
-    target: string | undefined,
-  ) {
+  private async runRelayout(tab: BookTab, operationId: number, target: string | undefined) {
     try {
       await tab.waitForPendingNavigation()
     } catch {
@@ -151,17 +130,9 @@ export class BookLayoutTransactionController {
     const manager = tab.rendition?.manager
     const spread = contentReloadTarget
       ? undefined
-      : hydrateReflowableSpread(
-          tab.book.configuration?.spread,
-          tab.sections,
-          tab.layoutStyleSignature,
-        )
+      : hydrateReflowableSpread(tab.book.configuration?.spread, tab.sections, tab.layoutStyleSignature)
 
-    if (
-      spread &&
-      manager?.canUseLogicalReflowableSpread?.() &&
-      manager.renderReflowableSpread
-    ) {
+    if (spread && manager?.canUseLogicalReflowableSpread?.() && manager.renderReflowableSpread) {
       const requestId = tab.createManualLocationRequest({ updateAnchor: true })
       await manager.renderReflowableSpread(spread)
       await (tab.rendition as any)?.reportLocation(requestId)
@@ -170,10 +141,7 @@ export class BookLayoutTransactionController {
     }
 
     const target = tab.resolveDisplayTarget(
-      contentReloadTarget ??
-        tab.location?.start.cfi ??
-        tab.book.cfi ??
-        undefined,
+      contentReloadTarget ?? tab.location?.start.cfi ?? tab.book.cfi ?? undefined,
       'initial',
     )
     const previousRequestId = tab.currentRenditionLocationRequestId()
