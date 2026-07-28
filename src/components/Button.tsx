@@ -1,7 +1,7 @@
 import { type LucideIcon } from 'lucide-react'
 import { ComponentProps } from 'react'
 
-import { cn } from '@/lib/utils'
+import { cn } from '@/utils'
 
 import type { ShortcutChordValue } from '../shortcuts'
 

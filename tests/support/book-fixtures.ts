@@ -1,4 +1,4 @@
-import type { BookRecord } from '../../src/db'
+import type { BookRecord } from '../../src/storage'
 
 type TestBookOverrides = Omit<Partial<BookRecord>, 'metadata'> & {
   metadata?: Partial<BookRecord['metadata']>

@@ -14,15 +14,11 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 
-import { RenditionSpread } from '@flow/epubjs/types/rendition'
-import { useTranslation } from '@flow/reader/hooks/useTranslation'
-import { reader, useReaderSnapshot } from '@flow/reader/models/reader'
-import { resolveBookSpreadPolicy } from '@flow/reader/readerSpreadPolicy'
-import {
-  PageAppearance,
-  TypographyConfiguration,
-  useSettings,
-} from '@flow/reader/state'
+import { useTranslation } from '@/hooks/useTranslation'
+import { reader, useReaderSnapshot } from '@/models/reader'
+import { resolveBookSpreadPolicy } from '@/reader/spreadPolicy'
+import { PageAppearance, TypographyConfiguration, useSettings } from '@/state'
+import { RenditionSpread } from '@flow/epubjs/rendition'
 
 import { getBodyTypographyBaseline } from '../../styles'
 import { IconButton } from '../Button'

@@ -25,6 +25,17 @@ function loadTsModule(
   mocks: Record<string, any> = {},
 ): Record<string, any> {
   const sourcePath = path.join(__dirname, '..', '..', relativePath)
+  return loadTsFile(sourcePath, mocks, new Map())
+}
+
+function loadTsFile(
+  sourcePath: string,
+  mocks: Record<string, any>,
+  cache: Map<string, Record<string, any>>,
+): Record<string, any> {
+  const cached = cache.get(sourcePath)
+  if (cached) return cached
+
   const source = fs.readFileSync(sourcePath, 'utf8')
   const { outputText } = ts.transpileModule(source, {
     compilerOptions: {
@@ -37,15 +48,30 @@ function loadTsModule(
   })
   const localRequire = (id: string) => {
     if (Object.prototype.hasOwnProperty.call(mocks, id)) return mocks[id]
+
+    if (id.startsWith('.')) {
+      const base = path.resolve(path.dirname(sourcePath), id)
+      const candidate = [
+        `${base}.ts`,
+        `${base}.tsx`,
+        path.join(base, 'index.ts'),
+        path.join(base, 'index.tsx'),
+        base,
+      ].find((target) => fs.existsSync(target) && fs.statSync(target).isFile())
+      if (candidate) return loadTsFile(candidate, mocks, cache)
+    }
+
     return loadDependency(id)
   }
 
   const compiledModule = new Module(sourcePath) as DynamicModule
+  cache.set(sourcePath, compiledModule.exports)
   compiledModule.filename = sourcePath
   compiledModule.paths = NodeModule._nodeModulePaths(path.dirname(sourcePath))
   compiledModule.require = localRequire
   compiledModule._compile(outputText, sourcePath)
 
+  cache.set(sourcePath, compiledModule.exports)
   return compiledModule.exports
 }
 
@@ -68,52 +94,59 @@ const styles = loadTsModule('src/styles.ts', {
 })
 
 const annotation = loadTsModule('src/annotation.ts')
-const contextView = loadTsModule('src/components/base/ContextView.tsx')
+const contextViewLayout = loadTsModule(
+  'src/components/base/contextViewLayout.ts',
+)
 const noteLinks = loadTsModule('src/noteLinks.ts')
 const noteSemantics = loadTsModule('src/noteSemantics.ts')
 const imageFilters = loadTsModule('src/imageFilters.ts')
-const readerModel = loadTsModule('src/models/reader.ts', {
+const readerModel = loadTsModule('src/models/reader/model.ts', {
   '@github/mini-throttle/decorators': {
     debounce: () => () => undefined,
   },
   '@flow/epubjs': () => ({}),
-  '@flow/epubjs/src/utils/request': () => Promise.resolve(''),
-  '@flow/epubjs/types/navigation': {},
-  '@flow/epubjs/types/section': {},
-  '@flow/reader/env': {
+  '@flow/epubjs/navigation': {},
+  '@flow/epubjs/request': () => Promise.resolve(''),
+  '@flow/epubjs/section': {},
+  '@/env': {
     IS_SERVER: true,
   },
-  '../annotation': {
+  '@/annotation': {
     AnnotationColor: {},
     AnnotationType: {},
     createAnnotationSpine: () => [],
   },
-  '../book': {
+  '@/book': {
     getBookDisplayTitle: () => '',
   },
-  '../db': {
+  '@/storage': {
     db: {},
     searchBookText: () => [],
     unloadBookSearchText: () => undefined,
   },
-  '../externalLink': {
+  '../../storage': {
+    db: {},
+    searchBookText: () => [],
+    unloadBookSearchText: () => undefined,
+  },
+  '@/externalLink': {
     openSupportedExternalUrl: () => undefined,
   },
-  '../id': {
+  '@/id': {
     createId: () => 'test-id',
   },
-  '../noteLinks': {
+  '@/noteLinks': {
     normalizeHrefPath: (value: string) => value,
     sameHref: (a: string, b: string) => a === b,
   },
-  '../readerErrorEvents': {
+  '@/reader/errorEvents': {
     emitReaderOpenError: () => undefined,
   },
-  '../styles': {
+  '@/styles': {
     BodyTextDetectionCache: class {},
     defaultStyle: {},
   },
-  './tree': {
+  '../tree': {
     BaseTab: class {},
     dfs: () => undefined,
     find: () => undefined,
@@ -194,7 +227,7 @@ function testTextAlignIsNonPaginationStyle() {
 
 function testVerticalOverlayPlacementStaysInsidePageAndAvoidsSelection() {
   assert.strictEqual(
-    typeof contextView.layoutBesideRect,
+    typeof contextViewLayout.layoutBesideRect,
     'function',
     'Expected vertical overlays to share a testable side-placement contract',
   )
@@ -203,7 +236,7 @@ function testVerticalOverlayPlacementStaysInsidePageAndAvoidsSelection() {
   const size = { width: 160, height: 220 }
 
   assert.deepStrictEqual(
-    contextView.layoutBesideRect(
+    contextViewLayout.layoutBesideRect(
       page,
       { left: 300, top: 200, width: 20, height: 80 },
       size,
@@ -214,7 +247,7 @@ function testVerticalOverlayPlacementStaysInsidePageAndAvoidsSelection() {
   )
 
   assert.deepStrictEqual(
-    contextView.layoutBesideRect(
+    contextViewLayout.layoutBesideRect(
       page,
       { left: 20, top: 200, width: 20, height: 80 },
       size,
@@ -225,7 +258,7 @@ function testVerticalOverlayPlacementStaysInsidePageAndAvoidsSelection() {
   )
 
   assert.deepStrictEqual(
-    contextView.layoutBesideRect(
+    contextViewLayout.layoutBesideRect(
       page,
       { left: 250, top: 240, width: 20, height: 20 },
       size,
@@ -235,7 +268,7 @@ function testVerticalOverlayPlacementStaysInsidePageAndAvoidsSelection() {
     'selection menus should prefer the right side when both sides fit',
   )
 
-  const avoidingSelection = contextView.layoutBesideRect(
+  const avoidingSelection = contextViewLayout.layoutBesideRect(
     page,
     { left: 320, top: 240, width: 1, height: 1 },
     size,
@@ -261,8 +294,8 @@ function testContextViewLayoutClampsOutsideAnchorsToViewport() {
       anchor: {
         offset: -24,
         size: 1,
-        mode: contextView.LayoutAnchorMode.ALIGN,
-        position: contextView.LayoutAnchorPosition.Before,
+        mode: contextViewLayout.LayoutAnchorMode.ALIGN,
+        position: contextViewLayout.LayoutAnchorPosition.Before,
       },
       expected: 0,
     },
@@ -270,8 +303,8 @@ function testContextViewLayoutClampsOutsideAnchorsToViewport() {
       anchor: {
         offset: 560,
         size: 1,
-        mode: contextView.LayoutAnchorMode.ALIGN,
-        position: contextView.LayoutAnchorPosition.After,
+        mode: contextViewLayout.LayoutAnchorMode.ALIGN,
+        position: contextViewLayout.LayoutAnchorPosition.After,
       },
       expected: viewportSize - viewSize,
     },
@@ -279,7 +312,7 @@ function testContextViewLayoutClampsOutsideAnchorsToViewport() {
 
   for (const { anchor, expected } of anchors) {
     assert.strictEqual(
-      contextView.layout(viewportSize, viewSize, anchor),
+      contextViewLayout.layout(viewportSize, viewSize, anchor),
       expected,
       'context views must remain fully inside the viewport when the anchor is outside it',
     )

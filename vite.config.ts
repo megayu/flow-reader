@@ -20,16 +20,6 @@ export default defineConfig({
         find: /^@\//,
         replacement: `${fileURLToPath(new URL('./src', import.meta.url))}/`,
       },
-      {
-        find: /^@flow\/reader(?=\/|$)/,
-        replacement: fileURLToPath(new URL('./src', import.meta.url)),
-      },
-      {
-        find: /^@flow\/epubjs(?=\/|$)/,
-        replacement: fileURLToPath(
-          new URL('./packages/epubjs', import.meta.url),
-        ),
-      },
     ],
   },
   server: {

@@ -7,9 +7,9 @@ import {
   useState,
 } from 'react'
 
-import { useAccentColor } from '@flow/reader/hooks/theme/useSourceColor'
-import { useTranslation } from '@flow/reader/hooks/useTranslation'
-import { useSettings, type Settings } from '@flow/reader/state'
+import { useAccentColor } from '@/hooks/theme/useSourceColor'
+import { useTranslation } from '@/hooks/useTranslation'
+import { useSettings, type Settings } from '@/state'
 import {
   backgroundPresets,
   defaultAccentColor,
@@ -18,7 +18,7 @@ import {
   normalizePaletteColor,
   normalizeThemeConfiguration,
   type BackgroundPreset,
-} from '@flow/reader/styles/theme'
+} from '@/styles/theme'
 
 import { ColorPickerPopover } from '../ColorPickerPopover'
 
@@ -145,7 +145,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({
     <div
       data-flow-theme-panel
       className={clsx(
-        'text-muted-foreground ring-border z-[100] w-80 rounded-xl bg-[var(--flow-bg-panel)] p-3 text-base shadow-xl ring-1 ring-inset',
+        'text-muted-foreground ring-border z-[100] w-80 rounded-xl bg-(--flow-bg-panel) p-3 text-base shadow-xl ring-1 ring-inset',
         positioned || 'relative',
         className,
       )}
@@ -164,10 +164,10 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({
           type="button"
           aria-pressed={selectedBackground === 'custom'}
           className={clsx(
-            'group relative h-12 overflow-hidden rounded-lg border border-dashed text-left shadow-sm transition-[color,background-color,border-color,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-focus-ring)]',
+            'group relative h-12 overflow-hidden rounded-lg border border-dashed text-left shadow-sm transition-[color,background-color,border-color,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-(--flow-focus-ring)',
             selectedBackground === 'custom'
-              ? 'border-[var(--flow-accent)] ring-2 ring-[var(--flow-accent-border)]'
-              : 'border-[var(--flow-border-strong)] hover:border-[var(--flow-accent-border)]',
+              ? 'border-(--flow-accent) ring-2 ring-(--flow-accent-border)'
+              : 'border-(--flow-border-strong) hover:border-(--flow-accent-border)',
           )}
           style={{ backgroundColor: customBackground }}
           onClick={openCustomPicker}
@@ -196,7 +196,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({
         <button
           type="button"
           aria-label={t('source_color')}
-          className="border-border text-foreground flex h-8 items-center gap-2 rounded-lg border bg-[var(--flow-bg-control)] px-2 text-base transition-colors outline-none hover:bg-[var(--flow-bg-control-hover)] focus-visible:ring-2 focus-visible:ring-[var(--flow-focus-ring)]"
+          className="border-border text-foreground flex h-8 items-center gap-2 rounded-lg border bg-(--flow-bg-control) px-2 text-base transition-colors outline-none hover:bg-(--flow-bg-control-hover) focus-visible:ring-2 focus-visible:ring-(--flow-focus-ring)"
           onClick={() => {
             setCustomPickerOpen(false)
             setAccentPickerOpen(true)
@@ -284,10 +284,10 @@ const BackgroundSwatch: React.FC<BackgroundSwatchProps> = ({
       aria-pressed={selected}
       aria-label={label}
       className={clsx(
-        'group relative h-12 overflow-hidden rounded-lg border text-left shadow-sm transition-[color,background-color,border-color,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-focus-ring)]',
+        'group relative h-12 overflow-hidden rounded-lg border text-left shadow-sm transition-[color,background-color,border-color,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-(--flow-focus-ring)',
         selected
-          ? 'border-[var(--flow-accent)] ring-2 ring-[var(--flow-accent-border)]'
-          : 'border-[var(--flow-border)] hover:border-[var(--flow-accent-border)]',
+          ? 'border-(--flow-accent) ring-2 ring-(--flow-accent-border)'
+          : 'border-(--flow-border) hover:border-(--flow-accent-border)',
         className,
       )}
       style={{ backgroundColor: seed }}
@@ -309,41 +309,41 @@ const BackgroundSwatch: React.FC<BackgroundSwatchProps> = ({
 
 const ThemePreview: React.FC = () => {
   return (
-    <div className="border-border mt-3 overflow-hidden rounded-lg border bg-[var(--flow-bg-app)]">
+    <div className="border-border mt-3 overflow-hidden rounded-lg border bg-(--flow-bg-app)">
       <div className="flex h-36 min-w-0">
-        <div className="relative flex w-8 flex-col items-center gap-2 bg-[var(--flow-bg-activity)] py-2">
-          <span className="absolute inset-y-8 left-0 w-0.5 rounded-r bg-[var(--flow-accent)]" />
-          <span className="h-4 w-4 rounded bg-[var(--flow-bg-control-hover)]" />
-          <span className="h-4 w-4 rounded bg-[var(--flow-bg-control-hover)]" />
-          <span className="h-4 w-4 rounded bg-[var(--flow-accent-bg)] ring-1 ring-[var(--flow-accent-border)] ring-inset" />
+        <div className="relative flex w-8 flex-col items-center gap-2 bg-(--flow-bg-activity) py-2">
+          <span className="absolute inset-y-8 left-0 w-0.5 rounded-r bg-(--flow-accent)" />
+          <span className="h-4 w-4 rounded bg-(--flow-bg-control-hover)" />
+          <span className="h-4 w-4 rounded bg-(--flow-bg-control-hover)" />
+          <span className="h-4 w-4 rounded bg-(--flow-accent-bg) ring-1 ring-(--flow-accent-border) ring-inset" />
         </div>
-        <div className="border-border flex w-20 flex-col gap-1.5 border-r bg-[var(--flow-bg-sidebar)] p-2">
-          <span className="h-3 rounded bg-[var(--flow-sidebar-item-bg)] ring-1 ring-[var(--flow-sidebar-item-border)] ring-inset" />
-          <span className="h-3 rounded bg-[var(--flow-sidebar-item-bg-hover)] ring-1 ring-[var(--flow-sidebar-item-border)] ring-inset" />
-          <span className="h-4 rounded bg-[var(--flow-accent-bg)] ring-1 ring-[var(--flow-accent-border)] ring-inset" />
-          <span className="mt-auto h-3 rounded bg-[var(--flow-sidebar-item-bg)] ring-1 ring-[var(--flow-sidebar-item-border)] ring-inset" />
+        <div className="border-border flex w-20 flex-col gap-1.5 border-r bg-(--flow-bg-sidebar) p-2">
+          <span className="h-3 rounded bg-(--flow-sidebar-item-bg) ring-1 ring-(--flow-sidebar-item-border) ring-inset" />
+          <span className="h-3 rounded bg-(--flow-sidebar-item-bg-hover) ring-1 ring-(--flow-sidebar-item-border) ring-inset" />
+          <span className="h-4 rounded bg-(--flow-accent-bg) ring-1 ring-(--flow-accent-border) ring-inset" />
+          <span className="mt-auto h-3 rounded bg-(--flow-sidebar-item-bg) ring-1 ring-(--flow-sidebar-item-border) ring-inset" />
         </div>
-        <div className="flex min-w-0 flex-1 flex-col bg-[var(--flow-bg-content)]">
-          <div className="flex h-8 items-end gap-1 bg-[var(--flow-bg-tabbar)] px-1">
-            <span className="mb-1 h-5 w-10 rounded-md bg-[var(--flow-bg-control-hover)]" />
-            <span className="relative h-7 w-16 rounded-t-md bg-[var(--flow-bg-tab-active)] shadow-[inset_0_1px_0_var(--flow-tab-border)] before:absolute before:bottom-0 before:-left-[8px] before:size-2 before:rounded-br-md before:shadow-[4px_4px_0_4px_var(--flow-bg-tab-active)] after:absolute after:right-[-8px] after:bottom-0 after:size-2 after:rounded-bl-md after:shadow-[-4px_4px_0_4px_var(--flow-bg-tab-active)]">
-              <span className="absolute inset-x-2 top-0 h-px rounded-full bg-[var(--flow-accent)]" />
+        <div className="flex min-w-0 flex-1 flex-col bg-(--flow-bg-content)">
+          <div className="flex h-8 items-end gap-1 bg-(--flow-bg-tabbar) px-1">
+            <span className="mb-1 h-5 w-10 rounded-md bg-(--flow-bg-control-hover)" />
+            <span className="relative h-7 w-16 rounded-t-md bg-(--flow-bg-tab-active) shadow-[inset_0_1px_0_var(--flow-tab-border)] before:absolute before:bottom-0 before:-left-[8px] before:size-2 before:rounded-br-md before:shadow-[4px_4px_0_4px_var(--flow-bg-tab-active)] after:absolute after:right-[-8px] after:bottom-0 after:size-2 after:rounded-bl-md after:shadow-[-4px_4px_0_4px_var(--flow-bg-tab-active)]">
+              <span className="absolute inset-x-2 top-0 h-px rounded-full bg-(--flow-accent)" />
             </span>
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-2">
-            <span className="h-2.5 rounded bg-[var(--flow-bg-control-hover)]" />
-            <span className="h-2.5 w-5/6 rounded bg-[var(--flow-bg-control)]" />
-            <span className="h-2.5 w-2/3 rounded bg-[var(--flow-bg-control)]" />
+            <span className="h-2.5 rounded bg-(--flow-bg-control-hover)" />
+            <span className="h-2.5 w-5/6 rounded bg-(--flow-bg-control)" />
+            <span className="h-2.5 w-2/3 rounded bg-(--flow-bg-control)" />
             <div className="mt-auto flex items-center gap-1.5">
-              <span className="h-4 w-8 rounded bg-[var(--flow-bg-control)]" />
-              <span className="h-4 w-9 rounded bg-[var(--flow-accent)]" />
-              <span className="ml-auto h-4 w-8 rounded bg-[var(--flow-danger-bg)] ring-1 ring-[var(--flow-danger)] ring-inset" />
+              <span className="h-4 w-8 rounded bg-(--flow-bg-control)" />
+              <span className="h-4 w-9 rounded bg-(--flow-accent)" />
+              <span className="ml-auto h-4 w-8 rounded bg-(--flow-danger-bg) ring-1 ring-(--flow-danger) ring-inset" />
             </div>
             <div className="flex h-2 items-center gap-1">
-              <span className="h-1 flex-1 rounded-full bg-[var(--flow-bg-control-hover)]">
-                <span className="block h-full w-2/5 rounded-full bg-[var(--flow-accent)]" />
+              <span className="h-1 flex-1 rounded-full bg-(--flow-bg-control-hover)">
+                <span className="block h-full w-2/5 rounded-full bg-(--flow-accent)" />
               </span>
-              <span className="h-2 w-8 rounded-full bg-[var(--flow-accent-bg)] ring-1 ring-[var(--flow-accent-border)] ring-inset" />
+              <span className="h-2 w-8 rounded-full bg-(--flow-accent-bg) ring-1 ring-(--flow-accent-border) ring-inset" />
             </div>
           </div>
         </div>

@@ -11,19 +11,19 @@ import {
   compareBookDisplayTitle,
   getBookDisplayTitle,
   getBookTooltip,
-} from '@flow/reader/book'
-import { useBackground } from '@flow/reader/hooks/theme/useBackground'
-import { useLibrary } from '@flow/reader/hooks/useLibrary'
-import { LIST_ITEM_SIZE, useList } from '@flow/reader/hooks/useList'
-import { useTranslation } from '@flow/reader/hooks/useTranslation'
+} from '@/book'
+import { useBackground } from '@/hooks/theme/useBackground'
+import { useLibrary } from '@/hooks/useLibrary'
+import { LIST_ITEM_SIZE, useList } from '@/hooks/useList'
+import { useTranslation } from '@/hooks/useTranslation'
 import {
   BookTab,
   compareHref,
   INavItem,
   reader,
   useReaderSnapshot,
-} from '@flow/reader/models/reader'
-import { useSetViewMode } from '@flow/reader/state'
+} from '@/models/reader'
+import { useSetViewMode } from '@/state'
 
 import { AppTooltip, readerPageTooltipContentStyle } from '../AppTooltip'
 import { BookTooltipContent } from '../BookTooltipContent'
@@ -113,7 +113,7 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
                 'group/library-row focus:ring-ring relative flex w-full items-center truncate py-0 pr-3 pl-5 text-left leading-none outline-none focus:ring-1 focus:ring-inset',
                 opened &&
                   !active &&
-                  'text-foreground/85 bg-[var(--flow-bg-control)]',
+                  'text-foreground/85 bg-(--flow-bg-control)',
                 active &&
                   clsx(background.rowActiveClassName, 'text-foreground'),
               )}
@@ -135,8 +135,8 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
                 className={clsx(
                   'transition-colors',
                   active
-                    ? 'group-hover/library-row:bg-[var(--flow-bg-active-hover)]'
-                    : 'group-hover/library-row:bg-[var(--flow-bg-control-hover)]',
+                    ? 'group-hover/library-row:bg-(--flow-bg-active-hover)'
+                    : 'group-hover/library-row:bg-(--flow-bg-control-hover)',
                 )}
               />
               {(opened || active) && (
@@ -144,8 +144,8 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
                   className={clsx(
                     'absolute inset-y-1 left-1 w-0.5 rounded-full',
                     active
-                      ? 'w-1 bg-[var(--flow-accent)]'
-                      : 'bg-[var(--flow-accent-border)]',
+                      ? 'w-1 bg-(--flow-accent)'
+                      : 'bg-(--flow-accent-border)',
                   )}
                 />
               )}
@@ -397,8 +397,8 @@ const TocRow: React.FC<TocRowProps> = memo(
           className={clsx(
             'transition-colors',
             active
-              ? 'group-hover/row:bg-[var(--flow-bg-active-hover)]'
-              : 'group-hover/row:bg-[var(--flow-bg-control-hover)]',
+              ? 'group-hover/row:bg-(--flow-bg-active-hover)'
+              : 'group-hover/row:bg-(--flow-bg-control-hover)',
           )}
         />
         <Twisty

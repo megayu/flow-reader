@@ -2,8 +2,8 @@ import path from 'node:path'
 
 import { expect, test, type Page } from '@playwright/test'
 
-import type { BookRecord } from '../../src/db'
 import type { LocalDictionaryRecord } from '../../src/dictionary/native'
+import type { BookRecord } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
 import { getDictionaryMockState, installTauriMock } from '../support/tauri-mock'
 

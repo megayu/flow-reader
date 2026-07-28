@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 
-import { IS_SERVER, isTauriRuntime } from '@flow/reader/env'
+import { IS_SERVER, isTauriRuntime } from '@/env'
 
 export function isSupportedExternalUrl(value: string) {
   try {

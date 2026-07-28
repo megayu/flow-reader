@@ -2,7 +2,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { Slot } from 'radix-ui'
 import * as React from 'react'
 
-import { cn } from '@/lib/utils'
+import { cn } from '@/utils'
 
 const buttonVariants = cva(
   "group/button inline-flex cursor-pointer shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-base font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform,opacity] outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:enabled:not-aria-[haspopup]:translate-y-px disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
@@ -10,16 +10,16 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          'bg-[var(--flow-accent)] text-[var(--flow-accent-text)] hover:bg-[var(--flow-accent-solid-hover)]',
+          'bg-(--flow-accent) text-(--flow-accent-text) hover:bg-(--flow-accent-solid-hover)',
         outline:
-          'border-[var(--flow-border)] bg-transparent hover:bg-[var(--flow-bg-control-hover)] hover:text-[var(--flow-text)] aria-expanded:bg-[var(--flow-bg-control-hover)] aria-expanded:text-[var(--flow-text)]',
+          'border-(--flow-border) bg-transparent hover:bg-(--flow-bg-control-hover) hover:text-(--flow-text) aria-expanded:bg-(--flow-bg-control-hover) aria-expanded:text-(--flow-text)',
         secondary:
-          'bg-[var(--flow-bg-control)] text-[var(--flow-text)] hover:bg-[var(--flow-bg-control-hover)] aria-expanded:bg-[var(--flow-bg-control-active)] aria-expanded:text-[var(--flow-text)]',
+          'bg-(--flow-bg-control) text-(--flow-text) hover:bg-(--flow-bg-control-hover) aria-expanded:bg-(--flow-bg-control-active) aria-expanded:text-(--flow-text)',
         ghost:
-          'hover:bg-[var(--flow-bg-control-hover)] hover:text-[var(--flow-text)] aria-expanded:bg-[var(--flow-bg-control-hover)] aria-expanded:text-[var(--flow-text)]',
+          'hover:bg-(--flow-bg-control-hover) hover:text-(--flow-text) aria-expanded:bg-(--flow-bg-control-hover) aria-expanded:text-(--flow-text)',
         destructive:
-          'bg-[var(--flow-danger-bg)] text-[var(--flow-danger-text)] hover:bg-[var(--flow-danger-bg-hover)] focus-visible:border-[var(--flow-danger)] focus-visible:ring-[color-mix(in_oklch,var(--flow-danger),transparent_75%)]',
-        link: 'text-[var(--flow-accent)] underline-offset-4 hover:underline',
+          'bg-(--flow-danger-bg) text-(--flow-danger-text) hover:bg-(--flow-danger-bg-hover) focus-visible:border-(--flow-danger) focus-visible:ring-[color-mix(in_oklch,var(--flow-danger),transparent_75%)]',
+        link: 'text-(--flow-accent) underline-offset-4 hover:underline',
       },
       size: {
         default:

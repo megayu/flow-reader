@@ -36,7 +36,8 @@ import {
   useState,
 } from 'react'
 
-import { db, type LibraryTagRecord } from '../db'
+import { SettingsDialog } from '@/settings/SettingsDialog'
+
 import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
 import {
@@ -62,7 +63,7 @@ import {
   toggleLibraryTagFilter,
   unpinLibraryAuthor,
   unpinLibraryTag,
-} from '../libraryFilters'
+} from '../library/filters'
 import { useReaderSnapshot } from '../models/reader'
 import { getShortcutChords, type ShortcutActionId } from '../shortcuts'
 import {
@@ -77,13 +78,13 @@ import {
   useZenMode,
   useZenModeValue,
 } from '../state'
+import { db, type LibraryTagRecord } from '../storage'
 import { activeClass } from '../styles'
 
 import { AppTooltip } from './AppTooltip'
 import { ReadingStatusIcon } from './ReadingStatusIcon'
 import { PaneView } from './base/PaneView'
 import { SplitView, useSplitViewItem } from './base/SplitView'
-import { SettingsDialog } from './pages/settings'
 import { Button as UiButton } from './ui/button'
 import {
   Dialog,
@@ -96,7 +97,7 @@ import { Input } from './ui/input'
 import { AnnotationView } from './viewlets/AnnotationView'
 import { ImageView } from './viewlets/ImageView'
 import { SearchView } from './viewlets/SearchView'
-import { ThemePanel } from './viewlets/ThemeView'
+import { ThemePanel } from './viewlets/ThemePanel'
 import { TocView } from './viewlets/TocView'
 import { TypographyView } from './viewlets/TypographyView'
 
@@ -698,17 +699,17 @@ const SideBarForMode: React.FC<{
 
 const libraryStatusOptions = ['toRead', 'reading', 'read'] as const
 const libraryFilterPanelClassName =
-  'rounded-md bg-[var(--flow-sidebar-item-bg)]/70 p-2 ring-[var(--flow-sidebar-item-border)] ring-inset'
+  'rounded-md bg-(--flow-sidebar-item-bg)/70 p-2 ring-(--flow-sidebar-item-border) ring-inset'
 const libraryFilterPanelHeaderClassName = 'mb-1 flex h-6 items-center gap-1'
 const libraryFilterOptionsClassName = 'flex min-w-0 flex-wrap gap-1'
 const libraryFilterChipClassName =
   'h-7 max-w-full min-w-0 gap-1 px-2 text-sm leading-none'
 const libraryFilterInactiveChipClassName =
-  'bg-transparent text-[var(--flow-text)] ring-1 ring-[var(--flow-sidebar-item-border)] ring-inset hover:bg-[var(--flow-sidebar-item-bg-hover)]'
+  'bg-transparent text-(--flow-text) ring-1 ring-(--flow-sidebar-item-border) ring-inset hover:bg-(--flow-sidebar-item-bg-hover)'
 const libraryFilterSectionHeaderClassName =
-  'text-[var(--flow-text)] text-base leading-none font-semibold'
+  'text-(--flow-text) text-base leading-none font-semibold'
 const libraryFilterIconButtonClassName =
-  'size-8 rounded-md text-[var(--flow-text-muted)] hover:text-[var(--flow-text)]'
+  'size-8 rounded-md text-(--flow-text-muted) hover:text-(--flow-text)'
 
 function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const t = useTranslation('home')
@@ -1179,7 +1180,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
           size="sm"
           aria-label={`${title} section`}
           aria-expanded={expanded}
-          className="h-8 min-w-0 flex-1 justify-start gap-1.5 rounded-xl bg-transparent px-0 text-left hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 aria-expanded:bg-transparent aria-expanded:text-[var(--flow-text)]"
+          className="h-8 min-w-0 flex-1 justify-start gap-1.5 rounded-xl bg-transparent px-0 text-left hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 aria-expanded:bg-transparent aria-expanded:text-(--flow-text)"
           onClick={() => onExpandedChange(!expanded)}
         >
           <span className={libraryFilterSectionHeaderClassName}>{title}</span>

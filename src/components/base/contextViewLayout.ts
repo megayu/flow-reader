@@ -1,5 +1,3 @@
-// https://github.com/microsoft/vscode/blob/36fdf6b697cba431beb6e391b5a8c5f3606975a1/src/vs/base/browser/ui/contextview/contextview.ts
-
 export const enum LayoutAnchorPosition {
   Before,
   After,

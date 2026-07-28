@@ -1,13 +1,13 @@
 import type { Page } from '@playwright/test'
 
+import type { LocalDictionaryRecord } from '../../src/dictionary/native'
 import type {
   BookRecord,
   BookSourceStatus,
   TextImportEncodingOption,
   TextImportPreview,
   TextImportSelection,
-} from '../../src/db'
-import type { LocalDictionaryRecord } from '../../src/dictionary/native'
+} from '../../src/storage'
 
 export interface TestLibraryTagRecord {
   id: string

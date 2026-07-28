@@ -1,5 +1,5 @@
-import { cleanBookText } from './book'
-import type { BookRecord, LibraryTagRecord, ReadingStatus } from './db'
+import { cleanBookText } from '../book'
+import type { BookRecord, LibraryTagRecord, ReadingStatus } from '../storage'
 
 const authorCollator = new Intl.Collator(undefined, {
   numeric: true,

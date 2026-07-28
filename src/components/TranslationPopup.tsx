@@ -266,7 +266,7 @@ export function TranslationPopup({
             splitter.addEventListener('pointercancel', onPointerUp)
           }}
         >
-          <div className="bg-border absolute inset-x-0 top-1/2 h-px -translate-y-1/2 transition-colors group-hover:bg-[var(--flow-accent)]" />
+          <div className="bg-border absolute inset-x-0 top-1/2 h-px -translate-y-1/2 transition-colors group-hover:bg-(--flow-accent)" />
         </div>
         <div
           className="scroll overflow-y-auto px-3 py-2 text-base leading-6 whitespace-pre-wrap"

@@ -5,6 +5,38 @@
   "main": "src/index.js",
   "module": "src/index.js",
   "types": "types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./src/index.js",
+      "default": "./src/index.js"
+    },
+    "./navigation": {
+      "types": "./types/navigation.d.ts",
+      "import": "./src/navigation.js",
+      "default": "./src/navigation.js"
+    },
+    "./packaging": {
+      "types": "./types/packaging.d.ts",
+      "import": "./src/packaging.js",
+      "default": "./src/packaging.js"
+    },
+    "./rendition": {
+      "types": "./types/rendition.ts",
+      "import": "./types/rendition.ts",
+      "default": "./types/rendition.ts"
+    },
+    "./request": {
+      "types": "./types/utils/request.d.ts",
+      "import": "./src/utils/request.js",
+      "default": "./src/utils/request.js"
+    },
+    "./section": {
+      "types": "./types/section.d.ts",
+      "import": "./src/section.js",
+      "default": "./src/section.js"
+    }
+  },
   "directories": {
     "test": "test"
   },

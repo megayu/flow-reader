@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useSnapshot } from 'valtio'
 
 import { BookTab } from '../models/reader'
-import { resolveBookSpreadPolicy } from '../readerSpreadPolicy'
+import { resolveBookSpreadPolicy } from '../reader/spreadPolicy'
 import { useSettings, useZenTypographyOverrides } from '../state'
 
 function removeUndefinedProperty<T extends Record<string, any>>(obj: T) {

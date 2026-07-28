@@ -55,7 +55,7 @@ export function DictionarySourceSection({
           {retryVisible && (
             <button
               type="button"
-              className="text-muted-foreground enabled:hover:bg-muted enabled:hover:text-foreground inline-flex size-7 cursor-pointer items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-accent-border)] disabled:cursor-default"
+              className="text-muted-foreground enabled:hover:bg-muted enabled:hover:text-foreground inline-flex size-7 cursor-pointer items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-(--flow-accent-border) disabled:cursor-default"
               data-dictionary-retry={source.providerId}
               disabled={isRetrying}
               onClick={onRetry}
@@ -68,7 +68,7 @@ export function DictionarySourceSection({
           {externalUrl && (source.status !== 'loading' || isRetrying) && (
             <button
               type="button"
-              className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-7 cursor-pointer items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-accent-border)]"
+              className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-7 cursor-pointer items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-(--flow-accent-border)"
               data-dictionary-external={source.providerId}
               onClick={() => {
                 void openSupportedExternalUrl(externalUrl).catch(
@@ -110,7 +110,7 @@ export function DictionarySourceSection({
                   <h3 className="text-xl font-semibold">{entry.headword}</h3>
                 )}
                 {entry.pronunciation && (
-                  <span className="text-base font-medium text-[var(--flow-accent)]">
+                  <span className="text-base font-medium text-(--flow-accent)">
                     {entry.pronunciation}
                   </span>
                 )}

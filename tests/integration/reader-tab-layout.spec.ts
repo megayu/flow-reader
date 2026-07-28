@@ -2,7 +2,7 @@ import path from 'node:path'
 
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
-import type { BookRecord } from '../../src/db'
+import type { BookRecord } from '../../src/storage'
 
 const aliceEpubPath = path.resolve('packages/epubjs/test/fixtures/alice.epub')
 const alicePackageUrl = '/test-assets/alice.epub'
@@ -5240,7 +5240,7 @@ test('[vertical-rl] preserves double-page and panel runtime across tab reorderin
       sidebar
         .getByRole('button', { name: 'All', exact: true })
         .evaluate((element) =>
-          element.className.includes('bg-[var(--flow-accent-bg)]'),
+          element.className.includes('bg-(--flow-accent-bg)'),
         ),
     )
     .toBe(true)

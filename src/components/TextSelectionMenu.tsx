@@ -13,7 +13,6 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useSnapshot } from 'valtio'
 
 import { typeMap, colorMap, orderRangeRectsForWritingMode } from '../annotation'
-import { BookTextReplaceTarget, replaceBookText } from '../db'
 import {
   listLocalDictionariesCached,
   type LocalDictionaryRecord,
@@ -25,6 +24,7 @@ import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
 import { BookTab, reader } from '../models/reader'
 import { useSettings } from '../state'
+import { BookTextReplaceTarget, replaceBookText } from '../storage'
 import {
   resolveTranslationDirection,
   type TranslationLanguage,
@@ -36,13 +36,13 @@ import { Button, IconButton } from './Button'
 import { DictionaryPopup } from './DictionaryPopup'
 import { TextField } from './Form'
 import { TranslationPopup } from './TranslationPopup'
+import { Overlay } from './base/Overlay'
 import {
   layout,
   LayoutAnchorMode,
   LayoutAnchorPosition,
   layoutBesideRect,
-} from './base/ContextView'
-import { Overlay } from './base/Overlay'
+} from './base/contextViewLayout'
 
 interface TextSelectionMenuProps {
   tab: BookTab

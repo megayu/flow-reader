@@ -1,11 +1,11 @@
 import { CopyIcon, FoldVerticalIcon, UnfoldVerticalIcon } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
 
-import { Annotation, getAnnotationSpineTitle } from '@flow/reader/annotation'
-import { useList } from '@flow/reader/hooks/useList'
-import { useTranslation } from '@flow/reader/hooks/useTranslation'
-import { reader, useReaderSnapshot } from '@flow/reader/models/reader'
-import { copy, group, keys } from '@flow/reader/utils'
+import { Annotation, getAnnotationSpineTitle } from '@/annotation'
+import { useList } from '@/hooks/useList'
+import { useTranslation } from '@/hooks/useTranslation'
+import { reader, useReaderSnapshot } from '@/models/reader'
+import { copy, group, keys } from '@/utils'
 
 import { Row } from '../Row'
 import { Pane, PaneView, PaneViewProps } from '../base/PaneView'

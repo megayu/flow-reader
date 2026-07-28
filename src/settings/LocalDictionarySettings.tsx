@@ -11,6 +11,9 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { Button as UiButton } from '@/components/ui/button'
+import { Checkbox as UiCheckbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import {
   listLocalDictionaries,
   type LocalDictionaryLanguage,
@@ -20,26 +23,22 @@ import {
   relocateLocalDictionary,
   removeLocalDictionary,
   updateLocalDictionary,
-} from '../dictionary/native'
-import { formatLocalPathForDisplay } from '../dictionary/path'
+} from '@/dictionary/native'
+import { formatLocalPathForDisplay } from '@/dictionary/path'
 import {
   localDictionarySourceId,
   merriamWebsterSourceId,
   reconcileDictionarySourceOrder,
   zdicSourceId,
-} from '../dictionary/sourceOrder'
-import { supportedDictionaryLanguages } from '../dictionary/types'
-import { openSupportedExternalUrl } from '../externalLink'
-import { useTranslation } from '../hooks/useTranslation'
+} from '@/dictionary/sourceOrder'
+import { supportedDictionaryLanguages } from '@/dictionary/types'
+import { openSupportedExternalUrl } from '@/externalLink'
+import { useTranslation } from '@/hooks/useTranslation'
 import {
   defaultDictionarySettings,
   type Settings,
   type SetterOrUpdater,
-} from '../state'
-
-import { Button as UiButton } from './ui/button'
-import { Checkbox as UiCheckbox } from './ui/checkbox'
-import { Input } from './ui/input'
+} from '@/state'
 
 const languageLabels: Record<LocalDictionaryLanguage, string> = {
   de: 'Deutsch',
@@ -544,11 +543,11 @@ function DictionarySourceRow({
     <div
       data-dictionary-source-id={source.id}
       data-local-dictionary-id={local?.id}
-      className="relative w-full max-w-full min-w-0 overflow-hidden bg-[var(--flow-bg)] px-3 py-3"
+      className="relative w-full max-w-full min-w-0 overflow-hidden bg-(--flow-bg) px-3 py-3"
     >
       {dropAfter !== undefined && (
         <span
-          className={`pointer-events-none absolute right-0 left-0 z-10 h-0.5 bg-[var(--flow-accent)] ${
+          className={`pointer-events-none absolute right-0 left-0 z-10 h-0.5 bg-(--flow-accent) ${
             dropAfter ? 'bottom-0' : 'top-0'
           }`}
         />
@@ -629,7 +628,7 @@ function DictionarySourceRow({
         <span
           data-dictionary-drag-handle
           data-dragging="false"
-          className="text-muted-foreground flex size-7 shrink-0 cursor-grab items-center justify-center rounded-sm hover:bg-[var(--flow-bg-control-hover)] active:cursor-grabbing"
+          className="text-muted-foreground flex size-7 shrink-0 cursor-grab items-center justify-center rounded-sm hover:bg-(--flow-bg-control-hover) active:cursor-grabbing"
           onPointerDown={(event) => {
             if (event.button !== 0) return
             event.preventDefault()
@@ -790,7 +789,7 @@ function LocalDictionaryEditor({
           return (
             <label
               key={language}
-              className="flex h-7 min-w-0 cursor-pointer items-center gap-1.5 rounded-sm px-1.5 hover:bg-[var(--flow-bg-control-hover)]"
+              className="flex h-7 min-w-0 cursor-pointer items-center gap-1.5 rounded-sm px-1.5 hover:bg-(--flow-bg-control-hover)"
             >
               <UiCheckbox
                 checked={checked}

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import type { BookRecord, ReadingStatus } from '../../src/db'
+import type { BookRecord, ReadingStatus } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
 import {
   getStoredSettings,

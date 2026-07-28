@@ -9,21 +9,21 @@ import {
 } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
-import {
-  getTextImportEncodings,
-  importTextPaths,
-  previewTextImportPaths,
-} from '../db'
+import { formatErrorMessage } from '../errorMessage'
+import { useTranslation } from '../hooks/useTranslation'
+import { defaultTextImportRules, useSettings } from '../state'
 import type {
   BookRecord,
   TextImportEncodingOption,
   TextImportChapterPreview,
   TextImportPreview,
   TextImportRulesInput,
-} from '../db'
-import { formatErrorMessage } from '../errorMessage'
-import { useTranslation } from '../hooks/useTranslation'
-import { defaultTextImportRules, useSettings } from '../state'
+} from '../storage'
+import {
+  getTextImportEncodings,
+  importTextPaths,
+  previewTextImportPaths,
+} from '../storage'
 
 import { AppTooltip } from './AppTooltip'
 import { Button } from './ui/button'
@@ -304,7 +304,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
         showCloseButton={false}
         className="grid h-[min(40rem,calc(100vh-3rem))] w-[min(58rem,calc(100vw-1.5rem))] max-w-none grid-cols-[12rem_minmax(0,1fr)] gap-0 overflow-hidden p-0"
       >
-        <aside className="border-border flex min-h-0 flex-col border-r bg-[var(--flow-bg-sidebar)]">
+        <aside className="border-border flex min-h-0 flex-col border-r bg-(--flow-bg-sidebar)">
           <div className="border-border border-b px-3 py-3">
             <DialogTitle id={titleId}>{t('title')}</DialogTitle>
           </div>
@@ -321,9 +321,9 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                   key={preview.path}
                   type="button"
                   className={clsx(
-                    'mb-1 flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-[var(--flow-bg-control-hover)]',
+                    'mb-1 flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-(--flow-bg-control-hover)',
                     active &&
-                      'text-foreground bg-[var(--flow-accent-bg)] ring-1 ring-[var(--flow-accent-border)] ring-inset',
+                      'text-foreground bg-(--flow-accent-bg) ring-1 ring-(--flow-accent-border) ring-inset',
                   )}
                   onClick={() => setActivePath(preview.path)}
                 >
@@ -473,7 +473,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                     </AppTooltip>
                   )}
                 </div>
-                <div className="scroll min-h-0 flex-1 overflow-auto rounded-lg bg-[var(--flow-bg-panel)] p-2 text-base">
+                <div className="scroll min-h-0 flex-1 overflow-auto rounded-lg bg-(--flow-bg-panel) p-2 text-base">
                   <ChapterPreviewTree
                     nodes={chapterTree}
                     collapsedKeys={collapsedChapterKeys}
@@ -521,7 +521,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
               </div>
               <section className="flex min-h-0 min-w-0 flex-col py-4 pr-4 pl-2">
                 <h3 className="mb-2 text-base font-semibold">{t('sample')}</h3>
-                <pre className="scroll min-h-0 flex-1 overflow-auto rounded-lg bg-[var(--flow-bg-panel)] p-3 font-sans text-base whitespace-pre-wrap">
+                <pre className="scroll min-h-0 flex-1 overflow-auto rounded-lg bg-(--flow-bg-panel) p-3 font-sans text-base whitespace-pre-wrap">
                   {activePreview.sample}
                 </pre>
               </section>
@@ -532,7 +532,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
             </div>
           )}
 
-          <div className="border-border flex shrink-0 items-center justify-between gap-3 border-t bg-[var(--flow-bg-panel)] px-4 py-3">
+          <div className="border-border flex shrink-0 items-center justify-between gap-3 border-t bg-(--flow-bg-panel) px-4 py-3">
             <div className="text-destructive min-w-0 text-base">
               {error || activePreview?.message || ''}
             </div>
@@ -592,7 +592,7 @@ const ChapterPreviewTree: React.FC<ChapterPreviewTreeProps> = ({
             <button
               type="button"
               className={clsx(
-                'flex w-full items-center gap-1 rounded-sm py-1 pr-2 text-left hover:bg-[var(--flow-bg-control-hover)]',
+                'flex w-full items-center gap-1 rounded-sm py-1 pr-2 text-left hover:bg-(--flow-bg-control-hover)',
                 hasChildren
                   ? 'text-muted-foreground'
                   : 'text-muted-foreground/80',

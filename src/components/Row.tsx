@@ -78,8 +78,8 @@ export const Row: React.FC<RowProps> = ({
         className={clsx(
           'transition-colors',
           active
-            ? 'group-hover/row:bg-[var(--flow-bg-active-hover)]'
-            : 'group-hover/row:bg-[var(--flow-bg-control-hover)]',
+            ? 'group-hover/row:bg-(--flow-bg-active-hover)'
+            : 'group-hover/row:bg-(--flow-bg-control-hover)',
         )}
       />
       <Twisty
@@ -117,7 +117,7 @@ export const Row: React.FC<RowProps> = ({
       </div>
       <div className="relative z-10 ml-auto flex h-full items-center">
         {badge && childCount && (
-          <div className="mr-1 flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[var(--flow-bg-control)] px-1 text-sm leading-none text-[var(--flow-text-muted)] ring-1 ring-[var(--flow-border)] ring-inset">
+          <div className="mr-1 flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-(--flow-bg-control) px-1 text-sm leading-none text-(--flow-text-muted) ring-1 ring-(--flow-border) ring-inset">
             {childCount}
           </div>
         )}

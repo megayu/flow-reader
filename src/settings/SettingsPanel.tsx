@@ -2,93 +2,40 @@ import clsx from 'clsx'
 import type { CSSProperties, ReactNode } from 'react'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 
-import { RenditionSpread } from '@flow/epubjs/types/rendition'
-import { openSupportedExternalUrl } from '@flow/reader/externalLink'
-import { useAccentColor } from '@flow/reader/hooks/theme/useSourceColor'
-import { useLocale } from '@flow/reader/hooks/useLocale'
-import { useTranslation } from '@flow/reader/hooks/useTranslation'
-import { createShortcutGroups } from '@flow/reader/shortcuts'
-import { defaultTextImportRules, useSettings } from '@flow/reader/state'
 import {
-  maxUiFontSize,
-  minUiFontSize,
-  normalizeUiFontSize,
-} from '@flow/reader/styles/ui'
-import {
-  orderedTargetLanguages,
-  TRANSLATION_LANGUAGES,
-  type TranslationLanguage,
-} from '@flow/reader/translation/languages'
-
-import { AppLocale, localeNames } from '../../locales'
-import { ColorPickerPopover, normalizeHexColor } from '../ColorPickerPopover'
-import { LocalDictionarySettings } from '../LocalDictionarySettings'
-import { ShortcutChord } from '../ShortcutChord'
-import { Button as UiButton } from '../ui/button'
-import { Checkbox as UiCheckbox } from '../ui/checkbox'
-import { Dialog, DialogContent, DialogTitle } from '../ui/dialog'
+  ColorPickerPopover,
+  normalizeHexColor,
+} from '@/components/ColorPickerPopover'
+import { ShortcutChord } from '@/components/ShortcutChord'
+import { Button as UiButton } from '@/components/ui/button'
+import { Checkbox as UiCheckbox } from '@/components/ui/checkbox'
+import { DialogTitle } from '@/components/ui/dialog'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '../ui/select'
-import { Textarea } from '../ui/textarea'
+} from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import { openSupportedExternalUrl } from '@/externalLink'
+import { useAccentColor } from '@/hooks/theme/useSourceColor'
+import { useLocale } from '@/hooks/useLocale'
+import { useTranslation } from '@/hooks/useTranslation'
+import { AppLocale, localeNames } from '@/locales'
+import { createShortcutGroups } from '@/shortcuts'
+import { defaultTextImportRules, useSettings } from '@/state'
+import { maxUiFontSize, minUiFontSize, normalizeUiFontSize } from '@/styles/ui'
+import {
+  orderedTargetLanguages,
+  TRANSLATION_LANGUAGES,
+  type TranslationLanguage,
+} from '@/translation/languages'
+import { RenditionSpread } from '@flow/epubjs/rendition'
 
-interface SettingsDialogProps {
-  open: boolean
-  onClose: () => void
-}
+import { LocalDictionarySettings } from './LocalDictionarySettings'
 
-export const SettingsDialog: React.FC<SettingsDialogProps> = ({
-  open,
-  onClose,
-}) => {
-  const [popupOpen, setPopupOpen] = useState(false)
-  const contentRef = useRef<HTMLDivElement>(null)
-  const popupPointerDownOutsideRef = useRef(false)
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next && !popupOpen) onClose()
-      }}
-    >
-      <DialogContent
-        ref={contentRef}
-        data-flow-keyboard-capture="true"
-        className="h-[min(38rem,calc(100vh-4rem))] w-[min(56rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-lg p-0"
-        onEscapeKeyDown={(event) => {
-          if (
-            event.target instanceof Element &&
-            event.target.closest('[data-dictionary-inline-editor]')
-          ) {
-            event.preventDefault()
-          }
-        }}
-        onPointerDownOutside={(event) => {
-          if (popupPointerDownOutsideRef.current) {
-            popupPointerDownOutsideRef.current = false
-            event.preventDefault()
-          }
-        }}
-      >
-        <Settings
-          onPopupOpenChange={setPopupOpen}
-          onPopupPointerDownOutside={(target) => {
-            popupPointerDownOutsideRef.current = !(
-              target instanceof Node && contentRef.current?.contains(target)
-            )
-          }}
-        />
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-interface SettingsProps {
+interface SettingsPanelProps {
   onPopupOpenChange: (open: boolean) => void
   onPopupPointerDownOutside: (target: EventTarget | null) => void
 }
@@ -115,7 +62,7 @@ const TEXTAREA_SIZE_STYLE = {
 } satisfies CSSProperties
 const REGEX_TESTER_URL = 'https://regex101.com/?flavor=rust'
 
-export const Settings: React.FC<SettingsProps> = ({
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onPopupOpenChange,
   onPopupPointerDownOutside,
 }) => {
@@ -143,7 +90,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
   return (
     <div className="flex h-full w-full max-w-full min-w-0 flex-row gap-0 overflow-hidden">
-      <aside className="border-border w-40 min-w-40 shrink-0 overflow-hidden border-r bg-[var(--flow-bg-sidebar)] p-2">
+      <aside className="border-border w-40 min-w-40 shrink-0 overflow-hidden border-r bg-(--flow-bg-sidebar) p-2">
         <DialogTitle className="text-muted-foreground px-3 py-3 text-lg font-semibold">
           {t('title')}
         </DialogTitle>
@@ -158,8 +105,8 @@ export const Settings: React.FC<SettingsProps> = ({
                 className={clsx(
                   'text-muted-foreground h-9 cursor-pointer rounded-sm px-3 text-left transition-colors',
                   active
-                    ? 'bg-[var(--flow-accent-bg)] text-[var(--flow-text)] ring-1 ring-[var(--flow-accent-border)] ring-inset'
-                    : 'hover:bg-[var(--flow-bg-control-hover)]',
+                    ? 'bg-(--flow-accent-bg) text-(--flow-text) ring-1 ring-(--flow-accent-border) ring-inset'
+                    : 'hover:bg-(--flow-bg-control-hover)',
                 )}
                 style={{ fontSize: 'var(--app-font-size-md)' }}
                 onClick={() => setActiveTab(tab)}
@@ -606,7 +553,7 @@ function RegexDescription({ descriptionKey }: { descriptionKey: string }) {
     regex: (
       <button
         type="button"
-        className="cursor-pointer text-[var(--flow-accent)] underline decoration-current/50 underline-offset-2 hover:decoration-current"
+        className="cursor-pointer text-(--flow-accent) underline decoration-current/50 underline-offset-2 hover:decoration-current"
         onClick={() => {
           void openSupportedExternalUrl(REGEX_TESTER_URL).catch(() => undefined)
         }}
@@ -650,7 +597,7 @@ function SegmentedField<T extends string>({
   onChange,
 }: SegmentedFieldProps<T>) {
   return (
-    <div className="text-muted-foreground ring-border inline-flex h-8 items-center overflow-hidden rounded-lg bg-[var(--flow-bg-control)] p-0.5 ring-1 ring-inset">
+    <div className="text-muted-foreground ring-border inline-flex h-8 items-center overflow-hidden rounded-lg bg-(--flow-bg-control) p-0.5 ring-1 ring-inset">
       {options.map((option) => {
         const selected = option.value === value
 
@@ -821,7 +768,7 @@ const Item: React.FC<PartProps> = ({
 }) => {
   const information = (
     <>
-      <h3 className="text-base leading-tight font-semibold text-[var(--flow-text)]">
+      <h3 className="text-base leading-tight font-semibold text-(--flow-text)">
         {title}
       </h3>
       {description && (
@@ -892,4 +839,5 @@ const ShortcutSettings: React.FC = () => {
   )
 }
 
-Settings.displayName = 'settings'
+// PageTab uses displayName as its persisted page identifier.
+SettingsPanel.displayName = 'settings'

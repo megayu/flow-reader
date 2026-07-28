@@ -14,7 +14,7 @@ import {
   useState,
 } from 'react'
 
-import { clamp } from '@flow/reader/utils'
+import { clamp } from '@/utils'
 
 import { Overlay } from './Overlay'
 
@@ -304,9 +304,7 @@ const Sash: React.FC<SashProps> = ({ vertical, views }) => {
         className={clsx(
           'pointer-events-none absolute inset-0 transition-[background-color,opacity]',
           vertical ? 'top-1/2 -translate-y-1/2' : 'left-1/2 -translate-x-1/2',
-          highlighted
-            ? 'bg-[var(--flow-accent)]'
-            : 'bg-[var(--flow-border-strong)]',
+          highlighted ? 'bg-(--flow-accent)' : 'bg-(--flow-border-strong)',
           highlighted && (active ? 'opacity-90' : 'opacity-65'),
         )}
         style={{

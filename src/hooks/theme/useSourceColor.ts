@@ -1,10 +1,7 @@
 import { useCallback } from 'react'
 
-import { useSettings } from '@flow/reader/state'
-import {
-  defaultAccentColor,
-  normalizePaletteColor,
-} from '@flow/reader/styles/theme'
+import { useSettings } from '@/state'
+import { defaultAccentColor, normalizePaletteColor } from '@/styles/theme'
 
 export function useAccentColor() {
   const [{ theme }, setSettings] = useSettings()

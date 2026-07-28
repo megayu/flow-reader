@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { BookRecord, CoverRecord, LibraryTagRecord, db } from '../db'
+import { BookRecord, CoverRecord, LibraryTagRecord, db } from '../storage'
 
 export function useLibrary() {
   const [books, setBooks] = useState<BookRecord[] | undefined>(() =>

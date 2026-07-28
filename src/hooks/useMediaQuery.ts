@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { IS_SERVER } from '@flow/reader/env'
+import { IS_SERVER } from '@/env'
 
 export function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(false)

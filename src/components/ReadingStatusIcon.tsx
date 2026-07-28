@@ -8,7 +8,7 @@ import {
   CircleX,
 } from 'lucide-react'
 
-import type { ReadingStatus } from '../db'
+import type { ReadingStatus } from '../storage'
 
 interface ReadingStatusIconProps {
   className?: string

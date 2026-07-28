@@ -420,6 +420,15 @@ async function installBrowserTauriMock(page, books) {
       if (command === 'get_book_package_path') {
         return bookStore.get(String(args.id))?.packageUrl ?? ''
       }
+      if (command === 'get_book_reader_source') {
+        const book = bookStore.get(String(args.id))
+        return book
+          ? {
+              mode: 'opf',
+              path: book.packageUrl,
+            }
+          : null
+      }
       if (command === 'take_pending_open_paths') return []
       if (command === 'flush_storage') return null
       if (command === 'search_book_text') return []

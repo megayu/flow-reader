@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import type { BookRecord } from '../../src/db'
+import type { BookRecord } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
 import { installTauriMock } from '../support/tauri-mock'
 

@@ -1,5 +1,5 @@
 import { useNotify } from '../components/ui/notification'
-import { EpubImportResult } from '../db'
+import { EpubImportResult } from '../storage'
 
 import { useTranslation } from './useTranslation'
 

@@ -1,6 +1,6 @@
 import * as React from 'react'
 
-import { cn } from '@/lib/utils'
+import { cn } from '@/utils'
 
 function Progress({
   className,
@@ -27,7 +27,7 @@ function Progress({
       {...props}
     >
       <div
-        className="h-full rounded-full bg-[var(--flow-accent)] transition-[width] duration-200 ease-out"
+        className="h-full rounded-full bg-(--flow-accent) transition-[width] duration-200 ease-out"
         style={{ width: `${percent}%` }}
       />
     </div>

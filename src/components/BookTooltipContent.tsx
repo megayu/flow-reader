@@ -1,10 +1,7 @@
 import { BookOpenText, FileText, UserRound } from 'lucide-react'
 
-import {
-  getBookTooltipLines,
-  type BookTooltipLineKind,
-} from '@flow/reader/book'
-import type { BookRecord } from '@flow/reader/db'
+import { getBookTooltipLines, type BookTooltipLineKind } from '@/book'
+import type { BookRecord } from '@/storage'
 
 const iconMap = {
   creator: UserRound,

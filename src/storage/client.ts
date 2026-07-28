@@ -1,242 +1,33 @@
-import { convertFileSrc, invoke as invokeNative } from '@tauri-apps/api/core'
-
-import type { PackagingMetadataObject } from '@flow/epubjs/types/packaging'
-
-import type { Annotation } from './annotation'
-import type { TypographyConfiguration } from './state'
-
-export interface FileRecord {
-  id: string
-  file: File
-}
-
-export interface CoverRecord {
-  id: string
-  cover: string | null
-}
-
-export interface CoverInput {
-  mimeType: string
-  extension: string
-  data: number[]
-}
-
-export interface TextImportEncodingOption {
-  id: string
-  label: string
-}
-
-export interface TextImportChapterPreview {
-  title: string
-  level: number
-  role: 'group' | 'chapter'
-}
-
-export interface TextImportPreview {
-  path: string
-  filename: string
-  title: string
-  encoding: string
-  encodingLabel: string
-  confidence: 'high' | 'medium' | 'low' | 'failed'
-  status: 'ready' | 'needsReview' | 'error' | 'skipped'
-  selected: boolean
-  message?: string | null
-  sample: string
-  chapters: TextImportChapterPreview[]
-}
-
-export interface TextImportSelection {
-  path: string
-  encoding?: string
-  title?: string
-  creator?: string
-}
-
-export interface TextImportRulesInput {
-  groupPatterns: string[]
-  chapterPatterns: string[]
-}
-
-export type BookSourceFormat = 'epub' | 'txt'
-export type BookExportFormat = 'epub' | 'txt'
-export type BookSourceStorage = 'managed' | 'referenced'
-export type BookSourceStatus =
-  | 'available'
-  | 'changed'
-  | 'missing'
-  | 'unreadable'
-export type BookContentMode = 'normal' | 'archiveOnly'
-export type BookContentFlag = 'nonPortableArchivePaths' | 'declaresEncryption'
-
-export interface BookReaderSource {
-  mode: 'opf' | 'epub'
-  url: string
-  rootUrl?: string
-}
+import {
+  invokeStorage as invoke,
+  storagePathToUrl as filePathToUrl,
+} from './native'
+import type {
+  BookExportFormat,
+  BookImageIndexCache,
+  BookImageIndexCacheInput,
+  BookReaderSource,
+  BookRecord,
+  BookSearchResult,
+  BookSourceStatusRecord,
+  BookTextReplaceResult,
+  BookTextReplaceTarget,
+  CoverInput,
+  CoverRecord,
+  EpubImportResult,
+  LibraryTagRecord,
+  ReadingPositionInput,
+  TextImportEncodingOption,
+  TextImportPreview,
+  TextImportRulesInput,
+  TextImportSelection,
+} from './types'
 
 interface NativeBookReaderSource {
   mode: BookReaderSource['mode']
   path: string
   rootPath?: string
   book?: BookRecord
-}
-
-export interface BookTextReplaceTarget {
-  sectionHref: string
-  textNodeIndex: number
-  textNodeText: string
-  startOffset: number
-  endOffset: number
-  paragraphIndex?: number
-}
-
-export interface BookTextReplaceResult {
-  book: BookRecord
-  sectionHref: string
-  changed: boolean
-}
-
-export interface ReadingSpreadPageRecord {
-  sectionIndex: number
-  pageIndex: number
-}
-
-export interface ReadingSpreadRecord extends ReadingSpreadPageRecord {
-  version: 1
-  anchor: 'left' | 'right'
-  exact?: boolean
-  left?: ReadingSpreadPageRecord
-  right?: ReadingSpreadPageRecord
-  endsAtSectionEnd?: boolean
-  layoutStyleSignature?: string
-}
-
-export type ReadingStatus = 'toRead' | 'reading' | 'read'
-
-export interface LibraryTagRecord {
-  id: string
-  name: string
-  createdAt: number
-  updatedAt?: number
-}
-
-export interface BookRecord {
-  id: string
-  name: string
-  size: number
-  scope?: 'library' | 'external'
-  readingStatus?: ReadingStatus | null
-  sourceFormat?: BookSourceFormat
-  exportedVersions?: Partial<Record<BookExportFormat, number>>
-  contentEditedAt?: number
-  metadata: PackagingMetadataObject
-  createdAt: number
-  updatedAt?: number
-  lastReadAt?: number
-  cfi?: string
-  percentage?: number
-  tagIds?: string[]
-  definitions: string[]
-  annotations: Annotation[]
-  configuration?: {
-    typography?: TypographyConfiguration
-    spread?: ReadingSpreadRecord
-  }
-  contentHash?: string
-  contentVersion?: number
-  contentMode?: BookContentMode
-  contentFlags?: BookContentFlag[]
-  sourceStorage?: BookSourceStorage
-  sourcePath?: string
-  stateLoaded?: boolean
-}
-
-export interface BookSourceStatusRecord {
-  id: string
-  status: BookSourceStatus
-}
-
-export interface EpubImportFailure {
-  path: string
-  filename: string
-  error: string
-}
-
-export interface EpubImportResult {
-  books: BookRecord[]
-  failures: EpubImportFailure[]
-}
-
-export interface EpubImportProgress {
-  importId: string
-  total: number
-  completed: number
-  imported: number
-  failed: number
-  book?: BookRecord | null
-  failure?: EpubImportFailure | null
-}
-
-export interface ReadingPositionInput {
-  bookId: string
-  cfi?: string
-  percentage?: number
-  spread?: ReadingSpreadRecord | null
-  updatedAt: number
-  sequence: number
-}
-
-export interface BookSearchHit {
-  id: string
-  excerpt: string
-  cfi?: string | null
-  occurrence: number
-}
-
-export interface BookSearchResult {
-  id: string
-  excerpt: string
-  description?: string | null
-  sectionIndex: number
-  subitems: BookSearchHit[]
-  expanded: boolean
-}
-
-export type ImageFilterReason =
-  | 'decorative'
-  | 'duplicate'
-  | 'icon'
-  | 'inlineGlyph'
-  | 'titleArt'
-
-export interface BookImageIndexEntry {
-  src: string
-  index: number
-  hiddenByDefault: boolean
-  reason?: ImageFilterReason | null
-}
-
-export interface BookImageIndexSection {
-  sectionIndex: number
-  href: string
-  title?: string | null
-  navPath?: string[]
-  images: BookImageIndexEntry[]
-}
-
-export interface BookImageIndexCache {
-  version: number
-  extractorVersion: number
-  bookHash: string
-  contentVersion: number
-  sections: BookImageIndexSection[]
-}
-
-export interface BookImageIndexCacheInput {
-  bookHash: string
-  contentVersion: number
-  sections: BookImageIndexSection[]
 }
 
 type Listener = () => void
@@ -412,14 +203,6 @@ function isReadingPositionOnlyUpdate(
   )
 }
 
-async function invoke<T>(command: string, args?: Record<string, unknown>) {
-  if (typeof window === 'undefined') {
-    throw new Error('Native storage is not available on the server')
-  }
-
-  return invokeNative<T>(command, args)
-}
-
 function trackNativeWrite<T>(promise: Promise<T>) {
   const tracked = promise.finally(() => {
     pendingNativeWrites.delete(tracked)
@@ -432,15 +215,6 @@ function trackNativeWrite<T>(promise: Promise<T>) {
 async function waitForPendingNativeWrites() {
   while (pendingNativeWrites.size) {
     await Promise.allSettled(Array.from(pendingNativeWrites))
-  }
-}
-
-async function filePathToUrl(path: string) {
-  try {
-    const normalizedPath = path.replace(/\\/g, '/')
-    return convertFileSrc(normalizedPath)
-  } catch {
-    return path
   }
 }
 

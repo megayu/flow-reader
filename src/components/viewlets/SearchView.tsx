@@ -16,9 +16,9 @@ import {
 } from 'react'
 import Highlighter from 'react-highlight-words'
 
-import { useListSize } from '@flow/reader/hooks/useList'
-import { useTranslation } from '@flow/reader/hooks/useTranslation'
-import { IMatch, reader, useReaderSnapshot } from '@flow/reader/models/reader'
+import { useListSize } from '@/hooks/useList'
+import { useTranslation } from '@/hooks/useTranslation'
+import { IMatch, reader, useReaderSnapshot } from '@/models/reader'
 
 import { readerPageTooltipContentStyle } from '../AppTooltip'
 import { IconButton } from '../Button'

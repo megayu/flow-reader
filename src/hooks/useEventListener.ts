@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-import { IS_SERVER } from '@flow/reader/env'
+import { IS_SERVER } from '@/env'
 
 export function useEventListener<K extends keyof WindowEventMap>(
   type: K,

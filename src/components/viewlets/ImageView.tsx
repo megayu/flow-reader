@@ -14,22 +14,19 @@ import {
   useState,
 } from 'react'
 
-import { loadBookImageIndex, storeBookImageIndex } from '@flow/reader/db'
-import type {
-  BookImageIndexCache,
-  BookImageIndexCacheInput,
-} from '@flow/reader/db'
-import { useAction } from '@flow/reader/hooks/useAction'
-import { LIST_ITEM_SIZE } from '@flow/reader/hooks/useList'
-import { useTranslation } from '@flow/reader/hooks/useTranslation'
-import { createDuplicateIllustrationFilter } from '@flow/reader/imageFilters'
+import { useAction } from '@/hooks/useAction'
+import { LIST_ITEM_SIZE } from '@/hooks/useList'
+import { useTranslation } from '@/hooks/useTranslation'
+import { createDuplicateIllustrationFilter } from '@/imageFilters'
 import {
   ImageEntry,
   ISection,
   reader,
   useReaderSnapshot,
-} from '@flow/reader/models/reader'
-import { normalizeHrefPath, sameHref } from '@flow/reader/noteLinks'
+} from '@/models/reader'
+import { normalizeHrefPath, sameHref } from '@/noteLinks'
+import type { BookImageIndexCache, BookImageIndexCacheInput } from '@/storage'
+import { loadBookImageIndex, storeBookImageIndex } from '@/storage'
 
 import { Row } from '../Row'
 import { OverlayScroll, PaneView, PaneViewProps } from '../base/PaneView'
@@ -527,8 +524,8 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-11 shrink-0 items-center gap-2 bg-[var(--flow-bg-sidebar)] px-2">
-        <div className="flex h-8 min-w-0 flex-1 items-center rounded-lg bg-[var(--flow-sidebar-item-bg)] p-0.5 ring-1 ring-[var(--flow-sidebar-item-border)] ring-inset">
+      <div className="flex h-11 shrink-0 items-center gap-2 bg-(--flow-bg-sidebar) px-2">
+        <div className="flex h-8 min-w-0 flex-1 items-center rounded-lg bg-(--flow-sidebar-item-bg) p-0.5 ring-1 ring-(--flow-sidebar-item-border) ring-inset">
           {(['illustrations', 'all'] as const).map((item) => (
             <button
               key={item}
@@ -536,8 +533,8 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
               className={[
                 'flex h-full min-w-0 flex-1 items-center justify-center truncate rounded-md px-2 py-0 text-base leading-tight font-medium transition-colors',
                 mode === item
-                  ? 'bg-[var(--flow-accent-bg)] text-[var(--flow-text)] ring-1 ring-[var(--flow-accent-border)] ring-inset'
-                  : 'text-[var(--flow-text-muted)] hover:bg-[var(--flow-sidebar-item-bg-hover)] hover:text-[var(--flow-text)]',
+                  ? 'bg-(--flow-accent-bg) text-(--flow-text) ring-1 ring-(--flow-accent-border) ring-inset'
+                  : 'text-(--flow-text-muted) hover:bg-(--flow-sidebar-item-bg-hover) hover:text-(--flow-text)',
               ].join(' ')}
               onClick={() => setMode(item)}
             >
@@ -545,7 +542,7 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
             </button>
           ))}
         </div>
-        <span className="flex h-7 min-w-8 shrink-0 items-center justify-center rounded-full bg-[var(--flow-sidebar-item-bg)] px-1.5 text-sm leading-none font-medium text-[var(--flow-text-muted)] ring-1 ring-[var(--flow-sidebar-item-border)] ring-inset">
+        <span className="flex h-7 min-w-8 shrink-0 items-center justify-center rounded-full bg-(--flow-sidebar-item-bg) px-1.5 text-sm leading-none font-medium text-(--flow-text-muted) ring-1 ring-(--flow-sidebar-item-border) ring-inset">
           {mode === 'all'
             ? visibleImageCount
             : `${visibleImageCount}/${allImages.length}`}
@@ -586,7 +583,7 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
             })}
           </div>
         ) : (
-          <div className="px-5 pt-1 pb-4 text-base text-[var(--flow-text-muted)]">
+          <div className="px-5 pt-1 pb-4 text-base text-(--flow-text-muted)">
             {t('image.empty')}
           </div>
         )}
@@ -687,8 +684,8 @@ const Block: React.FC<BlockProps> = ({
                 className={clsx(
                   'focus:ring-ring block w-full cursor-pointer border-0 bg-transparent py-0 pr-2.5 pl-0 text-left outline-none focus:ring-1 focus:ring-inset',
                   active
-                    ? 'flow-bg-active hover:bg-[var(--flow-bg-active-hover)]'
-                    : 'hover:bg-[var(--flow-bg-control-hover)]',
+                    ? 'flow-bg-active hover:bg-(--flow-bg-active-hover)'
+                    : 'hover:bg-(--flow-bg-control-hover)',
                 )}
                 onClick={() => {
                   setActiveKey(key)

@@ -9,7 +9,7 @@ import {
   useState,
 } from 'react'
 
-import { cn } from '@/lib/utils'
+import { cn } from '@/utils'
 
 import { Button } from './button'
 
@@ -124,8 +124,8 @@ function NotificationToast({
       className={cn(
         'bg-popover text-popover-foreground ring-foreground/10 grid grid-cols-[auto_1fr_auto] items-center gap-2 rounded-lg p-3 text-base shadow-lg ring-1',
         notification.type === 'success'
-          ? 'border-l-4 border-l-[var(--flow-accent)]'
-          : 'border-l-4 border-l-[var(--flow-danger)]',
+          ? 'border-l-4 border-l-(--flow-accent)'
+          : 'border-l-4 border-l-(--flow-danger)',
       )}
       role={notification.type === 'error' ? 'alert' : 'status'}
     >
@@ -134,8 +134,8 @@ function NotificationToast({
         className={cn(
           'size-4',
           notification.type === 'success'
-            ? 'text-[var(--flow-accent)]'
-            : 'text-[var(--flow-danger)]',
+            ? 'text-(--flow-accent)'
+            : 'text-(--flow-danger)',
         )}
       />
       <div className="min-w-0 cursor-text space-y-1 select-text">

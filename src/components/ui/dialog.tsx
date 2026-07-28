@@ -3,7 +3,7 @@ import { Dialog as DialogPrimitive } from 'radix-ui'
 import * as React from 'react'
 
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { cn } from '@/utils'
 
 function Dialog({
   ...props
@@ -89,7 +89,7 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        '-mx-4 -mb-4 flex flex-row justify-end gap-2 rounded-b-xl border-t bg-[var(--flow-bg-panel)] p-4',
+        '-mx-4 -mb-4 flex flex-row justify-end gap-2 rounded-b-xl border-t bg-(--flow-bg-panel) p-4',
         className,
       )}
       {...props}

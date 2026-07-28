@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react'
 
-import { useSettings } from '@flow/reader/state'
+import { useSettings } from '@/state'
 
 import { useMediaQuery } from '../useMediaQuery'
 

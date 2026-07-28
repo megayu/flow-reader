@@ -7,7 +7,7 @@ import {
   db,
   importBookPaths,
   openExternalBookPaths,
-} from './db'
+} from './storage'
 
 const nativeOpenEvent = 'flow-open-files'
 const epubImportProgressEvent = 'flow-epub-import-progress'

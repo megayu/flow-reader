@@ -1,49 +1,79 @@
-import { debounce } from '@github/mini-throttle/decorators'
 import React from 'react'
 import { proxy, ref, snapshot, useSnapshot } from 'valtio'
-
-import ePub, { Rendition as EpubRendition } from '@flow/epubjs'
-import type { Rendition, Location, Book } from '@flow/epubjs'
-import epubRequest from '@flow/epubjs/src/utils/request'
-import Navigation, { NavItem } from '@flow/epubjs/types/navigation'
-import type { RenditionSpread } from '@flow/epubjs/types/rendition'
-import Section from '@flow/epubjs/types/section'
-import { IS_SERVER } from '@flow/reader/env'
 
 import {
   AnnotationColor,
   AnnotationType,
   createAnnotationSpine,
-} from '../annotation'
-import { getBookDisplayTitle } from '../book'
+} from '@/annotation'
+import { getBookDisplayTitle } from '@/book'
+import { IS_SERVER } from '@/env'
+import { openSupportedExternalUrl } from '@/externalLink'
+import { createId } from '@/id'
+import { normalizeHrefPath, sameHref } from '@/noteLinks'
+import {
+  emitReaderOpenError,
+  type ReaderOpenErrorStage,
+} from '@/reader/errorEvents'
 import {
   BookReaderSource,
   BookTextReplaceTarget,
   BookRecord,
-  ReadingSpreadPageRecord,
   ReadingSpreadRecord,
   cleanupExternalBook,
   db,
-  searchBookText,
   unloadBookSearchText,
-} from '../db'
-import { openSupportedExternalUrl } from '../externalLink'
-import { createId } from '../id'
-import { normalizeHrefPath, sameHref } from '../noteLinks'
-import {
-  emitReaderOpenError,
-  type ReaderOpenErrorStage,
-} from '../readerErrorEvents'
-import { BodyTextDetectionCache, defaultStyle } from '../styles'
+} from '@/storage'
+import { BodyTextDetectionCache, defaultStyle } from '@/styles'
+import type { Rendition, Location, Book } from '@flow/epubjs'
+import ePub, { Rendition as EpubRendition } from '@flow/epubjs'
+import type { NavItem } from '@flow/epubjs/navigation'
+import type Navigation from '@flow/epubjs/navigation'
+import type { RenditionSpread } from '@flow/epubjs/rendition'
+import epubRequest from '@flow/epubjs/request'
+import type Section from '@flow/epubjs/section'
 
-import { dfs, find, INode } from './tree'
+import { dfs, find, INode } from '../tree'
+
+import { BookLayoutTransactionController } from './layoutTransaction'
+import {
+  BookNavigationController,
+  displayFromSelector,
+  displayImage,
+  pageIndexForCfi,
+} from './navigation'
+import {
+  calculateReadingPercentage,
+  fallbackReadingPercentage,
+  hydrateReflowableSpread,
+  mergeConfigurationWithSpread,
+  readingSpreadSectionIndexes,
+  snapshotReflowableSpread,
+  type HeaderPathItem,
+  type LocationRequestIntent,
+  type PaginationSnapshot,
+  type RelocatedEventMeta,
+  type SectionNavAnchorEntry,
+  type SectionNavEntry,
+  type SectionNavIndex,
+} from './pagination'
+import { BookPersistenceController } from './persistence'
+import type { BookPersistenceHost } from './persistence'
+import {
+  BookSearchController,
+  displaySearchResult,
+  searchBook,
+  searchInSection,
+  searchInSectionAsync,
+} from './search'
+
+export { readingOrderStartSectionIndex } from './pagination'
+export type { HeaderPathItem, PaginationSnapshot } from './pagination'
 
 function updateIndex(array: any[], deletedItemIndex: number) {
   const last = array.length - 1
   return deletedItemIndex > last ? last : deletedItemIndex
 }
-
-const searchRequestVersions = new WeakMap<object, number>()
 
 export function compareHref(
   sectionHref: string | undefined,
@@ -211,27 +241,6 @@ function createVersionedEpubRequest(contentVersion?: number) {
       withCredentials,
       headers,
     )
-}
-
-function normalizeImageSource(src: string) {
-  try {
-    return decodeURI(src)
-  } catch {
-    return src
-  }
-}
-
-function imageSourcesMatch(a: string | undefined, b: string | undefined) {
-  if (!a || !b) return false
-  if (a === b) return true
-
-  const normalizedA = normalizeImageSource(a)
-  const normalizedB = normalizeImageSource(b)
-  return (
-    normalizedA === normalizedB ||
-    normalizedA.includes(normalizedB) ||
-    normalizedB.includes(normalizedA)
-  )
 }
 
 const imageArtifactSelector = [
@@ -467,45 +476,6 @@ function compareDefinition(d1: string, d2: string) {
   return d1.toLowerCase() === d2.toLowerCase()
 }
 
-function withoutReadingSpread(
-  configuration: BookRecord['configuration'] | undefined,
-) {
-  const { spread, ...rest } = configuration ?? {}
-  return rest
-}
-
-function isSpreadOnlyConfigurationUpdate(
-  changes: Partial<BookRecord>,
-  currentBook: BookRecord,
-) {
-  if (!('configuration' in changes)) return true
-
-  return (
-    JSON.stringify(withoutReadingSpread(changes.configuration)) ===
-    JSON.stringify(withoutReadingSpread(currentBook.configuration))
-  )
-}
-
-function isReadingPositionOnlyUpdate(
-  changes: Partial<BookRecord>,
-  currentBook: BookRecord,
-) {
-  const keys = Object.keys(changes)
-  return (
-    keys.some((key) => key === 'cfi' || key === 'percentage') &&
-    isSpreadOnlyConfigurationUpdate(changes, currentBook) &&
-    keys.every((key) =>
-      [
-        'cfi',
-        'percentage',
-        'updatedAt',
-        'lastReadAt',
-        'configuration',
-      ].includes(key),
-    )
-  )
-}
-
 function reassignAnnotationBookIds(
   annotations: BookRecord['annotations'],
   bookId: string,
@@ -514,85 +484,6 @@ function reassignAnnotationBookIds(
     ...annotation,
     bookId,
   }))
-}
-
-function displayLocationPercentage(location?: Location['end']) {
-  const percentage = location?.percentage
-  if (typeof percentage !== 'number' || !Number.isFinite(percentage)) return
-  if (percentage < 0 || percentage > 1) return
-  return percentage
-}
-
-function estimatePercentageFromSpine(
-  location: Location['end'],
-  sectionCount: number,
-) {
-  if (!sectionCount) return 0
-
-  const sectionIndex = Math.max(0, Math.min(location.index, sectionCount - 1))
-  const totalPages = Math.max(1, location.displayed.total || 1)
-  const page = Math.max(1, Math.min(location.displayed.page || 1, totalPages))
-  const sectionProgress = page / totalPages
-
-  return Math.max(
-    0,
-    Math.min(1, (sectionIndex + sectionProgress) / sectionCount),
-  )
-}
-
-function calculateReadingPercentage({
-  location,
-  sections,
-  totalLength,
-  sectionAsPage = false,
-}: {
-  location: Location
-  sections: ISection[]
-  totalLength?: number
-  sectionAsPage?: boolean
-}) {
-  if (location.atEnd) return 1
-
-  const end = location.end ?? location.start
-  if (sectionAsPage) {
-    return estimatePercentageFromSpine(end, sections.length)
-  }
-
-  if (location.atStart) return 0
-
-  const sectionIndex = sections.findIndex((s) => s.href === end.href)
-  const activeSection = sectionIndex >= 0 ? sections[sectionIndex] : undefined
-
-  if (activeSection && totalLength && activeSection.length) {
-    const previousSectionsLength = sections
-      .slice(0, sectionIndex)
-      .reduce((acc, s) => acc + s.length, 0)
-    const previousSectionsPercentage = previousSectionsLength / totalLength
-    const currentSectionPercentage = activeSection.length / totalLength
-    const displayedPercentage =
-      end.displayed.total > 0 ? end.displayed.page / end.displayed.total : 0
-
-    return Math.max(
-      0,
-      Math.min(
-        1,
-        previousSectionsPercentage +
-          currentSectionPercentage * displayedPercentage,
-      ),
-    )
-  }
-
-  const estimated = estimatePercentageFromSpine(end, sections.length)
-  if (estimated > 0) return estimated
-
-  return displayLocationPercentage(end) ?? 0
-}
-
-function fallbackReadingPercentage(location: Location) {
-  if (location.atEnd) return 1
-  if (location.atStart) return 0
-
-  return displayLocationPercentage(location.end ?? location.start)
 }
 
 export interface INavItem extends NavItem, INode {
@@ -641,234 +532,6 @@ export type BookTypographyConfiguration = NonNullable<
   BookRecord['configuration']
 >['typography']
 
-export interface PaginationSnapshot {
-  location: Location
-  percentage?: number
-  spreadDivisor: number
-  writingMode?: string
-  pageProgressionDirection?: 'ltr' | 'rtl'
-  spreadSlotOrder?: 'left-first' | 'right-first'
-  layoutVersion: number
-  paginationVersion: number
-  headerPath: HeaderPathItem[]
-  visibleSectionIndexes: number[]
-}
-
-interface ReadingOrderSpread {
-  left?: { section?: { index?: number } }
-  right?: { section?: { index?: number } }
-}
-
-export function readingOrderStartSectionIndex(
-  spread: ReadingOrderSpread | undefined,
-  spreadSlotOrder: PaginationSnapshot['spreadSlotOrder'],
-  fallback?: number,
-) {
-  const primary =
-    spreadSlotOrder === 'right-first' ? spread?.right : spread?.left
-  const secondary =
-    spreadSlotOrder === 'right-first' ? spread?.left : spread?.right
-
-  return primary?.section?.index ?? secondary?.section?.index ?? fallback
-}
-
-export interface HeaderPathItem {
-  id?: string
-  href?: string
-  label: string
-}
-
-interface RelocatedEventMeta {
-  requestId?: number
-}
-
-interface LocationRequestIntent {
-  anchorTarget?: string
-  layoutKey?: string
-  updateAnchor: boolean
-}
-
-interface SectionNavEntry {
-  href: string
-  hash?: string
-  item: INavItem
-  order: number
-  sectionIndex: number
-}
-
-interface SectionNavAnchorEntry extends SectionNavEntry {
-  cfi: string
-}
-
-interface SectionNavIndex {
-  nav: Navigation
-  sections: ISection[]
-  exactBySectionHref: Map<string, INavItem>
-  firstNavItemById: Map<string, INavItem>
-  entriesBySectionIndex: Map<number, SectionNavEntry[]>
-  anchorEntriesBySectionIndex: Map<number, SectionNavAnchorEntry[]>
-  anchorPromisesBySectionIndex: Map<number, Promise<SectionNavAnchorEntry[]>>
-  entries: SectionNavEntry[]
-}
-
-function snapshotReflowablePage(
-  page: any,
-): ReadingSpreadPageRecord | undefined {
-  if (
-    !page?.section ||
-    typeof page.section.index !== 'number' ||
-    typeof page.pageIndex !== 'number'
-  ) {
-    return
-  }
-
-  return {
-    sectionIndex: page.section.index,
-    pageIndex: page.pageIndex,
-  }
-}
-
-function locationEndsAtDisplayedPageEnd(location?: Location) {
-  const displayed = location?.end?.displayed
-  return (
-    typeof displayed?.page === 'number' &&
-    typeof displayed.total === 'number' &&
-    displayed.total > 0 &&
-    displayed.page >= displayed.total
-  )
-}
-
-function snapshotReflowableSpread(
-  manager: any,
-  layoutStyleSignature?: string,
-  location?: Location,
-): ReadingSpreadRecord | undefined {
-  const spread = manager?.currentReflowableSpread
-  if (!manager?.canUseLogicalReflowableSpread?.() || !spread) return
-
-  const left = snapshotReflowablePage(spread.left)
-  const right = snapshotReflowablePage(spread.right)
-  const endsAtSectionEnd =
-    Boolean(spread.endsAtSectionEnd) || locationEndsAtDisplayedPageEnd(location)
-  const rightFirst =
-    manager.paginationModel?.().spreadSlotOrder === 'right-first'
-  const terminalSlot = endsAtSectionEnd
-    ? rightFirst
-      ? left
-        ? 'left'
-        : 'right'
-      : right
-        ? 'right'
-        : 'left'
-    : undefined
-  const anchor =
-    terminalSlot ??
-    (spread.anchor === 'right' && right
-      ? 'right'
-      : spread.anchor === 'left' && left
-        ? 'left'
-        : left
-          ? 'left'
-          : 'right')
-  const page = anchor === 'right' ? (right ?? left) : (left ?? right)
-  if (!page) return
-
-  return {
-    ...page,
-    version: 1,
-    anchor,
-    exact: !endsAtSectionEnd,
-    ...(left ? { left } : {}),
-    ...(right ? { right } : {}),
-    ...(endsAtSectionEnd ? { endsAtSectionEnd: true } : {}),
-    ...(layoutStyleSignature ? { layoutStyleSignature } : {}),
-  }
-}
-
-function hydrateReflowablePage(
-  page: ReadingSpreadPageRecord | undefined,
-  sections: ISection[] | undefined,
-) {
-  if (!page || !sections) return
-  const section = sections.find(
-    (candidate) => candidate.index === page.sectionIndex,
-  )
-  if (!section) return
-
-  return {
-    section,
-    pageIndex: page.pageIndex,
-  }
-}
-
-function hydrateReflowableSpread(
-  spread: ReadingSpreadRecord | undefined,
-  sections: ISection[] | undefined,
-  layoutStyleSignature?: string,
-) {
-  if (!spread || spread.version !== 1 || !sections) return
-  if (
-    spread.layoutStyleSignature &&
-    spread.layoutStyleSignature !== layoutStyleSignature
-  ) {
-    return
-  }
-
-  if (spread.left || spread.right) {
-    const left = hydrateReflowablePage(spread.left, sections)
-    const right = hydrateReflowablePage(spread.right, sections)
-    const anchor = spread.anchor === 'right' ? 'right' : 'left'
-    const anchorPage = anchor === 'right' ? right : left
-    if (!anchorPage) return
-
-    return {
-      exact: spread.exact ?? true,
-      anchor,
-      ...(left ? { left } : {}),
-      ...(right ? { right } : {}),
-      ...(spread.endsAtSectionEnd ? { endsAtSectionEnd: true } : {}),
-    }
-  }
-
-  const page = hydrateReflowablePage(spread, sections)
-  if (!page) return
-
-  return spread.anchor === 'right'
-    ? {
-        exact: true,
-        anchor: 'right',
-        right: page,
-      }
-    : {
-        left: page,
-        anchor: 'left',
-      }
-}
-
-function readingSpreadSectionIndexes(spread: ReadingSpreadRecord) {
-  const pages =
-    spread.left || spread.right ? [spread.left, spread.right] : [spread]
-
-  return pages
-    .filter((page): page is ReadingSpreadPageRecord => Boolean(page))
-    .map((page) => page.sectionIndex)
-}
-
-function mergeConfigurationWithSpread(
-  configuration: BookRecord['configuration'],
-  spread: ReadingSpreadRecord | undefined,
-) {
-  const next = { ...(configuration ?? {}) }
-
-  if (spread) {
-    next.spread = spread
-  } else {
-    delete next.spread
-  }
-
-  return next
-}
-
 class BaseTab {
   constructor(
     public readonly id: string,
@@ -915,26 +578,26 @@ export class BookTab extends BaseTab {
   overlayVersion = 0
   active = false
   private sectionInfoPromises = new Map<number, Promise<void>>()
-  private pendingBookUpdate?: Partial<BookRecord>
-  private pendingBookUpdateTimer?: ReturnType<typeof setTimeout>
   private destroyPromise?: Promise<void>
-  private navigationPromise?: Promise<void>
-  private renderGeneration = 0
+  private readonly navigation = ref(new BookNavigationController())
+  private readonly searchController = ref(new BookSearchController())
+  renderGeneration = 0
   private sectionNavIndex?: SectionNavIndex
   private currentSpreadState?: ReadingSpreadRecord
-  private preferredSectionIndex?: number
-  private allowLocationJump = false
-  private navigationDirection?: -1 | 1
-  private relayoutAnchorSectionIndexes?: number[]
+  preferredSectionIndex?: number
+  allowLocationJump = false
+  navigationDirection?: -1 | 1
+  relayoutAnchorSectionIndexes?: number[]
   private acceptedLocationRequests = new Map<number, LocationRequestIntent>()
   private runtimeAnchorCfi?: string
-  private runtimeSpreadAnchor?: ReadingSpreadRecord
-  private contentReloadTarget?: string
+  runtimeSpreadAnchor?: ReadingSpreadRecord
+  contentReloadTarget?: string
   private spreadAnchorsByLayout = new Map<string, ReadingSpreadRecord>()
   private navRefreshGeneration = 0
-  private layoutOperationId = 0
-  private layoutOperationPromise = Promise.resolve()
-  private readingPositionSequence = 0
+  private readonly layoutTransactions = ref(
+    new BookLayoutTransactionController(),
+  )
+  private readonly persistence = ref(new BookPersistenceController())
   private sectionDocumentAccessSeq = 0
   private sectionDocumentAccess = new Map<number, number>()
   private pendingSectionInfoIndexes = new Set<number>()
@@ -982,7 +645,7 @@ export class BookTab extends BaseTab {
     return this.locationAnchorCfi()
   }
 
-  private committedDisplayTarget() {
+  committedDisplayTarget() {
     const target = this.currentAnchorCfi()
     return this.sectionForDisplayTarget(target) ? target : undefined
   }
@@ -1001,74 +664,15 @@ export class BookTab extends BaseTab {
     return this.committedDisplayTarget()
   }
 
+  waitForPendingNavigation() {
+    return this.navigation.waitForPending()
+  }
+
   resizeRendition(width: number, height: number) {
-    const operationId = ++this.layoutOperationId
-
-    this.layoutOperationPromise = this.layoutOperationPromise
-      .catch(() => undefined)
-      .then(() => this.runResizeRendition(operationId, width, height))
+    this.layoutTransactions.resize(this, width, height)
   }
 
-  private async runResizeRendition(
-    operationId: number,
-    width: number,
-    height: number,
-  ) {
-    if (operationId !== this.layoutOperationId) return
-
-    const target = this.committedDisplayTarget()
-    if (!target) return
-
-    this.rememberCurrentLayoutSpread()
-    this.allowLocationJump = false
-    this.navigationDirection = undefined
-    this.relayoutAnchorSectionIndexes = [...this.visibleSectionIndexes]
-    const rendition = this.rendition as any
-    const manager = rendition?.manager
-    const layoutKey = this.layoutAnchorKey(width, height)
-    const spread =
-      this.storedSpreadForLayout(width, height) ??
-      hydrateReflowableSpread(
-        this.runtimeSpreadAnchor,
-        this.sections,
-        this.layoutStyleSignature,
-      )
-
-    if (!rendition || !manager) return
-
-    rendition._flowSuppressResizeRedisplay = true
-    try {
-      rendition.resize(width, height, target)
-    } finally {
-      rendition._flowSuppressResizeRedisplay = false
-    }
-
-    try {
-      if (spread && manager.renderReflowableSpread) {
-        const requestId = this.createManualLocationRequest({
-          layoutKey,
-          updateAnchor: false,
-        })
-        await manager.renderReflowableSpread(spread)
-        await (this.rendition as any)?.reportLocation(requestId)
-        this.commitPendingRenditionLocation(requestId)
-        return
-      }
-
-      const previousRequestId = this.currentRenditionLocationRequestId()
-      const display = this.rendition?.display(target)
-      const requestId = this.trackRenditionLocationRequest(previousRequestId, {
-        layoutKey,
-        updateAnchor: false,
-      })
-      await display
-      this.commitPendingRenditionLocation(requestId)
-    } catch (error) {
-      console.error(error)
-    }
-  }
-
-  private resolveDisplayTarget(
+  resolveDisplayTarget(
     target?: string,
     fallback: 'current' | 'initial' | false = 'current',
   ) {
@@ -1105,32 +709,34 @@ export class BookTab extends BaseTab {
     this.relayoutAnchorSectionIndexes = undefined
     if (returnable) this.showPrevLocation()
 
-    try {
-      const previousRequestId = this.currentRenditionLocationRequestId()
-      const display = this.rendition.display(resolvedTarget, {
-        alignTargetAsSpreadStart,
-      })
-      const requestId = this.trackRenditionLocationRequest(previousRequestId, {
-        anchorTarget: resolvedTarget,
-        updateAnchor: true,
-      })
-      await display
-      this.commitPendingRenditionLocation(requestId)
-    } catch (error) {
-      console.error(error)
-    }
+    const operation = (async () => {
+      try {
+        const previousRequestId = this.currentRenditionLocationRequestId()
+        const display = this.rendition!.display(resolvedTarget, {
+          alignTargetAsSpreadStart,
+        })
+        const requestId = this.trackRenditionLocationRequest(
+          previousRequestId,
+          {
+            anchorTarget: resolvedTarget,
+            updateAnchor: true,
+          },
+        )
+        await display
+        this.commitPendingRenditionLocation(requestId)
+      } catch (error) {
+        console.error(error)
+      }
+    })()
+
+    await this.navigation.trackDisplay(operation)
   }
 
   display(target?: string, returnable = true) {
     void this.displayResolvedTarget(target, { returnable })
   }
   async pageIndexForCfi(sectionIndex: number, cfi: string) {
-    const section = this.sections?.find((s) => s.index === sectionIndex)
-    const manager = this.rendition?.manager
-    if (!section || !manager?.reflowablePageForTarget) return 0
-
-    const page = await manager.reflowablePageForTarget(section, cfi)
-    return page?.pageIndex ?? 0
+    return pageIndexForCfi(this, sectionIndex, cfi)
   }
   async displayReflowableTarget(sectionIndex: number, cfi: string) {
     const section = this.sections?.find((s) => s.index === sectionIndex)
@@ -1167,21 +773,13 @@ export class BookTab extends BaseTab {
     returnable = true,
     alignTargetAsSpreadStart = false,
   ) {
-    try {
-      await this.ensureSectionInfo(section)
-      const el = section.document.querySelector(selector)
-      if (el) {
-        const cfi = selector.startsWith('#')
-          ? selector
-          : section.cfiFromElement(el)
-        if (returnable) this.showPrevLocation()
-        await this.displayTarget(section, cfi, { alignTargetAsSpreadStart })
-      } else {
-        await this.displaySectionStart(section)
-      }
-    } catch (err) {
-      this.display(section.href, returnable)
-    }
+    return displayFromSelector(
+      this,
+      selector,
+      section,
+      returnable,
+      alignTargetAsSpreadStart,
+    )
   }
 
   async displayImage(
@@ -1190,26 +788,7 @@ export class BookTab extends BaseTab {
     index: number,
     returnable = true,
   ) {
-    try {
-      await this.ensureSectionInfo(section)
-      const images = [
-        ...(section.document?.querySelectorAll('img') ?? []),
-      ] as HTMLImageElement[]
-      const el =
-        images.find((image) => imageSourcesMatch(image.src, src)) ??
-        images[index]
-
-      if (el) {
-        const cfi = section.cfiFromElement(el)
-        if (returnable) this.showPrevLocation()
-        await this.displayTarget(section, cfi)
-        return
-      }
-
-      await this.displaySectionStart(section)
-    } catch (err) {
-      this.display(section.href, returnable)
-    }
+    return displayImage(this, section, src, index, returnable)
   }
 
   async displaySearchResult(
@@ -1217,187 +796,19 @@ export class BookTab extends BaseTab {
     keyword = this.keyword,
     sectionContext?: Pick<IMatch, 'sectionIndex' | 'href'>,
   ) {
-    const sectionIndex = result.sectionIndex ?? sectionContext?.sectionIndex
-    const href = result.href ?? sectionContext?.href
-    if (result.cfi) {
-      const section =
-        this.sections?.find((s) => s.index === sectionIndex) ??
-        this.sections?.find((s) => s.href === href)
-
-      if (section) {
-        this.showPrevLocation()
-        await this.displayTarget(section, result.cfi)
-      } else {
-        this.display(result.cfi)
-      }
-      return
-    }
-
-    const section =
-      this.sections?.find((s) => s.index === sectionIndex) ??
-      this.sections?.find((s) => s.href === href)
-
-    if (!section) {
-      if (href) this.display(href)
-      return
-    }
-
-    try {
-      await this.ensureSectionInfo(section)
-      const matches = section.find(keyword) as Array<{
-        cfi?: string
-      }>
-      const match = matches[result.occurrence ?? 0] ?? matches[0]
-      if (match?.cfi) {
-        result.cfi = match.cfi
-        this.showPrevLocation()
-        await this.displayTarget(section, match.cfi)
-        return
-      }
-    } catch (error) {
-      console.error(error)
-    }
-
-    this.showPrevLocation()
-    await this.displaySectionStart(section)
+    return displaySearchResult(this, result, keyword, sectionContext)
   }
   async prev() {
-    if (this.turning) return
-
-    return this.runNavigation(async () => {
-      this.preferredSectionIndex = undefined
-      this.navigationDirection = -1
-      this.allowLocationJump = false
-      this.relayoutAnchorSectionIndexes = undefined
-      const previousRequestId = this.currentRenditionLocationRequestId()
-      const navigation = this.rendition?.prev()
-      const requestId = this.trackRenditionLocationRequest(previousRequestId, {
-        updateAnchor: true,
-      })
-      await navigation
-      this.commitPendingRenditionLocation(requestId)
-    })
+    return this.navigation.prev(this)
   }
   async next() {
-    if (this.turning) return
-
-    return this.runNavigation(async () => {
-      this.preferredSectionIndex = undefined
-      this.navigationDirection = 1
-      this.allowLocationJump = false
-      this.relayoutAnchorSectionIndexes = undefined
-      const previousRequestId = this.currentRenditionLocationRequestId()
-      const navigation = this.rendition?.next()
-      const requestId = this.trackRenditionLocationRequest(previousRequestId, {
-        updateAnchor: true,
-      })
-      await navigation
-      this.commitPendingRenditionLocation(requestId)
-    })
-  }
-  private sectionPositionFromLocation(
-    location?: Pick<Location['start'], 'index' | 'href'>,
-  ) {
-    if (!this.sections || !location) return -1
-
-    return this.sections.findIndex(
-      (section) =>
-        section.index === location.index || section.href === location.href,
-    )
-  }
-
-  private async displayCurrentSectionStartBeforePreviousSection() {
-    const manager = this.rendition?.manager
-    const spread = manager?.currentReflowableSpread
-
-    if (manager?.canUseLogicalReflowableSpread?.() && spread) {
-      const page =
-        manager.reflowableSpreadEarlierPage?.(spread) ??
-        spread.left ??
-        spread.right
-      if (page?.section && page.pageIndex > 0) {
-        await this.displaySectionStart(page.section)
-        return true
-      }
-
-      return false
-    }
-
-    const start = this.location?.start
-    const pageNumber = start?.displayed?.page
-    if (!start || typeof pageNumber !== 'number' || pageNumber <= 1) {
-      return false
-    }
-
-    const currentPosition = this.sectionPositionFromLocation(start)
-    const section = this.sections?.[currentPosition]
-    if (!section) return false
-
-    await this.displaySectionStart(section)
-    return true
-  }
-
-  private async navigateNavItem(direction: -1 | 1) {
-    const point = direction > 0 ? this.location?.end : this.location?.start
-    const navIndex = this.getSectionNavIndex()
-    const entries = navIndex?.entries
-    if (!entries?.length) return false
-
-    const anchor = await this.navAnchorForLocationPoint(point)
-    const pointSection = this.sectionFromLocationPoint(point)
-    const singleSectionEntry = pointSection
-      ? navIndex?.entriesBySectionIndex.get(pointSection.index)?.length === 1
-        ? navIndex.entriesBySectionIndex.get(pointSection.index)?.[0]
-        : undefined
-      : undefined
-    const anchorItem = anchor?.item ?? singleSectionEntry?.item
-    if (!anchorItem) return false
-
-    const index = entries.findIndex((entry) => entry.item === anchorItem)
-    const target = index < 0 ? undefined : entries[index + direction]
-    if (!target) return false
-
-    const section = this.sections?.find(
-      (section) => section.index === target.sectionIndex,
-    )
-    if (!section) return false
-
-    await this.displayTarget(
-      section,
-      target.hash ? `#${target.hash}` : undefined,
-      { alignTargetAsSpreadStart: true },
-    )
-    return true
-  }
-
-  private async navigateSection(direction: -1 | 1) {
-    if (this.turning || !this.sections?.length || !this.location) return
-
-    return this.runNavigation(async () => {
-      if (await this.navigateNavItem(direction)) return
-
-      if (
-        direction < 0 &&
-        (await this.displayCurrentSectionStartBeforePreviousSection())
-      ) {
-        return
-      }
-
-      const location = direction > 0 ? this.location?.end : this.location?.start
-      const currentPosition = this.sectionPositionFromLocation(location)
-      if (currentPosition === -1) return
-
-      const target = this.sections?.[currentPosition + direction]
-      if (!target) return
-
-      await this.displaySectionStart(target)
-    })
+    return this.navigation.next(this)
   }
   prevSection() {
-    return this.navigateSection(-1)
+    return this.navigation.navigateSection(this, -1)
   }
   nextSection() {
-    return this.navigateSection(1)
+    return this.navigation.navigateSection(this, 1)
   }
 
   private setBook(book: BookRecord) {
@@ -1407,6 +818,32 @@ export class BookTab extends BaseTab {
       definitions: book.definitions,
     }
     this.typographyConfiguration = book.configuration?.typography
+  }
+
+  private applyBookUpdate(book: BookRecord, changes: Partial<BookRecord>) {
+    this.book = book
+    if ('annotations' in changes || 'definitions' in changes) {
+      this.overlayState = {
+        annotations: changes.annotations ?? this.overlayState.annotations,
+        definitions: changes.definitions ?? this.overlayState.definitions,
+      }
+    }
+    if ('configuration' in changes) {
+      const typography = changes.configuration?.typography
+      if (typography !== this.typographyConfiguration) {
+        this.typographyConfiguration = typography
+      }
+    }
+  }
+
+  private persistenceHost(): BookPersistenceHost {
+    return {
+      getBook: () => this.book,
+      applyBookUpdate: (book, changes) => this.applyBookUpdate(book, changes),
+      replaceBook: (book) => this.setBook(book),
+      createCurrentPositionUpdate: () => this.createCurrentPositionUpdate(),
+      waitForNavigation: () => this.navigation.pending,
+    }
   }
 
   reloadContentAfterEdit(book: BookRecord, target?: string) {
@@ -1540,78 +977,8 @@ export class BookTab extends BaseTab {
     return true
   }
 
-  private syncOverlayState(changes: Partial<BookRecord>) {
-    if (!('annotations' in changes) && !('definitions' in changes)) return
-
-    this.overlayState = {
-      annotations: changes.annotations ?? this.overlayState.annotations,
-      definitions: changes.definitions ?? this.overlayState.definitions,
-    }
-  }
-
-  private syncTypographyConfiguration(changes: Partial<BookRecord>) {
-    if (!('configuration' in changes)) return
-
-    const typography = changes.configuration?.typography
-    if (typography === this.typographyConfiguration) return
-
-    this.typographyConfiguration = typography
-  }
-
   updateBook(changes: Partial<BookRecord>) {
-    const readingPositionOnly = isReadingPositionOnlyUpdate(changes, this.book)
-    const updatedAt = Date.now()
-
-    changes = {
-      ...changes,
-      updatedAt,
-      ...(readingPositionOnly ? { lastReadAt: updatedAt } : {}),
-    }
-    // don't wait promise resolve to make valtio batch updates
-    this.book = { ...this.book, ...changes }
-    this.syncOverlayState(changes)
-    this.syncTypographyConfiguration(changes)
-    db.books.remember(this.book)
-
-    if (readingPositionOnly) {
-      void this.recordReadingPosition(changes).catch((error) => {
-        console.error(error)
-      })
-      return
-    }
-
-    this.flushPendingBookUpdate()
-    void db.books.update(this.book.id, changes).catch((error) => {
-      console.error(error)
-    })
-  }
-
-  private schedulePendingBookUpdate() {
-    if (this.pendingBookUpdateTimer) return
-
-    this.pendingBookUpdateTimer = setTimeout(() => {
-      this.flushPendingBookUpdate()
-    }, 15_000)
-  }
-
-  flushPendingBookUpdate({ flushStorage = true } = {}) {
-    if (this.pendingBookUpdateTimer) {
-      clearTimeout(this.pendingBookUpdateTimer)
-      this.pendingBookUpdateTimer = undefined
-    }
-
-    const changes = this.pendingBookUpdate
-    if (!changes) return Promise.resolve()
-
-    this.pendingBookUpdate = undefined
-    return db.books
-      .update(this.book.id, changes)
-      .then(() => {
-        if (flushStorage) return db.flush()
-      })
-      .catch((error) => {
-        console.error(error)
-      })
+    this.persistence.updateBook(this.persistenceHost(), changes)
   }
 
   private createCurrentPositionUpdate(
@@ -1638,66 +1005,15 @@ export class BookTab extends BaseTab {
     }
   }
 
-  private recordReadingPosition(changes: Partial<BookRecord>) {
-    return db.books.recordReadingPosition({
-      bookId: this.book.id,
-      cfi: changes.cfi,
-      percentage: changes.percentage,
-      spread: changes.configuration?.spread ?? null,
-      updatedAt: changes.updatedAt ?? Date.now(),
-      sequence: ++this.readingPositionSequence,
-    })
-  }
-
   async flushForClose({
     flushStorage = true,
     recordReadingPosition = true,
   } = {}) {
-    try {
-      await this.navigationPromise
-    } catch (error) {
-      console.error(error)
-    }
-
-    const positionUpdate = this.createCurrentPositionUpdate()
-    if (positionUpdate) {
-      const updatedAt = Date.now()
-      const changes = {
-        ...positionUpdate,
-        updatedAt,
-        lastReadAt: updatedAt,
-      }
-      this.setBook({ ...this.book, ...changes })
-      db.books.remember(this.book)
-      if (recordReadingPosition) await this.recordReadingPosition(changes)
-    }
-
-    await this.flushPendingBookUpdate({ flushStorage: false })
-    if (flushStorage) await db.flush()
-  }
-
-  private async runNavigation(action: () => Promise<void>) {
-    if (this.turning) return
-
-    // `turning` owns the transient navigation cover; `rendered` continues to
-    // describe whether a committed page exists after navigation settles.
-    this.turning = true
-    const navigation = (async () => {
-      try {
-        await action()
-      } finally {
-        this.turning = false
-      }
-    })()
-
-    this.navigationPromise = navigation
-    try {
-      await navigation
-    } finally {
-      if (this.navigationPromise === navigation) {
-        this.navigationPromise = undefined
-      }
-    }
+    await this.persistence.flushForClose({
+      host: this.persistenceHost(),
+      flushStorage,
+      recordReadingPosition,
+    })
   }
 
   annotationRange?: Range
@@ -1774,12 +1090,12 @@ export class BookTab extends BaseTab {
     this.layoutVersion++
   }
 
-  private currentRenditionLocationRequestId() {
+  currentRenditionLocationRequestId() {
     const requestId = (this.rendition as any)?._locationRequestId
     return typeof requestId === 'number' ? requestId : undefined
   }
 
-  private trackRenditionLocationRequest(
+  trackRenditionLocationRequest(
     previousRequestId: number | undefined,
     intent: LocationRequestIntent,
   ) {
@@ -1790,7 +1106,7 @@ export class BookTab extends BaseTab {
     return requestId
   }
 
-  private createManualLocationRequest(intent: LocationRequestIntent) {
+  createManualLocationRequest(intent: LocationRequestIntent) {
     const rendition = this.rendition as any
     if (!rendition) return
 
@@ -1803,7 +1119,7 @@ export class BookTab extends BaseTab {
     return requestId
   }
 
-  private commitPendingRenditionLocation(requestId: number | undefined) {
+  commitPendingRenditionLocation(requestId: number | undefined) {
     if (
       typeof requestId !== 'number' ||
       !this.acceptedLocationRequests.has(requestId)
@@ -2057,47 +1373,11 @@ export class BookTab extends BaseTab {
   keyword = ''
   tocVersion = 0
   setKeyword(keyword: string) {
-    if (this.keyword === keyword) return
-    this.keyword = keyword
-    this.activeResultID = undefined
-    const requestVersion = this.nextSearchRequestVersion()
-    this.onKeywordChange(keyword, requestVersion)
+    this.searchController.setKeyword(this, keyword)
   }
 
   async searchKeywordImmediately(keyword: string) {
-    if (this.keyword !== keyword) {
-      this.keyword = keyword
-      this.activeResultID = undefined
-    }
-    const requestVersion = this.nextSearchRequestVersion()
-    await this.updateSearchResults(keyword, requestVersion)
-  }
-
-  // only use throttle/debounce for side effects
-  @debounce(500)
-  async onKeywordChange(keyword: string, requestVersion: number) {
-    if (!this.isCurrentSearchRequest(keyword, requestVersion)) return
-    await this.updateSearchResults(keyword, requestVersion)
-  }
-
-  private nextSearchRequestVersion() {
-    const version = (searchRequestVersions.get(this) ?? 0) + 1
-    searchRequestVersions.set(this, version)
-    return version
-  }
-
-  private isCurrentSearchRequest(keyword: string, requestVersion: number) {
-    return (
-      this.keyword === keyword &&
-      searchRequestVersions.get(this) === requestVersion
-    )
-  }
-
-  private async updateSearchResults(keyword: string, requestVersion: number) {
-    const results = await this.search(keyword)
-    if (this.isCurrentSearchRequest(keyword, requestVersion)) {
-      this.results = results
-    }
+    await this.searchController.searchImmediately(this, keyword)
   }
 
   get totalLength() {
@@ -2193,7 +1473,7 @@ export class BookTab extends BaseTab {
     }
   }
 
-  private getSectionNavIndex(sections = this.sections) {
+  getSectionNavIndex(sections = this.sections) {
     if (!this.nav || !sections) return
 
     if (
@@ -2430,7 +1710,7 @@ export class BookTab extends BaseTab {
     )
   }
 
-  private async navAnchorForLocationPoint(
+  async navAnchorForLocationPoint(
     point: Pick<Location['start'], 'index' | 'href' | 'cfi'> | undefined,
   ) {
     const section = this.sectionFromLocationPoint(point)
@@ -2444,9 +1724,7 @@ export class BookTab extends BaseTab {
     return this.location?.start.href
   }
 
-  private sectionFromLocationPoint(
-    point?: Pick<Location['start'], 'index' | 'href'>,
-  ) {
+  sectionFromLocationPoint(point?: Pick<Location['start'], 'index' | 'href'>) {
     if (!point) return
 
     return (
@@ -2737,7 +2015,7 @@ export class BookTab extends BaseTab {
   }
 
   private destroyRendering() {
-    this.layoutOperationId++
+    this.layoutTransactions.invalidate()
 
     try {
       this.rendition?.destroy?.()
@@ -2835,42 +2113,15 @@ export class BookTab extends BaseTab {
   }
 
   searchInSection(keyword = this.keyword, section = this.section) {
-    const query = keyword.trim()
-    if (!query || !section?.document?.body) return
-
-    const subitems = section.find(query) as unknown as IMatch[]
-    if (!subitems.length) return
-
-    const navItem = section.navitem
-    if (navItem) {
-      const path = this.getNavPath(navItem)
-      path.pop()
-      return {
-        id: navItem.href,
-        excerpt: navItem.label,
-        description: path.map((i) => i.label).join(' / '),
-        subitems: subitems.map((i) => ({ ...i, id: i.cfi! })),
-        expanded: true,
-      }
-    }
+    return searchInSection(this, keyword, section)
   }
 
   async searchInSectionAsync(keyword = this.keyword, section = this.section) {
-    if (!section) return
-
-    await this.ensureSectionInfo(section)
-    return this.searchInSection(keyword, section)
+    return searchInSectionAsync(this, keyword, section)
   }
 
   async search(keyword = this.keyword) {
-    if (!keyword.trim()) return undefined
-
-    try {
-      return (await searchBookText(this.book.id, keyword)) as IMatch[]
-    } catch (error) {
-      console.error(error)
-      return []
-    }
+    return searchBook(this, keyword)
   }
 
   private assignSectionNavItem(section: ISection, sections = this.sections) {
@@ -3051,7 +2302,7 @@ export class BookTab extends BaseTab {
   private _el?: HTMLDivElement
   private renderingEl?: HTMLDivElement
   onBeforeLayout?: (contents?: any, view?: any) => void
-  private layoutStyleSignature?: string
+  layoutStyleSignature?: string
 
   setBeforeLayout(
     beforeLayout?: (contents?: any, view?: any) => void,
@@ -3083,7 +2334,7 @@ export class BookTab extends BaseTab {
     this.markLayoutChanged()
   }
 
-  private layoutAnchorKey(width?: number, height?: number) {
+  layoutAnchorKey(width?: number, height?: number) {
     const manager = this.rendition?.manager
     const resolvedWidth =
       width ??
@@ -3106,7 +2357,7 @@ export class BookTab extends BaseTab {
     ].join(':')
   }
 
-  private rememberCurrentLayoutSpread(
+  rememberCurrentLayoutSpread(
     key = this.layoutAnchorKey(),
     {
       replace = true,
@@ -3137,7 +2388,7 @@ export class BookTab extends BaseTab {
     }
   }
 
-  private storedSpreadForLayout(width: number, height: number) {
+  storedSpreadForLayout(width: number, height: number) {
     const key = this.layoutAnchorKey(width, height)
     if (!key) return
 
@@ -3148,98 +2399,12 @@ export class BookTab extends BaseTab {
     )
   }
 
-  relayoutCurrentView(target = this.committedDisplayTarget()) {
-    const operationId = ++this.layoutOperationId
-    const operation = this.layoutOperationPromise
-      .catch(() => undefined)
-      .then(() => this.runRelayoutCurrentView(operationId, target))
-
-    this.layoutOperationPromise = operation.then(
-      () => undefined,
-      () => undefined,
-    )
-    return operation
-  }
-
-  private async runRelayoutCurrentView(
-    operationId: number,
-    target: string | undefined,
-  ) {
-    if (operationId !== this.layoutOperationId) return
-
-    const generation = this.renderGeneration
-    const resolvedTarget = this.resolveDisplayTarget(target)
-    if (!resolvedTarget) return
-
-    this.resetLayoutPageState()
-    this.allowLocationJump = false
-    this.navigationDirection = undefined
-    this.relayoutAnchorSectionIndexes = [...this.visibleSectionIndexes]
-
-    try {
-      if (resolvedTarget) {
-        const previousRequestId = this.currentRenditionLocationRequestId()
-        const display = this.rendition?.display(resolvedTarget)
-        const requestId = this.trackRenditionLocationRequest(
-          previousRequestId,
-          {
-            updateAnchor: false,
-          },
-        )
-        await display
-        this.commitPendingRenditionLocation(requestId)
-        return
-      }
-
-      const requestId = this.createManualLocationRequest({
-        updateAnchor: false,
-      })
-      await (this.rendition as any)?.reportLocation(requestId)
-      this.commitPendingRenditionLocation(requestId)
-    } catch (error) {
-      if (generation === this.renderGeneration) console.error(error)
-    }
+  relayoutCurrentView(target?: string) {
+    return this.layoutTransactions.relayout(this, target)
   }
 
   private async displayInitialPosition() {
-    const contentReloadTarget = this.contentReloadTarget
-    this.contentReloadTarget = undefined
-    const manager = this.rendition?.manager
-    const spread = contentReloadTarget
-      ? undefined
-      : hydrateReflowableSpread(
-          this.book.configuration?.spread,
-          this.sections,
-          this.layoutStyleSignature,
-        )
-
-    if (
-      spread &&
-      manager?.canUseLogicalReflowableSpread?.() &&
-      manager.renderReflowableSpread
-    ) {
-      const requestId = this.createManualLocationRequest({ updateAnchor: true })
-      await manager.renderReflowableSpread(spread)
-      await (this.rendition as any)?.reportLocation(requestId)
-      this.commitPendingRenditionLocation(requestId)
-      return
-    }
-
-    const target = this.resolveDisplayTarget(
-      contentReloadTarget ??
-        this.location?.start.cfi ??
-        this.book.cfi ??
-        undefined,
-      'initial',
-    )
-    const previousRequestId = this.currentRenditionLocationRequestId()
-    const display = this.rendition?.display(target)
-    const requestId = this.trackRenditionLocationRequest(previousRequestId, {
-      anchorTarget: target,
-      updateAnchor: true,
-    })
-    await display
-    this.commitPendingRenditionLocation(requestId)
+    await this.layoutTransactions.displayInitialPosition(this)
   }
 
   async render(

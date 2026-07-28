@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 
-import { useSettings } from '@flow/reader/state'
+import { useSettings } from '@/state'
 import {
   backgroundOptions,
   backgroundPresets,
@@ -12,7 +12,7 @@ import {
   normalizePaletteColor,
   type BackgroundPalette,
   type BackgroundPresetId,
-} from '@flow/reader/styles/theme'
+} from '@/styles/theme'
 
 export {
   backgroundOptions,

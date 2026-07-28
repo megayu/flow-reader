@@ -22,9 +22,7 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "paths": {
-      "@/*": ["./src/*"],
-      "@flow/reader/*": ["./src/*"],
-      "@flow/epubjs/*": ["./packages/epubjs/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["vite.config.ts", "src"],

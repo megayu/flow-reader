@@ -523,9 +523,9 @@ export function DictionaryPopup({
                   type="button"
                   aria-label={source.providerName}
                   aria-pressed={active}
-                  className={`enabled:hover:border-border enabled:hover:bg-muted enabled:hover:text-foreground inline-flex size-7 shrink-0 items-center justify-center rounded-sm border text-sm leading-none font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-accent-border)] enabled:cursor-pointer disabled:cursor-default disabled:opacity-35 ${
+                  className={`enabled:hover:border-border enabled:hover:bg-muted enabled:hover:text-foreground inline-flex size-7 shrink-0 items-center justify-center rounded-sm border text-sm leading-none font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-(--flow-accent-border) enabled:cursor-pointer disabled:cursor-default disabled:opacity-35 ${
                     active
-                      ? 'text-foreground border-transparent bg-[var(--flow-accent-bg)] ring-1 ring-[var(--flow-accent-border)] ring-inset'
+                      ? 'text-foreground border-transparent bg-(--flow-accent-bg) ring-1 ring-(--flow-accent-border) ring-inset'
                       : 'text-muted-foreground border-transparent'
                   }`}
                   disabled={Boolean(currentDetail) || source.status === 'empty'}
