@@ -1,7 +1,7 @@
 use std::{
     fs,
     io::{Read, Seek},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -324,7 +324,7 @@ struct UnpackedSearchTextSource<'a> {
 
 impl SearchTextSource for UnpackedSearchTextSource<'_> {
     fn read_text(&mut self, path: &str) -> Result<String, String> {
-        read_text_file_lossy(&join_relative_unpacked_path(self.root, path))
+        read_text_file_lossy(&resolve_unpacked_search_path(self.root, path)?)
     }
 }
 
@@ -683,18 +683,29 @@ fn href_without_fragment(href: &str) -> &str {
     href.split_once('#').map(|(path, _)| path).unwrap_or(href)
 }
 
-fn join_relative_unpacked_path(base: &Path, href: &str) -> PathBuf {
-    let mut path = base.to_path_buf();
-    for part in href.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                path.pop();
-            }
-            _ => path.push(percent_decode_path_segment(part)),
-        }
+fn resolve_unpacked_search_path(root: &Path, href: &str) -> Result<PathBuf, String> {
+    let decoded = percent_decode_path(&href.replace('\\', "/")).replace('\\', "/");
+    if decoded.is_empty() || decoded.contains('%') {
+        return Err("EPUB search document has an invalid encoded path".to_string());
     }
-    path
+
+    let relative = Path::new(&decoded);
+    if relative.components().any(|component| {
+        matches!(
+            component,
+            Component::Prefix(_) | Component::RootDir | Component::ParentDir
+        )
+    }) {
+        return Err("EPUB search document path escapes the unpacked book".to_string());
+    }
+
+    let canonical_root = fs::canonicalize(root).map_err(|error| error.to_string())?;
+    let canonical_candidate = fs::canonicalize(root.join(relative)).map_err(|error| error.to_string())?;
+    if !canonical_candidate.starts_with(&canonical_root) {
+        return Err("EPUB search document path escapes the unpacked book".to_string());
+    }
+
+    Ok(canonical_candidate)
 }
 
 fn read_text_file_lossy(path: &Path) -> Result<String, String> {
@@ -1151,6 +1162,29 @@ mod tests {
                 text: text.to_string(),
             }],
         }
+    }
+
+    #[test]
+    fn unpacked_search_rejects_percent_encoded_parent_paths() {
+        let root = temp_root("search-path-boundary-test");
+        let unpacked = root.join("unpacked");
+        fs::create_dir_all(unpacked.join("META-INF")).unwrap();
+        fs::write(
+            unpacked.join("META-INF/container.xml"),
+            r#"<?xml version="1.0"?><container><rootfiles><rootfile full-path="content.opf"/></rootfiles></container>"#,
+        )
+        .unwrap();
+        fs::write(
+            unpacked.join("content.opf"),
+            r#"<?xml version="1.0"?><package><manifest><item id="chapter" href="%2e%2e/outside.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="chapter"/></spine></package>"#,
+        )
+        .unwrap();
+        fs::write(root.join("outside.xhtml"), "<html><body>outside secret</body></html>").unwrap();
+
+        let result = read_search_text_sections_from_unpacked(&unpacked);
+
+        assert!(result.is_err());
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
