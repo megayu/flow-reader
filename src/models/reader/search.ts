@@ -40,9 +40,16 @@ export class BookSearchController {
   }
 
   private async updateResults(tab: BookTab, keyword: string, requestVersion: number) {
-    const results = await searchBook(tab, keyword)
-    if (this.isCurrent(tab, keyword, requestVersion)) {
-      tab.results = results
+    try {
+      const results = await searchBook(tab, keyword)
+      if (this.isCurrent(tab, keyword, requestVersion)) {
+        tab.results = results
+      }
+    } catch (error) {
+      console.error('Failed to update book search results', error)
+      if (this.isCurrent(tab, keyword, requestVersion)) {
+        tab.results = []
+      }
     }
   }
 }

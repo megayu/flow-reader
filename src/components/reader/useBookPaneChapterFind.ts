@@ -125,45 +125,65 @@ export function useBookPaneChapterFindResults({
 
     const sectionIndex = findSectionIndex
     const section = tab.sections?.find((item) => item.index === sectionIndex)
-    if (!section) return
+    if (!section) {
+      setState((current) => ({
+        ...current,
+        results: [],
+        activeIndex: 0,
+        searching: false,
+      }))
+      return
+    }
     const currentSection = section
 
     setState((current) => ({ ...current, searching: true }))
 
     async function searchSection() {
-      const matches = (
-        currentSection.find(query) as Array<{
-          cfi?: string
-          excerpt?: string
-        }>
-      ).flatMap((match) => (match.cfi ? [match] : []))
+      try {
+        const matches = (
+          currentSection.find(query) as Array<{
+            cfi?: string
+            excerpt?: string
+          }>
+        ).flatMap((match) => (match.cfi ? [match] : []))
 
-      const results = await Promise.all(
-        matches.map(async (match): Promise<ChapterFindResult> => {
-          const cfi = match.cfi!
+        const results = await Promise.all(
+          matches.map(async (match): Promise<ChapterFindResult> => {
+            const cfi = match.cfi!
 
-          return {
-            cfi,
-            excerpt: match.excerpt ?? '',
-            pageIndex: await tab.pageIndexForCfi(sectionIndex, cfi),
-          }
-        }),
-      )
+            return {
+              cfi,
+              excerpt: match.excerpt ?? '',
+              pageIndex: await tab.pageIndexForCfi(sectionIndex, cfi),
+            }
+          }),
+        )
 
-      if (cancelled) return
+        if (cancelled) return
 
-      const visibleIndex = firstVisibleFindResultIndex(
-        results,
-        sectionIndex,
-        rendition?.manager as ReflowableManager | undefined,
-      )
+        const visibleIndex = firstVisibleFindResultIndex(
+          results,
+          sectionIndex,
+          rendition?.manager as ReflowableManager | undefined,
+        )
 
-      setState((current) => ({
-        ...current,
-        results,
-        activeIndex: visibleIndex > -1 ? visibleIndex : 0,
-        searching: false,
-      }))
+        setState((current) => ({
+          ...current,
+          results,
+          activeIndex: visibleIndex > -1 ? visibleIndex : 0,
+          searching: false,
+        }))
+      } catch (error) {
+        console.error('Failed to search the current chapter', error)
+        if (cancelled) return
+
+        setState((current) => ({
+          ...current,
+          results: [],
+          activeIndex: 0,
+          searching: false,
+        }))
+      }
     }
 
     void searchSection()
