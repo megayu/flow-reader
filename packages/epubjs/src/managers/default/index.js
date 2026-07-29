@@ -58,6 +58,7 @@ class DefaultViewManager {
     this.currentReflowableSpread = undefined
     this.prePaginatedSlotCache = new WeakMap()
     this.currentPrePaginatedSpread = undefined
+    this._onUnload = this.onUnload.bind(this)
   }
 
   resetReflowablePageState(clearCache) {
@@ -135,12 +136,7 @@ class DefaultViewManager {
   addEventListeners() {
     var scroller
 
-    window.addEventListener(
-      'unload',
-      function (e) {
-        this.destroy()
-      }.bind(this),
-    )
+    window.addEventListener('unload', this._onUnload)
 
     if (!this.settings.fullsize) {
       scroller = this.container
@@ -155,6 +151,8 @@ class DefaultViewManager {
   removeEventListeners() {
     var scroller
 
+    window.removeEventListener('unload', this._onUnload)
+
     if (!this.settings.fullsize) {
       scroller = this.container
     } else {
@@ -163,6 +161,10 @@ class DefaultViewManager {
 
     scroller.removeEventListener('scroll', this._onScroll)
     this._onScroll = undefined
+  }
+
+  onUnload() {
+    this.destroy()
   }
 
   destroy() {
