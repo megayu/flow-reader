@@ -1,4 +1,4 @@
-import { defer, isXml, parse } from './utils/core'
+import { isXml, parse } from './utils/core'
 import mime from './utils/mime'
 import Path from './utils/path'
 import request from './utils/request'
@@ -70,7 +70,6 @@ class Archive {
    * @return {Promise<Blob | string | JSON | Document | XMLDocument>}
    */
   request(url, type) {
-    var deferred = new defer()
     var response
     var path = new Path(url)
 
@@ -85,20 +84,14 @@ class Archive {
       response = this.getText(url)
     }
 
-    if (response) {
-      response.then(
-        function (r) {
-          let result = this.handleResponse(r, type)
-          deferred.resolve(result)
-        }.bind(this),
-      )
-    } else {
-      deferred.reject({
+    if (!response) {
+      return Promise.reject({
         message: 'File not found in the epub: ' + url,
         stack: new Error().stack,
       })
     }
-    return deferred.promise
+
+    return response.then((result) => this.handleResponse(result, type))
   }
 
   /**
@@ -186,50 +179,32 @@ class Archive {
    * @return {Promise} url promise with Url string
    */
   createUrl(url, options) {
-    var deferred = new defer()
     var _URL = window.URL || window.webkitURL || window.mozURL
-    var tempUrl
     var response
     var useBase64 = options && options.base64
 
     if (url in this.urlCache) {
-      deferred.resolve(this.urlCache[url])
-      return deferred.promise
+      return Promise.resolve(this.urlCache[url])
     }
 
     if (useBase64) {
       response = this.getBase64(url)
-
-      if (response) {
-        response.then(
-          function (tempUrl) {
-            this.urlCache[url] = tempUrl
-            deferred.resolve(tempUrl)
-          }.bind(this),
-        )
-      }
     } else {
       response = this.getBlob(url)
-
-      if (response) {
-        response.then(
-          function (blob) {
-            tempUrl = _URL.createObjectURL(blob)
-            this.urlCache[url] = tempUrl
-            deferred.resolve(tempUrl)
-          }.bind(this),
-        )
-      }
     }
 
     if (!response) {
-      deferred.reject({
+      return Promise.reject({
         message: 'File not found in the epub: ' + url,
         stack: new Error().stack,
       })
     }
 
-    return deferred.promise
+    return response.then((result) => {
+      const tempUrl = useBase64 ? result : _URL.createObjectURL(result)
+      this.urlCache[url] = tempUrl
+      return tempUrl
+    })
   }
 
   /**
