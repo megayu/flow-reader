@@ -282,6 +282,7 @@ struct StorageInner {
     root: PathBuf,
     state: Mutex<StorageState>,
     dirty: Mutex<DirtyState>,
+    flush_lock: Mutex<()>,
     import_lock: Mutex<()>,
     reading_position_sequences: Mutex<HashMap<String, u64>>,
     search_text_caches: Mutex<HashMap<String, Arc<SearchTextCache>>>,
@@ -334,6 +335,7 @@ impl AppStorage {
                     book_states: HashMap::new(),
                 }),
                 dirty: Mutex::new(DirtyState::default()),
+                flush_lock: Mutex::new(()),
                 import_lock: Mutex::new(()),
                 reading_position_sequences: Mutex::new(HashMap::new()),
                 search_text_caches: Mutex::new(HashMap::new()),
@@ -1002,6 +1004,7 @@ mod tests {
                     book_states,
                 }),
                 dirty: Mutex::new(DirtyState::default()),
+                flush_lock: Mutex::new(()),
                 import_lock: Mutex::new(()),
                 reading_position_sequences: Mutex::new(HashMap::new()),
                 search_text_caches: Mutex::new(HashMap::new()),
@@ -1028,6 +1031,7 @@ mod tests {
                     book_states: HashMap::new(),
                 }),
                 dirty: Mutex::new(DirtyState::default()),
+                flush_lock: Mutex::new(()),
                 import_lock: Mutex::new(()),
                 reading_position_sequences: Mutex::new(HashMap::new()),
                 search_text_caches: Mutex::new(HashMap::new()),
@@ -2806,6 +2810,26 @@ mod tests {
         let state = fs::read_to_string(root.join("books").join("book").join(STATE_FILE)).unwrap();
         assert!(state.contains(r#""cfi": "epubcfi(/6/8)""#));
         assert!(state.contains(r#""percentage": 0.8"#));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn failed_flush_keeps_library_dirty_for_retry() {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("flow-reader-flush-retry-test-{}-{nonce}", std::process::id()));
+        let storage = test_storage_with_books(&root, vec![test_library_book(BookSourceFormat::Epub)]);
+        let path = library_path(&root).unwrap();
+        fs::create_dir_all(&path).unwrap();
+        storage.mark_library_dirty();
+
+        assert!(storage.flush_dirty().is_err());
+        assert!(storage.inner.dirty.lock().unwrap().library);
+
+        fs::remove_dir(&path).unwrap();
+        storage.flush_dirty().expect("dirty library should be retryable");
+        assert!(!storage.inner.dirty.lock().unwrap().library);
+        assert!(path.is_file());
 
         let _ = fs::remove_dir_all(root);
     }

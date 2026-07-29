@@ -77,6 +77,11 @@ impl AppStorage {
     }
 
     pub fn flush_dirty(&self) -> Result<(), String> {
+        let _flush_guard = self
+            .inner
+            .flush_lock
+            .lock()
+            .map_err(|_| "storage flush lock poisoned".to_string())?;
         let dirty = {
             let mut dirty = self
                 .inner
@@ -100,37 +105,53 @@ impl AppStorage {
             return Ok(());
         }
 
-        let (library, external, settings, book_states) = {
-            let state = self
+        let result = (|| {
+            let (library, external, settings, book_states) = {
+                let state = self
+                    .inner
+                    .state
+                    .lock()
+                    .map_err(|_| "storage state lock poisoned".to_string())?;
+                let library = dirty.library.then(|| clone_library(&state.library));
+                let external = dirty.external.then(|| clone_external_index(&state.external));
+                let settings = dirty.settings.then(|| state.settings.clone());
+                let book_states = dirty
+                    .book_states
+                    .iter()
+                    .filter_map(|id| state.book_states.get(id).map(|s| (id.clone(), s.clone())))
+                    .collect::<Vec<_>>();
+
+                (library, external, settings, book_states)
+            };
+
+            if let Some(library) = library {
+                write_json(&library_path(self.root())?, &library)?;
+            }
+            if let Some(external) = external {
+                write_json(&external_index_path(self.root())?, &external)?;
+            }
+            if let Some(settings) = settings {
+                write_json(&settings_path(self.root())?, &settings)?;
+            }
+            for (id, book_state) in book_states {
+                write_json(&self.book_dir(&id).join(STATE_FILE), &book_state)?;
+            }
+
+            Ok(())
+        })();
+
+        if result.is_err() {
+            let mut current = self
                 .inner
-                .state
+                .dirty
                 .lock()
-                .map_err(|_| "storage state lock poisoned".to_string())?;
-            let library = dirty.library.then(|| clone_library(&state.library));
-            let external = dirty.external.then(|| clone_external_index(&state.external));
-            let settings = dirty.settings.then(|| state.settings.clone());
-            let book_states = dirty
-                .book_states
-                .iter()
-                .filter_map(|id| state.book_states.get(id).map(|s| (id.clone(), s.clone())))
-                .collect::<Vec<_>>();
-
-            (library, external, settings, book_states)
-        };
-
-        if let Some(library) = library {
-            write_json(&library_path(self.root())?, &library)?;
-        }
-        if let Some(external) = external {
-            write_json(&external_index_path(self.root())?, &external)?;
-        }
-        if let Some(settings) = settings {
-            write_json(&settings_path(self.root())?, &settings)?;
-        }
-        for (id, book_state) in book_states {
-            write_json(&self.book_dir(&id).join(STATE_FILE), &book_state)?;
+                .map_err(|_| "storage dirty lock poisoned while restoring failed flush".to_string())?;
+            current.library |= dirty.library;
+            current.external |= dirty.external;
+            current.settings |= dirty.settings;
+            current.book_states.extend(dirty.book_states);
         }
 
-        Ok(())
+        result
     }
 }
