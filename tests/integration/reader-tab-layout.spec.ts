@@ -4378,6 +4378,7 @@ test('commits pointer tab reordering only inside the tab strip', async ({ page }
   await waitForStableReaderLayout(page, { sidebarVisible: true })
   await openFixtureBookByName(page, 'Tab Layout C')
   await waitForStableReaderLayout(page, { sidebarVisible: true })
+  await installFullTabRuntimeProbe(page)
 
   await page.evaluate(() => {
     const panes = Array.from(document.querySelectorAll<HTMLElement>('[data-flow-reader-pane]'))
@@ -4455,17 +4456,14 @@ test('commits pointer tab reordering only inside the tab strip', async ({ page }
   })
 
   const tabB = readerTab(page, 'Tab Layout B')
+  const tabList = readerTabs(page).first().locator('..')
   const tabBBox = await tabB.boundingBox()
-  const reorderedTabABox = await tabA.boundingBox()
-  if (!tabBBox || !reorderedTabABox) throw new Error('Missing tab bounds')
+  const tabListBox = await tabList.boundingBox()
+  if (!tabBBox || !tabListBox) throw new Error('Missing tab bounds')
 
   await page.mouse.move(tabBBox.x + tabBBox.width / 2, tabBBox.y + tabBBox.height / 2)
   await page.mouse.down()
-  await page.mouse.move(
-    reorderedTabABox.x + reorderedTabABox.width / 2,
-    reorderedTabABox.y + reorderedTabABox.height + 80,
-    { steps: 5 },
-  )
+  await page.mouse.move(tabListBox.x + tabListBox.width + 20, tabBBox.y + tabBBox.height / 2, { steps: 5 })
   await page.mouse.up()
 
   await expect.poll(tabOrder).toEqual(['Tab Layout B', 'Tab Layout C', 'Tab Layout A'])
