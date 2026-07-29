@@ -32,7 +32,7 @@ test('library modified-book indicator is disabled by default and can be enabled'
   await installTauriMock(page, { books: [modifiedBook] })
   await page.goto('/')
 
-  const indicator = page.getByLabel('Modified content can be exported')
+  const indicator = page.locator('[data-flow-library-book-card] svg.lucide-download')
   await expect(indicator).toHaveCount(0)
 
   await page.keyboard.press(settingsShortcut)
@@ -56,7 +56,7 @@ test('exporting either TXT format clears the shared indicator but preserves per-
   })
   await page.goto('/')
 
-  const indicator = page.getByLabel('Modified content can be exported')
+  const indicator = page.locator('[data-flow-library-book-card] svg.lucide-download')
   await expect(indicator).toBeVisible()
   await page.getByText('Correctable').click({ button: 'right' })
   await expect(page.getByRole('menuitem', { name: /Export TXT\s*\*/ })).toBeVisible()

@@ -1,159 +1,22 @@
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
-import Module, { createRequire } from 'node:module'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
-import ts from 'typescript'
+import { test } from 'vitest'
 
-type DynamicModule = Module & {
-  exports: Record<string, any>
-  filename: string
-  paths: string[]
-  require: (id: string) => any
-  _compile(source: string, filename: string): void
-}
+import * as annotationModule from '../../src/annotation.ts'
+import * as contextViewLayoutModule from '../../src/components/base/contextViewLayout.ts'
+import * as imageFiltersModule from '../../src/imageFilters.ts'
+import * as readerModelModule from '../../src/models/reader/model.ts'
+import * as noteLinksModule from '../../src/noteLinks.ts'
+import * as noteSemanticsModule from '../../src/noteSemantics.ts'
+import * as stylesModule from '../../src/styles.ts'
 
-const NodeModule = Module as typeof Module & {
-  _nodeModulePaths(path: string): string[]
-}
-const loadDependency = createRequire(import.meta.url)
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-
-function loadTsModule(relativePath: string, mocks: Record<string, any> = {}): Record<string, any> {
-  const sourcePath = path.join(__dirname, '..', '..', relativePath)
-  return loadTsFile(sourcePath, mocks, new Map())
-}
-
-function loadTsFile(
-  sourcePath: string,
-  mocks: Record<string, any>,
-  cache: Map<string, Record<string, any>>,
-): Record<string, any> {
-  const cached = cache.get(sourcePath)
-  if (cached) return cached
-
-  const source = fs.readFileSync(sourcePath, 'utf8')
-  const { outputText } = ts.transpileModule(source, {
-    compilerOptions: {
-      esModuleInterop: true,
-      experimentalDecorators: true,
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2019,
-    },
-    fileName: sourcePath,
-  })
-  const localRequire = (id: string) => {
-    if (Object.hasOwn(mocks, id)) return mocks[id]
-
-    if (id.startsWith('.')) {
-      const base = path.resolve(path.dirname(sourcePath), id)
-      const candidate = [
-        `${base}.ts`,
-        `${base}.tsx`,
-        path.join(base, 'index.ts'),
-        path.join(base, 'index.tsx'),
-        base,
-      ].find((target) => fs.existsSync(target) && fs.statSync(target).isFile())
-      if (candidate) return loadTsFile(candidate, mocks, cache)
-    }
-
-    return loadDependency(id)
-  }
-
-  const compiledModule = new Module(sourcePath) as DynamicModule
-  cache.set(sourcePath, compiledModule.exports)
-  compiledModule.filename = sourcePath
-  compiledModule.paths = NodeModule._nodeModulePaths(path.dirname(sourcePath))
-  compiledModule.require = localRequire
-  compiledModule._compile(outputText, sourcePath)
-
-  cache.set(sourcePath, compiledModule.exports)
-  return compiledModule.exports
-}
-
-const styles = loadTsModule('src/styles.ts', {
-  react: {},
-  '@flow/epubjs': {},
-  './bodyText': {
-    bodyTextCandidateSelector: 'p',
-    bodyTextSelector: '[data-flow-body-text]',
-    createHiddenNoteContentSelector: () => '[data-flow-note-content="true"]',
-    ensureBodyTextMarkers: () => undefined,
-    getBodyTypographyBaseline: () => ({}),
-    notePopoverClass: 'flow-note-popover',
-    noteTextSelector: '[data-flow-note-text]',
-  },
-  './state': {},
-  './utils': {
-    keys: Object.keys,
-  },
-})
-
-const annotation = loadTsModule('src/annotation.ts')
-const contextViewLayout = loadTsModule('src/components/base/contextViewLayout.ts')
-const noteLinks = loadTsModule('src/noteLinks.ts')
-const noteSemantics = loadTsModule('src/noteSemantics.ts')
-const imageFilters = loadTsModule('src/imageFilters.ts')
-const readerModel = loadTsModule('src/models/reader/model.ts', {
-  '@github/mini-throttle/decorators': {
-    debounce: () => () => undefined,
-  },
-  '@flow/epubjs': () => ({}),
-  '@flow/epubjs/navigation': {},
-  '@flow/epubjs/request': () => Promise.resolve(''),
-  '@flow/epubjs/section': {},
-  '@/env': {
-    IS_SERVER: true,
-  },
-  '@/annotation': {
-    AnnotationColor: {},
-    AnnotationType: {},
-    createAnnotationSpine: () => [],
-  },
-  '@/book': {
-    getBookDisplayTitle: () => '',
-  },
-  '@/storage': {
-    db: {},
-    searchBookText: () => [],
-    unloadBookSearchText: () => undefined,
-  },
-  '../../storage': {
-    db: {},
-    searchBookText: () => [],
-    unloadBookSearchText: () => undefined,
-  },
-  '@/externalLink': {
-    openSupportedExternalUrl: () => undefined,
-  },
-  '@/id': {
-    createId: () => 'test-id',
-  },
-  '@/noteLinks': {
-    normalizeHrefPath: (value: string) => value,
-    sameHref: (a: string, b: string) => a === b,
-  },
-  '@/reader/errorEvents': {
-    emitReaderOpenError: () => undefined,
-  },
-  '@/styles': {
-    BodyTextDetectionCache: class {},
-    defaultStyle: {},
-  },
-  '../tree': {
-    BaseTab: class {},
-    dfs: () => undefined,
-    find: () => undefined,
-  },
-  react: {},
-  valtio: {
-    proxy: <T>(value: T) => value,
-    ref: <T>(value: T) => value,
-    snapshot: <T>(value: T) => value,
-    useSnapshot: <T>(value: T) => value,
-  },
-})
+const annotation = annotationModule as Record<string, any>
+const contextViewLayout = contextViewLayoutModule as Record<string, any>
+const imageFilters = imageFiltersModule as Record<string, any>
+const noteLinks = noteLinksModule as Record<string, any>
+const noteSemantics = noteSemanticsModule as Record<string, any>
+const readerModel = readerModelModule as Record<string, any>
+const styles = stylesModule as Record<string, any>
 
 function testTextAlignIsNonPaginationStyle() {
   assert.strictEqual(
@@ -941,26 +804,29 @@ function testChapterFindUsesTheReadingOrderStartSection() {
   assert.strictEqual(readerModel.readingOrderStartSectionIndex(undefined, undefined, 20), 20)
 }
 
-testTextAlignIsNonPaginationStyle()
-testZoomBodyStylesSkipNonNumericValues()
-testZoomBodyStylesCanUseCurrentLayout()
-testZoomBodyStylesUseVerticalPhysicalAxes()
-testZoomBodyStylesUseSinglePageVerticalStride()
-testZoomMediaUsesScaledContentColumnWidth()
-testZoomPinsExplicitDecorativeBackgroundsToViewport()
-testZoomLeavesNonDecorativeBackgroundsAlone()
-testAnnotationSpineDoesNotRequireNavItem()
-testEpubHrefComparisonHandlesEncodedSpinePaths()
-testNoteMarkersSupportCjkBrackets()
-testDuplicateIllustrationFilterHidesFirstAndRepeatedCandidates()
-testDuplicateIllustrationFilterIgnoresAlreadyHiddenImages()
-testDuplicateIllustrationFilterRebuildsFromHiddenDuplicates()
-testDuplicateIllustrationFilterRestoresUniqueLeadingTitleArt()
-testDuplicateIllustrationFilterKeepsRepeatedLeadingTitleArtHidden()
-testNearDocumentStartHandlesDocumentsWithoutBody()
-testChapterFindUsesTheReadingOrderStartSection()
-testVerticalOverlayPlacementStaysInsidePageAndAvoidsSelection()
-testContextViewLayoutClampsOutsideAnchorsToViewport()
-testVerticalRangeRectsFollowReadingOrder()
-testVerticalTypographyCssOverridesAuthorPunctuation()
-console.log('reader optimization tests passed')
+for (const run of [
+  testTextAlignIsNonPaginationStyle,
+  testZoomBodyStylesSkipNonNumericValues,
+  testZoomBodyStylesCanUseCurrentLayout,
+  testZoomBodyStylesUseVerticalPhysicalAxes,
+  testZoomBodyStylesUseSinglePageVerticalStride,
+  testZoomMediaUsesScaledContentColumnWidth,
+  testZoomPinsExplicitDecorativeBackgroundsToViewport,
+  testZoomLeavesNonDecorativeBackgroundsAlone,
+  testAnnotationSpineDoesNotRequireNavItem,
+  testEpubHrefComparisonHandlesEncodedSpinePaths,
+  testNoteMarkersSupportCjkBrackets,
+  testDuplicateIllustrationFilterHidesFirstAndRepeatedCandidates,
+  testDuplicateIllustrationFilterIgnoresAlreadyHiddenImages,
+  testDuplicateIllustrationFilterRebuildsFromHiddenDuplicates,
+  testDuplicateIllustrationFilterRestoresUniqueLeadingTitleArt,
+  testDuplicateIllustrationFilterKeepsRepeatedLeadingTitleArtHidden,
+  testNearDocumentStartHandlesDocumentsWithoutBody,
+  testChapterFindUsesTheReadingOrderStartSection,
+  testVerticalOverlayPlacementStaysInsidePageAndAvoidsSelection,
+  testContextViewLayoutClampsOutsideAnchorsToViewport,
+  testVerticalRangeRectsFollowReadingOrder,
+  testVerticalTypographyCssOverridesAuthorPunctuation,
+]) {
+  test(run.name, run)
+}

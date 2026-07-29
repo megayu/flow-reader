@@ -10,6 +10,6 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['tests/unit/**/*.contract.test.ts'],
+    include: ['tests/unit/**/*.test.ts'],
   },
 })

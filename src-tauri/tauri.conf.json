@@ -6,7 +6,7 @@
   "identifier": "com.flow.reader",
   "build": {
     "beforeDevCommand": "pnpm dev",
-    "devUrl": "http://localhost:7127",
+    "devUrl": "http://127.0.0.1:7127",
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
   },

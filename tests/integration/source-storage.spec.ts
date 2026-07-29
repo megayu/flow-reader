@@ -64,8 +64,8 @@ test('replaces the archive badge and warns when its referenced source is missing
   await page.goto('/')
 
   const card = page.locator('[data-flow-library-book-card]')
-  await expect(card.getByLabel('Original file unavailable')).toBeVisible()
-  await expect(card.getByLabel('Archive mode')).toHaveCount(0)
+  await expect(card.locator('svg.lucide-file-x-corner')).toBeVisible()
+  await expect(card.locator('svg.lucide-archive')).toHaveCount(0)
 
   await card.click()
   const alert = page.getByRole('alert').filter({
@@ -122,8 +122,8 @@ test('shows source changed instead of archive mode on the cover', async ({ page 
   await page.goto('/')
 
   const card = page.locator('[data-flow-library-book-card]')
-  await expect(card.getByLabel('Original file unavailable')).toBeVisible()
-  await expect(card.getByLabel('Archive mode')).toHaveCount(0)
+  await expect(card.locator('svg.lucide-file-x-corner')).toBeVisible()
+  await expect(card.locator('svg.lucide-archive')).toHaveCount(0)
 
   await card.click()
   const alert = page.getByRole('alert').filter({

@@ -580,7 +580,7 @@ test('opens the compact translation popup and Escape returns to the text menu', 
   await expect(popup.getByRole('button', { name: '复制' })).toBeDisabled()
   await expect(popup.getByText('Google: sample', { exact: true })).toBeVisible()
   await expect(popup.getByRole('button', { name: '复制' })).toBeEnabled()
-  await expect(popup.getByRole('separator')).toBeVisible()
+  await expect(popup.locator('[data-flow-translation-splitter]')).toBeVisible()
   await expect(popup).toHaveCSS('width', '600px')
   await expect(page.getByRole('tooltip')).toHaveCount(0)
   const compactGeometry = await popup.evaluate((element) => {

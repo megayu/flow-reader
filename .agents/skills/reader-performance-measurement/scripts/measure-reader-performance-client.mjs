@@ -349,6 +349,12 @@ async function installBrowserTauriMock(page, books) {
       if (command === 'get_book_package_path') {
         return bookStore.get(String(args.id))?.packageUrl ?? ''
       }
+      if (command === 'get_book_reader_source') {
+        return {
+          mode: 'opf',
+          path: bookStore.get(String(args.id))?.packageUrl ?? '',
+        }
+      }
       if (command === 'take_pending_open_paths') return []
       if (command === 'flush_storage') return null
       if (command === 'search_book_text') return []
@@ -386,6 +392,12 @@ async function installRuntimePerfBookMock(page, books) {
       if (command === 'get_cover') return null
       if (command === 'get_book_package_path') {
         return bookStore.get(String(args.id))?.packageUrl ?? ''
+      }
+      if (command === 'get_book_reader_source') {
+        return {
+          mode: 'opf',
+          path: bookStore.get(String(args.id))?.packageUrl ?? '',
+        }
       }
       if (command === 'search_book_text') return []
       if (command === 'unload_book_search_text') return null

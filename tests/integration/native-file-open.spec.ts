@@ -68,12 +68,12 @@ test('cold native EPUB open opens only the requested book', async ({ page }) => 
     )
     .toEqual([requested.id])
   await expect(page.getByTestId('native-startup-surface')).toBeVisible()
-  await expect(page.locator('[role="tab"]')).toHaveCount(1)
+  await expect(page.locator('[data-flow-reader-tab-index]')).toHaveCount(1)
   await page.evaluate(() => {
     ;(window as any).reader.focusedBookTab.rendered = true
   })
   await expect(page.getByTestId('native-startup-surface')).toHaveCount(0)
-  await expect(page.locator('[role="tab"]')).toHaveCount(1)
+  await expect(page.locator('[data-flow-reader-tab-index]')).toHaveCount(1)
   expect(await page.evaluate(() => (window as any).__FLOW_TEST_TAURI__?.takePendingOpenPathsCalls)).toBe(1)
   await expect.poll(async () => (await getStoredSettings(page)).readerSidebarOpen).toBe(true)
 })

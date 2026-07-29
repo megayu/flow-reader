@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 
+import { test } from 'vitest'
+
 import {
   backgroundPresets,
   createBackgroundPalette,
@@ -364,11 +366,14 @@ function testBackgroundPaletteNormalizesPresetAndCustomColors() {
   assert.strictEqual(isDarkPaletteColor('#FFFFFF'), false)
 }
 
-testFlowThemeTokensCoverPresetsAndContrast()
-testTabTokensKeepVisibleLayeringForDarkAndCustomThemes()
-testSidebarItemTokensStayVisibleOnSidebarSurface()
-testCustomThemeTokensKeepAccentAndDangerSeparate()
-testFlowThemeCssOutputsFlowTokensAndCompatibilityBridge()
-testThemeConfigurationMigratesLegacySettings()
-testBackgroundPaletteNormalizesPresetAndCustomColors()
-console.log('theme-token tests passed')
+for (const run of [
+  testFlowThemeTokensCoverPresetsAndContrast,
+  testTabTokensKeepVisibleLayeringForDarkAndCustomThemes,
+  testSidebarItemTokensStayVisibleOnSidebarSurface,
+  testCustomThemeTokensKeepAccentAndDangerSeparate,
+  testFlowThemeCssOutputsFlowTokensAndCompatibilityBridge,
+  testThemeConfigurationMigratesLegacySettings,
+  testBackgroundPaletteNormalizesPresetAndCustomColors,
+]) {
+  test(run.name, run)
+}

@@ -1,74 +1,9 @@
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
-import Module, { createRequire } from 'node:module'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
-import ts from 'typescript'
+import { test } from 'vitest'
 
-type DynamicModule = Module & {
-  exports: Record<string, any>
-  filename: string
-  paths: string[]
-  require: (id: string) => any
-  _compile(source: string, filename: string): void
-}
-
-const NodeModule = Module as typeof Module & {
-  _nodeModulePaths(path: string): string[]
-}
-const loadDependency = createRequire(import.meta.url)
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-
-const sourcePath = path.join(__dirname, '..', '..', 'src', 'bodyText.ts')
-const source = fs.readFileSync(sourcePath, 'utf8')
-const { outputText } = ts.transpileModule(source, {
-  compilerOptions: {
-    esModuleInterop: true,
-    module: ts.ModuleKind.CommonJS,
-    target: ts.ScriptTarget.ES2019,
-  },
-  fileName: sourcePath,
-})
-
-const requireShim = (id: string): any => {
-  if (id === '@flow/epubjs') return {}
-  if (id === './noteIndex') return loadSourceModule('src/noteIndex.ts')
-  if (id === './noteSemantics') {
-    const isMarker = (text: string) => /^\[?\d+\]?$/.test((text || '').trim())
-    return {
-      isNoteMarkerText: isMarker,
-    }
-  }
-  return loadDependency(id)
-}
-
-function loadSourceModule(relativePath: string) {
-  const localSourcePath = path.join(__dirname, '..', '..', relativePath)
-  const localSource = fs.readFileSync(localSourcePath, 'utf8')
-  const { outputText: localOutputText } = ts.transpileModule(localSource, {
-    compilerOptions: {
-      esModuleInterop: true,
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2019,
-    },
-    fileName: localSourcePath,
-  })
-  const compiled = new Module(localSourcePath) as DynamicModule
-  compiled.filename = localSourcePath
-  compiled.paths = NodeModule._nodeModulePaths(path.dirname(localSourcePath))
-  compiled.require = requireShim
-  compiled._compile(localOutputText, localSourcePath)
-  return compiled.exports
-}
-
-const compiledModule = new Module(sourcePath) as DynamicModule
-compiledModule.filename = sourcePath
-compiledModule.paths = NodeModule._nodeModulePaths(path.dirname(sourcePath))
-compiledModule.require = requireShim
-compiledModule._compile(outputText, sourcePath)
-
-const { findReciprocalNoteItem, getNoteIndex } = loadSourceModule('src/noteIndex.ts')
+import * as bodyTextModule from '../../src/bodyText.ts'
+import * as noteIndexModule from '../../src/noteIndex.ts'
 
 const {
   bodyTextAttribute,
@@ -79,7 +14,8 @@ const {
   getBodyTextCandidates,
   noteContentAttribute,
   noteTextAttribute,
-} = compiledModule.exports
+} = bodyTextModule as Record<string, any>
+const { findReciprocalNoteItem, getNoteIndex } = noteIndexModule as Record<string, any>
 
 class FakeTextNode {
   readonly nodeType = 3
@@ -850,20 +786,23 @@ function testReciprocalLinkContentMayLiveInsideBacklinkAnchor() {
   assert.strictEqual(index.getHideTargets().includes(noteItem), true)
 }
 
-testInlineClassAnnotationPayloadIsNotCountedAsParentBodyText()
-testSameBaseStyleParagraphsAreCountedAsBodyText()
-testBodyTextIgnoresClassNameWhenComputedStyleMatches()
-testBodyTextIgnoresBlockMarginsWhenComputedStyleMatches()
-testBodyTextIncludesSameFontStyleVariants()
-testBodyTextIncludesLeadingDifferentFontCandidates()
-testBodyTextVariantsPreserveOriginalFontFamily()
-testInlineWrappedBodyParagraphsAreMarkedForTypographyPiercing()
-testReciprocalNoteContentIsMarkedStructurally()
-testSemanticNoteFallbackMarksNamedNoteContent()
-testLinkedNoteResolutionUsesHashTargetItem()
-testReciprocalNoteItemRequiresBacklinkToSourceAnchor()
-testReciprocalNoteItemUsesBoundedTargetStructures()
-testNoteIndexMapsBacklinksOnlyInsideRecognizedNoteItems()
-testReciprocalLinksDoNotDependOnNoteMarkerText()
-testReciprocalLinkContentMayLiveInsideBacklinkAnchor()
-console.log('body-text tests passed')
+for (const run of [
+  testInlineClassAnnotationPayloadIsNotCountedAsParentBodyText,
+  testSameBaseStyleParagraphsAreCountedAsBodyText,
+  testBodyTextIgnoresClassNameWhenComputedStyleMatches,
+  testBodyTextIgnoresBlockMarginsWhenComputedStyleMatches,
+  testBodyTextIncludesSameFontStyleVariants,
+  testBodyTextIncludesLeadingDifferentFontCandidates,
+  testBodyTextVariantsPreserveOriginalFontFamily,
+  testInlineWrappedBodyParagraphsAreMarkedForTypographyPiercing,
+  testReciprocalNoteContentIsMarkedStructurally,
+  testSemanticNoteFallbackMarksNamedNoteContent,
+  testLinkedNoteResolutionUsesHashTargetItem,
+  testReciprocalNoteItemRequiresBacklinkToSourceAnchor,
+  testReciprocalNoteItemUsesBoundedTargetStructures,
+  testNoteIndexMapsBacklinksOnlyInsideRecognizedNoteItems,
+  testReciprocalLinksDoNotDependOnNoteMarkerText,
+  testReciprocalLinkContentMayLiveInsideBacklinkAnchor,
+]) {
+  test(run.name, run)
+}

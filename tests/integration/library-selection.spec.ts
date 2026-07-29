@@ -45,7 +45,7 @@ function bookCard(page: Page, index: number) {
 }
 
 function selectedCount(page: Page) {
-  return page.locator('[aria-label="Selected / visible books"]')
+  return page.getByText(/^\d+ \/ 10$/)
 }
 
 async function expectSelectedCount(page: Page, count: number) {

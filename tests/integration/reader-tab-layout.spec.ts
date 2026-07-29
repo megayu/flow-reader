@@ -85,6 +85,18 @@ function createBook(id: string, title: string): BookRecord {
   }
 }
 
+function readerTabs(page: Page) {
+  return page.locator('[data-flow-reader-tab-index]')
+}
+
+function readerTab(page: Page, title: string) {
+  return readerTabs(page).filter({ hasText: title })
+}
+
+function listRow(scope: Page | Locator, text: string) {
+  return scope.locator('.list-row').filter({ hasText: text }).first()
+}
+
 async function installReaderBooksMock(
   page: Page,
   titles = ['Tab Layout A', 'Tab Layout B', 'Tab Layout C'],
@@ -590,7 +602,7 @@ async function openFixtureBookByName(page: Page, title: string) {
   if (!suffix) throw new Error(`Missing fixture-book suffix for ${title}`)
 
   await page.locator(`.SideBar button[aria-label*="${title}"]`).click()
-  await expect(page.getByRole('tab', { name: title })).toBeVisible()
+  await expect(readerTab(page, title)).toBeVisible()
   await expectFocusedTabId(page, `tab-layout-${suffix}`)
 }
 
@@ -691,8 +703,8 @@ async function readReaderLayout(page: Page) {
       const rect = el.getBoundingClientRect()
       return rect.right > 0 && rect.left < window.innerWidth && rect.bottom > 0 && rect.top < window.innerHeight
     }).length
-    const tabs = Array.from(document.querySelectorAll('[role="tab"]')).map((tab) => ({
-      label: tab.getAttribute('aria-label') ?? '',
+    const tabs = Array.from(document.querySelectorAll('[data-flow-reader-tab-index]')).map((tab) => ({
+      label: tab.textContent?.trim() ?? '',
       visible: isVisible(tab),
       selected: tab.className.includes('!text-foreground'),
     }))
@@ -1321,10 +1333,10 @@ async function readTabStripMotion(page: Page): Promise<TabStripMotion> {
     }
 
     function tabMetrics() {
-      return Array.from(document.querySelectorAll('[role="tab"]')).map((tab) => {
+      return Array.from(document.querySelectorAll('[data-flow-reader-tab-index]')).map((tab) => {
         const rect = tab.getBoundingClientRect()
         return {
-          label: tab.getAttribute('aria-label') ?? '',
+          label: tab.textContent?.trim() ?? '',
           height: Math.round(rect.height * 100) / 100,
           left: Math.round(rect.left * 100) / 100,
           top: Math.round(rect.top * 100) / 100,
@@ -1333,9 +1345,9 @@ async function readTabStripMotion(page: Page): Promise<TabStripMotion> {
       })
     }
 
-    const tabElements = Array.from(document.querySelectorAll('[role="tab"]')) as HTMLElement[]
+    const tabElements = Array.from(document.querySelectorAll('[data-flow-reader-tab-index]')) as HTMLElement[]
     const animated = tabElements.flatMap((tab) => {
-      const label = tab.getAttribute('aria-label') ?? ''
+      const label = tab.textContent?.trim() ?? ''
       const items: Array<{ label: string; target: string }> = []
       const targets: Array<readonly [string, Element]> = [
         ['self', tab],
@@ -1369,12 +1381,12 @@ async function readTabStripMotion(page: Page): Promise<TabStripMotion> {
 
 async function traceTabSwitchInteraction(page: Page, tabLabel: string) {
   return page.evaluate(async (targetLabel) => {
-    const tabElements = () => Array.from(document.querySelectorAll('[role="tab"]')) as HTMLElement[]
+    const tabElements = () => Array.from(document.querySelectorAll('[data-flow-reader-tab-index]')) as HTMLElement[]
     const tabMetrics = () =>
       tabElements().map((tab) => {
         const rect = tab.getBoundingClientRect()
         return {
-          label: tab.getAttribute('aria-label') ?? '',
+          label: tab.textContent?.trim() ?? '',
           height: Math.round(rect.height * 100) / 100,
           left: Math.round(rect.left * 100) / 100,
           top: Math.round(rect.top * 100) / 100,
@@ -1407,7 +1419,7 @@ async function traceTabSwitchInteraction(page: Page, tabLabel: string) {
       })
     }
 
-    const target = tabElements().find((tab) => tab.getAttribute('aria-label') === targetLabel)
+    const target = tabElements().find((tab) => tab.textContent?.trim() === targetLabel)
     if (!target) throw new Error(`Missing tab ${targetLabel}`)
 
     sample('before')
@@ -2670,7 +2682,7 @@ test('[vertical-rl] keeps a clicked sidebar search result active and visible', a
   const input = page.getByRole('textbox', { name: 'Search', exact: true })
   await input.fill('VERTICAL-CHAPTER-01-29')
 
-  const result = page.locator('.list-row[aria-label="VERTICAL-CHAPTER-01-29"]')
+  const result = listRow(page, 'VERTICAL-CHAPTER-01-29')
   await expect(result).toBeVisible()
   await result.click()
   await expect(result).toHaveAttribute('aria-current', 'true')
@@ -2717,23 +2729,24 @@ test('[vertical-rl] locates and expands the current search-result chapter', asyn
   })
   await locate.click()
 
-  await expect(page.getByLabel('Locate result 8-2')).toBeVisible()
-  const smallGroupVisibility = await searchScroll.evaluate((element) => {
-    const group = element.querySelector('[aria-label="Current locate chapter"]')
-    const lastResult = element.querySelector('[aria-label="Locate result 8-2"]')
-    if (!group || !lastResult) return null
-
-    const viewport = element.getBoundingClientRect()
-    const groupRect = group.getBoundingClientRect()
-    const resultRect = lastResult.getBoundingClientRect()
-    return {
-      groupTop: groupRect.top,
-      resultBottom: resultRect.bottom,
-      scrollTop: element.scrollTop,
-      viewportBottom: viewport.bottom,
-      viewportTop: viewport.top,
-    }
-  })
+  const lastSmallResult = listRow(searchScroll, 'Locate result 8-2')
+  await expect(lastSmallResult).toBeVisible()
+  const [viewport, groupRect, resultRect, scrollTop] = await Promise.all([
+    searchScroll.boundingBox(),
+    listRow(searchScroll, 'Current locate chapter').boundingBox(),
+    lastSmallResult.boundingBox(),
+    searchScroll.evaluate((element) => element.scrollTop),
+  ])
+  const smallGroupVisibility =
+    viewport && groupRect && resultRect
+      ? {
+          groupTop: groupRect.y,
+          resultBottom: resultRect.y + resultRect.height,
+          scrollTop,
+          viewportBottom: viewport.y + viewport.height,
+          viewportTop: viewport.y,
+        }
+      : null
   expect(smallGroupVisibility).toMatchObject({
     groupTop: expect.any(Number),
   })
@@ -2746,13 +2759,12 @@ test('[vertical-rl] locates and expands the current search-result chapter', asyn
   })
   await locate.click()
 
-  await expect(page.getByLabel('Locate result 8-0')).toBeVisible()
-  const largeGroupTopOffset = await searchScroll.evaluate((element) => {
-    const group = element.querySelector('[aria-label="Current locate chapter"]')
-    if (!group) return Number.POSITIVE_INFINITY
-
-    return group.getBoundingClientRect().top - element.getBoundingClientRect().top
-  })
+  await expect(listRow(searchScroll, 'Locate result 8-0')).toBeVisible()
+  const [largeViewport, largeGroup] = await Promise.all([
+    searchScroll.boundingBox(),
+    listRow(searchScroll, 'Current locate chapter').boundingBox(),
+  ])
+  const largeGroupTopOffset = largeViewport && largeGroup ? largeGroup.y - largeViewport.y : Number.POSITIVE_INFINITY
   expect(Math.abs(largeGroupTopOffset)).toBeLessThan(1)
 })
 
@@ -2902,9 +2914,9 @@ test('[vertical-rl] restores the committed right-first spread across tab and sid
   await installBookTabRuntimeCounters(page)
   await resetBookTabRuntimeCounters(page)
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   await waitForStableReaderLayout(page, { header: false })
-  await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+  await readerTab(page, 'Tab Layout B').click()
   await waitForVerticalReaderLoaded(page)
   const afterTabSwitch = await readVerticalReadingState(page)
   const counters = (await readBookTabRuntimeCounters(page)).find((entry) => entry.id === 'tab-layout-b')
@@ -3962,13 +3974,13 @@ test('keeps inactive reader panes at the active reader geometry', async ({ page 
 
   expectStablePaneGeometry(await readReaderPaneGeometry(page))
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   expectStablePaneGeometry(await readReaderPaneGeometry(page))
 
   await ensureTocSidebarVisibility(page, false)
   expectStablePaneGeometry(await readReaderPaneGeometry(page))
 
-  await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+  await readerTab(page, 'Tab Layout B').click()
   expectStablePaneGeometry(await readReaderPaneGeometry(page))
 })
 
@@ -3976,24 +3988,24 @@ test('keeps tab layout stable across repeated tab and sidebar changes', async ({
   await page.setViewportSize({ width: 1400, height: 900 })
 
   await openFixtureBook(page, 0)
-  await expect(page.getByRole('tab', { name: 'Tab Layout A' })).toBeVisible()
+  await expect(readerTab(page, 'Tab Layout A')).toBeVisible()
   await expectRightEdgeNavigation(page)
   const initialA = await waitForStableReaderLayout(page)
   expect(initialA.sidebarVisible).toBe(true)
   await stampVisibleFrames(page, 'tab-a-wide')
 
   await openFixtureBookByName(page, 'Tab Layout B')
-  await expect(page.getByRole('tab', { name: 'Tab Layout B' })).toBeVisible()
+  await expect(readerTab(page, 'Tab Layout B')).toBeVisible()
   const initialB = await waitForStableReaderLayout(page)
   expect(initialB.sidebarVisible).toBe(true)
   await stampVisibleFrames(page, 'tab-b-wide')
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   const unchangedA = await expectHealthyLayoutWithSidebar(page, true)
   expect(unchangedA.footer).toBe(initialA.footer)
   await expectVisibleFrameStamp(page, 'tab-a-wide')
 
-  await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+  await readerTab(page, 'Tab Layout B').click()
   const unchangedB = await expectHealthyLayoutWithSidebar(page, true)
   expect(unchangedB.footer).toBe(initialB.footer)
   await expectVisibleFrameStamp(page, 'tab-b-wide')
@@ -4004,7 +4016,7 @@ test('keeps tab layout stable across repeated tab and sidebar changes', async ({
   })
   await stampVisibleFrames(page, 'tab-b-hidden')
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   const hiddenA = await waitForStableReaderLayout(page, {
     sidebarVisible: false,
   })
@@ -4013,15 +4025,15 @@ test('keeps tab layout stable across repeated tab and sidebar changes', async ({
   expect(hiddenA.frames.every((frame) => frame.width > 250)).toBe(true)
   expect(hiddenB.frames.every((frame) => frame.width > 250)).toBe(true)
 
-  await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+  await readerTab(page, 'Tab Layout B').click()
   await expectHealthyLayoutWithSidebar(page, false)
   await expectVisibleFrameStamp(page, 'tab-b-hidden')
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   await expectHealthyLayoutWithSidebar(page, false)
   await expectVisibleFrameStamp(page, 'tab-a-hidden')
 
-  await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+  await readerTab(page, 'Tab Layout B').click()
   await expectHealthyLayoutWithSidebar(page, false)
   await expectVisibleFrameStamp(page, 'tab-b-hidden')
 
@@ -4029,15 +4041,15 @@ test('keeps tab layout stable across repeated tab and sidebar changes', async ({
   await waitForStableReaderLayout(page, { sidebarVisible: true })
   await stampVisibleFrames(page, 'tab-b-wide-again')
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   await waitForStableReaderLayout(page, { sidebarVisible: true })
   await stampVisibleFrames(page, 'tab-a-wide-again')
 
-  await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+  await readerTab(page, 'Tab Layout B').click()
   await expectHealthyLayoutWithSidebar(page, true)
   await expectVisibleFrameStamp(page, 'tab-b-wide-again')
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   await expectHealthyLayoutWithSidebar(page, true)
   await expectVisibleFrameStamp(page, 'tab-a-wide-again')
 
@@ -4047,13 +4059,13 @@ test('keeps tab layout stable across repeated tab and sidebar changes', async ({
   })
   await stampVisibleFrames(page, 'tab-a-narrow')
 
-  await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+  await readerTab(page, 'Tab Layout B').click()
   const resizedB = await waitForStableReaderLayout(page, {
     sidebarVisible: true,
   })
   await stampVisibleFrames(page, 'tab-b-narrow')
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   await expectHealthyLayoutWithSidebar(page, true)
   await expectVisibleFrameStamp(page, 'tab-a-narrow')
 
@@ -4134,7 +4146,7 @@ test('replays multi-tab mixed layout states deterministically', async ({ page })
     viewport: { width: number; height: number },
     sidebarVisible: boolean,
   ) {
-    await page.getByRole('tab', { name: tabName }).click()
+    await readerTab(page, tabName).click()
     await expectFocusedTabId(
       page,
       tabName === 'Tab Layout A' ? 'tab-layout-a' : tabName === 'Tab Layout B' ? 'tab-layout-b' : 'tab-layout-c',
@@ -4174,12 +4186,12 @@ test('keeps committed locations stable during rapid tab switches', async ({ page
   await advanceFocusedTabPages(page, 2)
   await waitForStableReaderLayout(page, { sidebarVisible: true })
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   await waitForStableReaderLayout(page, { sidebarVisible: true })
   const before = await readAllBookTabStates(page)
 
   for (let i = 0; i < 12; i++) {
-    await page.getByRole('tab', { name: i % 2 ? 'Tab Layout A' : 'Tab Layout B' }).click()
+    await readerTab(page, i % 2 ? 'Tab Layout A' : 'Tab Layout B').click()
   }
 
   await waitForStableReaderLayout(page, { sidebarVisible: true })
@@ -4210,16 +4222,16 @@ test('switches adjacent tabs immediately with wheel and keyboard input', async (
   await waitForStableReaderLayout(page, { sidebarVisible: true })
   await expectFocusedTabId(page, 'tab-layout-c')
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   await expectFocusedTabId(page, 'tab-layout-a')
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).hover()
+  await readerTab(page, 'Tab Layout A').hover()
   await page.mouse.wheel(0, 80)
   await expectFocusedTabId(page, 'tab-layout-b')
   await page.mouse.wheel(0, 80)
   await expectFocusedTabId(page, 'tab-layout-c')
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   await expectFocusedTabId(page, 'tab-layout-a')
 
   await page.keyboard.press('Control+ArrowRight')
@@ -4330,7 +4342,7 @@ test('reorders tabs without changing the focused reader runtime', async ({ page 
   await waitForStableReaderLayout(page, { sidebarVisible: true })
   await openFixtureBookByName(page, 'Tab Layout C')
   await waitForStableReaderLayout(page, { sidebarVisible: true })
-  await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+  await readerTab(page, 'Tab Layout B').click()
   await expectFocusedTabId(page, 'tab-layout-b')
 
   await installBookTabRuntimeCounters(page)
@@ -4339,7 +4351,7 @@ test('reorders tabs without changing the focused reader runtime', async ({ page 
   await page.keyboard.press('Control+Shift+ArrowRight')
 
   await expect
-    .poll(() => page.getByRole('tab').evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('aria-label'))))
+    .poll(() => readerTabs(page).evaluateAll((tabs) => tabs.map((tab) => tab.textContent?.trim())))
     .toEqual(['Tab Layout A', 'Tab Layout C', 'Tab Layout B'])
   await expectFocusedTabId(page, 'tab-layout-b')
 
@@ -4393,8 +4405,8 @@ test('commits pointer tab reordering only inside the tab strip', async ({ page }
     }
   })
 
-  const tabA = page.getByRole('tab', { name: 'Tab Layout A' })
-  const tabC = page.getByRole('tab', { name: 'Tab Layout C' })
+  const tabA = readerTab(page, 'Tab Layout A')
+  const tabC = readerTab(page, 'Tab Layout C')
   const tabABox = await tabA.boundingBox()
   const tabCBox = await tabC.boundingBox()
   if (!tabABox || !tabCBox) throw new Error('Missing tab bounds')
@@ -4414,7 +4426,7 @@ test('commits pointer tab reordering only inside the tab strip', async ({ page }
 
   await page.mouse.up()
 
-  const tabOrder = () => page.getByRole('tab').evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('aria-label')))
+  const tabOrder = () => readerTabs(page).evaluateAll((tabs) => tabs.map((tab) => tab.textContent?.trim()))
   await expect.poll(tabOrder).toEqual(['Tab Layout B', 'Tab Layout C', 'Tab Layout A'])
   await expectFocusedTabId(page, 'tab-layout-c')
 
@@ -4441,7 +4453,7 @@ test('commits pointer tab reordering only inside the tab strip', async ({ page }
     })
   })
 
-  const tabB = page.getByRole('tab', { name: 'Tab Layout B' })
+  const tabB = readerTab(page, 'Tab Layout B')
   const tabBBox = await tabB.boundingBox()
   const reorderedTabABox = await tabA.boundingBox()
   if (!tabBBox || !reorderedTabABox) throw new Error('Missing tab bounds')
@@ -4508,8 +4520,8 @@ test('[vertical-rl] preserves double-page and panel runtime across tab reorderin
   await resetBookTabRuntimeCounters(page)
   await installFullTabRuntimeProbe(page)
 
-  const tabC = page.getByRole('tab', { name: 'Tab Layout C' })
-  const tabA = page.getByRole('tab', { name: 'Tab Layout A' })
+  const tabC = readerTab(page, 'Tab Layout C')
+  const tabA = readerTab(page, 'Tab Layout A')
   const tabCBox = await tabC.boundingBox()
   const tabABox = await tabA.boundingBox()
   if (!tabCBox || !tabABox) throw new Error('Missing tab bounds')
@@ -4522,7 +4534,7 @@ test('[vertical-rl] preserves double-page and panel runtime across tab reorderin
   await page.mouse.up()
 
   await expect
-    .poll(() => page.getByRole('tab').evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('aria-label'))))
+    .poll(() => readerTabs(page).evaluateAll((tabs) => tabs.map((tab) => tab.textContent?.trim())))
     .toEqual(['Tab Layout C', 'Tab Layout A', 'Tab Layout B'])
   await expectFocusedTabId(page, 'tab-layout-c')
   await expect(page.locator('[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]')).toHaveAttribute(
@@ -4655,7 +4667,7 @@ test('long-book keeps distant chapter bodies tied to their committed tab state',
   ])
 
   async function switchToExpected(tabName: string) {
-    await page.getByRole('tab', { name: tabName }).click()
+    await readerTab(page, tabName).click()
     await expectFocusedLongBookSection(page, expectedByTab.get(tabName)!)
   }
 
@@ -4724,12 +4736,12 @@ test('long-book inactive tab does not commit stale relayout after rapid switch',
     }
   })
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   await page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab
     void tab.relayoutCurrentView()
   })
-  await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+  await readerTab(page, 'Tab Layout B').click()
   await expectFocusedLongBookSection(page, 565)
   await page.waitForTimeout(250)
   await expectLongBookTabSection(page, 'tab-layout-a', 38)
@@ -4761,19 +4773,19 @@ test('long-book keeps final-page tab stable across switches and relayouts', asyn
   await expect.poll(async () => (await readFocusedLongBookIntegrity(page)).atEnd).toBe(true)
 
   for (let i = 0; i < 3; i++) {
-    await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+    await readerTab(page, 'Tab Layout A').click()
     await expectFocusedLongBookSection(page, 38)
-    await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+    await readerTab(page, 'Tab Layout B').click()
     await expectFocusedLongBookSection(page, 619)
     await expect.poll(async () => (await readFocusedLongBookIntegrity(page)).atEnd).toBe(true)
   }
 
   await ensureTocSidebarVisibility(page, false, { header: false })
   await expectFocusedLongBookSection(page, 619)
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   await page.setViewportSize({ width: 1180, height: 820 })
   await expectFocusedLongBookSection(page, 38)
-  await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+  await readerTab(page, 'Tab Layout B').click()
   await expectFocusedLongBookSection(page, 619)
   await expect.poll(async () => (await readFocusedLongBookIntegrity(page)).atEnd).toBe(true)
   await ensureTocSidebarVisibility(page, true, { header: false })
@@ -4829,11 +4841,11 @@ test('keeps three tabs stable and redraws same-chapter overlays immediately', as
   await waitForStableReaderLayout(page, { sidebarVisible: true })
   await stampVisibleFrames(page, 'tab-c-initial')
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   await expectVisibleFrameStamp(page, 'tab-a-initial')
-  await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+  await readerTab(page, 'Tab Layout B').click()
   await expectVisibleFrameStamp(page, 'tab-b-initial')
-  await page.getByRole('tab', { name: 'Tab Layout C' }).click()
+  await readerTab(page, 'Tab Layout C').click()
   await expectVisibleFrameStamp(page, 'tab-c-initial')
 
   await toggleTocSidebar(page)
@@ -4844,10 +4856,10 @@ test('keeps three tabs stable and redraws same-chapter overlays immediately', as
   await waitForStableReaderLayout(page, { sidebarVisible: false })
   await stampVisibleFrames(page, 'tab-c-narrow')
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   await waitForStableReaderLayout(page, { sidebarVisible: false })
   await stampVisibleFrames(page, 'tab-a-narrow')
-  await page.getByRole('tab', { name: 'Tab Layout C' }).click()
+  await readerTab(page, 'Tab Layout C').click()
   await expectVisibleFrameStamp(page, 'tab-c-narrow')
 
   const originalDefinition = '原书，ＡＢＣ'
@@ -4886,9 +4898,9 @@ test('keeps three tabs stable and redraws same-chapter overlays immediately', as
   }, annotation.cfi)
   await expect.poll(() => countVisibleReaderMarks(page, 'epubjs-hl')).toBe(0)
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   await expectVisibleFrameStamp(page, 'tab-a-narrow')
-  await page.getByRole('tab', { name: 'Tab Layout C' }).click()
+  await readerTab(page, 'Tab Layout C').click()
   await expectVisibleFrameStamp(page, 'tab-c-narrow')
 })
 
@@ -4915,13 +4927,13 @@ test('keeps final-page tabs stable across tab switches and sidebar relayouts', a
   expect(finalState.footerPercentage).toBe(1)
   expect(finalB.footer).toContain('100.00%')
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   await waitForStableReaderLayout(page, {
     header: false,
     sidebarVisible: true,
   })
   await expectVisibleFrameStamp(page, 'tab-a-final-test')
-  await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+  await readerTab(page, 'Tab Layout B').click()
   await waitForStableReaderLayout(page, {
     header: false,
     sidebarVisible: true,
@@ -4932,9 +4944,9 @@ test('keeps final-page tabs stable across tab switches and sidebar relayouts', a
   await ensureTocSidebarVisibility(page, true, { header: false })
   await ensureTocSidebarVisibility(page, false, { header: false })
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   await waitForStableReaderLayout(page, { sidebarVisible: false })
-  await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+  await readerTab(page, 'Tab Layout B').click()
   const stableFinalB = await waitForStableReaderLayout(page, {
     header: false,
     sidebarVisible: false,
@@ -4985,9 +4997,9 @@ test('keeps right-page cross-section header and overlays in sync', async ({ page
   await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
   await expectVisibleReaderMarks(page, 'flow-definition-underline', 1)
 
-  await page.getByRole('tab', { name: 'Tab Layout A' }).click()
+  await readerTab(page, 'Tab Layout A').click()
   await waitForStableReaderLayout(page, { sidebarVisible: true })
-  await page.getByRole('tab', { name: 'Tab Layout B' }).click()
+  await readerTab(page, 'Tab Layout B').click()
   await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
   await expectVisibleReaderMarks(page, 'flow-definition-underline', 1)
 })
