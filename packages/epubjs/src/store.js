@@ -38,7 +38,7 @@ class Store {
   checkRequirements() {
     try {
       let store
-      if (typeof localforage === 'undefined') {
+      if (typeof localforage !== 'undefined') {
         store = localforage
       }
       this.storage = store.createInstance({
