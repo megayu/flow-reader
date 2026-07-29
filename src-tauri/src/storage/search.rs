@@ -14,6 +14,7 @@ use crate::{
     tasks::{TaskKey, TaskKind, TaskPriority, TaskService},
 };
 
+use super::epub_import::{EPUB_MAX_SEARCH_TEXT_BYTES, EPUB_SEARCH_DOCUMENT_READ_LIMIT, read_bounded_bytes};
 use super::*;
 
 const SEARCH_TEXT_MEMORY_CACHE_LIMIT: usize = 8;

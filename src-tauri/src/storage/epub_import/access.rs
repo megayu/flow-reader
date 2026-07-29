@@ -1,5 +1,32 @@
 use super::*;
 
+const EPUB_MAX_ENTRY_COUNT: usize = 10_000;
+const EPUB_MAX_ENTRY_BYTES: u64 = 1024 * 1024 * 1024;
+const EPUB_MAX_EXPANDED_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+const EPUB_MAX_COMPRESSION_RATIO: u64 = 1_000;
+const EPUB_COMPRESSION_RATIO_MIN_BYTES: u64 = 1024 * 1024;
+pub(in crate::storage) const EPUB_XML_READ_LIMIT: u64 = 8 * 1024 * 1024;
+pub(in crate::storage) const EPUB_COVER_READ_LIMIT: u64 = 64 * 1024 * 1024;
+pub(in crate::storage) const EPUB_SEARCH_DOCUMENT_READ_LIMIT: u64 = 32 * 1024 * 1024;
+pub(in crate::storage) const EPUB_MAX_SEARCH_TEXT_BYTES: u64 = 512 * 1024 * 1024;
+
+pub(in crate::storage) fn read_bounded_bytes(
+    reader: impl Read,
+    limit: u64,
+    description: &str,
+) -> Result<Vec<u8>, String> {
+    let capacity = usize::try_from(limit.min(1024 * 1024)).unwrap_or(1024 * 1024);
+    let mut data = Vec::with_capacity(capacity);
+    reader
+        .take(limit.saturating_add(1))
+        .read_to_end(&mut data)
+        .map_err(|error| error.to_string())?;
+    if data.len() as u64 > limit {
+        return Err(format!("{description} exceeds the supported size limit"));
+    }
+    Ok(data)
+}
+
 pub(in crate::storage) fn inspect_epub_access(path: &Path) -> Result<EpubAccessInfo, String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;

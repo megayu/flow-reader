@@ -1,5 +1,16 @@
 use super::*;
 
+pub(super) fn is_external_book_id(id: &str) -> bool {
+    id.starts_with("ext-") && is_valid_book_storage_id(id)
+}
+
+pub(super) fn is_valid_book_storage_id(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Library {

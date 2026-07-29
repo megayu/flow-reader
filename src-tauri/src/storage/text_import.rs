@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+use super::epub_import::ImportFileTransaction;
 use super::*;
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
