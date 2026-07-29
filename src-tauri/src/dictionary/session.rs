@@ -44,12 +44,14 @@ impl DictionarySessionManager {
             .resources
             .lock()
             .map_err(|_| StarDictError::new("sessionLockFailed", "Dictionary session lock failed."))?;
-        let session = resources.entry(session_id).or_default();
-        if let Some(DictionarySessionResource::StarDict(reader)) = session.get(dictionary_id) {
+        if let Some(DictionarySessionResource::StarDict(reader)) = resources
+            .get(&session_id)
+            .and_then(|session| session.get(dictionary_id))
+        {
             return Ok(Arc::clone(reader));
         }
         let reader = Arc::new(open()?);
-        session.insert(
+        resources.entry(session_id).or_default().insert(
             dictionary_id.to_string(),
             DictionarySessionResource::StarDict(Arc::clone(&reader)),
         );
@@ -66,12 +68,14 @@ impl DictionarySessionManager {
             .resources
             .lock()
             .map_err(|_| MdictError::new("sessionLockFailed", "Dictionary session lock failed."))?;
-        let session = resources.entry(session_id).or_default();
-        if let Some(DictionarySessionResource::Mdict(reader)) = session.get(dictionary_id) {
+        if let Some(DictionarySessionResource::Mdict(reader)) = resources
+            .get(&session_id)
+            .and_then(|session| session.get(dictionary_id))
+        {
             return Ok(Arc::clone(reader));
         }
         let reader = Arc::new(open()?);
-        session.insert(
+        resources.entry(session_id).or_default().insert(
             dictionary_id.to_string(),
             DictionarySessionResource::Mdict(Arc::clone(&reader)),
         );
@@ -124,7 +128,7 @@ impl DictionarySessionManager {
 
 #[cfg(test)]
 mod tests {
-    use super::DictionarySessionManager;
+    use super::{DictionarySessionManager, StarDictError};
 
     #[test]
     fn releases_only_resources_owned_by_the_requested_session() {
@@ -135,5 +139,17 @@ mod tests {
         assert_eq!(sessions.release(1).unwrap(), 2);
         assert_eq!(sessions.release_all().unwrap(), 1);
         assert_eq!(sessions.release_all().unwrap(), 0);
+    }
+
+    #[test]
+    fn failed_dictionary_open_does_not_create_an_empty_session() {
+        let sessions = DictionarySessionManager::default();
+
+        let result = sessions.get_or_open_stardict(7, "missing", || {
+            Err(StarDictError::new("openFailed", "Synthetic open failure."))
+        });
+
+        assert!(result.is_err());
+        assert!(sessions.resources.lock().unwrap().is_empty());
     }
 }
