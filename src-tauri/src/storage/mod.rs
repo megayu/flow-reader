@@ -62,7 +62,7 @@ use export::*;
 use epub_import::{
     clean_xml_text, deobfuscate_unpacked_idpf_fonts, find_unpacked_opf_path, import_epub_path_impl,
     inspect_epub_access, join_zip_path, normalize_unpacked_epub_structure, normalize_zip_path,
-    open_external_epub_path_impl, parent_zip_path, unpack_epub,
+    open_external_epub_path_impl, parent_zip_path, unpack_epub, validate_epub_archive_limits,
 };
 #[cfg(test)]
 use epub_import::{normalize_non_square_pixel_png, normalize_publication_date, relative_zip_path};
@@ -112,7 +112,29 @@ const STATE_FILE: &str = "state.json";
 const WINDOW_STATE_FILE: &str = "window-state.json";
 const EPUB_ZIP_WRITER_BUFFER_SIZE: usize = 256 * 1024;
 const TXT_EPUB_DEFLATE_LEVEL: i64 = 2;
+const EPUB_MAX_ENTRY_COUNT: usize = 10_000;
+const EPUB_MAX_ENTRY_BYTES: u64 = 1024 * 1024 * 1024;
+const EPUB_MAX_EXPANDED_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+const EPUB_MAX_COMPRESSION_RATIO: u64 = 1_000;
+const EPUB_COMPRESSION_RATIO_MIN_BYTES: u64 = 1024 * 1024;
+const EPUB_XML_READ_LIMIT: u64 = 8 * 1024 * 1024;
+const EPUB_COVER_READ_LIMIT: u64 = 64 * 1024 * 1024;
+const EPUB_SEARCH_DOCUMENT_READ_LIMIT: u64 = 32 * 1024 * 1024;
+const EPUB_MAX_SEARCH_TEXT_BYTES: u64 = 512 * 1024 * 1024;
 static IMPORT_WORK_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn read_bounded_bytes(reader: impl Read, limit: u64, description: &str) -> Result<Vec<u8>, String> {
+    let capacity = usize::try_from(limit.min(1024 * 1024)).unwrap_or(1024 * 1024);
+    let mut data = Vec::with_capacity(capacity);
+    reader
+        .take(limit.saturating_add(1))
+        .read_to_end(&mut data)
+        .map_err(|error| error.to_string())?;
+    if data.len() as u64 > limit {
+        return Err(format!("{description} exceeds the supported size limit"));
+    }
+    Ok(data)
+}
 
 fn import_work_path(root: &Path, prefix: &str, name: &str) -> PathBuf {
     let sequence = IMPORT_WORK_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -911,7 +933,7 @@ mod tests {
         library_path, load_or_build_search_text_cache, mark_book_exported, mark_library_book_content_updated,
         normalize_non_square_pixel_png, normalize_publication_date, normalize_unpacked_epub_structure,
         open_external_epub_path_impl, parent_zip_path, parse_text_import_document, path_to_client_string,
-        read_image_index_cache, read_json_or_default, read_json_value_or_default,
+        read_bounded_bytes, read_image_index_cache, read_json_or_default, read_json_value_or_default,
         read_search_text_sections_from_unpacked, relative_zip_path, replace_book_text_impl, replace_xhtml_text,
         replace_xhtml_text_node, schedule_existing_delete_tombstone_cleanup, search_text_cache_from_bytes,
         search_text_cache_to_bytes, search_text_in_cache, settings_path, sync_unpacked_opf_metadata, text_content_opf,
@@ -923,7 +945,7 @@ mod tests {
     use std::{
         collections::{HashMap, VecDeque},
         fs,
-        io::{Read, Write},
+        io::{Cursor, Read, Write},
         path::{Path, PathBuf},
         sync::{
             Arc, Mutex,
@@ -2832,6 +2854,13 @@ mod tests {
         assert!(path.is_file());
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn bounded_epub_read_rejects_content_past_the_limit() {
+        let result = read_bounded_bytes(Cursor::new(b"123456789"), 8, "Synthetic EPUB entry");
+
+        assert!(result.is_err());
     }
 
     #[test]

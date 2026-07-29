@@ -22,7 +22,7 @@ mod publication_date;
 use metadata_cover::*;
 use normalize::*;
 
-pub(super) use access::{find_unpacked_opf_path, inspect_epub_access, unpack_epub};
+pub(super) use access::{find_unpacked_opf_path, inspect_epub_access, unpack_epub, validate_epub_archive_limits};
 pub(super) use metadata_cover::{
     clean_xml_text, join_zip_path, normalize_non_square_pixel_png, normalize_zip_path, parent_zip_path,
 };

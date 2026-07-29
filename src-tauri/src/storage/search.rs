@@ -308,7 +308,8 @@ pub(super) fn read_search_text_sections_from_unpacked(unpacked_dir: &Path) -> Re
 
 fn read_search_text_sections_from_epub_package(path: &Path) -> Result<Vec<SearchTextSection>, String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
-    let archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
+    let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
+    validate_epub_archive_limits(&mut archive)?;
     let mut source = ArchiveSearchTextSource { archive };
     read_search_text_sections_from_source(&mut source)
 }
@@ -345,9 +346,7 @@ fn read_archive_bytes<R: Read + Seek>(archive: &mut ZipArchive<R>, path: &str) -
         let entry = archive.by_name(&candidate);
         match entry {
             Ok(mut file) => {
-                let mut data = Vec::with_capacity(file.size() as usize);
-                file.read_to_end(&mut data).map_err(|error| error.to_string())?;
-                return Ok(data);
+                return read_bounded_bytes(&mut file, EPUB_SEARCH_DOCUMENT_READ_LIMIT, "EPUB search document");
             }
             Err(error) => {
                 last_error = error.to_string();
@@ -398,6 +397,7 @@ fn read_search_text_sections_from_source(source: &mut impl SearchTextSource) -> 
     let nav_items = read_search_text_nav_items(source, &opf_doc, &manifest, &opf_dir);
 
     let mut sections = Vec::new();
+    let mut total_document_bytes = 0u64;
     for (section_index, itemref) in opf_doc
         .descendants()
         .filter(|node| node.is_element() && node.has_tag_name("itemref"))
@@ -420,6 +420,12 @@ fn read_search_text_sections_from_source(source: &mut impl SearchTextSource) -> 
 
         let section_path = normalize_zip_path(join_zip_path(&opf_dir, &normalized_href));
         let xhtml = source.read_text(&section_path)?;
+        total_document_bytes = total_document_bytes
+            .checked_add(xhtml.len() as u64)
+            .ok_or_else(|| "EPUB search text size overflows the supported limit".to_string())?;
+        if total_document_bytes > EPUB_MAX_SEARCH_TEXT_BYTES {
+            return Err("EPUB search text exceeds the supported size limit".to_string());
+        }
         let (text, title) = search_text_and_title_from_xhtml(&xhtml);
         if text.is_empty() {
             continue;
@@ -692,7 +698,8 @@ fn join_relative_unpacked_path(base: &Path, href: &str) -> PathBuf {
 }
 
 fn read_text_file_lossy(path: &Path) -> Result<String, String> {
-    let bytes = fs::read(path).map_err(|error| error.to_string())?;
+    let file = fs::File::open(path).map_err(|error| error.to_string())?;
+    let bytes = read_bounded_bytes(file, EPUB_SEARCH_DOCUMENT_READ_LIMIT, "EPUB search document")?;
     String::from_utf8(bytes.clone()).or_else(|_| Ok(decode_text_bytes(&bytes, None).text))
 }
 

@@ -3,6 +3,7 @@ use super::*;
 pub(super) fn parse_epub_info_result(path: &Path) -> Result<ParsedEpubInfo, String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
+    validate_epub_archive_limits(&mut archive)?;
     let container = read_zip_text(&mut archive, "META-INF/container.xml")?;
     let container_doc = roxmltree::Document::parse(&container).map_err(|error| error.to_string())?;
     let opf_path = container_doc
@@ -27,24 +28,14 @@ pub(super) fn parse_epub_info_result(path: &Path) -> Result<ParsedEpubInfo, Stri
 }
 
 pub(super) fn read_zip_text<R: Read + Seek>(archive: &mut ZipArchive<R>, name: &str) -> Result<String, String> {
-    let mut file = archive.by_name(name).map_err(|error| error.to_string())?;
-    let mut text = String::new();
-    file.read_to_string(&mut text).map_err(|error| error.to_string())?;
-    Ok(text)
+    let file = archive.by_name(name).map_err(|error| error.to_string())?;
+    let data = read_bounded_bytes(file, EPUB_XML_READ_LIMIT, "EPUB XML entry")?;
+    String::from_utf8(data).map_err(|error| error.to_string())
 }
 
 pub(super) fn read_zip_bytes<R: Read + Seek>(archive: &mut ZipArchive<R>, name: &str) -> Result<Vec<u8>, String> {
-    let mut file = archive.by_name(name).map_err(|error| error.to_string())?;
-    let mut data = Vec::with_capacity(file.size() as usize);
-    file.read_to_end(&mut data).map_err(|error| error.to_string())?;
-    Ok(data)
-}
-
-pub(super) fn read_zip_bytes_with_path_candidates<R: Read + Seek>(
-    archive: &mut ZipArchive<R>,
-    name: &str,
-) -> Result<Vec<u8>, String> {
-    read_zip_bytes_with_resolved_path(archive, name).map(|(data, _)| data)
+    let file = archive.by_name(name).map_err(|error| error.to_string())?;
+    read_bounded_bytes(file, EPUB_COVER_READ_LIMIT, "EPUB cover entry")
 }
 
 pub(super) fn read_zip_bytes_with_resolved_path<R: Read + Seek>(
@@ -69,8 +60,17 @@ pub(super) fn read_zip_text_with_path_candidates<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     name: &str,
 ) -> Result<String, String> {
-    let data = read_zip_bytes_with_path_candidates(archive, name)?;
-    Ok(String::from_utf8_lossy(&data).into_owned())
+    let mut last_error = "EPUB entry not found".to_string();
+    for candidate in zip_path_candidates(name) {
+        match archive.by_name(&candidate) {
+            Ok(file) => {
+                let data = read_bounded_bytes(file, EPUB_XML_READ_LIMIT, "EPUB XML entry")?;
+                return Ok(String::from_utf8_lossy(&data).into_owned());
+            }
+            Err(error) => last_error = error.to_string(),
+        }
+    }
+    Err(last_error)
 }
 
 pub(super) fn parse_opf_metadata(doc: &roxmltree::Document) -> Value {
