@@ -2223,7 +2223,6 @@ export class BookTab extends BaseTab {
         new EpubRendition(epub, {
           width: initialWidth,
           height: initialHeight,
-          allowScriptedContent: true,
         }),
       )
       ;(epub as any).rendition = rendition
