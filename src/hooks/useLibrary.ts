@@ -9,9 +9,12 @@ export function useLibrary() {
     let disposed = false
 
     const load = () => {
-      db.books.toArray().then((books) => {
-        if (!disposed) setBooks(books)
-      })
+      db.books
+        .toArray()
+        .then((books) => {
+          if (!disposed) setBooks(books)
+        })
+        .catch(console.error)
     }
 
     load()
@@ -33,9 +36,12 @@ export function useCovers() {
     let disposed = false
 
     const load = () => {
-      db.covers.toArray().then((covers) => {
-        if (!disposed) setCovers(covers)
-      })
+      db.covers
+        .toArray()
+        .then((covers) => {
+          if (!disposed) setCovers(covers)
+        })
+        .catch(console.error)
     }
 
     load()
@@ -57,9 +63,12 @@ export function useLibraryTags() {
     let disposed = false
 
     const load = () => {
-      db.tags.toArray().then((tags) => {
-        if (!disposed) setTags(tags)
-      })
+      db.tags
+        .toArray()
+        .then((tags) => {
+          if (!disposed) setTags(tags)
+        })
+        .catch(console.error)
     }
 
     load()

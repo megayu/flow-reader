@@ -33,9 +33,15 @@ type TableName = 'books' | 'covers' | 'files' | 'settings' | 'tags'
 const listeners = new Map<TableName, Set<Listener>>()
 const bookCache = new Map<string, BookRecord>()
 let booksCache: BookRecord[] | undefined
+let booksCacheEpoch = 0
+let booksListPromise: Promise<BookRecord[]> | undefined
 let coversCache: CoverRecord[] | undefined
 let tagsCache: LibraryTagRecord[] | undefined
 const pendingNativeWrites = new Set<Promise<unknown>>()
+
+function beginBooksMutation() {
+  booksCacheEpoch++
+}
 
 function subscribe(table: TableName, listener: Listener) {
   let set = listeners.get(table)
@@ -184,6 +190,30 @@ async function waitForPendingNativeWrites() {
   }
 }
 
+async function fetchCurrentBooks(): Promise<BookRecord[]> {
+  await waitForPendingNativeWrites()
+  if (booksCache) return booksCache
+
+  const requestEpoch = booksCacheEpoch
+  const books = await invoke<BookRecord[]>('list_books')
+  if (requestEpoch !== booksCacheEpoch) return fetchCurrentBooks()
+
+  rememberBooks(books)
+  return booksCache ?? []
+}
+
+function loadBooks() {
+  if (booksCache) return Promise.resolve(booksCache)
+  if (booksListPromise) return booksListPromise
+
+  const request = fetchCurrentBooks()
+  const tracked = request.finally(() => {
+    if (booksListPromise === tracked) booksListPromise = undefined
+  })
+  booksListPromise = tracked
+  return tracked
+}
+
 function addCacheBuster(url: string, version: string | number = Date.now()) {
   return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(String(version))}`
 }
@@ -207,24 +237,20 @@ export const db = {
   },
   books: {
     async toArray() {
-      if (booksCache) return booksCache
-
-      const books = await invoke<BookRecord[]>('list_books')
-      rememberBooks(books)
-      return books
+      return loadBooks()
     },
-    get(id: string) {
+    async get(id: string): Promise<BookRecord | undefined> {
       const cached = bookCache.get(id)
       if (cached?.stateLoaded) return Promise.resolve(cached)
 
-      return invoke<BookRecord | null>('get_book', { id }).then((book) => {
-        if (book) {
-          const loadedBook = asFullBook(book)
-          rememberBook(loadedBook)
-          return loadedBook
-        }
-        return undefined
-      })
+      const requestEpoch = booksCacheEpoch
+      const book = await invoke<BookRecord | null>('get_book', { id })
+      if (requestEpoch !== booksCacheEpoch) return db.books.get(id)
+      if (!book) return undefined
+
+      const loadedBook = asFullBook(book)
+      rememberBook(loadedBook)
+      return loadedBook
     },
     peek(id: string) {
       return bookCache.get(id)
@@ -239,12 +265,14 @@ export const db = {
       return invoke<boolean>('reveal_book_source', { id })
     },
     remember(book: BookRecord) {
+      beginBooksMutation()
       rememberBook(book)
     },
     recordReadingPosition(position: ReadingPositionInput) {
       return trackNativeWrite(invoke<boolean>('record_reading_position', { position }))
     },
     async update(id: string, changes: Partial<BookRecord>) {
+      beginBooksMutation()
       const cached = bookCache.get(id)
       const readingPositionOnly = isReadingPositionOnlyUpdate(changes, cached)
       if (cached) {
@@ -271,6 +299,7 @@ export const db = {
       })
     },
     async bulkDelete(ids: string[]) {
+      beginBooksMutation()
       await trackNativeWrite(invoke('delete_books', { ids }))
       forgetBooks(ids)
       forgetCovers(ids)
@@ -283,6 +312,7 @@ export const db = {
       ids: string[],
       { addTagIds = [], removeTagIds = [] }: { addTagIds?: string[]; removeTagIds?: string[] },
     ) {
+      beginBooksMutation()
       const books = await trackNativeWrite(
         invoke<BookRecord[]>('update_book_tags', {
           ids,
@@ -319,6 +349,7 @@ export const db = {
       return tag ?? undefined
     },
     async delete(id: string) {
+      beginBooksMutation()
       const books = await trackNativeWrite(invoke<BookRecord[]>('delete_tag', { id }))
       forgetTag(id)
       books.forEach((book) => rememberBook(book, { full: false }))
@@ -334,6 +365,7 @@ export const db = {
     async getReaderSource(id: string): Promise<BookReaderSource> {
       const source = await invoke<NativeBookReaderSource>('get_book_reader_source', { id })
       if (source.book) {
+        beginBooksMutation()
         rememberBook(source.book)
         notify('books')
       }
@@ -395,6 +427,7 @@ export async function importBookPaths(
   { importId, replaceExisting = true }: { importId?: string; replaceExisting?: boolean } = {},
 ) {
   await waitForPendingNativeWrites()
+  beginBooksMutation()
   const result = await trackNativeWrite(
     invoke<EpubImportResult>('import_epub_paths', {
       importId,
@@ -411,6 +444,7 @@ export async function importBookPaths(
 }
 
 export async function openExternalBookPaths(paths: string[]) {
+  beginBooksMutation()
   const result = await trackNativeWrite(invoke<EpubImportResult>('open_external_epub_paths', { paths }))
   result.books.forEach((book) => rememberBook(book))
   return result
@@ -437,6 +471,7 @@ export async function importTextPaths(
   { replaceExisting = true, rules }: { replaceExisting?: boolean; rules?: TextImportRulesInput } = {},
 ) {
   await waitForPendingNativeWrites()
+  beginBooksMutation()
   const books = await trackNativeWrite(
     invoke<BookRecord[]>('import_text_paths', {
       imports,
@@ -477,6 +512,7 @@ export async function replaceBookText({
   oldText: string
   newText: string
 }) {
+  beginBooksMutation()
   const result = await trackNativeWrite(
     invoke<BookTextReplaceResult>('replace_book_text', {
       id,
@@ -491,6 +527,7 @@ export async function replaceBookText({
 }
 
 export async function exportBook(id: string, format: BookExportFormat, outputPath: string) {
+  beginBooksMutation()
   const book = await trackNativeWrite(invoke<BookRecord | null>('export_book', { id, format, outputPath }))
   if (book) {
     rememberBook(book)
@@ -512,6 +549,7 @@ export function cleanupAllExternalBooks() {
 }
 
 export function deleteExternalBook(id: string) {
+  beginBooksMutation()
   forgetBooks([id])
   forgetCovers([id])
   return trackNativeWrite(invoke('delete_external_book', { id }))
