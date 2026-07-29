@@ -66,10 +66,12 @@ export function TranslationPopup({
   const [sourceHeight, setSourceHeight] = useState<number>()
   const sourceContentRef = useRef<HTMLDivElement>(null)
   const resultContentRef = useRef<HTMLDivElement>(null)
+  const requestGenerationRef = useRef(0)
   const maxBodyHeight = Math.max(0, maxPopupHeight - 40)
 
   useEffect(() => {
     const controller = new AbortController()
+    const generation = ++requestGenerationRef.current
     setError('')
     setTranslated('')
     void translateTexts({
@@ -79,9 +81,12 @@ export function TranslationPopup({
       targetLanguage,
       signal: controller.signal,
     })
-      .then((results) => setTranslated(results.join('\n\n')))
+      .then((results) => {
+        if (controller.signal.aborted || generation !== requestGenerationRef.current) return
+        setTranslated(results.join('\n\n'))
+      })
       .catch((reason: unknown) => {
-        if (!controller.signal.aborted) {
+        if (!controller.signal.aborted && generation === requestGenerationRef.current) {
           setError(
             reason instanceof Error
               ? reason.message
@@ -91,7 +96,10 @@ export function TranslationPopup({
           )
         }
       })
-    return () => controller.abort()
+    return () => {
+      controller.abort()
+      if (generation === requestGenerationRef.current) requestGenerationRef.current++
+    }
   }, [provider, retryCount, sourceLanguage, targetLanguage, text])
 
   useLayoutEffect(() => {

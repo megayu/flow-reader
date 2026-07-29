@@ -15,12 +15,14 @@ export async function fetchNativeTranslation(request: {
   targetLanguage: string
   signal?: AbortSignal
 }): Promise<string[]> {
+  request.signal?.throwIfAborted()
   const sessionId = nextSessionId++
   const abort = () => {
-    void invoke('cancel_translation_session', { sessionId })
+    void invoke('cancel_translation_session', { sessionId }).catch(() => undefined)
   }
   request.signal?.addEventListener('abort', abort, { once: true })
   try {
+    request.signal?.throwIfAborted()
     const response = await invoke<NativeTranslationResponse>('fetch_translation', {
       request: {
         provider: request.provider,
@@ -30,6 +32,7 @@ export async function fetchNativeTranslation(request: {
         sessionId,
       },
     })
+    request.signal?.throwIfAborted()
     return response.bodies
   } finally {
     request.signal?.removeEventListener('abort', abort)

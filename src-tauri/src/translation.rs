@@ -14,6 +14,7 @@ const AZURE_TRANSLATE_URL: &str = "https://api-edge.cognitive.microsofttranslato
 const MAX_TEXT_BYTES: usize = 40 * 1024;
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 const AZURE_TOKEN_TTL: Duration = Duration::from_secs(9 * 60);
+const PRE_CANCELLED_SESSION_TTL: Duration = Duration::from_secs(30);
 
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -61,7 +62,20 @@ struct CachedToken {
 pub struct TranslationHttpClient {
     client: Client,
     azure_token: Mutex<Option<CachedToken>>,
-    sessions: Mutex<HashMap<u64, CancellationToken>>,
+    sessions: Mutex<TranslationSessions>,
+}
+
+#[derive(Default)]
+struct TranslationSessions {
+    active: HashMap<u64, CancellationToken>,
+    pre_cancelled: HashMap<u64, Instant>,
+}
+
+impl TranslationSessions {
+    fn prune_pre_cancelled(&mut self, now: Instant) {
+        self.pre_cancelled
+            .retain(|_, cancelled_at| now.duration_since(*cancelled_at) <= PRE_CANCELLED_SESSION_TTL);
+    }
 }
 
 impl TranslationHttpClient {
@@ -74,17 +88,27 @@ impl TranslationHttpClient {
         Ok(Self {
             client,
             azure_token: Mutex::new(None),
-            sessions: Mutex::new(HashMap::new()),
+            sessions: Mutex::new(TranslationSessions::default()),
         })
     }
 
     async fn translate(&self, request: TranslationRequest) -> Result<TranslationResponse, TranslationError> {
         validate_request(&request)?;
         let cancellation = CancellationToken::new();
-        self.sessions
-            .lock()
-            .expect("translation session lock poisoned")
-            .insert(request.session_id, cancellation.clone());
+        {
+            let mut sessions = self.sessions.lock().expect("translation session lock poisoned");
+            sessions.prune_pre_cancelled(Instant::now());
+            if sessions.pre_cancelled.remove(&request.session_id).is_some() {
+                return Err(TranslationError::new("cancelled", "Translation cancelled"));
+            }
+            if sessions.active.contains_key(&request.session_id) {
+                return Err(TranslationError::new(
+                    "invalid_request",
+                    "Translation session is already active",
+                ));
+            }
+            sessions.active.insert(request.session_id, cancellation.clone());
+        }
         let operation = async {
             match request.provider {
                 TranslationProvider::Google => self.google(&request).await,
@@ -98,6 +122,7 @@ impl TranslationHttpClient {
         self.sessions
             .lock()
             .expect("translation session lock poisoned")
+            .active
             .remove(&request.session_id);
         result
     }
@@ -186,13 +211,13 @@ impl TranslationHttpClient {
     }
 
     fn cancel(&self, session_id: u64) {
-        if let Some(token) = self
-            .sessions
-            .lock()
-            .expect("translation session lock poisoned")
-            .remove(&session_id)
-        {
+        let mut sessions = self.sessions.lock().expect("translation session lock poisoned");
+        let now = Instant::now();
+        sessions.prune_pre_cancelled(now);
+        if let Some(token) = sessions.active.remove(&session_id) {
             token.cancel();
+        } else {
+            sessions.pre_cancelled.insert(session_id, now);
         }
     }
 }
