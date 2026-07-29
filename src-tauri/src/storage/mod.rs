@@ -112,6 +112,166 @@ const STATE_FILE: &str = "state.json";
 const WINDOW_STATE_FILE: &str = "window-state.json";
 const EPUB_ZIP_WRITER_BUFFER_SIZE: usize = 256 * 1024;
 const TXT_EPUB_DEFLATE_LEVEL: i64 = 2;
+static IMPORT_WORK_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn import_work_path(root: &Path, prefix: &str, name: &str) -> PathBuf {
+    let sequence = IMPORT_WORK_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let name = name
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    root.join(format!(".{prefix}-{}-{sequence}-{name}", std::process::id()))
+}
+
+struct ImportFileTransaction {
+    book_dir: PathBuf,
+    book_dir_existed: bool,
+    backup_dir: PathBuf,
+    moved: Vec<(PathBuf, PathBuf)>,
+}
+
+impl ImportFileTransaction {
+    fn begin(storage: &AppStorage, id: &str) -> Result<Self, String> {
+        let book_dir = storage.book_dir(id);
+        let book_dir_existed = book_dir.exists();
+        fs::create_dir_all(&book_dir).map_err(|error| error.to_string())?;
+        let backup_dir = import_work_path(&books_root(storage.root()), "import-backup", id);
+        fs::create_dir(&backup_dir).map_err(|error| error.to_string())?;
+
+        let mut targets = [
+            BOOK_FILE,
+            SOURCE_TEXT_FILE,
+            UNPACKED_DIR,
+            SEARCH_TEXT_CACHE_FILE,
+            IMAGE_INDEX_CACHE_FILE,
+            METADATA_FILE,
+        ]
+        .into_iter()
+        .map(|name| book_dir.join(name))
+        .collect::<Vec<_>>();
+        let entries = fs::read_dir(&book_dir).map_err(|error| error.to_string())?;
+        for entry in entries {
+            let entry = entry.map_err(|error| error.to_string())?;
+            if entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.starts_with(&format!("{COVER_STEM}.")))
+            {
+                targets.push(entry.path());
+            }
+        }
+
+        let mut transaction = Self {
+            book_dir,
+            book_dir_existed,
+            backup_dir,
+            moved: Vec::new(),
+        };
+        for target in targets {
+            if !target.exists() {
+                continue;
+            }
+            let Some(name) = target.file_name() else {
+                continue;
+            };
+            let backup = transaction.backup_dir.join(name);
+            if let Err(error) = fs::rename(&target, &backup) {
+                let _ = transaction.rollback();
+                return Err(error.to_string());
+            }
+            transaction.moved.push((backup, target));
+        }
+        Ok(transaction)
+    }
+
+    fn restore_preserved(&mut self, name: &str) -> Result<(), String> {
+        let Some(index) = self
+            .moved
+            .iter()
+            .position(|(_, target)| target.file_name().is_some_and(|filename| filename == name))
+        else {
+            return Ok(());
+        };
+        let (backup, target) = self.moved.remove(index);
+        if !target.exists() {
+            fs::rename(backup, target).map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    }
+
+    fn commit(self) -> Result<(), String> {
+        fs::remove_dir_all(self.backup_dir).map_err(|error| error.to_string())
+    }
+
+    fn rollback(self) -> Result<(), String> {
+        let mut first_error = None;
+        let mut current_targets = [
+            BOOK_FILE,
+            SOURCE_TEXT_FILE,
+            UNPACKED_DIR,
+            SEARCH_TEXT_CACHE_FILE,
+            IMAGE_INDEX_CACHE_FILE,
+            METADATA_FILE,
+        ]
+        .into_iter()
+        .map(|name| self.book_dir.join(name))
+        .collect::<Vec<_>>();
+        if let Ok(entries) = fs::read_dir(&self.book_dir) {
+            for entry in entries.flatten() {
+                if entry
+                    .file_name()
+                    .to_str()
+                    .is_some_and(|name| name.starts_with(&format!("{COVER_STEM}.")))
+                {
+                    current_targets.push(entry.path());
+                }
+            }
+        }
+        for target in current_targets {
+            if let Err(error) = remove_import_artifact(&target)
+                && first_error.is_none()
+            {
+                first_error = Some(error);
+            }
+        }
+        for (backup, target) in self.moved {
+            if let Err(error) = fs::rename(backup, target).map_err(|error| error.to_string())
+                && first_error.is_none()
+            {
+                first_error = Some(error);
+            }
+        }
+        if let Err(error) = fs::remove_dir_all(self.backup_dir).map_err(|error| error.to_string())
+            && first_error.is_none()
+        {
+            first_error = Some(error);
+        }
+        if !self.book_dir_existed
+            && let Err(error) = fs::remove_dir(&self.book_dir).map_err(|error| error.to_string())
+            && first_error.is_none()
+        {
+            first_error = Some(error);
+        }
+        first_error.map_or(Ok(()), Err)
+    }
+}
+
+fn remove_import_artifact(path: &Path) -> Result<(), String> {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return Ok(());
+    };
+    if metadata.file_type().is_dir() {
+        fs::remove_dir_all(path).map_err(|error| error.to_string())
+    } else {
+        fs::remove_file(path).map_err(|error| error.to_string())
+    }
+}
 
 #[derive(Clone)]
 pub struct AppStorage {
@@ -122,6 +282,7 @@ struct StorageInner {
     root: PathBuf,
     state: Mutex<StorageState>,
     dirty: Mutex<DirtyState>,
+    import_lock: Mutex<()>,
     reading_position_sequences: Mutex<HashMap<String, u64>>,
     search_text_caches: Mutex<HashMap<String, Arc<SearchTextCache>>>,
     search_text_cache_order: Mutex<VecDeque<String>>,
@@ -173,6 +334,7 @@ impl AppStorage {
                     book_states: HashMap::new(),
                 }),
                 dirty: Mutex::new(DirtyState::default()),
+                import_lock: Mutex::new(()),
                 reading_position_sequences: Mutex::new(HashMap::new()),
                 search_text_caches: Mutex::new(HashMap::new()),
                 search_text_cache_order: Mutex::new(VecDeque::new()),
@@ -734,8 +896,8 @@ mod tests {
         preview_text_import_paths_impl, record_reading_position_impl, revealable_book_source_path,
     };
     use super::{
-        AppStorage, BOOK_FILE, BookContentMode, BookExportFormat, BookReaderSourceMode, BookRecord, BookScope,
-        BookSourceFormat, BookSourceStatus, BookState, BookTextReplaceTarget, DirtyState, ExternalBookIndex,
+        AppStorage, BOOK_FILE, BOOKS_DIR, BookContentMode, BookExportFormat, BookReaderSourceMode, BookRecord,
+        BookScope, BookSourceFormat, BookSourceStatus, BookState, BookTextReplaceTarget, DirtyState, ExternalBookIndex,
         IMAGE_INDEX_CACHE_FILE, ImageIndexCacheInput, ImageIndexEntryInput, ImageIndexSectionInput, Library,
         LibraryBook, METADATA_FILE, ReadingStatus, SEARCH_TEXT_CACHE_FILE, SEARCH_TEXT_CACHE_VERSION,
         SEARCH_TEXT_EXTRACTOR_VERSION, SOURCE_TEXT_FILE, STATE_FILE, SearchTextCache, SearchTextSection, SourceStorage,
@@ -840,6 +1002,7 @@ mod tests {
                     book_states,
                 }),
                 dirty: Mutex::new(DirtyState::default()),
+                import_lock: Mutex::new(()),
                 reading_position_sequences: Mutex::new(HashMap::new()),
                 search_text_caches: Mutex::new(HashMap::new()),
                 search_text_cache_order: Mutex::new(VecDeque::new()),
@@ -865,6 +1028,7 @@ mod tests {
                     book_states: HashMap::new(),
                 }),
                 dirty: Mutex::new(DirtyState::default()),
+                import_lock: Mutex::new(()),
                 reading_position_sequences: Mutex::new(HashMap::new()),
                 search_text_caches: Mutex::new(HashMap::new()),
                 search_text_cache_order: Mutex::new(VecDeque::new()),
@@ -1144,6 +1308,45 @@ mod tests {
             fs::read_to_string(storage.book_dir(&books[0].id).join(SOURCE_TEXT_FILE)).unwrap(),
             "第1章 开始\n第一段。\n第二段。\n"
         );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn failed_text_import_does_not_mutate_existing_library_record() {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-text-import-rollback-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let source = root.join("novel.txt");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&source, "Chapter 1\nSynthetic paragraph.\n").unwrap();
+        let mut existing = test_library_book_with_id("book", BookSourceFormat::Txt);
+        existing.name = "novel.txt".to_string();
+        existing.content_hash = "before-import".to_string();
+        existing.metadata = json!({"title": "Before import"});
+        let storage = test_storage_with_book(&root, existing);
+        fs::create_dir_all(root.join(BOOKS_DIR)).unwrap();
+        fs::write(storage.book_dir("book"), "blocks the book directory").unwrap();
+        let before = serde_json::to_value(&storage.inner.state.lock().unwrap().library.books[0]).unwrap();
+
+        let result = import_text_paths_impl(
+            &storage,
+            &TaskService::default(),
+            vec![TextImportSelection {
+                path: source.to_string_lossy().to_string(),
+                encoding: None,
+                title: None,
+                creator: None,
+            }],
+            true,
+            None,
+        );
+
+        assert!(result.is_err());
+        let after = serde_json::to_value(&storage.inner.state.lock().unwrap().library.books[0]).unwrap();
+        assert_eq!(after, before);
 
         let _ = fs::remove_dir_all(root);
     }

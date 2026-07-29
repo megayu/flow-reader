@@ -3,17 +3,7 @@
 use super::*;
 
 pub(super) fn epub_import_temp_path(root: &Path, name: &str) -> PathBuf {
-    let name = name
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
-                character
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>();
-    root.join(format!(".import-{}-{}-{}", std::process::id(), now_ms(), name))
+    import_work_path(root, "import", name)
 }
 
 pub(super) fn copy_epub_and_hash(source: &Path, target: &Path) -> Result<String, String> {
@@ -68,6 +58,11 @@ pub(in crate::storage) fn import_epub_path_impl(
     path: &Path,
     replace_existing: bool,
 ) -> Result<BookRecord, String> {
+    let _import_guard = storage
+        .inner
+        .import_lock
+        .lock()
+        .map_err(|_| "storage import lock poisoned".to_string())?;
     let books_root = books_root(storage.root());
     fs::create_dir_all(&books_root).map_err(|error| error.to_string())?;
 
@@ -94,26 +89,15 @@ pub(in crate::storage) fn import_epub_path_impl(
         }
     };
 
-    // These values move once through import control flow; boxing would add avoidable allocations.
-    #[allow(clippy::large_enum_variant)]
-    enum ImportDecision {
-        Existing(BookRecord),
-        Commit {
-            book: LibraryBook,
-            id: String,
-            should_copy: bool,
-            external_promotion: Option<ExternalPromotion>,
-        },
-    }
-
     struct ExternalPromotion {
         book: ExternalBook,
         state: Option<BookState>,
     }
 
+    let mut file_transaction = None;
     let result = (|| -> Result<BookRecord, String> {
-        let decision = {
-            let mut state = storage
+        let (mut book, id, should_copy, is_new, external_promotion) = {
+            let state = storage
                 .inner
                 .state
                 .lock()
@@ -137,22 +121,12 @@ pub(in crate::storage) fn import_epub_path_impl(
 
             if let Some(index) = filename_index {
                 let storage_changed = state.library.books[index].source_storage != source_storage;
+                let mut book = state.library.books[index].clone();
                 if !replace_existing || (state.library.books[index].content_hash == hash && !storage_changed) {
-                    state.library.books[index].source_path = Some(source_path.clone());
-                    let book = state.library.books[index].clone();
-                    if external_promotion.is_none() {
-                        ImportDecision::Existing(storage.compose_book(&mut state, &book)?)
-                    } else {
-                        let id = book.id.clone();
-                        ImportDecision::Commit {
-                            book,
-                            id,
-                            should_copy: false,
-                            external_promotion,
-                        }
-                    }
+                    book.source_path = Some(source_path.clone());
+                    let id = book.id.clone();
+                    (book, id, false, false, external_promotion)
                 } else {
-                    let book = &mut state.library.books[index];
                     book.size = size;
                     book.content_hash = hash.clone();
                     book.content_version = book.content_version.saturating_add(1).max(1);
@@ -162,17 +136,11 @@ pub(in crate::storage) fn import_epub_path_impl(
                     book.source_path = Some(source_path.clone());
                     book.updated_at = Some(now_ms());
                     book.last_read_at = book.updated_at;
-                    let book = state.library.books[index].clone();
                     let id = book.id.clone();
-                    ImportDecision::Commit {
-                        book,
-                        id,
-                        should_copy: true,
-                        external_promotion,
-                    }
+                    (book, id, true, false, external_promotion)
                 }
             } else if let Some(index) = hash_index {
-                let book = &mut state.library.books[index];
+                let mut book = state.library.books[index].clone();
                 book.name = name.clone();
                 book.size = size;
                 book.content_mode = access.mode;
@@ -181,19 +149,13 @@ pub(in crate::storage) fn import_epub_path_impl(
                 book.source_storage = source_storage;
                 book.source_path = Some(source_path.clone());
                 book.updated_at = Some(now_ms());
-                let book = state.library.books[index].clone();
                 let id = book.id.clone();
-                ImportDecision::Commit {
-                    book,
-                    id,
-                    should_copy: storage_changed,
-                    external_promotion,
-                }
+                (book, id, storage_changed, false, external_promotion)
             } else {
                 let created_at = now_ms();
                 let id = id_from_hash(&hash);
-                state.library.books.push(LibraryBook {
-                    id,
+                let book = LibraryBook {
+                    id: id.clone(),
                     name: name.clone(),
                     size,
                     reading_status: None,
@@ -213,36 +175,9 @@ pub(in crate::storage) fn import_epub_path_impl(
                     cfi: None,
                     percentage: None,
                     tag_ids: Vec::new(),
-                });
-                let book = state
-                    .library
-                    .books
-                    .last()
-                    .expect("newly pushed book should exist")
-                    .clone();
-                let id = book.id.clone();
-                ImportDecision::Commit {
-                    book,
-                    id,
-                    should_copy: true,
-                    external_promotion,
-                }
+                };
+                (book, id, true, true, external_promotion)
             }
-        };
-
-        let (mut book, id, should_copy, external_promotion) = match decision {
-            ImportDecision::Existing(record) => {
-                remove_epub_import_temp(&temp_path);
-                storage.mark_library_dirty();
-                storage.flush_dirty()?;
-                return Ok(record);
-            }
-            ImportDecision::Commit {
-                book,
-                id,
-                should_copy,
-                external_promotion,
-            } => (book, id, should_copy, external_promotion),
         };
         let normalize_new_cover = should_copy && book.updated_at.is_none();
         let mut publication_changed = false;
@@ -261,21 +196,11 @@ pub(in crate::storage) fn import_epub_path_impl(
         let promoted_metadata = promotion.as_ref().map(|(_, metadata, _)| metadata.clone());
 
         if should_copy {
-            let dir = storage.book_dir(&id);
             storage.unload_search_text_cache(&id);
-            fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+            file_transaction = Some(ImportFileTransaction::begin(storage, &id)?);
+            let dir = storage.book_dir(&id);
             let book_path = dir.join(BOOK_FILE);
             let unpacked_dir = dir.join(UNPACKED_DIR);
-            if unpacked_dir.exists() {
-                fs::remove_dir_all(&unpacked_dir).map_err(|error| error.to_string())?;
-            }
-            let search_cache_path = dir.join(SEARCH_TEXT_CACHE_FILE);
-            if search_cache_path.exists() {
-                fs::remove_file(&search_cache_path).map_err(|error| error.to_string())?;
-            }
-            if book_path.exists() {
-                fs::remove_file(&book_path).map_err(|error| error.to_string())?;
-            }
             let package_path = if source_storage == SourceStorage::Managed {
                 fs::rename(&temp_path, &book_path).map_err(|error| error.to_string())?;
                 book_path.as_path()
@@ -317,68 +242,101 @@ pub(in crate::storage) fn import_epub_path_impl(
             .or_else(|| (parsed.metadata != json!({})).then(|| parsed.metadata.clone()));
         if let Some(metadata) = metadata {
             book.metadata = metadata;
+            write_metadata(storage, &id, &book.metadata)?;
+        } else if let Some(transaction) = file_transaction.as_mut() {
+            transaction.restore_preserved(METADATA_FILE)?;
+        }
+
+        let promotion = promotion.map(|(external_book, _, mut external_state)| {
+            let external_id = external_book.id.clone();
+            let last_opened_at = external_book.last_opened_at;
+            reassign_book_state_annotations(&mut external_state, &external_id, &id);
+            book.cfi = external_state.cfi.clone();
+            book.percentage = external_state.percentage;
+            book.last_read_at = Some(last_opened_at);
+            book.updated_at = Some(now_ms());
+            (external_id, external_state)
+        });
+
+        if publication_changed {
+            let now = now_ms();
+            book.content_version = book.content_version.saturating_add(1).max(1);
+            book.content_edited_at = Some(now);
+            book.content_hash = edited_book_content_hash(&book.id, book.content_version, now);
+            book.updated_at = Some(now);
+        }
+
+        let record = {
             let mut state = storage
                 .inner
                 .state
                 .lock()
                 .map_err(|_| "storage state lock poisoned".to_string())?;
-            if let Some(stored_book) = state.library.books.iter_mut().find(|book| book.id == id) {
-                stored_book.metadata = book.metadata.clone();
-            }
-            drop(state);
-            write_metadata(storage, &id, &book.metadata)?;
-        }
-
-        if let Some((external_book, _, mut external_state)) = promotion {
-            let external_id = external_book.id.clone();
-            let last_opened_at = external_book.last_opened_at;
-            reassign_book_state_annotations(&mut external_state, &external_id, &id);
-            {
-                let mut state = storage
-                    .inner
-                    .state
-                    .lock()
-                    .map_err(|_| "storage state lock poisoned".to_string())?;
-                state.external.books.retain(|book| book.id != external_id);
-                state.book_states.remove(&external_id);
-                state.book_states.insert(id.clone(), external_state.clone());
-                if let Some(stored_book) = state.library.books.iter_mut().find(|book| book.id == id) {
-                    stored_book.cfi = external_state.cfi.clone();
-                    stored_book.percentage = external_state.percentage;
-                    stored_book.last_read_at = Some(last_opened_at);
-                    stored_book.updated_at = Some(now_ms());
-                    book.cfi = stored_book.cfi.clone();
-                    book.percentage = stored_book.percentage;
-                    book.last_read_at = stored_book.last_read_at;
-                    book.updated_at = stored_book.updated_at;
+            if is_new {
+                if state
+                    .library
+                    .books
+                    .iter()
+                    .any(|stored| stored.id == id || stored.name == name)
+                {
+                    return Err("Library changed while the book was being imported".to_string());
                 }
+                state.library.books.push(book.clone());
+            } else {
+                let stored = state
+                    .library
+                    .books
+                    .iter_mut()
+                    .find(|stored| stored.id == id)
+                    .ok_or_else(|| "Book was removed while it was being imported".to_string())?;
+                book.reading_status = stored.reading_status.clone();
+                book.exported_versions = stored.exported_versions.clone();
+                book.cfi = promotion
+                    .as_ref()
+                    .map_or_else(|| stored.cfi.clone(), |_| book.cfi.clone());
+                book.percentage = promotion.as_ref().map_or(stored.percentage, |_| book.percentage);
+                book.tag_ids = stored.tag_ids.clone();
+                *stored = book.clone();
             }
-            storage.unload_search_text_cache(&external_id);
-            storage.mark_external_dirty();
-            storage.mark_book_state_dirty(&id);
-            let external_dir = storage.external_book_dir(&external_id);
-            if external_dir.exists() {
-                fs::remove_dir_all(&external_dir).map_err(|error| error.to_string())?;
+            if let Some((external_id, external_state)) = &promotion {
+                state.external.books.retain(|stored| stored.id != *external_id);
+                state.book_states.remove(external_id);
+                state.book_states.insert(id.clone(), external_state.clone());
             }
-        }
-
-        if publication_changed {
-            book = mark_library_book_content_updated(storage, &id)?.ok_or_else(|| "Book not found".to_string())?;
-        }
+            storage.compose_book(&mut state, &book)?
+        };
 
         storage.mark_library_dirty();
+        if let Some((external_id, _)) = &promotion {
+            storage.unload_search_text_cache(external_id);
+            storage.mark_external_dirty();
+            storage.mark_book_state_dirty(&id);
+        }
+        if let Some(transaction) = file_transaction.take()
+            && let Err(error) = transaction.commit()
+        {
+            eprintln!("Failed to remove committed import backup: {error}");
+        }
         storage.flush_dirty()?;
 
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
-        storage.compose_book(&mut state, &book)
+        if let Some((external_id, _)) = promotion {
+            let external_dir = storage.external_book_dir(&external_id);
+            if let Err(error) = fs::remove_dir_all(&external_dir)
+                && external_dir.exists()
+            {
+                eprintln!("Failed to remove promoted external book files: {error}");
+            }
+        }
+        Ok(record)
     })();
 
     if result.is_err() {
         remove_epub_import_temp(&temp_path);
+        if let Some(transaction) = file_transaction
+            && let Err(error) = transaction.rollback()
+        {
+            eprintln!("Failed to roll back EPUB import files: {error}");
+        }
     }
 
     result

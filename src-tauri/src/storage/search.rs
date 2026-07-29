@@ -1114,6 +1114,7 @@ mod tests {
                     book_states: HashMap::new(),
                 }),
                 dirty: Mutex::new(DirtyState::default()),
+                import_lock: Mutex::new(()),
                 reading_position_sequences: Mutex::new(HashMap::new()),
                 search_text_caches: Mutex::new(HashMap::new()),
                 search_text_cache_order: Mutex::new(VecDeque::new()),

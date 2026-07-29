@@ -1445,6 +1445,11 @@ pub(super) fn import_text_path_impl(
     replace_existing: bool,
     rules: Option<&TextImportRulesInput>,
 ) -> Result<BookRecord, String> {
+    let _import_guard = storage
+        .inner
+        .import_lock
+        .lock()
+        .map_err(|_| "storage import lock poisoned".to_string())?;
     fs::create_dir_all(books_root(storage.root())).map_err(|error| error.to_string())?;
 
     let path = &prepared.path;
@@ -1483,8 +1488,8 @@ pub(super) fn import_text_path_impl(
         "sourceEncodingId": decoded.encoding,
     });
 
-    let (mut book, id, should_copy) = {
-        let mut state = storage
+    let (mut book, id, should_copy, is_new) = {
+        let state = storage
             .inner
             .state
             .lock()
@@ -1496,33 +1501,30 @@ pub(super) fn import_text_path_impl(
             .iter()
             .position(|book| !book.content_hash.is_empty() && book.content_hash == hash);
 
-        let (index, should_copy) = if let Some(index) = filename_index {
+        if let Some(index) = filename_index {
             let storage_changed = state.library.books[index].source_storage != source_storage;
+            let mut book = state.library.books[index].clone();
             if !replace_existing || (state.library.books[index].content_hash == hash && !storage_changed) {
-                state.library.books[index].source_path = Some(source_path.clone());
-                let book = state.library.books[index].clone();
-                let book = storage.compose_book(&mut state, &book)?;
-                drop(state);
-                storage.mark_library_dirty();
-                storage.flush_dirty()?;
-                return Ok(book);
+                book.source_path = Some(source_path.clone());
+                let id = book.id.clone();
+                (book, id, false, false)
+            } else {
+                book.size = size;
+                book.content_hash = hash.clone();
+                book.content_version = book.content_version.saturating_add(1).max(1);
+                book.content_mode = BookContentMode::Normal;
+                book.content_flags.clear();
+                book.source_storage = source_storage;
+                book.source_path = Some(source_path.clone());
+                book.updated_at = Some(now_ms());
+                book.last_read_at = book.updated_at;
+                book.metadata = metadata.clone();
+                let id = book.id.clone();
+                (book, id, true, false)
             }
-
-            let book = &mut state.library.books[index];
-            book.size = size;
-            book.content_hash = hash.clone();
-            book.content_version = book.content_version.saturating_add(1).max(1);
-            book.content_mode = BookContentMode::Normal;
-            book.content_flags.clear();
-            book.source_storage = source_storage;
-            book.source_path = Some(source_path.clone());
-            book.updated_at = Some(now_ms());
-            book.last_read_at = book.updated_at;
-            book.metadata = metadata.clone();
-            (index, true)
         } else if let Some(index) = hash_index {
-            let book = &mut state.library.books[index];
-            book.name = name;
+            let mut book = state.library.books[index].clone();
+            book.name = name.clone();
             book.size = size;
             book.content_mode = BookContentMode::Normal;
             book.content_flags.clear();
@@ -1531,13 +1533,14 @@ pub(super) fn import_text_path_impl(
             book.source_path = Some(source_path.clone());
             book.updated_at = Some(now_ms());
             book.metadata = metadata.clone();
-            (index, storage_changed)
+            let id = book.id.clone();
+            (book, id, storage_changed, false)
         } else {
             let created_at = now_ms();
             let id = id_from_hash(&hash);
-            state.library.books.push(LibraryBook {
-                id,
-                name,
+            let book = LibraryBook {
+                id: id.clone(),
+                name: name.clone(),
                 size,
                 reading_status: None,
                 source_format: Some(BookSourceFormat::Txt),
@@ -1556,54 +1559,78 @@ pub(super) fn import_text_path_impl(
                 cfi: None,
                 percentage: None,
                 tag_ids: Vec::new(),
-            });
-            (state.library.books.len() - 1, true)
-        };
-
-        let book = state.library.books[index].clone();
-        let id = book.id.clone();
-        (book, id, should_copy)
+            };
+            (book, id, true, true)
+        }
     };
 
-    if should_copy {
-        let dir = storage.book_dir(&id);
-        storage.unload_search_text_cache(&id);
-        fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-        if dir.join(BOOK_FILE).exists() {
-            let _ = fs::remove_file(dir.join(BOOK_FILE));
+    let mut file_transaction = None;
+    let result = (|| -> Result<BookRecord, String> {
+        if should_copy {
+            storage.unload_search_text_cache(&id);
+            file_transaction = Some(ImportFileTransaction::begin(storage, &id)?);
+            let dir = storage.book_dir(&id);
+            let source_text_path = dir.join(SOURCE_TEXT_FILE);
+            if source_storage == SourceStorage::Managed {
+                fs::write(&source_text_path, prepared.bytes.as_slice()).map_err(|error| error.to_string())?;
+            }
+            let cover = create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str()));
+            write_text_publication(storage, &id, &document, &decoded.encoding_label, cover.as_ref())?;
+            book.metadata = metadata;
+            write_metadata(storage, &id, &book.metadata)?;
+            write_cover(storage, &id, cover)?;
         }
-        let source_text_path = dir.join(SOURCE_TEXT_FILE);
-        if source_storage == SourceStorage::Managed {
-            fs::write(&source_text_path, prepared.bytes.as_slice()).map_err(|error| error.to_string())?;
-        } else if source_text_path.exists() {
-            fs::remove_file(&source_text_path).map_err(|error| error.to_string())?;
-        }
-        let cover = create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str()));
-        write_text_publication(storage, &id, &document, &decoded.encoding_label, cover.as_ref())?;
-        book.metadata = metadata;
-        {
+
+        let record = {
             let mut state = storage
                 .inner
                 .state
                 .lock()
                 .map_err(|_| "storage state lock poisoned".to_string())?;
-            if let Some(stored_book) = state.library.books.iter_mut().find(|book| book.id == id) {
-                stored_book.metadata = book.metadata.clone();
+            if is_new {
+                if state
+                    .library
+                    .books
+                    .iter()
+                    .any(|stored| stored.id == id || stored.name == name)
+                {
+                    return Err("Library changed while the book was being imported".to_string());
+                }
+                state.library.books.push(book.clone());
+            } else {
+                let stored = state
+                    .library
+                    .books
+                    .iter_mut()
+                    .find(|stored| stored.id == id)
+                    .ok_or_else(|| "Book was removed while it was being imported".to_string())?;
+                book.reading_status = stored.reading_status.clone();
+                book.exported_versions = stored.exported_versions.clone();
+                book.cfi = stored.cfi.clone();
+                book.percentage = stored.percentage;
+                book.tag_ids = stored.tag_ids.clone();
+                *stored = book.clone();
             }
+            storage.compose_book(&mut state, &book)?
+        };
+
+        storage.mark_library_dirty();
+        if let Some(transaction) = file_transaction.take()
+            && let Err(error) = transaction.commit()
+        {
+            eprintln!("Failed to remove committed import backup: {error}");
         }
-        write_metadata(storage, &id, &book.metadata)?;
-        write_cover(storage, &id, cover)?;
+        storage.flush_dirty()?;
+        Ok(record)
+    })();
+
+    if result.is_err()
+        && let Some(transaction) = file_transaction
+        && let Err(error) = transaction.rollback()
+    {
+        eprintln!("Failed to roll back text import files: {error}");
     }
-
-    storage.mark_library_dirty();
-    storage.flush_dirty()?;
-
-    let mut state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
-    storage.compose_book(&mut state, &book)
+    result
 }
 
 pub fn is_epub_file(path: &Path) -> bool {
