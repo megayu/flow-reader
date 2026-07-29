@@ -2534,6 +2534,7 @@ test('[vertical-rl] resolves nested TOC anchors and chapter shortcuts on the rig
       const state = await readVerticalReadingState(page)
       return {
         aligned: state.startPage === (state.rightPageIndex ?? Number.NaN) + 1,
+        nested: (state.rightPageIndex ?? 0) > 0,
         rightIndex: state.rightIndex,
         startIndex: state.startIndex,
         startSlot: state.startSlot,
@@ -2541,12 +2542,12 @@ test('[vertical-rl] resolves nested TOC anchors and chapter shortcuts on the rig
     })
     .toMatchObject({
       aligned: true,
+      nested: true,
       rightIndex: 0,
       startIndex: 0,
       startSlot: 'right',
     })
   const nested = await readVerticalReadingState(page)
-  expect(nested.rightPageIndex).toBeGreaterThan(0)
 
   await page.keyboard.press(']')
   await expect
