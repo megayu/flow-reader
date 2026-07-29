@@ -20,7 +20,9 @@ interface BookPaneChapterFindOptions {
   active: boolean
   activeFrameWindows: readonly Window[]
   onOpen: () => void
-  rendition: any
+  rendition?: {
+    manager?: ReflowableManager
+  }
   tab: BookTab
   zenMode: boolean
 }
@@ -34,7 +36,7 @@ export function useBookPaneChapterFind({
   zenMode,
 }: BookPaneChapterFindOptions) {
   const findScopeSectionIndex = useCallback(() => {
-    const manager = rendition?.manager as ReflowableManager | undefined
+    const manager = rendition?.manager
     return readingOrderStartSectionIndex(
       manager?.currentReflowableSpread,
       manager?.paginationModel?.().spreadSlotOrder,
@@ -90,7 +92,9 @@ export function useBookPaneChapterFind({
 interface BookPaneChapterFindResultsOptions {
   active: boolean
   paginationVersion: number
-  rendition: any
+  rendition?: {
+    manager?: ReflowableManager
+  }
   setState: Dispatch<SetStateAction<ChapterFindState>>
   state: ChapterFindState
   tab: BookTab
@@ -161,11 +165,7 @@ export function useBookPaneChapterFindResults({
 
         if (cancelled) return
 
-        const visibleIndex = firstVisibleFindResultIndex(
-          results,
-          sectionIndex,
-          rendition?.manager as ReflowableManager | undefined,
-        )
+        const visibleIndex = firstVisibleFindResultIndex(results, sectionIndex, rendition?.manager)
 
         setState((current) => ({
           ...current,
@@ -202,7 +202,7 @@ export function useBookPaneChapterFindResults({
     if (locationKey === previousLocationKey.current) return
     previousLocationKey.current = locationKey
 
-    const manager = rendition?.manager as ReflowableManager | undefined
+    const manager = rendition?.manager
     setState((current) => {
       const visibleIndex = nearestVisibleFindResultIndex(
         current.results,
@@ -237,7 +237,7 @@ export function useBookPaneChapterFindResults({
         activeIndex: nextIndex,
       }))
 
-      if (!isFindResultVisible(result, state.sectionIndex, rendition?.manager as ReflowableManager | undefined)) {
+      if (!isFindResultVisible(result, state.sectionIndex, rendition?.manager)) {
         void tab.displayReflowableTarget(state.sectionIndex, result.cfi)
       }
     },

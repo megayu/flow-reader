@@ -2,17 +2,19 @@ import { type RefObject, useCallback, useEffect, useRef } from 'react'
 
 import type { RenditionSpread } from '@flow/epubjs/rendition'
 
-import type { BookTab } from '../../models/reader'
+import type { BookBeforeLayout, BookTab } from '../../models/reader'
 
 interface BookRenditionLifecycleOptions {
   active: boolean
   settingsReady: boolean
   tab: BookTab
-  rendition: any
+  rendition?: {
+    spread(spread: string): void
+  }
   currentSpread: RenditionSpread
   typographyLayoutSignature: string
   typographyStyleSignature: string
-  applyCustomStyle: (contents?: any, view?: any) => void
+  applyCustomStyle: BookBeforeLayout
   containerRef: RefObject<HTMLDivElement | null>
 }
 

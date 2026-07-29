@@ -20,7 +20,8 @@ import React, {
 } from 'react'
 import { useSnapshot } from 'valtio'
 
-import { RenditionSpread } from '@flow/epubjs/rendition'
+import type { Contents } from '@flow/epubjs'
+import { type RenditionManagerView, RenditionSpread } from '@flow/epubjs/rendition'
 import { SettingsPanel } from '@/settings/SettingsPanel'
 import {
   useSetSettingsDialogOpen,
@@ -615,14 +616,14 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
   useFrameEvent(activeFrameWindows, 'auxclick', handleReturnMouseButton, CAPTURE_EVENT_OPTIONS)
 
   const applyCustomStyle = useCallback(
-    (contents?: any, view?: any) => {
+    (contents?: Contents, view?: RenditionManagerView) => {
       if (contents) {
-        updateCustomStyle(contents, typography, tab.bodyTextCache, view, rendition?.layout?.name)
+        updateCustomStyle(contents, typography, tab.bodyTextCache, view, rendition?.manager?.layout?.name)
         return
       }
 
-      rendition?.getContents().forEach((contents: any) => {
-        updateCustomStyle(contents, typography, tab.bodyTextCache, undefined, rendition.layout?.name)
+      rendition?.getContents().forEach((contents) => {
+        updateCustomStyle(contents, typography, tab.bodyTextCache, undefined, rendition.manager?.layout?.name)
       })
     },
     [rendition, tab.bodyTextCache, typography],

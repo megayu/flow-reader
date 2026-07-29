@@ -49,7 +49,7 @@ export class BookLayoutTransactionController {
     tab.allowLocationJump = false
     tab.navigationDirection = undefined
     tab.relayoutAnchorSectionIndexes = [...tab.visibleSectionIndexes]
-    const rendition = tab.rendition as any
+    const rendition = tab.rendition
     const manager = rendition?.manager
     const layoutKey = tab.layoutAnchorKey(width, height)
     const spread =
@@ -72,7 +72,7 @@ export class BookLayoutTransactionController {
           updateAnchor: false,
         })
         await manager.renderReflowableSpread(spread)
-        await (tab.rendition as any)?.reportLocation(requestId)
+        await tab.rendition?.reportLocation(requestId)
         tab.commitPendingRenditionLocation(requestId)
         return
       }
@@ -135,7 +135,7 @@ export class BookLayoutTransactionController {
     if (spread && manager?.canUseLogicalReflowableSpread?.() && manager.renderReflowableSpread) {
       const requestId = tab.createManualLocationRequest({ updateAnchor: true })
       await manager.renderReflowableSpread(spread)
-      await (tab.rendition as any)?.reportLocation(requestId)
+      await tab.rendition?.reportLocation(requestId)
       tab.commitPendingRenditionLocation(requestId)
       return
     }

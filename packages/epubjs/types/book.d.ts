@@ -12,7 +12,7 @@ import Packaging from './packaging'
 import PageList, { PageListItem } from './pagelist'
 import { Rendition, RenditionOptions } from './rendition'
 import Resources from './resources'
-import Section, { SpineItem } from './section'
+import Section from './section'
 import Spine from './spine'
 import Store from './store'
 import Path from './utils/path'
@@ -21,10 +21,10 @@ import Url from './utils/url'
 export interface BookOptions {
   requestMethod?: (
     url: string,
-    type: string,
-    withCredentials: object,
-    headers: object,
-  ) => Promise<object>
+    type?: string | null,
+    withCredentials?: boolean,
+    headers?: Record<string, string>,
+  ) => Promise<unknown>
   requestCredentials?: object
   requestHeaders?: object
   encoding?: string
@@ -45,7 +45,7 @@ export default class Book {
   isOpen: boolean
   loaded: {
     metadata: Promise<PackagingMetadataObject>
-    spine: Promise<SpineItem[]>
+    spine: Promise<Spine>
     manifest: Promise<PackagingManifestObject>
     cover: Promise<string>
     navigation: Promise<Navigation>

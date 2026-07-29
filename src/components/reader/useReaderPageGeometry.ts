@@ -13,7 +13,7 @@ interface ReaderPageGeometryOptions {
   containerRef: RefObject<HTMLDivElement | null>
   paginationVersion: number
   rendered: boolean
-  rendition: any
+  rendition: unknown
 }
 
 export function useReaderPageGeometry({

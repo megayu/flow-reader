@@ -27,9 +27,13 @@ export const DropZone: React.FC<DropZoneProps> = (props) => {
 
 type Position = 'universe' | 'left' | 'right' | 'top' | 'bottom'
 
+interface DragDataEvent {
+  dataTransfer: DataTransfer | null
+}
+
 // > During the drag, in an event listener for the dragenter and dragover events, you use the data types of the data being dragged to check whether a drop is allowed.
 // https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Drag_operations#drag_data
-function accept(e?: DragEvent) {
+function accept(e?: DragDataEvent) {
   const dt = e?.dataTransfer
   return !!dt && [...dt.types].some((t) => ['text/plain', 'Files'].includes(t))
 }
@@ -121,12 +125,12 @@ const DropZoneInner: React.FC<DropZoneProps> = ({ children, className, onDrop, s
 
 const DndContext = createContext<{
   dragover: boolean
-  setDragEvent: (e?: DragEvent) => void
+  setDragEvent: (e?: DragDataEvent) => void
 }>({ dragover: false, setDragEvent: () => {} })
 const DndProvider: React.FC<{ children?: ReactNode }> = ({ children }) => {
   const [dragover, setDragover] = useState(false)
 
-  const setDragEvent = useCallback((e?: DragEvent) => {
+  const setDragEvent = useCallback((e?: DragDataEvent) => {
     setDragover(accept(e))
   }, [])
   const value = useMemo(() => ({ dragover, setDragEvent }), [dragover, setDragEvent])

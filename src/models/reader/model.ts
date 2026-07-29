@@ -1,11 +1,11 @@
 import type React from 'react'
 import { proxy, ref, snapshot, useSnapshot } from 'valtio'
 
-import type { Book, Location, Rendition } from '@flow/epubjs'
+import type { Book, Contents, Location, Rendition } from '@flow/epubjs'
 import ePub, { Rendition as EpubRendition } from '@flow/epubjs'
 import type Navigation from '@flow/epubjs/navigation'
 import type { NavItem } from '@flow/epubjs/navigation'
-import type { RenditionSpread } from '@flow/epubjs/rendition'
+import type { RenditionManagerView, RenditionSpread } from '@flow/epubjs/rendition'
 import epubRequest from '@flow/epubjs/request'
 import type Section from '@flow/epubjs/section'
 import { type AnnotationColor, type AnnotationType, createAnnotationSpine } from '@/annotation'
@@ -52,7 +52,7 @@ import { BookSearchController, displaySearchResult, searchBook, searchInSection,
 export type { HeaderPathItem, PaginationSnapshot } from './pagination'
 export { readingOrderStartSectionIndex } from './pagination'
 
-function updateIndex(array: any[], deletedItemIndex: number) {
+function updateIndex<T>(array: readonly T[], deletedItemIndex: number) {
   const last = array.length - 1
   return deletedItemIndex > last ? last : deletedItemIndex
 }
@@ -182,6 +182,10 @@ function markSectionsRuntime(sections: ISection[]) {
 
 function markRuntimeObject<T extends object>(value: T) {
   return ref(value)
+}
+
+type RuntimeRef<T extends object> = T & {
+  $$valtioSnapshot: T
 }
 
 function createVersionedEpubRequest(contentVersion?: number) {
@@ -434,6 +438,8 @@ export interface BookOverlayState {
   definitions: BookRecord['definitions']
 }
 
+export type BookBeforeLayout = (contents?: Contents, view?: RenditionManagerView) => void
+
 export type BookTypographyConfiguration = NonNullable<BookRecord['configuration']>['typography']
 
 class BaseTab {
@@ -465,14 +471,14 @@ export function getBookTabFrameWindows(tab: BookTab): readonly Window[] {
 }
 
 export class BookTab extends BaseTab {
-  epub?: Book
+  epub?: RuntimeRef<Book>
   get iframe(): Window | undefined {
     return frameWindowsByRuntime.get(getFrameRuntimeIdentity(this))?.[0]
   }
   get iframes(): readonly Window[] {
     return frameWindowsByRuntime.get(getFrameRuntimeIdentity(this)) ?? []
   }
-  rendition?: Rendition & { manager?: any }
+  rendition?: RuntimeRef<Rendition>
   nav?: Navigation
   locationsToReturn: Location[] = []
   section?: ISection
@@ -525,7 +531,7 @@ export class BookTab extends BaseTab {
   }
 
   get isScrolledDocument() {
-    return (this.rendition as any)?.settings?.globalLayoutProperties?.flow === 'scrolled-doc'
+    return this.rendition?.settings.globalLayoutProperties?.flow === 'scrolled-doc'
   }
 
   currentLocation?: Location
@@ -769,19 +775,8 @@ export class BookTab extends BaseTab {
     selectionDocument?: Document,
     selectionTextNode?: Text,
   ) {
-    const manager = this.rendition?.manager as any
-    const views = manager?.views?._views as
-      | Array<{
-          section?: ISection
-          document?: Document
-          contents?: { document?: Document }
-          window?: Window
-          layout?: { format?: (...args: any[]) => void }
-          axis?: string
-          expand?: () => void
-          _contentPageCount?: number
-        }>
-      | undefined
+    const manager = this.rendition?.manager
+    const views = manager?.views._views
     const selectionView = selectionDocument?.defaultView ? this.viewForWindow(selectionDocument.defaultView) : undefined
     const view =
       selectionView ??
@@ -804,7 +799,7 @@ export class BookTab extends BaseTab {
     )
     if (!patchedFrame) return false
 
-    const sectionDocument = (view.section as any)?.document as Document | undefined
+    const sectionDocument = view.section.document
     if (sectionDocument && !frameDocuments.includes(sectionDocument)) {
       patchDocumentTextNode(sectionDocument, target, oldText, newText)
     }
@@ -823,7 +818,7 @@ export class BookTab extends BaseTab {
       const requestId = this.createManualLocationRequest({
         updateAnchor: true,
       })
-      await (this.rendition as any)?.reportLocation(requestId)
+      await this.rendition?.reportLocation(requestId)
       this.commitPendingRenditionLocation(requestId)
     } catch (error) {
       console.error(error)
@@ -871,11 +866,11 @@ export class BookTab extends BaseTab {
     const doc = target && 'ownerDocument' in target ? (target.ownerDocument as Document | undefined) : undefined
     // epubjs mark callbacks originate from SVG overlays beside the iframe.
     const targetView =
-      (targetNode ? views.find((view: any) => view.element?.contains(targetNode)) : undefined) ??
+      (targetNode ? views.find((view) => view.element?.contains(targetNode)) : undefined) ??
       (doc?.defaultView ? this.viewForWindow(doc.defaultView) : undefined)
     const candidates = targetView ? [targetView] : [this.view, ...views]
 
-    for (const view of [...new Set(candidates)] as any[]) {
+    for (const view of [...new Set(candidates)]) {
       try {
         const range = view?.contents?.range(cfi)
         if (range) {
@@ -925,7 +920,7 @@ export class BookTab extends BaseTab {
   }
 
   currentRenditionLocationRequestId() {
-    const requestId = (this.rendition as any)?._locationRequestId
+    const requestId = this.rendition?._locationRequestId
     return typeof requestId === 'number' ? requestId : undefined
   }
 
@@ -938,7 +933,7 @@ export class BookTab extends BaseTab {
   }
 
   createManualLocationRequest(intent: LocationRequestIntent) {
-    const rendition = this.rendition as any
+    const rendition = this.rendition
     if (!rendition) return
 
     const requestId = typeof rendition._locationRequestId === 'number' ? rendition._locationRequestId + 1 : 1
@@ -1671,7 +1666,7 @@ export class BookTab extends BaseTab {
   }
 
   viewForWindow(win: Window | null) {
-    return this.rendition?.manager?.views._views.find((view: any) => view.window === win)
+    return this.rendition?.manager?.views._views.find((view) => view.window === win)
   }
 
   viewForRange(range: Range) {
@@ -1708,9 +1703,7 @@ export class BookTab extends BaseTab {
 
   syncFrames() {
     const views = this.rendition?.manager?.views?._views ?? []
-    const windows: Window[] = views
-      .map((view: any) => view.window as Window | undefined)
-      .filter((win: Window | undefined): win is Window => !!win)
+    const windows: Window[] = views.map((view) => view.window).filter((win: Window | undefined): win is Window => !!win)
     const current = getBookTabFrameWindows(this)
 
     if (windows.length === current.length && windows.every((win, index) => current[index] === win)) {
@@ -1753,7 +1746,7 @@ export class BookTab extends BaseTab {
     }
 
     try {
-      ;(this.epub as any)?.destroy?.()
+      this.epub?.destroy()
     } catch (error) {
       console.error(error)
     }
@@ -2008,10 +2001,10 @@ export class BookTab extends BaseTab {
 
   private _el?: HTMLDivElement
   private renderingEl?: HTMLDivElement
-  onBeforeLayout?: (contents?: any, view?: any) => void
+  onBeforeLayout?: BookBeforeLayout
   layoutStyleSignature?: string
 
-  setBeforeLayout(beforeLayout?: (contents?: any, view?: any) => void, layoutStyleSignature?: string) {
+  setBeforeLayout(beforeLayout?: BookBeforeLayout, layoutStyleSignature?: string) {
     if (beforeLayout) {
       this.onBeforeLayout = beforeLayout
     }
@@ -2024,7 +2017,7 @@ export class BookTab extends BaseTab {
 
     manager.viewSettings ??= {}
     manager.viewSettings.layoutStyleSignature = this.layoutStyleSignature
-    manager.viewSettings.beforeLayout = (contents: any, view: any) => {
+    manager.viewSettings.beforeLayout = (contents, view) => {
       this.onBeforeLayout?.(contents, view)
     }
   }
@@ -2057,7 +2050,7 @@ export class BookTab extends BaseTab {
       Math.round(resolvedWidth),
       Math.round(resolvedHeight),
       this.layoutStyleSignature ?? '',
-      (this.rendition as any)?.settings?.spread ?? '',
+      this.rendition?.settings.spread ?? '',
     ].join(':')
   }
 
@@ -2107,7 +2100,7 @@ export class BookTab extends BaseTab {
   async render(
     el: HTMLDivElement,
     initialSpread?: RenditionSpread,
-    beforeLayout?: (contents?: any, view?: any) => void,
+    beforeLayout?: BookBeforeLayout,
     layoutStyleSignature?: string,
   ) {
     this.setBeforeLayout(beforeLayout, layoutStyleSignature)
@@ -2171,7 +2164,7 @@ export class BookTab extends BaseTab {
       }
     }
 
-    let epub: Book
+    let epub: RuntimeRef<Book>
     let openingBook: Book | undefined
     try {
       if (source.mode === 'epub') {
@@ -2184,7 +2177,7 @@ export class BookTab extends BaseTab {
           await ePub(source.url, {
             requestMethod: createVersionedEpubRequest(this.book.contentVersion),
             containerRootUrl: source.rootUrl,
-          } as any),
+          }),
         )
       }
     } catch (error) {
@@ -2200,7 +2193,7 @@ export class BookTab extends BaseTab {
 
     if (generation !== this.renderGeneration) {
       try {
-        ;(epub as any)?.destroy?.()
+        epub.destroy()
       } catch (error) {
         console.error(error)
       }
@@ -2210,7 +2203,7 @@ export class BookTab extends BaseTab {
 
     if (el.getBoundingClientRect().width === 0) {
       try {
-        ;(epub as any)?.destroy?.()
+        epub.destroy()
       } catch (error) {
         console.error(error)
       }
@@ -2223,7 +2216,7 @@ export class BookTab extends BaseTab {
     const initialHeight = Math.round(initialRect.height)
     if (initialWidth <= 0 || initialHeight <= 0) {
       try {
-        ;(epub as any)?.destroy?.()
+        epub.destroy()
       } catch (error) {
         console.error(error)
       }
@@ -2231,7 +2224,7 @@ export class BookTab extends BaseTab {
       return
     }
 
-    let rendition: Rendition
+    let rendition: RuntimeRef<Rendition>
     try {
       rendition = ref(
         new EpubRendition(epub, {
@@ -2239,16 +2232,16 @@ export class BookTab extends BaseTab {
           height: initialHeight,
         }),
       )
-      ;(epub as any).rendition = rendition
+      epub.rendition = rendition
       await rendition.attachTo(el)
-      const renditionManager = (rendition as any).manager
+      const renditionManager = rendition.manager
       if (renditionManager) {
         renditionManager.suspendResize = true
       }
     } catch (error) {
       this.reportOpenError('render', error)
       try {
-        ;(epub as any)?.destroy?.()
+        epub.destroy()
       } catch (destroyError) {
         console.error(destroyError)
       }
@@ -2258,8 +2251,8 @@ export class BookTab extends BaseTab {
 
     if (generation !== this.renderGeneration) {
       try {
-        ;(rendition as any)?.destroy?.()
-        ;(epub as any)?.destroy?.()
+        rendition.destroy()
+        epub.destroy()
       } catch (error) {
         console.error(error)
       }
@@ -2286,7 +2279,7 @@ export class BookTab extends BaseTab {
     try {
       const spine = await this.epub.loaded.spine
       if (generation !== this.renderGeneration) return
-      const sections = (spine as any).spineItems as ISection[]
+      const sections = spine.spineItems as ISection[]
       sections.forEach((s) => {
         s.length ??= 0
         s.images ??= []

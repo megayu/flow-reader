@@ -1,5 +1,6 @@
 import type { Location } from '@flow/epubjs'
 import type Navigation from '@flow/epubjs/navigation'
+import type { RenditionManager, RenditionManagerPage } from '@flow/epubjs/rendition'
 
 import type { BookRecord, ReadingSpreadPageRecord, ReadingSpreadRecord } from '../../storage'
 
@@ -136,10 +137,8 @@ export interface SectionNavIndex {
   entries: SectionNavEntry[]
 }
 
-function snapshotReflowablePage(page: any): ReadingSpreadPageRecord | undefined {
-  if (!page?.section || typeof page.section.index !== 'number' || typeof page.pageIndex !== 'number') {
-    return
-  }
+function snapshotReflowablePage(page: RenditionManagerPage | undefined): ReadingSpreadPageRecord | undefined {
+  if (!page) return
 
   return {
     sectionIndex: page.section.index,
@@ -158,7 +157,7 @@ function locationEndsAtDisplayedPageEnd(location?: Location) {
 }
 
 export function snapshotReflowableSpread(
-  manager: any,
+  manager: RenditionManager | undefined,
   layoutStyleSignature?: string,
   location?: Location,
 ): ReadingSpreadRecord | undefined {

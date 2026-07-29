@@ -42,6 +42,9 @@ export interface RenditionOptions {
   snap?: boolean | object
   defaultDirection?: 'ltr'
   allowScriptedContent?: boolean
+  globalLayoutProperties?: {
+    flow?: string
+  }
 }
 
 export interface DisplayedLocation {
@@ -64,6 +67,85 @@ export interface Location {
   atEnd: boolean
 }
 
+export interface RenditionManagerLayout {
+  columnWidth?: number
+  divisor?: number
+  gap?: number
+  name?: string
+  pageWidth?: number
+}
+
+export interface RenditionManagerPage {
+  pageIndex: number
+  section: Section
+}
+
+export interface RenditionManagerSpread {
+  anchor?: 'left' | 'right'
+  endsAtSectionEnd?: boolean
+  exact?: boolean
+  left?: RenditionManagerPage
+  right?: RenditionManagerPage
+}
+
+export interface RenditionPaginationModel {
+  pageProgressionDirection?: 'ltr' | 'rtl'
+  spreadSlotOrder?: 'left-first' | 'right-first'
+  writingMode?: string
+}
+
+export interface RenditionManagerView {
+  _contentPageCount?: number
+  axis?: string
+  contents: Contents
+  document?: Document
+  element?: HTMLElement
+  expand?(): void
+  layout?: {
+    columnWidth?: number
+    format?(contents?: Contents, section?: Section, axis?: string): void
+    gap?: number
+    height?: number
+    name?: string
+    width?: number
+  }
+  section: Section
+  window?: Window
+}
+
+export interface RenditionManager {
+  _stageSize?: {
+    height?: number
+    width?: number
+  }
+  container?: HTMLElement
+  current?(): RenditionManagerView | undefined
+  currentReflowableSpread?: RenditionManagerSpread
+  deleteReflowablePageCountCache?(section?: Section): void
+  layout?: RenditionManagerLayout
+  paginationModel?(): RenditionPaginationModel
+  reflowablePageCountCache?: Record<string, number>
+  renderReflowableSpread?(spread: unknown): Promise<void>
+  canUseLogicalReflowableSpread?(): boolean
+  reflowablePageForTarget?(section: Section, target: string): Promise<RenditionManagerPage | undefined>
+  reflowableSpreadEarlierPage?(spread: RenditionManagerSpread): RenditionManagerPage | undefined
+  scrollHorizontalByReadingDirection?(delta: number, silent?: boolean): boolean
+  settings?: {
+    axis?: string
+  }
+  suspendResize?: boolean
+  views: {
+    displayed?(): RenditionManagerView[]
+    _views: RenditionManagerView[]
+  }
+  viewSettings?: {
+    beforeLayout?: (contents?: Contents, view?: RenditionManagerView) => void
+    height?: number
+    layoutStyleSignature?: string
+    width?: number
+  }
+}
+
 export declare class Rendition {
   constructor(book: Book, options: RenditionOptions)
 
@@ -83,7 +165,10 @@ export declare class Rendition {
   epubcfi: EpubCFI
   q: Queue
   location: Location
+  manager?: RenditionManager
   started: Promise<void>
+  _flowSuppressResizeRedisplay?: boolean
+  _locationRequestId?: number
 
   adjustImages(contents: Contents): Promise<void>
 
@@ -131,13 +216,13 @@ export declare class Rendition {
 
   prev(): Promise<void>
 
-  reportLocation(): Promise<void>
+  reportLocation(requestId?: number): Promise<void>
 
   requireManager(manager: string | Function | object): any
 
   requireView(view: string | Function | object): any
 
-  resize(width?: number, height?: number): void
+  resize(width?: number, height?: number, epubcfi?: string): void
 
   setManager(manager: Function): void
 

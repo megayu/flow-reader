@@ -45,6 +45,18 @@ function preventFrameContextMenu(event: Event) {
   event.preventDefault()
 }
 
+function isFrameAnchor(target: EventTarget): target is HTMLAnchorElement {
+  return 'tagName' in target && target.tagName === 'A' && 'href' in target
+}
+
+function isFrameImage(target: EventTarget): target is HTMLImageElement {
+  return 'tagName' in target && target.tagName === 'IMG' && 'src' in target
+}
+
+function isFrameSource(target: EventTarget): target is HTMLSourceElement {
+  return 'tagName' in target && target.tagName === 'SOURCE' && 'parentElement' in target
+}
+
 interface BookPaneFrameContentOptions {
   active: boolean
   activeFrameWindows: readonly Window[]
@@ -52,7 +64,7 @@ interface BookPaneFrameContentOptions {
   containerRef: RefObject<HTMLDivElement | null>
   frameWindows: readonly Window[]
   onMouseDown: () => void
-  rendition: any
+  rendition: unknown
   setNotePopover: Dispatch<SetStateAction<NotePopoverState | undefined>>
   tab: BookTab
   typography: NotePopoverTypography
@@ -99,7 +111,7 @@ export function useBookPaneFrameContent({
   // `dragenter` not fired in iframe when the count of times is even, so use `dragover`
   const handleFrameDragOver = useCallback(
     (event: DragEvent) => {
-      setDragEvent(event as any)
+      setDragEvent(event)
     },
     [setDragEvent],
   )
@@ -234,15 +246,15 @@ export function useBookPaneFrameContent({
       // https://developer.chrome.com/blog/tap-to-search
       event.preventDefault()
 
-      for (const element of event.composedPath() as any) {
+      for (const element of event.composedPath()) {
         // `instanceof` may not work in iframe
-        if (element.tagName === 'A' && element.href) {
+        if (isFrameAnchor(element) && element.href) {
           if (consumeExternalLinkClick(event, element)) return
 
           tab.showPrevLocation()
           return
         }
-        if (!zenMode && element.tagName === 'IMG') {
+        if (!zenMode && isFrameImage(element)) {
           const imageSrc = element.currentSrc || element.src
           if (imageSrc) {
             openImagePreview(imageSrc)
@@ -250,7 +262,7 @@ export function useBookPaneFrameContent({
           }
           return
         }
-        if (!zenMode && element.tagName === 'SOURCE') {
+        if (!zenMode && isFrameSource(element)) {
           const image = element.parentElement?.querySelector('img')
           const imageSrc = image?.currentSrc || image?.src
           if (imageSrc) {

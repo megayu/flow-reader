@@ -101,7 +101,10 @@ export class BookNavigationController {
     if (manager?.canUseLogicalReflowableSpread?.() && spread) {
       const page = manager.reflowableSpreadEarlierPage?.(spread) ?? spread.left ?? spread.right
       if (page?.section && page.pageIndex > 0) {
-        await tab.displaySectionStart(page.section)
+        const section = tab.sections?.find((candidate) => candidate.index === page.section.index)
+        if (!section) return false
+
+        await tab.displaySectionStart(section)
         return true
       }
 

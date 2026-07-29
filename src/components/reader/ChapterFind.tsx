@@ -14,10 +14,6 @@ export interface ReflowableManager {
   paginationModel?: () => {
     spreadSlotOrder?: 'left-first' | 'right-first'
   }
-  viewSettings?: {
-    beforeLayout?: (contents: unknown, view?: unknown) => void
-    layoutStyleSignature?: string
-  }
 }
 
 export interface ReflowablePageAddress {

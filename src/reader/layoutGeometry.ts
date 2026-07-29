@@ -1,10 +1,21 @@
+function isPropertyBag(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function readRenditionLayout(rendition: unknown) {
+  if (!isPropertyBag(rendition) || !isPropertyBag(rendition.manager)) return
+
+  const { layout } = rendition.manager
+  return isPropertyBag(layout) ? layout : undefined
+}
+
 export function getRenditionPageWidth(rendition: unknown) {
-  const pageWidth = (rendition as any)?.manager?.layout?.pageWidth
-  return Number.isFinite(pageWidth) && pageWidth > 0 ? Number(pageWidth) : undefined
+  const pageWidth = readRenditionLayout(rendition)?.pageWidth
+  return typeof pageWidth === 'number' && Number.isFinite(pageWidth) && pageWidth > 0 ? pageWidth : undefined
 }
 
 export function getRenditionLayout(rendition: unknown) {
-  return (rendition as any)?.manager?.layout
+  return readRenditionLayout(rendition)
 }
 
 export function getFiniteLayoutValue(value: unknown, fallback: number) {
@@ -35,6 +46,6 @@ export function getCurrentReaderSpreadWidth(rendition: unknown, container?: HTML
 }
 
 export function getRenditionDivisor(rendition: unknown) {
-  const divisor = (rendition as any)?.manager?.layout?.divisor
-  return Number.isFinite(divisor) && divisor > 1 ? Number(divisor) : 1
+  const divisor = readRenditionLayout(rendition)?.divisor
+  return typeof divisor === 'number' && Number.isFinite(divisor) && divisor > 1 ? divisor : 1
 }
