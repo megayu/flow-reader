@@ -67,7 +67,10 @@ export function useBookRenditionLifecycle({
     prevSize.current = size.key
     previousTypographyLayoutSignature.current = typographyLayoutSignature
     previousTypographyStyleSignature.current = typographyStyleSignature
-    tab.render(containerRef.current!, currentSpreadRef.current, beforeLayout, typographyLayoutSignature)
+    const container = containerRef.current
+    if (!container) return
+
+    void tab.render(container, currentSpreadRef.current, beforeLayout, typographyLayoutSignature).catch(console.error)
   }, [active, containerRef, rendition, settingsReady, tab, typographyLayoutSignature, typographyStyleSignature])
 
   const syncVisibleSize = useCallback(() => {

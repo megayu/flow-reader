@@ -2121,7 +2121,14 @@ export class BookTab extends BaseTab {
       if (el === this.renderingEl) this.renderingEl = undefined
     }
 
-    const loadedBook = await db.books.get(this.book.id)
+    let loadedBook: BookRecord | undefined
+    try {
+      loadedBook = await db.books.get(this.book.id)
+    } catch (error) {
+      this.reportOpenError('source', error)
+      clearRendering()
+      return
+    }
     if (generation !== this.renderGeneration) {
       clearRendering()
       return
@@ -2147,7 +2154,14 @@ export class BookTab extends BaseTab {
       return
     }
     if (source.mode === 'epub' && this.book.contentMode !== 'archiveOnly') {
-      const refreshedBook = await db.books.get(this.book.id)
+      let refreshedBook: BookRecord | undefined
+      try {
+        refreshedBook = await db.books.get(this.book.id)
+      } catch (error) {
+        this.reportOpenError('source', error)
+        clearRendering()
+        return
+      }
       if (generation !== this.renderGeneration) {
         clearRendering()
         return
@@ -2257,14 +2271,18 @@ export class BookTab extends BaseTab {
     this.rendition = rendition
     this._el = ref(el)
     clearRendering()
-    this.epub.loaded.navigation.then((nav) => {
-      if (generation !== this.renderGeneration) return
-      const previousTocVersion = this.tocVersion
-      this.nav = markRuntimeObject(nav)
-      this.expandNavPath(this.currentNavItem)
-      this.assignSectionNavItems()
-      if (this.tocVersion === previousTocVersion) this.tocVersion++
-    })
+    void this.epub.loaded.navigation
+      .then((nav) => {
+        if (generation !== this.renderGeneration) return
+        const previousTocVersion = this.tocVersion
+        this.nav = markRuntimeObject(nav)
+        this.expandNavPath(this.currentNavItem)
+        this.assignSectionNavItems()
+        if (this.tocVersion === previousTocVersion) this.tocVersion++
+      })
+      .catch((error) => {
+        this.failCommittedRender(generation, 'spine', error)
+      })
     try {
       const spine = await this.epub.loaded.spine
       if (generation !== this.renderGeneration) return
@@ -2277,9 +2295,7 @@ export class BookTab extends BaseTab {
       this.assignSectionNavItems(sections)
       this.sections = runtimeSections
     } catch (error) {
-      if (generation === this.renderGeneration) {
-        this.reportOpenError('spine', error)
-      }
+      this.failCommittedRender(generation, 'spine', error)
       return
     }
     this.setBeforeLayout()
@@ -2317,9 +2333,7 @@ export class BookTab extends BaseTab {
     try {
       await this.displayInitialPosition()
     } catch (error) {
-      if (generation === this.renderGeneration) {
-        this.reportOpenError('position', error)
-      }
+      this.failCommittedRender(generation, 'position', error)
       return
     }
 
@@ -2330,6 +2344,14 @@ export class BookTab extends BaseTab {
         }
       })
     }
+  }
+
+  private failCommittedRender(generation: number, stage: ReaderOpenErrorStage, error: unknown) {
+    if (generation !== this.renderGeneration) return
+
+    this.reportOpenError(stage, error)
+    this.renderGeneration++
+    this.destroyRendering()
   }
 
   private reportOpenError(stage: ReaderOpenErrorStage, error: unknown) {
