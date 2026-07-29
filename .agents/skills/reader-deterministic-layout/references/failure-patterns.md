@@ -44,6 +44,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: keep EventEmitter state per instance and gate relocated/rendered commits by explicit request or transaction identity.
 - Verification gate: multi-tab randomized resize/sidebar/tab-switch client verification must prove inactive tabs do not commit foreign sections.
 
+### Enumerable BookTab frame windows break React development component tracks
+
+- Symptom: a Tauri development client can start normally but fail on a later page turn or iframe replacement when React Performance Tracks reads a property such as `caches` from a detached iframe `Window`; the release build is unaffected.
+- Reproduction path: store frame windows in enumerable `BookTab.iframe` or `BookTab.iframes` fields, render `BookPane` from Valtio tab snapshots, keep React Performance Tracks enabled, detach or replace an iframe, and then update the pane props.
+- Root cause: Valtio `ref()` prevents proxy tracking but preserves the referenced value in the enumerable snapshot. React 19's development component-track formatter enumerates changed props and can reach a detached frame `Window` whose WebView2 getters throw.
+- Fix direction: store only `BookTab.iframe` and `BookTab.iframes` in the tab's runtime frame-window container, retain their prototype accessors for existing callers, and notify their current consumers through the existing `viewVersion`.
+- Verification gate: with React Performance Tracks enabled, a real Tauri development client must complete initial rendering, ordinary and repeated page turns, and iframe replacement without `pageerror`; matched release-client checks must verify that this frame-window ownership change does not regress tab switching or page turns.
+
 ### Hidden pane measured under a different geometry
 
 - Symptom: tab switching without size changes still changes pages, leaves blank iframes, or blocks page turns.

@@ -40,7 +40,7 @@ import { useAction } from '../hooks/useAction'
 import { useEventListener } from '../hooks/useEventListener'
 import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
-import { BookTab, reader, useReaderSnapshot } from '../models/reader'
+import { BookTab, getBookTabFrameWindows, reader, useReaderSnapshot } from '../models/reader'
 import { createReaderKeyDownHandler, hasKeyboardCapturingLayer, isEditableTarget } from '../reader/shortcuts'
 import { getShortcutChords } from '../shortcuts'
 import { type BookRecord, db, type EpubImportProgress, type EpubImportResult } from '../storage'
@@ -68,6 +68,10 @@ function preventContextMenu(e: Event) {
   e.preventDefault()
 }
 
+function getFocusedBookTab() {
+  return reader.focusedBookTab
+}
+
 interface ReaderGridViewProps {
   content?: React.ReactNode
   onEpubImportProgress?: (progress: EpubImportProgress) => void
@@ -75,7 +79,7 @@ interface ReaderGridViewProps {
 }
 
 export function ReaderGridView({ content, onEpubImportProgress, onEpubImportResult }: ReaderGridViewProps) {
-  const { groups } = useReaderSnapshot()
+  const { focusedIndex, groups } = useReaderSnapshot()
   const [action, setAction] = useAction()
   const setViewMode = useSetViewMode()
   const viewMode = useViewModeValue()
@@ -90,7 +94,7 @@ export function ReaderGridView({ content, onEpubImportProgress, onEpubImportResu
   useEventListener(
     'keydown',
     createReaderKeyDownHandler(
-      reader.focusedBookTab,
+      getFocusedBookTab,
       viewMode,
       enterReaderMode,
       zenMode,
@@ -107,7 +111,7 @@ export function ReaderGridView({ content, onEpubImportProgress, onEpubImportResu
   useEventListener('contextmenu', preventContextMenu)
 
   if (!groups.length) return null
-  const preferredIndex = reader.focusedIndex > -1 ? reader.focusedIndex : 0
+  const preferredIndex = focusedIndex > -1 ? focusedIndex : 0
   const index = groups[preferredIndex] ? preferredIndex : 0
   const group = groups[index]
   if (!group) return null
@@ -518,7 +522,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
   const { dark } = useColorScheme()
   const [background] = useBackground()
 
-  const { iframe, iframes, isScrolledDocument, rendition, rendered, turning, paginationVersion } = useSnapshot(tab)
+  const { isScrolledDocument, rendition, rendered, turning, paginationVersion, viewVersion } = useSnapshot(tab)
   const currentSpread = isScrolledDocument ? RenditionSpread.None : (typography.spread ?? RenditionSpread.Auto)
   const typographyLayoutSignature = useMemo(
     () =>
@@ -528,12 +532,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
       }),
     [currentSpread, typography],
   )
-  const frameWindows = useMemo(() => {
-    void iframe
-    void iframes.length
-
-    return tab.iframes.length ? [...tab.iframes] : tab.iframe ? [tab.iframe] : []
-  }, [iframe, iframes, tab])
+  const frameWindows = useMemo(() => [...getBookTabFrameWindows(tab)], [tab, viewVersion])
   const activeFrameWindows = useMemo(() => (active ? frameWindows : []), [active, frameWindows])
 
   useLayoutEffect(() => {

@@ -1549,7 +1549,7 @@ async function main() {
     expectedSelectedIndex: index,
     run: () =>
       page.evaluate((index) => {
-        const tabs = Array.from(document.querySelectorAll('.ReaderGroup [role="tab"]'))
+        const tabs = Array.from(document.querySelectorAll('.ReaderGroup [data-flow-reader-tab-index]'))
         const tab = tabs[index]
         if (!(tab instanceof HTMLElement)) {
           throw new Error(`reader tab ${index} not found`)

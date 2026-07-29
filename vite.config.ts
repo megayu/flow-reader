@@ -23,16 +23,6 @@ const watchedPaths = [
   '.env.*',
 ]
 
-function tauriReactDevBootstrap(): Plugin {
-  return {
-    name: 'flow-reader:tauri-react-dev-bootstrap',
-    apply: 'serve',
-    transformIndexHtml(html) {
-      return html.replace('/src/main.tsx', '/src/bootstrap.ts')
-    },
-  }
-}
-
 function sourceOnlyWatcher(): Plugin {
   return {
     name: 'flow-reader:source-only-watcher',
@@ -63,7 +53,7 @@ export default defineConfig({
     target: 'es2020',
   },
   clearScreen: false,
-  plugins: [tailwindcss(), react(), tauriReactDevBootstrap(), sourceOnlyWatcher()],
+  plugins: [tailwindcss(), react(), sourceOnlyWatcher()],
   resolve: {
     alias: [
       {

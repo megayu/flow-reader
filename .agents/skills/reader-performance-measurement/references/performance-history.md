@@ -204,6 +204,20 @@ Read this before proposing or testing a Flow Reader performance optimization. Se
 - Measured effect: rapid TOC tab-click first frame worsened about 5%, long tasks returned, and rapid TOC page-turn first frame worsened about 3%.
 - Decision: rejected. Mutation-count reductions are not acceptance evidence when client metrics and accessibility risk are worse.
 
+### Pass ImageView tab id through visible blocks
+
+- Attempt: let `ImagePane` pass its existing focused-tab id through `MeasuredImageBlock` to each visible image `Block`, removing one `useReaderSnapshot` subscription per visible block.
+- Measured effect: matched `tauri-release` native-book runs used eight runs with the first three excluded and covered closed, search, and image sidebar tab switches and tab clicks plus search input. An adjacent reverse A/B improved image tab-click operation p50 about 25% and p95 about 14%, but image tab-switch first-frame p50 worsened about 37%, first-frame p95 about 87%, and settled p95 about 22%. No long tasks appeared in the tab scenarios.
+- Decision: rejected. Removing per-block subscriptions did not produce a stable improvement across the required image tab-click and tab-switch paths.
+- Retry condition: reconsider only if image rows become substantially heavier or their subscription ownership changes, then measure image tab switching and tab clicking together with a closed-sidebar control.
+
+### Reuse SearchPane keyword snapshot in the IME buffer hook
+
+- Attempt: pass the `focusedBookTab.keyword` already read by `SearchPane` into `useIntermediateKeyword` instead of subscribing to the same reader snapshot again inside the hook.
+- Measured effect: matched `tauri-release` native-book runs used the same eight-run, first-three-excluded matrix as the adjacent baseline. Search-sidebar tab-switch first-frame p50 improved about 9%, but first-frame p95 worsened about 17%. Search input operation p50 worsened about 20%, and steady long-task total increased about 14%.
+- Decision: rejected. The simpler subscription graph did not provide a stable runtime benefit and regressed the actual search-input path.
+- Retry condition: keep the separate IME buffer subscription unless search state ownership or input synchronization changes; any retry must include both search-sidebar switching and a real search query.
+
 ## Current Baseline Shape To Protect
 
 - Current retained release-client performance should have zero long tasks for the primary closed-sidebar and TOC rapid tab-switch and rapid page-turn paths.

@@ -1,4 +1,4 @@
-import type { BookTab, ISection } from '../../models/reader'
+import { type BookTab, getBookTabFrameWindows, type ISection } from '../../models/reader'
 import { findReciprocalNoteItem } from '../../noteIndex'
 import { findSectionByLinkedHref, safeDecodeHref, sameHref } from '../../noteLinks'
 import { isNoteMarkerText } from '../../noteSemantics'
@@ -211,7 +211,7 @@ function findRenderedSectionByDocument(tab: BookTab, doc: Document) {
 }
 
 function findRenderedDocumentBySection(tab: BookTab, section: ISection) {
-  const windows = tab.iframes.length ? tab.iframes : tab.iframe ? [tab.iframe] : []
+  const windows = getBookTabFrameWindows(tab)
 
   return windows
     .map((win) => win.document)

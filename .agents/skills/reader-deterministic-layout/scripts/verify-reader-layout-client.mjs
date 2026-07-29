@@ -624,9 +624,9 @@ async function readState(page) {
     const sidebar = document.querySelector('.SideBar')
     const sidebarRect = rectOf(sidebar)
     const sidebarStyle = sidebar ? getComputedStyle(sidebar) : null
-    const tabRects = Array.from(document.querySelectorAll('[role="tab"]')).map((tab, index) => ({
+    const tabRects = Array.from(document.querySelectorAll('[data-flow-reader-tab-index]')).map((tab, index) => ({
       index,
-      label: tab.getAttribute('aria-label') || normalize(tab.textContent),
+      label: normalize(tab.textContent),
       rect: rectOf(tab),
     }))
     return {

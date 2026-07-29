@@ -19,7 +19,7 @@ import { useSetAction } from '../hooks/useAction'
 import { isForwardSelection, useTextSelection } from '../hooks/useTextSelection'
 import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
-import { type BookTab, reader } from '../models/reader'
+import { type BookTab, getBookTabFrameWindows, reader } from '../models/reader'
 import { useSettings } from '../state'
 import { type BookTextReplaceTarget, replaceBookText } from '../storage'
 import { resolveTranslationDirection, type TranslationLanguage } from '../translation/languages'
@@ -163,28 +163,24 @@ function textReplacementErrorMessage(error: unknown, t: (key: string) => string)
 }
 
 export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ tab, onChapterFind }) => {
-  const { iframe, iframes, annotationRange, annotationCfi } = useSnapshot(tab) as unknown as {
-    iframe?: Window
-    iframes: readonly Window[]
+  const { viewVersion, annotationRange, annotationCfi } = useSnapshot(tab) as unknown as {
+    viewVersion: number
     annotationRange?: Range
     annotationCfi?: string
   }
   const [settings] = useSettings()
 
   const windows = useMemo(() => {
-    void iframe
-    void iframes.length
+    const frameWindows = getBookTabFrameWindows(tab)
 
     return (
-      tab.iframes.length
-        ? [...tab.iframes]
-        : tab.iframe
-          ? [tab.iframe]
-          : (tab.rendition?.manager?.views?._views
-              ?.map((view: any) => view.window as Window | undefined)
-              .filter((win: Window | undefined): win is Window => !!win) ?? [])
+      frameWindows.length
+        ? [...frameWindows]
+        : (tab.rendition?.manager?.views?._views
+            ?.map((view: any) => view.window as Window | undefined)
+            .filter((win: Window | undefined): win is Window => !!win) ?? [])
     ) as Window[]
-  }, [iframe, iframes, tab])
+  }, [tab, viewVersion])
 
   const [selection, setSelection, releasePoint, menuOpen] = useTextSelection(windows, {
     automatic: settings.enableTextSelectionMenu !== false,

@@ -20,8 +20,10 @@ export interface ReaderShortcutContext {
   setSettingsOpen: SettingsOpenSetter
 }
 
+type ReaderShortcutTabSource = BookTab | (() => BookTab | undefined) | undefined
+
 export function createReaderKeyDownHandler(
-  tab: BookTab | undefined,
+  tabSource: ReaderShortcutTabSource,
   viewMode: ViewMode,
   enterReaderMode: () => void,
   zenMode: boolean,
@@ -30,6 +32,8 @@ export function createReaderKeyDownHandler(
   shortcuts: ReaderShortcutContext,
 ) {
   return (event: KeyboardEvent) => {
+    const tab = typeof tabSource === 'function' ? tabSource() : tabSource
+
     try {
       if (event.key === 'Escape') {
         if (zenMode) {

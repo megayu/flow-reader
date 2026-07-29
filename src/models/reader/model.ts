@@ -451,13 +451,27 @@ class BaseTab {
   }
 }
 
-// https://github.com/pmndrs/valtio/blob/92f3311f7f1a9fe2a22096cd30f9174b860488ed/src/vanilla.ts#L6
-type AsRef = { $$valtioRef: true }
+// Frame Windows are runtime-only: the non-enumerable identity and prototype
+// accessors keep host objects out of Valtio's enumerable snapshots.
+const frameRuntimeIdentity = Symbol('bookTabFrameRuntime')
+const frameWindowsByRuntime = new WeakMap<object, readonly Window[]>()
+
+function getFrameRuntimeIdentity(tab: BookTab) {
+  return (tab as unknown as { [frameRuntimeIdentity]: object })[frameRuntimeIdentity]
+}
+
+export function getBookTabFrameWindows(tab: BookTab): readonly Window[] {
+  return frameWindowsByRuntime.get(getFrameRuntimeIdentity(tab)) ?? []
+}
 
 export class BookTab extends BaseTab {
   epub?: Book
-  iframe?: Window & AsRef
-  iframes: (Window & AsRef)[] = []
+  get iframe(): Window | undefined {
+    return frameWindowsByRuntime.get(getFrameRuntimeIdentity(this))?.[0]
+  }
+  get iframes(): readonly Window[] {
+    return frameWindowsByRuntime.get(getFrameRuntimeIdentity(this)) ?? []
+  }
   rendition?: Rendition & { manager?: any }
   nav?: Navigation
   locationsToReturn: Location[] = []
@@ -1666,6 +1680,22 @@ export class BookTab extends BaseTab {
     return this.viewForWindow(doc.defaultView) ?? this.view
   }
 
+  private replaceFrameWindows(windows: readonly Window[]) {
+    const current = getBookTabFrameWindows(this)
+
+    if (windows.length === current.length && windows.every((win, index) => current[index] === win)) {
+      return false
+    }
+
+    if (windows.length) {
+      frameWindowsByRuntime.set(getFrameRuntimeIdentity(this), windows)
+    } else {
+      frameWindowsByRuntime.delete(getFrameRuntimeIdentity(this))
+    }
+    this.bumpViewVersion()
+    return true
+  }
+
   sectionForRange(range: Range) {
     const section = this.viewForRange(range)?.section as ISection | undefined
     if (section) {
@@ -1681,18 +1711,13 @@ export class BookTab extends BaseTab {
     const windows: Window[] = views
       .map((view: any) => view.window as Window | undefined)
       .filter((win: Window | undefined): win is Window => !!win)
-    const iframes = this.iframes
+    const current = getBookTabFrameWindows(this)
 
-    if (windows.length === iframes.length && windows.every((win, index) => iframes[index] === win)) {
+    if (windows.length === current.length && windows.every((win, index) => current[index] === win)) {
       return false
     }
 
-    const nextIframes = windows.map((win: Window) => ref(win) as unknown as Window & AsRef)
-
-    this.iframes = nextIframes
-    this.iframe = nextIframes[0]
-    this.bumpViewVersion()
-    return true
+    return this.replaceFrameWindows(windows)
   }
 
   destroy() {
@@ -1734,8 +1759,7 @@ export class BookTab extends BaseTab {
     }
 
     this.epub = undefined
-    this.iframe = undefined
-    this.iframes = []
+    this.replaceFrameWindows([])
     this.rendition = undefined
     this.section = undefined
     this.sections = undefined
@@ -2322,6 +2346,9 @@ export class BookTab extends BaseTab {
 
   constructor(public book: BookRecord) {
     super(book.id, book.name)
+    Object.defineProperty(this, frameRuntimeIdentity, {
+      value: ref({}),
+    })
     this.overlayState = {
       annotations: book.annotations,
       definitions: book.definitions,
