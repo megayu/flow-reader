@@ -6,6 +6,9 @@ pub(super) fn delete_books_to_tombstones(storage: &AppStorage, ids: &[String]) -
     if ids.is_empty() {
         return Ok(Vec::new());
     }
+    if ids.iter().any(|id| !is_valid_book_storage_id(id)) {
+        return Err("Invalid book id".to_string());
+    }
 
     {
         let mut state = storage
@@ -13,6 +16,12 @@ pub(super) fn delete_books_to_tombstones(storage: &AppStorage, ids: &[String]) -
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
+        if ids
+            .iter()
+            .any(|id| !state.library.books.iter().any(|book| &book.id == id))
+        {
+            return Err("Book not found".to_string());
+        }
         state.library.books.retain(|book| !ids.contains(&book.id));
         for id in &ids {
             state.book_states.remove(id);
@@ -175,9 +184,7 @@ pub(super) fn delete_books_impl(storage: &AppStorage, tasks: &TaskService, ids: 
 }
 
 pub(super) fn cleanup_external_book_heavy_files(storage: &AppStorage, id: &str) -> Result<(), String> {
-    if !is_external_book_id(id) {
-        return Ok(());
-    }
+    storage.ensure_external_book(id)?;
 
     storage.unload_search_text_cache(id);
     let dir = storage.external_book_dir(id);

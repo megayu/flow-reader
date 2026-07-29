@@ -157,6 +157,11 @@ impl AppStorage {
         let library = read_json_or_default::<Library>(&library_path(&root)?)?;
         let external = read_json_or_default::<ExternalBookIndex>(&external_index_path(&root)?)?;
         let settings = read_json_value_or_default(&settings_path(&root)?)?;
+        if library.books.iter().any(|book| !is_valid_book_storage_id(&book.id))
+            || external.books.iter().any(|book| !is_external_book_id(&book.id))
+        {
+            return Err("Storage contains an invalid book id".to_string());
+        }
 
         Ok(Self {
             inner: Arc::new(StorageInner {
@@ -213,6 +218,9 @@ impl AppStorage {
     }
 
     fn library_book(&self, id: &str) -> Result<LibraryBook, String> {
+        if !is_valid_book_storage_id(id) {
+            return Err("Invalid book id".to_string());
+        }
         let state = self
             .inner
             .state
@@ -232,6 +240,24 @@ impl AppStorage {
             .map(|book| self.external_to_library_book(&book))
             .transpose()?
             .ok_or_else(|| "Book not found".to_string())
+    }
+
+    fn ensure_external_book(&self, id: &str) -> Result<(), String> {
+        if !is_external_book_id(id) {
+            return Err("Invalid external book id".to_string());
+        }
+        let state = self
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        state
+            .external
+            .books
+            .iter()
+            .any(|book| book.id == id)
+            .then_some(())
+            .ok_or_else(|| "External book not found".to_string())
     }
 
     fn unload_search_text_cache(&self, id: &str) {
@@ -603,7 +629,14 @@ fn settings_path(root: &Path) -> Result<PathBuf, String> {
 }
 
 fn is_external_book_id(id: &str) -> bool {
-    id.starts_with("ext-")
+    id.starts_with("ext-") && is_valid_book_storage_id(id)
+}
+
+fn is_valid_book_storage_id(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
 fn window_state_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -924,6 +957,28 @@ mod tests {
             .unwrap()
             .map(|entry| entry.unwrap().path())
             .collect()
+    }
+
+    #[test]
+    fn delete_books_rejects_ids_outside_the_library_without_touching_the_path() {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-delete-boundary-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let storage = test_storage_with_book(&root, test_library_book_with_id("book-a", BookSourceFormat::Epub));
+        let outside = root.with_extension("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("marker.txt"), "keep").unwrap();
+
+        let result = delete_books_to_tombstones(&storage, &[outside.to_string_lossy().into_owned()]);
+
+        assert!(result.is_err());
+        assert!(outside.join("marker.txt").exists());
+        assert_eq!(storage.inner.state.lock().unwrap().library.books.len(), 1);
+
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(outside);
     }
 
     #[test]

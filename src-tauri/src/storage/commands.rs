@@ -413,6 +413,7 @@ pub fn list_covers(storage: State<'_, AppStorage>) -> Result<Vec<CoverRecord>, S
 
 #[tauri::command]
 pub fn get_cover(storage: State<'_, AppStorage>, id: String) -> Result<Option<CoverRecord>, String> {
+    storage.library_book(&id)?;
     Ok(Some(CoverRecord {
         id: id.clone(),
         cover: read_cover(&storage, &id)?,
@@ -421,6 +422,7 @@ pub fn get_cover(storage: State<'_, AppStorage>, id: String) -> Result<Option<Co
 
 #[tauri::command]
 pub fn update_cover(storage: State<'_, AppStorage>, id: String, cover: Option<CoverInput>) -> Result<(), String> {
+    storage.library_book(&id)?;
     write_cover(&storage, &id, cover)
 }
 
@@ -1078,9 +1080,7 @@ pub fn cleanup_all_external_books(storage: State<'_, AppStorage>) -> Result<(), 
 
 #[tauri::command]
 pub fn delete_external_book(storage: State<'_, AppStorage>, id: String) -> Result<(), String> {
-    if !is_external_book_id(&id) {
-        return Ok(());
-    }
+    storage.ensure_external_book(&id)?;
 
     {
         let mut state = storage
