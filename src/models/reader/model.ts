@@ -91,6 +91,43 @@ function documentBody(document: Document) {
   return document.body ?? document.getElementsByTagName('body')[0] ?? document.documentElement
 }
 
+const EPUB_CONTENT_SECURITY_POLICY = [
+  "script-src 'none'",
+  "object-src 'none'",
+  "frame-src 'none'",
+  "child-src 'none'",
+  "worker-src 'none'",
+  "connect-src 'none'",
+  "form-action 'none'",
+].join('; ')
+
+function sanitizeEpubDocument(document: Document) {
+  document.querySelectorAll('script, iframe, frame, object, embed, form').forEach((element) => element.remove())
+  document.querySelectorAll('meta[http-equiv]').forEach((element) => {
+    if (element.getAttribute('http-equiv')?.trim().toLowerCase() === 'refresh') {
+      element.remove()
+    }
+  })
+
+  document.querySelectorAll('*').forEach((element) => {
+    for (const attribute of Array.from(element.attributes)) {
+      const name = attribute.name.toLowerCase()
+      const compactValue = attribute.value.replace(/[\u0000-\u0020]+/g, '')
+      if (name.startsWith('on') || /^javascript:/i.test(compactValue)) {
+        element.removeAttributeNode(attribute)
+      }
+    }
+  })
+
+  const head = document.head ?? document.getElementsByTagName('head')[0]
+  if (!head) return
+
+  const meta = document.createElementNS(head.namespaceURI ?? 'http://www.w3.org/1999/xhtml', 'meta')
+  meta.setAttribute('http-equiv', 'Content-Security-Policy')
+  meta.setAttribute('content', EPUB_CONTENT_SECURITY_POLICY)
+  head.insertBefore(meta, head.firstChild)
+}
+
 function patchTextNode(textNode: Text | undefined, target: BookTextReplaceTarget, oldText: string, newText: string) {
   if (!textNode?.isConnected) return false
   const text = textNode.textContent ?? ''
@@ -2226,10 +2263,12 @@ export class BookTab extends BaseTab {
 
     let rendition: RuntimeRef<Rendition>
     try {
+      epub.spine.hooks.content.register(sanitizeEpubDocument)
       rendition = ref(
         new EpubRendition(epub, {
           width: initialWidth,
           height: initialHeight,
+          allowScriptedContent: true,
         }),
       )
       epub.rendition = rendition
