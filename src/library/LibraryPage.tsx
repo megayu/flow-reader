@@ -264,13 +264,19 @@ export function LibraryPage() {
 
     nativeOpenSetupPromiseRef.current ??= startNativeOpenSetup()
 
-    nativeOpenSetupPromiseRef.current.then((result) => {
-      if (disposed || !result) return
-
-      nativeOpenCleanupRef.current = result.cleanup
-      nativeOpenReadyRef.current = true
-      tryRestoreStartupSession()
-    })
+    void nativeOpenSetupPromiseRef.current
+      .then((result) => {
+        if (disposed) return
+        nativeOpenCleanupRef.current = result?.cleanup
+      })
+      .finally(() => {
+        if (disposed) return
+        nativeOpenReadyRef.current = true
+        tryRestoreStartupSession()
+      })
+      .catch((error) => {
+        console.error('Failed to finish native file setup', error)
+      })
 
     return () => {
       disposed = true

@@ -24,6 +24,7 @@ interface TauriMockOptions {
   localDictionaryFiles?: Record<string, LocalDictionaryRecord | { code: string; message: string }>
   openDialogPaths?: string[]
   pendingOpenPaths?: string[]
+  pendingOpenPathsError?: string
   deferReaderSource?: boolean
   readerSourceErrors?: Record<string, string>
   readerSources?: Record<string, string>
@@ -56,6 +57,7 @@ export async function installTauriMock(
     localDictionaryFiles = {},
     openDialogPaths = [],
     pendingOpenPaths = [],
+    pendingOpenPathsError,
     deferReaderSource = false,
     readerSourceErrors = {},
     readerSources = {},
@@ -91,6 +93,7 @@ export async function installTauriMock(
       fixtureLocalDictionaryFiles,
       fixtureOpenDialogPaths,
       fixturePendingOpenPaths,
+      fixturePendingOpenPathsError,
       fixtureDeferReaderSource,
       fixtureReaderSourceErrors,
       fixtureReaderSources,
@@ -627,6 +630,7 @@ export async function installTauriMock(
           if (globalWindow.__FLOW_TEST_TAURI__) {
             globalWindow.__FLOW_TEST_TAURI__.takePendingOpenPathsCalls += 1
           }
+          if (fixturePendingOpenPathsError) throw new Error(fixturePendingOpenPathsError)
           return fixturePendingOpenPaths
         }
         if (command === 'plugin:dialog|open') {
@@ -658,6 +662,7 @@ export async function installTauriMock(
       fixtureLocalDictionaryFiles: localDictionaryFiles,
       fixtureOpenDialogPaths: openDialogPaths,
       fixturePendingOpenPaths: pendingOpenPaths,
+      fixturePendingOpenPathsError: pendingOpenPathsError,
       fixtureDeferReaderSource: deferReaderSource,
       fixtureReaderSourceErrors: readerSourceErrors,
       fixtureReaderSources: readerSources,

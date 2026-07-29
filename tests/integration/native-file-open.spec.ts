@@ -43,6 +43,16 @@ test('cold native EPUB request suppresses startup restore even when opening fail
   ).toEqual([])
 })
 
+test('native file setup failure does not block startup completion', async ({ page }) => {
+  await installTauriMock(page, {
+    pendingOpenPathsError: 'native setup unavailable',
+  })
+
+  await page.goto('/')
+
+  await expect(page.getByTestId('native-startup-surface')).toHaveCount(0)
+})
+
 test('cold native EPUB open opens only the requested book', async ({ page }) => {
   const restored = createBook('restored-book', 'Restored Book')
   const requested = createBook('requested-book', 'Requested Book')
