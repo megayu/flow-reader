@@ -86,6 +86,12 @@ const sortFieldIconMap = {
   updatedAt: HistoryIcon,
   createdAt: CalendarPlusIcon,
 } satisfies Record<LibrarySortField, LucideIcon>
+const sortFieldMessageKey = {
+  title: 'sort.title',
+  creator: 'sort.creator',
+  updatedAt: 'sort.last_read',
+  createdAt: 'sort.date_added',
+} satisfies Record<LibrarySortField, string>
 
 const toolbarButtonClass = 'h-8 leading-none'
 const libraryBookCardSizePresets = [
@@ -714,7 +720,7 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
               <div className="flex items-center">
                 <Select value={sortField} onValueChange={(value) => setSortField(value as LibrarySortField)}>
                   <SelectTrigger
-                    aria-label={t(`sort.${sortField}`)}
+                    aria-label={t(sortFieldMessageKey[sortField])}
                     className={clsx(
                       toolbarButtonClass,
                       'bg-secondary text-secondary-foreground min-w-[6.25rem] rounded-r-none border-transparent px-2.5 text-base font-medium hover:bg-(--flow-bg-control-hover) [&_[data-slot=select-value]]:leading-none [&_[data-slot=select-value]]:font-medium',
@@ -734,7 +740,7 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
                           className="h-8 py-0 pr-7 pl-2 text-base leading-none font-medium"
                         >
                           <SortIcon aria-hidden className="text-muted-foreground size-4" />
-                          <span className="leading-none">{t(`sort.${field}`)}</span>
+                          <span className="leading-none">{t(sortFieldMessageKey[field])}</span>
                         </SelectItem>
                       )
                     })}

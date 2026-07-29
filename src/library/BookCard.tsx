@@ -22,6 +22,7 @@ import { useNotify } from '../components/ui/notification'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
 import { formatErrorMessage } from '../errorMessage'
 import { useTranslation } from '../hooks/useTranslation'
+import { toMessageKeySegment } from '../locales'
 import { reader } from '../models/reader'
 import {
   type BookExportFormat,
@@ -315,7 +316,7 @@ export const BookCard: React.FC<BookCardProps> = ({
           {book.readingStatus && (
             <ReadingStatusBadge
               status={book.readingStatus}
-              title={t(`reading_status.${book.readingStatus}`)}
+              title={t(`reading_status.${toMessageKeySegment(book.readingStatus)}`)}
               hidden={statusMenuOpen}
             />
           )}

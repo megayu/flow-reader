@@ -14,20 +14,14 @@ export function EpubImportProgressPanel({ progress }: { progress: EpubImportProg
         role="status"
       >
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-foreground leading-tight font-medium">{t('progress_title')}</h2>
+          <h2 className="text-foreground leading-tight font-medium">{t('title.progress')}</h2>
           <span className="text-muted-foreground tabular-nums">
             {progress.completed} / {progress.total}
           </span>
         </div>
         <Progress max={total} value={progress.completed} />
         <p className="text-muted-foreground mt-3 leading-snug">
-          {t('imported_count')}
-          {progress.imported}
-          {t('books_unit')}
-          {', '}
-          {t('failed_count')}
-          {progress.failed}
-          {t('books_unit')}
+          {t('result.partial', progress.imported, progress.failed)}
         </p>
       </section>
     </div>

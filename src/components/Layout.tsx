@@ -59,6 +59,7 @@ import {
   unpinLibraryAuthor,
   unpinLibraryTag,
 } from '../library/filters'
+import { toMessageKeySegment } from '../locales'
 import { useReaderSnapshot } from '../models/reader'
 import { getShortcutChords, type ShortcutActionId } from '../shortcuts'
 import {
@@ -840,7 +841,9 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                   onClick={() => toggle(status)}
                 >
                   <ReadingStatusIcon status={status} className={active ? 'text-primary-foreground' : ''} />
-                  <span className="min-w-0 truncate leading-none">{t(`reading_status.${status}`)}</span>
+                  <span className="min-w-0 truncate leading-none">
+                    {t(`reading_status.${toMessageKeySegment(status)}`)}
+                  </span>
                 </UiButton>
               )
             })}

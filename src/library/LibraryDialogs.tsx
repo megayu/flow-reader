@@ -465,15 +465,15 @@ export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({ book, cover, onC
     [t('info.creator'), cleanBookText(book.metadata.creator)],
     [t('info.language'), formatLanguage(book.metadata.language)],
     [t('info.publisher'), cleanBookText(book.metadata.publisher)],
-    [t('info.pubdate'), cleanBookText(book.metadata.pubdate)],
+    [t('info.publication_date'), cleanBookText(book.metadata.pubdate)],
     ...(book.sourceStorage === 'referenced' && book.sourcePath
-      ? [[t('info.sourcePath'), formatLocalDirectoryForDisplay(book.sourcePath)]]
+      ? [[t('info.original_file_path'), formatLocalDirectoryForDisplay(book.sourcePath)]]
       : []),
-    [t('info.filename'), cleanBookText(book.name)],
+    [t('info.file_name'), cleanBookText(book.name)],
     [t('info.size'), formatFileSize(book.size)],
-    [t('info.createdAt'), formatDateTime(book.createdAt)],
-    [t('info.lastReadAt'), formatDateTime(book.lastReadAt)],
-    [t('info.percentage'), formatPercentage(book.percentage)],
+    [t('info.date_added'), formatDateTime(book.createdAt)],
+    [t('info.last_read'), formatDateTime(book.lastReadAt)],
+    [t('info.reading_progress'), formatPercentage(book.percentage)],
   ].filter(([, value]) => !!value)
 
   return (

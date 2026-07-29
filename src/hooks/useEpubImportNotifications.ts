@@ -14,12 +14,9 @@ export function useEpubImportNotifications() {
     if (failed > 0) {
       notify({
         autoCloseMs: false,
-        description:
-          imported > 0
-            ? `${t('imported_count')}${imported}${t('books_unit')}，${t('failed_count')}${failed}${t('books_unit')}`
-            : `${t('failed_count')}${failed}${t('books_unit')}`,
+        description: imported > 0 ? t('result.partial', imported, failed) : t('result.failed', failed),
         items: result.failures.map((failure) => failure.filename),
-        title: t(imported > 0 ? 'partial_failed' : 'failed'),
+        title: t(imported > 0 ? 'title.partial_failure' : 'title.failed'),
         type: 'error',
       })
       return
@@ -27,7 +24,7 @@ export function useEpubImportNotifications() {
 
     if (imported > 0) {
       notify({
-        title: `${t('success')}${imported}${t('books_unit')}`,
+        title: t('result.success', imported),
         type: 'success',
       })
     }

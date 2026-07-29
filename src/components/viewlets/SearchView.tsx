@@ -185,9 +185,7 @@ const ResultList = forwardRef<ResultListHandle, ResultListProps>(({ results, key
 
   return (
     <>
-      <div className="text-muted-foreground px-3 py-2 text-base">
-        {t('files.result').replace('{n}', `${resultCount}`).replace('{m}', `${sectionCount}`)}
-      </div>
+      <div className="text-muted-foreground px-3 py-2 text-base">{t('result.summary', resultCount, sectionCount)}</div>
       <OverlayScroll
         ref={outerRef}
         className="text-muted-foreground text-base"

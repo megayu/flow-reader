@@ -33,6 +33,10 @@
 
 - Text inside UI controls, list rows, toolbar items, notifications, and similar interface elements should be vertically centered unless a design or functional requirement explicitly calls for another alignment.
 
+## Localization Guidelines
+
+- Every new or changed i18n key must include Simplified Chinese and English; other locales are optional. Writing each idiomatically from the feature semantics rather than translating from the other.
+
 ## Testing Guidelines
 
 - Run the smallest relevant checks during iteration, then use `pnpm check` for standard web validation or `pnpm check:full` when the EPUB engine, native code, or browser integration is affected.

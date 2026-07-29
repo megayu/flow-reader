@@ -4,13 +4,13 @@ import type { ComponentProps, CSSProperties } from 'react'
 
 import { useBackground } from '../hooks/theme/useBackground'
 import { LIST_ITEM_SIZE } from '../hooks/useList'
-import { useTranslation } from '../hooks/useTranslation'
 
 import { AppTooltip } from './AppTooltip'
 import { IconButton } from './Button'
 import { StateLayer } from './base/StateLayer'
 
 export const TREE_INDENT_SIZE = 10
+export const EMPTY_ROW_LABEL = '—'
 
 interface RowProps extends ComponentProps<'div'> {
   expanded?: boolean
@@ -44,7 +44,6 @@ export const Row: React.FC<RowProps> = ({
   tooltipContentStyle,
   ...props
 }) => {
-  const trans = useTranslation()
   const [, , background] = useBackground()
 
   const childCount = subitems?.length
@@ -98,7 +97,7 @@ export const Row: React.FC<RowProps> = ({
       >
         <span className="flex h-full min-w-0 items-center whitespace-nowrap">
           <span className="block min-w-0 truncate">
-            {t || trans('untitled')}
+            {t || EMPTY_ROW_LABEL}
             {description && (
               <span
                 className="text-muted-foreground/60"

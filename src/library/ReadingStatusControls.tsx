@@ -6,6 +6,7 @@ import { AppTooltip } from '../components/AppTooltip'
 import { ReadingStatusIcon } from '../components/ReadingStatusIcon'
 import { Button } from '../components/ui/button'
 import { useTranslation } from '../hooks/useTranslation'
+import { toMessageKeySegment } from '../locales'
 import type { ReadingStatus } from '../storage'
 
 import { bookCoverCornerBadgeClassName, bookCoverCornerIconSize } from './model'
@@ -104,7 +105,7 @@ export const ReadingStatusMenu: React.FC<{
         <ReadingStatusMenuItem
           key={option}
           iconStatus={option}
-          label={t(`reading_status.${option}`)}
+          label={t(`reading_status.${toMessageKeySegment(option)}`)}
           checked={status === option}
           onClick={() => onChange(option)}
         />

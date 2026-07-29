@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import type { CSSProperties, ReactNode } from 'react'
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { RenditionSpread } from '@flow/epubjs/rendition'
 import { ColorPickerPopover, normalizeHexColor } from '@/components/ColorPickerPopover'
@@ -13,7 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { openSupportedExternalUrl } from '@/externalLink'
 import { useAccentColor } from '@/hooks/theme/useSourceColor'
 import { useLocale } from '@/hooks/useLocale'
-import { useTranslation } from '@/hooks/useTranslation'
+import { formatTranslation, useTranslation } from '@/hooks/useTranslation'
 import { type AppLocale, localeNames } from '@/locales'
 import { createShortcutGroups } from '@/shortcuts'
 import { defaultTextImportRules, useSettings } from '@/state'
@@ -451,28 +451,18 @@ function parsePatternText(value: string) {
 function RegexDescription({ descriptionKey }: { descriptionKey: string }) {
   const t = useTranslation('settings')
 
-  return renderRichText(t(descriptionKey), {
-    regex: (
-      <button
-        type="button"
-        className="cursor-pointer text-(--flow-accent) underline decoration-current/50 underline-offset-2 hover:decoration-current"
-        onClick={() => {
-          void openSupportedExternalUrl(REGEX_TESTER_URL).catch(() => undefined)
-        }}
-      >
-        {t('txt_import.regular_expression')}
-      </button>
-    ),
-  })
-}
-
-function renderRichText(message: string, replacements: Record<string, ReactNode>) {
-  return message.split(/(\{[a-z][a-z0-9_]*\})/g).map((part, index) => {
-    const name = part.match(/^\{(.+)\}$/)?.[1]
-    const replacement = name ? replacements[name] : undefined
-
-    return <Fragment key={index}>{replacement === undefined ? part : replacement}</Fragment>
-  })
+  return formatTranslation<ReactNode>(t(descriptionKey), [
+    <button
+      key="regular-expression"
+      type="button"
+      className="cursor-pointer text-(--flow-accent) underline decoration-current/50 underline-offset-2 hover:decoration-current"
+      onClick={() => {
+        void openSupportedExternalUrl(REGEX_TESTER_URL).catch(() => undefined)
+      }}
+    >
+      {t('txt_import.regular_expression')}
+    </button>,
+  ])
 }
 
 interface SegmentedFieldOption<T extends string> {

@@ -1,13 +1,13 @@
 import { useEffect } from 'react'
 
-import { defaultLocale, isAppLocale } from '../locales'
+import { fallbackLocale, isAppLocale } from '../locales'
 import { useSettings } from '../state'
 import { createFlowThemeCss } from '../styles/theme'
 import { createAppTypographyCss } from '../styles/ui'
 
 export function Theme() {
   const [settings] = useSettings()
-  const locale = isAppLocale(settings.locale) ? settings.locale : defaultLocale
+  const locale = isAppLocale(settings.locale) ? settings.locale : fallbackLocale
 
   useEffect(() => {
     document.documentElement.lang = locale

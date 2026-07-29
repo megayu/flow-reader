@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { create } from 'zustand'
 
 import { IS_SERVER } from '@/env'
+import { isAppLocale, resolveSystemLocale } from '@/locales'
 import { normalizeThemeConfiguration } from '@/styles/theme'
 import { normalizeUiFontSize } from '@/styles/ui'
 
@@ -203,10 +204,24 @@ let settingsLoadPromise: Promise<Settings> | undefined
 
 function loadSettings() {
   settingsLoadPromise ??= getSettingsFromStorage<Partial<Settings>>()
-    .then((value) => normalizeSettings(value))
-    .catch(() => defaultSettings)
+    .then((value) => normalizeSettings(initializeSettingsLocale(value)))
+    .catch(() => normalizeSettings(initializeSettingsLocale(undefined)))
 
   return settingsLoadPromise
+}
+
+function initializeSettingsLocale(value: Partial<Settings> | undefined): Partial<Settings> {
+  if (isAppLocale(value?.locale)) return value
+
+  const languages =
+    typeof navigator === 'undefined'
+      ? []
+      : [navigator.language, ...(Array.isArray(navigator.languages) ? navigator.languages : [])]
+
+  return {
+    ...value,
+    locale: resolveSystemLocale(languages),
+  }
 }
 
 function normalizeSettings(value: Partial<Settings> | undefined): Settings {

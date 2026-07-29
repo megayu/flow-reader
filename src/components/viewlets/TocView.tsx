@@ -15,7 +15,7 @@ import { AppTooltip, readerPageTooltipContentStyle } from '../AppTooltip'
 import { BookTooltipContent } from '../BookTooltipContent'
 import { Pane, PaneView, type PaneViewProps } from '../base/PaneView'
 import { StateLayer } from '../base/StateLayer'
-import { TREE_INDENT_SIZE, Twisty } from '../Row'
+import { EMPTY_ROW_LABEL, TREE_INDENT_SIZE, Twisty } from '../Row'
 
 export const TocView: React.FC<PaneViewProps> = (props) => {
   const active = props.active ?? true
@@ -279,7 +279,7 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
                 item={item}
                 itemExpanded={!!item?.expanded}
                 tab={tab}
-                untitledLabel={t('untitled')}
+                emptyLabel={EMPTY_ROW_LABEL}
               />
             </div>
           )
@@ -296,10 +296,10 @@ interface TocRowProps {
   item?: INavItem
   itemExpanded: boolean
   tab: BookTab
-  untitledLabel: string
+  emptyLabel: string
 }
 const TocRow: React.FC<TocRowProps> = memo(
-  ({ active, activeClassName, depth, item, itemExpanded, tab, untitledLabel }) => {
+  ({ active, activeClassName, depth, item, itemExpanded, tab, emptyLabel }) => {
     if (!item) return null
     const { label, subitems, href = '' } = item
     const hasSubitems = !!subitems?.length
@@ -373,7 +373,7 @@ const TocRow: React.FC<TocRowProps> = memo(
           }}
         >
           <span className="flex h-full min-w-0 items-center whitespace-nowrap">
-            <span className="block min-w-0 truncate">{title || untitledLabel}</span>
+            <span className="block min-w-0 truncate">{title || emptyLabel}</span>
           </span>
         </div>
         <div className="relative z-10 ml-auto flex h-full items-center" />
