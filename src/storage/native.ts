@@ -28,6 +28,7 @@ export const storageCommand = {
   recordReadingPosition: 'record_reading_position',
   replaceBookText: 'replace_book_text',
   revealBookSource: 'reveal_book_source',
+  revealExportedFile: 'reveal_exported_file',
   searchBookText: 'search_book_text',
   storeBookImageIndex: 'store_book_image_index',
   unloadBookSearchText: 'unload_book_search_text',

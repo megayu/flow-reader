@@ -136,6 +136,7 @@ export async function exportBookWithDialog(book: BookRecord, format: BookExportF
   if (!outputPath) return
 
   await exportBook(book.id, format, outputPath)
+  return outputPath
 }
 
 let languageDisplayNamesLocale: string | undefined

@@ -9,6 +9,10 @@ type NotificationType = 'success' | 'error'
 const DEFAULT_NOTIFICATION_AUTO_CLOSE_MS = 5000
 
 interface NotificationInput {
+  action?: {
+    label: string
+    onClick: () => void
+  }
   autoCloseMs?: number | false
   description?: string
   items?: string[]
@@ -122,6 +126,18 @@ function NotificationToast({
               </li>
             ))}
           </ul>
+        )}
+        {notification.action && (
+          <Button
+            className="h-auto w-fit justify-start p-0 leading-snug"
+            onClick={() => {
+              onDismiss(notification.id)
+              notification.action?.onClick()
+            }}
+            variant="link"
+          >
+            {notification.action.label}
+          </Button>
         )}
       </div>
       <Button

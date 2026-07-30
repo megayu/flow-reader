@@ -231,6 +231,7 @@ pub fn run() {
             storage::get_book,
             storage::open_book_directory,
             storage::reveal_book_source,
+            storage::reveal_exported_file,
             storage::list_tags,
             storage::create_tag,
             storage::update_tag,

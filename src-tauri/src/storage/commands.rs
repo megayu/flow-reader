@@ -386,6 +386,18 @@ pub fn reveal_book_source(storage: State<'_, AppStorage>, id: String) -> Result<
 }
 
 #[tauri::command]
+pub fn reveal_exported_file(path: String) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    if !path.is_absolute() {
+        return Err("exported file path must be absolute".to_string());
+    }
+    if !path.is_file() {
+        return Err(format!("exported file does not exist: {}", path.display()));
+    }
+    reveal_file_in_file_manager(&path)
+}
+
+#[tauri::command]
 pub fn list_covers(storage: State<'_, AppStorage>) -> Result<Vec<CoverRecord>, String> {
     let ids = {
         let state = storage

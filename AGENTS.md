@@ -35,7 +35,8 @@
 
 ## Localization Guidelines
 
-- Every new or changed i18n key must include Simplified Chinese and English; other locales are optional. Writing each idiomatically from the feature semantics rather than translating from the other.
+- Every new or changed i18n key must include Simplified Chinese and English; other locales are optional. Write each idiomatically from the feature semantics rather than translating from the other.
+- Insert every new i18n key in the position implied by its full key name, alongside the corresponding namespace and neighboring keys; do not append it at an arbitrary location.
 
 ## Testing Guidelines
 

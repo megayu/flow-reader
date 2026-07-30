@@ -60,6 +60,8 @@
   "home.edit.new_tag": "New tag",
   "home.edit.save": "Save",
   "home.edit.title": "Title",
+  "home.export_complete": "Export complete",
+  "home.export_reveal": "Show in File Manager",
   "home.import": "Import",
   "home.info.creator": "Author",
   "home.info.date_added": "Added",

@@ -60,6 +60,8 @@
   "home.edit.new_tag": "新增标签",
   "home.edit.save": "保存",
   "home.edit.title": "标题",
+  "home.export_complete": "导出完成",
+  "home.export_reveal": "在文件管理器中显示",
   "home.import": "导入",
   "home.info.creator": "作者",
   "home.info.date_added": "添加时间",

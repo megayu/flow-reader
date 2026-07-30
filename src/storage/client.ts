@@ -358,6 +358,9 @@ export const db = {
     },
   },
   files: {
+    reveal(path: string) {
+      return invoke('reveal_exported_file', { path })
+    },
     async getPackageUrl(id: string) {
       const path = await invoke<string>('get_book_package_path', { id })
       return filePathToUrl(path)
