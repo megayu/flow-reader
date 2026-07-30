@@ -216,7 +216,7 @@ Use only to validate script behavior or cross-platform support:
 
 ```text
 pnpm build
-python -m http.server 7127 -d out
+python -m http.server 7127 -d dist
 node --input-type=module -e "process.env.FLOW_READER_PERF_MODE='browser'; process.env.FLOW_READER_PERF_BOOK_SOURCE='mock'; process.env.FLOW_READER_PERF_OUT_DIR='perf-results/reader-performance-browser-smoke'; await import('./.agents/skills/reader-performance-measurement/scripts/measure-reader-performance-client.mjs')"
 ```
 

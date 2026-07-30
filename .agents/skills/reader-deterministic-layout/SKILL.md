@@ -154,7 +154,7 @@ Use this only to validate script behavior or a cross-platform layout fixture:
 
 ```text
 pnpm build
-python -m http.server 7127 -d out
+python -m http.server 7127 -d dist
 node --input-type=module -e "process.env.FLOW_READER_LAYOUT_MODE='browser'; process.env.FLOW_READER_LAYOUT_HEADLESS='1'; process.env.FLOW_READER_LAYOUT_OUT_DIR='test-results/reader-layout-browser-smoke'; await import('./.agents/skills/reader-deterministic-layout/scripts/verify-reader-layout-client.mjs')"
 ```
 
