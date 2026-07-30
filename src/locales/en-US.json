@@ -55,7 +55,7 @@
   "home.context.open": "Open",
   "home.delete": "Delete",
   "home.delete.tooltip": "Delete selected books",
-  "home.delete_selected.message": "This will permanently delete the selected books ({1}). This action cannot be undone.",
+  "home.delete_selected.message": "Remove the {1} selected books from the library and delete their reading progress, notes, and user-edited content. This action cannot be undone.",
   "home.delete_selected.title": "Delete selected books",
   "home.deselect_all": "Clear selection",
   "home.deselect_all.tooltip": "Clear all selected books",

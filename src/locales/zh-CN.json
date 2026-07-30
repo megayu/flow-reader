@@ -55,7 +55,7 @@
   "home.context.open": "打开",
   "home.delete": "删除",
   "home.delete.tooltip": "删除所选图书",
-  "home.delete_selected.message": "将永久删除所选的 {1} 本图书，此操作无法撤销。",
+  "home.delete_selected.message": "将从图书馆移除所选的 {1} 本图书，并删除相应的阅读进度、笔记及用户修改的内容。此操作无法撤销。",
   "home.delete_selected.title": "删除所选图书",
   "home.deselect_all": "清空选择",
   "home.deselect_all.tooltip": "取消全部已选图书",
