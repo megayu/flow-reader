@@ -33,13 +33,6 @@ const readingStatusProgressBarClassName: Record<ReadingStatus | 'unmarked', stri
   read: 'bg-emerald-500',
 }
 
-const readingStatusProgressPillClassName: Record<ReadingStatus | 'unmarked', string> = {
-  unmarked: 'bg-sky-50/95 text-sky-600 ring-sky-200',
-  toRead: 'bg-amber-50/95 text-amber-600 ring-amber-200',
-  reading: 'bg-sky-50/95 text-sky-600 ring-sky-200',
-  read: 'bg-emerald-50/95 text-emerald-600 ring-emerald-200',
-}
-
 export const BookProgress: React.FC<{
   percent: number
   status: ReadingStatus | null
@@ -47,21 +40,8 @@ export const BookProgress: React.FC<{
   const statusKey = status ?? 'unmarked'
 
   return (
-    <div className="pointer-events-none absolute right-1 bottom-1 left-1 z-10 flex items-center gap-1.5">
-      <div className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-white/75 shadow-sm ring-1 ring-black/5">
-        <div
-          className={clsx('h-full rounded-full', readingStatusProgressBarClassName[statusKey])}
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-      <div
-        className={clsx(
-          'flex h-5 items-center justify-center rounded-full px-1.5 text-xs leading-none font-semibold shadow-sm ring-1 ring-inset',
-          readingStatusProgressPillClassName[statusKey],
-        )}
-      >
-        {percent.toFixed()}%
-      </div>
+    <div className="bg-muted-foreground/20 pointer-events-none absolute right-1 bottom-0 left-1 z-10 h-0.5 overflow-hidden">
+      <div className={clsx('h-full', readingStatusProgressBarClassName[statusKey])} style={{ width: `${percent}%` }} />
     </div>
   )
 }

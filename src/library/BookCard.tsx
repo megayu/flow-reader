@@ -335,8 +335,16 @@ export const BookCard: React.FC<BookCardProps> = ({
               contentStyle={readerPageTooltipContentStyle}
               label={tooltip}
             >
-              <div className="text-foreground mt-2 flex min-h-[2.5em] w-full items-start justify-center px-1 text-center text-lg leading-tight font-semibold">
-                <span className="line-clamp-2 min-w-0 wrap-break-word">{displayTitle}</span>
+              <div
+                className="text-foreground mx-auto mt-2 flex h-6 w-full items-center gap-2 text-base leading-none font-semibold"
+                style={{ maxWidth: 'var(--library-book-card-width)' }}
+              >
+                <span className="min-w-0 flex-1 truncate text-left">{displayTitle}</span>
+                {!select && progressPercent !== undefined && (
+                  <span className="text-muted-foreground shrink-0 text-xs leading-none font-normal tabular-nums">
+                    {progressPercent.toFixed()}%
+                  </span>
+                )}
               </div>
             </AppTooltip>
           </div>
