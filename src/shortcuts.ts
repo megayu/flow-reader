@@ -150,7 +150,7 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
   },
   tocPanel: {
     labelKey: 'toc_panel',
-    shortcuts: [['T']],
+    shortcuts: [['C']],
   },
   searchPanel: {
     labelKey: 'search_panel',
@@ -166,11 +166,11 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
   },
   typographyPanel: {
     labelKey: 'typography_panel',
-    shortcuts: [['V']],
+    shortcuts: [['T']],
   },
   libraryReaderToggle: {
     labelKey: 'library_reader_toggle',
-    shortcuts: [['C']],
+    shortcuts: [['E']],
   },
   libraryBatchTags: {
     labelKey: 'library_batch_tags',

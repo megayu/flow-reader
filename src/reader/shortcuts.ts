@@ -150,7 +150,7 @@ function handleAppShortcut(
     return true
   }
 
-  if (key === 'c') {
+  if (key === 'e') {
     consumeShortcut(event)
     if (viewMode === 'library') {
       if (tab) shortcuts.setViewMode('reader')
@@ -177,11 +177,11 @@ function handleAppShortcut(
 
 function getPanelShortcutAction(event: KeyboardEvent): ReaderPanelAction | undefined {
   const key = event.key.toLowerCase()
-  if (key === 't') return 'toc'
+  if (key === 'c') return 'toc'
   if (key === 's') return 'search'
   if (key === 'a') return 'annotation'
   if (key === 'g') return 'image'
-  if (key === 'v') return 'typography'
+  if (key === 't') return 'typography'
 }
 
 function handleFontSizeShortcut(event: KeyboardEvent, viewMode: ViewMode) {
