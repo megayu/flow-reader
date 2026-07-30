@@ -12,14 +12,23 @@ import {
   TriangleAlertIcon,
 } from 'lucide-react'
 import type React from 'react'
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import { getBookDisplayTitle, getBookTooltip } from '../book'
 import { AppTooltip, readerPageTooltipContentStyle } from '../components/AppTooltip'
 import { BookTooltipContent } from '../components/BookTooltipContent'
 import { ReadingStatusIcon } from '../components/ReadingStatusIcon'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '../components/ui/menu'
 import { useNotify } from '../components/ui/notification'
-import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
 import { formatErrorMessage } from '../errorMessage'
 import { useTranslation } from '../hooks/useTranslation'
 import { toMessageKeySegment } from '../locales'
@@ -40,7 +49,6 @@ import {
   bookCoverCornerIconStrokeWidth,
   bookExportFormats,
   bookSourceDescriptionKey,
-  clampMenuPosition,
   exportBookWithDialog,
   getBookProgressPercent,
   hasUnexportedBookChanges,
@@ -84,8 +92,6 @@ export const BookCard: React.FC<BookCardProps> = ({
   const t = useTranslation('home')
   const errorT = useTranslation('error')
   const notify = useNotify()
-  const contextMenuRef = useRef<HTMLDivElement>(null)
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number }>()
   const [statusMenuOpen, setStatusMenuOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
@@ -97,23 +103,6 @@ export const BookCard: React.FC<BookCardProps> = ({
   const displayTitle = getBookDisplayTitle(book)
   const tooltip = getBookTooltip(book)
   const exportFormats = bookExportFormats(book)
-
-  const closeContextMenu = useCallback(() => {
-    setContextMenu(undefined)
-    setConfirmDelete(false)
-  }, [])
-
-  const openContextMenu = useCallback(
-    (event: React.MouseEvent) => {
-      if (select) return
-
-      event.preventDefault()
-      event.stopPropagation()
-      setContextMenu(clampMenuPosition(event.clientX, event.clientY))
-      setConfirmDelete(false)
-    },
-    [select],
-  )
 
   const openBook = useCallback(async () => {
     if (isBookSourceUnavailable(sourceStatus)) {
@@ -139,7 +128,6 @@ export const BookCard: React.FC<BookCardProps> = ({
 
       event.preventDefault()
       event.stopPropagation()
-      closeContextMenu()
 
       if (revealSource) {
         void db.books.revealSource(book.id).catch(console.error)
@@ -156,7 +144,7 @@ export const BookCard: React.FC<BookCardProps> = ({
         })
       })
     },
-    [book, closeContextMenu, errorT, notify, select],
+    [book, errorT, notify, select],
   )
 
   const updateReadingStatus = useCallback(
@@ -178,303 +166,249 @@ export const BookCard: React.FC<BookCardProps> = ({
     [book.id, onSelectBook, openBook, select],
   )
 
-  const handleContextMenuPointerDown = useEffectEvent((event: PointerEvent) => {
-    if (contextMenuRef.current?.contains(event.target as Node)) return
-    closeContextMenu()
-  })
-  const handleContextMenuKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key === 'Escape') {
-      closeContextMenu()
-    }
-  })
-
-  useEffect(() => {
-    if (!contextMenu) return
-
-    const onPointerDown = (event: PointerEvent) => {
-      handleContextMenuPointerDown(event)
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      handleContextMenuKeyDown(event)
-    }
-
-    document.addEventListener('pointerdown', onPointerDown)
-    document.addEventListener('keydown', onKeyDown)
-
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [contextMenu])
-
   const progressPercent = getBookProgressPercent(book.percentage)
 
   return (
     <div className="relative">
-      <div
-        data-flow-library-book-card
-        className={clsx(
-          'group relative flex cursor-pointer flex-col rounded-md p-1 transition-colors',
-          select && selected
-            ? 'bg-(--flow-accent-bg) ring-2 ring-(--flow-accent) hover:bg-(--flow-accent-bg)'
-            : highlighted
-              ? 'ring-2 ring-(--flow-accent)'
-              : 'hover:bg-popover/70',
-        )}
-        onClick={activateBook}
-        onContextMenu={openContextMenu}
+      <ContextMenu
+        modal={false}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDelete(false)
+        }}
       >
-        {contextMenu && (
+        <ContextMenuTrigger asChild disabled={select}>
           <div
-            ref={contextMenuRef}
-            role="menu"
-            tabIndex={-1}
-            className="ring-border bg-popover text-popover-foreground fixed z-[70] w-40 rounded-lg p-1 shadow-lg ring-1"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
+            data-flow-library-book-card
+            className={clsx(
+              'group relative flex cursor-pointer flex-col rounded-md p-1 transition-colors',
+              select && selected
+                ? 'bg-(--flow-accent-bg) ring-2 ring-(--flow-accent) hover:bg-(--flow-accent-bg)'
+                : highlighted
+                  ? 'ring-2 ring-(--flow-accent)'
+                  : 'hover:bg-popover/70',
+            )}
+            onClick={activateBook}
           >
-            <BookContextMenuButton
-              Icon={BookOpenIcon}
-              label={t('context.open')}
-              onClick={() => {
-                closeContextMenu()
-                void openBook()
-              }}
-            />
-            <BookContextMenuButton
-              Icon={PencilIcon}
-              label={t('context.edit')}
-              onClick={() => {
-                closeContextMenu()
-                setEditOpen(true)
-              }}
-            />
-            <BookContextMenuButton
-              Icon={TagIcon}
-              label={t('tags')}
-              onClick={() => {
-                closeContextMenu()
-                setTagsOpen(true)
-              }}
-            />
-            <BookContextMenuButton
-              Icon={InfoIcon}
-              label={t('context.info')}
-              onClick={() => {
-                closeContextMenu()
-                setInfoOpen(true)
-              }}
-            />
-            {exportFormats.map((format) => {
-              const dirty = isBookExportDirty(book, format)
-              return (
-                <BookContextMenuButton
-                  key={format}
-                  Icon={DownloadIcon}
-                  label={`${t('context.export')} ${format.toUpperCase()}${dirty ? ' *' : ''}`}
-                  disabled={exportingFormat === format}
-                  onClick={() => {
-                    closeContextMenu()
-                    setExportingFormat(format)
-                    void exportBookWithDialog(book, format)
-                      .then((outputPath) => {
-                        if (!outputPath) return
-                        notify({
-                          action: {
-                            label: t('export_reveal'),
-                            onClick: () => {
-                              void db.files.reveal(outputPath).catch(console.error)
-                            },
-                          },
-                          description: outputPath,
-                          title: t('export_complete'),
-                          type: 'success',
-                        })
-                      })
-                      .catch((error) => {
-                        console.error(error)
-                        notify({
-                          autoCloseMs: false,
-                          description: `${getBookDisplayTitle(book)} · ${format.toUpperCase()}: ${formatErrorMessage(error)}`,
-                          title: errorT('export_failed'),
-                          type: 'error',
-                        })
-                      })
-                      .finally(() => setExportingFormat(undefined))
-                  }}
+            <div
+              className="border-border relative mx-auto aspect-[9/12] w-full overflow-hidden rounded-md border shadow-sm"
+              style={{ maxWidth: 'var(--library-book-card-width)' }}
+              onClick={handleCoverClick}
+            >
+              {book.readingStatus && (
+                <ReadingStatusBadge
+                  status={book.readingStatus}
+                  title={t(`reading_status.${toMessageKeySegment(book.readingStatus)}`)}
+                  hidden={statusMenuOpen}
                 />
-              )
-            })}
-            <div className="bg-muted my-1 h-px" />
-            <BookContextMenuButton
-              danger
-              Icon={confirmDelete ? TriangleAlertIcon : Trash2Icon}
-              label={t(confirmDelete ? 'context.confirm_delete' : 'context.delete')}
-              onClick={() => {
-                if (!confirmDelete) {
-                  setConfirmDelete(true)
-                  return
-                }
-
-                closeContextMenu()
-                reader.closeBookTabs(book.id)
-                void db.books.delete(book.id)
-              }}
-            />
-          </div>
-        )}
-        <div
-          className="border-border relative mx-auto aspect-[9/12] w-full overflow-hidden rounded-md border shadow-sm"
-          style={{ maxWidth: 'var(--library-book-card-width)' }}
-          onClick={handleCoverClick}
-        >
-          {book.readingStatus && (
-            <ReadingStatusBadge
-              status={book.readingStatus}
-              title={t(`reading_status.${toMessageKeySegment(book.readingStatus)}`)}
-              hidden={statusMenuOpen}
-            />
-          )}
-          {!select && (
-            <Popover open={statusMenuOpen} onOpenChange={setStatusMenuOpen}>
-              <div
-                className="absolute top-2 right-2 z-20"
-                onClick={(event) => event.stopPropagation()}
-                onPointerDown={(event) => event.stopPropagation()}
-                onContextMenu={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                }}
-              >
-                <AppTooltip label={t('reading_status.change')}>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label={t('reading_status.change')}
-                      className={clsx(
-                        bookCoverCornerBadgeClassName,
-                        'opacity-0 transition-opacity group-hover:opacity-100',
-                        readingStatusEditButtonClassName[book.readingStatus ?? 'unmarked'],
-                        statusMenuOpen && 'opacity-100',
-                      )}
+              )}
+              {!select && (
+                <DropdownMenu open={statusMenuOpen} modal={false} onOpenChange={setStatusMenuOpen}>
+                  <div
+                    className="absolute top-2 right-2 z-20"
+                    onClick={(event) => event.stopPropagation()}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onContextMenu={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                    }}
+                  >
+                    <AppTooltip label={t('reading_status.change')}>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={t('reading_status.change')}
+                          className={clsx(
+                            bookCoverCornerBadgeClassName,
+                            'opacity-0 transition-opacity group-hover:opacity-100',
+                            readingStatusEditButtonClassName[book.readingStatus ?? 'unmarked'],
+                            statusMenuOpen && 'opacity-100',
+                          )}
+                        >
+                          <ReadingStatusIcon
+                            intent="edit"
+                            status={book.readingStatus ?? null}
+                            size={bookCoverCornerIconSize}
+                            tone="current"
+                          />
+                        </button>
+                      </DropdownMenuTrigger>
+                    </AppTooltip>
+                    <DropdownMenuContent
+                      align="start"
+                      side="bottom"
+                      sideOffset={4}
+                      className="w-36 p-1 text-base"
+                      style={{ fontSize: 'var(--app-font-size-md)' }}
+                      onClick={(event) => event.stopPropagation()}
+                      onPointerDown={(event) => event.stopPropagation()}
                     >
-                      <ReadingStatusIcon
-                        intent="edit"
-                        status={book.readingStatus ?? null}
-                        size={bookCoverCornerIconSize}
-                        tone="current"
-                      />
-                    </button>
-                  </PopoverTrigger>
-                </AppTooltip>
-                <PopoverContent
-                  align="start"
-                  side="bottom"
-                  sideOffset={4}
-                  className="w-36 p-1 text-base"
-                  style={{ fontSize: 'var(--app-font-size-md)' }}
-                  onClick={(event) => event.stopPropagation()}
-                  onPointerDown={(event) => event.stopPropagation()}
+                      <ReadingStatusMenu status={book.readingStatus ?? null} onChange={updateReadingStatus} />
+                    </DropdownMenuContent>
+                  </div>
+                </DropdownMenu>
+              )}
+              <img
+                src={cover ?? placeholder}
+                alt="Cover"
+                className="block h-full w-full rounded-[inherit] object-cover"
+                draggable={false}
+              />
+              {isBookSourceUnavailable(sourceStatus) && (
+                <AppTooltip
+                  label={t('source_unavailable')}
+                  contentStyle={{ maxWidth: 'calc(50vw - 2rem)' }}
+                  content={
+                    <span className="flex w-max max-w-[calc(50vw-2rem)] min-w-0 flex-col gap-1">
+                      <span className="min-w-0 text-base font-medium break-words">{t('source_unavailable')}</span>
+                      <span className="text-muted-foreground min-w-0 text-base break-words">
+                        {t(bookSourceDescriptionKey(sourceStatus))}
+                      </span>
+                    </span>
+                  }
                 >
-                  <ReadingStatusMenu status={book.readingStatus ?? null} onChange={updateReadingStatus} />
-                </PopoverContent>
-              </div>
-            </Popover>
-          )}
-          <img
-            src={cover ?? placeholder}
-            alt="Cover"
-            className="block h-full w-full rounded-[inherit] object-cover"
-            draggable={false}
-          />
-          {isBookSourceUnavailable(sourceStatus) && (
-            <AppTooltip
-              label={t('source_unavailable')}
-              contentStyle={{ maxWidth: 'calc(50vw - 2rem)' }}
-              content={
-                <span className="flex w-max max-w-[calc(50vw-2rem)] min-w-0 flex-col gap-1">
-                  <span className="min-w-0 text-base font-medium break-words">{t('source_unavailable')}</span>
-                  <span className="text-muted-foreground min-w-0 text-base break-words">
-                    {t(bookSourceDescriptionKey(sourceStatus))}
-                  </span>
-                </span>
-              }
-            >
-              <div
-                className={clsx(
-                  bookCoverCornerBadgeClassName,
-                  'absolute top-2 left-2 z-10 bg-zinc-950/90 text-white ring-white/50',
-                )}
-              >
-                <FileX2Icon size={bookCoverCornerIconSize} strokeWidth={bookCoverCornerIconStrokeWidth} />
-              </div>
-            </AppTooltip>
-          )}
-          {!isBookSourceUnavailable(sourceStatus) && isArchiveOnlyBook(book) && (
-            <AppTooltip
-              label={t('compat.archive_only')}
-              contentStyle={{ maxWidth: 'calc(50vw - 2rem)' }}
-              content={
-                <span className="flex w-max max-w-[calc(50vw-2rem)] min-w-0 flex-col gap-1">
-                  <span className="min-w-0 text-base font-medium break-words">{t('compat.archive_only')}</span>
-                  <span className="text-muted-foreground min-w-0 text-base break-words">
-                    {t('compat.archive_only_description')}
-                  </span>
-                </span>
-              }
-            >
-              <div
-                className={clsx(
-                  bookCoverCornerBadgeClassName,
-                  'absolute top-2 left-2 z-10 bg-zinc-950/90 text-white ring-white/50',
-                )}
-              >
-                <ArchiveIcon size={bookCoverCornerIconSize} strokeWidth={bookCoverCornerIconStrokeWidth} />
-              </div>
-            </AppTooltip>
-          )}
-          {showModifiedExportIndicator && !isArchiveOnlyBook(book) && hasUnexportedBookChanges(book) && (
-            <AppTooltip label={t('modified_export_indicator')}>
-              <div
-                className={clsx(
-                  bookCoverCornerBadgeClassName,
-                  'absolute top-2 left-2 z-10 bg-(--flow-accent) text-(--flow-accent-text) ring-white/40',
-                )}
-              >
-                <DownloadIcon size={bookCoverCornerIconSize} strokeWidth={bookCoverCornerIconStrokeWidth} />
-              </div>
-            </AppTooltip>
-          )}
-          {!select && progressPercent !== undefined && (
-            <BookProgress percent={progressPercent} status={book.readingStatus ?? null} />
-          )}
-          {select && (
-            <div className="absolute right-2 bottom-2 z-20">
-              <div
-                aria-hidden
-                className={clsx(
-                  'flex size-6 items-center justify-center rounded-md shadow-sm ring-1 ring-inset',
-                  selected
-                    ? 'bg-(--flow-accent) text-(--flow-accent-text) ring-(--flow-accent)'
-                    : 'bg-(--flow-bg-panel) ring-(--flow-border)',
-                )}
-              >
-                {selected && <CheckIcon className="size-4" strokeWidth={2.5} />}
-              </div>
+                  <div
+                    className={clsx(
+                      bookCoverCornerBadgeClassName,
+                      'absolute top-2 left-2 z-10 bg-zinc-950/90 text-white ring-white/50',
+                    )}
+                  >
+                    <FileX2Icon size={bookCoverCornerIconSize} strokeWidth={bookCoverCornerIconStrokeWidth} />
+                  </div>
+                </AppTooltip>
+              )}
+              {!isBookSourceUnavailable(sourceStatus) && isArchiveOnlyBook(book) && (
+                <AppTooltip
+                  label={t('compat.archive_only')}
+                  contentStyle={{ maxWidth: 'calc(50vw - 2rem)' }}
+                  content={
+                    <span className="flex w-max max-w-[calc(50vw-2rem)] min-w-0 flex-col gap-1">
+                      <span className="min-w-0 text-base font-medium break-words">{t('compat.archive_only')}</span>
+                      <span className="text-muted-foreground min-w-0 text-base break-words">
+                        {t('compat.archive_only_description')}
+                      </span>
+                    </span>
+                  }
+                >
+                  <div
+                    className={clsx(
+                      bookCoverCornerBadgeClassName,
+                      'absolute top-2 left-2 z-10 bg-zinc-950/90 text-white ring-white/50',
+                    )}
+                  >
+                    <ArchiveIcon size={bookCoverCornerIconSize} strokeWidth={bookCoverCornerIconStrokeWidth} />
+                  </div>
+                </AppTooltip>
+              )}
+              {showModifiedExportIndicator && !isArchiveOnlyBook(book) && hasUnexportedBookChanges(book) && (
+                <AppTooltip label={t('modified_export_indicator')}>
+                  <div
+                    className={clsx(
+                      bookCoverCornerBadgeClassName,
+                      'absolute top-2 left-2 z-10 bg-(--flow-accent) text-(--flow-accent-text) ring-white/40',
+                    )}
+                  >
+                    <DownloadIcon size={bookCoverCornerIconSize} strokeWidth={bookCoverCornerIconStrokeWidth} />
+                  </div>
+                </AppTooltip>
+              )}
+              {!select && progressPercent !== undefined && (
+                <BookProgress percent={progressPercent} status={book.readingStatus ?? null} />
+              )}
+              {select && (
+                <div className="absolute right-2 bottom-2 z-20">
+                  <div
+                    aria-hidden
+                    className={clsx(
+                      'flex size-6 items-center justify-center rounded-md shadow-sm ring-1 ring-inset',
+                      selected
+                        ? 'bg-(--flow-accent) text-(--flow-accent-text) ring-(--flow-accent)'
+                        : 'bg-(--flow-bg-panel) ring-(--flow-border)',
+                    )}
+                  >
+                    {selected && <CheckIcon className="size-4" strokeWidth={2.5} />}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        <AppTooltip
-          content={<BookTooltipContent book={book} />}
-          contentStyle={readerPageTooltipContentStyle}
-          label={tooltip}
-        >
-          <div className="text-foreground mt-2 flex min-h-[2.5em] w-full items-start justify-center px-1 text-center text-lg leading-tight font-semibold">
-            <span className="line-clamp-2 min-w-0 break-words">{displayTitle}</span>
+            <AppTooltip
+              content={<BookTooltipContent book={book} />}
+              contentStyle={readerPageTooltipContentStyle}
+              label={tooltip}
+            >
+              <div className="text-foreground mt-2 flex min-h-[2.5em] w-full items-start justify-center px-1 text-center text-lg leading-tight font-semibold">
+                <span className="line-clamp-2 min-w-0 break-words">{displayTitle}</span>
+              </div>
+            </AppTooltip>
           </div>
-        </AppTooltip>
-      </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <BookContextMenuItem
+            Icon={BookOpenIcon}
+            label={t('context.open')}
+            onSelect={() => {
+              void openBook()
+            }}
+          />
+          <BookContextMenuItem Icon={PencilIcon} label={t('context.edit')} onSelect={() => setEditOpen(true)} />
+          <BookContextMenuItem Icon={TagIcon} label={t('tags')} onSelect={() => setTagsOpen(true)} />
+          <BookContextMenuItem Icon={InfoIcon} label={t('context.info')} onSelect={() => setInfoOpen(true)} />
+          {exportFormats.map((format) => {
+            const dirty = isBookExportDirty(book, format)
+            return (
+              <BookContextMenuItem
+                key={format}
+                Icon={DownloadIcon}
+                label={`${t('context.export')} ${format.toUpperCase()}${dirty ? ' *' : ''}`}
+                disabled={exportingFormat === format}
+                onSelect={() => {
+                  setExportingFormat(format)
+                  void exportBookWithDialog(book, format)
+                    .then((outputPath) => {
+                      if (!outputPath) return
+                      notify({
+                        action: {
+                          label: t('export_reveal'),
+                          onClick: () => {
+                            void db.files.reveal(outputPath).catch(console.error)
+                          },
+                        },
+                        description: outputPath,
+                        title: t('export_complete'),
+                        type: 'success',
+                      })
+                    })
+                    .catch((error) => {
+                      console.error(error)
+                      notify({
+                        autoCloseMs: false,
+                        description: `${getBookDisplayTitle(book)} · ${format.toUpperCase()}: ${formatErrorMessage(error)}`,
+                        title: errorT('export_failed'),
+                        type: 'error',
+                      })
+                    })
+                    .finally(() => setExportingFormat(undefined))
+                }}
+              />
+            )
+          })}
+          <ContextMenuSeparator />
+          <BookContextMenuItem
+            variant="destructive"
+            Icon={confirmDelete ? TriangleAlertIcon : Trash2Icon}
+            label={t(confirmDelete ? 'context.confirm_delete' : 'context.delete')}
+            onSelect={(event) => {
+              if (!confirmDelete) {
+                event.preventDefault()
+                setConfirmDelete(true)
+                return
+              }
+
+              reader.closeBookTabs(book.id)
+              void db.books.delete(book.id)
+            }}
+          />
+        </ContextMenuContent>
+      </ContextMenu>
       {editOpen && <EditBookDialog book={book} onClose={() => setEditOpen(false)} />}
       {tagsOpen && <BookTagsDialog book={book} onClose={() => setTagsOpen(false)} />}
       {infoOpen && <BookInfoDialog book={book} cover={cover} onClose={() => setInfoOpen(false)} />}
@@ -482,26 +416,15 @@ export const BookCard: React.FC<BookCardProps> = ({
   )
 }
 
-const BookContextMenuButton: React.FC<{
-  danger?: boolean
+const BookContextMenuItem: React.FC<{
   disabled?: boolean
   Icon: React.ComponentType<{ size?: number; className?: string }>
   label: string
-  onClick: () => void
-}> = ({ danger, disabled, Icon, label, onClick }) => (
-  <button
-    type="button"
-    role="menuitem"
-    aria-label={label}
-    disabled={disabled}
-    className={clsx(
-      'hover:bg-muted flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-base outline-none',
-      disabled && 'pointer-events-none opacity-50',
-      danger ? 'text-destructive' : 'text-muted-foreground',
-    )}
-    onClick={onClick}
-  >
+  onSelect: (event: Event) => void
+  variant?: 'default' | 'destructive'
+}> = ({ disabled, Icon, label, onSelect, variant }) => (
+  <ContextMenuItem aria-label={label} disabled={disabled} variant={variant} onSelect={onSelect}>
     <Icon size={18} className="shrink-0" />
     <span className="min-w-0 truncate">{label}</span>
-  </button>
+  </ContextMenuItem>
 )

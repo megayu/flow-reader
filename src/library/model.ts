@@ -195,15 +195,6 @@ export function mergeLibraryTags(tags: LibraryTagRecord[], extraTags: LibraryTag
   return Array.from(byId.values()).sort((a, b) => collator.compare(a.name, b.name))
 }
 
-export function clampMenuPosition(x: number, y: number) {
-  if (typeof window === 'undefined') return { x, y }
-
-  return {
-    x: Math.min(x, Math.max(8, window.innerWidth - 176)),
-    y: Math.min(y, Math.max(8, window.innerHeight - 208)),
-  }
-}
-
 function compareBookTitle(a: BookRecord, b: BookRecord) {
   return compareBookDisplayTitle(a, b)
 }

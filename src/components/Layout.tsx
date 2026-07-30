@@ -26,7 +26,6 @@ import {
 import {
   type ComponentProps,
   type PropsWithChildren,
-  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -84,6 +83,7 @@ import { ReadingStatusIcon } from './ReadingStatusIcon'
 import { Button as UiButton } from './ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import { Input } from './ui/input'
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from './ui/menu'
 import { AnnotationView } from './viewlets/AnnotationView'
 import { ImageView } from './viewlets/ImageView'
 import { SearchView } from './viewlets/SearchView'
@@ -1105,47 +1105,8 @@ const LibraryFilterChip: React.FC<LibraryFilterChipProps> = ({
   testId,
   unpinLabel,
 }) => {
-  const contextMenuRef = useRef<HTMLDivElement>(null)
   const labelRef = useRef<HTMLSpanElement>(null)
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number }>()
   const [labelOverflowing, setLabelOverflowing] = useState(false)
-
-  const closeContextMenu = useCallback(() => {
-    setContextMenu(undefined)
-  }, [])
-
-  const openContextMenu = useCallback((e: ReactMouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setContextMenu(clampFilterContextMenuPosition(e.clientX, e.clientY))
-  }, [])
-  const handleContextMenuPointerDown = useEffectEvent((e: PointerEvent) => {
-    if (contextMenuRef.current?.contains(e.target as Node)) return
-    closeContextMenu()
-  })
-  const handleContextMenuKeyDown = useEffectEvent((e: KeyboardEvent) => {
-    if (e.key === 'Escape') closeContextMenu()
-  })
-
-  useEffect(() => {
-    if (!contextMenu) return
-    contextMenuRef.current?.focus()
-
-    const onPointerDown = (e: PointerEvent) => {
-      handleContextMenuPointerDown(e)
-    }
-    const onKeyDown = (e: KeyboardEvent) => {
-      handleContextMenuKeyDown(e)
-    }
-
-    document.addEventListener('pointerdown', onPointerDown)
-    document.addEventListener('keydown', onKeyDown)
-
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [contextMenu])
 
   useEffect(() => {
     const labelElement = labelRef.current
@@ -1169,108 +1130,88 @@ const LibraryFilterChip: React.FC<LibraryFilterChipProps> = ({
 
   return (
     <div className="relative max-w-full min-w-0">
-      <UiButton
-        type="button"
-        size="sm"
-        variant={active ? 'default' : 'secondary'}
-        aria-pressed={active}
-        aria-label={label}
-        title={labelOverflowing ? label : undefined}
-        data-testid={testId}
-        data-value={dataValue ?? label}
-        className={clsx(
-          libraryFilterChipClassName,
-          'max-w-full justify-start',
-          !active && libraryFilterInactiveChipClassName,
-        )}
-        onClick={onToggle}
-        onContextMenu={openContextMenu}
-      >
-        {pinned && (
-          <PinIcon
-            aria-hidden
-            className={clsx('size-3.5', active ? 'text-primary-foreground' : 'text-muted-foreground')}
-          />
-        )}
-        <span ref={labelRef} className="min-w-0 truncate leading-none" data-testid={labelTestId}>
-          {label}
-        </span>
-      </UiButton>
-
-      {contextMenu && (
-        <div
-          ref={contextMenuRef}
-          role="menu"
-          tabIndex={-1}
-          data-testid={contextMenuTestId}
-          className="ring-border bg-popover text-popover-foreground fixed z-[70] w-40 rounded-lg p-1 shadow-lg ring-1 outline-none"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <LibraryFilterContextMenuButton
+      <ContextMenu modal={false}>
+        <ContextMenuTrigger asChild>
+          <UiButton
+            type="button"
+            size="sm"
+            variant={active ? 'default' : 'secondary'}
+            aria-pressed={active}
+            aria-label={label}
+            title={labelOverflowing ? label : undefined}
+            data-testid={testId}
+            data-value={dataValue ?? label}
+            className={clsx(
+              libraryFilterChipClassName,
+              'max-w-full justify-start',
+              !active && libraryFilterInactiveChipClassName,
+            )}
+            onClick={onToggle}
+          >
+            {pinned && (
+              <PinIcon
+                aria-hidden
+                className={clsx('size-3.5', active ? 'text-primary-foreground' : 'text-muted-foreground')}
+              />
+            )}
+            <span ref={labelRef} className="min-w-0 truncate leading-none" data-testid={labelTestId}>
+              {label}
+            </span>
+          </UiButton>
+        </ContextMenuTrigger>
+        <ContextMenuContent data-testid={contextMenuTestId}>
+          <LibraryFilterContextMenuItem
             Icon={PinIcon}
             label={pinLabel}
-            onClick={() => {
+            onSelect={() => {
               onPin()
-              closeContextMenu()
             }}
           />
           {pinned && (
-            <LibraryFilterContextMenuButton
+            <LibraryFilterContextMenuItem
               Icon={PinOffIcon}
               label={unpinLabel}
-              onClick={() => {
+              onSelect={() => {
                 onUnpin()
-                closeContextMenu()
               }}
             />
           )}
-          {menuItems.length > 0 && <div className="bg-muted my-1 h-px" />}
+          {menuItems.length > 0 && <ContextMenuSeparator />}
           {menuItems.map((item) => (
-            <LibraryFilterContextMenuButton
+            <LibraryFilterContextMenuItem
               key={item.label}
-              danger={item.danger}
+              variant={item.danger ? 'destructive' : 'default'}
               Icon={item.Icon}
               label={item.label}
-              onClick={() => {
+              onSelect={() => {
                 item.onClick()
-                closeContextMenu()
               }}
             />
           ))}
-        </div>
-      )}
+        </ContextMenuContent>
+      </ContextMenu>
     </div>
   )
 }
 
-interface LibraryFilterContextMenuButtonProps {
-  danger?: boolean
+interface LibraryFilterContextMenuItemProps {
   Icon: LucideIcon
   label: string
-  onClick: () => void
+  onSelect: () => void
+  variant?: 'default' | 'destructive'
 }
 
-const LibraryFilterContextMenuButton: React.FC<LibraryFilterContextMenuButtonProps> = ({
-  danger,
+const LibraryFilterContextMenuItem: React.FC<LibraryFilterContextMenuItemProps> = ({
   Icon,
   label,
-  onClick,
+  onSelect,
+  variant,
 }) => {
   return (
-    <button
-      type="button"
-      role="menuitem"
-      className={clsx(
-        'hover:bg-muted flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-base outline-none',
-        danger ? 'text-destructive' : 'text-muted-foreground',
-      )}
-      onClick={onClick}
-    >
+    <ContextMenuItem variant={variant} onSelect={onSelect}>
       <Icon aria-hidden className="size-4 shrink-0" />
       <span className="min-w-0 truncate">{label}</span>
-    </button>
+    </ContextMenuItem>
   )
 }
 
@@ -1394,15 +1335,6 @@ const DeleteLibraryTagDialog: React.FC<DeleteLibraryTagDialogProps> = ({ onClose
       </DialogContent>
     </Dialog>
   )
-}
-
-function clampFilterContextMenuPosition(x: number, y: number) {
-  if (typeof window === 'undefined') return { x, y }
-
-  return {
-    x: Math.min(x, Math.max(8, window.innerWidth - 160)),
-    y: Math.min(y, Math.max(8, window.innerHeight - 96)),
-  }
 }
 
 interface ReaderProps extends ComponentProps<'div'> {}

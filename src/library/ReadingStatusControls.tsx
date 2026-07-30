@@ -4,7 +4,7 @@ import type React from 'react'
 
 import { AppTooltip } from '../components/AppTooltip'
 import { ReadingStatusIcon } from '../components/ReadingStatusIcon'
-import { Button } from '../components/ui/button'
+import { DropdownMenuItemIndicator, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '../components/ui/menu'
 import { useTranslation } from '../hooks/useTranslation'
 import { toMessageKeySegment } from '../locales'
 import type { ReadingStatus } from '../storage'
@@ -92,53 +92,45 @@ export const ReadingStatusMenu: React.FC<{
   onChange: (status: ReadingStatus | null) => void
 }> = ({ status, onChange }) => {
   const t = useTranslation('home')
+  const selectedValue = status ?? 'unmarked'
 
   return (
-    <div className="flex flex-col gap-0.5">
+    <DropdownMenuRadioGroup className="flex flex-col gap-0.5" value={selectedValue}>
       <ReadingStatusMenuItem
         iconStatus={null}
         label={t('reading_status.unmarked')}
-        checked={!status}
-        onClick={() => onChange(null)}
+        value="unmarked"
+        onSelect={() => onChange(null)}
       />
       {readingStatusOptions.map((option) => (
         <ReadingStatusMenuItem
           key={option}
           iconStatus={option}
           label={t(`reading_status.${toMessageKeySegment(option)}`)}
-          checked={status === option}
-          onClick={() => onChange(option)}
+          value={option}
+          onSelect={() => onChange(option)}
         />
       ))}
-    </div>
+    </DropdownMenuRadioGroup>
   )
 }
 
 const ReadingStatusMenuItem: React.FC<{
-  danger?: boolean
-  checked: boolean
   iconStatus: ReadingStatus | null
   label: string
-  onClick: () => void
-  removeIcon?: boolean
-}> = ({ danger, checked, iconStatus, label, onClick, removeIcon }) => (
-  <Button
-    type="button"
-    variant="ghost"
-    size="sm"
-    className={clsx(
-      'h-8 w-full justify-start gap-2 px-2 text-base leading-none',
-      danger ? 'text-destructive hover:bg-destructive/10 hover:text-destructive' : 'text-muted-foreground',
-    )}
+  onSelect: () => void
+  value: string
+}> = ({ iconStatus, label, onSelect, value }) => (
+  <DropdownMenuRadioItem
+    className="leading-none"
     style={{ fontSize: 'var(--app-font-size-md)' }}
-    onClick={onClick}
+    value={value}
+    onSelect={onSelect}
   >
-    <ReadingStatusIcon
-      intent={removeIcon ? 'remove' : 'status'}
-      status={iconStatus}
-      className={danger ? 'text-destructive' : undefined}
-    />
+    <ReadingStatusIcon intent="status" status={iconStatus} />
     <span className="min-w-0 flex-1 truncate text-left leading-none">{label}</span>
-    {checked && <CheckIcon className="size-4 shrink-0 text-(--flow-accent)" />}
-  </Button>
+    <DropdownMenuItemIndicator>
+      <CheckIcon className="size-4 shrink-0 text-(--flow-accent)" />
+    </DropdownMenuItemIndicator>
+  </DropdownMenuRadioItem>
 )
