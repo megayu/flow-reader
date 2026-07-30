@@ -15,24 +15,24 @@ import {
 } from '@/styles/theme'
 
 import { ColorPickerPopover } from '../ColorPickerPopover'
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '../ui/popover'
 
 interface ThemePanelProps {
-  className?: string
   onClose?: () => void
 }
-export const ThemePanel: React.FC<ThemePanelProps> = ({ className, onClose }) => {
+export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
   const [{ theme }, setSettings] = useSettings()
   const { accentColor, setAccentColor } = useAccentColor()
   const t = useTranslation('theme')
   const normalizedTheme = normalizeThemeConfiguration(theme)
   const [customPickerOpen, setCustomPickerOpen] = useState(false)
   const [accentPickerOpen, setAccentPickerOpen] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
   const previousThemeRef = useRef<Settings['theme'] | undefined>(undefined)
   const customSessionActiveRef = useRef(false)
   const customSessionAppliedRef = useRef(false)
   const selectedBackground = normalizedTheme.backgroundPreset
   const customBackground = normalizePaletteColor(normalizedTheme.customBackground) ?? defaultCustomBackgroundColor
-  const positioned = hasPositionClass(className)
 
   const applyBackgroundPreset = (preset: BackgroundPreset) => {
     customSessionActiveRef.current = false
@@ -94,31 +94,27 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ className, onClose }) =>
     }
   })
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      e.preventDefault()
-      e.stopPropagation()
+  const handleIframeEscape = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return
+    e.preventDefault()
+    e.stopPropagation()
 
-      if (customPickerOpen) {
-        restorePreviousTheme()
-        return
-      }
-
-      if (accentPickerOpen) {
-        setAccentPickerOpen(false)
-        return
-      }
-
-      onClose?.()
+    if (customPickerOpen) {
+      restorePreviousTheme()
+      return
     }
 
-    const targets = [window, ...getIframeWindows()]
-    targets.forEach((target) => target.addEventListener('keydown', onKeyDown, true))
-    return () => {
-      targets.forEach((target) => target.removeEventListener('keydown', onKeyDown, true))
+    if (accentPickerOpen) {
+      setAccentPickerOpen(false)
+      return
     }
+
+    onClose?.()
   })
+
+  useEffect(() => {
+    return listenForIframeEscape(handleIframeEscape)
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -127,108 +123,135 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ className, onClose }) =>
   }, [])
 
   return (
-    <div
-      data-flow-theme-panel
-      className={clsx(
-        'text-muted-foreground ring-border z-[100] w-80 rounded-xl bg-(--flow-bg-panel) p-3 text-base shadow-xl ring-1 ring-inset',
-        positioned || 'relative',
-        className,
-      )}
+    <Popover
+      open={customPickerOpen}
+      onOpenChange={(open) => {
+        if (open) {
+          openCustomPicker()
+        } else {
+          restorePreviousTheme()
+        }
+      }}
     >
-      <div className="grid grid-cols-3 gap-2">
-        {backgroundPresets.map((preset) => (
-          <BackgroundSwatch
-            key={preset.id}
-            preset={preset}
-            label={t(`preset.${preset.id}`)}
-            selected={selectedBackground === preset.id}
-            onClick={() => applyBackgroundPreset(preset)}
-          />
-        ))}
-        <button
-          type="button"
-          aria-pressed={selectedBackground === 'custom'}
-          className={clsx(
-            'group relative h-12 overflow-hidden rounded-lg border border-dashed text-left shadow-sm transition-[color,background-color,border-color,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-(--flow-focus-ring)',
-            selectedBackground === 'custom'
-              ? 'border-(--flow-accent) ring-2 ring-(--flow-accent-border)'
-              : 'border-(--flow-border-strong) hover:border-(--flow-accent-border)',
-          )}
-          style={{ backgroundColor: customBackground }}
-          onClick={openCustomPicker}
+      <PopoverAnchor asChild>
+        <div
+          ref={panelRef}
+          data-flow-theme-panel
+          className="text-muted-foreground ring-border relative z-[100] w-80 rounded-xl bg-(--flow-bg-panel) p-3 text-base shadow-xl ring-1 ring-inset"
         >
-          <span
-            className="absolute inset-x-1.5 top-1/2 -translate-y-1/2 truncate text-center text-base font-medium"
-            style={{
-              color: isDarkPaletteColor(customBackground) ? '#F8FAFC' : '#1F2937',
-            }}
-          >
-            {t('preset.custom')}
-          </span>
-          <span
-            className="absolute right-1.5 bottom-1.5 h-1.5 w-8 rounded-full"
-            style={{ backgroundColor: accentColor }}
-          />
-        </button>
-      </div>
+          <div className="grid grid-cols-3 gap-2">
+            {backgroundPresets.map((preset) => (
+              <BackgroundSwatch
+                key={preset.id}
+                preset={preset}
+                label={t(`preset.${preset.id}`)}
+                selected={selectedBackground === preset.id}
+                onClick={() => applyBackgroundPreset(preset)}
+              />
+            ))}
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-pressed={selectedBackground === 'custom'}
+                className={clsx(
+                  'group relative h-12 overflow-hidden rounded-lg border border-dashed text-left shadow-sm transition-[color,background-color,border-color,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-(--flow-focus-ring)',
+                  selectedBackground === 'custom'
+                    ? 'border-(--flow-accent) ring-2 ring-(--flow-accent-border)'
+                    : 'border-(--flow-border-strong) hover:border-(--flow-accent-border)',
+                )}
+                style={{ backgroundColor: customBackground }}
+              >
+                <span
+                  className="absolute inset-x-1.5 top-1/2 -translate-y-1/2 truncate text-center text-base font-medium"
+                  style={{
+                    color: isDarkPaletteColor(customBackground) ? '#F8FAFC' : '#1F2937',
+                  }}
+                >
+                  {t('preset.custom')}
+                </span>
+                <span
+                  className="absolute right-1.5 bottom-1.5 h-1.5 w-8 rounded-full"
+                  style={{ backgroundColor: accentColor }}
+                />
+              </button>
+            </PopoverTrigger>
+          </div>
 
-      <div className="border-border mt-3 flex items-center justify-between gap-3 border-t pt-3">
-        <span className="text-muted-foreground text-base font-medium">{t('source_color')}</span>
-        <button
-          type="button"
-          aria-label={t('source_color')}
-          className="border-border text-foreground flex h-8 items-center gap-2 rounded-lg border bg-(--flow-bg-control) px-2 text-base transition-colors outline-none hover:bg-(--flow-bg-control-hover) focus-visible:ring-2 focus-visible:ring-(--flow-focus-ring)"
-          onClick={() => {
+          <div className="border-border mt-3 flex items-center justify-between gap-3 border-t pt-3">
+            <span className="text-muted-foreground text-base font-medium">{t('source_color')}</span>
+            <Popover
+              open={accentPickerOpen}
+              onOpenChange={(open) => {
+                if (open) setCustomPickerOpen(false)
+                setAccentPickerOpen(open)
+              }}
+            >
+              <PopoverAnchor asChild>
+                <span aria-hidden className="pointer-events-none absolute right-0 bottom-0 size-px" />
+              </PopoverAnchor>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={t('source_color')}
+                  className="border-border text-foreground flex h-8 items-center gap-2 rounded-lg border bg-(--flow-bg-control) px-2 text-base transition-colors outline-none hover:bg-(--flow-bg-control-hover) focus-visible:ring-2 focus-visible:ring-(--flow-focus-ring)"
+                >
+                  <span
+                    className="ring-border h-4 w-8 rounded-md ring-1 ring-inset"
+                    style={{ backgroundColor: accentColor }}
+                  />
+                  <span className="font-mono text-base">{accentColor}</span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                side="right"
+                align="end"
+                sideOffset={8}
+                collisionPadding={8}
+                className="z-[110] w-auto gap-0 bg-transparent p-0 shadow-none ring-0"
+              >
+                <ColorPickerPopover
+                  value={accentColor}
+                  defaultValue={defaultAccentColor}
+                  onPreview={setAccentColor}
+                  onApply={(color) => {
+                    setAccentColor(color)
+                    setAccentPickerOpen(false)
+                  }}
+                  onCancel={() => setAccentPickerOpen(false)}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <ThemePreview />
+        </div>
+      </PopoverAnchor>
+
+      <PopoverContent
+        side="right"
+        align="end"
+        sideOffset={8}
+        collisionPadding={8}
+        className="z-[110] w-auto gap-0 bg-transparent p-0 shadow-none ring-0"
+        onInteractOutside={(event) => {
+          if (panelRef.current?.contains(event.target as Node)) event.preventDefault()
+        }}
+      >
+        <ColorPickerPopover
+          value={customBackground}
+          defaultValue={defaultCustomBackgroundColor}
+          onPreview={previewCustomBackground}
+          onApply={(color) => {
+            customSessionAppliedRef.current = true
+            customSessionActiveRef.current = false
+            previewCustomBackground(color)
             setCustomPickerOpen(false)
-            setAccentPickerOpen(true)
           }}
-        >
-          <span className="ring-border h-4 w-8 rounded-md ring-1 ring-inset" style={{ backgroundColor: accentColor }} />
-          <span className="font-mono text-base">{accentColor}</span>
-        </button>
-      </div>
-
-      <ThemePreview />
-
-      {customPickerOpen && (
-        <div className="absolute bottom-0 left-full z-[110] ml-2">
-          <ColorPickerPopover
-            value={customBackground}
-            defaultValue={defaultCustomBackgroundColor}
-            handleEscape={false}
-            onPreview={previewCustomBackground}
-            onApply={(color) => {
-              customSessionAppliedRef.current = true
-              customSessionActiveRef.current = false
-              previewCustomBackground(color)
-              setCustomPickerOpen(false)
-            }}
-            onCancel={restorePreviousTheme}
-          />
-        </div>
-      )}
-
-      {accentPickerOpen && (
-        <div className="absolute bottom-0 left-full z-[110] ml-2">
-          <ColorPickerPopover
-            value={accentColor}
-            defaultValue={defaultAccentColor}
-            handleEscape={false}
-            onPreview={setAccentColor}
-            onApply={(color) => {
-              setAccentColor(color)
-              setAccentPickerOpen(false)
-            }}
-            onCancel={() => setAccentPickerOpen(false)}
-          />
-        </div>
-      )}
-    </div>
+          onCancel={restorePreviousTheme}
+        />
+      </PopoverContent>
+    </Popover>
   )
-}
-
-function hasPositionClass(className: string | undefined) {
-  return /\b(?:absolute|fixed|relative|sticky)\b/.test(className ?? '')
 }
 
 function getIframeWindows() {
@@ -239,6 +262,15 @@ function getIframeWindows() {
       return []
     }
   })
+}
+
+function listenForIframeEscape(listener: (event: KeyboardEvent) => void) {
+  const targets = getIframeWindows()
+  targets.forEach((target) => target.addEventListener('keydown', listener, true))
+
+  return () => {
+    targets.forEach((target) => target.removeEventListener('keydown', listener, true))
+  }
 }
 
 interface BackgroundSwatchProps extends ComponentProps<'button'> {

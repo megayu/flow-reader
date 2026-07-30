@@ -84,6 +84,7 @@ import { Button as UiButton } from './ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import { Input } from './ui/input'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from './ui/menu'
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { AnnotationView } from './viewlets/AnnotationView'
 import { ImageView } from './viewlets/ImageView'
 import { SearchView } from './viewlets/SearchView'
@@ -483,50 +484,55 @@ function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProp
               active={active}
               disabled={disabled}
               shortcut={getPrimaryShortcut(shortcutId)}
-              onClick={() => {
-                if (name === 'theme') {
-                  setThemeOpen((open) => !open)
-                  return
-                }
+              onClick={
+                name === 'theme'
+                  ? undefined
+                  : () => {
+                      setThemeOpen(false)
+                      if (name === 'fullscreen') {
+                        void toggleFullscreen()
+                        return
+                      }
 
-                setThemeOpen(false)
-                if (name === 'fullscreen') {
-                  void toggleFullscreen()
-                  return
-                }
+                      if (name === 'zen') {
+                        if (viewMode !== 'library' && focusedBookTab) {
+                          onSettingsOpenChange(false)
+                          setZenMode(true)
+                        }
+                        return
+                      }
 
-                if (name === 'zen') {
-                  if (viewMode !== 'library' && focusedBookTab) {
-                    onSettingsOpenChange(false)
-                    setZenMode(true)
-                  }
-                  return
-                }
+                      if (name === 'mode') {
+                        if (viewMode === 'library') {
+                          if (focusedBookTab) setViewMode('reader')
+                        } else {
+                          setViewMode('library')
+                        }
+                        return
+                      }
 
-                if (name === 'mode') {
-                  if (viewMode === 'library') {
-                    if (focusedBookTab) setViewMode('reader')
-                  } else {
-                    setViewMode('library')
-                  }
-                  return
-                }
-
-                if (name === 'settings') {
-                  onSettingsOpenChange(true)
-                }
-              }}
+                      if (name === 'settings') {
+                        onSettingsOpenChange(true)
+                      }
+                    }
+              }
             />
           )
 
           if (name === 'theme') {
             return (
-              <div className="relative h-12 w-12" key={name}>
-                {themeOpen && (
-                  <ThemePanel className="absolute bottom-0 left-full ml-1" onClose={() => setThemeOpen(false)} />
-                )}
-                {actionButton}
-              </div>
+              <Popover key={name} open={themeOpen} onOpenChange={setThemeOpen}>
+                <PopoverTrigger asChild>{actionButton}</PopoverTrigger>
+                <PopoverContent
+                  side="right"
+                  align="end"
+                  sideOffset={4}
+                  collisionPadding={8}
+                  className="w-auto gap-0 rounded-xl bg-transparent p-0 shadow-none ring-0"
+                >
+                  <ThemePanel onClose={() => setThemeOpen(false)} />
+                </PopoverContent>
+              </Popover>
             )
           }
 

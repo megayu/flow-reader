@@ -6,7 +6,6 @@ const LIST_OVERSCAN = 4
 interface ScrollToItemOptions {
   align?: 'auto' | 'center' | 'end' | 'start'
   index: number
-  smooth?: boolean
 }
 
 interface ListViewport {
@@ -99,7 +98,6 @@ export function useListSize(count = 0) {
     (options: number | ScrollToItemOptions) => {
       const index = typeof options === 'number' ? options : options.index
       const align = typeof options === 'number' ? undefined : options.align
-      const behavior = typeof options === 'number' || !options.smooth ? 'auto' : 'smooth'
       const el = outerRef.current
       if (!el || !count) return
 
@@ -127,7 +125,7 @@ export function useListSize(count = 0) {
       nextScrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop))
       if (Math.abs(nextScrollTop - currentStart) < 1) return
 
-      el.scrollTo({ top: nextScrollTop, behavior })
+      el.scrollTo({ top: nextScrollTop, behavior: 'auto' })
     },
     [count, totalSize],
   )

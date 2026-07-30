@@ -1,11 +1,12 @@
 import clsx from 'clsx'
 import { ClipboardPasteIcon, CopyIcon } from 'lucide-react'
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { HexColorPicker } from 'react-colorful'
 
 import { useTranslation } from '../hooks/useTranslation'
 
-import { Button, IconButton } from './Button'
+import { IconButton } from './IconButton'
+import { Button } from './ui/button'
 
 const colorSlotCount = 9
 
@@ -16,7 +17,6 @@ interface ColorPickerPopoverProps {
   onApply: (color: string) => void
   onCancel: () => void
   onPreview: (color: string) => void
-  handleEscape?: boolean
 }
 
 export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
@@ -26,7 +26,6 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
   onApply,
   onCancel,
   onPreview,
-  handleEscape = true,
 }) => {
   const initialColorRef = useRef(normalizeHexColor(value) ?? defaultValue)
   const normalizedDefault = normalizeHexColor(defaultValue) ?? '#0ea5e9'
@@ -43,25 +42,6 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
       })),
     [slots],
   )
-  const handleEscapeKey = useEffectEvent((e: KeyboardEvent) => {
-    if (e.key !== 'Escape') return
-    e.preventDefault()
-    e.stopPropagation()
-    onPreview(initialColorRef.current)
-    onCancel()
-  })
-
-  useEffect(() => {
-    if (!handleEscape) return
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      handleEscapeKey(e)
-    }
-
-    window.addEventListener('keydown', onKeyDown, true)
-    return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [handleEscape])
-
   const updateDraft = (color: string) => {
     const normalized = normalizeHexColor(color)
     if (!normalized) return
@@ -157,16 +137,16 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
         ))}
       </div>
       <div className="mt-3 flex items-center justify-between gap-2">
-        <Button variant="secondary" compact onClick={saveDraftToSlot}>
+        <Button variant="secondary" size="sm" onClick={saveDraftToSlot}>
           {t('save_slot')}
         </Button>
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" compact onClick={() => updateDraft(normalizedDefault)}>
+          <Button variant="secondary" size="sm" onClick={() => updateDraft(normalizedDefault)}>
             {t('reset')}
           </Button>
           <Button
             variant="secondary"
-            compact
+            size="sm"
             onClick={() => {
               onPreview(initialColorRef.current)
               onCancel()
@@ -174,7 +154,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
           >
             {t('cancel')}
           </Button>
-          <Button compact onClick={() => onApply(draft)}>
+          <Button size="sm" onClick={() => onApply(draft)}>
             {t('apply')}
           </Button>
         </div>

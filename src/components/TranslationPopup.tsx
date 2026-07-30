@@ -21,7 +21,7 @@ import { splitTranslationSections } from '../translation/serialize'
 import { translateTexts } from '../translation/translate'
 import { clamp, copy } from '../utils'
 
-import { IconButton } from './Button'
+import { IconButton } from './IconButton'
 import { Button } from './ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 

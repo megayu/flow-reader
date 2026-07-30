@@ -21,10 +21,10 @@ import type React from 'react'
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
 import { AppTooltip } from '../components/AppTooltip'
-import { Button } from '../components/Button'
 import { DropZone } from '../components/base/DropZone'
 import { ReaderGridView } from '../components/Reader'
 import { TextImportDialog } from '../components/TextImportDialog'
+import { TooltipButton } from '../components/TooltipButton'
 import { Button as UiButton } from '../components/ui/button'
 import { useNotify } from '../components/ui/notification'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
@@ -806,10 +806,10 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
                     })}
                   </SelectContent>
                 </Select>
-                <Button
+                <TooltipButton
                   type="button"
                   variant="secondary"
-                  compact
+                  size="sm"
                   className={clsx(
                     toolbarButtonClass,
                     'border-background/40 w-8 rounded-l-none border-l px-0 text-center font-medium',
@@ -819,22 +819,22 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
                   onClick={toggleCurrentSortDirection}
                 >
                   <DirectionIcon size={16} className="mx-auto" />
-                </Button>
+                </TooltipButton>
               </div>
             )}
             {!!books.length && !select && (
               <Popover>
                 <AppTooltip label={t('book_size.title')}>
                   <PopoverTrigger asChild>
-                    <Button
+                    <UiButton
                       type="button"
                       variant="secondary"
-                      compact
+                      size="sm"
                       className={clsx(toolbarButtonClass, 'w-8 px-0')}
                       aria-label={t('book_size.title')}
                     >
                       <BookImageIcon aria-hidden className="mx-auto size-4" />
-                    </Button>
+                    </UiButton>
                   </PopoverTrigger>
                 </AppTooltip>
                 <PopoverContent
@@ -896,7 +896,7 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
               </Popover>
             )}
             {!!books.length && (
-              <Button
+              <TooltipButton
                 variant="secondary"
                 className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                 aria-label={t(select ? 'cancel' : 'select')}
@@ -910,11 +910,11 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
                   <SquareCheckBigIcon aria-hidden className="size-4" />
                 )}
                 <span className="leading-none">{t(select ? 'cancel' : 'select')}</span>
-              </Button>
+              </TooltipButton>
             )}
             {select &&
               (allSelected ? (
-                <Button
+                <TooltipButton
                   variant="secondary"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                   aria-label={t('deselect_all')}
@@ -923,9 +923,9 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
                 >
                   <ListXIcon aria-hidden className="size-4" />
                   <span className="leading-none">{t('deselect_all')}</span>
-                </Button>
+                </TooltipButton>
               ) : (
-                <Button
+                <TooltipButton
                   variant="secondary"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                   aria-label={t('select_all')}
@@ -935,7 +935,7 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
                 >
                   <ListChecksIcon aria-hidden className="size-4" />
                   <span className="leading-none">{t('select_all')}</span>
-                </Button>
+                </TooltipButton>
               ))}
           </div>
 
@@ -954,7 +954,7 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
           <div className="space-x-2">
             {select ? (
               <>
-                <Button
+                <TooltipButton
                   variant="secondary"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                   disabled={!selectedBooks.length}
@@ -965,8 +965,8 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
                 >
                   <TagIcon aria-hidden className="size-4" />
                   <span className="leading-none">{t('tags')}</span>
-                </Button>
-                <Button
+                </TooltipButton>
+                <TooltipButton
                   variant="destructive"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                   disabled={!selectedBooks.length}
@@ -977,10 +977,10 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
                 >
                   <Trash2Icon aria-hidden className="size-4" />
                   <span className="leading-none">{t('delete')}</span>
-                </Button>
+                </TooltipButton>
               </>
             ) : (
-              <Button
+              <TooltipButton
                 className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                 aria-label={t('import')}
                 title={t('import.tooltip')}
@@ -989,7 +989,7 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
               >
                 <FileInputIcon aria-hidden className="size-4" />
                 <span className="leading-none">{t('import')}</span>
-              </Button>
+              </TooltipButton>
             )}
           </div>
         </div>

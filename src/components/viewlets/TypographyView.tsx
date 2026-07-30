@@ -1,18 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import clsx from 'clsx'
 import { MinusIcon, PlusIcon, XIcon } from 'lucide-react'
-import {
-  type ComponentProps,
-  type CSSProperties,
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
-import { createPortal } from 'react-dom'
+import { type ComponentProps, useCallback, useEffect, useRef, useState } from 'react'
 
 import { RenditionSpread } from '@flow/epubjs/rendition'
 import { useTranslation } from '@/hooks/useTranslation'
@@ -21,18 +10,13 @@ import { resolveBookSpreadPolicy } from '@/reader/spreadPolicy'
 import { type PageAppearance, type TypographyConfiguration, useSettings } from '@/state'
 
 import { getBodyTypographyBaseline } from '../../styles'
-import { IconButton } from '../Button'
 import { PaneView, type PaneViewProps } from '../base/PaneView'
+import { IconButton } from '../IconButton'
 import { Button as UiButton } from '../ui/button'
+import { Combobox, type ComboboxOption } from '../ui/combobox'
 import { Input } from '../ui/input'
 
 type TextAlignOption = NonNullable<TypographyConfiguration['textAlign']>
-
-interface FontOption {
-  family: string
-  label: string
-  searchText: string
-}
 
 interface SystemFont {
   family: string
@@ -54,8 +38,8 @@ const TypographyPane: React.FC = () => {
   const [settings] = useSettings()
   const t = useTranslation('typography')
 
-  const [localFonts, setLocalFonts] = useState<FontOption[]>()
-  const localFontsRequestRef = useRef<Promise<FontOption[] | undefined> | undefined>(undefined)
+  const [localFonts, setLocalFonts] = useState<ComboboxOption[]>()
+  const localFontsRequestRef = useRef<Promise<ComboboxOption[] | undefined> | undefined>(undefined)
   const bookTypography = focusedBookTab?.book.configuration?.typography
   const typography = bookTypography ?? {}
   const isScrolledDocument = focusedBookTab?.isScrolledDocument ?? false
@@ -241,7 +225,7 @@ async function querySystemFonts() {
 }
 
 function createFontOptions(fonts: SystemFont[]) {
-  const unique = new Map<string, FontOption>()
+  const unique = new Map<string, ComboboxOption>()
 
   fonts.forEach(({ family, label }) => {
     const normalizedFamily = family.trim()
@@ -252,7 +236,7 @@ function createFontOptions(fonts: SystemFont[]) {
     if (unique.has(key)) return
 
     unique.set(key, {
-      family: normalizedFamily,
+      value: normalizedFamily,
       label: normalizedLabel || normalizedFamily,
       searchText: `${normalizedFamily} ${normalizedLabel} ${key}`.toLowerCase(),
     })
@@ -426,260 +410,34 @@ const PageAppearanceField: React.FC<PageAppearanceFieldProps> = ({ name, value, 
 interface FontFieldProps {
   name: string
   value: string
-  options: FontOption[]
-  loadOptions: () => Promise<FontOption[] | undefined>
+  options: ComboboxOption[]
+  loadOptions: () => Promise<ComboboxOption[] | undefined>
   onChange: (value: string) => void
 }
 
 const FontField: React.FC<FontFieldProps> = ({ name, value, options, loadOptions, onChange }) => {
   const t = useTranslation('typography')
   const actionT = useTranslation('action')
-  const [inputValue, setInputValue] = useState(value)
-  const [open, setOpen] = useState(false)
-  const [popoverStyle, setPopoverStyle] = useState<CSSProperties>()
-  const rootRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const popoverRef = useRef<HTMLDivElement>(null)
-  const editingRef = useRef(false)
-  const editStartValueRef = useRef(value)
-
-  useEffect(() => {
-    if (!editingRef.current) setInputValue(value)
-  }, [value])
-
-  const query = inputValue.trim().toLowerCase()
-  const filteredOptions = useMemo(() => {
-    if (!query) return options
-
-    const keywords = query.split(/\s+/).filter(Boolean)
-    return options.filter((option) => keywords.every((keyword) => option.searchText.includes(keyword)))
-  }, [options, query])
-
-  const openPicker = useCallback(() => {
-    setOpen(true)
-    loadOptions()
-  }, [loadOptions])
-
-  const closePicker = useCallback(() => {
-    setOpen(false)
-  }, [])
-  const handleDocumentPointerDown = useEffectEvent((e: PointerEvent) => {
-    const target = e.target as Node
-    if (rootRef.current?.contains(target) || popoverRef.current?.contains(target)) {
-      return
-    }
-
-    closePicker()
-  })
-  const handleDocumentKeyDown = useEffectEvent((e: KeyboardEvent) => {
-    if (e.key === 'Escape' && e.target !== inputRef.current) closePicker()
-  })
-
-  const finishEditing = useCallback(
-    (nextValue: string) => {
-      editingRef.current = false
-      editStartValueRef.current = nextValue
-      setInputValue(nextValue)
-      if (nextValue !== value) onChange(nextValue)
-    },
-    [onChange, value],
-  )
-
-  const estimatedPopoverWidth = useMemo(() => {
-    const longestLabel = filteredOptions.reduce(
-      (longest, option) => (option.label.length > longest.length ? option.label : longest),
-      '',
-    )
-    const estimatedTextWidth = Array.from(longestLabel).reduce((width, ch) => {
-      if (/[\u3400-\u9fff\uf900-\ufaff]/.test(ch)) return width + 15
-      if (/[A-Z0-9]/.test(ch)) return width + 8
-      if (/\s/.test(ch)) return width + 4
-      return width + 7
-    }, 0)
-
-    return estimatedTextWidth + 34
-  }, [filteredOptions])
-
-  const updatePopoverPosition = useCallback(() => {
-    const root = rootRef.current
-    if (!root) return
-
-    const rect = root.getBoundingClientRect()
-    const viewportWidth = window.innerWidth
-    const viewportHeight = window.innerHeight
-    const margin = 8
-    const itemHeight = 36
-    const contentHeight = Math.max(filteredOptions.length, 1) * itemHeight + 8
-    const hasQuery = !!query
-    const rightSpace = viewportWidth - rect.right - margin
-    const maxAvailableWidth = viewportWidth - margin * 2
-    const desiredWidth = Math.min(Math.max(rect.width, 280, estimatedPopoverWidth), Math.min(560, maxAvailableWidth))
-    const preferSide = !hasQuery && rightSpace >= desiredWidth
-    const width = preferSide ? Math.min(desiredWidth, rightSpace - margin) : desiredWidth
-
-    if (preferSide) {
-      const top = Math.max(margin, Math.min(rect.top - 6, viewportHeight - margin - contentHeight))
-      setPopoverStyle({
-        left: rect.right + margin,
-        top,
-        width,
-        maxHeight: viewportHeight - top - margin,
-      })
-      return
-    }
-
-    const belowTop = rect.bottom + margin
-    const belowSpace = viewportHeight - belowTop - margin
-    const aboveSpace = rect.top - margin * 2
-    const showAbove = belowSpace < Math.min(contentHeight, 180) && aboveSpace > belowSpace
-    const maxHeight = showAbove ? aboveSpace : belowSpace
-    const height = Math.min(contentHeight, maxHeight)
-
-    setPopoverStyle({
-      left: Math.min(viewportWidth - width - margin, Math.max(margin, rect.right - width)),
-      top: showAbove ? rect.top - margin - height : belowTop,
-      width,
-      maxHeight: Math.max(120, maxHeight),
-    })
-  }, [estimatedPopoverWidth, filteredOptions.length, query])
-  const handlePopoverPositionUpdate = useEffectEvent(() => {
-    updatePopoverPosition()
-  })
-
-  useLayoutEffect(() => {
-    if (!open) return
-
-    updatePopoverPosition()
-  }, [open, updatePopoverPosition])
-
-  useEffect(() => {
-    if (!open) return
-
-    const handlePointerDown = (e: PointerEvent) => {
-      handleDocumentPointerDown(e)
-    }
-    const handleKeyDown = (e: KeyboardEvent) => {
-      handleDocumentKeyDown(e)
-    }
-    const handleResizeOrScroll = () => {
-      handlePopoverPositionUpdate()
-    }
-
-    window.addEventListener('resize', handleResizeOrScroll)
-    window.addEventListener('scroll', handleResizeOrScroll, true)
-    document.addEventListener('pointerdown', handlePointerDown)
-    document.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      window.removeEventListener('resize', handleResizeOrScroll)
-      window.removeEventListener('scroll', handleResizeOrScroll, true)
-      document.removeEventListener('pointerdown', handlePointerDown)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [open])
 
   return (
-    <div ref={rootRef}>
-      <div className="flex flex-col">
-        <FieldLabel name={name} />
-        <div className="border-input bg-background focus-within:border-ring focus-within:ring-ring/50 flex h-8 items-center rounded-lg border transition-colors focus-within:ring-3">
-          <Input
-            ref={inputRef}
-            name={name}
-            id={name}
-            value={inputValue}
-            placeholder={t('default_value')}
-            className="h-full flex-1 rounded-none border-0 bg-transparent px-2.5 py-0 leading-none focus-visible:border-transparent focus-visible:ring-0"
-            onFocus={() => {
-              if (!editingRef.current) {
-                editingRef.current = true
-                editStartValueRef.current = value
-              }
-              openPicker()
-            }}
-            onClick={openPicker}
-            onChange={(e) => {
-              const nextValue = e.target.value
-              setInputValue(nextValue)
-              setOpen(true)
-              loadOptions()
-            }}
-            onBlur={(e) => {
-              if (!editingRef.current) return
-              finishEditing(e.currentTarget.value)
-              closePicker()
-            }}
-            onKeyDown={(e) => {
-              if (e.key !== 'Escape' || e.nativeEvent.isComposing || !editingRef.current) {
-                return
-              }
-
-              e.preventDefault()
-              e.stopPropagation()
-              const restoredValue = editStartValueRef.current
-              e.currentTarget.value = restoredValue
-              setInputValue(restoredValue)
-              e.currentTarget.setSelectionRange(restoredValue.length, restoredValue.length)
-            }}
-          />
-          {inputValue && (
-            <div className="flex shrink-0 items-center pr-1">
-              <IconButton
-                className="text-muted-foreground"
-                title={actionT('clear')}
-                Icon={XIcon}
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                }}
-                onClick={() => {
-                  finishEditing('')
-                  closePicker()
-                  inputRef.current?.blur()
-                }}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-      {open &&
-        popoverStyle &&
-        createPortal(
-          <div
-            data-flow-keyboard-capture="true"
-            ref={popoverRef}
-            className="bg-popover text-popover-foreground ring-border fixed z-[100] overflow-x-hidden overflow-y-auto rounded-lg p-1 shadow-lg ring-1"
-            style={popoverStyle}
-          >
-            {filteredOptions.map((option) => (
-              <button
-                key={option.family}
-                type="button"
-                className={clsx(
-                  'hover:bg-muted block min-h-[36px] w-full rounded-md px-3 py-1.5 text-left text-base leading-5 whitespace-nowrap',
-                  option.family === value && 'bg-muted',
-                )}
-                style={{
-                  fontFamily: option.family,
-                  lineHeight: '20px',
-                }}
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                }}
-                onClick={() => {
-                  finishEditing(option.family)
-                  closePicker()
-                  inputRef.current?.blur()
-                }}
-              >
-                {option.label}
-              </button>
-            ))}
-            {!filteredOptions.length && (
-              <div className="text-muted-foreground px-5 py-3 text-base">{t('no_matching_fonts')}</div>
-            )}
-          </div>,
-          document.body,
-        )}
+    <div className="flex flex-col">
+      <FieldLabel name={name} />
+      <Combobox
+        id={name}
+        name={name}
+        value={value}
+        options={options}
+        placeholder={t('default_value')}
+        clearLabel={actionT('clear')}
+        emptyContent={t('no_matching_fonts')}
+        side="right"
+        align="start"
+        sideOffset={8}
+        collisionPadding={8}
+        onLoadOptions={loadOptions}
+        onValueChange={onChange}
+        renderOption={(option) => <span style={{ fontFamily: option.value }}>{option.label}</span>}
+      />
     </div>
   )
 }

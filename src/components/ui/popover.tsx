@@ -9,6 +9,10 @@ function Popover({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Root
   return <PopoverPrimitive.Root data-slot="popover" {...props} />
 }
 
+function PopoverAnchor({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Anchor>) {
+  return <PopoverPrimitive.Anchor data-slot="popover-anchor" {...props} />
+}
+
 function PopoverTrigger({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Trigger>) {
   return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
 }
@@ -47,4 +51,4 @@ function PopoverDescription({ className, ...props }: React.ComponentProps<'p'>) 
   return <p data-slot="popover-description" className={cn('text-muted-foreground', className)} {...props} />
 }
 
-export { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger }
+export { Popover, PopoverAnchor, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger }

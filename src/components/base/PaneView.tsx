@@ -1,4 +1,5 @@
 import clsx from 'clsx'
+import type { LucideIcon } from 'lucide-react'
 import {
   type ComponentProps,
   forwardRef,
@@ -8,13 +9,20 @@ import {
   useState,
 } from 'react'
 
+import { IconButton } from '../IconButton'
 import { Twisty } from '../Row'
 
-import { type Action, ActionBar } from './ActionBar'
 import { SplitView, useSplitViewItem } from './SplitView'
 
 const COLLAPSED_STORAGE_SUFFIX = ':collapsed'
 const PANE_HEADER_SIZE = 28
+
+interface PaneAction {
+  id: string
+  title: string
+  Icon: LucideIcon
+  handle: () => void
+}
 
 interface PaneProps extends ComponentProps<'div'> {
   headline: string
@@ -25,7 +33,7 @@ interface PaneProps extends ComponentProps<'div'> {
   reserveScrollbarWidth?: boolean
   scrollbar?: OverlayScrollbarMetrics
   storageKey: string
-  actions?: Action[]
+  actions?: PaneAction[]
 }
 export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
   {
@@ -76,7 +84,22 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
         <div className="text-muted-foreground/85 flex h-full items-center text-base leading-none font-semibold tracking-normal">
           {headline.toUpperCase()}
         </div>
-        {actions && <ActionBar actions={actions} className="invisible ml-auto flex pr-0.5 group-hover:visible" />}
+        {actions && (
+          <ul className="text-muted-foreground invisible ml-auto flex items-center gap-1 pr-0.5 group-hover:visible">
+            {actions.map(({ id, title, Icon, handle }) => (
+              <li key={id} className="flex items-center">
+                <IconButton
+                  title={title}
+                  Icon={Icon}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    handle()
+                  }}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
       {overlayScroll ? (
         <OverlayScroll

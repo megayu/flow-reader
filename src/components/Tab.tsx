@@ -5,7 +5,7 @@ import type { ComponentProps, MouseEvent, ReactNode } from 'react'
 import { activeClass } from '../styles'
 
 import { AppTooltip } from './AppTooltip'
-import { IconButton } from './Button'
+import { IconButton } from './IconButton'
 
 interface TabProps extends ComponentProps<'div'> {
   dropIndicator?: 'before' | 'after'

@@ -6,7 +6,6 @@ contract, not a record of whichever implementation happens to exist locally.
 ## Contents
 
 - [Product direction](#product-direction)
-- [Implementation map](#implementation-map)
 - [Desktop interaction model](#desktop-interaction-model)
 - [Typography](#typography)
 - [Geometry and spacing](#geometry-and-spacing)
@@ -14,7 +13,6 @@ contract, not a record of whichever implementation happens to exist locally.
 - [Themes and visual states](#themes-and-visual-states)
 - [Motion and runtime cost](#motion-and-runtime-cost)
 - [Reader invariants](#reader-invariants)
-- [Verification](#verification)
 
 ## Product Direction
 
@@ -33,24 +31,6 @@ Flow Reader is a compact desktop reading application.
   sizing, responsive page rearrangement, browser history/navigation conventions,
   or generic website patterns. Desktop window resizing is a layout constraint, not
   a request to turn the app into a mobile layout.
-
-## Implementation Map
-
-Inspect these owners and their actual consumers before introducing another pattern:
-
-| Concern                              | Principal implementation                                      |
-| ------------------------------------ | ------------------------------------------------------------- |
-| Theme surfaces and semantic colors   | `src/styles/theme.ts`, `src/pages/styles.css`                 |
-| App UI type scale                    | `src/styles/ui.ts`, `src/pages/styles.css`                    |
-| Buttons                              | `src/components/ui/button.tsx`, `src/components/Button.tsx`   |
-| Inputs and selects                   | `src/components/ui/input.tsx`, `src/components/ui/select.tsx` |
-| Rows and tree indentation            | `src/components/Row.tsx`, `src/hooks/useList.ts`              |
-| Reader tabs                          | `src/components/Tab.tsx`                                      |
-| Pane headers and split panes         | `src/components/base/PaneView.tsx`, `base/SplitView.tsx`      |
-| Dialog and floating surfaces         | `src/components/ui/dialog.tsx`, `popover.tsx`, `tooltip.tsx`  |
-| Product shortcuts and blocking       | `src/shortcuts.ts`, `src/keyboard.ts`                         |
-| Reader interface and page appearance | `src/components/Reader.tsx`, `src/pages/styles.css`           |
-| Theme invariants                     | `tests/unit/theme-tokens.test.ts`                             |
 
 ## Desktop Interaction Model
 
@@ -77,8 +57,9 @@ Inspect these owners and their actual consumers before introducing another patte
   blocking overlays through `src/keyboard.ts`.
 - Keep a mouse entry point for every shortcut action and show the shortcut in the
   existing tooltip/settings surfaces when relevant.
-- Do not add general Tab traversal, roving tab index, arrow/Home/End movement among
-  controls, keyboard pane resizing, or keyboard-only tree/menu/tab operation.
+- Keep native and primitive-owned keyboard behavior, including looping menu and
+  select navigation. Do not add app-wide Tab or roving-focus graphs, custom
+  arrow/Home/End navigation among ordinary controls, or keyboard pane resizing.
 - Preserve keys that are already the feature itself, including text editing,
   search-result Enter behavior, Escape cancellation, and reader page shortcuts.
 
@@ -104,8 +85,7 @@ attributes may remain when they add no Flow-specific state or code.
   centering; use tight or snug leading for multiline content.
 - Use medium or semibold weight for labels and section headings. Keep secondary
   text quieter.
-- Use monospace or tabular numerals only for shortcuts, hexadecimal values,
-  counters, and stable numeric readouts.
+- Let ordinary UI inherit the language-specific application font.
 
 ### Reader content
 
@@ -208,7 +188,7 @@ Use the 2, 4, 6, 8, 10, 12, 16, and 20 px spacing rhythm:
   rectangular row/card silhouette; do not turn it into a pill.
 - Collapsing a tree group must leave its header available to expand again.
 
-### Tabs and breadcrumbs
+### Tabs
 
 - Preserve the Flow tab silhouette, selected surface, reverse-rounded cutouts,
   separators, close-button placement, dragging, drop feedback, and middle-click
@@ -218,7 +198,6 @@ Use the 2, 4, 6, 8, 10, 12, 16, and 20 px spacing rhythm:
 - Keep labels truncated and close actions available without changing tab width.
 - Pure tab switching must not trigger reader layout work when layout inputs are
   unchanged.
-- Reader breadcrumbs are display-only context; do not add navigation behavior.
 
 ### Activity bar, sidebars, and split panes
 
@@ -305,9 +284,11 @@ look the same. Do not add effects that communicate no state.
   decoration.
 - Do not add smooth scrolling, parallax, staggered list entrance, ambient motion,
   blur animation, or scroll-triggered reveal.
-- Do not measure layout per frame or use React state for pointer/scroll animation.
-- Clean up every listener, observer, timer, subscription, and RAF. Stop hidden UI
-  work.
+- Do not measure layout per frame for decorative motion or use React state for
+  pointer/scroll animation. Functional virtualization and reader geometry may
+  measure only at their established bounded update points.
+- Clean up persistent work. Cancel one-shot timers and RAFs only when they can
+  cause stale effects. Changes to scheduling require performance-history review.
 - Measure before and after when a change can affect first frame, page turns, tab
   switches, bundle size, memory, or long-session responsiveness.
 
@@ -325,35 +306,3 @@ look the same. Do not add effects that communicate no state.
 - Position annotations, definitions, selection menus, and reader toolbars against
   active iframe/page geometry and prevent edge clipping.
 - Keep page appearance modes (`cards`, `book`, `divider`) decorative only.
-
-## Verification
-
-Choose evidence from the changed mechanism, not from the fact that a UI file was
-edited:
-
-- Source inspection is enough for an unambiguous literal presentation edit that
-  changes no behavior or layout ownership.
-- Refresh the affected surface for visual judgment. Use bounding rectangles only
-  for numeric alignment, size, clipping, or boundary claims. Use screenshots only
-  for pixel appearance, contrast, theme, or visual-reference comparison.
-- Exercise the actual client workflow when pointer behavior, drag, dismissal,
-  scrolling, persistence, window integration, or WebView behavior changes.
-- Add an automated test when logic has a stable regression assertion: shared state,
-  boundary calculation, persistence, component contracts used by several callers,
-  or a previously recurring bug. Do not add a test that only repeats a CSS class,
-  token, or fixed dimension.
-- Run a production build for shared TypeScript/API changes, dependencies, config,
-  bundling/tree-shaking, or production-only behavior. Do not package Tauri merely
-  because a button, icon, radius, spacing, or local alignment changed.
-- Run reader layout or performance verification only when that skill's mechanism
-  actually changed.
-
-Verify only affected states and entry points. Theme, localization, constrained
-window, long-content, and shortcut coverage are required only when the change can
-alter them. Once the selected evidence passes, stop; do not repeat the same claim
-at browser, dev-client, release-client, screenshot, and automated-test levels.
-
-For a dependency or primitive replacement, also verify deleted code, final source
-size, tree-shaken production output, listeners/portals/observers, and every affected
-consumer. Preserve the existing implementation when total cost or behavioral
-parity is uncertain.

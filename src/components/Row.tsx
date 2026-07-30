@@ -6,8 +6,8 @@ import { useBackground } from '../hooks/theme/useBackground'
 import { LIST_ITEM_SIZE } from '../hooks/useList'
 
 import { AppTooltip } from './AppTooltip'
-import { IconButton } from './Button'
 import { StateLayer } from './base/StateLayer'
+import { IconButton } from './IconButton'
 
 export const TREE_INDENT_SIZE = 10
 export const EMPTY_ROW_LABEL = '—'

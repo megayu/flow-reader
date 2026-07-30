@@ -3,11 +3,11 @@ import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
 import * as annotationModule from '../../src/annotation.ts'
-import * as contextViewLayoutModule from '../../src/components/base/contextViewLayout.ts'
 import * as imageFiltersModule from '../../src/imageFilters.ts'
 import * as readerModelModule from '../../src/models/reader/model.ts'
 import * as noteLinksModule from '../../src/noteLinks.ts'
 import * as noteSemanticsModule from '../../src/noteSemantics.ts'
+import * as contextViewLayoutModule from '../../src/reader/contextViewLayout.ts'
 import * as stylesModule from '../../src/styles.ts'
 
 const annotation = annotationModule as Record<string, any>

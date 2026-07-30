@@ -16,8 +16,8 @@ import { useTranslation } from '@/hooks/useTranslation'
 import { type IMatch, reader, useReaderSnapshot } from '@/models/reader'
 
 import { readerPageTooltipContentStyle } from '../AppTooltip'
-import { IconButton } from '../Button'
 import { OverlayScroll, PaneView, type PaneViewProps } from '../base/PaneView'
+import { IconButton } from '../IconButton'
 import { Row } from '../Row'
 import { Input } from '../ui/input'
 

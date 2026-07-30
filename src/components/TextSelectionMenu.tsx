@@ -20,18 +20,19 @@ import { isForwardSelection, useTextSelection } from '../hooks/useTextSelection'
 import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
 import { type BookTab, getBookTabFrameWindows, reader } from '../models/reader'
+import { LayoutAnchorMode, LayoutAnchorPosition, layout, layoutBesideRect } from '../reader/contextViewLayout'
 import { useSettings } from '../state'
 import { type BookTextReplaceTarget, replaceBookText } from '../storage'
 import { resolveTranslationDirection, type TranslationLanguage } from '../translation/languages'
 import { serializeTranslationFragment } from '../translation/serialize'
 import { copy, keys, last } from '../utils'
 
-import { Button, IconButton } from './Button'
-import { LayoutAnchorMode, LayoutAnchorPosition, layout, layoutBesideRect } from './base/contextViewLayout'
 import { Overlay } from './base/Overlay'
 import { DictionaryPopup } from './DictionaryPopup'
-import { TextField } from './Form'
+import { IconButton } from './IconButton'
 import { TranslationPopup } from './TranslationPopup'
+import { Button } from './ui/button'
+import { Textarea } from './ui/textarea'
 
 interface TextSelectionMenuProps {
   tab: BookTab
@@ -311,7 +312,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   hide,
 }) => {
   const setAction = useSetAction()
-  const ref = useRef<HTMLInputElement>(null)
+  const ref = useRef<HTMLTextAreaElement>(null)
   const [width, setWidth] = useState(0)
   const [height, setHeight] = useState(0)
   const popupResizeObserverRef = useRef<ResizeObserver | undefined>(undefined)
@@ -410,6 +411,13 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
 
     return () => window.clearTimeout(timer)
   }, [editing])
+
+  useEffect(() => {
+    if (!annotate) return
+
+    const timer = window.setTimeout(() => ref.current?.focus())
+    return () => window.clearTimeout(timer)
+  }, [annotate])
 
   const position = releasePoint
     ? LayoutAnchorPosition.Before
@@ -590,17 +598,14 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             )}
           </div>
         ) : annotate ? (
-          <div>
-            <TextField
-              mRef={ref}
-              as="textarea"
-              name="notes"
-              defaultValue={annotation?.notes}
-              hideLabel
-              className="h-40 w-68"
-              autoFocus
-            />
-          </div>
+          <Textarea
+            ref={ref}
+            name="notes"
+            aria-label="notes"
+            defaultValue={annotation?.notes}
+            autoFocus
+            className="textfield bg-background text-muted-foreground scroll h-40 min-h-0 w-68 resize-none rounded-none border-0 px-1.5 py-1 text-base focus-visible:border-transparent focus-visible:ring-1 focus-visible:ring-inset"
+          />
         ) : (
           <div className="text-muted-foreground mb-3 flex gap-2">
             <IconButton
@@ -747,12 +752,12 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         )}
         {view === 'actions' && editing && (
           <div className="flex gap-2">
-            <Button compact variant="secondary" disabled={savingReplacement} onClick={cancelEditing}>
+            <Button size="sm" variant="secondary" disabled={savingReplacement} onClick={cancelEditing}>
               {t('cancel')}
             </Button>
             <Button
               className="ml-auto"
-              compact
+              size="sm"
               disabled={!replaceTarget || savingReplacement}
               onClick={() => {
                 if (!replaceTarget) return
@@ -799,7 +804,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           <div className="flex">
             {annotation ? (
               <Button
-                compact
+                size="sm"
                 variant="secondary"
                 onClick={() => {
                   tab.removeAnnotation(cfi)
@@ -809,13 +814,13 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 {t('delete')}
               </Button>
             ) : (
-              <Button compact variant="secondary" onClick={cancelAnnotation}>
+              <Button size="sm" variant="secondary" onClick={cancelAnnotation}>
                 {t('cancel')}
               </Button>
             )}
             <Button
               className="ml-auto"
-              compact
+              size="sm"
               onClick={() => {
                 tab.putAnnotation(
                   annotation?.type ?? 'highlight',

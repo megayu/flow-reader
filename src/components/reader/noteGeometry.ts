@@ -1,5 +1,5 @@
+import { layoutBesideRect } from '../../reader/contextViewLayout'
 import { getRenditionPageWidth } from '../../reader/layoutGeometry'
-import { layoutBesideRect } from '../base/contextViewLayout'
 
 export interface RectLike {
   left: number

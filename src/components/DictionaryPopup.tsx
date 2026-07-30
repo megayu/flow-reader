@@ -21,8 +21,8 @@ import { useSelectionSpeech } from '../hooks/useSelectionSpeech'
 import { useTranslation } from '../hooks/useTranslation'
 import { useSettings } from '../state'
 
-import { IconButton } from './Button'
 import { DictionarySourceSection } from './DictionarySourceSection'
+import { IconButton } from './IconButton'
 
 interface DictionaryPopupProps {
   maxPopupHeight: number
