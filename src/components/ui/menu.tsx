@@ -22,7 +22,7 @@ function ContextMenuContent({
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Content
         loop={loop}
-        className={cn(menuContentClassName, 'z-[70] w-40', className)}
+        className={cn(menuContentClassName, 'z-70 w-40', className)}
         {...props}
       />
     </ContextMenuPrimitive.Portal>

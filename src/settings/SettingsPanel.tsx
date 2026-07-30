@@ -513,7 +513,7 @@ const AccentColorSetting: React.FC = () => {
       <div className="relative inline-block">
         <button
           type="button"
-          className="border-input text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 dark:bg-input/30 flex h-8 min-w-[9rem] items-center gap-2 rounded-lg border bg-transparent px-2.5 text-left text-base leading-none transition-colors outline-none focus-visible:ring-3"
+          className="border-input text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 dark:bg-input/30 flex h-8 min-w-36 items-center gap-2 rounded-lg border bg-transparent px-2.5 text-left text-base leading-none transition-colors outline-none focus-visible:ring-3"
           onClick={() => {
             setDisplayColor(accentColor)
             setOpen(true)

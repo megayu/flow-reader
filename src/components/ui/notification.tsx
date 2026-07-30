@@ -64,7 +64,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     <NotificationContext.Provider value={value}>
       {children}
       <div
-        className="fixed top-3 right-3 z-[10000] flex w-[min(calc(100vw-1.5rem),24rem)] flex-col gap-2"
+        className="fixed top-3 right-3 z-10000 flex w-[min(calc(100vw-1.5rem),24rem)] flex-col gap-2"
         aria-live="polite"
         aria-relevant="additions text"
       >

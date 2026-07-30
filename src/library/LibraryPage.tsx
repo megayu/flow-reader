@@ -783,13 +783,13 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
                     aria-label={t(sortFieldMessageKey[sortField])}
                     className={clsx(
                       toolbarButtonClass,
-                      'bg-secondary text-secondary-foreground min-w-[6.25rem] rounded-r-none border-transparent px-2.5 text-base font-medium hover:bg-(--flow-bg-control-hover) [&_[data-slot=select-value]]:leading-none [&_[data-slot=select-value]]:font-medium',
+                      'bg-secondary text-secondary-foreground min-w-25 rounded-r-none border-transparent px-2.5 text-base font-medium hover:bg-(--flow-bg-control-hover) **:data-[slot=select-value]:leading-none **:data-[slot=select-value]:font-medium',
                     )}
                     size="default"
                   >
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent align="start" className="min-w-[7rem] p-1 text-base" position="popper">
+                  <SelectContent align="start" className="min-w-28 p-1 text-base" position="popper">
                     {librarySortFieldOptions.map((field) => {
                       const SortIcon = sortFieldIconMap[field]
 

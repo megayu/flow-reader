@@ -309,7 +309,7 @@ function Combobox({
           sideOffset={sideOffset}
           collisionPadding={collisionPadding}
           className={clsx(
-            'z-[100] block max-h-(--radix-popover-content-available-height) w-auto gap-0 overflow-x-hidden overflow-y-auto rounded-lg p-1 shadow-lg ring-(--flow-border)',
+            'z-100 block max-h-(--radix-popover-content-available-height) w-auto gap-0 overflow-x-hidden overflow-y-auto rounded-lg p-1 shadow-lg ring-(--flow-border)',
             contentClassName,
           )}
           style={{ width: contentWidth }}
@@ -332,7 +332,7 @@ function Combobox({
                 aria-selected={option.value === value}
                 type="button"
                 className={clsx(
-                  'hover:bg-muted block min-h-[36px] w-full rounded-md px-3 py-1.5 text-left text-base leading-5 whitespace-nowrap',
+                  'hover:bg-muted block min-h-9 w-full rounded-md px-3 py-1.5 text-left text-base leading-5 whitespace-nowrap',
                   (active || option.value === value) && 'bg-muted',
                 )}
                 onMouseDown={(event) => {

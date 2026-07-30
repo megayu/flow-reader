@@ -611,11 +611,11 @@ const SideBarForMode: React.FC<{
 
   return (
     <div
-      className={clsx('SideBar flex flex-col', background.sidebarClassName, !activeAction && '!hidden')}
+      className={clsx('SideBar flex flex-col', background.sidebarClassName, !activeAction && 'hidden!')}
       style={{ width: size }}
     >
       {actions.map(({ name, View }) => (
-        <View active={name === activeAction} key={name} className={clsx(name !== activeAction && '!hidden')} />
+        <View active={name === activeAction} key={name} className={clsx(name !== activeAction && 'hidden!')} />
       ))}
     </div>
   )

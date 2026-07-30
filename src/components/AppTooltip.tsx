@@ -44,8 +44,10 @@ export function AppTooltip({
       <TooltipContent align={align} side={side} sideOffset={6} style={contentStyle}>
         {content ?? (
           <>
-            <span className="min-w-0 text-base font-medium break-words">{contentLabel}</span>
-            {description && <span className="text-muted-foreground min-w-0 text-base break-words">{description}</span>}
+            <span className="min-w-0 text-base font-medium wrap-break-word">{contentLabel}</span>
+            {description && (
+              <span className="text-muted-foreground min-w-0 text-base wrap-break-word">{description}</span>
+            )}
             {!disabled && shortcut && <ShortcutChord className="ml-1.5" compact shortcut={shortcut} />}
           </>
         )}

@@ -24,7 +24,7 @@ export function BookTooltipContent({ book }: BookTooltipContentProps) {
         return (
           <span key={`${line.kind}:${line.text}`} className="flex min-w-0 items-start gap-2">
             <Icon aria-hidden className="mt-0.5 size-[1em] shrink-0 text-current opacity-75" strokeWidth={1.8} />
-            <span className="min-w-0 break-words">{line.text}</span>
+            <span className="min-w-0 wrap-break-word">{line.text}</span>
           </span>
         )
       })}

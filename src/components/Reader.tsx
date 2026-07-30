@@ -309,7 +309,7 @@ function ReaderGroup({
       onMouseDown={handleMouseDown}
     >
       <Tab.List
-        className={clsx('flex', zenMode && '!hidden')}
+        className={clsx('flex', zenMode && 'hidden!')}
         onWheel={handleTabWheel}
         onPointerDown={handleTabPointerDown}
         onPointerMove={handleTabPointerMove}
@@ -822,7 +822,7 @@ const ReaderEdgeNavigation: React.FC<ReaderEdgeNavigationProps> = ({ tab }) => {
             className="text-muted-foreground hover:text-foreground focus-visible:ring-ring flex h-9 w-full cursor-pointer items-center justify-center border-0 bg-transparent outline-none hover:bg-(--flow-bg-control-hover) focus-visible:ring-2 focus-visible:ring-inset"
             onClick={onClick}
           >
-            <Icon className="size-[1.125rem]" />
+            <Icon className="size-4.5" />
           </button>
         ))}
       </div>

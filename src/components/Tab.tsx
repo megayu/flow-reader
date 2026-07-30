@@ -47,13 +47,13 @@ export function Tab({
       className={clsx(
         'relative mx-0.5 mt-0.5 mb-0 flex cursor-pointer items-center gap-1 p-2 pr-1 text-base outline-none',
         selected
-          ? 'text-foreground z-10 rounded-t-[10px] rounded-b-none bg-(--flow-bg-tab-active) shadow-[inset_0_1px_0_var(--flow-tab-border)] before:pointer-events-none before:absolute before:bottom-0 before:-left-[10px] before:size-[10px] before:rounded-br-[10px] before:shadow-[5px_5px_0_5px_var(--flow-bg-tab-active)] after:pointer-events-none after:absolute after:right-[-10px] after:bottom-0 after:size-[10px] after:rounded-bl-[10px] after:shadow-[-5px_5px_0_5px_var(--flow-bg-tab-active)]'
+          ? 'text-foreground z-10 rounded-t-[10px] rounded-b-none bg-(--flow-bg-tab-active) shadow-[inset_0_1px_0_var(--flow-tab-border)] before:pointer-events-none before:absolute before:bottom-0 before:-left-2.5 before:size-2.5 before:rounded-br-[10px] before:shadow-[5px_5px_0_5px_var(--flow-bg-tab-active)] after:pointer-events-none after:absolute after:-right-2.5 after:bottom-0 after:size-2.5 after:rounded-bl-[10px] after:shadow-[-5px_5px_0_5px_var(--flow-bg-tab-active)]'
           : clsx(
               'text-muted-foreground/60 hover:text-foreground rounded-[10px] before:pointer-events-none before:absolute before:inset-x-0 before:top-0.5 before:bottom-1 before:rounded-[10px] before:opacity-0 before:transition-none hover:before:bg-(--flow-bg-control-hover) hover:before:opacity-100 hover:before:shadow-[inset_0_0_0_1px_var(--flow-tab-border)]',
               showSeparator &&
-                'after:pointer-events-none after:absolute after:top-1/2 after:right-[-3px] after:h-5 after:w-0.5 after:-translate-y-1/2 after:rounded-full after:bg-(--flow-tab-border)',
+                'after:pointer-events-none after:absolute after:top-1/2 after:-right-0.75 after:h-5 after:w-0.5 after:-translate-y-1/2 after:rounded-full after:bg-(--flow-tab-border)',
             ),
-        focused && '!text-foreground',
+        focused && 'text-foreground!',
         className,
       )}
       onMouseDown={(event) => {
@@ -74,13 +74,13 @@ export function Tab({
           data-flow-tab-drop-indicator={dropIndicator}
           className={clsx(
             'pointer-events-none absolute top-1/2 z-20 h-5 w-0.5 -translate-y-1/2 rounded-full',
-            dropIndicator === 'before' ? 'left-[-3px]' : 'right-[-3px]',
+            dropIndicator === 'before' ? '-left-0.75' : '-right-0.75',
             activeClass,
           )}
         />
       )}
       <Icon size={16} className="text-muted-foreground relative z-10" />
-      <span className="relative z-10 max-w-[200px] truncate">{children}</span>
+      <span className="relative z-10 max-w-50 truncate">{children}</span>
       <IconButton
         className="relative z-10 size-6 transition-none active:translate-y-0"
         Icon={XIcon}

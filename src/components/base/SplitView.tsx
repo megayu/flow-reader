@@ -275,7 +275,7 @@ const Sash: React.FC<SashProps> = ({ vertical, views }) => {
           [vertical ? 'height' : 'width']: highlighted ? SASH_HIGHLIGHT_LINE_SIZE : SASH_LINE_SIZE,
         }}
       ></div>
-      {active && <Overlay className="!bg-transparent" />}
+      {active && <Overlay className="bg-transparent!" />}
     </div>
   )
 }

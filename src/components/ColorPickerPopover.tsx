@@ -75,7 +75,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
       )}
       onClick={(e) => e.stopPropagation()}
     >
-      <HexColorPicker color={draft} onChange={updateDraft} className="!h-36 !w-full" />
+      <HexColorPicker color={draft} onChange={updateDraft} className="h-36! w-full!" />
       <div className="mt-3 flex items-center gap-2">
         <div className="ring-border h-8 w-8 shrink-0 rounded-sm ring-1 ring-inset" style={{ backgroundColor: draft }} />
         <input

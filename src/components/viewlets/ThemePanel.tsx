@@ -137,7 +137,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
         <div
           ref={panelRef}
           data-flow-theme-panel
-          className="text-muted-foreground ring-border relative z-[100] w-80 rounded-xl bg-(--flow-bg-panel) p-3 text-base shadow-xl ring-1 ring-inset"
+          className="text-muted-foreground ring-border relative z-100 w-80 rounded-xl bg-(--flow-bg-panel) p-3 text-base shadow-xl ring-1 ring-inset"
         >
           <div className="grid grid-cols-3 gap-2">
             {backgroundPresets.map((preset) => (
@@ -207,7 +207,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
                 align="end"
                 sideOffset={8}
                 collisionPadding={8}
-                className="z-[110] w-auto gap-0 bg-transparent p-0 shadow-none ring-0"
+                className="z-110 w-auto gap-0 bg-transparent p-0 shadow-none ring-0"
               >
                 <ColorPickerPopover
                   value={accentColor}
@@ -232,7 +232,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
         align="end"
         sideOffset={8}
         collisionPadding={8}
-        className="z-[110] w-auto gap-0 bg-transparent p-0 shadow-none ring-0"
+        className="z-110 w-auto gap-0 bg-transparent p-0 shadow-none ring-0"
         onInteractOutside={(event) => {
           if (panelRef.current?.contains(event.target as Node)) event.preventDefault()
         }}
@@ -330,7 +330,7 @@ const ThemePreview: React.FC = () => {
         <div className="flex min-w-0 flex-1 flex-col bg-(--flow-bg-content)">
           <div className="flex h-8 items-end gap-1 bg-(--flow-bg-tabbar) px-1">
             <span className="mb-1 h-5 w-10 rounded-md bg-(--flow-bg-control-hover)" />
-            <span className="relative h-7 w-16 rounded-t-md bg-(--flow-bg-tab-active) shadow-[inset_0_1px_0_var(--flow-tab-border)] before:absolute before:bottom-0 before:-left-[8px] before:size-2 before:rounded-br-md before:shadow-[4px_4px_0_4px_var(--flow-bg-tab-active)] after:absolute after:right-[-8px] after:bottom-0 after:size-2 after:rounded-bl-md after:shadow-[-4px_4px_0_4px_var(--flow-bg-tab-active)]">
+            <span className="relative h-7 w-16 rounded-t-md bg-(--flow-bg-tab-active) shadow-[inset_0_1px_0_var(--flow-tab-border)] before:absolute before:bottom-0 before:-left-2 before:size-2 before:rounded-br-md before:shadow-[4px_4px_0_4px_var(--flow-bg-tab-active)] after:absolute after:-right-2 after:bottom-0 after:size-2 after:rounded-bl-md after:shadow-[-4px_4px_0_4px_var(--flow-bg-tab-active)]">
               <span className="absolute inset-x-2 top-0 h-px rounded-full bg-(--flow-accent)" />
             </span>
           </div>

@@ -378,9 +378,9 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                         }}
                       >
                         {chapterPreviewExpanded ? (
-                          <FoldVerticalIcon className="size-[18px]" />
+                          <FoldVerticalIcon className="size-4.5" />
                         ) : (
-                          <UnfoldVerticalIcon className="size-[18px]" />
+                          <UnfoldVerticalIcon className="size-4.5" />
                         )}
                       </Button>
                     </AppTooltip>
@@ -497,7 +497,7 @@ const ChapterPreviewTree: React.FC<ChapterPreviewTreeProps> = ({ nodes, collapse
               }}
             >
               <Icon size={18} className={clsx('text-muted-foreground shrink-0', !hasChildren && 'invisible')} />
-              <span className="min-w-0 flex-1 break-words">{node.title}</span>
+              <span className="min-w-0 flex-1 wrap-break-word">{node.title}</span>
             </button>
             {hasChildren && !collapsed && (
               <ChapterPreviewTree

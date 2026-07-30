@@ -153,7 +153,7 @@ export const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
           }
         }}
       />
-      <div className="text-muted-foreground min-w-[3.5rem] text-center text-base">
+      <div className="text-muted-foreground min-w-14 text-center text-base">
         {find.searching ? '...' : `${current}/${count}`}
       </div>
       <button
@@ -163,7 +163,7 @@ export const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
         disabled={disabled}
         onClick={onPrevious}
       >
-        <ChevronUpIcon className="size-[22px]" />
+        <ChevronUpIcon className="size-5.5" />
       </button>
       <button
         type="button"
@@ -172,10 +172,10 @@ export const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
         disabled={disabled}
         onClick={onNext}
       >
-        <ChevronDownIcon className="size-[22px]" />
+        <ChevronDownIcon className="size-5.5" />
       </button>
       <button type="button" className="text-muted-foreground hover:text-foreground p-1" onClick={onClose}>
-        <XIcon className="size-[22px]" />
+        <XIcon className="size-5.5" />
       </button>
     </div>
   )

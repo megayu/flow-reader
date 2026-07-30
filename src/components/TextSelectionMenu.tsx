@@ -279,7 +279,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ tab, onCha
 
 const ICON_SIZE = 28
 const ANNOTATION_SIZE = 32
-const actionIconClassName = '!flex items-center justify-center !p-0 [&_svg]:!size-7'
+const actionIconClassName = 'flex! items-center justify-center p-0! [&_svg]:size-7!'
 
 interface TextSelectionMenuRendererProps {
   tab: BookTab
@@ -479,7 +479,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     <>
       <Overlay
         // cover `sash`
-        className="!z-50 !bg-transparent"
+        className="z-50! bg-transparent!"
         onPointerDown={dismissOverlay}
       />
       <div
@@ -589,7 +589,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               <div className="text-destructive w-68 text-sm leading-snug">
                 <div>{replacementError.message}</div>
                 {replacementError.detail && (
-                  <div className="mt-1 text-xs break-words">
+                  <div className="mt-1 text-xs wrap-break-word">
                     {t('edit_text_error_reason')}
                     {replacementError.detail}
                   </div>

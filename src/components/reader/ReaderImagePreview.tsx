@@ -366,7 +366,7 @@ export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({ openKey,
       aria-modal="true"
       data-flow-keyboard-capture="true"
       tabIndex={-1}
-      className="fixed inset-0 z-[9999] overflow-hidden bg-neutral-500 text-white outline-none"
+      className="fixed inset-0 z-9999 overflow-hidden bg-neutral-500 text-white outline-none"
       onWheel={handleWheel}
       onPointerDown={handlePreviewBackdropPointerDown}
       onMouseDown={(event) => {
@@ -444,13 +444,13 @@ export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({ openKey,
           <span className="text-xs font-semibold tracking-normal">1:1</span>
         </ReaderImagePreviewButton>
         <ReaderImagePreviewButton label={t('rotate_left')} onClick={() => rotateImage(-90)}>
-          <RotateCcwIcon className="size-[1.125rem]" />
+          <RotateCcwIcon className="size-4.5" />
         </ReaderImagePreviewButton>
         <ReaderImagePreviewButton label={t('rotate_right')} onClick={() => rotateImage(90)}>
-          <RotateCwIcon className="size-[1.125rem]" />
+          <RotateCwIcon className="size-4.5" />
         </ReaderImagePreviewButton>
         <ReaderImagePreviewButton label={t('fit')} active={isFit} disabled={isFit} onClick={resetToFit}>
-          <RefreshCwIcon className="size-[1.125rem]" />
+          <RefreshCwIcon className="size-4.5" />
         </ReaderImagePreviewButton>
         <div className="mx-1 h-5 w-px bg-white/20" />
         <ReaderImagePreviewButton label={t('close')} onClick={onClose}>

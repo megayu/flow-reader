@@ -190,7 +190,7 @@ export const BookCard: React.FC<BookCardProps> = ({
             onClick={activateBook}
           >
             <div
-              className="border-border relative mx-auto aspect-[9/12] w-full overflow-hidden rounded-md border shadow-sm"
+              className="border-border relative mx-auto aspect-9/12 w-full overflow-hidden rounded-md border shadow-sm"
               style={{ maxWidth: 'var(--library-book-card-width)' }}
               onClick={handleCoverClick}
             >
@@ -259,8 +259,8 @@ export const BookCard: React.FC<BookCardProps> = ({
                   contentStyle={{ maxWidth: 'calc(50vw - 2rem)' }}
                   content={
                     <span className="flex w-max max-w-[calc(50vw-2rem)] min-w-0 flex-col gap-1">
-                      <span className="min-w-0 text-base font-medium break-words">{t('source_unavailable')}</span>
-                      <span className="text-muted-foreground min-w-0 text-base break-words">
+                      <span className="min-w-0 text-base font-medium wrap-break-word">{t('source_unavailable')}</span>
+                      <span className="text-muted-foreground min-w-0 text-base wrap-break-word">
                         {t(bookSourceDescriptionKey(sourceStatus))}
                       </span>
                     </span>
@@ -282,8 +282,8 @@ export const BookCard: React.FC<BookCardProps> = ({
                   contentStyle={{ maxWidth: 'calc(50vw - 2rem)' }}
                   content={
                     <span className="flex w-max max-w-[calc(50vw-2rem)] min-w-0 flex-col gap-1">
-                      <span className="min-w-0 text-base font-medium break-words">{t('compat.archive_only')}</span>
-                      <span className="text-muted-foreground min-w-0 text-base break-words">
+                      <span className="min-w-0 text-base font-medium wrap-break-word">{t('compat.archive_only')}</span>
+                      <span className="text-muted-foreground min-w-0 text-base wrap-break-word">
                         {t('compat.archive_only_description')}
                       </span>
                     </span>
@@ -336,7 +336,7 @@ export const BookCard: React.FC<BookCardProps> = ({
               label={tooltip}
             >
               <div className="text-foreground mt-2 flex min-h-[2.5em] w-full items-start justify-center px-1 text-center text-lg leading-tight font-semibold">
-                <span className="line-clamp-2 min-w-0 break-words">{displayTitle}</span>
+                <span className="line-clamp-2 min-w-0 wrap-break-word">{displayTitle}</span>
               </div>
             </AppTooltip>
           </div>

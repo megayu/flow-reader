@@ -529,17 +529,17 @@ export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({ book, cover, onC
         <div className="grid grid-cols-[12rem_minmax(0,1fr)] gap-5 p-5 pr-12">
           <div className="w-full">
             {cover && (
-              <img src={cover} alt="" className="aspect-[9/12] w-full object-cover shadow-sm" draggable={false} />
+              <img src={cover} alt="" className="aspect-9/12 w-full object-cover shadow-sm" draggable={false} />
             )}
           </div>
           <div className="min-w-0 pr-6">
-            <DialogTitle className="text-foreground !text-xl leading-tight font-bold">{title}</DialogTitle>
+            <DialogTitle className="text-foreground text-xl! leading-tight font-bold">{title}</DialogTitle>
             {!!rows.length && (
               <dl className="mt-4 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-2 gap-y-1 text-base">
                 {rows.map(([label, value]) => (
                   <React.Fragment key={label}>
                     <dt className="font-semibold">{label}:</dt>
-                    <dd className="min-w-0 break-words">{value}</dd>
+                    <dd className="min-w-0 wrap-break-word">{value}</dd>
                   </React.Fragment>
                 ))}
               </dl>
