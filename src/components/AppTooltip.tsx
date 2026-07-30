@@ -41,7 +41,13 @@ export function AppTooltip({
   return (
     <Tooltip>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent align={align} side={side} sideOffset={6} style={contentStyle}>
+      <TooltipContent
+        align={align}
+        className="max-w-[min(25rem,var(--radix-tooltip-content-available-width))]"
+        side={side}
+        sideOffset={6}
+        style={contentStyle}
+      >
         {content ?? (
           <>
             <span className="min-w-0 text-base font-medium wrap-break-word">{contentLabel}</span>

@@ -15,7 +15,7 @@ export const ShortcutChord: FC<ShortcutChordProps> = ({ className, compact = fal
   return (
     <span
       className={clsx(
-        'bg-muted text-muted-foreground ring-border inline-flex items-stretch overflow-hidden rounded-sm ring-1 ring-inset',
+        'bg-muted text-muted-foreground ring-border inline-flex shrink-0 items-stretch overflow-hidden rounded-sm whitespace-nowrap ring-1 ring-inset',
         className,
       )}
     >

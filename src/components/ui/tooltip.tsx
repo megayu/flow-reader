@@ -43,7 +43,7 @@ function TooltipContent({
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         className={cn(
-          'bg-popover text-popover-foreground border-border pointer-events-none z-50 inline-flex w-fit max-w-xs origin-(--radix-tooltip-content-transform-origin) items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-base leading-tight whitespace-pre-line shadow-lg shadow-black/10 select-none has-data-[slot=kbd]:pr-1.5 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-sm **:data-[slot=kbd]:text-base',
+          'bg-popover text-popover-foreground border-border pointer-events-none z-50 inline-flex w-fit max-w-xs origin-(--radix-tooltip-content-transform-origin) items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-base leading-tight whitespace-pre-line shadow-lg shadow-black/10 select-none has-data-[slot=kbd]:pr-1.5 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:text-base',
           className,
         )}
         style={{ fontSize: 'var(--app-font-size-md)', ...style }}

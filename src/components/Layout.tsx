@@ -626,7 +626,7 @@ const libraryFilterPanelClassName =
   'rounded-md bg-(--flow-sidebar-item-bg)/70 p-2 ring-(--flow-sidebar-item-border) ring-inset'
 const libraryFilterPanelHeaderClassName = 'mb-1 flex h-6 items-center gap-1'
 const libraryFilterOptionsClassName = 'flex min-w-0 flex-wrap gap-1'
-const libraryFilterChipClassName = 'h-7 max-w-full min-w-0 gap-1 px-2 text-sm leading-none'
+const libraryFilterChipClassName = 'h-7 max-w-full min-w-0 gap-1 px-2 text-sm leading-tight'
 const libraryFilterInactiveChipClassName =
   'bg-transparent text-(--flow-text) ring-1 ring-(--flow-sidebar-item-border) ring-inset hover:bg-(--flow-sidebar-item-bg-hover)'
 const libraryFilterSectionHeaderClassName = 'text-(--flow-text) text-base leading-none font-semibold'
@@ -831,7 +831,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                 status={null}
                 className={statusFilters.length === 0 ? 'text-primary-foreground' : ''}
               />
-              <span className="min-w-0 truncate leading-none">{t('library_filter.all')}</span>
+              <span className="min-w-0 truncate leading-tight">{t('library_filter.all')}</span>
             </UiButton>
             {libraryStatusOptions.map((status) => {
               const active = statusFilters.includes(status)
@@ -847,7 +847,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                   onClick={() => toggle(status)}
                 >
                   <ReadingStatusIcon status={status} className={active ? 'text-primary-foreground' : ''} />
-                  <span className="min-w-0 truncate leading-none">
+                  <span className="min-w-0 truncate leading-tight">
                     {t(`reading_status.${toMessageKeySegment(status)}`)}
                   </span>
                 </UiButton>
@@ -1160,7 +1160,7 @@ const LibraryFilterChip: React.FC<LibraryFilterChipProps> = ({
                 className={clsx('size-3.5', active ? 'text-primary-foreground' : 'text-muted-foreground')}
               />
             )}
-            <span ref={labelRef} className="min-w-0 truncate leading-none" data-testid={labelTestId}>
+            <span ref={labelRef} className="min-w-0 truncate leading-tight" data-testid={labelTestId}>
               {label}
             </span>
           </UiButton>
