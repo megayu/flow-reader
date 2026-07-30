@@ -760,7 +760,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
   }, [creatingTag])
 
   const handleLibraryFilterKeyDown = useEffectEvent((e: KeyboardEvent) => {
-    if (e.key !== 'Escape' || isLibraryFilterShortcutBlocked(e)) return
+    if (e.key !== 'Escape' || e.defaultPrevented || isLibraryFilterShortcutBlocked(e)) return
 
     e.preventDefault()
     e.stopPropagation()
@@ -1379,7 +1379,12 @@ const DeleteLibraryTagDialog: React.FC<DeleteLibraryTagDialogProps> = ({ onClose
           {t('library_filter.delete_tag_message')} <span className="text-foreground font-medium">{tag.name}</span>
         </div>
         <DialogFooter className="-mx-4 mt-1 -mb-4 px-4 py-3">
-          <UiButton type="button" variant="secondary" onClick={onClose}>
+          <UiButton
+            type="button"
+            variant="secondary"
+            className="focus:border-ring focus:ring-ring focus:ring-1 focus:ring-inset focus-visible:ring-1 focus-visible:ring-inset"
+            onClick={onClose}
+          >
             {t('cancel')}
           </UiButton>
           <UiButton type="button" variant="destructive" onClick={remove}>

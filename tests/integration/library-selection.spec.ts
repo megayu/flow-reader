@@ -90,17 +90,27 @@ test('mod click can set a new anchor before another shift range', async ({ page 
   await expectSelectedCount(page, 7)
 })
 
-test('escape clears selection before exiting selection mode', async ({ page }) => {
+test('escape clears selection and exits selection mode before clearing filters', async ({ page }) => {
   await setupLibrary(page)
 
   await bookCard(page, 3).click()
   await expectSelectedCount(page, 1)
 
+  await page.keyboard.press('s')
+  const authorFilter = page.getByRole('button', { name: /^Selection Author$/ })
+  await authorFilter.click()
+  await expect(authorFilter).toHaveAttribute('aria-pressed', 'true')
+
   await page.keyboard.press('Escape')
   await expectSelectedCount(page, 0)
   await expect(page.getByRole('button', { name: /^Cancel$/ })).toBeVisible()
+  await expect(authorFilter).toHaveAttribute('aria-pressed', 'true')
 
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: /^Select$/ })).toBeVisible()
   await expect(selectedCount(page)).toHaveCount(0)
+  await expect(authorFilter).toHaveAttribute('aria-pressed', 'true')
+
+  await page.keyboard.press('Escape')
+  await expect(authorFilter).toHaveAttribute('aria-pressed', 'false')
 })

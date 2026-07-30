@@ -308,6 +308,45 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose
   )
 }
 
+interface DeleteSelectedBooksDialogProps {
+  count: number
+  onClose: () => void
+  onConfirm: () => void
+}
+
+export const DeleteSelectedBooksDialog: React.FC<DeleteSelectedBooksDialogProps> = ({ count, onClose, onConfirm }) => {
+  const t = useTranslation('home')
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <DialogContent data-flow-keyboard-capture="true" className="w-[min(24rem,calc(100vw-2rem))] max-w-none text-base">
+        <DialogHeader>
+          <DialogTitle>{t('delete_selected.title')}</DialogTitle>
+        </DialogHeader>
+        <div className="text-muted-foreground leading-relaxed">{t('delete_selected.message', count)}</div>
+        <DialogFooter className="-mx-4 mt-1 -mb-4 px-4 py-3">
+          <UiButton
+            type="button"
+            variant="secondary"
+            className="focus:border-ring focus:ring-ring focus:ring-1 focus:ring-inset focus-visible:ring-1 focus-visible:ring-inset"
+            onClick={onClose}
+          >
+            {t('cancel')}
+          </UiButton>
+          <UiButton type="button" variant="destructive" onClick={onConfirm}>
+            {t('delete')}
+          </UiButton>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
   const t = useTranslation('home')
   const tags = useLibraryTags()

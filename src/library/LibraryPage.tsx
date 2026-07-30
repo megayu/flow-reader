@@ -39,6 +39,7 @@ import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import { reader, useReaderSnapshot } from '../models/reader'
 import { subscribeReaderOpenErrors } from '../reader/errorEvents'
+import { getShortcutChords } from '../shortcuts'
 import {
   defaultLibraryDisplay,
   defaultLibrarySort,
@@ -61,7 +62,7 @@ import { clamp } from '../utils'
 import { BookCard } from './BookCard'
 import { EpubImportProgressPanel } from './EpubImportProgressPanel'
 import { filterBooksByLibraryFilters } from './filters'
-import { BatchTagsDialog } from './LibraryDialogs'
+import { BatchTagsDialog, DeleteSelectedBooksDialog } from './LibraryDialogs'
 import {
   bookSourceDescriptionKey,
   bookSourceStatusFromError,
@@ -423,12 +424,25 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
   const [, setLibraryAction] = useLibraryAction()
 
   const [select, , setSelect] = useBoolean(false)
-  const [selectedBookIds, { add, has, toggle, replace, reset }] = useStringSet()
+  const [selectedBookIds, { has, toggle, replace, reset }] = useStringSet()
   const [highlightedBookIds, setHighlightedBookIds] = useState<Set<string>>(() => new Set())
   const [sourceStatuses, setSourceStatuses] = useState(() => new Map<string, BookSourceStatus>())
   const [batchTagsOpen, setBatchTagsOpen] = useState(false)
+  const [deleteBooksOpen, setDeleteBooksOpen] = useState(false)
   const selectionAnchorIdRef = useRef<string | undefined>(undefined)
   const rangeSelectionSessionRef = useRef<LibraryRangeSelectionSession | undefined>(undefined)
+  const sortedBooks = useMemo(
+    () =>
+      filterBooksByLibraryFilters(
+        sortBooks(books ?? [], sortField, sortDirection),
+        statusFilters,
+        authorFilters,
+        tagFilters,
+      ),
+    [authorFilters, books, sortDirection, sortField, statusFilters, tagFilters],
+  )
+  const visibleBookIds = useMemo(() => sortedBooks.map((book) => book.id), [sortedBooks])
+  const selectedBooks = sortedBooks.filter((book) => selectedBookIds.has(book.id))
   const referencedArchiveIds = useMemo(
     () =>
       (books ?? []).reduce<string[]>((ids, book) => {
@@ -485,6 +499,13 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
 
     setSelect(true)
   }, [exitSelectMode, select, setSelect])
+
+  const selectAllBooks = useCallback(() => {
+    if (!sortedBooks.length) return
+
+    setSelect(true)
+    replace([...selectedBookIds, ...visibleBookIds])
+  }, [replace, selectedBookIds, setSelect, sortedBooks.length, visibleBookIds])
 
   const setBookCardWidth = useCallback(
     (bookCardWidth: number) => {
@@ -555,11 +576,20 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
     [onEpubImportResult],
   )
 
+  const importBooks = useCallback(() => {
+    void openImportDialog({
+      onImportProgress: onEpubImportProgress,
+      onImportResult: handleEpubImportResult,
+      onTextPaths,
+    })
+  }, [handleEpubImportResult, onEpubImportProgress, onTextPaths])
+
   const handleCancelSelectionKeyDown = useEffectEvent((e: KeyboardEvent) => {
     if (e.key !== 'Escape') return
     if (isGlobalKeyboardShortcutBlocked(e)) return
 
     e.preventDefault()
+    e.stopPropagation()
     if (selectedBookIds.size) {
       clearBookSelection()
     } else {
@@ -574,10 +604,10 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
       handleCancelSelectionKeyDown(e)
     }
 
-    document.addEventListener('keydown', cancelSelectionOnEscape)
+    document.addEventListener('keydown', cancelSelectionOnEscape, true)
 
     return () => {
-      document.removeEventListener('keydown', cancelSelectionOnEscape)
+      document.removeEventListener('keydown', cancelSelectionOnEscape, true)
     }
   }, [select])
 
@@ -602,11 +632,44 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey || isKeyboardTargetBlocked(e)) {
+      if (e.altKey || isKeyboardTargetBlocked(e)) return
+
+      const key = e.key.toLowerCase()
+      const commandModifier = e.ctrlKey || e.metaKey
+      if (commandModifier) {
+        if (e.shiftKey) return
+
+        if (e.code === 'KeyA' || key === 'a') {
+          e.preventDefault()
+          e.stopPropagation()
+          selectAllBooks()
+          return
+        }
+
+        if (!select && (e.code === 'KeyO' || key === 'o')) {
+          e.preventDefault()
+          e.stopPropagation()
+          importBooks()
+        }
         return
       }
 
-      const key = e.key.toLowerCase()
+      if (e.shiftKey) return
+
+      if (select && (e.code === 'KeyT' || key === 't') && selectedBooks.length) {
+        e.preventDefault()
+        e.stopPropagation()
+        setBatchTagsOpen(true)
+        return
+      }
+
+      if (select && e.key === 'Delete' && selectedBooks.length) {
+        e.preventDefault()
+        e.stopPropagation()
+        setDeleteBooksOpen(true)
+        return
+      }
+
       if (key === 's') {
         e.preventDefault()
         e.stopPropagation()
@@ -634,19 +697,7 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [setLibraryAction, setStatusFilters])
-
-  const sortedBooks = useMemo(
-    () =>
-      filterBooksByLibraryFilters(
-        sortBooks(books ?? [], sortField, sortDirection),
-        statusFilters,
-        authorFilters,
-        tagFilters,
-      ),
-    [authorFilters, books, sortDirection, sortField, statusFilters, tagFilters],
-  )
-  const visibleBookIds = useMemo(() => sortedBooks.map((book) => book.id), [sortedBooks])
+  }, [importBooks, select, selectAllBooks, selectedBooks.length, setLibraryAction, setStatusFilters])
 
   const selectBook = useCallback(
     (bookId: string, e: LibraryBookSelectionEvent) => {
@@ -673,7 +724,10 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
 
   const visibleSelectedCount = sortedBooks.filter((book) => selectedBookIds.has(book.id)).length
   const allSelected = !!sortedBooks.length && visibleSelectedCount === sortedBooks.length
-  const selectedBooks = sortedBooks.filter((book) => selectedBookIds.has(book.id))
+  const selectAllShortcut = getShortcutChords('librarySelectAll')[0]
+  const importShortcut = getShortcutChords('libraryImport')[0]
+  const batchTagsShortcut = getShortcutChords('libraryBatchTags')[0]
+  const deleteSelectionShortcut = getShortcutChords('libraryDeleteSelection')[0]
   const DirectionIcon = sortDirection === 'asc' ? ArrowUpIcon : ArrowDownIcon
   const LibraryCountIcon = select ? SquareCheckBigIcon : BookOpenIcon
   const libraryCountText = select
@@ -845,6 +899,9 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
               <Button
                 variant="secondary"
                 className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
+                aria-label={t(select ? 'cancel' : 'select')}
+                title={t(`${select ? 'cancel' : 'select'}.tooltip`)}
+                shortcut={select ? ['Esc'] : undefined}
                 onClick={toggleSelectMode}
               >
                 {select ? (
@@ -857,7 +914,13 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
             )}
             {select &&
               (allSelected ? (
-                <Button variant="secondary" className={clsx(toolbarButtonClass, 'gap-1.5 px-3')} onClick={reset}>
+                <Button
+                  variant="secondary"
+                  className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
+                  aria-label={t('deselect_all')}
+                  title={t('deselect_all.tooltip')}
+                  onClick={reset}
+                >
                   <ListXIcon aria-hidden className="size-4" />
                   <span className="leading-none">{t('deselect_all')}</span>
                 </Button>
@@ -865,7 +928,10 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
                 <Button
                   variant="secondary"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
-                  onClick={() => sortedBooks.forEach((b) => add(b.id))}
+                  aria-label={t('select_all')}
+                  title={t('select_all.tooltip')}
+                  shortcut={selectAllShortcut}
+                  onClick={selectAllBooks}
                 >
                   <ListChecksIcon aria-hidden className="size-4" />
                   <span className="leading-none">{t('select_all')}</span>
@@ -892,6 +958,9 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
                   variant="secondary"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                   disabled={!selectedBooks.length}
+                  aria-label={t('tags')}
+                  title={t('tags.tooltip')}
+                  shortcut={batchTagsShortcut}
                   onClick={() => setBatchTagsOpen(true)}
                 >
                   <TagIcon aria-hidden className="size-4" />
@@ -900,12 +969,11 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
                 <Button
                   variant="destructive"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
-                  onClick={() => {
-                    exitSelectMode()
-                    const bookIds = selectedBooks.map((book) => book.id)
-
-                    db.books.bulkDelete(bookIds)
-                  }}
+                  disabled={!selectedBooks.length}
+                  aria-label={t('delete')}
+                  title={t('delete.tooltip')}
+                  shortcut={deleteSelectionShortcut}
+                  onClick={() => setDeleteBooksOpen(true)}
                 >
                   <Trash2Icon aria-hidden className="size-4" />
                   <span className="leading-none">{t('delete')}</span>
@@ -914,13 +982,10 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
             ) : (
               <Button
                 className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
-                onClick={() => {
-                  void openImportDialog({
-                    onImportProgress: onEpubImportProgress,
-                    onImportResult: handleEpubImportResult,
-                    onTextPaths,
-                  })
-                }}
+                aria-label={t('import')}
+                title={t('import.tooltip')}
+                shortcut={importShortcut}
+                onClick={importBooks}
               >
                 <FileInputIcon aria-hidden className="size-4" />
                 <span className="leading-none">{t('import')}</span>
@@ -950,6 +1015,18 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
       </div>
       {batchTagsOpen && (
         <BatchTagsDialog books={selectedBooks} tags={tags ?? []} onClose={() => setBatchTagsOpen(false)} />
+      )}
+      {deleteBooksOpen && (
+        <DeleteSelectedBooksDialog
+          count={selectedBooks.length}
+          onClose={() => setDeleteBooksOpen(false)}
+          onConfirm={() => {
+            const bookIds = selectedBooks.map((book) => book.id)
+            setDeleteBooksOpen(false)
+            exitSelectMode()
+            void db.books.bulkDelete(bookIds)
+          }}
+        />
       )}
     </DropZone>
   )

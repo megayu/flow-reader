@@ -10,13 +10,17 @@ export type ShortcutActionId =
   | 'fullscreen'
   | 'imagePanel'
   | 'increaseFontSize'
+  | 'libraryBatchTags'
+  | 'libraryDeleteSelection'
   | 'libraryFilterAll'
   | 'libraryFilterClear'
   | 'libraryFilterPanel'
   | 'libraryFilterRead'
   | 'libraryFilterReading'
   | 'libraryFilterToRead'
+  | 'libraryImport'
   | 'libraryReaderToggle'
+  | 'librarySelectAll'
   | 'moveTabLeft'
   | 'moveTabRight'
   | 'nextChapter'
@@ -168,6 +172,14 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
     labelKey: 'library_reader_toggle',
     shortcuts: [['C']],
   },
+  libraryBatchTags: {
+    labelKey: 'library_batch_tags',
+    shortcuts: [['T']],
+  },
+  libraryDeleteSelection: {
+    labelKey: 'library_delete_selection',
+    shortcuts: [['Del']],
+  },
   openSettings: {
     labelKey: 'open_settings',
     shortcuts: [[commandToken, ',']],
@@ -195,6 +207,14 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
   libraryFilterRead: {
     labelKey: 'library_filter_read',
     shortcuts: [['3']],
+  },
+  libraryImport: {
+    labelKey: 'library_import',
+    shortcuts: [[commandToken, 'O']],
+  },
+  librarySelectAll: {
+    labelKey: 'library_select_all',
+    shortcuts: [[commandToken, 'A']],
   },
   developerTools: {
     labelKey: 'developer_tools',
@@ -261,6 +281,10 @@ const shortcutGroups: ShortcutGroupDefinition[] = [
   {
     titleKey: 'group.library',
     items: [
+      shortcutDefinitions.libraryImport,
+      shortcutDefinitions.librarySelectAll,
+      shortcutDefinitions.libraryBatchTags,
+      shortcutDefinitions.libraryDeleteSelection,
       shortcutDefinitions.libraryFilterPanel,
       shortcutDefinitions.libraryFilterClear,
       shortcutDefinitions.libraryFilterAll,

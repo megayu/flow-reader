@@ -183,7 +183,9 @@ export const BookCard: React.FC<BookCardProps> = ({
     closeContextMenu()
   })
   const handleContextMenuKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key === 'Escape') closeContextMenu()
+    if (event.key === 'Escape') {
+      closeContextMenu()
+    }
   })
 
   useEffect(() => {
@@ -490,6 +492,7 @@ const BookContextMenuButton: React.FC<{
   <button
     type="button"
     role="menuitem"
+    aria-label={label}
     disabled={disabled}
     className={clsx(
       'hover:bg-muted flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-base outline-none',
