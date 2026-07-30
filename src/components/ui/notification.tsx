@@ -106,7 +106,7 @@ function NotificationToast({
   return (
     <section
       className={cn(
-        'bg-popover text-popover-foreground ring-foreground/10 grid grid-cols-[auto_1fr_auto] items-center gap-2 rounded-lg p-3 text-base shadow-lg ring-1',
+        'bg-popover text-popover-foreground ring-foreground/10 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg p-3 text-base shadow-lg ring-1',
         notification.type === 'success' ? 'border-l-4 border-l-(--flow-accent)' : 'border-l-4 border-l-(--flow-danger)',
       )}
       role={notification.type === 'error' ? 'alert' : 'status'}
@@ -115,7 +115,7 @@ function NotificationToast({
         aria-hidden
         className={cn('size-4', notification.type === 'success' ? 'text-(--flow-accent)' : 'text-(--flow-danger)')}
       />
-      <div className="min-w-0 cursor-text space-y-1 select-text">
+      <div className="min-w-0 cursor-text space-y-1 [overflow-wrap:anywhere] select-text">
         <h2 className="text-foreground text-base leading-tight font-medium">{notification.title}</h2>
         {notification.description && <p className="text-muted-foreground leading-snug">{notification.description}</p>}
         {!!notification.items?.length && (
