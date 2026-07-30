@@ -52,9 +52,7 @@ export function AppTooltip({
               {description && (
                 <span className="text-muted-foreground min-w-0 text-base break-words">{description}</span>
               )}
-              {!disabled && shortcut && (
-                <ShortcutChord className="ml-1.5" compact shortcut={shortcut} variant="tooltip" />
-              )}
+              {!disabled && shortcut && <ShortcutChord className="ml-1.5" compact shortcut={shortcut} />}
             </>
           )}
         </TooltipContent>

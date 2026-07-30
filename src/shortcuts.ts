@@ -305,27 +305,31 @@ export interface ShortcutItem {
   shortcuts: ShortcutChordValue[]
 }
 
-export function getCommandKeyLabel() {
-  if (typeof navigator === 'undefined') return 'Ctrl'
+function isMacPlatform() {
+  if (typeof navigator === 'undefined') return false
 
-  const platform =
-    (
-      navigator as Navigator & {
-        userAgentData?: {
-          platform?: string
-        }
+  const userAgentPlatform = (
+    navigator as Navigator & {
+      userAgentData?: {
+        platform?: string
       }
-    ).userAgentData?.platform ??
-    navigator.platform ??
-    ''
+    }
+  ).userAgentData?.platform
 
-  return /mac|iphone|ipad|ipod/i.test(platform) ? 'Cmd' : 'Ctrl'
+  if (userAgentPlatform) return userAgentPlatform.toLowerCase() === 'macos'
+
+  return /^mac/i.test(navigator.platform) && !(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 }
 
 export function resolveShortcutChord(shortcut: ShortcutChordValue): ShortcutChordValue {
-  const commandKey = getCommandKeyLabel()
+  const macPlatform = isMacPlatform()
+  const commandKey = macPlatform ? '⌘' : 'Ctrl'
 
-  return shortcut.map((key) => (key === commandToken ? commandKey : key))
+  return shortcut.map((key) => {
+    if (key === commandToken) return commandKey
+    if (macPlatform && key === 'Shift') return '⇧'
+    return key
+  })
 }
 
 export function getShortcutChords(id: ShortcutActionId) {
