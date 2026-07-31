@@ -5,9 +5,11 @@ import type { Contents } from '@flow/epubjs'
 import {
   type BodyTextDetectionCache,
   bodyTextCandidateSelector,
-  bodyTextFontTypographySelector,
+  bodyTextFontSelector,
+  bodyTextInlineFollowFontAttribute,
+  bodyTextInlineFollowWeightAttribute,
+  bodyTextInlineFontSizeRatioAttribute,
   bodyTextSelector,
-  bodyTextTypographySelector,
   createHiddenNoteContentSelector,
   ensureBodyTextMarkers,
   notePopoverClass,
@@ -60,6 +62,45 @@ function mapToCss(o: CSSProperties) {
     .join('\n')
 }
 
+export function createBodyTextInlineTypographyCss(document: Document, typography: CSSProperties) {
+  let css = ''
+  const fontSize =
+    typeof typography.fontSize === 'string' ? Number.parseFloat(typography.fontSize) : typography.fontSize
+
+  if (typeof fontSize === 'number' && Number.isFinite(fontSize)) {
+    const ratios = new Map<string, number>()
+    document.querySelectorAll<HTMLElement>(`[${bodyTextInlineFontSizeRatioAttribute}]`).forEach((el) => {
+      const value = el.getAttribute(bodyTextInlineFontSizeRatioAttribute)
+      const ratio = value === null ? Number.NaN : Number.parseFloat(value)
+      if (value !== null && Number.isFinite(ratio) && ratio > 0) ratios.set(value, ratio)
+    })
+
+    ratios.forEach((ratio, value) => {
+      css += `${bodyTextSelector} [${bodyTextInlineFontSizeRatioAttribute}="${value}"] {
+        font-size: ${formatCssPixel(fontSize * ratio)} !important;
+      }`
+    })
+  }
+
+  if (typography.fontWeight !== undefined) {
+    css += `${bodyTextSelector} [${bodyTextInlineFollowWeightAttribute}="true"] {
+      ${mapToCss({ fontWeight: typography.fontWeight })}
+    }`
+  }
+
+  if (typography.fontFamily) {
+    css += `${bodyTextFontSelector} [${bodyTextInlineFollowFontAttribute}="true"] {
+      ${mapToCss({ fontFamily: typography.fontFamily })}
+    }`
+  }
+
+  return css
+}
+
+function formatCssPixel(value: number) {
+  return `${Math.round(value * 10000) / 10000}px`
+}
+
 enum Style {
   Custom = 'custom',
 }
@@ -96,7 +137,7 @@ export function createVerticalWritingCss(writingMode: string | undefined, textIn
   html:root body * {
     text-orientation: mixed !important;
   }
-  ${bodyTextTypographySelector} {
+  ${bodyTextSelector} {
     text-indent: var(--flow-text-indent) !important;
   }`
 }
@@ -385,16 +426,18 @@ export function updateCustomStyle(
   if (hasBodyTypography) {
     const { fontFamily, ...bodyTypographyWithoutFontFamily } = bodyTypography
     if (keys(bodyTypographyWithoutFontFamily).length) {
-      css += `${bodyTextTypographySelector} {
+      css += `${bodyTextSelector} {
         ${mapToCss(bodyTypographyWithoutFontFamily)}
       }`
     }
 
     if (fontFamily) {
-      css += `${bodyTextFontTypographySelector} {
+      css += `${bodyTextFontSelector} {
         ${mapToCss({ fontFamily })}
       }`
     }
+
+    css += createBodyTextInlineTypographyCss(contents.document, bodyTypography)
 
     if (settings.fontSize) {
       css += `${noteTextSelector}, ${noteTextSelector} * {

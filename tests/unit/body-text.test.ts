@@ -4,10 +4,13 @@ import { test } from 'vitest'
 
 import * as bodyTextModule from '../../src/bodyText.ts'
 import * as noteIndexModule from '../../src/noteIndex.ts'
+import * as stylesModule from '../../src/styles.ts'
 
 const {
   bodyTextAttribute,
-  bodyTextInlineWrapperAttribute,
+  bodyTextInlineFollowFontAttribute,
+  bodyTextInlineFollowWeightAttribute,
+  bodyTextInlineFontSizeRatioAttribute,
   bodyTextPreserveFontAttribute,
   detectBodyTextIndexes,
   ensureBodyTextMarkers,
@@ -16,6 +19,7 @@ const {
   noteTextAttribute,
 } = bodyTextModule as Record<string, any>
 const { findReciprocalNoteItem, getNoteIndex } = noteIndexModule as Record<string, any>
+const { createBodyTextInlineTypographyCss } = stylesModule as Record<string, any>
 
 class FakeTextNode {
   readonly nodeType = 3
@@ -270,44 +274,32 @@ function createContents(body: FakeElement) {
   }
 }
 
-function testInlineClassAnnotationPayloadIsNotCountedAsParentBodyText() {
+function testBodyParagraphOwnsReadableInlineTypography() {
   const body = new FakeElement('body')
   const bodyParagraphs = [
     paragraph('main', '这是第一段正文内容，包含足够多的连续叙述文字，用来代表普通正文段落。'),
     paragraph('main', '这是第二段正文内容，仍然是普通正文，应当被识别为主体文字。'),
     paragraph('main', '这是第三段正文内容，和前面段落保持相同的标签、class 与样式。'),
   ]
-  const annotationParagraphs = [
-    styledParagraph(
-      'commentary-title',
-      '校记',
-      { fontWeight: '700' },
-      span(
-        'commentary-body',
-        '这里是一大段夹在子元素里的说明文字，它属于注释正文，不应该让父级短标题段落被识别为正文。',
-      ),
-    ),
-    styledParagraph(
-      'commentary-title',
-      '笺注',
-      { fontWeight: '700' },
-      span('commentary-body', '这里还是一大段夹在子元素里的说明文字，用来模拟注释文本数量很多但父级本身很短的结构。'),
-    ),
-    styledParagraph(
-      'commentary-title',
-      '考订',
-      { fontWeight: '700' },
-      span('commentary-body', '这段说明继续提供大量子元素文本，如果统计父级 textContent 就会错误压过真正正文。'),
-    ),
-    styledParagraph(
-      'commentary-title',
-      '补注',
-      { fontWeight: '700' },
-      span('commentary-body', '最后一段说明仍然只应该属于子元素，不应该参与父级段落的正文聚类。'),
-    ),
-  ]
+  const annotation = new FakeElement('span', {
+    className: 'commentary-body',
+    style: {
+      fontFamily: 'serif',
+      fontSize: '12px',
+      fontWeight: '400',
+    },
+  }).append('这是由行内元素承载的连续阅读内容，用于验证段落统计包含可见的后代文字。')
+  const emphasized = new FakeElement('span', {
+    className: 'emphasis',
+    style: {
+      fontFamily: 'cursive',
+      fontSize: '20px',
+      fontWeight: '700',
+    },
+  }).append('保留不同的字体和字重。')
+  const mixedParagraph = new FakeElement('p', { className: 'main' }).append('正文引导文字：', annotation, emphasized)
 
-  body.append(...bodyParagraphs, ...annotationParagraphs)
+  body.append(...bodyParagraphs, mixedParagraph)
 
   const contents = createContents(body)
   const candidates = getBodyTextCandidates(contents.document)
@@ -315,7 +307,25 @@ function testInlineClassAnnotationPayloadIsNotCountedAsParentBodyText() {
 
   const selectedClasses = bodyIndexes.map((index: number) => candidates[index]!.className)
 
-  assert.deepStrictEqual(selectedClasses, ['main', 'main', 'main'])
+  assert.deepStrictEqual(selectedClasses, ['main', 'main', 'main', 'main'])
+
+  ensureBodyTextMarkers(contents)
+  assert.strictEqual(annotation.getAttribute(bodyTextInlineFontSizeRatioAttribute), '0.75')
+  assert.strictEqual(annotation.getAttribute(bodyTextInlineFollowFontAttribute), 'true')
+  assert.strictEqual(annotation.getAttribute(bodyTextInlineFollowWeightAttribute), 'true')
+  assert.strictEqual(emphasized.getAttribute(bodyTextInlineFontSizeRatioAttribute), '1.25')
+  assert.strictEqual(emphasized.getAttribute(bodyTextInlineFollowFontAttribute), null)
+  assert.strictEqual(emphasized.getAttribute(bodyTextInlineFollowWeightAttribute), null)
+
+  const css = createBodyTextInlineTypographyCss(contents.document, {
+    fontFamily: 'Reader Serif',
+    fontSize: '24px',
+    fontWeight: 600,
+  })
+  assert.match(css, /font-size:\s*18px\s*!important/)
+  assert.match(css, /font-size:\s*30px\s*!important/)
+  assert.match(css, /data-flow-body-text-inline-follow-font="true"/)
+  assert.match(css, /data-flow-body-text-inline-follow-weight="true"/)
 }
 
 function testSameBaseStyleParagraphsAreCountedAsBodyText() {
@@ -519,28 +529,6 @@ function testBodyTextVariantsPreserveOriginalFontFamily() {
     assert.strictEqual(el.getAttribute(bodyTextAttribute), 'true')
     assert.strictEqual(el.getAttribute(bodyTextPreserveFontAttribute), null)
   })
-}
-
-function testInlineWrappedBodyParagraphsAreMarkedForTypographyPiercing() {
-  const body = new FakeElement('body')
-  const paragraphs = [
-    new FakeElement('p', { className: 'calibre7' }).append(
-      span('calibre10', '这是第一段由直接子级行内容器承载的正文文本，用来模拟转换工具生成的段落结构。'),
-    ),
-    new FakeElement('p', { className: 'calibre7' }).append(
-      span('calibre10', '这是第二段由直接子级行内容器承载的正文文本，父级段落本身没有直接文本。'),
-    ),
-  ]
-
-  body.append(...paragraphs)
-
-  const contents = createContents(body)
-  ensureBodyTextMarkers(contents)
-
-  assert.strictEqual(paragraphs[0]!.getAttribute(bodyTextAttribute), 'true')
-  assert.strictEqual(paragraphs[0]!.getAttribute(bodyTextInlineWrapperAttribute), 'true')
-  assert.strictEqual(paragraphs[1]!.getAttribute(bodyTextAttribute), 'true')
-  assert.strictEqual(paragraphs[1]!.getAttribute(bodyTextInlineWrapperAttribute), 'true')
 }
 
 function testReciprocalNoteContentIsMarkedStructurally() {
@@ -787,14 +775,13 @@ function testReciprocalLinkContentMayLiveInsideBacklinkAnchor() {
 }
 
 for (const run of [
-  testInlineClassAnnotationPayloadIsNotCountedAsParentBodyText,
+  testBodyParagraphOwnsReadableInlineTypography,
   testSameBaseStyleParagraphsAreCountedAsBodyText,
   testBodyTextIgnoresClassNameWhenComputedStyleMatches,
   testBodyTextIgnoresBlockMarginsWhenComputedStyleMatches,
   testBodyTextIncludesSameFontStyleVariants,
   testBodyTextIncludesLeadingDifferentFontCandidates,
   testBodyTextVariantsPreserveOriginalFontFamily,
-  testInlineWrappedBodyParagraphsAreMarkedForTypographyPiercing,
   testReciprocalNoteContentIsMarkedStructurally,
   testSemanticNoteFallbackMarksNamedNoteContent,
   testLinkedNoteResolutionUsesHashTargetItem,

@@ -7,23 +7,13 @@ export const notePopoverClass = 'flow-note-popover'
 
 export const bodyTextAttribute = 'data-flow-body-text'
 export const bodyTextSelector = `[${bodyTextAttribute}="true"]`
-export const bodyTextInlineWrapperAttribute = 'data-flow-body-text-inline-wrapper'
 export const bodyTextPreserveFontAttribute = 'data-flow-body-text-preserve-font'
-const bodyTextInlineWrapperSelector = `${bodyTextSelector}[${bodyTextInlineWrapperAttribute}="true"]`
-const bodyTextInlineWrapperChildSelector = 'span, b, strong, em, i'
-const bodyTextFontSelector = `${bodyTextSelector}:not([${bodyTextPreserveFontAttribute}="true"])`
-const bodyTextFontInlineWrapperSelector = `${bodyTextFontSelector}[${bodyTextInlineWrapperAttribute}="true"]`
-export const bodyTextTypographySelector = [
-  bodyTextSelector,
-  ...bodyTextInlineWrapperChildSelector.split(', ').map((selector) => `${bodyTextInlineWrapperSelector} > ${selector}`),
-].join(',\n')
-export const bodyTextFontTypographySelector = [
-  bodyTextFontSelector,
-  ...bodyTextInlineWrapperChildSelector
-    .split(', ')
-    .map((selector) => `${bodyTextFontInlineWrapperSelector} > ${selector}`),
-].join(',\n')
+export const bodyTextInlineFontSizeRatioAttribute = 'data-flow-body-text-inline-font-size-ratio'
+export const bodyTextInlineFollowFontAttribute = 'data-flow-body-text-inline-follow-font'
+export const bodyTextInlineFollowWeightAttribute = 'data-flow-body-text-inline-follow-weight'
+export const bodyTextFontSelector = `${bodyTextSelector}:not([${bodyTextPreserveFontAttribute}="true"])`
 export const bodyTextCandidateSelector = 'p, blockquote > p, div'
+const bodyTextStructuralDescendantSelector = 'p, div, blockquote, table, figure, img, h1, h2, h3, h4, h5, h6, ol, ul'
 const bodyTextDetectedAttribute = 'data-flow-body-text-detected'
 export const noteTextAttribute = 'data-flow-note-text'
 export const noteTextSelector = `[${noteTextAttribute}="true"]`
@@ -95,12 +85,12 @@ export function ensureBodyTextMarkers(contents: Contents, bodyTextCache?: BodyTe
     clearBodyTextMarkers(candidates)
 
     if (cached && cached.candidateCount === candidates.length && cached.bodyMarkers.length) {
-      applyBodyTextMarkers(candidates, cached.bodyMarkers)
+      applyBodyTextMarkers(contents, candidates, cached.bodyMarkers)
       body.setAttribute(bodyTextDetectedAttribute, 'true')
     } else {
       const bodyMarkers = detectBodyTextMarkers(contents, candidates)
       if (bodyMarkers.length) {
-        applyBodyTextMarkers(candidates, bodyMarkers)
+        applyBodyTextMarkers(contents, candidates, bodyMarkers)
         body.setAttribute(bodyTextDetectedAttribute, 'true')
 
         if (cacheKey) {
@@ -133,7 +123,6 @@ function detectBodyTextMarkers(contents: Contents, candidates: HTMLElement[]) {
     const text = getBodyTextCandidateText(el)
     if (!text) return []
     if (isFactuallyExcludedElement(el)) return []
-    if (isInlineClassPayloadLabel(el)) return []
     if (isImageOnlyElement(el)) return []
     if (isStructuralDiv(el)) return []
 
@@ -190,12 +179,16 @@ function getBodyTextCacheKey(contents: Contents) {
 function clearBodyTextMarkers(candidates: HTMLElement[]) {
   candidates.forEach((el) => {
     el.removeAttribute(bodyTextAttribute)
-    el.removeAttribute(bodyTextInlineWrapperAttribute)
     el.removeAttribute(bodyTextPreserveFontAttribute)
+    walkBodyTextInlineElements(el, (inline) => {
+      inline.removeAttribute(bodyTextInlineFontSizeRatioAttribute)
+      inline.removeAttribute(bodyTextInlineFollowFontAttribute)
+      inline.removeAttribute(bodyTextInlineFollowWeightAttribute)
+    })
   })
 }
 
-function applyBodyTextMarkers(candidates: HTMLElement[], bodyMarkers: BodyTextMarker[]) {
+function applyBodyTextMarkers(contents: Contents, candidates: HTMLElement[], bodyMarkers: BodyTextMarker[]) {
   bodyMarkers.forEach((marker) => {
     const candidate = candidates[marker.index]
     if (!candidate) return
@@ -204,31 +197,66 @@ function applyBodyTextMarkers(candidates: HTMLElement[], bodyMarkers: BodyTextMa
     if (marker.preserveFont) {
       candidate.setAttribute(bodyTextPreserveFontAttribute, 'true')
     }
-    if (isInlineWrappedBodyTextElement(candidate)) {
-      candidate.setAttribute(bodyTextInlineWrapperAttribute, 'true')
+    applyBodyTextInlineTypographyMarkers(contents, candidate)
+  })
+}
+
+function applyBodyTextInlineTypographyMarkers(contents: Contents, candidate: HTMLElement) {
+  const parentStyle = contents.window.getComputedStyle(candidate)
+  const parentFontSize = parseCssPixel(parentStyle.fontSize)
+  const parentFontFamily = normalizeFontFamily(parentStyle.fontFamily)
+  const parentFontWeight = parseCssFontWeight(parentStyle.fontWeight)
+
+  walkBodyTextInlineElements(candidate, (inline) => {
+    const style = contents.window.getComputedStyle(inline)
+    const fontSize = parseCssPixel(style.fontSize)
+    const fontWeight = parseCssFontWeight(style.fontWeight)
+
+    if (parentFontSize && fontSize) {
+      inline.setAttribute(bodyTextInlineFontSizeRatioAttribute, formatTypographyRatio(fontSize / parentFontSize))
+    }
+    if (normalizeFontFamily(style.fontFamily) === parentFontFamily) {
+      inline.setAttribute(bodyTextInlineFollowFontAttribute, 'true')
+    }
+    if (fontWeight !== undefined && fontWeight === parentFontWeight) {
+      inline.setAttribute(bodyTextInlineFollowWeightAttribute, 'true')
     }
   })
 }
 
-function isInlineWrappedBodyTextElement(el: HTMLElement) {
-  if (getDirectText(el)) return false
+function walkBodyTextInlineElements(root: HTMLElement, visit: (el: HTMLElement) => void) {
+  const walk = (node: Node) => {
+    if (!isHTMLElement(node)) return
+    if (isInlineTypographyExcludedElement(node)) return
 
-  const meaningfulChildren = [...el.childNodes].filter((node) => {
-    return node.nodeType === 1 || !!normalizeText(node.textContent)
-  })
-  if (!meaningfulChildren.length) return false
+    if (normalizeText(node.textContent)) visit(node)
+    node.childNodes.forEach(walk)
+  }
 
-  return meaningfulChildren.every((node) => {
-    if (!isHTMLElement(node)) return false
-    if (isElementWithTag(node, 'br')) return true
-    if (!isBodyTextInlineWrapperChild(node)) return false
-
-    return !!normalizeText(node.textContent)
-  })
+  root.childNodes.forEach(walk)
 }
 
-function isBodyTextInlineWrapperChild(el: HTMLElement) {
-  return bodyTextInlineWrapperChildSelector.split(', ').some((tagName) => isElementWithTag(el, tagName))
+function isInlineTypographyExcludedElement(el: HTMLElement) {
+  return (
+    isFactuallyExcludedElement(el) ||
+    ['br', 'img', 'svg', 'math', 'ruby', 'rt', 'rp', 'sup', 'sub'].some((tagName) => isElementWithTag(el, tagName))
+  )
+}
+
+function normalizeFontFamily(value: string) {
+  return value
+    .split(',')
+    .map((family) =>
+      family
+        .trim()
+        .replace(/^['"]|['"]$/g, '')
+        .toLowerCase(),
+    )
+    .join(',')
+}
+
+function formatTypographyRatio(value: number) {
+  return String(Math.round(value * 10000) / 10000)
 }
 
 function applyNoteTextMarkers(document: Document) {
@@ -390,9 +418,7 @@ function isImageOnlyElement(el: HTMLElement) {
 function isStructuralDiv(el: HTMLElement) {
   if (el.tagName.toLowerCase() !== 'div') return false
 
-  return !!el.querySelector(
-    ['p', 'div', 'blockquote', 'table', 'figure', 'img', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ol', 'ul'].join(','),
-  )
+  return !!el.querySelector(bodyTextStructuralDescendantSelector)
 }
 
 function createBodyTextSignature(el: HTMLElement, style: CSSStyleDeclaration) {
@@ -429,52 +455,17 @@ function createBodyTextBaseSignature(el: HTMLElement, style: CSSStyleDeclaration
   ].join('|')
 }
 
-function normalizedClassName(el: HTMLElement) {
-  return [...el.classList].sort().join(' ')
-}
-
-function isInlineClassPayloadLabel(el: HTMLElement) {
-  const directText = getDirectText(el)
-  if (!directText || directText.length > 12) return false
-
-  const descendantText = collectClassedDescendantText(el)
-  return descendantText.length >= Math.max(30, directText.length * 4)
-}
-
-function collectClassedDescendantText(el: HTMLElement): string {
-  return [...el.childNodes]
-    .map((node) => {
-      if (!isHTMLElement(node)) return ''
-      const text = normalizedClassName(node) ? normalizeText(node.textContent) : ''
-      return text + collectClassedDescendantText(node)
-    })
-    .join('')
-}
-
 function getInlineMargin(style: CSSStyleDeclaration) {
   return (parseCssPixel(style.marginLeft) ?? 0) + (parseCssPixel(style.marginRight) ?? 0)
 }
 
 function getBodyTextCandidateText(el: HTMLElement) {
-  const directText = getDirectText(el)
   return collectBodyTextCandidateText(el, {
-    excludeClassedDescendants: !!directText,
     root: el,
   })
 }
 
-function getDirectText(el: HTMLElement) {
-  let text = ''
-  for (const node of el.childNodes) {
-    if (node.nodeType === 3) text += node.textContent ?? ''
-  }
-  return normalizeText(text)
-}
-
-function collectBodyTextCandidateText(
-  node: Node,
-  options: { excludeClassedDescendants: boolean; root: HTMLElement },
-): string {
+function collectBodyTextCandidateText(node: Node, options: { root: HTMLElement }): string {
   if (node.nodeType === 3) {
     return normalizeText(node.textContent)
   }
@@ -483,7 +474,6 @@ function collectBodyTextCandidateText(
 
   const el = node as HTMLElement
   if (el !== options.root) {
-    if (options.excludeClassedDescendants && normalizedClassName(el)) return ''
     if (isElementWithTag(el, 'br')) return ''
     if (isElementWithTag(el, 'img') || isElementWithTag(el, 'svg')) return ''
     if (isFactuallyExcludedElement(el)) return ''
