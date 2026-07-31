@@ -12,18 +12,6 @@ import {
   NOTE_POPOVER_PADDING,
 } from './noteGeometry'
 
-export {
-  createNotePopoverState,
-  getAnchorFromEvent,
-  getBookLinkDisplayTarget,
-  getLinkedNote,
-  isInternalBookHashLink,
-  type LinkedNoteResult,
-  type NotePopoverState,
-  type NotePopoverTypography,
-  type RectLike,
-} from './noteContent'
-
 export interface NotePopoverProps {
   popover?: NotePopoverState
   onClose: () => void

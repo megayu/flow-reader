@@ -23,7 +23,7 @@ import {
   type LinkedNoteResult,
   type NotePopoverState,
   type NotePopoverTypography,
-} from './NotePopover'
+} from './noteContent'
 import { useFrameEvent } from './useFrameEvent'
 
 function consumeExternalLinkClick(event: MouseEvent, anchor: HTMLAnchorElement) {
