@@ -5,6 +5,7 @@ import { expect, type Page, test } from '@playwright/test'
 import type { LocalDictionaryRecord } from '../../src/dictionary/native'
 import type { BookRecord } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
+import { msg } from '../support/i18n'
 import { getDictionaryMockState, installTauriMock } from '../support/tauri-mock'
 
 const aliceEpubPath = path.resolve('packages/epubjs/test/fixtures/alice.epub')
@@ -417,9 +418,9 @@ async function selectFixtureText(page: Page, query: string, expectDictionary = t
       }),
     )
   }, query)
-  await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible()
+  await expect(page.getByRole('button', { name: msg('menu.copy') })).toBeVisible()
   if (expectDictionary) {
-    await expect(page.getByRole('button', { name: 'Dictionary', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: msg('menu.dictionary'), exact: true })).toBeVisible()
   }
 }
 
@@ -432,7 +433,7 @@ test('selection speech reads Chinese with the matching system voice and toggles 
   })
   await setupDictionaryReader(page, { 测试: wordHtml })
   await selectFixtureText(page, '测试')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const speak = dictionarySpeechButton(page)
   await speak.focus()
@@ -467,7 +468,7 @@ test('prefers the default voice for the detected language and resets after an er
   })
   await setupDictionaryReader(page, {}, 0, { sample: [] }, [], {}, {}, {}, 'en-GB')
   await selectFixtureText(page, 'sample')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
   const speak = dictionarySpeechButton(page)
   await speak.click()
 
@@ -492,7 +493,7 @@ test('selection speech falls back to a same-language voice when no exact locale 
   })
   await setupDictionaryReader(page, {}, 0, { sample: [] }, [], {}, {}, {}, 'en-AU')
   await selectFixtureText(page, 'sample')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
   const speak = dictionarySpeechButton(page)
   await speak.click()
 
@@ -515,7 +516,7 @@ test('selection speech is hidden when the system API is unavailable', async ({ p
   await installSpeechSynthesisMock(page, { supported: false })
   await setupDictionaryReader(page, { 测试: wordHtml })
   await selectFixtureText(page, '测试')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const unavailable = dictionarySpeechButton(page)
   await expect(unavailable).toHaveCount(0)
@@ -525,7 +526,7 @@ test('selection speech reacts when the system voice list becomes available', asy
   await installSpeechSynthesisMock(page)
   await setupDictionaryReader(page, { 测试: wordHtml })
   await selectFixtureText(page, '测试')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const speak = dictionarySpeechButton(page)
   await expect(speak).toHaveCount(0)
@@ -550,7 +551,7 @@ test('stops active speech on every dictionary popup exit path', async ({ page })
   await selectFixtureText(page, '测试')
 
   const openDictionary = async () => {
-    await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+    await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
     await dictionarySpeechButton(page).click()
   }
 
@@ -565,14 +566,14 @@ test('stops active speech on every dictionary popup exit path', async ({ page })
   await openDictionary()
   await dictionaryCloseButton(page).click()
   await expect.poll(() => speechState(page)).toMatchObject({ cancelCalls: 6 })
-  await expect(page.getByRole('button', { name: 'Copy' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: msg('menu.copy') })).toHaveCount(0)
 })
 
 test('opens the compact translation popup and Escape returns to the text menu', async ({ page }) => {
   await setupTranslationReader(page, { delayMs: 150 })
   await selectFixtureText(page, 'sample')
 
-  await page.getByRole('button', { name: 'Translate', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.translate'), exact: true }).click()
   const popup = page.locator('[data-flow-translation-popup="true"]')
   await expect(popup).toBeVisible()
   await expect(popup.getByRole('combobox', { name: '源语言' })).toContainText('简体中文')
@@ -614,13 +615,13 @@ test('opens the compact translation popup and Escape returns to the text menu', 
 
   await page.keyboard.press('Escape')
   await expect(popup).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible()
+  await expect(page.getByRole('button', { name: msg('menu.copy') })).toBeVisible()
 })
 
 test('switches translation providers in place', async ({ page }) => {
   await setupTranslationReader(page)
   await selectFixtureText(page, 'sample')
-  await page.getByRole('button', { name: 'Translate', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.translate'), exact: true }).click()
 
   const popup = page.locator('[data-flow-translation-popup="true"]')
   await popup.getByRole('button', { name: 'Azure', exact: true }).click()
@@ -633,7 +634,7 @@ test('allows copying and retrying a failed translation record', async ({ page })
     error: 'Synthetic translation failure',
   })
   await selectFixtureText(page, 'sample')
-  await page.getByRole('button', { name: 'Translate', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.translate'), exact: true }).click()
 
   const popup = page.locator('[data-flow-translation-popup="true"]')
   await expect(popup.getByText('Synthetic translation failure')).toBeVisible()
@@ -662,7 +663,7 @@ test('allows copying and retrying a failed translation record', async ({ page })
 test('resizes the source and translation regions with the splitter', async ({ page }) => {
   await setupTranslationReader(page)
   await selectFixtureText(page, 'synthetic text '.repeat(100), false)
-  await page.getByRole('button', { name: 'Translate', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.translate'), exact: true }).click()
 
   const popup = page.locator('[data-flow-translation-popup="true"]')
   await expect(popup.getByText(/Google: synthetic text/)).toBeVisible()
@@ -699,14 +700,14 @@ test('keeps the dictionary action disabled when no source matches the selection'
   await setupDictionaryReader(page, {})
   await selectFixtureText(page, 'sky', false)
 
-  await expect(page.getByRole('button', { name: 'Dictionary', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: msg('menu.dictionary'), exact: true })).toBeDisabled()
   expect((await getDictionaryMockState(page)).dictionaryRequests).toEqual([])
 })
 
 test('parses only the first Han Dian character explanation into semantic groups', async ({ page }) => {
   await setupDictionaryReader(page, { 天: characterHtml })
   await selectFixtureText(page, '天')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = dictionaryPopup(page)
   await expect(popup).toBeVisible()
@@ -722,7 +723,7 @@ test('copies a dictionary body selection instead of the original book selection'
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await setupDictionaryReader(page, { 天: characterHtml })
   await selectFixtureText(page, '天')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = dictionaryPopup(page)
   const definition = popup.getByText('高处的空间。', { exact: true })
@@ -743,7 +744,7 @@ test('copies a dictionary body selection instead of the original book selection'
 test('parses adjacent Han Dian word reading groups and respects unnumbered senses', async ({ page }) => {
   await setupDictionaryReader(page, { 天空: wordHtml })
   await selectFixtureText(page, '天空')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = dictionaryPopup(page)
   await expect(popup.getByText('tiān kōng', { exact: true })).toBeVisible()
@@ -758,7 +759,7 @@ test('parses adjacent Han Dian word reading groups and respects unnumbered sense
 test('keeps modern Han Dian Chinese examples while excluding English glosses', async ({ page }) => {
   await setupDictionaryReader(page, { 样词: modernWordHtml })
   await selectFixtureText(page, '样词')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = dictionaryPopup(page)
   await expect(popup.getByText('合成的新版释义。', { exact: true })).toBeVisible()
@@ -777,7 +778,7 @@ test('falls back to cleaned item text without exposing active or raw HTML', asyn
   </body></html>`
   await setupDictionaryReader(page, { 测: fallbackHtml })
   await selectFixtureText(page, '测')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = dictionaryPopup(page)
   await expect(popup.getByText('缺少内部 class 的回退文本')).toBeVisible()
@@ -794,10 +795,10 @@ test('keeps the source link on parse failure and uses two-stage outside dismissa
     词: '<html><body><section data-section="其他解释">无目标区</section></body></html>',
   })
   await selectFixtureText(page, '词')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = dictionaryPopup(page)
-  await expect(popup.getByText('Could not parse this entry.')).toBeVisible()
+  await expect(popup.getByText(msg('dictionary.parse_error'))).toBeVisible()
   await popup.locator('[data-dictionary-external="zdic"]').click()
   await expect
     .poll(async () => (await getDictionaryMockState(page)).openedExternalUrls)
@@ -805,19 +806,19 @@ test('keeps the source link on parse failure and uses two-stage outside dismissa
 
   await page.mouse.click(2, 2)
   await expect(popup).toBeHidden()
-  await expect(page.getByRole('button', { name: 'Dictionary', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: msg('menu.dictionary'), exact: true })).toBeVisible()
   await page.mouse.click(2, 2)
-  await expect(page.getByRole('button', { name: 'Dictionary', exact: true })).toBeHidden()
+  await expect(page.getByRole('button', { name: msg('menu.dictionary'), exact: true })).toBeHidden()
 })
 
 test('treats a Han Dian 404 as a compact missing entry without retry', async ({ page }) => {
   await setupDictionaryReader(page, {}, 0, {}, [], {}, {}, {}, 'zh-CN', {}, { 测: 404 })
   await selectFixtureText(page, '测')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = dictionaryPopup(page)
   const section = popup.locator('[data-dictionary-source-id="zdic"]')
-  await expect(section.getByText('No definition found.')).toBeVisible()
+  await expect(section.getByText(msg('dictionary.no_result'))).toBeVisible()
   await expect(section.locator('[data-dictionary-retry]')).toHaveCount(0)
   await expect(section.locator('[data-dictionary-external="zdic"]')).toBeVisible()
   expect(await section.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(100)
@@ -852,10 +853,10 @@ test('retries a failed online source without displacing the scrolled dictionary 
     },
   )
   await selectFixtureText(page, '测')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = dictionaryPopup(page)
-  await expect(popup.getByText('Could not parse this entry.')).toBeVisible()
+  await expect(popup.getByText(msg('dictionary.parse_error'))).toBeVisible()
   const retry = popup.locator('[data-dictionary-retry="zdic"]')
   const source = popup.locator('[data-dictionary-external="zdic"]')
   await expect(retry).toBeVisible()
@@ -886,7 +887,7 @@ test('retries a failed online source without displacing the scrolled dictionary 
 test('keeps the external action available while disabling empty source navigation', async ({ page }) => {
   await setupDictionaryReader(page, {}, 0, { sample: [] }, [], {}, {}, {}, 'en-US')
   await selectFixtureText(page, 'sample')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = dictionaryPopup(page)
   const section = popup.locator('[data-dictionary-source-id="merriam-webster"]')
@@ -894,7 +895,7 @@ test('keeps the external action available while disabling empty source navigatio
     name: 'Merriam-Webster',
     exact: true,
   })
-  await expect(section.getByText('No definition found.')).toBeVisible()
+  await expect(section.getByText(msg('dictionary.no_result'))).toBeVisible()
   const source = section.locator('[data-dictionary-external="merriam-webster"]')
   await expect(section.locator('[data-dictionary-retry]')).toHaveCount(0)
   await expect(source).toBeVisible()
@@ -908,13 +909,13 @@ test('keeps the external action available while disabling empty source navigatio
 test('back cancels an active native lookup and restores the action menu', async ({ page }) => {
   await setupDictionaryReader(page, { 天: characterHtml }, 2_000)
   await selectFixtureText(page, '天')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect.poll(async () => (await getDictionaryMockState(page)).dictionaryRequests.length).toBeGreaterThan(0)
   const latestSessionId = (await getDictionaryMockState(page)).dictionaryRequests.at(-1)!.sessionId
   await dictionaryBackButton(page).click()
 
-  await expect(page.getByRole('button', { name: 'Dictionary', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: msg('menu.dictionary'), exact: true })).toBeVisible()
   await expect
     .poll(async () => {
       const state = await getDictionaryMockState(page)
@@ -927,7 +928,7 @@ test('keeps the larger popup inside a narrow horizontal reader', async ({ page }
   await page.setViewportSize({ width: 620, height: 520 })
   await setupDictionaryReader(page, { 天: characterHtml })
   await selectFixtureText(page, '天')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = dictionaryPopup(page)
   await expect(popup.getByText('高处的空间。', { exact: true })).toBeVisible()
@@ -1043,7 +1044,7 @@ test('looks up an English selection only in Merriam-Webster', async ({ page }) =
     ],
   })
   await selectFixtureText(page, 'sky')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = dictionaryPopup(page)
   await expect(popup.getByRole('heading', { name: 'Merriam-Webster' })).toBeVisible()
@@ -1124,12 +1125,12 @@ test('keeps empty dictionary sources visible beside successful results', async (
     'en-US',
   )
   await selectFixtureText(page, 'sample')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = dictionaryPopup(page)
   await expect(popup.getByText('a synthetic local explanation', { exact: true })).toBeVisible()
   await expect(popup.getByRole('heading', { name: 'Merriam-Webster', exact: true })).toBeVisible()
-  await expect(popup.getByText('No definition found.', { exact: true })).toBeVisible()
+  await expect(popup.getByText(msg('dictionary.no_result'), { exact: true })).toBeVisible()
   const empty = popup.getByRole('button', {
     name: 'Merriam-Webster',
     exact: true,
@@ -1167,7 +1168,7 @@ test('uses fixed source buttons to locate flat results and track scrolling', asy
     'en-US',
   )
   await selectFixtureText(page, 'sample')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = dictionaryPopup(page)
   const online = popup.getByRole('button', {
@@ -1229,7 +1230,7 @@ test('looks up an English selection in an enabled StarDict and releases its sess
     },
   })
   await selectFixtureText(page, 'sky')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = page.getByRole('dialog')
   await expect(popup.getByRole('heading', { name: 'Oxford English-Chinese Dictionary' })).toBeVisible()
@@ -1272,7 +1273,7 @@ test('MDict follows an exact mixed-script internal key in the originating dictio
     },
   )
   await selectFixtureText(page, '合成查询')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = dictionaryPopup(page)
   const frame = popup.locator('[data-dictionary-rich-content]').contentFrame()
@@ -1346,7 +1347,7 @@ test('MDict keeps internal links in a source-only bounded detail history', async
     },
   )
   await selectFixtureText(page, '词')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = page.getByRole('dialog')
   await expect(popup.getByRole('heading', { name: 'Synthetic Chinese MDict' })).toBeVisible()
@@ -1486,7 +1487,7 @@ test('MDict keeps readable text when an optional stylesheet is missing', async (
     },
   )
   await selectFixtureText(page, '词')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = dictionaryPopup(page)
   const frame = popup.locator('[data-dictionary-rich-content]').contentFrame()
@@ -1538,7 +1539,7 @@ test('MDict does not enlarge or navigate linked images', async ({ page }) => {
     },
   )
   await selectFixtureText(page, '图片词')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
 
   const popup = dictionaryPopup(page)
   const frame = popup.locator('[data-dictionary-rich-content]').contentFrame()
@@ -1574,13 +1575,13 @@ test('outside dismissal releases the local dictionary session before showing act
     },
   )
   await selectFixtureText(page, '词')
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
   await expect(dictionaryPopup(page).locator('[data-dictionary-rich-content]')).toBeVisible()
   const sessionId = (await getDictionaryMockState(page)).mdictRequests[0]!.sessionId
 
   await page.mouse.click(2, 2)
 
-  await expect(page.getByRole('button', { name: 'Dictionary', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: msg('menu.dictionary'), exact: true })).toBeVisible()
   await expect
     .poll(async () => (await getDictionaryMockState(page)).cancelledDictionarySessions.includes(sessionId))
     .toBe(true)

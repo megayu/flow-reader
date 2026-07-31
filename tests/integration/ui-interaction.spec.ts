@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 
+import { msg } from '../support/i18n'
 import { getFullscreenState, getStoredSettings, installTauriMock } from '../support/tauri-mock'
 
 const settingsShortcut = process.platform === 'darwin' ? 'Meta+Comma' : 'Control+Comma'
@@ -7,7 +8,7 @@ const accentColor = '#E11D48'
 
 async function openSettings(page: Page) {
   await page.keyboard.press(settingsShortcut)
-  const dialog = page.getByRole('dialog')
+  const dialog = page.getByRole('dialog', { name: msg('settings.title') })
   await expect(dialog).toBeVisible()
   return dialog
 }
@@ -111,21 +112,23 @@ test('loads without client exceptions and persists accent color settings', async
 
   await page.reload()
   await expect(page.locator('#layout')).toBeVisible()
-  await expect(page.getByRole('button', { name: /Settings/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: msg('settings.title') })).toBeVisible()
   expect(runtimeErrors).toEqual([])
 
   const dialog = await openSettings(page)
-  await expect(dialog.getByText(/Settings/)).toBeVisible()
-  await expect(dialog.getByRole('heading', { name: /Basic/ })).toBeVisible()
-  await expect(dialog.getByText(/Accent Color/)).toBeVisible()
+  await expect(dialog.getByText(msg('settings.title'))).toBeVisible()
+  await expect(dialog.getByRole('heading', { name: msg('settings.tabs.basic') })).toBeVisible()
+  await expect(dialog.getByText(msg('theme.source_color'))).toBeVisible()
 
   await dialog.getByRole('button', { name: /#0EA5E9/i }).click()
   await page.locator('.react-colorful').locator('..').getByRole('textbox').fill(accentColor)
-  await page.getByRole('button', { name: /Apply/ }).click()
+  await page.getByRole('button', { name: msg('color_picker.apply') }).click()
 
   await expect(dialog.getByRole('button', { name: new RegExp(accentColor, 'i') })).toBeVisible()
   await expect.poll(() => getStoredAccentColor(page)).toBe(accentColor)
 
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.react-colorful')).toBeHidden()
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
   expect(runtimeErrors).toEqual([])
@@ -133,12 +136,16 @@ test('loads without client exceptions and persists accent color settings', async
 
 test('configures one shared main language, secondary language, and translation service', async ({ page }) => {
   const dialog = await openSettings(page)
-  await dialog.getByRole('button', { name: 'Translation', exact: true }).click()
+  await dialog.getByRole('button', { name: msg('settings.tabs.translation'), exact: true }).click()
 
-  await expect(dialog.getByRole('combobox', { name: 'Main Language' })).toContainText('简体中文')
-  await expect(dialog.getByRole('combobox', { name: 'Secondary Language' })).toContainText('English')
-  await expect(dialog.getByText('Default Translation Service')).toBeVisible()
-  await dialog.getByRole('combobox', { name: 'Main Language' }).click()
+  await expect(dialog.getByRole('combobox', { name: msg('settings.translation.main_language') })).toContainText(
+    '简体中文',
+  )
+  await expect(dialog.getByRole('combobox', { name: msg('settings.translation.secondary_language') })).toContainText(
+    'English',
+  )
+  await expect(dialog.getByText(msg('settings.translation.default_provider'))).toBeVisible()
+  await dialog.getByRole('combobox', { name: msg('settings.translation.main_language') }).click()
   await expect(page.getByRole('option')).toHaveText([
     '简体中文',
     'English',
@@ -173,17 +180,17 @@ test('app UI font size changes app chrome without changing reading font size', a
   await expect.poll(() => readCssVariable(page, '--app-font-size-md')).toBe('15px')
 
   const fontSizeInput = dialog.getByRole('textbox', {
-    name: /App Font Size/,
+    name: msg('settings.ui_font_size'),
   })
-  const basicTab = dialog.getByRole('button', { name: /Basic/ })
+  const basicTab = dialog.getByRole('button', { name: msg('settings.tabs.basic') })
 
   await expect(fontSizeInput).toHaveValue('15')
   await fontSizeInput.focus()
   await page.keyboard.press('9')
   await expect(fontSizeInput).toHaveValue('15')
 
-  await dialog.getByRole('button', { name: /App Font Size \+/ }).click()
-  await dialog.getByRole('button', { name: /App Font Size \+/ }).click()
+  await dialog.getByRole('button', { name: `${msg('settings.ui_font_size')} +` }).click()
+  await dialog.getByRole('button', { name: `${msg('settings.ui_font_size')} +` }).click()
 
   await expect.poll(() => readCssVariable(page, '--app-font-size-md')).toBe('17px')
   await expect(basicTab).toHaveCSS('font-size', '17px')
@@ -210,7 +217,7 @@ test('app UI font size changes app chrome without changing reading font size', a
 test('keeps original-file references opt-in and persists the import mode', async ({ page }) => {
   const dialog = await openSettings(page)
   const checkbox = dialog.getByRole('checkbox', {
-    name: 'Do Not Copy Source Files on Import',
+    name: msg('settings.source_storage'),
   })
 
   await expect(checkbox).not.toBeChecked()
@@ -239,7 +246,7 @@ test('keeps original-file references opt-in and persists the import mode', async
 
 test('zen mode action is visibly disabled in library mode', async ({ page }) => {
   const zenButton = page.getByRole('button', {
-    name: /Enter Zen Mode/,
+    name: msg('zen.enter'),
   })
 
   await expect(zenButton).toBeVisible()
@@ -258,8 +265,8 @@ test('zen mode action is visibly disabled in library mode', async ({ page }) => 
 })
 
 test('fullscreen shortcut works in library mode without an open tab', async ({ page }) => {
-  await expect(page.getByRole('button', { name: /Enter Fullscreen/ })).toBeVisible()
-  await expect(page.getByRole('button', { name: /Return to Reading/ })).toBeDisabled()
+  await expect(page.getByRole('button', { name: msg('fullscreen.enter') })).toBeVisible()
+  await expect(page.getByRole('button', { name: msg('mode.return_reader') })).toBeDisabled()
   await expect.poll(() => getFullscreenState(page)).toBe(false)
 
   await page.keyboard.press('f')
@@ -270,37 +277,37 @@ test('fullscreen shortcut works in library mode without an open tab', async ({ p
 })
 
 test('theme color pickers close before the background theme panel on escape', async ({ page }) => {
-  await page.getByRole('button', { name: /Background Theme/ }).click()
-  await expect(page.getByText(/Accent Color/)).toBeVisible()
+  await page.getByRole('button', { name: msg('theme.title') }).click()
+  await expect(page.getByText(msg('theme.source_color'))).toBeVisible()
 
-  await page.getByRole('button', { name: /Accent Color/ }).click()
+  await page.getByRole('button', { name: msg('theme.source_color') }).click()
   await expect(page.locator('.react-colorful').locator('..').getByRole('textbox')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.locator('.react-colorful').locator('..').getByRole('textbox')).toBeHidden()
-  await expect(page.getByText(/Accent Color/)).toBeVisible()
+  await expect(page.getByText(msg('theme.source_color'))).toBeVisible()
   await page.keyboard.press('Escape')
-  await expect(page.getByText(/Accent Color/)).toBeHidden()
+  await expect(page.getByText(msg('theme.source_color'))).toBeHidden()
 
-  await page.getByRole('button', { name: /Background Theme/ }).click()
-  await expect(page.getByText(/Accent Color/)).toBeVisible()
+  await page.getByRole('button', { name: msg('theme.title') }).click()
+  await expect(page.getByText(msg('theme.source_color'))).toBeVisible()
 
   await page
     .locator('[data-flow-theme-panel]')
-    .getByRole('button', { name: /Custom/ })
+    .getByRole('button', { name: msg('theme.preset.custom') })
     .click()
   await expect(page.locator('.react-colorful').locator('..').getByRole('textbox')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.locator('.react-colorful').locator('..').getByRole('textbox')).toBeHidden()
-  await expect(page.getByText(/Accent Color/)).toBeVisible()
+  await expect(page.getByText(msg('theme.source_color'))).toBeVisible()
   await page.keyboard.press('Escape')
-  await expect(page.getByText(/Accent Color/)).toBeHidden()
+  await expect(page.getByText(msg('theme.source_color'))).toBeHidden()
 })
 
 test('disables browser autofill on app input controls', async ({ page }) => {
   const dialog = await openSettings(page)
 
-  await dialog.getByRole('button', { name: /TXT/ }).click()
-  await dialog.getByRole('button', { name: /Basic/ }).click()
+  await dialog.getByRole('button', { name: msg('settings.tabs.txt') }).click()
+  await dialog.getByRole('button', { name: msg('settings.tabs.basic') }).click()
   await dialog.getByRole('button', { name: /#0EA5E9/i }).click()
   await expect(page.locator('.react-colorful').locator('..').getByRole('textbox')).toBeVisible()
 
@@ -341,10 +348,10 @@ test('disables browser autofill on app input controls', async ({ page }) => {
 test('TXT import rules preserve enter input and persist by line', async ({ page }) => {
   const dialog = await openSettings(page)
 
-  await dialog.getByRole('button', { name: /TXT/ }).click()
+  await dialog.getByRole('button', { name: msg('settings.tabs.txt') }).click()
 
   const groupRules = dialog.getByRole('textbox', {
-    name: /Group Rules/,
+    name: msg('settings.txt_import.group_rules'),
   })
   const previousGroupPatterns = await getStoredGroupPatterns(page)
 
@@ -382,7 +389,7 @@ test('TXT import rules preserve enter input and persist by line', async ({ page 
 
   await dialog
     .getByRole('textbox', {
-      name: /Chapter Rules/,
+      name: msg('settings.txt_import.chapter_rules'),
     })
     .focus()
 

@@ -1,15 +1,16 @@
 import { expect, test } from '@playwright/test'
 
 import type { LocalDictionaryRecord } from '../../src/dictionary/native'
+import { msg } from '../support/i18n'
 import { getLocalDictionaryMockState, getStoredSettings, installTauriMock } from '../support/tauri-mock'
 
 const testApiKey = 'test-only-mw-key'
 
 async function openDictionarySettings(page: import('@playwright/test').Page) {
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: msg('settings.title') }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible()
-  await dialog.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await dialog.getByRole('button', { name: msg('settings.tabs.dictionary'), exact: true }).click()
   return dialog
 }
 
@@ -85,10 +86,10 @@ test('shows every dictionary source in one reorderable persisted list', async ({
 
   await expect(sources).toHaveCount(3)
   await expect(sources.nth(0)).toContainText('汉典')
-  await expect(sources.nth(0)).toContainText('Online')
+  await expect(sources.nth(0)).toContainText(msg('settings.dictionary.online'))
   await expect(sources.nth(0)).toContainText('中文')
   await expect(sources.nth(1)).toContainText('Merriam-Webster')
-  await expect(sources.nth(1)).toContainText('Online')
+  await expect(sources.nth(1)).toContainText(msg('settings.dictionary.online'))
   await expect(sources.nth(2)).toContainText('Fixture Lexicon')
 
   const sidebar = dialog.locator('aside')
@@ -140,7 +141,7 @@ test('adds one local dictionary from an ifo or mdx master-file chooser', async (
   })
   await page.goto('/')
   const dialog = await openDictionarySettings(page)
-  await dialog.getByRole('button', { name: 'Add local dictionary' }).click()
+  await dialog.getByRole('button', { name: msg('settings.dictionary.local_add') }).click()
 
   await expect(dialog.getByText('Oxford Test')).toBeVisible()
   const state = await getLocalDictionaryMockState(page)
@@ -171,7 +172,7 @@ test('manages local dictionary order, status, language, enablement, relocation, 
   })
   await page.goto('/')
   const dialog = await openDictionarySettings(page)
-  await expect(dialog.getByText('Source unavailable')).toBeVisible()
+  await expect(dialog.getByText(msg('settings.dictionary.local_status.missing'))).toBeVisible()
   await expect(dialog.getByText('Available', { exact: true })).toHaveCount(0)
 
   const alphaRow = dialog.locator(`[data-local-dictionary-id="${alpha.id}"]`)
@@ -293,9 +294,9 @@ test('dismisses open settings dropdowns before closing settings', async ({ page 
   await installTauriMock(page, { localDictionaries: [dictionary] })
   await page.goto('/')
   const dialog = await openDictionarySettings(page)
-  await dialog.getByRole('button', { name: 'Basic', exact: true }).click()
+  await dialog.getByRole('button', { name: msg('settings.tabs.basic'), exact: true }).click()
 
-  await dialog.getByRole('combobox', { name: 'Language' }).click()
+  await dialog.getByRole('combobox', { name: msg('settings.language') }).click()
   const options = page.locator('[data-slot="select-content"]')
   await expect(options).toBeVisible()
   await page.mouse.click(4, 4)
@@ -303,7 +304,7 @@ test('dismisses open settings dropdowns before closing settings', async ({ page 
   await expect(options).toHaveCount(0)
   await expect(dialog).toBeVisible()
 
-  await dialog.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await dialog.getByRole('button', { name: msg('settings.tabs.dictionary'), exact: true }).click()
   const row = dialog.locator(`[data-local-dictionary-id="${dictionary.id}"]`)
   await row.getByRole('button').first().click()
   await row.locator('input').first().fill('Draft name')
@@ -325,7 +326,7 @@ test('shows master-file validation errors without adding a partial record', asyn
   })
   await page.goto('/')
   const dialog = await openDictionarySettings(page)
-  await dialog.getByRole('button', { name: 'Add local dictionary' }).click()
+  await dialog.getByRole('button', { name: msg('settings.dictionary.local_add') }).click()
   await expect(dialog.getByRole('alert')).toContainText('Choose a StarDict .ifo or MDict .mdx master file.')
   expect((await getLocalDictionaryMockState(page)).localDictionaries).toEqual([])
 })

@@ -4,6 +4,7 @@ import { expect, type Page, test } from '@playwright/test'
 
 import type { BookRecord, ReadingStatus } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
+import { msg } from '../support/i18n'
 import { getStoredSettings, installTauriMock } from '../support/tauri-mock'
 
 const longAuthor = 'Beatrice Longname With An Extraordinarily Extended Family Name That Should Ellipsize'
@@ -100,7 +101,7 @@ async function openLibraryFilterPanel(page: Page) {
   for (let attempt = 0; attempt < 4; attempt += 1) {
     if (await panel.isVisible()) return
 
-    await page.getByRole('button', { name: /^Filter$/ }).click()
+    await page.getByRole('button', { name: msg('home.library_filter.title') }).click()
     await page.waitForTimeout(100)
   }
 
@@ -179,7 +180,7 @@ test('library author filters pin authors and refresh when books change', async (
 
   await page
     .getByTestId('library-author-section')
-    .getByRole('button', { name: /^Reset$/ })
+    .getByRole('button', { name: msg('home.library_filter.reset') })
     .click()
   await expect(page.getByText('Beta Read')).toBeVisible()
   await expect(page.getByText('Gamma Read')).toBeVisible()
@@ -187,32 +188,41 @@ test('library author filters pin authors and refresh when books change', async (
   await authorChip(page, longAuthor).click({ button: 'right' })
   await expect(
     page.getByTestId('library-author-context-menu').getByRole('menuitem', {
-      name: /^Pin$/,
+      name: msg('home.library_filter.pin_author'),
+      exact: true,
     }),
   ).toBeVisible()
   await expect(
     page.getByTestId('library-author-context-menu').getByRole('menuitem', {
-      name: /^Unpin$/,
+      name: msg('home.library_filter.unpin_author'),
+      exact: true,
     }),
   ).toHaveCount(0)
-  await page.getByTestId('library-author-context-menu').getByRole('menuitem', { name: /^Pin$/ }).click()
+  await page
+    .getByTestId('library-author-context-menu')
+    .getByRole('menuitem', { name: msg('home.library_filter.pin_author'), exact: true })
+    .click()
   await expect.poll(() => authorNames(page)).toEqual([longAuthor, 'Anne Able'])
   await expect.poll(() => pinnedAuthors(page)).toEqual([longAuthor])
 
   await authorChip(page, 'Anne Able').click({ button: 'right' })
-  await page.getByTestId('library-author-context-menu').getByRole('menuitem', { name: /^Pin$/ }).click()
+  await page
+    .getByTestId('library-author-context-menu')
+    .getByRole('menuitem', { name: msg('home.library_filter.pin_author'), exact: true })
+    .click()
   await expect.poll(() => authorNames(page)).toEqual(['Anne Able', longAuthor])
   await expect.poll(() => pinnedAuthors(page)).toEqual(['Anne Able', longAuthor])
 
   await authorChip(page, 'Anne Able').click({ button: 'right' })
   await expect(
     page.getByTestId('library-author-context-menu').getByRole('menuitem', {
-      name: /^Pin$/,
+      name: msg('home.library_filter.pin_author'),
+      exact: true,
     }),
   ).toBeVisible()
   await page
     .getByTestId('library-author-context-menu')
-    .getByRole('menuitem', { name: /^Unpin$/ })
+    .getByRole('menuitem', { name: msg('home.library_filter.unpin_author'), exact: true })
     .click()
   await expect.poll(() => authorNames(page)).toEqual([longAuthor, 'Anne Able'])
   await expect.poll(() => pinnedAuthors(page)).toEqual([longAuthor])
@@ -221,13 +231,13 @@ test('library author filters pin authors and refresh when books change', async (
     .locator('ul.grid [data-flow-library-book-card]')
     .filter({ hasText: 'Beta Read' })
     .click({ button: 'right' })
-  await page.getByRole('menuitem', { name: /^Delete$/ }).click()
-  await page.getByRole('menuitem', { name: /^Confirm delete$/ }).click()
+  await page.getByRole('menuitem', { name: msg('home.context.delete') }).click()
+  await page.getByRole('menuitem', { name: msg('home.context.confirm_delete') }).click()
   await expect(page.getByText('Beta Read')).toHaveCount(0)
   await expect(authorChip(page, longAuthor)).toHaveCount(0)
   await expect.poll(() => pinnedAuthors(page)).toEqual([longAuthor])
 
-  await page.getByRole('button', { name: /^Import$/ }).click()
+  await page.getByRole('button', { name: msg('home.import') }).click()
   await expect(page.getByText('Delta Read')).toBeVisible()
   await expect(authorChip(page, 'Dorian Delta')).toBeVisible()
 
@@ -247,7 +257,7 @@ test('library filter panel clears filters on Escape without closing', async ({ p
   await expect(page.getByText('Gamma Read')).toBeVisible()
   await expect(page.getByText('Beta Read')).toHaveCount(0)
 
-  await page.getByRole('button', { name: /^Clear$/ }).hover()
+  await page.getByRole('button', { name: msg('home.library_filter.clear') }).hover()
   await expect(page.getByRole('tooltip').locator('kbd')).toContainText(['Esc'])
   await page.mouse.move(500, 500)
 

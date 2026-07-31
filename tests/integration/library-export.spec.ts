@@ -4,9 +4,12 @@ import { expect, test } from '@playwright/test'
 
 import type { BookRecord } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
+import { msg } from '../support/i18n'
 import { getExportedBooks, installTauriMock } from '../support/tauri-mock'
 
 const settingsShortcut = process.platform === 'darwin' ? 'Meta+Comma' : 'Control+Comma'
+const exportTxt = `${msg('home.context.export')} TXT`
+const exportEpub = `${msg('home.context.export')} EPUB`
 
 const modifiedBook: BookRecord = createTestBook({
   id: 'txt-book',
@@ -38,7 +41,7 @@ test('library modified-book indicator is disabled by default and can be enabled'
   await page.keyboard.press(settingsShortcut)
   const dialog = page.getByRole('dialog')
   const checkbox = dialog.getByRole('checkbox', {
-    name: 'Show Library Export Reminder',
+    name: msg('settings.library_modified_indicator'),
   })
   await expect(checkbox).not.toBeChecked()
   await checkbox.click()
@@ -58,14 +61,14 @@ test('exporting either TXT format clears the shared indicator but preserves per-
 
   const indicator = page.locator('[data-flow-library-book-card] svg.lucide-download')
   await expect(indicator).toBeVisible()
-  await page.getByText('Correctable').click({ button: 'right' })
-  await expect(page.getByRole('menuitem', { name: /Export TXT\s*\*/ })).toBeVisible()
-  await page.getByRole('menuitem', { name: /Export EPUB\s*\*/ }).click()
+  await page.getByText('Correctable', { exact: true }).click({ button: 'right' })
+  await expect(page.getByRole('menuitem', { name: new RegExp(`${exportTxt}\\s*\\*`) })).toBeVisible()
+  await page.getByRole('menuitem', { name: new RegExp(`${exportEpub}\\s*\\*`) }).click()
 
   await expect(indicator).toHaveCount(0)
-  await page.getByText('Correctable').click({ button: 'right' })
-  await expect(page.getByRole('menuitem', { name: /Export TXT\s*\*/ })).toBeVisible()
-  await expect(page.getByRole('menuitem', { name: 'Export EPUB' })).toBeVisible()
+  await page.getByText('Correctable', { exact: true }).click({ button: 'right' })
+  await expect(page.getByRole('menuitem', { name: new RegExp(`${exportTxt}\\s*\\*`) })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: exportEpub })).toBeVisible()
 })
 
 test('TXT book context menu exports TXT and EPUB with per-format dirty markers', async ({ page }) => {
@@ -98,13 +101,13 @@ test('TXT book context menu exports TXT and EPUB with per-format dirty markers',
   await page.goto('/')
 
   await expect(page.getByText('Correctable')).toBeVisible()
-  await page.getByText('Correctable').click({ button: 'right' })
+  await page.getByText('Correctable', { exact: true }).click({ button: 'right' })
 
   const exportTxtMenuItem = page.getByRole('menuitem', {
-    name: /Export TXT\s*\*/,
+    name: new RegExp(`${exportTxt}\\s*\\*`),
   })
   await expect(exportTxtMenuItem).toBeVisible()
-  await expect(page.getByRole('menuitem', { name: 'Export EPUB' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: exportEpub })).toBeVisible()
 
   await exportTxtMenuItem.click()
   await expect
@@ -117,7 +120,7 @@ test('TXT book context menu exports TXT and EPUB with per-format dirty markers',
       },
     ])
 
-  await page.getByText('Correctable').click({ button: 'right' })
-  await expect(page.getByRole('menuitem', { name: 'Export TXT' })).toBeVisible()
-  await expect(page.getByRole('menuitem', { name: 'Export EPUB' })).toBeVisible()
+  await page.getByText('Correctable', { exact: true }).click({ button: 'right' })
+  await expect(page.getByRole('menuitem', { name: exportTxt })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: exportEpub })).toBeVisible()
 })

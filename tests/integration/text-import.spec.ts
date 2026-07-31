@@ -3,6 +3,7 @@ import path from 'node:path'
 import { expect, test } from '@playwright/test'
 
 import { createTestBook } from '../support/book-fixtures'
+import { msg } from '../support/i18n'
 import { getImportedTextSelections, installTauriMock } from '../support/tauri-mock'
 
 test('TXT import dialog sends edited title and author metadata', async ({ page }) => {
@@ -49,13 +50,13 @@ test('TXT import dialog sends edited title and author metadata', async ({ page }
   })
   await page.goto('/')
 
-  await page.getByRole('button', { name: 'Import' }).click()
+  await page.getByRole('button', { name: msg('home.import') }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
-  await expect(page.getByText('TXT Import Preview')).toBeVisible()
+  await expect(page.getByText(msg('text_import.title'))).toBeVisible()
 
-  await page.getByRole('textbox', { exact: true, name: 'Book title' }).fill('Edited Title')
-  await page.getByRole('textbox', { exact: true, name: 'Author' }).fill('Edited Author')
-  await page.getByRole('button', { name: 'Import Selected' }).click()
+  await page.getByRole('textbox', { exact: true, name: msg('text_import.book_title') }).fill('Edited Title')
+  await page.getByRole('textbox', { exact: true, name: msg('text_import.creator') }).fill('Edited Author')
+  await page.getByRole('button', { name: msg('text_import.import_selected') }).click()
 
   await expect
     .poll(() => getImportedTextSelections(page))

@@ -3,6 +3,7 @@ import path from 'node:path'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 
 import type { BookRecord } from '../../src/storage'
+import { msg } from '../support/i18n'
 
 const aliceEpubPath = path.resolve('packages/epubjs/test/fixtures/alice.epub')
 const alicePackageUrl = '/test-assets/alice.epub'
@@ -800,7 +801,7 @@ async function waitForHealthyReaderLayout(
           ? true
           : layout.sidebarVisible === options.sidebarVisible &&
             (!options.sidebarVisible ||
-              (layout.sidebar.includes('TOC') &&
+              (layout.sidebar.toLocaleLowerCase().includes(msg('toc.title').toLocaleLowerCase()) &&
                 layout.sidebar.includes('Tab Layout A') &&
                 layout.sidebar.includes('Tab Layout B')))
       const headerOk = options.header === false ? true : (options.header ?? /Down The Rabbit-Hole/).test(layout.header)
@@ -919,7 +920,7 @@ async function expectHealthyLayoutWithSidebar(page: Page, sidebarVisible: boolea
 }
 
 async function toggleTocSidebar(page: Page) {
-  await page.locator('.ActivityBar button[aria-label="TOC"]').click()
+  await page.locator(`.ActivityBar button[aria-label="${msg('toc.title')}"]`).click()
 }
 
 async function ensureTocSidebarVisibility(page: Page, visible: boolean, options: { header?: RegExp | false } = {}) {
@@ -1705,7 +1706,7 @@ test('applies overlay and reserved scrollbar width to the matching sidebars', as
   await page.setViewportSize({ width: 1000, height: 1200 })
   await openFixtureBook(page, 0)
   if (!(await sidebar.isVisible())) {
-    await activityBar.getByRole('button', { name: 'TOC' }).click()
+    await activityBar.getByRole('button', { name: msg('toc.title') }).click()
   }
   await expect(sidebar).toBeVisible()
 
@@ -1763,7 +1764,7 @@ test('applies overlay and reserved scrollbar width to the matching sidebars', as
     }))
     tab.activeResultID = 'result-0-0'
   })
-  await activityBar.getByRole('button', { name: 'Search' }).click()
+  await activityBar.getByRole('button', { name: msg('search.title') }).click()
   const searchScroll = sidebar.locator('[data-pane-scroll]').last()
   const resultCount = searchScroll.getByText('55', { exact: true }).first()
   await expect(resultCount).toBeVisible()
@@ -1780,7 +1781,7 @@ test('applies overlay and reserved scrollbar width to the matching sidebars', as
       definitions: Array.from({ length: 20 }, (_, index) => `Synthetic definition ${index + 1}`),
     })
   })
-  await activityBar.getByRole('button', { name: 'Annotation' }).click()
+  await activityBar.getByRole('button', { name: msg('annotation.title') }).click()
   for (const scroll of await sidebar.locator('[data-pane-scroll]').all()) {
     await expectFullWidthScroll(scroll)
   }
@@ -1791,7 +1792,7 @@ test('applies overlay and reserved scrollbar width to the matching sidebars', as
   await expectFullWidthRow(annotationScroll, annotationRow, annotationAction)
   await expectVisibleOverlayScrollbar(annotationScroll)
 
-  await activityBar.getByRole('button', { name: 'Image' }).click()
+  await activityBar.getByRole('button', { name: msg('image.title') }).click()
   const imageScroll = sidebar.locator('[data-pane-scroll]').last()
   const imageRow = imageScroll.locator('.list-row').first()
   const imageBadge = imageRow.locator('.rounded-full')
@@ -1888,7 +1889,7 @@ test('lets TOC and annotation splits reach both bounds without overflowing', asy
   }
 
   await expectBoundaryDragInBounds()
-  await page.locator('.ActivityBar button[aria-label="Annotation"]').click()
+  await page.locator(`.ActivityBar button[aria-label="${msg('annotation.title')}"]`).click()
   await expectBoundaryDragInBounds()
 })
 
@@ -1933,11 +1934,11 @@ test('normalizes typography number fields when editing ends', async ({ page }) =
     await expect(field).toHaveValue(expected)
   }
 
-  await setAndBlur('Zoom', '0', '1')
-  await setAndBlur('Font Size', '40', '28')
-  await setAndBlur('Font Weight', '155', '200')
-  await setAndBlur('Line Height', '0.5', '1')
-  await setAndBlur('First Line Indent', '-2', '0')
+  await setAndBlur(msg('typography.zoom'), '0', '1')
+  await setAndBlur(msg('typography.font_size'), '40', '28')
+  await setAndBlur(msg('typography.font_weight'), '155', '200')
+  await setAndBlur(msg('typography.line_height'), '0.5', '1')
+  await setAndBlur(msg('typography.text_indent'), '-2', '0')
 })
 
 test('toggles page appearance without changing reader pagination geometry', async ({ page }) => {
@@ -1951,12 +1952,12 @@ test('toggles page appearance without changing reader pagination geometry', asyn
   const content = activePane.locator('[data-flow-reader-content]')
   const paneRoot = activePane.locator('[data-flow-page-appearance]')
 
-  await expect(sidebar.getByText('Page Appearance', { exact: true })).toBeVisible()
+  await expect(sidebar.getByText(msg('typography.page_appearance'), { exact: true })).toBeVisible()
   await expect(paneRoot).toHaveCount(0)
   await installBookTabRuntimeCounters(page)
   await resetBookTabRuntimeCounters(page)
 
-  await sidebar.getByRole('button', { name: 'Cards', exact: true }).click()
+  await sidebar.getByRole('button', { name: msg('typography.page_appearance.cards'), exact: true }).click()
   await expect(paneRoot).toHaveAttribute('data-flow-page-appearance', 'cards')
   await expect(content).toHaveAttribute('data-flow-reader-spread', 'double')
 
@@ -2009,11 +2010,11 @@ test('toggles page appearance without changing reader pagination geometry', asyn
   })
   expect(darkCardGeometry.shadow).toContain('0px 6px 18px')
 
-  await sidebar.getByRole('button', { name: 'Cards', exact: true }).click()
+  await sidebar.getByRole('button', { name: msg('typography.page_appearance.cards'), exact: true }).click()
   await expect(paneRoot).toHaveCount(0)
   await expect(content.locator('[data-flow-reader-page-decoration]')).toHaveCount(0)
 
-  await sidebar.getByRole('button', { name: 'Book', exact: true }).click()
+  await sidebar.getByRole('button', { name: msg('typography.page_appearance.book'), exact: true }).click()
   await expect(paneRoot).toHaveAttribute('data-flow-page-appearance', 'book')
   await expect(content.locator('[data-flow-reader-page-seam]')).toHaveCSS('display', 'block')
   const bookDecoration = await content.evaluate((element) => {
@@ -2045,7 +2046,7 @@ test('toggles page appearance without changing reader pagination geometry', asyn
   expect(bookDecoration.seamBackground).toContain('linear-gradient')
   expect(bookDecoration.seamWidth).toBe('96px')
 
-  await sidebar.getByRole('button', { name: 'Divider', exact: true }).click()
+  await sidebar.getByRole('button', { name: msg('typography.page_appearance.divider'), exact: true }).click()
   await expect(paneRoot).toHaveAttribute('data-flow-page-appearance', 'divider')
   const dividerGeometry = await content.evaluate((element) => {
     const seam = element.querySelector('[data-flow-reader-page-seam]')
@@ -2069,11 +2070,11 @@ test('toggles page appearance without changing reader pagination geometry', asyn
     resizeRendition: 0,
   })
 
-  await sidebar.getByRole('button', { name: 'Single Page', exact: true }).click()
+  await sidebar.getByRole('button', { name: msg('typography.page_view.single_page'), exact: true }).click()
   await expect(content).toHaveAttribute('data-flow-reader-spread', 'single')
   await expect(content.locator('[data-flow-reader-page-seam]')).toHaveCSS('display', 'none')
 
-  await sidebar.getByRole('button', { name: 'Divider', exact: true }).click()
+  await sidebar.getByRole('button', { name: msg('typography.page_appearance.divider'), exact: true }).click()
   await expect(paneRoot).toHaveCount(0)
 })
 
@@ -2414,7 +2415,7 @@ test('[vertical-rl] places a TOC chapter start in the physical right slot', asyn
     exact: true,
   })
   if (!(await target.isVisible())) {
-    await page.locator('.ActivityBar button[aria-label="TOC"]').click()
+    await page.locator(`.ActivityBar button[aria-label="${msg('toc.title')}"]`).click()
   }
   await expect(target).toBeVisible()
   await target.click()
@@ -2587,7 +2588,7 @@ test('[vertical-rl] advances chapter find within the visible page before turning
   const initial = await readVerticalReadingState(page)
 
   await page.keyboard.press(findShortcut)
-  const input = page.getByRole('textbox', { name: /Find in chapter/ })
+  const input = page.getByRole('textbox', { name: msg('shortcuts.chapter_find') })
   await expect(input).toBeVisible()
   await input.fill('VERTICAL-CHAPTER-01-01')
   await expect(page.getByText('1/3', { exact: true })).toBeVisible()
@@ -2621,7 +2622,7 @@ test('[vertical-rl] wraps chapter find navigation in both directions', async ({ 
   await openVerticalFixtureBook(page)
 
   await page.keyboard.press(findShortcut)
-  const input = page.getByRole('textbox', { name: /Find in chapter/ })
+  const input = page.getByRole('textbox', { name: msg('shortcuts.chapter_find') })
   await input.fill('VERTICAL-CHAPTER-01-01')
   await expect(page.getByText('1/3', { exact: true })).toBeVisible()
 
@@ -2657,7 +2658,7 @@ test('[vertical-rl] turns to the next spread for an off-page chapter find result
   expect(search.firstOffPageIndex).toBeGreaterThan(search.initialIndex)
 
   await page.keyboard.press(findShortcut)
-  const input = page.getByRole('textbox', { name: /Find in chapter/ })
+  const input = page.getByRole('textbox', { name: msg('shortcuts.chapter_find') })
   await input.fill(query)
   await expect(
     page.getByText(`${search.initialIndex + 1}/${search.pageIndexes.length}`, {
@@ -2680,7 +2681,7 @@ test('[vertical-rl] turns to the next spread for an off-page chapter find result
 test('[vertical-rl] keeps a clicked sidebar search result active and visible', async ({ page }) => {
   await openVerticalFixtureBook(page)
   await page.locator('.ActivityBar button[aria-label="Search"]').click()
-  const input = page.getByRole('textbox', { name: 'Search', exact: true })
+  const input = page.getByRole('textbox', { name: msg('search.title'), exact: true })
   await input.fill('VERTICAL-CHAPTER-01-29')
 
   const result = listRow(page, 'VERTICAL-CHAPTER-01-29')
@@ -2722,7 +2723,7 @@ test('[vertical-rl] locates and expands the current search-result chapter', asyn
 
   const sidebar = page.locator('.SideBar')
   const searchScroll = sidebar.locator('[data-pane-scroll]').last()
-  const locate = sidebar.getByRole('button', { name: 'Locate Current Page' })
+  const locate = sidebar.getByRole('button', { name: msg('action.locate_current') })
 
   await setSearchResults(3)
   await searchScroll.evaluate((element) => {
@@ -3174,8 +3175,8 @@ test('[vertical-rl] keeps the selection menu beside the selection', async ({ pag
     )
   })
 
-  await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible()
-  const result = await page.evaluate(() => {
+  await expect(page.getByRole('button', { name: msg('menu.copy') })).toBeVisible()
+  const result = await page.evaluate((copyLabel) => {
     const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
       (candidate) => candidate.getBoundingClientRect().width > 0,
@@ -3184,7 +3185,7 @@ test('[vertical-rl] keeps the selection menu beside the selection', async ({ pag
     const selectionRect = selection?.rangeCount ? selection.getRangeAt(0).getBoundingClientRect() : undefined
     const frameRect = frame?.getBoundingClientRect()
     const copyButton = Array.from(pane?.querySelectorAll('button') ?? []).find(
-      (button) => button.getAttribute('aria-label') === 'Copy',
+      (button) => button.getAttribute('aria-label') === copyLabel,
     )
     const menu = copyButton?.closest('[data-flow-keyboard-capture="true"]')
     const menuRect = menu?.getBoundingClientRect()
@@ -3214,7 +3215,7 @@ test('[vertical-rl] keeps the selection menu beside the selection', async ({ pag
         menuRect.bottom <= contentRect.bottom,
       beside: menuRect.right <= outerSelection.left || menuRect.left >= outerSelection.right,
     }
-  })
+  }, msg('menu.copy'))
 
   expect(result.inside).toBe(true)
   expect(result.overlaps).toBe(false)
@@ -3252,7 +3253,7 @@ test('[vertical-rl] keeps the dictionary popup inside the reader without repagin
     )
   })
 
-  await page.getByRole('button', { name: 'Dictionary', exact: true }).click()
+  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
   const popup = page.getByRole('dialog')
   await expect(popup).toBeVisible()
   await expect(popup.getByText('用于浮层布局测试的合成释义。', { exact: true })).toBeVisible()
@@ -3317,11 +3318,11 @@ test('[vertical-rl] closes the selection menu before opening chapter find', asyn
     )
   })
 
-  await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible()
+  await expect(page.getByRole('button', { name: msg('menu.copy') })).toBeVisible()
   await page.keyboard.press(findShortcut)
 
-  await expect(page.getByRole('button', { name: 'Copy' })).toBeHidden()
-  await expect(page.getByRole('textbox', { name: /Find in chapter/ })).toBeFocused()
+  await expect(page.getByRole('button', { name: msg('menu.copy') })).toBeHidden()
+  await expect(page.getByRole('textbox', { name: msg('shortcuts.chapter_find') })).toBeFocused()
 })
 
 test('guards reader nav path expansion against cyclic parent links', async ({ page }) => {
@@ -3794,7 +3795,7 @@ test('long-book keeps chapter find bar out of the reading content', async ({ pag
 
   await page.keyboard.press(findShortcut)
 
-  const findInput = page.getByRole('textbox', { name: /Find in chapter/ })
+  const findInput = page.getByRole('textbox', { name: msg('shortcuts.chapter_find') })
   await expect(findInput).toBeVisible()
 
   const metrics = await page.evaluate(() => {
@@ -4495,8 +4496,8 @@ test('[vertical-rl] preserves double-page and panel runtime across tab reorderin
 
   const activityBar = page.locator('.ActivityBar')
   const sidebar = page.locator('.SideBar')
-  await activityBar.getByRole('button', { name: 'Image' }).click()
-  await sidebar.getByRole('button', { name: 'All', exact: true }).click()
+  await activityBar.getByRole('button', { name: msg('image.title') }).click()
+  await sidebar.getByRole('button', { name: msg('image.filter.all'), exact: true }).click()
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -4505,7 +4506,7 @@ test('[vertical-rl] preserves double-page and panel runtime across tab reorderin
     )
     .toBe(true)
 
-  await activityBar.getByRole('button', { name: 'Typography' }).click()
+  await activityBar.getByRole('button', { name: msg('typography.title') }).click()
   await expect(sidebar.locator('input[name="Font Size"]')).toHaveValue('18')
   await expect(page.locator('[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]')).toHaveAttribute(
     'data-flow-reader-spread',
@@ -4559,21 +4560,21 @@ test('[vertical-rl] preserves double-page and panel runtime across tab reorderin
     }),
   )
 
-  await activityBar.getByRole('button', { name: 'Search' }).click()
-  await expect(sidebar.getByRole('textbox', { name: 'Search' })).toHaveValue('VERTICAL-CHAPTER-01-29')
-  await activityBar.getByRole('button', { name: 'Annotation' }).click()
+  await activityBar.getByRole('button', { name: msg('search.title') }).click()
+  await expect(sidebar.getByRole('textbox', { name: msg('search.title') })).toHaveValue('VERTICAL-CHAPTER-01-29')
+  await activityBar.getByRole('button', { name: msg('annotation.title') }).click()
   await expect(sidebar.getByText('FLOW-RUNTIME-DEFINITION-C')).toBeVisible()
-  await activityBar.getByRole('button', { name: 'Image' }).click()
+  await activityBar.getByRole('button', { name: msg('image.title') }).click()
   await expect
     .poll(() =>
       sidebar
-        .getByRole('button', { name: 'All', exact: true })
+        .getByRole('button', { name: msg('image.filter.all'), exact: true })
         .evaluate((element) => element.className.includes('bg-(--flow-accent-bg)')),
     )
     .toBe(true)
-  await activityBar.getByRole('button', { name: 'Typography' }).click()
+  await activityBar.getByRole('button', { name: msg('typography.title') }).click()
   await expect(sidebar.locator('input[name="Font Size"]')).toHaveValue('18')
-  await activityBar.getByRole('button', { name: 'TOC' }).click()
+  await activityBar.getByRole('button', { name: msg('toc.title') }).click()
   await expect(sidebar.getByText('VERTICAL-CHAPTER-01')).toBeVisible()
 })
 

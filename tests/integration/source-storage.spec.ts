@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 
 import type { BookRecord } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
+import { msg } from '../support/i18n'
 import { installTauriMock } from '../support/tauri-mock'
 
 const missingArchiveBook: BookRecord = createTestBook({
@@ -69,9 +70,9 @@ test('replaces the archive badge and warns when its referenced source is missing
 
   await card.click()
   const alert = page.getByRole('alert').filter({
-    hasText: 'Original file unavailable',
+    hasText: msg('home.source_unavailable'),
   })
-  await expect(alert).toContainText('Original file unavailable')
+  await expect(alert).toContainText(msg('home.source_unavailable'))
   await expect(alert).toContainText('moved or deleted')
   await expect(page.locator('[data-flow-reader]')).toHaveCount(0)
 })
@@ -89,7 +90,7 @@ test('closes a referenced archive tab and notifies when its source fails during 
   await card.click()
 
   const alert = page.getByRole('alert').filter({
-    hasText: 'Original file unavailable',
+    hasText: msg('home.source_unavailable'),
   })
   await expect(alert).toBeVisible()
   await expect(alert).toContainText('changed since it was imported')
@@ -108,7 +109,7 @@ test('keeps a missing source distinct when it disappears during open', async ({ 
 
   await page.locator('[data-flow-library-book-card]').click()
   const alert = page.getByRole('alert').filter({
-    hasText: 'Original file unavailable',
+    hasText: msg('home.source_unavailable'),
   })
   await expect(alert).toContainText('moved or deleted')
   await expect(alert).not.toContainText('permissions')
@@ -127,7 +128,7 @@ test('shows source changed instead of archive mode on the cover', async ({ page 
 
   await card.click()
   const alert = page.getByRole('alert').filter({
-    hasText: 'Original file unavailable',
+    hasText: msg('home.source_unavailable'),
   })
   await expect(alert).toContainText('changed since it was imported')
 })

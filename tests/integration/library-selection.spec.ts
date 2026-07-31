@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test'
 
 import type { BookRecord } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
+import { msg } from '../support/i18n'
 import { installTauriMock } from '../support/tauri-mock'
 
 function createBook(index: number): BookRecord {
@@ -35,7 +36,7 @@ async function setupLibrary(page: Page) {
   await page.goto('/')
   await expect(page.locator('#layout')).toBeVisible()
   await expect(bookCard(page, 1)).toBeVisible()
-  await page.getByRole('button', { name: /^Select$/ }).click()
+  await page.getByRole('button', { name: msg('home.select'), exact: true }).click()
 }
 
 function bookCard(page: Page, index: number) {
@@ -103,11 +104,11 @@ test('escape clears selection and exits selection mode before clearing filters',
 
   await page.keyboard.press('Escape')
   await expectSelectedCount(page, 0)
-  await expect(page.getByRole('button', { name: /^Cancel$/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: msg('home.cancel'), exact: true })).toBeVisible()
   await expect(authorFilter).toHaveAttribute('aria-pressed', 'true')
 
   await page.keyboard.press('Escape')
-  await expect(page.getByRole('button', { name: /^Select$/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: msg('home.select'), exact: true })).toBeVisible()
   await expect(selectedCount(page)).toHaveCount(0)
   await expect(authorFilter).toHaveAttribute('aria-pressed', 'true')
 
