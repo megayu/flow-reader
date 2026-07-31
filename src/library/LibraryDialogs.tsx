@@ -3,6 +3,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react'
 
 import { cleanBookText, getBookDisplayTitle } from '../book'
 import { Button as UiButton } from '../components/ui/button'
+import { ConfirmDialog } from '../components/ui/confirm-dialog'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import { formatLocalDirectoryForDisplay } from '../dictionary/path'
@@ -24,10 +25,6 @@ import {
 interface BookDialogProps {
   book: BookRecord
   onClose: () => void
-}
-
-function selectInputOnFocus(e: React.FocusEvent<HTMLInputElement>) {
-  e.currentTarget.select()
 }
 
 const tagPickerChipClassName = 'h-8 max-w-full justify-start gap-1.5 px-3 text-base leading-none'
@@ -97,7 +94,7 @@ const TagSelectionEditor: React.FC<TagSelectionEditorProps> = ({
           <span className="text-muted-foreground mb-1.5 block leading-none font-medium">{t('edit.new_tag')}</span>
           <Input
             value={newTagName}
-            onChange={(e) => setNewTagName(e.target.value)}
+            onValueChange={setNewTagName}
             onKeyDown={(e) => {
               if (e.key !== 'Enter') return
 
@@ -276,7 +273,7 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose
         if (!open) onClose()
       }}
     >
-      <DialogContent data-flow-keyboard-capture="true" className="w-[min(32rem,calc(100vw-2rem))] max-w-none text-base">
+      <DialogContent className="w-[min(32rem,calc(100vw-2rem))] max-w-none text-base">
         <DialogHeader>
           <DialogTitle>{t('batch_tags.title')}</DialogTitle>
         </DialogHeader>
@@ -289,7 +286,7 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose
           onSelectTag={selectTag}
           onTemporaryTagsChange={setTemporaryTags}
         />
-        <DialogFooter className="-mx-4 mt-1 -mb-4 px-4 py-3">
+        <DialogFooter>
           <UiButton type="button" variant="secondary" onClick={onClose}>
             {t('cancel')}
           </UiButton>
@@ -318,32 +315,14 @@ export const DeleteSelectedBooksDialog: React.FC<DeleteSelectedBooksDialogProps>
   const t = useTranslation('home')
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose()
-      }}
-    >
-      <DialogContent data-flow-keyboard-capture="true" className="w-[min(24rem,calc(100vw-2rem))] max-w-none text-base">
-        <DialogHeader>
-          <DialogTitle>{t('delete_selected.title')}</DialogTitle>
-        </DialogHeader>
-        <div className="text-muted-foreground leading-relaxed">{t('delete_selected.message', count)}</div>
-        <DialogFooter className="-mx-4 mt-1 -mb-4 px-4 py-3">
-          <UiButton
-            type="button"
-            variant="secondary"
-            className="focus:border-ring focus:ring-ring focus:ring-1 focus:ring-inset focus-visible:ring-1 focus-visible:ring-inset"
-            onClick={onClose}
-          >
-            {t('cancel')}
-          </UiButton>
-          <UiButton type="button" variant="destructive" onClick={onConfirm}>
-            {t('delete')}
-          </UiButton>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <ConfirmDialog
+      title={t('delete_selected.title')}
+      description={t('delete_selected.message', count)}
+      cancelLabel={t('cancel')}
+      confirmLabel={t('delete')}
+      onClose={onClose}
+      onConfirm={onConfirm}
+    />
   )
 }
 
@@ -389,7 +368,7 @@ export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
         if (!open) onClose()
       }}
     >
-      <DialogContent data-flow-keyboard-capture="true" className="w-[min(32rem,calc(100vw-2rem))] max-w-none text-base">
+      <DialogContent className="w-[min(32rem,calc(100vw-2rem))] max-w-none text-base">
         <DialogHeader>
           <DialogTitle>{t('batch_tags.title')}</DialogTitle>
         </DialogHeader>
@@ -401,7 +380,7 @@ export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
           onSelectTag={selectTag}
           onTemporaryTagsChange={setTemporaryTags}
         />
-        <DialogFooter className="-mx-4 mt-1 -mb-4 px-4 py-3">
+        <DialogFooter>
           <UiButton type="button" variant="secondary" onClick={onClose}>
             {t('cancel')}
           </UiButton>
@@ -440,12 +419,10 @@ export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
       }}
     >
       <DialogContent
-        data-flow-keyboard-capture="true"
         className="w-[min(28rem,calc(100vw-2rem))] max-w-none text-base"
         onOpenAutoFocus={(event) => {
           event.preventDefault()
           titleRef.current?.focus()
-          titleRef.current?.select()
         }}
       >
         <form
@@ -465,8 +442,7 @@ export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
               <Input
                 ref={titleRef}
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onFocus={selectInputOnFocus}
+                onValueChange={setTitle}
                 className="focus-visible:border-input text-base focus-visible:ring-0"
               />
             </label>
@@ -474,13 +450,12 @@ export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
               <span className="text-muted-foreground mb-1.5 block leading-none font-medium">{t('edit.creator')}</span>
               <Input
                 value={creator}
-                onChange={(e) => setCreator(e.target.value)}
-                onFocus={selectInputOnFocus}
+                onValueChange={setCreator}
                 className="focus-visible:border-input text-base focus-visible:ring-0"
               />
             </label>
           </div>
-          <DialogFooter className="-mx-4 mt-1 -mb-4 px-4 py-3">
+          <DialogFooter>
             <UiButton type="button" variant="secondary" onClick={onClose}>
               {t('cancel')}
             </UiButton>
@@ -522,10 +497,7 @@ export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({ book, cover, onC
         if (!open) onClose()
       }}
     >
-      <DialogContent
-        data-flow-keyboard-capture="true"
-        className="max-h-[calc(100vh-4rem)] w-[min(46rem,calc(100vw-2rem))] max-w-none gap-0 overflow-hidden p-0 text-base"
-      >
+      <DialogContent className="max-h-[calc(100vh-4rem)] w-[min(46rem,calc(100vw-2rem))] max-w-none gap-0 overflow-hidden p-0 text-base">
         <div className="grid grid-cols-[12rem_minmax(0,1fr)] gap-5 p-5 pr-12">
           <div className="w-full">
             {cover && (

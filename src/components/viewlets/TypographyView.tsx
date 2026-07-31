@@ -1,5 +1,4 @@
 import { invoke } from '@tauri-apps/api/core'
-import clsx from 'clsx'
 import { MinusIcon, PlusIcon, XIcon } from 'lucide-react'
 import { type ComponentProps, useCallback, useEffect, useRef, useState } from 'react'
 
@@ -12,9 +11,9 @@ import { type PageAppearance, type TypographyConfiguration, useSettings } from '
 import { getBodyTypographyBaseline } from '../../styles'
 import { PaneView, type PaneViewProps } from '../base/PaneView'
 import { IconButton } from '../IconButton'
-import { Button as UiButton } from '../ui/button'
 import { Combobox, type ComboboxOption } from '../ui/combobox'
-import { Input } from '../ui/input'
+import { InputGroup, InputGroupActions, InputGroupInput } from '../ui/input-group'
+import { SegmentedControl, SegmentedControlItem } from '../ui/segmented-control'
 
 type TextAlignOption = NonNullable<TypographyConfiguration['textAlign']>
 
@@ -298,29 +297,24 @@ function SegmentedField<T extends string>({
   return (
     <div className="flex flex-col">
       <FieldLabel name={name} />
-      <div className="text-muted-foreground ring-border bg-background flex h-8 items-center overflow-hidden rounded-lg p-0.5 ring-1 ring-inset">
+      <SegmentedControl className="flex w-full bg-background">
         {options.map((option) => {
           const selected = option.value === value
           const inherited = value === undefined && option.value === inheritedValue
 
           return (
-            <UiButton
+            <SegmentedControlItem
               key={option.value ?? 'default'}
-              type="button"
-              variant={selected ? 'default' : 'ghost'}
-              size="sm"
-              className={clsx(
-                'h-full flex-1 rounded-lg px-2 text-base leading-none',
-                selected || 'text-muted-foreground',
-                inherited && !selected && 'bg-muted ring-border ring-1 ring-inset',
-              )}
+              selected={selected}
+              inherited={inherited}
+              className="flex-1 px-2 leading-none"
               onClick={() => onChange(selected && unsetOnSelected ? undefined : option.value)}
             >
               {option.label}
-            </UiButton>
+            </SegmentedControlItem>
           )
         })}
-      </div>
+      </SegmentedControl>
     </div>
   )
 }
@@ -449,7 +443,6 @@ interface NumberFieldProps extends Omit<ComponentProps<'input'>, 'onChange' | 'v
 }
 const NumberField: React.FC<NumberFieldProps> = ({ value, baseValue, onChange, ...props }) => {
   const ref = useRef<HTMLInputElement>(null)
-  const editStartValueRef = useRef<string | undefined>(undefined)
   const actionT = useTranslation('action')
   const typographyT = useTranslation('typography')
   const min = parseNumberInputProp(props.min)
@@ -481,18 +474,14 @@ const NumberField: React.FC<NumberFieldProps> = ({ value, baseValue, onChange, .
   return (
     <div className="flex flex-col">
       {typeof props.name === 'string' && <FieldLabel name={props.name} />}
-      <div className="border-input bg-background focus-within:border-ring focus-within:ring-ring/50 flex h-8 items-center rounded-lg border transition-colors focus-within:ring-3">
-        <Input
+      <InputGroup>
+        <InputGroupInput
           ref={ref}
           type="number"
           id={typeof props.name === 'string' ? props.name : undefined}
           placeholder={typographyT('default_value')}
           defaultValue={value}
-          className="h-full flex-1 rounded-none border-0 bg-transparent px-2.5 py-0 leading-none focus-visible:border-transparent focus-visible:ring-0"
           // lazy render
-          onFocus={(e) => {
-            editStartValueRef.current = e.currentTarget.value
-          }}
           onBlur={(e) => {
             const normalized = normalizeNumberFieldValue(e.target.value, {
               min: props.min,
@@ -500,21 +489,11 @@ const NumberField: React.FC<NumberFieldProps> = ({ value, baseValue, onChange, .
               step: props.step,
             })
             e.target.value = normalized === undefined ? '' : String(normalized)
-            editStartValueRef.current = undefined
             onChange(normalized)
-          }}
-          onKeyDown={(e) => {
-            if (e.key !== 'Escape' || e.nativeEvent.isComposing || editStartValueRef.current === undefined) {
-              return
-            }
-
-            e.preventDefault()
-            e.stopPropagation()
-            e.currentTarget.value = editStartValueRef.current
           }}
           {...props}
         />
-        <div className="flex shrink-0 items-center gap-0.5 pr-1">
+        <InputGroupActions>
           <IconButton
             className="text-muted-foreground flex size-6 items-center justify-center"
             disabled={stepDownDisabled}
@@ -546,8 +525,8 @@ const NumberField: React.FC<NumberFieldProps> = ({ value, baseValue, onChange, .
               }}
             />
           </span>
-        </div>
-      </div>
+        </InputGroupActions>
+      </InputGroup>
     </div>
   )
 }

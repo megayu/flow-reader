@@ -169,6 +169,13 @@ Use the 2, 4, 6, 8, 10, 12, 16, and 20 px spacing rhythm:
   compact context.
 - Keep text, prefix/suffix controls, increment/decrement buttons, and chevrons
   vertically centered.
+- Let shared text-editing primitives own focus and Escape editing sessions;
+  consumers configure exceptions instead of reimplementing the behavior.
+- Compose a text field and its inline actions as one control boundary and focus
+  state.
+- Let one dismissal interaction affect only the innermost active editor or
+  overlay. Escape, outside pointer, and focus return must unwind nested editors,
+  selects, menus, popovers, and dialogs one level at a time.
 - Give long option collections the useful available desktop height and a visible
   scrollbar when content overflows. Do not force a font list into a short generic
   menu.

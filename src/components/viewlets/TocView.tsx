@@ -16,7 +16,7 @@ import { readerPageTooltipContentStyle } from '../appTooltipStyles'
 import { BookTooltipContent } from '../BookTooltipContent'
 import { Pane, PaneView, type PaneViewProps } from '../base/PaneView'
 import { StateLayer } from '../base/StateLayer'
-import { EMPTY_ROW_LABEL, TREE_INDENT_SIZE, Twisty } from '../Row'
+import { EMPTY_ROW_LABEL, Row } from '../Row'
 
 export const TocView: React.FC<PaneViewProps> = (props) => {
   const active = props.active ?? true
@@ -305,7 +305,6 @@ const TocRow: React.FC<TocRowProps> = memo(
     const { label, subitems, href = '' } = item
     const hasSubitems = !!subitems?.length
     const title = label.trim()
-    const indent = Math.max(0, depth - 1) * TREE_INDENT_SIZE
     const toggleItem = () => {
       tab.toggleNavItem({
         id: item.id,
@@ -335,58 +334,23 @@ const TocRow: React.FC<TocRowProps> = memo(
       }
     }
 
-    const row = (
-      <button
-        type="button"
+    return (
+      <Row
+        as="button"
+        active={active}
+        activeClassName={activeClassName}
         aria-label={title}
-        className={clsx(
-          'list-row group/row focus:ring-ring relative flex w-full cursor-pointer appearance-none items-center border-0 bg-transparent p-0 text-left outline-none focus:ring-1 focus:ring-inset',
-          active && activeClassName,
-        )}
-        style={{
-          paddingLeft: indent,
-          paddingRight: 0,
-          height: LIST_ITEM_SIZE,
-        }}
+        className="w-full appearance-none border-0 bg-transparent p-0"
+        depth={depth}
+        emptyLabel={emptyLabel}
+        expanded={itemExpanded}
+        label={title}
         onClick={handleClick}
-      >
-        <StateLayer
-          className={clsx(
-            'transition-colors',
-            active ? 'group-hover/row:bg-(--flow-bg-active-hover)' : 'group-hover/row:bg-(--flow-bg-control-hover)',
-          )}
-        />
-        <Twisty
-          expanded={itemExpanded}
-          className={clsx(!hasSubitems && 'invisible')}
-          onClick={(e) => {
-            e.stopPropagation()
-            toggleItem()
-          }}
-        />
-        <div
-          className={clsx(
-            'relative z-10 flex h-full min-w-0 flex-1 items-center text-base leading-none',
-            title ? 'text-muted-foreground' : 'text-muted-foreground/60',
-          )}
-          style={{
-            marginLeft: 0,
-          }}
-        >
-          <span className="flex h-full min-w-0 items-center whitespace-nowrap">
-            <span className="block min-w-0 truncate">{title || emptyLabel}</span>
-          </span>
-        </div>
-        <div className="relative z-10 ml-auto flex h-full items-center" />
-      </button>
-    )
-
-    return title ? (
-      <AppTooltip contentStyle={readerPageTooltipContentStyle} label={title}>
-        {row}
-      </AppTooltip>
-    ) : (
-      row
+        subitems={subitems}
+        title={title || undefined}
+        toggle={toggleItem}
+        tooltipContentStyle={readerPageTooltipContentStyle}
+      />
     )
   },
 )

@@ -400,14 +400,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   useEffect(() => {
     if (!editing) return
 
-    const timer = window.setTimeout(() => {
-      const textarea = replacementRef.current
-      if (!textarea) return
-
-      const end = textarea.value.length
-      textarea.focus()
-      textarea.setSelectionRange(end, end)
-    })
+    const timer = window.setTimeout(() => replacementRef.current?.focus())
 
     return () => window.clearTimeout(timer)
   }, [editing])
@@ -528,6 +521,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           visibility: width && height ? 'visible' : 'hidden',
         }}
         role={view === 'dictionary' || view === 'translation' ? 'dialog' : undefined}
+        data-flow-escape-surface
         tabIndex={-1}
         onKeyDown={(e) => {
           e.stopPropagation()
@@ -574,16 +568,13 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           />
         ) : editing ? (
           <div className="space-y-2">
-            <textarea
+            <Textarea
               ref={replacementRef}
               name="replacement"
               aria-label={t('edit_text')}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
               defaultValue={replaceTarget?.selectedText ?? text}
-              className="textfield bg-background text-foreground scroll block h-40 w-68 resize-none px-1.5 py-1 text-base outline-none"
+              onExitEditing={cancelEditing}
+              className="textfield bg-background text-foreground scroll block h-40 min-h-0 w-68 resize-none rounded-none border-0 px-1.5 py-1 text-base outline-none focus-visible:border-transparent focus-visible:ring-1 focus-visible:ring-inset"
             />
             {replacementError && (
               <div className="text-destructive w-68 text-sm leading-snug">
@@ -604,6 +595,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             aria-label="notes"
             defaultValue={annotation?.notes}
             autoFocus
+            onExitEditing={cancelAnnotation}
             className="textfield bg-background text-muted-foreground scroll h-40 min-h-0 w-68 resize-none rounded-none border-0 px-1.5 py-1 text-base focus-visible:border-transparent focus-visible:ring-1 focus-visible:ring-inset"
           />
         ) : (

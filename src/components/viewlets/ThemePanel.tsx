@@ -15,13 +15,14 @@ import {
 } from '@/styles/theme'
 
 import { ColorPickerPopover } from '../ColorPickerPopover'
+import { ColorValueButton } from '../ColorValueButton'
+import { OverlayLayer } from '../ui/overlay-hierarchy'
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '../ui/popover'
 
 interface ThemePanelProps {
   onClose?: () => void
-  onPickerOpenChange?: (open: boolean) => void
 }
-export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose, onPickerOpenChange }) => {
+export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
   const [{ theme }, setSettings] = useSettings()
   const { accentColor, setAccentColor } = useAccentColor()
   const t = useTranslation('theme')
@@ -39,7 +40,6 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose, onPickerOpenCha
     customSessionActiveRef.current = false
     customSessionAppliedRef.current = true
     setCustomPickerOpen(false)
-    onPickerOpenChange?.(false)
     setSettings((prev) => ({
       ...prev,
       theme: {
@@ -72,7 +72,6 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose, onPickerOpenCha
     }
     setAccentPickerOpen(false)
     setCustomPickerOpen(true)
-    onPickerOpenChange?.(true)
     previewCustomBackground(customBackground)
   }
 
@@ -86,7 +85,6 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose, onPickerOpenCha
     customSessionActiveRef.current = false
     customSessionAppliedRef.current = false
     setCustomPickerOpen(false)
-    onPickerOpenChange?.(false)
   }
 
   const restorePreviousThemeOnUnmount = useEffectEvent(() => {
@@ -110,7 +108,6 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose, onPickerOpenCha
 
     if (accentPickerOpen) {
       setAccentPickerOpen(false)
-      onPickerOpenChange?.(false)
       return
     }
 
@@ -144,12 +141,22 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose, onPickerOpenCha
           data-flow-theme-panel
           className="text-muted-foreground ring-border relative z-100 w-80 rounded-xl bg-(--flow-bg-panel) p-3 text-base shadow-xl ring-1 ring-inset"
           onKeyDown={(event) => {
-            if (event.key !== 'Escape' || !accentPickerOpen) return
+            if (event.key !== 'Escape') return
 
             event.preventDefault()
             event.stopPropagation()
-            setAccentPickerOpen(false)
-            onPickerOpenChange?.(false)
+
+            if (customPickerOpen) {
+              restorePreviousTheme()
+              return
+            }
+
+            if (accentPickerOpen) {
+              setAccentPickerOpen(false)
+              return
+            }
+
+            onClose?.()
           }}
         >
           <div className="grid grid-cols-3 gap-2">
@@ -192,28 +199,22 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose, onPickerOpenCha
 
           <div className="border-border mt-3 flex items-center justify-between gap-3 border-t pt-3">
             <span className="text-muted-foreground text-base font-medium">{t('source_color')}</span>
-            <button
-              type="button"
+            <ColorValueButton
               aria-label={t('source_color')}
-              className="border-border text-foreground flex h-8 items-center gap-2 rounded-lg border bg-(--flow-bg-control) px-2 text-base transition-colors outline-none hover:bg-(--flow-bg-control-hover) focus-visible:ring-2 focus-visible:ring-(--flow-focus-ring)"
+              value={accentColor}
+              className="border-border text-foreground min-w-0 bg-(--flow-bg-control) px-2 hover:bg-(--flow-bg-control-hover) focus-visible:ring-2 focus-visible:ring-(--flow-focus-ring)"
+              swatchClassName="h-4"
               onClick={() => {
                 setCustomPickerOpen(false)
                 setAccentPickerOpen(true)
-                onPickerOpenChange?.(true)
               }}
-            >
-              <span
-                className="ring-border h-4 w-8 rounded-md ring-1 ring-inset"
-                style={{ backgroundColor: accentColor }}
-              />
-              <span className="font-mono text-base">{accentColor}</span>
-            </button>
+            />
           </div>
 
           <ThemePreview />
 
           {accentPickerOpen && (
-            <div className="absolute bottom-0 left-full z-110 ml-2">
+            <OverlayLayer className="absolute bottom-0 left-full z-110 ml-2">
               <ColorPickerPopover
                 value={accentColor}
                 defaultValue={defaultAccentColor}
@@ -221,14 +222,12 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose, onPickerOpenCha
                 onApply={(color) => {
                   setAccentColor(color)
                   setAccentPickerOpen(false)
-                  onPickerOpenChange?.(false)
                 }}
                 onCancel={() => {
                   setAccentPickerOpen(false)
-                  onPickerOpenChange?.(false)
                 }}
               />
-            </div>
+            </OverlayLayer>
           )}
         </div>
       </PopoverAnchor>
@@ -238,7 +237,8 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose, onPickerOpenCha
         align="end"
         sideOffset={8}
         avoidCollisions={false}
-        className="z-110 w-auto gap-0 bg-transparent p-0 shadow-none ring-0"
+        variant="bare"
+        className="z-110"
         onInteractOutside={(event) => {
           if (panelRef.current?.contains(event.target as Node)) event.preventDefault()
         }}
@@ -252,7 +252,6 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose, onPickerOpenCha
             customSessionActiveRef.current = false
             previewCustomBackground(color)
             setCustomPickerOpen(false)
-            onPickerOpenChange?.(false)
           }}
           onCancel={restorePreviousTheme}
         />

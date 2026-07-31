@@ -82,6 +82,7 @@ import { SplitView } from './base/SplitView'
 import { useSplitViewItem } from './base/splitViewContext'
 import { ReadingStatusIcon } from './ReadingStatusIcon'
 import { Button as UiButton } from './ui/button'
+import { ConfirmDialog } from './ui/confirm-dialog'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import { Input } from './ui/input'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from './ui/menu'
@@ -419,7 +420,6 @@ function useFullscreenAction() {
 
 function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProps) {
   const [themeOpen, setThemeOpen] = useState(false)
-  const themePickerOpenRef = useRef(false)
   const [viewMode, setViewMode] = useViewMode()
   const [zenMode, setZenMode] = useZenMode()
   const { focusedBookTab } = useReaderSnapshot()
@@ -523,34 +523,17 @@ function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProp
 
           if (name === 'theme') {
             return (
-              <Popover
-                key={name}
-                open={themeOpen}
-                onOpenChange={(open) => {
-                  setThemeOpen(open)
-                  if (!open) themePickerOpenRef.current = false
-                }}
-              >
+              <Popover key={name} open={themeOpen} onOpenChange={setThemeOpen}>
                 <PopoverTrigger asChild>{actionButton}</PopoverTrigger>
                 <PopoverContent
                   side="right"
                   align="end"
                   sideOffset={4}
                   collisionPadding={8}
-                  className="w-auto gap-0 rounded-xl bg-transparent p-0 shadow-none ring-0"
-                  onEscapeKeyDown={(event) => {
-                    if (themePickerOpenRef.current) event.preventDefault()
-                  }}
+                  variant="bare"
+                  className="rounded-xl"
                 >
-                  <ThemePanel
-                    onClose={() => {
-                      themePickerOpenRef.current = false
-                      setThemeOpen(false)
-                    }}
-                    onPickerOpenChange={(open) => {
-                      themePickerOpenRef.current = open
-                    }}
-                  />
+                  <ThemePanel onClose={() => setThemeOpen(false)} />
                 </PopoverContent>
               </Popover>
             )
@@ -942,15 +925,12 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                 ref={newTagInputRef}
                 aria-label={t('library_filter.new_tag')}
                 value={newTagName}
-                onChange={(e) => setNewTagName(e.target.value)}
+                onValueChange={setNewTagName}
+                onExitEditing={() => {
+                  setCreatingTag(false)
+                  setNewTagName('')
+                }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    e.preventDefault()
-                    setCreatingTag(false)
-                    setNewTagName('')
-                    return
-                  }
-
                   if (e.key !== 'Enter') return
 
                   e.preventDefault()
@@ -1271,12 +1251,10 @@ const EditLibraryTagDialog: React.FC<LibraryTagDialogProps> = ({ onClose, tag })
       }}
     >
       <DialogContent
-        data-flow-keyboard-capture="true"
         className="w-[min(24rem,calc(100vw-2rem))] max-w-none text-base"
         onOpenAutoFocus={(event) => {
           event.preventDefault()
           inputRef.current?.focus()
-          inputRef.current?.select()
         }}
       >
         <form
@@ -1297,16 +1275,17 @@ const EditLibraryTagDialog: React.FC<LibraryTagDialogProps> = ({ onClose, tag })
             <Input
               ref={inputRef}
               value={name}
-              onChange={(e) =>
+              focusBehavior="select-all"
+              onValueChange={(nextName) =>
                 setNameState((state) => ({
                   ...state,
-                  name: e.target.value,
+                  name: nextName,
                 }))
               }
               className="focus-visible:border-input text-base focus-visible:ring-0"
             />
           </label>
-          <DialogFooter className="-mx-4 mt-1 -mb-4 px-4 py-3">
+          <DialogFooter>
             <UiButton type="button" variant="secondary" onClick={onClose}>
               {t('cancel')}
             </UiButton>
@@ -1332,34 +1311,18 @@ const DeleteLibraryTagDialog: React.FC<DeleteLibraryTagDialogProps> = ({ onClose
   }
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose()
-      }}
-    >
-      <DialogContent data-flow-keyboard-capture="true" className="w-[min(24rem,calc(100vw-2rem))] max-w-none text-base">
-        <DialogHeader>
-          <DialogTitle>{t('library_filter.delete_tag')}</DialogTitle>
-        </DialogHeader>
-        <div className="text-muted-foreground leading-relaxed">
+    <ConfirmDialog
+      title={t('library_filter.delete_tag')}
+      description={
+        <>
           {t('library_filter.delete_tag_message')} <span className="text-foreground font-medium">{tag.name}</span>
-        </div>
-        <DialogFooter className="-mx-4 mt-1 -mb-4 px-4 py-3">
-          <UiButton
-            type="button"
-            variant="secondary"
-            className="focus:border-ring focus:ring-ring focus:ring-1 focus:ring-inset focus-visible:ring-1 focus-visible:ring-inset"
-            onClick={onClose}
-          >
-            {t('cancel')}
-          </UiButton>
-          <UiButton type="button" variant="destructive" onClick={remove}>
-            {t('library_filter.delete_tag')}
-          </UiButton>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+      cancelLabel={t('cancel')}
+      confirmLabel={t('library_filter.delete_tag')}
+      onClose={onClose}
+      onConfirm={remove}
+    />
   )
 }
 

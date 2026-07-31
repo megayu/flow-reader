@@ -5,11 +5,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { RenditionSpread } from '@flow/epubjs/rendition'
 import { normalizeHexColor } from '@/color'
 import { ColorPickerPopover } from '@/components/ColorPickerPopover'
+import { ColorValueButton } from '@/components/ColorValueButton'
 import { ShortcutChord } from '@/components/ShortcutChord'
 import { Button as UiButton } from '@/components/ui/button'
 import { Checkbox as UiCheckbox } from '@/components/ui/checkbox'
 import { DialogTitle } from '@/components/ui/dialog'
+import { InputGroup, InputGroupInput } from '@/components/ui/input-group'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { SegmentedControl, SegmentedControlItem } from '@/components/ui/segmented-control'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { openSupportedExternalUrl } from '@/externalLink'
@@ -24,11 +27,6 @@ import { orderedTargetLanguages, TRANSLATION_LANGUAGES, type TranslationLanguage
 
 import { LocalDictionarySettings } from './LocalDictionarySettings'
 
-interface SettingsPanelProps {
-  onPopupOpenChange: (open: boolean) => void
-  onPopupPointerDownOutside: (target: EventTarget | null) => void
-}
-
 type SettingsTab = 'basic' | 'reading' | 'dictionary' | 'translation' | 'txt' | 'shortcuts'
 const SETTINGS_TABS: SettingsTab[] = ['basic', 'reading', 'dictionary', 'translation', 'txt', 'shortcuts']
 const TEXTAREA_SIZE_STYLE = {
@@ -38,7 +36,7 @@ const TEXTAREA_SIZE_STYLE = {
 } satisfies CSSProperties
 const REGEX_TESTER_URL = 'https://regex101.com/?flavor=rust'
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onPopupOpenChange, onPopupPointerDownOutside }) => {
+export const SettingsPanel: React.FC = () => {
   const { locale, locales, setLocale } = useLocale()
   const [settings, setSettings] = useSettings()
   const t = useTranslation('settings')
@@ -92,17 +90,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onPopupOpenChange,
           {activeTab === 'basic' && (
             <div data-flow-settings-panel className="m-0 space-y-5">
               <Item title={t('language')}>
-                <Select
-                  value={locale}
-                  onOpenChange={onPopupOpenChange}
-                  onValueChange={(value) => setLocale(value as AppLocale)}
-                >
+                <Select value={locale} onValueChange={(value) => setLocale(value as AppLocale)}>
                   <SelectTrigger aria-label={t('language')} className="h-8 w-44 rounded-lg">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent
-                    onPointerDownOutside={(event) => onPopupPointerDownOutside(event.detail.originalEvent.target)}
-                  >
+                  <SelectContent>
                     {locales?.map((loc) => (
                       <SelectItem key={loc} value={loc}>
                         {localeNames[loc] || loc}
@@ -293,14 +285,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onPopupOpenChange,
               <LocalDictionarySettings settings={settings} setSettings={setSettings} />
             </div>
           )}
-          {activeTab === 'translation' && (
-            <TranslationSettings
-              settings={settings}
-              setSettings={setSettings}
-              onPopupOpenChange={onPopupOpenChange}
-              onPopupPointerDownOutside={onPopupPointerDownOutside}
-            />
-          )}
+          {activeTab === 'translation' && <TranslationSettings settings={settings} setSettings={setSettings} />}
           {activeTab === 'shortcuts' && (
             <div data-flow-settings-panel className="m-0">
               <ShortcutSettings />
@@ -315,13 +300,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onPopupOpenChange,
 function TranslationSettings({
   settings,
   setSettings,
-  onPopupOpenChange,
-  onPopupPointerDownOutside,
 }: {
   settings: ReturnType<typeof useSettings>[0]
   setSettings: ReturnType<typeof useSettings>[1]
-  onPopupOpenChange: (open: boolean) => void
-  onPopupPointerDownOutside: (target: EventTarget | null) => void
 }) {
   const t = useTranslation('settings.translation')
   const translation = settings.translation ?? {
@@ -332,7 +313,6 @@ function TranslationSettings({
   const languageSelect = (label: string, value: TranslationLanguage, key: 'mainLanguage' | 'secondaryLanguage') => (
     <Select
       value={value}
-      onOpenChange={onPopupOpenChange}
       onValueChange={(next) => {
         const language = next as TranslationLanguage
         setSettings((previous) => {
@@ -352,7 +332,7 @@ function TranslationSettings({
       <SelectTrigger aria-label={label} className="h-8 w-44 rounded-lg">
         <SelectValue />
       </SelectTrigger>
-      <SelectContent onPointerDownOutside={(event) => onPopupPointerDownOutside(event.detail.originalEvent.target)}>
+      <SelectContent>
         {orderedTargetLanguages(translation.mainLanguage, translation.secondaryLanguage).map((languageId) => (
           <SelectItem key={languageId} value={languageId}>
             {TRANSLATION_LANGUAGES.find((language) => language.id === languageId)?.label ?? languageId}
@@ -399,7 +379,6 @@ const PatternTextarea: React.FC<PatternTextareaProps> = ({ label, value, onChang
   const valueText = useMemo(() => value.join('\n'), [value])
   const [draft, setDraft] = useState(valueText)
   const focusedRef = useRef(false)
-  const focusedValueRef = useRef(valueText)
   const onChangeRef = useRef(onChange)
 
   useEffect(() => {
@@ -409,7 +388,6 @@ const PatternTextarea: React.FC<PatternTextareaProps> = ({ label, value, onChang
   useEffect(() => {
     if (!focusedRef.current) {
       setDraft(valueText)
-      focusedValueRef.current = valueText
     }
   }, [valueText])
 
@@ -420,21 +398,17 @@ const PatternTextarea: React.FC<PatternTextareaProps> = ({ label, value, onChang
       style={TEXTAREA_SIZE_STYLE}
       value={draft}
       spellCheck={false}
-      onChange={(event) => {
-        setDraft(event.target.value)
-      }}
+      onValueChange={setDraft}
       onFocus={() => {
         focusedRef.current = true
-        focusedValueRef.current = valueText
       }}
       onBlur={() => {
         focusedRef.current = false
         const patterns = parsePatternText(draft)
         const normalized = patterns.join('\n')
         setDraft(normalized)
-        if (normalized !== focusedValueRef.current) {
+        if (normalized !== valueText) {
           onChangeRef.current(patterns)
-          focusedValueRef.current = normalized
         }
       }}
     />
@@ -480,24 +454,22 @@ interface SegmentedFieldProps<T extends string> {
 
 function SegmentedField<T extends string>({ value, options, onChange }: SegmentedFieldProps<T>) {
   return (
-    <div className="text-muted-foreground ring-border inline-flex h-8 items-center overflow-hidden rounded-lg bg-(--flow-bg-control) p-0.5 ring-1 ring-inset">
+    <SegmentedControl>
       {options.map((option) => {
         const selected = option.value === value
 
         return (
-          <UiButton
+          <SegmentedControlItem
             key={option.value}
-            type="button"
-            variant={selected ? 'default' : 'ghost'}
-            size="sm"
-            className={clsx('h-full rounded-lg px-5 text-base', selected || 'text-muted-foreground')}
+            selected={selected}
+            className="px-5"
             onClick={() => onChange(option.value)}
           >
             {option.label}
-          </UiButton>
+          </SegmentedControlItem>
         )
       })}
-    </div>
+    </SegmentedControl>
   )
 }
 
@@ -520,24 +492,9 @@ const AccentColorSetting: React.FC = () => {
         }}
       >
         <PopoverTrigger asChild>
-          <button
-            type="button"
-            className="border-input text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 dark:bg-input/30 flex h-8 min-w-36 items-center gap-2 rounded-lg border bg-transparent px-2.5 text-left text-base leading-none transition-colors outline-none focus-visible:ring-3"
-          >
-            <span
-              className="ring-border h-5 w-8 shrink-0 rounded-md ring-1 ring-inset"
-              style={{ backgroundColor: color }}
-            />
-            <span className="font-mono text-base">{color}</span>
-          </button>
+          <ColorValueButton value={color} />
         </PopoverTrigger>
-        <PopoverContent
-          side="bottom"
-          align="end"
-          sideOffset={8}
-          collisionPadding={8}
-          className="z-110 w-auto gap-0 bg-transparent p-0 shadow-none ring-0"
-        >
+        <PopoverContent side="bottom" align="end" sideOffset={8} collisionPadding={8} variant="bare" className="z-110">
           <ColorPickerPopover
             value={accentColor}
             defaultValue="#0ea5e9"
@@ -576,18 +533,15 @@ const UiFontSizeSetting: React.FC = () => {
 
   return (
     <Item title={t('ui_font_size')} description={t('ui_font_size.description')}>
-      <div className="border-input focus-within:border-ring focus-within:ring-ring/50 dark:bg-input/30 flex h-8 w-24 overflow-hidden rounded-lg border bg-transparent transition-colors focus-within:ring-3">
-        <input
+      <InputGroup className="w-24 overflow-hidden bg-transparent">
+        <InputGroupInput
           type="text"
           aria-label={t('ui_font_size')}
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
           readOnly
           value={uiFontSize}
-          className="text-muted-foreground min-w-0 flex-1 bg-transparent px-2.5 text-base leading-none outline-none"
-          onFocus={(e) => e.currentTarget.select()}
+          escapeBehavior="none"
+          focusBehavior="select-all"
+          className="text-muted-foreground text-base outline-none"
         />
         <div className="border-input flex w-7 flex-col border-l">
           <button
@@ -609,7 +563,7 @@ const UiFontSizeSetting: React.FC = () => {
             ▼
           </button>
         </div>
-      </div>
+      </InputGroup>
     </Item>
   )
 }

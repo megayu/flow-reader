@@ -593,18 +593,14 @@ function DictionarySourceRow({
             <Input
               autoFocus
               type={showMerriamWebsterKey ? 'text' : 'password'}
-              className="w-full max-w-full pr-9"
+              className="focus-visible:border-input w-full max-w-full pr-9 focus-visible:ring-0"
               data-dictionary-inline-editor
               value={merriamWebsterKey}
-              onChange={(event) => onMerriamWebsterKeyChange(event.currentTarget.value)}
+              onValueChange={onMerriamWebsterKeyChange}
+              onExitEditing={onCancelEdit}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
                   onSaveEdit()
-                }
-                if (event.key === 'Escape') {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  onCancelEdit()
                 }
               }}
             />
@@ -685,19 +681,14 @@ function LocalDictionaryEditor({
     <div className="border-border mt-3 w-full max-w-full min-w-0 space-y-2 overflow-hidden border-t pt-3 pl-7">
       <Input
         autoFocus
-        className="w-full max-w-full"
+        className="focus-visible:border-input w-full max-w-full focus-visible:ring-0"
         data-dictionary-inline-editor
         data-local-dictionary-name-editor
         value={name}
-        onChange={(event) => onNameChange(event.currentTarget.value)}
-        onFocus={(event) => event.currentTarget.select()}
+        onValueChange={onNameChange}
+        onExitEditing={onCancel}
         onKeyDown={(event) => {
           if (event.key === 'Enter') onSave()
-          if (event.key === 'Escape') {
-            event.preventDefault()
-            event.stopPropagation()
-            onCancel()
-          }
         }}
       />
       <div className="grid w-full max-w-full min-w-0 grid-cols-4 gap-x-2 gap-y-0.5 overflow-hidden">

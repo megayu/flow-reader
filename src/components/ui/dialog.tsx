@@ -5,6 +5,10 @@ import type * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/utils'
 
+import { isEditableControlEscapeTarget } from './editable-control'
+import { OverlayHierarchyProvider } from './overlay-hierarchy'
+import { useOverlayHierarchy } from './overlayHierarchyContext'
+
 function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
 }
@@ -30,31 +34,50 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onEscapeKeyDown,
+  onInteractOutside,
+  ref: forwardedRef,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  const overlayHierarchy = useOverlayHierarchy(forwardedRef)
+
   return (
     <DialogPortal>
       <DialogOverlay />
-      <DialogPrimitive.Content
-        data-slot="dialog-content"
-        className={cn(
-          'bg-popover text-popover-foreground ring-foreground/10 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 fixed top-1/2 left-1/2 z-50 grid w-full max-w-sm -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl p-4 text-base ring-1 duration-100 outline-none',
-          className,
-        )}
-        {...props}
-      >
-        {children}
-        {showCloseButton && (
-          <DialogPrimitive.Close data-slot="dialog-close" asChild>
-            <Button variant="ghost" className="absolute top-2 right-2" size="icon-sm">
-              <XIcon />
-              <span className="sr-only">Close</span>
-            </Button>
-          </DialogPrimitive.Close>
-        )}
-      </DialogPrimitive.Content>
+      <OverlayHierarchyProvider value={overlayHierarchy.hierarchy}>
+        <DialogPrimitive.Content
+          ref={overlayHierarchy.ref}
+          data-slot="dialog-content"
+          data-flow-keyboard-capture="true"
+          className={cn(
+            'bg-popover text-popover-foreground ring-foreground/10 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 fixed top-1/2 left-1/2 z-50 grid w-full max-w-sm -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl p-4 text-base ring-1 duration-100 outline-none',
+            className,
+          )}
+          onEscapeKeyDown={(event) => {
+            onEscapeKeyDown?.(event)
+            if (overlayHierarchy.hasActiveChildLayer() || isEditableControlEscapeTarget(event.target)) {
+              event.preventDefault()
+            }
+          }}
+          onInteractOutside={(event) => {
+            onInteractOutside?.(event)
+            if (overlayHierarchy.hasActiveChildLayer()) event.preventDefault()
+          }}
+          {...props}
+        >
+          {children}
+          {showCloseButton && (
+            <DialogPrimitive.Close data-slot="dialog-close" asChild>
+              <Button variant="ghost" className="absolute top-2 right-2" size="icon-sm">
+                <XIcon />
+                <span className="sr-only">Close</span>
+              </Button>
+            </DialogPrimitive.Close>
+          )}
+        </DialogPrimitive.Content>
+      </OverlayHierarchyProvider>
     </DialogPortal>
   )
 }
@@ -68,7 +91,7 @@ function DialogFooter({ className, children, ...props }: React.ComponentProps<'d
     <div
       data-slot="dialog-footer"
       className={cn(
-        '-mx-4 -mb-4 flex flex-row justify-end gap-2 rounded-b-xl border-t bg-(--flow-bg-panel) p-4',
+        '-mx-4 mt-1 -mb-4 flex flex-row justify-end gap-2 rounded-b-xl border-t bg-(--flow-bg-panel) px-4 py-3',
         className,
       )}
       {...props}

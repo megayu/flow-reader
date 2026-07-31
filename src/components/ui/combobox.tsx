@@ -16,7 +16,7 @@ import {
 
 import { IconButton } from '../IconButton'
 
-import { Input } from './input'
+import { InputGroup, InputGroupActions, InputGroupInput } from './input-group'
 import { Popover, PopoverAnchor, PopoverContent } from './popover'
 
 interface ComboboxOption {
@@ -71,7 +71,6 @@ function Combobox({
   const inputRef = useRef<HTMLInputElement>(null)
   const scrollFrameRef = useRef(0)
   const editingRef = useRef(false)
-  const editStartValueRef = useRef(value)
 
   useEffect(() => {
     if (!editingRef.current) setInputValue(value)
@@ -133,7 +132,6 @@ function Combobox({
   const finishEditing = useCallback(
     (nextValue: string) => {
       editingRef.current = false
-      editStartValueRef.current = nextValue
       setInputValue(nextValue)
       if (nextValue !== value) onValueChange(nextValue)
     },
@@ -204,11 +202,8 @@ function Combobox({
     >
       <div ref={rootRef}>
         <PopoverAnchor asChild>
-          <div
-            ref={anchorRef}
-            className="border-input bg-background focus-within:border-ring focus-within:ring-ring/50 flex h-8 items-center rounded-lg border transition-colors focus-within:ring-3"
-          >
-            <Input
+          <InputGroup ref={anchorRef}>
+            <InputGroupInput
               ref={inputRef}
               name={name}
               id={id}
@@ -219,19 +214,17 @@ function Combobox({
               aria-activedescendant={activeOption ? `${listId}-${activeIndex}` : undefined}
               value={inputValue}
               placeholder={placeholder}
-              className="h-full flex-1 rounded-none border-0 bg-transparent px-2.5 py-0 leading-none focus-visible:border-transparent focus-visible:ring-0"
               onFocus={() => {
                 if (!editingRef.current) {
                   editingRef.current = true
-                  editStartValueRef.current = value
                 }
                 setFiltering(false)
                 openPicker()
               }}
               onClick={openPicker}
-              onChange={(event) => {
-                setInputValue(event.target.value)
-                setFiltering(true)
+              onValueChange={(nextValue) => {
+                setInputValue(nextValue)
+                setFiltering(nextValue !== value)
                 setActiveIndex(-1)
                 openPicker()
               }}
@@ -257,45 +250,26 @@ function Combobox({
                   event.preventDefault()
                   event.stopPropagation()
                   selectOption(activeOption)
-                  return
                 }
-
-                if (event.key !== 'Escape' || !editingRef.current) return
-
-                event.preventDefault()
-                event.stopPropagation()
-                if (!event.currentTarget.value) {
-                  finishEditing('')
-                  closePicker()
-                  event.currentTarget.blur()
-                  return
-                }
-
-                const restoredValue = editStartValueRef.current
-                event.currentTarget.value = restoredValue
-                setInputValue(restoredValue)
-                setFiltering(false)
-                event.currentTarget.setSelectionRange(restoredValue.length, restoredValue.length)
               }}
             />
-            {inputValue && (
-              <div className="flex shrink-0 items-center pr-1">
-                <IconButton
-                  className="text-muted-foreground"
-                  title={clearLabel}
-                  Icon={XIcon}
-                  onMouseDown={(event) => {
-                    event.preventDefault()
-                  }}
-                  onClick={() => {
-                    finishEditing('')
-                    closePicker()
-                    inputRef.current?.blur()
-                  }}
-                />
-              </div>
-            )}
-          </div>
+            <InputGroupActions>
+              <IconButton
+                className="text-muted-foreground"
+                title={clearLabel}
+                Icon={XIcon}
+                disabled={!inputValue}
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                }}
+                onClick={() => {
+                  finishEditing('')
+                  closePicker()
+                  inputRef.current?.blur()
+                }}
+              />
+            </InputGroupActions>
+          </InputGroup>
         </PopoverAnchor>
       </div>
       {contentWidth && (

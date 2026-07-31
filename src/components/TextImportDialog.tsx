@@ -243,7 +243,6 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         aria-labelledby={titleId}
-        data-flow-keyboard-capture="true"
         showCloseButton={false}
         className="grid h-[min(40rem,calc(100vh-3rem))] w-[min(58rem,calc(100vw-1.5rem))] max-w-none grid-cols-[12rem_minmax(0,1fr)] gap-0 overflow-hidden p-0"
       >
@@ -305,10 +304,10 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                   <span className="text-muted-foreground text-base">{t('book_title')}</span>
                   <Input
                     value={titleOverrides[activePreview.path] ?? ''}
-                    onChange={(event) => {
+                    onValueChange={(value) => {
                       setTitleOverrides((current) => ({
                         ...current,
-                        [activePreview.path]: event.target.value,
+                        [activePreview.path]: value,
                       }))
                     }}
                   />
@@ -317,10 +316,10 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                   <span className="text-muted-foreground text-base">{t('creator')}</span>
                   <Input
                     value={creatorOverrides[activePreview.path] ?? ''}
-                    onChange={(event) => {
+                    onValueChange={(value) => {
                       setCreatorOverrides((current) => ({
                         ...current,
-                        [activePreview.path]: event.target.value,
+                        [activePreview.path]: value,
                       }))
                     }}
                   />

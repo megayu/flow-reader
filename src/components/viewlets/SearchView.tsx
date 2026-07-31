@@ -19,7 +19,7 @@ import { readerPageTooltipContentStyle } from '../appTooltipStyles'
 import { OverlayScroll, PaneView, type PaneViewProps } from '../base/PaneView'
 import { IconButton } from '../IconButton'
 import { Row } from '../Row'
-import { Input } from '../ui/input'
+import { InputGroup, InputGroupActions, InputGroupInput } from '../ui/input-group'
 
 // When inputting with IME and storing state in `valtio`,
 // unexpected rendering with `e.target.value === ''` occurs,
@@ -75,25 +75,18 @@ const SearchPane: React.FC = () => {
   return (
     <div className="scroll-parent h-full flex-1">
       <div className="px-px py-px">
-        <div className="bg-background flex h-8 items-center rounded-lg transition-shadow focus-within:shadow-[inset_0_0_0_1px_var(--ring)]">
-          <Input
+        <InputGroup variant="ghost">
+          <InputGroupInput
             ref={inputRef}
             name="keyword"
             autoFocus
             aria-label={t('search.title')}
             value={keyword}
             placeholder={t('search.title')}
-            className="h-full flex-1 rounded-lg border-0 bg-transparent px-2.5 py-0 focus-visible:border-transparent focus-visible:ring-0"
-            onChange={(e) => setKeyword(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key !== 'Escape') return
-
-              e.preventDefault()
-              e.stopPropagation()
-              inputRef.current?.blur()
-            }}
+            escapeBehavior="exit"
+            onValueChange={setKeyword}
           />
-          <div className="flex shrink-0 items-center gap-0.5 pr-1">
+          <InputGroupActions>
             <IconButton
               className="text-muted-foreground"
               title={t('action.locate_current')}
@@ -111,16 +104,15 @@ const SearchPane: React.FC = () => {
               Icon={expanded ? FoldVerticalIcon : UnfoldVerticalIcon}
               onClick={toggleResults}
             />
-            {keyword && (
-              <IconButton
-                className="text-muted-foreground"
-                title={t('action.clear')}
-                Icon={XIcon}
-                onClick={() => setKeyword('')}
-              />
-            )}
-          </div>
-        </div>
+            <IconButton
+              className="text-muted-foreground"
+              title={t('action.clear')}
+              Icon={XIcon}
+              disabled={!keyword}
+              onClick={() => setKeyword('')}
+            />
+          </InputGroupActions>
+        </InputGroup>
       </div>
       {keyword && results && (
         <ResultList

@@ -9,6 +9,7 @@ import { Button } from './ui/button'
 
 interface IconButtonProps extends Omit<ComponentProps<'button'>, 'size' | 'title'> {
   Icon: LucideIcon
+  iconClassName?: string
   shortcut?: ShortcutChordValue
   size?: number
   title?: string
@@ -18,6 +19,7 @@ export function IconButton({
   'aria-label': ariaLabel,
   className,
   Icon,
+  iconClassName,
   shortcut,
   size = 16,
   title,
@@ -31,7 +33,7 @@ export function IconButton({
       className={cn('rounded-sm', className)}
       {...props}
     >
-      <Icon size={size} />
+      <Icon size={size} className={iconClassName} />
     </Button>
   )
 

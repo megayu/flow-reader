@@ -9,6 +9,7 @@ import { copy } from '../utils'
 
 import { IconButton } from './IconButton'
 import { Button } from './ui/button'
+import { Input } from './ui/input'
 
 const colorSlotCount = 9
 
@@ -80,16 +81,11 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
       <HexColorPicker color={draft} onChange={updateDraft} className="h-36! w-full!" />
       <div className="mt-3 flex items-center gap-2">
         <div className="ring-border h-8 w-8 shrink-0 rounded-sm ring-1 ring-inset" style={{ backgroundColor: draft }} />
-        <input
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
+        <Input
           value={input}
-          spellCheck={false}
-          className="textfield text-muted-foreground h-8 min-w-0 flex-1 bg-transparent px-2 font-mono text-base"
-          onFocus={(e) => e.currentTarget.select()}
-          onChange={(e) => {
-            const next = e.target.value
+          focusBehavior="select-all"
+          className="textfield text-muted-foreground h-8 min-w-0 flex-1 rounded-none border-0 bg-transparent px-2 font-mono text-base focus-visible:ring-1 focus-visible:ring-inset"
+          onValueChange={(next) => {
             setInput(next)
 
             const normalized = normalizeHexColor(next)

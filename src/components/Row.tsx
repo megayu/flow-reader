@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { ChevronDownIcon, ChevronRightIcon, XIcon } from 'lucide-react'
-import type { ComponentProps, CSSProperties } from 'react'
+import type { ComponentProps, CSSProperties, PointerEvent } from 'react'
 
 import { useBackground } from '../hooks/theme/useBackground'
 import { LIST_ITEM_SIZE } from '../hooks/useList'
@@ -13,10 +13,13 @@ export const TREE_INDENT_SIZE = 10
 export const EMPTY_ROW_LABEL = '—'
 
 interface RowProps extends ComponentProps<'div'> {
+  as?: 'button' | 'div'
   expanded?: boolean
   active?: boolean
+  activeClassName?: string
   depth?: number
   label?: string
+  emptyLabel?: string
   description?: string | number
   info?: string
   subitems?: Readonly<any[]>
@@ -26,12 +29,15 @@ interface RowProps extends ComponentProps<'div'> {
   tooltipContentStyle?: CSSProperties
 }
 export const Row: React.FC<RowProps> = ({
+  as = 'div',
   title,
   label,
+  emptyLabel = EMPTY_ROW_LABEL,
   description,
   info,
   expanded = false,
   active = false,
+  activeClassName,
   depth = 0,
   subitems,
   toggle,
@@ -42,6 +48,7 @@ export const Row: React.FC<RowProps> = ({
   onDelete,
   onPointerDown,
   tooltipContentStyle,
+  tabIndex,
   ...props
 }) => {
   const [, , background] = useBackground()
@@ -50,28 +57,24 @@ export const Row: React.FC<RowProps> = ({
   const t = children || label || title
   const tooltip = typeof title === 'string' ? title : undefined
   const indent = Math.max(0, depth - 1) * TREE_INDENT_SIZE
-  const row = (
-    <div
-      className={clsx(
-        'list-row group/row focus:ring-ring relative flex cursor-pointer items-center text-left outline-none focus:ring-1 focus:ring-inset',
-        active && background.rowActiveClassName,
-        className,
-      )}
-      style={{
-        paddingLeft: indent,
-        paddingRight: 'var(--flow-row-end-inset, 0px)',
-        height: LIST_ITEM_SIZE,
-      }}
-      tabIndex={onClick ? -1 : undefined}
-      onClick={onClick ?? toggle}
-      onPointerDown={(event) => {
-        if (onClick && event.button === 0) {
-          event.currentTarget.focus({ preventScroll: true })
-        }
-        onPointerDown?.(event)
-      }}
-      {...props}
-    >
+  const rowClassName = clsx(
+    'list-row group/row focus:ring-ring relative flex cursor-pointer items-center text-left outline-none focus:ring-1 focus:ring-inset',
+    active && (activeClassName ?? background.rowActiveClassName),
+    className,
+  )
+  const rowStyle = {
+    paddingLeft: indent,
+    paddingRight: 'var(--flow-row-end-inset, 0px)',
+    height: LIST_ITEM_SIZE,
+  }
+  const handlePointerDown = (event: PointerEvent<HTMLElement>) => {
+    if (onClick && event.button === 0) {
+      event.currentTarget.focus({ preventScroll: true })
+    }
+    onPointerDown?.(event as PointerEvent<HTMLDivElement>)
+  }
+  const content = (
+    <>
       <StateLayer
         className={clsx(
           'transition-colors',
@@ -97,7 +100,7 @@ export const Row: React.FC<RowProps> = ({
       >
         <span className="flex h-full min-w-0 items-center whitespace-nowrap">
           <span className="block min-w-0 truncate">
-            {t || EMPTY_ROW_LABEL}
+            {t || emptyLabel}
             {description && (
               <span
                 className="text-muted-foreground/60"
@@ -129,8 +132,33 @@ export const Row: React.FC<RowProps> = ({
         )}
         <span className="text-muted-foreground">{info}</span>
       </div>
-    </div>
+    </>
   )
+  const row =
+    as === 'button' ? (
+      <button
+        type="button"
+        className={rowClassName}
+        style={rowStyle}
+        tabIndex={tabIndex}
+        onClick={(onClick ?? toggle) as ComponentProps<'button'>['onClick']}
+        onPointerDown={handlePointerDown}
+        {...(props as ComponentProps<'button'>)}
+      >
+        {content}
+      </button>
+    ) : (
+      <div
+        className={rowClassName}
+        style={rowStyle}
+        tabIndex={tabIndex ?? (onClick ? -1 : undefined)}
+        onClick={onClick ?? toggle}
+        onPointerDown={handlePointerDown}
+        {...props}
+      >
+        {content}
+      </div>
+    )
 
   return tooltip ? (
     <AppTooltip contentStyle={tooltipContentStyle} label={tooltip}>

@@ -6,6 +6,7 @@ import { openSupportedExternalUrl } from '../externalLink'
 import { useTranslation } from '../hooks/useTranslation'
 
 import { DictionaryRichContent } from './DictionaryRichContent'
+import { IconButton } from './IconButton'
 
 interface DictionarySourceSectionProps {
   activeRichContent?: boolean
@@ -42,27 +43,24 @@ export function DictionarySourceSection({
         </h2>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {retryVisible && (
-            <button
-              type="button"
-              className="text-muted-foreground enabled:hover:bg-muted enabled:hover:text-foreground inline-flex size-7 cursor-pointer items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-(--flow-accent-border) disabled:cursor-default"
+            <IconButton
+              Icon={RefreshCwIcon}
+              iconClassName={isRetrying ? 'animate-spin' : undefined}
+              className="text-muted-foreground"
               data-dictionary-retry={source.providerId}
               disabled={isRetrying}
               onClick={onRetry}
-            >
-              <RefreshCwIcon className={`size-4 ${isRetrying ? 'animate-spin' : ''}`} />
-            </button>
+            />
           )}
           {externalUrl && (source.status !== 'loading' || isRetrying) && (
-            <button
-              type="button"
-              className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-7 cursor-pointer items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-(--flow-accent-border)"
+            <IconButton
+              Icon={ExternalLinkIcon}
+              className="text-muted-foreground"
               data-dictionary-external={source.providerId}
               onClick={() => {
                 void openSupportedExternalUrl(externalUrl).catch(() => undefined)
               }}
-            >
-              <ExternalLinkIcon className="size-4" />
-            </button>
+            />
           )}
         </div>
       </div>
