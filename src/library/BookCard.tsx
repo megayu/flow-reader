@@ -54,7 +54,6 @@ import {
   getBookProgressPercent,
   hasUnexportedBookChanges,
   isArchiveOnlyBook,
-  isBookExportDirty,
   isBookSourceUnavailable,
   readingStatusEditButtonClassName,
 } from './model'
@@ -95,6 +94,7 @@ export const BookCard: React.FC<BookCardProps> = ({
   const [infoOpen, setInfoOpen] = useState(false)
   const [tagsOpen, setTagsOpen] = useState(false)
   const [exportingFormat, setExportingFormat] = useState<BookExportFormat>()
+  const [exportFormatsExpanded, setExportFormatsExpanded] = useState(false)
 
   const cover = covers?.find((item) => item.id === book.id)?.cover
   const displayTitle = getBookDisplayTitle(book)
@@ -165,12 +165,46 @@ export const BookCard: React.FC<BookCardProps> = ({
 
   const progressPercent = getBookProgressPercent(book.percentage)
 
+  function startBookExport(format: BookExportFormat | undefined) {
+    if (!format) return
+
+    setExportingFormat(format)
+    void exportBookWithDialog(book, format)
+      .then((outputPath) => {
+        if (!outputPath) return
+        notify({
+          action: {
+            label: t('export_reveal'),
+            onClick: () => {
+              void db.files.reveal(outputPath).catch(console.error)
+            },
+          },
+          description: outputPath,
+          title: t('export_complete'),
+          type: 'success',
+        })
+      })
+      .catch((error) => {
+        console.error(error)
+        notify({
+          autoCloseMs: false,
+          description: `${getBookDisplayTitle(book)} · ${format.toUpperCase()}: ${formatErrorMessage(error)}`,
+          title: errorT('export_failed'),
+          type: 'error',
+        })
+      })
+      .finally(() => setExportingFormat(undefined))
+  }
+
   return (
     <div className="relative">
       <ContextMenu
         modal={false}
         onOpenChange={(open) => {
-          if (!open) setConfirmDelete(false)
+          if (!open) {
+            setConfirmDelete(false)
+            setExportFormatsExpanded(false)
+          }
         }}
       >
         <ContextMenuTrigger asChild disabled={select}>
@@ -357,45 +391,31 @@ export const BookCard: React.FC<BookCardProps> = ({
           <BookContextMenuItem Icon={PencilIcon} label={t('context.edit')} onSelect={() => setEditOpen(true)} />
           <BookContextMenuItem Icon={TagIcon} label={t('tags')} onSelect={() => setTagsOpen(true)} />
           <BookContextMenuItem Icon={InfoIcon} label={t('context.info')} onSelect={() => setInfoOpen(true)} />
-          {exportFormats.map((format) => {
-            const dirty = isBookExportDirty(book, format)
-            return (
+          {!exportFormatsExpanded ? (
+            <BookContextMenuItem
+              Icon={DownloadIcon}
+              label={`${t('context.export')}${hasUnexportedBookChanges(book) ? ' *' : ''}`}
+              disabled={exportingFormat !== undefined}
+              onSelect={(event) => {
+                if (exportFormats.length > 1) {
+                  event.preventDefault()
+                  setExportFormatsExpanded(true)
+                  return
+                }
+                startBookExport(exportFormats[0])
+              }}
+            />
+          ) : (
+            exportFormats.map((format) => (
               <BookContextMenuItem
                 key={format}
                 Icon={DownloadIcon}
-                label={`${t('context.export')} ${format.toUpperCase()}${dirty ? ' *' : ''}`}
+                label={format.toUpperCase()}
                 disabled={exportingFormat === format}
-                onSelect={() => {
-                  setExportingFormat(format)
-                  void exportBookWithDialog(book, format)
-                    .then((outputPath) => {
-                      if (!outputPath) return
-                      notify({
-                        action: {
-                          label: t('export_reveal'),
-                          onClick: () => {
-                            void db.files.reveal(outputPath).catch(console.error)
-                          },
-                        },
-                        description: outputPath,
-                        title: t('export_complete'),
-                        type: 'success',
-                      })
-                    })
-                    .catch((error) => {
-                      console.error(error)
-                      notify({
-                        autoCloseMs: false,
-                        description: `${getBookDisplayTitle(book)} · ${format.toUpperCase()}: ${formatErrorMessage(error)}`,
-                        title: errorT('export_failed'),
-                        type: 'error',
-                      })
-                    })
-                    .finally(() => setExportingFormat(undefined))
-                }}
+                onSelect={() => startBookExport(format)}
               />
-            )
-          })}
+            ))
+          )}
           <ContextMenuSeparator />
           <BookContextMenuItem
             variant="destructive"

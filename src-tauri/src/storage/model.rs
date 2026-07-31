@@ -11,7 +11,7 @@ pub(super) fn is_valid_book_storage_id(id: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Library {
     #[serde(default = "library_version")]
@@ -26,7 +26,17 @@ fn library_version() -> u32 {
     1
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+impl Default for Library {
+    fn default() -> Self {
+        Self {
+            version: library_version(),
+            books: Vec::new(),
+            tags: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ExternalBookIndex {
     #[serde(default = "external_book_index_version")]
@@ -37,6 +47,15 @@ pub(super) struct ExternalBookIndex {
 
 fn external_book_index_version() -> u32 {
     1
+}
+
+impl Default for ExternalBookIndex {
+    fn default() -> Self {
+        Self {
+            version: external_book_index_version(),
+            books: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,8 +89,6 @@ pub(super) struct LibraryBook {
     pub(super) reading_status: Option<ReadingStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) source_format: Option<BookSourceFormat>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub(super) exported_versions: HashMap<String, u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) content_edited_at: Option<u64>,
     #[serde(default)]
@@ -111,8 +128,6 @@ pub struct BookRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) reading_status: Option<ReadingStatus>,
     pub(super) source_format: BookSourceFormat,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub(super) exported_versions: HashMap<String, u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) content_edited_at: Option<u64>,
     #[serde(default = "empty_object")]
@@ -252,15 +267,6 @@ pub(super) enum BookContentFlag {
 pub enum BookExportFormat {
     Epub,
     Txt,
-}
-
-impl BookExportFormat {
-    pub(super) fn as_str(self) -> &'static str {
-        match self {
-            BookExportFormat::Epub => "epub",
-            BookExportFormat::Txt => "txt",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

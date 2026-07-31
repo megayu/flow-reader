@@ -115,7 +115,6 @@ export interface BookRecord {
   scope?: 'library' | 'external'
   readingStatus?: ReadingStatus | null
   sourceFormat?: BookSourceFormat
-  exportedVersions?: Partial<Record<BookExportFormat, number>>
   contentEditedAt?: number
   metadata: PackagingMetadataObject
   createdAt: number

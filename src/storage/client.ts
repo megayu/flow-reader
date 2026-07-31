@@ -268,6 +268,12 @@ export const db = {
       beginBooksMutation()
       rememberBook(book)
     },
+    rememberUpdate(book: BookRecord, changes: Partial<BookRecord>) {
+      beginBooksMutation()
+      const cached = bookCache.get(book.id)
+      const base = cached ?? book
+      rememberBook({ ...base, ...changes }, { full: base.stateLoaded !== false })
+    },
     recordReadingPosition(position: ReadingPositionInput) {
       return trackNativeWrite(invoke<boolean>('record_reading_position', { position }))
     },

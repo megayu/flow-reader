@@ -465,7 +465,6 @@ impl AppStorage {
             },
             reading_status: book.reading_status.clone(),
             source_format: self.book_source_format(book),
-            exported_versions: book.exported_versions.clone(),
             content_edited_at: book.content_edited_at,
             metadata: book.metadata.clone(),
             created_at: book.created_at,
@@ -494,7 +493,6 @@ impl AppStorage {
             scope: BookScope::Library,
             reading_status: book.reading_status.clone(),
             source_format: self.book_source_format(book),
-            exported_versions: book.exported_versions.clone(),
             content_edited_at: book.content_edited_at,
             metadata: book.metadata.clone(),
             created_at: book.created_at,
@@ -540,7 +538,6 @@ impl AppStorage {
             size: book.size,
             reading_status: None,
             source_format: Some(BookSourceFormat::Epub),
-            exported_versions: Default::default(),
             content_edited_at: None,
             content_hash: book.content_hash.clone(),
             content_version: book.content_version.max(1),
@@ -705,19 +702,8 @@ fn id_from_hash(hash: &str) -> String {
     hash.chars().take(16).collect()
 }
 
-fn book_export_key(format: BookExportFormat) -> String {
-    format.as_str().to_string()
-}
-
-fn mark_book_exported(book: &mut LibraryBook, format: BookExportFormat) {
-    book.exported_versions
-        .insert(book_export_key(format), book.content_version);
-}
-
-#[cfg(test)]
-fn book_is_export_dirty(book: &LibraryBook, format: BookExportFormat) -> bool {
-    book.content_edited_at.is_some()
-        && book.exported_versions.get(format.as_str()).copied().unwrap_or_default() < book.content_version
+fn mark_book_exported(book: &mut LibraryBook) {
+    book.content_edited_at = None;
 }
 
 #[cfg(test)]

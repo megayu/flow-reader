@@ -10,11 +10,11 @@ use super::{
     METADATA_FILE, ReadingStatus, SEARCH_TEXT_CACHE_FILE, SEARCH_TEXT_CACHE_VERSION, SEARCH_TEXT_EXTRACTOR_VERSION,
     SOURCE_TEXT_FILE, STATE_FILE, SearchTextCache, SearchTextSection, SourceStorage, SourceTextUpdate, StorageInner,
     StorageState, TextImportPreparedCache, TextImportRulesInput, TextImportSelection, UNPACKED_DIR,
-    book_is_export_dirty, check_book_source_statuses_impl, cleanup_delete_tombstones,
-    cleanup_external_book_heavy_files, decode_text_bytes, delete_books_to_tombstones, delete_tombstones_root,
-    empty_object, ensure_book_package_path_with_unpacker, export_book_impl, external_books_root, external_index_path,
-    get_book_reader_source_impl, hash_file, import_epub_path_impl, library_path, load_or_build_search_text_cache,
-    mark_book_exported, mark_library_book_content_updated, normalize_non_square_pixel_png, normalize_publication_date,
+    check_book_source_statuses_impl, cleanup_delete_tombstones, cleanup_external_book_heavy_files, decode_text_bytes,
+    delete_books_to_tombstones, delete_tombstones_root, empty_object, ensure_book_package_path_with_unpacker,
+    export_book_impl, external_books_root, external_index_path, get_book_reader_source_impl, hash_file,
+    import_epub_path_impl, library_path, load_or_build_search_text_cache, mark_book_exported,
+    mark_library_book_content_updated, normalize_non_square_pixel_png, normalize_publication_date,
     normalize_unpacked_epub_structure, open_external_epub_path_impl, parent_zip_path, parse_text_import_document,
     path_to_client_string, read_image_index_cache, read_json_or_default, read_json_value_or_default,
     read_search_text_sections_from_unpacked, relative_zip_path, replace_book_text_impl, replace_xhtml_text,
@@ -1828,12 +1828,11 @@ fn archive_only_epub_export_copies_original_package_without_unpacking() {
     let original = fs::read(&book_path).unwrap();
     let output = root.join("exported.epub");
 
-    let exported = export_book_impl(&storage, "book".to_string(), BookExportFormat::Epub, output.clone())
+    export_book_impl(&storage, "book".to_string(), BookExportFormat::Epub, output.clone())
         .unwrap()
         .unwrap();
 
     assert_eq!(fs::read(output).unwrap(), original);
-    assert_eq!(exported.exported_versions.get("epub"), Some(&1));
     assert!(!book_dir.join(UNPACKED_DIR).exists());
 
     let _ = fs::remove_dir_all(root);
@@ -3557,16 +3556,14 @@ fn syncs_unpacked_opf_metadata_rewrites_utf16_opf_as_utf8() {
 }
 
 #[test]
-fn exported_versions_are_tracked_per_format() {
+fn exporting_clears_content_edited_at() {
     let mut book = test_library_book(BookSourceFormat::Txt);
     book.content_version = 3;
     book.content_edited_at = Some(123);
 
-    mark_book_exported(&mut book, BookExportFormat::Txt);
+    mark_book_exported(&mut book);
 
-    assert_eq!(book.exported_versions.get("txt"), Some(&3));
-    assert!(book_is_export_dirty(&book, BookExportFormat::Epub));
-    assert!(!book_is_export_dirty(&book, BookExportFormat::Txt));
+    assert!(book.content_edited_at.is_none());
 }
 
 #[test]
@@ -3580,7 +3577,6 @@ fn imported_content_repair_marks_epub_export_dirty() {
 
     assert_eq!(updated.content_version, 2);
     assert!(updated.content_edited_at.is_some());
-    assert!(book_is_export_dirty(&updated, BookExportFormat::Epub));
 
     let _ = fs::remove_dir_all(root);
 }
@@ -3611,7 +3607,6 @@ fn test_library_book(source_format: BookSourceFormat) -> LibraryBook {
         size: 1,
         reading_status: None::<ReadingStatus>,
         source_format: Some(source_format),
-        exported_versions: Default::default(),
         content_edited_at: None,
         content_hash: "hash".to_string(),
         content_version: 1,

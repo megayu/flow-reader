@@ -1545,7 +1545,6 @@ pub(super) fn import_text_path_impl(
                 size,
                 reading_status: None,
                 source_format: Some(BookSourceFormat::Txt),
-                exported_versions: Default::default(),
                 content_edited_at: None,
                 content_hash: hash.clone(),
                 content_version: 1,
@@ -1606,7 +1605,6 @@ pub(super) fn import_text_path_impl(
                     .find(|stored| stored.id == id)
                     .ok_or_else(|| "Book was removed while it was being imported".to_string())?;
                 book.reading_status = stored.reading_status.clone();
-                book.exported_versions = stored.exported_versions.clone();
                 book.cfi = stored.cfi.clone();
                 book.percentage = stored.percentage;
                 book.tag_ids = stored.tag_ids.clone();

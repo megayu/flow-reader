@@ -46,7 +46,7 @@ export class BookPersistenceController {
     const book = { ...currentBook, ...committedChanges }
 
     host.applyBookUpdate(book, committedChanges)
-    db.books.remember(book)
+    db.books.rememberUpdate(book, committedChanges)
 
     if (readingPositionOnly) {
       void this.recordReadingPosition(host, committedChanges).catch((error) => {
@@ -97,7 +97,7 @@ export class BookPersistenceController {
       }
       const book = { ...host.getBook(), ...changes }
       host.replaceBook(book)
-      db.books.remember(book)
+      db.books.rememberUpdate(book, changes)
       if (recordReadingPosition) {
         await this.recordReadingPosition(host, changes)
       }

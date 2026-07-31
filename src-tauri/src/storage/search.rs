@@ -1100,7 +1100,6 @@ mod tests {
             size: 1,
             reading_status: None,
             source_format: Some(BookSourceFormat::Epub),
-            exported_versions: Default::default(),
             content_edited_at: None,
             content_hash: format!("hash-{content_version}"),
             content_version,

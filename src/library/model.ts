@@ -70,7 +70,7 @@ export function bookSourceFormat(book: BookRecord) {
 }
 
 export function bookExportFormats(book: BookRecord): BookExportFormat[] {
-  return bookSourceFormat(book) === 'txt' && book.sourceStorage !== 'referenced' ? ['txt', 'epub'] : ['epub']
+  return bookSourceFormat(book) === 'txt' && book.sourceStorage !== 'referenced' ? ['epub', 'txt'] : ['epub']
 }
 
 export function isArchiveOnlyBook(book: BookRecord) {
@@ -107,12 +107,8 @@ export function bookSourceStatusFromError(errorMessage: string): Exclude<BookSou
   return undefined
 }
 
-export function isBookExportDirty(book: BookRecord, format: BookExportFormat) {
-  return !!book.contentEditedAt && (book.exportedVersions?.[format] ?? 0) < (book.contentVersion ?? 0)
-}
-
 export function hasUnexportedBookChanges(book: BookRecord) {
-  return bookExportFormats(book).every((format) => isBookExportDirty(book, format))
+  return !!book.contentEditedAt
 }
 
 export function exportFormatExtension(format: BookExportFormat) {

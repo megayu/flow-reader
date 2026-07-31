@@ -381,7 +381,7 @@ pub(super) fn export_book_impl(
             return Ok(None);
         };
         book.source_format = Some(source_format);
-        mark_book_exported(book, format);
+        mark_book_exported(book);
         book.clone()
     };
 

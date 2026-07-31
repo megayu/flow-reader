@@ -616,10 +616,7 @@ export async function installTauriMock(
           })
           const updated = {
             ...current,
-            exportedVersions: {
-              ...(current.exportedVersions ?? {}),
-              [format]: current.contentVersion ?? 0,
-            },
+            contentEditedAt: undefined,
           }
           bookStore.set(id, updated)
           return updated

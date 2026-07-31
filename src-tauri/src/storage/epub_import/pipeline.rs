@@ -321,7 +321,6 @@ pub(in crate::storage) fn import_epub_path_impl(
                     size,
                     reading_status: None,
                     source_format: Some(BookSourceFormat::Epub),
-                    exported_versions: Default::default(),
                     content_edited_at: None,
                     content_hash: hash.clone(),
                     content_version: 1,
@@ -451,7 +450,6 @@ pub(in crate::storage) fn import_epub_path_impl(
                     .find(|stored| stored.id == id)
                     .ok_or_else(|| "Book was removed while it was being imported".to_string())?;
                 book.reading_status = stored.reading_status.clone();
-                book.exported_versions = stored.exported_versions.clone();
                 book.cfi = promotion
                     .as_ref()
                     .map_or_else(|| stored.cfi.clone(), |_| book.cfi.clone());
