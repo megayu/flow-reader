@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from 'react'
 import { HexColorPicker } from 'react-colorful'
 
 import { useTranslation } from '../hooks/useTranslation'
+import { copy } from '../utils'
 
 import { IconButton } from './IconButton'
 import { Button } from './ui/button'
@@ -103,7 +104,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
           Icon={CopyIcon}
           className="text-muted-foreground"
           onClick={() => {
-            navigator.clipboard?.writeText(draft).catch(() => undefined)
+            copy(draft).catch(() => undefined)
           }}
         />
         <IconButton

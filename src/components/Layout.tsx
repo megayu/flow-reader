@@ -418,6 +418,7 @@ function useFullscreenAction() {
 
 function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProps) {
   const [themeOpen, setThemeOpen] = useState(false)
+  const themePickerOpenRef = useRef(false)
   const [viewMode, setViewMode] = useViewMode()
   const [zenMode, setZenMode] = useZenMode()
   const { focusedBookTab } = useReaderSnapshot()
@@ -521,7 +522,14 @@ function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProp
 
           if (name === 'theme') {
             return (
-              <Popover key={name} open={themeOpen} onOpenChange={setThemeOpen}>
+              <Popover
+                key={name}
+                open={themeOpen}
+                onOpenChange={(open) => {
+                  setThemeOpen(open)
+                  if (!open) themePickerOpenRef.current = false
+                }}
+              >
                 <PopoverTrigger asChild>{actionButton}</PopoverTrigger>
                 <PopoverContent
                   side="right"
@@ -529,8 +537,19 @@ function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProp
                   sideOffset={4}
                   collisionPadding={8}
                   className="w-auto gap-0 rounded-xl bg-transparent p-0 shadow-none ring-0"
+                  onEscapeKeyDown={(event) => {
+                    if (themePickerOpenRef.current) event.preventDefault()
+                  }}
                 >
-                  <ThemePanel onClose={() => setThemeOpen(false)} />
+                  <ThemePanel
+                    onClose={() => {
+                      themePickerOpenRef.current = false
+                      setThemeOpen(false)
+                    }}
+                    onPickerOpenChange={(open) => {
+                      themePickerOpenRef.current = open
+                    }}
+                  />
                 </PopoverContent>
               </Popover>
             )

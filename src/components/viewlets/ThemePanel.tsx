@@ -19,8 +19,9 @@ import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '../ui/po
 
 interface ThemePanelProps {
   onClose?: () => void
+  onPickerOpenChange?: (open: boolean) => void
 }
-export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
+export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose, onPickerOpenChange }) => {
   const [{ theme }, setSettings] = useSettings()
   const { accentColor, setAccentColor } = useAccentColor()
   const t = useTranslation('theme')
@@ -38,6 +39,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
     customSessionActiveRef.current = false
     customSessionAppliedRef.current = true
     setCustomPickerOpen(false)
+    onPickerOpenChange?.(false)
     setSettings((prev) => ({
       ...prev,
       theme: {
@@ -70,6 +72,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
     }
     setAccentPickerOpen(false)
     setCustomPickerOpen(true)
+    onPickerOpenChange?.(true)
     previewCustomBackground(customBackground)
   }
 
@@ -83,6 +86,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
     customSessionActiveRef.current = false
     customSessionAppliedRef.current = false
     setCustomPickerOpen(false)
+    onPickerOpenChange?.(false)
   }
 
   const restorePreviousThemeOnUnmount = useEffectEvent(() => {
@@ -106,6 +110,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
 
     if (accentPickerOpen) {
       setAccentPickerOpen(false)
+      onPickerOpenChange?.(false)
       return
     }
 
@@ -138,6 +143,14 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
           ref={panelRef}
           data-flow-theme-panel
           className="text-muted-foreground ring-border relative z-100 w-80 rounded-xl bg-(--flow-bg-panel) p-3 text-base shadow-xl ring-1 ring-inset"
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape' || !accentPickerOpen) return
+
+            event.preventDefault()
+            event.stopPropagation()
+            setAccentPickerOpen(false)
+            onPickerOpenChange?.(false)
+          }}
         >
           <div className="grid grid-cols-3 gap-2">
             {backgroundPresets.map((preset) => (
@@ -179,51 +192,44 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
 
           <div className="border-border mt-3 flex items-center justify-between gap-3 border-t pt-3">
             <span className="text-muted-foreground text-base font-medium">{t('source_color')}</span>
-            <Popover
-              open={accentPickerOpen}
-              onOpenChange={(open) => {
-                if (open) setCustomPickerOpen(false)
-                setAccentPickerOpen(open)
+            <button
+              type="button"
+              aria-label={t('source_color')}
+              className="border-border text-foreground flex h-8 items-center gap-2 rounded-lg border bg-(--flow-bg-control) px-2 text-base transition-colors outline-none hover:bg-(--flow-bg-control-hover) focus-visible:ring-2 focus-visible:ring-(--flow-focus-ring)"
+              onClick={() => {
+                setCustomPickerOpen(false)
+                setAccentPickerOpen(true)
+                onPickerOpenChange?.(true)
               }}
             >
-              <PopoverAnchor asChild>
-                <span aria-hidden className="pointer-events-none absolute right-0 bottom-0 size-px" />
-              </PopoverAnchor>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  aria-label={t('source_color')}
-                  className="border-border text-foreground flex h-8 items-center gap-2 rounded-lg border bg-(--flow-bg-control) px-2 text-base transition-colors outline-none hover:bg-(--flow-bg-control-hover) focus-visible:ring-2 focus-visible:ring-(--flow-focus-ring)"
-                >
-                  <span
-                    className="ring-border h-4 w-8 rounded-md ring-1 ring-inset"
-                    style={{ backgroundColor: accentColor }}
-                  />
-                  <span className="font-mono text-base">{accentColor}</span>
-                </button>
-              </PopoverTrigger>
-              <PopoverContent
-                side="right"
-                align="end"
-                sideOffset={8}
-                collisionPadding={8}
-                className="z-110 w-auto gap-0 bg-transparent p-0 shadow-none ring-0"
-              >
-                <ColorPickerPopover
-                  value={accentColor}
-                  defaultValue={defaultAccentColor}
-                  onPreview={setAccentColor}
-                  onApply={(color) => {
-                    setAccentColor(color)
-                    setAccentPickerOpen(false)
-                  }}
-                  onCancel={() => setAccentPickerOpen(false)}
-                />
-              </PopoverContent>
-            </Popover>
+              <span
+                className="ring-border h-4 w-8 rounded-md ring-1 ring-inset"
+                style={{ backgroundColor: accentColor }}
+              />
+              <span className="font-mono text-base">{accentColor}</span>
+            </button>
           </div>
 
           <ThemePreview />
+
+          {accentPickerOpen && (
+            <div className="absolute bottom-0 left-full z-110 ml-2">
+              <ColorPickerPopover
+                value={accentColor}
+                defaultValue={defaultAccentColor}
+                onPreview={setAccentColor}
+                onApply={(color) => {
+                  setAccentColor(color)
+                  setAccentPickerOpen(false)
+                  onPickerOpenChange?.(false)
+                }}
+                onCancel={() => {
+                  setAccentPickerOpen(false)
+                  onPickerOpenChange?.(false)
+                }}
+              />
+            </div>
+          )}
         </div>
       </PopoverAnchor>
 
@@ -231,7 +237,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
         side="right"
         align="end"
         sideOffset={8}
-        collisionPadding={8}
+        avoidCollisions={false}
         className="z-110 w-auto gap-0 bg-transparent p-0 shadow-none ring-0"
         onInteractOutside={(event) => {
           if (panelRef.current?.contains(event.target as Node)) event.preventDefault()
@@ -246,6 +252,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
             customSessionActiveRef.current = false
             previewCustomBackground(color)
             setCustomPickerOpen(false)
+            onPickerOpenChange?.(false)
           }}
           onCancel={restorePreviousTheme}
         />

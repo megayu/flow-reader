@@ -8,6 +8,7 @@ import { ShortcutChord } from '@/components/ShortcutChord'
 import { Button as UiButton } from '@/components/ui/button'
 import { Checkbox as UiCheckbox } from '@/components/ui/checkbox'
 import { DialogTitle } from '@/components/ui/dialog'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { openSupportedExternalUrl } from '@/externalLink'
@@ -510,24 +511,33 @@ const AccentColorSetting: React.FC = () => {
 
   return (
     <Item title={t('source_color')} description={settingsT('accent_color.description')}>
-      <div className="relative inline-block">
-        <button
-          type="button"
-          className="border-input text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 dark:bg-input/30 flex h-8 min-w-36 items-center gap-2 rounded-lg border bg-transparent px-2.5 text-left text-base leading-none transition-colors outline-none focus-visible:ring-3"
-          onClick={() => {
-            setDisplayColor(accentColor)
-            setOpen(true)
-          }}
+      <Popover
+        open={open}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) setDisplayColor(accentColor)
+          setOpen(nextOpen)
+        }}
+      >
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="border-input text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 dark:bg-input/30 flex h-8 min-w-36 items-center gap-2 rounded-lg border bg-transparent px-2.5 text-left text-base leading-none transition-colors outline-none focus-visible:ring-3"
+          >
+            <span
+              className="ring-border h-5 w-8 shrink-0 rounded-md ring-1 ring-inset"
+              style={{ backgroundColor: color }}
+            />
+            <span className="font-mono text-base">{color}</span>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="bottom"
+          align="end"
+          sideOffset={8}
+          collisionPadding={8}
+          className="z-110 w-auto gap-0 bg-transparent p-0 shadow-none ring-0"
         >
-          <span
-            className="ring-border h-5 w-8 shrink-0 rounded-md ring-1 ring-inset"
-            style={{ backgroundColor: color }}
-          />
-          <span className="font-mono text-base">{color}</span>
-        </button>
-        {open && (
           <ColorPickerPopover
-            className="absolute top-full left-0 z-20 mt-2"
             value={accentColor}
             defaultValue="#0ea5e9"
             onPreview={(next) => {
@@ -543,8 +553,8 @@ const AccentColorSetting: React.FC = () => {
               setOpen(false)
             }}
           />
-        )}
-      </div>
+        </PopoverContent>
+      </Popover>
     </Item>
   )
 }
