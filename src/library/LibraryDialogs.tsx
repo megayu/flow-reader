@@ -501,7 +501,7 @@ export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({ book, cover, onC
         <div className="grid grid-cols-[12rem_minmax(0,1fr)] gap-5 p-5 pr-12">
           <div className="w-full">
             {cover && (
-              <img src={cover} alt="" className="aspect-9/12 w-full object-cover shadow-sm" draggable={false} />
+              <img src={cover} alt="" className="block h-auto max-h-64 w-auto max-w-full shadow-sm" draggable={false} />
             )}
           </div>
           <div className="min-w-0 pr-6">
