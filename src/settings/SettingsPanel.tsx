@@ -582,7 +582,7 @@ const UiFontSizeSetting: React.FC = () => {
           <button
             type="button"
             aria-label={`${t('ui_font_size')} +`}
-            className="hover:bg-muted flex h-1/2 items-center justify-center text-[12px] leading-none disabled:opacity-35"
+            className="hover:bg-muted flex h-1/2 items-center justify-center text-[12px] leading-none disabled:opacity-35 cursor-pointer"
             disabled={uiFontSize >= maxUiFontSize}
             onClick={() => setUiFontSize(uiFontSize + 1)}
           >
@@ -591,7 +591,7 @@ const UiFontSizeSetting: React.FC = () => {
           <button
             type="button"
             aria-label={`${t('ui_font_size')} -`}
-            className="border-input hover:bg-muted flex h-1/2 items-center justify-center border-t text-[12px] leading-none disabled:opacity-35"
+            className="border-input hover:bg-muted flex h-1/2 items-center justify-center border-t text-[12px] leading-none disabled:opacity-35 cursor-pointer"
             disabled={uiFontSize <= minUiFontSize}
             onClick={() => setUiFontSize(uiFontSize - 1)}
           >
