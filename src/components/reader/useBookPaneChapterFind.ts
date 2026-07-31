@@ -12,7 +12,7 @@ import {
   isFindShortcut,
   nearestVisibleFindResultIndex,
   type ReflowableManager,
-} from './ChapterFind'
+} from './chapterFindModel'
 import { useChapterFindController } from './useChapterFindController'
 import { CAPTURE_EVENT_OPTIONS, useFrameEvent } from './useFrameEvent'
 

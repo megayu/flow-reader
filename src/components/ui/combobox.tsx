@@ -356,4 +356,8 @@ function Combobox({
   )
 }
 
-export { Combobox, type ComboboxOption }
+export {
+  Combobox,
+  // biome-ignore lint/style/useComponentExportOnlyModules: Type exports do not exist at runtime and cannot invalidate Fast Refresh.
+  type ComboboxOption,
+}

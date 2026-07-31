@@ -1,39 +1,10 @@
 import clsx from 'clsx'
-import {
-  Children,
-  type ComponentProps,
-  createContext,
-  Fragment,
-  isValidElement,
-  useCallback,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { Children, type ComponentProps, Fragment, isValidElement, useCallback, useMemo, useState } from 'react'
 
 import { clamp } from '@/utils'
 
 import { Overlay } from './Overlay'
-
-interface ISplitViewItem {
-  dragMinSize?: number
-  fixed?: boolean
-  key: string
-  maxSize?: number
-  minSize?: number
-  reset?: () => void
-  visible?: boolean
-  resize?: (size: number) => void
-  commitSize?: () => void
-}
-interface SplitViewContext {
-  registerView(key: string, view: ISplitViewItem): void
-}
-const SplitViewContext = createContext<Partial<SplitViewContext>>({})
-SplitViewContext.displayName = 'SplitViewContext'
+import { SplitViewContext, type SplitViewItem } from './splitViewContext'
 
 function flattenSplitViewChildren(children: React.ReactNode): React.ReactNode[] {
   return Children.toArray(children).flatMap((child) => {
@@ -45,124 +16,15 @@ function flattenSplitViewChildren(children: React.ReactNode): React.ReactNode[] 
   })
 }
 
-function useSplitView() {
-  return useContext(SplitViewContext)
-}
-
-function useRegisterView(key: string, view: ISplitViewItem) {
-  const { registerView } = useSplitView()
-
-  useEffect(() => {
-    registerView?.(key, view)
-  }, [key, registerView, view])
-}
-
-function useSize(preferredSize?: number, minSize = 0, maxSize = Number.POSITIVE_INFINITY, storageKey?: string) {
-  const [size, setSize] = useState(preferredSize)
-  const sizeRef = useRef(size)
-  useLayoutEffect(() => {
-    if (!storageKey) return
-    if (preferredSize === undefined) {
-      if (sizeRef.current === undefined) return
-
-      sizeRef.current = undefined
-      setSize(undefined)
-      return
-    }
-
-    const stored = window.localStorage.getItem(storageKey)
-    const parsed = stored ? Number(stored) : Number.NaN
-    const restoredSize = Number.isFinite(parsed) ? clamp(parsed, minSize, maxSize) : preferredSize
-    if (restoredSize === sizeRef.current) return
-
-    sizeRef.current = restoredSize
-    setSize(restoredSize)
-  }, [maxSize, minSize, preferredSize, storageKey])
-  const persistSize = useCallback(
-    (size: number | undefined) => {
-      if (!storageKey || typeof window === 'undefined') return
-
-      if (size === undefined) {
-        window.localStorage.removeItem(storageKey)
-      } else {
-        window.localStorage.setItem(storageKey, String(size))
-      }
-    },
-    [storageKey],
-  )
-  const resize = useCallback(
-    (delta: number) => {
-      const current = sizeRef.current ?? preferredSize
-      if (current === undefined) return
-
-      const next = clamp(current + delta, minSize, maxSize)
-      sizeRef.current = next
-      setSize(next)
-    },
-    [maxSize, minSize, preferredSize],
-  )
-  const commitSize = useCallback(() => {
-    persistSize(sizeRef.current)
-  }, [persistSize])
-  const reset = useCallback(() => {
-    persistSize(undefined)
-    sizeRef.current = preferredSize
-    setSize(preferredSize)
-  }, [persistSize, preferredSize])
-
-  return [size, resize, reset, commitSize] as const
-}
-
-export function useSplitViewItem(
-  key: React.FC | string,
-  {
-    preferredSize,
-    minSize = 0,
-    maxSize = Number.POSITIVE_INFINITY,
-    storageKey,
-    visible = true,
-    dragMinSize,
-  }: {
-    dragMinSize?: number
-    preferredSize?: number
-    minSize?: number
-    maxSize?: number
-    storageKey?: string
-    visible?: boolean
-  } = {},
-) {
-  const [size, _resize, reset, commitSize] = useSize(preferredSize, dragMinSize ?? minSize, maxSize, storageKey)
-  const fixed = minSize === maxSize
-  const resize = fixed ? undefined : _resize
-  const stringKey = typeof key === 'string' ? key : key.name
-  const view = useMemo(
-    () => ({
-      commitSize,
-      fixed,
-      dragMinSize,
-      key: stringKey,
-      maxSize,
-      minSize,
-      reset,
-      resize,
-      visible,
-    }),
-    [commitSize, dragMinSize, fixed, maxSize, minSize, reset, stringKey, resize, visible],
-  )
-  useRegisterView(stringKey, view)
-
-  return { size }
-}
-
 interface SplitViewProps extends ComponentProps<'div'> {
   vertical?: boolean
 }
 
 export const SplitView = ({ children, className, vertical = false }: SplitViewProps) => {
-  const [viewMap, setViewMap] = useState(new Map<string, ISplitViewItem>())
+  const [viewMap, setViewMap] = useState(new Map<string, SplitViewItem>())
   const views = [...viewMap.values()]
 
-  const registerView = useCallback((key: string, view: ISplitViewItem) => {
+  const registerView = useCallback((key: string, view: SplitViewItem) => {
     setViewMap((map) => {
       const next = new Map(map)
       next.set(key, view)
@@ -196,7 +58,7 @@ const SASH_LINE_SIZE = 1
 const SASH_HIGHLIGHT_LINE_SIZE = 2
 interface SashProps {
   vertical: boolean
-  views: (ISplitViewItem | undefined)[]
+  views: (SplitViewItem | undefined)[]
 }
 const Sash: React.FC<SashProps> = ({ vertical, views }) => {
   const [hover, setHover] = useState(false)
@@ -280,7 +142,7 @@ const Sash: React.FC<SashProps> = ({ vertical, views }) => {
   )
 }
 
-function resizeDeltaBounds(vertical: boolean, views: (ISplitViewItem | undefined)[], sash: HTMLElement) {
+function resizeDeltaBounds(vertical: boolean, views: (SplitViewItem | undefined)[], sash: HTMLElement) {
   const [previousView, nextView] = views
   const previousElement = sash.previousElementSibling
   const nextElement = sash.nextElementSibling
@@ -300,6 +162,6 @@ function elementSplitSize(element: Element, vertical: boolean) {
   return vertical ? rect.height : rect.width
 }
 
-function dragMinSize(view?: ISplitViewItem) {
+function dragMinSize(view?: SplitViewItem) {
   return view?.dragMinSize ?? view?.minSize ?? 0
 }

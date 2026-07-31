@@ -12,7 +12,7 @@ import {
 import { isSupportedExternalUrl, openSupportedExternalUrl } from '../../externalLink'
 import type { BookTab } from '../../models/reader'
 import { getNoteIndex } from '../../noteIndex'
-import { useDndContext } from '../base/DropZone'
+import { useDndContext } from '../base/dropZoneContext'
 
 import {
   createNotePopoverState,

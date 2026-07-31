@@ -3,6 +3,7 @@ import { ClipboardPasteIcon, CopyIcon } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { HexColorPicker } from 'react-colorful'
 
+import { normalizeHexColor } from '../color'
 import { useTranslation } from '../hooks/useTranslation'
 import { copy } from '../utils'
 
@@ -162,22 +163,4 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
       </div>
     </div>
   )
-}
-
-export function normalizeHexColor(value: string | undefined) {
-  const raw = value?.trim()
-  if (!raw) return
-
-  const hex = raw.startsWith('#') ? raw.slice(1) : raw
-  if (/^[0-9a-fA-F]{3}$/.test(hex)) {
-    return `#${hex
-      .split('')
-      .map((char) => `${char}${char}`)
-      .join('')
-      .toUpperCase()}`
-  }
-
-  if (/^[0-9a-fA-F]{6}$/.test(hex)) {
-    return `#${hex.toUpperCase()}`
-  }
 }

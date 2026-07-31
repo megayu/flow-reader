@@ -12,7 +12,8 @@ import {
 import { IconButton } from '../IconButton'
 import { Twisty } from '../Row'
 
-import { SplitView, useSplitViewItem } from './SplitView'
+import { SplitView } from './SplitView'
+import { useSplitViewItem } from './splitViewContext'
 
 const COLLAPSED_STORAGE_SUFFIX = ':collapsed'
 const PANE_HEADER_SIZE = 28

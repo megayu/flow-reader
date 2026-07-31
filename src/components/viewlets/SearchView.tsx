@@ -15,7 +15,7 @@ import { useListSize } from '@/hooks/useList'
 import { useTranslation } from '@/hooks/useTranslation'
 import { type IMatch, reader, useReaderSnapshot } from '@/models/reader'
 
-import { readerPageTooltipContentStyle } from '../AppTooltip'
+import { readerPageTooltipContentStyle } from '../appTooltipStyles'
 import { OverlayScroll, PaneView, type PaneViewProps } from '../base/PaneView'
 import { IconButton } from '../IconButton'
 import { Row } from '../Row'

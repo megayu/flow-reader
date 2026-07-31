@@ -94,15 +94,21 @@ function DropdownMenuRadioItem({ className, ...props }: React.ComponentProps<typ
 const DropdownMenuItemIndicator = DropdownMenuPrimitive.ItemIndicator
 
 export {
+  // biome-ignore lint/style/useComponentExportOnlyModules: This Radix primitive alias is a React component.
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  // biome-ignore lint/style/useComponentExportOnlyModules: This Radix primitive alias is a React component.
   ContextMenuTrigger,
+  // biome-ignore lint/style/useComponentExportOnlyModules: This Radix primitive alias is a React component.
   DropdownMenu,
   DropdownMenuContent,
+  // biome-ignore lint/style/useComponentExportOnlyModules: This Radix primitive alias is a React component.
   DropdownMenuItemIndicator,
+  // biome-ignore lint/style/useComponentExportOnlyModules: This Radix primitive alias is a React component.
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  // biome-ignore lint/style/useComponentExportOnlyModules: This Radix primitive alias is a React component.
   DropdownMenuTrigger,
 }

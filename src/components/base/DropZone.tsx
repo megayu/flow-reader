@@ -1,15 +1,7 @@
 import clsx from 'clsx'
-import {
-  createContext,
-  type DragEvent,
-  type HTMLAttributes,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { type DragEvent, type HTMLAttributes, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+
+import { DndContext, type DragDataEvent, useDndContext } from './dropZoneContext'
 
 interface DropZoneProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onDrop'> {
   children?: ReactNode
@@ -26,10 +18,6 @@ export const DropZone: React.FC<DropZoneProps> = (props) => {
 }
 
 type Position = 'universe' | 'left' | 'right' | 'top' | 'bottom'
-
-interface DragDataEvent {
-  dataTransfer: DataTransfer | null
-}
 
 // > During the drag, in an event listener for the dragenter and dragover events, you use the data types of the data being dragged to check whether a drop is allowed.
 // https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Drag_operations#drag_data
@@ -123,10 +111,6 @@ const DropZoneInner: React.FC<DropZoneProps> = ({ children, className, onDrop, s
   )
 }
 
-const DndContext = createContext<{
-  dragover: boolean
-  setDragEvent: (e?: DragDataEvent) => void
-}>({ dragover: false, setDragEvent: () => {} })
 const DndProvider: React.FC<{ children?: ReactNode }> = ({ children }) => {
   const [dragover, setDragover] = useState(false)
 
@@ -136,8 +120,4 @@ const DndProvider: React.FC<{ children?: ReactNode }> = ({ children }) => {
   const value = useMemo(() => ({ dragover, setDragEvent }), [dragover, setDragEvent])
 
   return <DndContext.Provider value={value}>{children}</DndContext.Provider>
-}
-
-export function useDndContext() {
-  return useContext(DndContext)
 }

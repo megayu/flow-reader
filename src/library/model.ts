@@ -82,6 +82,13 @@ export const bookCoverCornerBadgeClassName =
 export const bookCoverCornerIconSize = 18
 export const bookCoverCornerIconStrokeWidth = 2.2
 export const bookSourceStatusRefreshEvent = 'flow-reader:book-source-status-refresh'
+export const readingStatusOptions: ReadingStatus[] = ['toRead', 'reading', 'read']
+export const readingStatusEditButtonClassName: Record<ReadingStatus | 'unmarked', string> = {
+  unmarked: 'bg-popover/95 text-muted-foreground ring-border hover:bg-muted hover:text-foreground',
+  toRead: 'bg-amber-50/95 text-amber-600 ring-amber-200 hover:bg-amber-100',
+  reading: 'bg-sky-50/95 text-sky-600 ring-sky-200 hover:bg-sky-100',
+  read: 'bg-emerald-50/95 text-emerald-600 ring-emerald-200 hover:bg-emerald-100',
+}
 
 export function isBookSourceUnavailable(status?: BookSourceStatus) {
   return status !== undefined && status !== 'available'

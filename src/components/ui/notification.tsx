@@ -1,35 +1,16 @@
 import { CheckCircleIcon, TriangleAlertIcon, XIcon } from 'lucide-react'
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { cn } from '@/utils'
 
 import { Button } from './button'
+import { NotificationContext, type NotificationInput } from './notificationContext'
 
-type NotificationType = 'success' | 'error'
 const DEFAULT_NOTIFICATION_AUTO_CLOSE_MS = 5000
-
-interface NotificationInput {
-  action?: {
-    label: string
-    onClick: () => void
-  }
-  autoCloseMs?: number | false
-  description?: string
-  items?: string[]
-  title: string
-  type: NotificationType
-}
 
 interface NotificationRecord extends NotificationInput {
   id: number
 }
-
-interface NotificationContextValue {
-  dismiss: (id: number) => void
-  notify: (notification: NotificationInput) => number
-}
-
-const NotificationContext = createContext<NotificationContextValue | undefined>(undefined)
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<NotificationRecord[]>([])
@@ -76,14 +57,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   )
 }
 
-export function useNotify() {
-  const context = useContext(NotificationContext)
-  if (!context) {
-    throw new Error('useNotify must be used within NotificationProvider')
-  }
-  return context.notify
-}
-
 function NotificationToast({
   notification,
   onDismiss,
@@ -115,7 +88,7 @@ function NotificationToast({
         aria-hidden
         className={cn('size-4', notification.type === 'success' ? 'text-(--flow-accent)' : 'text-(--flow-danger)')}
       />
-      <div className="min-w-0 cursor-text space-y-1 [overflow-wrap:anywhere] select-text">
+      <div className="min-w-0 cursor-text space-y-1 wrap-anywhere select-text">
         <h2 className="text-foreground text-base leading-tight font-medium">{notification.title}</h2>
         {notification.description && <p className="text-muted-foreground leading-snug">{notification.description}</p>}
         {!!notification.items?.length && (

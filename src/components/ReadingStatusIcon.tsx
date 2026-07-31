@@ -17,7 +17,7 @@ const iconMap = {
   read: BookCheck,
 } as const
 
-export const readingStatusIconClassName: Record<ReadingStatus, string> = {
+const readingStatusIconClassName: Record<ReadingStatus, string> = {
   toRead: 'text-amber-500',
   reading: 'text-sky-500',
   read: 'text-emerald-500',

@@ -26,7 +26,7 @@ import { AppTooltip } from './AppTooltip'
 import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogTitle } from './ui/dialog'
 import { Input } from './ui/input'
-import { useNotify } from './ui/notification'
+import { useNotify } from './ui/notificationContext'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 
 interface TextImportDialogProps {

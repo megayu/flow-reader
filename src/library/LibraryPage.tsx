@@ -26,7 +26,7 @@ import { ReaderGridView } from '../components/Reader'
 import { TextImportDialog } from '../components/TextImportDialog'
 import { TooltipButton } from '../components/TooltipButton'
 import { Button as UiButton } from '../components/ui/button'
-import { useNotify } from '../components/ui/notification'
+import { useNotify } from '../components/ui/notificationContext'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { formatErrorMessage } from '../errorMessage'
@@ -68,11 +68,11 @@ import {
   bookSourceStatusFromError,
   bookSourceStatusRefreshEvent,
   isArchiveOnlyBook,
+  readingStatusOptions,
   sortBooks,
   toggleReadingStatusFilter,
   toggleSortDirection,
 } from './model'
-import { readingStatusOptions } from './ReadingStatusControls'
 import {
   getBookIdRange,
   type LibraryBookSelectionEvent,

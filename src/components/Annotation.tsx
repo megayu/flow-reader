@@ -5,12 +5,6 @@ import { colorMap, type Annotation as IAnnotation } from '../annotation'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
 import type { BookTab } from '../models/reader'
 
-// avoid click penetration
-let clickedAnnotation = false
-
-export const getClickedAnnotation = () => clickedAnnotation
-export const setClickedAnnotation = (v: boolean) => (clickedAnnotation = v)
-
 const definitionPalette = [
   { light: '#dc2626', dark: '#ff4d4d' },
   { light: '#ea580c', dark: '#ff8a00' },
@@ -55,19 +49,11 @@ const FindMatches: React.FC<FindMatchProps> = ({ active, tab }) => {
     const matches = renderedSearchMatches(tab, query)
     matches.forEach((m) => {
       try {
-        rendition?.annotations.highlight(
-          m.cfi,
-          undefined,
-          () => {
-            setClickedAnnotation(true)
-          },
-          undefined,
-          {
-            // tailwind yellow-500
-            fill: 'rgba(234, 179, 8, 0.3)',
-            'fill-opacity': 'unset',
-          },
-        )
+        rendition?.annotations.highlight(m.cfi, undefined, () => {}, undefined, {
+          // tailwind yellow-500
+          fill: 'rgba(234, 179, 8, 0.3)',
+          'fill-opacity': 'unset',
+        })
       } catch (_error) {
         // ignore matched text in `<title>`
       }
@@ -221,7 +207,6 @@ const Definitions: React.FC<DefinitionsProps> = ({ active, definitions, tab, dar
               event?.preventDefault()
               event?.stopPropagation()
               tab.setAnnotationRange(match.cfi, event?.currentTarget)
-              setClickedAnnotation(true)
             },
             'flow-definition-underline',
             styles,
@@ -278,7 +263,6 @@ const Annotation: React.FC<AnnotationProps> = ({ tab, annotation }) => {
         event?.preventDefault()
         event?.stopPropagation()
         tab.setAnnotationRange(annotation.cfi, event?.currentTarget)
-        setClickedAnnotation(true)
       },
       undefined,
       {

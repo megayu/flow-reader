@@ -9,21 +9,12 @@ import { useTranslation } from '../hooks/useTranslation'
 import { toMessageKeySegment } from '../locales'
 import type { ReadingStatus } from '../storage'
 
-import { bookCoverCornerBadgeClassName, bookCoverCornerIconSize } from './model'
-
-export const readingStatusOptions: ReadingStatus[] = ['toRead', 'reading', 'read']
+import { bookCoverCornerBadgeClassName, bookCoverCornerIconSize, readingStatusOptions } from './model'
 
 const readingStatusBadgeClassName: Record<ReadingStatus, string> = {
   toRead: 'bg-amber-500 text-white ring-amber-700/15',
   reading: 'bg-sky-500 text-white ring-sky-700/15',
   read: 'bg-emerald-600 text-white ring-emerald-800/15',
-}
-
-export const readingStatusEditButtonClassName: Record<ReadingStatus | 'unmarked', string> = {
-  unmarked: 'bg-popover/95 text-muted-foreground ring-border hover:bg-muted hover:text-foreground',
-  toRead: 'bg-amber-50/95 text-amber-600 ring-amber-200 hover:bg-amber-100',
-  reading: 'bg-sky-50/95 text-sky-600 ring-sky-200 hover:bg-sky-100',
-  read: 'bg-emerald-50/95 text-emerald-600 ring-emerald-200 hover:bg-emerald-100',
 }
 
 const readingStatusProgressBarClassName: Record<ReadingStatus | 'unmarked', string> = {

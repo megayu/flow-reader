@@ -73,7 +73,13 @@
         "useHookAtTopLevel": "error"
       },
       "style": {
-        "noNonNullAssertion": "off"
+        "noNonNullAssertion": "off",
+        "useComponentExportOnlyModules": {
+          "level": "error",
+          "options": {
+            "allowConstantExport": true
+          }
+        }
       },
       "suspicious": {
         "noArrayIndexKey": "off",

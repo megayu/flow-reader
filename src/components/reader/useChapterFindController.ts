@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 
 import type { BookTab } from '../../models/reader'
 
-import { type ChapterFindState, initialChapterFind } from './ChapterFind'
+import { type ChapterFindState, initialChapterFind } from './chapterFindModel'
 
 function getSelectedText(windows: readonly Window[]) {
   for (const win of windows) {

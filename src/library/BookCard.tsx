@@ -15,7 +15,8 @@ import type React from 'react'
 import { useCallback, useState } from 'react'
 
 import { getBookDisplayTitle, getBookTooltip } from '../book'
-import { AppTooltip, readerPageTooltipContentStyle } from '../components/AppTooltip'
+import { AppTooltip } from '../components/AppTooltip'
+import { readerPageTooltipContentStyle } from '../components/appTooltipStyles'
 import { BookTooltipContent } from '../components/BookTooltipContent'
 import { ReadingStatusIcon } from '../components/ReadingStatusIcon'
 import {
@@ -28,7 +29,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '../components/ui/menu'
-import { useNotify } from '../components/ui/notification'
+import { useNotify } from '../components/ui/notificationContext'
 import { formatErrorMessage } from '../errorMessage'
 import { useTranslation } from '../hooks/useTranslation'
 import { toMessageKeySegment } from '../locales'
@@ -55,13 +56,9 @@ import {
   isArchiveOnlyBook,
   isBookExportDirty,
   isBookSourceUnavailable,
-} from './model'
-import {
-  BookProgress,
-  ReadingStatusBadge,
-  ReadingStatusMenu,
   readingStatusEditButtonClassName,
-} from './ReadingStatusControls'
+} from './model'
+import { BookProgress, ReadingStatusBadge, ReadingStatusMenu } from './ReadingStatusControls'
 import type { LibraryBookSelectionEvent } from './selection'
 
 const placeholder = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect fill="gray" fill-opacity="0" width="1" height="1"/></svg>`
