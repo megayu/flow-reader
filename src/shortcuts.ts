@@ -82,7 +82,7 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
   },
   dismissReturn: {
     labelKey: 'dismiss_return',
-    shortcuts: [['Q']],
+    shortcuts: [['X']],
   },
   chapterFind: {
     labelKey: 'chapter_find',
@@ -170,7 +170,7 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
   },
   libraryReaderToggle: {
     labelKey: 'library_reader_toggle',
-    shortcuts: [['E']],
+    shortcuts: [['V']],
   },
   libraryBatchTags: {
     labelKey: 'library_batch_tags',

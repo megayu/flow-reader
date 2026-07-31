@@ -162,8 +162,8 @@
   "menu.undefine": "移除定义",
   "menu.update": "更新",
 
-  "mode.enter_library": "前往书架",
-  "mode.return_reader": "返回阅读",
+  "mode.back_to_library": "返回书架",
+  "mode.resume_reading": "继续阅读",
 
   "reader.dismiss_return": "留在此处",
   "reader.return_to_previous": "返回上一处",

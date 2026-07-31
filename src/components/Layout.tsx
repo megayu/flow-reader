@@ -434,7 +434,7 @@ function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProp
     () => [
       {
         name: 'mode',
-        title: viewMode === 'library' ? 'mode.return_reader' : 'mode.enter_library',
+        title: viewMode === 'library' ? 'mode.resume_reading' : 'mode.back_to_library',
         Icon: viewMode === 'library' ? BookOpen : Library,
         shortcutId: 'libraryReaderToggle',
         disabled: viewMode === 'library' && !focusedBookTab,

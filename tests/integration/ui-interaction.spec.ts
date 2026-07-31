@@ -282,7 +282,7 @@ test('zen mode action is visibly disabled in library mode', async ({ page }) => 
 
 test('fullscreen shortcut works in library mode without an open tab', async ({ page }) => {
   await expect(page.getByRole('button', { name: msg('fullscreen.enter') })).toBeVisible()
-  await expect(page.getByRole('button', { name: msg('mode.return_reader') })).toBeDisabled()
+  await expect(page.getByRole('button', { name: msg('mode.resume_reading') })).toBeDisabled()
   await expect.poll(() => getFullscreenState(page)).toBe(false)
 
   await page.keyboard.press('f')

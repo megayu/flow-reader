@@ -150,7 +150,7 @@ function handleAppShortcut(
     return true
   }
 
-  if (key === 'e') {
+  if (key === 'v') {
     consumeShortcut(event)
     if (viewMode === 'library') {
       if (tab) shortcuts.setViewMode('reader')
@@ -450,7 +450,7 @@ function handleReturnShortcut(event: KeyboardEvent, tab?: BookTab) {
   if (!tab?.locationToReturn) return false
 
   const key = event.key.toLowerCase()
-  if (!['b', 'r', 'q'].includes(key)) return false
+  if (!['b', 'r', 'x'].includes(key)) return false
   if (shouldIgnoreReaderShortcut(event)) return false
 
   consumeShortcut(event)
