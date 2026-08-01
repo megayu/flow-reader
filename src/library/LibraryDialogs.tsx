@@ -307,17 +307,25 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose
 
 interface DeleteSelectedBooksDialogProps {
   count: number
+  openCount: number
   onClose: () => void
   onConfirm: () => void
 }
 
-export const DeleteSelectedBooksDialog: React.FC<DeleteSelectedBooksDialogProps> = ({ count, onClose, onConfirm }) => {
+export const DeleteSelectedBooksDialog: React.FC<DeleteSelectedBooksDialogProps> = ({
+  count,
+  openCount,
+  onClose,
+  onConfirm,
+}) => {
   const t = useTranslation('home')
+  const description =
+    openCount === 0 ? t('delete_selected.message', count) : t('delete_selected.message_open', count, openCount)
 
   return (
     <ConfirmDialog
       title={t('delete_selected.title')}
-      description={t('delete_selected.message', count)}
+      description={description}
       cancelLabel={t('cancel')}
       confirmLabel={t('delete')}
       onClose={onClose}

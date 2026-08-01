@@ -1,9 +1,14 @@
+import path from 'node:path'
+
 import { expect, type Page, test } from '@playwright/test'
 
 import type { BookRecord } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
 import { msg } from '../support/i18n'
 import { installTauriMock } from '../support/tauri-mock'
+
+const aliceEpubPath = path.resolve('packages/epubjs/test/fixtures/alice.epub')
+const alicePackageUrl = '/test-assets/library-selection/alice.epub'
 
 function createBook(index: number): BookRecord {
   const title = `Selection Book ${String(index).padStart(2, '0')}`
@@ -114,4 +119,43 @@ test('escape clears selection and exits selection mode before clearing filters',
 
   await page.keyboard.press('Escape')
   await expect(authorFilter).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('batch deletion closes selected open book tabs and preserves unselected tabs', async ({ page }) => {
+  const books = [createBook(1), createBook(2), createBook(3)]
+  await page.route(`**${alicePackageUrl}`, (route) =>
+    route.fulfill({
+      path: aliceEpubPath,
+      contentType: 'application/epub+zip',
+    }),
+  )
+  await installTauriMock(page, {
+    books,
+    readerSources: Object.fromEntries(books.map((book) => [book.id, alicePackageUrl])),
+    settings: {
+      librarySidebarOpen: false,
+      librarySort: { field: 'title', direction: 'asc' },
+    },
+  })
+  await page.goto('/')
+  await expect(page.locator('#layout')).toBeVisible()
+
+  await bookCard(page, 1).click()
+  await expect(page.locator('[data-flow-reader-tab-index]')).toHaveCount(1)
+  await page.getByRole('button', { name: msg('mode.back_to_library') }).click()
+  await bookCard(page, 2).click()
+  await expect(page.locator('[data-flow-reader-tab-index]')).toHaveCount(2)
+  await page.getByRole('button', { name: msg('mode.back_to_library') }).click()
+
+  await page.getByRole('button', { name: msg('home.select'), exact: true }).click()
+  await bookCard(page, 1).click()
+  await bookCard(page, 3).click()
+  await page.getByRole('button', { name: msg('home.delete'), exact: true }).click()
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: msg('home.delete'), exact: true })
+    .click()
+
+  await expect(page.locator('[data-flow-reader-tab-index]')).toHaveCount(1)
+  await expect(page.locator('[data-flow-reader-tab-index]')).toContainText('Selection Book 02')
 })

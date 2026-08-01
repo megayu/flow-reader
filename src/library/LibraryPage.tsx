@@ -139,6 +139,7 @@ export function LibraryPage() {
   const errorT = useTranslation('error')
   const homeT = useTranslation('home')
   const focusedBookId = focusedBookTab?.book.id
+  const openBookIds = new Set(groups.flatMap((group) => group.bookTabs.map((tab) => tab.book.id)))
 
   const applySavedSidebarState = useCallback(() => {
     setReaderAction(settings.readerSidebarOpen === false ? undefined : 'toc')
@@ -402,6 +403,7 @@ export function LibraryPage() {
 
   const library = (
     <Library
+      openBookIds={openBookIds}
       onOpenBook={() => setViewMode('reader')}
       onEpubImportProgress={handleBookImportProgress}
       onEpubImportResult={handleEpubImportResult}
@@ -438,13 +440,20 @@ export function LibraryPage() {
 }
 
 interface LibraryProps {
+  openBookIds: ReadonlySet<string>
   onEpubImportProgress: (progress: BookImportProgress) => void
   onEpubImportResult: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
   onOpenBook: () => void
   onTextPaths: (paths: string[]) => void
 }
 
-const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportResult, onOpenBook, onTextPaths }) => {
+const Library: React.FC<LibraryProps> = ({
+  openBookIds,
+  onEpubImportProgress,
+  onEpubImportResult,
+  onOpenBook,
+  onTextPaths,
+}) => {
   const books = useLibrary()
   const covers = useCovers()
   const tags = useLibraryTags()
@@ -481,6 +490,7 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
   const visibleBookIds = useMemo(() => sortedBooks.map((book) => book.id), [sortedBooks])
   const coversById = useMemo(() => new Map(covers?.map((cover) => [cover.id, cover.cover])), [covers])
   const selectedBooks = sortedBooks.filter((book) => selectedBookIds.has(book.id))
+  const openSelectedBookCount = selectedBooks.filter((book) => openBookIds.has(book.id)).length
   const referencedArchiveIds = useMemo(
     () =>
       (books ?? []).reduce<string[]>((ids, book) => {
@@ -1057,11 +1067,13 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
       {deleteBooksOpen && (
         <DeleteSelectedBooksDialog
           count={selectedBooks.length}
+          openCount={openSelectedBookCount}
           onClose={() => setDeleteBooksOpen(false)}
           onConfirm={() => {
             const bookIds = selectedBooks.map((book) => book.id)
             setDeleteBooksOpen(false)
             exitSelectMode()
+            bookIds.forEach((bookId) => reader.closeBookTab(bookId))
             void db.books.bulkDelete(bookIds)
           }}
         />
