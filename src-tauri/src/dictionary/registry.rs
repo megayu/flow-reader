@@ -6,12 +6,11 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 
 use super::import::{
-    DictionaryFileReference, DictionaryFormat, DictionaryImportError, InspectedDictionary, SourceFingerprint,
-    inspect_dictionary_file,
+    DictionaryFormat, DictionaryImportError, InspectedDictionary, SourceFingerprint, inspect_dictionary_file,
 };
 use super::mdict::{MdictError, MdictReader};
 use super::stardict::{StarDictError, prepare_index};
@@ -77,8 +76,6 @@ pub struct LocalDictionaryRecord {
     pub format: DictionaryFormat,
     pub source_path: PathBuf,
     pub fingerprint: SourceFingerprint,
-    #[serde(default)]
-    pub files: Vec<DictionaryFileReference>,
     #[serde(default = "enabled_by_default")]
     pub enabled: bool,
     #[serde(default)]
@@ -162,8 +159,45 @@ impl std::error::Error for DictionaryRegistryError {}
 struct RegistryFile {
     #[serde(default)]
     version: u32,
-    #[serde(default)]
+    #[serde(default, serialize_with = "serialize_dictionary_records")]
     dictionaries: Vec<LocalDictionaryRecord>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredLocalDictionaryRecord<'a> {
+    id: &'a str,
+    name: &'a str,
+    format: DictionaryFormat,
+    source_path: &'a Path,
+    fingerprint: &'a SourceFingerprint,
+    enabled: bool,
+    order: u32,
+    language: &'a DictionaryLanguageSetting,
+    created_at: u64,
+    updated_at: u64,
+}
+
+fn serialize_dictionary_records<S>(records: &[LocalDictionaryRecord], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    records
+        .iter()
+        .map(|record| StoredLocalDictionaryRecord {
+            id: &record.id,
+            name: &record.name,
+            format: record.format,
+            source_path: &record.source_path,
+            fingerprint: &record.fingerprint,
+            enabled: record.enabled,
+            order: record.order,
+            language: &record.language,
+            created_at: record.created_at,
+            updated_at: record.updated_at,
+        })
+        .collect::<Vec<_>>()
+        .serialize(serializer)
 }
 
 impl Default for RegistryFile {
@@ -582,7 +616,6 @@ fn record_from_inspection(id: String, inspected: InspectedDictionary, order: u32
         format: inspected.format,
         source_path: inspected.source_path,
         fingerprint: inspected.fingerprint,
-        files: inspected.files,
         enabled: true,
         order,
         language,
@@ -598,7 +631,6 @@ fn apply_inspection(record: &mut LocalDictionaryRecord, inspected: InspectedDict
     record.format = inspected.format;
     record.source_path = inspected.source_path;
     record.fingerprint = inspected.fingerprint;
-    record.files = inspected.files;
     record.source_status = DictionarySourceStatus::Available;
     record.updated_at = now;
     if record.language.source != DictionaryLanguageSource::Manual {

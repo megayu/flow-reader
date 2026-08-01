@@ -9,6 +9,7 @@ export function createTestBook({ metadata = {}, ...overrides }: TestBookOverride
     id: 'test-book',
     name: 'Test Book.epub',
     size: 1,
+    sourceFormat: 'epub',
     metadata: {
       title: 'Test Book',
       creator: '',

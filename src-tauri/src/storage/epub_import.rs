@@ -44,7 +44,7 @@ const EPUB_MISSING_SPINE_MAX_SMALL_READABLE_SPINE: usize = 2;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct EpubAccessInfo {
     pub(super) mode: BookContentMode,
-    pub(super) flags: Vec<BookContentFlag>,
+    pub(super) declares_encryption: bool,
 }
 
 struct ParsedEpubInfo {

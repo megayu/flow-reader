@@ -31,7 +31,6 @@ pub(in crate::storage) fn inspect_epub_access(path: &Path) -> Result<EpubAccessI
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
     validate_epub_archive_limits(&mut archive)?;
-    let mut flags = Vec::new();
     let mut has_non_portable_path = false;
     let mut declares_encryption = false;
 
@@ -46,20 +45,13 @@ pub(in crate::storage) fn inspect_epub_access(path: &Path) -> Result<EpubAccessI
         }
     }
 
-    if has_non_portable_path {
-        flags.push(BookContentFlag::NonPortableArchivePaths);
-    }
-    if declares_encryption {
-        flags.push(BookContentFlag::DeclaresEncryption);
-    }
-
     Ok(EpubAccessInfo {
         mode: if has_non_portable_path {
             BookContentMode::ArchiveOnly
         } else {
             BookContentMode::Normal
         },
-        flags,
+        declares_encryption,
     })
 }
 

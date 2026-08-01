@@ -329,7 +329,6 @@ function localStarDict(): LocalDictionaryRecord {
   return {
     createdAt: 1,
     enabled: true,
-    files: [],
     fingerprint: { modifiedMs: 1, sampleHash: 'fixture', size: 1 },
     format: 'stardict',
     id: 'dict-oxford',
@@ -346,7 +345,6 @@ function localMdict(): LocalDictionaryRecord {
   return {
     createdAt: 1,
     enabled: true,
-    files: [],
     fingerprint: { modifiedMs: 1, sampleHash: 'fixture', size: 1 },
     format: 'mdict',
     id: 'dict-synthetic-zh',

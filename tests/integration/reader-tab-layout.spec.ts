@@ -61,6 +61,7 @@ function createBook(id: string, title: string): BookRecord {
     id,
     name: `${title}.epub`,
     size: 128000,
+    sourceFormat: 'epub',
     metadata: {
       title,
       creator: 'Lewis Carroll',

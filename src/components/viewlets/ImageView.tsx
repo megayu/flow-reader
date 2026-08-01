@@ -162,15 +162,11 @@ function createImageIndexCacheInput(
   if (!tab) return
 
   return {
-    bookHash: tab.book.contentHash ?? '',
     contentVersion: tab.book.contentVersion ?? 0,
     sections: sections.map((section, index) => {
-      const navitem = section.navitem ?? tab.mapSectionToNavItem(section.href)
       return {
         sectionIndex: section.index ?? index,
         href: section.href,
-        title: navitem?.label ?? null,
-        navPath: navitem ? tab.getNavPath(navitem).map((item) => item.label) : [],
         images: imageEntries(section).map((image) => ({
           src: image.src,
           index: image.index,

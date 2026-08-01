@@ -57,12 +57,7 @@ pub(super) fn ensure_book_package_path(
     ensure_book_package_path_with_unpacker(storage, tasks, book, unpack_epub)
 }
 
-pub(super) fn set_book_content_access(
-    storage: &AppStorage,
-    id: &str,
-    mode: BookContentMode,
-    flags: Vec<BookContentFlag>,
-) -> Result<(), String> {
+pub(super) fn set_book_content_access(storage: &AppStorage, id: &str, mode: BookContentMode) -> Result<(), String> {
     let (changed, external) = {
         let mut state = storage
             .inner
@@ -71,19 +66,17 @@ pub(super) fn set_book_content_access(
             .map_err(|_| "storage state lock poisoned".to_string())?;
 
         if let Some(book) = state.library.books.iter_mut().find(|book| book.id == id) {
-            if book.content_mode == mode && book.content_flags == flags {
+            if book.content_mode == mode {
                 (false, false)
             } else {
                 book.content_mode = mode;
-                book.content_flags = flags;
                 (true, false)
             }
         } else if let Some(book) = state.external.books.iter_mut().find(|book| book.id == id) {
-            if book.content_mode == mode && book.content_flags == flags {
+            if book.content_mode == mode {
                 (false, true)
             } else {
                 book.content_mode = mode;
-                book.content_flags = flags;
                 (true, true)
             }
         } else {
@@ -110,7 +103,7 @@ pub(super) fn inspect_and_store_book_content_access(
     if book.content_mode == BookContentMode::ArchiveOnly {
         return Ok(BookContentMode::ArchiveOnly);
     }
-    if storage.book_source_format(book) != BookSourceFormat::Epub {
+    if book.source_format != BookSourceFormat::Epub {
         return Ok(BookContentMode::Normal);
     }
 
@@ -120,7 +113,7 @@ pub(super) fn inspect_and_store_book_content_access(
     }
 
     let access = inspect_epub_access(&book_path)?;
-    set_book_content_access(storage, &book.id, access.mode, access.flags)?;
+    set_book_content_access(storage, &book.id, access.mode)?;
     Ok(access.mode)
 }
 

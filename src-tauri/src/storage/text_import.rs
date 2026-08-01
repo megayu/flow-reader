@@ -1485,7 +1485,6 @@ pub(super) fn import_text_path_impl(
     let metadata = json!({
         "title": title,
         "creator": creator,
-        "sourceFormat": "txt",
         "sourceEncodingId": decoded.encoding,
     });
 
@@ -1514,7 +1513,6 @@ pub(super) fn import_text_path_impl(
                 book.content_hash = hash.clone();
                 book.content_version = book.content_version.saturating_add(1).max(1);
                 book.content_mode = BookContentMode::Normal;
-                book.content_flags.clear();
                 book.source_storage = source_storage;
                 book.source_path = Some(source_path.clone());
                 book.updated_at = Some(now_ms());
@@ -1528,7 +1526,6 @@ pub(super) fn import_text_path_impl(
             book.name = name.clone();
             book.size = size;
             book.content_mode = BookContentMode::Normal;
-            book.content_flags.clear();
             let storage_changed = book.source_storage != source_storage;
             book.source_storage = source_storage;
             book.source_path = Some(source_path.clone());
@@ -1544,12 +1541,11 @@ pub(super) fn import_text_path_impl(
                 name: name.clone(),
                 size,
                 reading_status: None,
-                source_format: Some(BookSourceFormat::Txt),
+                source_format: BookSourceFormat::Txt,
                 content_edited_at: None,
                 content_hash: hash.clone(),
                 content_version: 1,
                 content_mode: BookContentMode::Normal,
-                content_flags: Vec::new(),
                 source_storage,
                 source_path: Some(source_path.clone()),
                 metadata: metadata.clone(),

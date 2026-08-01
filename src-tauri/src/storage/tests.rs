@@ -7,20 +7,20 @@ use super::{
     AppStorage, BOOK_FILE, BOOKS_DIR, BookContentMode, BookExportFormat, BookReaderSourceMode, BookRecord, BookScope,
     BookSourceFormat, BookSourceStatus, BookState, BookTextReplaceTarget, DirtyState, ExternalBookIndex,
     IMAGE_INDEX_CACHE_FILE, ImageIndexCacheInput, ImageIndexEntryInput, ImageIndexSectionInput, Library, LibraryBook,
-    METADATA_FILE, ReadingStatus, SEARCH_TEXT_CACHE_FILE, SEARCH_TEXT_CACHE_VERSION, SEARCH_TEXT_EXTRACTOR_VERSION,
-    SOURCE_TEXT_FILE, STATE_FILE, SearchTextCache, SearchTextSection, SourceStorage, SourceTextUpdate, StorageInner,
-    StorageState, TextImportPreparedCache, TextImportRulesInput, TextImportSelection, UNPACKED_DIR,
-    check_book_source_statuses_impl, cleanup_delete_tombstones, cleanup_external_book_heavy_files, decode_text_bytes,
-    delete_books_to_tombstones, delete_tombstones_root, empty_object, ensure_book_package_path_with_unpacker,
-    export_book_impl, external_books_root, external_index_path, get_book_reader_source_impl, hash_file,
-    import_epub_path_impl, library_path, load_or_build_search_text_cache, mark_book_exported,
-    mark_library_book_content_updated, normalize_non_square_pixel_png, normalize_publication_date,
-    normalize_unpacked_epub_structure, open_external_epub_path_impl, parent_zip_path, parse_text_import_document,
-    path_to_client_string, read_image_index_cache, read_json_or_default, read_json_value_or_default,
-    read_search_text_sections_from_unpacked, relative_zip_path, replace_book_text_impl, replace_xhtml_text,
-    replace_xhtml_text_node, schedule_existing_delete_tombstone_cleanup, search_text_cache_from_bytes,
-    search_text_cache_to_bytes, search_text_in_cache, settings_path, sync_unpacked_opf_metadata, text_content_opf,
-    text_nav_xhtml, text_section_xhtml, visible_search_text_from_xhtml, write_epub_from_original_and_unpacked,
+    METADATA_FILE, ReadingStatus, SEARCH_TEXT_CACHE_FILE, SEARCH_TEXT_CACHE_VERSION, SOURCE_TEXT_FILE, STATE_FILE,
+    SearchTextCache, SearchTextSection, SourceStorage, SourceTextUpdate, StorageInner, StorageState,
+    TextImportPreparedCache, TextImportRulesInput, TextImportSelection, UNPACKED_DIR, check_book_source_statuses_impl,
+    cleanup_delete_tombstones, cleanup_external_book_heavy_files, decode_text_bytes, delete_books_to_tombstones,
+    delete_tombstones_root, empty_object, ensure_book_package_path_with_unpacker, export_book_impl,
+    external_books_root, external_index_path, get_book_reader_source_impl, hash_file, import_epub_path_impl,
+    library_path, load_or_build_search_text_cache, mark_book_exported, mark_library_book_content_updated,
+    normalize_non_square_pixel_png, normalize_publication_date, normalize_unpacked_epub_structure,
+    open_external_epub_path_impl, parent_zip_path, parse_text_import_document, path_to_client_string,
+    read_image_index_cache, read_json_or_default, read_json_value_or_default, read_search_text_sections_from_unpacked,
+    relative_zip_path, replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node,
+    schedule_existing_delete_tombstone_cleanup, search_text_cache_from_bytes, search_text_cache_to_bytes,
+    search_text_in_cache, settings_path, sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml,
+    text_section_xhtml, visible_search_text_from_xhtml, write_epub_from_original_and_unpacked,
     write_epub_from_unpacked_dir, write_image_index_cache_if_current, write_metadata, write_source_text_update,
 };
 use crate::tasks::TaskService;
@@ -152,14 +152,13 @@ fn test_storage_from_disk(root: &Path) -> AppStorage {
     }
 }
 
-fn external_promotion_state(book_id: &str) -> BookState {
+fn external_promotion_state() -> BookState {
     BookState {
         cfi: Some("epubcfi(/6/4!/4/2)".to_string()),
         percentage: Some(0.42),
         definitions: vec!["term".to_string()],
         annotations: vec![json!({
             "id": "annotation-1",
-            "bookId": book_id,
             "text": "note"
         })],
         configuration: Some(json!({"theme": "sepia", "spread": {"page": 2}})),
@@ -188,7 +187,6 @@ fn assert_external_promoted(storage: &AppStorage, imported: &BookRecord, externa
         promoted_state.annotations,
         vec![json!({
             "id": "annotation-1",
-            "bookId": imported.id,
             "text": "note"
         })]
     );
@@ -274,8 +272,6 @@ fn delete_books_moves_book_directories_to_tombstones_before_cleanup() {
         "book-a".to_string(),
         Arc::new(SearchTextCache {
             version: SEARCH_TEXT_CACHE_VERSION,
-            extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
-            book_hash: "hash".to_string(),
             content_version: 1,
             sections: Vec::new(),
         }),
@@ -1412,7 +1408,7 @@ fn importing_open_external_epub_promotes_metadata_state_and_removes_external_rec
         let mut state = storage.inner.state.lock().unwrap();
         state
             .book_states
-            .insert(external.id.clone(), external_promotion_state(&external.id));
+            .insert(external.id.clone(), external_promotion_state());
     }
 
     let imported = import_epub_path_impl(&storage, &source, true).unwrap();
@@ -1443,7 +1439,7 @@ fn importing_persisted_external_epub_promotes_disk_metadata_and_state() {
         let mut state = storage.inner.state.lock().unwrap();
         state
             .book_states
-            .insert(external.id.clone(), external_promotion_state(&external.id));
+            .insert(external.id.clone(), external_promotion_state());
     }
     storage.mark_book_state_dirty(&external.id);
     storage.flush_dirty().unwrap();
@@ -2102,8 +2098,6 @@ fn extracts_visible_text_for_search_cache() {
 fn persists_search_text_cache_as_zstd_payload() {
     let cache = SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
-        book_hash: "abc123".to_string(),
         content_version: 2,
         sections: vec![SearchTextSection {
             section_index: 0,
@@ -2132,13 +2126,10 @@ fn writes_image_index_cache_only_for_current_book_version() {
     fs::create_dir_all(storage.book_dir(&book.id)).unwrap();
 
     let input = ImageIndexCacheInput {
-        book_hash: book.content_hash.clone(),
         content_version: book.content_version,
         sections: vec![ImageIndexSectionInput {
             section_index: 0,
             href: "Text/chapter.xhtml".to_string(),
-            title: Some("Chapter One".to_string()),
-            nav_path: Vec::new(),
             images: vec![ImageIndexEntryInput {
                 src: "../Images/p001.jpg".to_string(),
                 index: 0,
@@ -2154,8 +2145,7 @@ fn writes_image_index_cache_only_for_current_book_version() {
     assert_eq!(cache.sections[0].images[0].src, "../Images/p001.jpg");
 
     let stale = ImageIndexCacheInput {
-        book_hash: "old-hash".to_string(),
-        content_version: book.content_version,
+        content_version: book.content_version + 1,
         sections: Vec::new(),
     };
     assert!(!write_image_index_cache_if_current(&storage, &book.id, stale).unwrap());
@@ -2169,8 +2159,6 @@ fn writes_image_index_cache_only_for_current_book_version() {
 fn searches_in_cached_section_text_with_occurrences() {
     let cache = SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
-        book_hash: "abc123".to_string(),
         content_version: 1,
         sections: vec![
             SearchTextSection {
@@ -2207,8 +2195,6 @@ fn searches_in_cached_section_text_with_occurrences() {
 fn search_results_serialize_section_context_once_per_group() {
     let cache = SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
-        book_hash: "abc123".to_string(),
         content_version: 1,
         sections: vec![SearchTextSection {
             section_index: 7,
@@ -2233,8 +2219,6 @@ fn search_results_serialize_section_context_once_per_group() {
 fn search_offsets_reference_original_text_when_lowercase_expands() {
     let cache = SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
-        book_hash: "abc123".to_string(),
         content_version: 1,
         sections: vec![SearchTextSection {
             section_index: 0,
@@ -2264,8 +2248,6 @@ fn searches_cached_text_without_default_result_limit() {
         .collect();
     let cache = SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
-        book_hash: "abc123".to_string(),
         content_version: 1,
         sections,
     };
@@ -2280,8 +2262,6 @@ fn searches_cached_text_without_default_result_limit() {
 fn search_excerpt_stays_within_matching_paragraph() {
     let cache = SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
-        book_hash: "abc123".to_string(),
         content_version: 1,
         sections: vec![SearchTextSection {
             section_index: 0,
@@ -2309,8 +2289,6 @@ fn search_excerpt_stays_within_matching_paragraph() {
 fn search_excerpt_trims_long_matching_paragraph_only() {
     let cache = SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
-        book_hash: "abc123".to_string(),
         content_version: 1,
         sections: vec![SearchTextSection {
             section_index: 0,
@@ -2340,8 +2318,6 @@ fn search_excerpt_trims_long_matching_paragraph_only() {
 fn uses_cached_nav_path_for_search_result_group() {
     let cache = SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
-        book_hash: "abc123".to_string(),
         content_version: 1,
         sections: vec![SearchTextSection {
             section_index: 0,
@@ -3606,12 +3582,11 @@ fn test_library_book(source_format: BookSourceFormat) -> LibraryBook {
         name: "book.txt".to_string(),
         size: 1,
         reading_status: None::<ReadingStatus>,
-        source_format: Some(source_format),
+        source_format,
         content_edited_at: None,
         content_hash: "hash".to_string(),
         content_version: 1,
         content_mode: BookContentMode::Normal,
-        content_flags: Vec::new(),
         source_storage: SourceStorage::Managed,
         source_path: None,
         metadata: empty_object(),

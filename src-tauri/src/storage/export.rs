@@ -315,7 +315,7 @@ pub(super) fn export_book_impl(
     output_path: PathBuf,
 ) -> Result<Option<BookRecord>, String> {
     let initial_book = storage.library_book(&id)?;
-    let source_format = storage.book_source_format(&initial_book);
+    let source_format = initial_book.source_format;
     let content_mode = inspect_and_store_book_content_access(storage, &initial_book)?;
     let book_dir = storage.book_dir(&id);
 
@@ -380,7 +380,7 @@ pub(super) fn export_book_impl(
         let Some(book) = state.library.books.iter_mut().find(|book| book.id == id) else {
             return Ok(None);
         };
-        book.source_format = Some(source_format);
+        book.source_format = source_format;
         mark_book_exported(book);
         book.clone()
     };

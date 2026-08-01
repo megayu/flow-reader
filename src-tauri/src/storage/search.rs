@@ -22,8 +22,6 @@ const SEARCH_TEXT_MEMORY_CACHE_LIMIT: usize = 8;
 #[serde(rename_all = "camelCase")]
 pub(super) struct SearchTextCache {
     pub(super) version: u32,
-    pub(super) extractor_version: u32,
-    pub(super) book_hash: String,
     pub(super) content_version: u32,
     pub(super) sections: Vec<SearchTextSection>,
 }
@@ -87,10 +85,7 @@ pub(super) fn search_text_cache_from_bytes(bytes: &[u8]) -> Result<SearchTextCac
 }
 
 fn search_text_cache_matches_book(cache: &SearchTextCache, book: &LibraryBook) -> bool {
-    cache.version == SEARCH_TEXT_CACHE_VERSION
-        && cache.extractor_version == SEARCH_TEXT_EXTRACTOR_VERSION
-        && cache.book_hash == book.content_hash
-        && cache.content_version == book.content_version
+    cache.version == SEARCH_TEXT_CACHE_VERSION && cache.content_version == book.content_version
 }
 
 fn write_search_text_cache_if_current(storage: &AppStorage, id: &str, cache: &SearchTextCache) -> Result<bool, String> {
@@ -295,8 +290,6 @@ fn build_search_text_cache(
     };
     Ok(SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
-        book_hash: book.content_hash.clone(),
         content_version: book.content_version,
         sections,
     })
@@ -1099,12 +1092,11 @@ mod tests {
             name: format!("{id}.epub"),
             size: 1,
             reading_status: None,
-            source_format: Some(BookSourceFormat::Epub),
+            source_format: BookSourceFormat::Epub,
             content_edited_at: None,
             content_hash: format!("hash-{content_version}"),
             content_version,
             content_mode: BookContentMode::Normal,
-            content_flags: Vec::new(),
             source_storage: SourceStorage::Managed,
             source_path: None,
             metadata: empty_object(),
@@ -1151,8 +1143,6 @@ mod tests {
     fn test_cache(book: &LibraryBook, text: &str) -> SearchTextCache {
         SearchTextCache {
             version: SEARCH_TEXT_CACHE_VERSION,
-            extractor_version: SEARCH_TEXT_EXTRACTOR_VERSION,
-            book_hash: book.content_hash.clone(),
             content_version: book.content_version,
             sections: vec![SearchTextSection {
                 section_index: 0,

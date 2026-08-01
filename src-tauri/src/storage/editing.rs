@@ -935,7 +935,7 @@ pub(super) fn replace_book_text_impl(
     new_text: String,
 ) -> Result<BookTextReplaceResult, String> {
     let initial_book = storage.library_book(&id)?;
-    let source_format = storage.book_source_format(&initial_book);
+    let source_format = initial_book.source_format;
     let content_mode = inspect_and_store_book_content_access(storage, &initial_book)?;
     if source_format == BookSourceFormat::Epub && content_mode == BookContentMode::ArchiveOnly {
         return Err("Archive-only EPUB text editing is not supported".to_string());
@@ -1028,7 +1028,7 @@ pub(super) fn replace_book_text_impl(
             return Err("Book not found".to_string());
         };
         let now = now_ms();
-        book.source_format = Some(source_format);
+        book.source_format = source_format;
         book.content_version = book.content_version.saturating_add(1).max(1);
         book.content_edited_at = Some(now);
         book.content_hash = edited_book_content_hash(&book.id, book.content_version, now);

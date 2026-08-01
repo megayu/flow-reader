@@ -61,7 +61,6 @@ export function getAnnotationSpineTitle(spine: AnnotationSpine) {
 
 export interface Annotation {
   id: string
-  bookId: string
   cfi: string
   spine: AnnotationSpine
   createAt: number

@@ -1281,7 +1281,7 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
                         value,
                         Path::new(&book.name).file_stem().and_then(|name| name.to_str()),
                     );
-                    if book.source_format == Some(BookSourceFormat::Txt)
+                    if book.source_format == BookSourceFormat::Txt
                         && let Some(cover) = cover.as_ref()
                     {
                         write_text_cover_to_unpacked(&storage, &id, cover)?;

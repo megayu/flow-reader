@@ -69,8 +69,6 @@ pub(super) struct ExternalBook {
     pub(super) content_version: u32,
     #[serde(default, skip_serializing_if = "BookContentMode::is_normal")]
     pub(super) content_mode: BookContentMode,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(super) content_flags: Vec<BookContentFlag>,
     #[serde(default, skip_serializing_if = "SourceStorage::is_managed")]
     pub(super) source_storage: SourceStorage,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -87,8 +85,7 @@ pub(super) struct LibraryBook {
     pub(super) size: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) reading_status: Option<ReadingStatus>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) source_format: Option<BookSourceFormat>,
+    pub(super) source_format: BookSourceFormat,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) content_edited_at: Option<u64>,
     #[serde(default)]
@@ -97,8 +94,6 @@ pub(super) struct LibraryBook {
     pub(super) content_version: u32,
     #[serde(default, skip_serializing_if = "BookContentMode::is_normal")]
     pub(super) content_mode: BookContentMode,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(super) content_flags: Vec<BookContentFlag>,
     #[serde(default, skip_serializing_if = "SourceStorage::is_managed")]
     pub(super) source_storage: SourceStorage,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -155,8 +150,6 @@ pub struct BookRecord {
     pub(super) content_version: u32,
     #[serde(default, skip_serializing_if = "BookContentMode::is_normal")]
     pub(super) content_mode: BookContentMode,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(super) content_flags: Vec<BookContentFlag>,
     #[serde(default, skip_serializing_if = "SourceStorage::is_managed")]
     pub(super) source_storage: SourceStorage,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -253,13 +246,6 @@ impl BookContentMode {
     pub(super) fn is_normal(value: &Self) -> bool {
         *value == Self::Normal
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) enum BookContentFlag {
-    NonPortableArchivePaths,
-    DeclaresEncryption,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

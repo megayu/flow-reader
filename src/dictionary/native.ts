@@ -21,11 +21,6 @@ export type LocalDictionarySourceStatus = 'available' | 'changed' | 'missing'
 export interface LocalDictionaryRecord {
   createdAt: number
   enabled: boolean
-  files: Array<{
-    kind: 'compressedData' | 'cover' | 'data' | 'index' | 'resources' | 'synonyms'
-    path: string
-    used: boolean
-  }>
   fingerprint: {
     modifiedMs: number
     sampleHash: string

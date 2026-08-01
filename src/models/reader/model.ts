@@ -394,13 +394,6 @@ function compareDefinition(d1: string, d2: string) {
   return d1.toLowerCase() === d2.toLowerCase()
 }
 
-function reassignAnnotationBookIds(annotations: BookRecord['annotations'], bookId: string) {
-  return annotations.map((annotation) => ({
-    ...annotation,
-    bookId,
-  }))
-}
-
 export interface INavItem extends NavItem, INode {
   subitems?: INavItem[]
 }
@@ -751,7 +744,7 @@ export class BookTab extends BaseTab {
     })
 
     const stateChanges: Partial<BookRecord> = {
-      annotations: reassignAnnotationBookIds(this.book.annotations, libraryBook.id),
+      annotations: this.book.annotations,
       cfi: this.book.cfi,
       configuration: this.book.configuration,
       definitions: this.book.definitions,
@@ -1130,7 +1123,6 @@ export class BookTab extends BaseTab {
     if (!annotation) {
       annotation = {
         id: createId(),
-        bookId: this.book.id,
         cfi,
         spine: annotationSpine,
         createAt: now,

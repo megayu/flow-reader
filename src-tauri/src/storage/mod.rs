@@ -38,8 +38,8 @@ pub use image_index::ImageIndexCache;
 #[cfg(test)]
 use model::ReadingStatus;
 use model::{
-    BookContentFlag, BookContentMode, BookScope, BookState, ExternalBook, ExternalBookIndex, Library, LibraryBook,
-    SourceStorage, WindowState, is_external_book_id, is_valid_book_storage_id,
+    BookContentMode, BookScope, BookState, ExternalBook, ExternalBookIndex, Library, LibraryBook, SourceStorage,
+    WindowState, is_external_book_id, is_valid_book_storage_id,
 };
 pub use model::{
     BookExportFormat, BookReaderSource, BookReaderSourceMode, BookRecord, BookSourceFormat, BookSourceStatus,
@@ -98,13 +98,11 @@ const SETTINGS_FILE: &str = "settings.json";
 const BOOK_FILE: &str = "book.epub";
 const SOURCE_TEXT_FILE: &str = "source.txt";
 const UNPACKED_DIR: &str = "unpacked";
-const SEARCH_TEXT_CACHE_FILE: &str = "search-text.v1.json.zst";
-const IMAGE_INDEX_CACHE_FILE: &str = "image-index.v1.json.zst";
+const SEARCH_TEXT_CACHE_FILE: &str = "search-text.json.zst";
+const IMAGE_INDEX_CACHE_FILE: &str = "image-index.json.zst";
 const SEARCH_TEXT_EXCERPT_RADIUS: usize = 60;
 pub const SEARCH_TEXT_CACHE_VERSION: u32 = 1;
-pub const SEARCH_TEXT_EXTRACTOR_VERSION: u32 = 1;
 pub const IMAGE_INDEX_CACHE_VERSION: u32 = 1;
-pub const IMAGE_INDEX_EXTRACTOR_VERSION: u32 = 1;
 const COVER_STEM: &str = "cover";
 const GENERATED_TEXT_COVER_MARKER: &str = r#"data-flow-generated-cover="true""#;
 const METADATA_FILE: &str = "metadata.json";
@@ -464,7 +462,7 @@ impl AppStorage {
                 BookScope::Library
             },
             reading_status: book.reading_status.clone(),
-            source_format: self.book_source_format(book),
+            source_format: book.source_format,
             content_edited_at: book.content_edited_at,
             metadata: book.metadata.clone(),
             created_at: book.created_at,
@@ -479,7 +477,6 @@ impl AppStorage {
             content_hash: book.content_hash.clone(),
             content_version: book.content_version,
             content_mode: book.content_mode,
-            content_flags: book.content_flags.clone(),
             source_storage: book.source_storage,
             source_path: book.source_path.as_deref().map(path_to_client_string),
         })
@@ -492,7 +489,7 @@ impl AppStorage {
             size: book.size,
             scope: BookScope::Library,
             reading_status: book.reading_status.clone(),
-            source_format: self.book_source_format(book),
+            source_format: book.source_format,
             content_edited_at: book.content_edited_at,
             metadata: book.metadata.clone(),
             created_at: book.created_at,
@@ -507,27 +504,8 @@ impl AppStorage {
             content_hash: book.content_hash.clone(),
             content_version: book.content_version,
             content_mode: book.content_mode,
-            content_flags: book.content_flags.clone(),
             source_storage: book.source_storage,
             source_path: book.source_path.as_deref().map(path_to_client_string),
-        }
-    }
-
-    fn book_source_format(&self, book: &LibraryBook) -> BookSourceFormat {
-        if let Some(source_format) = book.source_format {
-            return source_format;
-        }
-
-        if book
-            .metadata
-            .get("sourceFormat")
-            .and_then(Value::as_str)
-            .is_some_and(|format| format.eq_ignore_ascii_case("txt"))
-            || self.book_dir(&book.id).join(SOURCE_TEXT_FILE).exists()
-        {
-            BookSourceFormat::Txt
-        } else {
-            BookSourceFormat::Epub
         }
     }
 
@@ -537,12 +515,11 @@ impl AppStorage {
             name: book.name.clone(),
             size: book.size,
             reading_status: None,
-            source_format: Some(BookSourceFormat::Epub),
+            source_format: BookSourceFormat::Epub,
             content_edited_at: None,
             content_hash: book.content_hash.clone(),
             content_version: book.content_version.max(1),
             content_mode: book.content_mode,
-            content_flags: book.content_flags.clone(),
             source_storage: book.source_storage,
             source_path: book.source_path.clone(),
             metadata: read_json_value_or_default(&self.external_book_dir(&book.id).join(METADATA_FILE))?,

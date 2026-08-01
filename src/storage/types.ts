@@ -61,8 +61,6 @@ export type BookExportFormat = 'epub' | 'txt'
 export type BookSourceStorage = 'managed' | 'referenced'
 export type BookSourceStatus = 'available' | 'changed' | 'missing' | 'unreadable'
 export type BookContentMode = 'normal' | 'archiveOnly'
-export type BookContentFlag = 'nonPortableArchivePaths' | 'declaresEncryption'
-
 export interface BookReaderSource {
   mode: 'opf' | 'epub'
   url: string
@@ -114,7 +112,7 @@ export interface BookRecord {
   size: number
   scope?: 'library' | 'external'
   readingStatus?: ReadingStatus | null
-  sourceFormat?: BookSourceFormat
+  sourceFormat: BookSourceFormat
   contentEditedAt?: number
   metadata: PackagingMetadataObject
   createdAt: number
@@ -132,7 +130,6 @@ export interface BookRecord {
   contentHash?: string
   contentVersion?: number
   contentMode?: BookContentMode
-  contentFlags?: BookContentFlag[]
   sourceStorage?: BookSourceStorage
   sourcePath?: string
   stateLoaded?: boolean
@@ -201,21 +198,16 @@ export interface BookImageIndexEntry {
 export interface BookImageIndexSection {
   sectionIndex: number
   href: string
-  title?: string | null
-  navPath?: string[]
   images: BookImageIndexEntry[]
 }
 
 export interface BookImageIndexCache {
   version: number
-  extractorVersion: number
-  bookHash: string
   contentVersion: number
   sections: BookImageIndexSection[]
 }
 
 export interface BookImageIndexCacheInput {
-  bookHash: string
   contentVersion: number
   sections: BookImageIndexSection[]
 }

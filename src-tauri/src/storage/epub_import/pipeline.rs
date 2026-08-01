@@ -199,21 +199,6 @@ pub(super) fn remove_epub_import_temp(path: &Path) {
     }
 }
 
-pub(super) fn reassign_book_state_annotations(state: &mut BookState, from_id: &str, to_id: &str) {
-    for annotation in &mut state.annotations {
-        let Some(object) = annotation.as_object_mut() else {
-            continue;
-        };
-        if object
-            .get("bookId")
-            .and_then(Value::as_str)
-            .is_some_and(|book_id| book_id == from_id)
-        {
-            object.insert("bookId".to_string(), json!(to_id));
-        }
-    }
-}
-
 pub(in crate::storage) fn import_epub_path_impl(
     storage: &AppStorage,
     path: &Path,
@@ -292,7 +277,6 @@ pub(in crate::storage) fn import_epub_path_impl(
                     book.content_hash = hash.clone();
                     book.content_version = book.content_version.saturating_add(1).max(1);
                     book.content_mode = access.mode;
-                    book.content_flags = access.flags.clone();
                     book.source_storage = source_storage;
                     book.source_path = Some(source_path.clone());
                     book.updated_at = Some(now_ms());
@@ -305,7 +289,6 @@ pub(in crate::storage) fn import_epub_path_impl(
                 book.name = name.clone();
                 book.size = size;
                 book.content_mode = access.mode;
-                book.content_flags = access.flags.clone();
                 let storage_changed = book.source_storage != source_storage;
                 book.source_storage = source_storage;
                 book.source_path = Some(source_path.clone());
@@ -320,12 +303,11 @@ pub(in crate::storage) fn import_epub_path_impl(
                     name: name.clone(),
                     size,
                     reading_status: None,
-                    source_format: Some(BookSourceFormat::Epub),
+                    source_format: BookSourceFormat::Epub,
                     content_edited_at: None,
                     content_hash: hash.clone(),
                     content_version: 1,
                     content_mode: access.mode,
-                    content_flags: access.flags.clone(),
                     source_storage,
                     source_path: Some(source_path.clone()),
                     metadata: empty_object(),
@@ -374,7 +356,7 @@ pub(in crate::storage) fn import_epub_path_impl(
             let mut cover = parsed.cover;
             if normalize_new_cover
                 && access.mode == BookContentMode::Normal
-                && !access.flags.contains(&BookContentFlag::DeclaresEncryption)
+                && !access.declares_encryption
                 && let Some(parsed_cover) = cover.as_mut()
                 && (parsed_cover.input.mime_type == "image/png"
                     || parsed_cover.input.extension.eq_ignore_ascii_case("png"))
@@ -407,10 +389,9 @@ pub(in crate::storage) fn import_epub_path_impl(
             transaction.restore_preserved(METADATA_FILE)?;
         }
 
-        let promotion = promotion.map(|(external_book, _, mut external_state)| {
+        let promotion = promotion.map(|(external_book, _, external_state)| {
             let external_id = external_book.id.clone();
             let last_opened_at = external_book.last_opened_at;
-            reassign_book_state_annotations(&mut external_state, &external_id, &id);
             book.cfi = external_state.cfi.clone();
             book.percentage = external_state.percentage;
             book.last_read_at = Some(last_opened_at);
@@ -555,7 +536,6 @@ pub(in crate::storage) fn open_external_epub_path_impl(
                 book.name = name.clone();
                 book.size = size;
                 book.content_mode = access.mode;
-                book.content_flags = access.flags.clone();
                 book.content_version = book.content_version.max(1);
                 book.source_storage = SourceStorage::Referenced;
                 book.source_path = Some(source_path.clone());
@@ -574,7 +554,6 @@ pub(in crate::storage) fn open_external_epub_path_impl(
                     content_hash: hash.clone(),
                     content_version: 1,
                     content_mode: access.mode,
-                    content_flags: access.flags.clone(),
                     source_storage: SourceStorage::Referenced,
                     source_path: Some(source_path.clone()),
                     created_at: now,

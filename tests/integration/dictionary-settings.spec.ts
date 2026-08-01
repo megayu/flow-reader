@@ -355,7 +355,6 @@ function localDictionary(
   return {
     createdAt: 1,
     enabled: true,
-    files: [],
     fingerprint: { modifiedMs: 1, sampleHash: 'fixture', size: 1 },
     format: 'mdict',
     language: { source: 'unknown', value: [] },
