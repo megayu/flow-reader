@@ -137,22 +137,25 @@ export async function exportBookWithDialog(book: BookRecord, format: BookExportF
   return outputPath
 }
 
-let languageDisplayNamesLocale: string | undefined
-let languageDisplayNames: Intl.DisplayNames | undefined
+const preferredLanguageNames: Readonly<Record<string, string>> = {
+  'zh-CN': '简体中文',
+  'zh-Hans': '简体中文',
+  'zh-Hant': '繁體中文',
+}
 
 export function formatLanguage(value?: string) {
   const language = cleanBookText(value)
   if (!language) return ''
 
   try {
-    const locale = navigator.language
-    if (!languageDisplayNames || languageDisplayNamesLocale !== locale) {
-      languageDisplayNamesLocale = locale
-      languageDisplayNames = new Intl.DisplayNames([locale], {
-        type: 'language',
-      })
-    }
-    return languageDisplayNames.of(language) ?? language
+    const canonicalLanguage = Intl.getCanonicalLocales(language.replaceAll('_', '-'))[0]
+    if (!canonicalLanguage) return language
+
+    return (
+      preferredLanguageNames[canonicalLanguage] ??
+      new Intl.DisplayNames([canonicalLanguage], { type: 'language' }).of(canonicalLanguage) ??
+      language
+    )
   } catch {
     return language
   }
