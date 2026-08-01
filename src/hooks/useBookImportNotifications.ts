@@ -1,13 +1,13 @@
 import { useNotify } from '../components/ui/notificationContext'
-import type { EpubImportResult } from '../storage'
+import type { BookImportResult } from '../storage'
 
 import { useTranslation } from './useTranslation'
 
-export function useEpubImportNotifications() {
+export function useBookImportNotifications() {
   const notify = useNotify()
   const t = useTranslation('import')
 
-  return (result: EpubImportResult) => {
+  return (result: BookImportResult) => {
     const imported = result.books.length
     const failed = result.failures.length
 

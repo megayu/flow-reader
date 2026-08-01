@@ -2,153 +2,6 @@
 
 use super::*;
 
-static IMPORT_WORK_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-fn import_work_path(root: &Path, prefix: &str, name: &str) -> PathBuf {
-    let sequence = IMPORT_WORK_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let name = name
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
-                character
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>();
-    root.join(format!(".{prefix}-{}-{sequence}-{name}", std::process::id()))
-}
-
-pub(in crate::storage) struct ImportFileTransaction {
-    book_dir: PathBuf,
-    book_dir_existed: bool,
-    backup_dir: PathBuf,
-    moved: Vec<(PathBuf, PathBuf)>,
-}
-
-impl ImportFileTransaction {
-    pub(in crate::storage) fn begin(storage: &AppStorage, id: &str) -> Result<Self, String> {
-        let book_dir = storage.book_dir(id);
-        let book_dir_existed = book_dir.exists();
-        fs::create_dir_all(&book_dir).map_err(|error| error.to_string())?;
-        let backup_dir = import_work_path(&books_root(storage.root()), "import-backup", id);
-        fs::create_dir(&backup_dir).map_err(|error| error.to_string())?;
-
-        let mut targets = [BOOK_FILE, SOURCE_TEXT_FILE, UNPACKED_DIR, METADATA_FILE]
-            .into_iter()
-            .map(|name| book_dir.join(name))
-            .collect::<Vec<_>>();
-        let entries = fs::read_dir(&book_dir).map_err(|error| error.to_string())?;
-        for entry in entries {
-            let entry = entry.map_err(|error| error.to_string())?;
-            if entry
-                .file_name()
-                .to_str()
-                .is_some_and(|name| name.starts_with(&format!("{COVER_STEM}.")) || is_derived_cache_file_name(name))
-            {
-                targets.push(entry.path());
-            }
-        }
-
-        let mut transaction = Self {
-            book_dir,
-            book_dir_existed,
-            backup_dir,
-            moved: Vec::new(),
-        };
-        for target in targets {
-            if !target.exists() {
-                continue;
-            }
-            let Some(name) = target.file_name() else {
-                continue;
-            };
-            let backup = transaction.backup_dir.join(name);
-            if let Err(error) = fs::rename(&target, &backup) {
-                let _ = transaction.rollback();
-                return Err(error.to_string());
-            }
-            transaction.moved.push((backup, target));
-        }
-        Ok(transaction)
-    }
-
-    pub(in crate::storage) fn restore_preserved(&mut self, name: &str) -> Result<(), String> {
-        let Some(index) = self
-            .moved
-            .iter()
-            .position(|(_, target)| target.file_name().is_some_and(|filename| filename == name))
-        else {
-            return Ok(());
-        };
-        let (backup, target) = self.moved.remove(index);
-        if !target.exists() {
-            fs::rename(backup, target).map_err(|error| error.to_string())?;
-        }
-        Ok(())
-    }
-
-    pub(in crate::storage) fn commit(self) -> Result<(), String> {
-        fs::remove_dir_all(self.backup_dir).map_err(|error| error.to_string())
-    }
-
-    pub(in crate::storage) fn rollback(self) -> Result<(), String> {
-        let mut first_error = None;
-        let mut current_targets = [BOOK_FILE, SOURCE_TEXT_FILE, UNPACKED_DIR, METADATA_FILE]
-            .into_iter()
-            .map(|name| self.book_dir.join(name))
-            .collect::<Vec<_>>();
-        if let Ok(entries) = fs::read_dir(&self.book_dir) {
-            for entry in entries.flatten() {
-                if entry
-                    .file_name()
-                    .to_str()
-                    .is_some_and(|name| name.starts_with(&format!("{COVER_STEM}.")) || is_derived_cache_file_name(name))
-                {
-                    current_targets.push(entry.path());
-                }
-            }
-        }
-        for target in current_targets {
-            if let Err(error) = remove_import_artifact(&target)
-                && first_error.is_none()
-            {
-                first_error = Some(error);
-            }
-        }
-        for (backup, target) in self.moved {
-            if let Err(error) = fs::rename(backup, target).map_err(|error| error.to_string())
-                && first_error.is_none()
-            {
-                first_error = Some(error);
-            }
-        }
-        if let Err(error) = fs::remove_dir_all(self.backup_dir).map_err(|error| error.to_string())
-            && first_error.is_none()
-        {
-            first_error = Some(error);
-        }
-        if !self.book_dir_existed
-            && let Err(error) = fs::remove_dir(&self.book_dir).map_err(|error| error.to_string())
-            && first_error.is_none()
-        {
-            first_error = Some(error);
-        }
-        first_error.map_or(Ok(()), Err)
-    }
-}
-
-fn remove_import_artifact(path: &Path) -> Result<(), String> {
-    let Ok(metadata) = fs::symlink_metadata(path) else {
-        return Ok(());
-    };
-    if metadata.file_type().is_dir() {
-        fs::remove_dir_all(path).map_err(|error| error.to_string())
-    } else {
-        fs::remove_file(path).map_err(|error| error.to_string())
-    }
-}
-
 pub(super) fn epub_import_temp_path(root: &Path, name: &str) -> PathBuf {
     import_work_path(root, "import", name)
 }
@@ -185,19 +38,20 @@ pub(super) fn remove_epub_import_temp(path: &Path) {
     }
 }
 
-pub(in crate::storage) fn import_epub_path_impl(
-    storage: &AppStorage,
-    path: &Path,
-    replace_existing: bool,
-) -> Result<BookRecord, String> {
-    let _import_guard = storage
-        .inner
-        .import_lock
-        .lock()
-        .map_err(|_| "storage import lock poisoned".to_string())?;
+pub(in crate::storage) struct PreparedEpubImport {
+    source_path: PathBuf,
+    source_storage: SourceStorage,
+    size: u64,
+    name: String,
+    parsed: ParsedEpubInfo,
+    access: EpubAccessInfo,
+    temp_path: PathBuf,
+    hash: String,
+}
+
+pub(in crate::storage) fn prepare_epub_import(storage: &AppStorage, path: &Path) -> Result<PreparedEpubImport, String> {
     let books_root = books_root(storage.root());
     fs::create_dir_all(&books_root).map_err(|error| error.to_string())?;
-
     let source_path = path.to_path_buf();
     let source_storage = storage.import_source_storage();
     let size = fs::metadata(&source_path).map_err(|error| error.to_string())?.len();
@@ -205,21 +59,59 @@ pub(in crate::storage) fn import_epub_path_impl(
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| "book.epub".to_string());
-    let parsed = parse_epub_info_result(&source_path)?;
-    let access = inspect_epub_access(&source_path)?;
     let temp_path = epub_import_temp_path(&books_root, &name);
-    let hash_result = if source_storage == SourceStorage::Managed {
-        copy_epub_and_hash(&source_path, &temp_path)
-    } else {
-        hash_file(&source_path)
-    };
-    let hash = match hash_result {
-        Ok(hash) => hash,
-        Err(error) => {
-            remove_epub_import_temp(&temp_path);
-            return Err(error);
-        }
-    };
+
+    let result = (|| {
+        let hash = if source_storage == SourceStorage::Managed {
+            copy_epub_and_hash(&source_path, &temp_path)?
+        } else {
+            hash_file(&source_path)?
+        };
+        let inspected_path = if source_storage == SourceStorage::Managed {
+            temp_path.as_path()
+        } else {
+            source_path.as_path()
+        };
+        let (parsed, access) = inspect_epub_info(inspected_path)?;
+        Ok(PreparedEpubImport {
+            source_path,
+            source_storage,
+            size,
+            name,
+            parsed,
+            access,
+            temp_path: temp_path.clone(),
+            hash,
+        })
+    })();
+
+    if result.is_err() {
+        remove_epub_import_temp(&temp_path);
+    }
+    result
+}
+
+pub(in crate::storage) fn commit_prepared_epub_import(
+    storage: &AppStorage,
+    prepared: PreparedEpubImport,
+    replace_existing: bool,
+    import_index: Option<&mut LibraryBookLookupIndex>,
+) -> Result<(BookRecord, ImportFinalizer), String> {
+    let _import_guard = storage
+        .inner
+        .import_lock
+        .lock()
+        .map_err(|_| "storage import lock poisoned".to_string())?;
+    let PreparedEpubImport {
+        source_path,
+        source_storage,
+        size,
+        name,
+        parsed,
+        access,
+        temp_path,
+        hash,
+    } = prepared;
 
     struct ExternalPromotion {
         book: ExternalBook,
@@ -227,19 +119,27 @@ pub(in crate::storage) fn import_epub_path_impl(
     }
 
     let mut file_transaction = None;
-    let result = (|| -> Result<BookRecord, String> {
+    let result = (|| -> Result<(BookRecord, ImportFinalizer), String> {
         let (mut book, id, should_copy, is_new, external_promotion) = {
             let state = storage
                 .inner
                 .state
                 .lock()
                 .map_err(|_| "storage state lock poisoned".to_string())?;
-            let filename_index = state.library.books.iter().position(|book| book.name == name);
-            let hash_index = state
-                .library
-                .books
-                .iter()
-                .position(|book| !book.content_hash.is_empty() && book.content_hash == hash);
+            let filename_index = import_index.as_deref().map_or_else(
+                || state.library.books.iter().position(|book| book.name == name),
+                |index| index.filename_index(&state.library.books, &name),
+            );
+            let hash_index = import_index.as_deref().map_or_else(
+                || {
+                    state
+                        .library
+                        .books
+                        .iter()
+                        .position(|book| !book.content_hash.is_empty() && book.content_hash == hash)
+                },
+                |index| index.hash_index(&state.library.books, &hash),
+            );
             let external_promotion = state
                 .external
                 .books
@@ -399,7 +299,7 @@ pub(in crate::storage) fn import_epub_path_impl(
                 .state
                 .lock()
                 .map_err(|_| "storage state lock poisoned".to_string())?;
-            if is_new {
+            let stored_index = if is_new {
                 if state
                     .library
                     .books
@@ -409,13 +309,15 @@ pub(in crate::storage) fn import_epub_path_impl(
                     return Err("Library changed while the book was being imported".to_string());
                 }
                 state.library.books.push(book.clone());
+                state.library.books.len() - 1
             } else {
-                let stored = state
+                let stored_index = state
                     .library
                     .books
-                    .iter_mut()
-                    .find(|stored| stored.id == id)
+                    .iter()
+                    .position(|stored| stored.id == id)
                     .ok_or_else(|| "Book was removed while it was being imported".to_string())?;
+                let stored = &mut state.library.books[stored_index];
                 book.reading_status = stored.reading_status.clone();
                 book.cfi = promotion
                     .as_ref()
@@ -423,13 +325,18 @@ pub(in crate::storage) fn import_epub_path_impl(
                 book.percentage = promotion.as_ref().map_or(stored.percentage, |_| book.percentage);
                 book.tag_ids = stored.tag_ids.clone();
                 *stored = book.clone();
-            }
+                stored_index
+            };
             if let Some((external_id, external_state)) = &promotion {
                 state.external.books.retain(|stored| stored.id != *external_id);
                 state.book_states.remove(external_id);
                 state.book_states.insert(id.clone(), external_state.clone());
             }
-            storage.compose_book(&mut state, &book)?
+            let record = storage.compose_book(&mut state, &book)?;
+            if let Some(index) = import_index {
+                index.remember(stored_index, &book);
+            }
+            record
         };
 
         storage.mark_library_dirty();
@@ -438,22 +345,11 @@ pub(in crate::storage) fn import_epub_path_impl(
             storage.mark_external_dirty();
             storage.mark_book_state_dirty(&id);
         }
-        if let Some(transaction) = file_transaction.take()
-            && let Err(error) = transaction.commit()
-        {
-            eprintln!("Failed to remove committed import backup: {error}");
-        }
-        storage.flush_dirty()?;
-
+        let mut finalizer = ImportFinalizer::new(file_transaction.take());
         if let Some((external_id, _)) = promotion {
-            let external_dir = storage.external_book_dir(&external_id);
-            if let Err(error) = fs::remove_dir_all(&external_dir)
-                && external_dir.exists()
-            {
-                eprintln!("Failed to remove promoted external book files: {error}");
-            }
+            finalizer = finalizer.with_cleanup_path(storage.external_book_dir(&external_id), "external-promotion");
         }
-        Ok(record)
+        Ok((record, finalizer))
     })();
 
     if result.is_err() {
@@ -485,8 +381,7 @@ pub(in crate::storage) fn open_external_epub_path_impl(
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| "book.epub".to_string());
-    let parsed = parse_epub_info_result(&source_path)?;
-    let access = inspect_epub_access(&source_path)?;
+    let (parsed, access) = inspect_epub_info(&source_path)?;
     let hash = hash_file(&source_path)?;
 
     // These values move once through open control flow; boxing would add avoidable allocations.

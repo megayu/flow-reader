@@ -48,7 +48,7 @@ export async function invokeStorage<T>(command: StorageCommand, args?: Record<st
   return invokeNative<T>(command, args)
 }
 
-export async function storagePathToUrl(path: string) {
+export function storagePathToUrl(path: string) {
   try {
     return convertFileSrc(path.replace(/\\/g, '/'))
   } catch {

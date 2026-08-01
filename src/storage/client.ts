@@ -2,6 +2,8 @@ import { storagePathToUrl as filePathToUrl, invokeStorage as invoke } from './na
 import type {
   BookExportFormat,
   BookImageIndexCache,
+  BookImportProgress,
+  BookImportResult,
   BookReaderSource,
   BookRecord,
   BookSearchResult,
@@ -10,7 +12,6 @@ import type {
   BookTextReplaceTarget,
   CoverInput,
   CoverRecord,
-  EpubImportResult,
   LibraryTagRecord,
   ReadingPositionInput,
   TextImportEncodingOption,
@@ -101,6 +102,30 @@ function rememberBook(book: BookRecord, { full = true } = {}) {
   }
 }
 
+function rememberBookBatch(books: BookRecord[], { full = true } = {}) {
+  if (!books.length) return
+
+  const normalized = books.map((book) => (full ? asFullBook(book) : mergeBookSummary(book, bookCache.get(book.id))))
+  const updates = new Map(normalized.map((book) => [book.id, book]))
+  updates.forEach((book, id) => bookCache.set(id, book))
+  if (!booksCache) return
+
+  const seen = new Set<string>()
+  const next = booksCache.flatMap((book) => {
+    const update = updates.get(book.id)
+    if (!update) return [book]
+    seen.add(book.id)
+    return update.scope === 'external' ? [] : [update]
+  })
+  updates.forEach((book) => {
+    if (!seen.has(book.id) && book.scope !== 'external') {
+      seen.add(book.id)
+      next.push(book)
+    }
+  })
+  booksCache = next
+}
+
 function rememberBooks(books: BookRecord[]) {
   booksCache = books.map((book) => mergeBookSummary(book, bookCache.get(book.id)))
   bookCache.clear()
@@ -116,6 +141,31 @@ function forgetBooks(ids: string[]) {
 
 function rememberCovers(covers: CoverRecord[]) {
   coversCache = covers
+}
+
+function rememberCover(cover: CoverRecord) {
+  if (!coversCache) return
+
+  const index = coversCache.findIndex((item) => item.id === cover.id)
+  coversCache =
+    index >= 0 ? [...coversCache.slice(0, index), cover, ...coversCache.slice(index + 1)] : [...coversCache, cover]
+}
+
+async function refreshImportedCovers(ids: string[]) {
+  if (!coversCache || !ids.length) return
+
+  const covers = await invoke<CoverRecord[]>('list_covers', { ids })
+  const normalized = covers.map(normalizeCoverRecord)
+  const updates = new Map(normalized.map((cover) => [cover.id, cover]))
+  const next = coversCache.map((cover) => updates.get(cover.id) ?? cover)
+  const existing = new Set(next.map((cover) => cover.id))
+  normalized.forEach((cover) => {
+    if (!existing.has(cover.id)) {
+      existing.add(cover.id)
+      next.push(cover)
+    }
+  })
+  coversCache = next
 }
 
 function forgetCovers(ids: string[]) {
@@ -217,14 +267,26 @@ function addCacheBuster(url: string, version: string | number = Date.now()) {
   return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(String(version))}`
 }
 
-async function toCoverRecord(record: CoverRecord | null) {
-  if (!record) return undefined
-
-  const cover = record.cover ? await filePathToUrl(record.cover) : null
+function normalizeCoverRecord(record: CoverRecord) {
+  const cover = record.cover ? filePathToUrl(record.cover) : null
   return {
     ...record,
     cover: cover ? addCacheBuster(cover) : null,
   }
+}
+
+function toCoverRecord(record: CoverRecord | null) {
+  if (!record) return undefined
+  return normalizeCoverRecord(record)
+}
+
+export function rememberBookImportProgress(progress: BookImportProgress) {
+  if (!progress.book) return
+
+  beginBooksMutation()
+  rememberBook(progress.book)
+  if (progress.cover) rememberCover(normalizeCoverRecord(progress.cover))
+  notify('books', ...(progress.cover ? (['covers'] as const) : []))
 }
 
 export const db = {
@@ -379,8 +441,8 @@ export const db = {
       }
       return {
         mode: source.mode,
-        url: await filePathToUrl(source.path),
-        rootUrl: source.rootPath ? await filePathToUrl(source.rootPath) : undefined,
+        url: filePathToUrl(source.path),
+        rootUrl: source.rootPath ? filePathToUrl(source.rootPath) : undefined,
       }
     },
     async bulkDelete(ids: string[]) {
@@ -394,13 +456,8 @@ export const db = {
     async toArray() {
       if (coversCache) return coversCache
 
-      const covers = await invoke<CoverRecord[]>('list_covers')
-      const normalized = await Promise.all(
-        covers.map(async (cover) => ({
-          ...cover,
-          cover: cover.cover ? addCacheBuster(await filePathToUrl(cover.cover)) : null,
-        })),
-      )
+      const covers = await invoke<CoverRecord[]>('list_covers', { ids: null })
+      const normalized = covers.map(normalizeCoverRecord)
       rememberCovers(normalized)
       return normalized
     },
@@ -430,30 +487,34 @@ export const db = {
   },
 }
 
-export async function importBookPaths(
+export async function importEpubPaths(
   paths: string[],
-  { importId, replaceExisting = true }: { importId?: string; replaceExisting?: boolean } = {},
+  {
+    importId,
+    progressiveUpdates = false,
+    replaceExisting = true,
+  }: { importId?: string; progressiveUpdates?: boolean; replaceExisting?: boolean } = {},
 ) {
   await waitForPendingNativeWrites()
   beginBooksMutation()
   const result = await trackNativeWrite(
-    invoke<EpubImportResult>('import_epub_paths', {
+    invoke<BookImportResult>('import_epub_paths', {
       importId,
       paths,
       replaceExisting,
     }),
   )
-  result.books.forEach((book) => rememberBook(book))
+  rememberBookBatch(result.books)
   if (result.books.length) {
-    invalidateCovers()
+    if (!progressiveUpdates) await refreshImportedCovers(result.books.map((book) => book.id))
     notify('books', 'covers', 'files')
   }
   return result
 }
 
-export async function openExternalBookPaths(paths: string[]) {
+export async function openExternalEpubPaths(paths: string[]) {
   beginBooksMutation()
-  const result = await trackNativeWrite(invoke<EpubImportResult>('open_external_epub_paths', { paths }))
+  const result = await trackNativeWrite(invoke<BookImportResult>('open_external_epub_paths', { paths }))
   result.books.forEach((book) => rememberBook(book))
   return result
 }
@@ -476,21 +537,34 @@ export function previewTextImportPaths(
 
 export async function importTextPaths(
   imports: TextImportSelection[],
-  { replaceExisting = true, rules }: { replaceExisting?: boolean; rules?: TextImportRulesInput } = {},
+  {
+    importId,
+    progressiveUpdates = false,
+    replaceExisting = true,
+    rules,
+  }: {
+    importId?: string
+    progressiveUpdates?: boolean
+    replaceExisting?: boolean
+    rules?: TextImportRulesInput
+  } = {},
 ) {
   await waitForPendingNativeWrites()
   beginBooksMutation()
-  const books = await trackNativeWrite(
-    invoke<BookRecord[]>('import_text_paths', {
+  const result = await trackNativeWrite(
+    invoke<BookImportResult>('import_text_paths', {
+      importId,
       imports,
       replaceExisting,
       rules,
     }),
   )
-  books.forEach((book) => rememberBook(book))
-  invalidateCovers()
-  notify('books', 'covers', 'files')
-  return books
+  rememberBookBatch(result.books)
+  if (result.books.length) {
+    if (!progressiveUpdates) await refreshImportedCovers(result.books.map((book) => book.id))
+    notify('books', 'covers', 'files')
+  }
+  return result
 }
 
 export function searchBookText(id: string, keyword: string, limit?: number) {

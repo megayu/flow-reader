@@ -64,6 +64,22 @@ fn move_book_dir_to_tombstone(storage: &AppStorage, id: &str) -> Option<PathBuf>
     }
 }
 
+pub(super) fn move_path_to_delete_tombstone(
+    storage: &AppStorage,
+    path: &Path,
+    name: &str,
+) -> Result<Option<PathBuf>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let tombstones_root = delete_tombstones_root(storage.root());
+    fs::create_dir_all(&tombstones_root).map_err(|error| error.to_string())?;
+    let tombstone = next_delete_tombstone_path(&tombstones_root, name);
+    fs::rename(path, &tombstone).map_err(|error| error.to_string())?;
+    Ok(Some(tombstone))
+}
+
 fn remove_book_dir_directly(book_dir: &Path) {
     if let Err(error) = fs::remove_dir_all(book_dir) {
         eprintln!("Failed to delete book directory: {error}");
@@ -143,7 +159,7 @@ fn cleanup_delete_tombstone_path(path: &Path) -> Result<(), String> {
     }
 }
 
-fn enqueue_delete_tombstone_cleanup(tasks: &TaskService, tombstones: Vec<PathBuf>) {
+pub(super) fn enqueue_delete_tombstone_cleanup(tasks: &TaskService, tombstones: Vec<PathBuf>) {
     if tombstones.is_empty() {
         return;
     }

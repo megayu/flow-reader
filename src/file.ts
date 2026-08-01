@@ -1,22 +1,25 @@
 import { invoke } from '@tauri-apps/api/core'
 
 import {
+  type BookImportProgress,
+  type BookImportResult,
   type BookRecord,
-  db,
-  type EpubImportProgress,
-  type EpubImportResult,
-  importBookPaths,
-  openExternalBookPaths,
+  importEpubPaths,
+  importTextPaths,
+  openExternalEpubPaths,
+  rememberBookImportProgress,
+  type TextImportRulesInput,
+  type TextImportSelection,
 } from './storage'
 
 const nativeOpenEvent = 'flow-open-files'
-const epubImportProgressEvent = 'flow-epub-import-progress'
+const bookImportProgressEvent = 'flow-book-import-progress'
 
 interface HandleFilesOptions {
-  onImportProgress?: (progress: EpubImportProgress) => void
+  onImportProgress?: (progress: BookImportProgress) => void
   replaceExisting?: boolean
   onTextPaths?: (paths: string[]) => void
-  onImportResult?: (result: EpubImportResult) => Set<string> | void | Promise<Set<string> | void>
+  onImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
 }
 
 function isEpubPath(path: string) {
@@ -55,17 +58,44 @@ export async function handleFilePaths(
   if (textPaths.length) onTextPaths?.(textPaths)
   if (!epubPaths.length) return []
 
-  const importId = createEpubImportId()
-  const unlisten = onImportProgress ? await listenEpubImportProgress(importId, onImportProgress) : undefined
+  const importId = createBookImportId()
+  onImportProgress?.(initialBookImportProgress(importId, epubPaths.length))
+  const unlisten = onImportProgress ? await listenBookImportProgress(importId, onImportProgress) : undefined
 
   try {
-    const result = await importBookPaths(epubPaths, {
+    const result = await importEpubPaths(epubPaths, {
       importId,
+      progressiveUpdates: !!unlisten,
       replaceExisting,
     })
     const openedBookIds = await onImportResult?.(result)
     if (!openedBookIds?.size) return result.books
     return result.books.filter((book) => !openedBookIds.has(book.id))
+  } finally {
+    unlisten?.()
+  }
+}
+
+export async function importTextSelections(
+  imports: TextImportSelection[],
+  {
+    onImportProgress,
+    rules,
+  }: {
+    onImportProgress?: (progress: BookImportProgress) => void
+    rules?: TextImportRulesInput
+  } = {},
+): Promise<BookImportResult> {
+  const importId = createBookImportId()
+  onImportProgress?.(initialBookImportProgress(importId, imports.length))
+  const unlisten = onImportProgress ? await listenBookImportProgress(importId, onImportProgress) : undefined
+
+  try {
+    return await importTextPaths(imports, {
+      importId,
+      progressiveUpdates: !!unlisten,
+      rules,
+    })
   } finally {
     unlisten?.()
   }
@@ -93,8 +123,8 @@ export async function setupNativeOpenFiles({
   onOpen?: (books: BookRecord[]) => void
   onOpenRequest?: (paths: string[]) => void
   onDrop?: (books: BookRecord[]) => void
-  onImportProgress?: (progress: EpubImportProgress) => void
-  onImportResult?: (result: EpubImportResult) => Set<string> | void | Promise<Set<string> | void>
+  onImportProgress?: (progress: BookImportProgress) => void
+  onImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
   onDropTextPaths?: (paths: string[]) => void
 }) {
   if (typeof window === 'undefined') return
@@ -118,7 +148,7 @@ export async function setupNativeOpenFiles({
       }
 
       if (epubPaths.length) {
-        const result = await openExternalBookPaths(epubPaths)
+        const result = await openExternalEpubPaths(epubPaths)
         if (result.failures.length) onImportResult?.(result)
         if (result.books.length) onOpen?.(result.books)
       }
@@ -164,20 +194,27 @@ export function isTauriRuntime() {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 }
 
-function createEpubImportId() {
-  return `epub-import-${Date.now()}-${Math.random().toString(36).slice(2)}`
+function createBookImportId() {
+  return `book-import-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-async function listenEpubImportProgress(importId: string, onImportProgress: (progress: EpubImportProgress) => void) {
+function initialBookImportProgress(importId: string, total: number): BookImportProgress {
+  return {
+    importId,
+    total,
+    completed: 0,
+    imported: 0,
+    failed: 0,
+  }
+}
+
+async function listenBookImportProgress(importId: string, onImportProgress: (progress: BookImportProgress) => void) {
   const { listen } = await import('@tauri-apps/api/event')
-  return listen<EpubImportProgress>(epubImportProgressEvent, (event) => {
+  return listen<BookImportProgress>(bookImportProgressEvent, (event) => {
     const progress = event.payload
     if (progress.importId !== importId) return
 
-    if (progress.book) {
-      db.books.remember(progress.book)
-      db.notify('books')
-    }
+    rememberBookImportProgress(progress)
     onImportProgress(progress)
   })
 }

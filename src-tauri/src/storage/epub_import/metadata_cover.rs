@@ -1,10 +1,19 @@
+use super::access::inspect_epub_archive;
 use super::*;
 
-pub(super) fn parse_epub_info_result(path: &Path) -> Result<ParsedEpubInfo, String> {
+pub(super) fn inspect_epub_info(path: &Path) -> Result<(ParsedEpubInfo, EpubAccessInfo), String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
-    validate_epub_archive_limits(&mut archive)?;
-    let container = read_zip_text(&mut archive, "META-INF/container.xml")?;
+    let access = inspect_epub_archive(&mut archive)?;
+    let parsed = parse_epub_info_from_archive(&mut archive, path)?;
+    Ok((parsed, access))
+}
+
+fn parse_epub_info_from_archive<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    path: &Path,
+) -> Result<ParsedEpubInfo, String> {
+    let container = read_zip_text(archive, "META-INF/container.xml")?;
     let container_doc = roxmltree::Document::parse(&container).map_err(|error| error.to_string())?;
     let opf_path = container_doc
         .descendants()
@@ -12,10 +21,10 @@ pub(super) fn parse_epub_info_result(path: &Path) -> Result<ParsedEpubInfo, Stri
         .and_then(|node| node.attribute("full-path"))
         .ok_or_else(|| "EPUB container has no rootfile".to_string())?
         .to_string();
-    let opf = read_zip_text(&mut archive, &opf_path)?;
+    let opf = read_zip_text(archive, &opf_path)?;
     let opf_doc = roxmltree::Document::parse(&opf).map_err(|error| error.to_string())?;
     let metadata = parse_opf_metadata(&opf_doc);
-    let cover = find_cover_input(&mut archive, &opf_doc, &opf_path).or_else(|| {
+    let cover = find_cover_input(archive, &opf_doc, &opf_path).or_else(|| {
         create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str())).map(|input| {
             ParsedEpubCover {
                 input,

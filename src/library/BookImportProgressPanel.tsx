@@ -1,8 +1,8 @@
 import { Progress } from '../components/ui/progress'
 import { useTranslation } from '../hooks/useTranslation'
-import type { EpubImportProgress } from '../storage'
+import type { BookImportProgress } from '../storage'
 
-export function EpubImportProgressPanel({ progress }: { progress: EpubImportProgress }) {
+export function BookImportProgressPanel({ progress }: { progress: BookImportProgress }) {
   const t = useTranslation('import')
   const total = Math.max(progress.total, 1)
 

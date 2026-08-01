@@ -34,14 +34,7 @@ import { formatErrorMessage } from '../errorMessage'
 import { useTranslation } from '../hooks/useTranslation'
 import { toMessageKeySegment } from '../locales'
 import { reader } from '../models/reader'
-import {
-  type BookExportFormat,
-  type BookRecord,
-  type BookSourceStatus,
-  type CoverRecord,
-  db,
-  type ReadingStatus,
-} from '../storage'
+import { type BookExportFormat, type BookRecord, type BookSourceStatus, db, type ReadingStatus } from '../storage'
 
 import { BookInfoDialog, BookTagsDialog, EditBookDialog } from './LibraryDialogs'
 import {
@@ -64,7 +57,7 @@ const placeholder = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" 
 
 interface BookCardProps {
   book: BookRecord
-  covers?: CoverRecord[]
+  cover?: string | null
   highlighted?: boolean
   select?: boolean
   selected?: boolean
@@ -76,7 +69,7 @@ interface BookCardProps {
 
 export const BookCard: React.FC<BookCardProps> = ({
   book,
-  covers,
+  cover,
   highlighted,
   select,
   selected,
@@ -96,7 +89,6 @@ export const BookCard: React.FC<BookCardProps> = ({
   const [exportingFormat, setExportingFormat] = useState<BookExportFormat>()
   const [exportFormatsExpanded, setExportFormatsExpanded] = useState(false)
 
-  const cover = covers?.find((item) => item.id === book.id)?.cover
   const displayTitle = getBookDisplayTitle(book)
   const tooltip = getBookTooltip(book)
   const exportFormats = bookExportFormats(book)

@@ -14,13 +14,13 @@ import { useTranslation } from '../hooks/useTranslation'
 import { toMessageKeySegment } from '../locales'
 import { defaultTextImportRules, useSettings } from '../state'
 import type {
-  BookRecord,
   TextImportChapterPreview,
   TextImportEncodingOption,
   TextImportPreview,
   TextImportRulesInput,
+  TextImportSelection,
 } from '../storage'
-import { getTextImportEncodings, importTextPaths, previewTextImportPaths } from '../storage'
+import { getTextImportEncodings, previewTextImportPaths } from '../storage'
 
 import { AppTooltip } from './AppTooltip'
 import { Button } from './ui/button'
@@ -33,7 +33,7 @@ interface TextImportDialogProps {
   paths: string[]
   openAfterImport?: boolean
   onClose: () => void
-  onImported?: (books: BookRecord[], openAfterImport: boolean) => void
+  onImport: (imports: TextImportSelection[], openAfterImport: boolean, rules: TextImportRulesInput) => void
 }
 
 interface ChapterPreviewNode extends TextImportChapterPreview {
@@ -45,7 +45,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
   paths,
   openAfterImport = false,
   onClose,
-  onImported,
+  onImport,
 }) => {
   const t = useTranslation('text_import')
   const errorT = useTranslation('error')
@@ -71,7 +71,6 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     | undefined
   >(undefined)
   const [loading, setLoading] = useState(false)
-  const [importing, setImporting] = useState(false)
   const [error, setError] = useState('')
   const [collapsedChapterKeys, setCollapsedChapterKeys] = useState<Set<string>>(new Set())
   const initializedSelectionRef = useRef(false)
@@ -214,29 +213,11 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     })
   }
 
-  const importSelected = async () => {
-    if (!selectedImports.length || importing) return
+  const importSelected = () => {
+    if (!selectedImports.length) return
 
-    setImporting(true)
-    setError('')
-    try {
-      const books = await importTextPaths(selectedImports, {
-        rules: textImportRules,
-      })
-      onImported?.(books, openAfterImport)
-      onClose()
-    } catch (error) {
-      const message = formatErrorMessage(error)
-      setError(message)
-      notify({
-        autoCloseMs: false,
-        description: message,
-        title: errorT('txt_import_failed'),
-        type: 'error',
-      })
-    } finally {
-      setImporting(false)
-    }
+    onClose()
+    onImport(selectedImports, openAfterImport, textImportRules)
   }
 
   return (
@@ -446,7 +427,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
               <Button variant="secondary" onClick={onClose}>
                 {t('cancel')}
               </Button>
-              <Button disabled={!selectedImports.length || importing} onClick={importSelected}>
+              <Button disabled={!selectedImports.length} onClick={importSelected}>
                 {t('import_selected')}
               </Button>
             </div>

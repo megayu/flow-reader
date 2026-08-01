@@ -44,7 +44,7 @@ import { useTypography } from '../hooks/useTypography'
 import { BookTab, getBookTabFrameWindows, reader, useReaderSnapshot } from '../models/reader'
 import { createReaderKeyDownHandler, hasKeyboardCapturingLayer, isEditableTarget } from '../reader/shortcuts'
 import { getShortcutChords } from '../shortcuts'
-import { type BookRecord, db, type EpubImportProgress, type EpubImportResult } from '../storage'
+import { type BookImportProgress, type BookImportResult, type BookRecord, db } from '../storage'
 import { createTypographyLayoutSignature, createTypographyStyleSignature, updateCustomStyle } from '../styles'
 
 import { Annotations } from './Annotation'
@@ -76,8 +76,8 @@ function getFocusedBookTab() {
 
 interface ReaderGridViewProps {
   content?: React.ReactNode
-  onEpubImportProgress?: (progress: EpubImportProgress) => void
-  onEpubImportResult?: (result: EpubImportResult) => Set<string> | void | Promise<Set<string> | void>
+  onEpubImportProgress?: (progress: BookImportProgress) => void
+  onEpubImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
 }
 
 export function ReaderGridView({ content, onEpubImportProgress, onEpubImportResult }: ReaderGridViewProps) {
@@ -135,8 +135,8 @@ export function ReaderGridView({ content, onEpubImportProgress, onEpubImportResu
 interface ReaderGroupProps {
   index: number
   content?: React.ReactNode
-  onEpubImportProgress?: (progress: EpubImportProgress) => void
-  onEpubImportResult?: (result: EpubImportResult) => Set<string> | void | Promise<Set<string> | void>
+  onEpubImportProgress?: (progress: BookImportProgress) => void
+  onEpubImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
   onEnterReaderMode: () => void
 }
 

@@ -30,10 +30,10 @@ import { useNotify } from '../components/ui/notificationContext'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { formatErrorMessage } from '../errorMessage'
-import { handleFiles, openImportDialog, setupNativeOpenFiles } from '../file'
+import { handleFiles, importTextSelections, openImportDialog, setupNativeOpenFiles } from '../file'
 import { useAction, useLibraryAction } from '../hooks/useAction'
+import { useBookImportNotifications } from '../hooks/useBookImportNotifications'
 import { useBoolean } from '../hooks/useBoolean'
-import { useEpubImportNotifications } from '../hooks/useEpubImportNotifications'
 import { useCovers, useLibrary, useLibraryTags } from '../hooks/useLibrary'
 import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
@@ -56,11 +56,19 @@ import {
   useSettingsReady,
   useViewMode,
 } from '../state'
-import { type BookRecord, type BookSourceStatus, db, type EpubImportProgress, type EpubImportResult } from '../storage'
+import {
+  type BookImportProgress,
+  type BookImportResult,
+  type BookRecord,
+  type BookSourceStatus,
+  db,
+  type TextImportRulesInput,
+  type TextImportSelection,
+} from '../storage'
 import { clamp } from '../utils'
 
 import { BookCard } from './BookCard'
-import { EpubImportProgressPanel } from './EpubImportProgressPanel'
+import { BookImportProgressPanel } from './BookImportProgressPanel'
 import { filterBooksByLibraryFilters } from './filters'
 import { BatchTagsDialog, DeleteSelectedBooksDialog } from './LibraryDialogs'
 import {
@@ -125,9 +133,9 @@ export function LibraryPage() {
     paths: string[]
     openAfterImport: boolean
   }>()
-  const [epubImportProgress, setEpubImportProgress] = useState<EpubImportProgress>()
+  const [bookImportProgress, setBookImportProgress] = useState<BookImportProgress>()
   const notify = useNotify()
-  const notifyEpubImportResult = useEpubImportNotifications()
+  const notifyBookImportResult = useBookImportNotifications()
   const errorT = useTranslation('error')
   const homeT = useTranslation('home')
   const focusedBookId = focusedBookTab?.book.id
@@ -142,7 +150,7 @@ export function LibraryPage() {
     setTextImportDialog({ paths, openAfterImport })
   }, [])
 
-  const handleTextImported = useCallback(
+  const openImportedTextBooks = useCallback(
     (books: BookRecord[], openAfterImport: boolean) => {
       if (!openAfterImport || !books.length) return
 
@@ -152,24 +160,51 @@ export function LibraryPage() {
     [setViewMode],
   )
 
-  const handleEpubImportProgress = useCallback((progress: EpubImportProgress) => {
-    setEpubImportProgress(progress)
+  const handleBookImportProgress = useCallback((progress: BookImportProgress) => {
+    setBookImportProgress(progress)
   }, [])
 
   const handleEpubImportResult = useCallback(
-    async (result: EpubImportResult) => {
-      setEpubImportProgress(undefined)
+    async (result: BookImportResult) => {
+      setBookImportProgress(undefined)
       let openedBookIds: Set<string> | undefined
       try {
         openedBookIds = await reader.promoteExternalBooks(result.books)
       } catch (error) {
         console.error(error)
       }
-      notifyEpubImportResult(result)
+      notifyBookImportResult(result)
       return openedBookIds
     },
-    [notifyEpubImportResult],
+    [notifyBookImportResult],
   )
+
+  const handleTextImport = useCallback(
+    (imports: TextImportSelection[], openAfterImport: boolean, rules: TextImportRulesInput) => {
+      void importTextSelections(imports, {
+        onImportProgress: handleBookImportProgress,
+        rules,
+      })
+        .then((result: BookImportResult) => {
+          setBookImportProgress(undefined)
+          notifyBookImportResult(result)
+          openImportedTextBooks(result.books, openAfterImport)
+        })
+        .catch((error) => {
+          setBookImportProgress(undefined)
+          const message = formatErrorMessage(error)
+          notify({
+            autoCloseMs: false,
+            description: message,
+            title: errorT('txt_import_failed'),
+            type: 'error',
+          })
+        })
+    },
+    [errorT, handleBookImportProgress, notify, notifyBookImportResult, openImportedTextBooks],
+  )
+
+  const handleNativeEpubImportResult = useEffectEvent((result: BookImportResult) => handleEpubImportResult(result))
 
   useEffect(() => {
     return subscribeReaderOpenErrors(({ bookId, bookTitle, closeTab, error, stage }) => {
@@ -238,8 +273,8 @@ export function LibraryPage() {
 
   const startNativeOpenSetup = useEffectEvent(() =>
     setupNativeOpenFiles({
-      onImportProgress: handleEpubImportProgress,
-      onImportResult: handleEpubImportResult,
+      onImportProgress: handleBookImportProgress,
+      onImportResult: (result) => handleNativeEpubImportResult(result),
       onOpenRequest: () => {
         openedFromNativeRef.current = true
         setNativeStartupPending(true)
@@ -261,6 +296,8 @@ export function LibraryPage() {
   )
 
   useEffect(() => {
+    if (!settingsReady) return
+
     let disposed = false
 
     nativeOpenSetupPromiseRef.current ??= startNativeOpenSetup()
@@ -284,7 +321,7 @@ export function LibraryPage() {
       nativeOpenCleanupRef.current?.()
       nativeOpenCleanupRef.current = undefined
     }
-  }, [])
+  }, [settingsReady])
 
   useEffect(() => {
     tryRestoreStartupSession()
@@ -366,7 +403,7 @@ export function LibraryPage() {
   const library = (
     <Library
       onOpenBook={() => setViewMode('reader')}
-      onEpubImportProgress={handleEpubImportProgress}
+      onEpubImportProgress={handleBookImportProgress}
       onEpubImportResult={handleEpubImportResult}
       onTextPaths={(paths) => openTextImportDialog(paths, false)}
     />
@@ -380,7 +417,7 @@ export function LibraryPage() {
       {startupRestoreDone && groups.length ? (
         <ReaderGridView
           content={viewMode === 'library' ? library : undefined}
-          onEpubImportProgress={handleEpubImportProgress}
+          onEpubImportProgress={handleBookImportProgress}
           onEpubImportResult={handleEpubImportResult}
         />
       ) : startupRestoreDone ? (
@@ -392,17 +429,17 @@ export function LibraryPage() {
           paths={textImportDialog.paths}
           openAfterImport={textImportDialog.openAfterImport}
           onClose={() => setTextImportDialog(undefined)}
-          onImported={handleTextImported}
+          onImport={handleTextImport}
         />
       )}
-      {epubImportProgress && <EpubImportProgressPanel progress={epubImportProgress} />}
+      {bookImportProgress && <BookImportProgressPanel progress={bookImportProgress} />}
     </>
   )
 }
 
 interface LibraryProps {
-  onEpubImportProgress: (progress: EpubImportProgress) => void
-  onEpubImportResult: (result: EpubImportResult) => Set<string> | void | Promise<Set<string> | void>
+  onEpubImportProgress: (progress: BookImportProgress) => void
+  onEpubImportResult: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
   onOpenBook: () => void
   onTextPaths: (paths: string[]) => void
 }
@@ -442,6 +479,7 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
     [authorFilters, books, sortDirection, sortField, statusFilters, tagFilters],
   )
   const visibleBookIds = useMemo(() => sortedBooks.map((book) => book.id), [sortedBooks])
+  const coversById = useMemo(() => new Map(covers?.map((cover) => [cover.id, cover.cover])), [covers])
   const selectedBooks = sortedBooks.filter((book) => selectedBookIds.has(book.id))
   const referencedArchiveIds = useMemo(
     () =>
@@ -550,7 +588,7 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
   }, [setSettings])
 
   const handleEpubImportResult = useCallback(
-    async (result: EpubImportResult) => {
+    async (result: BookImportResult) => {
       const importedIds: string[] = []
       for (const book of result.books) {
         if (book.scope !== 'external') importedIds.push(book.id)
@@ -1002,7 +1040,7 @@ const Library: React.FC<LibraryProps> = ({ onEpubImportProgress, onEpubImportRes
               key={book.id}
               book={book}
               sourceStatus={sourceStatuses.get(book.id)}
-              covers={covers}
+              cover={coversById.get(book.id)}
               select={select}
               selected={has(book.id)}
               highlighted={highlightedBookIds.has(book.id)}

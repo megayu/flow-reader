@@ -1,6 +1,6 @@
 use super::commands::{
-    ReadingPositionInput, get_book_impl, import_epub_paths_impl, import_text_paths_impl,
-    preview_text_import_paths_impl, record_reading_position_impl, revealable_book_source_path,
+    BookImportResult, ReadingPositionInput, get_book_impl, import_epub_paths_impl, preview_text_import_paths_impl,
+    record_reading_position_impl, revealable_book_source_path,
 };
 use super::epub_import::read_bounded_bytes;
 use super::{
@@ -12,8 +12,8 @@ use super::{
     TextImportRulesInput, TextImportSelection, UNPACKED_DIR, check_book_source_statuses_impl,
     cleanup_delete_tombstones, cleanup_external_book_heavy_files, decode_text_bytes, delete_books_to_tombstones,
     delete_tombstones_root, empty_object, ensure_book_package_path_with_unpacker, export_book_impl,
-    external_books_root, external_index_path, get_book_reader_source_impl, hash_file, import_epub_path_impl,
-    library_path, load_or_build_search_text_cache, mark_book_exported, mark_library_book_content_updated,
+    external_books_root, external_index_path, get_book_reader_source_impl, hash_file, library_path,
+    load_or_build_search_text_cache, mark_book_exported, mark_library_book_content_updated,
     normalize_non_square_pixel_png, normalize_publication_date, normalize_unpacked_epub_structure,
     open_external_epub_path_impl, parent_zip_path, parse_text_import_document, path_to_client_string,
     read_image_index_cache, read_json_or_default, read_json_value_or_default, read_search_text_sections_from_unpacked,
@@ -38,6 +38,43 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use zip::{CompressionMethod, ZipArchive, ZipWriter, write::SimpleFileOptions};
+
+fn imported_books_or_first_error(result: BookImportResult) -> Result<Vec<BookRecord>, String> {
+    if let Some(failure) = result.failures.into_iter().next() {
+        return Err(failure.error);
+    }
+    Ok(result.books)
+}
+
+fn import_single_epub_for_test(
+    storage: &AppStorage,
+    path: &Path,
+    replace_existing: bool,
+) -> Result<BookRecord, String> {
+    let result = import_epub_paths_impl(
+        storage,
+        &TaskService::default(),
+        vec![path.to_string_lossy().to_string()],
+        replace_existing,
+        None,
+        None,
+    )?;
+    imported_books_or_first_error(result)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| "EPUB import produced no book".to_string())
+}
+
+fn import_text_paths_strict_for_test(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    imports: Vec<TextImportSelection>,
+    replace_existing: bool,
+    rules: Option<TextImportRulesInput>,
+) -> Result<Vec<BookRecord>, String> {
+    let result = super::commands::import_text_paths_impl(storage, tasks, imports, replace_existing, rules, None, None)?;
+    imported_books_or_first_error(result)
+}
 
 fn synthetic_non_square_pixel_png() -> Vec<u8> {
     let width = 4u32;
@@ -396,7 +433,7 @@ fn text_preview_then_import_consumes_prepared_entry_without_repreparing() {
     assert_eq!(storage.text_import_prepare_run_count(), 1);
     assert_eq!(storage.text_import_prepared_cache_len(), 1);
 
-    let books = import_text_paths_impl(
+    let books = import_text_paths_strict_for_test(
         &storage,
         &tasks,
         vec![TextImportSelection {
@@ -440,7 +477,7 @@ fn failed_text_import_does_not_mutate_existing_library_record() {
     fs::write(storage.book_dir("book"), "blocks the book directory").unwrap();
     let before = serde_json::to_value(&storage.inner.state.lock().unwrap().library.books[0]).unwrap();
 
-    let result = import_text_paths_impl(
+    let result = import_text_paths_strict_for_test(
         &storage,
         &TaskService::default(),
         vec![TextImportSelection {
@@ -474,7 +511,7 @@ fn referenced_text_import_uses_only_unpacked_and_exports_only_epub() {
     use_referenced_import_sources(&storage);
     let tasks = TaskService::default();
 
-    let books = import_text_paths_impl(
+    let books = import_text_paths_strict_for_test(
         &storage,
         &tasks,
         vec![TextImportSelection {
@@ -543,7 +580,7 @@ fn text_import_reprepares_when_prepared_file_metadata_changes() {
 
     fs::write(&source, "第1章 新内容\n新段落。\n新增段落。\n").unwrap();
 
-    let books = import_text_paths_impl(
+    let books = import_text_paths_strict_for_test(
         &storage,
         &tasks,
         vec![TextImportSelection {
@@ -653,7 +690,7 @@ fn text_import_prepares_files_concurrently_before_ordered_commit() {
     storage.set_text_import_prepare_delay(Duration::from_millis(80));
     let tasks = TaskService::default();
 
-    let books = import_text_paths_impl(
+    let books = import_text_paths_strict_for_test(
         &storage,
         &tasks,
         vec![
@@ -712,7 +749,7 @@ fn text_import_materializes_prepared_files_with_bounded_handoff() {
     let storage = test_storage_with_books(&root, Vec::new());
     let tasks = TaskService::default();
 
-    let books = import_text_paths_impl(&storage, &tasks, imports, true, None).unwrap();
+    let books = import_text_paths_strict_for_test(&storage, &tasks, imports, true, None).unwrap();
 
     assert_eq!(books.len(), file_count);
     assert_eq!(books[0].name, "book-000.txt");
@@ -738,7 +775,7 @@ fn text_import_does_not_build_search_cache_in_visible_path() {
     let storage = test_storage_with_books(&root, Vec::new());
     let tasks = TaskService::default();
 
-    let books = import_text_paths_impl(
+    let books = import_text_paths_strict_for_test(
         &storage,
         &tasks,
         vec![TextImportSelection {
@@ -1128,7 +1165,7 @@ fn epub_import_copies_source_without_unpacking_or_indexing() {
     write_minimal_epub_file(&source, "Streamed Book", "streamed body");
     let storage = test_storage_with_books(&root, Vec::new());
 
-    let book = import_epub_path_impl(&storage, &source, true).unwrap();
+    let book = import_single_epub_for_test(&storage, &source, true).unwrap();
 
     let book_dir = storage.book_dir(&book.id);
     assert_eq!(
@@ -1163,7 +1200,7 @@ fn referenced_epub_import_keeps_source_in_place_and_publishes_unpacked_package()
     let storage = test_storage_with_books(&root, Vec::new());
     use_referenced_import_sources(&storage);
 
-    let book = import_epub_path_impl(&storage, &source, true).unwrap();
+    let book = import_single_epub_for_test(&storage, &source, true).unwrap();
     let book_dir = storage.book_dir(&book.id);
 
     assert!(!book_dir.join(BOOK_FILE).exists());
@@ -1241,7 +1278,7 @@ fn referenced_archive_only_epub_fails_after_source_disappears() {
     let storage = test_storage_with_books(&root, Vec::new());
     use_referenced_import_sources(&storage);
 
-    let imported = import_epub_path_impl(&storage, &source, true).unwrap();
+    let imported = import_single_epub_for_test(&storage, &source, true).unwrap();
     assert!(!storage.book_dir(&imported.id).join(BOOK_FILE).exists());
     let available = check_book_source_statuses_impl(&storage, vec![imported.id.clone()]).unwrap();
     assert_eq!(available.len(), 1);
@@ -1272,7 +1309,7 @@ fn referenced_archive_only_epub_reports_changed_source() {
     let storage = test_storage_with_books(&root, Vec::new());
     use_referenced_import_sources(&storage);
 
-    let imported = import_epub_path_impl(&storage, &source, true).unwrap();
+    let imported = import_single_epub_for_test(&storage, &source, true).unwrap();
     fs::OpenOptions::new()
         .append(true)
         .open(&source)
@@ -1335,7 +1372,7 @@ fn external_epub_open_prefers_existing_library_book_by_hash() {
     let source = root.join("existing.epub");
     write_minimal_epub_file(&source, "Existing Library", "existing body");
     let storage = test_storage_with_books(&root, Vec::new());
-    let imported = import_epub_path_impl(&storage, &source, true).unwrap();
+    let imported = import_single_epub_for_test(&storage, &source, true).unwrap();
 
     let opened = open_external_epub_path_impl(&storage, &source).unwrap();
 
@@ -1355,7 +1392,7 @@ fn opening_managed_book_epub_uses_existing_book_without_hash_matching() {
     let source = root.join("source.epub");
     write_minimal_epub_file(&source, "Managed Original", "original body");
     let storage = test_storage_with_books(&root, Vec::new());
-    let imported = import_epub_path_impl(&storage, &source, true).unwrap();
+    let imported = import_single_epub_for_test(&storage, &source, true).unwrap();
     let managed_epub = storage.book_dir(&imported.id).join(BOOK_FILE);
     write_minimal_epub_file(&managed_epub, "Managed Edited", "edited body");
     write_metadata(
@@ -1415,7 +1452,7 @@ fn importing_open_external_epub_promotes_metadata_state_and_removes_external_rec
             .insert(external.id.clone(), external_promotion_state());
     }
 
-    let imported = import_epub_path_impl(&storage, &source, true).unwrap();
+    let imported = import_single_epub_for_test(&storage, &source, true).unwrap();
 
     assert_external_promoted(&storage, &imported, &external.id, &source);
 
@@ -1449,7 +1486,7 @@ fn importing_persisted_external_epub_promotes_disk_metadata_and_state() {
     storage.flush_dirty().unwrap();
 
     let reloaded = test_storage_from_disk(&root);
-    let imported = import_epub_path_impl(&reloaded, &source, true).unwrap();
+    let imported = import_single_epub_for_test(&reloaded, &source, true).unwrap();
 
     assert_external_promoted(&reloaded, &imported, &external.id, &source);
 
@@ -1468,7 +1505,7 @@ fn epub_import_extracts_cover_from_percent_encoded_zip_path() {
     write_minimal_epub_with_percent_encoded_cover(&source, cover_bytes);
     let storage = test_storage_with_books(&root, Vec::new());
 
-    let book = import_epub_path_impl(&storage, &source, true).unwrap();
+    let book = import_single_epub_for_test(&storage, &source, true).unwrap();
 
     let book_dir = storage.book_dir(&book.id);
     assert_eq!(fs::read(book_dir.join("cover.jpg")).unwrap(), cover_bytes);
@@ -1500,7 +1537,7 @@ fn epub_import_extracts_cover_from_xhtml_img_cover_page() {
     );
     let storage = test_storage_with_books(&root, Vec::new());
 
-    let book = import_epub_path_impl(&storage, &source, true).unwrap();
+    let book = import_single_epub_for_test(&storage, &source, true).unwrap();
 
     let book_dir = storage.book_dir(&book.id);
     assert_eq!(fs::read(book_dir.join("cover.jpeg")).unwrap(), cover_bytes);
@@ -1525,7 +1562,7 @@ fn epub_import_extracts_cover_from_xhtml_svg_image_cover_page() {
     );
     let storage = test_storage_with_books(&root, Vec::new());
 
-    let book = import_epub_path_impl(&storage, &source, true).unwrap();
+    let book = import_single_epub_for_test(&storage, &source, true).unwrap();
 
     let book_dir = storage.book_dir(&book.id);
     assert_eq!(fs::read(book_dir.join("cover.jpeg")).unwrap(), cover_bytes);
@@ -1546,7 +1583,7 @@ fn epub_import_uses_first_image_spine_page_when_cover_metadata_is_missing() {
     write_minimal_epub_with_first_image_spine_page(&source, cover_bytes);
     let storage = test_storage_with_books(&root, Vec::new());
 
-    let book = import_epub_path_impl(&storage, &source, true).unwrap();
+    let book = import_single_epub_for_test(&storage, &source, true).unwrap();
 
     let book_dir = storage.book_dir(&book.id);
     assert_eq!(fs::read(book_dir.join("cover.jpeg")).unwrap(), cover_bytes);
@@ -1603,7 +1640,7 @@ fn epub_replace_import_removes_stale_unpacked_and_search_artifacts() {
     let source = root.join("replace.epub");
     write_minimal_epub_file(&source, "Old Book", "old body");
     let storage = test_storage_with_books(&root, Vec::new());
-    let old_book = import_epub_path_impl(&storage, &source, true).unwrap();
+    let old_book = import_single_epub_for_test(&storage, &source, true).unwrap();
     let book_dir = storage.book_dir(&old_book.id);
     fs::create_dir_all(book_dir.join(UNPACKED_DIR)).unwrap();
     fs::write(book_dir.join(UNPACKED_DIR).join("stale.txt"), "stale").unwrap();
@@ -1611,7 +1648,7 @@ fn epub_replace_import_removes_stale_unpacked_and_search_artifacts() {
     fs::write(&stale_cache_path, "stale").unwrap();
 
     write_minimal_epub_file(&source, "New Book", "new body");
-    let new_book = import_epub_path_impl(&storage, &source, true).unwrap();
+    let new_book = import_single_epub_for_test(&storage, &source, true).unwrap();
 
     assert_eq!(old_book.id, new_book.id);
     assert_eq!(new_book.metadata.get("title").and_then(Value::as_str), Some("New Book"));

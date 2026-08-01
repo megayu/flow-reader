@@ -26,6 +26,7 @@ mod editing;
 mod epub_import;
 mod export;
 mod image_index;
+mod import_support;
 mod model;
 mod search;
 mod state;
@@ -66,13 +67,14 @@ use editing::*;
 use export::*;
 
 use epub_import::{
-    clean_xml_text, deobfuscate_unpacked_idpf_fonts, find_unpacked_opf_path, import_epub_path_impl,
+    clean_xml_text, commit_prepared_epub_import, deobfuscate_unpacked_idpf_fonts, find_unpacked_opf_path,
     inspect_epub_access, join_zip_path, normalize_unpacked_epub_structure, normalize_zip_path,
-    open_external_epub_path_impl, parent_zip_path, unpack_epub, validate_epub_archive_limits,
+    open_external_epub_path_impl, parent_zip_path, prepare_epub_import, unpack_epub, validate_epub_archive_limits,
 };
 #[cfg(test)]
 use epub_import::{normalize_non_square_pixel_png, normalize_publication_date, relative_zip_path};
 
+use import_support::{ImportFileTransaction, ImportFinalizer, LibraryBookLookupIndex, import_work_path};
 use search::{
     DerivedCacheState, SearchTextCache, load_or_build_image_index_cache, load_or_build_search_text_cache,
     search_text_in_cache,

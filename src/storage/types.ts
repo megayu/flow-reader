@@ -140,25 +140,25 @@ export interface BookSourceStatusRecord {
   status: BookSourceStatus
 }
 
-export interface EpubImportFailure {
+export interface BookImportFailure {
   path: string
   filename: string
   error: string
 }
 
-export interface EpubImportResult {
+export interface BookImportResult {
   books: BookRecord[]
-  failures: EpubImportFailure[]
+  failures: BookImportFailure[]
 }
 
-export interface EpubImportProgress {
+export interface BookImportProgress {
   importId: string
   total: number
   completed: number
   imported: number
   failed: number
   book?: BookRecord | null
-  failure?: EpubImportFailure | null
+  cover?: CoverRecord | null
 }
 
 export interface ReadingPositionInput {

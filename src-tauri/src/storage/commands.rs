@@ -398,19 +398,31 @@ pub fn reveal_exported_file(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn list_covers(storage: State<'_, AppStorage>) -> Result<Vec<CoverRecord>, String> {
+pub fn list_covers(storage: State<'_, AppStorage>, ids: Option<Vec<String>>) -> Result<Vec<CoverRecord>, String> {
     let ids = {
         let state = storage
             .inner
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        state
-            .library
-            .books
-            .iter()
-            .map(|book| book.id.clone())
-            .collect::<Vec<_>>()
+        match ids {
+            Some(ids) => {
+                let requested = ids.into_iter().collect::<HashSet<_>>();
+                state
+                    .library
+                    .books
+                    .iter()
+                    .filter(|book| requested.contains(&book.id))
+                    .map(|book| book.id.clone())
+                    .collect::<Vec<_>>()
+            }
+            None => state
+                .library
+                .books
+                .iter()
+                .map(|book| book.id.clone())
+                .collect::<Vec<_>>(),
+        }
     };
 
     ids.into_iter()
@@ -446,7 +458,7 @@ pub async fn import_epub_paths(
     paths: Vec<String>,
     replace_existing: bool,
     import_id: Option<String>,
-) -> Result<EpubImportResult, String> {
+) -> Result<BookImportResult, String> {
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -463,43 +475,66 @@ pub(super) fn import_epub_paths_impl(
     replace_existing: bool,
     app: Option<AppHandle>,
     import_id: Option<String>,
-) -> Result<EpubImportResult, String> {
+) -> Result<BookImportResult, String> {
     let started = Instant::now();
     let source_count = paths.len();
     let total = paths.iter().filter(|path| is_epub_file(Path::new(path))).count();
     let mut books = Vec::new();
     let mut failures = Vec::new();
-    let mut progress = EpubImportProgressReporter::new(app, import_id, total);
+    let mut finalizers = Vec::new();
+    let mut import_index = LibraryBookLookupIndex::load(storage)?;
+    let mut progress = BookImportProgressReporter::new(app, import_id, total);
 
-    for path in paths {
-        let path = PathBuf::from(path);
-        if !is_epub_file(&path) {
-            continue;
-        }
+    let paths = paths
+        .into_iter()
+        .map(PathBuf::from)
+        .filter(|path| is_epub_file(path))
+        .collect::<Vec<_>>();
+    let prepare_window = tasks.io_writer_limit().clamp(1, 4);
 
-        let failure = |error: String| EpubImportFailure {
-            filename: path
-                .file_name()
-                .map(|name| name.to_string_lossy().to_string())
-                .unwrap_or_else(|| path.to_string_lossy().to_string()),
-            path: path.to_string_lossy().to_string(),
-            error,
-        };
-        let bytes = std::fs::metadata(&path).map(|metadata| metadata.len()).unwrap_or(0);
-        match tasks.run_io_observed(storage.root(), bytes, TaskPriority::Foreground, || {
-            import_epub_path_impl(storage, &path, replace_existing)
-        }) {
-            Ok(book) => {
-                books.push(book.clone());
-                progress.emit(Some(book), None);
-            }
-            Err(error) => {
-                let failure = failure(error);
-                failures.push(failure.clone());
-                progress.emit(None, Some(failure));
+    for chunk in paths.chunks(prepare_window) {
+        let prepared = std::thread::scope(|scope| {
+            let handles = chunk
+                .iter()
+                .map(|path| {
+                    scope.spawn(move || {
+                        let bytes = fs::metadata(path).map(|metadata| metadata.len()).unwrap_or(0);
+                        tasks.run_io_observed(storage.root(), bytes, TaskPriority::Foreground, || {
+                            prepare_epub_import(storage, path)
+                        })
+                    })
+                })
+                .collect::<Vec<_>>();
+            handles
+                .into_iter()
+                .map(|handle| {
+                    handle
+                        .join()
+                        .unwrap_or_else(|_| Err("EPUB import prepare worker panicked".to_string()))
+                })
+                .collect::<Vec<_>>()
+        });
+
+        for (path, prepared) in chunk.iter().zip(prepared) {
+            let result = prepared.and_then(|prepared| {
+                commit_prepared_epub_import(storage, prepared, replace_existing, Some(&mut import_index))
+            });
+            match result {
+                Ok((book, finalizer)) => {
+                    progress.emit_success(storage, &book);
+                    books.push(book);
+                    finalizers.push(finalizer);
+                }
+                Err(error) => {
+                    let failure = book_import_failure(path, error);
+                    progress.emit_failure();
+                    failures.push(failure);
+                }
             }
         }
     }
+
+    finalize_import_batch(storage, tasks, finalizers)?;
 
     let mut fields = vec![
         ("sources", source_count.to_string()),
@@ -508,7 +543,18 @@ pub(super) fn import_epub_paths_impl(
     ];
     fields.extend(tasks.diagnostic_fields());
     diagnostics::record_timing("epub-import", started.elapsed(), &fields);
-    Ok(EpubImportResult { books, failures })
+    Ok(BookImportResult { books, failures })
+}
+
+fn book_import_failure(path: &Path, error: String) -> BookImportFailure {
+    BookImportFailure {
+        filename: path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.to_string_lossy().to_string()),
+        path: path.to_string_lossy().to_string(),
+        error,
+    }
 }
 
 #[tauri::command]
@@ -516,7 +562,7 @@ pub async fn open_external_epub_paths(
     storage: State<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     paths: Vec<String>,
-) -> Result<EpubImportResult, String> {
+) -> Result<BookImportResult, String> {
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || open_external_epub_paths_impl(&storage, &tasks, paths))
@@ -528,7 +574,7 @@ pub(super) fn open_external_epub_paths_impl(
     storage: &AppStorage,
     tasks: &TaskService,
     paths: Vec<String>,
-) -> Result<EpubImportResult, String> {
+) -> Result<BookImportResult, String> {
     let started = Instant::now();
     let source_count = paths.len();
     let mut books = Vec::new();
@@ -540,20 +586,12 @@ pub(super) fn open_external_epub_paths_impl(
             continue;
         }
 
-        let failure = |error: String| EpubImportFailure {
-            filename: path
-                .file_name()
-                .map(|name| name.to_string_lossy().to_string())
-                .unwrap_or_else(|| path.to_string_lossy().to_string()),
-            path: path.to_string_lossy().to_string(),
-            error,
-        };
         let bytes = std::fs::metadata(&path).map(|metadata| metadata.len()).unwrap_or(0);
         match tasks.run_io_observed(storage.root(), bytes, TaskPriority::Foreground, || {
             open_external_epub_path_impl(storage, &path)
         }) {
             Ok(book) => books.push(book),
-            Err(error) => failures.push(failure(error)),
+            Err(error) => failures.push(book_import_failure(&path, error)),
         }
     }
 
@@ -564,37 +602,37 @@ pub(super) fn open_external_epub_paths_impl(
     ];
     fields.extend(tasks.diagnostic_fields());
     diagnostics::record_timing("epub-open-external", started.elapsed(), &fields);
-    Ok(EpubImportResult { books, failures })
+    Ok(BookImportResult { books, failures })
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EpubImportFailure {
+pub struct BookImportFailure {
     pub path: String,
     pub filename: String,
     pub error: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EpubImportResult {
+pub struct BookImportResult {
     pub books: Vec<BookRecord>,
-    pub failures: Vec<EpubImportFailure>,
+    pub failures: Vec<BookImportFailure>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EpubImportProgress {
+pub struct BookImportProgress {
     import_id: String,
     total: usize,
     completed: usize,
     imported: usize,
     failed: usize,
     book: Option<BookRecord>,
-    failure: Option<EpubImportFailure>,
+    cover: Option<CoverRecord>,
 }
 
-struct EpubImportProgressReporter {
+struct BookImportProgressReporter {
     app: Option<AppHandle>,
     import_id: Option<String>,
     total: usize,
@@ -603,7 +641,7 @@ struct EpubImportProgressReporter {
     failed: usize,
 }
 
-impl EpubImportProgressReporter {
+impl BookImportProgressReporter {
     fn new(app: Option<AppHandle>, import_id: Option<String>, total: usize) -> Self {
         Self {
             app,
@@ -615,12 +653,11 @@ impl EpubImportProgressReporter {
         }
     }
 
-    fn emit(&mut self, book: Option<BookRecord>, failure: Option<EpubImportFailure>) {
+    fn emit(&mut self, book: Option<BookRecord>, cover: Option<CoverRecord>) {
         self.completed += 1;
         if book.is_some() {
             self.imported += 1;
-        }
-        if failure.is_some() {
+        } else {
             self.failed += 1;
         }
 
@@ -633,17 +670,29 @@ impl EpubImportProgressReporter {
         };
 
         let _ = app.emit(
-            "flow-epub-import-progress",
-            EpubImportProgress {
+            "flow-book-import-progress",
+            BookImportProgress {
                 import_id: import_id.clone(),
                 total: self.total,
                 completed: self.completed,
                 imported: self.imported,
                 failed: self.failed,
                 book,
-                failure,
+                cover,
             },
         );
+    }
+
+    fn emit_success(&mut self, storage: &AppStorage, book: &BookRecord) {
+        let cover = read_cover(storage, &book.id).ok().map(|cover| CoverRecord {
+            id: book.id.clone(),
+            cover,
+        });
+        self.emit(Some(book.clone()), cover);
+    }
+
+    fn emit_failure(&mut self) {
+        self.emit(None, None);
     }
 }
 
@@ -775,16 +824,18 @@ fn text_import_prepare_worker_count(file_count: usize) -> usize {
 
 #[tauri::command]
 pub async fn import_text_paths(
+    app: AppHandle,
     storage: State<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     imports: Vec<TextImportSelection>,
     replace_existing: bool,
     rules: Option<TextImportRulesInput>,
-) -> Result<Vec<BookRecord>, String> {
+    import_id: Option<String>,
+) -> Result<BookImportResult, String> {
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        import_text_paths_impl(&storage, &tasks, imports, replace_existing, rules)
+        import_text_paths_impl(&storage, &tasks, imports, replace_existing, rules, Some(app), import_id)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -796,31 +847,86 @@ pub(super) fn import_text_paths_impl(
     imports: Vec<TextImportSelection>,
     replace_existing: bool,
     rules: Option<TextImportRulesInput>,
-) -> Result<Vec<BookRecord>, String> {
+    app: Option<AppHandle>,
+    import_id: Option<String>,
+) -> Result<BookImportResult, String> {
     let started = Instant::now();
     let source_count = imports.len();
-    let mut books = Vec::new();
     let rules = rules.as_ref();
     let imports = imports
         .into_iter()
         .filter(|import| is_txt_file(Path::new(&import.path)))
         .collect::<Vec<_>>();
-    books.extend(if imports.len() <= 1 {
-        import_text_paths_direct(storage, tasks, imports, replace_existing, rules)?
+    let mut progress = BookImportProgressReporter::new(app, import_id, imports.len());
+    let mut import_index = LibraryBookLookupIndex::load(storage)?;
+    let batch = if imports.len() <= 1 {
+        import_text_paths_direct(
+            storage,
+            tasks,
+            imports,
+            replace_existing,
+            rules,
+            &mut import_index,
+            &mut progress,
+        )
     } else {
-        import_text_paths_with_pipeline(storage, tasks, imports, replace_existing, rules)?
-    });
+        import_text_paths_with_pipeline(
+            storage,
+            tasks,
+            imports,
+            replace_existing,
+            rules,
+            &mut import_index,
+            &mut progress,
+        )?
+    };
+    finalize_import_batch(storage, tasks, batch.finalizers)?;
 
     let (cache_entries, cache_bytes) = storage.text_import_prepared_cache_stats();
     let mut fields = vec![
         ("sources", source_count.to_string()),
-        ("imported", books.len().to_string()),
+        ("imported", batch.books.len().to_string()),
+        ("failed", batch.failures.len().to_string()),
         ("cache_entries", cache_entries.to_string()),
         ("cache_bytes", cache_bytes.to_string()),
     ];
     fields.extend(tasks.diagnostic_fields());
     diagnostics::record_timing("txt-import", started.elapsed(), &fields);
-    Ok(books)
+    Ok(BookImportResult {
+        books: batch.books,
+        failures: batch.failures,
+    })
+}
+
+struct TextImportBatch {
+    books: Vec<BookRecord>,
+    failures: Vec<BookImportFailure>,
+    finalizers: Vec<ImportFinalizer>,
+}
+
+fn commit_prepared_text_selection(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    import: &TextImportSelection,
+    prepared: Arc<PreparedTextImport>,
+    replace_existing: bool,
+    rules: Option<&TextImportRulesInput>,
+    import_index: &mut LibraryBookLookupIndex,
+) -> Result<(BookRecord, ImportFinalizer), BookImportFailure> {
+    let bytes = prepared.size;
+    tasks
+        .run_io_observed(storage.root(), bytes, TaskPriority::Foreground, || {
+            import_text_path_impl(
+                storage,
+                prepared,
+                import.title.as_deref(),
+                import.creator.as_deref(),
+                replace_existing,
+                rules,
+                Some(import_index),
+            )
+        })
+        .map_err(|error| book_import_failure(Path::new(&import.path), error))
 }
 
 fn import_text_paths_direct(
@@ -829,26 +935,48 @@ fn import_text_paths_direct(
     imports: Vec<TextImportSelection>,
     replace_existing: bool,
     rules: Option<&TextImportRulesInput>,
-) -> Result<Vec<BookRecord>, String> {
+    import_index: &mut LibraryBookLookupIndex,
+    progress: &mut BookImportProgressReporter,
+) -> TextImportBatch {
     let mut books = Vec::new();
+    let mut failures = Vec::new();
+    let mut finalizers = Vec::new();
     for import in imports {
         let path = PathBuf::from(&import.path);
-        let prepared = consume_or_prepare_text_import(storage, tasks, &path, import.encoding.as_deref(), rules)?;
-        let bytes = prepared.size;
-        books.push(
-            tasks.run_io_observed(storage.root(), bytes, TaskPriority::Foreground, || {
-                import_text_path_impl(
-                    storage,
-                    prepared,
-                    import.title.as_deref(),
-                    import.creator.as_deref(),
-                    replace_existing,
-                    rules,
-                )
-            })?,
-        );
+        let prepared = match consume_or_prepare_text_import(storage, tasks, &path, import.encoding.as_deref(), rules) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                let failure = book_import_failure(&path, error);
+                progress.emit_failure();
+                failures.push(failure);
+                continue;
+            }
+        };
+        let (book, finalizer) = match commit_prepared_text_selection(
+            storage,
+            tasks,
+            &import,
+            prepared,
+            replace_existing,
+            rules,
+            import_index,
+        ) {
+            Ok(result) => result,
+            Err(failure) => {
+                progress.emit_failure();
+                failures.push(failure);
+                continue;
+            }
+        };
+        progress.emit_success(storage, &book);
+        books.push(book);
+        finalizers.push(finalizer);
     }
-    Ok(books)
+    TextImportBatch {
+        books,
+        failures,
+        finalizers,
+    }
 }
 
 struct TextImportPrepareMessage {
@@ -863,7 +991,9 @@ fn import_text_paths_with_pipeline(
     imports: Vec<TextImportSelection>,
     replace_existing: bool,
     rules: Option<&TextImportRulesInput>,
-) -> Result<Vec<BookRecord>, String> {
+    import_index: &mut LibraryBookLookupIndex,
+    progress: &mut BookImportProgressReporter,
+) -> Result<TextImportBatch, String> {
     let queue = Arc::new(Mutex::new(imports.into_iter().enumerate().collect::<VecDeque<_>>()));
     let result_len = queue
         .lock()
@@ -874,8 +1004,10 @@ fn import_text_paths_with_pipeline(
     let mut books = std::iter::repeat_with(|| None)
         .take(result_len)
         .collect::<Vec<Option<BookRecord>>>();
+    let mut failures = Vec::new();
+    let mut finalizers = Vec::with_capacity(result_len);
 
-    std::thread::scope(|scope| {
+    let pipeline_result: Result<(), String> = std::thread::scope(|scope| {
         for _ in 0..workers {
             let queue = Arc::clone(&queue);
             let sender = sender.clone();
@@ -911,34 +1043,71 @@ fn import_text_paths_with_pipeline(
                 .map_err(|_| "text import prepare worker stopped before completing".to_string())?;
             match message.prepared {
                 Ok(prepared) => {
-                    let bytes = prepared.size;
-                    let book = tasks.run_io_observed(storage.root(), bytes, TaskPriority::Foreground, || {
-                        import_text_path_impl(
-                            storage,
-                            prepared,
-                            message.import.title.as_deref(),
-                            message.import.creator.as_deref(),
-                            replace_existing,
-                            rules,
-                        )
-                    });
+                    let result = commit_prepared_text_selection(
+                        storage,
+                        tasks,
+                        &message.import,
+                        prepared,
+                        replace_existing,
+                        rules,
+                        import_index,
+                    );
                     storage.end_text_import_prepared_handoff();
-                    books[message.index] = Some(book?);
+                    match result {
+                        Ok((book, finalizer)) => {
+                            progress.emit_success(storage, &book);
+                            books[message.index] = Some(book);
+                            finalizers.push(finalizer);
+                        }
+                        Err(failure) => {
+                            progress.emit_failure();
+                            failures.push(failure);
+                        }
+                    }
                 }
                 Err(error) => {
                     storage.end_text_import_prepared_handoff();
-                    return Err(error);
+                    let failure = book_import_failure(Path::new(&message.import.path), error);
+                    progress.emit_failure();
+                    failures.push(failure);
                 }
             }
         }
 
         Ok(())
-    })?;
+    });
+    if let Err(error) = pipeline_result {
+        finalize_import_batch(storage, tasks, finalizers)?;
+        return Err(error);
+    }
 
-    books
-        .into_iter()
-        .map(|book| book.ok_or_else(|| "text import worker did not produce a result".to_string()))
-        .collect()
+    let books = books.into_iter().flatten().collect::<Vec<_>>();
+    Ok(TextImportBatch {
+        books,
+        failures,
+        finalizers,
+    })
+}
+
+fn finalize_import_batch(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    finalizers: Vec<ImportFinalizer>,
+) -> Result<(), String> {
+    if finalizers.is_empty() {
+        return Ok(());
+    }
+
+    storage.flush_dirty()?;
+    let mut tombstones = Vec::new();
+    for finalizer in finalizers {
+        match finalizer.finalize(storage) {
+            Ok(paths) => tombstones.extend(paths),
+            Err(error) => eprintln!("Failed to finalize committed import files: {error}"),
+        }
+    }
+    deletion::enqueue_delete_tombstone_cleanup(tasks, tombstones);
+    Ok(())
 }
 
 #[tauri::command]

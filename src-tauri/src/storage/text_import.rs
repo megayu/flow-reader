@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use super::epub_import::ImportFileTransaction;
 use super::*;
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1174,6 +1173,7 @@ fn write_text_publication(
     storage: &AppStorage,
     id: &str,
     document: &TextImportDocument,
+    creator: &str,
     encoding_label: &str,
     cover: Option<&CoverInput>,
 ) -> Result<(), String> {
@@ -1218,8 +1218,12 @@ fn write_text_publication(
     }
 
     fs::write(oebps.join("nav.xhtml"), text_nav_xhtml(document)).map_err(|error| error.to_string())?;
-    fs::write(oebps.join("content.opf"), text_content_opf(document, encoding_label))
-        .map_err(|error| error.to_string())?;
+    let opf = if creator == document.creator {
+        text_content_opf(document, encoding_label)
+    } else {
+        text_content_opf_with_metadata(document, &document.title, creator, encoding_label)
+    };
+    fs::write(oebps.join("content.opf"), opf).map_err(|error| error.to_string())?;
 
     Ok(())
 }
@@ -1365,6 +1369,15 @@ pub(super) fn text_nav_xhtml(document: &TextImportDocument) -> String {
 }
 
 pub(super) fn text_content_opf(document: &TextImportDocument, encoding_label: &str) -> String {
+    text_content_opf_with_metadata(document, &document.title, &document.creator, encoding_label)
+}
+
+fn text_content_opf_with_metadata(
+    document: &TextImportDocument,
+    title: &str,
+    creator: &str,
+    encoding_label: &str,
+) -> String {
     let manifest_items = document
         .sections
         .iter()
@@ -1407,9 +1420,9 @@ pub(super) fn text_content_opf(document: &TextImportDocument, encoding_label: &s
     {}
   </spine>
 </package>"#,
-        escape_xml(&document.title),
-        escape_xml(&document.title),
-        escape_xml(&document.creator),
+        escape_xml(title),
+        escape_xml(title),
+        escape_xml(creator),
         escape_xml(encoding_label),
         manifest_items,
         spine_items
@@ -1445,7 +1458,8 @@ pub(super) fn import_text_path_impl(
     import_creator: Option<&str>,
     replace_existing: bool,
     rules: Option<&TextImportRulesInput>,
-) -> Result<BookRecord, String> {
+    import_index: Option<&mut LibraryBookLookupIndex>,
+) -> Result<(BookRecord, ImportFinalizer), String> {
     let _import_guard = storage
         .inner
         .import_lock
@@ -1476,12 +1490,13 @@ pub(super) fn import_text_path_impl(
         .map(str::to_string)
         .unwrap_or_default();
 
-    let mut document = if title == prepared.document.title {
-        prepared.document.clone()
+    let reparsed_document;
+    let document = if title == prepared.document.title {
+        &prepared.document
     } else {
-        parse_text_import_document(&decoded.text, &title, rules)
+        reparsed_document = parse_text_import_document(&decoded.text, &title, rules);
+        &reparsed_document
     };
-    document.creator = creator.clone();
     let metadata = json!({
         "title": title,
         "creator": creator,
@@ -1494,12 +1509,20 @@ pub(super) fn import_text_path_impl(
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        let filename_index = state.library.books.iter().position(|book| book.name == name);
-        let hash_index = state
-            .library
-            .books
-            .iter()
-            .position(|book| !book.content_hash.is_empty() && book.content_hash == hash);
+        let filename_index = import_index.as_deref().map_or_else(
+            || state.library.books.iter().position(|book| book.name == name),
+            |index| index.filename_index(&state.library.books, &name),
+        );
+        let hash_index = import_index.as_deref().map_or_else(
+            || {
+                state
+                    .library
+                    .books
+                    .iter()
+                    .position(|book| !book.content_hash.is_empty() && book.content_hash == hash)
+            },
+            |index| index.hash_index(&state.library.books, &hash),
+        );
 
         if let Some(index) = filename_index {
             let storage_changed = state.library.books[index].source_storage != source_storage;
@@ -1561,7 +1584,7 @@ pub(super) fn import_text_path_impl(
     };
 
     let mut file_transaction = None;
-    let result = (|| -> Result<BookRecord, String> {
+    let result = (|| -> Result<(BookRecord, ImportFinalizer), String> {
         if should_copy {
             storage.remove_derived_memory_caches(&id);
             file_transaction = Some(ImportFileTransaction::begin(storage, &id)?);
@@ -1571,7 +1594,14 @@ pub(super) fn import_text_path_impl(
                 fs::write(&source_text_path, prepared.bytes.as_slice()).map_err(|error| error.to_string())?;
             }
             let cover = create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str()));
-            write_text_publication(storage, &id, &document, &decoded.encoding_label, cover.as_ref())?;
+            write_text_publication(
+                storage,
+                &id,
+                document,
+                &creator,
+                &decoded.encoding_label,
+                cover.as_ref(),
+            )?;
             book.metadata = metadata;
             write_metadata(storage, &id, &book.metadata)?;
             write_cover(storage, &id, cover)?;
@@ -1583,7 +1613,7 @@ pub(super) fn import_text_path_impl(
                 .state
                 .lock()
                 .map_err(|_| "storage state lock poisoned".to_string())?;
-            if is_new {
+            let stored_index = if is_new {
                 if state
                     .library
                     .books
@@ -1593,30 +1623,31 @@ pub(super) fn import_text_path_impl(
                     return Err("Library changed while the book was being imported".to_string());
                 }
                 state.library.books.push(book.clone());
+                state.library.books.len() - 1
             } else {
-                let stored = state
+                let stored_index = state
                     .library
                     .books
-                    .iter_mut()
-                    .find(|stored| stored.id == id)
+                    .iter()
+                    .position(|stored| stored.id == id)
                     .ok_or_else(|| "Book was removed while it was being imported".to_string())?;
+                let stored = &mut state.library.books[stored_index];
                 book.reading_status = stored.reading_status.clone();
                 book.cfi = stored.cfi.clone();
                 book.percentage = stored.percentage;
                 book.tag_ids = stored.tag_ids.clone();
                 *stored = book.clone();
+                stored_index
+            };
+            let record = storage.compose_book(&mut state, &book)?;
+            if let Some(index) = import_index {
+                index.remember(stored_index, &book);
             }
-            storage.compose_book(&mut state, &book)?
+            record
         };
 
         storage.mark_library_dirty();
-        if let Some(transaction) = file_transaction.take()
-            && let Err(error) = transaction.commit()
-        {
-            eprintln!("Failed to remove committed import backup: {error}");
-        }
-        storage.flush_dirty()?;
-        Ok(record)
+        Ok((record, ImportFinalizer::new(file_transaction.take())))
     })();
 
     if result.is_err()
