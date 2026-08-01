@@ -358,7 +358,7 @@ async function installBrowserTauriMock(page, books) {
       if (command === 'take_pending_open_paths') return []
       if (command === 'flush_storage') return null
       if (command === 'search_book_text') return []
-      if (command === 'unload_book_search_text') return null
+      if (command === 'set_book_cache_active') return null
       if (command === 'plugin:event|listen') return nextEventId++
       if (command === 'plugin:event|unlisten') return null
       if (command.startsWith('plugin:window|is_')) return false
@@ -400,7 +400,7 @@ async function installRuntimePerfBookMock(page, books) {
         }
       }
       if (command === 'search_book_text') return []
-      if (command === 'unload_book_search_text') return null
+      if (command === 'set_book_cache_active') return null
       return originalInvoke?.(command, args) ?? null
     }
   }, books)

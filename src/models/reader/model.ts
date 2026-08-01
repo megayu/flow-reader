@@ -22,7 +22,7 @@ import {
   cleanupExternalBook,
   db,
   type ReadingSpreadRecord,
-  unloadBookSearchText,
+  setBookCacheActive,
 } from '@/storage'
 import { type BodyTextDetectionCache, defaultStyle } from '@/styles'
 
@@ -195,200 +195,9 @@ function createVersionedEpubRequest(contentVersion?: number) {
     epubRequest(appendUrlQuery(url, 'flowContentVersion', contentVersion), type, withCredentials, headers)
 }
 
-const imageArtifactSelector = [
-  'sup',
-  'sub',
-  'ruby',
-  'rt',
-  'rp',
-  'small',
-  'aside',
-  'footer',
-  'header',
-  'nav',
-  '[role="doc-noteref"]',
-  '[role="note"]',
-  '[epub\\:type~="noteref"]',
-  '[epub\\:type~="footnote"]',
-  '[epub\\:type~="endnote"]',
-  '[epub\\:type~="annotation"]',
-  '[class*="note" i]',
-  '[class*="footnote" i]',
-  '[class*="endnote" i]',
-  '[class*="annotation" i]',
-].join(',')
-
-const imageTitleSelector = [
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'title',
-  '[epub\\:type~="titlepage"]',
-  '[epub\\:type~="chapter"] > header',
-].join(',')
-
-const decorativeImagePattern = /(cover|decor|divider|flower|glyph|icon|note|ornament|title|zhu|注|题|章|節|节)/i
-const metadataElementTags = new Set(['LINK', 'META', 'SCRIPT', 'STYLE'])
-
-function textLength(value: string | null | undefined) {
-  return value?.replace(/\s+/g, '').length ?? 0
-}
-
-function elementName(element: Element) {
-  return element.localName.toUpperCase()
-}
-
-const NON_TEXT_SIBLING_TAGS = new Set(['IMG', 'SVG', 'PICTURE'])
 const SECTION_DOCUMENT_HIGH_WATERMARK = 48
 const SECTION_DOCUMENT_LOW_WATERMARK = 32
 const SECTION_DOCUMENT_TRIM_DELAY_MS = 5000
-
-function siblingTextLength(element: Element) {
-  let length = 0
-
-  for (const node of element.parentElement?.childNodes ?? []) {
-    if (node === element) continue
-    if (node.nodeType === Node.TEXT_NODE) {
-      length += textLength(node.textContent)
-    } else if (node instanceof Element && !NON_TEXT_SIBLING_TAGS.has(elementName(node))) {
-      length += textLength(node.textContent)
-    }
-  }
-
-  return length
-}
-
-function numericDimension(value: string | null) {
-  if (!value) return
-  const match = value.match(/[\d.]+/)
-  if (!match) return
-
-  const numeric = Number(match[0])
-  return Number.isFinite(numeric) ? numeric : undefined
-}
-
-function imageDeclaredSize(image: HTMLImageElement) {
-  const width = numericDimension(image.getAttribute('width')) ?? numericDimension(image.style.width)
-  const height = numericDimension(image.getAttribute('height')) ?? numericDimension(image.style.height)
-
-  return { height, width }
-}
-
-export function isNearDocumentStart(element: Element) {
-  const body = documentBody(element.ownerDocument)
-  if (!body) return false
-
-  const walker = element.ownerDocument.createTreeWalker(body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      if (node.nodeType === Node.TEXT_NODE) {
-        return textLength(node.textContent) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
-      }
-
-      const current = node as Element
-      if (current === element) return NodeFilter.FILTER_ACCEPT
-      if (current.closest('script, style')) return NodeFilter.FILTER_REJECT
-      if (['IMG', 'SVG', 'PICTURE'].includes(elementName(current))) {
-        return NodeFilter.FILTER_ACCEPT
-      }
-
-      return NodeFilter.FILTER_SKIP
-    },
-  })
-
-  let meaningful = 0
-  let node = walker.nextNode()
-  while (node && meaningful < 8) {
-    if (node === element) return meaningful <= 3
-    meaningful += 1
-    node = walker.nextNode()
-  }
-
-  return false
-}
-
-function nextHeadingTextLength(element: Element) {
-  const container = element.closest('div,p,figure,section') ?? element
-  let sibling = container.nextElementSibling
-  let scanned = 0
-
-  while (sibling && scanned < 8) {
-    if (metadataElementTags.has(elementName(sibling))) {
-      sibling = sibling.nextElementSibling
-      continue
-    }
-
-    if (/^H[1-6]$/.test(elementName(sibling))) {
-      return textLength(sibling.textContent)
-    }
-    const heading = sibling.querySelector('h1,h2,h3,h4,h5,h6')
-    if (heading) return textLength(heading.textContent)
-    if (textLength(sibling.textContent)) scanned += 1
-    sibling = sibling.nextElementSibling
-  }
-
-  return 0
-}
-
-function isImageOnlyBlock(image: HTMLImageElement) {
-  const block = image.closest('div,p,figure,section') ?? image.parentElement
-  if (!block) return true
-
-  const mediaCount = block.querySelectorAll('img,svg,picture').length
-  return mediaCount > 0 && textLength(block.textContent) === 0
-}
-
-function isLeadingTitleImage(image: HTMLImageElement) {
-  return isNearDocumentStart(image) && isImageOnlyBlock(image) && nextHeadingTextLength(image) > 0
-}
-
-function collectSectionImages(section: ISection): ImageEntry[] {
-  return [...(section.document?.querySelectorAll('img') ?? [])].map((el, index) => classifyImage(el, index))
-}
-
-function classifyImage(image: HTMLImageElement, index: number): ImageEntry {
-  const src = image.currentSrc || image.src || image.getAttribute('src') || ''
-  const { height, width } = imageDeclaredSize(image)
-  const sourceText = [
-    src,
-    image.getAttribute('alt'),
-    image.getAttribute('class'),
-    image.getAttribute('id'),
-    image.parentElement?.getAttribute('class'),
-  ]
-    .filter(Boolean)
-    .join(' ')
-  const siblingText = siblingTextLength(image)
-  const parentText = textLength(image.parentElement?.textContent)
-  const inlineParent = !!image.closest('p, span, a, em, strong, b, i')
-  const likelyInlineBySize = (height !== undefined && height <= 48) || (width !== undefined && width <= 48)
-  const likelySmallIcon =
-    (height !== undefined && height <= 72 && width !== undefined && width <= 72) ||
-    (likelyInlineBySize && decorativeImagePattern.test(sourceText))
-
-  let reason: ImageFilterReason | undefined
-
-  if (image.closest(imageArtifactSelector) || likelySmallIcon) {
-    reason = 'icon'
-  } else if (inlineParent && (siblingText > 0 || parentText >= 8) && (likelyInlineBySize || siblingText > 0)) {
-    reason = 'inlineGlyph'
-  } else if (
-    image.closest(imageTitleSelector) ||
-    isLeadingTitleImage(image) ||
-    (isNearDocumentStart(image) && decorativeImagePattern.test(sourceText))
-  ) {
-    reason = 'titleArt'
-  }
-
-  return {
-    hiddenByDefault: !!reason,
-    index,
-    ...(reason ? { reason } : {}),
-    src,
-  }
-}
 
 function compareDefinition(d1: string, d2: string) {
   return d1.toLowerCase() === d2.toLowerCase()
@@ -495,6 +304,7 @@ export class BookTab extends BaseTab {
   overlayVersion = 0
   active = false
   private sectionInfoPromises = new Map<number, Promise<void>>()
+  private readonly cacheActivation: Promise<void>
   private destroyPromise?: Promise<void>
   private readonly navigation = ref(new BookNavigationController())
   private readonly searchController = ref(new BookSearchController())
@@ -1720,7 +1530,8 @@ export class BookTab extends BaseTab {
     } catch (error) {
       console.error(error)
     } finally {
-      void unloadBookSearchText(this.book.id).catch(console.error)
+      await this.cacheActivation
+      await setBookCacheActive(this.book.id, false).catch(console.error)
       this.destroyRendering()
       if (this.book.scope === 'external') {
         await cleanupExternalBook(this.book.id).catch(console.error)
@@ -1950,10 +1761,6 @@ export class BookTab extends BaseTab {
     }
 
     if (section.document?.body && section.length !== undefined) {
-      if (!section.imageInfoLoaded) {
-        section.images = collectSectionImages(section)
-        section.imageInfoLoaded = true
-      }
       this.assignSectionNavItem(section)
       this.markSectionDocumentAccess(section)
       return
@@ -1970,10 +1777,6 @@ export class BookTab extends BaseTab {
       .then(() => {
         loaded = true
         section.length = section.document?.body?.textContent?.length ?? 0
-        if (!section.imageInfoLoaded) {
-          section.images = collectSectionImages(section)
-          section.imageInfoLoaded = true
-        }
         this.assignSectionNavItem(section)
         this.markSectionDocumentAccess(section)
       })
@@ -2360,10 +2163,9 @@ export class BookTab extends BaseTab {
       definitions: book.definitions,
     }
     this.typographyConfiguration = book.configuration?.typography
+    this.cacheActivation = setBookCacheActive(book.id, true).catch(console.error)
 
-    // don't subscribe `db.books` in `constructor`, it will
-    // 1. update the unproxied instance, which is not reactive
-    // 2. update unnecessary state (e.g. percentage) of all tabs with the same book
+    // The constructor instance is not proxied yet, so subscribing here would update a non-reactive object.
   }
 }
 
@@ -2536,35 +2338,51 @@ export class Reader {
     return this.focusedTab instanceof BookTab ? this.focusedTab : undefined
   }
 
-  openBookTab(book: BookRecord) {
+  private findBookTab(bookId: string) {
     for (let groupIndex = 0; groupIndex < this.groups.length; groupIndex++) {
       const group = this.groups[groupIndex]
       if (!group) continue
-      const tabIndex = group.tabs.findIndex((tab) => tab instanceof BookTab && tab.book.id === book.id)
-      if (tabIndex < 0) continue
-
-      if (groupIndex === this.focusedIndex) {
-        group.selectTab(tabIndex)
-      } else {
-        this.focusedGroup?.setSelectedRuntimeActive(false)
-        group.selectedIndex = tabIndex
-        this.focusedIndex = groupIndex
-        group.setSelectedRuntimeActive(true)
+      const tabIndex = group.tabs.findIndex((tab) => tab instanceof BookTab && tab.book.id === bookId)
+      if (tabIndex >= 0) {
+        return { group, groupIndex, tab: group.tabs[tabIndex] as BookTab, tabIndex }
       }
-      return group.tabs[tabIndex] as BookTab
     }
+  }
 
+  private focusBookTab({ group, groupIndex, tab, tabIndex }: NonNullable<ReturnType<Reader['findBookTab']>>) {
+    if (groupIndex === this.focusedIndex) {
+      group.selectTab(tabIndex)
+    } else {
+      this.focusedGroup?.setSelectedRuntimeActive(false)
+      group.selectedIndex = tabIndex
+      this.focusedIndex = groupIndex
+      group.setSelectedRuntimeActive(true)
+    }
+    return tab
+  }
+
+  openBookTab(book: BookRecord) {
     return this.addTab(book)
   }
 
   addTab(param: TabParam | Tab, groupIdx = this.focusedIndex) {
+    const resolved = resolveTabParam(param)
+    const bookId =
+      resolved instanceof BookTab
+        ? resolved.book.id
+        : resolved instanceof PageTab || typeof resolved === 'function'
+          ? undefined
+          : resolved.id
+    const existing = bookId ? this.findBookTab(bookId) : undefined
+    if (existing) return this.focusBookTab(existing)
+
     let group = this.groups[groupIdx]
     if (group) {
       this.focusedIndex = groupIdx
     } else {
       group = this.addGroup([])
     }
-    return group.addTab(param)
+    return group.addTab(resolved)
   }
 
   removeTab(index: number, groupIdx = this.focusedIndex) {
@@ -2591,18 +2409,9 @@ export class Reader {
     this.clear()
   }
 
-  closeBookTabs(bookId: string) {
-    for (let groupIndex = this.groups.length - 1; groupIndex >= 0; groupIndex--) {
-      const group = this.groups[groupIndex]
-      if (!group) continue
-
-      for (let tabIndex = group.tabs.length - 1; tabIndex >= 0; tabIndex--) {
-        const tab = group.tabs[tabIndex]
-        if (!(tab instanceof BookTab) || tab.book.id !== bookId) continue
-
-        this.removeTab(tabIndex, groupIndex)
-      }
-    }
+  closeBookTab(bookId: string) {
+    const located = this.findBookTab(bookId)
+    if (located) this.removeTab(located.tabIndex, located.groupIndex)
   }
 
   async applyBookContentEdit(
@@ -2612,28 +2421,21 @@ export class Reader {
     patch?: BookContentEditPatch,
   ) {
     db.books.remember(book)
-    const patchTasks: Array<Promise<void>> = []
-    for (const group of this.groups) {
-      for (const tab of group.bookTabs) {
-        if (tab.book.id === book.id) {
-          if (tab === editedTab && patch) {
-            patchTasks.push(
-              tab
-                .applyRenderedTextEdit(book, patch.target, patch.oldText, patch.newText, patch.document, patch.textNode)
-                .then((patched) => {
-                  if (!patched) {
-                    throw new Error('TEXT_REPLACE_RENDER_PATCH_FAILED')
-                  }
-                }),
-            )
-            continue
-          }
-
-          tab.reloadContentAfterEdit(book, !editedTab || tab === editedTab ? reloadTarget : undefined)
-        }
-      }
+    const tab = this.findBookTab(book.id)?.tab
+    if (!tab) return
+    if (tab === editedTab && patch) {
+      const patched = await tab.applyRenderedTextEdit(
+        book,
+        patch.target,
+        patch.oldText,
+        patch.newText,
+        patch.document,
+        patch.textNode,
+      )
+      if (!patched) throw new Error('TEXT_REPLACE_RENDER_PATCH_FAILED')
+      return
     }
-    await Promise.all(patchTasks)
+    tab.reloadContentAfterEdit(book, reloadTarget)
   }
 
   promoteExternalBooks(libraryBooks: BookRecord[]) {

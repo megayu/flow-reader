@@ -428,7 +428,7 @@ export const BookCard: React.FC<BookCardProps> = ({
                 return
               }
 
-              reader.closeBookTabs(book.id)
+              reader.closeBookTab(book.id)
               void db.books.delete(book.id)
             }}
           />

@@ -34,24 +34,17 @@ impl ImportFileTransaction {
         let backup_dir = import_work_path(&books_root(storage.root()), "import-backup", id);
         fs::create_dir(&backup_dir).map_err(|error| error.to_string())?;
 
-        let mut targets = [
-            BOOK_FILE,
-            SOURCE_TEXT_FILE,
-            UNPACKED_DIR,
-            SEARCH_TEXT_CACHE_FILE,
-            IMAGE_INDEX_CACHE_FILE,
-            METADATA_FILE,
-        ]
-        .into_iter()
-        .map(|name| book_dir.join(name))
-        .collect::<Vec<_>>();
+        let mut targets = [BOOK_FILE, SOURCE_TEXT_FILE, UNPACKED_DIR, METADATA_FILE]
+            .into_iter()
+            .map(|name| book_dir.join(name))
+            .collect::<Vec<_>>();
         let entries = fs::read_dir(&book_dir).map_err(|error| error.to_string())?;
         for entry in entries {
             let entry = entry.map_err(|error| error.to_string())?;
             if entry
                 .file_name()
                 .to_str()
-                .is_some_and(|name| name.starts_with(&format!("{COVER_STEM}.")))
+                .is_some_and(|name| name.starts_with(&format!("{COVER_STEM}.")) || is_derived_cache_file_name(name))
             {
                 targets.push(entry.path());
             }
@@ -101,23 +94,16 @@ impl ImportFileTransaction {
 
     pub(in crate::storage) fn rollback(self) -> Result<(), String> {
         let mut first_error = None;
-        let mut current_targets = [
-            BOOK_FILE,
-            SOURCE_TEXT_FILE,
-            UNPACKED_DIR,
-            SEARCH_TEXT_CACHE_FILE,
-            IMAGE_INDEX_CACHE_FILE,
-            METADATA_FILE,
-        ]
-        .into_iter()
-        .map(|name| self.book_dir.join(name))
-        .collect::<Vec<_>>();
+        let mut current_targets = [BOOK_FILE, SOURCE_TEXT_FILE, UNPACKED_DIR, METADATA_FILE]
+            .into_iter()
+            .map(|name| self.book_dir.join(name))
+            .collect::<Vec<_>>();
         if let Ok(entries) = fs::read_dir(&self.book_dir) {
             for entry in entries.flatten() {
                 if entry
                     .file_name()
                     .to_str()
-                    .is_some_and(|name| name.starts_with(&format!("{COVER_STEM}.")))
+                    .is_some_and(|name| name.starts_with(&format!("{COVER_STEM}.")) || is_derived_cache_file_name(name))
                 {
                     current_targets.push(entry.path());
                 }
@@ -338,7 +324,7 @@ pub(in crate::storage) fn import_epub_path_impl(
         let promoted_metadata = promotion.as_ref().map(|(_, metadata, _)| metadata.clone());
 
         if should_copy {
-            storage.unload_search_text_cache(&id);
+            storage.remove_derived_memory_caches(&id);
             file_transaction = Some(ImportFileTransaction::begin(storage, &id)?);
             let dir = storage.book_dir(&id);
             let book_path = dir.join(BOOK_FILE);
@@ -448,7 +434,7 @@ pub(in crate::storage) fn import_epub_path_impl(
 
         storage.mark_library_dirty();
         if let Some((external_id, _)) = &promotion {
-            storage.unload_search_text_cache(external_id);
+            storage.remove_derived_memory_caches(external_id);
             storage.mark_external_dirty();
             storage.mark_book_state_dirty(&id);
         }
@@ -572,20 +558,11 @@ pub(in crate::storage) fn open_external_epub_path_impl(
         };
 
         let dir = storage.external_book_dir(&book.id);
-        storage.unload_search_text_cache(&book.id);
         fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
         let book_path = dir.join(BOOK_FILE);
         let unpacked_dir = dir.join(UNPACKED_DIR);
         if unpacked_dir.exists() {
             fs::remove_dir_all(&unpacked_dir).map_err(|error| error.to_string())?;
-        }
-        let search_cache_path = dir.join(SEARCH_TEXT_CACHE_FILE);
-        if search_cache_path.exists() {
-            fs::remove_file(&search_cache_path).map_err(|error| error.to_string())?;
-        }
-        let image_cache_path = dir.join(IMAGE_INDEX_CACHE_FILE);
-        if image_cache_path.exists() {
-            fs::remove_file(&image_cache_path).map_err(|error| error.to_string())?;
         }
         if book_path.exists() {
             fs::remove_file(&book_path).map_err(|error| error.to_string())?;

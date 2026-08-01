@@ -122,6 +122,9 @@
   "image.empty": "No illustrations found",
   "image.filter.all": "All",
   "image.filter.illustrations": "Illustrations",
+  "image.load_error": "Failed to load image index",
+  "image.loading": "Indexing images…",
+  "image.retry": "Retry image indexing",
   "image.title": "Gallery",
 
   "image_preview.actual_size": "Actual size",

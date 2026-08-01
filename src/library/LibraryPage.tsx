@@ -175,7 +175,7 @@ export function LibraryPage() {
     return subscribeReaderOpenErrors(({ bookId, bookTitle, closeTab, error, stage }) => {
       setNativeStartupReaderFailed(true)
       if (closeTab) {
-        reader.closeBookTabs(bookId)
+        reader.closeBookTab(bookId)
         window.dispatchEvent(new Event(bookSourceStatusRefreshEvent))
       }
       const errorMessage = formatErrorMessage(error)

@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet},
     fs,
     io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
@@ -36,6 +36,12 @@ pub use commands::*;
 pub use deletion::{cleanup_all_external_book_heavy_files, schedule_existing_delete_tombstone_cleanup};
 pub use image_index::ImageIndexCache;
 #[cfg(test)]
+use image_index::ImageIndexEntry;
+use image_index::{
+    ImageIndexSection, finalize_image_index, image_index_cache_from_bytes, image_index_cache_to_bytes,
+    image_index_section_from_document,
+};
+#[cfg(test)]
 use model::ReadingStatus;
 use model::{
     BookContentMode, BookScope, BookState, ExternalBook, ExternalBookIndex, Library, LibraryBook, SourceStorage,
@@ -67,14 +73,14 @@ use epub_import::{
 #[cfg(test)]
 use epub_import::{normalize_non_square_pixel_png, normalize_publication_date, relative_zip_path};
 
-use image_index::{ImageIndexCacheInput, read_image_index_cache, write_image_index_cache_if_current};
-#[cfg(test)]
-use image_index::{ImageIndexEntryInput, ImageIndexSectionInput};
-use search::{SearchTextCache, load_or_build_search_text_cache, search_text_in_cache};
+use search::{
+    DerivedCacheState, SearchTextCache, load_or_build_image_index_cache, load_or_build_search_text_cache,
+    search_text_in_cache,
+};
 #[cfg(test)]
 use search::{
-    SearchTextSection, read_search_text_sections_from_unpacked, search_text_cache_from_bytes,
-    search_text_cache_to_bytes, visible_search_text_from_xhtml,
+    SearchTextSection, read_image_index_cache, read_search_text_sections_from_unpacked, search_text_cache_from_bytes,
+    search_text_cache_to_bytes, visible_search_text_from_xhtml, write_image_index_cache_if_current,
 };
 use state::{DirtyState, StorageState};
 use text_import::{
@@ -98,8 +104,9 @@ const SETTINGS_FILE: &str = "settings.json";
 const BOOK_FILE: &str = "book.epub";
 const SOURCE_TEXT_FILE: &str = "source.txt";
 const UNPACKED_DIR: &str = "unpacked";
-const SEARCH_TEXT_CACHE_FILE: &str = "search-text.json.zst";
-const IMAGE_INDEX_CACHE_FILE: &str = "image-index.json.zst";
+fn is_derived_cache_file_name(name: &str) -> bool {
+    (name.starts_with("search-text.v") || name.starts_with("image-index.v")) && name.ends_with(".json.zst")
+}
 const SEARCH_TEXT_EXCERPT_RADIUS: usize = 60;
 pub const SEARCH_TEXT_CACHE_VERSION: u32 = 1;
 pub const IMAGE_INDEX_CACHE_VERSION: u32 = 1;
@@ -124,7 +131,9 @@ struct StorageInner {
     import_lock: Mutex<()>,
     reading_position_sequences: Mutex<HashMap<String, u64>>,
     search_text_caches: Mutex<HashMap<String, Arc<SearchTextCache>>>,
-    search_text_cache_order: Mutex<VecDeque<String>>,
+    image_index_caches: Mutex<HashMap<String, Arc<ImageIndexCache>>>,
+    derived_cache_states: Mutex<HashMap<String, DerivedCacheState>>,
+    derived_cache_flush_lock: Mutex<()>,
     text_import_prepared_cache: Mutex<TextImportPreparedCache>,
     #[cfg(test)]
     text_import_prepare_runs: std::sync::atomic::AtomicUsize,
@@ -177,7 +186,9 @@ impl AppStorage {
                 import_lock: Mutex::new(()),
                 reading_position_sequences: Mutex::new(HashMap::new()),
                 search_text_caches: Mutex::new(HashMap::new()),
-                search_text_cache_order: Mutex::new(VecDeque::new()),
+                image_index_caches: Mutex::new(HashMap::new()),
+                derived_cache_states: Mutex::new(HashMap::new()),
+                derived_cache_flush_lock: Mutex::new(()),
                 text_import_prepared_cache: Mutex::new(TextImportPreparedCache::new()),
                 #[cfg(test)]
                 text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
@@ -211,12 +222,16 @@ impl AppStorage {
         external_books_root(self.root()).join(id)
     }
 
-    fn search_text_cache_path(&self, id: &str) -> PathBuf {
-        self.book_dir(id).join(SEARCH_TEXT_CACHE_FILE)
+    fn search_text_cache_path(&self, id: &str, content_version: u32) -> PathBuf {
+        self.book_dir(id).join(format!(
+            "search-text.v{SEARCH_TEXT_CACHE_VERSION}.cv{content_version}.json.zst"
+        ))
     }
 
-    fn image_index_cache_path(&self, id: &str) -> PathBuf {
-        self.book_dir(id).join(IMAGE_INDEX_CACHE_FILE)
+    fn image_index_cache_path(&self, id: &str, content_version: u32) -> PathBuf {
+        self.book_dir(id).join(format!(
+            "image-index.v{IMAGE_INDEX_CACHE_VERSION}.cv{content_version}.json.zst"
+        ))
     }
 
     fn library_book(&self, id: &str) -> Result<LibraryBook, String> {
@@ -262,12 +277,15 @@ impl AppStorage {
             .ok_or_else(|| "External book not found".to_string())
     }
 
-    fn unload_search_text_cache(&self, id: &str) {
+    fn remove_derived_memory_caches(&self, id: &str) {
         if let Ok(mut caches) = self.inner.search_text_caches.lock() {
             caches.remove(id);
         }
-        if let Ok(mut order) = self.inner.search_text_cache_order.lock() {
-            order.retain(|cache_id| cache_id != id);
+        if let Ok(mut caches) = self.inner.image_index_caches.lock() {
+            caches.remove(id);
+        }
+        if let Ok(mut states) = self.inner.derived_cache_states.lock() {
+            states.remove(id);
         }
     }
 

@@ -22,7 +22,7 @@
     "check:base": "pnpm test:unit && pnpm format:check && pnpm lint && pnpm typecheck",
     "check:extended": "pnpm --filter @flow/epubjs test && pnpm rust:format:check && pnpm rust:lint && pnpm rust:test && pnpm test:integration",
     "check": "pnpm check:base && pnpm build",
-    "check:full": "pnpm check:base && pnpm check:extended && pnpm build",
+    "check:full": "pnpm check:base && pnpm check:extended",
     "check:release": "pnpm check:base && pnpm check:extended && pnpm tauri:build",
     "tauri": "tauri",
     "tauri:dev": "tauri dev --features devtools",

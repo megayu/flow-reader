@@ -31,7 +31,7 @@ pub(super) fn delete_books_to_tombstones(storage: &AppStorage, ids: &[String]) -
 
     let mut tombstones = Vec::new();
     for id in &ids {
-        storage.unload_search_text_cache(id);
+        storage.remove_derived_memory_caches(id);
         if let Some(tombstone) = move_book_dir_to_tombstone(storage, id) {
             tombstones.push(tombstone);
         }
@@ -186,16 +186,10 @@ pub(super) fn delete_books_impl(storage: &AppStorage, tasks: &TaskService, ids: 
 pub(super) fn cleanup_external_book_heavy_files(storage: &AppStorage, id: &str) -> Result<(), String> {
     storage.ensure_external_book(id)?;
 
-    storage.unload_search_text_cache(id);
     let dir = storage.external_book_dir(id);
-    for path in [
-        dir.join(BOOK_FILE),
-        dir.join(SEARCH_TEXT_CACHE_FILE),
-        dir.join(IMAGE_INDEX_CACHE_FILE),
-    ] {
-        if path.exists() {
-            fs::remove_file(path).map_err(|error| error.to_string())?;
-        }
+    let book_path = dir.join(BOOK_FILE);
+    if book_path.exists() {
+        fs::remove_file(book_path).map_err(|error| error.to_string())?;
     }
 
     let unpacked_dir = dir.join(UNPACKED_DIR);

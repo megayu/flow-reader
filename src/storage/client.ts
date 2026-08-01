@@ -2,7 +2,6 @@ import { storagePathToUrl as filePathToUrl, invokeStorage as invoke } from './na
 import type {
   BookExportFormat,
   BookImageIndexCache,
-  BookImageIndexCacheInput,
   BookReaderSource,
   BookRecord,
   BookSearchResult,
@@ -503,11 +502,7 @@ export function searchBookText(id: string, keyword: string, limit?: number) {
 }
 
 export function loadBookImageIndex(id: string) {
-  return invoke<BookImageIndexCache | null>('load_book_image_index', { id })
-}
-
-export function storeBookImageIndex(id: string, cache: BookImageIndexCacheInput) {
-  return invoke<boolean>('store_book_image_index', { id, cache })
+  return invoke<BookImageIndexCache>('load_book_image_index', { id })
 }
 
 export async function replaceBookText({
@@ -545,8 +540,8 @@ export async function exportBook(id: string, format: BookExportFormat, outputPat
   return book ?? undefined
 }
 
-export function unloadBookSearchText(id: string) {
-  return invoke('unload_book_search_text', { id })
+export function setBookCacheActive(id: string, active: boolean) {
+  return invoke<void>('set_book_cache_active', { id, active })
 }
 
 export function cleanupExternalBook(id: string) {

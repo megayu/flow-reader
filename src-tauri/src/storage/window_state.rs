@@ -2,10 +2,13 @@ use tauri::{Manager, PhysicalPosition, PhysicalSize, WebviewWindow, Window};
 
 use super::*;
 pub fn flush_app_storage(window: &Window) {
-    if let Some(storage) = window.try_state::<AppStorage>()
-        && let Err(error) = storage.flush_dirty()
-    {
-        eprintln!("Failed to flush app storage: {error}");
+    if let Some(storage) = window.try_state::<AppStorage>() {
+        if let Err(error) = storage.flush_all_derived_caches() {
+            eprintln!("Failed to flush derived book caches: {error}");
+        }
+        if let Err(error) = storage.flush_dirty() {
+            eprintln!("Failed to flush app storage: {error}");
+        }
     }
 }
 

@@ -164,6 +164,7 @@ pub fn run() {
             app.manage(dictionary_registry);
             app.manage(dictionary::session::DictionarySessionManager::default());
             app.manage(storage.clone());
+            storage.start_derived_cache_maintenance();
             if let Some(tasks) = app.try_state::<tasks::TaskService>() {
                 tasks.configure_io_for_path(storage.root());
                 storage::schedule_existing_delete_tombstone_cleanup(&storage, &tasks);
@@ -250,10 +251,9 @@ pub fn run() {
             storage::check_book_source_statuses,
             storage::search_book_text,
             storage::load_book_image_index,
-            storage::store_book_image_index,
+            storage::set_book_cache_active,
             storage::replace_book_text,
             storage::export_book,
-            storage::unload_book_search_text,
             storage::cleanup_external_book,
             storage::cleanup_all_external_books,
             storage::delete_external_book,

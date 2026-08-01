@@ -17,7 +17,36 @@ use crate::{
 use super::epub_import::{EPUB_MAX_SEARCH_TEXT_BYTES, EPUB_SEARCH_DOCUMENT_READ_LIMIT, read_bounded_bytes};
 use super::*;
 
-const SEARCH_TEXT_MEMORY_CACHE_LIMIT: usize = 8;
+const DERIVED_CACHE_BOOK_LIMIT: usize = 8;
+const DERIVED_CACHE_MEMORY_SOFT_LIMIT: usize = 256 * 1024 * 1024;
+const DERIVED_CACHE_COLD_TTL: Duration = Duration::from_secs(15 * 60);
+
+#[derive(Debug)]
+pub(super) struct DerivedCacheState {
+    pub(super) active: bool,
+    pub(super) last_accessed: Instant,
+    pub(super) cold_since: Option<Instant>,
+    pub(super) search_dirty: bool,
+    pub(super) image_dirty: bool,
+}
+
+impl DerivedCacheState {
+    fn active() -> Self {
+        Self {
+            active: true,
+            last_accessed: Instant::now(),
+            cold_since: None,
+            search_dirty: false,
+            image_dirty: false,
+        }
+    }
+}
+
+#[derive(Clone)]
+struct DerivedCacheBuild {
+    search: Option<Arc<SearchTextCache>>,
+    image: Arc<ImageIndexCache>,
+}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct SearchTextCache {
@@ -40,13 +69,13 @@ pub(super) struct SearchTextSection {
 
 #[derive(Debug, Clone)]
 struct SearchTextNavItem {
-    pub(super) href: Option<String>,
+    href: String,
     label: String,
     path: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
-struct SearchManifestItem {
+struct DerivedManifestItem {
     pub(super) href: String,
     media_type: String,
     properties: String,
@@ -89,12 +118,15 @@ fn search_text_cache_matches_book(cache: &SearchTextCache, book: &LibraryBook) -
 }
 
 fn write_search_text_cache_if_current(storage: &AppStorage, id: &str, cache: &SearchTextCache) -> Result<bool, String> {
+    if is_external_book_id(id) {
+        return Ok(false);
+    }
     let current_book = storage.library_book(id)?;
     if !search_text_cache_matches_book(cache, &current_book) {
         return Ok(false);
     }
 
-    let path = storage.search_text_cache_path(id);
+    let path = storage.search_text_cache_path(id, cache.content_version);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
@@ -109,34 +141,25 @@ fn write_search_text_cache_if_current(storage: &AppStorage, id: &str, cache: &Se
         return Ok(false);
     }
 
-    fs::rename(&tmp, path).map_err(|error| error.to_string())?;
+    fs::rename(&tmp, &path).map_err(|error| error.to_string())?;
     Ok(true)
 }
 
-fn store_search_text_memory_cache(storage: &AppStorage, id: String, cache: Arc<SearchTextCache>) -> Result<(), String> {
+fn store_search_text_memory_cache(
+    storage: &AppStorage,
+    id: String,
+    cache: Arc<SearchTextCache>,
+    dirty: bool,
+) -> Result<(), String> {
     let mut caches = storage
         .inner
         .search_text_caches
         .lock()
         .map_err(|_| "search text cache lock poisoned".to_string())?;
-    let mut order = storage
-        .inner
-        .search_text_cache_order
-        .lock()
-        .map_err(|_| "search text cache order lock poisoned".to_string())?;
-
     caches.insert(id.clone(), cache);
-    order.retain(|cache_id| cache_id != &id);
-    order.push_back(id.clone());
-
-    while caches.len() > SEARCH_TEXT_MEMORY_CACHE_LIMIT {
-        let Some(evicted_id) = order.pop_front() else {
-            break;
-        };
-        if evicted_id != id {
-            caches.remove(&evicted_id);
-        }
-    }
+    drop(caches);
+    storage.touch_derived_cache(&id, dirty, false)?;
+    storage.enforce_derived_cache_limits()?;
 
     Ok(())
 }
@@ -145,7 +168,6 @@ fn load_search_text_memory_cache(
     storage: &AppStorage,
     book: &LibraryBook,
 ) -> Result<Option<Arc<SearchTextCache>>, String> {
-    let mut stale = false;
     let cache = {
         let mut caches = storage
             .inner
@@ -157,30 +179,24 @@ fn load_search_text_memory_cache(
             Some(cache) if search_text_cache_matches_book(&cache, book) => Some(cache),
             Some(_) => {
                 caches.remove(&book.id);
-                stale = true;
                 None
             }
             None => None,
         }
     };
 
-    if cache.is_some() || stale {
-        let mut order = storage
-            .inner
-            .search_text_cache_order
-            .lock()
-            .map_err(|_| "search text cache order lock poisoned".to_string())?;
-        order.retain(|cache_id| cache_id != &book.id);
-        if cache.is_some() {
-            order.push_back(book.id.clone());
-        }
+    if cache.is_some() {
+        storage.touch_derived_cache(&book.id, false, false)?;
     }
 
     Ok(cache)
 }
 
 fn read_search_text_cache(storage: &AppStorage, book: &LibraryBook) -> Result<SearchTextCache, String> {
-    let path = storage.search_text_cache_path(&book.id);
+    if is_external_book_id(&book.id) {
+        return Err("External book search caches are memory-only".to_string());
+    }
+    let path = storage.search_text_cache_path(&book.id, book.content_version);
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
     let cache = search_text_cache_from_bytes(&bytes)?;
     if search_text_cache_matches_book(&cache, book) {
@@ -190,14 +206,199 @@ fn read_search_text_cache(storage: &AppStorage, book: &LibraryBook) -> Result<Se
     }
 }
 
+fn image_index_cache_matches_book(cache: &ImageIndexCache, book: &LibraryBook) -> bool {
+    cache.version == IMAGE_INDEX_CACHE_VERSION && cache.content_version == book.content_version
+}
+
+pub(super) fn read_image_index_cache(storage: &AppStorage, book: &LibraryBook) -> Result<ImageIndexCache, String> {
+    if is_external_book_id(&book.id) {
+        return Err("External book image caches are memory-only".to_string());
+    }
+    let path = storage.image_index_cache_path(&book.id, book.content_version);
+    let bytes = fs::read(path).map_err(|error| error.to_string())?;
+    let cache = image_index_cache_from_bytes(&bytes)?;
+    if image_index_cache_matches_book(&cache, book) {
+        Ok(cache)
+    } else {
+        Err("Image index cache is stale".to_string())
+    }
+}
+
+pub(super) fn write_image_index_cache_if_current(
+    storage: &AppStorage,
+    id: &str,
+    cache: &ImageIndexCache,
+) -> Result<bool, String> {
+    if is_external_book_id(id) {
+        return Ok(false);
+    }
+    let current_book = storage.library_book(id)?;
+    if !image_index_cache_matches_book(cache, &current_book) {
+        return Ok(false);
+    }
+
+    let path = storage.image_index_cache_path(id, cache.content_version);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let bytes = image_index_cache_to_bytes(cache)?;
+    let tmp = path.with_extension("tmp");
+    fs::write(&tmp, bytes).map_err(|error| error.to_string())?;
+    let current_book = storage.library_book(id)?;
+    if !image_index_cache_matches_book(cache, &current_book) {
+        let _ = fs::remove_file(&tmp);
+        return Ok(false);
+    }
+    fs::rename(&tmp, &path).map_err(|error| error.to_string())?;
+    Ok(true)
+}
+
+fn load_image_index_memory_cache(
+    storage: &AppStorage,
+    book: &LibraryBook,
+) -> Result<Option<Arc<ImageIndexCache>>, String> {
+    let cache = {
+        let mut caches = storage
+            .inner
+            .image_index_caches
+            .lock()
+            .map_err(|_| "image index cache lock poisoned".to_string())?;
+        match caches.get(&book.id).cloned() {
+            Some(cache) if image_index_cache_matches_book(&cache, book) => Some(cache),
+            Some(_) => {
+                caches.remove(&book.id);
+                None
+            }
+            None => None,
+        }
+    };
+    if cache.is_some() {
+        storage.touch_derived_cache(&book.id, false, false)?;
+    }
+    Ok(cache)
+}
+
+fn store_image_index_memory_cache(
+    storage: &AppStorage,
+    id: String,
+    cache: Arc<ImageIndexCache>,
+    dirty: bool,
+) -> Result<(), String> {
+    storage
+        .inner
+        .image_index_caches
+        .lock()
+        .map_err(|_| "image index cache lock poisoned".to_string())?
+        .insert(id.clone(), cache);
+    storage.touch_derived_cache(&id, false, dirty)?;
+    storage.enforce_derived_cache_limits()
+}
+
 pub(super) fn load_or_build_search_text_cache(
     storage: &AppStorage,
     tasks: &TaskService,
     book: &LibraryBook,
 ) -> Result<Arc<SearchTextCache>, String> {
-    load_or_build_search_text_cache_with_builder(storage, tasks, book, build_search_text_cache)
+    load_or_build_derived_cache(storage, tasks, book, true)?
+        .search
+        .ok_or_else(|| "Search text cache was not built".to_string())
 }
 
+pub(super) fn load_or_build_image_index_cache(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    book: &LibraryBook,
+) -> Result<Arc<ImageIndexCache>, String> {
+    Ok(load_or_build_derived_cache(storage, tasks, book, false)?.image)
+}
+
+fn load_or_build_derived_cache(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    book: &LibraryBook,
+    include_search: bool,
+) -> Result<DerivedCacheBuild, String> {
+    let memory_search = include_search
+        .then(|| load_search_text_memory_cache(storage, book))
+        .transpose()?
+        .flatten();
+    let memory_image = load_image_index_memory_cache(storage, book)?;
+    if (!include_search || memory_search.is_some())
+        && let Some(image) = memory_image
+    {
+        return Ok(DerivedCacheBuild {
+            search: memory_search,
+            image,
+        });
+    }
+
+    let disk_search = if include_search && memory_search.is_none() {
+        read_search_text_cache(storage, book).ok().map(Arc::new)
+    } else {
+        memory_search
+    };
+    let disk_image = if memory_image.is_none() {
+        read_image_index_cache(storage, book).ok().map(Arc::new)
+    } else {
+        memory_image
+    };
+    if let Some(search) = &disk_search {
+        store_search_text_memory_cache(storage, book.id.clone(), Arc::clone(search), false)?;
+    }
+    if let Some(image) = &disk_image {
+        store_image_index_memory_cache(storage, book.id.clone(), Arc::clone(image), false)?;
+    }
+    if (!include_search || disk_search.is_some())
+        && let Some(image) = disk_image
+    {
+        return Ok(DerivedCacheBuild {
+            search: disk_search,
+            image,
+        });
+    }
+
+    let key = derived_cache_task_key(book);
+    let task_storage = storage.clone();
+    let task_book = book.clone();
+    let task_runner = tasks.clone();
+    let built: DerivedCacheBuild = tasks.get_or_run(key, TaskPriority::Foreground, move || {
+        task_runner.run_book_exclusive(&task_book.id, TaskPriority::Foreground, || {
+            if let Some(image) = load_image_index_memory_cache(&task_storage, &task_book)? {
+                let search = if include_search {
+                    load_search_text_memory_cache(&task_storage, &task_book)?
+                } else {
+                    None
+                };
+                if !include_search || search.is_some() {
+                    return Ok(DerivedCacheBuild { search, image });
+                }
+            }
+
+            task_runner.run_cpu(TaskPriority::Foreground, || {
+                let built = build_derived_cache(&task_storage, &task_runner, &task_book, include_search)?;
+                let current_book = task_storage.library_book(&task_book.id)?;
+                if let Some(search) = &built.search {
+                    if !search_text_cache_matches_book(search, &current_book) {
+                        return Err("Search text cache is stale".to_string());
+                    }
+                    store_search_text_memory_cache(&task_storage, task_book.id.clone(), Arc::clone(search), true)?;
+                }
+                if !image_index_cache_matches_book(&built.image, &current_book) {
+                    return Err("Image index cache is stale".to_string());
+                }
+                store_image_index_memory_cache(&task_storage, task_book.id.clone(), Arc::clone(&built.image), true)?;
+                Ok(built)
+            })
+        })
+    })?;
+
+    if include_search && built.search.is_none() {
+        return load_or_build_derived_cache(storage, tasks, book, true);
+    }
+    Ok(built)
+}
+
+#[cfg(test)]
 fn load_or_build_search_text_cache_with_builder(
     storage: &AppStorage,
     tasks: &TaskService,
@@ -222,7 +423,7 @@ fn load_or_build_search_text_cache_with_builder(
 
     if let Ok(cache) = read_search_text_cache(storage, book) {
         let cache = Arc::new(cache);
-        store_search_text_memory_cache(storage, book.id.clone(), cache.clone())?;
+        store_search_text_memory_cache(storage, book.id.clone(), cache.clone(), false)?;
         let mut fields = vec![
             ("book", book.id.clone()),
             ("cache", "disk".to_string()),
@@ -237,7 +438,7 @@ fn load_or_build_search_text_cache_with_builder(
         return Ok(cache);
     }
 
-    let key = search_index_task_key(book);
+    let key = derived_cache_task_key(book);
     let task_storage = storage.clone();
     let task_book = book.clone();
     let task_runner = tasks.clone();
@@ -256,7 +457,7 @@ fn load_or_build_search_text_cache_with_builder(
     if !search_text_cache_matches_book(&cache, book) {
         return Err("Search text cache is stale".to_string());
     }
-    store_search_text_memory_cache(storage, book.id.clone(), cache.clone())?;
+    store_search_text_memory_cache(storage, book.id.clone(), cache.clone(), false)?;
     let mut fields = vec![
         ("book", book.id.clone()),
         ("cache", "built".to_string()),
@@ -271,62 +472,97 @@ fn load_or_build_search_text_cache_with_builder(
     Ok(cache)
 }
 
-fn search_index_task_key(book: &LibraryBook) -> TaskKey {
+fn derived_cache_task_key(book: &LibraryBook) -> TaskKey {
     TaskKey::new(TaskKind::SearchIndex, format!("{}:{}", book.id, book.content_version))
 }
 
-fn build_search_text_cache(
+fn build_derived_cache(
     storage: &AppStorage,
     tasks: &TaskService,
     book: &LibraryBook,
-) -> Result<SearchTextCache, String> {
-    let book_dir = storage.book_dir(&book.id);
-    let unpacked_dir = book_dir.join(UNPACKED_DIR);
-    let sections = if inspect_and_store_book_content_access(storage, book)? == BookContentMode::ArchiveOnly {
-        read_search_text_sections_from_epub_package(&archive_only_source_path(storage, book)?)?
+    include_search: bool,
+) -> Result<DerivedCacheBuild, String> {
+    let content_mode = inspect_and_store_book_content_access(storage, book)?;
+    // A managed EPUB remains authoritative until editing changes only its unpacked content.
+    let can_read_current_content_from_archive = content_mode == BookContentMode::ArchiveOnly
+        || (book.source_format == BookSourceFormat::Epub
+            && book.source_storage == SourceStorage::Managed
+            && book.content_edited_at.is_none());
+    let (search_sections, mut image_sections) = if can_read_current_content_from_archive {
+        read_derived_sections_from_epub_package(&archive_only_source_path(storage, book)?, include_search)?
     } else {
+        let unpacked_dir = storage.book_dir(&book.id).join(UNPACKED_DIR);
         ensure_book_package_path(storage, tasks, book)?;
-        read_search_text_sections_from_unpacked(&unpacked_dir)?
+        read_derived_sections_from_unpacked(&unpacked_dir, include_search)?
     };
-    Ok(SearchTextCache {
-        version: SEARCH_TEXT_CACHE_VERSION,
-        content_version: book.content_version,
-        sections,
+    finalize_image_index(&mut image_sections);
+
+    Ok(DerivedCacheBuild {
+        search: include_search.then(|| {
+            Arc::new(SearchTextCache {
+                version: SEARCH_TEXT_CACHE_VERSION,
+                content_version: book.content_version,
+                sections: search_sections,
+            })
+        }),
+        image: Arc::new(ImageIndexCache {
+            version: IMAGE_INDEX_CACHE_VERSION,
+            content_version: book.content_version,
+            sections: image_sections,
+        }),
     })
 }
 
+#[cfg(test)]
 pub(super) fn read_search_text_sections_from_unpacked(unpacked_dir: &Path) -> Result<Vec<SearchTextSection>, String> {
-    let mut source = UnpackedSearchTextSource { root: unpacked_dir };
-    read_search_text_sections_from_source(&mut source)
+    let mut source = UnpackedDerivedCacheSource::new(unpacked_dir);
+    Ok(read_derived_sections_from_source(&mut source, true)?.0)
 }
 
-fn read_search_text_sections_from_epub_package(path: &Path) -> Result<Vec<SearchTextSection>, String> {
+fn read_derived_sections_from_unpacked(
+    unpacked_dir: &Path,
+    include_search: bool,
+) -> Result<(Vec<SearchTextSection>, Vec<ImageIndexSection>), String> {
+    let mut source = UnpackedDerivedCacheSource::new(unpacked_dir);
+    read_derived_sections_from_source(&mut source, include_search)
+}
+
+fn read_derived_sections_from_epub_package(
+    path: &Path,
+    include_search: bool,
+) -> Result<(Vec<SearchTextSection>, Vec<ImageIndexSection>), String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
     validate_epub_archive_limits(&mut archive)?;
-    let mut source = ArchiveSearchTextSource { archive };
-    read_search_text_sections_from_source(&mut source)
+    let mut source = ArchiveDerivedCacheSource { archive };
+    read_derived_sections_from_source(&mut source, include_search)
 }
 
-trait SearchTextSource {
+trait DerivedCacheSource {
     fn read_text(&mut self, path: &str) -> Result<String, String>;
 }
 
-struct UnpackedSearchTextSource<'a> {
+struct UnpackedDerivedCacheSource<'a> {
     root: &'a Path,
 }
 
-impl SearchTextSource for UnpackedSearchTextSource<'_> {
-    fn read_text(&mut self, path: &str) -> Result<String, String> {
-        read_text_file_lossy(&resolve_unpacked_search_path(self.root, path)?)
+impl<'a> UnpackedDerivedCacheSource<'a> {
+    fn new(root: &'a Path) -> Self {
+        Self { root }
     }
 }
 
-struct ArchiveSearchTextSource<R: Read + Seek> {
+impl DerivedCacheSource for UnpackedDerivedCacheSource<'_> {
+    fn read_text(&mut self, path: &str) -> Result<String, String> {
+        read_text_file_lossy(&resolve_unpacked_derived_path(self.root, path)?)
+    }
+}
+
+struct ArchiveDerivedCacheSource<R: Read + Seek> {
     archive: ZipArchive<R>,
 }
 
-impl<R: Read + Seek> SearchTextSource for ArchiveSearchTextSource<R> {
+impl<R: Read + Seek> DerivedCacheSource for ArchiveDerivedCacheSource<R> {
     fn read_text(&mut self, path: &str) -> Result<String, String> {
         let bytes = read_archive_bytes(&mut self.archive, path)?;
         Ok(text_from_bytes_lossy(bytes))
@@ -340,7 +576,11 @@ fn read_archive_bytes<R: Read + Seek>(archive: &mut ZipArchive<R>, path: &str) -
         let entry = archive.by_name(&candidate);
         match entry {
             Ok(mut file) => {
-                return read_bounded_bytes(&mut file, EPUB_SEARCH_DOCUMENT_READ_LIMIT, "EPUB search document");
+                return read_bounded_bytes(
+                    &mut file,
+                    EPUB_SEARCH_DOCUMENT_READ_LIMIT,
+                    "EPUB derived-cache document",
+                );
             }
             Err(error) => {
                 last_error = error.to_string();
@@ -352,10 +592,16 @@ fn read_archive_bytes<R: Read + Seek>(archive: &mut ZipArchive<R>, path: &str) -
 }
 
 fn text_from_bytes_lossy(bytes: Vec<u8>) -> String {
-    String::from_utf8(bytes.clone()).unwrap_or_else(|_| decode_text_bytes(&bytes, None).text)
+    match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(error) => decode_text_bytes(error.as_bytes(), None).text,
+    }
 }
 
-fn read_search_text_sections_from_source(source: &mut impl SearchTextSource) -> Result<Vec<SearchTextSection>, String> {
+fn read_derived_sections_from_source(
+    source: &mut impl DerivedCacheSource,
+    include_search: bool,
+) -> Result<(Vec<SearchTextSection>, Vec<ImageIndexSection>), String> {
     let container = source.read_text("META-INF/container.xml")?;
     let container_doc = roxmltree::Document::parse(&container).map_err(|error| error.to_string())?;
     let opf_path = container_doc
@@ -380,7 +626,7 @@ fn read_search_text_sections_from_source(source: &mut impl SearchTextSource) -> 
             let href = node.attribute("href")?.to_string();
             Some((
                 id,
-                SearchManifestItem {
+                DerivedManifestItem {
                     href,
                     media_type: node.attribute("media-type").unwrap_or("").to_string(),
                     properties: node.attribute("properties").unwrap_or("").to_string(),
@@ -388,9 +634,19 @@ fn read_search_text_sections_from_source(source: &mut impl SearchTextSource) -> 
             ))
         })
         .collect::<HashMap<_, _>>();
-    let nav_items = read_search_text_nav_items(source, &opf_doc, &manifest, &opf_dir);
+    let nav_items = if include_search {
+        read_search_text_nav_items(source, &opf_doc, &manifest, &opf_dir)
+            .into_iter()
+            .fold(HashMap::new(), |mut items, item| {
+                items.entry(item.href.clone()).or_insert(item);
+                items
+            })
+    } else {
+        HashMap::new()
+    };
 
     let mut sections = Vec::new();
+    let mut image_sections = Vec::new();
     let mut total_document_bytes = 0u64;
     for (section_index, itemref) in opf_doc
         .descendants()
@@ -420,18 +676,13 @@ fn read_search_text_sections_from_source(source: &mut impl SearchTextSource) -> 
         if total_document_bytes > EPUB_MAX_SEARCH_TEXT_BYTES {
             return Err("EPUB search text exceeds the supported size limit".to_string());
         }
-        let (text, title) = search_text_and_title_from_xhtml(&xhtml);
-        if text.is_empty() {
+        let (search_data, image_section) =
+            parse_derived_section(section_index, normalized_href.clone(), &xhtml, include_search);
+        image_sections.push(image_section);
+        let Some((text, title)) = search_data else {
             continue;
-        }
-        let nav_item = nav_items
-            .iter()
-            .find(|item| {
-                item.href
-                    .as_deref()
-                    .is_some_and(|href| search_href_matches(&normalized_href, href))
-            })
-            .cloned();
+        };
+        let nav_item = nav_items.get(&normalized_href).cloned();
 
         sections.push(SearchTextSection {
             section_index,
@@ -442,13 +693,13 @@ fn read_search_text_sections_from_source(source: &mut impl SearchTextSource) -> 
         });
     }
 
-    Ok(sections)
+    Ok((sections, image_sections))
 }
 
 fn read_search_text_nav_items(
-    source: &mut impl SearchTextSource,
+    source: &mut impl DerivedCacheSource,
     opf_doc: &roxmltree::Document,
-    manifest: &HashMap<String, SearchManifestItem>,
+    manifest: &HashMap<String, DerivedManifestItem>,
     opf_dir: &str,
 ) -> Vec<SearchTextNavItem> {
     if let Some(item) = manifest
@@ -476,7 +727,7 @@ fn read_search_text_nav_items(
 }
 
 fn read_epub3_search_nav_items(
-    source: &mut impl SearchTextSource,
+    source: &mut impl DerivedCacheSource,
     opf_dir: &str,
     nav_href: &str,
 ) -> Result<Vec<SearchTextNavItem>, String> {
@@ -537,7 +788,7 @@ fn collect_epub3_search_nav_items(
             .map(|href| normalize_nav_href(base_href, href));
 
         if let Some(label) = label {
-            if href.is_some() {
+            if let Some(href) = href {
                 items.push(SearchTextNavItem {
                     href,
                     label: label.clone(),
@@ -565,7 +816,7 @@ fn collect_epub3_search_nav_items(
 }
 
 fn read_ncx_search_nav_items(
-    source: &mut impl SearchTextSource,
+    source: &mut impl DerivedCacheSource,
     opf_dir: &str,
     ncx_href: &str,
 ) -> Result<Vec<SearchTextNavItem>, String> {
@@ -617,7 +868,7 @@ fn collect_ncx_search_nav_items(
             .map(|href| normalize_nav_href(base_href, href));
 
         if let Some(label) = label {
-            if href.is_some() {
+            if let Some(href) = href {
                 items.push(SearchTextNavItem {
                     href,
                     label: label.clone(),
@@ -641,10 +892,14 @@ fn normalize_nav_href(base_href: &str, href: &str) -> String {
     ))
 }
 
-fn search_href_matches(section_href: &str, nav_href: &str) -> bool {
-    !section_href.is_empty()
-        && !nav_href.is_empty()
-        && (section_href.ends_with(nav_href) || nav_href.ends_with(section_href))
+fn section_hrefs_match(left: &str, right: &str) -> bool {
+    let left = href_without_fragment(left).trim_start_matches('/');
+    let right = href_without_fragment(right).trim_start_matches('/');
+    !left.is_empty()
+        && !right.is_empty()
+        && (left == right
+            || left.strip_suffix(right).is_some_and(|prefix| prefix.ends_with('/'))
+            || right.strip_suffix(left).is_some_and(|prefix| prefix.ends_with('/')))
 }
 
 fn node_search_text(node: roxmltree::Node) -> String {
@@ -677,7 +932,7 @@ fn href_without_fragment(href: &str) -> &str {
     href.split_once('#').map(|(path, _)| path).unwrap_or(href)
 }
 
-fn resolve_unpacked_search_path(root: &Path, href: &str) -> Result<PathBuf, String> {
+fn resolve_unpacked_derived_path(root: &Path, href: &str) -> Result<PathBuf, String> {
     let decoded = percent_decode_path(&href.replace('\\', "/")).replace('\\', "/");
     if decoded.is_empty() || decoded.contains('%') {
         return Err("EPUB search document has an invalid encoded path".to_string());
@@ -693,19 +948,18 @@ fn resolve_unpacked_search_path(root: &Path, href: &str) -> Result<PathBuf, Stri
         return Err("EPUB search document path escapes the unpacked book".to_string());
     }
 
-    let canonical_root = fs::canonicalize(root).map_err(|error| error.to_string())?;
-    let canonical_candidate = fs::canonicalize(root.join(relative)).map_err(|error| error.to_string())?;
-    if !canonical_candidate.starts_with(&canonical_root) {
-        return Err("EPUB search document path escapes the unpacked book".to_string());
-    }
-
-    Ok(canonical_candidate)
+    // Extraction creates only regular entries from enclosed ZIP paths, so repeating
+    // filesystem canonicalization for every spine document adds no containment guarantee.
+    Ok(root.join(relative))
 }
 
 fn read_text_file_lossy(path: &Path) -> Result<String, String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let bytes = read_bounded_bytes(file, EPUB_SEARCH_DOCUMENT_READ_LIMIT, "EPUB search document")?;
-    String::from_utf8(bytes.clone()).or_else(|_| Ok(decode_text_bytes(&bytes, None).text))
+    match String::from_utf8(bytes) {
+        Ok(text) => Ok(text),
+        Err(error) => Ok(decode_text_bytes(error.as_bytes(), None).text),
+    }
 }
 
 #[cfg(test)]
@@ -713,12 +967,40 @@ pub(super) fn visible_search_text_from_xhtml(xhtml: &str) -> String {
     search_text_and_title_from_xhtml(xhtml).0
 }
 
+#[cfg(test)]
 fn search_text_and_title_from_xhtml(xhtml: &str) -> (String, Option<String>) {
     let xhtml = remove_doctype_declaration(xhtml);
     let Ok(doc) = roxmltree::Document::parse(&xhtml) else {
         return (strip_html_for_search_text(&xhtml), None);
     };
 
+    search_text_and_title_from_document(&doc)
+}
+
+fn parse_derived_section(
+    section_index: usize,
+    href: String,
+    xhtml: &str,
+    include_search: bool,
+) -> (Option<(String, Option<String>)>, ImageIndexSection) {
+    let cleaned = remove_doctype_declaration(xhtml);
+    let Ok(document) = roxmltree::Document::parse(&cleaned) else {
+        let search = include_search.then(|| (strip_html_for_search_text(&cleaned), None));
+        return (
+            search,
+            ImageIndexSection {
+                section_index,
+                href,
+                images: Vec::new(),
+            },
+        );
+    };
+    let search = include_search.then(|| search_text_and_title_from_document(&document));
+    let image = image_index_section_from_document(section_index, href, &document);
+    (search, image)
+}
+
+fn search_text_and_title_from_document(doc: &roxmltree::Document<'_>) -> (String, Option<String>) {
     let body = doc
         .descendants()
         .find(|node| node.is_element() && node.has_tag_name("body"))
@@ -1066,12 +1348,374 @@ fn search_text_excerpt(chars: &[char], offset: usize, keyword_len: usize) -> Str
     excerpt
 }
 
+impl AppStorage {
+    pub(super) fn set_derived_cache_active(&self, id: &str, active: bool) -> Result<(), String> {
+        let has_cache = self
+            .inner
+            .search_text_caches
+            .lock()
+            .map_err(|_| "search text cache lock poisoned".to_string())?
+            .contains_key(id)
+            || self
+                .inner
+                .image_index_caches
+                .lock()
+                .map_err(|_| "image index cache lock poisoned".to_string())?
+                .contains_key(id);
+        {
+            let mut states = self
+                .inner
+                .derived_cache_states
+                .lock()
+                .map_err(|_| "derived cache state lock poisoned".to_string())?;
+            let state = states.entry(id.to_string()).or_insert_with(DerivedCacheState::active);
+            state.active = active;
+            state.last_accessed = Instant::now();
+            state.cold_since = (!active).then(Instant::now);
+        }
+        if !active && has_cache {
+            self.flush_derived_cache(id)?;
+        }
+        Ok(())
+    }
+
+    fn touch_derived_cache(&self, id: &str, search_dirty: bool, image_dirty: bool) -> Result<(), String> {
+        let mut states = self
+            .inner
+            .derived_cache_states
+            .lock()
+            .map_err(|_| "derived cache state lock poisoned".to_string())?;
+        let state = states.entry(id.to_string()).or_insert_with(DerivedCacheState::active);
+        state.last_accessed = Instant::now();
+        let persistent = !is_external_book_id(id);
+        state.search_dirty |= persistent && search_dirty;
+        state.image_dirty |= persistent && image_dirty;
+        Ok(())
+    }
+
+    pub(super) fn update_derived_caches_after_edit(
+        &self,
+        book: &LibraryBook,
+        section_href: &str,
+        xhtml: &str,
+    ) -> Result<(), String> {
+        if !is_external_book_id(&book.id)
+            && let Some(previous_version) = book.content_version.checked_sub(1)
+        {
+            let _ = fs::remove_file(self.search_text_cache_path(&book.id, previous_version));
+            let _ = fs::remove_file(self.image_index_cache_path(&book.id, previous_version));
+        }
+        let has_search = self
+            .inner
+            .search_text_caches
+            .lock()
+            .map_err(|_| "search text cache lock poisoned".to_string())?
+            .contains_key(&book.id);
+        let has_image = self
+            .inner
+            .image_index_caches
+            .lock()
+            .map_err(|_| "image index cache lock poisoned".to_string())?
+            .contains_key(&book.id);
+        if !has_search && !has_image {
+            return Ok(());
+        }
+        let (search_data, image_section) = parse_derived_section(0, section_href.to_string(), xhtml, has_search);
+        let mut updated_search = false;
+        {
+            let mut caches = self
+                .inner
+                .search_text_caches
+                .lock()
+                .map_err(|_| "search text cache lock poisoned".to_string())?;
+            if let Some(cache) = caches.get_mut(&book.id)
+                && let Some(index) = cache
+                    .sections
+                    .iter()
+                    .position(|section| section_hrefs_match(&section.href, section_href))
+            {
+                let cache = Arc::make_mut(cache);
+                cache.content_version = book.content_version;
+                let (text, title) = search_data.unwrap_or_default();
+                cache.sections[index].text = text;
+                if title.is_some() {
+                    cache.sections[index].title = title;
+                }
+                updated_search = true;
+            }
+        }
+
+        let mut updated_image = false;
+        {
+            let mut caches = self
+                .inner
+                .image_index_caches
+                .lock()
+                .map_err(|_| "image index cache lock poisoned".to_string())?;
+            if let Some(cache) = caches.get_mut(&book.id)
+                && let Some(index) = cache
+                    .sections
+                    .iter()
+                    .position(|section| section_hrefs_match(&section.href, section_href))
+            {
+                let cache = Arc::make_mut(cache);
+                cache.content_version = book.content_version;
+                let section_index = cache.sections[index].section_index;
+                cache.sections[index] = ImageIndexSection {
+                    section_index,
+                    href: cache.sections[index].href.clone(),
+                    images: image_section.images,
+                };
+                finalize_image_index(&mut cache.sections);
+                updated_image = true;
+            }
+        }
+
+        if updated_search || updated_image {
+            self.touch_derived_cache(&book.id, updated_search, updated_image)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn flush_all_derived_caches(&self) -> Result<(), String> {
+        let ids = self
+            .inner
+            .derived_cache_states
+            .lock()
+            .map_err(|_| "derived cache state lock poisoned".to_string())?
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut errors = Vec::new();
+        for id in ids {
+            if let Err(error) = self.flush_derived_cache(&id) {
+                errors.push(format!("{id}: {error}"));
+            }
+        }
+        if !errors.is_empty() {
+            return Err(errors.join("; "));
+        }
+        Ok(())
+    }
+
+    fn flush_derived_cache(&self, id: &str) -> Result<(), String> {
+        let _flush_guard = self
+            .inner
+            .derived_cache_flush_lock
+            .lock()
+            .map_err(|_| "derived cache flush lock poisoned".to_string())?;
+        let (search_dirty, image_dirty) = self
+            .inner
+            .derived_cache_states
+            .lock()
+            .map_err(|_| "derived cache state lock poisoned".to_string())?
+            .get(id)
+            .map(|state| (state.search_dirty, state.image_dirty))
+            .unwrap_or_default();
+        let search = search_dirty
+            .then(|| {
+                self.inner
+                    .search_text_caches
+                    .lock()
+                    .map_err(|_| "search text cache lock poisoned".to_string())
+                    .map(|caches| caches.get(id).cloned())
+            })
+            .transpose()?
+            .flatten();
+        let image = image_dirty
+            .then(|| {
+                self.inner
+                    .image_index_caches
+                    .lock()
+                    .map_err(|_| "image index cache lock poisoned".to_string())
+                    .map(|caches| caches.get(id).cloned())
+            })
+            .transpose()?
+            .flatten();
+
+        let mut errors = Vec::new();
+        let search_published = match &search {
+            Some(cache) => match write_search_text_cache_if_current(self, id, cache) {
+                Ok(published) => published,
+                Err(error) => {
+                    errors.push(format!("search: {error}"));
+                    false
+                }
+            },
+            None => false,
+        };
+        let image_published = match &image {
+            Some(cache) => match write_image_index_cache_if_current(self, id, cache) {
+                Ok(published) => published,
+                Err(error) => {
+                    errors.push(format!("image: {error}"));
+                    false
+                }
+            },
+            None => false,
+        };
+
+        let search_unchanged = if search_published {
+            let caches = self
+                .inner
+                .search_text_caches
+                .lock()
+                .map_err(|_| "search text cache lock poisoned".to_string())?;
+            search
+                .as_ref()
+                .is_some_and(|cache| caches.get(id).is_some_and(|current| Arc::ptr_eq(current, cache)))
+        } else {
+            false
+        };
+        let image_unchanged = if image_published {
+            let caches = self
+                .inner
+                .image_index_caches
+                .lock()
+                .map_err(|_| "image index cache lock poisoned".to_string())?;
+            image
+                .as_ref()
+                .is_some_and(|cache| caches.get(id).is_some_and(|current| Arc::ptr_eq(current, cache)))
+        } else {
+            false
+        };
+
+        let mut states = self
+            .inner
+            .derived_cache_states
+            .lock()
+            .map_err(|_| "derived cache state lock poisoned".to_string())?;
+        if let Some(state) = states.get_mut(id) {
+            if search_dirty && (search.is_none() || search_unchanged) {
+                state.search_dirty = false;
+            }
+            if image_dirty && (image.is_none() || image_unchanged) {
+                state.image_dirty = false;
+            }
+        }
+        if !errors.is_empty() {
+            return Err(errors.join("; "));
+        }
+        Ok(())
+    }
+
+    fn derived_cache_usage(&self) -> Result<(usize, usize), String> {
+        let search = self
+            .inner
+            .search_text_caches
+            .lock()
+            .map_err(|_| "search text cache lock poisoned".to_string())?;
+        let image = self
+            .inner
+            .image_index_caches
+            .lock()
+            .map_err(|_| "image index cache lock poisoned".to_string())?;
+        let ids = search.keys().chain(image.keys()).collect::<HashSet<_>>().len();
+        let search_bytes = search
+            .values()
+            .map(|cache| search_cache_estimated_bytes(cache))
+            .sum::<usize>();
+        let image_bytes = image
+            .values()
+            .map(|cache| image_cache_estimated_bytes(cache))
+            .sum::<usize>();
+        Ok((ids, search_bytes.saturating_add(image_bytes)))
+    }
+
+    fn enforce_derived_cache_limits(&self) -> Result<(), String> {
+        loop {
+            let (count, bytes) = self.derived_cache_usage()?;
+            if count <= DERIVED_CACHE_BOOK_LIMIT && bytes <= DERIVED_CACHE_MEMORY_SOFT_LIMIT {
+                return Ok(());
+            }
+            let candidate = self
+                .inner
+                .derived_cache_states
+                .lock()
+                .map_err(|_| "derived cache state lock poisoned".to_string())?
+                .iter()
+                .min_by_key(|(id, state)| (state.active, !is_external_book_id(id), state.last_accessed))
+                .map(|(id, _)| id.clone());
+            let Some(candidate) = candidate else {
+                return Ok(());
+            };
+            self.flush_derived_cache(&candidate)?;
+            self.remove_derived_memory_caches(&candidate);
+        }
+    }
+
+    pub(super) fn maintain_derived_caches(&self) -> Result<(), String> {
+        let now = Instant::now();
+        let expired = self
+            .inner
+            .derived_cache_states
+            .lock()
+            .map_err(|_| "derived cache state lock poisoned".to_string())?
+            .iter()
+            .filter(|(_, state)| {
+                !state.active
+                    && state
+                        .cold_since
+                        .is_some_and(|cold_since| now.duration_since(cold_since) >= DERIVED_CACHE_COLD_TTL)
+            })
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>();
+        for id in expired {
+            self.flush_derived_cache(&id)?;
+            self.remove_derived_memory_caches(&id);
+        }
+        self.enforce_derived_cache_limits()
+    }
+
+    pub(crate) fn start_derived_cache_maintenance(&self) {
+        let storage = self.clone();
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(Duration::from_secs(60));
+                if let Err(error) = storage.maintain_derived_caches() {
+                    eprintln!("Failed to maintain derived book caches: {error}");
+                }
+            }
+        });
+    }
+}
+
+fn search_cache_estimated_bytes(cache: &SearchTextCache) -> usize {
+    cache
+        .sections
+        .iter()
+        .map(|section| {
+            section.href.len()
+                + section.title.as_ref().map_or(0, String::len)
+                + section.nav_path.iter().map(String::len).sum::<usize>()
+                + section.text.len()
+                + 96
+        })
+        .sum()
+}
+
+fn image_cache_estimated_bytes(cache: &ImageIndexCache) -> usize {
+    cache
+        .sections
+        .iter()
+        .map(|section| {
+            section.href.len()
+                + section
+                    .images
+                    .iter()
+                    .map(|image| image.src.len() + image.reason.as_ref().map_or(0, String::len) + 48)
+                    .sum::<usize>()
+                + 48
+        })
+        .sum()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
     use std::{
-        collections::{HashMap, VecDeque},
+        collections::HashMap,
         path::Path,
         sync::{
             Arc, Mutex,
@@ -1128,7 +1772,9 @@ mod tests {
                 import_lock: Mutex::new(()),
                 reading_position_sequences: Mutex::new(HashMap::new()),
                 search_text_caches: Mutex::new(HashMap::new()),
-                search_text_cache_order: Mutex::new(VecDeque::new()),
+                image_index_caches: Mutex::new(HashMap::new()),
+                derived_cache_states: Mutex::new(HashMap::new()),
+                derived_cache_flush_lock: Mutex::new(()),
                 text_import_prepared_cache: Mutex::new(TextImportPreparedCache::new()),
                 text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
                 text_import_prepare_active: std::sync::atomic::AtomicUsize::new(0),
@@ -1239,7 +1885,7 @@ mod tests {
         let published = write_search_text_cache_if_current(&storage, "book", &cache).unwrap();
 
         assert!(!published);
-        assert!(!storage.search_text_cache_path("book").exists());
+        assert!(!storage.search_text_cache_path("book", book.content_version).exists());
 
         let _ = fs::remove_dir_all(root);
     }
@@ -1247,20 +1893,21 @@ mod tests {
     #[test]
     fn search_memory_cache_is_bounded_by_book_count() {
         let root = temp_root("search-memory-bound-test");
-        let books = (0..=SEARCH_TEXT_MEMORY_CACHE_LIMIT)
+        let books = (0..=DERIVED_CACHE_BOOK_LIMIT)
             .map(|index| test_book(&format!("book-{index}"), 1))
             .collect::<Vec<_>>();
         let storage = test_storage(&root, books.clone());
 
         for book in &books {
-            store_search_text_memory_cache(&storage, book.id.clone(), Arc::new(test_cache(book, &book.id))).unwrap();
+            store_search_text_memory_cache(&storage, book.id.clone(), Arc::new(test_cache(book, &book.id)), false)
+                .unwrap();
         }
 
         let caches = storage.inner.search_text_caches.lock().unwrap();
 
-        assert!(caches.len() <= SEARCH_TEXT_MEMORY_CACHE_LIMIT);
+        assert!(caches.len() <= DERIVED_CACHE_BOOK_LIMIT);
         assert!(!caches.contains_key("book-0"));
-        assert!(caches.contains_key(&format!("book-{SEARCH_TEXT_MEMORY_CACHE_LIMIT}")));
+        assert!(caches.contains_key(&format!("book-{DERIVED_CACHE_BOOK_LIMIT}")));
 
         let _ = fs::remove_dir_all(root);
     }

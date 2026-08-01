@@ -1563,7 +1563,7 @@ pub(super) fn import_text_path_impl(
     let mut file_transaction = None;
     let result = (|| -> Result<BookRecord, String> {
         if should_copy {
-            storage.unload_search_text_cache(&id);
+            storage.remove_derived_memory_caches(&id);
             file_transaction = Some(ImportFileTransaction::begin(storage, &id)?);
             let dir = storage.book_dir(&id);
             let source_text_path = dir.join(SOURCE_TEXT_FILE);

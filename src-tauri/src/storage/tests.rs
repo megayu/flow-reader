@@ -6,10 +6,10 @@ use super::epub_import::read_bounded_bytes;
 use super::{
     AppStorage, BOOK_FILE, BOOKS_DIR, BookContentMode, BookExportFormat, BookReaderSourceMode, BookRecord, BookScope,
     BookSourceFormat, BookSourceStatus, BookState, BookTextReplaceTarget, DirtyState, ExternalBookIndex,
-    IMAGE_INDEX_CACHE_FILE, ImageIndexCacheInput, ImageIndexEntryInput, ImageIndexSectionInput, Library, LibraryBook,
-    METADATA_FILE, ReadingStatus, SEARCH_TEXT_CACHE_FILE, SEARCH_TEXT_CACHE_VERSION, SOURCE_TEXT_FILE, STATE_FILE,
-    SearchTextCache, SearchTextSection, SourceStorage, SourceTextUpdate, StorageInner, StorageState,
-    TextImportPreparedCache, TextImportRulesInput, TextImportSelection, UNPACKED_DIR, check_book_source_statuses_impl,
+    IMAGE_INDEX_CACHE_VERSION, ImageIndexCache, ImageIndexEntry, ImageIndexSection, Library, LibraryBook,
+    METADATA_FILE, ReadingStatus, SEARCH_TEXT_CACHE_VERSION, SOURCE_TEXT_FILE, STATE_FILE, SearchTextCache,
+    SearchTextSection, SourceStorage, SourceTextUpdate, StorageInner, StorageState, TextImportPreparedCache,
+    TextImportRulesInput, TextImportSelection, UNPACKED_DIR, check_book_source_statuses_impl,
     cleanup_delete_tombstones, cleanup_external_book_heavy_files, decode_text_bytes, delete_books_to_tombstones,
     delete_tombstones_root, empty_object, ensure_book_package_path_with_unpacker, export_book_impl,
     external_books_root, external_index_path, get_book_reader_source_impl, hash_file, import_epub_path_impl,
@@ -26,7 +26,7 @@ use super::{
 use crate::tasks::TaskService;
 use serde_json::{Value, json};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     fs,
     io::{Cursor, Read, Write},
     path::{Path, PathBuf},
@@ -113,7 +113,9 @@ fn test_storage_with_books(root: &Path, books: Vec<LibraryBook>) -> AppStorage {
             import_lock: Mutex::new(()),
             reading_position_sequences: Mutex::new(HashMap::new()),
             search_text_caches: Mutex::new(HashMap::new()),
-            search_text_cache_order: Mutex::new(VecDeque::new()),
+            image_index_caches: Mutex::new(HashMap::new()),
+            derived_cache_states: Mutex::new(HashMap::new()),
+            derived_cache_flush_lock: Mutex::new(()),
             text_import_prepared_cache: Mutex::new(TextImportPreparedCache::new()),
             text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
             text_import_prepare_active: std::sync::atomic::AtomicUsize::new(0),
@@ -140,7 +142,9 @@ fn test_storage_from_disk(root: &Path) -> AppStorage {
             import_lock: Mutex::new(()),
             reading_position_sequences: Mutex::new(HashMap::new()),
             search_text_caches: Mutex::new(HashMap::new()),
-            search_text_cache_order: Mutex::new(VecDeque::new()),
+            image_index_caches: Mutex::new(HashMap::new()),
+            derived_cache_states: Mutex::new(HashMap::new()),
+            derived_cache_flush_lock: Mutex::new(()),
             text_import_prepared_cache: Mutex::new(TextImportPreparedCache::new()),
             text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
             text_import_prepare_active: std::sync::atomic::AtomicUsize::new(0),
@@ -749,7 +753,11 @@ fn text_import_does_not_build_search_cache_in_visible_path() {
     .unwrap();
 
     assert_eq!(books.len(), 1);
-    assert!(!storage.book_dir(&books[0].id).join(SEARCH_TEXT_CACHE_FILE).exists());
+    assert!(
+        !storage
+            .search_text_cache_path(&books[0].id, books[0].content_version)
+            .exists()
+    );
 
     let _ = fs::remove_dir_all(root);
 }
@@ -1132,7 +1140,7 @@ fn epub_import_copies_source_without_unpacking_or_indexing() {
         Some("Streamed Book")
     );
     assert!(!book_dir.join(UNPACKED_DIR).exists());
-    assert!(!book_dir.join(SEARCH_TEXT_CACHE_FILE).exists());
+    assert!(!storage.search_text_cache_path(&book.id, book.content_version).exists());
     let persisted = serde_json::to_value(&book).unwrap();
     assert_eq!(
         persisted.get("sourcePath").and_then(Value::as_str),
@@ -1299,8 +1307,6 @@ fn external_epub_cleanup_keeps_metadata_and_state() {
 
     fs::create_dir_all(external_dir.join(UNPACKED_DIR)).unwrap();
     fs::write(external_dir.join(UNPACKED_DIR).join("stale"), "stale").unwrap();
-    fs::write(external_dir.join(SEARCH_TEXT_CACHE_FILE), "search").unwrap();
-    fs::write(external_dir.join(IMAGE_INDEX_CACHE_FILE), "image").unwrap();
     {
         let mut state = storage.inner.state.lock().unwrap();
         let book_state = storage.ensure_book_state(&mut state, &book.id).unwrap();
@@ -1313,8 +1319,6 @@ fn external_epub_cleanup_keeps_metadata_and_state() {
 
     assert!(!external_dir.join(BOOK_FILE).exists());
     assert!(!external_dir.join(UNPACKED_DIR).exists());
-    assert!(!external_dir.join(SEARCH_TEXT_CACHE_FILE).exists());
-    assert!(!external_dir.join(IMAGE_INDEX_CACHE_FILE).exists());
     assert!(external_dir.join(METADATA_FILE).exists());
     assert!(external_dir.join(STATE_FILE).exists());
 
@@ -1603,7 +1607,8 @@ fn epub_replace_import_removes_stale_unpacked_and_search_artifacts() {
     let book_dir = storage.book_dir(&old_book.id);
     fs::create_dir_all(book_dir.join(UNPACKED_DIR)).unwrap();
     fs::write(book_dir.join(UNPACKED_DIR).join("stale.txt"), "stale").unwrap();
-    fs::write(book_dir.join(SEARCH_TEXT_CACHE_FILE), "stale").unwrap();
+    let stale_cache_path = storage.search_text_cache_path(&old_book.id, old_book.content_version);
+    fs::write(&stale_cache_path, "stale").unwrap();
 
     write_minimal_epub_file(&source, "New Book", "new body");
     let new_book = import_epub_path_impl(&storage, &source, true).unwrap();
@@ -1611,7 +1616,7 @@ fn epub_replace_import_removes_stale_unpacked_and_search_artifacts() {
     assert_eq!(old_book.id, new_book.id);
     assert_eq!(new_book.metadata.get("title").and_then(Value::as_str), Some("New Book"));
     assert!(!book_dir.join(UNPACKED_DIR).exists());
-    assert!(!book_dir.join(SEARCH_TEXT_CACHE_FILE).exists());
+    assert!(!stale_cache_path.exists());
 
     let _ = fs::remove_dir_all(root);
 }
@@ -1766,7 +1771,10 @@ fn archive_only_epub_search_reads_sections_from_package() {
     );
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].id, "Text/invalid:path.xhtml");
-    assert!(book_dir.join(SEARCH_TEXT_CACHE_FILE).exists());
+    let cache_path = storage.search_text_cache_path(&book.id, book.content_version);
+    assert!(!cache_path.exists());
+    storage.set_derived_cache_active(&book.id, false).unwrap();
+    assert!(cache_path.exists());
     assert!(!book_dir.join(UNPACKED_DIR).exists());
 
     let _ = fs::remove_dir_all(root);
@@ -2125,12 +2133,13 @@ fn writes_image_index_cache_only_for_current_book_version() {
     let storage = test_storage_with_book(&root, book.clone());
     fs::create_dir_all(storage.book_dir(&book.id)).unwrap();
 
-    let input = ImageIndexCacheInput {
+    let input = ImageIndexCache {
+        version: IMAGE_INDEX_CACHE_VERSION,
         content_version: book.content_version,
-        sections: vec![ImageIndexSectionInput {
+        sections: vec![ImageIndexSection {
             section_index: 0,
             href: "Text/chapter.xhtml".to_string(),
-            images: vec![ImageIndexEntryInput {
+            images: vec![ImageIndexEntry {
                 src: "../Images/p001.jpg".to_string(),
                 index: 0,
                 hidden_by_default: false,
@@ -2139,16 +2148,17 @@ fn writes_image_index_cache_only_for_current_book_version() {
         }],
     };
 
-    assert!(write_image_index_cache_if_current(&storage, &book.id, input).unwrap());
+    assert!(write_image_index_cache_if_current(&storage, &book.id, &input).unwrap());
     let cache = read_image_index_cache(&storage, &book).unwrap();
     assert_eq!(cache.sections.len(), 1);
     assert_eq!(cache.sections[0].images[0].src, "../Images/p001.jpg");
 
-    let stale = ImageIndexCacheInput {
+    let stale = ImageIndexCache {
+        version: IMAGE_INDEX_CACHE_VERSION,
         content_version: book.content_version + 1,
         sections: Vec::new(),
     };
-    assert!(!write_image_index_cache_if_current(&storage, &book.id, stale).unwrap());
+    assert!(!write_image_index_cache_if_current(&storage, &book.id, &stale).unwrap());
     let cache = read_image_index_cache(&storage, &book).unwrap();
     assert_eq!(cache.sections.len(), 1);
 

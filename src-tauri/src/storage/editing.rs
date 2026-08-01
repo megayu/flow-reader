@@ -1016,7 +1016,7 @@ pub(super) fn replace_book_text_impl(
     if let Some((path, updated_nav)) = &nav_update {
         fs::write(path, updated_nav).map_err(|error| error.to_string())?;
     }
-    fs::write(&section_path, updated_xhtml).map_err(|error| error.to_string())?;
+    fs::write(&section_path, &updated_xhtml).map_err(|error| error.to_string())?;
 
     let mut book = {
         let mut state = storage
@@ -1056,7 +1056,7 @@ pub(super) fn replace_book_text_impl(
         stored_book.size = book.size;
     }
 
-    storage.unload_search_text_cache(&id);
+    storage.update_derived_caches_after_edit(&book, &target.section_href, &updated_xhtml)?;
     storage.mark_library_dirty();
     storage.flush_dirty()?;
 

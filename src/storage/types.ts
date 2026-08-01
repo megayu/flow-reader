@@ -206,8 +206,3 @@ export interface BookImageIndexCache {
   contentVersion: number
   sections: BookImageIndexSection[]
 }
-
-export interface BookImageIndexCacheInput {
-  contentVersion: number
-  sections: BookImageIndexSection[]
-}

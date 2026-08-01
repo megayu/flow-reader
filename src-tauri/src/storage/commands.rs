@@ -1007,30 +1007,35 @@ pub async fn search_book_text(
 #[tauri::command]
 pub async fn load_book_image_index(
     storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
     id: String,
-) -> Result<Option<ImageIndexCache>, String> {
+) -> Result<ImageIndexCache, String> {
     let storage = (*storage).clone();
+    let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
         let book = storage.library_book(&id)?;
-        match read_image_index_cache(&storage, &book) {
-            Ok(cache) => Ok(Some(cache)),
-            Err(_) => Ok(None),
-        }
+        Ok((*load_or_build_image_index_cache(&storage, &tasks, &book)?).clone())
     })
     .await
     .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub async fn store_book_image_index(
+pub async fn set_book_cache_active(
     storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
     id: String,
-    cache: ImageIndexCacheInput,
-) -> Result<bool, String> {
+    active: bool,
+) -> Result<(), String> {
     let storage = (*storage).clone();
-    tauri::async_runtime::spawn_blocking(move || write_image_index_cache_if_current(&storage, &id, cache))
-        .await
-        .map_err(|error| error.to_string())?
+    let tasks = (*tasks).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        tasks.run_book_exclusive(&id, TaskPriority::Critical, || {
+            storage.set_derived_cache_active(&id, active)
+        })
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -1075,12 +1080,6 @@ pub async fn export_book(
 }
 
 #[tauri::command]
-pub fn unload_book_search_text(storage: State<'_, AppStorage>, id: String) -> Result<(), String> {
-    storage.unload_search_text_cache(&id);
-    Ok(())
-}
-
-#[tauri::command]
 pub fn cleanup_external_book(storage: State<'_, AppStorage>, id: String) -> Result<(), String> {
     cleanup_external_book_heavy_files(&storage, &id)
 }
@@ -1104,7 +1103,7 @@ pub fn delete_external_book(storage: State<'_, AppStorage>, id: String) -> Resul
         state.book_states.remove(&id);
     }
     storage.mark_external_dirty();
-    storage.unload_search_text_cache(&id);
+    storage.remove_derived_memory_caches(&id);
 
     let dir = storage.external_book_dir(&id);
     if dir.exists() {

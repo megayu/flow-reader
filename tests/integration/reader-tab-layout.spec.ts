@@ -246,7 +246,27 @@ async function installReaderBooksMock(
           }
           return []
         }
-        if (command === 'unload_book_search_text') return null
+        if (command === 'load_book_image_index') {
+          const book = bookStore.get(String(args?.id))
+          return {
+            version: 1,
+            contentVersion: book?.contentVersion ?? 0,
+            sections: [
+              {
+                sectionIndex: 0,
+                href: 'cover.xhtml',
+                images: [
+                  {
+                    src: 'images/cover_th.jpg',
+                    index: 0,
+                    hiddenByDefault: false,
+                  },
+                ],
+              },
+            ],
+          }
+        }
+        if (command === 'set_book_cache_active') return null
         if (command === 'plugin:event|listen') return nextEventId++
         if (command === 'plugin:event|unlisten') return null
         if (command.startsWith('plugin:window|is_')) return false

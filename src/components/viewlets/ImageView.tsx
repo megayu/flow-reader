@@ -1,4 +1,5 @@
 import clsx from 'clsx'
+import { RefreshCwIcon } from 'lucide-react'
 import {
   type CSSProperties,
   createContext,
@@ -17,21 +18,21 @@ import {
 import { useAction } from '@/hooks/useAction'
 import { LIST_ITEM_SIZE } from '@/hooks/useList'
 import { useTranslation } from '@/hooks/useTranslation'
-import { createDuplicateIllustrationFilter } from '@/imageFilters'
 import { type ImageEntry, type ISection, reader, useReaderSnapshot } from '@/models/reader'
 import { normalizeHrefPath, sameHref } from '@/noteLinks'
-import type { BookImageIndexCache, BookImageIndexCacheInput } from '@/storage'
-import { loadBookImageIndex, storeBookImageIndex } from '@/storage'
+import type { BookImageIndexCache } from '@/storage'
+import { loadBookImageIndex } from '@/storage'
 
 import { OverlayScroll, PaneView, type PaneViewProps } from '../base/PaneView'
+import { IconButton } from '../IconButton'
 import { Row } from '../Row'
 
-const IMAGE_SCAN_CONCURRENCY = 4
 const IMAGE_LIST_OVERSCAN = 6
 const IMAGE_LIST_TOP_PADDING = 4
 const IMAGE_SECTION_ESTIMATED_THUMBNAIL_HEIGHT = 180
 
 type ImageDisplayMode = 'illustrations' | 'all'
+type ImageIndexStatus = 'error' | 'loading' | 'ready'
 
 interface ImageSection {
   images: ImageEntry[]
@@ -49,6 +50,7 @@ interface ImageAssetLookup {
   blobs: string[]
   entries: ImageAssetEntry[]
   indexesByHref: Map<string, number>
+  resolveHref: (href: string) => string | undefined
 }
 
 interface VirtualImageSection {
@@ -87,22 +89,22 @@ function imageEntries(section: ISection) {
   return section.images.map(normalizeImageEntry)
 }
 
-function knownImageEntries(section: ISection) {
-  return !!section.imageInfoLoaded
-}
-
-function imageSignature(section: ISection) {
-  return imageEntries(section)
-    .map((image) => `${image.index}:${image.src}:${image.hiddenByDefault ? (image.reason ?? 'hidden') : 'visible'}`)
-    .join('|')
-}
-
 function normalizePath(value: string | undefined) {
   return normalizeHrefPath(value)
 }
 
-function createImageAssetLookup(resources: any): ImageAssetLookup | undefined {
-  if (!resources) return
+function resolveImageHref(href: string, resolve: (href: string) => string | undefined) {
+  if (/^[a-z][a-z\d+.-]*:/i.test(href) || href.startsWith('//') || href.startsWith('#')) {
+    return href
+  }
+  return resolve(href)
+}
+
+function createImageAssetLookup(
+  resources: any,
+  resolve: ((href: string) => string | undefined) | undefined,
+): ImageAssetLookup | undefined {
+  if (!resources || !resolve) return
 
   const assets = resources.assets ?? []
   const blobs = resources.replacementUrls ?? []
@@ -126,17 +128,24 @@ function createImageAssetLookup(resources: any): ImageAssetLookup | undefined {
     blobs,
     entries,
     indexesByHref,
+    resolveHref: (href) => resolveImageHref(href, resolve),
   }
 }
 
 function applyImageIndexCache(tab: typeof reader.focusedBookTab, sections: ISection[], cache: BookImageIndexCache) {
   if (!tab) return false
 
-  let applied = 0
-  cache.sections.forEach((cachedSection) => {
-    const section = sections[cachedSection.sectionIndex] ?? sections.find((item) => item.href === cachedSection.href)
+  const matchedSections = cache.sections.map((cachedSection) => {
+    const indexedSection = sections[cachedSection.sectionIndex]
+    return indexedSection?.href === cachedSection.href
+      ? indexedSection
+      : sections.find((section) => section.href === cachedSection.href)
+  })
+  if (matchedSections.some((section) => !section)) return false
 
-    if (!section || section.href !== cachedSection.href) return
+  cache.sections.forEach((cachedSection, index) => {
+    const section = matchedSections[index]
+    if (!section) return
 
     section.images = cachedSection.images.map((image): ImageEntry => {
       const reason = image.reason ?? undefined
@@ -149,33 +158,9 @@ function applyImageIndexCache(tab: typeof reader.focusedBookTab, sections: ISect
     })
     section.imageInfoLoaded = true
     section.navitem ??= tab.mapSectionToNavItem(section.href)
-    applied += 1
   })
 
-  return applied > 0
-}
-
-function createImageIndexCacheInput(
-  tab: typeof reader.focusedBookTab,
-  sections: ISection[],
-): BookImageIndexCacheInput | undefined {
-  if (!tab) return
-
-  return {
-    contentVersion: tab.book.contentVersion ?? 0,
-    sections: sections.map((section, index) => {
-      return {
-        sectionIndex: section.index ?? index,
-        href: section.href,
-        images: imageEntries(section).map((image) => ({
-          src: image.src,
-          index: image.index,
-          hiddenByDefault: image.hiddenByDefault,
-          reason: image.reason ?? null,
-        })),
-      }
-    }),
-  }
+  return cache.sections.length > 0
 }
 
 function sectionKey(section: ISection) {
@@ -322,106 +307,51 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
     keys: new Set<string>(),
     mode,
   }))
+  const [imageIndexStatus, setImageIndexStatus] = useState<ImageIndexStatus>('loading')
+  const [imageIndexRetryCount, setImageIndexRetryCount] = useState(0)
   const [, setImageScanRevision] = useState(0)
   const liveSections = useMemo(() => (tab?.sections as ISection[] | undefined) ?? [], [tab?.sections])
   const snapshotSections = focusedBookTab?.sections as ISection[] | undefined
   const canLoadImages = action === 'image' && !!snapshotSections
-  const imageAssetLookup = useMemo(() => createImageAssetLookup(tab?.epub?.resources), [tab?.epub?.resources])
+  const imageAssetLookup = useMemo(() => {
+    const epub = tab?.epub
+    return createImageAssetLookup(epub?.resources, epub ? (href) => epub.resolve(href) : undefined)
+  }, [tab?.epub])
 
   useEffect(() => {
     if (!canLoadImages || !liveSections.length || !tab) return
 
     let cancelled = false
-    let frame = 0
-    const refreshImages = () => {
-      if (cancelled || frame) return
+    const contentVersion = tab.book.contentVersion ?? 0
+    setImageIndexStatus('loading')
 
-      frame = window.requestAnimationFrame(() => {
-        frame = 0
-        if (!cancelled) setImageScanRevision((revision) => revision + 1)
-      })
-    }
-
-    void (async () => {
-      const duplicateFilter = createDuplicateIllustrationFilter()
-      const applyDuplicateFilterToKnownSections = () => {
-        let changed = false
-
-        for (const section of liveSections) {
-          if (!knownImageEntries(section)) continue
-          changed = duplicateFilter.applyToSection(section) || changed
-        }
-
-        return changed
-      }
-      const replayDuplicateFilterForKnownSections = () => {
-        duplicateFilter.reset()
-        return applyDuplicateFilterToKnownSections()
-      }
-      const finalizeDuplicateFilterForAllSections = () =>
-        liveSections.every(knownImageEntries) ? duplicateFilter.finalize() : false
-
-      applyDuplicateFilterToKnownSections()
-      refreshImages()
-
-      try {
-        const cache = await loadBookImageIndex(tab.book.id)
+    void loadBookImageIndex(tab.book.id)
+      .then((cache) => {
         if (cancelled || reader.focusedBookTab !== tab) return
-        if (cache && applyImageIndexCache(tab, liveSections, cache)) {
-          replayDuplicateFilterForKnownSections()
-          finalizeDuplicateFilterForAllSections()
-          refreshImages()
+        if (cache.contentVersion !== contentVersion) {
+          setImageIndexStatus('error')
+          return
         }
-      } catch (error) {
+        const applied = applyImageIndexCache(tab, liveSections, cache)
+        if (cache.sections.length && !applied) {
+          setImageIndexStatus('error')
+          return
+        }
+        if (applied) {
+          setImageScanRevision((revision) => revision + 1)
+        }
+        setImageIndexStatus('ready')
+      })
+      .catch((error: unknown) => {
+        if (cancelled || reader.focusedBookTab !== tab) return
         console.error(error)
-      }
-
-      let nextSectionIndex = 0
-      const sectionsToScan = liveSections.filter((section) => !knownImageEntries(section))
-
-      const scanNextSection = async () => {
-        while (!cancelled) {
-          const section = sectionsToScan[nextSectionIndex]
-          nextSectionIndex += 1
-          if (!section) return
-
-          if (knownImageEntries(section)) continue
-          if (reader.focusedBookTab !== tab) return
-
-          const previousImageSignature = imageSignature(section)
-          await tab.ensureSectionInfo(section)
-
-          if (cancelled || reader.focusedBookTab !== tab) return
-
-          const duplicatesChanged = duplicateFilter.applyToSection(section)
-          if (duplicatesChanged || imageSignature(section) !== previousImageSignature) {
-            refreshImages()
-          }
-        }
-      }
-
-      await Promise.all(
-        Array.from({ length: Math.min(IMAGE_SCAN_CONCURRENCY, sectionsToScan.length) }, scanNextSection),
-      )
-
-      if (!cancelled && reader.focusedBookTab === tab && liveSections.every(knownImageEntries)) {
-        const duplicateChanged = replayDuplicateFilterForKnownSections()
-        const finalizedChanged = finalizeDuplicateFilterForAllSections()
-        const changed = duplicateChanged || finalizedChanged
-        if (changed) refreshImages()
-
-        const cache = createImageIndexCacheInput(tab, liveSections)
-        if (cache) {
-          void storeBookImageIndex(tab.book.id, cache).catch(console.error)
-        }
-      }
-    })()
+        setImageIndexStatus('error')
+      })
 
     return () => {
       cancelled = true
-      if (frame) window.cancelAnimationFrame(frame)
     }
-  }, [canLoadImages, liveSections, tab])
+  }, [canLoadImages, imageIndexRetryCount, liveSections, tab, tab?.book.contentVersion])
 
   const allImages = liveSections.flatMap(imageEntries)
   const sections = liveSections.flatMap((section): ImageSection[] => {
@@ -480,7 +410,11 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
           ))}
         </div>
         <span className="flex h-7 min-w-8 shrink-0 items-center justify-center rounded-full bg-(--flow-sidebar-item-bg) px-1.5 text-sm leading-none font-medium text-(--flow-text-muted) ring-1 ring-(--flow-sidebar-item-border) ring-inset">
-          {mode === 'all' ? visibleImageCount : `${visibleImageCount}/${allImages.length}`}
+          {imageIndexStatus === 'ready'
+            ? mode === 'all'
+              ? visibleImageCount
+              : `${visibleImageCount}/${allImages.length}`
+            : '—'}
         </span>
       </div>
       <OverlayScroll
@@ -490,7 +424,22 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
         reserveScrollbarWidth
         scrollbar={{ ...scrollbar, scrollRef: outerRef }}
       >
-        {sections.length ? (
+        {imageIndexStatus === 'loading' ? (
+          <div className="px-5 pt-1 pb-4 text-base text-(--flow-text-muted)">{t('image.loading')}</div>
+        ) : imageIndexStatus === 'error' ? (
+          <div className="inline-flex items-center gap-1 px-5 pt-1 pb-4 text-base text-destructive">
+            <span>{t('image.load_error')}</span>
+            <IconButton
+              aria-label={t('image.retry')}
+              Icon={RefreshCwIcon}
+              className="size-6 shrink-0 text-(--flow-text-muted) hover:text-(--flow-text)"
+              onClick={() => {
+                setImageIndexStatus('loading')
+                setImageIndexRetryCount((count) => count + 1)
+              }}
+            />
+          </div>
+        ) : sections.length ? (
           <div className="relative pt-1" style={{ height: totalSize + IMAGE_LIST_TOP_PADDING }}>
             {visibleItems.map(({ section: imageSection, start }) => {
               const key = sectionKey(imageSection.section)
@@ -590,7 +539,7 @@ const Block: React.FC<BlockProps> = ({ assetLookup, expanded, images, onToggle, 
             const key = imageSelectionKey(focusedBookTab?.id, section, image)
             const i = findImageAssetIndex(src, assetLookup)
             const asset = assetLookup?.assets[i]
-            const imageSrc = assetLookup?.blobs[i] ?? src
+            const imageSrc = assetLookup?.blobs[i] ?? assetLookup?.resolveHref(asset?.href ?? src) ?? src
             const active = key === activeKey
 
             if (!imageSrc) return null

@@ -123,6 +123,9 @@
   "image.empty": "未找到插图",
   "image.filter.all": "全部",
   "image.filter.illustrations": "插图",
+  "image.load_error": "图片索引加载失败",
+  "image.loading": "正在索引图片…",
+  "image.retry": "重新索引图片",
   "image.title": "图片",
 
   "image_preview.actual_size": "原始大小",
