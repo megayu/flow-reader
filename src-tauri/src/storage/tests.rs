@@ -7,21 +7,20 @@ use super::{
     AppStorage, BOOK_FILE, BOOKS_DIR, BookContentMode, BookExportFormat, BookReaderSourceMode, BookRecord, BookScope,
     BookSourceFormat, BookSourceStatus, BookState, BookTextReplaceTarget, DirtyState, ExternalBookIndex,
     IMAGE_INDEX_CACHE_VERSION, ImageIndexCache, ImageIndexEntry, ImageIndexSection, Library, LibraryBook,
-    METADATA_FILE, ReadingStatus, SEARCH_TEXT_CACHE_VERSION, SOURCE_TEXT_FILE, STATE_FILE, SearchTextCache,
-    SearchTextSection, SourceStorage, SourceTextUpdate, StorageInner, StorageState, TextImportPreparedCache,
-    TextImportRulesInput, TextImportSelection, UNPACKED_DIR, check_book_source_statuses_impl,
-    cleanup_delete_tombstones, cleanup_external_book_heavy_files, decode_text_bytes, delete_books_to_tombstones,
-    delete_tombstones_root, empty_object, ensure_book_package_path_with_unpacker, export_book_impl,
-    external_books_root, external_index_path, get_book_reader_source_impl, hash_file, library_path,
-    load_or_build_search_text_cache, mark_book_exported, mark_library_book_content_updated,
-    normalize_non_square_pixel_png, normalize_publication_date, normalize_unpacked_epub_structure,
-    open_external_epub_path_impl, parent_zip_path, parse_text_import_document, path_to_client_string,
-    read_image_index_cache, read_json_or_default, read_json_value_or_default, read_search_text_sections_from_unpacked,
-    relative_zip_path, replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node,
-    schedule_existing_delete_tombstone_cleanup, search_text_cache_from_bytes, search_text_cache_to_bytes,
-    search_text_in_cache, settings_path, sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml,
-    text_section_xhtml, visible_search_text_from_xhtml, write_epub_from_original_and_unpacked,
-    write_epub_from_unpacked_dir, write_image_index_cache_if_current, write_metadata, write_source_text_update,
+    ReadingStatus, SEARCH_TEXT_CACHE_VERSION, SOURCE_TEXT_FILE, STATE_FILE, SearchTextCache, SearchTextSection,
+    SourceStorage, SourceTextUpdate, StorageInner, StorageState, TextImportPreparedCache, TextImportRulesInput,
+    TextImportSelection, UNPACKED_DIR, check_book_source_statuses_impl, cleanup_delete_tombstones,
+    cleanup_external_book_heavy_files, decode_text_bytes, delete_books_to_tombstones, delete_tombstones_root,
+    empty_object, ensure_book_package_path_with_unpacker, export_book_impl, external_books_root, external_index_path,
+    get_book_reader_source_impl, hash_file, library_path, load_or_build_search_text_cache, mark_book_exported,
+    mark_library_book_content_updated, normalize_non_square_pixel_png, normalize_publication_date,
+    normalize_unpacked_epub_structure, open_external_epub_path_impl, parent_zip_path, parse_text_import_document,
+    path_to_client_string, read_image_index_cache, read_json_or_default, read_json_value_or_default,
+    read_search_text_sections_from_unpacked, relative_zip_path, replace_book_text_impl, replace_xhtml_text,
+    replace_xhtml_text_node, schedule_existing_delete_tombstone_cleanup, search_text_cache_from_bytes,
+    search_text_cache_to_bytes, search_text_in_cache, settings_path, sync_unpacked_opf_metadata, text_content_opf,
+    text_nav_xhtml, text_section_xhtml, visible_search_text_from_xhtml, write_epub_from_original_and_unpacked,
+    write_epub_from_unpacked_dir, write_image_index_cache_if_current, write_source_text_update,
 };
 use crate::tasks::TaskService;
 use serde_json::{Value, json};
@@ -237,9 +236,11 @@ fn assert_external_promoted(storage: &AppStorage, imported: &BookRecord, externa
     );
     drop(state);
 
-    let metadata: Value = read_json_value_or_default(&storage.book_dir(&imported.id).join(METADATA_FILE)).unwrap();
-    assert_eq!(metadata.get("title").and_then(Value::as_str), Some("Edited External"));
-    assert_eq!(metadata.get("custom").and_then(Value::as_str), Some("kept"));
+    assert_eq!(
+        imported.metadata.get("title").and_then(Value::as_str),
+        Some("Edited External")
+    );
+    assert_eq!(imported.metadata.get("custom").and_then(Value::as_str), Some("kept"));
     let state_file: BookState = read_json_or_default(&storage.book_dir(&imported.id).join(STATE_FILE)).unwrap();
     assert_eq!(state_file.cfi.as_deref(), Some("epubcfi(/6/4!/4/2)"));
     let external_index: ExternalBookIndex =
@@ -1247,7 +1248,6 @@ fn external_epub_open_creates_external_record_without_library_entry() {
 
     let external_dir = external_books_root(storage.root()).join(&book.id);
     assert!(!external_dir.join(BOOK_FILE).exists());
-    assert!(external_dir.join(METADATA_FILE).exists());
     assert!(external_dir.join(UNPACKED_DIR).join("OEBPS/content.opf").exists());
 
     let loaded = get_book_impl(&storage, book.id.clone())
@@ -1356,8 +1356,14 @@ fn external_epub_cleanup_keeps_metadata_and_state() {
 
     assert!(!external_dir.join(BOOK_FILE).exists());
     assert!(!external_dir.join(UNPACKED_DIR).exists());
-    assert!(external_dir.join(METADATA_FILE).exists());
     assert!(external_dir.join(STATE_FILE).exists());
+    let external_index = read_json_value_or_default(&external_index_path(storage.root()).unwrap()).unwrap();
+    assert_eq!(
+        external_index
+            .pointer("/books/0/metadata/title")
+            .and_then(Value::as_str),
+        Some("External Cleanup")
+    );
 
     let _ = fs::remove_dir_all(root);
 }
@@ -1395,12 +1401,6 @@ fn opening_managed_book_epub_uses_existing_book_without_hash_matching() {
     let imported = import_single_epub_for_test(&storage, &source, true).unwrap();
     let managed_epub = storage.book_dir(&imported.id).join(BOOK_FILE);
     write_minimal_epub_file(&managed_epub, "Managed Edited", "edited body");
-    write_metadata(
-        &storage,
-        &imported.id,
-        &json!({"title": "Edited Metadata", "custom": "kept"}),
-    )
-    .unwrap();
     {
         let mut state = storage.inner.state.lock().unwrap();
         state
@@ -1439,14 +1439,15 @@ fn importing_open_external_epub_promotes_metadata_state_and_removes_external_rec
     write_minimal_epub_file(&source, "Promote Open", "promote body");
     let storage = test_storage_with_books(&root, Vec::new());
     let external = open_external_epub_path_impl(&storage, &source).unwrap();
-    write_metadata(
-        &storage,
-        &external.id,
-        &json!({"title": "Edited External", "custom": "kept"}),
-    )
-    .unwrap();
     {
         let mut state = storage.inner.state.lock().unwrap();
+        state
+            .external
+            .books
+            .iter_mut()
+            .find(|book| book.id == external.id)
+            .unwrap()
+            .metadata = json!({"title": "Edited External", "custom": "kept"});
         state
             .book_states
             .insert(external.id.clone(), external_promotion_state());
@@ -1470,18 +1471,20 @@ fn importing_persisted_external_epub_promotes_disk_metadata_and_state() {
     write_minimal_epub_file(&source, "Promote Disk", "promote body");
     let storage = test_storage_with_books(&root, Vec::new());
     let external = open_external_epub_path_impl(&storage, &source).unwrap();
-    write_metadata(
-        &storage,
-        &external.id,
-        &json!({"title": "Edited External", "custom": "kept"}),
-    )
-    .unwrap();
     {
         let mut state = storage.inner.state.lock().unwrap();
+        state
+            .external
+            .books
+            .iter_mut()
+            .find(|book| book.id == external.id)
+            .unwrap()
+            .metadata = json!({"title": "Edited External", "custom": "kept"});
         state
             .book_states
             .insert(external.id.clone(), external_promotion_state());
     }
+    storage.mark_external_dirty();
     storage.mark_book_state_dirty(&external.id);
     storage.flush_dirty().unwrap();
 

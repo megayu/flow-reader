@@ -1603,7 +1603,6 @@ pub(super) fn import_text_path_impl(
                 cover.as_ref(),
             )?;
             book.metadata = metadata;
-            write_metadata(storage, &id, &book.metadata)?;
             write_cover(storage, &id, cover)?;
         }
 

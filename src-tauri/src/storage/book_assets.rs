@@ -1,12 +1,6 @@
 use std::{fs, path::Path};
 
-use serde_json::Value;
-
 use super::*;
-pub(super) fn write_metadata(storage: &AppStorage, id: &str, metadata: &Value) -> Result<(), String> {
-    write_json(&storage.book_dir(id).join(METADATA_FILE), metadata)
-}
-
 pub(super) fn write_cover(storage: &AppStorage, id: &str, cover: Option<CoverInput>) -> Result<(), String> {
     remove_cover_files(storage, id)?;
 

@@ -1430,7 +1430,6 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
             }
             if let Some(value) = object.get("metadata") {
                 book.metadata = value.clone();
-                write_metadata(&storage, &id, value)?;
                 if book.content_mode != BookContentMode::ArchiveOnly {
                     sync_unpacked_opf_metadata(&storage.book_dir(&id).join(UNPACKED_DIR), value)?;
                 }
@@ -1553,8 +1552,6 @@ fn update_external_book(storage: &AppStorage, id: String, changes: Value) -> Res
     let mut external_changed = false;
     let mut state_changed = false;
     let mut immediate_flush = false;
-    let mut metadata_update: Option<Value> = None;
-
     {
         let mut state = storage
             .inner
@@ -1577,7 +1574,8 @@ fn update_external_book(storage: &AppStorage, id: String, changes: Value) -> Res
                 immediate_flush = true;
             }
             if let Some(value) = object.get("metadata") {
-                metadata_update = Some(value.clone());
+                book.metadata = value.clone();
+                external_changed = true;
                 immediate_flush = true;
             }
             if let Some(value) = object.get("updatedAt").and_then(Value::as_u64) {
@@ -1618,9 +1616,6 @@ fn update_external_book(storage: &AppStorage, id: String, changes: Value) -> Res
         }
     }
 
-    if let Some(metadata) = metadata_update {
-        write_metadata(storage, &id, &metadata)?;
-    }
     if external_changed {
         storage.mark_external_dirty();
     }
@@ -1644,8 +1639,7 @@ fn update_external_book(storage: &AppStorage, id: String, changes: Value) -> Res
         .iter()
         .find(|book| book.id == id)
         .cloned()
-        .map(|book| storage.external_to_library_book(&book))
-        .transpose()?;
+        .map(|book| storage.external_to_library_book(&book));
 
     book.map(|book| storage.compose_book(&mut state, &book)).transpose()
 }

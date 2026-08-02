@@ -95,7 +95,7 @@ impl ImportFileTransaction {
         let backup_dir = import_work_path(&books_root(storage.root()), "import-backup", id);
         fs::create_dir(&backup_dir).map_err(|error| error.to_string())?;
 
-        let mut targets = [BOOK_FILE, SOURCE_TEXT_FILE, UNPACKED_DIR, METADATA_FILE]
+        let mut targets = [BOOK_FILE, SOURCE_TEXT_FILE, UNPACKED_DIR]
             .into_iter()
             .map(|name| book_dir.join(name))
             .collect::<Vec<_>>();
@@ -134,21 +134,6 @@ impl ImportFileTransaction {
         Ok(transaction)
     }
 
-    pub(super) fn restore_preserved(&mut self, name: &str) -> Result<(), String> {
-        let Some(index) = self
-            .moved
-            .iter()
-            .position(|(_, target)| target.file_name().is_some_and(|filename| filename == name))
-        else {
-            return Ok(());
-        };
-        let (backup, target) = self.moved.remove(index);
-        if !target.exists() {
-            fs::rename(backup, target).map_err(|error| error.to_string())?;
-        }
-        Ok(())
-    }
-
     fn commit(self, storage: &AppStorage) -> Result<Option<PathBuf>, String> {
         if self.moved.is_empty() {
             fs::remove_dir(self.backup_dir).map_err(|error| error.to_string())?;
@@ -160,7 +145,7 @@ impl ImportFileTransaction {
 
     pub(super) fn rollback(self) -> Result<(), String> {
         let mut first_error = None;
-        let mut current_targets = [BOOK_FILE, SOURCE_TEXT_FILE, UNPACKED_DIR, METADATA_FILE]
+        let mut current_targets = [BOOK_FILE, SOURCE_TEXT_FILE, UNPACKED_DIR]
             .into_iter()
             .map(|name| self.book_dir.join(name))
             .collect::<Vec<_>>();

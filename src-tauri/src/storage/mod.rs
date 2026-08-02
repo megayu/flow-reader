@@ -58,7 +58,7 @@ pub use text_import::{
 };
 pub use window_state::{flush_app_storage, restore_window_state, save_window_state};
 
-use book_assets::{is_generated_text_cover, read_cover, remove_cover_files, write_cover, write_metadata};
+use book_assets::{is_generated_text_cover, read_cover, remove_cover_files, write_cover};
 use book_source::*;
 #[cfg(test)]
 use deletion::{cleanup_delete_tombstones, delete_books_to_tombstones};
@@ -114,7 +114,6 @@ pub const SEARCH_TEXT_CACHE_VERSION: u32 = 1;
 pub const IMAGE_INDEX_CACHE_VERSION: u32 = 1;
 const COVER_STEM: &str = "cover";
 const GENERATED_TEXT_COVER_MARKER: &str = r#"data-flow-generated-cover="true""#;
-const METADATA_FILE: &str = "metadata.json";
 const STATE_FILE: &str = "state.json";
 const WINDOW_STATE_FILE: &str = "window-state.json";
 const EPUB_ZIP_WRITER_BUFFER_SIZE: usize = 256 * 1024;
@@ -262,7 +261,6 @@ impl AppStorage {
             .find(|book| book.id == id)
             .cloned()
             .map(|book| self.external_to_library_book(&book))
-            .transpose()?
             .ok_or_else(|| "Book not found".to_string())
     }
 
@@ -534,8 +532,8 @@ impl AppStorage {
         }
     }
 
-    fn external_to_library_book(&self, book: &ExternalBook) -> Result<LibraryBook, String> {
-        Ok(LibraryBook {
+    fn external_to_library_book(&self, book: &ExternalBook) -> LibraryBook {
+        LibraryBook {
             id: book.id.clone(),
             name: book.name.clone(),
             size: book.size,
@@ -547,14 +545,14 @@ impl AppStorage {
             content_mode: book.content_mode,
             source_storage: book.source_storage,
             source_path: book.source_path.clone(),
-            metadata: read_json_value_or_default(&self.external_book_dir(&book.id).join(METADATA_FILE))?,
+            metadata: book.metadata.clone(),
             created_at: book.created_at,
             updated_at: None,
             last_read_at: Some(book.last_opened_at),
             cfi: None,
             percentage: None,
             tag_ids: Vec::new(),
-        })
+        }
     }
 
     fn import_source_storage(&self) -> SourceStorage {

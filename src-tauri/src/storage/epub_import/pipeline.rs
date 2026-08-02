@@ -213,15 +213,14 @@ pub(in crate::storage) fn commit_prepared_epub_import(
         let promotion = external_promotion
             .map(|promotion| {
                 let external_dir = storage.external_book_dir(&promotion.book.id);
-                let metadata = read_json_value_or_default(&external_dir.join(METADATA_FILE))?;
                 let state = match promotion.state {
                     Some(state) => state,
                     None => read_json_or_default(&external_dir.join(STATE_FILE))?,
                 };
-                Ok::<_, String>((promotion.book, metadata, state))
+                Ok::<_, String>((promotion.book, state))
             })
             .transpose()?;
-        let promoted_metadata = promotion.as_ref().map(|(_, metadata, _)| metadata.clone());
+        let promoted_metadata = promotion.as_ref().map(|(book, _)| book.metadata.clone());
 
         if should_copy {
             storage.remove_derived_memory_caches(&id);
@@ -270,12 +269,9 @@ pub(in crate::storage) fn commit_prepared_epub_import(
             .or_else(|| (parsed.metadata != json!({})).then(|| parsed.metadata.clone()));
         if let Some(metadata) = metadata {
             book.metadata = metadata;
-            write_metadata(storage, &id, &book.metadata)?;
-        } else if let Some(transaction) = file_transaction.as_mut() {
-            transaction.restore_preserved(METADATA_FILE)?;
         }
 
-        let promotion = promotion.map(|(external_book, _, external_state)| {
+        let promotion = promotion.map(|(external_book, external_state)| {
             let external_id = external_book.id.clone();
             let last_opened_at = external_book.last_opened_at;
             book.cfi = external_state.cfi.clone();
@@ -388,7 +384,7 @@ pub(in crate::storage) fn open_external_epub_path_impl(
     #[allow(clippy::large_enum_variant)]
     enum OpenDecision {
         Library(BookRecord),
-        External { book: ExternalBook, is_new: bool },
+        External(ExternalBook),
     }
 
     (|| -> Result<BookRecord, String> {
@@ -421,10 +417,10 @@ pub(in crate::storage) fn open_external_epub_path_impl(
                 book.source_storage = SourceStorage::Referenced;
                 book.source_path = Some(source_path.clone());
                 book.last_opened_at = now_ms();
-                OpenDecision::External {
-                    book: book.clone(),
-                    is_new: false,
+                if parsed.metadata != json!({}) {
+                    book.metadata = parsed.metadata.clone();
                 }
+                OpenDecision::External(book.clone())
             } else {
                 let now = now_ms();
                 let id = format!("ext-{}", id_from_hash(&hash));
@@ -437,19 +433,20 @@ pub(in crate::storage) fn open_external_epub_path_impl(
                     content_mode: access.mode,
                     source_storage: SourceStorage::Referenced,
                     source_path: Some(source_path.clone()),
+                    metadata: parsed.metadata.clone(),
                     created_at: now,
                     last_opened_at: now,
                 };
                 state.external.books.push(book.clone());
-                OpenDecision::External { book, is_new: true }
+                OpenDecision::External(book)
             }
         };
 
-        let (book, is_new) = match decision {
+        let book = match decision {
             OpenDecision::Library(book) => {
                 return Ok(book);
             }
-            OpenDecision::External { book, is_new } => (book, is_new),
+            OpenDecision::External(book) => book,
         };
 
         let dir = storage.external_book_dir(&book.id);
@@ -466,9 +463,6 @@ pub(in crate::storage) fn open_external_epub_path_impl(
             unpack_epub(&source_path, &unpacked_dir)?;
             normalize_unpacked_epub_structure(&unpacked_dir)?;
         }
-        if is_new || parsed.metadata != json!({}) {
-            write_metadata(storage, &book.id, &parsed.metadata)?;
-        }
         storage.mark_external_dirty();
         storage.flush_dirty()?;
 
@@ -477,7 +471,7 @@ pub(in crate::storage) fn open_external_epub_path_impl(
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        let book = storage.external_to_library_book(&book)?;
+        let book = storage.external_to_library_book(&book);
         storage.compose_book(&mut state, &book)
     })()
 }

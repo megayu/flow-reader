@@ -46,7 +46,7 @@ pub(super) struct ExternalBookIndex {
 }
 
 fn external_book_index_version() -> u32 {
-    1
+    2
 }
 
 impl Default for ExternalBookIndex {
@@ -73,6 +73,7 @@ pub(super) struct ExternalBook {
     pub(super) source_storage: SourceStorage,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) source_path: Option<PathBuf>,
+    pub(super) metadata: Value,
     pub(super) created_at: u64,
     pub(super) last_opened_at: u64,
 }
