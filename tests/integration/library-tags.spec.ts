@@ -191,6 +191,25 @@ test('library tags can be filtered, pinned, edited, batch-applied, renamed, dele
   let editDialog = page.getByRole('dialog')
   await expect(editDialog.getByRole('heading', { name: msg('home.edit.dialog_title') })).toBeVisible()
   await expect(editDialog.getByRole('textbox', { name: msg('home.edit.new_tag') })).toHaveCount(0)
+  const titleInput = editDialog.getByRole('textbox', { name: msg('home.edit.title') })
+  const creatorInput = editDialog.getByRole('textbox', { name: msg('home.edit.creator') })
+  const hasCaretAtEnd = (input: typeof titleInput) =>
+    input.evaluate((element) => {
+      const { selectionEnd, selectionStart, value } = element as HTMLInputElement
+      return selectionStart === value.length && selectionEnd === value.length
+    })
+  await page.keyboard.press('Tab')
+  await expect(creatorInput).toBeFocused()
+  await expect.poll(() => hasCaretAtEnd(creatorInput)).toBe(true)
+  await page.keyboard.press('Tab')
+  await expect(editDialog.getByRole('button', { name: msg('home.cancel') })).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(editDialog.getByRole('button', { name: msg('home.edit.save') })).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(editDialog.locator('[data-slot="dialog-close"]')).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(titleInput).toBeFocused()
+  await expect.poll(() => hasCaretAtEnd(titleInput)).toBe(true)
   await editDialog.getByRole('button', { name: msg('home.cancel') }).click()
 
   await bookCard(page, 'Beta Plain').click({ button: 'right' })

@@ -451,6 +451,7 @@ export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
                 ref={titleRef}
                 value={title}
                 onValueChange={setTitle}
+                focusBehavior="end"
                 className="focus-visible:border-input text-base focus-visible:ring-0"
               />
             </label>
@@ -459,6 +460,7 @@ export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
               <Input
                 value={creator}
                 onValueChange={setCreator}
+                focusBehavior="end"
                 className="focus-visible:border-input text-base focus-visible:ring-0"
               />
             </label>

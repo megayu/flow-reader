@@ -60,18 +60,6 @@ function placeSelection(element: EditableControlElement, behavior: EditableContr
   }
 }
 
-function hasExplicitSelection(element: EditableControlElement) {
-  try {
-    return (
-      element.selectionStart !== null &&
-      element.selectionEnd !== null &&
-      element.selectionStart !== element.selectionEnd
-    )
-  } catch {
-    return false
-  }
-}
-
 function isEditableControlEscapeTarget(target: EventTarget | null) {
   return target instanceof Element && target.closest(editableControlSelector) !== null
 }
@@ -153,8 +141,11 @@ function useEditableControl<T extends EditableControlElement>({
       editStartValueRef.current = event.currentTarget.value
       exitFocusTargetRef.current =
         event.relatedTarget instanceof HTMLElement && event.relatedTarget !== document.body ? event.relatedTarget : null
-      if (!pointerDownRef.current && !hasExplicitSelection(event.currentTarget)) {
-        placeSelection(event.currentTarget, focusBehavior)
+      if (!pointerDownRef.current && focusBehavior !== 'native') {
+        const element = event.currentTarget
+        queueMicrotask(() => {
+          if (document.activeElement === element) placeSelection(element, focusBehavior)
+        })
       }
       onFocus?.(event)
     },
