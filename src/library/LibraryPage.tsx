@@ -958,7 +958,6 @@ const Library: React.FC<LibraryProps> = ({
                 className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                 aria-label={t(select ? 'cancel' : 'select')}
                 title={t(`${select ? 'cancel' : 'select'}.tooltip`)}
-                shortcut={select ? ['Esc'] : undefined}
                 onClick={toggleSelectMode}
               >
                 {select ? (
