@@ -1,6 +1,6 @@
 import { XIcon } from 'lucide-react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
-import type * as React from 'react'
+import * as React from 'react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/utils'
@@ -9,8 +9,44 @@ import { isEditableControlEscapeTarget } from './editable-control'
 import { OverlayHierarchyProvider } from './overlay-hierarchy'
 import { useOverlayHierarchy } from './overlayHierarchyContext'
 
-function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+interface DialogDismissalGuardValue {
+  controlled: boolean
+  ignoreNextDismissal: () => void
+}
+
+const DialogDismissalGuardContext = React.createContext<DialogDismissalGuardValue | null>(null)
+
+function Dialog({ open, onOpenChange, ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  const ignoreNextDismissalRef = React.useRef(false)
+  const dismissalGuard = React.useMemo<DialogDismissalGuardValue>(
+    () => ({
+      controlled: open !== undefined,
+      ignoreNextDismissal: () => {
+        ignoreNextDismissalRef.current = true
+        queueMicrotask(() => {
+          ignoreNextDismissalRef.current = false
+        })
+      },
+    }),
+    [open],
+  )
+
+  return (
+    <DialogDismissalGuardContext.Provider value={dismissalGuard}>
+      <DialogPrimitive.Root
+        data-slot="dialog"
+        open={open}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && ignoreNextDismissalRef.current) {
+            ignoreNextDismissalRef.current = false
+            return
+          }
+          onOpenChange?.(nextOpen)
+        }}
+        {...props}
+      />
+    </DialogDismissalGuardContext.Provider>
+  )
 }
 
 function DialogPortal({ ...props }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
@@ -42,6 +78,7 @@ function DialogContent({
   showCloseButton?: boolean
 }) {
   const overlayHierarchy = useOverlayHierarchy(forwardedRef)
+  const dismissalGuard = React.useContext(DialogDismissalGuardContext)
 
   return (
     <DialogPortal>
@@ -63,7 +100,12 @@ function DialogContent({
           }}
           onInteractOutside={(event) => {
             onInteractOutside?.(event)
-            if (overlayHierarchy.hasActiveChildLayer()) event.preventDefault()
+            if (!overlayHierarchy.hasActiveChildLayer(true) || event.defaultPrevented) return
+            if (dismissalGuard?.controlled) {
+              dismissalGuard.ignoreNextDismissal()
+            } else {
+              event.preventDefault()
+            }
           }}
           {...props}
         >

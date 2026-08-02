@@ -60,7 +60,7 @@ function PopoverContent({
           }}
           onInteractOutside={(event) => {
             onInteractOutside?.(event)
-            if (overlayHierarchy.hasActiveChildLayer()) event.preventDefault()
+            if (overlayHierarchy.hasActiveChildLayer(true)) event.preventDefault()
           }}
           {...props}
         >

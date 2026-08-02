@@ -174,14 +174,23 @@ test('configures one shared main language, secondary language, and translation s
     .toBe('azure')
 })
 
-test('settings dropdown Escape closes one layer at a time', async ({ page }) => {
+test('settings dropdown dismissal closes one layer at a time', async ({ page }) => {
   const dialog = await openSettings(page)
   const language = dialog.getByRole('combobox', { name: msg('settings.language') })
+  const options = page.locator('[data-slot="select-content"]')
+  const headingBox = await dialog.getByRole('heading', { name: msg('settings.tabs.basic') }).boundingBox()
+  if (!headingBox) throw new Error('Settings heading is not visible')
 
   await language.click()
-  const options = page.locator('[data-slot="select-content"]')
   await expect(options).toBeVisible()
+  await page.evaluate(() => new Promise(requestAnimationFrame))
 
+  await page.mouse.click(headingBox.x + headingBox.width / 2, headingBox.y + headingBox.height / 2)
+  await expect(options).toHaveCount(0)
+  await expect(dialog).toBeVisible()
+
+  await language.click()
+  await expect(options).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(options).toHaveCount(0)
   await expect(dialog).toBeVisible()

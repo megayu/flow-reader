@@ -1,7 +1,7 @@
 import { createContext, type Ref, useCallback, useContext, useMemo, useRef } from 'react'
 
 interface OverlayHierarchyValue {
-  hasActiveChildLayer: () => boolean
+  hasActiveChildLayer: (includeDisconnected?: boolean) => boolean
   registerLayer: (node: HTMLElement) => () => void
 }
 
@@ -23,7 +23,13 @@ function useOverlayHierarchy<T extends HTMLElement>(forwardedRef?: Ref<T>) {
 
   const hierarchy = useMemo<OverlayHierarchyValue>(
     () => ({
-      hasActiveChildLayer: () => childLayersRef.current.size > 0,
+      hasActiveChildLayer: (includeDisconnected = false) => {
+        const hasActiveChildLayer = childLayersRef.current.size > 0
+        for (const layer of childLayersRef.current) {
+          if (!layer.isConnected) childLayersRef.current.delete(layer)
+        }
+        return includeDisconnected ? hasActiveChildLayer : childLayersRef.current.size > 0
+      },
       registerLayer: (node) => {
         childLayersRef.current.add(node)
         return () => {

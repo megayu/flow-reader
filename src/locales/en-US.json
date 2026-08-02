@@ -46,7 +46,7 @@
   "home.cancel": "Cancel",
   "home.cancel.tooltip": "Exit selection mode",
   "home.compat.archive_only": "Archive mode",
-  "home.compat.archive_only_description": "Reads directly from the original EPUB archive; text editing and exporting modified content are unavailable.",
+  "home.compat.archive_only_description": "Reads directly from the original EPUB archive, text editing and exporting modified content are unavailable.",
   "home.context.confirm_delete": "Confirm delete",
   "home.context.delete": "Delete",
   "home.context.edit": "Edit",
@@ -137,7 +137,7 @@
   "image_preview.zoom_out": "Zoom out",
 
   "import.result.failed": "Failed: {1}",
-  "import.result.partial": "Imported: {1}; failed: {2}",
+  "import.result.partial": "Imported: {1}, failed: {2}",
   "import.result.success": "Imported: {1}",
   "import.title.failed": "Book import failed",
   "import.title.partial_failure": "Some books failed to import",
