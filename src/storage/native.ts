@@ -14,6 +14,7 @@ export const storageCommand = {
   getBookPackagePath: 'get_book_package_path',
   getBookReaderSource: 'get_book_reader_source',
   getCover: 'get_cover',
+  getLibraryPins: 'get_library_pins',
   getSettings: 'get_settings',
   getTextImportEncodings: 'get_text_import_encodings',
   importEpubPaths: 'import_epub_paths',
@@ -34,6 +35,7 @@ export const storageCommand = {
   updateBook: 'update_book',
   updateBookTags: 'update_book_tags',
   updateCover: 'update_cover',
+  updateLibraryPin: 'update_library_pin',
   updateSettings: 'update_settings',
   updateTag: 'update_tag',
 } as const

@@ -3,7 +3,7 @@ import { expect, type Page, test } from '@playwright/test'
 import type { BookRecord, ReadingStatus } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
 import { msg } from '../support/i18n'
-import { getStoredSettings, installTauriMock, type TestLibraryTagRecord } from '../support/tauri-mock'
+import { getStoredLibraryPins, installTauriMock, type TestLibraryTagRecord } from '../support/tauri-mock'
 
 function createBook({
   creator = 'Author',
@@ -149,11 +149,7 @@ function tagChip(page: Page, tag: string) {
 }
 
 async function pinnedTags(page: Page) {
-  const settings = (await getStoredSettings(page)) as {
-    libraryPinnedTags?: string[]
-  }
-
-  return settings.libraryPinnedTags ?? []
+  return (await getStoredLibraryPins(page)).tagIds
 }
 
 test('library tags can be filtered, pinned, edited, batch-applied, renamed, deleted, and persisted', async ({

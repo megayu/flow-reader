@@ -6,7 +6,7 @@ use super::epub_import::read_bounded_bytes;
 use super::{
     AppStorage, BOOK_FILE, BOOKS_DIR, BookContentMode, BookExportFormat, BookReaderSourceMode, BookRecord, BookScope,
     BookSourceFormat, BookSourceStatus, BookState, BookTextReplaceTarget, DirtyState, ExternalBookIndex,
-    IMAGE_INDEX_CACHE_VERSION, ImageIndexCache, ImageIndexEntry, ImageIndexSection, Library, LibraryBook,
+    IMAGE_INDEX_CACHE_VERSION, ImageIndexCache, ImageIndexEntry, ImageIndexSection, Library, LibraryBook, LibraryPins,
     ReadingStatus, SEARCH_TEXT_CACHE_VERSION, SOURCE_TEXT_FILE, STATE_FILE, SearchTextCache, SearchTextSection,
     SourceStorage, SourceTextUpdate, StorageInner, StorageState, TextImportPreparedCache, TextImportRulesInput,
     TextImportSelection, UNPACKED_DIR, check_book_source_statuses_impl, cleanup_delete_tombstones,
@@ -139,6 +139,7 @@ fn test_storage_with_books(root: &Path, books: Vec<LibraryBook>) -> AppStorage {
                     version: 1,
                     books,
                     tags: Vec::new(),
+                    pins: LibraryPins::default(),
                 },
                 external: ExternalBookIndex::default(),
                 settings: json!({}),

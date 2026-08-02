@@ -147,6 +147,85 @@ pub fn list_tags(storage: State<'_, AppStorage>) -> Result<Vec<LibraryTagRecord>
 }
 
 #[tauri::command]
+pub fn get_library_pins(storage: State<'_, AppStorage>) -> Result<LibraryPins, String> {
+    let state = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?;
+    Ok(state.library.pins.clone())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LibraryPinKind {
+    Author,
+    Tag,
+}
+
+#[tauri::command]
+pub fn update_library_pin(
+    storage: State<'_, AppStorage>,
+    kind: LibraryPinKind,
+    id: String,
+    pinned: bool,
+) -> Result<LibraryPins, String> {
+    let changed = {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+
+        let (items, value) = match kind {
+            LibraryPinKind::Author => {
+                let author = clean_tag_name(&id);
+                if pinned
+                    && !state
+                        .library
+                        .books
+                        .iter()
+                        .filter_map(library_book_author)
+                        .any(|candidate| candidate == author)
+                {
+                    return Ok(state.library.pins.clone());
+                }
+                (&mut state.library.pins.authors, author)
+            }
+            LibraryPinKind::Tag => {
+                let tag_id = id.trim().to_string();
+                if pinned && !state.library.tags.iter().any(|tag| tag.id == tag_id) {
+                    return Ok(state.library.pins.clone());
+                }
+                (&mut state.library.pins.tag_ids, tag_id)
+            }
+        };
+
+        if value.is_empty() {
+            return Ok(state.library.pins.clone());
+        }
+
+        let previous = items.clone();
+        items.retain(|item| item != &value);
+        if pinned {
+            items.insert(0, value);
+        }
+        previous != *items
+    };
+
+    if changed {
+        storage.mark_library_dirty();
+        storage.flush_dirty()?;
+    }
+    let state = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?;
+    Ok(state.library.pins.clone())
+}
+
+#[tauri::command]
 pub fn create_tag(storage: State<'_, AppStorage>, name: String) -> Result<Option<LibraryTagRecord>, String> {
     let name = clean_tag_name(&name);
     if name.is_empty() {
@@ -236,7 +315,7 @@ pub fn update_tag(
 
 #[tauri::command]
 pub fn delete_tag(storage: State<'_, AppStorage>, id: String) -> Result<Vec<BookRecord>, String> {
-    let settings_changed = {
+    {
         let mut state = storage
             .inner
             .state
@@ -247,15 +326,10 @@ pub fn delete_tag(storage: State<'_, AppStorage>, id: String) -> Result<Vec<Book
         for book in &mut state.library.books {
             book.tag_ids.retain(|tag_id| tag_id != &id);
         }
-
-        let tags = state.library.tags.clone();
-        prune_library_pinned_tags(&mut state.settings, &tags)
-    };
+        state.library.pins.tag_ids.retain(|tag_id| tag_id != &id);
+    }
 
     storage.mark_library_dirty();
-    if settings_changed {
-        storage.mark_settings_dirty();
-    }
     storage.flush_dirty()?;
     compose_book_summaries(&storage)
 }
@@ -1400,6 +1474,7 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
             return Ok(None);
         };
         let mut book = state.library.books[book_index].clone();
+        let previous_author = library_book_author(&book);
 
         if let Some(object) = changes.as_object() {
             let updates_reading_position = object.contains_key("cfi") || object.contains_key("percentage");
@@ -1524,6 +1599,17 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
         }
 
         state.library.books[book_index] = book.clone();
+        if let Some(previous_author) = previous_author
+            && library_book_author(&book).as_ref() != Some(&previous_author)
+            && !state
+                .library
+                .books
+                .iter()
+                .filter_map(library_book_author)
+                .any(|candidate| candidate == previous_author)
+        {
+            state.library.pins.authors.retain(|author| author != &previous_author);
+        }
         book
     };
 
@@ -1671,8 +1757,6 @@ pub fn update_settings(storage: State<'_, AppStorage>, settings: Value) -> Resul
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        let mut settings = settings;
-        prune_library_pinned_tags(&mut settings, &state.library.tags);
         state.settings = settings;
     }
 

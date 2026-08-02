@@ -20,6 +20,8 @@ pub(super) struct Library {
     pub(super) books: Vec<LibraryBook>,
     #[serde(default)]
     pub(super) tags: Vec<LibraryTagRecord>,
+    #[serde(default)]
+    pub(super) pins: LibraryPins,
 }
 
 fn library_version() -> u32 {
@@ -32,8 +34,16 @@ impl Default for Library {
             version: library_version(),
             books: Vec::new(),
             tags: Vec::new(),
+            pins: LibraryPins::default(),
         }
     }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryPins {
+    pub(super) authors: Vec<String>,
+    pub(super) tag_ids: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

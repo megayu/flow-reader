@@ -5,7 +5,7 @@ import { expect, type Page, test } from '@playwright/test'
 import type { BookRecord, ReadingStatus } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
 import { msg } from '../support/i18n'
-import { getStoredSettings, installTauriMock } from '../support/tauri-mock'
+import { getStoredLibraryPins, installTauriMock } from '../support/tauri-mock'
 
 const longAuthor = 'Beatrice Longname With An Extraordinarily Extended Family Name That Should Ellipsize'
 
@@ -117,11 +117,7 @@ async function authorNames(page: Page) {
 }
 
 async function pinnedAuthors(page: Page) {
-  const settings = (await getStoredSettings(page)) as {
-    libraryPinnedAuthors?: string[]
-  }
-
-  return settings.libraryPinnedAuthors ?? []
+  return (await getStoredLibraryPins(page)).authors
 }
 
 test('library author filters pin authors and refresh when books change', async ({ page }) => {
@@ -235,7 +231,7 @@ test('library author filters pin authors and refresh when books change', async (
   await page.getByRole('menuitem', { name: msg('home.context.confirm_delete') }).click()
   await expect(page.getByText('Beta Read')).toHaveCount(0)
   await expect(authorChip(page, longAuthor)).toHaveCount(0)
-  await expect.poll(() => pinnedAuthors(page)).toEqual([longAuthor])
+  await expect.poll(() => pinnedAuthors(page)).toEqual([])
 
   await page.getByRole('button', { name: msg('home.import') }).click()
   await expect(page.getByText('Delta Read')).toBeVisible()
@@ -244,9 +240,9 @@ test('library author filters pin authors and refresh when books change', async (
   await page.reload()
   await expect(page.locator('#layout')).toBeVisible()
   await openLibraryFilterPanel(page)
-  await expect.poll(() => pinnedAuthors(page)).toEqual([longAuthor])
+  await expect.poll(() => pinnedAuthors(page)).toEqual([])
   await expect.poll(() => authorNames(page)).toContainEqual(longAuthor)
-  expect((await authorNames(page))[0]).toBe(longAuthor)
+  expect((await authorNames(page))[0]).toBe('Anne Able')
 })
 
 test('library filter panel clears filters on Escape without closing', async ({ page }) => {

@@ -24,8 +24,6 @@ export interface Settings extends TypographyConfiguration {
   librarySidebarOpen?: boolean
   libraryDisplay?: LibraryDisplayConfiguration
   librarySort?: LibrarySortConfiguration
-  libraryPinnedAuthors?: string[]
-  libraryPinnedTags?: string[]
   textImportRules?: TextImportRulesConfiguration
   locale?: AppLocale
 }

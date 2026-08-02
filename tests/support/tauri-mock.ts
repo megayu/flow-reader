@@ -16,6 +16,11 @@ export interface TestLibraryTagRecord {
   updatedAt?: number
 }
 
+export interface TestLibraryPins {
+  authors: string[]
+  tagIds: string[]
+}
+
 interface TauriMockOptions {
   books?: BookRecord[]
   externallyOpenedBooks?: BookRecord[]
@@ -25,6 +30,7 @@ interface TauriMockOptions {
   openDialogPaths?: string[]
   pendingOpenPaths?: string[]
   pendingOpenPathsError?: string
+  pins?: TestLibraryPins
   deferReaderSource?: boolean
   readerSourceErrors?: Record<string, string>
   readerSources?: Record<string, string>
@@ -58,6 +64,7 @@ export async function installTauriMock(
     openDialogPaths = [],
     pendingOpenPaths = [],
     pendingOpenPathsError,
+    pins = { authors: [], tagIds: [] },
     deferReaderSource = false,
     readerSourceErrors = {},
     readerSources = {},
@@ -94,6 +101,7 @@ export async function installTauriMock(
       fixtureOpenDialogPaths,
       fixturePendingOpenPaths,
       fixturePendingOpenPathsError,
+      fixturePins,
       fixtureDeferReaderSource,
       fixtureReaderSourceErrors,
       fixtureReaderSources,
@@ -160,6 +168,7 @@ export async function installTauriMock(
             sessionId: number
           }>
           localDictionaries: LocalDictionaryRecord[]
+          libraryPinsStore: TestLibraryPins
           openedExternalUrls: string[]
           revealedBookSourceIds: string[]
           takePendingOpenPathsCalls: number
@@ -169,6 +178,7 @@ export async function installTauriMock(
         __TAURI_INTERNALS__?: TauriInternals
       }
       const settingsStorageKey = '__FLOW_TEST_TAURI_SETTINGS__'
+      const libraryPinsStorageKey = '__FLOW_TEST_TAURI_LIBRARY_PINS__'
       const storedSettings = (() => {
         try {
           return JSON.parse(localStorage.getItem(settingsStorageKey) ?? '{}') as Record<string, unknown> | undefined
@@ -176,8 +186,35 @@ export async function installTauriMock(
           return undefined
         }
       })()
+      const storedLibraryPins = (() => {
+        try {
+          return JSON.parse(localStorage.getItem(libraryPinsStorageKey) ?? 'null') as TestLibraryPins | null
+        } catch {
+          return null
+        }
+      })()
       const bookStore = new Map<string, BookRecord>(fixtureBooks.map((book) => [book.id, book]))
       const tagStore = new Map<string, TestLibraryTagRecord>(fixtureTags.map((tag) => [tag.id, tag]))
+      const libraryPinsStore: TestLibraryPins = {
+        authors: [...(storedLibraryPins?.authors ?? fixturePins.authors)],
+        tagIds: [...(storedLibraryPins?.tagIds ?? fixturePins.tagIds)],
+      }
+      const persistLibraryPins = () => {
+        localStorage.setItem(libraryPinsStorageKey, JSON.stringify(libraryPinsStore))
+      }
+      const prunePinnedAuthors = () => {
+        const authors = new Set(
+          Array.from(bookStore.values())
+            .map((book) =>
+              String(book.metadata.creator ?? '')
+                .replace(/\s+/g, ' ')
+                .trim(),
+            )
+            .filter(Boolean),
+        )
+        libraryPinsStore.authors = libraryPinsStore.authors.filter((author) => authors.has(author))
+        persistLibraryPins()
+      }
       const importQueue = [...fixtureImportedBooks]
       const externalOpenQueue = [...fixtureExternallyOpenedBooks]
       const localDictionaryStore = fixtureLocalDictionaries.map((record) => ({
@@ -208,6 +245,7 @@ export async function installTauriMock(
         mdictStylesheetRequests: [],
         stardictRequests: [],
         localDictionaries: localDictionaryStore,
+        libraryPinsStore,
         exports: [],
         get fullscreen() {
           return fullscreen
@@ -440,6 +478,32 @@ export async function installTauriMock(
         }
         if (command === 'list_books') return Array.from(bookStore.values())
         if (command === 'list_tags') return Array.from(tagStore.values())
+        if (command === 'get_library_pins') return structuredClone(libraryPinsStore)
+        if (command === 'update_library_pin') {
+          const kind = String(args?.kind ?? '')
+          const id = String(args?.id ?? '')
+            .replace(/\s+/g, ' ')
+            .trim()
+          const pinned = Boolean(args?.pinned)
+          const items = kind === 'author' ? libraryPinsStore.authors : libraryPinsStore.tagIds
+          const exists =
+            kind === 'author'
+              ? Array.from(bookStore.values()).some(
+                  (book) =>
+                    String(book.metadata.creator ?? '')
+                      .replace(/\s+/g, ' ')
+                      .trim() === id,
+                )
+              : kind === 'tag' && tagStore.has(id)
+          if (id && (!pinned || exists)) {
+            const updated = items.filter((item) => item !== id)
+            if (pinned) updated.unshift(id)
+            if (kind === 'author') libraryPinsStore.authors = updated
+            if (kind === 'tag') libraryPinsStore.tagIds = updated
+          }
+          persistLibraryPins()
+          return structuredClone(libraryPinsStore)
+        }
         if (command === 'create_tag') {
           const name = String(args?.name ?? '')
             .replace(/\s+/g, ' ')
@@ -477,6 +541,8 @@ export async function installTauriMock(
         if (command === 'delete_tag') {
           const id = String(args?.id)
           tagStore.delete(id)
+          libraryPinsStore.tagIds = libraryPinsStore.tagIds.filter((tagId) => tagId !== id)
+          persistLibraryPins()
           bookStore.forEach((book, bookId) => {
             const tagIds = ((book as BookRecord & { tagIds?: string[] }).tagIds ?? []).filter((tagId) => tagId !== id)
             bookStore.set(bookId, { ...book, tagIds })
@@ -548,11 +614,13 @@ export async function installTauriMock(
             ...((args?.changes ?? {}) as Partial<BookRecord>),
           }
           bookStore.set(id, updated)
+          if ((args?.changes as Partial<BookRecord> | undefined)?.metadata) prunePinnedAuthors()
           return updated
         }
         if (command === 'delete_books') {
           const ids = Array.isArray(args?.ids) ? args.ids : []
           ids.forEach((id) => bookStore.delete(String(id)))
+          prunePinnedAuthors()
           return null
         }
         if (command === 'import_epub_paths') {
@@ -660,6 +728,7 @@ export async function installTauriMock(
       fixtureOpenDialogPaths: openDialogPaths,
       fixturePendingOpenPaths: pendingOpenPaths,
       fixturePendingOpenPathsError: pendingOpenPathsError,
+      fixturePins: pins,
       fixtureDeferReaderSource: deferReaderSource,
       fixtureReaderSourceErrors: readerSourceErrors,
       fixtureReaderSources: readerSources,
@@ -710,6 +779,18 @@ export async function getStoredSettings(page: Page) {
     }
 
     return globalWindow.__FLOW_TEST_TAURI__?.settingsStore ?? {}
+  })
+}
+
+export async function getStoredLibraryPins(page: Page) {
+  return page.evaluate(() => {
+    const globalWindow = window as typeof window & {
+      __FLOW_TEST_TAURI__?: {
+        libraryPinsStore: TestLibraryPins
+      }
+    }
+
+    return globalWindow.__FLOW_TEST_TAURI__?.libraryPinsStore ?? { authors: [], tagIds: [] }
   })
 }
 

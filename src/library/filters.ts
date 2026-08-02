@@ -135,22 +135,6 @@ export function toggleLibraryTagFilter(tagFilters: string[], tagId: string) {
   return tagFilters.includes(tagId) ? tagFilters.filter((item) => item !== tagId) : [...tagFilters, tagId]
 }
 
-export function pinLibraryAuthor(pinnedAuthors: string[], author: string) {
-  return [author, ...uniqueStrings(pinnedAuthors).filter((item) => item !== author)]
-}
-
-export function unpinLibraryAuthor(pinnedAuthors: string[], author: string) {
-  return uniqueStrings(pinnedAuthors).filter((item) => item !== author)
-}
-
-export function pinLibraryTag(pinnedTags: string[], tagId: string) {
-  return [tagId, ...uniqueStrings(pinnedTags).filter((item) => item !== tagId)]
-}
-
-export function unpinLibraryTag(pinnedTags: string[], tagId: string) {
-  return uniqueStrings(pinnedTags).filter((item) => item !== tagId)
-}
-
 export function areStringListsEqual(a: string[], b: string[]) {
   return a.length === b.length && a.every((item, index) => item === b[index])
 }

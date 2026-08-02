@@ -50,7 +50,8 @@ use model::{
 };
 pub use model::{
     BookExportFormat, BookReaderSource, BookReaderSourceMode, BookRecord, BookSourceFormat, BookSourceStatus,
-    BookSourceStatusRecord, BookTextReplaceResult, BookTextReplaceTarget, CoverInput, CoverRecord, LibraryTagRecord,
+    BookSourceStatusRecord, BookTextReplaceResult, BookTextReplaceTarget, CoverInput, CoverRecord, LibraryPins,
+    LibraryTagRecord,
 };
 pub use search::SearchTextResult;
 pub use text_import::{
@@ -166,18 +167,12 @@ impl AppStorage {
         let root = data_root(app)?;
         let library = read_json_or_default::<Library>(&library_path(&root)?)?;
         let external = read_json_or_default::<ExternalBookIndex>(&external_index_path(&root)?)?;
-        let mut settings = read_json_value_or_default(&settings_path(&root)?)?;
-        let settings_dirty = prune_library_pinned_tags(&mut settings, &library.tags);
+        let settings = read_json_value_or_default(&settings_path(&root)?)?;
         if library.books.iter().any(|book| !is_valid_book_storage_id(&book.id))
             || external.books.iter().any(|book| !is_external_book_id(&book.id))
         {
             return Err("Storage contains an invalid book id".to_string());
         }
-        let dirty = DirtyState {
-            settings: settings_dirty,
-            ..DirtyState::default()
-        };
-
         Ok(Self {
             inner: Arc::new(StorageInner {
                 root,
@@ -187,7 +182,7 @@ impl AppStorage {
                     settings,
                     book_states: HashMap::new(),
                 }),
-                dirty: Mutex::new(dirty),
+                dirty: Mutex::new(DirtyState::default()),
                 flush_lock: Mutex::new(()),
                 import_lock: Mutex::new(()),
                 reading_position_sequences: Mutex::new(HashMap::new()),
@@ -578,6 +573,7 @@ fn clone_library(library: &Library) -> Library {
         version: library.version,
         books: library.books.clone(),
         tags: library.tags.clone(),
+        pins: library.pins.clone(),
     }
 }
 
@@ -642,19 +638,15 @@ fn now_ms() -> u64 {
         .unwrap_or_default()
 }
 
-fn prune_library_pinned_tags(settings: &mut Value, tags: &[LibraryTagRecord]) -> bool {
-    let Some(pinned_tags) = settings
-        .as_object_mut()
-        .and_then(|settings| settings.get_mut("libraryPinnedTags"))
-        .and_then(Value::as_array_mut)
-    else {
-        return false;
-    };
-
-    let valid_tag_ids = tags.iter().map(|tag| tag.id.as_str()).collect::<HashSet<_>>();
-    let original_len = pinned_tags.len();
-    pinned_tags.retain(|tag_id| tag_id.as_str().is_some_and(|tag_id| valid_tag_ids.contains(tag_id)));
-    pinned_tags.len() != original_len
+fn library_book_author(book: &LibraryBook) -> Option<String> {
+    let author = book
+        .metadata
+        .get("creator")
+        .and_then(Value::as_str)?
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!author.is_empty()).then_some(author)
 }
 
 fn read_json_or_default<T>(path: &Path) -> Result<T, String>

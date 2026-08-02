@@ -22,7 +22,25 @@ pub(super) fn delete_books_to_tombstones(storage: &AppStorage, ids: &[String]) -
         {
             return Err("Book not found".to_string());
         }
+        let deleted_authors = state
+            .library
+            .books
+            .iter()
+            .filter(|book| ids.contains(&book.id))
+            .filter_map(library_book_author)
+            .collect::<HashSet<_>>();
         state.library.books.retain(|book| !ids.contains(&book.id));
+        for author in deleted_authors {
+            if !state
+                .library
+                .books
+                .iter()
+                .filter_map(library_book_author)
+                .any(|candidate| candidate == author)
+            {
+                state.library.pins.authors.retain(|candidate| candidate != &author);
+            }
+        }
         for id in &ids {
             state.book_states.remove(id);
         }

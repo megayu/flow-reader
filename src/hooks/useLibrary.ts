@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
-import { type BookRecord, type CoverRecord, db, type LibraryTagRecord } from '../storage'
+import { db } from '../storage/client'
+import type { BookRecord, CoverRecord, LibraryPins, LibraryTagRecord } from '../storage/types'
 
 export function useLibrary() {
   const [books, setBooks] = useState<BookRecord[] | undefined>(() => db.books.peekAll())
@@ -81,4 +82,31 @@ export function useLibraryTags() {
   }, [])
 
   return tags
+}
+
+export function useLibraryPins() {
+  const [pins, setPins] = useState<LibraryPins | undefined>(() => db.pins.peek())
+
+  useEffect(() => {
+    let disposed = false
+
+    const load = () => {
+      db.pins
+        .get()
+        .then((pins) => {
+          if (!disposed) setPins(pins)
+        })
+        .catch(console.error)
+    }
+
+    load()
+    const unsubscribe = db.subscribe('pins', load)
+
+    return () => {
+      disposed = true
+      unsubscribe()
+    }
+  }, [])
+
+  return pins
 }

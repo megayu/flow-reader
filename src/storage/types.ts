@@ -106,6 +106,11 @@ export interface LibraryTagRecord {
   updatedAt?: number
 }
 
+export interface LibraryPins {
+  authors: string[]
+  tagIds: string[]
+}
+
 export interface BookRecord {
   id: string
   name: string

@@ -12,6 +12,7 @@ import type {
   BookTextReplaceTarget,
   CoverInput,
   CoverRecord,
+  LibraryPins,
   LibraryTagRecord,
   ReadingPositionInput,
   TextImportEncodingOption,
@@ -28,7 +29,7 @@ interface NativeBookReaderSource {
 }
 
 type Listener = () => void
-type TableName = 'books' | 'covers' | 'files' | 'settings' | 'tags'
+type TableName = 'books' | 'covers' | 'files' | 'pins' | 'settings' | 'tags'
 
 const listeners = new Map<TableName, Set<Listener>>()
 const bookCache = new Map<string, BookRecord>()
@@ -37,6 +38,7 @@ let booksCacheEpoch = 0
 let booksListPromise: Promise<BookRecord[]> | undefined
 let coversCache: CoverRecord[] | undefined
 let tagsCache: LibraryTagRecord[] | undefined
+let pinsCache: LibraryPins | undefined
 const pendingNativeWrites = new Set<Promise<unknown>>()
 
 function beginBooksMutation() {
@@ -199,6 +201,21 @@ function forgetTag(id: string) {
   }
 }
 
+function rememberPins(pins: LibraryPins) {
+  pinsCache = pins
+}
+
+async function updateLibraryPin(kind: 'author' | 'tag', id: string, pinned: boolean) {
+  const pins = await trackNativeWrite(invoke<LibraryPins>('update_library_pin', { kind, id, pinned }))
+  rememberPins(pins)
+  notify('pins')
+  return pins
+}
+
+function invalidatePins() {
+  pinsCache = undefined
+}
+
 function withoutReadingSpread(configuration: BookRecord['configuration'] | undefined) {
   const { spread, ...rest } = configuration ?? {}
   return rest
@@ -356,7 +373,12 @@ export const db = {
 
       if (!readingPositionOnly) {
         if (changes.metadata) invalidateCovers()
-        notify(...(['books', changes.metadata ? 'covers' : undefined].filter(Boolean) as TableName[]))
+        if (changes.metadata) invalidatePins()
+        notify(
+          ...(['books', changes.metadata ? 'covers' : undefined, changes.metadata ? 'pins' : undefined].filter(
+            Boolean,
+          ) as TableName[]),
+        )
       }
       return book ?? undefined
     },
@@ -370,7 +392,8 @@ export const db = {
       await trackNativeWrite(invoke('delete_books', { ids }))
       forgetBooks(ids)
       forgetCovers(ids)
-      notify('books', 'covers', 'files')
+      invalidatePins()
+      notify('books', 'covers', 'files', 'pins')
     },
     async delete(id: string) {
       await this.bulkDelete([id])
@@ -420,8 +443,33 @@ export const db = {
       const books = await trackNativeWrite(invoke<BookRecord[]>('delete_tag', { id }))
       forgetTag(id)
       books.forEach((book) => rememberBook(book, { full: false }))
-      notify('tags', 'books')
+      invalidatePins()
+      notify('tags', 'books', 'pins')
       return books
+    },
+  },
+  pins: {
+    async get() {
+      if (pinsCache) return pinsCache
+
+      const pins = await invoke<LibraryPins>('get_library_pins')
+      rememberPins(pins)
+      return pins
+    },
+    peek() {
+      return pinsCache
+    },
+    async pinAuthor(author: string) {
+      return updateLibraryPin('author', author, true)
+    },
+    async unpinAuthor(author: string) {
+      return updateLibraryPin('author', author, false)
+    },
+    async pinTag(tagId: string) {
+      return updateLibraryPin('tag', tagId, true)
+    },
+    async unpinTag(tagId: string) {
+      return updateLibraryPin('tag', tagId, false)
     },
   },
   files: {
@@ -506,8 +554,9 @@ export async function importEpubPaths(
   )
   rememberBookBatch(result.books)
   if (result.books.length) {
+    invalidatePins()
     if (!progressiveUpdates) await refreshImportedCovers(result.books.map((book) => book.id))
-    notify('books', 'covers', 'files')
+    notify('books', 'covers', 'files', 'pins')
   }
   return result
 }
@@ -561,8 +610,9 @@ export async function importTextPaths(
   )
   rememberBookBatch(result.books)
   if (result.books.length) {
+    invalidatePins()
     if (!progressiveUpdates) await refreshImportedCovers(result.books.map((book) => book.id))
-    notify('books', 'covers', 'files')
+    notify('books', 'covers', 'files', 'pins')
   }
   return result
 }

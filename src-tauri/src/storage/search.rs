@@ -1762,6 +1762,7 @@ mod tests {
                         version: 1,
                         books,
                         tags: Vec::new(),
+                        pins: LibraryPins::default(),
                     },
                     external: ExternalBookIndex::default(),
                     settings: json!({}),

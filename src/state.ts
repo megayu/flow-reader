@@ -232,8 +232,6 @@ function normalizeSettings(value: Partial<Settings> | undefined): Settings {
     theme: normalizeThemeConfiguration(settings.theme),
     libraryDisplay: normalizeLibraryDisplay(settings.libraryDisplay),
     librarySort: normalizeLibrarySort(settings.librarySort),
-    libraryPinnedAuthors: normalizeStringList(settings.libraryPinnedAuthors),
-    libraryPinnedTags: normalizeStringList(settings.libraryPinnedTags),
     textImportRules: {
       ...defaultTextImportRules,
       ...settings.textImportRules,
@@ -331,24 +329,6 @@ function normalizeLibrarySort(value: Partial<LibrarySortConfiguration> | undefin
     value?.direction === 'desc' || value?.direction === 'asc' ? value.direction : defaultLibrarySort.direction
 
   return { field, direction }
-}
-
-function normalizeStringList(value: unknown) {
-  if (!Array.isArray(value)) return []
-
-  const seen = new Set<string>()
-  const list: string[] = []
-  value.forEach((item) => {
-    if (typeof item !== 'string') return
-
-    const normalized = item.replace(/\s+/g, ' ').trim()
-    if (!normalized || seen.has(normalized)) return
-
-    seen.add(normalized)
-    list.push(normalized)
-  })
-
-  return list
 }
 
 export function useSettings() {

@@ -40,7 +40,7 @@ import { SettingsDialog } from '@/settings/SettingsDialog'
 import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
 import { type LibraryAction, type Action as ReaderPanelAction, useAction, useLibraryAction } from '../hooks/useAction'
-import { useLibrary, useLibraryTags } from '../hooks/useLibrary'
+import { useLibrary, useLibraryPins, useLibraryTags } from '../hooks/useLibrary'
 import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import {
@@ -48,15 +48,11 @@ import {
   cleanLibraryTagName,
   getLibraryAuthorOptions,
   getLibraryTagOptions,
-  pinLibraryAuthor,
-  pinLibraryTag,
   pruneLibraryAuthorFilters,
   pruneLibraryTagFilters,
   sameLibraryTagName,
   toggleLibraryAuthorFilter,
   toggleLibraryTagFilter,
-  unpinLibraryAuthor,
-  unpinLibraryTag,
 } from '../library/filters'
 import { toMessageKeySegment } from '../locales'
 import { useReaderSnapshot } from '../models/reader'
@@ -65,7 +61,6 @@ import {
   useLibraryAuthorFilter,
   useLibraryStatusFilter,
   useLibraryTagFilter,
-  useSettings,
   useSettingsDialogOpen,
   useSetZenTypographyOverrides,
   useViewMode,
@@ -639,8 +634,8 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const t = useTranslation('home')
   const books = useLibrary()
   const tags = useLibraryTags()
+  const pins = useLibraryPins()
   const [libraryAction] = useLibraryAction()
-  const [settings, setSettings] = useSettings()
   const [statusFilters, setStatusFilters] = useLibraryStatusFilter()
   const [authorFilters, setAuthorFilters] = useLibraryAuthorFilter()
   const [tagFilters, setTagFilters] = useLibraryTagFilter()
@@ -652,12 +647,12 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const [deletingTag, setDeletingTag] = useState<LibraryTagRecord>()
   const newTagInputRef = useRef<HTMLInputElement>(null)
   const authorOptions = useMemo(
-    () => getLibraryAuthorOptions(books ?? [], statusFilters, settings.libraryPinnedAuthors ?? []),
-    [books, settings.libraryPinnedAuthors, statusFilters],
+    () => getLibraryAuthorOptions(books ?? [], statusFilters, pins?.authors ?? []),
+    [books, pins?.authors, statusFilters],
   )
   const tagOptions = useMemo(
-    () => getLibraryTagOptions(books ?? [], statusFilters, tags ?? [], settings.libraryPinnedTags ?? []),
-    [books, settings.libraryPinnedTags, statusFilters, tags],
+    () => getLibraryTagOptions(books ?? [], statusFilters, tags ?? [], pins?.tagIds ?? []),
+    [books, pins?.tagIds, statusFilters, tags],
   )
   const hasFilters = statusFilters.length > 0 || authorFilters.length > 0 || tagFilters.length > 0
 
@@ -708,45 +703,21 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     [setTagFilters],
   )
 
-  const pinAuthor = useCallback(
-    (author: string) => {
-      setSettings((current) => ({
-        ...current,
-        libraryPinnedAuthors: pinLibraryAuthor(current.libraryPinnedAuthors ?? [], author),
-      }))
-    },
-    [setSettings],
-  )
+  const pinAuthor = useCallback((author: string) => {
+    void db.pins.pinAuthor(author)
+  }, [])
 
-  const unpinAuthor = useCallback(
-    (author: string) => {
-      setSettings((current) => ({
-        ...current,
-        libraryPinnedAuthors: unpinLibraryAuthor(current.libraryPinnedAuthors ?? [], author),
-      }))
-    },
-    [setSettings],
-  )
+  const unpinAuthor = useCallback((author: string) => {
+    void db.pins.unpinAuthor(author)
+  }, [])
 
-  const pinTag = useCallback(
-    (tagId: string) => {
-      setSettings((current) => ({
-        ...current,
-        libraryPinnedTags: pinLibraryTag(current.libraryPinnedTags ?? [], tagId),
-      }))
-    },
-    [setSettings],
-  )
+  const pinTag = useCallback((tagId: string) => {
+    void db.pins.pinTag(tagId)
+  }, [])
 
-  const unpinTag = useCallback(
-    (tagId: string) => {
-      setSettings((current) => ({
-        ...current,
-        libraryPinnedTags: unpinLibraryTag(current.libraryPinnedTags ?? [], tagId),
-      }))
-    },
-    [setSettings],
-  )
+  const unpinTag = useCallback((tagId: string) => {
+    void db.pins.unpinTag(tagId)
+  }, [])
 
   useEffect(() => {
     setAuthorFilters((current) => {
@@ -990,10 +961,6 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
         <DeleteLibraryTagDialog
           tag={deletingTag}
           onDeleted={() => {
-            setSettings((current) => ({
-              ...current,
-              libraryPinnedTags: unpinLibraryTag(current.libraryPinnedTags ?? [], deletingTag.id),
-            }))
             setDeletingTag(undefined)
           }}
           onClose={() => setDeletingTag(undefined)}
