@@ -101,24 +101,8 @@ pub(super) fn revealable_book_source_path(book: &LibraryBook) -> Option<&Path> {
     book.source_path.as_deref().filter(|path| path.is_file())
 }
 
-fn tag_id_from_name(name: &str, created_at: u64) -> String {
-    let slug = name
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() {
-                ch.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .split('-')
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>()
-        .join("-");
-    let slug = if slug.is_empty() { "tag" } else { &slug };
-
-    format!("tag-{slug}-{created_at}")
+fn tag_id(created_at: u64) -> String {
+    format!("tag-{created_at}")
 }
 
 fn compose_book_summaries(storage: &AppStorage) -> Result<Vec<BookRecord>, String> {
@@ -187,11 +171,11 @@ pub fn create_tag(storage: State<'_, AppStorage>, name: String) -> Result<Option
         }
 
         let created_at = now_ms();
-        let mut id = tag_id_from_name(&name, created_at);
+        let mut id = tag_id(created_at);
         let mut suffix = 1;
         while state.library.tags.iter().any(|tag| tag.id == id) {
             suffix += 1;
-            id = format!("{}-{suffix}", tag_id_from_name(&name, created_at));
+            id = format!("{}-{suffix}", tag_id(created_at));
         }
 
         let tag = LibraryTagRecord {
@@ -252,7 +236,7 @@ pub fn update_tag(
 
 #[tauri::command]
 pub fn delete_tag(storage: State<'_, AppStorage>, id: String) -> Result<Vec<BookRecord>, String> {
-    {
+    let settings_changed = {
         let mut state = storage
             .inner
             .state
@@ -263,9 +247,15 @@ pub fn delete_tag(storage: State<'_, AppStorage>, id: String) -> Result<Vec<Book
         for book in &mut state.library.books {
             book.tag_ids.retain(|tag_id| tag_id != &id);
         }
-    }
+
+        let tags = state.library.tags.clone();
+        prune_library_pinned_tags(&mut state.settings, &tags)
+    };
 
     storage.mark_library_dirty();
+    if settings_changed {
+        storage.mark_settings_dirty();
+    }
     storage.flush_dirty()?;
     compose_book_summaries(&storage)
 }
@@ -1687,6 +1677,8 @@ pub fn update_settings(storage: State<'_, AppStorage>, settings: Value) -> Resul
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
+        let mut settings = settings;
+        prune_library_pinned_tags(&mut settings, &state.library.tags);
         state.settings = settings;
     }
 
