@@ -40,7 +40,7 @@ impl Default for Library {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase")]
 pub struct LibraryPins {
     pub(super) authors: Vec<String>,
     pub(super) tag_ids: Vec<String>,
@@ -83,6 +83,7 @@ pub(super) struct ExternalBook {
     pub(super) source_storage: SourceStorage,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) source_path: Option<PathBuf>,
+    #[serde(default = "empty_object")]
     pub(super) metadata: Value,
     pub(super) created_at: u64,
     pub(super) last_opened_at: u64,
@@ -96,6 +97,7 @@ pub(super) struct LibraryBook {
     pub(super) size: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) reading_status: Option<ReadingStatus>,
+    #[serde(default)]
     pub(super) source_format: BookSourceFormat,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) content_edited_at: Option<u64>,
@@ -208,9 +210,10 @@ pub(super) enum ReadingStatus {
     Read,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BookSourceFormat {
+    #[default]
     Epub,
     Txt,
 }
