@@ -1675,6 +1675,71 @@ test('updates the rendered iframe after a mocked book text replacement', async (
   })
 })
 
+test('reloads an imported replacement now for the active tab and on activation for an inactive tab', async ({
+  page,
+}) => {
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page)
+  await openFixtureBookByName(page, 'Tab Layout B')
+  await waitForStableReaderLayout(page)
+
+  const immediate = await page.evaluate(() => {
+    const reader = (window as any).reader
+    const [inactiveTab, activeTab] = reader.focusedGroup.bookTabs
+    if (!inactiveTab?.rendition || !activeTab?.rendition) {
+      throw new Error('Missing reader renditions')
+    }
+
+    ;(window as any).__flowImportReloadRefs = {
+      inactiveRendition: inactiveTab.rendition,
+      activeRendition: activeTab.rendition,
+    }
+    reader.refreshImportedBooks([
+      {
+        ...inactiveTab.book,
+        contentHash: 'replacement-a',
+        contentVersion: (inactiveTab.book.contentVersion ?? 0) + 1,
+      },
+      {
+        ...activeTab.book,
+        contentHash: 'replacement-b',
+        contentVersion: (activeTab.book.contentVersion ?? 0) + 1,
+      },
+    ])
+
+    return {
+      activeRenditionCleared: !activeTab.rendition,
+      activeVersion: activeTab.book.contentVersion,
+      inactiveRenditionPreserved: inactiveTab.rendition === (window as any).__flowImportReloadRefs.inactiveRendition,
+      inactiveVersion: inactiveTab.book.contentVersion ?? 0,
+    }
+  })
+
+  expect(immediate).toEqual({
+    activeRenditionCleared: true,
+    activeVersion: 1,
+    inactiveRenditionPreserved: true,
+    inactiveVersion: 0,
+  })
+
+  await waitForStableReaderLayout(page)
+  await readerTab(page, 'Tab Layout A').click()
+  await waitForStableReaderLayout(page)
+
+  const activated = await page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    return {
+      renditionReplaced: tab.rendition !== (window as any).__flowImportReloadRefs.inactiveRendition,
+      version: tab.book.contentVersion,
+    }
+  })
+
+  expect(activated).toEqual({
+    renditionReplaced: true,
+    version: 1,
+  })
+})
+
 const SIDEBAR_SCROLLBAR_WIDTH = 10
 const SIDEBAR_EDGE_EPSILON = 0.5
 

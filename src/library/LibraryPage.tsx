@@ -174,6 +174,11 @@ export function LibraryPage() {
       } catch (error) {
         console.error(error)
       }
+      if (viewModeRef.current === 'reader') {
+        const refreshedBookIds = reader.refreshImportedBooks(result.books)
+        openedBookIds ??= new Set()
+        refreshedBookIds.forEach((id) => openedBookIds?.add(id))
+      }
       notifyBookImportResult(result)
       return openedBookIds
     },
@@ -188,8 +193,12 @@ export function LibraryPage() {
       })
         .then((result: BookImportResult) => {
           setBookImportProgress(undefined)
+          const openBookIds = openAfterImport ? reader.refreshImportedBooks(result.books) : new Set<string>()
           notifyBookImportResult(result)
-          openImportedTextBooks(result.books, openAfterImport)
+          openImportedTextBooks(
+            result.books.filter((book) => !openBookIds.has(book.id)),
+            openAfterImport,
+          )
         })
         .catch((error) => {
           setBookImportProgress(undefined)

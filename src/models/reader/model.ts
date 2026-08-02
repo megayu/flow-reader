@@ -263,6 +263,7 @@ class BaseTab {
 // accessors keep host objects out of Valtio's enumerable snapshots.
 const frameRuntimeIdentity = Symbol('bookTabFrameRuntime')
 const frameWindowsByRuntime = new WeakMap<object, readonly Window[]>()
+const pendingImportedBooksByRuntime = new WeakMap<object, BookRecord>()
 
 function getFrameRuntimeIdentity(tab: BookTab) {
   return (tab as unknown as { [frameRuntimeIdentity]: object })[frameRuntimeIdentity]
@@ -539,6 +540,34 @@ export class BookTab extends BaseTab {
     this.destroyRendering()
     this.contentReloadTarget = target
     this.bumpViewVersion()
+  }
+
+  refreshImportedBook(book: BookRecord) {
+    const runtime = getFrameRuntimeIdentity(this)
+    const currentBook = pendingImportedBooksByRuntime.get(runtime) ?? this.book
+    const currentVersion = currentBook.contentVersion ?? 0
+    const importedVersion = book.contentVersion ?? 0
+    const contentChanged =
+      importedVersion > currentVersion ||
+      (importedVersion === currentVersion && book.contentHash !== currentBook.contentHash)
+    if (!contentChanged) return
+
+    if (!this.active) {
+      pendingImportedBooksByRuntime.set(runtime, book)
+      return
+    }
+
+    pendingImportedBooksByRuntime.delete(runtime)
+    this.reloadContentAfterEdit(book, this.getCurrentDisplayTarget())
+  }
+
+  private refreshPendingImportedBook() {
+    const runtime = getFrameRuntimeIdentity(this)
+    const book = pendingImportedBooksByRuntime.get(runtime)
+    if (!book) return
+
+    pendingImportedBooksByRuntime.delete(runtime)
+    this.reloadContentAfterEdit(book, this.getCurrentDisplayTarget())
   }
 
   async promoteExternalBook(libraryBook: BookRecord) {
@@ -886,6 +915,7 @@ export class BookTab extends BaseTab {
     if (manager) {
       manager.suspendResize = true
     }
+    if (active) this.refreshPendingImportedBook()
   }
 
   define(def: string[]) {
@@ -2436,6 +2466,24 @@ export class Reader {
       return
     }
     tab.reloadContentAfterEdit(book, reloadTarget)
+  }
+
+  refreshImportedBooks(books: BookRecord[]) {
+    const booksById = new Map(books.map((book) => [book.id, book]))
+    const openBookIds = new Set<string>()
+    if (!booksById.size) return openBookIds
+
+    this.groups.forEach(({ bookTabs }) => {
+      bookTabs.forEach((tab) => {
+        const book = booksById.get(tab.book.id)
+        if (!book) return
+
+        openBookIds.add(book.id)
+        db.books.remember(book)
+        tab.refreshImportedBook(book)
+      })
+    })
+    return openBookIds
   }
 
   promoteExternalBooks(libraryBooks: BookRecord[]) {
