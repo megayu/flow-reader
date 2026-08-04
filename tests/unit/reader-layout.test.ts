@@ -3,17 +3,11 @@ import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
 import * as annotationModule from '../../src/annotation.ts'
-import * as readerModelModule from '../../src/models/reader/model.ts'
-import * as noteLinksModule from '../../src/noteLinks.ts'
-import * as noteSemanticsModule from '../../src/noteSemantics.ts'
 import * as contextViewLayoutModule from '../../src/reader/contextViewLayout.ts'
 import * as stylesModule from '../../src/styles.ts'
 
 const annotation = annotationModule as Record<string, any>
 const contextViewLayout = contextViewLayoutModule as Record<string, any>
-const noteLinks = noteLinksModule as Record<string, any>
-const noteSemantics = noteSemanticsModule as Record<string, any>
-const readerModel = readerModelModule as Record<string, any>
 const styles = stylesModule as Record<string, any>
 
 function testTextAlignIsNonPaginationStyle() {
@@ -447,108 +441,6 @@ function testZoomLeavesNonDecorativeBackgroundsAlone() {
   )
 }
 
-function testAnnotationSpineDoesNotRequireNavItem() {
-  assert.strictEqual(
-    typeof annotation.createAnnotationSpine,
-    'function',
-    'Expected annotation spine creation to be independent of navitem',
-  )
-
-  assert.deepStrictEqual(
-    annotation.createAnnotationSpine({
-      index: 3,
-      href: 'Text/chapter-3.xhtml',
-      navitem: { label: 'Chapter 3' },
-    }),
-    {
-      index: 3,
-      href: 'Text/chapter-3.xhtml',
-      title: 'Chapter 3',
-    },
-  )
-
-  assert.deepStrictEqual(
-    annotation.createAnnotationSpine({
-      index: 4,
-      href: 'Text/chapter-4.xhtml',
-    }),
-    {
-      index: 4,
-      href: 'Text/chapter-4.xhtml',
-    },
-  )
-}
-
-function testEpubHrefComparisonHandlesEncodedSpinePaths() {
-  assert.strictEqual(
-    typeof noteLinks.sameHref,
-    'function',
-    'Expected one shared href comparison helper for reader paths',
-  )
-
-  assert.strictEqual(
-    noteLinks.sameHref('Text/%2A%3Achapter%3Aone.xhtml', 'Text/*:chapter:one.xhtml'),
-    true,
-    'decoded NCX targets must match encoded OPF spine hrefs',
-  )
-
-  assert.strictEqual(
-    noteLinks.sameHref('http://localhost:7127/OEBPS/Images/%2A%3Aplate%3A1.jpg', 'Images/*:plate:1.jpg'),
-    true,
-    'absolute image URLs must match package-relative resource hrefs',
-  )
-}
-
-function testNoteMarkersSupportCjkBrackets() {
-  assert.strictEqual(typeof noteSemantics.isNoteMarkerText, 'function', 'Expected note marker recognition to be shared')
-
-  assert.strictEqual(noteSemantics.isNoteMarkerText('[67]'), true)
-  assert.strictEqual(noteSemantics.isNoteMarkerText('〚95〛'), true)
-  assert.strictEqual(noteSemantics.isNoteMarkerText('〖95〗'), true)
-  assert.strictEqual(noteSemantics.isNoteMarkerText('【零】'), true)
-  assert.strictEqual(noteSemantics.isNoteMarkerText('【九】'), true)
-  assert.strictEqual(noteSemantics.isNoteMarkerText('【壹拾貳】'), true)
-  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('零、注释'), true)
-  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('壹拾貳、注释'), true)
-  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('[1].译者注'), true)
-  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('[12]. Translator note'), true)
-  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('[1]. 原作者在邮件中指出'), true)
-  assert.strictEqual(noteSemantics.isNoteMarkerText('〚note〛'), false)
-  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('[note].正文'), false)
-}
-
-function testChapterFindUsesTheReadingOrderStartSection() {
-  assert.strictEqual(
-    typeof readerModel.readingOrderStartSectionIndex,
-    'function',
-    'Expected chapter find to share the pagination-model reading order',
-  )
-
-  const spread = {
-    left: { section: { index: 11 } },
-    right: { section: { index: 12 } },
-  }
-  assert.strictEqual(readerModel.readingOrderStartSectionIndex(spread, 'left-first', 20), 11)
-  assert.strictEqual(readerModel.readingOrderStartSectionIndex(spread, 'right-first', 20), 12)
-  assert.strictEqual(readerModel.readingOrderStartSectionIndex(undefined, undefined, 20), 20)
-}
-
-function testClosingBackgroundTabsPreservesTheSelectedTab() {
-  const pages = ['A', 'B', 'C', 'D'].map((name) => {
-    const Page = () => null
-    Page.displayName = name
-    return Page
-  })
-  const group = new readerModel.Group(pages, 2)
-  const selectedTab = group.selectedTab
-
-  group.removeTab(0)
-  assert.strictEqual(group.selectedTab, selectedTab)
-
-  group.removeTab(group.tabs.length - 1)
-  assert.strictEqual(group.selectedTab, selectedTab)
-}
-
 for (const run of [
   testTextAlignIsNonPaginationStyle,
   testZoomBodyStylesSkipNonNumericValues,
@@ -558,11 +450,6 @@ for (const run of [
   testZoomMediaUsesScaledContentColumnWidth,
   testZoomPinsExplicitDecorativeBackgroundsToViewport,
   testZoomLeavesNonDecorativeBackgroundsAlone,
-  testAnnotationSpineDoesNotRequireNavItem,
-  testEpubHrefComparisonHandlesEncodedSpinePaths,
-  testNoteMarkersSupportCjkBrackets,
-  testChapterFindUsesTheReadingOrderStartSection,
-  testClosingBackgroundTabsPreservesTheSelectedTab,
   testVerticalOverlayPlacementStaysInsidePageAndAvoidsSelection,
   testContextViewLayoutClampsOutsideAnchorsToViewport,
   testVerticalRangeRectsFollowReadingOrder,

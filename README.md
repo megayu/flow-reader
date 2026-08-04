@@ -119,7 +119,7 @@ pnpm test:integration
 Run one Playwright spec:
 
 ```bash
-pnpm exec playwright test tests/integration/ui-interaction.spec.ts
+pnpm exec playwright test tests/integration/app-shell.spec.ts
 ```
 
 Run the complete browser, EPUB engine, and native quality and test suite:
