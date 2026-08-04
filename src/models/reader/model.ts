@@ -2264,13 +2264,18 @@ export class Group {
   }
 
   removeTab(index: number) {
+    const previousSelectedIndex = this.selectedIndex
     const wasSelected = index === this.selectedIndex
     const tab = this.tabs.splice(index, 1)
     const paneIndex = this.paneTabs.findIndex((item) => item.id === tab[0]?.id)
     if (paneIndex > -1) this.paneTabs.splice(paneIndex, 1)
     setTabRuntimeActive(tab[0], false)
-    this.selectedIndex = updateIndex(this.tabs, index)
-    if (wasSelected) this.setSelectedRuntimeActive(true)
+    if (wasSelected) {
+      this.selectedIndex = updateIndex(this.tabs, index)
+      this.setSelectedRuntimeActive(true)
+    } else if (index < previousSelectedIndex) {
+      this.selectedIndex = previousSelectedIndex - 1
+    }
     return tab[0]
   }
 

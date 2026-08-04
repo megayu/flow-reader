@@ -533,6 +533,22 @@ function testChapterFindUsesTheReadingOrderStartSection() {
   assert.strictEqual(readerModel.readingOrderStartSectionIndex(undefined, undefined, 20), 20)
 }
 
+function testClosingBackgroundTabsPreservesTheSelectedTab() {
+  const pages = ['A', 'B', 'C', 'D'].map((name) => {
+    const Page = () => null
+    Page.displayName = name
+    return Page
+  })
+  const group = new readerModel.Group(pages, 2)
+  const selectedTab = group.selectedTab
+
+  group.removeTab(0)
+  assert.strictEqual(group.selectedTab, selectedTab)
+
+  group.removeTab(group.tabs.length - 1)
+  assert.strictEqual(group.selectedTab, selectedTab)
+}
+
 for (const run of [
   testTextAlignIsNonPaginationStyle,
   testZoomBodyStylesSkipNonNumericValues,
@@ -546,6 +562,7 @@ for (const run of [
   testEpubHrefComparisonHandlesEncodedSpinePaths,
   testNoteMarkersSupportCjkBrackets,
   testChapterFindUsesTheReadingOrderStartSection,
+  testClosingBackgroundTabsPreservesTheSelectedTab,
   testVerticalOverlayPlacementStaysInsidePageAndAvoidsSelection,
   testContextViewLayoutClampsOutsideAnchorsToViewport,
   testVerticalRangeRectsFollowReadingOrder,
