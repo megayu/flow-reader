@@ -45,6 +45,28 @@ function sanitizeNcxNavLabelText(markup) {
   )
 }
 
+function isParserErrorDocument(doc) {
+  var root = doc && doc.documentElement
+  if (!root) return false
+
+  var isParserError = function (node) {
+    return (
+      node &&
+      String(node.localName || node.nodeName).toLowerCase() === 'parsererror'
+    )
+  }
+  if (isParserError(root)) return true
+
+  return isParserError(root.firstElementChild)
+}
+
+function repairBareXmlAmpersands(markup) {
+  return markup.replace(
+    /&(?!(?:#\d+|#x[\da-f]+|[^\s<>&;]+);)/gi,
+    '&amp;',
+  )
+}
+
 /**
  * Generates a UUID
  * based on: http://stackoverflow.com/questions/105034/how-to-create-a-guid-uuid-in-javascript
@@ -556,6 +578,18 @@ export function parse(markup, mime, forceXMLDom) {
   }
 
   doc = new Parser().parseFromString(markup, mime)
+
+  // Some otherwise readable EPUBs contain HTML-style URLs with bare ampersands.
+  // Keep the strict parser as the normal path and repair only a failed XHTML.
+  if (mime === 'application/xhtml+xml' && isParserErrorDocument(doc)) {
+    var repairedMarkup = repairBareXmlAmpersands(markup)
+    if (repairedMarkup !== markup) {
+      var repairedDoc = new Parser().parseFromString(repairedMarkup, mime)
+      if (!isParserErrorDocument(repairedDoc)) {
+        return repairedDoc
+      }
+    }
+  }
 
   return doc
 }
