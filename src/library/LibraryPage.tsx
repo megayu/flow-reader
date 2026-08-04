@@ -108,6 +108,22 @@ const libraryBookCardSizePresets = [
   { key: 'medium', value: 160 },
   { key: 'large', value: 200 },
 ] as const
+const dragImportAutoOpenBookTabLimit = 8
+
+function selectDroppedBooksToAutoOpen(books: BookRecord[]) {
+  const openBookIds = new Set(reader.groups.flatMap((group) => group.bookTabs.map((tab) => tab.book.id)))
+  if (openBookIds.size >= dragImportAutoOpenBookTabLimit) return []
+
+  const selectedBooks: BookRecord[] = []
+  for (const book of books) {
+    if (openBookIds.has(book.id)) continue
+
+    openBookIds.add(book.id)
+    selectedBooks.push(book)
+    if (openBookIds.size >= dragImportAutoOpenBookTabLimit) break
+  }
+  return selectedBooks
+}
 
 function isKeyboardTargetBlocked(e: KeyboardEvent) {
   return isGlobalKeyboardShortcutBlocked(e)
@@ -155,7 +171,7 @@ export function LibraryPage() {
     (books: BookRecord[], openAfterImport: boolean) => {
       if (!openAfterImport || !books.length) return
 
-      books.forEach((book) => reader.addTab(book))
+      selectDroppedBooksToAutoOpen(books).forEach((book) => reader.addTab(book))
       setViewMode('reader')
     },
     [setViewMode],
@@ -296,7 +312,7 @@ export function LibraryPage() {
       onDrop: (books) => {
         if (viewModeRef.current === 'library') return
 
-        books.forEach((book) => reader.addTab(book))
+        selectDroppedBooksToAutoOpen(books).forEach((book) => reader.addTab(book))
         setViewMode('reader')
       },
       onDropTextPaths: (paths) => {

@@ -14,6 +14,10 @@ import {
 
 const nativeOpenEvent = 'flow-open-files'
 const bookImportProgressEvent = 'flow-book-import-progress'
+const filePathCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: 'base',
+})
 
 interface HandleFilesOptions {
   onImportProgress?: (progress: BookImportProgress) => void
@@ -30,6 +34,25 @@ function isTxtPath(path: string) {
   return path.toLowerCase().endsWith('.txt')
 }
 
+function getPathFilename(path: string) {
+  const separatorIndex = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+  return path.slice(separatorIndex + 1)
+}
+
+function compareExactText(a: string, b: string) {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+function sortDroppedFilePaths(paths: readonly string[]) {
+  return [...paths].sort((a, b) => {
+    const filenameOrder = filePathCollator.compare(getPathFilename(a), getPathFilename(b))
+    if (filenameOrder) return filenameOrder
+
+    const pathOrder = filePathCollator.compare(a, b)
+    return pathOrder || compareExactText(a, b)
+  })
+}
+
 function getNativeFilePath(file: File) {
   const path = (file as File & { path?: string }).path
   return typeof path === 'string' && path ? path : ''
@@ -43,7 +66,7 @@ export async function handleFiles(files: Iterable<File>, options: HandleFilesOpt
   }
   if (!paths.length) return []
 
-  return handleFilePaths(paths, options)
+  return handleFilePaths(sortDroppedFilePaths(paths), options)
 }
 
 export async function handleFilePaths(
@@ -166,7 +189,7 @@ export async function setupNativeOpenFiles({
       const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow')
       unlistenDrop = await getCurrentWebviewWindow().onDragDropEvent((event) => {
         if (event.payload.type !== 'drop') return
-        void handleFilePaths(event.payload.paths, {
+        void handleFilePaths(sortDroppedFilePaths(event.payload.paths), {
           onImportProgress,
           onImportResult,
           replaceExisting: true,
