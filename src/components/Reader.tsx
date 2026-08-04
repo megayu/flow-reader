@@ -29,6 +29,7 @@ import {
   useSetViewMode,
   useSetZenMode,
   useSetZenTypographyOverrides,
+  useUiFontSizeValue,
   useViewModeValue,
   useZenModeValue,
 } from '@/state'
@@ -149,6 +150,38 @@ interface TabPointerDrag {
   targetIndex?: number
 }
 
+// Keep one text glyph visible in addition to the tab's fixed icon, gap, padding, and close-button chrome.
+const READER_TAB_FIXED_CHROME_WIDTH = 60
+
+interface ReaderTabIconOnlyState {
+  element: HTMLElement
+  iconOnly: boolean
+}
+
+function readReaderTabIconOnlyStates(elements: HTMLElement[], iconOnlyWidth: number) {
+  return elements.map((element) => ({
+    element,
+    iconOnly: element.getBoundingClientRect().width <= iconOnlyWidth,
+  }))
+}
+
+function observeReaderTabIconOnlyStates(
+  elements: HTMLElement[],
+  iconOnlyWidth: number,
+  applyStates: (states: ReaderTabIconOnlyState[]) => void,
+) {
+  const observer = new ResizeObserver((entries) => {
+    const states = entries.map((entry) => {
+      const element = entry.target as HTMLElement
+      const width = entry.borderBoxSize[0]?.inlineSize ?? element.getBoundingClientRect().width
+      return { element, iconOnly: width <= iconOnlyWidth }
+    })
+    applyStates(states)
+  })
+  elements.forEach((element) => observer.observe(element))
+  return () => observer.disconnect()
+}
+
 function ReaderGroup({
   index,
   content,
@@ -161,7 +194,10 @@ function ReaderGroup({
   const selectedTabId = tabs[selectedIndex]?.id
   const [backgroundClassName] = useBackground()
   const zenMode = useZenModeValue()
+  const uiFontSize = useUiFontSizeValue()
+  const tabIconOnlyWidth = READER_TAB_FIXED_CHROME_WIDTH + uiFontSize
   const tabWheelDelta = useRef(0)
+  const tabListRef = useRef<HTMLUListElement>(null)
   const tabPointerDrag = useRef<TabPointerDrag | undefined>(undefined)
   const suppressTabClick = useRef(false)
   const [hoveredTabIndex, setHoveredTabIndex] = useState<number | undefined>()
@@ -169,6 +205,36 @@ function ReaderGroup({
     sourceIndex: number
     targetIndex?: number
   }>()
+  const tabElementSignature = tabs.map((tab) => tab.id).join('\u0000')
+
+  useLayoutEffect(() => {
+    const list = tabListRef.current
+    if (!list) return
+
+    const tabElements = Array.from(list.querySelectorAll<HTMLElement>('[data-flow-reader-tab-index]'))
+    const applyIconOnlyStates = (states: Array<{ element: HTMLElement; iconOnly: boolean }>) => {
+      states.forEach(({ element, iconOnly }) => {
+        element.toggleAttribute('data-flow-tab-icon-only', iconOnly)
+      })
+    }
+
+    applyIconOnlyStates(readReaderTabIconOnlyStates(tabElements, tabIconOnlyWidth))
+    if (typeof ResizeObserver === 'undefined') {
+      const updateIconOnlyStates = () => applyIconOnlyStates(readReaderTabIconOnlyStates(tabElements, tabIconOnlyWidth))
+      window.addEventListener('resize', updateIconOnlyStates)
+
+      return () => {
+        window.removeEventListener('resize', updateIconOnlyStates)
+        tabElements.forEach((element) => element.removeAttribute('data-flow-tab-icon-only'))
+      }
+    }
+
+    const stopObserving = observeReaderTabIconOnlyStates(tabElements, tabIconOnlyWidth, applyIconOnlyStates)
+    return () => {
+      stopObserving()
+      tabElements.forEach((element) => element.removeAttribute('data-flow-tab-icon-only'))
+    }
+  }, [tabElementSignature, tabIconOnlyWidth])
 
   const handleMouseDown = useCallback(() => {
     reader.selectGroup(index)
@@ -311,6 +377,7 @@ function ReaderGroup({
     >
       <Tab.List
         className={clsx('flex', zenMode && 'hidden!')}
+        listRef={tabListRef}
         onWheel={handleTabWheel}
         onPointerDown={handleTabPointerDown}
         onPointerMove={handleTabPointerMove}

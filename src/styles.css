@@ -415,6 +415,24 @@ input[type="color"]::-webkit-color-swatch {
   display: none; /* Safari and Chrome */
 }
 
+.flow-reader-tab[data-flow-tab-icon-only] .flow-reader-tab-label {
+  opacity: 0;
+}
+.flow-reader-tab[data-flow-tab-icon-only] .flow-reader-tab-leading-icon {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.flow-reader-tab[data-flow-tab-icon-only][data-flow-tab-selected] .flow-reader-tab-leading-icon,
+.flow-reader-tab[data-flow-tab-icon-only]:not([data-flow-tab-selected]):hover .flow-reader-tab-leading-icon {
+  opacity: 0;
+}
+.flow-reader-tab[data-flow-tab-icon-only] .flow-reader-tab-close {
+  right: auto;
+  left: calc(50% - 12px);
+}
+
 .match-highlight {
   @apply bg-yellow-500/30;
   color: unset;

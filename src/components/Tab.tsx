@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { type LucideIcon, XIcon } from 'lucide-react'
-import type { ComponentProps, MouseEvent, ReactNode } from 'react'
+import type { ComponentProps, MouseEvent, ReactNode, Ref } from 'react'
 
 import { activeClass } from '../styles'
 
@@ -45,7 +45,7 @@ export function Tab({
   const tab = (
     <div
       className={clsx(
-        'relative mx-0.5 mt-0.5 mb-0 flex cursor-pointer items-center gap-1 p-2 pr-1 text-base outline-none',
+        'flow-reader-tab group/tab relative mx-0.5 mt-0.5 mb-0 flex h-10 min-w-9 max-w-max flex-[1_1_0] cursor-pointer items-center gap-1 px-2 pr-8 text-base outline-none',
         selected
           ? 'text-foreground z-10 rounded-t-[10px] rounded-b-none bg-(--flow-bg-tab-active) shadow-[inset_0_1px_0_var(--flow-tab-border)] before:pointer-events-none before:absolute before:bottom-0 before:-left-2.5 before:size-2.5 before:rounded-br-[10px] before:shadow-[5px_5px_0_5px_var(--flow-bg-tab-active)] after:pointer-events-none after:absolute after:-right-2.5 after:bottom-0 after:size-2.5 after:rounded-bl-[10px] after:shadow-[-5px_5px_0_5px_var(--flow-bg-tab-active)]'
           : clsx(
@@ -56,6 +56,7 @@ export function Tab({
         focused && 'text-foreground!',
         className,
       )}
+      data-flow-tab-selected={selected ? '' : undefined}
       onMouseDown={(event) => {
         onMouseDown?.(event)
         if (!event.defaultPrevented) closeOnMiddleClick(event)
@@ -79,10 +80,17 @@ export function Tab({
           )}
         />
       )}
-      <Icon size={16} className="text-muted-foreground relative z-10" />
-      <span className="relative z-10 max-w-50 truncate">{children}</span>
+      <span className="size-4 shrink-0">
+        <Icon size={16} className="flow-reader-tab-leading-icon text-muted-foreground relative z-10 block" />
+      </span>
+      <span className="flow-reader-tab-label relative z-10 min-w-0 max-w-50 truncate">{children}</span>
       <IconButton
-        className="relative z-10 size-6 transition-none active:translate-y-0"
+        className={clsx(
+          'flow-reader-tab-close absolute top-2 right-1 z-20 size-6 transition-none active:translate-y-0',
+          selected
+            ? 'bg-(--flow-bg-tab-active)'
+            : 'pointer-events-none opacity-0 group-hover/tab:pointer-events-auto group-hover/tab:bg-(--flow-bg-control-hover) group-hover/tab:opacity-100',
+        )}
         Icon={XIcon}
         onClick={(e) => {
           e.stopPropagation()
@@ -100,13 +108,14 @@ export function Tab({
 }
 
 interface ListProps extends Omit<ComponentProps<'ul'>, 'onWheel'> {
+  listRef?: Ref<HTMLUListElement>
   onDelete?: () => void
   onWheel?: ComponentProps<'div'>['onWheel']
 }
-const List: React.FC<ListProps> = ({ className, onDelete, onWheel, ...props }) => {
+const List: React.FC<ListProps> = ({ className, listRef, onDelete, onWheel, ...props }) => {
   return (
-    <div className={clsx('flex items-end justify-between bg-(--flow-bg-tabbar)', className)} onWheel={onWheel}>
-      <ul className={clsx('scroll-h flex items-end px-2.5')} {...props} />
+    <div className={clsx('flex min-w-0 items-end justify-between bg-(--flow-bg-tabbar)', className)} onWheel={onWheel}>
+      <ul ref={listRef} className={clsx('flex min-w-0 flex-1 items-end overflow-hidden px-2.5')} {...props} />
       {onDelete && (
         <IconButton
           className="mx-2"

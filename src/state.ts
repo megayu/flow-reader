@@ -161,6 +161,10 @@ export function useSetSettingsDialogOpen() {
   return useAppStore((state) => state.setSettingsDialogOpen)
 }
 
+export function useUiFontSizeValue() {
+  return useAppStore((state) => normalizeUiFontSize(state.settings.ui?.fontSize))
+}
+
 export function useViewMode() {
   const viewMode = useAppStore((state) => state.viewMode)
   const setViewMode = useAppStore((state) => state.setViewMode)
