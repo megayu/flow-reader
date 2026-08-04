@@ -17,9 +17,6 @@ const TEXT_NODE = 3
 const PAGINATED_ROOT_STYLE = 'paginated-root-normalize'
 const ORTHOGONAL_BLOCK_STYLE = 'orthogonal-block-sizing'
 const ORTHOGONAL_BLOCK_ATTRIBUTE = 'data-epubjs-orthogonal-block'
-const PAGE_BACKGROUND_STYLE = 'page-background-normalize'
-const PAGE_BACKGROUND_ATTRIBUTE = 'data-epubjs-page-background'
-const PAGE_BACKGROUND_SOURCE_ATTRIBUTE = 'data-epubjs-page-background-source'
 const SPREAD_BACKGROUND_STYLE = 'spread-background-fit'
 const SPREAD_BACKGROUND_ATTRIBUTE = 'data-epubjs-spread-background-fit'
 const SPREAD_BACKGROUND_SOURCE_ATTRIBUTE =
@@ -1092,16 +1089,36 @@ class Contents {
 
     this.restorePageBackgroundOverrides()
 
-    this.documentElement.setAttribute(PAGE_BACKGROUND_ATTRIBUTE, 'true')
-    this.content.setAttribute(PAGE_BACKGROUND_ATTRIBUTE, 'true')
-
-    if (this._pageBackgroundSources) {
-      this._pageBackgroundSources.forEach((element) => {
-        element.removeAttribute(PAGE_BACKGROUND_SOURCE_ATTRIBUTE)
-      })
-    }
-
     var backgrounds = this.findPageBackgrounds(width, height)
+    var backgroundColors = new Map()
+    backgrounds.forEach((background) => {
+      backgroundColors.set(background.element, background.computed)
+    })
+    if (!backgroundColors.has(this.documentElement)) {
+      backgroundColors.set(
+        this.documentElement,
+        this.window.getComputedStyle(this.documentElement),
+      )
+    }
+    if (!backgroundColors.has(this.content)) {
+      backgroundColors.set(
+        this.content,
+        this.window.getComputedStyle(this.content),
+      )
+    }
+    backgroundColors.forEach((computed, element) => {
+      if (
+        computed.backgroundColor === 'rgb(255, 255, 255)' ||
+        computed.backgroundColor === 'rgba(255, 255, 255, 1)'
+      ) {
+        this.setPageBackgroundProperty(
+          element,
+          'background-color',
+          'transparent',
+        )
+      }
+    })
+
     var hasReadableText = this.hasReadableTextContent()
     if (hasReadableText) {
       backgrounds.forEach((background) => {
@@ -1118,21 +1135,6 @@ class Contents {
             backgroundImage: background.computed.backgroundImage,
           }))
       : undefined
-    this._pageBackgroundSources = backgrounds.map((background) => {
-      background.element.setAttribute(PAGE_BACKGROUND_SOURCE_ATTRIBUTE, 'true')
-      return background.element
-    })
-
-    var css = `
-      html[${PAGE_BACKGROUND_ATTRIBUTE}],
-      body[${PAGE_BACKGROUND_ATTRIBUTE}],
-      [${PAGE_BACKGROUND_SOURCE_ATTRIBUTE}] {
-        background-color: transparent !important;
-      }
-    `
-
-    this.addStylesheetCss(css, PAGE_BACKGROUND_STYLE)
-
     this._pageBackgroundVersion = (this._pageBackgroundVersion || 0) + 1
     var version = this._pageBackgroundVersion
 
@@ -1155,23 +1157,7 @@ class Contents {
     this.restorePageBackgroundOverrides()
     this._pageBackgroundVersion = (this._pageBackgroundVersion || 0) + 1
 
-    if (this.documentElement) {
-      this.documentElement.removeAttribute(PAGE_BACKGROUND_ATTRIBUTE)
-    }
-
-    if (this.content) {
-      this.content.removeAttribute(PAGE_BACKGROUND_ATTRIBUTE)
-    }
-
-    if (this._pageBackgroundSources) {
-      this._pageBackgroundSources.forEach((element) => {
-        element.removeAttribute(PAGE_BACKGROUND_SOURCE_ATTRIBUTE)
-      })
-    }
-
-    this._pageBackgroundSources = undefined
     this._readablePageBackgrounds = undefined
-    this.addStylesheetCss(' ', PAGE_BACKGROUND_STYLE)
 
     return true
   }

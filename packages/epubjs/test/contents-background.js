@@ -254,6 +254,28 @@ describe('Contents page backgrounds', function () {
     }
   })
 
+  it('makes only fully opaque white page backgrounds transparent', function () {
+    const cases = [
+      { authored: 'rgb(255, 255, 255)', normalized: 'rgba(0, 0, 0, 0)' },
+      { authored: 'rgb(245, 240, 225)', normalized: 'rgb(245, 240, 225)' },
+    ]
+
+    cases.forEach(({ authored, normalized }) => {
+      const { contents, doc, cleanup } = createContents('<p>Readable body</p>')
+      doc.body.style.backgroundColor = authored
+
+      try {
+        contents.normalizePageBackgrounds(400, 600, 'ltr')
+        assert.equal(
+          doc.defaultView.getComputedStyle(doc.body).backgroundColor,
+          normalized,
+        )
+      } finally {
+        cleanup()
+      }
+    })
+  })
+
   it('preserves authored readable section background constraints', function () {
     const { contents, doc, cleanup } = createContents('<p>Readable body</p>')
     doc.body.style.backgroundImage = 'url("data:image/png;base64,iVBORw0KGgo=")'
