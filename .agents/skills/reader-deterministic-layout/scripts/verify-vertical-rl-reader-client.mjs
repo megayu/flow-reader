@@ -2,7 +2,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { chromium } from '@playwright/test'
-import sharp from 'sharp'
 
 const CDP_URL = process.env.FLOW_READER_CDP_URL ?? 'http://127.0.0.1:9351'
 const INVENTORY_FILE =
@@ -165,7 +164,7 @@ async function inspectReader(page) {
 }
 
 async function screenshotWithGapCheck(page, file, reader) {
-  await page.screenshot({ path: file })
+  const buffer = await page.screenshot({ path: file })
   const frame = reader.frames.find((candidate) => candidate.writingMode === 'vertical-rl')
   assert(frame, 'no rendered vertical-rl frame found', reader)
   assert(reader.contentRect, 'reader content rect is missing', reader)
@@ -176,27 +175,44 @@ async function screenshotWithGapCheck(page, file, reader) {
   const top = Math.round(frame.rect.top * dpr)
   const width = Math.max(1, Math.round(reader.gap * dpr))
   const height = Math.max(1, Math.round(frame.rect.height * dpr))
-  const image = sharp(file)
-  const metadata = await image.metadata()
-  const extract = {
-    left: Math.max(0, Math.min(left, metadata.width - 1)),
-    top: Math.max(0, Math.min(top, metadata.height - 1)),
-    width: Math.min(width, metadata.width - left),
-    height: Math.min(height, metadata.height - top),
-  }
-  const { data, info } = await image.extract(extract).removeAlpha().raw().toBuffer({ resolveWithObject: true })
-  let darkPixels = 0
-  for (let index = 0; index < data.length; index += info.channels) {
-    if (data[index] < 150 && data[index + 1] < 150 && data[index + 2] < 150) {
-      darkPixels += 1
-    }
-  }
+  const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`
+  return page.evaluate(
+    async ({ src, requestedCrop }) => {
+      const image = new Image()
+      image.src = src
+      await image.decode()
+      const cropLeft = Math.max(0, Math.min(requestedCrop.left, image.width - 1))
+      const cropTop = Math.max(0, Math.min(requestedCrop.top, image.height - 1))
+      const crop = {
+        left: cropLeft,
+        top: cropTop,
+        width: Math.max(1, Math.min(requestedCrop.width, image.width - cropLeft)),
+        height: Math.max(1, Math.min(requestedCrop.height, image.height - cropTop)),
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = crop.width
+      canvas.height = crop.height
+      const context = canvas.getContext('2d')
+      context.drawImage(image, crop.left, crop.top, crop.width, crop.height, 0, 0, crop.width, crop.height)
+      const data = context.getImageData(0, 0, crop.width, crop.height).data
+      let darkPixels = 0
+      for (let index = 0; index < data.length; index += 4) {
+        if (data[index] < 150 && data[index + 1] < 150 && data[index + 2] < 150) {
+          darkPixels += 1
+        }
+      }
 
-  return {
-    crop: extract,
-    darkPixels,
-    totalPixels: info.width * info.height,
-  }
+      return {
+        crop,
+        darkPixels,
+        totalPixels: crop.width * crop.height,
+      }
+    },
+    {
+      src: dataUrl,
+      requestedCrop: { left, top, width, height },
+    },
+  )
 }
 
 async function selectVisibleRange(page, mode) {

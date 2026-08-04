@@ -1,10 +1,4 @@
 packages:
   - 'packages/*'
 autoInstallPeers: false
-allowBuilds:
-  core-js: true
-  sharp: true
-  unrs-resolver: true
 minimumReleaseAge: 1440
-minimumReleaseAgeExclude:
-  - 'browserslist@4.28.4'
