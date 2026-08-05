@@ -511,7 +511,15 @@ export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({ book, cover, onC
         <div className="grid grid-cols-[12rem_minmax(0,1fr)] gap-5 p-5 pr-12">
           <div className="w-full">
             {cover && (
-              <img src={cover} alt="" className="block h-auto max-h-64 w-auto max-w-full shadow-sm" draggable={false} />
+              <img
+                src={cover}
+                alt=""
+                className={clsx(
+                  'block max-w-full shadow-sm',
+                  book.sourceFormat === 'txt' ? 'h-64 w-48' : 'h-auto max-h-64 w-auto',
+                )}
+                draggable={false}
+              />
             )}
           </div>
           <div className="min-w-0 pr-6">
