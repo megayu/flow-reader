@@ -57,6 +57,7 @@ pub use search::SearchTextResult;
 pub use text_import::{
     TextImportEncodingOption, TextImportPreview, TextImportRulesInput, TextImportSelection, is_epub_file, is_txt_file,
 };
+pub(crate) use window_state::{RuntimeWindowState, record_window_state};
 pub use window_state::{flush_app_storage, restore_window_state, save_window_state};
 
 use book_assets::{is_generated_text_cover, read_cover, remove_cover_files, write_cover};
@@ -153,9 +154,6 @@ struct StorageInner {
 
 const MIN_RESTORED_WINDOW_WIDTH: u32 = 900;
 const MIN_RESTORED_WINDOW_HEIGHT: u32 = 600;
-const DEFAULT_RESTORED_WINDOW_WIDTH: u32 = 1280;
-const DEFAULT_RESTORED_WINDOW_HEIGHT: u32 = 800;
-const MAXIMIZED_BOUNDS_TOLERANCE: u32 = 16;
 const WINDOWS_MINIMIZED_POSITION_SENTINEL: i32 = -30_000;
 
 fn empty_object() -> Value {

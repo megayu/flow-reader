@@ -329,6 +329,7 @@ pub(super) struct WindowState {
     pub(super) y: i32,
     pub(super) width: u32,
     pub(super) height: u32,
-    #[serde(default)]
     pub(super) maximized: bool,
+    pub(super) maximized_x: i32,
+    pub(super) maximized_y: i32,
 }

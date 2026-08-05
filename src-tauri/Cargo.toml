@@ -48,6 +48,7 @@ windows-sys = { version = "0.61.2", features = [
   "Win32_System_IO",
   "Win32_System_Ioctl",
   "Win32_System_WindowsProgramming",
+  "Win32_UI_WindowsAndMessaging",
 ] }
 
 [lints.clippy]

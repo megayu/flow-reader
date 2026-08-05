@@ -136,6 +136,7 @@ pub fn run() {
             dictionary::mdict::resource_protocol_response(context.app_handle(), request)
         })
         .manage(PendingOpenFiles(Mutex::new(pending_open_files)))
+        .manage(storage::RuntimeWindowState::default())
         .manage(tasks::TaskService::default())
         .manage(dictionary::create_http_client().expect("dictionary HTTP client"))
         .manage(translation::TranslationHttpClient::new().expect("translation HTTP client"))
@@ -205,6 +206,9 @@ pub fn run() {
                 }
                 WindowEvent::Destroyed => {
                     storage::flush_app_storage(window);
+                }
+                WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
+                    storage::record_window_state(window);
                 }
                 _ => {}
             }
