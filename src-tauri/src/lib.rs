@@ -1,7 +1,10 @@
 use std::{
     path::{Path, PathBuf},
     process::Command,
-    sync::Mutex,
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use serde::Serialize;
@@ -14,9 +17,61 @@ mod tasks;
 mod translation;
 
 const OPEN_FILES_EVENT: &str = "flow-open-files";
+const APP_CLOSE_REQUESTED_EVENT: &str = "flow-app-close-requested";
 
 #[derive(Default)]
 struct PendingOpenFiles(Mutex<Vec<PathBuf>>);
+
+#[derive(Default)]
+struct AppCloseCoordinator(AtomicBool);
+
+#[tauri::command]
+fn get_window_ui_state(app: tauri::AppHandle) -> Result<storage::WindowUiState, String> {
+    storage::runtime_window_ui_state(&app)
+}
+
+#[tauri::command]
+fn persist_app_close_state(
+    window: tauri::Window,
+    storage: tauri::State<'_, storage::AppStorage>,
+    coordinator: tauri::State<'_, AppCloseCoordinator>,
+    close_state: storage::AppCloseInput,
+) -> Result<(), String> {
+    if !coordinator.0.load(Ordering::SeqCst) {
+        return Err("app close was not requested".to_string());
+    }
+    storage::persist_app_close_state(&window, &storage, close_state)?;
+    if coordinator.0.swap(false, Ordering::SeqCst) {
+        begin_app_exit(window.app_handle().clone());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn cancel_app_close(state: tauri::State<'_, AppCloseCoordinator>) {
+    state.0.store(false, Ordering::SeqCst);
+}
+
+fn begin_app_exit(app: tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        app.exit(0);
+        return;
+    };
+    let _ = window.hide();
+    std::thread::spawn(move || {
+        if let Some(tasks) = app.try_state::<tasks::TaskService>() {
+            tasks.begin_shutdown();
+            tasks.cancel_background();
+        }
+        if let Some(storage) = app.try_state::<storage::AppStorage>() {
+            storage.flush_for_exit();
+            if let Err(error) = storage::cleanup_all_external_book_heavy_files(&storage) {
+                eprintln!("Failed to cleanup external book files: {error}");
+            }
+        }
+        app.exit(0);
+    });
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -136,6 +191,7 @@ pub fn run() {
             dictionary::mdict::resource_protocol_response(context.app_handle(), request)
         })
         .manage(PendingOpenFiles(Mutex::new(pending_open_files)))
+        .manage(AppCloseCoordinator::default())
         .manage(storage::RuntimeWindowState::default())
         .manage(tasks::TaskService::default())
         .manage(dictionary::create_http_client().expect("dictionary HTTP client"))
@@ -185,27 +241,18 @@ pub fn run() {
             match event {
                 WindowEvent::CloseRequested { api, .. } => {
                     api.prevent_close();
-                    storage::save_window_state(window);
-                    let _ = window.hide();
-
                     let app = window.app_handle().clone();
-                    let window = window.clone();
-                    std::thread::spawn(move || {
-                        if let Some(tasks) = app.try_state::<tasks::TaskService>() {
-                            tasks.begin_shutdown();
-                            tasks.cancel_background();
-                        }
-                        storage::flush_app_storage(&window);
-                        if let Some(storage) = app.try_state::<storage::AppStorage>()
-                            && let Err(error) = storage::cleanup_all_external_book_heavy_files(&storage)
-                        {
-                            eprintln!("Failed to cleanup external book files: {error}");
-                        }
-                        app.exit(0);
-                    });
+                    let coordinator = app.state::<AppCloseCoordinator>();
+                    if !coordinator.0.swap(true, Ordering::SeqCst)
+                        && window.emit(APP_CLOSE_REQUESTED_EVENT, ()).is_err()
+                    {
+                        coordinator.0.store(false, Ordering::SeqCst);
+                    }
                 }
                 WindowEvent::Destroyed => {
-                    storage::flush_app_storage(window);
+                    if let Some(storage) = window.try_state::<storage::AppStorage>() {
+                        storage.flush_for_exit();
+                    }
                 }
                 WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
                     storage::record_window_state(window);
@@ -219,6 +266,9 @@ pub fn run() {
             open_external_url,
             take_pending_open_paths,
             toggle_devtools,
+            get_window_ui_state,
+            persist_app_close_state,
+            cancel_app_close,
             dictionary::fetch_zdic,
             dictionary::fetch_merriam_webster,
             dictionary::cancel_dictionary_session,
@@ -268,7 +318,6 @@ pub fn run() {
             storage::delete_books,
             storage::get_settings,
             storage::update_settings,
-            storage::flush_storage,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Flow");

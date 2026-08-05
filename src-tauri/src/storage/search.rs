@@ -1771,7 +1771,6 @@ mod tests {
                 dirty: Mutex::new(DirtyState::default()),
                 flush_lock: Mutex::new(()),
                 import_lock: Mutex::new(()),
-                reading_position_sequences: Mutex::new(HashMap::new()),
                 search_text_caches: Mutex::new(HashMap::new()),
                 image_index_caches: Mutex::new(HashMap::new()),
                 derived_cache_states: Mutex::new(HashMap::new()),

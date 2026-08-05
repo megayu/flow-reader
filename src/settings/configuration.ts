@@ -20,8 +20,6 @@ export interface Settings extends TypographyConfiguration {
   showModifiedBookExportIndicator?: boolean
   importSourceStorage?: BookSourceStorage
   startupSession?: StartupSession
-  readerSidebarOpen?: boolean
-  librarySidebarOpen?: boolean
   libraryDisplay?: LibraryDisplayConfiguration
   librarySort?: LibrarySortConfiguration
   textImportRules?: TextImportRulesConfiguration
@@ -124,8 +122,6 @@ export const defaultSettings: Settings = {
   hideEndnotes: false,
   showModifiedBookExportIndicator: false,
   importSourceStorage: 'managed',
-  readerSidebarOpen: true,
-  librarySidebarOpen: false,
   libraryDisplay: defaultLibraryDisplay,
   librarySort: defaultLibrarySort,
   textImportRules: defaultTextImportRules,

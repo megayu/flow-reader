@@ -4,8 +4,11 @@ use std::{
     io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(test)]
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -46,7 +49,7 @@ use image_index::{
 use model::ReadingStatus;
 use model::{
     BookContentMode, BookScope, BookState, ExternalBook, ExternalBookIndex, Library, LibraryBook, SourceStorage,
-    WindowState, is_external_book_id, is_valid_book_storage_id,
+    WindowPaneState, WindowState, is_external_book_id, is_valid_book_storage_id,
 };
 pub use model::{
     BookExportFormat, BookReaderSource, BookReaderSourceMode, BookRecord, BookSourceFormat, BookSourceStatus,
@@ -57,8 +60,10 @@ pub use search::SearchTextResult;
 pub use text_import::{
     TextImportEncodingOption, TextImportPreview, TextImportRulesInput, TextImportSelection, is_epub_file, is_txt_file,
 };
+pub use window_state::{
+    AppCloseInput, WindowUiState, persist_app_close_state, restore_window_state, runtime_window_ui_state,
+};
 pub(crate) use window_state::{RuntimeWindowState, record_window_state};
-pub use window_state::{flush_app_storage, restore_window_state, save_window_state};
 
 use book_assets::{is_generated_text_cover, read_cover, remove_cover_files, write_cover};
 use book_source::*;
@@ -132,7 +137,6 @@ struct StorageInner {
     dirty: Mutex<DirtyState>,
     flush_lock: Mutex<()>,
     import_lock: Mutex<()>,
-    reading_position_sequences: Mutex<HashMap<String, u64>>,
     search_text_caches: Mutex<HashMap<String, Arc<SearchTextCache>>>,
     image_index_caches: Mutex<HashMap<String, Arc<ImageIndexCache>>>,
     derived_cache_states: Mutex<HashMap<String, DerivedCacheState>>,
@@ -183,7 +187,6 @@ impl AppStorage {
                 dirty: Mutex::new(DirtyState::default()),
                 flush_lock: Mutex::new(()),
                 import_lock: Mutex::new(()),
-                reading_position_sequences: Mutex::new(HashMap::new()),
                 search_text_caches: Mutex::new(HashMap::new()),
                 image_index_caches: Mutex::new(HashMap::new()),
                 derived_cache_states: Mutex::new(HashMap::new()),

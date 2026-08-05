@@ -148,7 +148,6 @@ fn test_storage_with_books(root: &Path, books: Vec<LibraryBook>) -> AppStorage {
             dirty: Mutex::new(DirtyState::default()),
             flush_lock: Mutex::new(()),
             import_lock: Mutex::new(()),
-            reading_position_sequences: Mutex::new(HashMap::new()),
             search_text_caches: Mutex::new(HashMap::new()),
             image_index_caches: Mutex::new(HashMap::new()),
             derived_cache_states: Mutex::new(HashMap::new()),
@@ -177,7 +176,6 @@ fn test_storage_from_disk(root: &Path) -> AppStorage {
             dirty: Mutex::new(DirtyState::default()),
             flush_lock: Mutex::new(()),
             import_lock: Mutex::new(()),
-            reading_position_sequences: Mutex::new(HashMap::new()),
             search_text_caches: Mutex::new(HashMap::new()),
             image_index_caches: Mutex::new(HashMap::new()),
             derived_cache_states: Mutex::new(HashMap::new()),
@@ -802,7 +800,6 @@ fn text_import_does_not_build_search_cache_in_visible_path() {
 }
 
 fn reading_position_input(
-    sequence: u64,
     cfi: &str,
     percentage: f64,
     spread: serde_json::Value,
@@ -814,7 +811,6 @@ fn reading_position_input(
         percentage: Some(percentage),
         spread: Some(spread),
         updated_at,
-        sequence,
     }
 }
 
@@ -1884,51 +1880,6 @@ fn archive_only_epub_export_copies_original_package_without_unpacking() {
 }
 
 #[test]
-fn record_reading_position_keeps_latest_sequence_in_memory() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-position-memory-test-{}-{nonce}",
-        std::process::id()
-    ));
-    let mut book = test_library_book(BookSourceFormat::Txt);
-    book.metadata = json!({ "sourceEncodingId": "utf-8" });
-    let storage = test_storage_with_book(&root, book);
-
-    let accepted = record_reading_position_impl(
-        &storage,
-        reading_position_input(2, "epubcfi(/6/4)", 0.4, json!({"version": 1}), 200),
-    )
-    .expect("new sequence should not error");
-    assert!(accepted);
-
-    let stale = record_reading_position_impl(
-        &storage,
-        reading_position_input(1, "epubcfi(/6/2)", 0.2, json!({"version": 1}), 100),
-    )
-    .expect("stale sequence should not error");
-    assert!(!stale);
-
-    let mut state = storage.inner.state.lock().unwrap();
-    let book = state
-        .library
-        .books
-        .iter()
-        .find(|book| book.id == "book")
-        .unwrap()
-        .clone();
-    let book_state = storage.ensure_book_state(&mut state, "book").unwrap().clone();
-
-    assert_eq!(book.cfi.as_deref(), Some("epubcfi(/6/4)"));
-    assert_eq!(book_state.cfi.as_deref(), Some("epubcfi(/6/4)"));
-    assert_eq!(book.percentage, Some(0.4));
-    assert_eq!(book_state.percentage, Some(0.4));
-    assert_eq!(book.updated_at, Some(200));
-    assert_eq!(book.last_read_at, Some(200));
-
-    let _ = fs::remove_dir_all(root);
-}
-
-#[test]
 fn record_reading_position_marks_dirty_without_disk_write_until_flush() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
@@ -1941,7 +1892,7 @@ fn record_reading_position_marks_dirty_without_disk_write_until_flush() {
 
     let accepted = record_reading_position_impl(
         &storage,
-        reading_position_input(1, "epubcfi(/6/8)", 0.8, json!({"version": 1}), 300),
+        reading_position_input("epubcfi(/6/8)", 0.8, json!({"version": 1}), 300),
     )
     .expect("position update should not error");
     assert!(accepted);

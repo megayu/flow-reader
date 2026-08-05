@@ -106,7 +106,6 @@ async function setupDictionaryReader(
     books: [dictionaryBook(bookLanguage)],
     readerSources: { 'dictionary-book': alicePackageUrl },
     settings: {
-      librarySidebarOpen: false,
       dictionary: {
         merriamWebster: {
           apiKey: Object.keys(merriamWebsterResponses).length ? 'test-only-mw-key' : '',

@@ -34,7 +34,6 @@ async function setupLibrary(page: Page) {
   await installTauriMock(page, {
     books: Array.from({ length: 10 }, (_, index) => createBook(index + 1)),
     settings: {
-      librarySidebarOpen: false,
       librarySort: { field: 'title', direction: 'asc' },
     },
   })
@@ -102,7 +101,6 @@ test('escape clears selection and exits selection mode before clearing filters',
   await bookCard(page, 3).click()
   await expectSelectedCount(page, 1)
 
-  await page.keyboard.press('s')
   const authorFilter = page.getByRole('button', { name: /^Selection Author$/ })
   await authorFilter.click()
   await expect(authorFilter).toHaveAttribute('aria-pressed', 'true')
@@ -133,7 +131,6 @@ test('batch deletion closes selected open book tabs and preserves unselected tab
     books,
     readerSources: Object.fromEntries(books.map((book) => [book.id, alicePackageUrl])),
     settings: {
-      librarySidebarOpen: false,
       librarySort: { field: 'title', direction: 'asc' },
     },
   })

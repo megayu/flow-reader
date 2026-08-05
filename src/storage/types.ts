@@ -172,7 +172,6 @@ export interface ReadingPositionInput {
   percentage?: number
   spread?: ReadingSpreadRecord | null
   updatedAt: number
-  sequence: number
 }
 
 export interface BookSearchHit {

@@ -683,11 +683,15 @@ export class BookTab extends BaseTab {
   }
 
   async flushForClose({ flushStorage = true, recordReadingPosition = true } = {}) {
-    await this.persistence.flushForClose({
+    return this.persistence.flushForClose({
       host: this.persistenceHost(),
       flushStorage,
       recordReadingPosition,
     })
+  }
+
+  prepareForAppClose() {
+    return this.persistence.captureReadingPositionForClose(this.persistenceHost())
   }
 
   annotationRange?: Range
@@ -2579,11 +2583,13 @@ export class Reader {
     })
   }
 
-  flushPendingBookUpdates() {
-    return Promise.all([
-      ...Array.from(this.pendingDisposals),
-      ...this.groups.flatMap(({ bookTabs }) => bookTabs.map((tab) => tab.flushForClose({ flushStorage: false }))),
-    ]).then(() => db.flush())
+  async collectAppCloseReadingPositions() {
+    await Promise.all(this.pendingDisposals)
+    const positions = await Promise.all(
+      this.groups.flatMap(({ bookTabs }) => bookTabs.map((tab) => tab.prepareForAppClose())),
+    )
+    await db.waitForPendingWrites()
+    return positions.filter((position) => position !== undefined)
   }
 
   private trackDisposal(promise: Promise<unknown>) {

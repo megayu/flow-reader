@@ -75,7 +75,7 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
       overlayScroll
       preferredSize={220}
       scrollbar={{ ...scrollbar, scrollRef: outerRef }}
-      storageKey="flow-reader:pane:toc:library"
+      stateKey="libraryToc"
     >
       <div className="relative" style={{ height: totalSize }}>
         {items.map(({ index, start, size }) => {
@@ -177,7 +177,7 @@ function useFocusedBookTabReference() {
 const EmptyTocPane: React.FC = () => {
   const t = useTranslation()
 
-  return <Pane headline={t('toc.title')} overlayScroll storageKey="flow-reader:pane:toc:toc" />
+  return <Pane headline={t('toc.title')} overlayScroll stateKey="readerToc" />
 }
 
 interface BookTocPaneProps {
@@ -222,7 +222,7 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
       minSize={160}
       overlayScroll
       scrollbar={{ ...scrollbar, scrollRef: outerRef }}
-      storageKey="flow-reader:pane:toc:toc"
+      stateKey="readerToc"
       actions={[
         {
           id: 'locate-current',

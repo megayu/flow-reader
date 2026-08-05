@@ -1370,26 +1370,12 @@ pub struct ReadingPositionInput {
     #[serde(default)]
     pub spread: Option<Value>,
     pub updated_at: u64,
-    pub sequence: u64,
 }
 
 pub(super) fn record_reading_position_impl(
     storage: &AppStorage,
     position: ReadingPositionInput,
 ) -> Result<bool, String> {
-    let mut sequences = storage
-        .inner
-        .reading_position_sequences
-        .lock()
-        .map_err(|_| "reading position sequence lock poisoned".to_string())?;
-
-    if sequences
-        .get(&position.book_id)
-        .is_some_and(|current| position.sequence < *current)
-    {
-        return Ok(false);
-    }
-
     {
         let mut state = storage
             .inner
@@ -1420,17 +1406,12 @@ pub(super) fn record_reading_position_impl(
         }
     }
 
-    sequences.insert(position.book_id.clone(), position.sequence);
-    drop(sequences);
-
     if is_external_book_id(&position.book_id) {
         storage.mark_external_dirty();
     } else {
         storage.mark_library_dirty();
     }
     storage.mark_book_state_dirty(&position.book_id);
-    storage.schedule_reading_position_flush();
-
     Ok(true)
 }
 
@@ -1450,8 +1431,9 @@ fn configuration_with_recorded_spread(current: Option<&Value>, spread: Option<Va
 }
 
 #[tauri::command]
-pub fn record_reading_position(storage: State<'_, AppStorage>, position: ReadingPositionInput) -> Result<bool, String> {
-    record_reading_position_impl(&storage, position)
+pub fn record_reading_position(storage: State<'_, AppStorage>, position: ReadingPositionInput) -> Result<(), String> {
+    record_reading_position_impl(&storage, position)?;
+    storage.flush_dirty()
 }
 
 #[tauri::command]
@@ -1620,10 +1602,8 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
         storage.mark_book_state_dirty(&id);
     }
 
-    if immediate_flush {
+    if immediate_flush || reading_position_only {
         storage.flush_dirty()?;
-    } else if reading_position_only {
-        storage.schedule_reading_position_flush();
     }
 
     let mut state = storage
@@ -1708,10 +1688,8 @@ fn update_external_book(storage: &AppStorage, id: String, changes: Value) -> Res
     if state_changed {
         storage.mark_book_state_dirty(&id);
     }
-    if immediate_flush {
+    if immediate_flush || state_changed || external_changed {
         storage.flush_dirty()?;
-    } else if state_changed || external_changed {
-        storage.schedule_reading_position_flush();
     }
 
     let mut state = storage
@@ -1761,10 +1739,5 @@ pub fn update_settings(storage: State<'_, AppStorage>, settings: Value) -> Resul
     }
 
     storage.mark_settings_dirty();
-    storage.flush_dirty()
-}
-
-#[tauri::command]
-pub fn flush_storage(storage: State<'_, AppStorage>) -> Result<(), String> {
     storage.flush_dirty()
 }

@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test'
 
 import type { BookRecord } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
-import { getStoredSettings, installTauriMock } from '../support/tauri-mock'
+import { installTauriMock } from '../support/tauri-mock'
 
 const pendingEpubPath = path.join('temporary', 'requested.epub')
 
@@ -62,7 +62,6 @@ test('cold native EPUB open opens only the requested book', async ({ page }) => 
     externallyOpenedBooks: [requested],
     pendingOpenPaths: [pendingEpubPath],
     settings: {
-      readerSidebarOpen: true,
       restoreLastReadingOnStartup: true,
       startupSession: { viewMode: 'reader', bookId: restored.id },
     },
@@ -85,7 +84,6 @@ test('cold native EPUB open opens only the requested book', async ({ page }) => 
   await expect(page.getByTestId('native-startup-surface')).toHaveCount(0)
   await expect(page.locator('[data-flow-reader-tab-index]')).toHaveCount(1)
   expect(await page.evaluate(() => (window as any).__FLOW_TEST_TAURI__?.takePendingOpenPathsCalls)).toBe(1)
-  await expect.poll(async () => (await getStoredSettings(page)).readerSidebarOpen).toBe(true)
 })
 
 test('native EPUB open focuses an existing tab across reader groups', async ({ page }) => {

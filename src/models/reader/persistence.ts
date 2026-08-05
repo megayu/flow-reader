@@ -32,8 +32,6 @@ function isReadingPositionOnlyUpdate(changes: Partial<BookRecord>, currentBook: 
 }
 
 export class BookPersistenceController {
-  private readingPositionSequence = 0
-
   updateBook(host: BookPersistenceHost, changes: Partial<BookRecord>) {
     const currentBook = host.getBook()
     const readingPositionOnly = isReadingPositionOnlyUpdate(changes, currentBook)
@@ -48,28 +46,44 @@ export class BookPersistenceController {
     host.applyBookUpdate(book, committedChanges)
     db.books.rememberUpdate(book, committedChanges)
 
-    if (readingPositionOnly) {
-      void this.recordReadingPosition(host, committedChanges).catch((error) => {
-        console.error(error)
-      })
-      return
-    }
+    if (readingPositionOnly) return
 
     void db.books.update(book.id, committedChanges).catch((error) => {
       console.error(error)
     })
   }
 
-  private recordReadingPosition(host: BookPersistenceHost, changes: Partial<BookRecord>) {
+  private readingPosition(host: BookPersistenceHost, changes: Partial<BookRecord>) {
     const book = host.getBook()
-    return db.books.recordReadingPosition({
+    return {
       bookId: book.id,
       cfi: changes.cfi,
       percentage: changes.percentage,
       spread: changes.configuration?.spread ?? null,
       updatedAt: changes.updatedAt ?? Date.now(),
-      sequence: ++this.readingPositionSequence,
-    })
+    }
+  }
+
+  async captureReadingPositionForClose(host: BookPersistenceHost) {
+    try {
+      await host.waitForNavigation()
+    } catch (error) {
+      console.error(error)
+    }
+
+    const positionUpdate = host.createCurrentPositionUpdate()
+    if (!positionUpdate) return
+
+    const updatedAt = Date.now()
+    const changes = {
+      ...positionUpdate,
+      updatedAt,
+      lastReadAt: updatedAt,
+    }
+    const book = { ...host.getBook(), ...changes }
+    host.replaceBook(book)
+    db.books.rememberUpdate(book, changes)
+    return this.readingPosition(host, changes)
   }
 
   async flushForClose({
@@ -81,28 +95,9 @@ export class BookPersistenceController {
     flushStorage?: boolean
     recordReadingPosition?: boolean
   }) {
-    try {
-      await host.waitForNavigation()
-    } catch (error) {
-      console.error(error)
-    }
-
-    const positionUpdate = host.createCurrentPositionUpdate()
-    if (positionUpdate) {
-      const updatedAt = Date.now()
-      const changes = {
-        ...positionUpdate,
-        updatedAt,
-        lastReadAt: updatedAt,
-      }
-      const book = { ...host.getBook(), ...changes }
-      host.replaceBook(book)
-      db.books.rememberUpdate(book, changes)
-      if (recordReadingPosition) {
-        await this.recordReadingPosition(host, changes)
-      }
-    }
-
-    if (flushStorage) await db.flush()
+    const position = await this.captureReadingPositionForClose(host)
+    if (flushStorage) await db.waitForPendingWrites()
+    if (recordReadingPosition && position) await db.books.recordReadingPosition(position)
+    return position
   }
 }

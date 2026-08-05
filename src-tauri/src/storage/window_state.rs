@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use tauri::{Manager, PhysicalPosition, PhysicalSize, WebviewWindow, Window};
 
 use super::*;
@@ -5,15 +6,21 @@ use super::*;
 #[derive(Default)]
 pub(crate) struct RuntimeWindowState(Mutex<Option<WindowState>>);
 
-pub fn flush_app_storage(window: &Window) {
-    if let Some(storage) = window.try_state::<AppStorage>() {
-        if let Err(error) = storage.flush_all_derived_caches() {
-            eprintln!("Failed to flush derived book caches: {error}");
-        }
-        if let Err(error) = storage.flush_dirty() {
-            eprintln!("Failed to flush app storage: {error}");
-        }
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowUiState {
+    reader_sidebar_open: bool,
+    reader_sidebar_width: u32,
+    library_sidebar_open: bool,
+    library_sidebar_width: u32,
+    panes: HashMap<String, WindowPaneState>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppCloseInput {
+    window: WindowUiState,
+    reading_positions: Vec<ReadingPositionInput>,
 }
 
 pub fn restore_window_state(window: &WebviewWindow) {
@@ -62,18 +69,51 @@ pub fn restore_window_state(window: &WebviewWindow) {
     }
 }
 
-pub fn save_window_state(window: &Window) {
+fn save_window_state(window: &Window) -> Result<(), String> {
     record_window_state(window);
 
     let app = window.app_handle();
-    let Ok(path) = window_state_path(app) else {
-        return;
-    };
-    if let Some(state) = runtime_window_state(app)
-        && is_restorable_window_state(&state)
-    {
-        let _ = write_json(&path, &state);
+    let path = window_state_path(app)?;
+    let state = runtime_window_state(app).ok_or_else(|| "window state is not initialized".to_string())?;
+    if !is_restorable_window_state(&state) {
+        return Err("window state is not restorable".to_string());
     }
+    write_json(&path, &state)
+}
+
+pub fn runtime_window_ui_state(app: &AppHandle) -> Result<WindowUiState, String> {
+    runtime_window_state(app)
+        .map(|state| WindowUiState {
+            reader_sidebar_open: state.reader_sidebar_open,
+            reader_sidebar_width: state.reader_sidebar_width,
+            library_sidebar_open: state.library_sidebar_open,
+            library_sidebar_width: state.library_sidebar_width,
+            panes: state.panes,
+        })
+        .ok_or_else(|| "window state is not initialized".to_string())
+}
+
+pub fn persist_app_close_state(window: &Window, storage: &AppStorage, input: AppCloseInput) -> Result<(), String> {
+    for position in input.reading_positions {
+        record_reading_position_impl(storage, position)?;
+    }
+
+    let runtime = window
+        .try_state::<RuntimeWindowState>()
+        .ok_or_else(|| "window state is not initialized".to_string())?;
+    let mut runtime = runtime.0.lock().map_err(|_| "window state lock poisoned".to_string())?;
+    let state = runtime
+        .as_mut()
+        .ok_or_else(|| "window state is not initialized".to_string())?;
+    state.reader_sidebar_open = input.window.reader_sidebar_open;
+    state.reader_sidebar_width = input.window.reader_sidebar_width;
+    state.library_sidebar_open = input.window.library_sidebar_open;
+    state.library_sidebar_width = input.window.library_sidebar_width;
+    state.panes = input.window.panes;
+    drop(runtime);
+
+    save_window_state(window)?;
+    storage.flush_dirty()
 }
 
 pub(crate) fn record_window_state(window: &Window) {
@@ -168,6 +208,11 @@ fn restored_state(
         maximized: false,
         maximized_x: monitor.x,
         maximized_y: monitor.y,
+        reader_sidebar_open: true,
+        reader_sidebar_width: 240,
+        library_sidebar_open: true,
+        library_sidebar_width: 240,
+        panes: HashMap::new(),
     }
 }
 
@@ -295,6 +340,11 @@ mod tests {
             maximized: false,
             maximized_x: 0,
             maximized_y: 0,
+            reader_sidebar_open: true,
+            reader_sidebar_width: 240,
+            library_sidebar_open: false,
+            library_sidebar_width: 240,
+            panes: HashMap::new(),
         };
 
         update_restored_state(
@@ -332,6 +382,11 @@ mod tests {
             maximized: true,
             maximized_x: 1920,
             maximized_y: 0,
+            reader_sidebar_open: true,
+            reader_sidebar_width: 240,
+            library_sidebar_open: false,
+            library_sidebar_width: 240,
+            panes: HashMap::new(),
         };
 
         let mut added_display = state.clone();

@@ -1,14 +1,4 @@
-import {
-  createContext,
-  type FC,
-  useCallback,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { createContext, type FC, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import { clamp } from '@/utils'
 
@@ -21,7 +11,6 @@ export interface SplitViewItem {
   reset?: () => void
   visible?: boolean
   resize?: (size: number) => void
-  commitSize?: () => void
 }
 
 interface SplitViewContextValue {
@@ -43,39 +32,16 @@ function useRegisterView(key: string, view: SplitViewItem) {
   }, [key, registerView, view])
 }
 
-function useSize(preferredSize?: number, minSize = 0, maxSize = Number.POSITIVE_INFINITY, storageKey?: string) {
-  const [size, setSize] = useState(preferredSize)
+function useSize(
+  preferredSize?: number,
+  minSize = 0,
+  maxSize = Number.POSITIVE_INFINITY,
+  initialSize?: number,
+  onSizeChange?: (size: number) => void,
+) {
+  const initial = initialSize ?? preferredSize
+  const [size, setSize] = useState(initial === undefined ? undefined : clamp(initial, minSize, maxSize))
   const sizeRef = useRef(size)
-  useLayoutEffect(() => {
-    if (!storageKey) return
-    if (preferredSize === undefined) {
-      if (sizeRef.current === undefined) return
-
-      sizeRef.current = undefined
-      setSize(undefined)
-      return
-    }
-
-    const stored = window.localStorage.getItem(storageKey)
-    const parsed = stored ? Number(stored) : Number.NaN
-    const restoredSize = Number.isFinite(parsed) ? clamp(parsed, minSize, maxSize) : preferredSize
-    if (restoredSize === sizeRef.current) return
-
-    sizeRef.current = restoredSize
-    setSize(restoredSize)
-  }, [maxSize, minSize, preferredSize, storageKey])
-  const persistSize = useCallback(
-    (size: number | undefined) => {
-      if (!storageKey || typeof window === 'undefined') return
-
-      if (size === undefined) {
-        window.localStorage.removeItem(storageKey)
-      } else {
-        window.localStorage.setItem(storageKey, String(size))
-      }
-    },
-    [storageKey],
-  )
   const resize = useCallback(
     (delta: number) => {
       const current = sizeRef.current ?? preferredSize
@@ -84,19 +50,17 @@ function useSize(preferredSize?: number, minSize = 0, maxSize = Number.POSITIVE_
       const next = clamp(current + delta, minSize, maxSize)
       sizeRef.current = next
       setSize(next)
+      onSizeChange?.(next)
     },
-    [maxSize, minSize, preferredSize],
+    [maxSize, minSize, onSizeChange, preferredSize],
   )
-  const commitSize = useCallback(() => {
-    persistSize(sizeRef.current)
-  }, [persistSize])
   const reset = useCallback(() => {
-    persistSize(undefined)
     sizeRef.current = preferredSize
     setSize(preferredSize)
-  }, [persistSize, preferredSize])
+    if (preferredSize !== undefined) onSizeChange?.(preferredSize)
+  }, [onSizeChange, preferredSize])
 
-  return [size, resize, reset, commitSize] as const
+  return [size, resize, reset] as const
 }
 
 export function useSplitViewItem(
@@ -105,7 +69,8 @@ export function useSplitViewItem(
     preferredSize,
     minSize = 0,
     maxSize = Number.POSITIVE_INFINITY,
-    storageKey,
+    initialSize,
+    onSizeChange,
     visible = true,
     dragMinSize,
   }: {
@@ -113,17 +78,17 @@ export function useSplitViewItem(
     preferredSize?: number
     minSize?: number
     maxSize?: number
-    storageKey?: string
+    initialSize?: number
+    onSizeChange?: (size: number) => void
     visible?: boolean
   } = {},
 ) {
-  const [size, resizeValue, reset, commitSize] = useSize(preferredSize, dragMinSize ?? minSize, maxSize, storageKey)
+  const [size, resizeValue, reset] = useSize(preferredSize, dragMinSize ?? minSize, maxSize, initialSize, onSizeChange)
   const fixed = minSize === maxSize
   const resize = fixed ? undefined : resizeValue
   const stringKey = typeof key === 'string' ? key : key.name
   const view = useMemo(
     () => ({
-      commitSize,
       fixed,
       dragMinSize,
       key: stringKey,
@@ -133,7 +98,7 @@ export function useSplitViewItem(
       resize,
       visible,
     }),
-    [commitSize, dragMinSize, fixed, maxSize, minSize, reset, stringKey, resize, visible],
+    [dragMinSize, fixed, maxSize, minSize, reset, stringKey, resize, visible],
   )
   useRegisterView(stringKey, view)
 

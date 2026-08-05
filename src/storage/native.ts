@@ -9,7 +9,6 @@ export const storageCommand = {
   deleteExternalBook: 'delete_external_book',
   deleteTag: 'delete_tag',
   exportBook: 'export_book',
-  flushStorage: 'flush_storage',
   getBook: 'get_book',
   getBookPackagePath: 'get_book_package_path',
   getBookReaderSource: 'get_book_reader_source',

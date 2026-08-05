@@ -332,4 +332,17 @@ pub(super) struct WindowState {
     pub(super) maximized: bool,
     pub(super) maximized_x: i32,
     pub(super) maximized_y: i32,
+    pub(super) reader_sidebar_open: bool,
+    pub(super) reader_sidebar_width: u32,
+    pub(super) library_sidebar_open: bool,
+    pub(super) library_sidebar_width: u32,
+    pub(super) panes: HashMap<String, WindowPaneState>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct WindowPaneState {
+    pub(super) expanded: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) size: Option<f64>,
 }

@@ -1,7 +1,5 @@
 use super::*;
 
-const READING_POSITION_FLUSH_DELAY: Duration = Duration::from_secs(15);
-
 pub(super) struct StorageState {
     pub(super) library: Library,
     pub(super) external: ExternalBookIndex,
@@ -15,10 +13,18 @@ pub(super) struct DirtyState {
     pub(super) external: bool,
     pub(super) settings: bool,
     pub(super) book_states: HashSet<String>,
-    pub(super) delayed_flush_scheduled: bool,
 }
 
 impl AppStorage {
+    pub fn flush_for_exit(&self) {
+        if let Err(error) = self.flush_all_derived_caches() {
+            eprintln!("Failed to flush derived book caches: {error}");
+        }
+        if let Err(error) = self.flush_dirty() {
+            eprintln!("Failed to flush app storage: {error}");
+        }
+    }
+
     pub(super) fn mark_library_dirty(&self) {
         if let Ok(mut dirty) = self.inner.dirty.lock() {
             dirty.library = true;
@@ -43,39 +49,6 @@ impl AppStorage {
         }
     }
 
-    pub(super) fn schedule_reading_position_flush(&self) {
-        let should_schedule = {
-            let Ok(mut dirty) = self.inner.dirty.lock() else {
-                return;
-            };
-            if dirty.delayed_flush_scheduled {
-                false
-            } else {
-                dirty.delayed_flush_scheduled = true;
-                true
-            }
-        };
-
-        if !should_schedule {
-            return;
-        }
-
-        let storage = self.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(READING_POSITION_FLUSH_DELAY);
-            storage.clear_delayed_flush_flag();
-            if let Err(error) = storage.flush_dirty() {
-                eprintln!("Failed to flush reading position: {error}");
-            }
-        });
-    }
-
-    fn clear_delayed_flush_flag(&self) {
-        if let Ok(mut dirty) = self.inner.dirty.lock() {
-            dirty.delayed_flush_scheduled = false;
-        }
-    }
-
     pub fn flush_dirty(&self) -> Result<(), String> {
         let _flush_guard = self
             .inner
@@ -93,7 +66,6 @@ impl AppStorage {
                 external: dirty.external,
                 settings: dirty.settings,
                 book_states: std::mem::take(&mut dirty.book_states),
-                delayed_flush_scheduled: dirty.delayed_flush_scheduled,
             };
             dirty.library = false;
             dirty.external = false;

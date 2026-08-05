@@ -120,7 +120,6 @@ const Sash: React.FC<SashProps> = ({ vertical, views }) => {
           // `mouseleave` not fire when `mousedown`
           setHover(false)
           setActive(false)
-          views.forEach((view) => view?.commitSize?.())
           window.removeEventListener('mousemove', handleMouseMove)
           window.removeEventListener('mouseup', handleMouseUp)
         })

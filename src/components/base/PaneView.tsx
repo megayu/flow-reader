@@ -5,9 +5,11 @@ import {
   forwardRef,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
+  useCallback,
   useRef,
-  useState,
 } from 'react'
+
+import { useAppStore } from '@/state'
 
 import { IconButton } from '../IconButton'
 import { Twisty } from '../Row'
@@ -15,7 +17,6 @@ import { Twisty } from '../Row'
 import { SplitView } from './SplitView'
 import { useSplitViewItem } from './splitViewContext'
 
-const COLLAPSED_STORAGE_SUFFIX = ':collapsed'
 const PANE_HEADER_SIZE = 28
 
 interface PaneAction {
@@ -33,7 +34,7 @@ interface PaneProps extends ComponentProps<'div'> {
   preferredSize?: number
   reserveScrollbarWidth?: boolean
   scrollbar?: OverlayScrollbarMetrics
-  storageKey: string
+  stateKey: string
   actions?: PaneAction[]
 }
 export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
@@ -48,26 +49,30 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
     preferredSize,
     reserveScrollbarWidth = false,
     scrollbar,
-    storageKey,
+    stateKey,
     ...props
   },
   ref,
 ) {
-  const [expanded, setExpanded] = useState(() => readPaneExpanded(storageKey))
-  const { size } = useSplitViewItem(storageKey, {
+  const paneState = useAppStore((state) => state.panes?.[stateKey])
+  const setPaneState = useAppStore((state) => state.setPaneState)
+  const expanded = paneState?.expanded ?? true
+  const handleSizeChange = useCallback(
+    (nextSize: number) =>
+      setPaneState(stateKey, (current) => ({ expanded: current?.expanded ?? true, size: nextSize })),
+    [setPaneState, stateKey],
+  )
+  const { size } = useSplitViewItem(stateKey, {
     dragMinSize: PANE_HEADER_SIZE,
     maxSize,
     minSize,
     preferredSize,
-    storageKey,
+    initialSize: paneState?.size,
+    onSizeChange: handleSizeChange,
     visible: expanded,
   })
   const toggleExpanded = () => {
-    setExpanded((current) => {
-      const next = !current
-      writePaneExpanded(storageKey, next)
-      return next
-    })
+    setPaneState(stateKey, (current) => ({ expanded: !(current?.expanded ?? true), size: current?.size }))
   }
 
   return (
@@ -244,22 +249,6 @@ export function OverlayScrollbar({ scrollRef, scrollTop, totalSize, viewportHeig
       />
     </div>
   )
-}
-
-function readPaneExpanded(storageKey?: string) {
-  if (!storageKey || typeof window === 'undefined') return true
-
-  return window.localStorage.getItem(collapsedStorageKey(storageKey)) !== '1'
-}
-
-function writePaneExpanded(storageKey: string | undefined, expanded: boolean) {
-  if (!storageKey || typeof window === 'undefined') return
-
-  window.localStorage.setItem(collapsedStorageKey(storageKey), expanded ? '0' : '1')
-}
-
-function collapsedStorageKey(storageKey: string) {
-  return `${storageKey}${COLLAPSED_STORAGE_SUFFIX}`
 }
 
 export interface PaneViewProps extends ComponentProps<'div'> {

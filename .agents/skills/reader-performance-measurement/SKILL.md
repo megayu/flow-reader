@@ -33,7 +33,7 @@ performance-safe or whether an optimization should be retained.
 | Work type                     | Measure when                                                                                                                        |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | Feature or correctness change | Both conditions hold: the change materially affects runtime work in an operation, and the coverage catalog measures that operation. |
-| Performance optimization      | Always use a targeted baseline and after-run. Add or adapt a scenario first if the catalog lacks the target operation.              |
+| Performance optimization      | Measure unless the improvement is structurally guaranteed by removing work without replacement or relocation.                    |
 
 A material effect changes work count, frequency, complexity, resource volume,
 layout invalidation, subscriptions, update timing, or object lifetime. Classify
@@ -76,6 +76,11 @@ Skip measurement when runtime work is unchanged, including:
 For feature/correctness work, skip performance measurement if either gate
 condition fails.
 
+Skip measurement when code alone proves that the same path performs strictly
+less work, with no comparable replacement or work moved elsewhere. This covers
+removing high-frequency IPC or duplicate computation. Still verify correctness;
+measure if runtime behavior or tradeoffs make the result uncertain.
+
 ## 2. Match Actual Coverage
 
 Use only scenarios that execute the changed operation:
@@ -97,8 +102,8 @@ overlay interaction. An open-sidebar variant measures only its table operation
 while that panel is mounted.
 
 If the operation is absent, skip measurement for feature/correctness work;
-performance optimization work must add or adapt a scenario. Update this catalog
-whenever the measurement script changes its operations.
+optimizations requiring empirical evidence must add or adapt a scenario. Update
+this catalog whenever the measurement script changes its operations.
 
 ## 3. Establish the Pre-Edit Baseline
 

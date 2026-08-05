@@ -63,6 +63,7 @@ import {
   useLibraryTagFilter,
   useSettingsDialogOpen,
   useSetZenTypographyOverrides,
+  useSidebarWidth,
   useViewMode,
   useViewModeValue,
   useZenMode,
@@ -599,11 +600,13 @@ const SideBarForMode: React.FC<{
   const [, , background] = useBackground()
   const activeAction = viewMode === 'library' ? libraryAction : action
   const actions = viewMode === 'library' ? libraryViewActions : viewActions
+  const [sidebarWidth, setSidebarWidth] = useSidebarWidth(viewMode)
 
   const { size } = useSplitViewItem('SideBar', {
     preferredSize: 240,
     minSize: 160,
-    storageKey: `flow-reader:sidebar:${viewMode}:width`,
+    initialSize: sidebarWidth,
+    onSizeChange: setSidebarWidth,
     visible: !!activeAction,
   })
 

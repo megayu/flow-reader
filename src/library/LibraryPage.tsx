@@ -31,7 +31,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popove
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { formatErrorMessage } from '../errorMessage'
 import { handleFiles, importTextSelections, openImportDialog, setupNativeOpenFiles } from '../file'
-import { useAction, useLibraryAction } from '../hooks/useAction'
+import { useLibraryAction } from '../hooks/useAction'
 import { useBookImportNotifications } from '../hooks/useBookImportNotifications'
 import { useBoolean } from '../hooks/useBoolean'
 import { useCovers, useLibrary, useLibraryTags } from '../hooks/useLibrary'
@@ -132,8 +132,6 @@ function isKeyboardTargetBlocked(e: KeyboardEvent) {
 export function LibraryPage() {
   const { focusedBookTab, groups } = useReaderSnapshot()
   const [viewMode, setViewMode] = useViewMode()
-  const [readerAction, setReaderAction] = useAction()
-  const [libraryAction, setLibraryAction] = useLibraryAction()
   const [settings, setSettings] = useSettings()
   const settingsReady = useSettingsReady()
   const viewModeRef = useRef(viewMode)
@@ -156,11 +154,6 @@ export function LibraryPage() {
   const homeT = useTranslation('home')
   const focusedBookId = focusedBookTab?.book.id
   const openBookIds = new Set(groups.flatMap((group) => group.bookTabs.map((tab) => tab.book.id)))
-
-  const applySavedSidebarState = useCallback(() => {
-    setReaderAction(settings.readerSidebarOpen === false ? undefined : 'toc')
-    setLibraryAction(settings.librarySidebarOpen ? 'libraryFilter' : undefined)
-  }, [setLibraryAction, setReaderAction, settings.librarySidebarOpen, settings.readerSidebarOpen])
 
   const openTextImportDialog = useCallback((paths: string[], openAfterImport: boolean) => {
     if (!paths.length) return
@@ -260,7 +253,6 @@ export function LibraryPage() {
 
     startupRestoreStartedRef.current = true
     if (openedFromNativeRef.current) {
-      applySavedSidebarState()
       setStartupRestoreDone(true)
       return
     }
@@ -270,7 +262,6 @@ export function LibraryPage() {
       settings.startupSession?.viewMode !== 'reader' ||
       !settings.startupSession.bookId
     ) {
-      applySavedSidebarState()
       setStartupRestoreDone(true)
       return
     }
@@ -278,14 +269,9 @@ export function LibraryPage() {
     db.books
       .get(settings.startupSession.bookId)
       .then((book) => {
-        if (!book || reader.groups.length) {
-          applySavedSidebarState()
-          return
-        }
+        if (!book || reader.groups.length) return
 
         reader.addTab(book)
-        setReaderAction(settings.readerSidebarOpen === false ? undefined : 'toc')
-        setLibraryAction(settings.librarySidebarOpen ? 'libraryFilter' : undefined)
         setViewMode('reader')
       })
       .finally(() => {
@@ -400,25 +386,6 @@ export function LibraryPage() {
       }
     })
   }, [focusedBookId, focusedBookTab?.book.scope, setSettings, settingsReady, startupRestoreDone, viewMode])
-
-  useEffect(() => {
-    if (!settingsReady || !startupRestoreDone) return
-
-    const nextReaderSidebarOpen = readerAction !== undefined
-    const nextLibrarySidebarOpen = libraryAction !== undefined
-
-    setSettings((prev) => {
-      if (prev.readerSidebarOpen === nextReaderSidebarOpen && prev.librarySidebarOpen === nextLibrarySidebarOpen) {
-        return prev
-      }
-
-      return {
-        ...prev,
-        readerSidebarOpen: nextReaderSidebarOpen,
-        librarySidebarOpen: nextLibrarySidebarOpen,
-      }
-    })
-  }, [libraryAction, readerAction, setSettings, settingsReady, startupRestoreDone])
 
   useEffect(() => {
     if (!groups.length && viewMode !== 'library') {

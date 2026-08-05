@@ -41,7 +41,7 @@ const DefinitionPane: React.FC = () => {
       ref={outerRef}
       reserveScrollbarWidth
       scrollbar={{ ...scrollbar, scrollRef: outerRef }}
-      storageKey="flow-reader:pane:annotation:definitions"
+      stateKey="annotationDefinitions"
     >
       <div className="relative" style={{ height: totalSize }}>
         {items.map(({ index, start, size }) => {
@@ -196,7 +196,7 @@ const AnnotationPane: React.FC = () => {
       ref={outerRef}
       reserveScrollbarWidth
       scrollbar={{ ...scrollbar, scrollRef: outerRef }}
-      storageKey="flow-reader:pane:annotation:annotations"
+      stateKey="annotationAnnotations"
       actions={
         annotations.length > 0
           ? [

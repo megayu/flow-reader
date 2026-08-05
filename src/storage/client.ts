@@ -309,10 +309,7 @@ export function rememberBookImportProgress(progress: BookImportProgress) {
 export const db = {
   subscribe,
   notify,
-  async flush() {
-    await waitForPendingNativeWrites()
-    return invoke('flush_storage')
-  },
+  waitForPendingWrites: waitForPendingNativeWrites,
   books: {
     async toArray() {
       return loadBooks()
@@ -353,7 +350,7 @@ export const db = {
       rememberBook({ ...base, ...changes }, { full: base.stateLoaded !== false })
     },
     recordReadingPosition(position: ReadingPositionInput) {
-      return trackNativeWrite(invoke<boolean>('record_reading_position', { position }))
+      return trackNativeWrite(invoke<void>('record_reading_position', { position }))
     },
     async update(id: string, changes: Partial<BookRecord>) {
       beginBooksMutation()

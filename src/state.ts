@@ -36,12 +36,28 @@ export type SetterOrUpdater<T> = (value: T | ((prev: T) => T)) => void
 export type Action = 'toc' | 'search' | 'annotation' | 'typography' | 'image'
 export type LibraryAction = 'libraryFilter'
 
+export interface WindowPaneState {
+  expanded: boolean
+  size?: number
+}
+
+export interface WindowUiState {
+  librarySidebarOpen: boolean
+  librarySidebarWidth: number
+  panes: Record<string, WindowPaneState>
+  readerSidebarOpen: boolean
+  readerSidebarWidth: number
+}
+
 interface AppStore {
   action?: Action
   libraryAction?: LibraryAction
   libraryAuthorFilter: string[]
   libraryStatusFilter: ReadingStatus[]
   libraryTagFilter: string[]
+  librarySidebarWidth?: number
+  panes?: Record<string, WindowPaneState>
+  readerSidebarWidth?: number
   settings: Settings
   settingsDialogOpen: boolean
   settingsReady: boolean
@@ -53,6 +69,9 @@ interface AppStore {
   setLibraryAuthorFilter: SetterOrUpdater<string[]>
   setLibraryStatusFilter: SetterOrUpdater<ReadingStatus[]>
   setLibraryTagFilter: SetterOrUpdater<string[]>
+  setLibrarySidebarWidth(value: number): void
+  setPaneState(key: string, value: WindowPaneState | ((prev: WindowPaneState | undefined) => WindowPaneState)): void
+  setReaderSidebarWidth(value: number): void
   setSettings: SetterOrUpdater<Settings>
   setSettingsDialogOpen: SetterOrUpdater<boolean>
   setSettingsReady: SetterOrUpdater<boolean>
@@ -71,6 +90,9 @@ export const useAppStore = create<AppStore>((set) => ({
   libraryAuthorFilter: [],
   libraryStatusFilter: [],
   libraryTagFilter: [],
+  librarySidebarWidth: undefined,
+  panes: undefined,
+  readerSidebarWidth: undefined,
   settings: defaultSettings,
   settingsDialogOpen: false,
   settingsReady: false,
@@ -94,6 +116,14 @@ export const useAppStore = create<AppStore>((set) => ({
     set((state) => ({
       libraryTagFilter: resolveUpdate(value, state.libraryTagFilter),
     })),
+  setLibrarySidebarWidth: (value) => set({ librarySidebarWidth: value }),
+  setPaneState: (key, value) =>
+    set((state) => {
+      const panes = state.panes!
+      const next = typeof value === 'function' ? value(panes[key]) : value
+      return { panes: { ...panes, [key]: next } }
+    }),
+  setReaderSidebarWidth: (value) => set({ readerSidebarWidth: value }),
   setSettings: (value) => set((state) => ({ settings: resolveUpdate(value, state.settings) })),
   setSettingsDialogOpen: (value) =>
     set((state) => ({
@@ -110,6 +140,36 @@ export const useAppStore = create<AppStore>((set) => ({
       zenTypographyOverrides: resolveUpdate(value, state.zenTypographyOverrides),
     })),
 }))
+
+export function initializeWindowUiState(value: WindowUiState) {
+  useAppStore.setState({
+    action: value.readerSidebarOpen ? 'toc' : undefined,
+    libraryAction: value.librarySidebarOpen ? 'libraryFilter' : undefined,
+    librarySidebarWidth: value.librarySidebarWidth,
+    panes: value.panes,
+    readerSidebarWidth: value.readerSidebarWidth,
+  })
+}
+
+export function snapshotWindowUiState(): WindowUiState {
+  const state = useAppStore.getState()
+  return {
+    librarySidebarOpen: state.libraryAction !== undefined,
+    librarySidebarWidth: state.librarySidebarWidth!,
+    panes: state.panes!,
+    readerSidebarOpen: state.action !== undefined,
+    readerSidebarWidth: state.readerSidebarWidth!,
+  }
+}
+
+export function useSidebarWidth(viewMode: ViewMode) {
+  const width = useAppStore((state) => (viewMode === 'library' ? state.librarySidebarWidth : state.readerSidebarWidth))
+  const setWidth = useAppStore((state) =>
+    viewMode === 'library' ? state.setLibrarySidebarWidth : state.setReaderSidebarWidth,
+  )
+
+  return [width!, setWidth] as const
+}
 
 export function useReaderActionState() {
   const action = useAppStore((state) => state.action)

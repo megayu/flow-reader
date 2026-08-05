@@ -85,9 +85,6 @@ async function setupLibrary(page: Page) {
     books: fixtureBooks,
     importedBooks,
     openDialogPaths: [path.join('books', 'delta.epub')],
-    settings: {
-      librarySidebarOpen: false,
-    },
   })
   await page.goto('/')
   await expect(page.locator('#layout')).toBeVisible()

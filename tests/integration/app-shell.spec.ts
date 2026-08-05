@@ -35,62 +35,6 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('#layout')).toBeVisible()
 })
 
-test('restores a persisted sidebar width before the first visible frame without a hydration mismatch', async ({
-  page,
-}) => {
-  const hydrationErrors: string[] = []
-
-  await page.evaluate(() => {
-    window.localStorage.setItem('flow-reader:sidebar:library:width', '276')
-  })
-  await page.addInitScript(() => {
-    const frameWidths: number[] = []
-    Object.assign(window, { __FLOW_TEST_SIDEBAR_FRAME_WIDTHS__: frameWidths })
-
-    const sampleSidebarWidth = () => {
-      const sidebar = document.querySelector('.SideBar')
-      if (sidebar instanceof HTMLElement) {
-        frameWidths.push(Math.round(Number.parseFloat(sidebar.style.width)))
-      }
-      window.requestAnimationFrame(sampleSidebarWidth)
-    }
-    window.requestAnimationFrame(sampleSidebarWidth)
-  })
-  page.on('console', (message) => {
-    if (message.type() === 'error' && /hydrated|hydration mismatch/i.test(message.text())) {
-      hydrationErrors.push(message.text())
-    }
-  })
-
-  await page.reload()
-  await expect(page.locator('#layout')).toBeVisible()
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (
-            window as typeof window & {
-              __FLOW_TEST_SIDEBAR_FRAME_WIDTHS__?: number[]
-            }
-          ).__FLOW_TEST_SIDEBAR_FRAME_WIDTHS__ ?? [],
-      ),
-    )
-    .toContain(276)
-
-  const frameWidths = await page.evaluate(
-    () =>
-      (
-        window as typeof window & {
-          __FLOW_TEST_SIDEBAR_FRAME_WIDTHS__?: number[]
-        }
-      ).__FLOW_TEST_SIDEBAR_FRAME_WIDTHS__ ?? [],
-  )
-  const restoredFrame = frameWidths.indexOf(276)
-  expect(restoredFrame).toBeGreaterThanOrEqual(0)
-  expect(frameWidths.slice(restoredFrame)).toEqual(Array(frameWidths.length - restoredFrame).fill(276))
-  expect(hydrationErrors).toEqual([])
-})
-
 test('loads without client exceptions and persists accent color settings', async ({ page }) => {
   const runtimeErrors: string[] = []
 

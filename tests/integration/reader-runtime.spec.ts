@@ -221,7 +221,15 @@ async function installReaderBooksMock(
           }
         }
         if (command === 'take_pending_open_paths') return []
-        if (command === 'flush_storage') return null
+        if (command === 'get_window_ui_state') {
+          return {
+            librarySidebarOpen: true,
+            librarySidebarWidth: 240,
+            panes: {},
+            readerSidebarOpen: true,
+            readerSidebarWidth: 240,
+          }
+        }
         if (command === 'search_book_text') {
           const keyword = String(args?.keyword ?? '')
           if (keyword === 'VERTICAL-CHAPTER-01-29') {

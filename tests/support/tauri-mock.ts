@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 
 import type { LocalDictionaryRecord } from '../../src/dictionary/native'
+import type { WindowUiState } from '../../src/state'
 import type {
   BookRecord,
   BookSourceStatus,
@@ -19,6 +20,14 @@ export interface TestLibraryTagRecord {
 export interface TestLibraryPins {
   authors: string[]
   tagIds: string[]
+}
+
+const testWindowUiState: WindowUiState = {
+  librarySidebarOpen: true,
+  librarySidebarWidth: 240,
+  panes: {},
+  readerSidebarOpen: true,
+  readerSidebarWidth: 240,
 }
 
 interface TauriMockOptions {
@@ -122,6 +131,7 @@ export async function installTauriMock(
       fixtureZdicResponseDelayMs,
       fixtureTranslationResponseDelayMs,
       fixtureTranslationError,
+      fixtureWindowUiState,
     }) => {
       type TauriInternals = {
         callbacks?: Record<number, (...args: unknown[]) => unknown>
@@ -698,13 +708,13 @@ export async function installTauriMock(
           if (fixturePendingOpenPathsError) throw new Error(fixturePendingOpenPathsError)
           return fixturePendingOpenPaths
         }
+        if (command === 'get_window_ui_state') return fixtureWindowUiState
         if (command === 'plugin:dialog|open') {
           globalWindow.__FLOW_TEST_TAURI__?.dialogOpenCalls.push(args ?? {})
           const options = args?.options as { multiple?: boolean } | undefined
           return options?.multiple === false ? (fixtureOpenDialogPaths[0] ?? null) : fixtureOpenDialogPaths
         }
         if (command === 'plugin:dialog|save') return fixtureSaveDialogPath
-        if (command === 'flush_storage') return null
         if (command === 'plugin:event|listen') return nextEventId++
         if (command === 'plugin:event|unlisten') return null
         if (command === 'plugin:window|is_fullscreen') return fullscreen
@@ -749,6 +759,7 @@ export async function installTauriMock(
       fixtureZdicResponseDelayMs: zdicResponseDelayMs,
       fixtureTranslationResponseDelayMs: translationResponseDelayMs,
       fixtureTranslationError: translationError,
+      fixtureWindowUiState: testWindowUiState,
     },
   )
 }

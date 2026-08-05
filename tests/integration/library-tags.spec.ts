@@ -89,9 +89,6 @@ test('library tag filters refresh from books matching the selected reading statu
         tagIds: ['tag-later'],
       }),
     ],
-    settings: {
-      librarySidebarOpen: false,
-    },
     tags: [
       { id: 'tag-done', name: 'Done', createdAt: 1 },
       { id: 'tag-active', name: 'Active', createdAt: 2 },
@@ -115,9 +112,6 @@ test('library tag filters refresh from books matching the selected reading statu
 async function setupLibrary(page: Page) {
   await installTauriMock(page, {
     books: fixtureBooks,
-    settings: {
-      librarySidebarOpen: false,
-    },
     tags: fixtureTags,
   })
   await page.goto('/')
