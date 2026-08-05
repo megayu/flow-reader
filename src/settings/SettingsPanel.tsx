@@ -1,4 +1,5 @@
 import clsx from 'clsx'
+import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -533,7 +534,7 @@ const UiFontSizeSetting: React.FC = () => {
 
   return (
     <Item title={t('ui_font_size')} description={t('ui_font_size.description')}>
-      <InputGroup className="w-24 overflow-hidden bg-transparent">
+      <InputGroup className="w-24 overflow-hidden bg-transparent focus-within:border-input focus-within:ring-0">
         <InputGroupInput
           type="text"
           aria-label={t('ui_font_size')}
@@ -543,24 +544,24 @@ const UiFontSizeSetting: React.FC = () => {
           focusBehavior="select-all"
           className="text-muted-foreground text-base outline-none"
         />
-        <div className="border-input flex w-7 flex-col border-l">
+        <div className="border-input grid h-full w-7 shrink-0 grid-rows-2 border-l">
           <button
             type="button"
             aria-label={`${t('ui_font_size')} +`}
-            className="hover:bg-muted flex h-1/2 items-center justify-center text-[12px] leading-none disabled:opacity-35 cursor-pointer"
+            className="flex min-h-0 w-full cursor-pointer items-center justify-center text-muted-foreground transition-colors enabled:hover:bg-(--flow-bg-control-hover) enabled:active:bg-(--flow-bg-control-active) disabled:cursor-default disabled:opacity-35"
             disabled={uiFontSize >= maxUiFontSize}
             onClick={() => setUiFontSize(uiFontSize + 1)}
           >
-            ▲
+            <ChevronUpIcon className="size-3" />
           </button>
           <button
             type="button"
             aria-label={`${t('ui_font_size')} -`}
-            className="border-input hover:bg-muted flex h-1/2 items-center justify-center border-t text-[12px] leading-none disabled:opacity-35 cursor-pointer"
+            className="border-input flex min-h-0 w-full cursor-pointer items-center justify-center border-t text-muted-foreground transition-colors enabled:hover:bg-(--flow-bg-control-hover) enabled:active:bg-(--flow-bg-control-active) disabled:cursor-default disabled:opacity-35"
             disabled={uiFontSize <= minUiFontSize}
             onClick={() => setUiFontSize(uiFontSize - 1)}
           >
-            ▼
+            <ChevronDownIcon className="size-3" />
           </button>
         </div>
       </InputGroup>
