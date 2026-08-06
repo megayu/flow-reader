@@ -1,4 +1,4 @@
-import { cleanBookText, compareBookDisplayTitle, getBookDisplayTitle, stripFileExtension } from '../book'
+import { cleanBookText, compareBookDisplayTitle } from '../book'
 import type { LibrarySortDirection, LibrarySortField } from '../state'
 import {
   type BookExportFormat,
@@ -106,23 +106,15 @@ export function hasUnexportedBookChanges(book: BookRecord) {
   return !!book.contentEditedAt
 }
 
-export function exportFormatExtension(format: BookExportFormat) {
-  return format === 'txt' ? 'txt' : 'epub'
-}
-
 export function exportDialogFilter(format: BookExportFormat) {
   return format === 'txt' ? { name: 'TXT', extensions: ['txt'] } : { name: 'EPUB', extensions: ['epub'] }
 }
 
-export function cleanExportFileName(value: string) {
-  const fallback = 'book'
-  const cleaned = value.replace(/[\\/:*?"<>|]+/g, ' ').trim()
-  return cleaned || fallback
-}
-
 export function getExportDefaultPath(book: BookRecord, format: BookExportFormat) {
-  const base = cleanExportFileName(stripFileExtension(book.name) || getBookDisplayTitle(book))
-  return `${base}.${exportFormatExtension(format)}`
+  const sourcePath = book.sourcePath ?? book.name
+  if (book.sourceFormat === format) return sourcePath
+
+  return sourcePath.replace(/\.[^./\\]+$/, `.${format}`)
 }
 
 export async function exportBookWithDialog(book: BookRecord, format: BookExportFormat) {
