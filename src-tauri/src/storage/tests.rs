@@ -19,8 +19,9 @@ use super::{
     read_search_text_sections_from_unpacked, relative_zip_path, replace_book_text_impl, replace_xhtml_text,
     replace_xhtml_text_node, schedule_existing_delete_tombstone_cleanup, search_text_cache_from_bytes,
     search_text_cache_to_bytes, search_text_in_cache, settings_path, sync_unpacked_opf_metadata, text_content_opf,
-    text_nav_xhtml, text_section_xhtml, visible_search_text_from_xhtml, write_epub_from_original_and_unpacked,
-    write_epub_from_unpacked_dir, write_image_index_cache_if_current, write_source_text_update,
+    text_nav_xhtml, text_section_xhtml, visible_search_text_from_xhtml, write_cover,
+    write_epub_from_original_and_unpacked, write_epub_from_unpacked_dir, write_image_index_cache_if_current,
+    write_source_text_update,
 };
 use crate::tasks::TaskService;
 use serde_json::{Value, json};
@@ -105,6 +106,73 @@ fn png_dimensions(bytes: &[u8]) -> (u32, u32) {
         u32::from_be_bytes(bytes[16..20].try_into().unwrap()),
         u32::from_be_bytes(bytes[20..24].try_into().unwrap()),
     )
+}
+
+#[test]
+fn book_cover_assets_bound_lossy_webp_dimensions_and_preserve_svg() {
+    let root = std::env::temp_dir().join(format!(
+        "flow-reader-cover-asset-test-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
+    fs::create_dir_all(storage.book_dir("book")).unwrap();
+
+    for ((width, height), expected, extension) in [
+        ((640, 960), (320, 480), "jpg"),
+        ((1200, 1600), (320, 427), "png"),
+        ((200, 300), (200, 300), "webp"),
+    ] {
+        let data = if extension == "webp" {
+            let pixels = vec![0; (width * height * 3) as usize];
+            webp::Encoder::from_rgb(&pixels, width, height).encode(90.0).to_vec()
+        } else {
+            let format = if extension == "jpg" {
+                image::ImageFormat::Jpeg
+            } else {
+                image::ImageFormat::Png
+            };
+            let mut data = Cursor::new(Vec::new());
+            image::DynamicImage::new_rgb8(width, height)
+                .write_to(&mut data, format)
+                .unwrap();
+            data.into_inner()
+        };
+
+        write_cover(
+            &storage,
+            "book",
+            Some(super::CoverInput {
+                mime_type: format!("image/{extension}"),
+                extension: extension.to_string(),
+                data,
+            }),
+        )
+        .unwrap();
+
+        let cover = fs::read(storage.book_dir("book").join("cover.webp")).unwrap();
+        assert_eq!(&cover[12..16], b"VP8 ");
+        let decoded = webp::Decoder::new(&cover).decode().unwrap();
+        assert_eq!((decoded.width(), decoded.height()), expected);
+        assert!(!storage.book_dir("book").join("cover.jpg").exists());
+        assert!(!storage.book_dir("book").join("cover.png").exists());
+    }
+
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%"></svg>"#;
+    write_cover(
+        &storage,
+        "book",
+        Some(super::CoverInput {
+            mime_type: "image/svg+xml".to_string(),
+            extension: "svg".to_string(),
+            data: svg.to_vec(),
+        }),
+    )
+    .unwrap();
+
+    assert_eq!(fs::read(storage.book_dir("book").join("cover.svg")).unwrap(), svg);
+    assert!(!storage.book_dir("book").join("cover.webp").exists());
+    fs::remove_dir_all(root).unwrap();
 }
 
 fn wait_until_next_epoch_second() {

@@ -350,7 +350,7 @@ pub(in crate::storage) fn normalize_non_square_pixel_png(data: &[u8]) -> Option<
         return None;
     }
 
-    let mut source = vec![0; reader.output_buffer_size()];
+    let mut source = vec![0; reader.output_buffer_size()?];
     let frame = reader.next_frame(&mut source).ok()?;
     source.truncate(frame.buffer_size());
     let channels = match frame.color_type {

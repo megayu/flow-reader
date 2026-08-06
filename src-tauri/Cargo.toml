@@ -31,7 +31,9 @@ roxmltree = "0.21"
 zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 encoding_rs = "0.8"
 regex = "1"
-png = "0.17"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
+webp = { version = "0.3.1", default-features = false }
+png = "0.18"
 zstd = "0.13"
 reqwest = { version = "0.13.4", default-features = false, features = ["gzip", "native-tls", "system-proxy"] }
 tokio-util = { version = "0.7.18", features = ["rt"] }

@@ -1,6 +1,13 @@
-use std::{fs, path::Path};
+use std::{fs, io::Cursor, path::Path};
+
+use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader, imageops::FilterType};
 
 use super::*;
+
+const LIBRARY_COVER_MAX_WIDTH: u32 = 320;
+const LIBRARY_COVER_MAX_HEIGHT: u32 = 480;
+const LIBRARY_COVER_WEBP_QUALITY: f32 = 90.0;
+
 pub(super) fn write_cover(storage: &AppStorage, id: &str, cover: Option<CoverInput>) -> Result<(), String> {
     remove_cover_files(storage, id)?;
 
@@ -13,8 +20,52 @@ pub(super) fn write_cover(storage: &AppStorage, id: &str, cover: Option<CoverInp
         return Ok(());
     }
 
+    let (extension, data) = if matches!(extension.as_str(), "jpg" | "jpeg" | "png" | "webp") {
+        library_cover_thumbnail(&cover.data, &extension).unwrap_or((extension, cover.data))
+    } else {
+        (extension, cover.data)
+    };
     let path = storage.book_dir(id).join(format!("{COVER_STEM}.{extension}"));
-    fs::write(path, cover.data).map_err(|error| error.to_string())
+    fs::write(path, data).map_err(|error| error.to_string())
+}
+
+fn library_cover_thumbnail(data: &[u8], extension: &str) -> Option<(String, Vec<u8>)> {
+    let image = if extension == "webp" {
+        let decoded = webp::Decoder::new(data).decode()?;
+        let (width, height) = (decoded.width(), decoded.height());
+        if decoded.is_alpha() {
+            DynamicImage::ImageRgba8(image::RgbaImage::from_raw(width, height, decoded.to_vec())?)
+        } else {
+            DynamicImage::ImageRgb8(image::RgbImage::from_raw(width, height, decoded.to_vec())?)
+        }
+    } else {
+        let format = match extension {
+            "jpg" | "jpeg" => ImageFormat::Jpeg,
+            "png" => ImageFormat::Png,
+            _ => return None,
+        };
+        let reader = ImageReader::with_format(Cursor::new(data), format);
+        let mut decoder = reader.into_decoder().ok()?;
+        let orientation = decoder
+            .orientation()
+            .unwrap_or(image::metadata::Orientation::NoTransforms);
+        let mut image = DynamicImage::from_decoder(decoder).ok()?;
+        image.apply_orientation(orientation);
+        image
+    };
+    let image = if image.width() > LIBRARY_COVER_MAX_WIDTH || image.height() > LIBRARY_COVER_MAX_HEIGHT {
+        image.resize(LIBRARY_COVER_MAX_WIDTH, LIBRARY_COVER_MAX_HEIGHT, FilterType::Lanczos3)
+    } else {
+        image
+    };
+    let output = if image.color().has_alpha() {
+        let pixels = image.to_rgba8();
+        webp::Encoder::from_rgba(pixels.as_raw(), image.width(), image.height()).encode(LIBRARY_COVER_WEBP_QUALITY)
+    } else {
+        let pixels = image.to_rgb8();
+        webp::Encoder::from_rgb(pixels.as_raw(), image.width(), image.height()).encode(LIBRARY_COVER_WEBP_QUALITY)
+    };
+    Some(("webp".to_string(), output.to_vec()))
 }
 
 pub(super) fn read_cover(storage: &AppStorage, id: &str) -> Result<Option<String>, String> {

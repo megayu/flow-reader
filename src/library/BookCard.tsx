@@ -314,7 +314,9 @@ export const BookCard: React.FC<BookCardProps> = ({
                 src={cover ?? placeholder}
                 alt="Cover"
                 className="block h-full w-full rounded-[inherit] object-cover"
+                decoding="async"
                 draggable={false}
+                loading="lazy"
               />
               {isBookSourceUnavailable(sourceStatus) && (
                 <AppTooltip
