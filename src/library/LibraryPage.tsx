@@ -33,7 +33,6 @@ import { formatErrorMessage } from '../errorMessage'
 import { handleFiles, importTextSelections, openImportDialog, setupNativeOpenFiles } from '../file'
 import { useLibraryAction } from '../hooks/useAction'
 import { useBookImportNotifications } from '../hooks/useBookImportNotifications'
-import { useBoolean } from '../hooks/useBoolean'
 import { useCovers, useLibrary, useLibraryTags } from '../hooks/useLibrary'
 import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
@@ -461,7 +460,7 @@ const Library: React.FC<LibraryProps> = ({
   const [tagFilters] = useLibraryTagFilter()
   const [, setLibraryAction] = useLibraryAction()
 
-  const [select, , setSelect] = useBoolean(false)
+  const [select, setSelect] = useState(false)
   const [selectedBookIds, { has, toggle, replace, reset }] = useStringSet()
   const [highlightedBookIds, setHighlightedBookIds] = useState<Set<string>>(() => new Set())
   const [sourceStatuses, setSourceStatuses] = useState(() => new Map<string, BookSourceStatus>())
@@ -740,8 +739,9 @@ const Library: React.FC<LibraryProps> = ({
   }, [importBooks, select, selectAllBooks, selectedBooks.length, setLibraryAction, setStatusFilters])
 
   const selectBook = useCallback(
-    (bookId: string, e: LibraryBookSelectionEvent) => {
-      if (!e.shiftKey) {
+    (bookId: string, e?: LibraryBookSelectionEvent) => {
+      setSelect(true)
+      if (!e?.shiftKey) {
         rangeSelectionSessionRef.current = undefined
         selectionAnchorIdRef.current = bookId
         toggle(bookId)
@@ -757,7 +757,7 @@ const Library: React.FC<LibraryProps> = ({
 
       replace(selectBookIdRange(session.baseSelectedIds, getBookIdRange(visibleBookIds, session.anchorId, bookId)))
     },
-    [replace, selectedBookIds, toggle, visibleBookIds],
+    [replace, selectedBookIds, setSelect, toggle, visibleBookIds],
   )
 
   if (!books) return null

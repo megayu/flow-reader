@@ -12,7 +12,7 @@ import {
   TriangleAlertIcon,
 } from 'lucide-react'
 import type React from 'react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { getBookDisplayTitle, getBookTooltip } from '../book'
 import { AppTooltip } from '../components/AppTooltip'
@@ -63,7 +63,7 @@ interface BookCardProps {
   selected?: boolean
   showModifiedExportIndicator: boolean
   sourceStatus?: BookSourceStatus
-  onSelectBook: (id: string, e: LibraryBookSelectionEvent) => void
+  onSelectBook: (id: string, e?: LibraryBookSelectionEvent) => void
   onOpenBook: () => void
 }
 
@@ -88,6 +88,7 @@ export const BookCard: React.FC<BookCardProps> = ({
   const [tagsOpen, setTagsOpen] = useState(false)
   const [exportingFormat, setExportingFormat] = useState<BookExportFormat>()
   const [exportFormatsExpanded, setExportFormatsExpanded] = useState(false)
+  const longPressRef = useRef<number | 'triggered' | undefined>(undefined)
 
   const displayTitle = getBookDisplayTitle(book)
   const tooltip = getBookTooltip(book)
@@ -109,6 +110,13 @@ export const BookCard: React.FC<BookCardProps> = ({
 
   const handleCoverClick = useCallback(
     (event: React.MouseEvent) => {
+      if (longPressRef.current === 'triggered') {
+        longPressRef.current = undefined
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+
       if (select || event.button !== 0) return
 
       const revealSource = event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey
@@ -135,6 +143,34 @@ export const BookCard: React.FC<BookCardProps> = ({
     },
     [book, errorT, notify, select],
   )
+
+  const clearLongPressTimer = useCallback(() => {
+    if (typeof longPressRef.current !== 'number') return
+    window.clearTimeout(longPressRef.current)
+    longPressRef.current = undefined
+  }, [])
+
+  useEffect(() => clearLongPressTimer, [clearLongPressTimer])
+
+  function handleCoverPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (
+      select ||
+      !event.isPrimary ||
+      event.button !== 0 ||
+      event.shiftKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey
+    ) {
+      return
+    }
+
+    clearLongPressTimer()
+    longPressRef.current = window.setTimeout(() => {
+      longPressRef.current = 'triggered'
+      onSelectBook(book.id)
+    }, 500)
+  }
 
   const updateReadingStatus = useCallback(
     (readingStatus: ReadingStatus | null) => {
@@ -216,6 +252,10 @@ export const BookCard: React.FC<BookCardProps> = ({
               className="border-border relative mx-auto aspect-9/12 w-full overflow-hidden rounded-md border shadow-sm"
               style={{ maxWidth: 'var(--library-book-card-width)' }}
               onClick={handleCoverClick}
+              onPointerCancel={clearLongPressTimer}
+              onPointerDown={handleCoverPointerDown}
+              onPointerLeave={clearLongPressTimer}
+              onPointerUp={clearLongPressTimer}
             >
               {book.readingStatus && (
                 <ReadingStatusBadge

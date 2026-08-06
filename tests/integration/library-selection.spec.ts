@@ -30,7 +30,7 @@ function createBook(index: number): BookRecord {
   })
 }
 
-async function setupLibrary(page: Page) {
+async function setupLibrary(page: Page, enterSelectionMode = true) {
   await installTauriMock(page, {
     books: Array.from({ length: 10 }, (_, index) => createBook(index + 1)),
     settings: {
@@ -40,7 +40,9 @@ async function setupLibrary(page: Page) {
   await page.goto('/')
   await expect(page.locator('#layout')).toBeVisible()
   await expect(bookCard(page, 1)).toBeVisible()
-  await page.getByRole('button', { name: msg('home.select'), exact: true }).click()
+  if (enterSelectionMode) {
+    await page.getByRole('button', { name: msg('home.select'), exact: true }).click()
+  }
 }
 
 function bookCard(page: Page, index: number) {
@@ -56,6 +58,23 @@ function selectedCount(page: Page) {
 async function expectSelectedCount(page: Page, count: number) {
   await expect(selectedCount(page)).toContainText(`${count} / 10`)
 }
+
+test('long pressing a cover enters selection mode without opening the book', async ({ page }) => {
+  await setupLibrary(page, false)
+
+  const cover = bookCard(page, 3).locator('img')
+  const box = await cover.boundingBox()
+  if (!box) throw new Error('Book cover has no bounding box')
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await expectSelectedCount(page, 1)
+  await page.waitForTimeout(1100)
+  await page.mouse.up()
+
+  await expectSelectedCount(page, 1)
+  await expect(page.locator('[data-flow-reader-tab-index]')).toHaveCount(0)
+})
 
 test('shift selection recomputes the active range until shift is released', async ({ page }) => {
   await setupLibrary(page)
