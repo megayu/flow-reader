@@ -45,7 +45,7 @@ export function Tab({
   const tab = (
     <div
       className={clsx(
-        'flow-reader-tab group/tab relative mx-0.5 mt-0.5 mb-0 flex h-10 min-w-9 max-w-max flex-[1_1_0] cursor-pointer items-center gap-1 px-2 pr-8 text-base outline-none',
+        'flow-reader-tab group/tab relative mx-0.5 mt-0.5 mb-0 flex h-10 min-w-9 max-w-max flex-[1_1_0] cursor-pointer items-center gap-1 px-2 text-base outline-none',
         selected
           ? 'text-foreground z-10 rounded-t-[10px] rounded-b-none bg-(--flow-bg-tab-active) shadow-[inset_0_1px_0_var(--flow-tab-border)] before:pointer-events-none before:absolute before:bottom-0 before:-left-2.5 before:size-2.5 before:rounded-br-[10px] before:shadow-[5px_5px_0_5px_var(--flow-bg-tab-active)] after:pointer-events-none after:absolute after:-right-2.5 after:bottom-0 after:size-2.5 after:rounded-bl-[10px] after:shadow-[-5px_5px_0_5px_var(--flow-bg-tab-active)]'
           : clsx(
@@ -56,7 +56,6 @@ export function Tab({
         focused && 'text-foreground!',
         className,
       )}
-      data-flow-tab-selected={selected ? '' : undefined}
       onMouseDown={(event) => {
         onMouseDown?.(event)
         if (!event.defaultPrevented) closeOnMiddleClick(event)
@@ -86,10 +85,8 @@ export function Tab({
       <span className="flow-reader-tab-label relative z-10 min-w-0 max-w-50 truncate">{children}</span>
       <IconButton
         className={clsx(
-          'flow-reader-tab-close absolute top-2 right-1 z-20 size-6 transition-none active:translate-y-0',
-          selected
-            ? 'bg-(--flow-bg-tab-active)'
-            : 'pointer-events-none opacity-0 group-hover/tab:pointer-events-auto group-hover/tab:bg-(--flow-bg-control-hover) group-hover/tab:opacity-100',
+          'flow-reader-tab-close pointer-events-none absolute top-2 right-1 z-20 size-6 opacity-0 transition-none group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 active:translate-y-0',
+          selected ? 'group-hover/tab:bg-(--flow-bg-tab-active)' : 'group-hover/tab:bg-(--flow-bg-control-hover)',
         )}
         Icon={XIcon}
         onClick={(e) => {

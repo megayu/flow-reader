@@ -150,8 +150,8 @@ interface TabPointerDrag {
   targetIndex?: number
 }
 
-// Keep one text glyph visible in addition to the tab's fixed icon, gap, padding, and close-button chrome.
-const READER_TAB_FIXED_CHROME_WIDTH = 60
+// Keep one text glyph visible in addition to the tab's fixed icon, gap, and padding.
+const READER_TAB_FIXED_CHROME_WIDTH = 36
 
 interface ReaderTabIconOnlyState {
   element: HTMLElement
