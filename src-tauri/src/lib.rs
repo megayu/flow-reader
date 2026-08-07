@@ -224,7 +224,7 @@ pub fn run() {
             storage.start_derived_cache_maintenance();
             if let Some(tasks) = app.try_state::<tasks::TaskService>() {
                 tasks.configure_io_for_path(storage.root());
-                storage::schedule_existing_delete_tombstone_cleanup(&storage, &tasks);
+                storage::schedule_existing_pending_delete_cleanup(&storage, &tasks);
             }
 
             if let Some(window) = app.get_webview_window("main") {

@@ -160,7 +160,7 @@ pub(super) fn clear_book_caches_impl(
     Ok(updated_books)
 }
 
-pub(super) fn delete_books_to_tombstones(storage: &AppStorage, ids: &[String]) -> Result<Vec<PathBuf>, String> {
+pub(super) fn rename_books_for_deletion(storage: &AppStorage, ids: &[String]) -> Result<Vec<PathBuf>, String> {
     let ids = ids.iter().filter(|id| !id.is_empty()).cloned().collect::<HashSet<_>>();
 
     if ids.is_empty() {
@@ -171,7 +171,7 @@ pub(super) fn delete_books_to_tombstones(storage: &AppStorage, ids: &[String]) -
     }
 
     {
-        let mut state = storage
+        let state = storage
             .inner
             .state
             .lock()
@@ -182,6 +182,26 @@ pub(super) fn delete_books_to_tombstones(storage: &AppStorage, ids: &[String]) -
         {
             return Err("Book not found".to_string());
         }
+    }
+
+    let mut renamed_books = Vec::new();
+    for id in &ids {
+        storage.remove_derived_memory_caches(id);
+        match rename_path_for_deletion(&storage.book_dir(id)) {
+            Ok(Some(path)) => renamed_books.push((id.clone(), path)),
+            Ok(None) => {}
+            Err(error) => {
+                restore_renamed_book_directories(storage, &renamed_books);
+                return Err(error);
+            }
+        }
+    }
+
+    {
+        let mut state = storage.inner.state.lock().map_err(|error| {
+            restore_renamed_book_directories(storage, &renamed_books);
+            format!("storage state lock poisoned: {error}")
+        })?;
         let deleted_authors = state
             .library
             .books
@@ -207,129 +227,69 @@ pub(super) fn delete_books_to_tombstones(storage: &AppStorage, ids: &[String]) -
     }
     storage.mark_library_dirty();
 
-    let mut tombstones = Vec::new();
-    for id in &ids {
-        storage.remove_derived_memory_caches(id);
-        if let Some(tombstone) = move_book_dir_to_tombstone(storage, id) {
-            tombstones.push(tombstone);
-        }
-    }
-
-    Ok(tombstones)
+    Ok(renamed_books.into_iter().map(|(_, path)| path).collect())
 }
 
-fn move_book_dir_to_tombstone(storage: &AppStorage, id: &str) -> Option<PathBuf> {
-    let book_dir = storage.book_dir(id);
-    if !book_dir.exists() {
-        return None;
-    }
-
-    let tombstones_root = delete_tombstones_root(storage.root());
-    if let Err(error) = fs::create_dir_all(&tombstones_root) {
-        eprintln!("Failed to prepare deleted book tombstone directory: {error}");
-        remove_book_dir_directly(&book_dir);
-        return None;
-    }
-    let tombstone = next_delete_tombstone_path(&tombstones_root, id);
-
-    match fs::rename(&book_dir, &tombstone) {
-        Ok(()) => Some(tombstone),
-        Err(error) => {
-            eprintln!("Failed to move deleted book directory to tombstone: {error}");
-            remove_book_dir_directly(&book_dir);
-            None
+fn restore_renamed_book_directories(storage: &AppStorage, renamed_books: &[(String, PathBuf)]) {
+    for (id, renamed_path) in renamed_books.iter().rev() {
+        let original_path = storage.book_dir(id);
+        if let Err(error) = fs::rename(renamed_path, original_path) {
+            eprintln!("Failed to restore book directory after deferred-delete rename failure: {error}");
         }
     }
 }
 
-pub(super) fn move_path_to_delete_tombstone(
-    storage: &AppStorage,
-    path: &Path,
-    name: &str,
-) -> Result<Option<PathBuf>, String> {
+pub(super) fn rename_path_for_deletion(path: &Path) -> Result<Option<PathBuf>, String> {
     if !path.exists() {
         return Ok(None);
     }
 
-    let tombstones_root = delete_tombstones_root(storage.root());
-    fs::create_dir_all(&tombstones_root).map_err(|error| error.to_string())?;
-    let tombstone = next_delete_tombstone_path(&tombstones_root, name);
-    fs::rename(path, &tombstone).map_err(|error| error.to_string())?;
-    Ok(Some(tombstone))
-}
-
-fn remove_book_dir_directly(book_dir: &Path) {
-    if let Err(error) = fs::remove_dir_all(book_dir) {
-        eprintln!("Failed to delete book directory: {error}");
-    }
-}
-
-fn next_delete_tombstone_path(root: &Path, id: &str) -> PathBuf {
-    let stamp = now_ms();
-    let pid = std::process::id();
-    let id = sanitize_tombstone_name(id);
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Delete target has no parent directory".to_string())?;
+    let name = path
+        .file_name()
+        .ok_or_else(|| "Delete target has no file name".to_string())?;
+    let base = format!("{PENDING_DELETE_PREFIX}{}", name.to_string_lossy());
     for index in 0.. {
         let suffix = if index == 0 { String::new() } else { format!("-{index}") };
-        let path = root.join(format!("{id}-{pid}-{stamp}{suffix}"));
-        if !path.exists() {
-            return path;
+        let renamed_path = parent.join(format!("{base}{suffix}"));
+        if !renamed_path.exists() {
+            fs::rename(path, &renamed_path).map_err(|error| error.to_string())?;
+            return Ok(Some(renamed_path));
         }
     }
 
-    unreachable!("tombstone path loop should return")
+    unreachable!("pending-delete path loop should return")
 }
 
-fn sanitize_tombstone_name(value: &str) -> String {
-    let name = value
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
-                character
-            } else {
-                '-'
+fn list_pending_delete_paths(storage: &AppStorage) -> Result<Vec<PathBuf>, String> {
+    let mut paths = Vec::new();
+    for root in [books_root(storage.root()), external_books_root(storage.root())] {
+        if !root.exists() {
+            continue;
+        }
+        for entry in fs::read_dir(root).map_err(|error| error.to_string())? {
+            let entry = entry.map_err(|error| error.to_string())?;
+            if entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.starts_with(PENDING_DELETE_PREFIX))
+            {
+                paths.push(entry.path());
             }
-        })
-        .collect::<String>();
-
-    if name.is_empty() { "book".to_string() } else { name }
-}
-
-#[cfg(test)]
-pub(super) fn cleanup_delete_tombstones(storage: &AppStorage) -> Result<(), String> {
-    let tombstones = list_delete_tombstones(storage)?;
-    for tombstone in tombstones {
-        cleanup_delete_tombstone_path(&tombstone)?;
-    }
-
-    let root = delete_tombstones_root(storage.root());
-    if root.exists() {
-        let is_empty = fs::read_dir(&root).map_err(|error| error.to_string())?.next().is_none();
-        if is_empty {
-            fs::remove_dir(&root).map_err(|error| error.to_string())?;
         }
     }
 
-    Ok(())
+    Ok(paths)
 }
 
-fn list_delete_tombstones(storage: &AppStorage) -> Result<Vec<PathBuf>, String> {
-    let root = delete_tombstones_root(storage.root());
-    if !root.exists() {
-        return Ok(Vec::new());
-    }
-
-    fs::read_dir(root)
-        .map_err(|error| error.to_string())?
-        .map(|entry| entry.map(|entry| entry.path()).map_err(|error| error.to_string()))
-        .collect()
-}
-
-fn cleanup_delete_tombstone_path(path: &Path) -> Result<(), String> {
+fn cleanup_pending_delete_path(path: &Path) -> Result<(), String> {
     if !path.exists() {
         return Ok(());
     }
 
-    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
+    let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
     if metadata.is_dir() {
         fs::remove_dir_all(path).map_err(|error| error.to_string())
     } else {
@@ -337,21 +297,21 @@ fn cleanup_delete_tombstone_path(path: &Path) -> Result<(), String> {
     }
 }
 
-pub(super) fn enqueue_delete_tombstone_cleanup(tasks: &TaskService, tombstones: Vec<PathBuf>) {
-    if tombstones.is_empty() {
+pub(super) fn enqueue_pending_delete_cleanup(tasks: &TaskService, paths: Vec<PathBuf>) {
+    if paths.is_empty() {
         return;
     }
 
     let tasks = tasks.clone();
     std::thread::spawn(move || {
-        for tombstone in tombstones {
-            let key = TaskKey::new(TaskKind::TombstoneCleanup, tombstone.to_string_lossy().into_owned());
+        for path in paths {
+            let key = TaskKey::new(TaskKind::PendingDeleteCleanup, path.to_string_lossy().into_owned());
             let runner = tasks.clone();
-            let cleanup_path = tombstone.clone();
+            let cleanup_path = path.clone();
             if let Err(error) = tasks.get_or_run(key, TaskPriority::Background, move || {
-                runner.run_background(|| cleanup_delete_tombstone_path(&cleanup_path))
+                runner.run_background(|| cleanup_pending_delete_path(&cleanup_path))
             }) {
-                eprintln!("Failed to cleanup deleted book tombstone: {error}");
+                eprintln!("Failed to cleanup deferred-delete path: {error}");
             }
         }
     });
@@ -360,13 +320,13 @@ pub(super) fn enqueue_delete_tombstone_cleanup(tasks: &TaskService, tombstones: 
 pub(super) fn delete_books_impl(storage: &AppStorage, tasks: &TaskService, ids: Vec<String>) -> Result<(), String> {
     let started = Instant::now();
     let source_count = ids.len();
-    let tombstones = delete_books_to_tombstones(storage, &ids)?;
-    let tombstone_count = tombstones.len();
+    let pending_deletes = rename_books_for_deletion(storage, &ids)?;
+    let pending_delete_count = pending_deletes.len();
     storage.flush_dirty()?;
-    enqueue_delete_tombstone_cleanup(tasks, tombstones);
+    enqueue_pending_delete_cleanup(tasks, pending_deletes);
     let mut fields = vec![
         ("sources", source_count.to_string()),
-        ("tombstones", tombstone_count.to_string()),
+        ("pending_deletes", pending_delete_count.to_string()),
         (
             "search_memory_caches",
             storage.search_text_memory_cache_len().to_string(),
@@ -415,9 +375,9 @@ pub fn cleanup_all_external_book_heavy_files(storage: &AppStorage) -> Result<(),
     Ok(())
 }
 
-pub fn schedule_existing_delete_tombstone_cleanup(storage: &AppStorage, tasks: &TaskService) {
-    match list_delete_tombstones(storage) {
-        Ok(tombstones) => enqueue_delete_tombstone_cleanup(tasks, tombstones),
-        Err(error) => eprintln!("Failed to list deleted book tombstones: {error}"),
+pub fn schedule_existing_pending_delete_cleanup(storage: &AppStorage, tasks: &TaskService) {
+    match list_pending_delete_paths(storage) {
+        Ok(paths) => enqueue_pending_delete_cleanup(tasks, paths),
+        Err(error) => eprintln!("Failed to list deferred-delete paths: {error}"),
     }
 }

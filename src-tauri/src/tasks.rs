@@ -45,7 +45,7 @@ pub(crate) enum TaskKind {
     SearchIndex,
     BookMaterialize,
     TxtPreview,
-    TombstoneCleanup,
+    PendingDeleteCleanup,
 }
 
 impl TaskKind {
@@ -54,7 +54,7 @@ impl TaskKind {
             Self::SearchIndex => "search-index",
             Self::BookMaterialize => "book-materialize",
             Self::TxtPreview => "txt-preview",
-            Self::TombstoneCleanup => "delete-cleanup",
+            Self::PendingDeleteCleanup => "delete-cleanup",
         }
     }
 }

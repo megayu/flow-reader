@@ -37,7 +37,7 @@ mod text_import;
 mod window_state;
 
 pub use commands::*;
-pub use deletion::{cleanup_all_external_book_heavy_files, schedule_existing_delete_tombstone_cleanup};
+pub use deletion::{cleanup_all_external_book_heavy_files, schedule_existing_pending_delete_cleanup};
 pub use image_index::ImageIndexCache;
 #[cfg(test)]
 use image_index::ImageIndexEntry;
@@ -68,7 +68,7 @@ pub(crate) use window_state::{RuntimeWindowState, record_window_state};
 use book_assets::{is_generated_text_cover, read_cover, remove_cover_files, write_cover};
 use book_source::*;
 #[cfg(test)]
-use deletion::{cleanup_delete_tombstones, delete_books_to_tombstones};
+use deletion::rename_books_for_deletion;
 use deletion::{cleanup_external_book_heavy_files, clear_book_caches_impl, delete_books_impl};
 use editing::*;
 use export::*;
@@ -110,7 +110,7 @@ const APP_DATA_DIR_NAME: &str = "Flow Reader";
 const APP_DATA_DIR_ENV: &str = "FLOW_READER_DATA_DIR";
 const BOOKS_DIR: &str = "books";
 const EXTERNAL_BOOKS_DIR: &str = "external-books";
-const DELETE_TOMBSTONES_DIR: &str = "delete-tombstones";
+const PENDING_DELETE_PREFIX: &str = ".del-";
 const LIBRARY_FILE: &str = "library.json";
 const EXTERNAL_INDEX_FILE: &str = "index.json";
 const SETTINGS_FILE: &str = "settings.json";
@@ -613,10 +613,6 @@ fn books_root(root: &Path) -> PathBuf {
 
 fn external_books_root(root: &Path) -> PathBuf {
     root.join(EXTERNAL_BOOKS_DIR)
-}
-
-fn delete_tombstones_root(root: &Path) -> PathBuf {
-    root.join(DELETE_TOMBSTONES_DIR)
 }
 
 fn library_path(root: &Path) -> Result<PathBuf, String> {

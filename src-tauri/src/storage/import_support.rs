@@ -141,13 +141,16 @@ impl ImportFileTransaction {
         Ok(transaction)
     }
 
-    fn commit(self, storage: &AppStorage) -> Result<Option<PathBuf>, String> {
+    fn commit(self, pending_deletes: &mut Vec<PathBuf>) -> Result<(), String> {
         if self.moved.is_empty() {
             fs::remove_dir(self.backup_dir).map_err(|error| error.to_string())?;
-            return Ok(None);
+            return Ok(());
         }
 
-        deletion::move_path_to_delete_tombstone(storage, &self.backup_dir, "import-backup")
+        if let Some(path) = deletion::rename_path_for_deletion(&self.backup_dir)? {
+            pending_deletes.push(path);
+        }
+        Ok(())
     }
 
     pub(super) fn rollback(self) -> Result<(), String> {
@@ -198,7 +201,7 @@ impl ImportFileTransaction {
 
 pub(super) struct ImportFinalizer {
     transaction: Option<ImportFileTransaction>,
-    cleanup_paths: Vec<(PathBuf, String)>,
+    cleanup_paths: Vec<PathBuf>,
 }
 
 impl ImportFinalizer {
@@ -209,24 +212,21 @@ impl ImportFinalizer {
         }
     }
 
-    pub(super) fn with_cleanup_path(mut self, path: PathBuf, name: impl Into<String>) -> Self {
-        self.cleanup_paths.push((path, name.into()));
+    pub(super) fn with_cleanup_path(mut self, path: PathBuf) -> Self {
+        self.cleanup_paths.push(path);
         self
     }
 
-    pub(super) fn finalize(self, storage: &AppStorage) -> Result<Vec<PathBuf>, String> {
-        let mut tombstones = Vec::new();
-        if let Some(transaction) = self.transaction
-            && let Some(tombstone) = transaction.commit(storage)?
-        {
-            tombstones.push(tombstone);
+    pub(super) fn finalize(self, pending_deletes: &mut Vec<PathBuf>) -> Result<(), String> {
+        if let Some(transaction) = self.transaction {
+            transaction.commit(pending_deletes)?;
         }
-        for (path, name) in self.cleanup_paths {
-            if let Some(tombstone) = deletion::move_path_to_delete_tombstone(storage, &path, &name)? {
-                tombstones.push(tombstone);
+        for path in self.cleanup_paths {
+            if let Some(path) = deletion::rename_path_for_deletion(&path)? {
+                pending_deletes.push(path);
             }
         }
-        Ok(tombstones)
+        Ok(())
     }
 }
 

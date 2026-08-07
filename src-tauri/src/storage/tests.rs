@@ -9,15 +9,14 @@ use super::{
     IMAGE_INDEX_CACHE_VERSION, ImageIndexCache, ImageIndexEntry, ImageIndexSection, Library, LibraryBook, LibraryPins,
     ReadingStatus, SEARCH_TEXT_CACHE_VERSION, SOURCE_TEXT_FILE, STATE_FILE, SearchTextCache, SearchTextSection,
     SourceStorage, SourceTextUpdate, StorageInner, StorageState, TextImportPreparedCache, TextImportRulesInput,
-    TextImportSelection, UNPACKED_DIR, check_book_source_statuses_impl, cleanup_delete_tombstones,
-    cleanup_external_book_heavy_files, decode_text_bytes, delete_books_to_tombstones, delete_tombstones_root,
-    empty_object, ensure_book_package_path_with_unpacker, export_book_impl, external_books_root, external_index_path,
-    get_book_reader_source_impl, hash_file, library_path, load_or_build_search_text_cache, mark_book_exported,
-    mark_library_book_content_updated, materialize_epub_package, normalize_non_square_pixel_png,
+    TextImportSelection, UNPACKED_DIR, check_book_source_statuses_impl, cleanup_external_book_heavy_files,
+    decode_text_bytes, empty_object, ensure_book_package_path_with_unpacker, export_book_impl, external_books_root,
+    external_index_path, get_book_reader_source_impl, hash_file, library_path, load_or_build_search_text_cache,
+    mark_book_exported, mark_library_book_content_updated, materialize_epub_package, normalize_non_square_pixel_png,
     normalize_publication_date, normalize_unpacked_epub_structure, open_external_epub_path_impl, parent_zip_path,
     parse_text_import_document, path_to_client_string, read_image_index_cache, read_json_or_default,
-    read_json_value_or_default, read_search_text_sections_from_unpacked, relative_zip_path, replace_book_text_impl,
-    replace_xhtml_text, replace_xhtml_text_node, schedule_existing_delete_tombstone_cleanup,
+    read_json_value_or_default, read_search_text_sections_from_unpacked, relative_zip_path, rename_books_for_deletion,
+    replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node, schedule_existing_pending_delete_cleanup,
     search_text_cache_from_bytes, search_text_cache_to_bytes, search_text_in_cache, settings_path,
     sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml, text_section_xhtml, visible_search_text_from_xhtml,
     write_cover, write_epub_from_original_and_unpacked, write_epub_from_unpacked_dir,
@@ -29,7 +28,7 @@ use std::{
     collections::HashMap,
     fs,
     io::{Cursor, Read, Write},
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
@@ -328,17 +327,6 @@ fn write_book_dir(storage: &AppStorage, id: &str, marker: &str) {
     fs::write(dir.join("marker.txt"), marker).unwrap();
 }
 
-fn tombstone_entries(root: &Path) -> Vec<PathBuf> {
-    let tombstones = delete_tombstones_root(root);
-    if !tombstones.exists() {
-        return Vec::new();
-    }
-    fs::read_dir(tombstones)
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .collect()
-}
-
 #[test]
 fn delete_books_rejects_ids_outside_the_library_without_touching_the_path() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
@@ -351,7 +339,7 @@ fn delete_books_rejects_ids_outside_the_library_without_touching_the_path() {
     fs::create_dir_all(&outside).unwrap();
     fs::write(outside.join("marker.txt"), "keep").unwrap();
 
-    let result = delete_books_to_tombstones(&storage, &[outside.to_string_lossy().into_owned()]);
+    let result = rename_books_for_deletion(&storage, &[outside.to_string_lossy().into_owned()]);
 
     assert!(result.is_err());
     assert!(outside.join("marker.txt").exists());
@@ -362,10 +350,10 @@ fn delete_books_rejects_ids_outside_the_library_without_touching_the_path() {
 }
 
 #[test]
-fn delete_books_moves_book_directories_to_tombstones_before_cleanup() {
+fn delete_books_renames_all_book_directories_in_place_before_cleanup() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
-        "flow-reader-delete-tombstone-test-{}-{nonce}",
+        "flow-reader-deferred-delete-test-{}-{nonce}",
         std::process::id()
     ));
     let storage = test_storage_with_books(
@@ -386,7 +374,7 @@ fn delete_books_moves_book_directories_to_tombstones_before_cleanup() {
         }),
     );
 
-    let tombstones = delete_books_to_tombstones(&storage, &["book-a".to_string(), "book-b".to_string()]).unwrap();
+    let pending_deletes = rename_books_for_deletion(&storage, &["book-a".to_string(), "book-b".to_string()]).unwrap();
 
     {
         let state = storage.inner.state.lock().unwrap();
@@ -395,83 +383,41 @@ fn delete_books_moves_book_directories_to_tombstones_before_cleanup() {
     }
     assert!(!storage.book_dir("book-a").exists());
     assert!(!storage.book_dir("book-b").exists());
-    assert_eq!(tombstones.len(), 2);
-    assert_eq!(tombstone_entries(&root).len(), 2);
-    assert!(tombstones.iter().any(|path| path.join("marker.txt").exists()));
+    assert_eq!(pending_deletes.len(), 2);
+    assert!(pending_deletes.iter().all(|path| {
+        path.parent() == Some(root.join(BOOKS_DIR).as_path())
+            && path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with(".del-"))
+    }));
+    assert!(pending_deletes.iter().any(|path| path.join("marker.txt").exists()));
     assert!(!storage.inner.search_text_caches.lock().unwrap().contains_key("book-a"));
 
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
-fn delete_books_falls_back_when_tombstone_root_is_unavailable() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-delete-tombstone-fallback-test-{}-{nonce}",
-        std::process::id()
-    ));
-    let storage = test_storage_with_books(&root, vec![test_library_book_with_id("book-a", BookSourceFormat::Epub)]);
-    write_book_dir(&storage, "book-a", "A");
-    fs::create_dir_all(&root).unwrap();
-    fs::write(delete_tombstones_root(&root), "blocked").unwrap();
-
-    let tombstones = delete_books_to_tombstones(&storage, &["book-a".to_string()]).unwrap();
-
-    {
-        let state = storage.inner.state.lock().unwrap();
-        assert!(state.library.books.is_empty());
-        assert!(state.book_states.is_empty());
-    }
-    assert!(storage.inner.dirty.lock().unwrap().library);
-    assert!(!storage.book_dir("book-a").exists());
-    assert!(tombstones.is_empty());
-
-    let _ = fs::remove_dir_all(root);
-}
-
-#[test]
-fn delete_tombstone_cleanup_removes_existing_tombstones() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-delete-cleanup-test-{}-{nonce}",
-        std::process::id()
-    ));
-    let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
-    let tombstone = delete_tombstones_root(&root).join("book-a-deleted");
-    fs::create_dir_all(&tombstone).unwrap();
-    fs::write(tombstone.join("marker.txt"), "deleted").unwrap();
-
-    cleanup_delete_tombstones(&storage).unwrap();
-
-    assert!(!tombstone.exists());
-    assert!(tombstone_entries(&root).is_empty());
-
-    let _ = fs::remove_dir_all(root);
-}
-
-#[test]
-fn startup_tombstone_cleanup_removes_leftover_tombstones() {
+fn startup_cleanup_removes_leftover_pending_delete_paths() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
         "flow-reader-startup-cleanup-test-{}-{nonce}",
         std::process::id()
     ));
     let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
-    let tombstone = delete_tombstones_root(&root).join("book-a-leftover");
-    fs::create_dir_all(&tombstone).unwrap();
-    fs::write(tombstone.join("marker.txt"), "leftover").unwrap();
+    let pending_delete = root.join(BOOKS_DIR).join(".del-book-a-leftover");
+    fs::create_dir_all(&pending_delete).unwrap();
+    fs::write(pending_delete.join("marker.txt"), "leftover").unwrap();
     let tasks = TaskService::default();
 
-    schedule_existing_delete_tombstone_cleanup(&storage, &tasks);
+    schedule_existing_pending_delete_cleanup(&storage, &tasks);
     for _ in 0..100 {
-        if !tombstone.exists() {
+        if !pending_delete.exists() {
             break;
         }
         thread::sleep(Duration::from_millis(10));
     }
 
-    assert!(!tombstone.exists());
-    assert!(tombstone_entries(&root).is_empty());
+    assert!(!pending_delete.exists());
 
     let _ = fs::remove_dir_all(root);
 }

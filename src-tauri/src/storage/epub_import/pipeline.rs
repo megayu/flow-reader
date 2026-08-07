@@ -335,7 +335,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
         }
         let mut finalizer = ImportFinalizer::new(file_transaction.take());
         if let Some((external_id, _)) = promotion {
-            finalizer = finalizer.with_cleanup_path(storage.external_book_dir(&external_id), "external-promotion");
+            finalizer = finalizer.with_cleanup_path(storage.external_book_dir(&external_id));
         }
         Ok((record, finalizer))
     })();

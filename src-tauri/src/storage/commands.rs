@@ -1163,14 +1163,13 @@ fn finalize_import_batch(
     }
 
     storage.flush_dirty()?;
-    let mut tombstones = Vec::new();
+    let mut pending_deletes = Vec::new();
     for finalizer in finalizers {
-        match finalizer.finalize(storage) {
-            Ok(paths) => tombstones.extend(paths),
-            Err(error) => eprintln!("Failed to finalize committed import files: {error}"),
+        if let Err(error) = finalizer.finalize(&mut pending_deletes) {
+            eprintln!("Failed to finalize committed import files: {error}");
         }
     }
-    deletion::enqueue_delete_tombstone_cleanup(tasks, tombstones);
+    deletion::enqueue_pending_delete_cleanup(tasks, pending_deletes);
     Ok(())
 }
 
