@@ -572,6 +572,19 @@ impl AppStorage {
             .map(|_| SourceStorage::Referenced)
             .unwrap_or_default()
     }
+
+    fn text_import_rules(&self) -> Result<Option<TextImportRulesInput>, String> {
+        let state = self
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        Ok(state
+            .settings
+            .get("textImportRules")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok()))
+    }
 }
 
 fn clone_library(library: &Library) -> Library {

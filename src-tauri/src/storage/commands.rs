@@ -771,8 +771,8 @@ pub async fn preview_text_import_paths(
     tasks: State<'_, TaskService>,
     paths: Vec<String>,
     encodings: HashMap<String, String>,
-    rules: Option<TextImportRulesInput>,
 ) -> Result<Vec<TextImportPreview>, String> {
+    let rules = storage.text_import_rules()?;
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -893,9 +893,9 @@ pub async fn import_text_paths(
     tasks: State<'_, TaskService>,
     imports: Vec<TextImportSelection>,
     replace_existing: bool,
-    rules: Option<TextImportRulesInput>,
     import_id: Option<String>,
 ) -> Result<BookImportResult, String> {
+    let rules = storage.text_import_rules()?;
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {

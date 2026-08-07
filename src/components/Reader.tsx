@@ -77,11 +77,17 @@ function getFocusedBookTab() {
 
 interface ReaderGridViewProps {
   content?: React.ReactNode
+  directTextImport: boolean
   onEpubImportProgress?: (progress: BookImportProgress) => void
   onEpubImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
 }
 
-export function ReaderGridView({ content, onEpubImportProgress, onEpubImportResult }: ReaderGridViewProps) {
+export function ReaderGridView({
+  content,
+  directTextImport,
+  onEpubImportProgress,
+  onEpubImportResult,
+}: ReaderGridViewProps) {
   const { focusedIndex, groups } = useReaderSnapshot()
   const [action, setAction] = useAction()
   const setViewMode = useSetViewMode()
@@ -125,6 +131,7 @@ export function ReaderGridView({ content, onEpubImportProgress, onEpubImportResu
         key={group.id}
         index={index}
         content={content}
+        directTextImport={directTextImport}
         onEpubImportProgress={onEpubImportProgress}
         onEpubImportResult={onEpubImportResult}
         onEnterReaderMode={enterReaderMode}
@@ -136,6 +143,7 @@ export function ReaderGridView({ content, onEpubImportProgress, onEpubImportResu
 interface ReaderGroupProps {
   index: number
   content?: React.ReactNode
+  directTextImport: boolean
   onEpubImportProgress?: (progress: BookImportProgress) => void
   onEpubImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
   onEnterReaderMode: () => void
@@ -185,6 +193,7 @@ function observeReaderTabIconOnlyStates(
 function ReaderGroup({
   index,
   content,
+  directTextImport,
   onEpubImportProgress,
   onEpubImportResult,
   onEnterReaderMode,
@@ -427,6 +436,7 @@ function ReaderGroup({
 
             if (files.length) {
               tabs = await handleFiles(files, {
+                directTextImport,
                 onImportProgress: onEpubImportProgress,
                 onImportResult: onEpubImportResult,
               })

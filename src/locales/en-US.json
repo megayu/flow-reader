@@ -229,6 +229,8 @@
   "settings.translation.main_language.description": "Translations target this language unless the selected text is already in it.",
   "settings.translation.secondary_language": "Secondary Language",
   "settings.translation.secondary_language.description": "Used as the target when the selected text is in your main language.",
+  "settings.txt_import.auto_import": "Import TXT without Preview",
+  "settings.txt_import.auto_import.description": "Skip the import preview and detect TXT file encoding automatically.",
   "settings.txt_import.chapter_rules": "Chapter Rules",
   "settings.txt_import.chapter_rules.description": "Enter one {1} per line. Matching headings create chapters under the current group.",
   "settings.txt_import.group_rules": "Group Rules",

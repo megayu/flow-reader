@@ -61,7 +61,6 @@ import {
   type BookRecord,
   type BookSourceStatus,
   db,
-  type TextImportRulesInput,
   type TextImportSelection,
 } from '../storage'
 import { clamp } from '../utils'
@@ -152,6 +151,7 @@ export function LibraryPage() {
   const errorT = useTranslation('error')
   const homeT = useTranslation('home')
   const focusedBookId = focusedBookTab?.book.id
+  const directTextImport = settings.directTextImport === true
   const openBookIds = new Set(groups.flatMap((group) => group.bookTabs.map((tab) => tab.book.id)))
 
   const openTextImportDialog = useCallback((paths: string[], openAfterImport: boolean) => {
@@ -194,10 +194,9 @@ export function LibraryPage() {
   )
 
   const handleTextImport = useCallback(
-    (imports: TextImportSelection[], openAfterImport: boolean, rules: TextImportRulesInput) => {
+    (imports: TextImportSelection[], openAfterImport: boolean) => {
       void importTextSelections(imports, {
         onImportProgress: handleBookImportProgress,
-        rules,
       })
         .then((result: BookImportResult) => {
           setBookImportProgress(undefined)
@@ -223,6 +222,7 @@ export function LibraryPage() {
   )
 
   const handleNativeEpubImportResult = useEffectEvent((result: BookImportResult) => handleEpubImportResult(result))
+  const getNativeDirectTextImport = useEffectEvent(() => directTextImport)
 
   useEffect(() => {
     return subscribeReaderOpenErrors(({ bookId, bookTitle, closeTab, error, stage }) => {
@@ -286,6 +286,7 @@ export function LibraryPage() {
     setupNativeOpenFiles({
       onImportProgress: handleBookImportProgress,
       onImportResult: (result) => handleNativeEpubImportResult(result),
+      getDirectTextImport: () => getNativeDirectTextImport(),
       onOpenRequest: () => {
         openedFromNativeRef.current = true
         setNativeStartupPending(true)
@@ -398,6 +399,7 @@ export function LibraryPage() {
       onOpenBook={() => setViewMode('reader')}
       onEpubImportProgress={handleBookImportProgress}
       onEpubImportResult={handleEpubImportResult}
+      directTextImport={directTextImport}
       onTextPaths={(paths) => openTextImportDialog(paths, false)}
     />
   )
@@ -412,6 +414,7 @@ export function LibraryPage() {
           content={viewMode === 'library' ? library : undefined}
           onEpubImportProgress={handleBookImportProgress}
           onEpubImportResult={handleEpubImportResult}
+          directTextImport={directTextImport}
         />
       ) : startupRestoreDone ? (
         library
@@ -431,6 +434,7 @@ export function LibraryPage() {
 }
 
 interface LibraryProps {
+  directTextImport: boolean
   openBookIds: ReadonlySet<string>
   onEpubImportProgress: (progress: BookImportProgress) => void
   onEpubImportResult: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
@@ -439,6 +443,7 @@ interface LibraryProps {
 }
 
 const Library: React.FC<LibraryProps> = ({
+  directTextImport,
   openBookIds,
   onEpubImportProgress,
   onEpubImportResult,
@@ -619,11 +624,12 @@ const Library: React.FC<LibraryProps> = ({
 
   const importBooks = useCallback(() => {
     void openImportDialog({
+      directTextImport,
       onImportProgress: onEpubImportProgress,
       onImportResult: handleEpubImportResult,
       onTextPaths,
     })
-  }, [handleEpubImportResult, onEpubImportProgress, onTextPaths])
+  }, [directTextImport, handleEpubImportResult, onEpubImportProgress, onTextPaths])
 
   const handleCancelSelectionKeyDown = useEffectEvent((e: KeyboardEvent) => {
     if (e.key !== 'Escape') return
@@ -808,6 +814,7 @@ const Library: React.FC<LibraryProps> = ({
 
         if (e.dataTransfer.files.length) {
           handleFiles(e.dataTransfer.files, {
+            directTextImport,
             onImportProgress: onEpubImportProgress,
             onImportResult: handleEpubImportResult,
             onTextPaths,

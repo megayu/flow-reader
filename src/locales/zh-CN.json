@@ -230,6 +230,8 @@
   "settings.translation.main_language.description": "所选文本不是主语言时，默认翻译为主语言。",
   "settings.translation.secondary_language": "次语言",
   "settings.translation.secondary_language.description": "所选文本是主语言时，默认翻译为次语言。",
+  "settings.txt_import.auto_import": "直接导入 TXT",
+  "settings.txt_import.auto_import.description": "跳过导入预览，自动识别 TXT 文件编码。",
   "settings.txt_import.chapter_rules": "章节规则",
   "settings.txt_import.chapter_rules.description": "每行输入一个{1}，匹配的标题会作为当前分组下的章节。",
   "settings.txt_import.group_rules": "分组规则",

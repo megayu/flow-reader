@@ -22,7 +22,7 @@ import { useLocale } from '@/hooks/useLocale'
 import { formatTranslation, useTranslation } from '@/hooks/useTranslation'
 import { type AppLocale, localeNames } from '@/locales'
 import { createShortcutGroups } from '@/shortcuts'
-import { defaultTextImportRules, useSettings } from '@/state'
+import { defaultTextImportRules, normalizeTextImportRules, useSettings } from '@/state'
 import { maxUiFontSize, minUiFontSize, normalizeUiFontSize } from '@/styles/ui'
 import { orderedTargetLanguages, TRANSLATION_LANGUAGES, type TranslationLanguage } from '@/translation/languages'
 
@@ -45,10 +45,7 @@ export const SettingsPanel: React.FC = () => {
   const t = useTranslation('settings')
   const typographyT = useTranslation('typography')
   const [activeTab, setActiveTab] = useState<SettingsTab>('basic')
-  const textImportRules = {
-    ...defaultTextImportRules,
-    ...settings.textImportRules,
-  }
+  const textImportRules = normalizeTextImportRules(settings.textImportRules)
   const updateTextImportRules = (patch: Partial<typeof defaultTextImportRules>) => {
     setSettings((prev) => ({
       ...prev,
@@ -261,6 +258,23 @@ export const SettingsPanel: React.FC = () => {
           )}
           {activeTab === 'txt' && (
             <div data-flow-settings-panel className="m-0 space-y-4">
+              <Item
+                title={t('txt_import.auto_import')}
+                description={t('txt_import.auto_import.description')}
+                controlId="settings-txt-auto-import"
+              >
+                <SettingsCheckbox
+                  id="settings-txt-auto-import"
+                  label={t('txt_import.auto_import')}
+                  checked={settings.directTextImport === true}
+                  onCheckedChange={(checked) => {
+                    setSettings((prev) => ({
+                      ...prev,
+                      directTextImport: checked,
+                    }))
+                  }}
+                />
+              </Item>
               <Item
                 title={t('txt_import.group_rules')}
                 description={<RegexDescription descriptionKey="txt_import.group_rules.description" />}

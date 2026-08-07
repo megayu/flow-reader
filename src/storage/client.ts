@@ -20,7 +20,6 @@ import type {
   ReadingPositionInput,
   TextImportEncodingOption,
   TextImportPreview,
-  TextImportRulesInput,
   TextImportSelection,
 } from './types'
 
@@ -562,6 +561,7 @@ export async function importEpubPaths(
 }
 
 export async function openExternalEpubPaths(paths: string[]) {
+  await waitForPendingNativeWrites()
   beginBooksMutation()
   const result = await trackNativeWrite(invoke<BookImportResult>('open_external_epub_paths', { paths }))
   result.books.forEach((book) => rememberBook(book))
@@ -572,15 +572,11 @@ export function getTextImportEncodings() {
   return invoke<TextImportEncodingOption[]>('get_text_import_encodings')
 }
 
-export function previewTextImportPaths(
-  paths: string[],
-  encodings: Record<string, string> = {},
-  rules?: TextImportRulesInput,
-) {
+export async function previewTextImportPaths(paths: string[], encodings: Record<string, string> = {}) {
+  await waitForPendingNativeWrites()
   return invoke<TextImportPreview[]>('preview_text_import_paths', {
     paths,
     encodings,
-    rules,
   })
 }
 
@@ -590,12 +586,10 @@ export async function importTextPaths(
     importId,
     progressiveUpdates = false,
     replaceExisting = true,
-    rules,
   }: {
     importId?: string
     progressiveUpdates?: boolean
     replaceExisting?: boolean
-    rules?: TextImportRulesInput
   } = {},
 ) {
   await waitForPendingNativeWrites()
@@ -605,7 +599,6 @@ export async function importTextPaths(
       importId,
       imports,
       replaceExisting,
-      rules,
     }),
   )
   rememberBookBatch(result.books)

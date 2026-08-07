@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test'
 
 import type { BookRecord } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
-import { installTauriMock } from '../support/tauri-mock'
+import { getBookImportOperations, installTauriMock } from '../support/tauri-mock'
 
 const pendingEpubPath = path.join('temporary', 'requested.epub')
 
@@ -84,6 +84,42 @@ test('cold native EPUB open opens only the requested book', async ({ page }) => 
   await expect(page.getByTestId('native-startup-surface')).toHaveCount(0)
   await expect(page.locator('[data-flow-reader-tab-index]')).toHaveCount(1)
   expect(await page.evaluate(() => (window as any).__FLOW_TEST_TAURI__?.takePendingOpenPathsCalls)).toBe(1)
+})
+
+test('native mixed open prepares TXT with EPUB and commits it through one later progress phase', async ({ page }) => {
+  const textPath = path.join('temporary', 'requested.txt')
+  const epub = createBook('requested-epub', 'Requested EPUB')
+  const text = createTestBook({
+    id: 'requested-text',
+    name: 'requested.txt',
+    sourceFormat: 'txt',
+    metadata: { title: 'Requested TXT' },
+  })
+  await installTauriMock(page, {
+    epubImportDelayMs: 150,
+    externallyOpenedBooks: [epub],
+    importedBooks: [text],
+    pendingOpenPaths: [pendingEpubPath, textPath],
+    settings: { directTextImport: true },
+    textImportDelayMs: 150,
+    textImportPreviewDelayMs: 20,
+  })
+
+  await page.goto('/')
+
+  await expect(page.getByRole('status')).toContainText('0 / 2')
+  await expect.poll(() => getBookImportOperations(page)).toContain('txt-import:start')
+  await expect(page.getByRole('status')).toContainText('1 / 2')
+  await expect
+    .poll(() => getBookImportOperations(page))
+    .toEqual([
+      'txt-preview:start',
+      'epub:start',
+      'txt-preview:finish',
+      'epub:finish',
+      'txt-import:start',
+      'txt-import:finish',
+    ])
 })
 
 test('native EPUB open focuses an existing tab across reader groups', async ({ page }) => {

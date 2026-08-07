@@ -4,7 +4,12 @@ import { expect, type Page, test } from '@playwright/test'
 
 import { createTestBook } from '../support/book-fixtures'
 import { msg } from '../support/i18n'
-import { getImportedTextSelections, getStoredSettings, installTauriMock } from '../support/tauri-mock'
+import {
+  getBookImportOperations,
+  getImportedTextSelections,
+  getStoredSettings,
+  installTauriMock,
+} from '../support/tauri-mock'
 
 const settingsShortcut = process.platform === 'darwin' ? 'Meta+Comma' : 'Control+Comma'
 const selectAllShortcut = process.platform === 'darwin' ? 'Meta+A' : 'Control+A'
@@ -90,6 +95,50 @@ test('TXT import dialog sends edited title and author metadata', async ({ page }
         creator: 'Edited Author',
       },
     ])
+})
+
+test('direct mixed import prepares TXT alongside EPUB and commits it in one later phase', async ({ page }) => {
+  const epubPath = path.join('tmp', 'First.epub')
+  const textPath = path.join('tmp', 'Second.txt')
+
+  await installTauriMock(page, {
+    epubImportDelayMs: 150,
+    importedBooks: [
+      createTestBook({
+        id: 'direct-epub-book',
+        name: 'First.epub',
+        sourceFormat: 'epub',
+        metadata: { title: 'First' },
+      }),
+      createTestBook({
+        id: 'direct-text-book',
+        name: 'Second.txt',
+        sourceFormat: 'txt',
+        metadata: { title: 'Second' },
+      }),
+    ],
+    openDialogPaths: [epubPath, textPath],
+    settings: { directTextImport: true },
+    textImportPreviewDelayMs: 20,
+  })
+  await page.goto('/')
+
+  await page.getByRole('button', { name: msg('home.import') }).click()
+
+  await expect(page.getByText(msg('text_import.title'))).toBeHidden()
+  await expect(page.getByRole('status')).toContainText('0 / 2')
+  await expect.poll(() => getImportedTextSelections(page)).toEqual([{ path: textPath }])
+  await expect
+    .poll(() => getBookImportOperations(page))
+    .toEqual([
+      'txt-preview:start',
+      'epub:start',
+      'txt-preview:finish',
+      'epub:finish',
+      'txt-import:start',
+      'txt-import:finish',
+    ])
+  await expect(page.getByRole('status').getByRole('heading')).toContainText('2')
 })
 
 test('switches TXT import previews with arrow keys while keeping the active preview focused and visible', async ({

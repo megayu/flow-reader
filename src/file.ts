@@ -8,8 +8,8 @@ import {
   importEpubPaths,
   importTextPaths,
   openExternalEpubPaths,
+  previewTextImportPaths,
   rememberBookImportProgress,
-  type TextImportRulesInput,
   type TextImportSelection,
 } from './storage'
 
@@ -21,6 +21,7 @@ const filePathCollator = new Intl.Collator(undefined, {
 })
 
 interface HandleFilesOptions {
+  directTextImport?: boolean
   onImportProgress?: (progress: BookImportProgress) => void
   replaceExisting?: boolean
   onTextPaths?: (paths: string[]) => void
@@ -72,7 +73,7 @@ export async function handleFiles(files: Iterable<File>, options: HandleFilesOpt
 
 export async function handleFilePaths(
   paths: string[],
-  { onImportProgress, replaceExisting = true, onImportResult, onTextPaths }: HandleFilesOptions = {},
+  { directTextImport, onImportProgress, replaceExisting = true, onImportResult, onTextPaths }: HandleFilesOptions = {},
 ) {
   if (!paths.length) return []
   await waitForBookCacheClearing()
@@ -80,50 +81,58 @@ export async function handleFilePaths(
   const epubPaths = paths.filter(isEpubPath)
   const textPaths = paths.filter(isTxtPath)
 
-  if (textPaths.length) onTextPaths?.(textPaths)
-  if (!epubPaths.length) return []
+  if (textPaths.length && !directTextImport) onTextPaths?.(textPaths)
 
-  const importId = createBookImportId()
-  onImportProgress?.(initialBookImportProgress(importId, epubPaths.length))
-  const unlisten = onImportProgress ? await listenBookImportProgress(importId, onImportProgress) : undefined
+  const directTextPaths = directTextImport ? textPaths : []
+  const batch = await runDirectTextImportBatch(epubPaths, directTextPaths, {
+    onImportProgress,
+    importEpubPhase: (importId, progressiveUpdates) =>
+      importEpubPaths(epubPaths, {
+        importId,
+        progressiveUpdates,
+        replaceExisting,
+      }),
+    importTextPhase: (importId, progressiveUpdates) =>
+      importTextPaths(
+        directTextPaths.map((path) => ({ path })),
+        {
+          importId,
+          progressiveUpdates,
+          replaceExisting,
+        },
+      ),
+  })
+  if (!batch) return []
 
-  try {
-    const result = await importEpubPaths(epubPaths, {
-      importId,
-      progressiveUpdates: !!unlisten,
-      replaceExisting,
-    })
-    const openedBookIds = await onImportResult?.(result)
-    if (!openedBookIds?.size) return result.books
-    return result.books.filter((book) => !openedBookIds.has(book.id))
-  } finally {
-    unlisten?.()
+  const result = {
+    books: [...batch.epubResult.books, ...batch.textResult.books],
+    failures: [...batch.epubResult.failures, ...batch.textResult.failures],
   }
+  const openedBookIds = await onImportResult?.(result)
+  if (!openedBookIds?.size) return result.books
+  return result.books.filter((book) => !openedBookIds.has(book.id))
 }
 
 export async function importTextSelections(
   imports: TextImportSelection[],
   {
     onImportProgress,
-    rules,
   }: {
     onImportProgress?: (progress: BookImportProgress) => void
-    rules?: TextImportRulesInput
   } = {},
 ): Promise<BookImportResult> {
-  const importId = createBookImportId()
-  onImportProgress?.(initialBookImportProgress(importId, imports.length))
-  const unlisten = onImportProgress ? await listenBookImportProgress(importId, onImportProgress) : undefined
-
-  try {
-    return await importTextPaths(imports, {
-      importId,
-      progressiveUpdates: !!unlisten,
-      rules,
-    })
-  } finally {
-    unlisten?.()
-  }
+  const batchImportId = createBookImportId()
+  onImportProgress?.(initialBookImportProgress(batchImportId, imports.length))
+  return runBookImportPhase(
+    onImportProgress,
+    (progress) => aggregateBookImportProgress(progress, batchImportId, imports.length),
+    imports.length,
+    (importId, progressiveUpdates) =>
+      importTextPaths(imports, {
+        importId,
+        progressiveUpdates,
+      }),
+  )
 }
 
 export async function openImportDialog(options: HandleFilesOptions = {}) {
@@ -144,6 +153,7 @@ export async function setupNativeOpenFiles({
   onImportProgress,
   onImportResult,
   onDropTextPaths,
+  getDirectTextImport,
 }: {
   onOpen?: (books: BookRecord[]) => void
   onOpenRequest?: (paths: string[]) => void
@@ -151,6 +161,7 @@ export async function setupNativeOpenFiles({
   onImportProgress?: (progress: BookImportProgress) => void
   onImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
   onDropTextPaths?: (paths: string[]) => void
+  getDirectTextImport?: () => boolean
 }) {
   if (typeof window === 'undefined') return
 
@@ -163,13 +174,33 @@ export async function setupNativeOpenFiles({
       const epubPaths = paths.filter(isEpubPath)
       const textPaths = paths.filter(isTxtPath)
       if (epubPaths.length) onOpenRequest?.(epubPaths)
-      if (textPaths.length) {
-        const books = await handleFilePaths(textPaths, {
+      if (textPaths.length && getDirectTextImport?.()) {
+        const batch = await runDirectTextImportBatch(epubPaths, textPaths, {
           onImportProgress,
-          onImportResult,
-          replaceExisting: false,
+          importEpubPhase: () => openExternalEpubPaths(epubPaths),
+          importTextPhase: (importId, progressiveUpdates) =>
+            importTextPaths(
+              textPaths.map((path) => ({ path })),
+              {
+                importId,
+                progressiveUpdates,
+                replaceExisting: false,
+              },
+            ),
         })
+        if (!batch) return
+
+        const importResult = {
+          books: batch.textResult.books,
+          failures: [...batch.epubResult.failures, ...batch.textResult.failures],
+        }
+        const openedBookIds = await onImportResult?.(importResult)
+        const books = [
+          ...batch.epubResult.books,
+          ...batch.textResult.books.filter((book) => !openedBookIds?.has(book.id)),
+        ]
         if (books.length) onOpen?.(books)
+        return
       }
 
       if (epubPaths.length) {
@@ -192,6 +223,7 @@ export async function setupNativeOpenFiles({
       unlistenDrop = await getCurrentWebviewWindow().onDragDropEvent((event) => {
         if (event.payload.type !== 'drop') return
         void handleFilePaths(sortDroppedFilePaths(event.payload.paths), {
+          directTextImport: getDirectTextImport?.(),
           onImportProgress,
           onImportResult,
           replaceExisting: true,
@@ -230,6 +262,116 @@ function initialBookImportProgress(importId: string, total: number): BookImportP
     completed: 0,
     imported: 0,
     failed: 0,
+  }
+}
+
+function emptyBookImportResult(): BookImportResult {
+  return { books: [], failures: [] }
+}
+
+async function prepareDirectTextImports(paths: string[]) {
+  if (!paths.length) return
+
+  try {
+    await previewTextImportPaths(paths)
+  } catch (error) {
+    console.debug('TXT import preparation is unavailable; the import phase will retry', error)
+  }
+}
+
+interface DirectTextImportBatchOptions {
+  onImportProgress?: (progress: BookImportProgress) => void
+  importEpubPhase: (importId: string, progressiveUpdates: boolean) => Promise<BookImportResult>
+  importTextPhase: (importId: string, progressiveUpdates: boolean) => Promise<BookImportResult>
+}
+
+async function runDirectTextImportBatch(
+  epubPaths: string[],
+  textPaths: string[],
+  { onImportProgress, importEpubPhase, importTextPhase }: DirectTextImportBatchOptions,
+) {
+  const total = epubPaths.length + textPaths.length
+  if (!total) return
+
+  const batchImportId = createBookImportId()
+  onImportProgress?.(initialBookImportProgress(batchImportId, total))
+  const textPreparation = prepareDirectTextImports(textPaths)
+  let epubResult = emptyBookImportResult()
+  if (epubPaths.length) {
+    epubResult = await runBookImportPhase(
+      onImportProgress,
+      (progress) => aggregateBookImportProgress(progress, batchImportId, total),
+      epubPaths.length,
+      importEpubPhase,
+    )
+  }
+
+  await textPreparation
+  let textResult = emptyBookImportResult()
+  if (textPaths.length) {
+    textResult = await runBookImportPhase(
+      onImportProgress,
+      (progress) =>
+        aggregateBookImportProgress(progress, batchImportId, total, {
+          completed: epubPaths.length,
+          imported: epubResult.books.length,
+          failed: epubResult.failures.length,
+        }),
+      textPaths.length,
+      importTextPhase,
+    )
+  }
+
+  return { epubResult, textResult }
+}
+
+interface BookImportProgressOffset {
+  completed: number
+  imported: number
+  failed: number
+}
+
+function aggregateBookImportProgress(
+  progress: BookImportProgress,
+  importId: string,
+  total: number,
+  offset: BookImportProgressOffset = { completed: 0, imported: 0, failed: 0 },
+): BookImportProgress {
+  return {
+    ...progress,
+    importId,
+    total,
+    completed: offset.completed + progress.completed,
+    imported: offset.imported + progress.imported,
+    failed: offset.failed + progress.failed,
+  }
+}
+
+async function runBookImportPhase(
+  onImportProgress: ((progress: BookImportProgress) => void) | undefined,
+  presentProgress: (progress: BookImportProgress) => BookImportProgress,
+  total: number,
+  operation: (importId: string, progressiveUpdates: boolean) => Promise<BookImportResult>,
+) {
+  const importId = createBookImportId()
+  const unlisten = onImportProgress
+    ? await listenBookImportProgress(importId, (progress) => onImportProgress(presentProgress(progress)))
+    : undefined
+
+  try {
+    const result = await operation(importId, !!unlisten)
+    onImportProgress?.(
+      presentProgress({
+        importId,
+        total,
+        completed: total,
+        imported: result.books.length,
+        failed: result.failures.length,
+      }),
+    )
+    return result
+  } finally {
+    unlisten?.()
   }
 }
 

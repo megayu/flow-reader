@@ -34,6 +34,7 @@ interface TauriMockOptions {
   books?: BookRecord[]
   externallyOpenedBooks?: BookRecord[]
   importedBooks?: BookRecord[]
+  epubImportDelayMs?: number
   localDictionaries?: LocalDictionaryRecord[]
   localDictionaryFiles?: Record<string, LocalDictionaryRecord | { code: string; message: string }>
   openDialogPaths?: string[]
@@ -49,6 +50,8 @@ interface TauriMockOptions {
   settings?: Record<string, unknown>
   tags?: TestLibraryTagRecord[]
   textImportEncodings?: TextImportEncodingOption[]
+  textImportDelayMs?: number
+  textImportPreviewDelayMs?: number
   textImportPreviews?: TextImportPreview[]
   merriamWebsterResponses?: Record<string, unknown>
   mdictResponses?: Record<string, Record<string, unknown>>
@@ -68,6 +71,7 @@ export async function installTauriMock(
     books = [],
     externallyOpenedBooks = [],
     importedBooks = [],
+    epubImportDelayMs = 0,
     localDictionaries = [],
     localDictionaryFiles = {},
     openDialogPaths = [],
@@ -87,6 +91,8 @@ export async function installTauriMock(
       { id: 'utf-8', label: 'UTF-8' },
       { id: 'gb18030', label: 'GB18030' },
     ],
+    textImportDelayMs = 0,
+    textImportPreviewDelayMs = 0,
     textImportPreviews = [],
     merriamWebsterResponses = {},
     mdictResponses = {},
@@ -105,6 +111,7 @@ export async function installTauriMock(
       fixtureBooks,
       fixtureExternallyOpenedBooks,
       fixtureImportedBooks,
+      fixtureEpubImportDelayMs,
       fixtureLocalDictionaries,
       fixtureLocalDictionaryFiles,
       fixtureOpenDialogPaths,
@@ -120,6 +127,8 @@ export async function installTauriMock(
       fixtureSettings,
       fixtureTags,
       fixtureTextImportEncodings,
+      fixtureTextImportDelayMs,
+      fixtureTextImportPreviewDelayMs,
       fixtureTextImportPreviews,
       fixtureMerriamWebsterResponses,
       fixtureMdictResponses,
@@ -179,6 +188,7 @@ export async function installTauriMock(
           }>
           localDictionaries: LocalDictionaryRecord[]
           libraryPinsStore: TestLibraryPins
+          bookImportOperations: string[]
           openedExternalUrls: string[]
           revealedBookSourceIds: string[]
           takePendingOpenPathsCalls: number
@@ -247,6 +257,7 @@ export async function installTauriMock(
       const callbacks = (internals.callbacks ??= {})
 
       globalWindow.__FLOW_TEST_TAURI__ = {
+        bookImportOperations: [],
         cancelledDictionarySessions: [],
         dictionaryRequests: [],
         dialogOpenCalls: [],
@@ -634,26 +645,40 @@ export async function installTauriMock(
           return null
         }
         if (command === 'import_epub_paths') {
+          globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations.push('epub:start')
+          if (fixtureEpubImportDelayMs > 0) {
+            await new Promise((resolve) => window.setTimeout(resolve, fixtureEpubImportDelayMs))
+          }
           const paths = Array.isArray(args?.paths) ? args.paths : []
           const imported = importQueue.splice(0, Math.max(paths.length, 1))
           imported.forEach((book) => bookStore.set(book.id, book))
+          globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations.push('epub:finish')
           return {
             books: imported,
             failures: [],
           }
         }
         if (command === 'open_external_epub_paths') {
+          globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations.push('epub:start')
+          if (fixtureEpubImportDelayMs > 0) {
+            await new Promise((resolve) => window.setTimeout(resolve, fixtureEpubImportDelayMs))
+          }
           const paths = Array.isArray(args?.paths) ? args.paths : []
           const opened = externalOpenQueue.splice(0, Math.max(paths.length, 1))
           opened.forEach((book) => bookStore.set(book.id, book))
+          globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations.push('epub:finish')
           return { books: opened, failures: [] }
         }
         if (command === 'get_text_import_encodings') {
           return fixtureTextImportEncodings
         }
         if (command === 'preview_text_import_paths') {
+          globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations.push('txt-preview:start')
+          if (fixtureTextImportPreviewDelayMs > 0) {
+            await new Promise((resolve) => window.setTimeout(resolve, fixtureTextImportPreviewDelayMs))
+          }
           const paths = Array.isArray(args?.paths) ? args.paths.map(String) : []
-          return paths.map((path) => {
+          const previews = paths.map((path) => {
             const preview = textImportPreviewStore.get(path)
             if (preview) return preview
 
@@ -672,13 +697,20 @@ export async function installTauriMock(
               sample: '',
             }
           })
+          globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations.push('txt-preview:finish')
+          return previews
         }
         if (command === 'import_text_paths') {
+          globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations.push('txt-import:start')
+          if (fixtureTextImportDelayMs > 0) {
+            await new Promise((resolve) => window.setTimeout(resolve, fixtureTextImportDelayMs))
+          }
           const imports = Array.isArray(args?.imports) ? (args.imports as TextImportSelection[]) : []
           globalWindow.__FLOW_TEST_TAURI__?.textImports.push(...imports)
           const imported = importQueue.splice(0, Math.max(imports.length, 1))
           imported.forEach((book) => bookStore.set(book.id, book))
-          return imported
+          globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations.push('txt-import:finish')
+          return { books: imported, failures: [] }
         }
         if (command === 'export_book') {
           const id = String(args?.id)
@@ -733,6 +765,7 @@ export async function installTauriMock(
       fixtureBooks: books,
       fixtureExternallyOpenedBooks: externallyOpenedBooks,
       fixtureImportedBooks: importedBooks,
+      fixtureEpubImportDelayMs: epubImportDelayMs,
       fixtureLocalDictionaries: localDictionaries,
       fixtureLocalDictionaryFiles: localDictionaryFiles,
       fixtureOpenDialogPaths: openDialogPaths,
@@ -748,6 +781,8 @@ export async function installTauriMock(
       fixtureSettings: settings,
       fixtureTags: tags,
       fixtureTextImportEncodings: textImportEncodings,
+      fixtureTextImportDelayMs: textImportDelayMs,
+      fixtureTextImportPreviewDelayMs: textImportPreviewDelayMs,
       fixtureTextImportPreviews: textImportPreviews,
       fixtureMerriamWebsterResponses: merriamWebsterResponses,
       fixtureMdictResponses: mdictResponses,
@@ -842,6 +877,18 @@ export async function getImportedTextSelections(page: Page) {
     }
 
     return globalWindow.__FLOW_TEST_TAURI__?.textImports ?? []
+  })
+}
+
+export async function getBookImportOperations(page: Page) {
+  return page.evaluate(() => {
+    const globalWindow = window as typeof window & {
+      __FLOW_TEST_TAURI__?: {
+        bookImportOperations: string[]
+      }
+    }
+
+    return globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations ?? []
   })
 }
 

@@ -12,12 +12,10 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { formatErrorMessage } from '../errorMessage'
 import { useTranslation } from '../hooks/useTranslation'
 import { toMessageKeySegment } from '../locales'
-import { defaultTextImportRules, useSettings } from '../state'
 import type {
   TextImportChapterPreview,
   TextImportEncodingOption,
   TextImportPreview,
-  TextImportRulesInput,
   TextImportSelection,
 } from '../storage'
 import { getTextImportEncodings, previewTextImportPaths } from '../storage'
@@ -33,7 +31,7 @@ interface TextImportDialogProps {
   paths: string[]
   openAfterImport?: boolean
   onClose: () => void
-  onImport: (imports: TextImportSelection[], openAfterImport: boolean, rules: TextImportRulesInput) => void
+  onImport: (imports: TextImportSelection[], openAfterImport: boolean) => void
 }
 
 interface ChapterPreviewNode extends TextImportChapterPreview {
@@ -51,7 +49,6 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
   const errorT = useTranslation('error')
   const notify = useNotify()
   const titleId = useId()
-  const [settings] = useSettings()
   const [encodings, setEncodings] = useState<TextImportEncodingOption[]>([])
   const [previews, setPreviews] = useState<TextImportPreview[]>([])
   const [autoDetectedEncodingLabels, setAutoDetectedEncodingLabels] = useState<Record<string, string>>({})
@@ -77,15 +74,6 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
   const [error, setError] = useState('')
   const [collapsedChapterKeys, setCollapsedChapterKeys] = useState<Set<string>>(new Set())
   const initializedSelectionRef = useRef(false)
-  const textImportRules = useMemo<TextImportRulesInput>(() => {
-    const rules = settings.textImportRules ?? defaultTextImportRules
-    return {
-      groupPatterns: normalizePatternList(rules.groupPatterns),
-      chapterPatterns: normalizePatternList(rules.chapterPatterns),
-    }
-  }, [settings.textImportRules])
-  const textImportRulesKey = useMemo(() => JSON.stringify(textImportRules), [textImportRules])
-
   useEffect(() => {
     getTextImportEncodings().then(setEncodings).catch(console.error)
   }, [])
@@ -97,7 +85,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     setLoading(true)
     setError('')
 
-    previewTextImportPaths(paths, encodingOverrides, textImportRules)
+    previewTextImportPaths(paths, encodingOverrides)
       .then((items) => {
         if (disposed) return
         setPreviews(items)
@@ -154,7 +142,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     return () => {
       disposed = true
     }
-  }, [encodingOverrides, errorT, notify, paths, textImportRules, textImportRulesKey])
+  }, [encodingOverrides, errorT, notify, paths])
 
   useEffect(() => {
     return () => {
@@ -237,7 +225,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     if (!selectedImports.length) return
 
     onClose()
-    onImport(selectedImports, openAfterImport, textImportRules)
+    onImport(selectedImports, openAfterImport)
   }
 
   return (
@@ -578,13 +566,4 @@ function collectCollapsibleChapterKeys(nodes: ChapterPreviewNode[]) {
   }
   nodes.forEach(visit)
   return keys
-}
-
-function normalizePatternList(patterns: string[] | undefined) {
-  const normalized: string[] = []
-  for (const pattern of patterns ?? []) {
-    const trimmed = pattern.trim()
-    if (trimmed) normalized.push(trimmed)
-  }
-  return normalized
 }

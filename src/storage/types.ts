@@ -51,11 +51,6 @@ export interface TextImportSelection {
   creator?: string
 }
 
-export interface TextImportRulesInput {
-  groupPatterns: string[]
-  chapterPatterns: string[]
-}
-
 export type BookSourceFormat = 'epub' | 'txt'
 export type BookExportFormat = 'epub' | 'txt'
 export type BookSourceStorage = 'managed' | 'referenced'

@@ -15,6 +15,7 @@ export interface Settings extends TypographyConfiguration {
   theme?: ThemeConfiguration
   ui?: UiConfiguration
   enableTextSelectionMenu?: boolean
+  directTextImport?: boolean
   hideEndnotes?: boolean
   restoreLastReadingOnStartup?: boolean
   showLibraryInToc?: boolean
@@ -99,6 +100,25 @@ export const defaultTextImportRules: TextImportRulesConfiguration = {
   ],
 }
 
+export function normalizeTextImportRules(
+  value: Partial<TextImportRulesConfiguration> | undefined,
+): TextImportRulesConfiguration {
+  return {
+    groupPatterns: normalizeTextImportPatternList(value?.groupPatterns, defaultTextImportRules.groupPatterns),
+    chapterPatterns: normalizeTextImportPatternList(value?.chapterPatterns, defaultTextImportRules.chapterPatterns),
+  }
+}
+
+function normalizeTextImportPatternList(value: unknown, fallback: string[]) {
+  if (!Array.isArray(value)) return [...fallback]
+
+  return value.flatMap((pattern) => {
+    if (typeof pattern !== 'string') return []
+    const trimmed = pattern.trim()
+    return trimmed ? [trimmed] : []
+  })
+}
+
 export const defaultDictionarySettings: DictionarySettingsConfiguration = {
   zdic: {
     enabled: true,
@@ -120,6 +140,7 @@ export const defaultSettings: Settings = {
   dictionary: defaultDictionarySettings,
   translation: defaultTranslationSettings,
   enableTextSelectionMenu: true,
+  directTextImport: false,
   hideEndnotes: false,
   showLibraryInToc: true,
   showModifiedBookExportIndicator: false,

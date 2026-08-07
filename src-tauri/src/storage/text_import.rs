@@ -1267,15 +1267,7 @@ pub(super) fn materialize_library_text_publication(
 ) -> Result<PathBuf, String> {
     let source_path = available_book_source_path(storage, book)?;
     let encoding = source_encoding_id_from_metadata(&book.metadata);
-    let rules = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?
-        .settings
-        .get("textImportRules")
-        .cloned()
-        .and_then(|value| serde_json::from_value(value).ok());
+    let rules = storage.text_import_rules()?;
     let title = book.metadata.get("title").and_then(Value::as_str).unwrap_or_default();
     let key = text_import_prepared_key(&source_path, encoding.as_deref(), rules.as_ref())?;
     let prepared = prepare_text_import_entry(&source_path, encoding.as_deref(), rules.as_ref(), Some(title), key)?;
