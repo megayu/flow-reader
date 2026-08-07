@@ -449,6 +449,8 @@ const Library: React.FC<LibraryProps> = ({
   const covers = useCovers()
   const tags = useLibraryTags()
   const t = useTranslation('home')
+  const errorT = useTranslation('error')
+  const notify = useNotify()
   const [settings, setSettings] = useSettings()
   const sortField = settings.librarySort?.field ?? defaultLibrarySort.field
   const sortDirection = settings.librarySort?.direction ?? defaultLibrarySort.direction
@@ -1065,7 +1067,14 @@ const Library: React.FC<LibraryProps> = ({
             setDeleteBooksOpen(false)
             exitSelectMode()
             bookIds.forEach((bookId) => reader.closeBookTab(bookId))
-            void db.books.bulkDelete(bookIds)
+            void db.books.bulkDelete(bookIds).catch((error) => {
+              notify({
+                autoCloseMs: false,
+                description: formatErrorMessage(error),
+                title: errorT('delete_books_failed'),
+                type: 'error',
+              })
+            })
           }}
         />
       )}

@@ -192,7 +192,7 @@ pub(super) fn rename_books_for_deletion(storage: &AppStorage, ids: &[String]) ->
             Ok(None) => {}
             Err(error) => {
                 restore_renamed_book_directories(storage, &renamed_books);
-                return Err(error);
+                return Err(format!("Failed to prepare book '{id}' for deletion: {error}"));
             }
         }
     }

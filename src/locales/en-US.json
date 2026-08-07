@@ -23,6 +23,7 @@
   "dictionary.no_result": "No definition found.",
   "dictionary.parse_error": "Could not parse this entry.",
 
+  "error.delete_books_failed": "Failed to delete books",
   "error.export_failed": "Export failed",
   "error.open_book_directory_failed": "Failed to open book folder",
   "error.reader_open_failed": "Failed to open book",

@@ -23,6 +23,7 @@
   "dictionary.no_result": "未收录该词",
   "dictionary.parse_error": "无法解析该词条",
 
+  "error.delete_books_failed": "删除书籍失败",
   "error.export_failed": "导出失败",
   "error.open_book_directory_failed": "打开书籍所在文件夹失败",
   "error.reader_open_failed": "打开书籍失败",
