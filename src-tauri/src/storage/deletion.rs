@@ -1,5 +1,165 @@
 use super::*;
 
+fn unedited_source_path(storage: &AppStorage, book: &LibraryBook) -> Option<PathBuf> {
+    if book.source_format == BookSourceFormat::Txt
+        && book.source_storage == SourceStorage::Managed
+        && book.content_edited_at.is_some()
+    {
+        return book.source_path.clone();
+    }
+
+    match book.source_storage {
+        SourceStorage::Managed => Some(storage.book_dir(&book.id).join(match book.source_format {
+            BookSourceFormat::Epub => BOOK_FILE,
+            BookSourceFormat::Txt => SOURCE_TEXT_FILE,
+        })),
+        SourceStorage::Referenced => book.source_path.clone(),
+    }
+}
+
+fn remove_book_derived_cache_files(storage: &AppStorage, id: &str) -> Result<(), String> {
+    let book_dir = storage.book_dir(id);
+    if !book_dir.exists() {
+        return Ok(());
+    }
+
+    for entry in fs::read_dir(book_dir).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        if entry.file_type().map_err(|error| error.to_string())?.is_file()
+            && entry.file_name().to_str().is_some_and(is_derived_cache_file_name)
+        {
+            fs::remove_file(entry.path()).map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn clear_book_caches_impl(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    discard_unexported_edits: bool,
+    preserved_unpacked_book_ids: HashSet<String>,
+    mut report_progress: impl FnMut(usize, usize),
+) -> Result<Vec<BookRecord>, String> {
+    let (library_books, external_ids) = {
+        let state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        (
+            state.library.books.clone(),
+            state
+                .external
+                .books
+                .iter()
+                .map(|book| book.id.clone())
+                .collect::<Vec<_>>(),
+        )
+    };
+    let mut all_ids = library_books.iter().map(|book| book.id.clone()).collect::<Vec<_>>();
+    all_ids.extend(external_ids);
+    let total = all_ids.len();
+    report_progress(0, total);
+
+    let edited_book_ids = library_books
+        .iter()
+        .filter(|book| book.content_edited_at.is_some())
+        .map(|book| book.id.clone())
+        .collect::<HashSet<_>>();
+    let source_restorations = if discard_unexported_edits {
+        library_books
+            .iter()
+            .filter(|book| book.content_edited_at.is_some() && !preserved_unpacked_book_ids.contains(&book.id))
+            .map(|book| {
+                let path =
+                    unedited_source_path(storage, book).ok_or_else(|| "Book source is unavailable".to_string())?;
+                let size = fs::metadata(&path).map_err(|error| error.to_string())?.len();
+                let restore_managed_text =
+                    book.source_format == BookSourceFormat::Txt && book.source_storage == SourceStorage::Managed;
+                Ok((
+                    book.id.clone(),
+                    (path.clone(), size, hash_file(&path)?, restore_managed_text),
+                ))
+            })
+            .collect::<Result<HashMap<_, _>, String>>()?
+    } else {
+        HashMap::new()
+    };
+
+    let mut completed = 0;
+    let mut restored_source_ids = Vec::new();
+    for id in all_ids {
+        let restored_source = tasks.run_book_exclusive(&id, TaskPriority::Critical, || {
+            let preserve_unpacked = preserved_unpacked_book_ids.contains(&id)
+                || storage.derived_cache_is_active(&id)?
+                || (edited_book_ids.contains(&id) && !discard_unexported_edits);
+            {
+                let _flush_guard = storage
+                    .inner
+                    .derived_cache_flush_lock
+                    .lock()
+                    .map_err(|_| "derived cache flush lock poisoned".to_string())?;
+                storage.remove_derived_memory_caches(&id);
+                remove_book_derived_cache_files(storage, &id)?;
+            }
+            if !preserve_unpacked {
+                if let Some((source_path, _, _, true)) = source_restorations.get(&id) {
+                    fs::copy(source_path, storage.book_dir(&id).join(SOURCE_TEXT_FILE))
+                        .map_err(|error| error.to_string())?;
+                }
+                let unpacked = storage.book_dir(&id).join(UNPACKED_DIR);
+                if unpacked.exists() {
+                    fs::remove_dir_all(unpacked).map_err(|error| error.to_string())?;
+                }
+            }
+            Ok(!preserve_unpacked && source_restorations.contains_key(&id))
+        })?;
+        if restored_source {
+            restored_source_ids.push(id);
+        }
+        completed += 1;
+        if completed < total {
+            report_progress(completed, total);
+        }
+    }
+
+    if restored_source_ids.is_empty() {
+        report_progress(total, total);
+        return Ok(Vec::new());
+    }
+
+    let restored_source_ids = restored_source_ids.into_iter().collect::<HashSet<_>>();
+    {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        for book in &mut state.library.books {
+            if !restored_source_ids.contains(&book.id) {
+                continue;
+            }
+            let Some((_, size, content_hash, _)) = source_restorations.get(&book.id) else {
+                continue;
+            };
+            book.size = *size;
+            book.content_hash = content_hash.clone();
+            book.content_version = book.content_version.saturating_add(1).max(1);
+            book.content_edited_at = None;
+        }
+    }
+    storage.mark_library_dirty();
+    storage.flush_dirty()?;
+
+    let updated_books = restored_source_ids
+        .into_iter()
+        .map(|id| commands::get_book_impl(storage, id)?.ok_or_else(|| "Book not found after cache clear".to_string()))
+        .collect::<Result<Vec<_>, String>>()?;
+    report_progress(total, total);
+    Ok(updated_books)
+}
+
 pub(super) fn delete_books_to_tombstones(storage: &AppStorage, ids: &[String]) -> Result<Vec<PathBuf>, String> {
     let ids = ids.iter().filter(|id| !id.is_empty()).cloned().collect::<HashSet<_>>();
 

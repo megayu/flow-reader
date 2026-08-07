@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 
+import { waitForBookCacheClearing } from './state'
 import {
   type BookImportProgress,
   type BookImportResult,
@@ -74,6 +75,7 @@ export async function handleFilePaths(
   { onImportProgress, replaceExisting = true, onImportResult, onTextPaths }: HandleFilesOptions = {},
 ) {
   if (!paths.length) return []
+  await waitForBookCacheClearing()
 
   const epubPaths = paths.filter(isEpubPath)
   const textPaths = paths.filter(isTxtPath)

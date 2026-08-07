@@ -166,6 +166,11 @@ export interface BookImportProgress {
   cover?: CoverRecord | null
 }
 
+export interface BookCacheClearProgress {
+  total: number
+  completed: number
+}
+
 export interface ReadingPositionInput {
   bookId: string
   cfi?: string

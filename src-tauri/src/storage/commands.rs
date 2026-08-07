@@ -9,7 +9,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, State, ipc::Channel};
 
 use crate::{
     diagnostics,
@@ -1276,6 +1276,39 @@ pub async fn set_book_cache_active(
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn clear_book_caches(
+    storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
+    discard_unexported_edits: bool,
+    preserved_unpacked_book_ids: Vec<String>,
+    on_progress: Channel<BookCacheClearProgress>,
+) -> Result<Vec<BookRecord>, String> {
+    let storage = (*storage).clone();
+    let tasks = (*tasks).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let preserved_unpacked_book_ids = preserved_unpacked_book_ids.into_iter().collect::<HashSet<_>>();
+        clear_book_caches_impl(
+            &storage,
+            &tasks,
+            discard_unexported_edits,
+            preserved_unpacked_book_ids,
+            |completed, total| {
+                let _ = on_progress.send(BookCacheClearProgress { completed, total });
+            },
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BookCacheClearProgress {
+    completed: usize,
+    total: usize,
 }
 
 #[tauri::command]

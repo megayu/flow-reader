@@ -1349,6 +1349,16 @@ fn search_text_excerpt(chars: &[char], offset: usize, keyword_len: usize) -> Str
 }
 
 impl AppStorage {
+    pub(super) fn derived_cache_is_active(&self, id: &str) -> Result<bool, String> {
+        Ok(self
+            .inner
+            .derived_cache_states
+            .lock()
+            .map_err(|_| "derived cache state lock poisoned".to_string())?
+            .get(id)
+            .is_some_and(|state| state.active))
+    }
+
     pub(super) fn set_derived_cache_active(&self, id: &str, active: bool) -> Result<(), String> {
         let has_cache = self
             .inner

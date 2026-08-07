@@ -2377,6 +2377,10 @@ export class Reader {
     return this.focusedTab instanceof BookTab ? this.focusedTab : undefined
   }
 
+  getOpenBookIds() {
+    return [...new Set(this.groups.flatMap(({ bookTabs }) => bookTabs.map((tab) => tab.book.id)))]
+  }
+
   private findBookTab(bookId: string) {
     for (let groupIndex = 0; groupIndex < this.groups.length; groupIndex++) {
       const group = this.groups[groupIndex]

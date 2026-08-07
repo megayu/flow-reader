@@ -2,6 +2,7 @@ import { convertFileSrc, invoke as invokeNative } from '@tauri-apps/api/core'
 
 export const storageCommand = {
   checkBookSourceStatuses: 'check_book_source_statuses',
+  clearBookCaches: 'clear_book_caches',
   cleanupAllExternalBooks: 'cleanup_all_external_books',
   cleanupExternalBook: 'cleanup_external_book',
   createTag: 'create_tag',

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 
 import { Layout } from '../components/Layout'
 import { Theme } from '../components/Theme'
+import { NotificationProvider } from '../components/ui/notification'
 import { TooltipProvider } from '../components/ui/tooltip'
 import { loadDevtoolsShortcutEnabled, toggleDevtools } from '../devtools'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
@@ -45,11 +46,13 @@ export function FlowReader() {
   return (
     <>
       <Theme />
-      <TooltipProvider>
-        <Layout>
-          <App />
-        </Layout>
-      </TooltipProvider>
+      <NotificationProvider>
+        <TooltipProvider>
+          <Layout>
+            <App />
+          </Layout>
+        </TooltipProvider>
+      </NotificationProvider>
     </>
   )
 }

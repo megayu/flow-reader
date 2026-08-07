@@ -69,7 +69,7 @@ use book_assets::{is_generated_text_cover, read_cover, remove_cover_files, write
 use book_source::*;
 #[cfg(test)]
 use deletion::{cleanup_delete_tombstones, delete_books_to_tombstones};
-use deletion::{cleanup_external_book_heavy_files, delete_books_impl};
+use deletion::{cleanup_external_book_heavy_files, clear_book_caches_impl, delete_books_impl};
 use editing::*;
 use export::*;
 

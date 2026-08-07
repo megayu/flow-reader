@@ -51,6 +51,7 @@ export interface WindowUiState {
 
 interface AppStore {
   action?: Action
+  bookCacheClearing: boolean
   libraryAction?: LibraryAction
   libraryAuthorFilter: string[]
   libraryStatusFilter: ReadingStatus[]
@@ -65,6 +66,7 @@ interface AppStore {
   zenMode: boolean
   zenTypographyOverrides: Record<string, TypographyConfiguration>
   setAction: SetterOrUpdater<Action | undefined>
+  setBookCacheClearing: SetterOrUpdater<boolean>
   setLibraryAction: SetterOrUpdater<LibraryAction | undefined>
   setLibraryAuthorFilter: SetterOrUpdater<string[]>
   setLibraryStatusFilter: SetterOrUpdater<ReadingStatus[]>
@@ -86,6 +88,7 @@ function resolveUpdate<T>(value: T | ((prev: T) => T), prev: T) {
 
 export const useAppStore = create<AppStore>((set) => ({
   action: undefined,
+  bookCacheClearing: false,
   libraryAction: undefined,
   libraryAuthorFilter: [],
   libraryStatusFilter: [],
@@ -100,6 +103,8 @@ export const useAppStore = create<AppStore>((set) => ({
   zenMode: false,
   zenTypographyOverrides: {},
   setAction: (value) => set((state) => ({ action: resolveUpdate(value, state.action) })),
+  setBookCacheClearing: (value) =>
+    set((state) => ({ bookCacheClearing: resolveUpdate(value, state.bookCacheClearing) })),
   setLibraryAction: (value) =>
     set((state) => ({
       libraryAction: resolveUpdate(value, state.libraryAction),
@@ -215,6 +220,30 @@ export function useSettingsDialogOpen() {
   const setOpen = useAppStore((state) => state.setSettingsDialogOpen)
 
   return [open, setOpen] as const
+}
+
+export function useBookCacheClearing() {
+  return useAppStore((state) => state.bookCacheClearing)
+}
+
+export function useSetBookCacheClearing() {
+  return useAppStore((state) => state.setBookCacheClearing)
+}
+
+export function waitForBookCacheClearing() {
+  if (!useAppStore.getState().bookCacheClearing) return Promise.resolve()
+
+  return new Promise<void>((resolve) => {
+    const unlisten = useAppStore.subscribe((state) => {
+      if (state.bookCacheClearing) return
+      unlisten()
+      resolve()
+    })
+    if (!useAppStore.getState().bookCacheClearing) {
+      unlisten()
+      resolve()
+    }
+  })
 }
 
 export function useSetSettingsDialogOpen() {

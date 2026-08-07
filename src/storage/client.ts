@@ -1,5 +1,8 @@
+import { Channel } from '@tauri-apps/api/core'
+
 import { storagePathToUrl as filePathToUrl, invokeStorage as invoke } from './native'
 import type {
+  BookCacheClearProgress,
   BookExportFormat,
   BookImageIndexCache,
   BookImportProgress,
@@ -663,6 +666,28 @@ export async function exportBook(id: string, format: BookExportFormat, outputPat
 
 export function setBookCacheActive(id: string, active: boolean) {
   return invoke<void>('set_book_cache_active', { id, active })
+}
+
+export async function clearBookCaches(
+  discardUnexportedEdits: boolean,
+  preservedUnpackedBookIds: string[],
+  onProgress: (progress: BookCacheClearProgress) => void,
+) {
+  onProgress({ completed: 0, total: 0 })
+  const progressChannel = new Channel<BookCacheClearProgress>(onProgress)
+
+  beginBooksMutation()
+  const books = await trackNativeWrite(
+    invoke<BookRecord[]>('clear_book_caches', {
+      discardUnexportedEdits,
+      preservedUnpackedBookIds,
+      onProgress: progressChannel,
+    }),
+  )
+  const updatedBooks = books.map((book) => ({ ...book, contentEditedAt: undefined }))
+  rememberBookBatch(updatedBooks, { full: false })
+  if (updatedBooks.length) notify('books')
+  return updatedBooks
 }
 
 export function cleanupExternalBook(id: string) {

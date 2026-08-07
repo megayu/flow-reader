@@ -305,6 +305,7 @@ pub fn run() {
             storage::get_book_package_path,
             storage::get_book_reader_source,
             storage::check_book_source_statuses,
+            storage::clear_book_caches,
             storage::search_book_text,
             storage::load_book_image_index,
             storage::set_book_cache_active,
