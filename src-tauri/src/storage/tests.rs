@@ -13,15 +13,15 @@ use super::{
     cleanup_external_book_heavy_files, decode_text_bytes, delete_books_to_tombstones, delete_tombstones_root,
     empty_object, ensure_book_package_path_with_unpacker, export_book_impl, external_books_root, external_index_path,
     get_book_reader_source_impl, hash_file, library_path, load_or_build_search_text_cache, mark_book_exported,
-    mark_library_book_content_updated, normalize_non_square_pixel_png, normalize_publication_date,
-    normalize_unpacked_epub_structure, open_external_epub_path_impl, parent_zip_path, parse_text_import_document,
-    path_to_client_string, read_image_index_cache, read_json_or_default, read_json_value_or_default,
-    read_search_text_sections_from_unpacked, relative_zip_path, replace_book_text_impl, replace_xhtml_text,
-    replace_xhtml_text_node, schedule_existing_delete_tombstone_cleanup, search_text_cache_from_bytes,
-    search_text_cache_to_bytes, search_text_in_cache, settings_path, sync_unpacked_opf_metadata, text_content_opf,
-    text_nav_xhtml, text_section_xhtml, visible_search_text_from_xhtml, write_cover,
-    write_epub_from_original_and_unpacked, write_epub_from_unpacked_dir, write_image_index_cache_if_current,
-    write_source_text_update,
+    mark_library_book_content_updated, materialize_epub_package, normalize_non_square_pixel_png,
+    normalize_publication_date, normalize_unpacked_epub_structure, open_external_epub_path_impl, parent_zip_path,
+    parse_text_import_document, path_to_client_string, read_image_index_cache, read_json_or_default,
+    read_json_value_or_default, read_search_text_sections_from_unpacked, relative_zip_path, replace_book_text_impl,
+    replace_xhtml_text, replace_xhtml_text_node, schedule_existing_delete_tombstone_cleanup,
+    search_text_cache_from_bytes, search_text_cache_to_bytes, search_text_in_cache, settings_path,
+    sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml, text_section_xhtml, visible_search_text_from_xhtml,
+    write_cover, write_epub_from_original_and_unpacked, write_epub_from_unpacked_dir,
+    write_image_index_cache_if_current, write_source_text_update,
 };
 use crate::tasks::TaskService;
 use serde_json::{Value, json};
@@ -566,7 +566,7 @@ fn failed_text_import_does_not_mutate_existing_library_record() {
 }
 
 #[test]
-fn referenced_text_import_uses_only_unpacked_and_exports_only_epub() {
+fn referenced_text_import_materializes_on_epub_export() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
         "flow-reader-text-reference-import-test-{}-{nonce}",
@@ -596,7 +596,7 @@ fn referenced_text_import_uses_only_unpacked_and_exports_only_epub() {
     let book_dir = storage.book_dir(&book.id);
 
     assert!(!book_dir.join(SOURCE_TEXT_FILE).exists());
-    assert!(book_dir.join(UNPACKED_DIR).join("OEBPS/content.opf").exists());
+    assert!(!book_dir.join(UNPACKED_DIR).exists());
     let persisted = serde_json::to_value(book).unwrap();
     assert_eq!(
         persisted.get("sourceStorage").and_then(Value::as_str),
@@ -619,6 +619,7 @@ fn referenced_text_import_uses_only_unpacked_and_exports_only_epub() {
     let output = root.join("referenced.epub");
     export_book_impl(&storage, book.id.clone(), BookExportFormat::Epub, output.clone()).unwrap();
     assert!(output.exists());
+    assert!(book_dir.join(UNPACKED_DIR).join("OEBPS/content.opf").exists());
 
     let _ = fs::remove_dir_all(root);
 }
@@ -1095,7 +1096,13 @@ fn write_minimal_epub_with_percent_encoded_cover(path: &Path, cover_bytes: &[u8]
     writer.finish().unwrap();
 }
 
-fn write_minimal_epub_with_xhtml_cover_image(path: &Path, cover_page_body: &str, cover_bytes: &[u8]) {
+fn write_minimal_epub_with_xhtml_cover_image(
+    path: &Path,
+    cover_page_body: &str,
+    cover_path: &str,
+    cover_media_type: &str,
+    cover_bytes: &[u8],
+) {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).unwrap();
     }
@@ -1120,7 +1127,8 @@ fn write_minimal_epub_with_xhtml_cover_image(path: &Path, cover_page_body: &str,
     writer.start_file("OEBPS/content.opf", deflated).unwrap();
     writer
         .write_all(
-            br#"<?xml version="1.0" encoding="UTF-8"?>
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/">
   <metadata>
     <dc:title>XHTML Cover</dc:title>
@@ -1128,13 +1136,15 @@ fn write_minimal_epub_with_xhtml_cover_image(path: &Path, cover_page_body: &str,
   <manifest>
     <item id="x_coverpage" href="Text/cover.xhtml" media-type="application/xhtml+xml"/>
     <item id="chapter" href="Text/chapter.xhtml" media-type="application/xhtml+xml"/>
-    <item id="image-cover" href="Images/real-cover.jpeg" media-type="image/jpeg"/>
+    <item id="image-cover" href="Images/{cover_path}" media-type="{cover_media_type}"/>
   </manifest>
   <spine>
     <itemref idref="x_coverpage" linear="yes"/>
     <itemref idref="chapter"/>
   </spine>
-</package>"#,
+</package>"#
+            )
+            .as_bytes(),
         )
         .unwrap();
     writer.start_file("OEBPS/Text/cover.xhtml", deflated).unwrap();
@@ -1154,7 +1164,9 @@ fn write_minimal_epub_with_xhtml_cover_image(path: &Path, cover_page_body: &str,
 <html xmlns="http://www.w3.org/1999/xhtml"><body><p>body</p></body></html>"#,
         )
         .unwrap();
-    writer.start_file("OEBPS/Images/real-cover.jpeg", deflated).unwrap();
+    writer
+        .start_file(format!("OEBPS/Images/{cover_path}"), deflated)
+        .unwrap();
     writer.write_all(cover_bytes).unwrap();
     writer.finish().unwrap();
 }
@@ -1255,7 +1267,7 @@ fn epub_import_copies_source_without_unpacking_or_indexing() {
 }
 
 #[test]
-fn referenced_epub_import_keeps_source_in_place_and_publishes_unpacked_package() {
+fn referenced_epub_import_materializes_on_first_open() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
         "flow-reader-epub-reference-import-test-{}-{nonce}",
@@ -1270,7 +1282,7 @@ fn referenced_epub_import_keeps_source_in_place_and_publishes_unpacked_package()
     let book_dir = storage.book_dir(&book.id);
 
     assert!(!book_dir.join(BOOK_FILE).exists());
-    assert!(book_dir.join(UNPACKED_DIR).join("OEBPS/content.opf").exists());
+    assert!(!book_dir.join(UNPACKED_DIR).exists());
     let persisted = serde_json::to_value(&book).unwrap();
     assert_eq!(
         persisted.get("sourceStorage").and_then(Value::as_str),
@@ -1286,6 +1298,7 @@ fn referenced_epub_import_keeps_source_in_place_and_publishes_unpacked_package()
     let reader_source = get_book_reader_source_impl(&storage, &tasks, &reader_book).unwrap();
     assert_eq!(reader_source.mode, BookReaderSourceMode::Opf);
     assert!(reader_source.path.ends_with("/unpacked/OEBPS/content.opf"));
+    assert!(book_dir.join(UNPACKED_DIR).join("OEBPS/content.opf").exists());
 
     let _ = fs::remove_dir_all(root);
 }
@@ -1590,6 +1603,49 @@ fn normalizes_non_square_pixel_png_dimensions() {
 }
 
 #[test]
+fn epub_materialization_repairs_plain_png_cover_when_another_resource_is_encrypted() {
+    let root = std::env::temp_dir().join(format!(
+        "flow-reader-encrypted-resource-cover-test-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    let source = root.join("source.epub");
+    let unpacked = root.join("unpacked");
+    write_minimal_epub_with_xhtml_cover_image(
+        &source,
+        r#"<img src="../Images/real-cover.png"/>"#,
+        "real-cover.png",
+        "image/png",
+        &synthetic_non_square_pixel_png(),
+    );
+    let file = fs::OpenOptions::new().read(true).write(true).open(&source).unwrap();
+    let mut writer = ZipWriter::new_append(file).unwrap();
+    let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    writer.start_file("META-INF/encryption.xml", deflated).unwrap();
+    writer
+        .write_all(
+            br#"<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:enc="http://www.w3.org/2001/04/xmlenc#">
+  <enc:EncryptedData>
+    <enc:EncryptionMethod Algorithm="urn:example:unrelated-resource"/>
+    <enc:CipherData><enc:CipherReference URI="OEBPS/protected.bin"/></enc:CipherData>
+  </enc:EncryptedData>
+</encryption>"#,
+        )
+        .unwrap();
+    writer.start_file("OEBPS/protected.bin", deflated).unwrap();
+    writer.write_all(b"encrypted resource").unwrap();
+    writer.finish().unwrap();
+
+    assert!(materialize_epub_package(&source, &unpacked).unwrap());
+    assert_eq!(
+        png_dimensions(&fs::read(unpacked.join("OEBPS/Images/real-cover.png")).unwrap()),
+        (2, 2)
+    );
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn epub_import_extracts_cover_from_xhtml_img_cover_page() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
@@ -1601,6 +1657,8 @@ fn epub_import_extracts_cover_from_xhtml_img_cover_page() {
     write_minimal_epub_with_xhtml_cover_image(
         &source,
         r#"<div><img src="../Images/real-cover.jpeg" alt=""/></div>"#,
+        "real-cover.jpeg",
+        "image/jpeg",
         cover_bytes,
     );
     let storage = test_storage_with_books(&root, Vec::new());
@@ -1626,6 +1684,8 @@ fn epub_import_extracts_cover_from_xhtml_svg_image_cover_page() {
     write_minimal_epub_with_xhtml_cover_image(
         &source,
         r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><image xlink:href="../Images/real-cover.jpeg"/></svg>"#,
+        "real-cover.jpeg",
+        "image/jpeg",
         cover_bytes,
     );
     let storage = test_storage_with_books(&root, Vec::new());

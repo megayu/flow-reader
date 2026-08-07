@@ -1,10 +1,25 @@
 use super::*;
 
+#[cfg(test)]
 pub(super) fn ensure_book_package_path_with_unpacker(
     storage: &AppStorage,
     tasks: &TaskService,
     book: &LibraryBook,
     unpacker: impl FnOnce(&Path, &Path) -> Result<(), String>,
+) -> Result<PathBuf, String> {
+    ensure_book_package_path_with(storage, tasks, book, move |storage, book| {
+        publish_unpacked_book_package_with(storage, book, move |source_path, unpacked_dir| {
+            unpacker(source_path, unpacked_dir)?;
+            normalize_unpacked_epub_structure(unpacked_dir)
+        })
+    })
+}
+
+fn ensure_book_package_path_with(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    book: &LibraryBook,
+    materialize: impl FnOnce(&AppStorage, &LibraryBook) -> Result<PathBuf, String>,
 ) -> Result<PathBuf, String> {
     let started = Instant::now();
     if let Ok(opf_path) = find_unpacked_opf_path(&storage.book_dir(&book.id).join(UNPACKED_DIR)) {
@@ -17,11 +32,11 @@ pub(super) fn ensure_book_package_path_with_unpacker(
             ),
         ];
         fields.extend(tasks.diagnostic_fields());
-        diagnostics::record_timing("epub-unpack", started.elapsed(), &fields);
+        diagnostics::record_timing("book-materialize", started.elapsed(), &fields);
         return Ok(opf_path);
     }
 
-    let key = unpack_epub_task_key(book);
+    let key = book_materialize_task_key(book);
     let storage = storage.clone();
     let book = book.clone();
     let diagnostics_storage = storage.clone();
@@ -30,7 +45,7 @@ pub(super) fn ensure_book_package_path_with_unpacker(
     let result = tasks.get_or_run(key, TaskPriority::Foreground, move || {
         task_runner.run_book_exclusive(&book.id, TaskPriority::Foreground, || {
             task_runner.run_io_observed(storage.root(), book.size, TaskPriority::Foreground, || {
-                publish_unpacked_book_package(&storage, &book, unpacker)
+                materialize(&storage, &book)
             })
         })
     });
@@ -44,7 +59,7 @@ pub(super) fn ensure_book_package_path_with_unpacker(
             ),
         ];
         fields.extend(tasks.diagnostic_fields());
-        diagnostics::record_timing("epub-unpack", started.elapsed(), &fields);
+        diagnostics::record_timing("book-materialize", started.elapsed(), &fields);
     }
     result
 }
@@ -54,7 +69,12 @@ pub(super) fn ensure_book_package_path(
     tasks: &TaskService,
     book: &LibraryBook,
 ) -> Result<PathBuf, String> {
-    ensure_book_package_path_with_unpacker(storage, tasks, book, unpack_epub)
+    match book.source_format {
+        BookSourceFormat::Epub => ensure_book_package_path_with(storage, tasks, book, publish_unpacked_book_package),
+        BookSourceFormat::Txt => {
+            ensure_book_package_path_with(storage, tasks, book, materialize_library_text_publication)
+        }
+    }
 }
 
 pub(super) fn set_book_content_access(storage: &AppStorage, id: &str, mode: BookContentMode) -> Result<(), String> {
@@ -112,16 +132,9 @@ pub(super) fn inspect_and_store_book_content_access(
         return Ok(BookContentMode::Normal);
     }
 
-    let access = inspect_epub_access(&book_path)?;
-    set_book_content_access(storage, &book.id, access.mode)?;
-    Ok(access.mode)
-}
-
-pub(super) fn book_original_source_path(storage: &AppStorage, book: &LibraryBook) -> Option<PathBuf> {
-    match book.source_storage {
-        SourceStorage::Managed => Some(storage.book_dir(&book.id).join(BOOK_FILE)),
-        SourceStorage::Referenced => book.source_path.clone(),
-    }
+    let content_mode = inspect_epub_access(&book_path)?;
+    set_book_content_access(storage, &book.id, content_mode)?;
+    Ok(content_mode)
 }
 
 const BOOK_SOURCE_MISSING_ERROR: &str = "BOOK_SOURCE_MISSING";
@@ -162,8 +175,14 @@ pub(super) fn source_status_error(status: BookSourceStatus) -> Option<&'static s
     }
 }
 
-pub(super) fn archive_only_source_path(storage: &AppStorage, book: &LibraryBook) -> Result<PathBuf, String> {
-    let path = book_original_source_path(storage, book);
+pub(super) fn available_book_source_path(storage: &AppStorage, book: &LibraryBook) -> Result<PathBuf, String> {
+    let path = match book.source_storage {
+        SourceStorage::Managed => Some(storage.book_dir(&book.id).join(match book.source_format {
+            BookSourceFormat::Epub => BOOK_FILE,
+            BookSourceFormat::Txt => SOURCE_TEXT_FILE,
+        })),
+        SourceStorage::Referenced => book.source_path.clone(),
+    };
     let expected_source =
         (book.source_storage == SourceStorage::Referenced).then_some((book.size, book.content_hash.as_str()));
     let status = source_path_status(path.as_deref(), expected_source);
@@ -228,7 +247,7 @@ pub(super) fn get_book_reader_source_impl(
     }
 
     if inspect_and_store_book_content_access(storage, book)? == BookContentMode::ArchiveOnly {
-        let book_path = archive_only_source_path(storage, book)?;
+        let book_path = available_book_source_path(storage, book)?;
         return Ok(BookReaderSource {
             mode: BookReaderSourceMode::Epub,
             path: path_to_client_string(&book_path),
@@ -252,31 +271,24 @@ pub(super) fn get_book_reader_source_impl(
     })
 }
 
-pub(super) fn publish_unpacked_book_package(
+fn publish_unpacked_book_package(storage: &AppStorage, book: &LibraryBook) -> Result<PathBuf, String> {
+    publish_unpacked_book_package_with(storage, book, materialize_epub_package)
+}
+
+fn publish_unpacked_book_package_with(
     storage: &AppStorage,
     book: &LibraryBook,
-    unpacker: impl FnOnce(&Path, &Path) -> Result<(), String>,
+    materialize: impl FnOnce(&Path, &Path) -> Result<bool, String>,
 ) -> Result<PathBuf, String> {
     let book_dir = storage.book_dir(&book.id);
     let unpacked_dir = book_dir.join(UNPACKED_DIR);
-
-    if let Ok(opf_path) = find_unpacked_opf_path(&unpacked_dir) {
-        return Ok(opf_path);
-    }
-
-    let book_path = book_dir.join(BOOK_FILE);
-    if !book_path.exists() {
-        return Err("Book package is unavailable".to_string());
-    }
+    let book_path = available_book_source_path(storage, book)?;
 
     let temp_dir = unpack_temp_dir(&unpacked_dir);
     let _ = fs::remove_dir_all(&temp_dir);
-    if let Err(error) = unpacker(&book_path, &temp_dir) {
+    let publication_changed = materialize(&book_path, &temp_dir).inspect_err(|_| {
         let _ = fs::remove_dir_all(&temp_dir);
-        return Err(error);
-    }
-    let normalized = normalize_unpacked_epub_structure(&temp_dir)?;
-
+    })?;
     let temp_opf_path = match find_unpacked_opf_path(&temp_dir) {
         Ok(path) => path,
         Err(error) => {
@@ -304,21 +316,21 @@ pub(super) fn publish_unpacked_book_package(
         return Err("Unpacked package is stale".to_string());
     }
 
-    if normalized && mark_library_book_content_updated(storage, &book.id)?.is_some() {
+    if publication_changed && mark_library_book_content_updated(storage, &book.id)?.is_some() {
         storage.flush_dirty()?;
     }
 
     Ok(unpacked_dir.join(opf_relative_path))
 }
 
-pub(super) fn unpack_epub_task_key(book: &LibraryBook) -> TaskKey {
+fn book_materialize_task_key(book: &LibraryBook) -> TaskKey {
     TaskKey::new(
-        TaskKind::EpubUnpack,
+        TaskKind::BookMaterialize,
         format!("{}:{}:{}", book.id, book.content_hash, book.content_version),
     )
 }
 
-pub(super) fn unpack_temp_dir(unpacked_dir: &Path) -> PathBuf {
+fn unpack_temp_dir(unpacked_dir: &Path) -> PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
@@ -330,7 +342,7 @@ pub(super) fn unpack_temp_dir(unpacked_dir: &Path) -> PathBuf {
     unpacked_dir.with_file_name(format!("{name}.tmp-{}-{nonce}", std::process::id()))
 }
 
-pub(super) fn book_content_still_current(storage: &AppStorage, book: &LibraryBook) -> Result<bool, String> {
+fn book_content_still_current(storage: &AppStorage, book: &LibraryBook) -> Result<bool, String> {
     let current = storage.library_book(&book.id)?;
     Ok(current.content_hash == book.content_hash && current.content_version == book.content_version)
 }

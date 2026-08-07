@@ -489,7 +489,7 @@ fn build_derived_cache(
             && book.source_storage == SourceStorage::Managed
             && book.content_edited_at.is_none());
     let (search_sections, mut image_sections) = if can_read_current_content_from_archive {
-        read_derived_sections_from_epub_package(&archive_only_source_path(storage, book)?, include_search)?
+        read_derived_sections_from_epub_package(&available_book_source_path(storage, book)?, include_search)?
     } else {
         let unpacked_dir = storage.book_dir(&book.id).join(UNPACKED_DIR);
         ensure_book_package_path(storage, tasks, book)?;

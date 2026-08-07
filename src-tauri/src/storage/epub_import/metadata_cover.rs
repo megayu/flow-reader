@@ -1,12 +1,12 @@
 use super::access::inspect_epub_archive;
 use super::*;
 
-pub(super) fn inspect_epub_info(path: &Path) -> Result<(ParsedEpubInfo, EpubAccessInfo), String> {
+pub(super) fn inspect_epub_info(path: &Path) -> Result<(ParsedEpubInfo, BookContentMode), String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
-    let access = inspect_epub_archive(&mut archive)?;
+    let content_mode = inspect_epub_archive(&mut archive)?;
     let parsed = parse_epub_info_from_archive(&mut archive, path)?;
-    Ok((parsed, access))
+    Ok((parsed, content_mode))
 }
 
 fn parse_epub_info_from_archive<R: Read + Seek>(
@@ -381,6 +381,27 @@ pub(in crate::storage) fn normalize_non_square_pixel_png(data: &[u8]) -> Option<
     writer.write_image_data(&resized).ok()?;
     drop(writer);
     Some(output)
+}
+
+pub(super) fn normalize_epub_cover_png(cover: &mut Option<ParsedEpubCover>) -> Option<String> {
+    let cover = cover.as_mut()?;
+    if cover.input.mime_type != "image/png" && !cover.input.extension.eq_ignore_ascii_case("png") {
+        return None;
+    }
+    let archive_path = cover.archive_path.clone()?;
+    let normalized = normalize_non_square_pixel_png(&cover.input.data)?;
+    cover.input.data = normalized;
+    Some(archive_path)
+}
+
+pub(super) fn read_epub_cover_png_repair(path: &Path) -> Result<Option<(String, Vec<u8>)>, String> {
+    let file = fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
+    let mut parsed = parse_epub_info_from_archive(&mut archive, path)?;
+    let Some(archive_path) = normalize_epub_cover_png(&mut parsed.cover) else {
+        return Ok(None);
+    };
+    Ok(parsed.cover.map(|cover| (archive_path, cover.input.data)))
 }
 
 pub(super) fn find_first_html_image_href(html: &str) -> Option<String> {

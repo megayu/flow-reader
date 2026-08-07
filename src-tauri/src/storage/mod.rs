@@ -75,13 +75,17 @@ use export::*;
 
 use epub_import::{
     clean_xml_text, commit_prepared_epub_import, deobfuscate_unpacked_idpf_fonts, find_unpacked_opf_path,
-    inspect_epub_access, join_zip_path, normalize_unpacked_epub_structure, normalize_zip_path,
-    open_external_epub_path_impl, parent_zip_path, prepare_epub_import, unpack_epub, validate_epub_archive_limits,
+    inspect_epub_access, join_zip_path, materialize_epub_package, normalize_unpacked_epub_structure,
+    normalize_zip_path, open_external_epub_path_impl, parent_zip_path, prepare_epub_import, unpack_epub,
+    validate_epub_archive_limits,
 };
 #[cfg(test)]
 use epub_import::{normalize_non_square_pixel_png, normalize_publication_date, relative_zip_path};
 
-use import_support::{ImportFileTransaction, ImportFinalizer, LibraryBookLookupIndex, import_work_path};
+use import_support::{
+    ImportFileTransaction, ImportFinalizer, LibraryBookLookupIndex, eager_import_materialization_enabled,
+    import_work_path,
+};
 use search::{
     DerivedCacheState, SearchTextCache, load_or_build_image_index_cache, load_or_build_search_text_cache,
     search_text_in_cache,
@@ -96,8 +100,8 @@ use text_import::{
     PreparedTextImport, TextImportPreparedCache, TextImportPreparedKey, consume_or_prepare_text_import,
     create_skipped_text_import_preview, create_text_cover_input, create_text_import_error_preview,
     create_text_import_preview_from_prepared, decode_text_bytes, encode_text_bytes, import_text_path_impl,
-    load_or_prepare_text_import, should_skip_prepared_text_import_preview, source_encoding_id_from_metadata,
-    text_import_encoding_options, write_text_cover_to_unpacked,
+    load_or_prepare_text_import, materialize_library_text_publication, should_skip_prepared_text_import_preview,
+    source_encoding_id_from_metadata, text_import_encoding_options, write_text_cover_to_unpacked,
 };
 #[cfg(test)]
 use text_import::{parse_text_import_document, text_content_opf, text_nav_xhtml, text_section_xhtml};
@@ -113,6 +117,7 @@ const SETTINGS_FILE: &str = "settings.json";
 const BOOK_FILE: &str = "book.epub";
 const SOURCE_TEXT_FILE: &str = "source.txt";
 const UNPACKED_DIR: &str = "unpacked";
+
 fn is_derived_cache_file_name(name: &str) -> bool {
     (name.starts_with("search-text.v") || name.starts_with("image-index.v")) && name.ends_with(".json.zst")
 }

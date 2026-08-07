@@ -27,20 +27,19 @@ pub(in crate::storage) fn read_bounded_bytes(
     Ok(data)
 }
 
-pub(in crate::storage) fn inspect_epub_access(path: &Path) -> Result<EpubAccessInfo, String> {
+pub(in crate::storage) fn inspect_epub_access(path: &Path) -> Result<BookContentMode, String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
     inspect_epub_archive(&mut archive)
 }
 
-pub(super) fn inspect_epub_archive<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Result<EpubAccessInfo, String> {
+pub(super) fn inspect_epub_archive<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Result<BookContentMode, String> {
     if archive.len() > EPUB_MAX_ENTRY_COUNT {
         return Err("EPUB contains too many archive entries".to_string());
     }
 
     let mut total_size = 0u64;
     let mut has_non_portable_path = false;
-    let mut declares_encryption = false;
 
     for index in 0..archive.len() {
         let file = archive.by_index(index).map_err(|error| error.to_string())?;
@@ -49,18 +48,12 @@ pub(super) fn inspect_epub_archive<R: Read + Seek>(archive: &mut ZipArchive<R>) 
         if non_portable_zip_path(&name) {
             has_non_portable_path = true;
         }
-        if name.eq_ignore_ascii_case("META-INF/encryption.xml") {
-            declares_encryption = true;
-        }
     }
 
-    Ok(EpubAccessInfo {
-        mode: if has_non_portable_path {
-            BookContentMode::ArchiveOnly
-        } else {
-            BookContentMode::Normal
-        },
-        declares_encryption,
+    Ok(if has_non_portable_path {
+        BookContentMode::ArchiveOnly
+    } else {
+        BookContentMode::Normal
     })
 }
 

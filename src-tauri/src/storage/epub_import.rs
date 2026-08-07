@@ -27,13 +27,15 @@ pub(super) use access::{
     EPUB_MAX_SEARCH_TEXT_BYTES, EPUB_SEARCH_DOCUMENT_READ_LIMIT, find_unpacked_opf_path, inspect_epub_access,
     read_bounded_bytes, unpack_epub, validate_epub_archive_limits,
 };
-pub(super) use metadata_cover::{
-    clean_xml_text, join_zip_path, normalize_non_square_pixel_png, normalize_zip_path, parent_zip_path,
-};
+#[cfg(test)]
+pub(super) use metadata_cover::normalize_non_square_pixel_png;
+pub(super) use metadata_cover::{clean_xml_text, join_zip_path, normalize_zip_path, parent_zip_path};
 #[cfg(test)]
 pub(super) use normalize::relative_zip_path;
 pub(super) use normalize::{deobfuscate_unpacked_idpf_fonts, normalize_unpacked_epub_structure};
-pub(super) use pipeline::{commit_prepared_epub_import, open_external_epub_path_impl, prepare_epub_import};
+pub(super) use pipeline::{
+    commit_prepared_epub_import, materialize_epub_package, open_external_epub_path_impl, prepare_epub_import,
+};
 
 pub(super) use publication_date::normalize_publication_date;
 
@@ -41,12 +43,6 @@ const EPUB_SECTION_SPLIT_MIN_BYTES: u64 = 512 * 1024;
 const EPUB_SECTION_SPLIT_MIN_NAV_POINTS: usize = 2;
 const EPUB_MISSING_SPINE_MIN_NAV_TARGETS: usize = 2;
 const EPUB_MISSING_SPINE_MAX_SMALL_READABLE_SPINE: usize = 2;
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct EpubAccessInfo {
-    pub(super) mode: BookContentMode,
-    pub(super) declares_encryption: bool,
-}
-
 struct ParsedEpubInfo {
     metadata: Value,
     cover: Option<ParsedEpubCover>,

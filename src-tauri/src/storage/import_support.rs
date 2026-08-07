@@ -2,6 +2,13 @@
 
 use super::*;
 
+const EAGER_IMPORT_ENV: &str = "FLOW_READER_EAGER_IMPORT";
+
+pub(super) fn eager_import_materialization_enabled() -> bool {
+    std::env::var(EAGER_IMPORT_ENV)
+        .is_ok_and(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+}
+
 pub(super) struct LibraryBookLookupIndex {
     names: HashMap<String, usize>,
     hashes: HashMap<String, usize>,

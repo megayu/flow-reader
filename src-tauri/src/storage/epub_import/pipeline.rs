@@ -38,13 +38,23 @@ pub(super) fn remove_epub_import_temp(path: &Path) {
     }
 }
 
+pub(in crate::storage) fn materialize_epub_package(source_path: &Path, unpacked_dir: &Path) -> Result<bool, String> {
+    unpack_epub(source_path, unpacked_dir)?;
+    let mut changed = normalize_unpacked_epub_structure(unpacked_dir)?;
+    if let Some((archive_path, data)) = read_epub_cover_png_repair(source_path)? {
+        fs::write(unpacked_resource_path(unpacked_dir, &archive_path), data).map_err(|error| error.to_string())?;
+        changed = true;
+    }
+    Ok(changed)
+}
+
 pub(in crate::storage) struct PreparedEpubImport {
     source_path: PathBuf,
     source_storage: SourceStorage,
     size: u64,
     name: String,
     parsed: ParsedEpubInfo,
-    access: EpubAccessInfo,
+    content_mode: BookContentMode,
     temp_path: PathBuf,
     hash: String,
 }
@@ -72,14 +82,14 @@ pub(in crate::storage) fn prepare_epub_import(storage: &AppStorage, path: &Path)
         } else {
             source_path.as_path()
         };
-        let (parsed, access) = inspect_epub_info(inspected_path)?;
+        let (parsed, content_mode) = inspect_epub_info(inspected_path)?;
         Ok(PreparedEpubImport {
             source_path,
             source_storage,
             size,
             name,
             parsed,
-            access,
+            content_mode,
             temp_path: temp_path.clone(),
             hash,
         })
@@ -108,7 +118,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
         size,
         name,
         parsed,
-        access,
+        content_mode,
         temp_path,
         hash,
     } = prepared;
@@ -162,7 +172,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                     book.size = size;
                     book.content_hash = hash.clone();
                     book.content_version = book.content_version.saturating_add(1).max(1);
-                    book.content_mode = access.mode;
+                    book.content_mode = content_mode;
                     book.source_storage = source_storage;
                     book.source_path = Some(source_path.clone());
                     book.updated_at = Some(now_ms());
@@ -174,7 +184,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                 let mut book = state.library.books[index].clone();
                 book.name = name.clone();
                 book.size = size;
-                book.content_mode = access.mode;
+                book.content_mode = content_mode;
                 let storage_changed = book.source_storage != source_storage;
                 book.source_storage = source_storage;
                 book.source_path = Some(source_path.clone());
@@ -193,7 +203,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                     content_edited_at: None,
                     content_hash: hash.clone(),
                     content_version: 1,
-                    content_mode: access.mode,
+                    content_mode,
                     source_storage,
                     source_path: Some(source_path.clone()),
                     metadata: empty_object(),
@@ -234,30 +244,12 @@ pub(in crate::storage) fn commit_prepared_epub_import(
             } else {
                 source_path.as_path()
             };
-            if source_storage == SourceStorage::Referenced && access.mode == BookContentMode::Normal {
-                unpack_epub(package_path, &unpacked_dir)?;
-                publication_changed |= normalize_unpacked_epub_structure(&unpacked_dir)?;
-            }
             let mut cover = parsed.cover;
-            if normalize_new_cover
-                && access.mode == BookContentMode::Normal
-                && !access.declares_encryption
-                && let Some(parsed_cover) = cover.as_mut()
-                && (parsed_cover.input.mime_type == "image/png"
-                    || parsed_cover.input.extension.eq_ignore_ascii_case("png"))
-                && let (Some(archive_path), Some(normalized)) = (
-                    parsed_cover.archive_path.as_deref(),
-                    normalize_non_square_pixel_png(&parsed_cover.input.data),
-                )
-            {
-                if !unpacked_dir.exists() {
-                    unpack_epub(package_path, &unpacked_dir)?;
-                    normalize_unpacked_epub_structure(&unpacked_dir)?;
-                }
-                fs::write(unpacked_resource_path(&unpacked_dir, archive_path), &normalized)
-                    .map_err(|error| error.to_string())?;
-                parsed_cover.input.data = normalized;
-                publication_changed = true;
+            if normalize_new_cover && content_mode == BookContentMode::Normal {
+                normalize_epub_cover_png(&mut cover);
+            }
+            if eager_import_materialization_enabled() && content_mode == BookContentMode::Normal {
+                publication_changed |= materialize_epub_package(package_path, &unpacked_dir)?;
             }
             write_cover(storage, &id, cover.map(|cover| cover.input))?;
         } else {
@@ -377,7 +369,7 @@ pub(in crate::storage) fn open_external_epub_path_impl(
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| "book.epub".to_string());
-    let (parsed, access) = inspect_epub_info(&source_path)?;
+    let (parsed, content_mode) = inspect_epub_info(&source_path)?;
     let hash = hash_file(&source_path)?;
 
     // These values move once through open control flow; boxing would add avoidable allocations.
@@ -412,7 +404,7 @@ pub(in crate::storage) fn open_external_epub_path_impl(
                 let book = &mut state.external.books[index];
                 book.name = name.clone();
                 book.size = size;
-                book.content_mode = access.mode;
+                book.content_mode = content_mode;
                 book.content_version = book.content_version.max(1);
                 book.source_storage = SourceStorage::Referenced;
                 book.source_path = Some(source_path.clone());
@@ -430,7 +422,7 @@ pub(in crate::storage) fn open_external_epub_path_impl(
                     size,
                     content_hash: hash.clone(),
                     content_version: 1,
-                    content_mode: access.mode,
+                    content_mode,
                     source_storage: SourceStorage::Referenced,
                     source_path: Some(source_path.clone()),
                     metadata: parsed.metadata.clone(),
@@ -459,7 +451,7 @@ pub(in crate::storage) fn open_external_epub_path_impl(
         if book_path.exists() {
             fs::remove_file(&book_path).map_err(|error| error.to_string())?;
         }
-        if access.mode == BookContentMode::Normal {
+        if content_mode == BookContentMode::Normal {
             unpack_epub(&source_path, &unpacked_dir)?;
             normalize_unpacked_epub_structure(&unpacked_dir)?;
         }

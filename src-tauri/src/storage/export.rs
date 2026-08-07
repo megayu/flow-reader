@@ -321,39 +321,28 @@ pub(super) fn export_book_impl(
 
     match format {
         BookExportFormat::Epub => {
-            if source_format == BookSourceFormat::Epub && content_mode == BookContentMode::ArchiveOnly {
-                let book_path = archive_only_source_path(storage, &initial_book)?;
-                if let Some(parent) = output_path.parent() {
-                    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+            let unpacked_dir = book_dir.join(UNPACKED_DIR);
+            match source_format {
+                BookSourceFormat::Epub if content_mode == BookContentMode::ArchiveOnly || !unpacked_dir.exists() => {
+                    let book_path = available_book_source_path(storage, &initial_book)?;
+                    if let Some(parent) = output_path.parent() {
+                        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+                    }
+                    fs::copy(&book_path, &output_path).map_err(|error| error.to_string())?;
                 }
-                fs::copy(&book_path, &output_path).map_err(|error| error.to_string())?;
-            } else {
-                let unpacked_dir = book_dir.join(UNPACKED_DIR);
-                if !unpacked_dir.exists()
-                    && let Some(book_path) = book_original_source_path(storage, &initial_book)
-                    && book_path.exists()
-                {
-                    unpack_epub(&book_path, &unpacked_dir)?;
-                    normalize_unpacked_epub_structure(&unpacked_dir)?;
-                }
-                let original_epub = book_original_source_path(storage, &initial_book).filter(|path| {
-                    path.is_file()
-                        && (initial_book.source_storage == SourceStorage::Managed
-                            || hash_file(path).is_ok_and(|hash| hash == initial_book.content_hash))
-                });
-                if source_format == BookSourceFormat::Epub {
+                BookSourceFormat::Epub => {
+                    let original_epub = available_book_source_path(storage, &initial_book).ok();
                     if let Some(book_path) = original_epub {
                         write_epub_from_original_and_unpacked(&book_path, &unpacked_dir, &output_path)?;
                     } else {
                         write_epub_from_unpacked_dir(&unpacked_dir, &output_path, None)?;
                     }
-                } else {
-                    let deflate_level = if source_format == BookSourceFormat::Txt {
-                        Some(TXT_EPUB_DEFLATE_LEVEL)
-                    } else {
-                        None
-                    };
-                    write_epub_from_unpacked_dir(&unpacked_dir, &output_path, deflate_level)?;
+                }
+                BookSourceFormat::Txt => {
+                    if !unpacked_dir.exists() {
+                        materialize_library_text_publication(storage, &initial_book)?;
+                    }
+                    write_epub_from_unpacked_dir(&unpacked_dir, &output_path, Some(TXT_EPUB_DEFLATE_LEVEL))?;
                 }
             }
         }

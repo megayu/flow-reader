@@ -43,9 +43,8 @@ impl TaskKey {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum TaskKind {
     SearchIndex,
-    EpubUnpack,
+    BookMaterialize,
     TxtPreview,
-    ImportMaterialize,
     TombstoneCleanup,
 }
 
@@ -53,9 +52,8 @@ impl TaskKind {
     fn as_str(self) -> &'static str {
         match self {
             Self::SearchIndex => "search-index",
-            Self::EpubUnpack => "unpack-epub",
+            Self::BookMaterialize => "book-materialize",
             Self::TxtPreview => "txt-preview",
-            Self::ImportMaterialize => "import-materialize",
             Self::TombstoneCleanup => "delete-cleanup",
         }
     }

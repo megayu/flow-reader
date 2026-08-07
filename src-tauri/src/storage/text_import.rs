@@ -1023,10 +1023,11 @@ pub(super) fn create_text_import_error_preview(path: &Path, message: String) -> 
     }
 }
 
-pub(super) fn prepare_text_import_entry(
+fn prepare_text_import_entry(
     path: &Path,
     encoding: Option<&str>,
     rules: Option<&TextImportRulesInput>,
+    document_title: Option<&str>,
     key: TextImportPreparedKey,
 ) -> Result<Arc<PreparedTextImport>, String> {
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
@@ -1040,7 +1041,9 @@ pub(super) fn prepare_text_import_entry(
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| "book.txt".to_string());
-    let fallback_title = text_import_file_title(path, &filename);
+    let fallback_title = document_title
+        .map(str::to_string)
+        .unwrap_or_else(|| text_import_file_title(path, &filename));
     let decoded = decode_text_bytes(&bytes, encoding);
     let sample = decoded
         .text
@@ -1143,7 +1146,7 @@ pub(super) fn load_or_prepare_text_import(
             }
             storage.note_text_import_prepare_run();
             storage.begin_text_import_prepare();
-            let prepared = prepare_text_import_entry(&path, encoding.as_deref(), rules.as_ref(), key);
+            let prepared = prepare_text_import_entry(&path, encoding.as_deref(), rules.as_ref(), None, key);
             storage.end_text_import_prepare();
             let prepared = prepared?;
             storage.insert_prepared_text_import(Arc::clone(&prepared));
@@ -1180,14 +1183,23 @@ pub(super) fn consume_or_prepare_text_import(
     Ok(prepared)
 }
 
-fn write_text_publication(
+fn materialize_text_publication(
     storage: &AppStorage,
     id: &str,
-    document: &TextImportDocument,
-    creator: &str,
-    encoding_label: &str,
+    prepared: &PreparedTextImport,
+    metadata: &Value,
+    rules: Option<&TextImportRulesInput>,
     cover: Option<&CoverInput>,
-) -> Result<(), String> {
+) -> Result<PathBuf, String> {
+    let title = metadata.get("title").and_then(Value::as_str).unwrap_or_default();
+    let creator = metadata.get("creator").and_then(Value::as_str).unwrap_or_default();
+    let reparsed_document;
+    let document = if title == prepared.document.title {
+        &prepared.document
+    } else {
+        reparsed_document = parse_text_import_document(&prepared.decoded.text, title, rules);
+        &reparsed_document
+    };
     let unpacked_dir = storage.book_dir(id).join(UNPACKED_DIR);
     if unpacked_dir.exists() {
         fs::remove_dir_all(&unpacked_dir).map_err(|error| error.to_string())?;
@@ -1230,13 +1242,50 @@ fn write_text_publication(
 
     fs::write(oebps.join("nav.xhtml"), text_nav_xhtml(document)).map_err(|error| error.to_string())?;
     let opf = if creator == document.creator {
-        text_content_opf(document, encoding_label)
+        text_content_opf(document, &prepared.decoded.encoding_label)
     } else {
-        text_content_opf_with_metadata(document, &document.title, creator, encoding_label)
+        text_content_opf_with_metadata(document, &document.title, creator, &prepared.decoded.encoding_label)
     };
     fs::write(oebps.join("content.opf"), opf).map_err(|error| error.to_string())?;
 
-    Ok(())
+    Ok(unpacked_dir.join("OEBPS/content.opf"))
+}
+
+pub(super) fn materialize_library_text_publication(
+    storage: &AppStorage,
+    book: &LibraryBook,
+) -> Result<PathBuf, String> {
+    let source_path = available_book_source_path(storage, book)?;
+    let encoding = source_encoding_id_from_metadata(&book.metadata);
+    let rules = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?
+        .settings
+        .get("textImportRules")
+        .cloned()
+        .and_then(|value| serde_json::from_value(value).ok());
+    let title = book.metadata.get("title").and_then(Value::as_str).unwrap_or_default();
+    let key = text_import_prepared_key(&source_path, encoding.as_deref(), rules.as_ref())?;
+    let prepared = prepare_text_import_entry(&source_path, encoding.as_deref(), rules.as_ref(), Some(title), key)?;
+    let cover = fs::read(storage.book_dir(&book.id).join("cover.svg"))
+        .ok()
+        .filter(|data| !data.is_empty())
+        .map(|data| CoverInput {
+            mime_type: "image/svg+xml".to_string(),
+            extension: "svg".to_string(),
+            data,
+        })
+        .or_else(|| create_text_cover_input(&book.metadata, None));
+    materialize_text_publication(
+        storage,
+        &book.id,
+        &prepared,
+        &book.metadata,
+        rules.as_ref(),
+        cover.as_ref(),
+    )
 }
 
 pub(super) fn text_import_css() -> &'static str {
@@ -1445,7 +1494,11 @@ pub(super) fn write_text_cover_to_unpacked(storage: &AppStorage, id: &str, cover
         return Ok(());
     }
 
-    let images_dir = storage.book_dir(id).join(UNPACKED_DIR).join("OEBPS").join("Images");
+    let unpacked_dir = storage.book_dir(id).join(UNPACKED_DIR);
+    if !unpacked_dir.exists() {
+        return Ok(());
+    }
+    let images_dir = unpacked_dir.join("OEBPS").join("Images");
     fs::create_dir_all(&images_dir).map_err(|error| error.to_string())?;
     fs::write(images_dir.join("cover.svg"), &cover.data).map_err(|error| error.to_string())
 }
@@ -1501,13 +1554,6 @@ pub(super) fn import_text_path_impl(
         .map(str::to_string)
         .unwrap_or_default();
 
-    let reparsed_document;
-    let document = if title == prepared.document.title {
-        &prepared.document
-    } else {
-        reparsed_document = parse_text_import_document(&decoded.text, &title, rules);
-        &reparsed_document
-    };
     let metadata = json!({
         "title": title,
         "creator": creator,
@@ -1605,14 +1651,9 @@ pub(super) fn import_text_path_impl(
                 fs::write(&source_text_path, prepared.bytes.as_slice()).map_err(|error| error.to_string())?;
             }
             let cover = create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str()));
-            write_text_publication(
-                storage,
-                &id,
-                document,
-                &creator,
-                &decoded.encoding_label,
-                cover.as_ref(),
-            )?;
+            if eager_import_materialization_enabled() {
+                materialize_text_publication(storage, &id, &prepared, &metadata, rules, cover.as_ref())?;
+            }
             book.metadata = metadata;
             write_cover(storage, &id, cover)?;
         }
