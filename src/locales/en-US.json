@@ -210,6 +210,8 @@
   "settings.library_modified_indicator.description": "Shows a badge on books with content changes that have not been exported.",
   "settings.restore_last_reading": "Resume Last Reading on Startup",
   "settings.restore_last_reading.description": "Reopens the last book and reading view when Flow Reader starts.",
+  "settings.show_library_in_toc": "Show Library in Table of Contents",
+  "settings.show_library_in_toc.description": "Shows the library above the book's table of contents for quick switching.",
   "settings.source_storage": "Use Source Files Without Copying",
   "settings.source_storage.description": "Uses source files in place instead of copying them into the library. Moving, renaming, or deleting a source file may make the book unavailable.",
   "settings.tabs.basic": "General",

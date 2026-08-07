@@ -240,6 +240,23 @@ export const SettingsPanel: React.FC = () => {
                   }}
                 />
               </Item>
+              <Item
+                title={t('show_library_in_toc')}
+                description={t('show_library_in_toc.description')}
+                controlId="settings-show-library-in-toc"
+              >
+                <SettingsCheckbox
+                  id="settings-show-library-in-toc"
+                  label={t('show_library_in_toc')}
+                  checked={settings.showLibraryInToc !== false}
+                  onCheckedChange={(checked) => {
+                    setSettings((prev) => ({
+                      ...prev,
+                      showLibraryInToc: checked,
+                    }))
+                  }}
+                />
+              </Item>
             </div>
           )}
           {activeTab === 'txt' && (

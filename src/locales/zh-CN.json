@@ -211,6 +211,8 @@
   "settings.library_modified_indicator.description": "正文修改后尚未导出的书籍会显示标记。",
   "settings.restore_last_reading": "启动时恢复上次阅读",
   "settings.restore_last_reading.description": "启动 Flow Reader 时，自动打开上次阅读的书籍。",
+  "settings.show_library_in_toc": "在目录侧边栏显示书架",
+  "settings.show_library_in_toc.description": "在书籍目录上方显示书架，便于快速切换书籍。",
   "settings.source_storage": "直接使用原文件",
   "settings.source_storage.description": "直接使用原文件，不在书架中保存副本，移动、重命名或删除原文件后，书籍可能无法打开。",
   "settings.tabs.basic": "常规",

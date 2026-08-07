@@ -490,3 +490,7 @@ export function useSettingsReady() {
 
   return ready
 }
+
+export function useShowLibraryInTocValue() {
+  return useAppStore((state) => state.settings.showLibraryInToc !== false)
+}

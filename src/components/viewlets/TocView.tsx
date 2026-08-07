@@ -9,7 +9,7 @@ import { useLibrary } from '@/hooks/useLibrary'
 import { LIST_ITEM_SIZE, useList } from '@/hooks/useList'
 import { useTranslation } from '@/hooks/useTranslation'
 import { type BookTab, compareHref, type INavItem, reader, useReaderSnapshot } from '@/models/reader'
-import { useSetViewMode } from '@/state'
+import { useSetViewMode, useShowLibraryInTocValue } from '@/state'
 
 import { AppTooltip } from '../AppTooltip'
 import { readerPageTooltipContentStyle } from '../appTooltipStyles'
@@ -20,12 +20,13 @@ import { EMPTY_ROW_LABEL, Row } from '../Row'
 
 export const TocView: React.FC<PaneViewProps> = (props) => {
   const active = props.active ?? true
+  const showLibrary = useShowLibraryInTocValue()
 
   return (
     <PaneView {...props}>
       {active && (
         <>
-          <LibraryPane active={active} />
+          {showLibrary && <LibraryPane active={active} />}
           <TocPane active={active} />
         </>
       )}
