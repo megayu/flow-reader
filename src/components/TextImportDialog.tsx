@@ -54,6 +54,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
   const [settings] = useSettings()
   const [encodings, setEncodings] = useState<TextImportEncodingOption[]>([])
   const [previews, setPreviews] = useState<TextImportPreview[]>([])
+  const [autoDetectedEncodingLabels, setAutoDetectedEncodingLabels] = useState<Record<string, string>>({})
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
   const [activePath, setActivePath] = useState(paths[0])
   const [encodingOverrides, setEncodingOverrides] = useState<Record<string, string>>({})
@@ -98,6 +99,13 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
       .then((items) => {
         if (disposed) return
         setPreviews(items)
+        setAutoDetectedEncodingLabels((current) => {
+          const next = { ...current }
+          for (const item of items) {
+            if (next[item.path] === undefined) next[item.path] = item.encodingLabel
+          }
+          return next
+        })
         setTitleOverrides((current) => {
           const next = { ...current }
           for (const item of items) {
@@ -323,7 +331,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                       {encodings.map((encoding) => (
                         <SelectItem key={encoding.id} value={encoding.id}>
                           {encoding.id === 'auto'
-                            ? `${encoding.label} (${activePreview.encodingLabel})`
+                            ? `${encoding.label} (${autoDetectedEncodingLabels[activePreview.path] ?? activePreview.encodingLabel})`
                             : encoding.label}
                         </SelectItem>
                       ))}
