@@ -6,7 +6,9 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use encoding_rs::{BIG5, EUC_KR, Encoding, GB18030, SHIFT_JIS, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252};
+use encoding_rs::{
+    BIG5, EUC_KR, Encoding, GB18030, SHIFT_JIS, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1250, WINDOWS_1251, WINDOWS_1252,
+};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -360,6 +362,8 @@ pub(super) fn text_import_encoding_options() -> Vec<TextImportEncodingOption> {
         ("big5", "Big5"),
         ("shift_jis", "Shift_JIS"),
         ("euc-kr", "EUC-KR"),
+        ("windows-1250", "Windows-1250"),
+        ("windows-1251", "Windows-1251"),
         ("windows-1252", "Windows-1252"),
     ]
     .into_iter()
@@ -377,6 +381,8 @@ fn text_encoding_by_id(id: &str) -> Option<(&'static str, &'static str, &'static
         "big5" => Some(("big5", "Big5", BIG5)),
         "shift_jis" => Some(("shift_jis", "Shift_JIS", SHIFT_JIS)),
         "euc-kr" => Some(("euc-kr", "EUC-KR", EUC_KR)),
+        "windows-1250" => Some(("windows-1250", "Windows-1250", WINDOWS_1250)),
+        "windows-1251" => Some(("windows-1251", "Windows-1251", WINDOWS_1251)),
         "windows-1252" => Some(("windows-1252", "Windows-1252", WINDOWS_1252)),
         _ => None,
     }
@@ -392,6 +398,8 @@ fn text_encoding_id_by_label(label: &str) -> Option<&'static str> {
         "big5" | "big-5" => Some("big5"),
         "shift_jis" | "shift-jis" | "sjis" => Some("shift_jis"),
         "euc-kr" | "euckr" => Some("euc-kr"),
+        "windows-1250" | "windows 1250" | "cp1250" => Some("windows-1250"),
+        "windows-1251" | "windows 1251" | "cp1251" => Some("windows-1251"),
         "windows-1252" | "windows 1252" | "cp1252" => Some("windows-1252"),
         _ => None,
     }
@@ -475,6 +483,8 @@ pub(super) fn decode_text_bytes(bytes: &[u8], encoding: Option<&str>) -> Decoded
         ("big5", "Big5", BIG5),
         ("shift_jis", "Shift_JIS", SHIFT_JIS),
         ("euc-kr", "EUC-KR", EUC_KR),
+        ("windows-1250", "Windows-1250", WINDOWS_1250),
+        ("windows-1251", "Windows-1251", WINDOWS_1251),
         ("windows-1252", "Windows-1252", WINDOWS_1252),
     ] {
         let (text, had_errors) = decode_with_encoding(&sample, encoding);
