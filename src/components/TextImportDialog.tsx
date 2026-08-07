@@ -62,6 +62,8 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
   const [creatorOverrides, setCreatorOverrides] = useState<Record<string, string>>({})
   const [previewSplit, setPreviewSplit] = useState(44)
   const previewAreaRef = useRef<HTMLDivElement>(null)
+  const previewButtonRefs = useRef(new Map<string, HTMLButtonElement>())
+  const hasFocusedInitialPreviewRef = useRef(false)
   const splitDragRef = useRef<
     | {
         pointerId: number
@@ -188,6 +190,16 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
   )
 
   useEffect(() => {
+    if (hasFocusedInitialPreviewRef.current || !activePreview) return
+
+    const activeButton = previewButtonRefs.current.get(activePreview.path)
+    if (!activeButton) return
+
+    activeButton.focus({ preventScroll: true })
+    hasFocusedInitialPreviewRef.current = true
+  }, [activePreview])
+
+  useEffect(() => {
     setCollapsedChapterKeys(new Set())
   }, [activePreview?.path])
 
@@ -239,7 +251,27 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
           <div className="border-border border-b px-3 py-3">
             <DialogTitle id={titleId}>{t('title')}</DialogTitle>
           </div>
-          <div className="scroll min-h-0 flex-1 overflow-y-auto p-2" style={{ scrollbarGutter: 'auto' }}>
+          <div
+            className="scroll min-h-0 flex-1 overflow-y-auto p-2"
+            style={{ scrollbarGutter: 'auto' }}
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+
+              event.preventDefault()
+              const offset = event.key === 'ArrowDown' ? 1 : -1
+              setActivePath((currentPath) => {
+                const currentIndex = previews.findIndex((preview) => preview.path === currentPath)
+                const nextIndex = Math.min(previews.length - 1, Math.max(0, currentIndex + offset))
+                const nextPath = previews[nextIndex]?.path
+                if (!nextPath || nextPath === currentPath) return currentPath
+
+                const nextButton = previewButtonRefs.current.get(nextPath)
+                nextButton?.focus({ preventScroll: true })
+                nextButton?.scrollIntoView({ block: 'nearest' })
+                return nextPath
+              })
+            }}
+          >
             {previews.map((preview) => {
               const selected = selectedPaths.has(preview.path)
               const active = activePreview?.path === preview.path
@@ -247,6 +279,13 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
               return (
                 <button
                   key={preview.path}
+                  ref={(element) => {
+                    if (element) {
+                      previewButtonRefs.current.set(preview.path, element)
+                    } else {
+                      previewButtonRefs.current.delete(preview.path)
+                    }
+                  }}
                   type="button"
                   className={clsx(
                     'mb-1 flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-(--flow-bg-control-hover)',

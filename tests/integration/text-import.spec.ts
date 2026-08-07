@@ -92,6 +92,47 @@ test('TXT import dialog sends edited title and author metadata', async ({ page }
     ])
 })
 
+test('switches TXT import previews with arrow keys while keeping the active preview focused and visible', async ({
+  page,
+}) => {
+  const previewCount = 18
+  const filePaths = Array.from({ length: previewCount }, (_, index) => path.join('tmp', `Preview ${index + 1}.txt`))
+
+  await installTauriMock(page, {
+    openDialogPaths: filePaths,
+    textImportPreviews: filePaths.map((filePath, index) => ({
+      path: filePath,
+      filename: path.basename(filePath),
+      title: `Preview title ${index + 1}`,
+      encoding: 'utf-8',
+      encodingLabel: 'UTF-8',
+      confidence: 'high' as const,
+      status: 'ready' as const,
+      selected: true,
+      chapters: [],
+      sample: '',
+    })),
+  })
+  await page.goto('/')
+
+  await page.getByRole('button', { name: msg('home.import') }).click()
+  const titleInput = page.getByRole('textbox', { exact: true, name: msg('text_import.book_title') })
+  const firstPreview = page.getByRole('button', { name: /Preview 1\.txt/ })
+  const lastPreview = page.getByRole('button', { name: new RegExp(`Preview ${previewCount}\\.txt`) })
+  const previewList = page.locator('aside > .scroll')
+
+  await expect(firstPreview).toBeFocused()
+  await page.keyboard.press('ArrowUp')
+  for (let index = 1; index < previewCount; index += 1) {
+    await page.keyboard.press('ArrowDown')
+  }
+  await expect(titleInput).toHaveValue(`Preview title ${previewCount}`)
+  await expect(lastPreview).toBeFocused()
+  await expect.poll(() => previewList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  await page.keyboard.press('ArrowDown')
+  await expect(lastPreview).toBeFocused()
+})
+
 test('TXT import rules preserve enter input and persist by line', async ({ page }) => {
   await installTauriMock(page)
   await page.goto('/')
