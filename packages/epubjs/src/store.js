@@ -359,8 +359,8 @@ class Store {
 
   destroy() {
     var _URL = window.URL || window.webkitURL || window.mozURL
-    for (let fromCache in this.urlCache) {
-      _URL.revokeObjectURL(fromCache)
+    for (let url in this.urlCache) {
+      _URL.revokeObjectURL(this.urlCache[url])
     }
     this.urlCache = {}
     this.removeListeners()
