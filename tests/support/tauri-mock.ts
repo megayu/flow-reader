@@ -32,6 +32,7 @@ const testWindowUiState: WindowUiState = {
 
 interface TauriMockOptions {
   books?: BookRecord[]
+  eventListenDelayMs?: number
   externallyOpenedBooks?: BookRecord[]
   importedBooks?: BookRecord[]
   epubImportDelayMs?: number
@@ -69,6 +70,7 @@ export async function installTauriMock(
   page: Page,
   {
     books = [],
+    eventListenDelayMs = 0,
     externallyOpenedBooks = [],
     importedBooks = [],
     epubImportDelayMs = 0,
@@ -109,6 +111,7 @@ export async function installTauriMock(
   await page.addInitScript(
     ({
       fixtureBooks,
+      fixtureEventListenDelayMs,
       fixtureExternallyOpenedBooks,
       fixtureImportedBooks,
       fixtureEpubImportDelayMs,
@@ -747,7 +750,12 @@ export async function installTauriMock(
           return options?.multiple === false ? (fixtureOpenDialogPaths[0] ?? null) : fixtureOpenDialogPaths
         }
         if (command === 'plugin:dialog|save') return fixtureSaveDialogPath
-        if (command === 'plugin:event|listen') return nextEventId++
+        if (command === 'plugin:event|listen') {
+          if (fixtureEventListenDelayMs > 0) {
+            await new Promise((resolve) => window.setTimeout(resolve, fixtureEventListenDelayMs))
+          }
+          return nextEventId++
+        }
         if (command === 'plugin:event|unlisten') return null
         if (command === 'plugin:window|is_fullscreen') return fullscreen
         if (command === 'plugin:window|set_fullscreen') {
@@ -763,6 +771,7 @@ export async function installTauriMock(
     },
     {
       fixtureBooks: books,
+      fixtureEventListenDelayMs: eventListenDelayMs,
       fixtureExternallyOpenedBooks: externallyOpenedBooks,
       fixtureImportedBooks: importedBooks,
       fixtureEpubImportDelayMs: epubImportDelayMs,

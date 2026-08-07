@@ -24,7 +24,7 @@ interface HandleFilesOptions {
   directTextImport?: boolean
   onImportProgress?: (progress: BookImportProgress) => void
   replaceExisting?: boolean
-  onTextPaths?: (paths: string[]) => void
+  onTextPaths?: (paths: string[], waitForEpubImport?: Promise<void>) => void
   onImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
 }
 
@@ -80,37 +80,48 @@ export async function handleFilePaths(
 
   const epubPaths = paths.filter(isEpubPath)
   const textPaths = paths.filter(isTxtPath)
+  let completeEpubImport: (() => void) | undefined
+  const waitForEpubImport =
+    epubPaths.length && textPaths.length && !directTextImport
+      ? new Promise<void>((resolve) => {
+          completeEpubImport = resolve
+        })
+      : undefined
 
-  if (textPaths.length && !directTextImport) onTextPaths?.(textPaths)
+  try {
+    if (textPaths.length && !directTextImport) onTextPaths?.(textPaths, waitForEpubImport)
 
-  const directTextPaths = directTextImport ? textPaths : []
-  const batch = await runDirectTextImportBatch(epubPaths, directTextPaths, {
-    onImportProgress,
-    importEpubPhase: (importId, progressiveUpdates) =>
-      importEpubPaths(epubPaths, {
-        importId,
-        progressiveUpdates,
-        replaceExisting,
-      }),
-    importTextPhase: (importId, progressiveUpdates) =>
-      importTextPaths(
-        directTextPaths.map((path) => ({ path })),
-        {
+    const directTextPaths = directTextImport ? textPaths : []
+    const batch = await runDirectTextImportBatch(epubPaths, directTextPaths, {
+      onImportProgress,
+      importEpubPhase: (importId, progressiveUpdates) =>
+        importEpubPaths(epubPaths, {
           importId,
           progressiveUpdates,
           replaceExisting,
-        },
-      ),
-  })
-  if (!batch) return []
+        }),
+      importTextPhase: (importId, progressiveUpdates) =>
+        importTextPaths(
+          directTextPaths.map((path) => ({ path })),
+          {
+            importId,
+            progressiveUpdates,
+            replaceExisting,
+          },
+        ),
+    })
+    if (!batch) return []
 
-  const result = {
-    books: [...batch.epubResult.books, ...batch.textResult.books],
-    failures: [...batch.epubResult.failures, ...batch.textResult.failures],
+    const result = {
+      books: [...batch.epubResult.books, ...batch.textResult.books],
+      failures: [...batch.epubResult.failures, ...batch.textResult.failures],
+    }
+    const openedBookIds = await onImportResult?.(result)
+    if (!openedBookIds?.size) return result.books
+    return result.books.filter((book) => !openedBookIds.has(book.id))
+  } finally {
+    completeEpubImport?.()
   }
-  const openedBookIds = await onImportResult?.(result)
-  if (!openedBookIds?.size) return result.books
-  return result.books.filter((book) => !openedBookIds.has(book.id))
 }
 
 export async function importTextSelections(
@@ -160,7 +171,7 @@ export async function setupNativeOpenFiles({
   onDrop?: (books: BookRecord[]) => void
   onImportProgress?: (progress: BookImportProgress) => void
   onImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
-  onDropTextPaths?: (paths: string[]) => void
+  onDropTextPaths?: (paths: string[], waitForEpubImport?: Promise<void>) => void
   getDirectTextImport?: () => boolean
 }) {
   if (typeof window === 'undefined') return

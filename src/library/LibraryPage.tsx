@@ -144,6 +144,7 @@ export function LibraryPage() {
   const [textImportDialog, setTextImportDialog] = useState<{
     paths: string[]
     openAfterImport: boolean
+    waitForEpubImport?: Promise<void>
   }>()
   const [bookImportProgress, setBookImportProgress] = useState<BookImportProgress>()
   const notify = useNotify()
@@ -154,10 +155,13 @@ export function LibraryPage() {
   const directTextImport = settings.directTextImport === true
   const openBookIds = new Set(groups.flatMap((group) => group.bookTabs.map((tab) => tab.book.id)))
 
-  const openTextImportDialog = useCallback((paths: string[], openAfterImport: boolean) => {
-    if (!paths.length) return
-    setTextImportDialog({ paths, openAfterImport })
-  }, [])
+  const openTextImportDialog = useCallback(
+    (paths: string[], openAfterImport: boolean, waitForEpubImport?: Promise<void>) => {
+      if (!paths.length) return
+      setTextImportDialog({ paths, openAfterImport, waitForEpubImport })
+    },
+    [],
+  )
 
   const openImportedTextBooks = useCallback(
     (books: BookRecord[], openAfterImport: boolean) => {
@@ -194,10 +198,13 @@ export function LibraryPage() {
   )
 
   const handleTextImport = useCallback(
-    (imports: TextImportSelection[], openAfterImport: boolean) => {
-      void importTextSelections(imports, {
-        onImportProgress: handleBookImportProgress,
-      })
+    (imports: TextImportSelection[], openAfterImport: boolean, waitForEpubImport?: Promise<void>) => {
+      void Promise.resolve(waitForEpubImport)
+        .then(() =>
+          importTextSelections(imports, {
+            onImportProgress: handleBookImportProgress,
+          }),
+        )
         .then((result: BookImportResult) => {
           setBookImportProgress(undefined)
           const openBookIds = openAfterImport ? reader.refreshImportedBooks(result.books) : new Set<string>()
@@ -301,8 +308,8 @@ export function LibraryPage() {
         selectDroppedBooksToAutoOpen(books).forEach((book) => reader.addTab(book))
         setViewMode('reader')
       },
-      onDropTextPaths: (paths) => {
-        openTextImportDialog(paths, viewModeRef.current !== 'library')
+      onDropTextPaths: (paths, waitForEpubImport) => {
+        openTextImportDialog(paths, viewModeRef.current !== 'library', waitForEpubImport)
       },
     }),
   )
@@ -400,7 +407,7 @@ export function LibraryPage() {
       onEpubImportProgress={handleBookImportProgress}
       onEpubImportResult={handleEpubImportResult}
       directTextImport={directTextImport}
-      onTextPaths={(paths) => openTextImportDialog(paths, false)}
+      onTextPaths={(paths, waitForEpubImport) => openTextImportDialog(paths, false, waitForEpubImport)}
     />
   )
   const nativeStartupContentReady =
@@ -425,7 +432,9 @@ export function LibraryPage() {
           paths={textImportDialog.paths}
           openAfterImport={textImportDialog.openAfterImport}
           onClose={() => setTextImportDialog(undefined)}
-          onImport={handleTextImport}
+          onImport={(imports, openAfterImport) =>
+            handleTextImport(imports, openAfterImport, textImportDialog.waitForEpubImport)
+          }
         />
       )}
       {bookImportProgress && <BookImportProgressPanel progress={bookImportProgress} />}
@@ -439,7 +448,7 @@ interface LibraryProps {
   onEpubImportProgress: (progress: BookImportProgress) => void
   onEpubImportResult: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
   onOpenBook: () => void
-  onTextPaths: (paths: string[]) => void
+  onTextPaths: (paths: string[], waitForEpubImport?: Promise<void>) => void
 }
 
 const Library: React.FC<LibraryProps> = ({

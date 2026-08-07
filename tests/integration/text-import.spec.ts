@@ -141,6 +141,41 @@ test('direct mixed import prepares TXT alongside EPUB and commits it in one late
   await expect(page.getByRole('status').getByRole('heading')).toContainText('2')
 })
 
+test('preview confirmation keeps EPUB progress until the queued TXT import can start', async ({ page }) => {
+  const epubPaths = [path.join('tmp', 'First.epub'), path.join('tmp', 'Second.epub')]
+  const textPath = path.join('tmp', 'Third.txt')
+
+  await installTauriMock(page, {
+    eventListenDelayMs: 100,
+    epubImportDelayMs: 1_000,
+    importedBooks: [
+      createTestBook({ id: 'first-epub', name: 'First.epub', sourceFormat: 'epub' }),
+      createTestBook({ id: 'second-epub', name: 'Second.epub', sourceFormat: 'epub' }),
+      createTestBook({ id: 'third-text', name: 'Third.txt', sourceFormat: 'txt' }),
+    ],
+    openDialogPaths: [...epubPaths, textPath],
+    textImportDelayMs: 1_000,
+  })
+  await page.goto('/')
+
+  await page.getByRole('button', { name: msg('home.import') }).click()
+  await expect(page.getByText(msg('text_import.title'))).toBeVisible()
+  const importButton = page.getByRole('button', { name: msg('text_import.import_selected') })
+  await expect(importButton).toBeEnabled()
+  await expect.poll(() => getBookImportOperations(page)).toContain('epub:start')
+
+  const progress = page
+    .getByRole('status')
+    .filter({ has: page.getByRole('heading', { name: msg('import.title.progress') }) })
+  await expect(progress).toContainText('0 / 2')
+
+  await importButton.dispatchEvent('click')
+
+  await expect(progress).toContainText('0 / 2')
+  await expect.poll(() => getBookImportOperations(page)).toContain('txt-import:start')
+  await expect(progress).toContainText('0 / 1')
+})
+
 test('switches TXT import previews with arrow keys while keeping the active preview focused and visible', async ({
   page,
 }) => {
