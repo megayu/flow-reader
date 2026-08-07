@@ -491,7 +491,7 @@ export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({ book, cover, onC
     [t('info.publisher'), cleanBookText(book.metadata.publisher)],
     [t('info.publication_date'), cleanBookText(book.metadata.pubdate)],
     ...(book.sourceStorage === 'referenced' && book.sourcePath
-      ? [[t('info.original_file_path'), formatLocalDirectoryForDisplay(book.sourcePath)]]
+      ? [[t('info.file_path'), formatLocalDirectoryForDisplay(book.sourcePath)]]
       : []),
     [t('info.file_name'), cleanBookText(book.name)],
     [t('info.size'), formatFileSize(book.size)],
