@@ -1247,6 +1247,13 @@ pub async fn load_book_image_index(
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
         let book = storage.library_book(&id)?;
+        if book.source_format == BookSourceFormat::Txt {
+            return Ok(ImageIndexCache {
+                version: IMAGE_INDEX_CACHE_VERSION,
+                content_version: book.content_version,
+                sections: Vec::new(),
+            });
+        }
         Ok((*load_or_build_image_index_cache(&storage, &tasks, &book)?).clone())
     })
     .await
