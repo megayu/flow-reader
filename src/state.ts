@@ -54,8 +54,10 @@ interface AppStore {
   bookCacheClearing: boolean
   libraryAction?: LibraryAction
   libraryAuthorFilter: string[]
+  libraryAuthorFilterExpanded: boolean
   libraryStatusFilter: ReadingStatus[]
   libraryTagFilter: string[]
+  libraryTagFilterExpanded: boolean
   librarySidebarWidth?: number
   panes?: Record<string, WindowPaneState>
   readerSidebarWidth?: number
@@ -69,8 +71,10 @@ interface AppStore {
   setBookCacheClearing: SetterOrUpdater<boolean>
   setLibraryAction: SetterOrUpdater<LibraryAction | undefined>
   setLibraryAuthorFilter: SetterOrUpdater<string[]>
+  setLibraryAuthorFilterExpanded: SetterOrUpdater<boolean>
   setLibraryStatusFilter: SetterOrUpdater<ReadingStatus[]>
   setLibraryTagFilter: SetterOrUpdater<string[]>
+  setLibraryTagFilterExpanded: SetterOrUpdater<boolean>
   setLibrarySidebarWidth(value: number): void
   setPaneState(key: string, value: WindowPaneState | ((prev: WindowPaneState | undefined) => WindowPaneState)): void
   setReaderSidebarWidth(value: number): void
@@ -91,8 +95,10 @@ export const useAppStore = create<AppStore>((set) => ({
   bookCacheClearing: false,
   libraryAction: undefined,
   libraryAuthorFilter: [],
+  libraryAuthorFilterExpanded: true,
   libraryStatusFilter: [],
   libraryTagFilter: [],
+  libraryTagFilterExpanded: true,
   librarySidebarWidth: undefined,
   panes: undefined,
   readerSidebarWidth: undefined,
@@ -113,6 +119,10 @@ export const useAppStore = create<AppStore>((set) => ({
     set((state) => ({
       libraryAuthorFilter: resolveUpdate(value, state.libraryAuthorFilter),
     })),
+  setLibraryAuthorFilterExpanded: (value) =>
+    set((state) => ({
+      libraryAuthorFilterExpanded: resolveUpdate(value, state.libraryAuthorFilterExpanded),
+    })),
   setLibraryStatusFilter: (value) =>
     set((state) => ({
       libraryStatusFilter: resolveUpdate(value, state.libraryStatusFilter),
@@ -120,6 +130,10 @@ export const useAppStore = create<AppStore>((set) => ({
   setLibraryTagFilter: (value) =>
     set((state) => ({
       libraryTagFilter: resolveUpdate(value, state.libraryTagFilter),
+    })),
+  setLibraryTagFilterExpanded: (value) =>
+    set((state) => ({
+      libraryTagFilterExpanded: resolveUpdate(value, state.libraryTagFilterExpanded),
     })),
   setLibrarySidebarWidth: (value) => set({ librarySidebarWidth: value }),
   setPaneState: (key, value) =>
@@ -208,11 +222,25 @@ export function useLibraryAuthorFilter() {
   return [filters, setFilters] as const
 }
 
+export function useLibraryAuthorFilterExpanded() {
+  const expanded = useAppStore((state) => state.libraryAuthorFilterExpanded)
+  const setExpanded = useAppStore((state) => state.setLibraryAuthorFilterExpanded)
+
+  return [expanded, setExpanded] as const
+}
+
 export function useLibraryTagFilter() {
   const filters = useAppStore((state) => state.libraryTagFilter)
   const setFilters = useAppStore((state) => state.setLibraryTagFilter)
 
   return [filters, setFilters] as const
+}
+
+export function useLibraryTagFilterExpanded() {
+  const expanded = useAppStore((state) => state.libraryTagFilterExpanded)
+  const setExpanded = useAppStore((state) => state.setLibraryTagFilterExpanded)
+
+  return [expanded, setExpanded] as const
 }
 
 export function useSettingsDialogOpen() {

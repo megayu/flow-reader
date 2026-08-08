@@ -8,6 +8,8 @@ import { msg } from '../support/i18n'
 import { getStoredLibraryPins, installTauriMock } from '../support/tauri-mock'
 
 const longAuthor = 'Beatrice Longname With An Extraordinarily Extended Family Name That Should Ellipsize'
+const authorSearchShortcut = process.platform === 'darwin' ? 'Meta+E' : 'Control+E'
+const tagSearchShortcut = process.platform === 'darwin' ? 'Meta+T' : 'Control+T'
 
 function createBook({
   creator,
@@ -261,4 +263,51 @@ test('library filter panel clears filters on Escape without closing', async ({ p
 
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('library-filter-panel')).toBeVisible()
+})
+
+test('library facet searches stay scoped and exit on blur without clearing applied filters', async ({ page }) => {
+  await installTauriMock(page, {
+    books: fixtureBooks.map((book, index) => ({
+      ...book,
+      tagIds: [index % 2 ? 'tag-notes' : 'tag-reference'],
+    })),
+    tags: [
+      { id: 'tag-notes', name: 'Notes', createdAt: 1 },
+      { id: 'tag-reference', name: 'Reference', createdAt: 2 },
+    ],
+  })
+  await page.goto('/')
+  await expect(page.locator('#layout')).toBeVisible()
+  await openLibraryFilterPanel(page)
+
+  await page.keyboard.press(authorSearchShortcut)
+  const authorSearch = page.getByRole('textbox', { name: msg('home.library_filter.search_authors') })
+  await expect(authorSearch).toBeFocused()
+  await authorSearch.fill('ABLE')
+  await expect(authorChip(page, 'Anne Able')).toBeVisible()
+  await expect(authorChip(page, 'Clara Cove')).toHaveCount(0)
+  await expect(page.getByTestId('library-tag-chip')).toHaveCount(2)
+
+  await authorChip(page, 'Anne Able').click()
+  await expect(authorSearch).toBeFocused()
+  await expect(authorChip(page, 'Anne Able')).toHaveAttribute('aria-pressed', 'true')
+
+  await page.getByTestId('library-filter-status-all').click()
+  await expect(authorSearch).toHaveCount(0)
+  await expect(authorChip(page, 'Anne Able')).toHaveAttribute('aria-pressed', 'true')
+  await expect(authorChip(page, 'Clara Cove')).toBeVisible()
+
+  await page.keyboard.press(tagSearchShortcut)
+  const tagSearch = page.getByRole('textbox', { name: msg('home.library_filter.search_tags') })
+  await expect(tagSearch).toBeFocused()
+  await tagSearch.fill('NOTE')
+  await expect(page.getByTestId('library-tag-chip').filter({ hasText: 'Notes' })).toBeVisible()
+  await expect(page.getByTestId('library-tag-chip').filter({ hasText: 'Reference' })).toHaveCount(0)
+  await expect(authorChip(page, 'Clara Cove')).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  await expect(tagSearch).toHaveCount(0)
+  await expect(authorChip(page, 'Anne Able')).toHaveAttribute('aria-pressed', 'true')
+  await page.keyboard.press('Escape')
+  await expect(authorChip(page, 'Anne Able')).toHaveAttribute('aria-pressed', 'false')
 })

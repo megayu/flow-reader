@@ -10,6 +10,7 @@ export type ShortcutActionId =
   | 'fullscreen'
   | 'imagePanel'
   | 'increaseFontSize'
+  | 'libraryAuthorSearch'
   | 'libraryBatchTags'
   | 'libraryDeleteSelection'
   | 'libraryFilterAll'
@@ -21,6 +22,7 @@ export type ShortcutActionId =
   | 'libraryImport'
   | 'libraryReaderToggle'
   | 'librarySelectAll'
+  | 'libraryTagSearch'
   | 'moveTabLeft'
   | 'moveTabRight'
   | 'nextChapter'
@@ -172,6 +174,10 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
     labelKey: 'library_reader_toggle',
     shortcuts: [['V']],
   },
+  libraryAuthorSearch: {
+    labelKey: 'library_author_search',
+    shortcuts: [[commandToken, 'E']],
+  },
   libraryBatchTags: {
     labelKey: 'library_batch_tags',
     shortcuts: [['T']],
@@ -215,6 +221,10 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
   librarySelectAll: {
     labelKey: 'library_select_all',
     shortcuts: [[commandToken, 'A']],
+  },
+  libraryTagSearch: {
+    labelKey: 'library_tag_search',
+    shortcuts: [[commandToken, 'T']],
   },
   developerTools: {
     labelKey: 'developer_tools',
@@ -283,6 +293,8 @@ const shortcutGroups: ShortcutGroupDefinition[] = [
     items: [
       shortcutDefinitions.libraryImport,
       shortcutDefinitions.librarySelectAll,
+      shortcutDefinitions.libraryAuthorSearch,
+      shortcutDefinitions.libraryTagSearch,
       shortcutDefinitions.libraryBatchTags,
       shortcutDefinitions.libraryDeleteSelection,
       shortcutDefinitions.libraryFilterPanel,

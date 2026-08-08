@@ -25,11 +25,14 @@ import {
 } from 'lucide-react'
 import {
   type ComponentProps,
+  memo,
   type PropsWithChildren,
   type ReactNode,
+  type RefObject,
   useCallback,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -59,8 +62,10 @@ import { useReaderSnapshot } from '../models/reader'
 import { getShortcutChords, type ShortcutActionId } from '../shortcuts'
 import {
   useLibraryAuthorFilter,
+  useLibraryAuthorFilterExpanded,
   useLibraryStatusFilter,
   useLibraryTagFilter,
+  useLibraryTagFilterExpanded,
   useSettingsDialogOpen,
   useSetZenTypographyOverrides,
   useSidebarWidth,
@@ -73,7 +78,7 @@ import { db, type LibraryTagRecord } from '../storage'
 import { activeClass } from '../styles'
 
 import { AppTooltip } from './AppTooltip'
-import { PaneView } from './base/PaneView'
+import { OverlayScroll, type OverlayScrollbarMetrics, PaneView } from './base/PaneView'
 import { SplitView } from './base/SplitView'
 import { useSplitViewItem } from './base/splitViewContext'
 import { ReadingStatusIcon } from './ReadingStatusIcon'
@@ -624,31 +629,50 @@ const SideBarForMode: React.FC<{
 
 const libraryStatusOptions = ['toRead', 'reading', 'read'] as const
 const libraryFilterPanelClassName =
-  'rounded-md bg-(--flow-sidebar-item-bg)/70 p-2 ring-(--flow-sidebar-item-border) ring-inset'
-const libraryFilterPanelHeaderClassName = 'mb-1 flex h-6 items-center gap-1'
+  'rounded-md bg-(--flow-sidebar-item-bg)/70 p-1.5 ring-(--flow-sidebar-item-border) ring-inset'
+const libraryFilterPanelHeaderClassName = 'mb-1 flex h-7 shrink-0 items-center gap-0.5'
 const libraryFilterOptionsClassName = 'flex min-w-0 flex-wrap gap-1'
-const libraryFilterChipClassName = 'h-7 max-w-full min-w-0 gap-1 px-2 text-sm leading-tight'
+const libraryFilterChipClassName = 'h-7 max-w-full min-w-0 gap-1 px-1.5 text-sm leading-tight'
 const libraryFilterInactiveChipClassName =
   'bg-transparent text-(--flow-text) ring-1 ring-(--flow-sidebar-item-border) ring-inset hover:bg-(--flow-sidebar-item-bg-hover)'
 const libraryFilterSectionHeaderClassName = 'text-(--flow-text) text-base leading-none font-semibold'
-const libraryFilterIconButtonClassName = 'size-8 rounded-md text-(--flow-text-muted) hover:text-(--flow-text)'
+const libraryFilterIconButtonClassName = 'size-7 rounded-md text-(--flow-text-muted) hover:text-(--flow-text)'
+const libraryFilterSectionIconButtonClassName = 'size-7 rounded-md text-(--flow-text-muted) hover:text-(--flow-text)'
+
+type LibraryFacetSearchTarget = 'author' | 'tag'
+
+interface LibraryFacetSearchState {
+  lockedHeight?: number
+  restoreCollapsed: boolean
+  scrollTop: number
+  target: LibraryFacetSearchTarget
+}
 
 function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const t = useTranslation('home')
   const books = useLibrary()
   const tags = useLibraryTags()
   const pins = useLibraryPins()
-  const [libraryAction] = useLibraryAction()
+  const [libraryAction, setLibraryAction] = useLibraryAction()
   const [statusFilters, setStatusFilters] = useLibraryStatusFilter()
   const [authorFilters, setAuthorFilters] = useLibraryAuthorFilter()
   const [tagFilters, setTagFilters] = useLibraryTagFilter()
-  const [authorsExpanded, setAuthorsExpanded] = useState(true)
-  const [tagsExpanded, setTagsExpanded] = useState(true)
+  const [authorsExpanded, setAuthorsExpanded] = useLibraryAuthorFilterExpanded()
+  const [tagsExpanded, setTagsExpanded] = useLibraryTagFilterExpanded()
+  const [facetSearch, setFacetSearch] = useState<LibraryFacetSearchState>()
+  const [facetSearchQuery, setFacetSearchQuery] = useState('')
   const [creatingTag, setCreatingTag] = useState(false)
   const [newTagName, setNewTagName] = useState('')
   const [editingTag, setEditingTag] = useState<LibraryTagRecord>()
   const [deletingTag, setDeletingTag] = useState<LibraryTagRecord>()
   const newTagInputRef = useRef<HTMLInputElement>(null)
+  const authorSearchInputRef = useRef<HTMLInputElement>(null)
+  const tagSearchInputRef = useRef<HTMLInputElement>(null)
+  const authorSectionRef = useRef<HTMLElement>(null)
+  const tagSectionRef = useRef<HTMLElement>(null)
+  const authorScrollRef = useRef<HTMLDivElement>(null)
+  const tagScrollRef = useRef<HTMLDivElement>(null)
+  const facetSearchRef = useRef<LibraryFacetSearchState | undefined>(undefined)
   const authorOptions = useMemo(
     () => getLibraryAuthorOptions(books ?? [], statusFilters, pins?.authors ?? []),
     [books, pins?.authors, statusFilters],
@@ -657,6 +681,20 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     () => getLibraryTagOptions(books ?? [], statusFilters, tags ?? [], pins?.tagIds ?? []),
     [books, pins?.tagIds, statusFilters, tags],
   )
+  const tagsById = useMemo(() => new Map((tags ?? []).map((tag) => [tag.id, tag])), [tags])
+  const normalizedFacetSearchQuery = facetSearchQuery.toLocaleLowerCase()
+  const visibleAuthorOptions = useMemo(() => {
+    if (facetSearch?.target !== 'author' || !normalizedFacetSearchQuery) return authorOptions
+
+    return authorOptions.filter((option) => option.name.toLocaleLowerCase().indexOf(normalizedFacetSearchQuery) !== -1)
+  }, [authorOptions, facetSearch?.target, normalizedFacetSearchQuery])
+  const visibleTagOptions = useMemo(() => {
+    if (facetSearch?.target !== 'tag' || !normalizedFacetSearchQuery) return tagOptions
+
+    return tagOptions.filter((option) => option.name.toLocaleLowerCase().indexOf(normalizedFacetSearchQuery) !== -1)
+  }, [facetSearch?.target, normalizedFacetSearchQuery, tagOptions])
+  const selectedAuthors = useMemo(() => new Set(authorFilters), [authorFilters])
+  const selectedTagIds = useMemo(() => new Set(tagFilters), [tagFilters])
   const hasFilters = statusFilters.length > 0 || authorFilters.length > 0 || tagFilters.length > 0
 
   const toggle = (status: (typeof libraryStatusOptions)[number]) => {
@@ -678,6 +716,81 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const resetTags = useCallback(() => {
     setTagFilters([])
   }, [setTagFilters])
+
+  const exitFacetSearch = useCallback(
+    (target?: LibraryFacetSearchTarget) => {
+      const current = facetSearchRef.current
+      if (!current || (target && current.target !== target)) return
+
+      facetSearchRef.current = undefined
+      setFacetSearch(undefined)
+      setFacetSearchQuery('')
+      if (current.restoreCollapsed) {
+        if (current.target === 'author') setAuthorsExpanded(false)
+        else setTagsExpanded(false)
+      }
+
+      const scrollRef = current.target === 'author' ? authorScrollRef : tagScrollRef
+      requestAnimationFrame(() => {
+        if (scrollRef.current) scrollRef.current.scrollTop = current.scrollTop
+      })
+    },
+    [setAuthorsExpanded, setTagsExpanded],
+  )
+
+  const startFacetSearch = useCallback(
+    (target: LibraryFacetSearchTarget) => {
+      const current = facetSearchRef.current
+      const inputRef = target === 'author' ? authorSearchInputRef : tagSearchInputRef
+      if (current?.target === target) {
+        inputRef.current?.focus()
+        return
+      }
+
+      if (current) {
+        if (current.restoreCollapsed) {
+          if (current.target === 'author') setAuthorsExpanded(false)
+          else setTagsExpanded(false)
+        }
+
+        const previousScrollRef = current.target === 'author' ? authorScrollRef : tagScrollRef
+        requestAnimationFrame(() => {
+          if (previousScrollRef.current) previousScrollRef.current.scrollTop = current.scrollTop
+        })
+      }
+
+      const expanded = target === 'author' ? authorsExpanded : tagsExpanded
+      const sectionRef = target === 'author' ? authorSectionRef : tagSectionRef
+      const scrollRef = target === 'author' ? authorScrollRef : tagScrollRef
+      const measuredHeight = expanded ? sectionRef.current?.getBoundingClientRect().height : undefined
+      const nextSearch: LibraryFacetSearchState = {
+        lockedHeight: measuredHeight && measuredHeight > 0 ? measuredHeight : undefined,
+        restoreCollapsed: !expanded,
+        scrollTop: scrollRef.current?.scrollTop ?? 0,
+        target,
+      }
+      facetSearchRef.current = nextSearch
+      setFacetSearch(nextSearch)
+      setFacetSearchQuery('')
+      setLibraryAction('libraryFilter')
+      if (!expanded) {
+        if (target === 'author') setAuthorsExpanded(true)
+        else setTagsExpanded(true)
+      }
+
+      requestAnimationFrame(() => inputRef.current?.focus())
+    },
+    [authorsExpanded, setAuthorsExpanded, setLibraryAction, setTagsExpanded, tagsExpanded],
+  )
+
+  const lockFacetSearchHeight = useCallback((target: LibraryFacetSearchTarget, height: number) => {
+    const current = facetSearchRef.current
+    if (!current || current.target !== target || current.lockedHeight !== undefined || height <= 0) return
+
+    const nextSearch = { ...current, lockedHeight: height }
+    facetSearchRef.current = nextSearch
+    setFacetSearch(nextSearch)
+  }, [])
 
   const createGlobalTag = useCallback(async () => {
     const name = cleanLibraryTagName(newTagName)
@@ -722,19 +835,46 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     void db.pins.unpinTag(tagId)
   }, [])
 
-  useEffect(() => {
-    setAuthorFilters((current) => {
-      const next = pruneLibraryAuthorFilters(current, authorOptions)
-      return areStringListsEqual(current, next) ? current : next
-    })
-  }, [authorOptions, setAuthorFilters])
+  const editTag = useCallback(
+    (tagId: string) => {
+      setEditingTag(tagsById.get(tagId))
+    },
+    [tagsById],
+  )
+
+  const deleteTag = useCallback(
+    (tagId: string) => {
+      setDeletingTag(tagsById.get(tagId))
+    },
+    [tagsById],
+  )
+
+  const tagMenuItems = useMemo<LibraryFilterMenuItem[]>(
+    () => [
+      {
+        Icon: PencilIcon,
+        label: t('library_filter.edit_tag'),
+        onClick: editTag,
+      },
+      {
+        danger: true,
+        Icon: Trash2Icon,
+        label: t('library_filter.delete_tag'),
+        onClick: deleteTag,
+      },
+    ],
+    [deleteTag, editTag, t],
+  )
 
   useEffect(() => {
-    setTagFilters((current) => {
-      const next = pruneLibraryTagFilters(current, tagOptions)
-      return areStringListsEqual(current, next) ? current : next
-    })
-  }, [setTagFilters, tagOptions])
+    const next = pruneLibraryAuthorFilters(authorFilters, authorOptions)
+    if (!areStringListsEqual(authorFilters, next)) setAuthorFilters(next)
+  }, [authorFilters, authorOptions, setAuthorFilters])
+
+  useEffect(() => {
+    const next = pruneLibraryTagFilters(tagFilters, tagOptions)
+    if (!areStringListsEqual(tagFilters, next)) setTagFilters(next)
+  }, [setTagFilters, tagFilters, tagOptions])
 
   useEffect(() => {
     if (!creatingTag) return
@@ -743,7 +883,25 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
   }, [creatingTag])
 
   const handleLibraryFilterKeyDown = useEffectEvent((e: KeyboardEvent) => {
-    if (e.key !== 'Escape' || e.defaultPrevented || isLibraryFilterShortcutBlocked(e)) return
+    const searchTarget = getLibraryFacetSearchShortcutTarget(e)
+    if (searchTarget) {
+      const insideFacetSearch = e.target instanceof Element && e.target.closest('[data-library-facet-search]') !== null
+      if (isLibraryFilterShortcutBlocked(e) && !insideFacetSearch) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      e.stopImmediatePropagation()
+      startFacetSearch(searchTarget)
+      return
+    }
+
+    if (
+      libraryAction !== 'libraryFilter' ||
+      e.key !== 'Escape' ||
+      e.defaultPrevented ||
+      isLibraryFilterShortcutBlocked(e)
+    )
+      return
 
     e.preventDefault()
     e.stopPropagation()
@@ -754,24 +912,22 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
   })
 
   useEffect(() => {
-    if (libraryAction !== 'libraryFilter') return
-
     const onKeyDown = (e: KeyboardEvent) => {
       handleLibraryFilterKeyDown(e)
     }
 
-    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('keydown', onKeyDown, { capture: true })
 
     return () => {
-      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('keydown', onKeyDown, { capture: true })
     }
-  }, [libraryAction])
+  }, [])
 
   return (
-    <PaneView className={clsx('p-3', className)}>
-      <div className="flex h-full min-h-0 flex-col gap-2" data-testid="library-filter-panel">
-        <div className="flex h-6 items-center justify-between gap-2">
-          <div className="text-foreground text-lg leading-none font-semibold">{t('library_filter.title')}</div>
+    <PaneView className={clsx('p-2', className)}>
+      <div className="flex h-full min-h-0 flex-col gap-1.5" data-testid="library-filter-panel">
+        <div className="flex h-7 shrink-0 items-center justify-between gap-1.5">
+          <div className="text-foreground text-base leading-none font-semibold">{t('library_filter.title')}</div>
           <AppTooltip label={t('library_filter.clear')} shortcut={getPrimaryShortcut('libraryFilterClear')}>
             <UiButton
               type="button"
@@ -782,12 +938,12 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
               disabled={!hasFilters}
               onClick={clearFilters}
             >
-              <XIcon aria-hidden className="size-4.5" />
+              <XIcon aria-hidden className="size-3.5" />
             </UiButton>
           </AppTooltip>
         </div>
 
-        <section className={libraryFilterPanelClassName} data-testid="library-status-filter">
+        <section className={clsx(libraryFilterPanelClassName, 'shrink-0')} data-testid="library-status-filter">
           <div className={libraryFilterPanelHeaderClassName}>
             <div className={libraryFilterSectionHeaderClassName}>{t('library_filter.status')}</div>
           </div>
@@ -834,42 +990,21 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
         </section>
 
         <FilterSection
-          title={t('library_filter.author')}
-          expanded={authorsExpanded}
-          onExpandedChange={setAuthorsExpanded}
-          resetLabel={t('library_filter.reset')}
-          resetDisabled={!authorFilters.length}
-          onReset={resetAuthors}
-          testId="library-author-section"
-        >
-          {authorOptions.length ? (
-            <div className={libraryFilterOptionsClassName}>
-              {authorOptions.map((option) => (
-                <LibraryFilterChip
-                  key={option.name}
-                  label={option.name}
-                  pinned={option.pinned}
-                  testId="library-author-chip"
-                  labelTestId="library-author-chip-label"
-                  contextMenuTestId="library-author-context-menu"
-                  active={authorFilters.includes(option.name)}
-                  onToggle={() => toggleAuthor(option.name)}
-                  pinLabel={t('library_filter.pin_author')}
-                  unpinLabel={t('library_filter.unpin_author')}
-                  onPin={() => pinAuthor(option.name)}
-                  onUnpin={() => unpinAuthor(option.name)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="text-muted-foreground py-0.5 text-sm leading-tight">{t('library_filter.no_authors')}</div>
-          )}
-        </FilterSection>
-
-        <FilterSection
+          sectionRef={tagSectionRef}
+          scrollRef={tagScrollRef}
           title={t('library_filter.tags')}
           expanded={tagsExpanded}
           onExpandedChange={setTagsExpanded}
+          searching={facetSearch?.target === 'tag'}
+          searchInputRef={tagSearchInputRef}
+          searchLabel={t('library_filter.search_tags')}
+          searchQuery={facetSearch?.target === 'tag' ? facetSearchQuery : ''}
+          searchShortcutId="libraryTagSearch"
+          lockedHeight={facetSearch?.target === 'tag' ? facetSearch.lockedHeight : undefined}
+          onSearch={() => startFacetSearch('tag')}
+          onSearchExit={() => exitFacetSearch('tag')}
+          onSearchHeightLocked={(height) => lockFacetSearchHeight('tag', height)}
+          onSearchQueryChange={setFacetSearchQuery}
           resetLabel={t('library_filter.reset')}
           resetDisabled={!tagFilters.length}
           onReset={resetTags}
@@ -881,7 +1016,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                 variant="ghost"
                 size="icon-sm"
                 aria-label={t('library_filter.new_tag')}
-                className={libraryFilterIconButtonClassName}
+                className={libraryFilterSectionIconButtonClassName}
                 onClick={(e) => {
                   e.stopPropagation()
                   setCreatingTag(true)
@@ -893,68 +1028,104 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
             </AppTooltip>
           }
         >
-          {creatingTag && (
-            <div className="mb-1">
-              <Input
-                ref={newTagInputRef}
-                aria-label={t('library_filter.new_tag')}
-                value={newTagName}
-                onValueChange={setNewTagName}
-                onExitEditing={() => {
-                  setCreatingTag(false)
-                  setNewTagName('')
-                }}
-                onKeyDown={(e) => {
-                  if (e.key !== 'Enter') return
+          {tagsExpanded && (
+            <>
+              {creatingTag && (
+                <div className="mb-1">
+                  <Input
+                    ref={newTagInputRef}
+                    aria-label={t('library_filter.new_tag')}
+                    value={newTagName}
+                    onValueChange={setNewTagName}
+                    onExitEditing={() => {
+                      setCreatingTag(false)
+                      setNewTagName('')
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return
 
-                  e.preventDefault()
-                  void createGlobalTag()
-                }}
-                className="focus-visible:border-input h-7 rounded-md px-2 text-sm focus-visible:ring-0"
-              />
-            </div>
+                      e.preventDefault()
+                      void createGlobalTag()
+                    }}
+                    className="focus-visible:border-input h-7 rounded-md px-2 text-sm focus-visible:ring-0"
+                  />
+                </div>
+              )}
+              {visibleTagOptions.length ? (
+                <div className={libraryFilterOptionsClassName}>
+                  {visibleTagOptions.map((option) => (
+                    <LibraryFilterChip
+                      key={option.id}
+                      value={option.id}
+                      active={selectedTagIds.has(option.id)}
+                      preserveInputFocus={facetSearch?.target === 'tag'}
+                      label={option.name}
+                      pinned={option.pinned}
+                      testId="library-tag-chip"
+                      labelTestId="library-tag-chip-label"
+                      contextMenuTestId="library-tag-context-menu"
+                      onToggle={toggleTag}
+                      pinLabel={t('library_filter.pin_tag')}
+                      unpinLabel={t('library_filter.unpin_tag')}
+                      onPin={pinTag}
+                      onUnpin={unpinTag}
+                      menuItems={tagMenuItems}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-muted-foreground py-0.5 text-sm leading-tight">{t('library_filter.no_tags')}</div>
+              )}
+            </>
           )}
-          {tagOptions.length ? (
-            <div className={libraryFilterOptionsClassName}>
-              {tagOptions.map((option) => {
-                const tag = tags?.find((item) => item.id === option.id)
-                if (!tag) return null
+        </FilterSection>
 
-                return (
+        <FilterSection
+          sectionRef={authorSectionRef}
+          scrollRef={authorScrollRef}
+          title={t('library_filter.author')}
+          expanded={authorsExpanded}
+          onExpandedChange={setAuthorsExpanded}
+          searching={facetSearch?.target === 'author'}
+          searchInputRef={authorSearchInputRef}
+          searchLabel={t('library_filter.search_authors')}
+          searchQuery={facetSearch?.target === 'author' ? facetSearchQuery : ''}
+          searchShortcutId="libraryAuthorSearch"
+          lockedHeight={facetSearch?.target === 'author' ? facetSearch.lockedHeight : undefined}
+          onSearch={() => startFacetSearch('author')}
+          onSearchExit={() => exitFacetSearch('author')}
+          onSearchHeightLocked={(height) => lockFacetSearchHeight('author', height)}
+          onSearchQueryChange={setFacetSearchQuery}
+          resetLabel={t('library_filter.reset')}
+          resetDisabled={!authorFilters.length}
+          onReset={resetAuthors}
+          testId="library-author-section"
+        >
+          {authorsExpanded &&
+            (visibleAuthorOptions.length ? (
+              <div className={libraryFilterOptionsClassName}>
+                {visibleAuthorOptions.map((option) => (
                   <LibraryFilterChip
-                    key={option.id}
-                    active={tagFilters.includes(option.id)}
+                    key={option.name}
+                    value={option.name}
                     label={option.name}
                     pinned={option.pinned}
-                    testId="library-tag-chip"
-                    labelTestId="library-tag-chip-label"
-                    contextMenuTestId="library-tag-context-menu"
-                    dataValue={option.id}
-                    onToggle={() => toggleTag(option.id)}
-                    pinLabel={t('library_filter.pin_tag')}
-                    unpinLabel={t('library_filter.unpin_tag')}
-                    onPin={() => pinTag(option.id)}
-                    onUnpin={() => unpinTag(option.id)}
-                    menuItems={[
-                      {
-                        Icon: PencilIcon,
-                        label: t('library_filter.edit_tag'),
-                        onClick: () => setEditingTag(tag),
-                      },
-                      {
-                        danger: true,
-                        Icon: Trash2Icon,
-                        label: t('library_filter.delete_tag'),
-                        onClick: () => setDeletingTag(tag),
-                      },
-                    ]}
+                    testId="library-author-chip"
+                    labelTestId="library-author-chip-label"
+                    contextMenuTestId="library-author-context-menu"
+                    active={selectedAuthors.has(option.name)}
+                    preserveInputFocus={facetSearch?.target === 'author'}
+                    onToggle={toggleAuthor}
+                    pinLabel={t('library_filter.pin_author')}
+                    unpinLabel={t('library_filter.unpin_author')}
+                    onPin={pinAuthor}
+                    onUnpin={unpinAuthor}
                   />
-                )
-              })}
-            </div>
-          ) : (
-            <div className="text-muted-foreground py-0.5 text-sm leading-tight">{t('library_filter.no_tags')}</div>
-          )}
+                ))}
+              </div>
+            ) : (
+              <div className="text-muted-foreground py-0.5 text-sm leading-tight">{t('library_filter.no_authors')}</div>
+            ))}
         </FilterSection>
       </div>
       {editingTag && (
@@ -977,13 +1148,87 @@ function isLibraryFilterShortcutBlocked(e: KeyboardEvent) {
   return isGlobalKeyboardShortcutBlocked(e)
 }
 
+function getLibraryFacetSearchShortcutTarget(e: KeyboardEvent): LibraryFacetSearchTarget | undefined {
+  const hasPrimaryModifier = (e.ctrlKey || e.metaKey) && !(e.ctrlKey && e.metaKey)
+  if (!hasPrimaryModifier || e.altKey || e.shiftKey) return undefined
+
+  if (e.code === 'KeyE' || e.key.toLocaleLowerCase() === 'e') return 'author'
+  if (e.code === 'KeyT' || e.key.toLocaleLowerCase() === 't') return 'tag'
+  return undefined
+}
+
+function useFilterSectionScrollbar(
+  scrollRef: RefObject<HTMLDivElement | null>,
+  contentRef: RefObject<HTMLDivElement | null>,
+  active: boolean,
+): OverlayScrollbarMetrics {
+  const [metrics, setMetrics] = useState({ scrollTop: 0, totalSize: 0, viewportHeight: 0 })
+  const updateMetrics = useCallback(() => {
+    const scroll = scrollRef.current
+    if (!scroll) return
+
+    const next = {
+      scrollTop: scroll.scrollTop,
+      totalSize: scroll.scrollHeight,
+      viewportHeight: scroll.clientHeight,
+    }
+    setMetrics((current) =>
+      current.scrollTop === next.scrollTop &&
+      current.totalSize === next.totalSize &&
+      current.viewportHeight === next.viewportHeight
+        ? current
+        : next,
+    )
+  }, [scrollRef])
+
+  useLayoutEffect(() => {
+    if (active) updateMetrics()
+  })
+
+  useEffect(() => {
+    if (!active) return
+
+    const scroll = scrollRef.current
+    const content = contentRef.current
+    if (!scroll || !content) return
+
+    scroll.addEventListener('scroll', updateMetrics, { passive: true })
+    if (typeof ResizeObserver === 'undefined') {
+      return () => scroll.removeEventListener('scroll', updateMetrics)
+    }
+
+    const observer = new ResizeObserver(updateMetrics)
+    observer.observe(scroll)
+    observer.observe(content)
+
+    return () => {
+      scroll.removeEventListener('scroll', updateMetrics)
+      observer.disconnect()
+    }
+  }, [active, contentRef, scrollRef, updateMetrics])
+
+  return { scrollRef, ...metrics }
+}
+
 interface FilterSectionProps extends PropsWithChildren {
   actions?: ReactNode
   expanded: boolean
+  lockedHeight?: number
   onExpandedChange: (expanded: boolean) => void
   onReset: () => void
+  onSearch: () => void
+  onSearchExit: () => void
+  onSearchHeightLocked: (height: number) => void
+  onSearchQueryChange: (query: string) => void
   resetDisabled: boolean
   resetLabel: string
+  scrollRef: RefObject<HTMLDivElement | null>
+  searchInputRef: RefObject<HTMLInputElement | null>
+  searchLabel: string
+  searchQuery: string
+  searching: boolean
+  searchShortcutId: ShortcutActionId
+  sectionRef: RefObject<HTMLElement | null>
   testId?: string
   title: string
 }
@@ -992,51 +1237,130 @@ const FilterSection: React.FC<FilterSectionProps> = ({
   actions,
   children,
   expanded,
+  lockedHeight,
   onExpandedChange,
   onReset,
+  onSearch,
+  onSearchExit,
+  onSearchHeightLocked,
+  onSearchQueryChange,
   resetDisabled,
   resetLabel,
+  scrollRef,
+  searchInputRef,
+  searchLabel,
+  searchQuery,
+  searching,
+  searchShortcutId,
+  sectionRef,
   testId,
   title,
 }) => {
+  const contentRef = useRef<HTMLDivElement>(null)
+  const scrollbar = useFilterSectionScrollbar(scrollRef, contentRef, expanded)
+
+  useLayoutEffect(() => {
+    if (!searching || lockedHeight !== undefined || !sectionRef.current) return
+
+    onSearchHeightLocked(sectionRef.current.getBoundingClientRect().height)
+  }, [lockedHeight, onSearchHeightLocked, searching, sectionRef])
+
   return (
-    <section className={libraryFilterPanelClassName} data-testid={testId}>
+    <section
+      ref={sectionRef}
+      className={clsx(
+        libraryFilterPanelClassName,
+        'flex min-h-0 flex-col overflow-hidden',
+        lockedHeight === undefined ? 'flex-1 basis-0' : 'shrink',
+      )}
+      data-testid={testId}
+      style={{ height: lockedHeight, maxHeight: lockedHeight ?? 'max-content' }}
+    >
       <div className={libraryFilterPanelHeaderClassName}>
-        <UiButton
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label={`${title} section`}
-          aria-expanded={expanded}
-          className="h-8 min-w-0 flex-1 justify-start gap-1.5 rounded-xl bg-transparent px-0 text-left hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 aria-expanded:bg-transparent aria-expanded:text-(--flow-text)"
-          onClick={() => onExpandedChange(!expanded)}
-        >
-          <span className={libraryFilterSectionHeaderClassName}>{title}</span>
-          <ChevronDown
-            aria-hidden
-            className={clsx('size-4.5 shrink-0 transition-transform', !expanded && '-rotate-90')}
-          />
-        </UiButton>
-        {actions}
-        <AppTooltip label={resetLabel}>
-          <UiButton
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={resetLabel}
-            className={libraryFilterIconButtonClassName}
-            disabled={resetDisabled}
-            onClick={(e) => {
-              e.stopPropagation()
-              onReset()
-            }}
-          >
-            <RotateCcwIcon aria-hidden className="size-4.5" />
-          </UiButton>
-        </AppTooltip>
+        {searching ? (
+          <div className="border-input focus-within:border-ring flex h-7 min-w-0 flex-1 items-center gap-1 rounded-md border px-1.5">
+            <Search aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
+            <Input
+              ref={searchInputRef}
+              data-library-facet-search="true"
+              aria-label={searchLabel}
+              value={searchQuery}
+              escapeBehavior="exit"
+              focusBehavior="native"
+              onBlur={onSearchExit}
+              onExitEditing={onSearchExit}
+              onValueChange={onSearchQueryChange}
+              className="h-6 min-w-0 border-0 px-0 py-0 text-sm transition-none focus-visible:border-transparent focus-visible:ring-0"
+            />
+            <UiButton
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={searchLabel}
+              className="text-muted-foreground hover:text-foreground -mr-1 size-6 shrink-0 rounded-sm"
+              onPointerDown={(event) => {
+                if (event.button === 0) event.preventDefault()
+              }}
+              onClick={onSearchExit}
+            >
+              <XIcon aria-hidden className="size-4.5" />
+            </UiButton>
+          </div>
+        ) : (
+          <>
+            <UiButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label={`${title} section`}
+              aria-expanded={expanded}
+              className="h-7 min-w-0 flex-1 justify-start gap-1.5 overflow-hidden rounded-xl bg-transparent px-0 text-left hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 aria-expanded:bg-transparent aria-expanded:text-(--flow-text)"
+              onClick={() => onExpandedChange(!expanded)}
+            >
+              <span className={clsx(libraryFilterSectionHeaderClassName, 'min-w-0 truncate')}>{title}</span>
+              <ChevronDown
+                aria-hidden
+                className={clsx('size-4.5 shrink-0 transition-transform', !expanded && '-rotate-90')}
+              />
+            </UiButton>
+            {actions}
+            <AppTooltip label={searchLabel} shortcut={getPrimaryShortcut(searchShortcutId)}>
+              <UiButton
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={searchLabel}
+                className={libraryFilterSectionIconButtonClassName}
+                onClick={onSearch}
+              >
+                <Search aria-hidden className="size-4" />
+              </UiButton>
+            </AppTooltip>
+            <AppTooltip label={resetLabel}>
+              <UiButton
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={resetLabel}
+                className={libraryFilterSectionIconButtonClassName}
+                disabled={resetDisabled}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onReset()
+                }}
+              >
+                <RotateCcwIcon aria-hidden className="size-4" />
+              </UiButton>
+            </AppTooltip>
+          </>
+        )}
       </div>
 
-      {expanded && children}
+      {expanded && (
+        <OverlayScroll ref={scrollRef} containerClassName="min-h-0 flex-1" scrollbar={scrollbar} className="pr-0.5">
+          <div ref={contentRef}>{children}</div>
+        </OverlayScroll>
+      )}
     </section>
   )
 }
@@ -1045,7 +1369,7 @@ interface LibraryFilterMenuItem {
   danger?: boolean
   Icon: LucideIcon
   label: string
-  onClick: () => void
+  onClick: (value: string) => void
 }
 
 const EMPTY_LIBRARY_FILTER_MENU_ITEMS: LibraryFilterMenuItem[] = []
@@ -1053,23 +1377,23 @@ const EMPTY_LIBRARY_FILTER_MENU_ITEMS: LibraryFilterMenuItem[] = []
 interface LibraryFilterChipProps {
   active: boolean
   contextMenuTestId: string
-  dataValue?: string
   label: string
   labelTestId: string
   menuItems?: LibraryFilterMenuItem[]
-  onPin: () => void
-  onToggle: () => void
-  onUnpin: () => void
+  onPin: (value: string) => void
+  onToggle: (value: string) => void
+  onUnpin: (value: string) => void
   pinLabel: string
   pinned: boolean
+  preserveInputFocus?: boolean
   testId: string
   unpinLabel: string
+  value: string
 }
 
-const LibraryFilterChip: React.FC<LibraryFilterChipProps> = ({
+const LibraryFilterChip = memo(function LibraryFilterChip({
   active,
   contextMenuTestId,
-  dataValue,
   label,
   labelTestId,
   menuItems = EMPTY_LIBRARY_FILTER_MENU_ITEMS,
@@ -1078,31 +1402,28 @@ const LibraryFilterChip: React.FC<LibraryFilterChipProps> = ({
   onUnpin,
   pinLabel,
   pinned,
+  preserveInputFocus = false,
   testId,
   unpinLabel,
-}) => {
+  value,
+}: LibraryFilterChipProps) {
   const labelRef = useRef<HTMLSpanElement>(null)
-  const [labelOverflowing, setLabelOverflowing] = useState(false)
 
-  useEffect(() => {
+  const updateOverflowTitle = useCallback(
+    (button: HTMLButtonElement) => {
+      const labelElement = labelRef.current
+      if (!labelElement) return
+
+      button.title = labelElement.scrollWidth > labelElement.clientWidth ? label : ''
+    },
+    [label],
+  )
+
+  useLayoutEffect(() => {
     const labelElement = labelRef.current
-    if (!labelElement) return
-
-    const updateOverflow = () => {
-      setLabelOverflowing(labelElement.scrollWidth > labelElement.clientWidth)
-    }
-
-    updateOverflow()
-
-    if (typeof ResizeObserver === 'undefined') return
-
-    const observer = new ResizeObserver(updateOverflow)
-    observer.observe(labelElement)
-
-    return () => {
-      observer.disconnect()
-    }
-  }, [label])
+    const button = labelElement?.closest('button')
+    if (button instanceof HTMLButtonElement) updateOverflowTitle(button)
+  }, [updateOverflowTitle])
 
   return (
     <div className="relative max-w-full min-w-0">
@@ -1114,15 +1435,18 @@ const LibraryFilterChip: React.FC<LibraryFilterChipProps> = ({
             variant={active ? 'default' : 'secondary'}
             aria-pressed={active}
             aria-label={label}
-            title={labelOverflowing ? label : undefined}
             data-testid={testId}
-            data-value={dataValue ?? label}
+            data-value={value}
             className={clsx(
               libraryFilterChipClassName,
               'max-w-full justify-start',
               !active && libraryFilterInactiveChipClassName,
             )}
-            onClick={onToggle}
+            onPointerDown={(event) => {
+              if (preserveInputFocus && event.button === 0) event.preventDefault()
+            }}
+            onPointerEnter={(event) => updateOverflowTitle(event.currentTarget)}
+            onClick={() => onToggle(value)}
           >
             {pinned && (
               <PinIcon
@@ -1140,7 +1464,7 @@ const LibraryFilterChip: React.FC<LibraryFilterChipProps> = ({
             Icon={PinIcon}
             label={pinLabel}
             onSelect={() => {
-              onPin()
+              onPin(value)
             }}
           />
           {pinned && (
@@ -1148,7 +1472,7 @@ const LibraryFilterChip: React.FC<LibraryFilterChipProps> = ({
               Icon={PinOffIcon}
               label={unpinLabel}
               onSelect={() => {
-                onUnpin()
+                onUnpin(value)
               }}
             />
           )}
@@ -1160,7 +1484,7 @@ const LibraryFilterChip: React.FC<LibraryFilterChipProps> = ({
               Icon={item.Icon}
               label={item.label}
               onSelect={() => {
-                item.onClick()
+                item.onClick(value)
               }}
             />
           ))}
@@ -1168,7 +1492,7 @@ const LibraryFilterChip: React.FC<LibraryFilterChipProps> = ({
       </ContextMenu>
     </div>
   )
-}
+})
 
 interface LibraryFilterContextMenuItemProps {
   Icon: LucideIcon
