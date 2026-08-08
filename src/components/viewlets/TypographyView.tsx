@@ -6,6 +6,7 @@ import { RenditionSpread } from '@flow/epubjs/rendition'
 import { useTranslation } from '@/hooks/useTranslation'
 import { reader, useReaderSnapshot } from '@/models/reader'
 import { resolveBookSpreadPolicy } from '@/reader/spreadPolicy'
+import { createTextSearchIndex } from '@/search/textSearch'
 import { type PageAppearance, type TypographyConfiguration, useSettings } from '@/state'
 
 import { getBodyTypographyBaseline } from '../../styles'
@@ -237,7 +238,7 @@ function createFontOptions(fonts: SystemFont[]) {
     unique.set(key, {
       value: normalizedFamily,
       label: normalizedLabel || normalizedFamily,
-      searchText: `${normalizedFamily} ${normalizedLabel} ${key}`.toLowerCase(),
+      searchIndex: createTextSearchIndex([normalizedFamily, normalizedLabel, key]),
     })
   })
 

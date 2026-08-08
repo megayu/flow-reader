@@ -56,6 +56,7 @@ import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import { reader, useReaderSnapshot } from '../models/reader'
 import { subscribeReaderOpenErrors } from '../reader/errorEvents'
+import { createTextSearchIndex, matchesTextSearch } from '../search/textSearch'
 import { getShortcutChords } from '../shortcuts'
 import {
   defaultLibraryDisplay,
@@ -107,7 +108,6 @@ import {
   selectBookIdRange,
   useStringSet,
 } from './selection'
-import { createLibraryTitleSearchCandidates, matchesLibraryTitleSearch } from './titleSearch'
 
 const sortFieldIconMap = {
   title: BookTextIcon,
@@ -538,9 +538,8 @@ const Library: React.FC<LibraryProps> = ({
   const titleSearchInputRef = useRef<HTMLInputElement>(null)
   const selectionAnchorIdRef = useRef<string | undefined>(undefined)
   const rangeSelectionSessionRef = useRef<LibraryRangeSelectionSession | undefined>(undefined)
-  const titleSearchCandidatesByBookId = useMemo(
-    () =>
-      new Map((books ?? []).map((book) => [book.id, createLibraryTitleSearchCandidates(getBookDisplayTitle(book))])),
+  const titleSearchIndexByBookId = useMemo(
+    () => new Map((books ?? []).map((book) => [book.id, createTextSearchIndex([getBookDisplayTitle(book)])])),
     [books],
   )
   const sortedBooks = useMemo(() => {
@@ -553,7 +552,7 @@ const Library: React.FC<LibraryProps> = ({
     if (!debouncedTitleSearchQuery.trim()) return filteredBooks
 
     return filteredBooks.filter((book) =>
-      matchesLibraryTitleSearch(titleSearchCandidatesByBookId.get(book.id) ?? [], debouncedTitleSearchQuery),
+      matchesTextSearch(titleSearchIndexByBookId.get(book.id) ?? [], debouncedTitleSearchQuery),
     )
   }, [
     authorFilters,
@@ -563,7 +562,7 @@ const Library: React.FC<LibraryProps> = ({
     sortField,
     statusFilters,
     tagFilters,
-    titleSearchCandidatesByBookId,
+    titleSearchIndexByBookId,
   ])
   const visibleBookIds = useMemo(() => sortedBooks.map((book) => book.id), [sortedBooks])
   const recentBooks = useMemo(() => {
@@ -1018,7 +1017,7 @@ const Library: React.FC<LibraryProps> = ({
         <div className="flex flex-wrap items-start gap-2">
           <div className="flex min-w-30 flex-1 basis-0 flex-wrap items-center gap-2">
             {!!books.length && (
-              <InputGroup className="min-w-30 max-w-60 flex-[1_1_120px] bg-transparent dark:bg-transparent">
+              <InputGroup className="min-w-30 max-w-60 flex-[1_1_120px] bg-transparent focus-within:ring-0 dark:bg-transparent">
                 <SearchIcon aria-hidden className="text-muted-foreground ml-2.5 size-4 shrink-0" />
                 <InputGroupInput
                   ref={titleSearchInputRef}

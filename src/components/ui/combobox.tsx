@@ -14,6 +14,8 @@ import {
   useState,
 } from 'react'
 
+import { createTextSearchQuery, matchesTextSearch, type TextSearchIndex } from '@/search/textSearch'
+
 import { IconButton } from '../IconButton'
 
 import { InputGroup, InputGroupActions, InputGroupInput } from './input-group'
@@ -21,6 +23,7 @@ import { Popover, PopoverAnchor, PopoverContent } from './popover'
 
 interface ComboboxOption {
   label: string
+  searchIndex?: TextSearchIndex
   searchText?: string
   value: string
 }
@@ -76,14 +79,13 @@ function Combobox({
     if (!editingRef.current) setInputValue(value)
   }, [value])
 
-  const query = inputValue.trim().toLowerCase()
+  const query = useMemo(() => createTextSearchQuery(inputValue), [inputValue])
   const filteredOptions = useMemo(() => {
-    if (!filtering || !query) return options
+    if (!filtering || !query.length) return options
 
-    const keywords = query.split(/\s+/).filter(Boolean)
     return options.filter((option) => {
-      const searchText = (option.searchText ?? `${option.value} ${option.label}`).toLowerCase()
-      return keywords.every((keyword) => searchText.includes(keyword))
+      const searchIndex = option.searchIndex ?? [(option.searchText ?? `${option.value} ${option.label}`).toLowerCase()]
+      return matchesTextSearch(searchIndex, query)
     })
   }, [filtering, options, query])
 

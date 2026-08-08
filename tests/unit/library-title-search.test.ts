@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 
 import { test } from 'vitest'
 
-import { createLibraryTitleSearchCandidates, matchesLibraryTitleSearch } from '../../src/library/titleSearch.ts'
+import { createTextSearchIndex, matchesTextSearch } from '../../src/search/textSearch.ts'
 
-function testLibraryTitleSearchNormalizationAndMatching() {
+function testTextSearchNormalizationAndMatching() {
   const cases = [
     {
       candidates: ['buildingsystems', 'bs'],
@@ -24,14 +24,16 @@ function testLibraryTitleSearchNormalizationAndMatching() {
   ]
 
   for (const { candidates, matchingQueries, title } of cases) {
-    const actualCandidates = createLibraryTitleSearchCandidates(title)
+    const actualCandidates = createTextSearchIndex([title])
     assert.deepEqual(actualCandidates, candidates)
     for (const query of matchingQueries) {
-      assert.equal(matchesLibraryTitleSearch(actualCandidates, query), true)
+      assert.equal(matchesTextSearch(actualCandidates, query), true)
     }
   }
 
-  assert.equal(matchesLibraryTitleSearch(createLibraryTitleSearchCandidates('Building Systems'), 'bui network'), false)
+  const fontAliases = createTextSearchIndex(['思源宋体', 'Source Han Serif'])
+  assert.equal(matchesTextSearch(fontAliases, 'syst source'), true)
+  assert.equal(matchesTextSearch(createTextSearchIndex(['Building Systems']), 'bui network'), false)
 }
 
-test(testLibraryTitleSearchNormalizationAndMatching.name, testLibraryTitleSearchNormalizationAndMatching)
+test(testTextSearchNormalizationAndMatching.name, testTextSearchNormalizationAndMatching)

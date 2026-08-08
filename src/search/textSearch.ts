@@ -1,6 +1,6 @@
 import { pinyin } from 'pinyin-pro'
 
-type TitleSearchUnit =
+type TextSearchUnit =
   | {
       kind: 'han'
       text: string
@@ -10,11 +10,14 @@ type TitleSearchUnit =
       text: string
     }
 
+export type TextSearchIndex = readonly string[]
+export type TextSearchQuery = readonly string[]
+
 const hanCharacterPattern = /\p{Script=Han}/u
 const wordCharacterPattern = /[\p{Letter}\p{Number}]/u
 
-function createTitleSearchUnits(value: string) {
-  const units: TitleSearchUnit[] = []
+function createTextSearchUnits(value: string) {
+  const units: TextSearchUnit[] = []
   let word = ''
 
   const finishWord = () => {
@@ -42,14 +45,14 @@ function createTitleSearchUnits(value: string) {
   return units
 }
 
-function compactSearchText(value: string) {
-  return createTitleSearchUnits(value)
+function compactTextSearchValue(value: string) {
+  return createTextSearchUnits(value)
     .map((unit) => unit.text)
     .join('')
 }
 
-export function createLibraryTitleSearchCandidates(title: string) {
-  const units = createTitleSearchUnits(title)
+function createTextSearchCandidates(value: string) {
+  const units = createTextSearchUnits(value)
   if (!units.length) return []
 
   const hanText = units
@@ -71,11 +74,19 @@ export function createLibraryTitleSearchCandidates(title: string) {
     .map((unit) => (unit.kind === 'word' ? Array.from(unit.text)[0] : hanInitials[hanIndex++] || unit.text))
     .join('')
 
-  return [...new Set([literal, hybrid, initials].filter(Boolean))]
+  return [literal, hybrid, initials].filter(Boolean)
 }
 
-export function matchesLibraryTitleSearch(candidates: readonly string[], query: string) {
-  const keywords = query.normalize('NFKC').toLowerCase().trim().split(/\s+/u).map(compactSearchText).filter(Boolean)
+export function createTextSearchIndex(values: readonly string[]): TextSearchIndex {
+  return [...new Set(values.flatMap(createTextSearchCandidates))]
+}
 
-  return keywords.every((keyword) => candidates.some((candidate) => candidate.includes(keyword)))
+export function createTextSearchQuery(value: string): TextSearchQuery {
+  return value.normalize('NFKC').toLowerCase().trim().split(/\s+/u).map(compactTextSearchValue).filter(Boolean)
+}
+
+export function matchesTextSearch(index: TextSearchIndex, query: string | TextSearchQuery) {
+  const keywords = typeof query === 'string' ? createTextSearchQuery(query) : query
+
+  return keywords.every((keyword) => index.some((candidate) => candidate.includes(keyword)))
 }
