@@ -1944,12 +1944,16 @@ export class BookTab extends BaseTab {
     }
 
     let loadedBook: BookRecord | undefined
-    try {
-      loadedBook = await db.books.get(this.book.id)
-    } catch (error) {
-      this.reportOpenError('source', error)
-      clearRendering()
-      return
+    if (this.book.stateLoaded) {
+      loadedBook = this.book
+    } else {
+      try {
+        loadedBook = await db.books.get(this.book.id)
+      } catch (error) {
+        this.reportOpenError('source', error)
+        clearRendering()
+        return
+      }
     }
     if (generation !== this.renderGeneration) {
       clearRendering()

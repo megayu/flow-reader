@@ -125,7 +125,6 @@ pub(in crate::storage) fn commit_prepared_epub_import(
 
     struct ExternalPromotion {
         book: ExternalBook,
-        state: Option<BookState>,
     }
 
     let mut file_transaction = None;
@@ -156,10 +155,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                 .iter()
                 .find(|book| !book.content_hash.is_empty() && book.content_hash == hash)
                 .cloned()
-                .map(|book| ExternalPromotion {
-                    state: state.book_states.get(&book.id).cloned(),
-                    book,
-                });
+                .map(|book| ExternalPromotion { book });
 
             if let Some(index) = filename_index {
                 let storage_changed = state.library.books[index].source_storage != source_storage;
@@ -223,10 +219,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
         let promotion = external_promotion
             .map(|promotion| {
                 let external_dir = storage.external_book_dir(&promotion.book.id);
-                let state = match promotion.state {
-                    Some(state) => state,
-                    None => read_json_or_default(&external_dir.join(STATE_FILE))?,
-                };
+                let state: BookState = read_json_or_default(&external_dir.join(STATE_FILE))?;
                 Ok::<_, String>((promotion.book, state))
             })
             .transpose()?;
@@ -281,7 +274,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
             book.updated_at = Some(now);
         }
 
-        let record = {
+        let stored_index = {
             let mut state = storage
                 .inner
                 .state
@@ -315,23 +308,23 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                 *stored = book.clone();
                 stored_index
             };
-            if let Some((external_id, external_state)) = &promotion {
+            if let Some((external_id, _)) = &promotion {
                 state.external.books.retain(|stored| stored.id != *external_id);
-                state.book_states.remove(external_id);
-                state.book_states.insert(id.clone(), external_state.clone());
             }
-            let record = storage.compose_book(&mut state, &book)?;
-            if let Some(index) = import_index {
-                index.remember(stored_index, &book);
-            }
-            record
+            stored_index
         };
+        if let Some((_, external_state)) = &promotion {
+            storage.write_book_state(&id, external_state)?;
+        }
+        if let Some(index) = import_index {
+            index.remember(stored_index, &book);
+        }
+        let record = storage.compose_book(&book)?;
 
         storage.mark_library_dirty();
         if let Some((external_id, _)) = &promotion {
             storage.remove_derived_memory_caches(external_id);
             storage.mark_external_dirty();
-            storage.mark_book_state_dirty(&id);
         }
         let mut finalizer = ImportFinalizer::new(file_transaction.take());
         if let Some((external_id, _)) = promotion {
@@ -394,7 +387,7 @@ pub(in crate::storage) fn open_external_epub_path_impl(
                 .find(|book| !book.content_hash.is_empty() && book.content_hash == hash)
                 .cloned()
             {
-                OpenDecision::Library(storage.compose_book(&mut state, &book)?)
+                OpenDecision::Library(storage.compose_book(&book)?)
             } else if let Some(index) = state
                 .external
                 .books
@@ -458,13 +451,8 @@ pub(in crate::storage) fn open_external_epub_path_impl(
         storage.mark_external_dirty();
         storage.flush_dirty()?;
 
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
         let book = storage.external_to_library_book(&book);
-        storage.compose_book(&mut state, &book)
+        storage.compose_book(&book)
     })()
 }
 
@@ -498,7 +486,7 @@ pub(super) fn managed_library_book_for_epub_path(
         return Ok(None);
     };
 
-    let mut state = storage
+    let state = storage
         .inner
         .state
         .lock()
@@ -507,5 +495,5 @@ pub(super) fn managed_library_book_for_epub_path(
         return Ok(None);
     };
 
-    storage.compose_book(&mut state, &book).map(Some)
+    storage.compose_book(&book).map(Some)
 }

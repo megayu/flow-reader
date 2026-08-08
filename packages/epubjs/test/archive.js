@@ -1,28 +1,21 @@
 import { assert } from 'vitest'
 
 import Archive from '../src/archive'
-import Store from '../src/store'
 
 describe('Archive', function () {
-  it('revokes cached blob URLs when resource owners are destroyed', function () {
+  it('revokes cached blob URLs when destroyed', function () {
     const revokeObjectUrl = vi
       .spyOn(window.URL, 'revokeObjectURL')
       .mockImplementation(() => {})
-    const owners = [new Archive(), new Store('flow-reader-url-cleanup-test')]
+    const archive = new Archive()
 
     try {
-      owners.forEach((owner, index) => {
-        const blobUrl = `blob:${location.origin}/resource-${index}`
-        owner.urlCache[`/resource-${index}`] = blobUrl
-        owner.destroy()
+      const blobUrl = `blob:${location.origin}/resource`
+      archive.urlCache['/resource'] = blobUrl
+      archive.destroy()
 
-        assert.strictEqual(
-          revokeObjectUrl.mock.calls[index]?.[0],
-          blobUrl,
-        )
-      })
+      assert.strictEqual(revokeObjectUrl.mock.calls[0]?.[0], blobUrl)
     } finally {
-      owners.forEach((owner) => owner.removeListeners?.())
       revokeObjectUrl.mockRestore()
     }
   })

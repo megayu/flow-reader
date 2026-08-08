@@ -23,7 +23,7 @@ export interface RenditionOptions {
   width?: number | string
   height?: number | string
   ignoreClass?: string
-  manager?: 'default' | 'continuous' | Function | object
+  manager?: 'default' | Function | object
   view?: 'iframe' | Function | object
   flow?:
     | 'auto'

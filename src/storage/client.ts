@@ -13,7 +13,6 @@ import type {
   BookSourceStatusRecord,
   BookTextReplaceResult,
   BookTextReplaceTarget,
-  CoverInput,
   CoverRecord,
   FolderImportCandidate,
   FolderImportTagAssignment,
@@ -34,7 +33,7 @@ interface NativeBookReaderSource {
 }
 
 type Listener = () => void
-type TableName = 'books' | 'covers' | 'files' | 'pins' | 'settings' | 'tags'
+type TableName = 'books' | 'covers' | 'pins' | 'settings' | 'tags'
 
 const listeners = new Map<TableName, Set<Listener>>()
 const bookCache = new Map<string, BookRecord>()
@@ -74,24 +73,17 @@ function asFullBook(book: BookRecord) {
 }
 
 function asBookSummary(book: BookRecord) {
-  return { ...book, stateLoaded: false }
-}
-
-function mergeBookSummary(book: BookRecord, existing?: BookRecord) {
-  if (!existing?.stateLoaded) return asBookSummary(book)
-
   return {
-    ...existing,
     ...book,
-    definitions: existing.definitions,
-    annotations: existing.annotations,
-    configuration: existing.configuration,
-    stateLoaded: true,
+    definitions: [],
+    annotations: [],
+    configuration: undefined,
+    stateLoaded: false,
   }
 }
 
-function rememberBook(book: BookRecord, { full = true } = {}) {
-  const normalized = full ? asFullBook(book) : mergeBookSummary(book, bookCache.get(book.id))
+function rememberBook(book: BookRecord) {
+  const normalized = asBookSummary(book)
   bookCache.set(book.id, normalized)
 
   if (!booksCache) return
@@ -109,10 +101,10 @@ function rememberBook(book: BookRecord, { full = true } = {}) {
   }
 }
 
-function rememberBookBatch(books: BookRecord[], { full = true } = {}) {
+function rememberBookBatch(books: BookRecord[]) {
   if (!books.length) return
 
-  const normalized = books.map((book) => (full ? asFullBook(book) : mergeBookSummary(book, bookCache.get(book.id))))
+  const normalized = books.map(asBookSummary)
   const updates = new Map(normalized.map((book) => [book.id, book]))
   updates.forEach((book, id) => bookCache.set(id, book))
   if (!booksCache) return
@@ -134,7 +126,7 @@ function rememberBookBatch(books: BookRecord[], { full = true } = {}) {
 }
 
 function rememberBooks(books: BookRecord[]) {
-  booksCache = books.map((book) => mergeBookSummary(book, bookCache.get(book.id)))
+  booksCache = books.map(asBookSummary)
   bookCache.clear()
   booksCache.forEach((book) => bookCache.set(book.id, book))
 }
@@ -156,23 +148,6 @@ function rememberCover(cover: CoverRecord) {
   const index = coversCache.findIndex((item) => item.id === cover.id)
   coversCache =
     index >= 0 ? [...coversCache.slice(0, index), cover, ...coversCache.slice(index + 1)] : [...coversCache, cover]
-}
-
-async function refreshImportedCovers(ids: string[]) {
-  if (!coversCache || !ids.length) return
-
-  const covers = await invoke<CoverRecord[]>('list_covers', { ids })
-  const normalized = covers.map(normalizeCoverRecord)
-  const updates = new Map(normalized.map((cover) => [cover.id, cover]))
-  const next = coversCache.map((cover) => updates.get(cover.id) ?? cover)
-  const existing = new Set(next.map((cover) => cover.id))
-  normalized.forEach((cover) => {
-    if (!existing.has(cover.id)) {
-      existing.add(cover.id)
-      next.push(cover)
-    }
-  })
-  coversCache = next
 }
 
 function forgetCovers(ids: string[]) {
@@ -297,18 +272,55 @@ function normalizeCoverRecord(record: CoverRecord) {
   }
 }
 
-function toCoverRecord(record: CoverRecord | null) {
-  if (!record) return undefined
-  return normalizeCoverRecord(record)
-}
-
-export function rememberBookImportProgress(progress: BookImportProgress) {
+function rememberBookImportProgress(progress: BookImportProgress) {
   if (!progress.book) return
 
-  beginBooksMutation()
   rememberBook(progress.book)
   if (progress.cover) rememberCover(normalizeCoverRecord(progress.cover))
   notify('books', ...(progress.cover ? (['covers'] as const) : []))
+}
+
+type NativeBookImportProgress = Omit<BookImportProgress, 'importId'>
+
+async function importBooksWithProgress(
+  command: 'import_epub_paths' | 'import_text_paths',
+  args: Record<string, unknown>,
+  importId: string | undefined,
+  onProgress: ((progress: BookImportProgress) => void) | undefined,
+) {
+  await waitForPendingNativeWrites()
+  beginBooksMutation()
+
+  const books = new Map<string, BookRecord>()
+  const progressChannel = new Channel<NativeBookImportProgress>((nativeProgress) => {
+    const progress = { ...nativeProgress, importId: importId ?? '' }
+    if (progress.book) books.set(progress.book.id, progress.book)
+    rememberBookImportProgress(progress)
+    onProgress?.(progress)
+  })
+  const result = await trackNativeWrite(
+    invoke<BookImportResult>(command, {
+      ...args,
+      onProgress: progressChannel,
+    }),
+  )
+  result.books.forEach((book) => {
+    books.set(book.id, book)
+    rememberBook(book)
+  })
+  if (result.books.length && coversCache) {
+    const fallbackCovers = await invoke<CoverRecord[]>('list_covers', {
+      ids: result.books.map((book) => book.id),
+    })
+    fallbackCovers.forEach((cover) => rememberCover(normalizeCoverRecord(cover)))
+  }
+
+  const importedBooks = [...books.values()]
+  if (importedBooks.length) {
+    invalidatePins()
+    notify('books', 'covers', 'pins')
+  }
+  return { books: importedBooks, failures: result.failures }
 }
 
 export const db = {
@@ -320,16 +332,13 @@ export const db = {
       return loadBooks()
     },
     async get(id: string): Promise<BookRecord | undefined> {
-      const cached = bookCache.get(id)
-      if (cached?.stateLoaded) return Promise.resolve(cached)
-
       const requestEpoch = booksCacheEpoch
       const book = await invoke<BookRecord | null>('get_book', { id })
       if (requestEpoch !== booksCacheEpoch) return db.books.get(id)
       if (!book) return undefined
 
       const loadedBook = asFullBook(book)
-      rememberBook(loadedBook)
+      rememberBook(book)
       return loadedBook
     },
     peek(id: string) {
@@ -352,7 +361,7 @@ export const db = {
       beginBooksMutation()
       const cached = bookCache.get(book.id)
       const base = cached ?? book
-      rememberBook({ ...base, ...changes }, { full: base.stateLoaded !== false })
+      rememberBook({ ...base, ...changes })
     },
     recordReadingPosition(position: ReadingPositionInput) {
       return trackNativeWrite(invoke<void>('record_reading_position', { position }))
@@ -360,29 +369,32 @@ export const db = {
     async update(id: string, changes: Partial<BookRecord>) {
       beginBooksMutation()
       const cached = bookCache.get(id)
-      const readingPositionOnly = isReadingPositionOnlyUpdate(changes, cached)
+      const normalizedChanges = changes.tagIds
+        ? { ...changes, tagIds: [...new Set(changes.tagIds.filter(Boolean))] }
+        : changes
+      const readingPositionOnly = isReadingPositionOnlyUpdate(normalizedChanges, cached)
       if (cached) {
-        rememberBook({ ...cached, ...changes }, { full: cached.stateLoaded })
+        rememberBook({ ...cached, ...normalizedChanges })
       }
 
-      const book = await trackNativeWrite(
-        invoke<BookRecord | null>('update_book', {
+      await trackNativeWrite(
+        invoke<void>('update_book', {
           id,
-          changes,
+          changes: normalizedChanges,
         }),
       )
-      if (book) rememberBook(book)
 
       if (!readingPositionOnly) {
-        if (changes.metadata) invalidateCovers()
-        if (changes.metadata) invalidatePins()
+        if (normalizedChanges.metadata) invalidateCovers()
+        if (normalizedChanges.metadata) invalidatePins()
         notify(
-          ...(['books', changes.metadata ? 'covers' : undefined, changes.metadata ? 'pins' : undefined].filter(
-            Boolean,
-          ) as TableName[]),
+          ...([
+            'books',
+            normalizedChanges.metadata ? 'covers' : undefined,
+            normalizedChanges.metadata ? 'pins' : undefined,
+          ].filter(Boolean) as TableName[]),
         )
       }
-      return book ?? undefined
     },
     checkSourceStatuses(ids: string[]) {
       return invoke<BookSourceStatusRecord[]>('check_book_source_statuses', {
@@ -395,7 +407,7 @@ export const db = {
       forgetBooks(ids)
       forgetCovers(ids)
       invalidatePins()
-      notify('books', 'covers', 'files', 'pins')
+      notify('books', 'covers', 'pins')
     },
     async delete(id: string) {
       await this.bulkDelete([id])
@@ -405,16 +417,29 @@ export const db = {
       { addTagIds = [], removeTagIds = [] }: { addTagIds?: string[]; removeTagIds?: string[] },
     ) {
       beginBooksMutation()
-      const books = await trackNativeWrite(
-        invoke<BookRecord[]>('update_book_tags', {
+      const existingTagIds = tagsCache ? new Set(tagsCache.map((tag) => tag.id)) : undefined
+      const additions = [
+        ...new Set(addTagIds.filter((tagId) => tagId && (!existingTagIds || existingTagIds.has(tagId)))),
+      ]
+      const removals = new Set(removeTagIds.filter(Boolean))
+      const books = ids.flatMap((id) => {
+        const book = bookCache.get(id)
+        if (!book) return []
+
+        const tagIds = new Set(book.tagIds)
+        removals.forEach((tagId) => tagIds.delete(tagId))
+        additions.forEach((tagId) => tagIds.add(tagId))
+        return [{ ...book, tagIds: [...tagIds] }]
+      })
+      await trackNativeWrite(
+        invoke<void>('update_book_tags', {
           ids,
-          addTagIds,
-          removeTagIds,
+          addTagIds: additions,
+          removeTagIds: [...removals],
         }),
       )
-      books.forEach((book) => rememberBook(book, { full: false }))
+      rememberBookBatch(books)
       notify('books')
-      return books
     },
   },
   tags: {
@@ -442,12 +467,16 @@ export const db = {
     },
     async delete(id: string) {
       beginBooksMutation()
-      const books = await trackNativeWrite(invoke<BookRecord[]>('delete_tag', { id }))
+      const update = (book: BookRecord) => {
+        const tagIds = book.tagIds ?? []
+        return tagIds.includes(id) ? { ...book, tagIds: tagIds.filter((tagId) => tagId !== id) } : book
+      }
+      await trackNativeWrite(invoke<void>('delete_tag', { id }))
+      bookCache.forEach((book, bookId) => bookCache.set(bookId, update(book)))
+      if (booksCache) booksCache = booksCache.map(update)
       forgetTag(id)
-      books.forEach((book) => rememberBook(book, { full: false }))
       invalidatePins()
       notify('tags', 'books', 'pins')
-      return books
     },
   },
   pins: {
@@ -478,10 +507,6 @@ export const db = {
     reveal(path: string) {
       return invoke('reveal_exported_file', { path })
     },
-    async getPackageUrl(id: string) {
-      const path = await invoke<string>('get_book_package_path', { id })
-      return filePathToUrl(path)
-    },
     async getReaderSource(id: string): Promise<BookReaderSource> {
       const source = await invoke<NativeBookReaderSource>('get_book_reader_source', { id })
       if (source.book) {
@@ -494,12 +519,6 @@ export const db = {
         url: filePathToUrl(source.path),
         rootUrl: source.rootPath ? filePathToUrl(source.rootPath) : undefined,
       }
-    },
-    async bulkDelete(ids: string[]) {
-      await db.books.bulkDelete(ids)
-    },
-    async delete(id: string) {
-      await db.books.delete(id)
     },
   },
   covers: {
@@ -514,26 +533,6 @@ export const db = {
     peekAll() {
       return coversCache
     },
-    get(id: string) {
-      return invoke<CoverRecord | null>('get_cover', { id }).then((cover) => toCoverRecord(cover))
-    },
-    async put(record: { id: string; cover: CoverInput | null }) {
-      await trackNativeWrite(
-        invoke('update_cover', {
-          id: record.id,
-          cover: record.cover,
-        }),
-      )
-      invalidateCovers()
-      notify('covers')
-      return record.id
-    },
-    async bulkDelete(ids: string[]) {
-      await db.books.bulkDelete(ids)
-    },
-    async delete(id: string) {
-      await db.books.delete(id)
-    },
   },
 }
 
@@ -541,26 +540,15 @@ export async function importEpubPaths(
   paths: string[],
   {
     importId,
-    progressiveUpdates = false,
+    onProgress,
     replaceExisting = true,
-  }: { importId?: string; progressiveUpdates?: boolean; replaceExisting?: boolean } = {},
+  }: {
+    importId?: string
+    onProgress?: (progress: BookImportProgress) => void
+    replaceExisting?: boolean
+  } = {},
 ) {
-  await waitForPendingNativeWrites()
-  beginBooksMutation()
-  const result = await trackNativeWrite(
-    invoke<BookImportResult>('import_epub_paths', {
-      importId,
-      paths,
-      replaceExisting,
-    }),
-  )
-  rememberBookBatch(result.books)
-  if (result.books.length) {
-    invalidatePins()
-    if (!progressiveUpdates) await refreshImportedCovers(result.books.map((book) => book.id))
-    notify('books', 'covers', 'files', 'pins')
-  }
-  return result
+  return importBooksWithProgress('import_epub_paths', { paths, replaceExisting }, importId, onProgress)
 }
 
 export async function openExternalEpubPaths(paths: string[]) {
@@ -576,7 +564,6 @@ export function getTextImportEncodings() {
 }
 
 export async function previewTextImportPaths(paths: string[], encodings: Record<string, string> = {}) {
-  await waitForPendingNativeWrites()
   return invoke<TextImportPreview[]>('preview_text_import_paths', {
     paths,
     encodings,
@@ -587,30 +574,15 @@ export async function importTextPaths(
   imports: TextImportSelection[],
   {
     importId,
-    progressiveUpdates = false,
+    onProgress,
     replaceExisting = true,
   }: {
     importId?: string
-    progressiveUpdates?: boolean
+    onProgress?: (progress: BookImportProgress) => void
     replaceExisting?: boolean
   } = {},
 ) {
-  await waitForPendingNativeWrites()
-  beginBooksMutation()
-  const result = await trackNativeWrite(
-    invoke<BookImportResult>('import_text_paths', {
-      importId,
-      imports,
-      replaceExisting,
-    }),
-  )
-  rememberBookBatch(result.books)
-  if (result.books.length) {
-    invalidatePins()
-    if (!progressiveUpdates) await refreshImportedCovers(result.books.map((book) => book.id))
-    notify('books', 'covers', 'files', 'pins')
-  }
-  return result
+  return importBooksWithProgress('import_text_paths', { imports, replaceExisting }, importId, onProgress)
 }
 
 export function scanImportFolder(root: string, recursive: boolean) {
@@ -626,7 +598,7 @@ export async function applyFolderImportTags(assignments: FolderImportTagAssignme
       assignments,
     }),
   )
-  result.books.forEach((book) => rememberBook(book, { full: false }))
+  result.books.forEach(rememberBook)
   rememberTags(result.tags)
   notify('books', 'tags')
   return result
@@ -665,7 +637,7 @@ export async function replaceBookText({
     }),
   )
   rememberBook(result.book)
-  notify('books', 'files')
+  notify('books')
   return result
 }
 
@@ -700,7 +672,7 @@ export async function clearBookCaches(
     }),
   )
   const updatedBooks = books.map((book) => ({ ...book, contentEditedAt: undefined }))
-  rememberBookBatch(updatedBooks, { full: false })
+  rememberBookBatch(updatedBooks)
   if (updatedBooks.length) notify('books')
   return updatedBooks
 }

@@ -2,7 +2,6 @@
  * Core Utilities and Helpers
  * @module Core
  */
-import { DOMParser as XMLDOMParser } from '@xmldom/xmldom'
 
 /**
  * Vendor prefixed requestAnimationFrame
@@ -553,19 +552,11 @@ export function type(obj) {
  * Parse xml (or html) markup
  * @param {string} markup
  * @param {string} mime
- * @param {boolean} forceXMLDom force using xmlDom to parse instead of native parser
  * @returns {document} document
  * @memberof Core
  */
-export function parse(markup, mime, forceXMLDom) {
+export function parse(markup, mime) {
   var doc
-  var Parser
-
-  if (typeof DOMParser === 'undefined' || forceXMLDom) {
-    Parser = XMLDOMParser
-  } else {
-    Parser = DOMParser
-  }
 
   // Remove byte order mark before parsing
   // https://www.w3.org/International/questions/qa-byte-order-mark
@@ -577,14 +568,14 @@ export function parse(markup, mime, forceXMLDom) {
     markup = sanitizeNcxNavLabelText(markup)
   }
 
-  doc = new Parser().parseFromString(markup, mime)
+  doc = new DOMParser().parseFromString(markup, mime)
 
   // Some otherwise readable EPUBs contain HTML-style URLs with bare ampersands.
   // Keep the strict parser as the normal path and repair only a failed XHTML.
   if (mime === 'application/xhtml+xml' && isParserErrorDocument(doc)) {
     var repairedMarkup = repairBareXmlAmpersands(markup)
     if (repairedMarkup !== markup) {
-      var repairedDoc = new Parser().parseFromString(repairedMarkup, mime)
+      var repairedDoc = new DOMParser().parseFromString(repairedMarkup, mime)
       if (!isParserErrorDocument(repairedDoc)) {
         return repairedDoc
       }

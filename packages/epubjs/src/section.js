@@ -1,8 +1,3 @@
-import {
-  DOMParser as XMLDOMParser,
-  XMLSerializer as XMLDOMSerializer,
-} from '@xmldom/xmldom'
-
 import EpubCFI from './epubcfi'
 import { defer } from './utils/core'
 import { sprint } from './utils/core'
@@ -38,8 +33,7 @@ export function isRenderableSpineMediaType(mediaType) {
 }
 
 function createBitmapDocument(url) {
-  var Parser = typeof DOMParser === 'undefined' ? XMLDOMParser : DOMParser
-  var doc = new Parser().parseFromString(
+  var doc = new DOMParser().parseFromString(
     `<html xmlns="http://www.w3.org/1999/xhtml">
       <head>
         <style>
@@ -197,16 +191,7 @@ class Section {
     this.load(_request)
       .then(
         function (contents) {
-          var userAgent =
-            (typeof navigator !== 'undefined' && navigator.userAgent) || ''
-          var isIE = userAgent.indexOf('Trident') >= 0
-          var Serializer
-          if (typeof XMLSerializer === 'undefined' || isIE) {
-            Serializer = XMLDOMSerializer
-          } else {
-            Serializer = XMLSerializer
-          }
-          var serializer = new Serializer()
+          var serializer = new XMLSerializer()
           this.output = serializer.serializeToString(contents)
           return this.output
         }.bind(this),

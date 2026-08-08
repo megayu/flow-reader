@@ -14,7 +14,6 @@ import { Rendition, RenditionOptions } from './rendition'
 import Resources from './resources'
 import Section from './section'
 import Spine from './spine'
-import Store from './store'
 import Path from './utils/path'
 import Url from './utils/url'
 
@@ -32,7 +31,6 @@ export interface BookOptions {
   containerRootUrl?: string
   canonical?: (path: string) => string
   openAs?: string
-  store?: string
 }
 
 export default class Book {
@@ -66,7 +64,6 @@ export default class Book {
   rendition: Rendition
   container: Container
   packaging: Packaging
-  storage: Store
 
   canonical(path: string): string
 
@@ -110,8 +107,6 @@ export default class Book {
   setRequestHeaders(headers: object): void
 
   unarchive(input: BinaryType, encoding?: string): Promise<Archive>
-
-  store(name: string): Store
 
   unpack(opf: XMLDocument): Promise<Book>
 

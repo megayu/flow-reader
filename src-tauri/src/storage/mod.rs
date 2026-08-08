@@ -99,10 +99,9 @@ use search::{
 };
 use state::{DirtyState, StorageState};
 use text_import::{
-    PreparedTextImport, TextImportPreparedCache, TextImportPreparedKey, consume_or_prepare_text_import,
-    create_skipped_text_import_preview, create_text_cover_input, create_text_import_error_preview,
+    PreparedTextImport, create_skipped_text_import_preview, create_text_cover_input, create_text_import_error_preview,
     create_text_import_preview_from_prepared, decode_text_bytes, encode_text_bytes, import_text_path_impl,
-    load_or_prepare_text_import, materialize_library_text_publication, should_skip_prepared_text_import_preview,
+    materialize_library_text_publication, prepare_text_import, should_skip_prepared_text_import_preview,
     source_encoding_id_from_metadata, text_import_encoding_options, write_text_cover_to_unpacked,
 };
 #[cfg(test)]
@@ -148,7 +147,6 @@ struct StorageInner {
     image_index_caches: Mutex<HashMap<String, Arc<ImageIndexCache>>>,
     derived_cache_states: Mutex<HashMap<String, DerivedCacheState>>,
     derived_cache_flush_lock: Mutex<()>,
-    text_import_prepared_cache: Mutex<TextImportPreparedCache>,
     #[cfg(test)]
     text_import_prepare_runs: std::sync::atomic::AtomicUsize,
     #[cfg(test)]
@@ -189,7 +187,6 @@ impl AppStorage {
                     library,
                     external,
                     settings,
-                    book_states: HashMap::new(),
                 }),
                 dirty: Mutex::new(DirtyState::default()),
                 flush_lock: Mutex::new(()),
@@ -198,7 +195,6 @@ impl AppStorage {
                 image_index_caches: Mutex::new(HashMap::new()),
                 derived_cache_states: Mutex::new(HashMap::new()),
                 derived_cache_flush_lock: Mutex::new(()),
-                text_import_prepared_cache: Mutex::new(TextImportPreparedCache::new()),
                 #[cfg(test)]
                 text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
                 #[cfg(test)]
@@ -297,28 +293,6 @@ impl AppStorage {
         }
     }
 
-    fn get_prepared_text_import(&self, key: &TextImportPreparedKey) -> Option<Arc<PreparedTextImport>> {
-        self.inner
-            .text_import_prepared_cache
-            .lock()
-            .ok()
-            .and_then(|mut cache| cache.get(key))
-    }
-
-    fn insert_prepared_text_import(&self, prepared: Arc<PreparedTextImport>) {
-        if let Ok(mut cache) = self.inner.text_import_prepared_cache.lock() {
-            cache.insert(prepared);
-        }
-    }
-
-    fn take_prepared_text_import(&self, key: &TextImportPreparedKey) -> Option<Arc<PreparedTextImport>> {
-        self.inner
-            .text_import_prepared_cache
-            .lock()
-            .ok()
-            .and_then(|mut cache| cache.take(key))
-    }
-
     fn note_text_import_prepare_run(&self) {
         #[cfg(test)]
         self.inner
@@ -406,33 +380,6 @@ impl AppStorage {
             .load(std::sync::atomic::Ordering::SeqCst)
     }
 
-    #[cfg(test)]
-    fn set_text_import_prepared_cache_limit(&self, max_bytes: usize) {
-        self.inner
-            .text_import_prepared_cache
-            .lock()
-            .unwrap()
-            .set_max_bytes(max_bytes);
-    }
-
-    #[cfg(test)]
-    fn text_import_prepared_cache_len(&self) -> usize {
-        self.inner.text_import_prepared_cache.lock().unwrap().len()
-    }
-
-    #[cfg(test)]
-    fn text_import_prepared_cache_bytes(&self) -> usize {
-        self.inner.text_import_prepared_cache.lock().unwrap().bytes()
-    }
-
-    fn text_import_prepared_cache_stats(&self) -> (usize, usize) {
-        self.inner
-            .text_import_prepared_cache
-            .lock()
-            .map(|mut cache| (cache.len(), cache.bytes()))
-            .unwrap_or_default()
-    }
-
     fn search_text_memory_cache_len(&self) -> usize {
         self.inner
             .search_text_caches
@@ -462,21 +409,16 @@ impl AppStorage {
             .load(std::sync::atomic::Ordering::SeqCst)
     }
 
-    fn read_book_state_uncached(&self, id: &str) -> Result<BookState, String> {
+    fn read_book_state(&self, id: &str) -> Result<BookState, String> {
         read_json_or_default(&self.book_dir(id).join(STATE_FILE))
     }
 
-    fn ensure_book_state<'a>(&self, state: &'a mut StorageState, id: &str) -> Result<&'a mut BookState, String> {
-        if !state.book_states.contains_key(id) {
-            let book_state = self.read_book_state_uncached(id)?;
-            state.book_states.insert(id.to_string(), book_state);
-        }
-
-        Ok(state.book_states.get_mut(id).expect("book state should exist"))
+    fn write_book_state(&self, id: &str, state: &BookState) -> Result<(), String> {
+        write_json(&self.book_dir(id).join(STATE_FILE), state)
     }
 
-    fn compose_book(&self, state: &mut StorageState, book: &LibraryBook) -> Result<BookRecord, String> {
-        let book_state = self.ensure_book_state(state, &book.id)?.clone();
+    fn compose_book(&self, book: &LibraryBook) -> Result<BookRecord, String> {
+        let book_state = self.read_book_state(&book.id)?;
 
         Ok(BookRecord {
             id: book.id.clone(),

@@ -4,7 +4,6 @@ import Annotations from './annotations'
 import Contents from './contents'
 import EpubCFI from './epubcfi'
 import Layout from './layout'
-import ContinuousViewManager from './managers/continuous/index'
 import DefaultViewManager from './managers/default/index'
 import IframeView from './managers/views/iframe'
 import Themes from './themes'
@@ -176,8 +175,6 @@ class Rendition {
     // If manager is a string, try to load from imported managers
     if (typeof manager === 'string' && manager === 'default') {
       viewManager = DefaultViewManager
-    } else if (typeof manager === 'string' && manager === 'continuous') {
-      viewManager = ContinuousViewManager
     } else {
       // otherwise, assume we were passed a class function
       viewManager = manager

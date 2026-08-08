@@ -9,7 +9,7 @@ use super::{
     FolderImportTagAssignment, IMAGE_INDEX_CACHE_VERSION, ImageIndexCache, ImageIndexEntry, ImageIndexSection, Library,
     LibraryBook, LibraryPins, LibraryTagRecord, ReadingStatus, SEARCH_TEXT_CACHE_VERSION, SOURCE_TEXT_FILE, STATE_FILE,
     SearchTextCache, SearchTextSection, SourceStorage, SourceTextUpdate, StorageInner, StorageState,
-    TextImportPreparedCache, TextImportRulesInput, TextImportSelection, UNPACKED_DIR, apply_folder_import_tags_impl,
+    TextImportRulesInput, TextImportSelection, UNPACKED_DIR, apply_folder_import_tags_impl,
     check_book_source_statuses_impl, cleanup_external_book_heavy_files, decode_text_bytes, empty_object,
     ensure_book_package_path_with_unpacker, export_book_impl, external_books_root, external_index_path,
     get_book_reader_source_impl, hash_file, library_path, load_or_build_search_text_cache, mark_book_exported,
@@ -57,7 +57,6 @@ fn import_single_epub_for_test(
         vec![path.to_string_lossy().to_string()],
         replace_existing,
         None,
-        None,
     )?;
     imported_books_or_first_error(result)?
         .into_iter()
@@ -72,7 +71,7 @@ fn import_text_paths_strict_for_test(
     replace_existing: bool,
     rules: Option<TextImportRulesInput>,
 ) -> Result<Vec<BookRecord>, String> {
-    let result = super::commands::import_text_paths_impl(storage, tasks, imports, replace_existing, rules, None, None)?;
+    let result = super::commands::import_text_paths_impl(storage, tasks, imports, replace_existing, rules, None)?;
     imported_books_or_first_error(result)
 }
 
@@ -187,19 +186,21 @@ fn test_storage_with_book(root: &Path, book: LibraryBook) -> AppStorage {
 }
 
 fn test_storage_with_books(root: &Path, books: Vec<LibraryBook>) -> AppStorage {
-    let mut book_states = HashMap::new();
-    for book in &books {
-        book_states.insert(
-            book.id.clone(),
-            BookState {
-                cfi: book.cfi.clone(),
-                percentage: book.percentage,
-                ..Default::default()
-            },
-        );
-    }
-
-    AppStorage {
+    let initial_states = books
+        .iter()
+        .filter(|book| book.cfi.is_some() || book.percentage.is_some())
+        .map(|book| {
+            (
+                book.id.clone(),
+                BookState {
+                    cfi: book.cfi.clone(),
+                    percentage: book.percentage,
+                    ..Default::default()
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+    let storage = AppStorage {
         inner: Arc::new(StorageInner {
             root: root.to_path_buf(),
             state: Mutex::new(StorageState {
@@ -211,7 +212,6 @@ fn test_storage_with_books(root: &Path, books: Vec<LibraryBook>) -> AppStorage {
                 },
                 external: ExternalBookIndex::default(),
                 settings: json!({}),
-                book_states,
             }),
             dirty: Mutex::new(DirtyState::default()),
             flush_lock: Mutex::new(()),
@@ -220,7 +220,6 @@ fn test_storage_with_books(root: &Path, books: Vec<LibraryBook>) -> AppStorage {
             image_index_caches: Mutex::new(HashMap::new()),
             derived_cache_states: Mutex::new(HashMap::new()),
             derived_cache_flush_lock: Mutex::new(()),
-            text_import_prepared_cache: Mutex::new(TextImportPreparedCache::new()),
             text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
             text_import_prepare_active: std::sync::atomic::AtomicUsize::new(0),
             text_import_prepare_max_active: std::sync::atomic::AtomicUsize::new(0),
@@ -228,7 +227,11 @@ fn test_storage_with_books(root: &Path, books: Vec<LibraryBook>) -> AppStorage {
             text_import_prepared_handoff_active: std::sync::atomic::AtomicUsize::new(0),
             text_import_prepared_handoff_max_active: std::sync::atomic::AtomicUsize::new(0),
         }),
+    };
+    for (id, state) in initial_states {
+        storage.write_book_state(&id, &state).unwrap();
     }
+    storage
 }
 
 fn test_storage_from_disk(root: &Path) -> AppStorage {
@@ -239,7 +242,6 @@ fn test_storage_from_disk(root: &Path) -> AppStorage {
                 library: read_json_or_default::<Library>(&library_path(root).unwrap()).unwrap(),
                 external: read_json_or_default::<ExternalBookIndex>(&external_index_path(root).unwrap()).unwrap(),
                 settings: read_json_value_or_default(&settings_path(root).unwrap()).unwrap(),
-                book_states: HashMap::new(),
             }),
             dirty: Mutex::new(DirtyState::default()),
             flush_lock: Mutex::new(()),
@@ -248,7 +250,6 @@ fn test_storage_from_disk(root: &Path) -> AppStorage {
             image_index_caches: Mutex::new(HashMap::new()),
             derived_cache_states: Mutex::new(HashMap::new()),
             derived_cache_flush_lock: Mutex::new(()),
-            text_import_prepared_cache: Mutex::new(TextImportPreparedCache::new()),
             text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
             text_import_prepare_active: std::sync::atomic::AtomicUsize::new(0),
             text_import_prepare_max_active: std::sync::atomic::AtomicUsize::new(0),
@@ -285,8 +286,8 @@ fn assert_external_promoted(storage: &AppStorage, imported: &BookRecord, externa
     let state = storage.inner.state.lock().unwrap();
     assert!(state.external.books.is_empty());
     assert_eq!(state.library.books.len(), 1);
-    assert!(!state.book_states.contains_key(external_id));
-    let promoted_state = state.book_states.get(&imported.id).unwrap();
+    drop(state);
+    let promoted_state: BookState = read_json_or_default(&storage.book_dir(&imported.id).join(STATE_FILE)).unwrap();
     assert_eq!(promoted_state.cfi.as_deref(), Some("epubcfi(/6/4!/4/2)"));
     assert_eq!(promoted_state.percentage, Some(0.42));
     assert_eq!(promoted_state.definitions, vec!["term".to_string()]);
@@ -301,15 +302,11 @@ fn assert_external_promoted(storage: &AppStorage, imported: &BookRecord, externa
         promoted_state.configuration,
         Some(json!({"theme": "sepia", "spread": {"page": 2}}))
     );
-    drop(state);
-
     assert_eq!(
         imported.metadata.get("title").and_then(Value::as_str),
         Some("Edited External")
     );
     assert_eq!(imported.metadata.get("custom").and_then(Value::as_str), Some("kept"));
-    let state_file: BookState = read_json_or_default(&storage.book_dir(&imported.id).join(STATE_FILE)).unwrap();
-    assert_eq!(state_file.cfi.as_deref(), Some("epubcfi(/6/4!/4/2)"));
     let external_index: ExternalBookIndex =
         read_json_or_default(&external_index_path(storage.root()).unwrap()).unwrap();
     assert!(external_index.books.is_empty());
@@ -436,7 +433,6 @@ fn delete_books_renames_all_book_directories_in_place_before_cleanup() {
     {
         let state = storage.inner.state.lock().unwrap();
         assert!(state.library.books.is_empty());
-        assert!(state.book_states.is_empty());
     }
     assert!(!storage.book_dir("book-a").exists());
     assert!(!storage.book_dir("book-b").exists());
@@ -480,7 +476,7 @@ fn startup_cleanup_removes_leftover_pending_delete_paths() {
 }
 
 #[test]
-fn text_preview_then_import_consumes_prepared_entry_without_repreparing() {
+fn text_preview_does_not_retain_full_document_for_later_import() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
         "flow-reader-text-prepare-reuse-test-{}-{nonce}",
@@ -502,7 +498,6 @@ fn text_preview_then_import_consumes_prepared_entry_without_repreparing() {
     .unwrap();
     assert_eq!(previews.len(), 1);
     assert_eq!(storage.text_import_prepare_run_count(), 1);
-    assert_eq!(storage.text_import_prepared_cache_len(), 1);
 
     let books = import_text_paths_strict_for_test(
         &storage,
@@ -519,8 +514,7 @@ fn text_preview_then_import_consumes_prepared_entry_without_repreparing() {
     .unwrap();
 
     assert_eq!(books.len(), 1);
-    assert_eq!(storage.text_import_prepare_run_count(), 1);
-    assert_eq!(storage.text_import_prepared_cache_len(), 0);
+    assert_eq!(storage.text_import_prepare_run_count(), 2);
     assert_eq!(
         fs::read_to_string(storage.book_dir(&books[0].id).join(SOURCE_TEXT_FILE)).unwrap(),
         "第1章 开始\n第一段。\n第二段。\n"
@@ -672,42 +666,6 @@ fn text_import_reprepares_when_prepared_file_metadata_changes() {
         fs::read_to_string(storage.book_dir(&books[0].id).join(SOURCE_TEXT_FILE)).unwrap(),
         "第1章 新内容\n新段落。\n新增段落。\n"
     );
-
-    let _ = fs::remove_dir_all(root);
-}
-
-#[test]
-fn text_prepare_cache_enforces_configured_byte_limit() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-text-prepare-limit-test-{}-{nonce}",
-        std::process::id()
-    ));
-    let first = root.join("first.txt");
-    let second = root.join("second.txt");
-    fs::create_dir_all(&root).unwrap();
-    fs::write(&first, "第1章 第一\n第一段。\n").unwrap();
-    fs::write(&second, "第1章 第二\n第二段。\n").unwrap();
-    let storage = test_storage_with_books(&root, Vec::new());
-    storage.set_text_import_prepared_cache_limit(32);
-    let tasks = TaskService::default();
-
-    let previews = preview_text_import_paths_impl(
-        &storage,
-        &tasks,
-        vec![
-            first.to_string_lossy().to_string(),
-            second.to_string_lossy().to_string(),
-        ],
-        HashMap::new(),
-        None,
-    )
-    .unwrap();
-
-    assert_eq!(previews.len(), 2);
-    assert_eq!(storage.text_import_prepare_run_count(), 2);
-    assert!(storage.text_import_prepared_cache_bytes() <= 32);
-    assert!(storage.text_import_prepared_cache_len() <= 1);
 
     let _ = fs::remove_dir_all(root);
 }
@@ -1425,13 +1383,15 @@ fn external_epub_cleanup_keeps_metadata_and_state() {
 
     fs::create_dir_all(external_dir.join(UNPACKED_DIR)).unwrap();
     fs::write(external_dir.join(UNPACKED_DIR).join("stale"), "stale").unwrap();
-    {
-        let mut state = storage.inner.state.lock().unwrap();
-        let book_state = storage.ensure_book_state(&mut state, &book.id).unwrap();
-        book_state.cfi = Some("epubcfi(/6/2)".to_string());
-    }
-    storage.mark_book_state_dirty(&book.id);
-    storage.flush_dirty().unwrap();
+    storage
+        .write_book_state(
+            &book.id,
+            &BookState {
+                cfi: Some("epubcfi(/6/2)".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
 
     cleanup_external_book_heavy_files(&storage, &book.id).unwrap();
 
@@ -1529,10 +1489,10 @@ fn importing_open_external_epub_promotes_metadata_state_and_removes_external_rec
             .find(|book| book.id == external.id)
             .unwrap()
             .metadata = json!({"title": "Edited External", "custom": "kept"});
-        state
-            .book_states
-            .insert(external.id.clone(), external_promotion_state());
     }
+    storage
+        .write_book_state(&external.id, &external_promotion_state())
+        .unwrap();
 
     let imported = import_single_epub_for_test(&storage, &source, true).unwrap();
 
@@ -1561,12 +1521,11 @@ fn importing_persisted_external_epub_promotes_disk_metadata_and_state() {
             .find(|book| book.id == external.id)
             .unwrap()
             .metadata = json!({"title": "Edited External", "custom": "kept"});
-        state
-            .book_states
-            .insert(external.id.clone(), external_promotion_state());
     }
+    storage
+        .write_book_state(&external.id, &external_promotion_state())
+        .unwrap();
     storage.mark_external_dirty();
-    storage.mark_book_state_dirty(&external.id);
     storage.flush_dirty().unwrap();
 
     let reloaded = test_storage_from_disk(&root);
@@ -1745,7 +1704,6 @@ fn epub_import_command_returns_successes_when_later_source_fails() {
             broken.to_string_lossy().to_string(),
         ],
         true,
-        None,
         None,
     )
     .unwrap();
@@ -2011,7 +1969,7 @@ fn archive_only_epub_export_copies_original_package_without_unpacking() {
 }
 
 #[test]
-fn record_reading_position_marks_dirty_without_disk_write_until_flush() {
+fn record_reading_position_persists_state_before_library_flush() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
         "flow-reader-position-flush-test-{}-{nonce}",
@@ -2029,17 +1987,15 @@ fn record_reading_position_marks_dirty_without_disk_write_until_flush() {
     assert!(accepted);
 
     assert!(!library_path(&root).unwrap().exists());
-    assert!(!root.join("books").join("book").join(STATE_FILE).exists());
+    let state = fs::read_to_string(root.join("books").join("book").join(STATE_FILE)).unwrap();
+    assert!(state.contains(r#""cfi": "epubcfi(/6/8)""#));
+    assert!(state.contains(r#""percentage": 0.8"#));
 
     storage.flush_dirty().expect("dirty position should flush");
 
     let library = fs::read_to_string(library_path(&root).unwrap()).unwrap();
     assert!(library.contains(r#""cfi": "epubcfi(/6/8)""#));
     assert!(library.contains(r#""percentage": 0.8"#));
-
-    let state = fs::read_to_string(root.join("books").join("book").join(STATE_FILE)).unwrap();
-    assert!(state.contains(r#""cfi": "epubcfi(/6/8)""#));
-    assert!(state.contains(r#""percentage": 0.8"#));
 
     let _ = fs::remove_dir_all(root);
 }

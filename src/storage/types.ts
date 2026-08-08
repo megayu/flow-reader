@@ -3,20 +3,9 @@ import type { PackagingMetadataObject } from '@flow/epubjs/packaging'
 import type { Annotation } from '../annotation'
 import type { TypographyConfiguration } from '../reader/configuration'
 
-export interface FileRecord {
-  id: string
-  file: File
-}
-
 export interface CoverRecord {
   id: string
   cover: string | null
-}
-
-export interface CoverInput {
-  mimeType: string
-  extension: string
-  data: number[]
 }
 
 export interface TextImportEncodingOption {

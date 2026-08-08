@@ -4,7 +4,6 @@ pub(super) struct StorageState {
     pub(super) library: Library,
     pub(super) external: ExternalBookIndex,
     pub(super) settings: Value,
-    pub(super) book_states: HashMap<String, BookState>,
 }
 
 #[derive(Default)]
@@ -12,7 +11,6 @@ pub(super) struct DirtyState {
     pub(super) library: bool,
     pub(super) external: bool,
     pub(super) settings: bool,
-    pub(super) book_states: HashSet<String>,
 }
 
 impl AppStorage {
@@ -43,12 +41,6 @@ impl AppStorage {
         }
     }
 
-    pub(super) fn mark_book_state_dirty(&self, id: &str) {
-        if let Ok(mut dirty) = self.inner.dirty.lock() {
-            dirty.book_states.insert(id.to_string());
-        }
-    }
-
     pub fn flush_dirty(&self) -> Result<(), String> {
         let _flush_guard = self
             .inner
@@ -65,7 +57,6 @@ impl AppStorage {
                 library: dirty.library,
                 external: dirty.external,
                 settings: dirty.settings,
-                book_states: std::mem::take(&mut dirty.book_states),
             };
             dirty.library = false;
             dirty.external = false;
@@ -73,12 +64,12 @@ impl AppStorage {
             snapshot
         };
 
-        if !dirty.library && !dirty.external && !dirty.settings && dirty.book_states.is_empty() {
+        if !dirty.library && !dirty.external && !dirty.settings {
             return Ok(());
         }
 
         let result = (|| {
-            let (library, external, settings, book_states) = {
+            let (library, external, settings) = {
                 let state = self
                     .inner
                     .state
@@ -87,13 +78,7 @@ impl AppStorage {
                 let library = dirty.library.then(|| clone_library(&state.library));
                 let external = dirty.external.then(|| clone_external_index(&state.external));
                 let settings = dirty.settings.then(|| state.settings.clone());
-                let book_states = dirty
-                    .book_states
-                    .iter()
-                    .filter_map(|id| state.book_states.get(id).map(|s| (id.clone(), s.clone())))
-                    .collect::<Vec<_>>();
-
-                (library, external, settings, book_states)
+                (library, external, settings)
             };
 
             if let Some(library) = library {
@@ -105,10 +90,6 @@ impl AppStorage {
             if let Some(settings) = settings {
                 write_json(&settings_path(self.root())?, &settings)?;
             }
-            for (id, book_state) in book_states {
-                write_json(&self.book_dir(&id).join(STATE_FILE), &book_state)?;
-            }
-
             Ok(())
         })();
 
@@ -121,7 +102,6 @@ impl AppStorage {
             current.library |= dirty.library;
             current.external |= dirty.external;
             current.settings |= dirty.settings;
-            current.book_states.extend(dirty.book_states);
         }
 
         result

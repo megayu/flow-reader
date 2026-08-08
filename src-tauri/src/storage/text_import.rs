@@ -1,9 +1,8 @@
 use std::{
-    collections::{HashMap, VecDeque},
     fs,
     path::{Path, PathBuf},
     sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::UNIX_EPOCH,
 };
 
 use encoding_rs::{
@@ -125,152 +124,21 @@ pub(super) struct TextImportPreparedKey {
 
 #[derive(Debug, Clone)]
 pub(super) struct PreparedTextImport {
-    pub(super) key: TextImportPreparedKey,
     pub(super) path: PathBuf,
     pub(super) filename: String,
     pub(super) fallback_title: String,
     pub(super) size: u64,
     pub(super) hash: String,
-    pub(super) bytes: Arc<Vec<u8>>,
+    pub(super) bytes: Vec<u8>,
     pub(super) decoded: DecodedText,
     pub(super) sample: String,
     pub(super) document: TextImportDocument,
 }
 
-struct PreparedTextImportCacheEntry {
-    prepared: Arc<PreparedTextImport>,
-    inserted_at: u64,
-}
-
-pub(super) struct TextImportPreparedCache {
-    entries: HashMap<TextImportPreparedKey, PreparedTextImportCacheEntry>,
-    order: VecDeque<TextImportPreparedKey>,
-    bytes: usize,
-    max_bytes: usize,
-}
-
-const TEXT_IMPORT_PREPARED_CACHE_MAX_BYTES: usize = 256 * 1024 * 1024;
-const TEXT_IMPORT_PREPARED_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
-
 impl TextImportPreparedKey {
     pub(super) fn task_identity(&self) -> &str {
         &self.identity
     }
-}
-
-impl TextImportPreparedCache {
-    pub(super) fn new() -> Self {
-        Self {
-            entries: HashMap::new(),
-            order: VecDeque::new(),
-            bytes: 0,
-            max_bytes: TEXT_IMPORT_PREPARED_CACHE_MAX_BYTES,
-        }
-    }
-
-    pub(super) fn get(&mut self, key: &TextImportPreparedKey) -> Option<Arc<PreparedTextImport>> {
-        self.remove_expired();
-        let prepared = self.entries.get(key)?.prepared.clone();
-        self.touch(key);
-        Some(prepared)
-    }
-
-    pub(super) fn insert(&mut self, prepared: Arc<PreparedTextImport>) {
-        self.remove_expired();
-        let key = prepared.key.clone();
-        let bytes = prepared.bytes.len();
-        self.remove_key(&key);
-        if bytes > self.max_bytes {
-            return;
-        }
-
-        self.bytes = self.bytes.saturating_add(bytes);
-        self.order.push_back(key.clone());
-        self.entries.insert(
-            key,
-            PreparedTextImportCacheEntry {
-                prepared,
-                inserted_at: text_import_cache_now_ms(),
-            },
-        );
-        self.enforce_limit();
-    }
-
-    pub(super) fn take(&mut self, key: &TextImportPreparedKey) -> Option<Arc<PreparedTextImport>> {
-        self.remove_expired();
-        self.remove_key(key).map(|entry| entry.prepared)
-    }
-
-    #[cfg(test)]
-    pub(super) fn set_max_bytes(&mut self, max_bytes: usize) {
-        self.max_bytes = max_bytes;
-        self.enforce_limit();
-    }
-
-    pub(super) fn len(&mut self) -> usize {
-        self.remove_expired();
-        self.entries.len()
-    }
-
-    pub(super) fn bytes(&mut self) -> usize {
-        self.remove_expired();
-        self.bytes
-    }
-
-    fn touch(&mut self, key: &TextImportPreparedKey) {
-        self.order.retain(|candidate| candidate != key);
-        self.order.push_back(key.clone());
-    }
-
-    fn enforce_limit(&mut self) {
-        while self.bytes > self.max_bytes {
-            let Some(key) = self.order.pop_front() else {
-                break;
-            };
-            if let Some(entry) = self.entries.remove(&key) {
-                self.bytes = self.bytes.saturating_sub(entry.prepared.bytes.len());
-            }
-        }
-    }
-
-    fn remove_expired(&mut self) {
-        let now = text_import_cache_now_ms();
-        let ttl_ms = TEXT_IMPORT_PREPARED_CACHE_TTL.as_millis() as u64;
-        let expired = self
-            .entries
-            .iter()
-            .filter_map(|(key, entry)| {
-                if now.saturating_sub(entry.inserted_at) > ttl_ms {
-                    Some(key.clone())
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-        for key in expired {
-            self.remove_key(&key);
-        }
-    }
-
-    fn remove_key(&mut self, key: &TextImportPreparedKey) -> Option<PreparedTextImportCacheEntry> {
-        self.order.retain(|candidate| candidate != key);
-        let entry = self.entries.remove(key)?;
-        self.bytes = self.bytes.saturating_sub(entry.prepared.bytes.len());
-        Some(entry)
-    }
-}
-
-impl Default for TextImportPreparedCache {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-fn text_import_cache_now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u64)
-        .unwrap_or_default()
 }
 
 fn create_text_cover_svg(title: &str, creator: &str) -> String {
@@ -1066,13 +934,12 @@ fn prepare_text_import_entry(
     let document = parse_text_import_document(&decoded.text, &fallback_title, rules);
 
     Ok(Arc::new(PreparedTextImport {
-        key,
         path: path.to_path_buf(),
         filename,
         fallback_title,
         size: metadata.len(),
         hash: hash_text_import_bytes(&bytes),
-        bytes: Arc::new(bytes),
+        bytes,
         decoded,
         sample,
         document,
@@ -1131,7 +998,7 @@ pub(super) fn should_skip_prepared_text_import_preview(
     }))
 }
 
-pub(super) fn load_or_prepare_text_import(
+pub(super) fn prepare_text_import(
     storage: &AppStorage,
     tasks: &TaskService,
     path: &Path,
@@ -1139,58 +1006,19 @@ pub(super) fn load_or_prepare_text_import(
     rules: Option<&TextImportRulesInput>,
 ) -> Result<Arc<PreparedTextImport>, String> {
     let key = text_import_prepared_key(path, encoding, rules)?;
-    if let Some(prepared) = storage.get_prepared_text_import(&key) {
-        return Ok(prepared);
-    }
-
-    let storage = storage.clone();
-    let tasks_runner = tasks.clone();
     let path = path.to_path_buf();
     let encoding = encoding.map(str::to_string);
     let rules = rules.cloned();
     let task_key = TaskKey::new(TaskKind::TxtPreview, key.task_identity().to_string());
     tasks.get_or_run(task_key, TaskPriority::Foreground, move || {
-        tasks_runner.run_cpu(TaskPriority::Foreground, || {
-            if let Some(prepared) = storage.get_prepared_text_import(&key) {
-                return Ok(prepared);
-            }
+        tasks.run_cpu(TaskPriority::Foreground, || {
             storage.note_text_import_prepare_run();
             storage.begin_text_import_prepare();
             let prepared = prepare_text_import_entry(&path, encoding.as_deref(), rules.as_ref(), None, key);
             storage.end_text_import_prepare();
-            let prepared = prepared?;
-            storage.insert_prepared_text_import(Arc::clone(&prepared));
-            Ok(prepared)
+            prepared
         })
     })
-}
-
-pub(super) fn consume_or_prepare_text_import(
-    storage: &AppStorage,
-    tasks: &TaskService,
-    path: &Path,
-    encoding: Option<&str>,
-    rules: Option<&TextImportRulesInput>,
-) -> Result<Arc<PreparedTextImport>, String> {
-    let key = text_import_prepared_key(path, encoding, rules)?;
-    if let Some(prepared) = storage.take_prepared_text_import(&key) {
-        return Ok(prepared);
-    }
-
-    let encoding_id = normalized_text_import_encoding(encoding);
-    if encoding_id != "auto" {
-        let auto_key = text_import_prepared_key(path, None, rules)?;
-        if let Some(prepared) = storage.take_prepared_text_import(&auto_key) {
-            if prepared.decoded.encoding == encoding_id {
-                return Ok(prepared);
-            }
-            storage.insert_prepared_text_import(prepared);
-        }
-    }
-
-    let prepared = load_or_prepare_text_import(storage, tasks, path, encoding, rules)?;
-    storage.take_prepared_text_import(&prepared.key);
-    Ok(prepared)
 }
 
 fn materialize_text_publication(
@@ -1650,7 +1478,7 @@ pub(super) fn import_text_path_impl(
             let dir = storage.book_dir(&id);
             let source_text_path = dir.join(SOURCE_TEXT_FILE);
             if source_storage == SourceStorage::Managed {
-                fs::write(&source_text_path, prepared.bytes.as_slice()).map_err(|error| error.to_string())?;
+                fs::write(&source_text_path, &prepared.bytes).map_err(|error| error.to_string())?;
             }
             let cover = create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str()));
             if eager_import_materialization_enabled() {
@@ -1692,7 +1520,7 @@ pub(super) fn import_text_path_impl(
                 *stored = book.clone();
                 stored_index
             };
-            let record = storage.compose_book(&mut state, &book)?;
+            let record = storage.compose_book(&book)?;
             if let Some(index) = import_index {
                 index.remember(stored_index, &book);
             }

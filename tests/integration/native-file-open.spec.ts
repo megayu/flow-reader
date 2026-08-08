@@ -86,7 +86,7 @@ test('cold native EPUB open opens only the requested book', async ({ page }) => 
   expect(await page.evaluate(() => (window as any).__FLOW_TEST_TAURI__?.takePendingOpenPathsCalls)).toBe(1)
 })
 
-test('native mixed open prepares TXT with EPUB and commits it through one later progress phase', async ({ page }) => {
+test('native mixed open opens EPUB before committing direct TXT without previewing it', async ({ page }) => {
   const textPath = path.join('temporary', 'requested.txt')
   const epub = createBook('requested-epub', 'Requested EPUB')
   const text = createTestBook({
@@ -101,7 +101,7 @@ test('native mixed open prepares TXT with EPUB and commits it through one later 
     importedBooks: [text],
     pendingOpenPaths: [pendingEpubPath, textPath],
     settings: { directTextImport: true },
-    textImportDelayMs: 150,
+    textImportDelayMs: 300,
     textImportPreviewDelayMs: 20,
   })
 
@@ -112,14 +112,7 @@ test('native mixed open prepares TXT with EPUB and commits it through one later 
   await expect(page.getByRole('status')).toContainText('1 / 2')
   await expect
     .poll(() => getBookImportOperations(page))
-    .toEqual([
-      'txt-preview:start',
-      'epub:start',
-      'txt-preview:finish',
-      'epub:finish',
-      'txt-import:start',
-      'txt-import:finish',
-    ])
+    .toEqual(['epub:start', 'epub:finish', 'txt-import:start', 'txt-import:finish'])
 })
 
 test('native EPUB open focuses an existing tab across reader groups', async ({ page }) => {

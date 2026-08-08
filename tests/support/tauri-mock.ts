@@ -269,6 +269,16 @@ export async function installTauriMock(
       const internals = (globalWindow.__TAURI_INTERNALS__ ??= {})
       const eventInternals = (globalWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ ??= {})
       const callbacks = (internals.callbacks ??= {})
+      const streamChannelMessages = (channel: unknown, messages: unknown[]) => {
+        if (!channel || typeof channel !== 'object' || !('id' in channel)) return false
+
+        const callback = callbacks[Number(channel.id)]
+        if (!callback) return false
+
+        messages.forEach((message, index) => callback({ index, message }))
+        callback({ end: true, index: messages.length })
+        return true
+      }
 
       globalWindow.__FLOW_TEST_TAURI__ = {
         bookImportOperations: [],
@@ -626,14 +636,12 @@ export async function installTauriMock(
             const tagIds = ((book as BookRecord & { tagIds?: string[] }).tagIds ?? []).filter((tagId) => tagId !== id)
             bookStore.set(bookId, { ...book, tagIds })
           })
-          return Array.from(bookStore.values())
+          return null
         }
         if (command === 'update_book_tags') {
           const ids = Array.isArray(args?.ids) ? args.ids.map(String) : []
           const addTagIds = Array.isArray(args?.addTagIds) ? args.addTagIds.map(String) : []
           const removeTagIds = Array.isArray(args?.removeTagIds) ? args.removeTagIds.map(String) : []
-          const updatedBooks: BookRecord[] = []
-
           ids.forEach((id) => {
             const current = bookStore.get(id)
             if (!current) return
@@ -644,10 +652,9 @@ export async function installTauriMock(
 
             const updated = { ...current, tagIds: Array.from(tagIds) }
             bookStore.set(id, updated)
-            updatedBooks.push(updated)
           })
 
-          return updatedBooks
+          return null
         }
         if (command === 'get_book') return bookStore.get(String(args?.id)) ?? null
         if (command === 'reveal_book_source') {
@@ -671,9 +678,6 @@ export async function installTauriMock(
           const message = fixtureReaderSourceErrors[id]
           if (message) throw new Error(message)
         }
-        if (command === 'get_book_package_path') {
-          return fixtureReaderSources[String(args?.id)] ?? null
-        }
         if (command === 'get_book_reader_source') {
           const path = fixtureReaderSources[String(args?.id)] ?? ''
           return path
@@ -694,7 +698,7 @@ export async function installTauriMock(
           }
           bookStore.set(id, updated)
           if ((args?.changes as Partial<BookRecord> | undefined)?.metadata) prunePinnedAuthors()
-          return updated
+          return null
         }
         if (command === 'delete_books') {
           const ids = Array.isArray(args?.ids) ? args.ids : []
@@ -710,9 +714,19 @@ export async function installTauriMock(
           const paths = Array.isArray(args?.paths) ? args.paths : []
           const imported = importQueue.splice(0, Math.max(paths.length, 1))
           imported.forEach((book) => bookStore.set(book.id, book))
+          const streamed = streamChannelMessages(
+            args?.onProgress,
+            imported.map((book, index) => ({
+              book,
+              completed: index + 1,
+              failed: 0,
+              imported: index + 1,
+              total: paths.length,
+            })),
+          )
           globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations.push('epub:finish')
           return {
-            books: imported,
+            books: streamed ? [] : imported,
             failures: [],
           }
         }
@@ -767,8 +781,18 @@ export async function installTauriMock(
           globalWindow.__FLOW_TEST_TAURI__?.textImports.push(...imports)
           const imported = importQueue.splice(0, Math.max(imports.length, 1))
           imported.forEach((book) => bookStore.set(book.id, book))
+          const streamed = streamChannelMessages(
+            args?.onProgress,
+            imported.map((book, index) => ({
+              book,
+              completed: index + 1,
+              failed: 0,
+              imported: index + 1,
+              total: imports.length,
+            })),
+          )
           globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations.push('txt-import:finish')
-          return { books: imported, failures: [] }
+          return { books: streamed ? [] : imported, failures: [] }
         }
         if (command === 'export_book') {
           const id = String(args?.id)
@@ -790,7 +814,6 @@ export async function installTauriMock(
           return updated
         }
         if (command === 'list_covers') return []
-        if (command === 'get_cover') return null
         if (command === 'take_pending_open_paths') {
           if (globalWindow.__FLOW_TEST_TAURI__) {
             globalWindow.__FLOW_TEST_TAURI__.takePendingOpenPathsCalls += 1

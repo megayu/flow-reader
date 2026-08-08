@@ -221,9 +221,6 @@ pub(super) fn rename_books_for_deletion(storage: &AppStorage, ids: &[String]) ->
                 state.library.pins.authors.retain(|candidate| candidate != &author);
             }
         }
-        for id in &ids {
-            state.book_states.remove(id);
-        }
     }
     storage.mark_library_dirty();
 

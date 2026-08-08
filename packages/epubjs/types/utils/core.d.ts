@@ -69,11 +69,7 @@ export function createBase64Url(content: any, mime: string): string
 
 export function type(obj: object): string
 
-export function parse(
-  markup: string,
-  mime: string,
-  forceXMLDom: boolean,
-): Document
+export function parse(markup: string, mime: string): Document
 
 export function qs(el: Element, sel: string): Element
 

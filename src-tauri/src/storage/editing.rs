@@ -960,13 +960,8 @@ pub(super) fn replace_book_text_impl(
     }
     let updated_xhtml = xhtml_update.xhtml;
     if updated_xhtml == xhtml {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
         return Ok(BookTextReplaceResult {
-            book: storage.compose_book(&mut state, &initial_book)?,
+            book: storage.compose_book(&initial_book)?,
             section_href: target.section_href,
             changed: false,
         });
@@ -1060,13 +1055,8 @@ pub(super) fn replace_book_text_impl(
     storage.mark_library_dirty();
     storage.flush_dirty()?;
 
-    let mut state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
     Ok(BookTextReplaceResult {
-        book: storage.compose_book(&mut state, &book)?,
+        book: storage.compose_book(&book)?,
         section_href: target.section_href,
         changed: true,
     })

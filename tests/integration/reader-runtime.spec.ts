@@ -209,10 +209,6 @@ async function installReaderBooksMock(
           return updated
         }
         if (command === 'list_covers') return []
-        if (command === 'get_cover') return null
-        if (command === 'get_book_package_path') {
-          return packageUrlByBookId.get(String(args?.id)) ?? ''
-        }
         if (command === 'get_book_reader_source') {
           const path = packageUrlByBookId.get(String(args?.id)) ?? ''
           return {

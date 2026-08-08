@@ -377,10 +377,5 @@ pub(super) fn export_book_impl(
     storage.mark_library_dirty();
     storage.flush_dirty()?;
 
-    let mut state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
-    storage.compose_book(&mut state, &book).map(Some)
+    storage.compose_book(&book).map(Some)
 }

@@ -1,6 +1,5 @@
 import { assert, vi } from 'vitest'
 
-import ContinuousViewManager from '../src/managers/continuous'
 import DefaultViewManager from '../src/managers/default'
 
 function createManager(settings = {}) {
@@ -25,23 +24,6 @@ function createManager(settings = {}) {
     name: 'reflowable',
   }
   manager.isPaginated = true
-
-  return manager
-}
-
-function createContinuousManager(settings = {}) {
-  const manager = new ContinuousViewManager({
-    settings: {
-      axis: 'horizontal',
-      direction: 'ltr',
-      ...settings,
-    },
-    view: function View() {},
-    request: function request() {},
-    queue: {},
-  })
-  manager.container = document.createElement('div')
-  manager.isPaginated = false
 
   return manager
 }
@@ -107,22 +89,21 @@ describe('DefaultViewManager pre-paginated spread', function () {
     const removeListener = vi.spyOn(window, 'removeEventListener')
 
     try {
-      for (const manager of [createManager(), createContinuousManager()]) {
-        manager.container = document.createElement('div')
-        manager.addEventListeners()
-        manager.removeEventListeners()
+      const manager = createManager()
+      manager.container = document.createElement('div')
+      manager.addEventListeners()
+      manager.removeEventListeners()
 
-        assert.ok(
-          addListener.mock.calls.some(
-            ([event, listener]) => event === 'unload' && listener === manager._onUnload,
-          ),
-        )
-        assert.ok(
-          removeListener.mock.calls.some(
-            ([event, listener]) => event === 'unload' && listener === manager._onUnload,
-          ),
-        )
-      }
+      assert.ok(
+        addListener.mock.calls.some(
+          ([event, listener]) => event === 'unload' && listener === manager._onUnload,
+        ),
+      )
+      assert.ok(
+        removeListener.mock.calls.some(
+          ([event, listener]) => event === 'unload' && listener === manager._onUnload,
+        ),
+      )
     } finally {
       addListener.mockRestore()
       removeListener.mockRestore()

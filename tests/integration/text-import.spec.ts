@@ -98,7 +98,7 @@ test('TXT import dialog sends edited title and author metadata', async ({ page }
     ])
 })
 
-test('direct mixed import prepares TXT alongside EPUB and commits it in one later phase', async ({ page }) => {
+test('direct mixed import commits TXT after EPUB without previewing it', async ({ page }) => {
   const epubPath = path.join('tmp', 'First.epub')
   const textPath = path.join('tmp', 'Second.txt')
 
@@ -132,14 +132,7 @@ test('direct mixed import prepares TXT alongside EPUB and commits it in one late
   await expect.poll(() => getImportedTextSelections(page)).toEqual([{ path: textPath }])
   await expect
     .poll(() => getBookImportOperations(page))
-    .toEqual([
-      'txt-preview:start',
-      'epub:start',
-      'txt-preview:finish',
-      'epub:finish',
-      'txt-import:start',
-      'txt-import:finish',
-    ])
+    .toEqual(['epub:start', 'epub:finish', 'txt-import:start', 'txt-import:finish'])
   await expect(page.getByRole('status').getByRole('heading')).toContainText('2')
 })
 
@@ -148,15 +141,14 @@ test('preview confirmation keeps EPUB progress until the queued TXT import can s
   const textPath = path.join('tmp', 'Third.txt')
 
   await installTauriMock(page, {
-    eventListenDelayMs: 100,
-    epubImportDelayMs: 1_000,
+    epubImportDelayMs: 2_500,
     importedBooks: [
       createTestBook({ id: 'first-epub', name: 'First.epub', sourceFormat: 'epub' }),
       createTestBook({ id: 'second-epub', name: 'Second.epub', sourceFormat: 'epub' }),
       createTestBook({ id: 'third-text', name: 'Third.txt', sourceFormat: 'txt' }),
     ],
     openDialogPaths: [...epubPaths, textPath],
-    textImportDelayMs: 1_000,
+    textImportDelayMs: 1_500,
   })
   await page.goto('/')
 

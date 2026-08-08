@@ -10,13 +10,10 @@ import {
   importEpubPaths,
   importTextPaths,
   openExternalEpubPaths,
-  previewTextImportPaths,
-  rememberBookImportProgress,
   type TextImportSelection,
 } from './storage'
 
 const nativeOpenEvent = 'flow-open-files'
-const bookImportProgressEvent = 'flow-book-import-progress'
 const filePathCollator = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: 'base',
@@ -107,18 +104,18 @@ export async function handleFilePaths(
     const directTextPaths = directTextImport ? textPaths : []
     const batch = await runDirectTextImportBatch(epubPaths, directTextPaths, {
       onImportProgress,
-      importEpubPhase: (importId, progressiveUpdates) =>
+      importEpubPhase: (importId, onProgress) =>
         importEpubPaths(epubPaths, {
           importId,
-          progressiveUpdates,
+          onProgress,
           replaceExisting,
         }),
-      importTextPhase: (importId, progressiveUpdates) =>
+      importTextPhase: (importId, onProgress) =>
         importTextPaths(
           directTextPaths.map((path) => ({ path })),
           {
             importId,
-            progressiveUpdates,
+            onProgress,
             replaceExisting,
           },
         ),
@@ -151,10 +148,10 @@ export async function importTextSelections(
     onImportProgress,
     (progress) => aggregateBookImportProgress(progress, batchImportId, imports.length),
     imports.length,
-    (importId, progressiveUpdates) =>
+    (importId, onProgress) =>
       importTextPaths(imports, {
         importId,
-        progressiveUpdates,
+        onProgress,
       }),
   )
 }
@@ -242,12 +239,12 @@ export async function setupNativeOpenFiles({
         const batch = await runDirectTextImportBatch(epubPaths, textPaths, {
           onImportProgress,
           importEpubPhase: () => openExternalEpubPaths(epubPaths),
-          importTextPhase: (importId, progressiveUpdates) =>
+          importTextPhase: (importId, onProgress) =>
             importTextPaths(
               textPaths.map((path) => ({ path })),
               {
                 importId,
-                progressiveUpdates,
+                onProgress,
                 replaceExisting: false,
               },
             ),
@@ -333,20 +330,10 @@ function emptyBookImportResult(): BookImportResult {
   return { books: [], failures: [] }
 }
 
-async function prepareDirectTextImports(paths: string[]) {
-  if (!paths.length) return
-
-  try {
-    await previewTextImportPaths(paths)
-  } catch (error) {
-    console.debug('TXT import preparation is unavailable; the import phase will retry', error)
-  }
-}
-
 interface DirectTextImportBatchOptions {
   onImportProgress?: (progress: BookImportProgress) => void
-  importEpubPhase: (importId: string, progressiveUpdates: boolean) => Promise<BookImportResult>
-  importTextPhase: (importId: string, progressiveUpdates: boolean) => Promise<BookImportResult>
+  importEpubPhase: (importId: string, onProgress?: (progress: BookImportProgress) => void) => Promise<BookImportResult>
+  importTextPhase: (importId: string, onProgress?: (progress: BookImportProgress) => void) => Promise<BookImportResult>
 }
 
 async function runDirectTextImportBatch(
@@ -359,7 +346,6 @@ async function runDirectTextImportBatch(
 
   const batchImportId = createBookImportId()
   onImportProgress?.(initialBookImportProgress(batchImportId, total))
-  const textPreparation = prepareDirectTextImports(textPaths)
   let epubResult = emptyBookImportResult()
   if (epubPaths.length) {
     epubResult = await runBookImportPhase(
@@ -370,7 +356,6 @@ async function runDirectTextImportBatch(
     )
   }
 
-  await textPreparation
   let textResult = emptyBookImportResult()
   if (textPaths.length) {
     textResult = await runBookImportPhase(
@@ -415,37 +400,21 @@ async function runBookImportPhase(
   onImportProgress: ((progress: BookImportProgress) => void) | undefined,
   presentProgress: (progress: BookImportProgress) => BookImportProgress,
   total: number,
-  operation: (importId: string, progressiveUpdates: boolean) => Promise<BookImportResult>,
+  operation: (importId: string, onProgress?: (progress: BookImportProgress) => void) => Promise<BookImportResult>,
 ) {
   const importId = createBookImportId()
-  const unlisten = onImportProgress
-    ? await listenBookImportProgress(importId, (progress) => onImportProgress(presentProgress(progress)))
-    : undefined
-
-  try {
-    const result = await operation(importId, !!unlisten)
-    onImportProgress?.(
-      presentProgress({
-        importId,
-        total,
-        completed: total,
-        imported: result.books.length,
-        failed: result.failures.length,
-      }),
-    )
-    return result
-  } finally {
-    unlisten?.()
-  }
-}
-
-async function listenBookImportProgress(importId: string, onImportProgress: (progress: BookImportProgress) => void) {
-  const { listen } = await import('@tauri-apps/api/event')
-  return listen<BookImportProgress>(bookImportProgressEvent, (event) => {
-    const progress = event.payload
-    if (progress.importId !== importId) return
-
-    rememberBookImportProgress(progress)
-    onImportProgress(progress)
-  })
+  const result = await operation(
+    importId,
+    onImportProgress ? (progress) => onImportProgress(presentProgress(progress)) : undefined,
+  )
+  onImportProgress?.(
+    presentProgress({
+      importId,
+      total,
+      completed: total,
+      imported: result.books.length,
+      failed: result.failures.length,
+    }),
+  )
+  return result
 }

@@ -11,7 +11,6 @@ import PageList from './pagelist'
 import Rendition from './rendition'
 import Resources from './resources'
 import Spine from './spine'
-import Store from './store'
 import { EPUBJS_VERSION, EVENTS } from './utils/constants'
 import { extend, defer } from './utils/core'
 import Path from './utils/path'
@@ -187,7 +186,6 @@ function normalizeNavigationHrefsBySpine(items, readableHrefs, navPath) {
  * @param {string} [options.containerRootUrl] root URL that bounds resources in an unarchived EPUB container
  * @param {method} [options.canonical] optional function to determine canonical urls for a path
  * @param {string} [options.openAs] optional string to determine the input type
- * @param {string} [options.store=false] cache the contents in local storage, value should be the name of the reader
  * @returns {Book}
  * @example new Book("/path/to/book.epub", {})
  * @example new Book({ replacements: "blobUrl" })
@@ -214,7 +212,6 @@ class Book {
       containerRootUrl: undefined,
       canonical: undefined,
       openAs: undefined,
-      store: undefined,
     })
 
     extend(this.settings, options)
@@ -329,13 +326,6 @@ class Book {
     this.archive = undefined
 
     /**
-     * @member {Store} storage
-     * @memberof Book
-     * @private
-     */
-    this.storage = undefined
-
-    /**
      * @member {Resources} resources
      * @memberof Book
      * @private
@@ -371,10 +361,6 @@ class Book {
     this.displayOptions = undefined
 
     // this.toc = undefined;
-    if (this.settings.store) {
-      this.store(this.settings.store)
-    }
-
     if (url) {
       this.open(url, this.settings.openAs).catch((error) => {
         var err = new Error('Cannot load book at ' + url)
@@ -783,65 +769,6 @@ class Book {
   unarchive(input, encoding) {
     this.archive = new Archive()
     return this.archive.open(input, encoding)
-  }
-
-  /**
-   * Store the epubs contents
-   * @private
-   * @param  {binary} input epub data
-   * @param  {string} [encoding]
-   * @return {Store}
-   */
-  store(name) {
-    // Use "blobUrl" or "base64" for replacements
-    let replacementsSetting =
-      this.settings.replacements && this.settings.replacements !== 'none'
-    // Save original url
-    let originalUrl = this.url
-    // Save original request method
-    let requester = this.settings.requestMethod || request.bind(this)
-    // Create new Store
-    this.storage = new Store(name, requester, this.resolve.bind(this))
-    // Replace request method to go through store
-    this.request = this.storage.request.bind(this.storage)
-
-    this.opened.then(() => {
-      if (this.archived) {
-        this.storage.requester = this.archive.request.bind(this.archive)
-      }
-      // Substitute hook
-      let substituteResources = (output, section) => {
-        section.output = this.resources.substitute(output, section.url)
-        return this.resources
-          .substituteMissingMedia(section.output, section.url)
-          .then((output) => {
-            section.output = output
-          })
-      }
-
-      // Set to use replacements
-      this.resources.settings.replacements = replacementsSetting || 'blobUrl'
-      // Create replacement urls
-      this.resources.replacements().then(() => {
-        return this.resources.replaceCss()
-      })
-
-      this.storage.on('offline', () => {
-        // Remove url to use relative resolving for hrefs
-        this.url = new Url('/', '')
-        // Add hook to replace resources in contents
-        this.spine.hooks.serialize.register(substituteResources)
-      })
-
-      this.storage.on('online', () => {
-        // Restore original url
-        this.url = originalUrl
-        // Remove hook
-        this.spine.hooks.serialize.deregister(substituteResources)
-      })
-    })
-
-    return this.storage
   }
 
   /**
