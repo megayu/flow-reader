@@ -1,5 +1,7 @@
 import { Channel } from '@tauri-apps/api/core'
 
+import { RecentReadingModel } from '../library/recentReading'
+
 import { storagePathToUrl as filePathToUrl, invokeStorage as invoke } from './native'
 import type {
   BookCacheClearProgress,
@@ -33,7 +35,7 @@ interface NativeBookReaderSource {
 }
 
 type Listener = () => void
-type TableName = 'books' | 'covers' | 'pins' | 'settings' | 'tags'
+type TableName = 'books' | 'covers' | 'pins' | 'recentBooks' | 'settings' | 'tags'
 
 const listeners = new Map<TableName, Set<Listener>>()
 const bookCache = new Map<string, BookRecord>()
@@ -43,6 +45,10 @@ let booksListPromise: Promise<BookRecord[]> | undefined
 let coversCache: CoverRecord[] | undefined
 let tagsCache: LibraryTagRecord[] | undefined
 let pinsCache: LibraryPins | undefined
+const recentReading = new RecentReadingModel()
+let recentBooksLoaded = false
+let recentBooksPromise: Promise<string[]> | undefined
+let recentBooksChangedDuringLoad = false
 const pendingNativeWrites = new Set<Promise<unknown>>()
 
 function beginBooksMutation() {
@@ -194,6 +200,24 @@ async function updateLibraryPin(kind: 'author' | 'tag', id: string, pinned: bool
 
 function invalidatePins() {
   pinsCache = undefined
+}
+
+function loadRecentBooks() {
+  if (recentBooksLoaded) return Promise.resolve(recentReading.snapshot())
+  if (recentBooksPromise) return recentBooksPromise
+
+  const request = invoke<string[] | undefined>('get_recent_book_ids').then((ids) => {
+    const storedIds = ids ?? []
+    recentReading.replace(recentBooksChangedDuringLoad ? [...recentReading.snapshot(), ...storedIds] : storedIds)
+    recentBooksChangedDuringLoad = false
+    recentBooksLoaded = true
+    return recentReading.snapshot()
+  })
+  const tracked = request.finally(() => {
+    if (recentBooksPromise === tracked) recentBooksPromise = undefined
+  })
+  recentBooksPromise = tracked
+  return tracked
 }
 
 function withoutReadingSpread(configuration: BookRecord['configuration'] | undefined) {
@@ -501,6 +525,24 @@ export const db = {
     },
     async unpinTag(tagId: string) {
       return updateLibraryPin('tag', tagId, false)
+    },
+  },
+  recentBooks: {
+    get: loadRecentBooks,
+    peek() {
+      return recentBooksLoaded ? recentReading.snapshot() : undefined
+    },
+    beginSession(bookId: string, baselineCfi?: string) {
+      recentReading.beginSession(bookId, baselineCfi)
+    },
+    cancelSession(bookId: string) {
+      recentReading.cancelSession(bookId)
+    },
+    observePosition(bookId: string, cfi: string | undefined, userNavigation: boolean) {
+      if (!recentReading.observePosition(bookId, cfi, userNavigation)) return false
+      if (!recentBooksLoaded) recentBooksChangedDuringLoad = true
+      notify('recentBooks')
+      return true
     },
   },
   files: {

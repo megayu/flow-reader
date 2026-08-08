@@ -238,6 +238,23 @@ export const SettingsPanel: React.FC = () => {
                 />
               </Item>
               <Item
+                title={t('show_recent_books')}
+                description={t('show_recent_books.description')}
+                controlId="settings-show-recent-books"
+              >
+                <SettingsCheckbox
+                  id="settings-show-recent-books"
+                  label={t('show_recent_books')}
+                  checked={settings.showRecentBooks === true}
+                  onCheckedChange={(checked) => {
+                    setSettings((prev) => ({
+                      ...prev,
+                      showRecentBooks: checked,
+                    }))
+                  }}
+                />
+              </Item>
+              <Item
                 title={t('show_library_in_toc')}
                 description={t('show_library_in_toc.description')}
                 controlId="settings-show-library-in-toc"

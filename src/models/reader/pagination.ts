@@ -112,6 +112,7 @@ export interface LocationRequestIntent {
   anchorTarget?: string
   layoutKey?: string
   updateAnchor: boolean
+  userNavigation?: boolean
 }
 
 export interface SectionNavEntry {

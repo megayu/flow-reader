@@ -64,6 +64,7 @@ export class BookNavigationController {
       const navigation = tab.rendition?.prev()
       const requestId = tab.trackRenditionLocationRequest(previousRequestId, {
         updateAnchor: true,
+        userNavigation: true,
       })
       await navigation
       tab.commitPendingRenditionLocation(requestId)
@@ -82,6 +83,7 @@ export class BookNavigationController {
       const navigation = tab.rendition?.next()
       const requestId = tab.trackRenditionLocationRequest(previousRequestId, {
         updateAnchor: true,
+        userNavigation: true,
       })
       await navigation
       tab.commitPendingRenditionLocation(requestId)

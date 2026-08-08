@@ -15,6 +15,7 @@ import { openSupportedExternalUrl } from '@/externalLink'
 import { createId } from '@/id'
 import { normalizeHrefPath, sameHref } from '@/noteLinks'
 import { emitReaderOpenError, type ReaderOpenErrorStage } from '@/reader/errorEvents'
+import { isRecentReadingEnabled } from '@/state'
 import {
   type BookReaderSource,
   type BookRecord,
@@ -430,6 +431,7 @@ export class BookTab extends BaseTab {
         const requestId = this.trackRenditionLocationRequest(previousRequestId, {
           anchorTarget: resolvedTarget,
           updateAnchor: true,
+          userNavigation: true,
         })
         await display
         this.commitPendingRenditionLocation(requestId)
@@ -836,6 +838,7 @@ export class BookTab extends BaseTab {
 
         const currentSpreadState = snapshotReflowableSpread(this.rendition?.manager, this.layoutStyleSignature, loc)
         this.currentLocation = loc
+        this.observeRecentReadingLocation(loc, locationIntent)
         this.currentSpreadState = currentSpreadState
         if (locationIntent.updateAnchor) {
           this.spreadAnchorsByLayout.clear()
@@ -869,6 +872,7 @@ export class BookTab extends BaseTab {
 
     const currentSpreadState = snapshotReflowableSpread(this.rendition?.manager, this.layoutStyleSignature, loc)
     this.currentLocation = loc
+    this.observeRecentReadingLocation(loc, locationIntent)
     this.currentSpreadState = currentSpreadState
     if (locationIntent.updateAnchor) {
       this.spreadAnchorsByLayout.clear()
@@ -899,6 +903,23 @@ export class BookTab extends BaseTab {
     this.commitPaginationSnapshot(loc, percentage, activeSection)
     this.clearLocationIntent()
     this.rendered = true
+  }
+
+  beginRecentReadingSession() {
+    if (!isRecentReadingEnabled()) {
+      db.recentBooks.cancelSession(this.book.id)
+      return
+    }
+    const baselineCfi = this.rendered ? this.locationAnchorCfi() : undefined
+    db.recentBooks.beginSession(this.book.id, baselineCfi)
+  }
+
+  private observeRecentReadingLocation(location: Location, intent: LocationRequestIntent) {
+    if (!isRecentReadingEnabled()) {
+      db.recentBooks.cancelSession(this.book.id)
+      return
+    }
+    db.recentBooks.observePosition(this.book.id, this.locationAnchorCfi(location), intent.userNavigation === true)
   }
 
   private updateRuntimeAnchorCfi(location: Location, intent: LocationRequestIntent) {
@@ -1564,6 +1585,7 @@ export class BookTab extends BaseTab {
     } catch (error) {
       console.error(error)
     } finally {
+      db.recentBooks.cancelSession(this.book.id)
       await this.cacheActivation
       await setBookCacheActive(this.book.id, false).catch(console.error)
       this.destroyRendering()
@@ -2410,6 +2432,12 @@ export class Reader {
 
   openBookTab(book: BookRecord) {
     return this.addTab(book)
+  }
+
+  openBookFromLibrary(book: BookRecord) {
+    const tab = this.addTab(book)
+    if (tab instanceof BookTab) tab.beginRecentReadingSession()
+    return tab
   }
 
   addTab(param: TabParam | Tab, groupIdx = this.focusedIndex) {

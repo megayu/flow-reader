@@ -157,6 +157,16 @@ pub fn get_library_pins(storage: State<'_, AppStorage>) -> Result<LibraryPins, S
     Ok(state.library.pins.clone())
 }
 
+#[tauri::command]
+pub fn get_recent_book_ids(storage: State<'_, AppStorage>) -> Result<Vec<String>, String> {
+    let state = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?;
+    Ok(state.library.recent_book_ids.clone())
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LibraryPinKind {

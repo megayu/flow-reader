@@ -6,21 +6,28 @@ import { createRoot } from 'react-dom/client'
 
 import { FlowReader } from './app/FlowReader'
 import { reader } from './models/reader'
-import { initializeWindowUiState, snapshotWindowUiState, type WindowUiState } from './state'
+import { initializeWindowUiState, isRecentReadingEnabled, snapshotWindowUiState, type WindowUiState } from './state'
+import { db } from './storage/client'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Flow Reader root element was not found')
 const appRoot = root
 
 const windowUiStateReady = invoke<WindowUiState>('get_window_ui_state').then(initializeWindowUiState)
+const recentBooksReady = db.recentBooks.get().catch((error) => {
+  console.error(error)
+  return []
+})
 
 async function handleAppCloseRequested() {
   try {
     await windowUiStateReady
+    await recentBooksReady
     const readingPositions = await reader.collectAppCloseReadingPositions()
     await invoke('persist_app_close_state', {
       closeState: {
         readingPositions,
+        recentBookIds: isRecentReadingEnabled() ? db.recentBooks.peek() : undefined,
         window: snapshotWindowUiState(),
       },
     })

@@ -14,6 +14,7 @@ export const storageCommand = {
   getBook: 'get_book',
   getBookReaderSource: 'get_book_reader_source',
   getLibraryPins: 'get_library_pins',
+  getRecentBookIds: 'get_recent_book_ids',
   getSettings: 'get_settings',
   getTextImportEncodings: 'get_text_import_encodings',
   importEpubPaths: 'import_epub_paths',

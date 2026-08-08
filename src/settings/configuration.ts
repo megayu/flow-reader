@@ -19,6 +19,7 @@ export interface Settings extends TypographyConfiguration {
   hideEndnotes?: boolean
   restoreLastReadingOnStartup?: boolean
   showLibraryInToc?: boolean
+  showRecentBooks?: boolean
   showModifiedBookExportIndicator?: boolean
   importSourceStorage?: BookSourceStorage
   startupSession?: StartupSession
@@ -143,6 +144,7 @@ export const defaultSettings: Settings = {
   directTextImport: false,
   hideEndnotes: false,
   showLibraryInToc: true,
+  showRecentBooks: false,
   showModifiedBookExportIndicator: false,
   importSourceStorage: 'managed',
   libraryDisplay: defaultLibraryDisplay,

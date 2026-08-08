@@ -21,6 +21,8 @@ pub struct WindowUiState {
 pub struct AppCloseInput {
     window: WindowUiState,
     reading_positions: Vec<ReadingPositionInput>,
+    #[serde(default)]
+    recent_book_ids: Option<Vec<String>>,
 }
 
 pub fn restore_window_state(window: &WebviewWindow) {
@@ -96,6 +98,38 @@ pub fn runtime_window_ui_state(app: &AppHandle) -> Result<WindowUiState, String>
 pub fn persist_app_close_state(window: &Window, storage: &AppStorage, input: AppCloseInput) -> Result<(), String> {
     for position in input.reading_positions {
         record_reading_position_impl(storage, position)?;
+    }
+
+    let recent_books_changed = match input.recent_book_ids {
+        Some(recent_book_ids) => {
+            let mut state = storage
+                .inner
+                .state
+                .lock()
+                .map_err(|_| "storage state lock poisoned".to_string())?;
+            let library_book_ids = state
+                .library
+                .books
+                .iter()
+                .map(|book| book.id.clone())
+                .collect::<HashSet<_>>();
+            let mut seen = HashSet::new();
+            let recent_book_ids = recent_book_ids
+                .into_iter()
+                .filter(|id| library_book_ids.contains(id) && seen.insert(id.clone()))
+                .take(RECENT_BOOK_LIMIT)
+                .collect::<Vec<_>>();
+            if state.library.recent_book_ids == recent_book_ids {
+                false
+            } else {
+                state.library.recent_book_ids = recent_book_ids;
+                true
+            }
+        }
+        None => false,
+    };
+    if recent_books_changed {
+        storage.mark_library_dirty();
     }
 
     let runtime = window

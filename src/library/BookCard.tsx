@@ -7,6 +7,7 @@ import {
   FileX2Icon,
   InfoIcon,
   PencilIcon,
+  PlayIcon,
   TagIcon,
   Trash2Icon,
   TriangleAlertIcon,
@@ -59,6 +60,7 @@ interface BookCardProps {
   book: BookRecord
   cover?: string | null
   highlighted?: boolean
+  recent?: boolean
   select?: boolean
   selected?: boolean
   showModifiedExportIndicator: boolean
@@ -71,6 +73,7 @@ export const BookCard: React.FC<BookCardProps> = ({
   book,
   cover,
   highlighted,
+  recent,
   select,
   selected,
   showModifiedExportIndicator,
@@ -104,7 +107,7 @@ export const BookCard: React.FC<BookCardProps> = ({
       })
       return
     }
-    reader.addTab((await db.books.get(book.id)) ?? book)
+    reader.openBookFromLibrary((await db.books.get(book.id)) ?? book)
     onOpenBook()
   }, [book, notify, onOpenBook, sourceStatus, t])
 
@@ -318,6 +321,13 @@ export const BookCard: React.FC<BookCardProps> = ({
                 draggable={false}
                 loading="lazy"
               />
+              {recent && !select && (
+                <div className="pointer-events-none absolute inset-0 z-1 flex items-center justify-center bg-black/0 opacity-0 transition-[background-color,opacity] group-hover:bg-black/20 group-hover:opacity-100">
+                  <span className="flex size-12 items-center justify-center rounded-full bg-black/65 text-white shadow-md ring-1 ring-white/50">
+                    <PlayIcon aria-hidden className="size-6 fill-current" strokeWidth={1.8} />
+                  </span>
+                </div>
+              )}
               {isBookSourceUnavailable(sourceStatus) && (
                 <AppTooltip
                   label={t('source_unavailable')}

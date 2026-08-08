@@ -1773,6 +1773,7 @@ mod tests {
                         books,
                         tags: Vec::new(),
                         pins: LibraryPins::default(),
+                        recent_book_ids: Vec::new(),
                     },
                     external: ExternalBookIndex::default(),
                     settings: json!({}),

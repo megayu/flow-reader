@@ -289,6 +289,7 @@ pub fn run() {
             storage::reveal_exported_file,
             storage::list_tags,
             storage::get_library_pins,
+            storage::get_recent_book_ids,
             storage::update_library_pin,
             storage::create_tag,
             storage::update_tag,

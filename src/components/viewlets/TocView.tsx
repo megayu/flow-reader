@@ -103,7 +103,7 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
               aria-current={active ? 'true' : undefined}
               draggable
               onClick={() => {
-                reader.addTab(book)
+                reader.openBookFromLibrary(book)
                 setViewMode('reader')
               }}
               onDragStart={(e) => {

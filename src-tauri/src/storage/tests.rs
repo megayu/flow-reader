@@ -209,6 +209,7 @@ fn test_storage_with_books(root: &Path, books: Vec<LibraryBook>) -> AppStorage {
                     books,
                     tags: Vec::new(),
                     pins: LibraryPins::default(),
+                    recent_book_ids: Vec::new(),
                 },
                 external: ExternalBookIndex::default(),
                 settings: json!({}),

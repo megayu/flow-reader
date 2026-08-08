@@ -22,6 +22,8 @@ pub(super) struct Library {
     pub(super) tags: Vec<LibraryTagRecord>,
     #[serde(default)]
     pub(super) pins: LibraryPins,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(super) recent_book_ids: Vec<String>,
 }
 
 fn library_version() -> u32 {
@@ -35,6 +37,7 @@ impl Default for Library {
             books: Vec::new(),
             tags: Vec::new(),
             pins: LibraryPins::default(),
+            recent_book_ids: Vec::new(),
         }
     }
 }

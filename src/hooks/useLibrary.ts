@@ -110,3 +110,32 @@ export function useLibraryPins() {
 
   return pins
 }
+
+export function useRecentBookIds(enabled = true) {
+  const [bookIds, setBookIds] = useState<string[] | undefined>(() => db.recentBooks.peek())
+
+  useEffect(() => {
+    if (!enabled) return
+
+    let disposed = false
+
+    const load = () => {
+      db.recentBooks
+        .get()
+        .then((ids) => {
+          if (!disposed) setBookIds(ids)
+        })
+        .catch(console.error)
+    }
+
+    load()
+    const unsubscribe = db.subscribe('recentBooks', load)
+
+    return () => {
+      disposed = true
+      unsubscribe()
+    }
+  }, [enabled])
+
+  return bookIds
+}

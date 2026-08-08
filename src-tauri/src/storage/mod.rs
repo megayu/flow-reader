@@ -113,6 +113,7 @@ const BOOKS_DIR: &str = "books";
 const EXTERNAL_BOOKS_DIR: &str = "external-books";
 const PENDING_DELETE_PREFIX: &str = ".del-";
 const LIBRARY_FILE: &str = "library.json";
+const RECENT_BOOK_LIMIT: usize = 10;
 const EXTERNAL_INDEX_FILE: &str = "index.json";
 const SETTINGS_FILE: &str = "settings.json";
 const BOOK_FILE: &str = "book.epub";
@@ -537,6 +538,7 @@ fn clone_library(library: &Library) -> Library {
         books: library.books.clone(),
         tags: library.tags.clone(),
         pins: library.pins.clone(),
+        recent_book_ids: library.recent_book_ids.clone(),
     }
 }
 

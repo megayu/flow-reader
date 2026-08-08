@@ -45,7 +45,7 @@ import {
 } from '../file'
 import { useLibraryAction } from '../hooks/useAction'
 import { useBookImportNotifications } from '../hooks/useBookImportNotifications'
-import { useCovers, useLibrary, useLibraryTags } from '../hooks/useLibrary'
+import { useCovers, useLibrary, useLibraryTags, useRecentBookIds } from '../hooks/useLibrary'
 import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import { reader, useReaderSnapshot } from '../models/reader'
@@ -502,11 +502,14 @@ const Library: React.FC<LibraryProps> = ({
   const errorT = useTranslation('error')
   const notify = useNotify()
   const [settings, setSettings] = useSettings()
+  const recentBookIds = useRecentBookIds(settings.showRecentBooks === true)
   const sortField = settings.librarySort?.field ?? defaultLibrarySort.field
   const sortDirection = settings.librarySort?.direction ?? defaultLibrarySort.direction
   const bookCardWidth = normalizeLibraryBookCardWidth(
     settings.libraryDisplay?.bookCardWidth ?? defaultLibraryDisplay.bookCardWidth,
   )
+  const bookCardGap = clamp(Math.round(bookCardWidth * 0.08), 10, 20)
+  const bookGridPadding = clamp(Math.round(bookCardWidth * 0.04), 4, 10)
   const [statusFilters, setStatusFilters] = useLibraryStatusFilter()
   const [authorFilters] = useLibraryAuthorFilter()
   const [tagFilters] = useLibraryTagFilter()
@@ -519,6 +522,8 @@ const Library: React.FC<LibraryProps> = ({
   const [batchTagsOpen, setBatchTagsOpen] = useState(false)
   const [deleteBooksOpen, setDeleteBooksOpen] = useState(false)
   const [folderImportPath, setFolderImportPath] = useState<string>()
+  const [recentBookCapacity, setRecentBookCapacity] = useState(0)
+  const libraryViewportRef = useRef<HTMLDivElement>(null)
   const selectionAnchorIdRef = useRef<string | undefined>(undefined)
   const rangeSelectionSessionRef = useRef<LibraryRangeSelectionSession | undefined>(undefined)
   const sortedBooks = useMemo(
@@ -532,6 +537,13 @@ const Library: React.FC<LibraryProps> = ({
     [authorFilters, books, sortDirection, sortField, statusFilters, tagFilters],
   )
   const visibleBookIds = useMemo(() => sortedBooks.map((book) => book.id), [sortedBooks])
+  const recentBooks = useMemo(() => {
+    const booksById = new Map((books ?? []).map((book) => [book.id, book]))
+    return (recentBookIds ?? []).flatMap((bookId) => {
+      const book = booksById.get(bookId)
+      return book ? [book] : []
+    })
+  }, [books, recentBookIds])
   const coversById = useMemo(() => new Map(covers?.map((cover) => [cover.id, cover.cover])), [covers])
   const selectedBooks = sortedBooks.filter((book) => selectedBookIds.has(book.id))
   const openSelectedBookCount = selectedBooks.filter((book) => openBookIds.has(book.id)).length
@@ -545,6 +557,30 @@ const Library: React.FC<LibraryProps> = ({
       }, []),
     [books],
   )
+  useEffect(() => {
+    if (!settings.showRecentBooks || select || !recentBooks.length) {
+      setRecentBookCapacity(0)
+      return
+    }
+
+    const viewport = libraryViewportRef.current
+    if (!viewport) return
+
+    const updateCapacity = (width: number) => {
+      const availableWidth = Math.max(0, width - bookGridPadding * 2)
+      const capacity = Math.max(1, Math.floor((availableWidth + bookCardGap) / (bookCardWidth + bookCardGap)))
+      setRecentBookCapacity((current) => (current === capacity ? current : capacity))
+    }
+    updateCapacity(viewport.clientWidth)
+
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) updateCapacity(entry.contentRect.width)
+    })
+    observer.observe(viewport)
+    return () => observer.disconnect()
+  }, [bookCardGap, bookCardWidth, bookGridPadding, recentBooks.length, select, settings.showRecentBooks])
+
   useEffect(() => {
     if (!referencedArchiveIds.length) {
       setSourceStatuses((current) => (current.size ? new Map<string, BookSourceStatus>() : current))
@@ -875,8 +911,6 @@ const Library: React.FC<LibraryProps> = ({
     : sortedBooks.length === books.length
       ? t('book_count.total')
       : t('book_count.filtered')
-  const bookCardGap = clamp(Math.round(bookCardWidth * 0.08), 10, 20)
-  const bookGridPadding = clamp(Math.round(bookCardWidth * 0.04), 4, 10)
   const bookGridStyle = {
     gridTemplateColumns: `repeat(auto-fill, minmax(${bookCardWidth}px, 1fr))`,
     columnGap: `${bookCardGap}px`,
@@ -1141,7 +1175,25 @@ const Library: React.FC<LibraryProps> = ({
         </div>
       </div>
 
-      <div className="scroll min-h-0 flex-1">
+      <div ref={libraryViewportRef} className="scroll min-h-0 flex-1">
+        {settings.showRecentBooks && !select && recentBookCapacity > 0 && recentBooks.length > 0 && (
+          <section data-flow-library-recent-books className="border-border/60 mb-2 border-b pb-2">
+            <ul className="grid" style={bookGridStyle}>
+              {recentBooks.slice(0, recentBookCapacity).map((book) => (
+                <BookCard
+                  key={`recent-${book.id}`}
+                  book={book}
+                  sourceStatus={sourceStatuses.get(book.id)}
+                  cover={coversById.get(book.id)}
+                  recent
+                  showModifiedExportIndicator={settings.showModifiedBookExportIndicator === true}
+                  onSelectBook={selectBook}
+                  onOpenBook={onOpenBook}
+                />
+              ))}
+            </ul>
+          </section>
+        )}
         <ul className="grid" style={bookGridStyle}>
           {sortedBooks.map((book) => (
             <BookCard
