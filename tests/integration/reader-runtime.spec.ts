@@ -1687,7 +1687,7 @@ test('reloads an imported replacement now for the active tab and on activation f
   await openFixtureBookByName(page, 'Tab Layout B')
   await waitForStableReaderLayout(page)
 
-  const immediate = await page.evaluate(() => {
+  const immediate = await page.evaluate(async () => {
     const reader = (window as any).reader
     const [inactiveTab, activeTab] = reader.focusedGroup.bookTabs
     if (!inactiveTab?.rendition || !activeTab?.rendition) {
@@ -1698,7 +1698,7 @@ test('reloads an imported replacement now for the active tab and on activation f
       inactiveRendition: inactiveTab.rendition,
       activeRendition: activeTab.rendition,
     }
-    reader.refreshImportedBooks([
+    const replacements = [
       {
         ...inactiveTab.book,
         contentHash: 'replacement-a',
@@ -1709,7 +1709,21 @@ test('reloads an imported replacement now for the active tab and on activation f
         contentHash: 'replacement-b',
         contentVersion: (activeTab.book.contentVersion ?? 0) + 1,
       },
-    ])
+    ]
+    const invoke = (window as any).__TAURI_INTERNALS__?.invoke
+    if (!invoke) throw new Error('Missing Tauri invoke mock')
+    await Promise.all(
+      replacements.map((book) =>
+        invoke('update_book', {
+          id: book.id,
+          changes: {
+            contentHash: book.contentHash,
+            contentVersion: book.contentVersion,
+          },
+        }),
+      ),
+    )
+    reader.refreshImportedBooks(replacements)
 
     return {
       activeRenditionCleared: !activeTab.rendition,
