@@ -25,6 +25,7 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 import { AppTooltip } from '../components/AppTooltip'
 import { DropZone } from '../components/base/DropZone'
 import { ReaderGridView } from '../components/Reader'
+import { ReadingStatusIcon } from '../components/ReadingStatusIcon'
 import { TextImportDialog } from '../components/TextImportDialog'
 import { TooltipButton } from '../components/TooltipButton'
 import { Button as UiButton } from '../components/ui/button'
@@ -75,6 +76,7 @@ import {
   db,
   type TextImportSelection,
 } from '../storage'
+import type { ReadingStatus } from '../storage/types'
 import { clamp } from '../utils'
 
 import { BookCard } from './BookCard'
@@ -92,6 +94,7 @@ import {
   toggleReadingStatusFilter,
   toggleSortDirection,
 } from './model'
+import { ReadingStatusMenuContent } from './ReadingStatusControls'
 import {
   getBookIdRange,
   type LibraryBookSelectionEvent,
@@ -547,6 +550,12 @@ const Library: React.FC<LibraryProps> = ({
   const coversById = useMemo(() => new Map(covers?.map((cover) => [cover.id, cover.cover])), [covers])
   const selectedBooks = sortedBooks.filter((book) => selectedBookIds.has(book.id))
   const openSelectedBookCount = selectedBooks.filter((book) => openBookIds.has(book.id)).length
+  const updateSelectedReadingStatus = (readingStatus: ReadingStatus | null) => {
+    void db.books.updateReadingStatus(
+      selectedBooks.map((book) => book.id),
+      readingStatus,
+    )
+  }
   const referencedArchiveIds = useMemo(
     () =>
       (books ?? []).reduce<string[]>((ids, book) => {
@@ -1124,6 +1133,23 @@ const Library: React.FC<LibraryProps> = ({
           <div className="space-x-2">
             {select ? (
               <>
+                <DropdownMenu modal={false}>
+                  <AppTooltip label={t('reading_status.batch_change')}>
+                    <DropdownMenuTrigger asChild>
+                      <UiButton
+                        variant="secondary"
+                        className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
+                        disabled={!selectedBooks.length}
+                        aria-label={t('reading_status.batch_change')}
+                      >
+                        <ReadingStatusIcon intent="edit" status={null} />
+                        <span className="leading-none">{t('reading_status.label')}</span>
+                        <ChevronDownIcon aria-hidden className="size-3.5" />
+                      </UiButton>
+                    </DropdownMenuTrigger>
+                  </AppTooltip>
+                  <ReadingStatusMenuContent align="end" onChange={updateSelectedReadingStatus} />
+                </DropdownMenu>
                 <TooltipButton
                   variant="secondary"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}

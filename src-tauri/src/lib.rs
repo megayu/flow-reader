@@ -294,6 +294,7 @@ pub fn run() {
             storage::create_tag,
             storage::update_tag,
             storage::delete_tag,
+            storage::update_book_reading_status,
             storage::update_book_tags,
             storage::apply_folder_import_tags,
             storage::list_covers,

@@ -34,6 +34,7 @@ export const storageCommand = {
   searchBookText: 'search_book_text',
   setBookCacheActive: 'set_book_cache_active',
   updateBook: 'update_book',
+  updateBookReadingStatus: 'update_book_reading_status',
   updateBookTags: 'update_book_tags',
   updateLibraryPin: 'update_library_pin',
   updateSettings: 'update_settings',

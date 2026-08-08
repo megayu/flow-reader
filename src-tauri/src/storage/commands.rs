@@ -16,6 +16,7 @@ use crate::{
     tasks::{TaskPriority, TaskService},
 };
 
+use super::model::ReadingStatus;
 use super::*;
 
 pub(super) fn clean_tag_name(value: &str) -> String {
@@ -379,6 +380,32 @@ pub fn update_book_tags(
                 if existing_tags.contains(tag_id) && !book.tag_ids.contains(tag_id) {
                     book.tag_ids.push(tag_id.clone());
                 }
+            }
+        }
+    }
+
+    storage.mark_library_dirty();
+    storage.flush_dirty()
+}
+
+#[tauri::command]
+pub fn update_book_reading_status(
+    storage: State<'_, AppStorage>,
+    ids: Vec<String>,
+    reading_status: Option<ReadingStatus>,
+) -> Result<(), String> {
+    let id_set = ids.into_iter().collect::<std::collections::HashSet<_>>();
+
+    {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+
+        for book in &mut state.library.books {
+            if id_set.contains(&book.id) {
+                book.reading_status = reading_status.clone();
             }
         }
     }

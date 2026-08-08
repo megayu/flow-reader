@@ -22,6 +22,7 @@ import type {
   LibraryPins,
   LibraryTagRecord,
   ReadingPositionInput,
+  ReadingStatus,
   TextImportEncodingOption,
   TextImportPreview,
   TextImportSelection,
@@ -435,6 +436,21 @@ export const db = {
     },
     async delete(id: string) {
       await this.bulkDelete([id])
+    },
+    async updateReadingStatus(ids: string[], readingStatus: ReadingStatus | null) {
+      beginBooksMutation()
+      const books = ids.flatMap((id) => {
+        const book = bookCache.get(id)
+        return book ? [{ ...book, readingStatus }] : []
+      })
+      await trackNativeWrite(
+        invoke<void>('update_book_reading_status', {
+          ids,
+          readingStatus,
+        }),
+      )
+      rememberBookBatch(books)
+      notify('books')
     },
     async updateTags(
       ids: string[],

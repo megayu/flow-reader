@@ -4,7 +4,12 @@ import type React from 'react'
 
 import { AppTooltip } from '../components/AppTooltip'
 import { ReadingStatusIcon } from '../components/ReadingStatusIcon'
-import { DropdownMenuItemIndicator, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '../components/ui/menu'
+import {
+  DropdownMenuContent,
+  DropdownMenuItemIndicator,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from '../components/ui/menu'
 import { useTranslation } from '../hooks/useTranslation'
 import { toMessageKeySegment } from '../locales'
 import type { ReadingStatus } from '../storage'
@@ -58,12 +63,29 @@ export const ReadingStatusBadge: React.FC<{
   return <AppTooltip label={title}>{badge}</AppTooltip>
 }
 
-export const ReadingStatusMenu: React.FC<{
-  status: ReadingStatus | null
+export const ReadingStatusMenuContent: React.FC<{
+  align?: 'start' | 'center' | 'end'
+  status?: ReadingStatus | null
+  onChange: (status: ReadingStatus | null) => void
+}> = ({ align = 'start', status, onChange }) => (
+  <DropdownMenuContent
+    align={align}
+    side="bottom"
+    sideOffset={4}
+    className="w-max max-w-[calc(100vw-2rem)]"
+    onClick={(event) => event.stopPropagation()}
+    onPointerDown={(event) => event.stopPropagation()}
+  >
+    <ReadingStatusMenu status={status} onChange={onChange} />
+  </DropdownMenuContent>
+)
+
+const ReadingStatusMenu: React.FC<{
+  status?: ReadingStatus | null
   onChange: (status: ReadingStatus | null) => void
 }> = ({ status, onChange }) => {
   const t = useTranslation('home')
-  const selectedValue = status ?? 'unmarked'
+  const selectedValue = status === undefined ? '' : (status ?? 'unmarked')
 
   return (
     <DropdownMenuRadioGroup className="flex flex-col gap-0.5" value={selectedValue}>

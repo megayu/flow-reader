@@ -27,7 +27,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuTrigger,
 } from '../components/ui/menu'
 import { useNotify } from '../components/ui/notificationContext'
@@ -51,7 +50,7 @@ import {
   isBookSourceUnavailable,
   readingStatusEditButtonClassName,
 } from './model'
-import { BookProgress, ReadingStatusBadge, ReadingStatusMenu } from './ReadingStatusControls'
+import { BookProgress, ReadingStatusBadge, ReadingStatusMenuContent } from './ReadingStatusControls'
 import type { LibraryBookSelectionEvent } from './selection'
 
 const placeholder = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect fill="gray" fill-opacity="0" width="1" height="1"/></svg>`
@@ -299,17 +298,7 @@ export const BookCard: React.FC<BookCardProps> = ({
                         </button>
                       </DropdownMenuTrigger>
                     </AppTooltip>
-                    <DropdownMenuContent
-                      align="start"
-                      side="bottom"
-                      sideOffset={4}
-                      className="w-36 p-1 text-base"
-                      style={{ fontSize: 'var(--app-font-size-md)' }}
-                      onClick={(event) => event.stopPropagation()}
-                      onPointerDown={(event) => event.stopPropagation()}
-                    >
-                      <ReadingStatusMenu status={book.readingStatus ?? null} onChange={updateReadingStatus} />
-                    </DropdownMenuContent>
+                    <ReadingStatusMenuContent status={book.readingStatus ?? null} onChange={updateReadingStatus} />
                   </div>
                 </DropdownMenu>
               )}

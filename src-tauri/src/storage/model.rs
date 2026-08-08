@@ -207,7 +207,7 @@ pub struct CoverInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) enum ReadingStatus {
+pub(crate) enum ReadingStatus {
     ToRead,
     Reading,
     Read,
