@@ -7,11 +7,12 @@ import { ConfirmDialog } from '../components/ui/confirm-dialog'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import { formatLocalDirectoryForDisplay } from '../dictionary/path'
-import { useLibraryTags } from '../hooks/useLibrary'
+import { useLibraryPins, useLibraryTags } from '../hooks/useLibrary'
 import { useTranslation } from '../hooks/useTranslation'
 import { type BookRecord, db, type LibraryTagRecord } from '../storage'
 
-import { cleanLibraryTagName, sameLibraryTagName } from './filters'
+import { cleanLibraryTagName, orderLibraryTags, sameLibraryTagName } from './filters'
+import { LibraryFilterChipButton, libraryFilterOptionsClassName } from './LibraryFilterChipButton'
 import {
   cleanBookDescription,
   formatDateTime,
@@ -26,12 +27,6 @@ interface BookDialogProps {
   book: BookRecord
   onClose: () => void
 }
-
-const tagPickerChipClassName = 'h-8 max-w-full justify-start gap-1.5 px-3 text-base leading-none'
-const tagPickerInactiveChipClassName =
-  'bg-transparent text-(--flow-text) ring-1 ring-(--flow-sidebar-item-border) ring-inset hover:bg-(--flow-sidebar-item-bg-hover)'
-const tagPickerPartialChipClassName =
-  'bg-(--flow-sidebar-item-bg-hover) text-(--flow-text) ring-1 ring-(--flow-accent)/60 ring-inset hover:bg-(--flow-sidebar-item-bg-hover)'
 
 type TagSelectionState = 'none' | 'partial' | 'selected'
 
@@ -59,9 +54,14 @@ const TagSelectionEditor: React.FC<TagSelectionEditorProps> = ({
   temporaryTags,
 }) => {
   const t = useTranslation('home')
+  const pins = useLibraryPins()
   const [newTagName, setNewTagName] = useState('')
   const temporaryTagIndexRef = useRef(0)
-  const visibleTags = useMemo(() => mergeLibraryTags(tags, temporaryTags), [tags, temporaryTags])
+  const visibleTags = useMemo(
+    () => orderLibraryTags(mergeLibraryTags(tags, temporaryTags), pins?.tagIds),
+    [pins?.tagIds, tags, temporaryTags],
+  )
+  const pinnedTagIds = useMemo(() => new Set(pins?.tagIds ?? []), [pins?.tagIds])
   const cleanName = cleanLibraryTagName(newTagName)
 
   const addTag = () => {
@@ -117,7 +117,7 @@ const TagSelectionEditor: React.FC<TagSelectionEditorProps> = ({
       </div>
 
       {visibleTags.length > 0 && (
-        <div className="flex min-w-0 flex-wrap gap-1.5">
+        <div className={libraryFilterOptionsClassName}>
           {visibleTags.map((tag) => {
             const state: TagSelectionState = selectedTagIds.has(tag.id)
               ? 'selected'
@@ -126,22 +126,14 @@ const TagSelectionEditor: React.FC<TagSelectionEditorProps> = ({
                 : 'none'
 
             return (
-              <UiButton
+              <LibraryFilterChipButton
                 key={tag.id}
-                type="button"
-                size="sm"
-                variant={state === 'selected' ? 'default' : 'secondary'}
+                state={state === 'selected' ? 'active' : state === 'partial' ? 'partial' : 'inactive'}
+                label={tag.name}
+                pinned={pinnedTagIds.has(tag.id)}
                 aria-pressed={state === 'partial' ? 'mixed' : state === 'selected'}
-                title={tag.name}
-                className={clsx(
-                  tagPickerChipClassName,
-                  state === 'partial' && tagPickerPartialChipClassName,
-                  state === 'none' && tagPickerInactiveChipClassName,
-                )}
                 onClick={() => onToggleTag(tag.id)}
-              >
-                <span className="min-w-0 truncate leading-none">{tag.name}</span>
-              </UiButton>
+              />
             )
           })}
         </div>

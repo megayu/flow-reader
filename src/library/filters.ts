@@ -29,6 +29,15 @@ export function sameLibraryTagName(a: string, b: string) {
   return cleanLibraryTagName(a).toLocaleLowerCase() === cleanLibraryTagName(b).toLocaleLowerCase()
 }
 
+export function orderLibraryTags(tags: LibraryTagRecord[], pinnedTags: string[] = []) {
+  const sortedTags = [...tags].sort((a, b) => authorCollator.compare(a.name, b.name))
+  const tagById = new Map(sortedTags.map((tag) => [tag.id, tag]))
+  const pinned = uniqueStrings(pinnedTags).filter((tagId) => tagById.has(tagId))
+  const pinnedSet = new Set(pinned)
+
+  return [...pinned.map((tagId) => tagById.get(tagId)!), ...sortedTags.filter((tag) => !pinnedSet.has(tag.id))]
+}
+
 export function matchesLibraryStatusFilter(book: BookRecord, statusFilters: ReadingStatus[]) {
   if (!statusFilters.length) return true
 
@@ -101,24 +110,12 @@ export function getLibraryTagOptions(
     })
   })
 
-  const sortedTags = Array.from(availableTagIds)
-    .map((tagId) => tagById.get(tagId)!)
-    .sort((a, b) => authorCollator.compare(a.name, b.name))
-  const availableTags = new Set(sortedTags.map((tag) => tag.id))
-  const pinned = uniqueStrings(pinnedTags).filter((tagId) => availableTags.has(tagId))
-  const pinnedSet = new Set(pinned)
+  const pinnedSet = new Set(uniqueStrings(pinnedTags))
 
-  const options: LibraryTagOption[] = []
-  for (const id of pinned) {
-    const tag = tagById.get(id)
-    if (tag) options.push({ id: tag.id, name: tag.name, pinned: true })
-  }
-  for (const tag of sortedTags) {
-    if (!pinnedSet.has(tag.id)) {
-      options.push({ id: tag.id, name: tag.name, pinned: false })
-    }
-  }
-  return options
+  return orderLibraryTags(
+    Array.from(availableTagIds).map((tagId) => tagById.get(tagId)!),
+    pinnedTags,
+  ).map((tag) => ({ id: tag.id, name: tag.name, pinned: pinnedSet.has(tag.id) }))
 }
 
 export function pruneLibraryTagFilters(tagFilters: string[], tagOptions: LibraryTagOption[]) {

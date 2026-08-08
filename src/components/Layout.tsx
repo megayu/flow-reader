@@ -57,6 +57,12 @@ import {
   toggleLibraryAuthorFilter,
   toggleLibraryTagFilter,
 } from '../library/filters'
+import {
+  LibraryFilterChipButton,
+  libraryFilterChipClassName,
+  libraryFilterInactiveChipClassName,
+  libraryFilterOptionsClassName,
+} from '../library/LibraryFilterChipButton'
 import { toMessageKeySegment } from '../locales'
 import { useReaderSnapshot } from '../models/reader'
 import { getShortcutChords, type ShortcutActionId } from '../shortcuts'
@@ -631,10 +637,6 @@ const libraryStatusOptions = ['toRead', 'reading', 'read'] as const
 const libraryFilterPanelClassName =
   'rounded-md bg-(--flow-sidebar-item-bg)/70 p-1.5 ring-(--flow-sidebar-item-border) ring-inset'
 const libraryFilterPanelHeaderClassName = 'mb-1 flex h-7 shrink-0 items-center gap-0.5'
-const libraryFilterOptionsClassName = 'flex min-w-0 flex-wrap gap-1'
-const libraryFilterChipClassName = 'h-7 max-w-full min-w-0 gap-1 px-1.5 text-sm leading-tight'
-const libraryFilterInactiveChipClassName =
-  'bg-transparent text-(--flow-text) ring-1 ring-(--flow-sidebar-item-border) ring-inset hover:bg-(--flow-sidebar-item-bg-hover)'
 const libraryFilterSectionHeaderClassName = 'text-(--flow-text) text-base leading-none font-semibold'
 const libraryFilterIconButtonClassName = 'size-7 rounded-md text-(--flow-text-muted) hover:text-(--flow-text)'
 const libraryFilterSectionIconButtonClassName = 'size-7 rounded-md text-(--flow-text-muted) hover:text-(--flow-text)'
@@ -1407,57 +1409,23 @@ const LibraryFilterChip = memo(function LibraryFilterChip({
   unpinLabel,
   value,
 }: LibraryFilterChipProps) {
-  const labelRef = useRef<HTMLSpanElement>(null)
-
-  const updateOverflowTitle = useCallback(
-    (button: HTMLButtonElement) => {
-      const labelElement = labelRef.current
-      if (!labelElement) return
-
-      button.title = labelElement.scrollWidth > labelElement.clientWidth ? label : ''
-    },
-    [label],
-  )
-
-  useLayoutEffect(() => {
-    const labelElement = labelRef.current
-    const button = labelElement?.closest('button')
-    if (button instanceof HTMLButtonElement) updateOverflowTitle(button)
-  }, [updateOverflowTitle])
-
   return (
     <div className="relative max-w-full min-w-0">
       <ContextMenu modal={false}>
         <ContextMenuTrigger asChild>
-          <UiButton
-            type="button"
-            size="sm"
-            variant={active ? 'default' : 'secondary'}
+          <LibraryFilterChipButton
+            state={active ? 'active' : 'inactive'}
+            label={label}
+            labelTestId={labelTestId}
+            pinned={pinned}
             aria-pressed={active}
-            aria-label={label}
             data-testid={testId}
             data-value={value}
-            className={clsx(
-              libraryFilterChipClassName,
-              'max-w-full justify-start',
-              !active && libraryFilterInactiveChipClassName,
-            )}
             onPointerDown={(event) => {
               if (preserveInputFocus && event.button === 0) event.preventDefault()
             }}
-            onPointerEnter={(event) => updateOverflowTitle(event.currentTarget)}
             onClick={() => onToggle(value)}
-          >
-            {pinned && (
-              <PinIcon
-                aria-hidden
-                className={clsx('size-3.5', active ? 'text-primary-foreground' : 'text-muted-foreground')}
-              />
-            )}
-            <span ref={labelRef} className="min-w-0 truncate leading-tight" data-testid={labelTestId}>
-              {label}
-            </span>
-          </UiButton>
+          />
         </ContextMenuTrigger>
         <ContextMenuContent data-testid={contextMenuTestId}>
           <LibraryFilterContextMenuItem
