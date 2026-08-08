@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import {
   type ComponentProps,
+  type KeyboardEventHandler,
   memo,
   type PropsWithChildren,
   type ReactNode,
@@ -821,6 +822,11 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     requestAnimationFrame(() => newTagInputRef.current?.focus())
   }, [newTagName, tags])
 
+  const exitTagCreation = useCallback(() => {
+    setCreatingTag(false)
+    setNewTagName('')
+  }, [])
+
   const toggleAuthor = useCallback(
     (author: string) => {
       setAuthorFilters((current) => toggleLibraryAuthorFilter(current, author))
@@ -1031,6 +1037,24 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
           resetDisabled={!tagFilters.length}
           onReset={resetTags}
           testId="library-tag-section"
+          editor={
+            creatingTag
+              ? {
+                  Icon: PlusIcon,
+                  inputRef: newTagInputRef,
+                  label: t('library_filter.new_tag'),
+                  value: newTagName,
+                  onExit: exitTagCreation,
+                  onValueChange: setNewTagName,
+                  onKeyDown: (event) => {
+                    if (event.key !== 'Enter') return
+
+                    event.preventDefault()
+                    void createGlobalTag()
+                  },
+                }
+              : undefined
+          }
           actions={
             <AppTooltip label={t('library_filter.new_tag')}>
               <UiButton
@@ -1050,56 +1074,32 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
             </AppTooltip>
           }
         >
-          {tagsExpanded && (
-            <>
-              {creatingTag && (
-                <div className="mb-1">
-                  <Input
-                    ref={newTagInputRef}
-                    aria-label={t('library_filter.new_tag')}
-                    value={newTagName}
-                    onValueChange={setNewTagName}
-                    onExitEditing={() => {
-                      setCreatingTag(false)
-                      setNewTagName('')
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key !== 'Enter') return
-
-                      e.preventDefault()
-                      void createGlobalTag()
-                    }}
-                    className="focus-visible:border-input h-7 rounded-md px-2 text-sm focus-visible:ring-0"
+          {tagsExpanded &&
+            (visibleTagOptions.length ? (
+              <div className={libraryFilterOptionsClassName}>
+                {visibleTagOptions.map((option) => (
+                  <LibraryFilterChip
+                    key={option.id}
+                    value={option.id}
+                    active={selectedTagIds.has(option.id)}
+                    preserveInputFocus={facetSearch?.target === 'tag'}
+                    label={option.name}
+                    pinned={option.pinned}
+                    testId="library-tag-chip"
+                    labelTestId="library-tag-chip-label"
+                    contextMenuTestId="library-tag-context-menu"
+                    onToggle={toggleTag}
+                    pinLabel={t('library_filter.pin_tag')}
+                    unpinLabel={t('library_filter.unpin_tag')}
+                    onPin={pinTag}
+                    onUnpin={unpinTag}
+                    menuItems={tagMenuItems}
                   />
-                </div>
-              )}
-              {visibleTagOptions.length ? (
-                <div className={libraryFilterOptionsClassName}>
-                  {visibleTagOptions.map((option) => (
-                    <LibraryFilterChip
-                      key={option.id}
-                      value={option.id}
-                      active={selectedTagIds.has(option.id)}
-                      preserveInputFocus={facetSearch?.target === 'tag'}
-                      label={option.name}
-                      pinned={option.pinned}
-                      testId="library-tag-chip"
-                      labelTestId="library-tag-chip-label"
-                      contextMenuTestId="library-tag-context-menu"
-                      onToggle={toggleTag}
-                      pinLabel={t('library_filter.pin_tag')}
-                      unpinLabel={t('library_filter.unpin_tag')}
-                      onPin={pinTag}
-                      onUnpin={unpinTag}
-                      menuItems={tagMenuItems}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="text-muted-foreground py-0.5 text-sm leading-tight">{t('library_filter.no_tags')}</div>
-              )}
-            </>
-          )}
+                ))}
+              </div>
+            ) : (
+              <div className="text-muted-foreground py-0.5 text-sm leading-tight">{t('library_filter.no_tags')}</div>
+            ))}
         </FilterSection>
 
         <FilterSection
@@ -1179,8 +1179,19 @@ function getLibraryFacetSearchShortcutTarget(e: KeyboardEvent): LibraryFacetSear
   return undefined
 }
 
+interface FilterSectionEditorConfig {
+  Icon: LucideIcon
+  inputRef: RefObject<HTMLInputElement | null>
+  label: string
+  onExit: () => void
+  onKeyDown?: KeyboardEventHandler<HTMLInputElement>
+  onValueChange: (value: string) => void
+  value: string
+}
+
 interface FilterSectionProps extends PropsWithChildren {
   actions?: ReactNode
+  editor?: FilterSectionEditorConfig
   expanded: boolean
   lockedHeight?: number
   onExpandedChange: (expanded: boolean) => void
@@ -1205,6 +1216,7 @@ interface FilterSectionProps extends PropsWithChildren {
 const FilterSection: React.FC<FilterSectionProps> = ({
   actions,
   children,
+  editor,
   expanded,
   lockedHeight,
   onExpandedChange,
@@ -1227,6 +1239,18 @@ const FilterSection: React.FC<FilterSectionProps> = ({
 }) => {
   const contentRef = useRef<HTMLDivElement>(null)
   const scrollbar = useOverlayScrollbarMetrics(scrollRef, contentRef, expanded)
+  const activeEditor: FilterSectionEditorConfig | undefined =
+    editor ??
+    (searching
+      ? {
+          Icon: Search,
+          inputRef: searchInputRef,
+          label: searchLabel,
+          onExit: onSearchExit,
+          onValueChange: onSearchQueryChange,
+          value: searchQuery,
+        }
+      : undefined)
 
   useLayoutEffect(() => {
     if (!searching || lockedHeight !== undefined || !sectionRef.current) return
@@ -1246,31 +1270,32 @@ const FilterSection: React.FC<FilterSectionProps> = ({
       style={{ height: lockedHeight, maxHeight: lockedHeight ?? 'max-content' }}
     >
       <div className={libraryFilterPanelHeaderClassName}>
-        {searching ? (
+        {activeEditor ? (
           <div className="border-input focus-within:border-ring flex h-7 min-w-0 flex-1 items-center gap-1 rounded-md border px-1.5">
-            <Search aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
+            <activeEditor.Icon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
             <Input
-              ref={searchInputRef}
-              data-library-facet-search="true"
-              aria-label={searchLabel}
-              value={searchQuery}
+              ref={activeEditor.inputRef}
+              data-library-facet-search={editor ? undefined : 'true'}
+              aria-label={activeEditor.label}
+              value={activeEditor.value}
               escapeBehavior="exit"
               focusBehavior="native"
-              onBlur={onSearchExit}
-              onExitEditing={onSearchExit}
-              onValueChange={onSearchQueryChange}
+              onBlur={activeEditor.onExit}
+              onExitEditing={activeEditor.onExit}
+              onKeyDown={activeEditor.onKeyDown}
+              onValueChange={activeEditor.onValueChange}
               className="h-6 min-w-0 flex-1 border-0 bg-transparent px-1 py-0 text-sm transition-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
             />
             <UiButton
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label={searchLabel}
+              aria-label={activeEditor.label}
               className="text-muted-foreground hover:text-foreground -mr-1 size-6 shrink-0 rounded-sm"
               onPointerDown={(event) => {
                 if (event.button === 0) event.preventDefault()
               }}
-              onClick={onSearchExit}
+              onClick={activeEditor.onExit}
             >
               <XIcon aria-hidden className="size-4.5" />
             </UiButton>

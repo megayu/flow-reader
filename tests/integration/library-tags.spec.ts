@@ -163,6 +163,12 @@ test('library tags can be filtered, pinned, edited, batch-applied, renamed, dele
   const tagSection = page.getByTestId('library-tag-section')
   await tagSection.getByRole('button', { name: msg('home.library_filter.new_tag') }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page
+    .getByTestId('library-status-filter')
+    .getByRole('button', { name: msg('home.library_filter.all') })
+    .click()
+  await expect(tagSection.getByRole('textbox', { name: msg('home.library_filter.new_tag') })).toHaveCount(0)
+  await tagSection.getByRole('button', { name: msg('home.library_filter.new_tag') }).click()
   await tagSection.getByRole('textbox', { name: msg('home.library_filter.new_tag') }).fill('Later')
   await tagSection.getByRole('textbox', { name: msg('home.library_filter.new_tag') }).press('Enter')
   await expect(tagChip(page, 'Later')).toBeVisible()
