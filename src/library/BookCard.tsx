@@ -413,7 +413,7 @@ export const BookCard: React.FC<BookCardProps> = ({
             </AppTooltip>
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent>
+        <ContextMenuContent className="w-max max-w-[calc(100vw-2rem)]">
           <BookContextMenuItem
             Icon={BookOpenIcon}
             label={t('context.open')}

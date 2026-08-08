@@ -1186,7 +1186,7 @@ const Library: React.FC<LibraryProps> = ({
                     </UiButton>
                   </DropdownMenuTrigger>
                 </AppTooltip>
-                <DropdownMenuContent align="end" sideOffset={4} className="w-max min-w-35 max-w-[calc(100vw-2rem)]">
+                <DropdownMenuContent align="end" sideOffset={4} className="w-max max-w-[calc(100vw-2rem)]">
                   <DropdownMenuItem onSelect={importBooks}>
                     <FileInputIcon aria-hidden className="size-4" />
                     <span className="leading-none whitespace-nowrap">{t('import_books')}</span>

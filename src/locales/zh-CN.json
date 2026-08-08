@@ -47,7 +47,7 @@
   "home.cancel.tooltip": "退出批量选择模式",
   "home.compat.archive_only": "原包模式",
   "home.compat.archive_only_description": "直接读取 EPUB 原始压缩包，无法编辑正文及导出修改后的内容。",
-  "home.context.confirm_delete": "确认删除",
+  "home.context.confirm_delete": "确认",
   "home.context.delete": "删除",
   "home.context.edit": "编辑",
   "home.context.export": "导出",
