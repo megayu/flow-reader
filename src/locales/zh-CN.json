@@ -35,8 +35,6 @@
   "fullscreen.enter": "进入全屏",
   "fullscreen.exit": "退出全屏",
 
-  "home.batch_tags.apply": "应用",
-  "home.batch_tags.title": "编辑标签",
   "home.book_count.filtered": "当前显示 / 全部",
   "home.book_count.selected": "已选 / 当前显示",
   "home.book_count.total": "书籍总数",
@@ -134,8 +132,9 @@
   "home.source_missing_description": "原文件已移动或删除，无法打开。",
   "home.source_unavailable": "原文件不可用",
   "home.source_unreadable_description": "当前无权访问原文件，无法打开。",
+  "home.tag_editor.title": "设置标签",
   "home.tags": "标签",
-  "home.tags.tooltip": "编辑所选书籍的标签",
+  "home.tags.tooltip": "设置所选书籍的标签",
 
   "image.empty": "未找到插图",
   "image.filter.all": "全部",
@@ -274,7 +273,7 @@
   "shortcuts.image_panel": "图片",
   "shortcuts.increase_font_size": "增大字号",
   "shortcuts.library_author_search": "搜索作者",
-  "shortcuts.library_batch_tags": "编辑所选书籍标签",
+  "shortcuts.library_batch_tags": "设置所选书籍标签",
   "shortcuts.library_delete_selection": "删除所选书籍",
   "shortcuts.library_filter_all": "显示全部书籍",
   "shortcuts.library_filter_clear": "清空筛选",

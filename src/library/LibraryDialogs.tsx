@@ -173,6 +173,10 @@ function getPartiallySelectedTags(books: BookRecord[], tags: LibraryTagRecord[])
   return new Set([...getTagsInAnyBook(books, tags)].filter((tagId) => !allTagIds.has(tagId)))
 }
 
+function sameStringSet(left: Set<string>, right: Set<string>) {
+  return left.size === right.size && [...left].every((value) => right.has(value))
+}
+
 async function resolveSelectedTagIds(selectedTagIds: Set<string>, temporaryTags: TemporaryLibraryTagRecord[]) {
   const temporaryById = new Map(temporaryTags.map((tag) => [tag.id, tag]))
   const resolvedIds: string[] = []
@@ -199,9 +203,13 @@ interface BatchTagsDialogProps {
 
 export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose, tags }) => {
   const t = useTranslation('home')
-  const [selectedTagIds, setSelectedTagIds] = useState(() => getTagsInAllBooks(books, tags))
-  const [partialTagIds, setPartialTagIds] = useState(() => getPartiallySelectedTags(books, tags))
+  const [initialSelectedTagIds] = useState(() => getTagsInAllBooks(books, tags))
+  const [initialPartialTagIds] = useState(() => getPartiallySelectedTags(books, tags))
+  const [selectedTagIds, setSelectedTagIds] = useState(() => new Set(initialSelectedTagIds))
+  const [partialTagIds, setPartialTagIds] = useState(() => new Set(initialPartialTagIds))
   const [temporaryTags, setTemporaryTags] = useState<TemporaryLibraryTagRecord[]>([])
+  const canSave =
+    !sameStringSet(selectedTagIds, initialSelectedTagIds) || !sameStringSet(partialTagIds, initialPartialTagIds)
 
   const toggleTag = useCallback((tagId: string) => {
     setSelectedTagIds((current) => {
@@ -241,7 +249,7 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose
   }, [])
 
   const apply = async () => {
-    if (!books.length) return
+    if (!books.length || !canSave) return
 
     const persistedSelectedTagIds = new Set(await resolveSelectedTagIds(selectedTagIds, temporaryTags))
     const initialTagIds = getTagsInAllBooks(books, tags)
@@ -267,7 +275,7 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose
     >
       <DialogContent className="w-[min(32rem,calc(100vw-2rem))] max-w-none text-base">
         <DialogHeader>
-          <DialogTitle>{t('batch_tags.title')}</DialogTitle>
+          <DialogTitle>{t('tag_editor.title')}</DialogTitle>
         </DialogHeader>
         <TagSelectionEditor
           tags={tags}
@@ -284,12 +292,12 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose
           </UiButton>
           <UiButton
             type="button"
-            disabled={!books.length}
+            disabled={!books.length || !canSave}
             onClick={() => {
               void apply()
             }}
           >
-            {t('batch_tags.apply')}
+            {t('edit.save')}
           </UiButton>
         </DialogFooter>
       </DialogContent>
@@ -329,8 +337,10 @@ export const DeleteSelectedBooksDialog: React.FC<DeleteSelectedBooksDialogProps>
 export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
   const t = useTranslation('home')
   const tags = useLibraryTags()
-  const [tagIds, setTagIds] = useState(() => new Set(uniqueStringValues(book.tagIds ?? [])))
+  const [initialTagIds] = useState(() => new Set(uniqueStringValues(book.tagIds ?? [])))
+  const [tagIds, setTagIds] = useState(() => new Set(initialTagIds))
   const [temporaryTags, setTemporaryTags] = useState<TemporaryLibraryTagRecord[]>([])
+  const canSave = !sameStringSet(tagIds, initialTagIds)
 
   const toggleTag = useCallback((tagId: string) => {
     setTagIds((current) => {
@@ -356,6 +366,8 @@ export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
   }, [])
 
   const apply = () => {
+    if (!canSave) return
+
     void resolveSelectedTagIds(tagIds, temporaryTags)
       .then((resolvedTagIds) => db.books.update(book.id, { tagIds: resolvedTagIds }))
       .then(() => onClose())
@@ -370,7 +382,7 @@ export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
     >
       <DialogContent className="w-[min(32rem,calc(100vw-2rem))] max-w-none text-base">
         <DialogHeader>
-          <DialogTitle>{t('batch_tags.title')}</DialogTitle>
+          <DialogTitle>{t('tag_editor.title')}</DialogTitle>
         </DialogHeader>
         <TagSelectionEditor
           tags={tags ?? []}
@@ -384,8 +396,8 @@ export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
           <UiButton type="button" variant="secondary" onClick={onClose}>
             {t('cancel')}
           </UiButton>
-          <UiButton type="button" onClick={apply}>
-            {t('batch_tags.apply')}
+          <UiButton type="button" disabled={!canSave} onClick={apply}>
+            {t('edit.save')}
           </UiButton>
         </DialogFooter>
       </DialogContent>
@@ -396,10 +408,15 @@ export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
 export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
   const t = useTranslation('home')
   const titleRef = useRef<HTMLInputElement>(null)
-  const [title, setTitle] = useState(() => getBookDisplayTitle(book))
-  const [creator, setCreator] = useState(() => cleanBookText(book.metadata.creator))
+  const initialTitle = getBookDisplayTitle(book)
+  const initialCreator = cleanBookText(book.metadata.creator)
+  const [title, setTitle] = useState(initialTitle)
+  const [creator, setCreator] = useState(initialCreator)
+  const canSave = cleanBookText(title) !== initialTitle || cleanBookText(creator) !== initialCreator
 
   const save = () => {
+    if (!canSave) return
+
     void db.books
       .update(book.id, {
         metadata: {
@@ -461,7 +478,9 @@ export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
             <UiButton type="button" variant="secondary" onClick={onClose}>
               {t('cancel')}
             </UiButton>
-            <UiButton type="submit">{t('edit.save')}</UiButton>
+            <UiButton type="submit" disabled={!canSave}>
+              {t('edit.save')}
+            </UiButton>
           </DialogFooter>
         </form>
       </DialogContent>
