@@ -914,14 +914,20 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
   })
 
   useEffect(() => {
+    const onShortcutKeyDown = (e: KeyboardEvent) => {
+      if (!getLibraryFacetSearchShortcutTarget(e)) return
+      handleLibraryFilterKeyDown(e)
+    }
     const onKeyDown = (e: KeyboardEvent) => {
       handleLibraryFilterKeyDown(e)
     }
 
-    document.addEventListener('keydown', onKeyDown, { capture: true })
+    document.addEventListener('keydown', onShortcutKeyDown, { capture: true })
+    document.addEventListener('keydown', onKeyDown)
 
     return () => {
-      document.removeEventListener('keydown', onKeyDown, { capture: true })
+      document.removeEventListener('keydown', onShortcutKeyDown, { capture: true })
+      document.removeEventListener('keydown', onKeyDown)
     }
   }, [])
 

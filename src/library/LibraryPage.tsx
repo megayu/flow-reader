@@ -758,6 +758,7 @@ const Library: React.FC<LibraryProps> = ({
 
     e.preventDefault()
     e.stopPropagation()
+    e.stopImmediatePropagation()
     if (selectedBookIds.size) {
       clearBookSelection()
     } else {
