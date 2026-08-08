@@ -34,7 +34,7 @@ function InputGroupInput({ className, ...props }: React.ComponentProps<typeof In
     <Input
       data-slot="input-group-input"
       className={cn(
-        'h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-2.5 py-0 leading-none focus-visible:border-transparent focus-visible:ring-0',
+        'h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-2.5 py-0 leading-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent',
         className,
       )}
       {...props}

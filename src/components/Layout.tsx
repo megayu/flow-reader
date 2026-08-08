@@ -1298,7 +1298,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
               onBlur={onSearchExit}
               onExitEditing={onSearchExit}
               onValueChange={onSearchQueryChange}
-              className="h-6 min-w-0 border-0 px-0 py-0 text-sm transition-none focus-visible:border-transparent focus-visible:ring-0"
+              className="h-6 min-w-0 flex-1 border-0 bg-transparent px-1 py-0 text-sm transition-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
             />
             <UiButton
               type="button"

@@ -24,6 +24,7 @@ export type ShortcutActionId =
   | 'libraryReaderToggle'
   | 'librarySelectAll'
   | 'libraryTagSearch'
+  | 'libraryTitleSearch'
   | 'moveTabLeft'
   | 'moveTabRight'
   | 'nextChapter'
@@ -231,6 +232,10 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
     labelKey: 'library_tag_search',
     shortcuts: [[commandToken, 'T']],
   },
+  libraryTitleSearch: {
+    labelKey: 'library_title_search',
+    shortcuts: [[commandToken, 'F']],
+  },
   developerTools: {
     labelKey: 'developer_tools',
     shortcuts: [[commandToken, 'Shift', 'I']],
@@ -299,6 +304,7 @@ const shortcutGroups: ShortcutGroupDefinition[] = [
       shortcutDefinitions.libraryImport,
       shortcutDefinitions.libraryImportFolder,
       shortcutDefinitions.librarySelectAll,
+      shortcutDefinitions.libraryTitleSearch,
       shortcutDefinitions.libraryAuthorSearch,
       shortcutDefinitions.libraryTagSearch,
       shortcutDefinitions.libraryBatchTags,

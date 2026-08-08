@@ -13,22 +13,27 @@ import {
   ListChecksIcon,
   ListXIcon,
   type LucideIcon,
+  SearchIcon,
   SquareCheckBigIcon,
   SquareXIcon,
   TagIcon,
   Trash2Icon,
   UserRound,
+  XIcon,
 } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
+import { getBookDisplayTitle } from '../book'
 import { AppTooltip } from '../components/AppTooltip'
 import { DropZone } from '../components/base/DropZone'
+import { IconButton } from '../components/IconButton'
 import { ReaderGridView } from '../components/Reader'
 import { ReadingStatusIcon } from '../components/ReadingStatusIcon'
 import { TextImportDialog } from '../components/TextImportDialog'
 import { TooltipButton } from '../components/TooltipButton'
 import { Button as UiButton } from '../components/ui/button'
+import { InputGroup, InputGroupActions, InputGroupInput } from '../components/ui/input-group'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/menu'
 import { useNotify } from '../components/ui/notificationContext'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
@@ -102,6 +107,7 @@ import {
   selectBookIdRange,
   useStringSet,
 } from './selection'
+import { createLibraryTitleSearchCandidates, matchesLibraryTitleSearch } from './titleSearch'
 
 const sortFieldIconMap = {
   title: BookTextIcon,
@@ -519,6 +525,8 @@ const Library: React.FC<LibraryProps> = ({
   const [, setLibraryAction] = useLibraryAction()
 
   const [select, setSelect] = useState(false)
+  const [titleSearchQuery, setTitleSearchQuery] = useState('')
+  const [debouncedTitleSearchQuery, setDebouncedTitleSearchQuery] = useState('')
   const [selectedBookIds, { has, toggle, replace, reset }] = useStringSet()
   const [highlightedBookIds, setHighlightedBookIds] = useState<Set<string>>(() => new Set())
   const [sourceStatuses, setSourceStatuses] = useState(() => new Map<string, BookSourceStatus>())
@@ -527,18 +535,36 @@ const Library: React.FC<LibraryProps> = ({
   const [folderImportPath, setFolderImportPath] = useState<string>()
   const [recentBookCapacity, setRecentBookCapacity] = useState(0)
   const libraryViewportRef = useRef<HTMLDivElement>(null)
+  const titleSearchInputRef = useRef<HTMLInputElement>(null)
   const selectionAnchorIdRef = useRef<string | undefined>(undefined)
   const rangeSelectionSessionRef = useRef<LibraryRangeSelectionSession | undefined>(undefined)
-  const sortedBooks = useMemo(
+  const titleSearchCandidatesByBookId = useMemo(
     () =>
-      filterBooksByLibraryFilters(
-        sortBooks(books ?? [], sortField, sortDirection),
-        statusFilters,
-        authorFilters,
-        tagFilters,
-      ),
-    [authorFilters, books, sortDirection, sortField, statusFilters, tagFilters],
+      new Map((books ?? []).map((book) => [book.id, createLibraryTitleSearchCandidates(getBookDisplayTitle(book))])),
+    [books],
   )
+  const sortedBooks = useMemo(() => {
+    const filteredBooks = filterBooksByLibraryFilters(
+      sortBooks(books ?? [], sortField, sortDirection),
+      statusFilters,
+      authorFilters,
+      tagFilters,
+    )
+    if (!debouncedTitleSearchQuery.trim()) return filteredBooks
+
+    return filteredBooks.filter((book) =>
+      matchesLibraryTitleSearch(titleSearchCandidatesByBookId.get(book.id) ?? [], debouncedTitleSearchQuery),
+    )
+  }, [
+    authorFilters,
+    books,
+    debouncedTitleSearchQuery,
+    sortDirection,
+    sortField,
+    statusFilters,
+    tagFilters,
+    titleSearchCandidatesByBookId,
+  ])
   const visibleBookIds = useMemo(() => sortedBooks.map((book) => book.id), [sortedBooks])
   const recentBooks = useMemo(() => {
     const booksById = new Map((books ?? []).map((book) => [book.id, book]))
@@ -550,6 +576,25 @@ const Library: React.FC<LibraryProps> = ({
   const coversById = useMemo(() => new Map(covers?.map((cover) => [cover.id, cover.cover])), [covers])
   const selectedBooks = sortedBooks.filter((book) => selectedBookIds.has(book.id))
   const openSelectedBookCount = selectedBooks.filter((book) => openBookIds.has(book.id)).length
+  useEffect(() => {
+    if (!titleSearchQuery) {
+      setDebouncedTitleSearchQuery('')
+      return
+    }
+
+    const timeout = window.setTimeout(() => setDebouncedTitleSearchQuery(titleSearchQuery), 150)
+    return () => window.clearTimeout(timeout)
+  }, [titleSearchQuery])
+
+  const focusTitleSearch = useCallback(() => {
+    titleSearchInputRef.current?.focus()
+    titleSearchInputRef.current?.select()
+  }, [])
+
+  const clearTitleSearch = useCallback(() => {
+    setTitleSearchQuery('')
+    setDebouncedTitleSearchQuery('')
+  }, [])
   const updateSelectedReadingStatus = (readingStatus: ReadingStatus | null) => {
     void db.books.updateReadingStatus(
       selectedBooks.map((book) => book.id),
@@ -815,6 +860,13 @@ const Library: React.FC<LibraryProps> = ({
       const key = e.key.toLowerCase()
       const commandModifier = e.ctrlKey || e.metaKey
       if (commandModifier) {
+        if (!e.shiftKey && (e.code === 'KeyF' || key === 'f')) {
+          e.preventDefault()
+          e.stopPropagation()
+          focusTitleSearch()
+          return
+        }
+
         if (!select && (e.code === 'KeyO' || key === 'o')) {
           e.preventDefault()
           e.stopPropagation()
@@ -878,7 +930,16 @@ const Library: React.FC<LibraryProps> = ({
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [importBooks, importFolder, select, selectAllBooks, selectedBooks.length, setLibraryAction, setStatusFilters])
+  }, [
+    importBooks,
+    importFolder,
+    focusTitleSearch,
+    select,
+    selectAllBooks,
+    selectedBooks.length,
+    setLibraryAction,
+    setStatusFilters,
+  ])
 
   const selectBook = useCallback(
     (bookId: string, e?: LibraryBookSelectionEvent) => {
@@ -954,8 +1015,50 @@ const Library: React.FC<LibraryProps> = ({
       }}
     >
       <div className="mb-4 space-y-2.5">
-        <div className="relative flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-start gap-2">
+          <div className="flex min-w-30 flex-1 basis-0 flex-wrap items-center gap-2">
+            {!!books.length && (
+              <InputGroup className="min-w-30 max-w-60 flex-[1_1_120px] bg-transparent dark:bg-transparent">
+                <SearchIcon aria-hidden className="text-muted-foreground ml-2.5 size-4 shrink-0" />
+                <InputGroupInput
+                  ref={titleSearchInputRef}
+                  value={titleSearchQuery}
+                  escapeBehavior="none"
+                  placeholder={t('library_search.placeholder')}
+                  aria-label={t('library_search.title')}
+                  onValueChange={setTitleSearchQuery}
+                  onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing) return
+
+                    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key === 'f') {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      event.currentTarget.select()
+                      return
+                    }
+
+                    if (event.key !== 'Escape') return
+                    event.preventDefault()
+                    event.stopPropagation()
+                    clearTitleSearch()
+                    event.currentTarget.blur()
+                  }}
+                />
+                <InputGroupActions>
+                  <IconButton
+                    Icon={XIcon}
+                    title={t('library_search.clear')}
+                    disabled={!titleSearchQuery}
+                    className="text-muted-foreground"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      clearTitleSearch()
+                      titleSearchInputRef.current?.focus()
+                    }}
+                  />
+                </InputGroupActions>
+              </InputGroup>
+            )}
             {!!books.length && !select && (
               <div className="flex items-center">
                 <Select value={sortField} onValueChange={(value) => setSortField(value as LibrarySortField)}>
@@ -1121,7 +1224,7 @@ const Library: React.FC<LibraryProps> = ({
           <AppTooltip label={libraryCountTooltip}>
             <div
               className={clsx(
-                'absolute top-1/2 left-1/2 flex h-8 max-w-[35%] -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-1.5 overflow-hidden text-base leading-none tabular-nums',
+                'flex h-8 min-w-16 shrink-0 items-center justify-center gap-1.5 overflow-hidden text-base leading-none tabular-nums',
                 select ? 'text-foreground font-medium' : 'text-muted-foreground',
               )}
             >
@@ -1130,7 +1233,7 @@ const Library: React.FC<LibraryProps> = ({
             </div>
           </AppTooltip>
 
-          <div className="space-x-2">
+          <div className="flex min-w-30 flex-1 basis-0 flex-wrap items-center justify-end gap-2">
             {select ? (
               <>
                 <DropdownMenu modal={false}>
