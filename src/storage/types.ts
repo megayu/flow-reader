@@ -161,6 +161,24 @@ export interface BookImportProgress {
   cover?: CoverRecord | null
 }
 
+export interface FolderImportCandidate {
+  path: string
+  format: BookSourceFormat
+  rootDirectory: string | null
+  intermediateDirectories: string[]
+  directDirectory: string | null
+}
+
+export interface FolderImportTagAssignment {
+  bookId: string
+  tagNames: string[]
+}
+
+export interface FolderImportTagResult {
+  books: BookRecord[]
+  tags: LibraryTagRecord[]
+}
+
 export interface BookCacheClearProgress {
   total: number
   completed: number

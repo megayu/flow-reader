@@ -18,7 +18,7 @@ use crate::{
 
 use super::*;
 
-fn clean_tag_name(value: &str) -> String {
+pub(super) fn clean_tag_name(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
@@ -103,6 +103,22 @@ pub(super) fn revealable_book_source_path(book: &LibraryBook) -> Option<&Path> {
 
 fn tag_id(created_at: u64) -> String {
     format!("tag-{created_at}")
+}
+
+pub(super) fn next_tag_id(tags: &[LibraryTagRecord], created_at: u64) -> String {
+    let base_id = tag_id(created_at);
+    if !tags.iter().any(|tag| tag.id == base_id) {
+        return base_id;
+    }
+
+    let mut suffix = 2;
+    loop {
+        let id = format!("{base_id}-{suffix}");
+        if !tags.iter().any(|tag| tag.id == id) {
+            return id;
+        }
+        suffix += 1;
+    }
 }
 
 fn compose_book_summaries(storage: &AppStorage) -> Result<Vec<BookRecord>, String> {
@@ -250,12 +266,7 @@ pub fn create_tag(storage: State<'_, AppStorage>, name: String) -> Result<Option
         }
 
         let created_at = now_ms();
-        let mut id = tag_id(created_at);
-        let mut suffix = 1;
-        while state.library.tags.iter().any(|tag| tag.id == id) {
-            suffix += 1;
-            id = format!("{}-{suffix}", tag_id(created_at));
-        }
+        let id = next_tag_id(&state.library.tags, created_at);
 
         let tag = LibraryTagRecord {
             id,

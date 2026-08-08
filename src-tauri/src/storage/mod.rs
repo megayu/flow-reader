@@ -28,6 +28,7 @@ mod deletion;
 mod editing;
 mod epub_import;
 mod export;
+mod folder_import;
 mod image_index;
 mod import_support;
 mod model;
@@ -38,6 +39,7 @@ mod window_state;
 
 pub use commands::*;
 pub use deletion::{cleanup_all_external_book_heavy_files, schedule_existing_pending_delete_cleanup};
+pub use folder_import::*;
 pub use image_index::ImageIndexCache;
 #[cfg(test)]
 use image_index::ImageIndexEntry;

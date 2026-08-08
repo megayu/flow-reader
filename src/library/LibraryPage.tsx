@@ -6,7 +6,9 @@ import {
   BookOpenIcon,
   BookTextIcon,
   CalendarPlusIcon,
+  ChevronDownIcon,
   FileInputIcon,
+  FolderInputIcon,
   HistoryIcon,
   ListChecksIcon,
   ListXIcon,
@@ -26,11 +28,21 @@ import { ReaderGridView } from '../components/Reader'
 import { TextImportDialog } from '../components/TextImportDialog'
 import { TooltipButton } from '../components/TooltipButton'
 import { Button as UiButton } from '../components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/menu'
 import { useNotify } from '../components/ui/notificationContext'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { formatErrorMessage } from '../errorMessage'
-import { handleFiles, importTextSelections, openImportDialog, setupNativeOpenFiles } from '../file'
+import {
+  applyFolderImportTagsToResult,
+  type FolderImportSelection,
+  handleFilePaths,
+  handleFiles,
+  importTextSelections,
+  openImportDialog,
+  selectImportFolder,
+  setupNativeOpenFiles,
+} from '../file'
 import { useLibraryAction } from '../hooks/useAction'
 import { useBookImportNotifications } from '../hooks/useBookImportNotifications'
 import { useCovers, useLibrary, useLibraryTags } from '../hooks/useLibrary'
@@ -67,6 +79,7 @@ import { clamp } from '../utils'
 
 import { BookCard } from './BookCard'
 import { BookImportProgressPanel } from './BookImportProgressPanel'
+import { FolderImportDialog } from './FolderImportDialog'
 import { filterBooksByLibraryFilters } from './filters'
 import { BatchTagsDialog, DeleteSelectedBooksDialog } from './LibraryDialogs'
 import {
@@ -145,6 +158,7 @@ export function LibraryPage() {
     paths: string[]
     openAfterImport: boolean
     waitForEpubImport?: Promise<void>
+    folderImportSelection?: FolderImportSelection
   }>()
   const [bookImportProgress, setBookImportProgress] = useState<BookImportProgress>()
   const notify = useNotify()
@@ -156,9 +170,14 @@ export function LibraryPage() {
   const openBookIds = new Set(groups.flatMap((group) => group.bookTabs.map((tab) => tab.book.id)))
 
   const openTextImportDialog = useCallback(
-    (paths: string[], openAfterImport: boolean, waitForEpubImport?: Promise<void>) => {
+    (
+      paths: string[],
+      openAfterImport: boolean,
+      waitForEpubImport?: Promise<void>,
+      folderImportSelection?: FolderImportSelection,
+    ) => {
       if (!paths.length) return
-      setTextImportDialog({ paths, openAfterImport, waitForEpubImport })
+      setTextImportDialog({ paths, openAfterImport, waitForEpubImport, folderImportSelection })
     },
     [],
   )
@@ -198,13 +217,19 @@ export function LibraryPage() {
   )
 
   const handleTextImport = useCallback(
-    (imports: TextImportSelection[], openAfterImport: boolean, waitForEpubImport?: Promise<void>) => {
+    (
+      imports: TextImportSelection[],
+      openAfterImport: boolean,
+      waitForEpubImport?: Promise<void>,
+      folderImportSelection?: FolderImportSelection,
+    ) => {
       void Promise.resolve(waitForEpubImport)
         .then(() =>
           importTextSelections(imports, {
             onImportProgress: handleBookImportProgress,
           }),
         )
+        .then((result) => applyFolderImportTagsToResult(result, folderImportSelection))
         .then((result: BookImportResult) => {
           setBookImportProgress(undefined)
           const openBookIds = openAfterImport ? reader.refreshImportedBooks(result.books) : new Set<string>()
@@ -407,7 +432,9 @@ export function LibraryPage() {
       onEpubImportProgress={handleBookImportProgress}
       onEpubImportResult={handleEpubImportResult}
       directTextImport={directTextImport}
-      onTextPaths={(paths, waitForEpubImport) => openTextImportDialog(paths, false, waitForEpubImport)}
+      onTextPaths={(paths, waitForEpubImport, folderImportSelection) =>
+        openTextImportDialog(paths, false, waitForEpubImport, folderImportSelection)
+      }
     />
   )
   const nativeStartupContentReady =
@@ -433,7 +460,12 @@ export function LibraryPage() {
           openAfterImport={textImportDialog.openAfterImport}
           onClose={() => setTextImportDialog(undefined)}
           onImport={(imports, openAfterImport) =>
-            handleTextImport(imports, openAfterImport, textImportDialog.waitForEpubImport)
+            handleTextImport(
+              imports,
+              openAfterImport,
+              textImportDialog.waitForEpubImport,
+              textImportDialog.folderImportSelection,
+            )
           }
         />
       )}
@@ -448,7 +480,11 @@ interface LibraryProps {
   onEpubImportProgress: (progress: BookImportProgress) => void
   onEpubImportResult: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
   onOpenBook: () => void
-  onTextPaths: (paths: string[], waitForEpubImport?: Promise<void>) => void
+  onTextPaths: (
+    paths: string[],
+    waitForEpubImport?: Promise<void>,
+    folderImportSelection?: FolderImportSelection,
+  ) => void
 }
 
 const Library: React.FC<LibraryProps> = ({
@@ -482,6 +518,7 @@ const Library: React.FC<LibraryProps> = ({
   const [sourceStatuses, setSourceStatuses] = useState(() => new Map<string, BookSourceStatus>())
   const [batchTagsOpen, setBatchTagsOpen] = useState(false)
   const [deleteBooksOpen, setDeleteBooksOpen] = useState(false)
+  const [folderImportPath, setFolderImportPath] = useState<string>()
   const selectionAnchorIdRef = useRef<string | undefined>(undefined)
   const rangeSelectionSessionRef = useRef<LibraryRangeSelectionSession | undefined>(undefined)
   const sortedBooks = useMemo(
@@ -640,6 +677,45 @@ const Library: React.FC<LibraryProps> = ({
     })
   }, [directTextImport, handleEpubImportResult, onEpubImportProgress, onTextPaths])
 
+  const importFolder = useCallback(() => {
+    void selectImportFolder()
+      .then((path) => {
+        if (path) setFolderImportPath(path)
+      })
+      .catch((error) => {
+        notify({
+          autoCloseMs: false,
+          description: formatErrorMessage(error),
+          title: errorT('folder_import_failed'),
+          type: 'error',
+        })
+      })
+  }, [errorT, notify])
+
+  const importFolderSelection = useCallback(
+    (folderImportSelection: FolderImportSelection) => {
+      setFolderImportPath(undefined)
+      void handleFilePaths(
+        folderImportSelection.candidates.map((candidate) => candidate.path),
+        {
+          directTextImport,
+          onImportProgress: onEpubImportProgress,
+          onImportResult: async (result) =>
+            handleEpubImportResult(await applyFolderImportTagsToResult(result, folderImportSelection)),
+          onTextPaths: (paths, waitForEpubImport) => onTextPaths(paths, waitForEpubImport, folderImportSelection),
+        },
+      ).catch((error) => {
+        notify({
+          autoCloseMs: false,
+          description: formatErrorMessage(error),
+          title: errorT('folder_import_failed'),
+          type: 'error',
+        })
+      })
+    },
+    [directTextImport, errorT, handleEpubImportResult, notify, onEpubImportProgress, onTextPaths],
+  )
+
   const handleCancelSelectionKeyDown = useEffectEvent((e: KeyboardEvent) => {
     if (e.key !== 'Escape') return
     if (isGlobalKeyboardShortcutBlocked(e)) return
@@ -693,6 +769,14 @@ const Library: React.FC<LibraryProps> = ({
       const key = e.key.toLowerCase()
       const commandModifier = e.ctrlKey || e.metaKey
       if (commandModifier) {
+        if (!select && (e.code === 'KeyO' || key === 'o')) {
+          e.preventDefault()
+          e.stopPropagation()
+          if (e.shiftKey) importFolder()
+          else importBooks()
+          return
+        }
+
         if (e.shiftKey) return
 
         if (e.code === 'KeyA' || key === 'a') {
@@ -702,11 +786,6 @@ const Library: React.FC<LibraryProps> = ({
           return
         }
 
-        if (!select && (e.code === 'KeyO' || key === 'o')) {
-          e.preventDefault()
-          e.stopPropagation()
-          importBooks()
-        }
         return
       }
 
@@ -753,7 +832,7 @@ const Library: React.FC<LibraryProps> = ({
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [importBooks, select, selectAllBooks, selectedBooks.length, setLibraryAction, setStatusFilters])
+  }, [importBooks, importFolder, select, selectAllBooks, selectedBooks.length, setLibraryAction, setStatusFilters])
 
   const selectBook = useCallback(
     (bookId: string, e?: LibraryBookSelectionEvent) => {
@@ -782,7 +861,6 @@ const Library: React.FC<LibraryProps> = ({
   const visibleSelectedCount = sortedBooks.filter((book) => selectedBookIds.has(book.id)).length
   const allSelected = !!sortedBooks.length && visibleSelectedCount === sortedBooks.length
   const selectAllShortcut = getShortcutChords('librarySelectAll')[0]
-  const importShortcut = getShortcutChords('libraryImport')[0]
   const batchTagsShortcut = getShortcutChords('libraryBatchTags')[0]
   const deleteSelectionShortcut = getShortcutChords('libraryDeleteSelection')[0]
   const DirectionIcon = sortDirection === 'asc' ? ArrowUpIcon : ArrowDownIcon
@@ -1037,16 +1115,27 @@ const Library: React.FC<LibraryProps> = ({
                 </TooltipButton>
               </>
             ) : (
-              <TooltipButton
-                className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
-                aria-label={t('import')}
-                title={t('import.tooltip')}
-                shortcut={importShortcut}
-                onClick={importBooks}
-              >
-                <FileInputIcon aria-hidden className="size-4" />
-                <span className="leading-none">{t('import')}</span>
-              </TooltipButton>
+              <DropdownMenu>
+                <AppTooltip label={t('import.tooltip')}>
+                  <DropdownMenuTrigger asChild>
+                    <UiButton className={clsx(toolbarButtonClass, 'gap-1.5 px-3')} aria-label={t('import')}>
+                      <FileInputIcon aria-hidden className="size-4" />
+                      <span className="leading-none">{t('import')}</span>
+                      <ChevronDownIcon aria-hidden className="size-3.5" />
+                    </UiButton>
+                  </DropdownMenuTrigger>
+                </AppTooltip>
+                <DropdownMenuContent align="end" sideOffset={4} className="w-max min-w-35 max-w-[calc(100vw-2rem)]">
+                  <DropdownMenuItem onSelect={importBooks}>
+                    <FileInputIcon aria-hidden className="size-4" />
+                    <span className="leading-none whitespace-nowrap">{t('import_books')}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={importFolder}>
+                    <FolderInputIcon aria-hidden className="size-4" />
+                    <span className="leading-none whitespace-nowrap">{t('folder_import.action')}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
         </div>
@@ -1092,6 +1181,13 @@ const Library: React.FC<LibraryProps> = ({
               })
             })
           }}
+        />
+      )}
+      {folderImportPath && (
+        <FolderImportDialog
+          rootPath={folderImportPath}
+          onClose={() => setFolderImportPath(undefined)}
+          onImport={importFolderSelection}
         />
       )}
     </DropZone>

@@ -68,6 +68,19 @@ function ContextMenuSeparator({ className, ...props }: React.ComponentProps<type
 const DropdownMenu = DropdownMenuPrimitive.Root
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
 
+function DropdownMenuItem({ className, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Item>) {
+  return (
+    <DropdownMenuPrimitive.Item
+      className={cn(
+        menuItemClassName,
+        'text-muted-foreground focus:bg-(--flow-bg-control-hover) focus:text-(--flow-text) font-medium transition-colors',
+        className,
+      )}
+      {...props}
+    />
+  )
+}
+
 function DropdownMenuContent({
   className,
   loop = true,
@@ -125,6 +138,7 @@ export {
   // biome-ignore lint/style/useComponentExportOnlyModules: This Radix primitive alias is a React component.
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   // biome-ignore lint/style/useComponentExportOnlyModules: This Radix primitive alias is a React component.
   DropdownMenuItemIndicator,
   // biome-ignore lint/style/useComponentExportOnlyModules: This Radix primitive alias is a React component.

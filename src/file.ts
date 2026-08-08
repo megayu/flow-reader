@@ -2,9 +2,11 @@ import { invoke } from '@tauri-apps/api/core'
 
 import { waitForBookCacheClearing } from './state'
 import {
+  applyFolderImportTags,
   type BookImportProgress,
   type BookImportResult,
   type BookRecord,
+  type FolderImportCandidate,
   importEpubPaths,
   importTextPaths,
   openExternalEpubPaths,
@@ -26,6 +28,17 @@ interface HandleFilesOptions {
   replaceExisting?: boolean
   onTextPaths?: (paths: string[], waitForEpubImport?: Promise<void>) => void
   onImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
+}
+
+export interface FolderImportTagRules {
+  rootDirectory: boolean
+  intermediateDirectories: boolean
+  directDirectory: boolean
+}
+
+export interface FolderImportSelection {
+  candidates: FolderImportCandidate[]
+  tagRules: FolderImportTagRules
 }
 
 function isEpubPath(path: string) {
@@ -155,6 +168,46 @@ export async function openImportDialog(options: HandleFilesOptions = {}) {
   const paths = Array.isArray(selected) ? selected : selected ? [selected] : []
 
   return handleFilePaths(paths, { replaceExisting: true, ...options })
+}
+
+export async function selectImportFolder() {
+  const { open } = await import('@tauri-apps/plugin-dialog')
+  const selected = await open({
+    directory: true,
+    multiple: false,
+  })
+  return typeof selected === 'string' ? selected : undefined
+}
+
+export async function applyFolderImportTagsToResult(result: BookImportResult, selection?: FolderImportSelection) {
+  if (!selection || !result.books.length) return result
+
+  const candidateByPath = new Map(
+    selection.candidates.map((candidate) => [candidate.path.replaceAll('\\', '/'), candidate]),
+  )
+  const tagNamesByBookId = new Map<string, string[]>()
+  for (const book of result.books) {
+    if (!book.sourcePath) continue
+    const candidate = candidateByPath.get(book.sourcePath.replaceAll('\\', '/'))
+    if (!candidate) continue
+
+    const tagNames = tagNamesByBookId.get(book.id) ?? []
+    if (selection.tagRules.rootDirectory && candidate.rootDirectory) tagNames.push(candidate.rootDirectory)
+    if (selection.tagRules.intermediateDirectories) tagNames.push(...candidate.intermediateDirectories)
+    if (selection.tagRules.directDirectory && candidate.directDirectory) tagNames.push(candidate.directDirectory)
+    tagNamesByBookId.set(book.id, tagNames)
+  }
+  const assignments = Array.from(tagNamesByBookId, ([bookId, tagNames]) => ({ bookId, tagNames })).filter(
+    (assignment) => assignment.tagNames.length,
+  )
+  if (!assignments.length) return result
+
+  const tagged = await applyFolderImportTags(assignments)
+  const taggedById = new Map(tagged.books.map((book) => [book.id, book]))
+  return {
+    ...result,
+    books: result.books.map((book) => taggedById.get(book.id) ?? book),
+  }
 }
 
 export async function setupNativeOpenFiles({

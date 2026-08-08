@@ -15,6 +15,9 @@ import type {
   BookTextReplaceTarget,
   CoverInput,
   CoverRecord,
+  FolderImportCandidate,
+  FolderImportTagAssignment,
+  FolderImportTagResult,
   LibraryPins,
   LibraryTagRecord,
   ReadingPositionInput,
@@ -607,6 +610,25 @@ export async function importTextPaths(
     if (!progressiveUpdates) await refreshImportedCovers(result.books.map((book) => book.id))
     notify('books', 'covers', 'files', 'pins')
   }
+  return result
+}
+
+export function scanImportFolder(root: string, recursive: boolean) {
+  return invoke<FolderImportCandidate[]>('scan_import_folder', { root, recursive })
+}
+
+export async function applyFolderImportTags(assignments: FolderImportTagAssignment[]) {
+  if (!assignments.length) return { books: [], tags: tagsCache ?? [] }
+
+  beginBooksMutation()
+  const result = await trackNativeWrite(
+    invoke<FolderImportTagResult>('apply_folder_import_tags', {
+      assignments,
+    }),
+  )
+  result.books.forEach((book) => rememberBook(book, { full: false }))
+  rememberTags(result.tags)
+  notify('books', 'tags')
   return result
 }
 

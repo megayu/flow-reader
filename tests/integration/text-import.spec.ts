@@ -76,6 +76,7 @@ test('TXT import dialog sends edited title and author metadata', async ({ page }
   await page.goto('/')
 
   await page.getByRole('button', { name: msg('home.import') }).click()
+  await page.getByRole('menuitem', { name: msg('home.import_books') }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByText(msg('text_import.title'))).toBeVisible()
 
@@ -124,6 +125,7 @@ test('direct mixed import prepares TXT alongside EPUB and commits it in one late
   await page.goto('/')
 
   await page.getByRole('button', { name: msg('home.import') }).click()
+  await page.getByRole('menuitem', { name: msg('home.import_books') }).click()
 
   await expect(page.getByText(msg('text_import.title'))).toBeHidden()
   await expect(page.getByRole('status')).toContainText('0 / 2')
@@ -159,6 +161,7 @@ test('preview confirmation keeps EPUB progress until the queued TXT import can s
   await page.goto('/')
 
   await page.getByRole('button', { name: msg('home.import') }).click()
+  await page.getByRole('menuitem', { name: msg('home.import_books') }).click()
   await expect(page.getByText(msg('text_import.title'))).toBeVisible()
   const importButton = page.getByRole('button', { name: msg('text_import.import_selected') })
   await expect(importButton).toBeEnabled()
@@ -200,6 +203,7 @@ test('switches TXT import previews with arrow keys while keeping the active prev
   await page.goto('/')
 
   await page.getByRole('button', { name: msg('home.import') }).click()
+  await page.getByRole('menuitem', { name: msg('home.import_books') }).click()
   const titleInput = page.getByRole('textbox', { exact: true, name: msg('text_import.book_title') })
   const firstPreview = page.getByRole('button', { name: /Preview 1\.txt/ })
   const lastPreview = page.getByRole('button', { name: new RegExp(`Preview ${previewCount}\\.txt`) })

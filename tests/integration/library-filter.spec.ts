@@ -233,6 +233,7 @@ test('library author filters pin authors and refresh when books change', async (
   await expect.poll(() => pinnedAuthors(page)).toEqual([])
 
   await page.getByRole('button', { name: msg('home.import') }).click()
+  await page.getByRole('menuitem', { name: msg('home.import_books') }).click()
   await expect(page.getByText('Delta Read')).toBeVisible()
   await expect(authorChip(page, 'Dorian Delta')).toBeVisible()
 

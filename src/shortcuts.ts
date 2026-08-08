@@ -20,6 +20,7 @@ export type ShortcutActionId =
   | 'libraryFilterReading'
   | 'libraryFilterToRead'
   | 'libraryImport'
+  | 'libraryImportFolder'
   | 'libraryReaderToggle'
   | 'librarySelectAll'
   | 'libraryTagSearch'
@@ -218,6 +219,10 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
     labelKey: 'library_import',
     shortcuts: [[commandToken, 'O']],
   },
+  libraryImportFolder: {
+    labelKey: 'library_import_folder',
+    shortcuts: [[commandToken, 'Shift', 'O']],
+  },
   librarySelectAll: {
     labelKey: 'library_select_all',
     shortcuts: [[commandToken, 'A']],
@@ -292,6 +297,7 @@ const shortcutGroups: ShortcutGroupDefinition[] = [
     titleKey: 'group.library',
     items: [
       shortcutDefinitions.libraryImport,
+      shortcutDefinitions.libraryImportFolder,
       shortcutDefinitions.librarySelectAll,
       shortcutDefinitions.libraryAuthorSearch,
       shortcutDefinitions.libraryTagSearch,

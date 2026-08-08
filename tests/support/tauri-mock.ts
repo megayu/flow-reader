@@ -5,6 +5,8 @@ import type { WindowUiState } from '../../src/state'
 import type {
   BookRecord,
   BookSourceStatus,
+  FolderImportCandidate,
+  FolderImportTagAssignment,
   TextImportEncodingOption,
   TextImportPreview,
   TextImportSelection,
@@ -36,6 +38,8 @@ interface TauriMockOptions {
   externallyOpenedBooks?: BookRecord[]
   importedBooks?: BookRecord[]
   epubImportDelayMs?: number
+  folderDialogPaths?: string[]
+  folderImportCandidates?: Record<string, FolderImportCandidate[]>
   localDictionaries?: LocalDictionaryRecord[]
   localDictionaryFiles?: Record<string, LocalDictionaryRecord | { code: string; message: string }>
   openDialogPaths?: string[]
@@ -74,6 +78,8 @@ export async function installTauriMock(
     externallyOpenedBooks = [],
     importedBooks = [],
     epubImportDelayMs = 0,
+    folderDialogPaths = [],
+    folderImportCandidates = {},
     localDictionaries = [],
     localDictionaryFiles = {},
     openDialogPaths = [],
@@ -115,6 +121,8 @@ export async function installTauriMock(
       fixtureExternallyOpenedBooks,
       fixtureImportedBooks,
       fixtureEpubImportDelayMs,
+      fixtureFolderDialogPaths,
+      fixtureFolderImportCandidates,
       fixtureLocalDictionaries,
       fixtureLocalDictionaryFiles,
       fixtureOpenDialogPaths,
@@ -191,6 +199,8 @@ export async function installTauriMock(
           }>
           localDictionaries: LocalDictionaryRecord[]
           libraryPinsStore: TestLibraryPins
+          books: BookRecord[]
+          tags: TestLibraryTagRecord[]
           bookImportOperations: string[]
           openedExternalUrls: string[]
           revealedBookSourceIds: string[]
@@ -240,6 +250,7 @@ export async function installTauriMock(
       }
       const importQueue = [...fixtureImportedBooks]
       const externalOpenQueue = [...fixtureExternallyOpenedBooks]
+      const folderDialogQueue = [...fixtureFolderDialogPaths]
       const localDictionaryStore = fixtureLocalDictionaries.map((record) => ({
         ...record,
       }))
@@ -270,6 +281,12 @@ export async function installTauriMock(
         stardictRequests: [],
         localDictionaries: localDictionaryStore,
         libraryPinsStore,
+        get books() {
+          return Array.from(bookStore.values())
+        },
+        get tags() {
+          return Array.from(tagStore.values())
+        },
         exports: [],
         get fullscreen() {
           return fullscreen
@@ -501,6 +518,44 @@ export async function installTauriMock(
           return null
         }
         if (command === 'list_books') return Array.from(bookStore.values())
+        if (command === 'scan_import_folder') {
+          return fixtureFolderImportCandidates[String(args?.root ?? '')] ?? []
+        }
+        if (command === 'apply_folder_import_tags') {
+          const assignments = Array.isArray(args?.assignments) ? (args.assignments as FolderImportTagAssignment[]) : []
+          const updatedBooks: BookRecord[] = []
+          assignments.forEach((assignment) => {
+            const current = bookStore.get(assignment.bookId)
+            if (!current) return
+
+            const tagIds = new Set(current.tagIds ?? [])
+            const seenNames = new Set<string>()
+            assignment.tagNames.forEach((rawName) => {
+              const name = rawName.replace(/\s+/g, ' ').trim()
+              const normalizedName = name.toLowerCase()
+              if (!name || seenNames.has(normalizedName)) return
+              seenNames.add(normalizedName)
+
+              let tag = Array.from(tagStore.values()).find(
+                (candidate) => candidate.name.toLowerCase() === normalizedName,
+              )
+              if (!tag) {
+                tag = {
+                  id: `tag-folder-${tagStore.size + 1}`,
+                  name,
+                  createdAt: Date.now(),
+                }
+                tagStore.set(tag.id, tag)
+              }
+              tagIds.add(tag.id)
+            })
+
+            const updated = { ...current, tagIds: Array.from(tagIds) }
+            bookStore.set(updated.id, updated)
+            updatedBooks.push(updated)
+          })
+          return { books: updatedBooks, tags: Array.from(tagStore.values()) }
+        }
         if (command === 'list_tags') return Array.from(tagStore.values())
         if (command === 'get_library_pins') return structuredClone(libraryPinsStore)
         if (command === 'update_library_pin') {
@@ -746,7 +801,8 @@ export async function installTauriMock(
         if (command === 'get_window_ui_state') return fixtureWindowUiState
         if (command === 'plugin:dialog|open') {
           globalWindow.__FLOW_TEST_TAURI__?.dialogOpenCalls.push(args ?? {})
-          const options = args?.options as { multiple?: boolean } | undefined
+          const options = args?.options as { directory?: boolean; multiple?: boolean } | undefined
+          if (options?.directory) return folderDialogQueue.shift() ?? null
           return options?.multiple === false ? (fixtureOpenDialogPaths[0] ?? null) : fixtureOpenDialogPaths
         }
         if (command === 'plugin:dialog|save') return fixtureSaveDialogPath
@@ -775,6 +831,8 @@ export async function installTauriMock(
       fixtureExternallyOpenedBooks: externallyOpenedBooks,
       fixtureImportedBooks: importedBooks,
       fixtureEpubImportDelayMs: epubImportDelayMs,
+      fixtureFolderDialogPaths: folderDialogPaths,
+      fixtureFolderImportCandidates: folderImportCandidates,
       fixtureLocalDictionaries: localDictionaries,
       fixtureLocalDictionaryFiles: localDictionaryFiles,
       fixtureOpenDialogPaths: openDialogPaths,
@@ -846,6 +904,22 @@ export async function getStoredLibraryPins(page: Page) {
     }
 
     return globalWindow.__FLOW_TEST_TAURI__?.libraryPinsStore ?? { authors: [], tagIds: [] }
+  })
+}
+
+export async function getStoredLibraryMockState(page: Page) {
+  return page.evaluate(() => {
+    const globalWindow = window as typeof window & {
+      __FLOW_TEST_TAURI__?: {
+        books: BookRecord[]
+        tags: TestLibraryTagRecord[]
+      }
+    }
+
+    return {
+      books: globalWindow.__FLOW_TEST_TAURI__?.books ?? [],
+      tags: globalWindow.__FLOW_TEST_TAURI__?.tags ?? [],
+    }
   })
 }
 

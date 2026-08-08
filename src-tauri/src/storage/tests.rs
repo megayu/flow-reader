@@ -6,13 +6,14 @@ use super::epub_import::read_bounded_bytes;
 use super::{
     AppStorage, BOOK_FILE, BOOKS_DIR, BookContentMode, BookExportFormat, BookReaderSourceMode, BookRecord, BookScope,
     BookSourceFormat, BookSourceStatus, BookState, BookTextReplaceTarget, DirtyState, ExternalBookIndex,
-    IMAGE_INDEX_CACHE_VERSION, ImageIndexCache, ImageIndexEntry, ImageIndexSection, Library, LibraryBook, LibraryPins,
-    ReadingStatus, SEARCH_TEXT_CACHE_VERSION, SOURCE_TEXT_FILE, STATE_FILE, SearchTextCache, SearchTextSection,
-    SourceStorage, SourceTextUpdate, StorageInner, StorageState, TextImportPreparedCache, TextImportRulesInput,
-    TextImportSelection, UNPACKED_DIR, check_book_source_statuses_impl, cleanup_external_book_heavy_files,
-    decode_text_bytes, empty_object, ensure_book_package_path_with_unpacker, export_book_impl, external_books_root,
-    external_index_path, get_book_reader_source_impl, hash_file, library_path, load_or_build_search_text_cache,
-    mark_book_exported, mark_library_book_content_updated, materialize_epub_package, normalize_non_square_pixel_png,
+    FolderImportTagAssignment, IMAGE_INDEX_CACHE_VERSION, ImageIndexCache, ImageIndexEntry, ImageIndexSection, Library,
+    LibraryBook, LibraryPins, LibraryTagRecord, ReadingStatus, SEARCH_TEXT_CACHE_VERSION, SOURCE_TEXT_FILE, STATE_FILE,
+    SearchTextCache, SearchTextSection, SourceStorage, SourceTextUpdate, StorageInner, StorageState,
+    TextImportPreparedCache, TextImportRulesInput, TextImportSelection, UNPACKED_DIR, apply_folder_import_tags_impl,
+    check_book_source_statuses_impl, cleanup_external_book_heavy_files, decode_text_bytes, empty_object,
+    ensure_book_package_path_with_unpacker, export_book_impl, external_books_root, external_index_path,
+    get_book_reader_source_impl, hash_file, library_path, load_or_build_search_text_cache, mark_book_exported,
+    mark_library_book_content_updated, materialize_epub_package, normalize_non_square_pixel_png,
     normalize_publication_date, normalize_unpacked_epub_structure, open_external_epub_path_impl, parent_zip_path,
     parse_text_import_document, path_to_client_string, read_image_index_cache, read_json_or_default,
     read_json_value_or_default, read_search_text_sections_from_unpacked, relative_zip_path, rename_books_for_deletion,
@@ -319,6 +320,62 @@ fn test_library_book_with_id(id: &str, source_format: BookSourceFormat) -> Libra
     book.id = id.to_string();
     book.name = format!("{id}.epub");
     book
+}
+
+#[test]
+fn folder_import_tags_reuse_existing_names_and_deduplicate_repeated_directories() {
+    let root = std::env::temp_dir().join(format!(
+        "flow-reader-folder-tag-test-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    fs::create_dir_all(&root).unwrap();
+    let storage = test_storage_with_book(&root, test_library_book_with_id("book-a", BookSourceFormat::Epub));
+    storage.inner.state.lock().unwrap().library.tags.push(LibraryTagRecord {
+        id: "tag-rust".to_string(),
+        name: "rust".to_string(),
+        created_at: 1,
+        updated_at: None,
+    });
+
+    let result = apply_folder_import_tags_impl(
+        &storage,
+        vec![FolderImportTagAssignment {
+            book_id: "book-a".to_string(),
+            tag_names: vec!["Rust".to_string(), "a".to_string(), "b".to_string(), "A".to_string()],
+        }],
+    )
+    .unwrap();
+
+    assert_eq!(
+        result
+            .tags
+            .iter()
+            .filter(|tag| tag.name.eq_ignore_ascii_case("rust"))
+            .count(),
+        1
+    );
+    assert_eq!(
+        result
+            .tags
+            .iter()
+            .filter(|tag| tag.name.eq_ignore_ascii_case("a"))
+            .count(),
+        1
+    );
+    assert_eq!(
+        result
+            .tags
+            .iter()
+            .filter(|tag| tag.name.eq_ignore_ascii_case("b"))
+            .count(),
+        1
+    );
+    let book = result.books.iter().find(|book| book.id == "book-a").unwrap();
+    assert_eq!(book.tag_ids.len(), 3);
+    assert!(book.tag_ids.iter().any(|tag_id| tag_id == "tag-rust"));
+
+    fs::remove_dir_all(root).unwrap();
 }
 
 fn write_book_dir(storage: &AppStorage, id: &str, marker: &str) {
