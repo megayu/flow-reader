@@ -44,6 +44,7 @@ import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
 import { type LibraryAction, type Action as ReaderPanelAction, useAction, useLibraryAction } from '../hooks/useAction'
 import { useLibrary, useLibraryPins, useLibraryTags } from '../hooks/useLibrary'
+import { useOverlayScrollbarMetrics } from '../hooks/useOverlayScrollbarMetrics'
 import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import {
@@ -85,7 +86,7 @@ import { db, type LibraryTagRecord } from '../storage'
 import { activeClass } from '../styles'
 
 import { AppTooltip } from './AppTooltip'
-import { OverlayScroll, type OverlayScrollbarMetrics, PaneView } from './base/PaneView'
+import { OverlayScroll, PaneView } from './base/PaneView'
 import { SplitView } from './base/SplitView'
 import { useSplitViewItem } from './base/splitViewContext'
 import { ReadingStatusIcon } from './ReadingStatusIcon'
@@ -1178,59 +1179,6 @@ function getLibraryFacetSearchShortcutTarget(e: KeyboardEvent): LibraryFacetSear
   return undefined
 }
 
-function useFilterSectionScrollbar(
-  scrollRef: RefObject<HTMLDivElement | null>,
-  contentRef: RefObject<HTMLDivElement | null>,
-  active: boolean,
-): OverlayScrollbarMetrics {
-  const [metrics, setMetrics] = useState({ scrollTop: 0, totalSize: 0, viewportHeight: 0 })
-  const updateMetrics = useCallback(() => {
-    const scroll = scrollRef.current
-    if (!scroll) return
-
-    const next = {
-      scrollTop: scroll.scrollTop,
-      totalSize: scroll.scrollHeight,
-      viewportHeight: scroll.clientHeight,
-    }
-    setMetrics((current) =>
-      current.scrollTop === next.scrollTop &&
-      current.totalSize === next.totalSize &&
-      current.viewportHeight === next.viewportHeight
-        ? current
-        : next,
-    )
-  }, [scrollRef])
-
-  useLayoutEffect(() => {
-    if (active) updateMetrics()
-  })
-
-  useEffect(() => {
-    if (!active) return
-
-    const scroll = scrollRef.current
-    const content = contentRef.current
-    if (!scroll || !content) return
-
-    scroll.addEventListener('scroll', updateMetrics, { passive: true })
-    if (typeof ResizeObserver === 'undefined') {
-      return () => scroll.removeEventListener('scroll', updateMetrics)
-    }
-
-    const observer = new ResizeObserver(updateMetrics)
-    observer.observe(scroll)
-    observer.observe(content)
-
-    return () => {
-      scroll.removeEventListener('scroll', updateMetrics)
-      observer.disconnect()
-    }
-  }, [active, contentRef, scrollRef, updateMetrics])
-
-  return { scrollRef, ...metrics }
-}
-
 interface FilterSectionProps extends PropsWithChildren {
   actions?: ReactNode
   expanded: boolean
@@ -1278,7 +1226,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
   title,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null)
-  const scrollbar = useFilterSectionScrollbar(scrollRef, contentRef, expanded)
+  const scrollbar = useOverlayScrollbarMetrics(scrollRef, contentRef, expanded)
 
   useLayoutEffect(() => {
     if (!searching || lockedHeight !== undefined || !sectionRef.current) return

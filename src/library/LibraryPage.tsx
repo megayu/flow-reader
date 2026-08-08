@@ -27,6 +27,7 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 import { getBookDisplayTitle } from '../book'
 import { AppTooltip } from '../components/AppTooltip'
 import { DropZone } from '../components/base/DropZone'
+import { OverlayScroll } from '../components/base/PaneView'
 import { IconButton } from '../components/IconButton'
 import { ReaderGridView } from '../components/Reader'
 import { ReadingStatusIcon } from '../components/ReadingStatusIcon'
@@ -52,6 +53,7 @@ import {
 import { useLibraryAction } from '../hooks/useAction'
 import { useBookImportNotifications } from '../hooks/useBookImportNotifications'
 import { useCovers, useLibrary, useLibraryTags, useRecentBookIds } from '../hooks/useLibrary'
+import { useOverlayScrollbarMetrics } from '../hooks/useOverlayScrollbarMetrics'
 import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import { reader, useReaderSnapshot } from '../models/reader'
@@ -123,6 +125,17 @@ const sortFieldMessageKey = {
 } satisfies Record<LibrarySortField, string>
 
 const toolbarButtonClass = 'h-8 leading-none'
+// Match the selected tab's straight side: 10px list padding plus its 2px outer margin.
+const libraryContentInlineInset = 12
+const libraryBookCardOuterInset = 4
+const librarySelectionRingOutset = 2
+const libraryToolbarStyle = {
+  paddingInline: `${libraryContentInlineInset}px`,
+} as React.CSSProperties
+const libraryScrollContentStyle = {
+  paddingBlock: `${librarySelectionRingOutset}px`,
+  paddingInline: `${libraryContentInlineInset}px`,
+} as React.CSSProperties
 const libraryBookCardSizePresets = [
   { key: 'small', value: 140 },
   { key: 'medium', value: 160 },
@@ -518,7 +531,6 @@ const Library: React.FC<LibraryProps> = ({
     settings.libraryDisplay?.bookCardWidth ?? defaultLibraryDisplay.bookCardWidth,
   )
   const bookCardGap = clamp(Math.round(bookCardWidth * 0.08), 10, 20)
-  const bookGridPadding = clamp(Math.round(bookCardWidth * 0.04), 4, 10)
   const [statusFilters, setStatusFilters] = useLibraryStatusFilter()
   const [authorFilters] = useLibraryAuthorFilter()
   const [tagFilters] = useLibraryTagFilter()
@@ -534,7 +546,9 @@ const Library: React.FC<LibraryProps> = ({
   const [deleteBooksOpen, setDeleteBooksOpen] = useState(false)
   const [folderImportPath, setFolderImportPath] = useState<string>()
   const [recentBookCapacity, setRecentBookCapacity] = useState(0)
-  const libraryViewportRef = useRef<HTMLDivElement>(null)
+  const bookGridRef = useRef<HTMLUListElement>(null)
+  const libraryScrollRef = useRef<HTMLDivElement>(null)
+  const libraryScrollContentRef = useRef<HTMLDivElement>(null)
   const titleSearchInputRef = useRef<HTMLInputElement>(null)
   const selectionAnchorIdRef = useRef<string | undefined>(undefined)
   const rangeSelectionSessionRef = useRef<LibraryRangeSelectionSession | undefined>(undefined)
@@ -575,6 +589,7 @@ const Library: React.FC<LibraryProps> = ({
   const coversById = useMemo(() => new Map(covers?.map((cover) => [cover.id, cover.cover])), [covers])
   const selectedBooks = sortedBooks.filter((book) => selectedBookIds.has(book.id))
   const openSelectedBookCount = selectedBooks.filter((book) => openBookIds.has(book.id)).length
+  const libraryScrollbar = useOverlayScrollbarMetrics(libraryScrollRef, libraryScrollContentRef)
   useEffect(() => {
     if (!titleSearchQuery) {
       setDebouncedTitleSearchQuery('')
@@ -616,23 +631,22 @@ const Library: React.FC<LibraryProps> = ({
       return
     }
 
-    const viewport = libraryViewportRef.current
-    if (!viewport) return
+    const grid = bookGridRef.current
+    if (!grid) return
 
     const updateCapacity = (width: number) => {
-      const availableWidth = Math.max(0, width - bookGridPadding * 2)
-      const capacity = Math.max(1, Math.floor((availableWidth + bookCardGap) / (bookCardWidth + bookCardGap)))
+      const capacity = Math.max(1, Math.floor((width + bookCardGap) / (bookCardWidth + bookCardGap)))
       setRecentBookCapacity((current) => (current === capacity ? current : capacity))
     }
-    updateCapacity(viewport.clientWidth)
+    updateCapacity(grid.clientWidth)
 
     if (typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(([entry]) => {
       if (entry) updateCapacity(entry.contentRect.width)
     })
-    observer.observe(viewport)
+    observer.observe(grid)
     return () => observer.disconnect()
-  }, [bookCardGap, bookCardWidth, bookGridPadding, recentBooks.length, select, settings.showRecentBooks])
+  }, [bookCardGap, bookCardWidth, recentBooks.length, select, settings.showRecentBooks])
 
   useEffect(() => {
     if (!referencedArchiveIds.length) {
@@ -982,16 +996,17 @@ const Library: React.FC<LibraryProps> = ({
       ? t('book_count.total')
       : t('book_count.filtered')
   const bookGridStyle = {
-    gridTemplateColumns: `repeat(auto-fill, minmax(${bookCardWidth}px, 1fr))`,
+    gridTemplateColumns: `repeat(auto-fill, ${bookCardWidth}px)`,
     columnGap: `${bookCardGap}px`,
     rowGap: `${bookCardGap}px`,
-    padding: `${bookGridPadding}px`,
+    justifyContent: 'space-between',
+    marginInline: `-${libraryBookCardOuterInset}px`,
     '--library-book-card-width': `${bookCardWidth}px`,
   } as React.CSSProperties
 
   return (
     <DropZone
-      className="scroll-parent flex h-full min-h-0 flex-col p-4"
+      className="scroll-parent flex h-full min-h-0 flex-col py-4"
       onContextMenu={(e) => {
         e.preventDefault()
       }}
@@ -1013,7 +1028,7 @@ const Library: React.FC<LibraryProps> = ({
         }
       }}
     >
-      <div className="mb-4 space-y-2.5">
+      <div className="mb-4 space-y-2.5" style={libraryToolbarStyle}>
         <div className="flex flex-wrap items-start gap-2">
           <div className="flex min-w-30 flex-1 basis-0 flex-wrap items-center gap-2">
             {!!books.length && (
@@ -1304,42 +1319,44 @@ const Library: React.FC<LibraryProps> = ({
         </div>
       </div>
 
-      <div ref={libraryViewportRef} className="scroll min-h-0 flex-1">
-        {settings.showRecentBooks && !select && recentBookCapacity > 0 && recentBooks.length > 0 && (
-          <section data-flow-library-recent-books className="border-border/60 mb-2 border-b pb-2">
-            <ul className="grid" style={bookGridStyle}>
-              {recentBooks.slice(0, recentBookCapacity).map((book) => (
-                <BookCard
-                  key={`recent-${book.id}`}
-                  book={book}
-                  sourceStatus={sourceStatuses.get(book.id)}
-                  cover={coversById.get(book.id)}
-                  recent
-                  showModifiedExportIndicator={settings.showModifiedBookExportIndicator === true}
-                  onSelectBook={selectBook}
-                  onOpenBook={onOpenBook}
-                />
-              ))}
-            </ul>
-          </section>
-        )}
-        <ul className="grid" style={bookGridStyle}>
-          {sortedBooks.map((book) => (
-            <BookCard
-              key={book.id}
-              book={book}
-              sourceStatus={sourceStatuses.get(book.id)}
-              cover={coversById.get(book.id)}
-              select={select}
-              selected={has(book.id)}
-              highlighted={highlightedBookIds.has(book.id)}
-              showModifiedExportIndicator={settings.showModifiedBookExportIndicator === true}
-              onSelectBook={selectBook}
-              onOpenBook={onOpenBook}
-            />
-          ))}
-        </ul>
-      </div>
+      <OverlayScroll ref={libraryScrollRef} containerClassName="-mt-0.5 min-h-0 flex-1" scrollbar={libraryScrollbar}>
+        <div ref={libraryScrollContentRef} style={libraryScrollContentStyle}>
+          {settings.showRecentBooks && !select && recentBookCapacity > 0 && recentBooks.length > 0 && (
+            <section data-flow-library-recent-books className="border-border/60 mb-2 border-b pb-2">
+              <ul className="grid" style={bookGridStyle}>
+                {recentBooks.slice(0, recentBookCapacity).map((book) => (
+                  <BookCard
+                    key={`recent-${book.id}`}
+                    book={book}
+                    sourceStatus={sourceStatuses.get(book.id)}
+                    cover={coversById.get(book.id)}
+                    recent
+                    showModifiedExportIndicator={settings.showModifiedBookExportIndicator === true}
+                    onSelectBook={selectBook}
+                    onOpenBook={onOpenBook}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
+          <ul ref={bookGridRef} className="grid" style={bookGridStyle}>
+            {sortedBooks.map((book) => (
+              <BookCard
+                key={book.id}
+                book={book}
+                sourceStatus={sourceStatuses.get(book.id)}
+                cover={coversById.get(book.id)}
+                select={select}
+                selected={has(book.id)}
+                highlighted={highlightedBookIds.has(book.id)}
+                showModifiedExportIndicator={settings.showModifiedBookExportIndicator === true}
+                onSelectBook={selectBook}
+                onOpenBook={onOpenBook}
+              />
+            ))}
+          </ul>
+        </div>
+      </OverlayScroll>
       {batchTagsOpen && (
         <BatchTagsDialog books={selectedBooks} tags={tags ?? []} onClose={() => setBatchTagsOpen(false)} />
       )}

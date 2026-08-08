@@ -1,14 +1,8 @@
 import clsx from 'clsx'
 import type { LucideIcon } from 'lucide-react'
-import {
-  type ComponentProps,
-  forwardRef,
-  type PointerEvent as ReactPointerEvent,
-  type RefObject,
-  useCallback,
-  useRef,
-} from 'react'
+import { type ComponentProps, forwardRef, type PointerEvent as ReactPointerEvent, useCallback, useRef } from 'react'
 
+import type { OverlayScrollbarMetrics } from '@/hooks/useOverlayScrollbarMetrics'
 import { useAppStore } from '@/state'
 
 import { IconButton } from '../IconButton'
@@ -131,13 +125,6 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
     </div>
   )
 })
-
-export interface OverlayScrollbarMetrics {
-  scrollRef: RefObject<HTMLDivElement | null>
-  scrollTop: number
-  totalSize: number
-  viewportHeight: number
-}
 
 interface ScrollbarDrag {
   pointerId: number
