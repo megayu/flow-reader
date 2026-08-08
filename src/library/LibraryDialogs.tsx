@@ -526,7 +526,7 @@ export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({ book, cover, onC
                 src={cover}
                 alt=""
                 className={clsx(
-                  'block max-w-full shadow-sm',
+                  'block max-w-full',
                   book.sourceFormat === 'txt' ? 'h-64 w-48' : 'h-auto max-h-64 w-auto',
                 )}
                 draggable={false}
