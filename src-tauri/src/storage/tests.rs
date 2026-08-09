@@ -18,10 +18,10 @@ use super::{
     parse_text_import_document, path_to_client_string, read_image_index_cache, read_json_or_default,
     read_json_value_or_default, read_search_text_sections_from_unpacked, relative_zip_path, rename_books_for_deletion,
     replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node, schedule_existing_pending_delete_cleanup,
-    search_text_cache_from_bytes, search_text_cache_to_bytes, search_text_in_cache, settings_path,
-    sync_unpacked_opf_metadata, text_content_opf, text_nav_xhtml, text_section_xhtml, visible_search_text_from_xhtml,
-    write_cover, write_epub_from_original_and_unpacked, write_epub_from_unpacked_dir,
-    write_image_index_cache_if_current, write_source_text_update,
+    search_text_cache_from_bytes, search_text_cache_to_bytes, search_text_in_cache, sync_unpacked_opf_metadata,
+    text_content_opf, text_nav_xhtml, text_section_xhtml, visible_search_text_from_xhtml, write_cover,
+    write_epub_from_original_and_unpacked, write_epub_from_unpacked_dir, write_image_index_cache_if_current,
+    write_source_text_update,
 };
 use crate::tasks::TaskService;
 use serde_json::{Value, json};
@@ -212,7 +212,7 @@ fn test_storage_with_books(root: &Path, books: Vec<LibraryBook>) -> AppStorage {
                     recent_book_ids: Vec::new(),
                 },
                 external: ExternalBookIndex::default(),
-                settings: json!({}),
+                settings: json!({"importSourceStorage": "managed"}),
             }),
             dirty: Mutex::new(DirtyState::default()),
             flush_lock: Mutex::new(()),
@@ -242,7 +242,7 @@ fn test_storage_from_disk(root: &Path) -> AppStorage {
             state: Mutex::new(StorageState {
                 library: read_json_or_default::<Library>(&library_path(root).unwrap()).unwrap(),
                 external: read_json_or_default::<ExternalBookIndex>(&external_index_path(root).unwrap()).unwrap(),
-                settings: read_json_value_or_default(&settings_path(root).unwrap()).unwrap(),
+                settings: json!({"importSourceStorage": "managed"}),
             }),
             dirty: Mutex::new(DirtyState::default()),
             flush_lock: Mutex::new(()),

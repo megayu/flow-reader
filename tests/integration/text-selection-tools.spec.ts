@@ -112,11 +112,13 @@ async function setupDictionaryReader(
     readerSources: { 'dictionary-book': alicePackageUrl },
     settings: {
       dictionary: {
+        zdic: { enabled: true },
         merriamWebster: {
           apiKey: Object.keys(merriamWebsterResponses).length ? 'test-only-mw-key' : '',
           enabled: Object.keys(merriamWebsterResponses).length > 0,
         },
       },
+      enableTextSelectionMenu: true,
     },
     merriamWebsterResponses,
     localDictionaries,

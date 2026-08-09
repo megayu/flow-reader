@@ -244,7 +244,7 @@ fn restored_state(
         maximized_y: monitor.y,
         reader_sidebar_open: true,
         reader_sidebar_width: 240,
-        library_sidebar_open: true,
+        library_sidebar_open: false,
         library_sidebar_width: 240,
         panes: HashMap::new(),
     }

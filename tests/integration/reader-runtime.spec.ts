@@ -156,6 +156,7 @@ async function installReaderBooksMock(
     },
     imageIndexes,
     readerSources: Object.fromEntries(books.map((book, index) => [book.id, packageUrls[index]!])),
+    settings: { dictionary: { zdic: { enabled: true } }, enableTextSelectionMenu: true, showLibraryInToc: true },
     zdicResponses: { 乙丙丁戊己庚: dictionaryLayoutHtml },
   })
 }

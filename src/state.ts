@@ -518,7 +518,7 @@ export function useSettingsReady() {
 }
 
 export function useShowLibraryInTocValue() {
-  return useAppStore((state) => state.settings.showLibraryInToc !== false)
+  return useAppStore((state) => state.settings.showLibraryInToc === true)
 }
 
 export function isRecentReadingEnabled() {

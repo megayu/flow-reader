@@ -183,24 +183,13 @@ test('app UI font size changes app chrome without changing reading font size', a
     })
 })
 
-test('keeps original-file references opt-in and persists the import mode', async ({ page }) => {
+test('uses original-file references by default and persists the import mode', async ({ page }) => {
   const dialog = await openSettings(page)
   const checkbox = dialog.getByRole('checkbox', {
     name: msg('settings.source_storage'),
   })
 
-  await expect(checkbox).not.toBeChecked()
-  await checkbox.click()
   await expect(checkbox).toBeChecked()
-  await expect
-    .poll(async () => {
-      const settings = (await getStoredSettings(page)) as {
-        importSourceStorage?: string
-      }
-      return settings.importSourceStorage
-    })
-    .toBe('referenced')
-
   await checkbox.click()
   await expect(checkbox).not.toBeChecked()
   await expect
@@ -211,6 +200,17 @@ test('keeps original-file references opt-in and persists the import mode', async
       return settings.importSourceStorage
     })
     .toBe('managed')
+
+  await checkbox.click()
+  await expect(checkbox).toBeChecked()
+  await expect
+    .poll(async () => {
+      const settings = (await getStoredSettings(page)) as {
+        importSourceStorage?: string
+      }
+      return settings.importSourceStorage
+    })
+    .toBe('referenced')
 })
 
 test('zen mode action is visibly disabled in library mode', async ({ page }) => {

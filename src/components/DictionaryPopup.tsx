@@ -60,7 +60,7 @@ export function DictionaryPopup({
       localDictionaries.map((dictionary) => dictionary.id),
     )
     const providerSources = [
-      ...(zdic?.enabled !== false ? [{ sourceId: zdicSourceId, provider: zdicProvider }] : []),
+      ...(zdic?.enabled === true ? [{ sourceId: zdicSourceId, provider: zdicProvider }] : []),
       ...(merriamWebster?.enabled && merriamWebster.apiKey
         ? [
             {

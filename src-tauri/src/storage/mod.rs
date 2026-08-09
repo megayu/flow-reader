@@ -513,9 +513,10 @@ impl AppStorage {
                     .and_then(Value::as_str)
                     .map(str::to_owned)
             })
-            .filter(|value| value == "referenced")
-            .map(|_| SourceStorage::Referenced)
-            .unwrap_or_default()
+            .map_or(SourceStorage::Referenced, |value| match value.as_str() {
+                "referenced" => SourceStorage::Referenced,
+                _ => SourceStorage::Managed,
+            })
     }
 
     fn text_import_rules(&self) -> Result<Option<TextImportRulesInput>, String> {

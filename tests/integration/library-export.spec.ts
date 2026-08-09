@@ -26,23 +26,23 @@ const modifiedBook: BookRecord = createTestBook({
   annotations: [],
 })
 
-test('library modified-book indicator is disabled by default and can be enabled', async ({ page }) => {
+test('library modified-book indicator is enabled by default and can be disabled', async ({ page }) => {
   await installTauriMock(page, { books: [modifiedBook] })
   await page.goto('/')
 
   const indicator = page.locator('[data-flow-library-book-card] svg.lucide-download')
-  await expect(indicator).toHaveCount(0)
+  await expect(indicator).toHaveCount(1)
 
   await page.keyboard.press(settingsShortcut)
   const dialog = page.getByRole('dialog')
   const checkbox = dialog.getByRole('checkbox', {
     name: msg('settings.library_modified_indicator'),
   })
-  await expect(checkbox).not.toBeChecked()
+  await expect(checkbox).toBeChecked()
   await checkbox.click()
   await page.keyboard.press('Escape')
 
-  await expect(indicator).toBeVisible()
+  await expect(indicator).toHaveCount(0)
 })
 
 test('exporting either TXT format clears the shared indicator and export marker', async ({ page }) => {

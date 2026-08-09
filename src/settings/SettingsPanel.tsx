@@ -217,7 +217,7 @@ export const SettingsPanel: React.FC = () => {
                 <SettingsCheckbox
                   id="settings-text-selection-menu"
                   label={t('text_selection_menu')}
-                  checked={settings.enableTextSelectionMenu !== false}
+                  checked={settings.enableTextSelectionMenu === true}
                   onCheckedChange={(checked) => {
                     setSettings({
                       ...settings,
@@ -268,7 +268,7 @@ export const SettingsPanel: React.FC = () => {
                 <SettingsCheckbox
                   id="settings-show-library-in-toc"
                   label={t('show_library_in_toc')}
-                  checked={settings.showLibraryInToc !== false}
+                  checked={settings.showLibraryInToc === true}
                   onCheckedChange={(checked) => {
                     setSettings((prev) => ({
                       ...prev,
