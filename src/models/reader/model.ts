@@ -506,6 +506,18 @@ export class BookTab extends BaseTab {
     this.typographyConfiguration = book.configuration?.typography
   }
 
+  mergeRuntimeState(book: BookRecord) {
+    return {
+      ...book,
+      annotations: this.book.annotations,
+      cfi: this.book.cfi,
+      configuration: this.book.configuration,
+      definitions: this.book.definitions,
+      lastReadAt: this.book.lastReadAt,
+      percentage: this.book.percentage,
+    }
+  }
+
   private applyBookUpdate(book: BookRecord, changes: Partial<BookRecord>) {
     this.book = book
     if ('annotations' in changes || 'definitions' in changes) {
@@ -533,7 +545,7 @@ export class BookTab extends BaseTab {
   }
 
   reloadContentAfterEdit(book: BookRecord, target?: string) {
-    this.setBook(book)
+    this.setBook(this.mergeRuntimeState(book))
     this.annotationRange = undefined
     this.annotationCfi = undefined
     this.runtimeAnchorCfi = undefined
@@ -638,7 +650,7 @@ export class BookTab extends BaseTab {
       patchDocumentTextNode(sectionDocument, target, oldText, newText)
     }
 
-    this.setBook(book)
+    this.setBook(this.mergeRuntimeState(book))
     this.annotationRange = undefined
     this.annotationCfi = undefined
     this.runtimeAnchorCfi = undefined
@@ -663,6 +675,15 @@ export class BookTab extends BaseTab {
 
   updateBook(changes: Partial<BookRecord>) {
     this.persistence.updateBook(this.persistenceHost(), changes)
+  }
+
+  private hasRecordedOpen = false
+
+  recordOpened(force = false) {
+    if (this.hasRecordedOpen && !force) return false
+    this.hasRecordedOpen = true
+    this.persistence.recordOpened(this.persistenceHost())
+    return true
   }
 
   private createCurrentPositionUpdate(percentage?: number): Partial<BookRecord> | undefined {
@@ -1961,6 +1982,7 @@ export class BookTab extends BaseTab {
 
     this.renderingEl = ref(el)
     const generation = ++this.renderGeneration
+    if (this.recordOpened()) this.beginRecentReadingSession()
     const clearRendering = () => {
       if (el === this.renderingEl) this.renderingEl = undefined
     }
@@ -2184,7 +2206,6 @@ export class BookTab extends BaseTab {
       this.failCommittedRender(generation, 'position', error)
       return
     }
-
     if (this.book.sourceStorage === 'referenced' && this.book.contentMode === 'archiveOnly') {
       this.rendition.on('displayError', (error: unknown) => {
         if (generation === this.renderGeneration) {
@@ -2435,8 +2456,12 @@ export class Reader {
   }
 
   openBookFromLibrary(book: BookRecord) {
+    const existing = this.findBookTab(book.id)
     const tab = this.addTab(book)
-    if (tab instanceof BookTab) tab.beginRecentReadingSession()
+    if (tab instanceof BookTab && existing) {
+      tab.beginRecentReadingSession()
+      tab.recordOpened(true)
+    }
     return tab
   }
 
@@ -2495,12 +2520,13 @@ export class Reader {
     editedTab?: BookTab,
     patch?: BookContentEditPatch,
   ) {
-    db.books.remember(book)
     const tab = this.findBookTab(book.id)?.tab
+    const currentBook = tab?.mergeRuntimeState(book) ?? book
+    db.books.remember(currentBook)
     if (!tab) return
     if (tab === editedTab && patch) {
       const patched = await tab.applyRenderedTextEdit(
-        book,
+        currentBook,
         patch.target,
         patch.oldText,
         patch.newText,
@@ -2510,7 +2536,7 @@ export class Reader {
       if (!patched) throw new Error('TEXT_REPLACE_RENDER_PATCH_FAILED')
       return
     }
-    tab.reloadContentAfterEdit(book, reloadTarget)
+    tab.reloadContentAfterEdit(currentBook, reloadTarget)
   }
 
   refreshImportedBooks(books: BookRecord[]) {
@@ -2524,8 +2550,9 @@ export class Reader {
         if (!book) return
 
         openBookIds.add(book.id)
-        db.books.remember(book)
-        tab.refreshImportedBook(book)
+        const currentBook = tab.mergeRuntimeState(book)
+        db.books.remember(currentBook)
+        tab.refreshImportedBook(currentBook)
       })
     })
     return openBookIds

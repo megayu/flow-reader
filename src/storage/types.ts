@@ -178,7 +178,7 @@ export interface ReadingPositionInput {
   cfi?: string
   percentage?: number
   spread?: ReadingSpreadRecord | null
-  updatedAt: number
+  lastReadAt: number
 }
 
 export interface BookSearchHit {

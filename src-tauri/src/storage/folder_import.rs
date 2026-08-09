@@ -195,6 +195,7 @@ pub(super) fn apply_folder_import_tags_impl(
             .map(|tag| (tag.name.to_ascii_lowercase(), tag.id.clone()))
             .collect::<HashMap<_, _>>();
 
+        let updated_at = now_ms();
         for assignment in assignments {
             let Some(&book_index) = book_indices.get(&assignment.book_id) else {
                 continue;
@@ -230,11 +231,16 @@ pub(super) fn apply_folder_import_tags_impl(
             }
 
             let book = &mut state.library.books[book_index];
+            let mut book_changed = false;
             for tag_id in resolved_tag_ids {
                 if !book.tag_ids.contains(&tag_id) {
                     book.tag_ids.push(tag_id);
                     changed = true;
+                    book_changed = true;
                 }
+            }
+            if book_changed {
+                book.updated_at = Some(updated_at);
             }
         }
 

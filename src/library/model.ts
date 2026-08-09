@@ -188,40 +188,27 @@ export function mergeLibraryTags(tags: LibraryTagRecord[], extraTags: LibraryTag
   return Array.from(byId.values()).sort((a, b) => collator.compare(a.name, b.name))
 }
 
-function compareBookTitle(a: BookRecord, b: BookRecord) {
-  return compareBookDisplayTitle(a, b)
-}
-
-function compareBookString(a: BookRecord, b: BookRecord, getValue: (book: BookRecord) => string) {
-  return collator.compare(getValue(a), getValue(b))
-}
-
-function compareBookNumber(a: BookRecord, b: BookRecord, getValue: (book: BookRecord) => number | undefined) {
-  return (getValue(a) ?? 0) - (getValue(b) ?? 0)
-}
-
-function compareBooksByField(a: BookRecord, b: BookRecord, field: LibrarySortField) {
-  if (field === 'title') return compareBookTitle(a, b)
-  if (field === 'creator') {
-    return compareBookString(a, b, (book) => cleanBookText(book.metadata.creator))
-  }
-  if (field === 'updatedAt') {
-    return compareBookNumber(a, b, (book) => book.lastReadAt ?? book.updatedAt)
-  }
-
-  return compareBookNumber(a, b, (book) => book.createdAt)
-}
-
 export function sortBooks(books: BookRecord[], field: LibrarySortField, direction: LibrarySortDirection) {
-  return [...books].sort((a, b) => {
-    const primary = compareBooksByField(a, b, field)
-    if (primary) return direction === 'asc' ? primary : -primary
+  if (field === 'createdAt') {
+    return direction === 'asc' ? books : [...books].reverse()
+  }
 
-    if (field !== 'title') {
-      return compareBookTitle(a, b)
+  return [...books].sort((a, b) => {
+    if (field === 'updatedAt') {
+      if (a.lastReadAt === undefined || b.lastReadAt === undefined) {
+        if (a.lastReadAt === b.lastReadAt) return 0
+        return a.lastReadAt === undefined ? 1 : -1
+      }
+
+      const primary = a.lastReadAt - b.lastReadAt
+      return direction === 'asc' ? primary : -primary
     }
 
-    return 0
+    const primary =
+      field === 'title'
+        ? compareBookDisplayTitle(a, b)
+        : collator.compare(cleanBookText(a.metadata.creator), cleanBookText(b.metadata.creator))
+    return direction === 'asc' ? primary : -primary
   })
 }
 

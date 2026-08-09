@@ -136,6 +136,7 @@ pub(super) fn clear_book_caches_impl(
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
+        let updated_at = now_ms();
         for book in &mut state.library.books {
             if !restored_source_ids.contains(&book.id) {
                 continue;
@@ -147,6 +148,7 @@ pub(super) fn clear_book_caches_impl(
             book.content_hash = content_hash.clone();
             book.content_version = book.content_version.saturating_add(1).max(1);
             book.content_edited_at = None;
+            book.updated_at = Some(updated_at);
         }
     }
     storage.mark_library_dirty();

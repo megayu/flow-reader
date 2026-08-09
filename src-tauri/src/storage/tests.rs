@@ -942,14 +942,14 @@ fn reading_position_input(
     cfi: &str,
     percentage: f64,
     spread: serde_json::Value,
-    updated_at: u64,
+    last_read_at: u64,
 ) -> ReadingPositionInput {
     ReadingPositionInput {
         book_id: "book".to_string(),
         cfi: Some(cfi.to_string()),
         percentage: Some(percentage),
         spread: Some(spread),
-        updated_at,
+        last_read_at,
     }
 }
 
@@ -2086,6 +2086,7 @@ fn record_reading_position_persists_state_before_library_flush() {
     ));
     let mut book = test_library_book(BookSourceFormat::Txt);
     book.metadata = json!({ "sourceEncodingId": "utf-8" });
+    book.updated_at = Some(100);
     let storage = test_storage_with_book(&root, book);
 
     let accepted = record_reading_position_impl(
@@ -2094,6 +2095,13 @@ fn record_reading_position_persists_state_before_library_flush() {
     )
     .expect("position update should not error");
     assert!(accepted);
+
+    {
+        let state = storage.inner.state.lock().unwrap();
+        let stored = &state.library.books[0];
+        assert_eq!(stored.updated_at, Some(100));
+        assert_eq!(stored.last_read_at, Some(300));
+    }
 
     assert!(!library_path(&root).unwrap().exists());
     let state = fs::read_to_string(root.join("books").join("book").join(STATE_FILE)).unwrap();

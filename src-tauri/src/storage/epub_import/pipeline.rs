@@ -172,7 +172,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                     book.source_storage = source_storage;
                     book.source_path = Some(source_path.clone());
                     book.updated_at = Some(now_ms());
-                    book.last_read_at = book.updated_at;
+                    book.content_edited_at = None;
                     let id = book.id.clone();
                     (book, id, true, false, external_promotion)
                 }

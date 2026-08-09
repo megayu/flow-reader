@@ -27,7 +27,7 @@ function isReadingPositionOnlyUpdate(changes: Partial<BookRecord>, currentBook: 
   return (
     keys.some((key) => key === 'cfi' || key === 'percentage') &&
     isSpreadOnlyConfigurationUpdate(changes, currentBook) &&
-    keys.every((key) => ['cfi', 'percentage', 'updatedAt', 'lastReadAt', 'configuration'].includes(key))
+    keys.every((key) => ['cfi', 'percentage', 'lastReadAt', 'configuration'].includes(key))
   )
 }
 
@@ -35,12 +35,10 @@ export class BookPersistenceController {
   updateBook(host: BookPersistenceHost, changes: Partial<BookRecord>) {
     const currentBook = host.getBook()
     const readingPositionOnly = isReadingPositionOnlyUpdate(changes, currentBook)
-    const updatedAt = Date.now()
-    const committedChanges = {
-      ...changes,
-      updatedAt,
-      ...(readingPositionOnly ? { lastReadAt: updatedAt } : {}),
-    }
+    const cfiChanged = readingPositionOnly && 'cfi' in changes && changes.cfi !== currentBook.cfi
+    const committedChanges: Partial<BookRecord> = readingPositionOnly
+      ? { ...changes, ...(cfiChanged ? { lastReadAt: Date.now() } : {}) }
+      : { ...changes, updatedAt: Date.now() }
     const book = { ...currentBook, ...committedChanges }
 
     host.applyBookUpdate(book, committedChanges)
@@ -53,14 +51,26 @@ export class BookPersistenceController {
     })
   }
 
-  private readingPosition(host: BookPersistenceHost, changes: Partial<BookRecord>) {
+  recordOpened(host: BookPersistenceHost) {
+    const changes = { lastReadAt: Date.now() }
+    const book = { ...host.getBook(), ...changes }
+    host.applyBookUpdate(book, changes)
+    db.books.rememberUpdate(book, changes)
+    void db.books.update(book.id, changes).catch((error) => {
+      console.error(error)
+    })
+  }
+
+  private readingPosition(host: BookPersistenceHost) {
     const book = host.getBook()
+    if (book.lastReadAt === undefined) return
+
     return {
       bookId: book.id,
-      cfi: changes.cfi,
-      percentage: changes.percentage,
-      spread: changes.configuration?.spread ?? null,
-      updatedAt: changes.updatedAt ?? Date.now(),
+      cfi: book.cfi,
+      percentage: book.percentage,
+      spread: book.configuration?.spread ?? null,
+      lastReadAt: book.lastReadAt,
     }
   }
 
@@ -72,18 +82,13 @@ export class BookPersistenceController {
     }
 
     const positionUpdate = host.createCurrentPositionUpdate()
-    if (!positionUpdate) return
-
-    const updatedAt = Date.now()
-    const changes = {
-      ...positionUpdate,
-      updatedAt,
-      lastReadAt: updatedAt,
+    if (positionUpdate) {
+      const book = { ...host.getBook(), ...positionUpdate }
+      host.replaceBook(book)
+      db.books.rememberUpdate(book, positionUpdate)
     }
-    const book = { ...host.getBook(), ...changes }
-    host.replaceBook(book)
-    db.books.rememberUpdate(book, changes)
-    return this.readingPosition(host, changes)
+
+    return this.readingPosition(host)
   }
 
   async flushForClose({

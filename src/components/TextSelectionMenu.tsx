@@ -329,10 +329,12 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const currentReplaceTarget = useMemo(() => createTextReplaceTarget(range, section), [range, section])
   const replacementSnapshotRef = useRef<TextReplaceTarget | undefined>(undefined)
   const [editing, setEditing] = useState(false)
+  const [editorChanged, setEditorChanged] = useState(false)
   const [savingReplacement, setSavingReplacement] = useState(false)
   const savingReplacementRef = useRef(false)
   const [replacementError, setReplacementError] = useState<TextReplacementError>()
   const replaceTarget = editing ? replacementSnapshotRef.current : currentReplaceTarget
+  const initialAnnotationNotes = annotation?.notes ?? ''
   const textEditingDisabled = tab.book.scope === 'external' || tab.book.contentMode === 'archiveOnly'
   const closeMenu = () => {
     if (savingReplacementRef.current) return
@@ -484,6 +486,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           popupResizeObserverRef.current?.disconnect()
           popupResizeObserverRef.current = undefined
           if (!el) return
+
           const updateSize = () => {
             setWidth(el.offsetWidth)
             setHeight(el.offsetHeight)
@@ -491,7 +494,9 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           updateSize()
           popupResizeObserverRef.current = new ResizeObserver(updateSize)
           popupResizeObserverRef.current.observe(el)
-          el.focus({ preventScroll: true })
+          if (!el.contains(el.ownerDocument.activeElement)) {
+            el.focus({ preventScroll: true })
+          }
         }}
         className={clsx(
           'border-border bg-popover text-popover-foreground absolute z-50 box-border rounded-lg border shadow-lg shadow-black/10 focus:outline-none',
@@ -573,6 +578,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               name="replacement"
               aria-label={t('edit_text')}
               defaultValue={replaceTarget?.selectedText ?? text}
+              onValueChange={(value) => setEditorChanged(value !== replaceTarget?.selectedText)}
               onExitEditing={cancelEditing}
               className="textfield bg-background text-foreground scroll block h-40 min-h-0 w-68 resize-none rounded-none border-0 px-1.5 py-1 text-base outline-none focus-visible:border-transparent focus-visible:ring-1 focus-visible:ring-inset"
             />
@@ -593,7 +599,8 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             ref={ref}
             name="notes"
             aria-label="notes"
-            defaultValue={annotation?.notes}
+            defaultValue={initialAnnotationNotes}
+            onValueChange={(value) => setEditorChanged(value !== initialAnnotationNotes)}
             autoFocus
             onExitEditing={cancelAnnotation}
             className="textfield bg-background text-muted-foreground scroll h-40 min-h-0 w-68 resize-none rounded-none border-0 px-1.5 py-1 text-base focus-visible:border-transparent focus-visible:ring-1 focus-visible:ring-inset"
@@ -661,6 +668,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               }}
               onClick={() => {
                 replacementSnapshotRef.current = currentReplaceTarget
+                setEditorChanged(false)
                 setReplacementError(undefined)
                 setEditing(true)
               }}
@@ -675,6 +683,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 height: ANNOTATION_SIZE,
               }}
               onClick={() => {
+                setEditorChanged(false)
                 setAnnotate(true)
               }}
             />
@@ -750,15 +759,12 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             <Button
               className="ml-auto"
               size="sm"
-              disabled={!replaceTarget || savingReplacement}
+              disabled={!replaceTarget || savingReplacement || !editorChanged}
               onClick={() => {
                 if (!replaceTarget) return
                 const { selectedText, textNode, ...target } = replaceTarget
                 const newText = replacementRef.current?.value ?? selectedText
-                if (newText === selectedText) {
-                  hide()
-                  return
-                }
+                if (newText === selectedText) return
 
                 savingReplacementRef.current = true
                 setSavingReplacement(true)
@@ -813,6 +819,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             <Button
               className="ml-auto"
               size="sm"
+              disabled={!editorChanged}
               onClick={() => {
                 tab.putAnnotation(
                   annotation?.type ?? 'highlight',

@@ -320,10 +320,14 @@ pub fn update_tag(
     Ok(Some(tag))
 }
 
-fn remove_library_tags(library: &mut Library, ids: &HashSet<String>) {
+fn remove_library_tags(library: &mut Library, ids: &HashSet<String>, updated_at: u64) {
     library.tags.retain(|tag| !ids.contains(&tag.id));
     for book in &mut library.books {
+        let previous_len = book.tag_ids.len();
         book.tag_ids.retain(|tag_id| !ids.contains(tag_id));
+        if book.tag_ids.len() != previous_len {
+            book.updated_at = Some(updated_at);
+        }
     }
     library.pins.tag_ids.retain(|tag_id| !ids.contains(tag_id));
 }
@@ -340,7 +344,7 @@ pub(super) fn delete_tags_impl(storage: &AppStorage, ids: Vec<String>) -> Result
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        remove_library_tags(&mut state.library, &ids);
+        remove_library_tags(&mut state.library, &ids, now_ms());
     }
 
     storage.mark_library_dirty();
@@ -417,12 +421,14 @@ pub(super) fn merge_tags_impl(
             }
         };
 
+        let updated_at = now_ms();
         for book in &mut state.library.books {
             if !book.tag_ids.iter().any(|tag_id| source_ids.contains(tag_id)) {
                 continue;
             }
             book.tag_ids.retain(|tag_id| !source_ids.contains(tag_id));
             book.tag_ids.push(target.id.clone());
+            book.updated_at = Some(updated_at);
         }
 
         let pinned = state
@@ -487,16 +493,21 @@ pub fn update_book_tags(
             .iter()
             .map(|tag| tag.id.clone())
             .collect::<std::collections::HashSet<_>>();
+        let updated_at = now_ms();
         for book in &mut state.library.books {
             if !id_set.contains(&book.id) {
                 continue;
             }
 
+            let previous_tag_ids = book.tag_ids.clone();
             book.tag_ids.retain(|tag_id| !remove_tag_ids.contains(tag_id));
             for tag_id in &add_tag_ids {
                 if existing_tags.contains(tag_id) && !book.tag_ids.contains(tag_id) {
                     book.tag_ids.push(tag_id.clone());
                 }
+            }
+            if book.tag_ids != previous_tag_ids {
+                book.updated_at = Some(updated_at);
             }
         }
     }
@@ -520,9 +531,11 @@ pub fn update_book_reading_status(
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
 
+        let updated_at = now_ms();
         for book in &mut state.library.books {
-            if id_set.contains(&book.id) {
+            if id_set.contains(&book.id) && book.reading_status != reading_status {
                 book.reading_status = reading_status.clone();
+                book.updated_at = Some(updated_at);
             }
         }
     }
@@ -1503,7 +1516,7 @@ pub struct ReadingPositionInput {
     pub percentage: Option<f64>,
     #[serde(default)]
     pub spread: Option<Value>,
-    pub updated_at: u64,
+    pub last_read_at: u64,
 }
 
 pub(super) fn record_reading_position_impl(
@@ -1519,10 +1532,9 @@ pub(super) fn record_reading_position_impl(
         if let Some(book) = state.library.books.iter_mut().find(|book| book.id == position.book_id) {
             book.cfi = position.cfi.clone();
             book.percentage = position.percentage;
-            book.updated_at = Some(position.updated_at);
-            book.last_read_at = Some(position.updated_at);
+            book.last_read_at = Some(position.last_read_at);
         } else if let Some(book) = state.external.books.iter_mut().find(|book| book.id == position.book_id) {
-            book.last_opened_at = position.updated_at;
+            book.last_opened_at = position.last_read_at;
         } else {
             return Ok(false);
         }
@@ -1643,9 +1655,6 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
             }
             if let Some(value) = object.get("updatedAt").and_then(Value::as_u64) {
                 book.updated_at = Some(value);
-                if updates_reading_position {
-                    book.last_read_at = Some(value);
-                }
                 library_changed = true;
             }
             if let Some(value) = object.get("lastReadAt").and_then(Value::as_u64) {

@@ -1028,7 +1028,6 @@ pub(super) fn replace_book_text_impl(
         book.content_edited_at = Some(now);
         book.content_hash = edited_book_content_hash(&book.id, book.content_version, now);
         book.updated_at = Some(now);
-        book.last_read_at = book.last_read_at.or(Some(now));
         book.clone()
     };
 

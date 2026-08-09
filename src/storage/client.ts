@@ -182,14 +182,14 @@ function rememberTag(tag: LibraryTagRecord) {
   }
 }
 
-function applyDeletedTags(ids: string[]) {
+function applyDeletedTags(ids: string[], updatedAt: number) {
   const removed = new Set(ids)
   if (!removed.size) return
 
   const update = (book: BookRecord) => {
     const tagIds = book.tagIds ?? []
     return tagIds.some((tagId) => removed.has(tagId))
-      ? { ...book, tagIds: tagIds.filter((tagId) => !removed.has(tagId)) }
+      ? { ...book, tagIds: tagIds.filter((tagId) => !removed.has(tagId)), updatedAt }
       : book
   }
   bookCache.forEach((book, bookId) => bookCache.set(bookId, update(book)))
@@ -245,13 +245,13 @@ function isSpreadOnlyConfigurationUpdate(changes: Partial<BookRecord>, currentBo
   )
 }
 
-function isReadingPositionOnlyUpdate(changes: Partial<BookRecord>, currentBook?: BookRecord) {
+function isReadingActivityOnlyUpdate(changes: Partial<BookRecord>, currentBook?: BookRecord) {
   const keys = Object.keys(changes)
   return (
     keys.length > 0 &&
-    keys.some((key) => key === 'cfi' || key === 'percentage') &&
+    keys.some((key) => key === 'cfi' || key === 'percentage' || key === 'lastReadAt') &&
     isSpreadOnlyConfigurationUpdate(changes, currentBook) &&
-    keys.every((key) => ['cfi', 'percentage', 'updatedAt', 'lastReadAt', 'configuration'].includes(key))
+    keys.every((key) => ['cfi', 'percentage', 'lastReadAt', 'configuration'].includes(key))
   )
 }
 
@@ -406,26 +406,30 @@ export const db = {
       const normalizedChanges = changes.tagIds
         ? { ...changes, tagIds: [...new Set(changes.tagIds.filter(Boolean))] }
         : changes
-      const readingPositionOnly = isReadingPositionOnlyUpdate(normalizedChanges, cached)
+      const readingActivityOnly = isReadingActivityOnlyUpdate(normalizedChanges, cached)
+      const committedChanges =
+        readingActivityOnly || normalizedChanges.updatedAt !== undefined
+          ? normalizedChanges
+          : { ...normalizedChanges, updatedAt: Date.now() }
       if (cached) {
-        rememberBook({ ...cached, ...normalizedChanges })
+        rememberBook({ ...cached, ...committedChanges })
       }
 
       await trackNativeWrite(
         invoke<void>('update_book', {
           id,
-          changes: normalizedChanges,
+          changes: committedChanges,
         }),
       )
 
-      if (!readingPositionOnly) {
-        if (normalizedChanges.metadata) invalidateCovers()
-        if (normalizedChanges.metadata) invalidatePins()
+      if (!readingActivityOnly) {
+        if (committedChanges.metadata) invalidateCovers()
+        if (committedChanges.metadata) invalidatePins()
         notify(
           ...([
             'books',
-            normalizedChanges.metadata ? 'covers' : undefined,
-            normalizedChanges.metadata ? 'pins' : undefined,
+            committedChanges.metadata ? 'covers' : undefined,
+            committedChanges.metadata ? 'pins' : undefined,
           ].filter(Boolean) as TableName[]),
         )
       }
@@ -448,9 +452,10 @@ export const db = {
     },
     async updateReadingStatus(ids: string[], readingStatus: ReadingStatus | null) {
       beginBooksMutation()
+      const updatedAt = Date.now()
       const books = ids.flatMap((id) => {
         const book = bookCache.get(id)
-        return book ? [{ ...book, readingStatus }] : []
+        return book && book.readingStatus !== readingStatus ? [{ ...book, readingStatus, updatedAt }] : []
       })
       await trackNativeWrite(
         invoke<void>('update_book_reading_status', {
@@ -471,14 +476,22 @@ export const db = {
         ...new Set(addTagIds.filter((tagId) => tagId && (!existingTagIds || existingTagIds.has(tagId)))),
       ]
       const removals = new Set(removeTagIds.filter(Boolean))
+      const updatedAt = Date.now()
       const books = ids.flatMap((id) => {
         const book = bookCache.get(id)
         if (!book) return []
 
-        const tagIds = new Set(book.tagIds)
-        removals.forEach((tagId) => tagIds.delete(tagId))
-        additions.forEach((tagId) => tagIds.add(tagId))
-        return [{ ...book, tagIds: [...tagIds] }]
+        const tagIds = new Set(book.tagIds ?? [])
+        let changed = false
+        for (const tagId of removals) {
+          changed = tagIds.delete(tagId) || changed
+        }
+        for (const tagId of additions) {
+          if (tagIds.has(tagId)) continue
+          tagIds.add(tagId)
+          changed = true
+        }
+        return changed ? [{ ...book, tagIds: [...tagIds], updatedAt }] : []
       })
       await trackNativeWrite(
         invoke<void>('update_book_tags', {
@@ -521,8 +534,9 @@ export const db = {
       const uniqueIds = [...new Set(ids.filter(Boolean))]
       if (!uniqueIds.length) return
       beginBooksMutation()
+      const updatedAt = Date.now()
       await trackNativeWrite(invoke<void>('delete_tags', { ids: uniqueIds }))
-      applyDeletedTags(uniqueIds)
+      applyDeletedTags(uniqueIds, updatedAt)
       invalidatePins()
       notify('tags', 'books', 'pins')
     },
@@ -530,6 +544,7 @@ export const db = {
       beginBooksMutation()
       const sourceIds = [...new Set(ids.filter(Boolean))]
       const sourceIdSet = new Set(sourceIds)
+      const updatedAt = Date.now()
       const tag = await trackNativeWrite(
         invoke<LibraryTagRecord>('merge_tags', {
           ids: sourceIds,
@@ -541,7 +556,7 @@ export const db = {
         const tagIds = book.tagIds ?? []
         if (!tagIds.some((tagId) => sourceIdSet.has(tagId))) return book
 
-        return { ...book, tagIds: [...tagIds.filter((tagId) => !sourceIdSet.has(tagId)), tag.id] }
+        return { ...book, tagIds: [...tagIds.filter((tagId) => !sourceIdSet.has(tagId)), tag.id], updatedAt }
       }
       bookCache.forEach((book, bookId) => bookCache.set(bookId, update(book)))
       if (booksCache) booksCache = booksCache.map(update)
