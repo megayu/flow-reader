@@ -40,6 +40,7 @@
 
 ## Testing Guidelines
 
+- Use `msg(...)` for localized UI labels in tests; never hard-code them.
 - Run the smallest relevant checks during iteration, then use `pnpm check` for standard web validation or `pnpm check:full` when the EPUB engine, native code, or browser integration is affected.
 - Use synthetic fixture text in tests; do not copy book text, user-provided context, or investigation-specific prose into test cases unless the exact text is required to reproduce a parser or encoding bug.
 - Keep test fixtures platform-neutral. Do not use Windows- or Unix-specific drive letters, absolute paths, path separators, shell syntax, or other operating-system characteristics unless the test explicitly verifies platform-specific path handling or system integration.

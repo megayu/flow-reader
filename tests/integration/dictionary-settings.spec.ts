@@ -33,7 +33,7 @@ test('configures Merriam-Webster inline with the key actions in one row', async 
   await expect(keyInput).toHaveAttribute('type', 'password')
   const keyRow = dialog.locator('[data-merriam-webster-key-row]')
   const visibility = keyRow.getByRole('button').first()
-  const getKey = keyRow.getByRole('button', { name: 'Get a free API key' })
+  const getKey = keyRow.getByRole('button', { name: msg('settings.dictionary.get_api_key') })
   const [inputBox, visibilityBox, getKeyBox] = await Promise.all([
     keyInput.boundingBox(),
     visibility.boundingBox(),
