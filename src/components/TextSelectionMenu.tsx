@@ -12,7 +12,7 @@ import {
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useSnapshot } from 'valtio'
 
-import { colorMap, orderRangeRectsForWritingMode, typeMap } from '../annotation'
+import { type AnnotationColor, colorMap, orderRangeRectsForWritingMode, typeMap } from '../annotation'
 import { type LocalDictionaryRecord, listLocalDictionariesCached } from '../dictionary/native'
 import { normalizeDictionaryQuery } from '../dictionary/query'
 import { useSetAction } from '../hooks/useAction'
@@ -315,6 +315,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const ref = useRef<HTMLTextAreaElement>(null)
   const [width, setWidth] = useState(0)
   const [height, setHeight] = useState(0)
+  const popupElementRef = useRef<HTMLDivElement>(null)
   const popupResizeObserverRef = useRef<ResizeObserver | undefined>(undefined)
   const t = useTranslation('menu')
   const [settings] = useSettings()
@@ -324,7 +325,10 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const cfi = annotationCfi ?? tab.rangeToCfi(range)
   const section = tab.sectionForRange(range)
   const annotation = tab.overlayState.annotations.find((a) => a.cfi === cfi)
-  const [annotate, setAnnotate] = useState(!!annotation)
+  const annotationHasNotes = Boolean(annotation?.notes?.trim())
+  const [annotate, setAnnotate] = useState(annotationHasNotes)
+  const [draftAnnotationColor, setDraftAnnotationColor] = useState<AnnotationColor>(annotation?.color ?? 'yellow')
+  const [annotationNotesChanged, setAnnotationNotesChanged] = useState(false)
   const replacementRef = useRef<HTMLTextAreaElement>(null)
   const currentReplaceTarget = useMemo(() => createTextReplaceTarget(range, section), [range, section])
   const replacementSnapshotRef = useRef<TextReplaceTarget | undefined>(undefined)
@@ -335,6 +339,8 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const [replacementError, setReplacementError] = useState<TextReplacementError>()
   const replaceTarget = editing ? replacementSnapshotRef.current : currentReplaceTarget
   const initialAnnotationNotes = annotation?.notes ?? ''
+  const annotationColorChanged = draftAnnotationColor !== (annotation?.color ?? 'yellow')
+  const annotationChanged = annotationNotesChanged || annotationColorChanged
   const textEditingDisabled = tab.book.scope === 'external' || tab.book.contentMode === 'archiveOnly'
   const closeMenu = () => {
     if (savingReplacementRef.current) return
@@ -345,7 +351,12 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     setEditing(false)
     setReplacementError(undefined)
   }
-  const cancelAnnotation = () => setAnnotate(false)
+  const cancelAnnotation = () => {
+    setDraftAnnotationColor(annotation?.color ?? 'yellow')
+    setAnnotationNotesChanged(false)
+    setAnnotate(false)
+    popupElementRef.current?.focus({ preventScroll: true })
+  }
   const switchView = (nextView: 'actions' | 'dictionary' | 'translation') => {
     setWidth(0)
     setHeight(0)
@@ -483,6 +494,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         data-flow-dictionary-popup={view === 'dictionary' ? 'true' : undefined}
         data-flow-translation-popup={view === 'translation' ? 'true' : undefined}
         ref={(el) => {
+          popupElementRef.current = el
           popupResizeObserverRef.current?.disconnect()
           popupResizeObserverRef.current = undefined
           if (!el) return
@@ -600,7 +612,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             name="notes"
             aria-label="notes"
             defaultValue={initialAnnotationNotes}
-            onValueChange={(value) => setEditorChanged(value !== initialAnnotationNotes)}
+            onValueChange={(value) => setAnnotationNotesChanged(value !== initialAnnotationNotes)}
             autoFocus
             onExitEditing={cancelAnnotation}
             className="textfield bg-background text-muted-foreground scroll h-40 min-h-0 w-68 resize-none rounded-none border-0 px-1.5 py-1 text-base focus-visible:border-transparent focus-visible:ring-1 focus-visible:ring-inset"
@@ -683,7 +695,8 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 height: ANNOTATION_SIZE,
               }}
               onClick={() => {
-                setEditorChanged(false)
+                setAnnotationNotesChanged(false)
+                setDraftAnnotationColor(annotation?.color ?? 'yellow')
                 setAnnotate(true)
               }}
             />
@@ -736,11 +749,26 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                       fontSize: 18,
                     }}
                     className={clsx(
-                      'border-border text-muted-foreground flex cursor-pointer appearance-none items-center justify-center rounded-md border bg-transparent p-0 text-base transition-[box-shadow,filter] outline-none hover:shadow-[inset_0_0_0_2px_var(--flow-accent-border)] hover:brightness-110 active:brightness-95',
+                      'text-muted-foreground flex cursor-pointer appearance-none items-center justify-center rounded-md border-2 bg-transparent p-0 text-base transition-[filter] outline-none hover:brightness-110 active:brightness-95',
+                      type === (annotation?.type ?? 'highlight') &&
+                        color === (annotate ? draftAnnotationColor : annotation?.color)
+                        ? 'border-(--flow-accent)'
+                        : annotate && annotationColorChanged && type === annotation?.type && color === annotation.color
+                          ? 'border-(--flow-text-muted)'
+                          : 'border-border',
                       typeMap[type].class,
                     )}
                     onClick={() => {
-                      tab.putAnnotation(type, cfi, color, text, ref.current?.value, section)
+                      if (annotate) {
+                        setDraftAnnotationColor(color)
+                        return
+                      }
+
+                      if (annotation && !annotationHasNotes && annotation.type === type && annotation.color === color) {
+                        tab.removeAnnotation(cfi)
+                      } else if (annotation?.type !== type || annotation.color !== color) {
+                        tab.putAnnotation(type, cfi, color, text, annotation?.notes, section)
+                      }
                       hide()
                     }}
                   >
@@ -819,12 +847,12 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             <Button
               className="ml-auto"
               size="sm"
-              disabled={!editorChanged}
+              disabled={!annotationChanged}
               onClick={() => {
                 tab.putAnnotation(
                   annotation?.type ?? 'highlight',
                   cfi,
-                  annotation?.color ?? 'yellow',
+                  draftAnnotationColor,
                   text,
                   ref.current?.value,
                   section,
