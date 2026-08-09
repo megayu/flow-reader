@@ -427,6 +427,37 @@ describe('IframeView media fitting', function () {
 })
 
 describe('IframeView trailing blank page trimming', function () {
+  it('normalizes an oversized sole wrapper after content trims to one page', function () {
+    const view = createView({})
+    const body = document.createElement('body')
+    const wrapper = document.createElement('div')
+
+    wrapper.style.height = '300%'
+    wrapper.appendChild(document.createElement('img'))
+    body.appendChild(wrapper)
+
+    view.settings.flow = 'paginated'
+    view.contents = {
+      content: body,
+      textWidth: () => (wrapper.style.height === '100%' ? 500 : 1500),
+      fillReadablePageBackgrounds: () => undefined,
+    }
+    view.iframe = document.createElement('iframe')
+    view.trimTrailingBlankPages = () => 500
+    view.reframe = (width, height) => {
+      view._width = width
+      view._height = height
+    }
+    view.clearSinglePageFirstPageOffset = () => undefined
+    view.applySinglePageFirstPageOffset = () => undefined
+
+    view.expand()
+
+    assert.equal(wrapper.style.height, '100%')
+    assert.equal(view._contentWidth, 500)
+    assert.equal(view._contentPageCount, 1)
+  })
+
   it('treats a two-page background-only visual section as one page', function () {
     const view = createView({})
     view.hasContentInRange = () => false

@@ -365,6 +365,9 @@ class IframeView {
 
     this.layout = this.settings.layout
     this._layoutPageWidth = this.layout && this.layout.pageWidth
+    this._oversizedSinglePageWrapperChecked = false
+    this._oversizedSinglePageWrapper = undefined
+    this._oversizedSinglePageWrapperNormalized = false
     // Dom events to listen for
     // this.listenedEvents = ["keydown", "keyup", "keypressed", "mouseup", "mousedown", "click", "touchend", "touchstart"];
 
@@ -1118,6 +1121,54 @@ class IframeView {
     return width
   }
 
+  normalizeOversizedSinglePageWrapper(width, trimmedWidth) {
+    // Some converted EPUBs use an oversized wrapper as empty vertical canvas.
+    // In paginated columns that canvas can move positioned descendants below
+    // the only meaningful page even after trailing blank pages are trimmed.
+    if (
+      this._oversizedSinglePageWrapperNormalized ||
+      !this.layout ||
+      !this.layout.pageWidth ||
+      this.layout.name !== 'reflowable' ||
+      this.settings.flow !== 'paginated' ||
+      this.settings.axis !== 'horizontal' ||
+      this.settings.direction !== 'ltr' ||
+      width <= this.layout.pageWidth ||
+      trimmedWidth !== this.layout.pageWidth
+    ) {
+      return false
+    }
+
+    if (!this._oversizedSinglePageWrapperChecked) {
+      this._oversizedSinglePageWrapperChecked = true
+
+      let body = this.contents && this.contents.content
+      let wrapper = body && body.firstElementChild
+
+      if (wrapper && wrapper === body.lastElementChild && wrapper.style) {
+        let authoredHeight = wrapper.style.getPropertyValue('height').trim()
+        let percentage = authoredHeight.endsWith('%')
+          ? Number(authoredHeight.slice(0, -1))
+          : NaN
+
+        if (Number.isFinite(percentage) && percentage > 100) {
+          this._oversizedSinglePageWrapper = wrapper
+        }
+      }
+    }
+
+    let wrapper = this._oversizedSinglePageWrapper
+    if (!wrapper) {
+      return false
+    }
+
+    let priority = wrapper.style.getPropertyPriority('height')
+    wrapper.style.setProperty('height', '100%', priority)
+    this._oversizedSinglePageWrapperNormalized = true
+
+    return true
+  }
+
   displayWidthForContentWidth(contentWidth) {
     if (
       !this.layout ||
@@ -1181,9 +1232,23 @@ class IframeView {
       height != this._height
     ) {
       this.reframe(width, height)
-      this._measureWidth = width
 
       let trimmedWidth = this.trimTrailingBlankPages(width)
+      if (
+        width > this.layout.pageWidth &&
+        trimmedWidth === this.layout.pageWidth &&
+        this.normalizeOversizedSinglePageWrapper(width, trimmedWidth)
+      ) {
+        width = this.contents.textWidth()
+        if (width % this.layout.pageWidth > 0) {
+          width =
+            Math.ceil(width / this.layout.pageWidth) * this.layout.pageWidth
+        }
+        this.reframe(width, height)
+        trimmedWidth = this.trimTrailingBlankPages(width)
+      }
+
+      this._measureWidth = width
       displayWidth = this.displayWidthForContentWidth(trimmedWidth)
       if (displayWidth != width) {
         this.reframe(displayWidth, height)
