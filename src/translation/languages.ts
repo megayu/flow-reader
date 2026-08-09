@@ -67,10 +67,10 @@ function inferScriptLanguage(
   mainLanguage: TranslationLanguage,
   secondaryLanguage: TranslationLanguage,
 ): TranslationLanguage | undefined {
-  if (/[぀-ヿ]/u.test(text)) return 'ja'
-  if (/[가-힯]/u.test(text)) return 'ko'
+  if (/[\u3040-\u30ff]/u.test(text)) return 'ja'
+  if (/[\uac00-\ud7af]/u.test(text)) return 'ko'
 
-  if (/[㐀-鿿]/u.test(text)) {
+  if (/[\u3400-\u9fff]/u.test(text)) {
     const configuredChinese = unique([mainLanguage, secondaryLanguage].filter((language) => language.startsWith('zh-')))
     if (configuredChinese.length === 1) return configuredChinese[0]
   }
