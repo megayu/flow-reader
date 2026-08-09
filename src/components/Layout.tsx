@@ -11,8 +11,6 @@ import {
   Maximize,
   Minimize,
   PencilIcon,
-  PinIcon,
-  PinOffIcon,
   PlusIcon,
   RotateCcwIcon,
   Search,
@@ -26,7 +24,6 @@ import {
 import {
   type ComponentProps,
   type KeyboardEventHandler,
-  memo,
   type PropsWithChildren,
   type ReactNode,
   type RefObject,
@@ -45,26 +42,27 @@ import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
 import { type LibraryAction, type Action as ReaderPanelAction, useAction, useLibraryAction } from '../hooks/useAction'
 import { useLibrary, useLibraryPins, useLibraryTags } from '../hooks/useLibrary'
+import { useLibraryTagCreation } from '../hooks/useLibraryTagCreation'
 import { useOverlayScrollbarMetrics } from '../hooks/useOverlayScrollbarMetrics'
 import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import {
   areStringListsEqual,
-  cleanLibraryTagName,
   getLibraryAuthorOptions,
   getLibraryTagOptions,
   pruneLibraryAuthorFilters,
   pruneLibraryTagFilters,
-  sameLibraryTagName,
   toggleLibraryAuthorFilter,
   toggleLibraryTagFilter,
 } from '../library/filters'
+import { LibraryFilterChip, type LibraryFilterMenuItem } from '../library/LibraryFilterChip'
 import {
-  LibraryFilterChipButton,
   libraryFilterChipClassName,
   libraryFilterInactiveChipClassName,
   libraryFilterOptionsClassName,
 } from '../library/LibraryFilterChipButton'
+import { LibraryFilterInput } from '../library/LibraryFilterInput'
+import { DeleteLibraryTagDialog, EditLibraryTagDialog } from '../library/LibraryTagDialogs'
 import { toMessageKeySegment } from '../locales'
 import { useReaderSnapshot } from '../models/reader'
 import { createTextSearchIndex, createTextSearchQuery, matchesTextSearch } from '../search/textSearch'
@@ -92,10 +90,6 @@ import { SplitView } from './base/SplitView'
 import { useSplitViewItem } from './base/splitViewContext'
 import { ReadingStatusIcon } from './ReadingStatusIcon'
 import { Button as UiButton } from './ui/button'
-import { ConfirmDialog } from './ui/confirm-dialog'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
-import { Input } from './ui/input'
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from './ui/menu'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { AnnotationView } from './viewlets/AnnotationView'
 import { ImageView } from './viewlets/ImageView'
@@ -667,7 +661,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const [facetSearch, setFacetSearch] = useState<LibraryFacetSearchState>()
   const [facetSearchQuery, setFacetSearchQuery] = useState('')
   const [creatingTag, setCreatingTag] = useState(false)
-  const [newTagName, setNewTagName] = useState('')
+  const tagCreation = useLibraryTagCreation()
   const [editingTag, setEditingTag] = useState<LibraryTagRecord>()
   const [deletingTag, setDeletingTag] = useState<LibraryTagRecord>()
   const newTagInputRef = useRef<HTMLInputElement>(null)
@@ -809,23 +803,10 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     setFacetSearch(nextSearch)
   }, [])
 
-  const createGlobalTag = useCallback(async () => {
-    const name = cleanLibraryTagName(newTagName)
-    if (!name) return
-
-    const existing = tags?.find((tag) => sameLibraryTagName(tag.name, name))
-    if (!existing) {
-      await db.tags.create(name)
-    }
-
-    setNewTagName('')
-    requestAnimationFrame(() => newTagInputRef.current?.focus())
-  }, [newTagName, tags])
-
   const exitTagCreation = useCallback(() => {
     setCreatingTag(false)
-    setNewTagName('')
-  }, [])
+    tagCreation.clear()
+  }, [tagCreation])
 
   const toggleAuthor = useCallback(
     (author: string) => {
@@ -875,13 +856,13 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     () => [
       {
         Icon: PencilIcon,
-        label: t('library_filter.edit_tag'),
+        label: t('context.edit'),
         onClick: editTag,
       },
       {
         danger: true,
         Icon: Trash2Icon,
-        label: t('library_filter.delete_tag'),
+        label: t('delete'),
         onClick: deleteTag,
       },
     ],
@@ -1043,14 +1024,14 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                   Icon: PlusIcon,
                   inputRef: newTagInputRef,
                   label: t('library_filter.new_tag'),
-                  value: newTagName,
+                  value: tagCreation.name,
                   onExit: exitTagCreation,
-                  onValueChange: setNewTagName,
+                  onValueChange: tagCreation.setName,
                   onKeyDown: (event) => {
                     if (event.key !== 'Enter') return
 
                     event.preventDefault()
-                    void createGlobalTag()
+                    void tagCreation.create()
                   },
                 }
               : undefined
@@ -1271,35 +1252,21 @@ const FilterSection: React.FC<FilterSectionProps> = ({
     >
       <div className={libraryFilterPanelHeaderClassName}>
         {activeEditor ? (
-          <div className="border-input focus-within:border-ring flex h-7 min-w-0 flex-1 items-center gap-1 rounded-md border px-1.5">
-            <activeEditor.Icon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
-            <Input
-              ref={activeEditor.inputRef}
-              data-library-facet-search={editor ? undefined : 'true'}
-              aria-label={activeEditor.label}
-              value={activeEditor.value}
-              escapeBehavior="exit"
-              focusBehavior="native"
-              onBlur={activeEditor.onExit}
-              onExitEditing={activeEditor.onExit}
-              onKeyDown={activeEditor.onKeyDown}
-              onValueChange={activeEditor.onValueChange}
-              className="h-6 min-w-0 flex-1 border-0 bg-transparent px-1 py-0 text-sm transition-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
-            />
-            <UiButton
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={activeEditor.label}
-              className="text-muted-foreground hover:text-foreground -mr-1 size-6 shrink-0 rounded-sm"
-              onPointerDown={(event) => {
-                if (event.button === 0) event.preventDefault()
-              }}
-              onClick={activeEditor.onExit}
-            >
-              <XIcon aria-hidden className="size-4.5" />
-            </UiButton>
-          </div>
+          <LibraryFilterInput
+            Icon={activeEditor.Icon}
+            inputRef={activeEditor.inputRef}
+            data-library-facet-search={editor ? undefined : 'true'}
+            aria-label={activeEditor.label}
+            value={activeEditor.value}
+            escapeBehavior="exit"
+            focusBehavior="native"
+            onBlur={activeEditor.onExit}
+            onExitEditing={activeEditor.onExit}
+            onKeyDown={activeEditor.onKeyDown}
+            onValueChange={activeEditor.onValueChange}
+            clearLabel={activeEditor.label}
+            onClear={activeEditor.onExit}
+          />
         ) : (
           <>
             <UiButton
@@ -1356,227 +1323,6 @@ const FilterSection: React.FC<FilterSectionProps> = ({
         </OverlayScroll>
       )}
     </section>
-  )
-}
-
-interface LibraryFilterMenuItem {
-  danger?: boolean
-  Icon: LucideIcon
-  label: string
-  onClick: (value: string) => void
-}
-
-const EMPTY_LIBRARY_FILTER_MENU_ITEMS: LibraryFilterMenuItem[] = []
-
-interface LibraryFilterChipProps {
-  active: boolean
-  contextMenuTestId: string
-  label: string
-  labelTestId: string
-  menuItems?: LibraryFilterMenuItem[]
-  onPin: (value: string) => void
-  onToggle: (value: string) => void
-  onUnpin: (value: string) => void
-  pinLabel: string
-  pinned: boolean
-  preserveInputFocus?: boolean
-  testId: string
-  unpinLabel: string
-  value: string
-}
-
-const LibraryFilterChip = memo(function LibraryFilterChip({
-  active,
-  contextMenuTestId,
-  label,
-  labelTestId,
-  menuItems = EMPTY_LIBRARY_FILTER_MENU_ITEMS,
-  onPin,
-  onToggle,
-  onUnpin,
-  pinLabel,
-  pinned,
-  preserveInputFocus = false,
-  testId,
-  unpinLabel,
-  value,
-}: LibraryFilterChipProps) {
-  return (
-    <div className="relative max-w-full min-w-0">
-      <ContextMenu modal={false}>
-        <ContextMenuTrigger asChild>
-          <LibraryFilterChipButton
-            state={active ? 'active' : 'inactive'}
-            label={label}
-            labelTestId={labelTestId}
-            pinned={pinned}
-            aria-pressed={active}
-            data-testid={testId}
-            data-value={value}
-            onPointerDown={(event) => {
-              if (preserveInputFocus && event.button === 0) event.preventDefault()
-            }}
-            onClick={() => onToggle(value)}
-          />
-        </ContextMenuTrigger>
-        <ContextMenuContent data-testid={contextMenuTestId}>
-          <LibraryFilterContextMenuItem
-            Icon={PinIcon}
-            label={pinLabel}
-            onSelect={() => {
-              onPin(value)
-            }}
-          />
-          {pinned && (
-            <LibraryFilterContextMenuItem
-              Icon={PinOffIcon}
-              label={unpinLabel}
-              onSelect={() => {
-                onUnpin(value)
-              }}
-            />
-          )}
-          {menuItems.length > 0 && <ContextMenuSeparator />}
-          {menuItems.map((item) => (
-            <LibraryFilterContextMenuItem
-              key={item.label}
-              variant={item.danger ? 'destructive' : 'default'}
-              Icon={item.Icon}
-              label={item.label}
-              onSelect={() => {
-                item.onClick(value)
-              }}
-            />
-          ))}
-        </ContextMenuContent>
-      </ContextMenu>
-    </div>
-  )
-})
-
-interface LibraryFilterContextMenuItemProps {
-  Icon: LucideIcon
-  label: string
-  onSelect: () => void
-  variant?: 'default' | 'destructive'
-}
-
-const LibraryFilterContextMenuItem: React.FC<LibraryFilterContextMenuItemProps> = ({
-  Icon,
-  label,
-  onSelect,
-  variant,
-}) => {
-  return (
-    <ContextMenuItem variant={variant} onSelect={onSelect}>
-      <Icon aria-hidden className="size-4 shrink-0" />
-      <span className="min-w-0 truncate">{label}</span>
-    </ContextMenuItem>
-  )
-}
-
-interface LibraryTagDialogProps {
-  onClose: () => void
-  tag: LibraryTagRecord
-}
-
-const EditLibraryTagDialog: React.FC<LibraryTagDialogProps> = ({ onClose, tag }) => {
-  const t = useTranslation('home')
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [nameState, setNameState] = useState({ tagId: tag.id, name: tag.name })
-  if (nameState.tagId !== tag.id) {
-    setNameState({ tagId: tag.id, name: tag.name })
-  }
-  const name = nameState.tagId === tag.id ? nameState.name : tag.name
-  const trimmedName = name.replace(/\s+/g, ' ').trim()
-  const canSave = !!trimmedName && trimmedName !== tag.name
-
-  const save = () => {
-    if (!canSave) return
-
-    void db.tags.update(tag.id, trimmedName).then(() => onClose())
-  }
-
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose()
-      }}
-    >
-      <DialogContent
-        className="w-[min(24rem,calc(100vw-2rem))] max-w-none text-base"
-        onOpenAutoFocus={(event) => {
-          event.preventDefault()
-          inputRef.current?.focus()
-        }}
-      >
-        <form
-          autoComplete="off"
-          className="grid gap-4"
-          onSubmit={(e) => {
-            e.preventDefault()
-            save()
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle>{t('library_filter.edit_tag')}</DialogTitle>
-          </DialogHeader>
-          <label className="block">
-            <span className="text-muted-foreground mb-1.5 block leading-none font-medium">
-              {t('library_filter.tag_name')}
-            </span>
-            <Input
-              ref={inputRef}
-              value={name}
-              focusBehavior="select-all"
-              onValueChange={(nextName) =>
-                setNameState((state) => ({
-                  ...state,
-                  name: nextName,
-                }))
-              }
-              className="focus-visible:border-input text-base focus-visible:ring-0"
-            />
-          </label>
-          <DialogFooter>
-            <UiButton type="button" variant="secondary" onClick={onClose}>
-              {t('cancel')}
-            </UiButton>
-            <UiButton type="submit" disabled={!canSave}>
-              {t('edit.save')}
-            </UiButton>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-interface DeleteLibraryTagDialogProps extends LibraryTagDialogProps {
-  onDeleted: () => void
-}
-
-const DeleteLibraryTagDialog: React.FC<DeleteLibraryTagDialogProps> = ({ onClose, onDeleted, tag }) => {
-  const t = useTranslation('home')
-
-  const remove = () => {
-    void db.tags.delete(tag.id).then(() => onDeleted())
-  }
-
-  return (
-    <ConfirmDialog
-      title={t('library_filter.delete_tag')}
-      description={
-        <>
-          {t('library_filter.delete_tag_message')} <span className="text-foreground font-medium">{tag.name}</span>
-        </>
-      }
-      cancelLabel={t('cancel')}
-      confirmLabel={t('library_filter.delete_tag')}
-      onClose={onClose}
-      onConfirm={remove}
-    />
   )
 }
 

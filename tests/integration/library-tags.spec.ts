@@ -1,9 +1,14 @@
-import { expect, type Page, test } from '@playwright/test'
+import { expect, type Locator, type Page, test } from '@playwright/test'
 
 import type { BookRecord, ReadingStatus } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
 import { msg } from '../support/i18n'
-import { getStoredLibraryPins, installTauriMock, type TestLibraryTagRecord } from '../support/tauri-mock'
+import {
+  getStoredLibraryMockState,
+  getStoredLibraryPins,
+  installTauriMock,
+  type TestLibraryTagRecord,
+} from '../support/tauri-mock'
 
 function createBook({
   creator = 'Author',
@@ -37,15 +42,15 @@ function createBook({
   })
 }
 
-const fixtureTags: TestLibraryTagRecord[] = [
-  { id: 'tag-research', name: 'Research', createdAt: 1 },
-  { id: 'tag-archive', name: 'Archive', createdAt: 2 },
-  {
-    id: 'tag-long',
-    name: 'A Very Long Tag Name That Should Ellipsize In The Sidebar',
-    createdAt: 3,
-  },
-]
+const researchTag: TestLibraryTagRecord = { id: 'tag-research', name: 'Research', createdAt: 1 }
+const archiveTag: TestLibraryTagRecord = { id: 'tag-archive', name: 'Archive', createdAt: 2 }
+const orphanTag: TestLibraryTagRecord = {
+  id: 'tag-long',
+  name: 'A Very Long Tag Name That Should Ellipsize In The Sidebar',
+  createdAt: 3,
+}
+const fixtureTags = [researchTag, archiveTag, orphanTag]
+const settingsShortcut = process.platform === 'darwin' ? 'Meta+Comma' : 'Control+Comma'
 
 const fixtureBooks = [
   createBook({
@@ -146,6 +151,222 @@ async function pinnedTags(page: Page) {
   return (await getStoredLibraryPins(page)).tagIds
 }
 
+async function openTagSettings(page: Page) {
+  await page.keyboard.press(settingsShortcut)
+  const settings = page.getByRole('dialog', { name: msg('settings.title') })
+  await settings.getByRole('button', { name: msg('settings.tabs.tags'), exact: true }).click()
+  return settings
+}
+
+function tagOption(container: Locator | Page, name: string) {
+  return container.getByRole('button', { name, exact: true })
+}
+
+test('tag settings keep selection while search changes the visible select-all scope', async ({ page }) => {
+  await installTauriMock(page, {
+    books: fixtureBooks,
+    tags: fixtureTags,
+  })
+  await page.goto('/')
+  const settings = await openTagSettings(page)
+
+  const search = settings.getByRole('textbox', { name: msg('settings.tags.search') })
+  const clearSearch = settings.getByRole('button', { name: msg('settings.tags.search') })
+  const selectAll = settings.getByRole('button', { name: msg('settings.tags.select_all'), exact: true })
+  const deselectAll = settings.getByRole('button', { name: msg('home.deselect_all'), exact: true })
+  const merge = settings.getByRole('button', { name: msg('settings.tags.merge_action'), exact: true })
+  const remove = settings.getByRole('button', { name: msg('home.delete'), exact: true })
+  const clearOrphans = settings.getByRole('button', { name: msg('settings.tags.clear_orphans'), exact: true })
+
+  await expect(settings.getByRole('textbox', { name: msg('settings.tags.new') })).toBeVisible()
+  await expect(deselectAll).toBeDisabled()
+  await expect(merge).toBeDisabled()
+  await expect(remove).toBeDisabled()
+  await expect(clearOrphans).toBeEnabled()
+
+  await search.fill('No matching tag')
+  await expect(settings.getByText(msg('settings.tags.no_tags'), { exact: true })).toBeVisible()
+  await expect(selectAll).toBeDisabled()
+  await clearSearch.click()
+  await expect(selectAll).toBeEnabled()
+
+  await clearOrphans.click()
+  const clearOrphansDialog = page.getByRole('dialog', { name: msg('settings.tags.clear_orphans') })
+  await expect(clearOrphansDialog.getByRole('button', { name: msg('settings.tags.clear'), exact: true })).toBeVisible()
+  await clearOrphansDialog.getByRole('button', { name: msg('home.cancel'), exact: true }).click()
+
+  await search.fill(researchTag.name)
+  await selectAll.click()
+  await clearSearch.click()
+  await expect(tagOption(settings, researchTag.name)).toHaveAttribute('aria-pressed', 'true')
+  await expect(tagOption(settings, archiveTag.name)).toHaveAttribute('aria-pressed', 'false')
+  await expect(remove).toBeEnabled()
+  await expect(merge).toBeDisabled()
+
+  await search.fill(researchTag.name)
+  await selectAll.click()
+  await expect(tagOption(settings, researchTag.name)).toHaveAttribute('aria-pressed', 'false')
+  await expect(remove).toBeDisabled()
+  await selectAll.click()
+  await clearSearch.click()
+
+  await search.fill(archiveTag.name)
+  await expect(tagOption(settings, archiveTag.name)).toBeVisible()
+  await selectAll.click()
+  await clearSearch.click()
+  await expect(tagOption(settings, researchTag.name)).toHaveAttribute('aria-pressed', 'true')
+  await expect(tagOption(settings, archiveTag.name)).toHaveAttribute('aria-pressed', 'true')
+  await expect(merge).toBeEnabled()
+
+  await deselectAll.click()
+  await expect(tagOption(settings, researchTag.name)).toHaveAttribute('aria-pressed', 'false')
+  await expect(tagOption(settings, archiveTag.name)).toHaveAttribute('aria-pressed', 'false')
+  await expect(deselectAll).toBeDisabled()
+  await expect(merge).toBeDisabled()
+  await expect(remove).toBeDisabled()
+})
+
+test('tag settings create, edit, delete, batch-delete, and clear orphan tags', async ({ page }) => {
+  await installTauriMock(page, { books: fixtureBooks, tags: fixtureTags })
+  await page.goto('/')
+  const settings = await openTagSettings(page)
+  const newTag = settings.getByRole('textbox', { name: msg('settings.tags.new') })
+
+  await newTag.fill('  Focus   Tag  ')
+  await newTag.press('Enter')
+  await expect(tagOption(settings, 'Focus Tag')).toBeVisible()
+  await newTag.fill('focus tag')
+  await newTag.press('Enter')
+  await expect
+    .poll(async () => (await getStoredLibraryMockState(page)).tags.filter((tag) => tag.name === 'Focus Tag').length)
+    .toBe(1)
+
+  await tagOption(settings, 'Focus Tag').click({ button: 'right' })
+  await page.getByRole('menuitem', { name: msg('home.context.edit'), exact: true }).click()
+  let dialog = page.getByRole('dialog', { name: msg('home.library_filter.edit_tag') })
+  const tagName = dialog.getByRole('textbox', { name: msg('home.library_filter.tag_name') })
+  const save = dialog.getByRole('button', { name: msg('home.edit.save'), exact: true })
+  await expect(save).toBeDisabled()
+  await tagName.fill('   ')
+  await expect(save).toBeDisabled()
+  await tagName.fill(researchTag.name)
+  await save.click()
+  await expect(tagOption(settings, 'Focus Tag')).toBeVisible()
+
+  await tagOption(settings, 'Focus Tag').click({ button: 'right' })
+  await page.getByRole('menuitem', { name: msg('home.context.edit'), exact: true }).click()
+  dialog = page.getByRole('dialog', { name: msg('home.library_filter.edit_tag') })
+  await dialog.getByRole('textbox', { name: msg('home.library_filter.tag_name') }).fill('Priority')
+  await dialog.getByRole('button', { name: msg('home.edit.save'), exact: true }).click()
+  await expect(tagOption(settings, 'Priority')).toBeVisible()
+
+  await tagOption(settings, 'Priority').click({ button: 'right' })
+  await page.getByRole('menuitem', { name: msg('home.delete'), exact: true }).click()
+  dialog = page.getByRole('dialog', { name: msg('home.library_filter.delete_tag') })
+  await dialog.getByRole('button', { name: msg('home.cancel'), exact: true }).click()
+  await expect(tagOption(settings, 'Priority')).toBeVisible()
+  await tagOption(settings, 'Priority').click({ button: 'right' })
+  await page.getByRole('menuitem', { name: msg('home.delete'), exact: true }).click()
+  await page
+    .getByRole('dialog', { name: msg('home.library_filter.delete_tag') })
+    .getByRole('button', { name: msg('home.delete'), exact: true })
+    .click()
+  await expect(tagOption(settings, 'Priority')).toHaveCount(0)
+
+  const clearOrphans = settings.getByRole('button', { name: msg('settings.tags.clear_orphans'), exact: true })
+  await clearOrphans.click()
+  await page
+    .getByRole('dialog', { name: msg('settings.tags.clear_orphans') })
+    .getByRole('button', { name: msg('settings.tags.clear'), exact: true })
+    .click()
+  await expect(tagOption(settings, orphanTag.name)).toHaveCount(0)
+  await expect(clearOrphans).toBeDisabled()
+
+  await tagOption(settings, researchTag.name).click()
+  await tagOption(settings, archiveTag.name).click()
+  await settings.getByRole('button', { name: msg('home.delete'), exact: true }).click()
+  await page
+    .getByRole('dialog', { name: msg('settings.tags.delete_selected') })
+    .getByRole('button', { name: msg('home.delete'), exact: true })
+    .click()
+
+  await expect(settings.getByText(msg('settings.tags.no_tags'), { exact: true })).toBeVisible()
+  await expect
+    .poll(async () => await getStoredLibraryMockState(page))
+    .toMatchObject({
+      books: [
+        { id: 'alpha', tagIds: [] },
+        { id: 'beta', tagIds: [] },
+        { id: 'gamma', tagIds: [] },
+      ],
+      tags: [],
+    })
+})
+
+test('tag settings merge into a selected tag or a new name and explain name conflicts', async ({ page }) => {
+  await installTauriMock(page, {
+    books: fixtureBooks,
+    pins: { authors: [], tagIds: [archiveTag.id] },
+    tags: fixtureTags,
+  })
+  await page.goto('/')
+  const settings = await openTagSettings(page)
+  const merge = settings.getByRole('button', { name: msg('settings.tags.merge_action'), exact: true })
+
+  await tagOption(settings, researchTag.name).click()
+  await tagOption(settings, archiveTag.name).click()
+  await merge.click()
+  let dialog = page.getByRole('dialog', { name: msg('settings.tags.merge') })
+  let name = dialog.getByRole('textbox', { name: msg('settings.tags.merge_name') })
+  let confirm = dialog.getByRole('button', { name: msg('settings.tags.merge_action'), exact: true })
+  await name.fill('   ')
+  await expect(confirm).toBeDisabled()
+  await name.fill(orphanTag.name)
+  await confirm.click()
+  await expect(page.getByText(msg('settings.tags.merge_error'), { exact: true })).toBeVisible()
+  await expect(dialog).toBeVisible()
+
+  await tagOption(dialog, researchTag.name).click()
+  await expect(name).toHaveValue('')
+  await confirm.click()
+  await expect(dialog).toHaveCount(0)
+  await expect
+    .poll(async () => await getStoredLibraryMockState(page))
+    .toMatchObject({
+      books: [
+        { id: 'alpha', tagIds: [researchTag.id] },
+        { id: 'beta', tagIds: [] },
+        { id: 'gamma', tagIds: [researchTag.id] },
+      ],
+      tags: [{ id: researchTag.id }, { id: orphanTag.id }],
+    })
+  await expect.poll(() => pinnedTags(page)).toEqual([researchTag.id])
+
+  await tagOption(settings, researchTag.name).click()
+  await tagOption(settings, orphanTag.name).click()
+  await merge.click()
+  dialog = page.getByRole('dialog', { name: msg('settings.tags.merge') })
+  name = dialog.getByRole('textbox', { name: msg('settings.tags.merge_name') })
+  confirm = dialog.getByRole('button', { name: msg('settings.tags.merge_action'), exact: true })
+  await name.fill('Unified')
+  await confirm.click()
+  await expect(dialog).toHaveCount(0)
+  await expect
+    .poll(async () => await getStoredLibraryMockState(page))
+    .toMatchObject({
+      books: [
+        { id: 'alpha', tagIds: [expect.any(String)] },
+        { id: 'beta', tagIds: [] },
+        { id: 'gamma', tagIds: [expect.any(String)] },
+      ],
+      tags: [{ name: 'Unified' }],
+    })
+  const state = await getStoredLibraryMockState(page)
+  expect(state.books[0]?.tagIds).toEqual([state.tags[0]?.id])
+  expect(state.books[2]?.tagIds).toEqual([state.tags[0]?.id])
+  await expect.poll(() => pinnedTags(page)).toEqual([state.tags[0]?.id])
+})
+
 test('library tags can be filtered, pinned, edited, batch-applied, renamed, deleted, and persisted', async ({
   page,
 }) => {
@@ -223,7 +444,7 @@ test('library tags can be filtered, pinned, edited, batch-applied, renamed, dele
   await editDialog.getByRole('textbox', { name: msg('home.edit.new_tag') }).fill('Scratch')
   await editDialog.getByRole('button', { name: msg('home.edit.add_tag') }).click()
   await expect(saveBookTagsButton).toBeEnabled()
-  await expect(editDialog.getByRole('button', { name: /^Scratch$/ })).toHaveAttribute('aria-pressed', 'true')
+  await expect(tagOption(editDialog, 'Scratch')).toHaveAttribute('aria-pressed', 'true')
   await editDialog.getByRole('button', { name: msg('home.cancel') }).click()
   await expect(tagChip(page, 'Scratch')).toHaveCount(0)
 
@@ -232,14 +453,14 @@ test('library tags can be filtered, pinned, edited, batch-applied, renamed, dele
   editDialog = page.getByRole('dialog')
   await editDialog.getByRole('textbox', { name: msg('home.edit.new_tag') }).fill(' research ')
   await editDialog.getByRole('button', { name: msg('home.edit.add_tag') }).click()
-  await expect(editDialog.getByRole('button', { name: /^Research$/ })).toHaveAttribute('aria-pressed', 'true')
-  await expect(editDialog.getByRole('button', { name: /^Research$/ })).toHaveCount(1)
+  await expect(tagOption(editDialog, researchTag.name)).toHaveAttribute('aria-pressed', 'true')
+  await expect(tagOption(editDialog, researchTag.name)).toHaveCount(1)
   await editDialog.getByRole('textbox', { name: msg('home.edit.new_tag') }).fill('Priority')
   await editDialog.getByRole('button', { name: msg('home.edit.add_tag') }).click()
   await editDialog.getByRole('textbox', { name: msg('home.edit.new_tag') }).fill('priority')
   await editDialog.getByRole('button', { name: msg('home.edit.add_tag') }).click()
-  await expect(editDialog.getByRole('button', { name: /^Priority$/ })).toHaveAttribute('aria-pressed', 'true')
-  await expect(editDialog.getByRole('button', { name: /^Priority$/ })).toHaveCount(1)
+  await expect(tagOption(editDialog, 'Priority')).toHaveAttribute('aria-pressed', 'true')
+  await expect(tagOption(editDialog, 'Priority')).toHaveCount(1)
   await editDialog.getByRole('button', { name: msg('home.edit.save') }).click()
 
   await expect(tagChip(page, 'Priority')).toBeVisible()
@@ -258,21 +479,21 @@ test('library tags can be filtered, pinned, edited, batch-applied, renamed, dele
   await expect(batchDialog.getByRole('heading', { name: msg('home.tag_editor.title') })).toBeVisible()
   const saveBatchTagsButton = batchDialog.getByRole('button', { name: msg('home.edit.save') })
   await expect(saveBatchTagsButton).toBeDisabled()
-  await batchDialog.getByRole('button', { name: /^Later$/ }).click()
+  await tagOption(batchDialog, 'Later').click()
   await expect(saveBatchTagsButton).toBeEnabled()
-  await batchDialog.getByRole('button', { name: /^Later$/ }).click()
+  await tagOption(batchDialog, 'Later').click()
   await expect(saveBatchTagsButton).toBeDisabled()
-  await expect(batchDialog.getByRole('button', { name: /^Research$/ })).toHaveAttribute('aria-pressed', 'mixed')
-  await expect(batchDialog.getByRole('button', { name: /^Research$/ }).locator('svg')).toHaveCount(0)
-  await batchDialog.getByRole('button', { name: /^Research$/ }).click()
+  await expect(tagOption(batchDialog, researchTag.name)).toHaveAttribute('aria-pressed', 'mixed')
+  await expect(tagOption(batchDialog, researchTag.name).locator('svg')).toHaveCount(0)
+  await tagOption(batchDialog, researchTag.name).click()
   await expect(saveBatchTagsButton).toBeEnabled()
-  await expect(batchDialog.getByRole('button', { name: /^Research$/ })).toHaveAttribute('aria-pressed', 'true')
+  await expect(tagOption(batchDialog, researchTag.name)).toHaveAttribute('aria-pressed', 'true')
   await batchDialog.getByRole('textbox', { name: msg('home.edit.new_tag') }).fill('Batch')
   await batchDialog.getByRole('button', { name: msg('home.edit.add_tag') }).click()
   await batchDialog.getByRole('textbox', { name: msg('home.edit.new_tag') }).fill('batch')
   await batchDialog.getByRole('button', { name: msg('home.edit.add_tag') }).click()
-  await expect(batchDialog.getByRole('button', { name: /^Batch$/ })).toHaveAttribute('aria-pressed', 'true')
-  await expect(batchDialog.getByRole('button', { name: /^Batch$/ })).toHaveCount(1)
+  await expect(tagOption(batchDialog, 'Batch')).toHaveAttribute('aria-pressed', 'true')
+  await expect(tagOption(batchDialog, 'Batch')).toHaveCount(1)
   await batchDialog.getByRole('button', { name: msg('home.edit.save') }).click()
   await page.getByRole('button', { name: msg('home.cancel'), exact: true }).click()
 
@@ -286,7 +507,7 @@ test('library tags can be filtered, pinned, edited, batch-applied, renamed, dele
   await tagChip(page, 'Priority').click({ button: 'right' })
   await page
     .getByTestId('library-tag-context-menu')
-    .getByRole('menuitem', { name: msg('home.library_filter.edit_tag') })
+    .getByRole('menuitem', { name: msg('home.context.edit'), exact: true })
     .click()
   const tagDialog = page.getByRole('dialog')
   await expect(tagDialog.getByRole('heading', { name: msg('home.library_filter.edit_tag') })).toBeVisible()
@@ -298,9 +519,9 @@ test('library tags can be filtered, pinned, edited, batch-applied, renamed, dele
   await tagChip(page, 'Important').click({ button: 'right' })
   await page
     .getByTestId('library-tag-context-menu')
-    .getByRole('menuitem', { name: msg('home.library_filter.delete_tag') })
+    .getByRole('menuitem', { name: msg('home.delete'), exact: true })
     .click()
-  await page.getByRole('button', { name: msg('home.library_filter.delete_tag') }).click()
+  await page.getByRole('button', { name: msg('home.delete'), exact: true }).click()
   await expect(tagChip(page, 'Important')).toHaveCount(0)
 
   await page.reload()

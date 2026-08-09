@@ -29,9 +29,10 @@ import { orderedTargetLanguages, TRANSLATION_LANGUAGES, type TranslationLanguage
 import { BookCacheSetting } from './BookCacheSetting'
 import { LocalDictionarySettings } from './LocalDictionarySettings'
 import { SettingsItem as Item } from './SettingsItem'
+import { TagSettings } from './TagSettings'
 
-type SettingsTab = 'basic' | 'reading' | 'dictionary' | 'translation' | 'txt' | 'shortcuts'
-const SETTINGS_TABS: SettingsTab[] = ['basic', 'reading', 'dictionary', 'translation', 'txt', 'shortcuts']
+type SettingsTab = 'basic' | 'reading' | 'tags' | 'dictionary' | 'translation' | 'txt' | 'shortcuts'
+const SETTINGS_TABS: SettingsTab[] = ['basic', 'reading', 'tags', 'dictionary', 'translation', 'txt', 'shortcuts']
 const TEXTAREA_SIZE_STYLE = {
   fieldSizing: 'fixed',
   maxHeight: '22rem',
@@ -84,9 +85,14 @@ export const SettingsPanel: React.FC = () => {
           })}
         </div>
       </aside>
-      <section className="scroll w-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-5 py-4">
+      <section
+        className={clsx(
+          'w-0 min-w-0 flex-1 overflow-x-hidden px-5 py-4',
+          activeTab === 'tags' ? 'flex flex-col overflow-y-hidden' : 'scroll overflow-y-auto',
+        )}
+      >
         <h2 className="text-muted-foreground text-lg font-semibold">{t(`tabs.${activeTab}`)}</h2>
-        <div className="mt-5 space-y-5">
+        <div className={clsx('mt-5', activeTab === 'tags' ? 'min-h-0 flex-1' : 'space-y-5')}>
           {activeTab === 'basic' && (
             <div data-flow-settings-panel className="m-0 space-y-5">
               <Item title={t('language')}>
@@ -273,6 +279,7 @@ export const SettingsPanel: React.FC = () => {
               </Item>
             </div>
           )}
+          {activeTab === 'tags' && <TagSettings />}
           {activeTab === 'txt' && (
             <div data-flow-settings-panel className="m-0 space-y-4">
               <Item

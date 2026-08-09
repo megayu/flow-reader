@@ -627,16 +627,60 @@ export async function installTauriMock(
           tagStore.set(id, updated)
           return updated
         }
-        if (command === 'delete_tag') {
-          const id = String(args?.id)
-          tagStore.delete(id)
-          libraryPinsStore.tagIds = libraryPinsStore.tagIds.filter((tagId) => tagId !== id)
+        if (command === 'delete_tags') {
+          const ids = new Set(Array.isArray(args?.ids) ? args.ids.map(String) : [])
+          ids.forEach((id) => tagStore.delete(id))
+          libraryPinsStore.tagIds = libraryPinsStore.tagIds.filter((tagId) => !ids.has(tagId))
           persistLibraryPins()
           bookStore.forEach((book, bookId) => {
-            const tagIds = ((book as BookRecord & { tagIds?: string[] }).tagIds ?? []).filter((tagId) => tagId !== id)
+            const tagIds = ((book as BookRecord & { tagIds?: string[] }).tagIds ?? []).filter(
+              (tagId) => !ids.has(tagId),
+            )
             bookStore.set(bookId, { ...book, tagIds })
           })
           return null
+        }
+        if (command === 'merge_tags') {
+          const ids = new Set(Array.isArray(args?.ids) ? args.ids.map(String) : [])
+          if (ids.size < 2 || [...ids].some((id) => !tagStore.has(id))) throw new Error('Invalid merge selection')
+          const targetId = args?.targetId ? String(args.targetId) : undefined
+          const targetName = String(args?.targetName ?? '')
+            .replace(/\s+/g, ' ')
+            .trim()
+          if (targetId && !ids.has(targetId)) throw new Error('Merge target must be selected')
+          let target = targetId ? tagStore.get(targetId) : undefined
+          if (!target && targetName) {
+            const existing = Array.from(tagStore.values()).find(
+              (tag) => tag.name.replace(/\s+/g, ' ').trim().toLowerCase() === targetName.toLowerCase(),
+            )
+            if (existing && !ids.has(existing.id)) throw new Error('Merge target name already exists')
+            target = existing ?? {
+              id: `tag-${targetName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`,
+              name: targetName,
+              createdAt: Date.now(),
+            }
+            if (!existing) {
+              tagStore.set(target.id, target)
+            }
+          }
+          if (!target) throw new Error('Merge target is required')
+
+          ids.forEach((id) => {
+            if (id !== target?.id) tagStore.delete(id)
+          })
+          const pinned = libraryPinsStore.tagIds.some((tagId) => ids.has(tagId))
+          libraryPinsStore.tagIds = libraryPinsStore.tagIds.filter((tagId) => !ids.has(tagId))
+          if (pinned) libraryPinsStore.tagIds.unshift(target.id)
+          persistLibraryPins()
+          bookStore.forEach((book, bookId) => {
+            const currentTagIds = (book as BookRecord & { tagIds?: string[] }).tagIds ?? []
+            if (!currentTagIds.some((tagId) => ids.has(tagId))) return
+            bookStore.set(bookId, {
+              ...book,
+              tagIds: [...currentTagIds.filter((tagId) => !ids.has(tagId)), target.id],
+            })
+          })
+          return target
         }
         if (command === 'update_book_tags') {
           const ids = Array.isArray(args?.ids) ? args.ids.map(String) : []

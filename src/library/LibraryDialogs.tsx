@@ -130,7 +130,7 @@ const TagSelectionEditor: React.FC<TagSelectionEditorProps> = ({
                 key={tag.id}
                 state={state === 'selected' ? 'active' : state === 'partial' ? 'partial' : 'inactive'}
                 label={tag.name}
-                pinned={pinnedTagIds.has(tag.id)}
+                pinned={state !== 'partial' && pinnedTagIds.has(tag.id)}
                 aria-pressed={state === 'partial' ? 'mixed' : state === 'selected'}
                 onClick={() => onToggleTag(tag.id)}
               />

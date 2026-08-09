@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     fs,
     path::{Path, PathBuf},
     process::Command,
@@ -320,24 +320,141 @@ pub fn update_tag(
     Ok(Some(tag))
 }
 
-#[tauri::command]
-pub fn delete_tag(storage: State<'_, AppStorage>, id: String) -> Result<(), String> {
+fn remove_library_tags(library: &mut Library, ids: &HashSet<String>) {
+    library.tags.retain(|tag| !ids.contains(&tag.id));
+    for book in &mut library.books {
+        book.tag_ids.retain(|tag_id| !ids.contains(tag_id));
+    }
+    library.pins.tag_ids.retain(|tag_id| !ids.contains(tag_id));
+}
+
+pub(super) fn delete_tags_impl(storage: &AppStorage, ids: Vec<String>) -> Result<(), String> {
+    let ids = ids.into_iter().filter(|id| !id.is_empty()).collect::<HashSet<_>>();
+    if ids.is_empty() {
+        return Ok(());
+    }
+
     {
         let mut state = storage
             .inner
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-
-        state.library.tags.retain(|tag| tag.id != id);
-        for book in &mut state.library.books {
-            book.tag_ids.retain(|tag_id| tag_id != &id);
-        }
-        state.library.pins.tag_ids.retain(|tag_id| tag_id != &id);
+        remove_library_tags(&mut state.library, &ids);
     }
 
     storage.mark_library_dirty();
-    storage.flush_dirty()
+    storage.flush_dirty()?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_tags(storage: State<'_, AppStorage>, ids: Vec<String>) -> Result<(), String> {
+    delete_tags_impl(&storage, ids)
+}
+
+pub(super) fn merge_tags_impl(
+    storage: &AppStorage,
+    ids: Vec<String>,
+    target_id: Option<String>,
+    target_name: Option<String>,
+) -> Result<LibraryTagRecord, String> {
+    let source_ids = ids.into_iter().filter(|id| !id.is_empty()).collect::<HashSet<_>>();
+    if source_ids.len() < 2 {
+        return Err("at least two tags are required".to_string());
+    }
+
+    let target = {
+        let mut state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        if source_ids
+            .iter()
+            .any(|id| !state.library.tags.iter().any(|tag| &tag.id == id))
+        {
+            return Err("selected tag does not exist".to_string());
+        }
+
+        let target = if let Some(target_id) = target_id {
+            if !source_ids.contains(&target_id) {
+                return Err("merge target must be selected".to_string());
+            }
+            state
+                .library
+                .tags
+                .iter()
+                .find(|tag| tag.id == target_id)
+                .cloned()
+                .ok_or_else(|| "merge target does not exist".to_string())?
+        } else {
+            let name = clean_tag_name(target_name.as_deref().unwrap_or_default());
+            if name.is_empty() {
+                return Err("merge target name is required".to_string());
+            }
+            if let Some(existing) = state
+                .library
+                .tags
+                .iter()
+                .find(|tag| same_tag_name(&tag.name, &name))
+                .cloned()
+            {
+                if !source_ids.contains(&existing.id) {
+                    return Err("merge target name already exists".to_string());
+                }
+                existing
+            } else {
+                let created_at = now_ms();
+                let tag = LibraryTagRecord {
+                    id: next_tag_id(&state.library.tags, created_at),
+                    name,
+                    created_at,
+                    updated_at: None,
+                };
+                state.library.tags.push(tag.clone());
+                tag
+            }
+        };
+
+        for book in &mut state.library.books {
+            if !book.tag_ids.iter().any(|tag_id| source_ids.contains(tag_id)) {
+                continue;
+            }
+            book.tag_ids.retain(|tag_id| !source_ids.contains(tag_id));
+            book.tag_ids.push(target.id.clone());
+        }
+
+        let pinned = state
+            .library
+            .pins
+            .tag_ids
+            .iter()
+            .any(|tag_id| source_ids.contains(tag_id));
+        state.library.pins.tag_ids.retain(|tag_id| !source_ids.contains(tag_id));
+        if pinned {
+            state.library.pins.tag_ids.insert(0, target.id.clone());
+        }
+        state
+            .library
+            .tags
+            .retain(|tag| !source_ids.contains(&tag.id) || tag.id == target.id);
+        target
+    };
+
+    storage.mark_library_dirty();
+    storage.flush_dirty()?;
+    Ok(target)
+}
+
+#[tauri::command]
+pub fn merge_tags(
+    storage: State<'_, AppStorage>,
+    ids: Vec<String>,
+    target_id: Option<String>,
+    target_name: Option<String>,
+) -> Result<LibraryTagRecord, String> {
+    merge_tags_impl(&storage, ids, target_id, target_name)
 }
 
 #[tauri::command]

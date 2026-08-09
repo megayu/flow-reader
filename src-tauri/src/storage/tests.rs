@@ -1,6 +1,6 @@
 use super::commands::{
-    BookImportResult, ReadingPositionInput, get_book_impl, import_epub_paths_impl, preview_text_import_paths_impl,
-    record_reading_position_impl, revealable_book_source_path,
+    BookImportResult, ReadingPositionInput, delete_tags_impl, get_book_impl, import_epub_paths_impl, merge_tags_impl,
+    preview_text_import_paths_impl, record_reading_position_impl, revealable_book_source_path,
 };
 use super::epub_import::read_bounded_bytes;
 use super::{
@@ -372,6 +372,114 @@ fn folder_import_tags_reuse_existing_names_and_deduplicate_repeated_directories(
     let book = result.books.iter().find(|book| book.id == "book-a").unwrap();
     assert_eq!(book.tag_ids.len(), 3);
     assert!(book.tag_ids.iter().any(|tag_id| tag_id == "tag-rust"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn tag_management_operations_preserve_book_and_pin_references() {
+    let root = std::env::temp_dir().join(format!(
+        "flow-reader-tag-management-test-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    fs::create_dir_all(&root).unwrap();
+    let mut first = test_library_book_with_id("book-a", BookSourceFormat::Epub);
+    first.tag_ids = vec!["tag-a".to_string(), "tag-b".to_string()];
+    let mut second = test_library_book_with_id("book-b", BookSourceFormat::Epub);
+    second.tag_ids = vec!["tag-b".to_string(), "tag-c".to_string()];
+    let storage = test_storage_with_books(&root, vec![first, second]);
+    {
+        let mut state = storage.inner.state.lock().unwrap();
+        state.library.tags = [
+            ("tag-a", "Alpha"),
+            ("tag-b", "Beta"),
+            ("tag-c", "Gamma"),
+            ("tag-orphan", "Orphan"),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, (id, name))| LibraryTagRecord {
+            id: id.to_string(),
+            name: name.to_string(),
+            created_at: index as u64 + 1,
+            updated_at: None,
+        })
+        .collect();
+        state.library.pins.tag_ids = vec!["tag-b".to_string(), "tag-orphan".to_string()];
+    }
+
+    assert_eq!(
+        merge_tags_impl(&storage, vec!["tag-a".to_string()], None, Some("Alpha".to_string())).unwrap_err(),
+        "at least two tags are required"
+    );
+    assert_eq!(
+        merge_tags_impl(
+            &storage,
+            vec!["tag-a".to_string(), "tag-missing".to_string()],
+            None,
+            Some("Combined".to_string()),
+        )
+        .unwrap_err(),
+        "selected tag does not exist"
+    );
+    assert_eq!(
+        merge_tags_impl(
+            &storage,
+            vec!["tag-a".to_string(), "tag-b".to_string()],
+            Some("tag-c".to_string()),
+            None,
+        )
+        .unwrap_err(),
+        "merge target must be selected"
+    );
+    assert_eq!(
+        merge_tags_impl(
+            &storage,
+            vec!["tag-a".to_string(), "tag-b".to_string()],
+            None,
+            Some(" ".to_string()),
+        )
+        .unwrap_err(),
+        "merge target name is required"
+    );
+    assert_eq!(
+        merge_tags_impl(
+            &storage,
+            vec!["tag-a".to_string(), "tag-b".to_string()],
+            None,
+            Some("Gamma".to_string()),
+        )
+        .unwrap_err(),
+        "merge target name already exists"
+    );
+
+    let merged = merge_tags_impl(
+        &storage,
+        vec!["tag-a".to_string(), "tag-b".to_string()],
+        Some("tag-a".to_string()),
+        None,
+    )
+    .unwrap();
+    assert_eq!(merged.id, "tag-a");
+    {
+        let state = storage.inner.state.lock().unwrap();
+        assert!(!state.library.tags.iter().any(|tag| tag.id == "tag-b"));
+        assert_eq!(state.library.books[0].tag_ids, vec!["tag-a"]);
+        assert_eq!(state.library.books[1].tag_ids, vec!["tag-c", "tag-a"]);
+        assert_eq!(state.library.pins.tag_ids, vec!["tag-a", "tag-orphan"]);
+    }
+
+    delete_tags_impl(&storage, vec!["tag-orphan".to_string(), "tag-c".to_string()]).unwrap();
+    {
+        let state = storage.inner.state.lock().unwrap();
+        assert_eq!(
+            state.library.tags.iter().map(|tag| tag.id.as_str()).collect::<Vec<_>>(),
+            vec!["tag-a"]
+        );
+        assert_eq!(state.library.books[1].tag_ids, vec!["tag-a"]);
+        assert_eq!(state.library.pins.tag_ids, vec!["tag-a"]);
+    }
 
     fs::remove_dir_all(root).unwrap();
 }

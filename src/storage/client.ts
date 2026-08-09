@@ -182,10 +182,19 @@ function rememberTag(tag: LibraryTagRecord) {
   }
 }
 
-function forgetTag(id: string) {
-  if (tagsCache) {
-    tagsCache = tagsCache.filter((tag) => tag.id !== id)
+function applyDeletedTags(ids: string[]) {
+  const removed = new Set(ids)
+  if (!removed.size) return
+
+  const update = (book: BookRecord) => {
+    const tagIds = book.tagIds ?? []
+    return tagIds.some((tagId) => removed.has(tagId))
+      ? { ...book, tagIds: tagIds.filter((tagId) => !removed.has(tagId)) }
+      : book
   }
+  bookCache.forEach((book, bookId) => bookCache.set(bookId, update(book)))
+  if (booksCache) booksCache = booksCache.map(update)
+  if (tagsCache) tagsCache = tagsCache.filter((tag) => !removed.has(tag.id))
 }
 
 function rememberPins(pins: LibraryPins) {
@@ -506,17 +515,41 @@ export const db = {
       return tag ?? undefined
     },
     async delete(id: string) {
+      await this.deleteMany([id])
+    },
+    async deleteMany(ids: string[]) {
+      const uniqueIds = [...new Set(ids.filter(Boolean))]
+      if (!uniqueIds.length) return
       beginBooksMutation()
-      const update = (book: BookRecord) => {
-        const tagIds = book.tagIds ?? []
-        return tagIds.includes(id) ? { ...book, tagIds: tagIds.filter((tagId) => tagId !== id) } : book
-      }
-      await trackNativeWrite(invoke<void>('delete_tag', { id }))
-      bookCache.forEach((book, bookId) => bookCache.set(bookId, update(book)))
-      if (booksCache) booksCache = booksCache.map(update)
-      forgetTag(id)
+      await trackNativeWrite(invoke<void>('delete_tags', { ids: uniqueIds }))
+      applyDeletedTags(uniqueIds)
       invalidatePins()
       notify('tags', 'books', 'pins')
+    },
+    async merge(ids: string[], target: { id?: string; name?: string }) {
+      beginBooksMutation()
+      const sourceIds = [...new Set(ids.filter(Boolean))]
+      const sourceIdSet = new Set(sourceIds)
+      const tag = await trackNativeWrite(
+        invoke<LibraryTagRecord>('merge_tags', {
+          ids: sourceIds,
+          targetId: target.id,
+          targetName: target.name,
+        }),
+      )
+      const update = (book: BookRecord) => {
+        const tagIds = book.tagIds ?? []
+        if (!tagIds.some((tagId) => sourceIdSet.has(tagId))) return book
+
+        return { ...book, tagIds: [...tagIds.filter((tagId) => !sourceIdSet.has(tagId)), tag.id] }
+      }
+      bookCache.forEach((book, bookId) => bookCache.set(bookId, update(book)))
+      if (booksCache) booksCache = booksCache.map(update)
+      if (tagsCache) tagsCache = tagsCache.filter((item) => !sourceIdSet.has(item.id) || item.id === tag.id)
+      rememberTag(tag)
+      invalidatePins()
+      notify('tags', 'books', 'pins')
+      return tag
     },
   },
   pins: {
