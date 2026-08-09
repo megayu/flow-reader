@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
+import { useTranslation } from '../hooks/useTranslation'
 import {
   orderedSourceLanguages,
   orderedTargetLanguages,
@@ -55,6 +56,7 @@ export function TranslationPopup({
   onBack,
   onClose,
 }: TranslationPopupProps) {
+  const t = useTranslation('translation')
   const [provider, setProvider] = useState(initialProvider)
   const [sourceLanguage, setSourceLanguage] = useState(initialSourceLanguage)
   const [targetLanguage, setTargetLanguage] = useState(initialTargetLanguage)
@@ -85,15 +87,9 @@ export function TranslationPopup({
         if (controller.signal.aborted || generation !== requestGenerationRef.current) return
         setTranslated(results.join('\n\n'))
       })
-      .catch((reason: unknown) => {
+      .catch((error: Error) => {
         if (!controller.signal.aborted && generation === requestGenerationRef.current) {
-          setError(
-            reason instanceof Error
-              ? reason.message
-              : typeof reason === 'object' && reason && 'message' in reason && typeof reason.message === 'string'
-                ? reason.message
-                : '翻译失败',
-          )
+          setError(error.message)
         }
       })
     return () => {
@@ -127,17 +123,16 @@ export function TranslationPopup({
   const languageSelect = (
     value: TranslationSourceLanguage,
     values: TranslationSourceLanguage[],
-    label: string,
     onChange: (value: string) => void,
   ) => (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger aria-label={label} size="sm" className="h-7 min-w-0 flex-1 rounded-sm px-2 text-sm">
+      <SelectTrigger size="sm" className="h-7 min-w-0 flex-1 rounded-sm px-2 text-sm">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
         {values.map((language) => (
           <SelectItem key={language} value={language}>
-            {language === 'auto' ? '自动检测' : (languageLabels.get(language) ?? language)}
+            {language === 'auto' ? t('auto_detect') : (languageLabels.get(language) ?? language)}
           </SelectItem>
         ))}
       </SelectContent>
@@ -147,12 +142,12 @@ export function TranslationPopup({
   return (
     <div className="bg-popover w-full">
       <div data-flow-translation-toolbar className="border-border flex h-10 items-center gap-1 border-b px-1.5">
-        <IconButton aria-label="返回" Icon={ArrowLeftIcon} className="shrink-0" onClick={onBack} />
-        {languageSelect(sourceLanguage, orderedSourceLanguages(mainLanguage, secondaryLanguage), '源语言', (value) =>
+        <IconButton Icon={ArrowLeftIcon} className="shrink-0" onClick={onBack} />
+        {languageSelect(sourceLanguage, orderedSourceLanguages(mainLanguage, secondaryLanguage), (value) =>
           setSourceLanguage(value as TranslationSourceLanguage),
         )}
         <ArrowRightIcon className="text-muted-foreground size-4 shrink-0" />
-        {languageSelect(targetLanguage, orderedTargetLanguages(mainLanguage, secondaryLanguage), '目标语言', (value) =>
+        {languageSelect(targetLanguage, orderedTargetLanguages(mainLanguage, secondaryLanguage), (value) =>
           setTargetLanguage(value as TranslationLanguage),
         )}
         <div className="ring-border flex h-7 shrink-0 items-center rounded-sm p-0.5 ring-1 ring-inset">
@@ -170,7 +165,6 @@ export function TranslationPopup({
           ))}
         </div>
         <IconButton
-          aria-label={copied ? '已复制' : '复制'}
           Icon={copied ? CheckIcon : CopyIcon}
           className="shrink-0"
           disabled={!copyText}
@@ -181,7 +175,7 @@ export function TranslationPopup({
             window.setTimeout(() => setCopied(false), 1200)
           }}
         />
-        <IconButton aria-label="关闭" Icon={XIcon} className="shrink-0" onClick={onClose} />
+        <IconButton Icon={XIcon} className="shrink-0" onClick={onClose} />
       </div>
       <div className="min-h-0" data-flow-translation-split style={{ height: bodyHeight, maxHeight: maxBodyHeight }}>
         <div
@@ -242,7 +236,6 @@ export function TranslationPopup({
               <div className="text-destructive inline-flex items-center gap-1">
                 <span>{error}</span>
                 <IconButton
-                  aria-label="重新翻译"
                   Icon={RefreshCwIcon}
                   className="text-muted-foreground hover:text-foreground size-6 shrink-0"
                   onClick={() => setRetryCount((count) => count + 1)}

@@ -1,6 +1,6 @@
 import path from 'node:path'
 
-import { expect, type Page, test } from '@playwright/test'
+import { expect, type Locator, type Page, test } from '@playwright/test'
 
 import type { LocalDictionaryRecord } from '../../src/dictionary/native'
 import type { BookRecord } from '../../src/storage'
@@ -10,6 +10,10 @@ import { getDictionaryMockState, installTauriMock } from '../support/tauri-mock'
 
 const aliceEpubPath = path.resolve('packages/epubjs/test/fixtures/alice.epub')
 const alicePackageUrl = '/test-assets/dictionary/alice.epub'
+
+function iconButton(container: Locator, icon: string) {
+  return container.locator(`button:has(svg.lucide-${icon})`)
+}
 
 const characterHtml = `<!doctype html><html><body>
   <section id="jbjs" data-section="基本解释">
@@ -573,11 +577,11 @@ test('opens the compact translation popup and Escape returns to the text menu', 
   await page.getByRole('button', { name: msg('menu.translate'), exact: true }).click()
   const popup = page.locator('[data-flow-translation-popup="true"]')
   await expect(popup).toBeVisible()
-  await expect(popup.getByRole('combobox', { name: '源语言' })).toContainText('简体中文')
-  await expect(popup.getByRole('combobox', { name: '目标语言' })).toContainText('English')
-  await expect(popup.getByRole('button', { name: '复制' })).toBeDisabled()
+  await expect(popup.getByRole('combobox').nth(0)).toContainText('简体中文')
+  await expect(popup.getByRole('combobox').nth(1)).toContainText('English')
+  await expect(iconButton(popup, 'copy')).toBeDisabled()
   await expect(popup.getByText('Google: sample', { exact: true })).toBeVisible()
-  await expect(popup.getByRole('button', { name: '复制' })).toBeEnabled()
+  await expect(iconButton(popup, 'copy')).toBeEnabled()
   await expect(popup.locator('[data-flow-translation-splitter]')).toBeVisible()
   await expect(popup).toHaveCSS('width', '600px')
   await expect(page.getByRole('tooltip')).toHaveCount(0)
@@ -635,8 +639,10 @@ test('allows copying and retrying a failed translation record', async ({ page })
 
   const popup = page.locator('[data-flow-translation-popup="true"]')
   await expect(popup.getByText('Synthetic translation failure')).toBeVisible()
-  await expect(popup.getByRole('button', { name: '复制' })).toBeEnabled()
-  const errorAlignment = await popup.getByRole('button', { name: '重新翻译' }).evaluate((button) => {
+  await expect(iconButton(popup, 'copy')).toBeEnabled()
+  const errorRow = popup.getByText('Synthetic translation failure').locator('..')
+  const retryButton = iconButton(errorRow, 'refresh-cw')
+  const errorAlignment = await retryButton.evaluate((button) => {
     const row = button.parentElement
     const text = row?.querySelector('span')
     if (!row || !text) throw new Error('Missing translation error row')
@@ -652,8 +658,8 @@ test('allows copying and retrying a failed translation record', async ({ page })
   expect(errorAlignment.alignItems).toBe('center')
   expect(errorAlignment.buttonColor).not.toBe(errorAlignment.textColor)
   expect(errorAlignment.centerDelta).toBeLessThanOrEqual(1)
-  await popup.getByRole('button', { name: '重新翻译' }).click()
-  await expect(popup.getByRole('button', { name: '复制' })).toBeDisabled()
+  await retryButton.click()
+  await expect(iconButton(popup, 'copy')).toBeDisabled()
   await expect(popup.getByText('Synthetic translation failure')).toBeVisible()
 })
 

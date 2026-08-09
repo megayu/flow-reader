@@ -362,6 +362,8 @@
   "toc.library": "书架",
   "toc.title": "目录",
 
+  "translation.auto_detect": "自动检测",
+
   "typography.default_value": "默认",
   "typography.font_family": "字体",
   "typography.font_size": "字号",

@@ -361,6 +361,8 @@
   "toc.library": "Library",
   "toc.title": "Table of Contents",
 
+  "translation.auto_detect": "Auto-detect",
+
   "typography.default_value": "Default",
   "typography.font_family": "Font Family",
   "typography.font_size": "Font Size",
