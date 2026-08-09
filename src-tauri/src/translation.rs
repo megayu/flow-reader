@@ -9,11 +9,9 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 const GOOGLE_URL: &str = "https://translate.googleapis.com/translate_a/single";
-const AZURE_AUTH_URL: &str = "https://edge.microsoft.com/translate/auth";
-const AZURE_TRANSLATE_URL: &str = "https://api-edge.cognitive.microsofttranslator.com/translate";
+const AZURE_TRANSLATE_URL: &str = "https://edge.microsoft.com/translate/translatetext";
 const MAX_TEXT_BYTES: usize = 40 * 1024;
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
-const AZURE_TOKEN_TTL: Duration = Duration::from_secs(9 * 60);
 const PRE_CANCELLED_SESSION_TTL: Duration = Duration::from_secs(30);
 
 #[derive(Deserialize)]
@@ -54,14 +52,8 @@ impl TranslationError {
     }
 }
 
-struct CachedToken {
-    value: String,
-    expires_at: Instant,
-}
-
 pub struct TranslationHttpClient {
     client: Client,
-    azure_token: Mutex<Option<CachedToken>>,
     sessions: Mutex<TranslationSessions>,
 }
 
@@ -87,7 +79,6 @@ impl TranslationHttpClient {
             .map_err(|error| TranslationError::new("configuration", error.to_string()))?;
         Ok(Self {
             client,
-            azure_token: Mutex::new(None),
             sessions: Mutex::new(TranslationSessions::default()),
         })
     }
@@ -150,64 +141,25 @@ impl TranslationHttpClient {
     }
 
     async fn azure(&self, request: &TranslationRequest) -> Result<TranslationResponse, TranslationError> {
-        let token = self.azure_token().await?;
         let mut url = Url::parse(AZURE_TRANSLATE_URL).expect("fixed Azure translation URL");
         url.query_pairs_mut()
-            .append_pair("api-version", "3.0")
-            .append_pair("to", &request.target_language);
+            .append_pair("to", &request.target_language)
+            .append_pair("isEnterpriseClient", "false");
         if !request.source_language.is_empty() {
             url.query_pairs_mut().append_pair("from", &request.source_language);
         }
-        let body = request
-            .texts
-            .iter()
-            .map(|text| format!("{{\"Text\":{}}}", serde_json::to_string(text).expect("text JSON")))
-            .collect::<Vec<_>>()
-            .join(",");
+        let body = serde_json::to_string(&request.texts).expect("translation text JSON");
         let response = self
             .client
             .post(url)
-            .bearer_auth(token)
+            .header(reqwest::header::USER_AGENT, "Mozilla/5.0")
             .header("Content-Type", "application/json; charset=UTF-8")
-            .body(format!("[{body}]"))
+            .body(body)
             .send()
             .await;
         Ok(TranslationResponse {
             bodies: vec![read_response(response, "Azure").await?],
         })
-    }
-
-    async fn azure_token(&self) -> Result<String, TranslationError> {
-        if let Some(token) = self.azure_token.lock().expect("Azure token lock poisoned").as_ref()
-            && token.expires_at > Instant::now()
-        {
-            return Ok(token.value.clone());
-        }
-        let requested_at = Instant::now();
-        let response = self
-            .client
-            .get(AZURE_AUTH_URL)
-            .header(reqwest::header::USER_AGENT, "Mozilla/5.0")
-            .send()
-            .await;
-        let token = read_response(response, "Azure authentication")
-            .await?
-            .trim()
-            .to_string();
-        if token.len() > 16 * 1024 || token.is_empty() {
-            return Err(TranslationError::new(
-                "invalid_response",
-                "Azure authentication returned an invalid token",
-            ));
-        }
-        self.azure_token
-            .lock()
-            .expect("Azure token lock poisoned")
-            .replace(CachedToken {
-                value: token.clone(),
-                expires_at: requested_at + AZURE_TOKEN_TTL,
-            });
-        Ok(token)
     }
 
     fn cancel(&self, session_id: u64) {
