@@ -3,6 +3,7 @@ import {
   ArchiveIcon,
   BookOpenIcon,
   CheckIcon,
+  CircleIcon,
   DownloadIcon,
   FileX2Icon,
   InfoIcon,
@@ -54,6 +55,14 @@ import { BookProgress, ReadingStatusBadge, ReadingStatusMenuContent } from './Re
 import type { LibraryBookSelectionEvent } from './selection'
 
 const placeholder = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect fill="gray" fill-opacity="0" width="1" height="1"/></svg>`
+const newBookMarkerDurationMs = 24 * 60 * 60 * 1000
+
+function isNewBook(book: BookRecord) {
+  if (book.lastReadAt !== undefined) return false
+
+  const bookAgeMs = Date.now() - book.createdAt
+  return bookAgeMs >= 0 && bookAgeMs < newBookMarkerDurationMs
+}
 
 interface BookCardProps {
   book: BookRecord
@@ -95,6 +104,7 @@ export const BookCard: React.FC<BookCardProps> = ({
   const displayTitle = getBookDisplayTitle(book)
   const tooltip = getBookTooltip(book)
   const exportFormats = bookExportFormats(book)
+  const showNewBookMarker = isNewBook(book)
 
   const openBook = useCallback(async () => {
     if (isBookSourceUnavailable(sourceStatus)) {
@@ -403,7 +413,16 @@ export const BookCard: React.FC<BookCardProps> = ({
                 className="text-foreground mx-auto mt-2 flex h-6 w-full items-center gap-2 text-base leading-none font-semibold"
                 style={{ maxWidth: 'var(--library-book-card-width)' }}
               >
-                <span className="min-w-0 flex-1 truncate text-left">{displayTitle}</span>
+                <span className="flex min-w-0 flex-1 items-center gap-0.5">
+                  {showNewBookMarker && (
+                    <CircleIcon
+                      aria-hidden
+                      className="size-[0.55em] shrink-0 fill-current text-(--flow-accent)"
+                      strokeWidth={0}
+                    />
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-left">{displayTitle}</span>
+                </span>
                 {!select && progressPercent !== undefined && (
                   <span className="text-muted-foreground shrink-0 text-xs leading-none font-normal tabular-nums">
                     {progressPercent.toFixed()}%
