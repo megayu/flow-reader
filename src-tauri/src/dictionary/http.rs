@@ -4,6 +4,8 @@ use reqwest::{Client, StatusCode, Url, redirect::Policy};
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
+use super::error::DictionaryError;
+
 const ZDIC_BASE_URL: &str = "https://zdic.net/hans/";
 const MERRIAM_WEBSTER_BASE_URL: &str = "https://www.dictionaryapi.com/api/v3/references/collegiate/json/";
 const DEFAULT_MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
@@ -19,21 +21,7 @@ pub struct DictionaryHttpResponse {
     pub status: u16,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DictionaryHttpError {
-    pub code: String,
-    pub message: String,
-}
-
-impl DictionaryHttpError {
-    fn new(code: &str, message: &str) -> Self {
-        Self {
-            code: code.to_string(),
-            message: message.to_string(),
-        }
-    }
-}
+pub type DictionaryHttpError = DictionaryError;
 
 struct ProviderTransport {
     base_url: Url,
@@ -141,7 +129,7 @@ impl DictionaryHttpClient {
             }
             return Err(DictionaryHttpError::new(
                 "http_status",
-                &format!("Dictionary service returned HTTP {}", status.as_u16()),
+                format!("Dictionary service returned HTTP {}", status.as_u16()),
             ));
         }
 

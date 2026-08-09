@@ -1,21 +1,6 @@
-import {
-  type Action,
-  type LibraryAction,
-  useLibraryActionState,
-  useReaderActionState,
-  useSetReaderActionState,
+export type { Action, LibraryAction } from '../state'
+export {
+  useLibraryActionState as useLibraryAction,
+  useReaderActionState as useAction,
+  useSetReaderActionState as useSetAction,
 } from '../state'
-
-export type { Action, LibraryAction }
-
-export function useSetAction() {
-  return useSetReaderActionState()
-}
-
-export function useAction() {
-  return useReaderActionState()
-}
-
-export function useLibraryAction() {
-  return useLibraryActionState()
-}

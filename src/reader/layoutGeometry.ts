@@ -2,7 +2,7 @@ function isPropertyBag(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-function readRenditionLayout(rendition: unknown) {
+export function readRenditionLayout(rendition: unknown) {
   if (!isPropertyBag(rendition) || !isPropertyBag(rendition.manager)) return
 
   const { layout } = rendition.manager
@@ -12,10 +12,6 @@ function readRenditionLayout(rendition: unknown) {
 export function getRenditionPageWidth(rendition: unknown) {
   const pageWidth = readRenditionLayout(rendition)?.pageWidth
   return typeof pageWidth === 'number' && Number.isFinite(pageWidth) && pageWidth > 0 ? pageWidth : undefined
-}
-
-export function getRenditionLayout(rendition: unknown) {
-  return readRenditionLayout(rendition)
 }
 
 export function getFiniteLayoutValue(value: unknown, fallback: number) {

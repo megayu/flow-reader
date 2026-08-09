@@ -22,12 +22,3 @@ export function useAccentColor() {
 
   return { accentColor, setAccentColor }
 }
-
-export function useSourceColor() {
-  const { accentColor, setAccentColor } = useAccentColor()
-
-  return {
-    sourceColor: accentColor,
-    setSourceColor: setAccentColor,
-  }
-}

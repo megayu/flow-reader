@@ -1396,20 +1396,8 @@ pub(super) fn import_text_path_impl(
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        let filename_index = import_index.as_deref().map_or_else(
-            || state.library.books.iter().position(|book| book.name == name),
-            |index| index.filename_index(&state.library.books, &name),
-        );
-        let hash_index = import_index.as_deref().map_or_else(
-            || {
-                state
-                    .library
-                    .books
-                    .iter()
-                    .position(|book| !book.content_hash.is_empty() && book.content_hash == hash)
-            },
-            |index| index.hash_index(&state.library.books, &hash),
-        );
+        let (filename_index, hash_index) =
+            existing_book_indices(import_index.as_deref(), &state.library.books, &name, &hash);
 
         if let Some(index) = filename_index {
             let storage_changed = state.library.books[index].source_storage != source_storage;

@@ -9,8 +9,9 @@ use flate2::read::DeflateDecoder;
 use memmap2::{Mmap, MmapOptions};
 use serde::{Deserialize, Serialize};
 
-use super::import::{
-    DictionaryFileKind, DictionaryFormat, InspectedDictionary, SourceFingerprint, inspect_dictionary_file,
+use super::{
+    error::DictionaryError,
+    import::{DictionaryFileKind, DictionaryFormat, InspectedDictionary, SourceFingerprint, inspect_dictionary_file},
 };
 
 const INDEX_VERSION: u32 = 1;
@@ -21,29 +22,7 @@ const MAX_DEFINITION_BYTES: usize = 1024 * 1024;
 const MAX_MATCHES: usize = 64;
 const MAX_DICTZIP_BLOCKS: usize = 4_096;
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StarDictError {
-    pub code: String,
-    pub message: String,
-}
-
-impl StarDictError {
-    pub(crate) fn new(code: &str, message: impl Into<String>) -> Self {
-        Self {
-            code: code.to_string(),
-            message: message.into(),
-        }
-    }
-}
-
-impl std::fmt::Display for StarDictError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{}", self.message)
-    }
-}
-
-impl std::error::Error for StarDictError {}
+pub type StarDictError = DictionaryError;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

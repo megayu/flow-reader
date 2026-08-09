@@ -2,6 +2,7 @@ import { Channel } from '@tauri-apps/api/core'
 
 import { RecentReadingModel } from '../library/recentReading'
 
+import { isReadingActivityOnlyUpdate } from './bookUpdate'
 import { storagePathToUrl as filePathToUrl, invokeStorage as invoke } from './native'
 import type {
   BookCacheClearProgress,
@@ -149,12 +150,14 @@ function rememberCovers(covers: CoverRecord[]) {
   coversCache = covers
 }
 
+function upsertCachedById<T extends { id: string }>(items: T[], value: T) {
+  const index = items.findIndex((item) => item.id === value.id)
+  return index >= 0 ? [...items.slice(0, index), value, ...items.slice(index + 1)] : [...items, value]
+}
+
 function rememberCover(cover: CoverRecord) {
   if (!coversCache) return
-
-  const index = coversCache.findIndex((item) => item.id === cover.id)
-  coversCache =
-    index >= 0 ? [...coversCache.slice(0, index), cover, ...coversCache.slice(index + 1)] : [...coversCache, cover]
+  coversCache = upsertCachedById(coversCache, cover)
 }
 
 function forgetCovers(ids: string[]) {
@@ -173,13 +176,7 @@ function rememberTags(tags: LibraryTagRecord[]) {
 
 function rememberTag(tag: LibraryTagRecord) {
   if (!tagsCache) return
-
-  const index = tagsCache.findIndex((item) => item.id === tag.id)
-  if (index >= 0) {
-    tagsCache = [...tagsCache.slice(0, index), tag, ...tagsCache.slice(index + 1)]
-  } else {
-    tagsCache = [...tagsCache, tag]
-  }
+  tagsCache = upsertCachedById(tagsCache, tag)
 }
 
 function applyDeletedTags(ids: string[], updatedAt: number) {
@@ -228,31 +225,6 @@ function loadRecentBooks() {
   })
   recentBooksPromise = tracked
   return tracked
-}
-
-function withoutReadingSpread(configuration: BookRecord['configuration'] | undefined) {
-  const { spread, ...rest } = configuration ?? {}
-  return rest
-}
-
-function isSpreadOnlyConfigurationUpdate(changes: Partial<BookRecord>, currentBook?: BookRecord) {
-  if (!('configuration' in changes)) return true
-  if (!currentBook) return false
-
-  return (
-    JSON.stringify(withoutReadingSpread(changes.configuration)) ===
-    JSON.stringify(withoutReadingSpread(currentBook.configuration))
-  )
-}
-
-function isReadingActivityOnlyUpdate(changes: Partial<BookRecord>, currentBook?: BookRecord) {
-  const keys = Object.keys(changes)
-  return (
-    keys.length > 0 &&
-    keys.some((key) => key === 'cfi' || key === 'percentage' || key === 'lastReadAt') &&
-    isSpreadOnlyConfigurationUpdate(changes, currentBook) &&
-    keys.every((key) => ['cfi', 'percentage', 'lastReadAt', 'configuration'].includes(key))
-  )
 }
 
 function trackNativeWrite<T>(promise: Promise<T>) {
@@ -785,17 +757,6 @@ export async function clearBookCaches(
 
 export function cleanupExternalBook(id: string) {
   return trackNativeWrite(invoke('cleanup_external_book', { id }))
-}
-
-export function cleanupAllExternalBooks() {
-  return trackNativeWrite(invoke('cleanup_all_external_books'))
-}
-
-export function deleteExternalBook(id: string) {
-  beginBooksMutation()
-  forgetBooks([id])
-  forgetCovers([id])
-  return trackNativeWrite(invoke('delete_external_book', { id }))
 }
 
 export async function getSettingsFromStorage<T>() {

@@ -1,23 +1,5 @@
 import path from './posix-path'
-
-function isTauriAssetUrl(url) {
-  return (
-    url &&
-    ((url.protocol === 'asset:' && url.hostname === 'localhost') ||
-      (url.protocol === 'http:' && url.hostname === 'asset.localhost'))
-  )
-}
-
-function hasEncodedPathSeparators(pathname) {
-  return /%2f|%5c/i.test(pathname)
-}
-
-function decodeAssetPath(pathname) {
-  var encodedPath = pathname.charAt(0) === '/' ? pathname.slice(1) : pathname
-  var decodedPath = window.decodeURIComponent(encodedPath).replace(/\\/g, '/')
-
-  return decodedPath.charAt(0) === '/' ? decodedPath : '/' + decodedPath
-}
+import { decodeAssetPath, hasEncodedPathSeparators, isTauriAssetUrl } from './asset-url'
 
 function stripPathSuffix(pathString) {
   var end = pathString.length

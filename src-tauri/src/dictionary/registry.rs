@@ -9,11 +9,10 @@ use std::{
 use serde::{Deserialize, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 
-use super::import::{
-    DictionaryFormat, DictionaryImportError, InspectedDictionary, SourceFingerprint, inspect_dictionary_file,
-};
-use super::mdict::{MdictError, MdictReader};
-use super::stardict::{StarDictError, prepare_index};
+use super::error::DictionaryError;
+use super::import::{DictionaryFormat, InspectedDictionary, SourceFingerprint, inspect_dictionary_file};
+use super::mdict::MdictReader;
+use super::stardict::prepare_index;
 
 const REGISTRY_VERSION: u32 = 1;
 const DICTIONARIES_DIR: &str = "dictionaries";
@@ -103,56 +102,7 @@ pub struct LocalDictionaryUpdate {
     pub name: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DictionaryRegistryError {
-    pub code: String,
-    pub message: String,
-}
-
-impl DictionaryRegistryError {
-    fn new(code: &str, message: impl Into<String>) -> Self {
-        Self {
-            code: code.to_string(),
-            message: message.into(),
-        }
-    }
-}
-
-impl From<DictionaryImportError> for DictionaryRegistryError {
-    fn from(error: DictionaryImportError) -> Self {
-        Self {
-            code: error.code,
-            message: error.message,
-        }
-    }
-}
-
-impl From<StarDictError> for DictionaryRegistryError {
-    fn from(error: StarDictError) -> Self {
-        Self {
-            code: error.code,
-            message: error.message,
-        }
-    }
-}
-
-impl From<MdictError> for DictionaryRegistryError {
-    fn from(error: MdictError) -> Self {
-        Self {
-            code: error.code,
-            message: error.message,
-        }
-    }
-}
-
-impl std::fmt::Display for DictionaryRegistryError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{}", self.message)
-    }
-}
-
-impl std::error::Error for DictionaryRegistryError {}
+pub type DictionaryRegistryError = DictionaryError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -340,7 +290,7 @@ impl DictionaryRegistryStore {
             if !cache_existed {
                 let _ = fs::remove_dir_all(&cache);
             }
-            return Err(error.into());
+            return Err(error);
         }
         if let Err(error) = persist_registry(&self.registry_path, &next) {
             if !cache_existed {

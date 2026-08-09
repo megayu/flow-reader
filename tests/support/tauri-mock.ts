@@ -3,7 +3,9 @@ import type { Page } from '@playwright/test'
 import type { LocalDictionaryRecord } from '../../src/dictionary/native'
 import type { WindowUiState } from '../../src/state'
 import type {
+  BookImageIndexCache,
   BookRecord,
+  BookSearchResult,
   BookSourceStatus,
   FolderImportCandidate,
   FolderImportTagAssignment,
@@ -33,10 +35,12 @@ const testWindowUiState: WindowUiState = {
 }
 
 interface TauriMockOptions {
+  bookSearchResults?: Record<string, BookSearchResult[]>
   books?: BookRecord[]
   eventListenDelayMs?: number
   externallyOpenedBooks?: BookRecord[]
   importedBooks?: BookRecord[]
+  imageIndexes?: Record<string, BookImageIndexCache>
   epubImportDelayMs?: number
   folderDialogPaths?: string[]
   folderImportCandidates?: Record<string, FolderImportCandidate[]>
@@ -73,10 +77,12 @@ interface TauriMockOptions {
 export async function installTauriMock(
   page: Page,
   {
+    bookSearchResults = {},
     books = [],
     eventListenDelayMs = 0,
     externallyOpenedBooks = [],
     importedBooks = [],
+    imageIndexes = {},
     epubImportDelayMs = 0,
     folderDialogPaths = [],
     folderImportCandidates = {},
@@ -116,10 +122,12 @@ export async function installTauriMock(
 ) {
   await page.addInitScript(
     ({
+      fixtureBookSearchResults,
       fixtureBooks,
       fixtureEventListenDelayMs,
       fixtureExternallyOpenedBooks,
       fixtureImportedBooks,
+      fixtureImageIndexes,
       fixtureEpubImportDelayMs,
       fixtureFolderDialogPaths,
       fixtureFolderImportCandidates,
@@ -228,6 +236,10 @@ export async function installTauriMock(
       })()
       const bookStore = new Map<string, BookRecord>(fixtureBooks.map((book) => [book.id, book]))
       const tagStore = new Map<string, TestLibraryTagRecord>(fixtureTags.map((tag) => [tag.id, tag]))
+      const normalizeName = (value: unknown) =>
+        String(value ?? '')
+          .replace(/\s+/g, ' ')
+          .trim()
       const libraryPinsStore: TestLibraryPins = {
         authors: [...(storedLibraryPins?.authors ?? fixturePins.authors)],
         tagIds: [...(storedLibraryPins?.tagIds ?? fixturePins.tagIds)],
@@ -238,11 +250,7 @@ export async function installTauriMock(
       const prunePinnedAuthors = () => {
         const authors = new Set(
           Array.from(bookStore.values())
-            .map((book) =>
-              String(book.metadata.creator ?? '')
-                .replace(/\s+/g, ' ')
-                .trim(),
-            )
+            .map((book) => normalizeName(book.metadata.creator))
             .filter(Boolean),
         )
         libraryPinsStore.authors = libraryPinsStore.authors.filter((author) => authors.has(author))
@@ -541,7 +549,7 @@ export async function installTauriMock(
             const tagIds = new Set(current.tagIds ?? [])
             const seenNames = new Set<string>()
             assignment.tagNames.forEach((rawName) => {
-              const name = rawName.replace(/\s+/g, ' ').trim()
+              const name = normalizeName(rawName)
               const normalizedName = name.toLowerCase()
               if (!name || seenNames.has(normalizedName)) return
               seenNames.add(normalizedName)
@@ -570,19 +578,12 @@ export async function installTauriMock(
         if (command === 'get_library_pins') return structuredClone(libraryPinsStore)
         if (command === 'update_library_pin') {
           const kind = String(args?.kind ?? '')
-          const id = String(args?.id ?? '')
-            .replace(/\s+/g, ' ')
-            .trim()
+          const id = normalizeName(args?.id)
           const pinned = Boolean(args?.pinned)
           const items = kind === 'author' ? libraryPinsStore.authors : libraryPinsStore.tagIds
           const exists =
             kind === 'author'
-              ? Array.from(bookStore.values()).some(
-                  (book) =>
-                    String(book.metadata.creator ?? '')
-                      .replace(/\s+/g, ' ')
-                      .trim() === id,
-                )
+              ? Array.from(bookStore.values()).some((book) => normalizeName(book.metadata.creator) === id)
               : kind === 'tag' && tagStore.has(id)
           if (id && (!pinned || exists)) {
             const updated = items.filter((item) => item !== id)
@@ -594,9 +595,7 @@ export async function installTauriMock(
           return structuredClone(libraryPinsStore)
         }
         if (command === 'create_tag') {
-          const name = String(args?.name ?? '')
-            .replace(/\s+/g, ' ')
-            .trim()
+          const name = normalizeName(args?.name)
           if (!name) return null
           const existing = Array.from(tagStore.values()).find((tag) => tag.name.toLowerCase() === name.toLowerCase())
           if (existing) return existing
@@ -613,9 +612,7 @@ export async function installTauriMock(
           const id = String(args?.id)
           const current = tagStore.get(id)
           if (!current) return null
-          const name = String(args?.name ?? current.name)
-            .replace(/\s+/g, ' ')
-            .trim()
+          const name = normalizeName(args?.name ?? current.name)
           if (!name) return current
 
           const duplicate = Array.from(tagStore.values()).find(
@@ -644,14 +641,12 @@ export async function installTauriMock(
           const ids = new Set(Array.isArray(args?.ids) ? args.ids.map(String) : [])
           if (ids.size < 2 || [...ids].some((id) => !tagStore.has(id))) throw new Error('Invalid merge selection')
           const targetId = args?.targetId ? String(args.targetId) : undefined
-          const targetName = String(args?.targetName ?? '')
-            .replace(/\s+/g, ' ')
-            .trim()
+          const targetName = normalizeName(args?.targetName)
           if (targetId && !ids.has(targetId)) throw new Error('Merge target must be selected')
           let target = targetId ? tagStore.get(targetId) : undefined
           if (!target && targetName) {
             const existing = Array.from(tagStore.values()).find(
-              (tag) => tag.name.replace(/\s+/g, ' ').trim().toLowerCase() === targetName.toLowerCase(),
+              (tag) => normalizeName(tag.name).toLowerCase() === targetName.toLowerCase(),
             )
             if (existing && !ids.has(existing.id)) throw new Error('Merge target name already exists')
             target = existing ?? {
@@ -701,6 +696,12 @@ export async function installTauriMock(
           return null
         }
         if (command === 'get_book') return bookStore.get(String(args?.id)) ?? null
+        if (command === 'search_book_text') {
+          return fixtureBookSearchResults[String(args?.keyword ?? '')] ?? []
+        }
+        if (command === 'load_book_image_index') {
+          return fixtureImageIndexes[String(args?.id)] ?? null
+        }
         if (command === 'reveal_book_source') {
           const id = String(args?.id)
           if (!fixtureRevealableBookSourceIds.includes(id)) return false
@@ -893,10 +894,12 @@ export async function installTauriMock(
       }
     },
     {
+      fixtureBookSearchResults: bookSearchResults,
       fixtureBooks: books,
       fixtureEventListenDelayMs: eventListenDelayMs,
       fixtureExternallyOpenedBooks: externallyOpenedBooks,
       fixtureImportedBooks: importedBooks,
+      fixtureImageIndexes: imageIndexes,
       fixtureEpubImportDelayMs: epubImportDelayMs,
       fixtureFolderDialogPaths: folderDialogPaths,
       fixtureFolderImportCandidates: folderImportCandidates,

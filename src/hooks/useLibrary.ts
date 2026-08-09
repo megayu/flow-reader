@@ -3,139 +3,85 @@ import { useEffect, useState } from 'react'
 import { db } from '../storage/client'
 import type { BookRecord, CoverRecord, LibraryPins, LibraryTagRecord } from '../storage/types'
 
-export function useLibrary() {
-  const [books, setBooks] = useState<BookRecord[] | undefined>(() => db.books.peekAll())
-
-  useEffect(() => {
-    let disposed = false
-
-    const load = () => {
-      db.books
-        .toArray()
-        .then((books) => {
-          if (!disposed) setBooks(books)
-        })
-        .catch(console.error)
-    }
-
-    load()
-    const unsubscribe = db.subscribe('books', load)
-
-    return () => {
-      disposed = true
-      unsubscribe()
-    }
-  }, [])
-
-  return books
+interface StorageSubscriptionSource<T> {
+  load: () => Promise<T>
+  peek: () => T | undefined
+  subscribe: (load: () => void) => () => void
 }
 
-export function useCovers() {
-  const [covers, setCovers] = useState<CoverRecord[] | undefined>(() => db.covers.peekAll())
-
-  useEffect(() => {
-    let disposed = false
-
-    const load = () => {
-      db.covers
-        .toArray()
-        .then((covers) => {
-          if (!disposed) setCovers(covers)
-        })
-        .catch(console.error)
-    }
-
-    load()
-    const unsubscribe = db.subscribe('covers', load)
-
-    return () => {
-      disposed = true
-      unsubscribe()
-    }
-  }, [])
-
-  return covers
+const booksSource: StorageSubscriptionSource<BookRecord[]> = {
+  load: () => db.books.toArray(),
+  peek: () => db.books.peekAll(),
+  subscribe: (load) => db.subscribe('books', load),
 }
 
-export function useLibraryTags() {
-  const [tags, setTags] = useState<LibraryTagRecord[] | undefined>(() => db.tags.peekAll())
-
-  useEffect(() => {
-    let disposed = false
-
-    const load = () => {
-      db.tags
-        .toArray()
-        .then((tags) => {
-          if (!disposed) setTags(tags)
-        })
-        .catch(console.error)
-    }
-
-    load()
-    const unsubscribe = db.subscribe('tags', load)
-
-    return () => {
-      disposed = true
-      unsubscribe()
-    }
-  }, [])
-
-  return tags
+const coversSource: StorageSubscriptionSource<CoverRecord[]> = {
+  load: () => db.covers.toArray(),
+  peek: () => db.covers.peekAll(),
+  subscribe: (load) => db.subscribe('covers', load),
 }
 
-export function useLibraryPins() {
-  const [pins, setPins] = useState<LibraryPins | undefined>(() => db.pins.peek())
-
-  useEffect(() => {
-    let disposed = false
-
-    const load = () => {
-      db.pins
-        .get()
-        .then((pins) => {
-          if (!disposed) setPins(pins)
-        })
-        .catch(console.error)
-    }
-
-    load()
-    const unsubscribe = db.subscribe('pins', load)
-
-    return () => {
-      disposed = true
-      unsubscribe()
-    }
-  }, [])
-
-  return pins
+const tagsSource: StorageSubscriptionSource<LibraryTagRecord[]> = {
+  load: () => db.tags.toArray(),
+  peek: () => db.tags.peekAll(),
+  subscribe: (load) => db.subscribe('tags', load),
 }
 
-export function useRecentBookIds(enabled = true) {
-  const [bookIds, setBookIds] = useState<string[] | undefined>(() => db.recentBooks.peek())
+const pinsSource: StorageSubscriptionSource<LibraryPins> = {
+  load: () => db.pins.get(),
+  peek: () => db.pins.peek(),
+  subscribe: (load) => db.subscribe('pins', load),
+}
+
+const recentBooksSource: StorageSubscriptionSource<string[]> = {
+  load: () => db.recentBooks.get(),
+  peek: () => db.recentBooks.peek(),
+  subscribe: (load) => db.subscribe('recentBooks', load),
+}
+
+function useStorageSubscription<T>(source: StorageSubscriptionSource<T>, enabled = true) {
+  const [value, setValue] = useState<T | undefined>(source.peek)
 
   useEffect(() => {
     if (!enabled) return
 
     let disposed = false
-
     const load = () => {
-      db.recentBooks
-        .get()
-        .then((ids) => {
-          if (!disposed) setBookIds(ids)
+      source
+        .load()
+        .then((nextValue) => {
+          if (!disposed) setValue(nextValue)
         })
         .catch(console.error)
     }
 
     load()
-    const unsubscribe = db.subscribe('recentBooks', load)
-
+    const unsubscribe = source.subscribe(load)
     return () => {
       disposed = true
       unsubscribe()
     }
-  }, [enabled])
+  }, [enabled, source])
 
-  return bookIds
+  return value
+}
+
+export function useLibrary() {
+  return useStorageSubscription(booksSource)
+}
+
+export function useCovers() {
+  return useStorageSubscription(coversSource)
+}
+
+export function useLibraryTags() {
+  return useStorageSubscription(tagsSource)
+}
+
+export function useLibraryPins() {
+  return useStorageSubscription(pinsSource)
+}
+
+export function useRecentBookIds(enabled = true) {
+  return useStorageSubscription(recentBooksSource, enabled)
 }

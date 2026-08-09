@@ -1,3 +1,5 @@
+import { safeDecodeHref } from './noteLinks'
+
 export interface NoteIndex {
   getHideTargets(): HTMLElement[]
   getItemForAnchor(anchor: HTMLAnchorElement): HTMLElement | undefined
@@ -62,7 +64,7 @@ function getLinkedHashTarget(anchor: HTMLAnchorElement) {
   const [, hash = ''] = anchor.getAttribute('href')?.split('#') ?? []
   if (!hash) return
 
-  return getElementByIdOrName(anchor.ownerDocument, safeDecode(hash))
+  return getElementByIdOrName(anchor.ownerDocument, safeDecodeHref(hash))
 }
 
 function isHashTargetAfterSource(source: HTMLAnchorElement, target: HTMLElement) {
@@ -294,7 +296,7 @@ function backlinkTargetsAnchor(backlink: HTMLAnchorElement, anchor: HTMLAnchorEl
   const [, hash = ''] = backlink.getAttribute('href')?.split('#') ?? []
   if (!hash) return false
 
-  const target = getElementByIdOrName(anchor.ownerDocument, safeDecode(hash))
+  const target = getElementByIdOrName(anchor.ownerDocument, safeDecodeHref(hash))
   if (!target) return false
 
   return (
@@ -306,19 +308,11 @@ function backlinkTargetsAnchor(backlink: HTMLAnchorElement, anchor: HTMLAnchorEl
   )
 }
 
-function getElementByIdOrName(doc: Document, id: string) {
+export function getElementByIdOrName(doc: Document, id: string) {
   return (
     doc.getElementById(id) ??
     ([...doc.querySelectorAll('[name]')].find((el) => el.getAttribute('name') === id) as HTMLElement | undefined)
   )
-}
-
-function safeDecode(text: string) {
-  try {
-    return decodeURIComponent(text)
-  } catch {
-    return text
-  }
 }
 
 function isPotentialNoteContentElement(el: HTMLElement) {

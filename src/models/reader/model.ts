@@ -13,7 +13,7 @@ import { getBookDisplayTitle } from '@/book'
 import { IS_SERVER } from '@/env'
 import { openSupportedExternalUrl } from '@/externalLink'
 import { createId } from '@/id'
-import { normalizeHrefPath, sameHref } from '@/noteLinks'
+import { normalizeHrefPath, safeDecodeHref, sameHref } from '@/noteLinks'
 import { emitReaderOpenError, type ReaderOpenErrorStage } from '@/reader/errorEvents'
 import { isRecentReadingEnabled } from '@/state'
 import {
@@ -65,16 +65,6 @@ export function compareHref(sectionHref: string | undefined, navitemHref: string
 function splitHrefTarget(href: string | undefined) {
   const [path = '', hash] = href?.split('#') ?? []
   return { hash, path }
-}
-
-function safeDecode(value: string | undefined) {
-  if (!value) return value
-
-  try {
-    return decodeURIComponent(value)
-  } catch {
-    return value
-  }
 }
 
 function appendUrlQuery(url: string, name: string, value: string | number) {
@@ -1300,10 +1290,10 @@ export class BookTab extends BaseTab {
     const document = section.document
     if (!document) return
 
-    const decoded = safeDecode(hash)
     if (!hash) return document.body
+    const decoded = safeDecodeHref(hash)
 
-    return document.getElementById(hash) ?? (decoded && decoded !== hash ? document.getElementById(decoded) : undefined)
+    return document.getElementById(hash) ?? (decoded !== hash ? document.getElementById(decoded) : undefined)
   }
 
   private compareCfi(a: string, b: string) {

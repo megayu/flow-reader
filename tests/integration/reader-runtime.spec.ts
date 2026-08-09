@@ -2,8 +2,10 @@ import path from 'node:path'
 
 import { expect, type Locator, type Page, test } from '@playwright/test'
 
-import type { BookRecord } from '../../src/storage'
+import { createTestBook } from '../support/book-fixtures'
 import { msg } from '../support/i18n'
+import { selectReaderTextAndOpenMenu } from '../support/reader-selection'
+import { installTauriMock } from '../support/tauri-mock'
 
 const aliceEpubPath = path.resolve('packages/epubjs/test/fixtures/alice.epub')
 const alicePackageUrl = '/test-assets/alice.epub'
@@ -56,35 +58,20 @@ interface TabStripMotion {
   >
 }
 
-function createBook(id: string, title: string): BookRecord {
-  return {
+function createBook(id: string, title: string) {
+  return createTestBook({
     id,
     name: `${title}.epub`,
     size: 128000,
-    sourceFormat: 'epub',
     metadata: {
       title,
       creator: 'Lewis Carroll',
-      description: '',
-      pubdate: '',
-      publisher: '',
       identifier: id,
       language: 'en',
-      rights: '',
-      modified_date: '',
-      layout: '',
-      orientation: '',
-      flow: '',
-      viewport: '',
-      spread: '',
     },
-    createdAt: 1,
     updatedAt: 1,
     cfi: 'chapter_001.xhtml',
-    definitions: [],
-    annotations: [],
-    stateLoaded: true,
-  }
+  })
 }
 
 function readerTabs(page: Page) {
@@ -125,167 +112,52 @@ async function installReaderBooksMock(
     await installVerticalBookRoutes(page)
   }
 
-  await page.addInitScript(
-    ({ fixtureBooks, packageUrls, fixtureDictionaryHtml }) => {
-      type TauriInternals = {
-        callbacks?: Record<number, (...args: unknown[]) => unknown>
-        convertFileSrc?: (filePath: string) => string
-        invoke?: (command: string, args?: Record<string, unknown>) => unknown
-        metadata?: {
-          currentWebview: { label: string }
-          currentWindow: { label: string }
-        }
-        runCallback?: (id: number, ...args: unknown[]) => unknown
-        transformCallback?: (callback: (...args: unknown[]) => unknown) => number
-        unregisterCallback?: (id: number) => void
-      }
-      type TauriEventInternals = {
-        unregisterListener?: (event: string, eventId: number) => void
-      }
-      type TestWindow = {
-        __TAURI_EVENT_PLUGIN_INTERNALS__?: TauriEventInternals
-        __FLOW_TEST_TAURI__?: {
-          settingsStore: Record<string, unknown>
-        }
-        __TAURI_INTERNALS__?: TauriInternals
-      }
-
-      const globalWindow = window as unknown as TestWindow
-      const bookStore = new Map<string, BookRecord>(fixtureBooks.map((book) => [book.id, book]))
-      const packageUrlByBookId = new Map(fixtureBooks.map((book, index) => [book.id, packageUrls[index]]))
-      const settingsStore: Record<string, unknown> = { locale: 'en-US' }
-      let nextCallbackId = 1
-      let nextEventId = 1
-
-      const internals = (globalWindow.__TAURI_INTERNALS__ ??= {})
-      const eventInternals = (globalWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ ??= {})
-      const callbacks = (internals.callbacks ??= {})
-
-      globalWindow.__FLOW_TEST_TAURI__ = { settingsStore }
-      internals.metadata = {
-        currentWebview: { label: 'main' },
-        currentWindow: { label: 'main' },
-      }
-      internals.convertFileSrc = (filePath) => filePath
-      internals.transformCallback = (callback) => {
-        const id = nextCallbackId++
-        callbacks[id] = callback
-        return id
-      }
-      internals.unregisterCallback = (id) => {
-        delete callbacks[id]
-      }
-      internals.runCallback = (id, ...args) => callbacks[id]?.(...args)
-      eventInternals.unregisterListener = () => undefined
-      internals.invoke = async (command, args) => {
-        if (command === 'fetch_zdic') {
-          const query = String(args?.query ?? '')
-          return {
-            body: fixtureDictionaryHtml,
-            finalUrl: `https://zdic.net/hans/${encodeURIComponent(query)}`,
-            status: 200,
-          }
-        }
-        if (command === 'cancel_dictionary_session') return null
-        if (command === 'open_external_url') return null
-        if (command === 'get_settings') return { ...settingsStore }
-        if (command === 'update_settings') {
-          Object.assign(settingsStore, args?.settings ?? {})
-          return null
-        }
-        if (command === 'list_books') return Array.from(bookStore.values())
-        if (command === 'get_book') {
-          return bookStore.get(String(args?.id)) ?? null
-        }
-        if (command === 'update_book') {
-          const id = String(args?.id)
-          const current = bookStore.get(id)
-          if (!current) return null
-          const updated = {
-            ...current,
-            ...((args?.changes ?? {}) as Partial<BookRecord>),
-          }
-          bookStore.set(id, updated)
-          return updated
-        }
-        if (command === 'list_covers') return []
-        if (command === 'get_book_reader_source') {
-          const path = packageUrlByBookId.get(String(args?.id)) ?? ''
-          return {
-            mode: path.toLowerCase().endsWith('.epub') ? 'epub' : 'opf',
-            path,
-          }
-        }
-        if (command === 'take_pending_open_paths') return []
-        if (command === 'get_window_ui_state') {
-          return {
-            librarySidebarOpen: true,
-            librarySidebarWidth: 240,
-            panes: {},
-            readerSidebarOpen: true,
-            readerSidebarWidth: 240,
-          }
-        }
-        if (command === 'search_book_text') {
-          const keyword = String(args?.keyword ?? '')
-          if (keyword === 'VERTICAL-CHAPTER-01-29') {
-            return [
+  const imageIndexes = Object.fromEntries(
+    books.map((book) => [
+      book.id,
+      {
+        version: 1,
+        contentVersion: book.contentVersion ?? 0,
+        sections: [
+          {
+            sectionIndex: 0,
+            href: 'cover.xhtml',
+            images: [
               {
-                id: 'vertical-search-section-1',
-                excerpt: 'VERTICAL-CHAPTER-01',
-                description: 'Synthetic Vertical Reader',
-                expanded: true,
-                subitems: [
-                  {
-                    id: 'vertical-search-hit-1',
-                    excerpt: keyword,
-                    sectionIndex: 0,
-                    href: 'chapter_001.xhtml',
-                    occurrence: 0,
-                    offset: 0,
-                  },
-                ],
-              },
-            ]
-          }
-          return []
-        }
-        if (command === 'load_book_image_index') {
-          const book = bookStore.get(String(args?.id))
-          return {
-            version: 1,
-            contentVersion: book?.contentVersion ?? 0,
-            sections: [
-              {
-                sectionIndex: 0,
-                href: 'cover.xhtml',
-                images: [
-                  {
-                    src: 'images/cover_th.jpg',
-                    index: 0,
-                    hiddenByDefault: false,
-                  },
-                ],
+                src: 'images/cover_th.jpg',
+                index: 0,
+                hiddenByDefault: false,
               },
             ],
-          }
-        }
-        if (command === 'set_book_cache_active') return null
-        if (command === 'plugin:event|listen') return nextEventId++
-        if (command === 'plugin:event|unlisten') return null
-        if (command.startsWith('plugin:window|is_')) return false
-        if (command.startsWith('plugin:window|')) return null
-        if (command.startsWith('plugin:webview|')) return null
-
-        return null
-      }
-    },
-    {
-      fixtureBooks: books,
-      packageUrls,
-      fixtureDictionaryHtml: dictionaryLayoutHtml,
-    },
+          },
+        ],
+      },
+    ]),
   )
+  await installTauriMock(page, {
+    books,
+    bookSearchResults: {
+      'VERTICAL-CHAPTER-01-29': [
+        {
+          id: 'vertical-search-section-1',
+          excerpt: 'VERTICAL-CHAPTER-01',
+          description: 'Synthetic Vertical Reader',
+          expanded: true,
+          sectionIndex: 0,
+          subitems: [
+            {
+              id: 'vertical-search-hit-1',
+              excerpt: 'VERTICAL-CHAPTER-01-29',
+              occurrence: 0,
+            },
+          ],
+        },
+      ],
+    },
+    imageIndexes,
+    readerSources: Object.fromEntries(books.map((book, index) => [book.id, packageUrls[index]!])),
+    zdicResponses: { 乙丙丁戊己庚: dictionaryLayoutHtml },
+  })
 }
 
 function longChapterName(index: number) {
@@ -3252,31 +3124,10 @@ test('does not scroll a horizontal note for glyph overflow inside the available 
 
 test('[vertical-rl] keeps the selection menu beside the selection', async ({ page }) => {
   await openVerticalFixtureBook(page)
-  await page.evaluate(() => {
-    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
-    const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
-      (candidate) => candidate.getBoundingClientRect().width > 0,
-    ) as HTMLIFrameElement | undefined
-    const target = frame?.contentDocument?.querySelector('#vertical-selection-target')
-    const text = target?.firstChild
-    if (!frame?.contentWindow || !target || !text) {
-      throw new Error('Missing selection fixture')
-    }
-    const range = frame.contentDocument!.createRange()
-    range.setStart(text, 1)
-    range.setEnd(text, Math.min(7, text.textContent?.length ?? 0))
-    const selection = frame.contentWindow.getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
-    const rect = range.getBoundingClientRect()
-    frame.contentWindow.dispatchEvent(
-      new (frame.contentWindow as Window & { MouseEvent: typeof MouseEvent }).MouseEvent('contextmenu', {
-        bubbles: true,
-        cancelable: true,
-        clientX: rect.left + rect.width / 2,
-        clientY: rect.top + rect.height / 2,
-      }),
-    )
+  await selectReaderTextAndOpenMenu(page, {
+    endOffset: 7,
+    startOffset: 1,
+    targetSelector: '#vertical-selection-target',
   })
 
   await expect(page.getByRole('button', { name: msg('menu.copy') })).toBeVisible()
@@ -3329,32 +3180,10 @@ test('[vertical-rl] keeps the selection menu beside the selection', async ({ pag
 test('[vertical-rl] keeps the dictionary popup inside the reader without repagination', async ({ page }) => {
   await openVerticalFixtureBook(page)
   const before = await readFocusedTabState(page)
-  await page.evaluate(() => {
-    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
-    const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
-      (candidate) => candidate.getBoundingClientRect().width > 0,
-    ) as HTMLIFrameElement | undefined
-    const target = frame?.contentDocument?.querySelector('#vertical-selection-target')
-    const text = target?.firstChild
-    if (!frame?.contentWindow || !target || !text) {
-      throw new Error('Missing dictionary selection fixture')
-    }
-
-    const range = frame.contentDocument!.createRange()
-    range.setStart(text, 1)
-    range.setEnd(text, Math.min(7, text.textContent?.length ?? 0))
-    const selection = frame.contentWindow.getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
-    const rect = range.getBoundingClientRect()
-    frame.contentWindow.dispatchEvent(
-      new (frame.contentWindow as Window & { MouseEvent: typeof MouseEvent }).MouseEvent('contextmenu', {
-        bubbles: true,
-        cancelable: true,
-        clientX: rect.left + rect.width / 2,
-        clientY: rect.top + rect.height / 2,
-      }),
-    )
+  await selectReaderTextAndOpenMenu(page, {
+    endOffset: 7,
+    startOffset: 1,
+    targetSelector: '#vertical-selection-target',
   })
 
   await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
@@ -3394,32 +3223,10 @@ test('[vertical-rl] keeps the dictionary popup inside the reader without repagin
 
 test('[vertical-rl] closes the selection menu before opening chapter find', async ({ page }) => {
   await openVerticalFixtureBook(page)
-  await page.evaluate(() => {
-    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
-    const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
-      (candidate) => candidate.getBoundingClientRect().width > 0,
-    ) as HTMLIFrameElement | undefined
-    const target = frame?.contentDocument?.querySelector('#vertical-selection-target')
-    const text = target?.firstChild
-    if (!frame?.contentWindow || !target || !text) {
-      throw new Error('Missing selection fixture')
-    }
-
-    const range = frame.contentDocument!.createRange()
-    range.setStart(text, 1)
-    range.setEnd(text, Math.min(7, text.textContent?.length ?? 0))
-    const selection = frame.contentWindow.getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
-    const rect = range.getBoundingClientRect()
-    frame.contentWindow.dispatchEvent(
-      new (frame.contentWindow as Window & { MouseEvent: typeof MouseEvent }).MouseEvent('contextmenu', {
-        bubbles: true,
-        cancelable: true,
-        clientX: rect.left + rect.width / 2,
-        clientY: rect.top + rect.height / 2,
-      }),
-    )
+  await selectReaderTextAndOpenMenu(page, {
+    endOffset: 7,
+    startOffset: 1,
+    targetSelector: '#vertical-selection-target',
   })
 
   await expect(page.getByRole('button', { name: msg('menu.copy') })).toBeVisible()

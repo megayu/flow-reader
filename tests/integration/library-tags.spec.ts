@@ -3,6 +3,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import type { BookRecord, ReadingStatus } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
 import { msg } from '../support/i18n'
+import { openLibraryFilterPanel } from '../support/library-filter'
 import {
   getStoredLibraryMockState,
   getStoredLibraryPins,
@@ -124,19 +125,6 @@ async function setupLibrary(page: Page) {
   await expect(page.getByText('Alpha Research')).toBeVisible()
 
   await openLibraryFilterPanel(page)
-}
-
-async function openLibraryFilterPanel(page: Page) {
-  const panel = page.getByTestId('library-filter-panel')
-
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    if (await panel.isVisible()) return
-
-    await page.getByRole('button', { name: msg('home.library_filter.title') }).click()
-    await page.waitForTimeout(100)
-  }
-
-  await expect(panel).toBeVisible()
 }
 
 function bookCard(page: Page, title: string) {

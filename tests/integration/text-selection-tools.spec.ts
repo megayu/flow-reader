@@ -6,6 +6,7 @@ import type { LocalDictionaryRecord } from '../../src/dictionary/native'
 import type { BookRecord } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
 import { msg } from '../support/i18n'
+import { selectReaderTextAndOpenMenu } from '../support/reader-selection'
 import { getDictionaryMockState, installTauriMock } from '../support/tauri-mock'
 
 const aliceEpubPath = path.resolve('packages/epubjs/test/fixtures/alice.epub')
@@ -404,21 +405,8 @@ async function selectFixtureText(page: Page, query: string, expectDictionary = t
     target.id = 'dictionary-selection-target'
     target.textContent = selectedText
     doc.body.prepend(target)
-    const range = doc.createRange()
-    range.selectNodeContents(target)
-    const selection = frame.contentWindow.getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
-    const rect = range.getBoundingClientRect()
-    frame.contentWindow.dispatchEvent(
-      new (frame.contentWindow as Window & { MouseEvent: typeof MouseEvent }).MouseEvent('contextmenu', {
-        bubbles: true,
-        cancelable: true,
-        clientX: rect.left + rect.width / 2,
-        clientY: rect.top + rect.height / 2,
-      }),
-    )
   }, query)
+  await selectReaderTextAndOpenMenu(page, { targetSelector: '#dictionary-selection-target' })
   await expect(page.getByRole('button', { name: msg('menu.copy') })).toBeVisible()
   if (expectDictionary) {
     await expect(page.getByRole('button', { name: msg('menu.dictionary'), exact: true })).toBeVisible()

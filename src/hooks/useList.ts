@@ -1,4 +1,6 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo } from 'react'
+
+import { useScrollViewport } from './useScrollViewport'
 
 export const LIST_ITEM_SIZE = 24
 const LIST_OVERSCAN = 4
@@ -8,67 +10,13 @@ interface ScrollToItemOptions {
   index: number
 }
 
-interface ListViewport {
-  height: number
-  scrollTop: number
-}
-
 export function useList(array: Readonly<any[]> = []) {
   return useListSize(array.length)
 }
 
 export function useListSize(count = 0) {
-  const outerRef = useRef<HTMLDivElement | null>(null)
-  const [viewport, setViewport] = useState<ListViewport>({
-    height: 0,
-    scrollTop: 0,
-  })
+  const { outerRef, updateViewport, viewport } = useScrollViewport()
   const totalSize = count * LIST_ITEM_SIZE
-
-  const updateViewport = useCallback(() => {
-    const el = outerRef.current
-    if (!el) return
-
-    const next = {
-      height: Math.ceil(el.clientHeight),
-      scrollTop: Math.max(0, el.scrollTop),
-    }
-
-    setViewport((current) => (current.height === next.height && current.scrollTop === next.scrollTop ? current : next))
-  }, [])
-
-  useLayoutEffect(() => {
-    const el = outerRef.current
-    if (!el) return
-
-    let frame = 0
-    const scheduleUpdate = () => {
-      if (frame) return
-
-      frame = window.requestAnimationFrame(() => {
-        frame = 0
-        updateViewport()
-      })
-    }
-
-    updateViewport()
-    el.addEventListener('scroll', scheduleUpdate, { passive: true })
-
-    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(scheduleUpdate)
-
-    if (observer) {
-      observer.observe(el)
-    } else {
-      window.addEventListener('resize', scheduleUpdate)
-    }
-
-    return () => {
-      el.removeEventListener('scroll', scheduleUpdate)
-      observer?.disconnect()
-      window.removeEventListener('resize', scheduleUpdate)
-      if (frame) window.cancelAnimationFrame(frame)
-    }
-  }, [updateViewport])
 
   useLayoutEffect(() => {
     updateViewport()
@@ -127,7 +75,7 @@ export function useListSize(count = 0) {
 
       el.scrollTo({ top: nextScrollTop, behavior: 'auto' })
     },
-    [count, totalSize],
+    [count, outerRef, totalSize],
   )
 
   return {

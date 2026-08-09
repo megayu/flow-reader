@@ -1,10 +1,9 @@
 import type { DictionaryProvider } from '../coordinator'
-import { cancelDictionarySession, fetchZdic } from '../native'
+import { cancelDictionarySession, fetchZdic, nextDictionarySessionId } from '../native'
 import type { DictionaryEntry, DictionaryResult, DictionarySense, DictionaryText } from '../types'
 
 const SOURCE_ID = 'zdic'
 const SOURCE_NAME = '汉典'
-let nextNativeSessionId = 1
 
 export class ZdicParseError extends Error {
   externalUrl: string
@@ -33,7 +32,7 @@ export const zdicProvider: DictionaryProvider = {
   scope: 'online',
   sourceLanguages: ['zh'],
   async lookup(query, { signal }) {
-    const sessionId = nextNativeSessionId++
+    const sessionId = nextDictionarySessionId()
     const cancel = () => {
       void cancelDictionarySession(sessionId).catch(() => undefined)
     }

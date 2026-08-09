@@ -8,6 +8,8 @@ import { useTranslation } from '../hooks/useTranslation'
 import { db } from '../storage/client'
 import type { LibraryTagRecord } from '../storage/types'
 
+import { cleanLibraryTagName } from './filters'
+
 interface LibraryTagDialogProps {
   onClose: () => void
   tag: LibraryTagRecord
@@ -17,7 +19,7 @@ export function EditLibraryTagDialog({ onClose, tag }: LibraryTagDialogProps) {
   const t = useTranslation('home')
   const inputRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState(tag.name)
-  const trimmedName = name.replace(/\s+/g, ' ').trim()
+  const trimmedName = cleanLibraryTagName(name)
   const canSave = !!trimmedName && trimmedName !== tag.name
 
   const save = () => {

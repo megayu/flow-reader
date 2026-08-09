@@ -5,7 +5,7 @@ import {
   getCurrentReaderSpreadWidth,
   getFiniteLayoutValue,
   getRenditionDivisor,
-  getRenditionLayout,
+  readRenditionLayout,
 } from '../../reader/layoutGeometry'
 
 interface ReaderPageGeometryOptions {
@@ -30,7 +30,7 @@ export function useReaderPageGeometry({
       const width = getCurrentReaderPageWidth(rendition, containerRef.current)
       if (!width) return
       const spreadWidth = getCurrentReaderSpreadWidth(rendition, containerRef.current)
-      const layout = getRenditionLayout(rendition)
+      const layout = readRenditionLayout(rendition)
       const container = containerRef.current
 
       document.documentElement.style.setProperty('--flow-reader-page-width', `${width}px`)

@@ -8,7 +8,7 @@ use std::{
 use mdict_rs::{MddFile, MdxFile};
 use serde::Serialize;
 
-use super::language::infer_language;
+use super::{error::DictionaryError, language::infer_language};
 
 const MAX_HEADER_BYTES: u64 = 1024 * 1024;
 const MAX_ENTRY_BYTES: usize = 2 * 1024 * 1024;
@@ -17,29 +17,7 @@ const MAX_NUMBERED_RESOURCE_VOLUMES: usize = 256;
 const MAX_STYLESHEET_BYTES: usize = 512 * 1024;
 const MAX_RESOURCE_BYTES: usize = 32 * 1024 * 1024;
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MdictError {
-    pub code: String,
-    pub message: String,
-}
-
-impl MdictError {
-    pub(crate) fn new(code: &str, message: impl Into<String>) -> Self {
-        Self {
-            code: code.to_string(),
-            message: message.into(),
-        }
-    }
-}
-
-impl std::fmt::Display for MdictError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{}", self.message)
-    }
-}
-
-impl std::error::Error for MdictError {}
+pub type MdictError = DictionaryError;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

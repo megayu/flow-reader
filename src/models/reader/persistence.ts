@@ -1,4 +1,5 @@
 import { type BookRecord, db } from '../../storage'
+import { isReadingPositionOnlyUpdate } from '../../storage/bookUpdate'
 
 export interface BookPersistenceHost {
   getBook: () => BookRecord
@@ -6,29 +7,6 @@ export interface BookPersistenceHost {
   replaceBook: (book: BookRecord) => void
   createCurrentPositionUpdate: () => Partial<BookRecord> | undefined
   waitForNavigation: () => Promise<void> | undefined
-}
-
-function withoutReadingSpread(configuration: BookRecord['configuration'] | undefined) {
-  const { spread, ...rest } = configuration ?? {}
-  return rest
-}
-
-function isSpreadOnlyConfigurationUpdate(changes: Partial<BookRecord>, currentBook: BookRecord) {
-  if (!('configuration' in changes)) return true
-
-  return (
-    JSON.stringify(withoutReadingSpread(changes.configuration)) ===
-    JSON.stringify(withoutReadingSpread(currentBook.configuration))
-  )
-}
-
-function isReadingPositionOnlyUpdate(changes: Partial<BookRecord>, currentBook: BookRecord) {
-  const keys = Object.keys(changes)
-  return (
-    keys.some((key) => key === 'cfi' || key === 'percentage') &&
-    isSpreadOnlyConfigurationUpdate(changes, currentBook) &&
-    keys.every((key) => ['cfi', 'percentage', 'lastReadAt', 'configuration'].includes(key))
-  )
 }
 
 export class BookPersistenceController {

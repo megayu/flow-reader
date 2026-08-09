@@ -70,6 +70,27 @@ impl LibraryBookLookupIndex {
     }
 }
 
+pub(super) fn existing_book_indices(
+    index: Option<&LibraryBookLookupIndex>,
+    books: &[LibraryBook],
+    name: &str,
+    hash: &str,
+) -> (Option<usize>, Option<usize>) {
+    let filename_index = index.map_or_else(
+        || books.iter().position(|book| book.name == name),
+        |index| index.filename_index(books, name),
+    );
+    let hash_index = index.map_or_else(
+        || {
+            books
+                .iter()
+                .position(|book| !book.content_hash.is_empty() && book.content_hash == hash)
+        },
+        |index| index.hash_index(books, hash),
+    );
+    (filename_index, hash_index)
+}
+
 static IMPORT_WORK_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 pub(super) fn import_work_path(root: &Path, prefix: &str, name: &str) -> PathBuf {

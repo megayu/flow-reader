@@ -1,9 +1,13 @@
 import type { DictionaryProvider } from '../coordinator'
-import { cancelDictionarySession, type LocalDictionaryRecord, loadMdictStylesheet, lookupMdict } from '../native'
+import {
+  cancelDictionarySession,
+  type LocalDictionaryRecord,
+  loadMdictStylesheet,
+  lookupMdict,
+  nextDictionarySessionId,
+} from '../native'
 
 import { sanitizeMdictContent } from './mdictContent'
-
-let nextNativeSessionId = 2_000_000
 
 export function createMdictProvider(dictionary: LocalDictionaryRecord): DictionaryProvider {
   return {
@@ -12,7 +16,7 @@ export function createMdictProvider(dictionary: LocalDictionaryRecord): Dictiona
     scope: 'local',
     sourceLanguages: dictionary.language.value,
     async lookup(query, { signal }) {
-      const sessionId = nextNativeSessionId++
+      const sessionId = nextDictionarySessionId()
       const release = () => {
         void cancelDictionarySession(sessionId).catch(() => undefined)
       }

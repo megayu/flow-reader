@@ -314,8 +314,6 @@ pub fn run() {
             storage::replace_book_text,
             storage::export_book,
             storage::cleanup_external_book,
-            storage::cleanup_all_external_books,
-            storage::delete_external_book,
             storage::record_reading_position,
             storage::update_book,
             storage::delete_books,

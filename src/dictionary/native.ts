@@ -67,6 +67,11 @@ export interface MdictStylesheetResponse {
 }
 
 let localDictionaryListCache: Promise<LocalDictionaryRecord[]> | undefined
+let nextDictionarySessionIdValue = 1
+
+export function nextDictionarySessionId() {
+  return nextDictionarySessionIdValue++
+}
 
 export function fetchZdic(query: string, sessionId: number) {
   return invoke<DictionaryHttpResponse>('fetch_zdic', { query, sessionId })
@@ -99,39 +104,27 @@ export function listLocalDictionariesCached() {
   return localDictionaryListCache ?? listLocalDictionaries()
 }
 
-export function registerLocalDictionary(path: string) {
-  return invoke<LocalDictionaryRecord>('register_local_dictionary', {
-    path,
-  }).then((record) => {
+function invalidateDictionaryListAfter<T>(request: Promise<T>) {
+  return request.then((value) => {
     localDictionaryListCache = undefined
-    return record
+    return value
   })
+}
+
+export function registerLocalDictionary(path: string) {
+  return invalidateDictionaryListAfter(invoke<LocalDictionaryRecord>('register_local_dictionary', { path }))
 }
 
 export function updateLocalDictionary(id: string, changes: LocalDictionaryUpdate) {
-  return invoke<LocalDictionaryRecord>('update_local_dictionary', {
-    id,
-    changes,
-  }).then((record) => {
-    localDictionaryListCache = undefined
-    return record
-  })
+  return invalidateDictionaryListAfter(invoke<LocalDictionaryRecord>('update_local_dictionary', { id, changes }))
 }
 
 export function relocateLocalDictionary(id: string, path: string) {
-  return invoke<LocalDictionaryRecord>('relocate_local_dictionary', {
-    id,
-    path,
-  }).then((record) => {
-    localDictionaryListCache = undefined
-    return record
-  })
+  return invalidateDictionaryListAfter(invoke<LocalDictionaryRecord>('relocate_local_dictionary', { id, path }))
 }
 
 export function removeLocalDictionary(id: string) {
-  return invoke<void>('remove_local_dictionary', { id }).then(() => {
-    localDictionaryListCache = undefined
-  })
+  return invalidateDictionaryListAfter(invoke<void>('remove_local_dictionary', { id }))
 }
 
 export function lookupStarDict(dictionaryId: string, query: string, sessionId: number) {

@@ -6,6 +6,8 @@ import { useSnapshot } from 'valtio'
 
 import { useTranslation } from '../../hooks/useTranslation'
 import type { BookTab } from '../../models/reader'
+import { IconButton } from '../IconButton'
+import { Input } from '../ui/input'
 
 import type { ChapterFindState } from './chapterFindModel'
 
@@ -89,16 +91,14 @@ export const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <input
+      <Input
         ref={inputRef}
         aria-label={t('find_current_chapter')}
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize="off"
-        spellCheck={false}
-        className="text-foreground w-40 bg-transparent px-1 py-0.5 text-base outline-none"
+        className="text-foreground h-auto w-40 rounded-none border-0 bg-transparent px-1 py-0.5 text-base shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
+        escapeBehavior="none"
+        focusBehavior="select-all"
         value={find.query}
-        onChange={(e) => onChange(e.target.value)}
+        onValueChange={onChange}
         onKeyDown={(e) => {
           e.stopPropagation()
           if (e.key === 'Enter') {
@@ -114,27 +114,28 @@ export const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
       <div className="text-muted-foreground min-w-14 text-center text-base">
         {find.searching ? '...' : `${current}/${count}`}
       </div>
-      <button
-        type="button"
+      <IconButton
         aria-label={t('previous_find_result')}
-        className="text-muted-foreground hover:text-foreground p-1 disabled:opacity-40"
+        Icon={ChevronUpIcon}
+        iconClassName="size-5.5"
+        className="text-muted-foreground hover:text-foreground size-7 hover:bg-transparent disabled:opacity-40"
         disabled={disabled}
         onClick={onPrevious}
-      >
-        <ChevronUpIcon className="size-5.5" />
-      </button>
-      <button
-        type="button"
+      />
+      <IconButton
         aria-label={t('next_find_result')}
-        className="text-muted-foreground hover:text-foreground p-1 disabled:opacity-40"
+        Icon={ChevronDownIcon}
+        iconClassName="size-5.5"
+        className="text-muted-foreground hover:text-foreground size-7 hover:bg-transparent disabled:opacity-40"
         disabled={disabled}
         onClick={onNext}
-      >
-        <ChevronDownIcon className="size-5.5" />
-      </button>
-      <button type="button" className="text-muted-foreground hover:text-foreground p-1" onClick={onClose}>
-        <XIcon className="size-5.5" />
-      </button>
+      />
+      <IconButton
+        Icon={XIcon}
+        iconClassName="size-5.5"
+        className="text-muted-foreground hover:text-foreground size-7 hover:bg-transparent"
+        onClick={onClose}
+      />
     </div>
   )
 }

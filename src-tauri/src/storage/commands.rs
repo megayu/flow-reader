@@ -1465,33 +1465,6 @@ pub fn cleanup_external_book(storage: State<'_, AppStorage>, id: String) -> Resu
     cleanup_external_book_heavy_files(&storage, &id)
 }
 
-#[tauri::command]
-pub fn cleanup_all_external_books(storage: State<'_, AppStorage>) -> Result<(), String> {
-    cleanup_all_external_book_heavy_files(&storage)
-}
-
-#[tauri::command]
-pub fn delete_external_book(storage: State<'_, AppStorage>, id: String) -> Result<(), String> {
-    storage.ensure_external_book(&id)?;
-
-    {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
-        state.external.books.retain(|book| book.id != id);
-    }
-    storage.mark_external_dirty();
-    storage.remove_derived_memory_caches(&id);
-
-    let dir = storage.external_book_dir(&id);
-    if dir.exists() {
-        fs::remove_dir_all(dir).map_err(|error| error.to_string())?;
-    }
-    storage.flush_dirty()
-}
-
 fn configuration_without_spread(value: Option<&Value>) -> Value {
     match value {
         Some(Value::Object(object)) => {

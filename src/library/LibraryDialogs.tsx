@@ -11,7 +11,7 @@ import { useLibraryPins, useLibraryTags } from '../hooks/useLibrary'
 import { useTranslation } from '../hooks/useTranslation'
 import { type BookRecord, db, type LibraryTagRecord } from '../storage'
 
-import { cleanLibraryTagName, orderLibraryTags, sameLibraryTagName } from './filters'
+import { cleanLibraryTagName, orderLibraryTags, sameLibraryTagName, uniqueStringValues } from './filters'
 import { LibraryFilterChipButton, libraryFilterOptionsClassName } from './LibraryFilterChipButton'
 import {
   cleanBookDescription,
@@ -20,7 +20,6 @@ import {
   formatLanguage,
   formatPercentage,
   mergeLibraryTags,
-  uniqueStringValues,
 } from './model'
 
 interface BookDialogProps {

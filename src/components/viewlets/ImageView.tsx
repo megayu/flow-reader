@@ -17,6 +17,7 @@ import {
 
 import { useAction } from '@/hooks/useAction'
 import { LIST_ITEM_SIZE } from '@/hooks/useList'
+import { useScrollViewport } from '@/hooks/useScrollViewport'
 import { useTranslation } from '@/hooks/useTranslation'
 import { type ImageEntry, type ISection, reader, useReaderSnapshot } from '@/models/reader'
 import { normalizeHrefPath, sameHref } from '@/noteLinks'
@@ -26,6 +27,7 @@ import { loadBookImageIndex } from '@/storage'
 import { OverlayScroll, PaneView, type PaneViewProps } from '../base/PaneView'
 import { IconButton } from '../IconButton'
 import { Row } from '../Row'
+import { SegmentedControl, SegmentedControlItem } from '../ui/segmented-control'
 
 const IMAGE_LIST_OVERSCAN = 6
 const IMAGE_LIST_TOP_PADDING = 4
@@ -172,57 +174,11 @@ function estimatedImageSectionHeight(section: ImageSection, expanded: boolean) {
 }
 
 function useVirtualImageSections(sections: ImageSection[], expandedKeys: ReadonlySet<string>) {
-  const outerRef = useRef<HTMLDivElement | null>(null)
+  const { outerRef, updateViewport, viewport } = useScrollViewport()
   const measuredHeights = useRef<Map<string, number> | null>(null)
   const [measureRevision, setMeasureRevision] = useState(0)
-  const [viewport, setViewport] = useState({ height: 0, scrollTop: 0 })
 
   measuredHeights.current ??= new Map()
-
-  const updateViewport = useCallback(() => {
-    const el = outerRef.current
-    if (!el) return
-
-    const next = {
-      height: Math.ceil(el.clientHeight),
-      scrollTop: Math.max(0, el.scrollTop),
-    }
-
-    setViewport((current) => (current.height === next.height && current.scrollTop === next.scrollTop ? current : next))
-  }, [])
-
-  useLayoutEffect(() => {
-    const el = outerRef.current
-    if (!el) return
-
-    let frame = 0
-    const scheduleUpdate = () => {
-      if (frame) return
-
-      frame = window.requestAnimationFrame(() => {
-        frame = 0
-        updateViewport()
-      })
-    }
-
-    updateViewport()
-    el.addEventListener('scroll', scheduleUpdate, { passive: true })
-
-    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(scheduleUpdate)
-
-    if (observer) {
-      observer.observe(el)
-    } else {
-      window.addEventListener('resize', scheduleUpdate)
-    }
-
-    return () => {
-      el.removeEventListener('scroll', scheduleUpdate)
-      observer?.disconnect()
-      window.removeEventListener('resize', scheduleUpdate)
-      if (frame) window.cancelAnimationFrame(frame)
-    }
-  }, [updateViewport])
 
   useLayoutEffect(() => {
     updateViewport()
@@ -392,23 +348,23 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-11 shrink-0 items-center gap-2 bg-(--flow-bg-sidebar) px-2">
-        <div className="flex h-8 min-w-0 flex-1 items-center rounded-lg bg-(--flow-sidebar-item-bg) p-0.5 ring-1 ring-(--flow-sidebar-item-border) ring-inset">
+        <SegmentedControl className="flex min-w-0 flex-1 bg-(--flow-sidebar-item-bg) ring-(--flow-sidebar-item-border)">
           {(['illustrations', 'all'] as const).map((item) => (
-            <button
+            <SegmentedControlItem
               key={item}
-              type="button"
+              selected={mode === item}
               className={[
-                'flex h-full min-w-0 flex-1 items-center justify-center truncate rounded-md px-2 py-0 text-base leading-tight font-medium transition-colors',
+                'h-full min-w-0 flex-1 truncate rounded-md px-2 py-0 text-base leading-tight',
                 mode === item
-                  ? 'bg-(--flow-accent-bg) text-(--flow-text) ring-1 ring-(--flow-accent-border) ring-inset'
+                  ? 'bg-(--flow-accent-bg) text-(--flow-text) ring-1 ring-(--flow-accent-border) ring-inset hover:bg-(--flow-accent-bg)'
                   : 'text-(--flow-text-muted) hover:bg-(--flow-sidebar-item-bg-hover) hover:text-(--flow-text)',
               ].join(' ')}
               onClick={() => setMode(item)}
             >
               {t(`image.filter.${item}`)}
-            </button>
+            </SegmentedControlItem>
           ))}
-        </div>
+        </SegmentedControl>
         <span className="flex h-7 min-w-8 shrink-0 items-center justify-center rounded-full bg-(--flow-sidebar-item-bg) px-1.5 text-sm leading-none font-medium text-(--flow-text-muted) ring-1 ring-(--flow-sidebar-item-border) ring-inset">
           {imageIndexStatus === 'ready'
             ? mode === 'all'

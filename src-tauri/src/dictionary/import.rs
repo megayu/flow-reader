@@ -8,7 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::language::infer_language;
+use super::{error::DictionaryError, language::infer_language};
 
 const FINGERPRINT_SAMPLE_BYTES: usize = 4 * 1024;
 
@@ -57,29 +57,7 @@ pub struct InspectedDictionary {
     pub metadata_languages: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DictionaryImportError {
-    pub code: String,
-    pub message: String,
-}
-
-impl DictionaryImportError {
-    pub(crate) fn new(code: &str, message: impl Into<String>) -> Self {
-        Self {
-            code: code.to_string(),
-            message: message.into(),
-        }
-    }
-}
-
-impl std::fmt::Display for DictionaryImportError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{}", self.message)
-    }
-}
-
-impl std::error::Error for DictionaryImportError {}
+pub type DictionaryImportError = DictionaryError;
 
 pub fn inspect_dictionary_file(path: &Path) -> Result<InspectedDictionary, DictionaryImportError> {
     if path.as_os_str().is_empty() {

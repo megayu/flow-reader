@@ -1,5 +1,5 @@
 import { type BookTab, getBookTabFrameWindows, type ISection } from '../../models/reader'
-import { findReciprocalNoteItem } from '../../noteIndex'
+import { findReciprocalNoteItem, getElementByIdOrName } from '../../noteIndex'
 import { findSectionByLinkedHref, safeDecodeHref, sameHref } from '../../noteLinks'
 import { isNoteMarkerText } from '../../noteSemantics'
 
@@ -195,13 +195,6 @@ async function findLinkedElement(
 
 function wrapNoteElement(element: HTMLElement | undefined): LinkedNoteResult | undefined {
   return element ? { element } : undefined
-}
-
-function getElementByIdOrName(doc: Document, id: string) {
-  return (
-    doc.getElementById(id) ??
-    ([...doc.querySelectorAll('[name]')].find((el) => el.getAttribute('name') === id) as HTMLElement | undefined)
-  )
 }
 
 function findRenderedSectionByDocument(tab: BookTab, doc: Document) {

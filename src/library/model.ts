@@ -60,12 +60,8 @@ export function getBookProgressPercent(value?: number) {
   return Math.max(0, Math.min(100, value * 100))
 }
 
-export function bookSourceFormat(book: BookRecord) {
-  return book.sourceFormat
-}
-
 export function bookExportFormats(book: BookRecord): BookExportFormat[] {
-  return bookSourceFormat(book) === 'txt' && book.sourceStorage !== 'referenced' ? ['epub', 'txt'] : ['epub']
+  return book.sourceFormat === 'txt' && book.sourceStorage !== 'referenced' ? ['epub', 'txt'] : ['epub']
 }
 
 export function isArchiveOnlyBook(book: BookRecord) {
@@ -162,21 +158,6 @@ export function cleanBookDescription(value?: string) {
     if (normalized) paragraphs.push(normalized)
   }
   return paragraphs.join('\n\n')
-}
-
-export function uniqueStringValues(values: string[]) {
-  const seen = new Set<string>()
-  const result: string[] = []
-
-  values.forEach((value) => {
-    const normalized = value.replace(/\s+/g, ' ').trim()
-    if (!normalized || seen.has(normalized)) return
-
-    seen.add(normalized)
-    result.push(normalized)
-  })
-
-  return result
 }
 
 export function mergeLibraryTags(tags: LibraryTagRecord[], extraTags: LibraryTagRecord[]) {

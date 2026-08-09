@@ -22,7 +22,7 @@ export function getBookAuthor(book: BookRecord) {
 }
 
 export function cleanLibraryTagName(value: string) {
-  return value.replace(/\s+/g, ' ').trim()
+  return cleanBookText(value)
 }
 
 export function sameLibraryTagName(a: string, b: string) {
@@ -32,7 +32,7 @@ export function sameLibraryTagName(a: string, b: string) {
 export function orderLibraryTags(tags: LibraryTagRecord[], pinnedTags: string[] = []) {
   const sortedTags = [...tags].sort((a, b) => authorCollator.compare(a.name, b.name))
   const tagById = new Map(sortedTags.map((tag) => [tag.id, tag]))
-  const pinned = uniqueStrings(pinnedTags).filter((tagId) => tagById.has(tagId))
+  const pinned = uniqueStringValues(pinnedTags).filter((tagId) => tagById.has(tagId))
   const pinnedSet = new Set(pinned)
 
   return [...pinned.map((tagId) => tagById.get(tagId)!), ...sortedTags.filter((tag) => !pinnedSet.has(tag.id))]
@@ -78,7 +78,7 @@ export function getLibraryAuthorOptions(
 
   const sortedAuthors = Array.from(authorNames).sort((a, b) => authorCollator.compare(a, b))
   const availableAuthors = new Set(sortedAuthors)
-  const pinned = uniqueStrings(pinnedAuthors).filter((author) => availableAuthors.has(author))
+  const pinned = uniqueStringValues(pinnedAuthors).filter((author) => availableAuthors.has(author))
   const pinnedSet = new Set(pinned)
 
   const options = pinned.map((name) => ({ name, pinned: true }))
@@ -91,7 +91,7 @@ export function getLibraryAuthorOptions(
 export function pruneLibraryAuthorFilters(authorFilters: string[], authorOptions: LibraryAuthorOption[]) {
   const availableAuthors = new Set(authorOptions.map((option) => option.name))
 
-  return uniqueStrings(authorFilters).filter((author) => availableAuthors.has(author))
+  return uniqueStringValues(authorFilters).filter((author) => availableAuthors.has(author))
 }
 
 export function getLibraryTagOptions(
@@ -110,7 +110,7 @@ export function getLibraryTagOptions(
     })
   })
 
-  const pinnedSet = new Set(uniqueStrings(pinnedTags))
+  const pinnedSet = new Set(uniqueStringValues(pinnedTags))
 
   return orderLibraryTags(
     Array.from(availableTagIds).map((tagId) => tagById.get(tagId)!),
@@ -121,7 +121,7 @@ export function getLibraryTagOptions(
 export function pruneLibraryTagFilters(tagFilters: string[], tagOptions: LibraryTagOption[]) {
   const availableTags = new Set(tagOptions.map((option) => option.id))
 
-  return uniqueStrings(tagFilters).filter((tagId) => availableTags.has(tagId))
+  return uniqueStringValues(tagFilters).filter((tagId) => availableTags.has(tagId))
 }
 
 export function toggleLibraryAuthorFilter(authorFilters: string[], author: string) {
@@ -136,12 +136,12 @@ export function areStringListsEqual(a: string[], b: string[]) {
   return a.length === b.length && a.every((item, index) => item === b[index])
 }
 
-function uniqueStrings(values: string[]) {
+export function uniqueStringValues(values: string[]) {
   const seen = new Set<string>()
   const result: string[] = []
 
   values.forEach((value) => {
-    const normalized = value.replace(/\s+/g, ' ').trim()
+    const normalized = cleanBookText(value)
     if (!normalized || seen.has(normalized)) return
 
     seen.add(normalized)

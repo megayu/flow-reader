@@ -1,7 +1,5 @@
 import type { DictionaryProvider } from '../coordinator'
-import { cancelDictionarySession, type LocalDictionaryRecord, lookupStarDict } from '../native'
-
-let nextNativeSessionId = 1_000_000
+import { cancelDictionarySession, type LocalDictionaryRecord, lookupStarDict, nextDictionarySessionId } from '../native'
 
 export function createStarDictProvider(dictionary: LocalDictionaryRecord): DictionaryProvider {
   return {
@@ -10,7 +8,7 @@ export function createStarDictProvider(dictionary: LocalDictionaryRecord): Dicti
     scope: 'local',
     sourceLanguages: dictionary.language.value,
     async lookup(query, { signal }) {
-      const sessionId = nextNativeSessionId++
+      const sessionId = nextDictionarySessionId()
       const release = () => {
         void cancelDictionarySession(sessionId).catch(() => undefined)
       }

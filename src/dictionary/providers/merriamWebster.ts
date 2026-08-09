@@ -1,5 +1,5 @@
 import type { DictionaryProvider } from '../coordinator'
-import { cancelDictionarySession, fetchMerriamWebster } from '../native'
+import { cancelDictionarySession, fetchMerriamWebster, nextDictionarySessionId } from '../native'
 import type { DictionaryEntry, DictionaryResult, DictionarySense, DictionaryText, DictionaryTextRun } from '../types'
 
 const SOURCE_ID = 'merriam-webster'
@@ -7,7 +7,6 @@ const SOURCE_NAME = 'Merriam-Webster'
 const MAX_RESPONSE_LENGTH = 2_000_000
 const MAX_WALK_DEPTH = 32
 const MAX_WALK_NODES = 5_000
-let nextNativeSessionId = 1
 
 export class MerriamWebsterParseError extends Error {
   externalUrl: string
@@ -43,7 +42,7 @@ export function createMerriamWebsterProvider(apiKey: string): DictionaryProvider
         throw new MerriamWebsterLookupError('Merriam-Webster API key is not configured.', externalUrl)
       }
 
-      const sessionId = nextNativeSessionId++
+      const sessionId = nextDictionarySessionId()
       const cancel = () => {
         void cancelDictionarySession(sessionId).catch(() => undefined)
       }
