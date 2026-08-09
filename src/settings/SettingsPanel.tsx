@@ -647,7 +647,7 @@ const SettingsCheckbox: React.FC<SettingsCheckboxProps> = ({ checked, id, label,
 }
 
 const ShortcutSettings: React.FC = () => {
-  const t = useTranslation('shortcuts')
+  const t = useTranslation()
   const groups = createShortcutGroups(t)
 
   return (

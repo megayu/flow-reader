@@ -2692,7 +2692,7 @@ test('[vertical-rl] advances chapter find within the visible page before turning
   const initial = await readVerticalReadingState(page)
 
   await page.keyboard.press(findShortcut)
-  const input = page.getByRole('textbox', { name: msg('shortcuts.chapter_find') })
+  const input = page.getByRole('textbox', { name: msg('reader.find_current_chapter') })
   await expect(input).toBeVisible()
   await input.fill('VERTICAL-CHAPTER-01-01')
   await expect(page.getByText('1/3', { exact: true })).toBeVisible()
@@ -2726,7 +2726,7 @@ test('[vertical-rl] wraps chapter find navigation in both directions', async ({ 
   await openVerticalFixtureBook(page)
 
   await page.keyboard.press(findShortcut)
-  const input = page.getByRole('textbox', { name: msg('shortcuts.chapter_find') })
+  const input = page.getByRole('textbox', { name: msg('reader.find_current_chapter') })
   await input.fill('VERTICAL-CHAPTER-01-01')
   await expect(page.getByText('1/3', { exact: true })).toBeVisible()
 
@@ -2762,7 +2762,7 @@ test('[vertical-rl] turns to the next spread for an off-page chapter find result
   expect(search.firstOffPageIndex).toBeGreaterThan(search.initialIndex)
 
   await page.keyboard.press(findShortcut)
-  const input = page.getByRole('textbox', { name: msg('shortcuts.chapter_find') })
+  const input = page.getByRole('textbox', { name: msg('reader.find_current_chapter') })
   await input.fill(query)
   await expect(
     page.getByText(`${search.initialIndex + 1}/${search.pageIndexes.length}`, {
@@ -3426,7 +3426,7 @@ test('[vertical-rl] closes the selection menu before opening chapter find', asyn
   await page.keyboard.press(findShortcut)
 
   await expect(page.getByRole('button', { name: msg('menu.copy') })).toBeHidden()
-  await expect(page.getByRole('textbox', { name: msg('shortcuts.chapter_find') })).toBeFocused()
+  await expect(page.getByRole('textbox', { name: msg('reader.find_current_chapter') })).toBeFocused()
 })
 
 test('guards reader nav path expansion against cyclic parent links', async ({ page }) => {
@@ -3899,7 +3899,7 @@ test('long-book keeps chapter find bar out of the reading content', async ({ pag
 
   await page.keyboard.press(findShortcut)
 
-  const findInput = page.getByRole('textbox', { name: msg('shortcuts.chapter_find') })
+  const findInput = page.getByRole('textbox', { name: msg('reader.find_current_chapter') })
   await expect(findInput).toBeVisible()
 
   const metrics = await page.evaluate(() => {
@@ -4611,7 +4611,7 @@ test('[vertical-rl] preserves double-page and panel runtime across tab reorderin
     .toBe(true)
 
   await activityBar.getByRole('button', { name: msg('typography.title') }).click()
-  await expect(sidebar.locator('input[name="Font Size"]')).toHaveValue('18')
+  await expect(sidebar.getByRole('spinbutton', { name: msg('typography.font_size') })).toHaveValue('18')
   await expect(page.locator('[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]')).toHaveAttribute(
     'data-flow-reader-spread',
     'double',
@@ -4677,7 +4677,7 @@ test('[vertical-rl] preserves double-page and panel runtime across tab reorderin
     )
     .toBe(true)
   await activityBar.getByRole('button', { name: msg('typography.title') }).click()
-  await expect(sidebar.locator('input[name="Font Size"]')).toHaveValue('18')
+  await expect(sidebar.getByRole('spinbutton', { name: msg('typography.font_size') })).toHaveValue('18')
   await activityBar.getByRole('button', { name: msg('toc.title') }).click()
   await expect(sidebar.getByText('VERTICAL-CHAPTER-01')).toBeVisible()
 })

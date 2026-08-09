@@ -1038,7 +1038,7 @@ const Library: React.FC<LibraryProps> = ({
                   ref={titleSearchInputRef}
                   value={titleSearchQuery}
                   escapeBehavior="none"
-                  placeholder={t('library_search.placeholder')}
+                  placeholder={t('library_search.title')}
                   aria-label={t('library_search.title')}
                   onValueChange={setTitleSearchQuery}
                   onKeyDown={(event) => {

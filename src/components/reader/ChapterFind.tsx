@@ -71,7 +71,7 @@ export const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
   onNext,
   onPrevious,
 }) => {
-  const t = useTranslation('shortcuts')
+  const t = useTranslation('reader')
   const count = find.results.length
   const current = count ? find.activeIndex + 1 : 0
   const disabled = !count || find.searching
@@ -91,7 +91,7 @@ export const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
     >
       <input
         ref={inputRef}
-        aria-label={t('chapter_find')}
+        aria-label={t('find_current_chapter')}
         autoComplete="off"
         autoCorrect="off"
         autoCapitalize="off"

@@ -7,7 +7,7 @@ export const localeNames: Record<string, string> = {
   'zh-CN': '简体中文',
 }
 
-type MessageKey = keyof typeof en_US | keyof typeof zh_CN
+export type MessageKey = keyof typeof en_US | keyof typeof zh_CN
 
 const messages = {
   'en-US': en_US satisfies Record<MessageKey, string>,

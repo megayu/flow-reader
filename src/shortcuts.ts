@@ -1,3 +1,5 @@
+import type { MessageKey } from './locales'
+
 export type ShortcutChordValue = string[]
 
 export type ShortcutActionId =
@@ -5,7 +7,6 @@ export type ShortcutActionId =
   | 'chapterFind'
   | 'closeAllTabs'
   | 'closeTab'
-  | 'developerTools'
   | 'dismissReturn'
   | 'fullscreen'
   | 'imagePanel'
@@ -48,12 +49,12 @@ export type ShortcutActionId =
   | 'zenMode'
 
 interface ShortcutDefinition {
-  labelKey: string
+  labelKey: MessageKey
   shortcuts: ShortcutChordValue[]
 }
 
 interface ShortcutGroupDefinition {
-  titleKey: string
+  titleKey: MessageKey
   items: ShortcutDefinition[]
 }
 
@@ -61,190 +62,186 @@ const commandToken = 'Mod'
 
 const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
   previousPage: {
-    labelKey: 'previous_page',
+    labelKey: 'reader.previous_page',
     shortcuts: [['←'], ['↑'], ['Shift', 'Space']],
   },
   nextPage: {
-    labelKey: 'next_page',
+    labelKey: 'reader.next_page',
     shortcuts: [['→'], ['↓'], ['Space']],
   },
   previousChapter: {
-    labelKey: 'previous_chapter',
+    labelKey: 'reader.previous_chapter',
     shortcuts: [['[']],
   },
   nextChapter: {
-    labelKey: 'next_chapter',
+    labelKey: 'reader.next_chapter',
     shortcuts: [[']']],
   },
   returnPrevious: {
-    labelKey: 'return_previous',
+    labelKey: 'reader.return_to_previous',
     shortcuts: [['B']],
   },
   returnStart: {
-    labelKey: 'return_start',
+    labelKey: 'reader.return_to_start',
     shortcuts: [['R']],
   },
   dismissReturn: {
-    labelKey: 'dismiss_return',
+    labelKey: 'reader.dismiss_return',
     shortcuts: [['X']],
   },
   chapterFind: {
-    labelKey: 'chapter_find',
+    labelKey: 'reader.find_current_chapter',
     shortcuts: [[commandToken, 'F']],
   },
   nextFindResult: {
-    labelKey: 'next_find_result',
+    labelKey: 'reader.next_find_result',
     shortcuts: [['Enter']],
   },
   previousFindResult: {
-    labelKey: 'previous_find_result',
+    labelKey: 'reader.previous_find_result',
     shortcuts: [['Shift', 'Enter']],
   },
   closeTab: {
-    labelKey: 'close_tab',
+    labelKey: 'tabs.close_current',
     shortcuts: [[commandToken, 'W']],
   },
   closeAllTabs: {
-    labelKey: 'close_all_tabs',
+    labelKey: 'tabs.close_all',
     shortcuts: [[commandToken, 'Shift', 'W']],
   },
   switchTabIndex: {
-    labelKey: 'switch_tab_index',
+    labelKey: 'tabs.switch_by_number',
     shortcuts: [[commandToken, '1-8']],
   },
   switchLastTab: {
-    labelKey: 'switch_last_tab',
+    labelKey: 'tabs.switch_rightmost',
     shortcuts: [[commandToken, '9']],
   },
   switchPreviousTab: {
-    labelKey: 'switch_previous_tab',
+    labelKey: 'tabs.switch_previous',
     shortcuts: [[commandToken, '←']],
   },
   switchNextTab: {
-    labelKey: 'switch_next_tab',
+    labelKey: 'tabs.switch_next',
     shortcuts: [[commandToken, '→']],
   },
   moveTabLeft: {
-    labelKey: 'move_tab_left',
+    labelKey: 'tabs.move_left',
     shortcuts: [[commandToken, 'Shift', '←']],
   },
   moveTabRight: {
-    labelKey: 'move_tab_right',
+    labelKey: 'tabs.move_right',
     shortcuts: [[commandToken, 'Shift', '→']],
   },
   increaseFontSize: {
-    labelKey: 'increase_font_size',
+    labelKey: 'typography.increase_font_size',
     shortcuts: [[commandToken, '+']],
   },
   decreaseFontSize: {
-    labelKey: 'decrease_font_size',
+    labelKey: 'typography.decrease_font_size',
     shortcuts: [[commandToken, '-']],
   },
   resetFontSize: {
-    labelKey: 'reset_font_size',
+    labelKey: 'typography.reset_font_size',
     shortcuts: [[commandToken, '0']],
   },
   fullscreen: {
-    labelKey: 'fullscreen',
+    labelKey: 'fullscreen.title',
     shortcuts: [['F']],
   },
   zenMode: {
-    labelKey: 'zen_mode',
+    labelKey: 'zen.title',
     shortcuts: [['Z']],
   },
   tocPanel: {
-    labelKey: 'toc_panel',
+    labelKey: 'toc.title',
     shortcuts: [['C']],
   },
   searchPanel: {
-    labelKey: 'search_panel',
+    labelKey: 'search.title',
     shortcuts: [['S']],
   },
   annotationPanel: {
-    labelKey: 'annotation_panel',
+    labelKey: 'annotation.title',
     shortcuts: [['A']],
   },
   imagePanel: {
-    labelKey: 'image_panel',
+    labelKey: 'image.title',
     shortcuts: [['G']],
   },
   typographyPanel: {
-    labelKey: 'typography_panel',
+    labelKey: 'typography.title',
     shortcuts: [['T']],
   },
   libraryReaderToggle: {
-    labelKey: 'library_reader_toggle',
+    labelKey: 'mode.switch_library_reading',
     shortcuts: [['V']],
   },
   libraryAuthorSearch: {
-    labelKey: 'library_author_search',
+    labelKey: 'home.library_filter.search_authors',
     shortcuts: [[commandToken, 'E']],
   },
   libraryBatchTags: {
-    labelKey: 'library_batch_tags',
+    labelKey: 'home.tags.tooltip',
     shortcuts: [['T']],
   },
   libraryDeleteSelection: {
-    labelKey: 'library_delete_selection',
+    labelKey: 'home.delete.tooltip',
     shortcuts: [['Del']],
   },
   openSettings: {
-    labelKey: 'open_settings',
+    labelKey: 'settings.title',
     shortcuts: [[commandToken, ',']],
   },
   libraryFilterPanel: {
-    labelKey: 'library_filter_panel',
+    labelKey: 'library_filter.title',
     shortcuts: [['S']],
   },
   libraryFilterClear: {
-    labelKey: 'library_filter_clear',
+    labelKey: 'home.library_filter.clear',
     shortcuts: [['Esc']],
   },
   libraryFilterAll: {
-    labelKey: 'library_filter_all',
+    labelKey: 'home.library_filter.all',
     shortcuts: [['`'], ['0']],
   },
   libraryFilterToRead: {
-    labelKey: 'library_filter_to_read',
+    labelKey: 'home.reading_status.to_read',
     shortcuts: [['1']],
   },
   libraryFilterReading: {
-    labelKey: 'library_filter_reading',
+    labelKey: 'home.reading_status.reading',
     shortcuts: [['2']],
   },
   libraryFilterRead: {
-    labelKey: 'library_filter_read',
+    labelKey: 'home.reading_status.read',
     shortcuts: [['3']],
   },
   libraryImport: {
-    labelKey: 'library_import',
+    labelKey: 'home.import_books',
     shortcuts: [[commandToken, 'O']],
   },
   libraryImportFolder: {
-    labelKey: 'library_import_folder',
+    labelKey: 'home.folder_import.action',
     shortcuts: [[commandToken, 'Shift', 'O']],
   },
   librarySelectAll: {
-    labelKey: 'library_select_all',
+    labelKey: 'home.select_all',
     shortcuts: [[commandToken, 'A']],
   },
   libraryTagSearch: {
-    labelKey: 'library_tag_search',
+    labelKey: 'home.library_filter.search_tags',
     shortcuts: [[commandToken, 'T']],
   },
   libraryTitleSearch: {
-    labelKey: 'library_title_search',
+    labelKey: 'home.library_search.title',
     shortcuts: [[commandToken, 'F']],
-  },
-  developerTools: {
-    labelKey: 'developer_tools',
-    shortcuts: [[commandToken, 'Shift', 'I']],
   },
 }
 
 const shortcutGroups: ShortcutGroupDefinition[] = [
   {
-    titleKey: 'group.navigation',
+    titleKey: 'settings.shortcuts.group.navigation',
     items: [
       shortcutDefinitions.previousPage,
       shortcutDefinitions.nextPage,
@@ -256,7 +253,7 @@ const shortcutGroups: ShortcutGroupDefinition[] = [
     ],
   },
   {
-    titleKey: 'group.search',
+    titleKey: 'settings.shortcuts.group.search',
     items: [
       shortcutDefinitions.chapterFind,
       shortcutDefinitions.nextFindResult,
@@ -264,7 +261,7 @@ const shortcutGroups: ShortcutGroupDefinition[] = [
     ],
   },
   {
-    titleKey: 'group.tabs',
+    titleKey: 'settings.shortcuts.group.tabs',
     items: [
       shortcutDefinitions.closeTab,
       shortcutDefinitions.closeAllTabs,
@@ -277,7 +274,7 @@ const shortcutGroups: ShortcutGroupDefinition[] = [
     ],
   },
   {
-    titleKey: 'group.display',
+    titleKey: 'settings.shortcuts.group.display',
     items: [
       shortcutDefinitions.increaseFontSize,
       shortcutDefinitions.decreaseFontSize,
@@ -287,7 +284,7 @@ const shortcutGroups: ShortcutGroupDefinition[] = [
     ],
   },
   {
-    titleKey: 'group.panels',
+    titleKey: 'settings.shortcuts.group.panels',
     items: [
       shortcutDefinitions.tocPanel,
       shortcutDefinitions.searchPanel,
@@ -299,7 +296,7 @@ const shortcutGroups: ShortcutGroupDefinition[] = [
     ],
   },
   {
-    titleKey: 'group.library',
+    titleKey: 'settings.shortcuts.group.library',
     items: [
       shortcutDefinitions.libraryImport,
       shortcutDefinitions.libraryImportFolder,

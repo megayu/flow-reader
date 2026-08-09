@@ -857,7 +857,7 @@ interface ReaderEdgeNavigationProps {
 }
 
 const ReaderEdgeNavigation: React.FC<ReaderEdgeNavigationProps> = ({ tab }) => {
-  const t = useTranslation('shortcuts')
+  const t = useTranslation('reader')
   const items = [
     {
       label: t('previous_chapter'),
