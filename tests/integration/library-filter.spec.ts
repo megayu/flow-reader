@@ -254,6 +254,39 @@ test('library filter panel clears filters on Escape without closing', async ({ p
   await expect(page.getByTestId('library-filter-panel')).toBeVisible()
 })
 
+test('library result criteria changes reset the book grid to the top', async ({ page }) => {
+  await installTauriMock(page, {
+    books: Array.from({ length: 40 }, (_, index) =>
+      createBook({
+        id: `scroll-book-${index}`,
+        title: `Scroll Book ${String(index).padStart(2, '0')}`,
+        creator: 'Scroll Author',
+        readingStatus: index % 2 ? 'read' : 'toRead',
+      }),
+    ),
+  })
+  await page.goto('/')
+  await expect(page.locator('#layout')).toBeVisible()
+
+  const scrollTopBeforeFilter = await page
+    .locator('ul.grid [data-flow-library-book-card]')
+    .first()
+    .evaluate((card) => {
+      const scroll = card.closest('[data-pane-scroll]') as HTMLElement
+      scroll.scrollTop = scroll.scrollHeight
+      return scroll.scrollTop
+    })
+  expect(scrollTopBeforeFilter).toBeGreaterThan(0)
+
+  await openLibraryFilterPanel(page)
+  await page.getByTestId('library-filter-status-read').click()
+  const libraryScroll = page
+    .locator('ul.grid [data-flow-library-book-card]')
+    .first()
+    .locator('xpath=ancestor::*[@data-pane-scroll]')
+  await expect.poll(() => libraryScroll.evaluate((scroll) => scroll.scrollTop)).toBe(0)
+})
+
 test('library facet searches stay scoped and exit on blur without clearing applied filters', async ({ page }) => {
   await installTauriMock(page, {
     books: fixtureBooks.map((book, index) => ({

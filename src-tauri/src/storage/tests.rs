@@ -3789,6 +3789,7 @@ fn test_library_book(source_format: BookSourceFormat) -> LibraryBook {
         size: 1,
         reading_status: None::<ReadingStatus>,
         source_format,
+        generated_cover: source_format == BookSourceFormat::Txt,
         content_edited_at: None,
         content_hash: "hash".to_string(),
         content_version: 1,

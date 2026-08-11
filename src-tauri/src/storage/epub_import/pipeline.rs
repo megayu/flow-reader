@@ -122,6 +122,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
         temp_path,
         hash,
     } = prepared;
+    let generated_cover = parsed.generated_cover;
 
     struct ExternalPromotion {
         book: ExternalBook,
@@ -156,6 +157,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                     book.size = size;
                     book.content_hash = hash.clone();
                     book.content_version = book.content_version.saturating_add(1).max(1);
+                    book.generated_cover = generated_cover;
                     book.content_mode = content_mode;
                     book.source_storage = source_storage;
                     book.source_path = Some(source_path.clone());
@@ -184,6 +186,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                     size,
                     reading_status: None,
                     source_format: BookSourceFormat::Epub,
+                    generated_cover,
                     content_edited_at: None,
                     content_hash: hash.clone(),
                     content_version: 1,
@@ -387,6 +390,7 @@ pub(in crate::storage) fn open_external_epub_path_impl(
                 book.size = size;
                 book.content_mode = content_mode;
                 book.content_version = book.content_version.max(1);
+                book.generated_cover = parsed.generated_cover;
                 book.source_storage = SourceStorage::Referenced;
                 book.source_path = Some(source_path.clone());
                 book.last_opened_at = now_ms();
@@ -403,6 +407,7 @@ pub(in crate::storage) fn open_external_epub_path_impl(
                     size,
                     content_hash: hash.clone(),
                     content_version: 1,
+                    generated_cover: parsed.generated_cover,
                     content_mode,
                     source_storage: SourceStorage::Referenced,
                     source_path: Some(source_path.clone()),

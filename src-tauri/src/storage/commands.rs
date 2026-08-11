@@ -644,14 +644,7 @@ pub fn list_covers(storage: State<'_, AppStorage>, ids: Option<Vec<String>>) -> 
         }
     };
 
-    ids.into_iter()
-        .map(|id| {
-            Ok(CoverRecord {
-                cover: read_cover(&storage, &id)?,
-                id,
-            })
-        })
-        .collect()
+    ids.into_iter().map(|id| read_cover_record(&storage, id)).collect()
 }
 
 #[tauri::command]
@@ -884,10 +877,7 @@ impl BookImportProgressReporter {
     }
 
     fn emit_success(&mut self, storage: &AppStorage, book: BookRecord) -> Option<BookRecord> {
-        let cover = read_cover(storage, &book.id).ok().map(|cover| CoverRecord {
-            id: book.id.clone(),
-            cover,
-        });
+        let cover = read_cover_record(storage, book.id.clone()).ok();
         self.emit(Some(book), cover)
     }
 
@@ -1552,15 +1542,17 @@ pub fn record_reading_position(storage: State<'_, AppStorage>, position: Reading
 }
 
 #[tauri::command]
-pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -> Result<(), String> {
+pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -> Result<Option<CoverRecord>, String> {
     if is_external_book_id(&id) {
-        return update_external_book(&storage, id, changes);
+        update_external_book(&storage, id, changes)?;
+        return Ok(None);
     }
 
     let mut library_changed = false;
     let mut state_changed = false;
     let mut immediate_flush = false;
     let mut reading_position_only = false;
+    let mut cover_changed = false;
     {
         let mut state = storage
             .inner
@@ -1568,7 +1560,7 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
         let Some(book_index) = state.library.books.iter().position(|book| book.id == id) else {
-            return Ok(());
+            return Ok(None);
         };
         let mut book = state.library.books[book_index].clone();
         let mut book_state = storage.read_book_state(&id)?;
@@ -1606,7 +1598,7 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
                 if book.content_mode != BookContentMode::ArchiveOnly {
                     sync_unpacked_opf_metadata(&storage.book_dir(&id).join(UNPACKED_DIR), value)?;
                 }
-                if is_generated_text_cover(&storage, &id)? {
+                if book.generated_cover {
                     let cover = create_text_cover_input(
                         value,
                         Path::new(&book.name).file_stem().and_then(|name| name.to_str()),
@@ -1617,6 +1609,7 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
                         write_text_cover_to_unpacked(&storage, &id, cover)?;
                     }
                     write_cover(&storage, &id, cover)?;
+                    cover_changed = true;
                 }
                 library_changed = true;
                 immediate_flush = true;
@@ -1714,7 +1707,11 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
         storage.flush_dirty()?;
     }
 
-    Ok(())
+    if cover_changed {
+        return read_cover_record(&storage, id).map(Some);
+    }
+
+    Ok(None)
 }
 
 fn update_external_book(storage: &AppStorage, id: String, changes: Value) -> Result<(), String> {

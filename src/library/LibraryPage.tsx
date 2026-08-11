@@ -22,7 +22,7 @@ import {
   XIcon,
 } from 'lucide-react'
 import type React from 'react'
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { getBookDisplayTitle } from '../book'
 import { AppTooltip } from '../components/AppTooltip'
@@ -89,9 +89,20 @@ import { clamp } from '../utils'
 
 import { BookCard } from './BookCard'
 import { BookImportProgressPanel } from './BookImportProgressPanel'
+import {
+  type CoverResourceIdentity,
+  configureCoverResourceCache,
+  disposeCoverResourceCache,
+  getCoverResourceCacheBudget,
+  leaseCoverResources,
+  libraryReturnGraceMs,
+  resumeCoverResourceCache,
+  suspendCoverResourceCache,
+} from './coverResourceCache'
 import { FolderImportDialog } from './FolderImportDialog'
 import { filterBooksByLibraryFilters } from './filters'
 import { BatchTagsDialog, DeleteSelectedBooksDialog } from './LibraryDialogs'
+import { libraryGridVirtualizationThreshold } from './libraryGridWindow'
 import {
   bookSourceDescriptionKey,
   bookSourceStatusFromError,
@@ -110,6 +121,7 @@ import {
   selectBookIdRange,
   useStringSet,
 } from './selection'
+import { useLibraryGridWindow } from './useLibraryGridWindow'
 
 const sortFieldIconMap = {
   title: BookTextIcon,
@@ -141,6 +153,7 @@ const libraryBookCardSizePresets = [
   { key: 'medium', value: 160 },
   { key: 'large', value: 200 },
 ] as const
+const noCoverResourceIdentities: readonly CoverResourceIdentity[] = []
 const dragImportAutoOpenBookTabLimit = 8
 
 function selectDroppedBooksToAutoOpen(books: BookRecord[]) {
@@ -167,6 +180,7 @@ export function LibraryPage() {
   const [viewMode, setViewMode] = useViewMode()
   const [settings, setSettings] = useSettings()
   const settingsReady = useSettingsReady()
+  const libraryReturnStateRef = useRef<LibraryReturnState | undefined>(undefined)
   const viewModeRef = useRef(viewMode)
   const openedFromNativeRef = useRef(false)
   const nativeOpenReadyRef = useRef(false)
@@ -190,6 +204,15 @@ export function LibraryPage() {
   const focusedBookId = focusedBookTab?.book.id
   const directTextImport = settings.directTextImport === true
   const openBookIds = new Set(groups.flatMap((group) => group.bookTabs.map((tab) => tab.book.id)))
+
+  useLayoutEffect(() => {
+    if (viewMode === 'library') {
+      resumeCoverResourceCache()
+    } else {
+      suspendCoverResourceCache()
+    }
+  }, [viewMode])
+  useEffect(() => disposeCoverResourceCache, [])
 
   const openTextImportDialog = useCallback(
     (
@@ -457,6 +480,7 @@ export function LibraryPage() {
       onTextPaths={(paths, waitForEpubImport, folderImportSelection) =>
         openTextImportDialog(paths, false, waitForEpubImport, folderImportSelection)
       }
+      returnStateRef={libraryReturnStateRef}
     />
   )
   const nativeStartupContentReady =
@@ -507,6 +531,15 @@ interface LibraryProps {
     waitForEpubImport?: Promise<void>,
     folderImportSelection?: FolderImportSelection,
   ) => void
+  returnStateRef: { current: LibraryReturnState | undefined }
+}
+
+interface LibraryReturnState {
+  debouncedTitleSearchQuery: string
+  expiresAt: number
+  resultCriteriaSignature: string
+  scrollTop: number
+  titleSearchQuery: string
 }
 
 const Library: React.FC<LibraryProps> = ({
@@ -516,6 +549,7 @@ const Library: React.FC<LibraryProps> = ({
   onEpubImportResult,
   onOpenBook,
   onTextPaths,
+  returnStateRef,
 }) => {
   const books = useLibrary()
   const covers = useCovers()
@@ -536,16 +570,21 @@ const Library: React.FC<LibraryProps> = ({
   const [tagFilters] = useLibraryTagFilter()
   const [, setLibraryAction] = useLibraryAction()
 
+  const [returnState] = useState(() => {
+    const state = returnStateRef.current
+    return state && state.expiresAt > Date.now() ? state : undefined
+  })
   const [select, setSelect] = useState(false)
-  const [titleSearchQuery, setTitleSearchQuery] = useState('')
-  const [debouncedTitleSearchQuery, setDebouncedTitleSearchQuery] = useState('')
+  const [titleSearchQuery, setTitleSearchQuery] = useState(returnState?.titleSearchQuery ?? '')
+  const [debouncedTitleSearchQuery, setDebouncedTitleSearchQuery] = useState(
+    returnState?.debouncedTitleSearchQuery ?? '',
+  )
   const [selectedBookIds, { has, toggle, replace, reset }] = useStringSet()
   const [highlightedBookIds, setHighlightedBookIds] = useState<Set<string>>(() => new Set())
   const [sourceStatuses, setSourceStatuses] = useState(() => new Map<string, BookSourceStatus>())
   const [batchTagsOpen, setBatchTagsOpen] = useState(false)
   const [deleteBooksOpen, setDeleteBooksOpen] = useState(false)
   const [folderImportPath, setFolderImportPath] = useState<string>()
-  const [recentBookCapacity, setRecentBookCapacity] = useState(0)
   const bookGridRef = useRef<HTMLUListElement>(null)
   const libraryScrollRef = useRef<HTMLDivElement>(null)
   const libraryScrollContentRef = useRef<HTMLDivElement>(null)
@@ -556,40 +595,145 @@ const Library: React.FC<LibraryProps> = ({
     () => new Map((books ?? []).map((book) => [book.id, createTextSearchIndex([getBookDisplayTitle(book)])])),
     [books],
   )
+  const stableFilteredBooks = useMemo(
+    () =>
+      filterBooksByLibraryFilters(
+        sortBooks(books ?? [], sortField, sortDirection),
+        statusFilters,
+        authorFilters,
+        tagFilters,
+      ),
+    [authorFilters, books, sortDirection, sortField, statusFilters, tagFilters],
+  )
   const sortedBooks = useMemo(() => {
-    const filteredBooks = filterBooksByLibraryFilters(
-      sortBooks(books ?? [], sortField, sortDirection),
-      statusFilters,
-      authorFilters,
-      tagFilters,
-    )
-    if (!debouncedTitleSearchQuery.trim()) return filteredBooks
+    if (!debouncedTitleSearchQuery.trim()) return stableFilteredBooks
 
-    return filteredBooks.filter((book) =>
+    return stableFilteredBooks.filter((book) =>
       matchesTextSearch(titleSearchIndexByBookId.get(book.id) ?? [], debouncedTitleSearchQuery),
     )
-  }, [
-    authorFilters,
-    books,
-    debouncedTitleSearchQuery,
-    sortDirection,
-    sortField,
-    statusFilters,
-    tagFilters,
-    titleSearchIndexByBookId,
-  ])
+  }, [debouncedTitleSearchQuery, stableFilteredBooks, titleSearchIndexByBookId])
   const visibleBookIds = useMemo(() => sortedBooks.map((book) => book.id), [sortedBooks])
   const recentBooks = useMemo(() => {
+    if (!settings.showRecentBooks || !recentBookIds?.length) return []
+
     const booksById = new Map((books ?? []).map((book) => [book.id, book]))
-    return (recentBookIds ?? []).flatMap((bookId) => {
+    return recentBookIds.flatMap((bookId) => {
       const book = booksById.get(bookId)
       return book ? [book] : []
     })
-  }, [books, recentBookIds])
+  }, [books, recentBookIds, settings.showRecentBooks])
   const coversById = useMemo(() => new Map(covers?.map((cover) => [cover.id, cover.cover])), [covers])
-  const selectedBooks = sortedBooks.filter((book) => selectedBookIds.has(book.id))
-  const openSelectedBookCount = selectedBooks.filter((book) => openBookIds.has(book.id)).length
-  const libraryScrollbar = useOverlayScrollbarMetrics(libraryScrollRef, libraryScrollContentRef)
+  const selectedBooks = useMemo(
+    () => (selectedBookIds.size ? sortedBooks.filter((book) => selectedBookIds.has(book.id)) : []),
+    [selectedBookIds, sortedBooks],
+  )
+  const openSelectedBookCount = useMemo(
+    () => selectedBooks.filter((book) => openBookIds.has(book.id)).length,
+    [openBookIds, selectedBooks],
+  )
+  const resultCriteriaSignature = useMemo(
+    () =>
+      JSON.stringify([
+        debouncedTitleSearchQuery,
+        [...statusFilters].sort(),
+        [...authorFilters].sort(),
+        [...tagFilters].sort(),
+        sortField,
+        sortDirection,
+      ]),
+    [authorFilters, debouncedTitleSearchQuery, sortDirection, sortField, statusFilters, tagFilters],
+  )
+  const [initialScrollTop] = useState(() =>
+    returnState?.resultCriteriaSignature === resultCriteriaSignature ? returnState.scrollTop : 0,
+  )
+  const latestReturnStateRef = useRef({
+    debouncedTitleSearchQuery,
+    resultCriteriaSignature,
+    titleSearchQuery,
+  })
+  useLayoutEffect(() => {
+    latestReturnStateRef.current = {
+      debouncedTitleSearchQuery,
+      resultCriteriaSignature,
+      titleSearchQuery,
+    }
+  }, [debouncedTitleSearchQuery, resultCriteriaSignature, titleSearchQuery])
+  useLayoutEffect(
+    () => () => {
+      const scroll = libraryScrollRef.current
+      if (!scroll) return
+
+      returnStateRef.current = {
+        ...latestReturnStateRef.current,
+        expiresAt: Date.now() + libraryReturnGraceMs,
+        scrollTop: scroll.scrollTop,
+      }
+    },
+    [returnStateRef],
+  )
+  const virtualizeLibraryGrid = (books?.length ?? 0) >= libraryGridVirtualizationThreshold
+  const libraryGridLayoutKey = `${select}:${settings.showRecentBooks === true}:${recentBooks.length}`
+  const libraryGridWindow = useLibraryGridWindow({
+    cardWidth: bookCardWidth,
+    enabled: virtualizeLibraryGrid,
+    endInset: librarySelectionRingOutset,
+    gridRef: bookGridRef,
+    initialScrollTop,
+    layoutKey: libraryGridLayoutKey,
+    resetKey: resultCriteriaSignature,
+    rowGap: bookCardGap,
+    scrollRef: libraryScrollRef,
+    totalCount: sortedBooks.length,
+  })
+  const libraryGridWindowCount = libraryGridWindow.endIndex - libraryGridWindow.startIndex
+  const recentBookCapacity =
+    settings.showRecentBooks && !select && recentBooks.length ? libraryGridWindow.columnCount : 0
+  const windowedBooks = useMemo(
+    () =>
+      virtualizeLibraryGrid ? sortedBooks.slice(libraryGridWindow.startIndex, libraryGridWindow.endIndex) : sortedBooks,
+    [libraryGridWindow.endIndex, libraryGridWindow.startIndex, sortedBooks, virtualizeLibraryGrid],
+  )
+  const [stableFilterCoverCount, setStableFilterCoverCount] = useState(0)
+  useEffect(() => {
+    if (!virtualizeLibraryGrid || titleSearchQuery.trim()) return
+    setStableFilterCoverCount((current) =>
+      current === libraryGridWindow.topWindowCount ? current : libraryGridWindow.topWindowCount,
+    )
+  }, [libraryGridWindow.topWindowCount, titleSearchQuery, virtualizeLibraryGrid])
+  const stableFilterCoverResources = useMemo(() => {
+    if (!virtualizeLibraryGrid) return noCoverResourceIdentities
+    return stableFilteredBooks.slice(0, stableFilterCoverCount).flatMap<CoverResourceIdentity>((book) => {
+      if (book.generatedCover) return []
+      const cover = coversById.get(book.id)
+      return cover ? [{ bookId: book.id, cover }] : []
+    })
+  }, [coversById, stableFilterCoverCount, stableFilteredBooks, virtualizeLibraryGrid])
+  const stableFilterCoverOverlap = debouncedTitleSearchQuery.trim()
+    ? 0
+    : Math.max(0, Math.min(stableFilterCoverCount, libraryGridWindow.endIndex) - libraryGridWindow.startIndex)
+  const protectedCoverCount = virtualizeLibraryGrid
+    ? stableFilterCoverCount + libraryGridWindowCount - stableFilterCoverOverlap
+    : 0
+  const coverResourceCacheBudget = useMemo(
+    () => getCoverResourceCacheBudget(protectedCoverCount),
+    [protectedCoverCount],
+  )
+  useEffect(() => {
+    if (virtualizeLibraryGrid) {
+      configureCoverResourceCache(coverResourceCacheBudget)
+    } else {
+      disposeCoverResourceCache()
+    }
+  }, [coverResourceCacheBudget, virtualizeLibraryGrid])
+  useEffect(() => {
+    if (!virtualizeLibraryGrid || !stableFilterCoverResources.length) return
+    return leaseCoverResources(stableFilterCoverResources)
+  }, [stableFilterCoverResources, virtualizeLibraryGrid])
+  const fullGridScrollbar = useOverlayScrollbarMetrics(
+    libraryScrollRef,
+    libraryScrollContentRef,
+    !virtualizeLibraryGrid,
+  )
   useEffect(() => {
     if (!titleSearchQuery) {
       setDebouncedTitleSearchQuery('')
@@ -625,29 +769,6 @@ const Library: React.FC<LibraryProps> = ({
       }, []),
     [books],
   )
-  useEffect(() => {
-    if (!settings.showRecentBooks || select || !recentBooks.length) {
-      setRecentBookCapacity(0)
-      return
-    }
-
-    const grid = bookGridRef.current
-    if (!grid) return
-
-    const updateCapacity = (width: number) => {
-      const capacity = Math.max(1, Math.floor((width + bookCardGap) / (bookCardWidth + bookCardGap)))
-      setRecentBookCapacity((current) => (current === capacity ? current : capacity))
-    }
-    updateCapacity(grid.clientWidth)
-
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry) updateCapacity(entry.contentRect.width)
-    })
-    observer.observe(grid)
-    return () => observer.disconnect()
-  }, [bookCardGap, bookCardWidth, recentBooks.length, select, settings.showRecentBooks])
-
   useEffect(() => {
     if (!referencedArchiveIds.length) {
       setSourceStatuses((current) => (current.size ? new Map<string, BookSourceStatus>() : current))
@@ -978,7 +1099,7 @@ const Library: React.FC<LibraryProps> = ({
 
   if (!books) return null
 
-  const visibleSelectedCount = sortedBooks.filter((book) => selectedBookIds.has(book.id)).length
+  const visibleSelectedCount = selectedBooks.length
   const allSelected = !!sortedBooks.length && visibleSelectedCount === sortedBooks.length
   const selectAllShortcut = getShortcutChords('librarySelectAll')[0]
   const batchTagsShortcut = getShortcutChords('libraryBatchTags')[0]
@@ -1002,6 +1123,11 @@ const Library: React.FC<LibraryProps> = ({
     justifyContent: 'space-between',
     marginInline: `-${libraryBookCardOuterInset}px`,
     '--library-book-card-width': `${bookCardWidth}px`,
+  } as React.CSSProperties
+  const virtualBookGridStyle = {
+    ...bookGridStyle,
+    paddingBlockStart: `${libraryGridWindow.paddingTop}px`,
+    paddingBlockEnd: `${libraryGridWindow.paddingBottom}px`,
   } as React.CSSProperties
 
   return (
@@ -1319,7 +1445,11 @@ const Library: React.FC<LibraryProps> = ({
         </div>
       </div>
 
-      <OverlayScroll ref={libraryScrollRef} containerClassName="-mt-0.5 min-h-0 flex-1" scrollbar={libraryScrollbar}>
+      <OverlayScroll
+        ref={libraryScrollRef}
+        containerClassName="-mt-0.5 min-h-0 flex-1"
+        scrollbar={virtualizeLibraryGrid ? libraryGridWindow.scrollbar : fullGridScrollbar}
+      >
         <div ref={libraryScrollContentRef} style={libraryScrollContentStyle}>
           {settings.showRecentBooks && !select && recentBookCapacity > 0 && recentBooks.length > 0 && (
             <section data-flow-library-recent-books className="border-border/60 mb-2 border-b pb-2">
@@ -1331,6 +1461,7 @@ const Library: React.FC<LibraryProps> = ({
                     sourceStatus={sourceStatuses.get(book.id)}
                     cover={coversById.get(book.id)}
                     recent
+                    retainCoverResource={virtualizeLibraryGrid}
                     showModifiedExportIndicator={settings.showModifiedBookExportIndicator === true}
                     onSelectBook={selectBook}
                     onOpenBook={onOpenBook}
@@ -1339,8 +1470,15 @@ const Library: React.FC<LibraryProps> = ({
               </ul>
             </section>
           )}
-          <ul ref={bookGridRef} className="grid" style={bookGridStyle}>
-            {sortedBooks.map((book) => (
+          <ul
+            ref={bookGridRef}
+            className="grid"
+            data-flow-library-grid="true"
+            data-flow-library-grid-start-index={virtualizeLibraryGrid ? libraryGridWindow.startIndex : 0}
+            data-flow-library-grid-total-count={sortedBooks.length}
+            style={virtualizeLibraryGrid ? virtualBookGridStyle : bookGridStyle}
+          >
+            {windowedBooks.map((book) => (
               <BookCard
                 key={book.id}
                 book={book}
@@ -1349,6 +1487,7 @@ const Library: React.FC<LibraryProps> = ({
                 select={select}
                 selected={has(book.id)}
                 highlighted={highlightedBookIds.has(book.id)}
+                retainCoverResource={virtualizeLibraryGrid}
                 showModifiedExportIndicator={settings.showModifiedBookExportIndicator === true}
                 onSelectBook={selectBook}
                 onOpenBook={onOpenBook}

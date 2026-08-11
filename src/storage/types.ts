@@ -102,6 +102,7 @@ export interface BookRecord {
   scope?: 'library' | 'external'
   readingStatus?: ReadingStatus | null
   sourceFormat: BookSourceFormat
+  generatedCover: boolean
   contentEditedAt?: number
   metadata: PackagingMetadataObject
   createdAt: number

@@ -1747,6 +1747,7 @@ mod tests {
             size: 1,
             reading_status: None,
             source_format: BookSourceFormat::Epub,
+            generated_cover: false,
             content_edited_at: None,
             content_hash: format!("hash-{content_version}"),
             content_version,

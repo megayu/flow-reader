@@ -84,22 +84,11 @@ pub(super) fn read_cover(storage: &AppStorage, id: &str) -> Result<Option<String
     Ok(None)
 }
 
-pub(super) fn is_generated_text_cover(storage: &AppStorage, id: &str) -> Result<bool, String> {
-    let Some(path) = read_cover(storage, id)? else {
-        return Ok(true);
-    };
-    let path = PathBuf::from(path);
-    if !path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("svg"))
-    {
-        return Ok(false);
-    }
-
-    let svg = fs::read_to_string(path).unwrap_or_default();
-    Ok(svg.contains(GENERATED_TEXT_COVER_MARKER)
-        || (svg.contains(r##"<rect width="768" height="1024" fill="#ead7b5"/>"##) && svg.contains("Noto Serif CJK SC")))
+pub(super) fn read_cover_record(storage: &AppStorage, id: String) -> Result<CoverRecord, String> {
+    Ok(CoverRecord {
+        cover: read_cover(storage, &id)?,
+        id,
+    })
 }
 
 pub(super) fn remove_cover_files(storage: &AppStorage, id: &str) -> Result<(), String> {

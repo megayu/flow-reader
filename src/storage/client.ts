@@ -147,7 +147,8 @@ function forgetBooks(ids: string[]) {
 }
 
 function rememberCovers(covers: CoverRecord[]) {
-  coversCache = covers
+  coversCache = covers.map(normalizeCoverRecord)
+  return coversCache
 }
 
 function upsertCachedById<T extends { id: string }>(items: T[], value: T) {
@@ -157,17 +158,13 @@ function upsertCachedById<T extends { id: string }>(items: T[], value: T) {
 
 function rememberCover(cover: CoverRecord) {
   if (!coversCache) return
-  coversCache = upsertCachedById(coversCache, cover)
+  coversCache = upsertCachedById(coversCache, normalizeCoverRecord(cover))
 }
 
 function forgetCovers(ids: string[]) {
   if (coversCache) {
     coversCache = coversCache.filter((cover) => !ids.includes(cover.id))
   }
-}
-
-function invalidateCovers() {
-  coversCache = undefined
 }
 
 function rememberTags(tags: LibraryTagRecord[]) {
@@ -282,7 +279,7 @@ function rememberBookImportProgress(progress: BookImportProgress) {
   if (!progress.book) return
 
   rememberBook(progress.book)
-  if (progress.cover) rememberCover(normalizeCoverRecord(progress.cover))
+  if (progress.cover) rememberCover(progress.cover)
   notify('books', ...(progress.cover ? (['covers'] as const) : []))
 }
 
@@ -318,7 +315,7 @@ async function importBooksWithProgress(
     const fallbackCovers = await invoke<CoverRecord[]>('list_covers', {
       ids: result.books.map((book) => book.id),
     })
-    fallbackCovers.forEach((cover) => rememberCover(normalizeCoverRecord(cover)))
+    fallbackCovers.forEach(rememberCover)
   }
 
   const importedBooks = [...books.values()]
@@ -387,22 +384,20 @@ export const db = {
         rememberBook({ ...cached, ...committedChanges })
       }
 
-      await trackNativeWrite(
-        invoke<void>('update_book', {
+      const updatedCover = await trackNativeWrite(
+        invoke<CoverRecord | null>('update_book', {
           id,
           changes: committedChanges,
         }),
       )
 
       if (!readingActivityOnly) {
-        if (committedChanges.metadata) invalidateCovers()
+        if (updatedCover) rememberCover(updatedCover)
         if (committedChanges.metadata) invalidatePins()
         notify(
-          ...([
-            'books',
-            committedChanges.metadata ? 'covers' : undefined,
-            committedChanges.metadata ? 'pins' : undefined,
-          ].filter(Boolean) as TableName[]),
+          ...(['books', updatedCover ? 'covers' : undefined, committedChanges.metadata ? 'pins' : undefined].filter(
+            Boolean,
+          ) as TableName[]),
         )
       }
     },
@@ -604,9 +599,7 @@ export const db = {
       if (coversCache) return coversCache
 
       const covers = await invoke<CoverRecord[]>('list_covers', { ids: null })
-      const normalized = covers.map(normalizeCoverRecord)
-      rememberCovers(normalized)
-      return normalized
+      return rememberCovers(covers)
     },
     peekAll() {
       return coversCache

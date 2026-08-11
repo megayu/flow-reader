@@ -62,6 +62,10 @@ fn external_book_index_version() -> u32 {
     2
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 impl Default for ExternalBookIndex {
     fn default() -> Self {
         Self {
@@ -80,6 +84,8 @@ pub(super) struct ExternalBook {
     pub(super) content_hash: String,
     #[serde(default)]
     pub(super) content_version: u32,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(super) generated_cover: bool,
     #[serde(default, skip_serializing_if = "BookContentMode::is_normal")]
     pub(super) content_mode: BookContentMode,
     #[serde(default, skip_serializing_if = "SourceStorage::is_managed")]
@@ -102,6 +108,8 @@ pub(super) struct LibraryBook {
     pub(super) reading_status: Option<ReadingStatus>,
     #[serde(default)]
     pub(super) source_format: BookSourceFormat,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(super) generated_cover: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) content_edited_at: Option<u64>,
     #[serde(default)]
@@ -139,6 +147,8 @@ pub struct BookRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) reading_status: Option<ReadingStatus>,
     pub(super) source_format: BookSourceFormat,
+    #[serde(default)]
+    pub(super) generated_cover: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) content_edited_at: Option<u64>,
     #[serde(default = "empty_object")]

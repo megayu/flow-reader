@@ -50,6 +50,8 @@ export function filterBooksByLibraryFilters(
   authorFilters: string[],
   tagFilters: string[] = [],
 ) {
+  if (!statusFilters.length && !authorFilters.length && !tagFilters.length) return books
+
   const authors = new Set(authorFilters)
   const tags = new Set(tagFilters)
 

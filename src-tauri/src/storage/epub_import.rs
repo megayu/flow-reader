@@ -46,6 +46,7 @@ const EPUB_MISSING_SPINE_MAX_SMALL_READABLE_SPINE: usize = 2;
 struct ParsedEpubInfo {
     metadata: Value,
     cover: Option<ParsedEpubCover>,
+    generated_cover: bool,
 }
 
 struct ParsedEpubCover {

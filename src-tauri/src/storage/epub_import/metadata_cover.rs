@@ -24,7 +24,9 @@ fn parse_epub_info_from_archive<R: Read + Seek>(
     let opf = read_zip_text(archive, &opf_path)?;
     let opf_doc = roxmltree::Document::parse(&opf).map_err(|error| error.to_string())?;
     let metadata = parse_opf_metadata(&opf_doc);
-    let cover = find_cover_input(archive, &opf_doc, &opf_path).or_else(|| {
+    let cover = find_cover_input(archive, &opf_doc, &opf_path);
+    let generated_cover = cover.is_none();
+    let cover = cover.or_else(|| {
         create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str())).map(|input| {
             ParsedEpubCover {
                 input,
@@ -33,7 +35,11 @@ fn parse_epub_info_from_archive<R: Read + Seek>(
         })
     });
 
-    Ok(ParsedEpubInfo { metadata, cover })
+    Ok(ParsedEpubInfo {
+        metadata,
+        cover,
+        generated_cover,
+    })
 }
 
 pub(super) fn read_zip_text<R: Read + Seek>(archive: &mut ZipArchive<R>, name: &str) -> Result<String, String> {

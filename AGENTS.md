@@ -19,7 +19,7 @@
 ## Repository Skills
 
 - Repository-specific skills live in `.agents/skills/`.
-- Before changing reader runtime performance, tab switching, page turns, sidebar reader interactions, annotation/definition overlays, EPUB rendering, or generated content that can affect pagination cost, read `.agents/skills/reader-performance-measurement/SKILL.md` and follow it.
+- Before changing reader or library runtime performance—including tab switching, page turns, sidebar interactions, EPUB rendering, bookshelf virtualization, cover loading, filtering, sorting, scrolling, or reader/library switching—read `.agents/skills/reader-performance-measurement/SKILL.md` and follow it.
 - Before changing deterministic reader layout, zoom, single/spread mode, tab isolation, sidebar/window resize behavior, iframe pane geometry, reader header/footer/page alignment, or generated content that can affect reader layout, read `.agents/skills/reader-deterministic-layout/SKILL.md` and follow it.
 
 ## Coding Style & Naming Conventions

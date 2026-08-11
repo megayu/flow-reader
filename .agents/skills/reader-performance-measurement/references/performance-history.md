@@ -1,6 +1,19 @@
-# Reader Performance History
+# Flow Reader Performance History
 
-Read this before proposing or testing a Flow Reader performance optimization. Search for the touched area and avoid repeating rejected approaches unless the underlying ownership, DOM shape, or measurement condition has changed.
+Use this only after the measurement gate classifies the work as an optimization.
+Search by affected subsystem, read the matching entries and relevant baseline
+bullets, and avoid repeating a rejected approach unless ownership, DOM shape,
+or measurement conditions changed. Load the whole file only for cross-cutting
+work.
+
+## Contents
+
+- [Retained Approaches](#retained-approaches)
+- [Rejected Approaches](#rejected-approaches)
+- [Current Baseline Shape To Protect](#current-baseline-shape-to-protect)
+
+Library-specific entries are grouped at the end of retained approaches and the
+start of rejected approaches. Other entries cover reader interactions.
 
 ## Retained Approaches
 
@@ -81,7 +94,56 @@ Read this before proposing or testing a Flow Reader performance optimization. Se
 - Decision: keep.
 - Constraint: keep the outer `PaneView` ownership and visible sidebar model. Do not replace this with a broad "render only active view" change unless ownership is redesigned and remeasured.
 
+### Library row virtualization with memoized book cards
+
+- Change: replace the full library card grid with a row-aligned, overscanned window and memoize stable overlapping `BookCard` instances; retain full data semantics for filtering, sorting, selection, and result counts.
+- Measured effect: matched release-client none runs across 25/50/100/200/400/800/1200 books showed the crossover between 50 and 75 books. At 800 books, mount p95 improved about 90%, full-scroll p95 about 78%, filter-clear p95 about 97%, and mounted cards fell from 800 to about 30-35. At 1200 books, mount p95 improved about 94%, full-scroll p95 about 86%, and full-scroll private bytes fell from about 1,802 MiB to 714 MiB. Matched 25/50/100 SVG, WebP, and mixed runs confirmed that the large gains were not a no-cover special case.
+- Decision: keep. Use a fixed total-library threshold in the product so small libraries keep the full grid while large libraries use the virtual window. WebView image-resource residency and cover-return flashing remain separate follow-up measurements; DOM virtualization alone does not prove decoded cover memory is bounded.
+- Constraint: do not choose the threshold from current filtered-result count, and do not treat the retained window as authorization to restore old scroll anchors or add per-filter view caches.
+
+### Shared library-grid width measurement
+
+- Change: use the grid-window hook's width measurement for both recent-book capacity and virtualization, removing the page-level observer and unused row metadata.
+- Measured effect: matched `tauri-release` no-cover mount runs used 25 and 800 books, three pilots, and five runs with the first excluded. At 25 books, operation p50 improved 1.9%, p95 regressed 5.4%, settled p95 regressed 2.4%, and long-task total improved 1.1%. At 800 books, operation p50 improved 3.7%, p95 improved 5.3%, settled p95 improved 2.4%, and long-task total improved 9.8%. Mounted and visible card counts were unchanged in both datasets.
+- Decision: keep. The small-library variance stays below the 10% review threshold, while one measurement owner removes duplicate resize work and improves the virtualized case.
+- Constraint: keep width measurement active below the virtualization threshold because recent-book capacity still depends on the grid column count; scroll observation remains virtualization-only.
+
+### Decode-gated, bounded library cover resources
+
+- Change: retain decoded cover resources by `bookId + revisioned cover URL`, keep presentation and stable-filter return leases separate, cap decode concurrency at eight, and evict unleased resources through a byte-estimated LRU. Restrict the resource cache to libraries at or above the virtualization threshold; small libraries keep the original image path. Batch stable-filter lease changes so one result transition performs one budget pass.
+- Measured effect: a matched `tauri-release` 75-book mixed-cover return comparison used three pilots and five runs with the first run excluded. Return phases improved from 4 samples and 53 RAF frames containing pending covers to zero, maximum pending duration improved from 133.3 ms to zero, operation p95 improved 15.8%, long-task total improved 11.6%, and process-private p50 improved 5.0%. Final matched 25-book runs kept mount and filter-clear p95 within 1% of the original full-grid baseline. At 800 mixed books, the final stack kept about 35 cards mounted while mount p95 improved about 92%, full-scroll p95 about 76%, and filter-clear p95 about 98% versus the original grid; the retained cover budget did not erase the virtualization memory benefit.
+- Decision: keep. Resource retention removes the observable return blank frame that decode gating alone could not prevent, while byte and entry limits keep application-owned image references bounded.
+- Constraint: keep the cache identity tied to the cover revision, not only the book id. Search must not create query snapshots, active leases must remain a bounded viewport/stable-filter set, and WebView-owned decoded/GPU memory is not covered by the application byte estimate.
+
+### Suspended library-cover grace period
+
+- Change: on leaving the library, immediately discard non-visible, queued, and loading cover entries; retain only the ready visible window for a bounded grace period, then dispose the remaining image references and queue. Returning during the grace period resumes the same cache rather than constructing another manager.
+- Measured effect: at the evaluated grace setting, matched `tauri-release` 800-book mixed-cover switch runs used three pilots plus 30 quick runs with the first three excluded, and a separate 11-run post-timeout set with the first run excluded. Versus indefinite retention, quick-return p50 was unchanged and p95 regressed 5.8%, with zero pending covers in all 27 steady returns. The post-timeout runs confirmed that the grace path had disposed its strong references; versus immediate disposal, process-private p50 improved about 8.0%, and repeated cycles did not grow monotonically.
+- Decision: keep. It preserves the common quick-return experience while guaranteeing that a longer reader stay releases application ownership.
+- Constraint: entering the reader must not start a second cache or preserve non-visible LRU entries. Use one product-owned grace deadline for cover retention and the single transient library return position; elapsed returns must release application-owned image resources.
+
+### Bounded stable-filter cover range on quick return
+
+- Change: size the stable-filter cover lease from the top virtual window and combine it with the active window, instead of treating a restored middle window's absolute end index as a cover count.
+- Measured effect: matched `tauri-release` 800-book mixed-cover quick returns used three pilots and five runs with the first excluded. At the middle scroll position, DOM-node p50 fell 67.3%, document p50 47.6%, event-listener p50 39.0%, heap p50 22.2%, and working-set p50 19.7%; private/renderer-private p50 changed +3.1%/+6.8%. First-frame p50 changed +5.5% while p95 improved 8.3%; settled p50/p95 improved 1.6%/4.9%. At the top, first-frame p50 changed +2.6% and p95 -2.7%, with process memory effectively unchanged.
+- Decision: keep. It removes an absolute-index retention bug without changing the common top return path, and bounds middle-position ownership to the top and active virtual windows.
+- Constraint: measure restored non-top state at a middle position, not the bottom where a partial final row changes the mounted-card count. This is a large-library scenario; do not add a small-library matrix for it.
+
 ## Rejected Approaches
+
+### Decode gating without retained library cover resources
+
+- Attempt: display the real library image only after `load` plus `decode()`, but allow the resource to disappear when its virtualized card unmounts.
+- Measured effect: in the most sensitive 75-book mixed-cover release run, filter reapply still produced 19 pending RAF frames across two steady samples with a longest pending interval of 78.8 ms; final filter clear produced 31 pending RAF frames across two samples with a longest interval of 145.3 ms.
+- Decision: reject as a complete anti-flash solution. It prevents an undecoded image from painting, but replaces it with the placeholder and therefore does not preserve a previously shown cover across unmount.
+- Retry condition: none under the current virtual-card ownership model; decode gating remains only as the presentation half of the retained resource design.
+
+### Immediate disposal or indefinite retention of suspended library covers
+
+- Attempt: either clear every application-held cover as soon as reading mode opens, or retain the suspended cover set without a timeout.
+- Measured effect: at the evaluated grace setting, matched `tauri-release` 800-book mixed-cover quick-switch runs showed immediate disposal did not lower cycling memory and had about 3.1% higher quick-return process-private p50 than the bounded grace path. Indefinite retention matched grace quick-return p50 and improved p95 by 5.8%, but by construction never released the application's strong image references during a long reader stay. In post-timeout runs, the grace path improved process-private p50 about 8.0% versus immediate disposal while still reaching a stable memory platform.
+- Decision: reject both extremes. Immediate disposal adds avoidable reallocation without demonstrating a memory win in quick cycling; indefinite retention violates the reader-mode release requirement.
+- Retry condition: reconsider only if WebView lifecycle ownership changes, then remeasure both quick returns and long reader stays rather than using a single RSS snapshot.
 
 ### Replace iframe listener refs with Effect Events
 
@@ -223,4 +285,6 @@ Read this before proposing or testing a Flow Reader performance optimization. Se
 - Current retained release-client performance should have zero long tasks for the primary closed-sidebar and TOC rapid tab-switch and rapid page-turn paths.
 - Closed/sidebar and TOC tab switching should be compared together; optimizing only the open TOC path is not enough.
 - Page-turn checks must accompany tab-switch optimizations because many failed attempts moved work between these paths.
+- Library virtualization must retain full filtering, sorting, selection, and result-count semantics while keeping mounted cards bounded above the fixed total-library threshold.
+- Library cover retention must remain revision-aware and bounded; quick reader returns may use the shared grace period, but longer reader stays must release application-owned image resources.
 - Mutation diagnostics and React Doctor are advisory. The accept/reject decision comes from comparable client measurements.

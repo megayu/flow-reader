@@ -67,7 +67,7 @@ pub use window_state::{
 };
 pub(crate) use window_state::{RuntimeWindowState, record_window_state};
 
-use book_assets::{is_generated_text_cover, read_cover, remove_cover_files, write_cover};
+use book_assets::{read_cover_record, remove_cover_files, write_cover};
 use book_source::*;
 #[cfg(test)]
 use deletion::rename_books_for_deletion;
@@ -127,7 +127,6 @@ const SEARCH_TEXT_EXCERPT_RADIUS: usize = 60;
 pub const SEARCH_TEXT_CACHE_VERSION: u32 = 1;
 pub const IMAGE_INDEX_CACHE_VERSION: u32 = 1;
 const COVER_STEM: &str = "cover";
-const GENERATED_TEXT_COVER_MARKER: &str = r#"data-flow-generated-cover="true""#;
 const STATE_FILE: &str = "state.json";
 const WINDOW_STATE_FILE: &str = "window-state.json";
 const EPUB_ZIP_WRITER_BUFFER_SIZE: usize = 256 * 1024;
@@ -420,35 +419,18 @@ impl AppStorage {
 
     fn compose_book(&self, book: &LibraryBook) -> Result<BookRecord, String> {
         let book_state = self.read_book_state(&book.id)?;
-
-        Ok(BookRecord {
-            id: book.id.clone(),
-            name: book.name.clone(),
-            size: book.size,
-            scope: if is_external_book_id(&book.id) {
-                BookScope::External
-            } else {
-                BookScope::Library
-            },
-            reading_status: book.reading_status.clone(),
-            source_format: book.source_format,
-            content_edited_at: book.content_edited_at,
-            metadata: book.metadata.clone(),
-            created_at: book.created_at,
-            updated_at: book.updated_at,
-            last_read_at: book.last_read_at,
-            definitions: book_state.definitions,
-            annotations: book_state.annotations,
-            cfi: book_state.cfi,
-            percentage: book_state.percentage,
-            tag_ids: book.tag_ids.clone(),
-            configuration: book_state.configuration,
-            content_hash: book.content_hash.clone(),
-            content_version: book.content_version,
-            content_mode: book.content_mode,
-            source_storage: book.source_storage,
-            source_path: book.source_path.as_deref().map(path_to_client_string),
-        })
+        let mut record = self.compose_book_summary(book);
+        record.scope = if is_external_book_id(&book.id) {
+            BookScope::External
+        } else {
+            BookScope::Library
+        };
+        record.definitions = book_state.definitions;
+        record.annotations = book_state.annotations;
+        record.cfi = book_state.cfi;
+        record.percentage = book_state.percentage;
+        record.configuration = book_state.configuration;
+        Ok(record)
     }
 
     fn compose_book_summary(&self, book: &LibraryBook) -> BookRecord {
@@ -459,6 +441,7 @@ impl AppStorage {
             scope: BookScope::Library,
             reading_status: book.reading_status.clone(),
             source_format: book.source_format,
+            generated_cover: book.generated_cover,
             content_edited_at: book.content_edited_at,
             metadata: book.metadata.clone(),
             created_at: book.created_at,
@@ -485,6 +468,7 @@ impl AppStorage {
             size: book.size,
             reading_status: None,
             source_format: BookSourceFormat::Epub,
+            generated_cover: book.generated_cover,
             content_edited_at: None,
             content_hash: book.content_hash.clone(),
             content_version: book.content_version.max(1),

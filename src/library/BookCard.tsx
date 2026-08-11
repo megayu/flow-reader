@@ -14,9 +14,9 @@ import {
   TriangleAlertIcon,
 } from 'lucide-react'
 import type React from 'react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
-import { getBookDisplayTitle, getBookTooltip } from '../book'
+import { cleanBookText, getBookDisplayTitle, getBookTooltip } from '../book'
 import { AppTooltip } from '../components/AppTooltip'
 import { readerPageTooltipContentStyle } from '../components/appTooltipStyles'
 import { BookTooltipContent } from '../components/BookTooltipContent'
@@ -37,6 +37,7 @@ import { toMessageKeySegment } from '../locales'
 import { reader } from '../models/reader'
 import { type BookExportFormat, type BookRecord, type BookSourceStatus, db, type ReadingStatus } from '../storage'
 
+import { bookCoverPlaceholder, CoverImage } from './CoverImage'
 import { BookInfoDialog, BookTagsDialog, EditBookDialog } from './LibraryDialogs'
 import {
   bookCoverCornerBadgeClassName,
@@ -54,8 +55,49 @@ import {
 import { BookProgress, ReadingStatusBadge, ReadingStatusMenuContent } from './ReadingStatusControls'
 import type { LibraryBookSelectionEvent } from './selection'
 
-const placeholder = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect fill="gray" fill-opacity="0" width="1" height="1"/></svg>`
 const newBookMarkerDurationMs = 24 * 60 * 60 * 1000
+const generatedCoverFontFamily = 'Noto Serif CJK SC, Source Han Serif SC, STSong, SimSun, serif'
+
+function GeneratedBookCover({ book }: { book: BookRecord }) {
+  const creator = cleanBookText(book.metadata.creator)
+
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none relative h-full w-full select-none overflow-hidden rounded-[inherit] bg-[#ead7b5]"
+      style={{ containerType: 'inline-size', fontFamily: generatedCoverFontFamily }}
+    >
+      <div className="absolute top-[30%] left-[7.5%] flex h-[40%] w-[85%] items-start justify-center overflow-hidden text-center text-[#3d3122]">
+        <div
+          className="max-w-full font-extrabold"
+          style={{
+            fontSize: 'clamp(18px, 12cqw, 30px)',
+            lineHeight: 1.12,
+            overflowWrap: 'anywhere',
+            wordBreak: 'break-word',
+          }}
+        >
+          {getBookDisplayTitle(book)}
+        </div>
+      </div>
+      {creator && (
+        <div className="absolute top-[70%] left-[7.5%] flex h-[30%] w-[85%] items-start justify-center overflow-hidden text-center text-[#776b5c]">
+          <div
+            className="max-w-full font-bold"
+            style={{
+              fontSize: 'clamp(14px, 8cqw, 22px)',
+              lineHeight: 1.18,
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
+            }}
+          >
+            {creator}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function isNewBook(book: BookRecord) {
   if (book.lastReadAt !== undefined) return false
@@ -69,6 +111,7 @@ interface BookCardProps {
   cover?: string | null
   highlighted?: boolean
   recent?: boolean
+  retainCoverResource?: boolean
   select?: boolean
   selected?: boolean
   showModifiedExportIndicator: boolean
@@ -77,11 +120,12 @@ interface BookCardProps {
   onOpenBook: () => void
 }
 
-export const BookCard: React.FC<BookCardProps> = ({
+const BookCardComponent: React.FC<BookCardProps> = ({
   book,
   cover,
   highlighted,
   recent,
+  retainCoverResource,
   select,
   selected,
   showModifiedExportIndicator,
@@ -312,14 +356,20 @@ export const BookCard: React.FC<BookCardProps> = ({
                   </div>
                 </DropdownMenu>
               )}
-              <img
-                src={cover ?? placeholder}
-                alt="Cover"
-                className="block h-full w-full rounded-[inherit] object-cover"
-                decoding="async"
-                draggable={false}
-                loading="lazy"
-              />
+              {book.generatedCover ? (
+                <GeneratedBookCover book={book} />
+              ) : retainCoverResource && cover ? (
+                <CoverImage bookId={book.id} cover={cover} alt="Cover" />
+              ) : (
+                <img
+                  src={cover ?? bookCoverPlaceholder}
+                  alt="Cover"
+                  className="block h-full w-full rounded-[inherit] object-cover"
+                  decoding="async"
+                  draggable={false}
+                  loading="lazy"
+                />
+              )}
               {recent && !select && (
                 <div className="pointer-events-none absolute inset-0 z-1 flex items-center justify-center bg-black/0 opacity-0 transition-[background-color,opacity] group-hover:bg-black/20 group-hover:opacity-100">
                   <span className="flex size-12 items-center justify-center rounded-full bg-black/65 text-white shadow-md ring-1 ring-white/50">
@@ -492,6 +542,8 @@ export const BookCard: React.FC<BookCardProps> = ({
     </div>
   )
 }
+
+export const BookCard = memo(BookCardComponent)
 
 const BookContextMenuItem: React.FC<{
   disabled?: boolean

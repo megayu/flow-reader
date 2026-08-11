@@ -1,49 +1,21 @@
-import fs from 'node:fs'
 import path from 'node:path'
+
+import {
+  formatNumber,
+  formatPercent,
+  pad,
+  percentChange,
+  readResult,
+  scenarioMap,
+  scenarioSummary,
+  valueAt,
+} from './performance-comparison.mjs'
 
 function usage() {
   console.error(
     'Usage: node .agents/skills/reader-performance-measurement/scripts/compare-reader-performance.mjs <baseline.json> <after.json> [--json]',
   )
   process.exit(1)
-}
-
-function readResult(file) {
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'))
-  } catch (error) {
-    console.error(`Failed to read ${file}: ${error.message}`)
-    process.exit(1)
-  }
-}
-
-function scenarioSummary(scenario) {
-  return scenario?.steadySummary ?? scenario?.summary
-}
-
-function valueAt(object, pathParts) {
-  return pathParts.reduce((current, part) => (current == null ? undefined : current[part]), object)
-}
-
-function percentChange(baseline, after) {
-  if (typeof baseline !== 'number' || typeof after !== 'number') return null
-  if (baseline === 0) return after === 0 ? 0 : null
-  return ((after - baseline) / baseline) * 100
-}
-
-function formatNumber(value) {
-  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(1) : 'n/a'
-}
-
-function formatPercent(value) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return 'n/a'
-  const sign = value > 0 ? '+' : ''
-  return `${sign}${value.toFixed(1)}%`
-}
-
-function pad(value, width, align = 'left') {
-  const text = String(value ?? '')
-  return align === 'right' ? text.padStart(width) : text.padEnd(width)
 }
 
 function compareMetric(baselineSummary, afterSummary, label, pathParts) {
@@ -102,10 +74,6 @@ function compareScenario(name, baselineScenario, afterScenario) {
     status,
     metrics: metricSpecs.map(([label, parts]) => compareMetric(baselineSummary, afterSummary, label, parts)),
   }
-}
-
-function scenarioMap(result) {
-  return new Map((result.scenarios ?? []).map((scenario) => [scenario.name, scenario]))
 }
 
 function printText(comparison, baselineFile, afterFile) {
