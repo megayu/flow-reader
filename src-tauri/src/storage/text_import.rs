@@ -1515,8 +1515,8 @@ fn escape_svg(value: &str) -> String {
 pub(super) fn import_text_path_impl(
     storage: &AppStorage,
     prepared: Arc<PreparedTextImport>,
-    import_title: Option<&str>,
-    import_creator: Option<&str>,
+    import: &TextImportSelection,
+    copy_source_file: bool,
     replace_existing: bool,
     rules: Option<&TextImportRulesInput>,
     import_index: Option<&mut LibraryBookLookupIndex>,
@@ -1530,7 +1530,11 @@ pub(super) fn import_text_path_impl(
 
     let path = &prepared.path;
     let source_path = path.to_path_buf();
-    let source_storage = storage.import_source_storage();
+    let source_storage = if copy_source_file {
+        SourceStorage::Managed
+    } else {
+        SourceStorage::Referenced
+    };
     let decoded = &prepared.decoded;
     if decoded.confidence == TextEncodingConfidence::Failed {
         return Err("Unable to decode text file".to_string());
@@ -1540,12 +1544,16 @@ pub(super) fn import_text_path_impl(
     let size = prepared.size;
     let name = prepared.filename.clone();
     let fallback_title = prepared.fallback_title.clone();
-    let title = import_title
+    let title = import
+        .title
+        .as_deref()
         .map(str::trim)
         .filter(|title| !title.is_empty())
         .map(str::to_string)
         .unwrap_or(fallback_title);
-    let creator = import_creator
+    let creator = import
+        .creator
+        .as_deref()
         .map(|creator| creator.trim().to_string())
         .unwrap_or_else(|| prepared.fallback_creator.clone());
 

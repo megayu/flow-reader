@@ -22,16 +22,18 @@ import { getTextImportEncodings, previewTextImportPaths } from '../storage'
 
 import { AppTooltip } from './AppTooltip'
 import { Button } from './ui/button'
+import { Checkbox } from './ui/checkbox'
 import { Dialog, DialogContent, DialogTitle } from './ui/dialog'
 import { Input } from './ui/input'
 import { useNotify } from './ui/notificationContext'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 
 interface TextImportDialogProps {
+  defaultCopySourceFiles?: boolean
   paths: string[]
   openAfterImport?: boolean
   onClose: () => void
-  onImport: (imports: TextImportSelection[], openAfterImport: boolean) => void
+  onImport: (imports: TextImportSelection[], openAfterImport: boolean, copySourceFiles?: boolean) => void
 }
 
 interface ChapterPreviewNode extends TextImportChapterPreview {
@@ -40,6 +42,7 @@ interface ChapterPreviewNode extends TextImportChapterPreview {
 }
 
 export const TextImportDialog: React.FC<TextImportDialogProps> = ({
+  defaultCopySourceFiles,
   paths,
   openAfterImport = false,
   onClose,
@@ -57,6 +60,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
   const [encodingOverrides, setEncodingOverrides] = useState<Record<string, string>>({})
   const [titleOverrides, setTitleOverrides] = useState<Record<string, string>>({})
   const [creatorOverrides, setCreatorOverrides] = useState<Record<string, string>>({})
+  const [copySourceFiles, setCopySourceFiles] = useState(defaultCopySourceFiles ?? false)
   const [previewSplit, setPreviewSplit] = useState(44)
   const previewAreaRef = useRef<HTMLDivElement>(null)
   const previewButtonRefs = useRef(new Map<string, HTMLButtonElement>())
@@ -191,12 +195,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     setCollapsedChapterKeys(new Set())
   }, [activePreview?.path])
 
-  const selectedImports: {
-    creator?: string
-    encoding: string
-    path: string
-    title?: string
-  }[] = []
+  const selectedImports: TextImportSelection[] = []
   for (const preview of previews) {
     if (selectedPaths.has(preview.path) && preview.status !== 'error' && preview.status !== 'skipped') {
       selectedImports.push({
@@ -225,7 +224,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     if (!selectedImports.length) return
 
     onClose()
-    onImport(selectedImports, openAfterImport)
+    onImport(selectedImports, openAfterImport, defaultCopySourceFiles === undefined ? undefined : copySourceFiles)
   }
 
   return (
@@ -457,7 +456,23 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
           )}
 
           <div className="border-border flex shrink-0 items-center justify-between gap-3 border-t bg-(--flow-bg-panel) px-4 py-3">
-            <div className="text-destructive min-w-0 text-base">{error || activePreview?.message || ''}</div>
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              {defaultCopySourceFiles !== undefined && (
+                <label
+                  htmlFor="text-import-copy-source"
+                  className="flex shrink-0 cursor-pointer items-center gap-2 text-base"
+                >
+                  <Checkbox
+                    id="text-import-copy-source"
+                    className="size-5 after:inset-x-0"
+                    checked={copySourceFiles}
+                    onCheckedChange={(checked) => setCopySourceFiles(checked === true)}
+                  />
+                  <span>{t('copy_source')}</span>
+                </label>
+              )}
+              <div className="text-destructive min-w-0 text-base">{error || activePreview?.message || ''}</div>
+            </div>
             <div className="flex shrink-0 items-center gap-2">
               <Button variant="secondary" onClick={onClose}>
                 {t('cancel')}

@@ -203,6 +203,8 @@ export function LibraryPage() {
   const homeT = useTranslation('home')
   const focusedBookId = focusedBookTab?.book.id
   const directTextImport = settings.directTextImport === true
+  const defaultCopyTextSourceFiles =
+    settings.importSourceStorage === 'referenced' ? settings.copyTextImports === true : undefined
   const openBookIds = new Set(groups.flatMap((group) => group.bookTabs.map((tab) => tab.book.id)))
 
   useLayoutEffect(() => {
@@ -267,10 +269,12 @@ export function LibraryPage() {
       openAfterImport: boolean,
       waitForEpubImport?: Promise<void>,
       folderImportSelection?: FolderImportSelection,
+      copySourceFiles?: boolean,
     ) => {
       void Promise.resolve(waitForEpubImport)
         .then(() =>
           importTextSelections(imports, {
+            copySourceFiles,
             onImportProgress: handleBookImportProgress,
           }),
         )
@@ -502,15 +506,17 @@ export function LibraryPage() {
       {!contentReady && <div className="bg-background fixed inset-0 z-50" data-testid="native-startup-surface" />}
       {textImportDialog && (
         <TextImportDialog
+          defaultCopySourceFiles={defaultCopyTextSourceFiles}
           paths={textImportDialog.paths}
           openAfterImport={textImportDialog.openAfterImport}
           onClose={() => setTextImportDialog(undefined)}
-          onImport={(imports, openAfterImport) =>
+          onImport={(imports, openAfterImport, copySourceFiles) =>
             handleTextImport(
               imports,
               openAfterImport,
               textImportDialog.waitForEpubImport,
               textImportDialog.folderImportSelection,
+              copySourceFiles,
             )
           }
         />

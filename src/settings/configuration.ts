@@ -22,6 +22,7 @@ export interface Settings extends TypographyConfiguration {
   showRecentBooks?: boolean
   showModifiedBookExportIndicator?: boolean
   importSourceStorage?: BookSourceStorage
+  copyTextImports?: boolean
   startupSession?: StartupSession
   libraryDisplay?: LibraryDisplayConfiguration
   librarySort?: LibrarySortConfiguration
@@ -151,6 +152,7 @@ export const defaultSettings: Settings = {
   showRecentBooks: false,
   showModifiedBookExportIndicator: true,
   importSourceStorage: 'referenced',
+  copyTextImports: false,
   libraryDisplay: defaultLibraryDisplay,
   librarySort: defaultLibrarySort,
   textImportRules: defaultTextImportRules,

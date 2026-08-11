@@ -644,16 +644,23 @@ export async function previewTextImportPaths(paths: string[], encodings: Record<
 export async function importTextPaths(
   imports: TextImportSelection[],
   {
+    copySourceFiles,
     importId,
     onProgress,
     replaceExisting = true,
   }: {
+    copySourceFiles?: boolean
     importId?: string
     onProgress?: (progress: BookImportProgress) => void
     replaceExisting?: boolean
   } = {},
 ) {
-  return importBooksWithProgress('import_text_paths', { imports, replaceExisting }, importId, onProgress)
+  return importBooksWithProgress(
+    'import_text_paths',
+    { imports, replaceExisting, copySourceFiles },
+    importId,
+    onProgress,
+  )
 }
 
 export function scanImportFolder(root: string, recursive: boolean) {

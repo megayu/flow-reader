@@ -358,6 +358,7 @@ function normalizeSettings(value: Partial<Settings> | undefined): Settings {
     dictionary: normalizeDictionarySettings(settings.dictionary),
     translation: normalizeTranslationSettings(settings.translation),
     importSourceStorage: settings.importSourceStorage === 'referenced' ? 'referenced' : 'managed',
+    copyTextImports: settings.copyTextImports === true,
     ui: {
       ...defaultSettings.ui,
       ...settings.ui,

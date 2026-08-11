@@ -72,7 +72,7 @@ fn import_text_paths_strict_for_test(
     replace_existing: bool,
     rules: Option<TextImportRulesInput>,
 ) -> Result<Vec<BookRecord>, String> {
-    let result = super::commands::import_text_paths_impl(storage, tasks, imports, replace_existing, rules, None)?;
+    let result = super::commands::import_text_paths_impl(storage, tasks, imports, replace_existing, None, rules, None)?;
     imported_books_or_first_error(result)
 }
 

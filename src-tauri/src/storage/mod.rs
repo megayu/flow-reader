@@ -169,6 +169,13 @@ fn empty_object() -> Value {
     json!({})
 }
 
+fn source_storage_from_settings(settings: &Value) -> SourceStorage {
+    match settings.get("importSourceStorage").and_then(Value::as_str) {
+        Some("referenced") | None => SourceStorage::Referenced,
+        Some(_) => SourceStorage::Managed,
+    }
+}
+
 impl AppStorage {
     pub fn load(app: &AppHandle) -> Result<Self, String> {
         let root = data_root(app)?;
@@ -486,21 +493,22 @@ impl AppStorage {
     }
 
     fn import_source_storage(&self) -> SourceStorage {
-        self.inner
-            .state
-            .lock()
-            .ok()
-            .and_then(|state| {
-                state
-                    .settings
-                    .get("importSourceStorage")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
-            })
-            .map_or(SourceStorage::Referenced, |value| match value.as_str() {
-                "referenced" => SourceStorage::Referenced,
-                _ => SourceStorage::Managed,
-            })
+        self.inner.state.lock().ok().map_or(SourceStorage::Referenced, |state| {
+            source_storage_from_settings(&state.settings)
+        })
+    }
+
+    fn should_copy_text_import(&self, copy_source_files: Option<bool>) -> bool {
+        let Ok(state) = self.inner.state.lock() else {
+            return copy_source_files.unwrap_or(false);
+        };
+        if source_storage_from_settings(&state.settings) == SourceStorage::Managed {
+            return true;
+        }
+
+        copy_source_files
+            .or_else(|| state.settings.get("copyTextImports").and_then(Value::as_bool))
+            .unwrap_or(false)
     }
 
     fn text_import_rules(&self) -> Result<Option<TextImportRulesInput>, String> {

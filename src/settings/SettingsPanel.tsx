@@ -111,23 +111,46 @@ export const SettingsPanel: React.FC = () => {
               </Item>
               <AccentColorSetting />
               <UiFontSizeSetting />
-              <Item
-                title={t('source_storage')}
-                description={t('source_storage.description')}
-                controlId="settings-source-storage"
-              >
-                <SettingsCheckbox
-                  id="settings-source-storage"
-                  label={t('source_storage')}
-                  checked={settings.importSourceStorage === 'referenced'}
-                  onCheckedChange={(checked) => {
-                    setSettings((prev) => ({
-                      ...prev,
-                      importSourceStorage: checked ? 'referenced' : 'managed',
-                    }))
-                  }}
-                />
-              </Item>
+              <div className="space-y-3">
+                <Item
+                  title={t('source_storage')}
+                  description={t('source_storage.description')}
+                  controlId="settings-source-storage"
+                >
+                  <SettingsCheckbox
+                    id="settings-source-storage"
+                    label={t('source_storage')}
+                    checked={settings.importSourceStorage === 'referenced'}
+                    onCheckedChange={(checked) => {
+                      setSettings((prev) => ({
+                        ...prev,
+                        importSourceStorage: checked ? 'referenced' : 'managed',
+                      }))
+                    }}
+                  />
+                </Item>
+                {settings.importSourceStorage === 'referenced' && (
+                  <div className="border-border ml-4 border-l pl-4">
+                    <Item
+                      title={t('source_storage.txt_copy')}
+                      description={t('source_storage.txt_copy.description')}
+                      controlId="settings-source-storage-txt-copy"
+                    >
+                      <SettingsCheckbox
+                        id="settings-source-storage-txt-copy"
+                        label={t('source_storage.txt_copy')}
+                        checked={settings.copyTextImports === true}
+                        onCheckedChange={(checked) => {
+                          setSettings((prev) => ({
+                            ...prev,
+                            copyTextImports: checked,
+                          }))
+                        }}
+                      />
+                    </Item>
+                  </div>
+                )}
+              </div>
               <Item
                 title={t('library_modified_indicator')}
                 description={t('library_modified_indicator.description')}

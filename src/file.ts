@@ -137,8 +137,10 @@ export async function handleFilePaths(
 export async function importTextSelections(
   imports: TextImportSelection[],
   {
+    copySourceFiles,
     onImportProgress,
   }: {
+    copySourceFiles?: boolean
     onImportProgress?: (progress: BookImportProgress) => void
   } = {},
 ): Promise<BookImportResult> {
@@ -150,6 +152,7 @@ export async function importTextSelections(
     imports.length,
     (importId, onProgress) =>
       importTextPaths(imports, {
+        copySourceFiles,
         importId,
         onProgress,
       }),

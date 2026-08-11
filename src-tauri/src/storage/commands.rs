@@ -1014,13 +1014,22 @@ pub async fn import_text_paths(
     tasks: State<'_, TaskService>,
     imports: Vec<TextImportSelection>,
     replace_existing: bool,
+    copy_source_files: Option<bool>,
     on_progress: Channel<BookImportProgress>,
 ) -> Result<BookImportResult, String> {
     let rules = storage.text_import_rules()?;
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        import_text_paths_impl(&storage, &tasks, imports, replace_existing, rules, Some(on_progress))
+        import_text_paths_impl(
+            &storage,
+            &tasks,
+            imports,
+            replace_existing,
+            copy_source_files,
+            rules,
+            Some(on_progress),
+        )
     })
     .await
     .map_err(|error| error.to_string())?
@@ -1031,11 +1040,13 @@ pub(super) fn import_text_paths_impl(
     tasks: &TaskService,
     imports: Vec<TextImportSelection>,
     replace_existing: bool,
+    copy_source_files: Option<bool>,
     rules: Option<TextImportRulesInput>,
     on_progress: Option<Channel<BookImportProgress>>,
 ) -> Result<BookImportResult, String> {
     let started = Instant::now();
     let source_count = imports.len();
+    let copy_source_file = storage.should_copy_text_import(copy_source_files);
     let rules = rules.as_ref();
     let imports = imports
         .into_iter()
@@ -1043,26 +1054,17 @@ pub(super) fn import_text_paths_impl(
         .collect::<Vec<_>>();
     let mut progress = BookImportProgressReporter::new(on_progress, imports.len());
     let mut import_index = LibraryBookLookupIndex::load(storage)?;
-    let batch = if imports.len() <= 1 {
-        import_text_paths_direct(
-            storage,
-            tasks,
-            imports,
+    let batch = {
+        let mut state = TextImportBatchState {
+            import_index: &mut import_index,
+            progress: &mut progress,
             replace_existing,
-            rules,
-            &mut import_index,
-            &mut progress,
-        )
-    } else {
-        import_text_paths_with_pipeline(
-            storage,
-            tasks,
-            imports,
-            replace_existing,
-            rules,
-            &mut import_index,
-            &mut progress,
-        )?
+        };
+        if imports.len() <= 1 {
+            import_text_paths_direct(storage, tasks, imports, copy_source_file, rules, &mut state)
+        } else {
+            import_text_paths_with_pipeline(storage, tasks, imports, copy_source_file, rules, &mut state)?
+        }
     };
     finalize_import_batch(storage, tasks, batch.finalizers)?;
 
@@ -1085,14 +1087,20 @@ struct TextImportBatch {
     finalizers: Vec<ImportFinalizer>,
 }
 
+struct TextImportBatchState<'a> {
+    import_index: &'a mut LibraryBookLookupIndex,
+    progress: &'a mut BookImportProgressReporter,
+    replace_existing: bool,
+}
+
 fn commit_prepared_text_selection(
     storage: &AppStorage,
     tasks: &TaskService,
     import: &TextImportSelection,
     prepared: Arc<PreparedTextImport>,
-    replace_existing: bool,
+    copy_source_file: bool,
     rules: Option<&TextImportRulesInput>,
-    import_index: &mut LibraryBookLookupIndex,
+    state: &mut TextImportBatchState<'_>,
 ) -> Result<(BookRecord, ImportFinalizer), BookImportFailure> {
     let bytes = prepared.size;
     tasks
@@ -1100,11 +1108,11 @@ fn commit_prepared_text_selection(
             import_text_path_impl(
                 storage,
                 prepared,
-                import.title.as_deref(),
-                import.creator.as_deref(),
-                replace_existing,
+                import,
+                copy_source_file,
+                state.replace_existing,
                 rules,
-                Some(import_index),
+                Some(state.import_index),
             )
         })
         .map_err(|error| book_import_failure(Path::new(&import.path), error))
@@ -1114,10 +1122,9 @@ fn import_text_paths_direct(
     storage: &AppStorage,
     tasks: &TaskService,
     imports: Vec<TextImportSelection>,
-    replace_existing: bool,
+    copy_source_file: bool,
     rules: Option<&TextImportRulesInput>,
-    import_index: &mut LibraryBookLookupIndex,
-    progress: &mut BookImportProgressReporter,
+    state: &mut TextImportBatchState<'_>,
 ) -> TextImportBatch {
     let mut books = Vec::new();
     let mut failures = Vec::new();
@@ -1128,28 +1135,21 @@ fn import_text_paths_direct(
             Ok(prepared) => prepared,
             Err(error) => {
                 let failure = book_import_failure(&path, error);
-                progress.emit_failure();
+                state.progress.emit_failure();
                 failures.push(failure);
                 continue;
             }
         };
-        let (book, finalizer) = match commit_prepared_text_selection(
-            storage,
-            tasks,
-            &import,
-            prepared,
-            replace_existing,
-            rules,
-            import_index,
-        ) {
-            Ok(result) => result,
-            Err(failure) => {
-                progress.emit_failure();
-                failures.push(failure);
-                continue;
-            }
-        };
-        if let Some(book) = progress.emit_success(storage, book) {
+        let (book, finalizer) =
+            match commit_prepared_text_selection(storage, tasks, &import, prepared, copy_source_file, rules, state) {
+                Ok(result) => result,
+                Err(failure) => {
+                    state.progress.emit_failure();
+                    failures.push(failure);
+                    continue;
+                }
+            };
+        if let Some(book) = state.progress.emit_success(storage, book) {
             books.push(book);
         }
         finalizers.push(finalizer);
@@ -1171,10 +1171,9 @@ fn import_text_paths_with_pipeline(
     storage: &AppStorage,
     tasks: &TaskService,
     imports: Vec<TextImportSelection>,
-    replace_existing: bool,
+    copy_source_file: bool,
     rules: Option<&TextImportRulesInput>,
-    import_index: &mut LibraryBookLookupIndex,
-    progress: &mut BookImportProgressReporter,
+    state: &mut TextImportBatchState<'_>,
 ) -> Result<TextImportBatch, String> {
     let queue = Arc::new(Mutex::new(imports.into_iter().enumerate().collect::<VecDeque<_>>()));
     let result_len = queue
@@ -1188,7 +1187,6 @@ fn import_text_paths_with_pipeline(
         .collect::<Vec<Option<BookRecord>>>();
     let mut failures = Vec::new();
     let mut finalizers = Vec::with_capacity(result_len);
-
     let pipeline_result: Result<(), String> = std::thread::scope(|scope| {
         for _ in 0..workers {
             let queue = Arc::clone(&queue);
@@ -1229,18 +1227,18 @@ fn import_text_paths_with_pipeline(
                         tasks,
                         &message.import,
                         prepared,
-                        replace_existing,
+                        copy_source_file,
                         rules,
-                        import_index,
+                        state,
                     );
                     storage.end_text_import_prepared_handoff();
                     match result {
                         Ok((book, finalizer)) => {
-                            books[message.index] = progress.emit_success(storage, book);
+                            books[message.index] = state.progress.emit_success(storage, book);
                             finalizers.push(finalizer);
                         }
                         Err(failure) => {
-                            progress.emit_failure();
+                            state.progress.emit_failure();
                             failures.push(failure);
                         }
                     }
@@ -1248,7 +1246,7 @@ fn import_text_paths_with_pipeline(
                 Err(error) => {
                     storage.end_text_import_prepared_handoff();
                     let failure = book_import_failure(Path::new(&message.import.path), error);
-                    progress.emit_failure();
+                    state.progress.emit_failure();
                     failures.push(failure);
                 }
             }
