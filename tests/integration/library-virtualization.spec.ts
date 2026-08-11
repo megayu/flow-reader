@@ -61,7 +61,7 @@ test('large libraries mount a bounded window while preserving far books and full
   await expect(page.getByText(`${bookCount} / ${bookCount}`, { exact: true })).toBeVisible()
 })
 
-test('short reader returns restore an unchanged library scroll position', async ({ page }) => {
+test('reader returns retain library search and restore short-return scroll position', async ({ page }) => {
   const books = Array.from({ length: bookCount }, (_, index) =>
     createBook(index + 1, index < bookCount / 2 ? 'Other Book' : 'Return Book'),
   )
@@ -89,6 +89,7 @@ test('short reader returns restore an unchanged library scroll position', async 
   await expect(cards.first()).toContainText('Return Book 121')
   await cards.first().click()
   await expect(page.locator('[data-flow-reader-content]')).toBeVisible()
+  await page.clock.setSystemTime(Date.now() + 16_000)
   await page.keyboard.press('v')
   await expect(cards.first()).toBeVisible()
   await expect(titleSearch).toHaveValue('Return Book')

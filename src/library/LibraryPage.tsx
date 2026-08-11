@@ -542,8 +542,8 @@ interface LibraryProps {
 
 interface LibraryReturnState {
   debouncedTitleSearchQuery: string
-  expiresAt: number
   resultCriteriaSignature: string
+  scrollExpiresAt: number
   scrollTop: number
   titleSearchQuery: string
 }
@@ -576,10 +576,7 @@ const Library: React.FC<LibraryProps> = ({
   const [tagFilters] = useLibraryTagFilter()
   const [, setLibraryAction] = useLibraryAction()
 
-  const [returnState] = useState(() => {
-    const state = returnStateRef.current
-    return state && state.expiresAt > Date.now() ? state : undefined
-  })
+  const [returnState] = useState(() => returnStateRef.current)
   const [select, setSelect] = useState(false)
   const [titleSearchQuery, setTitleSearchQuery] = useState(returnState?.titleSearchQuery ?? '')
   const [debouncedTitleSearchQuery, setDebouncedTitleSearchQuery] = useState(
@@ -650,7 +647,11 @@ const Library: React.FC<LibraryProps> = ({
     [authorFilters, debouncedTitleSearchQuery, sortDirection, sortField, statusFilters, tagFilters],
   )
   const [initialScrollTop] = useState(() =>
-    returnState?.resultCriteriaSignature === resultCriteriaSignature ? returnState.scrollTop : 0,
+    returnState &&
+    returnState.scrollExpiresAt > Date.now() &&
+    returnState.resultCriteriaSignature === resultCriteriaSignature
+      ? returnState.scrollTop
+      : 0,
   )
   const latestReturnStateRef = useRef({
     debouncedTitleSearchQuery,
@@ -671,7 +672,7 @@ const Library: React.FC<LibraryProps> = ({
 
       returnStateRef.current = {
         ...latestReturnStateRef.current,
-        expiresAt: Date.now() + libraryReturnGraceMs,
+        scrollExpiresAt: Date.now() + libraryReturnGraceMs,
         scrollTop: scroll.scrollTop,
       }
     },
