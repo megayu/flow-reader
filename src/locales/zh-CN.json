@@ -284,6 +284,8 @@
   "settings.txt_import.auto_import.description": "跳过导入预览，自动识别 TXT 文件编码。",
   "settings.txt_import.chapter_rules": "章节规则",
   "settings.txt_import.chapter_rules.description": "每行输入一个{1}，匹配的标题会作为当前分组下的章节。",
+  "settings.txt_import.filename_rules": "文件名解析规则",
+  "settings.txt_import.filename_rules.description": "每行输入一个{1}，使用 $title 匹配书名，可用 $author 匹配作者。",
   "settings.txt_import.group_rules": "分组规则",
   "settings.txt_import.group_rules.description": "每行输入一个{1}，匹配的标题会作为卷、部或篇等顶层分组。",
   "settings.txt_import.regular_expression": "正则表达式",

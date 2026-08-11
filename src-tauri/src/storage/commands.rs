@@ -995,10 +995,10 @@ fn preview_text_import_path(
     let encoding = encodings.get(&key).map(String::as_str);
     let prepared = match prepare_text_import(storage, tasks, path, encoding, rules) {
         Ok(prepared) => prepared,
-        Err(error) => return create_text_import_error_preview(path, error),
+        Err(error) => return create_text_import_error_preview(path, error, rules),
     };
     if should_skip_prepared_text_import_preview(storage, &prepared).unwrap_or(false) {
-        create_skipped_text_import_preview(path)
+        create_skipped_text_import_preview(&prepared)
     } else {
         create_text_import_preview_from_prepared(&prepared)
     }

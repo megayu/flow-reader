@@ -321,6 +321,17 @@ export const SettingsPanel: React.FC = () => {
                   onChange={(patterns) => updateTextImportRules({ chapterPatterns: patterns })}
                 />
               </Item>
+              <Item
+                title={t('txt_import.filename_rules')}
+                description={<RegexDescription descriptionKey="txt_import.filename_rules.description" />}
+                wideControl
+              >
+                <PatternTextarea
+                  label={t('txt_import.filename_rules')}
+                  value={textImportRules.filenamePatterns}
+                  onChange={(patterns) => updateTextImportRules({ filenamePatterns: patterns })}
+                />
+              </Item>
               <div className="flex justify-end">
                 <UiButton
                   type="button"
@@ -453,7 +464,7 @@ const PatternTextarea: React.FC<PatternTextareaProps> = ({ label, value, onChang
   return (
     <Textarea
       aria-label={label}
-      className="scroll resize-y overflow-y-auto rounded-lg font-mono text-base leading-5"
+      className="scroll resize-y overflow-y-auto rounded-lg font-mono text-base leading-5 focus-visible:border-input focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
       style={TEXTAREA_SIZE_STYLE}
       value={draft}
       spellCheck={false}

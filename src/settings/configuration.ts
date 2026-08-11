@@ -71,6 +71,7 @@ export interface LibraryDisplayConfiguration {
 export interface TextImportRulesConfiguration {
   groupPatterns: string[]
   chapterPatterns: string[]
+  filenamePatterns: string[]
 }
 
 export const librarySortFieldOptions: LibrarySortField[] = ['title', 'creator', 'updatedAt', 'createdAt']
@@ -99,6 +100,7 @@ export const defaultTextImportRules: TextImportRulesConfiguration = {
     '^\\s*(简介|序言|序|前言|自序|楔子|后记|尾声|番外|附录).*',
     '^\\s*Chapter\\s+[0-9IVXLCDM]+.*',
   ],
+  filenamePatterns: ['《$title》'],
 }
 
 export function normalizeTextImportRules(
@@ -107,6 +109,7 @@ export function normalizeTextImportRules(
   return {
     groupPatterns: normalizeTextImportPatternList(value?.groupPatterns, defaultTextImportRules.groupPatterns),
     chapterPatterns: normalizeTextImportPatternList(value?.chapterPatterns, defaultTextImportRules.chapterPatterns),
+    filenamePatterns: normalizeTextImportPatternList(value?.filenamePatterns, defaultTextImportRules.filenamePatterns),
   }
 }
 

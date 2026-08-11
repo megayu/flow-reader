@@ -40,6 +40,8 @@ pub struct TextImportRulesInput {
     pub(super) group_patterns: Vec<String>,
     #[serde(default)]
     pub(super) chapter_patterns: Vec<String>,
+    #[serde(default = "default_text_import_filename_patterns")]
+    pub(super) filename_patterns: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,6 +69,7 @@ pub struct TextImportPreview {
     pub(super) path: String,
     pub(super) filename: String,
     pub(super) title: String,
+    pub(super) creator: String,
     pub(super) encoding: String,
     pub(super) encoding_label: String,
     pub(super) confidence: String,
@@ -127,6 +130,7 @@ pub(super) struct PreparedTextImport {
     pub(super) path: PathBuf,
     pub(super) filename: String,
     pub(super) fallback_title: String,
+    pub(super) fallback_creator: String,
     pub(super) size: u64,
     pub(super) hash: String,
     pub(super) bytes: Vec<u8>,
@@ -532,6 +536,10 @@ struct TextImportRule {
     regex: Regex,
 }
 
+fn default_text_import_filename_patterns() -> Vec<String> {
+    vec!["《$title》".to_string()]
+}
+
 fn default_text_import_rules_input() -> TextImportRulesInput {
     TextImportRulesInput {
         group_patterns: vec![
@@ -543,6 +551,7 @@ fn default_text_import_rules_input() -> TextImportRulesInput {
             r"^\s*(简介|序言|序|前言|自序|楔子|后记|尾声|番外|附录).*".to_string(),
             r"^\s*Chapter\s+[0-9IVXLCDM]+.*".to_string(),
         ],
+        filename_patterns: default_text_import_filename_patterns(),
     }
 }
 
@@ -788,17 +797,163 @@ fn text_import_file_title(path: &Path, filename: &str) -> String {
         .unwrap_or_else(|| filename.trim_end_matches(".txt").to_string())
 }
 
-pub(super) fn create_skipped_text_import_preview(path: &Path) -> TextImportPreview {
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct TextImportFilenameMetadata {
+    pub(super) title: String,
+    pub(super) creator: String,
+}
+
+fn expand_text_import_filename_pattern(pattern: &str) -> Option<(String, bool)> {
+    let mut expanded = String::with_capacity(pattern.len() + 32);
+    let mut offset = 0;
+    let mut in_character_class = false;
+    let mut has_title = false;
+    let mut has_author = false;
+
+    while offset < pattern.len() {
+        let rest = &pattern[offset..];
+        let ch = rest.chars().next()?;
+        let ch_len = ch.len_utf8();
+
+        if ch == '\\' {
+            expanded.push(ch);
+            offset += ch_len;
+            if offset < pattern.len() {
+                let escaped = pattern[offset..].chars().next()?;
+                expanded.push(escaped);
+                offset += escaped.len_utf8();
+            }
+            continue;
+        }
+
+        if ch == '[' {
+            in_character_class = true;
+            expanded.push(ch);
+            offset += ch_len;
+            continue;
+        }
+        if ch == ']' && in_character_class {
+            in_character_class = false;
+            expanded.push(ch);
+            offset += ch_len;
+            continue;
+        }
+        if ch != '$' || in_character_class {
+            expanded.push(ch);
+            offset += ch_len;
+            continue;
+        }
+
+        if rest.starts_with("$$") {
+            expanded.push_str(r"\$");
+            offset += 2;
+            continue;
+        }
+
+        let (name, consumed) = if let Some(variable) = rest.strip_prefix("${") {
+            let closing = variable.find('}')?;
+            (&variable[..closing], closing + 3)
+        } else {
+            let name_len = rest[1..]
+                .bytes()
+                .take_while(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+                .count();
+            if name_len == 0 {
+                expanded.push('$');
+                offset += 1;
+                continue;
+            }
+            (&rest[1..1 + name_len], name_len + 1)
+        };
+
+        match name {
+            "title" if !has_title => {
+                expanded.push_str("(?<title>.+?)");
+                has_title = true;
+            }
+            "author" if !has_author => {
+                expanded.push_str("(?<author>.+?)");
+                has_author = true;
+            }
+            _ => return None,
+        }
+        offset += consumed;
+    }
+
+    has_title.then(|| (format!(r"\A(?:{expanded})\z"), has_author))
+}
+
+pub(super) fn text_import_filename_metadata(
+    path: &Path,
+    rules: Option<&TextImportRulesInput>,
+) -> TextImportFilenameMetadata {
     let filename = path
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| "book.txt".to_string());
-    let title = text_import_file_title(path, &filename);
+    let fallback_title = text_import_file_title(path, &filename);
+    let match_text = path
+        .file_stem()
+        .map(|name| name.to_string_lossy().to_string())
+        .filter(|title| !title.is_empty())
+        .unwrap_or_else(|| fallback_title.clone());
+    let defaults;
+    let patterns = match rules {
+        Some(rules) => &rules.filename_patterns,
+        None => {
+            defaults = default_text_import_filename_patterns();
+            &defaults
+        }
+    };
 
+    for pattern in patterns {
+        let Some((expanded, has_author)) = expand_text_import_filename_pattern(pattern.trim()) else {
+            continue;
+        };
+        let Ok(regex) = Regex::new(&expanded) else {
+            continue;
+        };
+        let Some(captures) = regex.captures(&match_text) else {
+            continue;
+        };
+        let Some(whole_match) = captures.get(0) else {
+            continue;
+        };
+        if whole_match.start() != 0 || whole_match.end() != match_text.len() {
+            continue;
+        }
+        let Some(title) = captures.name("title").map(|value| value.as_str().trim()) else {
+            continue;
+        };
+        if title.is_empty() {
+            continue;
+        }
+        let creator = captures
+            .name("author")
+            .map(|value| value.as_str().trim())
+            .unwrap_or_default();
+        if has_author && creator.is_empty() {
+            continue;
+        }
+
+        return TextImportFilenameMetadata {
+            title: title.to_string(),
+            creator: creator.to_string(),
+        };
+    }
+
+    TextImportFilenameMetadata {
+        title: fallback_title,
+        creator: String::new(),
+    }
+}
+
+pub(super) fn create_skipped_text_import_preview(prepared: &PreparedTextImport) -> TextImportPreview {
     TextImportPreview {
-        path: path_to_client_string(path),
-        filename,
-        title,
+        path: path_to_client_string(&prepared.path),
+        filename: prepared.filename.clone(),
+        title: prepared.fallback_title.clone(),
+        creator: prepared.fallback_creator.clone(),
         encoding: "auto".to_string(),
         encoding_label: "Auto".to_string(),
         confidence: "high".to_string(),
@@ -828,6 +983,11 @@ fn text_import_rules_hash(rules: Option<&TextImportRulesInput>) -> String {
         }
         for pattern in &rules.chapter_patterns {
             hasher.update(b"chapter\0");
+            hasher.update(pattern.as_bytes());
+            hasher.update(b"\0");
+        }
+        for pattern in &rules.filename_patterns {
+            hasher.update(b"filename\0");
             hasher.update(pattern.as_bytes());
             hasher.update(b"\0");
         }
@@ -879,17 +1039,22 @@ fn hash_text_import_bytes(bytes: &[u8]) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-pub(super) fn create_text_import_error_preview(path: &Path, message: String) -> TextImportPreview {
+pub(super) fn create_text_import_error_preview(
+    path: &Path,
+    message: String,
+    rules: Option<&TextImportRulesInput>,
+) -> TextImportPreview {
     let filename = path
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| "book.txt".to_string());
-    let title = text_import_file_title(path, &filename);
+    let metadata = text_import_filename_metadata(path, rules);
 
     TextImportPreview {
         path: path_to_client_string(path),
         filename,
-        title,
+        title: metadata.title,
+        creator: metadata.creator,
         encoding: "auto".to_string(),
         encoding_label: "Auto".to_string(),
         confidence: "failed".to_string(),
@@ -919,9 +1084,9 @@ fn prepare_text_import_entry(
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| "book.txt".to_string());
-    let fallback_title = document_title
-        .map(str::to_string)
-        .unwrap_or_else(|| text_import_file_title(path, &filename));
+    let filename_metadata = text_import_filename_metadata(path, rules);
+    let fallback_title = document_title.map(str::to_string).unwrap_or(filename_metadata.title);
+    let fallback_creator = filename_metadata.creator;
     let decoded = decode_text_bytes(&bytes, encoding);
     let sample = decoded
         .text
@@ -937,6 +1102,7 @@ fn prepare_text_import_entry(
         path: path.to_path_buf(),
         filename,
         fallback_title,
+        fallback_creator,
         size: metadata.len(),
         hash: hash_text_import_bytes(&bytes),
         bytes,
@@ -960,6 +1126,7 @@ pub(super) fn create_text_import_preview_from_prepared(prepared: &PreparedTextIm
         path: path_to_client_string(&prepared.path),
         filename: prepared.filename.clone(),
         title: prepared.fallback_title.clone(),
+        creator: prepared.fallback_creator.clone(),
         encoding: prepared.decoded.encoding.clone(),
         encoding_label: prepared.decoded.encoding_label.clone(),
         confidence: match prepared.decoded.confidence {
@@ -1379,10 +1546,8 @@ pub(super) fn import_text_path_impl(
         .map(str::to_string)
         .unwrap_or(fallback_title);
     let creator = import_creator
-        .map(str::trim)
-        .filter(|creator| !creator.is_empty())
-        .map(str::to_string)
-        .unwrap_or_default();
+        .map(|creator| creator.trim().to_string())
+        .unwrap_or_else(|| prepared.fallback_creator.clone());
 
     let metadata = json!({
         "title": title,

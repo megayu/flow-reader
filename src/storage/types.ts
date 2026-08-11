@@ -23,6 +23,7 @@ export interface TextImportPreview {
   path: string
   filename: string
   title: string
+  creator?: string
   encoding: string
   encodingLabel: string
   confidence: 'high' | 'medium' | 'low' | 'failed'

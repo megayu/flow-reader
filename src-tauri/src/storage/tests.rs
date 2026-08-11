@@ -3,6 +3,7 @@ use super::commands::{
     preview_text_import_paths_impl, record_reading_position_impl, revealable_book_source_path,
 };
 use super::epub_import::read_bounded_bytes;
+use super::text_import::text_import_filename_metadata;
 use super::{
     AppStorage, BOOK_FILE, BOOKS_DIR, BookContentMode, BookExportFormat, BookReaderSourceMode, BookRecord, BookScope,
     BookSourceFormat, BookSourceStatus, BookState, BookTextReplaceTarget, DirtyState, ExternalBookIndex,
@@ -2256,6 +2257,7 @@ fn accepts_custom_text_import_heading_rules() {
     let rules = TextImportRulesInput {
         group_patterns: vec![r"^\s*幕\s+\d+".to_string()],
         chapter_patterns: vec![r"^\s*场\s+\d+".to_string()],
+        filename_patterns: Vec::new(),
     };
     let text = "幕 1\n场 1\n第一段正文。\n场 2\n第二段正文。";
     let document = parse_text_import_document(text, "测试书", Some(&rules));
@@ -2265,6 +2267,30 @@ fn accepts_custom_text_import_heading_rules() {
     assert_eq!(document.sections[1].parent.as_deref(), Some("幕 1"));
     assert_eq!(document.sections[1].title, "场 1");
     assert_eq!(document.sections[2].title, "场 2");
+}
+
+#[test]
+fn resolves_text_import_filename_templates_as_ordered_full_matches() {
+    let default_metadata = text_import_filename_metadata(Path::new("《示例书》.txt"), None);
+    assert_eq!(default_metadata.title, "示例书");
+    assert_eq!(default_metadata.creator, "");
+
+    let fallback_metadata = text_import_filename_metadata(Path::new("《示例书》作者：示例作者.txt"), None);
+    assert_eq!(fallback_metadata.title, "《示例书》作者：示例作者");
+    assert_eq!(fallback_metadata.creator, "");
+
+    let rules = TextImportRulesInput {
+        filename_patterns: vec![
+            "《$title》".to_string(),
+            "《$title》作者：$author".to_string(),
+            "$title".to_string(),
+        ],
+        group_patterns: Vec::new(),
+        chapter_patterns: Vec::new(),
+    };
+    let parsed_metadata = text_import_filename_metadata(Path::new("《示例书》作者：示例作者.txt"), Some(&rules));
+    assert_eq!(parsed_metadata.title, "示例书");
+    assert_eq!(parsed_metadata.creator, "示例作者");
 }
 
 #[test]

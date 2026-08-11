@@ -283,6 +283,8 @@
   "settings.txt_import.auto_import.description": "Skip the import preview and detect TXT file encoding automatically.",
   "settings.txt_import.chapter_rules": "Chapter rules",
   "settings.txt_import.chapter_rules.description": "Enter one {1} per line. Matching headings create chapters under the current group.",
+  "settings.txt_import.filename_rules": "Filename parsing rules",
+  "settings.txt_import.filename_rules.description": "Enter one {1} per line. Use $title and, optionally, $author.",
   "settings.txt_import.group_rules": "Group rules",
   "settings.txt_import.group_rules.description": "Enter one {1} per line. Matching headings create top-level groups.",
   "settings.txt_import.regular_expression": "regular expression",

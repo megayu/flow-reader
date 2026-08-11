@@ -106,7 +106,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
         setCreatorOverrides((current) => {
           const next = { ...current }
           for (const item of items) {
-            if (next[item.path] === undefined) next[item.path] = ''
+            if (next[item.path] === undefined) next[item.path] = item.creator ?? ''
           }
           return next
         })
@@ -203,7 +203,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
         path: preview.path,
         encoding: encodingOverrides[preview.path] ?? preview.encoding,
         title: (titleOverrides[preview.path] ?? preview.title).trim(),
-        creator: (creatorOverrides[preview.path] ?? '').trim(),
+        creator: (creatorOverrides[preview.path] ?? preview.creator ?? '').trim(),
       })
     }
   }
