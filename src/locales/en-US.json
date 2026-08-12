@@ -108,6 +108,7 @@
   "home.library_filter.search_authors": "Search authors",
   "home.library_filter.search_tags": "Search tags",
   "home.library_filter.status": "Reading status",
+  "home.library_filter.tag_exists": "A tag with that name already exists",
   "home.library_filter.tag_name": "Tag name",
   "home.library_filter.tags": "Tags",
   "home.library_filter.title": "Filter",

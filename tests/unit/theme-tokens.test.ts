@@ -113,6 +113,16 @@ function testFlowThemeTokensCoverPresetsAndContrast() {
       contrastRatio(tokens['--flow-accent-text'], tokens['--flow-accent']) >= 4.5,
       `Expected readable accent text for ${preset.id}`,
     )
+    assert.ok(tokens['--flow-success'], `Expected ${preset.id} to define --flow-success`)
+    assert.ok(tokens['--flow-warning'], `Expected ${preset.id} to define --flow-warning`)
+    assert.ok(
+      contrastRatio(tokens['--flow-success'], tokens['--flow-bg-panel']) >= 3,
+      `Expected visible success feedback for ${preset.id}`,
+    )
+    assert.ok(
+      contrastRatio(tokens['--flow-warning'], tokens['--flow-bg-panel']) >= 3,
+      `Expected visible warning feedback for ${preset.id}`,
+    )
     assert.ok(
       contrastRatio(tokens['--flow-danger-text'], tokens['--flow-danger-bg']) >= 4.5,
       `Expected readable danger text for ${preset.id}`,

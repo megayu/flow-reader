@@ -4,11 +4,12 @@ import { Button as UiButton } from '../components/ui/button'
 import { ConfirmDialog } from '../components/ui/confirm-dialog'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
+import { useNotify } from '../components/ui/notificationContext'
 import { useTranslation } from '../hooks/useTranslation'
 import { db } from '../storage/client'
 import type { LibraryTagRecord } from '../storage/types'
 
-import { cleanLibraryTagName } from './filters'
+import { cleanLibraryTagName, sameLibraryTagName } from './filters'
 
 interface LibraryTagDialogProps {
   onClose: () => void
@@ -17,6 +18,7 @@ interface LibraryTagDialogProps {
 
 export function EditLibraryTagDialog({ onClose, tag }: LibraryTagDialogProps) {
   const t = useTranslation('home')
+  const notify = useNotify()
   const inputRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState(tag.name)
   const trimmedName = cleanLibraryTagName(name)
@@ -24,7 +26,22 @@ export function EditLibraryTagDialog({ onClose, tag }: LibraryTagDialogProps) {
 
   const save = () => {
     if (!canSave) return
-    void db.tags.update(tag.id, trimmedName).then(() => onClose())
+    void (async () => {
+      const tags = await db.tags.toArray()
+      const duplicate = tags.some(
+        (existingTag) => existingTag.id !== tag.id && sameLibraryTagName(existingTag.name, trimmedName),
+      )
+      const updatedTag = duplicate ? undefined : await db.tags.update(tag.id, trimmedName)
+
+      if (!updatedTag) {
+        notify({
+          title: t('library_filter.tag_exists'),
+          type: 'warning',
+        })
+        return
+      }
+      onClose()
+    })()
   }
 
   return (

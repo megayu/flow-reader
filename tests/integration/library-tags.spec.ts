@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 
+import { DEFAULT_NOTIFICATION_AUTO_CLOSE_MS } from '../../src/components/ui/notificationContext'
 import type { BookRecord, ReadingStatus } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
 import { msg } from '../support/i18n'
@@ -223,8 +224,14 @@ test('tag settings create, edit, delete, batch-delete, and clear orphan tags', a
   await newTag.fill('  Focus   Tag  ')
   await newTag.press('Enter')
   await expect(tagOption(settings, 'Focus Tag')).toBeVisible()
+  await page.clock.install()
   await newTag.fill('focus tag')
   await newTag.press('Enter')
+  const tagConflictNotification = page.getByRole('status')
+  await expect(tagConflictNotification).toBeVisible()
+  await page.clock.fastForward(DEFAULT_NOTIFICATION_AUTO_CLOSE_MS)
+  await expect(tagConflictNotification).toHaveCount(0)
+  await page.clock.resume()
   await expect
     .poll(async () => (await getStoredLibraryMockState(page)).tags.filter((tag) => tag.name === 'Focus Tag').length)
     .toBe(1)
@@ -239,6 +246,9 @@ test('tag settings create, edit, delete, batch-delete, and clear orphan tags', a
   await expect(save).toBeDisabled()
   await tagName.fill(researchTag.name)
   await save.click()
+  await expect(tagConflictNotification).toBeVisible()
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: msg('home.cancel'), exact: true }).click()
   await expect(tagOption(settings, 'Focus Tag')).toBeVisible()
 
   await tagOption(settings, 'Focus Tag').click({ button: 'right' })

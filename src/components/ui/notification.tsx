@@ -1,12 +1,10 @@
-import { CheckCircleIcon, TriangleAlertIcon, XIcon } from 'lucide-react'
+import { CheckCircleIcon, CircleXIcon, TriangleAlertIcon, XIcon } from 'lucide-react'
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { cn } from '@/utils'
 
 import { Button } from './button'
-import { NotificationContext, type NotificationInput } from './notificationContext'
-
-const DEFAULT_NOTIFICATION_AUTO_CLOSE_MS = 5000
+import { DEFAULT_NOTIFICATION_AUTO_CLOSE_MS, NotificationContext, type NotificationInput } from './notificationContext'
 
 interface NotificationRecord extends NotificationInput {
   id: number
@@ -26,7 +24,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       {
         ...notification,
         autoCloseMs:
-          notification.autoCloseMs ?? (notification.type === 'success' ? DEFAULT_NOTIFICATION_AUTO_CLOSE_MS : false),
+          notification.autoCloseMs ?? (notification.type === 'error' ? false : DEFAULT_NOTIFICATION_AUTO_CLOSE_MS),
         id,
       },
     ])
@@ -74,20 +72,31 @@ function NotificationToast({
     return () => window.clearTimeout(timeout)
   }, [notification.autoCloseMs, notification.id, onDismiss])
 
-  const Icon = notification.type === 'success' ? CheckCircleIcon : TriangleAlertIcon
+  const Icon = {
+    error: CircleXIcon,
+    success: CheckCircleIcon,
+    warning: TriangleAlertIcon,
+  }[notification.type]
+  const borderClassName = {
+    error: 'border-l-(--flow-danger)',
+    success: 'border-l-(--flow-success)',
+    warning: 'border-l-(--flow-warning)',
+  }[notification.type]
+  const iconClassName = {
+    error: 'text-(--flow-danger)',
+    success: 'text-(--flow-success)',
+    warning: 'text-(--flow-warning)',
+  }[notification.type]
 
   return (
     <section
       className={cn(
-        'bg-popover text-popover-foreground ring-foreground/10 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg p-3 text-base shadow-lg ring-1',
-        notification.type === 'success' ? 'border-l-4 border-l-(--flow-accent)' : 'border-l-4 border-l-(--flow-danger)',
+        'bg-popover text-popover-foreground ring-foreground/10 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border-l-4 p-3 text-base shadow-lg ring-1',
+        borderClassName,
       )}
       role={notification.type === 'error' ? 'alert' : 'status'}
     >
-      <Icon
-        aria-hidden
-        className={cn('size-4', notification.type === 'success' ? 'text-(--flow-accent)' : 'text-(--flow-danger)')}
-      />
+      <Icon aria-hidden className={cn('size-4', iconClassName)} />
       <div className="min-w-0 cursor-text space-y-1 wrap-anywhere select-text">
         <h2 className="text-foreground text-base leading-tight font-medium">{notification.title}</h2>
         {notification.description && <p className="text-muted-foreground leading-snug">{notification.description}</p>}

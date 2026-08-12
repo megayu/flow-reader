@@ -1,6 +1,8 @@
 import { createContext, useContext } from 'react'
 
-export type NotificationType = 'success' | 'error'
+export const DEFAULT_NOTIFICATION_AUTO_CLOSE_MS = 5000
+
+export type NotificationType = 'success' | 'warning' | 'error'
 
 export interface NotificationInput {
   action?: {

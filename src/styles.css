@@ -108,6 +108,8 @@ body,
   --flow-accent-bg-hover: #ccecfa;
   --flow-accent-border: #9ad9f6;
   --flow-focus-ring: #0ea5e9;
+  --flow-success: #15803d;
+  --flow-warning: #a16207;
   --flow-danger: #dc2626;
   --flow-danger-bg: #fee2e2;
   --flow-danger-bg-hover: #fecaca;
@@ -510,6 +512,8 @@ p {
   --flow-accent-bg-hover: #28576d;
   --flow-accent-border: #2c7393;
   --flow-focus-ring: #38bdf8;
+  --flow-success: #4ade80;
+  --flow-warning: #facc15;
   --flow-danger: #f87171;
   --flow-danger-bg: #451a1a;
   --flow-danger-bg-hover: #5f1f23;

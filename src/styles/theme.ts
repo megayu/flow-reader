@@ -92,6 +92,8 @@ type FlowThemeTokenName =
   | '--flow-accent-bg-hover'
   | '--flow-accent-border'
   | '--flow-focus-ring'
+  | '--flow-success'
+  | '--flow-warning'
   | '--flow-danger'
   | '--flow-danger-bg'
   | '--flow-danger-bg-hover'
@@ -367,6 +369,8 @@ function createLightFlowThemeTokens(seed: string, accent: string, contrast: Flow
     '--flow-accent-bg-hover': mixHexColor(content, accent, highContrast ? 0.29 : 0.21),
     '--flow-accent-border': mixHexColor(content, accent, highContrast ? 0.58 : 0.42),
     '--flow-focus-ring': accent,
+    '--flow-success': '#15803D',
+    '--flow-warning': '#A16207',
     '--flow-danger': '#DC2626',
     '--flow-danger-bg': '#FEE2E2',
     '--flow-danger-bg-hover': '#FECACA',
@@ -430,6 +434,8 @@ function createDarkFlowThemeTokens(seed: string, accent: string, contrast: FlowT
     '--flow-accent-bg-hover': mixHexColor(content, accent, highContrast ? 0.44 : 0.34),
     '--flow-accent-border': mixHexColor(content, accent, highContrast ? 0.66 : 0.52),
     '--flow-focus-ring': accent,
+    '--flow-success': '#4ADE80',
+    '--flow-warning': '#FACC15',
     '--flow-danger': '#F87171',
     '--flow-danger-bg': '#451A1A',
     '--flow-danger-bg-hover': '#5F1F23',

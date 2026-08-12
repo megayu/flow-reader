@@ -108,6 +108,7 @@
   "home.library_filter.search_authors": "搜索作者",
   "home.library_filter.search_tags": "搜索标签",
   "home.library_filter.status": "阅读状态",
+  "home.library_filter.tag_exists": "已存在同名标签",
   "home.library_filter.tag_name": "标签名称",
   "home.library_filter.tags": "标签",
   "home.library_filter.title": "筛选",
