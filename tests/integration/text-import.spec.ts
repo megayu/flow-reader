@@ -2,6 +2,7 @@ import path from 'node:path'
 
 import { expect, type Page, test } from '@playwright/test'
 
+import { defaultTextImportRules } from '../../src/settings/configuration'
 import { createTestBook } from '../support/book-fixtures'
 import { msg } from '../support/i18n'
 import {
@@ -29,6 +30,18 @@ async function getStoredGroupPatterns(page: Page) {
   }
 
   return settings.textImportRules?.groupPatterns ?? null
+}
+
+async function getStoredTextImportRules(page: Page) {
+  const settings = (await getStoredSettings(page)) as {
+    textImportRules?: {
+      groupPatterns?: string[]
+      chapterPatterns?: string[]
+      filenamePatterns?: string[]
+    }
+  }
+
+  return settings.textImportRules ?? null
 }
 
 test('TXT import dialog sends edited title and author metadata', async ({ page }) => {
@@ -277,4 +290,41 @@ test('TXT import rules preserve enter input and persist by line', async ({ page 
       return settings.textImportRules?.groupPatterns
     })
     .toEqual(['^part$', '^book$'])
+})
+
+test('TXT import rule defaults restore one rule group at a time', async ({ page }) => {
+  const customRules = {
+    groupPatterns: ['^custom-group$'],
+    chapterPatterns: ['^custom-chapter$'],
+    filenamePatterns: ['custom-$title'],
+  }
+  await installTauriMock(page, {
+    settings: {
+      textImportRules: customRules,
+    },
+  })
+  await page.goto('/')
+  await expect(page.locator('#layout')).toBeVisible()
+
+  const dialog = await openSettings(page)
+  await dialog.getByRole('button', { name: msg('settings.tabs.txt') }).click()
+
+  const restoreButtons = dialog.getByRole('button', {
+    name: msg('settings.txt_import.restore_defaults'),
+    exact: true,
+  })
+  await expect(restoreButtons).toHaveCount(3)
+
+  const expected = { ...customRules }
+  const rules = [
+    ['groupPatterns', defaultTextImportRules.groupPatterns],
+    ['chapterPatterns', defaultTextImportRules.chapterPatterns],
+    ['filenamePatterns', defaultTextImportRules.filenamePatterns],
+  ] as const
+
+  for (const [index, [key, defaults]] of rules.entries()) {
+    await restoreButtons.nth(index).click()
+    expected[key] = defaults
+    await expect.poll(() => getStoredTextImportRules(page)).toEqual(expected)
+  }
 })

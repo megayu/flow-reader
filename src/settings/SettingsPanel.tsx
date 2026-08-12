@@ -1,10 +1,11 @@
 import clsx from 'clsx'
-import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
+import { ChevronDownIcon, ChevronUpIcon, RotateCcwIcon } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { RenditionSpread } from '@flow/epubjs/rendition'
 import { normalizeHexColor } from '@/color'
+import { AppTooltip } from '@/components/AppTooltip'
 import { ColorPickerPopover } from '@/components/ColorPickerPopover'
 import { ColorValueButton } from '@/components/ColorValueButton'
 import { ShortcutChord } from '@/components/ShortcutChord'
@@ -56,6 +57,28 @@ export const SettingsPanel: React.FC = () => {
         ...patch,
       },
     }))
+  }
+  const restoreTextImportRule = (key: keyof typeof defaultTextImportRules) => {
+    updateTextImportRules({ [key]: [...defaultTextImportRules[key]] })
+  }
+  const textImportRuleRestoreButton = (key: keyof typeof defaultTextImportRules) => {
+    const label = t('txt_import.restore_defaults')
+
+    return (
+      <AppTooltip label={label}>
+        <UiButton
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="text-muted-foreground hover:text-(--flow-text)"
+          aria-label={label}
+          disabled={arePatternListsEqual(textImportRules[key], defaultTextImportRules[key])}
+          onClick={() => restoreTextImportRule(key)}
+        >
+          <RotateCcwIcon aria-hidden />
+        </UiButton>
+      </AppTooltip>
+    )
   }
 
   return (
@@ -324,6 +347,7 @@ export const SettingsPanel: React.FC = () => {
               </Item>
               <Item
                 title={t('txt_import.group_rules')}
+                titleAction={textImportRuleRestoreButton('groupPatterns')}
                 description={<RegexDescription descriptionKey="txt_import.group_rules.description" />}
                 wideControl
               >
@@ -335,6 +359,7 @@ export const SettingsPanel: React.FC = () => {
               </Item>
               <Item
                 title={t('txt_import.chapter_rules')}
+                titleAction={textImportRuleRestoreButton('chapterPatterns')}
                 description={<RegexDescription descriptionKey="txt_import.chapter_rules.description" />}
                 wideControl
               >
@@ -346,6 +371,7 @@ export const SettingsPanel: React.FC = () => {
               </Item>
               <Item
                 title={t('txt_import.filename_rules')}
+                titleAction={textImportRuleRestoreButton('filenamePatterns')}
                 description={<RegexDescription descriptionKey="txt_import.filename_rules.description" />}
                 wideControl
               >
@@ -355,22 +381,6 @@ export const SettingsPanel: React.FC = () => {
                   onChange={(patterns) => updateTextImportRules({ filenamePatterns: patterns })}
                 />
               </Item>
-              <div className="flex justify-end">
-                <UiButton
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground hover:bg-muted hover:text-muted-foreground h-8 rounded-sm px-3 text-base"
-                  onClick={() => {
-                    setSettings((prev) => ({
-                      ...prev,
-                      textImportRules: defaultTextImportRules,
-                    }))
-                  }}
-                >
-                  {t('txt_import.restore_defaults')}
-                </UiButton>
-              </div>
             </div>
           )}
           {activeTab === 'dictionary' && (
@@ -515,6 +525,10 @@ function parsePatternText(value: string) {
     if (pattern) patterns.push(pattern)
   }
   return patterns
+}
+
+function arePatternListsEqual(left: string[], right: string[]) {
+  return left.length === right.length && left.every((pattern, index) => pattern === right[index])
 }
 
 function RegexDescription({ descriptionKey }: { descriptionKey: string }) {

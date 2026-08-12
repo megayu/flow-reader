@@ -6,13 +6,29 @@ interface SettingsItemProps {
   controlId?: string
   description?: ReactNode
   title: string
+  titleAction?: ReactNode
   wideControl?: boolean
 }
 
-export function SettingsItem({ title, children, controlId, description, wideControl = false }: SettingsItemProps) {
+export function SettingsItem({
+  title,
+  titleAction,
+  children,
+  controlId,
+  description,
+  wideControl = false,
+}: SettingsItemProps) {
+  const heading = <h3 className="text-base leading-tight font-semibold text-(--flow-text)">{title}</h3>
   const information = (
     <>
-      <h3 className="text-base leading-tight font-semibold text-(--flow-text)">{title}</h3>
+      {titleAction ? (
+        <div className="flex min-w-0 items-center gap-2">
+          {heading}
+          <div className="flex shrink-0 items-center">{titleAction}</div>
+        </div>
+      ) : (
+        heading
+      )}
       {description && <p className="text-muted-foreground mt-0 py-0 text-sm leading-snug">{description}</p>}
     </>
   )

@@ -101,7 +101,7 @@ export const defaultTextImportRules: TextImportRulesConfiguration = {
     '^\\s*(简介|序言|序|前言|自序|楔子|后记|尾声|番外|附录).*',
     '^\\s*Chapter\\s+[0-9IVXLCDM]+.*',
   ],
-  filenamePatterns: ['《$title》'],
+  filenamePatterns: ['《$title》.+作者：$author', '《$title》'],
 }
 
 export function normalizeTextImportRules(

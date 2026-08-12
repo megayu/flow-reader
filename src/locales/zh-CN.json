@@ -292,7 +292,7 @@
   "settings.txt_import.group_rules": "分组规则",
   "settings.txt_import.group_rules.description": "每行输入一个{1}，匹配的标题会作为卷、部或篇等顶层分组。",
   "settings.txt_import.regular_expression": "正则表达式",
-  "settings.txt_import.restore_defaults": "恢复默认规则",
+  "settings.txt_import.restore_defaults": "恢复默认",
   "settings.ui_font_size": "界面字号",
   "settings.ui_font_size.description": "仅调整应用界面文字，阅读正文字号请在“排版”中设置。",
 

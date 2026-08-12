@@ -291,7 +291,7 @@
   "settings.txt_import.group_rules": "Group rules",
   "settings.txt_import.group_rules.description": "Enter one {1} per line. Matching headings create top-level groups.",
   "settings.txt_import.regular_expression": "regular expression",
-  "settings.txt_import.restore_defaults": "Restore default rules",
+  "settings.txt_import.restore_defaults": "Restore default",
   "settings.ui_font_size": "Interface font size",
   "settings.ui_font_size.description": "Changes interface text only. Reading text is controlled separately in Typography.",
 

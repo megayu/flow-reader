@@ -2274,9 +2274,9 @@ fn resolves_text_import_filename_templates_as_ordered_full_matches() {
     assert_eq!(default_metadata.title, "示例书");
     assert_eq!(default_metadata.creator, "");
 
-    let fallback_metadata = text_import_filename_metadata(Path::new("《示例书》作者：示例作者.txt"), None);
-    assert_eq!(fallback_metadata.title, "《示例书》作者：示例作者");
-    assert_eq!(fallback_metadata.creator, "");
+    let author_metadata = text_import_filename_metadata(Path::new("《示例书》 - 作者：示例作者.txt"), None);
+    assert_eq!(author_metadata.title, "示例书");
+    assert_eq!(author_metadata.creator, "示例作者");
 
     let rules = TextImportRulesInput {
         filename_patterns: vec![

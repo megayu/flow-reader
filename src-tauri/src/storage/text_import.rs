@@ -539,7 +539,7 @@ struct TextImportRule {
 }
 
 fn default_text_import_filename_patterns() -> Vec<String> {
-    vec!["《$title》".to_string()]
+    vec!["《$title》.+作者：$author".to_string(), "《$title》".to_string()]
 }
 
 fn default_text_import_rules_input() -> TextImportRulesInput {
