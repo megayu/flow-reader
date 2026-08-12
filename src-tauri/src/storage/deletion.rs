@@ -152,7 +152,7 @@ pub(super) fn clear_book_caches_impl(
         }
     }
     storage.mark_library_dirty();
-    storage.flush_dirty()?;
+    storage.flush_content_dirty()?;
 
     let updated_books = restored_source_ids
         .into_iter()
@@ -321,7 +321,7 @@ pub(super) fn delete_books_impl(storage: &AppStorage, tasks: &TaskService, ids: 
     let source_count = ids.len();
     let pending_deletes = rename_books_for_deletion(storage, &ids)?;
     let pending_delete_count = pending_deletes.len();
-    storage.flush_dirty()?;
+    storage.flush_content_dirty()?;
     enqueue_pending_delete_cleanup(tasks, pending_deletes);
     let mut fields = vec![
         ("sources", source_count.to_string()),

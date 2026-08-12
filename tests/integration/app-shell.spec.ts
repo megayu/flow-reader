@@ -1,7 +1,13 @@
 import { expect, type Page, test } from '@playwright/test'
 
 import { msg } from '../support/i18n'
-import { getFullscreenState, getStoredSettings, installTauriMock } from '../support/tauri-mock'
+import {
+  clearSettingsOperations,
+  getFullscreenState,
+  getSettingsOperations,
+  getStoredSettings,
+  installTauriMock,
+} from '../support/tauri-mock'
 
 const settingsShortcut = process.platform === 'darwin' ? 'Meta+Comma' : 'Control+Comma'
 const accentColor = '#E11D48'
@@ -141,6 +147,26 @@ test('settings dropdown dismissal closes one layer at a time', async ({ page }) 
 
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
+})
+
+test('settings close flushes only a changed session after its update', async ({ page }) => {
+  let dialog = await openSettings(page)
+  await clearSettingsOperations(page)
+  await dialog.locator('[data-slot="dialog-close"]').click()
+  await expect(dialog).toBeHidden()
+  expect(await getSettingsOperations(page)).toEqual([])
+
+  dialog = await openSettings(page)
+  await dialog
+    .getByRole('checkbox', {
+      name: msg('settings.source_storage'),
+    })
+    .click()
+  await expect.poll(() => getSettingsOperations(page)).toEqual(['update'])
+
+  await dialog.locator('[data-slot="dialog-close"]').click()
+  await expect(dialog).toBeHidden()
+  await expect.poll(() => getSettingsOperations(page)).toEqual(['update', 'flush'])
 })
 
 test('app UI font size changes app chrome without changing reading font size', async ({ page }) => {

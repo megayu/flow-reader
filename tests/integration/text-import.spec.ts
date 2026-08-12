@@ -2,7 +2,6 @@ import path from 'node:path'
 
 import { expect, type Page, test } from '@playwright/test'
 
-import { defaultTextImportRules } from '../../src/settings/configuration'
 import { createTestBook } from '../support/book-fixtures'
 import { msg } from '../support/i18n'
 import {
@@ -293,12 +292,18 @@ test('TXT import rules preserve enter input and persist by line', async ({ page 
 })
 
 test('TXT import rule defaults restore one rule group at a time', async ({ page }) => {
+  const textImportRuleDefaults = {
+    groupPatterns: ['^default-group$'],
+    chapterPatterns: ['^default-chapter$'],
+    filenamePatterns: ['default-$title'],
+  }
   const customRules = {
     groupPatterns: ['^custom-group$'],
     chapterPatterns: ['^custom-chapter$'],
     filenamePatterns: ['custom-$title'],
   }
   await installTauriMock(page, {
+    textImportRuleDefaults,
     settings: {
       textImportRules: customRules,
     },
@@ -317,9 +322,9 @@ test('TXT import rule defaults restore one rule group at a time', async ({ page 
 
   const expected = { ...customRules }
   const rules = [
-    ['groupPatterns', defaultTextImportRules.groupPatterns],
-    ['chapterPatterns', defaultTextImportRules.chapterPatterns],
-    ['filenamePatterns', defaultTextImportRules.filenamePatterns],
+    ['groupPatterns', textImportRuleDefaults.groupPatterns],
+    ['chapterPatterns', textImportRuleDefaults.chapterPatterns],
+    ['filenamePatterns', textImportRuleDefaults.filenamePatterns],
   ] as const
 
   for (const [index, [key, defaults]] of rules.entries()) {

@@ -35,6 +35,7 @@ mod model;
 mod publication;
 mod reading_metrics;
 mod search;
+pub(crate) mod settings;
 mod state;
 mod text_import;
 mod window_state;
@@ -194,20 +195,21 @@ impl AppStorage {
         let root = data_root(app)?;
         let library = read_json_or_default::<Library>(&library_path(&root)?)?;
         let external = read_json_or_default::<ExternalBookIndex>(&external_index_path(&root)?)?;
-        let settings = read_json_value_or_default(&settings_path(&root)?)?;
+        let settings_path = settings_path(&root)?;
+        let initialize_settings = !settings_path.exists();
+        let mut settings = read_json_value_or_default(&settings_path)?;
+        if initialize_settings {
+            settings::initialize_first_launch_settings(&mut settings)?;
+        }
         if library.books.iter().any(|book| !is_valid_book_storage_id(&book.id))
             || external.books.iter().any(|book| !is_external_book_id(&book.id))
         {
             return Err("Storage contains an invalid book id".to_string());
         }
-        Ok(Self {
+        let storage = Self {
             inner: Arc::new(StorageInner {
                 root,
-                state: Mutex::new(StorageState {
-                    library,
-                    external,
-                    settings,
-                }),
+                state: Mutex::new(StorageState::new(library, external, settings)),
                 dirty: Mutex::new(DirtyState::default()),
                 flush_lock: Mutex::new(()),
                 import_lock: Mutex::new(()),
@@ -228,7 +230,11 @@ impl AppStorage {
                 #[cfg(test)]
                 text_import_prepared_handoff_max_active: std::sync::atomic::AtomicUsize::new(0),
             }),
-        })
+        };
+        if initialize_settings {
+            storage.mark_settings_dirty();
+        }
+        Ok(storage)
     }
 
     pub(crate) fn root(&self) -> &Path {
@@ -531,17 +537,13 @@ impl AppStorage {
             .unwrap_or(false)
     }
 
-    fn text_import_rules(&self) -> Result<Option<TextImportRulesInput>, String> {
+    fn text_import_rules(&self) -> Result<TextImportRulesInput, String> {
         let state = self
             .inner
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        Ok(state
-            .settings
-            .get("textImportRules")
-            .cloned()
-            .and_then(|value| serde_json::from_value(value).ok()))
+        Ok(state.text_import_rules.clone())
     }
 }
 

@@ -110,7 +110,7 @@ pub(super) fn set_book_content_access(storage: &AppStorage, id: &str, mode: Book
         } else {
             storage.mark_library_dirty();
         }
-        storage.flush_dirty()?;
+        storage.flush_content_dirty()?;
     }
 
     Ok(())
@@ -319,7 +319,7 @@ fn publish_unpacked_book_package_with(
     }
 
     if publication_changed && mark_library_book_content_updated(storage, &book.id)?.is_some() {
-        storage.flush_dirty()?;
+        storage.flush_content_dirty()?;
     }
 
     Ok(unpacked_dir.join(opf_relative_path))

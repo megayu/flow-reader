@@ -1,7 +1,10 @@
+import { useEffect } from 'react'
+
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { useBookCacheClearing } from '@/state'
 
 import { SettingsPanel } from './SettingsPanel'
+import { currentSettingsRevision, flushSettingsIfChangedSince } from './sync'
 
 interface SettingsDialogProps {
   open: boolean
@@ -10,6 +13,15 @@ interface SettingsDialogProps {
 
 export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const bookCacheClearing = useBookCacheClearing()
+
+  useEffect(() => {
+    if (!open) return
+    const openRevision = currentSettingsRevision()
+
+    return () => {
+      void flushSettingsIfChangedSince(openRevision).catch(console.error)
+    }
+  }, [open])
 
   return (
     <Dialog

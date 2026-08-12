@@ -228,7 +228,7 @@ pub fn update_library_pin(
 
     if changed {
         storage.mark_library_dirty();
-        storage.flush_dirty()?;
+        storage.flush_content_dirty()?;
     }
     let state = storage
         .inner
@@ -276,7 +276,7 @@ pub fn create_tag(storage: State<'_, AppStorage>, name: String) -> Result<Option
     };
 
     storage.mark_library_dirty();
-    storage.flush_dirty()?;
+    storage.flush_content_dirty()?;
     Ok(Some(tag))
 }
 
@@ -317,7 +317,7 @@ pub fn update_tag(
     };
 
     storage.mark_library_dirty();
-    storage.flush_dirty()?;
+    storage.flush_content_dirty()?;
     Ok(Some(tag))
 }
 
@@ -349,7 +349,7 @@ pub(super) fn delete_tags_impl(storage: &AppStorage, ids: Vec<String>) -> Result
     }
 
     storage.mark_library_dirty();
-    storage.flush_dirty()?;
+    storage.flush_content_dirty()?;
     Ok(())
 }
 
@@ -450,7 +450,7 @@ pub(super) fn merge_tags_impl(
     };
 
     storage.mark_library_dirty();
-    storage.flush_dirty()?;
+    storage.flush_content_dirty()?;
     Ok(target)
 }
 
@@ -514,7 +514,7 @@ pub fn update_book_tags(
     }
 
     storage.mark_library_dirty();
-    storage.flush_dirty()
+    storage.flush_content_dirty()
 }
 
 #[tauri::command]
@@ -542,7 +542,7 @@ pub fn update_book_reading_status(
     }
 
     storage.mark_library_dirty();
-    storage.flush_dirty()
+    storage.flush_content_dirty()
 }
 
 #[tauri::command]
@@ -899,7 +899,7 @@ pub async fn preview_text_import_paths(
     paths: Vec<String>,
     encodings: HashMap<String, String>,
 ) -> Result<Vec<TextImportPreview>, String> {
-    let rules = storage.text_import_rules()?;
+    let rules = Some(storage.text_import_rules()?);
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -1018,7 +1018,7 @@ pub async fn import_text_paths(
     copy_source_files: Option<bool>,
     on_progress: Channel<BookImportProgress>,
 ) -> Result<BookImportResult, String> {
-    let rules = storage.text_import_rules()?;
+    let rules = Some(storage.text_import_rules()?);
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -1277,7 +1277,7 @@ fn finalize_import_batch(
         return Ok(());
     }
 
-    storage.flush_dirty()?;
+    storage.flush_content_dirty()?;
     let mut pending_deletes = Vec::new();
     for finalizer in finalizers {
         if let Err(error) = finalizer.finalize(&mut pending_deletes) {
@@ -1537,7 +1537,7 @@ fn configuration_with_recorded_spread(current: Option<&Value>, spread: Option<Va
 #[tauri::command]
 pub fn record_reading_position(storage: State<'_, AppStorage>, position: ReadingPositionInput) -> Result<(), String> {
     record_reading_position_impl(&storage, position)?;
-    storage.flush_dirty()
+    storage.flush_content_dirty()
 }
 
 #[tauri::command]
@@ -1700,7 +1700,7 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
         storage.mark_library_dirty();
     }
     if immediate_flush || reading_position_only {
-        storage.flush_dirty()?;
+        storage.flush_content_dirty()?;
     }
 
     if cover_changed {
@@ -1783,7 +1783,7 @@ fn update_external_book(storage: &AppStorage, id: String, changes: Value) -> Res
         storage.mark_external_dirty();
     }
     if immediate_flush || state_changed || external_changed {
-        storage.flush_dirty()?;
+        storage.flush_content_dirty()?;
     }
 
     Ok(())
@@ -1796,29 +1796,4 @@ pub fn delete_books(
     ids: Vec<String>,
 ) -> Result<(), String> {
     delete_books_impl(&storage, &tasks, ids)
-}
-
-#[tauri::command]
-pub fn get_settings(storage: State<'_, AppStorage>) -> Result<Value, String> {
-    let state = storage
-        .inner
-        .state
-        .lock()
-        .map_err(|_| "storage state lock poisoned".to_string())?;
-    Ok(state.settings.clone())
-}
-
-#[tauri::command]
-pub fn update_settings(storage: State<'_, AppStorage>, settings: Value) -> Result<(), String> {
-    {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
-        state.settings = settings;
-    }
-
-    storage.mark_settings_dirty();
-    storage.flush_dirty()
 }

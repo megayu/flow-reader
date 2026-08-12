@@ -4,6 +4,19 @@ pub(super) struct StorageState {
     pub(super) library: Library,
     pub(super) external: ExternalBookIndex,
     pub(super) settings: Value,
+    pub(super) text_import_rules: TextImportRulesInput,
+}
+
+impl StorageState {
+    pub(super) fn new(library: Library, external: ExternalBookIndex, settings: Value) -> Self {
+        let text_import_rules = settings::text_import_rules_from_settings(&settings);
+        Self {
+            library,
+            external,
+            settings,
+            text_import_rules,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -18,7 +31,7 @@ impl AppStorage {
         if let Err(error) = self.flush_all_derived_caches() {
             eprintln!("Failed to flush derived book caches: {error}");
         }
-        if let Err(error) = self.flush_dirty() {
+        if let Err(error) = self.flush_all_dirty() {
             eprintln!("Failed to flush app storage: {error}");
         }
     }
@@ -41,7 +54,24 @@ impl AppStorage {
         }
     }
 
-    pub fn flush_dirty(&self) -> Result<(), String> {
+    pub(super) fn flush_content_dirty(&self) -> Result<(), String> {
+        self.flush_selected_dirty(true, true, false)
+    }
+
+    pub(super) fn flush_settings_dirty(&self) -> Result<(), String> {
+        self.flush_selected_dirty(false, false, true)
+    }
+
+    pub(super) fn flush_all_dirty(&self) -> Result<(), String> {
+        self.flush_selected_dirty(true, true, true)
+    }
+
+    fn flush_selected_dirty(
+        &self,
+        flush_library: bool,
+        flush_external: bool,
+        flush_settings: bool,
+    ) -> Result<(), String> {
         let _flush_guard = self
             .inner
             .flush_lock
@@ -54,13 +84,19 @@ impl AppStorage {
                 .lock()
                 .map_err(|_| "storage dirty lock poisoned".to_string())?;
             let snapshot = DirtyState {
-                library: dirty.library,
-                external: dirty.external,
-                settings: dirty.settings,
+                library: flush_library && dirty.library,
+                external: flush_external && dirty.external,
+                settings: flush_settings && dirty.settings,
             };
-            dirty.library = false;
-            dirty.external = false;
-            dirty.settings = false;
+            if flush_library {
+                dirty.library = false;
+            }
+            if flush_external {
+                dirty.external = false;
+            }
+            if flush_settings {
+                dirty.settings = false;
+            }
             snapshot
         };
 

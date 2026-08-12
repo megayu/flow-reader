@@ -375,7 +375,7 @@ pub(super) fn export_book_impl(
     };
 
     storage.mark_library_dirty();
-    storage.flush_dirty()?;
+    storage.flush_content_dirty()?;
 
     storage.compose_book(&book).map(Some)
 }

@@ -1669,17 +1669,17 @@ mod tests {
         AppStorage {
             inner: Arc::new(StorageInner {
                 root: root.to_path_buf(),
-                state: Mutex::new(StorageState {
-                    library: Library {
+                state: Mutex::new(StorageState::new(
+                    Library {
                         version: 1,
                         books,
                         tags: Vec::new(),
                         pins: LibraryPins::default(),
                         recent_book_ids: Vec::new(),
                     },
-                    external: ExternalBookIndex::default(),
-                    settings: json!({}),
-                }),
+                    ExternalBookIndex::default(),
+                    json!({}),
+                )),
                 dirty: Mutex::new(DirtyState::default()),
                 flush_lock: Mutex::new(()),
                 import_lock: Mutex::new(()),

@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 
 import type { LocalDictionaryRecord } from '../../src/dictionary/native'
+import type { TextImportRulesConfiguration } from '../../src/settings/configuration'
 import type { WindowUiState } from '../../src/state'
 import type {
   BookImageIndexCache,
@@ -57,6 +58,7 @@ interface TauriMockOptions {
   sourceStatuses?: Record<string, BookSourceStatus>
   saveDialogPath?: string | null
   settings?: Record<string, unknown>
+  textImportRuleDefaults?: TextImportRulesConfiguration
   tags?: TestLibraryTagRecord[]
   textImportEncodings?: TextImportEncodingOption[]
   textImportDelayMs?: number
@@ -99,6 +101,11 @@ export async function installTauriMock(
     sourceStatuses = {},
     saveDialogPath = null,
     settings = {},
+    textImportRuleDefaults = {
+      groupPatterns: ['^default-group$'],
+      chapterPatterns: ['^default-chapter$'],
+      filenamePatterns: ['default-$title'],
+    },
     tags = [],
     textImportEncodings = [
       { id: 'auto', label: 'Auto' },
@@ -144,6 +151,7 @@ export async function installTauriMock(
       fixtureSourceStatuses,
       fixtureSaveDialogPath,
       fixtureSettings,
+      fixtureTextImportRuleDefaults,
       fixtureTags,
       fixtureTextImportEncodings,
       fixtureTextImportDelayMs,
@@ -213,6 +221,7 @@ export async function installTauriMock(
           openedExternalUrls: string[]
           revealedBookSourceIds: string[]
           takePendingOpenPathsCalls: number
+          settingsOperations: string[]
           settingsStore: Record<string, unknown>
           textImports: TextImportSelection[]
         }
@@ -310,6 +319,7 @@ export async function installTauriMock(
           return fullscreen
         },
         takePendingOpenPathsCalls: 0,
+        settingsOperations: [],
         settingsStore,
         openedExternalUrls: [],
         revealedBookSourceIds: [],
@@ -529,9 +539,36 @@ export async function installTauriMock(
           globalWindow.__FLOW_TEST_TAURI__?.openedExternalUrls.push(String(args?.url ?? ''))
           return null
         }
-        if (command === 'get_settings') return { ...settingsStore }
+        if (command === 'get_settings') {
+          return {
+            settings: { ...settingsStore },
+            textImportRuleDefaults: fixtureTextImportRuleDefaults,
+          }
+        }
         if (command === 'update_settings') {
-          Object.assign(settingsStore, args?.settings ?? {})
+          globalWindow.__FLOW_TEST_TAURI__?.settingsOperations.push('update')
+          const settings = args?.settings
+          if (settings && typeof settings === 'object' && !Array.isArray(settings)) {
+            for (const key of Object.keys(settingsStore)) delete settingsStore[key]
+            Object.assign(settingsStore, settings)
+          }
+          if (args?.flush === true) {
+            localStorage.setItem(settingsStorageKey, JSON.stringify(settingsStore))
+          }
+          return null
+        }
+        if (command === 'reset_text_import_rule') {
+          const kind = String(args?.kind ?? '') as keyof TextImportRulesConfiguration
+          globalWindow.__FLOW_TEST_TAURI__?.settingsOperations.push(`reset:${kind}`)
+          const rules = (settingsStore.textImportRules ?? {}) as Partial<TextImportRulesConfiguration>
+          settingsStore.textImportRules = {
+            ...rules,
+            [kind]: [...fixtureTextImportRuleDefaults[kind]],
+          }
+          return null
+        }
+        if (command === 'flush_settings') {
+          globalWindow.__FLOW_TEST_TAURI__?.settingsOperations.push('flush')
           localStorage.setItem(settingsStorageKey, JSON.stringify(settingsStore))
           return null
         }
@@ -916,6 +953,7 @@ export async function installTauriMock(
       fixtureSourceStatuses: sourceStatuses,
       fixtureSaveDialogPath: saveDialogPath,
       fixtureSettings: settings,
+      fixtureTextImportRuleDefaults: textImportRuleDefaults,
       fixtureTags: tags,
       fixtureTextImportEncodings: textImportEncodings,
       fixtureTextImportDelayMs: textImportDelayMs,
@@ -962,6 +1000,30 @@ export async function getStoredSettings(page: Page) {
     }
 
     return globalWindow.__FLOW_TEST_TAURI__?.settingsStore ?? {}
+  })
+}
+
+export async function getSettingsOperations(page: Page) {
+  return page.evaluate(() => {
+    const globalWindow = window as typeof window & {
+      __FLOW_TEST_TAURI__?: {
+        settingsOperations: string[]
+      }
+    }
+
+    return [...(globalWindow.__FLOW_TEST_TAURI__?.settingsOperations ?? [])]
+  })
+}
+
+export async function clearSettingsOperations(page: Page) {
+  await page.evaluate(() => {
+    const globalWindow = window as typeof window & {
+      __FLOW_TEST_TAURI__?: {
+        settingsOperations: string[]
+      }
+    }
+
+    if (globalWindow.__FLOW_TEST_TAURI__) globalWindow.__FLOW_TEST_TAURI__.settingsOperations.length = 0
   })
 }
 

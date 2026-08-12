@@ -542,7 +542,7 @@ fn default_text_import_filename_patterns() -> Vec<String> {
     vec!["《$title》.+作者：$author".to_string(), "《$title》".to_string()]
 }
 
-fn default_text_import_rules_input() -> TextImportRulesInput {
+pub(super) fn default_text_import_rules_input() -> TextImportRulesInput {
     TextImportRulesInput {
         group_patterns: vec![
             r"^\s*第[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]+[卷部集篇].*".to_string(),
@@ -1264,7 +1264,7 @@ pub(super) fn materialize_library_text_publication(
 ) -> Result<PathBuf, String> {
     let source_path = available_book_source_path(storage, book)?;
     let encoding = source_encoding_id_from_metadata(&book.metadata);
-    let rules = storage.text_import_rules()?;
+    let rules = Some(storage.text_import_rules()?);
     let title = book.metadata.get("title").and_then(Value::as_str).unwrap_or_default();
     let key = text_import_prepared_key(&source_path, encoding.as_deref(), rules.as_ref())?;
     let prepared = prepare_text_import_entry(&source_path, encoding.as_deref(), rules.as_ref(), Some(title), key)?;

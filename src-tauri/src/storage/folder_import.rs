@@ -256,7 +256,7 @@ pub(super) fn apply_folder_import_tags_impl(
 
     if changed {
         storage.mark_library_dirty();
-        storage.flush_dirty()?;
+        storage.flush_content_dirty()?;
     }
     Ok(FolderImportTagResult { books, tags })
 }

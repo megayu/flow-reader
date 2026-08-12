@@ -26,7 +26,7 @@ export interface Settings extends TypographyConfiguration {
   startupSession?: StartupSession
   libraryDisplay?: LibraryDisplayConfiguration
   librarySort?: LibrarySortConfiguration
-  textImportRules?: TextImportRulesConfiguration
+  textImportRules?: Partial<TextImportRulesConfiguration>
   locale?: AppLocale
 }
 
@@ -91,26 +91,14 @@ export const defaultLibraryDisplay: LibraryDisplayConfiguration = {
   bookCardWidth: defaultLibraryBookCardWidth,
 }
 
-export const defaultTextImportRules: TextImportRulesConfiguration = {
-  groupPatterns: [
-    '^\\s*第[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]+[卷部集篇].*',
-    '^\\s*(Book|Part|Volume)\\s+[0-9IVXLCDM]+.*',
-  ],
-  chapterPatterns: [
-    '^\\s*第[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]+[章回节].*',
-    '^\\s*(简介|序言|序|前言|自序|楔子|后记|尾声|番外|附录).*',
-    '^\\s*Chapter\\s+[0-9IVXLCDM]+.*',
-  ],
-  filenamePatterns: ['《$title》.+作者：$author', '《$title》'],
-}
-
 export function normalizeTextImportRules(
   value: Partial<TextImportRulesConfiguration> | undefined,
+  defaults: TextImportRulesConfiguration,
 ): TextImportRulesConfiguration {
   return {
-    groupPatterns: normalizeTextImportPatternList(value?.groupPatterns, defaultTextImportRules.groupPatterns),
-    chapterPatterns: normalizeTextImportPatternList(value?.chapterPatterns, defaultTextImportRules.chapterPatterns),
-    filenamePatterns: normalizeTextImportPatternList(value?.filenamePatterns, defaultTextImportRules.filenamePatterns),
+    groupPatterns: normalizeTextImportPatternList(value?.groupPatterns, defaults.groupPatterns),
+    chapterPatterns: normalizeTextImportPatternList(value?.chapterPatterns, defaults.chapterPatterns),
+    filenamePatterns: normalizeTextImportPatternList(value?.filenamePatterns, defaults.filenamePatterns),
   }
 }
 
@@ -155,7 +143,6 @@ export const defaultSettings: Settings = {
   copyTextImports: false,
   libraryDisplay: defaultLibraryDisplay,
   librarySort: defaultLibrarySort,
-  textImportRules: defaultTextImportRules,
   ui: {
     fontSize: defaultUiFontSize,
   },

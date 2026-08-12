@@ -875,7 +875,7 @@ pub(super) fn replace_book_text_impl(
 
     storage.update_derived_caches_after_edit(&book, &target.section_href, &updated_xhtml)?;
     storage.mark_library_dirty();
-    storage.flush_dirty()?;
+    storage.flush_content_dirty()?;
 
     Ok(BookTextReplaceResult {
         book: storage.compose_book(&book)?,

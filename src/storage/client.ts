@@ -765,7 +765,16 @@ export async function getSettingsFromStorage<T>() {
   return invoke<T>('get_settings')
 }
 
-export async function updateSettingsInStorage<T>(settings: T) {
-  await trackNativeWrite(invoke('update_settings', { settings }))
+export async function updateSettingsInStorage<T>(settings: T, flush: boolean) {
+  await trackNativeWrite(invoke('update_settings', { settings, flush }))
   notify('settings')
+}
+
+export async function resetTextImportRuleInStorage(kind: string) {
+  await trackNativeWrite(invoke('reset_text_import_rule', { kind }))
+  notify('settings')
+}
+
+export async function flushSettingsInStorage() {
+  await trackNativeWrite(invoke('flush_settings'))
 }

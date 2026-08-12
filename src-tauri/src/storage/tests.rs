@@ -3,6 +3,7 @@ use super::commands::{
     preview_text_import_paths_impl, record_reading_position_impl, revealable_book_source_path,
 };
 use super::epub_import::read_bounded_bytes;
+use super::settings::{flush_settings_impl, update_settings_impl};
 use super::text_import::text_import_filename_metadata;
 use super::{
     AppStorage, BOOK_FILE, BOOKS_DIR, BookContentMode, BookExportFormat, BookReaderSourceMode, BookRecord, BookScope,
@@ -19,9 +20,10 @@ use super::{
     parse_text_import_document, path_to_client_string, read_image_index_cache, read_json_or_default,
     read_json_value_or_default, read_search_text_sections_from_unpacked, relative_zip_path, rename_books_for_deletion,
     replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node, schedule_existing_pending_delete_cleanup,
-    search_text_cache_from_bytes, search_text_cache_to_bytes, search_text_in_cache, text_content_opf, text_nav_xhtml,
-    text_section_xhtml, visible_search_text_from_xhtml, write_cover, write_epub_from_original_and_unpacked,
-    write_epub_from_unpacked_dir, write_image_index_cache_if_current, write_source_text_update,
+    search_text_cache_from_bytes, search_text_cache_to_bytes, search_text_in_cache, settings_path, text_content_opf,
+    text_nav_xhtml, text_section_xhtml, visible_search_text_from_xhtml, write_cover,
+    write_epub_from_original_and_unpacked, write_epub_from_unpacked_dir, write_image_index_cache_if_current,
+    write_source_text_update,
 };
 use crate::tasks::TaskService;
 use serde_json::{Value, json};
@@ -44,6 +46,33 @@ fn imported_books_or_first_error(result: BookImportResult) -> Result<Vec<BookRec
         return Err(failure.error);
     }
     Ok(result.books)
+}
+
+#[test]
+fn settings_update_honors_explicit_flush_policy() {
+    let root = std::env::temp_dir().join(format!(
+        "flow-reader-settings-flush-test-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    let storage = test_storage_with_books(&root, Vec::new());
+    let path = settings_path(&root).unwrap();
+    let settings = json!({"locale": "zh-CN"});
+
+    update_settings_impl(&storage, settings.clone(), false).unwrap();
+
+    assert_eq!(storage.inner.state.lock().unwrap().settings, settings);
+    assert!(!path.exists());
+
+    flush_settings_impl(&storage).unwrap();
+
+    assert_eq!(read_json_value_or_default(&path).unwrap(), settings);
+
+    let immediate_settings = json!({"locale": "en"});
+    update_settings_impl(&storage, immediate_settings.clone(), true).unwrap();
+
+    assert_eq!(read_json_value_or_default(&path).unwrap(), immediate_settings);
+    fs::remove_dir_all(root).unwrap();
 }
 
 fn import_single_epub_for_test(
@@ -203,17 +232,17 @@ fn test_storage_with_books(root: &Path, books: Vec<LibraryBook>) -> AppStorage {
     let storage = AppStorage {
         inner: Arc::new(StorageInner {
             root: root.to_path_buf(),
-            state: Mutex::new(StorageState {
-                library: Library {
+            state: Mutex::new(StorageState::new(
+                Library {
                     version: 1,
                     books,
                     tags: Vec::new(),
                     pins: LibraryPins::default(),
                     recent_book_ids: Vec::new(),
                 },
-                external: ExternalBookIndex::default(),
-                settings: json!({"importSourceStorage": "managed"}),
-            }),
+                ExternalBookIndex::default(),
+                json!({"importSourceStorage": "managed"}),
+            )),
             dirty: Mutex::new(DirtyState::default()),
             flush_lock: Mutex::new(()),
             import_lock: Mutex::new(()),
@@ -239,11 +268,11 @@ fn test_storage_from_disk(root: &Path) -> AppStorage {
     AppStorage {
         inner: Arc::new(StorageInner {
             root: root.to_path_buf(),
-            state: Mutex::new(StorageState {
-                library: read_json_or_default::<Library>(&library_path(root).unwrap()).unwrap(),
-                external: read_json_or_default::<ExternalBookIndex>(&external_index_path(root).unwrap()).unwrap(),
-                settings: json!({"importSourceStorage": "managed"}),
-            }),
+            state: Mutex::new(StorageState::new(
+                read_json_or_default::<Library>(&library_path(root).unwrap()).unwrap(),
+                read_json_or_default::<ExternalBookIndex>(&external_index_path(root).unwrap()).unwrap(),
+                json!({"importSourceStorage": "managed"}),
+            )),
             dirty: Mutex::new(DirtyState::default()),
             flush_lock: Mutex::new(()),
             import_lock: Mutex::new(()),
@@ -1635,7 +1664,7 @@ fn importing_persisted_external_epub_promotes_disk_metadata_and_state() {
         .write_book_state(&external.id, &external_promotion_state())
         .unwrap();
     storage.mark_external_dirty();
-    storage.flush_dirty().unwrap();
+    storage.flush_content_dirty().unwrap();
 
     let reloaded = test_storage_from_disk(&root);
     let imported = import_single_epub_for_test(&reloaded, &source, true).unwrap();
@@ -2108,7 +2137,7 @@ fn record_reading_position_persists_state_before_library_flush() {
     assert!(state.contains(r#""cfi": "epubcfi(/6/8)""#));
     assert!(state.contains(r#""percentage": 0.8"#));
 
-    storage.flush_dirty().expect("dirty position should flush");
+    storage.flush_content_dirty().expect("dirty position should flush");
 
     let library = fs::read_to_string(library_path(&root).unwrap()).unwrap();
     assert!(library.contains(r#""cfi": "epubcfi(/6/8)""#));
@@ -2126,11 +2155,13 @@ fn failed_flush_keeps_library_dirty_for_retry() {
     fs::create_dir_all(&path).unwrap();
     storage.mark_library_dirty();
 
-    assert!(storage.flush_dirty().is_err());
+    assert!(storage.flush_content_dirty().is_err());
     assert!(storage.inner.dirty.lock().unwrap().library);
 
     fs::remove_dir(&path).unwrap();
-    storage.flush_dirty().expect("dirty library should be retryable");
+    storage
+        .flush_content_dirty()
+        .expect("dirty library should be retryable");
     assert!(!storage.inner.dirty.lock().unwrap().library);
     assert!(path.is_file());
 

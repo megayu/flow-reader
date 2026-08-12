@@ -348,8 +348,10 @@ pub fn run() {
             storage::record_reading_position,
             storage::update_book,
             storage::delete_books,
-            storage::get_settings,
-            storage::update_settings,
+            storage::settings::get_settings,
+            storage::settings::update_settings,
+            storage::settings::reset_text_import_rule,
+            storage::settings::flush_settings,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Flow")

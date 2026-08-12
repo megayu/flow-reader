@@ -23,7 +23,13 @@ import { useLocale } from '@/hooks/useLocale'
 import { formatTranslation, useTranslation } from '@/hooks/useTranslation'
 import { type AppLocale, localeNames } from '@/locales'
 import { createShortcutGroups } from '@/shortcuts'
-import { defaultTextImportRules, normalizeTextImportRules, useSettings } from '@/state'
+import {
+  normalizeTextImportRules,
+  type TextImportRulesConfiguration,
+  useResetTextImportRule,
+  useSettings,
+  useTextImportRuleDefaults,
+} from '@/state'
 import { maxUiFontSize, minUiFontSize, normalizeUiFontSize } from '@/styles/ui'
 import { orderedTargetLanguages, TRANSLATION_LANGUAGES, type TranslationLanguage } from '@/translation/languages'
 
@@ -44,24 +50,22 @@ const REGEX_TESTER_URL = 'https://regex101.com/?flavor=rust'
 export const SettingsPanel: React.FC = () => {
   const { locale, locales, setLocale } = useLocale()
   const [settings, setSettings] = useSettings()
+  const textImportRuleDefaults = useTextImportRuleDefaults()
+  const resetTextImportRule = useResetTextImportRule()
   const t = useTranslation('settings')
   const typographyT = useTranslation('typography')
   const [activeTab, setActiveTab] = useState<SettingsTab>('basic')
-  const textImportRules = normalizeTextImportRules(settings.textImportRules)
-  const updateTextImportRules = (patch: Partial<typeof defaultTextImportRules>) => {
+  const textImportRules = normalizeTextImportRules(settings.textImportRules, textImportRuleDefaults)
+  const updateTextImportRules = (patch: Partial<TextImportRulesConfiguration>) => {
     setSettings((prev) => ({
       ...prev,
       textImportRules: {
-        ...defaultTextImportRules,
         ...prev.textImportRules,
         ...patch,
       },
     }))
   }
-  const restoreTextImportRule = (key: keyof typeof defaultTextImportRules) => {
-    updateTextImportRules({ [key]: [...defaultTextImportRules[key]] })
-  }
-  const textImportRuleRestoreButton = (key: keyof typeof defaultTextImportRules) => {
+  const textImportRuleRestoreButton = (key: keyof TextImportRulesConfiguration) => {
     const label = t('txt_import.restore_defaults')
 
     return (
@@ -72,8 +76,8 @@ export const SettingsPanel: React.FC = () => {
           size="icon-xs"
           className="text-muted-foreground hover:text-(--flow-text)"
           aria-label={label}
-          disabled={arePatternListsEqual(textImportRules[key], defaultTextImportRules[key])}
-          onClick={() => restoreTextImportRule(key)}
+          disabled={arePatternListsEqual(textImportRules[key], textImportRuleDefaults[key])}
+          onClick={() => resetTextImportRule(key)}
         >
           <RotateCcwIcon aria-hidden />
         </UiButton>

@@ -147,7 +147,7 @@ pub fn persist_app_close_state(window: &Window, storage: &AppStorage, input: App
     drop(runtime);
 
     save_window_state(window)?;
-    storage.flush_dirty()
+    storage.flush_all_dirty()
 }
 
 pub(crate) fn record_window_state(window: &Window) {

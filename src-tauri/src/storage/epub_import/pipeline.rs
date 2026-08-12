@@ -442,7 +442,7 @@ pub(in crate::storage) fn open_external_epub_path_impl(
             normalize_unpacked_epub_structure(&unpacked_dir)?;
         }
         storage.mark_external_dirty();
-        storage.flush_dirty()?;
+        storage.flush_content_dirty()?;
 
         let book = storage.external_to_library_book(&book);
         storage.compose_book(&book)

@@ -20,13 +20,19 @@ import {
   libraryBookCardWidthMin,
   libraryBookCardWidthStep,
   librarySortFieldOptions,
-  normalizeTextImportRules,
   type Settings,
+  type TextImportRulesConfiguration,
   type TranslationSettingsConfiguration,
   type TypographyConfiguration,
   type ViewMode,
 } from './settings/configuration'
-import { getSettingsFromStorage, type ReadingStatus, updateSettingsInStorage } from './storage'
+import {
+  getNativeSettingsBootstrap,
+  resetNativeTextImportRule,
+  type TextImportRuleKind,
+  updateNativeSettings,
+} from './settings/sync'
+import type { ReadingStatus } from './storage/types'
 import { TRANSLATION_LANGUAGES } from './translation/languages'
 
 export * from './settings/configuration'
@@ -64,6 +70,7 @@ interface AppStore {
   settings: Settings
   settingsDialogOpen: boolean
   settingsReady: boolean
+  textImportRuleDefaults: TextImportRulesConfiguration
   viewMode: ViewMode
   zenMode: boolean
   zenTypographyOverrides: Record<string, TypographyConfiguration>
@@ -80,7 +87,7 @@ interface AppStore {
   setReaderSidebarWidth(value: number): void
   setSettings: SetterOrUpdater<Settings>
   setSettingsDialogOpen: SetterOrUpdater<boolean>
-  setSettingsReady: SetterOrUpdater<boolean>
+  resetTextImportRule(kind: TextImportRuleKind): void
   setViewMode: SetterOrUpdater<ViewMode>
   setZenMode: SetterOrUpdater<boolean>
   setZenTypographyOverrides: SetterOrUpdater<Record<string, TypographyConfiguration>>
@@ -105,6 +112,11 @@ export const useAppStore = create<AppStore>((set) => ({
   settings: defaultSettings,
   settingsDialogOpen: false,
   settingsReady: false,
+  textImportRuleDefaults: {
+    groupPatterns: [],
+    chapterPatterns: [],
+    filenamePatterns: [],
+  },
   viewMode: 'library',
   zenMode: false,
   zenTypographyOverrides: {},
@@ -143,15 +155,32 @@ export const useAppStore = create<AppStore>((set) => ({
       return { panes: { ...panes, [key]: next } }
     }),
   setReaderSidebarWidth: (value) => set({ readerSidebarWidth: value }),
-  setSettings: (value) => set((state) => ({ settings: resolveUpdate(value, state.settings) })),
+  setSettings: (value) =>
+    set((state) => {
+      const settings = resolveUpdate(value, state.settings)
+      if (settings === state.settings) return {}
+      if (state.settingsReady) {
+        void updateNativeSettings(settings, !state.settingsDialogOpen).catch(console.error)
+      }
+      return { settings }
+    }),
   setSettingsDialogOpen: (value) =>
     set((state) => ({
       settingsDialogOpen: resolveUpdate(value, state.settingsDialogOpen),
     })),
-  setSettingsReady: (value) =>
-    set((state) => ({
-      settingsReady: resolveUpdate(value, state.settingsReady),
-    })),
+  resetTextImportRule: (kind) =>
+    set((state) => {
+      if (state.settingsReady) void resetNativeTextImportRule(kind).catch(console.error)
+      return {
+        settings: {
+          ...state.settings,
+          textImportRules: {
+            ...state.settings.textImportRules,
+            [kind]: [...state.textImportRuleDefaults[kind]],
+          },
+        },
+      }
+    }),
   setViewMode: (value) => set((state) => ({ viewMode: resolveUpdate(value, state.viewMode) })),
   setZenMode: (value) => set((state) => ({ zenMode: resolveUpdate(value, state.zenMode) })),
   setZenTypographyOverrides: (value) =>
@@ -320,18 +349,23 @@ export function useSetZenTypographyOverrides() {
   return useAppStore((state) => state.setZenTypographyOverrides)
 }
 
-let settingsLoaded = false
-let settingsLoadPromise: Promise<Settings> | undefined
+let settingsLoadPromise: Promise<void> | undefined
 
 function loadSettings() {
-  settingsLoadPromise ??= getSettingsFromStorage<Partial<Settings>>()
-    .then((value) => normalizeSettings(initializeSettingsLocale(value)))
-    .catch(() => normalizeSettings(initializeSettingsLocale(undefined)))
+  settingsLoadPromise ??= getNativeSettingsBootstrap()
+    .then((bootstrap) => {
+      useAppStore.setState({
+        settings: normalizeSettings(initializeSettingsLocale(bootstrap.settings)),
+        settingsReady: true,
+        textImportRuleDefaults: bootstrap.textImportRuleDefaults,
+      })
+    })
+    .catch(console.error)
 
   return settingsLoadPromise
 }
 
-function initializeSettingsLocale(value: Partial<Settings> | undefined): Partial<Settings> {
+function initializeSettingsLocale(value: Partial<Settings>): Partial<Settings> {
   if (isAppLocale(value?.locale)) return value
 
   const languages =
@@ -345,7 +379,7 @@ function initializeSettingsLocale(value: Partial<Settings> | undefined): Partial
   }
 }
 
-function normalizeSettings(value: Partial<Settings> | undefined): Settings {
+function normalizeSettings(value: Partial<Settings>): Settings {
   const settings = { ...defaultSettings, ...value }
 
   return {
@@ -353,7 +387,7 @@ function normalizeSettings(value: Partial<Settings> | undefined): Settings {
     theme: normalizeThemeConfiguration(settings.theme),
     libraryDisplay: normalizeLibraryDisplay(settings.libraryDisplay),
     librarySort: normalizeLibrarySort(settings.librarySort),
-    textImportRules: normalizeTextImportRules(settings.textImportRules),
+    textImportRules: settings.textImportRules,
     directTextImport: settings.directTextImport === true,
     dictionary: normalizeDictionarySettings(settings.dictionary),
     translation: normalizeTranslationSettings(settings.translation),
@@ -454,68 +488,32 @@ function normalizeLibrarySort(value: Partial<LibrarySortConfiguration> | undefin
 export function useSettings() {
   const settings = useAppStore((state) => state.settings)
   const setSettings = useAppStore((state) => state.setSettings)
-  const settingsReady = useAppStore((state) => state.settingsReady)
-  const setSettingsReady = useAppStore((state) => state.setSettingsReady)
 
   useEffect(() => {
     if (IS_SERVER) return
-    if (settingsLoaded) {
-      setSettingsReady(true)
-      return
-    }
-
-    let disposed = false
-
-    loadSettings().then((settings) => {
-      settingsLoaded = true
-      if (!disposed) {
-        setSettings(settings)
-        setSettingsReady(true)
-      }
-    })
-
-    return () => {
-      disposed = true
-    }
-  }, [setSettings, setSettingsReady])
-
-  useEffect(() => {
-    if (IS_SERVER || !settingsReady) return
-
-    updateSettingsInStorage(settings).catch(console.error)
-  }, [settings, settingsReady])
+    void loadSettings()
+  }, [])
 
   return [settings, setSettings] as const
 }
 
 export function useSettingsReady() {
   const ready = useAppStore((state) => state.settingsReady)
-  const setSettings = useAppStore((state) => state.setSettings)
-  const setSettingsReady = useAppStore((state) => state.setSettingsReady)
 
   useEffect(() => {
     if (IS_SERVER || ready) return
-    if (settingsLoaded) {
-      setSettingsReady(true)
-      return
-    }
-
-    let disposed = false
-
-    loadSettings().then((settings) => {
-      settingsLoaded = true
-      if (!disposed) {
-        setSettings(settings)
-        setSettingsReady(true)
-      }
-    })
-
-    return () => {
-      disposed = true
-    }
-  }, [ready, setSettings, setSettingsReady])
+    void loadSettings()
+  }, [ready])
 
   return ready
+}
+
+export function useTextImportRuleDefaults() {
+  return useAppStore((state) => state.textImportRuleDefaults)
+}
+
+export function useResetTextImportRule() {
+  return useAppStore((state) => state.resetTextImportRule)
 }
 
 export function useShowLibraryInTocValue() {
