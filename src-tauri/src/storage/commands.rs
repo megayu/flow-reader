@@ -1594,9 +1594,6 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
             }
             if let Some(value) = object.get("metadata") {
                 book.metadata = value.clone();
-                if book.content_mode != BookContentMode::ArchiveOnly {
-                    sync_unpacked_opf_metadata(&storage.book_dir(&id).join(UNPACKED_DIR), value)?;
-                }
                 if book.generated_cover {
                     let cover = create_text_cover_input(
                         value,
