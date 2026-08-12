@@ -4,9 +4,11 @@ import { test } from 'vitest'
 
 import * as annotationModule from '../../src/annotation.ts'
 import * as readerModelModule from '../../src/models/reader/model.ts'
+import * as readerSearchModule from '../../src/models/reader/search.ts'
 
 const annotation = annotationModule as Record<string, any>
 const readerModel = readerModelModule as Record<string, any>
+const readerSearch = readerSearchModule as Record<string, any>
 
 function testAnnotationSpineDoesNotRequireNavItem() {
   assert.strictEqual(
@@ -56,6 +58,33 @@ function testChapterFindUsesTheReadingOrderStartSection() {
   assert.strictEqual(readerModel.readingOrderStartSectionIndex(undefined, undefined, 20), 20)
 }
 
-for (const run of [testAnnotationSpineDoesNotRequireNavItem, testChapterFindUsesTheReadingOrderStartSection]) {
+function testSectionMatchesDoNotRequireNavItem() {
+  const cfi = 'epubcfi(/6/8!/4/2/1:0)'
+  const result = readerSearch.searchInSection(
+    {
+      getNavPath: () => {
+        throw new Error('A section without a nav item must not request a nav path')
+      },
+    },
+    'Technology',
+    {
+      document: { body: {} },
+      find: (query: string) => {
+        assert.strictEqual(query, 'Technology')
+        return [{ cfi, excerpt: 'Technology' }]
+      },
+      href: 'Text/dedication.xhtml',
+    },
+  )
+
+  assert.strictEqual(result?.id, 'Text/dedication.xhtml')
+  assert.deepStrictEqual(result?.subitems, [{ cfi, excerpt: 'Technology', id: cfi }])
+}
+
+for (const run of [
+  testAnnotationSpineDoesNotRequireNavItem,
+  testChapterFindUsesTheReadingOrderStartSection,
+  testSectionMatchesDoNotRequireNavItem,
+]) {
   test(run.name, run)
 }

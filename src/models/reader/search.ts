@@ -62,16 +62,23 @@ export function searchInSection(tab: BookTab, keyword = tab.keyword, section = t
   if (!subitems.length) return
 
   const navItem = section.navitem
-  if (navItem) {
-    const path = tab.getNavPath(navItem)
-    path.pop()
+  if (!navItem) {
     return {
-      id: navItem.href,
-      excerpt: navItem.label,
-      description: path.map((item) => item.label).join(' / '),
+      id: section.href,
+      excerpt: section.href,
       subitems: subitems.map((item) => ({ ...item, id: item.cfi! })),
       expanded: true,
     }
+  }
+
+  const path = tab.getNavPath(navItem)
+  path.pop()
+  return {
+    id: navItem.href,
+    excerpt: navItem.label,
+    description: path.map((item) => item.label).join(' / '),
+    subitems: subitems.map((item) => ({ ...item, id: item.cfi! })),
+    expanded: true,
   }
 }
 
