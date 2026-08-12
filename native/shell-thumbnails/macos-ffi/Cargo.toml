@@ -1,0 +1,15 @@
+[package]
+name = "flow-macos-thumbnail-ffi"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "flow_thumbnail_macos"
+crate-type = ["staticlib"]
+
+[dependencies]
+flow-epub-thumbnail = { path = "../../../crates/epub-thumbnail" }
+
+[dev-dependencies]
+image.workspace = true
+zip.workspace = true

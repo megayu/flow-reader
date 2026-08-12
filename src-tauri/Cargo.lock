@@ -1028,11 +1028,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow-epub-cover"
+version = "0.1.0"
+dependencies = [
+ "roxmltree",
+ "thiserror 2.0.18",
+ "zip",
+]
+
+[[package]]
 name = "flow-reader"
 version = "0.1.0"
 dependencies = [
  "encoding_rs",
  "flate2",
+ "flow-epub-cover",
  "image",
  "mdict-rs",
  "memmap2",

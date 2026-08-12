@@ -22,10 +22,11 @@ mod publication_date;
 use metadata_cover::*;
 use normalize::*;
 
-use access::{EPUB_COVER_READ_LIMIT, EPUB_XML_READ_LIMIT};
+#[cfg(test)]
+pub(super) use access::read_bounded_bytes;
 pub(super) use access::{
-    EPUB_MAX_SEARCH_TEXT_BYTES, find_unpacked_opf_path, inspect_epub_access, read_bounded_bytes, read_epub_xml_file,
-    unpack_epub, validate_epub_archive_limits,
+    EPUB_MAX_SEARCH_TEXT_BYTES, find_unpacked_opf_path, inspect_epub_access, read_epub_xml_file, unpack_epub,
+    validate_epub_archive_limits,
 };
 #[cfg(test)]
 pub(super) use metadata_cover::normalize_non_square_pixel_png;
@@ -688,22 +689,5 @@ mod tests {
 
         assert_eq!(anchors.get("first"), Some(&xhtml.find(r#"<p id="first""#).unwrap()));
         assert_eq!(anchors.get("second"), Some(&xhtml.find(r#"<a name='second'"#).unwrap()));
-    }
-
-    #[test]
-    fn find_cover_path_falls_back_to_image_manifest_id_prefix() {
-        let doc = roxmltree::Document::parse(
-            r#"<package>
-  <manifest>
-    <item id="cover.jpg" href="Images/obfuscated-image.jpg" media-type="image/jpeg"/>
-  </manifest>
-</package>"#,
-        )
-        .unwrap();
-
-        assert_eq!(
-            find_cover_path(&doc),
-            Some(("Images/obfuscated-image.jpg".to_string(), "image/jpeg".to_string()))
-        );
     }
 }

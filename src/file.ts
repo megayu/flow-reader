@@ -229,6 +229,7 @@ export async function setupNativeOpenFiles({
 }) {
   if (typeof window === 'undefined') return
 
+  let unlistenOpen: (() => void) | undefined
   try {
     const { listen } = await import('@tauri-apps/api/event')
 
@@ -274,12 +275,12 @@ export async function setupNativeOpenFiles({
       }
     }
 
-    const pendingOpenPaths = await invoke<string[]>('take_pending_open_paths')
-    await openPaths(pendingOpenPaths)
-
-    const unlistenOpen = await listen<string[]>(nativeOpenEvent, (event) => {
+    unlistenOpen = await listen<string[]>(nativeOpenEvent, (event) => {
       void openPaths(event.payload)
     })
+
+    const pendingOpenPaths = await invoke<string[]>('take_pending_open_paths')
+    await openPaths(pendingOpenPaths)
 
     let unlistenDrop: (() => void) | undefined
     try {
@@ -302,11 +303,12 @@ export async function setupNativeOpenFiles({
 
     return {
       cleanup: () => {
-        unlistenOpen()
+        unlistenOpen?.()
         unlistenDrop?.()
       },
     }
   } catch (error) {
+    unlistenOpen?.()
     console.debug('Native file open is unavailable', error)
   }
 }

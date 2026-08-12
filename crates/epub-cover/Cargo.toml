@@ -1,0 +1,9 @@
+[package]
+name = "flow-epub-cover"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+roxmltree.workspace = true
+thiserror.workspace = true
+zip.workspace = true

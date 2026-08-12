@@ -1,0 +1,158 @@
+!define FLOW_READER_THUMBNAIL_CLSID "@PROVIDER_CLSID@"
+!define FLOW_READER_THUMBNAIL_HANDLER "@THUMBNAIL_HANDLER_CATEGORY_ID@"
+!define FLOW_READER_THUMBNAIL_DLL "FlowReaderThumbnail.dll"
+!define FLOW_READER_PENDING_THUMBNAIL_DLL "@PENDING_THUMBNAIL_DLL@"
+!define FLOW_READER_EPUB_PROGID "@EPUB_PROGID@"
+!define FLOW_READER_EPUB_CLASS_KEY "Software\Classes\.epub"
+!define FLOW_READER_EPUB_BACKUP "@EPUB_BACKUP@"
+!define FLOW_READER_ORIGINAL_PROGID "FlowReaderThumbnailOriginalProgId"
+!define FLOW_READER_ORIGINAL_PROGID_PRESENT "FlowReaderThumbnailOriginalProgIdPresent"
+!define FLOW_READER_ORIGINAL_PROGID_SAVED "FlowReaderThumbnailOriginalProgIdSaved"
+!define FLOW_READER_CAPABILITIES "Software\Flow Reader\Capabilities"
+
+!macro FLOW_READER_NOTIFY_SHELL
+  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x1000, p 0, p 0)'
+!macroend
+
+!macro FLOW_READER_REMOVE_THUMBNAIL_REGISTRATION
+  DeleteRegKey HKCU "Software\Classes\${FLOW_READER_EPUB_PROGID}\ShellEx\${FLOW_READER_THUMBNAIL_HANDLER}"
+  DeleteRegKey HKCU "Software\Classes\CLSID\${FLOW_READER_THUMBNAIL_CLSID}"
+  !insertmacro FLOW_READER_NOTIFY_SHELL
+!macroend
+
+!macro FLOW_READER_REMOVE_LEGACY_THUMBNAIL_DLLS LABEL_SUFFIX
+  Push $0
+  Push $1
+  FindFirst $0 $1 "$INSTDIR\shell-thumbnails\FlowReaderThumbnail-*.dll"
+  loop_remove_flow_reader_thumbnail_dll_${LABEL_SUFFIX}:
+    StrCmp $1 "" done_remove_flow_reader_thumbnail_dll_${LABEL_SUFFIX}
+    Delete /REBOOTOK "$INSTDIR\shell-thumbnails\$1"
+    FindNext $0 $1
+    Goto loop_remove_flow_reader_thumbnail_dll_${LABEL_SUFFIX}
+  done_remove_flow_reader_thumbnail_dll_${LABEL_SUFFIX}:
+  FindClose $0
+  RMDir /REBOOTOK "$INSTDIR\shell-thumbnails"
+  Pop $1
+  Pop $0
+!macroend
+
+!macro FLOW_READER_INSTALL_THUMBNAIL_DLL LABEL_SUFFIX
+  IfFileExists "$INSTDIR\${FLOW_READER_THUMBNAIL_DLL}" 0 replace_flow_reader_thumbnail_dll_${LABEL_SUFFIX}
+  ClearErrors
+  Delete "$INSTDIR\${FLOW_READER_THUMBNAIL_DLL}"
+  IfErrors schedule_flow_reader_thumbnail_dll_${LABEL_SUFFIX}
+  replace_flow_reader_thumbnail_dll_${LABEL_SUFFIX}:
+  ClearErrors
+  Rename "$INSTDIR\${FLOW_READER_PENDING_THUMBNAIL_DLL}" "$INSTDIR\${FLOW_READER_THUMBNAIL_DLL}"
+  IfErrors 0 done_install_flow_reader_thumbnail_dll_${LABEL_SUFFIX}
+  schedule_flow_reader_thumbnail_dll_${LABEL_SUFFIX}:
+  ClearErrors
+  Delete /REBOOTOK "$INSTDIR\${FLOW_READER_THUMBNAIL_DLL}"
+  ClearErrors
+  Rename /REBOOTOK "$INSTDIR\${FLOW_READER_PENDING_THUMBNAIL_DLL}" "$INSTDIR\${FLOW_READER_THUMBNAIL_DLL}"
+  IfErrors 0 scheduled_flow_reader_thumbnail_dll_${LABEL_SUFFIX}
+  Abort "Flow Reader could not install its EPUB thumbnail provider."
+  scheduled_flow_reader_thumbnail_dll_${LABEL_SUFFIX}:
+  SetRebootFlag true
+  done_install_flow_reader_thumbnail_dll_${LABEL_SUFFIX}:
+!macroend
+
+!macro FLOW_READER_REMOVE_THUMBNAIL_DLLS LABEL_SUFFIX
+  Delete /REBOOTOK "$INSTDIR\${FLOW_READER_THUMBNAIL_DLL}"
+  Delete /REBOOTOK "$INSTDIR\${FLOW_READER_PENDING_THUMBNAIL_DLL}"
+  !insertmacro FLOW_READER_REMOVE_LEGACY_THUMBNAIL_DLLS ${LABEL_SUFFIX}
+!macroend
+
+!macro FLOW_READER_REGISTER_DEFAULT_APP
+  WriteRegStr HKCU "Software\RegisteredApplications" "Flow Reader" "${FLOW_READER_CAPABILITIES}"
+  WriteRegStr HKCU "${FLOW_READER_CAPABILITIES}" "ApplicationName" "Flow Reader"
+  WriteRegStr HKCU "${FLOW_READER_CAPABILITIES}" "ApplicationDescription" "Read EPUB eBooks with Flow Reader."
+  WriteRegStr HKCU "${FLOW_READER_CAPABILITIES}" "ApplicationIcon" "$INSTDIR\${MAINBINARYNAME}.exe,0"
+  WriteRegStr HKCU "${FLOW_READER_CAPABILITIES}\FileAssociations" ".epub" "${FLOW_READER_EPUB_PROGID}"
+  WriteRegStr HKCU "${FLOW_READER_EPUB_CLASS_KEY}\OpenWithProgids" "${FLOW_READER_EPUB_PROGID}" ""
+  WriteRegStr HKCU "Software\Classes\${FLOW_READER_EPUB_PROGID}\shell\open\command" "" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
+!macroend
+
+!macro FLOW_READER_UNREGISTER_DEFAULT_APP
+  DeleteRegValue HKCU "Software\RegisteredApplications" "Flow Reader"
+  DeleteRegValue HKCU "${FLOW_READER_EPUB_CLASS_KEY}\OpenWithProgids" "${FLOW_READER_EPUB_PROGID}"
+  DeleteRegKey /ifempty HKCU "${FLOW_READER_EPUB_CLASS_KEY}\OpenWithProgids"
+  DeleteRegKey HKCU "${FLOW_READER_CAPABILITIES}"
+  DeleteRegKey /ifempty HKCU "Software\Flow Reader"
+!macroend
+
+!macro FLOW_READER_PRESERVE_EPUB_ASSOCIATION
+  Push $0
+  Push $1
+  ClearErrors
+  ReadRegDWORD $0 HKCU "${FLOW_READER_EPUB_CLASS_KEY}" "${FLOW_READER_ORIGINAL_PROGID_SAVED}"
+  StrCmp $0 1 done_preserve_flow_reader_epub_association
+  ClearErrors
+  ReadRegStr $1 HKCU "${FLOW_READER_EPUB_CLASS_KEY}" ""
+  IfErrors 0 original_flow_reader_epub_association_present
+  WriteRegDWORD HKCU "${FLOW_READER_EPUB_CLASS_KEY}" "${FLOW_READER_ORIGINAL_PROGID_PRESENT}" 0
+  Goto save_original_flow_reader_epub_association
+  original_flow_reader_epub_association_present:
+  WriteRegDWORD HKCU "${FLOW_READER_EPUB_CLASS_KEY}" "${FLOW_READER_ORIGINAL_PROGID_PRESENT}" 1
+  save_original_flow_reader_epub_association:
+  WriteRegStr HKCU "${FLOW_READER_EPUB_CLASS_KEY}" "${FLOW_READER_ORIGINAL_PROGID}" "$1"
+  WriteRegDWORD HKCU "${FLOW_READER_EPUB_CLASS_KEY}" "${FLOW_READER_ORIGINAL_PROGID_SAVED}" 1
+  done_preserve_flow_reader_epub_association:
+  Pop $1
+  Pop $0
+!macroend
+
+!macro FLOW_READER_RESTORE_TAURI_EPUB_BACKUP LABEL_SUFFIX
+  Push $0
+  Push $1
+  ReadRegDWORD $0 HKCU "${FLOW_READER_EPUB_CLASS_KEY}" "${FLOW_READER_ORIGINAL_PROGID_SAVED}"
+  StrCmp $0 1 0 done_restore_tauri_epub_backup_${LABEL_SUFFIX}
+  ReadRegStr $1 HKCU "${FLOW_READER_EPUB_CLASS_KEY}" "${FLOW_READER_ORIGINAL_PROGID}"
+  WriteRegStr HKCU "${FLOW_READER_EPUB_CLASS_KEY}" "${FLOW_READER_EPUB_BACKUP}" "$1"
+  done_restore_tauri_epub_backup_${LABEL_SUFFIX}:
+  Pop $1
+  Pop $0
+!macroend
+
+!macro FLOW_READER_CLEAN_EPUB_ASSOCIATION_BACKUP
+  Push $0
+  ReadRegDWORD $0 HKCU "${FLOW_READER_EPUB_CLASS_KEY}" "${FLOW_READER_ORIGINAL_PROGID_SAVED}"
+  StrCmp $0 1 0 done_clean_flow_reader_epub_association_backup
+  ReadRegDWORD $0 HKCU "${FLOW_READER_EPUB_CLASS_KEY}" "${FLOW_READER_ORIGINAL_PROGID_PRESENT}"
+  StrCmp $0 0 0 keep_original_flow_reader_epub_default
+  DeleteRegValue HKCU "${FLOW_READER_EPUB_CLASS_KEY}" ""
+  keep_original_flow_reader_epub_default:
+  DeleteRegValue HKCU "${FLOW_READER_EPUB_CLASS_KEY}" "${FLOW_READER_EPUB_BACKUP}"
+  DeleteRegValue HKCU "${FLOW_READER_EPUB_CLASS_KEY}" "${FLOW_READER_ORIGINAL_PROGID}"
+  DeleteRegValue HKCU "${FLOW_READER_EPUB_CLASS_KEY}" "${FLOW_READER_ORIGINAL_PROGID_PRESENT}"
+  DeleteRegValue HKCU "${FLOW_READER_EPUB_CLASS_KEY}" "${FLOW_READER_ORIGINAL_PROGID_SAVED}"
+  done_clean_flow_reader_epub_association_backup:
+  Pop $0
+!macroend
+
+!macro NSIS_HOOK_PREINSTALL
+  !insertmacro FLOW_READER_PRESERVE_EPUB_ASSOCIATION
+  !insertmacro FLOW_READER_REMOVE_THUMBNAIL_REGISTRATION
+  !insertmacro FLOW_READER_REMOVE_LEGACY_THUMBNAIL_DLLS install
+!macroend
+
+!macro NSIS_HOOK_POSTINSTALL
+  !insertmacro FLOW_READER_INSTALL_THUMBNAIL_DLL install
+  WriteRegStr HKCU "Software\Classes\CLSID\${FLOW_READER_THUMBNAIL_CLSID}\InprocServer32" "" "$INSTDIR\${FLOW_READER_THUMBNAIL_DLL}"
+  WriteRegStr HKCU "Software\Classes\CLSID\${FLOW_READER_THUMBNAIL_CLSID}\InprocServer32" "ThreadingModel" "Apartment"
+  WriteRegStr HKCU "Software\Classes\${FLOW_READER_EPUB_PROGID}\ShellEx\${FLOW_READER_THUMBNAIL_HANDLER}" "" "${FLOW_READER_THUMBNAIL_CLSID}"
+  !insertmacro FLOW_READER_REGISTER_DEFAULT_APP
+  !insertmacro FLOW_READER_RESTORE_TAURI_EPUB_BACKUP install
+  !insertmacro FLOW_READER_NOTIFY_SHELL
+!macroend
+
+!macro NSIS_HOOK_PREUNINSTALL
+  !insertmacro FLOW_READER_RESTORE_TAURI_EPUB_BACKUP uninstall
+  !insertmacro FLOW_READER_REMOVE_THUMBNAIL_REGISTRATION
+  !insertmacro FLOW_READER_UNREGISTER_DEFAULT_APP
+  !insertmacro FLOW_READER_REMOVE_THUMBNAIL_DLLS uninstall
+!macroend
+
+!macro NSIS_HOOK_POSTUNINSTALL
+  !insertmacro FLOW_READER_CLEAN_EPUB_ASSOCIATION_BACKUP
+!macroend

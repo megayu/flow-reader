@@ -1,42 +1,15 @@
-import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { basename, join } from 'node:path'
 
-const scriptDir = dirname(fileURLToPath(import.meta.url))
-const rootDir = resolve(scriptDir, '..')
+import { applicationDistributionCargoProfile, repositoryRoot, runPnpm } from './distribution-cargo.ts'
+
+const rootDir = repositoryRoot
 const targetDir = join(rootDir, 'src-tauri', 'target', 'release')
 const releaseDir = join(rootDir, 'release')
-const localReleaseCargoProfile = {
-  CARGO_PROFILE_RELEASE_OPT_LEVEL: '3',
-  CARGO_PROFILE_RELEASE_LTO: 'true',
-  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '1',
-  CARGO_PROFILE_RELEASE_STRIP: 'true',
-  CARGO_PROFILE_RELEASE_PANIC: 'abort',
-}
 
 interface TauriConfig {
   mainBinaryName?: string
   productName?: string
-}
-
-function runPnpmScript(scriptName: string) {
-  const pnpmExecPath = process.env.npm_execpath
-  const command = pnpmExecPath ? process.execPath : process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
-  const args = pnpmExecPath ? [pnpmExecPath, 'run', scriptName] : ['run', scriptName]
-  const result = spawnSync(command, args, {
-    cwd: rootDir,
-    stdio: 'inherit',
-    shell: false,
-    env: {
-      ...process.env,
-      ...localReleaseCargoProfile,
-    },
-  })
-
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1)
-  }
 }
 
 function readJson(path: string): TauriConfig {
@@ -89,7 +62,7 @@ function findReleaseBinary() {
   )
 }
 
-runPnpmScript('tauri:build')
+runPnpm(['run', 'tauri:build'], applicationDistributionCargoProfile)
 
 mkdirSync(releaseDir, { recursive: true })
 

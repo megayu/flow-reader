@@ -1,0 +1,20 @@
+[package]
+name = "flow-windows-thumbnail-provider"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "flow_reader_thumbnail"
+crate-type = ["cdylib"]
+
+[dependencies]
+flow-epub-thumbnail = { path = "../../../crates/epub-thumbnail" }
+windows.workspace = true
+windows-core.workspace = true
+
+[build-dependencies]
+serde_json = "1"
+
+[dev-dependencies]
+image.workspace = true
+zip.workspace = true

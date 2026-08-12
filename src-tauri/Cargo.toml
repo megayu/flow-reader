@@ -17,6 +17,7 @@ default = []
 devtools = ["tauri/devtools"]
 
 [dependencies]
+flow-epub-cover = { path = "../crates/epub-cover" }
 tauri = { version = "2", features = ["protocol-asset"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

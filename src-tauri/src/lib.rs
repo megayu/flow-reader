@@ -20,7 +20,13 @@ const OPEN_FILES_EVENT: &str = "flow-open-files";
 const APP_CLOSE_REQUESTED_EVENT: &str = "flow-app-close-requested";
 
 #[derive(Default)]
-struct PendingOpenFiles(Mutex<Vec<PathBuf>>);
+struct PendingOpenFileState {
+    paths: Vec<PathBuf>,
+    listener_ready: bool,
+}
+
+#[derive(Default)]
+struct PendingOpenFiles(Mutex<PendingOpenFileState>);
 
 #[derive(Default)]
 struct AppCloseCoordinator(AtomicBool);
@@ -87,9 +93,14 @@ fn list_system_fonts() -> Vec<SystemFont> {
 
 #[tauri::command]
 fn take_pending_open_paths(state: tauri::State<'_, PendingOpenFiles>) -> Vec<String> {
-    let mut paths = state.0.lock().expect("pending open file lock poisoned");
+    let mut pending = state.0.lock().expect("pending open file lock poisoned");
+    pending.listener_ready = true;
 
-    paths.drain(..).map(|path| path.to_string_lossy().to_string()).collect()
+    pending
+        .paths
+        .drain(..)
+        .map(|path| path.to_string_lossy().to_string())
+        .collect()
 }
 
 #[tauri::command]
@@ -182,6 +193,37 @@ fn is_epub_file(path: &Path) -> bool {
     storage::is_epub_file(path)
 }
 
+fn dispatch_open_paths(app: &tauri::AppHandle, paths: Vec<PathBuf>) {
+    if paths.is_empty() {
+        return;
+    }
+
+    {
+        let state = app.state::<PendingOpenFiles>();
+        let mut pending = state.0.lock().expect("pending open file lock poisoned");
+        if !pending.listener_ready {
+            pending.paths.extend(paths);
+            return;
+        }
+    }
+
+    let payload = paths
+        .iter()
+        .map(|path| path.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        let _ = window.emit(OPEN_FILES_EVENT, payload);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn collect_opened_epub_urls(urls: Vec<tauri::Url>) -> Vec<PathBuf> {
+    collect_epub_paths(urls.into_iter().filter_map(|url| url.to_file_path().ok()))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let pending_open_files = collect_epub_paths(std::env::args_os().skip(1));
@@ -190,7 +232,10 @@ pub fn run() {
         .register_uri_scheme_protocol("dictionary", |context, request| {
             dictionary::mdict::resource_protocol_response(context.app_handle(), request)
         })
-        .manage(PendingOpenFiles(Mutex::new(pending_open_files)))
+        .manage(PendingOpenFiles(Mutex::new(PendingOpenFileState {
+            paths: pending_open_files,
+            listener_ready: false,
+        })))
         .manage(AppCloseCoordinator::default())
         .manage(storage::RuntimeWindowState::default())
         .manage(tasks::TaskService::default())
@@ -199,21 +244,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             let paths = collect_epub_paths(argv);
-            if paths.is_empty() {
-                return;
-            }
-
-            let payload = paths
-                .into_iter()
-                .map(|path| path.to_string_lossy().to_string())
-                .collect::<Vec<_>>();
-
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-                let _ = window.emit(OPEN_FILES_EVENT, payload);
-            }
+            dispatch_open_paths(app, paths);
         }))
         .setup(|app| {
             let storage = storage::AppStorage::load(app.handle()).map_err(std::io::Error::other)?;
@@ -320,8 +351,14 @@ pub fn run() {
             storage::get_settings,
             storage::update_settings,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Flow");
+        .build(tauri::generate_context!())
+        .expect("error while building Flow")
+        .run(|_app, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls, .. } = _event {
+                dispatch_open_paths(_app, collect_opened_epub_urls(urls));
+            }
+        });
 }
 
 #[cfg(target_os = "windows")]

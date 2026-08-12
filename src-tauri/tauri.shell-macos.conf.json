@@ -1,0 +1,22 @@
+{
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "fileAssociations": [
+      {
+        "ext": ["epub"],
+        "contentTypes": ["org.idpf.epub-container"],
+        "name": "EPUB Book",
+        "mimeType": "application/epub+zip",
+        "role": "Viewer",
+        "rank": "Default"
+      }
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "files": {
+        "PlugIns/FlowReaderThumbnail.appex": "../native/shell-thumbnails/dist/macos/DerivedData/Build/Products/Release/FlowReaderThumbnail.appex"
+      }
+    }
+  }
+}

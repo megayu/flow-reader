@@ -1,0 +1,22 @@
+[workspace]
+members = ["macos-ffi", "windows-provider"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+
+[workspace.dependencies]
+windows = { version = "=0.62.2", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_System_Com",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Ole",
+  "Win32_System_SystemServices",
+  "Win32_UI_Shell",
+  "Win32_UI_Shell_PropertiesSystem",
+] }
+windows-core = "=0.62.2"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs"] }

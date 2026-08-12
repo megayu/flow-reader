@@ -6,7 +6,6 @@ const EPUB_MAX_EXPANDED_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 const EPUB_MAX_COMPRESSION_RATIO: u64 = 1_000;
 const EPUB_COMPRESSION_RATIO_MIN_BYTES: u64 = 1024 * 1024;
 pub(in crate::storage) const EPUB_XML_READ_LIMIT: u64 = 8 * 1024 * 1024;
-pub(in crate::storage) const EPUB_COVER_READ_LIMIT: u64 = 64 * 1024 * 1024;
 pub(in crate::storage) const EPUB_SEARCH_DOCUMENT_READ_LIMIT: u64 = 32 * 1024 * 1024;
 pub(in crate::storage) const EPUB_MAX_SEARCH_TEXT_BYTES: u64 = 512 * 1024 * 1024;
 
@@ -96,7 +95,7 @@ fn validate_epub_entry<R: Read>(file: &zip::read::ZipFile<'_, R>, total_size: &m
     let compressed_size = file.compressed_size();
     if size >= EPUB_COMPRESSION_RATIO_MIN_BYTES
         && compressed_size > 0
-        && size / compressed_size > EPUB_MAX_COMPRESSION_RATIO
+        && size > compressed_size.saturating_mul(EPUB_MAX_COMPRESSION_RATIO)
     {
         return Err(format!("EPUB entry has an unsafe compression ratio: {}", file.name()));
     }
@@ -152,9 +151,7 @@ pub(super) fn non_portable_path_segment(segment: &str) -> bool {
 pub(in crate::storage) fn unpack_epub(path: &Path, dest: &Path) -> Result<(), String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
-    if archive.len() > EPUB_MAX_ENTRY_COUNT {
-        return Err("EPUB contains too many archive entries".to_string());
-    }
+    validate_epub_archive_limits(&mut archive)?;
 
     if dest.exists() {
         fs::remove_dir_all(dest).map_err(|error| error.to_string())?;
@@ -162,10 +159,8 @@ pub(in crate::storage) fn unpack_epub(path: &Path, dest: &Path) -> Result<(), St
     fs::create_dir_all(dest).map_err(|error| error.to_string())?;
 
     let result = (|| {
-        let mut expanded_size = 0u64;
         for index in 0..archive.len() {
             let file = archive.by_index(index).map_err(|error| error.to_string())?;
-            validate_epub_entry(&file, &mut expanded_size)?;
             let Some(enclosed_name) = file.enclosed_name() else {
                 continue;
             };

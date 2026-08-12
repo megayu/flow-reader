@@ -1,0 +1,12 @@
+[package]
+name = "flow-epub-thumbnail"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+flow-epub-cover = { path = "../epub-cover" }
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
+thiserror.workspace = true
+
+[dev-dependencies]
+zip.workspace = true
