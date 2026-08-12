@@ -978,6 +978,23 @@ class DefaultViewManager {
     })
   }
 
+  tryApplyRenderedReflowableSpread(spread) {
+    let viewBySectionIndex = this.renderedViewsForReflowableSpread(spread)
+    if (!viewBySectionIndex) {
+      return false
+    }
+
+    this.trimRenderedViewsToReflowableSpread(spread)
+    let retainedViews = Object.values(viewBySectionIndex)
+    if (retainedViews.length === 1 && retainedViews[0].writingMode) {
+      // One manager mode cannot represent mixed adjacent sections. Once only
+      // one section remains, its view owns the current pagination geometry.
+      this.updateWritingMode(retainedViews[0].writingMode)
+    }
+    this.applyReflowableSpreadPosition(spread, viewBySectionIndex)
+    return true
+  }
+
   async renderReflowableSpread(spread) {
     if (this.isRightFirstPagination()) {
       return this.renderRightFirstReflowableSpread(spread)
@@ -1246,15 +1263,7 @@ class DefaultViewManager {
         visiblePage,
         options,
       )
-      let visibleViewBySectionIndex =
-        this.renderedViewsForReflowableSpread(visibleSpread)
-
-      if (visibleViewBySectionIndex) {
-        this.trimRenderedViewsToReflowableSpread(visibleSpread)
-        this.applyReflowableSpreadPosition(
-          visibleSpread,
-          visibleViewBySectionIndex,
-        )
+      if (this.tryApplyRenderedReflowableSpread(visibleSpread)) {
         return
       }
     }
@@ -1378,6 +1387,10 @@ class DefaultViewManager {
       return
     }
 
+    if (this.tryApplyRenderedReflowableSpread(nextSpread)) {
+      return
+    }
+
     return this.renderReflowableSpread(nextSpread)
   }
 
@@ -1405,6 +1418,10 @@ class DefaultViewManager {
 
     if (current && !this.sameReflowableSection(current, previousPage)) {
       previousSpread.endsAtSectionEnd = true
+    }
+
+    if (this.tryApplyRenderedReflowableSpread(previousSpread)) {
+      return
     }
 
     return this.renderReflowableSpread(previousSpread)

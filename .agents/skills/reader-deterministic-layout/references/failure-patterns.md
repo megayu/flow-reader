@@ -28,6 +28,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: accept locations whose section indexes move consistently with the active navigation direction before applying percentage rollback checks.
 - Verification gate: focused Playwright tests must cover cross-section spread navigation and stale-header prevention.
 
+### Reflowable page turns rebuild compatible iframe views
+
+- Symptom: ordinary next/previous turns can take seconds or appear stuck inside a large reflowable section even though the logical page sequence is correct. Sections with many elements and internal links make the pause more visible.
+- Reproduction path: open a large reflowable section in spread mode, alternate next and previous within the section, and record iframe identity plus long tasks for each turn.
+- Root cause: the full spread renderer clears and recreates section iframes on every logical turn. Re-parsing and laying out the large DOM dominates the turn; internal links increase DOM work but do not independently require a rebuild.
+- Fix direction: calculate the complete logical spread before touching rendered views. Reposition existing views only when every required section view exists and its layout signature is compatible, then trim views outside the resolved spread and apply the physical slots. If any prerequisite fails, leave the current views untouched and use the full render transaction. Explicit aligned chapter/TOC targets remain physical-left in LTR and physical-right in RTL; sequential turns follow the continuous logical sequence.
+- Verification gate: retained epubjs coverage must exercise LTR and RTL, cross-section forward/backward turns, alternating direction, return to the starting spread, exact physical slots, terminal-spread state, stable view identity, and zero view-collection lifecycle calls during compatible same-section turns. Existing explicit-target tests must remain unchanged, and final acceptance requires matched release-client measurement plus the deterministic layout verifier.
+
 ### Final-page relayout loses terminal spread semantics
 
 - Symptom: after resize/sidebar changes, the body remains in the final chapter but the footer changes from end-of-book to an earlier page such as `1 / 3` or `2 / 3`.

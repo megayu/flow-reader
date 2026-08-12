@@ -1,6 +1,7 @@
 import { assert, vi } from 'vitest'
 
 import DefaultViewManager from '../src/managers/default'
+import Views from '../src/managers/helpers/views'
 
 function createManager(settings = {}) {
   const manager = new DefaultViewManager({
@@ -781,6 +782,164 @@ describe('DefaultViewManager reflowable spread', function () {
     assert.equal(renderedSpread.right.pageIndex, 0)
     assert.equal(renderedSpread.anchor, 'right')
     assert.equal(renderedSpread.endsAtSectionEnd, true)
+  })
+
+  it('keeps LTR and RTL page turns continuous while retaining compatible rendered views', async function () {
+    const cases = [
+      { direction: 'ltr', create: () => createManager() },
+      { direction: 'rtl', create: () => createVerticalRtlManager() },
+    ]
+
+    for (const testCase of cases) {
+      const manager = testCase.create()
+      const sections = createSections([3, 1, 6])
+      if (testCase.direction === 'rtl') {
+        sections[0].writingMode = 'horizontal-tb'
+        sections[1].writingMode = 'vertical-rl'
+      }
+      withMeasuredSections(manager, sections)
+      manager.views = new Views()
+      manager.scrollTo = function () {}
+      manager.updateLayout = function () {}
+      manager.mapping = {
+        page(_contents, _cfiBase, start, end) {
+          return { start, end }
+        },
+      }
+      const clear = vi.spyOn(manager, 'clear')
+
+      const createView = (section) => ({
+        section,
+        displayed: true,
+        destroyed: false,
+        writingMode: section.writingMode || 'horizontal-tb',
+        contents: {},
+        settings: {
+          layoutStyleSignature:
+            manager.viewSettings.layoutStyleSignature || '',
+        },
+        element: { style: {} },
+        pageCount() {
+          return section.pageCount
+        },
+        width() {
+          return section.pageCount * manager.layout.pageWidth
+        },
+        offset() {
+          return { left: 0 }
+        },
+        show() {},
+        hide() {},
+        destroy() {
+          this.displayed = false
+          this.destroyed = true
+        },
+      })
+      const addView = (section, position = 'append') => {
+        const view = createView(section)
+        manager.views[position](view)
+        manager.updateWritingMode(view.writingMode)
+        return view
+      }
+      manager.add = vi.fn(async (section) => addView(section))
+      manager.append = vi.fn(async (section) => addView(section))
+      manager.prepend = vi.fn(async (section) => addView(section, 'prepend'))
+      const lifecycleMethods = [
+        clear,
+        manager.add,
+        manager.append,
+        manager.prepend,
+      ]
+
+      const spreadSnapshot = () => {
+        const address = (page) =>
+          page
+            ? { sectionIndex: page.section.index, pageIndex: page.pageIndex }
+            : undefined
+
+        return {
+          left: address(manager.currentReflowableSpread.left),
+          right: address(manager.currentReflowableSpread.right),
+          endsAtSectionEnd:
+            manager.currentReflowableSpread.endsAtSectionEnd === true,
+        }
+      }
+      const expectedSpread = (earlier, later, endsAtSectionEnd = false) =>
+        testCase.direction === 'rtl'
+          ? { right: earlier, left: later, endsAtSectionEnd }
+          : { left: earlier, right: later, endsAtSectionEnd }
+      const page = (sectionIndex, pageIndex) => ({ sectionIndex, pageIndex })
+      const turn = async (direction, expected) => {
+        await manager[direction]()
+        assert.deepEqual(spreadSnapshot(), expected)
+      }
+
+      const initialView = addView(sections[0])
+      manager.currentReflowableSpread =
+        testCase.direction === 'rtl'
+          ? await manager.reflowableSpreadFromEarlier(
+              manager.reflowablePage(sections[0], 0),
+            )
+          : await manager.reflowableSpreadFromLeft(
+              manager.reflowablePage(sections[0], 0),
+            )
+      manager.applyReflowableSpreadPosition(manager.currentReflowableSpread, {
+        [sections[0].index]: initialView,
+      })
+
+      const initialSpread = expectedSpread(page(0, 0), page(0, 1))
+      assert.deepEqual(spreadSnapshot(), initialSpread)
+      await turn(
+        'nextReflowableSpread',
+        expectedSpread(page(0, 2), page(1, 0)),
+      )
+      await turn(
+        'nextReflowableSpread',
+        expectedSpread(page(2, 0), page(2, 1)),
+      )
+
+      const stableView = manager.views.find(sections[2])
+      assert.ok(stableView)
+      lifecycleMethods.forEach((method) => method.mockClear())
+      await turn(
+        'nextReflowableSpread',
+        expectedSpread(page(2, 2), page(2, 3)),
+      )
+      assert.equal(manager.views.find(sections[2]), stableView)
+      assert.equal(stableView.destroyed, false)
+      await turn(
+        'previousReflowableSpread',
+        expectedSpread(page(2, 0), page(2, 1)),
+      )
+      assert.equal(manager.views.find(sections[2]), stableView)
+      await turn(
+        'nextReflowableSpread',
+        expectedSpread(page(2, 2), page(2, 3)),
+      )
+      assert.equal(manager.views.find(sections[2]), stableView)
+      await turn(
+        'previousReflowableSpread',
+        expectedSpread(page(2, 0), page(2, 1)),
+      )
+      assert.equal(manager.views.find(sections[2]), stableView)
+      lifecycleMethods.forEach((method) => assert.equal(method.mock.calls.length, 0))
+
+      await turn(
+        'previousReflowableSpread',
+        expectedSpread(page(0, 2), page(1, 0), true),
+      )
+      const crossSectionView = manager.views.find(sections[0])
+      assert.ok(crossSectionView)
+      await turn('previousReflowableSpread', initialSpread)
+      assert.equal(manager.views.find(sections[0]), crossSectionView)
+      assert.deepEqual(spreadSnapshot(), initialSpread)
+      if (testCase.direction === 'rtl') {
+        assert.deepEqual(manager.reflowableSpreadLocation()[0].mapping, {
+          start: 0,
+          end: 1000,
+        })
+      }
+    }
   })
 
   it('resolves a render spread without mutating the requested spread', async function () {
