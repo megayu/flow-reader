@@ -22,6 +22,7 @@ import {
   type BookTextReplaceTarget,
   cleanupExternalBook,
   db,
+  type ReadingMetrics,
   type ReadingSpreadRecord,
   setBookCacheActive,
 } from '@/storage'
@@ -211,7 +212,6 @@ export interface IMatch extends INode {
 
 export interface ISection extends Section {
   imageInfoLoaded?: boolean
-  length: number
   images: ImageEntry[]
   navitem?: INavItem
   resourceAvailable?: boolean
@@ -277,6 +277,7 @@ export class BookTab extends BaseTab {
   locationsToReturn: Location[] = []
   section?: ISection
   sections?: ISection[]
+  readingMetrics?: ReadingMetrics
   visibleSections: ISection[] = []
   visibleSectionIndexes: number[] = []
   results?: IMatch[]
@@ -681,9 +682,9 @@ export class BookTab extends BaseTab {
 
     percentage ??= calculateReadingPercentage({
       location: this.currentLocation,
-      sections: this.sections,
-      totalLength: this.totalLength,
-      sectionAsPage: this.isScrolledDocument,
+      readingMetrics: this.readingMetrics,
+      sectionCount: this.sections.length,
+      sectionAsPage: this.isScrolledDocument || this.rendition?.manager?.layout?.name === 'pre-paginated',
     })
 
     const cfi = this.locationAnchorCfi(this.currentLocation)
@@ -870,9 +871,9 @@ export class BookTab extends BaseTab {
 
       percentage = calculateReadingPercentage({
         location: loc,
-        sections: this.sections,
-        totalLength: this.totalLength,
-        sectionAsPage: this.isScrolledDocument,
+        readingMetrics: this.readingMetrics,
+        sectionCount: this.sections.length,
+        sectionAsPage: this.isScrolledDocument || this.rendition?.manager?.layout?.name === 'pre-paginated',
       })
     }
 
@@ -1041,10 +1042,6 @@ export class BookTab extends BaseTab {
 
   async searchKeywordImmediately(keyword: string) {
     await this.searchController.searchImmediately(this, keyword)
-  }
-
-  get totalLength() {
-    return this.sections?.reduce((acc, s) => acc + s.length, 0) ?? 0
   }
 
   toggle(id: string) {
@@ -1626,6 +1623,7 @@ export class BookTab extends BaseTab {
     this.rendition = undefined
     this.section = undefined
     this.sections = undefined
+    this.readingMetrics = undefined
     this.sectionNavIndex = undefined
     this.annotationRange = undefined
     this.annotationCfi = undefined
@@ -1821,13 +1819,12 @@ export class BookTab extends BaseTab {
     if (!this.epub) return
 
     if (section.resourceAvailable === false || !section.url) {
-      section.length = 0
       section.images = []
       section.imageInfoLoaded = true
       return
     }
 
-    if (section.document?.body && section.length !== undefined) {
+    if (section.document?.body) {
       this.assignSectionNavItem(section)
       this.markSectionDocumentAccess(section)
       return
@@ -1843,7 +1840,6 @@ export class BookTab extends BaseTab {
       .then(() => section.load(this.epub!.load.bind(this.epub)))
       .then(() => {
         loaded = true
-        section.length = section.document?.body?.textContent?.length ?? 0
         this.assignSectionNavItem(section)
         this.markSectionDocumentAccess(section)
       })
@@ -2013,6 +2009,7 @@ export class BookTab extends BaseTab {
       clearRendering()
       return
     }
+    this.readingMetrics = source.readingMetrics ? markRuntimeObject(source.readingMetrics) : undefined
     if (source.mode === 'epub' && this.book.contentMode !== 'archiveOnly') {
       let refreshedBook: BookRecord | undefined
       try {
@@ -2148,7 +2145,6 @@ export class BookTab extends BaseTab {
       if (generation !== this.renderGeneration) return
       const sections = spine.spineItems as ISection[]
       sections.forEach((s) => {
-        s.length ??= 0
         s.images ??= []
       })
       const runtimeSections = markSectionsRuntime(sections)

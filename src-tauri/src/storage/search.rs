@@ -1,7 +1,6 @@
 use std::{
     fs,
-    io::{Read, Seek},
-    path::{Component, Path, PathBuf},
+    path::Path,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -14,8 +13,14 @@ use crate::{
     tasks::{TaskKey, TaskKind, TaskPriority, TaskService},
 };
 
-use super::epub_import::{EPUB_MAX_SEARCH_TEXT_BYTES, EPUB_SEARCH_DOCUMENT_READ_LIMIT, read_bounded_bytes};
+use super::epub_import::EPUB_MAX_SEARCH_TEXT_BYTES;
+use super::publication::{
+    ArchivePublicationSource, PublicationSource, UnpackedPublicationSource, read_package_document,
+};
 use super::*;
+
+#[cfg(test)]
+use std::path::PathBuf;
 
 const DERIVED_CACHE_BOOK_LIMIT: usize = 8;
 const DERIVED_CACHE_MEMORY_SOFT_LIMIT: usize = 256 * 1024 * 1024;
@@ -104,13 +109,11 @@ pub struct SearchTextHit {
 }
 
 pub(super) fn search_text_cache_to_bytes(cache: &SearchTextCache) -> Result<Vec<u8>, String> {
-    let json = serde_json::to_vec(cache).map_err(|error| error.to_string())?;
-    zstd::stream::encode_all(json.as_slice(), 3).map_err(|error| error.to_string())
+    encode_compressed_json(cache)
 }
 
 pub(super) fn search_text_cache_from_bytes(bytes: &[u8]) -> Result<SearchTextCache, String> {
-    let json = zstd::stream::decode_all(bytes).map_err(|error| error.to_string())?;
-    serde_json::from_slice(&json).map_err(|error| error.to_string())
+    decode_compressed_json(bytes)
 }
 
 fn search_text_cache_matches_book(cache: &SearchTextCache, book: &LibraryBook) -> bool {
@@ -515,7 +518,7 @@ fn build_derived_cache(
 
 #[cfg(test)]
 pub(super) fn read_search_text_sections_from_unpacked(unpacked_dir: &Path) -> Result<Vec<SearchTextSection>, String> {
-    let mut source = UnpackedDerivedCacheSource::new(unpacked_dir);
+    let mut source = UnpackedPublicationSource::new(unpacked_dir);
     Ok(read_derived_sections_from_source(&mut source, true)?.0)
 }
 
@@ -523,7 +526,7 @@ fn read_derived_sections_from_unpacked(
     unpacked_dir: &Path,
     include_search: bool,
 ) -> Result<(Vec<SearchTextSection>, Vec<ImageIndexSection>), String> {
-    let mut source = UnpackedDerivedCacheSource::new(unpacked_dir);
+    let mut source = UnpackedPublicationSource::new(unpacked_dir);
     read_derived_sections_from_source(&mut source, include_search)
 }
 
@@ -534,87 +537,15 @@ fn read_derived_sections_from_epub_package(
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
     validate_epub_archive_limits(&mut archive)?;
-    let mut source = ArchiveDerivedCacheSource { archive };
+    let mut source = ArchivePublicationSource::new(archive);
     read_derived_sections_from_source(&mut source, include_search)
 }
 
-trait DerivedCacheSource {
-    fn read_text(&mut self, path: &str) -> Result<String, String>;
-}
-
-struct UnpackedDerivedCacheSource<'a> {
-    root: &'a Path,
-}
-
-impl<'a> UnpackedDerivedCacheSource<'a> {
-    fn new(root: &'a Path) -> Self {
-        Self { root }
-    }
-}
-
-impl DerivedCacheSource for UnpackedDerivedCacheSource<'_> {
-    fn read_text(&mut self, path: &str) -> Result<String, String> {
-        read_text_file_lossy(&resolve_unpacked_derived_path(self.root, path)?)
-    }
-}
-
-struct ArchiveDerivedCacheSource<R: Read + Seek> {
-    archive: ZipArchive<R>,
-}
-
-impl<R: Read + Seek> DerivedCacheSource for ArchiveDerivedCacheSource<R> {
-    fn read_text(&mut self, path: &str) -> Result<String, String> {
-        let bytes = read_archive_bytes(&mut self.archive, path)?;
-        Ok(text_from_bytes_lossy(bytes))
-    }
-}
-
-fn read_archive_bytes<R: Read + Seek>(archive: &mut ZipArchive<R>, path: &str) -> Result<Vec<u8>, String> {
-    let mut last_error = "EPUB entry not found".to_string();
-
-    for candidate in zip_path_candidates(path) {
-        let entry = archive.by_name(&candidate);
-        match entry {
-            Ok(mut file) => {
-                return read_bounded_bytes(
-                    &mut file,
-                    EPUB_SEARCH_DOCUMENT_READ_LIMIT,
-                    "EPUB derived-cache document",
-                );
-            }
-            Err(error) => {
-                last_error = error.to_string();
-            }
-        }
-    }
-
-    Err(last_error)
-}
-
-fn text_from_bytes_lossy(bytes: Vec<u8>) -> String {
-    match String::from_utf8(bytes) {
-        Ok(text) => text,
-        Err(error) => decode_text_bytes(error.as_bytes(), None).text,
-    }
-}
-
 fn read_derived_sections_from_source(
-    source: &mut impl DerivedCacheSource,
+    source: &mut impl PublicationSource,
     include_search: bool,
 ) -> Result<(Vec<SearchTextSection>, Vec<ImageIndexSection>), String> {
-    let container = source.read_text("META-INF/container.xml")?;
-    let container_doc = roxmltree::Document::parse(&container).map_err(|error| error.to_string())?;
-    let opf_path = container_doc
-        .descendants()
-        .find(|node| node.has_tag_name("rootfile"))
-        .and_then(|node| node.attribute("full-path"))
-        .ok_or_else(|| "EPUB container has no rootfile".to_string())?;
-    let opf_path = normalize_zip_path(opf_path.replace('\\', "/"));
-    if opf_path.is_empty() {
-        return Err("EPUB container has invalid rootfile".to_string());
-    }
-
-    let opf = source.read_text(&opf_path)?;
+    let (opf_path, opf) = read_package_document(source)?;
     let opf_doc = roxmltree::Document::parse(&opf).map_err(|error| error.to_string())?;
     let opf_dir = parent_zip_path(&opf_path).to_string();
 
@@ -669,7 +600,7 @@ fn read_derived_sections_from_source(
         }
 
         let section_path = normalize_zip_path(join_zip_path(&opf_dir, &normalized_href));
-        let xhtml = source.read_text(&section_path)?;
+        let xhtml = source.read_document(&section_path)?;
         total_document_bytes = total_document_bytes
             .checked_add(xhtml.len() as u64)
             .ok_or_else(|| "EPUB search text size overflows the supported limit".to_string())?;
@@ -697,7 +628,7 @@ fn read_derived_sections_from_source(
 }
 
 fn read_search_text_nav_items(
-    source: &mut impl DerivedCacheSource,
+    source: &mut impl PublicationSource,
     opf_doc: &roxmltree::Document,
     manifest: &HashMap<String, DerivedManifestItem>,
     opf_dir: &str,
@@ -727,7 +658,7 @@ fn read_search_text_nav_items(
 }
 
 fn read_epub3_search_nav_items(
-    source: &mut impl DerivedCacheSource,
+    source: &mut impl PublicationSource,
     opf_dir: &str,
     nav_href: &str,
 ) -> Result<Vec<SearchTextNavItem>, String> {
@@ -737,7 +668,7 @@ fn read_epub3_search_nav_items(
     }
 
     let nav_path = normalize_zip_path(join_zip_path(opf_dir, &normalized_href));
-    let nav_text = source.read_text(&nav_path)?;
+    let nav_text = source.read_xml(&nav_path)?;
     let nav_text = remove_doctype_declaration(&nav_text);
     let nav_doc = roxmltree::Document::parse(&nav_text).map_err(|error| error.to_string())?;
     let Some(nav_node) = nav_doc
@@ -816,7 +747,7 @@ fn collect_epub3_search_nav_items(
 }
 
 fn read_ncx_search_nav_items(
-    source: &mut impl DerivedCacheSource,
+    source: &mut impl PublicationSource,
     opf_dir: &str,
     ncx_href: &str,
 ) -> Result<Vec<SearchTextNavItem>, String> {
@@ -826,7 +757,7 @@ fn read_ncx_search_nav_items(
     }
 
     let ncx_path = normalize_zip_path(join_zip_path(opf_dir, &normalized_href));
-    let ncx_text = source.read_text(&ncx_path)?;
+    let ncx_text = source.read_xml(&ncx_path)?;
     let ncx_text = remove_doctype_declaration(&ncx_text);
     let ncx_doc = roxmltree::Document::parse(&ncx_text).map_err(|error| error.to_string())?;
     let Some(nav_map) = ncx_doc
@@ -930,36 +861,6 @@ fn is_search_text_document_media_type(media_type: &str) -> bool {
 
 fn href_without_fragment(href: &str) -> &str {
     href.split_once('#').map(|(path, _)| path).unwrap_or(href)
-}
-
-fn resolve_unpacked_derived_path(root: &Path, href: &str) -> Result<PathBuf, String> {
-    let decoded = percent_decode_path(&href.replace('\\', "/")).replace('\\', "/");
-    if decoded.is_empty() || decoded.contains('%') {
-        return Err("EPUB search document has an invalid encoded path".to_string());
-    }
-
-    let relative = Path::new(&decoded);
-    if relative.components().any(|component| {
-        matches!(
-            component,
-            Component::Prefix(_) | Component::RootDir | Component::ParentDir
-        )
-    }) {
-        return Err("EPUB search document path escapes the unpacked book".to_string());
-    }
-
-    // Extraction creates only regular entries from enclosed ZIP paths, so repeating
-    // filesystem canonicalization for every spine document adds no containment guarantee.
-    Ok(root.join(relative))
-}
-
-fn read_text_file_lossy(path: &Path) -> Result<String, String> {
-    let file = fs::File::open(path).map_err(|error| error.to_string())?;
-    let bytes = read_bounded_bytes(file, EPUB_SEARCH_DOCUMENT_READ_LIMIT, "EPUB search document")?;
-    match String::from_utf8(bytes) {
-        Ok(text) => Ok(text),
-        Err(error) => Ok(decode_text_bytes(error.as_bytes(), None).text),
-    }
 }
 
 #[cfg(test)]

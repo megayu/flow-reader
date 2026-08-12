@@ -46,10 +46,23 @@ export type BookExportFormat = 'epub' | 'txt'
 export type BookSourceStorage = 'managed' | 'referenced'
 export type BookSourceStatus = 'available' | 'changed' | 'missing' | 'unreadable'
 export type BookContentMode = 'normal' | 'archiveOnly'
+export interface ReadingMetricsSection {
+  readonly href: string
+  readonly start: number
+  readonly end: number
+}
+
+export interface ReadingMetrics {
+  readonly version: number
+  readonly totalLength: number
+  readonly sections: readonly ReadingMetricsSection[]
+}
+
 export interface BookReaderSource {
   mode: 'opf' | 'epub'
   url: string
   rootUrl?: string
+  readingMetrics?: ReadingMetrics
 }
 
 export interface BookTextReplaceTarget {

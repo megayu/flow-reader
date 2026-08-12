@@ -27,6 +27,15 @@ pub(in crate::storage) fn read_bounded_bytes(
     Ok(data)
 }
 
+pub(in crate::storage) fn read_epub_xml_file(path: &Path, description: &str) -> Result<String, String> {
+    let bytes = read_bounded_bytes(
+        fs::File::open(path).map_err(|error| error.to_string())?,
+        EPUB_XML_READ_LIMIT,
+        description,
+    )?;
+    String::from_utf8(bytes).map_err(|error| error.to_string())
+}
+
 pub(in crate::storage) fn inspect_epub_access(path: &Path) -> Result<BookContentMode, String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
@@ -194,12 +203,7 @@ pub(in crate::storage) fn unpack_epub(path: &Path, dest: &Path) -> Result<(), St
 
 pub(in crate::storage) fn find_unpacked_opf_path(unpacked_dir: &Path) -> Result<PathBuf, String> {
     let container_path = unpacked_dir.join("META-INF").join("container.xml");
-    let container = String::from_utf8(read_bounded_bytes(
-        fs::File::open(&container_path).map_err(|error| error.to_string())?,
-        EPUB_XML_READ_LIMIT,
-        "EPUB container",
-    )?)
-    .map_err(|error| error.to_string())?;
+    let container = read_epub_xml_file(&container_path, "EPUB container")?;
     let container_doc = roxmltree::Document::parse(&container).map_err(|error| error.to_string())?;
     let opf_path = container_doc
         .descendants()

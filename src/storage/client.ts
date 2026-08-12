@@ -34,6 +34,7 @@ interface NativeBookReaderSource {
   path: string
   rootPath?: string
   book?: BookRecord
+  readingMetrics?: BookReaderSource['readingMetrics']
 }
 
 type Listener = () => void
@@ -591,6 +592,7 @@ export const db = {
         mode: source.mode,
         url: filePathToUrl(source.path),
         rootUrl: source.rootPath ? filePathToUrl(source.rootPath) : undefined,
+        readingMetrics: source.readingMetrics,
       }
     },
   },

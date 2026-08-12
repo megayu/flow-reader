@@ -311,6 +311,24 @@ pub struct BookReaderSource {
     pub(super) root_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) book: Option<BookRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) reading_metrics: Option<ReadingMetrics>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadingMetrics {
+    pub(super) version: u32,
+    pub(super) total_length: u64,
+    pub(super) sections: Vec<ReadingMetricsSection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadingMetricsSection {
+    pub(super) href: String,
+    pub(super) start: u64,
+    pub(super) end: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

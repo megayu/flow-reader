@@ -10,7 +10,7 @@ use std::{
 #[cfg(test)]
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager};
@@ -32,6 +32,8 @@ mod folder_import;
 mod image_index;
 mod import_support;
 mod model;
+mod publication;
+mod reading_metrics;
 mod search;
 mod state;
 mod text_import;
@@ -78,8 +80,8 @@ use export::*;
 use epub_import::{
     clean_xml_text, commit_prepared_epub_import, deobfuscate_unpacked_idpf_fonts, find_unpacked_opf_path,
     inspect_epub_access, join_zip_path, materialize_epub_package, normalize_unpacked_epub_structure,
-    normalize_zip_path, open_external_epub_path_impl, parent_zip_path, prepare_epub_import, unpack_epub,
-    validate_epub_archive_limits,
+    normalize_zip_path, open_external_epub_path_impl, parent_zip_path, prepare_epub_import, read_epub_xml_file,
+    unpack_epub, validate_epub_archive_limits,
 };
 #[cfg(test)]
 use epub_import::{normalize_non_square_pixel_png, normalize_publication_date, relative_zip_path};
@@ -120,8 +122,19 @@ const BOOK_FILE: &str = "book.epub";
 const SOURCE_TEXT_FILE: &str = "source.txt";
 const UNPACKED_DIR: &str = "unpacked";
 
+fn encode_compressed_json<T: Serialize>(value: &T) -> Result<Vec<u8>, String> {
+    let json = serde_json::to_vec(value).map_err(|error| error.to_string())?;
+    zstd::stream::encode_all(json.as_slice(), 3).map_err(|error| error.to_string())
+}
+
+fn decode_compressed_json<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, String> {
+    let json = zstd::stream::decode_all(bytes).map_err(|error| error.to_string())?;
+    serde_json::from_slice(&json).map_err(|error| error.to_string())
+}
+
 fn is_derived_cache_file_name(name: &str) -> bool {
-    (name.starts_with("search-text.v") || name.starts_with("image-index.v")) && name.ends_with(".json.zst")
+    (name.starts_with("search-text.v") || name.starts_with("image-index.v") || name.starts_with("reading-metrics.v"))
+        && name.ends_with(".json.zst")
 }
 const SEARCH_TEXT_EXCERPT_RADIUS: usize = 60;
 pub const SEARCH_TEXT_CACHE_VERSION: u32 = 1;
@@ -243,6 +256,13 @@ impl AppStorage {
     fn image_index_cache_path(&self, id: &str, content_version: u32) -> PathBuf {
         self.book_dir(id).join(format!(
             "image-index.v{IMAGE_INDEX_CACHE_VERSION}.cv{content_version}.json.zst"
+        ))
+    }
+
+    fn reading_metrics_cache_path(&self, id: &str) -> PathBuf {
+        self.book_dir(id).join(format!(
+            "reading-metrics.v{}.json.zst",
+            reading_metrics::READING_METRICS_VERSION
         ))
     }
 

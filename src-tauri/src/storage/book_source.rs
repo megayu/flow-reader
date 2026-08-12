@@ -234,40 +234,42 @@ pub(super) fn get_book_reader_source_impl(
 ) -> Result<BookReaderSource, String> {
     let book_dir = storage.book_dir(&book.id);
     let unpacked_dir = book_dir.join(UNPACKED_DIR);
-    if let Ok(opf_path) = find_unpacked_opf_path(&unpacked_dir) {
-        if let Ok(opf_xml) = fs::read_to_string(&opf_path) {
+    let (mode, source_path, root_path, updated_book) = if let Ok(opf_path) = find_unpacked_opf_path(&unpacked_dir) {
+        if let Ok(opf_xml) = read_epub_xml_file(&opf_path, "EPUB package document") {
             deobfuscate_unpacked_idpf_fonts(&unpacked_dir, &opf_xml)?;
         }
-        return Ok(BookReaderSource {
-            mode: BookReaderSourceMode::Opf,
-            path: path_to_client_string(&opf_path),
-            root_path: Some(path_to_client_string(&unpacked_dir)),
-            book: None,
-        });
-    }
-
-    if inspect_and_store_book_content_access(storage, book)? == BookContentMode::ArchiveOnly {
+        (BookReaderSourceMode::Opf, opf_path, Some(unpacked_dir.clone()), None)
+    } else if inspect_and_store_book_content_access(storage, book)? == BookContentMode::ArchiveOnly {
         let book_path = available_book_source_path(storage, book)?;
-        return Ok(BookReaderSource {
-            mode: BookReaderSourceMode::Epub,
-            path: path_to_client_string(&book_path),
-            root_path: None,
-            book: None,
-        });
-    }
+        (BookReaderSourceMode::Epub, book_path, None, None)
+    } else {
+        let opf_path = ensure_book_package_path(storage, tasks, book)?;
+        let current_book = storage.library_book(&book.id)?;
+        let updated_book = (current_book.content_version != book.content_version
+            || current_book.content_hash != book.content_hash)
+            .then(|| commands::get_book_impl(storage, book.id.clone()))
+            .transpose()?
+            .flatten();
+        (BookReaderSourceMode::Opf, opf_path, Some(unpacked_dir), updated_book)
+    };
 
-    let opf_path = ensure_book_package_path(storage, tasks, book)?;
-    let current_book = storage.library_book(&book.id)?;
-    let updated_book = (current_book.content_version != book.content_version
-        || current_book.content_hash != book.content_hash)
-        .then(|| commands::get_book_impl(storage, book.id.clone()))
-        .transpose()?
-        .flatten();
+    let reading_metrics = super::reading_metrics::load_or_build_reading_metrics(
+        storage,
+        tasks,
+        &book.id,
+        mode,
+        &source_path,
+        root_path.as_deref(),
+    )
+    .inspect_err(|error| eprintln!("Failed to load reading metrics for {}: {error}", book.id))
+    .ok();
+
     Ok(BookReaderSource {
-        mode: BookReaderSourceMode::Opf,
-        path: path_to_client_string(&opf_path),
-        root_path: Some(path_to_client_string(&unpacked_dir)),
+        mode,
+        path: path_to_client_string(&source_path),
+        root_path: root_path.as_deref().map(path_to_client_string),
         book: updated_book,
+        reading_metrics,
     })
 }
 

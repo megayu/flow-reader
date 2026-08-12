@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-use super::{join_zip_path, normalize_zip_path, parent_zip_path};
+use super::{decode_compressed_json, encode_compressed_json, join_zip_path, normalize_zip_path, parent_zip_path};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,13 +31,11 @@ pub struct ImageIndexEntry {
 }
 
 pub(super) fn image_index_cache_to_bytes(cache: &ImageIndexCache) -> Result<Vec<u8>, String> {
-    let json = serde_json::to_vec(cache).map_err(|error| error.to_string())?;
-    zstd::stream::encode_all(json.as_slice(), 3).map_err(|error| error.to_string())
+    encode_compressed_json(cache)
 }
 
 pub(super) fn image_index_cache_from_bytes(bytes: &[u8]) -> Result<ImageIndexCache, String> {
-    let json = zstd::stream::decode_all(bytes).map_err(|error| error.to_string())?;
-    serde_json::from_slice(&json).map_err(|error| error.to_string())
+    decode_compressed_json(bytes)
 }
 
 pub(super) fn image_index_section_from_document(

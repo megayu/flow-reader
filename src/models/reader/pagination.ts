@@ -1,8 +1,9 @@
 import type { Location } from '@flow/epubjs'
 import type Navigation from '@flow/epubjs/navigation'
 import type { RenditionManager, RenditionManagerPage } from '@flow/epubjs/rendition'
+import { sameHref } from '@/noteLinks'
 
-import type { BookRecord, ReadingSpreadPageRecord, ReadingSpreadRecord } from '../../storage'
+import type { BookRecord, ReadingMetrics, ReadingSpreadPageRecord, ReadingSpreadRecord } from '../../storage'
 
 import type { INavItem, ISection } from './model'
 
@@ -19,47 +20,49 @@ function estimatePercentageFromSpine(location: Location['end'], sectionCount: nu
   const sectionIndex = Math.max(0, Math.min(location.index, sectionCount - 1))
   const totalPages = Math.max(1, location.displayed.total || 1)
   const page = Math.max(1, Math.min(location.displayed.page || 1, totalPages))
-  const sectionProgress = page / totalPages
+  const sectionProgress = (page - 1) / totalPages
 
   return Math.max(0, Math.min(1, (sectionIndex + sectionProgress) / sectionCount))
 }
 
+function completedSectionPercentage(location: Location['end'], sectionCount: number) {
+  if (!sectionCount) return 0
+  return Math.max(0, Math.min(1, (location.index + 1) / sectionCount))
+}
+
 export function calculateReadingPercentage({
   location,
-  sections,
-  totalLength,
+  readingMetrics,
+  sectionCount = readingMetrics?.sections.length ?? 0,
   sectionAsPage = false,
 }: {
   location: Location
-  sections: ISection[]
-  totalLength?: number
+  readingMetrics?: ReadingMetrics
+  sectionCount?: number
   sectionAsPage?: boolean
 }) {
   if (location.atEnd) return 1
 
   const end = location.end ?? location.start
   if (sectionAsPage) {
-    return estimatePercentageFromSpine(end, sections.length)
+    return completedSectionPercentage(end, sectionCount)
   }
 
   if (location.atStart) return 0
 
-  const sectionIndex = sections.findIndex((s) => s.href === end.href)
-  const activeSection = sectionIndex >= 0 ? sections[sectionIndex] : undefined
+  const metrics = readingMetrics
+  const section = metrics?.sections[end.index]
+  if (metrics && section && metrics.totalLength > 0) {
+    if (!sameHref(section.href, end.href)) return estimatePercentageFromSpine(end, sectionCount)
 
-  if (activeSection && totalLength && activeSection.length) {
-    const previousSectionsLength = sections.slice(0, sectionIndex).reduce((acc, s) => acc + s.length, 0)
-    const previousSectionsPercentage = previousSectionsLength / totalLength
-    const currentSectionPercentage = activeSection.length / totalLength
-    const displayedPercentage = end.displayed.total > 0 ? end.displayed.page / end.displayed.total : 0
-
-    return Math.max(0, Math.min(1, previousSectionsPercentage + currentSectionPercentage * displayedPercentage))
+    const totalPages = Math.max(1, end.displayed.total || 1)
+    const page = Math.max(1, Math.min(end.displayed.page || 1, totalPages))
+    const sectionProgress = (page - 1) / totalPages
+    const position = section.start + (section.end - section.start) * sectionProgress
+    return Math.max(0, Math.min(1, position / metrics.totalLength))
   }
 
-  const estimated = estimatePercentageFromSpine(end, sections.length)
-  if (estimated > 0) return estimated
-
-  return displayLocationPercentage(end) ?? 0
+  return sectionCount ? estimatePercentageFromSpine(end, sectionCount) : (displayLocationPercentage(end) ?? 0)
 }
 
 export function fallbackReadingPercentage(location: Location) {

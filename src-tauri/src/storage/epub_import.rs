@@ -13,7 +13,7 @@ use zip::ZipArchive;
 
 use super::*;
 
-mod access;
+pub(super) mod access;
 mod metadata_cover;
 mod normalize;
 mod pipeline;
@@ -24,8 +24,8 @@ use normalize::*;
 
 use access::{EPUB_COVER_READ_LIMIT, EPUB_XML_READ_LIMIT};
 pub(super) use access::{
-    EPUB_MAX_SEARCH_TEXT_BYTES, EPUB_SEARCH_DOCUMENT_READ_LIMIT, find_unpacked_opf_path, inspect_epub_access,
-    read_bounded_bytes, unpack_epub, validate_epub_archive_limits,
+    EPUB_MAX_SEARCH_TEXT_BYTES, find_unpacked_opf_path, inspect_epub_access, read_bounded_bytes, read_epub_xml_file,
+    unpack_epub, validate_epub_archive_limits,
 };
 #[cfg(test)]
 pub(super) use metadata_cover::normalize_non_square_pixel_png;
