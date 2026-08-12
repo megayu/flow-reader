@@ -61,6 +61,7 @@ fn open_directory_in_file_manager(path: &Path) -> Result<(), String> {
 fn reveal_file_in_file_manager(path: &Path) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
+        let path = std::path::absolute(path).map_err(|error| format!("failed to resolve file path: {error}"))?;
         Command::new("explorer")
             .arg("/select,")
             .arg(path)
