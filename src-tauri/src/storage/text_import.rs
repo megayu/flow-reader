@@ -151,9 +151,9 @@ fn create_text_cover_svg(title: &str, creator: &str) -> String {
     let creator = escape_svg(creator);
     let creator_block = if has_creator {
         format!(
-            r#"<foreignObject x="7.5%" y="70%" width="85%" height="30%">
+            r#"<foreignObject x="45" y="560" width="510" height="240">
                 <div xmlns="http://www.w3.org/1999/xhtml" style="height:100%;box-sizing:border-box;display:flex;align-items:flex-start;justify-content:center;text-align:center;color:#776b5c;font-family:Noto Serif CJK SC, Source Han Serif SC, STSong, SimSun, serif;overflow:hidden;">
-                    <div xmlns="http://www.w3.org/1999/xhtml" style="max-width:100%;font-size:clamp(14px,8vw,22px);line-height:1.18;font-weight:700;overflow-wrap:anywhere;word-break:break-word;">{creator}</div>
+                    <div xmlns="http://www.w3.org/1999/xhtml" style="max-width:100%;font-size:48px;line-height:1.18;font-weight:700;overflow-wrap:anywhere;word-break:break-word;">{creator}</div>
                 </div>
             </foreignObject>"#
         )
@@ -162,12 +162,12 @@ fn create_text_cover_svg(title: &str, creator: &str) -> String {
     };
 
     format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" style="aspect-ratio:3/4" data-flow-generated-cover="true">
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" preserveAspectRatio="xMidYMid meet" data-flow-generated-cover="true">
             <title>{title}</title>
-            <rect width="100%" height="100%" fill="#ead7b5"/>
-            <foreignObject x="7.5%" y="30%" width="85%" height="40%">
+            <rect width="600" height="800" fill="#ead7b5"/>
+            <foreignObject x="45" y="240" width="510" height="320">
                 <div xmlns="http://www.w3.org/1999/xhtml" style="height:100%;box-sizing:border-box;display:flex;align-items:flex-start;justify-content:center;text-align:center;color:#3d3122;font-family:Noto Serif CJK SC, Source Han Serif SC, STSong, SimSun, serif;overflow:hidden;">
-                <div xmlns="http://www.w3.org/1999/xhtml" style="max-width:100%;font-size:clamp(18px,12vw,30px);line-height:1.12;font-weight:800;overflow-wrap:anywhere;word-break:break-word;">{title}</div>
+                <div xmlns="http://www.w3.org/1999/xhtml" style="max-width:100%;font-size:72px;line-height:1.12;font-weight:800;overflow-wrap:anywhere;word-break:break-word;">{title}</div>
                 </div>
             </foreignObject>
             {creator_block}
@@ -210,15 +210,17 @@ mod tests {
 
         assert!(svg.contains(r#"data-flow-generated-cover="true""#));
         assert!(svg.contains("<foreignObject"));
-        assert!(svg.contains(r#"style="aspect-ratio:3/4""#));
+        assert!(svg.contains(r#"width="600" height="800""#));
+        assert!(svg.contains(r#"viewBox="0 0 600 800""#));
+        assert!(svg.contains(r#"preserveAspectRatio="xMidYMid meet""#));
         assert!(svg.contains("overflow-wrap:anywhere"));
-        assert!(svg.contains(r#"width="100%" height="100%""#));
-        assert!(!svg.contains("viewBox"));
-        assert!(svg.contains(r#"y="30%" width="85%" height="40%""#));
-        assert!(svg.contains(r#"y="70%" width="85%" height="30%""#));
+        assert!(svg.contains(r#"x="45" y="240" width="510" height="320""#));
+        assert!(svg.contains(r#"x="45" y="560" width="510" height="240""#));
         assert!(svg.contains("align-items:flex-start"));
-        assert!(svg.contains("font-size:clamp(18px,12vw,30px)"));
-        assert!(svg.contains("font-size:clamp(14px,8vw,22px)"));
+        assert!(svg.contains("font-size:72px"));
+        assert!(svg.contains("font-size:48px"));
+        assert!(!svg.contains("clamp("));
+        assert!(!svg.contains("vw"));
         assert!(svg.contains("font-weight:700"));
         assert!(svg.contains("color:#776b5c"));
         assert!(svg.contains("Author &amp; Co"));
