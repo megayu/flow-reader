@@ -282,5 +282,5 @@ const AnnotationPane: React.FC = () => {
 
 function annotationRowKey(row: AnnotationRow) {
   if (row.type === 'section') return `section:${row.id}`
-  return `${row.type}:${row.annotation.id}`
+  return `${row.type}:${row.annotation.cfi}`
 }

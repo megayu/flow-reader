@@ -5,7 +5,7 @@ fn unedited_source_path(storage: &AppStorage, book: &LibraryBook) -> Option<Path
         && book.source_storage == SourceStorage::Managed
         && book.content_edited_at.is_some()
     {
-        return book.source_path.clone();
+        return Some(book.source_path.clone());
     }
 
     match book.source_storage {
@@ -13,7 +13,7 @@ fn unedited_source_path(storage: &AppStorage, book: &LibraryBook) -> Option<Path
             BookSourceFormat::Epub => BOOK_FILE,
             BookSourceFormat::Txt => SOURCE_TEXT_FILE,
         })),
-        SourceStorage::Referenced => book.source_path.clone(),
+        SourceStorage::Referenced => Some(book.source_path.clone()),
     }
 }
 
@@ -146,7 +146,7 @@ pub(super) fn clear_book_caches_impl(
             };
             book.size = *size;
             book.content_hash = content_hash.clone();
-            book.content_version = book.content_version.saturating_add(1).max(1);
+            book.revision = next_revision(book.revision)?;
             book.content_edited_at = None;
             book.updated_at = Some(updated_at);
         }
@@ -349,7 +349,6 @@ pub(super) fn cleanup_external_book_heavy_files(storage: &AppStorage, id: &str) 
     if unpacked_dir.exists() {
         fs::remove_dir_all(unpacked_dir).map_err(|error| error.to_string())?;
     }
-    remove_cover_files(storage, id)?;
     Ok(())
 }
 

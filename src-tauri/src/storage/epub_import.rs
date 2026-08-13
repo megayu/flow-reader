@@ -6,7 +6,7 @@ use std::{
 };
 
 use regex::Regex;
-use serde_json::{Value, json};
+use serde_json::Value;
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use zip::ZipArchive;

@@ -15,9 +15,10 @@ const modifiedBook: BookRecord = createTestBook({
   name: 'Correctable.txt',
   size: 1024,
   sourceFormat: 'txt',
+  managed: true,
   contentEditedAt: 123,
   contentHash: 'hash',
-  contentVersion: 2,
+  revision: 2,
   metadata: {
     title: 'Correctable',
   },
@@ -76,8 +77,9 @@ test('TXT book context menu expands formats and exports the selected format', as
         name: 'Correctable.txt',
         size: 1024,
         sourceFormat: 'txt',
+        managed: true,
         contentHash: 'hash',
-        contentVersion: 2,
+        revision: 2,
         metadata: {
           title: 'Correctable',
         },

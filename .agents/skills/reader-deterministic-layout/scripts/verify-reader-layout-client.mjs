@@ -217,6 +217,11 @@ function createLayoutBrowserBooks() {
     id: `flow-md4-${String(name).toLowerCase()}`,
     name: `${title}.epub`,
     size: 90 * Number(paragraphCount) * 512,
+    sourceFormat: 'epub',
+    contentHash: `flow-layout-${String(name).toLowerCase()}`,
+    revision: 1,
+    managed: true,
+    sourcePath: `${title}.epub`,
     metadata: {
       title,
       creator: 'Flow Layout',

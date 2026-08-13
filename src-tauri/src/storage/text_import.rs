@@ -1164,10 +1164,7 @@ pub(super) fn should_skip_prepared_text_import_preview(
 
     Ok(state.library.books.iter().any(|book| {
         book.content_edited_at.is_none()
-            && book
-                .source_path
-                .as_deref()
-                .is_some_and(|path| same_source_path(path, &prepared.path))
+            && same_source_path(&book.source_path, &prepared.path)
             && !book.content_hash.is_empty()
             && book.content_hash == prepared.hash
     }))
@@ -1580,10 +1577,10 @@ pub(super) fn import_text_path_impl(
 
         if let Some(ExistingBookImport::SameContent(index)) = existing {
             let mut book = state.library.books[index].clone();
-            let source_changed = book.name != name || book.source_path.as_ref() != Some(&source_path);
+            let source_changed = book.name != name || book.source_path != source_path;
             book.name = name.clone();
             book.size = size;
-            book.source_path = Some(source_path.clone());
+            book.source_path = source_path.clone();
             if source_changed {
                 book.updated_at = Some(now_ms());
             }
@@ -1594,13 +1591,14 @@ pub(super) fn import_text_path_impl(
             book.name = name.clone();
             book.size = size;
             book.content_hash = hash.clone();
-            book.content_version = book.content_version.saturating_add(1).max(1);
+            book.revision = next_revision(book.revision)?;
             book.generated_cover = true;
             book.content_mode = BookContentMode::Normal;
             book.source_storage = source_storage;
-            book.source_path = Some(source_path.clone());
+            book.source_path = source_path.clone();
             book.updated_at = Some(now_ms());
             book.content_edited_at = None;
+            book.metadata["sourceEncodingId"] = Value::String(decoded.encoding.clone());
             let id = book.id.clone();
             (book, id, true, false)
         } else if matches!(existing, Some(ExistingBookImport::Skip)) {
@@ -1617,10 +1615,10 @@ pub(super) fn import_text_path_impl(
                 generated_cover: true,
                 content_edited_at: None,
                 content_hash: hash.clone(),
-                content_version: 1,
+                revision: 1,
                 content_mode: BookContentMode::Normal,
                 source_storage,
-                source_path: Some(source_path.clone()),
+                source_path: source_path.clone(),
                 metadata: metadata.clone(),
                 created_at,
                 updated_at: None,
@@ -1680,7 +1678,7 @@ pub(super) fn import_text_path_impl(
                 *stored = book.clone();
                 stored_index
             };
-            let record = storage.compose_book(&book)?;
+            let record = storage.compose_book(&book, BookScope::Library)?;
             if let Some(index) = import_index.as_deref_mut() {
                 index.remember(stored_index, &book);
             }

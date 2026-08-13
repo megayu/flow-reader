@@ -1,6 +1,6 @@
 import type { AppLocale } from '../locales'
 import type { PageAppearance, TypographyConfiguration } from '../reader/configuration'
-import type { BookSourceStorage } from '../storage/types'
+import type { ImportSourceStorage } from '../storage/types'
 import type { ThemeConfiguration } from '../styles/theme'
 import { defaultUiFontSize } from '../styles/ui'
 import type { TranslationLanguage, TranslationProvider } from '../translation/languages'
@@ -21,7 +21,7 @@ export interface Settings extends TypographyConfiguration {
   showLibraryInToc?: boolean
   showRecentBooks?: boolean
   showModifiedBookExportIndicator?: boolean
-  importSourceStorage?: BookSourceStorage
+  importSourceStorage?: ImportSourceStorage
   copyTextImports?: boolean
   startupSession?: StartupSession
   libraryDisplay?: LibraryDisplayConfiguration

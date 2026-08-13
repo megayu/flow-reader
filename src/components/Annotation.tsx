@@ -147,7 +147,7 @@ const Definitions: React.FC<DefinitionsProps> = ({ active, definitions, tab, dar
     [definitions],
   )
   const definitionKey = useMemo(() => definitionItems.map((item) => item.definition).join('\u0000'), [definitionItems])
-  const matchCacheScope = `${book.id}:${book.contentVersion}:${definitionKey}`
+  const matchCacheScope = `${book.id}:${book.revision}:${definitionKey}`
   const visibleSectionKey = visibleSectionIndexes.join('|')
 
   useEffect(() => {
@@ -298,7 +298,7 @@ export const Annotations: React.FC<AnnotationsProps> = ({ active, tab }) => {
         overlayState.annotations.flatMap((annotation) =>
           // seems to fix annotation flash when executing `next()` and `display()`
           visibleSectionIndexSet.has(annotation.spine.index)
-            ? [<Annotation key={annotation.id} tab={tab} annotation={annotation} />]
+            ? [<Annotation key={annotation.cfi} tab={tab} annotation={annotation} />]
             : [],
         )}
       <Definitions active={active} definitions={overlayState.definitions} tab={tab} dark={!!dark} />

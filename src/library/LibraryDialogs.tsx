@@ -500,7 +500,7 @@ export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({ book, cover, onC
     [t('info.language'), formatLanguage(book.metadata.language)],
     [t('info.publisher'), cleanBookText(book.metadata.publisher)],
     [t('info.publication_date'), cleanBookText(book.metadata.pubdate)],
-    ...(book.sourceStorage === 'referenced' && book.sourcePath
+    ...(!book.managed && book.sourcePath
       ? [[t('info.file_path'), formatLocalDirectoryForDisplay(book.sourcePath)]]
       : []),
     [t('info.file_name'), cleanBookText(book.name)],

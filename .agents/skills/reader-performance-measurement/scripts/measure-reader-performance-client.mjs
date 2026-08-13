@@ -171,6 +171,11 @@ function createPerfBrowserBooks() {
       id: `flow-perf-${name.toLowerCase()}`,
       name: `${title}.epub`,
       size: BOOK_CHAPTERS * BOOK_PARAGRAPHS * 512,
+      sourceFormat: 'epub',
+      contentHash: `flow-perf-${name.toLowerCase()}`,
+      revision: 1,
+      managed: true,
+      sourcePath: `${title}.epub`,
       metadata: {
         title,
         creator: 'Flow Performance',

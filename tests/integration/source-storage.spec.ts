@@ -13,8 +13,7 @@ const missingArchiveBook: BookRecord = createTestBook({
   createdAt: 1,
   definitions: [],
   annotations: [],
-  contentMode: 'archiveOnly',
-  sourceStorage: 'referenced',
+  archive: true,
   sourcePath: '/fixtures/missing.epub',
   stateLoaded: true,
 })
@@ -24,7 +23,7 @@ const referencedBook: BookRecord = createTestBook({
   id: 'referenced-book',
   name: 'referenced.epub',
   metadata: { title: 'Referenced Book' },
-  contentMode: 'normal',
+  archive: undefined,
   sourcePath: '/fixtures/referenced.epub',
 })
 
@@ -33,8 +32,8 @@ const managedBook: BookRecord = createTestBook({
   id: 'managed-book',
   name: 'managed.epub',
   metadata: { title: 'Managed Book' },
-  sourceStorage: 'managed',
-  sourcePath: undefined,
+  managed: true,
+  sourcePath: 'managed.epub',
 })
 
 test('shift click reveals only an available referenced source in normal mode', async ({ page }) => {

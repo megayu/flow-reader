@@ -100,7 +100,7 @@ pub(super) fn revealable_book_source_path(book: &LibraryBook) -> Option<&Path> {
         return None;
     }
 
-    book.source_path.as_deref().filter(|path| path.is_file())
+    book.source_path.is_file().then_some(book.source_path.as_path())
 }
 
 fn tag_id(created_at: u64) -> String {
@@ -551,13 +551,21 @@ pub fn get_book(storage: State<'_, AppStorage>, id: String) -> Result<Option<Boo
 }
 
 pub(super) fn get_book_impl(storage: &AppStorage, id: String) -> Result<Option<BookRecord>, String> {
-    let book = match storage.library_book(&id) {
-        Ok(book) => book,
-        Err(error) if error == "Book not found" => return Ok(None),
-        Err(error) => return Err(error),
+    let (book, scope) = {
+        let state = storage
+            .inner
+            .state
+            .lock()
+            .map_err(|_| "storage state lock poisoned".to_string())?;
+        if let Some(book) = state.library.books.iter().find(|book| book.id == id) {
+            (book.clone(), BookScope::Library)
+        } else if let Some(book) = state.external.books.iter().find(|book| book.id == id) {
+            (book.clone(), BookScope::External)
+        } else {
+            return Ok(None);
+        }
     };
-
-    storage.compose_book(&book).map(Some)
+    storage.compose_book(&book, scope).map(Some)
 }
 
 #[tauri::command]
@@ -1371,7 +1379,7 @@ pub async fn load_book_image_index(
         if book.source_format == BookSourceFormat::Txt {
             return Ok(ImageIndexCache {
                 version: IMAGE_INDEX_CACHE_VERSION,
-                content_version: book.content_version,
+                revision: book.revision,
                 sections: Vec::new(),
             });
         }
@@ -1494,6 +1502,64 @@ fn is_spread_only_configuration_update(current: Option<&Value>, incoming: &Value
     configuration_without_spread(current) == configuration_without_spread(Some(incoming))
 }
 
+#[derive(Default)]
+struct BookStateChanges {
+    book: bool,
+    state: bool,
+    flush: bool,
+    configuration_spread_only: bool,
+}
+
+fn apply_book_state_changes(
+    book: &mut LibraryBook,
+    state: &mut BookState,
+    changes: &serde_json::Map<String, Value>,
+) -> BookStateChanges {
+    let mut applied = BookStateChanges {
+        configuration_spread_only: !changes.contains_key("configuration"),
+        ..Default::default()
+    };
+    if let Some(value) = changes.get("updatedAt").and_then(Value::as_u64) {
+        book.updated_at = Some(value);
+        applied.book = true;
+    }
+    if let Some(value) = changes.get("lastReadAt").and_then(Value::as_u64) {
+        book.last_read_at = Some(value);
+        applied.book = true;
+    }
+    if let Some(value) = changes.get("cfi") {
+        let cfi = value.as_str().map(str::to_string);
+        state.cfi = cfi.clone();
+        book.cfi = cfi;
+        applied.book = true;
+        applied.state = true;
+    }
+    if let Some(value) = changes.get("percentage") {
+        let percentage = value.as_f64();
+        state.percentage = percentage;
+        book.percentage = percentage;
+        applied.book = true;
+        applied.state = true;
+    }
+    if let Some(value) = changes.get("definitions") {
+        state.definitions = serde_json::from_value(value.clone()).unwrap_or_default();
+        applied.state = true;
+        applied.flush = true;
+    }
+    if let Some(value) = changes.get("annotations") {
+        state.annotations = serde_json::from_value(value.clone()).unwrap_or_default();
+        applied.state = true;
+        applied.flush = true;
+    }
+    if let Some(value) = changes.get("configuration") {
+        applied.configuration_spread_only = is_spread_only_configuration_update(state.configuration.as_ref(), value);
+        state.configuration = Some(value.clone());
+        applied.state = true;
+        applied.flush |= !applied.configuration_spread_only;
+    }
+    applied
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadingPositionInput {
@@ -1509,21 +1575,25 @@ pub(super) fn record_reading_position_impl(
     storage: &AppStorage,
     position: ReadingPositionInput,
 ) -> Result<bool, String> {
-    {
+    let scope = {
         let mut state = storage
             .inner
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        if let Some(book) = state.library.books.iter_mut().find(|book| book.id == position.book_id) {
+        let scope = if let Some(book) = state.library.books.iter_mut().find(|book| book.id == position.book_id) {
             book.cfi = position.cfi.clone();
             book.percentage = position.percentage;
             book.last_read_at = Some(position.last_read_at);
+            BookScope::Library
         } else if let Some(book) = state.external.books.iter_mut().find(|book| book.id == position.book_id) {
-            book.last_opened_at = position.last_read_at;
+            book.cfi = position.cfi.clone();
+            book.percentage = position.percentage;
+            book.last_read_at = Some(position.last_read_at);
+            BookScope::External
         } else {
             return Ok(false);
-        }
+        };
 
         let mut book_state = storage.read_book_state(&position.book_id)?;
         book_state.cfi = position.cfi.clone();
@@ -1533,12 +1603,12 @@ pub(super) fn record_reading_position_impl(
             position.spread,
         ));
         storage.write_book_state(&position.book_id, &book_state)?;
-    }
+        scope
+    };
 
-    if is_external_book_id(&position.book_id) {
-        storage.mark_external_dirty();
-    } else {
-        storage.mark_library_dirty();
+    match scope {
+        BookScope::Library => storage.mark_library_dirty(),
+        BookScope::External => storage.mark_external_dirty(),
     }
     Ok(true)
 }
@@ -1566,7 +1636,7 @@ pub fn record_reading_position(storage: State<'_, AppStorage>, position: Reading
 
 #[tauri::command]
 pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -> Result<Option<CoverRecord>, String> {
-    if is_external_book_id(&id) {
+    if storage.is_external_book(&id) {
         update_external_book(&storage, id, changes)?;
         return Ok(None);
     }
@@ -1597,8 +1667,6 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
                     "cfi" | "percentage" | "updatedAt" | "lastReadAt" | "configuration"
                 )
             });
-            let mut configuration_spread_only_update = !object.contains_key("configuration");
-
             if let Some(value) = object.get("name").and_then(Value::as_str) {
                 book.name = value.to_string();
                 library_changed = true;
@@ -1639,14 +1707,6 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
                 library_changed = true;
                 immediate_flush = true;
             }
-            if let Some(value) = object.get("updatedAt").and_then(Value::as_u64) {
-                book.updated_at = Some(value);
-                library_changed = true;
-            }
-            if let Some(value) = object.get("lastReadAt").and_then(Value::as_u64) {
-                book.last_read_at = Some(value);
-                library_changed = true;
-            }
             if let Some(value) = object.get("tagIds") {
                 let mut seen = std::collections::HashSet::new();
                 let tag_ids = value
@@ -1663,43 +1723,14 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
                 immediate_flush = true;
             }
 
-            if let Some(value) = object.get("cfi") {
-                let cfi = value.as_str().map(str::to_string);
-                book_state.cfi = cfi.clone();
-                book.cfi = cfi;
-                library_changed = true;
-                state_changed = true;
-            }
-            if let Some(value) = object.get("percentage") {
-                let percentage = value.as_f64();
-                book_state.percentage = percentage;
-                book.percentage = percentage;
-                library_changed = true;
-                state_changed = true;
-            }
-            if let Some(value) = object.get("definitions") {
-                book_state.definitions = serde_json::from_value(value.clone()).unwrap_or_default();
-                state_changed = true;
-                immediate_flush = true;
-            }
-            if let Some(value) = object.get("annotations") {
-                book_state.annotations = serde_json::from_value(value.clone()).unwrap_or_default();
-                state_changed = true;
-                immediate_flush = true;
-            }
-            if let Some(value) = object.get("configuration") {
-                let spread_only = is_spread_only_configuration_update(book_state.configuration.as_ref(), value);
-                configuration_spread_only_update = spread_only;
-                book_state.configuration = Some(value.clone());
-                state_changed = true;
-                if !spread_only {
-                    immediate_flush = true;
-                }
-            }
+            let applied = apply_book_state_changes(&mut book, &mut book_state, object);
+            library_changed |= applied.book;
+            state_changed |= applied.state;
+            immediate_flush |= applied.flush;
 
             let explicit_state_update = object.contains_key("definitions")
                 || object.contains_key("annotations")
-                || (object.contains_key("configuration") && !configuration_spread_only_update);
+                || (object.contains_key("configuration") && !applied.configuration_spread_only);
             reading_position_only = updates_reading_position && !explicit_state_update && allowed_reading_position_keys;
         }
 
@@ -1750,53 +1781,10 @@ fn update_external_book(storage: &AppStorage, id: String, changes: Value) -> Res
         let mut book_state = storage.read_book_state(&id)?;
 
         if let Some(object) = changes.as_object() {
-            if let Some(value) = object.get("name").and_then(Value::as_str) {
-                book.name = value.to_string();
-                external_changed = true;
-                immediate_flush = true;
-            }
-            if let Some(value) = object.get("size").and_then(Value::as_u64) {
-                book.size = value;
-                external_changed = true;
-                immediate_flush = true;
-            }
-            if let Some(value) = object.get("metadata") {
-                book.metadata = value.clone();
-                external_changed = true;
-                immediate_flush = true;
-            }
-            if let Some(value) = object.get("updatedAt").and_then(Value::as_u64) {
-                book.last_opened_at = value;
-                external_changed = true;
-            }
-            if let Some(value) = object.get("lastReadAt").and_then(Value::as_u64) {
-                book.last_opened_at = value;
-                external_changed = true;
-            }
-
-            if let Some(value) = object.get("cfi") {
-                book_state.cfi = value.as_str().map(str::to_string);
-                state_changed = true;
-            }
-            if let Some(value) = object.get("percentage") {
-                book_state.percentage = value.as_f64();
-                state_changed = true;
-            }
-            if let Some(value) = object.get("definitions") {
-                book_state.definitions = serde_json::from_value(value.clone()).unwrap_or_default();
-                state_changed = true;
-                immediate_flush = true;
-            }
-            if let Some(value) = object.get("annotations") {
-                book_state.annotations = serde_json::from_value(value.clone()).unwrap_or_default();
-                state_changed = true;
-                immediate_flush = true;
-            }
-            if let Some(value) = object.get("configuration") {
-                book_state.configuration = Some(value.clone());
-                state_changed = true;
-                immediate_flush = true;
-            }
+            let applied = apply_book_state_changes(book, &mut book_state, object);
+            external_changed = applied.book;
+            state_changed = applied.state;
+            immediate_flush = applied.flush;
         }
         if state_changed {
             storage.write_book_state(&id, &book_state)?;

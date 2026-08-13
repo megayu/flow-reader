@@ -3,7 +3,13 @@ import type Navigation from '@flow/epubjs/navigation'
 import type { RenditionManager, RenditionManagerPage } from '@flow/epubjs/rendition'
 import { sameHref } from '@/noteLinks'
 
-import type { BookRecord, ReadingMetrics, ReadingSpreadPageRecord, ReadingSpreadRecord } from '../../storage'
+import {
+  type BookRecord,
+  READING_SPREAD_VERSION,
+  type ReadingMetrics,
+  type ReadingSpreadPageRecord,
+  type ReadingSpreadRecord,
+} from '../../storage'
 
 import type { INavItem, ISection } from './model'
 
@@ -189,7 +195,7 @@ export function snapshotReflowableSpread(
 
   return {
     ...page,
-    version: 1,
+    version: READING_SPREAD_VERSION,
     anchor,
     exact: !endsAtSectionEnd,
     ...(left ? { left } : {}),
@@ -215,7 +221,7 @@ export function hydrateReflowableSpread(
   sections: ISection[] | undefined,
   layoutStyleSignature?: string,
 ) {
-  if (spread?.version !== 1 || !sections) return
+  if (spread?.version !== READING_SPREAD_VERSION || !sections) return
   if (spread.layoutStyleSignature && spread.layoutStyleSignature !== layoutStyleSignature) {
     return
   }

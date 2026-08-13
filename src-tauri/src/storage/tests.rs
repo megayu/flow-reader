@@ -1,3 +1,4 @@
+use super::book_assets::read_cover;
 use super::commands::{
     BookImportResult, ReadingPositionInput, delete_tags_impl, get_book_impl, import_epub_paths_impl, merge_tags_impl,
     preview_text_import_paths_impl, record_reading_position_impl, revealable_book_source_path,
@@ -6,24 +7,24 @@ use super::epub_import::read_bounded_bytes;
 use super::settings::{flush_settings_impl, update_settings_impl};
 use super::text_import::text_import_filename_metadata;
 use super::{
-    AppStorage, BOOK_FILE, BOOKS_DIR, BookContentMode, BookExportFormat, BookReaderSourceMode, BookRecord, BookScope,
-    BookSourceFormat, BookSourceStatus, BookState, BookTextReplaceTarget, DirtyState, ExternalBookIndex,
-    FolderImportTagAssignment, IMAGE_INDEX_CACHE_VERSION, ImageIndexCache, ImageIndexEntry, ImageIndexSection, Library,
-    LibraryBook, LibraryPins, LibraryTagRecord, ReadingStatus, SEARCH_TEXT_CACHE_VERSION, SOURCE_TEXT_FILE, STATE_FILE,
-    SearchTextCache, SearchTextSection, SourceStorage, SourceTextUpdate, StorageInner, StorageState,
-    TextImportRulesInput, TextImportSelection, UNPACKED_DIR, apply_folder_import_tags_impl,
-    check_book_source_statuses_impl, cleanup_external_book_heavy_files, decode_text_bytes, empty_object,
-    ensure_book_package_path_with_unpacker, export_book_impl, external_books_root, external_index_path,
-    get_book_reader_source_impl, hash_file, library_path, load_or_build_search_text_cache, mark_book_exported,
-    mark_library_book_content_updated, materialize_epub_package, normalize_non_square_pixel_png,
-    normalize_publication_date, normalize_unpacked_epub_structure, open_external_epub_path_impl, parent_zip_path,
-    parse_text_import_document, path_to_client_string, read_image_index_cache, read_json_or_default,
-    read_json_value_or_default, read_search_text_sections_from_unpacked, relative_zip_path, rename_books_for_deletion,
-    replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node, schedule_existing_pending_delete_cleanup,
-    search_text_cache_from_bytes, search_text_cache_to_bytes, search_text_in_cache, settings_path, text_content_opf,
-    text_nav_xhtml, text_section_xhtml, visible_search_text_from_xhtml, write_cover,
-    write_epub_from_original_and_unpacked, write_epub_from_unpacked_dir, write_image_index_cache_if_current,
-    write_source_text_update,
+    AppStorage, BOOK_FILE, BOOK_STATE_VERSION, BOOKS_DIR, BookContentMode, BookExportFormat, BookReaderSourceMode,
+    BookRecord, BookScope, BookSourceFormat, BookSourceStatus, BookState, BookTextReplaceTarget, DirtyState,
+    ExternalBookIndex, FolderImportTagAssignment, IMAGE_INDEX_CACHE_VERSION, ImageIndexCache, ImageIndexEntry,
+    ImageIndexSection, LIBRARY_VERSION, Library, LibraryBook, LibraryPins, LibraryTagRecord, ReadingStatus,
+    SEARCH_TEXT_CACHE_VERSION, SOURCE_TEXT_FILE, STATE_FILE, SearchTextCache, SearchTextSection, SourceStorage,
+    SourceTextUpdate, StorageInner, StorageState, TextImportRulesInput, TextImportSelection, UNPACKED_DIR,
+    apply_folder_import_tags_impl, check_book_source_statuses_impl, cleanup_external_book_heavy_files,
+    decode_text_bytes, empty_object, ensure_book_package_path_with_unpacker, export_book_impl, external_books_root,
+    external_index_path, get_book_reader_source_impl, hash_file, id_from_hash, library_path,
+    load_or_build_search_text_cache, mark_book_exported, mark_library_book_content_updated, materialize_epub_package,
+    normalize_non_square_pixel_png, normalize_publication_date, normalize_unpacked_epub_structure,
+    open_external_epub_path_impl, parent_zip_path, parse_text_import_document, path_to_client_string,
+    read_image_index_cache, read_json_or_default, read_json_value_or_default, read_search_text_sections_from_unpacked,
+    relative_zip_path, rename_books_for_deletion, replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node,
+    schedule_existing_pending_delete_cleanup, search_text_cache_from_bytes, search_text_cache_to_bytes,
+    search_text_in_cache, settings_path, text_content_opf, text_nav_xhtml, text_section_xhtml,
+    visible_search_text_from_xhtml, write_cover, write_epub_from_original_and_unpacked, write_epub_from_unpacked_dir,
+    write_image_index_cache_if_current, write_source_text_update,
 };
 use crate::tasks::TaskService;
 use serde_json::{Value, json};
@@ -228,7 +229,7 @@ fn test_storage_with_books(root: &Path, books: Vec<LibraryBook>) -> AppStorage {
             root: root.to_path_buf(),
             state: Mutex::new(StorageState::new(
                 Library {
-                    version: 1,
+                    version: LIBRARY_VERSION,
                     books,
                     tags: Vec::new(),
                     pins: LibraryPins::default(),
@@ -286,24 +287,26 @@ fn test_storage_from_disk(root: &Path) -> AppStorage {
 
 fn external_promotion_state() -> BookState {
     BookState {
+        version: BOOK_STATE_VERSION,
         cfi: Some("epubcfi(/6/4!/4/2)".to_string()),
         percentage: Some(0.42),
         definitions: vec!["term".to_string()],
-        annotations: vec![json!({
-            "id": "annotation-1",
-            "text": "note"
-        })],
+        annotations: vec![json!({"text": "note"})],
         configuration: Some(json!({"theme": "sepia", "spread": {"page": 2}})),
     }
 }
 
 fn assert_external_promoted(storage: &AppStorage, imported: &BookRecord, external_id: &str, source: &Path) {
     assert!(matches!(imported.scope, BookScope::Library));
-    assert_ne!(imported.id, external_id);
+    assert_eq!(imported.id, external_id);
     assert!(storage.book_dir(&imported.id).join(BOOK_FILE).exists());
     assert_eq!(
         hash_file(source).unwrap(),
         hash_file(&storage.book_dir(&imported.id).join(BOOK_FILE)).unwrap()
+    );
+    assert_eq!(
+        fs::read_to_string(storage.book_dir(&imported.id).join("promotion-marker.txt")).unwrap(),
+        "preserved"
     );
     assert!(!storage.external_book_dir(external_id).exists());
 
@@ -312,16 +315,11 @@ fn assert_external_promoted(storage: &AppStorage, imported: &BookRecord, externa
     assert_eq!(state.library.books.len(), 1);
     drop(state);
     let promoted_state: BookState = read_json_or_default(&storage.book_dir(&imported.id).join(STATE_FILE)).unwrap();
+    assert_eq!(promoted_state.version, BOOK_STATE_VERSION);
     assert_eq!(promoted_state.cfi.as_deref(), Some("epubcfi(/6/4!/4/2)"));
     assert_eq!(promoted_state.percentage, Some(0.42));
     assert_eq!(promoted_state.definitions, vec!["term".to_string()]);
-    assert_eq!(
-        promoted_state.annotations,
-        vec![json!({
-            "id": "annotation-1",
-            "text": "note"
-        })]
-    );
+    assert_eq!(promoted_state.annotations, vec![json!({"text": "note"})]);
     assert_eq!(
         promoted_state.configuration,
         Some(json!({"theme": "sepia", "spread": {"page": 2}}))
@@ -555,7 +553,7 @@ fn delete_books_renames_all_book_directories_in_place_before_cleanup() {
         "book-a".to_string(),
         Arc::new(SearchTextCache {
             version: SEARCH_TEXT_CACHE_VERSION,
-            content_version: 1,
+            revision: 1,
             sections: Vec::new(),
         }),
     );
@@ -666,7 +664,7 @@ fn failed_text_import_does_not_mutate_existing_library_record() {
     fs::write(&source, "Chapter 1\nSynthetic paragraph.\n").unwrap();
     let mut existing = test_library_book_with_id("book", BookSourceFormat::Txt);
     existing.name = "novel.txt".to_string();
-    existing.source_path = Some(source.clone());
+    existing.source_path = source.clone();
     existing.content_hash = "before-import".to_string();
     existing.metadata = json!({"title": "Before import"});
     let storage = test_storage_with_book(&root, existing);
@@ -725,10 +723,8 @@ fn referenced_text_import_materializes_on_epub_export() {
     assert!(!book_dir.join(SOURCE_TEXT_FILE).exists());
     assert!(!book_dir.join(UNPACKED_DIR).exists());
     let persisted = serde_json::to_value(book).unwrap();
-    assert_eq!(
-        persisted.get("sourceStorage").and_then(Value::as_str),
-        Some("referenced")
-    );
+    assert!(persisted.get("managed").is_none());
+    assert!(persisted.get("sourceStorage").is_none());
     assert_eq!(
         persisted.get("sourcePath").and_then(Value::as_str),
         Some(path_to_client_string(&source).as_str())
@@ -947,11 +943,7 @@ fn text_import_does_not_build_search_cache_in_visible_path() {
     .unwrap();
 
     assert_eq!(books.len(), 1);
-    assert!(
-        !storage
-            .search_text_cache_path(&books[0].id, books[0].content_version)
-            .exists()
-    );
+    assert!(!storage.search_text_cache_path(&books[0].id, books[0].revision).exists());
 
     let _ = fs::remove_dir_all(root);
 }
@@ -1343,12 +1335,13 @@ fn epub_import_copies_source_without_unpacking_or_indexing() {
         Some("Streamed Book")
     );
     assert!(!book_dir.join(UNPACKED_DIR).exists());
-    assert!(!storage.search_text_cache_path(&book.id, book.content_version).exists());
+    assert!(!storage.search_text_cache_path(&book.id, book.revision).exists());
     let persisted = serde_json::to_value(&book).unwrap();
     assert_eq!(
         persisted.get("sourcePath").and_then(Value::as_str),
         Some(path_to_client_string(&source).as_str())
     );
+    assert_eq!(persisted.get("managed").and_then(Value::as_bool), Some(true));
     assert!(persisted.get("sourceStorage").is_none());
 
     let _ = fs::remove_dir_all(root);
@@ -1372,10 +1365,8 @@ fn referenced_epub_import_materializes_on_first_open() {
     assert!(!book_dir.join(BOOK_FILE).exists());
     assert!(!book_dir.join(UNPACKED_DIR).exists());
     let persisted = serde_json::to_value(&book).unwrap();
-    assert_eq!(
-        persisted.get("sourceStorage").and_then(Value::as_str),
-        Some("referenced")
-    );
+    assert!(persisted.get("managed").is_none());
+    assert!(persisted.get("sourceStorage").is_none());
     assert_eq!(
         persisted.get("sourcePath").and_then(Value::as_str),
         Some(path_to_client_string(&source).as_str())
@@ -1401,7 +1392,7 @@ fn external_epub_open_creates_external_record_without_library_entry() {
 
     let book = open_external_epub_path_impl(&storage, &source).unwrap();
 
-    assert!(book.id.starts_with("ext-"));
+    assert_eq!(book.id, id_from_hash(&hash_file(&source).unwrap()));
     assert!(matches!(book.scope, BookScope::External));
     assert_eq!(
         book.metadata.get("title").and_then(Value::as_str),
@@ -1496,7 +1487,7 @@ fn referenced_archive_only_epub_reports_changed_source() {
 }
 
 #[test]
-fn external_epub_cleanup_keeps_metadata_and_state() {
+fn external_epub_cleanup_keeps_metadata_and_state_for_later_promotion() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
         "flow-reader-external-cleanup-test-{}-{nonce}",
@@ -1532,6 +1523,10 @@ fn external_epub_cleanup_keeps_metadata_and_state() {
             .and_then(Value::as_str),
         Some("External Cleanup")
     );
+
+    let imported = import_single_epub_for_test(&storage, &source).unwrap();
+    assert!(read_cover(&storage, &imported.id).unwrap().is_some());
+    assert!(storage.book_dir(&imported.id).join(BOOK_FILE).exists());
 
     let _ = fs::remove_dir_all(root);
 }
@@ -1607,6 +1602,14 @@ fn importing_open_external_epub_promotes_metadata_state_and_removes_external_rec
     write_minimal_epub_file(&source, "Promote Open", "promote body");
     let storage = test_storage_with_books(&root, Vec::new());
     let external = open_external_epub_path_impl(&storage, &source).unwrap();
+    assert_eq!(external.id, id_from_hash(&hash_file(&source).unwrap()));
+    {
+        let state = storage.inner.state.lock().unwrap();
+        let persisted = serde_json::to_value(&state.external.books[0]).unwrap();
+        assert_eq!(persisted["sourceFormat"], "epub");
+        assert!(persisted.get("lastReadAt").is_some());
+        assert!(persisted.get("lastOpenedAt").is_none());
+    }
     {
         let mut state = storage.inner.state.lock().unwrap();
         state
@@ -1620,10 +1623,21 @@ fn importing_open_external_epub_promotes_metadata_state_and_removes_external_rec
     storage
         .write_book_state(&external.id, &external_promotion_state())
         .unwrap();
+    fs::write(
+        storage.external_book_dir(&external.id).join("promotion-marker.txt"),
+        "preserved",
+    )
+    .unwrap();
+    let moved_source = root.join("moved/promoted.epub");
+    fs::create_dir_all(moved_source.parent().unwrap()).unwrap();
+    fs::rename(&source, &moved_source).unwrap();
 
-    let imported = import_single_epub_for_test(&storage, &source).unwrap();
+    let imported = import_single_epub_for_test(&storage, &moved_source).unwrap();
 
-    assert_external_promoted(&storage, &imported, &external.id, &source);
+    assert_eq!(imported.id, external.id);
+    assert_eq!(imported.name, "promoted.epub");
+    assert_eq!(imported.source_path, path_to_client_string(&moved_source));
+    assert_external_promoted(&storage, &imported, &external.id, &moved_source);
 
     let _ = fs::remove_dir_all(root);
 }
@@ -1652,6 +1666,11 @@ fn importing_persisted_external_epub_promotes_disk_metadata_and_state() {
     storage
         .write_book_state(&external.id, &external_promotion_state())
         .unwrap();
+    fs::write(
+        storage.external_book_dir(&external.id).join("promotion-marker.txt"),
+        "preserved",
+    )
+    .unwrap();
     storage.mark_external_dirty();
     storage.flush_content_dirty().unwrap();
 
@@ -1864,7 +1883,7 @@ fn epub_import_resolves_content_and_path_identity_without_losing_local_changes()
     let book_dir = storage.book_dir(&old_book.id);
     fs::create_dir_all(book_dir.join(UNPACKED_DIR)).unwrap();
     fs::write(book_dir.join(UNPACKED_DIR).join("stale.txt"), "stale").unwrap();
-    let stale_cache_path = storage.search_text_cache_path(&old_book.id, old_book.content_version);
+    let stale_cache_path = storage.search_text_cache_path(&old_book.id, old_book.revision);
     fs::write(&stale_cache_path, "stale").unwrap();
 
     let moved_source = root.join("moved/renamed.epub");
@@ -1875,7 +1894,7 @@ fn epub_import_resolves_content_and_path_identity_without_losing_local_changes()
     assert_eq!(renamed_book.name, "renamed.epub");
     assert_eq!(
         storage.library_book(&old_book.id).unwrap().source_path,
-        Some(moved_source.clone())
+        moved_source.clone()
     );
     assert!(book_dir.join(UNPACKED_DIR).exists());
     assert!(stale_cache_path.exists());
@@ -1924,7 +1943,7 @@ fn epub_import_resolves_content_and_path_identity_without_losing_local_changes()
 }
 
 #[test]
-fn unpack_package_reuses_in_flight_task_for_same_book_version() {
+fn unpack_package_reuses_in_flight_task_for_same_book_revision() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
         "flow-reader-unpack-idempotent-test-{}-{nonce}",
@@ -1993,7 +2012,7 @@ fn stale_unpack_result_is_not_published() {
         let mut state = storage.inner.state.lock().unwrap();
         let book = state.library.books.iter_mut().find(|book| book.id == "book").unwrap();
         book.content_hash = "changed".to_string();
-        book.content_version = book.content_version.saturating_add(1);
+        book.revision = book.revision.saturating_add(1);
         Ok(())
     });
 
@@ -2073,7 +2092,8 @@ fn archive_only_epub_search_reads_sections_from_package() {
     );
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].id, "Text/invalid:path.xhtml");
-    let cache_path = storage.search_text_cache_path(&book.id, book.content_version);
+    let cache_path = storage.search_text_cache_path(&book.id, book.revision);
+    assert_eq!(cache_path.file_name().unwrap(), "search-text.v1.r1.json.zst");
     assert!(!cache_path.exists());
     storage.set_derived_cache_active(&book.id, false).unwrap();
     assert!(cache_path.exists());
@@ -2396,7 +2416,7 @@ fn extracts_visible_text_for_search_cache() {
 fn persists_search_text_cache_as_zstd_payload() {
     let cache = SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        content_version: 2,
+        revision: 2,
         sections: vec![SearchTextSection {
             section_index: 0,
             href: "Text/chapter.xhtml".to_string(),
@@ -2410,10 +2430,15 @@ fn persists_search_text_cache_as_zstd_payload() {
     let restored = search_text_cache_from_bytes(&bytes).expect("cache should decode");
 
     assert_eq!(restored, cache);
+    let json = zstd::stream::decode_all(bytes.as_slice()).unwrap();
+    let json: Value = serde_json::from_slice(&json).unwrap();
+    assert_eq!(json["version"], SEARCH_TEXT_CACHE_VERSION);
+    assert_eq!(json["revision"], 2);
+    assert!(json.get("contentVersion").is_none());
 }
 
 #[test]
-fn writes_image_index_cache_only_for_current_book_version() {
+fn writes_image_index_cache_only_for_current_book_revision() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
         "flow-reader-image-index-cache-test-{}-{nonce}",
@@ -2425,9 +2450,9 @@ fn writes_image_index_cache_only_for_current_book_version() {
 
     let input = ImageIndexCache {
         version: IMAGE_INDEX_CACHE_VERSION,
-        content_version: book.content_version,
+        revision: book.revision,
         sections: vec![ImageIndexSection {
-            section_index: 0,
+            index: 0,
             href: "Text/chapter.xhtml".to_string(),
             images: vec![ImageIndexEntry {
                 src: "../Images/p001.jpg".to_string(),
@@ -2439,13 +2464,20 @@ fn writes_image_index_cache_only_for_current_book_version() {
     };
 
     assert!(write_image_index_cache_if_current(&storage, &book.id, &input).unwrap());
+    assert_eq!(
+        storage
+            .image_index_cache_path(&book.id, book.revision)
+            .file_name()
+            .unwrap(),
+        "image-index.v1.r1.json.zst"
+    );
     let cache = read_image_index_cache(&storage, &book).unwrap();
     assert_eq!(cache.sections.len(), 1);
     assert_eq!(cache.sections[0].images[0].src, "../Images/p001.jpg");
 
     let stale = ImageIndexCache {
         version: IMAGE_INDEX_CACHE_VERSION,
-        content_version: book.content_version + 1,
+        revision: book.revision + 1,
         sections: Vec::new(),
     };
     assert!(!write_image_index_cache_if_current(&storage, &book.id, &stale).unwrap());
@@ -2459,7 +2491,7 @@ fn writes_image_index_cache_only_for_current_book_version() {
 fn searches_in_cached_section_text_with_occurrences() {
     let cache = SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        content_version: 1,
+        revision: 1,
         sections: vec![
             SearchTextSection {
                 section_index: 0,
@@ -2495,7 +2527,7 @@ fn searches_in_cached_section_text_with_occurrences() {
 fn search_results_serialize_section_context_once_per_group() {
     let cache = SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        content_version: 1,
+        revision: 1,
         sections: vec![SearchTextSection {
             section_index: 7,
             href: "Text/chapter.xhtml".to_string(),
@@ -2519,7 +2551,7 @@ fn search_results_serialize_section_context_once_per_group() {
 fn search_offsets_reference_original_text_when_lowercase_expands() {
     let cache = SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        content_version: 1,
+        revision: 1,
         sections: vec![SearchTextSection {
             section_index: 0,
             href: "Text/chapter.xhtml".to_string(),
@@ -2548,7 +2580,7 @@ fn searches_cached_text_without_default_result_limit() {
         .collect();
     let cache = SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        content_version: 1,
+        revision: 1,
         sections,
     };
 
@@ -2562,7 +2594,7 @@ fn searches_cached_text_without_default_result_limit() {
 fn search_excerpt_stays_within_matching_paragraph() {
     let cache = SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        content_version: 1,
+        revision: 1,
         sections: vec![SearchTextSection {
             section_index: 0,
             href: "Text/chapter.xhtml".to_string(),
@@ -2589,7 +2621,7 @@ fn search_excerpt_stays_within_matching_paragraph() {
 fn search_excerpt_trims_long_matching_paragraph_only() {
     let cache = SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        content_version: 1,
+        revision: 1,
         sections: vec![SearchTextSection {
             section_index: 0,
             href: "Text/chapter.xhtml".to_string(),
@@ -2618,7 +2650,7 @@ fn search_excerpt_trims_long_matching_paragraph_only() {
 fn uses_cached_nav_path_for_search_result_group() {
     let cache = SearchTextCache {
         version: SEARCH_TEXT_CACHE_VERSION,
-        content_version: 1,
+        revision: 1,
         sections: vec![SearchTextSection {
             section_index: 0,
             href: "Text/chapter0002.xhtml".to_string(),
@@ -3648,7 +3680,7 @@ fn assert_minified_large_ncx_anchored_spine_section_normalizes(
 #[test]
 fn exporting_clears_content_edited_at() {
     let mut book = test_library_book(BookSourceFormat::Txt);
-    book.content_version = 3;
+    book.revision = 3;
     book.content_edited_at = Some(123);
 
     mark_book_exported(&mut book);
@@ -3665,7 +3697,7 @@ fn imported_content_repair_marks_epub_export_dirty() {
         .unwrap()
         .expect("library book should be updated");
 
-    assert_eq!(updated.content_version, 2);
+    assert_eq!(updated.revision, 2);
     assert!(updated.content_edited_at.is_some());
 
     let _ = fs::remove_dir_all(root);
@@ -3679,7 +3711,7 @@ fn only_existing_referenced_sources_can_be_revealed() {
     fs::write(&source, b"source").unwrap();
 
     let mut book = test_library_book(BookSourceFormat::Epub);
-    book.source_path = Some(source.clone());
+    book.source_path = source.clone();
     assert!(revealable_book_source_path(&book).is_none());
 
     book.source_storage = SourceStorage::Referenced;
@@ -3700,10 +3732,10 @@ fn test_library_book(source_format: BookSourceFormat) -> LibraryBook {
         generated_cover: source_format == BookSourceFormat::Txt,
         content_edited_at: None,
         content_hash: "hash".to_string(),
-        content_version: 1,
+        revision: 1,
         content_mode: BookContentMode::Normal,
         source_storage: SourceStorage::Managed,
-        source_path: None,
+        source_path: "book.txt".into(),
         metadata: empty_object(),
         created_at: 1,
         updated_at: None,

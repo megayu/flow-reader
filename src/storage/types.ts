@@ -43,9 +43,8 @@ export interface TextImportSelection {
 
 export type BookSourceFormat = 'epub' | 'txt'
 export type BookExportFormat = 'epub' | 'txt'
-export type BookSourceStorage = 'managed' | 'referenced'
+export type ImportSourceStorage = 'managed' | 'referenced'
 export type BookSourceStatus = 'available' | 'changed' | 'missing' | 'unreadable'
-export type BookContentMode = 'normal' | 'archiveOnly'
 export interface ReadingMetricsSection {
   readonly href: string
   readonly start: number
@@ -85,8 +84,10 @@ export interface ReadingSpreadPageRecord {
   pageIndex: number
 }
 
+export const READING_SPREAD_VERSION = 1 as const
+
 export interface ReadingSpreadRecord extends ReadingSpreadPageRecord {
-  version: 1
+  version: typeof READING_SPREAD_VERSION
   anchor: 'left' | 'right'
   exact?: boolean
   left?: ReadingSpreadPageRecord
@@ -131,11 +132,11 @@ export interface BookRecord {
     typography?: TypographyConfiguration
     spread?: ReadingSpreadRecord
   }
-  contentHash?: string
-  contentVersion?: number
-  contentMode?: BookContentMode
-  sourceStorage?: BookSourceStorage
-  sourcePath?: string
+  contentHash: string
+  revision: number
+  archive?: true
+  managed?: true
+  sourcePath: string
   stateLoaded?: boolean
 }
 
@@ -224,13 +225,13 @@ export interface BookImageIndexEntry {
 }
 
 export interface BookImageIndexSection {
-  sectionIndex: number
+  index: number
   href: string
   images: BookImageIndexEntry[]
 }
 
 export interface BookImageIndexCache {
   version: number
-  contentVersion: number
+  revision: number
   sections: BookImageIndexSection[]
 }

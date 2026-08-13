@@ -12,6 +12,7 @@ const FIXED_EPOCH_MS = Date.UTC(2026, 0, 1)
 const WEBP_WIDTH = 320
 const WEBP_HEIGHT = 480
 const WEBP_QUALITY = 0.9
+const LIBRARY_VERSION = 1
 
 function fail(message) {
   console.error(message)
@@ -409,8 +410,7 @@ async function main() {
       ...(readingStatus ? { readingStatus } : {}),
       sourceFormat: 'epub',
       contentHash: sourceHash,
-      contentVersion: 1,
-      sourceStorage: 'referenced',
+      revision: 1,
       sourcePath,
       metadata: {
         title: `Synthetic Library Book ${String(index + 1).padStart(6, '0')}`,
@@ -456,7 +456,7 @@ async function main() {
 
   const switchBookId = books[0]?.id ?? null
   const library = {
-    version: 1,
+    version: LIBRARY_VERSION,
     books,
     tags,
     pins: { authors: [], tagIds: [] },

@@ -8,14 +8,14 @@ use super::{decode_compressed_json, encode_compressed_json, join_zip_path, norma
 #[serde(rename_all = "camelCase")]
 pub struct ImageIndexCache {
     pub version: u32,
-    pub content_version: u32,
+    pub revision: u32,
     pub sections: Vec<ImageIndexSection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageIndexSection {
-    pub section_index: usize,
+    pub index: usize,
     pub href: String,
     pub images: Vec<ImageIndexEntry>,
 }
@@ -39,7 +39,7 @@ pub(super) fn image_index_cache_from_bytes(bytes: &[u8]) -> Result<ImageIndexCac
 }
 
 pub(super) fn image_index_section_from_document(
-    section_index: usize,
+    index: usize,
     href: String,
     document: &roxmltree::Document<'_>,
 ) -> ImageIndexSection {
@@ -53,11 +53,7 @@ pub(super) fn image_index_section_from_document(
             entry
         })
         .collect();
-    ImageIndexSection {
-        section_index,
-        href,
-        images,
-    }
+    ImageIndexSection { index, href, images }
 }
 
 pub(super) fn finalize_image_index(sections: &mut [ImageIndexSection]) {

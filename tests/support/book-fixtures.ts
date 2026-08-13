@@ -10,6 +10,9 @@ export function createTestBook({ metadata = {}, ...overrides }: TestBookOverride
     name: 'Test Book.epub',
     size: 1,
     sourceFormat: 'epub',
+    contentHash: 'test-content-hash',
+    revision: 1,
+    sourcePath: 'Test Book.epub',
     generatedCover: false,
     metadata: {
       title: 'Test Book',

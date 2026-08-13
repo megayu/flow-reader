@@ -1,8 +1,8 @@
 use super::*;
 
-pub(super) fn is_external_book_id(id: &str) -> bool {
-    id.starts_with("ext-") && is_valid_book_storage_id(id)
-}
+pub(super) const LIBRARY_VERSION: u32 = 1;
+pub(super) const EXTERNAL_BOOK_INDEX_VERSION: u32 = 1;
+pub(super) const BOOK_STATE_VERSION: u32 = 1;
 
 pub(super) fn is_valid_book_storage_id(id: &str) -> bool {
     !id.is_empty()
@@ -14,7 +14,6 @@ pub(super) fn is_valid_book_storage_id(id: &str) -> bool {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Library {
-    #[serde(default = "library_version")]
     pub(super) version: u32,
     #[serde(default)]
     pub(super) books: Vec<LibraryBook>,
@@ -26,14 +25,10 @@ pub(super) struct Library {
     pub(super) recent_book_ids: Vec<String>,
 }
 
-fn library_version() -> u32 {
-    1
-}
-
 impl Default for Library {
     fn default() -> Self {
         Self {
-            version: library_version(),
+            version: LIBRARY_VERSION,
             books: Vec::new(),
             tags: Vec::new(),
             pins: LibraryPins::default(),
@@ -52,14 +47,9 @@ pub struct LibraryPins {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ExternalBookIndex {
-    #[serde(default = "external_book_index_version")]
     pub(super) version: u32,
     #[serde(default)]
-    pub(super) books: Vec<ExternalBook>,
-}
-
-fn external_book_index_version() -> u32 {
-    2
+    pub(super) books: Vec<LibraryBook>,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -69,33 +59,10 @@ fn is_false(value: &bool) -> bool {
 impl Default for ExternalBookIndex {
     fn default() -> Self {
         Self {
-            version: external_book_index_version(),
+            version: EXTERNAL_BOOK_INDEX_VERSION,
             books: Vec::new(),
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct ExternalBook {
-    pub(super) id: String,
-    pub(super) name: String,
-    pub(super) size: u64,
-    pub(super) content_hash: String,
-    #[serde(default)]
-    pub(super) content_version: u32,
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub(super) generated_cover: bool,
-    #[serde(default, skip_serializing_if = "BookContentMode::is_normal")]
-    pub(super) content_mode: BookContentMode,
-    #[serde(default, skip_serializing_if = "SourceStorage::is_managed")]
-    pub(super) source_storage: SourceStorage,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(super) source_path: Option<PathBuf>,
-    #[serde(default = "empty_object")]
-    pub(super) metadata: Value,
-    pub(super) created_at: u64,
-    pub(super) last_opened_at: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,16 +79,13 @@ pub(super) struct LibraryBook {
     pub(super) generated_cover: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) content_edited_at: Option<u64>,
-    #[serde(default)]
     pub(super) content_hash: String,
-    #[serde(default)]
-    pub(super) content_version: u32,
-    #[serde(default, skip_serializing_if = "BookContentMode::is_normal")]
+    pub(super) revision: u32,
+    #[serde(default, rename = "archive", skip_serializing_if = "BookContentMode::is_normal")]
     pub(super) content_mode: BookContentMode,
-    #[serde(default, skip_serializing_if = "SourceStorage::is_managed")]
+    #[serde(default, rename = "managed", skip_serializing_if = "SourceStorage::is_referenced")]
     pub(super) source_storage: SourceStorage,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(super) source_path: Option<PathBuf>,
+    pub(super) source_path: PathBuf,
     #[serde(default = "empty_object")]
     pub(super) metadata: Value,
     pub(super) created_at: u64,
@@ -170,16 +134,13 @@ pub struct BookRecord {
     pub(super) tag_ids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) configuration: Option<Value>,
-    #[serde(default)]
     pub(super) content_hash: String,
-    #[serde(default)]
-    pub(super) content_version: u32,
-    #[serde(default, skip_serializing_if = "BookContentMode::is_normal")]
+    pub(super) revision: u32,
+    #[serde(default, rename = "archive", skip_serializing_if = "BookContentMode::is_normal")]
     pub(super) content_mode: BookContentMode,
-    #[serde(default, skip_serializing_if = "SourceStorage::is_managed")]
+    #[serde(default, rename = "managed", skip_serializing_if = "SourceStorage::is_referenced")]
     pub(super) source_storage: SourceStorage,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) source_path: Option<String>,
+    pub(super) source_path: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -248,25 +209,49 @@ pub struct BookSourceStatusRecord {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(from = "bool", into = "bool")]
 pub(super) enum SourceStorage {
-    #[default]
     Managed,
+    #[default]
     Referenced,
 }
 
+impl From<bool> for SourceStorage {
+    fn from(managed: bool) -> Self {
+        if managed { Self::Managed } else { Self::Referenced }
+    }
+}
+
+impl From<SourceStorage> for bool {
+    fn from(value: SourceStorage) -> Self {
+        value == SourceStorage::Managed
+    }
+}
+
 impl SourceStorage {
-    pub(super) fn is_managed(value: &Self) -> bool {
-        *value == Self::Managed
+    pub(super) fn is_referenced(value: &Self) -> bool {
+        *value == Self::Referenced
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(from = "bool", into = "bool")]
 pub(super) enum BookContentMode {
     #[default]
     Normal,
     ArchiveOnly,
+}
+
+impl From<bool> for BookContentMode {
+    fn from(archive: bool) -> Self {
+        if archive { Self::ArchiveOnly } else { Self::Normal }
+    }
+}
+
+impl From<BookContentMode> for bool {
+    fn from(value: BookContentMode) -> Self {
+        value == BookContentMode::ArchiveOnly
+    }
 }
 
 impl BookContentMode {
@@ -338,9 +323,10 @@ pub enum BookReaderSourceMode {
     Epub,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct BookState {
+    pub(super) version: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) cfi: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -351,6 +337,19 @@ pub(super) struct BookState {
     pub(super) annotations: Vec<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) configuration: Option<Value>,
+}
+
+impl Default for BookState {
+    fn default() -> Self {
+        Self {
+            version: BOOK_STATE_VERSION,
+            cfi: None,
+            percentage: None,
+            definitions: Vec::new(),
+            annotations: Vec::new(),
+            configuration: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

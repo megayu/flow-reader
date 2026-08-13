@@ -769,7 +769,7 @@ const Library: React.FC<LibraryProps> = ({
   const referencedArchiveIds = useMemo(
     () =>
       (books ?? []).reduce<string[]>((ids, book) => {
-        if (book.sourceStorage === 'referenced' && isArchiveOnlyBook(book)) {
+        if (!book.managed && isArchiveOnlyBook(book)) {
           ids.push(book.id)
         }
         return ids

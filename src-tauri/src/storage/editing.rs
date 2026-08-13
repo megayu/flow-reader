@@ -718,12 +718,12 @@ pub(super) fn write_source_text_update(path: &Path, update: &SourceTextUpdate) -
     }
 }
 
-pub(super) fn edited_book_content_hash(id: &str, content_version: u32, edited_at: u64) -> String {
+pub(super) fn edited_book_content_hash(id: &str, revision: u32, edited_at: u64) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"edited\0");
     hasher.update(id.as_bytes());
     hasher.update(b"\0");
-    hasher.update(content_version.to_le_bytes());
+    hasher.update(revision.to_le_bytes());
     hasher.update(edited_at.to_le_bytes());
     let digest = hasher.finalize();
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
@@ -740,9 +740,9 @@ pub(super) fn mark_library_book_content_updated(storage: &AppStorage, id: &str) 
             return Ok(None);
         };
         let now = now_ms();
-        book.content_version = book.content_version.saturating_add(1).max(1);
+        book.revision = next_revision(book.revision)?;
         book.content_edited_at = Some(now);
-        book.content_hash = edited_book_content_hash(&book.id, book.content_version, now);
+        book.content_hash = edited_book_content_hash(&book.id, book.revision, now);
         book.updated_at = Some(now);
         book.clone()
     };
@@ -784,7 +784,7 @@ pub(super) fn replace_book_text_impl(
     let updated_xhtml = xhtml_update.xhtml;
     if updated_xhtml == xhtml {
         return Ok(BookTextReplaceResult {
-            book: storage.compose_book(&initial_book)?,
+            book: storage.compose_book(&initial_book, BookScope::Library)?,
             section_href: target.section_href,
             changed: false,
         });
@@ -847,9 +847,9 @@ pub(super) fn replace_book_text_impl(
         };
         let now = now_ms();
         book.source_format = source_format;
-        book.content_version = book.content_version.saturating_add(1).max(1);
+        book.revision = next_revision(book.revision)?;
         book.content_edited_at = Some(now);
-        book.content_hash = edited_book_content_hash(&book.id, book.content_version, now);
+        book.content_hash = edited_book_content_hash(&book.id, book.revision, now);
         book.updated_at = Some(now);
         book.clone()
     };
@@ -878,7 +878,7 @@ pub(super) fn replace_book_text_impl(
     storage.flush_content_dirty()?;
 
     Ok(BookTextReplaceResult {
-        book: storage.compose_book(&book)?,
+        book: storage.compose_book(&book, BookScope::Library)?,
         section_href: target.section_href,
         changed: true,
     })

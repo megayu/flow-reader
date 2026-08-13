@@ -803,6 +803,7 @@ export async function installTauriMock(
               completed: index + 1,
               failed: 0,
               imported: index + 1,
+              skipped: 0,
               total: paths.length,
             })),
           )
@@ -810,6 +811,7 @@ export async function installTauriMock(
           return {
             books: streamed ? [] : imported,
             failures: [],
+            skipped: [],
           }
         }
         if (command === 'open_external_epub_paths') {
@@ -821,7 +823,7 @@ export async function installTauriMock(
           const opened = externalOpenQueue.splice(0, Math.max(paths.length, 1))
           opened.forEach((book) => bookStore.set(book.id, book))
           globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations.push('epub:finish')
-          return { books: opened, failures: [] }
+          return { books: opened, failures: [], skipped: [] }
         }
         if (command === 'get_text_import_encodings') {
           return fixtureTextImportEncodings
@@ -870,11 +872,12 @@ export async function installTauriMock(
               completed: index + 1,
               failed: 0,
               imported: index + 1,
+              skipped: 0,
               total: imports.length,
             })),
           )
           globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations.push('txt-import:finish')
-          return { books: streamed ? [] : imported, failures: [] }
+          return { books: streamed ? [] : imported, failures: [], skipped: [] }
         }
         if (command === 'export_book') {
           const id = String(args?.id)

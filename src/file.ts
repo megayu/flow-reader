@@ -185,7 +185,6 @@ export async function applyFolderImportTagsToResult(result: BookImportResult, se
   )
   const tagNamesByBookId = new Map<string, string[]>()
   for (const book of result.books) {
-    if (!book.sourcePath) continue
     const candidate = candidateByPath.get(book.sourcePath.replaceAll('\\', '/'))
     if (!candidate) continue
 

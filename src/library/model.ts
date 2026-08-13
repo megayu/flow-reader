@@ -61,11 +61,11 @@ export function getBookProgressPercent(value?: number) {
 }
 
 export function bookExportFormats(book: BookRecord): BookExportFormat[] {
-  return book.sourceFormat === 'txt' && book.sourceStorage !== 'referenced' ? ['epub', 'txt'] : ['epub']
+  return book.sourceFormat === 'txt' && book.managed ? ['epub', 'txt'] : ['epub']
 }
 
 export function isArchiveOnlyBook(book: BookRecord) {
-  return book.contentMode === 'archiveOnly'
+  return book.archive === true
 }
 
 export const bookCoverCornerBadgeClassName =
@@ -107,7 +107,7 @@ export function exportDialogFilter(format: BookExportFormat) {
 }
 
 export function getExportDefaultPath(book: BookRecord, format: BookExportFormat) {
-  const sourcePath = book.sourcePath ?? book.name
+  const sourcePath = book.sourcePath
   if (book.sourceFormat === format) return sourcePath
 
   return sourcePath.replace(/\.[^./\\]+$/, `.${format}`)

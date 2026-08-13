@@ -341,7 +341,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const initialAnnotationNotes = annotation?.notes ?? ''
   const annotationColorChanged = draftAnnotationColor !== (annotation?.color ?? 'yellow')
   const annotationChanged = annotationNotesChanged || annotationColorChanged
-  const textEditingDisabled = tab.book.scope === 'external' || tab.book.contentMode === 'archiveOnly'
+  const textEditingDisabled = tab.book.scope === 'external' || tab.book.archive === true
   const closeMenu = () => {
     if (savingReplacementRef.current) return
     hide()

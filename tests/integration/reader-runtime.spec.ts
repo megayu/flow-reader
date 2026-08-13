@@ -117,10 +117,10 @@ async function installReaderBooksMock(
       book.id,
       {
         version: 1,
-        contentVersion: book.contentVersion ?? 0,
+        revision: book.revision,
         sections: [
           {
-            sectionIndex: 0,
+            index: 0,
             href: 'cover.xhtml',
             images: [
               {
@@ -1520,7 +1520,7 @@ test('updates the rendered iframe after a mocked book text replacement', async (
     await reader.applyBookContentEdit(
       {
         ...tab.book,
-        contentVersion: (tab.book.contentVersion ?? 0) + 1,
+        revision: tab.book.revision + 1,
         updatedAt: tab.book.updatedAt + 1,
       },
       section.href,
@@ -1542,13 +1542,13 @@ test('updates the rendered iframe after a mocked book text replacement', async (
 
     return {
       renderedText: textNode.textContent,
-      contentVersion: tab.book.contentVersion,
+      revision: tab.book.revision,
     }
   })
 
   expect(result).toEqual({
     renderedText: 'FLOW-RENDERED-TEXT-EDIT',
-    contentVersion: 1,
+    revision: 2,
   })
 })
 
@@ -1575,12 +1575,12 @@ test('reloads an imported replacement now for the active tab and on activation f
       {
         ...inactiveTab.book,
         contentHash: 'replacement-a',
-        contentVersion: (inactiveTab.book.contentVersion ?? 0) + 1,
+        revision: inactiveTab.book.revision + 1,
       },
       {
         ...activeTab.book,
         contentHash: 'replacement-b',
-        contentVersion: (activeTab.book.contentVersion ?? 0) + 1,
+        revision: activeTab.book.revision + 1,
       },
     ]
     const invoke = (window as any).__TAURI_INTERNALS__?.invoke
@@ -1591,7 +1591,7 @@ test('reloads an imported replacement now for the active tab and on activation f
           id: book.id,
           changes: {
             contentHash: book.contentHash,
-            contentVersion: book.contentVersion,
+            revision: book.revision,
           },
         }),
       ),
@@ -1600,17 +1600,17 @@ test('reloads an imported replacement now for the active tab and on activation f
 
     return {
       activeRenditionCleared: !activeTab.rendition,
-      activeVersion: activeTab.book.contentVersion,
+      activeRevision: activeTab.book.revision,
       inactiveRenditionPreserved: inactiveTab.rendition === (window as any).__flowImportReloadRefs.inactiveRendition,
-      inactiveVersion: inactiveTab.book.contentVersion ?? 0,
+      inactiveRevision: inactiveTab.book.revision,
     }
   })
 
   expect(immediate).toEqual({
     activeRenditionCleared: true,
-    activeVersion: 1,
+    activeRevision: 2,
     inactiveRenditionPreserved: true,
-    inactiveVersion: 0,
+    inactiveRevision: 1,
   })
 
   await waitForStableReaderLayout(page)
@@ -1621,13 +1621,13 @@ test('reloads an imported replacement now for the active tab and on activation f
     const tab = (window as any).reader.focusedBookTab
     return {
       renditionReplaced: tab.rendition !== (window as any).__flowImportReloadRefs.inactiveRendition,
-      version: tab.book.contentVersion,
+      revision: tab.book.revision,
     }
   })
 
   expect(activated).toEqual({
     renditionReplaced: true,
-    version: 1,
+    revision: 2,
   })
 })
 

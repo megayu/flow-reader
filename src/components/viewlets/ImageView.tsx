@@ -138,7 +138,7 @@ function applyImageIndexCache(tab: typeof reader.focusedBookTab, sections: ISect
   if (!tab) return false
 
   const matchedSections = cache.sections.map((cachedSection) => {
-    const indexedSection = sections[cachedSection.sectionIndex]
+    const indexedSection = sections[cachedSection.index]
     return indexedSection?.href === cachedSection.href
       ? indexedSection
       : sections.find((section) => section.href === cachedSection.href)
@@ -278,13 +278,13 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
     if (!canLoadImages || !liveSections.length || !tab) return
 
     let cancelled = false
-    const contentVersion = tab.book.contentVersion ?? 0
+    const revision = tab.book.revision
     setImageIndexStatus('loading')
 
     void loadBookImageIndex(tab.book.id)
       .then((cache) => {
         if (cancelled || reader.focusedBookTab !== tab) return
-        if (cache.contentVersion !== contentVersion) {
+        if (cache.revision !== revision) {
           setImageIndexStatus('error')
           return
         }
@@ -307,7 +307,7 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
     return () => {
       cancelled = true
     }
-  }, [canLoadImages, imageIndexRetryCount, liveSections, tab, tab?.book.contentVersion])
+  }, [canLoadImages, imageIndexRetryCount, liveSections, tab, tab?.book.revision])
 
   const allImages = liveSections.flatMap(imageEntries)
   const sections = liveSections.flatMap((section): ImageSection[] => {

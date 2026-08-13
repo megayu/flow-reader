@@ -60,10 +60,9 @@ export function getAnnotationSpineTitle(spine: AnnotationSpine) {
 }
 
 export interface Annotation {
-  id: string
   cfi: string
   spine: AnnotationSpine
-  createAt: number
+  createdAt: number
   updatedAt: number
   type: AnnotationType
   color: AnnotationColor

@@ -180,11 +180,11 @@ type RuntimeRef<T extends object> = T & {
   $$valtioSnapshot: T
 }
 
-function createVersionedEpubRequest(contentVersion?: number) {
-  if (!contentVersion) return undefined
+function createRevisionedEpubRequest(revision?: number) {
+  if (!revision) return undefined
 
   return (url: string, type?: string | null, withCredentials?: boolean, headers?: Record<string, string>) =>
-    epubRequest(appendUrlQuery(url, 'flowContentVersion', contentVersion), type, withCredentials, headers)
+    epubRequest(appendUrlQuery(url, 'flowRevision', revision), type, withCredentials, headers)
 }
 
 const SECTION_DOCUMENT_HIGH_WATERMARK = 48
@@ -550,12 +550,20 @@ export class BookTab extends BaseTab {
   refreshImportedBook(book: BookRecord) {
     const runtime = getFrameRuntimeIdentity(this)
     const currentBook = pendingImportedBooksByRuntime.get(runtime) ?? this.book
-    const currentVersion = currentBook.contentVersion ?? 0
-    const importedVersion = book.contentVersion ?? 0
+    const currentRevision = currentBook.revision
+    const importedRevision = book.revision
+    if (importedRevision < currentRevision) return
     const contentChanged =
-      importedVersion > currentVersion ||
-      (importedVersion === currentVersion && book.contentHash !== currentBook.contentHash)
-    if (!contentChanged) return
+      importedRevision > currentRevision ||
+      (importedRevision === currentRevision && book.contentHash !== currentBook.contentHash)
+    if (!contentChanged) {
+      if (pendingImportedBooksByRuntime.has(runtime)) {
+        pendingImportedBooksByRuntime.set(runtime, book)
+      } else {
+        this.setBook(this.mergeRuntimeState(book))
+      }
+      return
+    }
 
     if (!this.active) {
       pendingImportedBooksByRuntime.set(runtime, book)
@@ -999,10 +1007,9 @@ export class BookTab extends BaseTab {
     const now = Date.now()
     if (!annotation) {
       annotation = {
-        id: createId(),
         cfi,
         spine: annotationSpine,
-        createAt: now,
+        createdAt: now,
         updatedAt: now,
         type,
         color,
@@ -2010,7 +2017,7 @@ export class BookTab extends BaseTab {
       return
     }
     this.readingMetrics = source.readingMetrics ? markRuntimeObject(source.readingMetrics) : undefined
-    if (source.mode === 'epub' && this.book.contentMode !== 'archiveOnly') {
+    if (source.mode === 'epub' && !this.book.archive) {
       let refreshedBook: BookRecord | undefined
       try {
         refreshedBook = await db.books.get(this.book.id)
@@ -2039,7 +2046,7 @@ export class BookTab extends BaseTab {
       } else {
         epub = ref(
           await ePub(source.url, {
-            requestMethod: createVersionedEpubRequest(this.book.contentVersion),
+            requestMethod: createRevisionedEpubRequest(this.book.revision),
             containerRootUrl: source.rootUrl,
           }),
         )
@@ -2192,7 +2199,7 @@ export class BookTab extends BaseTab {
       this.failCommittedRender(generation, 'position', error)
       return
     }
-    if (this.book.sourceStorage === 'referenced' && this.book.contentMode === 'archiveOnly') {
+    if (!this.book.managed && this.book.archive) {
       this.rendition.on('displayError', (error: unknown) => {
         if (generation === this.renderGeneration) {
           this.reportOpenError('render', error)
@@ -2214,7 +2221,7 @@ export class BookTab extends BaseTab {
     emitReaderOpenError({
       bookId: this.book.id,
       bookTitle: getBookDisplayTitle(this.book),
-      closeTab: this.book.sourceStorage === 'referenced' && this.book.contentMode === 'archiveOnly',
+      closeTab: !this.book.managed && this.book.archive === true,
       error,
       stage,
     })

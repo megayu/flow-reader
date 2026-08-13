@@ -53,8 +53,8 @@ use image_index::{
 #[cfg(test)]
 use model::ReadingStatus;
 use model::{
-    BookContentMode, BookScope, BookState, ExternalBook, ExternalBookIndex, Library, LibraryBook, SourceStorage,
-    WindowPaneState, WindowState, is_external_book_id, is_valid_book_storage_id,
+    BOOK_STATE_VERSION, BookContentMode, BookScope, BookState, EXTERNAL_BOOK_INDEX_VERSION, ExternalBookIndex,
+    LIBRARY_VERSION, Library, LibraryBook, SourceStorage, WindowPaneState, WindowState, is_valid_book_storage_id,
 };
 pub use model::{
     BookExportFormat, BookReaderSource, BookReaderSourceMode, BookRecord, BookSourceFormat, BookSourceStatus,
@@ -70,7 +70,7 @@ pub use window_state::{
 };
 pub(crate) use window_state::{RuntimeWindowState, record_window_state};
 
-use book_assets::{read_cover_record, remove_cover_files, write_cover};
+use book_assets::{read_cover_record, write_cover};
 use book_source::*;
 #[cfg(test)]
 use deletion::rename_books_for_deletion;
@@ -183,6 +183,12 @@ fn empty_object() -> Value {
     json!({})
 }
 
+fn next_revision(revision: u32) -> Result<u32, String> {
+    revision
+        .checked_add(1)
+        .ok_or_else(|| "Book revision overflow".to_string())
+}
+
 fn source_storage_from_settings(settings: &Value) -> SourceStorage {
     match settings.get("importSourceStorage").and_then(Value::as_str) {
         Some("referenced") | None => SourceStorage::Referenced,
@@ -195,6 +201,18 @@ impl AppStorage {
         let root = data_root(app)?;
         let library = read_json_or_default::<Library>(&library_path(&root)?)?;
         let external = read_json_or_default::<ExternalBookIndex>(&external_index_path(&root)?)?;
+        if library.version != LIBRARY_VERSION {
+            return Err(format!(
+                "Unsupported library version {}; current version is {LIBRARY_VERSION}",
+                library.version
+            ));
+        }
+        if external.version != EXTERNAL_BOOK_INDEX_VERSION {
+            return Err(format!(
+                "Unsupported external book index version {}; current version is {EXTERNAL_BOOK_INDEX_VERSION}",
+                external.version
+            ));
+        }
         let settings_path = settings_path(&root)?;
         let initialize_settings = !settings_path.exists();
         let mut settings = read_json_value_or_default(&settings_path)?;
@@ -202,9 +220,28 @@ impl AppStorage {
             settings::initialize_first_launch_settings(&mut settings)?;
         }
         if library.books.iter().any(|book| !is_valid_book_storage_id(&book.id))
-            || external.books.iter().any(|book| !is_external_book_id(&book.id))
+            || external.books.iter().any(|book| !is_valid_book_storage_id(&book.id))
         {
             return Err("Storage contains an invalid book id".to_string());
+        }
+        if library.books.iter().any(|book| book.source_path.as_os_str().is_empty())
+            || external
+                .books
+                .iter()
+                .any(|book| book.source_path.as_os_str().is_empty())
+        {
+            return Err("Storage contains an empty book source path".to_string());
+        }
+        let library_ids = library
+            .books
+            .iter()
+            .map(|book| book.id.as_str())
+            .collect::<HashSet<_>>();
+        if external.books.iter().any(|book| library_ids.contains(book.id.as_str())) {
+            return Err("Storage contains the same book in library and external indexes".to_string());
+        }
+        if library.books.iter().any(|book| book.revision == 0) || external.books.iter().any(|book| book.revision == 0) {
+            return Err("Storage contains an invalid book revision".to_string());
         }
         let storage = Self {
             inner: Arc::new(StorageInner {
@@ -241,30 +278,38 @@ impl AppStorage {
         &self.inner.root
     }
 
-    fn book_dir(&self, id: &str) -> PathBuf {
-        if is_external_book_id(id) {
-            self.external_book_dir(id)
-        } else {
-            books_root(self.root()).join(id)
-        }
+    fn library_book_dir(&self, id: &str) -> PathBuf {
+        books_root(self.root()).join(id)
     }
 
     fn external_book_dir(&self, id: &str) -> PathBuf {
         external_books_root(self.root()).join(id)
     }
 
-    fn search_text_cache_path(&self, id: &str, content_version: u32) -> PathBuf {
-        self.book_dir(id).join(format!(
-            "search-text.v{SEARCH_TEXT_CACHE_VERSION}.cv{content_version}.json.zst"
-        ))
+    fn book_dir(&self, id: &str) -> PathBuf {
+        let library_dir = self.library_book_dir(id);
+        if library_dir.exists() || !self.external_book_dir(id).exists() {
+            library_dir
+        } else {
+            self.external_book_dir(id)
+        }
     }
 
-    fn image_index_cache_path(&self, id: &str, content_version: u32) -> PathBuf {
-        self.book_dir(id).join(format!(
-            "image-index.v{IMAGE_INDEX_CACHE_VERSION}.cv{content_version}.json.zst"
-        ))
+    fn is_external_book(&self, id: &str) -> bool {
+        !self.library_book_dir(id).exists() && self.external_book_dir(id).exists()
     }
 
+    fn search_text_cache_path(&self, id: &str, revision: u32) -> PathBuf {
+        self.book_dir(id)
+            .join(format!("search-text.v{SEARCH_TEXT_CACHE_VERSION}.r{revision}.json.zst"))
+    }
+
+    fn image_index_cache_path(&self, id: &str, revision: u32) -> PathBuf {
+        self.book_dir(id)
+            .join(format!("image-index.v{IMAGE_INDEX_CACHE_VERSION}.r{revision}.json.zst"))
+    }
+
+    // Reading-metrics caches intentionally do not invalidate on text revisions; keep this path revision-independent.
     fn reading_metrics_cache_path(&self, id: &str) -> PathBuf {
         self.book_dir(id).join(format!(
             "reading-metrics.v{}.json.zst",
@@ -292,12 +337,11 @@ impl AppStorage {
             .iter()
             .find(|book| book.id == id)
             .cloned()
-            .map(|book| self.external_to_library_book(&book))
             .ok_or_else(|| "Book not found".to_string())
     }
 
     fn ensure_external_book(&self, id: &str) -> Result<(), String> {
-        if !is_external_book_id(id) {
+        if !is_valid_book_storage_id(id) {
             return Err("Invalid external book id".to_string());
         }
         let state = self
@@ -443,21 +487,24 @@ impl AppStorage {
     }
 
     fn read_book_state(&self, id: &str) -> Result<BookState, String> {
-        read_json_or_default(&self.book_dir(id).join(STATE_FILE))
+        let state = read_json_or_default::<BookState>(&self.book_dir(id).join(STATE_FILE))?;
+        if state.version != BOOK_STATE_VERSION {
+            return Err(format!(
+                "Unsupported book state version {}; current version is {BOOK_STATE_VERSION}",
+                state.version
+            ));
+        }
+        Ok(state)
     }
 
     fn write_book_state(&self, id: &str, state: &BookState) -> Result<(), String> {
         write_json(&self.book_dir(id).join(STATE_FILE), state)
     }
 
-    fn compose_book(&self, book: &LibraryBook) -> Result<BookRecord, String> {
+    fn compose_book(&self, book: &LibraryBook, scope: BookScope) -> Result<BookRecord, String> {
         let book_state = self.read_book_state(&book.id)?;
         let mut record = self.compose_book_summary(book);
-        record.scope = if is_external_book_id(&book.id) {
-            BookScope::External
-        } else {
-            BookScope::Library
-        };
+        record.scope = scope;
         record.definitions = book_state.definitions;
         record.annotations = book_state.annotations;
         record.cfi = book_state.cfi;
@@ -487,34 +534,10 @@ impl AppStorage {
             tag_ids: book.tag_ids.clone(),
             configuration: None,
             content_hash: book.content_hash.clone(),
-            content_version: book.content_version,
+            revision: book.revision,
             content_mode: book.content_mode,
             source_storage: book.source_storage,
-            source_path: book.source_path.as_deref().map(path_to_client_string),
-        }
-    }
-
-    fn external_to_library_book(&self, book: &ExternalBook) -> LibraryBook {
-        LibraryBook {
-            id: book.id.clone(),
-            name: book.name.clone(),
-            size: book.size,
-            reading_status: None,
-            source_format: BookSourceFormat::Epub,
-            generated_cover: book.generated_cover,
-            content_edited_at: None,
-            content_hash: book.content_hash.clone(),
-            content_version: book.content_version.max(1),
-            content_mode: book.content_mode,
-            source_storage: book.source_storage,
-            source_path: book.source_path.clone(),
-            metadata: book.metadata.clone(),
-            created_at: book.created_at,
-            updated_at: None,
-            last_read_at: Some(book.last_opened_at),
-            cfi: None,
-            percentage: None,
-            tag_ids: Vec::new(),
+            source_path: path_to_client_string(&book.source_path),
         }
     }
 

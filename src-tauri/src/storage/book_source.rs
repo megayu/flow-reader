@@ -181,7 +181,7 @@ pub(super) fn available_book_source_path(storage: &AppStorage, book: &LibraryBoo
             BookSourceFormat::Epub => BOOK_FILE,
             BookSourceFormat::Txt => SOURCE_TEXT_FILE,
         })),
-        SourceStorage::Referenced => book.source_path.clone(),
+        SourceStorage::Referenced => Some(book.source_path.clone()),
     };
     let expected_source =
         (book.source_storage == SourceStorage::Referenced).then_some((book.size, book.content_hash.as_str()));
@@ -195,7 +195,7 @@ pub(super) fn available_book_source_path(storage: &AppStorage, book: &LibraryBoo
 
 pub(super) fn referenced_archive_source_status(book: &LibraryBook) -> BookSourceStatus {
     source_path_status(
-        book.source_path.as_deref(),
+        Some(book.source_path.as_path()),
         Some((book.size, book.content_hash.as_str())),
     )
 }
@@ -245,8 +245,7 @@ pub(super) fn get_book_reader_source_impl(
     } else {
         let opf_path = ensure_book_package_path(storage, tasks, book)?;
         let current_book = storage.library_book(&book.id)?;
-        let updated_book = (current_book.content_version != book.content_version
-            || current_book.content_hash != book.content_hash)
+        let updated_book = (current_book.revision != book.revision || current_book.content_hash != book.content_hash)
             .then(|| commands::get_book_impl(storage, book.id.clone()))
             .transpose()?
             .flatten();
@@ -328,7 +327,7 @@ fn publish_unpacked_book_package_with(
 fn book_materialize_task_key(book: &LibraryBook) -> TaskKey {
     TaskKey::new(
         TaskKind::BookMaterialize,
-        format!("{}:{}:{}", book.id, book.content_hash, book.content_version),
+        format!("{}:{}:{}", book.id, book.content_hash, book.revision),
     )
 }
 
@@ -346,5 +345,5 @@ fn unpack_temp_dir(unpacked_dir: &Path) -> PathBuf {
 
 fn book_content_still_current(storage: &AppStorage, book: &LibraryBook) -> Result<bool, String> {
     let current = storage.library_book(&book.id)?;
-    Ok(current.content_hash == book.content_hash && current.content_version == book.content_version)
+    Ok(current.content_hash == book.content_hash && current.revision == book.revision)
 }

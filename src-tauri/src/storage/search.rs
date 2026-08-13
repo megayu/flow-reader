@@ -56,7 +56,7 @@ struct DerivedCacheBuild {
 #[serde(rename_all = "camelCase")]
 pub(super) struct SearchTextCache {
     pub(super) version: u32,
-    pub(super) content_version: u32,
+    pub(super) revision: u32,
     pub(super) sections: Vec<SearchTextSection>,
 }
 
@@ -117,11 +117,11 @@ pub(super) fn search_text_cache_from_bytes(bytes: &[u8]) -> Result<SearchTextCac
 }
 
 fn search_text_cache_matches_book(cache: &SearchTextCache, book: &LibraryBook) -> bool {
-    cache.version == SEARCH_TEXT_CACHE_VERSION && cache.content_version == book.content_version
+    cache.version == SEARCH_TEXT_CACHE_VERSION && cache.revision == book.revision
 }
 
 fn write_search_text_cache_if_current(storage: &AppStorage, id: &str, cache: &SearchTextCache) -> Result<bool, String> {
-    if is_external_book_id(id) {
+    if storage.is_external_book(id) {
         return Ok(false);
     }
     let current_book = storage.library_book(id)?;
@@ -129,7 +129,7 @@ fn write_search_text_cache_if_current(storage: &AppStorage, id: &str, cache: &Se
         return Ok(false);
     }
 
-    let path = storage.search_text_cache_path(id, cache.content_version);
+    let path = storage.search_text_cache_path(id, cache.revision);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
@@ -196,10 +196,10 @@ fn load_search_text_memory_cache(
 }
 
 fn read_search_text_cache(storage: &AppStorage, book: &LibraryBook) -> Result<SearchTextCache, String> {
-    if is_external_book_id(&book.id) {
+    if storage.is_external_book(&book.id) {
         return Err("External book search caches are memory-only".to_string());
     }
-    let path = storage.search_text_cache_path(&book.id, book.content_version);
+    let path = storage.search_text_cache_path(&book.id, book.revision);
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
     let cache = search_text_cache_from_bytes(&bytes)?;
     if search_text_cache_matches_book(&cache, book) {
@@ -210,14 +210,14 @@ fn read_search_text_cache(storage: &AppStorage, book: &LibraryBook) -> Result<Se
 }
 
 fn image_index_cache_matches_book(cache: &ImageIndexCache, book: &LibraryBook) -> bool {
-    cache.version == IMAGE_INDEX_CACHE_VERSION && cache.content_version == book.content_version
+    cache.version == IMAGE_INDEX_CACHE_VERSION && cache.revision == book.revision
 }
 
 pub(super) fn read_image_index_cache(storage: &AppStorage, book: &LibraryBook) -> Result<ImageIndexCache, String> {
-    if is_external_book_id(&book.id) {
+    if storage.is_external_book(&book.id) {
         return Err("External book image caches are memory-only".to_string());
     }
-    let path = storage.image_index_cache_path(&book.id, book.content_version);
+    let path = storage.image_index_cache_path(&book.id, book.revision);
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
     let cache = image_index_cache_from_bytes(&bytes)?;
     if image_index_cache_matches_book(&cache, book) {
@@ -232,7 +232,7 @@ pub(super) fn write_image_index_cache_if_current(
     id: &str,
     cache: &ImageIndexCache,
 ) -> Result<bool, String> {
-    if is_external_book_id(id) {
+    if storage.is_external_book(id) {
         return Ok(false);
     }
     let current_book = storage.library_book(id)?;
@@ -240,7 +240,7 @@ pub(super) fn write_image_index_cache_if_current(
         return Ok(false);
     }
 
-    let path = storage.image_index_cache_path(id, cache.content_version);
+    let path = storage.image_index_cache_path(id, cache.revision);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
@@ -476,7 +476,7 @@ fn load_or_build_search_text_cache_with_builder(
 }
 
 fn derived_cache_task_key(book: &LibraryBook) -> TaskKey {
-    TaskKey::new(TaskKind::SearchIndex, format!("{}:{}", book.id, book.content_version))
+    TaskKey::new(TaskKind::SearchIndex, format!("{}:{}", book.id, book.revision))
 }
 
 fn build_derived_cache(
@@ -504,13 +504,13 @@ fn build_derived_cache(
         search: include_search.then(|| {
             Arc::new(SearchTextCache {
                 version: SEARCH_TEXT_CACHE_VERSION,
-                content_version: book.content_version,
+                revision: book.revision,
                 sections: search_sections,
             })
         }),
         image: Arc::new(ImageIndexCache {
             version: IMAGE_INDEX_CACHE_VERSION,
-            content_version: book.content_version,
+            revision: book.revision,
             sections: image_sections,
         }),
     })
@@ -890,7 +890,7 @@ fn parse_derived_section(
         return (
             search,
             ImageIndexSection {
-                section_index,
+                index: section_index,
                 href,
                 images: Vec::new(),
             },
@@ -1298,7 +1298,7 @@ impl AppStorage {
             .map_err(|_| "derived cache state lock poisoned".to_string())?;
         let state = states.entry(id.to_string()).or_insert_with(DerivedCacheState::active);
         state.last_accessed = Instant::now();
-        let persistent = !is_external_book_id(id);
+        let persistent = !self.is_external_book(id);
         state.search_dirty |= persistent && search_dirty;
         state.image_dirty |= persistent && image_dirty;
         Ok(())
@@ -1310,11 +1310,11 @@ impl AppStorage {
         section_href: &str,
         xhtml: &str,
     ) -> Result<(), String> {
-        if !is_external_book_id(&book.id)
-            && let Some(previous_version) = book.content_version.checked_sub(1)
+        if !self.is_external_book(&book.id)
+            && let Some(previous_revision) = book.revision.checked_sub(1)
         {
-            let _ = fs::remove_file(self.search_text_cache_path(&book.id, previous_version));
-            let _ = fs::remove_file(self.image_index_cache_path(&book.id, previous_version));
+            let _ = fs::remove_file(self.search_text_cache_path(&book.id, previous_revision));
+            let _ = fs::remove_file(self.image_index_cache_path(&book.id, previous_revision));
         }
         let has_search = self
             .inner
@@ -1346,7 +1346,7 @@ impl AppStorage {
                     .position(|section| section_hrefs_match(&section.href, section_href))
             {
                 let cache = Arc::make_mut(cache);
-                cache.content_version = book.content_version;
+                cache.revision = book.revision;
                 let (text, title) = search_data.unwrap_or_default();
                 cache.sections[index].text = text;
                 if title.is_some() {
@@ -1370,10 +1370,10 @@ impl AppStorage {
                     .position(|section| section_hrefs_match(&section.href, section_href))
             {
                 let cache = Arc::make_mut(cache);
-                cache.content_version = book.content_version;
-                let section_index = cache.sections[index].section_index;
+                cache.revision = book.revision;
+                let section_index = cache.sections[index].index;
                 cache.sections[index] = ImageIndexSection {
-                    section_index,
+                    index: section_index,
                     href: cache.sections[index].href.clone(),
                     images: image_section.images,
                 };
@@ -1545,7 +1545,7 @@ impl AppStorage {
                 .lock()
                 .map_err(|_| "derived cache state lock poisoned".to_string())?
                 .iter()
-                .min_by_key(|(id, state)| (state.active, !is_external_book_id(id), state.last_accessed))
+                .min_by_key(|(id, state)| (state.active, !self.is_external_book(id), state.last_accessed))
                 .map(|(id, _)| id.clone());
             let Some(candidate) = candidate else {
                 return Ok(());
@@ -1641,7 +1641,7 @@ mod tests {
         std::env::temp_dir().join(format!("flow-reader-{label}-{}-{nonce}", std::process::id()))
     }
 
-    fn test_book(id: &str, content_version: u32) -> LibraryBook {
+    fn test_book(id: &str, revision: u32) -> LibraryBook {
         LibraryBook {
             id: id.to_string(),
             name: format!("{id}.epub"),
@@ -1650,11 +1650,11 @@ mod tests {
             source_format: BookSourceFormat::Epub,
             generated_cover: false,
             content_edited_at: None,
-            content_hash: format!("hash-{content_version}"),
-            content_version,
+            content_hash: format!("hash-{revision}"),
+            revision,
             content_mode: BookContentMode::Normal,
             source_storage: SourceStorage::Managed,
-            source_path: None,
+            source_path: PathBuf::from(format!("{id}.epub")),
             metadata: empty_object(),
             created_at: 1,
             updated_at: None,
@@ -1700,7 +1700,7 @@ mod tests {
     fn test_cache(book: &LibraryBook, text: &str) -> SearchTextCache {
         SearchTextCache {
             version: SEARCH_TEXT_CACHE_VERSION,
-            content_version: book.content_version,
+            revision: book.revision,
             sections: vec![SearchTextSection {
                 section_index: 0,
                 href: "Text/chapter.xhtml".to_string(),
@@ -1735,7 +1735,7 @@ mod tests {
     }
 
     #[test]
-    fn search_index_reuses_in_flight_build_for_same_book_version() {
+    fn search_index_reuses_in_flight_build_for_same_book_revision() {
         let root = temp_root("search-idempotent-test");
         let storage = Arc::new(test_storage(&root, vec![test_book("book", 1)]));
         let tasks = Arc::new(TaskService::default());
@@ -1790,13 +1790,13 @@ mod tests {
             let mut state = storage.inner.state.lock().unwrap();
             let book = state.library.books.iter_mut().find(|book| book.id == "book").unwrap();
             book.content_hash = "hash-2".to_string();
-            book.content_version = 2;
+            book.revision = 2;
         }
 
         let published = write_search_text_cache_if_current(&storage, "book", &cache).unwrap();
 
         assert!(!published);
-        assert!(!storage.search_text_cache_path("book", book.content_version).exists());
+        assert!(!storage.search_text_cache_path("book", book.revision).exists());
 
         let _ = fs::remove_dir_all(root);
     }
