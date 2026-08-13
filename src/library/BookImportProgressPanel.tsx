@@ -7,7 +7,7 @@ export function BookImportProgressPanel({ progress }: { progress: BookImportProg
   return (
     <BlockingProgressPanel title={t('title.progress')} completed={progress.completed} total={progress.total}>
       <p className="text-muted-foreground mt-3 leading-snug">
-        {t('result.partial', progress.imported, progress.failed)}
+        {t('result.summary', progress.imported, progress.failed, progress.skipped)}
       </p>
     </BlockingProgressPanel>
   )

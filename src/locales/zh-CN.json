@@ -158,11 +158,7 @@
   "image_preview.zoom_in": "放大",
   "image_preview.zoom_out": "缩小",
 
-  "import.result.failed": "失败 {1} 本",
-  "import.result.partial": "已导入 {1} 本，失败 {2} 本",
-  "import.result.success": "已导入 {1} 本",
-  "import.title.failed": "书籍导入失败",
-  "import.title.partial_failure": "部分书籍导入失败",
+  "import.result.summary": "已导入 {1} 本，失败 {2} 本，跳过 {3} 本",
   "import.title.progress": "正在导入书籍",
 
   "library_filter.title": "筛选",

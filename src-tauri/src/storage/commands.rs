@@ -653,23 +653,19 @@ pub async fn import_epub_paths(
     storage: State<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     paths: Vec<String>,
-    replace_existing: bool,
     on_progress: Channel<BookImportProgress>,
 ) -> Result<BookImportResult, String> {
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        import_epub_paths_impl(&storage, &tasks, paths, replace_existing, Some(on_progress))
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || import_epub_paths_impl(&storage, &tasks, paths, Some(on_progress)))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 pub(super) fn import_epub_paths_impl(
     storage: &AppStorage,
     tasks: &TaskService,
     paths: Vec<String>,
-    replace_existing: bool,
     on_progress: Option<Channel<BookImportProgress>>,
 ) -> Result<BookImportResult, String> {
     let started = Instant::now();
@@ -677,6 +673,7 @@ pub(super) fn import_epub_paths_impl(
     let total = paths.iter().filter(|path| is_epub_file(Path::new(path))).count();
     let mut books = Vec::new();
     let mut failures = Vec::new();
+    let mut skipped = Vec::new();
     let mut finalizers = Vec::new();
     let mut import_index = LibraryBookLookupIndex::load(storage)?;
     let mut progress = BookImportProgressReporter::new(on_progress, total);
@@ -690,13 +687,14 @@ pub(super) fn import_epub_paths_impl(
 
     for chunk in paths.chunks(prepare_window) {
         let prepared = std::thread::scope(|scope| {
+            let prepare_index = &import_index;
             let handles = chunk
                 .iter()
                 .map(|path| {
                     scope.spawn(move || {
                         let bytes = fs::metadata(path).map(|metadata| metadata.len()).unwrap_or(0);
                         tasks.run_io_observed(storage.root(), bytes, TaskPriority::Foreground, || {
-                            prepare_epub_import(storage, path)
+                            prepare_epub_import(storage, prepare_index, path)
                         })
                     })
                 })
@@ -712,15 +710,18 @@ pub(super) fn import_epub_paths_impl(
         });
 
         for (path, prepared) in chunk.iter().zip(prepared) {
-            let result = prepared.and_then(|prepared| {
-                commit_prepared_epub_import(storage, prepared, replace_existing, Some(&mut import_index))
-            });
+            let result =
+                prepared.and_then(|prepared| commit_prepared_epub_import(storage, prepared, Some(&mut import_index)));
             match result {
-                Ok((book, finalizer)) => {
+                Ok(Some((book, finalizer))) => {
                     if let Some(book) = progress.emit_success(storage, book) {
                         books.push(book);
                     }
                     finalizers.push(finalizer);
+                }
+                Ok(None) => {
+                    progress.emit_skip();
+                    skipped.push(book_import_filename(path));
                 }
                 Err(error) => {
                     let failure = book_import_failure(path, error);
@@ -737,21 +738,29 @@ pub(super) fn import_epub_paths_impl(
         ("sources", source_count.to_string()),
         ("imported", progress.imported.to_string()),
         ("failed", failures.len().to_string()),
+        ("skipped", skipped.len().to_string()),
     ];
     fields.extend(tasks.diagnostic_fields());
     diagnostics::record_timing("epub-import", started.elapsed(), &fields);
-    Ok(BookImportResult { books, failures })
+    Ok(BookImportResult {
+        books,
+        failures,
+        skipped,
+    })
 }
 
 fn book_import_failure(path: &Path, error: String) -> BookImportFailure {
     BookImportFailure {
-        filename: path
-            .file_name()
-            .map(|name| name.to_string_lossy().to_string())
-            .unwrap_or_else(|| path.to_string_lossy().to_string()),
+        filename: book_import_filename(path),
         path: path.to_string_lossy().to_string(),
         error,
     }
+}
+
+fn book_import_filename(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -799,7 +808,11 @@ pub(super) fn open_external_epub_paths_impl(
     ];
     fields.extend(tasks.diagnostic_fields());
     diagnostics::record_timing("epub-open-external", started.elapsed(), &fields);
-    Ok(BookImportResult { books, failures })
+    Ok(BookImportResult {
+        books,
+        failures,
+        skipped: Vec::new(),
+    })
 }
 
 #[derive(Debug, Serialize)]
@@ -815,6 +828,7 @@ pub struct BookImportFailure {
 pub struct BookImportResult {
     pub books: Vec<BookRecord>,
     pub failures: Vec<BookImportFailure>,
+    pub skipped: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -824,6 +838,7 @@ pub struct BookImportProgress {
     completed: usize,
     imported: usize,
     failed: usize,
+    skipped: usize,
     book: Option<Arc<BookRecord>>,
     cover: Option<CoverRecord>,
 }
@@ -834,6 +849,7 @@ struct BookImportProgressReporter {
     completed: usize,
     imported: usize,
     failed: usize,
+    skipped: usize,
 }
 
 impl BookImportProgressReporter {
@@ -844,17 +860,11 @@ impl BookImportProgressReporter {
             completed: 0,
             imported: 0,
             failed: 0,
+            skipped: 0,
         }
     }
 
     fn emit(&mut self, book: Option<BookRecord>, cover: Option<CoverRecord>) -> Option<BookRecord> {
-        self.completed += 1;
-        if book.is_some() {
-            self.imported += 1;
-        } else {
-            self.failed += 1;
-        }
-
         let Some(channel) = &self.channel else {
             return book;
         };
@@ -867,6 +877,7 @@ impl BookImportProgressReporter {
                 completed: self.completed,
                 imported: self.imported,
                 failed: self.failed,
+                skipped: self.skipped,
                 book,
                 cover,
             })
@@ -878,11 +889,21 @@ impl BookImportProgressReporter {
     }
 
     fn emit_success(&mut self, storage: &AppStorage, book: BookRecord) -> Option<BookRecord> {
+        self.completed += 1;
+        self.imported += 1;
         let cover = read_cover_record(storage, book.id.clone()).ok();
         self.emit(Some(book), cover)
     }
 
     fn emit_failure(&mut self) {
+        self.completed += 1;
+        self.failed += 1;
+        let _ = self.emit(None, None);
+    }
+
+    fn emit_skip(&mut self) {
+        self.completed += 1;
+        self.skipped += 1;
         let _ = self.emit(None, None);
     }
 }
@@ -1014,7 +1035,6 @@ pub async fn import_text_paths(
     storage: State<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     imports: Vec<TextImportSelection>,
-    replace_existing: bool,
     copy_source_files: Option<bool>,
     on_progress: Channel<BookImportProgress>,
 ) -> Result<BookImportResult, String> {
@@ -1022,15 +1042,7 @@ pub async fn import_text_paths(
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        import_text_paths_impl(
-            &storage,
-            &tasks,
-            imports,
-            replace_existing,
-            copy_source_files,
-            rules,
-            Some(on_progress),
-        )
+        import_text_paths_impl(&storage, &tasks, imports, copy_source_files, rules, Some(on_progress))
     })
     .await
     .map_err(|error| error.to_string())?
@@ -1040,7 +1052,6 @@ pub(super) fn import_text_paths_impl(
     storage: &AppStorage,
     tasks: &TaskService,
     imports: Vec<TextImportSelection>,
-    replace_existing: bool,
     copy_source_files: Option<bool>,
     rules: Option<TextImportRulesInput>,
     on_progress: Option<Channel<BookImportProgress>>,
@@ -1059,7 +1070,6 @@ pub(super) fn import_text_paths_impl(
         let mut state = TextImportBatchState {
             import_index: &mut import_index,
             progress: &mut progress,
-            replace_existing,
         };
         if imports.len() <= 1 {
             import_text_paths_direct(storage, tasks, imports, copy_source_file, rules, &mut state)
@@ -1073,25 +1083,27 @@ pub(super) fn import_text_paths_impl(
         ("sources", source_count.to_string()),
         ("imported", progress.imported.to_string()),
         ("failed", batch.failures.len().to_string()),
+        ("skipped", batch.skipped.len().to_string()),
     ];
     fields.extend(tasks.diagnostic_fields());
     diagnostics::record_timing("txt-import", started.elapsed(), &fields);
     Ok(BookImportResult {
         books: batch.books,
         failures: batch.failures,
+        skipped: batch.skipped,
     })
 }
 
 struct TextImportBatch {
     books: Vec<BookRecord>,
     failures: Vec<BookImportFailure>,
+    skipped: Vec<String>,
     finalizers: Vec<ImportFinalizer>,
 }
 
 struct TextImportBatchState<'a> {
     import_index: &'a mut LibraryBookLookupIndex,
     progress: &'a mut BookImportProgressReporter,
-    replace_existing: bool,
 }
 
 fn commit_prepared_text_selection(
@@ -1102,7 +1114,7 @@ fn commit_prepared_text_selection(
     copy_source_file: bool,
     rules: Option<&TextImportRulesInput>,
     state: &mut TextImportBatchState<'_>,
-) -> Result<(BookRecord, ImportFinalizer), BookImportFailure> {
+) -> Result<Option<(BookRecord, ImportFinalizer)>, BookImportFailure> {
     let bytes = prepared.size;
     tasks
         .run_io_observed(storage.root(), bytes, TaskPriority::Foreground, || {
@@ -1111,7 +1123,6 @@ fn commit_prepared_text_selection(
                 prepared,
                 import,
                 copy_source_file,
-                state.replace_existing,
                 rules,
                 Some(state.import_index),
             )
@@ -1129,6 +1140,7 @@ fn import_text_paths_direct(
 ) -> TextImportBatch {
     let mut books = Vec::new();
     let mut failures = Vec::new();
+    let mut skipped = Vec::new();
     let mut finalizers = Vec::new();
     for import in imports {
         let path = PathBuf::from(&import.path);
@@ -1141,7 +1153,7 @@ fn import_text_paths_direct(
                 continue;
             }
         };
-        let (book, finalizer) =
+        let result =
             match commit_prepared_text_selection(storage, tasks, &import, prepared, copy_source_file, rules, state) {
                 Ok(result) => result,
                 Err(failure) => {
@@ -1150,6 +1162,11 @@ fn import_text_paths_direct(
                     continue;
                 }
             };
+        let Some((book, finalizer)) = result else {
+            state.progress.emit_skip();
+            skipped.push(book_import_filename(&path));
+            continue;
+        };
         if let Some(book) = state.progress.emit_success(storage, book) {
             books.push(book);
         }
@@ -1158,6 +1175,7 @@ fn import_text_paths_direct(
     TextImportBatch {
         books,
         failures,
+        skipped,
         finalizers,
     }
 }
@@ -1187,6 +1205,7 @@ fn import_text_paths_with_pipeline(
         .take(result_len)
         .collect::<Vec<Option<BookRecord>>>();
     let mut failures = Vec::new();
+    let mut skipped = Vec::new();
     let mut finalizers = Vec::with_capacity(result_len);
     let pipeline_result: Result<(), String> = std::thread::scope(|scope| {
         for _ in 0..workers {
@@ -1234,9 +1253,13 @@ fn import_text_paths_with_pipeline(
                     );
                     storage.end_text_import_prepared_handoff();
                     match result {
-                        Ok((book, finalizer)) => {
+                        Ok(Some((book, finalizer))) => {
                             books[message.index] = state.progress.emit_success(storage, book);
                             finalizers.push(finalizer);
+                        }
+                        Ok(None) => {
+                            state.progress.emit_skip();
+                            skipped.push(book_import_filename(Path::new(&message.import.path)));
                         }
                         Err(failure) => {
                             state.progress.emit_failure();
@@ -1264,6 +1287,7 @@ fn import_text_paths_with_pipeline(
     Ok(TextImportBatch {
         books,
         failures,
+        skipped,
         finalizers,
     })
 }

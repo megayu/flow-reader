@@ -10,23 +10,20 @@ export function useBookImportNotifications() {
   return (result: BookImportResult) => {
     const imported = result.books.length
     const failed = result.failures.length
+    const skipped = result.skipped.length
+    if (imported === 0 && failed === 0 && skipped === 0) return
 
-    if (failed > 0) {
-      notify({
-        autoCloseMs: false,
-        description: imported > 0 ? t('result.partial', imported, failed) : t('result.failed', failed),
-        items: result.failures.map((failure) => failure.filename),
-        title: t(imported > 0 ? 'title.partial_failure' : 'title.failed'),
-        type: 'error',
-      })
-      return
-    }
-
-    if (imported > 0) {
-      notify({
-        title: t('result.success', imported),
-        type: 'success',
-      })
-    }
+    notify({
+      autoCloseMs: failed > 0 || skipped > 0 ? false : undefined,
+      items:
+        failed > 0 || skipped > 0
+          ? [
+              ...result.failures.map((failure) => `× ${failure.filename}`),
+              ...result.skipped.map((filename) => `- ${filename}`),
+            ]
+          : undefined,
+      title: t('result.summary', imported, failed, skipped),
+      type: failed > 0 ? 'error' : skipped > 0 ? 'warning' : 'success',
+    })
   }
 }

@@ -153,6 +153,7 @@ export interface BookImportFailure {
 export interface BookImportResult {
   books: BookRecord[]
   failures: BookImportFailure[]
+  skipped: string[]
 }
 
 export interface BookImportProgress {
@@ -161,6 +162,7 @@ export interface BookImportProgress {
   completed: number
   imported: number
   failed: number
+  skipped: number
   book?: BookRecord | null
   cover?: CoverRecord | null
 }

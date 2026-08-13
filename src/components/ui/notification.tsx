@@ -102,8 +102,8 @@ function NotificationToast({
         {notification.description && <p className="text-muted-foreground leading-snug">{notification.description}</p>}
         {!!notification.items?.length && (
           <ul className="text-muted-foreground max-h-40 space-y-1 overflow-auto pr-1 leading-snug">
-            {notification.items.map((item) => (
-              <li key={item} className="truncate">
+            {notification.items.map((item, index) => (
+              <li key={`${item}-${index}`} className="whitespace-pre-wrap wrap-anywhere">
                 {item}
               </li>
             ))}

@@ -1163,7 +1163,13 @@ pub(super) fn should_skip_prepared_text_import_preview(
         .map_err(|_| "storage state lock poisoned".to_string())?;
 
     Ok(state.library.books.iter().any(|book| {
-        book.name == prepared.filename && !book.content_hash.is_empty() && book.content_hash == prepared.hash
+        book.content_edited_at.is_none()
+            && book
+                .source_path
+                .as_deref()
+                .is_some_and(|path| same_source_path(path, &prepared.path))
+            && !book.content_hash.is_empty()
+            && book.content_hash == prepared.hash
     }))
 }
 
@@ -1519,10 +1525,9 @@ pub(super) fn import_text_path_impl(
     prepared: Arc<PreparedTextImport>,
     import: &TextImportSelection,
     copy_source_file: bool,
-    replace_existing: bool,
     rules: Option<&TextImportRulesInput>,
-    import_index: Option<&mut LibraryBookLookupIndex>,
-) -> Result<(BookRecord, ImportFinalizer), String> {
+    mut import_index: Option<&mut LibraryBookLookupIndex>,
+) -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
     let _import_guard = storage
         .inner
         .import_lock
@@ -1571,42 +1576,35 @@ pub(super) fn import_text_path_impl(
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        let (filename_index, hash_index) =
-            existing_book_indices(import_index.as_deref(), &state.library.books, &name, &hash);
+        let existing = existing_book_import(import_index.as_deref(), &state.library.books, &source_path, &hash);
 
-        if let Some(index) = filename_index {
-            let storage_changed = state.library.books[index].source_storage != source_storage;
+        if let Some(ExistingBookImport::SameContent(index)) = existing {
             let mut book = state.library.books[index].clone();
-            if !replace_existing || (state.library.books[index].content_hash == hash && !storage_changed) {
-                book.source_path = Some(source_path.clone());
-                let id = book.id.clone();
-                (book, id, false, false)
-            } else {
-                book.size = size;
-                book.content_hash = hash.clone();
-                book.content_version = book.content_version.saturating_add(1).max(1);
-                book.generated_cover = true;
-                book.content_mode = BookContentMode::Normal;
-                book.source_storage = source_storage;
-                book.source_path = Some(source_path.clone());
+            let source_changed = book.name != name || book.source_path.as_ref() != Some(&source_path);
+            book.name = name.clone();
+            book.size = size;
+            book.source_path = Some(source_path.clone());
+            if source_changed {
                 book.updated_at = Some(now_ms());
-                book.content_edited_at = None;
-                book.metadata = metadata.clone();
-                let id = book.id.clone();
-                (book, id, true, false)
             }
-        } else if let Some(index) = hash_index {
+            let id = book.id.clone();
+            (book, id, false, false)
+        } else if let Some(ExistingBookImport::ReplaceContent(index)) = existing {
             let mut book = state.library.books[index].clone();
             book.name = name.clone();
             book.size = size;
+            book.content_hash = hash.clone();
+            book.content_version = book.content_version.saturating_add(1).max(1);
+            book.generated_cover = true;
             book.content_mode = BookContentMode::Normal;
-            let storage_changed = book.source_storage != source_storage;
             book.source_storage = source_storage;
             book.source_path = Some(source_path.clone());
             book.updated_at = Some(now_ms());
-            book.metadata = metadata.clone();
+            book.content_edited_at = None;
             let id = book.id.clone();
-            (book, id, storage_changed, false)
+            (book, id, true, false)
+        } else if matches!(existing, Some(ExistingBookImport::Skip)) {
+            return Ok(None);
         } else {
             let created_at = now_ms();
             let id = id_from_hash(&hash);
@@ -1634,9 +1632,10 @@ pub(super) fn import_text_path_impl(
             (book, id, true, true)
         }
     };
+    let effective_metadata = book.metadata.clone();
 
     let mut file_transaction = None;
-    let result = (|| -> Result<(BookRecord, ImportFinalizer), String> {
+    let result = (|| -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
         if should_copy {
             storage.remove_derived_memory_caches(&id);
             file_transaction = Some(ImportFileTransaction::begin(storage, &id)?);
@@ -1645,11 +1644,10 @@ pub(super) fn import_text_path_impl(
             if source_storage == SourceStorage::Managed {
                 fs::write(&source_text_path, &prepared.bytes).map_err(|error| error.to_string())?;
             }
-            let cover = create_text_cover_input(&metadata, path.file_stem().and_then(|name| name.to_str()));
+            let cover = create_text_cover_input(&effective_metadata, path.file_stem().and_then(|name| name.to_str()));
             if eager_import_materialization_enabled() {
-                materialize_text_publication(storage, &id, &prepared, &metadata, rules, cover.as_ref())?;
+                materialize_text_publication(storage, &id, &prepared, &effective_metadata, rules, cover.as_ref())?;
             }
-            book.metadata = metadata;
             write_cover(storage, &id, cover)?;
         }
 
@@ -1660,11 +1658,8 @@ pub(super) fn import_text_path_impl(
                 .lock()
                 .map_err(|_| "storage state lock poisoned".to_string())?;
             let stored_index = if is_new {
-                if state
-                    .library
-                    .books
-                    .iter()
-                    .any(|stored| stored.id == id || stored.name == name)
+                if state.library.books.iter().any(|stored| stored.id == id)
+                    || existing_book_import(None, &state.library.books, &source_path, &hash).is_some()
                 {
                     return Err("Library changed while the book was being imported".to_string());
                 }
@@ -1686,14 +1681,14 @@ pub(super) fn import_text_path_impl(
                 stored_index
             };
             let record = storage.compose_book(&book)?;
-            if let Some(index) = import_index {
+            if let Some(index) = import_index.as_deref_mut() {
                 index.remember(stored_index, &book);
             }
             record
         };
 
         storage.mark_library_dirty();
-        Ok((record, ImportFinalizer::new(file_transaction.take())))
+        Ok(Some((record, ImportFinalizer::new(file_transaction.take()))))
     })();
 
     if result.is_err()

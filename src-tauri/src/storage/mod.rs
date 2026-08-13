@@ -88,8 +88,8 @@ use epub_import::{
 use epub_import::{normalize_non_square_pixel_png, normalize_publication_date, relative_zip_path};
 
 use import_support::{
-    ImportFileTransaction, ImportFinalizer, LibraryBookLookupIndex, eager_import_materialization_enabled,
-    existing_book_indices, import_work_path,
+    ExistingBookImport, ImportFileTransaction, ImportFinalizer, LibraryBookLookupIndex,
+    eager_import_materialization_enabled, existing_book_import, import_work_path, same_source_path,
 };
 use search::{
     DerivedCacheState, SearchTextCache, load_or_build_image_index_cache, load_or_build_search_text_cache,

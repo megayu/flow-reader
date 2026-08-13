@@ -10,8 +10,18 @@ pub(super) fn eager_import_materialization_enabled() -> bool {
 }
 
 pub(super) struct LibraryBookLookupIndex {
-    names: HashMap<String, usize>,
+    source_paths: HashMap<String, usize>,
     hashes: HashMap<String, usize>,
+}
+
+fn source_path_key(path: &Path) -> String {
+    let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let key = path.to_string_lossy().replace('\\', "/");
+    if cfg!(windows) { key.to_lowercase() } else { key }
+}
+
+pub(super) fn same_source_path(left: &Path, right: &Path) -> bool {
+    source_path_key(left) == source_path_key(right)
 }
 
 impl LibraryBookLookupIndex {
@@ -21,23 +31,37 @@ impl LibraryBookLookupIndex {
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        let mut names = HashMap::with_capacity(state.library.books.len());
+        let mut source_paths = HashMap::with_capacity(state.library.books.len());
         let mut hashes = HashMap::with_capacity(state.library.books.len());
         for (index, book) in state.library.books.iter().enumerate() {
-            names.entry(book.name.clone()).or_insert(index);
+            if let Some(source_path) = &book.source_path {
+                source_paths.entry(source_path_key(source_path)).or_insert(index);
+            }
             if !book.content_hash.is_empty() {
                 hashes.entry(book.content_hash.clone()).or_insert(index);
             }
         }
-        Ok(Self { names, hashes })
+        Ok(Self { source_paths, hashes })
     }
 
-    pub(super) fn filename_index(&self, books: &[LibraryBook], name: &str) -> Option<usize> {
-        self.names
-            .get(name)
+    pub(super) fn source_path_index(&self, books: &[LibraryBook], path: &Path) -> Option<usize> {
+        self.source_paths
+            .get(&source_path_key(path))
             .copied()
-            .filter(|index| books.get(*index).is_some_and(|book| book.name == name))
-            .or_else(|| books.iter().position(|book| book.name == name))
+            .filter(|index| {
+                books.get(*index).is_some_and(|book| {
+                    book.source_path
+                        .as_deref()
+                        .is_some_and(|source_path| same_source_path(source_path, path))
+                })
+            })
+            .or_else(|| {
+                books.iter().position(|book| {
+                    book.source_path
+                        .as_deref()
+                        .is_some_and(|source_path| same_source_path(source_path, path))
+                })
+            })
     }
 
     pub(super) fn hash_index(&self, books: &[LibraryBook], hash: &str) -> Option<usize> {
@@ -57,10 +81,12 @@ impl LibraryBookLookupIndex {
     }
 
     pub(super) fn remember(&mut self, index: usize, book: &LibraryBook) {
-        self.names
-            .entry(book.name.clone())
-            .and_modify(|stored| *stored = (*stored).min(index))
-            .or_insert(index);
+        if let Some(source_path) = &book.source_path {
+            self.source_paths
+                .entry(source_path_key(source_path))
+                .and_modify(|stored| *stored = (*stored).min(index))
+                .or_insert(index);
+        }
         if !book.content_hash.is_empty() {
             self.hashes
                 .entry(book.content_hash.clone())
@@ -70,15 +96,28 @@ impl LibraryBookLookupIndex {
     }
 }
 
-pub(super) fn existing_book_indices(
+#[derive(Clone, Copy)]
+pub(super) enum ExistingBookImport {
+    SameContent(usize),
+    ReplaceContent(usize),
+    Skip,
+}
+
+pub(super) fn existing_book_import(
     index: Option<&LibraryBookLookupIndex>,
     books: &[LibraryBook],
-    name: &str,
+    source_path: &Path,
     hash: &str,
-) -> (Option<usize>, Option<usize>) {
-    let filename_index = index.map_or_else(
-        || books.iter().position(|book| book.name == name),
-        |index| index.filename_index(books, name),
+) -> Option<ExistingBookImport> {
+    let source_path_index = index.map_or_else(
+        || {
+            books.iter().position(|book| {
+                book.source_path
+                    .as_deref()
+                    .is_some_and(|stored_path| same_source_path(stored_path, source_path))
+            })
+        },
+        |index| index.source_path_index(books, source_path),
     );
     let hash_index = index.map_or_else(
         || {
@@ -88,7 +127,19 @@ pub(super) fn existing_book_indices(
         },
         |index| index.hash_index(books, hash),
     );
-    (filename_index, hash_index)
+    if let Some(index) = source_path_index {
+        let book = &books[index];
+        return Some(
+            if book.content_edited_at.is_some() || hash_index.is_some_and(|hash_index| hash_index != index) {
+                ExistingBookImport::Skip
+            } else if book.content_hash == hash {
+                ExistingBookImport::SameContent(index)
+            } else {
+                ExistingBookImport::ReplaceContent(index)
+            },
+        );
+    }
+    hash_index.map(ExistingBookImport::SameContent)
 }
 
 static IMPORT_WORK_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);

@@ -157,11 +157,7 @@
   "image_preview.zoom_in": "Zoom in",
   "image_preview.zoom_out": "Zoom out",
 
-  "import.result.failed": "Failed: {1}",
-  "import.result.partial": "Imported: {1}, failed: {2}",
-  "import.result.success": "Imported: {1}",
-  "import.title.failed": "Book import failed",
-  "import.title.partial_failure": "Some books failed to import",
+  "import.result.summary": "Imported: {1}, failed: {2}, skipped: {3}",
   "import.title.progress": "Importing books",
 
   "library_filter.title": "Filter",

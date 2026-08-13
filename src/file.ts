@@ -22,7 +22,6 @@ const filePathCollator = new Intl.Collator(undefined, {
 interface HandleFilesOptions {
   directTextImport?: boolean
   onImportProgress?: (progress: BookImportProgress) => void
-  replaceExisting?: boolean
   onTextPaths?: (paths: string[], waitForEpubImport?: Promise<void>) => void
   onImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
 }
@@ -83,7 +82,7 @@ export async function handleFiles(files: Iterable<File>, options: HandleFilesOpt
 
 export async function handleFilePaths(
   paths: string[],
-  { directTextImport, onImportProgress, replaceExisting = true, onImportResult, onTextPaths }: HandleFilesOptions = {},
+  { directTextImport, onImportProgress, onImportResult, onTextPaths }: HandleFilesOptions = {},
 ) {
   if (!paths.length) return []
   await waitForBookCacheClearing()
@@ -108,7 +107,6 @@ export async function handleFilePaths(
         importEpubPaths(epubPaths, {
           importId,
           onProgress,
-          replaceExisting,
         }),
       importTextPhase: (importId, onProgress) =>
         importTextPaths(
@@ -116,7 +114,6 @@ export async function handleFilePaths(
           {
             importId,
             onProgress,
-            replaceExisting,
           },
         ),
     })
@@ -125,6 +122,7 @@ export async function handleFilePaths(
     const result = {
       books: [...batch.epubResult.books, ...batch.textResult.books],
       failures: [...batch.epubResult.failures, ...batch.textResult.failures],
+      skipped: [...batch.epubResult.skipped, ...batch.textResult.skipped],
     }
     const openedBookIds = await onImportResult?.(result)
     if (!openedBookIds?.size) return result.books
@@ -167,7 +165,7 @@ export async function openImportDialog(options: HandleFilesOptions = {}) {
   })
   const paths = Array.isArray(selected) ? selected : selected ? [selected] : []
 
-  return handleFilePaths(paths, { replaceExisting: true, ...options })
+  return handleFilePaths(paths, options)
 }
 
 export async function selectImportFolder() {
@@ -249,7 +247,6 @@ export async function setupNativeOpenFiles({
               {
                 importId,
                 onProgress,
-                replaceExisting: false,
               },
             ),
         })
@@ -258,6 +255,7 @@ export async function setupNativeOpenFiles({
         const importResult = {
           books: batch.textResult.books,
           failures: [...batch.epubResult.failures, ...batch.textResult.failures],
+          skipped: [...batch.epubResult.skipped, ...batch.textResult.skipped],
         }
         const openedBookIds = await onImportResult?.(importResult)
         const books = [
@@ -291,7 +289,6 @@ export async function setupNativeOpenFiles({
           directTextImport: getDirectTextImport?.(),
           onImportProgress,
           onImportResult,
-          replaceExisting: true,
           onTextPaths: onDropTextPaths,
         }).then((books) => {
           if (books.length) onDrop?.(books)
@@ -328,11 +325,12 @@ function initialBookImportProgress(importId: string, total: number): BookImportP
     completed: 0,
     imported: 0,
     failed: 0,
+    skipped: 0,
   }
 }
 
 function emptyBookImportResult(): BookImportResult {
-  return { books: [], failures: [] }
+  return { books: [], failures: [], skipped: [] }
 }
 
 interface DirectTextImportBatchOptions {
@@ -370,6 +368,7 @@ async function runDirectTextImportBatch(
           completed: epubPaths.length,
           imported: epubResult.books.length,
           failed: epubResult.failures.length,
+          skipped: epubResult.skipped.length,
         }),
       textPaths.length,
       importTextPhase,
@@ -383,13 +382,14 @@ interface BookImportProgressOffset {
   completed: number
   imported: number
   failed: number
+  skipped: number
 }
 
 function aggregateBookImportProgress(
   progress: BookImportProgress,
   importId: string,
   total: number,
-  offset: BookImportProgressOffset = { completed: 0, imported: 0, failed: 0 },
+  offset: BookImportProgressOffset = { completed: 0, imported: 0, failed: 0, skipped: 0 },
 ): BookImportProgress {
   return {
     ...progress,
@@ -398,6 +398,7 @@ function aggregateBookImportProgress(
     completed: offset.completed + progress.completed,
     imported: offset.imported + progress.imported,
     failed: offset.failed + progress.failed,
+    skipped: offset.skipped + progress.skipped,
   }
 }
 
@@ -419,6 +420,7 @@ async function runBookImportPhase(
       completed: total,
       imported: result.books.length,
       failed: result.failures.length,
+      skipped: result.skipped.length,
     }),
   )
   return result

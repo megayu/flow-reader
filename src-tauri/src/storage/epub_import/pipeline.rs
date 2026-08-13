@@ -53,13 +53,33 @@ pub(in crate::storage) struct PreparedEpubImport {
     source_storage: SourceStorage,
     size: u64,
     name: String,
-    parsed: ParsedEpubInfo,
-    content_mode: BookContentMode,
+    inspection: Option<(ParsedEpubInfo, BookContentMode)>,
     temp_path: PathBuf,
     hash: String,
 }
 
-pub(in crate::storage) fn prepare_epub_import(storage: &AppStorage, path: &Path) -> Result<PreparedEpubImport, String> {
+fn epub_import_requires_inspection(
+    storage: &AppStorage,
+    import_index: Option<&LibraryBookLookupIndex>,
+    source_path: &Path,
+    hash: &str,
+) -> Result<bool, String> {
+    let state = storage
+        .inner
+        .state
+        .lock()
+        .map_err(|_| "storage state lock poisoned".to_string())?;
+    Ok(matches!(
+        existing_book_import(import_index, &state.library.books, source_path, hash),
+        None | Some(ExistingBookImport::ReplaceContent(_))
+    ))
+}
+
+pub(in crate::storage) fn prepare_epub_import(
+    storage: &AppStorage,
+    import_index: &LibraryBookLookupIndex,
+    path: &Path,
+) -> Result<PreparedEpubImport, String> {
     let books_root = books_root(storage.root());
     fs::create_dir_all(&books_root).map_err(|error| error.to_string())?;
     let source_path = path.to_path_buf();
@@ -77,19 +97,22 @@ pub(in crate::storage) fn prepare_epub_import(storage: &AppStorage, path: &Path)
         } else {
             hash_file(&source_path)?
         };
-        let inspected_path = if source_storage == SourceStorage::Managed {
-            temp_path.as_path()
+        let inspection = if epub_import_requires_inspection(storage, Some(import_index), &source_path, &hash)? {
+            let inspected_path = if source_storage == SourceStorage::Managed {
+                temp_path.as_path()
+            } else {
+                source_path.as_path()
+            };
+            Some(inspect_epub_info(inspected_path)?)
         } else {
-            source_path.as_path()
+            None
         };
-        let (parsed, content_mode) = inspect_epub_info(inspected_path)?;
         Ok(PreparedEpubImport {
             source_path,
             source_storage,
             size,
             name,
-            parsed,
-            content_mode,
+            inspection,
             temp_path: temp_path.clone(),
             hash,
         })
@@ -104,9 +127,8 @@ pub(in crate::storage) fn prepare_epub_import(storage: &AppStorage, path: &Path)
 pub(in crate::storage) fn commit_prepared_epub_import(
     storage: &AppStorage,
     prepared: PreparedEpubImport,
-    replace_existing: bool,
-    import_index: Option<&mut LibraryBookLookupIndex>,
-) -> Result<(BookRecord, ImportFinalizer), String> {
+    mut import_index: Option<&mut LibraryBookLookupIndex>,
+) -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
     let _import_guard = storage
         .inner
         .import_lock
@@ -117,27 +139,33 @@ pub(in crate::storage) fn commit_prepared_epub_import(
         source_storage,
         size,
         name,
-        parsed,
-        content_mode,
+        mut inspection,
         temp_path,
         hash,
     } = prepared;
-    let generated_cover = parsed.generated_cover;
+
+    if inspection.is_none() && epub_import_requires_inspection(storage, import_index.as_deref(), &source_path, &hash)? {
+        let inspected_path = if source_storage == SourceStorage::Managed {
+            temp_path.as_path()
+        } else {
+            source_path.as_path()
+        };
+        inspection = Some(inspect_epub_info(inspected_path)?);
+    }
 
     struct ExternalPromotion {
         book: ExternalBook,
     }
 
     let mut file_transaction = None;
-    let result = (|| -> Result<(BookRecord, ImportFinalizer), String> {
-        let (mut book, id, should_copy, is_new, external_promotion) = {
+    let result = (|| -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
+        let (mut book, id, refresh_content, is_new, external_promotion) = {
             let state = storage
                 .inner
                 .state
                 .lock()
                 .map_err(|_| "storage state lock poisoned".to_string())?;
-            let (filename_index, hash_index) =
-                existing_book_indices(import_index.as_deref(), &state.library.books, &name, &hash);
+            let existing = existing_book_import(import_index.as_deref(), &state.library.books, &source_path, &hash);
             let external_promotion = state
                 .external
                 .books
@@ -146,38 +174,40 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                 .cloned()
                 .map(|book| ExternalPromotion { book });
 
-            if let Some(index) = filename_index {
-                let storage_changed = state.library.books[index].source_storage != source_storage;
+            if let Some(ExistingBookImport::SameContent(index)) = existing {
                 let mut book = state.library.books[index].clone();
-                if !replace_existing || (state.library.books[index].content_hash == hash && !storage_changed) {
-                    book.source_path = Some(source_path.clone());
-                    let id = book.id.clone();
-                    (book, id, false, false, external_promotion)
-                } else {
-                    book.size = size;
-                    book.content_hash = hash.clone();
-                    book.content_version = book.content_version.saturating_add(1).max(1);
-                    book.generated_cover = generated_cover;
-                    book.content_mode = content_mode;
-                    book.source_storage = source_storage;
-                    book.source_path = Some(source_path.clone());
+                let source_changed = book.name != name || book.source_path.as_ref() != Some(&source_path);
+                book.name = name.clone();
+                book.size = size;
+                book.source_path = Some(source_path.clone());
+                if source_changed {
                     book.updated_at = Some(now_ms());
-                    book.content_edited_at = None;
-                    let id = book.id.clone();
-                    (book, id, true, false, external_promotion)
                 }
-            } else if let Some(index) = hash_index {
+                let id = book.id.clone();
+                (book, id, false, false, external_promotion)
+            } else if let Some(ExistingBookImport::ReplaceContent(index)) = existing {
+                let (parsed, content_mode) = inspection
+                    .as_ref()
+                    .ok_or_else(|| "EPUB inspection is unavailable for changed content".to_string())?;
                 let mut book = state.library.books[index].clone();
                 book.name = name.clone();
                 book.size = size;
-                book.content_mode = content_mode;
-                let storage_changed = book.source_storage != source_storage;
+                book.content_hash = hash.clone();
+                book.content_version = book.content_version.saturating_add(1).max(1);
+                book.generated_cover = parsed.generated_cover;
+                book.content_mode = *content_mode;
                 book.source_storage = source_storage;
                 book.source_path = Some(source_path.clone());
                 book.updated_at = Some(now_ms());
+                book.content_edited_at = None;
                 let id = book.id.clone();
-                (book, id, storage_changed, false, external_promotion)
+                (book, id, true, false, external_promotion)
+            } else if matches!(existing, Some(ExistingBookImport::Skip)) {
+                return Ok(None);
             } else {
+                let (parsed, content_mode) = inspection
+                    .as_ref()
+                    .ok_or_else(|| "EPUB inspection is unavailable for new content".to_string())?;
                 let created_at = now_ms();
                 let id = id_from_hash(&hash);
                 let book = LibraryBook {
@@ -186,11 +216,11 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                     size,
                     reading_status: None,
                     source_format: BookSourceFormat::Epub,
-                    generated_cover,
+                    generated_cover: parsed.generated_cover,
                     content_edited_at: None,
                     content_hash: hash.clone(),
                     content_version: 1,
-                    content_mode,
+                    content_mode: *content_mode,
                     source_storage,
                     source_path: Some(source_path.clone()),
                     metadata: empty_object(),
@@ -204,7 +234,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                 (book, id, true, true, external_promotion)
             }
         };
-        let normalize_new_cover = should_copy && book.updated_at.is_none();
+        let normalize_new_cover = refresh_content && is_new;
         let mut publication_changed = false;
 
         let promotion = external_promotion
@@ -215,8 +245,15 @@ pub(in crate::storage) fn commit_prepared_epub_import(
             })
             .transpose()?;
         let promoted_metadata = promotion.as_ref().map(|(book, _)| book.metadata.clone());
+        let imported_metadata = inspection
+            .as_ref()
+            .map(|(parsed, _)| parsed.metadata.clone())
+            .unwrap_or_else(empty_object);
 
-        if should_copy {
+        if refresh_content {
+            let (parsed, content_mode) = inspection
+                .take()
+                .ok_or_else(|| "EPUB inspection is unavailable for imported content".to_string())?;
             storage.remove_derived_memory_caches(&id);
             file_transaction = Some(ImportFileTransaction::begin(storage, &id)?);
             let dir = storage.book_dir(&id);
@@ -240,11 +277,13 @@ pub(in crate::storage) fn commit_prepared_epub_import(
             remove_epub_import_temp(&temp_path);
         }
 
-        let metadata = promoted_metadata
-            .filter(|metadata| *metadata != json!({}))
-            .or_else(|| (parsed.metadata != json!({})).then(|| parsed.metadata.clone()));
-        if let Some(metadata) = metadata {
-            book.metadata = metadata;
+        if is_new {
+            let metadata = promoted_metadata
+                .filter(|metadata| *metadata != json!({}))
+                .or_else(|| (imported_metadata != json!({})).then_some(imported_metadata));
+            if let Some(metadata) = metadata {
+                book.metadata = metadata;
+            }
         }
 
         let promotion = promotion.map(|(external_book, external_state)| {
@@ -272,11 +311,8 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                 .lock()
                 .map_err(|_| "storage state lock poisoned".to_string())?;
             let stored_index = if is_new {
-                if state
-                    .library
-                    .books
-                    .iter()
-                    .any(|stored| stored.id == id || stored.name == name)
+                if state.library.books.iter().any(|stored| stored.id == id)
+                    || existing_book_import(None, &state.library.books, &source_path, &hash).is_some()
                 {
                     return Err("Library changed while the book was being imported".to_string());
                 }
@@ -307,7 +343,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
         if let Some((_, external_state)) = &promotion {
             storage.write_book_state(&id, external_state)?;
         }
-        if let Some(index) = import_index {
+        if let Some(index) = import_index.as_deref_mut() {
             index.remember(stored_index, &book);
         }
         let record = storage.compose_book(&book)?;
@@ -321,9 +357,12 @@ pub(in crate::storage) fn commit_prepared_epub_import(
         if let Some((external_id, _)) = promotion {
             finalizer = finalizer.with_cleanup_path(storage.external_book_dir(&external_id));
         }
-        Ok((record, finalizer))
+        Ok(Some((record, finalizer)))
     })();
 
+    if result.as_ref().is_ok_and(Option::is_none) {
+        remove_epub_import_temp(&temp_path);
+    }
     if result.is_err() {
         remove_epub_import_temp(&temp_path);
         if let Some(transaction) = file_transaction

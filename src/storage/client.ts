@@ -324,7 +324,7 @@ async function importBooksWithProgress(
     invalidatePins()
     notify('books', 'covers', 'pins')
   }
-  return { books: importedBooks, failures: result.failures }
+  return { ...result, books: importedBooks }
 }
 
 export const db = {
@@ -614,14 +614,12 @@ export async function importEpubPaths(
   {
     importId,
     onProgress,
-    replaceExisting = true,
   }: {
     importId?: string
     onProgress?: (progress: BookImportProgress) => void
-    replaceExisting?: boolean
   } = {},
 ) {
-  return importBooksWithProgress('import_epub_paths', { paths, replaceExisting }, importId, onProgress)
+  return importBooksWithProgress('import_epub_paths', { paths }, importId, onProgress)
 }
 
 export async function openExternalEpubPaths(paths: string[]) {
@@ -649,20 +647,13 @@ export async function importTextPaths(
     copySourceFiles,
     importId,
     onProgress,
-    replaceExisting = true,
   }: {
     copySourceFiles?: boolean
     importId?: string
     onProgress?: (progress: BookImportProgress) => void
-    replaceExisting?: boolean
   } = {},
 ) {
-  return importBooksWithProgress(
-    'import_text_paths',
-    { imports, replaceExisting, copySourceFiles },
-    importId,
-    onProgress,
-  )
+  return importBooksWithProgress('import_text_paths', { imports, copySourceFiles }, importId, onProgress)
 }
 
 export function scanImportFolder(root: string, recursive: boolean) {
