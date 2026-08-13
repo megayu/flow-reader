@@ -1552,6 +1552,74 @@ test('updates the rendered iframe after a mocked book text replacement', async (
   })
 })
 
+test('refreshes the current table of contents after a generated TXT heading replacement', async ({ page }) => {
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+  await ensureTocSidebarVisibility(page, true, { header: false })
+
+  const result = await page.evaluate(async () => {
+    const reader = (window as any).reader
+    const tab = reader.focusedBookTab
+    const frame = Array.from(document.querySelectorAll('iframe')).find(
+      (candidate) => !candidate.closest('[aria-hidden="true"]') && Boolean(candidate.contentDocument?.body),
+    )
+    const frameDocument = frame?.contentDocument
+    if (!tab || !frameDocument?.body) throw new Error('Missing active reader frame')
+
+    const heading = frameDocument.createElement('h1')
+    heading.className = 'flow-txt-volume'
+    heading.textContent = 'Volume One'
+    frameDocument.body.prepend(heading)
+    const textNode = heading.firstChild
+    if (!(textNode instanceof frameDocument.defaultView!.Text)) throw new Error('Missing generated TXT heading')
+
+    const range = frameDocument.createRange()
+    range.selectNodeContents(textNode)
+    const section = tab.sectionForRange(range)
+    const navItem = section?.navitem ?? tab.mapSectionToNavItem(section?.href)
+    if (!section?.href || !navItem) throw new Error('Missing generated TXT navigation item')
+    navItem.label = 'Volume One'
+    const previousTocVersion = tab.tocVersion
+
+    await reader.applyBookContentEdit(
+      {
+        ...tab.book,
+        sourceFormat: 'txt',
+        revision: tab.book.revision + 1,
+        updatedAt: tab.book.updatedAt + 1,
+      },
+      section.href,
+      tab,
+      {
+        target: {
+          sectionHref: section.href,
+          textNodeIndex: 0,
+          textNodeText: 'Volume One',
+          startOffset: 7,
+          endOffset: 10,
+        },
+        oldText: 'One',
+        newText: 'Two',
+        document: frameDocument,
+        textNode,
+      },
+    )
+
+    return {
+      heading: heading.textContent,
+      navLabel: navItem.label,
+      tocVersionDelta: tab.tocVersion - previousTocVersion,
+    }
+  })
+
+  expect(result).toEqual({
+    heading: 'Volume Two',
+    navLabel: 'Volume Two',
+    tocVersionDelta: 1,
+  })
+  await expect(page.getByRole('button', { name: 'Volume Two', exact: true })).toBeVisible()
+})
+
 test('reloads an imported replacement now for the active tab and on activation for an inactive tab', async ({
   page,
 }) => {

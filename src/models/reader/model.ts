@@ -96,7 +96,7 @@ function patchTextNode(textNode: Text | undefined, target: BookTextReplaceTarget
 
   const parent = textNode.parentElement
   const title = parent?.ownerDocument.querySelector('title')
-  if (parent?.closest('h2.flow-txt-chapter') && title?.textContent === text) {
+  if (parent?.closest('h1.flow-txt-volume, h2.flow-txt-chapter') && title?.textContent === text) {
     title.textContent = updatedText
   }
   return true
@@ -141,7 +141,7 @@ function patchDocumentTextNode(
     if (patchTextNode(textNode, target, oldText, newText)) return true
     return false
   } else {
-    const heading = body.querySelector<HTMLElement>('h2.flow-txt-chapter')
+    const heading = body.querySelector<HTMLElement>('h1.flow-txt-volume, h2.flow-txt-chapter')
     const textNode = matchingTextNodeInElement(heading ?? undefined, target.textNodeText)
     if (patchTextNode(textNode, target, oldText, newText)) return true
 
@@ -647,6 +647,14 @@ export class BookTab extends BaseTab {
     const sectionDocument = view.section.document
     if (sectionDocument && !frameDocuments.includes(sectionDocument)) {
       patchDocumentTextNode(sectionDocument, target, oldText, newText)
+    }
+
+    if (book.sourceFormat === 'txt' && target.paragraphIndex === undefined) {
+      const updatedHeading =
+        target.textNodeText.slice(0, target.startOffset) + newText + target.textNodeText.slice(target.endOffset)
+      const navItem = (view.section as ISection).navitem ?? this.mapSectionToNavItem(target.sectionHref)
+      if (navItem?.label === target.textNodeText) navItem.label = updatedHeading
+      this.tocVersion++
     }
 
     this.setBook(this.mergeRuntimeState(book))

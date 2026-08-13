@@ -123,6 +123,9 @@ pub(super) fn replace_xhtml_text_node(
         body_content_range(xhtml).ok_or_else(|| TEXT_REPLACE_SECTION_BODY_NOT_FOUND.to_string())?;
     let mut text_node_index = 0usize;
     let mut cursor = body_start;
+    let mut target_index_seen = false;
+    let mut unique_text_range = None;
+    let mut text_match_is_ambiguous = false;
 
     while cursor < body_end {
         let Some(relative_text_end) = xhtml[cursor..body_end].find('<') else {
@@ -130,25 +133,19 @@ pub(super) fn replace_xhtml_text_node(
         };
         let text_end = cursor + relative_text_end;
         if text_end > cursor {
-            if text_node_index == target.text_node_index {
-                let raw_text = &xhtml[cursor..text_end];
-                let decoded_text = unescape_xml_text(raw_text);
-                if decoded_text != target.text_node_text {
-                    return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
+            let decoded_text = unescape_xml_text(&xhtml[cursor..text_end]);
+            if decoded_text.trim() == target.text_node_text.trim() {
+                if unique_text_range.is_some() {
+                    text_match_is_ambiguous = true;
+                } else {
+                    unique_text_range = Some((cursor, text_end));
                 }
-                let updated_text = replace_text_by_utf16_offsets(
-                    &decoded_text,
-                    target.start_offset,
-                    target.end_offset,
-                    old_text,
-                    new_text,
-                )?;
-
-                let mut updated = String::with_capacity(xhtml.len() + new_text.len());
-                updated.push_str(&xhtml[..cursor]);
-                updated.push_str(&escape_xml_text(&updated_text));
-                updated.push_str(&xhtml[text_end..]);
-                return Ok(updated);
+            }
+            if text_node_index == target.text_node_index {
+                target_index_seen = true;
+                if decoded_text.trim() == target.text_node_text.trim() {
+                    return replace_xhtml_text_range(xhtml, cursor, text_end, target, old_text, new_text);
+                }
             }
             text_node_index += 1;
         }
@@ -159,7 +156,49 @@ pub(super) fn replace_xhtml_text_node(
         cursor = text_end + relative_tag_end + 1;
     }
 
-    Err(TEXT_REPLACE_NODE_NOT_FOUND_ERROR.to_string())
+    if !text_match_is_ambiguous && let Some((start, end)) = unique_text_range {
+        return replace_xhtml_text_range(xhtml, start, end, target, old_text, new_text);
+    }
+
+    Err(if target_index_seen {
+        TEXT_REPLACE_NODE_STALE_ERROR.to_string()
+    } else {
+        TEXT_REPLACE_NODE_NOT_FOUND_ERROR.to_string()
+    })
+}
+
+fn replace_xhtml_text_range(
+    xhtml: &str,
+    start: usize,
+    end: usize,
+    target: &BookTextReplaceTarget,
+    old_text: &str,
+    new_text: &str,
+) -> Result<String, String> {
+    let decoded_text = unescape_xml_text(&xhtml[start..end]);
+    if decoded_text.trim() != target.text_node_text.trim() {
+        return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
+    }
+    let updated_text = if decoded_text == target.text_node_text {
+        replace_text_by_utf16_offsets(
+            &decoded_text,
+            target.start_offset,
+            target.end_offset,
+            old_text,
+            new_text,
+        )?
+    } else {
+        let mut matches = decoded_text.match_indices(old_text);
+        if matches.next().is_none() || matches.next().is_some() {
+            return Err(TEXT_REPLACE_TEXT_STALE_ERROR.to_string());
+        }
+        decoded_text.replacen(old_text, new_text, 1)
+    };
+    let mut updated = String::with_capacity(xhtml.len() + new_text.len());
+    updated.push_str(&xhtml[..start]);
+    updated.push_str(&escape_xml_text(&updated_text));
+    updated.push_str(&xhtml[end..]);
+    Ok(updated)
 }
 
 pub(super) struct XhtmlTextReplacement {
@@ -257,11 +296,11 @@ pub(super) fn replace_generated_txt_heading_xhtml(
     old_text: &str,
     new_text: &str,
 ) -> Result<Option<XhtmlTextReplacement>, String> {
-    if !xhtml.contains("flow-txt-chapter") {
+    let Some(tag_name) = generated_txt_heading_tag(xhtml) else {
         return Ok(None);
-    }
+    };
 
-    let Some(heading) = extract_first_tag_text(xhtml, "h2") else {
+    let Some(heading) = extract_first_tag_text(xhtml, tag_name) else {
         return Ok(None);
     };
     if heading != target.text_node_text {
@@ -270,7 +309,7 @@ pub(super) fn replace_generated_txt_heading_xhtml(
 
     let updated_heading =
         replace_text_by_utf16_offsets(&heading, target.start_offset, target.end_offset, old_text, new_text)?;
-    let Some(mut updated_xhtml) = replace_first_tag_text(xhtml, "h2", &heading, &updated_heading)? else {
+    let Some(mut updated_xhtml) = replace_first_tag_text(xhtml, tag_name, &heading, &updated_heading)? else {
         return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
     };
     if let Some(with_title) = replace_first_tag_text(&updated_xhtml, "title", &heading, &updated_heading)? {
@@ -282,6 +321,16 @@ pub(super) fn replace_generated_txt_heading_xhtml(
         heading_update: Some((heading, updated_heading)),
         paragraph_index: None,
     }))
+}
+
+fn generated_txt_heading_tag(xhtml: &str) -> Option<&'static str> {
+    if xhtml.contains("flow-txt-volume") {
+        Some("h1")
+    } else if xhtml.contains("flow-txt-chapter") {
+        Some("h2")
+    } else {
+        None
+    }
 }
 
 pub(super) fn replace_xhtml_text(
@@ -302,6 +351,10 @@ pub(super) fn replace_xhtml_text(
         });
     }
 
+    // Product tradeoffs: EPUB navigation can come from EPUB 3 nav, EPUB 2 NCX, or an authored
+    // HTML TOC, and its labels need not match document headings, so EPUB text edits do not
+    // synchronize navigation. Cached search navPath values are not updated for any format;
+    // the affected cases are too rare to justify the hierarchy propagation and maintenance cost.
     if source_format != BookSourceFormat::Txt {
         return replace_xhtml_text_node(xhtml, target, old_text, new_text).map(|xhtml| XhtmlTextReplacement {
             xhtml,
@@ -468,7 +521,10 @@ pub(super) fn generated_txt_section_source_heading_candidates(
     let mut candidates = Vec::new();
     let path = text_dir.join(format!("part{:04}.xhtml", section_index + 1));
     let xhtml = fs::read_to_string(path).map_err(|_| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
-    push_unique_text(&mut candidates, extract_first_tag_text(&xhtml, "h2"));
+    push_unique_text(
+        &mut candidates,
+        generated_txt_heading_tag(&xhtml).and_then(|tag_name| extract_first_tag_text(&xhtml, tag_name)),
+    );
 
     let nav_path = text_dir
         .parent()

@@ -280,6 +280,7 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
                 depth={row?.depth ?? 1}
                 item={item}
                 itemExpanded={!!item?.expanded}
+                itemLabel={item?.label ?? ''}
                 tab={tab}
                 emptyLabel={EMPTY_ROW_LABEL}
               />
@@ -297,15 +298,16 @@ interface TocRowProps {
   depth: number
   item?: INavItem
   itemExpanded: boolean
+  itemLabel: string
   tab: BookTab
   emptyLabel: string
 }
 const TocRow: React.FC<TocRowProps> = memo(
-  ({ active, activeClassName, depth, item, itemExpanded, tab, emptyLabel }) => {
+  ({ active, activeClassName, depth, item, itemExpanded, itemLabel, tab, emptyLabel }) => {
     if (!item) return null
-    const { label, subitems, href = '' } = item
+    const { subitems, href = '' } = item
     const hasSubitems = !!subitems?.length
-    const title = label.trim()
+    const title = itemLabel.trim()
     const toggleItem = () => {
       tab.toggleNavItem({
         id: item.id,

@@ -2868,20 +2868,74 @@ fn reads_ncx_titles_for_search_sections() {
 
 #[test]
 fn replaces_selected_xhtml_text_node_by_dom_index() {
-    let xhtml = r#"<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><body><p>target one</p><p>target two</p></body></html>"#;
+    let xhtml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><html xmlns=\"http://www.w3.org/1999/xhtml\"><body><p>alpha</p><p>\r\nbeta target gamma\r\n</p></body></html>";
     let target = BookTextReplaceTarget {
         section_href: "Text/chapter.xhtml".to_string(),
         text_node_index: 1,
-        text_node_text: "target two".to_string(),
-        start_offset: 0,
-        end_offset: 6,
+        text_node_text: "\nbeta target gamma\n".to_string(),
+        start_offset: 6,
+        end_offset: 12,
         paragraph_index: None,
     };
 
     let updated = replace_xhtml_text_node(xhtml, &target, "target", "fixed").expect("replace succeeds");
 
-    assert!(updated.contains("<p>target one</p>"));
-    assert!(updated.contains("<p>fixed two</p>"));
+    assert!(updated.contains("<p>alpha</p>"));
+    assert!(updated.contains("<p>\r\nbeta fixed gamma\r\n</p>"));
+}
+
+#[test]
+fn epub_replacement_updates_unique_xhtml_heading_without_updating_navigation() {
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "flow-reader-epub-heading-replace-test-{}-{nonce}",
+        std::process::id()
+    ));
+    let storage = test_storage_with_book(&root, test_library_book(BookSourceFormat::Epub));
+    let book_dir = storage.book_dir("book");
+    let unpacked = book_dir.join(UNPACKED_DIR);
+    let oebps = unpacked.join("OEBPS");
+    let text_dir = oebps.join("Text");
+    fs::create_dir_all(&text_dir).unwrap();
+    fs::create_dir_all(unpacked.join("META-INF")).unwrap();
+    fs::write(
+        unpacked.join("META-INF").join("container.xml"),
+        r#"<?xml version="1.0" encoding="UTF-8"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>"#,
+    )
+    .unwrap();
+    fs::write(oebps.join("content.opf"), "<package/>").unwrap();
+    let original_nav = r#"<?xml version="1.0" encoding="UTF-8"?><html><body><nav><ol><li><a href="Text/volume.xhtml">Volume One</a></li></ol></nav></body></html>"#;
+    fs::write(oebps.join("nav.xhtml"), original_nav).unwrap();
+    fs::write(
+        text_dir.join("volume.xhtml"),
+        r#"<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><body><h1>Volume One</h1><p>Body text.</p></body></html>"#,
+    )
+    .unwrap();
+
+    replace_book_text_impl(
+        &storage,
+        "book".to_string(),
+        BookTextReplaceTarget {
+            section_href: "Text/volume.xhtml".to_string(),
+            text_node_index: 99,
+            text_node_text: "Volume One".to_string(),
+            start_offset: 7,
+            end_offset: 10,
+            paragraph_index: None,
+        },
+        "One".to_string(),
+        "Two".to_string(),
+    )
+    .expect("unique EPUB heading replacement succeeds when the rendered text node index differs");
+
+    assert!(
+        fs::read_to_string(text_dir.join("volume.xhtml"))
+            .unwrap()
+            .contains("<h1>Volume Two</h1>")
+    );
+    assert_eq!(fs::read_to_string(oebps.join("nav.xhtml")).unwrap(), original_nav);
+
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -3198,6 +3252,75 @@ fn txt_replacement_updates_generated_heading_and_source_title_line() {
     assert_eq!(
         fs::read_to_string(book_dir.join(SOURCE_TEXT_FILE)).unwrap(),
         "第001章 测试\n正文。\n"
+    );
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn txt_replacement_updates_generated_volume_heading_and_source_title_line() {
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "flow-reader-txt-volume-heading-replace-test-{}-{nonce}",
+        std::process::id()
+    ));
+    let mut book = test_library_book(BookSourceFormat::Txt);
+    book.metadata = json!({ "sourceEncodingId": "utf-8" });
+    let storage = test_storage_with_book(&root, book);
+    let book_dir = storage.book_dir("book");
+    let unpacked = book_dir.join(UNPACKED_DIR);
+    let oebps = unpacked.join("OEBPS");
+    let text_dir = oebps.join("Text");
+    fs::create_dir_all(&text_dir).unwrap();
+    fs::create_dir_all(unpacked.join("META-INF")).unwrap();
+    fs::write(
+        unpacked.join("META-INF").join("container.xml"),
+        r#"<?xml version="1.0" encoding="UTF-8"?><container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>"#,
+    )
+    .unwrap();
+    fs::write(oebps.join("content.opf"), "<package/>").unwrap();
+    fs::write(
+        oebps.join("nav.xhtml"),
+        r#"<?xml version="1.0" encoding="UTF-8"?><html><body><nav><ol><li><a href="Text/part0001.xhtml">第一卷测试</a></li></ol></nav></body></html>"#,
+    )
+    .unwrap();
+    fs::write(
+        text_dir.join("part0001.xhtml"),
+        r#"<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>第一卷测试</title></head><body>
+<h1 class="flow-txt-volume">第一卷测试</h1><div class="flow-txt-body" data-flow-body-text="true"><p>正文。</p></div></body></html>"#,
+    )
+    .unwrap();
+    fs::write(book_dir.join(SOURCE_TEXT_FILE), "第一卷测试\n正文。\n").unwrap();
+
+    let target = BookTextReplaceTarget {
+        section_href: "Text/part0001.xhtml".to_string(),
+        text_node_index: 99,
+        text_node_text: "第一卷测试".to_string(),
+        start_offset: 3,
+        end_offset: 5,
+        paragraph_index: None,
+    };
+
+    replace_book_text_impl(
+        &storage,
+        "book".to_string(),
+        target,
+        "测试".to_string(),
+        " 测试".to_string(),
+    )
+    .expect("volume heading replacement succeeds without rendered node index");
+
+    let updated_xhtml = fs::read_to_string(text_dir.join("part0001.xhtml")).unwrap();
+    assert!(updated_xhtml.contains("<title>第一卷 测试</title>"));
+    assert!(updated_xhtml.contains(r#"<h1 class="flow-txt-volume">第一卷 测试</h1>"#));
+    assert!(
+        fs::read_to_string(oebps.join("nav.xhtml"))
+            .unwrap()
+            .contains(r#"<a href="Text/part0001.xhtml">第一卷 测试</a>"#)
+    );
+    assert_eq!(
+        fs::read_to_string(book_dir.join(SOURCE_TEXT_FILE)).unwrap(),
+        "第一卷 测试\n正文。\n"
     );
 
     fs::remove_dir_all(root).unwrap();
