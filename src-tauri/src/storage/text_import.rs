@@ -1306,17 +1306,14 @@ pub(super) fn text_import_css() -> &'static str {
 
 .flow-txt-volume-page {
   box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   min-height: 100vh;
-  width: 100%;
 }
 
 .flow-txt-volume {
   font-size: 1.45em;
   margin: 0;
+  position: relative;
+  top: 25%;
 }
 
 .flow-txt-chapter {
