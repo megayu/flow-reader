@@ -1174,7 +1174,7 @@ const Library: React.FC<LibraryProps> = ({
 
   return (
     <DropZone
-      className="scroll-parent flex h-full min-h-0 flex-col py-4"
+      className="scroll-parent flex h-full min-h-0 flex-col pt-4"
       onContextMenu={(e) => {
         e.preventDefault()
       }}
