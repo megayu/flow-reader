@@ -96,7 +96,7 @@ function updateCachedBook(id: string, changes: Partial<BookRecord>) {
 }
 
 function cacheBooks(books: BookRecord[]) {
-  booksCache = books.filter((book) => book.scope === 'library')
+  booksCache = books.filter((book) => book.scope === 'library').map(stripBookState)
 }
 
 function upsertCachedBooks(books: BookRecord[]) {
@@ -280,7 +280,6 @@ async function importBooksWithProgress(
   const progressChannel = new Channel<NativeBookImportProgress>((nativeProgress) => {
     const progress = {
       ...nativeProgress,
-      book: nativeProgress.book,
       importId: importId ?? '',
     }
     if (progress.book) books.set(progress.book.id, progress.book)
@@ -676,10 +675,9 @@ export async function replaceBookText({
       newText,
     }),
   )
-  const book = result.book
-  upsertCachedBook(book)
+  upsertCachedBook(result.book)
   notify('books')
-  return { ...result, book }
+  return result
 }
 
 export async function exportBook(id: string, format: BookExportFormat, outputPath: string) {

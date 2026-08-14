@@ -276,7 +276,7 @@ function handleTabMoveShortcut(event: KeyboardEvent, enterReaderMode: () => void
 
   consumeShortcut(event)
   if (!isReaderShortcutTargetBlocked(event)) {
-    reader.moveFocusedTab(direction)
+    reader.moveSelectedTab(direction)
     enterReaderMode()
   }
   return true
@@ -291,17 +291,16 @@ function handleTabSwitchShortcut(event: KeyboardEvent, enterReaderMode: () => vo
 
   consumeShortcut(event)
   if (!isReaderShortcutTargetBlocked(event)) {
-    const group = reader.focusedGroup
     const hasTarget =
-      index === 8 ? !!group?.tabs.length : index !== undefined ? !!group?.tabs[index] : !!group?.tabs.length
+      index === 8 ? !!reader.tabs.length : index !== undefined ? !!reader.tabs[index] : !!reader.tabs.length
     if (!hasTarget) return true
 
     if (index === 8) {
-      reader.selectLastFocusedTab()
+      reader.selectLastTab()
     } else if (index !== undefined) {
-      reader.selectFocusedTab(index)
+      reader.selectTab(index)
     } else if (direction) {
-      reader.selectAdjacentFocusedTab(direction)
+      reader.selectAdjacentTab(direction)
     }
     enterReaderMode()
   }

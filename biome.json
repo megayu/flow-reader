@@ -91,18 +91,6 @@
       }
     }
   },
-  "overrides": [
-    {
-      "includes": ["src/hooks/useAsync.ts"],
-      "linter": {
-        "rules": {
-          "correctness": {
-            "useExhaustiveDependencies": "off"
-          }
-        }
-      }
-    }
-  ],
   "assist": {
     "enabled": true,
     "actions": {

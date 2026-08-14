@@ -1,4 +1,4 @@
-import EventEmitter from './utils/event-emitter'
+import EventEmitter from 'eventemitter3'
 
 import Annotations from './annotations'
 import Contents from './contents'
@@ -35,13 +35,14 @@ import Queue from './utils/queue'
  * @param {string} [options.stylesheet] url of stylesheet to be injected
  * @param {boolean} [options.resizeOnOrientationChange] false to disable orientation events
  * @param {string} [options.script] url of script to be injected
- * @param {boolean | object} [options.snap=false] use snap scrolling
  * @param {string} [options.defaultDirection='ltr'] default text direction
  * @param {boolean} [options.allowScriptedContent=false] enable running scripts in content
  * @param {boolean} [options.allowPopups=false] enable opening popup in content
  */
-class Rendition {
+class Rendition extends EventEmitter {
   constructor(book, options) {
+    super()
+
     this.settings = extend(this.settings || {}, {
       width: null,
       height: null,
@@ -55,7 +56,6 @@ class Rendition {
       stylesheet: null,
       resizeOnOrientationChange: true,
       script: null,
-      snap: false,
       defaultDirection: 'ltr',
       allowScriptedContent: false,
       allowPopups: false,
@@ -403,51 +403,6 @@ class Rendition {
 
     return displayed
   }
-
-  /*
-	render(view, show) {
-
-		// view.onLayout = this.layout.format.bind(this.layout);
-		view.create();
-
-		// Fit to size of the container, apply padding
-		this.manager.resizeView(view);
-
-		// Render Chain
-		return view.section.render(this.book.request)
-			.then(function(contents){
-				return view.load(contents);
-			}.bind(this))
-			.then(function(doc){
-				return this.hooks.content.trigger(view, this);
-			}.bind(this))
-			.then(function(){
-				this.layout.format(view.contents);
-				return this.hooks.layout.trigger(view, this);
-			}.bind(this))
-			.then(function(){
-				return view.display();
-			}.bind(this))
-			.then(function(){
-				return this.hooks.render.trigger(view, this);
-			}.bind(this))
-			.then(function(){
-				if(show !== false) {
-					this.q.enqueue(function(view){
-						view.show();
-					}, view);
-				}
-				// this.map = new Map(view, this.layout);
-				this.hooks.show.trigger(view, this);
-				this.trigger("rendered", view.section);
-
-			}.bind(this))
-			.catch(function(e){
-				this.trigger("loaderror", e);
-			}.bind(this));
-
-	}
-	*/
 
   /**
    * Report what section has been displayed
@@ -1181,8 +1136,5 @@ class Rendition {
     doc.getElementsByTagName('head')[0].appendChild(meta)
   }
 }
-
-//-- Enable binding events to Renderer
-EventEmitter(Rendition.prototype)
 
 export default Rendition

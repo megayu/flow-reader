@@ -3,7 +3,6 @@ import type React from 'react'
 import { useMemo, useState } from 'react'
 
 import { type Annotation, getAnnotationSpineTitle } from '@/annotation'
-import { formatErrorMessage } from '@/errorMessage'
 import { useList } from '@/hooks/useList'
 import { useTranslation } from '@/hooks/useTranslation'
 import { reader, useReaderSnapshot } from '@/models/reader'
@@ -11,7 +10,6 @@ import { copy, group, keys } from '@/utils'
 
 import { Pane, PaneView, type PaneViewProps } from '../base/PaneView'
 import { Row } from '../Row'
-import { useNotify } from '../ui/notificationContext'
 
 export const AnnotationView: React.FC<PaneViewProps> = (props) => {
   const active = props.active ?? true
@@ -94,7 +92,6 @@ const AnnotationPane: React.FC = () => {
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation()
   const annotationT = useTranslation('annotation')
-  const notify = useNotify()
   const [collapsedSections, setCollapsedSections] = useState(() => new Set<string>())
   const [activeRowKey, setActiveRowKey] = useState<string>()
 
@@ -258,16 +255,7 @@ const AnnotationPane: React.FC = () => {
                     reader.focusedBookTab?.display(row.annotation.cfi)
                   }}
                   onDelete={() => {
-                    const tab = reader.focusedBookTab
-                    if (!tab) return
-                    void tab.removeAnnotation(row.annotation.cfi).catch((error) => {
-                      notify({
-                        autoCloseMs: false,
-                        description: formatErrorMessage(error),
-                        title: t('menu.note_save_error'),
-                        type: 'error',
-                      })
-                    })
+                    void reader.focusedBookTab?.removeAnnotation(row.annotation.cfi).catch(console.error)
                   }}
                 >
                   {row.annotation.text}

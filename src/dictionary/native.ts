@@ -8,11 +8,6 @@ export interface DictionaryHttpResponse {
   status: number
 }
 
-export interface DictionaryHttpError {
-  code: string
-  message: string
-}
-
 export type LocalDictionaryFormat = 'mdict' | 'stardict'
 export type LocalDictionaryLanguage = SupportedDictionaryLanguage
 export type LocalDictionaryLanguageSource = 'manual' | 'metadata' | 'sample' | 'unknown'

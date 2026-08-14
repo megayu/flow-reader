@@ -954,9 +954,7 @@ async function expectFocusedTabId(page: Page, tabId: string) {
 
 async function readAllBookTabStates(page: Page): Promise<BookTabState[]> {
   return page.evaluate(() => {
-    const group = (window as any).reader.focusedGroup
-
-    return (group?.bookTabs ?? []).map((tab: any) => {
+    return (window as any).reader.tabs.map((tab: any) => {
       const location = tab?.paginationSnapshot?.location
 
       return {
@@ -991,9 +989,7 @@ async function advanceFocusedTabPages(page: Page, count: number) {
 
 async function installBookTabRuntimeCounters(page: Page) {
   await page.evaluate(() => {
-    const group = (window as any).reader.focusedGroup
-
-    for (const tab of group?.bookTabs ?? []) {
+    for (const tab of (window as any).reader.tabs) {
       if (tab.__flowRuntimeCounterInstalled) continue
 
       const counters = {
@@ -1023,9 +1019,7 @@ async function installBookTabRuntimeCounters(page: Page) {
 
 async function resetBookTabRuntimeCounters(page: Page) {
   await page.evaluate(() => {
-    const group = (window as any).reader.focusedGroup
-
-    for (const tab of group?.bookTabs ?? []) {
+    for (const tab of (window as any).reader.tabs) {
       const counters = tab.__flowRuntimeCounters
       if (!counters) continue
 
@@ -1041,9 +1035,7 @@ async function resetBookTabRuntimeCounters(page: Page) {
 
 async function readBookTabRuntimeCounters(page: Page): Promise<BookTabRuntimeCounters[]> {
   return page.evaluate(() => {
-    const group = (window as any).reader.focusedGroup
-
-    return (group?.bookTabs ?? []).map((tab: any) => ({
+    return (window as any).reader.tabs.map((tab: any) => ({
       id: tab.id,
       ...(tab.__flowRuntimeCounters ?? {}),
     }))
@@ -1052,7 +1044,7 @@ async function readBookTabRuntimeCounters(page: Page): Promise<BookTabRuntimeCou
 
 async function installFullTabRuntimeProbe(page: Page) {
   await page.evaluate(() => {
-    const group = (window as any).reader.focusedGroup
+    const tabs = (window as any).reader.tabs
     const valueSignature = (tab: any) => {
       const manager = tab.rendition?.manager
       const spread = manager?.currentReflowableSpread
@@ -1118,7 +1110,7 @@ async function installFullTabRuntimeProbe(page: Page) {
     }
 
     ;(window as any).__flowFullTabRuntimeProbe = {
-      tabs: (group?.bookTabs ?? []).map((tab: any) => {
+      tabs: tabs.map((tab: any) => {
         const manager = tab.rendition?.manager
         const views = manager?.views?._views ?? []
 
@@ -1155,14 +1147,14 @@ async function installFullTabRuntimeProbe(page: Page) {
 
 async function readFullTabRuntimeStability(page: Page) {
   return page.evaluate(() => {
-    const group = (window as any).reader.focusedGroup
+    const tabs = (window as any).reader.tabs
     const probeState = (window as any).__flowFullTabRuntimeProbe
     const probes = probeState?.tabs ?? []
     const valueSignature = probeState?.valueSignature
     const sameItems = (current: any[] | undefined, before: any[]) =>
       !!current && current.length === before.length && current.every((item, index) => item === before[index])
     return probes.map((probe: any) => {
-      const tab = group.bookTabs.find((candidate: any) => candidate.id === probe.id)
+      const tab = tabs.find((candidate: any) => candidate.id === probe.id)
       const manager = tab?.rendition?.manager
       const views = manager?.views?._views ?? []
 
@@ -1293,9 +1285,7 @@ async function traceTabSwitchInteraction(page: Page, tabLabel: string) {
         }
       })
     const runtimeCounters = () => {
-      const group = (window as any).reader.focusedGroup
-
-      return (group?.bookTabs ?? []).map((tab: any) => ({
+      return (window as any).reader.tabs.map((tab: any) => ({
         id: tab.id,
         ...(tab.__flowRuntimeCounters ?? {}),
       }))
@@ -1630,7 +1620,7 @@ test('reloads an imported replacement now for the active tab and on activation f
 
   const immediate = await page.evaluate(async () => {
     const reader = (window as any).reader
-    const [inactiveTab, activeTab] = reader.focusedGroup.bookTabs
+    const [inactiveTab, activeTab] = reader.tabs
     if (!inactiveTab?.rendition || !activeTab?.rendition) {
       throw new Error('Missing reader renditions')
     }
@@ -3831,7 +3821,7 @@ async function readFocusedLongBookIntegrity(page: Page) {
 
 async function readLongBookIntegrityByTabId(page: Page, tabId: string) {
   return page.evaluate((targetTabId) => {
-    const tabs = (window as any).reader.focusedGroup?.bookTabs ?? []
+    const tabs = (window as any).reader.tabs
     const tab = tabs.find((candidate: any) => candidate.id === targetTabId)
     if (!tab) throw new Error(`Missing tab ${targetTabId}`)
 
@@ -4689,7 +4679,7 @@ test('long-book inactive tab does not commit stale relayout after rapid switch',
   await expectFocusedLongBookSection(page, 565)
 
   await page.evaluate(() => {
-    const tabs = (window as any).reader.focusedGroup.bookTabs
+    const tabs = (window as any).reader.tabs
     const tabA = tabs.find((tab: any) => tab.id === 'tab-layout-a')
     if (!tabA) throw new Error('Missing Tab Layout A')
 

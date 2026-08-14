@@ -1,4 +1,4 @@
-import EventEmitter from '../../utils/event-emitter'
+import EventEmitter from 'eventemitter3'
 import { Pane, Highlight, Underline } from 'marks-pane'
 
 import Contents from '../../contents'
@@ -325,8 +325,10 @@ function nextHeadingTextLength(element) {
   return 0
 }
 
-class IframeView {
+class IframeView extends EventEmitter {
   constructor(section, options) {
+    super()
+
     this.settings = extend(
       {
         ignoreClass: '',
@@ -1999,7 +2001,5 @@ class IframeView {
     // this.element.style.width = "0px";
   }
 }
-
-EventEmitter(IframeView.prototype)
 
 export default IframeView

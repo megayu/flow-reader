@@ -1,4 +1,4 @@
-import EventEmitter from './utils/event-emitter'
+import EventEmitter from 'eventemitter3'
 
 import EpubCFI from './epubcfi'
 import { EVENTS } from './utils/constants'
@@ -11,8 +11,10 @@ import Queue from './utils/queue'
  * @param {request} request
  * @param {number} [pause=100]
  */
-class Locations {
+class Locations extends EventEmitter {
   constructor(spine, request, pause) {
+    super()
+
     this.spine = spine
     this.request = request
     this.pause = pause || 100
@@ -525,7 +527,5 @@ class Locations {
     clearTimeout(this.processingTimeout)
   }
 }
-
-EventEmitter(Locations.prototype)
 
 export default Locations

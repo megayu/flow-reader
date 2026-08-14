@@ -40,15 +40,12 @@ interface ActivePaneProps {
 
 const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
   const books = useLibrary()
-  const { focusedBookTab, groups } = useReaderSnapshot()
+  const { focusedBookTab, tabs } = useReaderSnapshot()
   const setViewMode = useSetViewMode()
   const [, , background] = useBackground()
   const sortedBooks = useMemo(() => books?.slice().sort(compareBookDisplayTitle) ?? [], [books])
   const { outerRef, items, scrollbar, scrollToItem, totalSize } = useList(sortedBooks)
-  const openedBookIds = useMemo(
-    () => new Set(groups.flatMap((group) => group.tabs.map((tab) => tab.book.id))),
-    [groups],
-  )
+  const openedBookIds = useMemo(() => new Set(tabs.map((tab) => tab.book.id)), [tabs])
   const currentBookId = focusedBookTab?.book.id
   const currentIndex = useMemo(
     () => sortedBooks.findIndex((book) => book.id === currentBookId),
@@ -160,10 +157,7 @@ const TocPane: React.FC<ActivePaneProps> = ({ active }) => {
 
 function useFocusedBookTabReference() {
   const readerSnapshot = useSnapshot(reader)
-  const focusedIndex = readerSnapshot.focusedIndex
-  const focusedGroup = readerSnapshot.groups[focusedIndex]
-  const selectedIndex = focusedGroup?.selectedIndex
-  const selectedTabId = focusedGroup?.tabs[selectedIndex ?? -1]?.id
+  const selectedTabId = readerSnapshot.tabs[readerSnapshot.selectedIndex]?.id
 
   void selectedTabId
   return reader.focusedBookTab

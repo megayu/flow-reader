@@ -106,10 +106,9 @@ export class BookPersistenceController {
     before: Annotation | undefined,
     after: Annotation | undefined,
     annotations: Annotation[],
-    requireCheckpoint = false,
   ) {
     if (sameSemanticAnnotation(before, after)) {
-      return requireCheckpoint ? this.checkpoint(host) : Promise.resolve()
+      return Promise.resolve()
     }
 
     this.advanceState(host, { annotations })
@@ -117,7 +116,7 @@ export class BookPersistenceController {
     if (!id) return Promise.resolve()
     this.annotationChanges.record(id, after)
 
-    if (requireCheckpoint || normalizedAnnotationNotes(before) !== normalizedAnnotationNotes(after)) {
+    if (normalizedAnnotationNotes(before) || normalizedAnnotationNotes(after)) {
       return this.checkpoint(host)
     }
 

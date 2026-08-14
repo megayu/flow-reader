@@ -35,11 +35,7 @@ test('cold native EPUB request suppresses startup restore even when opening fail
   await page.goto('/')
   await page.waitForTimeout(1000)
 
-  expect(
-    await page.evaluate(() =>
-      (window as any).reader.groups.flatMap((group: any) => group.bookTabs.map((tab: any) => tab.book.id)),
-    ),
-  ).toEqual([])
+  expect(await page.evaluate(() => (window as any).reader.tabs.map((tab: any) => tab.book.id))).toEqual([])
 })
 
 test('native file setup failure does not block startup completion', async ({ page }) => {
@@ -69,11 +65,7 @@ test('cold native EPUB open opens only the requested book', async ({ page }) => 
   await page.goto('/')
 
   await expect
-    .poll(() =>
-      page.evaluate(() =>
-        (window as any).reader.groups.flatMap((group: any) => group.bookTabs.map((tab: any) => tab.book.id)),
-      ),
-    )
+    .poll(() => page.evaluate(() => (window as any).reader.tabs.map((tab: any) => tab.book.id)))
     .toEqual([requested.id])
   await expect(page.getByTestId('native-startup-surface')).toBeVisible()
   await expect(page.locator('[data-flow-reader-tab-index]')).toHaveCount(1)
@@ -112,63 +104,4 @@ test('native mixed open opens EPUB before committing direct TXT without previewi
   await expect
     .poll(() => getBookImportOperations(page))
     .toEqual(['epub:start', 'epub:finish', 'txt-import:start', 'txt-import:finish'])
-})
-
-test('native EPUB open focuses an existing tab across reader groups', async ({ page }) => {
-  await installTauriMock(page)
-  await page.goto('/')
-
-  const result = await page.evaluate(() => {
-    const reader = (window as any).reader
-    const first = createBrowserBook('first-book', 'First Book')
-    const second = createBrowserBook('second-book', 'Second Book')
-    reader.clear()
-    reader.addTab(first)
-    reader.addGroup([second])
-    reader.openBookTab(first)
-
-    return {
-      focusedBookId: reader.focusedBookTab?.book.id,
-      focusedIndex: reader.focusedIndex,
-      groupCount: reader.groups.length,
-      firstBookTabCount: reader.groups
-        .flatMap((group: any) => group.bookTabs)
-        .filter((tab: any) => tab.book.id === first.id).length,
-    }
-
-    function createBrowserBook(id: string, title: string) {
-      return {
-        id,
-        name: `${title}.epub`,
-        size: 1,
-        metadata: {
-          title,
-          creator: '',
-          description: '',
-          pubdate: '',
-          publisher: '',
-          identifier: id,
-          language: '',
-          rights: '',
-          modified_date: '',
-          layout: '',
-          orientation: '',
-          flow: '',
-          viewport: '',
-          spread: '',
-        },
-        createdAt: 1,
-        updatedAt: 1,
-        definitions: [],
-        annotations: [],
-      }
-    }
-  })
-
-  expect(result).toEqual({
-    focusedBookId: 'first-book',
-    focusedIndex: 0,
-    groupCount: 2,
-    firstBookTabCount: 1,
-  })
 })

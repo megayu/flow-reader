@@ -84,7 +84,7 @@ export function ReaderGridView({
   onEpubImportProgress,
   onEpubImportResult,
 }: ReaderGridViewProps) {
-  const { focusedIndex, groups } = useReaderSnapshot()
+  const { tabs } = useReaderSnapshot()
   const [action, setAction] = useAction()
   const setViewMode = useSetViewMode()
   const viewMode = useViewModeValue()
@@ -115,17 +115,11 @@ export function ReaderGridView({
   )
   useEventListener('contextmenu', preventContextMenu)
 
-  if (!groups.length) return null
-  const preferredIndex = focusedIndex > -1 ? focusedIndex : 0
-  const index = groups[preferredIndex] ? preferredIndex : 0
-  const group = groups[index]
-  if (!group) return null
+  if (!tabs.length) return null
 
   return (
     <div className="ReaderGridView relative flex h-full min-h-0">
-      <ReaderGroup
-        key={group.id}
-        index={index}
+      <ReaderTabs
         content={content}
         directTextImport={directTextImport}
         onEpubImportProgress={onEpubImportProgress}
@@ -136,8 +130,7 @@ export function ReaderGridView({
   )
 }
 
-interface ReaderGroupProps {
-  index: number
+interface ReaderTabsProps {
   content?: React.ReactNode
   directTextImport: boolean
   onEpubImportProgress?: (progress: BookImportProgress) => void
@@ -186,16 +179,14 @@ function observeReaderTabIconOnlyStates(
   return () => observer.disconnect()
 }
 
-function ReaderGroup({
-  index,
+function ReaderTabs({
   content,
   directTextImport,
   onEpubImportProgress,
   onEpubImportResult,
   onEnterReaderMode,
-}: ReaderGroupProps) {
-  const group = reader.groups[index]!
-  const { paneTabs, tabs, selectedIndex } = useSnapshot(group)
+}: ReaderTabsProps) {
+  const { paneTabs, tabs, selectedIndex } = useReaderSnapshot()
   const selectedTabId = tabs[selectedIndex]?.id
   const [backgroundClassName] = useBackground()
   const zenMode = useZenModeValue()
@@ -241,10 +232,6 @@ function ReaderGroup({
     }
   }, [tabElementSignature, tabIconOnlyWidth])
 
-  const handleMouseDown = useCallback(() => {
-    reader.selectGroup(index)
-  }, [index])
-
   const handleTabWheel = useCallback(
     (e: React.WheelEvent) => {
       e.preventDefault()
@@ -257,12 +244,11 @@ function ReaderGroup({
 
       if (Math.abs(tabWheelDelta.current) < 30) return
 
-      reader.selectGroup(index)
-      group.selectAdjacentTab(tabWheelDelta.current > 0 ? 1 : -1, true)
+      reader.selectAdjacentTab(tabWheelDelta.current > 0 ? 1 : -1, true)
       onEnterReaderMode()
       tabWheelDelta.current = 0
     },
-    [group, index, onEnterReaderMode],
+    [onEnterReaderMode],
   )
 
   const clearTabPointerDrag = useCallback(() => {
@@ -349,13 +335,13 @@ function ReaderGroup({
           event.clientY >= rect.top &&
           event.clientY <= rect.bottom
         if (releasedInside && drag.targetIndex !== undefined) {
-          group.moveTab(drag.sourceIndex, drag.targetIndex)
+          reader.moveTab(drag.sourceIndex, drag.targetIndex)
         }
       }
 
       clearTabPointerDrag()
     },
-    [clearTabPointerDrag, group],
+    [clearTabPointerDrag],
   )
 
   const handleTabPointerCancel = useCallback(
@@ -369,17 +355,14 @@ function ReaderGroup({
   const handleTabSelect = useCallback(
     (tabIndex: number) => {
       if (suppressTabClick.current) return
-      group.selectTab(tabIndex)
+      reader.selectTab(tabIndex)
       onEnterReaderMode()
     },
-    [group, onEnterReaderMode],
+    [onEnterReaderMode],
   )
 
   return (
-    <div
-      className="ReaderGroup flex h-full min-h-0 flex-1 flex-col overflow-hidden focus:outline-none"
-      onMouseDown={handleMouseDown}
-    >
+    <div className="ReaderTabs flex h-full min-h-0 flex-1 flex-col overflow-hidden focus:outline-none">
       <Tab.List
         className={clsx('flex', zenMode && 'hidden!')}
         listRef={tabListRef}
@@ -390,12 +373,11 @@ function ReaderGroup({
         onPointerCancel={handleTabPointerCancel}
       >
         {tabs.map((tabSnapshot, i) => {
-          const tab = group.tabs[i]!
+          const tab = reader.tabs[i]!
           const selected = i === selectedIndex
           const focused = selected
           return (
             <ReaderTabItem
-              groupIndex={index}
               index={i}
               key={tabSnapshot.id}
               focused={focused}
@@ -445,18 +427,18 @@ function ReaderGroup({
 
             if (tabs.length) {
               tabs.forEach((tab) => {
-                completeTabOpen(reader.addTab(tab, index), onEnterReaderMode)
+                completeTabOpen(reader.addTab(tab), onEnterReaderMode)
               })
             }
           }}
         >
           {paneTabs.map((paneTab, paneIndex) => {
-            const tab = group.paneTabs[paneIndex]!
+            const tab = reader.paneTabs[paneIndex]!
             const active = paneTab.id === selectedTabId
 
             return (
               <PaneContainer active={active} key={paneTab.id}>
-                <BookPane active={active} tab={tab} onMouseDown={handleMouseDown} />
+                <BookPane active={active} tab={tab} />
               </PaneContainer>
             )
           })}
@@ -477,7 +459,6 @@ interface ReaderTabItemProps {
   dragging: boolean
   dropIndicator?: 'before' | 'after'
   focused: boolean
-  groupIndex: number
   index: number
   onHoverChange: React.Dispatch<React.SetStateAction<number | undefined>>
   onSelect: (index: number) => void
@@ -490,7 +471,6 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
   dragging,
   dropIndicator,
   focused,
-  groupIndex,
   index,
   onHoverChange,
   onSelect,
@@ -509,8 +489,8 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
     onSelect(index)
   }, [index, onSelect])
   const handleDelete = useCallback(() => {
-    void reader.removeTab(index, groupIndex).catch(console.error)
-  }, [groupIndex, index])
+    void reader.removeTab(index).catch(console.error)
+  }, [index])
 
   return (
     <Tab
@@ -576,10 +556,9 @@ const PaneContainer: React.FC<PaneContainerProps> = React.memo(function PaneCont
 interface BookPaneProps {
   active: boolean
   tab: BookTab
-  onMouseDown: () => void
 }
 
-const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active, tab, onMouseDown }) {
+const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active, tab }) {
   const ref = useRef<HTMLDivElement>(null)
   const [notePopover, setNotePopover] = useState<NotePopoverState>()
   const typography = useTypography(tab)
@@ -736,7 +715,6 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
     closeChapterFind,
     containerRef: ref,
     frameWindows,
-    onMouseDown,
     rendition,
     setNotePopover,
     tab,

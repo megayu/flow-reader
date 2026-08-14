@@ -1,4 +1,4 @@
-import EventEmitter from '../../utils/event-emitter'
+import EventEmitter from 'eventemitter3'
 
 import Mapping from '../../mapping'
 import { EVENTS } from '../../utils/constants'
@@ -15,8 +15,10 @@ function isUnavailableSectionError(error) {
   return status === 404 || /file not found|not found/i.test(message)
 }
 
-class DefaultViewManager {
+class DefaultViewManager extends EventEmitter {
   constructor(options) {
+    super()
+
     this.name = 'default'
     this.optsSettings = options.settings
     this.View = options.view
@@ -2700,8 +2702,5 @@ class DefaultViewManager {
     return this.rendered
   }
 }
-
-//-- Enable binding events to Manager
-EventEmitter(DefaultViewManager.prototype)
 
 export default DefaultViewManager

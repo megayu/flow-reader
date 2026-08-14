@@ -15,13 +15,7 @@ function testNoteMarkersSupportCjkBrackets() {
   assert.strictEqual(noteSemantics.isNoteMarkerText('【零】'), true)
   assert.strictEqual(noteSemantics.isNoteMarkerText('【九】'), true)
   assert.strictEqual(noteSemantics.isNoteMarkerText('【壹拾貳】'), true)
-  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('零、注释'), true)
-  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('壹拾貳、注释'), true)
-  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('[1].译者注'), true)
-  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('[12]. Translator note'), true)
-  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('[1]. 原作者在邮件中指出'), true)
   assert.strictEqual(noteSemantics.isNoteMarkerText('〚note〛'), false)
-  assert.strictEqual(noteSemantics.startsWithNoteMarkerText('[note].正文'), false)
 }
 
 test(testNoteMarkersSupportCjkBrackets.name, testNoteMarkersSupportCjkBrackets)

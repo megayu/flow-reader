@@ -1,13 +1,12 @@
 import clsx from 'clsx'
-import { type DragEvent, type HTMLAttributes, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { type DragEvent, type HTMLAttributes, type ReactNode, useCallback, useMemo, useState } from 'react'
 
 import { DndContext, type DragDataEvent, useDndContext } from './dropZoneContext'
 
 interface DropZoneProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onDrop'> {
   children?: ReactNode
   className?: string
-  onDrop?: (e: DragEvent<HTMLDivElement>, position?: Position) => void
-  split?: boolean
+  onDrop?: (e: DragEvent<HTMLDivElement>) => void
 }
 export const DropZone: React.FC<DropZoneProps> = (props) => {
   return (
@@ -17,8 +16,6 @@ export const DropZone: React.FC<DropZoneProps> = (props) => {
   )
 }
 
-type Position = 'universe' | 'left' | 'right' | 'top' | 'bottom'
-
 // > During the drag, in an event listener for the dragenter and dragover events, you use the data types of the data being dragged to check whether a drop is allowed.
 // https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Drag_operations#drag_data
 function accept(e?: DragDataEvent) {
@@ -26,44 +23,13 @@ function accept(e?: DragDataEvent) {
   return !!dt && [...dt.types].some((t) => ['text/plain', 'Files'].includes(t))
 }
 
-const DropZoneInner: React.FC<DropZoneProps> = ({ children, className, onDrop, split = false, ...props }) => {
+const DropZoneInner: React.FC<DropZoneProps> = ({ children, className, onDrop, ...props }) => {
   const { dragover, setDragEvent } = useDndContext()
-  const [position, setPosition] = useState<Position>()
-  // console.log(dragover, position)
 
-  useEffect(() => {
-    if (!dragover) setPosition(undefined)
-  }, [dragover])
-
-  const handleDragover = useCallback(
-    (e: DragEvent<HTMLDivElement>) => {
-      e.stopPropagation()
-      e.preventDefault()
-
-      setPosition(() => {
-        if (!split) return 'universe'
-
-        const rect = (e.target as HTMLDivElement).getBoundingClientRect()
-        if (!rect.width || !rect.height) return
-
-        const offsetLeft = (e.clientX - rect.left) / rect.width
-        const offsetTop = (e.clientY - rect.top) / rect.height
-        const offsetRight = 1 - offsetLeft
-        const offsetBottom = 1 - offsetTop
-        const threshold = 0.15
-
-        // TODO: add `offsetTop` and `offsetBottom`
-        const minOffset = Math.min(offsetLeft, offsetRight)
-
-        if (minOffset > threshold) return 'universe'
-        if (minOffset === offsetLeft) return 'left'
-        if (minOffset === offsetRight) return 'right'
-        if (minOffset === offsetTop) return 'top'
-        if (minOffset === offsetBottom) return 'bottom'
-      })
-    },
-    [split],
-  )
+  const handleDragover = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.stopPropagation()
+    e.preventDefault()
+  }, [])
 
   return (
     <div
@@ -80,18 +46,7 @@ const DropZoneInner: React.FC<DropZoneProps> = ({ children, className, onDrop, s
     >
       {children}
 
-      {dragover && (
-        <div
-          className={clsx(
-            'bg-muted/60 absolute z-10 transition',
-            position === 'left' && 'inset-y-0 right-1/2 left-0',
-            position === 'right' && 'inset-y-0 right-0 left-1/2',
-            position === 'top' && 'inset-x-0 top-0 bottom-1/2',
-            position === 'bottom' && 'inset-x-0 top-1/2 bottom-0',
-            position === 'universe' && 'inset-0',
-          )}
-        ></div>
-      )}
+      {dragover && <div className="bg-muted/60 absolute inset-0 z-10 transition"></div>}
       {dragover && (
         <div
           className="absolute inset-0 z-10"
@@ -103,7 +58,7 @@ const DropZoneInner: React.FC<DropZoneProps> = ({ children, className, onDrop, s
             setDragEvent()
             e.stopPropagation()
             e.preventDefault()
-            onDrop?.(e, position)
+            onDrop?.(e)
           }}
         ></div>
       )}

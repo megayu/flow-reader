@@ -64,7 +64,6 @@ interface BookPaneFrameContentOptions {
   closeChapterFind: () => void
   containerRef: RefObject<HTMLDivElement | null>
   frameWindows: readonly Window[]
-  onMouseDown: () => void
   rendition: unknown
   setNotePopover: Dispatch<SetStateAction<NotePopoverState | undefined>>
   tab: BookTab
@@ -78,7 +77,6 @@ export function useBookPaneFrameContent({
   closeChapterFind,
   containerRef,
   frameWindows,
-  onMouseDown,
   rendition,
   setNotePopover,
   tab,
@@ -117,11 +115,6 @@ export function useBookPaneFrameContent({
     [setDragEvent],
   )
   useFrameEvent(activeFrameWindows, 'dragover', handleFrameDragOver)
-
-  const handleFrameMouseDown = useCallback(() => {
-    onMouseDown()
-  }, [onMouseDown])
-  useFrameEvent(activeFrameWindows, 'mousedown', handleFrameMouseDown)
 
   useEffect(() => {
     if (!active) return

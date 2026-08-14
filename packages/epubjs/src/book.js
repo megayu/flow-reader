@@ -1,4 +1,4 @@
-import EventEmitter from './utils/event-emitter'
+import EventEmitter from 'eventemitter3'
 
 import Archive from './archive'
 import Container from './container'
@@ -190,8 +190,10 @@ function normalizeNavigationHrefsBySpine(items, readableHrefs, navPath) {
  * @example new Book("/path/to/book.epub", {})
  * @example new Book({ replacements: "blobUrl" })
  */
-class Book {
+class Book extends EventEmitter {
   constructor(url, options) {
+    super()
+
     // Allow passing just options to the Book
     if (
       typeof options === 'undefined' &&
@@ -994,9 +996,6 @@ function findFirstImageHref(doc) {
 
   return ''
 }
-
-//-- Enable binding events to book
-EventEmitter(Book.prototype)
 
 export default Book
 

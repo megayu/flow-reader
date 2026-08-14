@@ -175,7 +175,6 @@
   "menu.edit_text_error_generic": "Could not update the text. Select it again and retry.",
   "menu.edit_text_error_reason": "Reason: ",
   "menu.edit_text_error_stale": "Could not verify the selected text. Select it again and retry.",
-  "menu.note_save_error": "Could not save the note. Retry to keep this editor open.",
   "menu.save": "Save",
   "menu.saving": "Saving",
   "menu.search_in_book": "Search in book",

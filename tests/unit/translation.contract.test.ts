@@ -8,7 +8,7 @@ import {
 } from '../../src/translation/languages'
 import { parseAzureTranslationResponse } from '../../src/translation/providers/azure'
 import { parseGoogleTranslationResponse } from '../../src/translation/providers/google'
-import { joinTranslationSections, splitTranslationSections } from '../../src/translation/serialize'
+import { splitTranslationSections } from '../../src/translation/serialize'
 
 test.describe('translation language contract', () => {
   test('pins automatic detection, main language, and secondary language before the fixed list', () => {
@@ -63,11 +63,7 @@ test.describe('translation language contract', () => {
 })
 
 test.describe('translation payload contract', () => {
-  test('preserves chapter boundaries while discarding empty outer sections', () => {
-    expect(joinTranslationSections(['  first paragraph\nsecond paragraph  ', '', '  next chapter  '])).toBe(
-      'first paragraph\nsecond paragraph\n\nnext chapter',
-    )
-
+  test('splits chapter boundaries', () => {
     expect(splitTranslationSections('chapter one\n\nchapter two')).toEqual(['chapter one', 'chapter two'])
   })
 

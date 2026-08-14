@@ -332,6 +332,15 @@ async function installBrowserTauriMock(page, books) {
     internals.runCallback = (id, ...args) => callbacks[id]?.(...args)
     eventInternals.unregisterListener = () => undefined
     internals.invoke = async (command, args = {}) => {
+      if (command === 'get_window_ui_state') {
+        return {
+          readerSidebarOpen: true,
+          readerSidebarWidth: 240,
+          librarySidebarOpen: false,
+          librarySidebarWidth: 240,
+          panes: {},
+        }
+      }
       if (command === 'get_settings') return { ...settingsStore }
       if (command === 'update_settings') {
         Object.assign(settingsStore, args.settings ?? {})
@@ -454,7 +463,7 @@ async function ensureReaderMode(page) {
       () => !!document.querySelector('.absolute.inset-0.z-10.min-h-0.overflow-hidden.flow-bg-content'),
     )
     if (!libraryOverlay) return
-    await page.keyboard.press('c')
+    await page.keyboard.press('v')
     await wait(700)
   }
   assert(
@@ -588,9 +597,8 @@ async function readState(page) {
         frames,
       }
     })
-    const group = window.reader?.focusedGroup
-    const selectedIndex = group?.selectedIndex ?? -1
-    const tabs = (group?.tabs || []).map((tab, index) => ({
+    const selectedIndex = window.reader?.selectedIndex ?? -1
+    const tabs = (window.reader?.tabs || []).map((tab, index) => ({
       index,
       id: tab.id,
       title: tab.title,
@@ -651,16 +659,15 @@ async function readFastInteractionState(page) {
         frameCount: pane.querySelectorAll('iframe').length,
       }
     })
-    const group = window.reader?.focusedGroup
-    const selectedIndex = group?.selectedIndex ?? -1
+    const selectedIndex = window.reader?.selectedIndex ?? -1
     const activePane = panes.find((pane) => !pane.hidden)
 
     return {
       selectedIndex,
       activePane,
-      activeTab: group?.tabs?.[selectedIndex]
+      activeTab: window.reader?.tabs?.[selectedIndex]
         ? {
-            turning: !!group.tabs[selectedIndex].turning,
+            turning: !!window.reader.tabs[selectedIndex].turning,
           }
         : null,
     }
@@ -771,9 +778,7 @@ async function waitForAllTabsReady(page, label, timeout = 30000) {
     const state = await readState(page)
     const allReady =
       state.tabCount > 0 &&
-      (await page.evaluate(() =>
-        (window.reader?.focusedGroup?.tabs || []).every((tab) => tab.paginationSnapshot && !tab.turning),
-      ))
+      (await page.evaluate(() => (window.reader?.tabs || []).every((tab) => tab.paginationSnapshot && !tab.turning)))
     if (allReady) return state
     await wait(100)
   }
@@ -924,8 +929,7 @@ async function installPerfInstrumentation(page) {
     }
 
     window.__flowPerfWrap = () => {
-      const group = window.reader?.focusedGroup
-      ;(group?.tabs || []).forEach((tab) => {
+      ;(window.reader?.tabs || []).forEach((tab) => {
         if (window.__flowPerf.wrapped.has(tab)) return
         window.__flowPerf.wrapped.add(tab)
         window.__flowPerf.counters[tab.id] ||= {}
@@ -993,9 +997,8 @@ function sumCounters(counters) {
 async function navigateTabTo(page, tabIndex, sectionIndex, nextCount = 0) {
   await page.evaluate(
     async ({ tabIndex, sectionIndex, nextCount }) => {
-      const group = window.reader.focusedGroup
-      group.selectTab(tabIndex)
-      const tab = group.tabs[tabIndex]
+      window.reader.selectTab(tabIndex)
+      const tab = window.reader.tabs[tabIndex]
       const deadline = Date.now() + 30000
       while (!tab.sections?.[sectionIndex] && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 100))
@@ -1491,10 +1494,10 @@ async function main() {
       return full ?? book
     }),
   )
-  await page.evaluate((books) => {
-    window.reader.closeAllTabs?.()
-    books.forEach((book) => window.reader.addTab(book))
-    window.reader.focusedGroup?.selectTab(0)
+  await page.evaluate(async (books) => {
+    await window.reader.closeAllTabs?.()
+    await Promise.all(books.map((book) => window.reader.addTab(book)))
+    window.reader.selectTab(0)
   }, books)
   await ensureReaderMode(page)
   await waitForSettled(page, 'initial imported tabs')
@@ -1502,7 +1505,7 @@ async function main() {
   await navigateTabTo(page, 0, 20, 2)
   await navigateTabTo(page, 1, 55, 3)
   await navigateTabTo(page, 2, 90, 1)
-  await page.evaluate(() => window.reader.focusedGroup.selectTab(0))
+  await page.evaluate(() => window.reader.selectTab(0))
   await waitForAllTabsReady(page, 'all tabs positioned')
 
   const scenarios = []
@@ -1546,14 +1549,14 @@ async function main() {
   const selectTabOperation = (index) => ({
     name: `select-tab-${index + 1}`,
     expectedSelectedIndex: index,
-    run: () => page.evaluate((index) => window.reader.focusedGroup.selectTab(index), index),
+    run: () => page.evaluate((index) => window.reader.selectTab(index), index),
   })
   const clickTabOperation = (index) => ({
     name: `click-tab-${index + 1}`,
     expectedSelectedIndex: index,
     run: () =>
       page.evaluate((index) => {
-        const tabs = Array.from(document.querySelectorAll('.ReaderGroup [data-flow-reader-tab-index]'))
+        const tabs = Array.from(document.querySelectorAll('.ReaderTabs [data-flow-reader-tab-index]'))
         const tab = tabs[index]
         if (!(tab instanceof HTMLElement)) {
           throw new Error(`reader tab ${index} not found`)
@@ -1607,9 +1610,9 @@ async function main() {
   })
   await recordScenario('search-query/sidebar-search', [searchQueryOperation])
 
-  await page.evaluate((book) => {
-    window.reader.closeAllTabs?.()
-    window.reader.addTab(book)
+  await page.evaluate(async (book) => {
+    await window.reader.closeAllTabs?.()
+    await window.reader.addTab(book)
   }, books[0])
   await ensureReaderMode(page)
   await navigateTabTo(page, 0, 28, 2)

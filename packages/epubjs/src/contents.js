@@ -1,4 +1,4 @@
-import EventEmitter from './utils/event-emitter'
+import EventEmitter from 'eventemitter3'
 
 import EpubCFI from './epubcfi'
 import Mapping from './mapping'
@@ -76,8 +76,10 @@ function parseViewportContent(content) {
  * @param {string} cfiBase Section component of CFIs
  * @param {number} sectionIndex Index in Spine of Conntent's Section
  */
-class Contents {
+class Contents extends EventEmitter {
   constructor(doc, content, cfiBase, sectionIndex) {
+    super()
+
     // Blank Cfi for Parsing
     this.epubcfi = new EpubCFI()
 
@@ -102,7 +104,7 @@ class Contents {
     this.imageLoadListenerCleanup = []
     this.visibilityListenerCleanup = undefined
     this.resizeCheckFrame = undefined
-    this.listeners()
+    this.addListeners()
   }
 
   /**
@@ -394,7 +396,7 @@ class Contents {
    * Add DOM listeners
    * @private
    */
-  listeners() {
+  addListeners() {
     this.imageLoadListeners()
 
     this.mediaQueryListeners()
@@ -2613,7 +2615,5 @@ class Contents {
     this.removeListeners()
   }
 }
-
-EventEmitter(Contents.prototype)
 
 export default Contents

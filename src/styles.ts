@@ -101,10 +101,6 @@ function formatCssPixel(value: number) {
   return `${Math.round(value * 10000) / 10000}px`
 }
 
-enum Style {
-  Custom = 'custom',
-}
-
 export function createTypographyLayoutSignature(settings: Settings) {
   return [
     settings.fontFamily,
@@ -473,7 +469,7 @@ export function updateCustomStyle(
     }`
   }
 
-  const applied = contents.addStylesheetCss(css, Style.Custom)
+  const applied = contents.addStylesheetCss(css, 'custom')
   logStyleDiagnostics(contents, settings, {
     applied,
     bodyTypography,
@@ -553,11 +549,4 @@ function removeDefaultCssValues<T extends CSSProperties>(styles: T) {
       return value !== undefined && value !== null && value !== ''
     }),
   ) as T
-}
-
-export function lock(l: number, r: number, unit = 'px') {
-  const minw = 400
-  const maxw = 2560
-
-  return `calc(${l}${unit} + ${r - l} * (100vw - ${minw}px) / ${maxw - minw})`
 }

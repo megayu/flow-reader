@@ -314,10 +314,6 @@ export async function setupNativeOpenFiles({
   }
 }
 
-export function isTauriRuntime() {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
-}
-
 function createBookImportId() {
   return `book-import-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }

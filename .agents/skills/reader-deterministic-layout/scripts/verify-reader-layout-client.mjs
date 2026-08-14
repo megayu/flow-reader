@@ -364,6 +364,15 @@ async function installBrowserTauriMock(page, books) {
     internals.runCallback = (id, ...args) => callbacks[id]?.(...args)
     eventInternals.unregisterListener = () => undefined
     internals.invoke = async (command, args = {}) => {
+      if (command === 'get_window_ui_state') {
+        return {
+          readerSidebarOpen: true,
+          readerSidebarWidth: 240,
+          librarySidebarOpen: false,
+          librarySidebarWidth: 240,
+          panes: {},
+        }
+      }
       if (command === 'get_settings') return { ...settingsStore }
       if (command === 'update_settings') {
         Object.assign(settingsStore, args.settings ?? {})
@@ -443,7 +452,7 @@ async function ensureReaderMode(page) {
       () => !!document.querySelector('.absolute.inset-0.z-10.min-h-0.overflow-hidden.flow-bg-content'),
     )
     if (!libraryOverlay) return
-    await page.keyboard.press('c')
+    await page.keyboard.press('v')
     await wait(700)
   }
 
@@ -560,8 +569,7 @@ async function readState(page) {
         frames,
       }
     })
-    const group = window.reader?.focusedGroup
-    const tabs = (group?.tabs || []).map((tab, index) => {
+    const tabs = (window.reader?.tabs || []).map((tab, index) => {
       const snapshot = tab.paginationSnapshot
       const spread = tab.rendition?.manager?.currentReflowableSpread
       const pane = panes[index]
@@ -623,7 +631,7 @@ async function readState(page) {
     const loadingCover = activePaneElement?.querySelector('[data-flow-reader-loading-cover]')
     const loadingCoverStyle = loadingCover ? getComputedStyle(loadingCover) : undefined
     const loadingCoverRect = rectOf(loadingCover)
-    const selectedIndex = group?.selectedIndex ?? -1
+    const selectedIndex = window.reader?.selectedIndex ?? -1
     const activeTab = tabs[selectedIndex]
     const sidebar = document.querySelector('.SideBar')
     const sidebarRect = rectOf(sidebar)
@@ -825,7 +833,7 @@ async function instrumentCounters(page) {
     const methods = ['display', 'next', 'prev', 'resizeRendition', 'relayoutCurrentView']
     window.__flowWrapTabCounters = () => {
       const store = window.__flowCounterStore
-      ;(window.reader?.focusedGroup?.tabs || []).forEach((tab) => {
+      ;(window.reader?.tabs || []).forEach((tab) => {
         if (store.wrapped.has(tab)) return
         store.wrapped.add(tab)
         store.counters[tab.id] ||= { title: tab.title }
@@ -972,9 +980,8 @@ function assertOnlyMarker(counts, selectedIndex, label) {
 async function navigateTabTo(page, tabIndex, sectionIndex, nextCount = 0) {
   await page.evaluate(
     async ({ tabIndex, sectionIndex, nextCount }) => {
-      const group = window.reader.focusedGroup
-      group.selectTab(tabIndex)
-      const tab = group.tabs[tabIndex]
+      window.reader.selectTab(tabIndex)
+      const tab = window.reader.tabs[tabIndex]
       const deadline = Date.now() + 30000
       while (!tab.sections?.[sectionIndex] && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 100))
@@ -992,9 +999,8 @@ async function navigateTabTo(page, tabIndex, sectionIndex, nextCount = 0) {
 async function navigateTabToEnd(page, tabIndex) {
   await page.evaluate(
     async ({ tabIndex }) => {
-      const group = window.reader.focusedGroup
-      group.selectTab(tabIndex)
-      const tab = group.tabs[tabIndex]
+      window.reader.selectTab(tabIndex)
+      const tab = window.reader.tabs[tabIndex]
       const deadline = Date.now() + 30000
       while (!tab.sections?.length && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 100))
@@ -1020,9 +1026,8 @@ async function navigateTabToEnd(page, tabIndex) {
 async function setTabToSectionFinalSpread(page, tabIndex, sectionIndex) {
   await page.evaluate(
     async ({ tabIndex, sectionIndex }) => {
-      const group = window.reader.focusedGroup
-      group.selectTab(tabIndex)
-      const tab = group.tabs[tabIndex]
+      window.reader.selectTab(tabIndex)
+      const tab = window.reader.tabs[tabIndex]
       const deadline = Date.now() + 30000
       while (!tab.sections?.[sectionIndex] && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 100))
@@ -1250,10 +1255,10 @@ async function main() {
       return full ?? book
     }),
   )
-  await page.evaluate((books) => {
-    window.reader.closeAllTabs?.()
-    books.forEach((book) => window.reader.addTab(book))
-    window.reader.focusedGroup?.selectTab(0)
+  await page.evaluate(async (books) => {
+    await window.reader.closeAllTabs?.()
+    await Promise.all(books.map((book) => window.reader.addTab(book)))
+    window.reader.selectTab(0)
   }, books)
   await ensureReaderMode(page)
   await waitForSettled(page, 'initial imported tabs')
@@ -1263,7 +1268,7 @@ async function main() {
   await navigateTabTo(page, 0, 8, 2)
   await navigateTabTo(page, 1, 35, 3)
   await navigateTabToEnd(page, 2)
-  await page.evaluate(() => window.reader.focusedGroup.selectTab(0))
+  await page.evaluate(() => window.reader.selectTab(0))
   await waitForSettled(page, 'tab A active before standards')
   await waitForAllTabsReady(page, 'all tabs positioned')
 
@@ -1284,7 +1289,7 @@ async function main() {
   assertOnlyMarker(counts, 0, 'standard 1 wheel visual back')
   results.push('standard 1 passed')
 
-  await page.evaluate(() => window.reader.focusedGroup.selectTab(0))
+  await page.evaluate(() => window.reader.selectTab(0))
   await waitForSettled(page, 'hidden unchanged setup')
   await assertHiddenTabsUnchanged(
     page,
@@ -1307,9 +1312,8 @@ async function main() {
   results.push('hidden tab input isolation passed')
 
   await page.evaluate(() => {
-    const group = window.reader.focusedGroup
-    while (group.tabs.length > 1) window.reader.removeTab(group.tabs.length - 1)
-    group.selectTab(0)
+    while (window.reader.tabs.length > 1) window.reader.removeTab(window.reader.tabs.length - 1)
+    window.reader.selectTab(0)
   })
   await ensureSidebar(page, true)
   await navigateTabTo(page, 0, 22, 2)
@@ -1355,9 +1359,9 @@ async function main() {
   }
   results.push('standard 3 passed')
 
-  await page.evaluate((books) => {
-    window.reader.closeAllTabs?.()
-    books.forEach((book) => window.reader.addTab(book))
+  await page.evaluate(async (books) => {
+    await window.reader.closeAllTabs?.()
+    await Promise.all(books.map((book) => window.reader.addTab(book)))
   }, books)
   await ensureReaderMode(page)
   await ensureSidebar(page, true)
@@ -1365,7 +1369,7 @@ async function main() {
   await navigateTabTo(page, 0, 18, 2)
   await navigateTabTo(page, 1, 46, 1)
   await navigateTabToEnd(page, 2)
-  await page.evaluate(() => window.reader.focusedGroup.selectTab(0))
+  await page.evaluate(() => window.reader.selectTab(0))
   const tab0OpenBefore = activeRenderSignature(await waitForSettled(page, 'standard 4 tab0 open before'))
   await waitForAllTabsReady(page, 'standard 4 positioned')
 

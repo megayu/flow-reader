@@ -157,7 +157,7 @@ const noCoverResourceIdentities: readonly CoverResourceIdentity[] = []
 const dragImportAutoOpenBookTabLimit = 8
 
 function selectDroppedBooksToAutoOpen(books: BookRecord[]) {
-  const openBookIds = new Set(reader.groups.flatMap((group) => group.tabs.map((tab) => tab.book.id)))
+  const openBookIds = new Set(reader.tabs.map((tab) => tab.book.id))
   if (openBookIds.size >= dragImportAutoOpenBookTabLimit) return []
 
   const selectedBooks: BookRecord[] = []
@@ -176,7 +176,7 @@ function isKeyboardTargetBlocked(e: KeyboardEvent) {
 }
 
 export function LibraryPage() {
-  const { focusedBookTab, groups } = useReaderSnapshot()
+  const { focusedBookTab, tabs } = useReaderSnapshot()
   const [viewMode, setViewMode] = useViewMode()
   const [settings, setSettings] = useSettings()
   const settingsReady = useSettingsReady()
@@ -205,7 +205,7 @@ export function LibraryPage() {
   const directTextImport = settings.directTextImport === true
   const defaultCopyTextSourceFiles =
     settings.importSourceStorage === 'referenced' ? settings.copyTextImports === true : undefined
-  const openBookIds = new Set(groups.flatMap((group) => group.tabs.map((tab) => tab.book.id)))
+  const openBookIds = new Set(tabs.map((tab) => tab.book.id))
 
   useLayoutEffect(() => {
     if (viewMode === 'library') {
@@ -350,7 +350,7 @@ export function LibraryPage() {
     db.books
       .get(settings.startupSession.bookId)
       .then((book) => {
-        if (!book || reader.groups.length) return
+        if (!book || reader.tabs.length) return
 
         completeTabOpen(reader.openBookTab(book), () => setViewMode('reader'))
       })
@@ -425,14 +425,14 @@ export function LibraryPage() {
 
   useEffect(() => {
     if (!nativeStartupPending || !startupRestoreDone) return
-    if (groups.length && (!focusedBookTab?.rendered || viewMode !== 'reader') && !nativeStartupReaderFailed) {
+    if (tabs.length && (!focusedBookTab?.rendered || viewMode !== 'reader') && !nativeStartupReaderFailed) {
       return
     }
 
     setNativeStartupPending(false)
   }, [
     focusedBookTab?.rendered,
-    groups.length,
+    tabs.length,
     nativeStartupPending,
     nativeStartupReaderFailed,
     startupRestoreDone,
@@ -472,10 +472,10 @@ export function LibraryPage() {
   }, [focusedBookId, focusedBookTab?.book.scope, setSettings, settingsReady, startupRestoreDone, viewMode])
 
   useEffect(() => {
-    if (!groups.length && viewMode !== 'library') {
+    if (!tabs.length && viewMode !== 'library') {
       setViewMode('library')
     }
-  }, [groups.length, setViewMode, viewMode])
+  }, [setViewMode, tabs.length, viewMode])
 
   const library = (
     <Library
@@ -491,12 +491,12 @@ export function LibraryPage() {
     />
   )
   const nativeStartupContentReady =
-    !nativeStartupPending || !groups.length || focusedBookTab?.rendered || nativeStartupReaderFailed
+    !nativeStartupPending || !tabs.length || focusedBookTab?.rendered || nativeStartupReaderFailed
   const contentReady = startupRestoreDone && nativeStartupContentReady
 
   return (
     <>
-      {startupRestoreDone && groups.length ? (
+      {startupRestoreDone && tabs.length ? (
         <ReaderGridView
           content={viewMode === 'library' ? library : undefined}
           onEpubImportProgress={handleBookImportProgress}

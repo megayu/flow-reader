@@ -17,10 +17,6 @@ export function last<T>(array: T[]) {
   return array[array.length - 1]
 }
 
-export function range(n: number) {
-  return [...new Array(n)].map((_, i) => i)
-}
-
 export function group<T>(array: T[], getKey: (item: T) => string | number) {
   const o: Record<string, T[]> = {}
 

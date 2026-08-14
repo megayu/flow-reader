@@ -12,7 +12,7 @@ geometry. Run commands from the repository root.
 
 | Operation | Filters |
 | --- | --- |
-| `focusedGroup.selectTab(...)` | `tab-switch/sidebar-closed`, `tab-switch/sidebar-toc`, `tab-switch/sidebar-search`, `tab-switch/sidebar-annotation`, `tab-switch/sidebar-image` |
+| `reader.selectTab(...)` | `tab-switch/sidebar-closed`, `tab-switch/sidebar-toc`, `tab-switch/sidebar-search`, `tab-switch/sidebar-annotation`, `tab-switch/sidebar-image` |
 | Tab click/adoption | `tab-click/sidebar-closed`, `tab-click/sidebar-toc`, `tab-click/sidebar-search`, `tab-click/sidebar-annotation`, `tab-click/sidebar-image` |
 | Repeated tab clicks | `rapid-tab-click/sidebar-closed`, `rapid-tab-click/sidebar-toc` |
 | `focusedBookTab.search(...)` | `search-query/sidebar-search` |

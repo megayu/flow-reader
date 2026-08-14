@@ -965,7 +965,7 @@ async function warmSwitchBook(page, manifest) {
   assert(opfPath, 'switch warmup did not create an unpacked OPF', { unpacked })
   await page.keyboard.press('v')
   await waitForLibrary(page, manifest.count)
-  const tabCount = await page.evaluate(() => window.reader?.focusedGroup?.tabs?.length ?? 0)
+  const tabCount = await page.evaluate(() => window.reader?.tabs?.length ?? 0)
   assert(tabCount > 0, 'switch warmup did not retain a reader tab')
   return {
     performed: true,

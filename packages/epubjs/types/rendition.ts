@@ -39,7 +39,6 @@ export interface RenditionOptions {
   script?: string
   infinite?: boolean
   overflow?: string
-  snap?: boolean | object
   defaultDirection?: 'ltr'
   allowScriptedContent?: boolean
   globalLayoutProperties?: {

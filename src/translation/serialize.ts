@@ -1,10 +1,3 @@
-export function joinTranslationSections(sections: string[]): string {
-  return sections
-    .map((section) => section.trim())
-    .filter(Boolean)
-    .join('\n\n')
-}
-
 export function splitTranslationSections(text: string): string[] {
   return text
     .split(/\n{2,}/u)

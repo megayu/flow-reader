@@ -80,8 +80,8 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 
 - Symptom: unchanged-size tab switching produces many more active/inactive writes than the expected deactivate-old and activate-new operations.
 - Reproduction path: instrument `setActive` calls while switching across three tabs without reader width or typography changes.
-- Root cause: tab group selection owned active state synchronously, while a `BookPane` layout effect repeated active writes during cleanup/setup.
-- Fix direction: keep active-state ownership in the group/tab model; pane components should only clear active state on unmount.
+- Root cause: reader tab selection owned active state synchronously, while a `BookPane` layout effect repeated active writes during cleanup/setup.
+- Fix direction: keep active-state ownership in the `Reader` tab model; pane components should only clear active state on unmount.
 - Verification gate: pure tab switching should have exactly the expected active flips and zero reader pagination counters.
 
 ### Tab reorder moves mounted reader panes
