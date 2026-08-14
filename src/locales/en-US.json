@@ -73,6 +73,8 @@
   "home.folder_import.change_folder": "Change",
   "home.folder_import.formats": "File formats",
   "home.folder_import.include_subfolders": "Include subfolders",
+  "home.folder_import.mixed_drop_not_allowed": "Folders and files cannot be dropped together",
+  "home.folder_import.multiple_drop_not_allowed": "Only one folder can be dropped at a time",
   "home.folder_import.search_scope": "Search scope",
   "home.folder_import.selected_folder": "Selected folder",
   "home.folder_import.tag_direct": "Book folder",

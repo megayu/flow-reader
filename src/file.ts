@@ -214,6 +214,9 @@ export async function setupNativeOpenFiles({
   onOpen,
   onOpenRequest,
   onDrop,
+  onDropFolder,
+  onDropMixedItems,
+  onDropMultipleFolders,
   onImportProgress,
   onImportResult,
   onDropTextPaths,
@@ -222,6 +225,9 @@ export async function setupNativeOpenFiles({
   onOpen?: (books: BookRecord[]) => void
   onOpenRequest?: (paths: string[]) => void
   onDrop?: (books: BookRecord[]) => void
+  onDropFolder?: (path: string) => void
+  onDropMixedItems?: () => void
+  onDropMultipleFolders?: () => void
   onImportProgress?: (progress: BookImportProgress) => void
   onImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
   onDropTextPaths?: (paths: string[], waitForEpubImport?: Promise<void>) => void
@@ -287,12 +293,30 @@ export async function setupNativeOpenFiles({
       const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow')
       unlistenDrop = await getCurrentWebviewWindow().onDragDropEvent((event) => {
         if (event.payload.type !== 'drop') return
-        void handleFilePaths(sortDroppedFilePaths(event.payload.paths), {
-          directTextImport: getDirectTextImport?.(),
-          onImportProgress,
-          onImportResult,
-          onTextPaths: onDropTextPaths,
-        })
+        const paths = sortDroppedFilePaths(event.payload.paths)
+        void invoke<string[]>('filter_directory_paths', { paths })
+          .then((directoryPaths) => {
+            if (directoryPaths.length > 1) {
+              onDropMultipleFolders?.()
+              return []
+            }
+            if (directoryPaths.length && directoryPaths.length < paths.length) {
+              onDropMixedItems?.()
+              return []
+            }
+            const [directoryPath] = directoryPaths
+            if (directoryPath) {
+              onDropFolder?.(directoryPath)
+              return []
+            }
+
+            return handleFilePaths(paths, {
+              directTextImport: getDirectTextImport?.(),
+              onImportProgress,
+              onImportResult,
+              onTextPaths: onDropTextPaths,
+            })
+          })
           .then((books) => {
             if (books.length) onDrop?.(books)
           })

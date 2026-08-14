@@ -197,6 +197,7 @@ export function LibraryPage() {
     folderImportSelection?: FolderImportSelection
   }>()
   const [bookImportProgress, setBookImportProgress] = useState<BookImportProgress>()
+  const [folderImportPath, setFolderImportPath] = useState<string>()
   const notify = useNotify()
   const notifyBookImportResult = useBookImportNotifications()
   const errorT = useTranslation('error')
@@ -306,6 +307,31 @@ export function LibraryPage() {
   const handleNativeEpubImportResult = useEffectEvent((result: BookImportResult) => handleEpubImportResult(result))
   const getNativeDirectTextImport = useEffectEvent(() => directTextImport)
 
+  const importFolderSelection = useCallback(
+    (folderImportSelection: FolderImportSelection) => {
+      setFolderImportPath(undefined)
+      void handleFilePaths(
+        folderImportSelection.candidates.map((candidate) => candidate.path),
+        {
+          directTextImport,
+          onImportProgress: handleBookImportProgress,
+          onImportResult: async (result) =>
+            handleEpubImportResult(await applyFolderImportTagsToResult(result, folderImportSelection)),
+          onTextPaths: (paths, waitForEpubImport) =>
+            openTextImportDialog(paths, false, waitForEpubImport, folderImportSelection),
+        },
+      ).catch((error) => {
+        notify({
+          autoCloseMs: false,
+          description: formatErrorMessage(error),
+          title: errorT('folder_import_failed'),
+          type: 'error',
+        })
+      })
+    },
+    [directTextImport, errorT, handleBookImportProgress, handleEpubImportResult, notify, openTextImportDialog],
+  )
+
   useEffect(() => {
     return subscribeReaderOpenErrors(({ bookId, bookTitle, closeTab, error, stage }) => {
       setNativeStartupReaderFailed(true)
@@ -383,6 +409,21 @@ export function LibraryPage() {
 
         selectDroppedBooksToAutoOpen(books).forEach((book) => {
           completeTabOpen(reader.openBookTab(book), () => setViewMode('reader'))
+        })
+      },
+      onDropFolder: (path) => {
+        setFolderImportPath(path)
+      },
+      onDropMixedItems: () => {
+        notify({
+          title: homeT('folder_import.mixed_drop_not_allowed'),
+          type: 'error',
+        })
+      },
+      onDropMultipleFolders: () => {
+        notify({
+          title: homeT('folder_import.multiple_drop_not_allowed'),
+          type: 'error',
         })
       },
       onDropTextPaths: (paths, waitForEpubImport) => {
@@ -487,6 +528,7 @@ export function LibraryPage() {
       onTextPaths={(paths, waitForEpubImport, folderImportSelection) =>
         openTextImportDialog(paths, false, waitForEpubImport, folderImportSelection)
       }
+      onOpenFolderImport={setFolderImportPath}
       returnStateRef={libraryReturnStateRef}
     />
   )
@@ -525,6 +567,13 @@ export function LibraryPage() {
         />
       )}
       {bookImportProgress && <BookImportProgressPanel progress={bookImportProgress} />}
+      {folderImportPath && (
+        <FolderImportDialog
+          rootPath={folderImportPath}
+          onClose={() => setFolderImportPath(undefined)}
+          onImport={importFolderSelection}
+        />
+      )}
     </>
   )
 }
@@ -535,6 +584,7 @@ interface LibraryProps {
   onEpubImportProgress: (progress: BookImportProgress) => void
   onEpubImportResult: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
   onOpenBook: () => void
+  onOpenFolderImport: (path: string) => void
   onTextPaths: (
     paths: string[],
     waitForEpubImport?: Promise<void>,
@@ -557,6 +607,7 @@ const Library: React.FC<LibraryProps> = ({
   onEpubImportProgress,
   onEpubImportResult,
   onOpenBook,
+  onOpenFolderImport,
   onTextPaths,
   returnStateRef,
 }) => {
@@ -590,7 +641,6 @@ const Library: React.FC<LibraryProps> = ({
   const [sourceStatuses, setSourceStatuses] = useState(() => new Map<string, BookSourceStatus>())
   const [batchTagsOpen, setBatchTagsOpen] = useState(false)
   const [deleteBooksOpen, setDeleteBooksOpen] = useState(false)
-  const [folderImportPath, setFolderImportPath] = useState<string>()
   const bookGridRef = useRef<HTMLUListElement>(null)
   const libraryScrollRef = useRef<HTMLDivElement>(null)
   const libraryScrollContentRef = useRef<HTMLDivElement>(null)
@@ -920,7 +970,7 @@ const Library: React.FC<LibraryProps> = ({
   const importFolder = useCallback(() => {
     void selectImportFolder()
       .then((path) => {
-        if (path) setFolderImportPath(path)
+        if (path) onOpenFolderImport(path)
       })
       .catch((error) => {
         notify({
@@ -930,31 +980,7 @@ const Library: React.FC<LibraryProps> = ({
           type: 'error',
         })
       })
-  }, [errorT, notify])
-
-  const importFolderSelection = useCallback(
-    (folderImportSelection: FolderImportSelection) => {
-      setFolderImportPath(undefined)
-      void handleFilePaths(
-        folderImportSelection.candidates.map((candidate) => candidate.path),
-        {
-          directTextImport,
-          onImportProgress: onEpubImportProgress,
-          onImportResult: async (result) =>
-            handleEpubImportResult(await applyFolderImportTagsToResult(result, folderImportSelection)),
-          onTextPaths: (paths, waitForEpubImport) => onTextPaths(paths, waitForEpubImport, folderImportSelection),
-        },
-      ).catch((error) => {
-        notify({
-          autoCloseMs: false,
-          description: formatErrorMessage(error),
-          title: errorT('folder_import_failed'),
-          type: 'error',
-        })
-      })
-    },
-    [directTextImport, errorT, handleEpubImportResult, notify, onEpubImportProgress, onTextPaths],
-  )
+  }, [errorT, notify, onOpenFolderImport])
 
   const handleCancelSelectionKeyDown = useEffectEvent((e: KeyboardEvent) => {
     if (e.key !== 'Escape') return
@@ -1534,13 +1560,6 @@ const Library: React.FC<LibraryProps> = ({
                 })
               })
           }}
-        />
-      )}
-      {folderImportPath && (
-        <FolderImportDialog
-          rootPath={folderImportPath}
-          onClose={() => setFolderImportPath(undefined)}
-          onImport={importFolderSelection}
         />
       )}
     </DropZone>

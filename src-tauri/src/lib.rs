@@ -104,6 +104,11 @@ fn take_pending_open_paths(state: tauri::State<'_, PendingOpenFiles>) -> Vec<Str
 }
 
 #[tauri::command]
+fn filter_directory_paths(paths: Vec<String>) -> Vec<String> {
+    paths.into_iter().filter(|path| Path::new(path).is_dir()).collect()
+}
+
+#[tauri::command]
 fn is_devtools_enabled() -> bool {
     cfg!(feature = "devtools")
 }
@@ -296,6 +301,7 @@ pub fn run() {
             list_system_fonts,
             open_external_url,
             take_pending_open_paths,
+            filter_directory_paths,
             toggle_devtools,
             get_window_ui_state,
             persist_app_close_state,
