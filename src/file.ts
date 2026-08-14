@@ -203,7 +203,10 @@ export async function applyFolderImportTagsToResult(result: BookImportResult, se
   const taggedById = new Map(tagged.books.map((book) => [book.id, book]))
   return {
     ...result,
-    books: result.books.map((book) => taggedById.get(book.id) ?? book),
+    books: result.books.map((book) => {
+      const taggedBook = taggedById.get(book.id)
+      return taggedBook ? { ...book, tagIds: taggedBook.tagIds, updatedAt: taggedBook.updatedAt } : book
+    }),
   }
 }
 
@@ -273,7 +276,7 @@ export async function setupNativeOpenFiles({
     }
 
     unlistenOpen = await listen<string[]>(nativeOpenEvent, (event) => {
-      void openPaths(event.payload)
+      void openPaths(event.payload).catch(console.error)
     })
 
     const pendingOpenPaths = await invoke<string[]>('take_pending_open_paths')
@@ -289,9 +292,11 @@ export async function setupNativeOpenFiles({
           onImportProgress,
           onImportResult,
           onTextPaths: onDropTextPaths,
-        }).then((books) => {
-          if (books.length) onDrop?.(books)
         })
+          .then((books) => {
+            if (books.length) onDrop?.(books)
+          })
+          .catch(console.error)
       })
     } catch (error) {
       console.debug('Native file drop is unavailable', error)

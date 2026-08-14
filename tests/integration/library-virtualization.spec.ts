@@ -27,7 +27,6 @@ function createBook(index: number, titlePrefix = 'Virtual Book') {
     updatedAt: index,
     definitions: [],
     annotations: [],
-    stateLoaded: true,
   })
 }
 

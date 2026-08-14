@@ -121,9 +121,9 @@ function handleCommandShortcut(
     consumeShortcut(event)
     if (!isReaderShortcutTargetBlocked(event)) {
       if (event.shiftKey) {
-        reader.closeAllTabs()
+        void reader.closeAllTabs().catch(console.error)
       } else {
-        reader.closeFocusedTab()
+        void reader.closeFocusedTab()?.catch(console.error)
       }
     }
     return true
@@ -343,13 +343,11 @@ function updateBookFontSize(tab: BookTab, delta: number) {
     parseFontSize(tab.book.configuration?.typography?.fontSize) ?? getCurrentBodyFontSize(tab) ?? FONT_SIZE_DEFAULT
   const next = clamp(fontSize + delta, FONT_SIZE_MIN, FONT_SIZE_MAX)
 
-  tab.updateBook({
-    configuration: {
-      ...tab.book.configuration,
-      typography: {
-        ...tab.book.configuration?.typography,
-        fontSize: `${next}px`,
-      },
+  tab.updateConfiguration({
+    ...tab.book.configuration,
+    typography: {
+      ...tab.book.configuration?.typography,
+      fontSize: `${next}px`,
     },
   })
 }
@@ -358,11 +356,9 @@ function clearBookFontSize(tab: BookTab) {
   const typography = { ...tab.book.configuration?.typography }
   delete typography.fontSize
 
-  tab.updateBook({
-    configuration: {
-      ...tab.book.configuration,
-      typography,
-    },
+  tab.updateConfiguration({
+    ...tab.book.configuration,
+    typography,
   })
 }
 

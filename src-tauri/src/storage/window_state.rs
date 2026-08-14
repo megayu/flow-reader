@@ -20,7 +20,8 @@ pub struct WindowUiState {
 #[serde(rename_all = "camelCase")]
 pub struct AppCloseInput {
     window: WindowUiState,
-    reading_positions: Vec<ReadingPositionInput>,
+    #[serde(default)]
+    book_checkpoints: Vec<checkpoint::BookStateCheckpointInput>,
     #[serde(default)]
     recent_book_ids: Option<Vec<String>>,
 }
@@ -96,9 +97,7 @@ pub fn runtime_window_ui_state(app: &AppHandle) -> Result<WindowUiState, String>
 }
 
 pub fn persist_app_close_state(window: &Window, storage: &AppStorage, input: AppCloseInput) -> Result<(), String> {
-    for position in input.reading_positions {
-        record_reading_position_impl(storage, position)?;
-    }
+    checkpoint::apply_book_state_checkpoints(storage, input.book_checkpoints)?;
 
     let recent_books_changed = match input.recent_book_ids {
         Some(recent_book_ids) => {
@@ -111,6 +110,7 @@ pub fn persist_app_close_state(window: &Window, storage: &AppStorage, input: App
                 .library
                 .books
                 .iter()
+                .filter(|book| book.scope == BookScope::Library)
                 .map(|book| book.id.clone())
                 .collect::<HashSet<_>>();
             let mut seen = HashSet::new();

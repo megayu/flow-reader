@@ -366,7 +366,12 @@ pub(super) fn export_book_impl(
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        let Some(book) = state.library.books.iter_mut().find(|book| book.id == id) else {
+        let Some(book) = state
+            .library
+            .books
+            .iter_mut()
+            .find(|book| book.id == id && book.scope == BookScope::Library)
+        else {
             return Ok(None);
         };
         book.source_format = source_format;
@@ -377,5 +382,5 @@ pub(super) fn export_book_impl(
     storage.mark_library_dirty();
     storage.flush_content_dirty()?;
 
-    storage.compose_book(&book, BookScope::Library).map(Some)
+    storage.compose_book(&book).map(Some)
 }

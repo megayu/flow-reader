@@ -83,7 +83,6 @@ function dictionaryBook(language = 'zh-CN'): BookRecord {
     cfi: 'chapter_001.xhtml',
     definitions: [],
     annotations: [],
-    stateLoaded: true,
   })
 }
 

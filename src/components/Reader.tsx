@@ -6,7 +6,6 @@ import {
   ChevronsDownIcon,
   ChevronsUpIcon,
   ChevronUpIcon,
-  PanelTopIcon,
 } from 'lucide-react'
 import React, {
   type ComponentProps,
@@ -22,7 +21,6 @@ import { useSnapshot } from 'valtio'
 
 import type { Contents } from '@flow/epubjs'
 import { type RenditionManagerView, RenditionSpread } from '@flow/epubjs/rendition'
-import { SettingsPanel } from '@/settings/SettingsPanel'
 import {
   useSetSettingsDialogOpen,
   useSettingsReady,
@@ -42,10 +40,10 @@ import { useAction } from '../hooks/useAction'
 import { useEventListener } from '../hooks/useEventListener'
 import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
-import { BookTab, getBookTabFrameWindows, reader, useReaderSnapshot } from '../models/reader'
+import { type BookTab, completeTabOpen, getBookTabFrameWindows, reader, useReaderSnapshot } from '../models/reader'
 import { createReaderKeyDownHandler, hasKeyboardCapturingLayer, isEditableTarget } from '../reader/shortcuts'
 import { getShortcutChords } from '../shortcuts'
-import { type BookImportProgress, type BookImportResult, type BookRecord, db } from '../storage'
+import { type BookImportProgress, type BookImportResult, db } from '../storage'
 import { createTypographyLayoutSignature, createTypographyStyleSignature, updateCustomStyle } from '../styles'
 
 import { Annotations } from './Annotation'
@@ -64,8 +62,6 @@ import { useReaderPageGeometry } from './reader/useReaderPageGeometry'
 import { ShortcutChord } from './ShortcutChord'
 import { Tab } from './Tab'
 import { TextSelectionMenu } from './TextSelectionMenu'
-
-const pageComponents = [SettingsPanel]
 
 function preventContextMenu(e: Event) {
   e.preventDefault()
@@ -393,14 +389,15 @@ function ReaderGroup({
         onPointerUp={handleTabPointerUp}
         onPointerCancel={handleTabPointerCancel}
       >
-        {tabs.map((tab, i) => {
+        {tabs.map((tabSnapshot, i) => {
+          const tab = group.tabs[i]!
           const selected = i === selectedIndex
           const focused = selected
           return (
             <ReaderTabItem
               groupIndex={index}
               index={i}
-              key={tab.id}
+              key={tabSnapshot.id}
               focused={focused}
               selected={selected}
               showSeparator={
@@ -442,13 +439,14 @@ function ReaderGroup({
               })
             } else {
               const text = e.dataTransfer.getData('text/plain')
-              const tabParam = pageComponents.find((p) => p.displayName === text) ?? (await db.books.get(text))
-              if (tabParam) tabs.push(tabParam)
+              const book = await db.books.get(text)
+              if (book) tabs.push(book)
             }
 
             if (tabs.length) {
-              tabs.forEach((t) => reader.addTab(t, index))
-              onEnterReaderMode()
+              tabs.forEach((tab) => {
+                completeTabOpen(reader.addTab(tab, index), onEnterReaderMode)
+              })
             }
           }}
         >
@@ -458,11 +456,7 @@ function ReaderGroup({
 
             return (
               <PaneContainer active={active} key={paneTab.id}>
-                {tab instanceof BookTab ? (
-                  <BookPane active={active} tab={tab} onMouseDown={handleMouseDown} />
-                ) : (
-                  <tab.Component />
-                )}
+                <BookPane active={active} tab={tab} onMouseDown={handleMouseDown} />
               </PaneContainer>
             )
           })}
@@ -475,8 +469,8 @@ function ReaderGroup({
   )
 }
 
-function getReaderTabLabel(tab: BookTab | { title: string }, t: (key: string) => string) {
-  return tab instanceof BookTab ? getBookDisplayTitle(tab.book) : t(`${tab.title}.title`)
+function getReaderTabLabel(tab: BookTab) {
+  return getBookDisplayTitle(tab.book)
 }
 
 interface ReaderTabItemProps {
@@ -489,7 +483,7 @@ interface ReaderTabItemProps {
   onSelect: (index: number) => void
   selected: boolean
   showSeparator: boolean
-  tab: BookTab | { id: string; title: string }
+  tab: BookTab
 }
 
 const ReaderTabItem = React.memo(function ReaderTabItem({
@@ -504,8 +498,7 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
   showSeparator,
   tab,
 }: ReaderTabItemProps) {
-  const t = useTranslation()
-  const label = getReaderTabLabel(tab, t)
+  const label = getReaderTabLabel(tab)
   const handleMouseEnter = useCallback(() => {
     onHoverChange(index)
   }, [index, onHoverChange])
@@ -516,7 +509,7 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
     onSelect(index)
   }, [index, onSelect])
   const handleDelete = useCallback(() => {
-    reader.removeTab(index, groupIndex)
+    void reader.removeTab(index, groupIndex).catch(console.error)
   }, [groupIndex, index])
 
   return (
@@ -528,7 +521,7 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
       selected={selected}
       focused={focused}
       showSeparator={showSeparator}
-      title={getReaderTabTooltip(tab, t)}
+      title={getReaderTabTooltip(tab)}
       tooltipContent={getReaderTabTooltipContent(tab)}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -541,15 +534,12 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
   )
 })
 
-function getReaderTabTooltip(tab: BookTab | { title: string }, t: (key: string) => string) {
-  return tab instanceof BookTab ? getBookTooltip(tab.book) : getReaderTabLabel(tab, t)
+function getReaderTabTooltip(tab: BookTab) {
+  return getBookTooltip(tab.book)
 }
 
-function getReaderTabTooltipContent(tab: BookTab | { title: string }) {
-  if (!(tab instanceof BookTab)) return
-
-  const book = tab.book as unknown as BookRecord
-  return <BookTooltipContent book={book} />
+function getReaderTabTooltipContent(tab: BookTab) {
+  return <BookTooltipContent book={tab.book} />
 }
 
 type TemporaryBookOpenIconProps = React.ComponentProps<typeof BookOpenIcon> & {
@@ -560,9 +550,7 @@ const TemporaryBookOpenIcon = function TemporaryBookOpenIcon({ ref, ...props }: 
   return <BookOpenIcon {...props} ref={ref} strokeDasharray="1 2.5" />
 } as typeof BookOpenIcon
 
-function getReaderTabIcon(tab: BookTab | { title: string }) {
-  if (!(tab instanceof BookTab)) return PanelTopIcon
-
+function getReaderTabIcon(tab: BookTab) {
   return tab.book.scope === 'external' ? TemporaryBookOpenIcon : BookOpenIcon
 }
 

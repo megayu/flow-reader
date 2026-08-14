@@ -724,6 +724,3 @@ const ShortcutSettings: React.FC = () => {
     </div>
   )
 }
-
-// PageTab uses displayName as its persisted page identifier.
-SettingsPanel.displayName = 'settings'

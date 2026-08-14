@@ -8,7 +8,7 @@ import { useBackground } from '@/hooks/theme/useBackground'
 import { useLibrary } from '@/hooks/useLibrary'
 import { LIST_ITEM_SIZE, useList } from '@/hooks/useList'
 import { useTranslation } from '@/hooks/useTranslation'
-import { type BookTab, compareHref, type INavItem, reader, useReaderSnapshot } from '@/models/reader'
+import { type BookTab, compareHref, completeTabOpen, type INavItem, reader, useReaderSnapshot } from '@/models/reader'
 import { useSetViewMode, useShowLibraryInTocValue } from '@/state'
 
 import { AppTooltip } from '../AppTooltip'
@@ -46,12 +46,7 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
   const sortedBooks = useMemo(() => books?.slice().sort(compareBookDisplayTitle) ?? [], [books])
   const { outerRef, items, scrollbar, scrollToItem, totalSize } = useList(sortedBooks)
   const openedBookIds = useMemo(
-    () =>
-      new Set(
-        groups.flatMap((group) =>
-          group.tabs.map((tab) => ('book' in tab ? tab.book?.id : undefined)).filter((id): id is string => !!id),
-        ),
-      ),
+    () => new Set(groups.flatMap((group) => group.tabs.map((tab) => tab.book.id))),
     [groups],
   )
   const currentBookId = focusedBookTab?.book.id
@@ -103,8 +98,7 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
               aria-current={active ? 'true' : undefined}
               draggable
               onClick={() => {
-                reader.openBookFromLibrary(book)
-                setViewMode('reader')
+                completeTabOpen(reader.openBookFromLibrary(book.id), () => setViewMode('reader'))
               }}
               onDragStart={(e) => {
                 e.dataTransfer.setData('text/plain', book.id)

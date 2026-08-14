@@ -56,7 +56,7 @@ import { useCovers, useLibrary, useLibraryTags, useRecentBookIds } from '../hook
 import { useOverlayScrollbarMetrics } from '../hooks/useOverlayScrollbarMetrics'
 import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
-import { reader, useReaderSnapshot } from '../models/reader'
+import { completeTabOpen, reader, useReaderSnapshot } from '../models/reader'
 import { subscribeReaderOpenErrors } from '../reader/errorEvents'
 import { createTextSearchIndex, matchesTextSearch } from '../search/textSearch'
 import { getShortcutChords } from '../shortcuts'
@@ -157,7 +157,7 @@ const noCoverResourceIdentities: readonly CoverResourceIdentity[] = []
 const dragImportAutoOpenBookTabLimit = 8
 
 function selectDroppedBooksToAutoOpen(books: BookRecord[]) {
-  const openBookIds = new Set(reader.groups.flatMap((group) => group.bookTabs.map((tab) => tab.book.id)))
+  const openBookIds = new Set(reader.groups.flatMap((group) => group.tabs.map((tab) => tab.book.id)))
   if (openBookIds.size >= dragImportAutoOpenBookTabLimit) return []
 
   const selectedBooks: BookRecord[] = []
@@ -205,7 +205,7 @@ export function LibraryPage() {
   const directTextImport = settings.directTextImport === true
   const defaultCopyTextSourceFiles =
     settings.importSourceStorage === 'referenced' ? settings.copyTextImports === true : undefined
-  const openBookIds = new Set(groups.flatMap((group) => group.bookTabs.map((tab) => tab.book.id)))
+  const openBookIds = new Set(groups.flatMap((group) => group.tabs.map((tab) => tab.book.id)))
 
   useLayoutEffect(() => {
     if (viewMode === 'library') {
@@ -233,8 +233,9 @@ export function LibraryPage() {
     (books: BookRecord[], openAfterImport: boolean) => {
       if (!openAfterImport || !books.length) return
 
-      selectDroppedBooksToAutoOpen(books).forEach((book) => reader.addTab(book))
-      setViewMode('reader')
+      selectDroppedBooksToAutoOpen(books).forEach((book) => {
+        completeTabOpen(reader.openBookTab(book), () => setViewMode('reader'))
+      })
     },
     [setViewMode],
   )
@@ -309,7 +310,7 @@ export function LibraryPage() {
     return subscribeReaderOpenErrors(({ bookId, bookTitle, closeTab, error, stage }) => {
       setNativeStartupReaderFailed(true)
       if (closeTab) {
-        reader.closeBookTab(bookId)
+        void reader.closeBookTab(bookId).catch(console.error)
         window.dispatchEvent(new Event(bookSourceStatusRefreshEvent))
       }
       const errorMessage = formatErrorMessage(error)
@@ -351,9 +352,9 @@ export function LibraryPage() {
       .then((book) => {
         if (!book || reader.groups.length) return
 
-        reader.addTab(book)
-        setViewMode('reader')
+        completeTabOpen(reader.openBookTab(book), () => setViewMode('reader'))
       })
+      .catch(console.error)
       .finally(() => {
         setStartupRestoreDone(true)
       })
@@ -373,14 +374,16 @@ export function LibraryPage() {
         setNativeStartupPending(true)
       },
       onOpen: (books) => {
-        books.forEach((book) => reader.openBookTab(book))
-        setViewMode('reader')
+        books.forEach((book) => {
+          completeTabOpen(reader.openBookTab(book), () => setViewMode('reader'))
+        })
       },
       onDrop: (books) => {
         if (viewModeRef.current === 'library') return
 
-        selectDroppedBooksToAutoOpen(books).forEach((book) => reader.addTab(book))
-        setViewMode('reader')
+        selectDroppedBooksToAutoOpen(books).forEach((book) => {
+          completeTabOpen(reader.openBookTab(book), () => setViewMode('reader'))
+        })
       },
       onDropTextPaths: (paths, waitForEpubImport) => {
         openTextImportDialog(paths, viewModeRef.current !== 'library', waitForEpubImport)
@@ -659,12 +662,18 @@ const Library: React.FC<LibraryProps> = ({
     titleSearchQuery,
   })
   useLayoutEffect(() => {
-    latestReturnStateRef.current = {
+    const latest = {
       debouncedTitleSearchQuery,
       resultCriteriaSignature,
       titleSearchQuery,
     }
-  }, [debouncedTitleSearchQuery, resultCriteriaSignature, titleSearchQuery])
+    latestReturnStateRef.current = latest
+    returnStateRef.current = {
+      ...latest,
+      scrollExpiresAt: returnStateRef.current?.scrollExpiresAt ?? 0,
+      scrollTop: returnStateRef.current?.scrollTop ?? 0,
+    }
+  }, [debouncedTitleSearchQuery, resultCriteriaSignature, returnStateRef, titleSearchQuery])
   useLayoutEffect(
     () => () => {
       const scroll = libraryScrollRef.current
@@ -1147,8 +1156,7 @@ const Library: React.FC<LibraryProps> = ({
         const bookId = e.dataTransfer.getData('text/plain')
         const book = books.find((b) => b.id === bookId)
         if (book) {
-          reader.addTab(book)
-          onOpenBook()
+          completeTabOpen(reader.openBookFromLibrary(book.id), onOpenBook)
         }
 
         if (e.dataTransfer.files.length) {
@@ -1515,15 +1523,16 @@ const Library: React.FC<LibraryProps> = ({
             const bookIds = selectedBooks.map((book) => book.id)
             setDeleteBooksOpen(false)
             exitSelectMode()
-            bookIds.forEach((bookId) => reader.closeBookTab(bookId))
-            void db.books.bulkDelete(bookIds).catch((error) => {
-              notify({
-                autoCloseMs: false,
-                description: formatErrorMessage(error),
-                title: errorT('delete_books_failed'),
-                type: 'error',
+            void Promise.all(bookIds.map((bookId) => reader.closeBookTab(bookId)))
+              .then(() => db.books.bulkDelete(bookIds))
+              .catch((error) => {
+                notify({
+                  autoCloseMs: false,
+                  description: formatErrorMessage(error),
+                  title: errorT('delete_books_failed'),
+                  type: 'error',
+                })
               })
-            })
           }}
         />
       )}

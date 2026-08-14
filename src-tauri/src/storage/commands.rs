@@ -95,7 +95,7 @@ fn reveal_file_in_file_manager(path: &Path) -> Result<(), String> {
     }
 }
 
-pub(super) fn revealable_book_source_path(book: &LibraryBook) -> Option<&Path> {
+pub(super) fn revealable_book_source_path(book: &StoredBook) -> Option<&Path> {
     if book.source_storage != SourceStorage::Referenced {
         return None;
     }
@@ -134,6 +134,7 @@ pub fn list_books(storage: State<'_, AppStorage>) -> Result<Vec<BookRecord>, Str
         .library
         .books
         .iter()
+        .filter(|book| book.scope == BookScope::Library)
         .map(|book| storage.compose_book_summary(book))
         .collect())
 }
@@ -198,6 +199,7 @@ pub fn update_library_pin(
                         .library
                         .books
                         .iter()
+                        .filter(|book| book.scope == BookScope::Library)
                         .filter_map(library_book_author)
                         .any(|candidate| candidate == author)
                 {
@@ -324,6 +326,9 @@ pub fn update_tag(
 fn remove_library_tags(library: &mut Library, ids: &HashSet<String>, updated_at: u64) {
     library.tags.retain(|tag| !ids.contains(&tag.id));
     for book in &mut library.books {
+        if book.scope != BookScope::Library {
+            continue;
+        }
         let previous_len = book.tag_ids.len();
         book.tag_ids.retain(|tag_id| !ids.contains(tag_id));
         if book.tag_ids.len() != previous_len {
@@ -424,6 +429,9 @@ pub(super) fn merge_tags_impl(
 
         let updated_at = now_ms();
         for book in &mut state.library.books {
+            if book.scope != BookScope::Library {
+                continue;
+            }
             if !book.tag_ids.iter().any(|tag_id| source_ids.contains(tag_id)) {
                 continue;
             }
@@ -496,7 +504,7 @@ pub fn update_book_tags(
             .collect::<std::collections::HashSet<_>>();
         let updated_at = now_ms();
         for book in &mut state.library.books {
-            if !id_set.contains(&book.id) {
+            if book.scope != BookScope::Library || !id_set.contains(&book.id) {
                 continue;
             }
 
@@ -534,7 +542,7 @@ pub fn update_book_reading_status(
 
         let updated_at = now_ms();
         for book in &mut state.library.books {
-            if id_set.contains(&book.id) && book.reading_status != reading_status {
+            if book.scope == BookScope::Library && id_set.contains(&book.id) && book.reading_status != reading_status {
                 book.reading_status = reading_status.clone();
                 book.updated_at = Some(updated_at);
             }
@@ -551,21 +559,18 @@ pub fn get_book(storage: State<'_, AppStorage>, id: String) -> Result<Option<Boo
 }
 
 pub(super) fn get_book_impl(storage: &AppStorage, id: String) -> Result<Option<BookRecord>, String> {
-    let (book, scope) = {
+    let book = {
         let state = storage
             .inner
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        if let Some(book) = state.library.books.iter().find(|book| book.id == id) {
-            (book.clone(), BookScope::Library)
-        } else if let Some(book) = state.external.books.iter().find(|book| book.id == id) {
-            (book.clone(), BookScope::External)
-        } else {
+        let Some(book) = state.library.books.iter().find(|book| book.id == id) else {
             return Ok(None);
-        }
+        };
+        book.clone()
     };
-    storage.compose_book(&book, scope).map(Some)
+    storage.compose_book(&book).map(Some)
 }
 
 #[tauri::command]
@@ -577,7 +582,12 @@ pub fn open_book_directory(storage: State<'_, AppStorage>, id: String) -> Result
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
 
-        if !state.library.books.iter().any(|book| book.id == id) {
+        if !state
+            .library
+            .books
+            .iter()
+            .any(|book| book.id == id && book.scope == BookScope::Library)
+        {
             return Err("book not found".to_string());
         }
 
@@ -599,7 +609,12 @@ pub fn reveal_book_source(storage: State<'_, AppStorage>, id: String) -> Result<
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        let Some(book) = state.library.books.iter().find(|book| book.id == id) else {
+        let Some(book) = state
+            .library
+            .books
+            .iter()
+            .find(|book| book.id == id && book.scope == BookScope::Library)
+        else {
             return Ok(false);
         };
 
@@ -640,7 +655,7 @@ pub fn list_covers(storage: State<'_, AppStorage>, ids: Option<Vec<String>>) -> 
                     .library
                     .books
                     .iter()
-                    .filter(|book| requested.contains(&book.id))
+                    .filter(|book| book.scope == BookScope::Library && requested.contains(&book.id))
                     .map(|book| book.id.clone())
                     .collect::<Vec<_>>()
             }
@@ -648,6 +663,7 @@ pub fn list_covers(storage: State<'_, AppStorage>, ids: Option<Vec<String>>) -> 
                 .library
                 .books
                 .iter()
+                .filter(|book| book.scope == BookScope::Library)
                 .map(|book| book.id.clone())
                 .collect::<Vec<_>>(),
         }
@@ -683,7 +699,7 @@ pub(super) fn import_epub_paths_impl(
     let mut failures = Vec::new();
     let mut skipped = Vec::new();
     let mut finalizers = Vec::new();
-    let mut import_index = LibraryBookLookupIndex::load(storage)?;
+    let mut import_index = BookImportLookupIndex::load(storage)?;
     let mut progress = BookImportProgressReporter::new(on_progress, total);
 
     let paths = paths
@@ -793,20 +809,26 @@ pub(super) fn open_external_epub_paths_impl(
     let source_count = paths.len();
     let mut books = Vec::new();
     let mut failures = Vec::new();
+    let mut saw_epub = false;
 
     for path in paths {
         let path = PathBuf::from(path);
         if !is_epub_file(&path) {
             continue;
         }
+        saw_epub = true;
 
         let bytes = std::fs::metadata(&path).map(|metadata| metadata.len()).unwrap_or(0);
         match tasks.run_io_observed(storage.root(), bytes, TaskPriority::Foreground, || {
-            open_external_epub_path_impl(storage, &path)
+            open_external_epub_path_unflushed_impl(storage, &path)
         }) {
             Ok(book) => books.push(book),
             Err(error) => failures.push(book_import_failure(&path, error)),
         }
+    }
+
+    if saw_epub && !books.is_empty() {
+        storage.flush_content_dirty()?;
     }
 
     let mut fields = vec![
@@ -1073,7 +1095,7 @@ pub(super) fn import_text_paths_impl(
         .filter(|import| is_txt_file(Path::new(&import.path)))
         .collect::<Vec<_>>();
     let mut progress = BookImportProgressReporter::new(on_progress, imports.len());
-    let mut import_index = LibraryBookLookupIndex::load(storage)?;
+    let mut import_index = BookImportLookupIndex::load(storage)?;
     let batch = {
         let mut state = TextImportBatchState {
             import_index: &mut import_index,
@@ -1110,7 +1132,7 @@ struct TextImportBatch {
 }
 
 struct TextImportBatchState<'a> {
-    import_index: &'a mut LibraryBookLookupIndex,
+    import_index: &'a mut BookImportLookupIndex,
     progress: &'a mut BookImportProgressReporter,
 }
 
@@ -1329,7 +1351,7 @@ pub async fn get_book_reader_source(
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let book = storage.library_book(&id)?;
+        let book = storage.stored_book(&id)?;
         get_book_reader_source_impl(&storage, &tasks, &book)
     })
     .await
@@ -1358,7 +1380,7 @@ pub async fn search_book_text(
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let book = storage.library_book(&id)?;
+        let book = storage.stored_book(&id)?;
         let cache = load_or_build_search_text_cache(&storage, &tasks, &book)?;
         Ok(search_text_in_cache(&cache, &keyword, limit))
     })
@@ -1375,7 +1397,7 @@ pub async fn load_book_image_index(
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let book = storage.library_book(&id)?;
+        let book = storage.stored_book(&id)?;
         if book.source_format == BookSourceFormat::Txt {
             return Ok(ImageIndexCache {
                 version: IMAGE_INDEX_CACHE_VERSION,
@@ -1486,165 +1508,14 @@ pub fn cleanup_external_book(storage: State<'_, AppStorage>, id: String) -> Resu
     cleanup_external_book_heavy_files(&storage, &id)
 }
 
-fn configuration_without_spread(value: Option<&Value>) -> Value {
-    match value {
-        Some(Value::Object(object)) => {
-            let mut object = object.clone();
-            object.remove("spread");
-            Value::Object(object)
-        }
-        Some(value) => value.clone(),
-        None => Value::Object(Default::default()),
-    }
-}
-
-fn is_spread_only_configuration_update(current: Option<&Value>, incoming: &Value) -> bool {
-    configuration_without_spread(current) == configuration_without_spread(Some(incoming))
-}
-
-#[derive(Default)]
-struct BookStateChanges {
-    book: bool,
-    state: bool,
-    flush: bool,
-    configuration_spread_only: bool,
-}
-
-fn apply_book_state_changes(
-    book: &mut LibraryBook,
-    state: &mut BookState,
-    changes: &serde_json::Map<String, Value>,
-) -> BookStateChanges {
-    let mut applied = BookStateChanges {
-        configuration_spread_only: !changes.contains_key("configuration"),
-        ..Default::default()
-    };
-    if let Some(value) = changes.get("updatedAt").and_then(Value::as_u64) {
-        book.updated_at = Some(value);
-        applied.book = true;
-    }
-    if let Some(value) = changes.get("lastReadAt").and_then(Value::as_u64) {
-        book.last_read_at = Some(value);
-        applied.book = true;
-    }
-    if let Some(value) = changes.get("cfi") {
-        let cfi = value.as_str().map(str::to_string);
-        state.cfi = cfi.clone();
-        book.cfi = cfi;
-        applied.book = true;
-        applied.state = true;
-    }
-    if let Some(value) = changes.get("percentage") {
-        let percentage = value.as_f64();
-        state.percentage = percentage;
-        book.percentage = percentage;
-        applied.book = true;
-        applied.state = true;
-    }
-    if let Some(value) = changes.get("definitions") {
-        state.definitions = serde_json::from_value(value.clone()).unwrap_or_default();
-        applied.state = true;
-        applied.flush = true;
-    }
-    if let Some(value) = changes.get("annotations") {
-        state.annotations = serde_json::from_value(value.clone()).unwrap_or_default();
-        applied.state = true;
-        applied.flush = true;
-    }
-    if let Some(value) = changes.get("configuration") {
-        applied.configuration_spread_only = is_spread_only_configuration_update(state.configuration.as_ref(), value);
-        state.configuration = Some(value.clone());
-        applied.state = true;
-        applied.flush |= !applied.configuration_spread_only;
-    }
-    applied
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReadingPositionInput {
-    pub book_id: String,
-    pub cfi: Option<String>,
-    pub percentage: Option<f64>,
-    #[serde(default)]
-    pub spread: Option<Value>,
-    pub last_read_at: u64,
-}
-
-pub(super) fn record_reading_position_impl(
-    storage: &AppStorage,
-    position: ReadingPositionInput,
-) -> Result<bool, String> {
-    let scope = {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
-        let scope = if let Some(book) = state.library.books.iter_mut().find(|book| book.id == position.book_id) {
-            book.cfi = position.cfi.clone();
-            book.percentage = position.percentage;
-            book.last_read_at = Some(position.last_read_at);
-            BookScope::Library
-        } else if let Some(book) = state.external.books.iter_mut().find(|book| book.id == position.book_id) {
-            book.cfi = position.cfi.clone();
-            book.percentage = position.percentage;
-            book.last_read_at = Some(position.last_read_at);
-            BookScope::External
-        } else {
-            return Ok(false);
-        };
-
-        let mut book_state = storage.read_book_state(&position.book_id)?;
-        book_state.cfi = position.cfi.clone();
-        book_state.percentage = position.percentage;
-        book_state.configuration = Some(configuration_with_recorded_spread(
-            book_state.configuration.as_ref(),
-            position.spread,
-        ));
-        storage.write_book_state(&position.book_id, &book_state)?;
-        scope
-    };
-
-    match scope {
-        BookScope::Library => storage.mark_library_dirty(),
-        BookScope::External => storage.mark_external_dirty(),
-    }
-    Ok(true)
-}
-
-fn configuration_with_recorded_spread(current: Option<&Value>, spread: Option<Value>) -> Value {
-    let mut object = current.and_then(Value::as_object).cloned().unwrap_or_default();
-
-    match spread {
-        Some(spread) if !spread.is_null() => {
-            object.insert("spread".to_string(), spread);
-        }
-        _ => {
-            object.remove("spread");
-        }
-    }
-
-    Value::Object(object)
-}
-
-#[tauri::command]
-pub fn record_reading_position(storage: State<'_, AppStorage>, position: ReadingPositionInput) -> Result<(), String> {
-    record_reading_position_impl(&storage, position)?;
-    storage.flush_content_dirty()
-}
-
 #[tauri::command]
 pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -> Result<Option<CoverRecord>, String> {
-    if storage.is_external_book(&id) {
-        update_external_book(&storage, id, changes)?;
+    let Some(object) = changes.as_object() else {
         return Ok(None);
-    }
-
-    let mut library_changed = false;
-    let mut state_changed = false;
-    let mut immediate_flush = false;
-    let mut reading_position_only = false;
+    };
+    let Some(metadata) = object.get("metadata") else {
+        return Ok(None);
+    };
     let mut cover_changed = false;
     {
         let mut state = storage
@@ -1652,90 +1523,35 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        let Some(book_index) = state.library.books.iter().position(|book| book.id == id) else {
+        let Some(book_index) = state
+            .library
+            .books
+            .iter()
+            .position(|book| book.id == id && book.scope == BookScope::Library)
+        else {
             return Ok(None);
         };
         let mut book = state.library.books[book_index].clone();
-        let mut book_state = storage.read_book_state(&id)?;
         let previous_author = library_book_author(&book);
 
-        if let Some(object) = changes.as_object() {
-            let updates_reading_position = object.contains_key("cfi") || object.contains_key("percentage");
-            let allowed_reading_position_keys = object.keys().all(|key| {
-                matches!(
-                    key.as_str(),
-                    "cfi" | "percentage" | "updatedAt" | "lastReadAt" | "configuration"
-                )
-            });
-            if let Some(value) = object.get("name").and_then(Value::as_str) {
-                book.name = value.to_string();
-                library_changed = true;
-                immediate_flush = true;
+        book.metadata = metadata.clone();
+        if book.generated_cover {
+            let cover = create_text_cover_input(
+                metadata,
+                Path::new(&book.name).file_stem().and_then(|name| name.to_str()),
+            );
+            if book.source_format == BookSourceFormat::Txt
+                && let Some(cover) = cover.as_ref()
+            {
+                write_text_cover_to_unpacked(&storage, &id, cover)?;
             }
-            if let Some(value) = object.get("size").and_then(Value::as_u64) {
-                book.size = value;
-                library_changed = true;
-                immediate_flush = true;
-            }
-            if object.contains_key("readingStatus") {
-                book.reading_status = object
-                    .get("readingStatus")
-                    .and_then(|value| serde_json::from_value(value.clone()).ok());
-                library_changed = true;
-                immediate_flush = true;
-            }
-            if let Some(value) = object.get("metadata") {
-                book.metadata = value.clone();
-                if book.generated_cover {
-                    let cover = create_text_cover_input(
-                        value,
-                        Path::new(&book.name).file_stem().and_then(|name| name.to_str()),
-                    );
-                    if book.source_format == BookSourceFormat::Txt
-                        && let Some(cover) = cover.as_ref()
-                    {
-                        write_text_cover_to_unpacked(&storage, &id, cover)?;
-                    }
-                    write_cover(&storage, &id, cover)?;
-                    cover_changed = true;
-                }
-                library_changed = true;
-                immediate_flush = true;
-            }
-            if let Some(value) = object.get("createdAt").and_then(Value::as_u64) {
-                book.created_at = value;
-                library_changed = true;
-                immediate_flush = true;
-            }
-            if let Some(value) = object.get("tagIds") {
-                let mut seen = std::collections::HashSet::new();
-                let tag_ids = value
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(Value::as_str)
-                    .filter(|tag_id| !tag_id.is_empty())
-                    .filter(|tag_id| seen.insert((*tag_id).to_string()))
-                    .map(str::to_string)
-                    .collect::<Vec<_>>();
-                book.tag_ids = tag_ids;
-                library_changed = true;
-                immediate_flush = true;
-            }
-
-            let applied = apply_book_state_changes(&mut book, &mut book_state, object);
-            library_changed |= applied.book;
-            state_changed |= applied.state;
-            immediate_flush |= applied.flush;
-
-            let explicit_state_update = object.contains_key("definitions")
-                || object.contains_key("annotations")
-                || (object.contains_key("configuration") && !applied.configuration_spread_only);
-            reading_position_only = updates_reading_position && !explicit_state_update && allowed_reading_position_keys;
+            write_cover(&storage, &id, cover)?;
+            cover_changed = true;
         }
-
-        if state_changed {
-            storage.write_book_state(&id, &book_state)?;
+        if let Some(updated_at) = object.get("updatedAt").and_then(Value::as_u64)
+            && book.updated_at.is_none_or(|current| updated_at > current)
+        {
+            book.updated_at = Some(updated_at);
         }
         state.library.books[book_index] = book;
         if let Some(previous_author) = previous_author
@@ -1744,6 +1560,7 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
                 .library
                 .books
                 .iter()
+                .filter(|book| book.scope == BookScope::Library)
                 .filter_map(library_book_author)
                 .any(|candidate| candidate == previous_author)
         {
@@ -1751,54 +1568,14 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
         }
     }
 
-    if library_changed {
-        storage.mark_library_dirty();
-    }
-    if immediate_flush || reading_position_only {
-        storage.flush_content_dirty()?;
-    }
+    storage.mark_library_dirty();
+    storage.flush_content_dirty()?;
 
     if cover_changed {
         return read_cover_record(&storage, id).map(Some);
     }
 
     Ok(None)
-}
-
-fn update_external_book(storage: &AppStorage, id: String, changes: Value) -> Result<(), String> {
-    let mut external_changed = false;
-    let mut state_changed = false;
-    let mut immediate_flush = false;
-    {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
-        let Some(book) = state.external.books.iter_mut().find(|book| book.id == id) else {
-            return Ok(());
-        };
-        let mut book_state = storage.read_book_state(&id)?;
-
-        if let Some(object) = changes.as_object() {
-            let applied = apply_book_state_changes(book, &mut book_state, object);
-            external_changed = applied.book;
-            state_changed = applied.state;
-            immediate_flush = applied.flush;
-        }
-        if state_changed {
-            storage.write_book_state(&id, &book_state)?;
-        }
-    }
-
-    if external_changed {
-        storage.mark_external_dirty();
-    }
-    if immediate_flush || state_changed || external_changed {
-        storage.flush_content_dirty()?;
-    }
-
-    Ok(())
 }
 
 #[tauri::command]

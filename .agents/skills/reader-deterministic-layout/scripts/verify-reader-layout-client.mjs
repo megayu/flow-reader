@@ -232,7 +232,6 @@ function createLayoutBrowserBooks() {
     cfi: 'chapter_001.xhtml',
     definitions: [],
     annotations: [],
-    stateLoaded: true,
     packageUrl: `/flow-layout/${name}/OPS/package.opf`,
     layoutTitle: title,
     layoutPrefix: prefix,

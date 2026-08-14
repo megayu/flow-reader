@@ -3,6 +3,8 @@ import { stat } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { extname, join, resolve, sep } from 'node:path'
 
+import { build } from 'vite'
+
 const port = Number(process.env.PLAYWRIGHT_PORT ?? 7127)
 const host = process.env.PLAYWRIGHT_HOST ?? '127.0.0.1'
 const exportRoot = resolve('dist')
@@ -22,7 +24,9 @@ const contentTypes: Record<string, string> = {
   '.woff2': 'font/woff2',
 }
 
-export default async function serveStaticExport() {
+export default async function prepareStaticExport() {
+  await build()
+
   const server = createServer(async (request, response) => {
     try {
       const pathname = decodeURIComponent(new URL(request.url ?? '/', `http://${host}:${port}`).pathname)

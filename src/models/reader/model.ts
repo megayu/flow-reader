@@ -1,4 +1,3 @@
-import type React from 'react'
 import { proxy, ref, snapshot, useSnapshot } from 'valtio'
 
 import type { Book, Contents, Location, Rendition } from '@flow/epubjs'
@@ -17,7 +16,7 @@ import { normalizeHrefPath, safeDecodeHref, sameHref } from '@/noteLinks'
 import { emitReaderOpenError, type ReaderOpenErrorStage } from '@/reader/errorEvents'
 import { isRecentReadingEnabled } from '@/state'
 import {
-  type BookReaderSource,
+  type BookReaderPreparation,
   type BookRecord,
   type BookTextReplaceTarget,
   cleanupExternalBook,
@@ -235,21 +234,6 @@ export type BookBeforeLayout = (contents?: Contents, view?: RenditionManagerView
 
 export type BookTypographyConfiguration = NonNullable<BookRecord['configuration']>['typography']
 
-class BaseTab {
-  constructor(
-    public readonly id: string,
-    public readonly title = id,
-  ) {}
-
-  get isBook(): boolean {
-    return this instanceof BookTab
-  }
-
-  get isPage(): boolean {
-    return this instanceof PageTab
-  }
-}
-
 // Frame Windows are runtime-only: the non-enumerable identity and prototype
 // accessors keep host objects out of Valtio's enumerable snapshots.
 const frameRuntimeIdentity = Symbol('bookTabFrameRuntime')
@@ -264,7 +248,8 @@ export function getBookTabFrameWindows(tab: BookTab): readonly Window[] {
   return frameWindowsByRuntime.get(getFrameRuntimeIdentity(tab)) ?? []
 }
 
-export class BookTab extends BaseTab {
+export class BookTab {
+  readonly id: string
   epub?: RuntimeRef<Book>
   get iframe(): Window | undefined {
     return frameWindowsByRuntime.get(getFrameRuntimeIdentity(this))?.[0]
@@ -529,7 +514,6 @@ export class BookTab extends BaseTab {
     return {
       getBook: () => this.book,
       applyBookUpdate: (book, changes) => this.applyBookUpdate(book, changes),
-      replaceBook: (book) => this.setBook(book),
       createCurrentPositionUpdate: () => this.createCurrentPositionUpdate(),
       waitForNavigation: () => this.navigation.pending,
     }
@@ -590,10 +574,7 @@ export class BookTab extends BaseTab {
     }
 
     const reloadTarget = this.getCurrentDisplayTarget()
-    await this.flushForClose({
-      flushStorage: false,
-      recordReadingPosition: false,
-    })
+    await this.persistence.persistCurrentState(this.persistenceHost())
 
     const stateChanges: Partial<BookRecord> = {
       annotations: this.book.annotations,
@@ -607,8 +588,6 @@ export class BookTab extends BaseTab {
       ...stateChanges,
       scope: 'library' as const,
     }
-    db.books.remember(promotedBook)
-    await db.books.update(libraryBook.id, stateChanges)
     this.reloadContentAfterEdit(promotedBook, reloadTarget)
   }
 
@@ -680,8 +659,12 @@ export class BookTab extends BaseTab {
     return true
   }
 
-  updateBook(changes: Partial<BookRecord>) {
-    this.persistence.updateBook(this.persistenceHost(), changes)
+  checkpointContentEdit() {
+    return this.persistence.checkpointContentEdit(this.persistenceHost())
+  }
+
+  updateConfiguration(configuration: BookRecord['configuration']) {
+    this.persistence.recordConfiguration(this.persistenceHost(), configuration)
   }
 
   private hasRecordedOpen = false
@@ -712,16 +695,12 @@ export class BookTab extends BaseTab {
     }
   }
 
-  async flushForClose({ flushStorage = true, recordReadingPosition = true } = {}) {
-    return this.persistence.flushForClose({
-      host: this.persistenceHost(),
-      flushStorage,
-      recordReadingPosition,
-    })
+  async flushForClose(onStateCaptured?: () => void) {
+    return this.persistence.flushForClose(this.persistenceHost(), onStateCaptured)
   }
 
   prepareForAppClose() {
-    return this.persistence.captureReadingPositionForClose(this.persistenceHost())
+    return this.persistence.captureForAppClose(this.persistenceHost())
   }
 
   annotationRange?: Range
@@ -924,7 +903,7 @@ export class BookTab extends BaseTab {
 
       const positionUpdate = this.createCurrentPositionUpdate(percentage)
       if (positionUpdate) {
-        this.updateBook(positionUpdate)
+        this.persistence.recordPosition(this.persistenceHost(), positionUpdate)
       }
     }
 
@@ -972,14 +951,14 @@ export class BookTab extends BaseTab {
   }
 
   define(def: string[]) {
-    this.updateBook({ definitions: [...this.book.definitions, ...def] })
+    this.persistence.recordDefinitions(this.persistenceHost(), [...this.book.definitions, ...def])
     this.bumpOverlayVersion()
   }
   undefine(def: string) {
     const definitions = this.book.definitions.filter((d) => !compareDefinition(d, def))
     if (definitions.length === this.book.definitions.length) return
 
-    this.updateBook({ definitions })
+    this.persistence.recordDefinitions(this.persistenceHost(), definitions)
     this.bumpOverlayVersion()
   }
   isDefined(def: string) {
@@ -999,18 +978,20 @@ export class BookTab extends BaseTab {
     text: string,
     notes?: string,
     section = this.section,
+    requireCheckpoint = false,
   ) {
     const spine = section ?? this.section
-    if (!spine) return
+    if (!spine) return Promise.resolve()
 
     const navitem = spine.navitem ?? this.mapSectionToNavItem(spine.href)
     if (navitem) spine.navitem = navitem
     const annotationSpine = createAnnotationSpine(spine)
-    if (!annotationSpine) return
+    if (!annotationSpine) return Promise.resolve()
 
     const annotations = [...snapshot(this.book.annotations)]
     const i = annotations.findIndex((a) => a.cfi === cfi)
-    let annotation = annotations[i]
+    const before = annotations[i]
+    let annotation = before
 
     const now = Date.now()
     if (!annotation) {
@@ -1025,7 +1006,7 @@ export class BookTab extends BaseTab {
         text,
       }
 
-      this.updateBook({ annotations: [...annotations, annotation] })
+      annotations.push(annotation)
     } else {
       annotation = {
         ...annotation,
@@ -1036,17 +1017,18 @@ export class BookTab extends BaseTab {
         text,
       }
       annotations.splice(i, 1, annotation)
-      this.updateBook({ annotations })
     }
 
     this.bumpOverlayVersion()
+    return this.persistence.recordAnnotation(this.persistenceHost(), before, annotation, annotations, requireCheckpoint)
   }
-  removeAnnotation(cfi: string) {
-    const annotations = snapshot(this.book.annotations).filter((a) => a.cfi !== cfi)
-    if (annotations.length === this.book.annotations.length) return
+  removeAnnotation(cfi: string, requireCheckpoint = false) {
+    const before = snapshot(this.book.annotations).find((annotation) => annotation.cfi === cfi)
+    if (!before) return Promise.resolve()
+    const annotations = snapshot(this.book.annotations).filter((annotation) => annotation.cfi !== cfi)
 
-    this.updateBook({ annotations })
     this.bumpOverlayVersion()
+    return this.persistence.recordAnnotation(this.persistenceHost(), before, undefined, annotations, requireCheckpoint)
   }
 
   keyword = ''
@@ -1596,22 +1578,23 @@ export class BookTab extends BaseTab {
   destroy() {
     if (this.destroyPromise) return this.destroyPromise
 
+    this.renderGeneration++
     this.destroyPromise = this.destroyAfterFlush()
     return this.destroyPromise
   }
 
   private async destroyAfterFlush() {
-    this.renderGeneration++
-
+    let renderingDestroyed = false
     try {
-      await this.flushForClose()
-    } catch (error) {
-      console.error(error)
+      await this.flushForClose(() => {
+        this.destroyRendering()
+        renderingDestroyed = true
+      })
     } finally {
       db.recentBooks.cancelSession(this.book.id)
       await this.cacheActivation
       await setBookCacheActive(this.book.id, false).catch(console.error)
-      this.destroyRendering()
+      if (!renderingDestroyed) this.destroyRendering()
       if (this.book.scope === 'external') {
         await cleanupExternalBook(this.book.id).catch(console.error)
       }
@@ -1983,34 +1966,13 @@ export class BookTab extends BaseTab {
 
     this.renderingEl = ref(el)
     const generation = ++this.renderGeneration
-    if (this.recordOpened()) this.beginRecentReadingSession()
     const clearRendering = () => {
       if (el === this.renderingEl) this.renderingEl = undefined
     }
 
-    let loadedBook: BookRecord | undefined
-    if (this.book.stateLoaded) {
-      loadedBook = this.book
-    } else {
-      try {
-        loadedBook = await db.books.get(this.book.id)
-      } catch (error) {
-        this.reportOpenError('source', error)
-        clearRendering()
-        return
-      }
-    }
-    if (generation !== this.renderGeneration) {
-      clearRendering()
-      return
-    }
-    if (loadedBook) {
-      this.setBook(loadedBook)
-    }
-
-    let source: BookReaderSource
+    let preparation: BookReaderPreparation
     try {
-      source = await db.files.getReaderSource(this.book.id)
+      preparation = await db.files.prepareReader(this.book.id)
     } catch (error) {
       this.reportOpenError('source', error)
       clearRendering()
@@ -2020,28 +1982,16 @@ export class BookTab extends BaseTab {
       clearRendering()
       return
     }
+    if (preparation.updatedBook) {
+      this.setBook(this.mergeRuntimeState(preparation.updatedBook))
+    }
+    const { source } = preparation
     if (!source.url) {
       clearRendering()
       return
     }
+    if (this.recordOpened()) this.beginRecentReadingSession()
     this.readingMetrics = source.readingMetrics ? markRuntimeObject(source.readingMetrics) : undefined
-    if (source.mode === 'epub' && !this.book.archive) {
-      let refreshedBook: BookRecord | undefined
-      try {
-        refreshedBook = await db.books.get(this.book.id)
-      } catch (error) {
-        this.reportOpenError('source', error)
-        clearRendering()
-        return
-      }
-      if (generation !== this.renderGeneration) {
-        clearRendering()
-        return
-      }
-      if (refreshedBook) {
-        this.setBook(refreshedBook)
-      }
-    }
 
     let epub: RuntimeRef<Book>
     let openingBook: Book | undefined
@@ -2236,7 +2186,7 @@ export class BookTab extends BaseTab {
   }
 
   constructor(public book: BookRecord) {
-    super(book.id, book.name)
+    this.id = book.id
     Object.defineProperty(this, frameRuntimeIdentity, {
       value: ref({}),
     })
@@ -2245,20 +2195,12 @@ export class BookTab extends BaseTab {
       definitions: book.definitions,
     }
     this.typographyConfiguration = book.configuration?.typography
+    this.persistence.initialize(book)
     this.cacheActivation = setBookCacheActive(book.id, true).catch(console.error)
 
     // The constructor instance is not proxied yet, so subscribing here would update a non-reactive object.
   }
 }
-
-class PageTab extends BaseTab {
-  constructor(public readonly Component: React.FC<any>) {
-    super(Component.displayName ?? 'untitled')
-  }
-}
-
-type Tab = BookTab | PageTab
-type TabParam = ConstructorParameters<typeof BookTab | typeof PageTab>[0]
 
 interface BookContentEditPatch {
   target: BookTextReplaceTarget
@@ -2268,47 +2210,35 @@ interface BookContentEditPatch {
   textNode?: Text
 }
 
-function resolveTabParam(param: TabParam | Tab) {
-  if (param instanceof BookTab || param instanceof PageTab) return param
-  if (typeof param === 'function') return param
-
-  return db.books.peek(param.id) ?? param
+function setTabRuntimeActive(tab: BookTab | undefined, active: boolean) {
+  tab?.setActive(active)
 }
 
-function disposeTab(tab?: Tab) {
-  if (tab instanceof BookTab) return tab.destroy()
-  return Promise.resolve()
-}
+export function completeTabOpen(opening: BookTab | Promise<BookTab>, onOpened: () => void) {
+  if (opening instanceof Promise) {
+    void opening.then(onOpened).catch(console.error)
+    return
+  }
 
-function setTabRuntimeActive(tab: Tab | undefined, active: boolean) {
-  if (tab instanceof BookTab) tab.setActive(active)
+  onOpened()
 }
 
 export class Group {
   id = createId()
-  paneTabs: Tab[] = []
-  tabs: Tab[] = []
+  paneTabs: BookTab[] = []
+  tabs: BookTab[] = []
 
   constructor(
-    tabs: Array<Tab | TabParam> = [],
-    public selectedIndex = tabs.length - 1,
+    books: BookRecord[] = [],
+    public selectedIndex = books.length - 1,
   ) {
-    this.tabs = tabs.map((tabParam) => {
-      const t = resolveTabParam(tabParam)
-      if (t instanceof BookTab || t instanceof PageTab) return t
-      const isPage = typeof t === 'function'
-      return isPage ? new PageTab(t) : new BookTab(t)
-    })
+    this.tabs = books.map((book) => new BookTab(book))
     this.paneTabs = [...this.tabs]
     this.setSelectedRuntimeActive(true)
   }
 
   get selectedTab() {
     return this.tabs[this.selectedIndex]
-  }
-
-  get bookTabs() {
-    return this.tabs.filter((t) => t instanceof BookTab) as BookTab[]
   }
 
   setSelectedRuntimeActive(active: boolean) {
@@ -2331,31 +2261,20 @@ export class Group {
     return tab[0]
   }
 
-  addTab(param: TabParam | Tab) {
-    const resolved = resolveTabParam(param)
-    const isTab = resolved instanceof BookTab || resolved instanceof PageTab
-    const isPage = typeof resolved === 'function'
-
-    const id = isTab ? resolved.id : isPage ? resolved.displayName : resolved.id
-
-    const index = this.tabs.findIndex((t) => t.id === id)
+  addTab(book: BookRecord) {
+    const index = this.tabs.findIndex((tab) => tab.id === book.id)
     if (index > -1) {
       this.selectTab(index)
-      return this.tabs[index]
+      return this.tabs[index]!
     }
 
-    const tab = isTab ? resolved : isPage ? new PageTab(resolved) : new BookTab(resolved)
+    const tab = new BookTab(book)
 
     this.setSelectedRuntimeActive(false)
     this.tabs.splice(++this.selectedIndex, 0, tab)
     this.paneTabs.push(tab)
     setTabRuntimeActive(tab, true)
     return tab
-  }
-
-  replaceTab(param: TabParam, index = this.selectedIndex) {
-    this.addTab(param)
-    this.removeTab(index)
   }
 
   selectTab(index: number) {
@@ -2411,31 +2330,27 @@ export class Group {
 export class Reader {
   groups: Group[] = []
   focusedIndex = -1
-  private pendingDisposals = new Set<Promise<unknown>>()
+  private closingBooks = new Map<string, Promise<BookTab>>()
 
   get focusedGroup() {
     return this.groups[this.focusedIndex]
   }
 
-  get focusedTab() {
+  get focusedBookTab() {
     return this.focusedGroup?.selectedTab
   }
 
-  get focusedBookTab() {
-    return this.focusedTab instanceof BookTab ? this.focusedTab : undefined
-  }
-
   getOpenBookIds() {
-    return [...new Set(this.groups.flatMap(({ bookTabs }) => bookTabs.map((tab) => tab.book.id)))]
+    return [...new Set(this.groups.flatMap(({ tabs }) => tabs.map((tab) => tab.book.id)))]
   }
 
   private findBookTab(bookId: string) {
     for (let groupIndex = 0; groupIndex < this.groups.length; groupIndex++) {
       const group = this.groups[groupIndex]
       if (!group) continue
-      const tabIndex = group.tabs.findIndex((tab) => tab instanceof BookTab && tab.book.id === bookId)
+      const tabIndex = group.tabs.findIndex((tab) => tab.book.id === bookId)
       if (tabIndex >= 0) {
-        return { group, groupIndex, tab: group.tabs[tabIndex] as BookTab, tabIndex }
+        return { group, groupIndex, tab: group.tabs[tabIndex]!, tabIndex }
       }
     }
   }
@@ -2456,47 +2371,72 @@ export class Reader {
     return this.addTab(book)
   }
 
-  openBookFromLibrary(book: BookRecord) {
-    const existing = this.findBookTab(book.id)
-    const tab = this.addTab(book)
-    if (tab instanceof BookTab && existing) {
+  openBookFromLibrary(bookId: string) {
+    const existing = this.findBookTab(bookId)
+    if (existing) {
+      const tab = this.focusBookTab(existing)
       tab.beginRecentReadingSession()
       tab.recordOpened(true)
+      return tab
     }
-    return tab
+
+    return this.loadAndAddBookTab(bookId, this.closingBooks.get(bookId), undefined)
   }
 
-  addTab(param: TabParam | Tab, groupIdx = this.focusedIndex) {
-    const resolved = resolveTabParam(param)
-    const bookId =
-      resolved instanceof BookTab
-        ? resolved.book.id
-        : resolved instanceof PageTab || typeof resolved === 'function'
-          ? undefined
-          : resolved.id
-    const existing = bookId ? this.findBookTab(bookId) : undefined
-    if (existing) return this.focusBookTab(existing)
+  addTab(book: BookRecord, groupIdx?: number): BookTab | Promise<BookTab> {
+    const bookId = book.id
+    const existing = this.findBookTab(bookId)
+    if (existing) {
+      return this.focusBookTab(existing)
+    }
 
+    const closingBook = this.closingBooks.get(bookId)
+    if (closingBook) {
+      return this.loadAndAddBookTab(bookId, closingBook, groupIdx)
+    }
+
+    groupIdx ??= this.focusedIndex
     let group = this.groups[groupIdx]
     if (group) {
       this.focusedIndex = groupIdx
     } else {
       group = this.addGroup([])
     }
-    return group.addTab(resolved)
+    const tab = group.addTab(book)
+    return tab
+  }
+
+  private async loadAndAddBookTab(
+    bookId: string,
+    closingBook: Promise<BookTab> | undefined,
+    groupIdx: number | undefined,
+  ) {
+    await closingBook
+
+    const existing = this.findBookTab(bookId)
+    if (existing) {
+      return this.focusBookTab(existing)
+    }
+
+    const book = await db.books.get(bookId)
+    if (!book) throw new Error(`Book not found: ${bookId}`)
+
+    const opened = this.findBookTab(bookId)
+    if (opened) {
+      return this.focusBookTab(opened)
+    }
+
+    return this.addTab(book, groupIdx)
   }
 
   removeTab(index: number, groupIdx = this.focusedIndex) {
     const group = this.groups[groupIdx]
-    if (group?.tabs.length === 1) {
-      const tab = group.tabs[0]
-      this.removeGroup(groupIdx)
-      this.trackDisposal(disposeTab(tab))
-      return tab
-    }
-    const tab = group?.removeTab(index)
-    this.trackDisposal(disposeTab(tab))
-    return tab
+    const tab = group?.tabs[index]
+    if (!group || !tab) return Promise.resolve(undefined)
+
+    group.removeTab(index)
+    if (!group.tabs.length) this.removeGroup(groupIdx)
+    return this.disposeDetachedTab(tab)
   }
 
   closeFocusedTab() {
@@ -2507,12 +2447,13 @@ export class Reader {
   }
 
   closeAllTabs() {
-    this.clear()
+    return this.clear()
   }
 
   closeBookTab(bookId: string) {
     const located = this.findBookTab(bookId)
-    if (located) this.removeTab(located.tabIndex, located.groupIndex)
+    if (located) return this.removeTab(located.tabIndex, located.groupIndex)
+    return this.closingBooks.get(bookId) ?? Promise.resolve(undefined)
   }
 
   async applyBookContentEdit(
@@ -2523,7 +2464,6 @@ export class Reader {
   ) {
     const tab = this.findBookTab(book.id)?.tab
     const currentBook = tab?.mergeRuntimeState(book) ?? book
-    db.books.remember(currentBook)
     if (!tab) return
     if (tab === editedTab && patch) {
       const patched = await tab.applyRenderedTextEdit(
@@ -2535,6 +2475,7 @@ export class Reader {
         patch.textNode,
       )
       if (!patched) throw new Error('TEXT_REPLACE_RENDER_PATCH_FAILED')
+      await tab.checkpointContentEdit()
       return
     }
     tab.reloadContentAfterEdit(currentBook, reloadTarget)
@@ -2545,14 +2486,13 @@ export class Reader {
     const openBookIds = new Set<string>()
     if (!booksById.size) return openBookIds
 
-    this.groups.forEach(({ bookTabs }) => {
-      bookTabs.forEach((tab) => {
+    this.groups.forEach(({ tabs }) => {
+      tabs.forEach((tab) => {
         const book = booksById.get(tab.book.id)
         if (!book) return
 
         openBookIds.add(book.id)
         const currentBook = tab.mergeRuntimeState(book)
-        db.books.remember(currentBook)
         tab.refreshImportedBook(currentBook)
       })
     })
@@ -2568,8 +2508,8 @@ export class Reader {
     if (!booksByHash.size) return Promise.resolve(new Set<string>())
 
     const promotedBookIds = new Set<string>()
-    const tasks = this.groups.flatMap(({ bookTabs }) =>
-      bookTabs
+    const tasks = this.groups.flatMap(({ tabs }) =>
+      tabs
         .map((tab) => {
           const book =
             tab.book.scope === 'external' && tab.book.contentHash ? booksByHash.get(tab.book.contentHash) : undefined
@@ -2600,19 +2540,14 @@ export class Reader {
     this.focusedGroup?.moveSelectedTab(delta)
   }
 
-  replaceTab(param: TabParam, index = this.focusedIndex, groupIdx = this.focusedIndex) {
-    const group = this.groups[groupIdx]
-    group?.replaceTab(param, index)
-  }
-
   removeGroup(index: number) {
     this.groups.splice(index, 1)
     this.focusedIndex = updateIndex(this.groups, index)
   }
 
-  addGroup(tabs: Array<Tab | TabParam>, index = this.focusedIndex + 1) {
+  addGroup(books: BookRecord[], index = this.focusedIndex + 1) {
     this.focusedGroup?.setSelectedRuntimeActive(false)
-    const group = proxy(new Group(tabs))
+    const group = proxy(new Group(books))
     this.groups.splice(index, 0, group)
     this.focusedIndex = index
     group.setSelectedRuntimeActive(true)
@@ -2628,14 +2563,18 @@ export class Reader {
   }
 
   clear() {
-    this.groups.forEach(({ tabs }) => tabs.forEach((tab) => this.trackDisposal(disposeTab(tab))))
-    this.groups = []
+    const tabs = this.groups.flatMap((group) => [...group.tabs])
+    this.groups.forEach((group) => {
+      while (group.tabs.length) group.removeTab(group.tabs.length - 1)
+    })
+    this.groups.splice(0)
     this.focusedIndex = -1
+    return Promise.all(tabs.map((tab) => this.disposeDetachedTab(tab)))
   }
 
   resize() {
-    this.groups.forEach(({ bookTabs }) => {
-      bookTabs.forEach((tab) => {
+    this.groups.forEach(({ tabs }) => {
+      tabs.forEach((tab) => {
         if (!tab.active) return
 
         try {
@@ -2647,22 +2586,27 @@ export class Reader {
     })
   }
 
-  async collectAppCloseReadingPositions() {
-    await Promise.all(this.pendingDisposals)
-    const positions = await Promise.all(
-      this.groups.flatMap(({ bookTabs }) => bookTabs.map((tab) => tab.prepareForAppClose())),
+  async collectAppCloseBookCheckpoints() {
+    await Promise.all(this.closingBooks.values())
+    const checkpoints = await Promise.all(
+      this.groups.flatMap(({ tabs }) => tabs.map((tab) => tab.prepareForAppClose())),
     )
     await db.waitForPendingWrites()
-    return positions.filter((position) => position !== undefined)
+    return checkpoints.filter((checkpoint) => checkpoint !== undefined)
   }
 
-  private trackDisposal(promise: Promise<unknown>) {
-    const tracked = promise.finally(() => {
-      this.pendingDisposals.delete(tracked)
-    })
-
-    this.pendingDisposals.add(tracked)
-    return tracked
+  private disposeDetachedTab(tab: BookTab) {
+    const bookId = tab.book.id
+    const closing = tab.destroy().then(() => tab)
+    this.closingBooks.set(bookId, closing)
+    void closing
+      .finally(() => {
+        if (this.closingBooks.get(bookId) === closing) {
+          this.closingBooks.delete(bookId)
+        }
+      })
+      .catch(() => undefined)
+    return closing
   }
 }
 

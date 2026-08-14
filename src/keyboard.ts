@@ -44,3 +44,19 @@ export function hasKeyboardCaptureLayer(target: EventTarget | null, selectors: s
 export function isGlobalKeyboardShortcutBlocked(e: KeyboardEvent) {
   return isEditableKeyboardTarget(e.target) || isKeyboardCaptureTarget(e.target) || hasBlockingKeyboardOverlay(e.target)
 }
+
+export function installProductionReloadShortcutGuard(target: Document) {
+  if (import.meta.env.DEV) return () => {}
+
+  const preventReload = (event: KeyboardEvent) => {
+    if (!(event.metaKey || event.ctrlKey) || event.altKey) return
+    if (event.code !== 'KeyR' && event.key.toLowerCase() !== 'r') return
+
+    event.preventDefault()
+    event.stopPropagation()
+    event.stopImmediatePropagation()
+  }
+
+  target.addEventListener('keydown', preventReload, true)
+  return () => target.removeEventListener('keydown', preventReload, true)
+}

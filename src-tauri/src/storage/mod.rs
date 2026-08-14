@@ -23,6 +23,7 @@ use crate::{
 
 mod book_assets;
 mod book_source;
+pub(crate) mod checkpoint;
 mod commands;
 mod deletion;
 mod editing;
@@ -53,8 +54,8 @@ use image_index::{
 #[cfg(test)]
 use model::ReadingStatus;
 use model::{
-    BOOK_STATE_VERSION, BookContentMode, BookScope, BookState, EXTERNAL_BOOK_INDEX_VERSION, ExternalBookIndex,
-    LIBRARY_VERSION, Library, LibraryBook, SourceStorage, WindowPaneState, WindowState, is_valid_book_storage_id,
+    BOOK_STATE_VERSION, BookContentMode, BookScope, BookState, LIBRARY_VERSION, Library, SourceStorage, StoredBook,
+    WindowPaneState, WindowState, is_valid_book_storage_id,
 };
 pub use model::{
     BookExportFormat, BookReaderSource, BookReaderSourceMode, BookRecord, BookSourceFormat, BookSourceStatus,
@@ -81,14 +82,16 @@ use export::*;
 use epub_import::{
     clean_xml_text, commit_prepared_epub_import, deobfuscate_unpacked_idpf_fonts, find_unpacked_opf_path,
     inspect_epub_access, join_zip_path, materialize_epub_package, normalize_unpacked_epub_structure,
-    normalize_zip_path, open_external_epub_path_impl, parent_zip_path, prepare_epub_import, read_epub_xml_file,
-    unpack_epub, validate_epub_archive_limits,
+    normalize_zip_path, open_external_epub_path_unflushed_impl, parent_zip_path, prepare_epub_import,
+    read_epub_xml_file, unpack_epub, validate_epub_archive_limits,
 };
 #[cfg(test)]
-use epub_import::{normalize_non_square_pixel_png, normalize_publication_date, relative_zip_path};
+use epub_import::{
+    normalize_non_square_pixel_png, normalize_publication_date, open_external_epub_path_impl, relative_zip_path,
+};
 
 use import_support::{
-    ExistingBookImport, ImportFileTransaction, ImportFinalizer, LibraryBookLookupIndex,
+    BookImportLookupIndex, ExistingBookImport, ImportFileTransaction, ImportFinalizer,
     eager_import_materialization_enabled, existing_book_import, import_work_path, same_source_path,
 };
 use search::{
@@ -113,11 +116,9 @@ use text_import::{parse_text_import_document, text_content_opf, text_nav_xhtml, 
 const APP_DATA_DIR_NAME: &str = "Flow Reader";
 const APP_DATA_DIR_ENV: &str = "FLOW_READER_DATA_DIR";
 const BOOKS_DIR: &str = "books";
-const EXTERNAL_BOOKS_DIR: &str = "external-books";
 const PENDING_DELETE_PREFIX: &str = ".del-";
 const LIBRARY_FILE: &str = "library.json";
 const RECENT_BOOK_LIMIT: usize = 10;
-const EXTERNAL_INDEX_FILE: &str = "index.json";
 const SETTINGS_FILE: &str = "settings.json";
 const BOOK_FILE: &str = "book.epub";
 const SOURCE_TEXT_FILE: &str = "source.txt";
@@ -200,17 +201,10 @@ impl AppStorage {
     pub fn load(app: &AppHandle) -> Result<Self, String> {
         let root = data_root(app)?;
         let library = read_json_or_default::<Library>(&library_path(&root)?)?;
-        let external = read_json_or_default::<ExternalBookIndex>(&external_index_path(&root)?)?;
         if library.version != LIBRARY_VERSION {
             return Err(format!(
                 "Unsupported library version {}; current version is {LIBRARY_VERSION}",
                 library.version
-            ));
-        }
-        if external.version != EXTERNAL_BOOK_INDEX_VERSION {
-            return Err(format!(
-                "Unsupported external book index version {}; current version is {EXTERNAL_BOOK_INDEX_VERSION}",
-                external.version
             ));
         }
         let settings_path = settings_path(&root)?;
@@ -219,34 +213,23 @@ impl AppStorage {
         if initialize_settings {
             settings::initialize_first_launch_settings(&mut settings)?;
         }
-        if library.books.iter().any(|book| !is_valid_book_storage_id(&book.id))
-            || external.books.iter().any(|book| !is_valid_book_storage_id(&book.id))
-        {
+        if library.books.iter().any(|book| !is_valid_book_storage_id(&book.id)) {
             return Err("Storage contains an invalid book id".to_string());
         }
-        if library.books.iter().any(|book| book.source_path.as_os_str().is_empty())
-            || external
-                .books
-                .iter()
-                .any(|book| book.source_path.as_os_str().is_empty())
-        {
+        if library.books.iter().any(|book| book.source_path.as_os_str().is_empty()) {
             return Err("Storage contains an empty book source path".to_string());
         }
-        let library_ids = library
-            .books
-            .iter()
-            .map(|book| book.id.as_str())
-            .collect::<HashSet<_>>();
-        if external.books.iter().any(|book| library_ids.contains(book.id.as_str())) {
-            return Err("Storage contains the same book in library and external indexes".to_string());
+        let mut book_ids = HashSet::with_capacity(library.books.len());
+        if library.books.iter().any(|book| !book_ids.insert(book.id.as_str())) {
+            return Err("Storage contains duplicate book ids".to_string());
         }
-        if library.books.iter().any(|book| book.revision == 0) || external.books.iter().any(|book| book.revision == 0) {
+        if library.books.iter().any(|book| book.revision == 0) {
             return Err("Storage contains an invalid book revision".to_string());
         }
         let storage = Self {
             inner: Arc::new(StorageInner {
                 root,
-                state: Mutex::new(StorageState::new(library, external, settings)),
+                state: Mutex::new(StorageState::new(library, settings)),
                 dirty: Mutex::new(DirtyState::default()),
                 flush_lock: Mutex::new(()),
                 import_lock: Mutex::new(()),
@@ -278,25 +261,8 @@ impl AppStorage {
         &self.inner.root
     }
 
-    fn library_book_dir(&self, id: &str) -> PathBuf {
-        books_root(self.root()).join(id)
-    }
-
-    fn external_book_dir(&self, id: &str) -> PathBuf {
-        external_books_root(self.root()).join(id)
-    }
-
     fn book_dir(&self, id: &str) -> PathBuf {
-        let library_dir = self.library_book_dir(id);
-        if library_dir.exists() || !self.external_book_dir(id).exists() {
-            library_dir
-        } else {
-            self.external_book_dir(id)
-        }
-    }
-
-    fn is_external_book(&self, id: &str) -> bool {
-        !self.library_book_dir(id).exists() && self.external_book_dir(id).exists()
+        books_root(self.root()).join(id)
     }
 
     fn search_text_cache_path(&self, id: &str, revision: u32) -> PathBuf {
@@ -317,7 +283,7 @@ impl AppStorage {
         ))
     }
 
-    fn library_book(&self, id: &str) -> Result<LibraryBook, String> {
+    fn stored_book(&self, id: &str) -> Result<StoredBook, String> {
         if !is_valid_book_storage_id(id) {
             return Err("Invalid book id".to_string());
         }
@@ -327,16 +293,19 @@ impl AppStorage {
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
 
-        if let Some(book) = state.library.books.iter().find(|book| book.id == id).cloned() {
-            return Ok(book);
-        }
-
         state
-            .external
+            .library
             .books
             .iter()
             .find(|book| book.id == id)
             .cloned()
+            .ok_or_else(|| "Book not found".to_string())
+    }
+
+    fn library_book(&self, id: &str) -> Result<StoredBook, String> {
+        let book = self.stored_book(id)?;
+        (book.scope == BookScope::Library)
+            .then_some(book)
             .ok_or_else(|| "Book not found".to_string())
     }
 
@@ -350,10 +319,10 @@ impl AppStorage {
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
         state
-            .external
+            .library
             .books
             .iter()
-            .any(|book| book.id == id)
+            .any(|book| book.id == id && book.scope == BookScope::External)
             .then_some(())
             .ok_or_else(|| "External book not found".to_string())
     }
@@ -498,13 +467,12 @@ impl AppStorage {
     }
 
     fn write_book_state(&self, id: &str, state: &BookState) -> Result<(), String> {
-        write_json(&self.book_dir(id).join(STATE_FILE), state)
+        write_json_durable(&self.book_dir(id).join(STATE_FILE), state)
     }
 
-    fn compose_book(&self, book: &LibraryBook, scope: BookScope) -> Result<BookRecord, String> {
+    fn compose_book(&self, book: &StoredBook) -> Result<BookRecord, String> {
         let book_state = self.read_book_state(&book.id)?;
         let mut record = self.compose_book_summary(book);
-        record.scope = scope;
         record.definitions = book_state.definitions;
         record.annotations = book_state.annotations;
         record.cfi = book_state.cfi;
@@ -513,12 +481,12 @@ impl AppStorage {
         Ok(record)
     }
 
-    fn compose_book_summary(&self, book: &LibraryBook) -> BookRecord {
+    fn compose_book_summary(&self, book: &StoredBook) -> BookRecord {
         BookRecord {
             id: book.id.clone(),
             name: book.name.clone(),
             size: book.size,
-            scope: BookScope::Library,
+            scope: book.scope,
             reading_status: book.reading_status.clone(),
             source_format: book.source_format,
             generated_cover: book.generated_cover,
@@ -580,13 +548,6 @@ fn clone_library(library: &Library) -> Library {
     }
 }
 
-fn clone_external_index(index: &ExternalBookIndex) -> ExternalBookIndex {
-    ExternalBookIndex {
-        version: index.version,
-        books: index.books.clone(),
-    }
-}
-
 fn data_root(app: &AppHandle) -> Result<PathBuf, String> {
     if let Some(root) = std::env::var_os(APP_DATA_DIR_ENV) {
         let root = PathBuf::from(root);
@@ -608,16 +569,8 @@ fn books_root(root: &Path) -> PathBuf {
     root.join(BOOKS_DIR)
 }
 
-fn external_books_root(root: &Path) -> PathBuf {
-    root.join(EXTERNAL_BOOKS_DIR)
-}
-
 fn library_path(root: &Path) -> Result<PathBuf, String> {
     Ok(root.join(LIBRARY_FILE))
-}
-
-fn external_index_path(root: &Path) -> Result<PathBuf, String> {
-    Ok(external_books_root(root).join(EXTERNAL_INDEX_FILE))
 }
 
 fn settings_path(root: &Path) -> Result<PathBuf, String> {
@@ -637,7 +590,7 @@ fn now_ms() -> u64 {
         .unwrap_or_default()
 }
 
-fn library_book_author(book: &LibraryBook) -> Option<String> {
+fn library_book_author(book: &StoredBook) -> Option<String> {
     let author = book
         .metadata
         .get("creator")
@@ -683,6 +636,32 @@ where
     fs::rename(&tmp, path).map_err(|error| error.to_string())
 }
 
+fn write_json_durable<T>(path: &Path, value: &T) -> Result<(), String>
+where
+    T: Serialize,
+{
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+
+    let data = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
+    let tmp = path.with_extension("tmp");
+    let mut file = fs::File::create(&tmp).map_err(|error| error.to_string())?;
+    file.write_all(&data).map_err(|error| error.to_string())?;
+    file.sync_all().map_err(|error| error.to_string())?;
+    drop(file);
+    fs::rename(&tmp, path).map_err(|error| error.to_string())?;
+
+    #[cfg(not(windows))]
+    if let Some(parent) = path.parent() {
+        fs::File::open(parent)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
+}
+
 fn path_to_client_string(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
@@ -708,7 +687,7 @@ fn id_from_hash(hash: &str) -> String {
     hash.chars().take(16).collect()
 }
 
-fn mark_book_exported(book: &mut LibraryBook) {
+fn mark_book_exported(book: &mut StoredBook) {
     book.content_edited_at = None;
 }
 

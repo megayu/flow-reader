@@ -1822,9 +1822,7 @@ test('applies overlay and reserved scrollbar width to the matching sidebars', as
 
   await page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab
-    tab.updateBook({
-      definitions: Array.from({ length: 20 }, (_, index) => `Synthetic definition ${index + 1}`),
-    })
+    tab.define(Array.from({ length: 20 }, (_, index) => `Synthetic definition ${index + 1}`))
   })
   await activityBar.getByRole('button', { name: msg('annotation.title') }).click()
   for (const scroll of await sidebar.locator('[data-pane-scroll]').all()) {
@@ -2129,13 +2127,11 @@ test('[vertical-rl] page appearance follows actual spread geometry', async ({ pa
 
   await page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab
-    tab.updateBook({
-      configuration: {
-        ...tab.book.configuration,
-        typography: {
-          ...tab.book.configuration?.typography,
-          pageAppearance: 'divider',
-        },
+    tab.updateConfiguration({
+      ...tab.book.configuration,
+      typography: {
+        ...tab.book.configuration?.typography,
+        pageAppearance: 'divider',
       },
     })
   })
@@ -2165,13 +2161,11 @@ test('[vertical-rl] page appearance follows actual spread geometry', async ({ pa
 
   await page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab
-    tab.updateBook({
-      configuration: {
-        ...tab.book.configuration,
-        typography: {
-          ...tab.book.configuration?.typography,
-          spread: 'none',
-        },
+    tab.updateConfiguration({
+      ...tab.book.configuration,
+      typography: {
+        ...tab.book.configuration?.typography,
+        spread: 'none',
       },
     })
   })
@@ -2840,14 +2834,12 @@ test('[vertical-rl] keeps one physical page frame in single-page and zoomed layo
     await page.evaluate(
       ({ nextSpread, nextZoom }) => {
         const tab = (window as any).reader.focusedBookTab
-        tab.updateBook({
-          configuration: {
-            ...tab.book.configuration,
-            typography: {
-              ...tab.book.configuration?.typography,
-              spread: nextSpread,
-              zoom: nextZoom,
-            },
+        tab.updateConfiguration({
+          ...tab.book.configuration,
+          typography: {
+            ...tab.book.configuration?.typography,
+            spread: nextSpread,
+            zoom: nextZoom,
           },
         })
       },
@@ -3461,13 +3453,11 @@ test('reapplies zoom layout when switching from double page to single page', asy
 
   await page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab
-    tab.updateBook({
-      configuration: {
-        ...tab.book.configuration,
-        typography: {
-          ...tab.book.configuration?.typography,
-          zoom: 1.5,
-        },
+    tab.updateConfiguration({
+      ...tab.book.configuration,
+      typography: {
+        ...tab.book.configuration?.typography,
+        zoom: 1.5,
       },
     })
   })
@@ -3483,14 +3473,12 @@ test('reapplies zoom layout when switching from double page to single page', asy
 
   await page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab
-    tab.updateBook({
-      configuration: {
-        ...tab.book.configuration,
-        typography: {
-          ...tab.book.configuration?.typography,
-          spread: 'none',
-          zoom: 1.5,
-        },
+    tab.updateConfiguration({
+      ...tab.book.configuration,
+      typography: {
+        ...tab.book.configuration?.typography,
+        spread: 'none',
+        zoom: 1.5,
       },
     })
   })
@@ -3535,14 +3523,12 @@ test('keeps zoomed images inside the current page column in double page mode', a
 
   await page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab
-    tab.updateBook({
-      configuration: {
-        ...tab.book.configuration,
-        typography: {
-          ...tab.book.configuration?.typography,
-          spread: 'auto',
-          zoom: 2,
-        },
+    tab.updateConfiguration({
+      ...tab.book.configuration,
+      typography: {
+        ...tab.book.configuration?.typography,
+        spread: 'auto',
+        zoom: 2,
       },
     })
   })
@@ -4458,14 +4444,12 @@ test('[vertical-rl] preserves double-page and panel runtime across tab reorderin
 
   await page.evaluate(() => {
     const tab = (window as any).reader.focusedBookTab
-    tab.updateBook({
-      configuration: {
-        ...tab.book.configuration,
-        typography: {
-          ...tab.book.configuration?.typography,
-          fontSize: '18px',
-          spread: 'auto',
-        },
+    tab.updateConfiguration({
+      ...tab.book.configuration,
+      typography: {
+        ...tab.book.configuration?.typography,
+        fontSize: '18px',
+        spread: 'auto',
       },
     })
     tab.define(['FLOW-RUNTIME-DEFINITION-C'])

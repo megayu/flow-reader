@@ -368,7 +368,14 @@ export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
     if (!canSave) return
 
     void resolveSelectedTagIds(tagIds, temporaryTags)
-      .then((resolvedTagIds) => db.books.update(book.id, { tagIds: resolvedTagIds }))
+      .then((resolvedTagIds) => {
+        const current = new Set(book.tagIds ?? [])
+        const next = new Set(resolvedTagIds)
+        return db.books.updateTags([book.id], {
+          addTagIds: [...next].filter((tagId) => !current.has(tagId)),
+          removeTagIds: [...current].filter((tagId) => !next.has(tagId)),
+        })
+      })
       .then(() => onClose())
   }
 

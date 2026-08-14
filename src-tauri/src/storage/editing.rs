@@ -785,14 +785,19 @@ pub(super) fn edited_book_content_hash(id: &str, revision: u32, edited_at: u64) 
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-pub(super) fn mark_library_book_content_updated(storage: &AppStorage, id: &str) -> Result<Option<LibraryBook>, String> {
+pub(super) fn mark_library_book_content_updated(storage: &AppStorage, id: &str) -> Result<Option<StoredBook>, String> {
     let updated = {
         let mut state = storage
             .inner
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        let Some(book) = state.library.books.iter_mut().find(|book| book.id == id) else {
+        let Some(book) = state
+            .library
+            .books
+            .iter_mut()
+            .find(|book| book.id == id && book.scope == BookScope::Library)
+        else {
             return Ok(None);
         };
         let now = now_ms();
@@ -840,7 +845,7 @@ pub(super) fn replace_book_text_impl(
     let updated_xhtml = xhtml_update.xhtml;
     if updated_xhtml == xhtml {
         return Ok(BookTextReplaceResult {
-            book: storage.compose_book(&initial_book, BookScope::Library)?,
+            book: storage.compose_book(&initial_book)?,
             section_href: target.section_href,
             changed: false,
         });
@@ -898,7 +903,12 @@ pub(super) fn replace_book_text_impl(
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        let Some(book) = state.library.books.iter_mut().find(|book| book.id == id) else {
+        let Some(book) = state
+            .library
+            .books
+            .iter_mut()
+            .find(|book| book.id == id && book.scope == BookScope::Library)
+        else {
             return Err("Book not found".to_string());
         };
         let now = now_ms();
@@ -922,7 +932,12 @@ pub(super) fn replace_book_text_impl(
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        let Some(stored_book) = state.library.books.iter_mut().find(|stored| stored.id == id) else {
+        let Some(stored_book) = state
+            .library
+            .books
+            .iter_mut()
+            .find(|stored| stored.id == id && stored.scope == BookScope::Library)
+        else {
             return Err("Book not found".to_string());
         };
         stored_book.content_hash = book.content_hash.clone();
@@ -934,7 +949,7 @@ pub(super) fn replace_book_text_impl(
     storage.flush_content_dirty()?;
 
     Ok(BookTextReplaceResult {
-        book: storage.compose_book(&book, BookScope::Library)?,
+        book: storage.compose_book(&book)?,
         section_href: target.section_href,
         changed: true,
     })

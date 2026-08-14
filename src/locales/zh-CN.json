@@ -176,6 +176,7 @@
   "menu.edit_text_error_generic": "修改失败，请重新选择后再试",
   "menu.edit_text_error_reason": "原因：",
   "menu.edit_text_error_stale": "无法确认所选文本，请重新选择后再修改",
+  "menu.note_save_error": "笔记保存失败，请重试；编辑器将保持打开",
   "menu.save": "保存",
   "menu.saving": "保存中",
   "menu.search_in_book": "书内搜索",

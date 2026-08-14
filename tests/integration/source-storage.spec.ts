@@ -15,7 +15,6 @@ const missingArchiveBook: BookRecord = createTestBook({
   annotations: [],
   archive: true,
   sourcePath: '/fixtures/missing.epub',
-  stateLoaded: true,
 })
 
 const referencedBook: BookRecord = createTestBook({

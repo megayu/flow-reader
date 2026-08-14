@@ -2,7 +2,6 @@ import { Channel } from '@tauri-apps/api/core'
 
 import { RecentReadingModel } from '../library/recentReading'
 
-import { isReadingActivityOnlyUpdate } from './bookUpdate'
 import { storagePathToUrl as filePathToUrl, invokeStorage as invoke } from './native'
 import type {
   BookCacheClearProgress,
@@ -10,10 +9,12 @@ import type {
   BookImageIndexCache,
   BookImportProgress,
   BookImportResult,
+  BookReaderPreparation,
   BookReaderSource,
   BookRecord,
   BookSearchResult,
   BookSourceStatusRecord,
+  BookStateCheckpointInput,
   BookTextReplaceResult,
   BookTextReplaceTarget,
   CoverRecord,
@@ -22,18 +23,17 @@ import type {
   FolderImportTagResult,
   LibraryPins,
   LibraryTagRecord,
-  ReadingPositionInput,
   ReadingStatus,
   TextImportEncodingOption,
   TextImportPreview,
   TextImportSelection,
 } from './types'
 
-interface NativeBookReaderSource {
+interface NativeBookReaderPreparation {
   mode: BookReaderSource['mode']
   path: string
   rootPath?: string
-  book?: BookRecord
+  updatedBook?: BookRecord
   readingMetrics?: BookReaderSource['readingMetrics']
 }
 
@@ -41,7 +41,6 @@ type Listener = () => void
 type TableName = 'books' | 'covers' | 'pins' | 'recentBooks' | 'settings' | 'tags'
 
 const listeners = new Map<TableName, Set<Listener>>()
-const bookCache = new Map<string, BookRecord>()
 let booksCache: BookRecord[] | undefined
 let booksCacheEpoch = 0
 let booksListPromise: Promise<BookRecord[]> | undefined
@@ -77,73 +76,54 @@ function notify(...tables: TableName[]) {
   })
 }
 
-function asFullBook(book: BookRecord) {
-  return { ...book, stateLoaded: true }
+function stripBookState(book: BookRecord): BookRecord {
+  return { ...book, annotations: [], definitions: [], configuration: undefined }
 }
 
-function asBookSummary(book: BookRecord) {
-  return {
-    ...book,
-    definitions: [],
-    annotations: [],
-    configuration: undefined,
-    stateLoaded: false,
-  }
+function upsertCachedBook(book: BookRecord) {
+  if (book.scope !== 'library' || !booksCache) return
+
+  const cacheableBook = stripBookState(book)
+  const cached = booksCache.find((candidate) => candidate.id === book.id)
+  if (cached) Object.assign(cached, cacheableBook)
+  else booksCache.push(cacheableBook)
+  booksCache = [...booksCache]
 }
 
-function rememberBook(book: BookRecord) {
-  const normalized = asBookSummary(book)
-  bookCache.set(book.id, normalized)
-
-  if (!booksCache) return
-
-  const index = booksCache.findIndex((item) => item.id === book.id)
-  if (index >= 0) {
-    if (normalized.scope === 'external') {
-      booksCache = [...booksCache.slice(0, index), ...booksCache.slice(index + 1)]
-      return
-    }
-
-    booksCache = [...booksCache.slice(0, index), normalized, ...booksCache.slice(index + 1)]
-  } else if (normalized.scope !== 'external') {
-    booksCache = [...booksCache, normalized]
-  }
+function updateCachedBook(id: string, changes: Partial<BookRecord>) {
+  const book = booksCache?.find((candidate) => candidate.id === id)
+  if (book) Object.assign(book, changes)
 }
 
-function rememberBookBatch(books: BookRecord[]) {
-  if (!books.length) return
+function cacheBooks(books: BookRecord[]) {
+  booksCache = books.filter((book) => book.scope === 'library')
+}
 
-  const normalized = books.map(asBookSummary)
-  const updates = new Map(normalized.map((book) => [book.id, book]))
-  updates.forEach((book, id) => bookCache.set(id, book))
-  if (!booksCache) return
+function upsertCachedBooks(books: BookRecord[]) {
+  if (!books.length || !booksCache) return
+
+  const updates = new Map(
+    books.filter((book) => book.scope === 'library').map((book) => [book.id, stripBookState(book)]),
+  )
+  if (!updates.size) return
 
   const seen = new Set<string>()
-  const next = booksCache.flatMap((book) => {
+  const next = booksCache.map((book) => {
     const update = updates.get(book.id)
-    if (!update) return [book]
+    if (!update) return book
     seen.add(book.id)
-    return update.scope === 'external' ? [] : [update]
+    return update
   })
   updates.forEach((book) => {
-    if (!seen.has(book.id) && book.scope !== 'external') {
-      seen.add(book.id)
-      next.push(book)
-    }
+    if (!seen.has(book.id)) next.push(book)
   })
   booksCache = next
 }
 
-function rememberBooks(books: BookRecord[]) {
-  booksCache = books.map(asBookSummary)
-  bookCache.clear()
-  booksCache.forEach((book) => bookCache.set(book.id, book))
-}
-
 function forgetBooks(ids: string[]) {
-  ids.forEach((id) => bookCache.delete(id))
   if (booksCache) {
-    booksCache = booksCache.filter((book) => !ids.includes(book.id))
+    const removed = new Set(ids)
+    booksCache = booksCache.filter((book) => !removed.has(book.id))
   }
 }
 
@@ -187,8 +167,9 @@ function applyDeletedTags(ids: string[], updatedAt: number) {
       ? { ...book, tagIds: tagIds.filter((tagId) => !removed.has(tagId)), updatedAt }
       : book
   }
-  bookCache.forEach((book, bookId) => bookCache.set(bookId, update(book)))
-  if (booksCache) booksCache = booksCache.map(update)
+  if (booksCache) {
+    booksCache = booksCache.map(update)
+  }
   if (tagsCache) tagsCache = tagsCache.filter((tag) => !removed.has(tag.id))
 }
 
@@ -248,7 +229,7 @@ async function fetchCurrentBooks(): Promise<BookRecord[]> {
   const books = await invoke<BookRecord[]>('list_books')
   if (requestEpoch !== booksCacheEpoch) return fetchCurrentBooks()
 
-  rememberBooks(books)
+  cacheBooks(books)
   return booksCache ?? []
 }
 
@@ -276,10 +257,10 @@ function normalizeCoverRecord(record: CoverRecord) {
   }
 }
 
-function rememberBookImportProgress(progress: BookImportProgress) {
+function cacheBookImportProgress(progress: BookImportProgress) {
   if (!progress.book) return
 
-  rememberBook(progress.book)
+  upsertCachedBook(progress.book)
   if (progress.cover) rememberCover(progress.cover)
   notify('books', ...(progress.cover ? (['covers'] as const) : []))
 }
@@ -297,9 +278,13 @@ async function importBooksWithProgress(
 
   const books = new Map<string, BookRecord>()
   const progressChannel = new Channel<NativeBookImportProgress>((nativeProgress) => {
-    const progress = { ...nativeProgress, importId: importId ?? '' }
+    const progress = {
+      ...nativeProgress,
+      book: nativeProgress.book,
+      importId: importId ?? '',
+    }
     if (progress.book) books.set(progress.book.id, progress.book)
-    rememberBookImportProgress(progress)
+    cacheBookImportProgress(progress)
     onProgress?.(progress)
   })
   const result = await trackNativeWrite(
@@ -310,7 +295,7 @@ async function importBooksWithProgress(
   )
   result.books.forEach((book) => {
     books.set(book.id, book)
-    rememberBook(book)
+    upsertCachedBook(book)
   })
   if (result.books.length && coversCache) {
     const fallbackCovers = await invoke<CoverRecord[]>('list_covers', {
@@ -336,17 +321,11 @@ export const db = {
       return loadBooks()
     },
     async get(id: string): Promise<BookRecord | undefined> {
-      const requestEpoch = booksCacheEpoch
       const book = await invoke<BookRecord | null>('get_book', { id })
-      if (requestEpoch !== booksCacheEpoch) return db.books.get(id)
-      if (!book) return undefined
-
-      const loadedBook = asFullBook(book)
-      rememberBook(book)
-      return loadedBook
+      return book ?? undefined
     },
     peek(id: string) {
-      return bookCache.get(id)
+      return booksCache?.find((book) => book.id === id)
     },
     peekAll() {
       return booksCache
@@ -357,32 +336,24 @@ export const db = {
     revealSource(id: string) {
       return invoke<boolean>('reveal_book_source', { id })
     },
-    remember(book: BookRecord) {
-      beginBooksMutation()
-      rememberBook(book)
+    updateCachedFields(
+      id: string,
+      changes: Partial<Pick<BookRecord, 'cfi' | 'lastReadAt' | 'percentage' | 'updatedAt'>>,
+    ) {
+      updateCachedBook(id, changes)
     },
-    rememberUpdate(book: BookRecord, changes: Partial<BookRecord>) {
-      beginBooksMutation()
-      const cached = bookCache.get(book.id)
-      const base = cached ?? book
-      rememberBook({ ...base, ...changes })
+    persistState(checkpoint: BookStateCheckpointInput) {
+      return trackNativeWrite(invoke<void>('persist_book_state', { checkpoint }))
     },
-    recordReadingPosition(position: ReadingPositionInput) {
-      return trackNativeWrite(invoke<void>('record_reading_position', { position }))
+    persistStateOnClose(checkpoint: BookStateCheckpointInput) {
+      return trackNativeWrite(invoke<void>('persist_book_on_close', { checkpoint }))
     },
-    async update(id: string, changes: Partial<BookRecord>) {
+    async update(id: string, changes: Pick<BookRecord, 'metadata'>) {
       beginBooksMutation()
-      const cached = bookCache.get(id)
-      const normalizedChanges = changes.tagIds
-        ? { ...changes, tagIds: [...new Set(changes.tagIds.filter(Boolean))] }
-        : changes
-      const readingActivityOnly = isReadingActivityOnlyUpdate(normalizedChanges, cached)
-      const committedChanges =
-        readingActivityOnly || normalizedChanges.updatedAt !== undefined
-          ? normalizedChanges
-          : { ...normalizedChanges, updatedAt: Date.now() }
+      const cached = booksCache?.find((book) => book.id === id)
+      const committedChanges = { ...changes, updatedAt: Date.now() }
       if (cached) {
-        rememberBook({ ...cached, ...committedChanges })
+        updateCachedBook(id, committedChanges)
       }
 
       const updatedCover = await trackNativeWrite(
@@ -392,15 +363,9 @@ export const db = {
         }),
       )
 
-      if (!readingActivityOnly) {
-        if (updatedCover) rememberCover(updatedCover)
-        if (committedChanges.metadata) invalidatePins()
-        notify(
-          ...(['books', updatedCover ? 'covers' : undefined, committedChanges.metadata ? 'pins' : undefined].filter(
-            Boolean,
-          ) as TableName[]),
-        )
-      }
+      if (updatedCover) rememberCover(updatedCover)
+      invalidatePins()
+      notify(...(['books', updatedCover ? 'covers' : undefined, 'pins'].filter(Boolean) as TableName[]))
     },
     checkSourceStatuses(ids: string[]) {
       return invoke<BookSourceStatusRecord[]>('check_book_source_statuses', {
@@ -422,7 +387,7 @@ export const db = {
       beginBooksMutation()
       const updatedAt = Date.now()
       const books = ids.flatMap((id) => {
-        const book = bookCache.get(id)
+        const book = booksCache?.find((book) => book.id === id)
         return book && book.readingStatus !== readingStatus ? [{ ...book, readingStatus, updatedAt }] : []
       })
       await trackNativeWrite(
@@ -431,7 +396,7 @@ export const db = {
           readingStatus,
         }),
       )
-      rememberBookBatch(books)
+      upsertCachedBooks(books)
       notify('books')
     },
     async updateTags(
@@ -446,7 +411,7 @@ export const db = {
       const removals = new Set(removeTagIds.filter(Boolean))
       const updatedAt = Date.now()
       const books = ids.flatMap((id) => {
-        const book = bookCache.get(id)
+        const book = booksCache?.find((book) => book.id === id)
         if (!book) return []
 
         const tagIds = new Set(book.tagIds ?? [])
@@ -468,7 +433,7 @@ export const db = {
           removeTagIds: [...removals],
         }),
       )
-      rememberBookBatch(books)
+      upsertCachedBooks(books)
       notify('books')
     },
   },
@@ -526,8 +491,9 @@ export const db = {
 
         return { ...book, tagIds: [...tagIds.filter((tagId) => !sourceIdSet.has(tagId)), tag.id], updatedAt }
       }
-      bookCache.forEach((book, bookId) => bookCache.set(bookId, update(book)))
-      if (booksCache) booksCache = booksCache.map(update)
+      if (booksCache) {
+        booksCache = booksCache.map(update)
+      }
       if (tagsCache) tagsCache = tagsCache.filter((item) => !sourceIdSet.has(item.id) || item.id === tag.id)
       rememberTag(tag)
       invalidatePins()
@@ -581,18 +547,22 @@ export const db = {
     reveal(path: string) {
       return invoke('reveal_exported_file', { path })
     },
-    async getReaderSource(id: string): Promise<BookReaderSource> {
-      const source = await invoke<NativeBookReaderSource>('get_book_reader_source', { id })
-      if (source.book) {
+    async prepareReader(id: string): Promise<BookReaderPreparation> {
+      const result = await invoke<NativeBookReaderPreparation>('get_book_reader_source', { id })
+      const updatedBook = result.updatedBook
+      if (updatedBook) {
         beginBooksMutation()
-        rememberBook(source.book)
+        upsertCachedBook(updatedBook)
         notify('books')
       }
       return {
-        mode: source.mode,
-        url: filePathToUrl(source.path),
-        rootUrl: source.rootPath ? filePathToUrl(source.rootPath) : undefined,
-        readingMetrics: source.readingMetrics,
+        source: {
+          mode: result.mode,
+          url: filePathToUrl(result.path),
+          rootUrl: result.rootPath ? filePathToUrl(result.rootPath) : undefined,
+          readingMetrics: result.readingMetrics,
+        },
+        updatedBook,
       }
     },
   },
@@ -626,7 +596,6 @@ export async function openExternalEpubPaths(paths: string[]) {
   await waitForPendingNativeWrites()
   beginBooksMutation()
   const result = await trackNativeWrite(invoke<BookImportResult>('open_external_epub_paths', { paths }))
-  result.books.forEach((book) => rememberBook(book))
   return result
 }
 
@@ -669,7 +638,7 @@ export async function applyFolderImportTags(assignments: FolderImportTagAssignme
       assignments,
     }),
   )
-  result.books.forEach(rememberBook)
+  result.books.forEach(upsertCachedBook)
   rememberTags(result.tags)
   notify('books', 'tags')
   return result
@@ -707,19 +676,21 @@ export async function replaceBookText({
       newText,
     }),
   )
-  rememberBook(result.book)
+  const book = result.book
+  upsertCachedBook(book)
   notify('books')
-  return result
+  return { ...result, book }
 }
 
 export async function exportBook(id: string, format: BookExportFormat, outputPath: string) {
   beginBooksMutation()
   const book = await trackNativeWrite(invoke<BookRecord | null>('export_book', { id, format, outputPath }))
   if (book) {
-    rememberBook(book)
+    upsertCachedBook(book)
     notify('books')
+    return book
   }
-  return book ?? undefined
+  return undefined
 }
 
 export function setBookCacheActive(id: string, active: boolean) {
@@ -743,7 +714,7 @@ export async function clearBookCaches(
     }),
   )
   const updatedBooks = books.map((book) => ({ ...book, contentEditedAt: undefined }))
-  rememberBookBatch(updatedBooks)
+  upsertCachedBooks(updatedBooks)
   if (updatedBooks.length) notify('books')
   return updatedBooks
 }

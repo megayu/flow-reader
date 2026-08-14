@@ -1163,7 +1163,8 @@ pub(super) fn should_skip_prepared_text_import_preview(
         .map_err(|_| "storage state lock poisoned".to_string())?;
 
     Ok(state.library.books.iter().any(|book| {
-        book.content_edited_at.is_none()
+        book.scope == BookScope::Library
+            && book.content_edited_at.is_none()
             && same_source_path(&book.source_path, &prepared.path)
             && !book.content_hash.is_empty()
             && book.content_hash == prepared.hash
@@ -1261,10 +1262,7 @@ fn materialize_text_publication(
     Ok(unpacked_dir.join("OEBPS/content.opf"))
 }
 
-pub(super) fn materialize_library_text_publication(
-    storage: &AppStorage,
-    book: &LibraryBook,
-) -> Result<PathBuf, String> {
+pub(super) fn materialize_library_text_publication(storage: &AppStorage, book: &StoredBook) -> Result<PathBuf, String> {
     let source_path = available_book_source_path(storage, book)?;
     let encoding = source_encoding_id_from_metadata(&book.metadata);
     let rules = Some(storage.text_import_rules()?);
@@ -1520,7 +1518,7 @@ pub(super) fn import_text_path_impl(
     import: &TextImportSelection,
     copy_source_file: bool,
     rules: Option<&TextImportRulesInput>,
-    mut import_index: Option<&mut LibraryBookLookupIndex>,
+    mut import_index: Option<&mut BookImportLookupIndex>,
 ) -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
     let _import_guard = storage
         .inner
@@ -1603,8 +1601,9 @@ pub(super) fn import_text_path_impl(
         } else {
             let created_at = now_ms();
             let id = id_from_hash(&hash);
-            let book = LibraryBook {
+            let book = StoredBook {
                 id: id.clone(),
+                scope: BookScope::Library,
                 name: name.clone(),
                 size,
                 reading_status: None,
@@ -1675,7 +1674,7 @@ pub(super) fn import_text_path_impl(
                 *stored = book.clone();
                 stored_index
             };
-            let record = storage.compose_book(&book, BookScope::Library)?;
+            let record = storage.compose_book(&book)?;
             if let Some(index) = import_index.as_deref_mut() {
                 index.remember(stored_index, &book);
             }

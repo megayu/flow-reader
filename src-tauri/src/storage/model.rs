@@ -1,7 +1,6 @@
 use super::*;
 
 pub(super) const LIBRARY_VERSION: u32 = 1;
-pub(super) const EXTERNAL_BOOK_INDEX_VERSION: u32 = 1;
 pub(super) const BOOK_STATE_VERSION: u32 = 1;
 
 pub(super) fn is_valid_book_storage_id(id: &str) -> bool {
@@ -16,7 +15,7 @@ pub(super) fn is_valid_book_storage_id(id: &str) -> bool {
 pub(super) struct Library {
     pub(super) version: u32,
     #[serde(default)]
-    pub(super) books: Vec<LibraryBook>,
+    pub(super) books: Vec<StoredBook>,
     #[serde(default)]
     pub(super) tags: Vec<LibraryTagRecord>,
     #[serde(default)]
@@ -44,31 +43,15 @@ pub struct LibraryPins {
     pub(super) tag_ids: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct ExternalBookIndex {
-    pub(super) version: u32,
-    #[serde(default)]
-    pub(super) books: Vec<LibraryBook>,
-}
-
 fn is_false(value: &bool) -> bool {
     !*value
 }
 
-impl Default for ExternalBookIndex {
-    fn default() -> Self {
-        Self {
-            version: EXTERNAL_BOOK_INDEX_VERSION,
-            books: Vec::new(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct LibraryBook {
+pub(super) struct StoredBook {
     pub(super) id: String,
+    pub(super) scope: BookScope,
     pub(super) name: String,
     pub(super) size: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -295,7 +278,7 @@ pub struct BookReaderSource {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) root_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) book: Option<BookRecord>,
+    pub(super) updated_book: Option<BookRecord>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) reading_metrics: Option<ReadingMetrics>,
 }

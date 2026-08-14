@@ -18,7 +18,6 @@ function createBook(id: string, title: string): BookRecord {
     updatedAt: 1,
     definitions: [],
     annotations: [],
-    stateLoaded: true,
   })
 }
 
@@ -162,7 +161,6 @@ test('native EPUB open focuses an existing tab across reader groups', async ({ p
         updatedAt: 1,
         definitions: [],
         annotations: [],
-        stateLoaded: true,
       }
     }
   })

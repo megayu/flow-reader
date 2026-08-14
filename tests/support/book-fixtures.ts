@@ -7,6 +7,7 @@ type TestBookOverrides = Omit<Partial<BookRecord>, 'metadata'> & {
 export function createTestBook({ metadata = {}, ...overrides }: TestBookOverrides = {}): BookRecord {
   return {
     id: 'test-book',
+    scope: 'library',
     name: 'Test Book.epub',
     size: 1,
     sourceFormat: 'epub',
@@ -34,7 +35,6 @@ export function createTestBook({ metadata = {}, ...overrides }: TestBookOverride
     createdAt: 1,
     definitions: [],
     annotations: [],
-    stateLoaded: true,
     ...overrides,
   }
 }

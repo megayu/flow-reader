@@ -186,6 +186,7 @@ pub(super) fn apply_folder_import_tags_impl(
             .books
             .iter()
             .enumerate()
+            .filter(|(_, book)| book.scope == BookScope::Library)
             .map(|(index, book)| (book.id.clone(), index))
             .collect::<HashMap<_, _>>();
         let mut tag_ids_by_name = state
@@ -248,7 +249,7 @@ pub(super) fn apply_folder_import_tags_impl(
             .library
             .books
             .iter()
-            .filter(|book| assignment_book_ids.contains(book.id.as_str()))
+            .filter(|book| book.scope == BookScope::Library && assignment_book_ids.contains(book.id.as_str()))
             .map(|book| storage.compose_book_summary(book))
             .collect();
         (books, state.library.tags.clone())

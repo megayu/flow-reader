@@ -29,6 +29,7 @@ const DERIVED_CACHE_COLD_TTL: Duration = Duration::from_secs(15 * 60);
 #[derive(Debug)]
 pub(super) struct DerivedCacheState {
     pub(super) active: bool,
+    pub(super) persistent: bool,
     pub(super) last_accessed: Instant,
     pub(super) cold_since: Option<Instant>,
     pub(super) search_dirty: bool,
@@ -36,9 +37,10 @@ pub(super) struct DerivedCacheState {
 }
 
 impl DerivedCacheState {
-    fn active() -> Self {
+    fn active(persistent: bool) -> Self {
         Self {
             active: true,
+            persistent,
             last_accessed: Instant::now(),
             cold_since: None,
             search_dirty: false,
@@ -116,16 +118,13 @@ pub(super) fn search_text_cache_from_bytes(bytes: &[u8]) -> Result<SearchTextCac
     decode_compressed_json(bytes)
 }
 
-fn search_text_cache_matches_book(cache: &SearchTextCache, book: &LibraryBook) -> bool {
+fn search_text_cache_matches_book(cache: &SearchTextCache, book: &StoredBook) -> bool {
     cache.version == SEARCH_TEXT_CACHE_VERSION && cache.revision == book.revision
 }
 
 fn write_search_text_cache_if_current(storage: &AppStorage, id: &str, cache: &SearchTextCache) -> Result<bool, String> {
-    if storage.is_external_book(id) {
-        return Ok(false);
-    }
-    let current_book = storage.library_book(id)?;
-    if !search_text_cache_matches_book(cache, &current_book) {
+    let current_book = storage.stored_book(id)?;
+    if current_book.scope == BookScope::External || !search_text_cache_matches_book(cache, &current_book) {
         return Ok(false);
     }
 
@@ -138,7 +137,7 @@ fn write_search_text_cache_if_current(storage: &AppStorage, id: &str, cache: &Se
     let tmp = path.with_extension("tmp");
     fs::write(&tmp, bytes).map_err(|error| error.to_string())?;
 
-    let current_book = storage.library_book(id)?;
+    let current_book = storage.stored_book(id)?;
     if !search_text_cache_matches_book(cache, &current_book) {
         let _ = fs::remove_file(&tmp);
         return Ok(false);
@@ -153,6 +152,7 @@ fn store_search_text_memory_cache(
     id: String,
     cache: Arc<SearchTextCache>,
     dirty: bool,
+    persistent: bool,
 ) -> Result<(), String> {
     let mut caches = storage
         .inner
@@ -161,7 +161,7 @@ fn store_search_text_memory_cache(
         .map_err(|_| "search text cache lock poisoned".to_string())?;
     caches.insert(id.clone(), cache);
     drop(caches);
-    storage.touch_derived_cache(&id, dirty, false)?;
+    storage.touch_derived_cache(&id, dirty, false, persistent)?;
     storage.enforce_derived_cache_limits()?;
 
     Ok(())
@@ -169,7 +169,7 @@ fn store_search_text_memory_cache(
 
 fn load_search_text_memory_cache(
     storage: &AppStorage,
-    book: &LibraryBook,
+    book: &StoredBook,
 ) -> Result<Option<Arc<SearchTextCache>>, String> {
     let cache = {
         let mut caches = storage
@@ -189,14 +189,14 @@ fn load_search_text_memory_cache(
     };
 
     if cache.is_some() {
-        storage.touch_derived_cache(&book.id, false, false)?;
+        storage.touch_derived_cache(&book.id, false, false, book.scope == BookScope::Library)?;
     }
 
     Ok(cache)
 }
 
-fn read_search_text_cache(storage: &AppStorage, book: &LibraryBook) -> Result<SearchTextCache, String> {
-    if storage.is_external_book(&book.id) {
+fn read_search_text_cache(storage: &AppStorage, book: &StoredBook) -> Result<SearchTextCache, String> {
+    if book.scope == BookScope::External {
         return Err("External book search caches are memory-only".to_string());
     }
     let path = storage.search_text_cache_path(&book.id, book.revision);
@@ -209,12 +209,12 @@ fn read_search_text_cache(storage: &AppStorage, book: &LibraryBook) -> Result<Se
     }
 }
 
-fn image_index_cache_matches_book(cache: &ImageIndexCache, book: &LibraryBook) -> bool {
+fn image_index_cache_matches_book(cache: &ImageIndexCache, book: &StoredBook) -> bool {
     cache.version == IMAGE_INDEX_CACHE_VERSION && cache.revision == book.revision
 }
 
-pub(super) fn read_image_index_cache(storage: &AppStorage, book: &LibraryBook) -> Result<ImageIndexCache, String> {
-    if storage.is_external_book(&book.id) {
+pub(super) fn read_image_index_cache(storage: &AppStorage, book: &StoredBook) -> Result<ImageIndexCache, String> {
+    if book.scope == BookScope::External {
         return Err("External book image caches are memory-only".to_string());
     }
     let path = storage.image_index_cache_path(&book.id, book.revision);
@@ -232,11 +232,8 @@ pub(super) fn write_image_index_cache_if_current(
     id: &str,
     cache: &ImageIndexCache,
 ) -> Result<bool, String> {
-    if storage.is_external_book(id) {
-        return Ok(false);
-    }
-    let current_book = storage.library_book(id)?;
-    if !image_index_cache_matches_book(cache, &current_book) {
+    let current_book = storage.stored_book(id)?;
+    if current_book.scope == BookScope::External || !image_index_cache_matches_book(cache, &current_book) {
         return Ok(false);
     }
 
@@ -247,7 +244,7 @@ pub(super) fn write_image_index_cache_if_current(
     let bytes = image_index_cache_to_bytes(cache)?;
     let tmp = path.with_extension("tmp");
     fs::write(&tmp, bytes).map_err(|error| error.to_string())?;
-    let current_book = storage.library_book(id)?;
+    let current_book = storage.stored_book(id)?;
     if !image_index_cache_matches_book(cache, &current_book) {
         let _ = fs::remove_file(&tmp);
         return Ok(false);
@@ -258,7 +255,7 @@ pub(super) fn write_image_index_cache_if_current(
 
 fn load_image_index_memory_cache(
     storage: &AppStorage,
-    book: &LibraryBook,
+    book: &StoredBook,
 ) -> Result<Option<Arc<ImageIndexCache>>, String> {
     let cache = {
         let mut caches = storage
@@ -276,7 +273,7 @@ fn load_image_index_memory_cache(
         }
     };
     if cache.is_some() {
-        storage.touch_derived_cache(&book.id, false, false)?;
+        storage.touch_derived_cache(&book.id, false, false, book.scope == BookScope::Library)?;
     }
     Ok(cache)
 }
@@ -286,6 +283,7 @@ fn store_image_index_memory_cache(
     id: String,
     cache: Arc<ImageIndexCache>,
     dirty: bool,
+    persistent: bool,
 ) -> Result<(), String> {
     storage
         .inner
@@ -293,14 +291,14 @@ fn store_image_index_memory_cache(
         .lock()
         .map_err(|_| "image index cache lock poisoned".to_string())?
         .insert(id.clone(), cache);
-    storage.touch_derived_cache(&id, false, dirty)?;
+    storage.touch_derived_cache(&id, false, dirty, persistent)?;
     storage.enforce_derived_cache_limits()
 }
 
 pub(super) fn load_or_build_search_text_cache(
     storage: &AppStorage,
     tasks: &TaskService,
-    book: &LibraryBook,
+    book: &StoredBook,
 ) -> Result<Arc<SearchTextCache>, String> {
     load_or_build_derived_cache(storage, tasks, book, true)?
         .search
@@ -310,7 +308,7 @@ pub(super) fn load_or_build_search_text_cache(
 pub(super) fn load_or_build_image_index_cache(
     storage: &AppStorage,
     tasks: &TaskService,
-    book: &LibraryBook,
+    book: &StoredBook,
 ) -> Result<Arc<ImageIndexCache>, String> {
     Ok(load_or_build_derived_cache(storage, tasks, book, false)?.image)
 }
@@ -318,7 +316,7 @@ pub(super) fn load_or_build_image_index_cache(
 fn load_or_build_derived_cache(
     storage: &AppStorage,
     tasks: &TaskService,
-    book: &LibraryBook,
+    book: &StoredBook,
     include_search: bool,
 ) -> Result<DerivedCacheBuild, String> {
     let memory_search = include_search
@@ -346,10 +344,22 @@ fn load_or_build_derived_cache(
         memory_image
     };
     if let Some(search) = &disk_search {
-        store_search_text_memory_cache(storage, book.id.clone(), Arc::clone(search), false)?;
+        store_search_text_memory_cache(
+            storage,
+            book.id.clone(),
+            Arc::clone(search),
+            false,
+            book.scope == BookScope::Library,
+        )?;
     }
     if let Some(image) = &disk_image {
-        store_image_index_memory_cache(storage, book.id.clone(), Arc::clone(image), false)?;
+        store_image_index_memory_cache(
+            storage,
+            book.id.clone(),
+            Arc::clone(image),
+            false,
+            book.scope == BookScope::Library,
+        )?;
     }
     if (!include_search || disk_search.is_some())
         && let Some(image) = disk_image
@@ -379,17 +389,29 @@ fn load_or_build_derived_cache(
 
             task_runner.run_cpu(TaskPriority::Foreground, || {
                 let built = build_derived_cache(&task_storage, &task_runner, &task_book, include_search)?;
-                let current_book = task_storage.library_book(&task_book.id)?;
+                let current_book = task_storage.stored_book(&task_book.id)?;
                 if let Some(search) = &built.search {
                     if !search_text_cache_matches_book(search, &current_book) {
                         return Err("Search text cache is stale".to_string());
                     }
-                    store_search_text_memory_cache(&task_storage, task_book.id.clone(), Arc::clone(search), true)?;
+                    store_search_text_memory_cache(
+                        &task_storage,
+                        task_book.id.clone(),
+                        Arc::clone(search),
+                        true,
+                        current_book.scope == BookScope::Library,
+                    )?;
                 }
                 if !image_index_cache_matches_book(&built.image, &current_book) {
                     return Err("Image index cache is stale".to_string());
                 }
-                store_image_index_memory_cache(&task_storage, task_book.id.clone(), Arc::clone(&built.image), true)?;
+                store_image_index_memory_cache(
+                    &task_storage,
+                    task_book.id.clone(),
+                    Arc::clone(&built.image),
+                    true,
+                    current_book.scope == BookScope::Library,
+                )?;
                 Ok(built)
             })
         })
@@ -405,8 +427,8 @@ fn load_or_build_derived_cache(
 fn load_or_build_search_text_cache_with_builder(
     storage: &AppStorage,
     tasks: &TaskService,
-    book: &LibraryBook,
-    builder: impl FnOnce(&AppStorage, &TaskService, &LibraryBook) -> Result<SearchTextCache, String>,
+    book: &StoredBook,
+    builder: impl FnOnce(&AppStorage, &TaskService, &StoredBook) -> Result<SearchTextCache, String>,
 ) -> Result<Arc<SearchTextCache>, String> {
     let started = Instant::now();
     if let Some(cache) = load_search_text_memory_cache(storage, book)? {
@@ -426,7 +448,13 @@ fn load_or_build_search_text_cache_with_builder(
 
     if let Ok(cache) = read_search_text_cache(storage, book) {
         let cache = Arc::new(cache);
-        store_search_text_memory_cache(storage, book.id.clone(), cache.clone(), false)?;
+        store_search_text_memory_cache(
+            storage,
+            book.id.clone(),
+            cache.clone(),
+            false,
+            book.scope == BookScope::Library,
+        )?;
         let mut fields = vec![
             ("book", book.id.clone()),
             ("cache", "disk".to_string()),
@@ -460,7 +488,13 @@ fn load_or_build_search_text_cache_with_builder(
     if !search_text_cache_matches_book(&cache, book) {
         return Err("Search text cache is stale".to_string());
     }
-    store_search_text_memory_cache(storage, book.id.clone(), cache.clone(), false)?;
+    store_search_text_memory_cache(
+        storage,
+        book.id.clone(),
+        cache.clone(),
+        false,
+        book.scope == BookScope::Library,
+    )?;
     let mut fields = vec![
         ("book", book.id.clone()),
         ("cache", "built".to_string()),
@@ -475,14 +509,14 @@ fn load_or_build_search_text_cache_with_builder(
     Ok(cache)
 }
 
-fn derived_cache_task_key(book: &LibraryBook) -> TaskKey {
+fn derived_cache_task_key(book: &StoredBook) -> TaskKey {
     TaskKey::new(TaskKind::SearchIndex, format!("{}:{}", book.id, book.revision))
 }
 
 fn build_derived_cache(
     storage: &AppStorage,
     tasks: &TaskService,
-    book: &LibraryBook,
+    book: &StoredBook,
     include_search: bool,
 ) -> Result<DerivedCacheBuild, String> {
     let content_mode = inspect_and_store_book_content_access(storage, book)?;
@@ -1261,6 +1295,7 @@ impl AppStorage {
     }
 
     pub(super) fn set_derived_cache_active(&self, id: &str, active: bool) -> Result<(), String> {
+        let persistent = self.stored_book(id)?.scope == BookScope::Library;
         let has_cache = self
             .inner
             .search_text_caches
@@ -1279,8 +1314,11 @@ impl AppStorage {
                 .derived_cache_states
                 .lock()
                 .map_err(|_| "derived cache state lock poisoned".to_string())?;
-            let state = states.entry(id.to_string()).or_insert_with(DerivedCacheState::active);
+            let state = states
+                .entry(id.to_string())
+                .or_insert_with(|| DerivedCacheState::active(persistent));
             state.active = active;
+            state.persistent = persistent;
             state.last_accessed = Instant::now();
             state.cold_since = (!active).then(Instant::now);
         }
@@ -1290,15 +1328,23 @@ impl AppStorage {
         Ok(())
     }
 
-    fn touch_derived_cache(&self, id: &str, search_dirty: bool, image_dirty: bool) -> Result<(), String> {
+    fn touch_derived_cache(
+        &self,
+        id: &str,
+        search_dirty: bool,
+        image_dirty: bool,
+        persistent: bool,
+    ) -> Result<(), String> {
         let mut states = self
             .inner
             .derived_cache_states
             .lock()
             .map_err(|_| "derived cache state lock poisoned".to_string())?;
-        let state = states.entry(id.to_string()).or_insert_with(DerivedCacheState::active);
+        let state = states
+            .entry(id.to_string())
+            .or_insert_with(|| DerivedCacheState::active(persistent));
         state.last_accessed = Instant::now();
-        let persistent = !self.is_external_book(id);
+        state.persistent = persistent;
         state.search_dirty |= persistent && search_dirty;
         state.image_dirty |= persistent && image_dirty;
         Ok(())
@@ -1306,11 +1352,11 @@ impl AppStorage {
 
     pub(super) fn update_derived_caches_after_edit(
         &self,
-        book: &LibraryBook,
+        book: &StoredBook,
         section_href: &str,
         xhtml: &str,
     ) -> Result<(), String> {
-        if !self.is_external_book(&book.id)
+        if book.scope == BookScope::Library
             && let Some(previous_revision) = book.revision.checked_sub(1)
         {
             let _ = fs::remove_file(self.search_text_cache_path(&book.id, previous_revision));
@@ -1383,7 +1429,12 @@ impl AppStorage {
         }
 
         if updated_search || updated_image {
-            self.touch_derived_cache(&book.id, updated_search, updated_image)?;
+            self.touch_derived_cache(
+                &book.id,
+                updated_search,
+                updated_image,
+                book.scope == BookScope::Library,
+            )?;
         }
         Ok(())
     }
@@ -1545,7 +1596,7 @@ impl AppStorage {
                 .lock()
                 .map_err(|_| "derived cache state lock poisoned".to_string())?
                 .iter()
-                .min_by_key(|(id, state)| (state.active, !self.is_external_book(id), state.last_accessed))
+                .min_by_key(|(_, state)| (state.active, state.persistent, state.last_accessed))
                 .map(|(id, _)| id.clone());
             let Some(candidate) = candidate else {
                 return Ok(());
@@ -1641,9 +1692,10 @@ mod tests {
         std::env::temp_dir().join(format!("flow-reader-{label}-{}-{nonce}", std::process::id()))
     }
 
-    fn test_book(id: &str, revision: u32) -> LibraryBook {
-        LibraryBook {
+    fn test_book(id: &str, revision: u32) -> StoredBook {
+        StoredBook {
             id: id.to_string(),
+            scope: BookScope::Library,
             name: format!("{id}.epub"),
             size: 1,
             reading_status: None,
@@ -1665,7 +1717,7 @@ mod tests {
         }
     }
 
-    fn test_storage(root: &Path, books: Vec<LibraryBook>) -> AppStorage {
+    fn test_storage(root: &Path, books: Vec<StoredBook>) -> AppStorage {
         AppStorage {
             inner: Arc::new(StorageInner {
                 root: root.to_path_buf(),
@@ -1677,7 +1729,6 @@ mod tests {
                         pins: LibraryPins::default(),
                         recent_book_ids: Vec::new(),
                     },
-                    ExternalBookIndex::default(),
                     json!({}),
                 )),
                 dirty: Mutex::new(DirtyState::default()),
@@ -1697,7 +1748,7 @@ mod tests {
         }
     }
 
-    fn test_cache(book: &LibraryBook, text: &str) -> SearchTextCache {
+    fn test_cache(book: &StoredBook, text: &str) -> SearchTextCache {
         SearchTextCache {
             version: SEARCH_TEXT_CACHE_VERSION,
             revision: book.revision,
@@ -1740,7 +1791,7 @@ mod tests {
         let storage = Arc::new(test_storage(&root, vec![test_book("book", 1)]));
         let tasks = Arc::new(TaskService::default());
         let runs = Arc::new(AtomicUsize::new(0));
-        let book = storage.library_book("book").unwrap();
+        let book = storage.stored_book("book").unwrap();
 
         let first = {
             let storage = Arc::clone(&storage);
@@ -1783,7 +1834,7 @@ mod tests {
     fn stale_search_index_result_is_not_written() {
         let root = temp_root("search-stale-publish-test");
         let storage = test_storage(&root, vec![test_book("book", 1)]);
-        let book = storage.library_book("book").unwrap();
+        let book = storage.stored_book("book").unwrap();
         let cache = test_cache(&book, "old content");
 
         {
@@ -1810,8 +1861,14 @@ mod tests {
         let storage = test_storage(&root, books.clone());
 
         for book in &books {
-            store_search_text_memory_cache(&storage, book.id.clone(), Arc::new(test_cache(book, &book.id)), false)
-                .unwrap();
+            store_search_text_memory_cache(
+                &storage,
+                book.id.clone(),
+                Arc::new(test_cache(book, &book.id)),
+                false,
+                true,
+            )
+            .unwrap();
         }
 
         let caches = storage.inner.search_text_caches.lock().unwrap();

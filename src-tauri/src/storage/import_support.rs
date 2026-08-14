@@ -9,12 +9,12 @@ pub(super) fn eager_import_materialization_enabled() -> bool {
         .is_ok_and(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
 }
 
-pub(super) struct LibraryBookLookupIndex {
+pub(super) struct BookImportLookupIndex {
     source_paths: HashMap<String, usize>,
     hashes: HashMap<String, usize>,
     ids: HashMap<String, usize>,
     book_keys: Vec<Option<LibraryBookLookupKeys>>,
-    external_books: HashMap<String, LibraryBook>,
+    external_books: HashMap<String, StoredBook>,
 }
 
 struct LibraryBookLookupKeys {
@@ -32,7 +32,7 @@ pub(super) fn same_source_path(left: &Path, right: &Path) -> bool {
     source_path_key(left) == source_path_key(right)
 }
 
-impl LibraryBookLookupIndex {
+impl BookImportLookupIndex {
     pub(super) fn load(storage: &AppStorage) -> Result<Self, String> {
         let state = storage
             .inner
@@ -43,7 +43,15 @@ impl LibraryBookLookupIndex {
         let mut hashes = HashMap::with_capacity(state.library.books.len());
         let mut ids = HashMap::with_capacity(state.library.books.len());
         let mut book_keys = Vec::with_capacity(state.library.books.len());
+        let mut external_books = HashMap::new();
         for (index, book) in state.library.books.iter().enumerate() {
+            if book.scope == BookScope::External {
+                if !book.content_hash.is_empty() {
+                    external_books.insert(book.content_hash.clone(), book.clone());
+                }
+                book_keys.push(None);
+                continue;
+            }
             let source_path = source_path_key(&book.source_path);
             source_paths.entry(source_path.clone()).or_insert(index);
             if !book.content_hash.is_empty() {
@@ -55,13 +63,6 @@ impl LibraryBookLookupIndex {
                 hash: (!book.content_hash.is_empty()).then(|| book.content_hash.clone()),
             }));
         }
-        let external_books = state
-            .external
-            .books
-            .iter()
-            .filter(|book| !book.content_hash.is_empty())
-            .map(|book| (book.content_hash.clone(), book.clone()))
-            .collect();
         Ok(Self {
             source_paths,
             hashes,
@@ -71,48 +72,64 @@ impl LibraryBookLookupIndex {
         })
     }
 
-    pub(super) fn source_path_index(&self, books: &[LibraryBook], path: &Path) -> Option<usize> {
+    pub(super) fn source_path_index(&self, books: &[StoredBook], path: &Path) -> Option<usize> {
         self.source_paths
             .get(&source_path_key(path))
             .copied()
             .filter(|index| {
                 books
                     .get(*index)
-                    .is_some_and(|book| same_source_path(&book.source_path, path))
-            })
-            .or_else(|| books.iter().position(|book| same_source_path(&book.source_path, path)))
-    }
-
-    pub(super) fn hash_index(&self, books: &[LibraryBook], hash: &str) -> Option<usize> {
-        self.hashes
-            .get(hash)
-            .copied()
-            .filter(|index| {
-                books
-                    .get(*index)
-                    .is_some_and(|book| !book.content_hash.is_empty() && book.content_hash == hash)
+                    .is_some_and(|book| book.scope == BookScope::Library && same_source_path(&book.source_path, path))
             })
             .or_else(|| {
                 books
                     .iter()
-                    .position(|book| !book.content_hash.is_empty() && book.content_hash == hash)
+                    .position(|book| book.scope == BookScope::Library && same_source_path(&book.source_path, path))
             })
     }
 
-    pub(super) fn id_index(&self, books: &[LibraryBook], hash: &str) -> Option<usize> {
+    pub(super) fn hash_index(&self, books: &[StoredBook], hash: &str) -> Option<usize> {
+        self.hashes
+            .get(hash)
+            .copied()
+            .filter(|index| {
+                books.get(*index).is_some_and(|book| {
+                    book.scope == BookScope::Library && !book.content_hash.is_empty() && book.content_hash == hash
+                })
+            })
+            .or_else(|| {
+                books.iter().position(|book| {
+                    book.scope == BookScope::Library && !book.content_hash.is_empty() && book.content_hash == hash
+                })
+            })
+    }
+
+    pub(super) fn id_index(&self, books: &[StoredBook], hash: &str) -> Option<usize> {
         let id = id_from_hash(hash);
         self.ids
             .get(&id)
             .copied()
-            .filter(|index| books.get(*index).is_some_and(|book| book.id == id))
-            .or_else(|| books.iter().position(|book| book.id == id))
+            .filter(|index| {
+                books
+                    .get(*index)
+                    .is_some_and(|book| book.scope == BookScope::Library && book.id == id)
+            })
+            .or_else(|| {
+                books
+                    .iter()
+                    .position(|book| book.scope == BookScope::Library && book.id == id)
+            })
     }
 
-    pub(super) fn external_book(&self, hash: &str) -> Option<&LibraryBook> {
+    pub(super) fn external_book(&self, hash: &str) -> Option<&StoredBook> {
         self.external_books.get(hash)
     }
 
-    pub(super) fn remember(&mut self, index: usize, book: &LibraryBook) {
+    pub(super) fn remember(&mut self, index: usize, book: &StoredBook) {
+        if book.scope != BookScope::Library {
+            return;
+        }
+        self.external_books.remove(&book.content_hash);
         if let Some(Some(keys)) = self.book_keys.get(index) {
             if self.source_paths.get(&keys.source_path) == Some(&index) {
                 self.source_paths.remove(&keys.source_path);
@@ -153,8 +170,8 @@ pub(super) enum ExistingBookImport {
 }
 
 pub(super) fn existing_book_import(
-    index: Option<&LibraryBookLookupIndex>,
-    books: &[LibraryBook],
+    index: Option<&BookImportLookupIndex>,
+    books: &[StoredBook],
     source_path: &Path,
     hash: &str,
 ) -> Option<ExistingBookImport> {
@@ -162,14 +179,15 @@ pub(super) fn existing_book_import(
         || {
             books
                 .iter()
-                .position(|book| same_source_path(&book.source_path, source_path))
+                .position(|book| book.scope == BookScope::Library && same_source_path(&book.source_path, source_path))
         },
         |index| index.source_path_index(books, source_path),
     );
     let identity_index = index.map_or_else(
         || {
             books.iter().position(|book| {
-                (!book.content_hash.is_empty() && book.content_hash == hash) || book.id == id_from_hash(hash)
+                book.scope == BookScope::Library
+                    && ((!book.content_hash.is_empty() && book.content_hash == hash) || book.id == id_from_hash(hash))
             })
         },
         |index| index.hash_index(books, hash).or_else(|| index.id_index(books, hash)),

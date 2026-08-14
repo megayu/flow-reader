@@ -66,11 +66,9 @@ const TypographyPane: React.FC = () => {
       typography[k] = v
     }
 
-    tab.updateBook({
-      configuration: {
-        ...tab.book.configuration,
-        typography,
-      },
+    tab.updateConfiguration({
+      ...tab.book.configuration,
+      typography,
     })
   }, [])
 

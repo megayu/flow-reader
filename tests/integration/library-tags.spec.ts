@@ -40,7 +40,6 @@ function createBook({
     updatedAt: 1,
     definitions: [],
     annotations: [],
-    stateLoaded: true,
   })
 }
 

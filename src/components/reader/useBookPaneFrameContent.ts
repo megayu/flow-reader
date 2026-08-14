@@ -10,6 +10,7 @@ import {
 } from 'react'
 
 import { isSupportedExternalUrl, openSupportedExternalUrl } from '../../externalLink'
+import { installProductionReloadShortcutGuard } from '../../keyboard'
 import type { BookTab } from '../../models/reader'
 import { getNoteIndex } from '../../noteIndex'
 import { useDndContext } from '../base/dropZoneContext'
@@ -121,6 +122,12 @@ export function useBookPaneFrameContent({
     onMouseDown()
   }, [onMouseDown])
   useFrameEvent(activeFrameWindows, 'mousedown', handleFrameMouseDown)
+
+  useEffect(() => {
+    if (!active) return
+    const cleanups = frameWindows.map((frame) => installProductionReloadShortcutGuard(frame.document))
+    return () => cleanups.forEach((cleanup) => cleanup())
+  }, [active, frameWindows])
 
   useEffect(() => {
     if (!active) return

@@ -329,6 +329,9 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const [annotate, setAnnotate] = useState(annotationHasNotes)
   const [draftAnnotationColor, setDraftAnnotationColor] = useState<AnnotationColor>(annotation?.color ?? 'yellow')
   const [annotationNotesChanged, setAnnotationNotesChanged] = useState(false)
+  const [savingAnnotation, setSavingAnnotation] = useState(false)
+  const savingAnnotationRef = useRef(false)
+  const [annotationError, setAnnotationError] = useState<string>()
   const replacementRef = useRef<HTMLTextAreaElement>(null)
   const currentReplaceTarget = useMemo(() => createTextReplaceTarget(range, section), [range, section])
   const replacementSnapshotRef = useRef<TextReplaceTarget | undefined>(undefined)
@@ -343,7 +346,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const annotationChanged = annotationNotesChanged || annotationColorChanged
   const textEditingDisabled = tab.book.scope === 'external' || tab.book.archive === true
   const closeMenu = () => {
-    if (savingReplacementRef.current) return
+    if (savingReplacementRef.current || savingAnnotationRef.current) return
     hide()
   }
   const cancelEditing = () => {
@@ -352,10 +355,26 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     setReplacementError(undefined)
   }
   const cancelAnnotation = () => {
+    if (savingAnnotationRef.current) return
     setDraftAnnotationColor(annotation?.color ?? 'yellow')
     setAnnotationNotesChanged(false)
     setAnnotate(false)
     popupElementRef.current?.focus({ preventScroll: true })
+  }
+  const saveAnnotation = (operation: () => Promise<void>) => {
+    savingAnnotationRef.current = true
+    setSavingAnnotation(true)
+    setAnnotationError(undefined)
+    void operation()
+      .then(hide)
+      .catch((error) => {
+        console.error(error)
+        setAnnotationError(t('note_save_error'))
+      })
+      .finally(() => {
+        savingAnnotationRef.current = false
+        setSavingAnnotation(false)
+      })
   }
   const switchView = (nextView: 'actions' | 'dictionary' | 'translation') => {
     setWidth(0)
@@ -607,16 +626,20 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             )}
           </div>
         ) : annotate ? (
-          <Textarea
-            ref={ref}
-            name="notes"
-            aria-label="notes"
-            defaultValue={initialAnnotationNotes}
-            onValueChange={(value) => setAnnotationNotesChanged(value !== initialAnnotationNotes)}
-            autoFocus
-            onExitEditing={cancelAnnotation}
-            className="textfield bg-background text-muted-foreground scroll h-40 min-h-0 w-68 resize-none rounded-none border-0 px-1.5 py-1 text-base focus-visible:border-transparent focus-visible:ring-1 focus-visible:ring-inset"
-          />
+          <div className="space-y-2">
+            <Textarea
+              ref={ref}
+              name="notes"
+              aria-label="notes"
+              defaultValue={initialAnnotationNotes}
+              disabled={savingAnnotation}
+              onValueChange={(value) => setAnnotationNotesChanged(value !== initialAnnotationNotes)}
+              autoFocus
+              onExitEditing={cancelAnnotation}
+              className="textfield bg-background text-muted-foreground scroll h-40 min-h-0 w-68 resize-none rounded-none border-0 px-1.5 py-1 text-base focus-visible:border-transparent focus-visible:ring-1 focus-visible:ring-inset"
+            />
+            {annotationError && <div className="text-destructive w-68 text-sm leading-snug">{annotationError}</div>}
+          </div>
         ) : (
           <div className="text-muted-foreground mb-3 flex gap-2">
             <IconButton
@@ -832,35 +855,37 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               <Button
                 size="sm"
                 variant="secondary"
+                disabled={savingAnnotation}
                 onClick={() => {
-                  tab.removeAnnotation(cfi)
-                  hide()
+                  saveAnnotation(() => tab.removeAnnotation(cfi, true))
                 }}
               >
                 {t('delete')}
               </Button>
             ) : (
-              <Button size="sm" variant="secondary" onClick={cancelAnnotation}>
+              <Button size="sm" variant="secondary" disabled={savingAnnotation} onClick={cancelAnnotation}>
                 {t('cancel')}
               </Button>
             )}
             <Button
               className="ml-auto"
               size="sm"
-              disabled={!annotationChanged}
+              disabled={!annotationChanged || savingAnnotation}
               onClick={() => {
-                tab.putAnnotation(
-                  annotation?.type ?? 'highlight',
-                  cfi,
-                  draftAnnotationColor,
-                  text,
-                  ref.current?.value,
-                  section,
+                saveAnnotation(() =>
+                  tab.putAnnotation(
+                    annotation?.type ?? 'highlight',
+                    cfi,
+                    draftAnnotationColor,
+                    text,
+                    ref.current?.value,
+                    section,
+                    true,
+                  ),
                 )
-                hide()
               }}
             >
-              {t(annotation ? 'update' : 'create')}
+              {savingAnnotation ? t('saving') : t(annotation ? 'update' : 'create')}
             </Button>
           </div>
         )}

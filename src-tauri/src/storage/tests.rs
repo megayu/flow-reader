@@ -1,7 +1,8 @@
 use super::book_assets::read_cover;
+use super::checkpoint::{BookStateCheckpoint, BookStateCheckpointInput, persist_book_states_and_flush};
 use super::commands::{
-    BookImportResult, ReadingPositionInput, delete_tags_impl, get_book_impl, import_epub_paths_impl, merge_tags_impl,
-    preview_text_import_paths_impl, record_reading_position_impl, revealable_book_source_path,
+    BookImportResult, delete_tags_impl, get_book_impl, import_epub_paths_impl, merge_tags_impl,
+    preview_text_import_paths_impl, revealable_book_source_path,
 };
 use super::epub_import::read_bounded_bytes;
 use super::settings::{flush_settings_impl, update_settings_impl};
@@ -9,22 +10,22 @@ use super::text_import::text_import_filename_metadata;
 use super::{
     AppStorage, BOOK_FILE, BOOK_STATE_VERSION, BOOKS_DIR, BookContentMode, BookExportFormat, BookReaderSourceMode,
     BookRecord, BookScope, BookSourceFormat, BookSourceStatus, BookState, BookTextReplaceTarget, DirtyState,
-    ExternalBookIndex, FolderImportTagAssignment, IMAGE_INDEX_CACHE_VERSION, ImageIndexCache, ImageIndexEntry,
-    ImageIndexSection, LIBRARY_VERSION, Library, LibraryBook, LibraryPins, LibraryTagRecord, ReadingStatus,
-    SEARCH_TEXT_CACHE_VERSION, SOURCE_TEXT_FILE, STATE_FILE, SearchTextCache, SearchTextSection, SourceStorage,
-    SourceTextUpdate, StorageInner, StorageState, TextImportRulesInput, TextImportSelection, UNPACKED_DIR,
-    apply_folder_import_tags_impl, check_book_source_statuses_impl, cleanup_external_book_heavy_files,
-    decode_text_bytes, empty_object, ensure_book_package_path_with_unpacker, export_book_impl, external_books_root,
-    external_index_path, get_book_reader_source_impl, hash_file, id_from_hash, library_path,
-    load_or_build_search_text_cache, mark_book_exported, mark_library_book_content_updated, materialize_epub_package,
-    normalize_non_square_pixel_png, normalize_publication_date, normalize_unpacked_epub_structure,
-    open_external_epub_path_impl, parent_zip_path, parse_text_import_document, path_to_client_string,
-    read_image_index_cache, read_json_or_default, read_json_value_or_default, read_search_text_sections_from_unpacked,
-    relative_zip_path, rename_books_for_deletion, replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node,
-    schedule_existing_pending_delete_cleanup, search_text_cache_from_bytes, search_text_cache_to_bytes,
-    search_text_in_cache, settings_path, text_content_opf, text_nav_xhtml, text_section_xhtml,
-    visible_search_text_from_xhtml, write_cover, write_epub_from_original_and_unpacked, write_epub_from_unpacked_dir,
-    write_image_index_cache_if_current, write_source_text_update,
+    FolderImportTagAssignment, IMAGE_INDEX_CACHE_VERSION, ImageIndexCache, ImageIndexEntry, ImageIndexSection,
+    LIBRARY_VERSION, Library, LibraryPins, LibraryTagRecord, ReadingStatus, SEARCH_TEXT_CACHE_VERSION,
+    SOURCE_TEXT_FILE, STATE_FILE, SearchTextCache, SearchTextSection, SourceStorage, SourceTextUpdate, StorageInner,
+    StorageState, StoredBook, TextImportRulesInput, TextImportSelection, UNPACKED_DIR, apply_folder_import_tags_impl,
+    check_book_source_statuses_impl, cleanup_external_book_heavy_files, decode_text_bytes, empty_object,
+    ensure_book_package_path_with_unpacker, export_book_impl, get_book_reader_source_impl, hash_file, id_from_hash,
+    library_path, load_or_build_search_text_cache, mark_book_exported, mark_library_book_content_updated,
+    materialize_epub_package, normalize_non_square_pixel_png, normalize_publication_date,
+    normalize_unpacked_epub_structure, open_external_epub_path_impl, parent_zip_path, parse_text_import_document,
+    path_to_client_string, read_image_index_cache, read_json_or_default, read_json_value_or_default,
+    read_search_text_sections_from_unpacked, relative_zip_path, rename_books_for_deletion, replace_book_text_impl,
+    replace_xhtml_text, replace_xhtml_text_node, schedule_existing_pending_delete_cleanup,
+    search_text_cache_from_bytes, search_text_cache_to_bytes, search_text_in_cache, settings_path, text_content_opf,
+    text_nav_xhtml, text_section_xhtml, visible_search_text_from_xhtml, write_cover,
+    write_epub_from_original_and_unpacked, write_epub_from_unpacked_dir, write_image_index_cache_if_current,
+    write_source_text_update,
 };
 use crate::tasks::TaskService;
 use serde_json::{Value, json};
@@ -205,11 +206,11 @@ fn wait_until_next_epoch_second() {
     }
 }
 
-fn test_storage_with_book(root: &Path, book: LibraryBook) -> AppStorage {
+fn test_storage_with_book(root: &Path, book: StoredBook) -> AppStorage {
     test_storage_with_books(root, vec![book])
 }
 
-fn test_storage_with_books(root: &Path, books: Vec<LibraryBook>) -> AppStorage {
+fn test_storage_with_books(root: &Path, books: Vec<StoredBook>) -> AppStorage {
     let initial_states = books
         .iter()
         .filter(|book| book.cfi.is_some() || book.percentage.is_some())
@@ -235,7 +236,6 @@ fn test_storage_with_books(root: &Path, books: Vec<LibraryBook>) -> AppStorage {
                     pins: LibraryPins::default(),
                     recent_book_ids: Vec::new(),
                 },
-                ExternalBookIndex::default(),
                 json!({"importSourceStorage": "managed"}),
             )),
             dirty: Mutex::new(DirtyState::default()),
@@ -265,7 +265,6 @@ fn test_storage_from_disk(root: &Path) -> AppStorage {
             root: root.to_path_buf(),
             state: Mutex::new(StorageState::new(
                 read_json_or_default::<Library>(&library_path(root).unwrap()).unwrap(),
-                read_json_or_default::<ExternalBookIndex>(&external_index_path(root).unwrap()).unwrap(),
                 json!({"importSourceStorage": "managed"}),
             )),
             dirty: Mutex::new(DirtyState::default()),
@@ -308,11 +307,9 @@ fn assert_external_promoted(storage: &AppStorage, imported: &BookRecord, externa
         fs::read_to_string(storage.book_dir(&imported.id).join("promotion-marker.txt")).unwrap(),
         "preserved"
     );
-    assert!(!storage.external_book_dir(external_id).exists());
-
     let state = storage.inner.state.lock().unwrap();
-    assert!(state.external.books.is_empty());
     assert_eq!(state.library.books.len(), 1);
+    assert_eq!(state.library.books[0].scope, BookScope::Library);
     drop(state);
     let promoted_state: BookState = read_json_or_default(&storage.book_dir(&imported.id).join(STATE_FILE)).unwrap();
     assert_eq!(promoted_state.version, BOOK_STATE_VERSION);
@@ -329,12 +326,9 @@ fn assert_external_promoted(storage: &AppStorage, imported: &BookRecord, externa
         Some("Edited External")
     );
     assert_eq!(imported.metadata.get("custom").and_then(Value::as_str), Some("kept"));
-    let external_index: ExternalBookIndex =
-        read_json_or_default(&external_index_path(storage.root()).unwrap()).unwrap();
-    assert!(external_index.books.is_empty());
 }
 
-fn test_library_book_with_id(id: &str, source_format: BookSourceFormat) -> LibraryBook {
+fn test_library_book_with_id(id: &str, source_format: BookSourceFormat) -> StoredBook {
     let mut book = test_library_book(source_format);
     book.id = id.to_string();
     book.name = format!("{id}.epub");
@@ -948,21 +942,6 @@ fn text_import_does_not_build_search_cache_in_visible_path() {
     let _ = fs::remove_dir_all(root);
 }
 
-fn reading_position_input(
-    cfi: &str,
-    percentage: f64,
-    spread: serde_json::Value,
-    last_read_at: u64,
-) -> ReadingPositionInput {
-    ReadingPositionInput {
-        book_id: "book".to_string(),
-        cfi: Some(cfi.to_string()),
-        percentage: Some(percentage),
-        spread: Some(spread),
-        last_read_at,
-    }
-}
-
 fn write_minimal_unpacked_package(root: &Path, marker: &str) {
     let meta_inf = root.join("META-INF");
     let oebps = root.join("OEBPS");
@@ -1373,7 +1352,7 @@ fn referenced_epub_import_materializes_on_first_open() {
     );
 
     let tasks = TaskService::default();
-    let reader_book = storage.library_book(&book.id).unwrap();
+    let reader_book = storage.stored_book(&book.id).unwrap();
     let reader_source = get_book_reader_source_impl(&storage, &tasks, &reader_book).unwrap();
     assert_eq!(reader_source.mode, BookReaderSourceMode::Opf);
     assert!(reader_source.path.ends_with("/unpacked/OEBPS/content.opf"));
@@ -1399,13 +1378,13 @@ fn external_epub_open_creates_external_record_without_library_entry() {
         Some("External Book")
     );
     let state = storage.inner.state.lock().unwrap();
-    assert!(state.library.books.is_empty());
-    assert_eq!(state.external.books.len(), 1);
+    assert_eq!(state.library.books.len(), 1);
+    assert_eq!(state.library.books[0].scope, BookScope::External);
     drop(state);
 
-    let external_dir = external_books_root(storage.root()).join(&book.id);
-    assert!(!external_dir.join(BOOK_FILE).exists());
-    assert!(external_dir.join(UNPACKED_DIR).join("OEBPS/content.opf").exists());
+    let book_dir = storage.book_dir(&book.id);
+    assert!(!book_dir.join(BOOK_FILE).exists());
+    assert!(book_dir.join(UNPACKED_DIR).join("OEBPS/content.opf").exists());
 
     let loaded = get_book_impl(&storage, book.id.clone())
         .unwrap()
@@ -1414,10 +1393,10 @@ fn external_epub_open_creates_external_record_without_library_entry() {
     assert!(matches!(loaded.scope, BookScope::External));
 
     let tasks = TaskService::default();
-    let reader_book = storage.library_book(&book.id).unwrap();
+    let reader_book = storage.stored_book(&book.id).unwrap();
     let source = get_book_reader_source_impl(&storage, &tasks, &reader_book).unwrap();
     assert_eq!(source.mode, BookReaderSourceMode::Opf);
-    assert!(source.path.contains("/external-books/"));
+    assert!(source.path.contains("/books/"));
     assert!(source.path.ends_with("/unpacked/OEBPS/content.opf"));
 
     let _ = fs::remove_dir_all(root);
@@ -1447,7 +1426,7 @@ fn referenced_archive_only_epub_fails_after_source_disappears() {
     assert_eq!(missing[0].status, BookSourceStatus::Missing);
 
     let tasks = TaskService::default();
-    let book = storage.library_book(&imported.id).unwrap();
+    let book = storage.stored_book(&imported.id).unwrap();
     let error = get_book_reader_source_impl(&storage, &tasks, &book).unwrap_err();
 
     assert_eq!(error, "BOOK_SOURCE_MISSING");
@@ -1479,7 +1458,7 @@ fn referenced_archive_only_epub_reports_changed_source() {
     assert_eq!(statuses[0].status, BookSourceStatus::Changed);
 
     let tasks = TaskService::default();
-    let book = storage.library_book(&imported.id).unwrap();
+    let book = storage.stored_book(&imported.id).unwrap();
     let error = get_book_reader_source_impl(&storage, &tasks, &book).unwrap_err();
     assert_eq!(error, "BOOK_SOURCE_CHANGED");
 
@@ -1497,10 +1476,10 @@ fn external_epub_cleanup_keeps_metadata_and_state_for_later_promotion() {
     write_minimal_epub_file(&source, "External Cleanup", "external body");
     let storage = test_storage_with_books(&root, Vec::new());
     let book = open_external_epub_path_impl(&storage, &source).unwrap();
-    let external_dir = external_books_root(storage.root()).join(&book.id);
+    let book_dir = storage.book_dir(&book.id);
 
-    fs::create_dir_all(external_dir.join(UNPACKED_DIR)).unwrap();
-    fs::write(external_dir.join(UNPACKED_DIR).join("stale"), "stale").unwrap();
+    fs::create_dir_all(book_dir.join(UNPACKED_DIR)).unwrap();
+    fs::write(book_dir.join(UNPACKED_DIR).join("stale"), "stale").unwrap();
     storage
         .write_book_state(
             &book.id,
@@ -1513,14 +1492,12 @@ fn external_epub_cleanup_keeps_metadata_and_state_for_later_promotion() {
 
     cleanup_external_book_heavy_files(&storage, &book.id).unwrap();
 
-    assert!(!external_dir.join(BOOK_FILE).exists());
-    assert!(!external_dir.join(UNPACKED_DIR).exists());
-    assert!(external_dir.join(STATE_FILE).exists());
-    let external_index = read_json_value_or_default(&external_index_path(storage.root()).unwrap()).unwrap();
+    assert!(!book_dir.join(BOOK_FILE).exists());
+    assert!(!book_dir.join(UNPACKED_DIR).exists());
+    assert!(book_dir.join(STATE_FILE).exists());
+    let library = read_json_value_or_default(&library_path(storage.root()).unwrap()).unwrap();
     assert_eq!(
-        external_index
-            .pointer("/books/0/metadata/title")
-            .and_then(Value::as_str),
+        library.pointer("/books/0/metadata/title").and_then(Value::as_str),
         Some("External Cleanup")
     );
 
@@ -1549,7 +1526,6 @@ fn external_epub_open_prefers_existing_library_book_by_hash() {
     assert!(matches!(opened.scope, BookScope::Library));
     let state = storage.inner.state.lock().unwrap();
     assert_eq!(state.library.books.len(), 1);
-    assert!(state.external.books.is_empty());
 
     let _ = fs::remove_dir_all(root);
 }
@@ -1586,13 +1562,12 @@ fn opening_managed_book_epub_uses_existing_book_without_hash_matching() {
     assert_eq!(opened.metadata.get("custom").and_then(Value::as_str), Some("kept"));
     let state = storage.inner.state.lock().unwrap();
     assert_eq!(state.library.books.len(), 1);
-    assert!(state.external.books.is_empty());
 
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
-fn importing_open_external_epub_promotes_metadata_state_and_removes_external_record() {
+fn importing_open_external_epub_promotes_metadata_and_state_in_place() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
         "flow-reader-external-promote-open-test-{}-{nonce}",
@@ -1605,7 +1580,7 @@ fn importing_open_external_epub_promotes_metadata_state_and_removes_external_rec
     assert_eq!(external.id, id_from_hash(&hash_file(&source).unwrap()));
     {
         let state = storage.inner.state.lock().unwrap();
-        let persisted = serde_json::to_value(&state.external.books[0]).unwrap();
+        let persisted = serde_json::to_value(&state.library.books[0]).unwrap();
         assert_eq!(persisted["sourceFormat"], "epub");
         assert!(persisted.get("lastReadAt").is_some());
         assert!(persisted.get("lastOpenedAt").is_none());
@@ -1613,21 +1588,17 @@ fn importing_open_external_epub_promotes_metadata_state_and_removes_external_rec
     {
         let mut state = storage.inner.state.lock().unwrap();
         state
-            .external
+            .library
             .books
             .iter_mut()
-            .find(|book| book.id == external.id)
+            .find(|book| book.id == external.id && book.scope == BookScope::External)
             .unwrap()
             .metadata = json!({"title": "Edited External", "custom": "kept"});
     }
     storage
         .write_book_state(&external.id, &external_promotion_state())
         .unwrap();
-    fs::write(
-        storage.external_book_dir(&external.id).join("promotion-marker.txt"),
-        "preserved",
-    )
-    .unwrap();
+    fs::write(storage.book_dir(&external.id).join("promotion-marker.txt"), "preserved").unwrap();
     let moved_source = root.join("moved/promoted.epub");
     fs::create_dir_all(moved_source.parent().unwrap()).unwrap();
     fs::rename(&source, &moved_source).unwrap();
@@ -1656,22 +1627,18 @@ fn importing_persisted_external_epub_promotes_disk_metadata_and_state() {
     {
         let mut state = storage.inner.state.lock().unwrap();
         state
-            .external
+            .library
             .books
             .iter_mut()
-            .find(|book| book.id == external.id)
+            .find(|book| book.id == external.id && book.scope == BookScope::External)
             .unwrap()
             .metadata = json!({"title": "Edited External", "custom": "kept"});
     }
     storage
         .write_book_state(&external.id, &external_promotion_state())
         .unwrap();
-    fs::write(
-        storage.external_book_dir(&external.id).join("promotion-marker.txt"),
-        "preserved",
-    )
-    .unwrap();
-    storage.mark_external_dirty();
+    fs::write(storage.book_dir(&external.id).join("promotion-marker.txt"), "preserved").unwrap();
+    storage.mark_library_dirty();
     storage.flush_content_dirty().unwrap();
 
     let reloaded = test_storage_from_disk(&root);
@@ -1893,7 +1860,7 @@ fn epub_import_resolves_content_and_path_identity_without_losing_local_changes()
     assert_eq!(old_book.id, renamed_book.id);
     assert_eq!(renamed_book.name, "renamed.epub");
     assert_eq!(
-        storage.library_book(&old_book.id).unwrap().source_path,
+        storage.stored_book(&old_book.id).unwrap().source_path,
         moved_source.clone()
     );
     assert!(book_dir.join(UNPACKED_DIR).exists());
@@ -1932,7 +1899,7 @@ fn epub_import_resolves_content_and_path_identity_without_losing_local_changes()
     assert!(result.books.is_empty());
     assert!(result.failures.is_empty());
     assert_eq!(result.skipped, vec!["renamed.epub"]);
-    let preserved = storage.library_book(&old_book.id).unwrap();
+    let preserved = storage.stored_book(&old_book.id).unwrap();
     assert!(preserved.content_edited_at.is_some());
     assert_eq!(
         preserved.metadata.get("title").and_then(Value::as_str),
@@ -1954,7 +1921,7 @@ fn unpack_package_reuses_in_flight_task_for_same_book_revision() {
     fs::write(storage.book_dir("book").join(BOOK_FILE), b"placeholder").unwrap();
     let tasks = Arc::new(TaskService::default());
     let runs = Arc::new(AtomicUsize::new(0));
-    let book = storage.library_book("book").unwrap();
+    let book = storage.stored_book("book").unwrap();
 
     let first = {
         let storage = Arc::clone(&storage);
@@ -2005,7 +1972,7 @@ fn stale_unpack_result_is_not_published() {
     fs::create_dir_all(storage.book_dir("book")).unwrap();
     fs::write(storage.book_dir("book").join(BOOK_FILE), b"placeholder").unwrap();
     let tasks = TaskService::default();
-    let book = storage.library_book("book").unwrap();
+    let book = storage.stored_book("book").unwrap();
 
     let result = ensure_book_package_path_with_unpacker(&storage, &tasks, &book, |_, dest| {
         write_minimal_unpacked_package(dest, "stale");
@@ -2030,7 +1997,7 @@ fn failed_unpack_does_not_expose_partial_directory() {
     fs::create_dir_all(storage.book_dir("book")).unwrap();
     fs::write(storage.book_dir("book").join(BOOK_FILE), b"placeholder").unwrap();
     let tasks = TaskService::default();
-    let book = storage.library_book("book").unwrap();
+    let book = storage.stored_book("book").unwrap();
 
     let result = ensure_book_package_path_with_unpacker(&storage, &tasks, &book, |_, dest| {
         fs::create_dir_all(dest.join("OEBPS")).unwrap();
@@ -2056,7 +2023,7 @@ fn archive_only_epub_reader_source_returns_original_package_without_unpacking() 
     let book_path = book_dir.join(BOOK_FILE);
     write_minimal_epub_with_invalid_windows_entry(&book_path);
     let tasks = TaskService::default();
-    let book = storage.library_book("book").unwrap();
+    let book = storage.stored_book("book").unwrap();
 
     let source = get_book_reader_source_impl(&storage, &tasks, &book).unwrap();
 
@@ -2078,7 +2045,7 @@ fn archive_only_epub_search_reads_sections_from_package() {
     let book_dir = storage.book_dir("book");
     write_minimal_epub_with_invalid_windows_entry(&book_dir.join(BOOK_FILE));
     let tasks = TaskService::default();
-    let book = storage.library_book("book").unwrap();
+    let book = storage.stored_book("book").unwrap();
 
     let cache = load_or_build_search_text_cache(&storage, &tasks, &book).unwrap();
     let hits = search_text_in_cache(&cache, "非法路径章节", None);
@@ -2165,46 +2132,6 @@ fn archive_only_epub_export_copies_original_package_without_unpacking() {
 }
 
 #[test]
-fn record_reading_position_persists_state_before_library_flush() {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-position-flush-test-{}-{nonce}",
-        std::process::id()
-    ));
-    let mut book = test_library_book(BookSourceFormat::Txt);
-    book.metadata = json!({ "sourceEncodingId": "utf-8" });
-    book.updated_at = Some(100);
-    let storage = test_storage_with_book(&root, book);
-
-    let accepted = record_reading_position_impl(
-        &storage,
-        reading_position_input("epubcfi(/6/8)", 0.8, json!({"version": 1}), 300),
-    )
-    .expect("position update should not error");
-    assert!(accepted);
-
-    {
-        let state = storage.inner.state.lock().unwrap();
-        let stored = &state.library.books[0];
-        assert_eq!(stored.updated_at, Some(100));
-        assert_eq!(stored.last_read_at, Some(300));
-    }
-
-    assert!(!library_path(&root).unwrap().exists());
-    let state = fs::read_to_string(root.join("books").join("book").join(STATE_FILE)).unwrap();
-    assert!(state.contains(r#""cfi": "epubcfi(/6/8)""#));
-    assert!(state.contains(r#""percentage": 0.8"#));
-
-    storage.flush_content_dirty().expect("dirty position should flush");
-
-    let library = fs::read_to_string(library_path(&root).unwrap()).unwrap();
-    assert!(library.contains(r#""cfi": "epubcfi(/6/8)""#));
-    assert!(library.contains(r#""percentage": 0.8"#));
-
-    let _ = fs::remove_dir_all(root);
-}
-
-#[test]
 fn failed_flush_keeps_library_dirty_for_retry() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!("flow-reader-flush-retry-test-{}-{nonce}", std::process::id()));
@@ -2222,6 +2149,91 @@ fn failed_flush_keeps_library_dirty_for_retry() {
         .expect("dirty library should be retryable");
     assert!(!storage.inner.dirty.lock().unwrap().library);
     assert!(path.is_file());
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn book_state_checkpoint_flushes_the_unified_book_aggregate() {
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "flow-reader-book-checkpoint-scope-test-{}-{nonce}",
+        std::process::id()
+    ));
+    let mut library_book = test_library_book_with_id("library-book", BookSourceFormat::Epub);
+    library_book.created_at = 100;
+    library_book.content_edited_at = Some(150);
+    library_book.updated_at = Some(250);
+    library_book.last_read_at = Some(350);
+    let mut external_book = test_library_book_with_id("external-book", BookSourceFormat::Epub);
+    external_book.scope = BookScope::External;
+    let storage = test_storage_with_books(&root, vec![library_book, external_book]);
+
+    persist_book_states_and_flush(
+        &storage,
+        vec![BookStateCheckpointInput {
+            id: "library-book".to_string(),
+            state: BookStateCheckpoint {
+                cfi: Some("epubcfi(/6/4)".to_string()),
+                percentage: Some(0.25),
+                definitions: vec!["library definition".to_string()],
+                annotations: vec![json!({"id": "library-note", "note": "saved"})],
+                configuration: Some(json!({"theme": "sepia"})),
+            },
+            state_updated_at: Some(200),
+            last_read_at: Some(300),
+        }],
+    )
+    .unwrap();
+
+    let library_after_checkpoint = fs::read(library_path(&root).unwrap()).unwrap();
+    let persisted_library: Library = serde_json::from_slice(&library_after_checkpoint).unwrap();
+    let persisted_library_book = persisted_library
+        .books
+        .iter()
+        .find(|book| book.id == "library-book")
+        .unwrap();
+    assert_eq!(persisted_library_book.created_at, 100);
+    assert_eq!(persisted_library_book.content_edited_at, Some(150));
+    assert_eq!(persisted_library_book.updated_at, Some(250));
+    assert_eq!(persisted_library_book.last_read_at, Some(350));
+    assert!(!storage.inner.dirty.lock().unwrap().library);
+
+    persist_book_states_and_flush(
+        &storage,
+        vec![BookStateCheckpointInput {
+            id: "external-book".to_string(),
+            state: BookStateCheckpoint {
+                cfi: Some("epubcfi(/6/8)".to_string()),
+                percentage: Some(0.75),
+                definitions: Vec::new(),
+                annotations: vec![json!({"id": "external-note", "note": "saved"})],
+                configuration: None,
+            },
+            state_updated_at: Some(400),
+            last_read_at: Some(500),
+        }],
+    )
+    .unwrap();
+
+    assert!(!storage.inner.dirty.lock().unwrap().library);
+    let library_after_external_checkpoint: Library =
+        serde_json::from_slice(&fs::read(library_path(&root).unwrap()).unwrap()).unwrap();
+    let persisted_external_book = library_after_external_checkpoint
+        .books
+        .iter()
+        .find(|book| book.id == "external-book")
+        .unwrap();
+    assert_eq!(persisted_external_book.scope, BookScope::External);
+    assert_eq!(persisted_external_book.cfi.as_deref(), Some("epubcfi(/6/8)"));
+    assert_eq!(persisted_external_book.percentage, Some(0.75));
+    assert_eq!(persisted_external_book.updated_at, Some(400));
+    assert_eq!(persisted_external_book.last_read_at, Some(500));
+    let external_state: BookState = read_json_or_default(&storage.book_dir("external-book").join(STATE_FILE)).unwrap();
+    assert_eq!(
+        external_state.annotations,
+        vec![json!({"id": "external-note", "note": "saved"})]
+    );
 
     let _ = fs::remove_dir_all(root);
 }
@@ -3848,9 +3860,10 @@ fn only_existing_referenced_sources_can_be_revealed() {
     fs::remove_dir_all(&root).unwrap();
 }
 
-fn test_library_book(source_format: BookSourceFormat) -> LibraryBook {
-    LibraryBook {
+fn test_library_book(source_format: BookSourceFormat) -> StoredBook {
+    StoredBook {
         id: "book".to_string(),
+        scope: BookScope::Library,
         name: "book.txt".to_string(),
         size: 1,
         reading_status: None::<ReadingStatus>,

@@ -5,6 +5,7 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { createRoot } from 'react-dom/client'
 
 import { FlowReader } from './app/FlowReader'
+import { installProductionReloadShortcutGuard } from './keyboard'
 import { reader } from './models/reader'
 import { initializeWindowUiState, isRecentReadingEnabled, snapshotWindowUiState, type WindowUiState } from './state'
 import { db } from './storage/client'
@@ -12,6 +13,7 @@ import { db } from './storage/client'
 const root = document.getElementById('root')
 if (!root) throw new Error('Flow Reader root element was not found')
 const appRoot = root
+installProductionReloadShortcutGuard(document)
 
 const windowUiStateReady = invoke<WindowUiState>('get_window_ui_state').then(initializeWindowUiState)
 const recentBooksReady = db.recentBooks.get().catch((error) => {
@@ -23,10 +25,10 @@ async function handleAppCloseRequested() {
   try {
     await windowUiStateReady
     await recentBooksReady
-    const readingPositions = await reader.collectAppCloseReadingPositions()
+    const bookCheckpoints = await reader.collectAppCloseBookCheckpoints()
     await invoke('persist_app_close_state', {
       closeState: {
-        readingPositions,
+        bookCheckpoints,
         recentBookIds: isRecentReadingEnabled() ? db.recentBooks.peek() : undefined,
         window: snapshotWindowUiState(),
       },

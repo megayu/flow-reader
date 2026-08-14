@@ -1,6 +1,6 @@
 use super::*;
 
-fn unedited_source_path(storage: &AppStorage, book: &LibraryBook) -> Option<PathBuf> {
+fn unedited_source_path(storage: &AppStorage, book: &StoredBook) -> Option<PathBuf> {
     if book.source_format == BookSourceFormat::Txt
         && book.source_storage == SourceStorage::Managed
         && book.content_edited_at.is_some()
@@ -41,36 +41,36 @@ pub(super) fn clear_book_caches_impl(
     preserved_unpacked_book_ids: HashSet<String>,
     mut report_progress: impl FnMut(usize, usize),
 ) -> Result<Vec<BookRecord>, String> {
-    let (library_books, external_ids) = {
+    let all_books = {
         let state = storage
             .inner
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        (
-            state.library.books.clone(),
-            state
-                .external
-                .books
-                .iter()
-                .map(|book| book.id.clone())
-                .collect::<Vec<_>>(),
-        )
+        state.library.books.clone()
     };
-    let mut all_ids = library_books.iter().map(|book| book.id.clone()).collect::<Vec<_>>();
-    all_ids.extend(external_ids);
+    let all_ids = all_books.iter().map(|book| book.id.clone()).collect::<Vec<_>>();
+    let external_ids = all_books
+        .iter()
+        .filter(|book| book.scope == BookScope::External)
+        .map(|book| book.id.clone())
+        .collect::<HashSet<_>>();
     let total = all_ids.len();
     report_progress(0, total);
 
-    let edited_book_ids = library_books
+    let edited_book_ids = all_books
         .iter()
-        .filter(|book| book.content_edited_at.is_some())
+        .filter(|book| book.scope == BookScope::Library && book.content_edited_at.is_some())
         .map(|book| book.id.clone())
         .collect::<HashSet<_>>();
     let source_restorations = if discard_unexported_edits {
-        library_books
+        all_books
             .iter()
-            .filter(|book| book.content_edited_at.is_some() && !preserved_unpacked_book_ids.contains(&book.id))
+            .filter(|book| {
+                book.scope == BookScope::Library
+                    && book.content_edited_at.is_some()
+                    && !preserved_unpacked_book_ids.contains(&book.id)
+            })
             .map(|book| {
                 let path =
                     unedited_source_path(storage, book).ok_or_else(|| "Book source is unavailable".to_string())?;
@@ -108,9 +108,13 @@ pub(super) fn clear_book_caches_impl(
                     fs::copy(source_path, storage.book_dir(&id).join(SOURCE_TEXT_FILE))
                         .map_err(|error| error.to_string())?;
                 }
-                let unpacked = storage.book_dir(&id).join(UNPACKED_DIR);
-                if unpacked.exists() {
-                    fs::remove_dir_all(unpacked).map_err(|error| error.to_string())?;
+                if external_ids.contains(&id) {
+                    cleanup_external_book_heavy_files(storage, &id)?;
+                } else {
+                    let unpacked = storage.book_dir(&id).join(UNPACKED_DIR);
+                    if unpacked.exists() {
+                        fs::remove_dir_all(unpacked).map_err(|error| error.to_string())?;
+                    }
                 }
             }
             Ok(!preserve_unpacked && source_restorations.contains_key(&id))
@@ -178,10 +182,13 @@ pub(super) fn rename_books_for_deletion(storage: &AppStorage, ids: &[String]) ->
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        if ids
-            .iter()
-            .any(|id| !state.library.books.iter().any(|book| &book.id == id))
-        {
+        if ids.iter().any(|id| {
+            !state
+                .library
+                .books
+                .iter()
+                .any(|book| &book.id == id && book.scope == BookScope::Library)
+        }) {
             return Err("Book not found".to_string());
         }
     }
@@ -208,7 +215,7 @@ pub(super) fn rename_books_for_deletion(storage: &AppStorage, ids: &[String]) ->
             .library
             .books
             .iter()
-            .filter(|book| ids.contains(&book.id))
+            .filter(|book| book.scope == BookScope::Library && ids.contains(&book.id))
             .filter_map(library_book_author)
             .collect::<HashSet<_>>();
         state.library.books.retain(|book| !ids.contains(&book.id));
@@ -217,6 +224,7 @@ pub(super) fn rename_books_for_deletion(storage: &AppStorage, ids: &[String]) ->
                 .library
                 .books
                 .iter()
+                .filter(|book| book.scope == BookScope::Library)
                 .filter_map(library_book_author)
                 .any(|candidate| candidate == author)
             {
@@ -264,7 +272,7 @@ pub(super) fn rename_path_for_deletion(path: &Path) -> Result<Option<PathBuf>, S
 
 fn list_pending_delete_paths(storage: &AppStorage) -> Result<Vec<PathBuf>, String> {
     let mut paths = Vec::new();
-    for root in [books_root(storage.root()), external_books_root(storage.root())] {
+    for root in [books_root(storage.root())] {
         if !root.exists() {
             continue;
         }
@@ -339,7 +347,7 @@ pub(super) fn delete_books_impl(storage: &AppStorage, tasks: &TaskService, ids: 
 pub(super) fn cleanup_external_book_heavy_files(storage: &AppStorage, id: &str) -> Result<(), String> {
     storage.ensure_external_book(id)?;
 
-    let dir = storage.external_book_dir(id);
+    let dir = storage.book_dir(id);
     let book_path = dir.join(BOOK_FILE);
     if book_path.exists() {
         fs::remove_file(book_path).map_err(|error| error.to_string())?;
@@ -360,9 +368,10 @@ pub fn cleanup_all_external_book_heavy_files(storage: &AppStorage) -> Result<(),
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
         state
-            .external
+            .library
             .books
             .iter()
+            .filter(|book| book.scope == BookScope::External)
             .map(|book| book.id.clone())
             .collect::<Vec<_>>()
     };

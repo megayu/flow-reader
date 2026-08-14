@@ -34,7 +34,7 @@ import { useNotify } from '../components/ui/notificationContext'
 import { formatErrorMessage } from '../errorMessage'
 import { useTranslation } from '../hooks/useTranslation'
 import { toMessageKeySegment } from '../locales'
-import { reader } from '../models/reader'
+import { completeTabOpen, reader } from '../models/reader'
 import { type BookExportFormat, type BookRecord, type BookSourceStatus, db, type ReadingStatus } from '../storage'
 
 import { bookCoverPlaceholder, CoverImage } from './CoverImage'
@@ -150,7 +150,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
   const exportFormats = bookExportFormats(book)
   const showNewBookMarker = isNewBook(book)
 
-  const openBook = useCallback(async () => {
+  const openBook = useCallback(() => {
     if (isBookSourceUnavailable(sourceStatus)) {
       notify({
         autoCloseMs: false,
@@ -160,9 +160,8 @@ const BookCardComponent: React.FC<BookCardProps> = ({
       })
       return
     }
-    reader.openBookFromLibrary((await db.books.get(book.id)) ?? book)
-    onOpenBook()
-  }, [book, notify, onOpenBook, sourceStatus, t])
+    completeTabOpen(reader.openBookFromLibrary(book.id), onOpenBook)
+  }, [book.id, notify, onOpenBook, sourceStatus, t])
 
   const handleCoverClick = useCallback(
     (event: React.MouseEvent) => {
@@ -231,7 +230,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
   const updateReadingStatus = useCallback(
     (readingStatus: ReadingStatus | null) => {
       setStatusMenuOpen(false)
-      void db.books.update(book.id, { readingStatus })
+      void db.books.updateReadingStatus([book.id], readingStatus)
     },
     [book.id],
   )
@@ -241,7 +240,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
       if (select) {
         onSelectBook(book.id, event)
       } else {
-        void openBook()
+        openBook()
       }
     },
     [book.id, onSelectBook, openBook, select],
@@ -487,7 +486,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
             Icon={BookOpenIcon}
             label={t('context.open')}
             onSelect={() => {
-              void openBook()
+              openBook()
             }}
           />
           <BookContextMenuItem Icon={PencilIcon} label={t('context.edit')} onSelect={() => setEditOpen(true)} />
@@ -530,8 +529,10 @@ const BookCardComponent: React.FC<BookCardProps> = ({
                 return
               }
 
-              reader.closeBookTab(book.id)
-              void db.books.delete(book.id)
+              void reader
+                .closeBookTab(book.id)
+                .then(() => db.books.delete(book.id))
+                .catch(console.error)
             }}
           />
         </ContextMenuContent>

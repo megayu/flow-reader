@@ -37,7 +37,7 @@ export default defineConfig({
   testDir: './tests/integration',
   testMatch: '**/*.spec.ts',
   outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? 'test-results',
-  globalSetup: './tests/support/serve-static-export.ts',
+  globalSetup: './tests/support/prepare-static-export.ts',
   timeout: 30_000,
   expect: {
     timeout: 5_000,

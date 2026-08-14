@@ -171,7 +171,7 @@ export function mergeLibraryTags(tags: LibraryTagRecord[], extraTags: LibraryTag
 
 export function sortBooks(books: BookRecord[], field: LibrarySortField, direction: LibrarySortDirection) {
   if (field === 'createdAt') {
-    return direction === 'asc' ? books : [...books].reverse()
+    return [...books].sort((a, b) => (direction === 'asc' ? a.createdAt - b.createdAt : b.createdAt - a.createdAt))
   }
 
   return [...books].sort((a, b) => {

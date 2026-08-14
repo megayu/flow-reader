@@ -4,7 +4,7 @@ use super::*;
 pub(super) fn ensure_book_package_path_with_unpacker(
     storage: &AppStorage,
     tasks: &TaskService,
-    book: &LibraryBook,
+    book: &StoredBook,
     unpacker: impl FnOnce(&Path, &Path) -> Result<(), String>,
 ) -> Result<PathBuf, String> {
     ensure_book_package_path_with(storage, tasks, book, move |storage, book| {
@@ -18,8 +18,8 @@ pub(super) fn ensure_book_package_path_with_unpacker(
 fn ensure_book_package_path_with(
     storage: &AppStorage,
     tasks: &TaskService,
-    book: &LibraryBook,
-    materialize: impl FnOnce(&AppStorage, &LibraryBook) -> Result<PathBuf, String>,
+    book: &StoredBook,
+    materialize: impl FnOnce(&AppStorage, &StoredBook) -> Result<PathBuf, String>,
 ) -> Result<PathBuf, String> {
     let started = Instant::now();
     if let Ok(opf_path) = find_unpacked_opf_path(&storage.book_dir(&book.id).join(UNPACKED_DIR)) {
@@ -67,7 +67,7 @@ fn ensure_book_package_path_with(
 pub(super) fn ensure_book_package_path(
     storage: &AppStorage,
     tasks: &TaskService,
-    book: &LibraryBook,
+    book: &StoredBook,
 ) -> Result<PathBuf, String> {
     match book.source_format {
         BookSourceFormat::Epub => ensure_book_package_path_with(storage, tasks, book, publish_unpacked_book_package),
@@ -78,38 +78,29 @@ pub(super) fn ensure_book_package_path(
 }
 
 pub(super) fn set_book_content_access(storage: &AppStorage, id: &str, mode: BookContentMode) -> Result<(), String> {
-    let (changed, external) = {
+    let changed = {
         let mut state = storage
             .inner
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
 
-        if let Some(book) = state.library.books.iter_mut().find(|book| book.id == id) {
-            if book.content_mode == mode {
-                (false, false)
-            } else {
-                book.content_mode = mode;
-                (true, false)
-            }
-        } else if let Some(book) = state.external.books.iter_mut().find(|book| book.id == id) {
-            if book.content_mode == mode {
-                (false, true)
-            } else {
-                book.content_mode = mode;
-                (true, true)
-            }
+        let book = state
+            .library
+            .books
+            .iter_mut()
+            .find(|book| book.id == id)
+            .ok_or_else(|| "Book not found".to_string())?;
+        if book.content_mode == mode {
+            false
         } else {
-            return Err("Book not found".to_string());
+            book.content_mode = mode;
+            true
         }
     };
 
     if changed {
-        if external {
-            storage.mark_external_dirty();
-        } else {
-            storage.mark_library_dirty();
-        }
+        storage.mark_library_dirty();
         storage.flush_content_dirty()?;
     }
 
@@ -118,7 +109,7 @@ pub(super) fn set_book_content_access(storage: &AppStorage, id: &str, mode: Book
 
 pub(super) fn inspect_and_store_book_content_access(
     storage: &AppStorage,
-    book: &LibraryBook,
+    book: &StoredBook,
 ) -> Result<BookContentMode, String> {
     if book.content_mode == BookContentMode::ArchiveOnly {
         return Ok(BookContentMode::ArchiveOnly);
@@ -175,7 +166,7 @@ pub(super) fn source_status_error(status: BookSourceStatus) -> Option<&'static s
     }
 }
 
-pub(super) fn available_book_source_path(storage: &AppStorage, book: &LibraryBook) -> Result<PathBuf, String> {
+pub(super) fn available_book_source_path(storage: &AppStorage, book: &StoredBook) -> Result<PathBuf, String> {
     let path = match book.source_storage {
         SourceStorage::Managed => Some(storage.book_dir(&book.id).join(match book.source_format {
             BookSourceFormat::Epub => BOOK_FILE,
@@ -193,7 +184,7 @@ pub(super) fn available_book_source_path(storage: &AppStorage, book: &LibraryBoo
     Ok(path)
 }
 
-pub(super) fn referenced_archive_source_status(book: &LibraryBook) -> BookSourceStatus {
+pub(super) fn referenced_archive_source_status(book: &StoredBook) -> BookSourceStatus {
     source_path_status(
         Some(book.source_path.as_path()),
         Some((book.size, book.content_hash.as_str())),
@@ -211,7 +202,14 @@ pub(super) fn check_book_source_statuses_impl(
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
         ids.into_iter()
-            .filter_map(|id| state.library.books.iter().find(|book| book.id == id).cloned())
+            .filter_map(|id| {
+                state
+                    .library
+                    .books
+                    .iter()
+                    .find(|book| book.id == id && book.scope == BookScope::Library)
+                    .cloned()
+            })
             .collect::<Vec<_>>()
     };
 
@@ -230,7 +228,7 @@ pub(super) fn check_book_source_statuses_impl(
 pub(super) fn get_book_reader_source_impl(
     storage: &AppStorage,
     tasks: &TaskService,
-    book: &LibraryBook,
+    book: &StoredBook,
 ) -> Result<BookReaderSource, String> {
     let book_dir = storage.book_dir(&book.id);
     let unpacked_dir = book_dir.join(UNPACKED_DIR);
@@ -239,17 +237,25 @@ pub(super) fn get_book_reader_source_impl(
             deobfuscate_unpacked_idpf_fonts(&unpacked_dir, &opf_xml)?;
         }
         (BookReaderSourceMode::Opf, opf_path, Some(unpacked_dir.clone()), None)
-    } else if inspect_and_store_book_content_access(storage, book)? == BookContentMode::ArchiveOnly {
-        let book_path = available_book_source_path(storage, book)?;
-        (BookReaderSourceMode::Epub, book_path, None, None)
     } else {
-        let opf_path = ensure_book_package_path(storage, tasks, book)?;
-        let current_book = storage.library_book(&book.id)?;
-        let updated_book = (current_book.revision != book.revision || current_book.content_hash != book.content_hash)
-            .then(|| commands::get_book_impl(storage, book.id.clone()))
-            .transpose()?
-            .flatten();
-        (BookReaderSourceMode::Opf, opf_path, Some(unpacked_dir), updated_book)
+        let content_mode = inspect_and_store_book_content_access(storage, book)?;
+        if content_mode == BookContentMode::ArchiveOnly {
+            let book_path = available_book_source_path(storage, book)?;
+            let updated_book = (content_mode != book.content_mode)
+                .then(|| commands::get_book_impl(storage, book.id.clone()))
+                .transpose()?
+                .flatten();
+            (BookReaderSourceMode::Epub, book_path, None, updated_book)
+        } else {
+            let opf_path = ensure_book_package_path(storage, tasks, book)?;
+            let current_book = storage.stored_book(&book.id)?;
+            let updated_book = (current_book.revision != book.revision
+                || current_book.content_hash != book.content_hash)
+                .then(|| commands::get_book_impl(storage, book.id.clone()))
+                .transpose()?
+                .flatten();
+            (BookReaderSourceMode::Opf, opf_path, Some(unpacked_dir), updated_book)
+        }
     };
 
     let reading_metrics = super::reading_metrics::load_or_build_reading_metrics(
@@ -267,18 +273,18 @@ pub(super) fn get_book_reader_source_impl(
         mode,
         path: path_to_client_string(&source_path),
         root_path: root_path.as_deref().map(path_to_client_string),
-        book: updated_book,
+        updated_book,
         reading_metrics,
     })
 }
 
-fn publish_unpacked_book_package(storage: &AppStorage, book: &LibraryBook) -> Result<PathBuf, String> {
+fn publish_unpacked_book_package(storage: &AppStorage, book: &StoredBook) -> Result<PathBuf, String> {
     publish_unpacked_book_package_with(storage, book, materialize_epub_package)
 }
 
 fn publish_unpacked_book_package_with(
     storage: &AppStorage,
-    book: &LibraryBook,
+    book: &StoredBook,
     materialize: impl FnOnce(&Path, &Path) -> Result<bool, String>,
 ) -> Result<PathBuf, String> {
     let book_dir = storage.book_dir(&book.id);
@@ -324,7 +330,7 @@ fn publish_unpacked_book_package_with(
     Ok(unpacked_dir.join(opf_relative_path))
 }
 
-fn book_materialize_task_key(book: &LibraryBook) -> TaskKey {
+fn book_materialize_task_key(book: &StoredBook) -> TaskKey {
     TaskKey::new(
         TaskKind::BookMaterialize,
         format!("{}:{}:{}", book.id, book.content_hash, book.revision),
@@ -343,7 +349,7 @@ fn unpack_temp_dir(unpacked_dir: &Path) -> PathBuf {
     unpacked_dir.with_file_name(format!("{name}.tmp-{}-{nonce}", std::process::id()))
 }
 
-fn book_content_still_current(storage: &AppStorage, book: &LibraryBook) -> Result<bool, String> {
-    let current = storage.library_book(&book.id)?;
+fn book_content_still_current(storage: &AppStorage, book: &StoredBook) -> Result<bool, String> {
+    let current = storage.stored_book(&book.id)?;
     Ok(current.content_hash == book.content_hash && current.revision == book.revision)
 }

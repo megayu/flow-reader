@@ -186,7 +186,6 @@ function createPerfBrowserBooks() {
       cfi: 'chapter_001.xhtml',
       definitions: [],
       annotations: [],
-      stateLoaded: true,
       packageUrl: `/flow-perf/${name}/OPS/package.opf`,
       perfPrefix: prefix,
       perfTitle: title,

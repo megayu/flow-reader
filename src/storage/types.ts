@@ -64,6 +64,11 @@ export interface BookReaderSource {
   readingMetrics?: ReadingMetrics
 }
 
+export interface BookReaderPreparation {
+  source: BookReaderSource
+  updatedBook?: BookRecord
+}
+
 export interface BookTextReplaceTarget {
   sectionHref: string
   textNodeIndex: number
@@ -114,7 +119,7 @@ export interface BookRecord {
   id: string
   name: string
   size: number
-  scope?: 'library' | 'external'
+  scope: 'library' | 'external'
   readingStatus?: ReadingStatus | null
   sourceFormat: BookSourceFormat
   generatedCover: boolean
@@ -137,7 +142,21 @@ export interface BookRecord {
   archive?: true
   managed?: true
   sourcePath: string
-  stateLoaded?: boolean
+}
+
+export interface BookStateSnapshot {
+  annotations: Annotation[]
+  definitions: string[]
+  cfi?: string
+  percentage?: number
+  configuration?: BookRecord['configuration']
+}
+
+export interface BookStateCheckpointInput {
+  id: string
+  state: BookStateSnapshot
+  stateUpdatedAt?: number
+  lastReadAt?: number
 }
 
 export interface BookSourceStatusRecord {
@@ -189,14 +208,6 @@ export interface FolderImportTagResult {
 export interface BookCacheClearProgress {
   total: number
   completed: number
-}
-
-export interface ReadingPositionInput {
-  bookId: string
-  cfi?: string
-  percentage?: number
-  spread?: ReadingSpreadRecord | null
-  lastReadAt: number
 }
 
 export interface BookSearchHit {

@@ -121,12 +121,6 @@ export function useBookRenditionLifecycle({
   }, [applyCustomStyle, rendition, tab, typographyLayoutSignature])
 
   useEffect(() => {
-    return () => {
-      tab.destroy()
-    }
-  }, [tab])
-
-  useEffect(() => {
     renderIfReady()
   }, [renderIfReady])
 

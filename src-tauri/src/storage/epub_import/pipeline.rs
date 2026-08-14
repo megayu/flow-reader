@@ -60,7 +60,7 @@ pub(in crate::storage) struct PreparedEpubImport {
 
 fn epub_import_requires_inspection(
     storage: &AppStorage,
-    import_index: Option<&LibraryBookLookupIndex>,
+    import_index: Option<&BookImportLookupIndex>,
     source_path: &Path,
     hash: &str,
 ) -> Result<bool, String> {
@@ -73,24 +73,29 @@ fn epub_import_requires_inspection(
         match existing_book_import(import_index, &state.library.books, source_path, hash) {
             Some(ExistingBookImport::ReplaceContent(_)) => true,
             Some(_) => false,
-            None => external_book_for_hash(import_index, &state.external.books, hash).is_none(),
+            None => external_book_for_hash(import_index, &state.library.books, hash).is_none(),
         },
     )
 }
 
 fn external_book_for_hash(
-    import_index: Option<&LibraryBookLookupIndex>,
-    books: &[LibraryBook],
+    import_index: Option<&BookImportLookupIndex>,
+    books: &[StoredBook],
     hash: &str,
-) -> Option<LibraryBook> {
+) -> Option<StoredBook> {
     import_index
         .and_then(|index| index.external_book(hash).cloned())
-        .or_else(|| books.iter().find(|book| book.content_hash == hash).cloned())
+        .or_else(|| {
+            books
+                .iter()
+                .find(|book| book.scope == BookScope::External && book.content_hash == hash)
+                .cloned()
+        })
 }
 
 pub(in crate::storage) fn prepare_epub_import(
     storage: &AppStorage,
-    import_index: &LibraryBookLookupIndex,
+    import_index: &BookImportLookupIndex,
     path: &Path,
 ) -> Result<PreparedEpubImport, String> {
     let books_root = books_root(storage.root());
@@ -140,7 +145,7 @@ pub(in crate::storage) fn prepare_epub_import(
 pub(in crate::storage) fn commit_prepared_epub_import(
     storage: &AppStorage,
     prepared: PreparedEpubImport,
-    mut import_index: Option<&mut LibraryBookLookupIndex>,
+    mut import_index: Option<&mut BookImportLookupIndex>,
 ) -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
     let _import_guard = storage
         .inner
@@ -158,7 +163,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
     } = prepared;
 
     let mut file_transaction = None;
-    let mut promoted_directory = None;
+    let mut promoted_managed_source = None;
     let result = (|| -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
         if inspection.is_none()
             && epub_import_requires_inspection(storage, import_index.as_deref(), &source_path, &hash)?
@@ -180,7 +185,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
             let existing = existing_book_import(import_index.as_deref(), &state.library.books, &source_path, &hash);
             let external_promotion = existing
                 .is_none()
-                .then(|| external_book_for_hash(import_index.as_deref(), &state.external.books, &hash))
+                .then(|| external_book_for_hash(import_index.as_deref(), &state.library.books, &hash))
                 .flatten();
 
             if let Some(ExistingBookImport::SameContent(index)) = existing {
@@ -217,6 +222,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                 let id = id_from_hash(&hash);
                 let now = now_ms();
                 let book = if let Some(mut book) = external_promotion.clone() {
+                    book.scope = BookScope::Library;
                     book.name = name.clone();
                     book.size = size;
                     book.source_storage = source_storage;
@@ -228,8 +234,9 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                     let (parsed, content_mode) = inspection
                         .as_ref()
                         .ok_or_else(|| "EPUB inspection is unavailable for new content".to_string())?;
-                    LibraryBook {
+                    StoredBook {
                         id: id.clone(),
+                        scope: BookScope::Library,
                         name: name.clone(),
                         size,
                         reading_status: None,
@@ -260,21 +267,14 @@ pub(in crate::storage) fn commit_prepared_epub_import(
         if let Some(book) = &external_promotion {
             storage.read_book_state(&book.id)?;
         }
-        if let Some(external_book) = &external_promotion {
-            storage.remove_derived_memory_caches(&id);
-            let external_dir = storage.external_book_dir(&external_book.id);
-            let library_dir = storage.library_book_dir(&id);
-            if library_dir.exists() {
-                return Err("Library book directory already exists during external promotion".to_string());
-            }
-            fs::rename(&external_dir, &library_dir).map_err(|error| error.to_string())?;
-            promoted_directory = Some((
-                external_dir,
-                library_dir.clone(),
-                source_storage == SourceStorage::Managed,
-            ));
+        if external_promotion.is_some() {
             if source_storage == SourceStorage::Managed {
-                fs::rename(&temp_path, library_dir.join(BOOK_FILE)).map_err(|error| error.to_string())?;
+                let managed_source = storage.book_dir(&id).join(BOOK_FILE);
+                if managed_source.exists() {
+                    fs::remove_file(&managed_source).map_err(|error| error.to_string())?;
+                }
+                fs::rename(&temp_path, &managed_source).map_err(|error| error.to_string())?;
+                promoted_managed_source = Some(managed_source);
             } else {
                 remove_epub_import_temp(&temp_path);
             }
@@ -305,8 +305,6 @@ pub(in crate::storage) fn commit_prepared_epub_import(
             remove_epub_import_temp(&temp_path);
         }
 
-        let promoted_id = external_promotion.as_ref().map(|book| book.id.clone());
-
         if publication_changed {
             let now = now_ms();
             book.revision = next_revision(book.revision)?;
@@ -321,7 +319,16 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                 .state
                 .lock()
                 .map_err(|_| "storage state lock poisoned".to_string())?;
-            let stored_index = if is_new {
+            if external_promotion.is_some() {
+                let stored_index = state
+                    .library
+                    .books
+                    .iter()
+                    .position(|stored| stored.id == id && stored.scope == BookScope::External)
+                    .ok_or_else(|| "External book changed while it was being added to the library".to_string())?;
+                state.library.books[stored_index] = book.clone();
+                stored_index
+            } else if is_new {
                 if state.library.books.iter().any(|stored| stored.id == id)
                     || existing_book_import(None, &state.library.books, &source_path, &hash).is_some()
                 {
@@ -343,22 +350,14 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                 book.tag_ids = stored.tag_ids.clone();
                 *stored = book.clone();
                 stored_index
-            };
-            if let Some(external_id) = &promoted_id {
-                state.external.books.retain(|stored| stored.id != *external_id);
             }
-            stored_index
         };
         if let Some(index) = import_index.as_deref_mut() {
             index.remember(stored_index, &book);
         }
-        let record = storage.compose_book(&book, BookScope::Library)?;
+        let record = storage.compose_book(&book)?;
 
         storage.mark_library_dirty();
-        if let Some(external_id) = &promoted_id {
-            storage.remove_derived_memory_caches(external_id);
-            storage.mark_external_dirty();
-        }
         let finalizer = ImportFinalizer::new(file_transaction.take());
         Ok(Some((record, finalizer)))
     })();
@@ -367,18 +366,11 @@ pub(in crate::storage) fn commit_prepared_epub_import(
         remove_epub_import_temp(&temp_path);
     }
     if result.is_err() {
-        if let Some((external_dir, library_dir, managed_source)) = promoted_directory.take() {
-            if managed_source {
-                let promoted_source = library_dir.join(BOOK_FILE);
-                if promoted_source.exists()
-                    && let Err(error) = fs::rename(&promoted_source, &temp_path)
-                {
-                    eprintln!("Failed to restore managed EPUB import file after promotion failure: {error}");
-                }
-            }
-            if let Err(error) = fs::rename(&library_dir, &external_dir) {
-                eprintln!("Failed to restore external book directory after promotion failure: {error}");
-            }
+        if let Some(managed_source) = promoted_managed_source.take()
+            && let Err(error) = fs::remove_file(&managed_source)
+            && managed_source.exists()
+        {
+            eprintln!("Failed to remove managed source after promotion failure: {error}");
         }
         remove_epub_import_temp(&temp_path);
         if let Some(transaction) = file_transaction
@@ -391,7 +383,21 @@ pub(in crate::storage) fn commit_prepared_epub_import(
     result
 }
 
+#[cfg(test)]
 pub(in crate::storage) fn open_external_epub_path_impl(
+    storage: &AppStorage,
+    path: &Path,
+) -> Result<BookRecord, String> {
+    let result = open_external_epub_path_unflushed_impl(storage, path);
+    let flush_result = storage.flush_content_dirty();
+    match (result, flush_result) {
+        (Ok(book), Ok(())) => Ok(book),
+        (Err(error), _) => Err(error),
+        (Ok(_), Err(error)) => Err(error),
+    }
+}
+
+pub(in crate::storage) fn open_external_epub_path_unflushed_impl(
     storage: &AppStorage,
     path: &Path,
 ) -> Result<BookRecord, String> {
@@ -399,8 +405,7 @@ pub(in crate::storage) fn open_external_epub_path_impl(
         return Ok(book);
     }
 
-    let external_root = external_books_root(storage.root());
-    fs::create_dir_all(&external_root).map_err(|error| error.to_string())?;
+    fs::create_dir_all(books_root(storage.root())).map_err(|error| error.to_string())?;
 
     let source_path = path.to_path_buf();
     let size = fs::metadata(&source_path).map_err(|error| error.to_string())?.len();
@@ -417,23 +422,32 @@ pub(in crate::storage) fn open_external_epub_path_impl(
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        if let Some(book) = state.library.books.iter().find(|book| book.id == id) {
-            return storage.compose_book(book, BookScope::Library);
+        if let Some(book) = state
+            .library
+            .books
+            .iter()
+            .find(|book| book.id == id && book.scope == BookScope::Library)
+        {
+            return storage.compose_book(book);
         }
-        state.external.books.iter().find(|book| book.id == id).cloned()
+        state
+            .library
+            .books
+            .iter()
+            .find(|book| book.id == id && book.scope == BookScope::External)
+            .cloned()
     };
 
-    let external_dir = storage.external_book_dir(&id);
-    fs::create_dir_all(&external_dir).map_err(|error| error.to_string())?;
+    let book_dir = storage.book_dir(&id);
+    fs::create_dir_all(&book_dir).map_err(|error| error.to_string())?;
     let needs_assets = existing.as_ref().is_none_or(|book| {
-        book.content_mode == BookContentMode::Normal
-            && find_unpacked_opf_path(&external_dir.join(UNPACKED_DIR)).is_err()
+        book.content_mode == BookContentMode::Normal && find_unpacked_opf_path(&book_dir.join(UNPACKED_DIR)).is_err()
     });
     let mut inspection = needs_assets.then(|| inspect_epub_info(&source_path)).transpose()?;
     if let Some((parsed, content_mode)) = inspection.as_mut() {
         if *content_mode == BookContentMode::Normal {
             normalize_epub_cover_png(&mut parsed.cover);
-            materialize_epub_package(&source_path, &external_dir.join(UNPACKED_DIR))?;
+            materialize_epub_package(&source_path, &book_dir.join(UNPACKED_DIR))?;
         }
         write_cover(storage, &id, parsed.cover.take().map(|cover| cover.input))?;
     }
@@ -445,10 +459,21 @@ pub(in crate::storage) fn open_external_epub_path_impl(
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        if let Some(book) = state.library.books.iter().find(|book| book.id == id).cloned() {
-            return storage.compose_book(&book, BookScope::Library);
+        if let Some(book) = state
+            .library
+            .books
+            .iter()
+            .find(|book| book.id == id && book.scope == BookScope::Library)
+            .cloned()
+        {
+            return storage.compose_book(&book);
         }
-        if let Some(book) = state.external.books.iter_mut().find(|book| book.id == id) {
+        if let Some(book) = state
+            .library
+            .books
+            .iter_mut()
+            .find(|book| book.id == id && book.scope == BookScope::External)
+        {
             book.name = name;
             book.size = size;
             book.source_path = source_path;
@@ -458,8 +483,9 @@ pub(in crate::storage) fn open_external_epub_path_impl(
             let (parsed, content_mode) = inspection
                 .as_ref()
                 .ok_or_else(|| "EPUB inspection is unavailable for external content".to_string())?;
-            let book = LibraryBook {
+            let book = StoredBook {
                 id,
+                scope: BookScope::External,
                 name,
                 size,
                 reading_status: None,
@@ -479,13 +505,12 @@ pub(in crate::storage) fn open_external_epub_path_impl(
                 percentage: None,
                 tag_ids: Vec::new(),
             };
-            state.external.books.push(book.clone());
+            state.library.books.push(book.clone());
             book
         }
     };
-    storage.mark_external_dirty();
-    storage.flush_content_dirty()?;
-    storage.compose_book(&book, BookScope::External)
+    storage.mark_library_dirty();
+    storage.compose_book(&book)
 }
 
 pub(super) fn managed_library_book_for_epub_path(
@@ -523,9 +548,15 @@ pub(super) fn managed_library_book_for_epub_path(
         .state
         .lock()
         .map_err(|_| "storage state lock poisoned".to_string())?;
-    let Some(book) = state.library.books.iter().find(|book| book.id == id).cloned() else {
+    let Some(book) = state
+        .library
+        .books
+        .iter()
+        .find(|book| book.id == id && book.scope == BookScope::Library)
+        .cloned()
+    else {
         return Ok(None);
     };
 
-    storage.compose_book(&book, BookScope::Library).map(Some)
+    storage.compose_book(&book).map(Some)
 }

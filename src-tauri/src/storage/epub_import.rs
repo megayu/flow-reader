@@ -34,8 +34,10 @@ pub(super) use metadata_cover::{clean_xml_text, join_zip_path, normalize_zip_pat
 #[cfg(test)]
 pub(super) use normalize::relative_zip_path;
 pub(super) use normalize::{deobfuscate_unpacked_idpf_fonts, normalize_unpacked_epub_structure};
+#[cfg(test)]
+pub(super) use pipeline::open_external_epub_path_impl;
 pub(super) use pipeline::{
-    commit_prepared_epub_import, materialize_epub_package, open_external_epub_path_impl, prepare_epub_import,
+    commit_prepared_epub_import, materialize_epub_package, open_external_epub_path_unflushed_impl, prepare_epub_import,
 };
 
 pub(super) use publication_date::normalize_publication_date;

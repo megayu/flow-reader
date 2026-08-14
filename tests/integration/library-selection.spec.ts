@@ -26,7 +26,6 @@ function createBook(index: number): BookRecord {
     updatedAt: index,
     definitions: [],
     annotations: [],
-    stateLoaded: true,
   })
 }
 

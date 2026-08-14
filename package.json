@@ -14,7 +14,7 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "test:unit": "vitest run",
-    "test:integration": "pnpm build && playwright test",
+    "test:integration": "playwright test",
     "rust:format": "cargo fmt --manifest-path src-tauri/Cargo.toml",
     "rust:format:check": "cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
     "rust:lint": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
