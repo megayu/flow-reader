@@ -29,6 +29,12 @@ export class RecentReadingModel {
     return [...this.bookIds]
   }
 
+  record(bookId: string) {
+    if (!bookId || this.bookIds[0] === bookId) return false
+    this.bookIds = [bookId, ...this.bookIds.filter((id) => id !== bookId)].slice(0, recentReadingLimit)
+    return true
+  }
+
   beginSession(bookId: string, baselineCfi?: string) {
     if (!bookId) return
     this.sessions.set(bookId, { baselineCfi })
@@ -49,7 +55,6 @@ export class RecentReadingModel {
     if (session.baselineCfi === cfi) return false
 
     this.sessions.delete(bookId)
-    this.bookIds = [bookId, ...this.bookIds.filter((id) => id !== bookId)].slice(0, recentReadingLimit)
-    return true
+    return this.record(bookId)
   }
 }

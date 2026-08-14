@@ -7,7 +7,7 @@ import { createRoot } from 'react-dom/client'
 import { FlowReader } from './app/FlowReader'
 import { installProductionReloadShortcutGuard } from './keyboard'
 import { reader } from './models/reader'
-import { initializeWindowUiState, isRecentReadingEnabled, snapshotWindowUiState, type WindowUiState } from './state'
+import { initializeWindowUiState, snapshotWindowUiState, type WindowUiState } from './state'
 import { db } from './storage/client'
 
 const root = document.getElementById('root')
@@ -29,7 +29,7 @@ async function handleAppCloseRequested() {
     await invoke('persist_app_close_state', {
       closeState: {
         bookCheckpoints,
-        recentBookIds: isRecentReadingEnabled() ? db.recentBooks.peek() : undefined,
+        recentBookIds: db.recentBooks.peek(),
         window: snapshotWindowUiState(),
       },
     })

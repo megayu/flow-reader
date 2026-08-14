@@ -2332,6 +2332,8 @@ export class Reader {
   }
 
   openBookFromLibrary(bookId: string) {
+    if (isRecentReadingEnabled()) db.recentBooks.record(bookId)
+
     const existing = this.findBookTab(bookId)
     if (existing) {
       const tab = this.focusBookTab(existing)

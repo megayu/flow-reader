@@ -107,3 +107,53 @@ test('reader returns retain library search and restore short-return scroll posit
   await expect(titleSearch).toHaveValue('Return Book')
   await expect.poll(() => libraryScroll.evaluate((scroll) => scroll.scrollTop)).toBe(expectedScrollTop)
 })
+
+test('recent books retain prior entries while tracking is disabled', async ({ page }) => {
+  const firstBook = createBook(1, 'Recent Reading A')
+  const secondBook = createBook(2, 'Recent Reading B')
+  await page.route(`**${alicePackageUrl}`, (route) =>
+    route.fulfill({
+      path: aliceEpubPath,
+      contentType: 'application/epub+zip',
+    }),
+  )
+  await installTauriMock(page, {
+    books: [firstBook, secondBook],
+    readerSources: {
+      [firstBook.id]: alicePackageUrl,
+      [secondBook.id]: alicePackageUrl,
+    },
+    settings: {
+      libraryDisplay: { bookCardWidth: 200 },
+      librarySort: { field: 'title', direction: 'asc' },
+      showRecentBooks: false,
+    },
+  })
+  await page.goto('/')
+  await expect(page.locator('#layout')).toBeVisible()
+
+  await page.getByRole('button', { name: msg('home.bookshelf_view.title') }).click()
+  await page.getByRole('checkbox', { name: msg('settings.show_recent_books') }).click()
+  await page.keyboard.press('Escape')
+
+  const libraryGrid = page.locator('ul[data-flow-library-grid]')
+  await libraryGrid.locator('[data-flow-library-book-card]').filter({ hasText: 'Recent Reading A 001' }).click()
+  await expect(page.locator('[data-flow-reader-content]:visible')).toBeVisible()
+  await page.keyboard.press('v')
+  const recentBooks = page.locator('[data-flow-library-recent-books]')
+  await expect(recentBooks).toContainText('Recent Reading A 001')
+
+  await page.getByRole('button', { name: msg('home.bookshelf_view.title') }).click()
+  await page.getByRole('checkbox', { name: msg('settings.show_recent_books') }).click()
+  await page.keyboard.press('Escape')
+  await libraryGrid.locator('[data-flow-library-book-card]').filter({ hasText: 'Recent Reading B 002' }).click()
+  await expect(page.locator('[data-flow-reader-content]:visible')).toBeVisible()
+  await page.keyboard.press('v')
+
+  await page.getByRole('button', { name: msg('home.bookshelf_view.title') }).click()
+  await page.getByRole('checkbox', { name: msg('settings.show_recent_books') }).click()
+  await page.keyboard.press('Escape')
+
+  await expect(recentBooks).toContainText('Recent Reading A 001')
+  await expect(recentBooks).not.toContainText('Recent Reading B 002')
+})

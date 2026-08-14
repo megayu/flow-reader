@@ -472,6 +472,7 @@ export function normalizeLibraryBookCardWidth(value: unknown) {
 function normalizeLibraryDisplay(value: Partial<LibraryDisplayConfiguration> | undefined): LibraryDisplayConfiguration {
   return {
     bookCardWidth: normalizeLibraryBookCardWidth(value?.bookCardWidth),
+    coverFit: value?.coverFit === 'contain' ? 'contain' : 'cover',
   }
 }
 

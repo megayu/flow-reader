@@ -6,6 +6,7 @@ import { defaultUiFontSize } from '../styles/ui'
 import type { TranslationLanguage, TranslationProvider } from '../translation/languages'
 
 export type ViewMode = 'reader' | 'library'
+export type LibraryCoverFit = 'contain' | 'cover'
 export type LibrarySortField = 'title' | 'creator' | 'updatedAt' | 'createdAt'
 export type LibrarySortDirection = 'asc' | 'desc'
 
@@ -67,6 +68,7 @@ export interface LibrarySortConfiguration {
 
 export interface LibraryDisplayConfiguration {
   bookCardWidth: number
+  coverFit: LibraryCoverFit
 }
 
 export interface TextImportRulesConfiguration {
@@ -83,12 +85,13 @@ export const defaultLibrarySort: LibrarySortConfiguration = {
 }
 
 export const libraryBookCardWidthMin = 120
-export const libraryBookCardWidthMax = 240
+export const libraryBookCardWidthMax = 320
 export const libraryBookCardWidthStep = 10
-export const defaultLibraryBookCardWidth = 160
+export const defaultLibraryBookCardWidth = 200
 
 export const defaultLibraryDisplay: LibraryDisplayConfiguration = {
   bookCardWidth: defaultLibraryBookCardWidth,
+  coverFit: 'cover',
 }
 
 export function normalizeTextImportRules(

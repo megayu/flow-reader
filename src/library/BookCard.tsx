@@ -35,6 +35,7 @@ import { formatErrorMessage } from '../errorMessage'
 import { useTranslation } from '../hooks/useTranslation'
 import { toMessageKeySegment } from '../locales'
 import { completeTabOpen, reader } from '../models/reader'
+import type { LibraryCoverFit } from '../settings/configuration'
 import { type BookExportFormat, type BookRecord, type BookSourceStatus, db, type ReadingStatus } from '../storage'
 
 import { bookCoverPlaceholder, CoverImage } from './CoverImage'
@@ -109,6 +110,7 @@ function isNewBook(book: BookRecord) {
 interface BookCardProps {
   book: BookRecord
   cover?: string | null
+  coverFit: LibraryCoverFit
   highlighted?: boolean
   recent?: boolean
   retainCoverResource?: boolean
@@ -123,6 +125,7 @@ interface BookCardProps {
 const BookCardComponent: React.FC<BookCardProps> = ({
   book,
   cover,
+  coverFit,
   highlighted,
   recent,
   retainCoverResource,
@@ -304,7 +307,12 @@ const BookCardComponent: React.FC<BookCardProps> = ({
             onClick={activateBook}
           >
             <div
-              className="border-border relative mx-auto aspect-9/12 w-full overflow-hidden rounded-md border shadow-sm"
+              className={clsx(
+                'relative mx-auto aspect-9/12 w-full overflow-hidden rounded-md',
+                cover && coverFit === 'contain' && !book.generatedCover
+                  ? 'shadow-none'
+                  : 'border-border border shadow-sm',
+              )}
               style={{ maxWidth: 'var(--library-book-card-width)' }}
               onClick={handleCoverClick}
               onPointerCancel={clearLongPressTimer}
@@ -358,12 +366,15 @@ const BookCardComponent: React.FC<BookCardProps> = ({
               {book.generatedCover ? (
                 <GeneratedBookCover book={book} />
               ) : retainCoverResource && cover ? (
-                <CoverImage bookId={book.id} cover={cover} alt="Cover" />
+                <CoverImage bookId={book.id} cover={cover} fit={coverFit} alt="Cover" />
               ) : (
                 <img
                   src={cover ?? bookCoverPlaceholder}
                   alt="Cover"
-                  className="block h-full w-full rounded-[inherit] object-cover"
+                  className={clsx(
+                    'block h-full w-full rounded-[inherit]',
+                    coverFit === 'contain' && cover ? 'object-contain' : 'object-cover',
+                  )}
                   decoding="async"
                   draggable={false}
                   loading="lazy"

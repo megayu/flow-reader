@@ -4,16 +4,18 @@ import { useEffect, useState } from 'react'
 import { acquireCoverResource, isCoverResourceReady } from './coverResourceCache'
 
 export const bookCoverPlaceholder = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect fill="gray" fill-opacity="0" width="1" height="1"/></svg>`
-const imageClassName = 'block h-full w-full rounded-[inherit] object-cover'
+const imageClassName = 'block h-full w-full rounded-[inherit]'
 
 interface CoverImageProps {
   alt: string
   bookId: string
   cover: string
+  fit: 'contain' | 'cover'
 }
 
-function RetainedCoverImage({ alt, bookId, cover }: { alt: string; bookId: string; cover: string }) {
+function RetainedCoverImage({ alt, bookId, cover, fit }: CoverImageProps) {
   const [ready, setReady] = useState(() => isCoverResourceReady({ bookId, cover }))
+  const fitClassName = fit === 'contain' ? 'object-contain' : 'object-cover'
 
   useEffect(() => {
     const identity = { bookId, cover }
@@ -22,11 +24,17 @@ function RetainedCoverImage({ alt, bookId, cover }: { alt: string; bookId: strin
 
   return (
     <>
-      <img src={bookCoverPlaceholder} alt="" aria-hidden className={imageClassName} draggable={false} />
+      <img
+        src={bookCoverPlaceholder}
+        alt=""
+        aria-hidden
+        className={clsx(imageClassName, fitClassName)}
+        draggable={false}
+      />
       <img
         src={ready ? cover : bookCoverPlaceholder}
         alt={alt}
-        className={clsx(imageClassName, 'absolute inset-0', !ready && 'invisible')}
+        className={clsx(imageClassName, fitClassName, 'absolute inset-0', !ready && 'invisible')}
         data-flow-library-cover-real
         data-flow-library-cover-ready={ready}
         decoding="async"
@@ -37,6 +45,6 @@ function RetainedCoverImage({ alt, bookId, cover }: { alt: string; bookId: strin
   )
 }
 
-export function CoverImage({ alt, bookId, cover }: CoverImageProps) {
-  return <RetainedCoverImage key={`${bookId}\u0000${cover}`} alt={alt} bookId={bookId} cover={cover} />
+export function CoverImage(props: CoverImageProps) {
+  return <RetainedCoverImage key={`${props.bookId}\u0000${props.cover}`} {...props} />
 }

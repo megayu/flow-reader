@@ -2,7 +2,6 @@ import clsx from 'clsx'
 import {
   ArrowDownIcon,
   ArrowUpIcon,
-  BookImageIcon,
   BookOpenIcon,
   BookTextIcon,
   CalendarPlusIcon,
@@ -10,6 +9,7 @@ import {
   FileInputIcon,
   FolderInputIcon,
   HistoryIcon,
+  LayoutGridIcon,
   ListChecksIcon,
   ListXIcon,
   type LucideIcon,
@@ -34,11 +34,12 @@ import { ReadingStatusIcon } from '../components/ReadingStatusIcon'
 import { TextImportDialog } from '../components/TextImportDialog'
 import { TooltipButton } from '../components/TooltipButton'
 import { Button as UiButton } from '../components/ui/button'
+import { Checkbox as UiCheckbox } from '../components/ui/checkbox'
 import { InputGroup, InputGroupActions, InputGroupInput } from '../components/ui/input-group'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/menu'
 import { useNotify } from '../components/ui/notificationContext'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
+import { SegmentedControl, SegmentedControlItem } from '../components/ui/segmented-control'
 import { formatErrorMessage } from '../errorMessage'
 import {
   applyFolderImportTagsToResult,
@@ -63,6 +64,8 @@ import { getShortcutChords } from '../shortcuts'
 import {
   defaultLibraryDisplay,
   defaultLibrarySort,
+  type LibraryCoverFit,
+  type LibrarySortDirection,
   type LibrarySortField,
   libraryBookCardWidthMax,
   libraryBookCardWidthMin,
@@ -111,7 +114,6 @@ import {
   readingStatusOptions,
   sortBooks,
   toggleReadingStatusFilter,
-  toggleSortDirection,
 } from './model'
 import { ReadingStatusMenuContent } from './ReadingStatusControls'
 import {
@@ -150,8 +152,8 @@ const libraryScrollContentStyle = {
 } as React.CSSProperties
 const libraryBookCardSizePresets = [
   { key: 'small', value: 140 },
-  { key: 'medium', value: 160 },
-  { key: 'large', value: 200 },
+  { key: 'medium', value: 200 },
+  { key: 'large', value: 290 },
 ] as const
 const noCoverResourceIdentities: readonly CoverResourceIdentity[] = []
 const dragImportAutoOpenBookTabLimit = 8
@@ -615,6 +617,7 @@ const Library: React.FC<LibraryProps> = ({
   const covers = useCovers()
   const tags = useLibraryTags()
   const t = useTranslation('home')
+  const settingsT = useTranslation('settings')
   const errorT = useTranslation('error')
   const notify = useNotify()
   const [settings, setSettings] = useSettings()
@@ -624,6 +627,7 @@ const Library: React.FC<LibraryProps> = ({
   const bookCardWidth = normalizeLibraryBookCardWidth(
     settings.libraryDisplay?.bookCardWidth ?? defaultLibraryDisplay.bookCardWidth,
   )
+  const coverFit = settings.libraryDisplay?.coverFit ?? defaultLibraryDisplay.coverFit
   const bookCardGap = clamp(Math.round(bookCardWidth * 0.08), 10, 20)
   const [statusFilters, setStatusFilters] = useLibraryStatusFilter()
   const [authorFilters] = useLibraryAuthorFilter()
@@ -904,6 +908,19 @@ const Library: React.FC<LibraryProps> = ({
     [setSettings],
   )
 
+  const setCoverFit = useCallback(
+    (coverFit: LibraryCoverFit) => {
+      setSettings((settings) => ({
+        ...settings,
+        libraryDisplay: {
+          ...(settings.libraryDisplay ?? defaultLibraryDisplay),
+          coverFit,
+        },
+      }))
+    },
+    [setSettings],
+  )
+
   const setSortField = useCallback(
     (field: LibrarySortField) => {
       setSettings((settings) => ({
@@ -917,19 +934,18 @@ const Library: React.FC<LibraryProps> = ({
     [setSettings],
   )
 
-  const toggleCurrentSortDirection = useCallback(() => {
-    setSettings((settings) => {
-      const librarySort = settings.librarySort ?? defaultLibrarySort
-
-      return {
+  const setSortDirection = useCallback(
+    (direction: LibrarySortDirection) => {
+      setSettings((settings) => ({
         ...settings,
         librarySort: {
-          field: librarySort.field,
-          direction: toggleSortDirection(librarySort.direction),
+          field: settings.librarySort?.field ?? defaultLibrarySort.field,
+          direction,
         },
-      }
-    })
-  }, [setSettings])
+      }))
+    },
+    [setSettings],
+  )
 
   const handleEpubImportResult = useCallback(
     async (result: BookImportResult) => {
@@ -1146,7 +1162,6 @@ const Library: React.FC<LibraryProps> = ({
   const selectAllShortcut = getShortcutChords('librarySelectAll')[0]
   const batchTagsShortcut = getShortcutChords('libraryBatchTags')[0]
   const deleteSelectionShortcut = getShortcutChords('libraryDeleteSelection')[0]
-  const DirectionIcon = sortDirection === 'asc' ? ArrowUpIcon : ArrowDownIcon
   const LibraryCountIcon = select ? SquareCheckBigIcon : BookOpenIcon
   const libraryCountText = select
     ? `${visibleSelectedCount} / ${sortedBooks.length}`
@@ -1241,120 +1256,177 @@ const Library: React.FC<LibraryProps> = ({
               </InputGroup>
             )}
             {!!books.length && !select && (
-              <div className="flex items-center">
-                <Select value={sortField} onValueChange={(value) => setSortField(value as LibrarySortField)}>
-                  <SelectTrigger
-                    aria-label={t(sortFieldMessageKey[sortField])}
-                    className={clsx(
-                      toolbarButtonClass,
-                      'bg-secondary text-secondary-foreground min-w-25 rounded-r-none border-transparent px-2.5 text-base font-medium hover:bg-(--flow-bg-control-hover) **:data-[slot=select-value]:leading-none **:data-[slot=select-value]:font-medium',
-                    )}
-                    size="default"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent align="start" className="min-w-28 p-1 text-base" position="popper">
-                    {librarySortFieldOptions.map((field) => {
-                      const SortIcon = sortFieldIconMap[field]
-
-                      return (
-                        <SelectItem
-                          key={field}
-                          value={field}
-                          className="h-8 py-0 pr-7 pl-2 text-base leading-none font-medium"
-                        >
-                          <SortIcon aria-hidden className="text-muted-foreground size-4" />
-                          <span className="leading-none">{t(sortFieldMessageKey[field])}</span>
-                        </SelectItem>
-                      )
-                    })}
-                  </SelectContent>
-                </Select>
-                <TooltipButton
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className={clsx(
-                    toolbarButtonClass,
-                    'border-background/40 w-8 rounded-l-none border-l px-0 text-center font-medium',
-                  )}
-                  title={t(`sort.${sortDirection}`)}
-                  aria-label={t(`sort.${sortDirection}`)}
-                  onClick={toggleCurrentSortDirection}
-                >
-                  <DirectionIcon size={16} className="mx-auto" />
-                </TooltipButton>
-              </div>
-            )}
-            {!!books.length && !select && (
               <Popover>
-                <AppTooltip label={t('book_size.title')}>
+                <AppTooltip label={t('bookshelf_view.title')}>
                   <PopoverTrigger asChild>
                     <UiButton
                       type="button"
                       variant="secondary"
                       size="sm"
                       className={clsx(toolbarButtonClass, 'w-8 px-0')}
-                      aria-label={t('book_size.title')}
+                      aria-label={t('bookshelf_view.title')}
                     >
-                      <BookImageIcon aria-hidden className="mx-auto size-4" />
+                      <LayoutGridIcon aria-hidden className="mx-auto size-4" />
                     </UiButton>
                   </PopoverTrigger>
                 </AppTooltip>
                 <PopoverContent
                   align="start"
-                  className="w-64 gap-3 p-3 text-base"
+                  className="w-72 gap-0 p-3 text-base"
                   onClick={(e) => e.stopPropagation()}
                   onPointerDown={(e) => e.stopPropagation()}
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="font-medium">{t('book_size.title')}</span>
-                    <span className="text-muted-foreground tabular-nums">{bookCardWidth}px</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1">
-                    {libraryBookCardSizePresets.map((preset) => {
-                      const active = bookCardWidth === preset.value
+                  <div className="space-y-3">
+                    <section>
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <span className="text-muted-foreground font-medium">{t('book_size.title')}</span>
+                        <span className="text-muted-foreground tabular-nums">{bookCardWidth}px</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1">
+                        {libraryBookCardSizePresets.map((preset) => {
+                          const active = bookCardWidth === preset.value
 
-                      return (
+                          return (
+                            <UiButton
+                              key={preset.key}
+                              type="button"
+                              variant={active ? 'default' : 'secondary'}
+                              size="sm"
+                              className="h-8"
+                              onClick={() => setBookCardWidth(preset.value)}
+                            >
+                              {t(`book_size.${preset.key}`)}
+                            </UiButton>
+                          )
+                        })}
+                      </div>
+                      <input
+                        type="range"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
+                        min={libraryBookCardWidthMin}
+                        max={libraryBookCardWidthMax}
+                        step={libraryBookCardWidthStep}
+                        value={bookCardWidth}
+                        aria-label={t('book_size.title')}
+                        className="mt-3 h-2 w-full cursor-pointer accent-(--flow-accent)"
+                        onChange={(e) => setBookCardWidth(Number(e.target.value))}
+                      />
+                      <div className="mt-2 flex items-center justify-between gap-3">
+                        <span className="text-muted-foreground">{libraryBookCardWidthMin}px</span>
                         <UiButton
-                          key={preset.key}
                           type="button"
-                          variant={active ? 'default' : 'secondary'}
+                          variant="secondary"
                           size="sm"
-                          className="h-8"
-                          onClick={() => setBookCardWidth(preset.value)}
+                          className="h-7 px-2"
+                          onClick={() => setBookCardWidth(defaultLibraryDisplay.bookCardWidth)}
                         >
-                          {t(`book_size.${preset.key}`)}
+                          {t('book_size.default')}
                         </UiButton>
-                      )
-                    })}
-                  </div>
-                  <input
-                    type="range"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    min={libraryBookCardWidthMin}
-                    max={libraryBookCardWidthMax}
-                    step={libraryBookCardWidthStep}
-                    value={bookCardWidth}
-                    aria-label={t('book_size.title')}
-                    className="h-2 w-full cursor-pointer accent-(--flow-accent)"
-                    onChange={(e) => setBookCardWidth(Number(e.target.value))}
-                  />
-                  <div className="flex items-center justify-between gap-3 text-base">
-                    <span className="text-muted-foreground">{libraryBookCardWidthMin}px</span>
-                    <UiButton
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="h-7 px-2"
-                      onClick={() => setBookCardWidth(defaultLibraryDisplay.bookCardWidth)}
-                    >
-                      {t('book_size.default')}
-                    </UiButton>
-                    <span className="text-muted-foreground">{libraryBookCardWidthMax}px</span>
+                        <span className="text-muted-foreground">{libraryBookCardWidthMax}px</span>
+                      </div>
+                    </section>
+
+                    <section>
+                      <div className="text-muted-foreground mb-1 font-medium">{t('cover_fit.title')}</div>
+                      <SegmentedControl className="flex w-full bg-background">
+                        {(['contain', 'cover'] as const).map((fit) => (
+                          <SegmentedControlItem
+                            key={fit}
+                            selected={coverFit === fit}
+                            className="flex-1 px-2 leading-none"
+                            onClick={() => setCoverFit(fit)}
+                          >
+                            {t(`cover_fit.${fit}`)}
+                          </SegmentedControlItem>
+                        ))}
+                      </SegmentedControl>
+                    </section>
+
+                    <section className="border-border/60 -mx-3 border-t px-3 pt-3">
+                      <div className="text-muted-foreground mb-1 font-medium">{t('sort.field')}</div>
+                      <div className="grid grid-cols-2 gap-1">
+                        {librarySortFieldOptions.map((field) => {
+                          const SortIcon = sortFieldIconMap[field]
+
+                          return (
+                            <UiButton
+                              key={field}
+                              type="button"
+                              variant={sortField === field ? 'default' : 'secondary'}
+                              size="sm"
+                              className="h-8 justify-start px-2"
+                              onClick={() => setSortField(field)}
+                            >
+                              <SortIcon aria-hidden className="size-4" />
+                              <span className="min-w-0 truncate leading-none">{t(sortFieldMessageKey[field])}</span>
+                            </UiButton>
+                          )
+                        })}
+                      </div>
+                    </section>
+
+                    <section>
+                      <div className="text-muted-foreground mb-1 font-medium">{t('sort.direction')}</div>
+                      <SegmentedControl className="flex w-full bg-background">
+                        {(['asc', 'desc'] as const).map((direction) => {
+                          const SortDirectionIcon = direction === 'asc' ? ArrowUpIcon : ArrowDownIcon
+
+                          return (
+                            <SegmentedControlItem
+                              key={direction}
+                              selected={sortDirection === direction}
+                              className="flex-1 gap-1.5 px-2 leading-none"
+                              onClick={() => setSortDirection(direction)}
+                            >
+                              <SortDirectionIcon aria-hidden className="size-4" />
+                              {t(`sort.${direction}`)}
+                            </SegmentedControlItem>
+                          )
+                        })}
+                      </SegmentedControl>
+                    </section>
+
+                    <section className="border-border/60 -mx-3 space-y-1 border-t px-3 pt-3">
+                      <label
+                        htmlFor="library-show-recent-books"
+                        className="flex min-h-8 cursor-pointer items-center justify-between gap-3 font-medium"
+                      >
+                        <span>{settingsT('show_recent_books')}</span>
+                        <UiCheckbox
+                          id="library-show-recent-books"
+                          aria-label={settingsT('show_recent_books')}
+                          className="size-5 after:inset-x-0"
+                          checked={settings.showRecentBooks === true}
+                          onCheckedChange={(checked) => {
+                            setSettings((settings) => ({
+                              ...settings,
+                              showRecentBooks: checked === true,
+                            }))
+                          }}
+                        />
+                      </label>
+                      <label
+                        htmlFor="library-show-modified-export-indicator"
+                        className="flex min-h-8 cursor-pointer items-center justify-between gap-3 font-medium"
+                      >
+                        <span>{settingsT('library_modified_indicator')}</span>
+                        <UiCheckbox
+                          id="library-show-modified-export-indicator"
+                          aria-label={settingsT('library_modified_indicator')}
+                          className="size-5 after:inset-x-0"
+                          checked={settings.showModifiedBookExportIndicator === true}
+                          onCheckedChange={(checked) => {
+                            setSettings((settings) => ({
+                              ...settings,
+                              showModifiedBookExportIndicator: checked === true,
+                            }))
+                          }}
+                        />
+                      </label>
+                    </section>
                   </div>
                 </PopoverContent>
               </Popover>
@@ -1501,6 +1573,7 @@ const Library: React.FC<LibraryProps> = ({
                     book={book}
                     sourceStatus={sourceStatuses.get(book.id)}
                     cover={coversById.get(book.id)}
+                    coverFit={coverFit}
                     recent
                     retainCoverResource={virtualizeLibraryGrid}
                     showModifiedExportIndicator={settings.showModifiedBookExportIndicator === true}
@@ -1525,6 +1598,7 @@ const Library: React.FC<LibraryProps> = ({
                 book={book}
                 sourceStatus={sourceStatuses.get(book.id)}
                 cover={coversById.get(book.id)}
+                coverFit={coverFit}
                 select={select}
                 selected={has(book.id)}
                 highlighted={highlightedBookIds.has(book.id)}

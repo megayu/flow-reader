@@ -535,6 +535,12 @@ export const db = {
     cancelSession(bookId: string) {
       recentReading.cancelSession(bookId)
     },
+    record(bookId: string) {
+      if (!recentReading.record(bookId)) return false
+      if (!recentBooksLoaded) recentBooksChangedDuringLoad = true
+      notify('recentBooks')
+      return true
+    },
     observePosition(bookId: string, cfi: string | undefined, userNavigation: boolean) {
       if (!recentReading.observePosition(bookId, cfi, userNavigation)) return false
       if (!recentBooksLoaded) recentBooksChangedDuringLoad = true
