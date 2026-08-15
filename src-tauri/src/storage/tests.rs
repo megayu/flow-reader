@@ -245,6 +245,7 @@ fn test_storage_with_books(root: &Path, books: Vec<StoredBook>) -> AppStorage {
             image_index_caches: Mutex::new(HashMap::new()),
             derived_cache_states: Mutex::new(HashMap::new()),
             derived_cache_flush_lock: Mutex::new(()),
+            archive_resources: Mutex::new(HashMap::new()),
             text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
             text_import_prepare_active: std::sync::atomic::AtomicUsize::new(0),
             text_import_prepare_max_active: std::sync::atomic::AtomicUsize::new(0),
@@ -274,6 +275,7 @@ fn test_storage_from_disk(root: &Path) -> AppStorage {
             image_index_caches: Mutex::new(HashMap::new()),
             derived_cache_states: Mutex::new(HashMap::new()),
             derived_cache_flush_lock: Mutex::new(()),
+            archive_resources: Mutex::new(HashMap::new()),
             text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
             text_import_prepare_active: std::sync::atomic::AtomicUsize::new(0),
             text_import_prepare_max_active: std::sync::atomic::AtomicUsize::new(0),
@@ -2012,7 +2014,7 @@ fn failed_unpack_does_not_expose_partial_directory() {
 }
 
 #[test]
-fn archive_only_epub_reader_source_returns_original_package_without_unpacking() {
+fn archive_only_epub_reader_source_exposes_package_resources_without_unpacking() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
         "flow-reader-archive-reader-source-test-{}-{nonce}",
@@ -2027,8 +2029,23 @@ fn archive_only_epub_reader_source_returns_original_package_without_unpacking() 
 
     let source = get_book_reader_source_impl(&storage, &tasks, &book).unwrap();
 
-    assert_eq!(source.mode, BookReaderSourceMode::Epub);
-    assert_eq!(source.path, path_to_client_string(&book_path));
+    assert_eq!(source.mode, BookReaderSourceMode::Opf);
+    assert!(source.path.ends_with("/book/OEBPS/content.opf"));
+    assert!(source.root_path.as_deref().is_some_and(|path| path.ends_with("/book/")));
+    assert!(
+        String::from_utf8(storage.read_archive_resource("book", "OEBPS/content.opf").unwrap())
+            .unwrap()
+            .contains("invalid:path.xhtml")
+    );
+    assert!(
+        String::from_utf8(
+            storage
+                .read_archive_resource("book", "OEBPS/Text/invalid:path.xhtml")
+                .unwrap()
+        )
+        .unwrap()
+        .contains("非法路径章节")
+    );
     assert!(!book_dir.join(UNPACKED_DIR).exists());
 
     let _ = fs::remove_dir_all(root);

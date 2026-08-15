@@ -258,21 +258,29 @@ pub(super) fn get_book_reader_source_impl(
         }
     };
 
-    let reading_metrics = super::reading_metrics::load_or_build_reading_metrics(
-        storage,
-        tasks,
-        &book.id,
-        mode,
-        &source_path,
-        root_path.as_deref(),
-    )
-    .inspect_err(|error| eprintln!("Failed to load reading metrics for {}: {error}", book.id))
-    .ok();
+    let archive_urls = (mode == BookReaderSourceMode::Epub)
+        .then(|| storage.register_archive_resource(&book.id, &source_path))
+        .transpose()?;
+
+    let reading_metrics =
+        super::reading_metrics::load_or_build_reading_metrics(storage, tasks, &book.id, mode, root_path.as_deref())
+            .inspect_err(|error| eprintln!("Failed to load reading metrics for {}: {error}", book.id))
+            .ok();
+
+    let (mode, path, root_path) = if let Some(urls) = archive_urls {
+        (BookReaderSourceMode::Opf, urls.package, Some(urls.root))
+    } else {
+        (
+            mode,
+            path_to_client_string(&source_path),
+            root_path.as_deref().map(path_to_client_string),
+        )
+    };
 
     Ok(BookReaderSource {
         mode,
-        path: path_to_client_string(&source_path),
-        root_path: root_path.as_deref().map(path_to_client_string),
+        path,
+        root_path,
         updated_book,
         reading_metrics,
     })

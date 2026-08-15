@@ -262,6 +262,12 @@ pub fn run() {
         .register_uri_scheme_protocol("dictionary", |context, request| {
             dictionary::mdict::resource_protocol_response(context.app_handle(), request)
         })
+        .register_asynchronous_uri_scheme_protocol("epub", |context, request, responder| {
+            let app = context.app_handle().clone();
+            drop(tauri::async_runtime::spawn_blocking(move || {
+                responder.respond(storage::archive_resource_protocol_response(&app, request));
+            }));
+        })
         .manage(PendingOpenFiles(Mutex::new(PendingOpenFileState {
             paths: pending_open_files,
             listener_ready: false,

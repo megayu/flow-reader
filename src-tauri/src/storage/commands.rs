@@ -1422,7 +1422,11 @@ pub async fn set_book_cache_active(
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
         tasks.run_book_exclusive(&id, TaskPriority::Critical, || {
-            storage.set_derived_cache_active(&id, active)
+            let result = storage.set_derived_cache_active(&id, active);
+            if !active {
+                storage.release_archive_resource(&id);
+            }
+            result
         })
     })
     .await

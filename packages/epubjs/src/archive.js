@@ -28,6 +28,12 @@ class Archive {
       return Promise.resolve(this.zip)
     }
 
+    if (import.meta.env.MODE !== 'test') {
+      return Promise.reject(
+        new Error('Archived EPUB inputs must be opened through the native reader source'),
+      )
+    }
+
     if (!this.zipPromise) {
       this.zipPromise = import('jszip/dist/jszip').then((module) => {
         const JSZip = module.default || module

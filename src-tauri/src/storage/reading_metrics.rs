@@ -1,7 +1,5 @@
 use std::{collections::HashMap, fs, path::Path, time::Instant};
 
-use zip::ZipArchive;
-
 use crate::{
     diagnostics,
     tasks::{TaskPriority, TaskService},
@@ -130,7 +128,6 @@ pub(super) fn load_or_build_reading_metrics(
     tasks: &TaskService,
     id: &str,
     mode: BookReaderSourceMode,
-    source_path: &Path,
     unpacked_dir: Option<&Path>,
 ) -> Result<ReadingMetrics, String> {
     let started = Instant::now();
@@ -148,7 +145,6 @@ pub(super) fn load_or_build_reading_metrics(
     let storage = storage.clone();
     let id = id.to_string();
     let lock_id = id.clone();
-    let source_path = source_path.to_path_buf();
     let unpacked_dir = unpacked_dir.map(Path::to_path_buf);
     let metrics = tasks.run_book_exclusive(&lock_id, TaskPriority::Foreground, || {
         if let Ok(metrics) = read_reading_metrics_cache(&storage, &id) {
@@ -161,8 +157,7 @@ pub(super) fn load_or_build_reading_metrics(
                     .ok_or_else(|| "Unpacked book root is missing".to_string())?,
             )),
             BookReaderSourceMode::Epub => {
-                let file = fs::File::open(&source_path).map_err(|error| error.to_string())?;
-                let archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
+                let archive = storage.open_archive_resource(&id)?;
                 build_reading_metrics(&mut ArchivePublicationSource::new(archive))
             }
         }?;

@@ -54,6 +54,9 @@ export async function invokeStorage<T>(command: StorageCommand, args?: Record<st
 }
 
 export function storagePathToUrl(path: string) {
+  if (path.startsWith('http://epub.localhost/') || path.startsWith('epub://localhost/')) {
+    return path
+  }
   try {
     return convertFileSrc(path.replace(/\\/g, '/'))
   } catch {

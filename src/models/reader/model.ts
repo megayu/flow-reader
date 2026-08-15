@@ -2116,6 +2116,9 @@ export class BookTab {
       return
     }
     if (generation !== this.renderGeneration) {
+      if (this.destroyPromise) {
+        await setBookCacheActive(this.book.id, false).catch(console.error)
+      }
       clearRendering()
       return
     }

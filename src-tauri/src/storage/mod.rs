@@ -21,6 +21,7 @@ use crate::{
     tasks::{TaskKey, TaskKind, TaskPriority, TaskService},
 };
 
+mod archive_resource;
 mod book_assets;
 mod book_source;
 pub(crate) mod checkpoint;
@@ -41,6 +42,7 @@ mod state;
 mod text_import;
 mod window_state;
 
+pub use archive_resource::archive_resource_protocol_response;
 pub use commands::*;
 pub use deletion::{cleanup_all_external_book_heavy_files, schedule_existing_pending_delete_cleanup};
 pub use folder_import::*;
@@ -162,6 +164,7 @@ struct StorageInner {
     image_index_caches: Mutex<HashMap<String, Arc<ImageIndexCache>>>,
     derived_cache_states: Mutex<HashMap<String, DerivedCacheState>>,
     derived_cache_flush_lock: Mutex<()>,
+    archive_resources: Mutex<HashMap<String, archive_resource::ArchiveResourceSession>>,
     #[cfg(test)]
     text_import_prepare_runs: std::sync::atomic::AtomicUsize,
     #[cfg(test)]
@@ -237,6 +240,7 @@ impl AppStorage {
                 image_index_caches: Mutex::new(HashMap::new()),
                 derived_cache_states: Mutex::new(HashMap::new()),
                 derived_cache_flush_lock: Mutex::new(()),
+                archive_resources: Mutex::new(HashMap::new()),
                 #[cfg(test)]
                 text_import_prepare_runs: std::sync::atomic::AtomicUsize::new(0),
                 #[cfg(test)]

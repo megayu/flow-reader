@@ -53,9 +53,6 @@ export default defineConfig({
     target: 'es2020',
   },
   clearScreen: false,
-  optimizeDeps: {
-    include: ['@flow/epubjs > jszip/dist/jszip'],
-  },
   plugins: [tailwindcss(), react(), sourceOnlyWatcher()],
   resolve: {
     alias: [
