@@ -21,6 +21,7 @@ import { formatErrorMessage } from '@/errorMessage'
 import { useList } from '@/hooks/useList'
 import { useTranslation } from '@/hooks/useTranslation'
 import { getBookTabFrameWindows, reader, useReaderSnapshot } from '@/models/reader'
+import { db } from '@/storage'
 import { copy } from '@/utils'
 
 import { AppTooltip } from '../AppTooltip'
@@ -346,7 +347,18 @@ function AnnotationExportPanel({ annotations, onOpenChange, open }: AnnotationEx
     onOpenChange(false)
     void saveAnnotationExport(tab.book, format, contents)
       .then((outputPath) => {
-        if (outputPath) notify({ description: outputPath, title: homeT('export_complete'), type: 'success' })
+        if (!outputPath) return
+        notify({
+          action: {
+            label: homeT('export_reveal'),
+            onClick: () => {
+              void db.files.reveal(outputPath).catch(console.error)
+            },
+          },
+          description: outputPath,
+          title: homeT('export_complete'),
+          type: 'success',
+        })
       })
       .catch(notifyExportError)
   }
