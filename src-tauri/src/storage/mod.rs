@@ -128,7 +128,7 @@ const UNPACKED_DIR: &str = "unpacked";
 
 fn encode_compressed_json<T: Serialize>(value: &T) -> Result<Vec<u8>, String> {
     let json = serde_json::to_vec(value).map_err(|error| error.to_string())?;
-    zstd::stream::encode_all(json.as_slice(), 3).map_err(|error| error.to_string())
+    zstd::stream::encode_all(json.as_slice(), 8).map_err(|error| error.to_string())
 }
 
 fn decode_compressed_json<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, String> {
