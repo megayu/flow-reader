@@ -32,6 +32,7 @@
   "dictionary.no_result": "未收录该词",
   "dictionary.parse_error": "无法解析该词条",
 
+  "error.deep_link_book_not_found": "链接中的书籍不在当前书库中",
   "error.delete_books_failed": "删除书籍失败",
   "error.export_failed": "导出失败",
   "error.folder_import_failed": "文件夹导入失败",

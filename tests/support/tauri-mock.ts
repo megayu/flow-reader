@@ -284,7 +284,9 @@ export async function installTauriMock(
       let nextEventId = 1
 
       const internals = (globalWindow.__TAURI_INTERNALS__ ??= {})
-      const eventInternals = (globalWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ ??= {})
+      globalWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ ??= {
+        unregisterListener: () => undefined,
+      }
       const callbacks = (internals.callbacks ??= {})
       const streamChannelMessages = (channel: unknown, messages: unknown[]) => {
         if (!channel || typeof channel !== 'object' || !('id' in channel)) return false
@@ -339,7 +341,6 @@ export async function installTauriMock(
         delete callbacks[id]
       }
       internals.runCallback = (id, ...args) => callbacks[id]?.(...args)
-      eventInternals.unregisterListener = () => undefined
       internals.invoke = async (command, args) => {
         if (command === 'fetch_translation') {
           if (fixtureTranslationResponseDelayMs > 0) {

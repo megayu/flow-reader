@@ -34,6 +34,13 @@
       }
     }
   },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["flow-reader"]
+      }
+    }
+  },
   "bundle": {
     "active": false,
     "publisher": "Flow Reader",

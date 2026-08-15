@@ -296,6 +296,9 @@ export class BookTab {
   private runtimeAnchorCfi?: string
   runtimeSpreadAnchor?: ReadingSpreadRecord
   contentReloadTarget?: string
+  private pendingDeepLinkTarget?: string
+  private deepLinkNavigationPromise?: Promise<void>
+  private initialPositionPromise?: Promise<void>
   private spreadAnchorsByLayout = new Map<string, ReadingSpreadRecord>()
   private navRefreshGeneration = 0
   private readonly layoutTransactions = ref(new BookLayoutTransactionController())
@@ -421,6 +424,54 @@ export class BookTab {
   display(target?: string, returnable = true) {
     void this.displayResolvedTarget(target, { returnable })
   }
+
+  navigateFromDeepLink(cfi: string) {
+    this.pendingDeepLinkTarget = cfi
+    if (this.rendered) void this.displayPendingDeepLinkTarget().catch(console.error)
+  }
+
+  takePendingDeepLinkTarget() {
+    const target = this.pendingDeepLinkTarget
+    this.pendingDeepLinkTarget = undefined
+    return target
+  }
+
+  async displayPendingDeepLinkTarget() {
+    if (this.deepLinkNavigationPromise) return this.deepLinkNavigationPromise
+
+    const operation = (async () => {
+      while (this.rendered) {
+        const target = this.takePendingDeepLinkTarget()
+        if (!target) return
+        await this.waitForPendingPositionTransactions()
+        if (!this.rendered) return
+
+        this.turning = true
+        try {
+          await this.displayResolvedTarget(target, { returnable: false })
+        } finally {
+          this.turning = false
+        }
+      }
+    })()
+    this.deepLinkNavigationPromise = operation
+    try {
+      await operation
+    } finally {
+      if (this.deepLinkNavigationPromise === operation) this.deepLinkNavigationPromise = undefined
+    }
+  }
+
+  private async waitForPendingPositionTransactions() {
+    while (true) {
+      const initialPosition = this.initialPositionPromise
+      if (initialPosition) await initialPosition
+      await this.navigation.waitForPending()
+      await this.layoutTransactions.waitForPending()
+      if (!this.initialPositionPromise && !this.navigation.pending) return
+    }
+  }
+
   async pageIndexForCfi(sectionIndex: number, cfi: string) {
     return pageIndexForCfi(this, sectionIndex, cfi)
   }
@@ -1620,6 +1671,9 @@ export class BookTab {
     this.runtimeAnchorCfi = undefined
     this.runtimeSpreadAnchor = undefined
     this.contentReloadTarget = undefined
+    this.pendingDeepLinkTarget = undefined
+    this.deepLinkNavigationPromise = undefined
+    this.initialPositionPromise = undefined
     this.acceptedLocationRequests.clear()
     this.spreadAnchorsByLayout.clear()
     this.rendered = false
@@ -2140,9 +2194,14 @@ export class BookTab {
       })
     })
 
+    const initialPosition = this.displayInitialPosition()
+    this.initialPositionPromise = initialPosition
     try {
-      await this.displayInitialPosition()
+      await initialPosition
+      if (this.initialPositionPromise === initialPosition) this.initialPositionPromise = undefined
+      await this.displayPendingDeepLinkTarget()
     } catch (error) {
+      if (this.initialPositionPromise === initialPosition) this.initialPositionPromise = undefined
       this.failCommittedRender(generation, 'position', error)
       return
     }
@@ -2334,6 +2393,26 @@ export class Reader {
     }
 
     return this.loadAndAddBookTab(bookId, this.closingBooks.get(bookId))
+  }
+
+  async openBookFromDeepLink(bookId: string, cfi?: string) {
+    const existing = this.findBookTab(bookId)
+    let tab: BookTab
+    if (existing) {
+      tab = this.focusBookTab(existing)
+      tab.beginRecentReadingSession()
+      tab.recordOpened(true)
+    } else {
+      const book = await db.books.get(bookId)
+      if (!book) return
+
+      const opened = this.findBookTab(bookId)
+      tab = opened ? this.focusBookTab(opened) : await this.addTab(book)
+    }
+
+    if (isRecentReadingEnabled()) db.recentBooks.record(bookId)
+    if (cfi) tab.navigateFromDeepLink(cfi)
+    return tab
   }
 
   addTab(book: BookRecord): BookTab | Promise<BookTab> {

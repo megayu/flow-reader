@@ -12,13 +12,13 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: keep page decoration in a pointer-inert application-layer overlay, derive its physical geometry from the active rendition layout, and keep it out of EPUB iframe styles and typography signatures.
 - Verification gate: UI coverage must prove card frames use the rendition gap, divider/book seams appear only at physical double-page center, vertical-rl uses the same physical geometry, and appearance toggles call no display, resize, or relayout operations.
 
-### Header/body mismatch during pending page turn
+### Header/body mismatch during pending page turn or external position jump
 
-- Symptom: during a page turn, the iframe body advances to the next chapter while the header/footer still belong to the previous committed snapshot.
-- Reproduction path: long generated book, start near the end of one section, trigger next page, sample the client while `tab.turning` is still true and before the pagination snapshot has committed.
-- Root cause: epubjs can update the iframe body before Flow Reader has accepted and committed the matching relocated/pagination snapshot.
-- Fix direction: keep the loading cover visible while a page turn is pending, and commit body/header/footer/progress together from one snapshot.
-- Verification gate: the client verifier must include a pending page-turn gate where a next body is covered until header/footer/body can commit together.
+- Symptom: during a page turn, the iframe body advances to the next chapter while the header/footer still belong to the previous committed snapshot. An external CFI or other position request arriving during initial display, navigation, or relayout can produce the same mismatch or settle at the wrong target.
+- Reproduction path: long generated book, start near the end of one section, trigger next page, sample the client while `tab.turning` is still true and before the pagination snapshot has committed. Before that transaction settles, deliver another position target and verify it starts only after the pending work completes.
+- Root cause: epubjs can update the iframe body before Flow Reader has accepted and committed the matching relocated/pagination snapshot. Starting another `display()` without waiting for initial-position, navigation, and layout ownership can also resolve or supersede the active epubjs display early.
+- Fix direction: keep the loading cover visible while a page turn or external position jump is pending, serialize external position requests after initial-position, navigation, and layout transactions, and commit body/header/footer/progress together from one snapshot.
+- Verification gate: the client verifier must include a pending page-turn gate where a next body is covered until header/footer/body can commit together, plus an external position request delivered during the pending turn that settles at the requested target without an intermediate mismatched snapshot.
 
 ### Cross-section navigation rejected as percentage rollback
 

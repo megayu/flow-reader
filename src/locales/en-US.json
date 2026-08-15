@@ -32,6 +32,7 @@
   "dictionary.no_result": "No definition found.",
   "dictionary.parse_error": "Could not parse this entry.",
 
+  "error.deep_link_book_not_found": "The linked book is not in this library",
   "error.delete_books_failed": "Failed to delete books",
   "error.export_failed": "Export failed",
   "error.folder_import_failed": "Folder import failed",

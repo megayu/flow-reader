@@ -5,6 +5,7 @@ import { test } from 'vitest'
 import * as annotationModule from '../../src/annotation.ts'
 import * as readerModelModule from '../../src/models/reader/model.ts'
 import * as readerSearchModule from '../../src/models/reader/search.ts'
+import { createTestBook } from '../support/book-fixtures.ts'
 
 const annotation = annotationModule as Record<string, any>
 const readerModel = readerModelModule as Record<string, any>
@@ -81,9 +82,42 @@ function testSectionMatchesDoNotRequireNavItem() {
   assert.deepStrictEqual(result?.subitems, [{ cfi, excerpt: 'Technology', id: cfi }])
 }
 
+async function testDeepLinkWaitsForPendingPageTurn() {
+  const cfi = 'epubcfi(/6/4!/4/2/1:0)'
+  let finishPageTurn: (() => void) | undefined
+  const pageTurn = new Promise<void>((resolve) => {
+    finishPageTurn = resolve
+  })
+  const displays: string[] = []
+  const tab = new readerModel.BookTab(createTestBook({ id: 'deep-link-navigation' }))
+  tab.rendered = true
+  tab.epub = {
+    spine: {
+      get: () => ({ href: 'chapter.xhtml', index: 0 }),
+    },
+  }
+  tab.rendition = {
+    display: async (target: string) => {
+      displays.push(target)
+    },
+    next: () => pageTurn,
+  }
+
+  const turning = tab.next()
+  tab.navigateFromDeepLink(cfi)
+  await Promise.resolve()
+  assert.deepStrictEqual(displays, [])
+
+  finishPageTurn?.()
+  await turning
+  await tab.displayPendingDeepLinkTarget()
+  assert.deepStrictEqual(displays, [cfi])
+}
+
 for (const run of [
   testAnnotationSpineDoesNotRequireNavItem,
   testChapterFindUsesTheReadingOrderStartSection,
+  testDeepLinkWaitsForPendingPageTurn,
   testSectionMatchesDoNotRequireNavItem,
 ]) {
   test(run.name, run)

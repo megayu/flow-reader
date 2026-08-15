@@ -40,6 +40,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useNotify } from '../components/ui/notificationContext'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
 import { SegmentedControl, SegmentedControlItem } from '../components/ui/segmented-control'
+import { setupDeepLinks } from '../deepLink'
 import { formatErrorMessage } from '../errorMessage'
 import {
   applyFolderImportTagsToResult,
@@ -188,6 +189,8 @@ export function LibraryPage() {
   const nativeOpenReadyRef = useRef(false)
   const nativeOpenSetupPromiseRef = useRef<ReturnType<typeof setupNativeOpenFiles>>(undefined)
   const nativeOpenCleanupRef = useRef<() => void>(undefined)
+  const deepLinkSetupPromiseRef = useRef<Promise<Awaited<ReturnType<typeof setupDeepLinks>> | void>>(undefined)
+  const deepLinkCleanupRef = useRef<() => void>(undefined)
   const startupRestoreStartedRef = useRef(false)
   const [startupRestoreDone, setStartupRestoreDone] = useState(false)
   const [nativeStartupPending, setNativeStartupPending] = useState(false)
@@ -434,17 +437,46 @@ export function LibraryPage() {
     }),
   )
 
+  const startDeepLinkSetup = useEffectEvent(() =>
+    setupDeepLinks(async ({ bookId, cfi }) => {
+      openedFromNativeRef.current = true
+      setNativeStartupPending(true)
+      setNativeStartupReaderFailed(false)
+
+      const tab = await reader.openBookFromDeepLink(bookId, cfi)
+      if (tab) {
+        setViewMode('reader')
+        return
+      }
+
+      setNativeStartupReaderFailed(true)
+      notify({
+        autoCloseMs: false,
+        title: errorT('deep_link_book_not_found'),
+        type: 'error',
+      })
+    }).catch((error) => {
+      console.debug('Native deep links are unavailable', error)
+    }),
+  )
+
   useEffect(() => {
     if (!settingsReady) return
 
     let disposed = false
 
     nativeOpenSetupPromiseRef.current ??= startNativeOpenSetup()
+    deepLinkSetupPromiseRef.current ??= startDeepLinkSetup()
 
-    void nativeOpenSetupPromiseRef.current
-      .then((result) => {
-        if (disposed) return
-        nativeOpenCleanupRef.current = result?.cleanup
+    void Promise.all([nativeOpenSetupPromiseRef.current, deepLinkSetupPromiseRef.current])
+      .then(([nativeResult, deepLinkResult]) => {
+        if (disposed) {
+          nativeResult?.cleanup()
+          deepLinkResult?.cleanup()
+          return
+        }
+        nativeOpenCleanupRef.current = nativeResult?.cleanup
+        deepLinkCleanupRef.current = deepLinkResult?.cleanup
       })
       .finally(() => {
         if (disposed) return
@@ -459,6 +491,8 @@ export function LibraryPage() {
       disposed = true
       nativeOpenCleanupRef.current?.()
       nativeOpenCleanupRef.current = undefined
+      deepLinkCleanupRef.current?.()
+      deepLinkCleanupRef.current = undefined
     }
   }, [settingsReady])
 

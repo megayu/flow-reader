@@ -26,7 +26,8 @@ sha2 = "0.10"
 memmap2 = "0.9.11"
 mdict-rs = "0.1.4"
 flate2 = { version = "1.1.9", default-features = false, features = ["zlib-rs"] }
-tauri-plugin-single-instance = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+tauri-plugin-deep-link = "2"
 tauri-plugin-dialog = "2"
 roxmltree = "0.21"
 zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs"] }

@@ -13,6 +13,18 @@ export class BookLayoutTransactionController {
     this.operationId++
   }
 
+  async waitForPending() {
+    while (true) {
+      const operation = this.operationPromise
+      try {
+        await operation
+      } catch {
+        // Callers wait for transaction ownership, while the transaction reports its own error.
+      }
+      if (this.operationPromise === operation) return
+    }
+  }
+
   enqueueResize(run: (operationId: number) => Promise<void>) {
     const operationId = ++this.operationId
 
@@ -125,12 +137,14 @@ export class BookLayoutTransactionController {
   }
 
   async displayInitialPosition(tab: BookTab) {
+    const deepLinkTarget = tab.takePendingDeepLinkTarget()
     const contentReloadTarget = tab.contentReloadTarget
     tab.contentReloadTarget = undefined
     const manager = tab.rendition?.manager
-    const spread = contentReloadTarget
-      ? undefined
-      : hydrateReflowableSpread(tab.book.configuration?.spread, tab.sections, tab.layoutStyleSignature)
+    const spread =
+      deepLinkTarget || contentReloadTarget
+        ? undefined
+        : hydrateReflowableSpread(tab.book.configuration?.spread, tab.sections, tab.layoutStyleSignature)
 
     if (spread && manager?.canUseLogicalReflowableSpread?.() && manager.renderReflowableSpread) {
       const requestId = tab.createManualLocationRequest({ updateAnchor: true })
@@ -141,7 +155,7 @@ export class BookLayoutTransactionController {
     }
 
     const target = tab.resolveDisplayTarget(
-      contentReloadTarget ?? tab.location?.start.cfi ?? tab.book.cfi ?? undefined,
+      deepLinkTarget ?? contentReloadTarget ?? tab.location?.start.cfi ?? tab.book.cfi ?? undefined,
       'initial',
     )
     const previousRequestId = tab.currentRenditionLocationRequestId()
@@ -149,6 +163,7 @@ export class BookLayoutTransactionController {
     const requestId = tab.trackRenditionLocationRequest(previousRequestId, {
       anchorTarget: target,
       updateAnchor: true,
+      userNavigation: !!deepLinkTarget,
     })
     await display
     tab.commitPendingRenditionLocation(requestId)

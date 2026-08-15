@@ -204,6 +204,18 @@ fn is_epub_file(path: &Path) -> bool {
     storage::is_epub_file(path)
 }
 
+fn focus_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn is_flow_reader_deep_link(value: &str) -> bool {
+    tauri::Url::parse(value).is_ok_and(|url| url.scheme() == "flow-reader")
+}
+
 fn dispatch_open_paths(app: &tauri::AppHandle, paths: Vec<PathBuf>) {
     if paths.is_empty() {
         return;
@@ -223,9 +235,7 @@ fn dispatch_open_paths(app: &tauri::AppHandle, paths: Vec<PathBuf>) {
         .map(|path| path.to_string_lossy().to_string())
         .collect::<Vec<_>>();
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
+        focus_main_window(app);
         let _ = window.emit(OPEN_FILES_EVENT, payload);
     }
 }
@@ -240,6 +250,15 @@ pub fn run() {
     let pending_open_files = collect_epub_paths(std::env::args_os().skip(1));
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            let has_deep_link = argv.iter().any(|arg| is_flow_reader_deep_link(arg));
+            let paths = collect_epub_paths(argv);
+            if has_deep_link {
+                focus_main_window(app);
+            }
+            dispatch_open_paths(app, paths);
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .register_uri_scheme_protocol("dictionary", |context, request| {
             dictionary::mdict::resource_protocol_response(context.app_handle(), request)
         })
@@ -253,10 +272,6 @@ pub fn run() {
         .manage(dictionary::create_http_client().expect("dictionary HTTP client"))
         .manage(translation::TranslationHttpClient::new().expect("translation HTTP client"))
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            let paths = collect_epub_paths(argv);
-            dispatch_open_paths(app, paths);
-        }))
         .setup(|app| {
             let storage = storage::AppStorage::load(app.handle()).map_err(std::io::Error::other)?;
             let dictionary_registry = dictionary::registry::DictionaryRegistryStore::open_for_app(storage.root());
