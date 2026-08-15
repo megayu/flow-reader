@@ -1375,6 +1375,7 @@ fn external_epub_open_creates_external_record_without_library_entry() {
 
     assert_eq!(book.id, id_from_hash(&hash_file(&source).unwrap()));
     assert!(matches!(book.scope, BookScope::External));
+    assert_eq!(book.content_mode, BookContentMode::ArchiveOnly);
     assert_eq!(
         book.metadata.get("title").and_then(Value::as_str),
         Some("External Book")
@@ -1386,7 +1387,7 @@ fn external_epub_open_creates_external_record_without_library_entry() {
 
     let book_dir = storage.book_dir(&book.id);
     assert!(!book_dir.join(BOOK_FILE).exists());
-    assert!(book_dir.join(UNPACKED_DIR).join("OEBPS/content.opf").exists());
+    assert!(!book_dir.join(UNPACKED_DIR).exists());
 
     let loaded = get_book_impl(&storage, book.id.clone())
         .unwrap()
@@ -1398,8 +1399,7 @@ fn external_epub_open_creates_external_record_without_library_entry() {
     let reader_book = storage.stored_book(&book.id).unwrap();
     let source = get_book_reader_source_impl(&storage, &tasks, &reader_book).unwrap();
     assert_eq!(source.mode, BookReaderSourceMode::Opf);
-    assert!(source.path.contains("/books/"));
-    assert!(source.path.ends_with("/unpacked/OEBPS/content.opf"));
+    assert!(source.path.ends_with(&format!("/{}/OEBPS/content.opf", book.id)));
 
     let _ = fs::remove_dir_all(root);
 }
@@ -1610,6 +1610,7 @@ fn importing_open_external_epub_promotes_metadata_and_state_in_place() {
     assert_eq!(imported.id, external.id);
     assert_eq!(imported.name, "promoted.epub");
     assert_eq!(imported.source_path, path_to_client_string(&moved_source));
+    assert_eq!(imported.content_mode, BookContentMode::Normal);
     assert_external_promoted(&storage, &imported, &external.id, &moved_source);
 
     let _ = fs::remove_dir_all(root);

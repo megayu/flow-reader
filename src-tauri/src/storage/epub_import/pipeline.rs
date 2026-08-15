@@ -73,7 +73,7 @@ fn epub_import_requires_inspection(
         match existing_book_import(import_index, &state.library.books, source_path, hash) {
             Some(ExistingBookImport::ReplaceContent(_)) => true,
             Some(_) => false,
-            None => external_book_for_hash(import_index, &state.library.books, hash).is_none(),
+            None => true,
         },
     )
 }
@@ -222,9 +222,13 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                 let id = id_from_hash(&hash);
                 let now = now_ms();
                 let book = if let Some(mut book) = external_promotion.clone() {
+                    let (_, content_mode) = inspection
+                        .as_ref()
+                        .ok_or_else(|| "EPUB inspection is unavailable for external promotion".to_string())?;
                     book.scope = BookScope::Library;
                     book.name = name.clone();
                     book.size = size;
+                    book.content_mode = *content_mode;
                     book.source_storage = source_storage;
                     book.source_path = source_path.clone();
                     book.created_at = now;
@@ -440,15 +444,9 @@ pub(in crate::storage) fn open_external_epub_path_unflushed_impl(
 
     let book_dir = storage.book_dir(&id);
     fs::create_dir_all(&book_dir).map_err(|error| error.to_string())?;
-    let needs_assets = existing.as_ref().is_none_or(|book| {
-        book.content_mode == BookContentMode::Normal && find_unpacked_opf_path(&book_dir.join(UNPACKED_DIR)).is_err()
-    });
+    let needs_assets = existing.is_none();
     let mut inspection = needs_assets.then(|| inspect_epub_info(&source_path)).transpose()?;
-    if let Some((parsed, content_mode)) = inspection.as_mut() {
-        if *content_mode == BookContentMode::Normal {
-            normalize_epub_cover_png(&mut parsed.cover);
-            materialize_epub_package(&source_path, &book_dir.join(UNPACKED_DIR))?;
-        }
+    if let Some((parsed, _)) = inspection.as_mut() {
         write_cover(storage, &id, parsed.cover.take().map(|cover| cover.input))?;
     }
 
@@ -480,7 +478,7 @@ pub(in crate::storage) fn open_external_epub_path_unflushed_impl(
             book.last_read_at = Some(now);
             book.clone()
         } else {
-            let (parsed, content_mode) = inspection
+            let (parsed, _) = inspection
                 .as_ref()
                 .ok_or_else(|| "EPUB inspection is unavailable for external content".to_string())?;
             let book = StoredBook {
@@ -494,7 +492,7 @@ pub(in crate::storage) fn open_external_epub_path_unflushed_impl(
                 content_edited_at: None,
                 content_hash: hash,
                 revision: 1,
-                content_mode: *content_mode,
+                content_mode: BookContentMode::ArchiveOnly,
                 source_storage: SourceStorage::Referenced,
                 source_path,
                 metadata: parsed.metadata.clone(),
