@@ -38,8 +38,17 @@ import { LocalDictionarySettings } from './LocalDictionarySettings'
 import { SettingsItem as Item } from './SettingsItem'
 import { TagSettings } from './TagSettings'
 
-type SettingsTab = 'basic' | 'reading' | 'tags' | 'dictionary' | 'translation' | 'txt' | 'shortcuts'
-const SETTINGS_TABS: SettingsTab[] = ['basic', 'reading', 'tags', 'dictionary', 'translation', 'txt', 'shortcuts']
+type SettingsTab = 'basic' | 'reading' | 'storage' | 'tags' | 'dictionary' | 'translation' | 'txt' | 'shortcuts'
+const SETTINGS_TABS: SettingsTab[] = [
+  'basic',
+  'reading',
+  'storage',
+  'tags',
+  'dictionary',
+  'translation',
+  'txt',
+  'shortcuts',
+]
 const TEXTAREA_SIZE_STYLE = {
   fieldSizing: 'fixed',
   maxHeight: '22rem',
@@ -138,6 +147,141 @@ export const SettingsPanel: React.FC = () => {
               </Item>
               <AccentColorSetting />
               <UiFontSizeSetting />
+              <Item
+                title={t('restore_last_reading')}
+                description={t('restore_last_reading.description')}
+                controlId="settings-restore-last-reading"
+              >
+                <SettingsCheckbox
+                  id="settings-restore-last-reading"
+                  label={t('restore_last_reading')}
+                  checked={settings.restoreLastReadingOnStartup === true}
+                  onCheckedChange={(checked) => {
+                    setSettings({
+                      ...settings,
+                      restoreLastReadingOnStartup: checked,
+                    })
+                  }}
+                />
+              </Item>
+              <Item
+                title={t('show_recent_books')}
+                description={t('show_recent_books.description')}
+                controlId="settings-show-recent-books"
+              >
+                <SettingsCheckbox
+                  id="settings-show-recent-books"
+                  label={t('show_recent_books')}
+                  checked={settings.showRecentBooks === true}
+                  onCheckedChange={(checked) => {
+                    setSettings((prev) => ({
+                      ...prev,
+                      showRecentBooks: checked,
+                    }))
+                  }}
+                />
+              </Item>
+            </div>
+          )}
+          {activeTab === 'reading' && (
+            <div data-flow-settings-panel className="m-0 space-y-5">
+              <Item title={t('default_page_view')} description={t('default_page_view.description')}>
+                <SegmentedField
+                  value={settings.spread ?? RenditionSpread.Auto}
+                  options={[
+                    {
+                      label: typographyT('page_view.single_page'),
+                      value: RenditionSpread.None,
+                    },
+                    {
+                      label: typographyT('page_view.double_page'),
+                      value: RenditionSpread.Auto,
+                    },
+                  ]}
+                  onChange={(spread) => {
+                    setSettings((prev) => ({
+                      ...prev,
+                      spread,
+                    }))
+                  }}
+                />
+              </Item>
+              <Item title={t('default_text_align')} description={t('default_text_align.description')}>
+                <SegmentedField
+                  value={settings.textAlign ?? 'default'}
+                  options={[
+                    {
+                      label: typographyT('text_align.default'),
+                      value: 'default',
+                    },
+                    {
+                      label: typographyT('text_align.justify'),
+                      value: 'justify',
+                    },
+                  ]}
+                  onChange={(textAlign) => {
+                    setSettings((prev) => ({
+                      ...prev,
+                      textAlign,
+                    }))
+                  }}
+                />
+              </Item>
+              <Item
+                title={t('text_selection_menu')}
+                description={t('text_selection_menu.description')}
+                controlId="settings-text-selection-menu"
+              >
+                <SettingsCheckbox
+                  id="settings-text-selection-menu"
+                  label={t('text_selection_menu')}
+                  checked={settings.enableTextSelectionMenu === true}
+                  onCheckedChange={(checked) => {
+                    setSettings({
+                      ...settings,
+                      enableTextSelectionMenu: checked,
+                    })
+                  }}
+                />
+              </Item>
+              <Item
+                title={t('hide_endnotes')}
+                description={t('hide_endnotes.description')}
+                controlId="settings-hide-endnotes"
+              >
+                <SettingsCheckbox
+                  id="settings-hide-endnotes"
+                  label={t('hide_endnotes')}
+                  checked={settings.hideEndnotes === true}
+                  onCheckedChange={(checked) => {
+                    setSettings({
+                      ...settings,
+                      hideEndnotes: checked,
+                    })
+                  }}
+                />
+              </Item>
+              <Item
+                title={t('show_library_in_toc')}
+                description={t('show_library_in_toc.description')}
+                controlId="settings-show-library-in-toc"
+              >
+                <SettingsCheckbox
+                  id="settings-show-library-in-toc"
+                  label={t('show_library_in_toc')}
+                  checked={settings.showLibraryInToc === true}
+                  onCheckedChange={(checked) => {
+                    setSettings((prev) => ({
+                      ...prev,
+                      showLibraryInToc: checked,
+                    }))
+                  }}
+                />
+              </Item>
+            </div>
+          )}
+          {activeTab === 'storage' && (
+            <div data-flow-settings-panel className="m-0 space-y-5">
               <div className="space-y-3">
                 <Item
                   title={t('source_storage')}
@@ -196,137 +340,6 @@ export const SettingsPanel: React.FC = () => {
                 />
               </Item>
               <BookCacheSetting />
-            </div>
-          )}
-          {activeTab === 'reading' && (
-            <div data-flow-settings-panel className="m-0 space-y-5">
-              <Item title={t('default_page_view')} description={t('default_page_view.description')}>
-                <SegmentedField
-                  value={settings.spread ?? RenditionSpread.Auto}
-                  options={[
-                    {
-                      label: typographyT('page_view.single_page'),
-                      value: RenditionSpread.None,
-                    },
-                    {
-                      label: typographyT('page_view.double_page'),
-                      value: RenditionSpread.Auto,
-                    },
-                  ]}
-                  onChange={(spread) => {
-                    setSettings((prev) => ({
-                      ...prev,
-                      spread,
-                    }))
-                  }}
-                />
-              </Item>
-              <Item title={t('default_text_align')} description={t('default_text_align.description')}>
-                <SegmentedField
-                  value={settings.textAlign ?? 'default'}
-                  options={[
-                    {
-                      label: typographyT('text_align.default'),
-                      value: 'default',
-                    },
-                    {
-                      label: typographyT('text_align.justify'),
-                      value: 'justify',
-                    },
-                  ]}
-                  onChange={(textAlign) => {
-                    setSettings((prev) => ({
-                      ...prev,
-                      textAlign,
-                    }))
-                  }}
-                />
-              </Item>
-              <Item
-                title={t('restore_last_reading')}
-                description={t('restore_last_reading.description')}
-                controlId="settings-restore-last-reading"
-              >
-                <SettingsCheckbox
-                  id="settings-restore-last-reading"
-                  label={t('restore_last_reading')}
-                  checked={settings.restoreLastReadingOnStartup === true}
-                  onCheckedChange={(checked) => {
-                    setSettings({
-                      ...settings,
-                      restoreLastReadingOnStartup: checked,
-                    })
-                  }}
-                />
-              </Item>
-              <Item
-                title={t('text_selection_menu')}
-                description={t('text_selection_menu.description')}
-                controlId="settings-text-selection-menu"
-              >
-                <SettingsCheckbox
-                  id="settings-text-selection-menu"
-                  label={t('text_selection_menu')}
-                  checked={settings.enableTextSelectionMenu === true}
-                  onCheckedChange={(checked) => {
-                    setSettings({
-                      ...settings,
-                      enableTextSelectionMenu: checked,
-                    })
-                  }}
-                />
-              </Item>
-              <Item
-                title={t('hide_endnotes')}
-                description={t('hide_endnotes.description')}
-                controlId="settings-hide-endnotes"
-              >
-                <SettingsCheckbox
-                  id="settings-hide-endnotes"
-                  label={t('hide_endnotes')}
-                  checked={settings.hideEndnotes === true}
-                  onCheckedChange={(checked) => {
-                    setSettings({
-                      ...settings,
-                      hideEndnotes: checked,
-                    })
-                  }}
-                />
-              </Item>
-              <Item
-                title={t('show_recent_books')}
-                description={t('show_recent_books.description')}
-                controlId="settings-show-recent-books"
-              >
-                <SettingsCheckbox
-                  id="settings-show-recent-books"
-                  label={t('show_recent_books')}
-                  checked={settings.showRecentBooks === true}
-                  onCheckedChange={(checked) => {
-                    setSettings((prev) => ({
-                      ...prev,
-                      showRecentBooks: checked,
-                    }))
-                  }}
-                />
-              </Item>
-              <Item
-                title={t('show_library_in_toc')}
-                description={t('show_library_in_toc.description')}
-                controlId="settings-show-library-in-toc"
-              >
-                <SettingsCheckbox
-                  id="settings-show-library-in-toc"
-                  label={t('show_library_in_toc')}
-                  checked={settings.showLibraryInToc === true}
-                  onCheckedChange={(checked) => {
-                    setSettings((prev) => ({
-                      ...prev,
-                      showLibraryInToc: checked,
-                    }))
-                  }}
-                />
-              </Item>
             </div>
           )}
           {activeTab === 'tags' && <TagSettings />}
