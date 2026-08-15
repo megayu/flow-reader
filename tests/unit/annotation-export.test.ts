@@ -7,6 +7,7 @@ import type { BookRecord } from '../../src/storage'
 describe('annotation export', () => {
   test('preserves reading order while embedding isolated Markdown notes below their source text', () => {
     const book = {
+      id: 'book-id',
       name: 'fallback.epub',
       sourceFormat: 'epub',
       contentHash: 'book-hash',
@@ -34,13 +35,13 @@ describe('annotation export', () => {
 
     const exported = createAnnotationExport(book, annotations, (left, right) => left.localeCompare(right), 123)
 
-    expect(serializeAnnotationsAsMarkdown(exported)).toBe(`# Book \\*Title\\*
+    expect(serializeAnnotationsAsMarkdown(exported, book.id)).toBe(`# Book \\*Title\\*
 
 *Author\\_Name*
 
 ## Repeated chapter
 
-> 🟠 Earlier # source
+> [🟠](flow-reader://book-id?cfi=epubcfi%28%2F6%2F2%21%2F4%2F4%29) Earlier # source
 
 \`\`\`\`markdown
 # Main thought
@@ -53,7 +54,7 @@ describe('annotation export', () => {
 
 ## Repeated chapter
 
-> 🔵 Later \\*source\\*
+> [🔵](flow-reader://book-id?cfi=epubcfi%28%2F6%2F4%21%2F4%2F8%29) Later \\*source\\*
 
 \`\`\`\`markdown
 # Later note
@@ -62,6 +63,7 @@ describe('annotation export', () => {
 const later = true
 \`\`\`\`
 `)
+    expect(serializeAnnotationsAsMarkdown(exported)).not.toContain('flow-reader://')
   })
 })
 

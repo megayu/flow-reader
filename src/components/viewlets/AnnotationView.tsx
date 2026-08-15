@@ -28,6 +28,7 @@ import { Pane, PaneView, type PaneViewProps } from '../base/PaneView'
 import { IconButton } from '../IconButton'
 import { Row } from '../Row'
 import { Button } from '../ui/button'
+import { Checkbox } from '../ui/checkbox'
 import { useNotify } from '../ui/notificationContext'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
 
@@ -313,6 +314,7 @@ function AnnotationExportPanel({ annotations, onOpenChange, open }: AnnotationEx
   const notify = useNotify()
   const [filter, setFilter] = useState(createDefaultAnnotationFilter)
   const [format, setFormat] = useState<AnnotationExportFormat>('markdown')
+  const [includeCfiLinks, setIncludeCfiLinks] = useState(true)
   const hasAnnotations = useMemo(() => filterAnnotations(annotations, filter).length > 0, [annotations, filter])
   const notifyExportError = (error: unknown) => {
     notify({
@@ -327,7 +329,9 @@ function AnnotationExportPanel({ annotations, onOpenChange, open }: AnnotationEx
     const tab = reader.focusedBookTab
     if (!tab) return
     const exported = createAnnotationExport(tab.book, annotations, tab.compareCfi.bind(tab), Date.now(), filter)
-    return format === 'markdown' ? serializeAnnotationsAsMarkdown(exported) : serializeAnnotationsAsJson(exported)
+    return format === 'markdown'
+      ? serializeAnnotationsAsMarkdown(exported, includeCfiLinks ? tab.book.id : undefined)
+      : serializeAnnotationsAsJson(exported)
   }
   const handleCopy = () => {
     const contents = serialize()
@@ -355,6 +359,15 @@ function AnnotationExportPanel({ annotations, onOpenChange, open }: AnnotationEx
         </PopoverTrigger>
       </AppTooltip>
       <PopoverContent align="end" className="w-64 gap-3 p-2.5">
+        <div className="text-muted-foreground px-1 font-semibold">{annotationT('links')}</div>
+        <label htmlFor="annotation-export-cfi-links" className="flex h-6 cursor-pointer items-center gap-2 px-1">
+          <Checkbox
+            id="annotation-export-cfi-links"
+            checked={includeCfiLinks}
+            onCheckedChange={(checked) => setIncludeCfiLinks(checked === true)}
+          />
+          <span className="leading-none">{annotationT('include_cfi_links')}</span>
+        </label>
         <div className="text-muted-foreground px-1 font-semibold">{annotationT('filter')}</div>
         <AnnotationFilterFields value={filter} onChange={setFilter} />
         <div className="text-muted-foreground mt-1 px-1 font-semibold">{annotationT('format')}</div>
@@ -376,8 +389,11 @@ function AnnotationExportPanel({ annotations, onOpenChange, open }: AnnotationEx
             type="button"
             size="xs"
             variant="secondary"
-            disabled={isDefaultAnnotationFilter(filter)}
-            onClick={() => setFilter(createDefaultAnnotationFilter())}
+            disabled={isDefaultAnnotationFilter(filter) && includeCfiLinks}
+            onClick={() => {
+              setFilter(createDefaultAnnotationFilter())
+              setIncludeCfiLinks(true)
+            }}
           >
             {annotationT('reset')}
           </Button>

@@ -12,6 +12,7 @@ import {
   filterAnnotations,
 } from './annotationFilter'
 import { cleanBookText, getBookDisplayTitle } from './book'
+import { createFlowReaderDeepLink } from './deepLink'
 import type { BookRecord } from './storage'
 
 export type AnnotationExportFormat = 'json' | 'markdown'
@@ -71,7 +72,7 @@ export function serializeAnnotationsAsJson(exported: AnnotationExport) {
   return `${JSON.stringify(exported, null, 2)}\n`
 }
 
-export function serializeAnnotationsAsMarkdown(exported: AnnotationExport) {
+export function serializeAnnotationsAsMarkdown(exported: AnnotationExport, deepLinkBookId?: string) {
   const blocks = [`# ${escapeMarkdownText(exported.book.title)}`]
 
   if (exported.book.author) {
@@ -85,7 +86,11 @@ export function serializeAnnotationsAsMarkdown(exported: AnnotationExport) {
       blocks.push(`## ${escapeMarkdownText(getAnnotationSpineTitle(annotation.spine))}`)
     }
 
-    blocks.push(quotePlainText(annotation.text, annotationColorIcons[annotation.color]))
+    const icon = annotationColorIcons[annotation.color]
+    const linkedIcon = deepLinkBookId
+      ? `[${icon}](${createFlowReaderDeepLink({ bookId: deepLinkBookId, cfi: annotation.cfi })})`
+      : icon
+    blocks.push(quotePlainText(annotation.text, linkedIcon))
 
     if (annotation.notes?.trim()) {
       blocks.push(formatNoteMarkdown(annotation.notes))

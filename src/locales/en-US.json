@@ -13,6 +13,8 @@
   "annotation.export": "Export",
   "annotation.filter": "Filter",
   "annotation.format": "Format",
+  "annotation.include_cfi_links": "Link to source",
+  "annotation.links": "Links",
   "annotation.notes": "Notes",
   "annotation.notes_all": "All",
   "annotation.notes_with": "With",

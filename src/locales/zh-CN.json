@@ -13,6 +13,8 @@
   "annotation.export": "导出",
   "annotation.filter": "筛选",
   "annotation.format": "格式",
+  "annotation.include_cfi_links": "链接到原文",
+  "annotation.links": "链接",
   "annotation.notes": "笔记",
   "annotation.notes_all": "全部",
   "annotation.notes_with": "有笔记",

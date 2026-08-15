@@ -9,6 +9,12 @@ export interface FlowReaderDeepLink {
   cfi?: string
 }
 
+export function createFlowReaderDeepLink({ bookId, cfi }: FlowReaderDeepLink) {
+  const url = new URL(`${flowReaderDeepLinkScheme}//${bookId}`)
+  if (cfi) url.searchParams.set('cfi', cfi)
+  return url.href
+}
+
 export function parseFlowReaderDeepLink(value: string): FlowReaderDeepLink | undefined {
   if (!value || value.length > maximumDeepLinkLength || [...value].some((character) => character < ' ')) return
 
