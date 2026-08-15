@@ -1,27 +1,25 @@
-export const annotationColors = ['yellow', 'brown', 'red', 'green', 'cyan', 'blue', 'purple'] as const
+export const annotationColors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'brown'] as const
 
 export type AnnotationColor = (typeof annotationColors)[number]
 
 export const annotationColorIcons: Record<AnnotationColor, string> = {
-  yellow: '🟡',
-  brown: '🟤',
   red: '🔴',
+  orange: '🟠',
+  yellow: '🟡',
   green: '🟢',
-  cyan: '🟠',
   blue: '🔵',
   purple: '🟣',
+  brown: '🟤',
 }
 
-// Keep the stored color keys stable; tune the rendered fills for readability
-// across both light and dark reader backgrounds.
 export const colorMap: Record<AnnotationColor, string> = {
-  yellow: 'rgba(202, 138, 4, 0.42)',
-  brown: 'rgba(120, 53, 15, 0.46)',
   red: 'rgba(225, 29, 72, 0.36)',
+  orange: 'rgba(234, 88, 12, 0.42)',
+  yellow: 'rgba(202, 138, 4, 0.42)',
   green: 'rgba(22, 163, 74, 0.38)',
-  cyan: 'rgba(6, 182, 212, 0.46)',
   blue: 'rgba(37, 99, 235, 0.34)',
   purple: 'rgba(126, 34, 206, 0.36)',
+  brown: 'rgba(120, 53, 15, 0.46)',
 }
 
 export function orderRangeRectsForWritingMode<T extends DOMRectReadOnly>(rects: readonly T[], writingMode: string) {

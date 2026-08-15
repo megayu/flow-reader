@@ -25,7 +25,7 @@ describe('annotation export', () => {
       }),
       annotation({
         cfi: 'epubcfi(/6/2!/4/4)',
-        color: 'cyan',
+        color: 'orange',
         notes: '# Main thought\n\n## Detail\n\n- first\n- second',
         spine: { index: 1, href: 'first.xhtml', title: 'Repeated chapter' },
         text: 'Earlier # source',
