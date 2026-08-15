@@ -1,5 +1,9 @@
 import EventEmitter from 'eventemitter3'
-import { Pane, Highlight, Underline } from 'marks-pane'
+import {
+  Pane,
+  Highlight,
+  Underline,
+} from '../helpers/annotation-pane'
 
 import Contents from '../../contents'
 import EpubCFI from '../../epubcfi'
@@ -29,9 +33,7 @@ class WavyUnderline extends Highlight {
     }
 
     let docFrag = this.element.ownerDocument.createDocumentFragment()
-    let filtered = this.filteredRanges()
-    let offset = this.element.getBoundingClientRect()
-    let container = this.container.getBoundingClientRect()
+    let filtered = this.rects
     let stroke = this.attributes.stroke || 'black'
     let strokeOpacity = this.attributes['stroke-opacity'] || '0.9'
     let strokeWidth = numberAttribute(this.attributes, 'stroke-width', 1.8)
@@ -41,12 +43,12 @@ class WavyUnderline extends Highlight {
 
     for (let i = 0, len = filtered.length; i < len; i++) {
       let r = filtered[i]
-      let x = r.left - offset.left + container.left
-      let y = r.top - offset.top + container.top + r.height + gap
+      let x = r.left
+      let y = r.bottom + gap
       let geometry = wavyUnderlineGeometry(
         {
           left: x,
-          top: r.top - offset.top + container.top,
+          top: r.top,
           width: r.width,
           height: r.height,
         },
@@ -60,7 +62,7 @@ class WavyUnderline extends Highlight {
 
       let rect = createSvgElement(this.element.ownerDocument, 'rect')
       rect.setAttribute('x', x)
-      rect.setAttribute('y', r.top - offset.top + container.top)
+      rect.setAttribute('y', r.top)
       rect.setAttribute('height', r.height)
       rect.setAttribute('width', r.width)
       rect.setAttribute('fill', 'none')
@@ -101,9 +103,7 @@ class VerticalUnderline extends Highlight {
     }
 
     let docFrag = this.element.ownerDocument.createDocumentFragment()
-    let filtered = this.filteredRanges()
-    let offset = this.element.getBoundingClientRect()
-    let container = this.container.getBoundingClientRect()
+    let filtered = this.rects
     let stroke = this.attributes.stroke || 'black'
     let strokeOpacity = this.attributes['stroke-opacity'] || '0.3'
     let strokeWidth = numberAttribute(this.attributes, 'stroke-width', 1)
@@ -112,8 +112,8 @@ class VerticalUnderline extends Highlight {
     for (let i = 0, len = filtered.length; i < len; i++) {
       let r = filtered[i]
       let rect = {
-        left: r.left - offset.left + container.left,
-        top: r.top - offset.top + container.top,
+        left: r.left,
+        top: r.top,
         width: r.width,
         height: r.height,
       }
@@ -154,15 +154,6 @@ function createSvgElement(document, tagName) {
 function numberAttribute(attributes, name, fallback) {
   let value = Number(attributes[name])
   return Number.isFinite(value) ? value : fallback
-}
-
-function rectContainsPoint(rect, offset, x, y) {
-  let top = rect.top - offset.top
-  let left = rect.left - offset.left
-  let bottom = top + rect.height
-  let right = left + rect.width
-
-  return top <= y && left <= x && bottom > y && right > x
 }
 
 function wavyUnderlinePath(x, width, y, amplitude, period) {
@@ -381,6 +372,7 @@ class IframeView extends EventEmitter {
     this.markCursorProxyMove = undefined
     this.markCursorProxyLeave = undefined
     this.activeMarkCursor = undefined
+    this.annotationBatchDepth = 0
   }
 
   container(axis) {
@@ -1626,9 +1618,7 @@ class IframeView extends EventEmitter {
 
     data['epubcfi'] = cfiRange
 
-    if (!this.pane) {
-      this.pane = new Pane(this.iframe, this.element)
-    }
+    this.ensureAnnotationPane()
 
     let m = new Highlight(range, className, data, attributes)
     let h = this.pane.addMark(m)
@@ -1670,9 +1660,7 @@ class IframeView extends EventEmitter {
 
     data['epubcfi'] = cfiRange
 
-    if (!this.pane) {
-      this.pane = new Pane(this.iframe, this.element)
-    }
+    this.ensureAnnotationPane()
 
     let Mark = Underline
     if (attributes['data-underline-style'] === 'wavy') {
@@ -1712,6 +1700,27 @@ class IframeView extends EventEmitter {
     mark.element.setAttribute('cursor', cursor)
     mark.element.style.cursor = cursor
     this.ensureMarkCursorProxy()
+  }
+
+  ensureAnnotationPane() {
+    if (this.pane) return this.pane
+
+    this.pane = new Pane(this.iframe, this.element, this.writingMode)
+    for (let i = 0; i < this.annotationBatchDepth; i++) {
+      this.pane.beginBatch()
+    }
+    return this.pane
+  }
+
+  beginAnnotationBatch() {
+    this.annotationBatchDepth += 1
+    if (this.pane) this.pane.beginBatch()
+  }
+
+  endAnnotationBatch() {
+    if (this.annotationBatchDepth === 0) return
+    this.annotationBatchDepth -= 1
+    if (this.pane) this.pane.endBatch()
   }
 
   ensureMarkCursorProxy() {
@@ -1761,7 +1770,6 @@ class IframeView extends EventEmitter {
       return
     }
 
-    let offset = this.iframe.getBoundingClientRect()
     let marks = [
       ...Object.values(this.highlights),
       ...Object.values(this.underlines),
@@ -1770,28 +1778,12 @@ class IframeView extends EventEmitter {
     for (let i = marks.length - 1; i >= 0; i--) {
       let mark = marks[i] && marks[i].mark
       let cursor = mark && mark.element && mark.element.style.cursor
-      if (!cursor || !this.markContainsPoint(mark, offset, x, y)) {
+      if (!cursor || !mark.containsPoint(x, y)) {
         continue
       }
 
       return cursor
     }
-  }
-
-  markContainsPoint(mark, offset, x, y) {
-    let rect = mark.getBoundingClientRect()
-    if (!rectContainsPoint(rect, offset, x, y)) {
-      return false
-    }
-
-    let rects = mark.getClientRects()
-    for (let i = 0, len = rects.length; i < len; i++) {
-      if (rectContainsPoint(rects[i], offset, x, y)) {
-        return true
-      }
-    }
-
-    return false
   }
 
   setDocumentCursor(cursor) {
@@ -1954,6 +1946,8 @@ class IframeView extends EventEmitter {
   }
 
   destroy() {
+    if (this.pane) this.pane.beginBatch()
+
     for (let cfiRange in this.highlights) {
       this.unhighlight(cfiRange)
     }
@@ -1964,6 +1958,11 @@ class IframeView extends EventEmitter {
 
     for (let cfiRange in this.marks) {
       this.unmark(cfiRange)
+    }
+
+    if (this.pane) {
+      this.pane.destroy()
+      this.pane = undefined
     }
 
     if (this.blobUrl) {
@@ -1982,11 +1981,6 @@ class IframeView extends EventEmitter {
 
       this.stopExpanding = true
       this.element.removeChild(this.iframe)
-
-      if (this.pane) {
-        this.pane.element.remove()
-        this.pane = undefined
-      }
 
       this.iframe = undefined
       this.contents = undefined

@@ -159,10 +159,15 @@ class Annotations {
     let sectionIndex = view.index
     if (sectionIndex in this._annotationsBySectionIndex) {
       let annotations = this._annotationsBySectionIndex[sectionIndex]
-      annotations.forEach((hash) => {
-        let annotation = this._annotations[hash]
-        annotation.attach(view)
-      })
+      view.beginAnnotationBatch?.()
+      try {
+        annotations.forEach((hash) => {
+          let annotation = this._annotations[hash]
+          annotation.attach(view)
+        })
+      } finally {
+        view.endAnnotationBatch?.()
+      }
     }
   }
 
@@ -175,10 +180,15 @@ class Annotations {
     let sectionIndex = view.index
     if (sectionIndex in this._annotationsBySectionIndex) {
       let annotations = this._annotationsBySectionIndex[sectionIndex]
-      annotations.forEach((hash) => {
-        let annotation = this._annotations[hash]
-        annotation.detach(view)
-      })
+      view.beginAnnotationBatch?.()
+      try {
+        annotations.forEach((hash) => {
+          let annotation = this._annotations[hash]
+          annotation.detach(view)
+        })
+      } finally {
+        view.endAnnotationBatch?.()
+      }
     }
   }
 
