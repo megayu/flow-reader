@@ -320,8 +320,7 @@ const TocRow: React.FC<TocRowProps> = memo(
       if (id) {
         void tab.displayFromSelector(`#${id}`, section, true, true)
       } else {
-        tab.showPrevLocation()
-        void tab.displaySectionStart(section)
+        void tab.displaySectionStart(section, true)
       }
     }
 

@@ -154,10 +154,10 @@ export class BookLayoutTransactionController {
       return
     }
 
-    const target = tab.resolveDisplayTarget(
-      deepLinkTarget ?? contentReloadTarget ?? tab.location?.start.cfi ?? tab.book.cfi ?? undefined,
-      'initial',
-    )
+    const requestedInitialTarget = contentReloadTarget ?? tab.location?.start.cfi ?? tab.book.cfi ?? undefined
+    const initialTarget = tab.resolveDisplayTarget(requestedInitialTarget, 'initial')
+    const initialSpread = tab.book.configuration?.spread
+    const target = tab.resolveDisplayTarget(deepLinkTarget ?? initialTarget, 'initial')
     const previousRequestId = tab.currentRenditionLocationRequestId()
     const display = tab.rendition?.display(target)
     const requestId = tab.trackRenditionLocationRequest(previousRequestId, {
@@ -167,5 +167,8 @@ export class BookLayoutTransactionController {
     })
     await display
     tab.commitPendingRenditionLocation(requestId)
+    if (deepLinkTarget && initialTarget && !tab.targetIsInCurrentLocation(initialTarget)) {
+      tab.showPrevLocation(initialTarget, initialSpread)
+    }
   }
 }

@@ -129,12 +129,6 @@ export function useBookPaneFrameContent({
       const document = frame.document
 
       const handleClick = (event: MouseEvent) => {
-        if (zenMode) {
-          noteRequestId.current += 1
-          setNotePopover(undefined)
-          return
-        }
-
         const anchor = getAnchorFromEvent(event)
         if (!anchor) {
           noteRequestId.current += 1
@@ -143,6 +137,19 @@ export function useBookPaneFrameContent({
         }
 
         if (consumeExternalLinkClick(event, anchor)) {
+          noteRequestId.current += 1
+          setNotePopover(undefined)
+          return
+        }
+
+        if (zenMode) {
+          const target = getBookLinkDisplayTarget(tab, anchor)
+          if (target) {
+            event.preventDefault()
+            event.stopPropagation()
+            event.stopImmediatePropagation()
+            tab.displayBookLink(target).catch(console.error)
+          }
           noteRequestId.current += 1
           setNotePopover(undefined)
           return
@@ -157,7 +164,7 @@ export function useBookPaneFrameContent({
             closeChapterFindEvent()
             noteRequestId.current += 1
             setNotePopover(undefined)
-            tab.display(target)
+            tab.displayBookLink(target).catch(console.error)
           }
 
           return
@@ -172,7 +179,7 @@ export function useBookPaneFrameContent({
         const displayTarget = getBookLinkDisplayTarget(tab, anchor)
         if (getNoteIndex(anchor.ownerDocument).getItemForAnchor(anchor)) {
           noteRequestId.current += 1
-          if (displayTarget) tab.display(displayTarget)
+          if (displayTarget) tab.displayBookLink(displayTarget).catch(console.error)
           return
         }
 
@@ -183,7 +190,7 @@ export function useBookPaneFrameContent({
           try {
             note = await getLinkedNote(tab, anchor, containerRef.current)
             if (!note) {
-              if (displayTarget) tab.display(displayTarget)
+              if (displayTarget) await tab.displayBookLink(displayTarget)
               return
             }
             if (requestId !== noteRequestId.current) {
@@ -250,8 +257,6 @@ export function useBookPaneFrameContent({
         // `instanceof` may not work in iframe
         if (isFrameAnchor(element) && element.href) {
           if (consumeExternalLinkClick(event, element)) return
-
-          tab.showPrevLocation()
           return
         }
         if (!zenMode && isFrameImage(element)) {

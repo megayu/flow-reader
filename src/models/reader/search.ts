@@ -105,8 +105,7 @@ export async function displaySearchResult(
       tab.sections?.find((item) => item.index === sectionIndex) ?? tab.sections?.find((item) => item.href === href)
 
     if (section) {
-      tab.showPrevLocation()
-      await tab.displayTarget(section, result.cfi)
+      await tab.displayTarget(section, result.cfi, { returnable: true })
     } else {
       tab.display(result.cfi)
     }
@@ -127,14 +126,12 @@ export async function displaySearchResult(
     const match = matches[result.occurrence ?? 0] ?? matches[0]
     if (match?.cfi) {
       result.cfi = match.cfi
-      tab.showPrevLocation()
-      await tab.displayTarget(section, match.cfi)
+      await tab.displayTarget(section, match.cfi, { returnable: true })
       return
     }
   } catch (error) {
     console.error(error)
   }
 
-  tab.showPrevLocation()
-  await tab.displaySectionStart(section)
+  await tab.displaySectionStart(section, true)
 }

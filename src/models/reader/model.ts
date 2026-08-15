@@ -52,6 +52,13 @@ import { BookSearchController, displaySearchResult, searchBook, searchInSection,
 export type { HeaderPathItem, PaginationSnapshot } from './pagination'
 export { readingOrderStartSectionIndex } from './pagination'
 
+const RETURN_LOCATION_LIMIT = 50
+
+interface ReturnLocation {
+  target: string
+  spread?: ReadingSpreadRecord
+}
+
 function updateIndex<T>(array: readonly T[], deletedItemIndex: number) {
   const last = array.length - 1
   return deletedItemIndex > last ? last : deletedItemIndex
@@ -258,7 +265,7 @@ export class BookTab {
   }
   rendition?: RuntimeRef<Rendition>
   nav?: Navigation
-  locationsToReturn: Location[] = []
+  locationsToReturn: ReturnLocation[] = []
   section?: ISection
   sections?: ISection[]
   readingMetrics?: ReadingMetrics
@@ -347,6 +354,33 @@ export class BookTab {
     return this.locationAnchorCfi()
   }
 
+  targetIsInCurrentLocation(target: string, preferredSection?: ISection) {
+    const location = this.currentLocation
+    if (!location) return false
+
+    const section = preferredSection ?? this.sectionForDisplayTarget(target)
+    if (section && target === section.href) {
+      return [location.start, location.end].some(
+        (point) => point.index === section.index && point.displayed?.page === 1,
+      )
+    }
+
+    const compare = this.rendition?.epubcfi?.compare
+    if (!compare) return false
+
+    try {
+      const startComparison = compare(target, location.start.cfi)
+      const endComparison = compare(target, location.end.cfi)
+      const collapsedLocation = compare(location.start.cfi, location.end.cfi) === 0
+
+      // A paginated location's end CFI is the boundary at the start of the
+      // following page, so only a collapsed location includes that endpoint.
+      return startComparison >= 0 && (collapsedLocation ? endComparison === 0 : endComparison < 0)
+    } catch {
+      return false
+    }
+  }
+
   committedDisplayTarget() {
     const target = this.currentAnchorCfi()
     return this.sectionForDisplayTarget(target) ? target : undefined
@@ -382,28 +416,53 @@ export class BookTab {
     target?: string,
     {
       alignTargetAsSpreadStart = false,
+      locationTarget,
       preferredSection,
+      restoredSpread,
       returnable = true,
     }: {
       alignTargetAsSpreadStart?: boolean
+      locationTarget?: string
       preferredSection?: ISection
+      restoredSpread?: ReadingSpreadRecord
       returnable?: boolean
     } = {},
   ) {
-    const resolvedTarget = this.resolveDisplayTarget(target, target ? false : 'current')
-    if (!resolvedTarget || !this.rendition) return
+    const generation = this.renderGeneration
+    await this.navigation.enqueueDisplay(async () => {
+      if (generation !== this.renderGeneration || !this.rendition) return
 
-    const resolvedSection = preferredSection ?? this.sectionForDisplayTarget(resolvedTarget)
-    this.preferredSectionIndex = resolvedSection?.index
-    this.allowLocationJump = true
-    this.navigationDirection = undefined
-    this.relayoutAnchorSectionIndexes = undefined
-    if (returnable) this.showPrevLocation()
+      const resolvedTarget = this.resolveDisplayTarget(target, target ? false : 'current')
+      if (!resolvedTarget) return
 
-    const operation = (async () => {
+      const resolvedSection = preferredSection ?? this.sectionForDisplayTarget(resolvedTarget)
+      if (this.targetIsInCurrentLocation(locationTarget ?? resolvedTarget, resolvedSection)) return
+
+      const ownsTurning = !this.turning
+      if (ownsTurning) this.turning = true
       try {
+        this.preferredSectionIndex = resolvedSection?.index
+        this.allowLocationJump = true
+        this.navigationDirection = undefined
+        this.relayoutAnchorSectionIndexes = undefined
+        if (returnable) this.showPrevLocation()
+
+        const manager = this.rendition.manager
+        const spread = hydrateReflowableSpread(restoredSpread, this.sections, this.layoutStyleSignature)
+        if (spread && manager?.canUseLogicalReflowableSpread?.() && manager.renderReflowableSpread) {
+          const requestId = this.createManualLocationRequest({
+            anchorTarget: resolvedTarget,
+            updateAnchor: true,
+            userNavigation: true,
+          })
+          await manager.renderReflowableSpread(spread)
+          await this.rendition.reportLocation(requestId)
+          this.commitPendingRenditionLocation(requestId)
+          return
+        }
+
         const previousRequestId = this.currentRenditionLocationRequestId()
-        const display = this.rendition!.display(resolvedTarget, {
+        const display = this.rendition.display(resolvedTarget, {
           alignTargetAsSpreadStart,
         })
         const requestId = this.trackRenditionLocationRequest(previousRequestId, {
@@ -414,15 +473,25 @@ export class BookTab {
         await display
         this.commitPendingRenditionLocation(requestId)
       } catch (error) {
-        console.error(error)
+        if (generation === this.renderGeneration) console.error(error)
+      } finally {
+        if (ownsTurning) this.turning = false
       }
-    })()
-
-    await this.navigation.trackDisplay(operation)
+    })
   }
 
   display(target?: string, returnable = true) {
     void this.displayResolvedTarget(target, { returnable })
+  }
+
+  async displayBookLink(target: string) {
+    const hashIndex = target.indexOf('#')
+    const section = this.sectionForDisplayTarget(target)
+    if (hashIndex >= 0 && section) {
+      return this.displayFromSelector(`#${target.slice(hashIndex + 1)}`, section)
+    }
+
+    await this.displayResolvedTarget(target)
   }
 
   navigateFromDeepLink(cfi: string) {
@@ -448,7 +517,7 @@ export class BookTab {
 
         this.turning = true
         try {
-          await this.displayResolvedTarget(target, { returnable: false })
+          await this.displayResolvedTarget(target)
         } finally {
           this.turning = false
         }
@@ -482,16 +551,26 @@ export class BookTab {
       returnable: false,
     })
   }
-  async displaySectionStart(section: ISection) {
+  async displaySectionStart(section: ISection, returnable = false) {
     return this.displayTarget(section, undefined, {
       alignTargetAsSpreadStart: true,
+      returnable,
     })
   }
-  async displayTarget(section: ISection, target?: string, { alignTargetAsSpreadStart = false } = {}) {
+  async displayTarget(
+    section: ISection,
+    target?: string,
+    {
+      alignTargetAsSpreadStart = false,
+      locationTarget,
+      returnable = false,
+    }: { alignTargetAsSpreadStart?: boolean; locationTarget?: string; returnable?: boolean } = {},
+  ) {
     await this.displayResolvedTarget(target?.startsWith('#') ? `${section.href}${target}` : (target ?? section.href), {
       alignTargetAsSpreadStart,
+      locationTarget,
       preferredSection: section,
-      returnable: false,
+      returnable,
     })
   }
 
@@ -1136,17 +1215,32 @@ export class BookTab {
     if (item) item.expanded = !item.expanded
   }
 
-  showPrevLocation() {
-    if (this.location) {
-      this.locationsToReturn.push(this.location)
+  showPrevLocation(target = this.location?.start.cfi, spread = this.currentSpreadState) {
+    if (!target) return
+
+    if (this.locationsToReturn.length >= RETURN_LOCATION_LIMIT) {
+      // Keep the origin at index 0 and make room before appending, so the
+      // final history is always one origin plus at most 49 recent locations.
+      this.locationsToReturn.splice(1, this.locationsToReturn.length - RETURN_LOCATION_LIMIT + 1)
     }
+    this.locationsToReturn.push({
+      target,
+      ...(spread ? { spread } : {}),
+    })
+  }
+
+  private displayReturnLocation(location: ReturnLocation) {
+    void this.displayResolvedTarget(location.target, {
+      restoredSpread: location.spread,
+      returnable: false,
+    })
   }
 
   returnToPreviousLocation() {
     const location = this.locationsToReturn.pop()
     if (!location) return false
 
-    this.display(location.end.cfi, false)
+    void this.displayReturnLocation(location)
     return true
   }
 
@@ -1155,7 +1249,7 @@ export class BookTab {
     if (!location) return false
 
     this.locationsToReturn = []
-    this.display(location.end.cfi, false)
+    void this.displayReturnLocation(location)
     return true
   }
 

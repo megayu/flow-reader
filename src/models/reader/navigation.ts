@@ -5,6 +5,7 @@ import type { BookTab, ISection } from './model'
 
 export class BookNavigationController {
   pending?: Promise<void>
+  private displayQueue = Promise.resolve()
 
   private async track(operation: Promise<void>) {
     this.pending = operation
@@ -17,7 +18,12 @@ export class BookNavigationController {
     }
   }
 
-  trackDisplay(operation: Promise<void>) {
+  enqueueDisplay(run: () => Promise<void>) {
+    const operation = this.displayQueue.catch(() => undefined).then(run)
+    this.displayQueue = operation.then(
+      () => undefined,
+      () => undefined,
+    )
     return this.track(operation)
   }
 
@@ -194,13 +200,18 @@ export async function displayFromSelector(
 ) {
   try {
     await tab.ensureSectionInfo(section)
-    const element = section.document.querySelector(selector)
+    const element = selector.startsWith('#')
+      ? section.document.getElementById(selector.slice(1))
+      : section.document.querySelector(selector)
     if (element) {
-      const cfi = selector.startsWith('#') ? selector : section.cfiFromElement(element)
-      if (returnable) tab.showPrevLocation()
-      await tab.displayTarget(section, cfi, { alignTargetAsSpreadStart })
+      const locationTarget = section.cfiFromElement(element)
+      await tab.displayTarget(section, selector.startsWith('#') ? selector : locationTarget, {
+        alignTargetAsSpreadStart,
+        locationTarget,
+        returnable,
+      })
     } else {
-      await tab.displaySectionStart(section)
+      await tab.displaySectionStart(section, returnable)
     }
   } catch (_error) {
     tab.display(section.href, returnable)
@@ -215,12 +226,11 @@ export async function displayImage(tab: BookTab, section: ISection, src: string,
 
     if (element) {
       const cfi = section.cfiFromElement(element)
-      if (returnable) tab.showPrevLocation()
-      await tab.displayTarget(section, cfi)
+      await tab.displayTarget(section, cfi, { returnable })
       return
     }
 
-    await tab.displaySectionStart(section)
+    await tab.displaySectionStart(section, returnable)
   } catch (_error) {
     tab.display(section.href, returnable)
   }
