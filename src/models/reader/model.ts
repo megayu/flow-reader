@@ -7,7 +7,7 @@ import type { NavItem } from '@flow/epubjs/navigation'
 import type { RenditionManagerView, RenditionSpread } from '@flow/epubjs/rendition'
 import epubRequest from '@flow/epubjs/request'
 import type Section from '@flow/epubjs/section'
-import { type AnnotationColor, type AnnotationType, createAnnotationSpine } from '@/annotation'
+import { type AnnotationColor, createAnnotationSpine } from '@/annotation'
 import { getBookDisplayTitle } from '@/book'
 import { IS_SERVER } from '@/env'
 import { openSupportedExternalUrl } from '@/externalLink'
@@ -970,14 +970,7 @@ export class BookTab {
 
     return view.contents.cfiFromRange(range)
   }
-  putAnnotation(
-    type: AnnotationType,
-    cfi: string,
-    color: AnnotationColor,
-    text: string,
-    notes?: string,
-    section = this.section,
-  ) {
+  putAnnotation(cfi: string, color: AnnotationColor, text: string, notes?: string, section = this.section) {
     const spine = section ?? this.section
     if (!spine) return Promise.resolve()
 
@@ -998,7 +991,6 @@ export class BookTab {
         spine: annotationSpine,
         createdAt: now,
         updatedAt: now,
-        type,
         color,
         notes,
         text,
@@ -1008,7 +1000,6 @@ export class BookTab {
     } else {
       annotation = {
         ...annotation,
-        type,
         updatedAt: now,
         color,
         notes,

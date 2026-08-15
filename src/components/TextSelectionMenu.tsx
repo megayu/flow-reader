@@ -12,7 +12,7 @@ import {
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useSnapshot } from 'valtio'
 
-import { type AnnotationColor, colorMap, orderRangeRectsForWritingMode, typeMap } from '../annotation'
+import { type AnnotationColor, colorMap, orderRangeRectsForWritingMode } from '../annotation'
 import { type LocalDictionaryRecord, listLocalDictionariesCached } from '../dictionary/native'
 import { normalizeDictionaryQuery } from '../dictionary/query'
 import { useSetAction } from '../hooks/useAction'
@@ -734,48 +734,42 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           </div>
         )}
         {view === 'actions' && !editing && (
-          <div className="space-y-2">
-            {keys(typeMap).map((type) => (
-              <div key={type} className="flex gap-2">
-                {keys(colorMap).map((color) => (
-                  <button
-                    type="button"
-                    key={color}
-                    aria-label={`${type} ${color}`}
-                    style={{
-                      [typeMap[type].style]: colorMap[color],
-                      width: ANNOTATION_SIZE,
-                      height: ANNOTATION_SIZE,
-                      fontSize: 18,
-                    }}
-                    className={clsx(
-                      'text-muted-foreground flex cursor-pointer appearance-none items-center justify-center rounded-md border-2 bg-transparent p-0 text-base transition-[filter] outline-none hover:brightness-110 active:brightness-95',
-                      type === (annotation?.type ?? 'highlight') &&
-                        color === (annotate ? draftAnnotationColor : annotation?.color)
-                        ? 'border-(--flow-accent)'
-                        : annotate && annotationColorChanged && type === annotation?.type && color === annotation.color
-                          ? 'border-(--flow-text-muted)'
-                          : 'border-border',
-                      typeMap[type].class,
-                    )}
-                    onClick={() => {
-                      if (annotate) {
-                        setDraftAnnotationColor(color)
-                        return
-                      }
+          <div className="flex gap-2">
+            {keys(colorMap).map((color) => (
+              <button
+                type="button"
+                key={color}
+                aria-label={color}
+                style={{
+                  backgroundColor: colorMap[color],
+                  width: ANNOTATION_SIZE,
+                  height: ANNOTATION_SIZE,
+                  fontSize: 18,
+                }}
+                className={clsx(
+                  'text-muted-foreground flex cursor-pointer appearance-none items-center justify-center rounded border-2 bg-transparent p-0 text-base transition-[filter] outline-none hover:brightness-110 active:brightness-95',
+                  color === (annotate ? draftAnnotationColor : annotation?.color)
+                    ? 'border-(--flow-accent)'
+                    : annotate && annotationColorChanged && color === annotation?.color
+                      ? 'border-(--flow-text-muted)'
+                      : 'border-border',
+                )}
+                onClick={() => {
+                  if (annotate) {
+                    setDraftAnnotationColor(color)
+                    return
+                  }
 
-                      if (annotation && !annotationHasNotes && annotation.type === type && annotation.color === color) {
-                        void tab.removeAnnotation(cfi).catch(console.error)
-                      } else if (annotation?.type !== type || annotation.color !== color) {
-                        void tab.putAnnotation(type, cfi, color, text, annotation?.notes, section).catch(console.error)
-                      }
-                      hide()
-                    }}
-                  >
-                    A
-                  </button>
-                ))}
-              </div>
+                  if (annotation && !annotationHasNotes && annotation.color === color) {
+                    void tab.removeAnnotation(cfi).catch(console.error)
+                  } else if (annotation?.color !== color) {
+                    void tab.putAnnotation(cfi, color, text, annotation?.notes, section).catch(console.error)
+                  }
+                  hide()
+                }}
+              >
+                A
+              </button>
             ))}
           </div>
         )}
@@ -850,14 +844,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               disabled={!annotationChanged}
               onClick={() => {
                 void tab
-                  .putAnnotation(
-                    annotation?.type ?? 'highlight',
-                    cfi,
-                    draftAnnotationColor,
-                    text,
-                    ref.current?.value,
-                    section,
-                  )
+                  .putAnnotation(cfi, draftAnnotationColor, text, ref.current?.value, section)
                   .catch(console.error)
                 hide()
               }}

@@ -5,7 +5,6 @@ interface SemanticAnnotation {
   spineIndex: number
   spineHref: string
   spineTitle?: string
-  type: Annotation['type']
   color: Annotation['color']
   notes?: string
   text: string
@@ -22,7 +21,6 @@ function semanticAnnotation(annotation: Annotation): SemanticAnnotation {
     spineIndex: annotation.spine.index,
     spineHref: annotation.spine.href,
     spineTitle: annotation.spine.title,
-    type: annotation.type,
     color: annotation.color,
     notes,
     text: annotation.text,
@@ -36,7 +34,6 @@ function sameAnnotation(left: SemanticAnnotation | undefined, right: SemanticAnn
     left.spineIndex === right.spineIndex &&
     left.spineHref === right.spineHref &&
     left.spineTitle === right.spineTitle &&
-    left.type === right.type &&
     left.color === right.color &&
     left.notes === right.notes &&
     left.text === right.text

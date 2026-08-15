@@ -11,7 +11,6 @@ function annotation(cfi: string, overrides: Partial<Annotation> = {}): Annotatio
     spine: { index: 0, href: 'chapter.xhtml' },
     createdAt: 1,
     updatedAt: 1,
-    type: 'highlight',
     color: 'yellow',
     text: cfi,
     ...overrides,

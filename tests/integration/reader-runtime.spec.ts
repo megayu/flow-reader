@@ -805,7 +805,7 @@ async function addVisibleAnnotation(page: Page) {
 
     const cfi = tab.rangeToCfi(range)
     const section = tab.sectionForRange(range)
-    tab.putAnnotation('highlight', cfi, 'yellow', range.toString(), undefined, section)
+    tab.putAnnotation(cfi, 'yellow', range.toString(), undefined, section)
 
     return { cfi, text: range.toString() }
   })
@@ -1417,7 +1417,7 @@ async function addRightPageDefinitionAndAnnotation(page: Page, sectionIndex: num
         const cfi = tab.rangeToCfi(range)
         const section = tab.sectionForRange(range)
         tab.define([match[0]])
-        tab.putAnnotation('highlight', cfi, 'yellow', range.toString(), undefined, section)
+        tab.putAnnotation(cfi, 'yellow', range.toString(), undefined, section)
 
         return {
           cfi,

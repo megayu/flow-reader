@@ -1,12 +1,3 @@
-export type AnnotationType = keyof typeof typeMap
-
-export const typeMap = {
-  highlight: {
-    style: 'backgroundColor',
-    class: 'rounded',
-  },
-}
-
 export const annotationColors = ['yellow', 'brown', 'red', 'green', 'cyan', 'blue', 'purple'] as const
 
 export type AnnotationColor = (typeof annotationColors)[number]
@@ -76,7 +67,6 @@ export interface Annotation {
   spine: AnnotationSpine
   createdAt: number
   updatedAt: number
-  type: AnnotationType
   color: AnnotationColor
   notes?: string
   text: string

@@ -256,7 +256,7 @@ const Annotation: React.FC<AnnotationProps> = ({ tab, annotation }) => {
   const { rendition, viewVersion, overlayVersion } = useSnapshot(tab)
 
   useEffect(() => {
-    rendition?.annotations[annotation.type](
+    rendition?.annotations.highlight(
       annotation.cfi,
       undefined,
       (event?: Event) => {
@@ -273,9 +273,9 @@ const Annotation: React.FC<AnnotationProps> = ({ tab, annotation }) => {
     )
 
     return () => {
-      rendition?.annotations.remove(annotation.cfi, annotation.type)
+      rendition?.annotations.remove(annotation.cfi, 'highlight')
     }
-  }, [annotation.cfi, annotation.color, annotation.type, overlayVersion, rendition?.annotations, tab, viewVersion])
+  }, [annotation.cfi, annotation.color, overlayVersion, rendition?.annotations, tab, viewVersion])
 
   return null
 }

@@ -71,7 +71,6 @@ function annotation(overrides: Partial<Annotation>): Annotation {
     spine: { index: 1, href: 'chapter.xhtml', title: 'Chapter' },
     createdAt: 100,
     updatedAt: 200,
-    type: 'highlight',
     color: 'yellow',
     text: 'Source',
     ...overrides,
