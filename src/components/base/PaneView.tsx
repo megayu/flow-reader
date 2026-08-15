@@ -1,6 +1,13 @@
 import clsx from 'clsx'
 import type { LucideIcon } from 'lucide-react'
-import { type ComponentProps, forwardRef, type PointerEvent as ReactPointerEvent, useCallback, useRef } from 'react'
+import {
+  type ComponentProps,
+  forwardRef,
+  type ReactNode,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useRef,
+} from 'react'
 
 import type { OverlayScrollbarMetrics } from '@/hooks/useOverlayScrollbarMetrics'
 import { useAppStore } from '@/state'
@@ -13,12 +20,19 @@ import { useSplitViewItem } from './splitViewContext'
 
 const PANE_HEADER_SIZE = 28
 
-interface PaneAction {
+interface PaneButtonAction {
   id: string
   title: string
   Icon: LucideIcon
   handle: () => void
 }
+
+interface PaneCustomAction {
+  content: ReactNode
+  id: string
+}
+
+type PaneAction = PaneButtonAction | PaneCustomAction
 
 interface PaneProps extends ComponentProps<'div'> {
   headline: string
@@ -81,21 +95,21 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
         onClick={toggleExpanded}
       >
         <Twisty expanded={expanded} className="text-muted-foreground/80" />
-        <div className="text-muted-foreground/85 flex h-full items-center text-base leading-none font-semibold tracking-normal">
+        <div className="text-muted-foreground/85 flex h-full min-w-0 flex-1 items-center truncate text-base leading-none font-semibold tracking-normal">
           {headline.toUpperCase()}
         </div>
         {actions && (
-          <ul className="text-muted-foreground invisible ml-auto flex items-center gap-1 pr-0.5 group-hover:visible">
-            {actions.map(({ id, title, Icon, handle }) => (
-              <li key={id} className="flex items-center">
-                <IconButton
-                  title={title}
-                  Icon={Icon}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    handle()
-                  }}
-                />
+          <ul
+            className="text-muted-foreground invisible ml-auto flex shrink-0 items-center gap-1 pr-0.5 group-hover:visible group-focus-within:visible"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {actions.map((action) => (
+              <li key={action.id} className="flex items-center">
+                {'content' in action ? (
+                  action.content
+                ) : (
+                  <IconButton title={action.title} Icon={action.Icon} onClick={action.handle} />
+                )}
               </li>
             ))}
           </ul>

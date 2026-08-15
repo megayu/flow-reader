@@ -7,11 +7,23 @@ export const typeMap = {
   },
 }
 
-export type AnnotationColor = keyof typeof colorMap
+export const annotationColors = ['yellow', 'brown', 'red', 'green', 'cyan', 'blue', 'purple'] as const
+
+export type AnnotationColor = (typeof annotationColors)[number]
+
+export const annotationColorIcons: Record<AnnotationColor, string> = {
+  yellow: '🟡',
+  brown: '🟤',
+  red: '🔴',
+  green: '🟢',
+  cyan: '🟠',
+  blue: '🔵',
+  purple: '🟣',
+}
 
 // Keep the stored color keys stable; tune the rendered fills for readability
 // across both light and dark reader backgrounds.
-export const colorMap = {
+export const colorMap: Record<AnnotationColor, string> = {
   yellow: 'rgba(202, 138, 4, 0.42)',
   brown: 'rgba(120, 53, 15, 0.46)',
   red: 'rgba(225, 29, 72, 0.36)',

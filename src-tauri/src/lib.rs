@@ -1,4 +1,5 @@
 use std::{
+    fs,
     path::{Path, PathBuf},
     process::Command,
     sync::{
@@ -106,6 +107,11 @@ fn take_pending_open_paths(state: tauri::State<'_, PendingOpenFiles>) -> Vec<Str
 #[tauri::command]
 fn filter_directory_paths(paths: Vec<String>) -> Vec<String> {
     paths.into_iter().filter(|path| Path::new(path).is_dir()).collect()
+}
+
+#[tauri::command]
+fn write_annotation_export(output_path: String, contents: String) -> Result<(), String> {
+    fs::write(PathBuf::from(output_path), contents).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -302,6 +308,7 @@ pub fn run() {
             open_external_url,
             take_pending_open_paths,
             filter_directory_paths,
+            write_annotation_export,
             toggle_devtools,
             get_window_ui_state,
             persist_app_close_state,

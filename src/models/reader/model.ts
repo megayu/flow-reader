@@ -1288,7 +1288,7 @@ export class BookTab {
     return document.getElementById(hash) ?? (decoded !== hash ? document.getElementById(decoded) : undefined)
   }
 
-  private compareCfi(a: string, b: string) {
+  compareCfi(a: string, b: string) {
     try {
       return this.rendition?.epubcfi?.compare(a, b) ?? 0
     } catch {

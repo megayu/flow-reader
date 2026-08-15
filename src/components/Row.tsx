@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { ChevronDownIcon, ChevronRightIcon, XIcon } from 'lucide-react'
-import type { ComponentProps, CSSProperties, PointerEvent } from 'react'
+import type { ComponentProps, CSSProperties, PointerEvent, ReactNode } from 'react'
 
 import { useBackground } from '../hooks/theme/useBackground'
 import { LIST_ITEM_SIZE } from '../hooks/useList'
@@ -22,6 +22,7 @@ interface RowProps extends ComponentProps<'div'> {
   emptyLabel?: string
   description?: string | number
   info?: string
+  leading?: ReactNode
   subitems?: Readonly<any[]>
   toggle?: () => void
   onDelete?: () => void
@@ -35,6 +36,7 @@ export const Row: React.FC<RowProps> = ({
   emptyLabel = EMPTY_ROW_LABEL,
   description,
   info,
+  leading,
   expanded = false,
   active = false,
   activeClassName,
@@ -81,14 +83,18 @@ export const Row: React.FC<RowProps> = ({
           active ? 'group-hover/row:bg-(--flow-bg-active-hover)' : 'group-hover/row:bg-(--flow-bg-control-hover)',
         )}
       />
-      <Twisty
-        expanded={expanded}
-        className={clsx(!childCount && 'invisible')}
-        onClick={(e) => {
-          e.stopPropagation()
-          toggle?.()
-        }}
-      />
+      {leading ? (
+        <span className="relative z-10 flex size-5 shrink-0 items-center justify-center">{leading}</span>
+      ) : (
+        <Twisty
+          expanded={expanded}
+          className={clsx(!childCount && 'invisible')}
+          onClick={(e) => {
+            e.stopPropagation()
+            toggle?.()
+          }}
+        />
+      )}
       <div
         className={clsx(
           'relative z-10 flex h-full min-w-0 flex-1 items-center text-base leading-none',
