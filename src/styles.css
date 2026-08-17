@@ -327,6 +327,20 @@ a:focus-visible {
   @apply ring-ring ring-1 ring-inset;
 }
 
+button[data-slot="button"][data-variant="default"]:focus-visible,
+button[data-slot="button"][data-variant="destructive"]:focus-visible {
+  border-color: transparent;
+  outline: none;
+}
+
+button[data-slot="button"][data-variant="default"]:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--flow-text);
+}
+
+button[data-slot="button"][data-variant="destructive"]:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--flow-danger);
+}
+
 input:focus-visible,
 textarea:focus-visible {
   outline: none;
