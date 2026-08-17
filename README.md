@@ -130,9 +130,21 @@ pnpm check:full
 
 ### Build
 
+Build the application without creating a distributable package:
+
 ```bash
 pnpm tauri:build
 ```
+
+Build the complete local-use package for the current platform. The result is moved to `release/`:
+
+```bash
+pnpm bundle:windows:installed
+pnpm bundle:macos:installed
+pnpm bundle:linux:installed
+```
+
+Windows produces an NSIS installer, macOS produces the application bundle, and Linux produces an AppImage. Tagged CI releases use separate release-shape stages so release-only capabilities can be enabled independently in the future.
 
 ## Credits
 

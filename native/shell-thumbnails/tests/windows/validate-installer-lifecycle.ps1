@@ -345,7 +345,7 @@ try {
   $baselineProviderHash = (Get-FileHash -LiteralPath $developmentProvider -Algorithm SHA256).Hash
   Build-Installer -ProviderPath $developmentProvider -Destination $baselineInstaller
 
-  Invoke-CheckedCommand $pnpm @('thumbnail:dist:windows')
+  Invoke-CheckedCommand $pnpm @('bundle:windows:thumbnail')
   $upgradeProviderHash = (Get-FileHash -LiteralPath $distributionProvider -Algorithm SHA256).Hash
   if ($upgradeProviderHash -eq $baselineProviderHash) {
     throw 'Lifecycle validation requires baseline and upgrade providers with different content.'

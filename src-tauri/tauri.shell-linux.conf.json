@@ -1,18 +1,13 @@
 {
   "bundle": {
     "active": true,
-    "targets": ["deb"],
+    "targets": ["appimage"],
     "fileAssociations": [
       {
         "ext": ["epub"],
         "name": "EPUB Book",
         "mimeType": "application/epub+zip"
       }
-    ],
-    "linux": {
-      "deb": {
-        "desktopTemplate": "../native/shell-thumbnails/packaging/linux/flow-reader.desktop"
-      }
-    }
+    ]
   }
 }

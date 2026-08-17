@@ -1,6 +1,16 @@
 import { applicationDistributionCargoProfile, runPnpm } from './distribution-cargo.ts'
 
 const platform = process.argv[2]
+const distribution = process.argv[3]
+
+if (distribution !== 'local' && distribution !== 'release') {
+  throw new Error('Usage: node scripts/build-installed-bundle.ts <windows|macos|linux> <local|release>')
+}
+
+const distributionEnvironment = {
+  ...applicationDistributionCargoProfile,
+  FLOW_READER_DISTRIBUTION: distribution,
+}
 
 switch (platform) {
   case 'windows':
@@ -22,7 +32,7 @@ switch (platform) {
         '--config',
         'native/shell-thumbnails/dist/windows/tauri.shell-windows.generated.conf.json',
       ],
-      applicationDistributionCargoProfile,
+      distributionEnvironment,
     )
     break
   case 'macos':
@@ -39,7 +49,7 @@ switch (platform) {
         '--config',
         'src-tauri/tauri.shell-macos.conf.json',
       ],
-      applicationDistributionCargoProfile,
+      distributionEnvironment,
     )
     break
   case 'linux':
@@ -50,10 +60,10 @@ switch (platform) {
       throw new Error('The first Linux installed bundle is supported only on an x64 build host.')
     }
     runPnpm(
-      ['exec', 'tauri', 'build', '--bundles', 'deb', '--config', 'src-tauri/tauri.shell-linux.conf.json'],
-      applicationDistributionCargoProfile,
+      ['exec', 'tauri', 'build', '--bundles', 'appimage', '--config', 'src-tauri/tauri.shell-linux.conf.json'],
+      distributionEnvironment,
     )
     break
   default:
-    throw new Error('Usage: node scripts/build-installed-bundle.ts <windows|macos|linux>')
+    throw new Error('Usage: node scripts/build-installed-bundle.ts <windows|macos|linux> <local|release>')
 }

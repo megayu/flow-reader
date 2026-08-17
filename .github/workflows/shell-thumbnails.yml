@@ -121,7 +121,7 @@ jobs:
       - run: pnpm thumbnail:test:windows-installer
 
       - name: Build final Windows provider
-        run: pnpm thumbnail:dist:windows
+        run: pnpm bundle:windows:thumbnail
 
       - name: Inspect COM exports
         shell: pwsh
@@ -170,9 +170,11 @@ jobs:
 
       - name: Build final NSIS setup
         shell: pwsh
+        env:
+          BUNDLE_TAURI_COMMAND: ${{ startsWith(github.ref, 'refs/tags/') && 'bundle:windows:release:tauri' || 'bundle:windows:installed:tauri' }}
         run: |
           & native\shell-thumbnails\packaging\windows\prepare-nsis.ps1
-          pnpm bundle:windows:installed:tauri
+          pnpm $env:BUNDLE_TAURI_COMMAND
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $setups = @(Get-ChildItem -LiteralPath src-tauri\target\release\bundle\nsis -Filter '*-setup.exe' -File)
           if ($setups.Count -ne 1) { throw "Expected one NSIS setup, found $($setups.Count)." }
@@ -192,6 +194,15 @@ jobs:
               throw "Invalid Authenticode signature for ${path}: $($signature.Status)"
             }
           }
+
+      - name: Collect Windows installer
+        shell: pwsh
+        run: |
+          pnpm bundle:windows:collect
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $setups = @(Get-ChildItem -LiteralPath release -Filter '*-setup.exe' -File)
+          if ($setups.Count -ne 1) { throw "Expected one collected NSIS setup, found $($setups.Count)." }
+          "WINDOWS_SETUP_PATH=$($setups[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - uses: actions/upload-artifact@v7
         with:
@@ -233,7 +244,7 @@ jobs:
       - run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
       - run: cargo fmt --manifest-path native/shell-thumbnails/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path native/shell-thumbnails/Cargo.toml --workspace --all-targets --all-features -- -D warnings
-      - run: pnpm thumbnail:dist:macos
+      - run: pnpm bundle:macos:thumbnail
 
       - name: Import Apple release certificate
         if: startsWith(github.ref, 'refs/tags/')
@@ -272,13 +283,13 @@ jobs:
           fi
           codesign --force --options runtime --timestamp --sign "${APPLE_SIGNING_IDENTITY}" --entitlements native/shell-thumbnails/macos-extension/FlowReaderThumbnail/FlowReaderThumbnail.entitlements native/shell-thumbnails/dist/macos/DerivedData/Build/Products/Release/FlowReaderThumbnail.appex
 
-      - name: Build ad-hoc installed app and DMG
+      - name: Build ad-hoc installed app
         if: ${{ ! startsWith(github.ref, 'refs/tags/') }}
         env:
           APPLE_SIGNING_IDENTITY: "-"
         run: pnpm bundle:macos:installed:tauri
 
-      - name: Build, sign, notarize, and staple release app and DMG
+      - name: Build, sign, notarize, and staple release app
         if: startsWith(github.ref, 'refs/tags/')
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -292,7 +303,7 @@ jobs:
               exit 1
             fi
           done
-          pnpm bundle:macos:installed:tauri
+          pnpm bundle:macos:release:tauri
 
       - name: Verify EPUB opening and Quick Look lifecycle
         run: pnpm thumbnail:test:macos-installer
@@ -301,23 +312,20 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           app_path='src-tauri/target/universal-apple-darwin/release/bundle/macos/Flow Reader.app'
-          dmg_path="$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -maxdepth 1 -type f -name '*.dmg' -print -quit)"
-          [[ -n "${dmg_path}" ]]
           codesign --verify --deep --strict --verbose=2 "${app_path}"
           xcrun stapler validate "${app_path}"
-          xcrun stapler validate "${dmg_path}"
+
+      - name: Collect macOS application
+        run: pnpm bundle:macos:collect
 
       - name: Prepare macOS artifacts
         run: |
           artifact_dir='native/shell-thumbnails/dist/artifacts/macos'
           appex_path='native/shell-thumbnails/dist/macos/DerivedData/Build/Products/Release/FlowReaderThumbnail.appex'
-          app_path='src-tauri/target/universal-apple-darwin/release/bundle/macos/Flow Reader.app'
-          dmg_path="$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -maxdepth 1 -type f -name '*.dmg' -print -quit)"
-          [[ -n "${dmg_path}" ]]
+          app_path='release/Flow Reader.app'
           mkdir -p "${artifact_dir}"
           ditto -c -k --sequesterRsrc --keepParent "${appex_path}" "${artifact_dir}/FlowReaderThumbnail.appex.zip"
           ditto -c -k --sequesterRsrc --keepParent "${app_path}" "${artifact_dir}/FlowReader.app.zip"
-          cp "${dmg_path}" "${artifact_dir}/"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -327,13 +335,11 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: flow-reader-installed-macos-universal-${{ github.sha }}
-          path: |
-            native/shell-thumbnails/dist/artifacts/macos/FlowReader.app.zip
-            native/shell-thumbnails/dist/artifacts/macos/*.dmg
+          path: native/shell-thumbnails/dist/artifacts/macos/FlowReader.app.zip
           if-no-files-found: error
 
   linux:
-    name: Linux DEB file association
+    name: Linux AppImage
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
@@ -370,26 +376,33 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             desktop-file-utils \
+            libfuse2 \
             xvfb \
             dbus-x11 \
             zip
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm bundle:linux:installed
+      - name: Build local AppImage
+        if: ${{ ! startsWith(github.ref, 'refs/tags/') }}
+        run: pnpm bundle:linux:installed:tauri
+      - name: Build release AppImage
+        if: startsWith(github.ref, 'refs/tags/')
+        run: pnpm bundle:linux:release:tauri
+      - run: pnpm bundle:linux:collect
 
-      - name: Locate Linux DEB
+      - name: Locate Linux AppImage
         run: |
-          mapfile -t debs < <(find src-tauri/target/release/bundle/deb -maxdepth 1 -type f -name '*.deb' -print)
-          [[ "${#debs[@]}" == "1" ]] || { echo "Expected one DEB, found ${#debs[@]}." >&2; exit 1; }
-          echo "LINUX_DEB_PATH=$(realpath "${debs[0]}")" >> "${GITHUB_ENV}"
+          mapfile -t appimages < <(find release -maxdepth 1 -type f -name '*.AppImage' -print)
+          [[ "${#appimages[@]}" == "1" ]] || { echo "Expected one AppImage, found ${#appimages[@]}." >&2; exit 1; }
+          echo "LINUX_APPIMAGE_PATH=$(realpath "${appimages[0]}")" >> "${GITHUB_ENV}"
 
-      - name: Verify DEB file association and direct opening
-        run: xvfb-run -a dbus-run-session -- pnpm bundle:test:linux-installed "${LINUX_DEB_PATH}"
+      - name: Verify AppImage and direct EPUB opening
+        run: xvfb-run -a dbus-run-session -- pnpm test:bundle:linux-appimage "${LINUX_APPIMAGE_PATH}"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: flow-reader-installed-linux-x86_64-${{ github.sha }}
-          path: ${{ env.LINUX_DEB_PATH }}
+          name: flow-reader-appimage-linux-x86_64-${{ github.sha }}
+          path: ${{ env.LINUX_APPIMAGE_PATH }}
           if-no-files-found: error
 
   release:
@@ -420,8 +433,8 @@ jobs:
           path: release-artifacts/flow-reader-installed-macos-universal-${{ github.sha }}
       - uses: actions/download-artifact@v8
         with:
-          name: flow-reader-installed-linux-x86_64-${{ github.sha }}
-          path: release-artifacts/flow-reader-installed-linux-x86_64-${{ github.sha }}
+          name: flow-reader-appimage-linux-x86_64-${{ github.sha }}
+          path: release-artifacts/flow-reader-appimage-linux-x86_64-${{ github.sha }}
 
       - name: Validate artifact commit identity
         run: |
@@ -430,7 +443,7 @@ jobs:
             flow-reader-thumbnail-macos-universal
             flow-reader-installed-windows-x86_64
             flow-reader-installed-macos-universal
-            flow-reader-installed-linux-x86_64
+            flow-reader-appimage-linux-x86_64
           )
           for prefix in "${expected[@]}"; do
             directory="release-artifacts/${prefix}-${GITHUB_SHA}"

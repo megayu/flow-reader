@@ -1,6 +1,6 @@
 # Flow Reader shell integrations
 
-This directory owns the native Windows and macOS components that render EPUB thumbnails outside the Flow Reader process, plus installed-package validation for platform shell integration.
+This directory owns the native Windows and macOS components that render EPUB thumbnails outside the Flow Reader process, plus packaged-application validation for platform shell integration.
 
 It is intentionally isolated from the main Tauri crate and is built only by explicit thumbnail or installed-package commands.
 
@@ -12,10 +12,9 @@ It is intentionally isolated from the main Tauri crate and is built only by expl
 | `macos-ffi/` | Rust C ABI wrapper around the shared EPUB thumbnail renderer. | `libflow_thumbnail_macos.a` |
 | `macos-extension/` | Swift Quick Look Thumbnail Extension and its Xcode project. | `FlowReaderThumbnail.appex` |
 | `packaging/windows/` | Production NSIS hook template and generated-config preparation. | Ignored files under `dist/windows/` |
-| `packaging/linux/` | DEB desktop entry template with a file-path argument contract. | Desktop entry inside the DEB |
 | `tests/windows/` | Installed NSIS lifecycle validation. | Test-only installers under `dist/windows/lifecycle/` |
 | `tests/macos/` | Bundled extension, signing, registration, and Quick Look validation. | Temporary test app and thumbnail |
-| `tests/linux/` | DEB desktop entry, MIME association, and direct-open validation. | Temporary extracted package and app data |
+| `tests/linux/` | AppImage contents and direct-open validation. | Temporary extracted package and app data |
 
 The Cargo manifest at this directory is a virtual workspace for the Windows provider and macOS Rust FFI package.
 
@@ -40,19 +39,21 @@ pnpm bundle:linux:installed
 
 The two `thumbnail:build:*` commands build platform components for development and real-machine testing.
 
-The Windows and macOS `bundle:*:installed` commands produce distributable packages and are the only commands that embed thumbnail components.
+The Windows and macOS `bundle:*:installed` commands produce local-use packages and are the only commands that embed thumbnail components. Successful public bundle commands move their final application artifacts to `release/`.
 
-The Linux command produces a DEB that registers `application/epub+zip` and passes selected EPUB paths to Flow Reader; it intentionally does not package a thumbnailer because Linux desktop environments do not share one portable thumbnail extension contract.
+The Linux command produces an AppImage that declares `application/epub+zip` and accepts selected EPUB paths; it intentionally does not package a thumbnailer because Linux desktop environments do not share one portable thumbnail extension contract.
 
 Developer builds use Cargo's default `release` settings.
 
-Distribution commands inject size-oriented `opt-level=z`, fat LTO, one codegen unit, and symbol stripping into the same Cargo `release` profile and reuse the same target directories; the project does not define a second publish profile. Panic unwinding remains enabled because both native providers catch panics at their FFI boundary.
+Application bundle commands inject `opt-level=3`, LTO, one codegen unit, symbol stripping, and aborting panics into the existing Cargo `release` profile. Bundled thumbnail providers use the size-oriented `opt-level=z`, fat LTO, one codegen unit, and symbol stripping while retaining panic unwinding because both FFI boundaries catch panics. Both paths reuse the default target directories; the project does not define a second publish profile.
 
-On x64 Windows, the portable application and NSIS application build both use `src-tauri/target/release`; only the x64 COM provider uses its explicit target-triple directory.
+On x64 Windows, the NSIS application build uses `src-tauri/target/release`; only the x64 COM provider uses its explicit target-triple directory.
 
 The macOS installed application remains a universal target and therefore cannot reuse a single-architecture host output directory.
 
-Ordinary `pnpm tauri:build` and portable `pnpm release:local` do not build this workspace or the Xcode extension.
+Ordinary `pnpm tauri:build` does not build this workspace or the Xcode extension. It is a compile validation command, not a supported portable distribution.
+
+Installed commands build the local-use distribution shape. CI invokes the parallel `bundle:*:release:tauri` stages for tagged releases so future release-only capabilities, such as automatic updates, do not leak into local packages. Both shapes currently contain the same application features.
 
 ## Stable platform identities
 

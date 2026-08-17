@@ -1,7 +1,7 @@
 {
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
+    "targets": ["app"],
     "fileAssociations": [
       {
         "ext": ["epub"],
