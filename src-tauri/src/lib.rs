@@ -373,6 +373,8 @@ pub fn run() {
             storage::scan_import_folder,
             storage::import_text_paths,
             storage::get_book_reader_source,
+            storage::check_book_content_mode_switch,
+            storage::switch_book_content_mode,
             storage::check_book_source_statuses,
             storage::clear_book_caches,
             storage::search_book_text,

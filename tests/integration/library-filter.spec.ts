@@ -214,7 +214,7 @@ test('library author filters pin authors and refresh when books change', async (
     .filter({ hasText: 'Beta Read' })
     .click({ button: 'right' })
   await page.getByRole('menuitem', { name: msg('home.context.delete') }).click()
-  await page.getByRole('menuitem', { name: msg('home.context.confirm_delete') }).click()
+  await page.getByRole('menuitem', { name: msg('home.context.confirm') }).click()
   await expect(page.getByText('Beta Read')).toHaveCount(0)
   await expect(authorChip(page, longAuthor)).toHaveCount(0)
   await expect.poll(() => pinnedAuthors(page)).toEqual([])

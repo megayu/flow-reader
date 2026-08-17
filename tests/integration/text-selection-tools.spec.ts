@@ -1,16 +1,12 @@
-import path from 'node:path'
-
 import { expect, type Locator, type Page, test } from '@playwright/test'
 
 import type { LocalDictionaryRecord } from '../../src/dictionary/native'
 import type { BookRecord } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
+import { epubFixturePackageUrl, installEpubFixtureRoutes } from '../support/epub-fixture'
 import { msg } from '../support/i18n'
 import { selectReaderTextAndOpenMenu } from '../support/reader-selection'
 import { getDictionaryMockState, installTauriMock } from '../support/tauri-mock'
-
-const aliceEpubPath = path.resolve('packages/epubjs/test/fixtures/alice.epub')
-const alicePackageUrl = '/test-assets/dictionary/alice.epub'
 
 function iconButton(container: Locator, icon: string) {
   return container.locator(`button:has(svg.lucide-${icon})`)
@@ -100,15 +96,10 @@ async function setupDictionaryReader(
   zdicResponseStatuses: Record<string, number> = {},
   translationOptions: { delayMs?: number; error?: string } = {},
 ) {
-  await page.route(`**${alicePackageUrl}`, (route) =>
-    route.fulfill({
-      path: aliceEpubPath,
-      contentType: 'application/epub+zip',
-    }),
-  )
+  await installEpubFixtureRoutes(page)
   await installTauriMock(page, {
     books: [dictionaryBook(bookLanguage)],
-    readerSources: { 'dictionary-book': alicePackageUrl },
+    readerSources: { 'dictionary-book': epubFixturePackageUrl },
     settings: {
       dictionary: {
         zdic: { enabled: true },

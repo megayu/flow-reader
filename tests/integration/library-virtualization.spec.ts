@@ -1,14 +1,11 @@
-import path from 'node:path'
-
 import { expect, test } from '@playwright/test'
 
 import { createTestBook } from '../support/book-fixtures'
+import { epubFixturePackageUrl, installEpubFixtureRoutes } from '../support/epub-fixture'
 import { msg } from '../support/i18n'
 import { installTauriMock } from '../support/tauri-mock'
 
 const bookCount = 240
-const aliceEpubPath = path.resolve('packages/epubjs/test/fixtures/alice.epub')
-const alicePackageUrl = '/test-assets/library-virtualization/alice.epub'
 
 function createBook(index: number, titlePrefix = 'Virtual Book') {
   const number = String(index).padStart(3, '0')
@@ -64,15 +61,10 @@ test('reader returns retain library search and restore short-return scroll posit
   const books = Array.from({ length: bookCount }, (_, index) =>
     createBook(index + 1, index < bookCount / 2 ? 'Other Book' : 'Return Book'),
   )
-  await page.route(`**${alicePackageUrl}`, (route) =>
-    route.fulfill({
-      path: aliceEpubPath,
-      contentType: 'application/epub+zip',
-    }),
-  )
+  await installEpubFixtureRoutes(page)
   await installTauriMock(page, {
     books,
-    readerSources: Object.fromEntries(books.map((book) => [book.id, alicePackageUrl])),
+    readerSources: Object.fromEntries(books.map((book) => [book.id, epubFixturePackageUrl])),
     settings: {
       libraryDisplay: { bookCardWidth: 160 },
       librarySort: { field: 'title', direction: 'asc' },
@@ -111,17 +103,12 @@ test('reader returns retain library search and restore short-return scroll posit
 test('recent books retain prior entries while tracking is disabled', async ({ page }) => {
   const firstBook = createBook(1, 'Recent Reading A')
   const secondBook = createBook(2, 'Recent Reading B')
-  await page.route(`**${alicePackageUrl}`, (route) =>
-    route.fulfill({
-      path: aliceEpubPath,
-      contentType: 'application/epub+zip',
-    }),
-  )
+  await installEpubFixtureRoutes(page)
   await installTauriMock(page, {
     books: [firstBook, secondBook],
     readerSources: {
-      [firstBook.id]: alicePackageUrl,
-      [secondBook.id]: alicePackageUrl,
+      [firstBook.id]: epubFixturePackageUrl,
+      [secondBook.id]: epubFixturePackageUrl,
     },
     settings: {
       libraryDisplay: { bookCardWidth: 200 },

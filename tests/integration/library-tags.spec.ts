@@ -405,7 +405,7 @@ test('library tags can be filtered, pinned, edited, batch-applied, renamed, dele
 
   await tagChip(page, 'Research').click()
   await bookCard(page, 'Beta Plain').click({ button: 'right' })
-  await page.getByRole('menuitem', { name: msg('home.context.edit') }).click()
+  await page.getByRole('menuitem', { name: msg('home.context.edit_details') }).click()
   let editDialog = page.getByRole('dialog')
   await expect(editDialog.getByRole('heading', { name: msg('home.edit.dialog_title') })).toBeVisible()
   await expect(editDialog.getByRole('textbox', { name: msg('home.edit.new_tag') })).toHaveCount(0)

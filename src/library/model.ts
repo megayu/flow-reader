@@ -87,19 +87,17 @@ export function isBookSourceUnavailable(status?: BookSourceStatus) {
 
 export function bookSourceDescriptionKey(status: Exclude<BookSourceStatus, 'available'>) {
   if (status === 'missing') return 'source_missing_description' as const
-  if (status === 'changed') return 'source_changed_description' as const
   return 'source_unreadable_description' as const
 }
 
 export function bookSourceStatusFromError(errorMessage: string): Exclude<BookSourceStatus, 'available'> | undefined {
   if (errorMessage === 'BOOK_SOURCE_MISSING') return 'missing'
   if (errorMessage === 'BOOK_SOURCE_UNREADABLE') return 'unreadable'
-  if (errorMessage === 'BOOK_SOURCE_CHANGED') return 'changed'
   return undefined
 }
 
 export function hasUnexportedBookChanges(book: BookRecord) {
-  return !!book.contentEditedAt
+  return book.revision > book.sourceRevision && book.latestExportRevision !== book.revision
 }
 
 export function exportDialogFilter(format: BookExportFormat) {

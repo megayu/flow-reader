@@ -157,6 +157,7 @@ test('settings close flushes only a changed session after its update', async ({ 
   expect(await getSettingsOperations(page)).toEqual([])
 
   dialog = await openSettings(page)
+  await dialog.getByRole('button', { name: msg('settings.tabs.storage') }).click()
   await dialog
     .getByRole('checkbox', {
       name: msg('settings.source_storage'),
@@ -211,6 +212,7 @@ test('app UI font size changes app chrome without changing reading font size', a
 
 test('uses original-file references by default and persists the import mode', async ({ page }) => {
   const dialog = await openSettings(page)
+  await dialog.getByRole('button', { name: msg('settings.tabs.storage') }).click()
   const checkbox = dialog.getByRole('checkbox', {
     name: msg('settings.source_storage'),
   })

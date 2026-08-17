@@ -1,14 +1,10 @@
-import path from 'node:path'
-
 import { expect, type Page, test } from '@playwright/test'
 
 import type { BookRecord } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
+import { epubFixturePackageUrl, installEpubFixtureRoutes } from '../support/epub-fixture'
 import { msg } from '../support/i18n'
 import { installTauriMock } from '../support/tauri-mock'
-
-const aliceEpubPath = path.resolve('packages/epubjs/test/fixtures/alice.epub')
-const alicePackageUrl = '/test-assets/library-selection/alice.epub'
 
 function createBook(index: number): BookRecord {
   const title = `Selection Book ${String(index).padStart(2, '0')}`
@@ -139,15 +135,10 @@ test('escape clears selection and exits selection mode before clearing filters',
 
 test('batch deletion closes selected open book tabs and preserves unselected tabs', async ({ page }) => {
   const books = [createBook(1), createBook(2), createBook(3)]
-  await page.route(`**${alicePackageUrl}`, (route) =>
-    route.fulfill({
-      path: aliceEpubPath,
-      contentType: 'application/epub+zip',
-    }),
-  )
+  await installEpubFixtureRoutes(page)
   await installTauriMock(page, {
     books,
-    readerSources: Object.fromEntries(books.map((book) => [book.id, alicePackageUrl])),
+    readerSources: Object.fromEntries(books.map((book) => [book.id, epubFixturePackageUrl])),
     settings: {
       librarySort: { field: 'title', direction: 'asc' },
     },

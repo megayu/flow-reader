@@ -3,7 +3,7 @@ use super::*;
 fn unedited_source_path(storage: &AppStorage, book: &StoredBook) -> Option<PathBuf> {
     if book.source_format == BookSourceFormat::Txt
         && book.source_storage == SourceStorage::Managed
-        && book.content_edited_at.is_some()
+        && has_unexported_book_changes(book)
     {
         return Some(book.source_path.clone());
     }
@@ -17,7 +17,7 @@ fn unedited_source_path(storage: &AppStorage, book: &StoredBook) -> Option<PathB
     }
 }
 
-fn remove_book_derived_cache_files(storage: &AppStorage, id: &str) -> Result<(), String> {
+pub(super) fn remove_book_derived_cache_files(storage: &AppStorage, id: &str) -> Result<(), String> {
     let book_dir = storage.book_dir(id);
     if !book_dir.exists() {
         return Ok(());
@@ -58,9 +58,9 @@ pub(super) fn clear_book_caches_impl(
     let total = all_ids.len();
     report_progress(0, total);
 
-    let edited_book_ids = all_books
+    let locally_modified_book_ids = all_books
         .iter()
-        .filter(|book| book.scope == BookScope::Library && book.content_edited_at.is_some())
+        .filter(|book| book.scope == BookScope::Library && book.revision > book.source_revision)
         .map(|book| book.id.clone())
         .collect::<HashSet<_>>();
     let source_restorations = if discard_unexported_edits {
@@ -68,7 +68,7 @@ pub(super) fn clear_book_caches_impl(
             .iter()
             .filter(|book| {
                 book.scope == BookScope::Library
-                    && book.content_edited_at.is_some()
+                    && has_unexported_book_changes(book)
                     && !preserved_unpacked_book_ids.contains(&book.id)
             })
             .map(|book| {
@@ -93,7 +93,7 @@ pub(super) fn clear_book_caches_impl(
         let restored_source = tasks.run_book_exclusive(&id, TaskPriority::Critical, || {
             let preserve_unpacked = preserved_unpacked_book_ids.contains(&id)
                 || storage.derived_cache_is_active(&id)?
-                || (edited_book_ids.contains(&id) && !discard_unexported_edits);
+                || (locally_modified_book_ids.contains(&id) && !source_restorations.contains_key(&id));
             {
                 let _flush_guard = storage
                     .inner
@@ -145,13 +145,10 @@ pub(super) fn clear_book_caches_impl(
             if !restored_source_ids.contains(&book.id) {
                 continue;
             }
-            let Some((_, size, content_hash, _)) = source_restorations.get(&book.id) else {
+            let Some((_, size, source_hash, _)) = source_restorations.get(&book.id) else {
                 continue;
             };
-            book.size = *size;
-            book.content_hash = content_hash.clone();
-            book.revision = next_revision(book.revision)?;
-            book.content_edited_at = None;
+            adopt_book_source_fields(book, source_hash.clone(), *size)?;
             book.updated_at = Some(updated_at);
         }
     }

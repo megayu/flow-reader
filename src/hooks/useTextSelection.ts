@@ -91,7 +91,6 @@ export function useTextSelection(target?: Window | Window[], { automatic = true 
         }, 80)
       }
 
-      win.addEventListener('mouseup', updateSelection)
       win.addEventListener('contextmenu', openContextMenuSelection)
       win.document.addEventListener('mouseup', updateSelection)
       win.document.addEventListener('contextmenu', openContextMenuSelection)
@@ -99,7 +98,6 @@ export function useTextSelection(target?: Window | Window[], { automatic = true 
 
       return () => {
         if (timeout) clearTimeout(timeout)
-        win.removeEventListener('mouseup', updateSelection)
         win.removeEventListener('contextmenu', openContextMenuSelection)
         win.document.removeEventListener('mouseup', updateSelection)
         win.document.removeEventListener('contextmenu', openContextMenuSelection)

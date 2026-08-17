@@ -774,17 +774,6 @@ pub(super) fn write_source_text_update(path: &Path, update: &SourceTextUpdate) -
     }
 }
 
-pub(super) fn edited_book_content_hash(id: &str, revision: u32, edited_at: u64) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(b"edited\0");
-    hasher.update(id.as_bytes());
-    hasher.update(b"\0");
-    hasher.update(revision.to_le_bytes());
-    hasher.update(edited_at.to_le_bytes());
-    let digest = hasher.finalize();
-    digest.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
 pub(super) fn mark_library_book_content_updated(storage: &AppStorage, id: &str) -> Result<Option<StoredBook>, String> {
     let updated = {
         let mut state = storage
@@ -801,9 +790,7 @@ pub(super) fn mark_library_book_content_updated(storage: &AppStorage, id: &str) 
             return Ok(None);
         };
         let now = now_ms();
-        book.revision = next_revision(book.revision)?;
-        book.content_edited_at = Some(now);
-        book.content_hash = edited_book_content_hash(&book.id, book.revision, now);
+        mark_book_content_updated_fields(book, now)?;
         book.updated_at = Some(now);
         book.clone()
     };
@@ -821,8 +808,10 @@ pub(super) fn replace_book_text_impl(
     let initial_book = storage.library_book(&id)?;
     let source_format = initial_book.source_format;
     let content_mode = inspect_and_store_book_content_access(storage, &initial_book)?;
-    if source_format == BookSourceFormat::Epub && content_mode == BookContentMode::ArchiveOnly {
-        return Err("Archive-only EPUB text editing is not supported".to_string());
+    if source_format == BookSourceFormat::Epub
+        && (!initial_book.editable || content_mode == BookContentMode::ArchiveOnly)
+    {
+        return Err("BOOK_CONTENT_NOT_EDITABLE".to_string());
     }
     let book_dir = storage.book_dir(&id);
     let unpacked_dir = book_dir.join(UNPACKED_DIR);
@@ -897,7 +886,7 @@ pub(super) fn replace_book_text_impl(
     }
     fs::write(&section_path, &updated_xhtml).map_err(|error| error.to_string())?;
 
-    let mut book = {
+    let book = {
         let mut state = storage
             .inner
             .state
@@ -913,38 +902,12 @@ pub(super) fn replace_book_text_impl(
         };
         let now = now_ms();
         book.source_format = source_format;
-        book.revision = next_revision(book.revision)?;
-        book.content_edited_at = Some(now);
-        book.content_hash = edited_book_content_hash(&book.id, book.revision, now);
+        mark_book_content_updated_fields(book, now)?;
         book.updated_at = Some(now);
         book.clone()
     };
 
-    if source_format == BookSourceFormat::Txt && initial_book.source_storage == SourceStorage::Managed {
-        book.size = fs::metadata(book_dir.join(SOURCE_TEXT_FILE))
-            .map_err(|error| error.to_string())?
-            .len();
-    }
-
-    {
-        let mut state = storage
-            .inner
-            .state
-            .lock()
-            .map_err(|_| "storage state lock poisoned".to_string())?;
-        let Some(stored_book) = state
-            .library
-            .books
-            .iter_mut()
-            .find(|stored| stored.id == id && stored.scope == BookScope::Library)
-        else {
-            return Err("Book not found".to_string());
-        };
-        stored_book.content_hash = book.content_hash.clone();
-        stored_book.size = book.size;
-    }
-
-    storage.update_derived_caches_after_edit(&book, &target.section_href, &updated_xhtml)?;
+    storage.update_derived_caches_after_edit(&initial_book, &book, &target.section_href, &updated_xhtml)?;
     storage.mark_library_dirty();
     storage.flush_content_dirty()?;
 

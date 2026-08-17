@@ -62,10 +62,20 @@ pub(super) struct StoredBook {
     pub(super) generated_cover: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) content_edited_at: Option<u64>,
-    pub(super) content_hash: String,
+    pub(super) source_hash: String,
+    /// Monotonic event number for the last accepted source file.
+    pub(super) source_revision: u32,
+    /// Monotonic event number for the last App edit to unpacked content.
     pub(super) revision: u32,
+    /// Content event number captured by the last successful export.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) latest_export_revision: Option<u32>,
+    /// Hash captured for export comparison: the EPUB output, or managed TXT's internal `book.txt` snapshot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) latest_export_hash: Option<String>,
     #[serde(default, rename = "archive", skip_serializing_if = "BookContentMode::is_normal")]
     pub(super) content_mode: BookContentMode,
+    pub(super) editable: bool,
     #[serde(default, rename = "managed", skip_serializing_if = "SourceStorage::is_referenced")]
     pub(super) source_storage: SourceStorage,
     pub(super) source_path: PathBuf,
@@ -117,10 +127,16 @@ pub struct BookRecord {
     pub(super) tag_ids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) configuration: Option<Value>,
-    pub(super) content_hash: String,
+    pub(super) source_hash: String,
+    pub(super) source_revision: u32,
     pub(super) revision: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) latest_export_revision: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) latest_export_hash: Option<String>,
     #[serde(default, rename = "archive", skip_serializing_if = "BookContentMode::is_normal")]
     pub(super) content_mode: BookContentMode,
+    pub(super) editable: bool,
     #[serde(default, rename = "managed", skip_serializing_if = "SourceStorage::is_referenced")]
     pub(super) source_storage: SourceStorage,
     pub(super) source_path: String,
@@ -179,7 +195,6 @@ pub enum BookSourceFormat {
 #[serde(rename_all = "camelCase")]
 pub enum BookSourceStatus {
     Available,
-    Changed,
     Missing,
     Unreadable,
 }
@@ -248,6 +263,29 @@ impl BookContentMode {
 pub enum BookExportFormat {
     Epub,
     Txt,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BookModeSwitchResolution {
+    Overwrite,
+    Adopt,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BookModeSwitchConflict {
+    Changed,
+    Missing,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BookModeSwitchResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) book: Option<BookRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) conflict: Option<BookModeSwitchConflict>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

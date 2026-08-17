@@ -1359,6 +1359,37 @@ pub async fn get_book_reader_source(
 }
 
 #[tauri::command]
+pub async fn check_book_content_mode_switch(
+    storage: State<'_, AppStorage>,
+    id: String,
+    editable: bool,
+) -> Result<Option<BookModeSwitchConflict>, String> {
+    let storage = (*storage).clone();
+    tauri::async_runtime::spawn_blocking(move || check_book_content_mode_switch_impl(&storage, id, editable))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn switch_book_content_mode(
+    storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
+    id: String,
+    editable: bool,
+    resolution: Option<BookModeSwitchResolution>,
+) -> Result<BookModeSwitchResult, String> {
+    let storage = (*storage).clone();
+    let tasks = (*tasks).clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        tasks.run_book_exclusive(&id, TaskPriority::Critical, || {
+            switch_book_content_mode_impl(&storage, &tasks, id.clone(), editable, resolution)
+        })
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub async fn check_book_source_statuses(
     storage: State<'_, AppStorage>,
     ids: Vec<String>,
@@ -1401,6 +1432,7 @@ pub async fn load_book_image_index(
         if book.source_format == BookSourceFormat::Txt {
             return Ok(ImageIndexCache {
                 version: IMAGE_INDEX_CACHE_VERSION,
+                source_revision: book.source_revision,
                 revision: book.revision,
                 sections: Vec::new(),
             });

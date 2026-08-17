@@ -10,7 +10,7 @@ describe('annotation export', () => {
       id: 'book-id',
       name: 'fallback.epub',
       sourceFormat: 'epub',
-      contentHash: 'book-hash',
+      sourceHash: 'book-hash',
       metadata: {
         title: 'Book *Title*',
         creator: 'Author_Name',

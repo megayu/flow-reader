@@ -9,7 +9,7 @@ import {
   SquareMinusIcon,
   SquarePlusIcon,
 } from 'lucide-react'
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSnapshot } from 'valtio'
 
 import { type AnnotationColor, colorMap, orderRangeRectsForWritingMode } from '../annotation'
@@ -61,9 +61,48 @@ function clearWindowSelections(windows: readonly Window[]) {
   })
 }
 
+function selectionSpansParagraphs(range: Range) {
+  const startParagraph = range.startContainer.parentElement?.closest('p')
+  const endParagraph = range.endContainer.parentElement?.closest('p')
+  return Boolean(startParagraph && endParagraph && startParagraph !== endParagraph)
+}
+
 interface TextReplaceTarget extends BookTextReplaceTarget {
   selectedText: string
   textNode: Text
+}
+
+function resolveTextSelection(range: Range) {
+  let textNode: Text
+  let endOffset = range.endOffset
+
+  if (range.startContainer === range.endContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
+    textNode = range.startContainer as Text
+  } else {
+    if (range.startContainer.nodeType !== Node.TEXT_NODE || range.startOffset !== 0 || range.endOffset !== 0) return
+    textNode = range.startContainer as Text
+    const paragraph = textNode.parentElement
+    const nextParagraph = paragraph?.nextElementSibling
+    if (
+      !paragraph?.matches('p') ||
+      paragraph.childNodes.length !== 1 ||
+      nextParagraph !== range.endContainer ||
+      !nextParagraph.matches('p') ||
+      range.toString().trim() !== textNode.data.trim()
+    ) {
+      return
+    }
+    endOffset = textNode.length
+  }
+
+  const selectedText = textNode.data.slice(range.startOffset, endOffset)
+  if (!selectedText) return
+  return {
+    textNode,
+    startOffset: range.startOffset,
+    endOffset,
+    selectedText,
+  }
 }
 
 function paragraphIndexForTextNode(node: Node) {
@@ -93,12 +132,9 @@ function createTextReplaceTarget(
   section: ReturnType<BookTab['sectionForRange']>,
 ): TextReplaceTarget | undefined {
   if (!section?.href) return
-  if (range.startContainer !== range.endContainer) return
-  if (range.startContainer.nodeType !== Node.TEXT_NODE) return
-
-  const node = range.startContainer as Text
-  const selectedText = range.toString()
-  if (!selectedText) return
+  const selection = resolveTextSelection(range)
+  if (!selection) return
+  const { textNode: node, startOffset, endOffset, selectedText } = selection
 
   const ownerDocument = node.ownerDocument
   const body = ownerDocument?.body
@@ -114,8 +150,8 @@ function createTextReplaceTarget(
         sectionHref: section.href,
         textNodeIndex,
         textNodeText,
-        startOffset: range.startOffset,
-        endOffset: range.endOffset,
+        startOffset,
+        endOffset,
         paragraphIndex: paragraphIndexForTextNode(node),
         selectedText,
         textNode: node,
@@ -316,11 +352,31 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const [width, setWidth] = useState(0)
   const [height, setHeight] = useState(0)
   const popupElementRef = useRef<HTMLDivElement>(null)
-  const popupResizeObserverRef = useRef<ResizeObserver | undefined>(undefined)
   const t = useTranslation('menu')
   const [settings] = useSettings()
   const [view, setView] = useState<'actions' | 'dictionary' | 'translation'>('actions')
   const [localDictionaries, setLocalDictionaries] = useState<LocalDictionaryRecord[]>([])
+
+  useLayoutEffect(() => {
+    const el = popupElementRef.current
+    if (!el) return
+
+    const observer = new ResizeObserver(() => {
+      setWidth(el.offsetWidth)
+      setHeight(el.offsetHeight)
+    })
+    observer.observe(el)
+    const focusTimer = window.setTimeout(() => {
+      if (!el.contains(el.ownerDocument.activeElement)) {
+        el.focus({ preventScroll: true })
+      }
+    })
+
+    return () => {
+      window.clearTimeout(focusTimer)
+      observer.disconnect()
+    }
+  }, [view])
 
   const cfi = annotationCfi ?? tab.rangeToCfi(range)
   const section = tab.sectionForRange(range)
@@ -341,7 +397,15 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const initialAnnotationNotes = annotation?.notes ?? ''
   const annotationColorChanged = draftAnnotationColor !== (annotation?.color ?? 'yellow')
   const annotationChanged = annotationNotesChanged || annotationColorChanged
-  const textEditingDisabled = tab.book.scope === 'external' || tab.book.archive === true
+  const editTextDisabledReason = tab.book.archive
+    ? t('edit_text_unsupported')
+    : tab.book.scope === 'external'
+      ? t('edit_text_import_first')
+      : !tab.book.editable
+        ? t('edit_text_enable_first')
+        : !currentReplaceTarget
+          ? t(selectionSpansParagraphs(range) ? 'edit_text_one_paragraph' : 'edit_text_reselect')
+          : undefined
   const closeMenu = () => {
     if (savingReplacementRef.current) return
     hide()
@@ -387,11 +451,10 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     void listLocalDictionariesCached()
       .then((records) => {
         if (!active) return
-        setLocalDictionaries(records.filter((record) => record.enabled && record.sourceStatus === 'available'))
+        const available = records.filter((record) => record.enabled && record.sourceStatus === 'available')
+        if (available.length) setLocalDictionaries(available)
       })
-      .catch(() => {
-        if (active) setLocalDictionaries([])
-      })
+      .catch(() => {})
     return () => {
       active = false
     }
@@ -493,23 +556,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         data-flow-keyboard-capture="true"
         data-flow-dictionary-popup={view === 'dictionary' ? 'true' : undefined}
         data-flow-translation-popup={view === 'translation' ? 'true' : undefined}
-        ref={(el) => {
-          popupElementRef.current = el
-          popupResizeObserverRef.current?.disconnect()
-          popupResizeObserverRef.current = undefined
-          if (!el) return
-
-          const updateSize = () => {
-            setWidth(el.offsetWidth)
-            setHeight(el.offsetHeight)
-          }
-          updateSize()
-          popupResizeObserverRef.current = new ResizeObserver(updateSize)
-          popupResizeObserverRef.current.observe(el)
-          if (!el.contains(el.ownerDocument.activeElement)) {
-            el.focus({ preventScroll: true })
-          }
-        }}
+        ref={popupElementRef}
         className={clsx(
           'border-border bg-popover text-popover-foreground absolute z-50 box-border rounded-lg border shadow-lg shadow-black/10 focus:outline-none',
           view === 'dictionary' || view === 'translation' ? 'overflow-hidden p-0' : 'p-2',
@@ -669,9 +716,10 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               onClick={() => switchView('translation')}
             />
             <IconButton
-              title={t(textEditingDisabled ? 'edit_text_archive_only' : 'edit_text')}
+              title={t('edit_text')}
+              disabledReason={editTextDisabledReason}
               Icon={FilePenLineIcon}
-              disabled={textEditingDisabled || !currentReplaceTarget}
+              disabled={Boolean(editTextDisabledReason)}
               size={ICON_SIZE}
               className={actionIconClassName}
               style={{

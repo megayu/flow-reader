@@ -111,7 +111,6 @@ import {
   bookSourceDescriptionKey,
   bookSourceStatusFromError,
   bookSourceStatusRefreshEvent,
-  isArchiveOnlyBook,
   readingStatusOptions,
   sortBooks,
   toggleReadingStatusFilter,
@@ -866,7 +865,7 @@ const Library: React.FC<LibraryProps> = ({
   const referencedArchiveIds = useMemo(
     () =>
       (books ?? []).reduce<string[]>((ids, book) => {
-        if (!book.managed && isArchiveOnlyBook(book)) {
+        if (!book.managed && book.sourceFormat === 'epub' && !book.editable) {
           ids.push(book.id)
         }
         return ids

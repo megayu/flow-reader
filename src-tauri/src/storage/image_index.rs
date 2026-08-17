@@ -8,6 +8,7 @@ use super::{decode_compressed_json, encode_compressed_json, join_zip_path, norma
 #[serde(rename_all = "camelCase")]
 pub struct ImageIndexCache {
     pub version: u32,
+    pub source_revision: u32,
     pub revision: u32,
     pub sections: Vec<ImageIndexSection>,
 }

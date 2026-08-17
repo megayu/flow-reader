@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import {
   ArchiveIcon,
+  ArchiveRestoreIcon,
   BookOpenIcon,
   CheckIcon,
   CircleIcon,
@@ -21,6 +22,8 @@ import { AppTooltip } from '../components/AppTooltip'
 import { readerPageTooltipContentStyle } from '../components/appTooltipStyles'
 import { BookTooltipContent } from '../components/BookTooltipContent'
 import { ReadingStatusIcon } from '../components/ReadingStatusIcon'
+import { Button } from '../components/ui/button'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -36,7 +39,15 @@ import { useTranslation } from '../hooks/useTranslation'
 import { toMessageKeySegment } from '../locales'
 import { completeTabOpen, reader } from '../models/reader'
 import type { LibraryCoverFit } from '../settings/configuration'
-import { type BookExportFormat, type BookRecord, type BookSourceStatus, db, type ReadingStatus } from '../storage'
+import {
+  type BookExportFormat,
+  type BookModeSwitchConflict,
+  type BookModeSwitchResolution,
+  type BookRecord,
+  type BookSourceStatus,
+  db,
+  type ReadingStatus,
+} from '../storage'
 
 import { bookCoverPlaceholder, CoverImage } from './CoverImage'
 import { BookInfoDialog, BookTagsDialog, EditBookDialog } from './LibraryDialogs'
@@ -146,6 +157,8 @@ const BookCardComponent: React.FC<BookCardProps> = ({
   const [tagsOpen, setTagsOpen] = useState(false)
   const [exportingFormat, setExportingFormat] = useState<BookExportFormat>()
   const [exportFormatsExpanded, setExportFormatsExpanded] = useState(false)
+  const [modeDialog, setModeDialog] = useState<'confirm' | BookModeSwitchConflict>()
+  const [switchingMode, setSwitchingMode] = useState(false)
   const longPressRef = useRef<number | 'triggered' | undefined>(undefined)
 
   const displayTitle = getBookDisplayTitle(book)
@@ -282,6 +295,42 @@ const BookCardComponent: React.FC<BookCardProps> = ({
       .finally(() => setExportingFormat(undefined))
   }
 
+  function switchContentMode(resolution?: BookModeSwitchResolution) {
+    const editable = !book.editable
+    setSwitchingMode(true)
+    void (async () => {
+      if (!resolution) {
+        const conflict = await db.books.checkContentModeSwitch(book.id, editable)
+        if (conflict) {
+          setModeDialog(conflict)
+          return
+        }
+      }
+
+      await reader.closeBookTab(book.id)
+      const result = await db.books.switchContentMode(book.id, editable, resolution)
+      if (result.conflict) {
+        setModeDialog(result.conflict)
+        return
+      }
+      setModeDialog(undefined)
+      notify({
+        title: t(editable ? 'content_mode.unpacked_complete' : 'content_mode.archive_complete'),
+        type: 'success',
+      })
+    })()
+      .catch((error) => {
+        console.error(error)
+        notify({
+          autoCloseMs: false,
+          description: formatErrorMessage(error),
+          title: errorT('content_mode_switch_failed'),
+          type: 'error',
+        })
+      })
+      .finally(() => setSwitchingMode(false))
+  }
+
   return (
     <div className="relative">
       <ContextMenu
@@ -411,18 +460,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
                 </AppTooltip>
               )}
               {!isBookSourceUnavailable(sourceStatus) && isArchiveOnlyBook(book) && (
-                <AppTooltip
-                  label={t('compat.archive_only')}
-                  contentStyle={{ maxWidth: 'calc(50vw - 2rem)' }}
-                  content={
-                    <span className="flex w-max max-w-[calc(50vw-2rem)] min-w-0 flex-col gap-1">
-                      <span className="min-w-0 text-base font-medium wrap-break-word">{t('compat.archive_only')}</span>
-                      <span className="text-muted-foreground min-w-0 text-base wrap-break-word">
-                        {t('compat.archive_only_description')}
-                      </span>
-                    </span>
-                  }
-                >
+                <AppTooltip label={t('compat.archive_only')}>
                   <div
                     className={clsx(
                       bookCoverCornerBadgeClassName,
@@ -500,9 +538,16 @@ const BookCardComponent: React.FC<BookCardProps> = ({
               openBook()
             }}
           />
-          <BookContextMenuItem Icon={PencilIcon} label={t('context.edit')} onSelect={() => setEditOpen(true)} />
-          <BookContextMenuItem Icon={TagIcon} label={t('tags')} onSelect={() => setTagsOpen(true)} />
+          <BookContextMenuItem Icon={PencilIcon} label={t('context.edit_details')} onSelect={() => setEditOpen(true)} />
+          <BookContextMenuItem Icon={TagIcon} label={t('context.set_tags')} onSelect={() => setTagsOpen(true)} />
           <BookContextMenuItem Icon={InfoIcon} label={t('context.info')} onSelect={() => setInfoOpen(true)} />
+          {book.sourceFormat === 'epub' && !isArchiveOnlyBook(book) && (
+            <BookContextMenuItem
+              Icon={book.editable ? ArchiveIcon : ArchiveRestoreIcon}
+              label={t(book.editable ? 'content_mode.to_archive' : 'content_mode.to_unpacked')}
+              onSelect={() => setModeDialog('confirm')}
+            />
+          )}
           {!exportFormatsExpanded ? (
             <BookContextMenuItem
               Icon={DownloadIcon}
@@ -532,7 +577,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
           <BookContextMenuItem
             variant="destructive"
             Icon={confirmDelete ? TriangleAlertIcon : Trash2Icon}
-            label={t(confirmDelete ? 'context.confirm_delete' : 'context.delete')}
+            label={t(confirmDelete ? 'context.confirm' : 'context.delete')}
             onSelect={(event) => {
               if (!confirmDelete) {
                 event.preventDefault()
@@ -551,11 +596,89 @@ const BookCardComponent: React.FC<BookCardProps> = ({
       {editOpen && <EditBookDialog book={book} onClose={() => setEditOpen(false)} />}
       {tagsOpen && <BookTagsDialog book={book} onClose={() => setTagsOpen(false)} />}
       {infoOpen && <BookInfoDialog book={book} cover={cover} onClose={() => setInfoOpen(false)} />}
+      {modeDialog && (
+        <BookModeDialog
+          book={book}
+          conflict={modeDialog === 'confirm' ? undefined : modeDialog}
+          busy={switchingMode}
+          onClose={() => setModeDialog(undefined)}
+          onSwitch={switchContentMode}
+        />
+      )}
     </div>
   )
 }
 
 export const BookCard = memo(BookCardComponent)
+
+function BookModeDialog({
+  book,
+  busy,
+  conflict,
+  onClose,
+  onSwitch,
+}: {
+  book: BookRecord
+  busy: boolean
+  conflict?: BookModeSwitchConflict
+  onClose: () => void
+  onSwitch: (resolution?: BookModeSwitchResolution) => void
+}) {
+  const t = useTranslation('home')
+  const primaryActionRef = useRef<HTMLButtonElement>(null)
+  const toUnpacked = !book.editable
+  const title = conflict
+    ? t(conflict === 'missing' ? 'content_mode.source_missing_title' : 'content_mode.source_conflict_title')
+    : t(toUnpacked ? 'content_mode.to_unpacked' : 'content_mode.to_archive')
+  const description = conflict
+    ? t(conflict === 'missing' ? 'content_mode.source_missing' : 'content_mode.source_changed')
+    : t(toUnpacked ? 'content_mode.enable_description' : 'content_mode.readonly_description')
+
+  useEffect(() => {
+    if (!busy) primaryActionRef.current?.focus()
+  }, [busy])
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
+      <DialogContent
+        className="w-[min(28rem,calc(100vw-2rem))] max-w-none text-base"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          primaryActionRef.current?.focus()
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <div className="text-muted-foreground leading-relaxed">{description}</div>
+        <DialogFooter>
+          <Button type="button" variant="secondary" disabled={busy} onClick={onClose}>
+            {t('cancel')}
+          </Button>
+          {conflict === 'changed' && (
+            <Button type="button" variant="destructive" disabled={busy} onClick={() => onSwitch('adopt')}>
+              {t('content_mode.adopt_source')}
+            </Button>
+          )}
+          <Button
+            ref={primaryActionRef}
+            type="button"
+            disabled={busy}
+            onClick={() => onSwitch(conflict ? 'overwrite' : undefined)}
+          >
+            {t(
+              conflict === 'missing'
+                ? 'content_mode.recreate_source'
+                : conflict === 'changed'
+                  ? 'content_mode.overwrite_source'
+                  : 'context.confirm',
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 const BookContextMenuItem: React.FC<{
   disabled?: boolean

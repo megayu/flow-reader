@@ -1,13 +1,20 @@
-import { BookOpenText, FileText, UserRound } from 'lucide-react'
+import { Archive, Book, BookDashed, BookLock, FileText, UserRound } from 'lucide-react'
 
 import { type BookTooltipLineKind, getBookTooltipLines } from '@/book'
 import type { BookRecord } from '@/storage'
 
-const iconMap = {
-  creator: UserRound,
-  file: FileText,
-  title: BookOpenText,
-} satisfies Record<BookTooltipLineKind, typeof BookOpenText>
+function getTooltipIcon(book: BookRecord, kind: BookTooltipLineKind) {
+  switch (kind) {
+    case 'creator':
+      return UserRound
+    case 'file':
+      return FileText
+    case 'title':
+      if (book.scope === 'external') return BookDashed
+      if (book.archive) return Archive
+      return book.editable ? Book : BookLock
+  }
+}
 
 interface BookTooltipContentProps {
   book: BookRecord
@@ -19,7 +26,7 @@ export function BookTooltipContent({ book }: BookTooltipContentProps) {
   return (
     <span className="flex min-w-0 flex-col gap-1 text-base leading-tight">
       {lines.map((line) => {
-        const Icon = iconMap[line.kind]
+        const Icon = getTooltipIcon(book, line.kind)
 
         return (
           <span key={`${line.kind}:${line.text}`} className="flex min-w-0 items-start gap-2">

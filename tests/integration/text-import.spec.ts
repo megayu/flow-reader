@@ -53,7 +53,7 @@ test('TXT import dialog sends edited title and author metadata', async ({ page }
         name: 'Original Title.txt',
         size: 1024,
         sourceFormat: 'txt',
-        contentHash: 'hash',
+        sourceHash: 'hash',
         metadata: {
           title: 'Edited Title',
           creator: 'Edited Author',

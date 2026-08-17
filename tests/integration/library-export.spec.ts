@@ -17,7 +17,8 @@ const modifiedBook: BookRecord = createTestBook({
   sourceFormat: 'txt',
   managed: true,
   contentEditedAt: 123,
-  contentHash: 'hash',
+  sourceHash: 'hash',
+  sourceRevision: 1,
   revision: 2,
   metadata: {
     title: 'Correctable',
@@ -36,6 +37,7 @@ test('library modified-book indicator is enabled by default and can be disabled'
 
   await page.keyboard.press(settingsShortcut)
   const dialog = page.getByRole('dialog')
+  await dialog.getByRole('button', { name: msg('settings.tabs.storage') }).click()
   const checkbox = dialog.getByRole('checkbox', {
     name: msg('settings.library_modified_indicator'),
   })
@@ -78,8 +80,8 @@ test('TXT book context menu expands formats and exports the selected format', as
         size: 1024,
         sourceFormat: 'txt',
         managed: true,
-        contentHash: 'hash',
-        revision: 2,
+        sourceHash: 'hash',
+        revision: 1,
         metadata: {
           title: 'Correctable',
         },

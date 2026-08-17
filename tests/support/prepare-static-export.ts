@@ -25,7 +25,7 @@ const contentTypes: Record<string, string> = {
 }
 
 export default async function prepareStaticExport() {
-  await build()
+  await build({ mode: 'test' })
 
   const server = createServer(async (request, response) => {
     try {

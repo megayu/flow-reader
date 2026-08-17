@@ -22,9 +22,9 @@ export interface AnnotationExport {
   format: 'flow-reader.annotations'
   exportedAt: number
   book: {
+    id: string
     title: string
     author?: string
-    contentHash: string
     sourceFormat: BookRecord['sourceFormat']
   }
   selection: {
@@ -48,9 +48,9 @@ export function createAnnotationExport(
     format: 'flow-reader.annotations',
     exportedAt,
     book: {
+      id: book.id,
       title: getBookDisplayTitle(book),
       ...(author ? { author } : {}),
-      contentHash: book.contentHash,
       sourceFormat: book.sourceFormat,
     },
     selection: {

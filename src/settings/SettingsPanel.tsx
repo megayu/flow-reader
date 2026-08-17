@@ -323,6 +323,23 @@ export const SettingsPanel: React.FC = () => {
                 )}
               </div>
               <Item
+                title={t('epub_default_mode')}
+                description={t('epub_default_mode.description')}
+                controlId="settings-epub-text-editing"
+              >
+                <SettingsCheckbox
+                  id="settings-epub-text-editing"
+                  label={t('epub_default_mode')}
+                  checked={settings.defaultEpubMode === 'unpacked'}
+                  onCheckedChange={(checked) => {
+                    setSettings((prev) => ({
+                      ...prev,
+                      defaultEpubMode: checked ? 'unpacked' : 'archive',
+                    }))
+                  }}
+                />
+              </Item>
+              <Item
                 title={t('library_modified_indicator')}
                 description={t('library_modified_indicator.description')}
                 controlId="settings-library-export-reminder"

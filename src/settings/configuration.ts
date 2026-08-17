@@ -9,6 +9,7 @@ export type ViewMode = 'reader' | 'library'
 export type LibraryCoverFit = 'contain' | 'cover'
 export type LibrarySortField = 'title' | 'creator' | 'updatedAt' | 'createdAt'
 export type LibrarySortDirection = 'asc' | 'desc'
+export type EpubContentMode = 'archive' | 'unpacked'
 
 export interface Settings extends TypographyConfiguration {
   dictionary?: DictionarySettingsConfiguration
@@ -22,6 +23,7 @@ export interface Settings extends TypographyConfiguration {
   showLibraryInToc?: boolean
   showRecentBooks?: boolean
   showModifiedBookExportIndicator?: boolean
+  defaultEpubMode?: EpubContentMode
   importSourceStorage?: ImportSourceStorage
   copyTextImports?: boolean
   startupSession?: StartupSession
@@ -142,6 +144,7 @@ export const defaultSettings: Settings = {
   showLibraryInToc: false,
   showRecentBooks: false,
   showModifiedBookExportIndicator: true,
+  defaultEpubMode: 'archive',
   importSourceStorage: 'referenced',
   copyTextImports: false,
   libraryDisplay: defaultLibraryDisplay,

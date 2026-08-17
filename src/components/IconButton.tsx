@@ -8,6 +8,7 @@ import { AppTooltip } from './AppTooltip'
 import { Button } from './ui/button'
 
 interface IconButtonProps extends Omit<ComponentProps<'button'>, 'size' | 'title'> {
+  disabledReason?: string
   Icon: LucideIcon
   iconClassName?: string
   shortcut?: ShortcutChordValue
@@ -18,6 +19,7 @@ interface IconButtonProps extends Omit<ComponentProps<'button'>, 'size' | 'title
 export function IconButton({
   'aria-label': ariaLabel,
   className,
+  disabledReason,
   Icon,
   iconClassName,
   shortcut,
@@ -37,9 +39,11 @@ export function IconButton({
     </Button>
   )
 
+  const tooltipTarget = props.disabled && disabledReason ? <span className="inline-flex">{button}</span> : button
+
   return title ? (
-    <AppTooltip disabled={props.disabled} label={title} shortcut={shortcut}>
-      {button}
+    <AppTooltip disabled={props.disabled} disabledReason={disabledReason} label={title} shortcut={shortcut}>
+      {tooltipTarget}
     </AppTooltip>
   ) : (
     button

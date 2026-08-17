@@ -44,7 +44,7 @@ export interface TextImportSelection {
 export type BookSourceFormat = 'epub' | 'txt'
 export type BookExportFormat = 'epub' | 'txt'
 export type ImportSourceStorage = 'managed' | 'referenced'
-export type BookSourceStatus = 'available' | 'changed' | 'missing' | 'unreadable'
+export type BookSourceStatus = 'available' | 'missing' | 'unreadable'
 export interface ReadingMetricsSection {
   readonly href: string
   readonly start: number
@@ -137,11 +137,23 @@ export interface BookRecord {
     typography?: TypographyConfiguration
     spread?: ReadingSpreadRecord
   }
-  contentHash: string
+  sourceHash: string
+  sourceRevision: number
   revision: number
+  latestExportRevision?: number
+  latestExportHash?: string
   archive?: true
+  editable: boolean
   managed?: true
   sourcePath: string
+}
+
+export type BookModeSwitchResolution = 'overwrite' | 'adopt'
+export type BookModeSwitchConflict = 'changed' | 'missing'
+
+export interface BookModeSwitchResult {
+  book?: BookRecord
+  conflict?: BookModeSwitchConflict
 }
 
 export interface BookStateSnapshot {
@@ -243,6 +255,7 @@ export interface BookImageIndexSection {
 
 export interface BookImageIndexCache {
   version: number
+  sourceRevision: number
   revision: number
   sections: BookImageIndexSection[]
 }

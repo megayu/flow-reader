@@ -245,6 +245,7 @@ pub(super) fn write_epub_from_original_and_unpacked(
     let source = fs::File::open(original_epub).map_err(|error| error.to_string())?;
     let mut archive = ZipArchive::new(source).map_err(|error| error.to_string())?;
     if original_epub_file_count(&mut archive)? != collect_files_sorted(unpacked_dir)?.len() {
+        drop(archive);
         return write_epub_from_unpacked_dir(unpacked_dir, output_path, None);
     }
 
@@ -302,6 +303,7 @@ pub(super) fn write_epub_from_original_and_unpacked(
 
     let mut output = writer.finish().map_err(|error| error.to_string())?;
     output.flush().map_err(|error| error.to_string())?;
+    drop(archive);
     if output_path.exists() {
         fs::remove_file(output_path).map_err(|error| error.to_string())?;
     }
@@ -315,6 +317,7 @@ pub(super) fn export_book_impl(
     output_path: PathBuf,
 ) -> Result<Option<BookRecord>, String> {
     let initial_book = storage.library_book(&id)?;
+    let exported_revision = current_book_revision(&initial_book);
     let source_format = initial_book.source_format;
     let content_mode = inspect_and_store_book_content_access(storage, &initial_book)?;
     let book_dir = storage.book_dir(&id);
@@ -323,12 +326,18 @@ pub(super) fn export_book_impl(
         BookExportFormat::Epub => {
             let unpacked_dir = book_dir.join(UNPACKED_DIR);
             match source_format {
-                BookSourceFormat::Epub if content_mode == BookContentMode::ArchiveOnly || !unpacked_dir.exists() => {
+                BookSourceFormat::Epub
+                    if !initial_book.editable
+                        || content_mode == BookContentMode::ArchiveOnly
+                        || !unpacked_dir.exists() =>
+                {
                     let book_path = available_book_source_path(storage, &initial_book)?;
                     if let Some(parent) = output_path.parent() {
                         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
                     }
-                    fs::copy(&book_path, &output_path).map_err(|error| error.to_string())?;
+                    if !same_source_path(&book_path, &output_path) {
+                        fs::copy(&book_path, &output_path).map_err(|error| error.to_string())?;
+                    }
                 }
                 BookSourceFormat::Epub => {
                     let original_epub = available_book_source_path(storage, &initial_book).ok();
@@ -360,6 +369,14 @@ pub(super) fn export_book_impl(
         }
     }
 
+    let exported_hash = match source_format {
+        BookSourceFormat::Epub => Some(hash_file(&output_path)?),
+        BookSourceFormat::Txt if initial_book.source_storage == SourceStorage::Managed => {
+            Some(hash_file(&book_dir.join(SOURCE_TEXT_FILE))?)
+        }
+        BookSourceFormat::Txt => None,
+    };
+
     let book = {
         let mut state = storage
             .inner
@@ -375,7 +392,7 @@ pub(super) fn export_book_impl(
             return Ok(None);
         };
         book.source_format = source_format;
-        mark_book_exported(book);
+        mark_book_exported(book, exported_revision, exported_hash);
         book.clone()
     };
 

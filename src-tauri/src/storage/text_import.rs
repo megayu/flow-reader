@@ -1164,10 +1164,10 @@ pub(super) fn should_skip_prepared_text_import_preview(
 
     Ok(state.library.books.iter().any(|book| {
         book.scope == BookScope::Library
-            && book.content_edited_at.is_none()
+            && !has_unexported_book_changes(book)
             && same_source_path(&book.source_path, &prepared.path)
-            && !book.content_hash.is_empty()
-            && book.content_hash == prepared.hash
+            && !book.source_hash.is_empty()
+            && book.source_hash == prepared.hash
     }))
 }
 
@@ -1562,7 +1562,7 @@ pub(super) fn import_text_path_impl(
         "sourceEncodingId": decoded.encoding,
     });
 
-    let (mut book, id, should_copy, is_new) = {
+    let (mut book, id, should_copy, adopt_source_only, is_new) = {
         let state = storage
             .inner
             .state
@@ -1580,22 +1580,28 @@ pub(super) fn import_text_path_impl(
                 book.updated_at = Some(now_ms());
             }
             let id = book.id.clone();
-            (book, id, false, false)
+            (book, id, false, false, false)
+        } else if let Some(ExistingBookImport::AdoptSource(index)) = existing {
+            let mut book = state.library.books[index].clone();
+            book.name = name.clone();
+            adopt_book_source_fields(&mut book, hash.clone(), size)?;
+            book.source_storage = source_storage;
+            book.source_path = source_path.clone();
+            book.updated_at = Some(now_ms());
+            let id = book.id.clone();
+            (book, id, false, true, false)
         } else if let Some(ExistingBookImport::ReplaceContent(index)) = existing {
             let mut book = state.library.books[index].clone();
             book.name = name.clone();
-            book.size = size;
-            book.content_hash = hash.clone();
-            book.revision = next_revision(book.revision)?;
+            adopt_book_source_fields(&mut book, hash.clone(), size)?;
             book.generated_cover = true;
             book.content_mode = BookContentMode::Normal;
             book.source_storage = source_storage;
             book.source_path = source_path.clone();
             book.updated_at = Some(now_ms());
-            book.content_edited_at = None;
             book.metadata["sourceEncodingId"] = Value::String(decoded.encoding.clone());
             let id = book.id.clone();
-            (book, id, true, false)
+            (book, id, true, false, false)
         } else if matches!(existing, Some(ExistingBookImport::Skip)) {
             return Ok(None);
         } else {
@@ -1610,9 +1616,13 @@ pub(super) fn import_text_path_impl(
                 source_format: BookSourceFormat::Txt,
                 generated_cover: true,
                 content_edited_at: None,
-                content_hash: hash.clone(),
+                source_hash: hash.clone(),
+                source_revision: 1,
                 revision: 1,
+                latest_export_revision: None,
+                latest_export_hash: None,
                 content_mode: BookContentMode::Normal,
+                editable: true,
                 source_storage,
                 source_path: source_path.clone(),
                 metadata: metadata.clone(),
@@ -1623,13 +1633,17 @@ pub(super) fn import_text_path_impl(
                 percentage: None,
                 tag_ids: Vec::new(),
             };
-            (book, id, true, true)
+            (book, id, true, false, true)
         }
     };
     let effective_metadata = book.metadata.clone();
 
     let mut file_transaction = None;
     let result = (|| -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
+        if adopt_source_only {
+            storage.remove_derived_memory_caches(&id);
+            remove_book_derived_cache_files(storage, &id)?;
+        }
         if should_copy {
             storage.remove_derived_memory_caches(&id);
             file_transaction = Some(ImportFileTransaction::begin(storage, &id)?);

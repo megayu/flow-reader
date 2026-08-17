@@ -58,6 +58,7 @@ struct DerivedCacheBuild {
 #[serde(rename_all = "camelCase")]
 pub(super) struct SearchTextCache {
     pub(super) version: u32,
+    pub(super) source_revision: u32,
     pub(super) revision: u32,
     pub(super) sections: Vec<SearchTextSection>,
 }
@@ -119,7 +120,9 @@ pub(super) fn search_text_cache_from_bytes(bytes: &[u8]) -> Result<SearchTextCac
 }
 
 fn search_text_cache_matches_book(cache: &SearchTextCache, book: &StoredBook) -> bool {
-    cache.version == SEARCH_TEXT_CACHE_VERSION && cache.revision == book.revision
+    cache.version == SEARCH_TEXT_CACHE_VERSION
+        && cache.source_revision == book.source_revision
+        && cache.revision == book.revision
 }
 
 fn write_search_text_cache_if_current(storage: &AppStorage, id: &str, cache: &SearchTextCache) -> Result<bool, String> {
@@ -128,7 +131,7 @@ fn write_search_text_cache_if_current(storage: &AppStorage, id: &str, cache: &Se
         return Ok(false);
     }
 
-    let path = storage.search_text_cache_path(id, cache.revision);
+    let path = storage.search_text_cache_path(id, cache.source_revision, cache.revision);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
@@ -199,7 +202,7 @@ fn read_search_text_cache(storage: &AppStorage, book: &StoredBook) -> Result<Sea
     if book.scope == BookScope::External {
         return Err("External book search caches are memory-only".to_string());
     }
-    let path = storage.search_text_cache_path(&book.id, book.revision);
+    let path = storage.search_text_cache_path(&book.id, book.source_revision, book.revision);
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
     let cache = search_text_cache_from_bytes(&bytes)?;
     if search_text_cache_matches_book(&cache, book) {
@@ -210,14 +213,16 @@ fn read_search_text_cache(storage: &AppStorage, book: &StoredBook) -> Result<Sea
 }
 
 fn image_index_cache_matches_book(cache: &ImageIndexCache, book: &StoredBook) -> bool {
-    cache.version == IMAGE_INDEX_CACHE_VERSION && cache.revision == book.revision
+    cache.version == IMAGE_INDEX_CACHE_VERSION
+        && cache.source_revision == book.source_revision
+        && cache.revision == book.revision
 }
 
 pub(super) fn read_image_index_cache(storage: &AppStorage, book: &StoredBook) -> Result<ImageIndexCache, String> {
     if book.scope == BookScope::External {
         return Err("External book image caches are memory-only".to_string());
     }
-    let path = storage.image_index_cache_path(&book.id, book.revision);
+    let path = storage.image_index_cache_path(&book.id, book.source_revision, book.revision);
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
     let cache = image_index_cache_from_bytes(&bytes)?;
     if image_index_cache_matches_book(&cache, book) {
@@ -237,7 +242,7 @@ pub(super) fn write_image_index_cache_if_current(
         return Ok(false);
     }
 
-    let path = storage.image_index_cache_path(id, cache.revision);
+    let path = storage.image_index_cache_path(id, cache.source_revision, cache.revision);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
@@ -510,7 +515,10 @@ fn load_or_build_search_text_cache_with_builder(
 }
 
 fn derived_cache_task_key(book: &StoredBook) -> TaskKey {
-    TaskKey::new(TaskKind::SearchIndex, format!("{}:{}", book.id, book.revision))
+    TaskKey::new(
+        TaskKind::SearchIndex,
+        format!("{}:{}:{}", book.id, book.source_revision, book.revision),
+    )
 }
 
 fn build_derived_cache(
@@ -520,11 +528,8 @@ fn build_derived_cache(
     include_search: bool,
 ) -> Result<DerivedCacheBuild, String> {
     let content_mode = inspect_and_store_book_content_access(storage, book)?;
-    // A managed EPUB remains authoritative until editing changes only its unpacked content.
-    let can_read_current_content_from_archive = content_mode == BookContentMode::ArchiveOnly
-        || (book.source_format == BookSourceFormat::Epub
-            && book.source_storage == SourceStorage::Managed
-            && book.content_edited_at.is_none());
+    let can_read_current_content_from_archive = book.source_format == BookSourceFormat::Epub
+        && (!book.editable || content_mode == BookContentMode::ArchiveOnly);
     let (search_sections, mut image_sections) = if can_read_current_content_from_archive {
         read_derived_sections_from_epub_package(&available_book_source_path(storage, book)?, include_search)?
     } else {
@@ -538,12 +543,14 @@ fn build_derived_cache(
         search: include_search.then(|| {
             Arc::new(SearchTextCache {
                 version: SEARCH_TEXT_CACHE_VERSION,
+                source_revision: book.source_revision,
                 revision: book.revision,
                 sections: search_sections,
             })
         }),
         image: Arc::new(ImageIndexCache {
             version: IMAGE_INDEX_CACHE_VERSION,
+            source_revision: book.source_revision,
             revision: book.revision,
             sections: image_sections,
         }),
@@ -1352,15 +1359,27 @@ impl AppStorage {
 
     pub(super) fn update_derived_caches_after_edit(
         &self,
+        previous_book: &StoredBook,
         book: &StoredBook,
         section_href: &str,
         xhtml: &str,
     ) -> Result<(), String> {
-        if book.scope == BookScope::Library
-            && let Some(previous_revision) = book.revision.checked_sub(1)
-        {
-            let _ = fs::remove_file(self.search_text_cache_path(&book.id, previous_revision));
-            let _ = fs::remove_file(self.image_index_cache_path(&book.id, previous_revision));
+        if book.scope == BookScope::Library {
+            let _ = fs::remove_file(self.search_text_cache_path(
+                &book.id,
+                previous_book.source_revision,
+                previous_book.revision,
+            ));
+            let _ = fs::remove_file(self.image_index_cache_path(
+                &book.id,
+                previous_book.source_revision,
+                previous_book.revision,
+            ));
+            let _ = fs::remove_file(self.reading_metrics_cache_path(
+                &book.id,
+                previous_book.source_revision,
+                previous_book.revision,
+            ));
         }
         let has_search = self
             .inner
@@ -1702,9 +1721,13 @@ mod tests {
             source_format: BookSourceFormat::Epub,
             generated_cover: false,
             content_edited_at: None,
-            content_hash: format!("hash-{revision}"),
+            source_hash: format!("hash-{revision}"),
+            source_revision: revision,
             revision,
+            latest_export_revision: None,
+            latest_export_hash: None,
             content_mode: BookContentMode::Normal,
+            editable: true,
             source_storage: SourceStorage::Managed,
             source_path: PathBuf::from(format!("{id}.epub")),
             metadata: empty_object(),
@@ -1752,6 +1775,7 @@ mod tests {
     fn test_cache(book: &StoredBook, text: &str) -> SearchTextCache {
         SearchTextCache {
             version: SEARCH_TEXT_CACHE_VERSION,
+            source_revision: book.source_revision,
             revision: book.revision,
             sections: vec![SearchTextSection {
                 section_index: 0,
@@ -1841,14 +1865,18 @@ mod tests {
         {
             let mut state = storage.inner.state.lock().unwrap();
             let book = state.library.books.iter_mut().find(|book| book.id == "book").unwrap();
-            book.content_hash = "hash-2".to_string();
-            book.revision = 2;
+            book.source_hash = "hash-2".to_string();
+            book.source_revision = 2;
         }
 
         let published = write_search_text_cache_if_current(&storage, "book", &cache).unwrap();
 
         assert!(!published);
-        assert!(!storage.search_text_cache_path("book", book.revision).exists());
+        assert!(
+            !storage
+                .search_text_cache_path("book", book.source_revision, book.revision)
+                .exists()
+        );
 
         let _ = fs::remove_dir_all(root);
     }

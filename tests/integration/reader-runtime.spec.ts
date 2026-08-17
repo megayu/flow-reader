@@ -1,14 +1,11 @@
-import path from 'node:path'
-
 import { expect, type Locator, type Page, test } from '@playwright/test'
 
 import { createTestBook } from '../support/book-fixtures'
+import { epubFixturePackageUrl, installEpubFixtureRoutes } from '../support/epub-fixture'
 import { msg } from '../support/i18n'
 import { selectReaderTextAndOpenMenu } from '../support/reader-selection'
 import { installTauriMock } from '../support/tauri-mock'
 
-const aliceEpubPath = path.resolve('packages/epubjs/test/fixtures/alice.epub')
-const alicePackageUrl = '/test-assets/alice.epub'
 const longPackageUrl = '/test-assets/long/OPS/package.opf'
 const scrolledPackageUrl = '/test-assets/scrolled/OPS/package.opf'
 const verticalPackageUrl = '/test-assets/vertical/OPS/package.opf'
@@ -89,18 +86,13 @@ function listRow(scope: Page | Locator, text: string) {
 async function installReaderBooksMock(
   page: Page,
   titles = ['Tab Layout A', 'Tab Layout B', 'Tab Layout C'],
-  packageUrl: string | string[] = alicePackageUrl,
+  packageUrl: string | string[] = epubFixturePackageUrl,
 ) {
   const books = titles.map((title, index) => createBook(`tab-layout-${String.fromCharCode(97 + index)}`, title))
   const packageUrls = Array.isArray(packageUrl) ? packageUrl : books.map(() => packageUrl)
 
-  if (packageUrls.includes(alicePackageUrl)) {
-    await page.route(`**${alicePackageUrl}`, (route) =>
-      route.fulfill({
-        path: aliceEpubPath,
-        contentType: 'application/epub+zip',
-      }),
-    )
+  if (packageUrls.includes(epubFixturePackageUrl)) {
+    await installEpubFixtureRoutes(page)
   }
   if (packageUrls.includes(longPackageUrl)) {
     await installLongBookRoutes(page)
@@ -117,6 +109,7 @@ async function installReaderBooksMock(
       book.id,
       {
         version: 1,
+        sourceRevision: book.sourceRevision,
         revision: book.revision,
         sections: [
           {
@@ -1462,12 +1455,12 @@ async function waitForStableReaderLayout(
 
 test.beforeEach(async ({ page }, testInfo) => {
   const packageUrl = testInfo.title.includes('[vertical-rl]')
-    ? [alicePackageUrl, verticalPackageUrl, verticalPackageUrl]
+    ? [epubFixturePackageUrl, verticalPackageUrl, verticalPackageUrl]
     : testInfo.title.includes('[scrolled-doc]')
       ? scrolledPackageUrl
       : testInfo.title.includes('long-book')
         ? longPackageUrl
-        : alicePackageUrl
+        : epubFixturePackageUrl
   await installReaderBooksMock(page, undefined, packageUrl)
   await page.goto('/')
   await expect(page.locator('#layout')).toBeVisible()
@@ -1540,6 +1533,52 @@ test('updates the rendered iframe after a mocked book text replacement', async (
     renderedText: 'FLOW-RENDERED-TEXT-EDIT',
     revision: 2,
   })
+})
+
+test('allows editing a plain paragraph selected from its trailing paragraph break', async ({ page }) => {
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+
+  const activeFrame = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .filter({ visible: true })
+    .first()
+  const paragraph = activeFrame.contentFrame().locator('p').filter({ visible: true }).first()
+  await paragraph.evaluate((element) => {
+    element.textContent = 'some'
+    const next = element.nextElementSibling
+    if (next?.tagName.toLowerCase() === 'p') next.textContent = 'text'
+  })
+  const selectedText = await paragraph.evaluate((element) => {
+    const text = element.firstChild
+    const frameWindow = element.ownerDocument.defaultView
+    if (!text || !frameWindow) throw new Error('Missing paragraph selection target')
+    const next = element.nextElementSibling
+    if (next?.tagName.toLowerCase() !== 'p') throw new Error('Missing next paragraph')
+    const range = element.ownerDocument.createRange()
+    range.setStart(text, 0)
+    range.setEnd(next, 0)
+    const selection = frameWindow.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+    const rect = range.getBoundingClientRect()
+    frameWindow.dispatchEvent(
+      new frameWindow.MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.right,
+        clientY: rect.bottom,
+      }),
+    )
+    return selection?.toString()
+  })
+  expect(selectedText?.trim()).toBe('some')
+
+  const editText = page.getByRole('button', { name: msg('menu.edit_text') })
+  await expect(editText).toBeVisible()
+  await expect(editText).toBeEnabled()
+  await editText.click()
+  await expect(page.getByRole('textbox', { name: msg('menu.edit_text') })).toHaveValue('some')
 })
 
 test('refreshes the current table of contents after a generated TXT heading replacement', async ({ page }) => {
@@ -1632,13 +1671,13 @@ test('reloads an imported replacement now for the active tab and on activation f
     const replacements = [
       {
         ...inactiveTab.book,
-        contentHash: 'replacement-a',
-        revision: inactiveTab.book.revision + 1,
+        sourceHash: 'replacement-a',
+        sourceRevision: Math.max(inactiveTab.book.sourceRevision, inactiveTab.book.revision) + 1,
       },
       {
         ...activeTab.book,
-        contentHash: 'replacement-b',
-        revision: activeTab.book.revision + 1,
+        sourceHash: 'replacement-b',
+        sourceRevision: Math.max(activeTab.book.sourceRevision, activeTab.book.revision) + 1,
       },
     ]
     const invoke = (window as any).__TAURI_INTERNALS__?.invoke
@@ -1648,8 +1687,8 @@ test('reloads an imported replacement now for the active tab and on activation f
         invoke('update_book', {
           id: book.id,
           changes: {
-            contentHash: book.contentHash,
-            revision: book.revision,
+            sourceHash: book.sourceHash,
+            sourceRevision: book.sourceRevision,
           },
         }),
       ),
@@ -1658,17 +1697,17 @@ test('reloads an imported replacement now for the active tab and on activation f
 
     return {
       activeRenditionCleared: !activeTab.rendition,
-      activeRevision: activeTab.book.revision,
+      activeSourceRevision: activeTab.book.sourceRevision,
       inactiveRenditionPreserved: inactiveTab.rendition === (window as any).__flowImportReloadRefs.inactiveRendition,
-      inactiveRevision: inactiveTab.book.revision,
+      inactiveSourceRevision: inactiveTab.book.sourceRevision,
     }
   })
 
   expect(immediate).toEqual({
     activeRenditionCleared: true,
-    activeRevision: 2,
+    activeSourceRevision: 2,
     inactiveRenditionPreserved: true,
-    inactiveRevision: 1,
+    inactiveSourceRevision: 1,
   })
 
   await waitForStableReaderLayout(page)
@@ -1679,13 +1718,13 @@ test('reloads an imported replacement now for the active tab and on activation f
     const tab = (window as any).reader.focusedBookTab
     return {
       renditionReplaced: tab.rendition !== (window as any).__flowImportReloadRefs.inactiveRendition,
-      revision: tab.book.revision,
+      sourceRevision: tab.book.sourceRevision,
     }
   })
 
   expect(activated).toEqual({
     renditionReplaced: true,
-    revision: 2,
+    sourceRevision: 2,
   })
 })
 
@@ -2897,12 +2936,14 @@ test('[vertical-rl] keeps one physical page frame in single-page and zoomed layo
   })
 
   await setTypography('auto')
-  await page
-    .getByRole('button', {
-      name: 'VERTICAL-CHAPTER-04-TWO-PAGES',
-      exact: true,
-    })
-    .click()
+  await expect.poll(readGeometry).toMatchObject({
+    divisor: 2,
+    displayedViewCount: 2,
+    hasLeftPage: true,
+  })
+  await page.keyboard.press(']')
+  await expect.poll(() => readVerticalReadingState(page)).toMatchObject({ rightIndex: 4 })
+  await page.keyboard.press('[')
   await expect
     .poll(() => readVerticalReadingState(page))
     .toMatchObject({
@@ -4926,20 +4967,19 @@ test('keeps right-page cross-section header and overlays in sync', async ({ page
     sidebarVisible: true,
   })
   expect(crossSectionLayout.footer).toMatch(/\|/)
+  const stableHeader = new RegExp(crossSectionLayout.header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
 
-  const targetHeader = await page.evaluate(async (sectionIndex) => {
+  await page.evaluate(async (sectionIndex) => {
     const tab = (window as any).reader.focusedBookTab
     const section = tab?.sections?.find((candidate: { index?: number }) => candidate.index === sectionIndex)
     if (!tab || !section) throw new Error('Missing target section')
 
     await tab.displaySectionStart(section)
     await new Promise((resolve) => window.setTimeout(resolve, 80))
-
-    return section.navitem?.label ?? tab.mapSectionToNavItem(section.href)?.label ?? section.href
   }, spread.rightSectionIndex)
 
   await waitForStableReaderLayout(page, {
-    header: new RegExp(targetHeader.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    header: stableHeader,
     sidebarVisible: true,
   })
 
@@ -4954,6 +4994,7 @@ test('keeps right-page cross-section header and overlays in sync', async ({ page
   await readerTab(page, 'Tab Layout A').click()
   await waitForStableReaderLayout(page, { sidebarVisible: true })
   await readerTab(page, 'Tab Layout B').click()
+  await waitForStableReaderLayout(page, { header: stableHeader, sidebarVisible: true })
   await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
   await expectVisibleReaderMarks(page, 'flow-definition-underline', 1)
 })

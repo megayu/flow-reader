@@ -392,6 +392,7 @@ function normalizeSettings(value: Partial<Settings>): Settings {
     dictionary: normalizeDictionarySettings(settings.dictionary),
     translation: normalizeTranslationSettings(settings.translation),
     importSourceStorage: settings.importSourceStorage === 'referenced' ? 'referenced' : 'managed',
+    defaultEpubMode: settings.defaultEpubMode === 'unpacked' ? 'unpacked' : 'archive',
     copyTextImports: settings.copyTextImports === true,
     ui: {
       ...defaultSettings.ui,

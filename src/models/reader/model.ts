@@ -185,11 +185,12 @@ type RuntimeRef<T extends object> = T & {
   $$valtioSnapshot: T
 }
 
-function createRevisionedEpubRequest(revision?: number) {
-  if (!revision) return undefined
+function createRevisionedEpubRequest(sourceRevision?: number, revision?: number) {
+  if (!sourceRevision && !revision) return undefined
+  const contentRevision = `${sourceRevision ?? 0}.${revision ?? 0}`
 
   return (url: string, type?: string | null, withCredentials?: boolean, headers?: Record<string, string>) =>
-    epubRequest(appendUrlQuery(url, 'flowRevision', revision), type, withCredentials, headers)
+    epubRequest(appendUrlQuery(url, 'flowRevision', contentRevision), type, withCredentials, headers)
 }
 
 const SECTION_DOCUMENT_HIGH_WATERMARK = 48
@@ -663,12 +664,10 @@ export class BookTab {
   refreshImportedBook(book: BookRecord) {
     const runtime = getFrameRuntimeIdentity(this)
     const currentBook = pendingImportedBooksByRuntime.get(runtime) ?? this.book
-    const currentRevision = currentBook.revision
-    const importedRevision = book.revision
+    const currentRevision = Math.max(currentBook.sourceRevision, currentBook.revision)
+    const importedRevision = Math.max(book.sourceRevision, book.revision)
     if (importedRevision < currentRevision) return
-    const contentChanged =
-      importedRevision > currentRevision ||
-      (importedRevision === currentRevision && book.contentHash !== currentBook.contentHash)
+    const contentChanged = book.sourceRevision !== currentBook.sourceRevision || book.revision !== currentBook.revision
     if (!contentChanged) {
       if (pendingImportedBooksByRuntime.has(runtime)) {
         pendingImportedBooksByRuntime.set(runtime, book)
@@ -698,7 +697,7 @@ export class BookTab {
 
   async promoteExternalBook(libraryBook: BookRecord) {
     if (this.book.scope !== 'external') return
-    if (!this.book.contentHash || this.book.contentHash !== libraryBook.contentHash) {
+    if (!this.book.sourceHash || this.book.sourceHash !== libraryBook.sourceHash) {
       return
     }
 
@@ -2144,7 +2143,7 @@ export class BookTab {
       } else {
         epub = ref(
           await ePub(source.url, {
-            requestMethod: createRevisionedEpubRequest(this.book.revision),
+            requestMethod: createRevisionedEpubRequest(this.book.sourceRevision, this.book.revision),
             containerRootUrl: source.rootUrl,
           }),
         )
@@ -2302,7 +2301,7 @@ export class BookTab {
       this.failCommittedRender(generation, 'position', error)
       return
     }
-    if (!this.book.managed && this.book.archive) {
+    if (!this.book.managed && this.book.sourceFormat === 'epub' && !this.book.editable) {
       this.rendition.on('displayerror', (error: unknown) => {
         if (generation === this.renderGeneration) {
           this.reportOpenError('render', error)
@@ -2324,7 +2323,7 @@ export class BookTab {
     emitReaderOpenError({
       bookId: this.book.id,
       bookTitle: getBookDisplayTitle(this.book),
-      closeTab: !this.book.managed && this.book.archive === true,
+      closeTab: !this.book.managed && this.book.sourceFormat === 'epub' && !this.book.editable,
       error,
       stage,
     })
@@ -2612,8 +2611,8 @@ export class Reader {
   promoteExternalBooks(libraryBooks: BookRecord[]) {
     const booksByHash = new Map(
       libraryBooks
-        .filter((book) => book.scope !== 'external' && book.contentHash)
-        .map((book) => [book.contentHash, book]),
+        .filter((book) => book.scope !== 'external' && book.sourceHash)
+        .map((book) => [book.sourceHash, book]),
     )
     if (!booksByHash.size) return Promise.resolve(new Set<string>())
 
@@ -2621,7 +2620,7 @@ export class Reader {
     const tasks = this.tabs
       .map((tab) => {
         const book =
-          tab.book.scope === 'external' && tab.book.contentHash ? booksByHash.get(tab.book.contentHash) : undefined
+          tab.book.scope === 'external' && tab.book.sourceHash ? booksByHash.get(tab.book.sourceHash) : undefined
         if (!book) return
 
         promotedBookIds.add(book.id)

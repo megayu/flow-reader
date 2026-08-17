@@ -60,9 +60,9 @@ use model::{
     WindowPaneState, WindowState, is_valid_book_storage_id,
 };
 pub use model::{
-    BookExportFormat, BookReaderSource, BookReaderSourceMode, BookRecord, BookSourceFormat, BookSourceStatus,
-    BookSourceStatusRecord, BookTextReplaceResult, BookTextReplaceTarget, CoverInput, CoverRecord, LibraryPins,
-    LibraryTagRecord,
+    BookExportFormat, BookModeSwitchConflict, BookModeSwitchResolution, BookModeSwitchResult, BookReaderSource,
+    BookReaderSourceMode, BookRecord, BookSourceFormat, BookSourceStatus, BookSourceStatusRecord,
+    BookTextReplaceResult, BookTextReplaceTarget, CoverInput, CoverRecord, LibraryPins, LibraryTagRecord,
 };
 pub use search::SearchTextResult;
 pub use text_import::{
@@ -77,7 +77,9 @@ use book_assets::{read_cover_record, write_cover};
 use book_source::*;
 #[cfg(test)]
 use deletion::rename_books_for_deletion;
-use deletion::{cleanup_external_book_heavy_files, clear_book_caches_impl, delete_books_impl};
+use deletion::{
+    cleanup_external_book_heavy_files, clear_book_caches_impl, delete_books_impl, remove_book_derived_cache_files,
+};
 use editing::*;
 use export::*;
 
@@ -187,10 +189,31 @@ fn empty_object() -> Value {
     json!({})
 }
 
-fn next_revision(revision: u32) -> Result<u32, String> {
-    revision
+fn current_book_revision(book: &StoredBook) -> u32 {
+    book.source_revision.max(book.revision)
+}
+
+fn next_book_revision(book: &StoredBook) -> Result<u32, String> {
+    current_book_revision(book)
         .checked_add(1)
         .ok_or_else(|| "Book revision overflow".to_string())
+}
+
+fn has_unexported_book_changes(book: &StoredBook) -> bool {
+    book.revision > book.source_revision && book.latest_export_revision != Some(book.revision)
+}
+
+fn adopt_book_source_fields(book: &mut StoredBook, source_hash: String, size: u64) -> Result<(), String> {
+    book.source_revision = next_book_revision(book)?;
+    book.source_hash = source_hash;
+    book.size = size;
+    Ok(())
+}
+
+fn mark_book_content_updated_fields(book: &mut StoredBook, edited_at: u64) -> Result<(), String> {
+    book.revision = next_book_revision(book)?;
+    book.content_edited_at = Some(edited_at);
+    Ok(())
 }
 
 fn source_storage_from_settings(settings: &Value) -> SourceStorage {
@@ -198,6 +221,10 @@ fn source_storage_from_settings(settings: &Value) -> SourceStorage {
         Some("referenced") | None => SourceStorage::Referenced,
         Some(_) => SourceStorage::Managed,
     }
+}
+
+fn epub_editable_from_settings(settings: &Value) -> bool {
+    settings.get("defaultEpubMode").and_then(Value::as_str) == Some("unpacked")
 }
 
 impl AppStorage {
@@ -226,7 +253,11 @@ impl AppStorage {
         if library.books.iter().any(|book| !book_ids.insert(book.id.as_str())) {
             return Err("Storage contains duplicate book ids".to_string());
         }
-        if library.books.iter().any(|book| book.revision == 0) {
+        if library
+            .books
+            .iter()
+            .any(|book| book.source_revision == 0 || book.revision == 0)
+        {
             return Err("Storage contains an invalid book revision".to_string());
         }
         let storage = Self {
@@ -269,21 +300,22 @@ impl AppStorage {
         books_root(self.root()).join(id)
     }
 
-    fn search_text_cache_path(&self, id: &str, revision: u32) -> PathBuf {
-        self.book_dir(id)
-            .join(format!("search-text.v{SEARCH_TEXT_CACHE_VERSION}.r{revision}.json.zst"))
-    }
-
-    fn image_index_cache_path(&self, id: &str, revision: u32) -> PathBuf {
-        self.book_dir(id)
-            .join(format!("image-index.v{IMAGE_INDEX_CACHE_VERSION}.r{revision}.json.zst"))
-    }
-
-    // Reading-metrics caches intentionally do not invalidate on text revisions; keep this path revision-independent.
-    fn reading_metrics_cache_path(&self, id: &str) -> PathBuf {
+    fn search_text_cache_path(&self, id: &str, source_revision: u32, revision: u32) -> PathBuf {
         self.book_dir(id).join(format!(
-            "reading-metrics.v{}.json.zst",
-            reading_metrics::READING_METRICS_VERSION
+            "search-text.v{SEARCH_TEXT_CACHE_VERSION}.s{source_revision}.r{revision}.json.zst"
+        ))
+    }
+
+    fn image_index_cache_path(&self, id: &str, source_revision: u32, revision: u32) -> PathBuf {
+        self.book_dir(id).join(format!(
+            "image-index.v{IMAGE_INDEX_CACHE_VERSION}.s{source_revision}.r{revision}.json.zst"
+        ))
+    }
+
+    fn reading_metrics_cache_path(&self, id: &str, source_revision: u32, revision: u32) -> PathBuf {
+        self.book_dir(id).join(format!(
+            "reading-metrics.v{}.s{source_revision}.r{revision}.json.zst",
+            reading_metrics::READING_METRICS_VERSION,
         ))
     }
 
@@ -505,9 +537,13 @@ impl AppStorage {
             percentage: book.percentage,
             tag_ids: book.tag_ids.clone(),
             configuration: None,
-            content_hash: book.content_hash.clone(),
+            source_hash: book.source_hash.clone(),
+            source_revision: book.source_revision,
             revision: book.revision,
+            latest_export_revision: book.latest_export_revision,
+            latest_export_hash: book.latest_export_hash.clone(),
             content_mode: book.content_mode,
+            editable: book.editable,
             source_storage: book.source_storage,
             source_path: path_to_client_string(&book.source_path),
         }
@@ -517,6 +553,14 @@ impl AppStorage {
         self.inner.state.lock().ok().map_or(SourceStorage::Referenced, |state| {
             source_storage_from_settings(&state.settings)
         })
+    }
+
+    fn default_epub_editable(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .ok()
+            .is_some_and(|state| epub_editable_from_settings(&state.settings))
     }
 
     fn should_copy_text_import(&self, copy_source_files: Option<bool>) -> bool {
@@ -691,8 +735,11 @@ fn id_from_hash(hash: &str) -> String {
     hash.chars().take(16).collect()
 }
 
-fn mark_book_exported(book: &mut StoredBook) {
-    book.content_edited_at = None;
+fn mark_book_exported(book: &mut StoredBook, revision: u32, hash: Option<String>) {
+    book.latest_export_revision = Some(revision);
+    if let Some(hash) = hash {
+        book.latest_export_hash = Some(hash);
+    }
 }
 
 #[cfg(test)]

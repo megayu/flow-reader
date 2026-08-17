@@ -5,6 +5,8 @@ import type { TextImportRulesConfiguration } from '../../src/settings/configurat
 import type { WindowUiState } from '../../src/state'
 import type {
   BookImageIndexCache,
+  BookModeSwitchConflict,
+  BookModeSwitchResolution,
   BookRecord,
   BookSearchResult,
   BookSourceStatus,
@@ -38,6 +40,8 @@ const testWindowUiState: WindowUiState = {
 interface TauriMockOptions {
   bookSearchResults?: Record<string, BookSearchResult[]>
   books?: BookRecord[]
+  contentModeSwitchConflicts?: Record<string, BookModeSwitchConflict>
+  contentModeSwitchErrors?: Record<string, string>
   eventListenDelayMs?: number
   externallyOpenedBooks?: BookRecord[]
   importedBooks?: BookRecord[]
@@ -81,6 +85,8 @@ export async function installTauriMock(
   {
     bookSearchResults = {},
     books = [],
+    contentModeSwitchConflicts = {},
+    contentModeSwitchErrors = {},
     eventListenDelayMs = 0,
     externallyOpenedBooks = [],
     importedBooks = [],
@@ -131,6 +137,8 @@ export async function installTauriMock(
     ({
       fixtureBookSearchResults,
       fixtureBooks,
+      fixtureContentModeSwitchConflicts,
+      fixtureContentModeSwitchErrors,
       fixtureEventListenDelayMs,
       fixtureExternallyOpenedBooks,
       fixtureImportedBooks,
@@ -214,6 +222,11 @@ export async function installTauriMock(
             sessionId: number
           }>
           localDictionaries: LocalDictionaryRecord[]
+          contentModeSwitchOperations: Array<{
+            editable: boolean
+            id: string
+            resolution?: BookModeSwitchResolution
+          }>
           libraryPinsStore: TestLibraryPins
           books: BookRecord[]
           tags: TestLibraryTagRecord[]
@@ -301,6 +314,7 @@ export async function installTauriMock(
 
       globalWindow.__FLOW_TEST_TAURI__ = {
         bookImportOperations: [],
+        contentModeSwitchOperations: [],
         cancelledDictionarySessions: [],
         dictionaryRequests: [],
         dialogOpenCalls: [],
@@ -763,12 +777,13 @@ export async function installTauriMock(
         }
         if (command === 'get_book_reader_source') {
           const path = fixtureReaderSources[String(args?.id)] ?? ''
-          return path
-            ? {
-                mode: path.toLowerCase().endsWith('.epub') ? 'epub' : 'opf',
-                path,
-              }
-            : null
+          if (!path) return null
+          const opfRootEnd = path.lastIndexOf('/OPS/')
+          return {
+            mode: path.toLowerCase().endsWith('.epub') ? 'epub' : 'opf',
+            path,
+            rootPath: opfRootEnd < 0 ? undefined : path.slice(0, opfRootEnd + 1),
+          }
         }
         if (command === 'update_book') {
           const id = String(args?.id)
@@ -894,10 +909,29 @@ export async function installTauriMock(
           })
           const updated = {
             ...current,
-            contentEditedAt: undefined,
+            latestExportRevision: Math.max(current.sourceRevision, current.revision),
           }
           bookStore.set(id, updated)
           return updated
+        }
+        if (command === 'check_book_content_mode_switch') {
+          return fixtureContentModeSwitchConflicts[String(args?.id)] ?? null
+        }
+        if (command === 'switch_book_content_mode') {
+          const id = String(args?.id)
+          const current = bookStore.get(id)
+          if (!current) throw new Error('Book not found')
+          const editable = Boolean(args?.editable)
+          const resolution = args?.resolution as BookModeSwitchResolution | undefined
+          globalWindow.__FLOW_TEST_TAURI__?.contentModeSwitchOperations.push({ editable, id, resolution })
+          const error = fixtureContentModeSwitchErrors[id]
+          if (error) throw new Error(error)
+          const conflict = fixtureContentModeSwitchConflicts[id]
+          if (conflict && !resolution) return { conflict }
+
+          const updated = { ...current, editable, updatedAt: Date.now() }
+          bookStore.set(id, updated)
+          return { book: updated }
         }
         if (command === 'list_covers') return []
         if (command === 'take_pending_open_paths') {
@@ -937,6 +971,8 @@ export async function installTauriMock(
     {
       fixtureBookSearchResults: bookSearchResults,
       fixtureBooks: books,
+      fixtureContentModeSwitchConflicts: contentModeSwitchConflicts,
+      fixtureContentModeSwitchErrors: contentModeSwitchErrors,
       fixtureEventListenDelayMs: eventListenDelayMs,
       fixtureExternallyOpenedBooks: externallyOpenedBooks,
       fixtureImportedBooks: importedBooks,

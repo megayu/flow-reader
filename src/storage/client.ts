@@ -9,6 +9,9 @@ import type {
   BookImageIndexCache,
   BookImportProgress,
   BookImportResult,
+  BookModeSwitchConflict,
+  BookModeSwitchResolution,
+  BookModeSwitchResult,
   BookReaderPreparation,
   BookReaderSource,
   BookRecord,
@@ -371,6 +374,20 @@ export const db = {
         ids,
       })
     },
+    checkContentModeSwitch(id: string, editable: boolean) {
+      return invoke<BookModeSwitchConflict | null>('check_book_content_mode_switch', { id, editable })
+    },
+    async switchContentMode(id: string, editable: boolean, resolution?: BookModeSwitchResolution) {
+      beginBooksMutation()
+      const result = await trackNativeWrite(
+        invoke<BookModeSwitchResult>('switch_book_content_mode', { id, editable, resolution }),
+      )
+      if (result.book) {
+        upsertCachedBook(result.book)
+        notify('books')
+      }
+      return result
+    },
     async bulkDelete(ids: string[]) {
       beginBooksMutation()
       await trackNativeWrite(invoke('delete_books', { ids }))
@@ -717,10 +734,9 @@ export async function clearBookCaches(
       onProgress: progressChannel,
     }),
   )
-  const updatedBooks = books.map((book) => ({ ...book, contentEditedAt: undefined }))
-  upsertCachedBooks(updatedBooks)
-  if (updatedBooks.length) notify('books')
-  return updatedBooks
+  upsertCachedBooks(books)
+  if (books.length) notify('books')
+  return books
 }
 
 export function cleanupExternalBook(id: string) {

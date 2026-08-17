@@ -105,13 +105,25 @@ fn build_reading_metrics(source: &mut impl PublicationSource) -> Result<ReadingM
     parse_spine_lengths(&opf, &opf_dir, |path| source.byte_length(path))
 }
 
-fn read_reading_metrics_cache(storage: &AppStorage, id: &str) -> Result<ReadingMetrics, String> {
-    let bytes = fs::read(storage.reading_metrics_cache_path(id)).map_err(|error| error.to_string())?;
+fn read_reading_metrics_cache(
+    storage: &AppStorage,
+    id: &str,
+    source_revision: u32,
+    revision: u32,
+) -> Result<ReadingMetrics, String> {
+    let bytes = fs::read(storage.reading_metrics_cache_path(id, source_revision, revision))
+        .map_err(|error| error.to_string())?;
     reading_metrics_cache_from_bytes(&bytes)
 }
 
-fn write_reading_metrics_cache(storage: &AppStorage, id: &str, metrics: &ReadingMetrics) -> Result<(), String> {
-    let path = storage.reading_metrics_cache_path(id);
+fn write_reading_metrics_cache(
+    storage: &AppStorage,
+    id: &str,
+    source_revision: u32,
+    revision: u32,
+    metrics: &ReadingMetrics,
+) -> Result<(), String> {
+    let path = storage.reading_metrics_cache_path(id, source_revision, revision);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
@@ -127,11 +139,13 @@ pub(super) fn load_or_build_reading_metrics(
     storage: &AppStorage,
     tasks: &TaskService,
     id: &str,
+    source_revision: u32,
+    revision: u32,
     mode: BookReaderSourceMode,
     unpacked_dir: Option<&Path>,
 ) -> Result<ReadingMetrics, String> {
     let started = Instant::now();
-    if let Ok(metrics) = read_reading_metrics_cache(storage, id) {
+    if let Ok(metrics) = read_reading_metrics_cache(storage, id, source_revision, revision) {
         let mut fields = vec![
             ("book", id.to_string()),
             ("cache", "hit".to_string()),
@@ -147,7 +161,7 @@ pub(super) fn load_or_build_reading_metrics(
     let lock_id = id.clone();
     let unpacked_dir = unpacked_dir.map(Path::to_path_buf);
     let metrics = tasks.run_book_exclusive(&lock_id, TaskPriority::Foreground, || {
-        if let Ok(metrics) = read_reading_metrics_cache(&storage, &id) {
+        if let Ok(metrics) = read_reading_metrics_cache(&storage, &id, source_revision, revision) {
             return Ok(metrics);
         }
         let metrics = match mode {
@@ -161,7 +175,7 @@ pub(super) fn load_or_build_reading_metrics(
                 build_reading_metrics(&mut ArchivePublicationSource::new(archive))
             }
         }?;
-        write_reading_metrics_cache(&storage, &id, &metrics)?;
+        write_reading_metrics_cache(&storage, &id, source_revision, revision, &metrics)?;
         Ok(metrics)
     })?;
     let mut fields = vec![
