@@ -569,7 +569,7 @@ export const db = {
     reveal(path: string) {
       return invoke('reveal_exported_file', { path })
     },
-    async prepareReader(id: string): Promise<BookReaderPreparation> {
+    async openReader(id: string): Promise<BookReaderPreparation> {
       const result = await invoke<NativeBookReaderPreparation>('get_book_reader_source', { id })
       const updatedBook = result.updatedBook
       if (updatedBook) {
@@ -586,6 +586,9 @@ export const db = {
         },
         updatedBook,
       }
+    },
+    closeReader(id: string) {
+      return invoke<void>('set_book_cache_active', { id, active: false })
     },
   },
   covers: {
@@ -712,10 +715,6 @@ export async function exportBook(id: string, format: BookExportFormat, outputPat
     return book
   }
   return undefined
-}
-
-export function setBookCacheActive(id: string, active: boolean) {
-  return invoke<void>('set_book_cache_active', { id, active })
 }
 
 export async function clearBookCaches(

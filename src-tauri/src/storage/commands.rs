@@ -1352,7 +1352,14 @@ pub async fn get_book_reader_source(
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
         let book = storage.stored_book(&id)?;
-        get_book_reader_source_impl(&storage, &tasks, &book)
+        let source = get_book_reader_source_impl(&storage, &tasks, &book)?;
+        if let Err(error) = tasks.run_book_exclusive(&id, TaskPriority::Critical, || {
+            storage.set_derived_cache_active(&id, true)
+        }) {
+            storage.release_archive_resource(&id);
+            return Err(error);
+        }
+        Ok(source)
     })
     .await
     .map_err(|error| error.to_string())?

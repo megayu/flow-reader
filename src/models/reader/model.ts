@@ -22,7 +22,6 @@ import {
   db,
   type ReadingMetrics,
   type ReadingSpreadRecord,
-  setBookCacheActive,
 } from '@/storage'
 import { type BodyTextDetectionCache, defaultStyle } from '@/styles'
 
@@ -289,7 +288,8 @@ export class BookTab {
   overlayVersion = 0
   active = false
   private sectionInfoPromises = new Map<number, Promise<void>>()
-  private readonly cacheActivation: Promise<void>
+  private readerOpening?: Promise<BookReaderPreparation>
+  private readerResourceOpen = false
   private destroyPromise?: Promise<void>
   private readonly navigation = ref(new BookNavigationController())
   private readonly searchController = ref(new BookSearchController())
@@ -1725,8 +1725,11 @@ export class BookTab {
       })
     } finally {
       db.recentBooks.cancelSession(this.book.id)
-      await this.cacheActivation
-      await setBookCacheActive(this.book.id, false).catch(console.error)
+      await this.readerOpening?.catch(() => undefined)
+      if (this.readerResourceOpen) {
+        this.readerResourceOpen = false
+        await db.files.closeReader(this.book.id).catch(console.error)
+      }
       if (!renderingDestroyed) this.destroyRendering()
       if (this.book.scope === 'external') {
         await cleanupExternalBook(this.book.id).catch(console.error)
@@ -2107,17 +2110,19 @@ export class BookTab {
     }
 
     let preparation: BookReaderPreparation
+    const readerOpening = db.files.openReader(this.book.id)
+    this.readerOpening = readerOpening
     try {
-      preparation = await db.files.prepareReader(this.book.id)
+      preparation = await readerOpening
+      this.readerResourceOpen = true
     } catch (error) {
       this.reportOpenError('source', error)
       clearRendering()
       return
+    } finally {
+      if (this.readerOpening === readerOpening) this.readerOpening = undefined
     }
     if (generation !== this.renderGeneration) {
-      if (this.destroyPromise) {
-        await setBookCacheActive(this.book.id, false).catch(console.error)
-      }
       clearRendering()
       return
     }
@@ -2340,9 +2345,6 @@ export class BookTab {
     }
     this.typographyConfiguration = book.configuration?.typography
     this.persistence.initialize(book)
-    this.cacheActivation = setBookCacheActive(book.id, true).catch(console.error)
-
-    // The constructor instance is not proxied yet, so subscribing here would update a non-reactive object.
   }
 }
 
