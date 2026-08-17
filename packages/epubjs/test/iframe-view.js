@@ -1,5 +1,6 @@
 import { assert } from 'vitest'
 
+import Views from '../src/managers/helpers/views'
 import IframeView from '../src/managers/views/iframe'
 import Rendition from '../src/rendition'
 import { EVENTS } from '../src/utils/constants'
@@ -137,6 +138,44 @@ function createLeadingBackgroundBlockView({
 
   return { heading, view }
 }
+
+describe('IframeView destruction', function () {
+  it('releases resources when removed before display completes', async function () {
+    const container = document.createElement('div')
+    const views = new Views(container)
+    const view = createView({})
+    const iframe = view.create()
+    const blobUrl = URL.createObjectURL(new Blob(['epub view']))
+    const loading = view.load('<html><body>Pending view</body></html>')
+    const loadSettlement = loading.then(
+      () => 'resolved',
+      (error) => error,
+    )
+    let contentsDestroyed = false
+
+    view.blobUrl = blobUrl
+    view.contents = {
+      destroy() {
+        contentsDestroyed = true
+      },
+    }
+    views.append(view)
+
+    views.remove(view)
+    const loadResult = await Promise.race([
+      loadSettlement,
+      new Promise((resolve) => setTimeout(() => resolve('pending'), 0)),
+    ])
+
+    assert.equal(contentsDestroyed, true)
+    assert.instanceOf(loadResult, Error)
+    assert.match(loadResult.message, /destroyed/i)
+    assert.equal(view.element.contains(iframe), false)
+    assert.equal(view.blobUrl, undefined)
+    assert.equal(view.iframe, undefined)
+    assert.equal(view.contents, undefined)
+  })
+})
 
 describe('IframeView vertical writing pagination', function () {
   it('reports vertical-rl writing independently from the horizontal page axis', async function () {

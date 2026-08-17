@@ -346,6 +346,7 @@ class IframeView extends EventEmitter {
     this.added = false
     this.displayed = false
     this.rendered = false
+    this._loading = undefined
 
     // this.width  = this.settings.width;
     // this.height = this.settings.height;
@@ -1333,6 +1334,16 @@ class IframeView extends EventEmitter {
       return loaded
     }
 
+    this._loading = loading
+    loaded.then(
+      () => {
+        if (this._loading === loading) this._loading = undefined
+      },
+      () => {
+        if (this._loading === loading) this._loading = undefined
+      },
+    )
+
     this.iframe.onload = function (event) {
       this.onLoad(event, loading)
     }.bind(this)
@@ -1967,29 +1978,40 @@ class IframeView extends EventEmitter {
 
     if (this.blobUrl) {
       revokeBlobUrl(this.blobUrl)
+      this.blobUrl = undefined
     }
 
-    if (this.displayed) {
-      this.displayed = false
-
-      this.removeListeners()
-      if (this._onWheel && this.document) {
-        this.document.removeEventListener('wheel', this._onWheel)
-        this._onWheel = undefined
-      }
-      this.contents.destroy()
-
-      this.stopExpanding = true
-      this.element.removeChild(this.iframe)
-
-      this.iframe = undefined
-      this.contents = undefined
-
-      this._textWidth = null
-      this._textHeight = null
-      this._width = null
-      this._height = null
+    this.displayed = false
+    this.removeListeners()
+    if (this.iframe) {
+      this.iframe.onload = null
     }
+    if (this._loading) {
+      this._loading.reject(
+        new Error('Iframe view destroyed before loading completed'),
+      )
+      this._loading = undefined
+    }
+    if (this._onWheel && this.document) {
+      this.document.removeEventListener('wheel', this._onWheel)
+    }
+    this._onWheel = undefined
+    this.contents?.destroy?.()
+
+    this.stopExpanding = true
+    if (this.iframe?.parentNode) {
+      this.iframe.parentNode.removeChild(this.iframe)
+    }
+
+    this.iframe = undefined
+    this.contents = undefined
+    this.window = undefined
+    this.document = undefined
+
+    this._textWidth = null
+    this._textHeight = null
+    this._width = null
+    this._height = null
 
     // this.element.style.height = "0px";
     // this.element.style.width = "0px";
