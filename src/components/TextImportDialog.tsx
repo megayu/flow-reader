@@ -76,7 +76,6 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
   >(undefined)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [collapsedChapterKeys, setCollapsedChapterKeys] = useState<Set<string>>(new Set())
   const initializedSelectionRef = useRef(false)
   useEffect(() => {
     getTextImportEncodings().then(setEncodings).catch(console.error)
@@ -114,15 +113,16 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
           }
           return next
         })
+        const initializeSelection = !initializedSelectionRef.current
+        initializedSelectionRef.current = true
         setSelectedPaths((current) => {
           const next = new Set([...current].filter((path) => items.some((item) => item.path === path)))
           for (const item of items) {
-            if (!initializedSelectionRef.current && item.selected) {
+            if (initializeSelection && item.selected) {
               next.add(item.path)
             }
             if (item.status === 'error') next.delete(item.path)
           }
-          initializedSelectionRef.current = true
           return next
         })
         setActivePath((current) => (current && items.some((item) => item.path === current) ? current : items[0]?.path))
@@ -174,12 +174,6 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     () => previews.find((preview) => preview.path === activePath) ?? previews[0],
     [activePath, previews],
   )
-  const chapterTree = useMemo(() => buildChapterTree(activePreview?.chapters ?? []), [activePreview?.chapters])
-  const collapsibleChapterKeys = useMemo(() => collectCollapsibleChapterKeys(chapterTree), [chapterTree])
-  const chapterPreviewExpanded = useMemo(
-    () => collapsibleChapterKeys.some((key) => !collapsedChapterKeys.has(key)),
-    [collapsibleChapterKeys, collapsedChapterKeys],
-  )
 
   useEffect(() => {
     if (hasFocusedInitialPreviewRef.current || !activePreview) return
@@ -190,10 +184,6 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
     activeButton.focus({ preventScroll: true })
     hasFocusedInitialPreviewRef.current = true
   }, [activePreview])
-
-  useEffect(() => {
-    setCollapsedChapterKeys(new Set())
-  }, [activePreview?.path])
 
   const selectedImports: TextImportSelection[] = []
   for (const preview of previews) {
@@ -246,17 +236,22 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
 
               event.preventDefault()
               const offset = event.key === 'ArrowDown' ? 1 : -1
-              setActivePath((currentPath) => {
-                const currentIndex = previews.findIndex((preview) => preview.path === currentPath)
-                const nextIndex = Math.min(previews.length - 1, Math.max(0, currentIndex + offset))
-                const nextPath = previews[nextIndex]?.path
-                if (!nextPath || nextPath === currentPath) return currentPath
+              let currentPath = activePath
+              for (const [path, button] of previewButtonRefs.current) {
+                if (button === button.ownerDocument.activeElement) {
+                  currentPath = path
+                  break
+                }
+              }
+              const currentIndex = previews.findIndex((preview) => preview.path === currentPath)
+              const nextIndex = Math.min(previews.length - 1, Math.max(0, currentIndex + offset))
+              const nextPath = previews[nextIndex]?.path
+              if (!nextPath || nextPath === currentPath) return
 
-                const nextButton = previewButtonRefs.current.get(nextPath)
-                nextButton?.focus({ preventScroll: true })
-                nextButton?.scrollIntoView({ block: 'nearest' })
-                return nextPath
-              })
+              setActivePath(nextPath)
+              const nextButton = previewButtonRefs.current.get(nextPath)
+              nextButton?.focus({ preventScroll: true })
+              nextButton?.scrollIntoView({ block: 'nearest' })
             }}
           >
             {previews.map((preview) => {
@@ -377,47 +372,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                 gridTemplateColumns: `minmax(0,${previewSplit}fr) 0.75rem minmax(0,${100 - previewSplit}fr)`,
               }}
             >
-              <section className="flex min-h-0 min-w-0 flex-col py-4 pr-2 pl-4">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <h3 className="text-base font-semibold">{t('chapters')}</h3>
-                  {!!collapsibleChapterKeys.length && (
-                    <AppTooltip label={t(chapterPreviewExpanded ? 'collapse_all' : 'expand_all')}>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={t(chapterPreviewExpanded ? 'collapse_all' : 'expand_all')}
-                        onClick={() => {
-                          setCollapsedChapterKeys(chapterPreviewExpanded ? new Set(collapsibleChapterKeys) : new Set())
-                        }}
-                      >
-                        {chapterPreviewExpanded ? (
-                          <FoldVerticalIcon className="size-4.5" />
-                        ) : (
-                          <UnfoldVerticalIcon className="size-4.5" />
-                        )}
-                      </Button>
-                    </AppTooltip>
-                  )}
-                </div>
-                <div className="scroll min-h-0 flex-1 overflow-auto rounded-lg bg-(--flow-bg-panel) p-2 text-base">
-                  <ChapterPreviewTree
-                    nodes={chapterTree}
-                    collapsedKeys={collapsedChapterKeys}
-                    onToggle={(key) => {
-                      setCollapsedChapterKeys((current) => {
-                        const next = new Set(current)
-                        if (next.has(key)) {
-                          next.delete(key)
-                        } else {
-                          next.add(key)
-                        }
-                        return next
-                      })
-                    }}
-                  />
-                </div>
-              </section>
+              <ChapterPreview key={activePreview.path} chapters={activePreview.chapters} />
               <div
                 data-flow-text-import-splitter
                 className="group flex h-full cursor-col-resize items-stretch justify-center"
@@ -485,6 +440,52 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
         </main>
       </DialogContent>
     </Dialog>
+  )
+}
+
+const ChapterPreview: React.FC<{ chapters: TextImportChapterPreview[] }> = ({ chapters }) => {
+  const t = useTranslation('text_import')
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(() => new Set())
+  const chapterTree = useMemo(() => buildChapterTree(chapters), [chapters])
+  const collapsibleKeys = useMemo(() => collectCollapsibleChapterKeys(chapterTree), [chapterTree])
+  const expanded = collapsibleKeys.some((key) => !collapsedKeys.has(key))
+
+  return (
+    <section className="flex min-h-0 min-w-0 flex-col py-4 pr-2 pl-4">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-base font-semibold">{t('chapters')}</h3>
+        {!!collapsibleKeys.length && (
+          <AppTooltip label={t(expanded ? 'collapse_all' : 'expand_all')}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t(expanded ? 'collapse_all' : 'expand_all')}
+              onClick={() => setCollapsedKeys(expanded ? new Set(collapsibleKeys) : new Set())}
+            >
+              {expanded ? <FoldVerticalIcon className="size-4.5" /> : <UnfoldVerticalIcon className="size-4.5" />}
+            </Button>
+          </AppTooltip>
+        )}
+      </div>
+      <div className="scroll min-h-0 flex-1 overflow-auto rounded-lg bg-(--flow-bg-panel) p-2 text-base">
+        <ChapterPreviewTree
+          nodes={chapterTree}
+          collapsedKeys={collapsedKeys}
+          onToggle={(key) => {
+            setCollapsedKeys((current) => {
+              const next = new Set(current)
+              if (next.has(key)) {
+                next.delete(key)
+              } else {
+                next.add(key)
+              }
+              return next
+            })
+          }}
+        />
+      </div>
+    </section>
   )
 }
 

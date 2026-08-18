@@ -446,6 +446,30 @@ async function invoke(page, command, args) {
   return page.evaluate(({ command, args }) => window.__TAURI_INTERNALS__.invoke(command, args), { command, args })
 }
 
+async function invokeBookImport(page, command, args) {
+  return page.evaluate(
+    async ({ command, args }) => {
+      // Native imports stream successful books through the channel; the final result may contain none.
+      const books = new Map()
+      const callbackId = window.__TAURI_INTERNALS__.transformCallback((progress) => {
+        const book = progress?.message?.book
+        if (book) books.set(book.id, book)
+      })
+      try {
+        const result = await window.__TAURI_INTERNALS__.invoke(command, {
+          ...args,
+          onProgress: `__CHANNEL__:${callbackId}`,
+        })
+        result.books.forEach((book) => books.set(book.id, book))
+        return { ...result, books: [...books.values()] }
+      } finally {
+        window.__TAURI_INTERNALS__.unregisterCallback(callbackId)
+      }
+    },
+    { command, args },
+  )
+}
+
 async function ensureReaderMode(page) {
   for (let i = 0; i < 3; i += 1) {
     const libraryOverlay = await page.evaluate(
@@ -1245,10 +1269,12 @@ async function main() {
   const imported =
     target.mode === 'browser'
       ? target.books
-      : await invoke(page, 'import_text_paths', {
-          imports: [{ path: bookA }, { path: bookB }, { path: bookC }],
-          replaceExisting: true,
-        })
+      : (
+          await invokeBookImport(page, 'import_text_paths', {
+            imports: [{ path: bookA }, { path: bookB }, { path: bookC }],
+            replaceExisting: true,
+          })
+        ).books
   const books = await Promise.all(
     imported.map(async (book) => {
       const full = await invoke(page, 'get_book', { id: book.id })

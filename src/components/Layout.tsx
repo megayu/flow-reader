@@ -312,18 +312,20 @@ function ViewActionBar({ className }: ComponentProps<'div'>) {
 function useFullscreenAction() {
   const [fullscreen, setFullscreen] = useState(false)
   const fullscreenRef = useRef(false)
+  const commitFullscreen = useCallback((nextFullscreen: boolean) => {
+    fullscreenRef.current = nextFullscreen
+    setFullscreen(nextFullscreen)
+  }, [])
 
   const updateFullscreen = useCallback(async () => {
     try {
       const { getCurrentWindow } = await import('@tauri-apps/api/window')
       const nextFullscreen = await getCurrentWindow().isFullscreen()
-      fullscreenRef.current = nextFullscreen
-      setFullscreen(nextFullscreen)
+      commitFullscreen(nextFullscreen)
     } catch {
-      fullscreenRef.current = false
-      setFullscreen(false)
+      commitFullscreen(false)
     }
-  }, [])
+  }, [commitFullscreen])
 
   useEffect(() => {
     let unlistenResize: (() => void) | undefined
@@ -351,8 +353,7 @@ function useFullscreenAction() {
         unlistenResize = resizeListener
         unlistenFocus = focusListener
       } catch {
-        fullscreenRef.current = false
-        setFullscreen(false)
+        commitFullscreen(false)
       }
     }
 
@@ -363,7 +364,7 @@ function useFullscreenAction() {
       unlistenResize?.()
       unlistenFocus?.()
     }
-  }, [updateFullscreen])
+  }, [commitFullscreen, updateFullscreen])
 
   useEffect(() => {
     const onKeyDown = async (e: KeyboardEvent) => {
@@ -376,8 +377,7 @@ function useFullscreenAction() {
         const { getCurrentWindow } = await import('@tauri-apps/api/window')
         await getCurrentWindow().setFullscreen(false)
       } finally {
-        fullscreenRef.current = false
-        setFullscreen(false)
+        commitFullscreen(false)
       }
     }
 
@@ -386,7 +386,7 @@ function useFullscreenAction() {
     return () => {
       document.removeEventListener('keydown', onKeyDown, true)
     }
-  }, [])
+  }, [commitFullscreen])
 
   const toggleFullscreen = useCallback(async () => {
     try {
@@ -394,13 +394,11 @@ function useFullscreenAction() {
       const win = getCurrentWindow()
       const nextFullscreen = !(await win.isFullscreen())
       await win.setFullscreen(nextFullscreen)
-      fullscreenRef.current = nextFullscreen
-      setFullscreen(nextFullscreen)
+      commitFullscreen(nextFullscreen)
     } catch {
-      fullscreenRef.current = false
-      setFullscreen(false)
+      commitFullscreen(false)
     }
-  }, [])
+  }, [commitFullscreen])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -672,6 +670,10 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const authorScrollRef = useRef<HTMLDivElement>(null)
   const tagScrollRef = useRef<HTMLDivElement>(null)
   const facetSearchRef = useRef<LibraryFacetSearchState | undefined>(undefined)
+  const commitFacetSearch = useCallback((nextSearch: LibraryFacetSearchState | undefined) => {
+    facetSearchRef.current = nextSearch
+    setFacetSearch(nextSearch)
+  }, [])
   const authorOptions = useMemo(
     () => getLibraryAuthorOptions(books ?? [], statusFilters, pins?.authors ?? []),
     [books, pins?.authors, statusFilters],
@@ -733,8 +735,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
       const current = facetSearchRef.current
       if (!current || (target && current.target !== target)) return
 
-      facetSearchRef.current = undefined
-      setFacetSearch(undefined)
+      commitFacetSearch(undefined)
       setFacetSearchQuery('')
       if (current.restoreCollapsed) {
         if (current.target === 'author') setAuthorsExpanded(false)
@@ -746,7 +747,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
         if (scrollRef.current) scrollRef.current.scrollTop = current.scrollTop
       })
     },
-    [setAuthorsExpanded, setTagsExpanded],
+    [commitFacetSearch, setAuthorsExpanded, setTagsExpanded],
   )
 
   const startFacetSearch = useCallback(
@@ -780,8 +781,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
         scrollTop: scrollRef.current?.scrollTop ?? 0,
         target,
       }
-      facetSearchRef.current = nextSearch
-      setFacetSearch(nextSearch)
+      commitFacetSearch(nextSearch)
       setFacetSearchQuery('')
       setLibraryAction('libraryFilter')
       if (!expanded) {
@@ -791,17 +791,19 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
 
       requestAnimationFrame(() => inputRef.current?.focus())
     },
-    [authorsExpanded, setAuthorsExpanded, setLibraryAction, setTagsExpanded, tagsExpanded],
+    [authorsExpanded, commitFacetSearch, setAuthorsExpanded, setLibraryAction, setTagsExpanded, tagsExpanded],
   )
 
-  const lockFacetSearchHeight = useCallback((target: LibraryFacetSearchTarget, height: number) => {
-    const current = facetSearchRef.current
-    if (!current || current.target !== target || current.lockedHeight !== undefined || height <= 0) return
+  const lockFacetSearchHeight = useCallback(
+    (target: LibraryFacetSearchTarget, height: number) => {
+      const current = facetSearchRef.current
+      if (!current || current.target !== target || current.lockedHeight !== undefined || height <= 0) return
 
-    const nextSearch = { ...current, lockedHeight: height }
-    facetSearchRef.current = nextSearch
-    setFacetSearch(nextSearch)
-  }, [])
+      const nextSearch = { ...current, lockedHeight: height }
+      commitFacetSearch(nextSearch)
+    },
+    [commitFacetSearch],
+  )
 
   const exitTagCreation = useCallback(() => {
     setCreatingTag(false)

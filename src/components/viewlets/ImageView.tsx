@@ -32,6 +32,7 @@ import { SegmentedControl, SegmentedControlItem } from '../ui/segmented-control'
 const IMAGE_LIST_OVERSCAN = 6
 const IMAGE_LIST_TOP_PADDING = 4
 const IMAGE_SECTION_ESTIMATED_THUMBNAIL_HEIGHT = 180
+const EMPTY_IMAGE_SECTIONS: ISection[] = []
 
 type ImageDisplayMode = 'illustrations' | 'all'
 type ImageIndexStatus = 'error' | 'loading' | 'ready'
@@ -242,7 +243,7 @@ export const ImageView: React.FC<PaneViewProps> = (props) => {
     <PaneView {...props}>
       {active && (
         <ImageSelectionProvider>
-          <ImagePane mode={mode} setMode={setMode} />
+          <ImagePane mode={mode} onModeChange={setMode} />
         </ImageSelectionProvider>
       )}
     </PaneView>
@@ -251,22 +252,19 @@ export const ImageView: React.FC<PaneViewProps> = (props) => {
 
 interface ImagePaneProps {
   mode: ImageDisplayMode
-  setMode: Dispatch<SetStateAction<ImageDisplayMode>>
+  onModeChange: (mode: ImageDisplayMode) => void
 }
 
-const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
+const ImagePane: React.FC<ImagePaneProps> = ({ mode, onModeChange }) => {
   const [action] = useAction()
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation()
   const tab = reader.focusedBookTab
-  const [expandedState, setExpandedState] = useState(() => ({
-    keys: new Set<string>(),
-    mode,
-  }))
+  const [expandedKeys, setExpandedKeys] = useState(() => new Set<string>())
   const [imageIndexStatus, setImageIndexStatus] = useState<ImageIndexStatus>('loading')
   const [imageIndexRetryCount, setImageIndexRetryCount] = useState(0)
   const [, setImageScanRevision] = useState(0)
-  const liveSections = useMemo(() => (tab?.sections as ISection[] | undefined) ?? [], [tab?.sections])
+  const liveSections = (tab?.sections as ISection[] | undefined) ?? EMPTY_IMAGE_SECTIONS
   const snapshotSections = focusedBookTab?.sections as ISection[] | undefined
   const canLoadImages = action === 'image' && !!snapshotSections
   const imageAssetLookup = useMemo(() => {
@@ -316,34 +314,24 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
     return images.length ? [{ images, section }] : []
   })
   const visibleImageCount = sections.reduce((count, section) => count + section.images.length, 0)
-  let expandedKeys = expandedState.keys
-
-  if (expandedState.mode !== mode) {
-    expandedKeys = new Set()
-    setExpandedState({ keys: expandedKeys, mode })
-  }
-
   const { outerRef, scrollbar, setMeasuredHeight, totalSize, visibleItems } = useVirtualImageSections(
     sections,
     expandedKeys,
   )
 
-  const toggleSection = useCallback(
-    (key: string) => {
-      setExpandedState((current) => {
-        const next = new Set(current.mode === mode ? current.keys : [])
+  const toggleSection = useCallback((key: string) => {
+    setExpandedKeys((current) => {
+      const next = new Set(current)
 
-        if (next.has(key)) {
-          next.delete(key)
-        } else {
-          next.add(key)
-        }
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
 
-        return { keys: next, mode }
-      })
-    },
-    [mode],
-  )
+      return next
+    })
+  }, [])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -359,7 +347,11 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, setMode }) => {
                   ? 'bg-(--flow-accent-bg) text-(--flow-text) ring-1 ring-(--flow-accent-border) ring-inset hover:bg-(--flow-accent-bg)'
                   : 'text-(--flow-text-muted) hover:bg-(--flow-sidebar-item-bg-hover) hover:text-(--flow-text)',
               ].join(' ')}
-              onClick={() => setMode(item)}
+              onClick={() => {
+                if (item === mode) return
+                setExpandedKeys(new Set())
+                onModeChange(item)
+              }}
             >
               {t(`image.filter.${item}`)}
             </SegmentedControlItem>

@@ -1,4 +1,4 @@
-import { type RefObject, useCallback, useEffect, useRef } from 'react'
+import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 
 import type { RenditionSpread } from '@flow/epubjs/rendition'
 
@@ -45,11 +45,24 @@ export function useBookRenditionLifecycle({
   const previousTypographyLayoutSignature = useRef<string | undefined>(undefined)
   const previousTypographyStyleSignature = useRef<string | undefined>(undefined)
   const layoutFrame = useRef<number | undefined>(undefined)
-  const applyCustomStyleRef = useRef(applyCustomStyle)
-  const currentSpreadRef = useRef(currentSpread)
+  const committedRenderInputs = useRef<
+    | {
+        beforeLayout: BookBeforeLayout
+        spread: RenditionSpread
+        layoutSignature: string
+        styleSignature: string
+      }
+    | undefined
+  >(undefined)
 
-  applyCustomStyleRef.current = applyCustomStyle
-  currentSpreadRef.current = currentSpread
+  useLayoutEffect(() => {
+    committedRenderInputs.current = {
+      beforeLayout: applyCustomStyle,
+      spread: currentSpread,
+      layoutSignature: typographyLayoutSignature,
+      styleSignature: typographyStyleSignature,
+    }
+  }, [applyCustomStyle, currentSpread, typographyLayoutSignature, typographyStyleSignature])
 
   const cancelVisibleSizeSync = useCallback(() => {
     const frame = layoutFrame.current
@@ -63,17 +76,18 @@ export function useBookRenditionLifecycle({
     const size = getVisibleLayoutSize(containerRef.current)
     if (!size) return
 
-    const beforeLayout = applyCustomStyleRef.current
-    if (!beforeLayout) return
+    const inputs = committedRenderInputs.current
+    if (!inputs) return
+    const { beforeLayout, spread, layoutSignature, styleSignature } = inputs
 
     prevSize.current = size.key
-    previousTypographyLayoutSignature.current = typographyLayoutSignature
-    previousTypographyStyleSignature.current = typographyStyleSignature
+    previousTypographyLayoutSignature.current = layoutSignature
+    previousTypographyStyleSignature.current = styleSignature
     const container = containerRef.current
     if (!container) return
 
-    void tab.render(container, currentSpreadRef.current, beforeLayout, typographyLayoutSignature).catch(console.error)
-  }, [active, containerRef, rendition, settingsReady, tab, typographyLayoutSignature, typographyStyleSignature])
+    void tab.render(container, spread, beforeLayout, layoutSignature).catch(console.error)
+  }, [active, containerRef, rendition, settingsReady, tab])
 
   const syncVisibleSize = useCallback(() => {
     if (!active || !settingsReady) return
@@ -122,7 +136,7 @@ export function useBookRenditionLifecycle({
 
   useEffect(() => {
     renderIfReady()
-  }, [renderIfReady])
+  }, [renderIfReady, typographyLayoutSignature, typographyStyleSignature])
 
   useEffect(() => {
     scheduleVisibleSizeSync()

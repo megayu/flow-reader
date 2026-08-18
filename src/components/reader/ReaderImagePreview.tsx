@@ -6,7 +6,6 @@ import React, {
   useEffect,
   useEffectEvent,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -54,6 +53,17 @@ function createReaderImagePreviewState(): ReaderImagePreviewState {
 }
 
 export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({ openKey, src, onClose }) => {
+  if (!src) return null
+
+  return <ReaderImagePreviewContent key={`${openKey ?? 'default'}:${src}`} src={src} onClose={onClose} />
+}
+
+interface ReaderImagePreviewContentProps {
+  src: string
+  onClose: () => void
+}
+
+const ReaderImagePreviewContent: React.FC<ReaderImagePreviewContentProps> = ({ src, onClose }) => {
   const t = useTranslation('image_preview')
   const previewRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
@@ -72,48 +82,31 @@ export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({ openKey,
     | undefined
   >(undefined)
 
-  const availableSize = useMemo(
-    () => ({
-      height: Math.max(1, stageSize.height - IMAGE_PREVIEW_VERTICAL_PADDING),
-      width: Math.max(1, stageSize.width - IMAGE_PREVIEW_SIDE_PADDING),
-    }),
-    [stageSize.height, stageSize.width],
-  )
-
-  const rotatedSize = useMemo(() => {
-    if (!naturalSize) return undefined
-    if (normalizedRotation === 90 || normalizedRotation === 270) {
-      return {
-        width: naturalSize.height,
-        height: naturalSize.width,
-      }
-    }
-    return naturalSize
-  }, [naturalSize, normalizedRotation])
-
-  const fitScale = useMemo(() => {
-    if (!rotatedSize || !stageSize.width || !stageSize.height) return 1
-
-    return Math.min(1, availableSize.width / rotatedSize.width, availableSize.height / rotatedSize.height)
-  }, [availableSize.height, availableSize.width, rotatedSize, stageSize.height, stageSize.width])
+  const availableSize = {
+    height: Math.max(1, stageSize.height - IMAGE_PREVIEW_VERTICAL_PADDING),
+    width: Math.max(1, stageSize.width - IMAGE_PREVIEW_SIDE_PADDING),
+  }
+  const rotatedSize =
+    naturalSize && (normalizedRotation === 90 || normalizedRotation === 270)
+      ? { width: naturalSize.height, height: naturalSize.width }
+      : naturalSize
+  const fitScale =
+    rotatedSize && stageSize.width && stageSize.height
+      ? Math.min(1, availableSize.width / rotatedSize.width, availableSize.height / rotatedSize.height)
+      : 1
 
   const displayScale = mode === 'fit' ? fitScale : scale
   const previewReady = !!naturalSize && stageSize.width > 0 && stageSize.height > 0
 
-  const panBounds = useMemo(() => {
-    if (!rotatedSize) return { x: 0, y: 0 }
-
-    return {
-      x: Math.max(0, (rotatedSize.width * displayScale - availableSize.width) / 2),
-      y: Math.max(0, (rotatedSize.height * displayScale - availableSize.height) / 2),
-    }
-  }, [availableSize.height, availableSize.width, displayScale, rotatedSize])
-
-  const clampedPan = useMemo(() => clampImagePreviewPan(pan, panBounds), [pan, panBounds])
+  const panBounds = rotatedSize
+    ? {
+        x: Math.max(0, (rotatedSize.width * displayScale - availableSize.width) / 2),
+        y: Math.max(0, (rotatedSize.height * displayScale - availableSize.height) / 2),
+      }
+    : { x: 0, y: 0 }
+  const clampedPan = clampImagePreviewPan(pan, panBounds)
 
   useLayoutEffect(() => {
-    if (!src) return
-
     const stage = stageRef.current
     if (!stage) return
 
@@ -135,17 +128,14 @@ export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({ openKey,
       observer.disconnect()
       window.removeEventListener('resize', updateStageSize)
     }
-  }, [openKey, src])
+  }, [])
 
   useLayoutEffect(() => {
-    if (!src) return
-
-    setPreviewState(createReaderImagePreviewState())
-
-    requestAnimationFrame(() => {
+    const frame = requestAnimationFrame(() => {
       previewRef.current?.focus()
     })
-  }, [openKey, src])
+    return () => cancelAnimationFrame(frame)
+  }, [])
 
   const zoomTo = useCallback((nextScale: number) => {
     setPreviewState((current) => ({
@@ -336,8 +326,6 @@ export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({ openKey,
   })
 
   useEffect(() => {
-    if (!src) return
-
     const handleKeyDown = (event: KeyboardEvent) => {
       handlePreviewKeyDown(event)
     }
@@ -347,9 +335,7 @@ export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({ openKey,
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true)
     }
-  }, [src])
-
-  if (!src) return null
+  }, [])
 
   const zoomPercent = `${Math.round(displayScale * 100)}%`
   const canZoomOut = getNextImagePreviewZoomOut(displayScale) !== undefined && displayScale > IMAGE_PREVIEW_MIN_STEP
@@ -398,7 +384,6 @@ export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({ openKey,
           onMouseDown={(event) => event.stopPropagation()}
         >
           <img
-            key={openKey}
             src={src}
             alt=""
             draggable={false}

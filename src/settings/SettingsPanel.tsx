@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { ChevronDownIcon, ChevronUpIcon, RotateCcwIcon } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { RenditionSpread } from '@flow/epubjs/rendition'
 import { normalizeHexColor } from '@/color'
@@ -513,14 +513,9 @@ interface PatternTextareaProps {
 }
 
 const PatternTextarea: React.FC<PatternTextareaProps> = ({ label, value, onChange }) => {
-  const valueText = useMemo(() => value.join('\n'), [value])
+  const valueText = value.join('\n')
   const [draft, setDraft] = useState(valueText)
   const focusedRef = useRef(false)
-  const onChangeRef = useRef(onChange)
-
-  useEffect(() => {
-    onChangeRef.current = onChange
-  }, [onChange])
 
   useEffect(() => {
     if (!focusedRef.current) {
@@ -545,7 +540,7 @@ const PatternTextarea: React.FC<PatternTextareaProps> = ({ label, value, onChang
         const normalized = patterns.join('\n')
         setDraft(normalized)
         if (normalized !== valueText) {
-          onChangeRef.current(patterns)
+          onChange(patterns)
         }
       }}
     />

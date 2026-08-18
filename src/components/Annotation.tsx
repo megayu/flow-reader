@@ -137,16 +137,18 @@ const Definitions: React.FC<DefinitionsProps> = ({ active, definitions, tab, dar
   const matchCacheRef = useRef<Map<string, DefinitionMatch[]> | undefined>(undefined)
   const matchCacheScopeRef = useRef<string | undefined>(undefined)
   matchCacheRef.current ??= new Map()
-  const definitionItems = useMemo(
-    () =>
-      definitions.reduce<DefinitionItem[]>((items, definition, index) => {
-        const normalized = definition.trim()
-        if (normalized) items.push({ definition: normalized, index })
-        return items
-      }, []),
-    [definitions],
-  )
-  const definitionKey = useMemo(() => definitionItems.map((item) => item.definition).join('\u0000'), [definitionItems])
+  const { definitionItems, definitionKey } = useMemo(() => {
+    const definitionItems = definitions.reduce<DefinitionItem[]>((items, definition, index) => {
+      const normalized = definition.trim()
+      if (normalized) items.push({ definition: normalized, index })
+      return items
+    }, [])
+
+    return {
+      definitionItems,
+      definitionKey: definitionItems.map((item) => item.definition).join('\u0000'),
+    }
+  }, [definitions])
   const matchCacheScope = `${book.id}:${book.revision}:${definitionKey}`
   const visibleSectionKey = visibleSectionIndexes.join('|')
 

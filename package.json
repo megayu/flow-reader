@@ -49,8 +49,8 @@
     "bundle:windows:installed": "pnpm bundle:windows:thumbnail && powershell -NoProfile -ExecutionPolicy Bypass -File native/shell-thumbnails/packaging/windows/prepare-nsis.ps1 && pnpm bundle:windows:installed:tauri && pnpm bundle:windows:collect",
     "bundle:macos:installed": "pnpm bundle:macos:thumbnail && pnpm bundle:macos:installed:tauri && pnpm bundle:macos:collect",
     "bundle:linux:installed": "pnpm bundle:linux:installed:tauri && pnpm bundle:linux:collect",
-    "doctor": "npx react-doctor@0.9.12 -y",
-    "doctor:lines": "npx react-doctor@0.9.12 --scope lines --base HEAD --no-score --verbose -y"
+    "doctor": "npx react-doctor@latest -y",
+    "doctor:lines": "npx react-doctor@latest --scope lines --base HEAD --no-score --verbose -y"
   },
   "lint-staged": {
     "*.{js,jsx,json,jsonc,css,ts,tsx,html}": "biome check --write --no-errors-on-unmatched"

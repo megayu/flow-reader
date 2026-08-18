@@ -24,7 +24,17 @@ function indexFirstHrefOccurrence(index, href, sectionIndex) {
     return
   }
 
-  var variants = [decodeURI(href), encodeURI(href), href]
+  var variants = [href]
+  try {
+    variants.unshift(encodeURI(href))
+  } catch (error) {
+    // Keep the original href when malformed Unicode cannot be encoded.
+  }
+  try {
+    variants.unshift(decodeURI(href))
+  } catch (error) {
+    // Keep the original href when malformed escape sequences cannot be decoded.
+  }
 
   variants.forEach((variant) => {
     if (!Object.prototype.hasOwnProperty.call(index, variant)) {

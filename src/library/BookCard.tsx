@@ -133,6 +133,12 @@ interface BookCardProps {
   onOpenBook: () => void
 }
 
+type BookCardDialog =
+  | { type: 'edit' }
+  | { type: 'info' }
+  | { type: 'tags' }
+  | { type: 'mode'; conflict?: BookModeSwitchConflict }
+
 const BookCardComponent: React.FC<BookCardProps> = ({
   book,
   cover,
@@ -152,12 +158,9 @@ const BookCardComponent: React.FC<BookCardProps> = ({
   const notify = useNotify()
   const [statusMenuOpen, setStatusMenuOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [editOpen, setEditOpen] = useState(false)
-  const [infoOpen, setInfoOpen] = useState(false)
-  const [tagsOpen, setTagsOpen] = useState(false)
+  const [activeDialog, setActiveDialog] = useState<BookCardDialog>()
   const [exportingFormat, setExportingFormat] = useState<BookExportFormat>()
   const [exportFormatsExpanded, setExportFormatsExpanded] = useState(false)
-  const [modeDialog, setModeDialog] = useState<'confirm' | BookModeSwitchConflict>()
   const [switchingMode, setSwitchingMode] = useState(false)
   const longPressRef = useRef<number | 'triggered' | undefined>(undefined)
 
@@ -302,7 +305,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
       if (!resolution) {
         const conflict = await db.books.checkContentModeSwitch(book.id, editable)
         if (conflict) {
-          setModeDialog(conflict)
+          setActiveDialog({ type: 'mode', conflict })
           return
         }
       }
@@ -310,10 +313,10 @@ const BookCardComponent: React.FC<BookCardProps> = ({
       await reader.closeBookTab(book.id)
       const result = await db.books.switchContentMode(book.id, editable, resolution)
       if (result.conflict) {
-        setModeDialog(result.conflict)
+        setActiveDialog({ type: 'mode', conflict: result.conflict })
         return
       }
-      setModeDialog(undefined)
+      setActiveDialog(undefined)
       notify({
         title: t(editable ? 'content_mode.unpacked_complete' : 'content_mode.archive_complete'),
         type: 'success',
@@ -538,14 +541,26 @@ const BookCardComponent: React.FC<BookCardProps> = ({
               openBook()
             }}
           />
-          <BookContextMenuItem Icon={PencilIcon} label={t('context.edit_details')} onSelect={() => setEditOpen(true)} />
-          <BookContextMenuItem Icon={TagIcon} label={t('context.set_tags')} onSelect={() => setTagsOpen(true)} />
-          <BookContextMenuItem Icon={InfoIcon} label={t('context.info')} onSelect={() => setInfoOpen(true)} />
+          <BookContextMenuItem
+            Icon={PencilIcon}
+            label={t('context.edit_details')}
+            onSelect={() => setActiveDialog({ type: 'edit' })}
+          />
+          <BookContextMenuItem
+            Icon={TagIcon}
+            label={t('context.set_tags')}
+            onSelect={() => setActiveDialog({ type: 'tags' })}
+          />
+          <BookContextMenuItem
+            Icon={InfoIcon}
+            label={t('context.info')}
+            onSelect={() => setActiveDialog({ type: 'info' })}
+          />
           {book.sourceFormat === 'epub' && !isArchiveOnlyBook(book) && (
             <BookContextMenuItem
               Icon={book.editable ? ArchiveIcon : ArchiveRestoreIcon}
               label={t(book.editable ? 'content_mode.to_archive' : 'content_mode.to_unpacked')}
-              onSelect={() => setModeDialog('confirm')}
+              onSelect={() => setActiveDialog({ type: 'mode' })}
             />
           )}
           {!exportFormatsExpanded ? (
@@ -593,15 +608,17 @@ const BookCardComponent: React.FC<BookCardProps> = ({
           />
         </ContextMenuContent>
       </ContextMenu>
-      {editOpen && <EditBookDialog book={book} onClose={() => setEditOpen(false)} />}
-      {tagsOpen && <BookTagsDialog book={book} onClose={() => setTagsOpen(false)} />}
-      {infoOpen && <BookInfoDialog book={book} cover={cover} onClose={() => setInfoOpen(false)} />}
-      {modeDialog && (
+      {activeDialog?.type === 'edit' && <EditBookDialog book={book} onClose={() => setActiveDialog(undefined)} />}
+      {activeDialog?.type === 'tags' && <BookTagsDialog book={book} onClose={() => setActiveDialog(undefined)} />}
+      {activeDialog?.type === 'info' && (
+        <BookInfoDialog book={book} cover={cover} onClose={() => setActiveDialog(undefined)} />
+      )}
+      {activeDialog?.type === 'mode' && (
         <BookModeDialog
           book={book}
-          conflict={modeDialog === 'confirm' ? undefined : modeDialog}
+          conflict={activeDialog.conflict}
           busy={switchingMode}
-          onClose={() => setModeDialog(undefined)}
+          onClose={() => setActiveDialog(undefined)}
           onSwitch={switchContentMode}
         />
       )}
