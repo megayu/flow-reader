@@ -115,6 +115,7 @@ test('closes a referenced archive tab and notifies when its source is unreadable
   await expect(alert).toBeVisible()
   await expect(alert).toContainText('permissions')
   await expect(card).toBeVisible()
+  await expect(card.locator('svg.lucide-book-x')).toBeVisible()
   await expect(page.locator('[data-flow-reader-content]')).toHaveCount(0)
 })
 

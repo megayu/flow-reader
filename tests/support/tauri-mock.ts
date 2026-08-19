@@ -773,7 +773,11 @@ export async function installTauriMock(
         if (command === 'get_book_reader_source') {
           const id = String(args?.id)
           const message = fixtureReaderSourceErrors[id]
-          if (message) throw new Error(message)
+          if (message) {
+            if (message === 'BOOK_SOURCE_MISSING') fixtureSourceStatuses[id] = 'missing'
+            if (message === 'BOOK_SOURCE_UNREADABLE') fixtureSourceStatuses[id] = 'unreadable'
+            throw new Error(message)
+          }
         }
         if (command === 'get_book_reader_source') {
           const path = fixtureReaderSources[String(args?.id)] ?? ''

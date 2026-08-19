@@ -72,7 +72,6 @@ export const bookCoverCornerBadgeClassName =
   'flex size-8 items-center justify-center rounded-lg shadow-sm ring-1 ring-inset'
 export const bookCoverCornerIconSize = 18
 export const bookCoverCornerIconStrokeWidth = 2.2
-export const bookSourceStatusRefreshEvent = 'flow-reader:book-source-status-refresh'
 export const readingStatusOptions: ReadingStatus[] = ['toRead', 'reading', 'read']
 export const readingStatusEditButtonClassName: Record<ReadingStatus | 'unmarked', string> = {
   unmarked: 'bg-popover/95 text-muted-foreground ring-border hover:bg-muted hover:text-foreground',

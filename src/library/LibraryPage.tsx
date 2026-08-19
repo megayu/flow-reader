@@ -110,7 +110,6 @@ import { libraryGridVirtualizationThreshold } from './libraryGridWindow'
 import {
   bookSourceDescriptionKey,
   bookSourceStatusFromError,
-  bookSourceStatusRefreshEvent,
   readingStatusOptions,
   sortBooks,
   toggleReadingStatusFilter,
@@ -194,6 +193,7 @@ export function LibraryPage() {
   const [startupRestoreDone, setStartupRestoreDone] = useState(false)
   const [nativeStartupPending, setNativeStartupPending] = useState(false)
   const [nativeStartupReaderFailed, setNativeStartupReaderFailed] = useState(false)
+  const [sourceStatuses, setSourceStatuses] = useState(() => new Map<string, BookSourceStatus>())
   const [textImportDialog, setTextImportDialog] = useState<{
     paths: string[]
     openAfterImport: boolean
@@ -339,12 +339,18 @@ export function LibraryPage() {
   useEffect(() => {
     return subscribeReaderOpenErrors(({ bookId, bookTitle, closeTab, error, stage }) => {
       setNativeStartupReaderFailed(true)
-      if (closeTab) {
-        void reader.closeBookTab(bookId).catch(console.error)
-        window.dispatchEvent(new Event(bookSourceStatusRefreshEvent))
-      }
       const errorMessage = formatErrorMessage(error)
       const sourceErrorStatus = bookSourceStatusFromError(errorMessage)
+      if (closeTab) {
+        if (sourceErrorStatus) {
+          setSourceStatuses((current) => {
+            const next = new Map(current)
+            next.set(bookId, sourceErrorStatus)
+            return next
+          })
+        }
+        void reader.closeBookTab(bookId).catch(console.error)
+      }
       const sourceErrorDescription = sourceErrorStatus ? homeT(bookSourceDescriptionKey(sourceErrorStatus)) : undefined
       notify({
         autoCloseMs: false,
@@ -565,6 +571,8 @@ export function LibraryPage() {
       }
       onOpenFolderImport={setFolderImportPath}
       returnStateRef={libraryReturnStateRef}
+      sourceStatuses={sourceStatuses}
+      setSourceStatuses={setSourceStatuses}
     />
   )
   const nativeStartupContentReady =
@@ -626,6 +634,8 @@ interface LibraryProps {
     folderImportSelection?: FolderImportSelection,
   ) => void
   returnStateRef: { current: LibraryReturnState | undefined }
+  sourceStatuses: Map<string, BookSourceStatus>
+  setSourceStatuses: React.Dispatch<React.SetStateAction<Map<string, BookSourceStatus>>>
 }
 
 interface LibraryReturnState {
@@ -645,6 +655,8 @@ const Library: React.FC<LibraryProps> = ({
   onOpenFolderImport,
   onTextPaths,
   returnStateRef,
+  sourceStatuses,
+  setSourceStatuses,
 }) => {
   const books = useLibrary()
   const covers = useCovers()
@@ -675,7 +687,6 @@ const Library: React.FC<LibraryProps> = ({
   )
   const [selectedBookIds, { has, toggle, replace, reset }] = useStringSet()
   const [highlightedBookIds, setHighlightedBookIds] = useState<Set<string>>(() => new Set())
-  const [sourceStatuses, setSourceStatuses] = useState(() => new Map<string, BookSourceStatus>())
   const [batchTagsOpen, setBatchTagsOpen] = useState(false)
   const [deleteBooksOpen, setDeleteBooksOpen] = useState(false)
   const bookGridRef = useRef<HTMLUListElement>(null)
@@ -879,25 +890,17 @@ const Library: React.FC<LibraryProps> = ({
     }
 
     let active = true
-    const refresh = () => {
-      void db.books
-        .checkSourceStatuses(referencedArchiveIds)
-        .then((records) => {
-          if (!active) return
-          setSourceStatuses(new Map(records.map((record) => [record.id, record.status])))
-        })
-        .catch(console.error)
-    }
-
-    refresh()
-    window.addEventListener('focus', refresh)
-    window.addEventListener(bookSourceStatusRefreshEvent, refresh)
+    void db.books
+      .checkSourceStatuses(referencedArchiveIds)
+      .then((records) => {
+        if (!active) return
+        setSourceStatuses(new Map(records.map((record) => [record.id, record.status])))
+      })
+      .catch(console.error)
     return () => {
       active = false
-      window.removeEventListener('focus', refresh)
-      window.removeEventListener(bookSourceStatusRefreshEvent, refresh)
     }
-  }, [referencedArchiveIds])
+  }, [referencedArchiveIds, setSourceStatuses])
 
   const clearBookSelection = useCallback(() => {
     reset()
