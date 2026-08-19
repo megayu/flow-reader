@@ -1,5 +1,15 @@
 import { extend, type, findChildren, RangeObject, isNumber } from './utils/core'
 
+function bracketAssertion(value) {
+  var start = value.indexOf('[')
+  if (start === -1) return
+
+  var end = value.lastIndexOf(']')
+  if (end <= start + 1) return
+
+  return value.slice(start + 1, end)
+}
+
 const ELEMENT_NODE = 1
 const TEXT_NODE = 3
 const COMMENT_NODE = 8
@@ -179,12 +189,9 @@ class EpubCFI {
   }
 
   parseStep(stepStr) {
-    var type, num, index, has_brackets, id
+    var type, num, index, id
 
-    has_brackets = stepStr.match(/\[(.*)\]/)
-    if (has_brackets && has_brackets[1]) {
-      id = has_brackets[1]
-    }
+    id = bracketAssertion(stepStr)
 
     //-- Check if step is a text node or element
     num = parseInt(stepStr)
@@ -211,11 +218,11 @@ class EpubCFI {
 
   parseTerminal(termialStr) {
     var characterOffset, textLocationAssertion
-    var assertion = termialStr.match(/\[(.*)\]/)
+    var assertion = bracketAssertion(termialStr)
 
-    if (assertion && assertion[1]) {
+    if (assertion) {
       characterOffset = parseInt(termialStr.split('[')[0])
-      textLocationAssertion = assertion[1]
+      textLocationAssertion = assertion
     } else {
       characterOffset = parseInt(termialStr)
     }

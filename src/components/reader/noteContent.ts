@@ -49,6 +49,20 @@ const NOTE_POPOVER_TEXT_STYLE_PROPERTIES = [
   'word-spacing',
   'writing-mode',
 ]
+const NOTE_POPOVER_BLOCKED_ELEMENTS = new Set(['BASE', 'EMBED', 'IFRAME', 'LINK', 'META', 'OBJECT', 'SCRIPT', 'STYLE'])
+const NOTE_POPOVER_URL_ATTRIBUTES = new Set([
+  'action',
+  'background',
+  'cite',
+  'data',
+  'formaction',
+  'href',
+  'ping',
+  'poster',
+  'src',
+  'srcset',
+  'xlink:href',
+])
 export function createNotePopoverState(
   anchor: HTMLAnchorElement,
   noteElement: HTMLElement,
@@ -249,7 +263,7 @@ async function renderLinkedSectionElement(
   const cleanup = () => iframe.remove()
 
   try {
-    const output = stripScriptsFromNoteSectionHtml(await renderFreshLinkedSectionDocument(tab, section, id))
+    const output = await renderFreshLinkedSectionDocument(tab, section, id)
     const loaded = new Promise<void>((resolve, reject) => {
       const timer = window.setTimeout(resolve, 1500)
 
@@ -328,14 +342,6 @@ export function isInternalBookHashLink(anchor: HTMLAnchorElement) {
 
   const [, hash = ''] = href.split('#')
   return !!hash
-}
-
-function stripScriptsFromNoteSectionHtml(html: string) {
-  return html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<script\b[^>]*\/>/gi, '')
-    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/\s+(href|src|xlink:href)\s*=\s*(["'])\s*javascript:[\s\S]*?\2/gi, '')
 }
 
 function findNoteElement(el: HTMLElement, anchor: HTMLAnchorElement) {
@@ -497,7 +503,6 @@ function cloneNoteElement(
 ) {
   const clone = cloneNoteContentElement(el)
 
-  clone.querySelectorAll('script, style').forEach((node) => node.remove())
   clone.querySelectorAll('a[href]').forEach((node) => {
     if (isBacklink(node as HTMLAnchorElement, anchor)) {
       unwrapBacklink(node as HTMLAnchorElement)
@@ -621,6 +626,10 @@ function normalizeNotePopoverContent(root: HTMLElement) {
 }
 
 function cloneElementWithNoteStyles(el: HTMLElement) {
+  if (isBlockedNotePopoverElement(el)) {
+    return el.ownerDocument.createElement('span')
+  }
+
   const clone = el.cloneNode(true) as HTMLElement
   copyNoteStyleTree(el, clone)
 
@@ -628,7 +637,7 @@ function cloneElementWithNoteStyles(el: HTMLElement) {
 }
 
 function copyNoteStyleTree(source: HTMLElement, target: HTMLElement) {
-  target.removeAttribute('style')
+  sanitizeNotePopoverElement(target)
   copyNoteTextStyles(source, target)
   copyResolvedResourceAttributes(source, target)
 
@@ -639,10 +648,31 @@ function copyNoteStyleTree(source: HTMLElement, target: HTMLElement) {
     const targetElement = targetElements[index]
     if (!targetElement) return
 
-    targetElement.removeAttribute('style')
+    if (isBlockedNotePopoverElement(targetElement)) {
+      targetElement.remove()
+      return
+    }
+
+    sanitizeNotePopoverElement(targetElement)
     copyNoteTextStyles(sourceElement, targetElement)
     copyResolvedResourceAttributes(sourceElement, targetElement)
   })
+}
+
+function isBlockedNotePopoverElement(element: Element) {
+  return NOTE_POPOVER_BLOCKED_ELEMENTS.has(element.tagName.toUpperCase())
+}
+
+function sanitizeNotePopoverElement(element: HTMLElement) {
+  for (let index = element.attributes.length - 1; index >= 0; index--) {
+    const attribute = element.attributes.item(index)
+    if (!attribute) continue
+
+    const name = attribute.name.toLowerCase()
+    if (name === 'style' || name.startsWith('on') || NOTE_POPOVER_URL_ATTRIBUTES.has(name)) {
+      element.removeAttribute(attribute.name)
+    }
+  }
 }
 
 function copyNoteTextStyles(source: HTMLElement, target: HTMLElement) {
@@ -660,10 +690,23 @@ function copyNoteTextStyles(source: HTMLElement, target: HTMLElement) {
 
 function copyResolvedResourceAttributes(source: HTMLElement, target: HTMLElement) {
   if (source.tagName === 'IMG' && target.tagName === 'IMG') {
-    target.setAttribute('src', (source as HTMLImageElement).src)
+    const src = (source as HTMLImageElement).src
+    if (isSafeNotePopoverUrl(src, true)) target.setAttribute('src', src)
   }
   if (source.tagName === 'A' && target.tagName === 'A') {
-    target.setAttribute('href', (source as HTMLAnchorElement).href)
+    const href = (source as HTMLAnchorElement).href
+    if (isSafeNotePopoverUrl(href, false)) target.setAttribute('href', href)
+  }
+}
+
+function isSafeNotePopoverUrl(value: string, allowImageData: boolean) {
+  try {
+    const url = new URL(value)
+    if (url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'blob:') return true
+    if (url.protocol === 'mailto:' && !allowImageData) return true
+    return allowImageData && url.protocol === 'data:' && /^data:image\//i.test(value)
+  } catch {
+    return false
   }
 }
 

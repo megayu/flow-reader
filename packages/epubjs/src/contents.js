@@ -1577,9 +1577,33 @@ class Contents extends EventEmitter {
   }
 
   backgroundImageUrl(value) {
-    var match = /url\((?:"([^"]+)"|'([^']+)'|([^)]*))\)/.exec(value || '')
-    if (!match) return undefined
-    return (match[1] || match[2] || match[3] || '').trim()
+    value = value || ''
+    var start = value.indexOf('url(')
+    if (start === -1) return undefined
+
+    var index = start + 4
+    while (index < value.length && /\s/.test(value[index])) index++
+
+    var quote = value[index] === '"' || value[index] === "'" ? value[index++] : undefined
+    var urlStart = index
+    while (index < value.length) {
+      var char = value[index]
+      if (char === '\\') {
+        index += 2
+        continue
+      }
+      if (quote ? char === quote : char === ')') break
+      index++
+    }
+
+    if (index >= value.length) return undefined
+
+    var url = value.slice(urlStart, index).trim()
+    if (!quote) return url
+
+    index++
+    while (index < value.length && /\s/.test(value[index])) index++
+    return value[index] === ')' ? url : undefined
   }
 
   hasMultipleBackgroundImages(value) {
