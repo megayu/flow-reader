@@ -28,9 +28,9 @@ pub(super) use access::{
     EPUB_MAX_SEARCH_TEXT_BYTES, find_unpacked_opf_path, inspect_epub_access, read_epub_xml_file, unpack_epub,
     validate_epub_archive_limits,
 };
-#[cfg(test)]
-pub(super) use metadata_cover::normalize_non_square_pixel_png;
 pub(super) use metadata_cover::{clean_xml_text, join_zip_path, normalize_zip_path, parent_zip_path};
+#[cfg(test)]
+pub(super) use metadata_cover::{normalize_epub_creator, normalize_non_square_pixel_png};
 #[cfg(test)]
 pub(super) use normalize::relative_zip_path;
 pub(super) use normalize::{deobfuscate_unpacked_idpf_fonts, normalize_unpacked_epub_structure};

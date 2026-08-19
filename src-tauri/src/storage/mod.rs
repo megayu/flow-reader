@@ -91,7 +91,8 @@ use epub_import::{
 };
 #[cfg(test)]
 use epub_import::{
-    normalize_non_square_pixel_png, normalize_publication_date, open_external_epub_path_impl, relative_zip_path,
+    normalize_epub_creator, normalize_non_square_pixel_png, normalize_publication_date, open_external_epub_path_impl,
+    relative_zip_path,
 };
 
 use import_support::{

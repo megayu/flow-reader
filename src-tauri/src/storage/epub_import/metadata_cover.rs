@@ -70,7 +70,13 @@ pub(super) fn parse_opf_metadata(doc: &roxmltree::Document) -> Value {
             .children()
             .find(|node| node.is_element() && node.tag_name().name() == tag)
             .and_then(|node| node.text())
-            .map(clean_xml_text)
+            .map(|value| {
+                if key == "creator" {
+                    normalize_epub_creator(value)
+                } else {
+                    clean_xml_text(value)
+                }
+            })
             .filter(|value| !value.is_empty())
         {
             let value = if key == "pubdate" {
@@ -108,6 +114,11 @@ pub(super) fn parse_opf_metadata(doc: &roxmltree::Document) -> Value {
 
 pub(in crate::storage) fn clean_xml_text(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+pub(in crate::storage) fn normalize_epub_creator(value: &str) -> String {
+    let value = clean_xml_text(value);
+    value.strip_suffix(" 著").unwrap_or(&value).trim().to_string()
 }
 
 pub(in crate::storage) fn normalize_non_square_pixel_png(data: &[u8]) -> Option<Vec<u8>> {

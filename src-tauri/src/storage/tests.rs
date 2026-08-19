@@ -19,14 +19,15 @@ use super::{
     decode_text_bytes, empty_object, ensure_book_package_path_with_unpacker, existing_book_import, export_book_impl,
     get_book_reader_source_impl, hash_file, id_from_hash, library_path, load_or_build_search_text_cache,
     mark_book_content_updated_fields, mark_library_book_content_updated, materialize_epub_package,
-    normalize_non_square_pixel_png, normalize_publication_date, normalize_unpacked_epub_structure,
-    open_external_epub_path_impl, parent_zip_path, parse_text_import_document, path_to_client_string,
-    read_image_index_cache, read_json_or_default, read_json_value_or_default, read_search_text_sections_from_unpacked,
-    relative_zip_path, rename_books_for_deletion, replace_book_text_impl, replace_xhtml_text, replace_xhtml_text_node,
-    schedule_existing_pending_delete_cleanup, search_text_cache_from_bytes, search_text_cache_to_bytes,
-    search_text_in_cache, settings_path, switch_book_content_mode_impl, text_content_opf, text_nav_xhtml,
-    text_section_xhtml, visible_search_text_from_xhtml, write_cover, write_epub_from_original_and_unpacked,
-    write_epub_from_unpacked_dir, write_image_index_cache_if_current, write_source_text_update,
+    normalize_epub_creator, normalize_non_square_pixel_png, normalize_publication_date,
+    normalize_unpacked_epub_structure, open_external_epub_path_impl, parent_zip_path, parse_text_import_document,
+    path_to_client_string, read_image_index_cache, read_json_or_default, read_json_value_or_default,
+    read_search_text_sections_from_unpacked, relative_zip_path, rename_books_for_deletion, replace_book_text_impl,
+    replace_xhtml_text, replace_xhtml_text_node, schedule_existing_pending_delete_cleanup,
+    search_text_cache_from_bytes, search_text_cache_to_bytes, search_text_in_cache, settings_path,
+    switch_book_content_mode_impl, text_content_opf, text_nav_xhtml, text_section_xhtml,
+    visible_search_text_from_xhtml, write_cover, write_epub_from_original_and_unpacked, write_epub_from_unpacked_dir,
+    write_image_index_cache_if_current, write_source_text_update,
 };
 use crate::tasks::TaskService;
 use serde_json::{Value, json};
@@ -2405,6 +2406,11 @@ fn leaves_unrecognized_publication_dates_unchanged() {
     for input in cases {
         assert_eq!(normalize_publication_date(input), input);
     }
+}
+
+#[test]
+fn removes_trailing_authorship_marker_from_epub_creator() {
+    assert_eq!(normalize_epub_creator("  示例作者 著  "), "示例作者");
 }
 
 #[test]
