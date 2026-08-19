@@ -3,10 +3,10 @@ import {
   ArchiveIcon,
   ArchiveRestoreIcon,
   BookOpenIcon,
+  BookX,
   CheckIcon,
   CircleIcon,
   DownloadIcon,
-  FileX2Icon,
   InfoIcon,
   PencilIcon,
   PlayIcon,
@@ -458,7 +458,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
                       'absolute top-2 left-2 z-10 bg-zinc-950/90 text-white ring-white/50',
                     )}
                   >
-                    <FileX2Icon size={bookCoverCornerIconSize} strokeWidth={bookCoverCornerIconStrokeWidth} />
+                    <BookX size={bookCoverCornerIconSize} strokeWidth={bookCoverCornerIconStrokeWidth} />
                   </div>
                 </AppTooltip>
               )}
