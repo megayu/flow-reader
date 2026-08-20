@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.pnpm-store/
 
 # Frontend build and TypeScript
 /dist/
