@@ -1538,6 +1538,100 @@ test('updates the rendered iframe after a mocked book text replacement', async (
   })
 })
 
+test('keeps definitions and repeated editing available after an in-place text replacement', async ({ page }) => {
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+
+  await page.evaluate(async () => {
+    const reader = (window as any).reader
+    const tab = reader.focusedBookTab
+    const frame = Array.from(document.querySelectorAll('iframe')).find(
+      (candidate) =>
+        !candidate.closest('[aria-hidden="true"]') &&
+        candidate.contentDocument?.body.textContent?.includes('Alice was beginning to get very tired'),
+    )
+    const frameDocument = frame?.contentDocument
+    if (!tab || !frameDocument?.body) throw new Error('Missing editable reader frame')
+
+    const walker = frameDocument.createTreeWalker(frameDocument.body, NodeFilter.SHOW_TEXT)
+    let textNodeIndex = 0
+    let textNode = walker.nextNode() as Text | null
+    while (textNode && !textNode.textContent?.includes('Alice was beginning to get very tired')) {
+      textNode = walker.nextNode() as Text | null
+      textNodeIndex += 1
+    }
+    if (!textNode?.textContent) throw new Error('Missing editable text node')
+
+    const oldText = 'very tired'
+    const newText = 'fully awake'
+    const startOffset = textNode.textContent.indexOf(oldText)
+    const section = tab.sectionForRange(frameDocument.createRange()) ?? tab.view?.section
+    if (!section?.href || startOffset < 0) throw new Error('Missing editable section')
+
+    await reader.applyBookContentEdit(
+      {
+        ...tab.book,
+        revision: tab.book.revision + 1,
+        updatedAt: tab.book.updatedAt + 1,
+      },
+      section.href,
+      tab,
+      {
+        target: {
+          sectionHref: section.href,
+          textNodeIndex,
+          textNodeText: textNode.textContent,
+          startOffset,
+          endOffset: startOffset + oldText.length,
+        },
+        oldText,
+        newText,
+        document: frameDocument,
+        textNode,
+      },
+    )
+    tab.define([newText])
+  })
+
+  await expectVisibleReaderMarks(page, 'flow-definition-underline', 1)
+
+  const activeFrame = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .filter({ visible: true })
+    .first()
+  await activeFrame
+    .contentFrame()
+    .locator('body')
+    .evaluate((body) => {
+      const walker = body.ownerDocument.createTreeWalker(body, NodeFilter.SHOW_TEXT)
+      let textNode = walker.nextNode() as Text | null
+      while (textNode && !textNode.textContent?.includes('fully awake')) {
+        textNode = walker.nextNode() as Text | null
+      }
+      if (!textNode?.textContent) throw new Error('Missing updated editable text')
+
+      const startOffset = textNode.textContent.indexOf('fully awake')
+      const range = body.ownerDocument.createRange()
+      range.setStart(textNode, startOffset)
+      range.setEnd(textNode, startOffset + 'fully awake'.length)
+      const selection = body.ownerDocument.defaultView?.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      const rect = range.getBoundingClientRect()
+      body.ownerDocument.defaultView?.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: rect.right,
+          clientY: rect.bottom,
+        }),
+      )
+    })
+
+  await page.getByRole('button', { name: msg('menu.edit_text') }).click()
+  await expect(page.getByRole('textbox', { name: msg('menu.edit_text') })).toHaveValue('fully awake')
+})
+
 test('reloads an edited section with the latest revision after navigating away', async ({ page }) => {
   const chapterPath = path.resolve('packages/epubjs/test/fixtures/alice/OPS/chapter_001.xhtml')
   const originalChapter = readFileSync(chapterPath, 'utf8')

@@ -105,7 +105,7 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Symptom: after editing TXT content, the source file timestamp updates quickly but the reader turns blank for several seconds before the updated text appears.
 - Reproduction path: open a generated TXT book, edit a visible text node, and sample the active reader immediately after pressing save.
 - Root cause: the save callback called `reloadContentAfterEdit`, which destroyed the current rendition and iframe before the new package/rendition/display path finished. Large generated TXT books made the blank interval visible; EPUB books often completed fast enough to hide the issue.
-- Fix direction: for the edited active tab, patch the currently rendered section text node in place using the same section/text-node/offset target used by storage, then reformat/expand the view and commit a fresh location snapshot. If the rendered node cannot be verified, report the edit as inconsistent immediately.
+- Fix direction: for the edited active tab, patch the currently rendered section text node in place using the same section/text-node/offset target used by storage, then reformat/expand the view and commit a fresh location snapshot. Invalidate the section's serialized render inputs so a rebuilt view fetches the new revision, but keep its patched document available while the view is active so definitions and subsequent edits still resolve against visible content. If the rendered node cannot be verified, report the edit as inconsistent immediately.
 - Verification gate: a real Tauri release client edit must keep active reader iframes mounted and the loading cover hidden while the visible text changes.
 
 ### TXT text edits depend on unstable rendered text-node indexes

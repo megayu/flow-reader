@@ -792,7 +792,12 @@ export class BookTab {
   private invalidateEditedSection(section: ISection) {
     const index = this.sectionInfoIndex(section)
 
-    section.unload()
+    // Keep the patched document available to active-view consumers such as
+    // definitions and repeated text edits. Clearing the render inputs still
+    // forces Section.load() to fetch the new revision when the view is rebuilt.
+    const renderState = section as unknown as { contents?: Element; output?: string }
+    renderState.contents = undefined
+    renderState.output = undefined
     if (index < 0) return
 
     this.sectionInfoPromises.delete(index)
