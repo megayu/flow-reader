@@ -43,7 +43,12 @@
   },
   "bundle": {
     "active": false,
-    "publisher": "Flow Reader",
+    "publisher": "megayu",
+    "copyright": "Copyright © 2026 megayu",
+    "resources": {
+      "../LICENSE": "licenses/Flow-AGPL-3.0.txt",
+      "../packages/epubjs/license": "licenses/Epub.js-BSD-2-Clause.txt"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

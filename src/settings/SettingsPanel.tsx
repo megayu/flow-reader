@@ -33,12 +33,22 @@ import {
 import { maxUiFontSize, minUiFontSize, normalizeUiFontSize } from '@/styles/ui'
 import { orderedTargetLanguages, TRANSLATION_LANGUAGES, type TranslationLanguage } from '@/translation/languages'
 
+import { AboutSettings } from './AboutSettings'
 import { BookCacheSetting } from './BookCacheSetting'
 import { LocalDictionarySettings } from './LocalDictionarySettings'
 import { SettingsItem as Item } from './SettingsItem'
 import { TagSettings } from './TagSettings'
 
-type SettingsTab = 'basic' | 'reading' | 'storage' | 'tags' | 'dictionary' | 'translation' | 'txt' | 'shortcuts'
+type SettingsTab =
+  | 'basic'
+  | 'reading'
+  | 'storage'
+  | 'tags'
+  | 'dictionary'
+  | 'translation'
+  | 'txt'
+  | 'shortcuts'
+  | 'about'
 const SETTINGS_TABS: SettingsTab[] = [
   'basic',
   'reading',
@@ -48,6 +58,7 @@ const SETTINGS_TABS: SettingsTab[] = [
   'translation',
   'txt',
   'shortcuts',
+  'about',
 ]
 const TEXTAREA_SIZE_STYLE = {
   fieldSizing: 'fixed',
@@ -428,6 +439,7 @@ export const SettingsPanel: React.FC = () => {
               <ShortcutSettings />
             </div>
           )}
+          {activeTab === 'about' && <AboutSettings />}
         </div>
       </section>
     </div>

@@ -1,0 +1,393 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+
+env:
+  NODE_VERSION: 24.18.0
+  PNPM_VERSION: 11.8.0
+  CARGO_TERM_COLOR: always
+
+jobs:
+  core-check:
+    name: Shared crates and web checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            crates/target
+          key: release-core-${{ runner.os }}-${{ hashFiles('crates/Cargo.lock') }}
+          restore-keys: release-core-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - name: Build release web flavor
+        env:
+          FLOW_READER_DISTRIBUTION: release
+          FLOW_READER_SOURCE_URL: https://github.com/${{ github.repository }}
+        run: pnpm build
+      - run: cargo fmt --manifest-path crates/Cargo.toml --all -- --check
+      - run: cargo clippy --manifest-path crates/Cargo.toml --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --manifest-path crates/Cargo.toml --workspace
+
+  windows:
+    name: Windows ${{ matrix.arch }} COM and NSIS
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: windows-2025
+            rust_target: x86_64-pc-windows-msvc
+            tool_arch: x64
+            run_lifecycle: true
+          - arch: aarch64
+            runner: windows-11-arm
+            rust_target: aarch64-pc-windows-msvc
+            tool_arch: arm64
+            run_lifecycle: false
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    env:
+      WINDOWS_PROVIDER_PATH: native\shell-thumbnails\dist\windows\FlowReaderThumbnail.dll
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            crates/target
+            native/shell-thumbnails/target
+            src-tauri/target
+          key: release-windows-${{ matrix.arch }}-${{ hashFiles('crates/Cargo.lock', 'native/shell-thumbnails/Cargo.lock', 'src-tauri/Cargo.lock') }}
+          restore-keys: release-windows-${{ matrix.arch }}-
+      - run: pnpm install --frozen-lockfile
+      - run: rustup target add ${{ matrix.rust_target }}
+
+      - name: Verify ordinary Tauri build isolation
+        shell: pwsh
+        run: |
+          if (Test-Path -LiteralPath native\shell-thumbnails\dist) {
+            throw 'Thumbnail dist must be absent before the ordinary build.'
+          }
+          pnpm tauri:build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (Test-Path -LiteralPath native\shell-thumbnails\dist) {
+            throw 'The ordinary Tauri build created thumbnail bundle output.'
+          }
+
+      - run: cargo fmt --manifest-path native/shell-thumbnails/Cargo.toml --all -- --check
+      - if: matrix.arch == 'x86_64'
+        run: pnpm rust:lint
+      - run: cargo clippy --manifest-path native/shell-thumbnails/Cargo.toml --workspace --all-targets --all-features --target ${{ matrix.rust_target }} -- -D warnings
+      - run: cargo test --manifest-path native/shell-thumbnails/Cargo.toml --workspace --target ${{ matrix.rust_target }}
+      - if: matrix.run_lifecycle
+        run: pnpm thumbnail:test:windows-installer
+
+      - name: Build final Windows provider
+        run: pnpm bundle:windows:thumbnail
+
+      - name: Inspect COM exports
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $toolArch = '${{ matrix.tool_arch }}'
+          $dumpbinPattern = "VC\Tools\MSVC\**\bin\Host${toolArch}\${toolArch}\dumpbin.exe"
+          $dumpbin = & $vswhere -latest -products * -find $dumpbinPattern | Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($dumpbin)) { throw 'dumpbin.exe was not found.' }
+          $exports = & $dumpbin /exports $env:WINDOWS_PROVIDER_PATH
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $exports
+          foreach ($name in @('DllGetClassObject', 'DllCanUnloadNow')) {
+            if (-not ($exports -match $name)) { throw "Missing COM export: $name" }
+          }
+
+      - name: Build final NSIS setup
+        shell: pwsh
+        env:
+          FLOW_READER_UPDATER_PUBLIC_KEY: ${{ vars.FLOW_READER_UPDATER_PUBLIC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          & native\shell-thumbnails\packaging\windows\prepare-nsis.ps1
+          pnpm bundle:windows:release:tauri
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Collect Windows installer
+        shell: pwsh
+        run: |
+          pnpm bundle:windows:collect release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $setups = @(Get-ChildItem -LiteralPath release -Filter '*-setup.exe' -File)
+          if ($setups.Count -ne 1) { throw "Expected one collected NSIS setup, found $($setups.Count)." }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: flow-reader-thumbnail-windows-${{ matrix.arch }}-${{ github.sha }}
+          path: ${{ env.WINDOWS_PROVIDER_PATH }}
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: flow-reader-installed-windows-${{ matrix.arch }}-${{ github.sha }}
+          path: release/*-setup.exe*
+          if-no-files-found: error
+
+  macos:
+    name: macOS Quick Look and installed app
+    runs-on: macos-15-intel
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            crates/target
+            native/shell-thumbnails/target
+            src-tauri/target
+          key: release-macos-intel-${{ hashFiles('crates/Cargo.lock', 'native/shell-thumbnails/Cargo.lock', 'src-tauri/Cargo.lock') }}
+          restore-keys: release-macos-intel-
+      - run: pnpm install --frozen-lockfile
+      - run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
+      - run: cargo fmt --manifest-path native/shell-thumbnails/Cargo.toml --all -- --check
+      - run: cargo clippy --manifest-path native/shell-thumbnails/Cargo.toml --workspace --all-targets --all-features -- -D warnings
+      - run: pnpm bundle:macos:thumbnail
+
+      - name: Build ad-hoc signed release app
+        env:
+          FLOW_READER_UPDATER_PUBLIC_KEY: ${{ vars.FLOW_READER_UPDATER_PUBLIC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm bundle:macos:release:tauri
+
+      - name: Verify EPUB opening and Quick Look lifecycle
+        run: pnpm thumbnail:test:macos-installer
+
+      - name: Verify release application signatures
+        run: |
+          app_path='src-tauri/target/universal-apple-darwin/release/bundle/macos/Flow Reader.app'
+          codesign --verify --deep --strict --verbose=2 "${app_path}"
+
+      - name: Collect macOS application
+        run: pnpm bundle:macos:collect
+
+      - name: Prepare macOS artifacts
+        run: |
+          artifact_dir='native/shell-thumbnails/dist/artifacts/macos'
+          appex_path='native/shell-thumbnails/dist/macos/DerivedData/Build/Products/Release/FlowReaderThumbnail.appex'
+          app_path='release/Flow Reader.app'
+          mkdir -p "${artifact_dir}"
+          ditto -c -k --sequesterRsrc --keepParent "${appex_path}" "${artifact_dir}/FlowReaderThumbnail.appex.zip"
+          ditto -c -k --sequesterRsrc --keepParent "${app_path}" "${artifact_dir}/FlowReader.app.zip"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: flow-reader-thumbnail-macos-universal-${{ github.sha }}
+          path: native/shell-thumbnails/dist/artifacts/macos/FlowReaderThumbnail.appex.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: flow-reader-installed-macos-universal-${{ github.sha }}
+          path: |
+            native/shell-thumbnails/dist/artifacts/macos/FlowReader.app.zip
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+          if-no-files-found: error
+
+  linux:
+    name: Linux ${{ matrix.arch }} AppImage
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+            run_lifecycle: true
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+            run_lifecycle: false
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-tauri/target
+          key: shell-integrations-linux-${{ matrix.arch }}-${{ hashFiles('crates/Cargo.lock', 'src-tauri/Cargo.lock') }}
+          restore-keys: shell-integrations-linux-${{ matrix.arch }}-
+
+      - name: Install Tauri and lifecycle dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            desktop-file-utils \
+            libfuse2 \
+            xvfb \
+            dbus-x11 \
+            zip
+
+      - run: pnpm install --frozen-lockfile
+      - name: Build release AppImage
+        env:
+          FLOW_READER_UPDATER_PUBLIC_KEY: ${{ vars.FLOW_READER_UPDATER_PUBLIC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm bundle:linux:release:tauri
+      - name: Collect Linux AppImage
+        run: pnpm bundle:linux:collect release
+
+      - name: Locate Linux AppImage
+        run: |
+          mapfile -t appimages < <(find release -maxdepth 1 -type f -name '*.AppImage' -print)
+          [[ "${#appimages[@]}" == "1" ]] || { echo "Expected one AppImage, found ${#appimages[@]}." >&2; exit 1; }
+          echo "LINUX_APPIMAGE_PATH=$(realpath "${appimages[0]}")" >> "${GITHUB_ENV}"
+
+      - name: Verify AppImage and direct EPUB opening
+        if: matrix.run_lifecycle
+        run: xvfb-run -a dbus-run-session -- pnpm test:bundle:linux-appimage "${LINUX_APPIMAGE_PATH}"
+
+      - name: Verify ARM64 AppImage architecture
+        if: ${{ ! matrix.run_lifecycle }}
+        run: file "${LINUX_APPIMAGE_PATH}" | grep -q 'ARM aarch64'
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: flow-reader-appimage-linux-${{ matrix.arch }}-${{ github.sha }}
+          path: release/*.AppImage*
+          if-no-files-found: error
+
+  release:
+    name: Publish release artifacts
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [core-check, windows, macos, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: flow-reader-installed-windows-x86_64-${{ github.sha }}
+          path: release-artifacts/flow-reader-installed-windows-x86_64-${{ github.sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: flow-reader-installed-windows-aarch64-${{ github.sha }}
+          path: release-artifacts/flow-reader-installed-windows-aarch64-${{ github.sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: flow-reader-installed-macos-universal-${{ github.sha }}
+          path: release-artifacts/flow-reader-installed-macos-universal-${{ github.sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: flow-reader-appimage-linux-x86_64-${{ github.sha }}
+          path: release-artifacts/flow-reader-appimage-linux-x86_64-${{ github.sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: flow-reader-appimage-linux-aarch64-${{ github.sha }}
+          path: release-artifacts/flow-reader-appimage-linux-aarch64-${{ github.sha }}
+
+      - name: Validate artifact commit identity
+        run: |
+          expected=(
+            flow-reader-installed-windows-x86_64
+            flow-reader-installed-windows-aarch64
+            flow-reader-installed-macos-universal
+            flow-reader-appimage-linux-x86_64
+            flow-reader-appimage-linux-aarch64
+          )
+          for prefix in "${expected[@]}"; do
+            directory="release-artifacts/${prefix}-${GITHUB_SHA}"
+            [[ -d "${directory}" ]] || { echo "Missing artifact directory: ${directory}" >&2; exit 1; }
+            [[ -n "$(find "${directory}" -type f -print -quit)" ]] || { echo "Empty artifact: ${directory}" >&2; exit 1; }
+          done
+          directory_count="$(find release-artifacts -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+          [[ "${directory_count}" == "5" ]]
+          while IFS= read -r directory; do
+            [[ "$(basename "${directory}")" == *-"${GITHUB_SHA}" ]]
+          done < <(find release-artifacts -mindepth 1 -maxdepth 1 -type d -print)
+
+      - name: Generate updater manifest
+        run: pnpm bundle:release:manifest
+
+      - name: Create draft release and attach artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 || gh release create "${GITHUB_REF_NAME}" --draft --verify-tag --title "${GITHUB_REF_NAME}" --notes-file release-artifacts/release-notes.md
+          gh release edit "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes-file release-artifacts/release-notes.md
+          mapfile -t files < <(find release-artifacts -type f ! -name 'release-notes.md' -print)
+          gh release upload "${GITHUB_REF_NAME}" "${files[@]}" --clobber
+          gh release edit "${GITHUB_REF_NAME}" --draft=false --latest

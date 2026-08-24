@@ -249,7 +249,7 @@ fn collect_opened_epub_urls(urls: Vec<tauri::Url>) -> Vec<PathBuf> {
 pub fn run() {
     let pending_open_files = collect_epub_paths(std::env::args_os().skip(1));
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             let has_deep_link = argv.iter().any(|arg| is_flow_reader_deep_link(arg));
             let paths = collect_epub_paths(argv);
@@ -258,7 +258,14 @@ pub fn run() {
             }
             dispatch_open_paths(app, paths);
         }))
-        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_deep_link::init());
+
+    #[cfg(feature = "updater")]
+    let builder = builder
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init());
+
+    builder
         .register_uri_scheme_protocol("dictionary", |context, request| {
             dictionary::mdict::resource_protocol_response(context.app_handle(), request)
         })

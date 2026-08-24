@@ -8,6 +8,7 @@ node_modules/
 
 # Local desktop release
 /release/
+/.local/updater-test/
 
 # Tests and measurements
 /test-results/

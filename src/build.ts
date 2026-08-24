@@ -1,0 +1,3 @@
+export const applicationBuildVersion = __FLOW_READER_BUILD_VERSION__
+export const applicationCopyright = __FLOW_READER_COPYRIGHT__
+export const sourceRepositoryUrl = __FLOW_READER_SOURCE_URL__

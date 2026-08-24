@@ -1,0 +1,34 @@
+{
+  "productName": "Flow Reader Updater Test",
+  "identifier": "com.flow.reader.updater-test",
+  "app": {
+    "security": {
+      "capabilities": [
+        "default",
+        {
+          "identifier": "local-updater-test",
+          "description": "Allows the main window to exercise the updater against the local test server.",
+          "windows": ["main"],
+          "permissions": ["updater:default", "process:allow-restart"]
+        }
+      ]
+    }
+  },
+  "bundle": {
+    "fileAssociations": []
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["flow-reader-updater-test"]
+      }
+    },
+    "updater": {
+      "dangerousInsecureTransportProtocol": true,
+      "endpoints": ["http://127.0.0.1:7130/latest.json?current={{current_version}}&target={{target}}&arch={{arch}}"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

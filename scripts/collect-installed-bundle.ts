@@ -1,10 +1,17 @@
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 
-import { repositoryRoot } from './distribution-cargo.ts'
+import { repositoryRoot } from './bundle-cargo.ts'
 
 const platform = process.argv[2]
+const flavor = process.argv[3] ?? 'local'
+if (flavor !== 'local' && flavor !== 'release') {
+  throw new Error('Usage: node scripts/collect-installed-bundle.ts <windows|macos|linux> [local|release]')
+}
 const releaseDirectory = resolve(repositoryRoot, 'release')
+const { productName, version } = JSON.parse(
+  readFileSync(resolve(repositoryRoot, 'src-tauri/tauri.conf.json'), 'utf8'),
+) as { productName: string; version: string }
 
 interface ArtifactSource {
   directory: string
@@ -32,7 +39,7 @@ function artifactSources(): ArtifactSource[] {
       return [
         {
           directory: resolve(repositoryRoot, 'src-tauri/target/release/bundle/nsis'),
-          matches: (name) => name.endsWith('-setup.exe'),
+          matches: (name) => name.startsWith(`${productName}_${version}_`) && name.endsWith('-setup.exe'),
           description: 'Windows NSIS installer',
         },
       ]
@@ -40,7 +47,7 @@ function artifactSources(): ArtifactSource[] {
       return [
         {
           directory: resolve(repositoryRoot, 'src-tauri/target/universal-apple-darwin/release/bundle/macos'),
-          matches: (name) => name.endsWith('.app'),
+          matches: (name) => name === `${productName}.app`,
           description: 'macOS application bundle',
         },
       ]
@@ -48,7 +55,7 @@ function artifactSources(): ArtifactSource[] {
       return [
         {
           directory: resolve(repositoryRoot, 'src-tauri/target/release/bundle/appimage'),
-          matches: (name) => name.endsWith('.AppImage'),
+          matches: (name) => name.startsWith(`${productName}_${version}_`) && name.endsWith('.AppImage'),
           description: 'Linux AppImage',
         },
       ]
@@ -80,5 +87,12 @@ function moveCompletedArtifact(source: string) {
 const artifacts = artifactSources().map(oneArtifact)
 mkdirSync(releaseDirectory, { recursive: true })
 for (const artifact of artifacts) {
+  const signature = `${artifact}.sig`
+  if (flavor === 'release' && platform !== 'macos' && !existsSync(signature)) {
+    throw new Error(`Missing updater signature for ${artifact}.`)
+  }
   moveCompletedArtifact(artifact)
+  if (flavor === 'release' && existsSync(signature)) {
+    moveCompletedArtifact(signature)
+  }
 }

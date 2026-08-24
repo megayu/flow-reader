@@ -192,7 +192,7 @@
 				ARCHS = "arm64 x86_64";
 				CODE_SIGN_ENTITLEMENTS = FlowReaderThumbnail/FlowReaderThumbnail.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 0.1.0;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = FlowReaderThumbnail/Info.plist;
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
@@ -216,7 +216,7 @@
 				ARCHS = "arm64 x86_64";
 				CODE_SIGN_ENTITLEMENTS = FlowReaderThumbnail/FlowReaderThumbnail.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 0.1.0;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = FlowReaderThumbnail/Info.plist;

@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 
+import { UpdaterProvider } from '@/updater-entry'
+
 import { Layout } from '../components/Layout'
 import { Theme } from '../components/Theme'
 import { NotificationProvider } from '../components/ui/notification'
@@ -47,11 +49,13 @@ export function FlowReader() {
     <>
       <Theme />
       <NotificationProvider>
-        <TooltipProvider>
-          <Layout>
-            <App />
-          </Layout>
-        </TooltipProvider>
+        <UpdaterProvider>
+          <TooltipProvider>
+            <Layout>
+              <App />
+            </Layout>
+          </TooltipProvider>
+        </UpdaterProvider>
       </NotificationProvider>
     </>
   )

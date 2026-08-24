@@ -20,3 +20,6 @@ interface Window {
   launchQueue: LaunchQueue
   queryLocalFonts: () => Promise<LocalFont[]>
 }
+declare const __FLOW_READER_BUILD_VERSION__: string
+declare const __FLOW_READER_COPYRIGHT__: string
+declare const __FLOW_READER_SOURCE_URL__: string

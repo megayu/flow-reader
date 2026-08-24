@@ -51,9 +51,9 @@ On x64 Windows, the NSIS application build uses `src-tauri/target/release`; only
 
 The macOS installed application remains a universal target and therefore cannot reuse a single-architecture host output directory.
 
-Ordinary `pnpm tauri:build` does not build this workspace or the Xcode extension. It is a compile validation command, not a supported portable distribution.
+Ordinary `pnpm tauri:build` does not build this workspace or the Xcode extension. It is a compile validation command, not a packaging command.
 
-Installed commands build the local-use distribution shape. CI invokes the parallel `bundle:*:release:tauri` stages for tagged releases so future release-only capabilities, such as automatic updates, do not leak into local packages. Both shapes currently contain the same application features.
+Installed commands build the local-use package without automatic updates. Tagged CI releases invoke the parallel `bundle:*:release:tauri` stages, which compile the updater and generate signed updater artifacts without changing the thumbnail packaging chain.
 
 ## Stable platform identities
 
@@ -65,7 +65,7 @@ The Windows provider CLSID is a permanent product identity and must not change b
 
 The Windows thumbnail handler category GUID is owned by Microsoft and must never be replaced with a generated GUID.
 
-Cargo emits the internal compiler artifact `flow_reader_thumbnail.dll` under `target/`. The distribution build copies it to `dist/windows/FlowReaderThumbnail.dll`; signing, CI uploads, NSIS input, and the installed provider all use that canonical product name.
+Cargo emits the internal compiler artifact `flow_reader_thumbnail.dll` under `target/`. The bundle build copies it to `dist/windows/FlowReaderThumbnail.dll`; CI uploads, NSIS input, and the installed provider all use that canonical product name.
 
 The installed Windows provider uses the stable name `FlowReaderThumbnail.dll` beside `Flow Reader.exe`; NSIS uses the internal temporary name `FlowReaderThumbnail.pending.dll` only while replacing a loaded provider and schedules the stable-path replacement for reboot when required.
 
