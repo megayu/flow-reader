@@ -39,6 +39,13 @@ export type ShortcutActionId =
   | 'returnPrevious'
   | 'returnStart'
   | 'searchPanel'
+  | 'selectionAnnotate'
+  | 'selectionCopy'
+  | 'selectionDefinitionToggle'
+  | 'selectionDictionary'
+  | 'selectionEditText'
+  | 'selectionSearch'
+  | 'selectionTranslate'
   | 'switchNextTab'
   | 'switchPreviousTab'
   | 'switchLastTab'
@@ -48,10 +55,9 @@ export type ShortcutActionId =
   | 'decreaseFontSize'
   | 'zenMode'
 
-interface ShortcutDefinition {
-  labelKey: MessageKey
+type ShortcutDefinition = {
   shortcuts: ShortcutChordValue[]
-}
+} & ({ labelKey: MessageKey; labelKeys?: never } | { labelKey?: never; labelKeys: [MessageKey, MessageKey] })
 
 interface ShortcutGroupDefinition {
   titleKey: MessageKey
@@ -92,6 +98,34 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
   chapterFind: {
     labelKey: 'reader.find_current_chapter',
     shortcuts: [[commandToken, 'F']],
+  },
+  selectionCopy: {
+    labelKey: 'menu.copy',
+    shortcuts: [['C']],
+  },
+  selectionSearch: {
+    labelKey: 'menu.search_in_book',
+    shortcuts: [['S']],
+  },
+  selectionDictionary: {
+    labelKey: 'menu.dictionary',
+    shortcuts: [['D']],
+  },
+  selectionTranslate: {
+    labelKey: 'menu.translate',
+    shortcuts: [['T']],
+  },
+  selectionEditText: {
+    labelKey: 'menu.edit_text',
+    shortcuts: [['E']],
+  },
+  selectionAnnotate: {
+    labelKey: 'menu.annotate',
+    shortcuts: [['A']],
+  },
+  selectionDefinitionToggle: {
+    labelKeys: ['menu.define', 'menu.undefine'],
+    shortcuts: [['F']],
   },
   nextFindResult: {
     labelKey: 'reader.next_find_result',
@@ -261,6 +295,18 @@ const shortcutGroups: ShortcutGroupDefinition[] = [
     ],
   },
   {
+    titleKey: 'settings.shortcuts.group.selection_menu',
+    items: [
+      shortcutDefinitions.selectionCopy,
+      shortcutDefinitions.selectionSearch,
+      shortcutDefinitions.selectionDictionary,
+      shortcutDefinitions.selectionTranslate,
+      shortcutDefinitions.selectionEditText,
+      shortcutDefinitions.selectionAnnotate,
+      shortcutDefinitions.selectionDefinitionToggle,
+    ],
+  },
+  {
     titleKey: 'settings.shortcuts.group.tabs',
     items: [
       shortcutDefinitions.closeTab,
@@ -361,7 +407,7 @@ export function createShortcutGroups(t: (key: string) => string): ShortcutGroup[
   return shortcutGroups.map((group) => ({
     title: t(group.titleKey),
     items: group.items.map((item) => ({
-      label: t(item.labelKey),
+      label: item.labelKeys ? item.labelKeys.map(t).join(' / ') : t(item.labelKey),
       shortcuts: item.shortcuts.map(resolveShortcutChord),
     })),
   }))

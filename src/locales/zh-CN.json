@@ -288,6 +288,7 @@
   "settings.shortcuts.group.navigation": "导航",
   "settings.shortcuts.group.panels": "面板",
   "settings.shortcuts.group.search": "搜索",
+  "settings.shortcuts.group.selection_menu": "文本选择菜单",
   "settings.shortcuts.group.tabs": "标签页",
   "settings.show_library_in_toc": "在目录侧边栏显示书架",
   "settings.show_library_in_toc.description": "在书籍目录上方显示书架，便于快速切换书籍。",

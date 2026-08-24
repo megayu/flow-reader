@@ -287,6 +287,7 @@
   "settings.shortcuts.group.navigation": "Navigation",
   "settings.shortcuts.group.panels": "Panels",
   "settings.shortcuts.group.search": "Search",
+  "settings.shortcuts.group.selection_menu": "Text selection menu",
   "settings.shortcuts.group.tabs": "Tabs",
   "settings.show_library_in_toc": "Show library in table of contents",
   "settings.show_library_in_toc.description": "Shows the library above the book's table of contents for quick switching.",

@@ -21,6 +21,7 @@ import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
 import { type BookTab, getBookTabFrameWindows, reader } from '../models/reader'
 import { LayoutAnchorMode, LayoutAnchorPosition, layout, layoutBesideRect } from '../reader/contextViewLayout'
+import { getShortcutChords } from '../shortcuts'
 import { useSettings } from '../state'
 import { type BookTextReplaceTarget, replaceBookText } from '../storage'
 import { resolveTranslationDirection, type TranslationLanguage } from '../translation/languages'
@@ -356,6 +357,13 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const [settings] = useSettings()
   const [view, setView] = useState<'actions' | 'dictionary' | 'translation'>('actions')
   const [localDictionaries, setLocalDictionaries] = useState<LocalDictionaryRecord[]>([])
+  const copyShortcut = getShortcutChords('selectionCopy')[0]
+  const searchShortcut = getShortcutChords('selectionSearch')[0]
+  const dictionaryShortcut = getShortcutChords('selectionDictionary')[0]
+  const translateShortcut = getShortcutChords('selectionTranslate')[0]
+  const editTextShortcut = getShortcutChords('selectionEditText')[0]
+  const annotateShortcut = getShortcutChords('selectionAnnotate')[0]
+  const definitionToggleShortcut = getShortcutChords('selectionDefinitionToggle')[0]
 
   useLayoutEffect(() => {
     const el = popupElementRef.current
@@ -410,6 +418,15 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     if (savingReplacementRef.current) return
     hide()
   }
+  const copySelection = () => {
+    hide()
+    copy(text)
+  }
+  const searchSelection = () => {
+    hide()
+    setAction('search')
+    void tab.searchKeywordImmediately(text)
+  }
   const cancelEditing = () => {
     if (savingReplacementRef.current) return
     setEditing(false)
@@ -426,6 +443,26 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     setWidth(0)
     setHeight(0)
     setView(nextView)
+  }
+  const startEditing = () => {
+    if (editTextDisabledReason) return
+    replacementSnapshotRef.current = currentReplaceTarget
+    setEditorChanged(false)
+    setReplacementError(undefined)
+    setEditing(true)
+  }
+  const startAnnotating = () => {
+    setAnnotationNotesChanged(false)
+    setDraftAnnotationColor(annotation?.color ?? 'yellow')
+    setAnnotate(true)
+  }
+  const toggleDefinition = () => {
+    hide()
+    if (tab.isDefined(text)) {
+      tab.undefine(text)
+    } else {
+      tab.define([text])
+    }
   }
   const dismissOverlay = () => {
     if (view === 'dictionary' || view === 'translation') {
@@ -473,6 +510,30 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     (dictionaryQuery?.language === 'zh' && settings.dictionary?.zdic?.enabled === true) ||
     (dictionaryQuery?.language === 'en' && settings.dictionary?.merriamWebster?.enabled === true) ||
     eligibleLocalDictionaries.length > 0
+
+  const handleActionShortcut = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return
+
+    const key = event.key.toLowerCase()
+    if (view !== 'actions' || editing || annotate) return
+
+    const action = {
+      c: copySelection,
+      s: searchSelection,
+      d: dictionaryAvailable ? () => switchView('dictionary') : undefined,
+      t: () => switchView('translation'),
+      e: editTextDisabledReason ? undefined : startEditing,
+      a: startAnnotating,
+      f: toggleDefinition,
+    }[key]
+    if (!action) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    event.nativeEvent.stopImmediatePropagation()
+    action()
+    return true
+  }
 
   useEffect(() => {
     if (!editing) return
@@ -589,6 +650,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         data-flow-escape-surface
         tabIndex={-1}
         onKeyDown={(e) => {
+          if (handleActionShortcut(e)) return
           e.stopPropagation()
           if (e.key === 'Escape') {
             e.preventDefault()
@@ -669,6 +731,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
           <div className="text-muted-foreground mb-3 flex gap-2">
             <IconButton
               title={t('copy')}
+              shortcut={copyShortcut}
               Icon={CopyIcon}
               size={ICON_SIZE}
               className={actionIconClassName}
@@ -676,13 +739,11 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 width: ANNOTATION_SIZE,
                 height: ANNOTATION_SIZE,
               }}
-              onClick={() => {
-                hide()
-                copy(text)
-              }}
+              onClick={copySelection}
             />
             <IconButton
               title={t('search_in_book')}
+              shortcut={searchShortcut}
               Icon={SearchIcon}
               size={ICON_SIZE}
               className={actionIconClassName}
@@ -690,14 +751,11 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 width: ANNOTATION_SIZE,
                 height: ANNOTATION_SIZE,
               }}
-              onClick={() => {
-                hide()
-                setAction('search')
-                void tab.searchKeywordImmediately(text)
-              }}
+              onClick={searchSelection}
             />
             <IconButton
               title={t('dictionary')}
+              shortcut={dictionaryShortcut}
               Icon={BookOpenTextIcon}
               size={ICON_SIZE}
               className={actionIconClassName}
@@ -710,6 +768,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             />
             <IconButton
               title={t('translate')}
+              shortcut={translateShortcut}
               Icon={LanguagesIcon}
               size={ICON_SIZE}
               className={actionIconClassName}
@@ -718,6 +777,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             />
             <IconButton
               title={t('edit_text')}
+              shortcut={editTextShortcut}
               disabledReason={editTextDisabledReason}
               Icon={FilePenLineIcon}
               disabled={Boolean(editTextDisabledReason)}
@@ -727,15 +787,11 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 width: ANNOTATION_SIZE,
                 height: ANNOTATION_SIZE,
               }}
-              onClick={() => {
-                replacementSnapshotRef.current = currentReplaceTarget
-                setEditorChanged(false)
-                setReplacementError(undefined)
-                setEditing(true)
-              }}
+              onClick={startEditing}
             />
             <IconButton
               title={t('annotate')}
+              shortcut={annotateShortcut}
               Icon={PencilIcon}
               size={ICON_SIZE}
               className={actionIconClassName}
@@ -743,15 +799,12 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 width: ANNOTATION_SIZE,
                 height: ANNOTATION_SIZE,
               }}
-              onClick={() => {
-                setAnnotationNotesChanged(false)
-                setDraftAnnotationColor(annotation?.color ?? 'yellow')
-                setAnnotate(true)
-              }}
+              onClick={startAnnotating}
             />
             {tab.isDefined(text) ? (
               <IconButton
                 title={t('undefine')}
+                shortcut={definitionToggleShortcut}
                 Icon={SquareMinusIcon}
                 size={ICON_SIZE}
                 className={actionIconClassName}
@@ -759,14 +812,12 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                   width: ANNOTATION_SIZE,
                   height: ANNOTATION_SIZE,
                 }}
-                onClick={() => {
-                  hide()
-                  tab.undefine(text)
-                }}
+                onClick={toggleDefinition}
               />
             ) : (
               <IconButton
                 title={t('define')}
+                shortcut={definitionToggleShortcut}
                 Icon={SquarePlusIcon}
                 size={ICON_SIZE}
                 className={actionIconClassName}
@@ -774,10 +825,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                   width: ANNOTATION_SIZE,
                   height: ANNOTATION_SIZE,
                 }}
-                onClick={() => {
-                  hide()
-                  tab.define([text])
-                }}
+                onClick={toggleDefinition}
               />
             )}
           </div>
