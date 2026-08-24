@@ -414,6 +414,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     if (savingReplacementRef.current) return
     setEditing(false)
     setReplacementError(undefined)
+    popupElementRef.current?.focus({ preventScroll: true })
   }
   const cancelAnnotation = () => {
     setDraftAnnotationColor(annotation?.color ?? 'yellow')

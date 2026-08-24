@@ -1535,7 +1535,9 @@ test('updates the rendered iframe after a mocked book text replacement', async (
   })
 })
 
-test('allows editing a plain paragraph selected from its trailing paragraph break', async ({ page }) => {
+test('allows editing a plain paragraph selected from its trailing paragraph break and dismisses the menu after editing', async ({
+  page,
+}) => {
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })
 
@@ -1578,7 +1580,13 @@ test('allows editing a plain paragraph selected from its trailing paragraph brea
   await expect(editText).toBeVisible()
   await expect(editText).toBeEnabled()
   await editText.click()
-  await expect(page.getByRole('textbox', { name: msg('menu.edit_text') })).toHaveValue('some')
+  const editor = page.getByRole('textbox', { name: msg('menu.edit_text') })
+  await expect(editor).toHaveValue('some')
+
+  await editor.press('Escape')
+  await expect(editor).toBeHidden()
+  await page.keyboard.press('Escape')
+  await expect(editText).toBeHidden()
 })
 
 test('refreshes the current table of contents after a generated TXT heading replacement', async ({ page }) => {
