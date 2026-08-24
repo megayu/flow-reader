@@ -27,7 +27,7 @@ function definitionUnderlineStyle(index: number, dark: boolean) {
     ...clickableMarkStyle,
     'data-underline-style': 'wavy',
     'data-wave-amplitude': 2,
-    'data-wave-gap': 1.5,
+    'data-wave-gap': 0.5,
     'data-wave-period': 7,
     stroke: dark ? color.dark : color.light,
     'stroke-opacity': 1,
