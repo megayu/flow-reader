@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+
 import { expect, type Locator, type Page, test } from '@playwright/test'
 
 import { createTestBook } from '../support/book-fixtures'
@@ -1533,6 +1536,89 @@ test('updates the rendered iframe after a mocked book text replacement', async (
     renderedText: 'FLOW-RENDERED-TEXT-EDIT',
     revision: 2,
   })
+})
+
+test('reloads an edited section with the latest revision after navigating away', async ({ page }) => {
+  const chapterPath = path.resolve('packages/epubjs/test/fixtures/alice/OPS/chapter_001.xhtml')
+  const originalChapter = readFileSync(chapterPath, 'utf8')
+  const oldText = 'Alice was beginning to get very tired'
+  const newText = 'Alice was beginning to feel fully awake'
+  const revisedChapter = originalChapter.replace(oldText, newText)
+
+  await page.route('**/test-assets/epub/OPS/chapter_001.xhtml*', (route) => {
+    const revision = new URL(route.request().url()).searchParams.get('flowRevision')
+    return route.fulfill({
+      contentType: 'application/xhtml+xml',
+      body: revision?.endsWith('.2') ? revisedChapter : originalChapter,
+    })
+  })
+
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+
+  const renderedText = await page.evaluate(
+    async ({ oldText, newText }) => {
+      const reader = (window as any).reader
+      const tab = reader.focusedBookTab
+      const frame = Array.from(document.querySelectorAll('iframe')).find(
+        (candidate) =>
+          !candidate.closest('[aria-hidden="true"]') && candidate.contentDocument?.body.textContent?.includes(oldText),
+      )
+      const frameDocument = frame?.contentDocument
+      if (!tab || !frameDocument?.body) throw new Error('Missing editable reader frame')
+
+      frameDocument.body.prepend(frameDocument.createTextNode('renderer-only text'))
+      const walker = frameDocument.createTreeWalker(frameDocument.body, NodeFilter.SHOW_TEXT)
+      let textNodeIndex = 0
+      let textNode = walker.nextNode() as Text | null
+      while (textNode && !textNode.textContent?.includes(oldText)) {
+        textNode = walker.nextNode() as Text | null
+        textNodeIndex += 1
+      }
+      if (!textNode?.textContent) throw new Error('Missing editable text node')
+
+      const section = tab.sections.find((candidate: any) => candidate.href.endsWith('chapter_001.xhtml'))
+      const otherSection = tab.sections.find((candidate: any) => candidate.href.endsWith('chapter_003.xhtml'))
+      if (!section || !otherSection) throw new Error('Missing navigation sections')
+
+      const startOffset = textNode.textContent.indexOf(oldText)
+      const target = {
+        sectionHref: section.href,
+        textNodeIndex,
+        textNodeText: textNode.textContent,
+        startOffset,
+        endOffset: startOffset + oldText.length,
+      }
+
+      await reader.applyBookContentEdit(
+        {
+          ...tab.book,
+          revision: tab.book.revision + 1,
+          updatedAt: tab.book.updatedAt + 1,
+        },
+        section.href,
+        tab,
+        {
+          target,
+          oldText,
+          newText,
+          document: frameDocument,
+          textNode,
+        },
+      )
+
+      await tab.displayTarget(otherSection)
+      await tab.displayTarget(section)
+      const visibleFrame = Array.from(document.querySelectorAll('iframe')).find(
+        (candidate) => !candidate.closest('[aria-hidden="true"]') && candidate.contentDocument?.body,
+      )
+      return visibleFrame?.contentDocument?.body.textContent ?? ''
+    },
+    { oldText, newText },
+  )
+
+  expect(renderedText).toContain(newText)
+  expect(renderedText).not.toContain(oldText)
 })
 
 test('allows editing a plain paragraph selected from its trailing paragraph break and dismisses the menu after editing', async ({

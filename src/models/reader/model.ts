@@ -184,12 +184,13 @@ type RuntimeRef<T extends object> = T & {
   $$valtioSnapshot: T
 }
 
-function createRevisionedEpubRequest(sourceRevision?: number, revision?: number) {
-  if (!sourceRevision && !revision) return undefined
-  const contentRevision = `${sourceRevision ?? 0}.${revision ?? 0}`
-
-  return (url: string, type?: string | null, withCredentials?: boolean, headers?: Record<string, string>) =>
-    epubRequest(appendUrlQuery(url, 'flowRevision', contentRevision), type, withCredentials, headers)
+function createRevisionedEpubRequest(getBook: () => Pick<BookRecord, 'sourceRevision' | 'revision'>) {
+  return (url: string, type?: string | null, withCredentials?: boolean, headers?: Record<string, string>) => {
+    const { sourceRevision, revision } = getBook()
+    const requestUrl =
+      sourceRevision || revision ? appendUrlQuery(url, 'flowRevision', `${sourceRevision ?? 0}.${revision ?? 0}`) : url
+    return epubRequest(requestUrl, type, withCredentials, headers)
+  }
 }
 
 const SECTION_DOCUMENT_HIGH_WATERMARK = 48
@@ -783,8 +784,20 @@ export class BookTab {
     } catch (error) {
       console.error(error)
     }
+    this.invalidateEditedSection(view.section as ISection)
     this.bumpViewVersion()
     return true
+  }
+
+  private invalidateEditedSection(section: ISection) {
+    const index = this.sectionInfoIndex(section)
+
+    section.unload()
+    if (index < 0) return
+
+    this.sectionInfoPromises.delete(index)
+    this.sectionDocumentAccess.delete(index)
+    this.bodyTextCache.delete(String(index))
   }
 
   checkpointContentEdit() {
@@ -2148,7 +2161,7 @@ export class BookTab {
       } else {
         epub = ref(
           await ePub(source.url, {
-            requestMethod: createRevisionedEpubRequest(this.book.sourceRevision, this.book.revision),
+            requestMethod: createRevisionedEpubRequest(() => this.book),
             containerRootUrl: source.rootUrl,
           }),
         )
