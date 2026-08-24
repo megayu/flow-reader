@@ -2647,7 +2647,7 @@ fn writes_image_index_cache_only_for_current_book_revision() {
 }
 
 #[test]
-fn edited_book_removes_the_actual_previous_cache_version() {
+fn edited_book_preserves_revision_independent_reading_metrics_cache() {
     let root = std::env::temp_dir().join(format!(
         "flow-reader-previous-cache-version-test-{}-{}",
         std::process::id(),
@@ -2661,8 +2661,9 @@ fn edited_book_removes_the_actual_previous_cache_version() {
     let cache_paths = [
         storage.search_text_cache_path("book", previous.source_revision, previous.revision),
         storage.image_index_cache_path("book", previous.source_revision, previous.revision),
-        storage.reading_metrics_cache_path("book", previous.source_revision, previous.revision),
+        storage.reading_metrics_cache_path("book", previous.source_revision),
     ];
+    assert_eq!(cache_paths[2].file_name().unwrap(), "reading-metrics.v1.s3.json.zst");
     for path in &cache_paths {
         fs::write(path, b"stale").unwrap();
     }
@@ -2678,7 +2679,9 @@ fn edited_book_removes_the_actual_previous_cache_version() {
         )
         .unwrap();
 
-    assert!(cache_paths.iter().all(|path| !path.exists()));
+    assert!(!cache_paths[0].exists());
+    assert!(!cache_paths[1].exists());
+    assert!(cache_paths[2].exists());
     let _ = fs::remove_dir_all(root);
 }
 

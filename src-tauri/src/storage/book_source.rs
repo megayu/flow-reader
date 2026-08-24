@@ -525,7 +525,6 @@ pub(super) fn get_book_reader_source_impl(
         tasks,
         &book.id,
         metrics_book.source_revision,
-        metrics_book.revision,
         mode,
         root_path.as_deref(),
     )

@@ -313,9 +313,10 @@ impl AppStorage {
         ))
     }
 
-    fn reading_metrics_cache_path(&self, id: &str, source_revision: u32, revision: u32) -> PathBuf {
+    // source_revision changes must rebuild reading metrics; revision changes must reuse them.
+    fn reading_metrics_cache_path(&self, id: &str, source_revision: u32) -> PathBuf {
         self.book_dir(id).join(format!(
-            "reading-metrics.v{}.s{source_revision}.r{revision}.json.zst",
+            "reading-metrics.v{}.s{source_revision}.json.zst",
             reading_metrics::READING_METRICS_VERSION,
         ))
     }

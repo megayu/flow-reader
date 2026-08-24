@@ -1375,11 +1375,6 @@ impl AppStorage {
                 previous_book.source_revision,
                 previous_book.revision,
             ));
-            let _ = fs::remove_file(self.reading_metrics_cache_path(
-                &book.id,
-                previous_book.source_revision,
-                previous_book.revision,
-            ));
         }
         let has_search = self
             .inner
