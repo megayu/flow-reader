@@ -78,6 +78,22 @@ function inferScriptLanguage(
   return undefined
 }
 
+function firstLanguageCharacter(text: string): string | undefined {
+  for (const character of text) {
+    if (!/^[\p{N}\p{P}\p{Z}\s]$/u.test(character)) return character
+  }
+}
+
+function characterMatchesLanguage(character: string, language: TranslationLanguage): boolean {
+  if (language.startsWith('zh-')) return /^\p{Script=Han}$/u.test(character)
+  if (language === 'ja') {
+    return /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]$/u.test(character)
+  }
+  if (language === 'ko') return /^[\p{Script=Han}\p{Script=Hangul}]$/u.test(character)
+  if (language === 'ru') return /^\p{Script=Cyrillic}$/u.test(character)
+  return /^\p{Script=Latin}$/u.test(character)
+}
+
 export function resolveTranslationDirection({
   declaredLanguage,
   mainLanguage,
@@ -92,8 +108,21 @@ export function resolveTranslationDirection({
   sourceLanguage: TranslationSourceLanguage
   targetLanguage: TranslationLanguage
 } {
+  const normalizedDeclaredLanguage = normalizeLanguage(declaredLanguage)
+  const languageCharacter = firstLanguageCharacter(text)
+  if (
+    normalizedDeclaredLanguage &&
+    languageCharacter &&
+    !characterMatchesLanguage(languageCharacter, normalizedDeclaredLanguage)
+  ) {
+    return {
+      sourceLanguage: 'auto',
+      targetLanguage: mainLanguage,
+    }
+  }
+
   const sourceLanguage =
-    normalizeLanguage(declaredLanguage) ?? inferScriptLanguage(text, mainLanguage, secondaryLanguage) ?? 'auto'
+    normalizedDeclaredLanguage ?? inferScriptLanguage(text, mainLanguage, secondaryLanguage) ?? 'auto'
 
   return {
     sourceLanguage,
