@@ -950,6 +950,9 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
               {returnPreviousShortcut && <ShortcutChord compact shortcut={returnPreviousShortcut} />}
             </button>
           </div>
+          <div className="shrink-0 text-center tabular-nums">
+            {startDisplayed && formatFooterPage(startDisplayed, percentage)}
+          </div>
           <button
             type="button"
             className={returnActionClass}
