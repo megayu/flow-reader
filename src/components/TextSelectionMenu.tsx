@@ -433,6 +433,40 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     setReplacementError(undefined)
     popupElementRef.current?.focus({ preventScroll: true })
   }
+  const saveReplacement = () => {
+    if (!replaceTarget || savingReplacementRef.current) return
+
+    const { selectedText, textNode, ...target } = replaceTarget
+    const newText = replacementRef.current?.value ?? selectedText
+    if (newText === selectedText) return
+
+    savingReplacementRef.current = true
+    setSavingReplacement(true)
+    setReplacementError(undefined)
+    void replaceBookText({
+      id: tab.book.id,
+      target,
+      oldText: selectedText,
+      newText,
+    })
+      .then(async (result) => {
+        await reader.applyBookContentEdit(result.book, result.sectionHref, tab, {
+          target,
+          oldText: selectedText,
+          newText,
+          document: range.startContainer.ownerDocument ?? undefined,
+          textNode,
+        })
+        hide()
+      })
+      .catch((error) => {
+        setReplacementError(textReplacementErrorMessage(error, t))
+      })
+      .finally(() => {
+        savingReplacementRef.current = false
+        setSavingReplacement(false)
+      })
+  }
   const cancelAnnotation = () => {
     setDraftAnnotationColor(annotation?.color ?? 'yellow')
     setAnnotationNotesChanged(false)
@@ -702,6 +736,21 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               defaultValue={replaceTarget?.selectedText ?? text}
               onValueChange={(value) => setEditorChanged(value !== replaceTarget?.selectedText)}
               onExitEditing={cancelEditing}
+              onKeyDown={(event) => {
+                if (
+                  event.nativeEvent.isComposing ||
+                  !(event.metaKey || event.ctrlKey) ||
+                  event.altKey ||
+                  event.shiftKey ||
+                  (event.key.toLowerCase() !== 's' && event.code !== 'KeyS')
+                ) {
+                  return
+                }
+
+                event.preventDefault()
+                event.stopPropagation()
+                saveReplacement()
+              }}
               className="textfield bg-background text-foreground scroll block h-40 min-h-0 w-68 resize-none rounded-none border-0 px-1.5 py-1 text-base outline-none focus-visible:border-transparent focus-visible:ring-1 focus-visible:ring-inset"
             />
             {replacementError && (
@@ -879,39 +928,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               className="ml-auto"
               size="sm"
               disabled={!replaceTarget || savingReplacement || !editorChanged}
-              onClick={() => {
-                if (!replaceTarget) return
-                const { selectedText, textNode, ...target } = replaceTarget
-                const newText = replacementRef.current?.value ?? selectedText
-                if (newText === selectedText) return
-
-                savingReplacementRef.current = true
-                setSavingReplacement(true)
-                setReplacementError(undefined)
-                void replaceBookText({
-                  id: tab.book.id,
-                  target,
-                  oldText: selectedText,
-                  newText,
-                })
-                  .then(async (result) => {
-                    await reader.applyBookContentEdit(result.book, result.sectionHref, tab, {
-                      target,
-                      oldText: selectedText,
-                      newText,
-                      document: range.startContainer.ownerDocument ?? undefined,
-                      textNode,
-                    })
-                    hide()
-                  })
-                  .catch((error) => {
-                    setReplacementError(textReplacementErrorMessage(error, t))
-                  })
-                  .finally(() => {
-                    savingReplacementRef.current = false
-                    setSavingReplacement(false)
-                  })
-              }}
+              onClick={saveReplacement}
             >
               {savingReplacement ? t('saving') : t('save')}
             </Button>
