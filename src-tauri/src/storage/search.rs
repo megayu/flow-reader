@@ -954,14 +954,12 @@ fn search_text_and_title_from_document(doc: &roxmltree::Document<'_>) -> (String
     let title = body
         .descendants()
         .find(|node| node.is_element() && matches!(node.tag_name().name(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6"))
-        .and_then(|node| node.text())
-        .map(clean_xml_text)
+        .map(node_search_text)
         .filter(|title| !title.is_empty())
         .or_else(|| {
             doc.descendants()
                 .find(|node| node.is_element() && node.has_tag_name("title"))
-                .and_then(|node| node.text())
-                .map(clean_xml_text)
+                .map(node_search_text)
                 .filter(|title| !title.is_empty())
         });
 
