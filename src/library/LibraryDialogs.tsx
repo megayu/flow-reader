@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import React, { useCallback, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { cleanBookText, getBookDisplayTitle } from '../book'
 import { Button as UiButton } from '../components/ui/button'
@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '../components/ui/input'
 import { formatLocalDirectoryForDisplay } from '../dictionary/path'
 import { useLibraryPins, useLibraryTags } from '../hooks/useLibrary'
+import { useLocale } from '../hooks/useLocale'
 import { useTranslation } from '../hooks/useTranslation'
 import { type BookRecord, db, type LibraryTagRecord } from '../storage'
 
@@ -19,6 +20,7 @@ import {
   formatFileSize,
   formatLanguage,
   formatPercentage,
+  formatWordCount,
   mergeLibraryTags,
 } from './model'
 
@@ -500,8 +502,32 @@ interface BookInfoDialogProps extends BookDialogProps {
 
 export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({ book, cover, onClose }) => {
   const t = useTranslation('home')
+  const { locale } = useLocale()
+  const [wordCount, setWordCount] = useState<number | null | undefined>(book.wordCount)
   const title = getBookDisplayTitle(book)
   const description = cleanBookDescription(book.metadata.description)
+
+  useEffect(() => {
+    if (book.wordCount !== undefined) {
+      setWordCount(book.wordCount)
+      return
+    }
+
+    let active = true
+    setWordCount(undefined)
+    void db.books
+      .getWordCount(book.id)
+      .then((value) => {
+        if (active) setWordCount(value)
+      })
+      .catch(() => {
+        if (active) setWordCount(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [book.id, book.wordCount])
+
   const rows = [
     [t('info.creator'), cleanBookText(book.metadata.creator)],
     [t('info.language'), formatLanguage(book.metadata.language)],
@@ -512,6 +538,14 @@ export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({ book, cover, onC
       : []),
     [t('info.file_name'), cleanBookText(book.name)],
     [t('info.size'), formatFileSize(book.size)],
+    [
+      t('info.word_count'),
+      wordCount === undefined
+        ? t('info.word_count_calculating')
+        : wordCount === null
+          ? t('info.word_count_unavailable')
+          : formatWordCount(wordCount, locale),
+    ],
     [t('info.date_added'), formatDateTime(book.createdAt)],
     [t('info.last_read'), formatDateTime(book.lastReadAt)],
     [t('info.reading_progress'), formatPercentage(book.percentage)],

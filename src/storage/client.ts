@@ -338,6 +338,11 @@ export const db = {
     revealSource(id: string) {
       return invoke<boolean>('reveal_book_source', { id })
     },
+    async getWordCount(id: string) {
+      const wordCount = await invoke<number>('get_book_word_count', { id })
+      updateCachedBook(id, { wordCount })
+      return wordCount
+    },
     updateCachedFields(
       id: string,
       changes: Partial<Pick<BookRecord, 'cfi' | 'lastReadAt' | 'percentage' | 'updatedAt'>>,

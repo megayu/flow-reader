@@ -1427,6 +1427,19 @@ pub async fn search_book_text(
 }
 
 #[tauri::command]
+pub async fn get_book_word_count(
+    storage: State<'_, AppStorage>,
+    tasks: State<'_, TaskService>,
+    id: String,
+) -> Result<u64, String> {
+    let storage = (*storage).clone();
+    let tasks = (*tasks).clone();
+    tauri::async_runtime::spawn_blocking(move || get_or_compute_book_word_count(&storage, &tasks, &id))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub async fn load_book_image_index(
     storage: State<'_, AppStorage>,
     tasks: State<'_, TaskService>,

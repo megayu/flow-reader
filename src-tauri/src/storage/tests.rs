@@ -4340,6 +4340,7 @@ fn test_library_book(source_format: BookSourceFormat) -> StoredBook {
         source_format,
         generated_cover: source_format == BookSourceFormat::Txt,
         content_edited_at: None,
+        word_count: None,
         source_hash: "hash".to_string(),
         source_revision: 1,
         revision: 1,

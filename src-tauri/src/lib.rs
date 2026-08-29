@@ -356,6 +356,7 @@ pub fn run() {
             dictionary::remove_local_dictionary,
             storage::list_books,
             storage::get_book,
+            storage::get_book_word_count,
             storage::open_book_directory,
             storage::reveal_book_source,
             storage::reveal_exported_file,

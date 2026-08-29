@@ -124,6 +124,7 @@ export interface BookRecord {
   sourceFormat: BookSourceFormat
   generatedCover: boolean
   contentEditedAt?: number
+  wordCount?: number
   metadata: PackagingMetadataObject
   createdAt: number
   updatedAt?: number

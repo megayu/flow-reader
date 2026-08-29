@@ -12,6 +12,7 @@ export const storageCommand = {
   exportBook: 'export_book',
   flushSettings: 'flush_settings',
   getBook: 'get_book',
+  getBookWordCount: 'get_book_word_count',
   getBookReaderSource: 'get_book_reader_source',
   getLibraryPins: 'get_library_pins',
   getRecentBookIds: 'get_recent_book_ids',

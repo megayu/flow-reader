@@ -33,6 +33,13 @@ export function formatFileSize(bytes: number) {
   return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 2)} ${units[unitIndex]}`
 }
 
+export function formatWordCount(wordCount: number, locale: string) {
+  return new Intl.NumberFormat(
+    locale,
+    locale === 'zh-CN' ? { notation: 'compact', maximumFractionDigits: 2 } : undefined,
+  ).format(wordCount)
+}
+
 export function formatDateTime(value?: number) {
   if (!value) return ''
 

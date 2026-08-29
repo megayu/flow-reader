@@ -1616,6 +1616,7 @@ pub(super) fn import_text_path_impl(
                 source_format: BookSourceFormat::Txt,
                 generated_cover: true,
                 content_edited_at: None,
+                word_count: None,
                 source_hash: hash.clone(),
                 source_revision: 1,
                 revision: 1,

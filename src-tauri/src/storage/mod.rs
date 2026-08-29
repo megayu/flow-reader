@@ -100,8 +100,8 @@ use import_support::{
     eager_import_materialization_enabled, existing_book_import, import_work_path, same_source_path,
 };
 use search::{
-    DerivedCacheState, SearchTextCache, load_or_build_image_index_cache, load_or_build_search_text_cache,
-    search_text_in_cache,
+    DerivedCacheState, SearchTextCache, get_or_compute_book_word_count, load_or_build_image_index_cache,
+    load_or_build_search_text_cache, search_text_in_cache,
 };
 #[cfg(test)]
 use search::{
@@ -208,6 +208,7 @@ fn adopt_book_source_fields(book: &mut StoredBook, source_hash: String, size: u6
     book.source_revision = next_book_revision(book)?;
     book.source_hash = source_hash;
     book.size = size;
+    book.word_count = None;
     Ok(())
 }
 
@@ -529,6 +530,7 @@ impl AppStorage {
             source_format: book.source_format,
             generated_cover: book.generated_cover,
             content_edited_at: book.content_edited_at,
+            word_count: book.word_count,
             metadata: book.metadata.clone(),
             created_at: book.created_at,
             updated_at: book.updated_at,

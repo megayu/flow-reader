@@ -62,6 +62,8 @@ pub(super) struct StoredBook {
     pub(super) generated_cover: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) content_edited_at: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) word_count: Option<u64>,
     pub(super) source_hash: String,
     /// Monotonic event number for the last accepted source file.
     pub(super) source_revision: u32,
@@ -108,6 +110,8 @@ pub struct BookRecord {
     pub(super) generated_cover: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) content_edited_at: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) word_count: Option<u64>,
     #[serde(default = "empty_object")]
     pub(super) metadata: Value,
     pub(super) created_at: u64,

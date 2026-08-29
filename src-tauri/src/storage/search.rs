@@ -305,9 +305,14 @@ pub(super) fn load_or_build_search_text_cache(
     tasks: &TaskService,
     book: &StoredBook,
 ) -> Result<Arc<SearchTextCache>, String> {
-    load_or_build_derived_cache(storage, tasks, book, true)?
+    let cache = load_or_build_derived_cache(storage, tasks, book, true)?
         .search
-        .ok_or_else(|| "Search text cache was not built".to_string())
+        .ok_or_else(|| "Search text cache was not built".to_string())?;
+    if book.word_count.is_none() {
+        let word_count = word_count_from_search_sections(&cache.sections);
+        storage.store_word_count_if_missing(&book.id, book.source_revision, word_count)?;
+    }
+    Ok(cache)
 }
 
 pub(super) fn load_or_build_image_index_cache(
@@ -575,22 +580,22 @@ fn read_derived_sections_from_epub_package(
     path: &Path,
     include_search: bool,
 ) -> Result<(Vec<SearchTextSection>, Vec<ImageIndexSection>), String> {
+    with_epub_package_source(path, |source| read_derived_sections_from_source(source, include_search))
+}
+
+fn with_epub_package_source<T>(
+    path: &Path,
+    read: impl FnOnce(&mut ArchivePublicationSource<fs::File>) -> Result<T, String>,
+) -> Result<T, String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
     validate_epub_archive_limits(&mut archive)?;
     let mut source = ArchivePublicationSource::new(archive);
-    read_derived_sections_from_source(&mut source, include_search)
+    read(&mut source)
 }
 
-fn read_derived_sections_from_source(
-    source: &mut impl PublicationSource,
-    include_search: bool,
-) -> Result<(Vec<SearchTextSection>, Vec<ImageIndexSection>), String> {
-    let (opf_path, opf) = read_package_document(source)?;
-    let opf_doc = roxmltree::Document::parse(&opf).map_err(|error| error.to_string())?;
-    let opf_dir = parent_zip_path(&opf_path).to_string();
-
-    let manifest = opf_doc
+fn derived_manifest(opf_doc: &roxmltree::Document<'_>) -> HashMap<String, DerivedManifestItem> {
+    opf_doc
         .descendants()
         .filter(|node| node.is_element() && node.has_tag_name("item"))
         .filter_map(|node| {
@@ -605,7 +610,56 @@ fn read_derived_sections_from_source(
                 },
             ))
         })
-        .collect::<HashMap<_, _>>();
+        .collect()
+}
+
+fn visit_derived_spine_documents(
+    source: &mut impl PublicationSource,
+    opf_doc: &roxmltree::Document<'_>,
+    manifest: &HashMap<String, DerivedManifestItem>,
+    opf_dir: &str,
+    mut visit: impl FnMut(usize, String, &str) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut total_document_bytes = 0u64;
+    for (section_index, itemref) in opf_doc
+        .descendants()
+        .filter(|node| node.is_element() && node.has_tag_name("itemref"))
+        .enumerate()
+    {
+        let Some(item) = itemref.attribute("idref").and_then(|idref| manifest.get(idref)) else {
+            continue;
+        };
+        if !is_search_text_document_media_type(&item.media_type) {
+            continue;
+        }
+
+        let normalized_href = normalize_zip_path(href_without_fragment(&item.href).replace('\\', "/"));
+        if normalized_href.is_empty() {
+            continue;
+        }
+
+        let section_path = normalize_zip_path(join_zip_path(opf_dir, &normalized_href));
+        let xhtml = source.read_document(&section_path)?;
+        total_document_bytes = total_document_bytes
+            .checked_add(xhtml.len() as u64)
+            .ok_or_else(|| "EPUB search text size overflows the supported limit".to_string())?;
+        if total_document_bytes > EPUB_MAX_SEARCH_TEXT_BYTES {
+            return Err("EPUB search text exceeds the supported size limit".to_string());
+        }
+        visit(section_index, normalized_href, &xhtml)?;
+    }
+    Ok(())
+}
+
+fn read_derived_sections_from_source(
+    source: &mut impl PublicationSource,
+    include_search: bool,
+) -> Result<(Vec<SearchTextSection>, Vec<ImageIndexSection>), String> {
+    let (opf_path, opf) = read_package_document(source)?;
+    let opf_doc = roxmltree::Document::parse(&opf).map_err(|error| error.to_string())?;
+    let opf_dir = parent_zip_path(&opf_path).to_string();
+
+    let manifest = derived_manifest(&opf_doc);
     let nav_items = if include_search {
         read_search_text_nav_items(source, &opf_doc, &manifest, &opf_dir)
             .into_iter()
@@ -619,53 +673,197 @@ fn read_derived_sections_from_source(
 
     let mut sections = Vec::new();
     let mut image_sections = Vec::new();
-    let mut total_document_bytes = 0u64;
-    for (section_index, itemref) in opf_doc
-        .descendants()
-        .filter(|node| node.is_element() && node.has_tag_name("itemref"))
-        .enumerate()
-    {
-        let Some(idref) = itemref.attribute("idref") else {
-            continue;
-        };
-        let Some(item) = manifest.get(idref) else {
-            continue;
-        };
-        if !is_search_text_document_media_type(&item.media_type) {
-            continue;
-        }
+    visit_derived_spine_documents(
+        source,
+        &opf_doc,
+        &manifest,
+        &opf_dir,
+        |section_index, normalized_href, xhtml| {
+            let (search_data, image_section) =
+                parse_derived_section(section_index, normalized_href.clone(), xhtml, include_search);
+            image_sections.push(image_section);
+            let Some((text, title)) = search_data else {
+                return Ok(());
+            };
+            let nav_item = nav_items.get(&normalized_href).cloned();
 
-        let normalized_href = normalize_zip_path(href_without_fragment(&item.href).replace('\\', "/"));
-        if normalized_href.is_empty() {
-            continue;
-        }
-
-        let section_path = normalize_zip_path(join_zip_path(&opf_dir, &normalized_href));
-        let xhtml = source.read_document(&section_path)?;
-        total_document_bytes = total_document_bytes
-            .checked_add(xhtml.len() as u64)
-            .ok_or_else(|| "EPUB search text size overflows the supported limit".to_string())?;
-        if total_document_bytes > EPUB_MAX_SEARCH_TEXT_BYTES {
-            return Err("EPUB search text exceeds the supported size limit".to_string());
-        }
-        let (search_data, image_section) =
-            parse_derived_section(section_index, normalized_href.clone(), &xhtml, include_search);
-        image_sections.push(image_section);
-        let Some((text, title)) = search_data else {
-            continue;
-        };
-        let nav_item = nav_items.get(&normalized_href).cloned();
-
-        sections.push(SearchTextSection {
-            section_index,
-            href: normalized_href,
-            title: nav_item.as_ref().map(|item| item.label.clone()).or(title),
-            nav_path: nav_item.map(|item| item.path).unwrap_or_default(),
-            text,
-        });
-    }
+            sections.push(SearchTextSection {
+                section_index,
+                href: normalized_href,
+                title: nav_item.as_ref().map(|item| item.label.clone()).or(title),
+                nav_path: nav_item.map(|item| item.path).unwrap_or_default(),
+                text,
+            });
+            Ok(())
+        },
+    )?;
 
     Ok((sections, image_sections))
+}
+
+#[derive(Default)]
+struct WordCounter {
+    count: u64,
+    in_word: bool,
+}
+
+trait VisibleTextSink {
+    fn push_text(&mut self, text: &str);
+    fn boundary(&mut self);
+}
+
+impl VisibleTextSink for String {
+    fn push_text(&mut self, text: &str) {
+        self.push_str(text);
+    }
+
+    fn boundary(&mut self) {
+        push_search_text_boundary(self);
+    }
+}
+
+impl VisibleTextSink for WordCounter {
+    fn push_text(&mut self, text: &str) {
+        for character in text.chars() {
+            if is_cjk_character(character) {
+                self.count = self.count.saturating_add(1);
+                self.in_word = false;
+            } else if character.is_alphanumeric() {
+                if !self.in_word {
+                    self.count = self.count.saturating_add(1);
+                    self.in_word = true;
+                }
+            } else {
+                self.in_word = false;
+            }
+        }
+    }
+
+    fn boundary(&mut self) {
+        self.in_word = false;
+    }
+}
+
+fn is_cjk_character(character: char) -> bool {
+    matches!(
+        character as u32,
+        0x1100..=0x11ff
+            | 0x2e80..=0x2fdf
+            | 0x3040..=0x30ff
+            | 0x3130..=0x318f
+            | 0x31f0..=0x31ff
+            | 0x3400..=0x4dbf
+            | 0x4e00..=0x9fff
+            | 0xac00..=0xd7af
+            | 0xf900..=0xfaff
+            | 0x20000..=0x323af
+    )
+}
+
+fn word_count_from_search_sections(sections: &[SearchTextSection]) -> u64 {
+    let mut counter = WordCounter::default();
+    for section in sections {
+        counter.push_text(&section.text);
+        counter.boundary();
+    }
+    counter.count
+}
+
+fn count_words_in_xhtml(xhtml: &str, counter: &mut WordCounter) {
+    let cleaned = remove_doctype_declaration(xhtml);
+    let Ok(document) = roxmltree::Document::parse(&cleaned) else {
+        counter.push_text(&strip_html_for_search_text(&cleaned));
+        counter.boundary();
+        return;
+    };
+    let body = document
+        .descendants()
+        .find(|node| node.is_element() && node.has_tag_name("body"))
+        .unwrap_or_else(|| document.root_element());
+    append_visible_text(body, counter);
+    counter.boundary();
+}
+
+fn count_words_from_source(source: &mut impl PublicationSource) -> Result<u64, String> {
+    let (opf_path, opf) = read_package_document(source)?;
+    let opf_doc = roxmltree::Document::parse(&opf).map_err(|error| error.to_string())?;
+    let opf_dir = parent_zip_path(&opf_path).to_string();
+    let manifest = derived_manifest(&opf_doc);
+
+    let mut counter = WordCounter::default();
+    visit_derived_spine_documents(source, &opf_doc, &manifest, &opf_dir, |_, _, xhtml| {
+        count_words_in_xhtml(xhtml, &mut counter);
+        Ok(())
+    })?;
+    Ok(counter.count)
+}
+
+fn count_words_from_epub_package(path: &Path) -> Result<u64, String> {
+    with_epub_package_source(path, count_words_from_source)
+}
+
+fn count_words_from_unpacked(unpacked_dir: &Path) -> Result<u64, String> {
+    count_words_from_source(&mut UnpackedPublicationSource::new(unpacked_dir))
+}
+
+fn compute_book_word_count(storage: &AppStorage, tasks: &TaskService, book: &StoredBook) -> Result<u64, String> {
+    if book.source_format == BookSourceFormat::Epub {
+        return count_words_from_epub_package(&available_book_source_path(storage, book)?);
+    }
+
+    let unpacked_dir = storage.book_dir(&book.id).join(UNPACKED_DIR);
+    ensure_book_package_path(storage, tasks, book)?;
+    count_words_from_unpacked(&unpacked_dir)
+}
+
+pub(super) fn get_or_compute_book_word_count(
+    storage: &AppStorage,
+    tasks: &TaskService,
+    id: &str,
+) -> Result<u64, String> {
+    let book = storage.stored_book(id)?;
+    if let Some(word_count) = book.word_count {
+        return Ok(word_count);
+    }
+
+    tasks.run_book_exclusive(id, TaskPriority::Foreground, || {
+        let book = storage.stored_book(id)?;
+        if let Some(word_count) = book.word_count {
+            return Ok(word_count);
+        }
+        let word_count = tasks.run_cpu(TaskPriority::Foreground, || {
+            compute_book_word_count(storage, tasks, &book)
+        })?;
+        storage.store_word_count_if_missing(id, book.source_revision, word_count)
+    })
+}
+
+impl AppStorage {
+    fn store_word_count_if_missing(&self, id: &str, source_revision: u32, word_count: u64) -> Result<u64, String> {
+        let stored = {
+            let mut state = self
+                .inner
+                .state
+                .lock()
+                .map_err(|_| "storage state lock poisoned".to_string())?;
+            let book = state
+                .library
+                .books
+                .iter_mut()
+                .find(|book| book.id == id)
+                .ok_or_else(|| "Book not found".to_string())?;
+            if book.source_revision != source_revision {
+                return Err("Book word count is stale".to_string());
+            }
+            if let Some(existing) = book.word_count {
+                return Ok(existing);
+            }
+            book.word_count = Some(word_count);
+            word_count
+        };
+        self.mark_library_dirty();
+        Ok(stored)
+    }
 }
 
 fn read_search_text_nav_items(
@@ -949,7 +1147,7 @@ fn search_text_and_title_from_document(doc: &roxmltree::Document<'_>) -> (String
         .unwrap_or_else(|| doc.root_element());
 
     let mut text = String::new();
-    append_visible_search_text(body, &mut text);
+    append_visible_text(body, &mut text);
 
     let title = body
         .descendants()
@@ -996,10 +1194,10 @@ fn remove_doctype_declaration(value: &str) -> String {
     cleaned
 }
 
-fn append_visible_search_text(node: roxmltree::Node, output: &mut String) {
+fn append_visible_text(node: roxmltree::Node, output: &mut impl VisibleTextSink) {
     if node.is_text() {
         if let Some(text) = node.text() {
-            output.push_str(text);
+            output.push_text(text);
         }
         return;
     }
@@ -1015,15 +1213,15 @@ fn append_visible_search_text(node: roxmltree::Node, output: &mut String) {
 
     let block = is_search_text_block_element(name);
     if block {
-        push_search_text_boundary(output);
+        output.boundary();
     }
 
     for child in node.children() {
-        append_visible_search_text(child, output);
+        append_visible_text(child, output);
     }
 
     if block {
-        push_search_text_boundary(output);
+        output.boundary();
     }
 }
 
@@ -1714,6 +1912,7 @@ mod tests {
             source_format: BookSourceFormat::Epub,
             generated_cover: false,
             content_edited_at: None,
+            word_count: None,
             source_hash: format!("hash-{revision}"),
             source_revision: revision,
             revision,
