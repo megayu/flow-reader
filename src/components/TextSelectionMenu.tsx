@@ -12,7 +12,7 @@ import {
 import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSnapshot } from 'valtio'
 
-import { type AnnotationColor, colorMap, orderRangeRectsForWritingMode } from '../annotation'
+import { type AnnotationColor, annotationColors, colorMap, orderRangeRectsForWritingMode } from '../annotation'
 import { type LocalDictionaryRecord, listLocalDictionariesCached } from '../dictionary/native'
 import { normalizeDictionaryQuery } from '../dictionary/query'
 import { useSetAction } from '../hooks/useAction'
@@ -39,6 +39,8 @@ interface TextSelectionMenuProps {
   tab: BookTab
   onChapterFind: () => void
 }
+
+const DEFAULT_ANNOTATION_COLOR = annotationColors[0]
 
 function getSelectionRange(selection?: Selection) {
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
@@ -391,7 +393,9 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const annotation = tab.overlayState.annotations.find((a) => a.cfi === cfi)
   const annotationHasNotes = Boolean(annotation?.notes?.trim())
   const [annotate, setAnnotate] = useState(annotationHasNotes)
-  const [draftAnnotationColor, setDraftAnnotationColor] = useState<AnnotationColor>(annotation?.color ?? 'yellow')
+  const [draftAnnotationColor, setDraftAnnotationColor] = useState<AnnotationColor>(
+    annotation?.color ?? DEFAULT_ANNOTATION_COLOR,
+  )
   const [annotationNotesChanged, setAnnotationNotesChanged] = useState(false)
   const replacementRef = useRef<HTMLTextAreaElement>(null)
   const currentReplaceTarget = useMemo(() => createTextReplaceTarget(range, section), [range, section])
@@ -403,7 +407,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const [replacementError, setReplacementError] = useState<TextReplacementError>()
   const replaceTarget = editing ? replacementSnapshotRef.current : currentReplaceTarget
   const initialAnnotationNotes = annotation?.notes ?? ''
-  const annotationColorChanged = draftAnnotationColor !== (annotation?.color ?? 'yellow')
+  const annotationColorChanged = draftAnnotationColor !== (annotation?.color ?? DEFAULT_ANNOTATION_COLOR)
   const annotationChanged = annotationNotesChanged || annotationColorChanged
   const editTextDisabledReason = tab.book.archive
     ? t('edit_text_unsupported')
@@ -468,7 +472,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
       })
   }
   const cancelAnnotation = () => {
-    setDraftAnnotationColor(annotation?.color ?? 'yellow')
+    setDraftAnnotationColor(annotation?.color ?? DEFAULT_ANNOTATION_COLOR)
     setAnnotationNotesChanged(false)
     setAnnotate(false)
     popupElementRef.current?.focus({ preventScroll: true })
@@ -487,7 +491,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   }
   const startAnnotating = () => {
     setAnnotationNotesChanged(false)
-    setDraftAnnotationColor(annotation?.color ?? 'yellow')
+    setDraftAnnotationColor(annotation?.color ?? DEFAULT_ANNOTATION_COLOR)
     setAnnotate(true)
   }
   const toggleDefinition = () => {
