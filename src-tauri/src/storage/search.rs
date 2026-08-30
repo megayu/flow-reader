@@ -703,8 +703,10 @@ fn read_derived_sections_from_source(
 
 #[derive(Default)]
 struct WordCounter {
-    count: u64,
-    in_word: bool,
+    non_whitespace_character_count: u64,
+    non_cjk_token_count: u64,
+    has_cjk: bool,
+    token_has_alphanumeric: bool,
 }
 
 trait VisibleTextSink {
@@ -725,22 +727,35 @@ impl VisibleTextSink for String {
 impl VisibleTextSink for WordCounter {
     fn push_text(&mut self, text: &str) {
         for character in text.chars() {
-            if is_cjk_character(character) {
-                self.count = self.count.saturating_add(1);
-                self.in_word = false;
-            } else if character.is_alphanumeric() {
-                if !self.in_word {
-                    self.count = self.count.saturating_add(1);
-                    self.in_word = true;
-                }
+            if character.is_whitespace() {
+                self.finish_token();
             } else {
-                self.in_word = false;
+                self.non_whitespace_character_count = self.non_whitespace_character_count.saturating_add(1);
+                self.has_cjk |= is_cjk_character(character);
+                self.token_has_alphanumeric |= character.is_alphanumeric();
             }
         }
     }
 
     fn boundary(&mut self) {
-        self.in_word = false;
+        self.finish_token();
+    }
+}
+
+impl WordCounter {
+    fn finish_token(&mut self) {
+        if self.token_has_alphanumeric {
+            self.non_cjk_token_count = self.non_cjk_token_count.saturating_add(1);
+        }
+        self.token_has_alphanumeric = false;
+    }
+
+    fn count(&self) -> u64 {
+        if self.has_cjk {
+            self.non_whitespace_character_count
+        } else {
+            self.non_cjk_token_count
+        }
     }
 }
 
@@ -766,7 +781,7 @@ fn word_count_from_search_sections(sections: &[SearchTextSection]) -> u64 {
         counter.push_text(&section.text);
         counter.boundary();
     }
-    counter.count
+    counter.count()
 }
 
 fn count_words_in_xhtml(xhtml: &str, counter: &mut WordCounter) {
@@ -795,7 +810,7 @@ fn count_words_from_source(source: &mut impl PublicationSource) -> Result<u64, S
         count_words_in_xhtml(xhtml, &mut counter);
         Ok(())
     })?;
-    Ok(counter.count)
+    Ok(counter.count())
 }
 
 fn count_words_from_epub_package(path: &Path) -> Result<u64, String> {
@@ -1976,6 +1991,22 @@ mod tests {
                 nav_path: Vec::new(),
                 text: text.to_string(),
             }],
+        }
+    }
+
+    #[test]
+    fn counts_cjk_characters_and_non_cjk_whitespace_tokens() {
+        for (text, expected) in [
+            ("你好，世界！", 6),
+            ("你好 ， 世界", 5),
+            ("version 2.0", 2),
+            ("a - b", 2),
+            ("a-b", 1),
+        ] {
+            let mut counter = WordCounter::default();
+            counter.push_text(text);
+            counter.boundary();
+            assert_eq!(counter.count(), expected, "{text}");
         }
     }
 
