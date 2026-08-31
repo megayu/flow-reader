@@ -2423,8 +2423,15 @@ export class Reader {
     return tab
   }
 
-  private insertTab(book: BookRecord) {
+  private insertTab(book: BookRecord, activate = true) {
     const tab = new BookTab(book)
+
+    if (!activate && this.selectedIndex >= 0) {
+      this.tabs.push(tab)
+      this.paneTabs.push(tab)
+      setTabRuntimeActive(tab, false)
+      return tab
+    }
 
     this.setSelectedRuntimeActive(false)
     this.selectedIndex += 1
@@ -2497,18 +2504,21 @@ export class Reader {
     return this.addTab(book)
   }
 
-  openBookFromLibrary(bookId: string) {
-    if (isRecentReadingEnabled()) db.recentBooks.record(bookId)
+  openBookFromLibrary(bookId: string, options?: { activate?: boolean }) {
+    const activate = options?.activate !== false
+    if (activate && isRecentReadingEnabled()) db.recentBooks.record(bookId)
 
     const existing = this.findBookTab(bookId)
     if (existing) {
+      if (!activate) return existing.tab
+
       const tab = this.focusBookTab(existing)
       tab.beginRecentReadingSession()
       tab.recordOpened(true)
       return tab
     }
 
-    return this.loadAndAddBookTab(bookId, this.closingBooks.get(bookId))
+    return this.loadAndAddBookTab(bookId, this.closingBooks.get(bookId), activate)
   }
 
   async openBookFromDeepLink(bookId: string, cfi?: string) {
@@ -2531,27 +2541,28 @@ export class Reader {
     return tab
   }
 
-  addTab(book: BookRecord): BookTab | Promise<BookTab> {
+  addTab(book: BookRecord, options?: { activate?: boolean }): BookTab | Promise<BookTab> {
     const bookId = book.id
+    const activate = options?.activate !== false
     const existing = this.findBookTab(bookId)
     if (existing) {
-      return this.focusBookTab(existing)
+      return activate ? this.focusBookTab(existing) : existing.tab
     }
 
     const closingBook = this.closingBooks.get(bookId)
     if (closingBook) {
-      return this.loadAndAddBookTab(bookId, closingBook)
+      return this.loadAndAddBookTab(bookId, closingBook, activate)
     }
 
-    return this.insertTab(book)
+    return this.insertTab(book, activate)
   }
 
-  private async loadAndAddBookTab(bookId: string, closingBook: Promise<BookTab> | undefined) {
+  private async loadAndAddBookTab(bookId: string, closingBook: Promise<BookTab> | undefined, activate = true) {
     await closingBook
 
     const existing = this.findBookTab(bookId)
     if (existing) {
-      return this.focusBookTab(existing)
+      return activate ? this.focusBookTab(existing) : existing.tab
     }
 
     const book = await db.books.get(bookId)
@@ -2559,10 +2570,10 @@ export class Reader {
 
     const opened = this.findBookTab(bookId)
     if (opened) {
-      return this.focusBookTab(opened)
+      return activate ? this.focusBookTab(opened) : opened.tab
     }
 
-    return this.addTab(book)
+    return this.addTab(book, { activate })
   }
 
   removeTab(index: number) {

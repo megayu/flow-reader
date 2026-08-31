@@ -51,7 +51,7 @@ const managedBook: BookRecord = createTestBook({
   sourcePath: 'managed.epub',
 })
 
-test('shift click reveals only an available referenced source in normal mode', async ({ page }) => {
+test('cover modifiers reveal sources, open storage directories, and open tabs in the background', async ({ page }) => {
   await installTauriMock(page, {
     books: [referencedBook, missingArchiveBook, managedBook],
     revealableBookSourceIds: [referencedBook.id],
@@ -62,13 +62,25 @@ test('shift click reveals only an available referenced source in normal mode', a
   const cover = (title: string) =>
     page.locator('[data-flow-library-book-card]').filter({ hasText: title }).locator('img[alt="Cover"]')
 
-  await cover('Referenced Book').click({ modifiers: ['Shift'] })
-  await cover('Missing Archive').click({ modifiers: ['Shift'] })
+  await cover('Referenced Book').click({ modifiers: ['Alt'] })
+  await cover('Missing Archive').click({ modifiers: ['Alt'] })
+  await cover('Managed Book').click({ modifiers: ['Alt'] })
   await cover('Managed Book').click({ modifiers: ['Shift'] })
 
-  const revealedIds = await page.evaluate(() => (window as any).__FLOW_TEST_TAURI__?.revealedBookSourceIds as string[])
-  expect(revealedIds).toEqual([referencedBook.id])
-  await expect(page.locator('[data-flow-reader]')).toHaveCount(0)
+  const nativeOperations = await page.evaluate(() => (window as any).__FLOW_TEST_TAURI__)
+  expect(nativeOperations.revealedBookSourceIds).toEqual([referencedBook.id])
+  expect(nativeOperations.openedBookDirectoryIds).toEqual([managedBook.id])
+
+  const primaryModifier = process.platform === 'darwin' ? 'Meta' : 'Control'
+  await cover('Referenced Book').click({ modifiers: [primaryModifier] })
+  await expect(page.locator('[data-flow-reader-tab-index]')).toHaveCount(1)
+  await expect(cover('Referenced Book')).toBeVisible()
+
+  await cover('Managed Book').click({ button: 'middle' })
+  await expect(page.locator('[data-flow-reader-tab-index]')).toHaveCount(2)
+  const readerPanes = page.locator('[data-flow-reader-pane]')
+  await expect(readerPanes.nth(0)).toHaveAttribute('aria-hidden', 'false')
+  await expect(readerPanes.nth(1)).toHaveAttribute('aria-hidden', 'true')
 })
 
 test('replaces the archive badge and warns when its referenced source is missing', async ({ page }) => {

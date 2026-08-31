@@ -169,18 +169,21 @@ const BookCardComponent: React.FC<BookCardProps> = ({
   const exportFormats = bookExportFormats(book)
   const showNewBookMarker = isNewBook(book)
 
-  const openBook = useCallback(() => {
-    if (isBookSourceUnavailable(sourceStatus)) {
-      notify({
-        autoCloseMs: false,
-        description: t(bookSourceDescriptionKey(sourceStatus)),
-        title: t('source_unavailable'),
-        type: 'error',
-      })
-      return
-    }
-    completeTabOpen(reader.openBookFromLibrary(book.id), onOpenBook)
-  }, [book.id, notify, onOpenBook, sourceStatus, t])
+  const openBook = useCallback(
+    (activate = true) => {
+      if (isBookSourceUnavailable(sourceStatus)) {
+        notify({
+          autoCloseMs: false,
+          description: t(bookSourceDescriptionKey(sourceStatus)),
+          title: t('source_unavailable'),
+          type: 'error',
+        })
+        return
+      }
+      completeTabOpen(reader.openBookFromLibrary(book.id, { activate }), activate ? onOpenBook : () => undefined)
+    },
+    [book.id, notify, onOpenBook, sourceStatus, t],
+  )
 
   const handleCoverClick = useCallback(
     (event: React.MouseEvent) => {
@@ -193,29 +196,32 @@ const BookCardComponent: React.FC<BookCardProps> = ({
 
       if (select || event.button !== 0) return
 
-      const revealSource = event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey
-      const openDirectory = event.metaKey || event.ctrlKey
-      if (!revealSource && !openDirectory) return
+      const commandModifier = event.metaKey || event.ctrlKey
+      const openInBackground = commandModifier && !event.shiftKey && !event.altKey
+      const revealSource = event.altKey && !commandModifier && !event.shiftKey
+      const openDirectory = event.shiftKey && !commandModifier && !event.altKey
+      if (!openInBackground && !revealSource && !openDirectory) return
 
       event.preventDefault()
       event.stopPropagation()
 
-      if (revealSource) {
+      if (openInBackground) {
+        openBook(false)
+      } else if (revealSource) {
         void db.books.revealSource(book.id).catch(console.error)
-        return
-      }
-
-      void db.books.openDirectory(book.id).catch((error) => {
-        console.error(error)
-        notify({
-          autoCloseMs: false,
-          description: `${getBookDisplayTitle(book)}: ${formatErrorMessage(error)}`,
-          title: errorT('open_book_directory_failed'),
-          type: 'error',
+      } else {
+        void db.books.openDirectory(book.id).catch((error) => {
+          console.error(error)
+          notify({
+            autoCloseMs: false,
+            description: `${getBookDisplayTitle(book)}: ${formatErrorMessage(error)}`,
+            title: errorT('open_book_directory_failed'),
+            type: 'error',
+          })
         })
-      })
+      }
     },
-    [book, errorT, notify, select],
+    [book, errorT, notify, openBook, select],
   )
 
   const clearLongPressTimer = useCallback(() => {
@@ -227,15 +233,16 @@ const BookCardComponent: React.FC<BookCardProps> = ({
   useEffect(() => clearLongPressTimer, [clearLongPressTimer])
 
   function handleCoverPointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    if (
-      select ||
-      !event.isPrimary ||
-      event.button !== 0 ||
-      event.shiftKey ||
-      event.ctrlKey ||
-      event.metaKey ||
-      event.altKey
-    ) {
+    if (select || !event.isPrimary) return
+
+    if (event.button === 1) {
+      event.preventDefault()
+      event.stopPropagation()
+      openBook(false)
+      return
+    }
+
+    if (event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) {
       return
     }
 

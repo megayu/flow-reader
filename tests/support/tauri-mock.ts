@@ -232,6 +232,7 @@ export async function installTauriMock(
           tags: TestLibraryTagRecord[]
           bookImportOperations: string[]
           openedExternalUrls: string[]
+          openedBookDirectoryIds: string[]
           revealedBookSourceIds: string[]
           takePendingOpenPathsCalls: number
           settingsOperations: string[]
@@ -338,6 +339,7 @@ export async function installTauriMock(
         settingsOperations: [],
         settingsStore,
         openedExternalUrls: [],
+        openedBookDirectoryIds: [],
         revealedBookSourceIds: [],
         textImports: [],
       }
@@ -759,6 +761,10 @@ export async function installTauriMock(
           if (!fixtureRevealableBookSourceIds.includes(id)) return false
           globalWindow.__FLOW_TEST_TAURI__?.revealedBookSourceIds.push(id)
           return true
+        }
+        if (command === 'open_book_directory') {
+          globalWindow.__FLOW_TEST_TAURI__?.openedBookDirectoryIds.push(String(args?.id))
+          return null
         }
         if (command === 'check_book_source_statuses') {
           const ids = Array.isArray(args?.ids) ? args.ids.map(String) : []
