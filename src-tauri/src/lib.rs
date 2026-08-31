@@ -469,6 +469,8 @@ pub fn run() {
             storage::clear_book_caches,
             storage::search_book_text,
             storage::load_book_image_index,
+            storage::image_download::download_reader_image,
+            storage::image_download::write_image_download,
             storage::set_book_cache_active,
             storage::replace_book_text,
             storage::export_book,

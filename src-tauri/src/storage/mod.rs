@@ -31,6 +31,7 @@ mod editing;
 mod epub_import;
 mod export;
 mod folder_import;
+pub(crate) mod image_download;
 mod image_index;
 mod import_support;
 mod model;

@@ -756,6 +756,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
   return (
     <div className="flex h-full flex-col" data-flow-page-appearance={pageAppearance}>
       <ReaderImagePreview
+        bookId={tab.id}
         openKey={!zenMode ? imagePreview?.key : undefined}
         src={!zenMode ? imagePreview?.src : undefined}
         onClose={closeImagePreview}

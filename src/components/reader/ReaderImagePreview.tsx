@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { MinusIcon, PlusIcon, RefreshCwIcon, RotateCcwIcon, RotateCwIcon, XIcon } from 'lucide-react'
+import { DownloadIcon, MinusIcon, PlusIcon, RefreshCwIcon, RotateCcwIcon, RotateCwIcon, XIcon } from 'lucide-react'
 import React, {
   type ComponentProps,
   useCallback,
@@ -11,7 +11,11 @@ import React, {
 } from 'react'
 import { createPortal } from 'react-dom'
 
+import { formatErrorMessage } from '../../errorMessage'
 import { useTranslation } from '../../hooks/useTranslation'
+import { downloadReaderImage } from '../../readerImageDownload'
+import { db } from '../../storage'
+import { useNotify } from '../ui/notificationContext'
 
 const IMAGE_PREVIEW_ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 5]
 const IMAGE_PREVIEW_MIN_STEP = IMAGE_PREVIEW_ZOOM_STEPS[0] ?? 0.5
@@ -21,6 +25,7 @@ const IMAGE_PREVIEW_VERTICAL_PADDING = 192
 const IMAGE_PREVIEW_WHEEL_THRESHOLD = 6
 
 export interface ReaderImagePreviewProps {
+  bookId: string
   openKey?: number
   src?: string
   onClose: () => void
@@ -52,23 +57,29 @@ function createReaderImagePreviewState(): ReaderImagePreviewState {
   }
 }
 
-export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({ openKey, src, onClose }) => {
+export const ReaderImagePreview: React.FC<ReaderImagePreviewProps> = ({ bookId, openKey, src, onClose }) => {
   if (!src) return null
 
-  return <ReaderImagePreviewContent key={`${openKey ?? 'default'}:${src}`} src={src} onClose={onClose} />
+  return (
+    <ReaderImagePreviewContent key={`${openKey ?? 'default'}:${src}`} bookId={bookId} src={src} onClose={onClose} />
+  )
 }
 
 interface ReaderImagePreviewContentProps {
+  bookId: string
   src: string
   onClose: () => void
 }
 
-const ReaderImagePreviewContent: React.FC<ReaderImagePreviewContentProps> = ({ src, onClose }) => {
+const ReaderImagePreviewContent: React.FC<ReaderImagePreviewContentProps> = ({ bookId, src, onClose }) => {
   const t = useTranslation('image_preview')
+  const homeT = useTranslation('home')
+  const notify = useNotify()
   const previewRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 })
   const [dragging, setDragging] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [previewState, setPreviewState] = useState(createReaderImagePreviewState)
   const { mode, naturalSize, pan, rotation, scale } = previewState
   const normalizedRotation = normalizeImagePreviewRotation(rotation)
@@ -183,6 +194,37 @@ const ReaderImagePreviewContent: React.FC<ReaderImagePreviewContentProps> = ({ s
       rotation: current.rotation + delta,
     }))
   }, [])
+
+  const downloadImage = useCallback(() => {
+    if (downloading) return
+
+    setDownloading(true)
+    void downloadReaderImage(bookId, src)
+      .then((outputPath) => {
+        if (!outputPath) return
+        notify({
+          action: {
+            label: homeT('export_reveal'),
+            onClick: () => {
+              void db.files.reveal(outputPath).catch(console.error)
+            },
+          },
+          description: outputPath,
+          title: t('download_complete'),
+          type: 'success',
+        })
+      })
+      .catch((error) => {
+        console.error(error)
+        notify({
+          autoCloseMs: false,
+          description: formatErrorMessage(error),
+          title: t('download_failed'),
+          type: 'error',
+        })
+      })
+      .finally(() => setDownloading(false))
+  }, [bookId, downloading, homeT, notify, src, t])
 
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLDivElement>) => {
@@ -436,6 +478,10 @@ const ReaderImagePreviewContent: React.FC<ReaderImagePreviewContentProps> = ({ s
         </ReaderImagePreviewButton>
         <ReaderImagePreviewButton label={t('fit')} active={isFit} disabled={isFit} onClick={resetToFit}>
           <RefreshCwIcon className="size-4.5" />
+        </ReaderImagePreviewButton>
+        <div className="mx-1 h-5 w-px bg-white/20" />
+        <ReaderImagePreviewButton label={t('download')} disabled={downloading} onClick={downloadImage}>
+          <DownloadIcon className="size-5" />
         </ReaderImagePreviewButton>
         <div className="mx-1 h-5 w-px bg-white/20" />
         <ReaderImagePreviewButton label={t('close')} onClick={onClose}>
