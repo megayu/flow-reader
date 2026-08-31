@@ -211,8 +211,7 @@ Use the 2, 4, 6, 8, 10, 12, 16, and 20 px spacing rhythm:
 - Keep activity actions at 48 × 48 px with 28 px icons and a stable active-edge
   indicator.
 - Keep the library sidebar and reader sidebar at a 240 px default and 160 px
-  minimum. Persist their widths independently as
-  `flow-reader:sidebar:library:width` and `flow-reader:sidebar:reader:width`.
+  minimum. Persist their widths independently in the window UI state.
 - Keep the library list pane at a 220 px default and 120 px minimum. Keep the
   definitions pane at a 120 px default and 72 px minimum. Let the reader TOC and
   annotations panes consume the remaining height with their existing 160 px
