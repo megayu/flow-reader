@@ -20,6 +20,86 @@ mod translation;
 const OPEN_FILES_EVENT: &str = "flow-open-files";
 const APP_CLOSE_REQUESTED_EVENT: &str = "flow-app-close-requested";
 
+#[cfg(target_os = "windows")]
+struct NativeWindowIcons {
+    small: isize,
+    big: isize,
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for NativeWindowIcons {
+    fn drop(&mut self) {
+        use windows_sys::Win32::UI::WindowsAndMessaging::DestroyIcon;
+
+        unsafe {
+            DestroyIcon(self.small as _);
+            DestroyIcon(self.big as _);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn register_native_window_icons(window: &tauri::WebviewWindow) -> std::io::Result<NativeWindowIcons> {
+    use windows_sys::Win32::{
+        System::LibraryLoader::GetModuleHandleW,
+        UI::{
+            HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi},
+            WindowsAndMessaging::{
+                ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTCOLOR, LoadImageW, SM_CXSMICON, SM_CYSMICON, SendMessageW,
+                WM_SETICON,
+            },
+        },
+    };
+
+    const APP_ICON_RESOURCE_ID: usize = 32512;
+    const BIG_ICON_SIZE: i32 = 256;
+
+    let hwnd = window
+        .hwnd()
+        .map_err(|error| std::io::Error::other(error.to_string()))?
+        .0 as _;
+    let module = unsafe { GetModuleHandleW(std::ptr::null()) };
+    if module.is_null() {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    let dpi = unsafe { GetDpiForWindow(hwnd) };
+    let small_width = unsafe { GetSystemMetricsForDpi(SM_CXSMICON, dpi) };
+    let small_height = unsafe { GetSystemMetricsForDpi(SM_CYSMICON, dpi) };
+    let resource = APP_ICON_RESOURCE_ID as *const u16;
+    let small = unsafe { LoadImageW(module, resource, IMAGE_ICON, small_width, small_height, LR_DEFAULTCOLOR) };
+    if small.is_null() {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    let big = unsafe {
+        LoadImageW(
+            module,
+            resource,
+            IMAGE_ICON,
+            BIG_ICON_SIZE,
+            BIG_ICON_SIZE,
+            LR_DEFAULTCOLOR,
+        )
+    };
+    if big.is_null() {
+        unsafe {
+            windows_sys::Win32::UI::WindowsAndMessaging::DestroyIcon(small as _);
+        }
+        return Err(std::io::Error::last_os_error());
+    }
+
+    unsafe {
+        SendMessageW(hwnd, WM_SETICON, ICON_SMALL as _, small as _);
+        SendMessageW(hwnd, WM_SETICON, ICON_BIG as _, big as _);
+    }
+
+    Ok(NativeWindowIcons {
+        small: small as isize,
+        big: big as isize,
+    })
+}
+
 #[derive(Default)]
 struct PendingOpenFileState {
     paths: Vec<PathBuf>,
@@ -298,6 +378,8 @@ pub fn run() {
             }
 
             if let Some(window) = app.get_webview_window("main") {
+                #[cfg(target_os = "windows")]
+                app.manage(register_native_window_icons(&window)?);
                 storage::restore_window_state(&window);
             }
 
