@@ -41,8 +41,10 @@
     "test": "test"
   },
   "scripts": {
-    "test": "vitest run && pnpm test:types",
+    "test:browser": "vitest run",
     "test:types": "tsc -p types/tsconfig.json",
+    "test": "pnpm test:browser && pnpm test:types",
+    "test:ci": "pnpm test:browser --bail=1 && pnpm test:types",
     "test:watch": "vitest"
   },
   "license": "BSD-2-Clause",

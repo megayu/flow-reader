@@ -1,0 +1,353 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 24.18.0
+  PNPM_VERSION: 11.8.0
+  CARGO_TERM_COLOR: always
+
+jobs:
+  changes:
+    name: Detect required checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.filter.outputs.matrix }}
+      has_checks: ${{ steps.filter.outputs.has_checks }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed files
+        id: filter
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            base_sha="${PR_BASE_SHA}"
+          else
+            base_sha="${BEFORE_SHA}"
+          fi
+
+          zero_sha="0000000000000000000000000000000000000000"
+          if [[ -z "${base_sha}" || "${base_sha}" == "${zero_sha}" ]] || ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+            default_ref="refs/remotes/origin/${DEFAULT_BRANCH}"
+            if git show-ref --verify --quiet "${default_ref}" && merge_base="$(git merge-base "${default_ref}" "${GITHUB_SHA}")"; then
+              base_sha="${merge_base}"
+            elif parent_sha="$(git rev-parse "${GITHUB_SHA}^" 2>/dev/null)"; then
+              base_sha="${parent_sha}"
+            else
+              base_sha=''
+            fi
+          fi
+
+          if [[ -z "${base_sha}" ]]; then
+            git ls-files > changed-files.txt
+          else
+            git diff --no-renames --name-only "${base_sha}" "${GITHUB_SHA}" > changed-files.txt
+          fi
+
+          app=false
+          unit=false
+          test_static=false
+          integration=false
+          scripts=false
+          skills=false
+          epubjs=false
+          rust=false
+          crates=false
+          native_rust=false
+          shell_scripts=false
+          powershell_scripts=false
+          native_macos=false
+          tauri_config=false
+
+          while IFS= read -r path; do
+            case "${path}" in
+              .github/workflows/ci.yml)
+                app=true
+                unit=true
+                test_static=true
+                integration=true
+                scripts=true
+                skills=true
+                epubjs=true
+                rust=true
+                crates=true
+                native_rust=true
+                shell_scripts=true
+                powershell_scripts=true
+                native_macos=true
+                tauri_config=true
+                ;;
+              package.json|pnpm-lock.yaml|pnpm-workspace.yaml|.npmrc)
+                app=true
+                unit=true
+                test_static=true
+                integration=true
+                scripts=true
+                skills=true
+                epubjs=true
+                ;;
+              biome.json)
+                app=true
+                test_static=true
+                scripts=true
+                skills=true
+                ;;
+              components.json|index.html|tsconfig.json|vite.config.ts)
+                app=true
+                unit=true
+                ;;
+              vitest.config.ts)
+                test_static=true
+                unit=true
+                ;;
+              playwright.config.ts)
+                test_static=true
+                integration=true
+                ;;
+              src/updateChangelog.ts)
+                app=true
+                unit=true
+                scripts=true
+                ;;
+              src/*)
+                app=true
+                unit=true
+                ;;
+              scripts/*)
+                scripts=true
+                ;;
+              tests/unit/*)
+                test_static=true
+                unit=true
+                ;;
+              tests/integration/*)
+                test_static=true
+                integration=true
+                ;;
+              tests/support/*)
+                test_static=true
+                unit=true
+                integration=true
+                ;;
+              tests/*)
+                test_static=true
+                ;;
+              .agents/skills/*.mjs|.agents/skills/*/*.mjs|.agents/skills/*/*/*.mjs)
+                skills=true
+                ;;
+              packages/epubjs/*)
+                app=true
+                epubjs=true
+                ;;
+              src-tauri/Cargo.toml|src-tauri/Cargo.lock|src-tauri/build.rs|src-tauri/rustfmt.toml|src-tauri/src/*)
+                rust=true
+                ;;
+              src-tauri/*.json)
+                tauri_config=true
+                ;;
+              crates/Cargo.lock)
+                crates=true
+                ;;
+              crates/Cargo.toml|crates/epub-cover/*)
+                crates=true
+                rust=true
+                native_rust=true
+                ;;
+              crates/epub-thumbnail/*)
+                crates=true
+                native_rust=true
+                ;;
+              crates/*)
+                crates=true
+                ;;
+              native/shell-thumbnails/Cargo.toml|native/shell-thumbnails/Cargo.lock|native/shell-thumbnails/*/Cargo.toml|native/shell-thumbnails/*/build.rs|native/shell-thumbnails/*/src/*|native/shell-thumbnails/*/tests/*|native/shell-thumbnails/windows-identifiers.json)
+                native_rust=true
+                ;;
+              .husky/*|native/shell-thumbnails/*.sh|native/shell-thumbnails/*/*.sh|native/shell-thumbnails/*/*/*.sh)
+                shell_scripts=true
+                ;;
+              native/shell-thumbnails/*.ps1|native/shell-thumbnails/*/*.ps1|native/shell-thumbnails/*/*/*.ps1)
+                powershell_scripts=true
+                ;;
+              native/shell-thumbnails/macos-extension/*)
+                native_macos=true
+                ;;
+            esac
+          done < changed-files.txt
+
+          matrix='{"include":['
+          separator=''
+          add_check() {
+            matrix+="${separator}$1"
+            separator=','
+          }
+
+          [[ "${app}" == "false" ]] || add_check '{"area":"app","runner":"ubuntu-24.04","kind":"app","script":"check:app","node":true,"browser":false}'
+          [[ "${unit}" == "false" ]] || add_check '{"area":"unit-tests","runner":"ubuntu-24.04","kind":"unit","script":"test:unit:ci","node":true,"browser":false}'
+          [[ "${test_static}" == "false" ]] || add_check '{"area":"test-static","runner":"ubuntu-24.04","kind":"test-static","script":"check:test-static","node":true,"browser":false}'
+          [[ "${integration}" == "false" ]] || add_check '{"area":"integration-tests","runner":"ubuntu-24.04","kind":"integration","script":"test:integration:ci","node":true,"browser":true}'
+          [[ "${scripts}" == "false" ]] || add_check '{"area":"repository-scripts","runner":"ubuntu-24.04","kind":"scripts","script":"check:scripts","node":true,"browser":false}'
+          [[ "${skills}" == "false" ]] || add_check '{"area":"skill-scripts","runner":"ubuntu-24.04","kind":"skills","script":"check:skills","node":true,"browser":false}'
+          [[ "${epubjs}" == "false" ]] || add_check '{"area":"epubjs","runner":"ubuntu-24.04","kind":"epubjs","script":"check:epubjs:ci","node":true,"browser":true}'
+          [[ "${rust}" == "false" ]] || add_check '{"area":"rust","runner":"windows-2025","kind":"rust","script":"check:rust","node":false,"browser":false,"lock":"src-tauri/Cargo.lock","target":"src-tauri/target"}'
+          [[ "${crates}" == "false" ]] || add_check '{"area":"crates","runner":"ubuntu-24.04","kind":"rust","script":"check:crates","node":false,"browser":false,"lock":"crates/Cargo.lock","target":"crates/target"}'
+          [[ "${native_rust}" == "false" ]] || add_check '{"area":"native-rust","runner":"windows-2025","kind":"rust","script":"check:native-rust","node":false,"browser":false,"lock":"native/shell-thumbnails/Cargo.lock","target":"native/shell-thumbnails/target"}'
+          [[ "${shell_scripts}" == "false" ]] || add_check '{"area":"shell-scripts","runner":"ubuntu-24.04","kind":"shell","script":"","node":false,"browser":false}'
+          [[ "${powershell_scripts}" == "false" ]] || add_check '{"area":"powershell-scripts","runner":"windows-2025","kind":"powershell","script":"","node":false,"browser":false}'
+          [[ "${native_macos}" == "false" ]] || add_check '{"area":"native-macos","runner":"macos-15-intel","kind":"native-macos","script":"","node":false,"browser":false}'
+          [[ "${tauri_config}" == "false" ]] || add_check '{"area":"tauri-config","runner":"ubuntu-24.04","kind":"tauri-config","script":"","node":false,"browser":false}'
+
+          matrix+=']}'
+          if [[ -n "${separator}" ]]; then
+            has_checks=true
+          else
+            has_checks=false
+          fi
+
+          {
+            echo "matrix=${matrix}"
+            echo "has_checks=${has_checks}"
+          } >> "${GITHUB_OUTPUT}"
+
+          echo "Changed files:"
+          cat changed-files.txt
+          echo "Check matrix: ${matrix}"
+
+  checks:
+    name: Check ${{ matrix.area }}
+    needs: changes
+    if: needs.changes.outputs.has_checks == 'true'
+    strategy:
+      fail-fast: true
+      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        if: matrix.script != ''
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+      - name: Set up Node.js
+        if: matrix.node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Install Node.js dependencies
+        if: matrix.node
+        run: pnpm install --frozen-lockfile
+
+      - name: Install browser
+        if: matrix.browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Cache Cargo dependencies
+        if: matrix.kind == 'rust'
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ${{ matrix.target }}
+          key: ci-${{ matrix.area }}-${{ runner.os }}-${{ hashFiles(matrix.lock) }}
+          restore-keys: ci-${{ matrix.area }}-${{ runner.os }}-
+
+      - name: Run package check
+        if: matrix.script != ''
+        env:
+          PLAYWRIGHT_BROWSER_CHANNEL: chromium
+        run: pnpm ${{ matrix.script }}
+
+      - name: Check skill script syntax
+        if: matrix.kind == 'skills'
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r script; do
+            node --check "${script}"
+          done < <(find .agents/skills -type f -name '*.mjs' -print)
+
+      - name: Check shell syntax
+        if: matrix.kind == 'shell'
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r script; do
+            bash -n "${script}"
+          done < <(
+            find .husky -maxdepth 1 -type f -print
+            find native/shell-thumbnails -type f -name '*.sh' -print
+          )
+      - name: Check PowerShell syntax
+        if: matrix.kind == 'powershell'
+        shell: pwsh
+        run: |
+          Get-ChildItem native/shell-thumbnails -Recurse -File -Filter '*.ps1' | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$parseErrors
+            )
+            if ($parseErrors.Count -gt 0) { throw ($parseErrors | Out-String) }
+          }
+      - name: Check macOS native sources
+        if: matrix.kind == 'native-macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          find native/shell-thumbnails/macos-extension -type f -name '*.swift' -print0 | xargs -0 swiftc -parse
+          find native/shell-thumbnails/macos-extension -type f \( -name '*.plist' -o -name '*.entitlements' \) -print0 | xargs -0 -n 1 plutil -lint
+          xcodebuild -list -project native/shell-thumbnails/macos-extension/FlowReaderThumbnail.xcodeproj
+      - name: Check Tauri JSON configuration
+        if: matrix.kind == 'tauri-config'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for config in src-tauri/*.json; do
+            jq empty "${config}"
+          done
+
+  result:
+    name: CI result
+    if: always()
+    needs: [changes, checks]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CHANGES_RESULT: ${{ needs.changes.result }}
+      CHECKS_RESULT: ${{ needs.checks.result }}
+    steps:
+      - name: Require every applicable check to pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${CHANGES_RESULT}" == "success" ]]
+          [[ "${CHECKS_RESULT}" == "success" || "${CHECKS_RESULT}" == "skipped" ]]
