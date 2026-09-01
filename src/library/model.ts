@@ -36,7 +36,7 @@ export function formatFileSize(bytes: number) {
 export function formatWordCount(wordCount: number, locale: string) {
   return new Intl.NumberFormat(
     locale,
-    locale === 'zh-CN' ? { notation: 'compact', maximumFractionDigits: 2 } : undefined,
+    locale.startsWith('zh') ? { notation: 'compact', maximumFractionDigits: 2 } : undefined,
   ).format(wordCount)
 }
 
@@ -133,6 +133,8 @@ const preferredLanguageNames: Readonly<Record<string, string>> = {
   'zh-CN': '简体中文',
   'zh-Hans': '简体中文',
   'zh-Hant': '繁體中文',
+  'zh-TW': '繁體中文',
+  'zh-HK': '繁體中文',
 }
 
 export function formatLanguage(value?: string) {

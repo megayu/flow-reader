@@ -188,6 +188,9 @@
 
   "image_preview.actual_size": "Actual size",
   "image_preview.close": "Close",
+  "image_preview.download": "Download",
+  "image_preview.download_complete": "Download complete",
+  "image_preview.download_failed": "Download failed",
   "image_preview.fit": "Fit to window",
   "image_preview.rotate_left": "Rotate left",
   "image_preview.rotate_right": "Rotate right",

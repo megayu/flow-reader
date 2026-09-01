@@ -1,16 +1,16 @@
 export const TRANSLATION_LANGUAGES = [
-  { id: 'de', label: 'Deutsch' },
+  { id: 'zh-Hans', label: '简体中文' },
   { id: 'en', label: 'English' },
+  { id: 'de', label: 'Deutsch' },
   { id: 'es', label: 'Español' },
   { id: 'fr', label: 'Français' },
   { id: 'it', label: 'Italiano' },
-  { id: 'nl', label: 'Nederlands' },
-  { id: 'pl', label: 'Polski' },
-  { id: 'pt', label: 'Português' },
-  { id: 'ru', label: 'Русский' },
   { id: 'ja', label: '日本語' },
   { id: 'ko', label: '한국어' },
-  { id: 'zh-Hans', label: '简体中文' },
+  { id: 'nl', label: 'Nederlands' },
+  { id: 'pl', label: 'Polski' },
+  { id: 'pt-BR', label: 'Português (Brasil)' },
+  { id: 'ru', label: 'Русский' },
   { id: 'zh-Hant', label: '繁體中文' },
 ] as const
 
@@ -54,6 +54,7 @@ function normalizeLanguage(language?: string): TranslationLanguage | undefined {
   const normalized = language.trim().replace('_', '-').toLowerCase()
   if (/^zh-(hans|cn|sg)(-|$)/.test(normalized)) return 'zh-Hans'
   if (/^zh-(hant|tw|hk|mo)(-|$)/.test(normalized)) return 'zh-Hant'
+  if (/^pt(-|$)/.test(normalized)) return 'pt-BR'
 
   const exact = TRANSLATION_LANGUAGES.find(({ id }) => id.toLowerCase() === normalized)?.id
   if (exact) return exact

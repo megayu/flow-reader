@@ -23,7 +23,6 @@ const exactLanguageAliases: Partial<Record<SupportedDictionaryLanguage, readonly
   ko: ['ko', 'kor', 'korean', '한국어'],
   nl: ['nl', 'nld', 'dut', 'dutch', 'nederlands'],
   pl: ['pl', 'pol', 'polish', 'polski'],
-  pt: ['pt', 'por', 'portuguese', 'português'],
   ru: ['ru', 'rus', 'russian', 'русский'],
 }
 
@@ -44,6 +43,9 @@ export function normalizeDictionaryLanguage(language?: string): SupportedDiction
     ['eng', 'english', '英文', '英语', '英語'].includes(normalized)
   ) {
     return 'en'
+  }
+  if (normalized === 'pt' || normalized.startsWith('pt-') || ['por', 'portuguese', 'português'].includes(normalized)) {
+    return 'pt'
   }
 
   return Object.entries(exactLanguageAliases).find(([, aliases]) => aliases?.includes(normalized))?.[0] as

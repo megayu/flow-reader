@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 
-import locales, { fallbackLocale } from '../locales'
+import locales, { getMessageFallbackLocale } from '../locales'
 
 import { useLocale } from './useLocale'
 
@@ -27,10 +27,11 @@ export function useTranslation(scope?: string) {
   return useCallback(
     (key: string, ...replacements: Array<string | number>) => {
       const messageKey = scope ? `${scope}.${key}` : key
-      const messages = locales[locale] ?? locales[fallbackLocale]
+      const messages = locales[locale]
+      const fallbackMessages = locales[getMessageFallbackLocale(locale)]
       const message =
         messages[messageKey as keyof typeof messages] ??
-        locales[fallbackLocale][messageKey as keyof (typeof locales)[typeof fallbackLocale]] ??
+        fallbackMessages[messageKey as keyof typeof fallbackMessages] ??
         key
 
       return replacements.length > 0 ? formatTranslation(message, replacements).join('') : message
