@@ -102,8 +102,8 @@ if ! printf '%s\n' "${app_content_types}" | /usr/bin/grep -Fq 'org.idpf.epub-con
   exit 1
 fi
 
-/usr/bin/lipo -verify_arch arm64 x86_64 "${app_executable}"
-/usr/bin/lipo -verify_arch arm64 x86_64 "${appex_executable}"
+/usr/bin/lipo "${app_executable}" -verify_arch arm64 x86_64
+/usr/bin/lipo "${appex_executable}" -verify_arch arm64 x86_64
 
 # Sign the nested extension before the copied outer app, matching release signing order.
 /usr/bin/codesign --force --sign - --timestamp=none "${appex}"
