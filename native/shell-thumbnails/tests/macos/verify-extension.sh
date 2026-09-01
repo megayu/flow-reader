@@ -97,7 +97,7 @@ app_plist_value() {
 [[ "$(app_plist_value CFBundleDocumentTypes:0:LSHandlerRank)" == "Default" ]]
 [[ "$(app_plist_value CFBundleDocumentTypes:0:CFBundleTypeExtensions:0)" == "epub" ]]
 app_content_types="$(app_plist_value CFBundleDocumentTypes:0:LSItemContentTypes)"
-if ! /bin/printf '%s\n' "${app_content_types}" | /usr/bin/grep -Fq 'org.idpf.epub-container'; then
+if ! printf '%s\n' "${app_content_types}" | /usr/bin/grep -Fq 'org.idpf.epub-container'; then
   echo "Flow Reader app does not declare the standard EPUB content type." >&2
   exit 1
 fi
@@ -114,9 +114,9 @@ fi
 create_epub() {
   local output_path="$1"
   local title="$2"
-  /bin/printf '%s' '<container><rootfiles><rootfile full-path="package.opf"/></rootfiles></container>' > "${epub_root}/META-INF/container.xml"
-  /bin/printf '%s' "<package xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><metadata><dc:title>${title}</dc:title><dc:creator>Flow Reader</dc:creator></metadata><manifest><item id=\"cover\" href=\"cover.png\" media-type=\"image/png\" properties=\"cover-image\"/></manifest></package>" > "${epub_root}/package.opf"
-  /bin/printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAaSURBVBhXY9AIqPhfEaDxnyGgQuO/RkXAfwBBlAe9LXzOOgAAAABJRU5ErkJggg==' | /usr/bin/base64 -D > "${epub_root}/cover.png"
+  printf '%s' '<container><rootfiles><rootfile full-path="package.opf"/></rootfiles></container>' > "${epub_root}/META-INF/container.xml"
+  printf '%s' "<package xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><metadata><dc:title>${title}</dc:title><dc:creator>Flow Reader</dc:creator></metadata><manifest><item id=\"cover\" href=\"cover.png\" media-type=\"image/png\" properties=\"cover-image\"/></manifest></package>" > "${epub_root}/package.opf"
+  printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAaSURBVBhXY9AIqPhfEaDxnyGgQuO/RkXAfwBBlAe9LXzOOgAAAABJRU5ErkJggg==' | /usr/bin/base64 -D > "${epub_root}/cover.png"
   (
     cd "${epub_root}"
     /usr/bin/zip -q -X "${output_path}" META-INF/container.xml package.opf cover.png
@@ -207,7 +207,7 @@ find_app_pid() {
     [[ -n "${candidate}" ]] || continue
     command="$(/bin/ps -p "${candidate}" -o command= || true)"
     if [[ "${command}" == "${app_executable}"* ]]; then
-      /bin/printf '%s\n' "${candidate}"
+      printf '%s\n' "${candidate}"
       return 0
     fi
   done < <(/usr/bin/pgrep -f "${app_executable}" || true)
