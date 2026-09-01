@@ -121,7 +121,15 @@ switch (platform) {
       throw new Error(`The Linux installed bundle does not support ${process.arch}.`)
     }
     runTauri(
-      ['build', '--bundles', 'appimage', '--config', 'src-tauri/tauri.shell-linux.conf.json', ...updaterArguments],
+      [
+        'build',
+        '--bundles',
+        'appimage',
+        '--config',
+        'src-tauri/tauri.shell-linux.conf.json',
+        ...updaterArguments,
+        '--verbose',
+      ],
       buildEnvironment,
     )
     break

@@ -284,6 +284,7 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             desktop-file-utils \
+            xdg-utils \
             libfuse2 \
             xvfb \
             dbus-x11 \
