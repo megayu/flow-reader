@@ -8,9 +8,6 @@ export class BookSearchController {
   private requestVersion = 0
 
   setKeyword(tab: BookTab, keyword: string) {
-    if (tab.keyword === keyword) return
-    tab.keyword = keyword
-    tab.activeResultID = undefined
     const requestVersion = this.nextRequestVersion()
     this.onKeywordChange(tab, keyword, requestVersion)
   }
@@ -20,6 +17,7 @@ export class BookSearchController {
       tab.keyword = keyword
       tab.activeResultID = undefined
     }
+    tab.results = undefined
     const requestVersion = this.nextRequestVersion()
     await this.updateResults(tab, keyword, requestVersion)
   }
@@ -27,7 +25,10 @@ export class BookSearchController {
   // only use throttle/debounce for side effects
   @debounce(500)
   private async onKeywordChange(tab: BookTab, keyword: string, requestVersion: number) {
-    if (!this.isCurrent(tab, keyword, requestVersion)) return
+    if (this.requestVersion !== requestVersion) return
+    tab.keyword = keyword
+    tab.results = undefined
+    tab.activeResultID = undefined
     await this.updateResults(tab, keyword, requestVersion)
   }
 
