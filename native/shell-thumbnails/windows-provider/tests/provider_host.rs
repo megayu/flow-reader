@@ -120,7 +120,13 @@ fn exported_provider_renders_requested_dib_sizes_from_an_epub_stream() {
             * usize::try_from(details.bmHeight).unwrap()
             * 4;
         let bytes = unsafe { std::slice::from_raw_parts(details.bmBits.cast::<u8>(), byte_length) };
-        assert!(bytes.chunks_exact(4).any(|pixel| pixel != &bytes[..4]));
+        assert!(
+            bytes
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .any(|pixel| pixel != &bytes[..4])
+        );
         assert!(unsafe { DeleteObject(HGDIOBJ(bitmap.0)) }.as_bool());
     }
 

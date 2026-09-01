@@ -54,7 +54,7 @@ impl DibSection {
         }
 
         let destination = destination.cast::<u8>();
-        for (index, rgba) in thumbnail.pixels.chunks_exact(4).enumerate() {
+        for (index, rgba) in thumbnail.pixels.as_chunks::<4>().0.iter().enumerate() {
             let bgra = [rgba[2], rgba[1], rgba[0], rgba[3]];
             unsafe {
                 copy_nonoverlapping(bgra.as_ptr(), destination.add(index * 4), 4);

@@ -50,7 +50,11 @@ pub(crate) fn thumbnail_from_rgba(
     if pixels.len() != expected_length {
         return Err(ThumbnailError::DimensionOverflow);
     }
-    let has_alpha = pixels.chunks_exact(4).any(|pixel| pixel[3] != 255);
+    let has_alpha = pixels
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .any(|pixel| pixel[3] != 255);
 
     Ok(RgbaThumbnail {
         pixels,

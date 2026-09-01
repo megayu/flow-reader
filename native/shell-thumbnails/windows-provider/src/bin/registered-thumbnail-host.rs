@@ -94,7 +94,12 @@ mod host {
             .ok_or("bitmap byte length overflowed")?;
         let bytes = unsafe { std::slice::from_raw_parts(details.bmBits.cast::<u8>(), byte_length) };
         let first_pixel = bytes.get(..4).ok_or("bitmap contains no pixels")?;
-        if !bytes.chunks_exact(4).any(|pixel| pixel != first_pixel) {
+        if !bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|pixel| pixel != first_pixel)
+        {
             return Err("provider returned a uniform placeholder bitmap".into());
         }
 

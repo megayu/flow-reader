@@ -33,7 +33,9 @@ fn decode_xml(bytes: Vec<u8>, entry: &str) -> Result<String, CoverError> {
         return Err(invalid_encoding());
     }
     let code_units = bytes
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|bytes| {
             if little_endian {
                 u16::from_le_bytes([bytes[0], bytes[1]])
