@@ -1,4 +1,5 @@
 [Desktop Entry]
+Categories=Office;Viewer;
 Exec=flow-reader %F
 StartupWMClass=flow-reader
 Icon=flow-reader
