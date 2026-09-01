@@ -55,6 +55,11 @@ switch (platform) {
       '--sign',
       '-',
       '--timestamp=none',
+      '--entitlements',
+      resolve(
+        repositoryRoot,
+        'native/shell-thumbnails/macos-extension/FlowReaderThumbnail/FlowReaderThumbnail.entitlements',
+      ),
       resolve(
         repositoryRoot,
         'native/shell-thumbnails/dist/macos/DerivedData/Build/Products/Release/FlowReaderThumbnail.appex',
