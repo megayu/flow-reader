@@ -111,6 +111,7 @@ jobs:
       - if: matrix.arch == 'x86_64'
         run: pnpm rust:lint
       - run: cargo clippy --manifest-path native/shell-thumbnails/Cargo.toml --workspace --all-targets --all-features --target ${{ matrix.rust_target }} -- -D warnings
+      - run: cargo build --manifest-path native/shell-thumbnails/Cargo.toml --package flow-windows-thumbnail-provider --target ${{ matrix.rust_target }}
       - run: cargo test --manifest-path native/shell-thumbnails/Cargo.toml --workspace --target ${{ matrix.rust_target }}
       - if: matrix.run_lifecycle
         run: pnpm thumbnail:test:windows-installer
