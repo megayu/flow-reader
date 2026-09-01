@@ -15,7 +15,7 @@ concurrency:
 
 env:
   NODE_VERSION: 24.18.0
-  PNPM_VERSION: 11.8.0
+  PNPM_VERSION: 11.25.0
   CARGO_TERM_COLOR: always
 
 jobs:

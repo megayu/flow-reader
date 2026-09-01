@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "description": "Tauri desktop EPUB and TXT reader based on pacexy/flow",
-  "packageManager": "pnpm@11.8.0",
+  "packageManager": "pnpm@11.25.0",
   "scripts": {
     "prepare": "husky install",
     "dev": "vite",
