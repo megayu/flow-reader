@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useSnapshot } from 'valtio'
 
-import { colorMap, type Annotation as IAnnotation } from '../annotation'
+import { annotationOverlayColor, annotationOverlayOpacity, type Annotation as IAnnotation } from '../annotation'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
 import type { BookTab } from '../models/reader'
 
@@ -47,25 +47,29 @@ const FindMatches: React.FC<FindMatchProps> = ({ active, tab }) => {
     if (!active || !query || !results?.length) return
 
     const matches = renderedSearchMatches(tab, query)
-    matches.forEach((m) => {
-      try {
-        rendition?.annotations.highlight(m.cfi, undefined, () => {}, undefined, {
-          // tailwind yellow-500
-          fill: 'rgba(234, 179, 8, 0.3)',
-          'fill-opacity': 'unset',
-        })
-      } catch (_error) {
-        // ignore matched text in `<title>`
-      }
+    rendition?.annotations.batch(() => {
+      matches.forEach((m) => {
+        try {
+          rendition.annotations.highlight(m.cfi, undefined, () => {}, undefined, {
+            // tailwind yellow-500
+            fill: 'rgba(234, 179, 8, 0.3)',
+            'fill-opacity': 'unset',
+          })
+        } catch (_error) {
+          // ignore matched text in `<title>`
+        }
+      })
     })
 
     return () => {
-      matches.forEach((m) => {
-        try {
-          rendition?.annotations.remove(m.cfi, 'highlight')
-        } catch (_error) {
-          // ignore removed views
-        }
+      rendition?.annotations.batch(() => {
+        matches.forEach((m) => {
+          try {
+            rendition.annotations.remove(m.cfi, 'highlight')
+          } catch (_error) {
+            // ignore removed views
+          }
+        })
       })
     }
   }, [active, keyword, paginationVersion, rendition?.annotations, results, tab, viewVersion])
@@ -198,25 +202,27 @@ const Definitions: React.FC<DefinitionsProps> = ({ active, definitions, tab, dar
 
       const matches = matchesBySection.flat()
 
-      matches.forEach((match) => {
-        const styles = definitionUnderlineStyle(match.index, dark)
+      annotations.batch(() => {
+        matches.forEach((match) => {
+          const styles = definitionUnderlineStyle(match.index, dark)
 
-        try {
-          annotations.underline(
-            match.cfi,
-            undefined,
-            (event?: Event) => {
-              event?.preventDefault()
-              event?.stopPropagation()
-              tab.setAnnotationRange(match.cfi, event?.currentTarget)
-            },
-            'flow-definition-underline',
-            styles,
-          )
-          drawnCfis.push(match.cfi)
-        } catch (_error) {
-          // ignore matched text in `<title>`
-        }
+          try {
+            annotations.underline(
+              match.cfi,
+              undefined,
+              (event?: Event) => {
+                event?.preventDefault()
+                event?.stopPropagation()
+                tab.setAnnotationRange(match.cfi, event?.currentTarget)
+              },
+              'flow-definition-underline',
+              styles,
+            )
+            drawnCfis.push(match.cfi)
+          } catch (_error) {
+            // ignore matched text in `<title>`
+          }
+        })
       })
     })().catch((error) => {
       if (!cancelled) console.error(error)
@@ -224,12 +230,14 @@ const Definitions: React.FC<DefinitionsProps> = ({ active, definitions, tab, dar
 
     return () => {
       cancelled = true
-      drawnCfis.forEach((cfi) => {
-        try {
-          annotations.remove(cfi, 'underline')
-        } catch (_error) {
-          // ignore removed views
-        }
+      annotations.batch(() => {
+        drawnCfis.forEach((cfi) => {
+          try {
+            annotations.remove(cfi, 'underline')
+          } catch (_error) {
+            // ignore removed views
+          }
+        })
       })
     }
   }, [
@@ -269,8 +277,11 @@ const Annotation: React.FC<AnnotationProps> = ({ tab, annotation }) => {
       undefined,
       {
         ...clickableMarkStyle,
-        fill: colorMap[annotation.color],
-        'fill-opacity': 'unset',
+        'data-overlap-group': 'flow-annotations',
+        'data-overlap-opacity': annotationOverlayOpacity,
+        fill: annotationOverlayColor(annotation.color),
+        'fill-opacity': 1,
+        'mix-blend-mode': 'normal',
       },
     )
 

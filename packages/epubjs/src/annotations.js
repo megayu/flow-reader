@@ -80,8 +80,8 @@ class Annotations {
       }
 
       let views = this.rendition.views()
+      this._removeFromAnnotationBySectionIndex(annotation.sectionIndex, hash)
       views.forEach((view) => {
-        this._removeFromAnnotationBySectionIndex(annotation.sectionIndex, hash)
         if (annotation.sectionIndex === view.index) {
           annotation.detach(view)
         }
@@ -141,6 +141,20 @@ class Annotations {
    */
   mark(cfiRange, data, cb) {
     return this.add('mark', cfiRange, data, cb)
+  }
+
+  /**
+   * Apply synchronous annotation mutations and redraw each visible view once.
+   * @param {function} callback
+   */
+  batch(callback) {
+    let views = this.rendition.views()
+    views.forEach((view) => view.beginAnnotationBatch?.())
+    try {
+      return callback()
+    } finally {
+      views.forEach((view) => view.endAnnotationBatch?.())
+    }
   }
 
   /**

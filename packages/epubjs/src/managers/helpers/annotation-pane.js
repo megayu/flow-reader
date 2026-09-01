@@ -74,7 +74,7 @@ function axesRect(blockStart, blockEnd, inlineStart, inlineEnd, vertical) {
   return { left, top, right, bottom, width: right - left, height: bottom - top }
 }
 
-function mergeLineFragments(rects, vertical) {
+function mergeAdjacentFragments(rects, vertical) {
   let sorted = rects
     .slice()
     .sort((first, second) => {
@@ -111,6 +111,44 @@ function mergeLineFragments(rects, vertical) {
   }
 
   return merged
+}
+
+function normalizeLineFragments(line, vertical) {
+  let bands = new Map()
+
+  for (let fragment of line.fragments) {
+    let band = bands.get(fragment.mark)
+    if (!band) {
+      band = {
+        blockStart: fragment.geometry.start,
+        blockEnd: fragment.geometry.end,
+        inlineIntervals: [],
+      }
+      bands.set(fragment.mark, band)
+    }
+    band.blockStart = Math.min(band.blockStart, fragment.geometry.start)
+    band.blockEnd = Math.max(band.blockEnd, fragment.geometry.end)
+    band.inlineIntervals.push([
+      fragment.geometry.inlineStart,
+      fragment.geometry.inlineEnd,
+    ])
+  }
+
+  let normalized = []
+  for (let [mark, band] of bands) {
+    for (let [inlineStart, inlineEnd] of mergeIntervals(band.inlineIntervals)) {
+      let rect = axesRect(
+        band.blockStart,
+        band.blockEnd,
+        inlineStart,
+        inlineEnd,
+        vertical,
+      )
+      normalized.push({ mark, rect, geometry: blockGeometry(rect, vertical) })
+    }
+  }
+
+  return normalized
 }
 
 function boundaryIntervals(line, boundary, side) {
@@ -189,10 +227,17 @@ export function normalizeAnnotationRects(entries, writingMode = 'horizontal-tb')
 
   for (let fragment of fragments) {
     let line = lines[lines.length - 1]
+    let nestedBlock =
+      line &&
+      ((fragment.geometry.start >= line.minStart &&
+        fragment.geometry.end <= line.maxEnd) ||
+        (line.minStart >= fragment.geometry.start &&
+          line.maxEnd <= fragment.geometry.end))
     let sameLine =
       line &&
-      Math.abs(line.center - fragment.geometry.center) <=
-        Math.max(1, Math.min(line.size, fragment.geometry.size) / 2)
+      (Math.abs(line.center - fragment.geometry.center) <=
+        Math.max(1, Math.min(line.size, fragment.geometry.size) / 4) ||
+        nestedBlock)
 
     if (!sameLine) {
       lines.push({
@@ -213,11 +258,17 @@ export function normalizeAnnotationRects(entries, writingMode = 'horizontal-tb')
     line.maxEnd = Math.max(line.maxEnd, fragment.geometry.end)
   }
 
+  for (let line of lines) {
+    line.fragments = normalizeLineFragments(line, vertical)
+  }
+
   for (let i = 0; i < lines.length - 1; i++) {
     let current = lines[i]
     let next = lines[i + 1]
-    if (current.maxEnd <= next.minStart) continue
-    let boundary = (current.center + next.center) / 2
+    let overlapStart = Math.max(current.minStart, next.minStart)
+    let overlapEnd = Math.min(current.maxEnd, next.maxEnd)
+    if (overlapEnd <= overlapStart) continue
+    let boundary = (overlapStart + overlapEnd) / 2
     let intervals = intersectIntervals(
       boundaryIntervals(current, boundary, 'after'),
       boundaryIntervals(next, boundary, 'before'),
@@ -237,7 +288,7 @@ export function normalizeAnnotationRects(entries, writingMode = 'horizontal-tb')
   }
 
   for (let [mark, rects] of result) {
-    result.set(mark, mergeLineFragments(rects, vertical))
+    result.set(mark, mergeAdjacentFragments(rects, vertical))
   }
 
   return result
@@ -287,9 +338,12 @@ export class Pane {
     this.target = target
     this.container = container
     this.marks = []
+    this.overlapGroups = new Map()
     this.writingMode = writingMode
     this.batchDepth = 0
     this.element = svgElement(container.ownerDocument, 'svg')
+    this.overlapLayer = svgElement(container.ownerDocument, 'g')
+    this.element.appendChild(this.overlapLayer)
     this.element.style.position = 'absolute'
     this.element.setAttribute('pointer-events', 'none')
     this.container.appendChild(this.element)
@@ -318,7 +372,21 @@ export class Pane {
 
   addMark(mark) {
     let group = svgElement(this.element.ownerDocument, 'g')
-    this.element.appendChild(group)
+    let overlapGroup = mark.attributes?.['data-overlap-group']
+    let container = this.element
+    if (overlapGroup) {
+      container = this.overlapGroups.get(overlapGroup)
+      if (!container) {
+        // Composite opaque child marks first, then apply opacity once to their union.
+        container = svgElement(this.element.ownerDocument, 'g')
+        container.setAttribute('data-overlap-group', overlapGroup)
+        let opacity = mark.attributes?.['data-overlap-opacity']
+        if (opacity !== undefined) container.setAttribute('opacity', opacity)
+        this.overlapGroups.set(overlapGroup, container)
+        this.overlapLayer.appendChild(container)
+      }
+    }
+    container.appendChild(group)
     mark.bind(group)
     this.marks.push(mark)
     if (this.batchDepth === 0) {
@@ -332,7 +400,16 @@ export class Pane {
     let index = this.marks.indexOf(mark)
     if (index === -1) return
     let element = mark.unbind()
+    let container = element?.parentNode
     if (element) element.remove()
+    if (container && container !== this.element && !container.childNodes.length) {
+      for (let [name, group] of this.overlapGroups) {
+        if (group !== container) continue
+        this.overlapGroups.delete(name)
+        break
+      }
+      container.remove()
+    }
     this.marks.splice(index, 1)
     if (this.batchDepth === 0) this.updateMarks()
   }
@@ -383,6 +460,7 @@ export class Pane {
     }
     this.eventHandlers = []
     this.marks = []
+    this.overlapGroups.clear()
     this.element.remove()
   }
 }

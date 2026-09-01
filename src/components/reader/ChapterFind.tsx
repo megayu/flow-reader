@@ -165,39 +165,44 @@ export const ChapterFindHighlights: React.FC<ChapterFindHighlightsProps> = ({ ac
   }, [find.activeIndex, find.open, find.results])
 
   useEffect(() => {
-    if (!active || !matches.length) return
+    const annotations = rendition?.annotations
+    if (!active || !matches.length || !annotations) return
 
     const addHighlight = (cfi: string, styles: Record<string, string>) => {
       try {
-        rendition?.annotations.highlight(cfi, undefined, () => {}, undefined, styles)
+        annotations.highlight(cfi, undefined, () => {}, undefined, styles)
       } catch (_error) {
         // ignore matched text in unsupported nodes
       }
     }
 
-    for (const match of matches) {
-      if (!match.active) {
-        addHighlight(match.cfi, {
-          fill: 'rgba(234, 179, 8, 0.3)',
+    annotations.batch(() => {
+      for (const match of matches) {
+        if (!match.active) {
+          addHighlight(match.cfi, {
+            fill: 'rgba(234, 179, 8, 0.3)',
+            'fill-opacity': 'unset',
+          })
+        }
+      }
+      const activeMatch = matches.find((match) => match.active)
+      if (activeMatch) {
+        addHighlight(activeMatch.cfi, {
+          fill: 'rgba(59, 130, 246, 0.46)',
           'fill-opacity': 'unset',
         })
       }
-    }
-    const activeMatch = matches.find((match) => match.active)
-    if (activeMatch) {
-      addHighlight(activeMatch.cfi, {
-        fill: 'rgba(59, 130, 246, 0.46)',
-        'fill-opacity': 'unset',
-      })
-    }
+    })
 
     return () => {
-      matches.forEach((match) => {
-        try {
-          rendition?.annotations.remove(match.cfi, 'highlight')
-        } catch (_error) {
-          // ignore removed views
-        }
+      annotations.batch(() => {
+        matches.forEach((match) => {
+          try {
+            annotations.remove(match.cfi, 'highlight')
+          } catch (_error) {
+            // ignore removed views
+          }
+        })
       })
     }
   }, [active, matches, paginationVersion, rendition?.annotations, viewVersion])

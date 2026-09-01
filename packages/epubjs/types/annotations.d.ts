@@ -33,6 +33,8 @@ export default class Annotations {
 
   mark(cfiRange: string, data?: object, cb?: Function): void
 
+  batch<T>(callback: () => T): T
+
   each(): Array<Annotation>
 
   private _removeFromAnnotationBySectionIndex(
