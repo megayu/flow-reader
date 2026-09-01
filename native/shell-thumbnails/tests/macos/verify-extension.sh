@@ -105,9 +105,6 @@ fi
 /usr/bin/lipo "${app_executable}" -verify_arch arm64 x86_64
 /usr/bin/lipo "${appex_executable}" -verify_arch arm64 x86_64
 
-# Sign the nested extension before the copied outer app, matching release signing order.
-/usr/bin/codesign --force --sign - --timestamp=none "${appex}"
-/usr/bin/codesign --force --sign - --timestamp=none "${test_app}"
 /usr/bin/codesign --verify --strict --verbose=2 "${appex}"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "${test_app}"
 
@@ -127,10 +124,12 @@ create_epub "${epub_path}" "Quick Look lifecycle"
 create_epub "${second_epub_path}" "Finder reopen lifecycle"
 
 /usr/bin/pluginkit -a "${appex}"
-/usr/bin/pluginkit -e use -i "${extension_id}"
 registered=1
-if ! /usr/bin/pluginkit -m -A -D -i "${extension_id}" | /usr/bin/grep -Fq "${extension_id}"; then
+/usr/bin/pluginkit -e use -i "${extension_id}"
+plugin_matches="$(/usr/bin/pluginkit -m -A -D -i "${extension_id}" || true)"
+if [[ "${plugin_matches}" != *"${extension_id}"* ]]; then
   echo "Quick Look extension was not registered: ${extension_id}" >&2
+  /usr/bin/pluginkit -m -A -D -v -i "${extension_id}" >&2 || true
   exit 1
 fi
 
