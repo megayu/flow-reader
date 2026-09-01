@@ -1,0 +1,8 @@
+[Desktop Entry]
+Exec=flow-reader %F
+StartupWMClass=flow-reader
+Icon=flow-reader
+Name=Flow Reader
+Terminal=false
+Type=Application
+MimeType=application/epub+zip;

@@ -8,6 +8,13 @@
         "name": "EPUB Book",
         "mimeType": "application/epub+zip"
       }
-    ]
+    ],
+    "linux": {
+      "appimage": {
+        "files": {
+          "/usr/share/applications/Flow Reader.desktop": "../native/shell-thumbnails/packaging/linux/flow-reader.desktop"
+        }
+      }
+    }
   }
 }
