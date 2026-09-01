@@ -47,12 +47,13 @@ impl DictionaryHttpClient {
             Url::parse(MERRIAM_WEBSTER_BASE_URL).map_err(|_| configuration_error())?,
             DEFAULT_MAX_RESPONSE_BYTES,
             DEFAULT_TIMEOUT,
+            false,
         )
     }
 
     #[cfg(test)]
     fn for_test(base_url: Url, max_response_bytes: usize, timeout: Duration) -> Result<Self, DictionaryHttpError> {
-        Self::with_configuration(base_url.clone(), base_url, max_response_bytes, timeout)
+        Self::with_configuration(base_url.clone(), base_url, max_response_bytes, timeout, true)
     }
 
     fn with_configuration(
@@ -60,10 +61,11 @@ impl DictionaryHttpClient {
         merriam_webster_base_url: Url,
         max_response_bytes: usize,
         timeout: Duration,
+        bypass_system_proxy: bool,
     ) -> Result<Self, DictionaryHttpError> {
         Ok(Self {
-            zdic: build_transport(zdic_base_url, timeout)?,
-            merriam_webster: build_transport(merriam_webster_base_url, timeout)?,
+            zdic: build_transport(zdic_base_url, timeout, bypass_system_proxy)?,
+            merriam_webster: build_transport(merriam_webster_base_url, timeout, bypass_system_proxy)?,
             max_response_bytes,
             sessions: Mutex::new(HashMap::new()),
         })
@@ -211,7 +213,11 @@ fn provider_lookup_url(base_url: &Url, query: &str) -> Result<Url, DictionaryHtt
     Ok(url)
 }
 
-fn build_transport(base_url: Url, timeout: Duration) -> Result<ProviderTransport, DictionaryHttpError> {
+fn build_transport(
+    base_url: Url,
+    timeout: Duration,
+    bypass_system_proxy: bool,
+) -> Result<ProviderTransport, DictionaryHttpError> {
     let allowed_origin = base_url.origin().ascii_serialization();
     let redirect_policy = Policy::custom(move |attempt| {
         if attempt.previous().len() >= MAX_REDIRECTS {
@@ -223,11 +229,11 @@ fn build_transport(base_url: Url, timeout: Duration) -> Result<ProviderTransport
             attempt.error(REDIRECT_FORBIDDEN_MARKER)
         }
     });
-    let client = Client::builder()
-        .timeout(timeout)
-        .redirect(redirect_policy)
-        .build()
-        .map_err(|_| configuration_error())?;
+    let mut client_builder = Client::builder().timeout(timeout).redirect(redirect_policy);
+    if bypass_system_proxy {
+        client_builder = client_builder.no_proxy();
+    }
+    let client = client_builder.build().map_err(|_| configuration_error())?;
 
     Ok(ProviderTransport { base_url, client })
 }
@@ -261,7 +267,7 @@ fn response_too_large() -> DictionaryHttpError {
 mod tests {
     use std::{
         io::{Read, Write},
-        net::TcpListener,
+        net::{Shutdown, TcpListener},
         sync::Arc,
         thread,
         time::Duration,
@@ -397,13 +403,27 @@ mod tests {
     fn serve_once(response: &str, delay: Duration) -> (Url, thread::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
         let address = listener.local_addr().expect("test server address");
-        let response = response.as_bytes().to_vec();
+        let response = response
+            .replacen("\r\n\r\n", "\r\nConnection: close\r\n\r\n", 1)
+            .into_bytes();
         let handle = thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("accept request");
-            let mut request = [0_u8; 4096];
-            let _ = stream.read(&mut request);
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 1024];
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let read = stream.read(&mut chunk).expect("read request");
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..read]);
+            }
             thread::sleep(delay);
-            let _ = stream.write_all(&response);
+            if stream.write_all(&response).is_ok() {
+                let _ = stream.flush();
+                let _ = stream.shutdown(Shutdown::Write);
+                let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
+                while stream.read(&mut chunk).is_ok_and(|read| read > 0) {}
+            }
         });
 
         (

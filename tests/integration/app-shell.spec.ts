@@ -103,12 +103,12 @@ test('configures one shared main language, secondary language, and translation s
     'Español',
     'Français',
     'Italiano',
-    'Nederlands',
-    'Polski',
-    'Português',
-    'Русский',
     '日本語',
     '한국어',
+    'Nederlands',
+    'Polski',
+    'Português (Brasil)',
+    'Русский',
     '繁體中文',
   ])
   await page.keyboard.press('Escape')
