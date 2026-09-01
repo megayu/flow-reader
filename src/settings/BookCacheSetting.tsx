@@ -13,7 +13,7 @@ import { type BookCacheClearProgress, clearBookCaches } from '@/storage'
 import { SettingsItem } from './SettingsItem'
 
 export function BookCacheSetting() {
-  const t = useTranslation('settings.book_cache')
+  const t = useTranslation()
   const notify = useNotify()
   const setBookCacheClearing = useSetBookCacheClearing()
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -32,10 +32,10 @@ export function BookCacheSetting() {
     setBookCacheClearing(true)
     try {
       await clearBookCaches(discardEdits, preservedUnpackedBookIds, setProgress)
-      notify({ type: 'success', title: t('complete') })
+      notify({ type: 'success', title: t('settings.book_cache.complete') })
     } catch (clearError) {
       console.error(clearError)
-      notify({ type: 'error', title: t('error') })
+      notify({ type: 'error', title: t('settings.book_cache.error') })
     } finally {
       setProgress(undefined)
       setBookCacheClearing(false)
@@ -45,7 +45,7 @@ export function BookCacheSetting() {
 
   return (
     <>
-      <SettingsItem title={t('title')} description={t('description')}>
+      <SettingsItem title={t('settings.book_cache.title')} description={t('settings.book_cache.description')}>
         <Button
           type="button"
           variant="secondary"
@@ -54,14 +54,14 @@ export function BookCacheSetting() {
             setConfirmOpen(true)
           }}
         >
-          {t('clear')}
+          {t('settings.book_cache.clear')}
         </Button>
       </SettingsItem>
       {confirmOpen && (
         <ConfirmDialog
-          title={t('confirm')}
-          cancelLabel={t('cancel')}
-          confirmLabel={t('clear')}
+          title={t('settings.book_cache.confirm')}
+          cancelLabel={t('settings.book_cache.cancel')}
+          confirmLabel={t('settings.book_cache.clear')}
           onClose={closeConfirm}
           onConfirm={() => {
             void clear()
@@ -76,14 +76,14 @@ export function BookCacheSetting() {
               checked={discardUnexportedEdits}
               onCheckedChange={(checked) => setDiscardUnexportedEdits(checked === true)}
             />
-            <span>{t('discard_edits')}</span>
+            <span>{t('settings.book_cache.discard_edits')}</span>
           </label>
         </ConfirmDialog>
       )}
       {progress && (
         <BlockingProgressPanel
           blockKeyboard
-          title={t('clearing')}
+          title={t('settings.book_cache.clearing')}
           completed={progress.completed}
           total={progress.total}
         />

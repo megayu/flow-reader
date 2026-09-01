@@ -485,7 +485,7 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
   showSeparator,
   tab,
 }: ReaderTabItemProps) {
-  const t = useTranslation('tabs')
+  const t = useTranslation()
   const [contextMenuOpen, setContextMenuOpen] = useState(false)
   const label = getReaderTabLabel(tab)
   const handleMouseEnter = useCallback(() => {
@@ -535,17 +535,17 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
         </Tab>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-max max-w-[calc(100vw-2rem)]">
-        <ContextMenuItem onSelect={handleDelete}>{t('close')}</ContextMenuItem>
+        <ContextMenuItem onSelect={handleDelete}>{t('tabs.close')}</ContextMenuItem>
         <ContextMenuItem disabled={reader.tabs.length === 1} onSelect={handleCloseOthers}>
-          {t('close_others')}
+          {t('tabs.close_others')}
         </ContextMenuItem>
         <ContextMenuItem onSelect={() => void reader.closeAllTabs().catch(console.error)}>
-          {t('close_all')}
+          {t('tabs.close_all')}
         </ContextMenuItem>
         {tab.book.scope === 'external' && (
           <>
             <ContextMenuSeparator />
-            <ContextMenuItem onSelect={handleAddToLibrary}>{t('add_to_library')}</ContextMenuItem>
+            <ContextMenuItem onSelect={handleAddToLibrary}>{t('tabs.add_to_library')}</ContextMenuItem>
           </>
         )}
       </ContextMenuContent>
@@ -863,25 +863,25 @@ interface ReaderEdgeNavigationProps {
 }
 
 const ReaderEdgeNavigation: React.FC<ReaderEdgeNavigationProps> = ({ tab }) => {
-  const t = useTranslation('reader')
+  const t = useTranslation()
   const items = [
     {
-      label: t('previous_chapter'),
+      label: t('reader.previous_chapter'),
       Icon: ChevronsUpIcon,
       onClick: () => void tab.prevSection(),
     },
     {
-      label: t('previous_page'),
+      label: t('reader.previous_page'),
       Icon: ChevronUpIcon,
       onClick: () => void tab.prev(),
     },
     {
-      label: t('next_page'),
+      label: t('reader.next_page'),
       Icon: ChevronDownIcon,
       onClick: () => void tab.next(),
     },
     {
-      label: t('next_chapter'),
+      label: t('reader.next_chapter'),
       Icon: ChevronsDownIcon,
       onClick: () => void tab.nextSection(),
     },
@@ -940,7 +940,7 @@ interface FooterProps {
 }
 const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
   const { locationsToReturn, paginationSnapshot } = useSnapshot(tab)
-  const t = useTranslation('reader')
+  const t = useTranslation()
   const locationToReturn = locationsToReturn[locationsToReturn.length - 1]
   const location = paginationSnapshot?.location
   const divisor = paginationSnapshot?.spreadDivisor ?? 1
@@ -970,23 +970,23 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
             <button
               type="button"
               className={returnActionClass}
-              aria-label={t('return_to_start')}
+              aria-label={t('reader.return_to_start')}
               onClick={() => {
                 tab.returnToFirstLocation()
               }}
             >
-              <span>{t('return_to_start')}</span>
+              <span>{t('reader.return_to_start')}</span>
               {returnStartShortcut && <ShortcutChord compact shortcut={returnStartShortcut} />}
             </button>
             <button
               type="button"
               className={clsx(returnActionClass, 'truncate')}
-              aria-label={t('return_to_previous')}
+              aria-label={t('reader.return_to_previous')}
               onClick={() => {
                 tab.returnToPreviousLocation()
               }}
             >
-              <span>{t('return_to_previous')}</span>
+              <span>{t('reader.return_to_previous')}</span>
               {returnPreviousShortcut && <ShortcutChord compact shortcut={returnPreviousShortcut} />}
             </button>
           </div>
@@ -996,12 +996,12 @@ const ReaderPaneFooter: React.FC<FooterProps> = ({ tab }) => {
           <button
             type="button"
             className={returnActionClass}
-            aria-label={t('dismiss_return')}
+            aria-label={t('reader.dismiss_return')}
             onClick={() => {
               tab.hidePrevLocation()
             }}
           >
-            <span>{t('dismiss_return')}</span>
+            <span>{t('reader.dismiss_return')}</span>
             {dismissReturnShortcut && <ShortcutChord compact shortcut={dismissReturnShortcut} />}
           </button>
         </Bar>

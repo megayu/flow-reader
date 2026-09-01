@@ -48,7 +48,7 @@ export function DictionaryPopup({
   query,
   localDictionaries,
 }: DictionaryPopupProps) {
-  const t = useTranslation('dictionary')
+  const t = useTranslation()
   const [settings] = useSettings()
   const rootCoordinator = useMemo(() => new DictionaryCoordinator(), [])
   const detailCoordinator = useMemo(() => new DictionaryCoordinator(), [])
@@ -443,7 +443,7 @@ export function DictionaryPopup({
                 )
               })
             ) : (
-              <div className="text-muted-foreground px-5 py-3 text-sm">{t('no_result')}</div>
+              <div className="text-muted-foreground px-5 py-3 text-sm">{t('dictionary.no_result')}</div>
             )}
           </div>
           {retainedDetailViews.map(({ key }) => {
@@ -462,7 +462,7 @@ export function DictionaryPopup({
                     />
                   ))
                 ) : (
-                  <div className="text-muted-foreground px-5 py-3 text-sm">{t('no_result')}</div>
+                  <div className="text-muted-foreground px-5 py-3 text-sm">{t('dictionary.no_result')}</div>
                 )}
               </div>
             )

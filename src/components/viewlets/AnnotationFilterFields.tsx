@@ -12,7 +12,7 @@ interface AnnotationFilterFieldsProps {
 }
 
 export function AnnotationFilterFields({ onChange, value }: AnnotationFilterFieldsProps) {
-  const t = useTranslation('annotation')
+  const t = useTranslation()
   const toggleColor = (color: AnnotationColor) => {
     const colors = new Set(value.colors)
     if (colors.has(color)) colors.delete(color)
@@ -22,7 +22,7 @@ export function AnnotationFilterFields({ onChange, value }: AnnotationFilterFiel
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="text-muted-foreground px-1 font-medium">{t('colors')}</div>
+      <div className="text-muted-foreground px-1 font-medium">{t('annotation.colors')}</div>
       <div className="flex items-center justify-between px-1">
         {annotationColors.map((color) => (
           <button
@@ -42,7 +42,7 @@ export function AnnotationFilterFields({ onChange, value }: AnnotationFilterFiel
           </button>
         ))}
       </div>
-      <div className="text-muted-foreground mt-1 px-1 font-medium">{t('notes')}</div>
+      <div className="text-muted-foreground mt-1 px-1 font-medium">{t('annotation.notes')}</div>
       <div className="grid grid-cols-3 gap-1">
         {(['all', 'with', 'without'] as AnnotationNoteFilter[]).map((notes) => (
           <Button
@@ -52,7 +52,7 @@ export function AnnotationFilterFields({ onChange, value }: AnnotationFilterFiel
             variant={value.notes === notes ? 'secondary' : 'ghost'}
             onClick={() => onChange({ ...value, notes })}
           >
-            {t(`notes_${notes}`)}
+            {t(`annotation.notes_${notes}`)}
           </Button>
         ))}
       </div>

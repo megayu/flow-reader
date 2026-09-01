@@ -51,7 +51,7 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
     () => sortedBooks.findIndex((book) => book.id === currentBookId),
     [currentBookId, sortedBooks],
   )
-  const t = useTranslation('toc')
+  const t = useTranslation()
 
   useEffect(() => {
     if (!active) return
@@ -63,7 +63,7 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
   return (
     <Pane
       ref={outerRef}
-      headline={t('library')}
+      headline={t('toc.library')}
       minSize={120}
       overlayScroll
       preferredSize={220}

@@ -17,7 +17,7 @@ interface LibraryTagDialogProps {
 }
 
 export function EditLibraryTagDialog({ onClose, tag }: LibraryTagDialogProps) {
-  const t = useTranslation('home')
+  const t = useTranslation()
   const notify = useNotify()
   const inputRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState(tag.name)
@@ -35,7 +35,7 @@ export function EditLibraryTagDialog({ onClose, tag }: LibraryTagDialogProps) {
 
       if (!updatedTag) {
         notify({
-          title: t('library_filter.tag_exists'),
+          title: t('home.library_filter.tag_exists'),
           type: 'warning',
         })
         return
@@ -62,11 +62,11 @@ export function EditLibraryTagDialog({ onClose, tag }: LibraryTagDialogProps) {
           }}
         >
           <DialogHeader>
-            <DialogTitle>{t('library_filter.edit_tag')}</DialogTitle>
+            <DialogTitle>{t('home.library_filter.edit_tag')}</DialogTitle>
           </DialogHeader>
           <label className="block">
             <span className="text-muted-foreground mb-1.5 block leading-none font-medium">
-              {t('library_filter.tag_name')}
+              {t('home.library_filter.tag_name')}
             </span>
             <Input
               ref={inputRef}
@@ -78,10 +78,10 @@ export function EditLibraryTagDialog({ onClose, tag }: LibraryTagDialogProps) {
           </label>
           <DialogFooter>
             <UiButton type="button" variant="secondary" onClick={onClose}>
-              {t('cancel')}
+              {t('home.cancel')}
             </UiButton>
             <UiButton type="submit" disabled={!canSave}>
-              {t('edit.save')}
+              {t('home.edit.save')}
             </UiButton>
           </DialogFooter>
         </form>
@@ -95,18 +95,18 @@ interface DeleteLibraryTagDialogProps extends LibraryTagDialogProps {
 }
 
 export function DeleteLibraryTagDialog({ onClose, onDeleted, tag }: DeleteLibraryTagDialogProps) {
-  const t = useTranslation('home')
+  const t = useTranslation()
 
   return (
     <ConfirmDialog
-      title={t('library_filter.delete_tag')}
+      title={t('home.library_filter.delete_tag')}
       description={
         <>
-          {t('library_filter.delete_tag_message')} <span className="text-foreground font-medium">{tag.name}</span>
+          {t('home.library_filter.delete_tag_message')} <span className="text-foreground font-medium">{tag.name}</span>
         </>
       }
-      cancelLabel={t('cancel')}
-      confirmLabel={t('delete')}
+      cancelLabel={t('home.cancel')}
+      confirmLabel={t('home.delete')}
       onClose={onClose}
       onConfirm={() => {
         void db.tags.delete(tag.id).then(onDeleted)

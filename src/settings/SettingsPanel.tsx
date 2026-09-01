@@ -21,7 +21,7 @@ import { openSupportedExternalUrl } from '@/externalLink'
 import { useAccentColor } from '@/hooks/theme/useSourceColor'
 import { useLocale } from '@/hooks/useLocale'
 import { formatTranslation, useTranslation } from '@/hooks/useTranslation'
-import { type AppLocale, localeNames } from '@/locales'
+import { type AppLocale, localeNames, type MessageKey } from '@/locales'
 import { createShortcutGroups } from '@/shortcuts'
 import {
   normalizeTextImportRules,
@@ -72,8 +72,7 @@ export const SettingsPanel: React.FC = () => {
   const [settings, setSettings] = useSettings()
   const textImportRuleDefaults = useTextImportRuleDefaults()
   const resetTextImportRule = useResetTextImportRule()
-  const t = useTranslation('settings')
-  const typographyT = useTranslation('typography')
+  const t = useTranslation()
   const [activeTab, setActiveTab] = useState<SettingsTab>('basic')
   const textImportRules = normalizeTextImportRules(settings.textImportRules, textImportRuleDefaults)
   const updateTextImportRules = (patch: Partial<TextImportRulesConfiguration>) => {
@@ -86,7 +85,7 @@ export const SettingsPanel: React.FC = () => {
     }))
   }
   const textImportRuleRestoreButton = (key: keyof TextImportRulesConfiguration) => {
-    const label = t('txt_import.restore_defaults')
+    const label = t('settings.txt_import.restore_defaults')
 
     return (
       <AppTooltip label={label}>
@@ -108,7 +107,9 @@ export const SettingsPanel: React.FC = () => {
   return (
     <div className="flex h-full w-full max-w-full min-w-0 flex-row gap-0 overflow-hidden">
       <aside className="border-border w-40 min-w-40 shrink-0 overflow-hidden border-r bg-(--flow-bg-sidebar) p-2">
-        <DialogTitle className="text-muted-foreground px-3 py-3 text-lg font-semibold">{t('title')}</DialogTitle>
+        <DialogTitle className="text-muted-foreground px-3 py-3 text-lg font-semibold">
+          {t('settings.title')}
+        </DialogTitle>
         <div className="mt-1 flex h-auto w-full flex-col items-stretch gap-1 rounded-none bg-transparent p-0">
           {SETTINGS_TABS.map((tab) => {
             const active = tab === activeTab
@@ -126,7 +127,7 @@ export const SettingsPanel: React.FC = () => {
                 style={{ fontSize: 'var(--app-font-size-md)' }}
                 onClick={() => setActiveTab(tab)}
               >
-                {t(`tabs.${tab}`)}
+                {t(`settings.tabs.${tab}`)}
               </button>
             )
           })}
@@ -138,13 +139,13 @@ export const SettingsPanel: React.FC = () => {
           activeTab === 'tags' ? 'flex flex-col overflow-y-hidden' : 'scroll overflow-y-auto',
         )}
       >
-        <h2 className="text-muted-foreground text-lg font-semibold">{t(`tabs.${activeTab}`)}</h2>
+        <h2 className="text-muted-foreground text-lg font-semibold">{t(`settings.tabs.${activeTab}`)}</h2>
         <div className={clsx('mt-5', activeTab === 'tags' ? 'min-h-0 flex-1' : 'space-y-5')}>
           {activeTab === 'basic' && (
             <div data-flow-settings-panel className="m-0 space-y-5">
-              <Item title={t('language')}>
+              <Item title={t('settings.language')}>
                 <Select value={locale} onValueChange={(value) => setLocale(value as AppLocale)}>
-                  <SelectTrigger aria-label={t('language')} className="h-8 w-44 rounded-lg">
+                  <SelectTrigger aria-label={t('settings.language')} className="h-8 w-44 rounded-lg">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -159,13 +160,13 @@ export const SettingsPanel: React.FC = () => {
               <AccentColorSetting />
               <UiFontSizeSetting />
               <Item
-                title={t('restore_last_reading')}
-                description={t('restore_last_reading.description')}
+                title={t('settings.restore_last_reading')}
+                description={t('settings.restore_last_reading.description')}
                 controlId="settings-restore-last-reading"
               >
                 <SettingsCheckbox
                   id="settings-restore-last-reading"
-                  label={t('restore_last_reading')}
+                  label={t('settings.restore_last_reading')}
                   checked={settings.restoreLastReadingOnStartup === true}
                   onCheckedChange={(checked) => {
                     setSettings({
@@ -176,13 +177,13 @@ export const SettingsPanel: React.FC = () => {
                 />
               </Item>
               <Item
-                title={t('show_recent_books')}
-                description={t('show_recent_books.description')}
+                title={t('settings.show_recent_books')}
+                description={t('settings.show_recent_books.description')}
                 controlId="settings-show-recent-books"
               >
                 <SettingsCheckbox
                   id="settings-show-recent-books"
-                  label={t('show_recent_books')}
+                  label={t('settings.show_recent_books')}
                   checked={settings.showRecentBooks === true}
                   onCheckedChange={(checked) => {
                     setSettings((prev) => ({
@@ -196,16 +197,16 @@ export const SettingsPanel: React.FC = () => {
           )}
           {activeTab === 'reading' && (
             <div data-flow-settings-panel className="m-0 space-y-5">
-              <Item title={t('default_page_view')} description={t('default_page_view.description')}>
+              <Item title={t('settings.default_page_view')} description={t('settings.default_page_view.description')}>
                 <SegmentedField
                   value={settings.spread ?? RenditionSpread.Auto}
                   options={[
                     {
-                      label: typographyT('page_view.single_page'),
+                      label: t('typography.page_view.single_page'),
                       value: RenditionSpread.None,
                     },
                     {
-                      label: typographyT('page_view.double_page'),
+                      label: t('typography.page_view.double_page'),
                       value: RenditionSpread.Auto,
                     },
                   ]}
@@ -217,16 +218,16 @@ export const SettingsPanel: React.FC = () => {
                   }}
                 />
               </Item>
-              <Item title={t('default_text_align')} description={t('default_text_align.description')}>
+              <Item title={t('settings.default_text_align')} description={t('settings.default_text_align.description')}>
                 <SegmentedField
                   value={settings.textAlign ?? 'default'}
                   options={[
                     {
-                      label: typographyT('text_align.default'),
+                      label: t('typography.text_align.default'),
                       value: 'default',
                     },
                     {
-                      label: typographyT('text_align.justify'),
+                      label: t('typography.text_align.justify'),
                       value: 'justify',
                     },
                   ]}
@@ -239,13 +240,13 @@ export const SettingsPanel: React.FC = () => {
                 />
               </Item>
               <Item
-                title={t('text_selection_menu')}
-                description={t('text_selection_menu.description')}
+                title={t('settings.text_selection_menu')}
+                description={t('settings.text_selection_menu.description')}
                 controlId="settings-text-selection-menu"
               >
                 <SettingsCheckbox
                   id="settings-text-selection-menu"
-                  label={t('text_selection_menu')}
+                  label={t('settings.text_selection_menu')}
                   checked={settings.enableTextSelectionMenu === true}
                   onCheckedChange={(checked) => {
                     setSettings({
@@ -256,13 +257,13 @@ export const SettingsPanel: React.FC = () => {
                 />
               </Item>
               <Item
-                title={t('hide_endnotes')}
-                description={t('hide_endnotes.description')}
+                title={t('settings.hide_endnotes')}
+                description={t('settings.hide_endnotes.description')}
                 controlId="settings-hide-endnotes"
               >
                 <SettingsCheckbox
                   id="settings-hide-endnotes"
-                  label={t('hide_endnotes')}
+                  label={t('settings.hide_endnotes')}
                   checked={settings.hideEndnotes === true}
                   onCheckedChange={(checked) => {
                     setSettings({
@@ -273,13 +274,13 @@ export const SettingsPanel: React.FC = () => {
                 />
               </Item>
               <Item
-                title={t('show_library_in_toc')}
-                description={t('show_library_in_toc.description')}
+                title={t('settings.show_library_in_toc')}
+                description={t('settings.show_library_in_toc.description')}
                 controlId="settings-show-library-in-toc"
               >
                 <SettingsCheckbox
                   id="settings-show-library-in-toc"
-                  label={t('show_library_in_toc')}
+                  label={t('settings.show_library_in_toc')}
                   checked={settings.showLibraryInToc === true}
                   onCheckedChange={(checked) => {
                     setSettings((prev) => ({
@@ -295,13 +296,13 @@ export const SettingsPanel: React.FC = () => {
             <div data-flow-settings-panel className="m-0 space-y-5">
               <div className="space-y-3">
                 <Item
-                  title={t('source_storage')}
-                  description={t('source_storage.description')}
+                  title={t('settings.source_storage')}
+                  description={t('settings.source_storage.description')}
                   controlId="settings-source-storage"
                 >
                   <SettingsCheckbox
                     id="settings-source-storage"
-                    label={t('source_storage')}
+                    label={t('settings.source_storage')}
                     checked={settings.importSourceStorage === 'referenced'}
                     onCheckedChange={(checked) => {
                       setSettings((prev) => ({
@@ -314,13 +315,13 @@ export const SettingsPanel: React.FC = () => {
                 {settings.importSourceStorage === 'referenced' && (
                   <div className="border-border ml-4 border-l pl-4">
                     <Item
-                      title={t('source_storage.txt_copy')}
-                      description={t('source_storage.txt_copy.description')}
+                      title={t('settings.source_storage.txt_copy')}
+                      description={t('settings.source_storage.txt_copy.description')}
                       controlId="settings-source-storage-txt-copy"
                     >
                       <SettingsCheckbox
                         id="settings-source-storage-txt-copy"
-                        label={t('source_storage.txt_copy')}
+                        label={t('settings.source_storage.txt_copy')}
                         checked={settings.copyTextImports === true}
                         onCheckedChange={(checked) => {
                           setSettings((prev) => ({
@@ -334,13 +335,13 @@ export const SettingsPanel: React.FC = () => {
                 )}
               </div>
               <Item
-                title={t('epub_default_mode')}
-                description={t('epub_default_mode.description')}
+                title={t('settings.epub_default_mode')}
+                description={t('settings.epub_default_mode.description')}
                 controlId="settings-epub-text-editing"
               >
                 <SettingsCheckbox
                   id="settings-epub-text-editing"
-                  label={t('epub_default_mode')}
+                  label={t('settings.epub_default_mode')}
                   checked={settings.defaultEpubMode === 'unpacked'}
                   onCheckedChange={(checked) => {
                     setSettings((prev) => ({
@@ -351,13 +352,13 @@ export const SettingsPanel: React.FC = () => {
                 />
               </Item>
               <Item
-                title={t('library_modified_indicator')}
-                description={t('library_modified_indicator.description')}
+                title={t('settings.library_modified_indicator')}
+                description={t('settings.library_modified_indicator.description')}
                 controlId="settings-library-export-reminder"
               >
                 <SettingsCheckbox
                   id="settings-library-export-reminder"
-                  label={t('library_modified_indicator')}
+                  label={t('settings.library_modified_indicator')}
                   checked={settings.showModifiedBookExportIndicator === true}
                   onCheckedChange={(checked) => {
                     setSettings((prev) => ({
@@ -374,13 +375,13 @@ export const SettingsPanel: React.FC = () => {
           {activeTab === 'txt' && (
             <div data-flow-settings-panel className="m-0 space-y-4">
               <Item
-                title={t('txt_import.auto_import')}
-                description={t('txt_import.auto_import.description')}
+                title={t('settings.txt_import.auto_import')}
+                description={t('settings.txt_import.auto_import.description')}
                 controlId="settings-txt-auto-import"
               >
                 <SettingsCheckbox
                   id="settings-txt-auto-import"
-                  label={t('txt_import.auto_import')}
+                  label={t('settings.txt_import.auto_import')}
                   checked={settings.directTextImport === true}
                   onCheckedChange={(checked) => {
                     setSettings((prev) => ({
@@ -391,37 +392,37 @@ export const SettingsPanel: React.FC = () => {
                 />
               </Item>
               <Item
-                title={t('txt_import.group_rules')}
+                title={t('settings.txt_import.group_rules')}
                 titleAction={textImportRuleRestoreButton('groupPatterns')}
-                description={<RegexDescription descriptionKey="txt_import.group_rules.description" />}
+                description={<RegexDescription descriptionKey="settings.txt_import.group_rules.description" />}
                 wideControl
               >
                 <PatternTextarea
-                  label={t('txt_import.group_rules')}
+                  label={t('settings.txt_import.group_rules')}
                   value={textImportRules.groupPatterns}
                   onChange={(patterns) => updateTextImportRules({ groupPatterns: patterns })}
                 />
               </Item>
               <Item
-                title={t('txt_import.chapter_rules')}
+                title={t('settings.txt_import.chapter_rules')}
                 titleAction={textImportRuleRestoreButton('chapterPatterns')}
-                description={<RegexDescription descriptionKey="txt_import.chapter_rules.description" />}
+                description={<RegexDescription descriptionKey="settings.txt_import.chapter_rules.description" />}
                 wideControl
               >
                 <PatternTextarea
-                  label={t('txt_import.chapter_rules')}
+                  label={t('settings.txt_import.chapter_rules')}
                   value={textImportRules.chapterPatterns}
                   onChange={(patterns) => updateTextImportRules({ chapterPatterns: patterns })}
                 />
               </Item>
               <Item
-                title={t('txt_import.filename_rules')}
+                title={t('settings.txt_import.filename_rules')}
                 titleAction={textImportRuleRestoreButton('filenamePatterns')}
-                description={<RegexDescription descriptionKey="txt_import.filename_rules.description" />}
+                description={<RegexDescription descriptionKey="settings.txt_import.filename_rules.description" />}
                 wideControl
               >
                 <PatternTextarea
-                  label={t('txt_import.filename_rules')}
+                  label={t('settings.txt_import.filename_rules')}
                   value={textImportRules.filenamePatterns}
                   onChange={(patterns) => updateTextImportRules({ filenamePatterns: patterns })}
                 />
@@ -453,7 +454,7 @@ function TranslationSettings({
   settings: ReturnType<typeof useSettings>[0]
   setSettings: ReturnType<typeof useSettings>[1]
 }) {
-  const t = useTranslation('settings.translation')
+  const t = useTranslation()
   const translation = settings.translation ?? {
     mainLanguage: 'zh-Hans' as const,
     secondaryLanguage: 'en' as const,
@@ -493,13 +494,26 @@ function TranslationSettings({
 
   return (
     <div data-flow-settings-panel className="m-0 space-y-5">
-      <Item title={t('main_language')} description={t('main_language.description')}>
-        {languageSelect(t('main_language'), translation.mainLanguage, 'mainLanguage')}
+      <Item
+        title={t('settings.translation.main_language')}
+        description={t('settings.translation.main_language.description')}
+      >
+        {languageSelect(t('settings.translation.main_language'), translation.mainLanguage, 'mainLanguage')}
       </Item>
-      <Item title={t('secondary_language')} description={t('secondary_language.description')}>
-        {languageSelect(t('secondary_language'), translation.secondaryLanguage, 'secondaryLanguage')}
+      <Item
+        title={t('settings.translation.secondary_language')}
+        description={t('settings.translation.secondary_language.description')}
+      >
+        {languageSelect(
+          t('settings.translation.secondary_language'),
+          translation.secondaryLanguage,
+          'secondaryLanguage',
+        )}
       </Item>
-      <Item title={t('default_provider')} description={t('default_provider.description')}>
+      <Item
+        title={t('settings.translation.default_provider')}
+        description={t('settings.translation.default_provider.description')}
+      >
         <SegmentedField
           value={translation.defaultProvider}
           options={[
@@ -572,8 +586,8 @@ function arePatternListsEqual(left: string[], right: string[]) {
   return left.length === right.length && left.every((pattern, index) => pattern === right[index])
 }
 
-function RegexDescription({ descriptionKey }: { descriptionKey: string }) {
-  const t = useTranslation('settings')
+function RegexDescription({ descriptionKey }: { descriptionKey: MessageKey }) {
+  const t = useTranslation()
 
   return formatTranslation<ReactNode>(t(descriptionKey), [
     <button
@@ -584,7 +598,7 @@ function RegexDescription({ descriptionKey }: { descriptionKey: string }) {
         void openSupportedExternalUrl(REGEX_TESTER_URL).catch(() => undefined)
       }}
     >
-      {t('txt_import.regular_expression')}
+      {t('settings.txt_import.regular_expression')}
     </button>,
   ])
 }
@@ -625,13 +639,12 @@ const AccentColorSetting: React.FC = () => {
   const { accentColor, setAccentColor } = useAccentColor()
   const [open, setOpen] = useState(false)
   const [displayColor, setDisplayColor] = useState(accentColor)
-  const t = useTranslation('theme')
-  const settingsT = useTranslation('settings')
+  const t = useTranslation()
 
   const color = normalizeHexColor(displayColor) ?? accentColor
 
   return (
-    <Item title={t('source_color')} description={settingsT('accent_color.description')}>
+    <Item title={t('theme.source_color')} description={t('settings.accent_color.description')}>
       <Popover
         open={open}
         onOpenChange={(nextOpen) => {
@@ -667,7 +680,7 @@ const AccentColorSetting: React.FC = () => {
 
 const UiFontSizeSetting: React.FC = () => {
   const [settings, setSettings] = useSettings()
-  const t = useTranslation('settings')
+  const t = useTranslation()
   const uiFontSize = normalizeUiFontSize(settings.ui?.fontSize)
   const setUiFontSize = (next: number) => {
     setSettings((prev) => ({
@@ -680,11 +693,11 @@ const UiFontSizeSetting: React.FC = () => {
   }
 
   return (
-    <Item title={t('ui_font_size')} description={t('ui_font_size.description')}>
+    <Item title={t('settings.ui_font_size')} description={t('settings.ui_font_size.description')}>
       <InputGroup className="w-24 overflow-hidden bg-transparent focus-within:border-input focus-within:ring-0">
         <InputGroupInput
           type="text"
-          aria-label={t('ui_font_size')}
+          aria-label={t('settings.ui_font_size')}
           readOnly
           value={uiFontSize}
           escapeBehavior="none"
@@ -694,7 +707,7 @@ const UiFontSizeSetting: React.FC = () => {
         <div className="border-input grid h-full w-7 shrink-0 grid-rows-2 border-l">
           <button
             type="button"
-            aria-label={`${t('ui_font_size')} +`}
+            aria-label={`${t('settings.ui_font_size')} +`}
             className="flex min-h-0 w-full cursor-pointer items-center justify-center text-muted-foreground transition-colors enabled:hover:bg-(--flow-bg-control-hover) enabled:active:bg-(--flow-bg-control-active) disabled:cursor-default disabled:opacity-35"
             disabled={uiFontSize >= maxUiFontSize}
             onClick={() => setUiFontSize(uiFontSize + 1)}
@@ -703,7 +716,7 @@ const UiFontSizeSetting: React.FC = () => {
           </button>
           <button
             type="button"
-            aria-label={`${t('ui_font_size')} -`}
+            aria-label={`${t('settings.ui_font_size')} -`}
             className="border-input flex min-h-0 w-full cursor-pointer items-center justify-center border-t text-muted-foreground transition-colors enabled:hover:bg-(--flow-bg-control-hover) enabled:active:bg-(--flow-bg-control-active) disabled:cursor-default disabled:opacity-35"
             disabled={uiFontSize <= minUiFontSize}
             onClick={() => setUiFontSize(uiFontSize - 1)}

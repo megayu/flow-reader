@@ -63,7 +63,8 @@ import {
 } from '../library/LibraryFilterChipButton'
 import { LibraryFilterInput } from '../library/LibraryFilterInput'
 import { DeleteLibraryTagDialog, EditLibraryTagDialog } from '../library/LibraryTagDialogs'
-import { toMessageKeySegment } from '../locales'
+import { readingStatusMessageKey } from '../library/model'
+import type { MessageKey } from '../locales'
 import { useReaderSnapshot } from '../models/reader'
 import { createTextSearchIndex, createTextSearchQuery, matchesTextSearch } from '../search/textSearch'
 import { getShortcutChords, type ShortcutActionId } from '../shortcuts'
@@ -191,7 +192,7 @@ function isAppShortcutTargetBlocked(e: KeyboardEvent) {
 
 interface IAction {
   name: string
-  title: string
+  title: MessageKey
   Icon: LucideIcon
   shortcutId?: ShortcutActionId
 }
@@ -203,35 +204,35 @@ interface IViewAction extends IAction {
 const viewActions: IViewAction[] = [
   {
     name: 'toc',
-    title: 'toc',
+    title: 'toc.title',
     Icon: TableOfContents,
     shortcutId: 'tocPanel',
     View: TocView,
   },
   {
     name: 'search',
-    title: 'search',
+    title: 'search.title',
     Icon: Search,
     shortcutId: 'searchPanel',
     View: SearchView,
   },
   {
     name: 'annotation',
-    title: 'annotation',
+    title: 'annotation.title',
     Icon: Highlighter,
     shortcutId: 'annotationPanel',
     View: AnnotationView,
   },
   {
     name: 'image',
-    title: 'image',
+    title: 'image.title',
     Icon: Image,
     shortcutId: 'imagePanel',
     View: ImageView,
   },
   {
     name: 'typography',
-    title: 'typography',
+    title: 'typography.title',
     Icon: Type,
     shortcutId: 'typographyPanel',
     View: TypographyView,
@@ -246,7 +247,7 @@ interface ILibraryViewAction extends IAction {
 const libraryViewActions: ILibraryViewAction[] = [
   {
     name: 'libraryFilter',
-    title: 'library_filter',
+    title: 'library_filter.title',
     Icon: ListFilter,
     shortcutId: 'libraryFilterPanel',
     View: LibraryFilterView,
@@ -290,7 +291,7 @@ function ViewActionBar({ className }: ComponentProps<'div'>) {
         const active = activeAction === name
         return (
           <Action
-            label={t(`${title}.title`)}
+            label={t(title)}
             Icon={Icon}
             active={active}
             shortcut={getPrimaryShortcut(shortcutId)}
@@ -443,7 +444,7 @@ function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProp
       },
       {
         name: 'theme',
-        title: 'theme',
+        title: 'theme.title',
         Icon: Sun,
       },
       {
@@ -461,7 +462,7 @@ function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProp
       },
       {
         name: 'settings',
-        title: 'settings',
+        title: 'settings.title',
         Icon: Settings,
         shortcutId: 'openSettings',
       },
@@ -479,11 +480,10 @@ function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProp
             (fullscreen && name === 'fullscreen') ||
             (zenMode && name === 'zen') ||
             (settingsOpen && name === 'settings')
-          const titleKey = name === 'mode' || name === 'fullscreen' || name === 'zen' ? title : `${title}.title`
           const actionButton = (
             <Action
               key={name}
-              label={t(titleKey)}
+              label={t(title)}
               Icon={Icon}
               active={active}
               disabled={disabled}
@@ -646,7 +646,7 @@ interface LibraryFacetSearchState {
 }
 
 function LibraryFilterView({ className }: ComponentProps<'div'>) {
-  const t = useTranslation('home')
+  const t = useTranslation()
   const books = useLibrary()
   const tags = useLibraryTags()
   const pins = useLibraryPins()
@@ -858,13 +858,13 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     () => [
       {
         Icon: PencilIcon,
-        label: t('context.edit'),
+        label: t('home.context.edit'),
         onClick: editTag,
       },
       {
         danger: true,
         Icon: Trash2Icon,
-        label: t('delete'),
+        label: t('home.delete'),
         onClick: deleteTag,
       },
     ],
@@ -938,13 +938,13 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     <PaneView className={clsx('p-2', className)}>
       <div className="flex h-full min-h-0 flex-col gap-1.5" data-testid="library-filter-panel">
         <div className="flex h-7 shrink-0 items-center justify-between gap-1.5">
-          <div className="text-foreground text-base leading-none font-semibold">{t('library_filter.title')}</div>
-          <AppTooltip label={t('library_filter.clear')} shortcut={getPrimaryShortcut('libraryFilterClear')}>
+          <div className="text-foreground text-base leading-none font-semibold">{t('home.library_filter.title')}</div>
+          <AppTooltip label={t('home.library_filter.clear')} shortcut={getPrimaryShortcut('libraryFilterClear')}>
             <UiButton
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label={t('library_filter.clear')}
+              aria-label={t('home.library_filter.clear')}
               className={libraryFilterIconButtonClassName}
               disabled={!hasFilters}
               onClick={clearFilters}
@@ -956,7 +956,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
 
         <section className={clsx(libraryFilterPanelClassName, 'shrink-0')} data-testid="library-status-filter">
           <div className={libraryFilterPanelHeaderClassName}>
-            <div className={libraryFilterSectionHeaderClassName}>{t('library_filter.status')}</div>
+            <div className={libraryFilterSectionHeaderClassName}>{t('home.library_filter.status')}</div>
           </div>
           <div className={libraryFilterOptionsClassName}>
             <UiButton
@@ -975,7 +975,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                 status={null}
                 className={statusFilters.length === 0 ? 'text-primary-foreground' : ''}
               />
-              <span className="min-w-0 truncate leading-tight">{t('library_filter.all')}</span>
+              <span className="min-w-0 truncate leading-tight">{t('home.library_filter.all')}</span>
             </UiButton>
             {libraryStatusOptions.map((status) => {
               const active = statusFilters.includes(status)
@@ -991,9 +991,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                   onClick={() => toggle(status)}
                 >
                   <ReadingStatusIcon status={status} className={active ? 'text-primary-foreground' : ''} />
-                  <span className="min-w-0 truncate leading-tight">
-                    {t(`reading_status.${toMessageKeySegment(status)}`)}
-                  </span>
+                  <span className="min-w-0 truncate leading-tight">{t(readingStatusMessageKey(status))}</span>
                 </UiButton>
               )
             })}
@@ -1003,12 +1001,12 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
         <FilterSection
           sectionRef={tagSectionRef}
           scrollRef={tagScrollRef}
-          title={t('library_filter.tags')}
+          title={t('home.library_filter.tags')}
           expanded={tagsExpanded}
           onExpandedChange={setTagsExpanded}
           searching={facetSearch?.target === 'tag'}
           searchInputRef={tagSearchInputRef}
-          searchLabel={t('library_filter.search_tags')}
+          searchLabel={t('home.library_filter.search_tags')}
           searchQuery={facetSearch?.target === 'tag' ? facetSearchQuery : ''}
           searchShortcutId="libraryTagSearch"
           lockedHeight={facetSearch?.target === 'tag' ? facetSearch.lockedHeight : undefined}
@@ -1016,7 +1014,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
           onSearchExit={() => exitFacetSearch('tag')}
           onSearchHeightLocked={(height) => lockFacetSearchHeight('tag', height)}
           onSearchQueryChange={setFacetSearchQuery}
-          resetLabel={t('library_filter.reset')}
+          resetLabel={t('home.library_filter.reset')}
           resetDisabled={!tagFilters.length}
           onReset={resetTags}
           testId="library-tag-section"
@@ -1025,7 +1023,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
               ? {
                   Icon: PlusIcon,
                   inputRef: newTagInputRef,
-                  label: t('library_filter.new_tag'),
+                  label: t('home.library_filter.new_tag'),
                   value: tagCreation.name,
                   onExit: exitTagCreation,
                   onValueChange: tagCreation.setName,
@@ -1039,12 +1037,12 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
               : undefined
           }
           actions={
-            <AppTooltip label={t('library_filter.new_tag')}>
+            <AppTooltip label={t('home.library_filter.new_tag')}>
               <UiButton
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label={t('library_filter.new_tag')}
+                aria-label={t('home.library_filter.new_tag')}
                 className={libraryFilterSectionIconButtonClassName}
                 onClick={(e) => {
                   e.stopPropagation()
@@ -1072,8 +1070,8 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                     labelTestId="library-tag-chip-label"
                     contextMenuTestId="library-tag-context-menu"
                     onToggle={toggleTag}
-                    pinLabel={t('library_filter.pin_tag')}
-                    unpinLabel={t('library_filter.unpin_tag')}
+                    pinLabel={t('home.library_filter.pin_tag')}
+                    unpinLabel={t('home.library_filter.unpin_tag')}
                     onPin={pinTag}
                     onUnpin={unpinTag}
                     menuItems={tagMenuItems}
@@ -1081,19 +1079,21 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                 ))}
               </div>
             ) : (
-              <div className="text-muted-foreground py-0.5 text-sm leading-tight">{t('library_filter.no_tags')}</div>
+              <div className="text-muted-foreground py-0.5 text-sm leading-tight">
+                {t('home.library_filter.no_tags')}
+              </div>
             ))}
         </FilterSection>
 
         <FilterSection
           sectionRef={authorSectionRef}
           scrollRef={authorScrollRef}
-          title={t('library_filter.author')}
+          title={t('home.library_filter.author')}
           expanded={authorsExpanded}
           onExpandedChange={setAuthorsExpanded}
           searching={facetSearch?.target === 'author'}
           searchInputRef={authorSearchInputRef}
-          searchLabel={t('library_filter.search_authors')}
+          searchLabel={t('home.library_filter.search_authors')}
           searchQuery={facetSearch?.target === 'author' ? facetSearchQuery : ''}
           searchShortcutId="libraryAuthorSearch"
           lockedHeight={facetSearch?.target === 'author' ? facetSearch.lockedHeight : undefined}
@@ -1101,7 +1101,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
           onSearchExit={() => exitFacetSearch('author')}
           onSearchHeightLocked={(height) => lockFacetSearchHeight('author', height)}
           onSearchQueryChange={setFacetSearchQuery}
-          resetLabel={t('library_filter.reset')}
+          resetLabel={t('home.library_filter.reset')}
           resetDisabled={!authorFilters.length}
           onReset={resetAuthors}
           testId="library-author-section"
@@ -1121,15 +1121,17 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                     active={selectedAuthors.has(option.name)}
                     preserveInputFocus={facetSearch?.target === 'author'}
                     onToggle={toggleAuthor}
-                    pinLabel={t('library_filter.pin_author')}
-                    unpinLabel={t('library_filter.unpin_author')}
+                    pinLabel={t('home.library_filter.pin_author')}
+                    unpinLabel={t('home.library_filter.unpin_author')}
                     onPin={pinAuthor}
                     onUnpin={unpinAuthor}
                   />
                 ))}
               </div>
             ) : (
-              <div className="text-muted-foreground py-0.5 text-sm leading-tight">{t('library_filter.no_authors')}</div>
+              <div className="text-muted-foreground py-0.5 text-sm leading-tight">
+                {t('home.library_filter.no_authors')}
+              </div>
             ))}
         </FilterSection>
       </div>

@@ -36,7 +36,6 @@ import {
 import { useNotify } from '../components/ui/notificationContext'
 import { formatErrorMessage } from '../errorMessage'
 import { useTranslation } from '../hooks/useTranslation'
-import { toMessageKeySegment } from '../locales'
 import { completeTabOpen, reader } from '../models/reader'
 import type { LibraryCoverFit } from '../settings/configuration'
 import {
@@ -63,6 +62,7 @@ import {
   isArchiveOnlyBook,
   isBookSourceUnavailable,
   readingStatusEditButtonClassName,
+  readingStatusMessageKey,
 } from './model'
 import { BookProgress, ReadingStatusBadge, ReadingStatusMenuContent } from './ReadingStatusControls'
 import type { LibraryBookSelectionEvent } from './selection'
@@ -153,8 +153,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
   onSelectBook,
   onOpenBook,
 }) => {
-  const t = useTranslation('home')
-  const errorT = useTranslation('error')
+  const t = useTranslation()
   const notify = useNotify()
   const [statusMenuOpen, setStatusMenuOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -175,7 +174,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
         notify({
           autoCloseMs: false,
           description: t(bookSourceDescriptionKey(sourceStatus)),
-          title: t('source_unavailable'),
+          title: t('home.source_unavailable'),
           type: 'error',
         })
         return
@@ -215,13 +214,13 @@ const BookCardComponent: React.FC<BookCardProps> = ({
           notify({
             autoCloseMs: false,
             description: `${getBookDisplayTitle(book)}: ${formatErrorMessage(error)}`,
-            title: errorT('open_book_directory_failed'),
+            title: t('error.open_book_directory_failed'),
             type: 'error',
           })
         })
       }
     },
-    [book, errorT, notify, openBook, select],
+    [book, t, notify, openBook, select],
   )
 
   const clearLongPressTimer = useCallback(() => {
@@ -283,13 +282,13 @@ const BookCardComponent: React.FC<BookCardProps> = ({
         if (!outputPath) return
         notify({
           action: {
-            label: t('export_reveal'),
+            label: t('home.export_reveal'),
             onClick: () => {
               void db.files.reveal(outputPath).catch(console.error)
             },
           },
           description: outputPath,
-          title: t('export_complete'),
+          title: t('home.export_complete'),
           type: 'success',
         })
       })
@@ -298,7 +297,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
         notify({
           autoCloseMs: false,
           description: `${getBookDisplayTitle(book)} · ${format.toUpperCase()}: ${formatErrorMessage(error)}`,
-          title: errorT('export_failed'),
+          title: t('error.export_failed'),
           type: 'error',
         })
       })
@@ -325,7 +324,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
       }
       setActiveDialog(undefined)
       notify({
-        title: t(editable ? 'content_mode.unpacked_complete' : 'content_mode.archive_complete'),
+        title: t(`home.${editable ? 'content_mode.unpacked_complete' : 'content_mode.archive_complete'}`),
         type: 'success',
       })
     })()
@@ -334,7 +333,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
         notify({
           autoCloseMs: false,
           description: formatErrorMessage(error),
-          title: errorT('content_mode_switch_failed'),
+          title: t('error.content_mode_switch_failed'),
           type: 'error',
         })
       })
@@ -382,7 +381,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
               {book.readingStatus && (
                 <ReadingStatusBadge
                   status={book.readingStatus}
-                  title={t(`reading_status.${toMessageKeySegment(book.readingStatus)}`)}
+                  title={t(readingStatusMessageKey(book.readingStatus))}
                   hidden={statusMenuOpen}
                 />
               )}
@@ -397,11 +396,11 @@ const BookCardComponent: React.FC<BookCardProps> = ({
                       event.stopPropagation()
                     }}
                   >
-                    <AppTooltip label={t('reading_status.change')}>
+                    <AppTooltip label={t('home.reading_status.change')}>
                       <DropdownMenuTrigger asChild>
                         <button
                           type="button"
-                          aria-label={t('reading_status.change')}
+                          aria-label={t('home.reading_status.change')}
                           className={clsx(
                             bookCoverCornerBadgeClassName,
                             'opacity-0 transition-opacity group-hover:opacity-100',
@@ -448,11 +447,13 @@ const BookCardComponent: React.FC<BookCardProps> = ({
               )}
               {isBookSourceUnavailable(sourceStatus) && (
                 <AppTooltip
-                  label={t('source_unavailable')}
+                  label={t('home.source_unavailable')}
                   contentStyle={{ maxWidth: 'calc(50vw - 2rem)' }}
                   content={
                     <span className="flex w-max max-w-[calc(50vw-2rem)] min-w-0 flex-col gap-1">
-                      <span className="min-w-0 text-base font-medium wrap-break-word">{t('source_unavailable')}</span>
+                      <span className="min-w-0 text-base font-medium wrap-break-word">
+                        {t('home.source_unavailable')}
+                      </span>
                       <span className="text-muted-foreground min-w-0 text-base wrap-break-word">
                         {t(bookSourceDescriptionKey(sourceStatus))}
                       </span>
@@ -470,7 +471,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
                 </AppTooltip>
               )}
               {!isBookSourceUnavailable(sourceStatus) && isArchiveOnlyBook(book) && (
-                <AppTooltip label={t('compat.archive_only')}>
+                <AppTooltip label={t('home.compat.archive_only')}>
                   <div
                     className={clsx(
                       bookCoverCornerBadgeClassName,
@@ -482,7 +483,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
                 </AppTooltip>
               )}
               {showModifiedExportIndicator && !isArchiveOnlyBook(book) && hasUnexportedBookChanges(book) && (
-                <AppTooltip label={t('modified_export_indicator')}>
+                <AppTooltip label={t('home.modified_export_indicator')}>
                   <div
                     className={clsx(
                       bookCoverCornerBadgeClassName,
@@ -543,37 +544,37 @@ const BookCardComponent: React.FC<BookCardProps> = ({
         <ContextMenuContent className="w-max max-w-[calc(100vw-2rem)]">
           <BookContextMenuItem
             Icon={BookOpenIcon}
-            label={t('context.open')}
+            label={t('home.context.open')}
             onSelect={() => {
               openBook()
             }}
           />
           <BookContextMenuItem
             Icon={PencilIcon}
-            label={t('context.edit_details')}
+            label={t('home.context.edit_details')}
             onSelect={() => setActiveDialog({ type: 'edit' })}
           />
           <BookContextMenuItem
             Icon={TagIcon}
-            label={t('context.set_tags')}
+            label={t('home.context.set_tags')}
             onSelect={() => setActiveDialog({ type: 'tags' })}
           />
           <BookContextMenuItem
             Icon={InfoIcon}
-            label={t('context.info')}
+            label={t('home.context.info')}
             onSelect={() => setActiveDialog({ type: 'info' })}
           />
           {book.sourceFormat === 'epub' && !isArchiveOnlyBook(book) && (
             <BookContextMenuItem
               Icon={book.editable ? ArchiveIcon : ArchiveRestoreIcon}
-              label={t(book.editable ? 'content_mode.to_archive' : 'content_mode.to_unpacked')}
+              label={t(`home.${book.editable ? 'content_mode.to_archive' : 'content_mode.to_unpacked'}`)}
               onSelect={() => setActiveDialog({ type: 'mode' })}
             />
           )}
           {!exportFormatsExpanded ? (
             <BookContextMenuItem
               Icon={DownloadIcon}
-              label={`${t('context.export')}${hasUnexportedBookChanges(book) ? ' *' : ''}`}
+              label={`${t('home.context.export')}${hasUnexportedBookChanges(book) ? ' *' : ''}`}
               disabled={exportingFormat !== undefined}
               onSelect={(event) => {
                 if (exportFormats.length > 1) {
@@ -599,7 +600,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
           <BookContextMenuItem
             variant="destructive"
             Icon={confirmDelete ? TriangleAlertIcon : Trash2Icon}
-            label={t(confirmDelete ? 'context.confirm' : 'context.delete')}
+            label={t(`home.${confirmDelete ? 'context.confirm' : 'context.delete'}`)}
             onSelect={(event) => {
               if (!confirmDelete) {
                 event.preventDefault()
@@ -648,15 +649,15 @@ function BookModeDialog({
   onClose: () => void
   onSwitch: (resolution?: BookModeSwitchResolution) => void
 }) {
-  const t = useTranslation('home')
+  const t = useTranslation()
   const primaryActionRef = useRef<HTMLButtonElement>(null)
   const toUnpacked = !book.editable
   const title = conflict
-    ? t(conflict === 'missing' ? 'content_mode.source_missing_title' : 'content_mode.source_conflict_title')
-    : t(toUnpacked ? 'content_mode.to_unpacked' : 'content_mode.to_archive')
+    ? t(`home.${conflict === 'missing' ? 'content_mode.source_missing_title' : 'content_mode.source_conflict_title'}`)
+    : t(`home.${toUnpacked ? 'content_mode.to_unpacked' : 'content_mode.to_archive'}`)
   const description = conflict
-    ? t(conflict === 'missing' ? 'content_mode.source_missing' : 'content_mode.source_changed')
-    : t(toUnpacked ? 'content_mode.enable_description' : 'content_mode.readonly_description')
+    ? t(`home.${conflict === 'missing' ? 'content_mode.source_missing' : 'content_mode.source_changed'}`)
+    : t(`home.${toUnpacked ? 'content_mode.enable_description' : 'content_mode.readonly_description'}`)
 
   useEffect(() => {
     if (!busy) primaryActionRef.current?.focus()
@@ -677,11 +678,11 @@ function BookModeDialog({
         <div className="text-muted-foreground leading-relaxed">{description}</div>
         <DialogFooter>
           <Button type="button" variant="secondary" disabled={busy} onClick={onClose}>
-            {t('cancel')}
+            {t('home.cancel')}
           </Button>
           {conflict === 'changed' && (
             <Button type="button" variant="destructive" disabled={busy} onClick={() => onSwitch('adopt')}>
-              {t('content_mode.adopt_source')}
+              {t('home.content_mode.adopt_source')}
             </Button>
           )}
           <Button
@@ -691,11 +692,13 @@ function BookModeDialog({
             onClick={() => onSwitch(conflict ? 'overwrite' : undefined)}
           >
             {t(
-              conflict === 'missing'
-                ? 'content_mode.recreate_source'
-                : conflict === 'changed'
-                  ? 'content_mode.overwrite_source'
-                  : 'context.confirm',
+              `home.${
+                conflict === 'missing'
+                  ? 'content_mode.recreate_source'
+                  : conflict === 'changed'
+                    ? 'content_mode.overwrite_source'
+                    : 'context.confirm'
+              }`,
             )}
           </Button>
         </DialogFooter>

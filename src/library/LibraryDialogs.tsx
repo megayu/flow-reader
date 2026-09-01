@@ -54,7 +54,7 @@ const TagSelectionEditor: React.FC<TagSelectionEditorProps> = ({
   tags,
   temporaryTags,
 }) => {
-  const t = useTranslation('home')
+  const t = useTranslation()
   const pins = useLibraryPins()
   const [newTagName, setNewTagName] = useState('')
   const temporaryTagIndexRef = useRef(0)
@@ -92,7 +92,7 @@ const TagSelectionEditor: React.FC<TagSelectionEditorProps> = ({
     <div className="space-y-3">
       <div className="flex items-end gap-2">
         <label className="min-w-0 flex-1">
-          <span className="text-muted-foreground mb-1.5 block leading-none font-medium">{t('edit.new_tag')}</span>
+          <span className="text-muted-foreground mb-1.5 block leading-none font-medium">{t('home.edit.new_tag')}</span>
           <Input
             value={newTagName}
             onValueChange={setNewTagName}
@@ -113,7 +113,7 @@ const TagSelectionEditor: React.FC<TagSelectionEditorProps> = ({
             addTag()
           }}
         >
-          {t('edit.add_tag')}
+          {t('home.edit.add_tag')}
         </UiButton>
       </div>
 
@@ -203,7 +203,7 @@ interface BatchTagsDialogProps {
 }
 
 export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose, tags }) => {
-  const t = useTranslation('home')
+  const t = useTranslation()
   const [initialSelectedTagIds] = useState(() => getTagsInAllBooks(books, tags))
   const [initialPartialTagIds] = useState(() => getPartiallySelectedTags(books, tags))
   const [selectedTagIds, setSelectedTagIds] = useState(() => new Set(initialSelectedTagIds))
@@ -276,7 +276,7 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose
     >
       <DialogContent className="w-[min(32rem,calc(100vw-2rem))] max-w-none text-base">
         <DialogHeader>
-          <DialogTitle>{t('tag_editor.title')}</DialogTitle>
+          <DialogTitle>{t('home.tag_editor.title')}</DialogTitle>
         </DialogHeader>
         <TagSelectionEditor
           tags={tags}
@@ -289,7 +289,7 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose
         />
         <DialogFooter>
           <UiButton type="button" variant="secondary" onClick={onClose}>
-            {t('cancel')}
+            {t('home.cancel')}
           </UiButton>
           <UiButton
             type="button"
@@ -298,7 +298,7 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose
               void apply()
             }}
           >
-            {t('edit.save')}
+            {t('home.edit.save')}
           </UiButton>
         </DialogFooter>
       </DialogContent>
@@ -319,16 +319,18 @@ export const DeleteSelectedBooksDialog: React.FC<DeleteSelectedBooksDialogProps>
   onClose,
   onConfirm,
 }) => {
-  const t = useTranslation('home')
+  const t = useTranslation()
   const description =
-    openCount === 0 ? t('delete_selected.message', count) : t('delete_selected.message_open', count, openCount)
+    openCount === 0
+      ? t('home.delete_selected.message', count)
+      : t('home.delete_selected.message_open', count, openCount)
 
   return (
     <ConfirmDialog
-      title={t('delete_selected.title')}
+      title={t('home.delete_selected.title')}
       description={description}
-      cancelLabel={t('cancel')}
-      confirmLabel={t('delete')}
+      cancelLabel={t('home.cancel')}
+      confirmLabel={t('home.delete')}
       onClose={onClose}
       onConfirm={onConfirm}
     />
@@ -336,7 +338,7 @@ export const DeleteSelectedBooksDialog: React.FC<DeleteSelectedBooksDialogProps>
 }
 
 export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
-  const t = useTranslation('home')
+  const t = useTranslation()
   const tags = useLibraryTags()
   const [initialTagIds] = useState(() => new Set(uniqueStringValues(book.tagIds ?? [])))
   const [tagIds, setTagIds] = useState(() => new Set(initialTagIds))
@@ -390,7 +392,7 @@ export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
     >
       <DialogContent className="w-[min(32rem,calc(100vw-2rem))] max-w-none text-base">
         <DialogHeader>
-          <DialogTitle>{t('tag_editor.title')}</DialogTitle>
+          <DialogTitle>{t('home.tag_editor.title')}</DialogTitle>
         </DialogHeader>
         <TagSelectionEditor
           tags={tags ?? []}
@@ -402,10 +404,10 @@ export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
         />
         <DialogFooter>
           <UiButton type="button" variant="secondary" onClick={onClose}>
-            {t('cancel')}
+            {t('home.cancel')}
           </UiButton>
           <UiButton type="button" disabled={!canSave} onClick={apply}>
-            {t('edit.save')}
+            {t('home.edit.save')}
           </UiButton>
         </DialogFooter>
       </DialogContent>
@@ -414,7 +416,7 @@ export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
 }
 
 export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
-  const t = useTranslation('home')
+  const t = useTranslation()
   const titleRef = useRef<HTMLInputElement>(null)
   const initialTitle = getBookDisplayTitle(book)
   const initialCreator = cleanBookText(book.metadata.creator)
@@ -459,11 +461,13 @@ export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
           }}
         >
           <DialogHeader>
-            <DialogTitle>{t('edit.dialog_title')}</DialogTitle>
+            <DialogTitle>{t('home.edit.dialog_title')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <label className="block">
-              <span className="text-muted-foreground mb-1.5 block leading-none font-medium">{t('edit.title')}</span>
+              <span className="text-muted-foreground mb-1.5 block leading-none font-medium">
+                {t('home.edit.title')}
+              </span>
               <Input
                 ref={titleRef}
                 value={title}
@@ -473,7 +477,9 @@ export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
               />
             </label>
             <label className="block">
-              <span className="text-muted-foreground mb-1.5 block leading-none font-medium">{t('edit.creator')}</span>
+              <span className="text-muted-foreground mb-1.5 block leading-none font-medium">
+                {t('home.edit.creator')}
+              </span>
               <Input
                 value={creator}
                 onValueChange={setCreator}
@@ -484,10 +490,10 @@ export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
           </div>
           <DialogFooter>
             <UiButton type="button" variant="secondary" onClick={onClose}>
-              {t('cancel')}
+              {t('home.cancel')}
             </UiButton>
             <UiButton type="submit" disabled={!canSave}>
-              {t('edit.save')}
+              {t('home.edit.save')}
             </UiButton>
           </DialogFooter>
         </form>
@@ -501,7 +507,7 @@ interface BookInfoDialogProps extends BookDialogProps {
 }
 
 export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({ book, cover, onClose }) => {
-  const t = useTranslation('home')
+  const t = useTranslation()
   const { locale } = useLocale()
   const [wordCount, setWordCount] = useState<number | null | undefined>(book.wordCount)
   const title = getBookDisplayTitle(book)
@@ -529,26 +535,26 @@ export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({ book, cover, onC
   }, [book.id, book.wordCount])
 
   const rows = [
-    [t('info.creator'), cleanBookText(book.metadata.creator)],
-    [t('info.language'), formatLanguage(book.metadata.language)],
-    [t('info.publisher'), cleanBookText(book.metadata.publisher)],
-    [t('info.publication_date'), cleanBookText(book.metadata.pubdate)],
+    [t('home.info.creator'), cleanBookText(book.metadata.creator)],
+    [t('home.info.language'), formatLanguage(book.metadata.language)],
+    [t('home.info.publisher'), cleanBookText(book.metadata.publisher)],
+    [t('home.info.publication_date'), cleanBookText(book.metadata.pubdate)],
     ...(!book.managed && book.sourcePath
-      ? [[t('info.file_path'), formatLocalDirectoryForDisplay(book.sourcePath)]]
+      ? [[t('home.info.file_path'), formatLocalDirectoryForDisplay(book.sourcePath)]]
       : []),
-    [t('info.file_name'), cleanBookText(book.name)],
-    [t('info.size'), formatFileSize(book.size)],
+    [t('home.info.file_name'), cleanBookText(book.name)],
+    [t('home.info.size'), formatFileSize(book.size)],
     [
-      t('info.word_count'),
+      t('home.info.word_count'),
       wordCount === undefined
-        ? t('info.word_count_calculating')
+        ? t('home.info.word_count_calculating')
         : wordCount === null
-          ? t('info.word_count_unavailable')
+          ? t('home.info.word_count_unavailable')
           : formatWordCount(wordCount, locale),
     ],
-    [t('info.date_added'), formatDateTime(book.createdAt)],
-    [t('info.last_read'), formatDateTime(book.lastReadAt)],
-    [t('info.reading_progress'), formatPercentage(book.percentage)],
+    [t('home.info.date_added'), formatDateTime(book.createdAt)],
+    [t('home.info.last_read'), formatDateTime(book.lastReadAt)],
+    [t('home.info.reading_progress'), formatPercentage(book.percentage)],
   ].filter(([, value]) => !!value)
 
   return (

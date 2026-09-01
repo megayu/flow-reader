@@ -11,10 +11,14 @@ import {
   DropdownMenuRadioItem,
 } from '../components/ui/menu'
 import { useTranslation } from '../hooks/useTranslation'
-import { toMessageKeySegment } from '../locales'
 import type { ReadingStatus } from '../storage'
 
-import { bookCoverCornerBadgeClassName, bookCoverCornerIconSize, readingStatusOptions } from './model'
+import {
+  bookCoverCornerBadgeClassName,
+  bookCoverCornerIconSize,
+  readingStatusMessageKey,
+  readingStatusOptions,
+} from './model'
 
 const readingStatusBadgeClassName: Record<ReadingStatus, string> = {
   toRead: 'bg-amber-500 text-white ring-amber-700/15',
@@ -84,14 +88,14 @@ const ReadingStatusMenu: React.FC<{
   status?: ReadingStatus | null
   onChange: (status: ReadingStatus | null) => void
 }> = ({ status, onChange }) => {
-  const t = useTranslation('home')
+  const t = useTranslation()
   const selectedValue = status === undefined ? '' : (status ?? 'unmarked')
 
   return (
     <DropdownMenuRadioGroup className="flex flex-col gap-0.5" value={selectedValue}>
       <ReadingStatusMenuItem
         iconStatus={null}
-        label={t('reading_status.unmarked')}
+        label={t('home.reading_status.unmarked')}
         value="unmarked"
         onSelect={() => onChange(null)}
       />
@@ -99,7 +103,7 @@ const ReadingStatusMenu: React.FC<{
         <ReadingStatusMenuItem
           key={option}
           iconStatus={option}
-          label={t(`reading_status.${toMessageKeySegment(option)}`)}
+          label={t(readingStatusMessageKey(option))}
           value={option}
           onSelect={() => onChange(option)}
         />

@@ -27,7 +27,7 @@ export function DictionarySourceSection({
   onRetry,
   source,
 }: DictionarySourceSectionProps) {
-  const t = useTranslation('dictionary')
+  const t = useTranslation()
   const externalUrl = source.result?.externalUrl ?? source.externalUrl
   const retryVisible = Boolean(onRetry) && (isRetrying || source.status === 'error')
 
@@ -73,10 +73,10 @@ export function DictionarySourceSection({
         </div>
       ) : source.status === 'error' ? (
         <div className="text-muted-foreground px-5 py-2 text-sm leading-snug">
-          {source.error === 'Could not parse this entry.' ? t('parse_error') : t('lookup_error')}
+          {source.error === 'Could not parse this entry.' ? t('dictionary.parse_error') : t('dictionary.lookup_error')}
         </div>
       ) : source.status === 'empty' ? (
-        <div className="text-muted-foreground px-5 py-2 text-sm leading-snug">{t('no_result')}</div>
+        <div className="text-muted-foreground px-5 py-2 text-sm leading-snug">{t('dictionary.no_result')}</div>
       ) : source.result?.content.kind === 'entries' ? (
         <div className="cursor-text space-y-[1em] px-5 py-4 select-text">
           {source.result.content.entries.map((entry, entryIndex) => (
@@ -119,7 +119,7 @@ export function DictionarySourceSection({
                         {sense.examples?.map((example, exampleIndex) => (
                           <div key={exampleIndex} className="text-muted-foreground text-sm leading-snug">
                             <span className="bg-muted mr-2 inline-flex rounded px-1.5 py-0.5 text-xs font-medium">
-                              {t('example')}
+                              {t('dictionary.example')}
                             </span>
                             <span>
                               <DictionaryTextView text={example} />

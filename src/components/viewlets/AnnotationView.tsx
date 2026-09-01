@@ -53,13 +53,13 @@ export const AnnotationView: React.FC<PaneViewProps> = (props) => {
 
 const DefinitionPane: React.FC = () => {
   const { focusedBookTab } = useReaderSnapshot()
-  const t = useTranslation('annotation')
+  const t = useTranslation()
   const definitions = focusedBookTab?.overlayState.definitions ?? []
   const { outerRef, items, scrollbar, totalSize } = useList(definitions)
 
   return (
     <Pane
-      headline={t('definitions')}
+      headline={t('annotation.definitions')}
       minSize={72}
       overlayScroll
       preferredSize={120}
@@ -96,7 +96,6 @@ type AnnotationRow =
 const AnnotationPane: React.FC = () => {
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation()
-  const annotationT = useTranslation('annotation')
   const [collapsedSections, setCollapsedSections] = useState(() => new Set<number>())
   const [filter, setFilter] = useState(createDefaultAnnotationFilter)
   const [activeRowKey, setActiveRowKey] = useState<string>()
@@ -196,7 +195,7 @@ const AnnotationPane: React.FC = () => {
   }
   return (
     <Pane
-      headline={annotationT('annotations')}
+      headline={t('annotation.annotations')}
       minSize={160}
       overlayScroll
       ref={outerRef}
@@ -309,9 +308,7 @@ interface AnnotationExportPanelProps {
 }
 
 function AnnotationExportPanel({ annotations, onOpenChange, open }: AnnotationExportPanelProps) {
-  const annotationT = useTranslation('annotation')
-  const errorT = useTranslation('error')
-  const homeT = useTranslation('home')
+  const t = useTranslation()
   const notify = useNotify()
   const [filter, setFilter] = useState(createDefaultAnnotationFilter)
   const [format, setFormat] = useState<AnnotationExportFormat>('markdown')
@@ -321,7 +318,7 @@ function AnnotationExportPanel({ annotations, onOpenChange, open }: AnnotationEx
     notify({
       autoCloseMs: false,
       description: formatErrorMessage(error),
-      title: errorT('export_failed'),
+      title: t('error.export_failed'),
       type: 'error',
     })
   }
@@ -350,13 +347,13 @@ function AnnotationExportPanel({ annotations, onOpenChange, open }: AnnotationEx
         if (!outputPath) return
         notify({
           action: {
-            label: homeT('export_reveal'),
+            label: t('home.export_reveal'),
             onClick: () => {
               void db.files.reveal(outputPath).catch(console.error)
             },
           },
           description: outputPath,
-          title: homeT('export_complete'),
+          title: t('home.export_complete'),
           type: 'success',
         })
       })
@@ -365,24 +362,24 @@ function AnnotationExportPanel({ annotations, onOpenChange, open }: AnnotationEx
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <AppTooltip label={annotationT('export')}>
+      <AppTooltip label={t('annotation.export')}>
         <PopoverTrigger asChild>
-          <IconButton aria-label={annotationT('export')} Icon={DownloadIcon} />
+          <IconButton aria-label={t('annotation.export')} Icon={DownloadIcon} />
         </PopoverTrigger>
       </AppTooltip>
       <PopoverContent align="end" className="w-64 gap-3 p-2.5">
-        <div className="text-muted-foreground px-1 font-semibold">{annotationT('links')}</div>
+        <div className="text-muted-foreground px-1 font-semibold">{t('annotation.links')}</div>
         <label htmlFor="annotation-export-cfi-links" className="flex h-6 cursor-pointer items-center gap-2 px-1">
           <Checkbox
             id="annotation-export-cfi-links"
             checked={includeCfiLinks}
             onCheckedChange={(checked) => setIncludeCfiLinks(checked === true)}
           />
-          <span className="leading-none">{annotationT('include_cfi_links')}</span>
+          <span className="leading-none">{t('annotation.include_cfi_links')}</span>
         </label>
-        <div className="text-muted-foreground px-1 font-semibold">{annotationT('filter')}</div>
+        <div className="text-muted-foreground px-1 font-semibold">{t('annotation.filter')}</div>
         <AnnotationFilterFields value={filter} onChange={setFilter} />
-        <div className="text-muted-foreground mt-1 px-1 font-semibold">{annotationT('format')}</div>
+        <div className="text-muted-foreground mt-1 px-1 font-semibold">{t('annotation.format')}</div>
         <div className="grid grid-cols-2 gap-1">
           {(['markdown', 'json'] as AnnotationExportFormat[]).map((candidate) => (
             <Button
@@ -407,14 +404,14 @@ function AnnotationExportPanel({ annotations, onOpenChange, open }: AnnotationEx
               setIncludeCfiLinks(true)
             }}
           >
-            {annotationT('reset')}
+            {t('annotation.reset')}
           </Button>
           <div className="ml-auto flex items-center gap-1">
             <Button type="button" size="xs" variant="secondary" disabled={!hasAnnotations} onClick={handleCopy}>
-              {annotationT('copy')}
+              {t('annotation.copy')}
             </Button>
             <Button type="button" size="xs" disabled={!hasAnnotations} onClick={handleExport}>
-              {annotationT('export')}
+              {t('annotation.export')}
             </Button>
           </div>
         </div>
@@ -431,15 +428,15 @@ interface AnnotationFilterPopoverProps {
 }
 
 function AnnotationFilterPopover({ filter, onChange, onOpenChange, open }: AnnotationFilterPopoverProps) {
-  const t = useTranslation('annotation')
+  const t = useTranslation()
   const filterActive = !isDefaultAnnotationFilter(filter)
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <AppTooltip label={t('filter')}>
+      <AppTooltip label={t('annotation.filter')}>
         <PopoverTrigger asChild>
           <IconButton
-            aria-label={t('filter')}
+            aria-label={t('annotation.filter')}
             className={filterActive ? 'text-(--flow-accent)' : undefined}
             Icon={FilterIcon}
           />
@@ -455,7 +452,7 @@ function AnnotationFilterPopover({ filter, onChange, onOpenChange, open }: Annot
             disabled={!filterActive}
             onClick={() => onChange(createDefaultAnnotationFilter())}
           >
-            {t('reset')}
+            {t('annotation.reset')}
           </Button>
         </div>
       </PopoverContent>

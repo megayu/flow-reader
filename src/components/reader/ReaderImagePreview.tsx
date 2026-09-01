@@ -72,8 +72,7 @@ interface ReaderImagePreviewContentProps {
 }
 
 const ReaderImagePreviewContent: React.FC<ReaderImagePreviewContentProps> = ({ bookId, src, onClose }) => {
-  const t = useTranslation('image_preview')
-  const homeT = useTranslation('home')
+  const t = useTranslation()
   const notify = useNotify()
   const previewRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
@@ -204,13 +203,13 @@ const ReaderImagePreviewContent: React.FC<ReaderImagePreviewContentProps> = ({ b
         if (!outputPath) return
         notify({
           action: {
-            label: homeT('export_reveal'),
+            label: t('home.export_reveal'),
             onClick: () => {
               void db.files.reveal(outputPath).catch(console.error)
             },
           },
           description: outputPath,
-          title: t('download_complete'),
+          title: t('image_preview.download_complete'),
           type: 'success',
         })
       })
@@ -219,12 +218,12 @@ const ReaderImagePreviewContent: React.FC<ReaderImagePreviewContentProps> = ({ b
         notify({
           autoCloseMs: false,
           description: formatErrorMessage(error),
-          title: t('download_failed'),
+          title: t('image_preview.download_failed'),
           type: 'error',
         })
       })
       .finally(() => setDownloading(false))
-  }, [bookId, downloading, homeT, notify, src, t])
+  }, [bookId, downloading, notify, src, t])
 
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLDivElement>) => {
@@ -454,37 +453,37 @@ const ReaderImagePreviewContent: React.FC<ReaderImagePreviewContentProps> = ({ b
         onClick={(event) => event.stopPropagation()}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <ReaderImagePreviewButton label={t('zoom_out')} disabled={!canZoomOut} onClick={zoomOut}>
+        <ReaderImagePreviewButton label={t('image_preview.zoom_out')} disabled={!canZoomOut} onClick={zoomOut}>
           <MinusIcon className="size-5" />
         </ReaderImagePreviewButton>
         <div className="min-w-16 px-2 text-center text-sm font-medium tabular-nums">{zoomPercent}</div>
-        <ReaderImagePreviewButton label={t('zoom_in')} disabled={!canZoomIn} onClick={zoomIn}>
+        <ReaderImagePreviewButton label={t('image_preview.zoom_in')} disabled={!canZoomIn} onClick={zoomIn}>
           <PlusIcon className="size-5" />
         </ReaderImagePreviewButton>
         <div className="mx-1 h-5 w-px bg-white/20" />
         <ReaderImagePreviewButton
-          label={t('actual_size')}
+          label={t('image_preview.actual_size')}
           active={isOneToOne && !isFit}
           disabled={isOneToOne && !isFit}
           onClick={() => zoomTo(1)}
         >
           <span className="text-xs font-semibold tracking-normal">1:1</span>
         </ReaderImagePreviewButton>
-        <ReaderImagePreviewButton label={t('rotate_left')} onClick={() => rotateImage(-90)}>
+        <ReaderImagePreviewButton label={t('image_preview.rotate_left')} onClick={() => rotateImage(-90)}>
           <RotateCcwIcon className="size-4.5" />
         </ReaderImagePreviewButton>
-        <ReaderImagePreviewButton label={t('rotate_right')} onClick={() => rotateImage(90)}>
+        <ReaderImagePreviewButton label={t('image_preview.rotate_right')} onClick={() => rotateImage(90)}>
           <RotateCwIcon className="size-4.5" />
         </ReaderImagePreviewButton>
-        <ReaderImagePreviewButton label={t('fit')} active={isFit} disabled={isFit} onClick={resetToFit}>
+        <ReaderImagePreviewButton label={t('image_preview.fit')} active={isFit} disabled={isFit} onClick={resetToFit}>
           <RefreshCwIcon className="size-4.5" />
         </ReaderImagePreviewButton>
         <div className="mx-1 h-5 w-px bg-white/20" />
-        <ReaderImagePreviewButton label={t('download')} disabled={downloading} onClick={downloadImage}>
+        <ReaderImagePreviewButton label={t('image_preview.download')} disabled={downloading} onClick={downloadImage}>
           <DownloadIcon className="size-5" />
         </ReaderImagePreviewButton>
         <div className="mx-1 h-5 w-px bg-white/20" />
-        <ReaderImagePreviewButton label={t('close')} onClick={onClose}>
+        <ReaderImagePreviewButton label={t('image_preview.close')} onClick={onClose}>
           <XIcon className="size-5" />
         </ReaderImagePreviewButton>
       </div>

@@ -36,7 +36,7 @@ export const TypographyView: React.FC<PaneViewProps> = (props) => {
 const TypographyPane: React.FC = () => {
   const { focusedBookTab } = useReaderSnapshot()
   const [settings] = useSettings()
-  const t = useTranslation('typography')
+  const t = useTranslation()
 
   const [localFonts, setLocalFonts] = useState<ComboboxOption[]>()
   const localFontsRequestRef = useRef<Promise<ComboboxOption[] | undefined> | undefined>(undefined)
@@ -120,7 +120,7 @@ const TypographyPane: React.FC = () => {
         <div className="space-y-3 pt-2 pr-1.5 pb-4 pl-4" key={focusedBookTab?.id}>
           <fieldset className="m-0 min-w-0 border-0 p-0" disabled={isScrolledDocument}>
             <SpreadField
-              name={t('page_view')}
+              name={t('typography.page_view')}
               value={isScrolledDocument ? RenditionSpread.None : bookTypography?.spread}
               inheritedValue={inheritedSpread}
               unsetOnSelected
@@ -130,7 +130,7 @@ const TypographyPane: React.FC = () => {
             />
           </fieldset>
           <TextAlignField
-            name={t('text_align')}
+            name={t('typography.text_align')}
             value={bookTypography?.textAlign}
             inheritedValue={globalTextAlign}
             unsetOnSelected
@@ -139,14 +139,14 @@ const TypographyPane: React.FC = () => {
             }}
           />
           <PageAppearanceField
-            name={t('page_appearance')}
+            name={t('typography.page_appearance')}
             value={bookTypography?.pageAppearance}
             onChange={(value) => {
               setTypography('pageAppearance', value)
             }}
           />
           <NumberField
-            name={t('zoom')}
+            name={t('typography.zoom')}
             min={1}
             max={ZOOM_MAX}
             step={0.1}
@@ -156,7 +156,7 @@ const TypographyPane: React.FC = () => {
             }}
           />
           <FontField
-            name={t('font_family')}
+            name={t('typography.font_family')}
             value={fontFamily ?? ''}
             options={localFonts ?? []}
             loadOptions={queryFonts}
@@ -165,7 +165,7 @@ const TypographyPane: React.FC = () => {
             }}
           />
           <NumberField
-            name={t('font_size')}
+            name={t('typography.font_size')}
             min={14}
             max={28}
             value={fontSize ? parseInt(fontSize, 10) : undefined}
@@ -175,7 +175,7 @@ const TypographyPane: React.FC = () => {
             }}
           />
           <NumberField
-            name={t('font_weight')}
+            name={t('typography.font_weight')}
             min={100}
             max={900}
             step={100}
@@ -186,7 +186,7 @@ const TypographyPane: React.FC = () => {
             }}
           />
           <NumberField
-            name={t('line_height')}
+            name={t('typography.line_height')}
             min={1}
             max={LINE_HEIGHT_MAX}
             step={0.1}
@@ -197,7 +197,7 @@ const TypographyPane: React.FC = () => {
             }}
           />
           <NumberField
-            name={t('text_indent')}
+            name={t('typography.text_indent')}
             min={0}
             max={TEXT_INDENT_MAX}
             step={0.5}
@@ -335,7 +335,7 @@ interface SpreadFieldProps {
 }
 
 const SpreadField: React.FC<SpreadFieldProps> = ({ name, value, inheritedValue, unsetOnSelected, onChange }) => {
-  const t = useTranslation('typography')
+  const t = useTranslation()
 
   return (
     <SegmentedField
@@ -345,11 +345,11 @@ const SpreadField: React.FC<SpreadFieldProps> = ({ name, value, inheritedValue, 
       unsetOnSelected={unsetOnSelected}
       options={[
         {
-          label: t('page_view.single_page'),
+          label: t('typography.page_view.single_page'),
           value: RenditionSpread.None,
         },
         {
-          label: t('page_view.double_page'),
+          label: t('typography.page_view.double_page'),
           value: RenditionSpread.Auto,
         },
       ]}
@@ -359,7 +359,7 @@ const SpreadField: React.FC<SpreadFieldProps> = ({ name, value, inheritedValue, 
 }
 
 const TextAlignField: React.FC<TextAlignFieldProps> = ({ name, value, inheritedValue, unsetOnSelected, onChange }) => {
-  const t = useTranslation('typography')
+  const t = useTranslation()
 
   return (
     <SegmentedField
@@ -368,8 +368,8 @@ const TextAlignField: React.FC<TextAlignFieldProps> = ({ name, value, inheritedV
       inheritedValue={inheritedValue}
       unsetOnSelected={unsetOnSelected}
       options={[
-        { label: t('text_align.default'), value: 'default' },
-        { label: t('text_align.justify'), value: 'justify' },
+        { label: t('typography.text_align.default'), value: 'default' },
+        { label: t('typography.text_align.justify'), value: 'justify' },
       ]}
       onChange={onChange}
     />
@@ -383,7 +383,7 @@ interface PageAppearanceFieldProps {
 }
 
 const PageAppearanceField: React.FC<PageAppearanceFieldProps> = ({ name, value, onChange }) => {
-  const t = useTranslation('typography')
+  const t = useTranslation()
 
   return (
     <SegmentedField
@@ -391,9 +391,9 @@ const PageAppearanceField: React.FC<PageAppearanceFieldProps> = ({ name, value, 
       value={value}
       unsetOnSelected
       options={[
-        { label: t('page_appearance.cards'), value: 'cards' },
-        { label: t('page_appearance.book'), value: 'book' },
-        { label: t('page_appearance.divider'), value: 'divider' },
+        { label: t('typography.page_appearance.cards'), value: 'cards' },
+        { label: t('typography.page_appearance.book'), value: 'book' },
+        { label: t('typography.page_appearance.divider'), value: 'divider' },
       ]}
       onChange={onChange}
     />
@@ -409,8 +409,7 @@ interface FontFieldProps {
 }
 
 const FontField: React.FC<FontFieldProps> = ({ name, value, options, loadOptions, onChange }) => {
-  const t = useTranslation('typography')
-  const actionT = useTranslation('action')
+  const t = useTranslation()
 
   return (
     <div className="flex flex-col">
@@ -420,9 +419,9 @@ const FontField: React.FC<FontFieldProps> = ({ name, value, options, loadOptions
         name={name}
         value={value}
         options={options}
-        placeholder={t('default_value')}
-        clearLabel={actionT('clear')}
-        emptyContent={t('no_matching_fonts')}
+        placeholder={t('typography.default_value')}
+        clearLabel={t('action.clear')}
+        emptyContent={t('typography.no_matching_fonts')}
         side="right"
         align="start"
         sideOffset={8}
@@ -442,8 +441,7 @@ interface NumberFieldProps extends Omit<ComponentProps<'input'>, 'onChange' | 'v
 }
 const NumberField: React.FC<NumberFieldProps> = ({ value, baseValue, onChange, ...props }) => {
   const ref = useRef<HTMLInputElement>(null)
-  const actionT = useTranslation('action')
-  const typographyT = useTranslation('typography')
+  const t = useTranslation()
   const min = parseNumberInputProp(props.min)
   const max = parseNumberInputProp(props.max)
   const stepDownDisabled = value !== undefined && min !== undefined && value <= min
@@ -478,7 +476,7 @@ const NumberField: React.FC<NumberFieldProps> = ({ value, baseValue, onChange, .
           ref={ref}
           type="number"
           id={typeof props.name === 'string' ? props.name : undefined}
-          placeholder={typographyT('default_value')}
+          placeholder={t('typography.default_value')}
           defaultValue={value}
           // lazy render
           onBlur={(e) => {
@@ -496,7 +494,7 @@ const NumberField: React.FC<NumberFieldProps> = ({ value, baseValue, onChange, .
           <IconButton
             className="text-muted-foreground flex size-6 items-center justify-center"
             disabled={stepDownDisabled}
-            title={actionT('step_down')}
+            title={t('action.step_down')}
             Icon={MinusIcon}
             onClick={() => {
               step(-1)
@@ -505,7 +503,7 @@ const NumberField: React.FC<NumberFieldProps> = ({ value, baseValue, onChange, .
           <IconButton
             className="text-muted-foreground flex size-6 items-center justify-center"
             disabled={stepUpDisabled}
-            title={actionT('step_up')}
+            title={t('action.step_up')}
             Icon={PlusIcon}
             onClick={() => {
               step(1)
@@ -516,7 +514,7 @@ const NumberField: React.FC<NumberFieldProps> = ({ value, baseValue, onChange, .
               className="text-muted-foreground flex size-6 items-center justify-center"
               disabled={value === undefined}
               tabIndex={value === undefined ? -1 : undefined}
-              title={actionT('clear')}
+              title={t('action.clear')}
               Icon={XIcon}
               onClick={() => {
                 if (ref.current) ref.current.value = ''

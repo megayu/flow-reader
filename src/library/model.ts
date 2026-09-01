@@ -1,4 +1,5 @@
 import { cleanBookText, compareBookDisplayTitle } from '../book'
+import type { MessageKey } from '../locales'
 import type { LibrarySortDirection, LibrarySortField } from '../state'
 import {
   type BookExportFormat,
@@ -13,6 +14,16 @@ const collator = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: 'base',
 })
+
+const readingStatusMessageKeys = {
+  toRead: 'home.reading_status.to_read',
+  reading: 'home.reading_status.reading',
+  read: 'home.reading_status.read',
+} satisfies Record<ReadingStatus, MessageKey>
+
+export function readingStatusMessageKey(status: ReadingStatus) {
+  return readingStatusMessageKeys[status]
+}
 
 export function toggleReadingStatusFilter(filters: ReadingStatus[], status: ReadingStatus) {
   return filters.includes(status) ? filters.filter((item) => item !== status) : [...filters, status]
@@ -92,8 +103,8 @@ export function isBookSourceUnavailable(status?: BookSourceStatus) {
 }
 
 export function bookSourceDescriptionKey(status: Exclude<BookSourceStatus, 'available'>) {
-  if (status === 'missing') return 'source_missing_description' as const
-  return 'source_unreadable_description' as const
+  if (status === 'missing') return 'home.source_missing_description' as const
+  return 'home.source_unreadable_description' as const
 }
 
 export function bookSourceStatusFromError(errorMessage: string): Exclude<BookSourceStatus, 'available'> | undefined {

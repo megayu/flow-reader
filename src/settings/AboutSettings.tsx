@@ -7,7 +7,7 @@ import { UpdaterControl } from '@/updater-entry'
 import appIconUrl from '../../src-tauri/icons/128x128.png'
 
 export function AboutSettings() {
-  const t = useTranslation('settings.about')
+  const t = useTranslation()
 
   return (
     <div className="space-y-3">
@@ -18,7 +18,7 @@ export function AboutSettings() {
           <UpdaterControl />
         </div>
         <p className="col-start-2 font-mono text-sm leading-5 text-muted-foreground" style={{ paddingBlock: 0 }}>
-          {t('version', applicationBuildVersion)}
+          {t('settings.about.version', applicationBuildVersion)}
         </p>
         <p className="col-span-2 col-start-2 text-sm leading-5 text-muted-foreground" style={{ paddingBlock: 0 }}>
           {applicationCopyright}

@@ -26,7 +26,7 @@ interface UpdaterContextValue {
 const UpdaterContext = createContext<UpdaterContextValue | null>(null)
 
 export function UpdaterProvider({ children }: { children: ReactNode }) {
-  const t = useTranslation('settings.about.update')
+  const t = useTranslation()
   const notify = useNotify()
   const [checking, setChecking] = useState(false)
   const [status, setStatus] = useState<UpdateStatus>({ kind: 'idle' })
@@ -59,7 +59,7 @@ export function UpdaterProvider({ children }: { children: ReactNode }) {
       try {
         update = await check({ timeout: 30_000 })
         if (!update) {
-          if (manual) notify({ type: 'success', title: t('current') })
+          if (manual) notify({ type: 'success', title: t('settings.about.update.current') })
           return
         }
         if (!manual && dismissedVersionRef.current === update.version) {
@@ -74,7 +74,7 @@ export function UpdaterProvider({ children }: { children: ReactNode }) {
         setStatus({ kind: 'available', notes, version: update.version })
       } catch {
         void update?.close()
-        if (manual) notify({ type: 'error', title: t('error') })
+        if (manual) notify({ type: 'error', title: t('settings.about.update.error') })
       } finally {
         checkingRef.current = false
         setChecking(false)
@@ -122,7 +122,7 @@ export function UpdaterProvider({ children }: { children: ReactNode }) {
     } catch {
       closeActiveUpdate()
       setStatus({ kind: 'idle' })
-      notify({ type: 'error', title: t('install_error') })
+      notify({ type: 'error', title: t('settings.about.update.install_error') })
     } finally {
       downloadingRef.current = false
     }
@@ -151,7 +151,7 @@ export function UpdaterProvider({ children }: { children: ReactNode }) {
           onInteractOutside={(event) => downloading && event.preventDefault()}
         >
           <DialogHeader>
-            <DialogTitle>{t('available')}</DialogTitle>
+            <DialogTitle>{t('settings.about.update.available')}</DialogTitle>
           </DialogHeader>
           {status.kind !== 'idle' && <ChangelogNotes sections={status.notes} />}
           <DialogFooter className={downloading ? 'items-center' : undefined}>
@@ -163,10 +163,10 @@ export function UpdaterProvider({ children }: { children: ReactNode }) {
             ) : (
               <>
                 <Button type="button" variant="secondary" onClick={dismissUpdate}>
-                  {t('later')}
+                  {t('settings.about.update.later')}
                 </Button>
                 <Button ref={installButtonRef} type="button" onClick={() => void installUpdate()}>
-                  {t('install')}
+                  {t('settings.about.update.install')}
                 </Button>
               </>
             )}
@@ -178,14 +178,14 @@ export function UpdaterProvider({ children }: { children: ReactNode }) {
 }
 
 export function UpdaterControl() {
-  const t = useTranslation('settings.about.update')
+  const t = useTranslation()
   const updater = useContext(UpdaterContext)
   if (!updater) throw new Error('UpdaterControl must be used within UpdaterProvider')
 
   return (
     <div className="shrink-0">
       <Button type="button" className="w-32" disabled={updater.checking} onClick={() => void updater.checkManually()}>
-        {updater.checking ? <LoaderCircleIcon className="size-4 animate-spin" /> : t('check')}
+        {updater.checking ? <LoaderCircleIcon className="size-4 animate-spin" /> : t('settings.about.update.check')}
       </Button>
     </div>
   )

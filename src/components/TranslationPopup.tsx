@@ -56,7 +56,7 @@ export function TranslationPopup({
   onBack,
   onClose,
 }: TranslationPopupProps) {
-  const t = useTranslation('translation')
+  const t = useTranslation()
   const [provider, setProvider] = useState(initialProvider)
   const [sourceLanguage, setSourceLanguage] = useState(initialSourceLanguage)
   const [targetLanguage, setTargetLanguage] = useState(initialTargetLanguage)
@@ -132,7 +132,7 @@ export function TranslationPopup({
       <SelectContent>
         {values.map((language) => (
           <SelectItem key={language} value={language}>
-            {language === 'auto' ? t('auto_detect') : (languageLabels.get(language) ?? language)}
+            {language === 'auto' ? t('translation.auto_detect') : (languageLabels.get(language) ?? language)}
           </SelectItem>
         ))}
       </SelectContent>

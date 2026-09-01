@@ -25,7 +25,7 @@ interface ThemePanelProps {
 export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
   const [{ theme }, setSettings] = useSettings()
   const { accentColor, setAccentColor } = useAccentColor()
-  const t = useTranslation('theme')
+  const t = useTranslation()
   const normalizedTheme = normalizeThemeConfiguration(theme)
   const [customPickerOpen, setCustomPickerOpen] = useState(false)
   const [accentPickerOpen, setAccentPickerOpen] = useState(false)
@@ -164,7 +164,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
               <BackgroundSwatch
                 key={preset.id}
                 preset={preset}
-                label={t(`preset.${preset.id}`)}
+                label={t(`theme.preset.${preset.id}`)}
                 selected={selectedBackground === preset.id}
                 onClick={() => applyBackgroundPreset(preset)}
               />
@@ -187,7 +187,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
                     color: isDarkPaletteColor(customBackground) ? '#F8FAFC' : '#1F2937',
                   }}
                 >
-                  {t('preset.custom')}
+                  {t('theme.preset.custom')}
                 </span>
                 <span
                   className="absolute right-1.5 bottom-1.5 h-1.5 w-8 rounded-full"
@@ -198,9 +198,9 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
           </div>
 
           <div className="border-border mt-3 flex items-center justify-between gap-3 border-t pt-3">
-            <span className="text-muted-foreground text-base font-medium">{t('source_color')}</span>
+            <span className="text-muted-foreground text-base font-medium">{t('theme.source_color')}</span>
             <ColorValueButton
-              aria-label={t('source_color')}
+              aria-label={t('theme.source_color')}
               value={accentColor}
               className="border-border text-foreground min-w-0 bg-(--flow-bg-control) px-2 hover:bg-(--flow-bg-control-hover) focus-visible:ring-2 focus-visible:ring-(--flow-focus-ring)"
               swatchClassName="h-4"

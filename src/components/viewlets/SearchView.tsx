@@ -139,7 +139,7 @@ const ResultList = forwardRef<ResultListHandle, ResultListProps>(({ results, key
   const rowIndex = useMemo(() => createSearchRowIndex(results), [results])
   const { outerRef, items, scrollbar, scrollToItem, totalSize } = useListSize(rowIndex.length)
   const pendingLocateSectionRef = useRef<number | null>(null)
-  const t = useTranslation('search')
+  const t = useTranslation()
 
   const sectionCount = results.length
   const resultCount = results.reduce((a, r) => r.subitems!.length + a, 0)
@@ -177,7 +177,9 @@ const ResultList = forwardRef<ResultListHandle, ResultListProps>(({ results, key
 
   return (
     <>
-      <div className="text-muted-foreground px-3 py-2 text-base">{t('result.summary', resultCount, sectionCount)}</div>
+      <div className="text-muted-foreground px-3 py-2 text-base">
+        {t('search.result.summary', resultCount, sectionCount)}
+      </div>
       <OverlayScroll
         ref={outerRef}
         className="text-muted-foreground text-base"

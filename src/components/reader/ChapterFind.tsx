@@ -73,7 +73,7 @@ export const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
   onNext,
   onPrevious,
 }) => {
-  const t = useTranslation('reader')
+  const t = useTranslation()
   const count = find.results.length
   const current = count ? find.activeIndex + 1 : 0
   const disabled = !count || find.searching
@@ -93,7 +93,7 @@ export const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
     >
       <Input
         ref={inputRef}
-        aria-label={t('find_current_chapter')}
+        aria-label={t('reader.find_current_chapter')}
         className="text-foreground h-auto w-40 rounded-none border-0 bg-transparent px-1 py-0.5 text-base shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
         escapeBehavior="none"
         focusBehavior="select-all"
@@ -115,7 +115,7 @@ export const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
         {find.searching ? '...' : `${current}/${count}`}
       </div>
       <IconButton
-        aria-label={t('previous_find_result')}
+        aria-label={t('reader.previous_find_result')}
         Icon={ChevronUpIcon}
         iconClassName="size-5.5"
         className="text-muted-foreground hover:text-foreground size-7 hover:bg-transparent disabled:opacity-40"
@@ -123,7 +123,7 @@ export const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
         onClick={onPrevious}
       />
       <IconButton
-        aria-label={t('next_find_result')}
+        aria-label={t('reader.next_find_result')}
         Icon={ChevronDownIcon}
         iconClassName="size-5.5"
         className="text-muted-foreground hover:text-foreground size-7 hover:bg-transparent disabled:opacity-40"

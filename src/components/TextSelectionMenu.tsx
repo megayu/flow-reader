@@ -168,7 +168,7 @@ function createTextReplaceTarget(
 const textReplacementErrorKeys = [
   {
     fragments: ['TEXT_REPLACE_EMPTY', 'Selected text is empty'],
-    key: 'edit_text_error_empty',
+    key: 'menu.edit_text_error_empty',
   },
   {
     fragments: [
@@ -181,23 +181,23 @@ const textReplacementErrorKeys = [
       'no longer exists',
       'node was not found',
     ],
-    key: 'edit_text_error_stale',
+    key: 'menu.edit_text_error_stale',
   },
-]
+] as const
 
 interface TextReplacementError {
   message: string
   detail?: string
 }
 
-function textReplacementErrorMessage(error: unknown, t: (key: string) => string): TextReplacementError {
+function textReplacementErrorMessage(error: unknown, t: ReturnType<typeof useTranslation>): TextReplacementError {
   const message = error instanceof Error ? error.message : String(error)
   const match = textReplacementErrorKeys.find(({ fragments }) =>
     fragments.some((fragment) => message.includes(fragment)),
   )
 
   return {
-    message: t(match?.key ?? 'edit_text_error_generic'),
+    message: t(match?.key ?? 'menu.edit_text_error_generic'),
     detail: message || undefined,
   }
 }
@@ -355,7 +355,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const [width, setWidth] = useState(0)
   const [height, setHeight] = useState(0)
   const popupElementRef = useRef<HTMLDivElement>(null)
-  const t = useTranslation('menu')
+  const t = useTranslation()
   const [settings] = useSettings()
   const [view, setView] = useState<'actions' | 'dictionary' | 'translation'>('actions')
   const [localDictionaries, setLocalDictionaries] = useState<LocalDictionaryRecord[]>([])
@@ -410,13 +410,13 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const annotationColorChanged = draftAnnotationColor !== (annotation?.color ?? DEFAULT_ANNOTATION_COLOR)
   const annotationChanged = annotationNotesChanged || annotationColorChanged
   const editTextDisabledReason = tab.book.archive
-    ? t('edit_text_unsupported')
+    ? t('menu.edit_text_unsupported')
     : tab.book.scope === 'external'
-      ? t('edit_text_import_first')
+      ? t('menu.edit_text_import_first')
       : !tab.book.editable
-        ? t('edit_text_enable_first')
+        ? t('menu.edit_text_enable_first')
         : !currentReplaceTarget
-          ? t(selectionSpansParagraphs(range) ? 'edit_text_one_paragraph' : 'edit_text_reselect')
+          ? t(`menu.${selectionSpansParagraphs(range) ? 'edit_text_one_paragraph' : 'edit_text_reselect'}`)
           : undefined
   const closeMenu = () => {
     if (savingReplacementRef.current) return
@@ -736,7 +736,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             <Textarea
               ref={replacementRef}
               name="replacement"
-              aria-label={t('edit_text')}
+              aria-label={t('menu.edit_text')}
               defaultValue={replaceTarget?.selectedText ?? text}
               onValueChange={(value) => setEditorChanged(value !== replaceTarget?.selectedText)}
               onExitEditing={cancelEditing}
@@ -762,7 +762,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 <div>{replacementError.message}</div>
                 {replacementError.detail && (
                   <div className="mt-1 text-xs wrap-break-word">
-                    {t('edit_text_error_reason')}
+                    {t('menu.edit_text_error_reason')}
                     {replacementError.detail}
                   </div>
                 )}
@@ -783,7 +783,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         ) : (
           <div className="text-muted-foreground mb-3 flex gap-2">
             <IconButton
-              title={t('copy')}
+              title={t('menu.copy')}
               shortcut={copyShortcut}
               Icon={CopyIcon}
               size={ICON_SIZE}
@@ -795,7 +795,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               onClick={copySelection}
             />
             <IconButton
-              title={t('search_in_book')}
+              title={t('menu.search_in_book')}
               shortcut={searchShortcut}
               Icon={SearchIcon}
               size={ICON_SIZE}
@@ -807,7 +807,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               onClick={searchSelection}
             />
             <IconButton
-              title={t('dictionary')}
+              title={t('menu.dictionary')}
               shortcut={dictionaryShortcut}
               Icon={BookOpenTextIcon}
               size={ICON_SIZE}
@@ -820,7 +820,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               onClick={() => switchView('dictionary')}
             />
             <IconButton
-              title={t('translate')}
+              title={t('menu.translate')}
               shortcut={translateShortcut}
               Icon={LanguagesIcon}
               size={ICON_SIZE}
@@ -829,7 +829,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               onClick={() => switchView('translation')}
             />
             <IconButton
-              title={t('edit_text')}
+              title={t('menu.edit_text')}
               shortcut={editTextShortcut}
               disabledReason={editTextDisabledReason}
               Icon={FilePenLineIcon}
@@ -843,7 +843,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               onClick={startEditing}
             />
             <IconButton
-              title={t('annotate')}
+              title={t('menu.annotate')}
               shortcut={annotateShortcut}
               Icon={PencilIcon}
               size={ICON_SIZE}
@@ -856,7 +856,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             />
             {tab.isDefined(text) ? (
               <IconButton
-                title={t('undefine')}
+                title={t('menu.undefine')}
                 shortcut={definitionToggleShortcut}
                 Icon={SquareMinusIcon}
                 size={ICON_SIZE}
@@ -869,7 +869,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               />
             ) : (
               <IconButton
-                title={t('define')}
+                title={t('menu.define')}
                 shortcut={definitionToggleShortcut}
                 Icon={SquarePlusIcon}
                 size={ICON_SIZE}
@@ -926,7 +926,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         {view === 'actions' && editing && (
           <div className="flex gap-2">
             <Button size="sm" variant="secondary" disabled={savingReplacement} onClick={cancelEditing}>
-              {t('cancel')}
+              {t('menu.cancel')}
             </Button>
             <Button
               className="ml-auto"
@@ -934,7 +934,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               disabled={!replaceTarget || savingReplacement || !editorChanged}
               onClick={saveReplacement}
             >
-              {savingReplacement ? t('saving') : t('save')}
+              {savingReplacement ? t('menu.saving') : t('menu.save')}
             </Button>
           </div>
         )}
@@ -949,11 +949,11 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                   hide()
                 }}
               >
-                {t('delete')}
+                {t('menu.delete')}
               </Button>
             ) : (
               <Button size="sm" variant="secondary" onClick={cancelAnnotation}>
-                {t('cancel')}
+                {t('menu.cancel')}
               </Button>
             )}
             <Button
@@ -967,7 +967,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 hide()
               }}
             >
-              {t(annotation ? 'update' : 'create')}
+              {t(`menu.${annotation ? 'update' : 'create'}`)}
             </Button>
           </div>
         )}

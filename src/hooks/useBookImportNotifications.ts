@@ -5,7 +5,7 @@ import { useTranslation } from './useTranslation'
 
 export function useBookImportNotifications() {
   const notify = useNotify()
-  const t = useTranslation('import')
+  const t = useTranslation()
 
   return (result: BookImportResult) => {
     const imported = result.books.length
@@ -22,7 +22,7 @@ export function useBookImportNotifications() {
               ...result.skipped.map((filename) => `- ${filename}`),
             ]
           : undefined,
-      title: t('result.summary', imported, failed, skipped),
+      title: t('import.result.summary', imported, failed, skipped),
       type: failed > 0 ? 'error' : skipped > 0 ? 'warning' : 'success',
     })
   }

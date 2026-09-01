@@ -35,7 +35,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
   const [draft, setDraft] = useState(initialColorRef.current)
   const [input, setInput] = useState(initialColorRef.current)
   const [slots, setSlots] = useState<(string | undefined)[]>(() => Array.from({ length: colorSlotCount }))
-  const t = useTranslation('color_picker')
+  const t = useTranslation()
 
   const slotItems = useMemo(
     () =>
@@ -97,7 +97,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
           onBlur={() => setInput(draft)}
         />
         <IconButton
-          title={t('copy')}
+          title={t('color_picker.copy')}
           Icon={CopyIcon}
           className="text-muted-foreground"
           onClick={() => {
@@ -105,7 +105,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
           }}
         />
         <IconButton
-          title={t('paste')}
+          title={t('color_picker.paste')}
           Icon={ClipboardPasteIcon}
           className="text-muted-foreground"
           onClick={() => {
@@ -121,7 +121,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
           <button
             type="button"
             key={id}
-            aria-label={color ? color : t('save_slot')}
+            aria-label={color ? color : t('color_picker.save_slot')}
             className="bg-popover ring-border h-6 rounded-sm ring-1 ring-inset"
             style={color ? { backgroundColor: color } : undefined}
             onClick={() => {
@@ -136,11 +136,11 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
       </div>
       <div className="mt-3 flex items-center justify-between gap-2">
         <Button variant="secondary" size="sm" onClick={saveDraftToSlot}>
-          {t('save_slot')}
+          {t('color_picker.save_slot')}
         </Button>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" size="sm" onClick={() => updateDraft(normalizedDefault)}>
-            {t('reset')}
+            {t('color_picker.reset')}
           </Button>
           <Button
             variant="secondary"
@@ -150,10 +150,10 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
               onCancel()
             }}
           >
-            {t('cancel')}
+            {t('color_picker.cancel')}
           </Button>
           <Button size="sm" onClick={() => onApply(draft)}>
-            {t('apply')}
+            {t('color_picker.apply')}
           </Button>
         </div>
       </div>

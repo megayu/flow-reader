@@ -62,7 +62,7 @@ interface LocalDictionarySettingsProps {
 }
 
 export function LocalDictionarySettings({ settings, setSettings }: LocalDictionarySettingsProps) {
-  const t = useTranslation('settings')
+  const t = useTranslation()
   const [dictionaries, setDictionaries] = useState<LocalDictionaryRecord[]>([])
   const [error, setError] = useState<string>()
   const [loading, setLoading] = useState(true)
@@ -140,7 +140,7 @@ export function LocalDictionarySettings({ settings, setSettings }: LocalDictiona
       setDictionaries(sortDictionaries(records))
       setError(undefined)
     } catch (reason) {
-      setError(errorMessage(reason, t('dictionary.local_error')))
+      setError(errorMessage(reason, t('settings.dictionary.local_error')))
     } finally {
       setLoading(false)
     }
@@ -155,7 +155,7 @@ export function LocalDictionarySettings({ settings, setSettings }: LocalDictiona
     const selected = await open({
       directory: false,
       multiple: false,
-      filters: [{ name: t('dictionary.local_file_filter'), extensions: ['ifo', 'mdx'] }],
+      filters: [{ name: t('settings.dictionary.local_file_filter'), extensions: ['ifo', 'mdx'] }],
     })
     return Array.isArray(selected) ? selected[0] : selected
   }
@@ -174,7 +174,7 @@ export function LocalDictionarySettings({ settings, setSettings }: LocalDictiona
       })
       setError(undefined)
     } catch (reason) {
-      setError(errorMessage(reason, t('dictionary.local_error')))
+      setError(errorMessage(reason, t('settings.dictionary.local_error')))
     }
   }
 
@@ -191,7 +191,7 @@ export function LocalDictionarySettings({ settings, setSettings }: LocalDictiona
       if (previous) {
         setDictionaries((current) => upsertDictionary(current, previous))
       }
-      setError(errorMessage(reason, t('dictionary.local_error')))
+      setError(errorMessage(reason, t('settings.dictionary.local_error')))
     }
   }
 
@@ -203,7 +203,7 @@ export function LocalDictionarySettings({ settings, setSettings }: LocalDictiona
       setDictionaries((current) => upsertDictionary(current, record))
       setError(undefined)
     } catch (reason) {
-      setError(errorMessage(reason, t('dictionary.local_error')))
+      setError(errorMessage(reason, t('settings.dictionary.local_error')))
     }
   }
 
@@ -222,7 +222,7 @@ export function LocalDictionarySettings({ settings, setSettings }: LocalDictiona
       setEditingSourceId(undefined)
       setError(undefined)
     } catch (reason) {
-      setError(errorMessage(reason, t('dictionary.local_error')))
+      setError(errorMessage(reason, t('settings.dictionary.local_error')))
     }
   }
 
@@ -333,13 +333,13 @@ export function LocalDictionarySettings({ settings, setSettings }: LocalDictiona
       }}
     >
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1">
-        <h3 className="text-base font-semibold">{t('dictionary.sources_title')}</h3>
+        <h3 className="text-base font-semibold">{t('settings.dictionary.sources_title')}</h3>
         <UiButton type="button" size="sm" className="h-8 shrink-0 gap-1.5 px-3" onClick={() => void addDictionary()}>
           <PlusIcon className="size-4" />
-          {t('dictionary.local_add')}
+          {t('settings.dictionary.local_add')}
         </UiButton>
         <p className="text-muted-foreground col-span-2 text-sm leading-relaxed">
-          {t('dictionary.sources_description')}
+          {t('settings.dictionary.sources_description')}
         </p>
       </div>
 
@@ -354,7 +354,7 @@ export function LocalDictionarySettings({ settings, setSettings }: LocalDictiona
 
       {loading ? (
         <div role="status" className="text-muted-foreground py-4 text-sm">
-          {t('dictionary.local_loading')}
+          {t('settings.dictionary.local_loading')}
         </div>
       ) : (
         <div className="border-border divide-border w-full max-w-full min-w-0 divide-y overflow-hidden rounded-md border">
@@ -538,7 +538,7 @@ function DictionarySourceRow({
             )}
             {(source.kind === 'zdic' || source.kind === 'merriam-webster') && (
               <span className="bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-xs uppercase">
-                {t('dictionary.online')}
+                {t('settings.dictionary.online')}
               </span>
             )}
           </div>
@@ -547,7 +547,7 @@ function DictionarySourceRow({
               ? '中文'
               : source.kind === 'merriam-webster'
                 ? `English · Collegiate Dictionary · ${t(
-                    configured ? 'dictionary.configured' : 'dictionary.not_configured',
+                    configured ? 'settings.dictionary.configured' : 'settings.dictionary.not_configured',
                   )}`
                 : localMetadata(source.dictionary, t, editing ? localLanguagesDraft : undefined)}
           </div>
@@ -625,7 +625,7 @@ function DictionarySourceRow({
               void openSupportedExternalUrl('https://dictionaryapi.com/').catch(() => undefined)
             }}
           >
-            {t('dictionary.get_api_key')}
+            {t('settings.dictionary.get_api_key')}
             <ExternalLinkIcon className="size-4" />
           </UiButton>
         </div>
@@ -738,9 +738,11 @@ function LocalDictionaryEditor({
 
 function localMetadata(dictionary: LocalDictionaryRecord, t: Translation, languageDraft?: LocalDictionaryLanguage[]) {
   const languages = (languageDraft ?? dictionary.language.value).map((language) => languageLabels[language])
-  const language = languages.length > 0 ? languages.join(', ') : t('dictionary.local_language.unknown')
+  const language = languages.length > 0 ? languages.join(', ') : t('settings.dictionary.local_language.unknown')
   const status =
-    dictionary.sourceStatus === 'available' ? '' : ` · ${t(`dictionary.local_status.${dictionary.sourceStatus}`)}`
+    dictionary.sourceStatus === 'available'
+      ? ''
+      : ` · ${t(`settings.dictionary.local_status.${dictionary.sourceStatus}`)}`
   return `${language} · ${formatLocalPathForDisplay(dictionary.sourcePath)}${status}`
 }
 

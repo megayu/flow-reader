@@ -58,6 +58,7 @@ import { useCovers, useLibrary, useLibraryTags, useRecentBookIds } from '../hook
 import { useOverlayScrollbarMetrics } from '../hooks/useOverlayScrollbarMetrics'
 import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
+import type { MessageKey } from '../locales'
 import { completeTabOpen, reader, useReaderSnapshot } from '../models/reader'
 import { subscribeReaderOpenErrors } from '../reader/errorEvents'
 import { createTextSearchIndex, matchesTextSearch } from '../search/textSearch'
@@ -131,11 +132,11 @@ const sortFieldIconMap = {
   createdAt: CalendarPlusIcon,
 } satisfies Record<LibrarySortField, LucideIcon>
 const sortFieldMessageKey = {
-  title: 'sort.title',
-  creator: 'sort.creator',
-  updatedAt: 'sort.last_read',
-  createdAt: 'sort.date_added',
-} satisfies Record<LibrarySortField, string>
+  title: 'home.sort.title',
+  creator: 'home.sort.creator',
+  updatedAt: 'home.sort.last_read',
+  createdAt: 'home.sort.date_added',
+} satisfies Record<LibrarySortField, MessageKey>
 
 const toolbarButtonClass = 'h-8 leading-none'
 // Match the selected tab's straight side: 10px list padding plus its 2px outer margin.
@@ -204,8 +205,7 @@ export function LibraryPage() {
   const [folderImportPath, setFolderImportPath] = useState<string>()
   const notify = useNotify()
   const notifyBookImportResult = useBookImportNotifications()
-  const errorT = useTranslation('error')
-  const homeT = useTranslation('home')
+  const t = useTranslation()
   const focusedBookId = focusedBookTab?.book.id
   const directTextImport = settings.directTextImport === true
   const defaultCopyTextSourceFiles =
@@ -300,12 +300,12 @@ export function LibraryPage() {
           notify({
             autoCloseMs: false,
             description: message,
-            title: errorT('txt_import_failed'),
+            title: t('error.txt_import_failed'),
             type: 'error',
           })
         })
     },
-    [errorT, handleBookImportProgress, notify, notifyBookImportResult, openImportedTextBooks],
+    [t, handleBookImportProgress, notify, notifyBookImportResult, openImportedTextBooks],
   )
 
   const handleNativeEpubImportResult = useEffectEvent((result: BookImportResult) => handleEpubImportResult(result))
@@ -328,12 +328,12 @@ export function LibraryPage() {
         notify({
           autoCloseMs: false,
           description: formatErrorMessage(error),
-          title: errorT('folder_import_failed'),
+          title: t('error.folder_import_failed'),
           type: 'error',
         })
       })
     },
-    [directTextImport, errorT, handleBookImportProgress, handleEpubImportResult, notify, openTextImportDialog],
+    [directTextImport, t, handleBookImportProgress, handleEpubImportResult, notify, openTextImportDialog],
   )
 
   useEffect(() => {
@@ -351,17 +351,17 @@ export function LibraryPage() {
         }
         void reader.closeBookTab(bookId).catch(console.error)
       }
-      const sourceErrorDescription = sourceErrorStatus ? homeT(bookSourceDescriptionKey(sourceErrorStatus)) : undefined
+      const sourceErrorDescription = sourceErrorStatus ? t(bookSourceDescriptionKey(sourceErrorStatus)) : undefined
       notify({
         autoCloseMs: false,
         description: `${bookTitle}: ${sourceErrorDescription ?? errorMessage}`,
         title: sourceErrorDescription
-          ? homeT('source_unavailable')
-          : errorT(stage === 'source' || stage === 'open' ? 'reader_open_failed' : 'reader_render_failed'),
+          ? t('home.source_unavailable')
+          : t(`error.${stage === 'source' || stage === 'open' ? 'reader_open_failed' : 'reader_render_failed'}`),
         type: 'error',
       })
     })
-  }, [errorT, homeT, notify])
+  }, [notify, t])
 
   const tryRestoreStartupSession = useEffectEvent(() => {
     if (!settingsReady || !nativeOpenReadyRef.current || startupRestoreStartedRef.current) {
@@ -426,13 +426,13 @@ export function LibraryPage() {
       },
       onDropMixedItems: () => {
         notify({
-          title: homeT('folder_import.mixed_drop_not_allowed'),
+          title: t('home.folder_import.mixed_drop_not_allowed'),
           type: 'error',
         })
       },
       onDropMultipleFolders: () => {
         notify({
-          title: homeT('folder_import.multiple_drop_not_allowed'),
+          title: t('home.folder_import.multiple_drop_not_allowed'),
           type: 'error',
         })
       },
@@ -457,7 +457,7 @@ export function LibraryPage() {
       setNativeStartupReaderFailed(true)
       notify({
         autoCloseMs: false,
-        title: errorT('deep_link_book_not_found'),
+        title: t('error.deep_link_book_not_found'),
         type: 'error',
       })
     }).catch((error) => {
@@ -661,9 +661,7 @@ const Library: React.FC<LibraryProps> = ({
   const books = useLibrary()
   const covers = useCovers()
   const tags = useLibraryTags()
-  const t = useTranslation('home')
-  const settingsT = useTranslation('settings')
-  const errorT = useTranslation('error')
+  const t = useTranslation()
   const notify = useNotify()
   const [settings, setSettings] = useSettings()
   const recentBookIds = useRecentBookIds(settings.showRecentBooks === true)
@@ -1028,11 +1026,11 @@ const Library: React.FC<LibraryProps> = ({
         notify({
           autoCloseMs: false,
           description: formatErrorMessage(error),
-          title: errorT('folder_import_failed'),
+          title: t('error.folder_import_failed'),
           type: 'error',
         })
       })
-  }, [errorT, notify, onOpenFolderImport])
+  }, [t, notify, onOpenFolderImport])
 
   const handleCancelSelectionKeyDown = useEffectEvent((e: KeyboardEvent) => {
     if (e.key !== 'Escape') return
@@ -1205,10 +1203,10 @@ const Library: React.FC<LibraryProps> = ({
       ? String(books.length)
       : `${sortedBooks.length} / ${books.length}`
   const libraryCountTooltip = select
-    ? t('book_count.selected')
+    ? t('home.book_count.selected')
     : sortedBooks.length === books.length
-      ? t('book_count.total')
-      : t('book_count.filtered')
+      ? t('home.book_count.total')
+      : t('home.book_count.filtered')
   const bookGridStyle = {
     gridTemplateColumns: `repeat(auto-fill, ${bookCardWidth}px)`,
     columnGap: `${bookCardGap}px`,
@@ -1256,8 +1254,8 @@ const Library: React.FC<LibraryProps> = ({
                   ref={titleSearchInputRef}
                   value={titleSearchQuery}
                   escapeBehavior="none"
-                  placeholder={t('library_search.title')}
-                  aria-label={t('library_search.title')}
+                  placeholder={t('home.library_search.title')}
+                  aria-label={t('home.library_search.title')}
                   onValueChange={setTitleSearchQuery}
                   onKeyDown={(event) => {
                     if (event.nativeEvent.isComposing) return
@@ -1279,7 +1277,7 @@ const Library: React.FC<LibraryProps> = ({
                 <InputGroupActions>
                   <IconButton
                     Icon={XIcon}
-                    title={t('library_search.clear')}
+                    title={t('home.library_search.clear')}
                     disabled={!titleSearchQuery}
                     className="text-muted-foreground"
                     onMouseDown={(event) => event.preventDefault()}
@@ -1293,14 +1291,14 @@ const Library: React.FC<LibraryProps> = ({
             )}
             {!!books.length && !select && (
               <Popover>
-                <AppTooltip label={t('bookshelf_view.title')}>
+                <AppTooltip label={t('home.bookshelf_view.title')}>
                   <PopoverTrigger asChild>
                     <UiButton
                       type="button"
                       variant="secondary"
                       size="sm"
                       className={clsx(toolbarButtonClass, 'w-8 px-0')}
-                      aria-label={t('bookshelf_view.title')}
+                      aria-label={t('home.bookshelf_view.title')}
                     >
                       <LayoutGridIcon aria-hidden className="mx-auto size-4" />
                     </UiButton>
@@ -1315,7 +1313,7 @@ const Library: React.FC<LibraryProps> = ({
                   <div className="space-y-3">
                     <section>
                       <div className="mb-2 flex items-center justify-between gap-3">
-                        <span className="text-muted-foreground font-medium">{t('book_size.title')}</span>
+                        <span className="text-muted-foreground font-medium">{t('home.book_size.title')}</span>
                         <span className="text-muted-foreground tabular-nums">{bookCardWidth}px</span>
                       </div>
                       <div className="grid grid-cols-3 gap-1">
@@ -1331,7 +1329,7 @@ const Library: React.FC<LibraryProps> = ({
                               className="h-8"
                               onClick={() => setBookCardWidth(preset.value)}
                             >
-                              {t(`book_size.${preset.key}`)}
+                              {t(`home.book_size.${preset.key}`)}
                             </UiButton>
                           )
                         })}
@@ -1346,7 +1344,7 @@ const Library: React.FC<LibraryProps> = ({
                         max={libraryBookCardWidthMax}
                         step={libraryBookCardWidthStep}
                         value={bookCardWidth}
-                        aria-label={t('book_size.title')}
+                        aria-label={t('home.book_size.title')}
                         className="mt-3 h-2 w-full cursor-pointer accent-(--flow-accent)"
                         onChange={(e) => setBookCardWidth(Number(e.target.value))}
                       />
@@ -1359,14 +1357,14 @@ const Library: React.FC<LibraryProps> = ({
                           className="h-7 px-2"
                           onClick={() => setBookCardWidth(defaultLibraryDisplay.bookCardWidth)}
                         >
-                          {t('book_size.default')}
+                          {t('home.book_size.default')}
                         </UiButton>
                         <span className="text-muted-foreground">{libraryBookCardWidthMax}px</span>
                       </div>
                     </section>
 
                     <section>
-                      <div className="text-muted-foreground mb-1 font-medium">{t('cover_fit.title')}</div>
+                      <div className="text-muted-foreground mb-1 font-medium">{t('home.cover_fit.title')}</div>
                       <SegmentedControl className="flex w-full bg-background">
                         {(['contain', 'cover'] as const).map((fit) => (
                           <SegmentedControlItem
@@ -1375,14 +1373,14 @@ const Library: React.FC<LibraryProps> = ({
                             className="flex-1 px-2 leading-none"
                             onClick={() => setCoverFit(fit)}
                           >
-                            {t(`cover_fit.${fit}`)}
+                            {t(`home.cover_fit.${fit}`)}
                           </SegmentedControlItem>
                         ))}
                       </SegmentedControl>
                     </section>
 
                     <section className="border-border/60 -mx-3 border-t px-3 pt-3">
-                      <div className="text-muted-foreground mb-1 font-medium">{t('sort.field')}</div>
+                      <div className="text-muted-foreground mb-1 font-medium">{t('home.sort.field')}</div>
                       <div className="grid grid-cols-2 gap-1">
                         {librarySortFieldOptions.map((field) => {
                           const SortIcon = sortFieldIconMap[field]
@@ -1405,7 +1403,7 @@ const Library: React.FC<LibraryProps> = ({
                     </section>
 
                     <section>
-                      <div className="text-muted-foreground mb-1 font-medium">{t('sort.direction')}</div>
+                      <div className="text-muted-foreground mb-1 font-medium">{t('home.sort.direction')}</div>
                       <SegmentedControl className="flex w-full bg-background">
                         {(['asc', 'desc'] as const).map((direction) => {
                           const SortDirectionIcon = direction === 'asc' ? ArrowUpIcon : ArrowDownIcon
@@ -1418,7 +1416,7 @@ const Library: React.FC<LibraryProps> = ({
                               onClick={() => setSortDirection(direction)}
                             >
                               <SortDirectionIcon aria-hidden className="size-4" />
-                              {t(`sort.${direction}`)}
+                              {t(`home.sort.${direction}`)}
                             </SegmentedControlItem>
                           )
                         })}
@@ -1430,10 +1428,10 @@ const Library: React.FC<LibraryProps> = ({
                         htmlFor="library-show-recent-books"
                         className="flex min-h-8 cursor-pointer items-center justify-between gap-3 font-medium"
                       >
-                        <span>{settingsT('show_recent_books')}</span>
+                        <span>{t('settings.show_recent_books')}</span>
                         <UiCheckbox
                           id="library-show-recent-books"
-                          aria-label={settingsT('show_recent_books')}
+                          aria-label={t('settings.show_recent_books')}
                           className="size-5 after:inset-x-0"
                           checked={settings.showRecentBooks === true}
                           onCheckedChange={(checked) => {
@@ -1448,10 +1446,10 @@ const Library: React.FC<LibraryProps> = ({
                         htmlFor="library-show-modified-export-indicator"
                         className="flex min-h-8 cursor-pointer items-center justify-between gap-3 font-medium"
                       >
-                        <span>{settingsT('library_modified_indicator')}</span>
+                        <span>{t('settings.library_modified_indicator')}</span>
                         <UiCheckbox
                           id="library-show-modified-export-indicator"
-                          aria-label={settingsT('library_modified_indicator')}
+                          aria-label={t('settings.library_modified_indicator')}
                           className="size-5 after:inset-x-0"
                           checked={settings.showModifiedBookExportIndicator === true}
                           onCheckedChange={(checked) => {
@@ -1471,8 +1469,8 @@ const Library: React.FC<LibraryProps> = ({
               <TooltipButton
                 variant="secondary"
                 className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
-                aria-label={t(select ? 'cancel' : 'select')}
-                title={t(`${select ? 'cancel' : 'select'}.tooltip`)}
+                aria-label={t(select ? 'home.cancel' : 'home.select')}
+                title={t(select ? 'home.cancel.tooltip' : 'home.select.tooltip')}
                 onClick={toggleSelectMode}
               >
                 {select ? (
@@ -1480,7 +1478,7 @@ const Library: React.FC<LibraryProps> = ({
                 ) : (
                   <SquareCheckBigIcon aria-hidden className="size-4" />
                 )}
-                <span className="leading-none">{t(select ? 'cancel' : 'select')}</span>
+                <span className="leading-none">{t(select ? 'home.cancel' : 'home.select')}</span>
               </TooltipButton>
             )}
             {select &&
@@ -1488,24 +1486,24 @@ const Library: React.FC<LibraryProps> = ({
                 <TooltipButton
                   variant="secondary"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
-                  aria-label={t('deselect_all')}
-                  title={t('deselect_all.tooltip')}
+                  aria-label={t('home.deselect_all')}
+                  title={t('home.deselect_all.tooltip')}
                   onClick={reset}
                 >
                   <ListXIcon aria-hidden className="size-4" />
-                  <span className="leading-none">{t('deselect_all')}</span>
+                  <span className="leading-none">{t('home.deselect_all')}</span>
                 </TooltipButton>
               ) : (
                 <TooltipButton
                   variant="secondary"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
-                  aria-label={t('select_all')}
-                  title={t('select_all.tooltip')}
+                  aria-label={t('home.select_all')}
+                  title={t('home.select_all.tooltip')}
                   shortcut={selectAllShortcut}
                   onClick={selectAllBooks}
                 >
                   <ListChecksIcon aria-hidden className="size-4" />
-                  <span className="leading-none">{t('select_all')}</span>
+                  <span className="leading-none">{t('home.select_all')}</span>
                 </TooltipButton>
               ))}
           </div>
@@ -1526,16 +1524,16 @@ const Library: React.FC<LibraryProps> = ({
             {select ? (
               <>
                 <DropdownMenu modal={false}>
-                  <AppTooltip label={t('reading_status.batch_change')}>
+                  <AppTooltip label={t('home.reading_status.batch_change')}>
                     <DropdownMenuTrigger asChild>
                       <UiButton
                         variant="secondary"
                         className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                         disabled={!selectedBooks.length}
-                        aria-label={t('reading_status.batch_change')}
+                        aria-label={t('home.reading_status.batch_change')}
                       >
                         <ReadingStatusIcon intent="edit" status={null} />
-                        <span className="leading-none">{t('reading_status.label')}</span>
+                        <span className="leading-none">{t('home.reading_status.label')}</span>
                         <ChevronDownIcon aria-hidden className="size-3.5" />
                       </UiButton>
                     </DropdownMenuTrigger>
@@ -1546,34 +1544,34 @@ const Library: React.FC<LibraryProps> = ({
                   variant="secondary"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                   disabled={!selectedBooks.length}
-                  aria-label={t('tags')}
-                  title={t('tags.tooltip')}
+                  aria-label={t('home.tags')}
+                  title={t('home.tags.tooltip')}
                   shortcut={batchTagsShortcut}
                   onClick={() => setBatchTagsOpen(true)}
                 >
                   <TagIcon aria-hidden className="size-4" />
-                  <span className="leading-none">{t('tags')}</span>
+                  <span className="leading-none">{t('home.tags')}</span>
                 </TooltipButton>
                 <TooltipButton
                   variant="destructive"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                   disabled={!selectedBooks.length}
-                  aria-label={t('delete')}
-                  title={t('delete.tooltip')}
+                  aria-label={t('home.delete')}
+                  title={t('home.delete.tooltip')}
                   shortcut={deleteSelectionShortcut}
                   onClick={() => setDeleteBooksOpen(true)}
                 >
                   <Trash2Icon aria-hidden className="size-4" />
-                  <span className="leading-none">{t('delete')}</span>
+                  <span className="leading-none">{t('home.delete')}</span>
                 </TooltipButton>
               </>
             ) : (
               <DropdownMenu>
-                <AppTooltip label={t('import.tooltip')}>
+                <AppTooltip label={t('home.import.tooltip')}>
                   <DropdownMenuTrigger asChild>
-                    <UiButton className={clsx(toolbarButtonClass, 'gap-1.5 px-3')} aria-label={t('import')}>
+                    <UiButton className={clsx(toolbarButtonClass, 'gap-1.5 px-3')} aria-label={t('home.import')}>
                       <FileInputIcon aria-hidden className="size-4" />
-                      <span className="leading-none">{t('import')}</span>
+                      <span className="leading-none">{t('home.import')}</span>
                       <ChevronDownIcon aria-hidden className="size-3.5" />
                     </UiButton>
                   </DropdownMenuTrigger>
@@ -1581,11 +1579,11 @@ const Library: React.FC<LibraryProps> = ({
                 <DropdownMenuContent align="end" sideOffset={4} className="w-max max-w-[calc(100vw-2rem)]">
                   <DropdownMenuItem onSelect={importBooks}>
                     <FileInputIcon aria-hidden className="size-4" />
-                    <span className="leading-none whitespace-nowrap">{t('import_books')}</span>
+                    <span className="leading-none whitespace-nowrap">{t('home.import_books')}</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={importFolder}>
                     <FolderInputIcon aria-hidden className="size-4" />
-                    <span className="leading-none whitespace-nowrap">{t('folder_import.action')}</span>
+                    <span className="leading-none whitespace-nowrap">{t('home.folder_import.action')}</span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1665,7 +1663,7 @@ const Library: React.FC<LibraryProps> = ({
                 notify({
                   autoCloseMs: false,
                   description: formatErrorMessage(error),
-                  title: errorT('delete_books_failed'),
+                  title: t('error.delete_books_failed'),
                   type: 'error',
                 })
               })

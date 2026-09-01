@@ -403,7 +403,7 @@ export function getShortcutChords(id: ShortcutActionId) {
   return shortcutDefinitions[id].shortcuts.map(resolveShortcutChord)
 }
 
-export function createShortcutGroups(t: (key: string) => string): ShortcutGroup[] {
+export function createShortcutGroups(t: (key: MessageKey) => string): ShortcutGroup[] {
   return shortcutGroups.map((group) => ({
     title: t(group.titleKey),
     items: group.items.map((item) => ({

@@ -20,8 +20,7 @@ import { db } from '../storage/client'
 import type { LibraryTagRecord } from '../storage/types'
 
 export function TagSettings() {
-  const t = useTranslation('settings.tags')
-  const homeT = useTranslation('home')
+  const t = useTranslation()
   const books = useLibrary()
   const tags = useLibraryTags()
   const pins = useLibraryPins()
@@ -69,17 +68,17 @@ export function TagSettings() {
     () => [
       {
         Icon: PencilIcon,
-        label: homeT('context.edit'),
+        label: t('home.context.edit'),
         onClick: (tagId) => setEditingTag(tagsById.get(tagId)),
       },
       {
         danger: true,
         Icon: Trash2Icon,
-        label: homeT('delete'),
+        label: t('home.delete'),
         onClick: (tagId) => setDeletingTag(tagsById.get(tagId)),
       },
     ],
-    [homeT, tagsById],
+    [t, tagsById],
   )
 
   const toggleVisibleTags = () => {
@@ -94,8 +93,8 @@ export function TagSettings() {
       <div className="grid shrink-0 grid-cols-[repeat(auto-fit,minmax(min(14rem,100%),1fr))] gap-2">
         <LibraryFilterInput
           Icon={PlusIcon}
-          aria-label={t('new')}
-          placeholder={t('new')}
+          aria-label={t('settings.tags.new')}
+          placeholder={t('settings.tags.new')}
           value={tagCreation.name}
           onValueChange={tagCreation.setName}
           onKeyDown={(event) => {
@@ -106,11 +105,11 @@ export function TagSettings() {
         />
         <LibraryFilterInput
           Icon={SearchIcon}
-          aria-label={t('search')}
-          placeholder={t('search')}
+          aria-label={t('settings.tags.search')}
+          placeholder={t('settings.tags.search')}
           value={query}
           onValueChange={setQuery}
-          clearLabel={t('search')}
+          clearLabel={t('settings.tags.search')}
           onClear={query ? () => setQuery('') : undefined}
         />
       </div>
@@ -124,7 +123,7 @@ export function TagSettings() {
           disabled={!visibleTags.length}
           onClick={toggleVisibleTags}
         >
-          {t('select_all')}
+          {t('settings.tags.select_all')}
         </UiButton>
         <UiButton
           type="button"
@@ -133,7 +132,7 @@ export function TagSettings() {
           disabled={!selectedTagIds.size}
           onClick={resetSelectedTagIds}
         >
-          {homeT('deselect_all')}
+          {t('home.deselect_all')}
         </UiButton>
         <UiButton
           type="button"
@@ -142,7 +141,7 @@ export function TagSettings() {
           disabled={selectedTagIds.size < 2}
           onClick={() => setMergeOpen(true)}
         >
-          {t('merge_action')}
+          {t('settings.tags.merge_action')}
         </UiButton>
         <UiButton
           type="button"
@@ -151,7 +150,7 @@ export function TagSettings() {
           disabled={!selectedTagIds.size}
           onClick={() => setConfirmAction('delete')}
         >
-          {homeT('delete')}
+          {t('home.delete')}
         </UiButton>
         <UiButton
           type="button"
@@ -161,7 +160,7 @@ export function TagSettings() {
           disabled={books === undefined || !orphanTagIds.length}
           onClick={() => setConfirmAction('orphans')}
         >
-          {t('clear_orphans')}
+          {t('settings.tags.clear_orphans')}
         </UiButton>
       </div>
 
@@ -178,14 +177,14 @@ export function TagSettings() {
                 onPin={(tagId) => void db.pins.pinTag(tagId)}
                 onToggle={toggleTag}
                 onUnpin={(tagId) => void db.pins.unpinTag(tagId)}
-                pinLabel={homeT('library_filter.pin_tag')}
+                pinLabel={t('home.library_filter.pin_tag')}
                 pinned={pinnedTagIds.has(tag.id)}
-                unpinLabel={homeT('library_filter.unpin_tag')}
+                unpinLabel={t('home.library_filter.unpin_tag')}
               />
             ))}
           </div>
         ) : (
-          <div className="text-muted-foreground py-8 text-center text-sm">{t('no_tags')}</div>
+          <div className="text-muted-foreground py-8 text-center text-sm">{t('settings.tags.no_tags')}</div>
         )}
       </div>
 
@@ -199,13 +198,13 @@ export function TagSettings() {
       )}
       {confirmAction && (
         <ConfirmDialog
-          title={t(confirmAction === 'orphans' ? 'clear_orphans' : 'delete_selected')}
+          title={t(`settings.tags.${confirmAction === 'orphans' ? 'clear_orphans' : 'delete_selected'}`)}
           description={t(
-            confirmAction === 'orphans' ? 'clear_orphans_message' : 'delete_selected_message',
+            `settings.tags.${confirmAction === 'orphans' ? 'clear_orphans_message' : 'delete_selected_message'}`,
             confirmAction === 'orphans' ? orphanTagIds.length : selectedTagIds.size,
           )}
-          cancelLabel={homeT('cancel')}
-          confirmLabel={confirmAction === 'orphans' ? t('clear') : homeT('delete')}
+          cancelLabel={t('home.cancel')}
+          confirmLabel={confirmAction === 'orphans' ? t('settings.tags.clear') : t('home.delete')}
           onClose={() => setConfirmAction(undefined)}
           onConfirm={() => {
             const deletingSelection = confirmAction === 'delete'
@@ -237,8 +236,7 @@ interface MergeTagsDialogProps {
 }
 
 function MergeTagsDialog({ onClose, onMerged, tags }: MergeTagsDialogProps) {
-  const t = useTranslation('settings.tags')
-  const homeT = useTranslation('home')
+  const t = useTranslation()
   const notify = useNotify()
   const [targetId, setTargetId] = useState(tags[0]?.id)
   const [name, setName] = useState('')
@@ -248,10 +246,10 @@ function MergeTagsDialog({ onClose, onMerged, tags }: MergeTagsDialogProps) {
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="w-[min(28rem,calc(100vw-2rem))] max-w-none text-base">
         <DialogHeader>
-          <DialogTitle>{t('merge')}</DialogTitle>
+          <DialogTitle>{t('settings.tags.merge')}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-2">
-          <span className="text-muted-foreground leading-none font-medium">{t('merge_target')}</span>
+          <span className="text-muted-foreground leading-none font-medium">{t('settings.tags.merge_target')}</span>
           <div className={libraryFilterOptionsClassName}>
             {tags.map((tag) => (
               <LibraryFilterChipButton
@@ -268,7 +266,7 @@ function MergeTagsDialog({ onClose, onMerged, tags }: MergeTagsDialogProps) {
           </div>
         </div>
         <label className="grid gap-2">
-          <span className="text-muted-foreground leading-none font-medium">{t('merge_name')}</span>
+          <span className="text-muted-foreground leading-none font-medium">{t('settings.tags.merge_name')}</span>
           <Input
             value={name}
             onValueChange={(value) => {
@@ -280,7 +278,7 @@ function MergeTagsDialog({ onClose, onMerged, tags }: MergeTagsDialogProps) {
         </label>
         <DialogFooter>
           <UiButton type="button" variant="secondary" onClick={onClose}>
-            {homeT('cancel')}
+            {t('home.cancel')}
           </UiButton>
           <UiButton
             type="button"
@@ -294,11 +292,11 @@ function MergeTagsDialog({ onClose, onMerged, tags }: MergeTagsDialogProps) {
                 .then(onMerged)
                 .catch((error) => {
                   console.error(error)
-                  notify({ type: 'error', title: t('merge_error') })
+                  notify({ type: 'error', title: t('settings.tags.merge_error') })
                 })
             }}
           >
-            {t('merge_action')}
+            {t('settings.tags.merge_action')}
           </UiButton>
         </DialogFooter>
       </DialogContent>
