@@ -80,6 +80,20 @@ function Invoke-CheckedCommand {
   }
 }
 
+function Get-Sha256 {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $stream = [System.IO.File]::OpenRead($Path)
+  $sha256 = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    return ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '')
+  }
+  finally {
+    $sha256.Dispose()
+    $stream.Dispose()
+  }
+}
+
 function Build-Installer {
   param(
     [Parameter(Mandatory = $true)][string]$ProviderPath,
@@ -133,7 +147,7 @@ function Assert-InstalledProvider {
   if (-not (Test-Path -LiteralPath $installedProvider -PathType Leaf)) {
     throw "Installed provider DLL is missing: $installedProvider"
   }
-  $installedHash = (Get-FileHash -LiteralPath $installedProvider -Algorithm SHA256).Hash
+  $installedHash = Get-Sha256 -Path $installedProvider
   if ($installedHash -ne $ExpectedHash) {
     throw "Installed provider hash '$installedHash' does not match expected build '$ExpectedHash'."
   }
@@ -342,11 +356,11 @@ try {
     '--target', 'x86_64-pc-windows-msvc'
   )
   Invoke-CheckedCommand $pnpm @('thumbnail:build:windows')
-  $baselineProviderHash = (Get-FileHash -LiteralPath $developmentProvider -Algorithm SHA256).Hash
+  $baselineProviderHash = Get-Sha256 -Path $developmentProvider
   Build-Installer -ProviderPath $developmentProvider -Destination $baselineInstaller
 
   Invoke-CheckedCommand $pnpm @('bundle:windows:thumbnail')
-  $upgradeProviderHash = (Get-FileHash -LiteralPath $distributionProvider -Algorithm SHA256).Hash
+  $upgradeProviderHash = Get-Sha256 -Path $distributionProvider
   if ($upgradeProviderHash -eq $baselineProviderHash) {
     throw 'Lifecycle validation requires baseline and upgrade providers with different content.'
   }
