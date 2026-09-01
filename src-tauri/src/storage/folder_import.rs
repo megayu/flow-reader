@@ -57,7 +57,7 @@ fn ignored_directory(path: &Path) -> bool {
     })
 }
 
-fn link_like_directory(path: &Path, file_type: fs::FileType) -> bool {
+fn link_like_directory(_path: &Path, file_type: fs::FileType) -> bool {
     if file_type.is_symlink() {
         return true;
     }
@@ -67,7 +67,7 @@ fn link_like_directory(path: &Path, file_type: fs::FileType) -> bool {
         use std::os::windows::fs::MetadataExt;
 
         const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
-        fs::symlink_metadata(path)
+        fs::symlink_metadata(_path)
             .map(|metadata| metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0)
             .unwrap_or(true)
     }
