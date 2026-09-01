@@ -349,8 +349,10 @@
   "settings.ui_font_size": "Rozmiar czcionki interfejsu",
   "settings.ui_font_size.description": "Zmienia tylko rozmiar tekstu interfejsu. Tekst książki ustawia się oddzielnie w sekcji „Typografia”.",
 
-  "tabs.close_all": "Zamknij wszystkie karty",
-  "tabs.close_current": "Zamknij bieżącą kartę",
+  "tabs.close": "Zamknij",
+  "tabs.close_all": "Zamknij wszystkie",
+  "tabs.close_others": "Zamknij pozostałe",
+  "tabs.add_to_library": "Dodaj do biblioteki",
   "tabs.move_left": "Przesuń kartę w lewo",
   "tabs.move_right": "Przesuń kartę w prawo",
   "tabs.switch_by_number": "Przełącz na kartę wg numeru (1–8)",

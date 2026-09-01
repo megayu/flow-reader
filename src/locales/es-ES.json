@@ -349,8 +349,10 @@
   "settings.ui_font_size": "Tamaño de fuente de la interfaz",
   "settings.ui_font_size.description": "Cambia únicamente el tamaño del texto de la interfaz. El texto de lectura se ajusta por separado en «Tipografía».",
 
-  "tabs.close_all": "Cerrar todas las pestañas",
-  "tabs.close_current": "Cerrar pestaña actual",
+  "tabs.close": "Cerrar",
+  "tabs.close_all": "Cerrar todas",
+  "tabs.close_others": "Cerrar las demás",
+  "tabs.add_to_library": "Añadir a la biblioteca",
   "tabs.move_left": "Mover pestaña a la izquierda",
   "tabs.move_right": "Mover pestaña a la derecha",
   "tabs.switch_by_number": "Cambiar a pestaña por número (1–8)",

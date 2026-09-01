@@ -349,8 +349,10 @@
   "settings.ui_font_size": "인터페이스 글자 크기",
   "settings.ui_font_size.description": "앱 UI 텍스트 크기만 변경됩니다. 도서 본문 글자 크기는 '조판'에서 설정하세요.",
 
-  "tabs.close_all": "모든 탭 닫기",
-  "tabs.close_current": "현재 탭 닫기",
+  "tabs.close": "닫기",
+  "tabs.close_all": "모두 닫기",
+  "tabs.close_others": "나머지 닫기",
+  "tabs.add_to_library": "라이브러리에 추가",
   "tabs.move_left": "탭을 왼쪽으로 이동",
   "tabs.move_right": "탭을 오른쪽으로 이동",
   "tabs.switch_by_number": "번호로 탭 전환 (1–8)",

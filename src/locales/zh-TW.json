@@ -349,8 +349,10 @@
   "settings.ui_font_size": "介面字型大小",
   "settings.ui_font_size.description": "僅調整應用程式介面文字，閱讀內文字型大小請在「排版」中設定。",
 
-  "tabs.close_all": "關閉所有分頁",
-  "tabs.close_current": "關閉目前分頁",
+  "tabs.close": "關閉",
+  "tabs.close_all": "全部關閉",
+  "tabs.close_others": "關閉其他",
+  "tabs.add_to_library": "加入書架",
   "tabs.move_left": "將分頁向左移",
   "tabs.move_right": "將分頁向右移",
   "tabs.switch_by_number": "依編號切換分頁（1–8）",

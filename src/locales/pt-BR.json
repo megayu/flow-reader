@@ -349,8 +349,10 @@
   "settings.ui_font_size": "Tamanho da fonte da interface",
   "settings.ui_font_size.description": "Altera apenas o tamanho do texto da interface. O texto de leitura é ajustado separadamente em «Tipografia».",
 
-  "tabs.close_all": "Fechar todas as abas",
-  "tabs.close_current": "Fechar aba atual",
+  "tabs.close": "Fechar",
+  "tabs.close_all": "Fechar todas",
+  "tabs.close_others": "Fechar outras",
+  "tabs.add_to_library": "Adicionar à biblioteca",
   "tabs.move_left": "Mover aba para a esquerda",
   "tabs.move_right": "Mover aba para a direita",
   "tabs.switch_by_number": "Mudar para a aba por número (1–8)",

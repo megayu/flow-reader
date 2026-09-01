@@ -349,8 +349,10 @@
   "settings.ui_font_size": "界面字号",
   "settings.ui_font_size.description": "仅调整应用界面文字，阅读正文字号请在“排版”中设置。",
 
-  "tabs.close_all": "关闭所有标签页",
-  "tabs.close_current": "关闭当前标签页",
+  "tabs.close": "关闭",
+  "tabs.close_all": "全部关闭",
+  "tabs.close_others": "关闭其他",
+  "tabs.add_to_library": "加入书架",
   "tabs.move_left": "向左移动标签页",
   "tabs.move_right": "向右移动标签页",
   "tabs.switch_by_number": "按编号切换标签页（1–8）",

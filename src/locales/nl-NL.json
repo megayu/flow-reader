@@ -349,8 +349,10 @@
   "settings.ui_font_size": "Lettergrootte interface",
   "settings.ui_font_size.description": "Wijzigt alleen de tekstgrootte van de interface. De leestekst wordt afzonderlijk ingesteld onder „Typografie”.",
 
-  "tabs.close_all": "Alle tabbladen sluiten",
-  "tabs.close_current": "Huidig tabblad sluiten",
+  "tabs.close": "Sluiten",
+  "tabs.close_all": "Alles sluiten",
+  "tabs.close_others": "Andere sluiten",
+  "tabs.add_to_library": "Toevoegen aan bibliotheek",
   "tabs.move_left": "Tabblad naar links verplaatsen",
   "tabs.move_right": "Tabblad naar rechts verplaatsen",
   "tabs.switch_by_number": "Naar tabblad wisselen op nummer (1–8)",

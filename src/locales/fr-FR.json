@@ -349,8 +349,10 @@
   "settings.ui_font_size": "Taille de police de l'interface",
   "settings.ui_font_size.description": "Modifie uniquement la taille du texte de l'interface. Le texte de lecture se règle séparément dans « Typographie ».",
 
-  "tabs.close_all": "Fermer tous les onglets",
-  "tabs.close_current": "Fermer l'onglet actuel",
+  "tabs.close": "Fermer",
+  "tabs.close_all": "Tout fermer",
+  "tabs.close_others": "Fermer les autres",
+  "tabs.add_to_library": "Ajouter à la bibliothèque",
   "tabs.move_left": "Déplacer l'onglet vers la gauche",
   "tabs.move_right": "Déplacer l'onglet vers la droite",
   "tabs.switch_by_number": "Basculer vers l'onglet par numéro (1–8)",

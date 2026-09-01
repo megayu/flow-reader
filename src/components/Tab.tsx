@@ -16,6 +16,7 @@ interface TabProps extends ComponentProps<'div'> {
   Icon: LucideIcon
   children?: string
   tooltipContent?: ReactNode
+  tooltipDisabled?: boolean
 }
 export function Tab({
   dropIndicator,
@@ -27,6 +28,7 @@ export function Tab({
   children,
   onDelete,
   tooltipContent,
+  tooltipDisabled,
   title,
   onAuxClick,
   onMouseDown,
@@ -98,7 +100,7 @@ export function Tab({
   )
 
   return (
-    <AppTooltip content={tooltipContent} label={tooltip ?? children}>
+    <AppTooltip content={tooltipContent} disabled={tooltipDisabled} label={tooltip ?? children}>
       {tab}
     </AppTooltip>
   )

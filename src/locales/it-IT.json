@@ -349,8 +349,10 @@
   "settings.ui_font_size": "Dimensione del carattere dell'interfaccia",
   "settings.ui_font_size.description": "Modifica solo la dimensione del testo dell'interfaccia. Il testo di lettura si regola separatamente in «Tipografia».",
 
-  "tabs.close_all": "Chiudi tutte le schede",
-  "tabs.close_current": "Chiudi scheda corrente",
+  "tabs.close": "Chiudi",
+  "tabs.close_all": "Chiudi tutte",
+  "tabs.close_others": "Chiudi le altre",
+  "tabs.add_to_library": "Aggiungi alla libreria",
   "tabs.move_left": "Sposta scheda a sinistra",
   "tabs.move_right": "Sposta scheda a destra",
   "tabs.switch_by_number": "Passa alla scheda per numero (1–8)",

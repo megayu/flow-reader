@@ -33,7 +33,7 @@ import {
 } from '@/state'
 
 import { getBookDisplayTitle, getBookTooltip } from '../book'
-import { handleFiles } from '../file'
+import { handleFilePaths, handleFiles } from '../file'
 import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
 import { useAction } from '../hooks/useAction'
@@ -62,6 +62,7 @@ import { useReaderPageGeometry } from './reader/useReaderPageGeometry'
 import { ShortcutChord } from './ShortcutChord'
 import { Tab } from './Tab'
 import { TextSelectionMenu } from './TextSelectionMenu'
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from './ui/menu'
 
 function preventContextMenu(e: Event) {
   e.preventDefault()
@@ -390,6 +391,8 @@ function ReaderTabs({
                 hoveredTabIndex !== i + 1
               }
               tab={tab}
+              onEpubImportProgress={onEpubImportProgress}
+              onEpubImportResult={onEpubImportResult}
               onHoverChange={setHoveredTabIndex}
               onSelect={handleTabSelect}
               dragging={tabDragPreview?.sourceIndex === i}
@@ -460,6 +463,8 @@ interface ReaderTabItemProps {
   dropIndicator?: 'before' | 'after'
   focused: boolean
   index: number
+  onEpubImportProgress?: (progress: BookImportProgress) => void
+  onEpubImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
   onHoverChange: React.Dispatch<React.SetStateAction<number | undefined>>
   onSelect: (index: number) => void
   selected: boolean
@@ -472,12 +477,16 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
   dropIndicator,
   focused,
   index,
+  onEpubImportProgress,
+  onEpubImportResult,
   onHoverChange,
   onSelect,
   selected,
   showSeparator,
   tab,
 }: ReaderTabItemProps) {
+  const t = useTranslation('tabs')
+  const [contextMenuOpen, setContextMenuOpen] = useState(false)
   const label = getReaderTabLabel(tab)
   const handleMouseEnter = useCallback(() => {
     onHoverChange(index)
@@ -491,26 +500,56 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
   const handleDelete = useCallback(() => {
     void reader.removeTab(index).catch(console.error)
   }, [index])
+  const handleCloseOthers = useCallback(() => {
+    const closingTabs = reader.tabs.filter((candidate) => candidate !== tab)
+    void Promise.all(closingTabs.map((candidate) => reader.closeBookTab(candidate.book.id))).catch(console.error)
+  }, [tab])
+  const handleAddToLibrary = useCallback(() => {
+    void handleFilePaths([tab.book.sourcePath], {
+      onImportProgress: onEpubImportProgress,
+      onImportResult: onEpubImportResult,
+    }).catch(console.error)
+  }, [onEpubImportProgress, onEpubImportResult, tab])
 
   return (
-    <Tab
-      className={clsx(dragging && 'opacity-50')}
-      data-flow-reader-tab-index={index}
-      draggable={false}
-      dropIndicator={dropIndicator}
-      selected={selected}
-      focused={focused}
-      showSeparator={showSeparator}
-      title={getReaderTabTooltip(tab)}
-      tooltipContent={getReaderTabTooltipContent(tab)}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      onClick={handleClick}
-      onDelete={handleDelete}
-      Icon={getReaderTabIcon(tab)}
-    >
-      {label}
-    </Tab>
+    <ContextMenu modal={false} onOpenChange={setContextMenuOpen}>
+      <ContextMenuTrigger asChild>
+        <Tab
+          className={clsx(dragging && 'opacity-50')}
+          data-flow-reader-tab-index={index}
+          draggable={false}
+          dropIndicator={dropIndicator}
+          selected={selected}
+          focused={focused}
+          showSeparator={showSeparator}
+          title={getReaderTabTooltip(tab)}
+          tooltipContent={getReaderTabTooltipContent(tab)}
+          tooltipDisabled={contextMenuOpen}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          onClick={handleClick}
+          onDelete={handleDelete}
+          Icon={getReaderTabIcon(tab)}
+        >
+          {label}
+        </Tab>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-max max-w-[calc(100vw-2rem)]">
+        <ContextMenuItem onSelect={handleDelete}>{t('close')}</ContextMenuItem>
+        <ContextMenuItem disabled={reader.tabs.length === 1} onSelect={handleCloseOthers}>
+          {t('close_others')}
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => void reader.closeAllTabs().catch(console.error)}>
+          {t('close_all')}
+        </ContextMenuItem>
+        {tab.book.scope === 'external' && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={handleAddToLibrary}>{t('add_to_library')}</ContextMenuItem>
+          </>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
   )
 })
 

@@ -136,7 +136,7 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
     shortcuts: [['Shift', 'Enter']],
   },
   closeTab: {
-    labelKey: 'tabs.close_current',
+    labelKey: 'tabs.close',
     shortcuts: [[commandToken, 'W']],
   },
   closeAllTabs: {

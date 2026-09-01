@@ -349,8 +349,10 @@
   "settings.ui_font_size": "UI フォントサイズ",
   "settings.ui_font_size.description": "アプリの操作画面の文字サイズのみを変更します。読書本文のサイズは「組版」で設定してください。",
 
-  "tabs.close_all": "すべてのタブを閉じる",
-  "tabs.close_current": "現在のタブを閉じる",
+  "tabs.close": "閉じる",
+  "tabs.close_all": "すべて閉じる",
+  "tabs.close_others": "他を閉じる",
+  "tabs.add_to_library": "ライブラリに追加",
   "tabs.move_left": "タブを左へ移動",
   "tabs.move_right": "タブを右へ移動",
   "tabs.switch_by_number": "番号でタブを切り替え（1〜8）",

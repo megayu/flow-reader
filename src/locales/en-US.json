@@ -348,8 +348,10 @@
   "settings.ui_font_size": "Interface font size",
   "settings.ui_font_size.description": "Changes interface text only. Reading text is controlled separately in Typography.",
 
-  "tabs.close_all": "Close all tabs",
-  "tabs.close_current": "Close current tab",
+  "tabs.close": "Close",
+  "tabs.close_all": "Close all",
+  "tabs.close_others": "Close others",
+  "tabs.add_to_library": "Add to library",
   "tabs.move_left": "Move tab left",
   "tabs.move_right": "Move tab right",
   "tabs.switch_by_number": "Switch to tab by number (1–8)",

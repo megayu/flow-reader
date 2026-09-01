@@ -349,8 +349,10 @@
   "settings.ui_font_size": "Schriftgröße der Benutzeroberfläche",
   "settings.ui_font_size.description": "Ändert nur die Schriftgröße der Benutzeroberfläche. Die Leseschrift wird separat unter „Typografie“ eingestellt.",
 
-  "tabs.close_all": "Alle Tabs schließen",
-  "tabs.close_current": "Aktuellen Tab schließen",
+  "tabs.close": "Schließen",
+  "tabs.close_all": "Alle schließen",
+  "tabs.close_others": "Andere schließen",
+  "tabs.add_to_library": "Zur Bibliothek hinzufügen",
   "tabs.move_left": "Tab nach links verschieben",
   "tabs.move_right": "Tab nach rechts verschieben",
   "tabs.switch_by_number": "Zu Tab nach Nummer wechseln (1–8)",
