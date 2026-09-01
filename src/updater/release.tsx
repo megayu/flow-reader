@@ -11,7 +11,7 @@ import { useTranslation } from '@/hooks/useTranslation'
 import { type ChangelogSection, changelogSectionsBetween } from '@/updateChangelog'
 
 const AUTO_CHECK_START_DELAY_MS = 3_000
-const AUTO_CHECK_INTERVAL_MS = 60 * 60 * 1_000
+const AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1_000
 
 type UpdateStatus =
   | { kind: 'idle' }
