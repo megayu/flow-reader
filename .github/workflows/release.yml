@@ -191,7 +191,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
       - run: cargo fmt --manifest-path native/shell-thumbnails/Cargo.toml --all -- --check
-      - run: cargo clippy --manifest-path native/shell-thumbnails/Cargo.toml --workspace --all-targets --all-features -- -D warnings
+      - run: cargo clippy --manifest-path native/shell-thumbnails/Cargo.toml --workspace --exclude flow-windows-thumbnail-provider --all-targets --all-features -- -D warnings
       - run: pnpm bundle:macos:thumbnail
 
       - name: Build ad-hoc signed release app
