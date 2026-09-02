@@ -45,14 +45,13 @@ fn register_native_window_icons(window: &tauri::WebviewWindow) -> std::io::Resul
         UI::{
             HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi},
             WindowsAndMessaging::{
-                ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTCOLOR, LoadImageW, SM_CXSMICON, SM_CYSMICON, SendMessageW,
-                WM_SETICON,
+                ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTCOLOR, LoadImageW, SM_CXICON, SM_CXSMICON, SM_CYICON,
+                SM_CYSMICON, SendMessageW, WM_SETICON,
             },
         },
     };
 
     const APP_ICON_RESOURCE_ID: usize = 32512;
-    const BIG_ICON_SIZE: i32 = 256;
 
     let hwnd = window
         .hwnd()
@@ -66,22 +65,15 @@ fn register_native_window_icons(window: &tauri::WebviewWindow) -> std::io::Resul
     let dpi = unsafe { GetDpiForWindow(hwnd) };
     let small_width = unsafe { GetSystemMetricsForDpi(SM_CXSMICON, dpi) };
     let small_height = unsafe { GetSystemMetricsForDpi(SM_CYSMICON, dpi) };
+    let big_width = unsafe { GetSystemMetricsForDpi(SM_CXICON, dpi) };
+    let big_height = unsafe { GetSystemMetricsForDpi(SM_CYICON, dpi) };
     let resource = APP_ICON_RESOURCE_ID as *const u16;
     let small = unsafe { LoadImageW(module, resource, IMAGE_ICON, small_width, small_height, LR_DEFAULTCOLOR) };
     if small.is_null() {
         return Err(std::io::Error::last_os_error());
     }
 
-    let big = unsafe {
-        LoadImageW(
-            module,
-            resource,
-            IMAGE_ICON,
-            BIG_ICON_SIZE,
-            BIG_ICON_SIZE,
-            LR_DEFAULTCOLOR,
-        )
-    };
+    let big = unsafe { LoadImageW(module, resource, IMAGE_ICON, big_width, big_height, LR_DEFAULTCOLOR) };
     if big.is_null() {
         unsafe {
             windows_sys::Win32::UI::WindowsAndMessaging::DestroyIcon(small as _);
