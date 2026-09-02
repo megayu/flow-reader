@@ -82,7 +82,7 @@ jobs:
 
           while IFS= read -r path; do
             case "${path}" in
-              .github/workflows/ci.yml)
+              .github/workflows/*.yml)
                 app=true
                 unit=true
                 test_static=true
@@ -203,20 +203,26 @@ jobs:
             separator=','
           }
 
-          [[ "${app}" == "false" ]] || add_check '{"area":"app","runner":"ubuntu-24.04","kind":"app","script":"check:app","node":true,"browser":false}'
-          [[ "${unit}" == "false" ]] || add_check '{"area":"unit-tests","runner":"ubuntu-24.04","kind":"unit","script":"test:unit:ci","node":true,"browser":false}'
-          [[ "${test_static}" == "false" ]] || add_check '{"area":"test-static","runner":"ubuntu-24.04","kind":"test-static","script":"check:test-static","node":true,"browser":false}'
-          [[ "${integration}" == "false" ]] || add_check '{"area":"integration-tests","runner":"ubuntu-24.04","kind":"integration","script":"test:integration:ci","node":true,"browser":true}'
-          [[ "${scripts}" == "false" ]] || add_check '{"area":"repository-scripts","runner":"ubuntu-24.04","kind":"scripts","script":"check:scripts","node":true,"browser":false}'
-          [[ "${skills}" == "false" ]] || add_check '{"area":"skill-scripts","runner":"ubuntu-24.04","kind":"skills","script":"check:skills","node":true,"browser":false}'
-          [[ "${epubjs}" == "false" ]] || add_check '{"area":"epubjs","runner":"ubuntu-24.04","kind":"epubjs","script":"check:epubjs:ci","node":true,"browser":true}'
+          node_checks=false
+          for required in "${app}" "${unit}" "${test_static}" "${scripts}" "${skills}"; do
+            if [[ "${required}" == "true" ]]; then
+              node_checks=true
+            fi
+          done
+          if [[ "${node_checks}" == "true" ]]; then
+            add_check "{\"area\":\"node\",\"runner\":\"ubuntu-24.04\",\"kind\":\"node\",\"script\":\"\",\"node\":true,\"browser\":false,\"app\":${app},\"unit\":${unit},\"test_static\":${test_static},\"integration\":false,\"scripts\":${scripts},\"skills\":${skills},\"epubjs\":false}"
+          fi
+          if [[ "${integration}" == "true" || "${epubjs}" == "true" ]]; then
+            add_check "{\"area\":\"browser\",\"runner\":\"ubuntu-24.04\",\"kind\":\"node\",\"script\":\"\",\"node\":true,\"browser\":true,\"app\":false,\"unit\":false,\"test_static\":false,\"integration\":${integration},\"scripts\":false,\"skills\":false,\"epubjs\":${epubjs}}"
+          fi
           [[ "${rust}" == "false" ]] || add_check '{"area":"rust","runner":"windows-2025","kind":"rust","script":"check:rust","node":false,"browser":false,"lock":"src-tauri/Cargo.lock","target":"src-tauri/target"}'
           [[ "${crates}" == "false" ]] || add_check '{"area":"crates","runner":"ubuntu-24.04","kind":"rust","script":"check:crates","node":false,"browser":false,"lock":"crates/Cargo.lock","target":"crates/target"}'
           [[ "${native_rust}" == "false" ]] || add_check '{"area":"native-rust","runner":"windows-2025","kind":"rust","script":"check:native-rust","node":false,"browser":false,"lock":"native/shell-thumbnails/Cargo.lock","target":"native/shell-thumbnails/target"}'
-          [[ "${shell_scripts}" == "false" ]] || add_check '{"area":"shell-scripts","runner":"ubuntu-24.04","kind":"shell","script":"","node":false,"browser":false}'
+          if [[ "${shell_scripts}" == "true" || "${tauri_config}" == "true" ]]; then
+            add_check "{\"area\":\"portable-static\",\"runner\":\"ubuntu-24.04\",\"kind\":\"portable-static\",\"script\":\"\",\"node\":false,\"browser\":false,\"shell_scripts\":${shell_scripts},\"tauri_config\":${tauri_config}}"
+          fi
           [[ "${powershell_scripts}" == "false" ]] || add_check '{"area":"powershell-scripts","runner":"windows-2025","kind":"powershell","script":"","node":false,"browser":false}'
           [[ "${native_macos}" == "false" ]] || add_check '{"area":"native-macos","runner":"macos-15-intel","kind":"native-macos","script":"","node":false,"browser":false}'
-          [[ "${tauri_config}" == "false" ]] || add_check '{"area":"tauri-config","runner":"ubuntu-24.04","kind":"tauri-config","script":"","node":false,"browser":false}'
 
           matrix+=']}'
           if [[ -n "${separator}" ]]; then
@@ -247,7 +253,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Set up pnpm
-        if: matrix.script != ''
+        if: matrix.kind == 'node' || matrix.kind == 'rust'
         uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
@@ -279,13 +285,37 @@ jobs:
           restore-keys: ci-${{ matrix.area }}-${{ runner.os }}-
 
       - name: Run package check
-        if: matrix.script != ''
-        env:
-          PLAYWRIGHT_BROWSER_CHANNEL: chromium
+        if: matrix.kind == 'rust'
         run: pnpm ${{ matrix.script }}
 
+      - name: Check application
+        if: matrix.kind == 'node' && matrix.app
+        run: pnpm check:app
+      - name: Run unit tests
+        if: matrix.kind == 'node' && matrix.unit
+        run: pnpm test:unit:ci
+      - name: Check test sources
+        if: matrix.kind == 'node' && matrix.test_static
+        run: pnpm check:test-static
+      - name: Run browser integration tests
+        if: matrix.kind == 'node' && matrix.integration
+        env:
+          PLAYWRIGHT_BROWSER_CHANNEL: chromium
+        run: pnpm test:integration:ci
+      - name: Check repository scripts
+        if: matrix.kind == 'node' && matrix.scripts
+        run: pnpm check:scripts
+      - name: Check skill sources
+        if: matrix.kind == 'node' && matrix.skills
+        run: pnpm check:skills
+      - name: Run EPUB engine tests
+        if: matrix.kind == 'node' && matrix.epubjs
+        env:
+          PLAYWRIGHT_BROWSER_CHANNEL: chromium
+        run: pnpm check:epubjs:ci
+
       - name: Check skill script syntax
-        if: matrix.kind == 'skills'
+        if: matrix.kind == 'node' && matrix.skills
         shell: bash
         run: |
           set -euo pipefail
@@ -294,7 +324,7 @@ jobs:
           done < <(find .agents/skills -type f -name '*.mjs' -print)
 
       - name: Check shell syntax
-        if: matrix.kind == 'shell'
+        if: matrix.kind == 'portable-static' && matrix.shell_scripts
         shell: bash
         run: |
           set -euo pipefail
@@ -327,7 +357,7 @@ jobs:
           find native/shell-thumbnails/macos-extension -type f \( -name '*.plist' -o -name '*.entitlements' \) -print0 | xargs -0 -n 1 plutil -lint
           xcodebuild -list -project native/shell-thumbnails/macos-extension/FlowReaderThumbnail.xcodeproj
       - name: Check Tauri JSON configuration
-        if: matrix.kind == 'tauri-config'
+        if: matrix.kind == 'portable-static' && matrix.tauri_config
         shell: bash
         run: |
           set -euo pipefail
