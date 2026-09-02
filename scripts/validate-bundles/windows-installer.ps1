@@ -1,12 +1,18 @@
 param(
   [string]$InstallerPath,
-  [string]$ProviderPath
+  [string]$ProviderPath,
+  [ValidateSet('x86_64-pc-windows-msvc', 'aarch64-pc-windows-msvc')]
+  [string]$RustTarget
 )
 
 $ErrorActionPreference = 'Stop'
 
-if ([string]::IsNullOrWhiteSpace($InstallerPath) -or [string]::IsNullOrWhiteSpace($ProviderPath)) {
-  throw 'Usage: windows-installer.ps1 -InstallerPath <setup.exe> -ProviderPath <FlowReaderThumbnail.dll>'
+if (
+  [string]::IsNullOrWhiteSpace($InstallerPath) -or
+  [string]::IsNullOrWhiteSpace($ProviderPath) -or
+  [string]::IsNullOrWhiteSpace($RustTarget)
+) {
+  throw 'Usage: windows-installer.ps1 -InstallerPath <setup.exe> -ProviderPath <FlowReaderThumbnail.dll> -RustTarget <x86_64-pc-windows-msvc|aarch64-pc-windows-msvc>'
 }
 
 $scriptDirectory = Split-Path -Parent $PSCommandPath
@@ -19,7 +25,7 @@ $thumbnailHandlerCategoryId = [string]$identifiers.thumbnailHandlerCategoryId
 $epubProgId = [string]$identifiers.epubProgId
 $installer = (Resolve-Path -LiteralPath $InstallerPath).Path
 $distributionProvider = (Resolve-Path -LiteralPath $ProviderPath).Path
-$registeredHost = Join-Path $nativeRoot 'target\x86_64-pc-windows-msvc\release\registered-thumbnail-host.exe'
+$registeredHost = Join-Path $nativeRoot "target\$RustTarget\release\registered-thumbnail-host.exe"
 $installDirectory = Join-Path $env:LOCALAPPDATA 'Flow Reader'
 $installedExecutable = Join-Path $installDirectory 'Flow Reader.exe'
 $installedProvider = Join-Path $installDirectory 'FlowReaderThumbnail.dll'

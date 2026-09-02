@@ -64,9 +64,20 @@ function artifactSources(): ArtifactSource[] {
   }
 }
 
-function moveCompletedArtifact(source: string) {
-  const destination = join(releaseDirectory, basename(source))
-  const backup = join(releaseDirectory, `.${basename(source)}.${process.pid}.backup`)
+function collectedArtifactName(source: string) {
+  const sourceName = basename(source)
+  if (platform === 'macos') return sourceName
+
+  const productPrefix = `${productName}_`
+  if (!sourceName.startsWith(productPrefix)) {
+    throw new Error(`Artifact ${sourceName} does not start with ${productPrefix}.`)
+  }
+  return `${productName.replaceAll(' ', '-')}_${sourceName.slice(productPrefix.length)}`
+}
+
+function moveCompletedArtifact(source: string, destinationName: string) {
+  const destination = join(releaseDirectory, destinationName)
+  const backup = join(releaseDirectory, `.${destinationName}.${process.pid}.backup`)
 
   rmSync(backup, { force: true, recursive: true })
   if (existsSync(destination)) {
@@ -88,11 +99,12 @@ const artifacts = artifactSources().map(oneArtifact)
 mkdirSync(releaseDirectory, { recursive: true })
 for (const artifact of artifacts) {
   const signature = `${artifact}.sig`
+  const destinationName = collectedArtifactName(artifact)
   if (flavor === 'release' && platform !== 'macos' && !existsSync(signature)) {
     throw new Error(`Missing updater signature for ${artifact}.`)
   }
-  moveCompletedArtifact(artifact)
+  moveCompletedArtifact(artifact, destinationName)
   if (flavor === 'release' && existsSync(signature)) {
-    moveCompletedArtifact(signature)
+    moveCompletedArtifact(signature, `${destinationName}.sig`)
   }
 }
