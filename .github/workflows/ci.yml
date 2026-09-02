@@ -161,7 +161,7 @@ jobs:
               tests/*)
                 test_static=true
                 ;;
-              .agents/skills/*.mjs|.agents/skills/*/*.mjs|.agents/skills/*/*/*.mjs)
+              .agents/skills/*/scripts/*.mjs)
                 skills=true
                 ;;
               packages/epubjs/*)
@@ -192,10 +192,10 @@ jobs:
               native/shell-thumbnails/Cargo.toml|native/shell-thumbnails/Cargo.lock|native/shell-thumbnails/*/Cargo.toml|native/shell-thumbnails/*/build.rs|native/shell-thumbnails/*/src/*|native/shell-thumbnails/*/tests/*|native/shell-thumbnails/windows-identifiers.json)
                 native_rust=true
                 ;;
-              .husky/*|native/shell-thumbnails/*.sh|native/shell-thumbnails/*/*.sh|native/shell-thumbnails/*/*/*.sh)
+              .husky/*|native/shell-thumbnails/macos-extension/*.sh)
                 shell_scripts=true
                 ;;
-              native/shell-thumbnails/*.ps1|native/shell-thumbnails/*/*.ps1|native/shell-thumbnails/*/*/*.ps1)
+              native/shell-thumbnails/packaging/windows/*.ps1)
                 powershell_scripts=true
                 ;;
               native/shell-thumbnails/macos-extension/*)
