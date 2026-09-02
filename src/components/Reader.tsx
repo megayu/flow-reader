@@ -645,7 +645,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
     setState: setChapterFind,
     state: chapterFind,
   } = useBookPaneChapterFind({
-    active,
+    active: active && viewMode === 'reader',
     activeFrameWindows,
     onOpen: closeNotePopover,
     rendition,

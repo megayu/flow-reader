@@ -52,6 +52,7 @@ export function useBookPaneChapterFind({
   })
   const handleShortcut = useCallback(
     (event: KeyboardEvent) => {
+      if (!active) return
       if (!isFindShortcut(event)) return
       if (isReaderShortcutTargetBlocked(event)) return
 
@@ -61,7 +62,7 @@ export function useBookPaneChapterFind({
       if (zenMode) return
       open()
     },
-    [open, zenMode],
+    [active, open, zenMode],
   )
   const handleShortcutEvent = useEffectEvent(handleShortcut)
 
