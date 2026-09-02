@@ -79,33 +79,35 @@ jobs:
           powershell_scripts=false
           native_macos=false
           tauri_config=false
+          workflow_config=false
+          package_manifest=false
+
+          require_node_suite() {
+            app=true
+            unit=true
+            test_static=true
+            integration=true
+            scripts=true
+            skills=true
+            epubjs=true
+          }
 
           while IFS= read -r path; do
             case "${path}" in
-              .github/workflows/*.yml)
-                app=true
-                unit=true
-                test_static=true
-                integration=true
-                scripts=true
-                skills=true
-                epubjs=true
-                rust=true
-                crates=true
-                native_rust=true
-                shell_scripts=true
-                powershell_scripts=true
-                native_macos=true
-                tauri_config=true
+              .github/workflows/*.yml|.github/workflows/*.yaml)
+                workflow_config=true
                 ;;
-              package.json|pnpm-lock.yaml|pnpm-workspace.yaml|.npmrc)
-                app=true
-                unit=true
-                test_static=true
-                integration=true
-                scripts=true
-                skills=true
-                epubjs=true
+              package.json)
+                package_manifest=true
+                package_runtime_filter='{name, type, packageManager, engines, dependencies, devDependencies, peerDependencies, optionalDependencies, pnpm}'
+                if [[ -z "${base_sha}" ]] || ! git cat-file -e "${base_sha}:package.json" 2>/dev/null; then
+                  require_node_suite
+                elif [[ "$(git show "${base_sha}:package.json" | jq -cS "${package_runtime_filter}")" != "$(jq -cS "${package_runtime_filter}" package.json)" ]]; then
+                  require_node_suite
+                fi
+                ;;
+              pnpm-lock.yaml|pnpm-workspace.yaml|.npmrc)
+                require_node_suite
                 ;;
               biome.json)
                 app=true
@@ -224,8 +226,8 @@ jobs:
           [[ "${rust}" == "false" ]] || add_check '{"area":"rust","runner":"windows-2025","kind":"rust","script":"check:rust","node":false,"browser":false,"lock":"src-tauri/Cargo.lock","target":"src-tauri/target"}'
           [[ "${crates}" == "false" ]] || add_check '{"area":"crates","runner":"ubuntu-24.04","kind":"rust","script":"check:crates","node":false,"browser":false,"lock":"crates/Cargo.lock","target":"crates/target"}'
           [[ "${native_rust}" == "false" ]] || add_check '{"area":"native-rust","runner":"windows-2025","kind":"rust","script":"check:native-rust","node":false,"browser":false,"lock":"native/shell-thumbnails/Cargo.lock","target":"native/shell-thumbnails/target"}'
-          if [[ "${shell_scripts}" == "true" || "${tauri_config}" == "true" ]]; then
-            add_check "{\"area\":\"portable-static\",\"runner\":\"ubuntu-24.04\",\"kind\":\"portable-static\",\"script\":\"\",\"node\":false,\"browser\":false,\"shell_scripts\":${shell_scripts},\"tauri_config\":${tauri_config}}"
+          if [[ "${shell_scripts}" == "true" || "${tauri_config}" == "true" || "${workflow_config}" == "true" || "${package_manifest}" == "true" ]]; then
+            add_check "{\"area\":\"portable-static\",\"runner\":\"ubuntu-24.04\",\"kind\":\"portable-static\",\"script\":\"\",\"node\":false,\"browser\":false,\"shell_scripts\":${shell_scripts},\"tauri_config\":${tauri_config},\"workflow_config\":${workflow_config},\"package_manifest\":${package_manifest}}"
           fi
           [[ "${powershell_scripts}" == "false" ]] || add_check '{"area":"powershell-scripts","runner":"windows-2025","kind":"powershell","script":"","node":false,"browser":false}'
           [[ "${native_macos}" == "false" ]] || add_check '{"area":"native-macos","runner":"macos-15-intel","kind":"native-macos","script":"","node":false,"browser":false}'
@@ -371,6 +373,25 @@ jobs:
           for config in src-tauri/*.json; do
             jq empty "${config}"
           done
+      - name: Check package manifest
+        if: matrix.kind == 'portable-static' && matrix.package_manifest
+        shell: bash
+        run: jq empty package.json
+      - name: Check workflow definitions
+        if: matrix.kind == 'portable-static' && matrix.workflow_config
+        shell: bash
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -euo pipefail
+          archive="${RUNNER_TEMP}/actionlint.tar.gz"
+          curl --fail --location --retry 3 \
+            --output "${archive}" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  ${archive}" | sha256sum --check --status
+          tar -xzf "${archive}" -C "${RUNNER_TEMP}" actionlint
+          "${RUNNER_TEMP}/actionlint" -color
 
   result:
     name: CI result
