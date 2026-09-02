@@ -2,18 +2,17 @@
 set -euo pipefail
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "macOS thumbnail lifecycle validation requires macOS." >&2
+  echo "macOS bundle lifecycle validation requires macOS." >&2
   exit 1
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-native_dir="$(cd "${script_dir}/../.." && pwd)"
-repo_dir="$(cd "${native_dir}/../.." && pwd)"
+repo_dir="$(cd "${script_dir}/../.." && pwd)"
 source_app="${1:-${repo_dir}/src-tauri/target/universal-apple-darwin/release/bundle/macos/Flow Reader.app}"
 extension_id="com.flow.reader.thumbnail"
-temp_base="${TMPDIR:-/tmp}"
+temp_base="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 temp_base="${temp_base%/}"
-temp_root="$(mktemp -d "${temp_base}/flow-reader-thumbnail-lifecycle.XXXXXX")"
+temp_root="$(mktemp -d "${temp_base}/flow-reader-macos-lifecycle.XXXXXX")"
 test_app="${temp_root}/Applications/Flow Reader.app"
 thumbnail_dir="${temp_root}/thumbnails"
 epub_root="${temp_root}/epub"
@@ -24,18 +23,30 @@ registered=0
 app_pid=""
 remove_temp=1
 
+process_is_running() {
+  local process_state=""
+  /bin/kill -0 "$1" >/dev/null 2>&1 || return 1
+  process_state="$(/bin/ps -p "$1" -o stat= 2>/dev/null || true)"
+  [[ -n "${process_state}" && "${process_state:0:1}" != "Z" ]]
+}
+
 cleanup() {
-  if [[ -n "${app_pid}" ]] && /bin/kill -0 "${app_pid}" >/dev/null 2>&1; then
+  local exit_status=$?
+  if (( exit_status != 0 )); then
+    echo "Preserving failed macOS lifecycle diagnostics at ${temp_root}." >&2
+    remove_temp=0
+  fi
+  if [[ -n "${app_pid}" ]] && process_is_running "${app_pid}"; then
     app_command="$(/bin/ps -p "${app_pid}" -o command= || true)"
     if [[ "${app_command}" == *"${app_executable}"* ]]; then
       /bin/kill "${app_pid}" >/dev/null 2>&1 || true
       for _ in {1..50}; do
-        if ! /bin/kill -0 "${app_pid}" >/dev/null 2>&1; then
+        if ! process_is_running "${app_pid}"; then
           break
         fi
         /bin/sleep 0.1
       done
-      if /bin/kill -0 "${app_pid}" >/dev/null 2>&1; then
+      if process_is_running "${app_pid}"; then
         echo "Flow Reader did not exit; preserving temporary files at ${temp_root}." >&2
         remove_temp=0
       fi
@@ -49,7 +60,7 @@ cleanup() {
   fi
   if [[ "${remove_temp}" == "1" ]]; then
     case "${temp_root}" in
-      "${temp_base}"/flow-reader-thumbnail-lifecycle.*)
+      "${temp_base}"/flow-reader-macos-lifecycle.*)
         rm -rf -- "${temp_root}"
         ;;
       *)
@@ -65,7 +76,7 @@ if [[ ! -d "${source_app}" ]]; then
   exit 1
 fi
 
-/bin/mkdir -p "${temp_root}/Applications" "${thumbnail_dir}" "${epub_root}/META-INF"
+/bin/mkdir -p "${temp_root}/Applications" "${thumbnail_dir}" "${epub_root}/META-INF" "${epub_root}/EPUB"
 /usr/bin/ditto "${source_app}" "${test_app}"
 
 appex="${test_app}/Contents/PlugIns/FlowReaderThumbnail.appex"
@@ -111,12 +122,15 @@ fi
 create_epub() {
   local output_path="$1"
   local title="$2"
-  printf '%s' '<container><rootfiles><rootfile full-path="package.opf"/></rootfiles></container>' > "${epub_root}/META-INF/container.xml"
-  printf '%s' "<package xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><metadata><dc:title>${title}</dc:title><dc:creator>Flow Reader</dc:creator></metadata><manifest><item id=\"cover\" href=\"cover.png\" media-type=\"image/png\" properties=\"cover-image\"/></manifest></package>" > "${epub_root}/package.opf"
-  printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAaSURBVBhXY9AIqPhfEaDxnyGgQuO/RkXAfwBBlAe9LXzOOgAAAABJRU5ErkJggg==' | /usr/bin/base64 -D > "${epub_root}/cover.png"
+  printf '%s' 'application/epub+zip' > "${epub_root}/mimetype"
+  printf '%s' '<?xml version="1.0" encoding="UTF-8"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="EPUB/package.opf" media-type="application/oebps-package+xml"/></rootfiles></container>' > "${epub_root}/META-INF/container.xml"
+  printf '%s' "<?xml version=\"1.0\" encoding=\"UTF-8\"?><package version=\"3.0\" unique-identifier=\"book-id\" xmlns=\"http://www.idpf.org/2007/opf\"><metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:identifier id=\"book-id\">flow-reader-macos-test</dc:identifier><dc:title>${title}</dc:title><dc:language>en</dc:language></metadata><manifest><item id=\"cover\" href=\"cover.png\" media-type=\"image/png\" properties=\"cover-image\"/><item id=\"chapter\" href=\"chapter.xhtml\" media-type=\"application/xhtml+xml\"/></manifest><spine><itemref idref=\"chapter\"/></spine></package>" > "${epub_root}/EPUB/package.opf"
+  printf '%s' "<?xml version=\"1.0\" encoding=\"UTF-8\"?><html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>${title}</title></head><body><p>Flow Reader macOS lifecycle test.</p></body></html>" > "${epub_root}/EPUB/chapter.xhtml"
+  printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAaSURBVBhXY9AIqPhfEaDxnyGgQuO/RkXAfwBBlAe9LXzOOgAAAABJRU5ErkJggg==' | /usr/bin/base64 -D > "${epub_root}/EPUB/cover.png"
   (
     cd "${epub_root}"
-    /usr/bin/zip -q -X "${output_path}" META-INF/container.xml package.opf cover.png
+    /usr/bin/zip -q -X -0 "${output_path}" mimetype
+    /usr/bin/zip -q -X "${output_path}" META-INF/container.xml EPUB/package.opf EPUB/chapter.xhtml EPUB/cover.png
   )
 }
 
@@ -182,13 +196,42 @@ guard nonUniform else {
 print("Quick Look rendered \(image.width)x\(image.height) non-uniform RGBA pixels")
 SWIFT
 
-external_index="${app_data}/external-books/index.json"
+library_file="${app_data}/library.json"
+library_contains_file() {
+  local expected_path="$1"
+  [[ -f "${library_file}" ]] || return 1
+  node - "${library_file}" "${expected_path}" <<'NODE'
+const fs = require('node:fs')
+
+const [libraryPath, expectedPath] = process.argv.slice(2)
+try {
+  const expectedRealPath = fs.realpathSync.native(expectedPath)
+  const library = JSON.parse(fs.readFileSync(libraryPath, 'utf8'))
+  const containsExpectedFile = Array.isArray(library.books) && library.books.some((book) => {
+    if (typeof book?.sourcePath !== 'string') return false
+    try {
+      return fs.realpathSync.native(book.sourcePath) === expectedRealPath
+    } catch {
+      return false
+    }
+  })
+  process.exit(containsExpectedFile ? 0 : 1)
+} catch {
+  process.exit(1)
+}
+NODE
+}
+
 wait_for_external_path() {
   local expected_path="$1"
   local attempts=0
   while (( attempts < 60 )); do
-    if [[ -f "${external_index}" ]] && /usr/bin/grep -Fq "${expected_path}" "${external_index}"; then
+    if library_contains_file "${expected_path}"; then
       return 0
+    fi
+    if [[ -n "${app_pid}" ]] && ! process_is_running "${app_pid}"; then
+      echo "Flow Reader exited before recording the Finder-opened EPUB: ${expected_path}" >&2
+      return 1
     fi
     /bin/sleep 0.5
     attempts=$((attempts + 1))

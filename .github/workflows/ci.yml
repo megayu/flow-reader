@@ -134,6 +134,12 @@ jobs:
                 app=true
                 unit=true
                 ;;
+              scripts/validate-bundles/*.sh)
+                shell_scripts=true
+                ;;
+              scripts/validate-bundles/*.ps1)
+                powershell_scripts=true
+                ;;
               scripts/*)
                 scripts=true
                 ;;
@@ -333,12 +339,13 @@ jobs:
           done < <(
             find .husky -maxdepth 1 -type f -print
             find native/shell-thumbnails -type f -name '*.sh' -print
+            find scripts/validate-bundles -type f -name '*.sh' -print
           )
       - name: Check PowerShell syntax
         if: matrix.kind == 'powershell'
         shell: pwsh
         run: |
-          Get-ChildItem native/shell-thumbnails -Recurse -File -Filter '*.ps1' | ForEach-Object {
+          Get-ChildItem native/shell-thumbnails,scripts/validate-bundles -Recurse -File -Filter '*.ps1' | ForEach-Object {
             $tokens = $null
             $parseErrors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile(

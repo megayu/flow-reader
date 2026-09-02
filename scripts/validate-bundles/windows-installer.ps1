@@ -6,11 +6,12 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($InstallerPath) -or [string]::IsNullOrWhiteSpace($ProviderPath)) {
-  throw 'Usage: validate-installer-lifecycle.ps1 -InstallerPath <setup.exe> -ProviderPath <FlowReaderThumbnail.dll>'
+  throw 'Usage: windows-installer.ps1 -InstallerPath <setup.exe> -ProviderPath <FlowReaderThumbnail.dll>'
 }
 
 $scriptDirectory = Split-Path -Parent $PSCommandPath
-$nativeRoot = (Resolve-Path (Join-Path $scriptDirectory '..\..')).Path
+$repositoryRoot = (Resolve-Path (Join-Path $scriptDirectory '..\..')).Path
+$nativeRoot = Join-Path $repositoryRoot 'native\shell-thumbnails'
 $identifiersPath = Join-Path $nativeRoot 'windows-identifiers.json'
 $identifiers = Get-Content -LiteralPath $identifiersPath -Raw | ConvertFrom-Json
 $providerClsid = [string]$identifiers.providerClsid

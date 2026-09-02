@@ -2,9 +2,9 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-native_dir="$(cd "${script_dir}/../.." && pwd)"
-repo_dir="$(cd "${native_dir}/../.." && pwd)"
+repo_dir="$(cd "${script_dir}/../.." && pwd)"
 appimage_path="${1:-}"
+expected_arch="${2:-x86_64}"
 if [[ -z "${appimage_path}" ]]; then
   appimage_path="$(find "${repo_dir}/release" -maxdepth 1 -type f -name '*.AppImage' -print -quit 2>/dev/null || true)"
 fi
@@ -22,12 +22,24 @@ if [[ ! -x "${appimage_path}" ]]; then
   echo "Flow Reader AppImage is not executable: ${appimage_path}" >&2
   exit 1
 fi
-if ! file "${appimage_path}" | grep -Eq 'ELF 64-bit.*x86-64'; then
-  echo "The first Flow Reader AppImage must target x86_64." >&2
+case "${expected_arch}" in
+  x86_64)
+    architecture_pattern='ELF 64-bit.*x86-64'
+    ;;
+  aarch64)
+    architecture_pattern='ELF 64-bit.*ARM aarch64'
+    ;;
+  *)
+    echo "Unsupported AppImage architecture: ${expected_arch}" >&2
+    exit 1
+    ;;
+esac
+if ! file "${appimage_path}" | grep -Eq "${architecture_pattern}"; then
+  echo "Flow Reader AppImage does not target ${expected_arch}: $(file "${appimage_path}")" >&2
   exit 1
 fi
 
-temp_base="${TMPDIR:-/tmp}"
+temp_base="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 temp_base="${temp_base%/}"
 temp_root="$(mktemp -d "${temp_base}/flow-reader-appimage.XXXXXX")"
 extracted_root="${temp_root}/squashfs-root"
@@ -38,25 +50,41 @@ app_log="${temp_root}/flow-reader.log"
 app_pid=""
 remove_temp=1
 
+process_is_running() {
+  local process_state=""
+  kill -0 -- "$1" >/dev/null 2>&1 || return 1
+  process_state="$(ps -o stat= -p "$1" 2>/dev/null || true)"
+  [[ -n "${process_state}" && "${process_state:0:1}" != "Z" ]]
+}
+
 cleanup() {
-  if [[ -n "${app_pid}" ]] && kill -0 -- "-${app_pid}" >/dev/null 2>&1; then
+  local exit_status=$?
+  if (( exit_status != 0 )); then
+    echo "Preserving failed Linux lifecycle diagnostics at ${temp_root}." >&2
+    remove_temp=0
+  fi
+  if [[ -n "${app_pid}" ]] && process_is_running "${app_pid}"; then
     running_data_dir="$(tr '\0' '\n' < "/proc/${app_pid}/environ" 2>/dev/null | grep '^FLOW_READER_DATA_DIR=' || true)"
     if [[ "${running_data_dir}" != "FLOW_READER_DATA_DIR=${app_data}" ]]; then
-      echo "Refusing to terminate unexpected process group ${app_pid}." >&2
+      echo "Refusing to terminate unexpected process ${app_pid}." >&2
       remove_temp=0
       return
     fi
-    kill -- "-${app_pid}" >/dev/null 2>&1 || true
+    kill -- "${app_pid}" >/dev/null 2>&1 || true
     for _ in {1..50}; do
-      if ! kill -0 -- "-${app_pid}" >/dev/null 2>&1; then
+      if ! process_is_running "${app_pid}"; then
         break
       fi
       sleep 0.1
     done
-    if kill -0 -- "-${app_pid}" >/dev/null 2>&1; then
+    if process_is_running "${app_pid}"; then
       echo "Flow Reader did not exit; preserving temporary files at ${temp_root}." >&2
       remove_temp=0
     fi
+  fi
+  if [[ -n "${app_pid}" ]] && ! process_is_running "${app_pid}"; then
+    wait "${app_pid}" 2>/dev/null || true
+    app_pid=""
   fi
 
   if [[ "${remove_temp}" == "1" ]]; then
@@ -72,7 +100,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "${app_data}" "${epub_root}/META-INF"
+mkdir -p "${app_data}" "${epub_root}/META-INF" "${epub_root}/EPUB"
 (
   cd "${temp_root}"
   "${appimage_path}" --appimage-extract >/dev/null
@@ -105,11 +133,14 @@ if find "${extracted_root}" -type f \( -name '*.thumbnailer' -o -path '*/thumbna
   exit 1
 fi
 
-printf '%s' '<container><rootfiles><rootfile full-path="package.opf"/></rootfiles></container>' > "${epub_root}/META-INF/container.xml"
-printf '%s' '<package xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>AppImage open lifecycle</dc:title><dc:creator>Flow Reader</dc:creator></metadata><manifest/></package>' > "${epub_root}/package.opf"
+printf '%s' 'application/epub+zip' > "${epub_root}/mimetype"
+printf '%s' '<?xml version="1.0" encoding="UTF-8"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="EPUB/package.opf" media-type="application/oebps-package+xml"/></rootfiles></container>' > "${epub_root}/META-INF/container.xml"
+printf '%s' '<?xml version="1.0" encoding="UTF-8"?><package version="3.0" unique-identifier="book-id" xmlns="http://www.idpf.org/2007/opf"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="book-id">flow-reader-appimage-test</dc:identifier><dc:title>AppImage open lifecycle</dc:title><dc:language>en</dc:language></metadata><manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="chapter"/></spine></package>' > "${epub_root}/EPUB/package.opf"
+printf '%s' '<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>AppImage open lifecycle</title></head><body><p>Flow Reader AppImage lifecycle test.</p></body></html>' > "${epub_root}/EPUB/chapter.xhtml"
 (
   cd "${epub_root}"
-  zip -q -X "${epub_path}" META-INF/container.xml package.opf
+  zip -q -X -0 "${epub_path}" mimetype
+  zip -q -X "${epub_path}" META-INF/container.xml EPUB/package.opf EPUB/chapter.xhtml
 )
 
 if [[ -z "${DISPLAY:-}" ]]; then
@@ -117,27 +148,36 @@ if [[ -z "${DISPLAY:-}" ]]; then
   exit 1
 fi
 
-APPIMAGE_EXTRACT_AND_RUN=1 \
+# Run the packaged entrypoint directly so app_pid tracks the application rather
+# than the outer AppImage extraction or FUSE runtime.
 FLOW_READER_DATA_DIR="${app_data}" \
 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
 WEBKIT_DISABLE_DMABUF_RENDERER=1 \
-setsid "${appimage_path}" "${epub_path}" >"${app_log}" 2>&1 &
+"${extracted_root}/AppRun" "${epub_path}" >"${app_log}" 2>&1 &
 app_pid=$!
 
-external_index="${app_data}/external-books/index.json"
+library_file="${app_data}/library.json"
 for _ in {1..120}; do
-  if [[ -f "${external_index}" ]] && grep -Fq "${epub_path}" "${external_index}"; then
+  if [[ -f "${library_file}" ]] && grep -Fq "${epub_path}" "${library_file}"; then
     echo "Linux AppImage direct EPUB opening passed."
     exit 0
   fi
-  if ! kill -0 -- "-${app_pid}" >/dev/null 2>&1; then
-    echo "Flow Reader exited before recording the EPUB path." >&2
+  if ! process_is_running "${app_pid}"; then
+    if wait "${app_pid}"; then
+      app_status=0
+    else
+      app_status=$?
+    fi
+    app_pid=""
+    remove_temp=0
+    echo "Flow Reader exited with status ${app_status} before recording the EPUB path; preserving ${temp_root}." >&2
     cat "${app_log}" >&2
     exit 1
   fi
   sleep 0.5
 done
 
-echo "Flow Reader did not open the EPUB path supplied to the AppImage." >&2
+remove_temp=0
+echo "Flow Reader did not open the EPUB path supplied to the AppImage; preserving ${temp_root}." >&2
 cat "${app_log}" >&2
 exit 1

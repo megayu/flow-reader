@@ -137,7 +137,7 @@ jobs:
         run: |
           $setups = @(Get-ChildItem -LiteralPath release -Filter '*-setup.exe' -File)
           if ($setups.Count -ne 1) { throw "Expected one collected NSIS setup, found $($setups.Count)." }
-          & native\shell-thumbnails\tests\windows\validate-installer-lifecycle.ps1 `
+          & scripts\validate-bundles\windows-installer.ps1 `
             -InstallerPath $setups[0].FullName `
             -ProviderPath (Resolve-Path -LiteralPath $env:WINDOWS_PROVIDER_PATH).Path
 
@@ -189,7 +189,18 @@ jobs:
         run: pnpm bundle:macos:release:tauri
 
       - name: Verify EPUB opening and Quick Look lifecycle
-        run: pnpm thumbnail:test:macos-installer
+        run: pnpm test:bundle:macos-app
+
+      - name: Upload macOS lifecycle diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: flow-reader-macos-lifecycle-diagnostics-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/flow-reader-macos-lifecycle.*/app-data/**
+            ${{ runner.temp }}/flow-reader-macos-lifecycle.*/thumbnails/**
+          include-hidden-files: true
+          if-no-files-found: warn
 
       - name: Collect macOS application
         run: pnpm bundle:macos:collect
@@ -226,10 +237,8 @@ jobs:
         include:
           - arch: x86_64
             runner: ubuntu-22.04
-            run_lifecycle: true
           - arch: aarch64
             runner: ubuntu-22.04-arm
-            run_lifecycle: false
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
@@ -289,12 +298,18 @@ jobs:
           echo "LINUX_APPIMAGE_PATH=$(realpath "${appimages[0]}")" >> "${GITHUB_ENV}"
 
       - name: Verify AppImage and direct EPUB opening
-        if: matrix.run_lifecycle
-        run: xvfb-run -a dbus-run-session -- pnpm test:bundle:linux-appimage "${LINUX_APPIMAGE_PATH}"
+        run: xvfb-run -a dbus-run-session -- pnpm test:bundle:linux-appimage "${LINUX_APPIMAGE_PATH}" "${{ matrix.arch }}"
 
-      - name: Verify ARM64 AppImage architecture
-        if: ${{ ! matrix.run_lifecycle }}
-        run: file "${LINUX_APPIMAGE_PATH}" | grep -q 'ARM aarch64'
+      - name: Upload Linux lifecycle diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: flow-reader-linux-${{ matrix.arch }}-lifecycle-diagnostics-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/flow-reader-appimage.*/flow-reader.log
+            ${{ runner.temp }}/flow-reader-appimage.*/app-data/**
+          include-hidden-files: true
+          if-no-files-found: warn
 
       - uses: actions/upload-artifact@v7
         with:
