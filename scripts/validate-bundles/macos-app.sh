@@ -147,12 +147,30 @@ if [[ "${plugin_matches}" != *"${extension_id}"* ]]; then
   exit 1
 fi
 
-/usr/bin/qlmanage -t -s 256 -o "${thumbnail_dir}" "${epub_path}"
-thumbnail_path="$(/usr/bin/find "${thumbnail_dir}" -type f -name '*.png' -print -quit)"
-if [[ -z "${thumbnail_path}" ]]; then
-  echo "Quick Look did not create a PNG thumbnail." >&2
-  exit 1
-fi
+thumbnail_path="${thumbnail_dir}/quick-look.png"
+/usr/bin/xcrun swift - "${epub_path}" "${thumbnail_path}" <<'SWIFT'
+import CoreGraphics
+import Foundation
+import QuickLookThumbnailing
+import UniformTypeIdentifiers
+
+guard CommandLine.arguments.count == 3 else {
+    fatalError("expected EPUB and thumbnail paths")
+}
+
+let request = QLThumbnailGenerator.Request(
+    fileAt: URL(fileURLWithPath: CommandLine.arguments[1]),
+    size: CGSize(width: 256, height: 256),
+    scale: 1,
+    representationTypes: .thumbnail
+)
+request.contentType = UTType(importedAs: "org.idpf.epub-container")
+try await QLThumbnailGenerator.shared.saveBestRepresentation(
+    for: request,
+    to: URL(fileURLWithPath: CommandLine.arguments[2]),
+    as: .png
+)
+SWIFT
 
 /usr/bin/swift - "${thumbnail_path}" <<'SWIFT'
 import CoreGraphics
