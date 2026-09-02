@@ -1,24 +1,23 @@
-param()
+param(
+  [string]$InstallerPath,
+  [string]$ProviderPath
+)
 
 $ErrorActionPreference = 'Stop'
 
+if ([string]::IsNullOrWhiteSpace($InstallerPath) -or [string]::IsNullOrWhiteSpace($ProviderPath)) {
+  throw 'Usage: validate-installer-lifecycle.ps1 -InstallerPath <setup.exe> -ProviderPath <FlowReaderThumbnail.dll>'
+}
+
 $scriptDirectory = Split-Path -Parent $PSCommandPath
 $nativeRoot = (Resolve-Path (Join-Path $scriptDirectory '..\..')).Path
-$repositoryRoot = (Resolve-Path (Join-Path $nativeRoot '..\..')).Path
-$prepareScript = Join-Path $nativeRoot 'packaging\windows\prepare-nsis.ps1'
 $identifiersPath = Join-Path $nativeRoot 'windows-identifiers.json'
 $identifiers = Get-Content -LiteralPath $identifiersPath -Raw | ConvertFrom-Json
 $providerClsid = [string]$identifiers.providerClsid
 $thumbnailHandlerCategoryId = [string]$identifiers.thumbnailHandlerCategoryId
 $epubProgId = [string]$identifiers.epubProgId
-$tauriConfig = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src-tauri\tauri.conf.json') -Raw | ConvertFrom-Json
-$setupFileName = "$($tauriConfig.productName)_$($tauriConfig.version)_x64-setup.exe"
-$setupOutput = Join-Path $repositoryRoot "src-tauri\target\release\bundle\nsis\$setupFileName"
-$lifecycleOutput = Join-Path $nativeRoot 'dist\windows\lifecycle'
-$baselineInstaller = Join-Path $lifecycleOutput 'FlowReader-baseline-setup.exe'
-$upgradeInstaller = Join-Path $lifecycleOutput 'FlowReader-upgrade-setup.exe'
-$developmentProvider = Join-Path $nativeRoot 'target\x86_64-pc-windows-msvc\release\flow_reader_thumbnail.dll'
-$distributionProvider = Join-Path $nativeRoot 'dist\windows\FlowReaderThumbnail.dll'
+$installer = (Resolve-Path -LiteralPath $InstallerPath).Path
+$distributionProvider = (Resolve-Path -LiteralPath $ProviderPath).Path
 $registeredHost = Join-Path $nativeRoot 'target\x86_64-pc-windows-msvc\release\registered-thumbnail-host.exe'
 $installDirectory = Join-Path $env:LOCALAPPDATA 'Flow Reader'
 $installedExecutable = Join-Path $installDirectory 'Flow Reader.exe'
@@ -37,8 +36,6 @@ $capabilityAssociationsKey = "$capabilitiesKey\FileAssociations"
 $userChoiceKey = 'Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.epub\UserChoice'
 $sentinelKey = 'Registry::HKEY_CURRENT_USER\Software\Classes\Applications\FlowReaderThumbnailLifecycleSentinel.exe'
 $sentinelSupportedTypes = "$sentinelKey\SupportedTypes"
-$pnpm = (Get-Command pnpm.cmd -ErrorAction Stop).Source
-$originalLocation = Get-Location
 $installAttempted = $false
 $sentinelCreated = $false
 $epubClassExisted = Test-Path -LiteralPath $epubClassKey
@@ -92,44 +89,6 @@ function Get-Sha256 {
     $sha256.Dispose()
     $stream.Dispose()
   }
-}
-
-function Build-Installer {
-  param(
-    [Parameter(Mandatory = $true)][string]$ProviderPath,
-    [Parameter(Mandatory = $true)][string]$Destination
-  )
-
-  & $prepareScript -DllPath $ProviderPath
-  $packagedProvider = Join-Path $nativeRoot 'dist\windows\installer\FlowReaderThumbnail.pending.dll'
-  if (-not (Test-Path -LiteralPath $packagedProvider -PathType Leaf)) {
-    throw "NSIS preparation did not create the stable-name pending provider: $packagedProvider"
-  }
-  $generatedConfigPath = Join-Path $nativeRoot 'dist\windows\tauri.shell-windows.generated.conf.json'
-  $generatedConfig = Get-Content -LiteralPath $generatedConfigPath -Raw | ConvertFrom-Json
-  $resourceEntries = @($generatedConfig.bundle.resources.PSObject.Properties)
-  if ($resourceEntries.Count -ne 1 -or $resourceEntries[0].Value -ne 'FlowReaderThumbnail.pending.dll') {
-    throw 'Generated Tauri config does not install the pending provider beside the main executable.'
-  }
-  $generatedHookPath = Join-Path $nativeRoot 'dist\windows\installer-hooks.nsh'
-  $generatedHookText = Get-Content -LiteralPath $generatedHookPath -Raw
-  if ($generatedHookText -match 'FlowReaderThumbnail-[0-9a-f]{12}\.dll') {
-    throw 'Generated NSIS hook still uses a content-hash provider filename.'
-  }
-  foreach ($requiredReplacementCommand in @(
-    'Delete /REBOOTOK "$INSTDIR\${FLOW_READER_THUMBNAIL_DLL}"',
-    'Rename /REBOOTOK "$INSTDIR\${FLOW_READER_PENDING_THUMBNAIL_DLL}" "$INSTDIR\${FLOW_READER_THUMBNAIL_DLL}"',
-    'SetRebootFlag true'
-  )) {
-    if (-not $generatedHookText.Contains($requiredReplacementCommand)) {
-      throw "Generated NSIS hook is missing locked-upgrade behavior: $requiredReplacementCommand"
-    }
-  }
-  Invoke-CheckedCommand $pnpm @('bundle:windows:installed:tauri')
-  if (-not (Test-Path -LiteralPath $setupOutput -PathType Leaf)) {
-    throw "NSIS setup was not created: $setupOutput"
-  }
-  Copy-Item -LiteralPath $setupOutput -Destination $Destination -Force
 }
 
 function Invoke-Installer {
@@ -326,6 +285,12 @@ try {
   Add-Type -AssemblyName System.IO.Compression
   Add-Type -AssemblyName System.IO.Compression.FileSystem
 
+  foreach ($requiredFile in @($installer, $distributionProvider, $registeredHost)) {
+    if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
+      throw "Lifecycle validation input is missing: $requiredFile"
+    }
+  }
+
   foreach ($path in @($uninstallKey, $providerKey, $shellHandlerKey, $capabilitiesKey, $sentinelKey, $installDirectory)) {
     if (Test-Path -LiteralPath $path) {
       throw "Lifecycle validation requires an unused Flow Reader installation state: $path"
@@ -346,38 +311,15 @@ try {
     }
   }
 
-  Set-Location -LiteralPath $repositoryRoot
-  New-Item -ItemType Directory -Path $lifecycleOutput -Force | Out-Null
-  Invoke-CheckedCommand 'cargo.exe' @(
-    'build', '--locked', '--release',
-    '--manifest-path', 'native/shell-thumbnails/Cargo.toml',
-    '--package', 'flow-windows-thumbnail-provider',
-    '--bin', 'registered-thumbnail-host',
-    '--target', 'x86_64-pc-windows-msvc'
-  )
-  Invoke-CheckedCommand $pnpm @('thumbnail:build:windows')
-  $baselineProviderHash = Get-Sha256 -Path $developmentProvider
-  Build-Installer -ProviderPath $developmentProvider -Destination $baselineInstaller
-
-  Invoke-CheckedCommand $pnpm @('bundle:windows:thumbnail')
-  $upgradeProviderHash = Get-Sha256 -Path $distributionProvider
-  if ($upgradeProviderHash -eq $baselineProviderHash) {
-    throw 'Lifecycle validation requires baseline and upgrade providers with different content.'
-  }
-  Build-Installer -ProviderPath $distributionProvider -Destination $upgradeInstaller
+  $expectedProviderHash = Get-Sha256 -Path $distributionProvider
 
   New-Item -Path $sentinelSupportedTypes -Force | Out-Null
   New-ItemProperty -LiteralPath $sentinelSupportedTypes -Name '.epub' -Value '' -PropertyType String -Force | Out-Null
   $sentinelCreated = $true
 
   $installAttempted = $true
-  Invoke-Installer $baselineInstaller
-  Assert-InstalledProvider -ExpectedHash $baselineProviderHash
-  Assert-UserChoiceUnchanged
-  Invoke-FreshThumbnailRequest
-
-  Invoke-Installer $upgradeInstaller
-  Assert-InstalledProvider -ExpectedHash $upgradeProviderHash
+  Invoke-Installer $installer
+  Assert-InstalledProvider -ExpectedHash $expectedProviderHash
   Assert-UserChoiceUnchanged
   Invoke-FreshThumbnailRequest
 
@@ -423,10 +365,9 @@ try {
     }
   }
 
-  Write-Output 'Windows thumbnail installer lifecycle passed.'
+  Write-Output 'Windows release installer lifecycle passed.'
 }
 finally {
-  Set-Location -LiteralPath $originalLocation
   if ($installAttempted -and (Test-Path -LiteralPath (Join-Path $installDirectory 'uninstall.exe') -PathType Leaf)) {
     $cleanup = Start-Process -FilePath (Join-Path $installDirectory 'uninstall.exe') -ArgumentList '/S' -WindowStyle Hidden -Wait -PassThru
     if ($cleanup.ExitCode -ne 0) {

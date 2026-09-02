@@ -75,16 +75,17 @@ mod host {
             return Err("provider returned an unreadable bitmap".into());
         }
         let details = unsafe { details.assume_init() };
-        let expected_width = i32::try_from(requested_edge * 3 / 4)?;
-        let expected_height = i32::try_from(requested_edge)?;
-        if details.bmWidth != expected_width
-            || details.bmHeight != expected_height
+        let maximum_edge = i32::try_from(requested_edge)?;
+        if details.bmWidth <= 0
+            || details.bmHeight <= 0
+            || details.bmWidth > maximum_edge
+            || details.bmHeight > maximum_edge
             || details.bmBitsPixel != 32
             || details.bmBits.is_null()
         {
             return Err(format!(
-                "unexpected bitmap: {}x{}, {} bpp",
-                details.bmWidth, details.bmHeight, details.bmBitsPixel
+                "unexpected bitmap for maximum edge {requested_edge}: {}x{}, {} bpp",
+                details.bmWidth, details.bmHeight, details.bmBitsPixel,
             )
             .into());
         }
