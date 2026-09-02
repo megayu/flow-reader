@@ -33,6 +33,9 @@ process_is_running() {
 cleanup() {
   local exit_status=$?
   if (( exit_status != 0 )); then
+    if [[ -d "${app_data}" ]]; then
+      /usr/bin/pluginkit -m -A -D -v -i "${extension_id}" > "${app_data}/pluginkit.txt" 2>&1 || true
+    fi
     echo "Preserving failed macOS lifecycle diagnostics at ${temp_root}." >&2
     remove_temp=0
   fi
@@ -137,18 +140,13 @@ create_epub() {
 create_epub "${epub_path}" "Quick Look lifecycle"
 create_epub "${second_epub_path}" "Finder reopen lifecycle"
 
+/bin/mkdir -p "${app_data}"
 /usr/bin/pluginkit -a "${appex}"
 registered=1
-/usr/bin/pluginkit -e use -i "${extension_id}"
-plugin_matches="$(/usr/bin/pluginkit -m -A -D -i "${extension_id}" || true)"
-if [[ "${plugin_matches}" != *"${extension_id}"* ]]; then
-  echo "Quick Look extension was not registered: ${extension_id}" >&2
-  /usr/bin/pluginkit -m -A -D -v -i "${extension_id}" >&2 || true
-  exit 1
-fi
 
-thumbnail_path="${thumbnail_dir}/quick-look.png"
-/usr/bin/xcrun swift - "${epub_path}" "${thumbnail_path}" <<'SWIFT'
+render_and_validate_thumbnail() {
+  local thumbnail_path="${thumbnail_dir}/quick-look.png"
+  /usr/bin/xcrun swift - "${epub_path}" "${thumbnail_path}" <<'SWIFT'
 import CoreGraphics
 import Foundation
 import QuickLookThumbnailing
@@ -172,7 +170,7 @@ try await QLThumbnailGenerator.shared.saveBestRepresentation(
 )
 SWIFT
 
-/usr/bin/swift - "${thumbnail_path}" <<'SWIFT'
+  /usr/bin/swift - "${thumbnail_path}" <<'SWIFT'
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -213,6 +211,7 @@ guard nonUniform else {
 }
 print("Quick Look rendered \(image.width)x\(image.height) non-uniform RGBA pixels")
 SWIFT
+}
 
 library_file="${app_data}/library.json"
 library_contains_file() {
@@ -258,7 +257,6 @@ wait_for_external_path() {
   return 1
 }
 
-/bin/mkdir -p "${app_data}"
 /usr/bin/open -n -a "${test_app}" --env "FLOW_READER_DATA_DIR=${app_data}" "${epub_path}"
 find_app_pid() {
   local candidate=""
@@ -285,6 +283,9 @@ if [[ -z "${app_pid}" ]]; then
   exit 1
 fi
 wait_for_external_path "${epub_path}"
+
+/usr/bin/pluginkit -e use -i "${extension_id}"
+render_and_validate_thumbnail
 
 /usr/bin/open -a "${test_app}" "${second_epub_path}"
 wait_for_external_path "${second_epub_path}"
