@@ -243,6 +243,7 @@ test('library filter panel clears filters on Escape without closing', async ({ p
   await page.getByRole('button', { name: msg('home.library_filter.clear'), exact: true }).hover()
   await expect(page.getByRole('tooltip').locator('kbd')).toContainText(['Esc'])
   await page.mouse.move(500, 500)
+  await expect(page.getByRole('tooltip')).toHaveCount(0)
 
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('library-filter-panel')).toBeVisible()
