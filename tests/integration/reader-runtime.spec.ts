@@ -4036,6 +4036,13 @@ test('keeps zoomed images inside the current page column in double page mode', a
     )
     .toMatchObject({ divisor: 2, zoom: 2 })
 
+  await page.evaluate(async () => {
+    const tab = (window as any).reader.focusedBookTab
+    const pendingLayout = tab?.waitForPendingLayout?.()
+    if (pendingLayout) await pendingLayout
+  })
+  await waitForStableReaderLayout(page, { header: false })
+
   await expect
     .poll(() =>
       page.evaluate(() =>
