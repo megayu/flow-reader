@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 
 export const CAPTURE_EVENT_OPTIONS = { capture: true } as const
 
@@ -10,11 +10,11 @@ export function useFrameEvent<K extends keyof WindowEventMap>(
 ) {
   const listenerRef = useRef(listener)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     listenerRef.current = listener
   }, [listener])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!frames.length) return
 
     const handler = (event: WindowEventMap[K]) => {

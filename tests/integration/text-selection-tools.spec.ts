@@ -701,8 +701,7 @@ test('parses only the first Han Dian character explanation into semantic groups'
   await expect(popup.locator('[data-dictionary-sense-marker]')).toHaveText(['1', '2', '1'])
 })
 
-test('copies a dictionary body selection instead of the original book selection', async ({ context, page }) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+test('copies a dictionary body selection instead of the original book selection', async ({ page }) => {
   await setupDictionaryReader(page, { 天: characterHtml })
   await selectFixtureText(page, '天')
   await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
@@ -720,7 +719,15 @@ test('copies a dictionary body selection instead of the original book selection'
   await popup.focus()
   await page.keyboard.press('Control+c')
 
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('高处的空间。')
+  await page.evaluate(() => {
+    const target = document.createElement('textarea')
+    target.id = 'clipboard-paste-target'
+    document.body.append(target)
+    target.focus()
+  })
+  const pasteTarget = page.locator('#clipboard-paste-target')
+  await page.keyboard.press('Control+v')
+  await expect(pasteTarget).toHaveValue('高处的空间。')
 })
 
 test('parses adjacent Han Dian word reading groups and respects unnumbered senses', async ({ page }) => {
@@ -1334,7 +1341,7 @@ test('MDict keeps internal links in a source-only bounded detail history', async
   const popup = page.getByRole('dialog')
   await expect(popup.getByRole('heading', { name: 'Synthetic Chinese MDict' })).toBeVisible()
   const iframe = popup.locator('[data-dictionary-rich-content]')
-  await expect(iframe).toHaveAttribute('sandbox', 'allow-same-origin')
+  await expect(iframe).toHaveAttribute('sandbox', 'allow-same-origin allow-scripts')
   await expect(iframe).toHaveAttribute('scrolling', 'no')
   const frame = iframe.contentFrame()
   await expect(frame.getByText('安全释义', { exact: true })).toBeVisible()

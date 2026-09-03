@@ -221,7 +221,10 @@ jobs:
             add_check "{\"area\":\"node\",\"runner\":\"ubuntu-24.04\",\"kind\":\"node\",\"script\":\"\",\"node\":true,\"browser\":false,\"app\":${app},\"unit\":${unit},\"test_static\":${test_static},\"integration\":false,\"scripts\":${scripts},\"skills\":${skills},\"epubjs\":false}"
           fi
           if [[ "${integration}" == "true" || "${epubjs}" == "true" ]]; then
-            add_check "{\"area\":\"browser\",\"runner\":\"ubuntu-24.04\",\"kind\":\"node\",\"script\":\"\",\"node\":true,\"browser\":true,\"app\":false,\"unit\":false,\"test_static\":false,\"integration\":${integration},\"scripts\":false,\"skills\":false,\"epubjs\":${epubjs}}"
+            add_check "{\"area\":\"browser-chromium\",\"runner\":\"ubuntu-24.04\",\"kind\":\"node\",\"script\":\"\",\"node\":true,\"browser\":true,\"playwright_browser\":\"chromium\",\"playwright_project\":\"chromium\",\"app\":false,\"unit\":false,\"test_static\":false,\"integration\":${integration},\"scripts\":false,\"skills\":false,\"epubjs\":${epubjs}}"
+          fi
+          if [[ "${integration}" == "true" ]]; then
+            add_check '{"area":"browser-webkit","runner":"ubuntu-24.04","kind":"node","script":"","node":true,"browser":true,"playwright_browser":"webkit","playwright_project":"webkit","app":false,"unit":false,"test_static":false,"integration":true,"scripts":false,"skills":false,"epubjs":false}'
           fi
           [[ "${rust}" == "false" ]] || add_check '{"area":"rust","runner":"windows-2025","kind":"rust","script":"check:rust","node":false,"browser":false,"lock":"src-tauri/Cargo.lock","target":"src-tauri/target"}'
           [[ "${crates}" == "false" ]] || add_check '{"area":"crates","runner":"ubuntu-24.04","kind":"rust","script":"check:crates","node":false,"browser":false,"lock":"crates/Cargo.lock","target":"crates/target"}'
@@ -278,7 +281,7 @@ jobs:
 
       - name: Install browser
         if: matrix.browser
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps ${{ matrix.playwright_browser }}
 
       - name: Cache Cargo dependencies
         if: matrix.kind == 'rust'
@@ -309,7 +312,7 @@ jobs:
         if: matrix.kind == 'node' && matrix.integration
         env:
           PLAYWRIGHT_BROWSER_CHANNEL: chromium
-        run: pnpm test:integration:ci
+        run: pnpm test:integration:ci --project=${{ matrix.playwright_project }}
       - name: Check repository scripts
         if: matrix.kind == 'node' && matrix.scripts
         run: pnpm check:scripts

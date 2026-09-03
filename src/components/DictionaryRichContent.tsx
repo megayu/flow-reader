@@ -110,7 +110,7 @@ export function DictionaryRichContent({
       data-dictionary-rich-content={active ? 'true' : undefined}
       height={height}
       onLoad={handleLoad}
-      sandbox="allow-same-origin"
+      sandbox="allow-same-origin allow-scripts"
       scrolling="no"
       srcDoc={srcDoc}
       style={{ height }}

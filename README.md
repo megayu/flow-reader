@@ -125,6 +125,12 @@ and memory use remains restrained.
 pnpm install
 ```
 
+Install the Chromium and WebKit binaries used by the browser integration tests:
+
+```bash
+pnpm exec playwright install chromium webkit
+```
+
 ### Run
 
 ```bash
@@ -150,6 +156,14 @@ Run one integration spec:
 
 ```bash
 pnpm test:integration tests/integration/app-shell.spec.ts
+```
+
+Integration tests run in both the Chromium and WebKit projects by
+default. Run one engine explicitly when iterating on a focused failure:
+
+```bash
+pnpm test:integration:chromium tests/integration/app-shell.spec.ts
+pnpm test:integration:webkit tests/integration/app-shell.spec.ts
 ```
 
 Run one integration test by matching its title:

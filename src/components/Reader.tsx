@@ -790,7 +790,15 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
       zenMode,
     ],
   )
-  useFrameEvent(activeFrameWindows, 'keydown', handleFrameKeyDown)
+  const handleFrameKeyDownEvent = useEffectEvent(handleFrameKeyDown)
+
+  useEffect(() => {
+    if (!active || !rendition) return
+
+    const onKeyDown = (event: KeyboardEvent) => handleFrameKeyDownEvent(event)
+    rendition.on('keydown', onKeyDown)
+    return () => rendition.off('keydown', onKeyDown)
+  }, [active, rendition])
 
   return (
     <div className="flex h-full flex-col" data-flow-page-appearance={pageAppearance}>

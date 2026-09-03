@@ -83,6 +83,12 @@ Flow Reader 是一款快速、流畅和轻便的 EPUB 与 TXT 桌面阅读器。
 pnpm install
 ```
 
+安装浏览器集成测试使用的 Chromium 和 WebKit：
+
+```bash
+pnpm exec playwright install chromium webkit
+```
+
 ### 启动开发环境
 
 ```bash
@@ -108,6 +114,13 @@ pnpm test:integration
 
 ```bash
 pnpm test:integration tests/integration/app-shell.spec.ts
+```
+
+集成测试默认同时运行 Chromium 和 WebKit。集中排查单个失败时，可以明确运行其中一个内核：
+
+```bash
+pnpm test:integration:chromium tests/integration/app-shell.spec.ts
+pnpm test:integration:webkit tests/integration/app-shell.spec.ts
 ```
 
 按标题匹配并运行单个集成测试：

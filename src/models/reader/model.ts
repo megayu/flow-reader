@@ -402,6 +402,10 @@ export class BookTab {
     return this.navigation.waitForPending()
   }
 
+  waitForPendingLayout() {
+    return this.layoutTransactions.waitForPending()
+  }
+
   resizeRendition(width: number, height: number) {
     this.layoutTransactions.resize(this, width, height)
   }

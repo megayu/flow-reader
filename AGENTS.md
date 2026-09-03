@@ -19,6 +19,11 @@
 ## Repository Skills
 
 - Repository-specific skills live in `.agents/skills/`.
+- Before changing browser-facing behavior that can differ between WebView2 and
+  WebKit-family WebViews—including DOM events, focus, selection, iframe
+  lifecycle or sandboxing, CSS capabilities or intrinsic sizing, geometry
+  measurement, and asynchronous UI readiness—read
+  `.agents/skills/cross-webview-compatibility/SKILL.md` and follow it.
 - Before changing reader or library runtime performance—including tab switching, page turns, sidebar interactions, EPUB rendering, bookshelf virtualization, cover loading, filtering, sorting, scrolling, or reader/library switching—read `.agents/skills/reader-performance-measurement/SKILL.md` and follow it.
 - Before changing deterministic reader layout, zoom, single/spread mode, tab isolation, sidebar/window resize behavior, iframe pane geometry, reader header/footer/page alignment, or generated content that can affect reader layout, read `.agents/skills/reader-deterministic-layout/SKILL.md` and follow it.
 

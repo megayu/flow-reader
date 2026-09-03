@@ -1169,6 +1169,9 @@ async function verifySingleAndZoom(page, screenshotFile) {
       const style = body && getComputedStyle(body)
       const bodyRect = body?.getBoundingClientRect()
       const frameWidth = view?.iframe?.contentWindow?.innerWidth
+      const frameCss = body?.ownerDocument.defaultView?.CSS
+      const supportsBlockDirectionColumns =
+        frameCss?.supports('column-height', '1px') === true && frameCss.supports('column-wrap', 'wrap')
       let textCrossesBodyLeft = 0
       if (body && bodyRect) {
         const walker = body.ownerDocument.createTreeWalker(body, NodeFilter.SHOW_TEXT)
@@ -1199,9 +1202,12 @@ async function verifySingleAndZoom(page, screenshotFile) {
         textCrossesBodyLeft,
         style: style && {
           columnWidth: parseFloat(style.columnWidth),
-          columnHeight: parseFloat(style.columnHeight),
-          columnGap: parseFloat(style.columnGap),
-          rowGap: parseFloat(style.rowGap),
+          physicalPageContentWidth: supportsBlockDirectionColumns
+            ? parseFloat(style.columnHeight)
+            : parseFloat(style.width) - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+          physicalGap: supportsBlockDirectionColumns
+            ? parseFloat(style.rowGap)
+            : parseFloat(style.paddingLeft) + parseFloat(style.paddingRight),
           transform: style.transform,
         },
       }
@@ -1234,8 +1240,8 @@ async function verifySingleAndZoom(page, screenshotFile) {
       zoomed.bodyInsideFrame &&
       zoomed.textCrossesBodyLeft === 0 &&
       Math.abs(zoomed.style.columnWidth - (zoomed.pageHeight - 20) / 1.5) < 1 &&
-      Math.abs(zoomed.style.columnHeight - rowHeight / 1.5) < 1 &&
-      zoomed.style.columnGap === 0,
+      Math.abs(zoomed.style.physicalPageContentWidth - rowHeight / 1.5) < 1 &&
+      Math.abs(zoomed.style.physicalGap - zoomed.gap / 1.5) < 1,
     'zoomed single-page physical axes are incorrect',
     zoomed,
   )

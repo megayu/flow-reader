@@ -24,6 +24,37 @@ function isBitmapMediaType(mediaType) {
   )
 }
 
+const XHTML_NAMESPACE = 'http://www.w3.org/1999/xhtml'
+const SCRIPT_BLOCKING_CSP_CONTENT = "script-src 'none'; object-src 'none'"
+
+function serializeWithScriptBlockingCsp(doc, contents, mediaType) {
+  var serializer = new XMLSerializer()
+
+  if (mediaType === 'image/svg+xml') {
+    return `<html><head><meta http-equiv="Content-Security-Policy" content="${SCRIPT_BLOCKING_CSP_CONTENT}" /></head><body>${serializer.serializeToString(contents)}</body></html>`
+  }
+
+  var head = doc.getElementsByTagName('head')[0]
+  var createdHead = false
+  if (!head) {
+    head = doc.createElementNS(contents.namespaceURI || XHTML_NAMESPACE, 'head')
+    contents.insertBefore(head, contents.firstChild)
+    createdHead = true
+  }
+
+  var meta = doc.createElementNS(head.namespaceURI || XHTML_NAMESPACE, 'meta')
+  meta.setAttribute('http-equiv', 'Content-Security-Policy')
+  meta.setAttribute('content', SCRIPT_BLOCKING_CSP_CONTENT)
+  head.insertBefore(meta, head.firstChild)
+
+  try {
+    return serializer.serializeToString(contents)
+  } finally {
+    head.removeChild(meta)
+    if (createdHead) contents.removeChild(head)
+  }
+}
+
 export function isRenderableSpineMediaType(mediaType) {
   return Boolean(
     requestType(mediaType) ||
@@ -181,9 +212,10 @@ class Section {
   /**
    * Render the contents of a section
    * @param  {method} [_request] a request method to use for loading
+   * @param  {object} [options] serialization options
    * @return {string} output a serialized XML Document
    */
-  render(_request) {
+  render(_request, options = {}) {
     var rendering = new defer()
     var rendered = rendering.promise
     this.output // TODO: better way to return this from hooks?
@@ -191,8 +223,16 @@ class Section {
     this.load(_request)
       .then(
         function (contents) {
-          var serializer = new XMLSerializer()
-          this.output = serializer.serializeToString(contents)
+          if (options.blockScripts) {
+            this.output = serializeWithScriptBlockingCsp(
+              this.document,
+              contents,
+              this.type,
+            )
+          } else {
+            var serializer = new XMLSerializer()
+            this.output = serializer.serializeToString(contents)
+          }
           return this.output
         }.bind(this),
       )

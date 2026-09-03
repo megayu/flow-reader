@@ -5,15 +5,16 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { createRoot } from 'react-dom/client'
 
 import { FlowReader } from './app/FlowReader'
-import { installProductionReloadShortcutGuard } from './keyboard'
+import { installProductionReloadShortcutGuard, installSettingsShortcut } from './keyboard'
 import { reader } from './models/reader'
-import { initializeWindowUiState, snapshotWindowUiState, type WindowUiState } from './state'
+import { initializeWindowUiState, snapshotWindowUiState, useAppStore, type WindowUiState } from './state'
 import { db } from './storage/client'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Flow Reader root element was not found')
 const appRoot = root
 installProductionReloadShortcutGuard(document)
+installSettingsShortcut(document, () => useAppStore.getState().setSettingsDialogOpen(true))
 
 const windowUiStateReady = invoke<WindowUiState>('get_window_ui_state').then(initializeWindowUiState)
 const recentBooksReady = db.recentBooks.get().catch((error) => {

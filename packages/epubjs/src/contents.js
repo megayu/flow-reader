@@ -1958,7 +1958,7 @@ class Contents extends EventEmitter {
 
     DOM_EVENTS.forEach(function (eventName) {
       this.document.addEventListener(eventName, this._triggerEvent, {
-        passive: true,
+        passive: !eventName.startsWith('key'),
       })
     }, this)
   }
@@ -1973,7 +1973,7 @@ class Contents extends EventEmitter {
     }
     DOM_EVENTS.forEach(function (eventName) {
       this.document.removeEventListener(eventName, this._triggerEvent, {
-        passive: true,
+        passive: !eventName.startsWith('key'),
       })
     }, this)
     this._triggerEvent = undefined
@@ -2329,17 +2329,29 @@ class Contents extends EventEmitter {
     if (verticalRtl) {
       let rowHeight =
         width > columnWidth + gap ? columnWidth : Math.max(columnWidth - gap, 1)
-      // CSS Multicol Level 2 maps column-width to the vertical inline size
-      // and column-height to the horizontal block size. Wrapping rows in the
-      // block direction creates real right-to-left physical pages and keeps
-      // the row gap clear of text.
-      this.css(COLUMN_AXIS, null)
-      this.css(COLUMN_WIDTH, Math.max(height - 20, 1) + 'px')
-      this.css('column-height', rowHeight + 'px')
-      this.css('column-count', '1')
-      this.css('column-wrap', 'wrap')
-      this.css(COLUMN_GAP, '0px')
-      this.css('row-gap', gap + 'px')
+      let supportsBlockDirectionColumns =
+        this.window.CSS.supports('column-height', '1px') &&
+        this.window.CSS.supports('column-wrap', 'wrap')
+
+      if (supportsBlockDirectionColumns) {
+        // CSS Multicol Level 2 maps column-width to the vertical inline size
+        // and column-height to the horizontal block size. Wrapping rows in the
+        // block direction creates real right-to-left physical pages.
+        this.css(COLUMN_AXIS, null)
+        this.css(COLUMN_WIDTH, Math.max(height - 20, 1) + 'px')
+        this.css('column-height', rowHeight + 'px')
+        this.css('column-count', '1')
+        this.css('column-wrap', 'wrap')
+        this.css(COLUMN_GAP, '0px')
+        this.css('row-gap', gap + 'px')
+      } else {
+        // WebKit exposes the older column-axis extension instead of Multicol
+        // Level 2. It produces the same horizontal physical page sequence.
+        this.css(COLUMN_AXIS, 'horizontal')
+        this.css(COLUMN_WIDTH, rowHeight + 'px')
+        this.css(COLUMN_GAP, gap + 'px')
+        this.width(rowHeight + gap)
+      }
     } else {
       this.css('column-height', null)
       this.css('column-count', null)

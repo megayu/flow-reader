@@ -4,17 +4,19 @@ import { imageSourcesMatch } from './image'
 import type { BookTab, ISection } from './model'
 
 export class BookNavigationController {
-  pending?: Promise<void>
+  private readonly pendingOperations = new Set<Promise<void>>()
   private displayQueue = Promise.resolve()
 
+  get pending() {
+    return this.pendingOperations.size ? this.waitForPending() : undefined
+  }
+
   private async track(operation: Promise<void>) {
-    this.pending = operation
+    this.pendingOperations.add(operation)
     try {
       await operation
     } finally {
-      if (this.pending === operation) {
-        this.pending = undefined
-      }
+      this.pendingOperations.delete(operation)
     }
   }
 
@@ -28,15 +30,12 @@ export class BookNavigationController {
   }
 
   async waitForPending() {
-    while (this.pending) {
-      const operation = this.pending
+    while (this.pendingOperations.size) {
+      const operations = [...this.pendingOperations]
       try {
-        await operation
+        await Promise.all(operations)
       } catch {
         // The caller owns navigation errors; waiters only serialize later work.
-      }
-      if (this.pending === operation) {
-        this.pending = undefined
       }
     }
   }
@@ -59,7 +58,9 @@ export class BookNavigationController {
   }
 
   async prev(tab: BookTab) {
-    if (tab.turning) return
+    if (tab.turning) await this.waitForPending()
+    const pendingLayout = tab.waitForPendingLayout()
+    if (pendingLayout) await pendingLayout
 
     return this.run(tab, async () => {
       tab.preferredSectionIndex = undefined
@@ -78,7 +79,9 @@ export class BookNavigationController {
   }
 
   async next(tab: BookTab) {
-    if (tab.turning) return
+    if (tab.turning) await this.waitForPending()
+    const pendingLayout = tab.waitForPendingLayout()
+    if (pendingLayout) await pendingLayout
 
     return this.run(tab, async () => {
       tab.preferredSectionIndex = undefined
@@ -161,7 +164,10 @@ export class BookNavigationController {
   }
 
   async navigateSection(tab: BookTab, direction: -1 | 1) {
-    if (tab.turning || !tab.sections?.length || !tab.location) return
+    if (!tab.sections?.length || !tab.location) return
+    if (tab.turning) await this.waitForPending()
+    const pendingLayout = tab.waitForPendingLayout()
+    if (pendingLayout) await pendingLayout
 
     return this.run(tab, async () => {
       if (await this.navigateNavItem(tab, direction)) return

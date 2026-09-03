@@ -12,6 +12,8 @@ import { installTauriMock } from '../support/tauri-mock'
 const longPackageUrl = '/test-assets/long/OPS/package.opf'
 const scrolledPackageUrl = '/test-assets/scrolled/OPS/package.opf'
 const verticalPackageUrl = '/test-assets/vertical/OPS/package.opf'
+const scriptlessSvgPackageUrl = '/test-assets/scriptless-svg/OPS/package.opf'
+const scriptlessXhtmlPackageUrl = '/test-assets/scriptless-xhtml/OPS/package.opf'
 const findShortcut = process.platform === 'darwin' ? 'Meta+F' : 'Control+F'
 const dictionaryLayoutHtml = `<!doctype html><html><body>
   <section id="xxjs" data-section="词语解释">
@@ -105,6 +107,12 @@ async function installReaderBooksMock(
   }
   if (packageUrls.includes(verticalPackageUrl)) {
     await installVerticalBookRoutes(page)
+  }
+  if (packageUrls.includes(scriptlessSvgPackageUrl)) {
+    await installScriptlessSvgBookRoutes(page)
+  }
+  if (packageUrls.includes(scriptlessXhtmlPackageUrl)) {
+    await installScriptlessXhtmlBookRoutes(page)
   }
 
   const imageIndexes = Object.fromEntries(
@@ -485,6 +493,85 @@ async function installVerticalBookRoutes(page: Page) {
     }
 
     return route.fulfill(resource)
+  })
+}
+
+async function installScriptlessSvgBookRoutes(page: Page) {
+  await page.route('**/test-assets/scriptless-svg/OPS/**', (route) => {
+    const normalized = new URL(route.request().url()).pathname.replace(/^\/test-assets\/scriptless-svg\/OPS\//, '')
+
+    if (normalized === 'package.opf') {
+      return route.fulfill({
+        contentType: 'application/oebps-package+xml',
+        body: `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="pub-id">flow.reader.scriptless-svg</dc:identifier>
+    <dc:title>Scriptless SVG</dc:title>
+    <dc:language>en</dc:language>
+    <meta property="rendition:layout">pre-paginated</meta>
+  </metadata>
+  <manifest>
+    <item id="page" href="chapter_001.xhtml" media-type="image/svg+xml"/>
+  </manifest>
+  <spine><itemref idref="page"/></spine>
+</package>`,
+      })
+    }
+
+    if (normalized === 'chapter_001.xhtml') {
+      return route.fulfill({
+        contentType: 'image/svg+xml',
+        body: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 800">
+  <rect width="600" height="800" fill="white"/>
+  <text x="40" y="80">SCRIPTLESS-SVG-PAGE</text>
+  <script>window.parent.document.documentElement.dataset.epubSvgScriptExecuted = 'true'</script>
+</svg>`,
+      })
+    }
+
+    return route.fulfill({ status: 404, contentType: 'text/plain', body: 'not found' })
+  })
+}
+
+async function installScriptlessXhtmlBookRoutes(page: Page) {
+  await page.route('**/test-assets/scriptless-xhtml/OPS/**', (route) => {
+    const normalized = new URL(route.request().url()).pathname.replace(/^\/test-assets\/scriptless-xhtml\/OPS\//, '')
+
+    if (normalized === 'package.opf') {
+      return route.fulfill({
+        contentType: 'application/oebps-package+xml',
+        body: `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="pub-id">flow.reader.scriptless-xhtml</dc:identifier>
+    <dc:title>Scriptless XHTML</dc:title>
+    <dc:language>en</dc:language>
+    <meta property="rendition:layout">pre-paginated</meta>
+  </metadata>
+  <manifest>
+    <item id="page" href="chapter_001.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="page"/></spine>
+</package>`,
+      })
+    }
+
+    if (normalized === 'chapter_001.xhtml') {
+      return route.fulfill({
+        contentType: 'application/xhtml+xml',
+        body: `<html xmlns="http://www.w3.org/1999/xhtml">
+<!-- <head> -->
+<head><title>Scriptless XHTML</title></head>
+<body>
+  <p>SCRIPTLESS-XHTML-PAGE</p>
+  <script>window.parent.document.documentElement.dataset.epubXhtmlScriptExecuted = 'true'</script>
+</body>
+</html>`,
+      })
+    }
+
+    return route.fulfill({ status: 404, contentType: 'text/plain', body: 'not found' })
   })
 }
 
@@ -1463,11 +1550,80 @@ test.beforeEach(async ({ page }, testInfo) => {
       ? scrolledPackageUrl
       : testInfo.title.includes('long-book')
         ? longPackageUrl
-        : epubFixturePackageUrl
+        : testInfo.title.includes('[scriptless-svg]')
+          ? scriptlessSvgPackageUrl
+          : testInfo.title.includes('[scriptless-xhtml]')
+            ? scriptlessXhtmlPackageUrl
+            : epubFixturePackageUrl
   await installReaderBooksMock(page, undefined, packageUrl)
   await page.goto('/')
   await expect(page.locator('#layout')).toBeVisible()
   await expect(page.locator('ul.grid [data-flow-library-book-card]')).toHaveCount(3)
+})
+
+test('[scriptless-svg] blocks scripts in an SVG spine document', async ({ page }) => {
+  await openFixtureBook(page, 0)
+  const frame = page.locator('[data-flow-reader-pane][aria-hidden="false"] iframe').filter({ visible: true })
+  await expect(frame).toHaveCount(1)
+  await expect(frame.contentFrame().getByText('SCRIPTLESS-SVG-PAGE')).toBeVisible()
+
+  await expect(page.locator('html')).not.toHaveAttribute('data-epub-svg-script-executed', 'true')
+})
+
+test('[scriptless-xhtml] blocks scripts when an authored comment resembles a head tag', async ({ page }) => {
+  await openFixtureBook(page, 0)
+  const frame = page.locator('[data-flow-reader-pane][aria-hidden="false"] iframe').filter({ visible: true })
+  await expect(frame).toHaveCount(1)
+  await expect(frame.contentFrame().getByText('SCRIPTLESS-XHTML-PAGE')).toBeVisible()
+
+  await expect(page.locator('html')).not.toHaveAttribute('data-epub-xhtml-script-executed', 'true')
+})
+
+test('waits for every queued display before capturing stable reader state', async ({ page }) => {
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+
+  const result = await page.evaluate(async () => {
+    const tab = (window as any).reader.focusedBookTab
+    const navigation = tab?.navigation
+    const host = tab?.persistenceHost()
+    if (!navigation || !host) throw new Error('Missing reader navigation persistence host')
+
+    let releaseFirst = () => {}
+    let releaseSecond = () => {}
+    let firstStarted = false
+    let secondStarted = false
+    let stableWaitSettled = false
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    const secondGate = new Promise<void>((resolve) => {
+      releaseSecond = resolve
+    })
+    const first = navigation.enqueueDisplay(async () => {
+      firstStarted = true
+      await firstGate
+    })
+    const second = navigation.enqueueDisplay(async () => {
+      secondStarted = true
+      await secondGate
+    })
+
+    while (!firstStarted) await Promise.resolve()
+    const stableWait = host.waitForNavigation().then(() => {
+      stableWaitSettled = true
+    })
+    releaseFirst()
+    await first
+    while (!secondStarted) await Promise.resolve()
+    const settledBeforeLastDisplay = stableWaitSettled
+    releaseSecond()
+    await Promise.all([second, stableWait])
+
+    return { settledBeforeLastDisplay, stableWaitSettled }
+  })
+
+  expect(result).toEqual({ settledBeforeLastDisplay: false, stableWaitSettled: true })
 })
 
 test('updates the rendered iframe after a mocked book text replacement', async ({ page }) => {
@@ -2408,13 +2564,25 @@ async function readActivePageFrameMetrics(page: Page) {
     const frameRect = frame?.getBoundingClientRect()
     const bodyRect = body?.getBoundingClientRect()
     const vertical = bodyStyle?.writingMode === 'vertical-rl'
+    const frameCss = frame?.contentWindow as (Window & { CSS: typeof CSS }) | null | undefined
+    const supportsBlockDirectionColumns =
+      frameCss?.CSS.supports('column-height', '1px') === true && frameCss.CSS.supports('column-wrap', 'wrap')
     const physicalPageWidth = bodyStyle
-      ? Number.parseFloat(vertical ? bodyStyle.getPropertyValue('column-height') : bodyStyle.columnWidth)
+      ? Number.parseFloat(
+          vertical && supportsBlockDirectionColumns
+            ? bodyStyle.getPropertyValue('column-height')
+            : bodyStyle.columnWidth,
+        )
       : undefined
-    const physicalGap = bodyStyle ? Number.parseFloat(vertical ? bodyStyle.rowGap : bodyStyle.columnGap) : undefined
+    const physicalGap = bodyStyle
+      ? Number.parseFloat(vertical && supportsBlockDirectionColumns ? bodyStyle.rowGap : bodyStyle.columnGap)
+      : undefined
     let middleGapTextRectCount: number | undefined
     if (body && bodyStyle && bodyRect && Number.isFinite(physicalPageWidth) && Number.isFinite(physicalGap)) {
-      const gapStart = bodyRect.left + Number.parseFloat(bodyStyle.paddingLeft) + (physicalPageWidth ?? 0)
+      const gapStart =
+        vertical && !supportsBlockDirectionColumns
+          ? bodyRect.left - Number.parseFloat(bodyStyle.paddingRight)
+          : bodyRect.left + Number.parseFloat(bodyStyle.paddingLeft) + (physicalPageWidth ?? 0)
       const gapEnd = gapStart + (physicalGap ?? 0)
       const walker = body.ownerDocument.createTreeWalker(body, NodeFilter.SHOW_TEXT)
       let textNode = walker.nextNode()
@@ -2558,7 +2726,6 @@ test('[vertical-rl] keeps the horizontal physical page frame', async ({ page }) 
   expect(vertical.body?.direction).toBe('ltr')
   expect(vertical.body?.physicalPageWidth).toBe(horizontal.body?.physicalPageWidth)
   expect(vertical.body?.physicalGap).toBe(horizontal.body?.physicalGap)
-  expect(vertical.body?.rowGap).toBe(horizontal.body?.columnGap)
   expect(vertical.body?.middleGapTextRectCount).toBe(0)
 })
 
@@ -3075,6 +3242,9 @@ test('[vertical-rl] keeps one physical page frame in single-page and zoomed layo
       const style = body && getComputedStyle(body)
       const bodyRect = body?.getBoundingClientRect()
       const frameWidth = view?.iframe?.contentWindow?.innerWidth
+      const frameCss = body?.ownerDocument.defaultView as (Window & { CSS: typeof CSS }) | null | undefined
+      const supportsBlockDirectionColumns =
+        frameCss?.CSS.supports('column-height', '1px') === true && frameCss.CSS.supports('column-wrap', 'wrap')
       let textCrossesBodyLeft = 0
       if (body && bodyRect) {
         const walker = body.ownerDocument.createTreeWalker(body, NodeFilter.SHOW_TEXT)
@@ -3091,6 +3261,12 @@ test('[vertical-rl] keeps one physical page frame in single-page and zoomed layo
         }
       }
 
+      const columnHeight = style ? parseFloat(style.columnHeight) : Number.NaN
+      const rowGap = style ? parseFloat(style.rowGap) : Number.NaN
+      const bodyWidth = style ? parseFloat(style.width) : Number.NaN
+      const paddingLeft = style ? parseFloat(style.paddingLeft) : Number.NaN
+      const paddingRight = style ? parseFloat(style.paddingRight) : Number.NaN
+
       return {
         divisor: manager?.layout?.divisor,
         pageWidth: manager?.layout?.pageWidth,
@@ -3104,9 +3280,11 @@ test('[vertical-rl] keeps one physical page frame in single-page and zoomed layo
         textCrossesBodyLeft,
         body: style && {
           columnWidth: parseFloat(style.columnWidth),
-          columnHeight: parseFloat(style.columnHeight),
+          physicalPageContentWidth: supportsBlockDirectionColumns
+            ? columnHeight
+            : bodyWidth - paddingLeft - paddingRight,
+          physicalGap: supportsBlockDirectionColumns ? rowGap : paddingLeft + paddingRight,
           columnGap: parseFloat(style.columnGap),
-          rowGap: parseFloat(style.rowGap),
           transform: style.transform,
           transformOrigin: style.transformOrigin,
         },
@@ -3153,17 +3331,31 @@ test('[vertical-rl] keeps one physical page frame in single-page and zoomed layo
       const geometry = await readGeometry()
       const body = geometry.body
       const ready =
-        Number.isFinite(body?.columnWidth) && Number.isFinite(body?.columnHeight) && body?.transform !== 'none'
+        Number.isFinite(body?.columnWidth) &&
+        Number.isFinite(body?.physicalPageContentWidth) &&
+        Number.isFinite(body?.physicalGap) &&
+        body?.transform !== 'none'
       if (ready) zoomed = geometry
       return ready
     })
     .toBe(true)
   if (!zoomed) throw new Error('Missing stable zoomed geometry')
   expect(zoomed.body?.columnWidth).toBeCloseTo(((zoomed.pageHeight ?? 0) - 20) / 1.5, 1)
-  expect(zoomed.body?.columnHeight).toBeCloseTo(((zoomed.pageWidth ?? 0) - 48) / 1.5, 1)
-  expect(zoomed.body?.columnGap).toBe(0)
-  expect(zoomed.body?.rowGap).toBeCloseTo(48 / 1.5, 1)
+  expect(zoomed.body?.physicalPageContentWidth).toBeCloseTo(((zoomed.pageWidth ?? 0) - 48) / 1.5, 1)
+  expect(zoomed.body?.physicalGap).toBeCloseTo(48 / 1.5, 1)
   expect(zoomed.body?.transform).not.toBe('none')
+
+  await setTypography('auto', 1.5)
+  await expect.poll(readGeometry).toMatchObject({
+    divisor: 2,
+    bodyInsideFrame: true,
+    textCrossesBodyLeft: 0,
+  })
+  const zoomedSpread = await readGeometry()
+  expect(zoomedSpread.body?.columnWidth).toBeCloseTo(((zoomedSpread.pageHeight ?? 0) - 20) / 1.5, 1)
+  expect(zoomedSpread.body?.physicalPageContentWidth).toBeCloseTo(((zoomedSpread.pageWidth ?? 0) - 48) / 1.5, 1)
+  expect(zoomedSpread.body?.physicalGap).toBeCloseTo(48 / 1.5, 1)
+  expect(zoomedSpread.body?.transform).not.toBe('none')
 })
 
 test('[vertical-rl] restores the committed right-first spread across tab and sidebar changes', async ({ page }) => {
@@ -3359,9 +3551,12 @@ test('does not scroll a horizontal note for glyph overflow inside the available 
     .first()
     .evaluate((content) => {
       const style = getComputedStyle(content)
+      const range = content.ownerDocument.createRange()
+      range.selectNodeContents(content)
       return {
         clientHeight: content.clientHeight,
         clientWidth: content.clientWidth,
+        glyphBoundsHeight: range.getBoundingClientRect().height,
         overflowX: style.overflowX,
         overflowY: style.overflowY,
         scrollHeight: content.scrollHeight,
@@ -3370,7 +3565,7 @@ test('does not scroll a horizontal note for glyph overflow inside the available 
       }
     })
 
-  expect(overflow.scrollHeight).toBeGreaterThan(overflow.clientHeight + 1)
+  expect(overflow.glyphBoundsHeight).toBeGreaterThan(overflow.clientHeight + 1)
   expect(overflow.scrollHeight).toBeLessThan(overflow.maxHeight)
   expect(overflow.overflowX).toBe('clip')
   expect(overflow.overflowY).toBe('visible')
@@ -3455,6 +3650,82 @@ test('[vertical-rl] keeps the selection menu beside the selection', async ({ pag
   expect(result.inside).toBe(true)
   expect(result.overlaps).toBe(false)
   expect(result.beside).toBe(true)
+})
+
+test('[scrolled-doc] automatically opens the selection menu after pointer-selecting reader text', async ({ page }) => {
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+
+  const activeFrame = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .filter({ visible: true })
+    .first()
+  const frameBox = await activeFrame.boundingBox()
+  const selectionPoint = await activeFrame
+    .contentFrame()
+    .locator('body')
+    .evaluate((body) => {
+      const phrase = 'SCROLLED-CHAPTER-01'
+      const walker = body.ownerDocument.createTreeWalker(body, NodeFilter.SHOW_TEXT)
+      let text = walker.nextNode() as Text | null
+      while (text && !text.textContent?.includes(phrase)) {
+        text = walker.nextNode() as Text | null
+      }
+      if (!text?.textContent) throw new Error('Missing reader pointer selection target')
+
+      const phraseOffset = text.textContent.indexOf(phrase)
+      const pointAt = (offset: number) => {
+        const range = body.ownerDocument.createRange()
+        range.setStart(text, phraseOffset + offset)
+        range.setEnd(text, phraseOffset + offset + 1)
+        const rect = range.getBoundingClientRect()
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+      }
+
+      return pointAt(3)
+    })
+  if (!frameBox) throw new Error('Missing active reader frame bounds')
+
+  await page.mouse.dblclick(frameBox.x + selectionPoint.x, frameBox.y + selectionPoint.y)
+
+  await expect(page.getByRole('button', { name: msg('menu.copy') })).toBeVisible()
+})
+
+test('keeps Escape owned by settings above the reader selection menu', async ({ page }) => {
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+  await selectReaderTextAndOpenMenu(page, {
+    endOffset: 7,
+    startOffset: 1,
+    targetSelector: 'p',
+  })
+
+  const copy = page.getByRole('button', { name: msg('menu.copy') })
+  await expect(copy).toBeVisible()
+  await page.getByRole('button', { name: msg('settings.title') }).dispatchEvent('click')
+  const settings = page.getByRole('dialog', { name: msg('settings.title') })
+  await expect(settings).toBeVisible()
+
+  await page.keyboard.press('Escape')
+
+  await expect(settings).toBeHidden()
+  await expect(copy).toBeVisible()
+})
+
+test('exits zen mode when Escape is pressed from the focused reader frame', async ({ page }) => {
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+
+  await page.getByRole('button', { name: msg('zen.enter') }).click()
+  await expect(page.locator('.ActivityBar')).toBeHidden()
+
+  const activeFrame = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .filter({ visible: true })
+    .first()
+  await activeFrame.contentFrame().locator('body').press('Escape')
+
+  await expect(page.locator('.ActivityBar')).toBeVisible()
 })
 
 test('[vertical-rl] keeps the dictionary popup inside the reader without repagination', async ({ page }) => {

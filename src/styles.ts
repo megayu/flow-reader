@@ -451,6 +451,20 @@ export function updateCustomStyle(
   if (zoom) {
     const body = contents.content as HTMLBodyElement
     const layoutStyles = createZoomLayoutBodyStyleSource(layoutView?.layout, layoutView?.axis, writingMode)
+    const frameCss = (contents.window as Window & { CSS: typeof CSS }).CSS
+    const supportsBlockDirectionColumns =
+      writingMode !== 'vertical-rl' ||
+      (frameCss.supports('column-height', '1px') && frameCss.supports('column-wrap', 'wrap'))
+    const zoomBodyStyles = createZoomBodyStyles(createZoomBodyStyleSource(body.style, layoutStyles), zoom, writingMode)
+    const legacyWebKitColumnStyles: CSSProperties & { WebkitColumnGap?: string } = {}
+    if (!supportsBlockDirectionColumns) {
+      const physicalPageContentWidth = readCssPixelValue(layoutStyles.columnHeight)
+      const physicalColumnGap = readCssPixelValue(layoutStyles.rowGap)
+      if (physicalPageContentWidth !== undefined && physicalColumnGap !== undefined) {
+        legacyWebKitColumnStyles.width = `${(physicalPageContentWidth + physicalColumnGap) / zoom}px`
+      }
+      if (physicalColumnGap !== undefined) legacyWebKitColumnStyles.WebkitColumnGap = `${physicalColumnGap / zoom}px`
+    }
     css += createZoomMediaCss(layoutStyles, zoom, writingMode)
     const computedBodyStyle = contents.window.getComputedStyle(body)
     const backgroundStyleSource: ZoomDecorativeBackgroundStyleSource = {
@@ -463,7 +477,8 @@ export function updateCustomStyle(
     }
     css += `body {
       ${mapToCss({
-        ...createZoomBodyStyles(createZoomBodyStyleSource(body.style, layoutStyles), zoom, writingMode),
+        ...zoomBodyStyles,
+        ...legacyWebKitColumnStyles,
         ...createZoomDecorativeBackgroundStyles(backgroundStyleSource, zoom),
       })}
     }`

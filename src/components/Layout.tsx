@@ -107,7 +107,6 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
   const actionBeforeZen = useRef<ReaderPanelAction | undefined>(undefined)
   const zenModeRef = useRef(false)
   const zenMode = useZenModeValue()
-  const { focusedBookTab } = useReaderSnapshot()
   const setZenTypographyOverrides = useSetZenTypographyOverrides()
 
   useEffect(() => {
@@ -125,24 +124,6 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
 
     zenModeRef.current = zenMode
   }, [action, setAction, setSettingsOpen, setZenTypographyOverrides, zenMode])
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!isSettingsShortcut(e)) return
-      if (isGlobalKeyboardShortcutBlocked(e)) return
-
-      e.preventDefault()
-      e.stopPropagation()
-      e.stopImmediatePropagation?.()
-      setSettingsOpen(true)
-    }
-
-    const targets = [window, ...getIframeWindows()]
-    targets.forEach((target) => target.addEventListener('keydown', onKeyDown))
-    return () => {
-      targets.forEach((target) => target.removeEventListener('keydown', onKeyDown))
-    }
-  }, [focusedBookTab?.id, setSettingsOpen])
 
   useEffect(() => {
     const preventNativeContextMenu = (e: MouseEvent) => {
@@ -166,20 +147,6 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
       {!zenMode && <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
     </div>
   )
-}
-
-function isSettingsShortcut(e: KeyboardEvent) {
-  return (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === ',' || e.code === 'Comma')
-}
-
-function getIframeWindows() {
-  return Array.from(document.querySelectorAll('iframe')).flatMap((frame) => {
-    try {
-      return frame.contentWindow ? [frame.contentWindow] : []
-    } catch {
-      return []
-    }
-  })
 }
 
 function isFullscreenShortcut(e: KeyboardEvent) {
@@ -1249,7 +1216,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
       className={clsx(
         libraryFilterPanelClassName,
         'flex min-h-0 flex-col overflow-hidden',
-        lockedHeight === undefined ? 'flex-1 basis-0' : 'shrink',
+        lockedHeight === undefined ? 'flex-1 basis-auto' : 'shrink',
       )}
       data-testid={testId}
       style={{ height: lockedHeight, maxHeight: lockedHeight ?? 'max-content' }}

@@ -1,3 +1,5 @@
+/// <reference types="node" />
+
 import { createServer } from 'node:net'
 
 import { defineConfig, devices } from '@playwright/test'
@@ -31,7 +33,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65_535) {
 }
 process.env.PLAYWRIGHT_HOST = host
 process.env.PLAYWRIGHT_PORT = String(port)
-const browserChannel = process.env.PLAYWRIGHT_BROWSER_CHANNEL ?? (process.platform === 'win32' ? 'msedge' : 'chrome')
+const browserChannel = process.env.PLAYWRIGHT_BROWSER_CHANNEL ?? (process.platform === 'win32' ? 'msedge' : 'chromium')
 
 export default defineConfig({
   testDir: './tests/integration',
@@ -56,10 +58,17 @@ export default defineConfig({
   },
   projects: [
     {
-      name: 'desktop',
+      name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
         channel: browserChannel,
+      },
+    },
+    {
+      name: 'webkit',
+      use: {
+        ...devices['Desktop Safari'],
+        browserName: 'webkit',
       },
     },
   ],

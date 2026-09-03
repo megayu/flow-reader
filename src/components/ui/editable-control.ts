@@ -143,7 +143,7 @@ function useEditableControl<T extends EditableControlElement>({
         event.relatedTarget instanceof HTMLElement && event.relatedTarget !== document.body ? event.relatedTarget : null
       if (!pointerDownRef.current && focusBehavior !== 'native') {
         const element = event.currentTarget
-        queueMicrotask(() => {
+        setTimeout(() => {
           if (document.activeElement === element) placeSelection(element, focusBehavior)
         })
       }

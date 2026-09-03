@@ -60,3 +60,25 @@ export function installProductionReloadShortcutGuard(target: Document) {
   target.addEventListener('keydown', preventReload, true)
   return () => target.removeEventListener('keydown', preventReload, true)
 }
+
+export function installSettingsShortcut(target: Document, openSettings: () => void) {
+  const handleShortcut = (event: KeyboardEvent) => {
+    if (
+      !(event.ctrlKey || event.metaKey) ||
+      event.altKey ||
+      event.shiftKey ||
+      (event.key !== ',' && event.code !== 'Comma') ||
+      isGlobalKeyboardShortcutBlocked(event)
+    ) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    event.stopImmediatePropagation()
+    openSettings()
+  }
+
+  target.addEventListener('keydown', handleShortcut, true)
+  return () => target.removeEventListener('keydown', handleShortcut, true)
+}

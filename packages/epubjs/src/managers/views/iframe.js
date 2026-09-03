@@ -414,11 +414,10 @@ class IframeView extends EventEmitter {
     // Back up if seamless isn't supported
     this.iframe.style.border = 'none'
 
-    // sandbox
-    this.iframe.sandbox = 'allow-same-origin'
-    if (this.settings.allowScriptedContent) {
-      this.iframe.sandbox += ' allow-scripts'
-    }
+    // WebKit blocks parent-installed event listeners in a same-origin sandbox
+    // without allow-scripts (WebKit 218086). CSP still blocks book scripts by
+    // default; allowScriptedContent explicitly opts out in load().
+    this.iframe.sandbox = 'allow-same-origin allow-scripts'
     if (this.settings.allowPopups) {
       this.iframe.sandbox += ' allow-popups'
     }
@@ -471,7 +470,9 @@ class IframeView extends EventEmitter {
     this.size()
 
     if (!this.sectionRender) {
-      this.sectionRender = this.section.render(request)
+      this.sectionRender = this.section.render(request, {
+        blockScripts: !this.settings.allowScriptedContent,
+      })
     }
 
     // Render Chain

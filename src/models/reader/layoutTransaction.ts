@@ -4,6 +4,7 @@ import { hydrateReflowableSpread } from './pagination'
 export class BookLayoutTransactionController {
   private operationId = 0
   private operationPromise = Promise.resolve()
+  private operationPending = false
 
   isCurrent(operationId: number) {
     return operationId === this.operationId
@@ -13,7 +14,12 @@ export class BookLayoutTransactionController {
     this.operationId++
   }
 
-  async waitForPending() {
+  waitForPending() {
+    if (!this.operationPending) return
+    return this.waitForPendingOperations()
+  }
+
+  private async waitForPendingOperations() {
     while (true) {
       const operation = this.operationPromise
       try {
@@ -27,19 +33,28 @@ export class BookLayoutTransactionController {
 
   enqueueResize(run: (operationId: number) => Promise<void>) {
     const operationId = ++this.operationId
-
-    this.operationPromise = this.operationPromise.catch(() => undefined).then(() => run(operationId))
+    const operation = this.operationPromise.catch(() => undefined).then(() => run(operationId))
+    this.trackOperation(operation)
   }
 
   enqueueRelayout(run: (operationId: number) => Promise<void>) {
     const operationId = ++this.operationId
     const operation = this.operationPromise.catch(() => undefined).then(() => run(operationId))
 
-    this.operationPromise = operation.then(
+    this.trackOperation(operation)
+    return operation
+  }
+
+  private trackOperation(operation: Promise<void>) {
+    this.operationPending = true
+    const settled = operation.then(
       () => undefined,
       () => undefined,
     )
-    return operation
+    this.operationPromise = settled
+    void settled.then(() => {
+      if (this.operationPromise === settled) this.operationPending = false
+    })
   }
 
   resize(tab: BookTab, width: number, height: number) {

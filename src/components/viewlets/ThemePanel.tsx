@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { type ComponentProps, useEffect, useEffectEvent, useRef, useState } from 'react'
+import { type ComponentProps, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
 import { useAccentColor } from '@/hooks/theme/useSourceColor'
 import { useTranslation } from '@/hooks/useTranslation'
@@ -16,6 +16,7 @@ import {
 
 import { ColorPickerPopover } from '../ColorPickerPopover'
 import { ColorValueButton } from '../ColorValueButton'
+import { CAPTURE_EVENT_OPTIONS, useFrameEvent } from '../reader/useFrameEvent'
 import { OverlayLayer } from '../ui/overlay-hierarchy'
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '../ui/popover'
 
@@ -33,6 +34,7 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
   const previousThemeRef = useRef<Settings['theme'] | undefined>(undefined)
   const customSessionActiveRef = useRef(false)
   const customSessionAppliedRef = useRef(false)
+  const keyboardWindows = useMemo(() => [window, ...getIframeWindows()], [])
   const selectedBackground = normalizedTheme.backgroundPreset
   const customBackground = normalizePaletteColor(normalizedTheme.customBackground) ?? defaultCustomBackgroundColor
 
@@ -96,10 +98,11 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
     }
   })
 
-  const handleIframeEscape = useEffectEvent((e: KeyboardEvent) => {
+  const handleEscape = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return
     e.preventDefault()
     e.stopPropagation()
+    e.stopImmediatePropagation()
 
     if (customPickerOpen) {
       restorePreviousTheme()
@@ -112,11 +115,9 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
     }
 
     onClose?.()
-  })
+  }
 
-  useEffect(() => {
-    return listenForIframeEscape(handleIframeEscape)
-  }, [])
+  useFrameEvent(keyboardWindows, 'keydown', handleEscape, CAPTURE_EVENT_OPTIONS)
 
   useEffect(() => {
     return () => {
@@ -140,24 +141,6 @@ export const ThemePanel: React.FC<ThemePanelProps> = ({ onClose }) => {
           ref={panelRef}
           data-flow-theme-panel
           className="text-muted-foreground ring-border relative z-100 w-80 rounded-xl bg-(--flow-bg-panel) p-3 text-base shadow-xl ring-1 ring-inset"
-          onKeyDown={(event) => {
-            if (event.key !== 'Escape') return
-
-            event.preventDefault()
-            event.stopPropagation()
-
-            if (customPickerOpen) {
-              restorePreviousTheme()
-              return
-            }
-
-            if (accentPickerOpen) {
-              setAccentPickerOpen(false)
-              return
-            }
-
-            onClose?.()
-          }}
         >
           <div className="grid grid-cols-3 gap-2">
             {backgroundPresets.map((preset) => (
@@ -268,15 +251,6 @@ function getIframeWindows() {
       return []
     }
   })
-}
-
-function listenForIframeEscape(listener: (event: KeyboardEvent) => void) {
-  const targets = getIframeWindows()
-  targets.forEach((target) => target.addEventListener('keydown', listener, true))
-
-  return () => {
-    targets.forEach((target) => target.removeEventListener('keydown', listener, true))
-  }
 }
 
 interface BackgroundSwatchProps extends ComponentProps<'button'> {

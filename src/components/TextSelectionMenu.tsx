@@ -31,6 +31,7 @@ import { copy, keys, last } from '../utils'
 import { Overlay } from './base/Overlay'
 import { DictionaryPopup } from './DictionaryPopup'
 import { IconButton } from './IconButton'
+import { CAPTURE_EVENT_OPTIONS, useFrameEvent } from './reader/useFrameEvent'
 import { TranslationPopup } from './TranslationPopup'
 import { Button } from './ui/button'
 import { Textarea } from './ui/textarea'
@@ -285,6 +286,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ tab, onCha
     // to reset inner state
     <TextSelectionMenuRenderer
       tab={tab}
+      windows={windows}
       range={range as Range}
       anchorRect={anchorRect}
       rangeRects={rects}
@@ -322,6 +324,7 @@ const actionIconClassName = 'flex! items-center justify-center p-0! [&_svg]:size
 
 interface TextSelectionMenuRendererProps {
   tab: BookTab
+  windows: readonly Window[]
   range: Range
   anchorRect: DOMRect
   rangeRects: readonly DOMRect[]
@@ -337,6 +340,7 @@ interface TextSelectionMenuRendererProps {
 }
 const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   tab,
+  windows,
   range,
   anchorRect,
   rangeRects,
@@ -355,6 +359,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const [width, setWidth] = useState(0)
   const [height, setHeight] = useState(0)
   const popupElementRef = useRef<HTMLDivElement>(null)
+  const keyboardWindows = useMemo(() => [window, ...windows], [windows])
   const t = useTranslation()
   const [settings] = useSettings()
   const [view, setView] = useState<'actions' | 'dictionary' | 'translation'>('actions')
@@ -509,6 +514,33 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     }
     closeMenu()
   }
+  const handleEscape = () => {
+    if (editing) {
+      cancelEditing()
+      return
+    }
+    if (annotate) {
+      cancelAnnotation()
+      return
+    }
+    dismissOverlay()
+  }
+  useFrameEvent(
+    keyboardWindows,
+    'keydown',
+    (event) => {
+      if (event.key !== 'Escape') return
+
+      const keyboardCapture = (event.target as Element | null)?.closest?.('[data-flow-keyboard-capture="true"]')
+      if (keyboardCapture && keyboardCapture !== popupElementRef.current) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation()
+      handleEscape()
+    },
+    CAPTURE_EVENT_OPTIONS,
+  )
   const dictionaryMetadataLanguage = selectionLanguage(range, tab.book.metadata.language)
   const translationSettings = settings.translation ?? {
     mainLanguage: 'zh-Hans' as TranslationLanguage,
@@ -690,19 +722,6 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         onKeyDown={(e) => {
           if (handleActionShortcut(e)) return
           e.stopPropagation()
-          if (e.key === 'Escape') {
-            e.preventDefault()
-            if (editing) {
-              cancelEditing()
-              return
-            }
-            if (annotate) {
-              cancelAnnotation()
-              return
-            }
-            dismissOverlay()
-            return
-          }
           if (e.key.toLowerCase() === 'c' && (e.ctrlKey || e.metaKey) && !window.getSelection()?.toString()) {
             copy(text)
           }

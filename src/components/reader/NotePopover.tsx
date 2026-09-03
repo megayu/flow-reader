@@ -37,7 +37,7 @@ export const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) =>
       })
       setScrollable(
         popover.writingMode === 'vertical-rl'
-          ? content.scrollWidth > content.clientWidth + 1
+          ? content.clientWidth > 0 && content.scrollWidth > content.clientWidth + 1
           : content.scrollHeight > popover.pageRect.height - NOTE_POPOVER_MARGIN * 2 + 1,
       )
     }
@@ -103,8 +103,9 @@ export const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) =>
       <div
         ref={contentRef}
         style={{
+          display: vertical ? 'inline-block' : undefined,
           margin: 0,
-          maxWidth: '100%',
+          maxWidth: vertical ? maxWidth - NOTE_POPOVER_PADDING * 2 - 2 : '100%',
           maxHeight: popover.pageRect.height - NOTE_POPOVER_MARGIN * 2,
           overflowX: popover.writingMode === 'vertical-rl' ? (scrollable ? 'auto' : 'visible') : 'clip',
           overflowY: popover.writingMode === 'vertical-rl' ? 'clip' : scrollable ? 'auto' : 'visible',
