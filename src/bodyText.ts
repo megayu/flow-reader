@@ -14,6 +14,7 @@ export const bodyTextInlineFollowWeightAttribute = 'data-flow-body-text-inline-f
 export const bodyTextFontSelector = `${bodyTextSelector}:not([${bodyTextPreserveFontAttribute}="true"])`
 export const bodyTextCandidateSelector = 'p, blockquote > p, div'
 const bodyTextStructuralDescendantSelector = 'p, div, blockquote, table, figure, img, h1, h2, h3, h4, h5, h6, ol, ul'
+const bodyTextInlineWrapperTags = new Set(['span', 'b', 'strong', 'em', 'i'])
 const bodyTextDetectedAttribute = 'data-flow-body-text-detected'
 export const noteTextAttribute = 'data-flow-note-text'
 export const noteTextSelector = `[${noteTextAttribute}="true"]`
@@ -206,6 +207,7 @@ function applyBodyTextInlineTypographyMarkers(contents: Contents, candidate: HTM
   const parentFontSize = parseCssPixel(parentStyle.fontSize)
   const parentFontFamily = normalizeFontFamily(parentStyle.fontFamily)
   const parentFontWeight = parseCssFontWeight(parentStyle.fontWeight)
+  const inlineWrapperChildren = getBodyTextInlineWrapperChildren(candidate)
 
   walkBodyTextInlineElements(candidate, (inline) => {
     const style = contents.window.getComputedStyle(inline)
@@ -215,13 +217,35 @@ function applyBodyTextInlineTypographyMarkers(contents: Contents, candidate: HTM
     if (parentFontSize && fontSize) {
       inline.setAttribute(bodyTextInlineFontSizeRatioAttribute, formatTypographyRatio(fontSize / parentFontSize))
     }
-    if (normalizeFontFamily(style.fontFamily) === parentFontFamily) {
+    if (inlineWrapperChildren?.has(inline) || normalizeFontFamily(style.fontFamily) === parentFontFamily) {
       inline.setAttribute(bodyTextInlineFollowFontAttribute, 'true')
     }
     if (fontWeight !== undefined && fontWeight === parentFontWeight) {
       inline.setAttribute(bodyTextInlineFollowWeightAttribute, 'true')
     }
   })
+}
+
+function getBodyTextInlineWrapperChildren(root: HTMLElement) {
+  if (!isElementWithTag(root, 'p')) return
+
+  // Direct wrappers that carry the whole paragraph are body containers, while
+  // nested or mixed-content inline elements can still represent authored emphasis.
+  let wrappers: Set<HTMLElement> | undefined
+
+  for (const node of root.childNodes) {
+    if (node.nodeType === 3) {
+      if (normalizeText(node.textContent)) return
+      continue
+    }
+    if (!isHTMLElement(node)) continue
+    if (isElementWithTag(node, 'br')) continue
+    if (!bodyTextInlineWrapperTags.has(node.tagName.toLowerCase()) || !normalizeText(node.textContent)) return
+    if (!wrappers) wrappers = new Set()
+    wrappers.add(node)
+  }
+
+  return wrappers
 }
 
 function walkBodyTextInlineElements(root: HTMLElement, visit: (el: HTMLElement) => void) {

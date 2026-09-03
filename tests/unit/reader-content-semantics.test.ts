@@ -328,6 +328,51 @@ function testBodyParagraphOwnsReadableInlineTypography() {
   assert.match(css, /data-flow-body-text-inline-follow-weight="true"/)
 }
 
+function testInlineWrappedParagraphsFollowReaderFont() {
+  const body = new FakeElement('body')
+  const wrappers = [
+    new FakeElement('span', {
+      style: {
+        fontFamily: 'PingFang SC',
+      },
+    }).append(
+      '这是由统一行内包装层承载的正文，阅读器字体应当覆盖包装层。',
+      new FakeElement('em', {
+        style: {
+          fontFamily: 'cursive',
+        },
+      }).append('局部异体字仍应保留。'),
+    ),
+    new FakeElement('span', {
+      style: {
+        fontFamily: 'PingFang SC',
+      },
+    }).append('这是第二段由统一行内包装层承载的正文。'),
+    new FakeElement('span', {
+      style: {
+        fontFamily: 'PingFang SC',
+      },
+    }).append('这是第三段由统一行内包装层承载的正文。'),
+  ]
+  const paragraphs = wrappers.map((wrapper) =>
+    new FakeElement('p', {
+      className: 'main',
+      style: {
+        fontFamily: 'serif',
+      },
+    }).append(wrapper),
+  )
+  body.append(...paragraphs)
+
+  const contents = createContents(body)
+  ensureBodyTextMarkers(contents)
+
+  wrappers.forEach((wrapper) => {
+    assert.strictEqual(wrapper.getAttribute(bodyTextInlineFollowFontAttribute), 'true')
+  })
+  assert.strictEqual((wrappers[0]!.childNodes[1] as FakeElement).getAttribute(bodyTextInlineFollowFontAttribute), null)
+}
+
 function testSameBaseStyleParagraphsAreCountedAsBodyText() {
   const body = new FakeElement('body')
   const firstParagraph = styledParagraph('first', '这是第一段正文内容。', { textIndent: '0px' }, span('first', '一'))
@@ -776,6 +821,7 @@ function testReciprocalLinkContentMayLiveInsideBacklinkAnchor() {
 
 for (const run of [
   testBodyParagraphOwnsReadableInlineTypography,
+  testInlineWrappedParagraphsFollowReaderFont,
   testSameBaseStyleParagraphsAreCountedAsBodyText,
   testBodyTextIgnoresClassNameWhenComputedStyleMatches,
   testBodyTextIgnoresBlockMarginsWhenComputedStyleMatches,
