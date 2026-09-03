@@ -312,7 +312,13 @@ jobs:
         if: matrix.kind == 'node' && matrix.integration
         env:
           PLAYWRIGHT_BROWSER_CHANNEL: chromium
-        run: pnpm test:integration:ci --project=${{ matrix.playwright_project }}
+        shell: bash
+        run: |
+          if [[ "${{ matrix.playwright_project }}" == "webkit" ]]; then
+            xvfb-run --auto-servernum pnpm test:integration:ci --project=webkit --headed
+          else
+            pnpm test:integration:ci --project=${{ matrix.playwright_project }}
+          fi
       - name: Check repository scripts
         if: matrix.kind == 'node' && matrix.scripts
         run: pnpm check:scripts
