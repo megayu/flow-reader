@@ -49,22 +49,31 @@ assertions, read only the matching section of
 1. Prefer an existing focused integration scenario unchanged. If none covers the
    risk, follow the repository testing policy before adding one. Run the same
    scenario in the configured Chromium and Playwright WebKit projects.
-2. Treat Chromium-green/WebKit-red as compatibility evidence until a small
+2. Trace the changed mechanism to its direct consumers and choose the smallest
+   relevant scenario set that exercises the corrected state and those consumers.
+   Run that same set in both engines. Do not include unrelated specs merely
+   because they share the integration suite.
+3. Treat Chromium-green/WebKit-red as compatibility evidence until a small
    standalone reproduction or confirmed upstream issue proves a driver or
    browser limitation. Trace the first divergent production state.
-3. Make one small production-code correction. Do not weaken assertions or create
+4. Make one small production-code correction. Do not weaken assertions or create
    an engine-specific test path to obtain a pass.
-4. Re-run the focused scenario, then the complete integration suite, in both
-   projects. Compare exact test identities as well as totals. Record which prior
-   failures recovered and explain their shared production path before grouping
-   them under one cause.
-5. Use a real Tauri client for final claims about WKWebView, WebView2,
+5. Re-run the focused scenario and the affected scenario set in both projects.
+   Run the complete integration suite only when the change affects shared
+   cross-cutting infrastructure used broadly by the suite, the impact boundary
+   cannot be established from code and focused evidence, focused failures reveal
+   a wider blast radius, or the user explicitly requests it. Isolated annotation
+   geometry, one overlay, or one selection action does not justify unrelated
+   library, import, settings, or dictionary scenarios.
+6. Use a real Tauri client for final claims about WKWebView, WebView2,
    WebKitGTK, native menus, compositor behavior, or desktop window integration.
    Playwright WebKit is a strong development proxy for WebKit differences, not a
    substitute for the system WKWebView binary.
 
 ## Completion Report
 
-State which engines and evidence levels ran, their exact pass/fail totals, any
-test-identity changes, and the remaining real-client gap. Do not describe a
-Playwright WebKit pass as proof that macOS WKWebView was exercised.
+State why the selected scenarios match the changed mechanism, which engines and
+evidence levels ran, their exact pass/fail totals, any test-identity changes,
+which broader suites were intentionally omitted, and the remaining real-client
+gap. Do not describe a Playwright WebKit pass as proof that macOS WKWebView was
+exercised.

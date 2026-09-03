@@ -21,6 +21,96 @@ function plainRect(rect) {
   }
 }
 
+function nextSibling(node, root, forward) {
+  while (node !== root) {
+    let sibling = forward ? node.nextSibling : node.previousSibling
+    if (sibling) return sibling
+    node = node.parentNode
+  }
+}
+
+function textNodeAtBoundary(container, offset, root, forward) {
+  if (container.nodeType === 3) return container
+
+  let node =
+    container.childNodes[offset - (forward ? 0 : 1)] ||
+    nextSibling(container, root, forward)
+  while (node && node.nodeType !== 3) {
+    node =
+      (forward ? node.firstChild : node.lastChild) ||
+      nextSibling(node, root, forward)
+  }
+  return node
+}
+
+function textFragments(range) {
+  let root = range.commonAncestorContainer
+  let document = root.nodeType === 9 ? root : root.ownerDocument
+  if (!document) return []
+
+  let first = textNodeAtBoundary(
+    range.startContainer,
+    range.startOffset,
+    root,
+    true,
+  )
+  let last = textNodeAtBoundary(
+    range.endContainer,
+    range.endOffset,
+    root,
+    false,
+  )
+  if (!first || !last) return []
+
+  let fragments = []
+  let walker = document.createTreeWalker(root, 4)
+  walker.currentNode = first
+  let node = first
+  while (node) {
+    let start = node === range.startContainer ? range.startOffset : 0
+    let end = node === range.endContainer ? range.endOffset : node.length
+    if (end > start) fragments.push({ node, start, end })
+    if (node === last) break
+    node = walker.nextNode()
+  }
+  if (node !== last) return []
+
+  let firstIndex = 0
+  while (firstIndex < fragments.length) {
+    let fragment = fragments[firstIndex]
+    let leading = fragment.node.data.slice(fragment.start, fragment.end).search(/\S/)
+    if (leading >= 0) {
+      fragment.start += leading
+      break
+    }
+    firstIndex += 1
+  }
+  fragments = fragments.slice(firstIndex)
+
+  while (fragments.length) {
+    let fragment = fragments[fragments.length - 1]
+    let text = fragment.node.data.slice(fragment.start, fragment.end)
+    let trailing = text.search(/\s*$/)
+    if (trailing > 0) {
+      fragment.end = fragment.start + trailing
+      break
+    }
+    fragments.pop()
+  }
+
+  return fragments
+}
+
+function textClientRects(fragments, range) {
+  let rects = []
+  for (let { node, start, end } of fragments) {
+    range.setStart(node, start)
+    range.setEnd(node, end)
+    for (let rect of range.getClientRects()) rects.push(plainRect(rect))
+  }
+  return rects
+}
+
 function blockGeometry(rect, vertical) {
   let start = vertical ? rect.left : rect.top
   let end = vertical ? rect.right : rect.bottom
@@ -403,11 +493,7 @@ export class Pane {
     let container = element?.parentNode
     if (element) element.remove()
     if (container && container !== this.element && !container.childNodes.length) {
-      for (let [name, group] of this.overlapGroups) {
-        if (group !== container) continue
-        this.overlapGroups.delete(name)
-        break
-      }
+      this.overlapGroups.delete(container.getAttribute('data-overlap-group'))
       container.remove()
     }
     this.marks.splice(index, 1)
@@ -470,6 +556,7 @@ export class Mark {
     this.element = null
     this.rawRects = undefined
     this.rects = undefined
+    this.measurementRange = undefined
   }
 
   bind(element) {
@@ -483,7 +570,26 @@ export class Mark {
   }
 
   measure() {
-    this.rawRects = Array.from(this.range.getClientRects(), plainRect)
+    if (
+      this.range.startContainer === this.range.endContainer &&
+      this.range.startContainer.nodeType === 3 &&
+      this.range.endOffset > this.range.startOffset &&
+      !/\s/.test(this.range.startContainer.data[this.range.startOffset]) &&
+      !/\s/.test(this.range.startContainer.data[this.range.endOffset - 1])
+    ) {
+      this.rawRects = Array.from(this.range.getClientRects(), plainRect)
+      return
+    }
+
+    let fragments = textFragments(this.range)
+    if (!fragments.length) {
+      this.rawRects = []
+      return
+    }
+
+    let fragment = fragments[0]
+    this.measurementRange ??= fragment.node.ownerDocument.createRange()
+    this.rawRects = textClientRects(fragments, this.measurementRange)
   }
 
   containsPoint(x, y) {

@@ -405,6 +405,76 @@ async function selectFixtureText(page: Page, query: string, expectDictionary = t
   }
 }
 
+test('limits cross-paragraph highlights to rendered text', async ({ page }) => {
+  await setupDictionaryReader(page, {})
+
+  await page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    const doc = tab?.iframe?.document as Document | undefined
+    const frameWindow = doc?.defaultView
+    if (!doc?.body || !frameWindow) throw new Error('Missing active reader document')
+
+    doc.body.innerHTML =
+      '<section><p style="width: 400px">&nbsp;&nbsp;&nbsp;alpha</p><p style="width: 400px">beta</p><p style="width: 400px">gamma</p><p style="width: 400px">delta&nbsp;&nbsp;&nbsp;</p></section>'
+    const paragraphs = Array.from(doc.querySelectorAll('p'))
+    const start = paragraphs[0]?.firstChild
+    const end = paragraphs.at(-1)?.firstChild
+    if (!start?.textContent || !end?.textContent) throw new Error('Missing selection text')
+
+    const range = doc.createRange()
+    range.setStart(start, 0)
+    range.setEnd(end, end.textContent.length)
+    const selection = frameWindow.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+    const rect = range.getBoundingClientRect()
+    doc.body.dispatchEvent(
+      new frameWindow.MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.bottom,
+      }),
+    )
+  })
+
+  await page.getByRole('button', { name: 'yellow', exact: true }).click()
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const tab = (window as any).reader.focusedBookTab
+        return tab?.book?.annotations?.[0]?.text
+      }),
+    )
+    .toBe('alphabetagammadelta')
+
+  const widths = await page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    const doc = tab?.iframe?.document as Document | undefined
+    if (!doc) throw new Error('Missing active reader document')
+
+    const textWidths = Array.from(doc.querySelectorAll('p')).map((paragraph) => {
+      const node = paragraph.firstChild
+      const text = node?.textContent ?? ''
+      const start = text.search(/\S/)
+      const end = text.search(/\s*$/)
+      if (!node || start < 0 || end <= start) throw new Error('Missing paragraph text')
+
+      const range = doc.createRange()
+      range.setStart(node, start)
+      range.setEnd(node, end)
+      return range.getBoundingClientRect().width
+    })
+    const highlightWidths = Array.from(document.querySelectorAll<SVGRectElement>('g[ref="epubjs-hl"] rect')).map(
+      (rect) => rect.getBoundingClientRect().width,
+    )
+    return { highlightWidths, textWidths }
+  })
+
+  expect(widths.highlightWidths.length).toBeGreaterThan(0)
+  expect(Math.max(...widths.highlightWidths)).toBeLessThanOrEqual(Math.max(...widths.textWidths) + 1)
+})
+
 test('selection speech reads Chinese with the matching system voice and toggles stop', async ({ page }) => {
   await installSpeechSynthesisMock(page, {
     voices: [
