@@ -94,6 +94,10 @@ jobs:
 
           while IFS= read -r path; do
             case "${path}" in
+              .github/workflows/ci.yml)
+                workflow_config=true
+                require_node_suite
+                ;;
               .github/workflows/*.yml|.github/workflows/*.yaml)
                 workflow_config=true
                 ;;
