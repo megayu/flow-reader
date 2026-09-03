@@ -779,6 +779,7 @@ test('copies a dictionary body selection instead of the original book selection'
   const popup = dictionaryPopup(page)
   const definition = popup.getByText('高处的空间。', { exact: true })
   await expect(definition).toBeVisible()
+  await popup.focus()
   await definition.evaluate((element) => {
     const selection = window.getSelection()
     const range = document.createRange()
@@ -786,7 +787,6 @@ test('copies a dictionary body selection instead of the original book selection'
     selection?.removeAllRanges()
     selection?.addRange(range)
   })
-  await popup.focus()
   await page.keyboard.press('Control+c')
 
   await page.evaluate(() => {
