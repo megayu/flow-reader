@@ -366,10 +366,10 @@ const BookCardComponent: React.FC<BookCardProps> = ({
           >
             <div
               className={clsx(
-                'relative mx-auto aspect-9/12 w-full overflow-hidden rounded-md',
+                'relative mx-auto aspect-9/12 w-full overflow-hidden',
                 cover && coverFit === 'contain' && !book.generatedCover
-                  ? 'shadow-none'
-                  : 'border-border border shadow-sm',
+                  ? 'rounded-none shadow-none'
+                  : 'border-border rounded-md border shadow-sm',
               )}
               style={{ maxWidth: 'var(--library-book-card-width)' }}
               onClick={handleCoverClick}
