@@ -495,7 +495,11 @@ const BookCardComponent: React.FC<BookCardProps> = ({
                 </AppTooltip>
               )}
               {!select && progressPercent !== undefined && (
-                <BookProgress percent={progressPercent} status={book.readingStatus ?? null} />
+                <BookProgress
+                  inset={coverFit !== 'contain'}
+                  percent={progressPercent}
+                  status={book.readingStatus ?? null}
+                />
               )}
               {select && (
                 <div className="absolute right-2 bottom-2 z-20">

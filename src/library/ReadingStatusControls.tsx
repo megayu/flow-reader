@@ -34,13 +34,19 @@ const readingStatusProgressBarClassName: Record<ReadingStatus | 'unmarked', stri
 }
 
 export const BookProgress: React.FC<{
+  inset?: boolean
   percent: number
   status: ReadingStatus | null
-}> = ({ percent, status }) => {
+}> = ({ inset = true, percent, status }) => {
   const statusKey = status ?? 'unmarked'
 
   return (
-    <div className="bg-muted-foreground/20 pointer-events-none absolute right-1 bottom-0 left-1 z-10 h-0.5 overflow-hidden">
+    <div
+      className={clsx(
+        'bg-muted-foreground/20 pointer-events-none absolute bottom-0 z-10 h-0.5 overflow-hidden',
+        inset ? 'right-1 left-1' : 'inset-x-0',
+      )}
+    >
       <div className={clsx('h-full', readingStatusProgressBarClassName[statusKey])} style={{ width: `${percent}%` }} />
     </div>
   )
