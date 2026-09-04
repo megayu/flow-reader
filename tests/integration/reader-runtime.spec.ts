@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { expect, type Locator, type Page, test } from '@playwright/test'
+import { test as base, expect, type Locator, type Page } from '@playwright/test'
 
 import { createTestBook } from '../support/book-fixtures'
 import { epubFixturePackageUrl, installEpubFixtureRoutes } from '../support/epub-fixture'
@@ -14,6 +14,12 @@ const scrolledPackageUrl = '/test-assets/scrolled/OPS/package.opf'
 const verticalPackageUrl = '/test-assets/vertical/OPS/package.opf'
 const scriptlessSvgPackageUrl = '/test-assets/scriptless-svg/OPS/package.opf'
 const scriptlessXhtmlPackageUrl = '/test-assets/scriptless-xhtml/OPS/package.opf'
+const test = base.extend<{ bookPackages: string[] }>({
+  bookPackages: [[], { option: true }],
+})
+const verticalBookTest = test.extend({
+  bookPackages: [[epubFixturePackageUrl, verticalPackageUrl, verticalPackageUrl], { scope: 'test' }],
+})
 const findShortcut = process.platform === 'darwin' ? 'Meta+F' : 'Control+F'
 const dictionaryLayoutHtml = `<!doctype html><html><body>
   <section id="xxjs" data-section="词语解释">
@@ -1543,9 +1549,9 @@ async function waitForStableReaderLayout(
   return previous
 }
 
-test.beforeEach(async ({ page }, testInfo) => {
-  const packageUrl = testInfo.title.includes('[vertical-rl]')
-    ? [epubFixturePackageUrl, verticalPackageUrl, verticalPackageUrl]
+test.beforeEach(async ({ page, bookPackages }, testInfo) => {
+  const packageUrl = bookPackages.length
+    ? bookPackages
     : testInfo.title.includes('[scrolled-doc]')
       ? scrolledPackageUrl
       : testInfo.title.includes('long-book')
@@ -2494,7 +2500,7 @@ test('toggles page appearance without changing reader pagination geometry', asyn
   await expect(paneRoot).toHaveCount(0)
 })
 
-test('[vertical-rl] page appearance follows actual spread geometry', async ({ page }) => {
+verticalBookTest('[vertical-rl] page appearance follows actual spread geometry', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
   await openVerticalFixtureBook(page)
 
@@ -2704,7 +2710,7 @@ async function readActiveFooterSlots(page: Page) {
   })
 }
 
-test('[vertical-rl] keeps the horizontal physical page frame', async ({ page }) => {
+verticalBookTest('[vertical-rl] keeps the horizontal physical page frame', async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 900 })
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })
@@ -2729,7 +2735,7 @@ test('[vertical-rl] keeps the horizontal physical page frame', async ({ page }) 
   expect(vertical.body?.middleGapTextRectCount).toBe(0)
 })
 
-test('[vertical-rl] maps footer pages to physical right-first slots', async ({ page }) => {
+verticalBookTest('[vertical-rl] maps footer pages to physical right-first slots', async ({ page }) => {
   await openVerticalFixtureBook(page)
 
   await setSyntheticVerticalFooterSnapshot(
@@ -2810,28 +2816,50 @@ async function readVerticalPhysicalSectionSlots(page: Page) {
   })
 }
 
-test('[vertical-rl] keeps page shortcuts logical and returns to the same right-first spread', async ({ page }) => {
+verticalBookTest(
+  '[vertical-rl] keeps page shortcuts logical and returns to the same right-first spread',
+  async ({ page }) => {
+    await openVerticalFixtureBook(page)
+    const initial = await readVerticalReadingState(page)
+
+    await page.keyboard.press('ArrowRight')
+    await page.waitForTimeout(300)
+    const forward = await readVerticalReadingState(page)
+
+    await page.keyboard.press('ArrowLeft')
+    await page.waitForTimeout(300)
+    const returned = await readVerticalReadingState(page)
+
+    expect(initial.startPage).toBe(1)
+    expect(initial.startSlot).toBe('right')
+    expect(initial.rightPageIndex).toBe(0)
+    expect(initial.leftPageIndex).toBe(1)
+    expect(forward.startPage).toBeGreaterThan(initial.startPage ?? 0)
+    expect(forward.startSlot).toBe('right')
+    expect(returned).toEqual(initial)
+  },
+)
+
+verticalBookTest('turns pages from iframe logical arrow keys without a physical code', async ({ page }) => {
   await openVerticalFixtureBook(page)
   const initial = await readVerticalReadingState(page)
+  const body = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .filter({ visible: true })
+    .first()
+    .contentFrame()
+    .locator('body')
 
-  await page.keyboard.press('ArrowRight')
-  await page.waitForTimeout(300)
-  const forward = await readVerticalReadingState(page)
-
-  await page.keyboard.press('ArrowLeft')
-  await page.waitForTimeout(300)
-  const returned = await readVerticalReadingState(page)
-
-  expect(initial.startPage).toBe(1)
-  expect(initial.startSlot).toBe('right')
-  expect(initial.rightPageIndex).toBe(0)
-  expect(initial.leftPageIndex).toBe(1)
-  expect(forward.startPage).toBeGreaterThan(initial.startPage ?? 0)
-  expect(forward.startSlot).toBe('right')
-  expect(returned).toEqual(initial)
+  // Model key-only input separately from the native keyboard scenario above.
+  await body.dispatchEvent('keydown', { key: 'ArrowRight', code: '', bubbles: true, cancelable: true })
+  await expect
+    .poll(async () => (await readVerticalReadingState(page)).startPage)
+    .toBeGreaterThan(initial.startPage ?? 0)
+  await body.dispatchEvent('keydown', { key: 'ArrowLeft', code: '', bubbles: true, cancelable: true })
+  await expect.poll(() => readVerticalReadingState(page)).toEqual(initial)
 })
 
-test('[vertical-rl] places a TOC chapter start in the physical right slot', async ({ page }) => {
+verticalBookTest('[vertical-rl] places a TOC chapter start in the physical right slot', async ({ page }) => {
   await openVerticalFixtureBook(page)
   const target = page.getByRole('button', {
     name: 'VERTICAL-CHAPTER-02',
@@ -2852,161 +2880,165 @@ test('[vertical-rl] places a TOC chapter start in the physical right slot', asyn
   expect(state.rightPageIndex).toBe(0)
 })
 
-test('[vertical-rl] keeps one-page chapter jumps physically right and skips a next chapter already visible on the left', async ({
-  page,
-}) => {
-  await openVerticalFixtureBook(page)
-  const chapter4 = page.getByRole('button', {
-    name: 'VERTICAL-CHAPTER-04-TWO-PAGES',
-    exact: true,
-  })
-  const chapter3 = page.getByRole('button', {
-    name: 'VERTICAL-CHAPTER-03-SHORT',
-    exact: true,
-  })
-  await expect(chapter4).toBeVisible()
+verticalBookTest(
+  '[vertical-rl] keeps one-page chapter jumps physically right and skips a next chapter already visible on the left',
+  async ({ page }) => {
+    await openVerticalFixtureBook(page)
+    const chapter4 = page.getByRole('button', {
+      name: 'VERTICAL-CHAPTER-04-TWO-PAGES',
+      exact: true,
+    })
+    const chapter3 = page.getByRole('button', {
+      name: 'VERTICAL-CHAPTER-03-SHORT',
+      exact: true,
+    })
+    await expect(chapter4).toBeVisible()
 
-  await chapter4.click()
-  await expect
-    .poll(() => readVerticalReadingState(page))
-    .toMatchObject({
-      startIndex: 3,
-      startPage: 1,
-      startTotal: 2,
-      startSlot: 'right',
-      endIndex: 3,
-      endPage: 2,
-      rightIndex: 3,
-      leftIndex: 3,
-    })
+    await chapter4.click()
+    await expect
+      .poll(() => readVerticalReadingState(page))
+      .toMatchObject({
+        startIndex: 3,
+        startPage: 1,
+        startTotal: 2,
+        startSlot: 'right',
+        endIndex: 3,
+        endPage: 2,
+        rightIndex: 3,
+        leftIndex: 3,
+      })
 
-  await chapter3.click()
-  await expect
-    .poll(() => readVerticalReadingState(page))
-    .toMatchObject({
-      startIndex: 2,
-      startPage: 1,
-      startTotal: 1,
-      startSlot: 'right',
-      endIndex: 3,
-      endPage: 1,
-      endSlot: 'left',
-      rightIndex: 2,
-      leftIndex: 3,
-    })
-  await expect
-    .poll(() => readVerticalPhysicalSectionSlots(page))
-    .toMatchObject({
-      right: {
-        sectionIndex: 2,
-        marker: expect.stringContaining('VERTICAL-CHAPTER-03'),
-      },
-      left: {
-        sectionIndex: 3,
-        marker: expect.stringContaining('VERTICAL-CHAPTER-04'),
-      },
-    })
+    await chapter3.click()
+    await expect
+      .poll(() => readVerticalReadingState(page))
+      .toMatchObject({
+        startIndex: 2,
+        startPage: 1,
+        startTotal: 1,
+        startSlot: 'right',
+        endIndex: 3,
+        endPage: 1,
+        endSlot: 'left',
+        rightIndex: 2,
+        leftIndex: 3,
+      })
+    await expect
+      .poll(() => readVerticalPhysicalSectionSlots(page))
+      .toMatchObject({
+        right: {
+          sectionIndex: 2,
+          marker: expect.stringContaining('VERTICAL-CHAPTER-03'),
+        },
+        left: {
+          sectionIndex: 3,
+          marker: expect.stringContaining('VERTICAL-CHAPTER-04'),
+        },
+      })
 
-  await page.keyboard.press(']')
-  await expect
-    .poll(() => readVerticalReadingState(page))
-    .toMatchObject({
-      startIndex: 4,
-      startPage: 1,
-      startSlot: 'right',
-      rightIndex: 4,
-      rightPageIndex: 0,
-    })
-  await expect
-    .poll(() => readVerticalPhysicalSectionSlots(page))
-    .toMatchObject({
-      right: {
-        sectionIndex: 4,
-        marker: expect.stringContaining('VERTICAL-CHAPTER-05'),
-      },
-    })
+    await page.keyboard.press(']')
+    await expect
+      .poll(() => readVerticalReadingState(page))
+      .toMatchObject({
+        startIndex: 4,
+        startPage: 1,
+        startSlot: 'right',
+        rightIndex: 4,
+        rightPageIndex: 0,
+      })
+    await expect
+      .poll(() => readVerticalPhysicalSectionSlots(page))
+      .toMatchObject({
+        right: {
+          sectionIndex: 4,
+          marker: expect.stringContaining('VERTICAL-CHAPTER-05'),
+        },
+      })
 
-  await page.keyboard.press('[')
-  await expect
-    .poll(() => readVerticalReadingState(page))
-    .toMatchObject({
-      startIndex: 3,
-      startPage: 1,
-      startSlot: 'right',
-      rightIndex: 3,
-      rightPageIndex: 0,
-    })
-})
+    await page.keyboard.press('[')
+    await expect
+      .poll(() => readVerticalReadingState(page))
+      .toMatchObject({
+        startIndex: 3,
+        startPage: 1,
+        startSlot: 'right',
+        rightIndex: 3,
+        rightPageIndex: 0,
+      })
+  },
+)
 
-test('[vertical-rl] resolves nested TOC anchors and chapter shortcuts on the right page', async ({ page }) => {
-  await openVerticalFixtureBook(page)
-  const parent = page.getByRole('button', {
-    name: 'VERTICAL-CHAPTER-01',
-    exact: true,
-  })
-  await expect(parent).toBeVisible()
-  await parent.locator('svg').click()
-  const target = page.getByRole('button', {
-    name: 'VERTICAL-CHAPTER-01-PART-2',
-    exact: true,
-  })
-  await expect(target).toBeVisible()
-  await target.click()
-
-  await expect
-    .poll(async () => {
-      const state = await readVerticalReadingState(page)
-      return {
-        aligned: state.startPage === (state.rightPageIndex ?? Number.NaN) + 1,
-        nested: (state.rightPageIndex ?? 0) > 0,
-        rightIndex: state.rightIndex,
-        startIndex: state.startIndex,
-        startSlot: state.startSlot,
-      }
+verticalBookTest(
+  '[vertical-rl] resolves nested TOC anchors and chapter shortcuts on the right page',
+  async ({ page }) => {
+    await openVerticalFixtureBook(page)
+    const parent = page.getByRole('button', {
+      name: 'VERTICAL-CHAPTER-01',
+      exact: true,
     })
-    .toMatchObject({
-      aligned: true,
-      nested: true,
-      rightIndex: 0,
-      startIndex: 0,
-      startSlot: 'right',
+    await expect(parent).toBeVisible()
+    await parent.locator('svg').click()
+    const target = page.getByRole('button', {
+      name: 'VERTICAL-CHAPTER-01-PART-2',
+      exact: true,
     })
-  const nested = await readVerticalReadingState(page)
+    await expect(target).toBeVisible()
+    await target.click()
 
-  await page.keyboard.press(']')
-  await expect
-    .poll(() => readVerticalReadingState(page))
-    .toMatchObject({
-      startIndex: 1,
-      startPage: 1,
-      startSlot: 'right',
-      rightIndex: 1,
-      rightPageIndex: 0,
-    })
+    await expect
+      .poll(async () => {
+        const state = await readVerticalReadingState(page)
+        return {
+          aligned: state.startPage === (state.rightPageIndex ?? Number.NaN) + 1,
+          nested: (state.rightPageIndex ?? 0) > 0,
+          rightIndex: state.rightIndex,
+          startIndex: state.startIndex,
+          startSlot: state.startSlot,
+        }
+      })
+      .toMatchObject({
+        aligned: true,
+        nested: true,
+        rightIndex: 0,
+        startIndex: 0,
+        startSlot: 'right',
+      })
+    const nested = await readVerticalReadingState(page)
 
-  await page.keyboard.press('[')
-  await expect
-    .poll(() => readVerticalReadingState(page))
-    .toMatchObject({
-      startIndex: 0,
-      startSlot: 'right',
-      rightIndex: 0,
-      rightPageIndex: nested.rightPageIndex,
-    })
+    await page.keyboard.press(']')
+    await expect
+      .poll(() => readVerticalReadingState(page))
+      .toMatchObject({
+        startIndex: 1,
+        startPage: 1,
+        startSlot: 'right',
+        rightIndex: 1,
+        rightPageIndex: 0,
+      })
 
-  await page.keyboard.press('[')
-  await expect
-    .poll(() => readVerticalReadingState(page))
-    .toMatchObject({
-      startIndex: 0,
-      startPage: 1,
-      startSlot: 'right',
-      rightIndex: 0,
-      rightPageIndex: 0,
-    })
-})
+    await page.keyboard.press('[')
+    await expect
+      .poll(() => readVerticalReadingState(page))
+      .toMatchObject({
+        startIndex: 0,
+        startSlot: 'right',
+        rightIndex: 0,
+        rightPageIndex: nested.rightPageIndex,
+      })
 
-test('[vertical-rl] reuses chapter find after returning focus to the book', async ({ page }) => {
+    await page.keyboard.press('[')
+    await expect
+      .poll(() => readVerticalReadingState(page))
+      .toMatchObject({
+        startIndex: 0,
+        startPage: 1,
+        startSlot: 'right',
+        rightIndex: 0,
+        rightPageIndex: 0,
+      })
+  },
+)
+
+verticalBookTest('reuses chapter find after returning focus to the book', async ({ page }) => {
   await openVerticalFixtureBook(page)
   await page.keyboard.press(findShortcut)
   const input = page.getByRole('textbox', { name: msg('reader.find_current_chapter') })
@@ -3034,7 +3066,7 @@ test('[vertical-rl] reuses chapter find after returning focus to the book', asyn
   await expect(page.getByText('1/3', { exact: true })).toBeVisible()
 })
 
-test('[vertical-rl] advances chapter find within the visible page before turning', async ({ page }) => {
+verticalBookTest('advances chapter find within the visible page before turning', async ({ page }) => {
   await openVerticalFixtureBook(page)
   const initial = await readVerticalReadingState(page)
 
@@ -3069,7 +3101,7 @@ test('[vertical-rl] advances chapter find within the visible page before turning
   expect(activeHighlight).toBe(true)
 })
 
-test('[vertical-rl] wraps chapter find navigation in both directions', async ({ page }) => {
+verticalBookTest('wraps chapter find navigation in both directions', async ({ page }) => {
   await openVerticalFixtureBook(page)
 
   await page.keyboard.press(findShortcut)
@@ -3084,7 +3116,7 @@ test('[vertical-rl] wraps chapter find navigation in both directions', async ({ 
   await expect(page.getByText('1/3', { exact: true })).toBeVisible()
 })
 
-test('[vertical-rl] turns to the next spread for an off-page chapter find result', async ({ page }) => {
+verticalBookTest('turns to the next spread for an off-page chapter find result', async ({ page }) => {
   await openVerticalFixtureBook(page)
   const query = '天地玄黄宇宙洪荒'
   const search = await page.evaluate(async (value) => {
@@ -3129,7 +3161,7 @@ test('[vertical-rl] turns to the next spread for an off-page chapter find result
   await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
 })
 
-test('[vertical-rl] keeps a clicked sidebar search result active and visible', async ({ page }) => {
+verticalBookTest('[vertical-rl] keeps a clicked sidebar search result active and visible', async ({ page }) => {
   await openVerticalFixtureBook(page)
   await page.locator('.ActivityBar button[aria-label="Search"]').click()
   const input = page.getByRole('textbox', { name: msg('search.title'), exact: true })
@@ -3147,7 +3179,7 @@ test('[vertical-rl] keeps a clicked sidebar search result active and visible', a
   await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
 })
 
-test('[vertical-rl] locates and expands the current search-result chapter', async ({ page }) => {
+verticalBookTest('locates and expands the current search-result chapter', async ({ page }) => {
   await openVerticalFixtureBook(page)
   await page.locator('.ActivityBar button[aria-label="Search"]').click()
 
@@ -3221,7 +3253,7 @@ test('[vertical-rl] locates and expands the current search-result chapter', asyn
   expect(Math.abs(largeGroupTopOffset)).toBeLessThan(1)
 })
 
-test('[vertical-rl] keeps one physical page frame in single-page and zoomed layouts', async ({ page }) => {
+verticalBookTest('[vertical-rl] keeps one physical page frame in single-page and zoomed layouts', async ({ page }) => {
   await openVerticalFixtureBook(page)
   await page
     .getByRole('button', {
@@ -3386,69 +3418,75 @@ test('[vertical-rl] keeps one physical page frame in single-page and zoomed layo
   expect(zoomedSpread.body?.transform).not.toBe('none')
 })
 
-test('[vertical-rl] restores the committed right-first spread across tab and sidebar changes', async ({ page }) => {
-  await openVerticalFixtureBook(page)
-  const initial = await readVerticalReadingState(page)
-  await installBookTabRuntimeCounters(page)
-  await resetBookTabRuntimeCounters(page)
+verticalBookTest(
+  '[vertical-rl] restores the committed right-first spread across tab and sidebar changes',
+  async ({ page }) => {
+    await openVerticalFixtureBook(page)
+    const initial = await readVerticalReadingState(page)
+    await installBookTabRuntimeCounters(page)
+    await resetBookTabRuntimeCounters(page)
 
-  await readerTab(page, 'Tab Layout A').click()
-  await waitForStableReaderLayout(page, { header: false })
-  await readerTab(page, 'Tab Layout B').click()
-  await waitForVerticalReaderLoaded(page)
-  const afterTabSwitch = await readVerticalReadingState(page)
-  const counters = (await readBookTabRuntimeCounters(page)).find((entry) => entry.id === 'tab-layout-b')
+    await readerTab(page, 'Tab Layout A').click()
+    await waitForStableReaderLayout(page, { header: false })
+    await readerTab(page, 'Tab Layout B').click()
+    await waitForVerticalReaderLoaded(page)
+    const afterTabSwitch = await readVerticalReadingState(page)
+    const counters = (await readBookTabRuntimeCounters(page)).find((entry) => entry.id === 'tab-layout-b')
 
-  await toggleTocSidebar(page)
-  await page.waitForTimeout(250)
-  await toggleTocSidebar(page)
-  await page.waitForTimeout(250)
-  const afterSidebar = await readVerticalReadingState(page)
+    await toggleTocSidebar(page)
+    await page.waitForTimeout(250)
+    await toggleTocSidebar(page)
+    await page.waitForTimeout(250)
+    const afterSidebar = await readVerticalReadingState(page)
 
-  expect(initial.startSlot).toBe('right')
-  expect(afterTabSwitch).toEqual(initial)
-  expect(afterSidebar).toEqual(initial)
-  expect(counters).toMatchObject({
-    display: 0,
-    next: 0,
-    prev: 0,
-    relayoutCurrentView: 0,
-    resizeRendition: 0,
-  })
-})
+    expect(initial.startSlot).toBe('right')
+    expect(afterTabSwitch).toEqual(initial)
+    expect(afterSidebar).toEqual(initial)
+    expect(counters).toMatchObject({
+      display: 0,
+      next: 0,
+      prev: 0,
+      relayoutCurrentView: 0,
+      resizeRendition: 0,
+    })
+  },
+)
 
-test('[vertical-rl] overrides punctuation while preserving vertical indent and line height', async ({ page }) => {
-  await openVerticalFixtureBook(page)
+verticalBookTest(
+  '[vertical-rl] overrides punctuation while preserving vertical indent and line height',
+  async ({ page }) => {
+    await openVerticalFixtureBook(page)
 
-  const typography = await page.evaluate(() => {
-    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
-    const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
-      (candidate) => candidate.getBoundingClientRect().width > 0,
-    ) as HTMLIFrameElement | undefined
-    const doc = frame?.contentDocument
-    const punctuation = doc?.querySelector('#vertical-punctuation')
-    const paragraph = doc?.querySelector('p')
-    if (!frame?.contentWindow || !punctuation || !paragraph) {
-      throw new Error('Missing vertical typography fixture')
-    }
-    const punctuationStyle = frame.contentWindow.getComputedStyle(punctuation)
-    const paragraphStyle = frame.contentWindow.getComputedStyle(paragraph)
+    const typography = await page.evaluate(() => {
+      const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
+      const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
+        (candidate) => candidate.getBoundingClientRect().width > 0,
+      ) as HTMLIFrameElement | undefined
+      const doc = frame?.contentDocument
+      const punctuation = doc?.querySelector('#vertical-punctuation')
+      const paragraph = doc?.querySelector('p')
+      if (!frame?.contentWindow || !punctuation || !paragraph) {
+        throw new Error('Missing vertical typography fixture')
+      }
+      const punctuationStyle = frame.contentWindow.getComputedStyle(punctuation)
+      const paragraphStyle = frame.contentWindow.getComputedStyle(paragraph)
 
-    return {
-      punctuationOrientation: punctuationStyle.textOrientation,
-      writingMode: paragraphStyle.writingMode,
-      textIndent: paragraphStyle.textIndent,
-      lineHeight: paragraphStyle.lineHeight,
-    }
-  })
+      return {
+        punctuationOrientation: punctuationStyle.textOrientation,
+        writingMode: paragraphStyle.writingMode,
+        textIndent: paragraphStyle.textIndent,
+        lineHeight: paragraphStyle.lineHeight,
+      }
+    })
 
-  expect(typography.writingMode).toBe('vertical-rl')
-  expect(typography.punctuationOrientation).toBe('mixed')
-  expect(parseFloat(typography.textIndent)).toBeGreaterThan(0)
-  expect(parseFloat(typography.lineHeight)).toBeGreaterThan(0)
-})
+    expect(typography.writingMode).toBe('vertical-rl')
+    expect(typography.punctuationOrientation).toBe('mixed')
+    expect(parseFloat(typography.textIndent)).toBeGreaterThan(0)
+    expect(parseFloat(typography.lineHeight)).toBeGreaterThan(0)
+  },
+)
 
-test('[vertical-rl] places note popover on the physical left with vertical content', async ({ page }) => {
+verticalBookTest('[vertical-rl] places note popover on the physical left with vertical content', async ({ page }) => {
   await openVerticalFixtureBook(page)
   const activeFrame = page
     .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
@@ -3625,7 +3663,7 @@ test('does not scroll a horizontal note for glyph overflow inside the available 
   expect(longOverflow.overflowY).toBe('auto')
 })
 
-test('[vertical-rl] keeps the selection menu beside the selection', async ({ page }) => {
+verticalBookTest('[vertical-rl] keeps the selection menu beside the selection', async ({ page }) => {
   await openVerticalFixtureBook(page)
   await selectReaderTextAndOpenMenu(page, {
     endOffset: 7,
@@ -3756,7 +3794,7 @@ test('exits zen mode when Escape is pressed from the focused reader frame', asyn
   await expect(page.locator('.ActivityBar')).toBeVisible()
 })
 
-test('[vertical-rl] keeps the dictionary popup inside the reader without repagination', async ({ page }) => {
+verticalBookTest('keeps the dictionary popup inside the reader without repagination', async ({ page }) => {
   await openVerticalFixtureBook(page)
   const before = await readFocusedTabState(page)
   await selectReaderTextAndOpenMenu(page, {
@@ -3800,7 +3838,7 @@ test('[vertical-rl] keeps the dictionary popup inside the reader without repagin
   expect(after.renditionEndCfi).toBe(before.renditionEndCfi)
 })
 
-test('[vertical-rl] closes the selection menu before opening chapter find', async ({ page }) => {
+verticalBookTest('closes the selection menu before opening chapter find', async ({ page }) => {
   await openVerticalFixtureBook(page)
   await selectReaderTextAndOpenMenu(page, {
     endOffset: 7,
@@ -4961,7 +4999,7 @@ test('commits pointer tab reordering only inside the tab strip', async ({ page }
   await expect.poll(tabOrder).toEqual(['Tab Layout B', 'Tab Layout C', 'Tab Layout A'])
 })
 
-test('[vertical-rl] preserves double-page and panel runtime across tab reordering', async ({ page }) => {
+verticalBookTest('preserves double-page and panel runtime across tab reordering', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 })
   await openVerticalFixtureBook(page)
   await openFixtureBookByName(page, 'Tab Layout C')

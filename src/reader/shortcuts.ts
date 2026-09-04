@@ -424,7 +424,7 @@ function handlePageTurnShortcut(event: KeyboardEvent, tab?: BookTab) {
   if (event.ctrlKey || event.metaKey || event.altKey) return false
   if (isReaderShortcutTargetBlocked(event)) return false
 
-  switch (event.code) {
+  switch (event.key || event.code) {
     case 'ArrowLeft':
     case 'ArrowUp':
       tab.prev()
@@ -434,6 +434,7 @@ function handlePageTurnShortcut(event: KeyboardEvent, tab?: BookTab) {
       tab.next()
       return true
     case 'Space':
+    case ' ':
       event.shiftKey ? tab.prev() : tab.next()
       return true
     default:

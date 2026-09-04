@@ -21,6 +21,7 @@ import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
 import { type BookTab, getBookTabFrameWindows, reader } from '../models/reader'
 import { LayoutAnchorMode, LayoutAnchorPosition, layout, layoutBesideRect } from '../reader/contextViewLayout'
+import { hasKeyboardCapturingLayer } from '../reader/shortcuts'
 import { getShortcutChords } from '../shortcuts'
 import { useSettings } from '../state'
 import { type BookTextReplaceTarget, replaceBookText } from '../storage'
@@ -525,22 +526,6 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     }
     dismissOverlay()
   }
-  useFrameEvent(
-    keyboardWindows,
-    'keydown',
-    (event) => {
-      if (event.key !== 'Escape') return
-
-      const keyboardCapture = (event.target as Element | null)?.closest?.('[data-flow-keyboard-capture="true"]')
-      if (keyboardCapture && keyboardCapture !== popupElementRef.current) return
-
-      event.preventDefault()
-      event.stopPropagation()
-      event.stopImmediatePropagation()
-      handleEscape()
-    },
-    CAPTURE_EVENT_OPTIONS,
-  )
   const dictionaryMetadataLanguage = selectionLanguage(range, tab.book.metadata.language)
   const translationSettings = settings.translation ?? {
     mainLanguage: 'zh-Hans' as TranslationLanguage,
@@ -581,8 +566,10 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     (dictionaryQuery?.language === 'en' && settings.dictionary?.merriamWebster?.enabled === true) ||
     eligibleLocalDictionaries.length > 0
 
-  const handleActionShortcut = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return
+  const handleActionShortcut = (event: KeyboardEvent) => {
+    if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return
+    if ((event.target as Element | null)?.closest?.('input, textarea, select, [contenteditable="true"]')) return
+    if (hasKeyboardCapturingLayer(event.target, popupElementRef.current)) return
 
     const key = event.key.toLowerCase()
     if (view !== 'actions' || editing || annotate) return
@@ -600,10 +587,29 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
 
     event.preventDefault()
     event.stopPropagation()
-    event.nativeEvent.stopImmediatePropagation()
+    event.stopImmediatePropagation()
     action()
     return true
   }
+
+  useFrameEvent(
+    keyboardWindows,
+    'keydown',
+    (event) => {
+      const keyboardCapture = (event.target as Element | null)?.closest?.('[data-flow-keyboard-capture="true"]')
+      if (keyboardCapture && keyboardCapture !== popupElementRef.current) return
+
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation()
+        handleEscape()
+        return
+      }
+      handleActionShortcut(event)
+    },
+    CAPTURE_EVENT_OPTIONS,
+  )
 
   useEffect(() => {
     if (!editing) return
@@ -720,7 +726,6 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         data-flow-escape-surface
         tabIndex={-1}
         onKeyDown={(e) => {
-          if (handleActionShortcut(e)) return
           e.stopPropagation()
           if (e.key.toLowerCase() === 'c' && (e.ctrlKey || e.metaKey) && !window.getSelection()?.toString()) {
             copy(text)

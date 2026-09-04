@@ -668,6 +668,22 @@ test('opens the compact translation popup and Escape returns to the text menu', 
   await expect(page.getByRole('button', { name: msg('menu.copy') })).toBeVisible()
 })
 
+test('selection action shortcuts work while the reader iframe owns focus', async ({ page }) => {
+  await setupTranslationReader(page)
+  await selectFixtureText(page, 'sample')
+  const frame = page.locator('[data-flow-reader-pane][aria-hidden="false"] iframe').filter({ visible: true }).first()
+  await frame.evaluate((element: HTMLIFrameElement) => element.contentWindow!.focus())
+  await expect(frame).toBeFocused()
+
+  await page.keyboard.press('t')
+  const popup = page.locator('[data-flow-translation-popup="true"]')
+  await expect(popup).toBeVisible()
+  await expect(popup.getByText('Google: sample', { exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(popup).toHaveCount(0)
+  await expect(page.getByRole('button', { name: msg('menu.copy') })).toBeVisible()
+})
+
 test('switches translation providers in place', async ({ page }) => {
   await setupTranslationReader(page)
   await selectFixtureText(page, 'sample')
