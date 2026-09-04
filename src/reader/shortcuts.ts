@@ -314,8 +314,9 @@ function getCommandTabIndex(event: KeyboardEvent) {
 }
 
 function getCommandTabDirection(event: KeyboardEvent): -1 | 0 | 1 {
-  if (event.code === 'ArrowLeft') return -1
-  if (event.code === 'ArrowRight') return 1
+  const key = event.key && event.key !== 'Unidentified' ? event.key : event.code
+  if (key === 'ArrowLeft') return -1
+  if (key === 'ArrowRight') return 1
   return 0
 }
 

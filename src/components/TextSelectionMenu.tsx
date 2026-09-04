@@ -9,7 +9,7 @@ import {
   SquareMinusIcon,
   SquarePlusIcon,
 } from 'lucide-react'
-import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSnapshot } from 'valtio'
 
 import { type AnnotationColor, annotationColors, colorMap, orderRangeRectsForWritingMode } from '../annotation'
@@ -32,6 +32,7 @@ import { copy, keys, last } from '../utils'
 import { Overlay } from './base/Overlay'
 import { DictionaryPopup } from './DictionaryPopup'
 import { IconButton } from './IconButton'
+import { isFindShortcut } from './reader/chapterFindModel'
 import { CAPTURE_EVENT_OPTIONS, useFrameEvent } from './reader/useFrameEvent'
 import { TranslationPopup } from './TranslationPopup'
 import { Button } from './ui/button'
@@ -232,29 +233,6 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ tab, onCha
   // are set when select end within an annotation
   const menuSelection = menuOpen ? selection : undefined
   const range = getSelectionRange(menuSelection) ?? annotationRange
-  const onChapterFindEvent = useEffectEvent(onChapterFind)
-
-  useEffect(() => {
-    if (!range) return
-
-    const handleFindShortcut = (event: KeyboardEvent) => {
-      if (
-        !(event.metaKey || event.ctrlKey) ||
-        event.altKey ||
-        (event.key.toLowerCase() !== 'f' && event.code !== 'KeyF')
-      ) {
-        return
-      }
-
-      event.preventDefault()
-      event.stopPropagation()
-      event.stopImmediatePropagation()
-      onChapterFindEvent()
-    }
-
-    window.addEventListener('keydown', handleFindShortcut, true)
-    return () => window.removeEventListener('keydown', handleFindShortcut, true)
-  }, [range])
 
   if (!range) return null
 
@@ -299,6 +277,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ tab, onCha
       cfi={menuSelection ? undefined : annotationCfi}
       forward={forward}
       writingMode={writingMode}
+      onChapterFind={onChapterFind}
       hide={() => {
         if (menuSelection) {
           try {
@@ -337,6 +316,7 @@ interface TextSelectionMenuRendererProps {
   cfi?: string
   forward: boolean
   writingMode?: string
+  onChapterFind: () => void
   hide: () => void
 }
 const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
@@ -350,6 +330,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   releasePoint,
   forward,
   writingMode,
+  onChapterFind,
   text,
   translationText,
   cfi: annotationCfi,
@@ -598,6 +579,14 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     (event) => {
       const keyboardCapture = (event.target as Element | null)?.closest?.('[data-flow-keyboard-capture="true"]')
       if (keyboardCapture && keyboardCapture !== popupElementRef.current) return
+
+      if (isFindShortcut(event)) {
+        event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation()
+        onChapterFind()
+        return
+      }
 
       if (event.key === 'Escape') {
         event.preventDefault()
