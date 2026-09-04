@@ -184,8 +184,14 @@ export function UpdaterControl() {
 
   return (
     <div className="shrink-0">
-      <Button type="button" className="w-32" disabled={updater.checking} onClick={() => void updater.checkManually()}>
-        {updater.checking ? <LoaderCircleIcon className="size-4 animate-spin" /> : t('settings.about.update.check')}
+      <Button
+        type="button"
+        className="relative min-w-32"
+        disabled={updater.checking}
+        onClick={() => void updater.checkManually()}
+      >
+        <span className={updater.checking ? 'invisible' : undefined}>{t('settings.about.update.check')}</span>
+        {updater.checking && <LoaderCircleIcon className="absolute size-4 animate-spin" />}
       </Button>
     </div>
   )

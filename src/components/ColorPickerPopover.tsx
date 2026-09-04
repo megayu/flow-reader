@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { ClipboardPasteIcon, CopyIcon } from 'lucide-react'
+import { ClipboardPasteIcon, CopyIcon, PlusIcon, RotateCcwIcon } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { HexColorPicker } from 'react-colorful'
 
@@ -73,7 +73,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
   return (
     <div
       className={clsx(
-        'text-muted-foreground ring-border bg-background w-72 rounded-lg p-3 shadow-lg ring-1 ring-inset',
+        'text-muted-foreground ring-border bg-background w-72 min-w-min rounded-lg p-3 shadow-lg ring-1 ring-inset',
         className,
       )}
       onClick={(e) => e.stopPropagation()}
@@ -135,13 +135,15 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
         ))}
       </div>
       <div className="mt-3 flex items-center justify-between gap-2">
-        <Button variant="secondary" size="sm" onClick={saveDraftToSlot}>
-          {t('color_picker.save_slot')}
-        </Button>
+        <div className="flex gap-2">
+          <IconButton title={t('color_picker.save_slot')} Icon={PlusIcon} onClick={saveDraftToSlot} />
+          <IconButton
+            title={t('color_picker.reset')}
+            Icon={RotateCcwIcon}
+            onClick={() => updateDraft(normalizedDefault)}
+          />
+        </div>
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" size="sm" onClick={() => updateDraft(normalizedDefault)}>
-            {t('color_picker.reset')}
-          </Button>
           <Button
             variant="secondary"
             size="sm"
