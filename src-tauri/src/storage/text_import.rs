@@ -1311,7 +1311,8 @@ pub(super) fn text_import_css() -> &'static str {
   font-size: 1.45em;
   margin: 0;
   position: relative;
-  top: 25%;
+  /* WebKit ignores percentage relative offsets inside paginated columns. */
+  top: 25vh;
 }
 
 .flow-txt-chapter {

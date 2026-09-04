@@ -2483,7 +2483,7 @@ fn creates_standalone_centered_group_section_before_its_first_chapter() {
     assert!(chapter.contains(r#"<h2 class="flow-txt-chapter">第一章 章节甲</h2>"#));
     assert!(!chapter.contains("第一卷 分组甲 第一章 章节甲"));
     assert!(css.contains("position: relative;"));
-    assert!(css.contains("top: 25%;"));
+    assert!(css.contains("top: 25vh;"));
     assert!(!css.contains("padding-block-start:"));
     assert!(!css.contains("display: flex;"));
     assert!(!css.contains("width: 100%;"));
