@@ -1,9 +1,9 @@
 [Desktop Entry]
 Categories=Office;Viewer;
-Exec=flow-reader %F
+Exec=flow-reader %U
 StartupWMClass=flow-reader
 Icon=flow-reader
 Name=Flow Reader
 Terminal=false
 Type=Application
-MimeType=application/epub+zip;
+MimeType=application/epub+zip;x-scheme-handler/flow-reader;

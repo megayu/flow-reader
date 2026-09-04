@@ -359,6 +359,16 @@ pub fn run() {
         .manage(translation::TranslationHttpClient::new().expect("translation HTTP client"))
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            #[cfg(target_os = "linux")]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+
+                // AppImages need runtime registration to associate URLs with their current path.
+                if let Err(error) = app.deep_link().register_all() {
+                    eprintln!("Failed to register deep links: {error}");
+                }
+            }
+
             let storage = storage::AppStorage::load(app.handle()).map_err(std::io::Error::other)?;
             let dictionary_registry = dictionary::registry::DictionaryRegistryStore::open_for_app(storage.root());
             app.manage(dictionary_registry);
