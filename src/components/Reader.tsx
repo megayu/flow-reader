@@ -736,6 +736,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
   const { goToResult: goToFindResult } = useBookPaneChapterFindResults({
     active,
     paginationVersion,
+    viewVersion,
     rendition,
     setState: setChapterFind,
     state: chapterFind,
@@ -818,6 +819,8 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
               setChapterFind((state) => ({
                 ...state,
                 query,
+                results: [],
+                searching: !!query.trim(),
                 activeIndex: 0,
               }))
             }

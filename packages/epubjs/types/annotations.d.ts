@@ -21,7 +21,10 @@ export default class Annotations {
     cb?: Function,
     className?: string,
     styles?: object,
+    range?: Range,
   ): Annotation
+
+  updateHighlightStyles(cfiRange: string, styles: Record<string, string>, bringToFront?: boolean): void
 
   underline(
     cfiRange: string,

@@ -468,12 +468,13 @@ class EpubCFI {
       }
 
       if (step) {
-        segment.steps.unshift(step)
+        segment.steps.push(step)
       }
 
       currentNode = currentNode.parentNode
     }
 
+    segment.steps.reverse()
     if (offset != null && offset >= 0) {
       segment.terminal.offset = offset
 

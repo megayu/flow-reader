@@ -3006,6 +3006,34 @@ test('[vertical-rl] resolves nested TOC anchors and chapter shortcuts on the rig
     })
 })
 
+test('[vertical-rl] reuses chapter find after returning focus to the book', async ({ page }) => {
+  await openVerticalFixtureBook(page)
+  await page.keyboard.press(findShortcut)
+  const input = page.getByRole('textbox', { name: msg('reader.find_current_chapter') })
+  const query = 'VERTICAL-CHAPTER-01-01'
+  await input.fill(query)
+  await expect(page.getByText('1/3', { exact: true })).toBeVisible()
+
+  const body = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .first()
+    .contentFrame()
+    .locator('body')
+  await body.click({ position: { x: 10, y: 10 } })
+  await page.keyboard.press(findShortcut)
+  await expect(input).toHaveCount(1)
+  await expect(input).toBeFocused()
+  await expect(input).toHaveValue(query)
+  expect(await input.evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd])).toEqual([
+    0,
+    query.length,
+  ])
+
+  await input.press(findShortcut)
+  await expect(input).toBeFocused()
+  await expect(page.getByText('1/3', { exact: true })).toBeVisible()
+})
+
 test('[vertical-rl] advances chapter find within the visible page before turning', async ({ page }) => {
   await openVerticalFixtureBook(page)
   const initial = await readVerticalReadingState(page)

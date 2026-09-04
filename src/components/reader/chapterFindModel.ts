@@ -22,6 +22,7 @@ export interface ChapterFindResult {
   cfi: string
   excerpt: string
   pageIndex: number
+  range?: Range
 }
 
 export interface ChapterFindState {

@@ -127,6 +127,13 @@ export interface RenditionManager {
   renderReflowableSpread?(spread: unknown): Promise<void>
   canUseLogicalReflowableSpread?(): boolean
   reflowablePageForTarget?(section: Section, target: string): Promise<RenditionManagerPage | undefined>
+  reflowableLayoutCacheKey?(section: Section): string
+  findInDisplayedSection?(section: Section, query: string, signal: AbortSignal): Promise<Array<{
+    cfi: string
+    excerpt: string
+    pageIndex: number
+    range: Range
+  }>>
   reflowableSpreadEarlierPage?(spread: RenditionManagerSpread): RenditionManagerPage | undefined
   scrollHorizontalByReadingDirection?(delta: number, silent?: boolean): boolean
   settings?: {

@@ -4,6 +4,7 @@ import { sprint } from './utils/core'
 import Hook from './utils/hook'
 import { replaceBase } from './utils/replacements'
 import Request from './utils/request'
+import { findChapterMatches } from './utils/chapter-search'
 
 function requestType(mediaType) {
   if (mediaType === 'application/xhtml+xml') return 'xhtml'
@@ -251,6 +252,11 @@ class Section {
       })
 
     return rendered
+  }
+
+  /** Search one loaded chapter, yielding between batches and discarding cancelled results. */
+  findAsync(query, options) {
+    return findChapterMatches(this, query, options)
   }
 
   /**

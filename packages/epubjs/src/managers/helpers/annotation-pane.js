@@ -428,6 +428,7 @@ export class Pane {
     this.target = target
     this.container = container
     this.marks = []
+    this.marksDirty = false
     this.overlapGroups = new Map()
     this.writingMode = writingMode
     this.batchDepth = 0
@@ -454,6 +455,7 @@ export class Pane {
     if (this.batchDepth === 0) return
     this.batchDepth -= 1
     if (this.batchDepth !== 0) return
+    this.compactMarks()
     for (let mark of this.marks) {
       if (!mark.rawRects) mark.measure()
     }
@@ -461,6 +463,7 @@ export class Pane {
   }
 
   addMark(mark) {
+    this.compactMarks()
     let group = svgElement(this.element.ownerDocument, 'g')
     let overlapGroup = mark.attributes?.['data-overlap-group']
     let container = this.element
@@ -487,8 +490,8 @@ export class Pane {
   }
 
   removeMark(mark) {
-    let index = this.marks.indexOf(mark)
-    if (index === -1) return
+    if (mark.element?.ownerSVGElement !== this.element) return
+    let index = this.batchDepth === 0 ? this.marks.indexOf(mark) : -1
     let element = mark.unbind()
     let container = element?.parentNode
     if (element) element.remove()
@@ -496,11 +499,23 @@ export class Pane {
       this.overlapGroups.delete(container.getAttribute('data-overlap-group'))
       container.remove()
     }
-    this.marks.splice(index, 1)
-    if (this.batchDepth === 0) this.updateMarks()
+    if (this.batchDepth === 0) {
+      this.marks.splice(index, 1)
+      this.updateMarks()
+    } else {
+      // Unbound marks are compacted together before the batch redraw.
+      this.marksDirty = true
+    }
+  }
+
+  compactMarks() {
+    if (!this.marksDirty) return
+    this.marks = this.marks.filter((mark) => mark.element)
+    this.marksDirty = false
   }
 
   render() {
+    this.compactMarks()
     let container = this.container.getBoundingClientRect()
     let target = this.target.getBoundingClientRect()
     let paneHeight = this.target.scrollHeight
@@ -517,6 +532,7 @@ export class Pane {
   }
 
   updateMarks() {
+    this.compactMarks()
     let entries = []
     for (let mark of this.marks) {
       for (let rect of mark.rawRects || []) entries.push({ mark, rect })
@@ -531,6 +547,7 @@ export class Pane {
   }
 
   dispatch(event) {
+    this.compactMarks()
     let point = event.touches && event.touches[0] ? event.touches[0] : event
     for (let i = this.marks.length - 1; i >= 0; i--) {
       let mark = this.marks[i]

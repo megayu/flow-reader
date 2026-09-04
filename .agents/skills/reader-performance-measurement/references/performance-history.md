@@ -17,6 +17,13 @@ start of rejected approaches. Other entries cover reader interactions.
 
 ## Retained Approaches
 
+### Current-chapter find work reuse and cancellation
+
+- Change: Cmd/Ctrl+F scans the current chapter in yielding batches, indexes CFI siblings once per query, resolves each match against one displayed view, and passes the resolved Range only to initial annotation attachment. The search effect shares one reset branch, and a previous-active ref tracks color updates without rebuilding every mark. Closing, replacing the query, changing chapters, or replacing the view cancels obsolete work; layout changes refresh page addresses.
+- Measured effect: matched Windows `tauri-release` native-book runs used 120 chapters with 20 paragraphs per chapter, 80 hits in the searched chapter, a 1586×963 client area at 1.5 device scale, and direct `cmdf/query` and `cmdf/next-match` scenarios. The initial optimization comparison used eight runs with the first two excluded: query operation p50/p95 improved 41.4%/39.0%, first-frame p50/p95 improved 40.3%/37.3%, and settled p50/p95 improved 4.6%/6.7%. Next-match operation p50 improved 35.1% and first-frame p50 improved 32.8%; their p95 changed +2.0%/+2.4%, with settled p95 +0.6%. A separate comparison of the consolidated reset branch and transient Range attachment against that optimized implementation used two matched 16-run pairs under the same window/data conditions, excluding three warmup samples per run. Across the pooled 26 steady samples per side, query/next-match operation p95 changed -26.0%/-0.8%, first-frame p95 -23.2%/-5.1%, and settled p95 -3.9%/+1.3%. All comparisons had zero long tasks.
+- Decision: keep. Actual-client inspection confirmed mark reuse while changing the active hit, zero search annotations after closing or changing chapters, latest-query results after rapid input, and aligned highlights after a width-changing sidebar action.
+- Constraint: this is chapter-find evidence, not sidebar full-text-search evidence. Keep result/Range ownership scoped to the open query and invalidate layout-dependent page addresses. Initial highlight construction still scales with the number of hits. No matched heap measurement or Linux/macOS release-client evidence was collected.
+
 ### Stable iframe capture-listener options
 
 - Change: share one immutable `{ capture: true }` options object across iframe shortcut and mouse-button subscriptions instead of allocating a new object during every reader render.

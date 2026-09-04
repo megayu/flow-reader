@@ -463,16 +463,16 @@ function shouldIgnoreReaderShortcut(event: KeyboardEvent) {
   return isReaderShortcutTargetBlocked(event)
 }
 
-export function isReaderShortcutTargetBlocked(event: KeyboardEvent) {
-  return isGlobalKeyboardShortcutBlocked(event) || hasKeyboardCapturingLayer(event.target)
+export function isReaderShortcutTargetBlocked(event: KeyboardEvent, ignoredLayer?: Element | null) {
+  return isGlobalKeyboardShortcutBlocked(event) || hasKeyboardCapturingLayer(event.target, ignoredLayer)
 }
 
 export function isEditableTarget(target: EventTarget | null) {
   return isEditableKeyboardTarget(target)
 }
 
-export function hasKeyboardCapturingLayer(target: EventTarget | null) {
-  return hasKeyboardCaptureLayer(target, [`.${notePopoverClass}`, '[role="dialog"]', '[role="menu"]'])
+export function hasKeyboardCapturingLayer(target: EventTarget | null, ignoredLayer?: Element | null) {
+  return hasKeyboardCaptureLayer(target, [`.${notePopoverClass}`, '[role="dialog"]', '[role="menu"]'], ignoredLayer)
 }
 
 function consumeShortcut(event: KeyboardEvent) {

@@ -6,6 +6,11 @@ export interface GlobalLayout {
   orientation: string
 }
 
+export interface SectionMatch {
+  cfi: string
+  excerpt: string
+}
+
 export interface LayoutSettings {
   layout: string
   spread: string
@@ -54,6 +59,11 @@ export default class Section {
   render(_request?: Function): string
 
   find(_query: string): Array<Element>
+
+  findAsync<T = SectionMatch>(query: string, options?: {
+    signal?: AbortSignal
+    mapMatch?: (match: SectionMatch) => T
+  }): Promise<T[]>
 
   reconcileLayoutSettings(globalLayout: GlobalLayout): LayoutSettings
 

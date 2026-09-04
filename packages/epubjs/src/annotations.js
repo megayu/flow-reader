@@ -16,6 +16,8 @@ class Annotations {
     this.marks = []
     this._annotations = {}
     this._annotationsBySectionIndex = {}
+    this._batchDepth = 0
+    this._removedBySection = new Map()
 
     this.rendition.hooks.render.register(this.inject.bind(this))
     this.rendition.hooks.unloaded.register(this.clear.bind(this))
@@ -31,7 +33,7 @@ class Annotations {
    * @param {object} styles CSS styles to assign to annotation
    * @returns {Annotation} annotation
    */
-  add(type, cfiRange, data, cb, className, styles) {
+  add(type, cfiRange, data, cb, className, styles, range) {
     let hash = encodeURI(cfiRange + type)
     let cfi = new EpubCFI(cfiRange)
     let sectionIndex = cfi.spinePos
@@ -45,6 +47,7 @@ class Annotations {
       styles,
     })
 
+    this._flushSection(sectionIndex)
     this._annotations[hash] = annotation
 
     if (sectionIndex in this._annotationsBySectionIndex) {
@@ -57,7 +60,7 @@ class Annotations {
 
     views.forEach((view) => {
       if (annotation.sectionIndex === view.index) {
-        annotation.attach(view)
+        annotation.attach(view, range)
       }
     })
 
@@ -96,6 +99,15 @@ class Annotations {
    * @private
    */
   _removeFromAnnotationBySectionIndex(sectionIndex, hash) {
+    if (this._batchDepth) {
+      let removed = this._removedBySection.get(sectionIndex)
+      if (!removed) {
+        removed = new Set()
+        this._removedBySection.set(sectionIndex, removed)
+      }
+      removed.add(hash)
+      return
+    }
     this._annotationsBySectionIndex[sectionIndex] = this._annotationsAt(
       sectionIndex,
     ).filter((h) => h !== hash)
@@ -106,7 +118,17 @@ class Annotations {
    * @private
    */
   _annotationsAt(index) {
+    this._flushSection(index)
     return this._annotationsBySectionIndex[index]
+  }
+
+  _flushSection(index) {
+    let removed = this._removedBySection.get(index)
+    if (!removed) return
+    this._removedBySection.delete(index)
+    this._annotationsBySectionIndex[index] = this._annotationsBySectionIndex[index].filter(
+      (hash) => !removed.has(hash),
+    )
   }
 
   /**
@@ -117,8 +139,21 @@ class Annotations {
    * @param {string} className CSS class to assign to annotation
    * @param {object} styles CSS styles to assign to annotation
    */
-  highlight(cfiRange, data, cb, className, styles) {
-    return this.add('highlight', cfiRange, data, cb, className, styles)
+  highlight(cfiRange, data, cb, className, styles, range) {
+    return this.add('highlight', cfiRange, data, cb, className, styles, range)
+  }
+
+  updateHighlightStyles(cfiRange, styles, bringToFront = false) {
+    const annotation = this._annotations[encodeURI(cfiRange + 'highlight')]
+    if (!annotation) return
+    annotation.styles = Object.assign({}, annotation.styles, styles)
+    this.rendition.views().forEach((view) => {
+      const mark = view.highlights?.[cfiRange]?.mark
+      if (!mark?.element) return
+      Object.assign(mark.attributes, styles)
+      for (const [name, value] of Object.entries(styles)) mark.element.setAttribute(name, value)
+      if (bringToFront) mark.element.parentNode.appendChild(mark.element)
+    })
   }
 
   /**
@@ -150,9 +185,14 @@ class Annotations {
   batch(callback) {
     let views = this.rendition.views()
     views.forEach((view) => view.beginAnnotationBatch?.())
+    this._batchDepth += 1
     try {
       return callback()
     } finally {
+      this._batchDepth -= 1
+      if (!this._batchDepth) {
+        this._removedBySection.forEach((_removed, index) => this._flushSection(index))
+      }
       views.forEach((view) => view.endAnnotationBatch?.())
     }
   }
@@ -172,7 +212,7 @@ class Annotations {
   inject(view) {
     let sectionIndex = view.index
     if (sectionIndex in this._annotationsBySectionIndex) {
-      let annotations = this._annotationsBySectionIndex[sectionIndex]
+      let annotations = this._annotationsAt(sectionIndex)
       view.beginAnnotationBatch?.()
       try {
         annotations.forEach((hash) => {
@@ -193,7 +233,7 @@ class Annotations {
   clear(view) {
     let sectionIndex = view.index
     if (sectionIndex in this._annotationsBySectionIndex) {
-      let annotations = this._annotationsBySectionIndex[sectionIndex]
+      let annotations = this._annotationsAt(sectionIndex)
       view.beginAnnotationBatch?.()
       try {
         annotations.forEach((hash) => {
@@ -258,12 +298,12 @@ class Annotation extends EventEmitter {
    * Add to a view
    * @param {View} view
    */
-  attach(view) {
+  attach(view, range) {
     let { cfiRange, data, type, mark, cb, className, styles } = this
     let result
 
     if (type === 'highlight') {
-      result = view.highlight(cfiRange, data, cb, className, styles)
+      result = view.highlight(cfiRange, data, cb, className, styles, range)
     } else if (type === 'underline') {
       result = view.underline(cfiRange, data, cb, className, styles)
     } else if (type === 'mark') {

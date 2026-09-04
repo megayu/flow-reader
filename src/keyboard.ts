@@ -35,10 +35,16 @@ export function hasBlockingKeyboardOverlay(target: EventTarget | null) {
   return eventTargetDocuments(target).some((doc) => doc.querySelector(KEYBOARD_BLOCKING_OVERLAY_SELECTOR))
 }
 
-export function hasKeyboardCaptureLayer(target: EventTarget | null, selectors: string[] = []) {
-  return eventTargetDocuments(target).some((doc) =>
-    doc.querySelector([KEYBOARD_CAPTURE_SELECTOR, ...selectors].join(',')),
-  )
+export function hasKeyboardCaptureLayer(
+  target: EventTarget | null,
+  selectors: string[] = [],
+  ignoredLayer?: Element | null,
+) {
+  const selector = [KEYBOARD_CAPTURE_SELECTOR, ...selectors].join(',')
+  return eventTargetDocuments(target).some((doc) => {
+    if (!ignoredLayer) return !!doc.querySelector(selector)
+    return Array.from(doc.querySelectorAll(selector)).some((layer) => layer !== ignoredLayer)
+  })
 }
 
 export function isGlobalKeyboardShortcutBlocked(e: KeyboardEvent) {

@@ -16,6 +16,26 @@ async function loadFixtureSection() {
 }
 
 describe('Section search', function () {
+  it('returns complete async matches or discards a cancelled query', async function () {
+    const { book, section } = await loadFixtureSection()
+    try {
+      const expected = section.find('repeat marker')
+      assert.deepEqual(await section.findAsync('repeat marker'), expected)
+      const controller = new AbortController()
+      const cancelled = await section.findAsync('repeat marker', {
+        signal: controller.signal,
+        mapMatch: (match) => {
+          controller.abort()
+          return match
+        },
+      })
+      assert.deepEqual(cancelled, [])
+      assert.deepEqual(await section.findAsync('repeat marker'), expected)
+    } finally {
+      book.destroy()
+    }
+  })
+
   it('excludes document metadata from text results', async function () {
     const { book, section } = await loadFixtureSection()
 

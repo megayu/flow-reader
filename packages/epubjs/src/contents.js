@@ -703,7 +703,7 @@ class Contents extends EventEmitter {
    * @param {string} [ignoreClass] for the cfi
    * @returns { {left: Number, top: Number }
    */
-  locationOf(target, ignoreClass) {
+  locationOf(target, ignoreClass, resolvedRange, writingMode) {
     var position
     var targetPos = { left: 0, top: 0 }
     var logicalStartNode
@@ -712,7 +712,7 @@ class Contents extends EventEmitter {
     if (!this.document) return targetPos
 
     if (this.epubcfi.isCfiString(target)) {
-      let range = new EpubCFI(target).toRange(this.document, ignoreClass)
+      let range = resolvedRange || new EpubCFI(target).toRange(this.document, ignoreClass)
 
       if (range) {
         try {
@@ -796,7 +796,7 @@ class Contents extends EventEmitter {
       }
     }
 
-    if (this.writingMode().indexOf('vertical-rl') === 0 && logicalStartNode) {
+    if ((writingMode || this.writingMode()).indexOf('vertical-rl') === 0 && logicalStartNode) {
       position =
         this.verticalLogicalStartPosition(
           logicalStartNode,

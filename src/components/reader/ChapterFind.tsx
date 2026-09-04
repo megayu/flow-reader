@@ -1,6 +1,6 @@
 import { ChevronDownIcon, ChevronUpIcon, XIcon } from 'lucide-react'
 import type React from 'react'
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSnapshot } from 'valtio'
 
@@ -9,7 +9,7 @@ import type { BookTab } from '../../models/reader'
 import { IconButton } from '../IconButton'
 import { Input } from '../ui/input'
 
-import type { ChapterFindState } from './chapterFindModel'
+import { type ChapterFindState, isFindShortcut } from './chapterFindModel'
 
 export interface ChapterFindBarProps {
   find: ChapterFindState
@@ -90,6 +90,13 @@ export const ChapterFindBar: React.FC<ChapterFindBarProps> = ({
       className="text-muted-foreground bg-background flex items-center gap-2 rounded-lg px-3 py-2 shadow-lg"
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
+      onKeyDownCapture={(e) => {
+        if (!isFindShortcut(e.nativeEvent)) return
+        e.preventDefault()
+        e.stopPropagation()
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      }}
     >
       <Input
         ref={inputRef}
@@ -146,66 +153,62 @@ export interface ChapterFindHighlightsProps {
   tab: BookTab
 }
 export const ChapterFindHighlights: React.FC<ChapterFindHighlightsProps> = ({ active, find, tab }) => {
-  const { rendition, paginationVersion, viewVersion } = useSnapshot(tab)
-  const matches = useMemo(() => {
-    if (!find.open) return []
-
-    const seen = new Set<string>()
-    return find.results.flatMap((result, index) => {
-      if (!result.cfi || seen.has(result.cfi)) return []
-
-      seen.add(result.cfi)
-      return [
-        {
-          active: index === find.activeIndex,
-          cfi: result.cfi,
-        },
-      ]
-    })
-  }, [find.activeIndex, find.open, find.results])
+  const { rendition, viewVersion } = useSnapshot(tab)
+  const previousActive = useRef<string | undefined>(undefined)
+  const activeCfi = find.results[find.activeIndex]?.cfi
 
   useEffect(() => {
     const annotations = rendition?.annotations
-    if (!active || !matches.length || !annotations) return
-
-    const addHighlight = (cfi: string, styles: Record<string, string>) => {
-      try {
-        annotations.highlight(cfi, undefined, () => {}, undefined, styles)
-      } catch (_error) {
-        // ignore matched text in unsupported nodes
-      }
-    }
+    previousActive.current = undefined
+    if (!active || !find.open || !find.results.length || !annotations) return
+    const installed = new Set<string>()
 
     annotations.batch(() => {
-      for (const match of matches) {
-        if (!match.active) {
-          addHighlight(match.cfi, {
-            fill: 'rgba(234, 179, 8, 0.3)',
-            'fill-opacity': 'unset',
-          })
+      for (const match of find.results) {
+        if (installed.has(match.cfi)) continue
+        try {
+          annotations.highlight(
+            match.cfi,
+            undefined,
+            () => {},
+            undefined,
+            {
+              fill: 'rgba(234, 179, 8, 0.3)',
+              'fill-opacity': 'unset',
+            },
+            match.range,
+          )
+          installed.add(match.cfi)
+        } catch (_error) {
+          // A view may have been removed while the query was running.
         }
-      }
-      const activeMatch = matches.find((match) => match.active)
-      if (activeMatch) {
-        addHighlight(activeMatch.cfi, {
-          fill: 'rgba(59, 130, 246, 0.46)',
-          'fill-opacity': 'unset',
-        })
       }
     })
 
     return () => {
       annotations.batch(() => {
-        matches.forEach((match) => {
+        installed.forEach((cfi) => {
           try {
-            annotations.remove(match.cfi, 'highlight')
+            annotations.remove(cfi, 'highlight')
           } catch (_error) {
             // ignore removed views
           }
         })
       })
     }
-  }, [active, matches, paginationVersion, rendition?.annotations, viewVersion])
+  }, [active, find.open, find.results, rendition?.annotations, viewVersion])
+
+  useEffect(() => {
+    const annotations = rendition?.annotations
+    if (!active || !find.open || !annotations) return
+    if (previousActive.current) {
+      annotations.updateHighlightStyles(previousActive.current, { fill: 'rgba(234, 179, 8, 0.3)' })
+    }
+    if (activeCfi) {
+      annotations.updateHighlightStyles(activeCfi, { fill: 'rgba(59, 130, 246, 0.46)' }, true)
+    }
+    previousActive.current = activeCfi
+  }, [active, activeCfi, find.open, find.results, rendition?.annotations, viewVersion])
 
   return null
 }

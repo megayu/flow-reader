@@ -695,7 +695,22 @@ class DefaultViewManager extends EventEmitter {
     })
   }
 
-  reflowablePageForRenderedTarget(view, target) {
+  async findInDisplayedSection(section, query, signal) {
+    const view = this.views && this.views.find(section)
+    if (!view?.contents?.document || signal.aborted) return []
+    const document = view.contents.document
+    return section.findAsync(query, {
+      signal,
+      mapMatch: (match) => {
+        if (signal.aborted || view.contents?.document !== document) return undefined
+        const range = view.contents.range(match.cfi)
+        const page = this.reflowablePageForRenderedTarget(view, match.cfi, range)
+        return { ...match, range, pageIndex: page?.pageIndex ?? 0 }
+      },
+    }).then((matches) => signal.aborted || view.contents?.document !== document ? [] : matches.filter(Boolean))
+  }
+
+  reflowablePageForRenderedTarget(view, target, range) {
     let section = view && view.section
     if (!section) {
       return
@@ -705,7 +720,7 @@ class DefaultViewManager extends EventEmitter {
 
     let pageIndex = 0
     if (target) {
-      let targetOffset = view.locationOf(target)
+      let targetOffset = view.locationOf(target, range)
       let physicalOffset = this.isVerticalRtlGeometry()
         ? Math.max(view.width() - targetOffset.left - 1, 0)
         : Math.max(targetOffset.left, 0)

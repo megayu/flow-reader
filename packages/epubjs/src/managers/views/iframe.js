@@ -1588,9 +1588,8 @@ class IframeView extends EventEmitter {
     return this.element.getBoundingClientRect()
   }
 
-  locationOf(target) {
-    var parentPos = this.iframe.getBoundingClientRect()
-    var targetPos = this.contents.locationOf(target, this.settings.ignoreClass)
+  locationOf(target, range) {
+    var targetPos = this.contents.locationOf(target, this.settings.ignoreClass, range, this.writingMode)
 
     return {
       left: targetPos.left,
@@ -1614,7 +1613,7 @@ class IframeView extends EventEmitter {
     return this.elementBounds
   }
 
-  highlight(cfiRange, data = {}, cb, className = 'epubjs-hl', styles = {}) {
+  highlight(cfiRange, data = {}, cb, className = 'epubjs-hl', styles = {}, resolvedRange) {
     if (!this.contents) {
       return
     }
@@ -1622,7 +1621,8 @@ class IframeView extends EventEmitter {
       { fill: 'yellow', 'fill-opacity': '0.3', 'mix-blend-mode': 'multiply' },
       styles,
     )
-    let range = this.contents.range(cfiRange)
+    let range = resolvedRange?.startContainer.ownerDocument === this.contents.document
+      ? resolvedRange : this.contents.range(cfiRange)
 
     let emitter = () => {
       this.emit(EVENTS.VIEWS.MARK_CLICKED, cfiRange, data)
