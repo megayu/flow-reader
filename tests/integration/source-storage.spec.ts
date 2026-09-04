@@ -62,9 +62,9 @@ test('cover modifiers reveal sources, open storage directories, and open tabs in
   const cover = (title: string) =>
     page.locator('[data-flow-library-book-card]').filter({ hasText: title }).locator('img[alt="Cover"]')
 
-  await cover('Referenced Book').click({ modifiers: ['Alt'] })
-  await cover('Missing Archive').click({ modifiers: ['Alt'] })
-  await cover('Managed Book').click({ modifiers: ['Alt'] })
+  await cover('Referenced Book').click({ modifiers: ['ControlOrMeta', 'Shift'] })
+  await cover('Missing Archive').click({ modifiers: ['ControlOrMeta', 'Shift'] })
+  await cover('Managed Book').click({ modifiers: ['ControlOrMeta', 'Shift'] })
   await cover('Managed Book').click({ modifiers: ['Shift'] })
 
   const nativeOperations = await page.evaluate(() => (window as any).__FLOW_TEST_TAURI__)

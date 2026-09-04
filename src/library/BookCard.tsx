@@ -216,7 +216,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
 
       const commandModifier = event.metaKey || event.ctrlKey
       const openInBackground = commandModifier && !event.shiftKey && !event.altKey
-      const revealSource = event.altKey && !commandModifier && !event.shiftKey
+      const revealSource = commandModifier && event.shiftKey && !event.altKey
       const openDirectory = event.shiftKey && !commandModifier && !event.altKey
       if (!openInBackground && !revealSource && !openDirectory) return
 
