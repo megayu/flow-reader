@@ -6,6 +6,11 @@ import type { BookTab, IMatch } from './model'
 
 export class BookSearchController {
   private requestVersion = 0
+  private pending?: AbortController
+
+  cancel() {
+    this.nextRequestVersion()
+  }
 
   setKeyword(tab: BookTab, keyword: string) {
     const requestVersion = this.nextRequestVersion()
@@ -33,6 +38,8 @@ export class BookSearchController {
   }
 
   private nextRequestVersion() {
+    this.pending?.abort()
+    this.pending = undefined
     return ++this.requestVersion
   }
 
@@ -41,8 +48,10 @@ export class BookSearchController {
   }
 
   private async updateResults(tab: BookTab, keyword: string, requestVersion: number) {
+    const controller = new AbortController()
+    this.pending = controller
     try {
-      const results = await searchBook(tab, keyword)
+      const results = await searchBook(tab, keyword, controller.signal)
       if (this.isCurrent(tab, keyword, requestVersion)) {
         tab.results = results
       }
@@ -51,6 +60,8 @@ export class BookSearchController {
       if (this.isCurrent(tab, keyword, requestVersion)) {
         tab.results = []
       }
+    } finally {
+      if (this.pending === controller) this.pending = undefined
     }
   }
 }
@@ -82,11 +93,11 @@ export async function searchInSectionAsync(tab: BookTab, keyword = tab.keyword, 
   return searchInSection(tab, keyword, section)
 }
 
-export async function searchBook(tab: BookTab, keyword = tab.keyword) {
+export async function searchBook(tab: BookTab, keyword = tab.keyword, signal?: AbortSignal) {
   if (!keyword.trim()) return undefined
 
   try {
-    return (await searchBookText(tab.book.id, keyword)) as IMatch[]
+    return (await searchBookText(tab.book.id, keyword, undefined, signal)) as IMatch[]
   } catch (error) {
     console.error(error)
     return []
@@ -123,11 +134,10 @@ export async function displaySearchResult(
 
   try {
     await tab.ensureSectionInfo(section)
-    const matches = section.find(keyword) as Array<{ cfi?: string }>
-    const match = matches[result.occurrence ?? 0] ?? matches[0]
-    if (match?.cfi) {
-      result.cfi = match.cfi
-      await tab.displayTarget(section, match.cfi, { returnable: true })
+    const cfi = section.findOccurrence(keyword, result.occurrence ?? 0)
+    if (cfi) {
+      result.cfi = cfi
+      await tab.displayTarget(section, cfi, { returnable: true })
       return
     }
   } catch (error) {

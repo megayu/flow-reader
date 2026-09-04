@@ -1502,23 +1502,55 @@ pub async fn check_book_source_statuses(
         .map_err(|error| error.to_string())?
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BookSearchRequest {
+    id: String,
+    on_started: tauri::ipc::JavaScriptChannelId,
+}
+
 #[tauri::command]
 pub async fn search_book_text(
     storage: State<'_, AppStorage>,
     tasks: State<'_, TaskService>,
+    webview: tauri::Webview,
     id: String,
     keyword: String,
     limit: Option<usize>,
+    request: Option<BookSearchRequest>,
 ) -> Result<Vec<SearchTextResult>, String> {
+    let request = request
+        .map(|input| {
+            let request = webview.state::<SearchRequests>().start(input.id)?;
+            // Acknowledge registration before accepting cancellation, even if IPC delivery is reordered.
+            input
+                .on_started
+                .channel_on(webview.clone())
+                .send(())
+                .map_err(|error| error.to_string())?;
+            Ok::<_, String>(request)
+        })
+        .transpose()?;
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
+        if request.as_ref().is_some_and(|request| request.cancelled()) {
+            return Ok(Vec::new());
+        }
         let book = storage.stored_book(&id)?;
         let cache = load_or_build_search_text_cache(&storage, &tasks, &book)?;
-        Ok(search_text_in_cache(&cache, &keyword, limit))
+        Ok(match request {
+            Some(request) => search_text_in_cache_cancellable(&cache, &keyword, limit, || request.cancelled()),
+            None => search_text_in_cache(&cache, &keyword, limit),
+        })
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub fn cancel_book_text_search(requests: State<'_, SearchRequests>, request_id: String) -> Result<(), String> {
+    requests.cancel(&request_id)
 }
 
 #[tauri::command]

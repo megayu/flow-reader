@@ -16,6 +16,19 @@ async function loadFixtureSection() {
 }
 
 describe('Section search', function () {
+  it('locates the requested occurrence with the same CFI as complete search', async function () {
+    const { book, section } = await loadFixtureSection()
+    try {
+      const matches = section.find('repeat marker')
+      for (const index of [0, 1, 9]) {
+        assert.equal(section.findOccurrence('repeat marker', index), (matches[index] || matches[0]).cfi)
+      }
+      assert.isUndefined(section.findOccurrence('absent marker', 0))
+    } finally {
+      book.destroy()
+    }
+  })
+
   it('returns complete async matches or discards a cancelled query', async function () {
     const { book, section } = await loadFixtureSection()
     try {

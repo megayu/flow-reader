@@ -354,6 +354,7 @@ pub fn run() {
         .manage(AppCloseCoordinator::default())
         .manage(storage::RuntimeWindowState::default())
         .manage(tasks::TaskService::default())
+        .manage(storage::SearchRequests::default())
         .manage(dictionary::create_http_client().expect("dictionary HTTP client"))
         .manage(translation::TranslationHttpClient::new().expect("translation HTTP client"))
         .plugin(tauri_plugin_dialog::init())
@@ -460,6 +461,7 @@ pub fn run() {
             storage::check_book_source_statuses,
             storage::clear_book_caches,
             storage::search_book_text,
+            storage::cancel_book_text_search,
             storage::load_book_image_index,
             storage::image_download::download_reader_image,
             storage::image_download::write_image_download,

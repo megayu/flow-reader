@@ -259,6 +259,33 @@ class Section {
     return findChapterMatches(this, query, options)
   }
 
+  /** Resolve one occurrence without constructing CFIs for the other matches. */
+  findOccurrence(keyword, occurrence = 0) {
+    const query = keyword.toLowerCase()
+    if (!query || !this.document) return
+    const walker = this.document.createTreeWalker(this.document.body || this.document.documentElement, 4)
+    let first
+    let node
+    let index = 0
+    const resolve = ({ node, pos }) => {
+      const range = this.document.createRange()
+      range.setStart(node, pos)
+      range.setEnd(node, pos + query.length)
+      return this.cfiFromRange(range)
+    }
+    while ((node = walker.nextNode())) {
+      const text = node.textContent.toLowerCase()
+      let pos = text.indexOf(query)
+      while (pos !== -1) {
+        first ??= { node, pos }
+        if (index++ === occurrence) return resolve({ node, pos })
+        pos = text.indexOf(query, pos + 1)
+      }
+    }
+    // Preserve the existing result-navigation fallback for an outdated occurrence.
+    if (first) return resolve(first)
+  }
+
   /**
    * Find a string in a section
    * @param  {string} _query The query string to find

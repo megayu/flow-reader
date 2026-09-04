@@ -1,7 +1,10 @@
 use std::{
     fs,
     path::Path,
-    sync::Arc,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -25,6 +28,52 @@ use std::path::PathBuf;
 const DERIVED_CACHE_BOOK_LIMIT: usize = 8;
 const DERIVED_CACHE_MEMORY_SOFT_LIMIT: usize = 256 * 1024 * 1024;
 const DERIVED_CACHE_COLD_TTL: Duration = Duration::from_secs(15 * 60);
+
+#[derive(Clone, Default)]
+pub struct SearchRequests(Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>);
+
+pub(super) struct SearchRequest {
+    id: String,
+    cancelled: Arc<AtomicBool>,
+    requests: SearchRequests,
+}
+
+impl SearchRequests {
+    pub(super) fn start(&self, id: String) -> Result<SearchRequest, String> {
+        let mut requests = self.0.lock().map_err(|_| "search request lock poisoned")?;
+        if requests.contains_key(&id) {
+            return Err("Search request already exists".into());
+        }
+        let cancelled = Arc::new(AtomicBool::new(false));
+        requests.insert(id.clone(), Arc::clone(&cancelled));
+        Ok(SearchRequest {
+            id,
+            cancelled,
+            requests: self.clone(),
+        })
+    }
+
+    pub(super) fn cancel(&self, id: &str) -> Result<(), String> {
+        if let Some(cancelled) = self.0.lock().map_err(|_| "search request lock poisoned")?.get(id) {
+            cancelled.store(true, Ordering::Relaxed);
+        }
+        Ok(())
+    }
+}
+
+impl SearchRequest {
+    pub(super) fn cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Relaxed)
+    }
+}
+
+impl Drop for SearchRequest {
+    fn drop(&mut self) {
+        if let Ok(mut requests) = self.requests.0.lock() {
+            requests.remove(&self.id);
+        }
+    }
+}
 
 #[derive(Debug)]
 pub(super) struct DerivedCacheState {
@@ -1335,9 +1384,18 @@ pub(super) fn search_text_in_cache(
     keyword: &str,
     limit: Option<usize>,
 ) -> Vec<SearchTextResult> {
+    search_text_in_cache_cancellable(cache, keyword, limit, || false)
+}
+
+pub(super) fn search_text_in_cache_cancellable(
+    cache: &SearchTextCache,
+    keyword: &str,
+    limit: Option<usize>,
+    cancelled: impl Fn() -> bool,
+) -> Vec<SearchTextResult> {
     let started = Instant::now();
     let keyword = keyword.trim();
-    if keyword.is_empty() || limit == Some(0) {
+    if keyword.is_empty() || limit == Some(0) || cancelled() {
         return Vec::new();
     }
 
@@ -1351,6 +1409,9 @@ pub(super) fn search_text_in_cache(
     let mut excerpt_elapsed = Duration::ZERO;
 
     'sections: for section in &cache.sections {
+        if cancelled() {
+            return Vec::new();
+        }
         let fold_started = diagnostics_enabled.then(Instant::now);
         let (folded_text, original_char_offsets) = lowercase_with_original_char_offsets(&section.text);
         if let Some(fold_started) = fold_started {
@@ -1360,8 +1421,13 @@ pub(super) fn search_text_in_cache(
         let mut folded_char_offset = 0usize;
         let mut subitems = Vec::new();
         let mut text_chars = None;
+        let mut paragraph_start = ParagraphCursor::default();
+        let mut paragraph_end = ParagraphCursor::default();
 
         for (occurrence, (folded_byte_offset, _)) in folded_text.match_indices(&folded_keyword).enumerate() {
+            if cancelled() {
+                return Vec::new();
+            }
             let locate_started = diagnostics_enabled.then(Instant::now);
             folded_char_offset += folded_text[previous_folded_byte_offset..folded_byte_offset]
                 .chars()
@@ -1378,8 +1444,13 @@ pub(super) fn search_text_in_cache(
             }
 
             let excerpt_started = diagnostics_enabled.then(Instant::now);
-            let text_chars = text_chars.get_or_insert_with(|| section.text.chars().collect::<Vec<_>>());
-            let excerpt = search_text_excerpt(text_chars, char_offset, keyword_char_len);
+            let chars = text_chars.get_or_insert_with(|| section.text.chars().collect::<Vec<_>>());
+            let offset = char_offset.min(chars.len());
+            let start = paragraph_start.at(chars, offset).start;
+            let end = paragraph_end
+                .at(chars, (offset + keyword_char_len).min(chars.len()))
+                .end;
+            let excerpt = search_text_excerpt(chars, offset, keyword_char_len, start, end);
             if let Some(excerpt_started) = excerpt_started {
                 excerpt_elapsed += excerpt_started.elapsed();
             }
@@ -1429,7 +1500,7 @@ pub(super) fn search_text_in_cache(
         );
     }
 
-    results
+    if cancelled() { Vec::new() } else { results }
 }
 
 fn lowercase_with_original_char_offsets(text: &str) -> (String, Option<Vec<usize>>) {
@@ -1447,29 +1518,46 @@ fn lowercase_with_original_char_offsets(text: &str) -> (String, Option<Vec<usize
     (folded, Some(original_char_offsets))
 }
 
-fn search_text_excerpt(chars: &[char], offset: usize, keyword_len: usize) -> String {
+#[derive(Default)]
+struct ParagraphCursor {
+    next: usize,
+    bounds: std::ops::Range<usize>,
+}
+
+impl ParagraphCursor {
+    fn at(&mut self, chars: &[char], offset: usize) -> &std::ops::Range<usize> {
+        // Matches arrive in order; scan and trim each paragraph at most once per cursor.
+        while self.next <= offset {
+            let mut start = self.next;
+            let mut end = chars[start..]
+                .iter()
+                .position(|ch| *ch == '\n')
+                .map_or(chars.len(), |i| start + i);
+            self.next = end + 1;
+            while start < end && chars[start].is_whitespace() {
+                start += 1;
+            }
+            while end > start && chars[end - 1].is_whitespace() {
+                end -= 1;
+            }
+            self.bounds = start..end;
+        }
+        &self.bounds
+    }
+}
+
+fn search_text_excerpt(
+    chars: &[char],
+    offset: usize,
+    keyword_len: usize,
+    paragraph_start: usize,
+    paragraph_end: usize,
+) -> String {
     if chars.is_empty() {
         return String::new();
     }
 
     let offset = offset.min(chars.len());
-    let keyword_end = (offset + keyword_len).min(chars.len());
-    let mut paragraph_start = chars[..offset]
-        .iter()
-        .rposition(|ch| *ch == '\n')
-        .map_or(0, |index| index + 1);
-    let mut paragraph_end = chars[keyword_end..]
-        .iter()
-        .position(|ch| *ch == '\n')
-        .map_or(chars.len(), |index| keyword_end + index);
-
-    while paragraph_start < paragraph_end && chars[paragraph_start].is_whitespace() {
-        paragraph_start += 1;
-    }
-    while paragraph_end > paragraph_start && chars[paragraph_end - 1].is_whitespace() {
-        paragraph_end -= 1;
-    }
-
     if paragraph_start >= paragraph_end {
         return String::new();
     }
@@ -1911,6 +1999,36 @@ mod tests {
         thread,
         time::{Duration, SystemTime, UNIX_EPOCH},
     };
+
+    #[test]
+    fn cancelling_a_search_discards_only_its_results() {
+        let requests = SearchRequests::default();
+        let old = requests.start("old".into()).unwrap();
+        let current = requests.start("current".into()).unwrap();
+        requests.cancel("old").unwrap();
+        let cache = SearchTextCache {
+            version: 1,
+            source_revision: 1,
+            revision: 1,
+            sections: vec![SearchTextSection {
+                section_index: 0,
+                href: "chapter.xhtml".into(),
+                title: None,
+                nav_path: vec![],
+                text: "target target".into(),
+            }],
+        };
+        assert!(search_text_in_cache_cancellable(&cache, "target", None, || old.cancelled()).is_empty());
+        assert_eq!(
+            search_text_in_cache_cancellable(&cache, "target", None, || current.cancelled())[0]
+                .subitems
+                .len(),
+            2
+        );
+        drop(old);
+        requests.cancel("old").unwrap();
+        assert!(!current.cancelled());
+    }
 
     fn temp_root(label: &str) -> PathBuf {
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();

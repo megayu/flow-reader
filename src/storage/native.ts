@@ -2,6 +2,7 @@ import { convertFileSrc, invoke as invokeNative } from '@tauri-apps/api/core'
 
 export const storageCommand = {
   applyFolderImportTags: 'apply_folder_import_tags',
+  cancelBookTextSearch: 'cancel_book_text_search',
   checkBookSourceStatuses: 'check_book_source_statuses',
   checkBookContentModeSwitch: 'check_book_content_mode_switch',
   clearBookCaches: 'clear_book_caches',

@@ -60,6 +60,8 @@ export default class Section {
 
   find(_query: string): Array<Element>
 
+  findOccurrence(query: string, occurrence?: number): string | undefined
+
   findAsync<T = SectionMatch>(query: string, options?: {
     signal?: AbortSignal
     mapMatch?: (match: SectionMatch) => T

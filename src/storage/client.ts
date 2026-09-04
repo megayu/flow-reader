@@ -674,12 +674,34 @@ export async function applyFolderImportTags(assignments: FolderImportTagAssignme
   return result
 }
 
-export function searchBookText(id: string, keyword: string, limit?: number) {
-  return invoke<BookSearchResult[]>('search_book_text', {
-    id,
-    keyword,
-    limit,
-  })
+export async function searchBookText(id: string, keyword: string, limit?: number, signal?: AbortSignal) {
+  if (signal?.aborted) return []
+  const requestId = signal ? crypto.randomUUID() : undefined
+  let started = false
+  const cancel = () => {
+    if (started) {
+      void invoke('cancel_book_text_search', { requestId }).catch((error) => {
+        console.error('Failed to cancel book search', error)
+      })
+    }
+  }
+  const onStarted = signal
+    ? new Channel<null>(() => {
+        started = true
+        if (signal.aborted) cancel()
+      })
+    : undefined
+  signal?.addEventListener('abort', cancel, { once: true })
+  try {
+    return await invoke<BookSearchResult[]>('search_book_text', {
+      id,
+      keyword,
+      limit,
+      request: onStarted ? { id: requestId, onStarted } : undefined,
+    })
+  } finally {
+    signal?.removeEventListener('abort', cancel)
+  }
 }
 
 export function loadBookImageIndex(id: string) {

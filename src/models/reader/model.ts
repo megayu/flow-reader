@@ -1733,6 +1733,7 @@ export class BookTab {
   destroy() {
     if (this.destroyPromise) return this.destroyPromise
 
+    this.searchController.cancel()
     this.renderGeneration++
     this.destroyPromise = this.destroyAfterFlush()
     return this.destroyPromise

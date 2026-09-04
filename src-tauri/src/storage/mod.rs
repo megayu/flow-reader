@@ -65,7 +65,7 @@ pub use model::{
     BookReaderSourceMode, BookRecord, BookSourceFormat, BookSourceStatus, BookSourceStatusRecord,
     BookTextReplaceResult, BookTextReplaceTarget, CoverInput, CoverRecord, LibraryPins, LibraryTagRecord,
 };
-pub use search::SearchTextResult;
+pub use search::{SearchRequests, SearchTextResult};
 pub use text_import::{
     TextImportEncodingOption, TextImportPreview, TextImportRulesInput, TextImportSelection, is_epub_file, is_txt_file,
 };
@@ -102,7 +102,7 @@ use import_support::{
 };
 use search::{
     DerivedCacheState, SearchTextCache, get_or_compute_book_word_count, load_or_build_image_index_cache,
-    load_or_build_search_text_cache, search_text_in_cache,
+    load_or_build_search_text_cache, search_text_in_cache, search_text_in_cache_cancellable,
 };
 #[cfg(test)]
 use search::{
