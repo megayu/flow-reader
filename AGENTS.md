@@ -11,7 +11,7 @@
 ## Commands
 
 - `pnpm check` runs the standard web validation suite; `pnpm check:full` also runs the EPUB engine, Rust, and browser integration suites.
-- `pnpm exec playwright test <spec>` - run one Playwright spec under `tests/integration/`; set `PLAYWRIGHT_PORT` if 7127 is busy.
+- `pnpm exec playwright test <spec> --grep <pattern>` - run matching integration test cases in the specified Playwright spec; omit `--grep` to run the whole spec. Set `PLAYWRIGHT_PORT` if 7127 is busy.
 - `pnpm doctor:lines` - run after non-trivial React component/hook changes to catch render, hook, and state-flow issues on changed lines.
 - `pnpm --filter @flow/epubjs test` - run the internal EPUB engine Vitest Browser Mode suite in headless Chromium.
 - `pnpm rust:test` - run native storage/Tauri tests.
@@ -46,7 +46,9 @@
 ## Testing Guidelines
 
 - Use `msg(...)` for localized UI labels in tests; never hard-code them.
-- Run the smallest relevant checks during iteration, then use `pnpm check` for standard web validation or `pnpm check:full` when the EPUB engine, native code, or browser integration is affected.
+- Use `pnpm check` for standard web validation; it does not include EPUB engine or Rust checks.
+- When the EPUB engine or native code is affected, separately run `pnpm check:epubjs` or `pnpm check:rust`, respectively.
+- Integration tests are expensive: whenever possible, run only the cases relevant to the change, using spec paths and `--grep`. Run the full integration suite or `pnpm check:full` only when the impact cannot reasonably be narrowed or a full run is explicitly required.
 - Use synthetic fixture text in tests; do not copy book text, user-provided context, or investigation-specific prose into test cases unless the exact text is required to reproduce a parser or encoding bug.
 - Keep test fixtures platform-neutral. Do not use Windows- or Unix-specific drive letters, absolute paths, path separators, shell syntax, or other operating-system characteristics unless the test explicitly verifies platform-specific path handling or system integration.
 - For reader rendering, selection, keyboard, layout, or performance-sensitive changes, use the repository skills above to choose the required client checks.
@@ -54,5 +56,5 @@
 ## Commit & Pull Request Guidelines
 
 - Use Conventional Commits (`feat:`, `fix:`, `chore:`).
-- Run the smallest relevant checks before committing; use `pnpm check` or `pnpm check:full` for broader validation.
+- Before committing, follow the validation scope in Testing Guidelines above.
 - PRs should summarize UX changes and include screenshots or recordings for visual reader tweaks.

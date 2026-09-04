@@ -189,7 +189,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
       .revealSource(book.id)
       .then((revealed) => {
         if (!revealed) {
-          notify({ title: t('home.source_unavailable'), type: 'error' })
+          notify({ title: t('home.source_missing_description'), type: 'error' })
         }
       })
       .catch((error) => {

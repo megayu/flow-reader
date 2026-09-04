@@ -195,10 +195,6 @@ fn reveal_file_in_file_manager(path: &Path) -> Result<(), String> {
 }
 
 pub(super) fn revealable_book_source_path(book: &StoredBook) -> Option<&Path> {
-    if book.source_storage != SourceStorage::Referenced {
-        return None;
-    }
-
     book.source_path.is_file().then_some(book.source_path.as_path())
 }
 

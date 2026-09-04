@@ -4312,7 +4312,7 @@ fn imported_content_repair_marks_epub_export_dirty() {
 }
 
 #[test]
-fn only_existing_referenced_sources_can_be_revealed() {
+fn existing_original_sources_can_be_revealed_in_any_storage_mode() {
     let root = std::env::temp_dir().join(format!("flow-reader-reveal-source-test-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let source = root.join("source.epub");
@@ -4320,7 +4320,7 @@ fn only_existing_referenced_sources_can_be_revealed() {
 
     let mut book = test_library_book(BookSourceFormat::Epub);
     book.source_path = source.clone();
-    assert!(revealable_book_source_path(&book).is_none());
+    assert_eq!(revealable_book_source_path(&book), Some(source.as_path()));
 
     book.source_storage = SourceStorage::Referenced;
     assert_eq!(revealable_book_source_path(&book), Some(source.as_path()));
