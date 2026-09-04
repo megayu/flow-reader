@@ -74,6 +74,51 @@ fn linux_desktop_command(program: &str) -> Result<Command, String> {
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
+fn select_linux_file(path: &Path) -> Result<bool, String> {
+    let path = std::path::absolute(path).map_err(|error| format!("failed to resolve file path: {error}"))?;
+    let uri = tauri::Url::from_file_path(&path).map_err(|_| "failed to encode file URI".to_string())?;
+    // dbus-send uses commas to separate array elements, even within a URI.
+    let uris = format!("array:string:{}", uri.as_str().replace(',', "%2C"));
+    let output = linux_desktop_command("dbus-send")?
+        .args([
+            "--session",
+            "--type=method_call",
+            "--print-reply",
+            "--reply-timeout=5000",
+            "--dest=org.freedesktop.FileManager1",
+            "/org/freedesktop/FileManager1",
+        ])
+        .arg("org.freedesktop.FileManager1.ShowItems")
+        .args([uris.as_str(), "string:"])
+        .output();
+    let output = match output {
+        Ok(output) => output,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("failed to contact file manager: {error}")),
+    };
+    if output.status.success() {
+        return Ok(true);
+    }
+    let error = String::from_utf8_lossy(&output.stderr);
+    if [
+        "org.freedesktop.DBus.Error.ServiceUnknown",
+        "org.freedesktop.DBus.Error.NameHasNoOwner",
+        "org.freedesktop.DBus.Error.UnknownMethod",
+        "org.freedesktop.DBus.Error.UnknownInterface",
+    ]
+    .iter()
+    .any(|name| error.contains(name))
+    {
+        return Ok(false);
+    }
+    Err(format!(
+        "file manager ShowItems failed ({}): {}",
+        output.status,
+        error.trim()
+    ))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
 fn open_linux_directory(path: &Path) -> Result<(), String> {
     let status = linux_desktop_command("xdg-open")?
         .arg(path)
@@ -133,6 +178,9 @@ fn reveal_file_in_file_manager(path: &Path) -> Result<(), String> {
 
     #[cfg(all(unix, not(target_os = "macos")))]
     {
+        if select_linux_file(path)? {
+            return Ok(());
+        }
         let Some(parent) = path.parent() else {
             return Err("source file has no parent directory".to_string());
         };

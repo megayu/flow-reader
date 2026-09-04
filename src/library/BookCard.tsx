@@ -184,6 +184,25 @@ const BookCardComponent: React.FC<BookCardProps> = ({
     [book.id, notify, onOpenBook, sourceStatus, t],
   )
 
+  const revealBookSource = useCallback(() => {
+    void db.books
+      .revealSource(book.id)
+      .then((revealed) => {
+        if (!revealed) {
+          notify({ title: t('home.source_unavailable'), type: 'error' })
+        }
+      })
+      .catch((error) => {
+        console.error(error)
+        notify({
+          autoCloseMs: false,
+          description: `${getBookDisplayTitle(book)}: ${formatErrorMessage(error)}`,
+          title: t('error.open_book_directory_failed'),
+          type: 'error',
+        })
+      })
+  }, [book, notify, t])
+
   const handleCoverClick = useCallback(
     (event: React.MouseEvent) => {
       if (longPressRef.current === 'triggered') {
@@ -207,7 +226,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
       if (openInBackground) {
         openBook(false)
       } else if (revealSource) {
-        void db.books.revealSource(book.id).catch(console.error)
+        revealBookSource()
       } else {
         void db.books.openDirectory(book.id).catch((error) => {
           console.error(error)
@@ -220,7 +239,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
         })
       }
     },
-    [book, t, notify, openBook, select],
+    [book, t, notify, openBook, revealBookSource, select],
   )
 
   const clearLongPressTimer = useCallback(() => {
