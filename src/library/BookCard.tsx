@@ -430,7 +430,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
                   src={cover ?? bookCoverPlaceholder}
                   alt="Cover"
                   className={clsx(
-                    'block h-full w-full rounded-[inherit]',
+                    'block h-full w-full',
                     coverFit === 'contain' && cover ? 'object-contain' : 'object-cover',
                   )}
                   decoding="async"

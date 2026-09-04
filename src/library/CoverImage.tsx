@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { acquireCoverResource, isCoverResourceReady } from './coverResourceCache'
 
 export const bookCoverPlaceholder = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect fill="gray" fill-opacity="0" width="1" height="1"/></svg>`
-const imageClassName = 'block h-full w-full rounded-[inherit]'
+const imageClassName = 'block h-full w-full'
 
 interface CoverImageProps {
   alt: string
