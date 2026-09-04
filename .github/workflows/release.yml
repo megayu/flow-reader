@@ -3,8 +3,18 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
+      target_system:
+        description: Target system to build
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - windows
+          - macos
+          - linux
       publish_release:
-        description: Publish the GitHub release when running a v* tag ref
+        description: Publish the GitHub release (requires all systems and a v* tag ref)
         required: true
         type: boolean
         default: false
@@ -15,7 +25,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.ref }}-${{ inputs.target_system || 'all' }}
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
 
 env:
@@ -58,6 +68,7 @@ jobs:
 
   windows:
     name: Windows ${{ matrix.arch }} COM and NSIS
+    if: github.event_name == 'push' || inputs.target_system == 'all' || inputs.target_system == 'windows'
     needs: core-check
     strategy:
       fail-fast: false
@@ -158,6 +169,7 @@ jobs:
 
   macos:
     name: macOS Quick Look and installed app
+    if: github.event_name == 'push' || inputs.target_system == 'all' || inputs.target_system == 'macos'
     needs: core-check
     runs-on: macos-15-intel
     timeout-minutes: 120
@@ -240,6 +252,7 @@ jobs:
 
   linux:
     name: Linux ${{ matrix.arch }} AppImage
+    if: github.event_name == 'push' || inputs.target_system == 'all' || inputs.target_system == 'linux'
     needs: core-check
     strategy:
       fail-fast: false
@@ -329,7 +342,7 @@ jobs:
 
   release:
     name: Publish release artifacts
-    if: startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish_release)
+    if: startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || (inputs.publish_release && inputs.target_system == 'all'))
     needs: [windows, macos, linux]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
