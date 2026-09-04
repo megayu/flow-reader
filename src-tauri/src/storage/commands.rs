@@ -27,12 +27,63 @@ fn same_tag_name(a: &str, b: &str) -> bool {
     a.eq_ignore_ascii_case(b)
 }
 
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 fn spawn_directory_command(program: &str, path: &Path) -> Result<(), String> {
     Command::new(program)
         .arg(path)
         .spawn()
         .map(|_| ())
         .map_err(|error| format!("failed to open directory: {error}"))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn linux_desktop_command(program: &str) -> Result<Command, String> {
+    let mut command = Command::new(program);
+    // System applications must not load libraries or GTK modules from the AppImage.
+    // Keep host entries and the desktop session environment intact.
+    if let Some(app_dir) = std::env::var_os("APPDIR").filter(|value| !value.is_empty()) {
+        let app_dir = PathBuf::from(app_dir);
+        for name in [
+            "PATH",
+            "LD_LIBRARY_PATH",
+            "GTK_PATH",
+            "GTK_EXE_PREFIX",
+            "GTK_DATA_PREFIX",
+            "GIO_MODULE_DIR",
+            "GIO_EXTRA_MODULES",
+            "GI_TYPELIB_PATH",
+            "GSETTINGS_SCHEMA_DIR",
+            "GDK_PIXBUF_MODULE_FILE",
+            "GDK_PIXBUF_MODULEDIR",
+            "GTK_IM_MODULE_FILE",
+            "XDG_DATA_DIRS",
+        ] {
+            if let Some(value) = std::env::var_os(name) {
+                let paths: Vec<_> = std::env::split_paths(&value)
+                    .filter(|entry| !entry.starts_with(&app_dir))
+                    .collect();
+                if paths.is_empty() {
+                    command.env_remove(name);
+                } else {
+                    command.env(name, std::env::join_paths(paths).map_err(|error| error.to_string())?);
+                }
+            }
+        }
+    }
+    Ok(command)
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn open_linux_directory(path: &Path) -> Result<(), String> {
+    let status = linux_desktop_command("xdg-open")?
+        .arg(path)
+        .status()
+        .map_err(|error| format!("failed to open directory: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("file manager failed to open {}: {status}", path.display()))
+    }
 }
 
 fn open_directory_in_file_manager(path: &Path) -> Result<(), String> {
@@ -48,7 +99,7 @@ fn open_directory_in_file_manager(path: &Path) -> Result<(), String> {
 
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        spawn_directory_command("xdg-open", path)
+        open_linux_directory(path)
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", unix)))]
@@ -85,7 +136,7 @@ fn reveal_file_in_file_manager(path: &Path) -> Result<(), String> {
         let Some(parent) = path.parent() else {
             return Err("source file has no parent directory".to_string());
         };
-        spawn_directory_command("xdg-open", parent)
+        open_linux_directory(parent)
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", unix)))]
@@ -573,7 +624,7 @@ pub(super) fn get_book_impl(storage: &AppStorage, id: String) -> Result<Option<B
     storage.compose_book(&book).map(Some)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn open_book_directory(storage: State<'_, AppStorage>, id: String) -> Result<(), String> {
     let path = {
         let state = storage
@@ -601,7 +652,7 @@ pub fn open_book_directory(storage: State<'_, AppStorage>, id: String) -> Result
     open_directory_in_file_manager(&path)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reveal_book_source(storage: State<'_, AppStorage>, id: String) -> Result<bool, String> {
     let path = {
         let state = storage
@@ -628,7 +679,7 @@ pub fn reveal_book_source(storage: State<'_, AppStorage>, id: String) -> Result<
     Ok(true)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reveal_exported_file(path: String) -> Result<(), String> {
     let path = PathBuf::from(path);
     if !path.is_absolute() {
