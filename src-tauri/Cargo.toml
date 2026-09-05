@@ -1,6 +1,6 @@
 [package]
 name = "flow-reader"
-version = "0.1.0"
+version = "0.1.1"
 description = "Flow Reader desktop EPUB and TXT reader"
 authors = ["Flow"]
 edition = "2024"

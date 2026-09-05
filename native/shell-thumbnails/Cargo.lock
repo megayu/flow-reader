@@ -81,7 +81,7 @@ dependencies = [
 
 [[package]]
 name = "flow-epub-cover"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "roxmltree",
  "thiserror",
@@ -90,7 +90,7 @@ dependencies = [
 
 [[package]]
 name = "flow-epub-thumbnail"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "flow-epub-cover",
  "image",
@@ -99,7 +99,7 @@ dependencies = [
 
 [[package]]
 name = "flow-macos-thumbnail-ffi"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "flow-epub-thumbnail",
  "image",
@@ -108,7 +108,7 @@ dependencies = [
 
 [[package]]
 name = "flow-windows-thumbnail-provider"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "flow-epub-thumbnail",
  "image",

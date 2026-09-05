@@ -192,11 +192,11 @@
 				ARCHS = "arm64 x86_64";
 				CODE_SIGN_ENTITLEMENTS = FlowReaderThumbnail/FlowReaderThumbnail.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 0.1.0;
+				CURRENT_PROJECT_VERSION = 0.1.1;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = FlowReaderThumbnail/Info.plist;
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.1.1;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/../dist/macos/libflow_thumbnail_macos.a",
@@ -216,12 +216,12 @@
 				ARCHS = "arm64 x86_64";
 				CODE_SIGN_ENTITLEMENTS = FlowReaderThumbnail/FlowReaderThumbnail.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 0.1.0;
+				CURRENT_PROJECT_VERSION = 0.1.1;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = FlowReaderThumbnail/Info.plist;
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.1.1;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/../dist/macos/libflow_thumbnail_macos.a",
