@@ -17,6 +17,14 @@ start of rejected approaches. Other entries cover reader interactions.
 
 ## Retained Approaches
 
+### Construction-scoped note index lookups
+
+- Change: reuse note-container classifications within one index build. Query named elements only after an ID miss, and build a first-name-wins map only for repeated fallbacks. Neither temporary structure is retained by the document's NoteIndex; popup lookups remain live.
+- Measured effect: matched Windows `tauri-release` synthetic single-chapter EPUB opens used a 1280×800 client area at DPR 1.5, eight runs with three warmups excluded, and identical 16px typography. For 300 named notes, 1000 ID notes, and 1000 named notes, open-to-ready p50 changed -42.7%/-12.5%/-53.3%, and p95 changed -37.6%/-12.6%/-56.2%. Steady long-task totals changed 1194→581 ms, 5795→5029 ms, and 13219→5779 ms; task counts remained five per scenario. Post-GC heap-delta medians changed approximately -3.0%/+0.9%/+1.3%.
+- Small-scale control: a separate matched 20-run pair, excluding three warmups, covered zero notes and four ID/named notes. Median open time changed +0.9%/+2.4%/+2.0%, and p95 changed +0.3%/-0.3%/+10.9%. The named-note tail increase was 6.8 ms (62.5→69.3 ms), with a 1.2 ms median increase, unchanged post-GC heap median, and no long tasks. First-RAF p95 increased 0.6 ms for named notes and decreased for the other controls.
+- Decision: keep the explicit first-open UX tradeoff: dense named-note opens save about 1.4 seconds, while the small named-note control costs about 7 ms at the tail without retained-heap growth or new long tasks. Do not claim small-scale speedups or elimination of dense-open blocking.
+- Constraint: results measure open-to-ready including layout, not isolated index time. First RAF is not a content-visible-frame guarantee. Heap readings are post-operation/post-GC JS heap deltas, not peak allocation or native process memory. Temporary space remains proportional to visited containers and named elements. No Linux/macOS release measurement was collected.
+
 ### Current-chapter find work reuse and cancellation
 
 - Change: Cmd/Ctrl+F scans the current chapter in yielding batches, indexes CFI siblings once per query, resolves each match against one displayed view, and passes the resolved Range only to initial annotation attachment. The search effect shares one reset branch, and a previous-active ref tracks color updates without rebuilding every mark. Closing, replacing the query, changing chapters, or replacing the view cancels obsolete work; layout changes refresh page addresses.

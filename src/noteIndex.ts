@@ -7,6 +7,7 @@ export interface NoteIndex {
 }
 
 const indexCache = new WeakMap<Document, NoteIndex>()
+type NoteTargetLookup = typeof getElementByIdOrName
 
 export function getNoteIndex(document: Document) {
   const cached = indexCache.get(document)
@@ -25,7 +26,7 @@ export function findReciprocalNoteItem(anchor: HTMLAnchorElement, target: HTMLEl
 function createNoteIndex(document: Document): NoteIndex {
   const items = collectLinkedNoteItems(document)
   const itemSet = new Set(items)
-  const hideTargets = uniqueElements(items.map((item) => findNoteHideTarget(item, itemSet)))
+  const hideTargets = collectNoteHideTargets(items, itemSet)
 
   return {
     getHideTargets: () => hideTargets,
@@ -36,11 +37,12 @@ function createNoteIndex(document: Document): NoteIndex {
 
 function collectLinkedNoteItems(document: Document) {
   const items: HTMLElement[] = []
+  const getTarget = createNoteTargetLookup()
 
   document.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((anchor) => {
     if (!isUsableHashLink(anchor)) return
 
-    const item = findLinkedNoteItem(anchor)
+    const item = findLinkedNoteItem(anchor, getTarget)
     if (item) items.push(item)
   })
 
@@ -53,18 +55,18 @@ function isUsableHashLink(anchor: HTMLAnchorElement) {
   return href.includes('#')
 }
 
-function findLinkedNoteItem(anchor: HTMLAnchorElement) {
-  const target = getLinkedHashTarget(anchor)
+function findLinkedNoteItem(anchor: HTMLAnchorElement, getTarget: NoteTargetLookup) {
+  const target = getLinkedHashTarget(anchor, getTarget)
   if (!target || !isHashTargetAfterSource(anchor, target)) return
 
-  return findNoteItemForTarget(anchor, target)
+  return findNoteItemForTarget(anchor, target, getTarget)
 }
 
-function getLinkedHashTarget(anchor: HTMLAnchorElement) {
+function getLinkedHashTarget(anchor: HTMLAnchorElement, getTarget: NoteTargetLookup) {
   const [, hash = ''] = anchor.getAttribute('href')?.split('#') ?? []
   if (!hash) return
 
-  return getElementByIdOrName(anchor.ownerDocument, safeDecodeHref(hash))
+  return getTarget(anchor.ownerDocument, safeDecodeHref(hash))
 }
 
 function isHashTargetAfterSource(source: HTMLAnchorElement, target: HTMLElement) {
@@ -76,20 +78,28 @@ function isHashTargetAfterSource(source: HTMLAnchorElement, target: HTMLElement)
   return !!(position & 4)
 }
 
-function findNoteItemForTarget(anchor: HTMLAnchorElement, target: HTMLElement) {
+function findNoteItemForTarget(
+  anchor: HTMLAnchorElement,
+  target: HTMLElement,
+  getTarget: NoteTargetLookup = getElementByIdOrName,
+) {
   return (
-    findEmptyTargetNoteItem(anchor, target) ??
-    findBacklinkedTargetNoteItem(anchor, target) ??
+    findEmptyTargetNoteItem(anchor, target, getTarget) ??
+    findBacklinkedTargetNoteItem(anchor, target, getTarget) ??
     findSemanticLinkedNoteItem(anchor, target)
   )
 }
 
-function findBacklinkedTargetNoteItem(anchor: HTMLAnchorElement, target: HTMLElement) {
+function findBacklinkedTargetNoteItem(anchor: HTMLAnchorElement, target: HTMLElement, getTarget: NoteTargetLookup) {
   if (isEmptyPositionTarget(target)) return
 
   for (const candidate of getBacklinkedTargetNoteItemCandidates(target)) {
     const backlink = findFirstHashLink(candidate)
-    if (backlink && isConfirmedNoteBacklink(backlink, anchor) && hasUsefulReciprocalNoteContent(candidate, backlink)) {
+    if (
+      backlink &&
+      backlinkTargetsAnchor(backlink, anchor, getTarget) &&
+      hasUsefulReciprocalNoteContent(candidate, backlink)
+    ) {
       return candidate
     }
   }
@@ -118,12 +128,16 @@ function getBacklinkedTargetNoteItemCandidates(target: HTMLElement) {
   return uniqueElements(candidates)
 }
 
-function findEmptyTargetNoteItem(anchor: HTMLAnchorElement, target: HTMLElement) {
+function findEmptyTargetNoteItem(anchor: HTMLAnchorElement, target: HTMLElement, getTarget: NoteTargetLookup) {
   if (!isEmptyPositionTarget(target)) return
 
   for (const candidate of getEmptyTargetNoteItemCandidates(target)) {
     const backlink = findFirstHashLink(candidate)
-    if (backlink && isConfirmedNoteBacklink(backlink, anchor) && hasUsefulReciprocalNoteContent(candidate, backlink)) {
+    if (
+      backlink &&
+      backlinkTargetsAnchor(backlink, anchor, getTarget) &&
+      hasUsefulReciprocalNoteContent(candidate, backlink)
+    ) {
       return candidate
     }
   }
@@ -157,10 +171,6 @@ function getEmptyTargetNoteItemCandidates(target: HTMLElement) {
   return uniqueElements(candidates)
 }
 
-function isConfirmedNoteBacklink(backlink: HTMLAnchorElement, anchor: HTMLAnchorElement) {
-  return backlinkTargetsAnchor(backlink, anchor)
-}
-
 function findSemanticLinkedNoteItem(anchor: HTMLAnchorElement, target: HTMLElement) {
   if (!isSemanticNoteSourceAnchor(anchor)) return
 
@@ -171,34 +181,50 @@ function findSemanticLinkedNoteItem(anchor: HTMLAnchorElement, target: HTMLEleme
   }
 }
 
-function findNoteHideTarget(item: HTMLElement, itemSet: Set<HTMLElement>) {
+function collectNoteHideTargets(items: HTMLElement[], itemSet: Set<HTMLElement>) {
+  // Construction-only state must not be retained by the document's NoteIndex.
+  const containers = new WeakMap<HTMLElement, boolean>()
+  return uniqueElements(items.map((item) => findNoteHideTarget(item, itemSet, containers)))
+}
+
+function findNoteHideTarget(item: HTMLElement, itemSet: Set<HTMLElement>, containers: WeakMap<HTMLElement, boolean>) {
   let current = item
 
   while (current.parentElement && current.parentElement !== current.ownerDocument.body) {
-    if (!containsOnlyNoteItems(current.parentElement, itemSet)) break
+    if (!containsOnlyNoteItems(current.parentElement, itemSet, containers)) break
     current = current.parentElement
   }
 
   return current
 }
 
-function containsOnlyNoteItems(element: HTMLElement, itemSet: Set<HTMLElement>) {
+function containsOnlyNoteItems(
+  element: HTMLElement,
+  itemSet: Set<HTMLElement>,
+  containers: WeakMap<HTMLElement, boolean>,
+): boolean {
+  const cached = containers.get(element)
+  if (cached !== undefined) return cached
+
   let hasNote = false
   let hasOtherContent = false
 
-  element.childNodes.forEach((node) => {
-    if (hasOtherContent) return
-    const result = classifyNodeForNoteContainer(node, itemSet)
+  for (const node of element.childNodes) {
+    const result = classifyNodeForNoteContainer(node, itemSet, containers)
     hasNote ||= result.hasNote
     hasOtherContent ||= result.hasOtherContent
-  })
+    if (hasOtherContent) break
+  }
 
-  return hasNote && !hasOtherContent
+  const onlyNotes = hasNote && !hasOtherContent
+  containers.set(element, onlyNotes)
+  return onlyNotes
 }
 
 function classifyNodeForNoteContainer(
   node: ChildNode,
   itemSet: Set<HTMLElement>,
+  containers: WeakMap<HTMLElement, boolean>,
 ): { hasNote: boolean; hasOtherContent: boolean } {
   if (node.nodeType === 3) {
     return {
@@ -217,16 +243,8 @@ function classifyNodeForNoteContainer(
     return { hasNote: false, hasOtherContent: false }
   }
 
-  let hasNote = false
-  let hasOtherContent = false
-  element.childNodes.forEach((child) => {
-    if (hasOtherContent) return
-    const result = classifyNodeForNoteContainer(child, itemSet)
-    hasNote ||= result.hasNote
-    hasOtherContent ||= result.hasOtherContent
-  })
-
-  return { hasNote, hasOtherContent: hasOtherContent || !hasNote }
+  const onlyNotes = containsOnlyNoteItems(element, itemSet, containers)
+  return { hasNote: onlyNotes, hasOtherContent: !onlyNotes }
 }
 
 function findFirstHashLink(el: HTMLElement): HTMLAnchorElement | undefined {
@@ -292,11 +310,11 @@ function isInlineNoteTargetWrapper(el: HTMLElement) {
   return isTagName(el, 'A', 'B', 'EM', 'FONT', 'I', 'SMALL', 'SPAN', 'STRONG', 'SUB', 'SUP')
 }
 
-function backlinkTargetsAnchor(backlink: HTMLAnchorElement, anchor: HTMLAnchorElement) {
+function backlinkTargetsAnchor(backlink: HTMLAnchorElement, anchor: HTMLAnchorElement, getTarget: NoteTargetLookup) {
   const [, hash = ''] = backlink.getAttribute('href')?.split('#') ?? []
   if (!hash) return false
 
-  const target = getElementByIdOrName(anchor.ownerDocument, safeDecodeHref(hash))
+  const target = getTarget(anchor.ownerDocument, safeDecodeHref(hash))
   if (!target) return false
 
   return (
@@ -313,6 +331,35 @@ export function getElementByIdOrName(doc: Document, id: string) {
     doc.getElementById(id) ??
     ([...doc.querySelectorAll('[name]')].find((el) => el.getAttribute('name') === id) as HTMLElement | undefined)
   )
+}
+
+function createNoteTargetLookup(): NoteTargetLookup {
+  let namedElements: NodeListOf<HTMLElement> | undefined
+  let namedTargets: Map<string, HTMLElement> | undefined
+
+  return (doc, id) => {
+    const target = doc.getElementById(id)
+    if (target) return target
+
+    // A single name fallback needs no map; repeated fallbacks reuse the queried elements.
+    if (!namedElements) {
+      namedElements = doc.querySelectorAll<HTMLElement>('[name]')
+      for (const element of namedElements) {
+        if (element.getAttribute('name') === id) return element
+      }
+      return
+    }
+    if (!namedElements.length) return
+
+    if (!namedTargets) {
+      namedTargets = new Map()
+      for (const element of namedElements) {
+        const name = element.getAttribute('name')!
+        if (!namedTargets.has(name)) namedTargets.set(name, element)
+      }
+    }
+    return namedTargets.get(id)
+  }
 }
 
 function isPotentialNoteContentElement(el: HTMLElement) {
