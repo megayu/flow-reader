@@ -171,9 +171,13 @@ function createPerfBrowserBooks() {
       id: `flow-perf-${name.toLowerCase()}`,
       name: `${title}.epub`,
       size: BOOK_CHAPTERS * BOOK_PARAGRAPHS * 512,
+      scope: 'library',
       sourceFormat: 'epub',
-      contentHash: `flow-perf-${name.toLowerCase()}`,
+      generatedCover: true,
+      sourceHash: `flow-perf-${name.toLowerCase()}`,
+      sourceRevision: 1,
       revision: 1,
+      editable: false,
       managed: true,
       sourcePath: `${title}.epub`,
       metadata: {
@@ -341,7 +345,12 @@ async function installBrowserTauriMock(page, books) {
           panes: {},
         }
       }
-      if (command === 'get_settings') return { ...settingsStore }
+      if (command === 'get_settings') {
+        return {
+          settings: { ...settingsStore },
+          textImportRuleDefaults: { groupPatterns: [], chapterPatterns: [], filenamePatterns: [] },
+        }
+      }
       if (command === 'update_settings') {
         Object.assign(settingsStore, args.settings ?? {})
         return null
@@ -356,7 +365,9 @@ async function installBrowserTauriMock(page, books) {
         bookStore.set(id, updated)
         return updated
       }
-      if (command === 'import_text_paths') return Array.from(bookStore.values())
+      if (command === 'import_text_paths') {
+        return { books: Array.from(bookStore.values()), failures: [], skipped: [] }
+      }
       if (command === 'list_covers') return []
       if (command === 'get_cover') return null
       if (command === 'get_book_package_path') {
@@ -400,7 +411,9 @@ async function installRuntimePerfBookMock(page, books) {
         bookStore.set(id, updated)
         return updated
       }
-      if (command === 'import_text_paths') return Array.from(bookStore.values())
+      if (command === 'import_text_paths') {
+        return { books: Array.from(bookStore.values()), failures: [], skipped: [] }
+      }
       if (command === 'list_covers') return []
       if (command === 'get_cover') return null
       if (command === 'get_book_package_path') {
@@ -457,6 +470,72 @@ async function invoke(page, command, args) {
   return page.evaluate(({ command, args }) => window.__TAURI_INTERNALS__.invoke(command, args), { command, args })
 }
 
+async function invokeBookImportWithProgress(page, command, args) {
+  return page.evaluate(
+    async ({ command, args }) => {
+      const internals = window.__TAURI_INTERNALS__
+      const books = new Map()
+      const pendingMessages = new Map()
+      let nextMessageIndex = 0
+      let endMessageIndex
+      let callbackId
+      let resolveChannelEnd
+      const channelEnd = new Promise((resolve) => {
+        resolveChannelEnd = resolve
+      })
+      const recordMessage = (message) => {
+        const book = message?.book
+        if (book) books.set(book.id, book)
+      }
+      const finishIfComplete = () => {
+        if (endMessageIndex === nextMessageIndex) resolveChannelEnd()
+      }
+      callbackId = internals.transformCallback((rawMessage) => {
+        const index = rawMessage.index
+        if ('end' in rawMessage) {
+          endMessageIndex = index
+          finishIfComplete()
+          return
+        }
+        if (index !== nextMessageIndex) {
+          pendingMessages.set(index, rawMessage.message)
+          return
+        }
+        recordMessage(rawMessage.message)
+        nextMessageIndex += 1
+        while (pendingMessages.has(nextMessageIndex)) {
+          recordMessage(pendingMessages.get(nextMessageIndex))
+          pendingMessages.delete(nextMessageIndex)
+          nextMessageIndex += 1
+        }
+        finishIfComplete()
+      })
+      const onProgress = {
+        __TAURI_TO_IPC_KEY__: () => `__CHANNEL__:${callbackId}`,
+      }
+      try {
+        const result = await internals.invoke(command, { ...args, onProgress })
+        let timeoutId
+        try {
+          await Promise.race([
+            channelEnd,
+            new Promise((_, reject) => {
+              timeoutId = setTimeout(() => reject(new Error(`${command} progress channel did not close`)), 5_000)
+            }),
+          ])
+        } finally {
+          clearTimeout(timeoutId)
+        }
+        result.books.forEach((book) => books.set(book.id, book))
+        return { ...result, books: [...books.values()] }
+      } finally {
+        internals.unregisterCallback(callbackId)
+      }
+    },
+    { command, args },
+  )
+}
+
 async function ensureReaderMode(page) {
   for (let i = 0; i < 3; i += 1) {
     const libraryOverlay = await page.evaluate(
@@ -498,10 +577,10 @@ async function clickActivityButton(page, names) {
 async function ensureSidebar(page, visible, panel = 'toc') {
   await ensureReaderMode(page)
   const panelLabels = {
-    toc: ['目录', 'TOC'],
+    toc: ['目录', 'Table of contents'],
     search: ['搜索', 'Search'],
     annotation: ['标注', 'Annotation', 'Annotations'],
-    image: ['图片', 'Image', 'Images'],
+    image: ['图片', 'Gallery'],
     typography: ['排版', 'Typography'],
   }
   const labels = panelLabels[panel] ?? panelLabels.toc
@@ -1481,13 +1560,15 @@ async function main() {
     timeout: 30000,
   })
 
-  const imported =
+  const importResult =
     BOOK_SOURCE === 'mock'
-      ? target.books
-      : await invoke(page, 'import_text_paths', {
+      ? { books: target.books, failures: [], skipped: [] }
+      : await invokeBookImportWithProgress(page, 'import_text_paths', {
           imports: bookPaths.map((bookPath) => ({ path: bookPath })),
-          replaceExisting: true,
+          copySourceFiles: true,
         })
+  assert(importResult.books.length === bookPaths.length, 'native performance books failed to import', importResult)
+  const imported = importResult.books
   const books = await Promise.all(
     imported.map(async (book) => {
       const full = await invoke(page, 'get_book', { id: book.id })
@@ -1567,20 +1648,26 @@ async function main() {
   const tabSwitchOps = [selectTabOperation(1), selectTabOperation(2), selectTabOperation(0)]
   const tabClickOps = [clickTabOperation(1), clickTabOperation(2), clickTabOperation(0)]
   const profiles = []
+  const anySelected = (...names) => names.some((name) => shouldMeasureScenario(name))
 
   if (CPU_PROFILE) {
     await ensureSidebar(page, true, 'toc')
     profiles.push(await profileOperation(page, 'cpu-profile/tab-switch/sidebar-toc', tabSwitchOps[0]))
   }
 
-  await ensureSidebar(page, false)
-  await recordScenario('tab-switch/sidebar-closed', tabSwitchOps)
-  await recordScenario('tab-click/sidebar-closed', tabClickOps)
-  await recordBurstScenario('rapid-tab-click/sidebar-closed', repeatOperations(tabClickOps, 18), {
-    assertEachFrameVisible: true,
-  })
+  if (anySelected('tab-switch/sidebar-closed', 'tab-click/sidebar-closed', 'rapid-tab-click/sidebar-closed')) {
+    await ensureSidebar(page, false)
+    await recordScenario('tab-switch/sidebar-closed', tabSwitchOps)
+    await recordScenario('tab-click/sidebar-closed', tabClickOps)
+    await recordBurstScenario('rapid-tab-click/sidebar-closed', repeatOperations(tabClickOps, 18), {
+      assertEachFrameVisible: true,
+    })
+  }
 
   for (const panel of ['toc', 'search', 'annotation', 'image']) {
+    const panelScenarios = [`tab-switch/sidebar-${panel}`, `tab-click/sidebar-${panel}`]
+    if (panel === 'toc') panelScenarios.push('rapid-tab-click/sidebar-toc')
+    if (!anySelected(...panelScenarios)) continue
     await ensureSidebar(page, true, panel)
     await recordScenario(`tab-switch/sidebar-${panel}`, tabSwitchOps)
     await recordScenario(`tab-click/sidebar-${panel}`, tabClickOps)
@@ -1591,31 +1678,26 @@ async function main() {
     }
   }
 
-  await ensureSidebar(page, true, 'search')
-  const searchQueryOperation = {
-    name: 'broad-query',
-    run: () =>
-      page.evaluate(async () => {
-        const tab = window.reader.focusedBookTab
-        if (!tab) throw new Error('focused book tab missing')
-        tab.results = undefined
-        const results = await tab.search('性能测量')
-        if (tab.keyword === '') tab.results = results
-      }),
+  if (anySelected('search-query/sidebar-search')) {
+    await ensureSidebar(page, true, 'search')
+    const searchQueryOperation = {
+      name: 'broad-query',
+      run: () =>
+        page.evaluate(async () => {
+          const tab = window.reader.focusedBookTab
+          if (!tab) throw new Error('focused book tab missing')
+          tab.results = undefined
+          const results = await tab.search('性能测量')
+          if (tab.keyword === '') tab.results = results
+        }),
+    }
+    await page.evaluate(async () => {
+      const tab = window.reader.focusedBookTab
+      if (!tab) throw new Error('focused book tab missing')
+      await tab.search('性能测量')
+    })
+    await recordScenario('search-query/sidebar-search', [searchQueryOperation])
   }
-  await page.evaluate(async () => {
-    const tab = window.reader.focusedBookTab
-    if (!tab) throw new Error('focused book tab missing')
-    await tab.search('性能测量')
-  })
-  await recordScenario('search-query/sidebar-search', [searchQueryOperation])
-
-  await page.evaluate(async (book) => {
-    await window.reader.closeAllTabs?.()
-    await window.reader.addTab(book)
-  }, books[0])
-  await ensureReaderMode(page)
-  await navigateTabTo(page, 0, 28, 2)
 
   const pageTurnOps = [
     { name: 'keyboard-next', run: () => page.keyboard.press('ArrowRight') },
@@ -1642,25 +1724,44 @@ async function main() {
     },
   ]
 
-  await ensureSidebar(page, false)
-  await recordScenario('page-turn/sidebar-closed', pageTurnOps)
-  await recordScenario('page-turn-api/sidebar-closed', pageTurnApiOps)
-  await recordBurstScenario('rapid-page-turn/sidebar-closed', repeatOperations(pageTurnOps, 12))
-  try {
-    await ensureSidebar(page, true, 'toc')
-    await recordScenario('page-turn/sidebar-toc', pageTurnOps)
-    await recordScenario('page-turn-api/sidebar-toc', pageTurnApiOps)
-    await recordBurstScenario('rapid-page-turn/sidebar-toc', repeatOperations(pageTurnOps, 12))
-  } catch (error) {
-    scenarios.push({
-      name: 'page-turn/sidebar-toc',
-      status: 'failed-before-measure',
-      error: error.message,
-      detail: error.detail,
-    })
-    console.error(`page-turn/sidebar-toc: ${error.message}`)
-    if (error.detail) {
-      console.error(JSON.stringify(error.detail, null, 2).slice(0, 4000))
+  const pageTurnScenarioNames = [
+    'page-turn/sidebar-closed',
+    'page-turn-api/sidebar-closed',
+    'rapid-page-turn/sidebar-closed',
+    'page-turn/sidebar-toc',
+    'page-turn-api/sidebar-toc',
+    'rapid-page-turn/sidebar-toc',
+  ]
+  if (anySelected(...pageTurnScenarioNames)) {
+    await page.evaluate(async (book) => {
+      await window.reader.closeAllTabs?.()
+      await window.reader.addTab(book)
+    }, books[0])
+    await ensureReaderMode(page)
+    await navigateTabTo(page, 0, 28, 2)
+
+    if (anySelected('page-turn/sidebar-closed', 'page-turn-api/sidebar-closed', 'rapid-page-turn/sidebar-closed')) {
+      await ensureSidebar(page, false)
+      await recordScenario('page-turn/sidebar-closed', pageTurnOps)
+      await recordScenario('page-turn-api/sidebar-closed', pageTurnApiOps)
+      await recordBurstScenario('rapid-page-turn/sidebar-closed', repeatOperations(pageTurnOps, 12))
+    }
+    if (anySelected('page-turn/sidebar-toc', 'page-turn-api/sidebar-toc', 'rapid-page-turn/sidebar-toc')) {
+      try {
+        await ensureSidebar(page, true, 'toc')
+        await recordScenario('page-turn/sidebar-toc', pageTurnOps)
+        await recordScenario('page-turn-api/sidebar-toc', pageTurnApiOps)
+        await recordBurstScenario('rapid-page-turn/sidebar-toc', repeatOperations(pageTurnOps, 12))
+      } catch (error) {
+        scenarios.push({
+          name: 'page-turn/sidebar-toc',
+          status: 'failed-before-measure',
+          error: error.message,
+          detail: error.detail,
+        })
+        console.error(`page-turn/sidebar-toc: ${error.message}`)
+        if (error.detail) console.error(JSON.stringify(error.detail, null, 2).slice(0, 4000))
+      }
     }
   }
 

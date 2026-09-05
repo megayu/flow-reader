@@ -77,10 +77,11 @@ function sourceOnlyWatcher(): Plugin {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   base: './',
   build: {
     outDir: 'dist',
+    ...(mode === 'react-render' ? { rolldownOptions: { output: { keepNames: true } } } : {}),
     target: 'es2020',
   },
   clearScreen: false,
@@ -92,6 +93,14 @@ export default defineConfig({
   plugins: [tailwindcss(), react(), sourceOnlyWatcher()],
   resolve: {
     alias: [
+      ...(mode === 'react-render'
+        ? [
+            {
+              find: 'react-dom/client',
+              replacement: fileURLToPath(new URL('./node_modules/react-dom/profiling.js', import.meta.url)),
+            },
+          ]
+        : []),
       {
         find: /^@\/updater-entry$/,
         replacement: fileURLToPath(
@@ -110,4 +119,4 @@ export default defineConfig({
     strictPort: true,
     watch: null,
   },
-})
+}))

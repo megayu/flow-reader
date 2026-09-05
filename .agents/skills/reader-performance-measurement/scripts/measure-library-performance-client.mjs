@@ -1298,7 +1298,8 @@ async function main() {
     await ensureLibraryMode(page, manifest.count)
     const initialGeometry = await readLibraryGeometry(page)
     assertLibraryGeometry(initialGeometry)
-    const actualSettings = await invoke(page, 'get_settings')
+    const settingsBootstrap = await invoke(page, 'get_settings')
+    const actualSettings = settingsBootstrap.settings
     const settingsMismatches = compareExpectedSettings(expectedSettings, actualSettings)
     assert(settingsMismatches.length === 0, 'persisted settings do not match the dataset settings manifest', {
       settingsMismatches,

@@ -14,12 +14,15 @@ Accept performance decisions only from comparable client measurements.
 ## Procedure
 
 1. Trace the changed runtime mechanism and apply the gate below.
-2. Read [Reader Measurement](references/reader-measurement.md),
-   [Library Measurement](references/library-measurement.md), or both for shared
-   work.
+2. Read [Reader Measurement](references/reader-measurement.md) or
+   [Library Measurement](references/library-measurement.md) for the affected
+   surface. Read [React Render Measurement](references/react-render-measurement.md)
+   only when the work changes React subscriptions, component ownership, memo
+   boundaries, or explicitly investigates repeated renders.
 3. For optimizations, search [Performance History](references/performance-history.md)
    for matching retained/rejected work and baseline constraints.
-4. Before editing runtime source, measure the actual current worktree.
+4. When the gate requires measurement, capture the actual worktree before
+   editing runtime source.
 5. Implement, rebuild with the same profile, and repeat identical conditions.
 6. Compare matched results, retain/reject, report, and update history when eligible.
 
@@ -29,6 +32,10 @@ Accept performance decisions only from comparable client measurements.
 | --- | --- |
 | Feature/correctness | Runtime work changes materially and a bundled scenario executes it. |
 | Optimization | Always, unless code proves strictly less work with no replacement, relocation, or runtime tradeoff. |
+
+React render diagnosis is optional and must stay outside routine checks and CI.
+Use it to locate component fan-out and verify the same interaction after a
+change. Use `tauri-release` evidence for the retain/reject decision.
 
 Material changes affect count, frequency, complexity, resource volume, layout,
 subscriptions, timing, decoding, DOM lifetime, or retained resources. Skip cheap
@@ -60,7 +67,8 @@ runs, warmup, and launch configuration.
 - Preserve expensive baseline binaries and record their build source before
   editing; later repository state cannot identify an old binary.
 - Use isolated data and exactly one repository client.
-- Stop before runtime edits if no trustworthy baseline is possible.
+- When measurement is required, stop before runtime edits if no trustworthy
+  baseline is possible.
 
 ## Decision and Report
 
@@ -82,7 +90,7 @@ work once and move it if evidence reverses. Do not record feature gates,
 after-only results, smoke, or local artifact paths.
 
 Report the gate, level, key deltas, decision, and limitations. Mention artifacts
-only when retained for handoff.
+only when retained for review.
 
 ## Resources
 
@@ -93,4 +101,7 @@ only when retained for handoff.
   [data](scripts/generate-library-performance-data.mjs),
   [measure](scripts/measure-library-performance-client.mjs),
   [compare](scripts/compare-library-performance.mjs)
+- React render diagnosis: [reference](references/react-render-measurement.md),
+  [measure](scripts/measure-react-renders.mjs),
+  [compare](scripts/compare-react-renders.mjs)
 - [Performance History](references/performance-history.md)

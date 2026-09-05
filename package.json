@@ -8,6 +8,7 @@
     "prepare": "husky install",
     "dev": "vite",
     "build": "vite build",
+    "build:render-profile": "vite build --mode react-render",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "lint": "biome lint .",
@@ -73,7 +74,11 @@
     "updater:test:exercise": "node tests/updater/manual.ts exercise",
     "updater:test:serve": "node tests/updater/manual.ts serve",
     "doctor": "npx react-doctor@latest -y",
-    "doctor:lines": "npx react-doctor@latest --scope lines --base HEAD --no-score --verbose -y"
+    "doctor:lines": "npx react-doctor@latest --scope lines --base HEAD --no-score --verbose -y",
+    "perf:render:list": "node .agents/skills/reader-performance-measurement/scripts/measure-react-renders.mjs --list",
+    "perf:render:pilot": "pnpm build:render-profile && node .agents/skills/reader-performance-measurement/scripts/measure-react-renders.mjs --set pilot --runs 3",
+    "perf:render:measure": "pnpm build:render-profile && node .agents/skills/reader-performance-measurement/scripts/measure-react-renders.mjs",
+    "perf:render:compare": "node .agents/skills/reader-performance-measurement/scripts/compare-react-renders.mjs"
   },
   "lint-staged": {
     "*.{js,jsx,json,jsonc,css,ts,tsx,html}": "biome check --write --no-errors-on-unmatched"

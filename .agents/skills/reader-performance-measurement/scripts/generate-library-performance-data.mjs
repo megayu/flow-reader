@@ -405,12 +405,18 @@ async function main() {
     )
     const book = {
       id,
+      scope: 'library',
       name: `${id}.epub`,
       size: epubBytes.length,
       ...(readingStatus ? { readingStatus } : {}),
       sourceFormat: 'epub',
-      contentHash: sourceHash,
+      generatedCover: coverKind === 'none',
+      definitions: [],
+      annotations: [],
+      sourceHash,
+      sourceRevision: 1,
       revision: 1,
+      editable: false,
       sourcePath,
       metadata: {
         title: `Synthetic Library Book ${String(index + 1).padStart(6, '0')}`,
