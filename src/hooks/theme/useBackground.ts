@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 
-import { useSettings } from '@/state'
+import { useSetSettings } from '@/state'
 import {
   type BackgroundPalette,
   type BackgroundPresetId,
@@ -44,7 +44,7 @@ const backgroundClassNames = {
 }
 
 export function useBackground() {
-  const [, setSettings] = useSettings()
+  const setSettings = useSetSettings()
 
   const setBackground = useCallback(
     (background: number) => {

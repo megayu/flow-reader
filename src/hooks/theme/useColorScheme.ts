@@ -1,14 +1,14 @@
 import { useCallback, useEffect } from 'react'
 
-import { useSettings } from '@/state'
+import { useColorSchemeSetting } from '@/state'
 
 import { useMediaQuery } from '../useMediaQuery'
 
 export type ColorScheme = 'light' | 'dark' | 'system'
 
 export function useColorScheme() {
-  const [settings, setSettings] = useSettings()
-  const scheme = settings.theme?.scheme ?? 'light'
+  const [configuredScheme, setSettings] = useColorSchemeSetting()
+  const scheme = configuredScheme ?? 'light'
   const setScheme = useCallback(
     (scheme: ColorScheme) => {
       setSettings((prev) => ({

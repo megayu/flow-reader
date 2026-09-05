@@ -3,7 +3,7 @@ import { useSnapshot } from 'valtio'
 
 import type { BookTab } from '../models/reader'
 import { resolveBookSpreadPolicy } from '../reader/spreadPolicy'
-import { useSettings, useZenTypographyOverrides } from '../state'
+import { useTypographySettingValues, useZenTypographyOverrides } from '../state'
 
 function removeUndefinedProperty<T extends Record<string, any>>(obj: T) {
   const newObj: Partial<T> = {}
@@ -19,7 +19,7 @@ function removeUndefinedProperty<T extends Record<string, any>>(obj: T) {
 
 export function useTypography(tab: BookTab) {
   const { book, typographyConfiguration } = useSnapshot(tab)
-  const [settings] = useSettings()
+  const settings = useTypographySettingValues()
   const zenTypographyOverrides = useZenTypographyOverrides()
   const zenTypography = zenTypographyOverrides[tab.id]
 

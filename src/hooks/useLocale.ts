@@ -1,11 +1,11 @@
 import { useCallback } from 'react'
 
 import { type AppLocale, fallbackLocale, isAppLocale, localeOptions } from '../locales'
-import { useSettings } from '../state'
+import { useSettingsLocale } from '../state'
 
 export function useLocale() {
-  const [settings, setSettings] = useSettings()
-  const locale = isAppLocale(settings.locale) ? settings.locale : fallbackLocale
+  const [settingsLocale, setSettings] = useSettingsLocale()
+  const locale = isAppLocale(settingsLocale) ? settingsLocale : fallbackLocale
 
   const setLocale = useCallback(
     (locale: AppLocale) => {

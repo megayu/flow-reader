@@ -499,6 +499,54 @@ export function useSettings() {
   return [settings, setSettings] as const
 }
 
+export function useSettingsLocale() {
+  const locale = useAppStore((state) => state.settings.locale)
+  const setSettings = useAppStore((state) => state.setSettings)
+
+  useEffect(() => {
+    if (IS_SERVER) return
+    void loadSettings()
+  }, [])
+
+  return [locale, setSettings] as const
+}
+
+export function useSetSettings() {
+  const setSettings = useAppStore((state) => state.setSettings)
+
+  useEffect(() => {
+    if (IS_SERVER) return
+    void loadSettings()
+  }, [])
+
+  return setSettings
+}
+
+export function useTypographySettingValues() {
+  const hideEndnotes = useAppStore((state) => state.settings.hideEndnotes)
+  const spread = useAppStore((state) => state.settings.spread)
+  const textAlign = useAppStore((state) => state.settings.textAlign)
+
+  useEffect(() => {
+    if (IS_SERVER) return
+    void loadSettings()
+  }, [])
+
+  return { hideEndnotes, spread, textAlign }
+}
+
+export function useColorSchemeSetting() {
+  const scheme = useAppStore((state) => state.settings.theme?.scheme)
+  const setSettings = useAppStore((state) => state.setSettings)
+
+  useEffect(() => {
+    if (IS_SERVER) return
+    void loadSettings()
+  }, [])
+
+  return [scheme, setSettings] as const
+}
+
 export function useSettingsReady() {
   const ready = useAppStore((state) => state.settingsReady)
 

@@ -439,11 +439,7 @@ function ReaderTabs({
             const tab = reader.paneTabs[paneIndex]!
             const active = paneTab.id === selectedTabId
 
-            return (
-              <PaneContainer active={active} key={paneTab.id}>
-                <BookPane active={active} tab={tab} />
-              </PaneContainer>
-            )
+            return <PaneContainer active={active} key={paneTab.id} tab={tab} />
           })}
         </DropZone>
         {content && (
@@ -575,9 +571,9 @@ function getReaderTabIcon(tab: BookTab) {
 
 interface PaneContainerProps {
   active: boolean
-  children?: React.ReactNode
+  tab: BookTab
 }
-const PaneContainer: React.FC<PaneContainerProps> = React.memo(function PaneContainer({ active, children }) {
+const PaneContainer: React.FC<PaneContainerProps> = React.memo(function PaneContainer({ active, tab }) {
   return (
     <div
       aria-hidden={!active}
@@ -587,7 +583,7 @@ const PaneContainer: React.FC<PaneContainerProps> = React.memo(function PaneCont
         active ? 'visible z-10 opacity-100' : 'pointer-events-none invisible z-0 opacity-0',
       )}
     >
-      {children}
+      <BookPane active={active} tab={tab} />
     </div>
   )
 })

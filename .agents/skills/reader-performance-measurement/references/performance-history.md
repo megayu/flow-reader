@@ -172,6 +172,13 @@ start of rejected approaches. Other entries cover reader interactions.
 - Decision: keep. Each typed character now updates only the search control before the debounced result commit, while the matched single-input and clear paths remain within the review threshold in both full-grid and virtualized libraries.
 - Constraint: keep the raw query synchronized with the library return-state ref without scheduling a parent render. Preserve the delayed empty-query handoff unless a replacement passes the 800-book search-clear control as well as the search-apply path.
 
+### Reader tab clicks with many open books
+
+- Change: stabilize the import-result notification callback, subscribe reader hooks only to the locale, typography, color-scheme, or settings setter values they use, and pass stable tab data into memoized pane containers. Add a deterministic 20-tab render scenario so tab-switch fan-out can be measured at scale.
+- Measured effect: matched React Doctor profile-build samples used three independent recordings for both 3-tab and 20-tab clicks. At 3 tabs, total render events fell from 552 to 256; `ReaderTabItem` fell from seven renders to three, `AppTooltip` from 22 to eight, `PaneContainer` from six to two, and `Reader` and `Layout` from one each to zero. At 20 tabs, total render events fell from 1,789 to 231 (87.1%); `ReaderTabItem` fell from 41 renders to three, `AppTooltip` from 56 to eight, `PaneContainer` from 60 to two, and `Reader` and `Layout` again fell to zero. A matched Windows Tauri release control with three tabs improved single-click operation p50/p95 by 19.6%/21.1%, single-click first-frame p50/p95 by 20.4%/14.0%, rapid 18-step burst p50/p95 by 17.9%/15.5%, and maximum-step first-frame p95 by 41.0%. Single-click settled p95 changed +1.8%, rapid settled p50/p95 improved 10.0%/12.5%, and both builds recorded zero long tasks.
+- Decision: keep. Tab clicks now update the selected tab boundary instead of rebuilding inactive reader panes and unrelated settings consumers, and the improvement grows with tab count without moving measurable cost into the settled phase.
+- Constraint: preserve the narrow settings selectors. The 20-tab result establishes React render scaling in the browser diagnostic build; real-client timing remains a separate matched Tauri release control.
+
 ## Rejected Approaches
 
 ### Decode gating without retained library cover resources
