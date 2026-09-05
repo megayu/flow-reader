@@ -151,6 +151,13 @@ start of rejected approaches. Other entries cover reader interactions.
 - Decision: keep. It removes an absolute-index retention bug without changing the common top return path, and bounds middle-position ownership to the top and active virtual windows.
 - Constraint: measure restored non-top state at a middle position, not the bottom where a partial final row changes the mounted-card count. This is a large-library scenario; do not add a small-library matrix for it.
 
+### Narrow PageActionBar reader subscription
+
+- Change: derive whether a focused reader tab exists from `selectedIndex` and `tabs.length` instead of reading the full `focusedBookTab` object in `PageActionBar`. This keeps the global action bar subscribed to tab availability while excluding page-location and other nested current-tab updates.
+- Measured effect: the baseline and after builds came from the same worktree, with only the `PageActionBar` subscription changed between them. Matched React Doctor profile-build samples used three independent recordings per scenario. A keyboard page turn reduced `PageActionBar` from seven renders and 8.5 ms total render duration to zero, while a real tab click remained at two renders. Matched `tauri-release` native-book runs used eight single runs with the first three excluded and four rapid bursts across closed-sidebar and TOC page turns, tab switches, and tab clicks. Closed-sidebar rapid page turns improved burst p50/p95 by 14.0%/9.7% and settled p50/p95 by 8.0%/5.2%; TOC rapid page turns improved burst p50/p95 by 17.9%/17.3% and settled p50/p95 by 14.9%/9.3%. All ten scenarios passed with zero long tasks, while the tab-switch and tab-click controls showed no consistent regression.
+- Decision: keep. It removes a semantically unrelated render subtree from page turns and improves both rapid page-turn configurations without moving measurable cost into the tab-switch controls.
+- Constraint: `PageActionBar` may depend only on reader-tab availability through this boundary. If an action later needs focused-tab metadata, give that action a narrower subscription and repeat both React render counts and the full page-turn/tab-switch release matrix.
+
 ## Rejected Approaches
 
 ### Decode gating without retained library cover resources

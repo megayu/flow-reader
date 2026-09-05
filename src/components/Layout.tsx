@@ -392,7 +392,9 @@ function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProp
   const [themeOpen, setThemeOpen] = useState(false)
   const [viewMode, setViewMode] = useViewMode()
   const [zenMode, setZenMode] = useZenMode()
-  const { focusedBookTab } = useReaderSnapshot()
+  const readerSnapshot = useReaderSnapshot()
+  const hasFocusedBookTab =
+    readerSnapshot.selectedIndex >= 0 && readerSnapshot.selectedIndex < readerSnapshot.tabs.length
   const t = useTranslation()
   const { fullscreen, toggleFullscreen } = useFullscreenAction()
 
@@ -407,7 +409,7 @@ function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProp
         title: viewMode === 'library' ? 'mode.resume_reading' : 'mode.back_to_library',
         Icon: viewMode === 'library' ? BookOpen : Library,
         shortcutId: 'libraryReaderToggle',
-        disabled: viewMode === 'library' && !focusedBookTab,
+        disabled: viewMode === 'library' && !hasFocusedBookTab,
       },
       {
         name: 'theme',
@@ -425,7 +427,7 @@ function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProp
         title: 'zen.enter',
         Icon: Focus,
         shortcutId: 'zenMode',
-        disabled: viewMode === 'library' || !focusedBookTab,
+        disabled: viewMode === 'library' || !hasFocusedBookTab,
       },
       {
         name: 'settings',
@@ -434,7 +436,7 @@ function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProp
         shortcutId: 'openSettings',
       },
     ],
-    [focusedBookTab, fullscreen, viewMode],
+    [fullscreen, hasFocusedBookTab, viewMode],
   )
 
   return (
@@ -466,7 +468,7 @@ function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProp
                       }
 
                       if (name === 'zen') {
-                        if (viewMode !== 'library' && focusedBookTab) {
+                        if (viewMode !== 'library' && hasFocusedBookTab) {
                           onSettingsOpenChange(false)
                           setZenMode(true)
                         }
@@ -475,7 +477,7 @@ function PageActionBar({ settingsOpen, onSettingsOpenChange }: PageActionBarProp
 
                       if (name === 'mode') {
                         if (viewMode === 'library') {
-                          if (focusedBookTab) setViewMode('reader')
+                          if (hasFocusedBookTab) setViewMode('reader')
                         } else {
                           setViewMode('library')
                         }
