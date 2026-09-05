@@ -38,11 +38,13 @@ export async function sanitizeMdictContent({
   resourceUrlPrefix,
 }: SanitizeMdictOptions): Promise<DictionaryRichDocument> {
   const source = new DOMParser().parseFromString(html, 'text/html')
-  const stylesheetKeys = Array.from(source.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"][href]'))
-    .map((link) => normalizeResourceKey(link.getAttribute('href') ?? ''))
-    .filter((key): key is string => Boolean(key))
-    .filter((key, index, keys) => keys.indexOf(key) === index)
-    .slice(0, MAX_STYLESHEETS)
+  const stylesheetKeys: string[] = []
+  for (const link of source.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"][href]')) {
+    const key = normalizeResourceKey(link.getAttribute('href') ?? '')
+    if (!key || stylesheetKeys.includes(key)) continue
+    stylesheetKeys.push(key)
+    if (stylesheetKeys.length === MAX_STYLESHEETS) break
+  }
   const resourceKeys = new Set<string>(stylesheetKeys)
   sanitizeChildren(source.body, resourceUrlPrefix, resourceKeys)
 
