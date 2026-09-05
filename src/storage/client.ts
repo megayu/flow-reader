@@ -98,6 +98,17 @@ function updateCachedBook(id: string, changes: Partial<BookRecord>) {
   if (book) Object.assign(book, changes)
 }
 
+function getCachedBooks(ids: string[]): BookRecord[] {
+  if (!ids.length || !booksCache?.length) return []
+  if (ids.length === 1) {
+    const book = booksCache.find((book) => book.id === ids[0])
+    return book ? [book] : []
+  }
+
+  const selected = new Set(ids)
+  return booksCache.filter((book) => selected.has(book.id))
+}
+
 function cacheBooks(books: BookRecord[]) {
   booksCache = books.filter((book) => book.scope === 'library').map(stripBookState)
 }
@@ -146,9 +157,14 @@ function rememberCover(cover: CoverRecord) {
 }
 
 function forgetCovers(ids: string[]) {
-  if (coversCache) {
-    coversCache = coversCache.filter((cover) => !ids.includes(cover.id))
+  if (!ids.length || !coversCache?.length) return
+  if (ids.length === 1) {
+    coversCache = coversCache.filter((cover) => cover.id !== ids[0])
+    return
   }
+
+  const removed = new Set(ids)
+  coversCache = coversCache.filter((cover) => !removed.has(cover.id))
 }
 
 function rememberTags(tags: LibraryTagRecord[]) {
@@ -407,10 +423,9 @@ export const db = {
     async updateReadingStatus(ids: string[], readingStatus: ReadingStatus | null) {
       beginBooksMutation()
       const updatedAt = Date.now()
-      const books = ids.flatMap((id) => {
-        const book = booksCache?.find((book) => book.id === id)
-        return book && book.readingStatus !== readingStatus ? [{ ...book, readingStatus, updatedAt }] : []
-      })
+      const books = getCachedBooks(ids).flatMap((book) =>
+        book.readingStatus !== readingStatus ? [{ ...book, readingStatus, updatedAt }] : [],
+      )
       await trackNativeWrite(
         invoke<void>('update_book_reading_status', {
           ids,
@@ -431,10 +446,7 @@ export const db = {
       ]
       const removals = new Set(removeTagIds.filter(Boolean))
       const updatedAt = Date.now()
-      const books = ids.flatMap((id) => {
-        const book = booksCache?.find((book) => book.id === id)
-        if (!book) return []
-
+      const books = getCachedBooks(ids).flatMap((book) => {
         const tagIds = new Set(book.tagIds ?? [])
         let changed = false
         for (const tagId of removals) {
