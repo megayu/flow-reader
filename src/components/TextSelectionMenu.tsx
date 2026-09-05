@@ -9,7 +9,7 @@ import {
   SquareMinusIcon,
   SquarePlusIcon,
 } from 'lucide-react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSnapshot } from 'valtio'
 
 import { type AnnotationColor, annotationColors, colorMap, orderRangeRectsForWritingMode } from '../annotation'
@@ -338,8 +338,6 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
 }) => {
   const setAction = useSetAction()
   const ref = useRef<HTMLTextAreaElement>(null)
-  const [width, setWidth] = useState(0)
-  const [height, setHeight] = useState(0)
   const popupElementRef = useRef<HTMLDivElement>(null)
   const keyboardWindows = useMemo(() => [window, ...windows], [windows])
   const t = useTranslation()
@@ -353,27 +351,6 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const editTextShortcut = getShortcutChords('selectionEditText')[0]
   const annotateShortcut = getShortcutChords('selectionAnnotate')[0]
   const definitionToggleShortcut = getShortcutChords('selectionDefinitionToggle')[0]
-
-  useLayoutEffect(() => {
-    const el = popupElementRef.current
-    if (!el) return
-
-    const observer = new ResizeObserver(() => {
-      setWidth(el.offsetWidth)
-      setHeight(el.offsetHeight)
-    })
-    observer.observe(el)
-    const focusTimer = window.setTimeout(() => {
-      if (!el.contains(el.ownerDocument.activeElement)) {
-        el.focus({ preventScroll: true })
-      }
-    })
-
-    return () => {
-      window.clearTimeout(focusTimer)
-      observer.disconnect()
-    }
-  }, [view])
 
   const cfi = annotationCfi ?? tab.rangeToCfi(range)
   const section = tab.sectionForRange(range)
@@ -465,8 +442,6 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     popupElementRef.current?.focus({ preventScroll: true })
   }
   const switchView = (nextView: 'actions' | 'dictionary' | 'translation') => {
-    setWidth(0)
-    setHeight(0)
     setView(nextView)
   }
   const startEditing = () => {
@@ -652,24 +627,70 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     width: rangeRight - rangeLeft,
     height: releasePoint ? 1 : rangeBottom - rangeTop,
   }
-  const verticalPlacement = vertical
-    ? layoutBesideRect(
-        {
-          left: 0,
-          top: 0,
-          width: containerRect.width,
-          height: containerRect.height,
-        },
-        verticalAnchor,
-        { width, height },
-        {
-          preferredSide: 'right',
-          gap: 12,
-          margin: 10,
-          avoidRects: outerRangeRects,
-        },
-      )
-    : undefined
+  const updatePopupLayout = useEffectEvent((el: HTMLDivElement) => {
+    const width = el.offsetWidth
+    const height = el.offsetHeight
+    const verticalPlacement = vertical
+      ? layoutBesideRect(
+          {
+            left: 0,
+            top: 0,
+            width: containerRect.width,
+            height: containerRect.height,
+          },
+          verticalAnchor,
+          { width, height },
+          {
+            preferredSide: 'right',
+            gap: 12,
+            margin: 10,
+            avoidRects: outerRangeRects,
+          },
+        )
+      : undefined
+    const left =
+      verticalPlacement?.left ??
+      layout(containerRect.width, width, {
+        offset: layoutAnchor.left + viewRect.left - containerRect.left,
+        size: layoutAnchor.width,
+        mode: LayoutAnchorMode.ALIGN,
+        position,
+      })
+    const top =
+      verticalPlacement?.top ??
+      layout(containerRect.height, height, {
+        offset: layoutAnchor.top - (layoutLineHeight - layoutAnchor.height) / 2,
+        size: layoutLineHeight,
+        position,
+      })
+
+    el.style.left = `${left}px`
+    el.style.top = `${top}px`
+    el.style.visibility = width && height ? 'visible' : 'hidden'
+  })
+
+  useLayoutEffect(() => {
+    const el = popupElementRef.current
+    if (el) updatePopupLayout(el)
+  })
+
+  useLayoutEffect(() => {
+    const el = popupElementRef.current
+    if (!el) return
+
+    const observer = new ResizeObserver(() => updatePopupLayout(el))
+    observer.observe(el)
+    const focusTimer = window.setTimeout(() => {
+      if (!el.contains(el.ownerDocument.activeElement)) {
+        el.focus({ preventScroll: true })
+      }
+    })
+
+    return () => {
+      window.clearTimeout(focusTimer)
+      observer.disconnect()
+    }
+  }, [view])
 
   return (
     <>
@@ -694,22 +715,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
             view === 'dictionary' || view === 'translation'
               ? Math.min(600, Math.max(0, containerRect.width - 20))
               : undefined,
-          left:
-            verticalPlacement?.left ??
-            layout(containerRect.width, width, {
-              offset: layoutAnchor.left + viewRect.left - containerRect.left,
-              size: layoutAnchor.width,
-              mode: LayoutAnchorMode.ALIGN,
-              position,
-            }),
-          top:
-            verticalPlacement?.top ??
-            layout(containerRect.height, height, {
-              offset: layoutAnchor.top - (layoutLineHeight - layoutAnchor.height) / 2,
-              size: layoutLineHeight,
-              position,
-            }),
-          visibility: width && height ? 'visible' : 'hidden',
+          visibility: 'hidden',
         }}
         role={view === 'dictionary' || view === 'translation' ? 'dialog' : undefined}
         data-flow-escape-surface

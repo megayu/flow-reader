@@ -158,6 +158,13 @@ start of rejected approaches. Other entries cover reader interactions.
 - Decision: keep. It removes a semantically unrelated render subtree from page turns and improves both rapid page-turn configurations without moving measurable cost into the tab-switch controls.
 - Constraint: `PageActionBar` may depend only on reader-tab availability through this boundary. If an action later needs focused-tab metadata, give that action a narrower subscription and repeat both React render counts and the full page-turn/tab-switch release matrix.
 
+### Imperative selection-menu measurement and placement
+
+- Change: measure the mounted selection menu in a layout effect, write its position and visibility directly to that overlay element, and let `ResizeObserver` repeat the same DOM layout update when its contents resize. Remove the measured width and height from React state so opening the menu does not render the entire action and tooltip subtree a second time.
+- Measured effect: matched React Doctor profile-build samples used three independent recordings. `TextSelectionMenuRenderer` fell from two renders and 6.9 ms median total render-event duration to one render and 5.4 ms; the duplicated action-button and tooltip subtree renders disappeared with it. Matched `tauri-release` native-book runs used 12 menu openings with the first three excluded and asserted that every visible menu stayed within the reader. Time to visible improved from 17.1/23.7 ms to 16.0/20.1 ms at p50/p95, and first-frame time improved from 18.2/28.8 ms to 17.1/23.1 ms. Settled p50 changed from 202.0 to 201.3 ms and p95 from 217.0 to 218.4 ms; both builds recorded zero long tasks.
+- Decision: keep. The change removes the known measurement-driven React commit, improves the user-visible open path in the real client, and preserves horizontal, vertical, scrolling, focus, and overlay ownership behavior.
+- Constraint: keep selection-menu measurement synchronous with the layout commit so a newly mounted or view-switched menu remains hidden until its final position is available. If overlay geometry or iframe ownership changes, repeat the horizontal and vertical geometry checks plus the real-client time-to-visible measurement.
+
 ## Rejected Approaches
 
 ### Decode gating without retained library cover resources
@@ -274,6 +281,13 @@ start of rejected approaches. Other entries cover reader interactions.
 - Attempt: move page-width CSS variable sync and chapter-find pagination sync into smaller child components so `BookPane` no longer subscribes to pagination at the top level.
 - Measured effect: rapid TOC tab-click first frame worsened about 40%, long tasks returned, and closed-sidebar page-turn first frame worsened about 30%.
 - Decision: rejected. Extra subscriptions and sync paths hurt the primary multi-tab requirement.
+
+### Defer view-version notification until navigation settles
+
+- Attempt: keep iframe window ownership current during a page turn, but defer all `viewVersion` and overlay notifications raised by intermediate `rendered` and `removed` events until `turning` becomes false.
+- Measured effect: matched React Doctor profile-build samples reduced `BookPane`, reader header/footer, annotations, and edge-navigation renders from ten to four per keyboard page turn, with no render-count change during tab clicks. Matched `tauri-release` native-book runs used eight single runs with the first three excluded and four rapid bursts. With the TOC open, page-turn operation p50/p95 regressed 90.4%/84.2% and first-frame p50/p95 regressed 101.3%/64.6%. Rapid page-turn burst p95 regressed 6.8% closed and 10.7% with TOC; rapid closed-sidebar tab-click max-step first-frame p95 regressed 39.0%. The deterministic release verifier passed, so the failure was displaced interaction cost rather than snapshot correctness.
+- Decision: reject. The lower render count came from concentrating React work at the visible navigation commit, making the actual interaction slower.
+- Retry condition: do not defer the notification batch to the end of navigation. Reconsider only with a consumer design that removes intermediate work without moving it onto the body/header/footer commit boundary, and measure both TOC page turns and rapid tab clicks.
 
 ### Drop pagination dependency from page-width observer
 
