@@ -164,11 +164,7 @@ pub(in crate::storage) fn normalize_unpacked_epub_structure(unpacked_dir: &Path)
         return Ok(changed);
     }
 
-    let mut updated_opf = opf_xml;
-    for split in &split_sections {
-        updated_opf = replace_manifest_item(&updated_opf, split)?;
-        updated_opf = replace_spine_itemref(&updated_opf, split)?;
-    }
+    let mut updated_opf = replace_split_opf_items(opf_xml, &split_sections)?;
     updated_opf = rewrite_current_package_link_values(&updated_opf, &opf_parent, &split_sections);
 
     let replacements = split_sections
@@ -851,25 +847,35 @@ pub(super) fn rewrite_split_item_links(
         .map(|(_, name)| name)
         .unwrap_or(section_abs_path);
 
+    let original_opf_relative = relative_zip_path(opf_parent, section_abs_path);
+    let mut cached_parent = None;
+    let mut replacements = HashMap::new();
     for item in split_items {
         let item_parent = parent_zip_path(&item.abs_path);
-        let original_relative = relative_zip_path(item_parent, section_abs_path);
-        let original_opf_relative = relative_zip_path(opf_parent, section_abs_path);
-        let mut replacements = HashMap::new();
-
-        for (fragment, target_abs_path) in link_targets {
-            let target = format!("{}#{}", relative_zip_path(item_parent, target_abs_path), fragment);
-            replacements.insert(format!("{original_relative}#{fragment}"), target.clone());
-            replacements.insert(format!("{original_opf_relative}#{fragment}"), target.clone());
-            replacements.insert(format!("{section_file_name}#{fragment}"), target.clone());
-            replacements.insert(format!("./{section_file_name}#{fragment}"), target.clone());
-
-            if target_abs_path != &item.abs_path {
-                replacements.insert(format!("#{fragment}"), target);
+        if cached_parent.as_deref() != Some(item_parent) {
+            replacements.clear();
+            let original_relative = relative_zip_path(item_parent, section_abs_path);
+            for (fragment, target_abs_path) in link_targets {
+                let target = format!("{}#{}", relative_zip_path(item_parent, target_abs_path), fragment);
+                for key in [
+                    format!("{original_relative}#{fragment}"),
+                    format!("{original_opf_relative}#{fragment}"),
+                    format!("{section_file_name}#{fragment}"),
+                    format!("./{section_file_name}#{fragment}"),
+                    format!("#{fragment}"),
+                ] {
+                    replacements.insert(key, (target.clone(), target_abs_path.as_str()));
+                }
             }
+            cached_parent = Some(item_parent.to_string());
         }
 
-        item.content = replace_quoted_values_by_lookup(&item.content, &replacements);
+        // The source anchor map has unique fragments. Keep same-file hash links local.
+        item.content = replace_quoted_values_with(&item.content, |value| {
+            replacements.get(value).and_then(|(target, target_path)| {
+                (!(value.starts_with('#') && *target_path == item.abs_path)).then_some(target.as_str())
+            })
+        });
     }
 }
 
@@ -1070,12 +1076,8 @@ pub(in crate::storage) fn relative_zip_path(from_parent: &str, target: &str) -> 
     relative.join("/")
 }
 
-pub(super) fn replace_manifest_item(opf: &str, split: &SplitSection) -> Result<String, String> {
-    let Some((start, end)) = find_xml_start_tag_range(opf, "item", "id", &split.original_id) else {
-        return Ok(opf.to_string());
-    };
-    let indent = line_indent_before(opf, start);
-    let replacement = split
+fn split_manifest_replacement(split: &SplitSection, indent: &str) -> String {
+    split
         .split_items
         .iter()
         .map(|item| {
@@ -1086,8 +1088,14 @@ pub(super) fn replace_manifest_item(opf: &str, split: &SplitSection) -> Result<S
             )
         })
         .collect::<Vec<_>>()
-        .join("\n");
+        .join("\n")
+}
 
+pub(super) fn replace_manifest_item(opf: &str, split: &SplitSection) -> Result<String, String> {
+    let Some((start, end)) = find_xml_start_tag_range(opf, "item", "id", &split.original_id) else {
+        return Ok(opf.to_string());
+    };
+    let replacement = split_manifest_replacement(split, line_indent_before(opf, start));
     let mut updated = String::with_capacity(opf.len() + replacement.len());
     updated.push_str(&opf[..start]);
     updated.push_str(&replacement);
@@ -1095,23 +1103,87 @@ pub(super) fn replace_manifest_item(opf: &str, split: &SplitSection) -> Result<S
     Ok(updated)
 }
 
-pub(super) fn replace_spine_itemref(opf: &str, split: &SplitSection) -> Result<String, String> {
-    let Some((start, end)) = find_xml_start_tag_range(opf, "itemref", "idref", &split.original_id) else {
-        return Ok(opf.to_string());
-    };
-    let indent = line_indent_before(opf, start);
-    let replacement = split
+fn split_spine_replacement(split: &SplitSection, indent: &str) -> String {
+    split
         .split_items
         .iter()
         .map(|item| format!(r#"{indent}<itemref idref="{}"/>"#, escape_xml_attr_local(&item.id)))
         .collect::<Vec<_>>()
-        .join("\n");
+        .join("\n")
+}
 
+pub(super) fn replace_spine_itemref(opf: &str, split: &SplitSection) -> Result<String, String> {
+    let Some((start, end)) = find_xml_start_tag_range(opf, "itemref", "idref", &split.original_id) else {
+        return Ok(opf.to_string());
+    };
+    let replacement = split_spine_replacement(split, line_indent_before(opf, start));
     let mut updated = String::with_capacity(opf.len() + replacement.len());
     updated.push_str(&opf[..start]);
     updated.push_str(&replacement);
     updated.push_str(&opf[end..]);
     Ok(updated)
+}
+
+fn replace_split_opf_items(opf: String, splits: &[SplitSection]) -> Result<String, String> {
+    if let Some(edits) = plan_split_opf_edits(&opf, splits) {
+        let removed: usize = edits.iter().map(|(start, end, _)| end - start).sum();
+        let added: usize = edits.iter().map(|(_, _, text)| text.len()).sum();
+        let mut updated = String::with_capacity(opf.len() - removed + added);
+        let mut cursor = 0;
+        for (start, end, replacement) in edits {
+            updated.push_str(&opf[cursor..start]);
+            updated.push_str(&replacement);
+            cursor = end;
+        }
+        updated.push_str(&opf[cursor..]);
+        return Ok(updated);
+    }
+
+    let mut updated = opf;
+    for split in splits {
+        updated = replace_manifest_item(&updated, split)?;
+        updated = replace_spine_itemref(&updated, split)?;
+    }
+    Ok(updated)
+}
+
+fn plan_split_opf_edits(opf: &str, splits: &[SplitSection]) -> Option<Vec<(usize, usize, String)>> {
+    if splits.len() < 2 || splits.iter().any(|split| !split.original_id.is_ascii()) {
+        return None;
+    }
+    let original_ids = splits
+        .iter()
+        .map(|split| split.original_id.to_ascii_lowercase())
+        .collect::<HashSet<_>>();
+    // Sequential matching is case-insensitive; generated IDs must not become later targets.
+    if splits
+        .iter()
+        .flat_map(|split| &split.split_items)
+        .any(|item| original_ids.contains(&item.id.to_ascii_lowercase()))
+    {
+        return None;
+    }
+
+    let lower = opf.to_ascii_lowercase();
+    let mut edits = Vec::with_capacity(splits.len() * 2);
+    for split in splits {
+        for (tag, attr) in [("item", "id"), ("itemref", "idref")] {
+            if let Some((start, end)) = find_xml_start_tag_range_in_lower(opf, &lower, tag, attr, &split.original_id) {
+                let indent = line_indent_before(opf, start);
+                let replacement = if tag == "item" {
+                    split_manifest_replacement(split, indent)
+                } else {
+                    split_spine_replacement(split, indent)
+                };
+                edits.push((start, end, replacement));
+            }
+        }
+    }
+    edits.sort_unstable_by_key(|(start, _, _)| *start);
+    if edits.windows(2).any(|pair| pair[0].1 > pair[1].0) {
+        return None;
+    }
+    Some(edits)
 }
 
 pub(super) fn find_xml_start_tag_range(
@@ -1121,7 +1193,23 @@ pub(super) fn find_xml_start_tag_range(
     attr_value: &str,
 ) -> Option<(usize, usize)> {
     let lower = xml.to_ascii_lowercase();
+    find_xml_start_tag_range_in_lower(xml, &lower, tag, attr_name, attr_value)
+}
+
+fn find_xml_start_tag_range_in_lower(
+    xml: &str,
+    lower: &str,
+    tag: &str,
+    attr_name: &str,
+    attr_value: &str,
+) -> Option<(usize, usize)> {
     let needle = format!("<{}", tag.to_ascii_lowercase());
+    let pattern = format!(
+        r#"(?is)\b{}\s*=\s*['"]{}['"]"#,
+        regex::escape(attr_name),
+        regex::escape(attr_value)
+    );
+    let attr_regex = Regex::new(&pattern).ok()?;
     let mut cursor = 0usize;
     while let Some(relative_start) = lower[cursor..].find(&needle) {
         let start = cursor + relative_start;
@@ -1134,22 +1222,13 @@ pub(super) fn find_xml_start_tag_range(
 
         let end = lower[start..].find('>')? + start + 1;
         let tag_xml = &xml[start..end];
-        if xml_tag_has_attr_value(tag_xml, attr_name, attr_value) {
+        if attr_regex.is_match(tag_xml) {
             return Some((start, end));
         }
         cursor = end;
     }
 
     None
-}
-
-pub(super) fn xml_tag_has_attr_value(tag: &str, attr_name: &str, attr_value: &str) -> bool {
-    let pattern = format!(
-        r#"(?is)\b{}\s*=\s*['"]{}['"]"#,
-        regex::escape(attr_name),
-        regex::escape(attr_value)
-    );
-    Regex::new(&pattern).ok().is_some_and(|regex| regex.is_match(tag))
 }
 
 pub(super) fn line_indent_before(text: &str, index: usize) -> &str {
@@ -1171,6 +1250,14 @@ pub(super) fn escape_xml_attr_local(value: &str) -> String {
 }
 
 pub(super) fn replace_quoted_values(text: &str, replacements: &[(String, String)]) -> String {
+    if replacements.len() > 4
+        && replacements
+            .iter()
+            .all(|(from, to)| !from.contains(['\'', '"']) && !to.contains(['\'', '"']))
+        && let Some(updated) = replace_quoted_values_in_batch(text, replacements)
+    {
+        return updated;
+    }
     replacements.iter().fold(text.to_string(), |current, (from, to)| {
         current
             .replace(&format!(r#""{from}""#), &format!(r#""{to}""#))
@@ -1178,11 +1265,50 @@ pub(super) fn replace_quoted_values(text: &str, replacements: &[(String, String)
     })
 }
 
+fn replace_quoted_values_in_batch(text: &str, replacements: &[(String, String)]) -> Option<String> {
+    // Resolve later rules first, preserving cascades and first-effective duplicate keys.
+    let mut lookup = HashMap::with_capacity(replacements.len());
+    for (from, to) in replacements.iter().rev() {
+        let target = lookup.get(to.as_str()).copied().unwrap_or(to.as_str());
+        lookup.insert(from.as_str(), target);
+    }
+    let mut previous_quotes = [None, None];
+    let mut last_match_end = None;
+    let mut last_written = 0;
+    let mut updated = String::with_capacity(text.len());
+    for (end, byte) in text.bytes().enumerate() {
+        let quote_index = match byte {
+            b'\'' => 0,
+            b'"' => 1,
+            _ => continue,
+        };
+        if let Some(start) = previous_quotes[quote_index]
+            && let Some(target) = lookup.get(&text[start + 1..end])
+        {
+            // Shared delimiters can make sequential non-overlapping replacements order-dependent.
+            if last_match_end == Some(start) {
+                return None;
+            }
+            updated.push_str(&text[last_written..start + 1]);
+            updated.push_str(target);
+            last_written = end;
+            last_match_end = Some(end);
+        }
+        previous_quotes[quote_index] = Some(end);
+    }
+    updated.push_str(&text[last_written..]);
+    Some(updated)
+}
+
 pub(super) fn replace_quoted_values_by_lookup(text: &str, replacements: &HashMap<String, String>) -> String {
     if replacements.is_empty() {
         return text.to_string();
     }
 
+    replace_quoted_values_with(text, |value| replacements.get(value).map(String::as_str))
+}
+
+fn replace_quoted_values_with<'a>(text: &str, mut lookup: impl FnMut(&str) -> Option<&'a str>) -> String {
     let bytes = text.as_bytes();
     let mut cursor = 0usize;
     let mut last_written = 0usize;
@@ -1205,7 +1331,7 @@ pub(super) fn replace_quoted_values_by_lookup(text: &str, replacements: &HashMap
         }
 
         let value = &text[value_start..value_end];
-        if let Some(replacement) = replacements.get(value) {
+        if let Some(replacement) = lookup(value) {
             updated.push_str(&text[last_written..value_start]);
             updated.push_str(replacement);
             last_written = value_end;
@@ -1230,6 +1356,8 @@ pub(super) fn rewrite_current_package_html_links(
         .iter()
         .map(|split| split.original_abs_path.clone())
         .collect::<HashSet<_>>();
+    let mut cached_parent = None;
+    let mut replacements = HashMap::new();
 
     for path in collect_unpacked_html_files(unpacked_dir)? {
         let relative = path
@@ -1245,7 +1373,11 @@ pub(super) fn rewrite_current_package_html_links(
             continue;
         };
         let parent = parent_zip_path(&relative);
-        let updated = rewrite_current_package_link_values(&text, parent, split_sections);
+        if cached_parent.as_deref() != Some(parent) {
+            populate_current_package_link_replacements(parent, split_sections, &mut replacements);
+            cached_parent = Some(parent.to_string());
+        }
+        let updated = replace_quoted_values_by_lookup(&text, &replacements);
         if updated != text {
             fs::write(path, updated).map_err(|error| error.to_string())?;
         }
@@ -1260,7 +1392,16 @@ pub(super) fn rewrite_current_package_link_values(
     split_sections: &[SplitSection],
 ) -> String {
     let mut replacements = HashMap::new();
+    populate_current_package_link_replacements(current_parent, split_sections, &mut replacements);
+    replace_quoted_values_by_lookup(text, &replacements)
+}
 
+fn populate_current_package_link_replacements(
+    current_parent: &str,
+    split_sections: &[SplitSection],
+    replacements: &mut HashMap<String, String>,
+) {
+    replacements.clear();
     for split in split_sections {
         let original_relative = relative_zip_path(current_parent, &split.original_abs_path);
         let section_file_name = split
@@ -1283,8 +1424,6 @@ pub(super) fn rewrite_current_package_link_values(
             replacements.insert(format!("./{section_file_name}#{fragment}"), target);
         }
     }
-
-    replace_quoted_values_by_lookup(text, &replacements)
 }
 
 pub(super) fn collect_unpacked_html_files(root: &Path) -> Result<Vec<PathBuf>, String> {
