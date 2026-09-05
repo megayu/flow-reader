@@ -121,11 +121,11 @@ export function detectBodyTextIndexes(contents: Contents, candidates: HTMLElemen
 function detectBodyTextMarkers(contents: Contents, candidates: HTMLElement[]) {
   const window = contents.window
   const bodyTextCandidates = candidates.flatMap((el, index) => {
-    const text = getBodyTextCandidateText(el)
-    if (!text) return []
     if (isFactuallyExcludedElement(el)) return []
-    if (isImageOnlyElement(el)) return []
     if (isStructuralDiv(el)) return []
+    const textLength = getBodyTextCandidateLength(el, el)
+    if (!textLength) return []
+    if (isImageOnlyElement(el)) return []
 
     const style = window.getComputedStyle(el)
     if (isInvisible(style)) return []
@@ -140,7 +140,7 @@ function detectBodyTextMarkers(contents: Contents, candidates: HTMLElement[]) {
         fontWeight: style.fontWeight,
         textAlign: style.textAlign,
         textIndent: style.textIndent,
-        textLength: text.length,
+        textLength,
         signature: createBodyTextSignature(el, style),
       },
     ]
@@ -235,12 +235,12 @@ function getBodyTextInlineWrapperChildren(root: HTMLElement) {
 
   for (const node of root.childNodes) {
     if (node.nodeType === 3) {
-      if (normalizeText(node.textContent)) return
+      if (hasNonWhitespaceText(node.textContent)) return
       continue
     }
     if (!isHTMLElement(node)) continue
     if (isElementWithTag(node, 'br')) continue
-    if (!bodyTextInlineWrapperTags.has(node.tagName.toLowerCase()) || !normalizeText(node.textContent)) return
+    if (!bodyTextInlineWrapperTags.has(node.tagName.toLowerCase()) || !hasNonWhitespaceText(node.textContent)) return
     if (!wrappers) wrappers = new Set()
     wrappers.add(node)
   }
@@ -253,7 +253,7 @@ function walkBodyTextInlineElements(root: HTMLElement, visit: (el: HTMLElement) 
     if (!isHTMLElement(node)) return
     if (isInlineTypographyExcludedElement(node)) return
 
-    if (normalizeText(node.textContent)) visit(node)
+    if (hasNonWhitespaceText(node.textContent)) visit(node)
     node.childNodes.forEach(walk)
   }
 
@@ -410,7 +410,7 @@ function isNoteMarkerAnchor(el: HTMLElement) {
 function getFirstMeaningfulChild(el: HTMLElement) {
   return [...el.childNodes].find((node) => {
     if (isHTMLElement(node)) return true
-    return !!normalizeText(node.textContent)
+    return hasNonWhitespaceText(node.textContent)
   })
 }
 
@@ -421,7 +421,7 @@ function isHTMLElement(node: Node): node is HTMLElement {
 function isImageOnlyElement(el: HTMLElement) {
   const meaningfulChildren = [...el.childNodes].filter((node) => {
     if (node.nodeType === 3) {
-      return !!normalizeText(node.textContent)
+      return hasNonWhitespaceText(node.textContent)
     }
 
     if (isElementWithTag(node, 'br')) {
@@ -483,27 +483,25 @@ function getInlineMargin(style: CSSStyleDeclaration) {
   return (parseCssPixel(style.marginLeft) ?? 0) + (parseCssPixel(style.marginRight) ?? 0)
 }
 
-function getBodyTextCandidateText(el: HTMLElement) {
-  return collectBodyTextCandidateText(el, {
-    root: el,
-  })
-}
-
-function collectBodyTextCandidateText(node: Node, options: { root: HTMLElement }): string {
+function getBodyTextCandidateLength(node: Node, root: HTMLElement): number {
   if (node.nodeType === 3) {
-    return normalizeText(node.textContent)
+    return (node.textContent ?? '').replace(/\s+/g, '').length
   }
 
-  if (node.nodeType !== 1) return ''
+  if (node.nodeType !== 1) return 0
 
   const el = node as HTMLElement
-  if (el !== options.root) {
-    if (isElementWithTag(el, 'br')) return ''
-    if (isElementWithTag(el, 'img') || isElementWithTag(el, 'svg')) return ''
-    if (isFactuallyExcludedElement(el)) return ''
+  if (el !== root) {
+    if (isElementWithTag(el, 'br')) return 0
+    if (isElementWithTag(el, 'img') || isElementWithTag(el, 'svg')) return 0
+    if (isFactuallyExcludedElement(el)) return 0
   }
 
-  return [...el.childNodes].map((child) => collectBodyTextCandidateText(child, options)).join('')
+  let length = 0
+  for (const child of el.childNodes) {
+    length += getBodyTextCandidateLength(child, root)
+  }
+  return length
 }
 
 function createBodyTextClusters(candidates: BodyTextCandidate[]) {
@@ -641,8 +639,8 @@ function isInvisible(style: CSSStyleDeclaration) {
   return style.display === 'none' || style.visibility === 'hidden'
 }
 
-function normalizeText(value: string | null | undefined) {
-  return value?.replace(/\s+/g, '') ?? ''
+function hasNonWhitespaceText(value: string | null | undefined) {
+  return /\S/.test(value ?? '')
 }
 
 function parseCssPixel(value: string) {
