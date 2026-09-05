@@ -165,6 +165,13 @@ start of rejected approaches. Other entries cover reader interactions.
 - Decision: keep. The change removes the known measurement-driven React commit, improves the user-visible open path in the real client, and preserves horizontal, vertical, scrolling, focus, and overlay ownership behavior.
 - Constraint: keep selection-menu measurement synchronous with the layout commit so a newly mounted or view-switched menu remains hidden until its final position is available. If overlay geometry or iframe ownership changes, repeat the horizontal and vertical geometry checks plus the real-client time-to-visible measurement.
 
+### Local library-title search input state
+
+- Change: keep the raw title-search query in a small toolbar component, publish it to the library only after the existing 150 ms debounce, and mirror the raw value into the return-state ref so reader/library switches still restore unfinished input. Clearing first commits the local empty value, then lets the component effect clear the library filter.
+- Measured effect: matched React Doctor profile-build samples used three independent recordings. A full-title input reduced `Library`, `DropZone`, and `DropZoneInner` from two renders to one; `Library` median total render-event duration fell from 4.7 to 3.2 ms while the search control retained its two local renders. Matched `tauri-release` no-cover datasets used 25 and 800 books, three pilots, and eight formal runs with the first three excluded. At 25 books, search-apply operation p50/p95 improved 1.4%/0.7%; search-clear operation p50 changed +4.7% and p95 +2.0%, with first-frame p50/p95 +3.9%/+8.5%. At 800 books, search-apply operation p50 improved 1.6% while p95 changed +2.5%; search-clear operation p50 improved 6.9% while p95 changed +3.2%, with first-frame p50/p95 improving 2.1% and changing +2.1%. Both datasets kept mounted-card counts unchanged and recorded zero long tasks.
+- Decision: keep. Each typed character now updates only the search control before the debounced result commit, while the matched single-input and clear paths remain within the review threshold in both full-grid and virtualized libraries.
+- Constraint: keep the raw query synchronized with the library return-state ref without scheduling a parent render. Preserve the delayed empty-query handoff unless a replacement passes the 800-book search-clear control as well as the search-apply path.
+
 ## Rejected Approaches
 
 ### Decode gating without retained library cover resources
@@ -173,6 +180,13 @@ start of rejected approaches. Other entries cover reader interactions.
 - Measured effect: in the most sensitive 75-book mixed-cover release run, filter reapply still produced 19 pending RAF frames across two steady samples with a longest pending interval of 78.8 ms; final filter clear produced 31 pending RAF frames across two samples with a longest interval of 145.3 ms.
 - Decision: reject as a complete anti-flash solution. It prevents an undecoded image from painting, but replaces it with the placeholder and therefore does not preserve a previously shown cover across unmount.
 - Retry condition: none under the current virtual-card ownership model; decode gating remains only as the presentation half of the retained resource design.
+
+### Synchronous parent clear for local library search
+
+- Attempt: when the local search input becomes empty, clear the parent library filter in the same event instead of from the search component effect.
+- Measured effect: matched `tauri-release` 800-book no-cover runs used three pilots and eight formal runs with the first three excluded. Search-clear operation p50 regressed 11.9%, p95 regressed 8.2%, and first-frame p50/p95 regressed 8.2%/3.4%; search-apply did not gain enough to offset the clear regression.
+- Decision: reject. Combining the local input and virtualized-grid clear work in one commit made the primary clear operation slower.
+- Retry condition: keep the local and parent commits separate unless a different ownership boundary improves the repeated-input path and passes the 800-book clear comparison.
 
 ### Immediate disposal or indefinite retention of suspended library covers
 

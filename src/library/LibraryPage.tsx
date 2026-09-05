@@ -158,6 +158,86 @@ const libraryBookCardSizePresets = [
 const noCoverResourceIdentities: readonly CoverResourceIdentity[] = []
 const dragImportAutoOpenBookTabLimit = 8
 
+interface LibraryTitleSearchProps {
+  clearLabel: string
+  initialQuery: string
+  inputRef: React.RefObject<HTMLInputElement | null>
+  onDebouncedQueryChange: (query: string) => void
+  onQueryChange: (query: string) => void
+  placeholder: string
+}
+
+const LibraryTitleSearch: React.FC<LibraryTitleSearchProps> = ({
+  clearLabel,
+  initialQuery,
+  inputRef,
+  onDebouncedQueryChange,
+  onQueryChange,
+  placeholder,
+}) => {
+  const [query, setQuery] = useState(initialQuery)
+
+  useEffect(() => {
+    if (!query) {
+      onDebouncedQueryChange('')
+      return
+    }
+
+    const timeout = window.setTimeout(() => onDebouncedQueryChange(query), 150)
+    return () => window.clearTimeout(timeout)
+  }, [onDebouncedQueryChange, query])
+
+  const updateQuery = (query: string) => {
+    setQuery(query)
+    onQueryChange(query)
+  }
+
+  const clearQuery = () => updateQuery('')
+
+  return (
+    <InputGroup className="min-w-30 max-w-60 flex-[1_1_120px] bg-transparent focus-within:ring-0 dark:bg-transparent">
+      <SearchIcon aria-hidden className="text-muted-foreground ml-2.5 size-4 shrink-0" />
+      <InputGroupInput
+        ref={inputRef}
+        value={query}
+        escapeBehavior="none"
+        placeholder={placeholder}
+        aria-label={placeholder}
+        onValueChange={updateQuery}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return
+
+          if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key === 'f') {
+            event.preventDefault()
+            event.stopPropagation()
+            event.currentTarget.select()
+            return
+          }
+
+          if (event.key !== 'Escape') return
+          event.preventDefault()
+          event.stopPropagation()
+          clearQuery()
+          event.currentTarget.blur()
+        }}
+      />
+      <InputGroupActions>
+        <IconButton
+          Icon={XIcon}
+          title={clearLabel}
+          disabled={!query}
+          className="text-muted-foreground"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            clearQuery()
+            inputRef.current?.focus()
+          }}
+        />
+      </InputGroupActions>
+    </InputGroup>
+  )
+}
+
 function selectDroppedBooksToAutoOpen(books: BookRecord[]) {
   const openBookIds = new Set(reader.tabs.map((tab) => tab.book.id))
   if (openBookIds.size >= dragImportAutoOpenBookTabLimit) return []
@@ -679,7 +759,6 @@ const Library: React.FC<LibraryProps> = ({
 
   const [returnState] = useState(() => returnStateRef.current)
   const [select, setSelect] = useState(false)
-  const [titleSearchQuery, setTitleSearchQuery] = useState(returnState?.titleSearchQuery ?? '')
   const [debouncedTitleSearchQuery, setDebouncedTitleSearchQuery] = useState(
     returnState?.debouncedTitleSearchQuery ?? '',
   )
@@ -691,6 +770,7 @@ const Library: React.FC<LibraryProps> = ({
   const libraryScrollRef = useRef<HTMLDivElement>(null)
   const libraryScrollContentRef = useRef<HTMLDivElement>(null)
   const titleSearchInputRef = useRef<HTMLInputElement>(null)
+  const titleSearchQueryRef = useRef(returnState?.titleSearchQuery ?? '')
   const selectionAnchorIdRef = useRef<string | undefined>(undefined)
   const rangeSelectionSessionRef = useRef<LibraryRangeSelectionSession | undefined>(undefined)
   const titleSearchIndexByBookId = useMemo(
@@ -755,13 +835,13 @@ const Library: React.FC<LibraryProps> = ({
   const latestReturnStateRef = useRef({
     debouncedTitleSearchQuery,
     resultCriteriaSignature,
-    titleSearchQuery,
+    titleSearchQuery: titleSearchQueryRef.current,
   })
   useLayoutEffect(() => {
     const latest = {
       debouncedTitleSearchQuery,
       resultCriteriaSignature,
-      titleSearchQuery,
+      titleSearchQuery: titleSearchQueryRef.current,
     }
     latestReturnStateRef.current = latest
     returnStateRef.current = {
@@ -769,7 +849,11 @@ const Library: React.FC<LibraryProps> = ({
       scrollExpiresAt: returnStateRef.current?.scrollExpiresAt ?? 0,
       scrollTop: returnStateRef.current?.scrollTop ?? 0,
     }
-  }, [debouncedTitleSearchQuery, resultCriteriaSignature, returnStateRef, titleSearchQuery])
+  }, [debouncedTitleSearchQuery, resultCriteriaSignature, returnStateRef])
+  const updateTitleSearchQuery = useCallback((query: string) => {
+    titleSearchQueryRef.current = query
+    latestReturnStateRef.current.titleSearchQuery = query
+  }, [])
   useLayoutEffect(
     () => () => {
       const scroll = libraryScrollRef.current
@@ -807,11 +891,11 @@ const Library: React.FC<LibraryProps> = ({
   )
   const [stableFilterCoverCount, setStableFilterCoverCount] = useState(0)
   useEffect(() => {
-    if (!virtualizeLibraryGrid || titleSearchQuery.trim()) return
+    if (!virtualizeLibraryGrid || debouncedTitleSearchQuery.trim()) return
     setStableFilterCoverCount((current) =>
       current === libraryGridWindow.topWindowCount ? current : libraryGridWindow.topWindowCount,
     )
-  }, [libraryGridWindow.topWindowCount, titleSearchQuery, virtualizeLibraryGrid])
+  }, [debouncedTitleSearchQuery, libraryGridWindow.topWindowCount, virtualizeLibraryGrid])
   const stableFilterCoverResources = useMemo(() => {
     if (!virtualizeLibraryGrid) return noCoverResourceIdentities
     return stableFilteredBooks.slice(0, stableFilterCoverCount).flatMap<CoverResourceIdentity>((book) => {
@@ -846,25 +930,11 @@ const Library: React.FC<LibraryProps> = ({
     libraryScrollContentRef,
     !virtualizeLibraryGrid,
   )
-  useEffect(() => {
-    if (!titleSearchQuery) {
-      setDebouncedTitleSearchQuery('')
-      return
-    }
-
-    const timeout = window.setTimeout(() => setDebouncedTitleSearchQuery(titleSearchQuery), 150)
-    return () => window.clearTimeout(timeout)
-  }, [titleSearchQuery])
-
   const focusTitleSearch = useCallback(() => {
     titleSearchInputRef.current?.focus()
     titleSearchInputRef.current?.select()
   }, [])
 
-  const clearTitleSearch = useCallback(() => {
-    setTitleSearchQuery('')
-    setDebouncedTitleSearchQuery('')
-  }, [])
   const updateSelectedReadingStatus = (readingStatus: ReadingStatus | null) => {
     void db.books.updateReadingStatus(
       selectedBooks.map((book) => book.id),
@@ -1248,46 +1318,14 @@ const Library: React.FC<LibraryProps> = ({
         <div className="flex flex-wrap items-start gap-2">
           <div className="flex min-w-30 flex-1 basis-0 flex-wrap items-center gap-2">
             {!!books.length && (
-              <InputGroup className="min-w-30 max-w-60 flex-[1_1_120px] bg-transparent focus-within:ring-0 dark:bg-transparent">
-                <SearchIcon aria-hidden className="text-muted-foreground ml-2.5 size-4 shrink-0" />
-                <InputGroupInput
-                  ref={titleSearchInputRef}
-                  value={titleSearchQuery}
-                  escapeBehavior="none"
-                  placeholder={t('home.library_search.title')}
-                  aria-label={t('home.library_search.title')}
-                  onValueChange={setTitleSearchQuery}
-                  onKeyDown={(event) => {
-                    if (event.nativeEvent.isComposing) return
-
-                    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key === 'f') {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      event.currentTarget.select()
-                      return
-                    }
-
-                    if (event.key !== 'Escape') return
-                    event.preventDefault()
-                    event.stopPropagation()
-                    clearTitleSearch()
-                    event.currentTarget.blur()
-                  }}
-                />
-                <InputGroupActions>
-                  <IconButton
-                    Icon={XIcon}
-                    title={t('home.library_search.clear')}
-                    disabled={!titleSearchQuery}
-                    className="text-muted-foreground"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => {
-                      clearTitleSearch()
-                      titleSearchInputRef.current?.focus()
-                    }}
-                  />
-                </InputGroupActions>
-              </InputGroup>
+              <LibraryTitleSearch
+                clearLabel={t('home.library_search.clear')}
+                initialQuery={returnState?.titleSearchQuery ?? ''}
+                inputRef={titleSearchInputRef}
+                onDebouncedQueryChange={setDebouncedTitleSearchQuery}
+                onQueryChange={updateTitleSearchQuery}
+                placeholder={t('home.library_search.title')}
+              />
             )}
             {!!books.length && !select && (
               <Popover>
