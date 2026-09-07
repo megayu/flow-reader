@@ -483,7 +483,7 @@ const ReaderImagePreviewContent: React.FC<ReaderImagePreviewContentProps> = ({ b
           <DownloadIcon className="size-5" />
         </ReaderImagePreviewButton>
         <div className="mx-1 h-5 w-px bg-white/20" />
-        <ReaderImagePreviewButton label={t('image_preview.close')} onClick={onClose}>
+        <ReaderImagePreviewButton label={t('action.close')} onClick={onClose}>
           <XIcon className="size-5" />
         </ReaderImagePreviewButton>
       </div>

@@ -133,10 +133,10 @@ const sortFieldIconMap = {
   createdAt: CalendarPlusIcon,
 } satisfies Record<LibrarySortField, LucideIcon>
 const sortFieldMessageKey = {
-  title: 'home.sort.title',
-  creator: 'home.sort.creator',
-  updatedAt: 'home.sort.last_read',
-  createdAt: 'home.sort.date_added',
+  title: 'book.title',
+  creator: 'book.author',
+  updatedAt: 'book.last_read',
+  createdAt: 'book.date_added',
 } satisfies Record<LibrarySortField, MessageKey>
 
 const toolbarButtonClass = 'h-8 leading-none'
@@ -1511,7 +1511,7 @@ const Library: React.FC<LibraryProps> = ({
               <TooltipButton
                 variant="secondary"
                 className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
-                aria-label={t(select ? 'home.cancel' : 'home.select')}
+                aria-label={t(select ? 'action.cancel' : 'home.select')}
                 title={t(select ? 'home.cancel.tooltip' : 'home.select.tooltip')}
                 onClick={toggleSelectMode}
               >
@@ -1520,7 +1520,7 @@ const Library: React.FC<LibraryProps> = ({
                 ) : (
                   <SquareCheckBigIcon aria-hidden className="size-4" />
                 )}
-                <span className="leading-none">{t(select ? 'home.cancel' : 'home.select')}</span>
+                <span className="leading-none">{t(select ? 'action.cancel' : 'home.select')}</span>
               </TooltipButton>
             )}
             {select &&
@@ -1529,7 +1529,7 @@ const Library: React.FC<LibraryProps> = ({
                   variant="secondary"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                   aria-label={t('home.deselect_all')}
-                  title={t('home.deselect_all.tooltip')}
+                  title={t('home.deselect_all')}
                   onClick={reset}
                 >
                   <ListXIcon aria-hidden className="size-4" />
@@ -1586,25 +1586,25 @@ const Library: React.FC<LibraryProps> = ({
                   variant="secondary"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                   disabled={!selectedBooks.length}
-                  aria-label={t('home.tags')}
+                  aria-label={t('tag.title')}
                   title={t('home.tags.tooltip')}
                   shortcut={batchTagsShortcut}
                   onClick={() => setBatchTagsOpen(true)}
                 >
                   <TagIcon aria-hidden className="size-4" />
-                  <span className="leading-none">{t('home.tags')}</span>
+                  <span className="leading-none">{t('tag.title')}</span>
                 </TooltipButton>
                 <TooltipButton
                   variant="destructive"
                   className={clsx(toolbarButtonClass, 'gap-1.5 px-3')}
                   disabled={!selectedBooks.length}
-                  aria-label={t('home.delete')}
-                  title={t('home.delete.tooltip')}
+                  aria-label={t('action.delete')}
+                  title={t('home.delete_selected.title')}
                   shortcut={deleteSelectionShortcut}
                   onClick={() => setDeleteBooksOpen(true)}
                 >
                   <Trash2Icon aria-hidden className="size-4" />
-                  <span className="leading-none">{t('home.delete')}</span>
+                  <span className="leading-none">{t('action.delete')}</span>
                 </TooltipButton>
               </>
             ) : (

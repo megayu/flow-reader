@@ -60,7 +60,7 @@ export function BookCacheSetting() {
       {confirmOpen && (
         <ConfirmDialog
           title={t('settings.book_cache.confirm')}
-          cancelLabel={t('settings.book_cache.cancel')}
+          cancelLabel={t('action.cancel')}
           confirmLabel={t('settings.book_cache.clear')}
           onClose={closeConfirm}
           onConfirm={() => {

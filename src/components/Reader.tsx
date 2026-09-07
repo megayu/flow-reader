@@ -531,7 +531,7 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
         </Tab>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-max max-w-[calc(100vw-2rem)]">
-        <ContextMenuItem onSelect={handleDelete}>{t('tabs.close')}</ContextMenuItem>
+        <ContextMenuItem onSelect={handleDelete}>{t('action.close')}</ContextMenuItem>
         <ContextMenuItem disabled={reader.tabs.length === 1} onSelect={handleCloseOthers}>
           {t('tabs.close_others')}
         </ContextMenuItem>

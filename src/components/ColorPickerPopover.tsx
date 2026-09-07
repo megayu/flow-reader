@@ -137,11 +137,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
       <div className="mt-3 flex items-center justify-between gap-2">
         <div className="flex gap-2">
           <IconButton title={t('color_picker.save_slot')} Icon={PlusIcon} onClick={saveDraftToSlot} />
-          <IconButton
-            title={t('color_picker.reset')}
-            Icon={RotateCcwIcon}
-            onClick={() => updateDraft(normalizedDefault)}
-          />
+          <IconButton title={t('action.reset')} Icon={RotateCcwIcon} onClick={() => updateDraft(normalizedDefault)} />
         </div>
         <div className="flex justify-end gap-2">
           <Button
@@ -152,7 +148,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
               onCancel()
             }}
           >
-            {t('color_picker.cancel')}
+            {t('action.cancel')}
           </Button>
           <Button size="sm" onClick={() => onApply(draft)}>
             {t('color_picker.apply')}

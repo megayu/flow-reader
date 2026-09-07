@@ -121,7 +121,7 @@ test('escape clears selection and exits selection mode before clearing filters',
 
   await page.keyboard.press('Escape')
   await expectSelectedCount(page, 0)
-  await expect(page.getByRole('button', { name: msg('home.cancel'), exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: msg('action.cancel'), exact: true })).toBeVisible()
   await expect(authorFilter).toHaveAttribute('aria-pressed', 'true')
 
   await page.keyboard.press('Escape')
@@ -156,10 +156,10 @@ test('batch deletion closes selected open book tabs and preserves unselected tab
   await page.getByRole('button', { name: msg('home.select'), exact: true }).click()
   await bookCard(page, 1).click()
   await bookCard(page, 3).click()
-  await page.getByRole('button', { name: msg('home.delete'), exact: true }).click()
+  await page.getByRole('button', { name: msg('action.delete'), exact: true }).click()
   await page
     .getByRole('dialog')
-    .getByRole('button', { name: msg('home.delete'), exact: true })
+    .getByRole('button', { name: msg('action.delete'), exact: true })
     .click()
 
   await expect(page.locator('[data-flow-reader-tab-index]')).toHaveCount(1)

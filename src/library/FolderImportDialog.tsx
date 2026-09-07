@@ -199,7 +199,7 @@ export function FolderImportDialog({ rootPath: initialRootPath, onClose, onImpor
 
         <DialogFooter>
           <Button type="button" variant="secondary" onClick={onClose}>
-            {t('home.cancel')}
+            {t('action.cancel')}
           </Button>
           <Button
             type="button"

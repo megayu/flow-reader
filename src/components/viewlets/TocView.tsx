@@ -63,7 +63,7 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
   return (
     <Pane
       ref={outerRef}
-      headline={t('toc.library')}
+      headline={t('library.title')}
       minSize={120}
       overlayScroll
       preferredSize={220}

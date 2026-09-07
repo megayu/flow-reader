@@ -189,7 +189,7 @@ test('keeps the reading tab open until a changed-source mode switch is resolved'
   dialog = page.getByRole('dialog', { name: msg('home.content_mode.source_conflict_title') })
   await expect(dialog).toBeVisible()
   await expect(page.locator('[data-flow-reader-tab-index]')).toHaveCount(1)
-  const saveButton = dialog.getByRole('button', { name: msg('home.content_mode.overwrite_source') })
+  const saveButton = dialog.getByRole('button', { name: msg('action.save') })
   await expect(saveButton).toBeFocused()
   await saveButton.click()
   await expect(dialog).toHaveCount(0)

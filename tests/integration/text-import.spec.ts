@@ -95,7 +95,7 @@ test('TXT import dialog sends edited title and author metadata', async ({ page }
   const titleInput = page.getByRole('textbox', { exact: true, name: msg('text_import.book_title') })
   await titleInput.selectText()
   await titleInput.fill('Edited Title')
-  await page.getByRole('textbox', { exact: true, name: msg('text_import.creator') }).fill('Edited Author')
+  await page.getByRole('textbox', { exact: true, name: msg('book.author') }).fill('Edited Author')
   await page.getByRole('button', { name: msg('text_import.import_selected') }).click()
 
   await expect

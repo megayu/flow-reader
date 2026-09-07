@@ -376,7 +376,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const annotationColorChanged = draftAnnotationColor !== (annotation?.color ?? DEFAULT_ANNOTATION_COLOR)
   const annotationChanged = annotationNotesChanged || annotationColorChanged
   const editTextDisabledReason = tab.book.archive
-    ? t('menu.edit_text_unsupported')
+    ? t('book.edit_text_unsupported')
     : tab.book.scope === 'external'
       ? t('menu.edit_text_import_first')
       : !tab.book.editable
@@ -804,7 +804,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         ) : (
           <div className="text-muted-foreground mb-3 flex gap-2">
             <IconButton
-              title={t('menu.copy')}
+              title={t('action.copy')}
               shortcut={copyShortcut}
               Icon={CopyIcon}
               size={ICON_SIZE}
@@ -828,7 +828,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               onClick={searchSelection}
             />
             <IconButton
-              title={t('menu.dictionary')}
+              title={t('dictionary.title')}
               shortcut={dictionaryShortcut}
               Icon={BookOpenTextIcon}
               size={ICON_SIZE}
@@ -932,7 +932,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                   }
 
                   if (annotation && !annotationHasNotes && annotation.color === color) {
-                    void tab.removeAnnotation(cfi).catch((error) => notifyError(error, 'menu.delete'))
+                    void tab.removeAnnotation(cfi).catch((error) => notifyError(error, 'action.delete'))
                   } else if (annotation?.color !== color) {
                     void tab
                       .putAnnotation(cfi, color, text, annotation?.notes, section)
@@ -949,7 +949,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         {view === 'actions' && editing && (
           <div className="flex gap-2">
             <Button size="sm" variant="secondary" disabled={savingReplacement} onClick={cancelEditing}>
-              {t('menu.cancel')}
+              {t('action.cancel')}
             </Button>
             <Button
               className="ml-auto"
@@ -957,7 +957,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               disabled={!replaceTarget || savingReplacement || !editorChanged}
               onClick={saveReplacement}
             >
-              {savingReplacement ? t('menu.saving') : t('menu.save')}
+              {savingReplacement ? t('menu.saving') : t('action.save')}
             </Button>
           </div>
         )}
@@ -968,15 +968,15 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 size="sm"
                 variant="secondary"
                 onClick={() => {
-                  void tab.removeAnnotation(cfi).catch((error) => notifyError(error, 'menu.delete'))
+                  void tab.removeAnnotation(cfi).catch((error) => notifyError(error, 'action.delete'))
                   hide()
                 }}
               >
-                {t('menu.delete')}
+                {t('action.delete')}
               </Button>
             ) : (
               <Button size="sm" variant="secondary" onClick={cancelAnnotation}>
-                {t('menu.cancel')}
+                {t('action.cancel')}
               </Button>
             )}
             <Button

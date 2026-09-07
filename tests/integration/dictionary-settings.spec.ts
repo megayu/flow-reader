@@ -10,7 +10,7 @@ async function openDictionarySettings(page: import('@playwright/test').Page) {
   await page.getByRole('button', { name: msg('settings.title') }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible()
-  await dialog.getByRole('button', { name: msg('settings.tabs.dictionary'), exact: true }).click()
+  await dialog.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
   return dialog
 }
 

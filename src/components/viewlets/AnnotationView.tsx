@@ -197,7 +197,7 @@ const AnnotationPane: React.FC = () => {
   }
   return (
     <Pane
-      headline={t('annotation.annotations')}
+      headline={t('annotation.title')}
       minSize={160}
       overlayScroll
       ref={outerRef}
@@ -280,7 +280,7 @@ const AnnotationPane: React.FC = () => {
                   onDelete={() => {
                     void reader.focusedBookTab
                       ?.removeAnnotation(row.annotation.cfi)
-                      .catch((error) => notifyError(error, 'menu.delete'))
+                      .catch((error) => notifyError(error, 'action.delete'))
                   }}
                 >
                   {row.annotation.text}
@@ -408,11 +408,11 @@ function AnnotationExportPanel({ annotations, onOpenChange, open }: AnnotationEx
               setIncludeCfiLinks(true)
             }}
           >
-            {t('annotation.reset')}
+            {t('action.reset')}
           </Button>
           <div className="ml-auto flex items-center gap-1">
             <Button type="button" size="xs" variant="secondary" disabled={!hasAnnotations} onClick={handleCopy}>
-              {t('annotation.copy')}
+              {t('action.copy')}
             </Button>
             <Button type="button" size="xs" disabled={!hasAnnotations} onClick={handleExport}>
               {t('annotation.export')}
@@ -456,7 +456,7 @@ function AnnotationFilterPopover({ filter, onChange, onOpenChange, open }: Annot
             disabled={!filterActive}
             onClick={() => onChange(createDefaultAnnotationFilter())}
           >
-            {t('annotation.reset')}
+            {t('action.reset')}
           </Button>
         </div>
       </PopoverContent>

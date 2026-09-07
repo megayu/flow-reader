@@ -100,7 +100,7 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
     shortcuts: [[commandToken, 'F']],
   },
   selectionCopy: {
-    labelKey: 'menu.copy',
+    labelKey: 'action.copy',
     shortcuts: [['C']],
   },
   selectionSearch: {
@@ -108,7 +108,7 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
     shortcuts: [['S']],
   },
   selectionDictionary: {
-    labelKey: 'menu.dictionary',
+    labelKey: 'dictionary.title',
     shortcuts: [['D']],
   },
   selectionTranslate: {
@@ -136,7 +136,7 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
     shortcuts: [['Shift', 'Enter']],
   },
   closeTab: {
-    labelKey: 'tabs.close',
+    labelKey: 'action.close',
     shortcuts: [[commandToken, 'W']],
   },
   closeAllTabs: {
@@ -220,7 +220,7 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
     shortcuts: [['T']],
   },
   libraryDeleteSelection: {
-    labelKey: 'home.delete.tooltip',
+    labelKey: 'home.delete_selected.title',
     shortcuts: [['Del']],
   },
   openSettings: {
@@ -264,7 +264,7 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
     shortcuts: [[commandToken, 'A']],
   },
   libraryTagSearch: {
-    labelKey: 'home.library_filter.search_tags',
+    labelKey: 'tag.search',
     shortcuts: [[commandToken, 'T']],
   },
   libraryTitleSearch: {
@@ -342,7 +342,7 @@ const shortcutGroups: ShortcutGroupDefinition[] = [
     ],
   },
   {
-    titleKey: 'settings.shortcuts.group.library',
+    titleKey: 'library.title',
     items: [
       shortcutDefinitions.libraryImport,
       shortcutDefinitions.libraryImportFolder,

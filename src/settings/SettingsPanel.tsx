@@ -60,6 +60,17 @@ const SETTINGS_TABS: SettingsTab[] = [
   'shortcuts',
   'about',
 ]
+const SETTINGS_TAB_MESSAGE_KEYS = {
+  about: 'settings.tabs.about',
+  basic: 'settings.tabs.basic',
+  dictionary: 'dictionary.title',
+  reading: 'settings.tabs.reading',
+  shortcuts: 'settings.tabs.shortcuts',
+  storage: 'settings.tabs.storage',
+  tags: 'tag.title',
+  translation: 'settings.tabs.translation',
+  txt: 'settings.tabs.txt',
+} satisfies Record<SettingsTab, MessageKey>
 const TEXTAREA_SIZE_STYLE = {
   fieldSizing: 'fixed',
   maxHeight: '22rem',
@@ -127,7 +138,7 @@ export const SettingsPanel: React.FC = () => {
                 style={{ fontSize: 'var(--app-font-size-md)' }}
                 onClick={() => setActiveTab(tab)}
               >
-                {t(`settings.tabs.${tab}`)}
+                {t(SETTINGS_TAB_MESSAGE_KEYS[tab])}
               </button>
             )
           })}
@@ -139,13 +150,13 @@ export const SettingsPanel: React.FC = () => {
           activeTab === 'tags' ? 'flex flex-col overflow-y-hidden' : 'scroll overflow-y-auto',
         )}
       >
-        <h2 className="text-muted-foreground text-lg font-semibold">{t(`settings.tabs.${activeTab}`)}</h2>
+        <h2 className="text-muted-foreground text-lg font-semibold">{t(SETTINGS_TAB_MESSAGE_KEYS[activeTab])}</h2>
         <div className={clsx('mt-5', activeTab === 'tags' ? 'min-h-0 flex-1' : 'space-y-5')}>
           {activeTab === 'basic' && (
             <div data-flow-settings-panel className="m-0 space-y-5">
-              <Item title={t('settings.language')}>
+              <Item title={t('language.title')}>
                 <Select value={locale} onValueChange={(value) => setLocale(value as AppLocale)}>
-                  <SelectTrigger aria-label={t('settings.language')} className="h-8 w-44 rounded-lg">
+                  <SelectTrigger aria-label={t('language.title')} className="h-8 w-44 rounded-lg">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

@@ -353,7 +353,7 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, onModeChange }) => {
                 onModeChange(item)
               }}
             >
-              {t(`image.filter.${item}`)}
+              {t(item === 'all' ? 'option.all' : 'image.filter.illustrations')}
             </SegmentedControlItem>
           ))}
         </SegmentedControl>

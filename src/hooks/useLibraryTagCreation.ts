@@ -21,7 +21,7 @@ export function useLibraryTagCreation() {
       const tags = await db.tags.toArray()
       if (tags.some((tag) => sameLibraryTagName(tag.name, cleanName))) {
         notify({
-          title: t('home.library_filter.tag_exists'),
+          title: t('tag.error.name_exists'),
           type: 'warning',
         })
         setName('')
@@ -31,7 +31,7 @@ export function useLibraryTagCreation() {
       await db.tags.create(cleanName)
       setName('')
     } catch (error) {
-      notifyError(error, 'home.library_filter.new_tag')
+      notifyError(error, 'tag.new')
     }
   }, [name, notify, notifyError, t])
 

@@ -37,7 +37,7 @@ export function EditLibraryTagDialog({ onClose, tag }: LibraryTagDialogProps) {
 
       if (!updatedTag) {
         notify({
-          title: t('home.library_filter.tag_exists'),
+          title: t('tag.error.name_exists'),
           type: 'warning',
         })
         return
@@ -80,10 +80,10 @@ export function EditLibraryTagDialog({ onClose, tag }: LibraryTagDialogProps) {
           </label>
           <DialogFooter>
             <UiButton type="button" variant="secondary" onClick={onClose}>
-              {t('home.cancel')}
+              {t('action.cancel')}
             </UiButton>
             <UiButton type="submit" disabled={!canSave}>
-              {t('home.edit.save')}
+              {t('action.save')}
             </UiButton>
           </DialogFooter>
         </form>
@@ -108,8 +108,8 @@ export function DeleteLibraryTagDialog({ onClose, onDeleted, tag }: DeleteLibrar
           {t('home.library_filter.delete_tag_message')} <span className="text-foreground font-medium">{tag.name}</span>
         </>
       }
-      cancelLabel={t('home.cancel')}
-      confirmLabel={t('home.delete')}
+      cancelLabel={t('action.cancel')}
+      confirmLabel={t('action.delete')}
       onClose={onClose}
       onConfirm={() => {
         void db.tags

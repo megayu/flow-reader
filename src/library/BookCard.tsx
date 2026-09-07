@@ -497,7 +497,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
                 </AppTooltip>
               )}
               {!isBookSourceUnavailable(sourceStatus) && isArchiveOnlyBook(book) && (
-                <AppTooltip label={t('home.compat.archive_only')}>
+                <AppTooltip label={t('book.edit_text_unsupported')}>
                   <div
                     className={clsx(
                       bookCoverCornerBadgeClassName,
@@ -581,7 +581,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
           />
           <BookContextMenuItem
             Icon={PencilIcon}
-            label={t('home.context.edit_details')}
+            label={t('book.edit_details')}
             onSelect={() => setActiveDialog({ type: 'edit' })}
           />
           <BookContextMenuItem
@@ -708,7 +708,7 @@ function BookModeDialog({
         <div className="text-muted-foreground leading-relaxed">{description}</div>
         <DialogFooter>
           <Button type="button" variant="secondary" disabled={busy} onClick={onClose}>
-            {t('home.cancel')}
+            {t('action.cancel')}
           </Button>
           {conflict === 'changed' && (
             <Button type="button" variant="destructive" disabled={busy} onClick={() => onSwitch('adopt')}>
@@ -722,13 +722,11 @@ function BookModeDialog({
             onClick={() => onSwitch(conflict ? 'overwrite' : undefined)}
           >
             {t(
-              `home.${
-                conflict === 'missing'
-                  ? 'content_mode.recreate_source'
-                  : conflict === 'changed'
-                    ? 'content_mode.overwrite_source'
-                    : 'context.confirm'
-              }`,
+              conflict === 'missing'
+                ? 'home.content_mode.recreate_source'
+                : conflict === 'changed'
+                  ? 'action.save'
+                  : 'home.context.confirm',
             )}
           </Button>
         </DialogFooter>

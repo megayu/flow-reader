@@ -329,7 +329,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
                   />
                 </label>
                 <label className="grid gap-1">
-                  <span className="text-muted-foreground text-base">{t('text_import.creator')}</span>
+                  <span className="text-muted-foreground text-base">{t('book.author')}</span>
                   <Input
                     value={creatorOverrides[activePreview.path] ?? ''}
                     onValueChange={(value) => {
@@ -436,7 +436,7 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <Button variant="secondary" onClick={onClose}>
-                {t('text_import.cancel')}
+                {t('action.cancel')}
               </Button>
               <Button disabled={!selectedImports.length} onClick={importSelected}>
                 {t('text_import.import_selected')}
@@ -455,18 +455,19 @@ const ChapterPreview: React.FC<{ chapters: TextImportChapterPreview[] }> = ({ ch
   const chapterTree = useMemo(() => buildChapterTree(chapters), [chapters])
   const collapsibleKeys = useMemo(() => collectCollapsibleChapterKeys(chapterTree), [chapterTree])
   const expanded = collapsibleKeys.some((key) => !collapsedKeys.has(key))
+  const toggleAllLabel = t(expanded ? 'action.collapse_all' : 'action.expand_all')
 
   return (
     <section className="flex min-h-0 min-w-0 flex-col py-4 pr-2 pl-4">
       <div className="mb-2 flex items-center justify-between gap-2">
         <h3 className="text-base font-semibold">{t('text_import.chapters')}</h3>
         {!!collapsibleKeys.length && (
-          <AppTooltip label={t(`text_import.${expanded ? 'collapse_all' : 'expand_all'}`)}>
+          <AppTooltip label={toggleAllLabel}>
             <Button
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label={t(`text_import.${expanded ? 'collapse_all' : 'expand_all'}`)}
+              aria-label={toggleAllLabel}
               onClick={() => setCollapsedKeys(expanded ? new Set(collapsibleKeys) : new Set())}
             >
               {expanded ? <FoldVerticalIcon className="size-4.5" /> : <UnfoldVerticalIcon className="size-4.5" />}

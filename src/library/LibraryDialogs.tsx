@@ -93,7 +93,7 @@ const TagSelectionEditor: React.FC<TagSelectionEditorProps> = ({
     <div className="space-y-3">
       <div className="flex items-end gap-2">
         <label className="min-w-0 flex-1">
-          <span className="text-muted-foreground mb-1.5 block leading-none font-medium">{t('home.edit.new_tag')}</span>
+          <span className="text-muted-foreground mb-1.5 block leading-none font-medium">{t('tag.new')}</span>
           <Input
             value={newTagName}
             onValueChange={setNewTagName}
@@ -291,7 +291,7 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose
         />
         <DialogFooter>
           <UiButton type="button" variant="secondary" onClick={onClose}>
-            {t('home.cancel')}
+            {t('action.cancel')}
           </UiButton>
           <UiButton
             type="button"
@@ -300,7 +300,7 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose
               void apply().catch((error) => notifyError(error, 'home.context.set_tags'))
             }}
           >
-            {t('home.edit.save')}
+            {t('action.save')}
           </UiButton>
         </DialogFooter>
       </DialogContent>
@@ -331,8 +331,8 @@ export const DeleteSelectedBooksDialog: React.FC<DeleteSelectedBooksDialogProps>
     <ConfirmDialog
       title={t('home.delete_selected.title')}
       description={description}
-      cancelLabel={t('home.cancel')}
-      confirmLabel={t('home.delete')}
+      cancelLabel={t('action.cancel')}
+      confirmLabel={t('action.delete')}
       onClose={onClose}
       onConfirm={onConfirm}
     />
@@ -408,10 +408,10 @@ export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
         />
         <DialogFooter>
           <UiButton type="button" variant="secondary" onClick={onClose}>
-            {t('home.cancel')}
+            {t('action.cancel')}
           </UiButton>
           <UiButton type="button" disabled={!canSave} onClick={apply}>
-            {t('home.edit.save')}
+            {t('action.save')}
           </UiButton>
         </DialogFooter>
       </DialogContent>
@@ -441,7 +441,7 @@ export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
         },
       })
       .then(() => onClose())
-      .catch((error) => notifyError(error, 'home.context.edit_details'))
+      .catch((error) => notifyError(error, 'book.edit_details'))
   }
 
   return (
@@ -467,13 +467,11 @@ export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
           }}
         >
           <DialogHeader>
-            <DialogTitle>{t('home.edit.dialog_title')}</DialogTitle>
+            <DialogTitle>{t('book.edit_details')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <label className="block">
-              <span className="text-muted-foreground mb-1.5 block leading-none font-medium">
-                {t('home.edit.title')}
-              </span>
+              <span className="text-muted-foreground mb-1.5 block leading-none font-medium">{t('book.title')}</span>
               <Input
                 ref={titleRef}
                 value={title}
@@ -483,9 +481,7 @@ export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
               />
             </label>
             <label className="block">
-              <span className="text-muted-foreground mb-1.5 block leading-none font-medium">
-                {t('home.edit.creator')}
-              </span>
+              <span className="text-muted-foreground mb-1.5 block leading-none font-medium">{t('book.author')}</span>
               <Input
                 value={creator}
                 onValueChange={setCreator}
@@ -496,10 +492,10 @@ export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
           </div>
           <DialogFooter>
             <UiButton type="button" variant="secondary" onClick={onClose}>
-              {t('home.cancel')}
+              {t('action.cancel')}
             </UiButton>
             <UiButton type="submit" disabled={!canSave}>
-              {t('home.edit.save')}
+              {t('action.save')}
             </UiButton>
           </DialogFooter>
         </form>
@@ -541,8 +537,8 @@ export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({ book, cover, onC
   }, [book.id, book.wordCount])
 
   const rows = [
-    [t('home.info.creator'), cleanBookText(book.metadata.creator)],
-    [t('home.info.language'), formatLanguage(book.metadata.language)],
+    [t('book.author'), cleanBookText(book.metadata.creator)],
+    [t('language.title'), formatLanguage(book.metadata.language)],
     [t('home.info.publisher'), cleanBookText(book.metadata.publisher)],
     [t('home.info.publication_date'), cleanBookText(book.metadata.pubdate)],
     ...(!book.managed && book.sourcePath
@@ -558,8 +554,8 @@ export const BookInfoDialog: React.FC<BookInfoDialogProps> = ({ book, cover, onC
           ? t('home.info.word_count_unavailable')
           : formatWordCount(wordCount, locale),
     ],
-    [t('home.info.date_added'), formatDateTime(book.createdAt)],
-    [t('home.info.last_read'), formatDateTime(book.lastReadAt)],
+    [t('book.date_added'), formatDateTime(book.createdAt)],
+    [t('book.last_read'), formatDateTime(book.lastReadAt)],
     [t('home.info.reading_progress'), formatPercentage(book.percentage)],
   ].filter(([, value]) => !!value)
 

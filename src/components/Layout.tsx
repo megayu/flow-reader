@@ -797,28 +797,28 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
 
   const pinAuthor = useCallback(
     (author: string) => {
-      void db.pins.pinAuthor(author).catch((error) => notifyError(error, 'home.library_filter.pin_author'))
+      void db.pins.pinAuthor(author).catch((error) => notifyError(error, 'home.library_filter.pin'))
     },
     [notifyError],
   )
 
   const unpinAuthor = useCallback(
     (author: string) => {
-      void db.pins.unpinAuthor(author).catch((error) => notifyError(error, 'home.library_filter.unpin_author'))
+      void db.pins.unpinAuthor(author).catch((error) => notifyError(error, 'home.library_filter.unpin'))
     },
     [notifyError],
   )
 
   const pinTag = useCallback(
     (tagId: string) => {
-      void db.pins.pinTag(tagId).catch((error) => notifyError(error, 'home.library_filter.pin_tag'))
+      void db.pins.pinTag(tagId).catch((error) => notifyError(error, 'home.library_filter.pin'))
     },
     [notifyError],
   )
 
   const unpinTag = useCallback(
     (tagId: string) => {
-      void db.pins.unpinTag(tagId).catch((error) => notifyError(error, 'home.library_filter.unpin_tag'))
+      void db.pins.unpinTag(tagId).catch((error) => notifyError(error, 'home.library_filter.unpin'))
     },
     [notifyError],
   )
@@ -847,7 +847,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
       {
         danger: true,
         Icon: Trash2Icon,
-        label: t('home.delete'),
+        label: t('action.delete'),
         onClick: deleteTag,
       },
     ],
@@ -921,7 +921,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     <PaneView className={clsx('p-2', className)}>
       <div className="flex h-full min-h-0 flex-col gap-1.5" data-testid="library-filter-panel">
         <div className="flex h-7 shrink-0 items-center justify-between gap-1.5">
-          <div className="text-foreground text-base leading-none font-semibold">{t('home.library_filter.title')}</div>
+          <div className="text-foreground text-base leading-none font-semibold">{t('library_filter.title')}</div>
           <AppTooltip label={t('home.library_filter.clear')} shortcut={getPrimaryShortcut('libraryFilterClear')}>
             <UiButton
               type="button"
@@ -984,12 +984,12 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
         <FilterSection
           sectionRef={tagSectionRef}
           scrollRef={tagScrollRef}
-          title={t('home.library_filter.tags')}
+          title={t('tag.title')}
           expanded={tagsExpanded}
           onExpandedChange={setTagsExpanded}
           searching={facetSearch?.target === 'tag'}
           searchInputRef={tagSearchInputRef}
-          searchLabel={t('home.library_filter.search_tags')}
+          searchLabel={t('tag.search')}
           searchQuery={facetSearch?.target === 'tag' ? facetSearchQuery : ''}
           searchShortcutId="libraryTagSearch"
           lockedHeight={facetSearch?.target === 'tag' ? facetSearch.lockedHeight : undefined}
@@ -997,7 +997,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
           onSearchExit={() => exitFacetSearch('tag')}
           onSearchHeightLocked={(height) => lockFacetSearchHeight('tag', height)}
           onSearchQueryChange={setFacetSearchQuery}
-          resetLabel={t('home.library_filter.reset')}
+          resetLabel={t('action.reset')}
           resetDisabled={!tagFilters.length}
           onReset={resetTags}
           testId="library-tag-section"
@@ -1006,7 +1006,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
               ? {
                   Icon: PlusIcon,
                   inputRef: newTagInputRef,
-                  label: t('home.library_filter.new_tag'),
+                  label: t('tag.new'),
                   value: tagCreation.name,
                   onExit: exitTagCreation,
                   onValueChange: tagCreation.setName,
@@ -1020,12 +1020,12 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
               : undefined
           }
           actions={
-            <AppTooltip label={t('home.library_filter.new_tag')}>
+            <AppTooltip label={t('tag.new')}>
               <UiButton
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label={t('home.library_filter.new_tag')}
+                aria-label={t('tag.new')}
                 className={libraryFilterSectionIconButtonClassName}
                 onClick={(e) => {
                   e.stopPropagation()
@@ -1053,8 +1053,8 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                     labelTestId="library-tag-chip-label"
                     contextMenuTestId="library-tag-context-menu"
                     onToggle={toggleTag}
-                    pinLabel={t('home.library_filter.pin_tag')}
-                    unpinLabel={t('home.library_filter.unpin_tag')}
+                    pinLabel={t('home.library_filter.pin')}
+                    unpinLabel={t('home.library_filter.unpin')}
                     onPin={pinTag}
                     onUnpin={unpinTag}
                     menuItems={tagMenuItems}
@@ -1062,16 +1062,14 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                 ))}
               </div>
             ) : (
-              <div className="text-muted-foreground py-0.5 text-sm leading-tight">
-                {t('home.library_filter.no_tags')}
-              </div>
+              <div className="text-muted-foreground py-0.5 text-sm leading-tight">{t('tag.none')}</div>
             ))}
         </FilterSection>
 
         <FilterSection
           sectionRef={authorSectionRef}
           scrollRef={authorScrollRef}
-          title={t('home.library_filter.author')}
+          title={t('book.author')}
           expanded={authorsExpanded}
           onExpandedChange={setAuthorsExpanded}
           searching={facetSearch?.target === 'author'}
@@ -1084,7 +1082,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
           onSearchExit={() => exitFacetSearch('author')}
           onSearchHeightLocked={(height) => lockFacetSearchHeight('author', height)}
           onSearchQueryChange={setFacetSearchQuery}
-          resetLabel={t('home.library_filter.reset')}
+          resetLabel={t('action.reset')}
           resetDisabled={!authorFilters.length}
           onReset={resetAuthors}
           testId="library-author-section"
@@ -1104,8 +1102,8 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                     active={selectedAuthors.has(option.name)}
                     preserveInputFocus={facetSearch?.target === 'author'}
                     onToggle={toggleAuthor}
-                    pinLabel={t('home.library_filter.pin_author')}
-                    unpinLabel={t('home.library_filter.unpin_author')}
+                    pinLabel={t('home.library_filter.pin')}
+                    unpinLabel={t('home.library_filter.unpin')}
                     onPin={pinAuthor}
                     onUnpin={unpinAuthor}
                   />

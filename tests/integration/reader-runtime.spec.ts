@@ -3671,7 +3671,7 @@ verticalBookTest('[vertical-rl] keeps the selection menu beside the selection', 
     targetSelector: '#vertical-selection-target',
   })
 
-  await expect(page.getByRole('button', { name: msg('menu.copy') })).toBeVisible()
+  await expect(page.getByRole('button', { name: msg('action.copy') })).toBeVisible()
   const result = await page.evaluate((copyLabel) => {
     const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
     const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
@@ -3711,7 +3711,7 @@ verticalBookTest('[vertical-rl] keeps the selection menu beside the selection', 
         menuRect.bottom <= contentRect.bottom,
       beside: menuRect.right <= outerSelection.left || menuRect.left >= outerSelection.right,
     }
-  }, msg('menu.copy'))
+  }, msg('action.copy'))
 
   expect(result.inside).toBe(true)
   expect(result.overlaps).toBe(false)
@@ -3754,7 +3754,7 @@ test('[scrolled-doc] automatically opens the selection menu after pointer-select
 
   await page.mouse.dblclick(frameBox.x + selectionPoint.x, frameBox.y + selectionPoint.y)
 
-  await expect(page.getByRole('button', { name: msg('menu.copy') })).toBeVisible()
+  await expect(page.getByRole('button', { name: msg('action.copy') })).toBeVisible()
 })
 
 test('keeps Escape owned by settings above the reader selection menu', async ({ page }) => {
@@ -3766,7 +3766,7 @@ test('keeps Escape owned by settings above the reader selection menu', async ({ 
     targetSelector: 'p',
   })
 
-  const copy = page.getByRole('button', { name: msg('menu.copy') })
+  const copy = page.getByRole('button', { name: msg('action.copy') })
   await expect(copy).toBeVisible()
   await page.getByRole('button', { name: msg('settings.title') }).dispatchEvent('click')
   const settings = page.getByRole('dialog', { name: msg('settings.title') })
@@ -3803,7 +3803,7 @@ verticalBookTest('keeps the dictionary popup inside the reader without repaginat
     targetSelector: '#vertical-selection-target',
   })
 
-  await page.getByRole('button', { name: msg('menu.dictionary'), exact: true }).click()
+  await page.getByRole('button', { name: msg('dictionary.title'), exact: true }).click()
   const popup = page.getByRole('dialog')
   await expect(popup).toBeVisible()
   await expect(popup.getByText('用于浮层布局测试的合成释义。', { exact: true })).toBeVisible()
@@ -3846,10 +3846,10 @@ verticalBookTest('closes the selection menu before opening chapter find', async 
     targetSelector: '#vertical-selection-target',
   })
 
-  await expect(page.getByRole('button', { name: msg('menu.copy') })).toBeVisible()
+  await expect(page.getByRole('button', { name: msg('action.copy') })).toBeVisible()
   await page.keyboard.press(findShortcut)
 
-  await expect(page.getByRole('button', { name: msg('menu.copy') })).toBeHidden()
+  await expect(page.getByRole('button', { name: msg('action.copy') })).toBeHidden()
   await expect(page.getByRole('textbox', { name: msg('reader.find_current_chapter') })).toBeFocused()
 })
 
@@ -5024,7 +5024,7 @@ verticalBookTest('preserves double-page and panel runtime across tab reordering'
   const activityBar = page.locator('.ActivityBar')
   const sidebar = page.locator('.SideBar')
   await activityBar.getByRole('button', { name: msg('image.title') }).click()
-  await sidebar.getByRole('button', { name: msg('image.filter.all'), exact: true }).click()
+  await sidebar.getByRole('button', { name: msg('option.all'), exact: true }).click()
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -5095,7 +5095,7 @@ verticalBookTest('preserves double-page and panel runtime across tab reordering'
   await expect
     .poll(() =>
       sidebar
-        .getByRole('button', { name: msg('image.filter.all'), exact: true })
+        .getByRole('button', { name: msg('option.all'), exact: true })
         .evaluate((element) => element.className.includes('bg-(--flow-accent-bg)')),
     )
     .toBe(true)

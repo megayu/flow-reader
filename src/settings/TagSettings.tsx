@@ -76,7 +76,7 @@ export function TagSettings() {
       {
         danger: true,
         Icon: Trash2Icon,
-        label: t('home.delete'),
+        label: t('action.delete'),
         onClick: (tagId) => setDeletingTag(tagsById.get(tagId)),
       },
     ],
@@ -95,8 +95,8 @@ export function TagSettings() {
       <div className="grid shrink-0 grid-cols-[repeat(auto-fit,minmax(min(14rem,100%),1fr))] gap-2">
         <LibraryFilterInput
           Icon={PlusIcon}
-          aria-label={t('settings.tags.new')}
-          placeholder={t('settings.tags.new')}
+          aria-label={t('tag.new')}
+          placeholder={t('tag.new')}
           value={tagCreation.name}
           onValueChange={tagCreation.setName}
           onKeyDown={(event) => {
@@ -107,11 +107,11 @@ export function TagSettings() {
         />
         <LibraryFilterInput
           Icon={SearchIcon}
-          aria-label={t('settings.tags.search')}
-          placeholder={t('settings.tags.search')}
+          aria-label={t('tag.search')}
+          placeholder={t('tag.search')}
           value={query}
           onValueChange={setQuery}
-          clearLabel={t('settings.tags.search')}
+          clearLabel={t('tag.search')}
           onClear={query ? () => setQuery('') : undefined}
         />
       </div>
@@ -152,7 +152,7 @@ export function TagSettings() {
           disabled={!selectedTagIds.size}
           onClick={() => setConfirmAction('delete')}
         >
-          {t('home.delete')}
+          {t('action.delete')}
         </UiButton>
         <UiButton
           type="button"
@@ -177,20 +177,20 @@ export function TagSettings() {
                 label={tag.name}
                 menuItems={tagMenuItems}
                 onPin={(tagId) =>
-                  void db.pins.pinTag(tagId).catch((error) => notifyError(error, 'home.library_filter.pin_tag'))
+                  void db.pins.pinTag(tagId).catch((error) => notifyError(error, 'home.library_filter.pin'))
                 }
                 onToggle={toggleTag}
                 onUnpin={(tagId) =>
-                  void db.pins.unpinTag(tagId).catch((error) => notifyError(error, 'home.library_filter.unpin_tag'))
+                  void db.pins.unpinTag(tagId).catch((error) => notifyError(error, 'home.library_filter.unpin'))
                 }
-                pinLabel={t('home.library_filter.pin_tag')}
+                pinLabel={t('home.library_filter.pin')}
                 pinned={pinnedTagIds.has(tag.id)}
-                unpinLabel={t('home.library_filter.unpin_tag')}
+                unpinLabel={t('home.library_filter.unpin')}
               />
             ))}
           </div>
         ) : (
-          <div className="text-muted-foreground py-8 text-center text-sm">{t('settings.tags.no_tags')}</div>
+          <div className="text-muted-foreground py-8 text-center text-sm">{t('tag.none')}</div>
         )}
       </div>
 
@@ -209,8 +209,8 @@ export function TagSettings() {
             `settings.tags.${confirmAction === 'orphans' ? 'clear_orphans_message' : 'delete_selected_message'}`,
             confirmAction === 'orphans' ? orphanTagIds.length : selectedTagIds.size,
           )}
-          cancelLabel={t('home.cancel')}
-          confirmLabel={confirmAction === 'orphans' ? t('settings.tags.clear') : t('home.delete')}
+          cancelLabel={t('action.cancel')}
+          confirmLabel={confirmAction === 'orphans' ? t('settings.tags.clear') : t('action.delete')}
           onClose={() => setConfirmAction(undefined)}
           onConfirm={() => {
             const deletingSelection = confirmAction === 'delete'
@@ -289,7 +289,7 @@ function MergeTagsDialog({ onClose, onMerged, tags }: MergeTagsDialogProps) {
         </label>
         <DialogFooter>
           <UiButton type="button" variant="secondary" onClick={onClose}>
-            {t('home.cancel')}
+            {t('action.cancel')}
           </UiButton>
           <UiButton
             type="button"
@@ -303,7 +303,7 @@ function MergeTagsDialog({ onClose, onMerged, tags }: MergeTagsDialogProps) {
                 .then(onMerged)
                 .catch((error) => {
                   console.error(error)
-                  notify({ type: 'error', title: t('settings.tags.merge_error') })
+                  notify({ type: 'error', title: t('tag.error.name_exists') })
                 })
             }}
           >

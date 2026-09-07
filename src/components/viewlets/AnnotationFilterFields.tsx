@@ -52,7 +52,7 @@ export function AnnotationFilterFields({ onChange, value }: AnnotationFilterFiel
             variant={value.notes === notes ? 'secondary' : 'ghost'}
             onClick={() => onChange({ ...value, notes })}
           >
-            {t(`annotation.notes_${notes}`)}
+            {t(notes === 'all' ? 'option.all' : `annotation.notes_${notes}`)}
           </Button>
         ))}
       </div>

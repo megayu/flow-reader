@@ -162,7 +162,7 @@ test('library author filters pin authors and refresh when books change', async (
 
   await page
     .getByTestId('library-author-section')
-    .getByRole('button', { name: msg('home.library_filter.reset') })
+    .getByRole('button', { name: msg('action.reset') })
     .click()
   await expect(page.getByText('Beta Read')).toBeVisible()
   await expect(page.getByText('Gamma Read')).toBeVisible()
@@ -170,19 +170,19 @@ test('library author filters pin authors and refresh when books change', async (
   await authorChip(page, longAuthor).click({ button: 'right' })
   await expect(
     page.getByTestId('library-author-context-menu').getByRole('menuitem', {
-      name: msg('home.library_filter.pin_author'),
+      name: msg('home.library_filter.pin'),
       exact: true,
     }),
   ).toBeVisible()
   await expect(
     page.getByTestId('library-author-context-menu').getByRole('menuitem', {
-      name: msg('home.library_filter.unpin_author'),
+      name: msg('home.library_filter.unpin'),
       exact: true,
     }),
   ).toHaveCount(0)
   await page
     .getByTestId('library-author-context-menu')
-    .getByRole('menuitem', { name: msg('home.library_filter.pin_author'), exact: true })
+    .getByRole('menuitem', { name: msg('home.library_filter.pin'), exact: true })
     .click()
   await expect.poll(() => authorNames(page)).toEqual([longAuthor, 'Anne Able'])
   await expect.poll(() => pinnedAuthors(page)).toEqual([longAuthor])
@@ -190,7 +190,7 @@ test('library author filters pin authors and refresh when books change', async (
   await authorChip(page, 'Anne Able').click({ button: 'right' })
   await page
     .getByTestId('library-author-context-menu')
-    .getByRole('menuitem', { name: msg('home.library_filter.pin_author'), exact: true })
+    .getByRole('menuitem', { name: msg('home.library_filter.pin'), exact: true })
     .click()
   await expect.poll(() => authorNames(page)).toEqual(['Anne Able', longAuthor])
   await expect.poll(() => pinnedAuthors(page)).toEqual(['Anne Able', longAuthor])
@@ -198,13 +198,13 @@ test('library author filters pin authors and refresh when books change', async (
   await authorChip(page, 'Anne Able').click({ button: 'right' })
   await expect(
     page.getByTestId('library-author-context-menu').getByRole('menuitem', {
-      name: msg('home.library_filter.pin_author'),
+      name: msg('home.library_filter.pin'),
       exact: true,
     }),
   ).toBeVisible()
   await page
     .getByTestId('library-author-context-menu')
-    .getByRole('menuitem', { name: msg('home.library_filter.unpin_author'), exact: true })
+    .getByRole('menuitem', { name: msg('home.library_filter.unpin'), exact: true })
     .click()
   await expect.poll(() => authorNames(page)).toEqual([longAuthor, 'Anne Able'])
   await expect.poll(() => pinnedAuthors(page)).toEqual([longAuthor])
@@ -320,7 +320,7 @@ test('library facet searches stay scoped and exit on blur without clearing appli
   await expect(authorChip(page, 'Clara Cove')).toBeVisible()
 
   await page.keyboard.press(tagSearchShortcut)
-  const tagSearch = page.getByRole('textbox', { name: msg('home.library_filter.search_tags') })
+  const tagSearch = page.getByRole('textbox', { name: msg('tag.search') })
   await expect(tagSearch).toBeFocused()
   await tagSearch.fill('NOTE')
   await expect(page.getByTestId('library-tag-chip').filter({ hasText: 'Notes' })).toBeVisible()

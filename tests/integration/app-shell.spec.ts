@@ -126,7 +126,7 @@ test('configures one shared main language, secondary language, and translation s
 
 test('settings dropdown dismissal closes one layer at a time', async ({ page }) => {
   const dialog = await openSettings(page)
-  const language = dialog.getByRole('combobox', { name: msg('settings.language') })
+  const language = dialog.getByRole('combobox', { name: msg('language.title') })
   const options = page.locator('[data-slot="select-content"]')
   const headingBox = await dialog.getByRole('heading', { name: msg('settings.tabs.basic') }).boundingBox()
   if (!headingBox) throw new Error('Settings heading is not visible')
