@@ -634,7 +634,15 @@ const BookCardComponent: React.FC<BookCardProps> = ({
               void reader
                 .closeBookTab(book.id)
                 .then(() => db.books.delete(book.id))
-                .catch(console.error)
+                .catch((error) => {
+                  console.error(error)
+                  notify({
+                    autoCloseMs: false,
+                    description: formatErrorMessage(error),
+                    title: t('error.delete_books_failed'),
+                    type: 'error',
+                  })
+                })
             }}
           />
         </ContextMenuContent>
