@@ -55,6 +55,7 @@ import {
 import { useLibraryAction } from '../hooks/useAction'
 import { useBookImportNotifications } from '../hooks/useBookImportNotifications'
 import { useCovers, useLibrary, useLibraryTags, useRecentBookIds } from '../hooks/useLibrary'
+import { useNotifyError } from '../hooks/useNotifyError'
 import { useOverlayScrollbarMetrics } from '../hooks/useOverlayScrollbarMetrics'
 import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
@@ -743,6 +744,7 @@ const Library: React.FC<LibraryProps> = ({
   const tags = useLibraryTags()
   const t = useTranslation()
   const notify = useNotify()
+  const notifyError = useNotifyError()
   const [settings, setSettings] = useSettings()
   const recentBookIds = useRecentBookIds(settings.showRecentBooks === true)
   const sortField = settings.librarySort?.field ?? defaultLibrarySort.field
@@ -936,10 +938,12 @@ const Library: React.FC<LibraryProps> = ({
   }, [])
 
   const updateSelectedReadingStatus = (readingStatus: ReadingStatus | null) => {
-    void db.books.updateReadingStatus(
-      selectedBooks.map((book) => book.id),
-      readingStatus,
-    )
+    void db.books
+      .updateReadingStatus(
+        selectedBooks.map((book) => book.id),
+        readingStatus,
+      )
+      .catch((error) => notifyError(error, 'home.reading_status.batch_change'))
   }
   const referencedArchiveIds = useMemo(
     () =>
@@ -1697,14 +1701,7 @@ const Library: React.FC<LibraryProps> = ({
             exitSelectMode()
             void Promise.all(bookIds.map((bookId) => reader.closeBookTab(bookId)))
               .then(() => db.books.bulkDelete(bookIds))
-              .catch((error) => {
-                notify({
-                  autoCloseMs: false,
-                  description: formatErrorMessage(error),
-                  title: t('error.delete_books_failed'),
-                  type: 'error',
-                })
-              })
+              .catch((error) => notifyError(error, 'home.delete_selected.title'))
           }}
         />
       )}

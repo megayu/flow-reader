@@ -35,11 +35,11 @@
   "dictionary.parse_error": "Não foi possível processar esta entrada.",
 
   "error.deep_link_book_not_found": "O livro vinculado não está nesta biblioteca",
-  "error.delete_books_failed": "Falha ao excluir livros",
   "error.export_failed": "Falha na exportação",
   "error.content_mode_switch_failed": "Falha ao alternar modo",
   "error.folder_import_failed": "Falha ao importar pasta",
   "error.open_book_directory_failed": "Não foi possível abrir a pasta do livro",
+  "error.operation_failed": "Falha: {1}",
   "error.reader_open_failed": "Não foi possível abrir o livro",
   "error.reader_render_failed": "Falha ao renderizar o livro",
   "error.txt_import_failed": "Falha na importação de TXT",

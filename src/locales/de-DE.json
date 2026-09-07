@@ -35,11 +35,11 @@
   "dictionary.parse_error": "Eintrag konnte nicht verarbeitet werden.",
 
   "error.deep_link_book_not_found": "Das verlinkte Buch befindet sich nicht in dieser Bibliothek",
-  "error.delete_books_failed": "Bücher konnten nicht gelöscht werden",
   "error.export_failed": "Export fehlgeschlagen",
   "error.content_mode_switch_failed": "Moduswechsel fehlgeschlagen",
   "error.folder_import_failed": "Ordnerimport fehlgeschlagen",
   "error.open_book_directory_failed": "Buchordner konnte nicht geöffnet werden",
+  "error.operation_failed": "{1} fehlgeschlagen",
   "error.reader_open_failed": "Buch konnte nicht geöffnet werden",
   "error.reader_render_failed": "Buchdarstellung fehlgeschlagen",
   "error.txt_import_failed": "TXT-Import fehlgeschlagen",

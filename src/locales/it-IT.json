@@ -35,11 +35,11 @@
   "dictionary.parse_error": "Impossibile analizzare questa voce.",
 
   "error.deep_link_book_not_found": "Il libro collegato non è presente in questa libreria",
-  "error.delete_books_failed": "Eliminazione dei libri non riuscita",
   "error.export_failed": "Esportazione non riuscita",
   "error.content_mode_switch_failed": "Cambio di modalità non riuscito",
   "error.folder_import_failed": "Importazione cartella non riuscita",
   "error.open_book_directory_failed": "Impossibile aprire la cartella del libro",
+  "error.operation_failed": "Errore: {1}",
   "error.reader_open_failed": "Impossibile aprire il libro",
   "error.reader_render_failed": "Rendering del libro non riuscito",
   "error.txt_import_failed": "Importazione TXT non riuscita",

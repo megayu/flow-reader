@@ -35,11 +35,11 @@
   "dictionary.parse_error": "Impossible d'analyser cette entrée.",
 
   "error.deep_link_book_not_found": "Le livre lié ne se trouve pas dans cette bibliothèque",
-  "error.delete_books_failed": "Échec de la suppression des livres",
   "error.export_failed": "Échec de l'exportation",
   "error.content_mode_switch_failed": "Échec du changement de mode",
   "error.folder_import_failed": "Échec de l'importation du dossier",
   "error.open_book_directory_failed": "Impossible d'ouvrir le dossier du livre",
+  "error.operation_failed": "Échec : {1}",
   "error.reader_open_failed": "Impossible d'ouvrir le livre",
   "error.reader_render_failed": "Échec du rendu du livre",
   "error.txt_import_failed": "Échec de l'importation TXT",

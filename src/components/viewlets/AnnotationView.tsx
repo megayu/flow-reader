@@ -19,6 +19,7 @@ import {
 } from '@/annotationFilter'
 import { formatErrorMessage } from '@/errorMessage'
 import { useList } from '@/hooks/useList'
+import { useNotifyError } from '@/hooks/useNotifyError'
 import { useTranslation } from '@/hooks/useTranslation'
 import { getBookTabFrameWindows, reader, useReaderSnapshot } from '@/models/reader'
 import { db } from '@/storage'
@@ -96,6 +97,7 @@ type AnnotationRow =
 const AnnotationPane: React.FC = () => {
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation()
+  const notifyError = useNotifyError()
   const [collapsedSections, setCollapsedSections] = useState(() => new Set<number>())
   const [filter, setFilter] = useState(createDefaultAnnotationFilter)
   const [activeRowKey, setActiveRowKey] = useState<string>()
@@ -276,7 +278,9 @@ const AnnotationPane: React.FC = () => {
                     reader.focusedBookTab?.display(row.annotation.cfi)
                   }}
                   onDelete={() => {
-                    void reader.focusedBookTab?.removeAnnotation(row.annotation.cfi).catch(console.error)
+                    void reader.focusedBookTab
+                      ?.removeAnnotation(row.annotation.cfi)
+                      .catch((error) => notifyError(error, 'menu.delete'))
                   }}
                 >
                   {row.annotation.text}

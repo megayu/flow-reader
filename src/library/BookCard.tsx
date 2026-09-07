@@ -35,6 +35,7 @@ import {
 } from '../components/ui/menu'
 import { useNotify } from '../components/ui/notificationContext'
 import { formatErrorMessage } from '../errorMessage'
+import { useNotifyError } from '../hooks/useNotifyError'
 import { useTranslation } from '../hooks/useTranslation'
 import { completeTabOpen, reader } from '../models/reader'
 import type { LibraryCoverFit } from '../settings/configuration'
@@ -155,6 +156,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
 }) => {
   const t = useTranslation()
   const notify = useNotify()
+  const notifyError = useNotifyError()
   const [statusMenuOpen, setStatusMenuOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [activeDialog, setActiveDialog] = useState<BookCardDialog>()
@@ -274,9 +276,11 @@ const BookCardComponent: React.FC<BookCardProps> = ({
   const updateReadingStatus = useCallback(
     (readingStatus: ReadingStatus | null) => {
       setStatusMenuOpen(false)
-      void db.books.updateReadingStatus([book.id], readingStatus)
+      void db.books
+        .updateReadingStatus([book.id], readingStatus)
+        .catch((error) => notifyError(error, 'home.reading_status.change'))
     },
-    [book.id],
+    [book.id, notifyError],
   )
 
   const activateBook = useCallback(
@@ -637,15 +641,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
               void reader
                 .closeBookTab(book.id)
                 .then(() => db.books.delete(book.id))
-                .catch((error) => {
-                  console.error(error)
-                  notify({
-                    autoCloseMs: false,
-                    description: formatErrorMessage(error),
-                    title: t('error.delete_books_failed'),
-                    type: 'error',
-                  })
-                })
+                .catch((error) => notifyError(error, 'home.context.delete'))
             }}
           />
         </ContextMenuContent>

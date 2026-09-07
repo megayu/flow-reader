@@ -43,6 +43,7 @@ import { useColorScheme } from '../hooks/theme/useColorScheme'
 import { type LibraryAction, type Action as ReaderPanelAction, useAction, useLibraryAction } from '../hooks/useAction'
 import { useLibrary, useLibraryPins, useLibraryTags } from '../hooks/useLibrary'
 import { useLibraryTagCreation } from '../hooks/useLibraryTagCreation'
+import { useNotifyError } from '../hooks/useNotifyError'
 import { useOverlayScrollbarMetrics } from '../hooks/useOverlayScrollbarMetrics'
 import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
@@ -616,6 +617,7 @@ interface LibraryFacetSearchState {
 
 function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const t = useTranslation()
+  const notifyError = useNotifyError()
   const books = useLibrary()
   const tags = useLibraryTags()
   const pins = useLibraryPins()
@@ -793,21 +795,33 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     [setTagFilters],
   )
 
-  const pinAuthor = useCallback((author: string) => {
-    void db.pins.pinAuthor(author)
-  }, [])
+  const pinAuthor = useCallback(
+    (author: string) => {
+      void db.pins.pinAuthor(author).catch((error) => notifyError(error, 'home.library_filter.pin_author'))
+    },
+    [notifyError],
+  )
 
-  const unpinAuthor = useCallback((author: string) => {
-    void db.pins.unpinAuthor(author)
-  }, [])
+  const unpinAuthor = useCallback(
+    (author: string) => {
+      void db.pins.unpinAuthor(author).catch((error) => notifyError(error, 'home.library_filter.unpin_author'))
+    },
+    [notifyError],
+  )
 
-  const pinTag = useCallback((tagId: string) => {
-    void db.pins.pinTag(tagId)
-  }, [])
+  const pinTag = useCallback(
+    (tagId: string) => {
+      void db.pins.pinTag(tagId).catch((error) => notifyError(error, 'home.library_filter.pin_tag'))
+    },
+    [notifyError],
+  )
 
-  const unpinTag = useCallback((tagId: string) => {
-    void db.pins.unpinTag(tagId)
-  }, [])
+  const unpinTag = useCallback(
+    (tagId: string) => {
+      void db.pins.unpinTag(tagId).catch((error) => notifyError(error, 'home.library_filter.unpin_tag'))
+    },
+    [notifyError],
+  )
 
   const editTag = useCallback(
     (tagId: string) => {

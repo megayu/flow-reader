@@ -8,6 +8,7 @@ import { Input } from '../components/ui/input'
 import { useNotify } from '../components/ui/notificationContext'
 import { useLibrary, useLibraryPins, useLibraryTags } from '../hooks/useLibrary'
 import { useLibraryTagCreation } from '../hooks/useLibraryTagCreation'
+import { useNotifyError } from '../hooks/useNotifyError'
 import { useTranslation } from '../hooks/useTranslation'
 import { cleanLibraryTagName, orderLibraryTags } from '../library/filters'
 import { LibraryFilterChip, type LibraryFilterMenuItem } from '../library/LibraryFilterChip'
@@ -25,6 +26,7 @@ export function TagSettings() {
   const tags = useLibraryTags()
   const pins = useLibraryPins()
   const tagCreation = useLibraryTagCreation()
+  const notifyError = useNotifyError()
   const [query, setQuery] = useState('')
   const [selectedTagIds, { replace: replaceSelectedTagIds, reset: resetSelectedTagIds, toggle: toggleTag }] =
     useStringSet()
@@ -174,9 +176,13 @@ export function TagSettings() {
                 active={selectedTagIds.has(tag.id)}
                 label={tag.name}
                 menuItems={tagMenuItems}
-                onPin={(tagId) => void db.pins.pinTag(tagId)}
+                onPin={(tagId) =>
+                  void db.pins.pinTag(tagId).catch((error) => notifyError(error, 'home.library_filter.pin_tag'))
+                }
                 onToggle={toggleTag}
-                onUnpin={(tagId) => void db.pins.unpinTag(tagId)}
+                onUnpin={(tagId) =>
+                  void db.pins.unpinTag(tagId).catch((error) => notifyError(error, 'home.library_filter.unpin_tag'))
+                }
                 pinLabel={t('home.library_filter.pin_tag')}
                 pinned={pinnedTagIds.has(tag.id)}
                 unpinLabel={t('home.library_filter.unpin_tag')}
@@ -208,10 +214,15 @@ export function TagSettings() {
           onClose={() => setConfirmAction(undefined)}
           onConfirm={() => {
             const deletingSelection = confirmAction === 'delete'
-            void db.tags.deleteMany(deletingSelection ? [...selectedTagIds] : orphanTagIds).then(() => {
-              if (deletingSelection) resetSelectedTagIds()
-              setConfirmAction(undefined)
-            })
+            void db.tags
+              .deleteMany(deletingSelection ? [...selectedTagIds] : orphanTagIds)
+              .then(() => {
+                if (deletingSelection) resetSelectedTagIds()
+                setConfirmAction(undefined)
+              })
+              .catch((error) =>
+                notifyError(error, deletingSelection ? 'settings.tags.delete_selected' : 'settings.tags.clear_orphans'),
+              )
           }}
         />
       )}

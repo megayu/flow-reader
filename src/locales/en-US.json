@@ -35,11 +35,11 @@
   "dictionary.parse_error": "Could not parse this entry.",
 
   "error.deep_link_book_not_found": "The linked book is not in this library",
-  "error.delete_books_failed": "Failed to delete books",
   "error.export_failed": "Export failed",
   "error.content_mode_switch_failed": "Switch failed",
   "error.folder_import_failed": "Folder import failed",
   "error.open_book_directory_failed": "Failed to open book folder",
+  "error.operation_failed": "{1} failed",
   "error.reader_open_failed": "Failed to open book",
   "error.reader_render_failed": "Failed to render book",
   "error.txt_import_failed": "TXT import failed",

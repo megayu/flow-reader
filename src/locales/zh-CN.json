@@ -35,11 +35,11 @@
   "dictionary.parse_error": "无法解析该词条",
 
   "error.deep_link_book_not_found": "链接中的书籍不在当前书库中",
-  "error.delete_books_failed": "删除书籍失败",
   "error.export_failed": "导出失败",
   "error.content_mode_switch_failed": "切换失败",
   "error.folder_import_failed": "文件夹导入失败",
   "error.open_book_directory_failed": "打开书籍所在文件夹失败",
+  "error.operation_failed": "{1}失败",
   "error.reader_open_failed": "打开书籍失败",
   "error.reader_render_failed": "渲染书籍失败",
   "error.txt_import_failed": "TXT 导入失败",

@@ -35,11 +35,11 @@
   "dictionary.parse_error": "無法解析該詞條",
 
   "error.deep_link_book_not_found": "連結中的書籍不在目前書庫中",
-  "error.delete_books_failed": "刪除書籍失敗",
   "error.export_failed": "匯出失敗",
   "error.content_mode_switch_failed": "切換失敗",
   "error.folder_import_failed": "資料夾匯入失敗",
   "error.open_book_directory_failed": "開啟書籍所在資料夾失敗",
+  "error.operation_failed": "{1}失敗",
   "error.reader_open_failed": "開啟書籍失敗",
   "error.reader_render_failed": "算繪書籍失敗",
   "error.txt_import_failed": "TXT 匯入失敗",

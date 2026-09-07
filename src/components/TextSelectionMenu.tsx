@@ -16,6 +16,7 @@ import { type AnnotationColor, annotationColors, colorMap, orderRangeRectsForWri
 import { type LocalDictionaryRecord, listLocalDictionariesCached } from '../dictionary/native'
 import { normalizeDictionaryQuery } from '../dictionary/query'
 import { useSetAction } from '../hooks/useAction'
+import { useNotifyError } from '../hooks/useNotifyError'
 import { isForwardSelection, useTextSelection } from '../hooks/useTextSelection'
 import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
@@ -341,6 +342,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   const popupElementRef = useRef<HTMLDivElement>(null)
   const keyboardWindows = useMemo(() => [window, ...windows], [windows])
   const t = useTranslation()
+  const notifyError = useNotifyError()
   const [settings] = useSettings()
   const [view, setView] = useState<'actions' | 'dictionary' | 'translation'>('actions')
   const [localDictionaries, setLocalDictionaries] = useState<LocalDictionaryRecord[]>([])
@@ -930,9 +932,11 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                   }
 
                   if (annotation && !annotationHasNotes && annotation.color === color) {
-                    void tab.removeAnnotation(cfi).catch(console.error)
+                    void tab.removeAnnotation(cfi).catch((error) => notifyError(error, 'menu.delete'))
                   } else if (annotation?.color !== color) {
-                    void tab.putAnnotation(cfi, color, text, annotation?.notes, section).catch(console.error)
+                    void tab
+                      .putAnnotation(cfi, color, text, annotation?.notes, section)
+                      .catch((error) => notifyError(error, annotation ? 'menu.update' : 'menu.create'))
                   }
                   hide()
                 }}
@@ -964,7 +968,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
                 size="sm"
                 variant="secondary"
                 onClick={() => {
-                  void tab.removeAnnotation(cfi).catch(console.error)
+                  void tab.removeAnnotation(cfi).catch((error) => notifyError(error, 'menu.delete'))
                   hide()
                 }}
               >
@@ -982,7 +986,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               onClick={() => {
                 void tab
                   .putAnnotation(cfi, draftAnnotationColor, text, ref.current?.value, section)
-                  .catch(console.error)
+                  .catch((error) => notifyError(error, annotation ? 'menu.update' : 'menu.create'))
                 hide()
               }}
             >

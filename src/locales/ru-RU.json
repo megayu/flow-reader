@@ -35,11 +35,11 @@
   "dictionary.parse_error": "Не удалось обработать словарную статью.",
 
   "error.deep_link_book_not_found": "Связанная книга отсутствует в этой библиотеке",
-  "error.delete_books_failed": "Не удалось удалить книги",
   "error.export_failed": "Ошибка экспорта",
   "error.content_mode_switch_failed": "Не удалось переключить режим",
   "error.folder_import_failed": "Не удалось импортировать папку",
   "error.open_book_directory_failed": "Не удалось открыть папку книги",
+  "error.operation_failed": "Ошибка: {1}",
   "error.reader_open_failed": "Не удалось открыть книгу",
   "error.reader_render_failed": "Ошибка отображения книги",
   "error.txt_import_failed": "Ошибка импорта TXT",

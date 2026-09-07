@@ -35,11 +35,11 @@
   "dictionary.parse_error": "項目を解析できませんでした。",
 
   "error.deep_link_book_not_found": "リンク先の書籍は本棚に見つかりません",
-  "error.delete_books_failed": "書籍の削除に失敗しました",
   "error.export_failed": "エクスポートに失敗しました",
   "error.content_mode_switch_failed": "モードの切り替えに失敗しました",
   "error.folder_import_failed": "フォルダーの取り込みに失敗しました",
   "error.open_book_directory_failed": "書籍のフォルダーを開けませんでした",
+  "error.operation_failed": "{1}に失敗しました",
   "error.reader_open_failed": "書籍を開けませんでした",
   "error.reader_render_failed": "書籍の描画に失敗しました",
   "error.txt_import_failed": "TXT の取り込みに失敗しました",

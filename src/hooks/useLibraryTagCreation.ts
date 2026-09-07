@@ -4,30 +4,36 @@ import { useNotify } from '../components/ui/notificationContext'
 import { cleanLibraryTagName, sameLibraryTagName } from '../library/filters'
 import { db } from '../storage/client'
 
+import { useNotifyError } from './useNotifyError'
 import { useTranslation } from './useTranslation'
 
 export function useLibraryTagCreation() {
   const t = useTranslation()
   const notify = useNotify()
+  const notifyError = useNotifyError()
   const [name, setName] = useState('')
 
   const create = useCallback(async () => {
-    const cleanName = cleanLibraryTagName(name)
-    if (!cleanName) return
+    try {
+      const cleanName = cleanLibraryTagName(name)
+      if (!cleanName) return
 
-    const tags = await db.tags.toArray()
-    if (tags.some((tag) => sameLibraryTagName(tag.name, cleanName))) {
-      notify({
-        title: t('home.library_filter.tag_exists'),
-        type: 'warning',
-      })
+      const tags = await db.tags.toArray()
+      if (tags.some((tag) => sameLibraryTagName(tag.name, cleanName))) {
+        notify({
+          title: t('home.library_filter.tag_exists'),
+          type: 'warning',
+        })
+        setName('')
+        return
+      }
+
+      await db.tags.create(cleanName)
       setName('')
-      return
+    } catch (error) {
+      notifyError(error, 'home.library_filter.new_tag')
     }
-
-    await db.tags.create(cleanName)
-    setName('')
-  }, [name, notify, t])
+  }, [name, notify, notifyError, t])
 
   const clear = useCallback(() => setName(''), [])
 

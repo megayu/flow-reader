@@ -9,6 +9,7 @@ import { Input } from '../components/ui/input'
 import { formatLocalDirectoryForDisplay } from '../dictionary/path'
 import { useLibraryPins, useLibraryTags } from '../hooks/useLibrary'
 import { useLocale } from '../hooks/useLocale'
+import { useNotifyError } from '../hooks/useNotifyError'
 import { useTranslation } from '../hooks/useTranslation'
 import { type BookRecord, db, type LibraryTagRecord } from '../storage'
 
@@ -204,6 +205,7 @@ interface BatchTagsDialogProps {
 
 export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose, tags }) => {
   const t = useTranslation()
+  const notifyError = useNotifyError()
   const [initialSelectedTagIds] = useState(() => getTagsInAllBooks(books, tags))
   const [initialPartialTagIds] = useState(() => getPartiallySelectedTags(books, tags))
   const [selectedTagIds, setSelectedTagIds] = useState(() => new Set(initialSelectedTagIds))
@@ -295,7 +297,7 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose
             type="button"
             disabled={!books.length || !canSave}
             onClick={() => {
-              void apply()
+              void apply().catch((error) => notifyError(error, 'home.context.set_tags'))
             }}
           >
             {t('home.edit.save')}
@@ -339,6 +341,7 @@ export const DeleteSelectedBooksDialog: React.FC<DeleteSelectedBooksDialogProps>
 
 export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
   const t = useTranslation()
+  const notifyError = useNotifyError()
   const tags = useLibraryTags()
   const [initialTagIds] = useState(() => new Set(uniqueStringValues(book.tagIds ?? [])))
   const [tagIds, setTagIds] = useState(() => new Set(initialTagIds))
@@ -381,6 +384,7 @@ export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
         })
       })
       .then(() => onClose())
+      .catch((error) => notifyError(error, 'home.context.set_tags'))
   }
 
   return (
@@ -417,6 +421,7 @@ export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
 
 export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
   const t = useTranslation()
+  const notifyError = useNotifyError()
   const titleRef = useRef<HTMLInputElement>(null)
   const initialTitle = getBookDisplayTitle(book)
   const initialCreator = cleanBookText(book.metadata.creator)
@@ -436,6 +441,7 @@ export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => 
         },
       })
       .then(() => onClose())
+      .catch((error) => notifyError(error, 'home.context.edit_details'))
   }
 
   return (

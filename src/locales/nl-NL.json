@@ -35,11 +35,11 @@
   "dictionary.parse_error": "Kan dit lemma niet verwerken.",
 
   "error.deep_link_book_not_found": "Het gekoppelde boek bevindt zich niet in deze bibliotheek",
-  "error.delete_books_failed": "Boeken verwijderen mislukt",
   "error.export_failed": "Exporteren mislukt",
   "error.content_mode_switch_failed": "Modus wisselen mislukt",
   "error.folder_import_failed": "Map importeren mislukt",
   "error.open_book_directory_failed": "Kan de map van het boek niet openen",
+  "error.operation_failed": "{1} mislukt",
   "error.reader_open_failed": "Kan het boek niet openen",
   "error.reader_render_failed": "Weergeven van het boek mislukt",
   "error.txt_import_failed": "TXT-import mislukt",

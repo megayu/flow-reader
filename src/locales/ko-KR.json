@@ -35,11 +35,11 @@
   "dictionary.parse_error": "해당 항목을 분석할 수 없습니다.",
 
   "error.deep_link_book_not_found": "연결된 도서가 현재 서재에 없습니다",
-  "error.delete_books_failed": "도서 삭제 실패",
   "error.export_failed": "내보내기 실패",
   "error.content_mode_switch_failed": "모드 전환 실패",
   "error.folder_import_failed": "폴더 가져오기 실패",
   "error.open_book_directory_failed": "도서 폴더를 열 수 없습니다",
+  "error.operation_failed": "{1} 실패",
   "error.reader_open_failed": "도서를 열 수 없습니다",
   "error.reader_render_failed": "도서 렌더링에 실패했습니다",
   "error.txt_import_failed": "TXT 가져오기 실패",

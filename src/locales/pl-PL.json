@@ -35,11 +35,11 @@
   "dictionary.parse_error": "Nie udało się przetworzyć tego hasła.",
 
   "error.deep_link_book_not_found": "Powiązana książka nie znajduje się w tej bibliotece",
-  "error.delete_books_failed": "Nie udało się usunąć książek",
   "error.export_failed": "Eksport nie powiódł się",
   "error.content_mode_switch_failed": "Przełączanie trybu nie powiodło się",
   "error.folder_import_failed": "Import folderu nie powiódł się",
   "error.open_book_directory_failed": "Nie udało się otworzyć folderu książki",
+  "error.operation_failed": "Niepowodzenie: {1}",
   "error.reader_open_failed": "Nie udało się otworzyć książki",
   "error.reader_render_failed": "Renderowanie książki nie powiodło się",
   "error.txt_import_failed": "Import pliku TXT nie powiódł się",

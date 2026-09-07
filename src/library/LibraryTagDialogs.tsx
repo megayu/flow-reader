@@ -5,6 +5,7 @@ import { ConfirmDialog } from '../components/ui/confirm-dialog'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import { useNotify } from '../components/ui/notificationContext'
+import { useNotifyError } from '../hooks/useNotifyError'
 import { useTranslation } from '../hooks/useTranslation'
 import { db } from '../storage/client'
 import type { LibraryTagRecord } from '../storage/types'
@@ -19,6 +20,7 @@ interface LibraryTagDialogProps {
 export function EditLibraryTagDialog({ onClose, tag }: LibraryTagDialogProps) {
   const t = useTranslation()
   const notify = useNotify()
+  const notifyError = useNotifyError()
   const inputRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState(tag.name)
   const trimmedName = cleanLibraryTagName(name)
@@ -41,7 +43,7 @@ export function EditLibraryTagDialog({ onClose, tag }: LibraryTagDialogProps) {
         return
       }
       onClose()
-    })()
+    })().catch((error) => notifyError(error, 'home.library_filter.edit_tag'))
   }
 
   return (
@@ -96,6 +98,7 @@ interface DeleteLibraryTagDialogProps extends LibraryTagDialogProps {
 
 export function DeleteLibraryTagDialog({ onClose, onDeleted, tag }: DeleteLibraryTagDialogProps) {
   const t = useTranslation()
+  const notifyError = useNotifyError()
 
   return (
     <ConfirmDialog
@@ -109,7 +112,10 @@ export function DeleteLibraryTagDialog({ onClose, onDeleted, tag }: DeleteLibrar
       confirmLabel={t('home.delete')}
       onClose={onClose}
       onConfirm={() => {
-        void db.tags.delete(tag.id).then(onDeleted)
+        void db.tags
+          .delete(tag.id)
+          .then(onDeleted)
+          .catch((error) => notifyError(error, 'home.library_filter.delete_tag'))
       }}
     />
   )
