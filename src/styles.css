@@ -67,7 +67,7 @@ body,
 }
 
 :root {
-  --app-font-family: Roboto, sans-serif;
+  --app-font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif;
   --app-font-size-xs: 13px;
   --app-font-size-sm: 14px;
   --app-font-size-md: 15px;
@@ -78,19 +78,19 @@ body,
 }
 
 :root:lang(zh-CN) {
-  --app-font-family: "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+  --app-font-family: "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
 }
 
 :root:lang(zh-TW) {
-  --app-font-family: "Microsoft JhengHei UI", "PingFang TC", "Noto Sans CJK TC", sans-serif;
+  --app-font-family: "Microsoft JhengHei UI", "PingFang TC", "Noto Sans CJK TC", system-ui, sans-serif;
 }
 
 :root:lang(ja-JP) {
-  --app-font-family: "Yu Gothic UI", "Meiryo UI", "Hiragino Sans", "Noto Sans CJK JP", sans-serif;
+  --app-font-family: "Yu Gothic UI", "Meiryo UI", "Hiragino Sans", "Noto Sans CJK JP", system-ui, sans-serif;
 }
 
 :root:lang(ko-KR) {
-  --app-font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans CJK KR", sans-serif;
+  --app-font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans CJK KR", system-ui, sans-serif;
 }
 
 :root {

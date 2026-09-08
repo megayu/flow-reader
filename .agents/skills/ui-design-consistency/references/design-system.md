@@ -85,7 +85,10 @@ attributes may remain when they add no Flow-specific state or code.
   centering; use tight or snug leading for multiline content.
 - Use medium or semibold weight for labels and section headings. Keep secondary
   text quieter.
-- Let ordinary UI inherit the language-specific application font.
+- Let ordinary UI inherit the application font stack. Latin, Cyrillic, and
+  other non-CJK locales use the platform UI font first; Simplified Chinese,
+  Traditional Chinese, Japanese, and Korean use their language-specific
+  Windows, macOS, and Linux families before the platform and generic fallbacks.
 
 ### Reader content
 
