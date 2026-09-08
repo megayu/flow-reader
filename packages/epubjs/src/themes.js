@@ -216,7 +216,7 @@ class Themes {
     }
 
     contents.forEach((content) => {
-      content.css(
+      content.setCss(
         name,
         this._overrides[name].value,
         this._overrides[name].priority,
@@ -230,7 +230,7 @@ class Themes {
     delete this._overrides[name]
 
     contents.forEach((content) => {
-      content.css(name)
+      content.setCss(name)
     })
   }
 
@@ -243,7 +243,7 @@ class Themes {
 
     for (var rule in overrides) {
       if (overrides.hasOwnProperty(rule)) {
-        contents.css(rule, overrides[rule].value, overrides[rule].priority)
+        contents.setCss(rule, overrides[rule].value, overrides[rule].priority)
       }
     }
   }

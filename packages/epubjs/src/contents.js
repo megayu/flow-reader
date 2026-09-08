@@ -115,45 +115,33 @@ class Contents extends EventEmitter {
   }
 
   /**
-   * Get or Set width
+   * Set width without measuring layout
    * @param {number} [w]
-   * @returns {number} width
+   * @private
    */
-  width(w) {
-    // var frame = this.documentElement;
-    var frame = this.content
-
+  setWidth(w) {
     if (w && isNumber(w)) {
       w = w + 'px'
     }
 
     if (w) {
-      frame.style.width = w
-      // this.content.style.width = w;
+      this.content.style.width = w
     }
-
-    return parseInt(this.window.getComputedStyle(frame)['width'])
   }
 
   /**
-   * Get or Set height
+   * Set height without measuring layout
    * @param {number} [h]
-   * @returns {number} height
+   * @private
    */
-  height(h) {
-    // var frame = this.documentElement;
-    var frame = this.content
-
+  setHeight(h) {
     if (h && isNumber(h)) {
       h = h + 'px'
     }
 
     if (h) {
-      frame.style.height = h
-      // this.content.style.height = h;
+      this.content.style.height = h
     }
-
-    return parseInt(this.window.getComputedStyle(frame)['height'])
   }
 
   /**
@@ -294,12 +282,13 @@ class Contents extends EventEmitter {
   }
 
   /**
-   * Set Css styles on the contents element (typically Body)
+   * Set or remove styles without reading computed values. Layout measurement
+   * stays with the geometry reads after the required styles have been applied.
    * @param {string} property
-   * @param {string} value
+   * @param {string} [value] omitted or empty removes the property
    * @param {boolean} [priority] set as "important"
    */
-  css(property, value, priority) {
+  setCss(property, value, priority) {
     var content = this.content || this.document.body
 
     if (value) {
@@ -307,8 +296,6 @@ class Contents extends EventEmitter {
     } else {
       content.style.removeProperty(property)
     }
-
-    return this.window.getComputedStyle(content)[property]
   }
 
   /**
@@ -2102,18 +2089,18 @@ class Contents extends EventEmitter {
     this.clearOrthogonalBlockSizing()
 
     if (width >= 0) {
-      this.width(width)
+      this.setWidth(width)
       viewport.width = width
-      this.css('padding', '0 ' + width / 12 + 'px')
+      this.setCss('padding', '0 ' + width / 12 + 'px')
     }
 
     if (height >= 0) {
-      this.height(height)
+      this.setHeight(height)
       viewport.height = height
     }
 
-    this.css('margin', '0')
-    this.css('box-sizing', 'border-box')
+    this.setCss('margin', '0')
+    this.setCss('box-sizing', 'border-box')
 
     if (isNumber(width) && isNumber(height) && width >= 0 && height >= 0) {
       this.normalizePageBackgrounds(width, height)
@@ -2303,28 +2290,27 @@ class Contents extends EventEmitter {
       this.direction(dir)
     }
 
-    this.width(width)
-    this.height(height)
+    this.setWidth(width)
+    this.setHeight(height)
 
     // Deal with Mobile trying to scale to viewport
     this.viewport({ width: width, height: height, scale: 1.0, scalable: 'no' })
 
     // TODO: inline-block needs more testing
     // Fixes Safari column cut offs, but causes RTL issues
-    // this.css("display", "inline-block");
 
-    this.overflow('hidden')
-    this.css('overflow', 'visible')
-    this.css('margin', '0', true)
+    this.documentElement.style.overflow = 'hidden'
+    this.setCss('overflow', 'visible')
+    this.setCss('margin', '0', true)
 
-    this.css('padding-top', '10px')
-    this.css('padding-bottom', '10px')
-    this.css('padding-left', gap / 2 + 'px')
-    this.css('padding-right', gap / 2 + 'px')
-    this.css('box-sizing', 'border-box')
-    this.css('max-width', 'inherit')
+    this.setCss('padding-top', '10px')
+    this.setCss('padding-bottom', '10px')
+    this.setCss('padding-left', gap / 2 + 'px')
+    this.setCss('padding-right', gap / 2 + 'px')
+    this.setCss('box-sizing', 'border-box')
+    this.setCss('max-width', 'inherit')
 
-    this.css(COLUMN_FILL, 'auto')
+    this.setCss(COLUMN_FILL, 'auto')
 
     if (verticalRtl) {
       let rowHeight =
@@ -2337,29 +2323,29 @@ class Contents extends EventEmitter {
         // CSS Multicol Level 2 maps column-width to the vertical inline size
         // and column-height to the horizontal block size. Wrapping rows in the
         // block direction creates real right-to-left physical pages.
-        this.css(COLUMN_AXIS, null)
-        this.css(COLUMN_WIDTH, Math.max(height - 20, 1) + 'px')
-        this.css('column-height', rowHeight + 'px')
-        this.css('column-count', '1')
-        this.css('column-wrap', 'wrap')
-        this.css(COLUMN_GAP, '0px')
-        this.css('row-gap', gap + 'px')
+        this.setCss(COLUMN_AXIS, null)
+        this.setCss(COLUMN_WIDTH, Math.max(height - 20, 1) + 'px')
+        this.setCss('column-height', rowHeight + 'px')
+        this.setCss('column-count', '1')
+        this.setCss('column-wrap', 'wrap')
+        this.setCss(COLUMN_GAP, '0px')
+        this.setCss('row-gap', gap + 'px')
       } else {
         // WebKit exposes the older column-axis extension instead of Multicol
         // Level 2. It produces the same horizontal physical page sequence.
-        this.css(COLUMN_AXIS, 'horizontal')
-        this.css(COLUMN_WIDTH, rowHeight + 'px')
-        this.css(COLUMN_GAP, gap + 'px')
-        this.width(rowHeight + gap)
+        this.setCss(COLUMN_AXIS, 'horizontal')
+        this.setCss(COLUMN_WIDTH, rowHeight + 'px')
+        this.setCss(COLUMN_GAP, gap + 'px')
+        this.setWidth(rowHeight + gap)
       }
     } else {
-      this.css('column-height', null)
-      this.css('column-count', null)
-      this.css('column-wrap', null)
-      this.css('row-gap', null)
-      this.css(COLUMN_AXIS, axis)
-      this.css(COLUMN_GAP, gap + 'px')
-      this.css(COLUMN_WIDTH, columnWidth + 'px')
+      this.setCss('column-height', null)
+      this.setCss('column-count', null)
+      this.setCss('column-wrap', null)
+      this.setCss('row-gap', null)
+      this.setCss(COLUMN_AXIS, axis)
+      this.setCss(COLUMN_GAP, gap + 'px')
+      this.setCss(COLUMN_WIDTH, columnWidth + 'px')
     }
 
     var pageBackgroundWidth =
@@ -2368,7 +2354,7 @@ class Contents extends EventEmitter {
 
     // Fix glyph clipping in WebKit
     // https://github.com/futurepress/epub.js/issues/983
-    this.css('-webkit-line-box-contain', 'block glyphs replaced')
+    this.setCss('-webkit-line-box-contain', 'block glyphs replaced')
   }
 
   /**
@@ -2380,15 +2366,14 @@ class Contents extends EventEmitter {
   scaler(scale, offsetX, offsetY) {
     var scaleStr = 'scale(' + scale + ')'
     var translateStr = ''
-    // this.css("position", "absolute"));
-    this.css('transform-origin', 'top left')
+    this.setCss('transform-origin', 'top left')
 
     if (offsetX >= 0 || offsetY >= 0) {
       translateStr =
         ' translate(' + (offsetX || 0) + 'px, ' + (offsetY || 0) + 'px )'
     }
 
-    this.css('transform', scaleStr + translateStr)
+    this.setCss('transform', scaleStr + translateStr)
   }
 
   /**
@@ -2464,22 +2449,22 @@ class Contents extends EventEmitter {
     this.layoutStyle('paginated')
 
     // scale needs width and height to be set
-    this.width(viewportWidth)
-    this.height(viewportHeight)
-    this.overflow('hidden')
-    this.css('overflow', 'hidden')
+    this.setWidth(viewportWidth)
+    this.setHeight(viewportHeight)
+    this.documentElement.style.overflow = 'hidden'
+    this.setCss('overflow', 'hidden')
 
     // Scale to the correct size
     this.scaler(scale, 0, 0)
     // this.scaler(scale, offsetX > 0 ? offsetX : 0, offsetY);
 
     // background images are not scaled by transform
-    this.css(
+    this.setCss(
       'background-size',
       viewportWidth * scale + 'px ' + viewportHeight * scale + 'px',
     )
 
-    this.css('background-color', 'transparent')
+    this.setCss('background-color', 'transparent')
 
     var remainingWidth = Math.max(width - viewportWidth * scale, 0)
     var remainingHeight = Math.max(height - viewportHeight * scale, 0)
@@ -2500,8 +2485,8 @@ class Contents extends EventEmitter {
         marginLeft = 0
       }
     }
-    this.css('margin-left', marginLeft + 'px')
-    this.css('margin-top', remainingHeight / 2 + 'px')
+    this.setCss('margin-left', marginLeft + 'px')
+    this.setCss('margin-top', remainingHeight / 2 + 'px')
   }
 
   /**

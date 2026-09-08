@@ -56,16 +56,13 @@ export default class Contents {
 
   contentWidth(w: number): number
 
-  css(property: string, value: string, priority?: boolean): string
+  setCss(property: string, value?: string | null, priority?: boolean): void
 
   destroy(): void
 
   direction(dir: string): void
 
   fit(width: number, height: number): void
-
-  height(): number
-  height(h: number): number
 
   locationOf(
     target: string | EpubCFI,
@@ -107,9 +104,6 @@ export default class Contents {
   textWidth(): number
 
   viewport(options: ViewportSettings): ViewportSettings
-
-  width(): number
-  width(w: number): number
 
   writingMode(mode?: string, layoutName?: string): string
 

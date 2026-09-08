@@ -1303,19 +1303,21 @@ class IframeView extends EventEmitter {
       }
     }
 
-    requestAnimationFrame(() => {
-      let mark
-      for (let m in this.marks) {
-        if (Object.prototype.hasOwnProperty.call(this.marks, m)) {
-          mark = this.marks[m]
-          try {
-            this.placeMark(mark.element, mark.range)
-          } catch (error) {
-            // Ignore detached ranges; active annotations are redrawn by callers.
+    if (Object.keys(this.marks).length > 0) {
+      requestAnimationFrame(() => {
+        let mark
+        for (let m in this.marks) {
+          if (Object.prototype.hasOwnProperty.call(this.marks, m)) {
+            mark = this.marks[m]
+            try {
+              this.placeMark(mark.element, mark.range)
+            } catch (error) {
+              // Ignore detached ranges; active annotations are redrawn by callers.
+            }
           }
         }
-      }
-    })
+      })
+    }
 
     this.onResize(this, size)
 
