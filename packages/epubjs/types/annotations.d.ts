@@ -77,6 +77,4 @@ declare class Annotation {
   off(type: any, listener: any): any
 
   on(type: any, listener: any): any
-
-  once(type: any, listener: any, ...args: any[]): any
 }

@@ -1,4 +1,4 @@
-import EventEmitter from 'eventemitter3'
+import EventEmitter from '../../utils/event-emitter'
 
 import Mapping from '../../mapping'
 import { EVENTS } from '../../utils/constants'

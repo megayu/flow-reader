@@ -1,4 +1,4 @@
-import EventEmitter from 'eventemitter3'
+import EventEmitter from './utils/event-emitter'
 
 import Annotations from './annotations'
 import Contents from './contents'

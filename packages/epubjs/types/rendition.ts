@@ -245,8 +245,6 @@ export declare class Rendition {
 
   on(type: any, listener: any): any
 
-  once(type: any, listener: any, ...args: any[]): any
-
   private triggerMarkEvent(
     cfiRange: string,
     data: object,

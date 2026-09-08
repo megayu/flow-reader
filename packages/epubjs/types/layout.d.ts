@@ -45,7 +45,5 @@ export default class Layout {
 
   on(type: any, listener: any): any
 
-  once(type: any, listener: any, ...args: any[]): any
-
   private update(props: object): void
 }

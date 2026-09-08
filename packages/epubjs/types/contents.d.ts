@@ -120,8 +120,6 @@ export default class Contents {
 
   on(type: any, listener: any): any
 
-  once(type: any, listener: any, ...args: any[]): any
-
   private addEventListeners(): void
 
   private addSelectionListeners(): void
