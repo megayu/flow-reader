@@ -1,10 +1,11 @@
-import type * as React from 'react'
+import { Children, type ComponentProps } from 'react'
 
 import { cn } from '@/utils'
 
 import { Button } from './button'
+import { TruncatedLabel } from './truncated-label'
 
-function SegmentedControl({ className, ...props }: React.ComponentProps<'div'>) {
+function SegmentedControl({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       data-slot="segmented-control"
@@ -18,11 +19,12 @@ function SegmentedControl({ className, ...props }: React.ComponentProps<'div'>) 
 }
 
 function SegmentedControlItem({
+  children,
   className,
   inherited = false,
   selected = false,
   ...props
-}: Omit<React.ComponentProps<typeof Button>, 'size' | 'variant'> & {
+}: Omit<ComponentProps<typeof Button>, 'size' | 'variant'> & {
   inherited?: boolean
   selected?: boolean
 }) {
@@ -34,13 +36,17 @@ function SegmentedControlItem({
       variant={selected ? 'default' : 'ghost'}
       size="sm"
       className={cn(
-        'h-full rounded-lg text-base',
+        'h-full min-w-0 shrink rounded-lg text-base',
         !selected && 'text-muted-foreground',
         inherited && !selected && 'bg-muted ring-border ring-1 ring-inset',
         className,
       )}
       {...props}
-    />
+    >
+      {Children.map(children, (child) =>
+        typeof child === 'string' || typeof child === 'number' ? <TruncatedLabel>{child}</TruncatedLabel> : child,
+      )}
+    </Button>
   )
 }
 

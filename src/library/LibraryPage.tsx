@@ -40,6 +40,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useNotify } from '../components/ui/notificationContext'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
 import { SegmentedControl, SegmentedControlItem } from '../components/ui/segmented-control'
+import { TruncatedLabel } from '../components/ui/truncated-label'
 import { setupDeepLinks } from '../deepLink'
 import { formatErrorMessage } from '../errorMessage'
 import {
@@ -1433,11 +1434,11 @@ const Library: React.FC<LibraryProps> = ({
                               type="button"
                               variant={sortField === field ? 'default' : 'secondary'}
                               size="sm"
-                              className="h-8 justify-start px-2"
+                              className="h-8 min-w-0 justify-start px-2"
                               onClick={() => setSortField(field)}
                             >
                               <SortIcon aria-hidden className="size-4" />
-                              <span className="min-w-0 truncate leading-none">{t(sortFieldMessageKey[field])}</span>
+                              <TruncatedLabel>{t(sortFieldMessageKey[field])}</TruncatedLabel>
                             </UiButton>
                           )
                         })}
