@@ -17,6 +17,13 @@ start of rejected approaches. Other entries cover reader interactions.
 
 ## Retained Approaches
 
+### Batch import lookup and deferred bookshelf derivation
+
+- Change: retain the existing native lookup index under the import lock, avoid full-library scans on misses, and publish new books through an append-only batch array ahead of the stable bookshelf. Merge book/cover caches once at completion so search indexes, sorting, and filtering do not rerun for each arrival.
+- Evidence: Windows `tauri-release`, 800 existing synthetic books without covers, 300 small referenced TXT imports, title ascending, 1280x800 viewport, DPR 1.5, three fresh-data launches per build. Total import-to-settled median fell from 100.20s to 6.12s (93.9%); median sampled JS heap peak fell from 96.82MiB to 54.62MiB (43.6%). Final-build runs had no long tasks. Completion sorting is included in the measured interval.
+- Decision: retained. Existing filtering resumes at completion; duplicate imports do not add duplicate cards. Partial failure and deletion queued during import were also checked in the native client.
+- Limits: small TXT workload, 100ms JS-heap samples rather than whole-process memory, and three runs without a reliable p95. The third baseline run overlapped validation work; the first two baseline samples were 99.23s and 100.20s. Do not extrapolate the speedup to large EPUB decoding or filesystem throughput.
+
 ### Construction-scoped note index lookups
 
 - Change: reuse note-container classifications within one index build. Query named elements only after an ID miss, and build a first-name-wins map only for repeated fallbacks. Neither temporary structure is retained by the document's NoteIndex; popup lookups remain live.

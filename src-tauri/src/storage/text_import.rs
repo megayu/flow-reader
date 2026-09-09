@@ -1521,11 +1521,11 @@ pub(super) fn import_text_path_impl(
     rules: Option<&TextImportRulesInput>,
     mut import_index: Option<&mut BookImportLookupIndex>,
 ) -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
-    let _import_guard = storage
-        .inner
-        .import_lock
-        .lock()
-        .map_err(|_| "storage import lock poisoned".to_string())?;
+    let _import_guard = if import_index.is_none() {
+        Some(storage.lock_import()?)
+    } else {
+        None
+    };
     fs::create_dir_all(books_root(storage.root())).map_err(|error| error.to_string())?;
 
     let path = &prepared.path;
@@ -1668,8 +1668,11 @@ pub(super) fn import_text_path_impl(
                 .lock()
                 .map_err(|_| "storage state lock poisoned".to_string())?;
             let stored_index = if is_new {
-                if state.library.books.iter().any(|stored| stored.id == id)
-                    || existing_book_import(None, &state.library.books, &source_path, &hash).is_some()
+                if import_index.as_deref().map_or_else(
+                    || state.library.books.iter().any(|stored| stored.id == id),
+                    |index| index.contains_id(&id),
+                ) || existing_book_import(import_index.as_deref(), &state.library.books, &source_path, &hash)
+                    .is_some()
                 {
                     return Err("Library changed while the book was being imported".to_string());
                 }
@@ -1698,7 +1701,7 @@ pub(super) fn import_text_path_impl(
         };
 
         storage.mark_library_dirty();
-        Ok(Some((record, ImportFinalizer::new(file_transaction.take()))))
+        Ok(Some((record, ImportFinalizer::new(file_transaction.take(), is_new))))
     })();
 
     if result.is_err()

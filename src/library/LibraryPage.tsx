@@ -55,7 +55,7 @@ import {
 } from '../file'
 import { useLibraryAction } from '../hooks/useAction'
 import { useBookImportNotifications } from '../hooks/useBookImportNotifications'
-import { useCovers, useLibrary, useLibraryTags, useRecentBookIds } from '../hooks/useLibrary'
+import { useBookImport, useCovers, useLibrary, useLibraryTags, useRecentBookIds } from '../hooks/useLibrary'
 import { useNotifyError } from '../hooks/useNotifyError'
 import { useOverlayScrollbarMetrics } from '../hooks/useOverlayScrollbarMetrics'
 import { useTranslation } from '../hooks/useTranslation'
@@ -327,13 +327,12 @@ export function LibraryPage() {
     [setViewMode],
   )
 
-  const handleBookImportProgress = useCallback((progress: BookImportProgress) => {
+  const handleBookImportProgress = useCallback((progress: BookImportProgress | undefined) => {
     setBookImportProgress(progress)
   }, [])
 
   const handleEpubImportResult = useCallback(
     async (result: BookImportResult) => {
-      setBookImportProgress(undefined)
       let openedBookIds: Set<string> | undefined
       try {
         openedBookIds = await reader.promoteExternalBooks(result.books)
@@ -368,7 +367,6 @@ export function LibraryPage() {
         )
         .then((result) => applyFolderImportTagsToResult(result, folderImportSelection))
         .then((result: BookImportResult) => {
-          setBookImportProgress(undefined)
           const openBookIds = openAfterImport ? reader.refreshImportedBooks(result.books) : new Set<string>()
           notifyBookImportResult(result)
           openImportedTextBooks(
@@ -377,7 +375,6 @@ export function LibraryPage() {
           )
         })
         .catch((error) => {
-          setBookImportProgress(undefined)
           const message = formatErrorMessage(error)
           notify({
             autoCloseMs: false,
@@ -706,7 +703,7 @@ export function LibraryPage() {
 interface LibraryProps {
   directTextImport: boolean
   openBookIds: ReadonlySet<string>
-  onEpubImportProgress: (progress: BookImportProgress) => void
+  onEpubImportProgress: (progress: BookImportProgress | undefined) => void
   onEpubImportResult: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
   onOpenBook: () => void
   onOpenFolderImport: (path: string) => void
@@ -741,6 +738,9 @@ const Library: React.FC<LibraryProps> = ({
   setSourceStatuses,
 }) => {
   const books = useLibrary()
+  const bookImport = useBookImport()
+  const addedBooks = bookImport?.addedBooks
+  const addedCount = addedBooks?.length ?? 0
   const covers = useCovers()
   const tags = useLibraryTags()
   const t = useTranslation()
@@ -870,7 +870,9 @@ const Library: React.FC<LibraryProps> = ({
     },
     [returnStateRef],
   )
-  const virtualizeLibraryGrid = (books?.length ?? 0) >= libraryGridVirtualizationThreshold
+  const displayedBookCount = sortedBooks.length + addedCount
+  const totalBookCount = (books?.length ?? 0) + addedCount
+  const virtualizeLibraryGrid = totalBookCount >= libraryGridVirtualizationThreshold
   const libraryGridLayoutKey = `${select}:${settings.showRecentBooks === true}:${recentBooks.length}`
   const libraryGridWindow = useLibraryGridWindow({
     cardWidth: bookCardWidth,
@@ -882,16 +884,30 @@ const Library: React.FC<LibraryProps> = ({
     resetKey: resultCriteriaSignature,
     rowGap: bookCardGap,
     scrollRef: libraryScrollRef,
-    totalCount: sortedBooks.length,
+    totalCount: displayedBookCount,
   })
   const libraryGridWindowCount = libraryGridWindow.endIndex - libraryGridWindow.startIndex
   const recentBookCapacity =
     settings.showRecentBooks && !select && recentBooks.length ? libraryGridWindow.columnCount : 0
-  const windowedBooks = useMemo(
-    () =>
-      virtualizeLibraryGrid ? sortedBooks.slice(libraryGridWindow.startIndex, libraryGridWindow.endIndex) : sortedBooks,
-    [libraryGridWindow.endIndex, libraryGridWindow.startIndex, sortedBooks, virtualizeLibraryGrid],
-  )
+  const windowedBooks = useMemo(() => {
+    const start = virtualizeLibraryGrid ? libraryGridWindow.startIndex : 0
+    const end = virtualizeLibraryGrid ? Math.min(libraryGridWindow.endIndex, displayedBookCount) : displayedBookCount
+    // Read the two segments directly; prepending a book must not copy either full array.
+    return Array.from({ length: Math.max(0, end - start) }, (_, offset) => {
+      const index = start + offset
+      const book = index < addedCount ? addedBooks![addedCount - index - 1]! : sortedBooks[index - addedCount]!
+      return bookImport?.books.get(book.id) ?? book
+    })
+  }, [
+    addedBooks,
+    addedCount,
+    bookImport,
+    displayedBookCount,
+    libraryGridWindow.endIndex,
+    libraryGridWindow.startIndex,
+    sortedBooks,
+    virtualizeLibraryGrid,
+  ])
   const [stableFilterCoverCount, setStableFilterCoverCount] = useState(0)
   useEffect(() => {
     if (!virtualizeLibraryGrid || debouncedTitleSearchQuery.trim()) return
@@ -1273,13 +1289,13 @@ const Library: React.FC<LibraryProps> = ({
   const deleteSelectionShortcut = getShortcutChords('libraryDeleteSelection')[0]
   const LibraryCountIcon = select ? SquareCheckBigIcon : BookOpenIcon
   const libraryCountText = select
-    ? `${visibleSelectedCount} / ${sortedBooks.length}`
-    : sortedBooks.length === books.length
-      ? String(books.length)
-      : `${sortedBooks.length} / ${books.length}`
+    ? `${visibleSelectedCount} / ${displayedBookCount}`
+    : displayedBookCount === totalBookCount
+      ? String(totalBookCount)
+      : `${displayedBookCount} / ${totalBookCount}`
   const libraryCountTooltip = select
     ? t('home.book_count.selected')
-    : sortedBooks.length === books.length
+    : displayedBookCount === totalBookCount
       ? t('home.book_count.total')
       : t('home.book_count.filtered')
   const bookGridStyle = {
@@ -1666,7 +1682,7 @@ const Library: React.FC<LibraryProps> = ({
             className="grid"
             data-flow-library-grid="true"
             data-flow-library-grid-start-index={virtualizeLibraryGrid ? libraryGridWindow.startIndex : 0}
-            data-flow-library-grid-total-count={sortedBooks.length}
+            data-flow-library-grid-total-count={displayedBookCount}
             style={virtualizeLibraryGrid ? virtualBookGridStyle : bookGridStyle}
           >
             {windowedBooks.map((book) => (
@@ -1674,7 +1690,7 @@ const Library: React.FC<LibraryProps> = ({
                 key={book.id}
                 book={book}
                 sourceStatus={sourceStatuses.get(book.id)}
-                cover={coversById.get(book.id)}
+                cover={bookImport?.covers.get(book.id)?.cover ?? coversById.get(book.id)}
                 coverFit={coverFit}
                 select={select}
                 selected={has(book.id)}

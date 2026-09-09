@@ -197,6 +197,7 @@ export interface BookImportProgress {
   failed: number
   skipped: number
   book?: BookRecord | null
+  addedToLibrary?: boolean
   cover?: CoverRecord | null
 }
 

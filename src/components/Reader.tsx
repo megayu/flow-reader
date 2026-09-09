@@ -75,7 +75,7 @@ function getFocusedBookTab() {
 interface ReaderGridViewProps {
   content?: React.ReactNode
   directTextImport: boolean
-  onEpubImportProgress?: (progress: BookImportProgress) => void
+  onEpubImportProgress?: (progress: BookImportProgress | undefined) => void
   onEpubImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
 }
 
@@ -134,7 +134,7 @@ export function ReaderGridView({
 interface ReaderTabsProps {
   content?: React.ReactNode
   directTextImport: boolean
-  onEpubImportProgress?: (progress: BookImportProgress) => void
+  onEpubImportProgress?: (progress: BookImportProgress | undefined) => void
   onEpubImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
   onEnterReaderMode: () => void
 }
@@ -459,7 +459,7 @@ interface ReaderTabItemProps {
   dropIndicator?: 'before' | 'after'
   focused: boolean
   index: number
-  onEpubImportProgress?: (progress: BookImportProgress) => void
+  onEpubImportProgress?: (progress: BookImportProgress | undefined) => void
   onEpubImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
   onHoverChange: React.Dispatch<React.SetStateAction<number | undefined>>
   onSelect: (index: number) => void

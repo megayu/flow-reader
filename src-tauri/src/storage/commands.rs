@@ -787,6 +787,7 @@ pub(super) fn import_epub_paths_impl(
     paths: Vec<String>,
     on_progress: Option<Channel<BookImportProgress>>,
 ) -> Result<BookImportResult, String> {
+    let _import_guard = storage.lock_import()?;
     let started = Instant::now();
     let source_count = paths.len();
     let total = paths.iter().filter(|path| is_epub_file(Path::new(path))).count();
@@ -833,7 +834,7 @@ pub(super) fn import_epub_paths_impl(
                 prepared.and_then(|prepared| commit_prepared_epub_import(storage, prepared, Some(&mut import_index)));
             match result {
                 Ok(Some((book, finalizer))) => {
-                    if let Some(book) = progress.emit_success(storage, book) {
+                    if let Some(book) = progress.emit_success(storage, book, finalizer.added_to_library) {
                         books.push(book);
                     }
                     finalizers.push(finalizer);
@@ -900,6 +901,7 @@ pub(super) fn open_external_epub_paths_impl(
     tasks: &TaskService,
     paths: Vec<String>,
 ) -> Result<BookImportResult, String> {
+    let _import_guard = storage.lock_import()?;
     let started = Instant::now();
     let source_count = paths.len();
     let mut books = Vec::new();
@@ -966,6 +968,7 @@ pub struct BookImportProgress {
     skipped: usize,
     book: Option<Arc<BookRecord>>,
     cover: Option<CoverRecord>,
+    added_to_library: bool,
 }
 
 struct BookImportProgressReporter {
@@ -989,7 +992,12 @@ impl BookImportProgressReporter {
         }
     }
 
-    fn emit(&mut self, book: Option<BookRecord>, cover: Option<CoverRecord>) -> Option<BookRecord> {
+    fn emit(
+        &mut self,
+        book: Option<BookRecord>,
+        cover: Option<CoverRecord>,
+        added_to_library: bool,
+    ) -> Option<BookRecord> {
         let Some(channel) = &self.channel else {
             return book;
         };
@@ -1005,6 +1013,7 @@ impl BookImportProgressReporter {
                 skipped: self.skipped,
                 book,
                 cover,
+                added_to_library,
             })
             .is_err()
         {
@@ -1013,23 +1022,23 @@ impl BookImportProgressReporter {
         None
     }
 
-    fn emit_success(&mut self, storage: &AppStorage, book: BookRecord) -> Option<BookRecord> {
+    fn emit_success(&mut self, storage: &AppStorage, book: BookRecord, added_to_library: bool) -> Option<BookRecord> {
         self.completed += 1;
         self.imported += 1;
         let cover = read_cover_record(storage, book.id.clone()).ok();
-        self.emit(Some(book), cover)
+        self.emit(Some(book), cover, added_to_library)
     }
 
     fn emit_failure(&mut self) {
         self.completed += 1;
         self.failed += 1;
-        let _ = self.emit(None, None);
+        let _ = self.emit(None, None, false);
     }
 
     fn emit_skip(&mut self) {
         self.completed += 1;
         self.skipped += 1;
-        let _ = self.emit(None, None);
+        let _ = self.emit(None, None, false);
     }
 }
 
@@ -1181,6 +1190,7 @@ pub(super) fn import_text_paths_impl(
     rules: Option<TextImportRulesInput>,
     on_progress: Option<Channel<BookImportProgress>>,
 ) -> Result<BookImportResult, String> {
+    let _import_guard = storage.lock_import()?;
     let started = Instant::now();
     let source_count = imports.len();
     let copy_source_file = storage.should_copy_text_import(copy_source_files);
@@ -1292,7 +1302,7 @@ fn import_text_paths_direct(
             skipped.push(book_import_filename(&path));
             continue;
         };
-        if let Some(book) = state.progress.emit_success(storage, book) {
+        if let Some(book) = state.progress.emit_success(storage, book, finalizer.added_to_library) {
             books.push(book);
         }
         finalizers.push(finalizer);
@@ -1379,7 +1389,8 @@ fn import_text_paths_with_pipeline(
                     storage.end_text_import_prepared_handoff();
                     match result {
                         Ok(Some((book, finalizer))) => {
-                            books[message.index] = state.progress.emit_success(storage, book);
+                            books[message.index] =
+                                state.progress.emit_success(storage, book, finalizer.added_to_library);
                             finalizers.push(finalizer);
                         }
                         Ok(None) => {
@@ -1483,6 +1494,7 @@ pub async fn switch_book_content_mode(
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let _import_guard = storage.lock_import()?;
         tasks.run_book_exclusive(&id, TaskPriority::Critical, || {
             switch_book_content_mode_impl(&storage, &tasks, id.clone(), editable, resolution)
         })
@@ -1657,6 +1669,7 @@ pub async fn replace_book_text(
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let _import_guard = storage.lock_import()?;
         let lock_id = id.clone();
         tasks.run_book_exclusive(&lock_id, TaskPriority::Foreground, || {
             replace_book_text_impl(&storage, id, target, old_text, new_text)
@@ -1677,6 +1690,7 @@ pub async fn export_book(
     let storage = (*storage).clone();
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let _import_guard = storage.lock_import()?;
         let lock_id = id.clone();
         tasks.run_book_exclusive(&lock_id, TaskPriority::Foreground, || {
             export_book_impl(&storage, id, format, PathBuf::from(output_path))
@@ -1762,10 +1776,14 @@ pub fn update_book(storage: State<'_, AppStorage>, id: String, changes: Value) -
 }
 
 #[tauri::command]
-pub fn delete_books(
+pub async fn delete_books(
     storage: State<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     ids: Vec<String>,
 ) -> Result<(), String> {
-    delete_books_impl(&storage, &tasks, ids)
+    let storage = (*storage).clone();
+    let tasks = (*tasks).clone();
+    tauri::async_runtime::spawn_blocking(move || delete_books_impl(&storage, &tasks, ids))
+        .await
+        .map_err(|error| error.to_string())?
 }

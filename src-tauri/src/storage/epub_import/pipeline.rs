@@ -127,14 +127,15 @@ fn external_book_for_hash(
     books: &[StoredBook],
     hash: &str,
 ) -> Option<StoredBook> {
-    import_index
-        .and_then(|index| index.external_book(hash).cloned())
-        .or_else(|| {
+    import_index.map_or_else(
+        || {
             books
                 .iter()
                 .find(|book| book.scope == BookScope::External && book.source_hash == hash)
                 .cloned()
-        })
+        },
+        |index| index.external_book(hash).cloned(),
+    )
 }
 
 pub(in crate::storage) fn prepare_epub_import(
@@ -191,11 +192,11 @@ pub(in crate::storage) fn commit_prepared_epub_import(
     prepared: PreparedEpubImport,
     mut import_index: Option<&mut BookImportLookupIndex>,
 ) -> Result<Option<(BookRecord, ImportFinalizer)>, String> {
-    let _import_guard = storage
-        .inner
-        .import_lock
-        .lock()
-        .map_err(|_| "storage import lock poisoned".to_string())?;
+    let _import_guard = if import_index.is_none() {
+        Some(storage.lock_import()?)
+    } else {
+        None
+    };
     let PreparedEpubImport {
         source_path,
         source_storage,
@@ -401,8 +402,11 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                 state.library.books[stored_index] = book.clone();
                 stored_index
             } else if is_new {
-                if state.library.books.iter().any(|stored| stored.id == id)
-                    || existing_book_import(None, &state.library.books, &source_path, &hash).is_some()
+                if import_index.as_deref().map_or_else(
+                    || state.library.books.iter().any(|stored| stored.id == id),
+                    |index| index.contains_id(&id),
+                ) || existing_book_import(import_index.as_deref(), &state.library.books, &source_path, &hash)
+                    .is_some()
                 {
                     return Err("Library changed while the book was being imported".to_string());
                 }
@@ -433,7 +437,7 @@ pub(in crate::storage) fn commit_prepared_epub_import(
         let source_backup = managed_source_replacement
             .take()
             .and_then(|replacement| replacement.backup);
-        let finalizer = ImportFinalizer::new(file_transaction.take()).with_cleanup_path(source_backup);
+        let finalizer = ImportFinalizer::new(file_transaction.take(), is_new).with_cleanup_path(source_backup);
         Ok(Some((record, finalizer)))
     })();
 

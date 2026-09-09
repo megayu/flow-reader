@@ -41,6 +41,7 @@ pub(super) fn clear_book_caches_impl(
     preserved_unpacked_book_ids: HashSet<String>,
     mut report_progress: impl FnMut(usize, usize),
 ) -> Result<Vec<BookRecord>, String> {
+    let _import_guard = storage.lock_import()?;
     let all_books = {
         let state = storage
             .inner
@@ -164,6 +165,7 @@ pub(super) fn clear_book_caches_impl(
 }
 
 pub(super) fn rename_books_for_deletion(storage: &AppStorage, ids: &[String]) -> Result<Vec<PathBuf>, String> {
+    let _import_guard = storage.lock_import()?;
     let ids = ids.iter().filter(|id| !id.is_empty()).cloned().collect::<HashSet<_>>();
 
     if ids.is_empty() {

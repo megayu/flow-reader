@@ -10,6 +10,7 @@ import {
   importEpubPaths,
   importTextPaths,
   openExternalEpubPaths,
+  runBookImportBatch,
   type TextImportSelection,
 } from './storage'
 
@@ -21,7 +22,7 @@ const filePathCollator = new Intl.Collator(undefined, {
 
 interface HandleFilesOptions {
   directTextImport?: boolean
-  onImportProgress?: (progress: BookImportProgress) => void
+  onImportProgress?: (progress: BookImportProgress | undefined) => void
   onTextPaths?: (paths: string[], waitForEpubImport?: Promise<void>) => void
   onImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
 }
@@ -101,22 +102,26 @@ export async function handleFilePaths(
     if (textPaths.length && !directTextImport) onTextPaths?.(textPaths, waitForEpubImport)
 
     const directTextPaths = directTextImport ? textPaths : []
-    const batch = await runDirectTextImportBatch(epubPaths, directTextPaths, {
-      onImportProgress,
-      importEpubPhase: (importId, onProgress) =>
-        importEpubPaths(epubPaths, {
-          importId,
-          onProgress,
-        }),
-      importTextPhase: (importId, onProgress) =>
-        importTextPaths(
-          directTextPaths.map((path) => ({ path })),
-          {
+    const batch = await runBookImportBatch((batch) =>
+      runDirectTextImportBatch(epubPaths, directTextPaths, {
+        onImportProgress,
+        importEpubPhase: (importId, onProgress) =>
+          importEpubPaths(epubPaths, {
+            batch,
             importId,
             onProgress,
-          },
-        ),
-    })
+          }),
+        importTextPhase: (importId, onProgress) =>
+          importTextPaths(
+            directTextPaths.map((path) => ({ path })),
+            {
+              batch,
+              importId,
+              onProgress,
+            },
+          ),
+      }),
+    )
     if (!batch) return []
 
     const result = {
@@ -139,22 +144,26 @@ export async function importTextSelections(
     onImportProgress,
   }: {
     copySourceFiles?: boolean
-    onImportProgress?: (progress: BookImportProgress) => void
+    onImportProgress?: (progress: BookImportProgress | undefined) => void
   } = {},
 ): Promise<BookImportResult> {
   const batchImportId = createBookImportId()
   onImportProgress?.(initialBookImportProgress(batchImportId, imports.length))
-  return runBookImportPhase(
-    onImportProgress,
-    (progress) => aggregateBookImportProgress(progress, batchImportId, imports.length),
-    imports.length,
-    (importId, onProgress) =>
-      importTextPaths(imports, {
-        copySourceFiles,
-        importId,
-        onProgress,
-      }),
-  )
+  try {
+    return await runBookImportPhase(
+      onImportProgress,
+      (progress) => aggregateBookImportProgress(progress, batchImportId, imports.length),
+      imports.length,
+      (importId, onProgress) =>
+        importTextPaths(imports, {
+          copySourceFiles,
+          importId,
+          onProgress,
+        }),
+    )
+  } finally {
+    onImportProgress?.(undefined)
+  }
 }
 
 export async function openImportDialog(options: HandleFilesOptions = {}) {
@@ -228,7 +237,7 @@ export async function setupNativeOpenFiles({
   onDropFolder?: (path: string) => void
   onDropMixedItems?: () => void
   onDropMultipleFolders?: () => void
-  onImportProgress?: (progress: BookImportProgress) => void
+  onImportProgress?: (progress: BookImportProgress | undefined) => void
   onImportResult?: (result: BookImportResult) => Set<string> | void | Promise<Set<string> | void>
   onDropTextPaths?: (paths: string[], waitForEpubImport?: Promise<void>) => void
   getDirectTextImport?: () => boolean
@@ -358,7 +367,7 @@ function emptyBookImportResult(): BookImportResult {
 }
 
 interface DirectTextImportBatchOptions {
-  onImportProgress?: (progress: BookImportProgress) => void
+  onImportProgress?: (progress: BookImportProgress | undefined) => void
   importEpubPhase: (importId: string, onProgress?: (progress: BookImportProgress) => void) => Promise<BookImportResult>
   importTextPhase: (importId: string, onProgress?: (progress: BookImportProgress) => void) => Promise<BookImportResult>
 }
@@ -372,34 +381,38 @@ async function runDirectTextImportBatch(
   if (!total) return
 
   const batchImportId = createBookImportId()
-  onImportProgress?.(initialBookImportProgress(batchImportId, total))
-  let epubResult = emptyBookImportResult()
-  if (epubPaths.length) {
-    epubResult = await runBookImportPhase(
-      onImportProgress,
-      (progress) => aggregateBookImportProgress(progress, batchImportId, total),
-      epubPaths.length,
-      importEpubPhase,
-    )
-  }
+  try {
+    onImportProgress?.(initialBookImportProgress(batchImportId, total))
+    let epubResult = emptyBookImportResult()
+    if (epubPaths.length) {
+      epubResult = await runBookImportPhase(
+        onImportProgress,
+        (progress) => aggregateBookImportProgress(progress, batchImportId, total),
+        epubPaths.length,
+        importEpubPhase,
+      )
+    }
 
-  let textResult = emptyBookImportResult()
-  if (textPaths.length) {
-    textResult = await runBookImportPhase(
-      onImportProgress,
-      (progress) =>
-        aggregateBookImportProgress(progress, batchImportId, total, {
-          completed: epubPaths.length,
-          imported: epubResult.books.length,
-          failed: epubResult.failures.length,
-          skipped: epubResult.skipped.length,
-        }),
-      textPaths.length,
-      importTextPhase,
-    )
-  }
+    let textResult = emptyBookImportResult()
+    if (textPaths.length) {
+      textResult = await runBookImportPhase(
+        onImportProgress,
+        (progress) =>
+          aggregateBookImportProgress(progress, batchImportId, total, {
+            completed: epubPaths.length,
+            imported: epubResult.books.length,
+            failed: epubResult.failures.length,
+            skipped: epubResult.skipped.length,
+          }),
+        textPaths.length,
+        importTextPhase,
+      )
+    }
 
-  return { epubResult, textResult }
+    return { epubResult, textResult }
+  } finally {
+    onImportProgress?.(undefined)
+  }
 }
 
 interface BookImportProgressOffset {

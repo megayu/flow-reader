@@ -70,6 +70,16 @@ export function useLibrary() {
   return useStorageSubscription(booksSource)
 }
 
+const bookImportSource = {
+  load: () => Promise.resolve(db.books.peekImport()),
+  peek: () => db.books.peekImport(),
+  subscribe: (load: () => void) => db.subscribe('bookImports', load),
+}
+
+export function useBookImport() {
+  return useStorageSubscription(bookImportSource)
+}
+
 export function useCovers() {
   return useStorageSubscription(coversSource)
 }

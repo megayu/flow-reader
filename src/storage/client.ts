@@ -41,7 +41,15 @@ interface NativeBookReaderPreparation {
 }
 
 type Listener = () => void
-type TableName = 'books' | 'covers' | 'pins' | 'recentBooks' | 'settings' | 'tags'
+type TableName = 'books' | 'bookImports' | 'covers' | 'pins' | 'recentBooks' | 'settings' | 'tags'
+
+interface BookImportCache {
+  books: Map<string, BookRecord>
+  addedBooks: BookRecord[]
+  covers: Map<string, CoverRecord>
+}
+
+let bookImportCache: BookImportCache | undefined
 
 const listeners = new Map<TableName, Set<Listener>>()
 let booksCache: BookRecord[] | undefined
@@ -276,58 +284,76 @@ function normalizeCoverRecord(record: CoverRecord) {
   }
 }
 
-function cacheBookImportProgress(progress: BookImportProgress) {
-  if (!progress.book) return
-
-  upsertCachedBook(progress.book)
-  if (progress.cover) rememberCover(progress.cover)
-  notify('books', ...(progress.cover ? (['covers'] as const) : []))
-}
-
 type NativeBookImportProgress = Omit<BookImportProgress, 'importId'>
+
+export async function runBookImportBatch<T>(operation: (batch: BookImportCache) => Promise<T>) {
+  // Register the whole batch before yielding so mixed-format imports cannot interleave.
+  const previousWrites = Promise.allSettled([...pendingNativeWrites])
+  return trackNativeWrite(
+    previousWrites.then(async () => {
+      beginBooksMutation()
+      const batch: BookImportCache = { books: new Map(), addedBooks: [], covers: new Map() }
+      bookImportCache = batch
+      notify('bookImports')
+      try {
+        return await operation(batch)
+      } finally {
+        // A rejected command can still have delivered successfully imported books.
+        upsertCachedBooks([...batch.books.values()])
+        if (coversCache && batch.covers.size) {
+          coversCache = coversCache.map((cover) => {
+            const update = batch.covers.get(cover.id)
+            batch.covers.delete(cover.id)
+            return update ?? cover
+          })
+          for (const cover of batch.covers.values()) coversCache.push(cover)
+        }
+        bookImportCache = undefined
+        if (batch.books.size) invalidatePins()
+        notify('books', 'covers', 'pins', 'bookImports')
+      }
+    }),
+  )
+}
 
 async function importBooksWithProgress(
   command: 'import_epub_paths' | 'import_text_paths',
   args: Record<string, unknown>,
   importId: string | undefined,
   onProgress: ((progress: BookImportProgress) => void) | undefined,
-) {
-  await waitForPendingNativeWrites()
-  beginBooksMutation()
+  batch?: BookImportCache,
+): Promise<BookImportResult> {
+  if (!batch) {
+    return runBookImportBatch((batch) => importBooksWithProgress(command, args, importId, onProgress, batch))
+  }
 
   const books = new Map<string, BookRecord>()
   const progressChannel = new Channel<NativeBookImportProgress>((nativeProgress) => {
-    const progress = {
-      ...nativeProgress,
-      importId: importId ?? '',
+    const progress = { ...nativeProgress, importId: importId ?? '' }
+    if (progress.book) {
+      const received = batch.books.has(progress.book.id)
+      books.set(progress.book.id, progress.book)
+      batch.books.set(progress.book.id, progress.book)
+      if (!received && progress.addedToLibrary) batch.addedBooks.push(progress.book)
     }
-    if (progress.book) books.set(progress.book.id, progress.book)
-    cacheBookImportProgress(progress)
+    if (progress.cover) batch.covers.set(progress.cover.id, normalizeCoverRecord(progress.cover))
+    // Publish only the small batch snapshot; the normal library remains stable until completion.
+    bookImportCache = { ...batch }
+    notify('bookImports')
     onProgress?.(progress)
   })
-  const result = await trackNativeWrite(
-    invoke<BookImportResult>(command, {
-      ...args,
-      onProgress: progressChannel,
-    }),
-  )
+  const result = await invoke<BookImportResult>(command, { ...args, onProgress: progressChannel })
   result.books.forEach((book) => {
     books.set(book.id, book)
-    upsertCachedBook(book)
+    batch.books.set(book.id, book)
   })
   if (result.books.length && coversCache) {
     const fallbackCovers = await invoke<CoverRecord[]>('list_covers', {
       ids: result.books.map((book) => book.id),
     })
-    fallbackCovers.forEach(rememberCover)
+    fallbackCovers.forEach((cover) => batch.covers.set(cover.id, normalizeCoverRecord(cover)))
   }
-
-  const importedBooks = [...books.values()]
-  if (importedBooks.length) {
-    invalidatePins()
-    notify('books', 'covers', 'pins')
-  }
-  return { ...result, books: importedBooks }
+  return { ...result, books: [...books.values()] }
 }
 
 export const db = {
@@ -335,6 +361,9 @@ export const db = {
   notify,
   waitForPendingWrites: waitForPendingNativeWrites,
   books: {
+    peekImport() {
+      return bookImportCache
+    },
     async toArray() {
       return loadBooks()
     },
@@ -624,14 +653,16 @@ export const db = {
 export async function importEpubPaths(
   paths: string[],
   {
+    batch,
     importId,
     onProgress,
   }: {
+    batch?: BookImportCache
     importId?: string
     onProgress?: (progress: BookImportProgress) => void
   } = {},
 ) {
-  return importBooksWithProgress('import_epub_paths', { paths }, importId, onProgress)
+  return importBooksWithProgress('import_epub_paths', { paths }, importId, onProgress, batch)
 }
 
 export async function openExternalEpubPaths(paths: string[]) {
@@ -656,15 +687,17 @@ export async function importTextPaths(
   imports: TextImportSelection[],
   {
     copySourceFiles,
+    batch,
     importId,
     onProgress,
   }: {
     copySourceFiles?: boolean
+    batch?: BookImportCache
     importId?: string
     onProgress?: (progress: BookImportProgress) => void
   } = {},
 ) {
-  return importBooksWithProgress('import_text_paths', { imports, copySourceFiles }, importId, onProgress)
+  return importBooksWithProgress('import_text_paths', { imports, copySourceFiles }, importId, onProgress, batch)
 }
 
 export function scanImportFolder(root: string, recursive: boolean) {

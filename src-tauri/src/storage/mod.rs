@@ -231,6 +231,14 @@ fn epub_editable_from_settings(settings: &Value) -> bool {
 }
 
 impl AppStorage {
+    // Acquire before state or task resource locks. A batch keeps its lookup indices stable.
+    fn lock_import(&self) -> Result<std::sync::MutexGuard<'_, ()>, String> {
+        self.inner
+            .import_lock
+            .lock()
+            .map_err(|_| "storage import lock poisoned".to_string())
+    }
+
     pub fn load(app: &AppHandle) -> Result<Self, String> {
         let root = data_root(app)?;
         let library = read_json_or_default::<Library>(&library_path(&root)?)?;

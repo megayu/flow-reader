@@ -57,6 +57,7 @@ impl BookImportLookupIndex {
         let mut book_keys = Vec::with_capacity(state.library.books.len());
         let mut external_books = HashMap::new();
         for (index, book) in state.library.books.iter().enumerate() {
+            ids.entry(book.id.clone()).or_insert(index);
             if book.scope == BookScope::External {
                 if !book.source_hash.is_empty() {
                     external_books.insert(book.source_hash.clone(), book.clone());
@@ -72,7 +73,6 @@ impl BookImportLookupIndex {
             if let Some(hash) = latest_export_hash_for_import_identity(book) {
                 export_hashes.entry(hash.to_string()).or_insert(index);
             }
-            ids.entry(book.id.clone()).or_insert(index);
             book_keys.push(Some(LibraryBookLookupKeys {
                 source_path,
                 hash: (!book.source_hash.is_empty()).then(|| book.source_hash.clone()),
@@ -89,69 +89,35 @@ impl BookImportLookupIndex {
         })
     }
 
-    pub(super) fn source_path_index(&self, books: &[StoredBook], path: &Path) -> Option<usize> {
-        self.source_paths
-            .get(&source_path_key(path))
-            .copied()
-            .filter(|index| {
-                books
-                    .get(*index)
-                    .is_some_and(|book| book.scope == BookScope::Library && same_source_path(&book.source_path, path))
-            })
-            .or_else(|| {
-                books
-                    .iter()
-                    .position(|book| book.scope == BookScope::Library && same_source_path(&book.source_path, path))
-            })
+    pub(super) fn source_path_index(&self, path: &Path) -> Option<usize> {
+        self.source_paths.get(&source_path_key(path)).copied()
     }
 
-    pub(super) fn hash_index(&self, books: &[StoredBook], hash: &str) -> Option<usize> {
-        self.hashes
-            .get(hash)
-            .copied()
-            .filter(|index| {
-                books.get(*index).is_some_and(|book| {
-                    book.scope == BookScope::Library && !book.source_hash.is_empty() && book.source_hash == hash
-                })
-            })
-            .or_else(|| {
-                books.iter().position(|book| {
-                    book.scope == BookScope::Library && !book.source_hash.is_empty() && book.source_hash == hash
-                })
-            })
+    pub(super) fn hash_index(&self, hash: &str) -> Option<usize> {
+        self.hashes.get(hash).copied()
     }
 
     pub(super) fn id_index(&self, books: &[StoredBook], hash: &str) -> Option<usize> {
-        let id = id_from_hash(hash);
         self.ids
-            .get(&id)
+            .get(&id_from_hash(hash))
             .copied()
-            .filter(|index| {
-                books
-                    .get(*index)
-                    .is_some_and(|book| book.scope == BookScope::Library && book.id == id)
-            })
-            .or_else(|| {
-                books
-                    .iter()
-                    .position(|book| book.scope == BookScope::Library && book.id == id)
-            })
+            .filter(|index| books[*index].scope == BookScope::Library)
+    }
+
+    pub(super) fn contains_id(&self, id: &str) -> bool {
+        self.ids.contains_key(id)
     }
 
     pub(super) fn export_hash_index(&self, books: &[StoredBook], hash: &str) -> Option<usize> {
-        self.export_hashes
-            .get(hash)
-            .copied()
-            .filter(|index| {
-                books.get(*index).is_some_and(|book| {
-                    book.scope == BookScope::Library && latest_export_hash_for_import_identity(book) == Some(hash)
-                })
+        let index = *self.export_hashes.get(hash)?;
+        if latest_export_hash_for_import_identity(&books[index]) == Some(hash) {
+            Some(index)
+        } else {
+            // Content repair can invalidate an export while preserving source identity.
+            books.iter().position(|book| {
+                book.scope == BookScope::Library && latest_export_hash_for_import_identity(book) == Some(hash)
             })
-            .or_else(|| {
-                books.iter().position(|book| {
-                    book.scope == BookScope::Library && latest_export_hash_for_import_identity(book) == Some(hash)
-                })
-            })
+        }
     }
 
     pub(super) fn external_book(&self, hash: &str) -> Option<&StoredBook> {
@@ -163,25 +129,41 @@ impl BookImportLookupIndex {
             return;
         }
         self.external_books.remove(&book.source_hash);
-        if let Some(Some(keys)) = self.book_keys.get(index) {
-            if self.source_paths.get(&keys.source_path) == Some(&index) {
-                self.source_paths.remove(&keys.source_path);
-            }
-            if let Some(hash) = &keys.hash
-                && self.hashes.get(hash) == Some(&index)
-            {
-                self.hashes.remove(hash);
-            }
-            if let Some(hash) = &keys.export_hash
-                && self.export_hashes.get(hash) == Some(&index)
-            {
-                self.export_hashes.remove(hash);
-            }
-        }
-
         let source_path = source_path_key(&book.source_path);
         let hash = (!book.source_hash.is_empty()).then(|| book.source_hash.clone());
         let export_hash = latest_export_hash_for_import_identity(book).map(str::to_string);
+
+        if let Some(Some(keys)) = self.book_keys.get_mut(index).map(Option::take) {
+            for (map, old_key, new_key, kind) in [
+                (
+                    &mut self.source_paths,
+                    Some(keys.source_path),
+                    Some(source_path.as_str()),
+                    0,
+                ),
+                (&mut self.hashes, keys.hash, hash.as_deref(), 1),
+                (&mut self.export_hashes, keys.export_hash, export_hash.as_deref(), 2),
+            ] {
+                if old_key.as_deref() == new_key {
+                    continue;
+                }
+                let Some(key) = old_key else { continue };
+                if map.get(&key) != Some(&index) {
+                    continue;
+                }
+                map.remove(&key);
+                if let Some(replacement) = self.book_keys.iter().position(|keys| {
+                    keys.as_ref().is_some_and(|keys| match kind {
+                        0 => keys.source_path == key,
+                        1 => keys.hash.as_ref() == Some(&key),
+                        _ => keys.export_hash.as_ref() == Some(&key),
+                    })
+                }) {
+                    map.insert(key, replacement);
+                }
+            }
+        }
+
         self.source_paths
             .entry(source_path.clone())
             .and_modify(|stored| *stored = (*stored).min(index))
@@ -231,7 +213,7 @@ pub(super) fn existing_book_import(
                 .iter()
                 .position(|book| book.scope == BookScope::Library && same_source_path(&book.source_path, source_path))
         },
-        |index| index.source_path_index(books, source_path),
+        |index| index.source_path_index(source_path),
     );
     let identity_index = index.map_or_else(
         || {
@@ -240,7 +222,7 @@ pub(super) fn existing_book_import(
                     && ((!book.source_hash.is_empty() && book.source_hash == hash) || book.id == id_from_hash(hash))
             })
         },
-        |index| index.hash_index(books, hash).or_else(|| index.id_index(books, hash)),
+        |index| index.hash_index(hash).or_else(|| index.id_index(books, hash)),
     );
     let export_identity_index = index.map_or_else(
         || {
@@ -404,13 +386,15 @@ impl ImportFileTransaction {
 pub(super) struct ImportFinalizer {
     transaction: Option<ImportFileTransaction>,
     cleanup_path: Option<PathBuf>,
+    pub(super) added_to_library: bool,
 }
 
 impl ImportFinalizer {
-    pub(super) fn new(transaction: Option<ImportFileTransaction>) -> Self {
+    pub(super) fn new(transaction: Option<ImportFileTransaction>, added_to_library: bool) -> Self {
         Self {
             transaction,
             cleanup_path: None,
+            added_to_library,
         }
     }
 
