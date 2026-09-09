@@ -131,7 +131,7 @@ const ReadingStatusMenuItem: React.FC<{
     onSelect={onSelect}
   >
     <ReadingStatusIcon intent="status" status={iconStatus} />
-    <span className="min-w-0 flex-1 truncate text-left leading-none">{label}</span>
+    <span className="min-w-0 flex-1 truncate text-left leading-tight">{label}</span>
     <DropdownMenuItemIndicator>
       <CheckIcon className="size-4 shrink-0 text-(--flow-accent)" />
     </DropdownMenuItemIndicator>

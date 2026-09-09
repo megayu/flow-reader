@@ -560,7 +560,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
                       strokeWidth={0}
                     />
                   )}
-                  <span className="min-w-0 flex-1 truncate text-left">{displayTitle}</span>
+                  <span className="min-w-0 flex-1 truncate text-left leading-tight">{displayTitle}</span>
                 </span>
                 {!select && progressPercent !== undefined && (
                   <span className="text-muted-foreground shrink-0 text-xs leading-none font-normal tabular-nums">

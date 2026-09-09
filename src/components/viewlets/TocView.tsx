@@ -118,7 +118,7 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
                 />
               )}
               <span className="relative z-10 flex h-full min-w-0 flex-1 items-center">
-                <span className="block min-w-0 truncate">{displayTitle}</span>
+                <span className="block min-w-0 truncate leading-tight">{displayTitle}</span>
               </span>
             </button>
           )

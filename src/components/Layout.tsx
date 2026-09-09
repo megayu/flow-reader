@@ -602,7 +602,7 @@ const libraryStatusOptions = ['toRead', 'reading', 'read'] as const
 const libraryFilterPanelClassName =
   'rounded-md bg-(--flow-sidebar-item-bg)/70 p-1.5 ring-(--flow-sidebar-item-border) ring-inset'
 const libraryFilterPanelHeaderClassName = 'mb-1 flex h-7 shrink-0 items-center gap-0.5'
-const libraryFilterSectionHeaderClassName = 'text-(--flow-text) text-base leading-none font-semibold'
+const libraryFilterSectionHeaderClassName = 'text-(--flow-text) text-base font-semibold'
 const libraryFilterIconButtonClassName = 'size-7 rounded-md text-(--flow-text-muted) hover:text-(--flow-text)'
 const libraryFilterSectionIconButtonClassName = 'size-7 rounded-md text-(--flow-text-muted) hover:text-(--flow-text)'
 
@@ -969,7 +969,9 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
 
         <section className={clsx(libraryFilterPanelClassName, 'shrink-0')} data-testid="library-status-filter">
           <div className={libraryFilterPanelHeaderClassName}>
-            <div className={libraryFilterSectionHeaderClassName}>{t('home.library_filter.status')}</div>
+            <div className={clsx(libraryFilterSectionHeaderClassName, 'leading-none')}>
+              {t('home.library_filter.status')}
+            </div>
           </div>
           <div className={libraryFilterOptionsClassName}>
             <UiButton
@@ -1291,7 +1293,9 @@ const FilterSection: React.FC<FilterSectionProps> = ({
               className="h-7 min-w-0 flex-1 justify-start gap-1.5 overflow-hidden rounded-xl bg-transparent px-0 text-left hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 aria-expanded:bg-transparent aria-expanded:text-(--flow-text)"
               onClick={() => onExpandedChange(!expanded)}
             >
-              <span className={clsx(libraryFilterSectionHeaderClassName, 'min-w-0 truncate')}>{title}</span>
+              <span className={clsx(libraryFilterSectionHeaderClassName, 'min-w-0 truncate leading-tight')}>
+                {title}
+              </span>
               <ChevronDown
                 aria-hidden
                 className={clsx('size-4.5 shrink-0 transition-transform', !expanded && '-rotate-90')}

@@ -105,7 +105,7 @@ export const Row: React.FC<RowProps> = ({
         }}
       >
         <span className="flex h-full min-w-0 items-center whitespace-nowrap">
-          <span className="block min-w-0 truncate">
+          <span className="block min-w-0 truncate leading-tight">
             {t || emptyLabel}
             {description && (
               <span
