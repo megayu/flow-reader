@@ -1,4 +1,10 @@
+use std::sync::LazyLock;
+
 use super::*;
+
+static NCX_CONTENT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?is)<content\b[^>]*\bsrc\s*=\s*['"]([^'"]+)['"][^>]*/?>"#).expect("valid NCX content regex")
+});
 
 pub(in crate::storage) fn normalize_unpacked_epub_structure(unpacked_dir: &Path) -> Result<bool, String> {
     let opf_path = find_unpacked_opf_path(unpacked_dir)?;
@@ -557,15 +563,13 @@ pub(super) fn spine_item_is_linear_no(item: &OpfSpineItem) -> bool {
 }
 
 pub(super) fn nav_toc_href_paths(nav: &str) -> Vec<String> {
-    let (Ok(nav_start_regex), Ok(type_regex)) = (
-        Regex::new(r#"(?is)<nav\b[^>]*>"#),
-        Regex::new(r#"(?is)\b(?:epub:)?type\s*=\s*['"]([^'"]*)['"]"#),
-    ) else {
-        return Vec::new();
-    };
+    static NAV_START_REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#"(?is)<nav\b[^>]*>"#).expect("valid nav start regex"));
+    static TYPE_REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#"(?is)\b(?:epub:)?type\s*=\s*['"]([^'"]*)['"]"#).expect("valid nav type regex"));
 
-    let Some(start_match) = nav_start_regex.find_iter(nav).find(|nav_match| {
-        type_regex
+    let Some(start_match) = NAV_START_REGEX.find_iter(nav).find(|nav_match| {
+        TYPE_REGEX
             .captures(nav_match.as_str())
             .and_then(|captures| captures.get(1))
             .is_some_and(|types| types.as_str().split_whitespace().any(|value| value == "toc"))
@@ -583,11 +587,11 @@ pub(super) fn nav_toc_href_paths(nav: &str) -> Vec<String> {
 }
 
 pub(super) fn html_href_paths(html: &str) -> Vec<String> {
-    let Ok(regex) = Regex::new(r#"(?is)<a\b[^>]*\bhref\s*=\s*['"]([^'"]+)['"][^>]*>"#) else {
-        return Vec::new();
-    };
+    static HREF_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?is)<a\b[^>]*\bhref\s*=\s*['"]([^'"]+)['"][^>]*>"#).expect("valid HTML href regex")
+    });
 
-    regex
+    HREF_REGEX
         .captures_iter(html)
         .filter_map(|captures| captures.get(1).map(|match_| match_.as_str()))
         .filter_map(normalize_local_href_path)
@@ -604,11 +608,7 @@ pub(super) fn normalize_local_href_path(href: &str) -> Option<String> {
 }
 
 pub(super) fn ncx_content_paths(ncx: &str) -> Vec<String> {
-    let Ok(regex) = Regex::new(r#"(?is)<content\b[^>]*\bsrc\s*=\s*['"]([^'"]+)['"][^>]*/?>"#) else {
-        return Vec::new();
-    };
-
-    regex
+    NCX_CONTENT_REGEX
         .captures_iter(ncx)
         .filter_map(|captures| {
             let raw_src = captures.get(1)?.as_str();
@@ -659,11 +659,7 @@ pub(super) fn spine_itemref_insert_indent(opf: &str, spine_close: usize) -> Stri
 }
 
 pub(super) fn ncx_content_references(ncx: &str) -> Vec<NcxReference> {
-    let Ok(regex) = Regex::new(r#"(?is)<content\b[^>]*\bsrc\s*=\s*['"]([^'"]+)['"][^>]*/?>"#) else {
-        return Vec::new();
-    };
-
-    regex
+    NCX_CONTENT_REGEX
         .captures_iter(ncx)
         .filter_map(|captures| {
             let raw_src = captures.get(1)?.as_str().to_string();
@@ -884,12 +880,14 @@ pub(super) fn collect_anchor_split_points(
     body_start: usize,
     body_end: usize,
 ) -> Option<HashMap<String, AnchorSplitPoint>> {
-    let tag_regex = Regex::new(r#"(?is)<[^>]+>"#).ok()?;
-    let anchor_regex = Regex::new(r#"(?is)(?:\bid\s*=\s*["']([^"']+)["']|\bname\s*=\s*["']([^"']+)["'])"#).ok()?;
+    static TAG_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?is)<[^>]+>"#).expect("valid tag regex"));
+    static ANCHOR_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?is)(?:\bid\s*=\s*["']([^"']+)["']|\bname\s*=\s*["']([^"']+)["'])"#).expect("valid anchor regex")
+    });
     let mut anchors = HashMap::new();
     let mut stack: Vec<OpenElement> = Vec::new();
 
-    for tag_match in tag_regex.find_iter(&xhtml[body_start..body_end]) {
+    for tag_match in TAG_REGEX.find_iter(&xhtml[body_start..body_end]) {
         let tag = tag_match.as_str();
         let tag_start = body_start + tag_match.start();
         let trimmed = tag.trim_start();
@@ -920,7 +918,7 @@ pub(super) fn collect_anchor_split_points(
             start: tag_start,
         };
 
-        if let Some(captures) = anchor_regex.captures(tag)
+        if let Some(captures) = ANCHOR_REGEX.captures(tag)
             && let Some(anchor) = captures.get(1).or_else(|| captures.get(2))
         {
             let (split_start_position, open_ancestors) = split_boundary_for_anchor(&stack, &current);
