@@ -219,6 +219,9 @@ pub(super) fn rename_books_for_deletion(storage: &AppStorage, ids: &[String]) ->
             .collect::<HashSet<_>>();
         state.library.books.retain(|book| !ids.contains(&book.id));
         for author in deleted_authors {
+            if !state.library.pins.authors.contains(&author) {
+                continue;
+            }
             if !state
                 .library
                 .books
