@@ -2428,6 +2428,21 @@ fn parses_text_import_chapter_hierarchy() {
 }
 
 #[test]
+fn keeps_volume_intro_in_group_section() {
+    let text = "第一卷 分组甲\n　　引言甲。\n引言乙。\n第一章 章节甲\n正文甲。\n第二卷 分组乙\n引言丙。";
+    let document = parse_text_import_document(text, "测试书", None);
+
+    assert_eq!(document.sections.len(), 3);
+    assert!(document.sections[0].is_group);
+    assert_eq!(document.sections[0].paragraphs, vec!["引言甲。", "引言乙。"]);
+    assert!(!document.sections[1].is_group);
+    assert_eq!(document.sections[1].paragraphs, vec!["正文甲。"]);
+    assert!(document.sections[2].is_group);
+    assert_eq!(document.sections[2].paragraphs, vec!["引言丙。"]);
+    assert_eq!(document.chapters.len(), 3);
+}
+
+#[test]
 fn generates_valid_text_import_opf_metadata() {
     let mut document = parse_text_import_document("第1章 开始\n正文。", "测试书", None);
     document.creator = "作者".to_string();

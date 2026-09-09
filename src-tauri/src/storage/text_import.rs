@@ -610,6 +610,12 @@ pub(super) fn parse_text_import_document(
         if paragraphs.is_empty() {
             return;
         }
+        if current_title.is_none()
+            && let Some(group) = sections.last_mut().filter(|section| section.is_group)
+        {
+            group.paragraphs = std::mem::take(paragraphs);
+            return;
+        }
         let title = current_title
             .clone()
             .or_else(|| current_parent.clone())
@@ -649,9 +655,6 @@ pub(super) fn parse_text_import_document(
             continue;
         }
 
-        if current_title.is_none() {
-            current_title = current_parent.clone().or_else(|| Some(title.to_string()));
-        }
         paragraphs.push(line.to_string());
     }
 
@@ -1328,6 +1331,18 @@ pub(super) fn text_import_css() -> &'static str {
 
 .flow-txt-body p {
   margin: 0 0 0.75em;
+}
+
+.flow-txt-volume-page .flow-txt-body {
+  position: relative;
+  top: 25vh;
+  margin-top: 1.4em;
+}
+
+.flow-txt-volume-page .flow-txt-body,
+.flow-txt-volume-page .flow-txt-body p {
+  text-align: center !important;
+  text-indent: 0 !important;
 }
 "#
 }
