@@ -32,7 +32,7 @@ import {
   useZenModeValue,
 } from '@/state'
 
-import { getBookDisplayTitle, getBookTooltip } from '../book'
+import { type BookPresentation, getBookDisplayTitle, getBookTooltip } from '../book'
 import { handleFilePaths, handleFiles } from '../file'
 import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
@@ -450,7 +450,7 @@ function ReaderTabs({
   )
 }
 
-function getReaderTabLabel(tab: BookTab) {
+function getReaderTabLabel(tab: { book: BookPresentation }) {
   return getBookDisplayTitle(tab.book)
 }
 
@@ -483,7 +483,8 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
 }: ReaderTabItemProps) {
   const t = useTranslation()
   const [contextMenuOpen, setContextMenuOpen] = useState(false)
-  const label = getReaderTabLabel(tab)
+  const tabSnapshot = useSnapshot(tab)
+  const label = getReaderTabLabel(tabSnapshot)
   const handleMouseEnter = useCallback(() => {
     onHoverChange(index)
   }, [index, onHoverChange])
@@ -518,14 +519,14 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
           selected={selected}
           focused={focused}
           showSeparator={showSeparator}
-          title={getReaderTabTooltip(tab)}
-          tooltipContent={getReaderTabTooltipContent(tab)}
+          title={getReaderTabTooltip(tabSnapshot)}
+          tooltipContent={getReaderTabTooltipContent(tabSnapshot)}
           tooltipDisabled={contextMenuOpen}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
           onClick={handleClick}
           onDelete={handleDelete}
-          Icon={getReaderTabIcon(tab)}
+          Icon={getReaderTabIcon(tabSnapshot)}
         >
           {label}
         </Tab>
@@ -538,7 +539,7 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
         <ContextMenuItem onSelect={() => void reader.closeAllTabs().catch(console.error)}>
           {t('tabs.close_all')}
         </ContextMenuItem>
-        {tab.book.scope === 'external' && (
+        {tabSnapshot.book.scope === 'external' && (
           <>
             <ContextMenuSeparator />
             <ContextMenuItem onSelect={handleAddToLibrary}>{t('tabs.add_to_library')}</ContextMenuItem>
@@ -549,11 +550,11 @@ const ReaderTabItem = React.memo(function ReaderTabItem({
   )
 })
 
-function getReaderTabTooltip(tab: BookTab) {
+function getReaderTabTooltip(tab: { book: BookPresentation }) {
   return getBookTooltip(tab.book)
 }
 
-function getReaderTabTooltipContent(tab: BookTab) {
+function getReaderTabTooltipContent(tab: { book: BookPresentation }) {
   return <BookTooltipContent book={tab.book} />
 }
 
@@ -565,7 +566,7 @@ const TemporaryBookOpenIcon = function TemporaryBookOpenIcon({ ref, ...props }: 
   return <BookOpenIcon {...props} ref={ref} strokeDasharray="1 2.5" />
 } as typeof BookOpenIcon
 
-function getReaderTabIcon(tab: BookTab) {
+function getReaderTabIcon(tab: { book: BookPresentation }) {
   return tab.book.scope === 'external' ? TemporaryBookOpenIcon : BookOpenIcon
 }
 

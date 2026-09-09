@@ -1,5 +1,7 @@
 import type { BookRecord } from './storage'
 
+export type BookPresentation = Pick<BookRecord, 'name' | 'metadata' | 'scope' | 'archive' | 'editable'>
+
 export type BookTooltipLineKind = 'creator' | 'file' | 'title'
 
 export interface BookTooltipLine {
@@ -20,7 +22,7 @@ export function stripFileExtension(filename: string) {
   return cleanBookText(filename).replace(/\.[^.]+$/, '')
 }
 
-export function getBookDisplayTitle(book: BookRecord) {
+export function getBookDisplayTitle(book: BookPresentation) {
   return cleanBookText(book.metadata.title) || stripFileExtension(book.name)
 }
 
@@ -31,13 +33,13 @@ export function compareBookDisplayTitle(a: BookRecord, b: BookRecord) {
   return collator.compare(cleanBookText(a.name), cleanBookText(b.name))
 }
 
-export function getBookTooltip(book: BookRecord) {
+export function getBookTooltip(book: BookPresentation) {
   return getBookTooltipLines(book)
     .map((line) => line.text)
     .join('\n')
 }
 
-export function getBookTooltipLines(book: BookRecord): BookTooltipLine[] {
+export function getBookTooltipLines(book: BookPresentation): BookTooltipLine[] {
   const lines: BookTooltipLine[] = [
     { kind: 'title', text: cleanBookText(book.metadata.title) },
     { kind: 'creator', text: cleanBookText(book.metadata.creator) },

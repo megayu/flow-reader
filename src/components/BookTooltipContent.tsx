@@ -1,9 +1,8 @@
 import { Archive, Book, BookDashed, BookLock, FileText, UserRound } from 'lucide-react'
 
-import { type BookTooltipLineKind, getBookTooltipLines } from '@/book'
-import type { BookRecord } from '@/storage'
+import { type BookPresentation, type BookTooltipLineKind, getBookTooltipLines } from '@/book'
 
-function getTooltipIcon(book: BookRecord, kind: BookTooltipLineKind) {
+function getTooltipIcon(book: BookPresentation, kind: BookTooltipLineKind) {
   switch (kind) {
     case 'creator':
       return UserRound
@@ -17,7 +16,7 @@ function getTooltipIcon(book: BookRecord, kind: BookTooltipLineKind) {
 }
 
 interface BookTooltipContentProps {
-  book: BookRecord
+  book: BookPresentation
 }
 
 export function BookTooltipContent({ book }: BookTooltipContentProps) {
