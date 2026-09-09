@@ -227,10 +227,10 @@ function createFontOptions(fonts: SystemFont[]) {
 
   fonts.forEach(({ family, label }) => {
     const normalizedFamily = family.trim()
-    const normalizedLabel = cleanFontLabel(label.trim() || normalizedFamily)
+    const normalizedLabel = label.trim() || normalizedFamily
     if (!normalizedFamily) return
 
-    const key = fontOptionKey(normalizedLabel || normalizedFamily)
+    const key = normalizedFamily.toLowerCase()
     if (unique.has(key)) return
 
     unique.set(key, {
@@ -246,21 +246,6 @@ function createFontOptions(fonts: SystemFont[]) {
       sensitivity: 'base',
     }),
   )
-}
-
-function cleanFontLabel(label: string) {
-  return label
-    .replace(/\.(?:ttf|ttc|otf)$/i, '')
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function fontOptionKey(label: string) {
-  return cleanFontLabel(label)
-    .toLowerCase()
-    .replace(/\b(?:bold|italic|oblique|regular|medium|light|semibold|semi bold|semilight|semi light|black)\b/g, '')
-    .replace(/[^a-z0-9\u3400-\u9fff\uf900-\ufaff]+/g, '')
 }
 
 interface TextAlignFieldProps {
@@ -428,7 +413,7 @@ const FontField: React.FC<FontFieldProps> = ({ name, value, options, loadOptions
         collisionPadding={8}
         onLoadOptions={loadOptions}
         onValueChange={onChange}
-        renderOption={(option) => <span style={{ fontFamily: option.value }}>{option.label}</span>}
+        renderOption={(option) => <span style={{ fontFamily: `"${CSS.escape(option.value)}"` }}>{option.label}</span>}
       />
     </div>
   )

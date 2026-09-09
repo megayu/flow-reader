@@ -47,9 +47,9 @@ tokio-util = { version = "0.7.18", features = ["rt"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 
 [target.'cfg(windows)'.dependencies]
-winreg = "0.56"
 windows-sys = { version = "0.61.2", features = [
   "Win32_Foundation",
+  "Win32_Graphics_Gdi",
   "Win32_Security",
   "Win32_Storage_FileSystem",
   "Win32_System_IO",

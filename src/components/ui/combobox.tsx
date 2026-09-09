@@ -72,6 +72,7 @@ function Combobox({
   const rootRef = useRef<HTMLDivElement>(null)
   const anchorRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const scrollFrameRef = useRef(0)
   const editingRef = useRef(false)
 
@@ -126,27 +127,24 @@ function Combobox({
     void onLoadOptions?.()
   }, [onLoadOptions])
 
-  const closePicker = useCallback(() => {
-    setOpen(false)
-    setActiveIndex(-1)
-  }, [])
-
-  const finishEditing = useCallback(
-    (nextValue: string) => {
+  const closePicker = useCallback(
+    (nextValue = value) => {
       editingRef.current = false
       setInputValue(nextValue)
-      if (nextValue !== value) onValueChange(nextValue)
+      setFiltering(false)
+      setOpen(false)
+      setActiveIndex(-1)
     },
-    [onValueChange, value],
+    [value],
   )
 
-  const selectOption = useCallback(
-    (option: ComboboxOption) => {
-      finishEditing(option.value)
-      closePicker()
+  const selectValue = useCallback(
+    (nextValue: string) => {
+      closePicker(nextValue)
+      if (nextValue !== value) onValueChange(nextValue)
       inputRef.current?.blur()
     },
-    [closePicker, finishEditing],
+    [closePicker, onValueChange, value],
   )
 
   const moveActiveOption = useCallback(
@@ -198,8 +196,8 @@ function Combobox({
     <Popover
       open={open}
       onOpenChange={(nextOpen) => {
-        setOpen(nextOpen)
-        if (!nextOpen) setActiveIndex(-1)
+        if (nextOpen) setOpen(true)
+        else closePicker()
       }}
     >
       <div ref={rootRef}>
@@ -217,24 +215,24 @@ function Combobox({
               value={inputValue}
               placeholder={placeholder}
               onFocus={() => {
-                if (!editingRef.current) {
-                  editingRef.current = true
-                }
+                editingRef.current = true
                 setFiltering(false)
                 openPicker()
               }}
-              onClick={openPicker}
+              onClick={() => {
+                openPicker()
+                const selectedOption = contentRef.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]')
+                if (selectedOption) scrollActiveOptionIntoView(selectedOption)
+              }}
               onValueChange={(nextValue) => {
                 setInputValue(nextValue)
                 setFiltering(nextValue !== value)
                 setActiveIndex(-1)
                 openPicker()
               }}
-              onBlur={() => {
+              onBlur={(event) => {
+                if (event.relatedTarget instanceof Node && contentRef.current?.contains(event.relatedTarget)) return
                 if (!editingRef.current) return
-                editingRef.current = false
-                setInputValue(value)
-                setFiltering(false)
                 closePicker()
               }}
               onKeyDown={(event) => {
@@ -251,7 +249,7 @@ function Combobox({
                 if (event.key === 'Enter' && activeOption) {
                   event.preventDefault()
                   event.stopPropagation()
-                  selectOption(activeOption)
+                  selectValue(activeOption.value)
                 }
               }}
             />
@@ -265,9 +263,7 @@ function Combobox({
                   event.preventDefault()
                 }}
                 onClick={() => {
-                  finishEditing('')
-                  closePicker()
-                  inputRef.current?.blur()
+                  selectValue('')
                 }}
               />
             </InputGroupActions>
@@ -276,6 +272,7 @@ function Combobox({
       </div>
       {contentWidth && (
         <PopoverContent
+          ref={contentRef}
           id={listId}
           role="listbox"
           data-slot="combobox-content"
@@ -318,7 +315,7 @@ function Combobox({
                   setActiveIndex(index)
                 }}
                 onClick={() => {
-                  selectOption(option)
+                  selectValue(option.value)
                 }}
               >
                 {renderOption(option)}
