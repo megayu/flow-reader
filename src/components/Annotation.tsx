@@ -84,11 +84,12 @@ function renderedSearchMatches(tab: BookTab, keyword: string) {
 
   views.forEach((view: any) => {
     try {
-      ;(view.section.find(keyword) as Array<{ cfi?: string }>).forEach((match) => {
+      const section = view.section as NonNullable<BookTab['section']>
+      section.find(keyword, { includeExcerpt: false }).forEach((match) => {
         if (!match.cfi || seen.has(match.cfi)) return
 
         seen.add(match.cfi)
-        matches.push({ cfi: match.cfi })
+        matches.push(match)
       })
     } catch (_error) {
       // ignore matched text in unsupported nodes

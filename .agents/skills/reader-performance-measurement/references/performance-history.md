@@ -188,6 +188,13 @@ start of rejected approaches. Other entries cover reader interactions.
 
 ## Rejected Approaches
 
+### Display-scoped full-text highlights and bounded synchronous CFI indexing
+
+- Evaluated change: retain displayed-document CFI matches from 32 hits and build a query-local sibling index from hit 33. Query, content revision, document identity, and pane activity governed cache invalidation.
+- Evidence: matched Windows `tauri-release` synthetic TXT runs used 120 chapters, 320 hits per chapter, a fixed book/chapter/page, 1586x963 client area at DPR 1.5, and 16 samples excluding three warmups. Page-turn operation p50/p95 improved 7.1%/15.4% (53.6 to 49.8 ms / 64.4 to 54.5 ms); full-query p95 increased 2.0%. Approximate JS heap medians showed no material growth, but did not measure peak allocation or native RSS. A 16-hit control showed no regression. These measurements describe the withdrawn combined implementation, not the remaining excerpt-only change.
+- Decision: withdrawn after scope review. A 3.8 ms median saving in a synthetic dense chapter does not establish enough benefit for normal queries to justify cache lifetime/invalidation and threshold complexity. Hit count alone does not establish expensive sibling scans. Reconsider only with representative real-book queries showing a meaningful bottleneck.
+- Retained scope: highlight consumers omit unused excerpts, with accurate return types. No new match cache or synchronous sibling index remains; the existing asynchronous chapter-search index is unchanged. No speedup claim is made for the reduced implementation.
+
 ### Decode gating without retained library cover resources
 
 - Attempt: display the real library image only after `load` plus `decode()`, but allow the resource to disappear when its virtualized card unmounts.

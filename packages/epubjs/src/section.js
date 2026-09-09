@@ -289,9 +289,10 @@ class Section {
   /**
    * Find a string in a section
    * @param  {string} _query The query string to find
-   * @return {object[]} A list of matches, with form {cfi, excerpt}
+   * @param  {object} [options] Set includeExcerpt to false for CFI-only consumers
+   * @return {object[]} Matches with cfi and, by default, excerpt
    */
-  find(_query) {
+  find(_query, { includeExcerpt = true } = {}) {
     var section = this
     var matches = []
     var query = _query.toLowerCase()
@@ -316,6 +317,11 @@ class Section {
 
           cfi = section.cfiFromRange(range)
 
+          if (!includeExcerpt) {
+            matches.push({ cfi })
+            last = pos
+            continue
+          }
           // Generate the excerpt
           if (node.textContent.length < limit) {
             excerpt = node.textContent

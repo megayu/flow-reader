@@ -58,7 +58,9 @@ export default class Section {
 
   render(_request?: Function): string
 
-  find(_query: string): Array<Element>
+  find(query: string, options?: { includeExcerpt?: true }): SectionMatch[]
+
+  find(query: string, options: { includeExcerpt: false }): Pick<SectionMatch, 'cfi'>[]
 
   findOccurrence(query: string, occurrence?: number): string | undefined
 
