@@ -139,8 +139,6 @@ fn classify_image(image: roxmltree::Node<'_, '_>, index: usize) -> ImageIndexEnt
     .flatten()
     .collect::<Vec<_>>()
     .join(" ");
-    let sibling_text = sibling_text_length(image);
-    let parent_text = image.parent_element().map(node_text_length).unwrap_or_default();
     let inline_parent = image.ancestors().any(|node| {
         node.is_element() && matches!(node.tag_name().name(), "p" | "span" | "a" | "em" | "strong" | "b" | "i")
     });
@@ -150,7 +148,13 @@ fn classify_image(image: roxmltree::Node<'_, '_>, index: usize) -> ImageIndexEnt
 
     let reason = if has_artifact_ancestor(image) || likely_small_icon {
         Some("icon")
-    } else if inline_parent && (sibling_text > 0 || parent_text >= 8) && (likely_inline_by_size || sibling_text > 0) {
+    } else if inline_parent
+        && (has_sibling_text(image)
+            || likely_inline_by_size
+                && image
+                    .parent_element()
+                    .is_some_and(|parent| has_text_at_least(parent, 8)))
+    {
         Some("inlineGlyph")
     } else if has_title_ancestor(image)
         || is_leading_title_image(image)
@@ -228,7 +232,7 @@ fn epub_type_has(node: roxmltree::Node<'_, '_>, values: &[&str]) -> bool {
 }
 
 fn is_leading_title_image(image: roxmltree::Node<'_, '_>) -> bool {
-    is_near_document_start(image) && is_image_only_block(image) && next_heading_text_length(image) > 0
+    is_near_document_start(image) && is_image_only_block(image) && has_next_heading_text(image)
 }
 
 fn is_near_document_start(image: roxmltree::Node<'_, '_>) -> bool {
@@ -244,7 +248,7 @@ fn is_near_document_start(image: roxmltree::Node<'_, '_>) -> bool {
         let accepted = if node == image {
             true
         } else if node.is_text() {
-            node.text().is_some_and(|text| text_length(text) > 0)
+            node.text().is_some_and(has_text)
                 && !node
                     .ancestors()
                     .any(|ancestor| ancestor.is_element() && matches!(ancestor.tag_name().name(), "script" | "style"))
@@ -273,13 +277,13 @@ fn is_image_only_block(image: roxmltree::Node<'_, '_>) -> bool {
     let Some(block) = block else {
         return true;
     };
-    let media_count = block
+    let has_media = block
         .descendants()
-        .filter(|node| node.is_element() && matches!(node.tag_name().name(), "img" | "svg" | "picture"));
-    media_count.count() > 0 && node_text_length(block) == 0
+        .any(|node| node.is_element() && matches!(node.tag_name().name(), "img" | "svg" | "picture"));
+    has_media && !has_text_at_least(block, 1)
 }
 
-fn next_heading_text_length(image: roxmltree::Node<'_, '_>) -> usize {
+fn has_next_heading_text(image: roxmltree::Node<'_, '_>) -> bool {
     let container = image
         .ancestors()
         .find(|node| node.is_element() && matches!(node.tag_name().name(), "div" | "p" | "figure" | "section"))
@@ -292,15 +296,15 @@ fn next_heading_text_length(image: roxmltree::Node<'_, '_>) -> usize {
             continue;
         }
         if matches!(current.tag_name().name(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
-            return node_text_length(current);
+            return has_text_at_least(current, 1);
         }
         if let Some(heading) = current
             .descendants()
             .find(|node| node.is_element() && matches!(node.tag_name().name(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6"))
         {
-            return node_text_length(heading);
+            return has_text_at_least(heading, 1);
         }
-        if node_text_length(current) > 0 {
+        if has_text_at_least(current, 1) {
             scanned += 1;
             if scanned >= 8 {
                 break;
@@ -308,37 +312,39 @@ fn next_heading_text_length(image: roxmltree::Node<'_, '_>) -> usize {
         }
         sibling = current.next_sibling_element();
     }
-    0
+    false
 }
 
-fn sibling_text_length(image: roxmltree::Node<'_, '_>) -> usize {
+fn has_sibling_text(image: roxmltree::Node<'_, '_>) -> bool {
     image
         .parent()
         .into_iter()
         .flat_map(|parent| parent.children())
         .filter(|node| *node != image)
-        .map(|node| {
+        .any(|node| {
             if node.is_text() {
-                text_length(node.text().unwrap_or_default())
+                has_text(node.text().unwrap_or_default())
             } else if node.is_element() && !matches!(node.tag_name().name(), "img" | "svg" | "picture") {
-                node_text_length(node)
+                has_text_at_least(node, 1)
             } else {
-                0
+                false
             }
         })
-        .sum()
 }
 
-fn node_text_length(node: roxmltree::Node<'_, '_>) -> usize {
+fn has_text_at_least(node: roxmltree::Node<'_, '_>, minimum: usize) -> bool {
     node.descendants()
         .filter(|child| child.is_text())
         .filter_map(|child| child.text())
-        .map(text_length)
-        .sum()
+        .flat_map(str::chars)
+        .filter(|character| !character.is_whitespace())
+        .take(minimum)
+        .count()
+        == minimum
 }
 
-fn text_length(value: &str) -> usize {
-    value.chars().filter(|character| !character.is_whitespace()).count()
+fn has_text(value: &str) -> bool {
+    value.chars().any(|character| !character.is_whitespace())
 }
 
 fn numeric_dimension(value: Option<&str>) -> Option<f64> {
