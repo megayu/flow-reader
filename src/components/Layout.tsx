@@ -615,6 +615,13 @@ interface LibraryFacetSearchState {
   target: LibraryFacetSearchTarget
 }
 
+function libraryFacetTrack(expanded: boolean, lockedHeight?: number) {
+  if (!expanded) return 'max-content'
+
+  // Header (28), header gap (4), one chip row (28), and panel padding (12).
+  return `minmax(calc(var(--spacing) * 18), ${lockedHeight === undefined ? 'max-content' : `${lockedHeight}px`})`
+}
+
 function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const t = useTranslation()
   const notifyError = useNotifyError()
@@ -630,6 +637,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const [facetSearch, setFacetSearch] = useState<LibraryFacetSearchState>()
   const [facetSearchQuery, setFacetSearchQuery] = useState('')
   const [creatingTag, setCreatingTag] = useState(false)
+  const [createdTagId, setCreatedTagId] = useState<string>()
   const tagCreation = useLibraryTagCreation()
   const [editingTag, setEditingTag] = useState<LibraryTagRecord>()
   const [deletingTag, setDeletingTag] = useState<LibraryTagRecord>()
@@ -870,6 +878,20 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     requestAnimationFrame(() => newTagInputRef.current?.focus())
   }, [creatingTag])
 
+  useLayoutEffect(() => {
+    if (!createdTagId || !tagsById.has(createdTagId)) return
+
+    const scroll = tagScrollRef.current
+    const chip = scroll?.querySelector<HTMLElement>(`[data-value="${CSS.escape(createdTagId)}"]`)
+    if (scroll && chip) {
+      const viewport = scroll.getBoundingClientRect()
+      const bounds = chip.getBoundingClientRect()
+      if (bounds.bottom > viewport.bottom) scroll.scrollTop += bounds.bottom - viewport.bottom
+      else if (bounds.top < viewport.top) scroll.scrollTop += bounds.top - viewport.top
+    }
+    setCreatedTagId(undefined)
+  }, [createdTagId, tagsById])
+
   const handleLibraryFilterKeyDown = useEffectEvent((e: KeyboardEvent) => {
     const searchTarget = getLibraryFacetSearchShortcutTarget(e)
     if (searchTarget) {
@@ -919,7 +941,15 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
 
   return (
     <PaneView className={clsx('p-2', className)}>
-      <div className="flex h-full min-h-0 flex-col gap-1.5" data-testid="library-filter-panel">
+      <div
+        className="scroll scrollbar-visible grid h-full min-h-0 content-start gap-1.5"
+        data-testid="library-filter-panel"
+        style={{
+          scrollbarGutter: 'auto',
+          // Max-content tracks share space equally until the smaller facet is full.
+          gridTemplateRows: `max-content max-content ${libraryFacetTrack(tagsExpanded, facetSearch?.target === 'tag' ? facetSearch.lockedHeight : undefined)} ${libraryFacetTrack(authorsExpanded, facetSearch?.target === 'author' ? facetSearch.lockedHeight : undefined)}`,
+        }}
+      >
         <div className="flex h-7 shrink-0 items-center justify-between gap-1.5">
           <div className="text-foreground text-base leading-none font-semibold">{t('library_filter.title')}</div>
           <AppTooltip label={t('home.library_filter.clear')} shortcut={getPrimaryShortcut('libraryFilterClear')}>
@@ -1014,7 +1044,9 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                     if (event.key !== 'Enter') return
 
                     event.preventDefault()
-                    void tagCreation.create()
+                    void tagCreation.create().then((tag) => {
+                      if (tag) setCreatedTagId(tag.id)
+                    })
                   },
                 }
               : undefined
@@ -1029,6 +1061,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                 className={libraryFilterSectionIconButtonClassName}
                 onClick={(e) => {
                   e.stopPropagation()
+                  exitFacetSearch('tag')
                   setCreatingTag(true)
                   setTagsExpanded(true)
                 }}
@@ -1227,13 +1260,8 @@ const FilterSection: React.FC<FilterSectionProps> = ({
   return (
     <section
       ref={sectionRef}
-      className={clsx(
-        libraryFilterPanelClassName,
-        'flex min-h-0 flex-col overflow-hidden',
-        lockedHeight === undefined ? 'flex-1 basis-auto' : 'shrink',
-      )}
+      className={clsx(libraryFilterPanelClassName, 'flex min-h-0 flex-col overflow-hidden')}
       data-testid={testId}
-      style={{ height: lockedHeight, maxHeight: lockedHeight ?? 'max-content' }}
     >
       <div className={libraryFilterPanelHeaderClassName}>
         {activeEditor ? (
@@ -1303,7 +1331,12 @@ const FilterSection: React.FC<FilterSectionProps> = ({
       </div>
 
       {expanded && (
-        <OverlayScroll ref={scrollRef} containerClassName="min-h-0 flex-1" scrollbar={scrollbar} className="pr-0.5">
+        <OverlayScroll
+          ref={scrollRef}
+          containerClassName="min-h-0 flex-1 basis-auto [&>[data-orientation=vertical]]:pointer-events-auto [&>[data-orientation=vertical]]:opacity-100"
+          scrollbar={scrollbar}
+          className="pr-0.5"
+        >
           <div ref={contentRef}>{children}</div>
         </OverlayScroll>
       )}

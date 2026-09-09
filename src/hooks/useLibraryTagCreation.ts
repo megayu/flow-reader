@@ -28,8 +28,9 @@ export function useLibraryTagCreation() {
         return
       }
 
-      await db.tags.create(cleanName)
+      const tag = await db.tags.create(cleanName)
       setName('')
+      return tag
     } catch (error) {
       notifyError(error, 'tag.new')
     }
