@@ -151,6 +151,7 @@ const TypographyPane: React.FC = () => {
             max={ZOOM_MAX}
             step={0.1}
             value={zoom}
+            baseValue={() => 1}
             onChange={(v) => {
               setTypography('zoom', v || undefined)
             }}
