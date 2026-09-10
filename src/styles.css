@@ -421,6 +421,22 @@ input[type="color"]::-webkit-color-swatch {
   background: transparent;
   border-radius: 999px;
 }
+textarea.scroll::-webkit-scrollbar-corner {
+  background-color: transparent;
+}
+textarea.scroll::-webkit-resizer {
+  border: 0;
+  background:
+    linear-gradient(
+      135deg,
+      transparent 45%,
+      var(--flow-text-muted) 45% 55%,
+      transparent 55% 70%,
+      var(--flow-text-muted) 70% 80%,
+      transparent 80%
+    )
+    bottom right / 10px 10px no-repeat;
+}
 .scroll::-webkit-scrollbar-thumb {
   background: transparent;
   border-radius: 999px;
