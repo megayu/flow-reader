@@ -137,7 +137,7 @@ export const defaultTranslationSettings: TranslationSettingsConfiguration = {
 export const defaultSettings: Settings = {
   dictionary: defaultDictionarySettings,
   translation: defaultTranslationSettings,
-  enableTextSelectionMenu: false,
+  enableTextSelectionMenu: true,
   directTextImport: false,
   hideEndnotes: false,
   restoreLastReadingOnStartup: false,
