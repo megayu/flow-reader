@@ -1522,11 +1522,67 @@ pub(super) fn write_text_cover_to_unpacked(storage: &AppStorage, id: &str, cover
 }
 
 fn escape_xml(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
+    let mut escaped = String::with_capacity(value.len());
+    for (source, character) in text_characters(value, false) {
+        match (source.len() > character.len_utf8(), character) {
+            (true, _) => escaped.push_str(source),
+            (_, '&') => escaped.push_str("&amp;"),
+            (_, '<') => escaped.push_str("&lt;"),
+            (_, '>') => escaped.push_str("&gt;"),
+            (_, '"') => escaped.push_str("&quot;"),
+            _ => escaped.push(character),
+        }
+    }
+
+    escaped
+}
+
+fn numeric_character_reference(value: &str) -> Option<(usize, char)> {
+    let reference = value.strip_prefix("&#")?;
+    let (radix, prefix_len, digits) = if let Some(hex_digits) = reference.strip_prefix('x') {
+        (16, 1, hex_digits)
+    } else {
+        (10, 0, reference)
+    };
+    let digit_len = digits
+        .bytes()
+        .take_while(|byte| byte.is_ascii_digit() || (radix == 16 && byte.is_ascii_hexdigit()))
+        .count();
+    if digit_len == 0 || digits.as_bytes().get(digit_len) != Some(&b';') {
+        return None;
+    }
+
+    let codepoint = u32::from_str_radix(&digits[..digit_len], radix).ok()?;
+    if !matches!(codepoint, 0x9 | 0xa | 0xd | 0x20..=0xd7ff | 0xe000..=0xfffd | 0x10000..=0x10ffff) {
+        return None;
+    }
+    Some((2 + prefix_len + digit_len + 1, char::from_u32(codepoint)?))
+}
+
+// Match the single entity-decoding pass performed when generated XHTML is parsed.
+pub(super) fn text_characters(mut value: &str, xml_entities: bool) -> impl Iterator<Item = (&str, char)> {
+    std::iter::from_fn(move || {
+        let character = value.chars().next()?;
+        let reference = numeric_character_reference(value).or_else(|| {
+            if !xml_entities || character != '&' {
+                return None;
+            }
+            [
+                ("&amp;", '&'),
+                ("&lt;", '<'),
+                ("&gt;", '>'),
+                ("&quot;", '"'),
+                ("&apos;", '\''),
+                ("&nbsp;", '\u{a0}'),
+            ]
+            .into_iter()
+            .find_map(|(entity, character)| value.starts_with(entity).then_some((entity.len(), character)))
+        });
+        let (len, character) = reference.unwrap_or((character.len_utf8(), character));
+        let (source, remaining) = value.split_at(len);
+        value = remaining;
+        Some((source, character))
+    })
 }
 
 fn escape_svg(value: &str) -> String {

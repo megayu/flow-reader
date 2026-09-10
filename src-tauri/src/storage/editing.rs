@@ -1,58 +1,23 @@
 use super::*;
 
 pub(super) fn escape_xml_text(value: &str) -> String {
-    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            character if character.len_utf16() == 2 => escaped.push_str(&format!("&#{};", character as u32)),
+            _ => escaped.push(character),
+        }
+    }
+    escaped
 }
 
 pub(super) fn unescape_xml_text(value: &str) -> String {
-    let mut result = String::with_capacity(value.len());
-    let mut cursor = 0usize;
-
-    while let Some(relative_start) = value[cursor..].find('&') {
-        let start = cursor + relative_start;
-        result.push_str(&value[cursor..start]);
-        let Some(relative_end) = value[start..].find(';') else {
-            result.push_str(&value[start..]);
-            return result;
-        };
-        let end = start + relative_end;
-        let entity = &value[start + 1..end];
-        match entity {
-            "amp" => result.push('&'),
-            "lt" => result.push('<'),
-            "gt" => result.push('>'),
-            "quot" => result.push('"'),
-            "apos" => result.push('\''),
-            "nbsp" => result.push('\u{00a0}'),
-            entity if entity.starts_with("#x") || entity.starts_with("#X") => {
-                if let Ok(codepoint) = u32::from_str_radix(&entity[2..], 16) {
-                    if let Some(character) = char::from_u32(codepoint) {
-                        result.push(character);
-                    } else {
-                        result.push_str(&value[start..=end]);
-                    }
-                } else {
-                    result.push_str(&value[start..=end]);
-                }
-            }
-            entity if entity.starts_with('#') => {
-                if let Ok(codepoint) = entity[1..].parse::<u32>() {
-                    if let Some(character) = char::from_u32(codepoint) {
-                        result.push(character);
-                    } else {
-                        result.push_str(&value[start..=end]);
-                    }
-                } else {
-                    result.push_str(&value[start..=end]);
-                }
-            }
-            _ => result.push_str(&value[start..=end]),
-        }
-        cursor = end + 1;
-    }
-
-    result.push_str(&value[cursor..]);
-    result
+    super::text_import::text_characters(value, true)
+        .map(|(_, character)| character)
+        .collect()
 }
 
 pub(super) fn body_content_range(xhtml: &str) -> Option<(usize, usize)> {
@@ -179,25 +144,26 @@ fn replace_xhtml_text_range(
     if decoded_text.trim() != target.text_node_text.trim() {
         return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
     }
-    let updated_text = if decoded_text == target.text_node_text {
-        replace_text_by_utf16_offsets(
-            &decoded_text,
-            target.start_offset,
-            target.end_offset,
-            old_text,
-            new_text,
-        )?
-    } else {
+    let mut target = target.clone();
+    if decoded_text != target.text_node_text {
         let mut matches = decoded_text.match_indices(old_text);
-        if matches.next().is_none() || matches.next().is_some() {
+        let Some((index, _)) = matches.next() else {
+            return Err(TEXT_REPLACE_TEXT_STALE_ERROR.to_string());
+        };
+        if matches.next().is_some() {
             return Err(TEXT_REPLACE_TEXT_STALE_ERROR.to_string());
         }
-        decoded_text.replacen(old_text, new_text, 1)
-    };
-    let mut updated = String::with_capacity(xhtml.len() + new_text.len());
-    updated.push_str(&xhtml[..start]);
-    updated.push_str(&escape_xml_text(&updated_text));
-    updated.push_str(&xhtml[end..]);
+        target.start_offset = decoded_text[..index].encode_utf16().count();
+        target.end_offset = target.start_offset + old_text.encode_utf16().count();
+        target.text_node_text = decoded_text;
+    }
+    let range = selected_source_range(
+        super::text_import::text_characters(&xhtml[start..end], true),
+        old_text,
+        &target,
+    )?;
+    let mut updated = xhtml.to_string();
+    updated.replace_range(start + range.start..start + range.end, &escape_xml_text(new_text));
     Ok(updated)
 }
 
@@ -232,23 +198,13 @@ pub(super) fn replace_generated_txt_paragraph_xhtml(
         };
         let end = start + relative_end;
         if current_paragraph_index == paragraph_index {
-            let decoded_text = unescape_xml_text(&xhtml[start..end]);
-            if decoded_text != target.text_node_text {
-                return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
-            }
-
-            let updated_text = replace_text_by_utf16_offsets(
-                &decoded_text,
-                target.start_offset,
-                target.end_offset,
+            let range = selected_source_range(
+                super::text_import::text_characters(&xhtml[start..end], true),
                 old_text,
-                new_text,
+                target,
             )?;
-
-            let mut updated = String::with_capacity(xhtml.len() + new_text.len());
-            updated.push_str(&xhtml[..start]);
-            updated.push_str(&escape_xml_text(&updated_text));
-            updated.push_str(&xhtml[end..]);
+            let mut updated = xhtml.to_string();
+            updated.replace_range(start + range.start..start + range.end, &escape_xml_text(new_text));
             return Ok(Some(updated));
         }
 
@@ -414,7 +370,6 @@ pub(super) fn extract_first_tag_text(xhtml: &str, tag_name: &str) -> Option<Stri
 pub(super) struct SourceTextLine {
     text: String,
     offset: u64,
-    old_len: u64,
 }
 
 pub(super) fn source_bom_len(bytes: &[u8]) -> usize {
@@ -496,11 +451,9 @@ pub(super) fn decode_source_line(
     }
 
     let prefix_len = encode_text_bytes(&decoded[..trimmed_start], encoding, false)?.len();
-    let trimmed_len = encode_text_bytes(&decoded[trimmed_start..trimmed_end], encoding, false)?.len();
     Ok(Some(SourceTextLine {
         text: decoded[trimmed_start..trimmed_end].to_string(),
         offset: (bom_len + prefix_len) as u64,
-        old_len: trimmed_len as u64,
     }))
 }
 
@@ -560,6 +513,47 @@ pub(super) fn generated_txt_matching_heading_occurrences_before(
     Ok(occurrences)
 }
 
+fn selected_source_range<'a>(
+    characters: impl Iterator<Item = (&'a str, char)>,
+    old_text: &str,
+    target: &BookTextReplaceTarget,
+) -> Result<std::ops::Range<usize>, String> {
+    let mut expected = target.text_node_text.chars();
+    let mut selected = old_text.chars();
+    let mut start = None;
+    let mut end = None;
+    let mut offset = 0;
+    let mut index = 0;
+    for (source, character) in characters.chain(std::iter::once(("", '\0'))) {
+        if offset == target.start_offset {
+            start = Some(index);
+        }
+        if offset == target.end_offset {
+            end = Some(index);
+        }
+        if source.is_empty() {
+            break;
+        }
+        if expected.next() != Some(character) {
+            return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
+        }
+        if (target.start_offset..target.end_offset).contains(&offset) && selected.next() != Some(character) {
+            return Err(TEXT_REPLACE_TEXT_STALE_ERROR.to_string());
+        }
+        index += source.len();
+        offset += character.len_utf16();
+    }
+    if expected.next().is_some() {
+        return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
+    }
+    if target.start_offset > target.end_offset || selected.next().is_some() {
+        return Err(TEXT_REPLACE_TEXT_STALE_ERROR.to_string());
+    }
+    let start = start.ok_or_else(|| TEXT_REPLACE_TEXT_STALE_ERROR.to_string())?;
+    let end = end.ok_or_else(|| TEXT_REPLACE_TEXT_STALE_ERROR.to_string())?;
+    Ok(start..end)
+}
+
 pub(super) fn source_update_for_streamed_line(
     line: SourceTextLine,
     old_text: &str,
@@ -567,23 +561,24 @@ pub(super) fn source_update_for_streamed_line(
     encoding: &str,
     target: &BookTextReplaceTarget,
 ) -> Result<SourceTextUpdate, String> {
-    if line.text != target.text_node_text {
-        return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
+    let range = selected_source_range(super::text_import::text_characters(&line.text, false), old_text, target)?;
+    let mut replacement = String::new();
+    for character in new_text.chars() {
+        // Preserve literal ampersands through reimport and represent characters
+        // unavailable in the source encoding without changing that encoding.
+        if character == '&' || encode_text_bytes(character.encode_utf8(&mut [0; 4]), encoding, false).is_err() {
+            replacement.push_str(&format!("&#{};", character as u32));
+        } else {
+            replacement.push(character);
+        }
     }
-    let updated_line =
-        replace_text_by_utf16_offsets(&line.text, target.start_offset, target.end_offset, old_text, new_text)?;
-    let bytes = encode_text_bytes(&updated_line, encoding, false)?;
-    if bytes.len() as u64 == line.old_len {
-        Ok(SourceTextUpdate::Patch {
-            offset: line.offset,
-            bytes,
-        })
+    let offset = line.offset + encode_text_bytes(&line.text[..range.start], encoding, false)?.len() as u64;
+    let old_len = encode_text_bytes(&line.text[range], encoding, false)?.len() as u64;
+    let bytes = encode_text_bytes(&replacement, encoding, false)?;
+    if bytes.len() as u64 == old_len {
+        Ok(SourceTextUpdate::Patch { offset, bytes })
     } else {
-        Ok(SourceTextUpdate::Splice {
-            offset: line.offset,
-            old_len: line.old_len,
-            bytes,
-        })
+        Ok(SourceTextUpdate::Splice { offset, old_len, bytes })
     }
 }
 
@@ -628,7 +623,10 @@ pub(super) fn generated_txt_source_update_streaming(
         if let Some(mut line) = decode_source_line(&bytes, &encoding, first_line)? {
             line.offset = line.offset.saturating_add(line_offset);
             if !inside_target_section {
-                if target_heading_candidates.contains(&line.text) {
+                let heading: String = super::text_import::text_characters(&line.text, false)
+                    .map(|(_, character)| character)
+                    .collect();
+                if target_heading_candidates.contains(&heading) {
                     if matching_heading_occurrences_before > 0 {
                         matching_heading_occurrences_before -= 1;
                     } else {

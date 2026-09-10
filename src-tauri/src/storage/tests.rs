@@ -613,7 +613,8 @@ fn text_preview_does_not_retain_full_document_for_later_import() {
     ));
     let source = root.join("novel.txt");
     fs::create_dir_all(&root).unwrap();
-    fs::write(&source, "第1章 开始\n第一段。\n第二段。\n").unwrap();
+    let original_bytes = "\u{feff}第1章 开始\r\n第一段👀。\r\n&#128064; &amp; 👩‍💻\r\n".as_bytes();
+    fs::write(&source, original_bytes).unwrap();
     let storage = test_storage_with_books(&root, Vec::new());
     let tasks = TaskService::default();
 
@@ -644,8 +645,8 @@ fn text_preview_does_not_retain_full_document_for_later_import() {
     assert_eq!(books.len(), 1);
     assert_eq!(storage.text_import_prepare_run_count(), 2);
     assert_eq!(
-        fs::read_to_string(storage.book_dir(&books[0].id).join(SOURCE_TEXT_FILE)).unwrap(),
-        "第1章 开始\n第一段。\n第二段。\n"
+        fs::read(storage.book_dir(&books[0].id).join(SOURCE_TEXT_FILE)).unwrap(),
+        original_bytes
     );
 
     let _ = fs::remove_dir_all(root);
@@ -2477,6 +2478,142 @@ fn marks_generated_text_body_on_container_only() {
     assert!(xhtml.contains("  <h2 class=\"flow-txt-chapter\">\n    第1章 开始\n  </h2>\n"));
     assert!(xhtml.contains("    <p>第一段。</p>\n    <p>第二段。</p>\n"));
     assert!(!xhtml.contains(r#"<p class="flow-txt-body""#));
+}
+
+#[test]
+fn preserves_numeric_character_references_in_generated_text_xhtml() {
+    let document = parse_text_import_document("第1章 开始\n看看&#128064;\n&#X1F440;", "测试书", None);
+    let xhtml = text_section_xhtml(&document.sections[0]);
+
+    assert!(xhtml.contains("<p>看看&#128064;</p>"));
+    assert!(!xhtml.contains("&amp;#128064;"));
+    let parsed = roxmltree::Document::parse_with_options(
+        &xhtml,
+        roxmltree::ParsingOptions {
+            allow_dtd: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        parsed
+            .descendants()
+            .filter(|node| node.has_tag_name("p"))
+            .nth(1)
+            .unwrap()
+            .text(),
+        Some("&#X1F440;")
+    );
+}
+
+#[test]
+fn txt_entity_edits_preserve_source_positions_and_rendered_text() {
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let root = std::env::temp_dir().join(format!("flow-entity-edit-{}-{nonce}", std::process::id()));
+    let text_dir = root.join("Text");
+    fs::create_dir_all(&text_dir).unwrap();
+    let source_path = root.join("source.txt");
+    for (encoding, raw) in [
+        ("utf-8", "A👀Z"),
+        ("utf-8", "A&#x1F440;Z"),
+        ("utf-8", "A&#128064;Z"),
+        ("gb18030", "A👀Z"),
+        ("gb18030", "A&#128064;Z"),
+        ("windows-1252", "A&#128064;Z"),
+    ] {
+        for (start, end, old, new) in [
+            (0, 1, "A", "B"),
+            (1, 3, "👀", "😀"),
+            (3, 4, "Z", "Q"),
+            (0, 4, "A👀Z", "&#128064;"),
+        ] {
+            let target = BookTextReplaceTarget {
+                section_href: "Text/part0001.xhtml".to_string(),
+                text_node_index: 0,
+                text_node_text: "A👀Z".to_string(),
+                start_offset: start,
+                end_offset: end,
+                paragraph_index: Some(0),
+            };
+            let original = parse_text_import_document(&format!("Chapter 1 &#x1F440;\n{raw}"), "Book", None);
+            fs::write(root.join("nav.xhtml"), text_nav_xhtml(&original)).unwrap();
+            fs::write(
+                text_dir.join("part0001.xhtml"),
+                text_section_xhtml(&original.sections[0]),
+            )
+            .unwrap();
+            let prefix = "Chapter 1 &#x1F440;\r\n  ";
+            let suffix = "  \r\nUntouched tail\r\n";
+            fs::write(
+                &source_path,
+                super::text_import::encode_text_bytes(&format!("{prefix}{raw}{suffix}"), encoding, true).unwrap(),
+            )
+            .unwrap();
+            let update = super::editing::generated_txt_source_update_streaming(
+                &source_path,
+                &json!({"sourceEncodingId": encoding}),
+                &text_dir,
+                &target,
+                old,
+                new,
+                None,
+            )
+            .unwrap();
+            super::editing::write_source_text_update(&source_path, &update).unwrap();
+            let bytes = fs::read(&source_path).unwrap();
+            let updated_source = decode_text_bytes(&bytes, Some(encoding)).text;
+            let updated_source = updated_source.trim_start_matches('\u{feff}');
+            let updated_raw = updated_source
+                .strip_prefix(prefix)
+                .unwrap()
+                .strip_suffix(suffix)
+                .unwrap();
+            let document = parse_text_import_document(updated_raw, "Chapter", None);
+            let regenerated = text_section_xhtml(&document.sections[0]);
+            let original = parse_text_import_document(raw, "Chapter", None);
+            let edited = super::editing::replace_generated_txt_paragraph_xhtml(
+                &text_section_xhtml(&original.sections[0]),
+                &target,
+                old,
+                new,
+                0,
+            )
+            .unwrap()
+            .unwrap();
+            let epub_edited =
+                replace_xhtml_text_node(&format!("<html><body><p>{raw}</p></body></html>"), &target, old, new).unwrap();
+            for xhtml in [&regenerated, &edited, &epub_edited] {
+                let parsed = roxmltree::Document::parse_with_options(
+                    xhtml,
+                    roxmltree::ParsingOptions {
+                        allow_dtd: true,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                assert_eq!(
+                    parsed
+                        .descendants()
+                        .find(|node| node.has_tag_name("p"))
+                        .unwrap()
+                        .text()
+                        .unwrap(),
+                    "A👀Z".replacen(old, new, 1)
+                );
+            }
+            if old == "👀" {
+                assert!(edited.contains("&#128512;"));
+                assert!(epub_edited.contains("&#128512;"));
+            }
+            if old == "A" || old == "Z" {
+                assert_eq!(updated_raw, raw.replacen(old, new, 1));
+                for xhtml in [&edited, &epub_edited] {
+                    assert!(xhtml.contains(&format!("<p>{}</p>", raw.replacen(old, new, 1))));
+                }
+            }
+        }
+    }
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
