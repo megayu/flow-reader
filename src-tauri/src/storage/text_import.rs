@@ -539,19 +539,20 @@ struct TextImportRule {
 }
 
 fn default_text_import_filename_patterns() -> Vec<String> {
-    vec!["《$title》.+作者：$author".to_string(), "《$title》".to_string()]
+    vec!["《$title》.*作者：$author".to_string(), "《$title》.*".to_string()]
 }
 
 pub(super) fn default_text_import_rules_input() -> TextImportRulesInput {
     TextImportRulesInput {
         group_patterns: vec![
-            r"^\s*第[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]+[卷部集篇].*".to_string(),
-            r"^\s*(Book|Part|Volume)\s+[0-9IVXLCDM]+.*".to_string(),
+            r"^\s*第[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]+[卷部集篇](?:\s+.+)?$".to_string(),
+            r"(?i)^\s*(Book|Part|Volume)\s+(?:[0-9]+|[IVXLCDM]+)(?:\s+.+)?$".to_string(),
         ],
         chapter_patterns: vec![
-            r"^\s*第[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]+[章回节].*".to_string(),
-            r"^\s*(简介|序言|序|前言|自序|楔子|后记|尾声|番外|附录).*".to_string(),
-            r"^\s*Chapter\s+[0-9IVXLCDM]+.*".to_string(),
+            r"^\s*第[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]+[章回节](?:\s+.+)?$".to_string(),
+            r"^\s*(简介|序言|序|序章|前言|自序|楔子|后记|尾声|附录)(?:\s+.+)?$".to_string(),
+            r"^\s*番外[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]*(?:\s+.+)?$".to_string(),
+            r"(?i)^\s*Chapter\s+(?:[0-9]+|[IVXLCDM]+)(?:\s+.+)?$".to_string(),
         ],
         filename_patterns: default_text_import_filename_patterns(),
     }

@@ -2429,6 +2429,51 @@ fn parses_text_import_chapter_hierarchy() {
 }
 
 #[test]
+fn requires_whitespace_before_named_default_headings() {
+    for text in [
+        "第一卷\n第一章\n正文。",
+        "第一卷 卷名\n第一章 章名\n正文。",
+        "Book 1\nChapter I\n正文。",
+        "PART IV 卷名\nchapter 2 章名\n正文。",
+        "volume ii\nCHAPTER iii\n正文。",
+    ] {
+        let document = parse_text_import_document(text, "测试书", None);
+
+        assert_eq!(document.sections.len(), 2);
+        assert!(document.sections[0].is_group);
+        assert!(!document.sections[1].is_group);
+    }
+
+    let document = parse_text_import_document("第一卷卷名\n第一章章名\n正文。", "测试书", None);
+
+    assert_eq!(document.sections.len(), 1);
+    assert_eq!(document.sections[0].title, "测试书");
+    assert_eq!(
+        document.sections[0].paragraphs,
+        vec!["第一卷卷名", "第一章章名", "正文。"]
+    );
+
+    for heading in ["序", "序章", "前言 标题", "番外", "番外一", "番外一 标题", "番外 1"] {
+        let document = parse_text_import_document(&format!("{heading}\n正文。"), "测试书", None);
+        assert_eq!(document.sections[0].title, heading);
+        assert_eq!(document.sections[0].paragraphs, vec!["正文。"]);
+    }
+
+    for line in [
+        "Book 1title",
+        "Volume IVexample",
+        "Chapter 1title",
+        "Chapter 1IV",
+        "序言写得不错",
+        "番外一写得不错",
+    ] {
+        let document = parse_text_import_document(&format!("{line}\n正文。"), "测试书", None);
+        assert_eq!(document.sections[0].title, "测试书", "{line}");
+        assert_eq!(document.sections[0].paragraphs, vec![line, "正文。"]);
+    }
+}
+
+#[test]
 fn keeps_volume_intro_in_group_section() {
     let text = "第一卷 分组甲\n　　引言甲。\n引言乙。\n第一章 章节甲\n正文甲。\n第二卷 分组乙\n引言丙。";
     let document = parse_text_import_document(text, "测试书", None);
