@@ -95,15 +95,21 @@ function patchTextNode(textNode: Text | undefined, target: BookTextReplaceTarget
     return false
   }
 
+  const parent = textNode.parentElement
+  const heading = parent?.closest('h1.flow-txt-volume, h2.flow-txt-chapter')
+  const previousHeading = heading?.textContent?.trim()
   const updatedText = text.slice(0, target.startOffset) + newText + text.slice(target.endOffset)
   textNode.textContent = updatedText
 
-  const parent = textNode.parentElement
   const title = parent?.ownerDocument.querySelector('title')
-  if (parent?.closest('h1.flow-txt-volume, h2.flow-txt-chapter') && title?.textContent === text) {
-    title.textContent = updatedText
+  if (heading && title && title.textContent === previousHeading) {
+    title.textContent = heading.textContent?.trim() ?? updatedText
   }
   return true
+}
+
+function generatedTxtHeadingText(document: Document | undefined) {
+  return document?.querySelector<HTMLElement>('h1.flow-txt-volume, h2.flow-txt-chapter')?.textContent?.trim()
 }
 
 function matchingTextNodeInElement(element: Element | undefined, targetText: string) {
@@ -751,6 +757,10 @@ export class BookTab {
         return !!document && documents.indexOf(document) === index
       },
     )
+    const previousHeading =
+      book.sourceFormat === 'txt' && target.paragraphIndex === undefined
+        ? frameDocuments.map(generatedTxtHeadingText).find((heading) => heading !== undefined)
+        : undefined
     const patchedFrame = frameDocuments.some((document) =>
       patchDocumentTextNode(document, target, oldText, newText, selectionTextNode),
     )
@@ -762,10 +772,9 @@ export class BookTab {
     }
 
     if (book.sourceFormat === 'txt' && target.paragraphIndex === undefined) {
-      const updatedHeading =
-        target.textNodeText.slice(0, target.startOffset) + newText + target.textNodeText.slice(target.endOffset)
+      const updatedHeading = frameDocuments.map(generatedTxtHeadingText).find((heading) => heading !== undefined)
       const navItem = (view.section as ISection).navitem ?? this.mapSectionToNavItem(target.sectionHref)
-      if (navItem?.label === target.textNodeText) navItem.label = updatedHeading
+      if (previousHeading && updatedHeading && navItem?.label === previousHeading) navItem.label = updatedHeading
       this.tocVersion++
     }
 

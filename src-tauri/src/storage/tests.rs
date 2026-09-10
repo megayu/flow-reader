@@ -6,7 +6,7 @@ use super::commands::{
 };
 use super::epub_import::read_bounded_bytes;
 use super::settings::{flush_settings_impl, update_settings_impl};
-use super::text_import::text_import_filename_metadata;
+use super::text_import::{text_import_filename_metadata, text_section_xhtml_for_volume};
 use super::{
     AppStorage, BOOK_FILE, BOOK_STATE_VERSION, BOOKS_DIR, BookContentMode, BookExportFormat, BookModeSwitchConflict,
     BookModeSwitchResolution, BookReaderSourceMode, BookRecord, BookScope, BookSourceFormat, BookSourceStatus,
@@ -2520,7 +2520,6 @@ fn marks_generated_text_body_on_container_only() {
     let xhtml = text_section_xhtml(&document.sections[0]);
 
     assert!(xhtml.contains(r#"<div class="flow-txt-body" data-flow-body-text="true">"#));
-    assert!(xhtml.contains("  <h2 class=\"flow-txt-chapter\">\n    第1章 开始\n  </h2>\n"));
     assert!(xhtml.contains("    <p>第一段。</p>\n    <p>第二段。</p>\n"));
     assert!(!xhtml.contains(r#"<p class="flow-txt-body""#));
 }
@@ -2668,17 +2667,22 @@ fn creates_standalone_centered_group_section_before_its_first_chapter() {
 
     assert_eq!(document.sections.len(), 2);
 
-    let group = text_section_xhtml(&document.sections[0]);
-    let chapter = text_section_xhtml(&document.sections[1]);
+    let group = text_section_xhtml_for_volume(&document.sections[0], Some(1));
+    let chapter = text_section_xhtml_for_volume(&document.sections[1], Some(1));
     let css = super::text_import::text_import_css();
     let nav = text_nav_xhtml(&document);
     let opf = text_content_opf(&document, "UTF-8");
 
     assert!(document.sections[0].paragraphs.is_empty());
     assert_eq!(document.sections[1].paragraphs, vec!["示例正文。".to_string()]);
-    assert!(group.contains(r#"<body class="flow-txt-volume-page">"#));
-    assert!(group.contains("  <h1 class=\"flow-txt-volume\">\n    第一卷 分组甲\n  </h1>\n"));
-    assert!(chapter.contains("  <h2 class=\"flow-txt-chapter\">\n    第一章 章节甲\n  </h2>\n"));
+    assert!(group.contains(r#"<body class="flow-txt-volume-page v1">"#));
+    assert!(chapter.contains(r#"<body class="flow-txt-chapter-page v1">"#));
+    assert!(group.contains(
+        "  <h1 class=\"flow-txt-volume\"><span class=\"flow-txt-volume-label\">第一卷</span> <span class=\"flow-txt-volume-title\">分组甲</span></h1>\n"
+    ));
+    assert!(chapter.contains(
+        "  <h2 class=\"flow-txt-chapter\"><span class=\"flow-txt-chapter-label\">第一章</span> <span class=\"flow-txt-chapter-title\">章节甲</span></h2>\n"
+    ));
     assert!(!chapter.contains("第一卷 分组甲 第一章 章节甲"));
     assert!(css.contains("position: relative;"));
     assert!(css.contains("top: 25vh;"));
@@ -2687,6 +2691,8 @@ fn creates_standalone_centered_group_section_before_its_first_chapter() {
     assert!(!css.contains("width: 100%;"));
     assert!(css.contains(".flow-txt-volume {\n  font-size: 1.45em;"));
     assert!(css.contains(".flow-txt-chapter {\n  font-size: 1.25em;"));
+    assert!(css.contains(".flow-txt-volume-label,"));
+    assert!(css.contains(".flow-txt-chapter-title {\n  display: block;"));
     assert!(nav.contains(
             r#"<li id="txt-group-0001"><a href="Text/part0001.xhtml">第一卷 分组甲</a><ol><li><a href="Text/part0002.xhtml">第一章 章节甲</a></li>"#
         ));

@@ -1,5 +1,53 @@
 use super::*;
 
+#[cfg(test)]
+mod heading_tests {
+    use super::*;
+    #[test]
+    fn txt_heading_edits_preserve_old_whitespace_and_split_markup() {
+        for heading in [
+            "\n    第一章  名称\n  ",
+            "<span class=\"flow-txt-chapter-label\">第一章</span>  <span class=\"flow-txt-chapter-title\">名称</span>",
+        ] {
+            let xhtml = format!(
+                "<html><head><title>第一章  名称</title></head><body><h2 class=\"flow-txt-chapter\">{heading}</h2></body></html>"
+            );
+            let text = if heading.contains("<span") { "名称" } else { heading };
+            let start_offset = text[..text.find("名称").unwrap()].encode_utf16().count();
+            let target = BookTextReplaceTarget {
+                section_href: "Text/part0001.xhtml".into(),
+                text_node_index: 99,
+                text_node_text: text.into(),
+                start_offset,
+                end_offset: start_offset + 2,
+                paragraph_index: None,
+            };
+            let updated = replace_xhtml_text(&xhtml, BookSourceFormat::Txt, &target, "名称", "新名").unwrap();
+            // Both serializations must preserve their markup and synchronize the full title.
+            assert_eq!(updated.xhtml, xhtml.replace("名称", "新名"));
+            let root = std::env::temp_dir().join(format!("flow-heading-edit-{}-{}", std::process::id(), now_ms()));
+            let text_dir = root.join("Text");
+            fs::create_dir_all(&text_dir).unwrap();
+            fs::write(text_dir.join("part0001.xhtml"), &xhtml).unwrap();
+            let source = root.join("source.txt");
+            fs::write(&source, "  第一章  名称\r\n正文。\r\n").unwrap();
+            let update = generated_txt_source_update_streaming(
+                &source,
+                &json!({"sourceEncodingId": "utf-8"}),
+                &text_dir,
+                &target,
+                "名称",
+                "新名",
+                updated.heading_update.as_ref(),
+            )
+            .unwrap();
+            write_source_text_update(&source, &update).unwrap();
+            assert_eq!(fs::read_to_string(&source).unwrap(), "  第一章  新名\r\n正文。\r\n");
+            fs::remove_dir_all(&root).unwrap();
+        }
+    }
+}
+
 pub(super) fn escape_xml_text(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for character in value.chars() {
@@ -30,45 +78,6 @@ pub(super) fn body_content_range(xhtml: &str) -> Option<(usize, usize)> {
         .unwrap_or(xhtml.len());
 
     Some((body_content_start, body_content_end))
-}
-
-pub(super) fn utf16_offset_to_byte_index(text: &str, offset: usize) -> Option<usize> {
-    let mut utf16_offset = 0usize;
-    for (byte_index, character) in text.char_indices() {
-        if utf16_offset == offset {
-            return Some(byte_index);
-        }
-        utf16_offset += character.len_utf16();
-        if utf16_offset > offset {
-            return None;
-        }
-    }
-
-    if utf16_offset == offset { Some(text.len()) } else { None }
-}
-
-pub(super) fn replace_text_by_utf16_offsets(
-    text: &str,
-    start_offset: usize,
-    end_offset: usize,
-    old_text: &str,
-    new_text: &str,
-) -> Result<String, String> {
-    if start_offset > end_offset {
-        return Err(TEXT_REPLACE_TEXT_STALE_ERROR.to_string());
-    }
-    let start =
-        utf16_offset_to_byte_index(text, start_offset).ok_or_else(|| TEXT_REPLACE_TEXT_STALE_ERROR.to_string())?;
-    let end = utf16_offset_to_byte_index(text, end_offset).ok_or_else(|| TEXT_REPLACE_TEXT_STALE_ERROR.to_string())?;
-    if &text[start..end] != old_text {
-        return Err(TEXT_REPLACE_TEXT_STALE_ERROR.to_string());
-    }
-
-    let mut updated = String::with_capacity(text.len() + new_text.len());
-    updated.push_str(&text[..start]);
-    updated.push_str(new_text);
-    updated.push_str(&text[end..]);
-    Ok(updated)
 }
 
 pub(super) fn replace_xhtml_text_node(
@@ -255,23 +264,51 @@ pub(super) fn replace_generated_txt_heading_xhtml(
     let Some(tag_name) = generated_txt_heading_tag(xhtml) else {
         return Ok(None);
     };
-
-    let Some(heading) = extract_first_tag_text(xhtml, tag_name) else {
+    let document = roxmltree::Document::parse_with_options(
+        xhtml,
+        roxmltree::ParsingOptions {
+            allow_dtd: true,
+            ..Default::default()
+        },
+    )
+    .map_err(|_| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
+    let Some(element) = document.descendants().find(|node| node.has_tag_name(tag_name)) else {
         return Ok(None);
     };
-    if heading != target.text_node_text {
+    let mut matches = element
+        .descendants()
+        .filter(|node| node.is_text() && node.text().unwrap_or_default().trim() == target.text_node_text.trim());
+    let Some(node) = matches.next() else {
         return Ok(None);
-    }
-
-    let updated_heading =
-        replace_text_by_utf16_offsets(&heading, target.start_offset, target.end_offset, old_text, new_text)?;
-    let Some(mut updated_xhtml) = replace_first_tag_text(xhtml, tag_name, &heading, &updated_heading)? else {
+    };
+    if matches.next().is_some() {
         return Err(TEXT_REPLACE_NODE_STALE_ERROR.to_string());
-    };
+    }
+    let heading: String = element
+        .descendants()
+        .filter(|node| node.is_text())
+        .filter_map(|node| node.text())
+        .collect();
+    let range = node.range();
+    let mut updated_xhtml = replace_xhtml_text_range(xhtml, range.start, range.end, target, old_text, new_text)?;
+    let updated_node_end = updated_xhtml.len() - (xhtml.len() - range.end);
+    let updated_node = unescape_xml_text(&updated_xhtml[range.start..updated_node_end]);
+    let updated_heading: String = element
+        .descendants()
+        .filter(|candidate| candidate.is_text())
+        .map(|candidate| {
+            if candidate == node {
+                updated_node.as_str()
+            } else {
+                candidate.text().unwrap_or_default()
+            }
+        })
+        .collect();
+    let heading = heading.trim().to_string();
+    let updated_heading = updated_heading.trim().to_string();
     if let Some(with_title) = replace_first_tag_text(&updated_xhtml, "title", &heading, &updated_heading)? {
         updated_xhtml = with_title;
     }
-
     Ok(Some(XhtmlTextReplacement {
         xhtml: updated_xhtml,
         heading_update: Some((heading, updated_heading)),
@@ -474,9 +511,12 @@ pub(super) fn generated_txt_section_source_heading_candidates(
     let mut candidates = Vec::new();
     let path = text_dir.join(format!("part{:04}.xhtml", section_index + 1));
     let xhtml = fs::read_to_string(path).map_err(|_| TEXT_REPLACE_NODE_STALE_ERROR.to_string())?;
+    push_unique_text(&mut candidates, extract_first_tag_text(&xhtml, "title"));
     push_unique_text(
         &mut candidates,
-        generated_txt_heading_tag(&xhtml).and_then(|tag_name| extract_first_tag_text(&xhtml, tag_name)),
+        generated_txt_heading_tag(&xhtml)
+            .and_then(|tag_name| extract_first_tag_text(&xhtml, tag_name))
+            .map(|text| text.trim().to_string()),
     );
 
     let nav_path = text_dir
@@ -631,8 +671,18 @@ pub(super) fn generated_txt_source_update_streaming(
                         matching_heading_occurrences_before -= 1;
                     } else {
                         inside_target_section = true;
-                        if heading_update.is_some() {
-                            return source_update_for_streamed_line(line, old_text, new_text, &encoding, target);
+                        if let Some((old_heading, new_heading)) = heading_update {
+                            let mut heading_target = target.clone();
+                            heading_target.text_node_text = old_heading.clone();
+                            heading_target.start_offset = 0;
+                            heading_target.end_offset = old_heading.encode_utf16().count();
+                            return source_update_for_streamed_line(
+                                line,
+                                old_heading,
+                                new_heading,
+                                &encoding,
+                                &heading_target,
+                            );
                         }
                     }
                 }

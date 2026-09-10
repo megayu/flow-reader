@@ -1,7 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, LazyLock},
     time::UNIX_EPOCH,
 };
 
@@ -1247,10 +1247,14 @@ fn materialize_text_publication(
         write_text_cover_to_unpacked(storage, id, cover)?;
     }
 
+    let mut volume_number = None;
     for (index, section) in document.sections.iter().enumerate() {
+        if section.is_group {
+            volume_number = Some(volume_number.unwrap_or(0) + 1);
+        }
         fs::write(
             text_dir.join(format!("part{:04}.xhtml", index + 1)),
-            text_section_xhtml(section),
+            text_section_xhtml_for_volume(section, volume_number),
         )
         .map_err(|error| error.to_string())?;
     }
@@ -1315,13 +1319,43 @@ pub(super) fn text_import_css() -> &'static str {
   font-size: 1.45em;
   margin: 0;
   position: relative;
-  /* WebKit ignores percentage relative offsets inside paginated columns. */
   top: 25vh;
 }
 
 .flow-txt-chapter {
   font-size: 1.25em;
   margin: 2em 0 1.4em;
+}
+
+/* Examples: use one background image for every volume, or override one volume.
+.flow-txt-volume-page {
+  background: url("../Images/volume.jpg") center / cover no-repeat;
+}
+
+.flow-txt-volume-page.v1 {
+  background: url("../Images/volume-1.jpg") center / cover no-repeat;
+}
+*/
+
+/* Examples: use one title image for every chapter, or override one volume.
+.flow-txt-chapter::before {
+  content: "";
+  display: block;
+  height: 5em;
+  margin-bottom: 1em;
+  background: url("../Images/chapter.png") center / contain no-repeat;
+}
+
+.flow-txt-chapter-page.v1 .flow-txt-chapter::before {
+  background-image: url("../Images/chapter-1.png");
+}
+*/
+
+.flow-txt-volume-label,
+.flow-txt-volume-title,
+.flow-txt-chapter-label,
+.flow-txt-chapter-title {
+  display: block;
 }
 
 .flow-txt-body,
@@ -1348,19 +1382,69 @@ pub(super) fn text_import_css() -> &'static str {
 "#
 }
 
-pub(super) fn text_section_xhtml(section: &TextImportSection) -> String {
-    let heading = section.title.clone();
-    let mut body = if section.is_group {
+static TEXT_GROUP_TITLE_PARTS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)^(?P<label>第[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]+[卷部集篇]|(?:Book|Part|Volume)\s+(?:[0-9]+|[IVXLCDM]+))\s+(?P<title>.+)$",
+    )
+    .expect("valid TXT group title-parts regex")
+});
+
+static TEXT_CHAPTER_TITLE_PARTS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)^(?P<label>第[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]+[章回节]|简介|序言|序章|前言|自序|楔子|后记|尾声|附录|序|番外[0-9一二三四五六七八九十零〇百千万两壹贰叁肆伍陆柒捌玖拾佰仟]*|Chapter\s+(?:[0-9]+|[IVXLCDM]+))\s+(?P<title>.+)$",
+    )
+    .expect("valid TXT chapter title-parts regex")
+});
+
+fn text_heading_parts(title: &str, is_group: bool) -> Option<(&str, &str)> {
+    let captures = if is_group {
+        TEXT_GROUP_TITLE_PARTS.captures(title)
+    } else {
+        TEXT_CHAPTER_TITLE_PARTS.captures(title)
+    }?;
+    Some((captures.name("label")?.as_str(), captures.name("title")?.as_str()))
+}
+
+fn text_heading_xhtml(section: &TextImportSection) -> String {
+    let (tag, class, label_class, title_class) = if section.is_group {
+        (
+            "h1",
+            "flow-txt-volume",
+            "flow-txt-volume-label",
+            "flow-txt-volume-title",
+        )
+    } else {
+        (
+            "h2",
+            "flow-txt-chapter",
+            "flow-txt-chapter-label",
+            "flow-txt-chapter-title",
+        )
+    };
+
+    if let Some((label, title)) = text_heading_parts(&section.title, section.is_group) {
+        let separator = &section.title[label.len()..section.title.len() - title.len()];
         format!(
-            "  <h1 class=\"flow-txt-volume\">\n    {}\n  </h1>\n",
-            escape_xml(&heading)
+            "  <{tag} class=\"{class}\"><span class=\"{label_class}\">{}</span>{separator}<span class=\"{title_class}\">{}</span></{tag}>\n",
+            escape_xml(label),
+            escape_xml(title)
         )
     } else {
         format!(
-            "  <h2 class=\"flow-txt-chapter\">\n    {}\n  </h2>\n",
-            escape_xml(&heading)
+            "  <{tag} class=\"{class}\">\n    {}\n  </{tag}>\n",
+            escape_xml(&section.title)
         )
-    };
+    }
+}
+
+#[cfg(test)]
+pub(super) fn text_section_xhtml(section: &TextImportSection) -> String {
+    text_section_xhtml_for_volume(section, None)
+}
+
+pub(super) fn text_section_xhtml_for_volume(section: &TextImportSection, volume_number: Option<usize>) -> String {
+    let heading = section.title.clone();
+    let mut body = text_heading_xhtml(section);
 
     if !section.paragraphs.is_empty() {
         body.push_str("  <div class=\"flow-txt-body\" data-flow-body-text=\"true\">\n");
@@ -1378,15 +1462,16 @@ pub(super) fn text_section_xhtml(section: &TextImportSection) -> String {
   <title>{}</title>
   <link rel="stylesheet" type="text/css" href="../Styles/txt.css"/>
 </head>
-<body{}>
+<body class="{}{}">
 {}</body>
 </html>"#,
         escape_xml(&heading),
         if section.is_group {
-            r#" class="flow-txt-volume-page""#
+            "flow-txt-volume-page"
         } else {
-            ""
+            "flow-txt-chapter-page"
         },
+        volume_number.map(|number| format!(" v{number}")).unwrap_or_default(),
         body
     )
 }
