@@ -1297,34 +1297,15 @@ pub(super) fn materialize_library_text_publication(storage: &AppStorage, book: &
 }
 
 pub(super) fn text_import_css() -> &'static str {
-    r#"html, body {
+    r#"html,
+body {
   margin: 0;
   padding: 0;
-}
-
-.flow-txt-volume,
-.flow-txt-chapter {
-  text-align: center;
-  text-indent: 0;
-  font-weight: 700;
-  line-height: 1.5;
 }
 
 .flow-txt-volume-page {
   box-sizing: border-box;
   min-height: 100vh;
-}
-
-.flow-txt-volume {
-  font-size: 1.45em;
-  margin: 0;
-  position: relative;
-  top: 25vh;
-}
-
-.flow-txt-chapter {
-  font-size: 1.25em;
-  margin: 2em 0 1.4em;
 }
 
 /* Examples: use one background image for every volume, or override one volume.
@@ -1336,6 +1317,33 @@ pub(super) fn text_import_css() -> &'static str {
   background: url("../Images/volume-1.jpg") center / cover no-repeat;
 }
 */
+
+.flow-txt-volume,
+.flow-txt-chapter {
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+  text-indent: 0;
+}
+
+.flow-txt-volume-label,
+.flow-txt-volume-title,
+.flow-txt-chapter-label,
+.flow-txt-chapter-title {
+  display: block;
+}
+
+.flow-txt-volume {
+  position: relative;
+  top: 25vh;
+  margin: 0;
+  font-size: 1.45em;
+}
+
+.flow-txt-chapter {
+  margin: 1em 0 1.4em;
+  font-size: 1.25em;
+}
 
 /* Examples: use one title image for every chapter, or override one volume.
 .flow-txt-chapter::before {
@@ -1351,21 +1359,16 @@ pub(super) fn text_import_css() -> &'static str {
 }
 */
 
-.flow-txt-volume-label,
-.flow-txt-volume-title,
-.flow-txt-chapter-label,
-.flow-txt-chapter-title {
-  display: block;
-}
-
-.flow-txt-body,
-.flow-txt-body p {
+.flow-txt-body {
+  line-height: 1.5;
   text-align: justify;
   text-indent: 2em;
 }
 
 .flow-txt-body p {
   margin: 0 0 0.75em;
+  text-align: justify;
+  text-indent: 2em;
 }
 
 .flow-txt-volume-page .flow-txt-body {

@@ -2689,8 +2689,14 @@ fn creates_standalone_centered_group_section_before_its_first_chapter() {
     assert!(!css.contains("padding-block-start:"));
     assert!(!css.contains("display: flex;"));
     assert!(!css.contains("width: 100%;"));
-    assert!(css.contains(".flow-txt-volume {\n  font-size: 1.45em;"));
-    assert!(css.contains(".flow-txt-chapter {\n  font-size: 1.25em;"));
+    for (selector, font_size) in [
+        (".flow-txt-volume", "font-size: 1.45em;"),
+        (".flow-txt-chapter", "font-size: 1.25em;"),
+    ] {
+        let (_, rule) = css.split_once(&format!("\n\n{selector} {{")).unwrap();
+        let (declarations, _) = rule.split_once('}').unwrap();
+        assert!(declarations.lines().any(|line| line.trim() == font_size));
+    }
     assert!(css.contains(".flow-txt-volume-label,"));
     assert!(css.contains(".flow-txt-chapter-title {\n  display: block;"));
     assert!(nav.contains(
