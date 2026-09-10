@@ -74,6 +74,18 @@ function selectionSpansParagraphs(range: Range) {
   return Boolean(startParagraph && endParagraph && startParagraph !== endParagraph)
 }
 
+function serializeCopyText(contents: DocumentFragment) {
+  const sourceText = contents.textContent ?? ''
+  let paragraphBoundary = '\uE000'
+  while (sourceText.includes(paragraphBoundary)) paragraphBoundary += '\uE000'
+
+  contents.querySelectorAll('p').forEach((paragraph) => paragraph.append(paragraphBoundary))
+  return (contents.textContent ?? '')
+    .replace(new RegExp(`${paragraphBoundary}(?=[\\t ]*(?:\\r?\\n|$))`, 'g'), '')
+    .replaceAll(paragraphBoundary, '\n')
+    .trim()
+}
+
 interface TextReplaceTarget extends BookTextReplaceTarget {
   selectedText: string
   textNode: Text
@@ -261,6 +273,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ tab, onCha
   const text = contents.textContent?.trim()
   if (!text) return null
   const translationText = serializeTranslationFragment(contents) || text
+  const copyText = serializeCopyText(contents)
 
   return (
     // to reset inner state
@@ -274,6 +287,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ tab, onCha
       viewRect={el.getBoundingClientRect()}
       releasePoint={menuSelection ? releasePoint : undefined}
       text={text}
+      copyText={copyText}
       translationText={translationText}
       cfi={menuSelection ? undefined : annotationCfi}
       forward={forward}
@@ -313,6 +327,7 @@ interface TextSelectionMenuRendererProps {
   viewRect: DOMRect
   releasePoint?: { x: number; y: number }
   text: string
+  copyText: string
   translationText: string
   cfi?: string
   forward: boolean
@@ -333,6 +348,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   writingMode,
   onChapterFind,
   text,
+  copyText,
   translationText,
   cfi: annotationCfi,
   hide,
@@ -390,7 +406,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   }
   const copySelection = () => {
     hide()
-    copy(text)
+    copy(copyText)
   }
   const searchSelection = () => {
     hide()
@@ -725,7 +741,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
         onKeyDown={(e) => {
           e.stopPropagation()
           if (e.key.toLowerCase() === 'c' && (e.ctrlKey || e.metaKey) && !window.getSelection()?.toString()) {
-            copy(text)
+            copy(copyText)
           }
         }}
       >

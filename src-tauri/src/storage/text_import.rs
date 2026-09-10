@@ -1350,17 +1350,23 @@ pub(super) fn text_import_css() -> &'static str {
 pub(super) fn text_section_xhtml(section: &TextImportSection) -> String {
     let heading = section.title.clone();
     let mut body = if section.is_group {
-        format!(r#"<h1 class="flow-txt-volume">{}</h1>"#, escape_xml(&heading))
+        format!(
+            "  <h1 class=\"flow-txt-volume\">\n    {}\n  </h1>\n",
+            escape_xml(&heading)
+        )
     } else {
-        format!(r#"<h2 class="flow-txt-chapter">{}</h2>"#, escape_xml(&heading))
+        format!(
+            "  <h2 class=\"flow-txt-chapter\">\n    {}\n  </h2>\n",
+            escape_xml(&heading)
+        )
     };
 
     if !section.paragraphs.is_empty() {
-        body.push_str(r#"<div class="flow-txt-body" data-flow-body-text="true">"#);
+        body.push_str("  <div class=\"flow-txt-body\" data-flow-body-text=\"true\">\n");
         for paragraph in &section.paragraphs {
-            body.push_str(&format!(r#"<p>{}</p>"#, escape_xml(paragraph)));
+            body.push_str(&format!("    <p>{}</p>\n", escape_xml(paragraph)));
         }
-        body.push_str("</div>");
+        body.push_str("  </div>\n");
     }
 
     format!(
@@ -1372,8 +1378,7 @@ pub(super) fn text_section_xhtml(section: &TextImportSection) -> String {
   <link rel="stylesheet" type="text/css" href="../Styles/txt.css"/>
 </head>
 <body{}>
-{}
-</body>
+{}</body>
 </html>"#,
         escape_xml(&heading),
         if section.is_group {

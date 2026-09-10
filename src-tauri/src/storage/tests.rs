@@ -2474,7 +2474,8 @@ fn marks_generated_text_body_on_container_only() {
     let xhtml = text_section_xhtml(&document.sections[0]);
 
     assert!(xhtml.contains(r#"<div class="flow-txt-body" data-flow-body-text="true">"#));
-    assert!(xhtml.contains("<p>第一段。</p>"));
+    assert!(xhtml.contains("  <h2 class=\"flow-txt-chapter\">\n    第1章 开始\n  </h2>\n"));
+    assert!(xhtml.contains("    <p>第一段。</p>\n    <p>第二段。</p>\n"));
     assert!(!xhtml.contains(r#"<p class="flow-txt-body""#));
 }
 
@@ -2494,8 +2495,8 @@ fn creates_standalone_centered_group_section_before_its_first_chapter() {
     assert!(document.sections[0].paragraphs.is_empty());
     assert_eq!(document.sections[1].paragraphs, vec!["示例正文。".to_string()]);
     assert!(group.contains(r#"<body class="flow-txt-volume-page">"#));
-    assert!(group.contains(r#"<h1 class="flow-txt-volume">第一卷 分组甲</h1>"#));
-    assert!(chapter.contains(r#"<h2 class="flow-txt-chapter">第一章 章节甲</h2>"#));
+    assert!(group.contains("  <h1 class=\"flow-txt-volume\">\n    第一卷 分组甲\n  </h1>\n"));
+    assert!(chapter.contains("  <h2 class=\"flow-txt-chapter\">\n    第一章 章节甲\n  </h2>\n"));
     assert!(!chapter.contains("第一卷 分组甲 第一章 章节甲"));
     assert!(css.contains("position: relative;"));
     assert!(css.contains("top: 25vh;"));
