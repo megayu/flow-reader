@@ -1,17 +1,19 @@
+import type { AppLocale } from '../locales'
+
 export const TRANSLATION_LANGUAGES = [
-  { id: 'zh-Hans', label: '简体中文' },
-  { id: 'en', label: 'English' },
-  { id: 'de', label: 'Deutsch' },
-  { id: 'es', label: 'Español' },
-  { id: 'fr', label: 'Français' },
-  { id: 'it', label: 'Italiano' },
-  { id: 'ja', label: '日本語' },
-  { id: 'ko', label: '한국어' },
-  { id: 'nl', label: 'Nederlands' },
-  { id: 'pl', label: 'Polski' },
-  { id: 'pt-BR', label: 'Português (Brasil)' },
-  { id: 'ru', label: 'Русский' },
-  { id: 'zh-Hant', label: '繁體中文' },
+  { id: 'zh-Hans', label: '简体中文', appLocale: 'zh-CN' },
+  { id: 'en', label: 'English', appLocale: 'en-US' },
+  { id: 'de', label: 'Deutsch', appLocale: 'de-DE' },
+  { id: 'es', label: 'Español', appLocale: 'es-ES' },
+  { id: 'fr', label: 'Français', appLocale: 'fr-FR' },
+  { id: 'it', label: 'Italiano', appLocale: 'it-IT' },
+  { id: 'ja', label: '日本語', appLocale: 'ja-JP' },
+  { id: 'ko', label: '한국어', appLocale: 'ko-KR' },
+  { id: 'nl', label: 'Nederlands', appLocale: 'nl-NL' },
+  { id: 'pl', label: 'Polski', appLocale: 'pl-PL' },
+  { id: 'pt-BR', label: 'Português (Brasil)', appLocale: 'pt-BR' },
+  { id: 'ru', label: 'Русский', appLocale: 'ru-RU' },
+  { id: 'zh-Hant', label: '繁體中文', appLocale: 'zh-TW' },
 ] as const
 
 export type TranslationLanguage = (typeof TRANSLATION_LANGUAGES)[number]['id']
@@ -21,6 +23,10 @@ export type TranslationSourceLanguage = TranslationLanguage | 'auto'
 const LANGUAGE_IDS = new Set<string>(TRANSLATION_LANGUAGES.map((language) => language.id))
 
 const unique = <T>(values: T[]) => [...new Set(values)]
+
+export function translationLanguageForAppLocale(locale: AppLocale): TranslationLanguage {
+  return TRANSLATION_LANGUAGES.find(({ appLocale }) => appLocale === locale)!.id
+}
 
 export function orderedSourceLanguages(
   mainLanguage: TranslationLanguage,

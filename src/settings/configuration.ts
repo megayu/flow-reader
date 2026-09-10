@@ -3,7 +3,11 @@ import type { PageAppearance, TypographyConfiguration } from '../reader/configur
 import type { ImportSourceStorage } from '../storage/types'
 import type { ThemeConfiguration } from '../styles/theme'
 import { defaultUiFontSize } from '../styles/ui'
-import type { TranslationLanguage, TranslationProvider } from '../translation/languages'
+import {
+  type TranslationLanguage,
+  type TranslationProvider,
+  translationLanguageForAppLocale,
+} from '../translation/languages'
 
 export type ViewMode = 'reader' | 'library'
 export type LibraryCoverFit = 'contain' | 'cover'
@@ -128,11 +132,17 @@ export const defaultDictionarySettings: DictionarySettingsConfiguration = {
   sourceOrder: ['zdic', 'merriam-webster'],
 }
 
-export const defaultTranslationSettings: TranslationSettingsConfiguration = {
-  mainLanguage: 'zh-Hans',
-  secondaryLanguage: 'en',
-  defaultProvider: 'google',
+export function createDefaultTranslationSettings(locale: AppLocale = 'en-US'): TranslationSettingsConfiguration {
+  const mainLanguage = translationLanguageForAppLocale(locale)
+
+  return {
+    mainLanguage,
+    secondaryLanguage: mainLanguage === 'en' ? 'zh-Hans' : 'en',
+    defaultProvider: 'google',
+  }
 }
+
+export const defaultTranslationSettings = createDefaultTranslationSettings()
 
 export const defaultSettings: Settings = {
   dictionary: defaultDictionarySettings,

@@ -7,12 +7,12 @@ import { normalizeThemeConfiguration } from '@/styles/theme'
 import { normalizeUiFontSize } from '@/styles/ui'
 
 import {
+  createDefaultTranslationSettings,
   type DictionarySettingsConfiguration,
   defaultDictionarySettings,
   defaultLibraryBookCardWidth,
   defaultLibrarySort,
   defaultSettings,
-  defaultTranslationSettings,
   type LibraryDisplayConfiguration,
   type LibrarySortConfiguration,
   type LibrarySortField,
@@ -390,7 +390,7 @@ function normalizeSettings(value: Partial<Settings>): Settings {
     textImportRules: settings.textImportRules,
     directTextImport: settings.directTextImport === true,
     dictionary: normalizeDictionarySettings(settings.dictionary),
-    translation: normalizeTranslationSettings(settings.translation),
+    translation: normalizeTranslationSettings(value.translation, settings.locale),
     importSourceStorage: settings.importSourceStorage === 'referenced' ? 'referenced' : 'managed',
     defaultEpubMode: settings.defaultEpubMode === 'unpacked' ? 'unpacked' : 'archive',
     copyTextImports: settings.copyTextImports === true,
@@ -404,14 +404,16 @@ function normalizeSettings(value: Partial<Settings>): Settings {
 
 function normalizeTranslationSettings(
   value: Partial<TranslationSettingsConfiguration> | undefined,
+  locale: Settings['locale'],
 ): TranslationSettingsConfiguration {
+  const defaults = createDefaultTranslationSettings(locale)
   const supported = new Set<string>(TRANSLATION_LANGUAGES.map(({ id }) => id))
-  const mainLanguage = supported.has(value?.mainLanguage ?? '')
-    ? value!.mainLanguage!
-    : defaultTranslationSettings.mainLanguage
+  const mainLanguage = supported.has(value?.mainLanguage ?? '') ? value!.mainLanguage! : defaults.mainLanguage
   let secondaryLanguage = supported.has(value?.secondaryLanguage ?? '')
     ? value!.secondaryLanguage!
-    : defaultTranslationSettings.secondaryLanguage
+    : mainLanguage === 'en'
+      ? 'zh-Hans'
+      : 'en'
   if (secondaryLanguage === mainLanguage) {
     secondaryLanguage = mainLanguage === 'en' ? 'zh-Hans' : 'en'
   }
