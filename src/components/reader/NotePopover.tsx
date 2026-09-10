@@ -132,7 +132,7 @@ export const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) =>
               ? '1px solid var(--flow-border)'
               : undefined,
           borderBottom:
-            placement.side === 'left' || (!placement.side && placement.placeAbove)
+            placement.side === 'right' || (!placement.side && placement.placeAbove)
               ? '1px solid var(--flow-border)'
               : undefined,
           borderLeft:
@@ -140,7 +140,7 @@ export const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) =>
               ? '1px solid var(--flow-border)'
               : undefined,
           borderTop:
-            placement.side === 'right' || (!placement.side && !placement.placeAbove)
+            placement.side === 'left' || (!placement.side && !placement.placeAbove)
               ? '1px solid var(--flow-border)'
               : undefined,
           transform: 'rotate(45deg)',
