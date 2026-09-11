@@ -131,13 +131,19 @@ const SOURCE_TEXT_FILE: &str = "source.txt";
 const UNPACKED_DIR: &str = "unpacked";
 
 fn encode_compressed_json<T: Serialize>(value: &T) -> Result<Vec<u8>, String> {
-    let json = serde_json::to_vec(value).map_err(|error| error.to_string())?;
-    zstd::stream::encode_all(json.as_slice(), 8).map_err(|error| error.to_string())
+    let encoder = zstd::stream::Encoder::new(Vec::new(), 8).map_err(|error| error.to_string())?;
+    let mut writer = BufWriter::new(encoder);
+    serde_json::to_writer(&mut writer, value).map_err(|error| error.to_string())?;
+    writer
+        .into_inner()
+        .map_err(|error| error.to_string())?
+        .finish()
+        .map_err(|error| error.to_string())
 }
 
 fn decode_compressed_json<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, String> {
-    let json = zstd::stream::decode_all(bytes).map_err(|error| error.to_string())?;
-    serde_json::from_slice(&json).map_err(|error| error.to_string())
+    let decoder = zstd::stream::Decoder::new(bytes).map_err(|error| error.to_string())?;
+    serde_json::from_reader(BufReader::new(decoder)).map_err(|error| error.to_string())
 }
 
 fn is_derived_cache_file_name(name: &str) -> bool {
