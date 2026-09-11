@@ -629,7 +629,7 @@ pub(super) fn parse_text_import_document(
         });
     };
 
-    for raw_line in text.replace("\r\n", "\n").replace('\r', "\n").lines() {
+    for raw_line in text.split(['\r', '\n']) {
         let line = raw_line.trim();
         if line.is_empty() {
             continue;
@@ -662,14 +662,16 @@ pub(super) fn parse_text_import_document(
     flush_section(&mut sections, &current_parent, &current_title, &mut paragraphs);
 
     if !found_heading || sections.is_empty() {
-        let paragraphs = text
-            .replace("\r\n", "\n")
-            .replace('\r', "\n")
-            .split('\n')
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .map(str::to_string)
-            .collect::<Vec<_>>();
+        let paragraphs = if !found_heading {
+            sections.pop().map(|section| section.paragraphs).unwrap_or_default()
+        } else {
+            // Heading-only input has no body section; retain its source lines.
+            text.split(['\r', '\n'])
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_string)
+                .collect()
+        };
         let mut generated_sections =
             split_paragraphs_into_sections(title, None, paragraphs, TARGET_SECTION_CHARS, MAX_SECTION_CHARS);
         if generated_sections.is_empty() {
