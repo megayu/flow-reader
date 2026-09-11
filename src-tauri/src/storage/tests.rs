@@ -2924,12 +2924,10 @@ fn searches_in_cached_section_text_with_occurrences() {
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, "Text/two.xhtml");
     assert_eq!(results[0].excerpt, "Chapter Two");
-    assert_eq!(results[0].subitems.len(), 2);
+    assert_eq!(results[0].offsets.len(), 2);
     assert_eq!(results[0].section_index, 1);
-    assert_eq!(results[0].subitems[0].occurrence, 0);
-    assert!(results[0].subitems[0].id.ends_with(":0:4"));
-    assert!(results[0].subitems[0].excerpt.contains("target phrase appears"));
-    assert_eq!(results[0].subitems[1].occurrence, 1);
+    assert_eq!(results[0].offsets, vec![4, 42]);
+    assert!(super::search::search_text_excerpt(&cache.sections[1].text, 4, 13).contains("target phrase appears"));
 }
 
 #[test]
@@ -2949,12 +2947,11 @@ fn search_results_serialize_section_context_once_per_group() {
 
     let value = serde_json::to_value(search_text_in_cache(&cache, "target", None)).unwrap();
     let group = &value[0];
-    let hit = &group["subitems"][0];
+    let hit = &group["offsets"][0];
 
     assert_eq!(group["sectionIndex"], 7);
-    assert!(hit.get("sectionIndex").is_none());
-    assert!(hit.get("href").is_none());
-    assert!(hit.get("offset").is_none());
+    assert_eq!(hit, 0);
+    assert!(group.get("subitems").is_none());
 }
 
 #[test]
@@ -2974,8 +2971,8 @@ fn search_offsets_reference_original_text_when_lowercase_expands() {
 
     let results = search_text_in_cache(&cache, "TARGET", None);
 
-    assert!(results[0].subitems[0].id.ends_with(":0:3"));
-    assert!(results[0].subitems[0].excerpt.contains("target phrase"));
+    assert_eq!(results[0].offsets, vec![4]);
+    assert!(super::search::search_text_excerpt(&cache.sections[0].text, 4, 6).contains("target phrase"));
 }
 
 #[test]
@@ -2997,7 +2994,7 @@ fn searches_cached_text_without_default_result_limit() {
     };
 
     let results = search_text_in_cache(&cache, "target phrase", None);
-    let result_count = results.iter().map(|result| result.subitems.len()).sum::<usize>();
+    let result_count = results.iter().map(|result| result.offsets.len()).sum::<usize>();
 
     assert_eq!(result_count, 1001);
 }
@@ -3023,7 +3020,7 @@ fn search_excerpt_stays_within_matching_paragraph() {
     };
 
     let results = search_text_in_cache(&cache, "target phrase", Some(20));
-    let excerpt = &results[0].subitems[0].excerpt;
+    let excerpt = super::search::search_text_excerpt(&cache.sections[0].text, results[0].offsets[0], 13);
 
     assert!(excerpt.contains("Second paragraph has the target phrase"));
     assert!(!excerpt.contains("First paragraph"));
@@ -3051,7 +3048,7 @@ fn search_excerpt_trims_long_matching_paragraph_only() {
     };
 
     let results = search_text_in_cache(&cache, "target phrase", Some(20));
-    let excerpt = &results[0].subitems[0].excerpt;
+    let excerpt = super::search::search_text_excerpt(&cache.sections[0].text, results[0].offsets[0], 13);
 
     assert!(excerpt.starts_with('…'));
     assert!(excerpt.ends_with('…'));

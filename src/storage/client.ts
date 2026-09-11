@@ -740,8 +740,7 @@ export async function searchBookText(id: string, keyword: string, limit?: number
   try {
     return await invoke<BookSearchResult[]>('search_book_text', {
       id,
-      keyword,
-      limit,
+      query: { keyword, limit },
       request: onStarted ? { id: requestId, onStarted } : undefined,
     })
   } finally {
@@ -830,4 +829,8 @@ export async function resetTextImportRuleInStorage(kind: string) {
 
 export async function flushSettingsInStorage() {
   await trackNativeWrite(invoke('flush_settings'))
+}
+
+export function loadBookSearchExcerpts(id: string, keyword: string, positions: [number, number][]) {
+  return invoke<string[]>('search_book_text', { id, query: { keyword, positions } })
 }

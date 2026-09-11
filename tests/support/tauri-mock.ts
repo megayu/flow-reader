@@ -751,7 +751,10 @@ export async function installTauriMock(
         }
         if (command === 'get_book') return bookStore.get(String(args?.id)) ?? null
         if (command === 'search_book_text') {
-          return fixtureBookSearchResults[String(args?.keyword ?? '')] ?? []
+          const query = args?.query as { keyword: string; positions?: [number, number][] }
+          return query.positions
+            ? query.positions.map(() => query.keyword)
+            : (fixtureBookSearchResults[query.keyword] ?? [])
         }
         if (command === 'load_book_image_index') {
           return fixtureImageIndexes[String(args?.id)] ?? null

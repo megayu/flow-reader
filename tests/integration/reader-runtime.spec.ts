@@ -154,13 +154,7 @@ async function installReaderBooksMock(
           description: 'Synthetic Vertical Reader',
           expanded: true,
           sectionIndex: 0,
-          subitems: [
-            {
-              id: 'vertical-search-hit-1',
-              excerpt: 'VERTICAL-CHAPTER-01-29',
-              occurrence: 0,
-            },
-          ],
+          offsets: [0],
         },
       ],
     },

@@ -220,6 +220,7 @@ export interface IMatch extends INode {
   occurrence?: number
   offset?: number
   subitems?: IMatch[]
+  offsets?: number[]
 }
 
 export interface ISection extends Section {

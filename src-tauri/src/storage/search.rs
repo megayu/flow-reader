@@ -146,18 +146,8 @@ pub struct SearchTextResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) description: Option<String>,
     pub(super) section_index: usize,
-    pub(super) subitems: Vec<SearchTextHit>,
+    pub(super) offsets: Vec<usize>,
     pub(super) expanded: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SearchTextHit {
-    pub(super) id: String,
-    pub(super) excerpt: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) cfi: Option<String>,
-    pub(super) occurrence: usize,
 }
 
 pub(super) fn search_text_cache_to_bytes(cache: &SearchTextCache) -> Result<Vec<u8>, String> {
@@ -1400,13 +1390,11 @@ pub(super) fn search_text_in_cache_cancellable(
     }
 
     let folded_keyword = keyword.to_lowercase();
-    let keyword_char_len = keyword.chars().count().max(1);
     let mut results = Vec::new();
     let mut total = 0usize;
     let diagnostics_enabled = diagnostics::enabled();
     let mut fold_elapsed = Duration::ZERO;
     let mut locate_elapsed = Duration::ZERO;
-    let mut excerpt_elapsed = Duration::ZERO;
 
     'sections: for section in &cache.sections {
         if cancelled() {
@@ -1419,12 +1407,11 @@ pub(super) fn search_text_in_cache_cancellable(
         }
         let mut previous_folded_byte_offset = 0usize;
         let mut folded_char_offset = 0usize;
-        let mut subitems = Vec::new();
-        let mut text_chars = None;
-        let mut paragraph_start = ParagraphCursor::default();
-        let mut paragraph_end = ParagraphCursor::default();
+        let mut offsets = Vec::new();
+        let mut original_byte_offset = 0;
+        let mut previous_original_char_offset = 0;
 
-        for (occurrence, (folded_byte_offset, _)) in folded_text.match_indices(&folded_keyword).enumerate() {
+        for (folded_byte_offset, _) in folded_text.match_indices(&folded_keyword) {
             if cancelled() {
                 return Vec::new();
             }
@@ -1443,25 +1430,14 @@ pub(super) fn search_text_in_cache_cancellable(
                 locate_elapsed += locate_started.elapsed();
             }
 
-            let excerpt_started = diagnostics_enabled.then(Instant::now);
-            let chars = text_chars.get_or_insert_with(|| section.text.chars().collect::<Vec<_>>());
-            let offset = char_offset.min(chars.len());
-            let start = paragraph_start.at(chars, offset).start;
-            let end = paragraph_end
-                .at(chars, (offset + keyword_char_len).min(chars.len()))
-                .end;
-            let excerpt = search_text_excerpt(chars, offset, keyword_char_len, start, end);
-            if let Some(excerpt_started) = excerpt_started {
-                excerpt_elapsed += excerpt_started.elapsed();
-            }
-            let id = format!("{}:{}:{}", section.href, occurrence, char_offset);
-
-            subitems.push(SearchTextHit {
-                id,
-                excerpt,
-                cfi: None,
-                occurrence,
-            });
+            // Advance through original UTF-8 text once, including lowercase expansions.
+            original_byte_offset += section.text[original_byte_offset..]
+                .chars()
+                .take(char_offset - previous_original_char_offset)
+                .map(char::len_utf8)
+                .sum::<usize>();
+            previous_original_char_offset = char_offset;
+            offsets.push(original_byte_offset);
 
             total += 1;
             if limit.is_some_and(|limit| total >= limit) {
@@ -1469,13 +1445,13 @@ pub(super) fn search_text_in_cache_cancellable(
             }
         }
 
-        if !subitems.is_empty() {
+        if !offsets.is_empty() {
             results.push(SearchTextResult {
                 id: section.href.clone(),
                 excerpt: section.title.clone().unwrap_or_else(|| section.href.clone()),
                 description: (!section.nav_path.is_empty()).then(|| section.nav_path.join(" / ")),
                 section_index: section.section_index,
-                subitems,
+                offsets,
                 expanded: true,
             });
         }
@@ -1495,7 +1471,6 @@ pub(super) fn search_text_in_cache_cancellable(
                 ("hits", total.to_string()),
                 ("fold_ms", format!("{:.2}", fold_elapsed.as_secs_f64() * 1000.0)),
                 ("locate_ms", format!("{:.2}", locate_elapsed.as_secs_f64() * 1000.0)),
-                ("excerpt_ms", format!("{:.2}", excerpt_elapsed.as_secs_f64() * 1000.0)),
             ],
         );
     }
@@ -1518,74 +1493,45 @@ fn lowercase_with_original_char_offsets(text: &str) -> (String, Option<Vec<usize
     (folded, Some(original_char_offsets))
 }
 
-#[derive(Default)]
-struct ParagraphCursor {
-    next: usize,
-    bounds: std::ops::Range<usize>,
-}
-
-impl ParagraphCursor {
-    fn at(&mut self, chars: &[char], offset: usize) -> &std::ops::Range<usize> {
-        // Matches arrive in order; scan and trim each paragraph at most once per cursor.
-        while self.next <= offset {
-            let mut start = self.next;
-            let mut end = chars[start..]
-                .iter()
-                .position(|ch| *ch == '\n')
-                .map_or(chars.len(), |i| start + i);
-            self.next = end + 1;
-            while start < end && chars[start].is_whitespace() {
-                start += 1;
-            }
-            while end > start && chars[end - 1].is_whitespace() {
-                end -= 1;
-            }
-            self.bounds = start..end;
+pub(super) fn search_text_excerpt(text: &str, offset: usize, keyword_len: usize) -> String {
+    if !text.is_char_boundary(offset) {
+        return String::new();
+    }
+    let mut start = offset;
+    for (index, ch) in text[..offset].char_indices().rev().take(SEARCH_TEXT_EXCERPT_RADIUS) {
+        if ch == '\n' {
+            break;
         }
-        &self.bounds
+        start = index;
     }
-}
-
-fn search_text_excerpt(
-    chars: &[char],
-    offset: usize,
-    keyword_len: usize,
-    paragraph_start: usize,
-    paragraph_end: usize,
-) -> String {
-    if chars.is_empty() {
-        return String::new();
+    let mut end = offset;
+    let mut chars = text[offset..].char_indices();
+    for (index, ch) in chars.by_ref().take(keyword_len) {
+        end = offset + index + ch.len_utf8();
     }
-
-    let offset = offset.min(chars.len());
-    if paragraph_start >= paragraph_end {
-        return String::new();
+    for (index, ch) in chars.take(SEARCH_TEXT_EXCERPT_RADIUS) {
+        if ch == '\n' {
+            break;
+        }
+        end = offset + index + ch.len_utf8();
     }
-
-    let mut start = offset.saturating_sub(SEARCH_TEXT_EXCERPT_RADIUS).max(paragraph_start);
-    let mut end = (offset + keyword_len + SEARCH_TEXT_EXCERPT_RADIUS).min(paragraph_end);
-
-    while start < end && chars[start].is_whitespace() {
-        start += 1;
-    }
-    while end > start && chars[end - 1].is_whitespace() {
-        end -= 1;
-    }
-
-    if start >= end {
-        return String::new();
-    }
-
+    let before = text[..start]
+        .chars()
+        .rev()
+        .take_while(|ch| *ch != '\n')
+        .any(|ch| !ch.is_whitespace());
+    let after = text[end..]
+        .chars()
+        .take_while(|ch| *ch != '\n')
+        .any(|ch| !ch.is_whitespace());
     let mut excerpt = String::new();
-
-    if start > paragraph_start {
+    if before {
         excerpt.push('…');
     }
-    excerpt.extend(chars[start..end].iter());
-    if end < paragraph_end {
+    excerpt.push_str(text[start..end].trim());
+    if after {
         excerpt.push('…');
     }
-
     excerpt
 }
 
@@ -2021,7 +1967,7 @@ mod tests {
         assert!(search_text_in_cache_cancellable(&cache, "target", None, || old.cancelled()).is_empty());
         assert_eq!(
             search_text_in_cache_cancellable(&cache, "target", None, || current.cancelled())[0]
-                .subitems
+                .offsets
                 .len(),
             2
         );

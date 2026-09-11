@@ -1354,16 +1354,29 @@ pub struct BookSearchRequest {
     on_started: tauri::ipc::JavaScriptChannelId,
 }
 
+#[derive(Deserialize)]
+pub struct BookSearchQuery {
+    keyword: String,
+    limit: Option<usize>,
+    positions: Option<Vec<(usize, usize)>>,
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum BookSearchResponse {
+    Results(Vec<SearchTextResult>),
+    Excerpts(Vec<String>),
+}
+
 #[tauri::command]
 pub async fn search_book_text(
     storage: State<'_, AppStorage>,
     tasks: State<'_, TaskService>,
     webview: tauri::Webview,
     id: String,
-    keyword: String,
-    limit: Option<usize>,
+    query: BookSearchQuery,
     request: Option<BookSearchRequest>,
-) -> Result<Vec<SearchTextResult>, String> {
+) -> Result<BookSearchResponse, String> {
     let request = request
         .map(|input| {
             let request = webview.state::<SearchRequests>().start(input.id)?;
@@ -1380,14 +1393,33 @@ pub async fn search_book_text(
     let tasks = (*tasks).clone();
     tauri::async_runtime::spawn_blocking(move || {
         if request.as_ref().is_some_and(|request| request.cancelled()) {
-            return Ok(Vec::new());
+            return Ok(BookSearchResponse::Results(Vec::new()));
         }
         let book = storage.stored_book(&id)?;
         let cache = load_or_build_search_text_cache(&storage, &tasks, &book)?;
-        Ok(match request {
-            Some(request) => search_text_in_cache_cancellable(&cache, &keyword, limit, || request.cancelled()),
-            None => search_text_in_cache(&cache, &keyword, limit),
-        })
+        if let Some(positions) = query.positions {
+            let keyword_len = query.keyword.trim().chars().count().max(1);
+            return Ok(BookSearchResponse::Excerpts(
+                positions
+                    .into_iter()
+                    .map(|(section, offset)| {
+                        let Ok(index) = cache
+                            .sections
+                            .binary_search_by_key(&section, |entry| entry.section_index)
+                        else {
+                            return String::new();
+                        };
+                        super::search::search_text_excerpt(&cache.sections[index].text, offset, keyword_len)
+                    })
+                    .collect(),
+            ));
+        }
+        Ok(BookSearchResponse::Results(match request {
+            Some(request) => {
+                search_text_in_cache_cancellable(&cache, &query.keyword, query.limit, || request.cancelled())
+            }
+            None => search_text_in_cache(&cache, &query.keyword, query.limit),
+        }))
     })
     .await
     .map_err(|error| error.to_string())?

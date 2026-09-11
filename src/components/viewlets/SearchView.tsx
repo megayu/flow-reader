@@ -14,6 +14,7 @@ import Highlighter from 'react-highlight-words'
 import { useListSize } from '@/hooks/useList'
 import { useTranslation } from '@/hooks/useTranslation'
 import { type IMatch, reader, useReaderSnapshot } from '@/models/reader'
+import { loadBookSearchExcerpts } from '@/storage'
 
 import { readerPageTooltipContentStyle } from '../appTooltipStyles'
 import { OverlayScroll, PaneView, type PaneViewProps } from '../base/PaneView'
@@ -116,9 +117,10 @@ const SearchPane: React.FC = () => {
       </div>
       {keyword && results && (
         <ResultList
+          key={`${focusedBookTab?.book.id}:${focusedBookTab?.keyword}`}
           ref={resultListRef}
           results={results as IMatch[]}
-          keyword={keyword}
+          keyword={focusedBookTab?.keyword ?? ''}
           activeResultID={activeResultID}
         />
       )}
@@ -141,8 +143,33 @@ const ResultList = forwardRef<ResultListHandle, ResultListProps>(({ results, key
   const pendingLocateSectionRef = useRef<number | null>(null)
   const t = useTranslation()
 
+  let excerptIndex = 0
+  const rows = items.map(({ index }) => {
+    const row = searchRowAt(rowIndex, index)
+    return { ...row, excerptIndex: row?.result?.offset === undefined ? -1 : excerptIndex++ }
+  })
+  const positions = JSON.stringify(
+    rows.flatMap((row) => (row.result?.offset === undefined ? [] : [[row.sectionIndex, row.result.offset]])),
+  )
+  const bookId = reader.focusedBookTab!.book.id
+  const [loaded, setLoaded] = useState({ positions: '', excerpts: [] as string[] })
+  useEffect(() => {
+    let active = true
+    setLoaded({ positions, excerpts: [] })
+    const requested = JSON.parse(positions) as [number, number][]
+    if (!requested.length) return
+    void loadBookSearchExcerpts(bookId, keyword, requested)
+      .then((excerpts) => {
+        if (active) setLoaded({ positions, excerpts })
+      })
+      .catch(console.error)
+    return () => {
+      active = false
+    }
+  }, [bookId, keyword, positions])
+
   const sectionCount = results.length
-  const resultCount = results.reduce((a, r) => r.subitems!.length + a, 0)
+  const resultCount = results.reduce((a, r) => (r.offsets?.length ?? r.subitems?.length ?? 0) + a, 0)
 
   useLayoutEffect(() => {
     const sectionIndex = pendingLocateSectionRef.current
@@ -188,11 +215,18 @@ const ResultList = forwardRef<ResultListHandle, ResultListProps>(({ results, key
         scrollbar={{ ...scrollbar, scrollRef: outerRef }}
       >
         <div className="relative" style={{ height: totalSize }}>
-          {items.map(({ index, start, size }) => {
-            const row = searchRowAt(rowIndex, index)
+          {items.map(({ index, start, size }, visibleIndex) => {
+            const row = rows[visibleIndex]
+            const result =
+              row?.result?.offset === undefined
+                ? row?.result
+                : {
+                    ...row.result,
+                    excerpt: (loaded.positions === positions ? loaded.excerpts[row.excerptIndex] : undefined) ?? '…',
+                  }
             return (
               <div
-                key={row?.result?.id ?? index}
+                key={result?.id ?? index}
                 className="absolute top-0 right-0 left-0"
                 style={{
                   height: size,
@@ -200,12 +234,12 @@ const ResultList = forwardRef<ResultListHandle, ResultListProps>(({ results, key
                 }}
               >
                 <ResultRow
-                  result={row?.result}
+                  result={result}
                   depth={row?.depth}
                   sectionIndex={row?.sectionIndex}
                   href={row?.href}
                   keyword={keyword}
-                  active={row?.result?.id === activeResultID}
+                  active={result?.id === activeResultID}
                 />
               </div>
             )
@@ -227,10 +261,10 @@ interface ResultRowProps {
 }
 const ResultRow: React.FC<ResultRowProps> = ({ result, depth, sectionIndex, href, keyword, active }) => {
   if (!result) return null
-  const { expanded, subitems, id } = result
+  const { expanded, subitems, offsets, id } = result
   let { excerpt, description } = result
   const tab = reader.focusedBookTab
-  const isGroup = !!subitems?.length
+  const isGroup = !!(offsets?.length ?? subitems?.length)
 
   excerpt = excerpt.trim()
   description = description?.trim()
@@ -244,7 +278,7 @@ const ResultRow: React.FC<ResultRowProps> = ({ result, depth, sectionIndex, href
       active={active}
       aria-current={active ? 'true' : undefined}
       expanded={expanded}
-      subitems={subitems}
+      subitems={offsets ?? subitems}
       badge={isGroup}
       tooltipContentStyle={readerPageTooltipContentStyle}
       {...(!isGroup && {
@@ -288,7 +322,7 @@ function createSearchRowIndex(results: IMatch[]): SearchRowIndex {
   let length = 0
 
   results.forEach((result) => {
-    const childCount = result.expanded ? (result.subitems?.length ?? 0) : 0
+    const childCount = result.expanded ? (result.offsets?.length ?? result.subitems?.length ?? 0) : 0
     groups.push({ result, start: length, childCount })
     length += childCount + 1
   })
@@ -317,7 +351,14 @@ function searchRowAt(index: SearchRowIndex, rowIndex: number) {
             href: group.result.href ?? group.result.id,
           }
         : {
-            result: group.result.subitems?.[childIndex],
+            result: group.result.offsets
+              ? {
+                  id: `${group.result.id}:${childIndex}:${group.result.offsets[childIndex]}`,
+                  offset: group.result.offsets[childIndex],
+                  occurrence: childIndex,
+                  excerpt: '',
+                }
+              : group.result.subitems?.[childIndex],
             depth: 2,
             sectionIndex: group.result.sectionIndex,
             href: group.result.href ?? group.result.id,
