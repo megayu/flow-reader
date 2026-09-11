@@ -17,6 +17,13 @@ start of rejected approaches. Other entries cover reader interactions.
 
 ## Retained Approaches
 
+### SVG section document budget
+
+- Change: identify loaded section documents by their root element, so standalone SVG participates in the existing 48/32 document budget and active-section protection.
+- Evidence: matched Windows `tauri-release` builds with the same identifier override, default 1280x800 window, isolated data, 64 synthetic SVG sections with 601 text nodes each, and three open/load/idle/revisit runs per build. After GC, retained documents fell from 64 to 32, DOM nodes fell about 48%, and median embedder heap fell 44.9%. Initial loading median improved 8.9%; current and revisited content stayed available.
+- Decision: keep to correct the SVG budget bypass. Reopening 16 evicted sections took 64–69ms instead of 0.5–0.6ms. This is the expected reload cost of enforcing the existing lifetime contract, not a revisit speedup.
+- Constraint: JavaScript heap barely changed; these are DOM/embedder measurements, not process RSS. Before changing the budget or adding prefetch to address revisit latency, measure individual SVG navigation and retained DOM together. Linux/macOS native measurements remain unavailable.
+
 ### Batch import lookup and deferred bookshelf derivation
 
 - Change: retain the existing native lookup index under the import lock, avoid full-library scans on misses, and publish new books through an append-only batch array ahead of the stable bookshelf. Merge book/cover caches once at completion so search indexes, sorting, and filtering do not rerun for each arrival.

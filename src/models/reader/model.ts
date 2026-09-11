@@ -1866,7 +1866,7 @@ export class BookTab {
   }
 
   private markSectionDocumentAccess(section: ISection) {
-    if (!section.document?.body) return
+    if (!section.document?.documentElement) return
 
     const index = this.sectionInfoIndex(section)
     if (index < 0) return
@@ -1876,7 +1876,7 @@ export class BookTab {
   }
 
   private loadedSectionDocumentCount() {
-    return this.sections?.filter((section) => !!section.document?.body).length ?? 0
+    return this.sections?.filter((section) => !!section.document?.documentElement).length ?? 0
   }
 
   private protectedSectionDocumentIndexes() {
@@ -1912,7 +1912,7 @@ export class BookTab {
     const sections = this.sections
     if (!sections) return
 
-    const loaded = sections.filter((section) => !!section.document?.body)
+    const loaded = sections.filter((section) => !!section.document?.documentElement)
     if (loaded.length <= SECTION_DOCUMENT_HIGH_WATERMARK) return
 
     const protectedIndexes = this.protectedSectionDocumentIndexes()
@@ -1946,7 +1946,7 @@ export class BookTab {
       return
     }
 
-    if (section.document?.body) {
+    if (section.document?.documentElement) {
       this.assignSectionNavItem(section)
       this.markSectionDocumentAccess(section)
       return
