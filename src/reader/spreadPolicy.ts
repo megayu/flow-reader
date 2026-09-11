@@ -1,9 +1,9 @@
-import { RenditionSpread } from '@flow/epubjs/rendition'
+import { RenditionSpread } from '@flow/epub-engine/rendition'
 
 export interface BookSpreadPolicyInput {
   temporaryOverride?: RenditionSpread
   perBookOverride?: RenditionSpread
-  publicationSpread?: string
+  publicationSpread?: string | null
   applicationDefault?: RenditionSpread
 }
 

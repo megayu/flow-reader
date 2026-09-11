@@ -1,6 +1,6 @@
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useEffectEvent, useRef } from 'react'
 
-import type { Rendition } from '@flow/epubjs/rendition'
+import type { Rendition } from '@flow/epub-engine/rendition'
 
 import { type BookTab, readingOrderStartSectionIndex } from '../../models/reader'
 import { isReaderShortcutTargetBlocked } from '../../reader/shortcuts'
@@ -12,7 +12,6 @@ import {
   isFindResultVisible,
   isFindShortcut,
   nearestVisibleFindResultIndex,
-  type ReflowableManager,
 } from './chapterFindModel'
 import { useChapterFindController } from './useChapterFindController'
 import { CAPTURE_EVENT_OPTIONS, useFrameEvent } from './useFrameEvent'
@@ -21,9 +20,7 @@ interface BookPaneChapterFindOptions {
   active: boolean
   activeFrameWindows: readonly Window[]
   onOpen: () => void
-  rendition?: {
-    manager?: ReflowableManager
-  }
+  rendition?: Pick<Rendition, 'session'>
   tab: BookTab
   zenMode: boolean
 }
@@ -37,13 +34,13 @@ export function useBookPaneChapterFind({
   zenMode,
 }: BookPaneChapterFindOptions) {
   const findScopeSectionIndex = useCallback(() => {
-    const manager = rendition?.manager
+    const session = rendition?.session
     return readingOrderStartSectionIndex(
-      manager?.currentReflowableSpread,
-      manager?.paginationModel?.().spreadSlotOrder,
+      session?.currentSpread,
+      session?.paginationModel().spreadSlotOrder,
       tab.currentSection?.index,
     )
-  }, [rendition?.manager, tab])
+  }, [rendition?.session, tab])
 
   const { close, inputRef, open, setState, state } = useChapterFindController({
     activeFrameWindows,
@@ -97,7 +94,7 @@ interface BookPaneChapterFindResultsOptions {
   active: boolean
   paginationVersion: number
   viewVersion: number
-  rendition?: Pick<Rendition, 'manager'>
+  rendition?: Pick<Rendition, 'session'>
   setState: Dispatch<SetStateAction<ChapterFindState>>
   state: ChapterFindState
   tab: BookTab
@@ -117,11 +114,11 @@ export function useBookPaneChapterFindResults({
   const findQuery = state.query
   const findSectionIndex = state.sectionIndex
   const section = tab.sections?.find((item) => item.index === findSectionIndex)
-  const manager = rendition?.manager
-  const layoutKey = section ? manager?.reflowableLayoutCacheKey?.(section) : undefined
+  const session = rendition?.session
+  const layoutKey = section ? session?.sectionLayoutKey(section) : undefined
   const scopeIndex = readingOrderStartSectionIndex(
-    manager?.currentReflowableSpread,
-    manager?.paginationModel?.().spreadSlotOrder,
+    session?.currentSpread,
+    session?.paginationModel().spreadSlotOrder,
     tab.currentSection?.index,
   )
 
@@ -134,7 +131,7 @@ export function useBookPaneChapterFindResults({
       return
     }
 
-    if (!active || !findOpen || !query || !section || !manager?.findInDisplayedSection) {
+    if (!active || !findOpen || !query || !section || !session) {
       setState((current) => ({
         ...current,
         results: [],
@@ -147,12 +144,12 @@ export function useBookPaneChapterFindResults({
     const controller = new AbortController()
     setState((current) => ({ ...current, results: [], searching: true }))
 
-    void manager
+    void session
       .findInDisplayedSection(section, query, controller.signal)
       .then((results) => {
         if (controller.signal.aborted) return
 
-        const visibleIndex = firstVisibleFindResultIndex(results, section.index, manager)
+        const visibleIndex = firstVisibleFindResultIndex(results, section.index, session)
 
         setState((current) =>
           current.query !== findQuery || !current.open
@@ -180,7 +177,7 @@ export function useBookPaneChapterFindResults({
     return () => {
       controller.abort()
     }
-  }, [active, findOpen, findQuery, findSectionIndex, layoutKey, manager, scopeIndex, section, setState, viewVersion])
+  }, [active, findOpen, findQuery, findSectionIndex, layoutKey, session, scopeIndex, section, setState, viewVersion])
 
   useEffect(() => {
     if (!state.open || !active || !state.results.length || state.sectionIndex === undefined) {
@@ -195,7 +192,7 @@ export function useBookPaneChapterFindResults({
       const visibleIndex = nearestVisibleFindResultIndex(
         current.results,
         current.sectionIndex,
-        manager,
+        session,
         current.activeIndex,
       )
       if (visibleIndex < 0 || current.activeIndex === visibleIndex) {
@@ -207,7 +204,7 @@ export function useBookPaneChapterFindResults({
         activeIndex: visibleIndex,
       }
     })
-  }, [state.open, active, state.results, state.sectionIndex, paginationVersion, manager, setState, tab])
+  }, [state.open, active, state.results, state.sectionIndex, paginationVersion, session, setState, tab])
 
   const goToResult = useCallback(
     (index: number) => {
@@ -225,11 +222,11 @@ export function useBookPaneChapterFindResults({
         activeIndex: nextIndex,
       }))
 
-      if (!isFindResultVisible(result, state.sectionIndex, manager)) {
+      if (!isFindResultVisible(result, state.sectionIndex, session)) {
         void tab.displayReflowableTarget(state.sectionIndex, result.cfi)
       }
     },
-    [state.results, state.sectionIndex, manager, setState, tab],
+    [state.results, state.sectionIndex, session, setState, tab],
   )
 
   return {

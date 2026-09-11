@@ -16,7 +16,7 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 
 - Symptom: during a page turn, the iframe body advances to the next chapter while the header/footer still belong to the previous committed snapshot. An external CFI or other position request arriving during initial display, navigation, or relayout can produce the same mismatch or settle at the wrong target.
 - Reproduction path: long generated book, start near the end of one section, trigger next page, sample the client while `tab.turning` is still true and before the pagination snapshot has committed. Before that transaction settles, deliver another position target and verify it starts only after the pending work completes.
-- Root cause: epubjs can update the iframe body before Flow Reader has accepted and committed the matching relocated/pagination snapshot. Starting another `display()` without waiting for initial-position, navigation, and layout ownership can also resolve or supersede the active epubjs display early.
+- Root cause: the EPUB engine can update the iframe body before Flow Reader has accepted and committed the matching relocated/pagination snapshot. Starting another `display()` without waiting for initial-position, navigation, and layout ownership can also resolve or supersede the active EPUB engine display early.
 - Fix direction: keep the loading cover visible while a page turn or external position jump is pending, serialize external position requests after initial-position, navigation, and layout transactions, and commit body/header/footer/progress together from one snapshot. When navigation can contain nested or queued display promises, every stable-state and persistence consumer must await the complete pending-operation set rather than one representative promise.
 - Verification gate: the client verifier must include a pending page-turn gate where a next body is covered until header/footer/body can commit together, plus an external position request delivered during the pending turn that settles at the requested target without an intermediate mismatched snapshot.
 
@@ -34,7 +34,7 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Reproduction path: open a large reflowable section in spread mode, alternate next and previous within the section, and record iframe identity plus long tasks for each turn.
 - Root cause: the full spread renderer clears and recreates section iframes on every logical turn. Re-parsing and laying out the large DOM dominates the turn; internal links increase DOM work but do not independently require a rebuild.
 - Fix direction: calculate the complete logical spread before touching rendered views. Reposition existing views only when every required section view exists and its layout signature is compatible, then trim views outside the resolved spread and apply the physical slots. If any prerequisite fails, leave the current views untouched and use the full render transaction. Explicit aligned chapter/TOC targets remain physical-left in LTR and physical-right in RTL; sequential turns follow the continuous logical sequence.
-- Verification gate: retained epubjs coverage must exercise LTR and RTL, cross-section forward/backward turns, alternating direction, return to the starting spread, exact physical slots, terminal-spread state, stable view identity, and zero view-collection lifecycle calls during compatible same-section turns. Existing explicit-target tests must remain unchanged, and final acceptance requires matched release-client measurement plus the deterministic layout verifier.
+- Verification gate: retained EPUB engine coverage must exercise LTR and RTL, cross-section forward/backward turns, alternating direction, return to the starting spread, exact physical slots, terminal-spread state, stable view identity, and zero view-collection lifecycle calls during compatible same-section turns. Existing explicit-target tests must remain unchanged, and final acceptance requires matched release-client measurement plus the deterministic layout verifier.
 
 ### Final-page relayout loses terminal spread semantics
 
@@ -44,11 +44,11 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Fix direction: record whether a spread ends at the section end and resolve the right side to the new last page after relayout.
 - Verification gate: tests must cover final-page stability across tab switches and relayouts.
 
-### Shared epubjs EventEmitter state leaks between tabs
+### Shared EPUB engine EventEmitter state leaks between tabs
 
 - Symptom: resizing or displaying one tab changes another hidden tab's rendition location, body, or manager spread.
 - Reproduction path: three tabs at distant sections, resize while tab C is active, then inspect hidden tab A/B runtime locations and committed snapshots.
-- Root cause: epubjs EventEmitter state was stored on prototypes, causing manager instances to share listener tables.
+- Root cause: the EPUB engine EventEmitter state was stored on prototypes, causing manager instances to share listener tables.
 - Fix direction: keep EventEmitter state per instance and gate relocated/rendered commits by explicit request or transaction identity.
 - Verification gate: multi-tab randomized resize/sidebar/tab-switch client verification must prove inactive tabs do not commit foreign sections.
 
@@ -127,8 +127,8 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 ### TXT text edits depend on unstable rendered text-node indexes
 
 - Symptom: editing any generated TXT paragraph or chapter title reports stale text even though the visible text and `source.txt` still match.
-- Reproduction path: open a generated TXT book after reader/epubjs DOM or layout changes, select a body paragraph or generated `h2.flow-txt-chapter`, and save a replacement.
-- Root cause: storage verified the edit by replaying the rendered iframe's global text-node index against the unpacked XHTML file. The rendered DOM can gain, lose, reorder, or move generated TXT markers relative to the source XHTML, such as epubjs rendering `div[data-flow-body-text] > p` as `p[data-flow-body-text]`, so storage checks the wrong node or receives no paragraph index and returns `TEXT_REPLACE_NODE_STALE`.
+- Reproduction path: open a generated TXT book after reader/EPUB engine DOM or layout changes, select a body paragraph or generated `h2.flow-txt-chapter`, and save a replacement.
+- Root cause: storage verified the edit by replaying the rendered iframe's global text-node index against the unpacked XHTML file. The rendered DOM can gain, lose, reorder, or move generated TXT markers relative to the source XHTML, such as the EPUB engine rendering `div[data-flow-body-text] > p` as `p[data-flow-body-text]`, so storage checks the wrong node or receives no paragraph index and returns `TEXT_REPLACE_NODE_STALE`.
 - Fix direction: use one XHTML replacement path with structural strategies for generated TXT paragraphs and headings before the generic EPUB text-node strategy. Capture paragraph indexes from the actual rendered TXT paragraph shape, including `p[data-flow-body-text]`, and keep TXT-specific work limited to syncing `source.txt` and `nav.xhtml`; locate source edits by streaming encoded lines to the target chapter and paragraph instead of building full-book line ranges.
 - Verification gate: Rust storage coverage must prove paragraph and heading replacements succeed with an intentionally stale rendered `textNodeIndex`; active-tab patching should use the same structural target and report inconsistency if verification fails.
 
@@ -136,7 +136,7 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 
 - Symptom: in double-page mode, increasing reader zoom lets a large image draw over the adjacent page while text continues to reflow inside the page columns. A related regression can make an authored inline note icon expand to its large intrinsic bitmap size as soon as zoom is explicitly set, including zoom `1`.
 - Reproduction path: open a reflowable book in double-page mode, set reader zoom above 1, and render an image wider than the current page column. Also render a large intrinsic image under `sup` or `sub` with an authored relative height such as `0.9em`, then explicitly set zoom.
-- Root cause: epubjs image adjustment constrained media with the unzoomed layout column width, while Flow Reader applies zoom using a scaled body with inverse column dimensions. The resulting zoom rule also forced `height: auto !important` on every image, overriding author-sized superscript and subscript icons.
+- Root cause: the EPUB engine image adjustment constrained media with the unzoomed layout column width, while Flow Reader applies zoom using a scaled body with inverse column dimensions. The resulting zoom rule also forced `height: auto !important` on every image, overriding author-sized superscript and subscript icons.
 - Fix direction: when injecting zoom styles into iframe content, constrain media max inline size to the current single-page content column in unscaled coordinates. Keep automatic intrinsic height for ordinary images, video, and canvas, but preserve authored heights for images nested under `sup` or `sub` without scanning media nodes or reading computed styles.
 - Verification gate: browser Playwright coverage must assert a wide image's rendered width stays within the zoomed single-page content column in double-page mode and a 512-by-512 superscript icon remains at its authored relative height; final client layout changes still require the deterministic verifier on a Tauri client.
 
@@ -146,7 +146,7 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Reproduction path: open a reflowable EPUB section whose leading heading has a visible background and author CSS like `margin: -2em -2em 1.5em -2em` while horizontal pagination uses columns for spread mode.
 - Root cause: the negative inline margins are authored to make the heading background reach the single-page edge, but in a multi-column spread they expand the heading beyond the current page column and into the next page. Clipping the whole body or iframe is not acceptable because the horizontal column renderer needs later column fragments to remain paintable.
 - Fix direction: before measuring a reflowable horizontal LTR section, inspect only the first few direct body children and clamp visible-background title-like blocks' negative inline margins to the current page padding. Do not rewrite unpacked XHTML/CSS, do not add book-specific selectors, and do not change global overflow.
-- Verification gate: epubjs unit coverage must prove leading visible-background headings with excessive negative inline margins are clamped to page padding, while headings without visible backgrounds, headings whose margins already fit within page padding, and RTL sections are left unchanged; final client layout verification is still required before claiming desktop visual acceptance.
+- Verification gate: the EPUB engine unit coverage must prove leading visible-background headings with excessive negative inline margins are clamped to page padding, while headings without visible backgrounds, headings whose margins already fit within page padding, and RTL sections are left unchanged; final client layout verification is still required before claiming desktop visual acceptance.
 
 ### Zoomed positioned body background drifts from authored anchor
 
@@ -161,14 +161,14 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Symptom: in double-page mode, TOC entries can point at non-readable resources such as missing XHTML files or `linear="no"` pages, and clicking them can leave navigation stuck at the edge of the readable flow.
 - Reproduction path: open a reflowable EPUB whose NCX contains a missing `book-toc.html` entry and a `linear="no"` cover before the first readable section.
 - Root cause: navigation entries were exposed even when they did not resolve to readable spine sections; reflowable spread measurement also rejected on missing section resources and aborted page construction.
-- Fix direction: filter navigation entries in epubjs before publishing navigation, make spine lookups and `prev`/`next` return only readable sections, and treat confirmed missing section resources as zero-page sections so adjacent navigation keeps scanning.
+- Fix direction: filter navigation entries in the EPUB engine before publishing navigation, make spine lookups and `prev`/`next` return only readable sections, and treat confirmed missing section resources as zero-page sections so adjacent navigation keeps scanning.
 - Verification gate: targeted reader checks should cover TOC filtering plus next/previous spread navigation across non-readable and missing sections; real-client layout verification is still required for final desktop spread acceptance.
 
 ### TOC targets omitted from package spine
 
 - Symptom: an EPUB opens to its contents page, but clicking chapter entries does not navigate and page turns cannot reach the chapters.
 - Reproduction path: import a converter-broken EPUB whose NCX points at real manifest XHTML chapter files while the OPF spine contains only cover/toc-like entries.
-- Root cause: epubjs navigation resolves through readable spine sections; manifest resources that are not referenced by `spine/itemref` have no stable reading-order location, progress, or adjacent page-turn state.
+- Root cause: the EPUB engine navigation resolves through readable spine sections; manifest resources that are not referenced by `spine/itemref` have no stable reading-order location, progress, or adjacent page-turn state.
 - Fix direction: keep the compatibility at first-unpack normalization. When multiple NCX targets resolve to existing manifest HTML resources missing from a suspiciously tiny readable spine, append those manifest IDs to the OPF spine before pagination. Do not add a runtime fallback that displays arbitrary non-spine resources.
 - Verification gate: Rust import-normalization coverage should prove missing manifest chapters are added to spine, while isolated missing targets in an otherwise complete spine are left untouched; final reader layout verification is required only when claiming desktop visual navigation acceptance.
 
@@ -176,7 +176,7 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 
 - Symptom: a multi-volume converted EPUB can show an empty or incomplete sidebar TOC, and links from the book's top-level contents page do not navigate.
 - Reproduction path: import a Kindle/MOBI-converted EPUB whose NCX, EPUB3 nav toc, or OPF guide toc page points at volume start XHTML files that are present in the spine but marked `linear="no"`.
-- Root cause: Flow Reader filters navigation to readable spine sections, and epubjs treats `linear="no"` itemrefs as non-readable even when the book's official TOC points at them.
+- Root cause: Flow Reader filters navigation to readable spine sections, and the EPUB engine treats `linear="no"` itemrefs as non-readable even when the book's official TOC points at them.
 - Fix direction: keep this repair at first-unpack normalization. Only for targets reached from official TOC sources, change the matching existing spine itemref from `linear="no"` to `linear="yes"`; do not rewrite arbitrary body links and do not change cover or other non-linear resources that are not TOC targets.
 - Verification gate: Rust import-normalization coverage should prove NCX, EPUB3 nav toc, and OPF guide toc page targets are made readable while landmark cover entries and unrelated `linear="no"` spine items are preserved.
 
@@ -184,9 +184,9 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 
 - Symptom: short reflowable sections such as title, inscription, or part-title pages report as one natural page, but their visible text is clipped or shifted outside the first page.
 - Reproduction path: open a Kindle-converted EPUB whose short section body uses old `-webkit-box`/`box` centering with viewport-height sizing inside a horizontally paginated reflowable iframe.
-- Root cause: epubjs measures the range width as one page, but the author CSS can place the content rect outside the first page's horizontal bounds. Tail blank trimming does not apply because no extra natural page is reported.
+- Root cause: the EPUB engine measures the range width as one page, but the author CSS can place the content rect outside the first page's horizontal bounds. Tail blank trimming does not apply because no extra natural page is reported.
 - Fix direction: during iframe expansion, only for one-page LTR reflowable horizontal sections, measure the first-page content rect and apply a per-iframe horizontal `translate` when the rect is mostly outside the first page.
-- Verification gate: epubjs unit coverage must prove one-page clipped content is corrected while multi-page sections and content already inside the first page are ignored; final desktop layout acceptance still requires real-client verification.
+- Verification gate: the EPUB engine unit coverage must prove one-page clipped content is corrected while multi-page sections and content already inside the first page are ignored; final desktop layout acceptance still requires real-client verification.
 
 ### Short visual section measured as two pages
 
@@ -194,15 +194,15 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Reproduction path: open an EPUB section whose page is mostly a body/html background, whose small centered content crosses the first horizontal page boundary after column layout, or whose author CSS uses a spread-wide positioned wrapper such as `position:absolute; width:100%; text-align:center` so compact visible text is pinned at the first-page edge.
 - Root cause: iframe expansion rounds `textWidth()` to page multiples, while trailing blank trimming previously treated only non-empty text/media in the final range as decisive and only collapsed compact content when it crossed the page boundary. Spread-wide wrappers can make useful text sit at the page edge without crossing it, so the rounded second page was kept. Horizontal RTL adds another failure mode because DOM ranges use physical left-to-right coordinates: compact logical-first-page content can lie in the physical right half and be mistaken for a second logical page.
 - Fix direction: keep the correction inside `trimTrailingBlankPages()`: reuse the existing text/media rect scan and normalize horizontal RTL rects into logical reading coordinates before page-boundary checks. Collapse only two-page horizontal sections that have page-sized visual backgrounds, compact content confined to the logical first page, compact content crossing the page boundary, or compact content pinned near the first-page edge; reject collapse when any meaningful rect starts inside the logical second page, and leave real two-page bounds unchanged.
-- Verification gate: epubjs unit coverage must prove background-only, centered crossing, compact page-edge, spread-wide-wrapper, and compact RTL logical-first-page visual sections collapse to one page while real two-page content and compact logical-second-page-start content remain two pages; final desktop layout acceptance still requires real-client verification.
+- Verification gate: the EPUB engine unit coverage must prove background-only, centered crossing, compact page-edge, spread-wide-wrapper, and compact RTL logical-first-page visual sections collapse to one page while real two-page content and compact logical-second-page-start content remain two pages; final desktop layout acceptance still requires real-client verification.
 
 ### Text-bearing page backgrounds fitted like covers
 
 - Symptom: EPUB sections with a page background plus readable body text keep the background fitted like a cover image, so later paginated text pages do not each get a full-page background.
 - Reproduction path: open a reflowable section with a body/html background image and non-empty body text spanning one or more horizontal pages.
 - Root cause: page background normalization only checked the background image geometry and image dimensions; it did not distinguish textless cover-like sections from sections where the background is page decoration behind text.
-- Fix direction: detect readable body text with a text-node scan that ignores comments, script/style content, hidden heading text, and hidden elements; keep textless sections on a forced no-repeat fit-inside-page path. For readable sections, first respect authored background layout constraints such as size, repeat, position, and attachment. Only when the author supplies a background image without those layout constraints should epubjs apply the fallback one-layer-per-page stretched background.
-- Verification gate: epubjs unit coverage must prove comments and hidden headings do not count as readable text, authored readable background constraints are preserved from inline style and stylesheet rules, unconstrained readable backgrounds use page-sized no-repeat scroll layers, multi-page unconstrained readable sections get one stretched no-repeat scroll layer per page, repeated textless backgrounds are forced to display once, and cover-like textless backgrounds still fit inside the page; final desktop layout acceptance still requires real-client verification.
+- Fix direction: detect readable body text with a text-node scan that ignores comments, script/style content, hidden heading text, and hidden elements; keep textless sections on a forced no-repeat fit-inside-page path. For readable sections, first respect authored background layout constraints such as size, repeat, position, and attachment. Only when the author supplies a background image without those layout constraints should the EPUB engine apply the fallback one-layer-per-page stretched background.
+- Verification gate: the EPUB engine unit coverage must prove comments and hidden headings do not count as readable text, authored readable background constraints are preserved from inline style and stylesheet rules, unconstrained readable backgrounds use page-sized no-repeat scroll layers, multi-page unconstrained readable sections get one stretched no-repeat scroll layer per page, repeated textless backgrounds are forced to display once, and cover-like textless backgrounds still fit inside the page; final desktop layout acceptance still requires real-client verification.
 
 ### Author overflow clips horizontal paginated columns
 
@@ -210,7 +210,7 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Reproduction path: open a horizontal paginated reflowable section whose author CSS sets `html, body { height: 100%; overflow: auto; }`, then display a later exact spread such as section page 2/3.
 - Root cause: paginated layout only forced body `overflow-y: hidden`, leaving body `overflow-x: auto`; Chromium can keep later CSS column fragments measurable but clip their paint when the outer stage scrolls across the expanded iframe.
 - Fix direction: in `Contents.columns()`, make the iframe document element the clipped viewport and keep the body overflow visible so horizontal column fragments can paint across the expanded iframe. Hide the stage's native horizontal scrollbar without changing its scrollable surface.
-- Verification gate: epubjs unit coverage must prove paginated columns override author overflow to `html { overflow: hidden }` and `body { overflow: visible }`, and browser pixel reproduction should show later exact-spread pages are nonblank.
+- Verification gate: the EPUB engine unit coverage must prove paginated columns override author overflow to `html { overflow: hidden }` and `body { overflow: visible }`, and browser pixel reproduction should show later exact-spread pages are nonblank.
 
 ### Author root margins shift horizontal paginated pages
 
@@ -218,7 +218,7 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Reproduction path: open an EPUB whose stylesheet applies a physical inline margin to both roots, such as `html, body { margin: 0 1%; }`, then compare single-page and double-page text bounds.
 - Root cause: `Contents.columns()` fixed the body to the full pagination width and normalized the body margin, but left the document element's authored margin active. The root margin shifted the fixed-width body without reducing its width, consuming the physical right page padding.
 - Fix direction: apply a reversible pagination-only stylesheet that clears the document element margin while horizontal columns are active, and remove that override when the contents return to scrolling layout. Do not rewrite the EPUB stylesheet or permanently remove the author's root margin.
-- Verification gate: epubjs browser coverage must prove single-page and double-page columns start at the physical page edge and that switching back to scrolling restores the authored root margin; final desktop acceptance still requires real-client verification with an affected EPUB.
+- Verification gate: the EPUB engine browser coverage must prove single-page and double-page columns start at the physical page edge and that switching back to scrolling restores the authored root margin; final desktop acceptance still requires real-client verification with an affected EPUB.
 
 ### Vertical-rl column capabilities differ between Chromium and WebKit
 
@@ -242,7 +242,7 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Reproduction path: in a multi-page vertical-rl section, resolve an element-id or CFI target whose first glyph is near the physical right edge, then compare the selected page with the target glyph rect and repeat navigation across a section boundary.
 - Root cause: horizontal target pagination derives a page index from `targetRect.left / pageWidth`. Vertical-rl progresses from the physical right edge, and a fragmented wrapper's bounding rect can cover many columns instead of identifying the target's logical first glyph. Explicit chapter targets also reused the current cross-section phase, while forward chapter navigation incorrectly read the physical right/start endpoint even when the next chapter start was already visible on the logical later/left page.
 - Fix direction: resolve the target's first meaningful character rect, calculate its vertical-rl page index from the rendered view's physical right edge, and give chapter/TOC displays an explicit spread-start alignment option. Chapter navigation must use logical location order just like horizontal reading: forward resolves from `location.end`, backward from `location.start`; only the physical start slot changes from left to right.
-- Verification gate: epubjs tests must cover right-edge, middle, and left-edge targets. UI tests and Tauri release checks must cover nested TOC clicks, repeated previous/next chapter shortcuts, multiple same-page Cmd-F matches, and sidebar-result activation with visible marks in both tagged vertical books.
+- Verification gate: the EPUB engine tests must cover right-edge, middle, and left-edge targets. UI tests and Tauri release checks must cover nested TOC clicks, repeated previous/next chapter shortcuts, multiple same-page Cmd-F matches, and sidebar-result activation with visible marks in both tagged vertical books.
 
 ### Chapter find counts document metadata as visible text
 
@@ -250,7 +250,7 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Reproduction path: search a title word that exists in both XHTML `<head><title>` and the rendered heading, then move to the previous result. Repeat on a horizontal cross-section spread whose left and right pages belong to different sections.
 - Root cause: `Section.find()` and `Section.search()` walked the whole XHTML `document`, so non-rendered metadata produced CFIs that could not be highlighted. Chapter-find scope also selected the physical right slot unconditionally, which is correct only for `right-first` vertical pagination and wrong for `left-first` horizontal pagination.
 - Fix direction: restrict section text search to `document.body` with `documentElement` only as a body-less fallback. Select the scoped section from the pagination model's `spreadSlotOrder`, using the opposite slot only when the reading-order start slot is absent.
-- Verification gate: epubjs tests must prove head-only text returns no matches. Reader tests must cover the same unique title token in head and body for horizontal and vertical books, plus pure `left-first`/`right-first` scope selection. Tauri release checks must verify known title queries in both tagged vertical books and a horizontal control with result counts, disabled boundary buttons, body-owned CFI ranges, and a visible active highlight.
+- Verification gate: the EPUB engine tests must prove head-only text returns no matches. Reader tests must cover the same unique title token in head and body for horizontal and vertical books, plus pure `left-first`/`right-first` scope selection. Tauri release checks must verify known title queries in both tagged vertical books and a horizontal control with result counts, disabled boundary buttons, body-owned CFI ranges, and a visible active highlight.
 
 ### Vertical-rl zoom and view-mode changes reuse horizontal column axes
 
@@ -296,7 +296,7 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 
 - Symptom: opening a text-heavy EPUB can stall and sharply increase memory even when the book has many visible TOC chapters. A malformed implementation of this normalization can also make page turns jump back to the preface, advance only through the last split of each volume, or generate split files with browser-visible structure errors such as orphan closing tags.
 - Reproduction path: import an EPUB whose OPF spine contains one very large XHTML/HTML section while the NCX has many `content src="large.html#anchor"` entries into that same section. Include minified single-line OPF packages, nested OPF/NCX/content directories, and oversized sections whose NCX anchors are placed on text blocks wrapped by repeated container elements such as `div.text > p#anchor`.
-- Root cause: the TOC chapters are anchors, not spine sections, so epubjs must load and paginate the whole large DOM as one reflowable section. When rewriting split manifest/spine entries, indentation must not be inferred from non-whitespace text before the matched tag; minified OPFs otherwise duplicate package/manifest prefixes into each split item. When creating split XHTML files, cutting exactly at the anchor tag can leave already-open wrapper elements in the previous generated file and unmatched closing tags in the next generated file. XML-parser validation and ad hoc tag blacklists are also too strict for real EPUB content that browser engines can read, such as HTML named entities, embedded SVG, or legacy prefixed tags without namespace declarations.
+- Root cause: the TOC chapters are anchors, not spine sections, so the EPUB engine must load and paginate the whole large DOM as one reflowable section. When rewriting split manifest/spine entries, indentation must not be inferred from non-whitespace text before the matched tag; minified OPFs otherwise duplicate package/manifest prefixes into each split item. When creating split XHTML files, cutting exactly at the anchor tag can leave already-open wrapper elements in the previous generated file and unmatched closing tags in the next generated file. XML-parser validation and ad hoc tag blacklists are also too strict for real EPUB content that browser engines can read, such as HTML named entities, embedded SVG, or legacy prefixed tags without namespace declarations.
 - Fix direction: during first unpack publication, normalize NCX-anchored oversized sections into multiple XHTML/HTML spine items and rewrite OPF, NCX, generated split-file internal links, and existing HTML TOC links. Do not reject solely because the oversized section contains tables, normal anchor links, XHTML DTD declarations, browser-compatible named entities, embedded Web content, or legacy prefixed tags; choose a recoverable block boundary for each NCX anchor and synthesize required open and close ancestor tags around generated fragments. Treat pre-tag text as indentation only when it is whitespace; otherwise insert split manifest and spine entries with empty indentation.
 - Verification gate: Rust coverage must prove a single package/manifest/spine, correct OPF spine/manifest, NCX entries, HTML TOC links, split file creation, exported EPUB contents for both single-level and nested directory structures, wrapped-anchor oversized sections, browser-compatible entity/prefixed-tag/embedded-Web-content, and no obvious orphan closing tags from generated split boundaries; final desktop performance acceptance still requires release-client before/after measurement on an affected native EPUB.
 
@@ -304,17 +304,17 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 
 - Symptom: opening an EPUB fails before the reader renders with `Cannot read properties of null (reading 'getAttribute')` from `Navigation.ncxItem`.
 - Reproduction path: open a MOBI-converted EPUB whose `toc.ncx` has a `navLabel/text` containing unescaped angle-bracket command notation such as `<Key-x>{arg}` while the matching XHTML heading correctly escapes it as `&lt;Key-x&gt;`.
-- Root cause: the invalid NCX text can corrupt or truncate the parsed `navPoint` subtree before epubjs builds navigation, so later siblings disappear or a `navPoint` appears without a direct `content src`. The old NCX parser assumed every `navPoint` had a descendant `content`, and could also incorrectly use a child navPoint's `content` as the parent's target.
-- Fix direction: keep this compatibility inside epubjs NCX handling: before XML parsing, escape raw `<` characters inside NCX `navLabel/text`; after parsing, require a direct child `content src`, skip malformed navPoints instead of throwing, and promote valid child navPoints when their parent was skipped. Do not alter pagination or add reader reload fallbacks.
-- Verification gate: epubjs Navigation tests must cover unescaped angle brackets in raw NCX labels, missing direct NCX `content`, child promotion after a malformed parent, and preservation of valid sibling navigation entries.
+- Root cause: the invalid NCX text can corrupt or truncate the parsed `navPoint` subtree before the EPUB engine builds navigation, so later siblings disappear or a `navPoint` appears without a direct `content src`. The old NCX parser assumed every `navPoint` had a descendant `content`, and could also incorrectly use a child navPoint's `content` as the parent's target.
+- Fix direction: keep this compatibility inside the EPUB engine NCX handling: before XML parsing, escape raw `<` characters inside NCX `navLabel/text`; after parsing, require a direct child `content src`, skip malformed navPoints instead of throwing, and promote valid child navPoints when their parent was skipped. Do not alter pagination or add reader reload fallbacks.
+- Verification gate: the EPUB engine Navigation tests must cover unescaped angle brackets in raw NCX labels, missing direct NCX `content`, child promotion after a malformed parent, and preservation of valid sibling navigation entries.
 
 ### Fixed-layout pages omit viewport but declare original resolution
 
 - Symptom: an image-only fixed-layout EPUB renders each page partially clipped even though the source image is complete; opening the image directly shows the full page. Image indexing can also throw from `createTreeWalker` when a parsed section document has no `body`.
 - Reproduction path: open a Kindle Comic Creator style EPUB whose OPF metadata declares `rendition:layout` as `pre-paginated`, `fixed-layout` as true, and `original-resolution` such as `1200x1920`, while individual XHTML pages contain a single large image and omit `meta name="viewport"`.
-- Root cause: epubjs fixed-layout `fit()` scales pages from the per-page viewport meta. Without that tag it has no stable authored coordinate system, so large image pages can be laid out against the iframe size and clipped. Flow Reader image classification also assumed every section document has `document.body`.
+- Root cause: the EPUB engine fixed-layout `fit()` scales pages from the per-page viewport meta. Without that tag it has no stable authored coordinate system, so large image pages can be laid out against the iframe size and clipped. Flow Reader image classification also assumed every section document has `document.body`.
 - Fix direction: parse OPF `original-resolution` as a fixed-layout fallback viewport only when `rendition:viewport` is absent and the book is pre-paginated; pass that fallback into `Contents.fit()` and use it only when the page itself omits viewport dimensions. Do not scan image dimensions, rewrite unpacked XHTML, or override page-authored viewport tags. In image classification, fall back from `document.body` to the document element before creating a tree walker.
-- Verification gate: epubjs tests must prove `original-resolution` becomes a fallback viewport, fixed-layout fitting uses it only when page viewport is missing, and page viewport wins when present; reader optimization tests must prove missing `body` does not make start-position image classification throw.
+- Verification gate: the EPUB engine tests must prove `original-resolution` becomes a fallback viewport, fixed-layout fitting uses it only when page viewport is missing, and page viewport wins when present; reader optimization tests must prove missing `body` does not make start-position image classification throw.
 
 ### Unarchived EPUB resources confuse the package and container roots
 
@@ -322,7 +322,7 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 - Reproduction path: open an unpacked EPUB whose OPF lives below the container root, then render a spine XHTML document containing a container-absolute resource URL or more parent segments than its directory depth.
 - Root cause: the OPF directory is the base for package-relative manifest and spine paths, but it is not the EPUB container root. Reusing one URL for both meanings redirects container-absolute paths into the OPF directory and lets relative traversal escape the publication boundary.
 - Fix direction: pass the unpacked container root separately from the OPF URL, retain the OPF directory as the base for ordinary relative references, and normalize every local section resource within the container root. Do not add media-type or book-specific fallbacks.
-- Verification gate: epubjs resource coverage must prove container-absolute and excessive-parent references resolve inside the container while normal relative references retain their OPF-directory semantics; a real Tauri client must prove the resulting `asset.localhost` resource loads.
+- Verification gate: the EPUB engine resource coverage must prove container-absolute and excessive-parent references resolve inside the container while normal relative references retain their OPF-directory semantics; a real Tauri client must prove the resulting `asset.localhost` resource loads.
 
 ### IDPF-obfuscated fonts remain unreadable after unpacking
 
@@ -355,7 +355,7 @@ Read this before changing Flow Reader layout, pagination, tab-pane, or reader-he
 ### Shell-level tab render reduction without lifecycle ownership change
 
 - Attempt: reduce React work around tabs and no-op same-tab selection without changing rendition lifecycle ownership.
-- Why it failed: real multi-tab use still had blocked page turns, blank bodies, first-page restore, and page jumps. The shell got lighter but stale epubjs/runtime events could still commit.
+- Why it failed: real multi-tab use still had blocked page turns, blank bodies, first-page restore, and page jumps. The shell got lighter but stale EPUB engine/runtime events could still commit.
 - Do not extend shell-only optimizations as a fix for reader state mismatch.
 
 ### Instant tab-strip gate without runtime ownership change

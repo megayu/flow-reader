@@ -50,7 +50,7 @@
     "copyright": "Copyright © 2026 megayu",
     "resources": {
       "../LICENSE": "licenses/Flow-AGPL-3.0.txt",
-      "../packages/epubjs/license": "licenses/Epub.js-BSD-2-Clause.txt"
+      "../packages/epub-engine/license": "licenses/Epub.js-BSD-2-Clause.txt"
     },
     "icon": [
       "icons/icon.png",

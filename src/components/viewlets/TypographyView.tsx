@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { MinusIcon, PlusIcon, XIcon } from 'lucide-react'
 import { type ComponentProps, useCallback, useEffect, useRef, useState } from 'react'
 
-import { RenditionSpread } from '@flow/epubjs/rendition'
+import { RenditionSpread } from '@flow/epub-engine/rendition'
 import { useTranslation } from '@/hooks/useTranslation'
 import { reader, useReaderSnapshot } from '@/models/reader'
 import { resolveBookSpreadPolicy } from '@/reader/spreadPolicy'

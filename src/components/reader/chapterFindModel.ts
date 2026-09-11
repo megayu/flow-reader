@@ -1,9 +1,5 @@
-export interface ReflowableManager {
-  reflowablePageCountCache?: Record<string, number>
-  currentReflowableSpread?: ReflowableSpread
-  paginationModel?: () => {
-    spreadSlotOrder?: 'left-first' | 'right-first'
-  }
+export interface ChapterFindPagination {
+  currentSpread?: ReflowableSpread
 }
 
 export interface ReflowablePageAddress {
@@ -22,7 +18,7 @@ export interface ChapterFindResult {
   cfi: string
   excerpt: string
   pageIndex: number
-  range?: Range
+  range?: Range | null
 }
 
 export interface ChapterFindState {
@@ -46,8 +42,8 @@ export function isFindShortcut(event: KeyboardEvent) {
   return (event.ctrlKey || event.metaKey) && !event.altKey && (event.key.toLowerCase() === 'f' || event.code === 'KeyF')
 }
 
-export function visibleFindPageIndexes(sectionIndex: number, manager: ReflowableManager | undefined) {
-  const spread = manager?.currentReflowableSpread
+export function visibleFindPageIndexes(sectionIndex: number, session: ChapterFindPagination | undefined) {
+  const spread = session?.currentSpread
   const pages = new Set<number>()
 
   if (spread?.left?.section?.index === sectionIndex) {
@@ -63,9 +59,9 @@ export function visibleFindPageIndexes(sectionIndex: number, manager: Reflowable
 export function firstVisibleFindResultIndex(
   results: ChapterFindResult[],
   sectionIndex: number,
-  manager: ReflowableManager | undefined,
+  session: ChapterFindPagination | undefined,
 ) {
-  const pages = visibleFindPageIndexes(sectionIndex, manager)
+  const pages = visibleFindPageIndexes(sectionIndex, session)
   if (!pages.size) return -1
 
   return results.findIndex((result) => pages.has(result.pageIndex))
@@ -74,12 +70,12 @@ export function firstVisibleFindResultIndex(
 export function nearestVisibleFindResultIndex(
   results: ChapterFindResult[],
   sectionIndex: number | undefined,
-  manager: ReflowableManager | undefined,
+  session: ChapterFindPagination | undefined,
   activeIndex: number,
 ) {
   if (sectionIndex === undefined) return -1
 
-  const pages = visibleFindPageIndexes(sectionIndex, manager)
+  const pages = visibleFindPageIndexes(sectionIndex, session)
   if (!pages.size) return -1
 
   let nearestIndex = -1
@@ -100,9 +96,9 @@ export function nearestVisibleFindResultIndex(
 export function isFindResultVisible(
   result: ChapterFindResult,
   sectionIndex: number,
-  manager: ReflowableManager | undefined,
+  session: ChapterFindPagination | undefined,
 ) {
-  return visibleFindPageIndexes(sectionIndex, manager).has(result.pageIndex)
+  return visibleFindPageIndexes(sectionIndex, session).has(result.pageIndex)
 }
 
 export function findLocationKey(location: unknown) {

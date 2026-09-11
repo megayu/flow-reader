@@ -1,6 +1,6 @@
-import type { Location } from '@flow/epubjs'
-import type Navigation from '@flow/epubjs/navigation'
-import type { RenditionManager, RenditionManagerPage } from '@flow/epubjs/rendition'
+import type { Location } from '@flow/epub-engine'
+import type Navigation from '@flow/epub-engine/navigation'
+import type { ReaderPage, ReaderSession, ReaderSpread } from '@flow/epub-engine/rendition'
 import { sameHref } from '@/noteLinks'
 
 import {
@@ -83,7 +83,7 @@ export interface PaginationSnapshot {
   percentage?: number
   spreadDivisor: number
   writingMode?: string
-  pageProgressionDirection?: 'ltr' | 'rtl'
+  pageProgressionDirection?: string
   spreadSlotOrder?: 'left-first' | 'right-first'
   layoutVersion: number
   paginationVersion: number
@@ -108,7 +108,7 @@ export function readingOrderStartSectionIndex(
 }
 
 export interface HeaderPathItem {
-  id?: string
+  id?: string | false
   href?: string
   label: string
 }
@@ -147,7 +147,7 @@ export interface SectionNavIndex {
   entries: SectionNavEntry[]
 }
 
-function snapshotReflowablePage(page: RenditionManagerPage | undefined): ReadingSpreadPageRecord | undefined {
+function snapshotReflowablePage(page: ReaderPage | undefined): ReadingSpreadPageRecord | undefined {
   if (!page) return
 
   return {
@@ -156,51 +156,27 @@ function snapshotReflowablePage(page: RenditionManagerPage | undefined): Reading
   }
 }
 
-function locationEndsAtDisplayedPageEnd(location?: Location) {
-  const displayed = location?.end?.displayed
-  return (
-    typeof displayed?.page === 'number' &&
-    typeof displayed.total === 'number' &&
-    displayed.total > 0 &&
-    displayed.page >= displayed.total
-  )
-}
-
+/** Add the application's storage version and style identity to the engine's spread anchor. */
 export function snapshotReflowableSpread(
-  manager: RenditionManager | undefined,
+  session: ReaderSession | undefined,
   layoutStyleSignature?: string,
   location?: Location,
 ): ReadingSpreadRecord | undefined {
-  const spread = manager?.currentReflowableSpread
-  if (!manager?.canUseLogicalReflowableSpread?.() || !spread) return
-
+  const spread = session?.captureSpread(location)
+  if (!spread) return
   const left = snapshotReflowablePage(spread.left)
   const right = snapshotReflowablePage(spread.right)
-  const endsAtSectionEnd = Boolean(spread.endsAtSectionEnd) || locationEndsAtDisplayedPageEnd(location)
-  const rightFirst = manager.paginationModel?.().spreadSlotOrder === 'right-first'
-  const terminalSlot = endsAtSectionEnd
-    ? rightFirst
-      ? left
-        ? 'left'
-        : 'right'
-      : right
-        ? 'right'
-        : 'left'
-    : undefined
-  const anchor =
-    terminalSlot ??
-    (spread.anchor === 'right' && right ? 'right' : spread.anchor === 'left' && left ? 'left' : left ? 'left' : 'right')
-  const page = anchor === 'right' ? (right ?? left) : (left ?? right)
+  const page = spread.anchor === 'right' ? right : left
   if (!page) return
 
   return {
     ...page,
     version: READING_SPREAD_VERSION,
-    anchor,
-    exact: !endsAtSectionEnd,
+    anchor: spread.anchor ?? 'left',
+    exact: spread.exact,
     ...(left ? { left } : {}),
     ...(right ? { right } : {}),
-    ...(endsAtSectionEnd ? { endsAtSectionEnd: true } : {}),
+    ...(spread.endsAtSectionEnd ? { endsAtSectionEnd: true } : {}),
     ...(layoutStyleSignature ? { layoutStyleSignature } : {}),
   }
 }
@@ -220,7 +196,7 @@ export function hydrateReflowableSpread(
   spread: ReadingSpreadRecord | undefined,
   sections: ISection[] | undefined,
   layoutStyleSignature?: string,
-) {
+): ReaderSpread | undefined {
   if (spread?.version !== READING_SPREAD_VERSION || !sections) return
   if (spread.layoutStyleSignature && spread.layoutStyleSignature !== layoutStyleSignature) {
     return

@@ -77,41 +77,19 @@ export class BookLayoutTransactionController {
     tab.navigationDirection = undefined
     tab.relayoutAnchorSectionIndexes = [...tab.visibleSectionIndexes]
     const rendition = tab.rendition
-    const manager = rendition?.manager
+    const session = rendition?.session
     const layoutKey = tab.layoutAnchorKey(width, height)
     const spread =
       tab.storedSpreadForLayout(width, height) ??
       hydrateReflowableSpread(tab.runtimeSpreadAnchor, tab.sections, tab.layoutStyleSignature)
 
-    if (!rendition || !manager) return
-
-    rendition._flowSuppressResizeRedisplay = true
-    try {
-      rendition.resize(width, height, target)
-    } finally {
-      rendition._flowSuppressResizeRedisplay = false
-    }
+    if (!rendition || !session) return
 
     try {
-      if (spread && manager.renderReflowableSpread) {
-        const requestId = tab.createManualLocationRequest({
-          layoutKey,
-          updateAnchor: false,
-        })
-        await manager.renderReflowableSpread(spread)
-        await tab.rendition?.reportLocation(requestId)
-        tab.commitPendingRenditionLocation(requestId)
-        return
-      }
-
-      const previousRequestId = tab.currentRenditionLocationRequestId()
-      const display = tab.rendition?.display(target)
-      const requestId = tab.trackRenditionLocationRequest(previousRequestId, {
+      await tab.commitReaderOperation(session.resize(width, height, target, spread), {
         layoutKey,
         updateAnchor: false,
       })
-      await display
-      tab.commitPendingRenditionLocation(requestId)
     } catch (error) {
       console.error(error)
     }
@@ -139,13 +117,9 @@ export class BookLayoutTransactionController {
     tab.relayoutAnchorSectionIndexes = [...tab.visibleSectionIndexes]
 
     try {
-      const previousRequestId = tab.currentRenditionLocationRequestId()
-      const display = tab.rendition?.display(resolvedTarget)
-      const requestId = tab.trackRenditionLocationRequest(previousRequestId, {
+      await tab.commitReaderOperation(tab.rendition?.session.display(resolvedTarget), {
         updateAnchor: false,
       })
-      await display
-      tab.commitPendingRenditionLocation(requestId)
     } catch (error) {
       if (generation === tab.renderGeneration) console.error(error)
     }
@@ -155,17 +129,14 @@ export class BookLayoutTransactionController {
     const deepLinkTarget = tab.takePendingDeepLinkTarget()
     const contentReloadTarget = tab.contentReloadTarget
     tab.contentReloadTarget = undefined
-    const manager = tab.rendition?.manager
+    const session = tab.rendition?.session
     const spread =
       deepLinkTarget || contentReloadTarget
         ? undefined
         : hydrateReflowableSpread(tab.book.configuration?.spread, tab.sections, tab.layoutStyleSignature)
 
-    if (spread && manager?.canUseLogicalReflowableSpread?.() && manager.renderReflowableSpread) {
-      const requestId = tab.createManualLocationRequest({ updateAnchor: true })
-      await manager.renderReflowableSpread(spread)
-      await tab.rendition?.reportLocation(requestId)
-      tab.commitPendingRenditionLocation(requestId)
+    if (spread && session?.supportsSpreadNavigation()) {
+      await tab.commitReaderOperation(session.restoreSpread(spread), { updateAnchor: true })
       return
     }
 
@@ -173,15 +144,11 @@ export class BookLayoutTransactionController {
     const initialTarget = tab.resolveDisplayTarget(requestedInitialTarget, 'initial')
     const initialSpread = tab.book.configuration?.spread
     const target = tab.resolveDisplayTarget(deepLinkTarget ?? initialTarget, 'initial')
-    const previousRequestId = tab.currentRenditionLocationRequestId()
-    const display = tab.rendition?.display(target)
-    const requestId = tab.trackRenditionLocationRequest(previousRequestId, {
+    await tab.commitReaderOperation(tab.rendition?.session.display(target), {
       anchorTarget: target,
       updateAnchor: true,
       userNavigation: !!deepLinkTarget,
     })
-    await display
-    tab.commitPendingRenditionLocation(requestId)
     if (deepLinkTarget && initialTarget && !tab.targetIsInCurrentLocation(initialTarget)) {
       tab.showPrevLocation(initialTarget, initialSpread)
     }

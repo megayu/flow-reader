@@ -14,7 +14,7 @@ const collator = new Intl.Collator(undefined, {
   sensitivity: 'base',
 })
 
-export function cleanBookText(value?: string) {
+export function cleanBookText(value?: string | null) {
   return value?.replace(/\s+/g, ' ').trim() ?? ''
 }
 

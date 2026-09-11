@@ -465,7 +465,7 @@ test('limits cross-paragraph highlights to rendered text', async ({ page }) => {
       range.setEnd(node, end)
       return range.getBoundingClientRect().width
     })
-    const highlightWidths = Array.from(document.querySelectorAll<SVGRectElement>('g[ref="epubjs-hl"] rect')).map(
+    const highlightWidths = Array.from(document.querySelectorAll<SVGRectElement>('g[ref="flow-epub-hl"] rect')).map(
       (rect) => rect.getBoundingClientRect().width,
     )
     return { highlightWidths, textWidths }

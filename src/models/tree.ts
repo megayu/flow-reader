@@ -5,7 +5,12 @@ export interface INode {
   subitems?: INode[]
 }
 
-export function find<T extends INode>(nodes: T[] = [], id: string): T | undefined {
+interface TreeNode {
+  id?: unknown
+  subitems?: TreeNode[]
+}
+
+export function find<T extends TreeNode>(nodes: T[] = [], id: string): T | undefined {
   if (!id) return
 
   const node = nodes.find((n) => n.id === id)
@@ -17,7 +22,7 @@ export function find<T extends INode>(nodes: T[] = [], id: string): T | undefine
   return undefined
 }
 
-export function dfs<T extends INode>(node: T, fn: (node: T) => void) {
+export function dfs<T extends TreeNode>(node: T, fn: (node: T) => void) {
   fn(node)
   node.subitems?.forEach((child) => dfs(child as T, fn))
 }

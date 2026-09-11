@@ -8,9 +8,9 @@ importers:
 
   .:
     dependencies:
-      '@flow/epubjs':
+      '@flow/epub-engine':
         specifier: workspace:*
-        version: link:packages/epubjs
+        version: link:packages/epub-engine
       '@github/mini-throttle':
         specifier: 2.1.1
         version: 2.1.1
@@ -118,7 +118,7 @@ importers:
         specifier: 4.1.10
         version: 4.1.10(@types/node@24.10.1)(@vitest/browser-playwright@4.1.10)(vite@8.1.5(@types/node@24.10.1)(jiti@2.7.0))
 
-  packages/epubjs:
+  packages/epub-engine:
     devDependencies:
       '@vitest/browser-playwright':
         specifier: ^4.1.10

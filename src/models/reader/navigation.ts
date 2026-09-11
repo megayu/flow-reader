@@ -1,4 +1,4 @@
-import type { Location } from '@flow/epubjs'
+import type { Location } from '@flow/epub-engine'
 
 import { imageSourcesMatch } from './image'
 import type { BookTab, ISection } from './model'
@@ -67,14 +67,10 @@ export class BookNavigationController {
       tab.navigationDirection = -1
       tab.allowLocationJump = false
       tab.relayoutAnchorSectionIndexes = undefined
-      const previousRequestId = tab.currentRenditionLocationRequestId()
-      const navigation = tab.rendition?.prev()
-      const requestId = tab.trackRenditionLocationRequest(previousRequestId, {
+      await tab.commitReaderOperation(tab.rendition?.session.prev(), {
         updateAnchor: true,
         userNavigation: true,
       })
-      await navigation
-      tab.commitPendingRenditionLocation(requestId)
     })
   }
 
@@ -88,14 +84,10 @@ export class BookNavigationController {
       tab.navigationDirection = 1
       tab.allowLocationJump = false
       tab.relayoutAnchorSectionIndexes = undefined
-      const previousRequestId = tab.currentRenditionLocationRequestId()
-      const navigation = tab.rendition?.next()
-      const requestId = tab.trackRenditionLocationRequest(previousRequestId, {
+      await tab.commitReaderOperation(tab.rendition?.session.next(), {
         updateAnchor: true,
         userNavigation: true,
       })
-      await navigation
-      tab.commitPendingRenditionLocation(requestId)
     })
   }
 
@@ -106,11 +98,11 @@ export class BookNavigationController {
   }
 
   private async displayCurrentSectionStartBeforePreviousSection(tab: BookTab) {
-    const manager = tab.rendition?.manager
-    const spread = manager?.currentReflowableSpread
+    const session = tab.rendition?.session
+    const spread = session?.currentSpread
 
-    if (manager?.canUseLogicalReflowableSpread?.() && spread) {
-      const page = manager.reflowableSpreadEarlierPage?.(spread) ?? spread.left ?? spread.right
+    if (session?.supportsSpreadNavigation?.() && spread) {
+      const page = session.firstSpreadPage?.(spread) ?? spread.left ?? spread.right
       if (page?.section && page.pageIndex > 0) {
         const section = tab.sections?.find((candidate) => candidate.index === page.section.index)
         if (!section) return false
@@ -190,10 +182,10 @@ export class BookNavigationController {
 
 export async function pageIndexForCfi(tab: BookTab, sectionIndex: number, cfi: string) {
   const section = tab.sections?.find((item) => item.index === sectionIndex)
-  const manager = tab.rendition?.manager
-  if (!section || !manager?.reflowablePageForTarget) return 0
+  const session = tab.rendition?.session
+  if (!section || !session?.pageForTarget) return 0
 
-  const page = await manager.reflowablePageForTarget(section, cfi)
+  const page = await session.pageForTarget(section, cfi)
   return page?.pageIndex ?? 0
 }
 
@@ -207,8 +199,8 @@ export async function displayFromSelector(
   try {
     await tab.ensureSectionInfo(section)
     const element = selector.startsWith('#')
-      ? section.document.getElementById(selector.slice(1))
-      : section.document.querySelector(selector)
+      ? section.document!.getElementById(selector.slice(1))
+      : section.document!.querySelector(selector)
     if (element) {
       const locationTarget = section.cfiFromElement(element)
       await tab.displayTarget(section, selector.startsWith('#') ? selector : locationTarget, {

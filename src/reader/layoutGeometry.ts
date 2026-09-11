@@ -3,9 +3,9 @@ function isPropertyBag(value: unknown): value is Record<string, unknown> {
 }
 
 export function readRenditionLayout(rendition: unknown) {
-  if (!isPropertyBag(rendition) || !isPropertyBag(rendition.manager)) return
+  if (!isPropertyBag(rendition) || !isPropertyBag(rendition.session)) return
 
-  const { layout } = rendition.manager
+  const { layout } = rendition.session
   return isPropertyBag(layout) ? layout : undefined
 }
 

@@ -3,7 +3,7 @@ import { ChevronDownIcon, ChevronUpIcon, RotateCcwIcon } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 
-import { RenditionSpread } from '@flow/epubjs/rendition'
+import { RenditionSpread } from '@flow/epub-engine/rendition'
 import { normalizeHexColor } from '@/color'
 import { AppTooltip } from '@/components/AppTooltip'
 import { ColorPickerPopover } from '@/components/ColorPickerPopover'

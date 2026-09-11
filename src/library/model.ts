@@ -148,7 +148,7 @@ const preferredLanguageNames: Readonly<Record<string, string>> = {
   'zh-HK': '繁體中文',
 }
 
-export function formatLanguage(value?: string) {
+export function formatLanguage(value?: string | null) {
   const language = cleanBookText(value)
   if (!language) return ''
 
@@ -166,7 +166,7 @@ export function formatLanguage(value?: string) {
   }
 }
 
-export function cleanBookDescription(value?: string) {
+export function cleanBookDescription(value?: string | null) {
   if (!value) return ''
 
   const paragraphs: string[] = []

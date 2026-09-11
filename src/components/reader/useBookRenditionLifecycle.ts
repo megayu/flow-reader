@@ -1,6 +1,6 @@
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 
-import type { RenditionSpread } from '@flow/epubjs/rendition'
+import type { RenditionSpread } from '@flow/epub-engine/rendition'
 
 import type { BookBeforeLayout, BookTab } from '../../models/reader'
 

@@ -454,7 +454,7 @@ async function verifyAnnotationHighlight(page, screenshotFile) {
     const tab = window.reader.focusedBookTab
     const annotation = [...tab.book.annotations].find((candidate) => candidate.cfi === selection.cfi)
     if (!annotation) throw new Error('created annotation is missing')
-    const markRects = Array.from(document.querySelectorAll('[ref="epubjs-hl"] rect'))
+    const markRects = Array.from(document.querySelectorAll('[ref="flow-epub-hl"] rect'))
       .map((rect) => rect.getBoundingClientRect())
       .filter((rect) =>
         selection.rects.some(
@@ -481,7 +481,7 @@ async function verifyAnnotationHighlight(page, screenshotFile) {
 
   await page.evaluate((selection) => {
     const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
-    const target = Array.from(pane?.querySelectorAll('[ref="epubjs-hl"]') ?? []).find((mark) => {
+    const target = Array.from(pane?.querySelectorAll('[ref="flow-epub-hl"]') ?? []).find((mark) => {
       const rect = mark.getBoundingClientRect()
       return selection.rects.some(
         (selected) =>
@@ -596,9 +596,9 @@ async function verifySearches(page, screenshotFile) {
       document.querySelector('[data-flow-chapter-find-bar]')?.innerText.includes(`${ordinal}/${count}`),
     { ordinal: nextOrdinal, count: repeated.count },
   )
-  await page.waitForFunction(() => document.querySelectorAll('[ref="epubjs-hl"]').length > 0)
+  await page.waitForFunction(() => document.querySelectorAll('[ref="flow-epub-hl"]').length > 0)
   const chapter = {
-    markCount: await page.locator('[ref="epubjs-hl"]').count(),
+    markCount: await page.locator('[ref="flow-epub-hl"]').count(),
     stayedOnSpread: JSON.stringify(await spreadSignature(page)) === JSON.stringify(beforeFind),
   }
   await page.keyboard.press('Escape')
@@ -616,9 +616,9 @@ async function verifySearches(page, screenshotFile) {
       ),
     query,
   )
-  await page.waitForFunction(() => document.querySelectorAll('[ref="epubjs-hl"]').length > 0)
+  await page.waitForFunction(() => document.querySelectorAll('[ref="flow-epub-hl"]').length > 0)
   const sidebar = await page.evaluate(() => ({
-    markCount: document.querySelectorAll('[ref="epubjs-hl"]').length,
+    markCount: document.querySelectorAll('[ref="flow-epub-hl"]').length,
     hasResults: /个结果|results?/i.test(document.body.innerText),
     activeResultID: window.reader.focusedBookTab.activeResultID,
   }))
@@ -664,7 +664,7 @@ async function waitForVisibleActiveChapterFindHighlight(page) {
     const contentRect = content?.getBoundingClientRect()
     if (!contentRect) return false
 
-    return Array.from(document.querySelectorAll('[ref="epubjs-hl"]')).some((mark) => {
+    return Array.from(document.querySelectorAll('[ref="flow-epub-hl"]')).some((mark) => {
       const rect = mark.getBoundingClientRect()
       const fill = mark.getAttribute('fill') ?? getComputedStyle(mark).fill
       return (

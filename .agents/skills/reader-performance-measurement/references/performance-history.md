@@ -62,10 +62,10 @@ start of rejected approaches. Other entries cover reader interactions.
 
 ### Reuse the iframe view writing mode during style injection
 
-- Change: when epubjs calls the reader's `beforeLayout` hook, use the writing mode already resolved by `IframeView` instead of probing computed styles and walking the dominant content chain a second time. Keep the contents probe only for style refreshes that have no view context.
+- Change: when the EPUB engine calls the reader's `beforeLayout` hook, use the writing mode already resolved by `IframeView` instead of probing computed styles and walking the dominant content chain a second time. Keep the contents probe only for style refreshes that have no view context.
 - Measured effect: `tauri-release` native-book comparison used the same 12 page-turn, rapid-page-turn, tab-switch, tab-click, and rapid-tab-click scenarios as the pre-change baseline, with 12 single runs and 4 burst runs. Page-turn first-frame p50 improved about 11-26%, rapid page-turn burst p95 improved about 26-45%, and rapid tab-click burst p95 improved about 29-48%. No page-turn long tasks were introduced. A full-run `tab-click/sidebar-toc` p95 outlier was not stable: an isolated 12-run repeat improved operation p95 from 91.8ms to 79.6ms, first-frame p95 from 99.6ms to 89.9ms, settled p95 from 337.9ms to 280.4ms, and long-task count from 2 to 0.
 - Decision: keep. It removes duplicate synchronous layout inspection and preserves the vertical style branch without adding horizontal page-turn work.
-- Constraint: only trust `view.writingMode` after epubjs has resolved and set it. Code paths that refresh existing contents without a view must retain the contents-based fallback.
+- Constraint: only trust `view.writingMode` after the EPUB engine has resolved and set it. Code paths that refresh existing contents without a view must retain the contents-based fallback.
 
 ### Virtual list overscan 4
 
@@ -255,7 +255,7 @@ start of rejected approaches. Other entries cover reader interactions.
 
 ### Active-only inactive tab chrome
 
-- Attempt: keep epubjs containers mounted but render header, footer, overlays, and other inactive tab chrome only for the active tab.
+- Attempt: keep the EPUB engine containers mounted but render header, footer, overlays, and other inactive tab chrome only for the active tab.
 - Rejection evidence: real-client setup produced active-tab metadata from one book with body/header/footer from another.
 - Decision: rejected because it breaks the visibility-based multi-tab invariant and can reproduce cross-tab content mismatch.
 - Retry condition: reconsider only after reader body and chrome ownership are redesigned so one committed tab snapshot controls all visible surfaces.

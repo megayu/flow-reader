@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 
 import { test } from 'vitest'
 
-import type { Location } from '@flow/epubjs'
+import type { Location } from '@flow/epub-engine'
 
 import { calculateReadingPercentage } from '../../src/models/reader/pagination.ts'
 

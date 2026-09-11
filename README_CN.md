@@ -62,7 +62,7 @@ Flow Reader 是一款快速、流畅和轻便的 EPUB 与 TXT 桌面阅读器。
 
 - `src/`：React 前端，包括书架、阅读器和设置等界面
 - `src-tauri/`：Tauri 桌面外壳、原生命令、存储、导入和搜索
-- `packages/epubjs/`：项目内部维护的 EPUB 渲染引擎
+- `packages/epub-engine/`：项目内部维护的 EPUB 渲染引擎
 - `crates/`：共享的 EPUB 封面与缩略图库
 - `native/shell-thumbnails/`：Windows 和 macOS EPUB 缩略图集成
 - `scripts/`：构建、打包和发布脚本

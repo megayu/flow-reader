@@ -1,4 +1,4 @@
-import type { Contents } from '@flow/epubjs'
+import type { Contents } from '@flow/epub-engine'
 
 import { getNoteIndex } from './noteIndex'
 import { isNoteMarkerText } from './noteSemantics'

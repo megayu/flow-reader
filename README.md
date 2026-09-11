@@ -104,7 +104,7 @@ and memory use remains restrained.
 
 - `src/` - React frontend, including the library, reader, and settings
 - `src-tauri/` - Tauri shell, native commands, storage, import, and search
-- `packages/epubjs/` - internal EPUB rendering engine
+- `packages/epub-engine/` - internal EPUB rendering engine
 - `crates/` - shared EPUB cover and thumbnail libraries
 - `native/shell-thumbnails/` - Windows and macOS EPUB thumbnail integration
 - `scripts/` - build, packaging, and release utilities

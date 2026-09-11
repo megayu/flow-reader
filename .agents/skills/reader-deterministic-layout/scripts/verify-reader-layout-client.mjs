@@ -1064,22 +1064,20 @@ async function setTabToSectionFinalSpread(page, tabIndex, sectionIndex) {
       }
 
       await tab.ensureSectionInfo(section)
-      const pageCount = await manager.measureReflowableSectionPageCount(section)
+      const pageCount = await manager.sectionMeasurements.count(section)
       if (!pageCount) throw new Error(`section ${sectionIndex} has no pages`)
 
-      const requestId = (tab.rendition._locationRequestId ?? 0) + 1
-      tab.rendition._locationRequestId = requestId
-      tab.acceptedLocationRequests.set(requestId, { updateAnchor: true })
-      await manager.renderReflowableSpread({
-        anchor: 'right',
-        endsAtSectionEnd: true,
-        right: {
-          section,
-          pageIndex: pageCount - 1,
-        },
-      })
-      await tab.rendition.reportLocation(requestId)
-      tab.commitPendingRenditionLocation(requestId)
+      await tab.commitReaderOperation(
+        tab.rendition.session.restoreSpread({
+          anchor: 'right',
+          endsAtSectionEnd: true,
+          right: {
+            section,
+            pageIndex: pageCount - 1,
+          },
+        }),
+        { updateAnchor: true },
+      )
     },
     { tabIndex, sectionIndex },
   )

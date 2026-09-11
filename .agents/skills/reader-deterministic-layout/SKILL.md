@@ -43,7 +43,7 @@ Run this workflow for changes touching:
 - Window resize, maximize/restore, viewport measurement, `ResizeObserver`, or layout invalidation.
 - Tab activation, tab switching, hidden/inactive pane geometry, visibility, opacity, z-index, iframe lifecycle, or pane mounting.
 - Header, footer, percentage, page number, chapter path, visible section indexes, or pagination snapshot commits.
-- `packages/epubjs` display, relocation, rendition, view manager, spread, resize, or event ownership.
+- `packages/epub-engine` display, relocation, rendition, view manager, spread, resize, or event ownership.
 - Annotation and definition overlays when they redraw, align to text, respond to page turns, or depend on active iframe geometry.
 - Generated TXT/EPUB package, XHTML, CSS, images, metadata, or resource structure when it can change pagination, iframe DOM, section count, or reader dimensions.
 - Cover or SVG cover behavior when the requested change is about user-visible responsive layout, text wrapping, size adaptation, or client display correctness.
@@ -176,7 +176,7 @@ Do not use browser-smoke as final proof for hidden iframe compositing, desktop w
 Run targeted automated checks before client verification when available:
 
 - Reader tab/layout specs for tab switching, stale layout cache, inactive pane geometry, final-page stability, and pagination no-op paths.
-- EPUB engine tests when `packages/epubjs` behavior changes.
+- EPUB engine tests when `packages/epub-engine` behavior changes.
 - UI interaction tests when annotations, definitions, hover, pointer, or tooltip behavior changes.
 - `cargo test --manifest-path src-tauri/Cargo.toml` for native changes that alter generated resources, storage, or commands used by reader setup.
 

@@ -4,7 +4,7 @@
 
 - App code lives in `src/`; `src/main.tsx` mounts the application from `src/app`.
 - Tauri native shell and storage code lives in `src-tauri/`.
-- `packages/epubjs` is the internal EPUB rendering engine.
+- `packages/epub-engine` is the internal EPUB rendering engine.
 - Node-level unit tests and pure source contracts live in `tests/unit/`; mocked browser integration tests live in `tests/integration/`; shared fixtures, mocks, and test runners live in `tests/support/`.
 - Keep tests and test-only helpers under `tests/`, not `scripts/`.
 
@@ -13,7 +13,7 @@
 - `pnpm check` runs the standard web validation suite; `pnpm check:full` also runs the EPUB engine, Rust, and browser integration suites.
 - `pnpm exec playwright test <spec> --grep <pattern>` - run matching integration test cases in the specified Playwright spec; omit `--grep` to run the whole spec. Set `PLAYWRIGHT_PORT` if 7127 is busy.
 - `pnpm doctor:lines` - run after non-trivial React component/hook changes to catch render, hook, and state-flow issues on changed lines.
-- `pnpm --filter @flow/epubjs test` - run the internal EPUB engine Vitest Browser Mode suite in headless Chromium.
+- `pnpm --filter @flow/epub-engine test` - run the internal EPUB engine Vitest Browser Mode suite in headless Chromium.
 - `pnpm rust:test` - run native storage/Tauri tests.
 
 ## Repository Skills
@@ -47,7 +47,7 @@
 
 - Use `msg(...)` for localized UI labels in tests; never hard-code them.
 - Use `pnpm check` for standard web validation; it does not include EPUB engine or Rust checks.
-- When the EPUB engine or native code is affected, separately run `pnpm check:epubjs` or `pnpm check:rust`, respectively.
+- When the EPUB engine or native code is affected, separately run `pnpm check:epub-engine` or `pnpm check:rust`, respectively.
 - Integration tests are expensive: whenever possible, run only the cases relevant to the change, using spec paths and `--grep`. Run the full integration suite or `pnpm check:full` only when the impact cannot reasonably be narrowed or a full run is explicitly required.
 - Use synthetic fixture text in tests; do not copy book text, user-provided context, or investigation-specific prose into test cases unless the exact text is required to reproduce a parser or encoding bug.
 - Keep test fixtures platform-neutral. Do not use Windows- or Unix-specific drive letters, absolute paths, path separators, shell syntax, or other operating-system characteristics unless the test explicitly verifies platform-specific path handling or system integration.

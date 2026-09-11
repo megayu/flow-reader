@@ -1018,22 +1018,20 @@ async function setLongBookAtSectionFinalSpread(page: Page, sectionIndex: number)
     }
 
     await tab.ensureSectionInfo(section)
-    const pageCount = await manager.measureReflowableSectionPageCount(section)
+    const pageCount = await manager.sectionMeasurements.count(section)
     if (!pageCount) throw new Error('Missing measured page count')
 
-    const requestId = ((tab.rendition._locationRequestId ?? 0) + 1) as number
-    tab.rendition._locationRequestId = requestId
-    tab.acceptedLocationRequests.set(requestId, { updateAnchor: true })
-    await manager.renderReflowableSpread({
-      anchor: 'right',
-      endsAtSectionEnd: true,
-      right: {
-        section,
-        pageIndex: pageCount - 1,
-      },
-    })
-    await tab.rendition.reportLocation(requestId)
-    tab.commitPendingRenditionLocation(requestId)
+    await tab.commitReaderOperation(
+      tab.rendition.session.restoreSpread({
+        anchor: 'right',
+        endsAtSectionEnd: true,
+        right: {
+          section,
+          pageIndex: pageCount - 1,
+        },
+      }),
+      { updateAnchor: true },
+    )
   }, sectionIndex)
 }
 
@@ -1795,7 +1793,7 @@ test('keeps definitions and repeated editing available after an in-place text re
 })
 
 test('reloads an edited section with the latest revision after navigating away', async ({ page }) => {
-  const chapterPath = path.resolve('packages/epubjs/test/fixtures/alice/OPS/chapter_001.xhtml')
+  const chapterPath = path.resolve('packages/epub-engine/test/fixtures/alice/OPS/chapter_001.xhtml')
   const originalChapter = readFileSync(chapterPath, 'utf8')
   const oldText = 'Alice was beginning to get very tired'
   const newText = 'Alice was beginning to feel fully awake'
@@ -3085,7 +3083,7 @@ verticalBookTest('advances chapter find within the visible page before turning',
     const contentRect = content?.getBoundingClientRect()
     if (!contentRect) return false
 
-    return Array.from(document.querySelectorAll('[ref="epubjs-hl"]')).some((mark) => {
+    return Array.from(document.querySelectorAll('[ref="flow-epub-hl"]')).some((mark) => {
       const rect = mark.getBoundingClientRect()
       const fill = mark.getAttribute('fill') ?? getComputedStyle(mark).fill
       return (
@@ -3158,7 +3156,7 @@ verticalBookTest('turns to the next spread for an off-page chapter find result',
     page.getByText(`${search.firstOffPageIndex + 1}/${search.pageIndexes.length}`, { exact: true }),
   ).toBeVisible()
   await expect.poll(() => readVerticalReadingState(page)).not.toEqual(beforeTurn)
-  await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
+  await expectVisibleReaderMarks(page, 'flow-epub-hl', 1)
 })
 
 verticalBookTest('[vertical-rl] keeps a clicked sidebar search result active and visible', async ({ page }) => {
@@ -3176,7 +3174,7 @@ verticalBookTest('[vertical-rl] keeps a clicked sidebar search result active and
   expect(state.startIndex).toBe(0)
   expect(state.startSlot).toBe('right')
   expect(state.rightPageIndex).toBeGreaterThan(0)
-  await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
+  await expectVisibleReaderMarks(page, 'flow-epub-hl', 1)
 })
 
 verticalBookTest('locates and expands the current search-result chapter', async ({ page }) => {
@@ -5410,8 +5408,8 @@ test('keeps three tabs stable and redraws same-chapter overlays immediately', as
 
   const annotation = await addVisibleAnnotation(page)
   expect(annotation.text).toBe('Alice')
-  await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
-  await expectReaderMarkCursor(page, 'epubjs-hl')
+  await expectVisibleReaderMarks(page, 'flow-epub-hl', 1)
+  await expectReaderMarkCursor(page, 'flow-epub-hl')
 
   await page.evaluate((definition) => {
     const tab = (window as any).reader.focusedBookTab
@@ -5423,7 +5421,7 @@ test('keeps three tabs stable and redraws same-chapter overlays immediately', as
   await page.evaluate((cfi) => {
     ;(window as any).reader.focusedBookTab?.removeAnnotation(cfi)
   }, annotation.cfi)
-  await expect.poll(() => countVisibleReaderMarks(page, 'epubjs-hl')).toBe(0)
+  await expect.poll(() => countVisibleReaderMarks(page, 'flow-epub-hl')).toBe(0)
 
   await readerTab(page, 'Tab Layout A').click()
   await expectVisibleFrameStamp(page, 'tab-a-narrow')
@@ -5520,13 +5518,13 @@ test('keeps right-page cross-section header and overlays in sync', async ({ page
   expect(annotation.sectionIndex).toBe(overlaySpread.rightSectionIndex)
   expect(annotation.text.length).toBeGreaterThan(3)
 
-  await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
+  await expectVisibleReaderMarks(page, 'flow-epub-hl', 1)
   await expectVisibleReaderMarks(page, 'flow-definition-underline', 1)
 
   await readerTab(page, 'Tab Layout A').click()
   await waitForStableReaderLayout(page, { sidebarVisible: true })
   await readerTab(page, 'Tab Layout B').click()
   await waitForStableReaderLayout(page, { header: stableHeader, sidebarVisible: true })
-  await expectVisibleReaderMarks(page, 'epubjs-hl', 1)
+  await expectVisibleReaderMarks(page, 'flow-epub-hl', 1)
   await expectVisibleReaderMarks(page, 'flow-definition-underline', 1)
 })

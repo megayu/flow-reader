@@ -8,8 +8,8 @@ interface BookPaneWheelNavigationOptions {
   isScrolledDocument: boolean
   rendered: boolean
   rendition?: {
-    off(type: string, listener: (event: WheelEvent) => void): unknown
-    on(type: string, listener: (event: WheelEvent) => void): unknown
+    off(type: 'wheel', listener: (event: WheelEvent) => void): unknown
+    on(type: 'wheel', listener: (event: WheelEvent) => void): unknown
   }
   tab: BookTab
 }
@@ -33,8 +33,8 @@ export function useBookPaneWheelNavigation({
 
       if (tab.isScrolledDocument && tab.container) {
         const container = tab.container
-        const manager = tab.rendition?.manager
-        const horizontal = manager?.settings?.axis === 'horizontal'
+        const session = tab.rendition?.session
+        const horizontal = session?.axis === 'horizontal'
         const scale =
           event.deltaMode === WheelEvent.DOM_DELTA_LINE
             ? 16
@@ -46,7 +46,7 @@ export function useBookPaneWheelNavigation({
         const scrollDelta = delta * scale
 
         if (horizontal) {
-          if (manager.scrollHorizontalByReadingDirection?.(scrollDelta, true)) {
+          if (session.scrollHorizontalByReadingDirection(scrollDelta, true)) {
             wheelDelta.current = 0
             return
           }

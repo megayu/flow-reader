@@ -1,4 +1,4 @@
-import type { PackagingMetadataObject } from '@flow/epubjs/packaging'
+import type { PackagingMetadataObject } from '@flow/epub-engine/packaging'
 
 import type { Annotation } from '../annotation'
 import type { TypographyConfiguration } from '../reader/configuration'

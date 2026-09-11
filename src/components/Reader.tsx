@@ -19,8 +19,8 @@ import React, {
 } from 'react'
 import { useSnapshot } from 'valtio'
 
-import type { Contents } from '@flow/epubjs'
-import { type RenditionManagerView, RenditionSpread } from '@flow/epubjs/rendition'
+import type { Contents } from '@flow/epub-engine'
+import { type ReaderView, RenditionSpread } from '@flow/epub-engine/rendition'
 import {
   useSetSettingsDialogOpen,
   useSettingsReady,
@@ -697,14 +697,14 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
   useFrameEvent(activeFrameWindows, 'auxclick', handleReturnMouseButton, CAPTURE_EVENT_OPTIONS)
 
   const applyCustomStyle = useCallback(
-    (contents?: Contents, view?: RenditionManagerView) => {
+    (contents?: Contents, view?: ReaderView) => {
       if (contents) {
-        updateCustomStyle(contents, typography, tab.bodyTextCache, view, rendition?.manager?.layout?.name)
+        updateCustomStyle(contents, typography, tab.bodyTextCache, view)
         return
       }
 
-      rendition?.getContents().forEach((contents) => {
-        updateCustomStyle(contents, typography, tab.bodyTextCache, undefined, rendition.manager?.layout?.name)
+      rendition?.session.getViews().forEach((view) => {
+        updateCustomStyle(view.contents, typography, tab.bodyTextCache, view)
       })
     },
     [rendition, tab.bodyTextCache, typography],
@@ -743,7 +743,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
   useEffect(() => {
     if (dark === undefined) return
     // set `!important` when in dark mode
-    rendition?.themes.override('color', dark ? '#bfc8ca' : '#3f484a', dark)
+    rendition?.themes.overrideProperty('color', dark ? '#bfc8ca' : '#3f484a', dark)
   }, [rendition, dark])
 
   const { closeImagePreview, imagePreview } = useBookPaneFrameContent({
@@ -795,7 +795,9 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
 
     const onKeyDown = (event: KeyboardEvent) => handleFrameKeyDownEvent(event)
     rendition.on('keydown', onKeyDown)
-    return () => rendition.off('keydown', onKeyDown)
+    return () => {
+      rendition.off('keydown', onKeyDown)
+    }
   }, [active, rendition])
 
   return (
@@ -933,7 +935,7 @@ const ReaderPaneHeader: React.FC<ReaderPaneHeaderProps> = ({ tab }) => {
     <Bar data-flow-reader-header>
       <div className="scroll-h flex">
         {navPath.map((item, i) => (
-          <span key={item.id ?? item.href ?? item.label} className="flex shrink-0 items-center">
+          <span key={String(item.id ?? item.href ?? item.label)} className="flex shrink-0 items-center">
             {item.label}
             {i !== navPath.length - 1 && <ChevronRightIcon className="size-5" />}
           </span>

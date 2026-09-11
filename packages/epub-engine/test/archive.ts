@@ -1,0 +1,51 @@
+import { assert } from 'vitest'
+
+import JSZip from 'jszip'
+
+import Archive from '../src/archive'
+
+describe('Archive', function () {
+  it('revokes cached blob URLs when destroyed', function () {
+    const revokeObjectUrl = vi
+      .spyOn(window.URL, 'revokeObjectURL')
+      .mockImplementation(() => {})
+    const archive = new Archive()
+
+    try {
+      const blobUrl = `blob:${location.origin}/resource`
+      archive.urlCache['/resource'] = blobUrl
+      archive.destroy()
+
+      assert.strictEqual(revokeObjectUrl.mock.calls[0]?.[0], blobUrl)
+    } finally {
+      revokeObjectUrl.mockRestore()
+    }
+  })
+
+  it('rejects archive reads when an entry cannot be decoded', async function () {
+    const failure = new Error('synthetic archive read failure')
+    const archive = new Archive()
+    archive.zip = new JSZip()
+    archive.zip.file('chapter.xhtml', '<html/>')
+    vi.spyOn(archive.zip.file('chapter.xhtml')!, 'async').mockRejectedValue(
+      failure,
+    )
+
+    for (const read of [
+      () => archive.request('/chapter.xhtml', 'text'),
+      () => archive.createUrl('/chapter.xhtml'),
+    ]) {
+      const outcome = await Promise.race([
+        read().then(
+          () => 'resolved',
+          (error) => error,
+        ),
+        new Promise((resolve) =>
+          window.setTimeout(() => resolve('pending'), 50),
+        ),
+      ])
+
+      assert.strictEqual(outcome, failure)
+    }
+  })
+})

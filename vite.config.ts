@@ -47,9 +47,9 @@ const watchedPaths = [
   'pnpm-workspace.yaml',
   'tsconfig.json',
   'vite.config.ts',
-  'packages/epubjs/src',
-  'packages/epubjs/types',
-  'packages/epubjs/package.json',
+  'packages/epub-engine/src',
+  'packages/epub-engine/tsconfig.json',
+  'packages/epub-engine/package.json',
   '.env',
   '.env.*',
 ]

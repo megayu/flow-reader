@@ -1,0 +1,71 @@
+export { version as EPUB_ENGINE_VERSION } from '../../package.json'
+
+// Dom events to listen for
+export const DOM_EVENTS = [
+  'keydown',
+  'keyup',
+  'keypressed',
+  'mouseup',
+  'mousedown',
+  'mousemove',
+  'click',
+  'touchend',
+  'touchstart',
+  'touchmove',
+] as const
+
+export const EVENTS = {
+  BOOK: {
+    OPEN_FAILED: 'openFailed',
+  },
+  CONTENTS: {
+    EXPAND: 'expand',
+    RESIZE: 'resize',
+    SELECTED: 'selected',
+    SELECTED_RANGE: 'selectedRange',
+    LINK_CLICKED: 'linkClicked',
+  },
+  MANAGERS: {
+    RESIZE: 'resize',
+    RESIZED: 'resized',
+    ORIENTATION_CHANGE: 'orientationchange',
+    ADDED: 'added',
+    SCROLL: 'scroll',
+    SCROLLED: 'scrolled',
+    REMOVED: 'removed',
+  },
+  VIEWS: {
+    AXIS: 'axis',
+    WRITING_MODE: 'writingMode',
+    LOAD_ERROR: 'loaderror',
+    RENDERED: 'rendered',
+    RESIZED: 'resized',
+    DISPLAYED: 'displayed',
+    SHOWN: 'shown',
+    HIDDEN: 'hidden',
+    WHEEL: 'wheel',
+    MARK_CLICKED: 'markClicked',
+  },
+  RENDITION: {
+    STARTED: 'started',
+    ATTACHED: 'attached',
+    DISPLAYED: 'displayed',
+    DISPLAY_ERROR: 'displayerror',
+    RENDERED: 'rendered',
+    REMOVED: 'removed',
+    RESIZED: 'resized',
+    ORIENTATION_CHANGE: 'orientationchange',
+    RELOCATED: 'relocated',
+    EXTERNAL_LINK_CLICKED: 'externalLinkClicked',
+    MARK_CLICKED: 'markClicked',
+    SELECTED: 'selected',
+    LAYOUT: 'layout',
+  },
+  LAYOUT: {
+    UPDATED: 'updated',
+  },
+  ANNOTATION: {
+    ATTACH: 'attach',
+    DETACH: 'detach',
+  },
+} as const

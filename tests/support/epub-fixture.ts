@@ -2,7 +2,7 @@ import path from 'node:path'
 
 import type { Page } from '@playwright/test'
 
-const fixtureRoot = path.resolve('packages/epubjs/test/fixtures/alice')
+const fixtureRoot = path.resolve('packages/epub-engine/test/fixtures/alice')
 const fixtureRootPrefix = `${fixtureRoot}${path.sep}`
 const fixtureUrlPrefix = '/test-assets/epub/'
 const contentTypes: Record<string, string> = {

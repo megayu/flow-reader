@@ -1,4 +1,4 @@
-import type { RenditionSpread } from '@flow/epubjs/rendition'
+import type { RenditionSpread } from '@flow/epub-engine/rendition'
 
 export type PageAppearance = 'cards' | 'book' | 'divider'
 

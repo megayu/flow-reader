@@ -1,0 +1,28 @@
+{
+  "name": "@flow/epub-engine",
+  "version": "0.1.0",
+  "description": "Flow Reader's internal EPUB parser and renderer",
+  "exports": {
+    ".": "./src/index.ts",
+    "./navigation": "./src/navigation.ts",
+    "./packaging": "./src/packaging.ts",
+    "./rendition": "./src/public-rendition.ts",
+    "./request": "./src/utils/request.ts",
+    "./section": "./src/section.ts"
+  },
+  "scripts": {
+    "test:browser": "vitest run",
+    "test": "pnpm test:browser && pnpm typecheck",
+    "test:ci": "pnpm test:browser --bail=1 && pnpm typecheck",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "license": "BSD-2-Clause",
+  "devDependencies": {
+    "@vitest/browser-playwright": "^4.1.10",
+    "jszip": "^3.10.1",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "private": true
+}

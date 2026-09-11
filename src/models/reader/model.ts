@@ -1,12 +1,12 @@
-import { proxy, ref, snapshot, useSnapshot } from 'valtio'
+import { proxy, ref, type Snapshot, snapshot, useSnapshot } from 'valtio'
 
-import type { Book, Contents, Location, Rendition } from '@flow/epubjs'
-import ePub, { Rendition as EpubRendition } from '@flow/epubjs'
-import type Navigation from '@flow/epubjs/navigation'
-import type { NavItem } from '@flow/epubjs/navigation'
-import type { RenditionManagerView, RenditionSpread } from '@flow/epubjs/rendition'
-import epubRequest from '@flow/epubjs/request'
-import type Section from '@flow/epubjs/section'
+import type { Book, Contents, Location, Rendition } from '@flow/epub-engine'
+import ePub from '@flow/epub-engine'
+import type Navigation from '@flow/epub-engine/navigation'
+import type { NavItem } from '@flow/epub-engine/navigation'
+import type { ReaderOperation, ReaderView, RenditionSpread } from '@flow/epub-engine/rendition'
+import epubRequest from '@flow/epub-engine/request'
+import type Section from '@flow/epub-engine/section'
 import { type AnnotationColor, createAnnotationSpine } from '@/annotation'
 import { getBookDisplayTitle } from '@/book'
 import { IS_SERVER } from '@/env'
@@ -207,8 +207,8 @@ function compareDefinition(d1: string, d2: string) {
   return d1.toLowerCase() === d2.toLowerCase()
 }
 
-export interface INavItem extends NavItem, INode {
-  subitems?: INavItem[]
+export interface INavItem extends NavItem, Omit<INode, 'id' | 'subitems'> {
+  subitems: INavItem[]
 }
 
 export interface IMatch extends INode {
@@ -223,10 +223,10 @@ export interface IMatch extends INode {
 }
 
 export interface ISection extends Section {
+  readonly $$valtioSnapshot: ISection
   imageInfoLoaded?: boolean
   images: ImageEntry[]
   navitem?: INavItem
-  resourceAvailable?: boolean
 }
 
 export type ImageFilterReason = 'decorative' | 'duplicate' | 'icon' | 'inlineGlyph' | 'titleArt'
@@ -243,7 +243,7 @@ export interface BookOverlayState {
   definitions: BookRecord['definitions']
 }
 
-export type BookBeforeLayout = (contents?: Contents, view?: RenditionManagerView) => void
+export type BookBeforeLayout = (contents?: Contents, view?: ReaderView) => void
 
 export type BookTypographyConfiguration = NonNullable<BookRecord['configuration']>['typography']
 
@@ -271,7 +271,7 @@ export class BookTab {
     return frameWindowsByRuntime.get(getFrameRuntimeIdentity(this)) ?? []
   }
   rendition?: RuntimeRef<Rendition>
-  nav?: Navigation
+  nav?: RuntimeRef<Navigation>
   locationsToReturn: ReturnLocation[] = []
   section?: ISection
   sections?: ISection[]
@@ -325,7 +325,7 @@ export class BookTab {
   rejectedLocationEventCount = 0
 
   get container() {
-    return this?.rendition?.manager?.container as HTMLDivElement | undefined
+    return this?.rendition?.session?.container as HTMLDivElement | undefined
   }
 
   get isScrolledDocument() {
@@ -459,31 +459,25 @@ export class BookTab {
         this.relayoutAnchorSectionIndexes = undefined
         if (returnable) this.showPrevLocation()
 
-        const manager = this.rendition.manager
+        const session = this.rendition.session
         const spread = hydrateReflowableSpread(restoredSpread, this.sections, this.layoutStyleSignature)
-        if (spread && manager?.canUseLogicalReflowableSpread?.() && manager.renderReflowableSpread) {
-          const requestId = this.createManualLocationRequest({
+        if (spread && session?.supportsSpreadNavigation()) {
+          await this.commitReaderOperation(session.restoreSpread(spread), {
             anchorTarget: resolvedTarget,
             updateAnchor: true,
             userNavigation: true,
           })
-          await manager.renderReflowableSpread(spread)
-          await this.rendition.reportLocation(requestId)
-          this.commitPendingRenditionLocation(requestId)
           return
         }
 
-        const previousRequestId = this.currentRenditionLocationRequestId()
-        const display = this.rendition.display(resolvedTarget, {
+        const display = this.rendition.session.display(resolvedTarget, {
           alignTargetAsSpreadStart,
         })
-        const requestId = this.trackRenditionLocationRequest(previousRequestId, {
+        await this.commitReaderOperation(display, {
           anchorTarget: resolvedTarget,
           updateAnchor: true,
           userNavigation: true,
         })
-        await display
-        this.commitPendingRenditionLocation(requestId)
       } catch (error) {
         if (generation === this.renderGeneration) console.error(error)
       } finally {
@@ -738,8 +732,8 @@ export class BookTab {
     selectionDocument?: Document,
     selectionTextNode?: Text,
   ) {
-    const manager = this.rendition?.manager
-    const views = manager?.views._views
+    const session = this.rendition?.session
+    const views = session?.getViews()
     const selectionView = selectionDocument?.defaultView ? this.viewForWindow(selectionDocument.defaultView) : undefined
     const view =
       selectionView ??
@@ -784,16 +778,10 @@ export class BookTab {
     this.runtimeAnchorCfi = undefined
     this.runtimeSpreadAnchor = undefined
     this.spreadAnchorsByLayout.clear()
-    view._contentPageCount = undefined
     try {
-      manager?.deleteReflowablePageCountCache?.(view.section)
-      view.layout?.format?.(view.contents, view.section, view.axis)
-      view.expand?.()
-      const requestId = this.createManualLocationRequest({
+      await this.commitReaderOperation(session?.refreshSection(view.section), {
         updateAnchor: true,
       })
-      await this.rendition?.reportLocation(requestId)
-      this.commitPendingRenditionLocation(requestId)
     } catch (error) {
       console.error(error)
     }
@@ -808,9 +796,7 @@ export class BookTab {
     // Keep the patched document available to active-view consumers such as
     // definitions and repeated text edits. Clearing the render inputs still
     // forces Section.load() to fetch the new revision when the view is rebuilt.
-    const renderState = section as unknown as { contents?: Element; output?: string }
-    renderState.contents = undefined
-    renderState.output = undefined
+    section.invalidateRender()
     if (index < 0) return
 
     this.sectionInfoPromises.delete(index)
@@ -842,7 +828,7 @@ export class BookTab {
       location: this.currentLocation,
       readingMetrics: this.readingMetrics,
       sectionCount: this.sections.length,
-      sectionAsPage: this.isScrolledDocument || this.rendition?.manager?.layout?.name === 'pre-paginated',
+      sectionAsPage: this.isScrolledDocument || this.rendition?.session?.layout?.name === 'pre-paginated',
     })
 
     const cfi = this.locationAnchorCfi(this.currentLocation)
@@ -865,10 +851,10 @@ export class BookTab {
   annotationRange?: Range
   annotationCfi?: string
   setAnnotationRange(cfi: string, target?: EventTarget | null) {
-    const views = this.rendition?.manager?.views?._views ?? []
+    const views = this.rendition?.session?.getViews() ?? []
     const targetNode = target && 'nodeType' in target ? (target as unknown as Node) : undefined
     const doc = target && 'ownerDocument' in target ? (target.ownerDocument as Document | undefined) : undefined
-    // epubjs mark callbacks originate from SVG overlays beside the iframe.
+    // EPUB engine mark callbacks originate from SVG overlays beside the iframe.
     const targetView =
       (targetNode ? views.find((view) => view.element?.contains(targetNode)) : undefined) ??
       (doc?.defaultView ? this.viewForWindow(doc.defaultView) : undefined)
@@ -900,9 +886,9 @@ export class BookTab {
   }
 
   private commitPaginationSnapshot(location: Location, percentage?: number, activeSection = this.section) {
-    const manager = this.rendition?.manager
-    const divisor = manager?.layout?.divisor
-    const paginationModel = manager?.paginationModel?.()
+    const session = this.rendition?.session
+    const divisor = session?.layout?.divisor
+    const paginationModel = session?.paginationModel?.()
 
     this.paginationVersion++
     this.paginationSnapshot = {
@@ -923,48 +909,18 @@ export class BookTab {
     this.layoutVersion++
   }
 
-  currentRenditionLocationRequestId() {
-    const requestId = this.rendition?._locationRequestId
-    return typeof requestId === 'number' ? requestId : undefined
-  }
-
-  trackRenditionLocationRequest(previousRequestId: number | undefined, intent: LocationRequestIntent) {
-    const requestId = this.currentRenditionLocationRequestId()
-    if (requestId === undefined || requestId === previousRequestId) return
-
+  async commitReaderOperation(operation: ReaderOperation | undefined, intent: LocationRequestIntent) {
+    if (!operation) return
+    const { requestId } = operation
     this.acceptedLocationRequests.set(requestId, intent)
-    return requestId
-  }
-
-  createManualLocationRequest(intent: LocationRequestIntent) {
-    const rendition = this.rendition
-    if (!rendition) return
-
-    const requestId = typeof rendition._locationRequestId === 'number' ? rendition._locationRequestId + 1 : 1
-    rendition._locationRequestId = requestId
-    this.acceptedLocationRequests.set(requestId, intent)
-    return requestId
-  }
-
-  commitPendingRenditionLocation(requestId: number | undefined) {
-    if (typeof requestId !== 'number' || !this.acceptedLocationRequests.has(requestId)) {
-      return
-    }
-
-    if (requestId !== this.currentRenditionLocationRequestId()) {
+    try {
+      const location = await operation.finished
+      if (location && this.acceptedLocationRequests.has(requestId)) {
+        this.commitRelocatedLocation(location, { requestId })
+      }
+    } finally {
       this.acceptedLocationRequests.delete(requestId)
-      this.rejectedLocationEventCount++
-      return
     }
-
-    const loc = this.rendition?.location
-    if (!loc) {
-      this.acceptedLocationRequests.delete(requestId)
-      this.rejectedLocationEventCount++
-      return
-    }
-
-    this.commitRelocatedLocation(loc, { requestId })
   }
 
   private consumeLocationEventIntent(meta?: RelocatedEventMeta) {
@@ -1002,7 +958,7 @@ export class BookTab {
           return
         }
 
-        const currentSpreadState = snapshotReflowableSpread(this.rendition?.manager, this.layoutStyleSignature, loc)
+        const currentSpreadState = snapshotReflowableSpread(this.rendition?.session, this.layoutStyleSignature, loc)
         this.currentLocation = loc
         this.observeRecentReadingLocation(loc, locationIntent)
         this.currentSpreadState = currentSpreadState
@@ -1027,7 +983,7 @@ export class BookTab {
         location: loc,
         readingMetrics: this.readingMetrics,
         sectionCount: this.sections.length,
-        sectionAsPage: this.isScrolledDocument || this.rendition?.manager?.layout?.name === 'pre-paginated',
+        sectionAsPage: this.isScrolledDocument || this.rendition?.session?.layout?.name === 'pre-paginated',
       })
     }
 
@@ -1036,7 +992,7 @@ export class BookTab {
       return
     }
 
-    const currentSpreadState = snapshotReflowableSpread(this.rendition?.manager, this.layoutStyleSignature, loc)
+    const currentSpreadState = snapshotReflowableSpread(this.rendition?.session, this.layoutStyleSignature, loc)
     this.currentLocation = loc
     this.observeRecentReadingLocation(loc, locationIntent)
     this.currentSpreadState = currentSpreadState
@@ -1102,10 +1058,7 @@ export class BookTab {
   setActive(active: boolean) {
     this.active = active
 
-    const manager = this.rendition?.manager
-    if (manager) {
-      manager.suspendResize = true
-    }
+    this.rendition?.session.setAutomaticResize(false)
     if (active) this.refreshPendingImportedBook()
   }
 
@@ -1128,7 +1081,7 @@ export class BookTab {
     const view = this.viewForRange(range)
     if (!view) throw new Error('No active view for selected range')
 
-    return view.contents.cfiFromRange(range)
+    return view.contents!.cfiFromRange(range)
   }
   putAnnotation(cfi: string, color: AnnotationColor, text: string, notes?: string, section = this.section) {
     const spine = section ?? this.section
@@ -1522,7 +1475,7 @@ export class BookTab {
       sections.push(section)
     }
 
-    const spread = this.rendition?.manager?.currentReflowableSpread
+    const spread = this.rendition?.session?.currentSpread
     add(spread?.left?.section as ISection | undefined)
     add(spread?.right?.section as ISection | undefined)
     add(this.sectionFromLocationPoint(location.start))
@@ -1688,11 +1641,11 @@ export class BookTab {
   }
 
   get view() {
-    return this.rendition?.manager?.current?.() ?? this.rendition?.manager?.views._views[0]
+    return this.rendition?.session.currentView()
   }
 
   viewForWindow(win: Window | null) {
-    return this.rendition?.manager?.views._views.find((view) => view.window === win)
+    return this.rendition?.session.viewForWindow(win)
   }
 
   viewForRange(range: Range) {
@@ -1728,8 +1681,8 @@ export class BookTab {
   }
 
   syncFrames() {
-    const views = this.rendition?.manager?.views?._views ?? []
-    const windows: Window[] = views.map((view) => view.window).filter((win: Window | undefined): win is Window => !!win)
+    const views = this.rendition?.session?.getViews() ?? []
+    const windows: Window[] = views.map((view) => view.window).filter((win): win is NonNullable<typeof win> => !!win)
     const current = getBookTabFrameWindows(this)
 
     if (windows.length === current.length && windows.every((win, index) => current[index] === win)) {
@@ -1933,7 +1886,7 @@ export class BookTab {
       indexes.add(this.section.index)
     }
 
-    const views = this.rendition?.manager?.views?._views as Array<{ section?: ISection }> | undefined
+    const views = this.rendition?.session?.getViews() as Array<{ section?: ISection }> | undefined
     views?.forEach((view) => {
       if (view.section?.index !== undefined) {
         indexes.add(view.section.index)
@@ -2039,37 +1992,27 @@ export class BookTab {
       this.layoutStyleSignature = layoutStyleSignature
     }
 
-    const manager = this.rendition?.manager
-    if (!manager) return
+    const session = this.rendition?.session
+    if (!session) return
 
-    manager.viewSettings ??= {}
-    manager.viewSettings.layoutStyleSignature = this.layoutStyleSignature
-    manager.viewSettings.beforeLayout = (contents, view) => {
+    session.setBeforeLayout((contents, view) => {
       this.onBeforeLayout?.(contents, view)
-    }
+    }, this.layoutStyleSignature)
   }
 
   resetLayoutPageState() {
-    const manager = this.rendition?.manager
-    if (!manager) return
+    const session = this.rendition?.session
+    if (!session) return
 
-    manager.reflowablePageCountCache = {}
-    manager.currentReflowableSpread = undefined
+    session.invalidateLayout()
     this.markLayoutChanged()
   }
 
   layoutAnchorKey(width?: number, height?: number) {
-    const manager = this.rendition?.manager
-    const resolvedWidth =
-      width ??
-      manager?._stageSize?.width ??
-      manager?.viewSettings?.width ??
-      this.container?.getBoundingClientRect().width
-    const resolvedHeight =
-      height ??
-      manager?._stageSize?.height ??
-      manager?.viewSettings?.height ??
-      this.container?.getBoundingClientRect().height
+    const session = this.rendition?.session
+    const size = session?.viewportSize()
+    const resolvedWidth = width ?? size?.width
+    const resolvedHeight = height ?? size?.height
 
     if (!resolvedWidth || !resolvedHeight) return
 
@@ -2091,7 +2034,7 @@ export class BookTab {
     const currentSpread =
       spread ??
       snapshotReflowableSpread(
-        this.rendition?.manager,
+        this.rendition?.session,
         this.layoutStyleSignature,
         this.rendition?.location ?? this.currentLocation,
       )
@@ -2232,17 +2175,12 @@ export class BookTab {
     let rendition: RuntimeRef<Rendition>
     try {
       rendition = ref(
-        new EpubRendition(epub, {
+        await epub.renderTo(el, {
           width: initialWidth,
           height: initialHeight,
         }),
       )
-      epub.rendition = rendition
-      await rendition.attachTo(el)
-      const renditionManager = rendition.manager
-      if (renditionManager) {
-        renditionManager.suspendResize = true
-      }
+      rendition.session.setAutomaticResize(false)
     } catch (error) {
       this.reportOpenError('render', error)
       try {
@@ -2296,7 +2234,7 @@ export class BookTab {
       return
     }
     this.setBeforeLayout()
-    this.rendition.themes.default(defaultStyle)
+    this.rendition.themes.setDefaultRules(defaultStyle)
     this.rendition.hooks.render.register(() => {
       this.syncFrames()
     })
@@ -2308,7 +2246,8 @@ export class BookTab {
       this.commitRelocatedLocation(loc, meta),
     )
 
-    this.rendition.on('rendered', (section: ISection) => {
+    this.rendition.on('rendered', (renderedSection) => {
+      const section = renderedSection as ISection
       markSectionRuntime(section)
       if (!this.section) this.section = section
       if (!this.visibleSections.length) {
@@ -2682,18 +2621,6 @@ export class Reader {
     return Promise.all(tabs.map((tab) => this.disposeDetachedTab(tab)))
   }
 
-  resize() {
-    this.tabs.forEach((tab) => {
-      if (!tab.active) return
-
-      try {
-        tab.rendition?.resize()
-      } catch (error) {
-        console.error(error)
-      }
-    })
-  }
-
   async collectAppCloseBookCheckpoints() {
     await Promise.all(this.closingBooks.values())
     const checkpoints = await Promise.all(this.tabs.map((tab) => tab.prepareForAppClose()))
@@ -2718,8 +2645,16 @@ export class Reader {
 
 export const reader = proxy(new Reader())
 
-export function useReaderSnapshot() {
-  return useSnapshot(reader)
+// Prototype getters return live engine and DOM objects; they are not recursively copied into snapshots.
+type ReaderRuntimeGetters = 'view' | 'iframe' | 'iframes' | 'container'
+type BookTabSnapshot = Snapshot<Omit<BookTab, ReaderRuntimeGetters>> & Pick<BookTab, ReaderRuntimeGetters>
+type ReaderSnapshot = Omit<Snapshot<Reader>, 'tabs' | 'paneTabs' | 'focusedBookTab'> & {
+  readonly tabs: readonly BookTabSnapshot[]
+  readonly paneTabs: readonly BookTabSnapshot[]
+  readonly focusedBookTab: BookTabSnapshot | undefined
+}
+export function useReaderSnapshot(): ReaderSnapshot {
+  return useSnapshot(reader) as unknown as ReaderSnapshot
 }
 
 declare global {

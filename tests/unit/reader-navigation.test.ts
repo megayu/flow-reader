@@ -98,10 +98,15 @@ async function testDeepLinkWaitsForPendingPageTurn() {
     },
   }
   tab.rendition = {
-    display: async (target: string) => {
-      displays.push(target)
+    session: {
+      display: (target: string) => ({
+        requestId: 1,
+        finished: (async (target: string) => {
+          displays.push(target)
+        })(target),
+      }),
+      next: () => ({ requestId: 1, finished: (() => pageTurn)() }),
     },
-    next: () => pageTurn,
   }
 
   const turning = tab.next()
@@ -161,26 +166,31 @@ async function testDeepLinkRecordsReturnLocationOnlyWhenLeavingCurrentPage() {
     const displays: string[] = []
     const restoredSpreads: unknown[] = []
     tab.rendition = {
-      display: async (displayTarget: string) => {
-        displays.push(displayTarget)
-        tab.currentLocation = displayTarget === nextPageCfi ? nextPageLocation : currentLocation
-        if (displayTarget === nextPageCfi) {
-          tab.book = {
-            ...tab.book,
-            configuration: { spread: nextPageSpread },
-          }
-        }
-      },
       epubcfi: {
         compare,
       },
-      manager: {
-        canUseLogicalReflowableSpread: () => true,
-        renderReflowableSpread: async (spread: unknown) => {
-          restoredSpreads.push(spread)
-        },
+      session: {
+        display: (displayTarget: string) => ({
+          requestId: 1,
+          finished: (async (displayTarget: string) => {
+            displays.push(displayTarget)
+            tab.currentLocation = displayTarget === nextPageCfi ? nextPageLocation : currentLocation
+            if (displayTarget === nextPageCfi) {
+              tab.book = {
+                ...tab.book,
+                configuration: { spread: nextPageSpread },
+              }
+            }
+          })(displayTarget),
+        }),
+        supportsSpreadNavigation: () => true,
+        restoreSpread: (spread: unknown) => ({
+          requestId: 1,
+          finished: (async (spread: unknown) => {
+            restoredSpreads.push(spread)
+          })(spread),
+        }),
       },
-      reportLocation: async () => undefined,
     }
 
     if (alreadyOpen) {
@@ -263,21 +273,26 @@ async function testPositionJumpsIgnoreTheCurrentSpreadAndSerializeDuplicates() {
         })
       : Promise.resolve()
     tab.rendition = {
-      display: async () => {
-        displays++
-        await displayGate
-        tab.currentLocation = {
-          start: {
-            cfi: 'epubcfi(/6/4!/4/2:0)',
-            displayed: { page: 1 },
-            index: section.index,
-          },
-          end: {
-            cfi: 'epubcfi(/6/4!/4/4:0)',
-            displayed: { page: 2 },
-            index: section.index,
-          },
-        }
+      session: {
+        display: () => ({
+          requestId: 1,
+          finished: (async () => {
+            displays++
+            await displayGate
+            tab.currentLocation = {
+              start: {
+                cfi: 'epubcfi(/6/4!/4/2:0)',
+                displayed: { page: 1 },
+                index: section.index,
+              },
+              end: {
+                cfi: 'epubcfi(/6/4!/4/4:0)',
+                displayed: { page: 2 },
+                index: section.index,
+              },
+            }
+          })(),
+        }),
       },
     }
 
@@ -313,8 +328,13 @@ async function testPositionJumpsIgnoreTheCurrentSpreadAndSerializeDuplicates() {
   crossSectionTab.epub = { spine: { get: () => nextSection } }
   let crossSectionDisplays = 0
   crossSectionTab.rendition = {
-    display: async () => {
-      crossSectionDisplays++
+    session: {
+      display: () => ({
+        requestId: 1,
+        finished: (async () => {
+          crossSectionDisplays++
+        })(),
+      }),
     },
   }
   await crossSectionTab.displaySectionStart(nextSection, true)
@@ -330,11 +350,16 @@ async function testPositionJumpsIgnoreTheCurrentSpreadAndSerializeDuplicates() {
   endBoundaryTab.epub = { spine: { get: () => section } }
   let endBoundaryDisplays = 0
   endBoundaryTab.rendition = {
-    display: async () => {
-      endBoundaryDisplays++
-    },
     epubcfi: {
       compare: (left: string, right: string) => left.localeCompare(right, undefined, { numeric: true }),
+    },
+    session: {
+      display: () => ({
+        requestId: 1,
+        finished: (async () => {
+          endBoundaryDisplays++
+        })(),
+      }),
     },
   }
   endBoundaryTab.display(endBoundary, true)
@@ -376,24 +401,31 @@ async function testReturnHistoryKeepsTheOriginAndRestoresItsExactSpread() {
   )
 
   let visiblePages: number[] = []
-  const manager = {
-    canUseLogicalReflowableSpread: () => true,
-    renderReflowableSpread: async (restored: { left?: { pageIndex: number }; right?: { pageIndex: number } }) => {
-      visiblePages = [restored.left, restored.right]
-        .filter((page): page is { pageIndex: number } => Boolean(page))
-        .map((page) => page.pageIndex + 1)
-    },
+  const session = {
+    supportsSpreadNavigation: () => true,
+    restoreSpread: (restored: { left?: { pageIndex: number }; right?: { pageIndex: number } }) => ({
+      requestId: 1,
+      finished: (async (restored: { left?: { pageIndex: number }; right?: { pageIndex: number } }) => {
+        visiblePages = [restored.left, restored.right]
+          .filter((page): page is { pageIndex: number } => Boolean(page))
+          .map((page) => page.pageIndex + 1)
+      })(restored),
+    }),
   }
   tab.epub = { spine: { get: () => section } }
   tab.rendition = {
-    display: async () => {
-      visiblePages = [3, 4]
-    },
     epubcfi: {
       compare: (left: string, right: string) => left.localeCompare(right, undefined, { numeric: true }),
     },
-    manager,
-    reportLocation: async () => undefined,
+    session: {
+      display: () => ({
+        requestId: 1,
+        finished: (async () => {
+          visiblePages = [3, 4]
+        })(),
+      }),
+      ...session,
+    },
   }
   tab.currentLocation = {
     start: { cfi: startCfi(51) },

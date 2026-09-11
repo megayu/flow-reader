@@ -71,7 +71,7 @@ jobs:
           integration=false
           scripts=false
           skills=false
-          epubjs=false
+          epub_engine=false
           rust=false
           crates=false
           native_rust=false
@@ -89,7 +89,7 @@ jobs:
             integration=true
             scripts=true
             skills=true
-            epubjs=true
+            epub_engine=true
           }
 
           while IFS= read -r path; do
@@ -168,9 +168,9 @@ jobs:
               .agents/skills/*/scripts/*.mjs)
                 skills=true
                 ;;
-              packages/epubjs/*)
+              packages/epub-engine/*)
                 app=true
-                epubjs=true
+                epub_engine=true
                 ;;
               src-tauri/Cargo.toml|src-tauri/Cargo.lock|src-tauri/build.rs|src-tauri/rustfmt.toml|src-tauri/src/*)
                 rust=true
@@ -222,13 +222,13 @@ jobs:
             fi
           done
           if [[ "${node_checks}" == "true" ]]; then
-            add_check "{\"area\":\"node\",\"runner\":\"ubuntu-24.04\",\"kind\":\"node\",\"script\":\"\",\"node\":true,\"browser\":false,\"app\":${app},\"unit\":${unit},\"test_static\":${test_static},\"integration\":false,\"scripts\":${scripts},\"skills\":${skills},\"epubjs\":false}"
+            add_check "{\"area\":\"node\",\"runner\":\"ubuntu-24.04\",\"kind\":\"node\",\"script\":\"\",\"node\":true,\"browser\":false,\"app\":${app},\"unit\":${unit},\"test_static\":${test_static},\"integration\":false,\"scripts\":${scripts},\"skills\":${skills},\"epub_engine\":false}"
           fi
-          if [[ "${integration}" == "true" || "${epubjs}" == "true" ]]; then
-            add_check "{\"area\":\"browser-chromium\",\"runner\":\"ubuntu-24.04\",\"kind\":\"node\",\"script\":\"\",\"node\":true,\"browser\":true,\"playwright_browser\":\"chromium\",\"playwright_project\":\"chromium\",\"app\":false,\"unit\":false,\"test_static\":false,\"integration\":${integration},\"scripts\":false,\"skills\":false,\"epubjs\":${epubjs}}"
+          if [[ "${integration}" == "true" || "${epub_engine}" == "true" ]]; then
+            add_check "{\"area\":\"browser-chromium\",\"runner\":\"ubuntu-24.04\",\"kind\":\"node\",\"script\":\"\",\"node\":true,\"browser\":true,\"playwright_browser\":\"chromium\",\"playwright_project\":\"chromium\",\"app\":false,\"unit\":false,\"test_static\":false,\"integration\":${integration},\"scripts\":false,\"skills\":false,\"epub_engine\":${epub_engine}}"
           fi
           if [[ "${integration}" == "true" ]]; then
-            add_check '{"area":"browser-webkit","runner":"ubuntu-24.04","kind":"node","script":"","node":true,"browser":true,"playwright_browser":"webkit","playwright_project":"webkit","app":false,"unit":false,"test_static":false,"integration":true,"scripts":false,"skills":false,"epubjs":false}'
+            add_check '{"area":"browser-webkit","runner":"ubuntu-24.04","kind":"node","script":"","node":true,"browser":true,"playwright_browser":"webkit","playwright_project":"webkit","app":false,"unit":false,"test_static":false,"integration":true,"scripts":false,"skills":false,"epub_engine":false}'
           fi
           [[ "${rust}" == "false" ]] || add_check '{"area":"rust","runner":"windows-2025","kind":"rust","script":"check:rust","node":false,"browser":false,"lock":"src-tauri/Cargo.lock","target":"src-tauri/target"}'
           [[ "${crates}" == "false" ]] || add_check '{"area":"crates","runner":"ubuntu-24.04","kind":"rust","script":"check:crates","node":false,"browser":false,"lock":"crates/Cargo.lock","target":"crates/target"}'
@@ -330,10 +330,10 @@ jobs:
         if: matrix.kind == 'node' && matrix.skills
         run: pnpm check:skills
       - name: Run EPUB engine tests
-        if: matrix.kind == 'node' && matrix.epubjs
+        if: matrix.kind == 'node' && matrix.epub_engine
         env:
           PLAYWRIGHT_BROWSER_CHANNEL: chromium
-        run: pnpm check:epubjs:ci
+        run: pnpm check:epub-engine:ci
 
       - name: Check skill script syntax
         if: matrix.kind == 'node' && matrix.skills

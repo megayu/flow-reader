@@ -78,7 +78,7 @@ const FindMatches: React.FC<FindMatchProps> = ({ active, tab }) => {
 }
 
 function renderedSearchMatches(tab: BookTab, keyword: string) {
-  const views = tab.rendition?.manager?.views?.displayed?.() ?? tab.rendition?.manager?.views?._views ?? []
+  const views = tab.rendition?.session.getDisplayedViews() ?? []
   const seen = new Set<string>()
   const matches: Array<{ cfi: string }> = []
 

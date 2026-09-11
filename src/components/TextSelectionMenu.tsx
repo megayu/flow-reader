@@ -12,6 +12,8 @@ import {
 import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSnapshot } from 'valtio'
 
+import type { Rendition } from '@flow/epub-engine'
+
 import { type AnnotationColor, annotationColors, colorMap, orderRangeRectsForWritingMode } from '../annotation'
 import { type LocalDictionaryRecord, listLocalDictionariesCached } from '../dictionary/native'
 import { normalizeDictionaryQuery } from '../dictionary/query'
@@ -219,7 +221,8 @@ function textReplacementErrorMessage(error: unknown, t: ReturnType<typeof useTra
 }
 
 export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ tab, onChapterFind }) => {
-  const { viewVersion, annotationRange, annotationCfi } = useSnapshot(tab) as unknown as {
+  const { rendition, viewVersion, annotationRange, annotationCfi } = useSnapshot(tab) as unknown as {
+    rendition?: Rendition
     viewVersion: number
     annotationRange?: Range
     annotationCfi?: string
@@ -232,11 +235,9 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ tab, onCha
     return (
       frameWindows.length
         ? [...frameWindows]
-        : (tab.rendition?.manager?.views?._views
-            ?.map((view: any) => view.window as Window | undefined)
-            .filter((win: Window | undefined): win is Window => !!win) ?? [])
+        : (rendition?.session.getViews().flatMap((view) => (view.window ? [view.window] : [])) ?? [])
     ) as Window[]
-  }, [tab, viewVersion])
+  }, [rendition, tab, viewVersion])
 
   const [selection, setSelection, releasePoint, menuOpen] = useTextSelection(windows, {
     automatic: settings.enableTextSelectionMenu === true,
@@ -1015,7 +1016,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   )
 }
 
-function selectionLanguage(range: Range, bookLanguage?: string) {
+function selectionLanguage(range: Range, bookLanguage?: string | null) {
   const container = range.commonAncestorContainer
   let element = container.nodeType === Node.ELEMENT_NODE ? (container as Element) : container.parentElement
   while (element) {
@@ -1024,5 +1025,5 @@ function selectionLanguage(range: Range, bookLanguage?: string) {
     if (language?.trim()) return language
     element = element.parentElement
   }
-  return bookLanguage
+  return bookLanguage ?? undefined
 }
