@@ -46,6 +46,11 @@ struct SourceEntry {
     index_offset: u32,
 }
 
+struct IndexEntry {
+    key: String,
+    index_offset: u32,
+}
+
 #[derive(Debug, Clone)]
 struct SynonymEntry {
     key: String,
@@ -83,7 +88,6 @@ pub fn prepare_index(master: &Path, cache: &Path) -> Result<(), StarDictError> {
         left.key
             .cmp(&right.key)
             .then_with(|| left.index_offset.cmp(&right.index_offset))
-            .then_with(|| left.headword.cmp(&right.headword))
     });
     synonyms.sort_by(|left, right| {
         left.key
@@ -497,7 +501,7 @@ fn read_ifo(path: &Path) -> Result<std::collections::HashMap<String, String>, St
         .collect())
 }
 
-fn parse_index(path: &Path, offset_bytes: usize, data_size: u64) -> Result<Vec<SourceEntry>, StarDictError> {
+fn parse_index(path: &Path, offset_bytes: usize, data_size: u64) -> Result<Vec<IndexEntry>, StarDictError> {
     let bytes = fs::read(path).map_err(|error| io_error("indexUnavailable", error))?;
     if bytes.len() > u32::MAX as usize {
         return Err(invalid_index("The StarDict index exceeds the supported size."));
@@ -512,7 +516,10 @@ fn parse_index(path: &Path, offset_bytes: usize, data_size: u64) -> Result<Vec<S
             parse_index_entry(&bytes, cursor as u32, offset_bytes).map_err(|error| invalid_index(&error.message))?;
         validate_range(entry.offset, entry.length, data_size)
             .map_err(|_| invalid_index("A StarDict entry points outside dictionary data."))?;
-        entries.push(entry);
+        entries.push(IndexEntry {
+            key: entry.key,
+            index_offset: entry.index_offset,
+        });
         cursor = next;
     }
     if entries.is_empty() {
@@ -521,7 +528,7 @@ fn parse_index(path: &Path, offset_bytes: usize, data_size: u64) -> Result<Vec<S
     Ok(entries)
 }
 
-fn parse_synonyms(path: &Path, source: &[SourceEntry]) -> Result<Vec<SynonymEntry>, StarDictError> {
+fn parse_synonyms(path: &Path, source: &[IndexEntry]) -> Result<Vec<SynonymEntry>, StarDictError> {
     let bytes = fs::read(path).map_err(|error| io_error("invalidSynonym", error))?;
     if bytes.len() > u32::MAX as usize {
         return Err(invalid_synonym("The StarDict synonym list exceeds the supported size."));
