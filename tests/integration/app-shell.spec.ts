@@ -89,16 +89,16 @@ test('configures one shared main language, secondary language, and translation s
   await dialog.getByRole('button', { name: msg('settings.tabs.translation'), exact: true }).click()
 
   await expect(dialog.getByRole('combobox', { name: msg('settings.translation.main_language') })).toContainText(
-    '简体中文',
+    'English',
   )
   await expect(dialog.getByRole('combobox', { name: msg('settings.translation.secondary_language') })).toContainText(
-    'English',
+    '简体中文',
   )
   await expect(dialog.getByText(msg('settings.translation.default_provider'))).toBeVisible()
   await dialog.getByRole('combobox', { name: msg('settings.translation.main_language') }).click()
   await expect(page.getByRole('option')).toHaveText([
-    '简体中文',
     'English',
+    '简体中文',
     'Deutsch',
     'Español',
     'Français',
