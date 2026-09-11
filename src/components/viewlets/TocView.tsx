@@ -4,12 +4,12 @@ import { memo, useEffect, useMemo, useRef } from 'react'
 import { useSnapshot } from 'valtio'
 
 import { compareBookDisplayTitle, getBookDisplayTitle, getBookTooltip } from '@/book'
-import { useBackground } from '@/hooks/theme/useBackground'
 import { useLibrary } from '@/hooks/useLibrary'
 import { LIST_ITEM_SIZE, useList } from '@/hooks/useList'
 import { useTranslation } from '@/hooks/useTranslation'
 import { type BookTab, compareHref, completeTabOpen, type INavItem, reader, useReaderSnapshot } from '@/models/reader'
 import { useSetViewMode, useShowLibraryInTocValue } from '@/state'
+import { backgroundClassNames } from '@/styles/theme'
 
 import { AppTooltip } from '../AppTooltip'
 import { readerPageTooltipContentStyle } from '../appTooltipStyles'
@@ -42,7 +42,6 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
   const books = useLibrary()
   const { focusedBookTab, tabs } = useReaderSnapshot()
   const setViewMode = useSetViewMode()
-  const [, , background] = useBackground()
   const sortedBooks = useMemo(() => books?.slice().sort(compareBookDisplayTitle) ?? [], [books])
   const { outerRef, items, scrollbar, scrollToItem, totalSize } = useList(sortedBooks)
   const openedBookIds = useMemo(() => new Set(tabs.map((tab) => tab.book.id)), [tabs])
@@ -86,7 +85,7 @@ const LibraryPane: React.FC<ActivePaneProps> = ({ active }) => {
               className={clsx(
                 'group/library-row focus:ring-ring relative flex w-full items-center truncate py-0 pr-3 pl-5 text-left leading-none outline-none focus:ring-1 focus:ring-inset',
                 opened && !active && 'text-foreground/85 bg-(--flow-bg-control)',
-                active && clsx(background.rowActiveClassName, 'text-foreground'),
+                active && clsx(backgroundClassNames.rowActiveClassName, 'text-foreground'),
               )}
               style={{
                 height: LIST_ITEM_SIZE,
@@ -176,7 +175,6 @@ interface BookTocPaneProps {
 
 const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
   const t = useTranslation()
-  const [, , background] = useBackground()
   const tabSnapshot = useSnapshot(tab)
   const toc = tab.nav?.toc as INavItem[] | undefined
   const tocVersion = tabSnapshot.tocVersion
@@ -264,7 +262,7 @@ const BookTocPane: React.FC<BookTocPaneProps> = ({ active, tab }) => {
             >
               <TocRow
                 active={active}
-                activeClassName={background.rowActiveClassName}
+                activeClassName={backgroundClassNames.rowActiveClassName}
                 depth={row?.depth ?? 1}
                 item={item}
                 itemExpanded={!!item?.expanded}

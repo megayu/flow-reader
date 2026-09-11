@@ -62,11 +62,6 @@ export interface MdictStylesheetResponse {
 }
 
 let localDictionaryListCache: Promise<LocalDictionaryRecord[]> | undefined
-let nextDictionarySessionIdValue = 1
-
-export function nextDictionarySessionId() {
-  return nextDictionarySessionIdValue++
-}
 
 export function fetchZdic(query: string, sessionId: number) {
   return invoke<DictionaryHttpResponse>('fetch_zdic', { query, sessionId })

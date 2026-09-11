@@ -1,5 +1,6 @@
 import type { DictionaryProvider } from '../coordinator'
-import { cancelDictionarySession, fetchZdic, nextDictionarySessionId } from '../native'
+import { fetchZdic } from '../native'
+import { beginDictionarySession } from '../session'
 import type { DictionaryEntry, DictionaryResult, DictionarySense, DictionaryText } from '../types'
 
 const SOURCE_ID = 'zdic'
@@ -32,21 +33,10 @@ export const zdicProvider: DictionaryProvider = {
   scope: 'online',
   sourceLanguages: ['zh'],
   async lookup(query, { signal }) {
-    const sessionId = nextDictionarySessionId()
-    const cancel = () => {
-      void cancelDictionarySession(sessionId).catch(() => undefined)
-    }
-    if (signal.aborted) {
-      cancel()
-      throw new DOMException('Request cancelled', 'AbortError')
-    }
-
-    signal.addEventListener('abort', cancel, { once: true })
+    const session = beginDictionarySession(signal)
     try {
-      const response = await fetchZdic(query.text, sessionId)
-      if (signal.aborted) {
-        throw new DOMException('Request cancelled', 'AbortError')
-      }
+      const response = await fetchZdic(query.text, session.id)
+      session.throwIfCancelled()
       return parseZdicHtml(response.body, query.text)
     } catch (error) {
       if (signal.aborted || error instanceof ZdicParseError) throw error
@@ -54,7 +44,7 @@ export const zdicProvider: DictionaryProvider = {
       const message = error instanceof Error ? error.message : String(error)
       throw new ZdicLookupError(message, zdicExternalUrl(query.text))
     } finally {
-      signal.removeEventListener('abort', cancel)
+      session.detachCancellation()
     }
   },
 }

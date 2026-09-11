@@ -1,5 +1,6 @@
 import type { DictionaryProvider } from '../coordinator'
-import { cancelDictionarySession, type LocalDictionaryRecord, lookupStarDict, nextDictionarySessionId } from '../native'
+import { type LocalDictionaryRecord, lookupStarDict } from '../native'
+import { beginDictionarySession } from '../session'
 
 export function createStarDictProvider(dictionary: LocalDictionaryRecord): DictionaryProvider {
   return {
@@ -8,22 +9,9 @@ export function createStarDictProvider(dictionary: LocalDictionaryRecord): Dicti
     scope: 'local',
     sourceLanguages: dictionary.language.value,
     async lookup(query, { signal }) {
-      const sessionId = nextDictionarySessionId()
-      const release = () => {
-        void cancelDictionarySession(sessionId).catch(() => undefined)
-      }
-      if (signal.aborted) {
-        release()
-        throw new DOMException('Request cancelled', 'AbortError')
-      }
-
-      // Keep this listener after invoke resolves: the Rust mmap and data file
-      // belong to the popup session and are released when the popup closes.
-      signal.addEventListener('abort', release, { once: true })
-      const response = await lookupStarDict(dictionary.id, query.text, sessionId)
-      if (signal.aborted) {
-        throw new DOMException('Request cancelled', 'AbortError')
-      }
+      const session = beginDictionarySession(signal)
+      const response = await lookupStarDict(dictionary.id, query.text, session.id)
+      session.throwIfCancelled()
       const entries = response.entries.flatMap((entry) => {
         const definitions = entry.definitions
           .filter((definition) => typeof definition === 'string')

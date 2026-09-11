@@ -209,7 +209,3 @@ export function sortBooks(books: BookRecord[], field: LibrarySortField, directio
     return direction === 'asc' ? primary : -primary
   })
 }
-
-export function toggleSortDirection(direction: LibrarySortDirection): LibrarySortDirection {
-  return direction === 'asc' ? 'desc' : 'asc'
-}

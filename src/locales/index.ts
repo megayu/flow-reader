@@ -60,10 +60,6 @@ export function isAppLocale(locale: string | undefined): locale is AppLocale {
   return !!locale && locale in messages
 }
 
-export function toMessageKeySegment(value: string) {
-  return value.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
-}
-
 export function resolveSystemLocale(languages: readonly string[]): AppLocale {
   for (const language of languages) {
     const normalized = language.trim().replaceAll('_', '-').toLowerCase()

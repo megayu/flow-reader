@@ -1,11 +1,6 @@
 import type { DictionaryProvider } from '../coordinator'
-import {
-  cancelDictionarySession,
-  type LocalDictionaryRecord,
-  loadMdictStylesheet,
-  lookupMdict,
-  nextDictionarySessionId,
-} from '../native'
+import { type LocalDictionaryRecord, loadMdictStylesheet, lookupMdict } from '../native'
+import { beginDictionarySession } from '../session'
 
 import { sanitizeMdictContent } from './mdictContent'
 
@@ -16,32 +11,20 @@ export function createMdictProvider(dictionary: LocalDictionaryRecord): Dictiona
     scope: 'local',
     sourceLanguages: dictionary.language.value,
     async lookup(query, { signal }) {
-      const sessionId = nextDictionarySessionId()
-      const release = () => {
-        void cancelDictionarySession(sessionId).catch(() => undefined)
-      }
-      if (signal.aborted) {
-        release()
-        throw new DOMException('Request cancelled', 'AbortError')
-      }
-      signal.addEventListener('abort', release, { once: true })
-      const response = await lookupMdict(dictionary.id, query.text, sessionId)
-      if (signal.aborted) {
-        throw new DOMException('Request cancelled', 'AbortError')
-      }
+      const session = beginDictionarySession(signal)
+      const response = await lookupMdict(dictionary.id, query.text, session.id)
+      session.throwIfCancelled()
       if (!response.entry) return null
 
       const document = await sanitizeMdictContent({
         html: response.entry.html,
         resourceUrlPrefix: response.resourceUrlPrefix,
         async loadStylesheet(key) {
-          const stylesheet = await loadMdictStylesheet(dictionary.id, key, sessionId)
+          const stylesheet = await loadMdictStylesheet(dictionary.id, key, session.id)
           return stylesheet?.text ?? null
         },
       })
-      if (signal.aborted) {
-        throw new DOMException('Request cancelled', 'AbortError')
-      }
+      session.throwIfCancelled()
       return {
         content: { document, kind: 'rich' },
         sourceId: `mdict:${dictionary.id}`,

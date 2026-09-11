@@ -24,6 +24,8 @@ import {
 import type React from 'react'
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
+import { normalizeLibraryBookCardWidth } from '@/settings/normalize'
+
 import { getBookDisplayTitle } from '../book'
 import { AppTooltip } from '../components/AppTooltip'
 import { DropZone } from '../components/base/DropZone'
@@ -75,7 +77,6 @@ import {
   libraryBookCardWidthMin,
   libraryBookCardWidthStep,
   librarySortFieldOptions,
-  normalizeLibraryBookCardWidth,
   useLibraryAuthorFilter,
   useLibraryStatusFilter,
   useLibraryTagFilter,

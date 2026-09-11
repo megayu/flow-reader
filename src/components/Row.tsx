@@ -2,7 +2,8 @@ import clsx from 'clsx'
 import { ChevronDownIcon, ChevronRightIcon, XIcon } from 'lucide-react'
 import type { ComponentProps, CSSProperties, PointerEvent, ReactNode } from 'react'
 
-import { useBackground } from '../hooks/theme/useBackground'
+import { backgroundClassNames } from '@/styles/theme'
+
 import { LIST_ITEM_SIZE } from '../hooks/useList'
 
 import { AppTooltip } from './AppTooltip'
@@ -53,15 +54,13 @@ export const Row: React.FC<RowProps> = ({
   tabIndex,
   ...props
 }) => {
-  const [, , background] = useBackground()
-
   const childCount = subitems?.length
   const t = children || label || title
   const tooltip = typeof title === 'string' ? title : undefined
   const indent = Math.max(0, depth - 1) * TREE_INDENT_SIZE
   const rowClassName = clsx(
     'list-row group/row focus:ring-ring relative flex cursor-pointer items-center text-left outline-none focus:ring-1 focus:ring-inset',
-    active && (activeClassName ?? background.rowActiveClassName),
+    active && (activeClassName ?? backgroundClassNames.rowActiveClassName),
     className,
   )
   const rowStyle = {

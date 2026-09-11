@@ -53,11 +53,6 @@ export interface BackgroundPreset {
   mode: SchemeName
 }
 
-export interface BackgroundOption {
-  value: number
-  color: string
-}
-
 export interface BackgroundPalette {
   content: string
   sidebar: string
@@ -189,14 +184,12 @@ export const backgroundPresets: BackgroundPreset[] = [
   },
 ]
 
-export const backgroundOptions: BackgroundOption[] = [
-  { value: -1, color: '#FFFFFF' },
-  { value: 1, color: '#F4F6F7' },
-  { value: -2, color: '#F3E8D2' },
-  { value: -3, color: '#E1EED8' },
-  { value: 3, color: '#DDE5EA' },
-  { value: 5, color: '#D1DEE6' },
-]
+export const backgroundClassNames = {
+  contentClassName: 'flow-bg-content',
+  sidebarClassName: 'flow-bg-sidebar',
+  activityBarClassName: 'flow-bg-activity',
+  rowActiveClassName: 'flow-bg-active',
+} as const
 
 const legacyBackgroundPresetMap: Record<number, BackgroundPresetId> = {
   [-1]: 'clean',

@@ -26,9 +26,9 @@ import { type BookTab, getBookTabFrameWindows, reader } from '../models/reader'
 import { LayoutAnchorMode, LayoutAnchorPosition, layout, layoutBesideRect } from '../reader/contextViewLayout'
 import { hasKeyboardCapturingLayer } from '../reader/shortcuts'
 import { getShortcutChords } from '../shortcuts'
-import { useSettings } from '../state'
+import { createDefaultTranslationSettings, useSettings } from '../state'
 import { type BookTextReplaceTarget, replaceBookText } from '../storage'
-import { resolveTranslationDirection, type TranslationLanguage } from '../translation/languages'
+import { resolveTranslationDirection } from '../translation/languages'
 import { serializeTranslationFragment } from '../translation/serialize'
 import { copy, keys, last } from '../utils'
 
@@ -502,11 +502,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     dismissOverlay()
   }
   const dictionaryMetadataLanguage = selectionLanguage(range, tab.book.metadata.language)
-  const translationSettings = settings.translation ?? {
-    mainLanguage: 'zh-Hans' as TranslationLanguage,
-    secondaryLanguage: 'en' as TranslationLanguage,
-    defaultProvider: 'google' as const,
-  }
+  const translationSettings = settings.translation ?? createDefaultTranslationSettings(settings.locale)
   const translationDirection = resolveTranslationDirection({
     declaredLanguage: dictionaryMetadataLanguage,
     mainLanguage: translationSettings.mainLanguage,

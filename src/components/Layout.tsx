@@ -37,8 +37,8 @@ import {
 } from 'react'
 
 import { SettingsDialog } from '@/settings/SettingsDialog'
+import { backgroundClassNames } from '@/styles/theme'
 
-import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
 import { type LibraryAction, type Action as ReaderPanelAction, useAction, useLibraryAction } from '../hooks/useAction'
 import { useLibrary, useLibraryPins, useLibraryTags } from '../hooks/useLibrary'
@@ -233,10 +233,9 @@ const ActivityBar: React.FC<SettingsActionProps> = ({ settingsOpen, onSettingsOp
     minSize: 48,
     maxSize: 48,
   })
-  const [, , background] = useBackground()
 
   return (
-    <div className={clsx('ActivityBar flex flex-col justify-between', background.activityBarClassName)}>
+    <div className={clsx('ActivityBar flex flex-col justify-between', backgroundClassNames.activityBarClassName)}>
       <ViewActionBar />
       <PageActionBar settingsOpen={settingsOpen} onSettingsOpenChange={onSettingsOpenChange} />
     </div>
@@ -573,7 +572,6 @@ const SideBarForMode: React.FC<{
 }> = ({ viewMode }) => {
   const [action] = useAction()
   const [libraryAction] = useLibraryAction()
-  const [, , background] = useBackground()
   const activeAction = viewMode === 'library' ? libraryAction : action
   const actions = viewMode === 'library' ? libraryViewActions : viewActions
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth(viewMode)
@@ -588,7 +586,7 @@ const SideBarForMode: React.FC<{
 
   return (
     <div
-      className={clsx('SideBar flex flex-col', background.sidebarClassName, !activeAction && 'hidden!')}
+      className={clsx('SideBar flex flex-col', backgroundClassNames.sidebarClassName, !activeAction && 'hidden!')}
       style={{ width: size }}
     >
       {actions.map(({ name, View }) => (
@@ -1351,7 +1349,11 @@ const FilterSection: React.FC<FilterSectionProps> = ({
 interface ReaderProps extends ComponentProps<'div'> {}
 const Reader: React.FC<ReaderProps> = ({ className, ...props }) => {
   useSplitViewItem(Reader)
-  const [bg] = useBackground()
 
-  return <div className={clsx('Reader flex-1 overflow-hidden', className, bg)} {...props} />
+  return (
+    <div
+      className={clsx('Reader flex-1 overflow-hidden', className, backgroundClassNames.contentClassName)}
+      {...props}
+    />
+  )
 }

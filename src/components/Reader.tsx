@@ -31,10 +31,10 @@ import {
   useViewModeValue,
   useZenModeValue,
 } from '@/state'
+import { backgroundClassNames } from '@/styles/theme'
 
 import { type BookPresentation, getBookDisplayTitle, getBookTooltip } from '../book'
 import { handleFilePaths, handleFiles } from '../file'
-import { useBackground } from '../hooks/theme/useBackground'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
 import { useAction } from '../hooks/useAction'
 import { useEventListener } from '../hooks/useEventListener'
@@ -189,7 +189,6 @@ function ReaderTabs({
 }: ReaderTabsProps) {
   const { paneTabs, tabs, selectedIndex } = useReaderSnapshot()
   const selectedTabId = tabs[selectedIndex]?.id
-  const [backgroundClassName] = useBackground()
   const zenMode = useZenModeValue()
   const uiFontSize = useUiFontSizeValue()
   const tabIconOnlyWidth = READER_TAB_FIXED_CHROME_WIDTH + uiFontSize
@@ -443,7 +442,9 @@ function ReaderTabs({
           })}
         </DropZone>
         {content && (
-          <div className={clsx('absolute inset-0 z-10 min-h-0 overflow-hidden', backgroundClassName)}>{content}</div>
+          <div className={clsx('absolute inset-0 z-10 min-h-0 overflow-hidden', backgroundClassNames.contentClassName)}>
+            {content}
+          </div>
         )}
       </div>
     </div>
@@ -602,7 +603,6 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
   const typographyStyleSignature = useMemo(() => createTypographyStyleSignature(typography), [typography])
   const settingsReady = useSettingsReady()
   const { dark } = useColorScheme()
-  const [background] = useBackground()
 
   const { isScrolledDocument, rendition, rendered, turning, paginationVersion, viewVersion } = useSnapshot(tab)
   const currentSpread = isScrolledDocument ? RenditionSpread.None : (typography.spread ?? RenditionSpread.Auto)
@@ -844,7 +844,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
             // do not cover `sash`
             'z-20',
             rendered && !turning && 'hidden',
-            background,
+            backgroundClassNames.contentClassName,
           )}
         />
         {!zenMode && active && <TextSelectionMenu tab={tab} onChapterFind={openChapterFind} />}

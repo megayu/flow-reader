@@ -1,5 +1,6 @@
 import type { DictionaryProvider } from '../coordinator'
-import { cancelDictionarySession, fetchMerriamWebster, nextDictionarySessionId } from '../native'
+import { fetchMerriamWebster } from '../native'
+import { beginDictionarySession } from '../session'
 import type { DictionaryEntry, DictionaryResult, DictionarySense, DictionaryText, DictionaryTextRun } from '../types'
 
 const SOURCE_ID = 'merriam-webster'
@@ -42,21 +43,10 @@ export function createMerriamWebsterProvider(apiKey: string): DictionaryProvider
         throw new MerriamWebsterLookupError('Merriam-Webster API key is not configured.', externalUrl)
       }
 
-      const sessionId = nextDictionarySessionId()
-      const cancel = () => {
-        void cancelDictionarySession(sessionId).catch(() => undefined)
-      }
-      if (signal.aborted) {
-        cancel()
-        throw new DOMException('Request cancelled', 'AbortError')
-      }
-
-      signal.addEventListener('abort', cancel, { once: true })
+      const session = beginDictionarySession(signal)
       try {
-        const response = await fetchMerriamWebster(query.text, key, sessionId)
-        if (signal.aborted) {
-          throw new DOMException('Request cancelled', 'AbortError')
-        }
+        const response = await fetchMerriamWebster(query.text, key, session.id)
+        session.throwIfCancelled()
         return parseMerriamWebsterResponse(response.body, query.text)
       } catch (error) {
         if (signal.aborted || error instanceof MerriamWebsterParseError) {
@@ -65,7 +55,7 @@ export function createMerriamWebsterProvider(apiKey: string): DictionaryProvider
         const message = error instanceof Error ? error.message : String(error)
         throw new MerriamWebsterLookupError(message, externalUrl)
       } finally {
-        signal.removeEventListener('abort', cancel)
+        session.detachCancellation()
       }
     },
   }

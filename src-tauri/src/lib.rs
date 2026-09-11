@@ -13,6 +13,7 @@ use tauri::{Emitter, Manager, WindowEvent};
 
 mod diagnostics;
 pub mod dictionary;
+mod file_manager;
 mod storage;
 mod tasks;
 mod translation;

@@ -24,6 +24,7 @@ import { formatTranslation, useTranslation } from '@/hooks/useTranslation'
 import { type AppLocale, localeNames, type MessageKey } from '@/locales'
 import { createShortcutGroups } from '@/shortcuts'
 import {
+  createDefaultTranslationSettings,
   normalizeTextImportRules,
   type TextImportRulesConfiguration,
   useResetTextImportRule,
@@ -466,11 +467,7 @@ function TranslationSettings({
   setSettings: ReturnType<typeof useSettings>[1]
 }) {
   const t = useTranslation()
-  const translation = settings.translation ?? {
-    mainLanguage: 'zh-Hans' as const,
-    secondaryLanguage: 'en' as const,
-    defaultProvider: 'google' as const,
-  }
+  const translation = settings.translation ?? createDefaultTranslationSettings(settings.locale)
   const languageSelect = (label: string, value: TranslationLanguage, key: 'mainLanguage' | 'secondaryLanguage') => (
     <Select
       value={value}
