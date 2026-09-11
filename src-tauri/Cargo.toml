@@ -31,7 +31,7 @@ tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 tauri-plugin-deep-link = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-process = { version = "2", optional = true }
-tauri-plugin-updater = { version = "2", optional = true }
+tauri-plugin-updater = { version = "2", optional = true, default-features = false, features = ["native-tls"] }
 roxmltree = "0.21"
 zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 encoding_rs = "0.8"
