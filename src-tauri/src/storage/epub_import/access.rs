@@ -53,7 +53,7 @@ pub(super) fn inspect_epub_archive<R: Read + Seek>(archive: &mut ZipArchive<R>) 
         let file = archive.by_index(index).map_err(|error| error.to_string())?;
         validate_epub_entry(&file, &mut total_size)?;
         let name = file.name().replace('\\', "/");
-        if non_portable_zip_path(&name) {
+        if cfg!(windows) && non_portable_zip_path(&name) {
             has_non_portable_path = true;
         }
     }

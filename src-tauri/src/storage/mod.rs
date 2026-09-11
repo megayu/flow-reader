@@ -241,7 +241,8 @@ impl AppStorage {
 
     pub fn load(app: &AppHandle) -> Result<Self, String> {
         let root = data_root(app)?;
-        let library = read_json_or_default::<Library>(&library_path(&root)?)?;
+        let mut library = read_json_or_default::<Library>(&library_path(&root)?)?;
+        let migrated_content_access = book_source::migrate_platform_content_access(&mut library);
         if library.version != LIBRARY_VERSION {
             return Err(format!(
                 "Unsupported library version {}; current version is {LIBRARY_VERSION}",
@@ -299,6 +300,9 @@ impl AppStorage {
         };
         if initialize_settings {
             storage.mark_settings_dirty();
+        }
+        if migrated_content_access {
+            storage.mark_library_dirty();
         }
         Ok(storage)
     }

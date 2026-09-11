@@ -351,6 +351,25 @@ pub(super) fn switch_book_content_mode_impl(
     })
 }
 
+// TODO: Remove once direct upgrades and backup restores from affected versions are no longer
+// supported, or a centralized migration handles them; users may skip intermediate releases.
+pub(super) fn migrate_platform_content_access(library: &mut Library) -> bool {
+    if cfg!(windows) {
+        return false;
+    }
+
+    let mut changed = false;
+    for book in &mut library.books {
+        if book.source_format == BookSourceFormat::Epub && book.content_mode == BookContentMode::ArchiveOnly {
+            // Older versions persisted Windows filename restrictions on every platform.
+            // Keep the current read-only preference while allowing an explicit mode switch.
+            book.content_mode = BookContentMode::Normal;
+            changed = true;
+        }
+    }
+    changed
+}
+
 pub(super) fn set_book_content_access(storage: &AppStorage, id: &str, mode: BookContentMode) -> Result<(), String> {
     let changed = {
         let mut state = storage
