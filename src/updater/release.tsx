@@ -1,14 +1,18 @@
 import { relaunch } from '@tauri-apps/plugin-process'
 import { check, type DownloadEvent, type Update } from '@tauri-apps/plugin-updater'
-import { LoaderCircleIcon } from 'lucide-react'
+import { ArrowLeftIcon, LanguagesIcon, LoaderCircleIcon } from 'lucide-react'
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { useNotify } from '@/components/ui/notificationContext'
+import { DEFAULT_NOTIFICATION_AUTO_CLOSE_MS, useNotify } from '@/components/ui/notificationContext'
 import { Progress } from '@/components/ui/progress'
+import { useLocale } from '@/hooks/useLocale'
 import { useTranslation } from '@/hooks/useTranslation'
-import { type ChangelogSection, changelogSectionsBetween } from '@/updateChangelog'
+import { createDefaultTranslationSettings, useSettings } from '@/state'
+import { type TranslationProvider, translationLanguageForAppLocale } from '@/translation/languages'
+import { translateTexts } from '@/translation/translate'
+import { type ChangelogSection, changelogSectionsBetween, parseChangelog } from '@/updateChangelog'
 
 const AUTO_CHECK_START_DELAY_MS = 3_000
 const AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1_000
@@ -27,6 +31,9 @@ const UpdaterContext = createContext<UpdaterContextValue | null>(null)
 
 export function UpdaterProvider({ children }: { children: ReactNode }) {
   const t = useTranslation()
+  const { locale } = useLocale()
+  const [settings] = useSettings()
+  const provider = (settings.translation ?? createDefaultTranslationSettings(locale)).defaultProvider
   const notify = useNotify()
   const [checking, setChecking] = useState(false)
   const [status, setStatus] = useState<UpdateStatus>({ kind: 'idle' })
@@ -150,10 +157,14 @@ export function UpdaterProvider({ children }: { children: ReactNode }) {
           onEscapeKeyDown={(event) => downloading && event.preventDefault()}
           onInteractOutside={(event) => downloading && event.preventDefault()}
         >
-          <DialogHeader>
-            <DialogTitle>{t('settings.about.update.available')}</DialogTitle>
-          </DialogHeader>
-          {status.kind !== 'idle' && <ChangelogNotes sections={status.notes} />}
+          {status.kind !== 'idle' && (
+            <UpdateNotes
+              key={JSON.stringify([status.notes, locale, provider])}
+              sections={status.notes}
+              locale={locale}
+              provider={provider}
+            />
+          )}
           <DialogFooter className={downloading ? 'items-center' : undefined}>
             {downloading ? (
               <div className="flex w-full items-center gap-3">
@@ -194,6 +205,98 @@ export function UpdaterControl() {
         {updater.checking && <LoaderCircleIcon className="absolute size-4 animate-spin" />}
       </Button>
     </div>
+  )
+}
+
+function UpdateNotes({
+  sections,
+  locale,
+  provider,
+}: {
+  sections: ChangelogSection[]
+  locale: ReturnType<typeof useLocale>['locale']
+  provider: TranslationProvider
+}) {
+  const t = useTranslation()
+  const notify = useNotify()
+  const [translation, setTranslation] = useState<
+    | { kind: 'original'; sections?: ChangelogSection[] }
+    | { kind: 'loading' }
+    | { kind: 'translated'; sections: ChangelogSection[] }
+  >({ kind: 'original' })
+  const requestRef = useRef<AbortController | null>(null)
+
+  useEffect(() => () => requestRef.current?.abort(), [])
+
+  const toggleTranslation = async () => {
+    if (requestRef.current) return
+    if (translation.kind === 'translated') {
+      setTranslation({ kind: 'original', sections: translation.sections })
+      return
+    }
+    if (translation.kind === 'original' && translation.sections !== undefined) {
+      setTranslation({ kind: 'translated', sections: translation.sections })
+      return
+    }
+
+    const controller = new AbortController()
+    requestRef.current = controller
+    setTranslation({ kind: 'loading' })
+    const texts = [sections.map(({ markdown }) => markdown).join('\n\n')]
+    const providers: TranslationProvider[] = [provider, provider === 'google' ? 'azure' : 'google']
+    try {
+      for (const candidate of providers) {
+        try {
+          const [text = ''] = await translateTexts({
+            provider: candidate,
+            texts,
+            sourceLanguage: 'auto',
+            targetLanguage: translationLanguageForAppLocale(locale),
+            signal: controller.signal,
+          })
+          if (!controller.signal.aborted) setTranslation({ kind: 'translated', sections: parseChangelog(text) })
+          return
+        } catch {
+          if (controller.signal.aborted) return
+        }
+      }
+      setTranslation({ kind: 'original' })
+      notify({
+        type: 'error',
+        title: t('error.operation_failed', t('settings.tabs.translation')),
+        autoCloseMs: DEFAULT_NOTIFICATION_AUTO_CLOSE_MS,
+      })
+    } finally {
+      requestRef.current = null
+    }
+  }
+
+  return (
+    <>
+      <DialogHeader>
+        <div className="flex items-center gap-2 pr-8">
+          <DialogTitle>{t('settings.about.update.available')}</DialogTitle>
+          {locale !== 'en-US' && (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              disabled={translation.kind === 'loading'}
+              onClick={() => void toggleTranslation()}
+            >
+              {translation.kind === 'loading' ? (
+                <LoaderCircleIcon className="animate-spin" />
+              ) : translation.kind === 'translated' ? (
+                <ArrowLeftIcon />
+              ) : (
+                <LanguagesIcon />
+              )}
+            </Button>
+          )}
+        </div>
+      </DialogHeader>
+      <ChangelogNotes sections={translation.kind === 'translated' ? translation.sections : sections} />
+    </>
   )
 }
 
