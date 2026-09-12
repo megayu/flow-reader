@@ -124,7 +124,8 @@ function NotificationToast({
       </div>
       <Button
         aria-label="Close"
-        className="-mr-1"
+        data-flow-notification-dismiss
+        className="pointer-events-auto -mr-1"
         onClick={() => onDismiss(notification.id)}
         size="icon-sm"
         variant="ghost"

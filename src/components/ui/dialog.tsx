@@ -99,6 +99,10 @@ function DialogContent({
             }
           }}
           onInteractOutside={(event) => {
+            if (event.target instanceof Element && event.target.closest('[data-flow-notification-dismiss]')) {
+              event.preventDefault()
+              return
+            }
             onInteractOutside?.(event)
             if (!overlayHierarchy.hasActiveChildLayer(true) || event.defaultPrevented) return
             if (dismissalGuard?.controlled) {
