@@ -1,4 +1,4 @@
-const VERSION_HEADING = /^## \[(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\](?: - (\d{4}-\d{2}-\d{2}))?[ \t]*$/gm
+const VERSION_HEADING = /^##[ \t]+\[([^\]\r\n]+)\](?:[ \t]+-[ \t]+([^\r\n]*))?[ \t]*\r?$/gm
 
 export interface ChangelogSection {
   body: string
@@ -12,7 +12,8 @@ export function parseChangelog(markdown: string): ChangelogSection[] {
   const versions = new Set<string>()
 
   return matches.map((match, index) => {
-    const version = match[1]
+    const version = match[1]?.trim()
+    const date = match[2]?.trim()
     if (!version) throw new Error('A changelog version heading is missing its version.')
     if (versions.has(version)) throw new Error(`Duplicate changelog version ${version}.`)
     versions.add(version)
@@ -24,7 +25,7 @@ export function parseChangelog(markdown: string): ChangelogSection[] {
 
     return {
       version,
-      ...(match[2] ? { date: match[2] } : {}),
+      ...(date ? { date } : {}),
       markdown: sectionMarkdown,
       body: headingEnd === -1 ? '' : sectionMarkdown.slice(headingEnd + 1).trim(),
     }
