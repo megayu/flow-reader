@@ -91,7 +91,7 @@ export const Pane = forwardRef<HTMLDivElement, PaneProps>(function Pane(
       }}
     >
       <div
-        className="border-border/70 bg-foreground/[0.035] hover:bg-foreground/5.5 flex h-7 shrink-0 items-center border-y px-0.5 transition-colors"
+        className="border-border/70 bg-foreground/[0.035] hover:bg-foreground/5.5 flex h-7 shrink-0 cursor-pointer items-center border-y px-0.5 transition-colors"
         onClick={toggleExpanded}
       >
         <Twisty expanded={expanded} className="text-muted-foreground/80" />
