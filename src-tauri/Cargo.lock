@@ -1085,6 +1085,7 @@ dependencies = [
 name = "flow-reader"
 version = "0.1.2"
 dependencies = [
+ "chrono",
  "encoding_rs",
  "flate2",
  "flow-epub-cover",
@@ -5570,6 +5571,7 @@ version = "8.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
 dependencies = [
+ "chrono",
  "crc32fast",
  "flate2",
  "indexmap 2.14.0",

@@ -135,17 +135,27 @@ pub(super) fn write_epub_file(
     relative: &str,
     path: &Path,
     deflate_level: Option<i64>,
+    export_options: SimpleFileOptions,
 ) -> Result<(), String> {
-    let content_options = SimpleFileOptions::default()
-        .compression_method(epub_entry_compression(relative))
-        .compression_level(deflate_level)
+    let compression_method = epub_entry_compression(relative);
+    let mut content_options = export_options
+        .compression_method(compression_method)
         .unix_permissions(0o644);
+    if compression_method == CompressionMethod::Deflated {
+        content_options = content_options.compression_level(deflate_level);
+    }
     writer
         .start_file(relative, content_options)
         .map_err(|error| error.to_string())?;
     let mut file = fs::File::open(path).map_err(|error| error.to_string())?;
     std::io::copy(&mut file, writer).map_err(|error| error.to_string())?;
     Ok(())
+}
+
+fn epub_export_options() -> SimpleFileOptions {
+    let modified = zip::DateTime::try_from(chrono::Local::now().naive_local()).unwrap_or_default();
+
+    SimpleFileOptions::default().last_modified_time(modified)
 }
 
 pub(super) fn epub_entry_is_editable_text(relative: &str) -> bool {
@@ -207,7 +217,7 @@ pub(super) fn write_epub_from_unpacked_dir(
     let tmp = output_path.with_extension("tmp");
     let file = fs::File::create(&tmp).map_err(|error| error.to_string())?;
     let mut writer = ZipWriter::new(BufWriter::with_capacity(EPUB_ZIP_WRITER_BUFFER_SIZE, file));
-    let stored = SimpleFileOptions::default()
+    let stored = epub_export_options()
         .compression_method(CompressionMethod::Stored)
         .unix_permissions(0o644);
 
@@ -222,7 +232,7 @@ pub(super) fn write_epub_from_unpacked_dir(
         if relative == "mimetype" {
             continue;
         }
-        write_epub_file(&mut writer, &relative, &path, deflate_level)?;
+        write_epub_file(&mut writer, &relative, &path, deflate_level, stored)?;
     }
 
     let mut output = writer.finish().map_err(|error| error.to_string())?;
@@ -252,7 +262,7 @@ pub(super) fn write_epub_from_original_and_unpacked(
     let tmp = output_path.with_extension("tmp");
     let file = fs::File::create(&tmp).map_err(|error| error.to_string())?;
     let mut writer = ZipWriter::new(BufWriter::with_capacity(EPUB_ZIP_WRITER_BUFFER_SIZE, file));
-    let stored = SimpleFileOptions::default()
+    let stored = epub_export_options()
         .compression_method(CompressionMethod::Stored)
         .unix_permissions(0o644);
 
@@ -288,7 +298,7 @@ pub(super) fn write_epub_from_original_and_unpacked(
             let raw_entry = archive.by_index(index).map_err(|error| error.to_string())?;
             writer.raw_copy_file(raw_entry).map_err(|error| error.to_string())?;
         } else {
-            write_epub_file(&mut writer, &relative, &unpacked_path, None)?;
+            write_epub_file(&mut writer, &relative, &unpacked_path, None, stored)?;
         }
         written.insert(relative);
     }
@@ -298,7 +308,7 @@ pub(super) fn write_epub_from_original_and_unpacked(
         if written.contains(&relative) {
             continue;
         }
-        write_epub_file(&mut writer, &relative, &path, None)?;
+        write_epub_file(&mut writer, &relative, &path, None, stored)?;
     }
 
     let mut output = writer.finish().map_err(|error| error.to_string())?;
