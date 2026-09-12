@@ -4792,6 +4792,78 @@ test('switches adjacent tabs immediately with wheel and keyboard input', async (
   await expectFocusedTabId(page, 'tab-layout-c')
 })
 
+test('turns pages with the wheel over empty first and last spread slots', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 })
+  await page.route('**/test-assets/epub/OPS/**', (route) => {
+    const name = new URL(route.request().url()).pathname.split('/').at(-1)
+    if (name === 'package.opf') {
+      return route.fulfill({
+        contentType: 'application/oebps-package+xml',
+        body: `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id">
+          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <dc:identifier id="book-id">synthetic-wheel-spread</dc:identifier>
+            <dc:title>Wheel Spread</dc:title>
+            <meta property="rendition:layout">pre-paginated</meta>
+            <meta property="rendition:spread">both</meta>
+          </metadata>
+          <manifest>${[1, 2, 3, 4].map((n) => `<item id="p${n}" href="chapter_00${n}.xhtml" media-type="application/xhtml+xml"/>`).join('')}</manifest>
+          <spine>${[1, 2, 3, 4].map((n) => `<itemref idref="p${n}" properties="page-spread-${n % 2 ? 'right' : 'left'}"/>`).join('')}</spine>
+        </package>`,
+      })
+    }
+    const number = /^chapter_00([1-4])\.xhtml$/.exec(name ?? '')?.[1]
+    if (!number) return route.fulfill({ status: 404 })
+    return route.fulfill({
+      contentType: 'application/xhtml+xml',
+      body: `<html xmlns="http://www.w3.org/1999/xhtml"><head>
+        <title>Page ${number}</title><meta name="viewport" content="width=600,height=800"/>
+        </head><body><p>Synthetic wheel page ${number}</p></body></html>`,
+    })
+  })
+  await openFixtureBook(page, 0)
+
+  const expectPages = async (indexes: number[]) => {
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const tab = (window as any).reader.focusedBookTab
+          return tab?.rendered && !tab.turning ? tab.paginationSnapshot?.visibleSectionIndexes : null
+        }),
+      )
+      .toEqual(indexes)
+  }
+  const wheelAtSlot = async (side: 'left' | 'right', delta: number, blank: boolean) => {
+    const point = await page.evaluate(
+      ({ side, blank }) => {
+        const container = (window as any).reader.focusedBookTab.container as HTMLElement
+        const rect = container.getBoundingClientRect()
+        const x = rect.left + rect.width * (side === 'left' ? 0.25 : 0.75)
+        const y = rect.top + rect.height / 2
+        const target = document.elementFromPoint(x, y)
+        if (!target || !container.contains(target) || (target.tagName === 'IFRAME') === blank) {
+          throw new Error('Wheel point does not hit the expected spread slot')
+        }
+        return { x, y }
+      },
+      { side, blank },
+    )
+    // Separate physical wheel gestures beyond the reader's existing cooldown.
+    await page.waitForTimeout(200)
+    await page.mouse.move(point.x, point.y)
+    await page.mouse.wheel(0, delta)
+  }
+
+  await expectPages([0])
+  await wheelAtSlot('left', 80, true)
+  await expectPages([1, 2])
+  await wheelAtSlot('right', 80, false)
+  await expectPages([3])
+  await wheelAtSlot('right', -80, true)
+  await expectPages([1, 2])
+  await wheelAtSlot('left', -80, false)
+  await expectPages([0])
+})
+
 test('[scrolled-doc] keeps one-page footer and turns chapters only at scroll boundaries', async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 700 })
   await openFixtureBook(page, 0)

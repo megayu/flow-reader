@@ -97,16 +97,15 @@ export function useBookPaneWheelNavigation({
   }, [active, rendition])
 
   useEffect(() => {
-    if (!active || !isScrolledDocument || !rendered) return
+    if (!active || !rendered) return
 
     const container = tab.container
     if (!container) return
 
     const onWheel = (event: WheelEvent) => {
-      const hasVerticalOverflow = container.scrollHeight - container.clientHeight > 1
-      if (hasVerticalOverflow || event.target instanceof HTMLIFrameElement) {
-        return
-      }
+      // Empty spread slots belong to this document; book content uses rendition events.
+      if (event.target instanceof HTMLIFrameElement) return
+      if (isScrolledDocument && container.scrollHeight - container.clientHeight > 1) return
 
       handleRenditionWheelEvent(event)
     }
