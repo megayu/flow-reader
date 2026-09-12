@@ -117,7 +117,7 @@ const TypographyPane: React.FC = () => {
   return (
     <div className="text-muted-foreground flex min-h-0 flex-1 flex-col text-base">
       <div className="scroll min-h-0 flex-1">
-        <div className="flex flex-col gap-3 pt-2 pr-1.5 pb-4 pl-4" key={focusedBookTab?.id}>
+        <div className="flex flex-col gap-3 pt-2 pr-0 pb-4 pl-2.5" key={focusedBookTab?.id}>
           <fieldset className="m-0 min-w-0 border-0 p-0" disabled={isScrolledDocument}>
             <SpreadField
               name={t('typography.page_view')}
