@@ -3148,10 +3148,10 @@ verticalBookTest('[vertical-rl] keeps a clicked sidebar search result active and
   await result.click()
   await expect(result).toHaveAttribute('aria-current', 'true')
 
+  await expect.poll(async () => (await readVerticalReadingState(page)).rightPageIndex).toBeGreaterThan(0)
   const state = await readVerticalReadingState(page)
   expect(state.startIndex).toBe(0)
   expect(state.startSlot).toBe('right')
-  expect(state.rightPageIndex).toBeGreaterThan(0)
   await expectVisibleReaderMarks(page, 'flow-epub-hl', 1)
 })
 
