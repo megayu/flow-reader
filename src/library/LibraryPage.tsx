@@ -60,6 +60,7 @@ import { useBookImportNotifications } from '../hooks/useBookImportNotifications'
 import { useBookImport, useCovers, useLibrary, useLibraryTags, useRecentBookIds } from '../hooks/useLibrary'
 import { useNotifyError } from '../hooks/useNotifyError'
 import { useOverlayScrollbarMetrics } from '../hooks/useOverlayScrollbarMetrics'
+import { useStringSet } from '../hooks/useStringSet'
 import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import type { MessageKey } from '../locales'
@@ -109,7 +110,7 @@ import {
 } from './coverResourceCache'
 import { FolderImportDialog } from './FolderImportDialog'
 import { filterBooksByLibraryFilters } from './filters'
-import { BatchTagsDialog, DeleteSelectedBooksDialog } from './LibraryDialogs'
+import { DeleteSelectedBooksDialog, TagsDialog } from './LibraryDialogs'
 import { libraryGridVirtualizationThreshold } from './libraryGridWindow'
 import {
   bookSourceDescriptionKey,
@@ -124,7 +125,6 @@ import {
   type LibraryBookSelectionEvent,
   type LibraryRangeSelectionSession,
   selectBookIdRange,
-  useStringSet,
 } from './selection'
 import { useLibraryGridWindow } from './useLibraryGridWindow'
 
@@ -254,10 +254,6 @@ function selectDroppedBooksToAutoOpen(books: BookRecord[]) {
     if (openBookIds.size >= dragImportAutoOpenBookTabLimit) break
   }
   return selectedBooks
-}
-
-function isKeyboardTargetBlocked(e: KeyboardEvent) {
-  return isGlobalKeyboardShortcutBlocked(e)
 }
 
 export function LibraryPage() {
@@ -1173,7 +1169,7 @@ const Library: React.FC<LibraryProps> = ({
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.altKey || isKeyboardTargetBlocked(e)) return
+      if (e.altKey || isGlobalKeyboardShortcutBlocked(e)) return
 
       const key = e.key.toLowerCase()
       const commandModifier = e.ctrlKey || e.metaKey
@@ -1705,9 +1701,7 @@ const Library: React.FC<LibraryProps> = ({
           </ul>
         </div>
       </OverlayScroll>
-      {batchTagsOpen && (
-        <BatchTagsDialog books={selectedBooks} tags={tags ?? []} onClose={() => setBatchTagsOpen(false)} />
-      )}
+      {batchTagsOpen && <TagsDialog target={selectedBooks} tags={tags ?? []} onClose={() => setBatchTagsOpen(false)} />}
       {deleteBooksOpen && (
         <DeleteSelectedBooksDialog
           count={selectedBooks.length}

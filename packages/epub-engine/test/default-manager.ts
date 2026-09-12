@@ -92,7 +92,6 @@ function stubRenderedViews(manager: DefaultViewManager) {
 
   manager.clear = function () {}
   manager.updateLayout = function () {}
-  manager.add = async (section) => createView(section)
   manager.append = async (section) => createView(section)
   manager.prepend = async (section) => createView(section)
 }
@@ -905,15 +904,9 @@ describe('DefaultViewManager reflowable spread', function () {
         manager.updateWritingMode(view.writingMode)
         return view
       }
-      manager.add = vi.fn(async (section) => addView(section))
       manager.append = vi.fn(async (section) => addView(section))
       manager.prepend = vi.fn(async (section) => addView(section, 'prepend'))
-      const lifecycleMethods = [
-        clear,
-        manager.add,
-        manager.append,
-        manager.prepend,
-      ]
+      const lifecycleMethods = [clear, manager.append, manager.prepend]
 
       const spreadSnapshot = () => {
         const address = (page: ReaderPage | undefined) =>

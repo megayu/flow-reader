@@ -485,13 +485,11 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
         ]
     entries = entries.filter((entry) => entry[1])
 
-    for (let index = 0; index < entries.length; index += 1) {
-      let [slot, section] = entries[index]!
+    for (let [slot, section] of entries) {
       let onlyPage = entries.length === 1
       let forceRight = onlyPage && slot === 'right' && !rightFirst
       let forceLeft = onlyPage && slot === 'left' && rightFirst
-      let action = index === 0 ? this.add : this.append
-      await action.call(this, section!, forceRight, forceLeft, slot)
+      await this.append(section!, forceRight, forceLeft, slot)
     }
 
     this.currentPrePaginatedSpread = spread
@@ -507,7 +505,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
   handleNextPrePaginated(
     forceRight: boolean,
     section: Section,
-    action: DefaultViewManager['add'],
+    action: DefaultViewManager['append'],
   ) {
     let next
 
@@ -1078,7 +1076,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
         resolvedSpread.right,
       )
       if (resolvedSpread.right) {
-        let rightView = await this.add(resolvedSpread.right.section)
+        let rightView = await this.append(resolvedSpread.right.section)
         viewBySectionIndex[resolvedSpread.right.section.index] = rightView
         let rightPageCount = this.sectionMeasurements.cacheView(rightView)
         let rightPageIndex = resolvedSpread.endsAtSectionEnd
@@ -1119,7 +1117,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     }
 
     if (resolvedSpread.left) {
-      let leftView = await this.add(resolvedSpread.left.section)
+      let leftView = await this.append(resolvedSpread.left.section)
       viewBySectionIndex[resolvedSpread.left.section.index] = leftView
       let leftPageCount = this.sectionMeasurements.cacheView(leftView)
       let keepTerminalInLeftSlot =
@@ -1150,9 +1148,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
       (!resolvedSpread.left ||
         !this.sameReflowableSection(resolvedSpread.left, resolvedSpread.right))
     ) {
-      let rightView = resolvedSpread.left
-        ? await this.append(resolvedSpread.right.section)
-        : await this.add(resolvedSpread.right.section)
+      let rightView = await this.append(resolvedSpread.right.section)
       viewBySectionIndex[resolvedSpread.right.section.index] = rightView
       this.sectionMeasurements.cacheView(rightView)
     }
@@ -1209,7 +1205,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
 
     let rightPageCount
     if (resolvedSpread.right) {
-      let rightView = await this.add(resolvedSpread.right.section)
+      let rightView = await this.append(resolvedSpread.right.section)
       viewBySectionIndex[resolvedSpread.right.section.index] = rightView
       rightPageCount = this.sectionMeasurements.cacheView(rightView)
       resolvedSpread.right = this.clampReflowablePageToCount(
@@ -1228,9 +1224,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
           rightPageCount || 1,
         )
       } else {
-        let leftView = resolvedSpread.right
-          ? await this.append(resolvedSpread.left.section)
-          : await this.add(resolvedSpread.left.section)
+        let leftView = await this.append(resolvedSpread.left.section)
         viewBySectionIndex[resolvedSpread.left.section.index] = leftView
         let leftPageCount = this.sectionMeasurements.cacheView(leftView)
         resolvedSpread.left = this.clampReflowablePageToCount(
@@ -1271,7 +1265,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
 
     let leftPageCount
     if (resolvedSpread.left) {
-      let leftView = await this.add(resolvedSpread.left.section)
+      let leftView = await this.append(resolvedSpread.left.section)
       viewBySectionIndex[resolvedSpread.left.section.index] = leftView
       leftPageCount = this.sectionMeasurements.cacheView(leftView)
       resolvedSpread.left = this.clampReflowablePageToCount(
@@ -1290,9 +1284,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
           leftPageCount || 1,
         )
       } else {
-        let rightView = resolvedSpread.left
-          ? await this.append(resolvedSpread.right.section)
-          : await this.add(resolvedSpread.right.section)
+        let rightView = await this.append(resolvedSpread.right.section)
         viewBySectionIndex[resolvedSpread.right.section.index] = rightView
         let rightPageCount = this.sectionMeasurements.cacheView(rightView)
         resolvedSpread.right = this.clampReflowablePageToCount(
@@ -1340,7 +1332,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     this.updateLayout()
     this.currentReflowableSpread = previousSpread
 
-    let targetView = await this.add(section)
+    let targetView = await this.append(section)
     viewBySectionIndex[section.index] = targetView
 
     let page = this.reflowablePageForRenderedTarget(targetView, target)
@@ -1646,7 +1638,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     let targetWidth: number | undefined
     let addedView: IframeView | undefined
 
-    this.add(section, forceRight)
+    this.append(section, forceRight)
       .then(
         function (this: DefaultViewManager, view: IframeView) {
           addedView = view
@@ -1662,7 +1654,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
       )
       .then(
         function (this: DefaultViewManager) {
-          return this.handleNextPrePaginated(forceRight, section, this.add)
+          return this.handleNextPrePaginated(forceRight, section, this.append)
         }.bind(this),
       )
       .then(
@@ -1736,31 +1728,6 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
       distX = distX - width!
     }
     this.scrollTo(distX, distY, true)
-  }
-
-  add(
-    section: Section,
-    forceRight?: boolean,
-    forceLeft?: boolean,
-    spreadSlot?: SpreadSlot,
-  ) {
-    var view = this.createView(section, forceRight, forceLeft, spreadSlot)
-
-    this.views.append(view)
-
-    // view.on(EVENTS.VIEWS.SHOWN, this.afterDisplayed.bind(this));
-    view.onDisplayed = this.afterDisplayed.bind(this)
-    view.onResize = this.afterResized.bind(this)
-
-    view.on(EVENTS.VIEWS.AXIS, (axis) => {
-      this.updateAxis(axis)
-    })
-
-    view.on(EVENTS.VIEWS.WRITING_MODE, (mode) => {
-      this.updateWritingMode(mode)
-    })
-
-    return view.display(this.request)
   }
 
   append(

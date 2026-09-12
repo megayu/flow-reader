@@ -86,13 +86,6 @@ export function searchInSection(tab: BookTab, keyword = tab.keyword, section = t
   }
 }
 
-export async function searchInSectionAsync(tab: BookTab, keyword = tab.keyword, section = tab.section) {
-  if (!section) return
-
-  await tab.ensureSectionInfo(section)
-  return searchInSection(tab, keyword, section)
-}
-
 export async function searchBook(tab: BookTab, keyword = tab.keyword, signal?: AbortSignal) {
   if (!keyword.trim()) return undefined
 

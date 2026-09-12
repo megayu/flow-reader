@@ -480,7 +480,7 @@ fn tag_management_operations_preserve_book_and_pin_references() {
         None,
     )
     .unwrap();
-    assert_eq!(merged.id, "tag-a");
+    assert_eq!(merged.tag.id, "tag-a");
     {
         let state = storage.inner.state.lock().unwrap();
         assert!(!state.library.tags.iter().any(|tag| tag.id == "tag-b"));

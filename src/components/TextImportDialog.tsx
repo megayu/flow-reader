@@ -10,6 +10,7 @@ import {
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { formatErrorMessage } from '../errorMessage'
+import { useStringSet } from '../hooks/useStringSet'
 import { useTranslation } from '../hooks/useTranslation'
 import type { MessageKey } from '../locales'
 import type {
@@ -451,7 +452,8 @@ export const TextImportDialog: React.FC<TextImportDialogProps> = ({
 
 const ChapterPreview: React.FC<{ chapters: TextImportChapterPreview[] }> = ({ chapters }) => {
   const t = useTranslation()
-  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(() => new Set())
+  const [collapsedKeys, { replace: replaceCollapsedKeys, reset: resetCollapsedKeys, toggle: toggleChapter }] =
+    useStringSet()
   const chapterTree = useMemo(() => buildChapterTree(chapters), [chapters])
   const collapsibleKeys = useMemo(() => collectCollapsibleChapterKeys(chapterTree), [chapterTree])
   const expanded = collapsibleKeys.some((key) => !collapsedKeys.has(key))
@@ -468,7 +470,7 @@ const ChapterPreview: React.FC<{ chapters: TextImportChapterPreview[] }> = ({ ch
               variant="ghost"
               size="icon-sm"
               aria-label={toggleAllLabel}
-              onClick={() => setCollapsedKeys(expanded ? new Set(collapsibleKeys) : new Set())}
+              onClick={() => (expanded ? replaceCollapsedKeys(collapsibleKeys) : resetCollapsedKeys())}
             >
               {expanded ? <FoldVerticalIcon className="size-4.5" /> : <UnfoldVerticalIcon className="size-4.5" />}
             </Button>
@@ -476,21 +478,7 @@ const ChapterPreview: React.FC<{ chapters: TextImportChapterPreview[] }> = ({ ch
         )}
       </div>
       <div className="scroll min-h-0 flex-1 overflow-auto rounded-lg bg-(--flow-bg-panel) p-2 text-base">
-        <ChapterPreviewTree
-          nodes={chapterTree}
-          collapsedKeys={collapsedKeys}
-          onToggle={(key) => {
-            setCollapsedKeys((current) => {
-              const next = new Set(current)
-              if (next.has(key)) {
-                next.delete(key)
-              } else {
-                next.add(key)
-              }
-              return next
-            })
-          }}
-        />
+        <ChapterPreviewTree nodes={chapterTree} collapsedKeys={collapsedKeys} onToggle={toggleChapter} />
       </div>
     </section>
   )

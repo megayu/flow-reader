@@ -1,16 +1,11 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 
 import { DEFAULT_NOTIFICATION_AUTO_CLOSE_MS } from '../../src/components/ui/notificationContext'
-import type { BookRecord, ReadingStatus } from '../../src/storage'
+import type { BookRecord, LibraryTagRecord, ReadingStatus } from '../../src/storage'
 import { createTestBook } from '../support/book-fixtures'
 import { msg } from '../support/i18n'
 import { openLibraryFilterPanel } from '../support/library-filter'
-import {
-  getStoredLibraryMockState,
-  getStoredLibraryPins,
-  installTauriMock,
-  type TestLibraryTagRecord,
-} from '../support/tauri-mock'
+import { getStoredLibraryMockState, getStoredLibraryPins, installTauriMock } from '../support/tauri-mock'
 
 function createBook({
   creator = 'Author',
@@ -43,9 +38,9 @@ function createBook({
   })
 }
 
-const researchTag: TestLibraryTagRecord = { id: 'tag-research', name: 'Research', createdAt: 1 }
-const archiveTag: TestLibraryTagRecord = { id: 'tag-archive', name: 'Archive', createdAt: 2 }
-const orphanTag: TestLibraryTagRecord = {
+const researchTag: LibraryTagRecord = { id: 'tag-research', name: 'Research', createdAt: 1 }
+const archiveTag: LibraryTagRecord = { id: 'tag-archive', name: 'Archive', createdAt: 2 }
+const orphanTag: LibraryTagRecord = {
   id: 'tag-long',
   name: 'A Very Long Tag Name That Should Ellipsize In The Sidebar',
   createdAt: 3,

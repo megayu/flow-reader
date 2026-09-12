@@ -4,8 +4,6 @@ type Rect = Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>
 type UnderlineOptions = {
   writingMode?: string
   gap?: number
-  amplitude?: number
-  period?: number
 }
 
 import { Highlight } from './annotation-pane'
@@ -31,7 +29,7 @@ class WavyUnderline extends Highlight {
       let r = filtered[i]!
       let x = r.left
       let y = r.bottom + gap
-      let geometry = wavyUnderlineGeometry(
+      let geometry = underlineGeometry(
         {
           left: x,
           top: r.top,
@@ -39,9 +37,7 @@ class WavyUnderline extends Highlight {
           height: r.height,
         },
         {
-          amplitude,
           gap,
-          period,
           writingMode: this.attributes['data-writing-mode'] as
             | string
             | undefined,
@@ -202,26 +198,6 @@ function wavyVerticalPath(
   return path
 }
 
-function wavyUnderlineGeometry(rect: Rect, options: UnderlineOptions = {}) {
-  if (options.writingMode === 'vertical-rl') {
-    return {
-      orientation: 'vertical' as const,
-      side: 'left',
-      x: rect.left - (options.gap || 0),
-      start: rect.top,
-      length: rect.height,
-    }
-  }
-
-  return {
-    orientation: 'horizontal' as const,
-    side: 'bottom',
-    y: rect.top + rect.height + (options.gap || 0),
-    start: rect.left,
-    length: rect.width,
-  }
-}
-
 function underlineGeometry(rect: Rect, options: UnderlineOptions = {}) {
   if (options.writingMode === 'vertical-rl') {
     return {
@@ -242,9 +218,4 @@ function underlineGeometry(rect: Rect, options: UnderlineOptions = {}) {
   }
 }
 
-export {
-  WavyUnderline,
-  VerticalUnderline,
-  wavyUnderlineGeometry,
-  underlineGeometry,
-}
+export { WavyUnderline, VerticalUnderline, underlineGeometry }

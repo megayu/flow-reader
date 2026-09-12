@@ -184,20 +184,21 @@ function rememberTag(tag: LibraryTagRecord) {
   tagsCache = upsertCachedById(tagsCache, tag)
 }
 
-function applyDeletedTags(ids: string[], updatedAt: number) {
-  const removed = new Set(ids)
-  if (!removed.size) return
+function applyTagBookUpdates(books: BookRecord[]) {
+  const updates = new Map(books.map((book) => [book.id, book]))
+  // Tag replies must not overwrite concurrent reading state or restore deleted books.
+  upsertCachedBooks(
+    (booksCache ?? []).flatMap((book) => {
+      const update = updates.get(book.id)
+      if (!update) return []
+      return [{ ...book, tagIds: update.tagIds, updatedAt: Math.max(book.updatedAt ?? 0, update.updatedAt ?? 0) }]
+    }),
+  )
+}
 
-  const update = (book: BookRecord) => {
-    const tagIds = book.tagIds ?? []
-    return tagIds.some((tagId) => removed.has(tagId))
-      ? { ...book, tagIds: tagIds.filter((tagId) => !removed.has(tagId)), updatedAt }
-      : book
-  }
-  if (booksCache) {
-    booksCache = booksCache.map(update)
-  }
-  if (tagsCache) tagsCache = tagsCache.filter((tag) => !removed.has(tag.id))
+function runTagMutation<T>(operation: () => Promise<T>) {
+  const previousWrites = Promise.allSettled([...pendingNativeWrites])
+  return trackNativeWrite(previousWrites.then(operation))
 }
 
 function rememberPins(pins: LibraryPins) {
@@ -394,11 +395,8 @@ export const db = {
     ) {
       updateCachedBook(id, changes)
     },
-    persistState(checkpoint: BookStateCheckpointInput) {
-      return trackNativeWrite(invoke<void>('persist_book_state', { checkpoint }))
-    },
-    persistStateOnClose(checkpoint: BookStateCheckpointInput) {
-      return trackNativeWrite(invoke<void>('persist_book_on_close', { checkpoint }))
+    persistState(checkpoint: BookStateCheckpointInput, flush: boolean) {
+      return trackNativeWrite(invoke<void>('persist_book_state', { checkpoint, flush }))
     },
     async update(id: string, changes: Pick<BookRecord, 'metadata'>) {
       beginBooksMutation()
@@ -452,51 +450,30 @@ export const db = {
     async updateReadingStatus(ids: string[], readingStatus: ReadingStatus | null) {
       beginBooksMutation()
       const updatedAt = Date.now()
-      const books = getCachedBooks(ids).flatMap((book) =>
-        book.readingStatus !== readingStatus ? [{ ...book, readingStatus, updatedAt }] : [],
-      )
       await trackNativeWrite(
         invoke<void>('update_book_reading_status', {
           ids,
           readingStatus,
         }),
       )
-      upsertCachedBooks(books)
-      notify('books')
-    },
-    async updateTags(
-      ids: string[],
-      { addTagIds = [], removeTagIds = [] }: { addTagIds?: string[]; removeTagIds?: string[] },
-    ) {
-      beginBooksMutation()
-      const existingTagIds = tagsCache ? new Set(tagsCache.map((tag) => tag.id)) : undefined
-      const additions = [
-        ...new Set(addTagIds.filter((tagId) => tagId && (!existingTagIds || existingTagIds.has(tagId)))),
-      ]
-      const removals = new Set(removeTagIds.filter(Boolean))
-      const updatedAt = Date.now()
-      const books = getCachedBooks(ids).flatMap((book) => {
-        const tagIds = new Set(book.tagIds ?? [])
-        let changed = false
-        for (const tagId of removals) {
-          changed = tagIds.delete(tagId) || changed
-        }
-        for (const tagId of additions) {
-          if (tagIds.has(tagId)) continue
-          tagIds.add(tagId)
-          changed = true
-        }
-        return changed ? [{ ...book, tagIds: [...tagIds], updatedAt }] : []
-      })
-      await trackNativeWrite(
-        invoke<void>('update_book_tags', {
-          ids,
-          addTagIds: additions,
-          removeTagIds: [...removals],
-        }),
+      const books = getCachedBooks(ids).flatMap((book) =>
+        book.readingStatus !== readingStatus
+          ? [{ ...book, readingStatus, updatedAt: Math.max(book.updatedAt ?? 0, updatedAt) }]
+          : [],
       )
       upsertCachedBooks(books)
       notify('books')
+    },
+    updateTags(
+      ids: string[],
+      { addTagIds = [], removeTagIds = [] }: { addTagIds?: string[]; removeTagIds?: string[] },
+    ) {
+      return runTagMutation(async () => {
+        beginBooksMutation()
+        const books = await invoke<BookRecord[]>('update_book_tags', { ids, addTagIds, removeTagIds })
+        applyTagBookUpdates(books)
+        notify('books')
+      })
     },
   },
   tags: {
@@ -510,57 +487,52 @@ export const db = {
     peekAll() {
       return tagsCache
     },
-    async create(name: string) {
-      const tag = await trackNativeWrite(invoke<LibraryTagRecord | null>('create_tag', { name }))
-      if (tag) rememberTag(tag)
-      notify('tags')
-      return tag ?? undefined
+    create(name: string) {
+      return runTagMutation(async () => {
+        const tag = await invoke<LibraryTagRecord | null>('create_tag', { name })
+        if (tag) rememberTag(tag)
+        notify('tags')
+        return tag ?? undefined
+      })
     },
-    async update(id: string, name: string) {
-      const tag = await trackNativeWrite(invoke<LibraryTagRecord | null>('update_tag', { id, name }))
-      if (tag) rememberTag(tag)
-      notify('tags')
-      return tag ?? undefined
+    update(id: string, name: string) {
+      return runTagMutation(async () => {
+        const tag = await invoke<LibraryTagRecord | null>('update_tag', { id, name })
+        if (tag) rememberTag(tag)
+        notify('tags')
+        return tag ?? undefined
+      })
     },
     async delete(id: string) {
       await this.deleteMany([id])
     },
-    async deleteMany(ids: string[]) {
-      const uniqueIds = [...new Set(ids.filter(Boolean))]
-      if (!uniqueIds.length) return
-      beginBooksMutation()
-      const updatedAt = Date.now()
-      await trackNativeWrite(invoke<void>('delete_tags', { ids: uniqueIds }))
-      applyDeletedTags(uniqueIds, updatedAt)
-      invalidatePins()
-      notify('tags', 'books', 'pins')
+    deleteMany(ids: string[]) {
+      return runTagMutation(async () => {
+        beginBooksMutation()
+        const books = await invoke<BookRecord[]>('delete_tags', { ids })
+        applyTagBookUpdates(books)
+        const removed = new Set(ids)
+        if (tagsCache) tagsCache = tagsCache.filter((tag) => !removed.has(tag.id))
+        invalidatePins()
+        notify('tags', 'books', 'pins')
+      })
     },
-    async merge(ids: string[], target: { id?: string; name?: string }) {
-      beginBooksMutation()
-      const sourceIds = [...new Set(ids.filter(Boolean))]
-      const sourceIdSet = new Set(sourceIds)
-      const updatedAt = Date.now()
-      const tag = await trackNativeWrite(
-        invoke<LibraryTagRecord>('merge_tags', {
-          ids: sourceIds,
+    merge(ids: string[], target: { id?: string; name?: string }) {
+      return runTagMutation(async () => {
+        beginBooksMutation()
+        const { tag, books } = await invoke<{ tag: LibraryTagRecord; books: BookRecord[] }>('merge_tags', {
+          ids,
           targetId: target.id,
           targetName: target.name,
-        }),
-      )
-      const update = (book: BookRecord) => {
-        const tagIds = book.tagIds ?? []
-        if (!tagIds.some((tagId) => sourceIdSet.has(tagId))) return book
-
-        return { ...book, tagIds: [...tagIds.filter((tagId) => !sourceIdSet.has(tagId)), tag.id], updatedAt }
-      }
-      if (booksCache) {
-        booksCache = booksCache.map(update)
-      }
-      if (tagsCache) tagsCache = tagsCache.filter((item) => !sourceIdSet.has(item.id) || item.id === tag.id)
-      rememberTag(tag)
-      invalidatePins()
-      notify('tags', 'books', 'pins')
-      return tag
+        })
+        applyTagBookUpdates(books)
+        const removed = new Set(ids)
+        if (tagsCache) tagsCache = tagsCache.filter((item) => !removed.has(item.id) || item.id === tag.id)
+        rememberTag(tag)
+        invalidatePins()
+        notify('tags', 'books', 'pins')
+        return tag
+      })
     },
   },
   pins: {

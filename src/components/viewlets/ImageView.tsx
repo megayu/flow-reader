@@ -18,6 +18,7 @@ import {
 import { useAction } from '@/hooks/useAction'
 import { LIST_ITEM_SIZE } from '@/hooks/useList'
 import { useScrollViewport } from '@/hooks/useScrollViewport'
+import { useStringSet } from '@/hooks/useStringSet'
 import { useTranslation } from '@/hooks/useTranslation'
 import { type ImageEntry, type ISection, reader, useReaderSnapshot } from '@/models/reader'
 import { normalizeHrefPath, sameHref } from '@/noteLinks'
@@ -92,10 +93,6 @@ function imageEntries(section: ISection) {
   return section.images.map(normalizeImageEntry)
 }
 
-function normalizePath(value: string | undefined) {
-  return normalizeHrefPath(value)
-}
-
 function resolveImageHref(href: string, resolve: (href: string) => string | undefined) {
   if (/^[a-z][a-z\d+.-]*:/i.test(href) || href.startsWith('//') || href.startsWith('#')) {
     return href
@@ -114,7 +111,7 @@ function createImageAssetLookup(
   const indexesByHref = new Map<string, number>()
   const entries = assets.map((asset: any, index: number) => {
     const href = asset?.href
-    const normalizedHref = normalizePath(href)
+    const normalizedHref = normalizeHrefPath(href)
 
     if (href) indexesByHref.set(href, index)
     if (normalizedHref) indexesByHref.set(normalizedHref, index)
@@ -260,7 +257,7 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, onModeChange }) => {
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation()
   const tab = reader.focusedBookTab
-  const [expandedKeys, setExpandedKeys] = useState(() => new Set<string>())
+  const [expandedKeys, { reset: resetExpandedKeys, toggle: toggleSection }] = useStringSet()
   const [imageIndexStatus, setImageIndexStatus] = useState<ImageIndexStatus>('loading')
   const [imageIndexRetryCount, setImageIndexRetryCount] = useState(0)
   const [, setImageScanRevision] = useState(0)
@@ -319,20 +316,6 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, onModeChange }) => {
     expandedKeys,
   )
 
-  const toggleSection = useCallback((key: string) => {
-    setExpandedKeys((current) => {
-      const next = new Set(current)
-
-      if (next.has(key)) {
-        next.delete(key)
-      } else {
-        next.add(key)
-      }
-
-      return next
-    })
-  }, [])
-
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-11 shrink-0 items-center gap-2 bg-(--flow-bg-sidebar) px-2">
@@ -349,7 +332,7 @@ const ImagePane: React.FC<ImagePaneProps> = ({ mode, onModeChange }) => {
               ].join(' ')}
               onClick={() => {
                 if (item === mode) return
-                setExpandedKeys(new Set())
+                resetExpandedKeys()
                 onModeChange(item)
               }}
             >
@@ -521,7 +504,7 @@ function imageSelectionKey(tabId: string | undefined, section: ISection, image: 
 function findImageAssetIndex(src: string, lookup?: ImageAssetLookup) {
   if (!lookup) return -1
 
-  const normalizedSrc = normalizePath(src)
+  const normalizedSrc = normalizeHrefPath(src)
   const exactIndex =
     lookup.indexesByHref.get(src) ?? (normalizedSrc ? lookup.indexesByHref.get(normalizedSrc) : undefined)
 

@@ -197,6 +197,18 @@ fn empty_object() -> Value {
     json!({})
 }
 
+fn body_content_range(xhtml: &str) -> Option<(usize, usize)> {
+    let lower = xhtml.to_ascii_lowercase();
+    let body_tag_start = lower.find("<body")?;
+    let body_content_start = lower[body_tag_start..].find('>')? + body_tag_start + 1;
+    let body_content_end = lower[body_content_start..]
+        .find("</body")
+        .map(|index| body_content_start + index)
+        .unwrap_or(xhtml.len());
+
+    Some((body_content_start, body_content_end))
+}
+
 fn current_book_revision(book: &StoredBook) -> u32 {
     book.source_revision.max(book.revision)
 }

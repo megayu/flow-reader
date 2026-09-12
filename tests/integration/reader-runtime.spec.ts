@@ -254,9 +254,13 @@ function longBookResource(pathname: string) {
   }
 }
 
-async function installLongBookRoutes(page: Page) {
-  await page.route('**/test-assets/long/OPS/**', (route) => {
-    const resource = longBookResource(new URL(route.request().url()).pathname)
+async function installBookRoutes(
+  page: Page,
+  pattern: string,
+  resolveResource: (pathname: string) => { contentType: string; body: string } | undefined,
+) {
+  await page.route(pattern, (route) => {
+    const resource = resolveResource(new URL(route.request().url()).pathname)
 
     if (!resource) {
       return route.fulfill({
@@ -268,6 +272,10 @@ async function installLongBookRoutes(page: Page) {
 
     return route.fulfill(resource)
   })
+}
+
+async function installLongBookRoutes(page: Page) {
+  await installBookRoutes(page, '**/test-assets/long/OPS/**', longBookResource)
 }
 
 function scrolledBookResource(pathname: string) {
@@ -352,19 +360,7 @@ svg { height: auto; }`,
 }
 
 async function installScrolledBookRoutes(page: Page) {
-  await page.route('**/test-assets/scrolled/OPS/**', (route) => {
-    const resource = scrolledBookResource(new URL(route.request().url()).pathname)
-
-    if (!resource) {
-      return route.fulfill({
-        status: 404,
-        contentType: 'text/plain',
-        body: 'not found',
-      })
-    }
-
-    return route.fulfill(resource)
-  })
+  await installBookRoutes(page, '**/test-assets/scrolled/OPS/**', scrolledBookResource)
 }
 
 function verticalChapterMarkup(index: number, paragraphCount = 56) {
@@ -481,19 +477,7 @@ p { margin: 0 0 0 1em; text-indent: 2em; line-height: 1.8; }
 }
 
 async function installVerticalBookRoutes(page: Page) {
-  await page.route('**/test-assets/vertical/OPS/**', (route) => {
-    const resource = verticalBookResource(new URL(route.request().url()).pathname)
-
-    if (!resource) {
-      return route.fulfill({
-        status: 404,
-        contentType: 'text/plain',
-        body: 'not found',
-      })
-    }
-
-    return route.fulfill(resource)
-  })
+  await installBookRoutes(page, '**/test-assets/vertical/OPS/**', verticalBookResource)
 }
 
 async function installScriptlessSvgBookRoutes(page: Page) {

@@ -254,6 +254,38 @@ pub(super) fn existing_book_import(
         .or_else(|| export_identity_index.map(ExistingBookImport::AdoptSource))
 }
 
+// The caller holds the storage state lock and owns record composition and lookup update ordering.
+pub(super) fn commit_imported_book_record(
+    books: &mut Vec<StoredBook>,
+    book: &mut StoredBook,
+    is_new: bool,
+    import_index: Option<&BookImportLookupIndex>,
+) -> Result<usize, String> {
+    if is_new {
+        if import_index.map_or_else(
+            || books.iter().any(|stored| stored.id == book.id),
+            |index| index.contains_id(&book.id),
+        ) || existing_book_import(import_index, books, &book.source_path, &book.source_hash).is_some()
+        {
+            return Err("Library changed while the book was being imported".to_string());
+        }
+        books.push(book.clone());
+        return Ok(books.len() - 1);
+    }
+
+    let stored_index = books
+        .iter()
+        .position(|stored| stored.id == book.id)
+        .ok_or_else(|| "Book was removed while it was being imported".to_string())?;
+    let stored = &mut books[stored_index];
+    book.reading_status = stored.reading_status.clone();
+    book.cfi = stored.cfi.clone();
+    book.percentage = stored.percentage;
+    book.tag_ids = stored.tag_ids.clone();
+    *stored = book.clone();
+    Ok(stored_index)
+}
+
 static IMPORT_WORK_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 pub(super) fn import_work_path(root: &Path, prefix: &str, name: &str) -> PathBuf {

@@ -12,22 +12,12 @@ import type {
   BookSourceStatus,
   FolderImportCandidate,
   FolderImportTagAssignment,
+  LibraryPins,
+  LibraryTagRecord,
   TextImportEncodingOption,
   TextImportPreview,
   TextImportSelection,
 } from '../../src/storage'
-
-export interface TestLibraryTagRecord {
-  id: string
-  name: string
-  createdAt: number
-  updatedAt?: number
-}
-
-export interface TestLibraryPins {
-  authors: string[]
-  tagIds: string[]
-}
 
 const testWindowUiState: WindowUiState = {
   librarySidebarOpen: true,
@@ -54,7 +44,7 @@ interface TauriMockOptions {
   openDialogPaths?: string[]
   pendingOpenPaths?: string[]
   pendingOpenPathsError?: string
-  pins?: TestLibraryPins
+  pins?: LibraryPins
   deferReaderSource?: boolean
   readerSourceErrors?: Record<string, string>
   readerSources?: Record<string, string>
@@ -63,7 +53,7 @@ interface TauriMockOptions {
   saveDialogPath?: string | null
   settings?: Record<string, unknown>
   textImportRuleDefaults?: TextImportRulesConfiguration
-  tags?: TestLibraryTagRecord[]
+  tags?: LibraryTagRecord[]
   textImportEncodings?: TextImportEncodingOption[]
   textImportDelayMs?: number
   textImportPreviewDelayMs?: number
@@ -80,167 +70,108 @@ interface TauriMockOptions {
   translationError?: string
 }
 
-export async function installTauriMock(
-  page: Page,
-  {
-    bookSearchResults = {},
-    books = [],
-    contentModeSwitchConflicts = {},
-    contentModeSwitchErrors = {},
-    eventListenDelayMs = 0,
-    externallyOpenedBooks = [],
-    importedBooks = [],
-    imageIndexes = {},
-    epubImportDelayMs = 0,
-    folderDialogPaths = [],
-    folderImportCandidates = {},
-    localDictionaries = [],
-    localDictionaryFiles = {},
-    openDialogPaths = [],
-    pendingOpenPaths = [],
-    pendingOpenPathsError,
-    pins = { authors: [], tagIds: [] },
-    deferReaderSource = false,
-    readerSourceErrors = {},
-    readerSources = {},
-    revealableBookSourceIds = [],
-    sourceStatuses = {},
-    saveDialogPath = null,
-    settings = {},
-    textImportRuleDefaults = {
-      groupPatterns: ['^default-group$'],
-      chapterPatterns: ['^default-chapter$'],
-      filenamePatterns: ['default-$title'],
-    },
-    tags = [],
-    textImportEncodings = [
-      { id: 'auto', label: 'Auto' },
-      { id: 'utf-8', label: 'UTF-8' },
-      { id: 'gb18030', label: 'GB18030' },
-    ],
-    textImportDelayMs = 0,
-    textImportPreviewDelayMs = 0,
-    textImportPreviews = [],
-    merriamWebsterResponses = {},
-    mdictResponses = {},
-    mdictStylesheets = {},
-    stardictResponses = {},
-    zdicResponses = {},
-    zdicResponseSequences = {},
-    zdicResponseStatuses = {},
-    zdicResponseDelayMs = 0,
-    translationResponseDelayMs = 0,
-    translationError,
-  }: TauriMockOptions = {},
-) {
+type TauriInternals = {
+  callbacks?: Record<number, (...args: unknown[]) => unknown>
+  convertFileSrc?: (filePath: string) => string
+  invoke?: (command: string, args?: Record<string, unknown>) => unknown
+  metadata?: {
+    currentWebview: { label: string }
+    currentWindow: { label: string }
+  }
+  runCallback?: (id: number, ...args: unknown[]) => unknown
+  transformCallback?: (callback: (...args: unknown[]) => unknown) => number
+  unregisterCallback?: (id: number) => void
+}
+
+type TauriEventInternals = {
+  unregisterListener?: (event: string, eventId: number) => void
+}
+
+interface TauriMockState {
+  exports: Array<{ format: string; id: string; outputPath: string }>
+  fullscreen: boolean
+  cancelledDictionarySessions: number[]
+  dictionaryRequests: Array<{ query: string; sessionId: number }>
+  dialogOpenCalls: unknown[]
+  merriamWebsterRequests: Array<{ query: string; sessionId: number }>
+  mdictRequests: Array<{ dictionaryId: string; query: string; sessionId: number }>
+  mdictStylesheetRequests: Array<{ dictionaryId: string; key: string; sessionId: number }>
+  stardictRequests: Array<{ dictionaryId: string; query: string; sessionId: number }>
+  localDictionaries: LocalDictionaryRecord[]
+  contentModeSwitchOperations: Array<{ editable: boolean; id: string; resolution?: BookModeSwitchResolution }>
+  libraryPinsStore: LibraryPins
+  books: BookRecord[]
+  tags: LibraryTagRecord[]
+  bookImportOperations: string[]
+  openedExternalUrls: string[]
+  openedBookDirectoryIds: string[]
+  revealedBookSourceIds: string[]
+  takePendingOpenPathsCalls: number
+  settingsOperations: string[]
+  settingsStore: Record<string, unknown>
+  textImports: TextImportSelection[]
+}
+
+type TauriMockWindow = typeof window & {
+  __TAURI_EVENT_PLUGIN_INTERNALS__?: TauriEventInternals
+  __FLOW_TEST_TAURI__?: TauriMockState
+  __TAURI_INTERNALS__?: TauriInternals
+}
+
+export async function installTauriMock(page: Page, options: TauriMockOptions = {}) {
   await page.addInitScript(
     ({
-      fixtureBookSearchResults,
-      fixtureBooks,
-      fixtureContentModeSwitchConflicts,
-      fixtureContentModeSwitchErrors,
-      fixtureEventListenDelayMs,
-      fixtureExternallyOpenedBooks,
-      fixtureImportedBooks,
-      fixtureImageIndexes,
-      fixtureEpubImportDelayMs,
-      fixtureFolderDialogPaths,
-      fixtureFolderImportCandidates,
-      fixtureLocalDictionaries,
-      fixtureLocalDictionaryFiles,
-      fixtureOpenDialogPaths,
-      fixturePendingOpenPaths,
-      fixturePendingOpenPathsError,
-      fixturePins,
-      fixtureDeferReaderSource,
-      fixtureReaderSourceErrors,
-      fixtureReaderSources,
-      fixtureRevealableBookSourceIds,
-      fixtureSourceStatuses,
-      fixtureSaveDialogPath,
-      fixtureSettings,
-      fixtureTextImportRuleDefaults,
-      fixtureTags,
-      fixtureTextImportEncodings,
-      fixtureTextImportDelayMs,
-      fixtureTextImportPreviewDelayMs,
-      fixtureTextImportPreviews,
-      fixtureMerriamWebsterResponses,
-      fixtureMdictResponses,
-      fixtureMdictStylesheets,
-      fixtureStardictResponses,
-      fixtureZdicResponses,
-      fixtureZdicResponseSequences,
-      fixtureZdicResponseStatuses,
-      fixtureZdicResponseDelayMs,
-      fixtureTranslationResponseDelayMs,
-      fixtureTranslationError,
-      fixtureWindowUiState,
+      bookSearchResults: fixtureBookSearchResults = {},
+      books: fixtureBooks = [],
+      contentModeSwitchConflicts: fixtureContentModeSwitchConflicts = {},
+      contentModeSwitchErrors: fixtureContentModeSwitchErrors = {},
+      eventListenDelayMs: fixtureEventListenDelayMs = 0,
+      externallyOpenedBooks: fixtureExternallyOpenedBooks = [],
+      importedBooks: fixtureImportedBooks = [],
+      imageIndexes: fixtureImageIndexes = {},
+      epubImportDelayMs: fixtureEpubImportDelayMs = 0,
+      folderDialogPaths: fixtureFolderDialogPaths = [],
+      folderImportCandidates: fixtureFolderImportCandidates = {},
+      localDictionaries: fixtureLocalDictionaries = [],
+      localDictionaryFiles: fixtureLocalDictionaryFiles = {},
+      openDialogPaths: fixtureOpenDialogPaths = [],
+      pendingOpenPaths: fixturePendingOpenPaths = [],
+      pendingOpenPathsError: fixturePendingOpenPathsError,
+      pins: fixturePins = { authors: [], tagIds: [] },
+      deferReaderSource: fixtureDeferReaderSource = false,
+      readerSourceErrors: fixtureReaderSourceErrors = {},
+      readerSources: fixtureReaderSources = {},
+      revealableBookSourceIds: fixtureRevealableBookSourceIds = [],
+      sourceStatuses: fixtureSourceStatuses = {},
+      saveDialogPath: fixtureSaveDialogPath = null,
+      settings: fixtureSettings = {},
+      textImportRuleDefaults: fixtureTextImportRuleDefaults = {
+        groupPatterns: ['^default-group$'],
+        chapterPatterns: ['^default-chapter$'],
+        filenamePatterns: ['default-$title'],
+      },
+      tags: fixtureTags = [],
+      textImportEncodings: fixtureTextImportEncodings = [
+        { id: 'auto', label: 'Auto' },
+        { id: 'utf-8', label: 'UTF-8' },
+        { id: 'gb18030', label: 'GB18030' },
+      ],
+      textImportDelayMs: fixtureTextImportDelayMs = 0,
+      textImportPreviewDelayMs: fixtureTextImportPreviewDelayMs = 0,
+      textImportPreviews: fixtureTextImportPreviews = [],
+      merriamWebsterResponses: fixtureMerriamWebsterResponses = {},
+      mdictResponses: fixtureMdictResponses = {},
+      mdictStylesheets: fixtureMdictStylesheets = {},
+      stardictResponses: fixtureStardictResponses = {},
+      zdicResponses: fixtureZdicResponses = {},
+      zdicResponseSequences: fixtureZdicResponseSequences = {},
+      zdicResponseStatuses: fixtureZdicResponseStatuses = {},
+      zdicResponseDelayMs: fixtureZdicResponseDelayMs = 0,
+      translationResponseDelayMs: fixtureTranslationResponseDelayMs = 0,
+      translationError: fixtureTranslationError,
+      windowUiState: fixtureWindowUiState,
     }) => {
-      type TauriInternals = {
-        callbacks?: Record<number, (...args: unknown[]) => unknown>
-        convertFileSrc?: (filePath: string) => string
-        invoke?: (command: string, args?: Record<string, unknown>) => unknown
-        metadata?: {
-          currentWebview: { label: string }
-          currentWindow: { label: string }
-        }
-        runCallback?: (id: number, ...args: unknown[]) => unknown
-        transformCallback?: (callback: (...args: unknown[]) => unknown) => number
-        unregisterCallback?: (id: number) => void
-      }
-      type TauriEventInternals = {
-        unregisterListener?: (event: string, eventId: number) => void
-      }
-
-      const globalWindow = window as typeof window & {
-        __TAURI_EVENT_PLUGIN_INTERNALS__?: TauriEventInternals
-        __FLOW_TEST_TAURI__?: {
-          exports: Array<{
-            format: string
-            id: string
-            outputPath: string
-          }>
-          fullscreen: boolean
-          cancelledDictionarySessions: number[]
-          dictionaryRequests: Array<{ query: string; sessionId: number }>
-          dialogOpenCalls: unknown[]
-          merriamWebsterRequests: Array<{ query: string; sessionId: number }>
-          mdictRequests: Array<{
-            dictionaryId: string
-            query: string
-            sessionId: number
-          }>
-          mdictStylesheetRequests: Array<{
-            dictionaryId: string
-            key: string
-            sessionId: number
-          }>
-          stardictRequests: Array<{
-            dictionaryId: string
-            query: string
-            sessionId: number
-          }>
-          localDictionaries: LocalDictionaryRecord[]
-          contentModeSwitchOperations: Array<{
-            editable: boolean
-            id: string
-            resolution?: BookModeSwitchResolution
-          }>
-          libraryPinsStore: TestLibraryPins
-          books: BookRecord[]
-          tags: TestLibraryTagRecord[]
-          bookImportOperations: string[]
-          openedExternalUrls: string[]
-          openedBookDirectoryIds: string[]
-          revealedBookSourceIds: string[]
-          takePendingOpenPathsCalls: number
-          settingsOperations: string[]
-          settingsStore: Record<string, unknown>
-          textImports: TextImportSelection[]
-        }
-        __TAURI_INTERNALS__?: TauriInternals
-      }
+      const globalWindow = window as TauriMockWindow
       const settingsStorageKey = '__FLOW_TEST_TAURI_SETTINGS__'
       const libraryPinsStorageKey = '__FLOW_TEST_TAURI_LIBRARY_PINS__'
       const storedSettings = (() => {
@@ -252,18 +183,18 @@ export async function installTauriMock(
       })()
       const storedLibraryPins = (() => {
         try {
-          return JSON.parse(localStorage.getItem(libraryPinsStorageKey) ?? 'null') as TestLibraryPins | null
+          return JSON.parse(localStorage.getItem(libraryPinsStorageKey) ?? 'null') as LibraryPins | null
         } catch {
           return null
         }
       })()
       const bookStore = new Map<string, BookRecord>(fixtureBooks.map((book) => [book.id, book]))
-      const tagStore = new Map<string, TestLibraryTagRecord>(fixtureTags.map((tag) => [tag.id, tag]))
+      const tagStore = new Map<string, LibraryTagRecord>(fixtureTags.map((tag) => [tag.id, tag]))
       const normalizeName = (value: unknown) =>
         String(value ?? '')
           .replace(/\s+/g, ' ')
           .trim()
-      const libraryPinsStore: TestLibraryPins = {
+      const libraryPinsStore: LibraryPins = {
         authors: [...(storedLibraryPins?.authors ?? fixturePins.authors)],
         tagIds: [...(storedLibraryPins?.tagIds ?? fixturePins.tagIds)],
       }
@@ -311,6 +242,22 @@ export async function installTauriMock(
         messages.forEach((message, index) => callback({ index, message }))
         callback({ end: true, index: messages.length })
         return true
+      }
+      const completeLibraryImport = (count: number, onProgress: unknown) => {
+        const imported = importQueue.splice(0, Math.max(count, 1))
+        imported.forEach((book) => bookStore.set(book.id, book))
+        const streamed = streamChannelMessages(
+          onProgress,
+          imported.map((book, index) => ({
+            book,
+            completed: index + 1,
+            failed: 0,
+            imported: index + 1,
+            skipped: 0,
+            total: count,
+          })),
+        )
+        return { books: streamed ? [] : imported, failures: [], skipped: [] }
       }
 
       globalWindow.__FLOW_TEST_TAURI__ = {
@@ -678,76 +625,82 @@ export async function installTauriMock(
           tagStore.set(id, updated)
           return updated
         }
-        if (command === 'delete_tags') {
-          const ids = new Set(Array.isArray(args?.ids) ? args.ids.map(String) : [])
-          ids.forEach((id) => tagStore.delete(id))
-          libraryPinsStore.tagIds = libraryPinsStore.tagIds.filter((tagId) => !ids.has(tagId))
-          persistLibraryPins()
-          bookStore.forEach((book, bookId) => {
-            const tagIds = ((book as BookRecord & { tagIds?: string[] }).tagIds ?? []).filter(
-              (tagId) => !ids.has(tagId),
+        if (command === 'delete_tags' || command === 'merge_tags' || command === 'update_book_tags') {
+          const ids = new Set(Array.isArray(args?.ids) ? args.ids.map(String).filter(Boolean) : [])
+          const books: BookRecord[] = []
+          const updatedAt = Date.now()
+          const updateTags = (book: BookRecord, tagIds: string[]) => {
+            if (
+              book.scope !== 'library' ||
+              ((book.tagIds ?? []).length === tagIds.length && tagIds.every((id, index) => id === book.tagIds?.[index]))
             )
-            bookStore.set(bookId, { ...book, tagIds })
-          })
-          return null
-        }
-        if (command === 'merge_tags') {
-          const ids = new Set(Array.isArray(args?.ids) ? args.ids.map(String) : [])
-          if (ids.size < 2 || [...ids].some((id) => !tagStore.has(id))) throw new Error('Invalid merge selection')
-          const targetId = args?.targetId ? String(args.targetId) : undefined
-          const targetName = normalizeName(args?.targetName)
-          if (targetId && !ids.has(targetId)) throw new Error('Merge target must be selected')
-          let target = targetId ? tagStore.get(targetId) : undefined
-          if (!target && targetName) {
-            const existing = Array.from(tagStore.values()).find(
-              (tag) => normalizeName(tag.name).toLowerCase() === targetName.toLowerCase(),
-            )
-            if (existing && !ids.has(existing.id)) throw new Error('Merge target name already exists')
-            target = existing ?? {
-              id: `tag-${targetName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`,
-              name: targetName,
-              createdAt: Date.now(),
-            }
-            if (!existing) {
-              tagStore.set(target.id, target)
-            }
+              return
+            const updated = { ...book, tagIds, updatedAt }
+            bookStore.set(book.id, updated)
+            books.push({ ...updated, annotations: [], definitions: [], configuration: undefined })
           }
-          if (!target) throw new Error('Merge target is required')
+          if (command === 'delete_tags') {
+            ids.forEach((id) => tagStore.delete(id))
+            libraryPinsStore.tagIds = libraryPinsStore.tagIds.filter((tagId) => !ids.has(tagId))
+            persistLibraryPins()
+            bookStore.forEach((book) =>
+              updateTags(
+                book,
+                (book.tagIds ?? []).filter((tagId) => !ids.has(tagId)),
+              ),
+            )
+            return books
+          }
+          if (command === 'merge_tags') {
+            if (ids.size < 2 || [...ids].some((id) => !tagStore.has(id))) throw new Error('Invalid merge selection')
+            const targetId = args?.targetId ? String(args.targetId) : undefined
+            const targetName = normalizeName(args?.targetName)
+            if (targetId && !ids.has(targetId)) throw new Error('Merge target must be selected')
+            let target = targetId ? tagStore.get(targetId) : undefined
+            if (!target && targetName) {
+              const existing = Array.from(tagStore.values()).find(
+                (tag) => normalizeName(tag.name).toLowerCase() === targetName.toLowerCase(),
+              )
+              if (existing && !ids.has(existing.id)) throw new Error('Merge target name already exists')
+              target = existing ?? {
+                id: `tag-${targetName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`,
+                name: targetName,
+                createdAt: Date.now(),
+              }
+              if (!existing) {
+                tagStore.set(target.id, target)
+              }
+            }
+            if (!target) throw new Error('Merge target is required')
 
-          ids.forEach((id) => {
-            if (id !== target?.id) tagStore.delete(id)
-          })
-          const pinned = libraryPinsStore.tagIds.some((tagId) => ids.has(tagId))
-          libraryPinsStore.tagIds = libraryPinsStore.tagIds.filter((tagId) => !ids.has(tagId))
-          if (pinned) libraryPinsStore.tagIds.unshift(target.id)
-          persistLibraryPins()
-          bookStore.forEach((book, bookId) => {
-            const currentTagIds = (book as BookRecord & { tagIds?: string[] }).tagIds ?? []
-            if (!currentTagIds.some((tagId) => ids.has(tagId))) return
-            bookStore.set(bookId, {
-              ...book,
-              tagIds: [...currentTagIds.filter((tagId) => !ids.has(tagId)), target.id],
+            ids.forEach((id) => {
+              if (id !== target?.id) tagStore.delete(id)
             })
-          })
-          return target
-        }
-        if (command === 'update_book_tags') {
-          const ids = Array.isArray(args?.ids) ? args.ids.map(String) : []
+            const pinned = libraryPinsStore.tagIds.some((tagId) => ids.has(tagId))
+            libraryPinsStore.tagIds = libraryPinsStore.tagIds.filter((tagId) => !ids.has(tagId))
+            if (pinned) libraryPinsStore.tagIds.unshift(target.id)
+            persistLibraryPins()
+            bookStore.forEach((book) => {
+              if (book.tagIds?.some((tagId) => ids.has(tagId))) {
+                updateTags(book, [...book.tagIds.filter((tagId) => !ids.has(tagId)), target.id])
+              }
+            })
+            return { tag: target, books }
+          }
           const addTagIds = Array.isArray(args?.addTagIds) ? args.addTagIds.map(String) : []
-          const removeTagIds = Array.isArray(args?.removeTagIds) ? args.removeTagIds.map(String) : []
+          const removeTagIds = new Set(
+            Array.isArray(args?.removeTagIds) ? args.removeTagIds.map(String).filter(Boolean) : [],
+          )
           ids.forEach((id) => {
             const current = bookStore.get(id)
             if (!current) return
-
-            const tagIds = new Set((current as BookRecord & { tagIds?: string[] }).tagIds ?? [])
-            removeTagIds.forEach((tagId) => tagIds.delete(tagId))
-            addTagIds.forEach((tagId) => tagIds.add(tagId))
-
-            const updated = { ...current, tagIds: Array.from(tagIds) }
-            bookStore.set(id, updated)
+            const tagIds = new Set((current.tagIds ?? []).filter((tagId) => !removeTagIds.has(tagId)))
+            addTagIds.forEach((tagId) => {
+              if (tagId && tagStore.has(tagId)) tagIds.add(tagId)
+            })
+            updateTags(current, [...tagIds])
           })
-
-          return null
+          return books
         }
         if (command === 'get_book') return bookStore.get(String(args?.id)) ?? null
         if (command === 'search_book_text') {
@@ -776,10 +729,9 @@ export async function installTauriMock(
             status: fixtureSourceStatuses[id] ?? 'available',
           }))
         }
-        if (command === 'get_book_reader_source' && fixtureDeferReaderSource) {
-          return new Promise(() => undefined)
-        }
         if (command === 'get_book_reader_source') {
+          if (fixtureDeferReaderSource) return new Promise(() => undefined)
+
           const id = String(args?.id)
           const message = fixtureReaderSourceErrors[id]
           if (message) {
@@ -787,9 +739,8 @@ export async function installTauriMock(
             if (message === 'BOOK_SOURCE_UNREADABLE') fixtureSourceStatuses[id] = 'unreadable'
             throw new Error(message)
           }
-        }
-        if (command === 'get_book_reader_source') {
-          const path = fixtureReaderSources[String(args?.id)] ?? ''
+
+          const path = fixtureReaderSources[id] ?? ''
           if (!path) return null
           const opfRootEnd = path.lastIndexOf('/OPS/')
           return {
@@ -823,25 +774,9 @@ export async function installTauriMock(
             await new Promise((resolve) => window.setTimeout(resolve, fixtureEpubImportDelayMs))
           }
           const paths = Array.isArray(args?.paths) ? args.paths : []
-          const imported = importQueue.splice(0, Math.max(paths.length, 1))
-          imported.forEach((book) => bookStore.set(book.id, book))
-          const streamed = streamChannelMessages(
-            args?.onProgress,
-            imported.map((book, index) => ({
-              book,
-              completed: index + 1,
-              failed: 0,
-              imported: index + 1,
-              skipped: 0,
-              total: paths.length,
-            })),
-          )
+          const result = completeLibraryImport(paths.length, args?.onProgress)
           globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations.push('epub:finish')
-          return {
-            books: streamed ? [] : imported,
-            failures: [],
-            skipped: [],
-          }
+          return result
         }
         if (command === 'open_external_epub_paths') {
           globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations.push('epub:start')
@@ -892,21 +827,9 @@ export async function installTauriMock(
           }
           const imports = Array.isArray(args?.imports) ? (args.imports as TextImportSelection[]) : []
           globalWindow.__FLOW_TEST_TAURI__?.textImports.push(...imports)
-          const imported = importQueue.splice(0, Math.max(imports.length, 1))
-          imported.forEach((book) => bookStore.set(book.id, book))
-          const streamed = streamChannelMessages(
-            args?.onProgress,
-            imported.map((book, index) => ({
-              book,
-              completed: index + 1,
-              failed: 0,
-              imported: index + 1,
-              skipped: 0,
-              total: imports.length,
-            })),
-          )
+          const result = completeLibraryImport(imports.length, args?.onProgress)
           globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations.push('txt-import:finish')
-          return { books: streamed ? [] : imported, failures: [], skipped: [] }
+          return result
         }
         if (command === 'export_book') {
           const id = String(args?.id)
@@ -981,62 +904,13 @@ export async function installTauriMock(
         return null
       }
     },
-    {
-      fixtureBookSearchResults: bookSearchResults,
-      fixtureBooks: books,
-      fixtureContentModeSwitchConflicts: contentModeSwitchConflicts,
-      fixtureContentModeSwitchErrors: contentModeSwitchErrors,
-      fixtureEventListenDelayMs: eventListenDelayMs,
-      fixtureExternallyOpenedBooks: externallyOpenedBooks,
-      fixtureImportedBooks: importedBooks,
-      fixtureImageIndexes: imageIndexes,
-      fixtureEpubImportDelayMs: epubImportDelayMs,
-      fixtureFolderDialogPaths: folderDialogPaths,
-      fixtureFolderImportCandidates: folderImportCandidates,
-      fixtureLocalDictionaries: localDictionaries,
-      fixtureLocalDictionaryFiles: localDictionaryFiles,
-      fixtureOpenDialogPaths: openDialogPaths,
-      fixturePendingOpenPaths: pendingOpenPaths,
-      fixturePendingOpenPathsError: pendingOpenPathsError,
-      fixturePins: pins,
-      fixtureDeferReaderSource: deferReaderSource,
-      fixtureReaderSourceErrors: readerSourceErrors,
-      fixtureReaderSources: readerSources,
-      fixtureRevealableBookSourceIds: revealableBookSourceIds,
-      fixtureSourceStatuses: sourceStatuses,
-      fixtureSaveDialogPath: saveDialogPath,
-      fixtureSettings: settings,
-      fixtureTextImportRuleDefaults: textImportRuleDefaults,
-      fixtureTags: tags,
-      fixtureTextImportEncodings: textImportEncodings,
-      fixtureTextImportDelayMs: textImportDelayMs,
-      fixtureTextImportPreviewDelayMs: textImportPreviewDelayMs,
-      fixtureTextImportPreviews: textImportPreviews,
-      fixtureMerriamWebsterResponses: merriamWebsterResponses,
-      fixtureMdictResponses: mdictResponses,
-      fixtureMdictStylesheets: mdictStylesheets,
-      fixtureStardictResponses: stardictResponses,
-      fixtureZdicResponses: zdicResponses,
-      fixtureZdicResponseSequences: zdicResponseSequences,
-      fixtureZdicResponseStatuses: zdicResponseStatuses,
-      fixtureZdicResponseDelayMs: zdicResponseDelayMs,
-      fixtureTranslationResponseDelayMs: translationResponseDelayMs,
-      fixtureTranslationError: translationError,
-      fixtureWindowUiState: testWindowUiState,
-    },
+    { ...options, windowUiState: testWindowUiState },
   )
 }
 
 export async function getLocalDictionaryMockState(page: Page) {
   return page.evaluate(() => {
-    const state = (
-      window as typeof window & {
-        __FLOW_TEST_TAURI__?: {
-          dialogOpenCalls: unknown[]
-          localDictionaries: LocalDictionaryRecord[]
-        }
-      }
-    ).__FLOW_TEST_TAURI__
+    const state = (window as TauriMockWindow).__FLOW_TEST_TAURI__
     return {
       dialogOpenCalls: state?.dialogOpenCalls ?? [],
       localDictionaries: state?.localDictionaries ?? [],
@@ -1046,11 +920,7 @@ export async function getLocalDictionaryMockState(page: Page) {
 
 export async function getStoredSettings(page: Page) {
   return page.evaluate(() => {
-    const globalWindow = window as typeof window & {
-      __FLOW_TEST_TAURI__?: {
-        settingsStore: Record<string, unknown>
-      }
-    }
+    const globalWindow = window as TauriMockWindow
 
     return globalWindow.__FLOW_TEST_TAURI__?.settingsStore ?? {}
   })
@@ -1058,11 +928,7 @@ export async function getStoredSettings(page: Page) {
 
 export async function getSettingsOperations(page: Page) {
   return page.evaluate(() => {
-    const globalWindow = window as typeof window & {
-      __FLOW_TEST_TAURI__?: {
-        settingsOperations: string[]
-      }
-    }
+    const globalWindow = window as TauriMockWindow
 
     return [...(globalWindow.__FLOW_TEST_TAURI__?.settingsOperations ?? [])]
   })
@@ -1070,11 +936,7 @@ export async function getSettingsOperations(page: Page) {
 
 export async function clearSettingsOperations(page: Page) {
   await page.evaluate(() => {
-    const globalWindow = window as typeof window & {
-      __FLOW_TEST_TAURI__?: {
-        settingsOperations: string[]
-      }
-    }
+    const globalWindow = window as TauriMockWindow
 
     if (globalWindow.__FLOW_TEST_TAURI__) globalWindow.__FLOW_TEST_TAURI__.settingsOperations.length = 0
   })
@@ -1082,11 +944,7 @@ export async function clearSettingsOperations(page: Page) {
 
 export async function getStoredLibraryPins(page: Page) {
   return page.evaluate(() => {
-    const globalWindow = window as typeof window & {
-      __FLOW_TEST_TAURI__?: {
-        libraryPinsStore: TestLibraryPins
-      }
-    }
+    const globalWindow = window as TauriMockWindow
 
     return globalWindow.__FLOW_TEST_TAURI__?.libraryPinsStore ?? { authors: [], tagIds: [] }
   })
@@ -1094,12 +952,7 @@ export async function getStoredLibraryPins(page: Page) {
 
 export async function getStoredLibraryMockState(page: Page) {
   return page.evaluate(() => {
-    const globalWindow = window as typeof window & {
-      __FLOW_TEST_TAURI__?: {
-        books: BookRecord[]
-        tags: TestLibraryTagRecord[]
-      }
-    }
+    const globalWindow = window as TauriMockWindow
 
     return {
       books: globalWindow.__FLOW_TEST_TAURI__?.books ?? [],
@@ -1110,11 +963,7 @@ export async function getStoredLibraryMockState(page: Page) {
 
 export async function getFullscreenState(page: Page) {
   return page.evaluate(() => {
-    const globalWindow = window as typeof window & {
-      __FLOW_TEST_TAURI__?: {
-        fullscreen: boolean
-      }
-    }
+    const globalWindow = window as TauriMockWindow
 
     return globalWindow.__FLOW_TEST_TAURI__?.fullscreen ?? false
   })
@@ -1122,15 +971,7 @@ export async function getFullscreenState(page: Page) {
 
 export async function getExportedBooks(page: Page) {
   return page.evaluate(() => {
-    const globalWindow = window as typeof window & {
-      __FLOW_TEST_TAURI__?: {
-        exports: Array<{
-          format: string
-          id: string
-          outputPath: string
-        }>
-      }
-    }
+    const globalWindow = window as TauriMockWindow
 
     return globalWindow.__FLOW_TEST_TAURI__?.exports ?? []
   })
@@ -1138,11 +979,7 @@ export async function getExportedBooks(page: Page) {
 
 export async function getImportedTextSelections(page: Page) {
   return page.evaluate(() => {
-    const globalWindow = window as typeof window & {
-      __FLOW_TEST_TAURI__?: {
-        textImports: TextImportSelection[]
-      }
-    }
+    const globalWindow = window as TauriMockWindow
 
     return globalWindow.__FLOW_TEST_TAURI__?.textImports ?? []
   })
@@ -1150,11 +987,7 @@ export async function getImportedTextSelections(page: Page) {
 
 export async function getBookImportOperations(page: Page) {
   return page.evaluate(() => {
-    const globalWindow = window as typeof window & {
-      __FLOW_TEST_TAURI__?: {
-        bookImportOperations: string[]
-      }
-    }
+    const globalWindow = window as TauriMockWindow
 
     return globalWindow.__FLOW_TEST_TAURI__?.bookImportOperations ?? []
   })
@@ -1162,29 +995,7 @@ export async function getBookImportOperations(page: Page) {
 
 export async function getDictionaryMockState(page: Page) {
   return page.evaluate(() => {
-    const globalWindow = window as typeof window & {
-      __FLOW_TEST_TAURI__?: {
-        cancelledDictionarySessions: number[]
-        dictionaryRequests: Array<{ query: string; sessionId: number }>
-        merriamWebsterRequests: Array<{ query: string; sessionId: number }>
-        mdictRequests: Array<{
-          dictionaryId: string
-          query: string
-          sessionId: number
-        }>
-        mdictStylesheetRequests: Array<{
-          dictionaryId: string
-          key: string
-          sessionId: number
-        }>
-        stardictRequests: Array<{
-          dictionaryId: string
-          query: string
-          sessionId: number
-        }>
-        openedExternalUrls: string[]
-      }
-    }
+    const globalWindow = window as TauriMockWindow
 
     return {
       cancelledDictionarySessions: globalWindow.__FLOW_TEST_TAURI__?.cancelledDictionarySessions ?? [],

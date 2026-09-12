@@ -401,31 +401,13 @@ pub(in crate::storage) fn commit_prepared_epub_import(
                     .ok_or_else(|| "External book changed while it was being added to the library".to_string())?;
                 state.library.books[stored_index] = book.clone();
                 stored_index
-            } else if is_new {
-                if import_index.as_deref().map_or_else(
-                    || state.library.books.iter().any(|stored| stored.id == id),
-                    |index| index.contains_id(&id),
-                ) || existing_book_import(import_index.as_deref(), &state.library.books, &source_path, &hash)
-                    .is_some()
-                {
-                    return Err("Library changed while the book was being imported".to_string());
-                }
-                state.library.books.push(book.clone());
-                state.library.books.len() - 1
             } else {
-                let stored_index = state
-                    .library
-                    .books
-                    .iter()
-                    .position(|stored| stored.id == id)
-                    .ok_or_else(|| "Book was removed while it was being imported".to_string())?;
-                let stored = &mut state.library.books[stored_index];
-                book.reading_status = stored.reading_status.clone();
-                book.cfi = stored.cfi.clone();
-                book.percentage = stored.percentage;
-                book.tag_ids = stored.tag_ids.clone();
-                *stored = book.clone();
-                stored_index
+                import_support::commit_imported_book_record(
+                    &mut state.library.books,
+                    &mut book,
+                    is_new,
+                    import_index.as_deref(),
+                )?
             }
         };
         if let Some(index) = import_index.as_deref_mut() {

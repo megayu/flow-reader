@@ -197,17 +197,25 @@ async function resolveSelectedTagIds(selectedTagIds: Set<string>, temporaryTags:
   return uniqueStringValues(resolvedIds)
 }
 
-interface BatchTagsDialogProps {
-  books: BookRecord[]
+interface TagsDialogProps {
+  target: BookRecord | BookRecord[]
   onClose: () => void
   tags: LibraryTagRecord[]
 }
 
-export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose, tags }) => {
+export const TagsDialog: React.FC<TagsDialogProps> = ({ target, onClose, tags }) => {
+  const books = Array.isArray(target) ? target : [target]
+  // Single-book editing must retain its tags even before the tag catalog loads.
+  const getCurrentTagIds = () =>
+    Array.isArray(target) ? getTagsInAllBooks(target, tags) : new Set(target.tagIds ?? [])
   const t = useTranslation()
   const notifyError = useNotifyError()
-  const [initialSelectedTagIds] = useState(() => getTagsInAllBooks(books, tags))
-  const [initialPartialTagIds] = useState(() => getPartiallySelectedTags(books, tags))
+  const [initialSelectedTagIds] = useState(() =>
+    Array.isArray(target) ? getCurrentTagIds() : new Set(uniqueStringValues(target.tagIds ?? [])),
+  )
+  const [initialPartialTagIds] = useState(() =>
+    Array.isArray(target) ? getPartiallySelectedTags(target, tags) : new Set<string>(),
+  )
   const [selectedTagIds, setSelectedTagIds] = useState(() => new Set(initialSelectedTagIds))
   const [partialTagIds, setPartialTagIds] = useState(() => new Set(initialPartialTagIds))
   const [temporaryTags, setTemporaryTags] = useState<TemporaryLibraryTagRecord[]>([])
@@ -255,8 +263,8 @@ export const BatchTagsDialog: React.FC<BatchTagsDialogProps> = ({ books, onClose
     if (!books.length || !canSave) return
 
     const persistedSelectedTagIds = new Set(await resolveSelectedTagIds(selectedTagIds, temporaryTags))
-    const initialTagIds = getTagsInAllBooks(books, tags)
-    const initialAnyTagIds = getTagsInAnyBook(books, tags)
+    const initialTagIds = getCurrentTagIds()
+    const initialAnyTagIds = Array.isArray(target) ? getTagsInAnyBook(target, tags) : initialTagIds
     const addTagIds = [...persistedSelectedTagIds].filter((tagId) => !initialTagIds.has(tagId))
     const removeTagIds = [...initialAnyTagIds].filter(
       (tagId) => !persistedSelectedTagIds.has(tagId) && !partialTagIds.has(tagId),
@@ -340,83 +348,8 @@ export const DeleteSelectedBooksDialog: React.FC<DeleteSelectedBooksDialogProps>
 }
 
 export const BookTagsDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {
-  const t = useTranslation()
-  const notifyError = useNotifyError()
   const tags = useLibraryTags()
-  const [initialTagIds] = useState(() => new Set(uniqueStringValues(book.tagIds ?? [])))
-  const [tagIds, setTagIds] = useState(() => new Set(initialTagIds))
-  const [temporaryTags, setTemporaryTags] = useState<TemporaryLibraryTagRecord[]>([])
-  const canSave = !sameStringSet(tagIds, initialTagIds)
-
-  const toggleTag = useCallback((tagId: string) => {
-    setTagIds((current) => {
-      const next = new Set(current)
-      if (next.has(tagId)) {
-        next.delete(tagId)
-      } else {
-        next.add(tagId)
-      }
-
-      return next
-    })
-  }, [])
-
-  const selectTag = useCallback((tagId: string) => {
-    setTagIds((current) => {
-      if (current.has(tagId)) return current
-
-      const next = new Set(current)
-      next.add(tagId)
-      return next
-    })
-  }, [])
-
-  const apply = () => {
-    if (!canSave) return
-
-    void resolveSelectedTagIds(tagIds, temporaryTags)
-      .then((resolvedTagIds) => {
-        const current = new Set(book.tagIds ?? [])
-        const next = new Set(resolvedTagIds)
-        return db.books.updateTags([book.id], {
-          addTagIds: [...next].filter((tagId) => !current.has(tagId)),
-          removeTagIds: [...current].filter((tagId) => !next.has(tagId)),
-        })
-      })
-      .then(() => onClose())
-      .catch((error) => notifyError(error, 'home.context.set_tags'))
-  }
-
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose()
-      }}
-    >
-      <DialogContent className="w-[min(32rem,calc(100vw-2rem))] max-w-none text-base">
-        <DialogHeader>
-          <DialogTitle>{t('home.tag_editor.title')}</DialogTitle>
-        </DialogHeader>
-        <TagSelectionEditor
-          tags={tags ?? []}
-          temporaryTags={temporaryTags}
-          selectedTagIds={tagIds}
-          onToggleTag={toggleTag}
-          onSelectTag={selectTag}
-          onTemporaryTagsChange={setTemporaryTags}
-        />
-        <DialogFooter>
-          <UiButton type="button" variant="secondary" onClick={onClose}>
-            {t('action.cancel')}
-          </UiButton>
-          <UiButton type="button" disabled={!canSave} onClick={apply}>
-            {t('action.save')}
-          </UiButton>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
+  return <TagsDialog target={book} tags={tags ?? []} onClose={onClose} />
 }
 
 export const EditBookDialog: React.FC<BookDialogProps> = ({ book, onClose }) => {

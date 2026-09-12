@@ -20,3 +20,11 @@ export function last<T>(array: T[]) {
 export function copy(text: string) {
   return navigator.clipboard.writeText(text)
 }
+
+export function sanitizeFilename(value: string) {
+  return value
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/, '')
+}

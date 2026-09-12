@@ -44,6 +44,7 @@ import Resources from './resources'
 import Spine from './spine'
 import { EVENTS } from './utils/constants'
 import { extend, defer } from './utils/core'
+import { decodeHrefPathSegments, encodeHrefPathSegments } from './utils/href'
 import Path from './utils/path'
 import request from './utils/request'
 import Url from './utils/url'
@@ -63,32 +64,6 @@ function normalizedNavigationHref(href: string) {
   if (!href) return
 
   return href.split('#')[0]
-}
-
-function decodeNavigationHref(href: string) {
-  return href
-    .split('/')
-    .map((part) => {
-      try {
-        return decodeURIComponent(part)
-      } catch (_error) {
-        return part
-      }
-    })
-    .join('/')
-}
-
-function encodeNavigationHref(href: string) {
-  return href
-    .split('/')
-    .map((part) => {
-      if (!part || part === '.' || part === '..') {
-        return part
-      }
-
-      return encodeURIComponent(part).replace(/\*/g, '%2A')
-    })
-    .join('/')
 }
 
 function splitHrefSuffix(href: string) {
@@ -150,8 +125,8 @@ function addReadableSectionHref(index: Set<string>, href: string) {
 
   index.add(normalized)
   index.add(encodeURI(normalized))
-  index.add(encodeNavigationHref(normalized))
-  index.add(decodeNavigationHref(normalized))
+  index.add(encodeHrefPathSegments(normalized))
+  index.add(decodeHrefPathSegments(normalized))
 }
 
 function readableSectionHrefIndex(sections: Section[]) {
@@ -179,8 +154,8 @@ function navigationHrefMatchesReadableSection(
   if (
     readableHrefs.has(normalized) ||
     readableHrefs.has(encodeURI(normalized)) ||
-    readableHrefs.has(encodeNavigationHref(normalized)) ||
-    readableHrefs.has(decodeNavigationHref(normalized))
+    readableHrefs.has(encodeHrefPathSegments(normalized)) ||
+    readableHrefs.has(decodeHrefPathSegments(normalized))
   ) {
     return true
   }

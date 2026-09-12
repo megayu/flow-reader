@@ -6,6 +6,8 @@ pub mod mdict;
 pub mod registry;
 pub mod session;
 pub mod stardict;
+#[cfg(test)]
+mod test_support;
 
 use http::{DictionaryHttpClient, DictionaryHttpError, DictionaryHttpResponse};
 use mdict::{MdictError, MdictLookupResponse, MdictReader, MdictTextResource};

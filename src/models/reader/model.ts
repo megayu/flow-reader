@@ -46,7 +46,7 @@ import {
 } from './pagination'
 import type { BookPersistenceHost } from './persistence'
 import { BookPersistenceController } from './persistence'
-import { BookSearchController, displaySearchResult, searchBook, searchInSection, searchInSectionAsync } from './search'
+import { BookSearchController, displaySearchResult, searchBook, searchInSection } from './search'
 
 export type { HeaderPathItem, PaginationSnapshot } from './pagination'
 export { readingOrderStartSectionIndex } from './pagination'
@@ -61,10 +61,6 @@ interface ReturnLocation {
 function updateIndex<T>(array: readonly T[], deletedItemIndex: number) {
   const last = array.length - 1
   return deletedItemIndex > last ? last : deletedItemIndex
-}
-
-export function compareHref(sectionHref: string | undefined, navitemHref: string | undefined) {
-  return sameHref(sectionHref, navitemHref)
 }
 
 function splitHrefTarget(href: string | undefined) {
@@ -741,9 +737,7 @@ export class BookTab {
       views?.find(
         (view) =>
           view.section?.href &&
-          (view.section.href === target.sectionHref ||
-            compareHref(view.section.href, target.sectionHref) ||
-            compareHref(target.sectionHref, view.section.href)),
+          (view.section.href === target.sectionHref || sameHref(view.section.href, target.sectionHref)),
       )
     if (!view) return false
 
@@ -948,38 +942,10 @@ export class BookTab {
     this.syncFrames()
     let percentage = fallbackReadingPercentage(loc)
     const visibleSections = this.visibleSectionsForLocation(loc)
+    const end = loc.end ?? loc.start
+    const hasKnownEndSection = this.sections?.some((section) => section.href === end.href)
 
-    // calculate percentage
-    if (this.sections) {
-      const end = loc.end ?? loc.start
-
-      if (!this.sections.some((s) => s.href === end.href)) {
-        if (!this.shouldAcceptRelocatedLocation(percentage, visibleSections)) {
-          this.rejectedLocationEventCount++
-          return
-        }
-
-        const currentSpreadState = snapshotReflowableSpread(this.rendition?.session, this.layoutStyleSignature, loc)
-        this.currentLocation = loc
-        this.observeRecentReadingLocation(loc, locationIntent)
-        this.currentSpreadState = currentSpreadState
-        if (locationIntent.updateAnchor) {
-          this.spreadAnchorsByLayout.clear()
-          this.runtimeSpreadAnchor = currentSpreadState
-        }
-        this.rememberCurrentLayoutSpread(locationIntent.layoutKey, {
-          replace: locationIntent.updateAnchor,
-          spread: currentSpreadState,
-        })
-        const activeSection = this.commitVisibleSections(loc, visibleSections)
-        this.updateRuntimeAnchorCfi(loc, locationIntent)
-        void this.refreshVisibleNavItems(loc, activeSection, ++this.navRefreshGeneration)
-        this.commitPaginationSnapshot(loc, percentage, activeSection)
-        this.clearLocationIntent()
-        this.rendered = true
-        return
-      }
-
+    if (this.sections && hasKnownEndSection) {
       percentage = calculateReadingPercentage({
         location: loc,
         readingMetrics: this.readingMetrics,
@@ -1009,17 +975,22 @@ export class BookTab {
     this.updateRuntimeAnchorCfi(loc, locationIntent)
 
     if (this.sections) {
-      const start = loc.start
-      const activeNavItem = activeSection?.navitem ?? this.mapSectionToNavItem(activeSection?.href ?? start.href)
-      if (activeSection && activeNavItem) {
-        activeSection.navitem = activeNavItem
+      if (hasKnownEndSection) {
+        const start = loc.start
+        const activeNavItem = activeSection?.navitem ?? this.mapSectionToNavItem(activeSection?.href ?? start.href)
+        if (activeSection && activeNavItem) {
+          activeSection.navitem = activeNavItem
+        }
+        this.expandNavPath(activeNavItem)
       }
-      this.expandNavPath(activeNavItem)
       void this.refreshVisibleNavItems(loc, activeSection, ++this.navRefreshGeneration)
 
-      const positionUpdate = this.createCurrentPositionUpdate(percentage)
-      if (positionUpdate) {
-        this.persistence.recordPosition(this.persistenceHost(), positionUpdate)
+      // Unmatched end sections refresh navigation but must not persist fallback progress.
+      if (hasKnownEndSection) {
+        const positionUpdate = this.createCurrentPositionUpdate(percentage)
+        if (positionUpdate) {
+          this.persistence.recordPosition(this.persistenceHost(), positionUpdate)
+        }
       }
     }
 
@@ -1337,7 +1308,7 @@ export class BookTab {
     if (!sectionHref || !sections) return
 
     const index = this.getSectionNavIndex(sections)
-    const section = sections.find((s) => s.href === sectionHref || compareHref(s.href, sectionHref))
+    const section = sections.find((s) => s.href === sectionHref || sameHref(s.href, sectionHref))
     if (!section || !index) return
 
     const exact = index.exactBySectionHref.get(section.href)
@@ -1461,7 +1432,7 @@ export class BookTab {
     return (
       this.sections?.find((section) => section.index === point.index) ??
       this.sections?.find((section) => section.href === point.href) ??
-      this.sections?.find((section) => compareHref(section.href, point.href))
+      this.sections?.find((section) => sameHref(section.href, point.href))
     )
   }
 
@@ -1821,10 +1792,6 @@ export class BookTab {
 
   searchInSection(keyword = this.keyword, section = this.section) {
     return searchInSection(this, keyword, section)
-  }
-
-  async searchInSectionAsync(keyword = this.keyword, section = this.section) {
-    return searchInSectionAsync(this, keyword, section)
   }
 
   async search(keyword = this.keyword) {

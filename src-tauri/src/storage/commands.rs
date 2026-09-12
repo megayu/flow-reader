@@ -251,44 +251,49 @@ pub fn update_tag(
     Ok(Some(tag))
 }
 
-fn remove_library_tags(library: &mut Library, ids: &HashSet<String>, updated_at: u64) {
-    library.tags.retain(|tag| !ids.contains(&tag.id));
-    for book in &mut library.books {
-        if book.scope != BookScope::Library {
-            continue;
-        }
-        let previous_len = book.tag_ids.len();
-        book.tag_ids.retain(|tag_id| !ids.contains(tag_id));
-        if book.tag_ids.len() != previous_len {
-            book.updated_at = Some(updated_at);
-        }
-    }
-    library.pins.tag_ids.retain(|tag_id| !ids.contains(tag_id));
-}
-
-pub(super) fn delete_tags_impl(storage: &AppStorage, ids: Vec<String>) -> Result<(), String> {
+pub(super) fn delete_tags_impl(storage: &AppStorage, ids: Vec<String>) -> Result<Vec<BookRecord>, String> {
     let ids = ids.into_iter().filter(|id| !id.is_empty()).collect::<HashSet<_>>();
     if ids.is_empty() {
-        return Ok(());
+        return Ok(Vec::new());
     }
 
+    let mut books = Vec::new();
     {
         let mut state = storage
             .inner
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        remove_library_tags(&mut state.library, &ids, now_ms());
+        state.library.tags.retain(|tag| !ids.contains(&tag.id));
+        let updated_at = now_ms();
+        for book in &mut state.library.books {
+            if book.scope != BookScope::Library {
+                continue;
+            }
+            let previous_len = book.tag_ids.len();
+            book.tag_ids.retain(|tag_id| !ids.contains(tag_id));
+            if book.tag_ids.len() != previous_len {
+                book.updated_at = Some(updated_at);
+                books.push(storage.compose_book_summary(book));
+            }
+        }
+        state.library.pins.tag_ids.retain(|tag_id| !ids.contains(tag_id));
     }
 
     storage.mark_library_dirty();
     storage.flush_content_dirty()?;
-    Ok(())
+    Ok(books)
 }
 
 #[tauri::command]
-pub fn delete_tags(storage: State<'_, AppStorage>, ids: Vec<String>) -> Result<(), String> {
+pub fn delete_tags(storage: State<'_, AppStorage>, ids: Vec<String>) -> Result<Vec<BookRecord>, String> {
     delete_tags_impl(&storage, ids)
+}
+
+#[derive(Debug, Serialize)]
+pub struct TagMergeResult {
+    pub(super) tag: LibraryTagRecord,
+    pub(super) books: Vec<BookRecord>,
 }
 
 pub(super) fn merge_tags_impl(
@@ -296,22 +301,21 @@ pub(super) fn merge_tags_impl(
     ids: Vec<String>,
     target_id: Option<String>,
     target_name: Option<String>,
-) -> Result<LibraryTagRecord, String> {
+) -> Result<TagMergeResult, String> {
     let source_ids = ids.into_iter().filter(|id| !id.is_empty()).collect::<HashSet<_>>();
     if source_ids.len() < 2 {
         return Err("at least two tags are required".to_string());
     }
 
+    let mut books = Vec::new();
     let target = {
         let mut state = storage
             .inner
             .state
             .lock()
             .map_err(|_| "storage state lock poisoned".to_string())?;
-        if source_ids
-            .iter()
-            .any(|id| !state.library.tags.iter().any(|tag| &tag.id == id))
-        {
+        let existing_ids = state.library.tags.iter().map(|tag| &tag.id).collect::<HashSet<_>>();
+        if source_ids.iter().any(|id| !existing_ids.contains(id)) {
             return Err("selected tag does not exist".to_string());
         }
 
@@ -363,9 +367,14 @@ pub(super) fn merge_tags_impl(
             if !book.tag_ids.iter().any(|tag_id| source_ids.contains(tag_id)) {
                 continue;
             }
+            let previous_tag_ids = book.tag_ids.clone();
             book.tag_ids.retain(|tag_id| !source_ids.contains(tag_id));
             book.tag_ids.push(target.id.clone());
+            if book.tag_ids == previous_tag_ids {
+                continue;
+            }
             book.updated_at = Some(updated_at);
+            books.push(storage.compose_book_summary(book));
         }
 
         let pinned = state
@@ -387,7 +396,7 @@ pub(super) fn merge_tags_impl(
 
     storage.mark_library_dirty();
     storage.flush_content_dirty()?;
-    Ok(target)
+    Ok(TagMergeResult { tag: target, books })
 }
 
 #[tauri::command]
@@ -396,7 +405,7 @@ pub fn merge_tags(
     ids: Vec<String>,
     target_id: Option<String>,
     target_name: Option<String>,
-) -> Result<LibraryTagRecord, String> {
+) -> Result<TagMergeResult, String> {
     merge_tags_impl(&storage, ids, target_id, target_name)
 }
 
@@ -406,7 +415,7 @@ pub fn update_book_tags(
     ids: Vec<String>,
     add_tag_ids: Vec<String>,
     remove_tag_ids: Vec<String>,
-) -> Result<(), String> {
+) -> Result<Vec<BookRecord>, String> {
     let id_set = ids.into_iter().collect::<std::collections::HashSet<_>>();
     let add_tag_ids = add_tag_ids
         .into_iter()
@@ -417,6 +426,7 @@ pub fn update_book_tags(
         .filter(|tag_id| !tag_id.is_empty())
         .collect::<std::collections::HashSet<_>>();
 
+    let mut books = Vec::new();
     {
         let mut state = storage
             .inner
@@ -438,19 +448,22 @@ pub fn update_book_tags(
 
             let previous_tag_ids = book.tag_ids.clone();
             book.tag_ids.retain(|tag_id| !remove_tag_ids.contains(tag_id));
+            let mut assigned_tags = book.tag_ids.iter().cloned().collect::<HashSet<_>>();
             for tag_id in &add_tag_ids {
-                if existing_tags.contains(tag_id) && !book.tag_ids.contains(tag_id) {
+                if existing_tags.contains(tag_id) && assigned_tags.insert(tag_id.clone()) {
                     book.tag_ids.push(tag_id.clone());
                 }
             }
             if book.tag_ids != previous_tag_ids {
                 book.updated_at = Some(updated_at);
+                books.push(storage.compose_book_summary(book));
             }
         }
     }
 
     storage.mark_library_dirty();
-    storage.flush_content_dirty()
+    storage.flush_content_dirty()?;
+    Ok(books)
 }
 
 #[tauri::command]

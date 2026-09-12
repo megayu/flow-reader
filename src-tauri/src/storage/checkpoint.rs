@@ -26,22 +26,18 @@ pub struct BookStateCheckpointInput {
 pub async fn persist_book_state(
     storage: tauri::State<'_, AppStorage>,
     checkpoint: BookStateCheckpointInput,
+    flush: bool,
 ) -> Result<(), String> {
     let storage = (*storage).clone();
-    tauri::async_runtime::spawn_blocking(move || apply_book_state_checkpoints(&storage, vec![checkpoint]))
-        .await
-        .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
-pub async fn persist_book_on_close(
-    storage: tauri::State<'_, AppStorage>,
-    checkpoint: BookStateCheckpointInput,
-) -> Result<(), String> {
-    let storage = (*storage).clone();
-    tauri::async_runtime::spawn_blocking(move || persist_book_states_and_flush(&storage, vec![checkpoint]))
-        .await
-        .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        if flush {
+            persist_book_states_and_flush(&storage, vec![checkpoint])
+        } else {
+            apply_book_state_checkpoints(&storage, vec![checkpoint])
+        }
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 pub(super) fn persist_book_states_and_flush(

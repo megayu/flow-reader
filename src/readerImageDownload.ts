@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 
+import { sanitizeFilename } from './utils'
+
 const IMAGE_EXTENSION_BY_MIME_TYPE: Readonly<Record<string, string>> = {
   'image/avif': 'avif',
   'image/bmp': 'bmp',
@@ -74,12 +76,4 @@ function isNativeReaderImageSource(src: string) {
 function filenameExtension(filename: string) {
   const match = filename.match(/\.([a-zA-Z0-9]+)$/)
   return match?.[1]?.toLowerCase()
-}
-
-function sanitizeFilename(value: string) {
-  return value
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/[. ]+$/, '')
 }

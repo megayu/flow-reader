@@ -29,6 +29,7 @@ import {
 import mime from './utils/mime'
 import Path from './utils/path'
 import { resolveDirectFallback } from './utils/fallback'
+import { decodeHrefPathSegments, encodeHrefPathSegments, stripHrefSuffix } from './utils/href'
 import { substitute } from './utils/replacements'
 import Url from './utils/url'
 
@@ -562,7 +563,7 @@ class Resources {
     }
 
     var suffix = getUrlSuffix(absolute)
-    var path = stripUrlSuffix(absolute)
+    var path = stripHrefSuffix(absolute)
     var fallback
 
     resourceUrlVariants(path).some((variant) => {
@@ -654,7 +655,7 @@ class Resources {
     }
 
     var replacements = urls.map((src) => {
-      var assetPath = decodeUrlPath(stripUrlSuffix(src))
+      var assetPath = decodeUrlPath(stripHrefSuffix(src))
       var absolute = path.isAbsolute(assetPath)
         ? assetPath
         : sectionPath.resolve(assetPath)
@@ -782,28 +783,12 @@ function shouldResolveMediaUrl(src: string) {
   )
 }
 
-function stripUrlSuffix(src: string) {
-  var end = src.length
-  var query = src.indexOf('?')
-  var hash = src.indexOf('#')
-
-  if (query > -1) {
-    end = Math.min(end, query)
-  }
-
-  if (hash > -1) {
-    end = Math.min(end, hash)
-  }
-
-  return src.slice(0, end)
-}
-
 function stripUrlPath(src: string) {
-  return decodeUrlPath(src.slice(0, stripUrlSuffix(src).length))
+  return decodeUrlPath(stripHrefSuffix(src))
 }
 
 function getUrlSuffix(src: string) {
-  return src.slice(stripUrlSuffix(src).length)
+  return src.slice(stripHrefSuffix(src).length)
 }
 
 function decodeUrlPath(src: string) {
@@ -812,32 +797,6 @@ function decodeUrlPath(src: string) {
   } catch {
     return src
   }
-}
-
-function decodeUrlPathSegments(src: string) {
-  return src
-    .split('/')
-    .map((part) => {
-      try {
-        return decodeURIComponent(part)
-      } catch {
-        return part
-      }
-    })
-    .join('/')
-}
-
-function encodeUrlPathSegments(src: string) {
-  return src
-    .split('/')
-    .map((part) => {
-      if (!part || part === '.' || part === '..') {
-        return part
-      }
-
-      return encodeURIComponent(part).replace(/\*/g, '%2A')
-    })
-    .join('/')
 }
 
 function addResourceUrlVariant(result: string[], seen: SeenUrls, url: string) {
@@ -852,10 +811,10 @@ function addResourceUrlVariant(result: string[], seen: SeenUrls, url: string) {
 function resourceUrlVariants(url: string) {
   var variants: string[] = []
   var seen: SeenUrls = Object.create(null)
-  var path = stripUrlSuffix(url)
+  var path = stripHrefSuffix(url)
   var suffix = getUrlSuffix(url)
-  var decoded = decodeUrlPathSegments(path)
-  var encoded = encodeUrlPathSegments(decoded)
+  var decoded = decodeHrefPathSegments(path)
+  var encoded = encodeHrefPathSegments(decoded)
 
   addResourceUrlVariant(variants, seen, url)
   addResourceUrlVariant(variants, seen, decoded + suffix)

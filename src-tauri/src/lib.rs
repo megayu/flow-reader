@@ -460,7 +460,6 @@ pub fn run() {
             storage::list_covers,
             storage::import_epub_paths,
             storage::open_external_epub_paths,
-            storage::checkpoint::persist_book_on_close,
             storage::checkpoint::persist_book_state,
             storage::get_text_import_encodings,
             storage::preview_text_import_paths,

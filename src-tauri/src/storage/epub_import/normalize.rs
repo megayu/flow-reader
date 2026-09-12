@@ -2,6 +2,8 @@ use std::sync::LazyLock;
 
 use super::*;
 
+pub(super) use crate::storage::body_content_range as local_body_content_range;
+
 static NCX_CONTENT_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?is)<content\b[^>]*\bsrc\s*=\s*['"]([^'"]+)['"][^>]*/?>"#).expect("valid NCX content regex")
 });
@@ -685,18 +687,6 @@ pub(super) fn split_href_fragment(href: &str) -> (String, String) {
 
 pub(super) fn unpacked_resource_path(unpacked_dir: &Path, zip_path: &str) -> PathBuf {
     unpacked_dir.join(zip_path.replace('/', std::path::MAIN_SEPARATOR_STR))
-}
-
-pub(super) fn local_body_content_range(xhtml: &str) -> Option<(usize, usize)> {
-    let lower = xhtml.to_ascii_lowercase();
-    let body_tag_start = lower.find("<body")?;
-    let body_content_start = lower[body_tag_start..].find('>')? + body_tag_start + 1;
-    let body_content_end = lower[body_content_start..]
-        .find("</body")
-        .map(|index| body_content_start + index)
-        .unwrap_or(xhtml.len());
-
-    Some((body_content_start, body_content_end))
 }
 
 // Split planning keeps path, navigation, and ID inputs explicit so their invariants remain visible.

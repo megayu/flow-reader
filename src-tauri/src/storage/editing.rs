@@ -68,18 +68,6 @@ pub(super) fn unescape_xml_text(value: &str) -> String {
         .collect()
 }
 
-pub(super) fn body_content_range(xhtml: &str) -> Option<(usize, usize)> {
-    let lower = xhtml.to_ascii_lowercase();
-    let body_tag_start = lower.find("<body")?;
-    let body_content_start = lower[body_tag_start..].find('>')? + body_tag_start + 1;
-    let body_content_end = lower[body_content_start..]
-        .find("</body")
-        .map(|index| body_content_start + index)
-        .unwrap_or(xhtml.len());
-
-    Some((body_content_start, body_content_end))
-}
-
 pub(super) fn replace_xhtml_text_node(
     xhtml: &str,
     target: &BookTextReplaceTarget,

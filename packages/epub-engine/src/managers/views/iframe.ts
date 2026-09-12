@@ -59,16 +59,10 @@ type ContentRangeSummary = {
   compactNearPageBoundary: boolean
   startsInsideSecondPage: boolean
 }
-type GeometryOptions = Parameters<typeof underlineGeometry>[1]
 
 import EventEmitter from '../../utils/event-emitter'
 import { createContentZoomCss } from '../../content-zoom'
-import {
-  WavyUnderline,
-  VerticalUnderline,
-  wavyUnderlineGeometry,
-  underlineGeometry,
-} from '../helpers/annotation-marks'
+import { WavyUnderline, VerticalUnderline } from '../helpers/annotation-marks'
 import { Pane, Highlight, Underline } from '../helpers/annotation-pane'
 
 import Contents from '../../contents'
@@ -1405,26 +1399,6 @@ class IframeView extends EventEmitter<ViewEvents> {
     this.writingMode = mode
   }
 
-  wavyUnderlineGeometry(
-    rect: Parameters<typeof wavyUnderlineGeometry>[0],
-    options: GeometryOptions = {},
-  ) {
-    return wavyUnderlineGeometry(rect, {
-      ...options,
-      writingMode: options.writingMode || this.writingMode,
-    })
-  }
-
-  underlineGeometry(
-    rect: Parameters<typeof underlineGeometry>[0],
-    options: GeometryOptions = {},
-  ) {
-    return underlineGeometry(rect, {
-      ...options,
-      writingMode: options.writingMode || this.writingMode,
-    })
-  }
-
   display(request?: SectionRequest) {
     var displayed = new defer<IframeView>()
 
@@ -1556,33 +1530,12 @@ class IframeView extends EventEmitter<ViewEvents> {
         ? resolvedRange
         : this.contents!.range(cfiRange)
 
-    let emitter = () => {
-      this.emit(EVENTS.VIEWS.MARK_CLICKED, cfiRange, data)
-    }
-
     data['epubcfi'] = cfiRange
 
     this.ensureAnnotationPane()
 
-    let m = new Highlight(range!, className, data, attributes)
-    let h = this.pane!.addMark(m)
-
-    this.highlights[cfiRange] = {
-      mark: h,
-      element: h.element,
-      listeners: [emitter, cb],
-    }
-
-    h.element!.setAttribute('ref', className)
-    this.applyMarkCursor(h, attributes.cursor)
-    h.element!.addEventListener('click', emitter)
-    h.element!.addEventListener('touchstart', emitter)
-
-    if (cb) {
-      h.element!.addEventListener('click', cb)
-      h.element!.addEventListener('touchstart', cb)
-    }
-    return h
+    let mark = new Highlight(range!, className, data, attributes)
+    return this.registerMark(this.highlights, cfiRange, mark, cb)
   }
 
   underline(
@@ -1604,10 +1557,6 @@ class IframeView extends EventEmitter<ViewEvents> {
       styles,
     )
     let range = this.contents!.range(cfiRange)
-    let emitter = () => {
-      this.emit(EVENTS.VIEWS.MARK_CLICKED, cfiRange, data)
-    }
-
     data['epubcfi'] = cfiRange
 
     this.ensureAnnotationPane()
@@ -1621,23 +1570,31 @@ class IframeView extends EventEmitter<ViewEvents> {
     if (Mark === WavyUnderline || Mark === VerticalUnderline) {
       attributes['data-writing-mode'] = this.writingMode
     }
-    let m = new Mark(range!, className, data, attributes)
-    let h = this.pane!.addMark(m)
+    let mark = new Mark(range!, className, data, attributes)
+    return this.registerMark(this.underlines, cfiRange, mark, cb)
+  }
 
-    this.underlines[cfiRange] = {
-      mark: h,
-      element: h.element,
-      listeners: [emitter, cb],
+  private registerMark(
+    marks: Record<string, StoredMark>,
+    cfiRange: string,
+    mark: Highlight,
+    cb?: AnnotationCallback,
+  ) {
+    let data = mark.data
+    let emitter = () => {
+      this.emit(EVENTS.VIEWS.MARK_CLICKED, cfiRange, data)
     }
+    let h = this.pane!.addMark(mark)
+    let listeners = [emitter, cb]
+    marks[cfiRange] = { mark: h, element: h.element, listeners }
 
-    h.element!.setAttribute('ref', className)
-    this.applyMarkCursor(h, attributes.cursor)
-    h.element!.addEventListener('click', emitter)
-    h.element!.addEventListener('touchstart', emitter)
-
-    if (cb) {
-      h.element!.addEventListener('click', cb)
-      h.element!.addEventListener('touchstart', cb)
+    h.element!.setAttribute('ref', h.className!)
+    this.applyMarkCursor(h, h.attributes.cursor)
+    for (let listener of listeners) {
+      if (listener) {
+        h.element!.addEventListener('click', listener)
+        h.element!.addEventListener('touchstart', listener)
+      }
     }
     return h
   }
@@ -1758,34 +1715,24 @@ class IframeView extends EventEmitter<ViewEvents> {
   }
 
   unhighlight(cfiRange: string) {
-    let item: StoredMark
-    if (cfiRange in this.highlights) {
-      item = this.highlights[cfiRange]!
-
-      this.pane!.removeMark(item.mark)
-      item.listeners.forEach((l) => {
-        if (l) {
-          item.element!.removeEventListener('click', l)
-          item.element!.removeEventListener('touchstart', l)
-        }
-      })
-      delete this.highlights[cfiRange]
-    }
+    this.unregisterMark(this.highlights, cfiRange)
   }
 
   ununderline(cfiRange: string) {
-    let item: StoredMark
-    if (cfiRange in this.underlines) {
-      item = this.underlines[cfiRange]!
-      this.pane!.removeMark(item.mark)
-      item.listeners.forEach((l) => {
-        if (l) {
-          item.element!.removeEventListener('click', l)
-          item.element!.removeEventListener('touchstart', l)
-        }
-      })
-      delete this.underlines[cfiRange]
+    this.unregisterMark(this.underlines, cfiRange)
+  }
+
+  private unregisterMark(marks: Record<string, StoredMark>, cfiRange: string) {
+    if (!(cfiRange in marks)) return
+    let item = marks[cfiRange]!
+    this.pane!.removeMark(item.mark)
+    for (let listener of item.listeners) {
+      if (listener) {
+        item.element!.removeEventListener('click', listener)
+        item.element!.removeEventListener('touchstart', listener)
+      }
     }
+    delete marks[cfiRange]
   }
 
   destroy() {

@@ -162,7 +162,7 @@ export class BookPersistenceController {
 
     const capturedRevision = this.revision
     const checkpoint = this.createCheckpoint(host.getBook())
-    await (close ? db.books.persistStateOnClose(checkpoint) : db.books.persistState(checkpoint))
+    await db.books.persistState(checkpoint, close)
 
     this.committedRevision = Math.max(this.committedRevision, capturedRevision)
     this.annotationChanges.replaceBaseline(checkpoint.state.annotations, host.getBook().annotations)

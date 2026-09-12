@@ -7,7 +7,8 @@ import { compareBookDisplayTitle, getBookDisplayTitle, getBookTooltip } from '@/
 import { useLibrary } from '@/hooks/useLibrary'
 import { LIST_ITEM_SIZE, useList } from '@/hooks/useList'
 import { useTranslation } from '@/hooks/useTranslation'
-import { type BookTab, compareHref, completeTabOpen, type INavItem, reader, useReaderSnapshot } from '@/models/reader'
+import { type BookTab, completeTabOpen, type INavItem, reader, useReaderSnapshot } from '@/models/reader'
+import { sameHref } from '@/noteLinks'
 import { useSetViewMode, useShowLibraryInTocValue } from '@/state'
 import { backgroundClassNames } from '@/styles/theme'
 
@@ -308,7 +309,7 @@ const TocRow: React.FC<TocRowProps> = memo(
       }
 
       const [, id] = href.split('#')
-      const section = tab.sections?.find((s) => compareHref(s.href, href))
+      const section = tab.sections?.find((s) => sameHref(s.href, href))
 
       if (!section) {
         if (hasSubitems) toggleItem()

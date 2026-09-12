@@ -389,17 +389,6 @@ export function useSettingsLocale() {
   return [locale, setSettings] as const
 }
 
-export function useSetSettings() {
-  const setSettings = useAppStore((state) => state.setSettings)
-
-  useEffect(() => {
-    if (IS_SERVER) return
-    void loadSettings()
-  }, [])
-
-  return setSettings
-}
-
 export function useTypographySettingValues() {
   const hideEndnotes = useAppStore((state) => state.settings.hideEndnotes)
   const spread = useAppStore((state) => state.settings.spread)

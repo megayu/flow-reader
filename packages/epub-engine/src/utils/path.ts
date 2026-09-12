@@ -4,22 +4,7 @@ import {
   hasEncodedPathSeparators,
   isTauriAssetUrl,
 } from './asset-url'
-
-function stripPathSuffix(pathString: string) {
-  var end = pathString.length
-  var query = pathString.indexOf('?')
-  var hash = pathString.indexOf('#')
-
-  if (query > -1) {
-    end = Math.min(end, query)
-  }
-
-  if (hash > -1) {
-    end = Math.min(end, hash)
-  }
-
-  return pathString.slice(0, end)
-}
+import { stripHrefSuffix } from './href'
 
 /**
  * Creates a Path object for parsing and manipulation of a path strings
@@ -46,7 +31,7 @@ class Path {
           ? decodeAssetPath(url.pathname)
           : url.pathname
     } else {
-      pathString = stripPathSuffix(pathString)
+      pathString = stripHrefSuffix(pathString)
     }
 
     parsed = this.parse(pathString)

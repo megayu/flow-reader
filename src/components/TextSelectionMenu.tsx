@@ -536,6 +536,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
     (dictionaryQuery?.language === 'zh' && settings.dictionary?.zdic?.enabled === true) ||
     (dictionaryQuery?.language === 'en' && settings.dictionary?.merriamWebster?.enabled === true) ||
     eligibleLocalDictionaries.length > 0
+  const defined = tab.isDefined(text)
 
   const handleActionShortcut = (event: KeyboardEvent) => {
     if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return
@@ -888,33 +889,18 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
               }}
               onClick={startAnnotating}
             />
-            {tab.isDefined(text) ? (
-              <IconButton
-                title={t('menu.undefine')}
-                shortcut={definitionToggleShortcut}
-                Icon={SquareMinusIcon}
-                size={ICON_SIZE}
-                className={actionIconClassName}
-                style={{
-                  width: ANNOTATION_SIZE,
-                  height: ANNOTATION_SIZE,
-                }}
-                onClick={toggleDefinition}
-              />
-            ) : (
-              <IconButton
-                title={t('menu.define')}
-                shortcut={definitionToggleShortcut}
-                Icon={SquarePlusIcon}
-                size={ICON_SIZE}
-                className={actionIconClassName}
-                style={{
-                  width: ANNOTATION_SIZE,
-                  height: ANNOTATION_SIZE,
-                }}
-                onClick={toggleDefinition}
-              />
-            )}
+            <IconButton
+              title={t(defined ? 'menu.undefine' : 'menu.define')}
+              shortcut={definitionToggleShortcut}
+              Icon={defined ? SquareMinusIcon : SquarePlusIcon}
+              size={ICON_SIZE}
+              className={actionIconClassName}
+              style={{
+                width: ANNOTATION_SIZE,
+                height: ANNOTATION_SIZE,
+              }}
+              onClick={toggleDefinition}
+            />
           </div>
         )}
         {view === 'actions' && !editing && (

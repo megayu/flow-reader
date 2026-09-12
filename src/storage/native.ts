@@ -29,7 +29,6 @@ export const storageCommand = {
   openBookDirectory: 'open_book_directory',
   openExternalEpubPaths: 'open_external_epub_paths',
   previewTextImportPaths: 'preview_text_import_paths',
-  persistBookOnClose: 'persist_book_on_close',
   persistBookState: 'persist_book_state',
   replaceBookText: 'replace_book_text',
   resetTextImportRule: 'reset_text_import_rule',

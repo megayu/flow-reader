@@ -4,7 +4,6 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 
 import { RenditionSpread } from '@flow/epub-engine/rendition'
-import { normalizeHexColor } from '@/color'
 import { AppTooltip } from '@/components/AppTooltip'
 import { ColorPickerPopover } from '@/components/ColorPickerPopover'
 import { ColorValueButton } from '@/components/ColorValueButton'
@@ -646,34 +645,21 @@ function SegmentedField<T extends string>({ value, options, onChange }: Segmente
 const AccentColorSetting: React.FC = () => {
   const { accentColor, setAccentColor } = useAccentColor()
   const [open, setOpen] = useState(false)
-  const [displayColor, setDisplayColor] = useState(accentColor)
   const t = useTranslation()
-
-  const color = normalizeHexColor(displayColor) ?? accentColor
 
   return (
     <Item title={t('theme.source_color')} description={t('settings.accent_color.description')}>
-      <Popover
-        open={open}
-        onOpenChange={(nextOpen) => {
-          if (nextOpen) setDisplayColor(accentColor)
-          setOpen(nextOpen)
-        }}
-      >
+      <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <ColorValueButton value={color} />
+          <ColorValueButton value={accentColor} />
         </PopoverTrigger>
         <PopoverContent side="bottom" align="end" sideOffset={8} collisionPadding={8} variant="bare" className="z-110">
           <ColorPickerPopover
             value={accentColor}
             defaultValue="#0ea5e9"
-            onPreview={(next) => {
-              setDisplayColor(next)
-              setAccentColor(next)
-            }}
+            onPreview={setAccentColor}
             onApply={(next) => {
               setAccentColor(next)
-              setDisplayColor(next)
               setOpen(false)
             }}
             onCancel={() => {

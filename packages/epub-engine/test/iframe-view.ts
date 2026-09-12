@@ -6,6 +6,7 @@ import type { LegacyWindow } from '../src/utils/core'
 import { double } from './support/double'
 import { assert } from 'vitest'
 import Views from '../src/managers/helpers/views'
+import { underlineGeometry } from '../src/managers/helpers/annotation-marks'
 import IframeView from '../src/managers/views/iframe'
 import Rendition from '../src/rendition'
 import { EVENTS } from '../src/utils/constants'
@@ -253,40 +254,19 @@ describe('IframeView vertical writing pagination', function () {
     assert.equal(layout.delta, 500)
   })
 
-  it('places a vertical-rl wavy definition line on the glyph left side', function () {
-    const view = createView({})
+  it('places vertical-rl definition and annotation underlines on the glyph left side', function () {
+    for (const gap of [2, 1.5]) {
+      const geometry = underlineGeometry(
+        { left: 300, top: 100, width: 24, height: 180 },
+        { gap, writingMode: 'vertical-rl' },
+      )
 
-    assert.equal(
-      typeof view.wavyUnderlineGeometry,
-      'function',
-      'vertical underline geometry must be exposed by the rendered view',
-    )
-
-    const geometry = view.wavyUnderlineGeometry(
-      { left: 300, top: 100, width: 24, height: 180 },
-      { amplitude: 2, gap: 2, period: 8, writingMode: 'vertical-rl' },
-    )
-
-    assert.equal(geometry.orientation, 'vertical')
-    assert.equal(geometry.side, 'left')
-    assert.equal(geometry.x! < 300, true)
-    assert.equal(geometry.start, 100)
-    assert.equal(geometry.length, 180)
-  })
-
-  it('places a vertical-rl annotation underline on the glyph left side', function () {
-    const view = createView({})
-
-    const geometry = view.underlineGeometry(
-      { left: 300, top: 100, width: 24, height: 180 },
-      { gap: 1.5, writingMode: 'vertical-rl' },
-    )
-
-    assert.equal(geometry.orientation, 'vertical')
-    assert.equal(geometry.side, 'left')
-    assert.equal(geometry.x! < 300, true)
-    assert.equal(geometry.start, 100)
-    assert.equal(geometry.length, 180)
+      assert.equal(geometry.orientation, 'vertical')
+      assert.equal(geometry.side, 'left')
+      assert.equal(geometry.x! < 300, true)
+      assert.equal(geometry.start, 100)
+      assert.equal(geometry.length, 180)
+    }
   })
 
   it('invalidates cached page geometry when the physical page width changes', function () {
