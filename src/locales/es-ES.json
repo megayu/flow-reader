@@ -7,6 +7,7 @@
   "action.delete": "Eliminar",
   "action.expand_all": "Expandir todo",
   "action.locate_current": "Ir al capítulo actual",
+  "action.open": "Abrir",
   "action.reset": "Restablecer",
   "action.save": "Guardar",
   "action.step_down": "Reducir",

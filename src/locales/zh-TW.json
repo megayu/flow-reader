@@ -7,6 +7,7 @@
   "action.delete": "刪除",
   "action.expand_all": "全部展開",
   "action.locate_current": "定位當前章節",
+  "action.open": "開啟",
   "action.reset": "重設",
   "action.save": "儲存",
   "action.step_down": "減少",

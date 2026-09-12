@@ -7,6 +7,7 @@
   "action.delete": "Löschen",
   "action.expand_all": "Alle ausklappen",
   "action.locate_current": "Aktuelles Kapitel anzeigen",
+  "action.open": "Öffnen",
   "action.reset": "Zurücksetzen",
   "action.save": "Speichern",
   "action.step_down": "Verringern",

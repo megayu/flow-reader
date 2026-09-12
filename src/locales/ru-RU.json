@@ -7,6 +7,7 @@
   "action.delete": "Удалить",
   "action.expand_all": "Развернуть все",
   "action.locate_current": "Перейти к текущей главе",
+  "action.open": "Открыть",
   "action.reset": "Сбросить",
   "action.save": "Сохранить",
   "action.step_down": "Уменьшить",

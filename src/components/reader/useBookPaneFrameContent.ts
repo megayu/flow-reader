@@ -15,6 +15,7 @@ import type { BookTab } from '../../models/reader'
 import { getNoteIndex } from '../../noteIndex'
 import { useDndContext } from '../base/dropZoneContext'
 
+import type { ExternalLinkPreview } from './ExternalLinkPopover'
 import {
   createNotePopoverState,
   getAnchorFromEvent,
@@ -27,17 +28,29 @@ import {
 } from './noteContent'
 import { useFrameEvent } from './useFrameEvent'
 
-function consumeExternalLinkClick(event: MouseEvent, anchor: HTMLAnchorElement) {
+function consumeExternalLinkClick(
+  event: MouseEvent,
+  anchor: HTMLAnchorElement,
+  setPreview: (preview: ExternalLinkPreview | undefined) => void,
+) {
   const href = anchor.getAttribute('href')?.trim()
   if (!href || !isSupportedExternalUrl(href)) return false
 
   event.preventDefault()
   event.stopPropagation()
   event.stopImmediatePropagation()
+  setPreview(undefined)
   if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
     void openSupportedExternalUrl(href).catch((error) => {
       console.error(error)
     })
+  } else if (event.button === 0 && !event.altKey && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+    const frame = anchor.ownerDocument.defaultView?.frameElement
+    if (frame) {
+      const frameRect = frame.getBoundingClientRect()
+      const rect = new DOMRect(frameRect.left + event.clientX, frameRect.top + event.clientY, 0, 0)
+      setPreview({ href, getBoundingClientRect: () => rect })
+    }
   }
   return true
 }
@@ -84,6 +97,8 @@ export function useBookPaneFrameContent({
   zenMode,
 }: BookPaneFrameContentOptions) {
   const noteRequestId = useRef(0)
+  const [externalLink, setExternalLink] = useState<ExternalLinkPreview>()
+  const closeExternalLink = useCallback(() => setExternalLink(undefined), [])
   const imagePreviewOpenKey = useRef(0)
   const [imagePreview, setImagePreview] = useState<{
     key: number
@@ -129,6 +144,7 @@ export function useBookPaneFrameContent({
       const document = frame.document
 
       const handleClick = (event: MouseEvent) => {
+        setExternalLink(undefined)
         const anchor = getAnchorFromEvent(event)
         if (!anchor) {
           noteRequestId.current += 1
@@ -136,7 +152,7 @@ export function useBookPaneFrameContent({
           return
         }
 
-        if (consumeExternalLinkClick(event, anchor)) {
+        if (consumeExternalLinkClick(event, anchor, setExternalLink)) {
           noteRequestId.current += 1
           setNotePopover(undefined)
           return
@@ -230,6 +246,7 @@ export function useBookPaneFrameContent({
         document.removeEventListener('keydown', handleKeyDown, true)
         noteRequestId.current += 1
         setNotePopover(undefined)
+        setExternalLink(undefined)
       }
     })
 
@@ -256,7 +273,6 @@ export function useBookPaneFrameContent({
       for (const element of event.composedPath()) {
         // `instanceof` may not work in iframe
         if (isFrameAnchor(element) && element.href) {
-          if (consumeExternalLinkClick(event, element)) return
           return
         }
         if (!zenMode && isFrameImage(element)) {
@@ -284,6 +300,8 @@ export function useBookPaneFrameContent({
   useFrameEvent(activeFrameWindows, 'contextmenu', preventFrameContextMenu)
 
   return {
+    externalLink,
+    closeExternalLink,
     closeImagePreview: () => setImagePreview(undefined),
     imagePreview,
   }

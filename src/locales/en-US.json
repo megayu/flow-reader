@@ -7,6 +7,7 @@
   "action.delete": "Delete",
   "action.expand_all": "Expand all",
   "action.locate_current": "Locate current chapter",
+  "action.open": "Open",
   "action.reset": "Reset",
   "action.save": "Save",
   "action.step_down": "Decrease",

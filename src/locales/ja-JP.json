@@ -7,6 +7,7 @@
   "action.delete": "削除",
   "action.expand_all": "すべて展開",
   "action.locate_current": "現在の章へ移動",
+  "action.open": "開く",
   "action.reset": "リセット",
   "action.save": "保存",
   "action.step_down": "減らす",

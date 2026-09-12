@@ -7,7 +7,7 @@ import { createTestBook } from '../support/book-fixtures'
 import { epubFixturePackageUrl, installEpubFixtureRoutes } from '../support/epub-fixture'
 import { msg } from '../support/i18n'
 import { selectReaderTextAndOpenMenu } from '../support/reader-selection'
-import { installTauriMock } from '../support/tauri-mock'
+import { getDictionaryMockState, installTauriMock } from '../support/tauri-mock'
 
 const longPackageUrl = '/test-assets/long/OPS/package.opf'
 const scrolledPackageUrl = '/test-assets/scrolled/OPS/package.opf'
@@ -3555,6 +3555,51 @@ verticalBookTest('[vertical-rl] places note popover on the physical left with ve
       longNoteGeometry.scrollWidth - longNoteGeometry.clientWidth,
     ),
   ).toBeGreaterThan(1)
+})
+
+test('previews external reader links and dismisses across documents', async ({ page }) => {
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+  const frame = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .filter({ visible: true })
+    .first()
+    .contentFrame()
+  await frame.locator('body').evaluate((body) => {
+    const paragraph = body.ownerDocument.createElement('p')
+    paragraph.innerHTML =
+      '<a href="https://example.org/reading">Website</a> <a href="mailto:reader@example.org?subject=Reading%20question">Email</a> <span>Outside link</span>'
+    body.prepend(paragraph)
+  })
+  const website = frame.getByRole('link', { name: 'Website', exact: true })
+  const popup = page.locator('[data-flow-external-link]')
+  await website.click()
+  await expect(popup).toBeVisible()
+  await expect(popup).toContainText('example.org')
+  expect((await getDictionaryMockState(page)).openedExternalUrls).toEqual([])
+  await popup.getByRole('button', { name: msg('action.open'), exact: true }).click()
+  await expect(popup).toBeHidden()
+  expect((await getDictionaryMockState(page)).openedExternalUrls).toEqual(['https://example.org/reading'])
+  await website.click({ modifiers: ['Control'] })
+  await expect(popup).toBeHidden()
+  expect((await getDictionaryMockState(page)).openedExternalUrls).toEqual([
+    'https://example.org/reading',
+    'https://example.org/reading',
+  ])
+  await website.click()
+  await page.keyboard.press('Escape')
+  await expect(popup).toBeHidden()
+  await website.click()
+  await frame.getByText('Outside link', { exact: true }).click()
+  await expect(popup).toBeHidden()
+  await frame.getByRole('link', { name: 'Email', exact: true }).click()
+  await expect(popup).toContainText('reader@example.org')
+  await expect(popup).toContainText('mailto:reader@example.org?subject=Reading%20question')
+  await popup.getByRole('button', { name: msg('action.open'), exact: true }).click()
+  await expect(popup).toBeHidden()
+  expect((await getDictionaryMockState(page)).openedExternalUrls.at(-1)).toBe(
+    'mailto:reader@example.org?subject=Reading%20question',
+  )
 })
 
 test('does not scroll a horizontal note for glyph overflow inside the available height', async ({ page }) => {
