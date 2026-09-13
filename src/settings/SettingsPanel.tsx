@@ -688,12 +688,18 @@ const UiFontSizeSetting: React.FC = () => {
 
   return (
     <Item title={t('settings.ui_font_size')} description={t('settings.ui_font_size.description')}>
-      <InputGroup className="w-24 overflow-hidden bg-transparent focus-within:border-input focus-within:ring-0">
+      <InputGroup className="w-24 overflow-hidden bg-transparent focus-within:ring-1">
         <InputGroupInput
           type="text"
           aria-label={t('settings.ui_font_size')}
           readOnly
           value={uiFontSize}
+          onKeyDown={(event) => {
+            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+            event.preventDefault()
+            event.stopPropagation()
+            setUiFontSize(uiFontSize + (event.key === 'ArrowUp' ? 1 : -1))
+          }}
           escapeBehavior="none"
           focusBehavior="select-all"
           className="text-muted-foreground text-base outline-none"
