@@ -223,6 +223,9 @@ class Annotations {
    * @param {function} callback
    */
   batch<Result>(callback: () => Result) {
+    // Effect cleanup can run after the owning rendition has been destroyed.
+    if (!this.rendition) return
+
     let views = this.rendition.session.getViews()
     views.forEach((view) => view.beginAnnotationBatch?.())
     this._batchDepth += 1
