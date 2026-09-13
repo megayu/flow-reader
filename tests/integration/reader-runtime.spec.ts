@@ -3778,6 +3778,66 @@ test('[scrolled-doc] automatically opens the selection menu after pointer-select
   await expect(page.getByRole('button', { name: msg('action.copy') })).toBeVisible()
 })
 
+test('[scrolled-doc] keeps the manually opened selection menu after right-button release when automatic display is disabled', async ({
+  page,
+}) => {
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+  await page.getByRole('button', { name: msg('settings.title') }).click()
+  const settings = page.getByRole('dialog', { name: msg('settings.title') })
+  await settings.getByRole('button', { name: msg('settings.tabs.reading'), exact: true }).click()
+  const automatic = settings.getByRole('checkbox', { name: msg('settings.text_selection_menu'), exact: true })
+  await automatic.uncheck()
+  await expect(automatic).not.toBeChecked()
+  await page.keyboard.press('Escape')
+  await expect(settings).toBeHidden()
+
+  await waitForStableReaderLayout(page, { header: false })
+
+  const activeFrame = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .filter({ visible: true })
+    .first()
+  const frameBox = await activeFrame.boundingBox()
+  const point = await activeFrame
+    .contentFrame()
+    .locator('body')
+    .evaluate((body) => {
+      const phrase = 'SCROLLED-CHAPTER-01'
+      const walker = body.ownerDocument.createTreeWalker(body, NodeFilter.SHOW_TEXT)
+      let text = walker.nextNode() as Text | null
+      while (text && !text.textContent?.includes(phrase)) {
+        text = walker.nextNode() as Text | null
+      }
+      if (!text?.textContent) throw new Error('Missing reader pointer selection target')
+      const offset = text.textContent.indexOf(phrase) + 3
+      const range = body.ownerDocument.createRange()
+      range.setStart(text, offset)
+      range.setEnd(text, offset + 1)
+      const rect = range.getBoundingClientRect()
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+    })
+  if (!frameBox) throw new Error('Missing active reader frame bounds')
+
+  await page.mouse.dblclick(frameBox.x + point.x, frameBox.y + point.y)
+  await expect
+    .poll(() =>
+      activeFrame
+        .contentFrame()
+        .locator('body')
+        .evaluate((body) => body.ownerDocument.defaultView?.getSelection()?.toString() ?? ''),
+    )
+    .not.toBe('')
+  const copy = page.getByRole('button', { name: msg('action.copy') })
+  await expect(copy).toBeHidden()
+  await page.mouse.down({ button: 'right' })
+  const visibleWhilePressed = await copy.isVisible()
+  await page.mouse.up({ button: 'right' })
+  await expect(copy, `Menu must remain open after release; visible while pressed: ${visibleWhilePressed}`).toBeVisible()
+  await page.getByRole('button', { name: msg('menu.edit_text') }).click()
+  await expect(page.getByRole('textbox', { name: msg('menu.edit_text') })).toBeVisible()
+})
+
 test('keeps Escape owned by settings above the reader selection menu', async ({ page }) => {
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })

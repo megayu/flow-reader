@@ -44,6 +44,9 @@ export function useTextSelection(target?: Window | Window[], { automatic = true 
     const removeListeners = windows.map((win) => {
       let timeout: ReturnType<typeof setTimeout> | undefined
       const updateSelection = (event: MouseEvent) => {
+        // A secondary-button release can follow contextmenu and must not reset its open state.
+        if (event.button !== 0) return
+
         const s = win.getSelection()
 
         if (hasSelection(s)) {

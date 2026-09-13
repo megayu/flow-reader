@@ -49,6 +49,19 @@ Flow Reader development constraints, not a chronology of past fixes.
 - Use the `contextmenu` event as the secondary-click contract. Do not require
   `button === 2`; macOS Control-click and trackpad gestures need not report the
   same button value as a Windows mouse.
+- Do not assume `contextmenu` follows button release. With ordinary right-button
+  input, Playwright WebKit delivered `mousedown -> contextmenu -> mouseup`, while
+  Windows Edge delivered `mousedown -> mouseup -> contextmenu`. A later
+  `mouseup` must not reset a manually opened menu to the automatic-display
+  preference. Filtering non-primary releases covers ordinary right-click, but
+  does not establish correctness for Control-click reported as `button === 0`;
+  preserve context-menu ownership across the complete gesture.
+- Verify manual selection menus with automatic display disabled, native pointer
+  selection, and a complete press/release sequence followed by a menu action.
+  Dispatching only a synthetic `contextmenu`, or leaving automatic display on,
+  misses release-time dismissal. Include native Control-click when validating
+  this contract on macOS; another platform's Playwright WebKit run does not
+  establish that OS gesture's behavior.
 - When the application owns the menu, call `preventDefault` synchronously in the
   `contextmenu` handler for every document that can produce it. If the event
   reaches JavaScript but the native menu still appears, test capture-phase
@@ -164,6 +177,10 @@ Reference: [CSSOM View](https://www.w3.org/TR/cssom-view/).
 
 ## Test evidence boundaries
 
+- Classify a defect from the first divergent state, not the operating system
+  where it was reported or a `-webkit-` selector in its fix. Missing mouse-button
+  filtering that reproduces in both Windows and Linux is a shared interaction
+  defect, not evidence of a WebKit incompatibility.
 - Ordinary keyboard and pointer input is the default evidence. Replace it only
   after a small standalone reproduction or confirmed upstream issue establishes
   a driver or browser capability limitation.
