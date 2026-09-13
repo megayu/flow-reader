@@ -28,7 +28,10 @@ const releaseNotes = changelogSectionForVersion(changelog, tauriConfig.version)
 if (!releaseNotes.body) {
   throw new Error(`CHANGELOG.md release ${tauriConfig.version} must contain release notes.`)
 }
-const changelogVersions = parseChangelog(changelog).map((section) => section.version)
+const releaseVersionPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u
+const changelogVersions = parseChangelog(changelog)
+  .map((section) => section.version)
+  .filter((version) => releaseVersionPattern.test(version))
 if (changelogVersions[0] !== tauriConfig.version) {
   throw new Error(`CHANGELOG.md must place release ${tauriConfig.version} before every older release.`)
 }

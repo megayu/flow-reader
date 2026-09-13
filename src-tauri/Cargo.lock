@@ -1074,7 +1074,7 @@ dependencies = [
 
 [[package]]
 name = "flow-epub-cover"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "roxmltree",
  "thiserror 2.0.18",
@@ -1083,7 +1083,7 @@ dependencies = [
 
 [[package]]
 name = "flow-reader"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "chrono",
  "encoding_rs",
