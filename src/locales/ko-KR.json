@@ -321,6 +321,7 @@
   "tabs.close_others": "나머지 닫기",
   "tabs.move_left": "탭을 왼쪽으로 이동",
   "tabs.move_right": "탭을 오른쪽으로 이동",
+  "tabs.reload_book": "현재 책 다시 불러오기",
   "tabs.switch_by_number": "번호로 탭 전환 (1–8)",
   "tabs.switch_next": "다음 탭으로 전환",
   "tabs.switch_previous": "이전 탭으로 전환",

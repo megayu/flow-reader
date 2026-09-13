@@ -321,6 +321,7 @@
   "tabs.close_others": "Chiudi le altre",
   "tabs.move_left": "Sposta scheda a sinistra",
   "tabs.move_right": "Sposta scheda a destra",
+  "tabs.reload_book": "Ricarica il libro corrente",
   "tabs.switch_by_number": "Passa alla scheda per numero (1–8)",
   "tabs.switch_next": "Passa alla scheda successiva",
   "tabs.switch_previous": "Passa alla scheda precedente",

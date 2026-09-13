@@ -321,6 +321,7 @@
   "tabs.close_others": "Close others",
   "tabs.move_left": "Move tab left",
   "tabs.move_right": "Move tab right",
+  "tabs.reload_book": "Reload current book",
   "tabs.switch_by_number": "Switch to tab by number (1–8)",
   "tabs.switch_next": "Switch to next tab",
   "tabs.switch_previous": "Switch to previous tab",

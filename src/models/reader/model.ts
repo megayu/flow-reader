@@ -651,13 +651,17 @@ export class BookTab {
     }
   }
 
+  async reloadContent() {
+    await this.persistence.persistCurrentState(this.persistenceHost())
+    const target = this.getCurrentDisplayTarget()
+    const book = await db.books.get(this.book.id)
+    if (!book) throw new Error(`Book not found: ${this.book.id}`)
+    if (this.destroyPromise) return
+    this.reloadContentAfterEdit(book, target)
+  }
+
   reloadContentAfterEdit(book: BookRecord, target?: string) {
     this.setBook(this.mergeRuntimeState(book))
-    this.annotationRange = undefined
-    this.annotationCfi = undefined
-    this.runtimeAnchorCfi = undefined
-    this.runtimeSpreadAnchor = undefined
-    this.spreadAnchorsByLayout.clear()
     this.destroyRendering()
     this.contentReloadTarget = target
     this.bumpViewVersion()
@@ -706,19 +710,7 @@ export class BookTab {
     const reloadTarget = this.getCurrentDisplayTarget()
     await this.persistence.persistCurrentState(this.persistenceHost())
 
-    const stateChanges: Partial<BookRecord> = {
-      annotations: this.book.annotations,
-      cfi: this.book.cfi,
-      configuration: this.book.configuration,
-      definitions: this.book.definitions,
-      percentage: this.book.percentage,
-    }
-    const promotedBook = {
-      ...libraryBook,
-      ...stateChanges,
-      scope: 'library' as const,
-    }
-    this.reloadContentAfterEdit(promotedBook, reloadTarget)
+    this.reloadContentAfterEdit({ ...libraryBook, scope: 'library' }, reloadTarget)
   }
 
   async applyRenderedTextEdit(
@@ -2083,19 +2075,17 @@ export class BookTab {
     let epub: RuntimeRef<Book>
     let openingBook: Book | undefined
     try {
-      if (source.mode === 'epub') {
-        openingBook = ePub()
-        await openingBook.open(source.url, 'epub')
-        epub = ref(openingBook)
-        openingBook = undefined
-      } else {
-        epub = ref(
-          await ePub(source.url, {
-            requestMethod: createRevisionedEpubRequest(() => this.book),
-            containerRootUrl: source.rootUrl,
-          }),
-        )
-      }
+      openingBook = ePub(
+        source.mode === 'epub'
+          ? undefined
+          : {
+              requestMethod: createRevisionedEpubRequest(() => this.book),
+              containerRootUrl: source.rootUrl,
+            },
+      )
+      await openingBook.open(source.url, source.mode === 'epub' ? 'epub' : undefined)
+      epub = ref(openingBook)
+      openingBook = undefined
     } catch (error) {
       try {
         openingBook?.destroy()

@@ -51,9 +51,7 @@ export function isGlobalKeyboardShortcutBlocked(e: KeyboardEvent) {
   return isEditableKeyboardTarget(e.target) || isKeyboardCaptureTarget(e.target) || hasBlockingKeyboardOverlay(e.target)
 }
 
-export function installProductionReloadShortcutGuard(target: Document) {
-  if (import.meta.env.DEV) return () => {}
-
+export function installReloadShortcut(target: Document, reload: () => Promise<void>) {
   const preventReload = (event: KeyboardEvent) => {
     if (!(event.metaKey || event.ctrlKey) || event.altKey) return
     if (event.code !== 'KeyR' && event.key.toLowerCase() !== 'r') return
@@ -61,6 +59,8 @@ export function installProductionReloadShortcutGuard(target: Document) {
     event.preventDefault()
     event.stopPropagation()
     event.stopImmediatePropagation()
+    if (event.repeat || event.shiftKey || isGlobalKeyboardShortcutBlocked(event)) return
+    void reload().catch(console.error)
   }
 
   target.addEventListener('keydown', preventReload, true)

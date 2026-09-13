@@ -2054,6 +2054,67 @@ test('reloads an imported replacement now for the active tab and on activation f
   })
 })
 
+test('refresh shortcut preserves tabs and position from the main document and book iframe', async ({ page }) => {
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page)
+  await openFixtureBookByName(page, 'Tab Layout B')
+  await waitForStableReaderLayout(page)
+  await openFixtureBookByName(page, 'Tab Layout C')
+  await waitForStableReaderLayout(page)
+  await readerTab(page, 'Tab Layout B').click()
+  await waitForStableReaderLayout(page)
+
+  for (const fromFrame of [false, true]) {
+    const before = await page.evaluate(async (external) => {
+      const reader = (window as any).reader
+      const tab = reader.focusedBookTab
+      if (external) {
+        await (window as any).__TAURI_INTERNALS__.invoke('update_book', {
+          id: tab.book.id,
+          changes: { scope: 'external' },
+        })
+        tab.book.scope = 'external'
+      }
+      ;(window as any).__reloadTabs = reader.tabs.map((item: any) => ({ tab: item, rendition: item.rendition }))
+      return { ids: reader.tabs.map((item: any) => item.id), target: tab.getCurrentDisplayTarget() }
+    }, fromFrame)
+
+    if (fromFrame) {
+      await page
+        .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+        .first()
+        .contentFrame()
+        .locator('html')
+        .click({ position: { x: 10, y: 10 } })
+    } else {
+      await readerTab(page, 'Tab Layout B').click()
+    }
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+r' : 'Control+r')
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const tab = (window as any).reader.focusedBookTab
+          return Boolean(tab?.rendition && tab.rendition !== (window as any).__reloadTabs[1].rendition)
+        }),
+      )
+      .toBe(true)
+    await waitForStableReaderLayout(page)
+    const after = await page.evaluate(() => {
+      const reader = (window as any).reader
+      return {
+        ids: reader.tabs.map((item: any) => item.id),
+        target: reader.focusedBookTab.getCurrentDisplayTarget(),
+        selectedIndex: reader.selectedIndex,
+        preserved: reader.tabs.every((item: any, index: number) => {
+          const previous = (window as any).__reloadTabs[index]
+          return item === previous.tab && (index === 1 || item.rendition === previous.rendition)
+        }),
+      }
+    })
+    expect(after).toEqual({ ...before, selectedIndex: 1, preserved: true })
+  }
+})
+
 const SIDEBAR_SCROLLBAR_WIDTH = 10
 const SIDEBAR_EDGE_EPSILON = 0.5
 

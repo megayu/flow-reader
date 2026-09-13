@@ -5,15 +5,16 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { createRoot } from 'react-dom/client'
 
 import { FlowReader } from './app/FlowReader'
-import { installProductionReloadShortcutGuard, installSettingsShortcut } from './keyboard'
+import { installReloadShortcut, installSettingsShortcut } from './keyboard'
 import { reader } from './models/reader'
+import { reloadCurrentView, restoreBookAfterReload } from './reader/reload'
 import { initializeWindowUiState, snapshotWindowUiState, useAppStore, type WindowUiState } from './state'
 import { db } from './storage/client'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Flow Reader root element was not found')
 const appRoot = root
-installProductionReloadShortcutGuard(document)
+installReloadShortcut(document, reloadCurrentView)
 installSettingsShortcut(document, () => useAppStore.getState().setSettingsDialogOpen(true))
 
 const windowUiStateReady = invoke<WindowUiState>('get_window_ui_state').then(initializeWindowUiState)
@@ -43,6 +44,8 @@ async function handleAppCloseRequested() {
 async function start() {
   await getCurrentWebviewWindow().listen('flow-app-close-requested', handleAppCloseRequested)
   await windowUiStateReady
+
+  await restoreBookAfterReload().catch(console.error)
 
   createRoot(appRoot).render(<FlowReader />)
 }

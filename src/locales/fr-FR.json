@@ -321,6 +321,7 @@
   "tabs.close_others": "Fermer les autres",
   "tabs.move_left": "Déplacer l'onglet vers la gauche",
   "tabs.move_right": "Déplacer l'onglet vers la droite",
+  "tabs.reload_book": "Recharger le livre actuel",
   "tabs.switch_by_number": "Basculer vers l'onglet par numéro (1–8)",
   "tabs.switch_next": "Passer à l'onglet suivant",
   "tabs.switch_previous": "Passer à l'onglet précédent",

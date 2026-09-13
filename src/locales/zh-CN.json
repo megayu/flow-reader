@@ -321,6 +321,7 @@
   "tabs.close_others": "关闭其他",
   "tabs.move_left": "向左移动标签页",
   "tabs.move_right": "向右移动标签页",
+  "tabs.reload_book": "重新加载当前书籍",
   "tabs.switch_by_number": "按编号切换标签页（1–8）",
   "tabs.switch_next": "切换到下一个标签页",
   "tabs.switch_previous": "切换到上一个标签页",

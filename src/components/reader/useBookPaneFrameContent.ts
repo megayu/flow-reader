@@ -10,9 +10,10 @@ import {
 } from 'react'
 
 import { isSupportedExternalUrl, openSupportedExternalUrl } from '../../externalLink'
-import { installProductionReloadShortcutGuard } from '../../keyboard'
+import { installReloadShortcut } from '../../keyboard'
 import type { BookTab } from '../../models/reader'
 import { getNoteIndex } from '../../noteIndex'
+import { reloadCurrentView } from '../../reader/reload'
 import { useDndContext } from '../base/dropZoneContext'
 
 import type { ExternalLinkPreview } from './ExternalLinkPopover'
@@ -133,7 +134,7 @@ export function useBookPaneFrameContent({
 
   useEffect(() => {
     if (!active) return
-    const cleanups = frameWindows.map((frame) => installProductionReloadShortcutGuard(frame.document))
+    const cleanups = frameWindows.map((frame) => installReloadShortcut(frame.document, reloadCurrentView))
     return () => cleanups.forEach((cleanup) => cleanup())
   }, [active, frameWindows])
 

@@ -35,6 +35,7 @@ export type ShortcutActionId =
   | 'previousChapter'
   | 'previousFindResult'
   | 'previousPage'
+  | 'reloadBook'
   | 'resetFontSize'
   | 'returnPrevious'
   | 'returnStart'
@@ -134,6 +135,10 @@ const shortcutDefinitions: Record<ShortcutActionId, ShortcutDefinition> = {
   previousFindResult: {
     labelKey: 'reader.previous_find_result',
     shortcuts: [['Shift', 'Enter']],
+  },
+  reloadBook: {
+    labelKey: 'tabs.reload_book',
+    shortcuts: [[commandToken, 'R']],
   },
   closeTab: {
     labelKey: 'action.close',
@@ -309,6 +314,7 @@ const shortcutGroups: ShortcutGroupDefinition[] = [
   {
     titleKey: 'settings.shortcuts.group.tabs',
     items: [
+      shortcutDefinitions.reloadBook,
       shortcutDefinitions.closeTab,
       shortcutDefinitions.closeAllTabs,
       shortcutDefinitions.switchTabIndex,

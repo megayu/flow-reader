@@ -41,6 +41,7 @@ import { useEventListener } from '../hooks/useEventListener'
 import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
 import { type BookTab, completeTabOpen, getBookTabFrameWindows, reader, useReaderSnapshot } from '../models/reader'
+import { revealRestoredBook } from '../reader/reload'
 import { createReaderKeyDownHandler, hasKeyboardCapturingLayer, isEditableTarget } from '../reader/shortcuts'
 import { getShortcutChords } from '../shortcuts'
 import { type BookImportProgress, type BookImportResult, db } from '../storage'
@@ -606,6 +607,9 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
   const { dark } = useColorScheme()
 
   const { isScrolledDocument, rendition, rendered, turning, paginationVersion, viewVersion } = useSnapshot(tab)
+  useLayoutEffect(() => {
+    if (import.meta.env.DEV && rendered && !turning) revealRestoredBook(tab.book.id)
+  }, [rendered, turning, tab])
   const currentSpread = isScrolledDocument ? RenditionSpread.None : (typography.spread ?? RenditionSpread.Auto)
   const typographyLayoutSignature = useMemo(
     () =>

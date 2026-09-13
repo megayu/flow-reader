@@ -321,6 +321,7 @@
   "tabs.close_others": "關閉其他",
   "tabs.move_left": "將分頁向左移",
   "tabs.move_right": "將分頁向右移",
+  "tabs.reload_book": "重新載入目前書籍",
   "tabs.switch_by_number": "依編號切換分頁（1–8）",
   "tabs.switch_next": "切換至下一個分頁",
   "tabs.switch_previous": "切換至上一個分頁",
