@@ -44,7 +44,11 @@ function SegmentedControlItem({
       {...props}
     >
       {Children.map(children, (child) =>
-        typeof child === 'string' || typeof child === 'number' ? <TruncatedLabel>{child}</TruncatedLabel> : child,
+        typeof child === 'string' || typeof child === 'number' ? (
+          <TruncatedLabel className="leading-6.5">{child}</TruncatedLabel>
+        ) : (
+          child
+        ),
       )}
     </Button>
   )

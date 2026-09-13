@@ -988,7 +988,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                 status={null}
                 className={statusFilters.length === 0 ? 'text-primary-foreground' : ''}
               />
-              <span className="min-w-0 truncate leading-tight">{t('home.library_filter.all')}</span>
+              <span className="min-w-0 truncate leading-6.5">{t('home.library_filter.all')}</span>
             </UiButton>
             {libraryStatusOptions.map((status) => {
               const active = statusFilters.includes(status)
@@ -1004,7 +1004,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                   onClick={() => toggle(status)}
                 >
                   <ReadingStatusIcon status={status} className={active ? 'text-primary-foreground' : ''} />
-                  <span className="min-w-0 truncate leading-tight">{t(readingStatusMessageKey(status))}</span>
+                  <span className="min-w-0 truncate leading-6.5">{t(readingStatusMessageKey(status))}</span>
                 </UiButton>
               )
             })}
@@ -1291,9 +1291,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
               className="h-7 min-w-0 flex-1 justify-start gap-1.5 overflow-hidden rounded-xl bg-transparent px-0 text-left hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 aria-expanded:bg-transparent aria-expanded:text-(--flow-text)"
               onClick={() => onExpandedChange(!expanded)}
             >
-              <span className={clsx(libraryFilterSectionHeaderClassName, 'min-w-0 truncate leading-tight')}>
-                {title}
-              </span>
+              <span className={clsx(libraryFilterSectionHeaderClassName, 'min-w-0 truncate leading-6.5')}>{title}</span>
               <ChevronDown
                 aria-hidden
                 className={clsx('size-4.5 shrink-0 transition-transform', !expanded && '-rotate-90')}

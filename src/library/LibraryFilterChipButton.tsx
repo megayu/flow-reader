@@ -75,7 +75,7 @@ export function LibraryFilterChipButton({
           className={clsx('size-3.5', active ? 'text-primary-foreground' : 'text-muted-foreground')}
         />
       )}
-      <span ref={labelRef} className="min-w-0 truncate leading-tight" data-testid={labelTestId}>
+      <span ref={labelRef} className="min-w-0 truncate leading-6.5" data-testid={labelTestId}>
         {label}
       </span>
     </UiButton>

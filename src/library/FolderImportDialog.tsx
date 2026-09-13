@@ -118,7 +118,7 @@ export function FolderImportDialog({ rootPath: initialRootPath, onClose, onImpor
           <div className="border-input flex h-8 w-full min-w-0 items-center gap-2 overflow-hidden rounded-lg border bg-(--flow-bg-control) pl-2.5">
             <span
               dir="rtl"
-              className="text-muted-foreground min-w-0 flex-1 truncate text-left leading-tight"
+              className="text-muted-foreground min-w-0 flex-1 truncate text-left leading-7.5"
               title={displayedPath}
             >
               <bdo dir="ltr">{displayedPath}</bdo>
