@@ -5,6 +5,7 @@ import { openSupportedExternalUrl } from '../../externalLink'
 import { useNotifyError } from '../../hooks/useNotifyError'
 import { useTranslation } from '../../hooks/useTranslation'
 import type { BookTab } from '../../models/reader'
+import { safeDecodeHref } from '../../noteLinks'
 import { copy } from '../../utils'
 import { Button } from '../ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '../ui/popover'
@@ -14,6 +15,10 @@ import { CAPTURE_EVENT_OPTIONS, useFrameEvent } from './useFrameEvent'
 export interface ExternalLinkPreview {
   href: string
   getBoundingClientRect: () => DOMRect
+}
+
+async function copyExternalLink(href: string) {
+  return copy(/^mailto:/i.test(href) ? safeDecodeHref(new URL(href).pathname) : href)
 }
 
 export function ExternalLinkPopover({
@@ -31,7 +36,7 @@ export function ExternalLinkPopover({
   const notifyError = useNotifyError()
   const actions = [
     ['action.open', ExternalLink, openSupportedExternalUrl],
-    ['action.copy', Copy, copy],
+    ['action.copy', Copy, copyExternalLink],
   ] as const
 
   useFrameEvent(frames, 'pointerdown', onClose, CAPTURE_EVENT_OPTIONS)
