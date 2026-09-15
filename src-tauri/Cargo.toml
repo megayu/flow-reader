@@ -7,7 +7,6 @@ edition = "2024"
 
 [lib]
 name = "flow_reader_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
