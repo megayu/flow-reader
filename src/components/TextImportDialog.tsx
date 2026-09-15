@@ -477,7 +477,7 @@ const ChapterPreview: React.FC<{ chapters: TextImportChapterPreview[] }> = ({ ch
           </AppTooltip>
         )}
       </div>
-      <div className="scroll min-h-0 flex-1 overflow-auto rounded-lg bg-(--flow-bg-panel) p-2 text-base">
+      <div className="scroll scrollbar-visible min-h-0 flex-1 overflow-auto rounded-lg bg-(--flow-bg-panel) p-2 text-base">
         <ChapterPreviewTree nodes={chapterTree} collapsedKeys={collapsedKeys} onToggle={toggleChapter} />
       </div>
     </section>
