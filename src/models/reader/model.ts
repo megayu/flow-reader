@@ -484,7 +484,7 @@ export class BookTab {
   }
 
   display(target?: string, returnable = true) {
-    void this.displayResolvedTarget(target, { returnable })
+    return this.displayResolvedTarget(target, { returnable })
   }
 
   async displayBookLink(target: string) {

@@ -289,9 +289,12 @@ const AnnotationPane: React.FC = () => {
                 <Row
                   active={activeRowKey === activeKey}
                   depth={2}
-                  onClick={() => {
+                  onClick={async () => {
                     setActiveRowKey(activeKey)
-                    reader.focusedBookTab?.display(row.annotation.cfi)
+                    const tab = reader.focusedBookTab
+                    if (!tab) return
+                    await tab.display(row.annotation.cfi)
+                    if (reader.focusedBookTab === tab) tab.setAnnotationRange(row.annotation.cfi)
                   }}
                 >
                   <span className="text-muted-foreground">{row.annotation.notes}</span>

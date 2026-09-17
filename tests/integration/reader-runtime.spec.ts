@@ -1561,6 +1561,39 @@ test('[scriptless-xhtml] blocks scripts when an authored comment resembles a hea
   await expect(page.locator('html')).not.toHaveAttribute('data-epub-xhtml-script-executed', 'true')
 })
 
+test('opens the note editor after navigating from a sidebar note', async ({ page }) => {
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+  const annotation = await addVisibleAnnotation(page)
+  const notes = 'Review this passage.\nCompare its surrounding context.'
+  await page.evaluate(
+    async ({ cfi, notes }) => {
+      const tab = (window as any).reader.focusedBookTab
+      const annotation = tab.book.annotations.find((item: { cfi: string }) => item.cfi === cfi)
+      await tab.putAnnotation(cfi, annotation.color, annotation.text, notes)
+      await tab.displayBookLink('chapter_002.xhtml')
+    },
+    { cfi: annotation.cfi, notes },
+  )
+  await waitForStableReaderLayout(page, { header: false })
+  await page
+    .locator('.ActivityBar')
+    .getByRole('button', { name: msg('annotation.title') })
+    .click()
+  await page.locator('.SideBar .list-row').filter({ hasText: 'Review this passage.' }).click()
+
+  const editor = page.locator('textarea[name="notes"]')
+  await expect(editor).toHaveValue(notes)
+  await expectVisibleReaderMarks(page, 'flow-epub-hl', 1)
+  await editor.click()
+  await editor.press('ControlOrMeta+A')
+  await page.keyboard.insertText(`${notes}\nContext checked.`)
+  await page.getByRole('button', { name: msg('menu.update'), exact: true }).click()
+  await expect(editor).toBeHidden()
+  await page.locator('.SideBar .list-row').filter({ hasText: 'Context checked.' }).click()
+  await expect(editor).toHaveValue(`${notes}\nContext checked.`)
+})
+
 test('waits for every queued display before capturing stable reader state', async ({ page }) => {
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })
