@@ -1005,6 +1005,8 @@ export class BookTab {
       db.recentBooks.cancelSession(this.book.id)
       return
     }
+    // Keep the session available for library promotion without consuming recent-book slots.
+    if (this.book.scope !== 'library') return
     db.recentBooks.observePosition(this.book.id, this.locationAnchorCfi(location), intent.userNavigation === true)
   }
 
@@ -2447,7 +2449,7 @@ export class Reader {
       tab = opened ? this.focusBookTab(opened) : await this.addTab(book)
     }
 
-    if (isRecentReadingEnabled()) db.recentBooks.record(bookId)
+    if (tab.book.scope === 'library' && isRecentReadingEnabled()) db.recentBooks.record(bookId)
     if (cfi) tab.navigateFromDeepLink(cfi)
     return tab
   }
