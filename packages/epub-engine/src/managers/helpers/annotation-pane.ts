@@ -7,6 +7,9 @@ export type AnnotationRect = Pick<
 type RectInput = Pick<AnnotationRect, 'left' | 'top' | 'width' | 'height'> &
   Partial<AnnotationRect>
 type TextFragment = { node: Text; start: number; end: number }
+type TextLayout = { lineHeight: number; vertical: boolean }
+type TextLayoutCache = WeakMap<Element, TextLayout>
+type MeasuredRect = AnnotationRect & { background?: AnnotationRect }
 type Interval = [number, number]
 type Geometry = ReturnType<typeof blockGeometry>
 type Fragment<Id> = { mark: Id; rect: AnnotationRect; geometry: Geometry }
@@ -66,6 +69,15 @@ function plainRect(rect: RectInput) {
     width: right - left,
     height: bottom - top,
   }
+}
+
+function positiveNumberAttribute(
+  attributes: Record<string, string | number>,
+  name: string,
+  fallback: number,
+) {
+  const value = Number(attributes[name])
+  return Number.isFinite(value) && value > 0 ? value : fallback
 }
 
 function nextSibling(node: Node, root: Node, forward: boolean) {
@@ -155,12 +167,56 @@ function textFragments(range: Range) {
   return fragments
 }
 
-function textClientRects(fragments: TextFragment[], range: Range) {
-  let rects: AnnotationRect[] = []
+function measureTextRects(range: Range, cache?: TextLayoutCache) {
+  const parent = range.startContainer.parentElement
+  let layout = parent && cache?.get(parent)
+  const view = parent?.ownerDocument.defaultView
+  if (cache && parent && view && !layout) {
+    const style = view.getComputedStyle(parent)
+    layout = {
+      lineHeight: parseFloat(style.lineHeight),
+      vertical: style.writingMode.startsWith('vertical'),
+    }
+    cache.set(parent, layout)
+  }
+  return Array.from(range.getClientRects(), (source) => {
+    const rect: MeasuredRect = plainRect(source)
+    if (
+      !layout ||
+      !Number.isFinite(layout.lineHeight) ||
+      layout.lineHeight <= 0
+    ) {
+      return rect
+    }
+    const size = layout.vertical ? rect.width : rect.height
+    const excess = Math.max(0, size - layout.lineHeight) / 2
+    if (excess === 0) return rect
+    // Bound only the fill; text hit areas and underlines keep the full font box.
+    const background = plainRect(rect)
+    if (layout.vertical) {
+      background.left += excess
+      background.right -= excess
+      background.width = background.right - background.left
+    } else {
+      background.top += excess
+      background.bottom -= excess
+      background.height = background.bottom - background.top
+    }
+    rect.background = background
+    return rect
+  })
+}
+
+function textClientRects(
+  fragments: TextFragment[],
+  range: Range,
+  cache?: TextLayoutCache,
+) {
+  let rects: MeasuredRect[] = []
   for (let { node, start, end } of fragments) {
     range.setStart(node, start)
     range.setEnd(node, end)
-    for (let rect of range.getClientRects()) rects.push(plainRect(rect))
+    for (const rect of measureTextRects(range, cache)) rects.push(rect)
   }
   return rects
 }
@@ -504,6 +560,7 @@ export class Pane {
   declare marksDirty: boolean
   declare overlapGroups: Map<string, NumericSvg>
   declare writingMode: string
+  declare pageWidth: number
   declare batchDepth: number
   declare element: NumericSvg
   declare overlapLayer: NumericSvg
@@ -516,6 +573,7 @@ export class Pane {
     target: HTMLElement & { contentDocument?: Document | null },
     container = document.body,
     writingMode = 'horizontal-tb',
+    pageWidth = 0,
   ) {
     this.target = target
     this.container = container
@@ -523,6 +581,7 @@ export class Pane {
     this.marksDirty = false
     this.overlapGroups = new Map()
     this.writingMode = writingMode
+    this.pageWidth = pageWidth
     this.batchDepth = 0
     this.element = svgElement(container.ownerDocument, 'svg')
     this.overlapLayer = svgElement(container.ownerDocument, 'g')
@@ -549,8 +608,9 @@ export class Pane {
     this.batchDepth -= 1
     if (this.batchDepth !== 0) return
     this.compactMarks()
+    const cache: TextLayoutCache = new WeakMap()
     for (let mark of this.marks) {
-      if (!mark.rawRects) mark.measure()
+      if (!mark.rawRects) mark.measure(cache)
     }
     this.updateMarks()
   }
@@ -619,8 +679,9 @@ export class Pane {
     let target = this.target.getBoundingClientRect()
     let paneHeight = this.target.scrollHeight
     let paneWidth = this.target.scrollWidth
+    const cache: TextLayoutCache = new WeakMap()
     for (let mark of this.marks) {
-      mark.measure()
+      mark.measure(cache)
     }
 
     this.element.style.setProperty(
@@ -642,12 +703,21 @@ export class Pane {
     this.compactMarks()
     let entries: { mark: Mark; rect: AnnotationRect }[] = []
     for (let mark of this.marks) {
-      for (let rect of mark.rawRects || []) entries.push({ mark, rect })
+      if (!mark.drawsBackground) continue
+      for (let rect of mark.rawRects || []) {
+        entries.push({ mark, rect: rect.background ?? rect })
+      }
     }
     let normalized = normalizeAnnotationRects(entries, this.writingMode)
     for (let mark of this.marks) {
-      let rects = normalized.get(mark) || []
-      if (sameRects(mark.rects, rects)) continue
+      let rects = mark.drawsBackground
+        ? normalized.get(mark) || []
+        : mark.rawRects || []
+      const layoutChanged =
+        mark.pageWidth !== this.pageWidth || mark.writingMode !== this.writingMode
+      mark.pageWidth = this.pageWidth
+      mark.writingMode = this.writingMode
+      if (!layoutChanged && sameRects(mark.rects, rects)) continue
       mark.rects = rects
       mark.render()
     }
@@ -676,10 +746,13 @@ export class Pane {
 }
 
 export class Mark {
+  drawsBackground = false
+  pageWidth = 0
+  writingMode = 'horizontal-tb'
   declare element: NumericSvg | null
   declare range: Range
   declare attributes: Record<string, string | number> | undefined
-  declare rawRects: AnnotationRect[] | undefined
+  declare rawRects: MeasuredRect[] | undefined
   declare rects: AnnotationRect[] | undefined
   declare measurementRange: Range | undefined
 
@@ -700,7 +773,8 @@ export class Mark {
     return element
   }
 
-  measure() {
+  measure(cache: TextLayoutCache = new WeakMap()) {
+    const layoutCache = this.drawsBackground ? cache : undefined
     if (
       this.range.startContainer === this.range.endContainer &&
       this.range.startContainer.nodeType === 3 &&
@@ -712,7 +786,7 @@ export class Mark {
         (this.range.startContainer as Text).data[this.range.endOffset - 1]!,
       )
     ) {
-      this.rawRects = Array.from(this.range.getClientRects(), plainRect)
+      this.rawRects = measureTextRects(this.range, layoutCache)
       return
     }
 
@@ -724,11 +798,11 @@ export class Mark {
 
     let fragment = fragments[0]!
     this.measurementRange ??= fragment.node.ownerDocument.createRange()
-    this.rawRects = textClientRects(fragments, this.measurementRange)
+    this.rawRects = textClientRects(fragments, this.measurementRange, layoutCache)
   }
 
   containsPoint(x: number, y: number) {
-    return (this.rects || []).some(
+    return (this.rawRects || []).some(
       (rect) =>
         rect.top <= y && rect.left <= x && rect.bottom > y && rect.right > x,
     )
@@ -742,6 +816,7 @@ export class Mark {
 }
 
 export class Highlight extends Mark {
+  drawsBackground = true
   declare className: string | undefined
   declare data: Record<string, unknown>
   declare attributes: Record<string, string | number>
@@ -771,7 +846,62 @@ export class Highlight extends Mark {
   render() {
     this.element!.replaceChildren()
     let fragment = this.element!.ownerDocument.createDocumentFragment()
+    const vertical = this.writingMode.startsWith('vertical')
+    const foldColor = this.attributes['data-note-fold-color']
+    const folds = new Set<AnnotationRect>()
+    if (foldColor) {
+      const pages = new Map<number, { rect: AnnotationRect; geometry: Geometry }>()
+      const direction = this.writingMode === 'vertical-rl' ? -1 : 1
+      // A long annotation gets one fold per physical page, in reading order.
+      for (const rect of this.rects!) {
+        if (Math.min(rect.width, rect.height) < 6) continue
+        const page = this.pageWidth > 0
+          ? Math.floor((rect.left + rect.right) / 2 / this.pageWidth)
+          : 0
+        const geometry = blockGeometry(rect, vertical)
+        const prior = pages.get(page)
+        const advance = prior
+          ? (geometry.start - prior.geometry.start) * direction
+          : 1
+        if (
+          advance > 0 ||
+          (advance === 0 && geometry.inlineEnd > prior!.geometry.inlineEnd)
+        ) {
+          pages.set(page, { rect, geometry })
+        }
+      }
+      for (const { rect } of pages.values()) folds.add(rect)
+    }
     for (let rect of this.rects!) {
+      if (folds.has(rect)) {
+        const { left, top, right, bottom } = rect
+        const blockSize = vertical ? rect.width : rect.height
+        // The ratio uses the background's block size; the maximum is in CSS px.
+        const size = Math.min(
+          positiveNumberAttribute(this.attributes, 'data-note-fold-max-size', 10),
+          blockSize * positiveNumberAttribute(this.attributes, 'data-note-fold-ratio', 0.28),
+          rect.width / 2,
+          rect.height / 2,
+        )
+        const background = svgElement(this.element!.ownerDocument, 'path')
+        background.setAttribute(
+          'd',
+          vertical
+            ? `M${left} ${top} H${right} V${bottom - size} L${right - size} ${bottom} H${left} Z`
+            : `M${left} ${top} H${right - size} L${right} ${top + size} V${bottom} H${left} Z`,
+        )
+        const fold = svgElement(this.element!.ownerDocument, 'path')
+        fold.setAttribute(
+          'd',
+          vertical
+            ? `M${right} ${bottom - size} H${right - size} V${bottom} Z`
+            : `M${right - size} ${top} V${top + size} H${right} Z`,
+        )
+        fold.setAttribute('fill', foldColor!)
+        fold.setAttribute('data-note-fold', '')
+        fragment.append(background, fold)
+        continue
+      }
       let element = svgElement(this.element!.ownerDocument, 'rect')
       element.setAttribute('x', rect.left)
       element.setAttribute('y', rect.top)
@@ -784,6 +914,7 @@ export class Highlight extends Mark {
 }
 
 export class Underline extends Highlight {
+  drawsBackground = false
   render() {
     this.element!.replaceChildren()
     let fragment = this.element!.ownerDocument.createDocumentFragment()

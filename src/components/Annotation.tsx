@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useSnapshot } from 'valtio'
 
-import { annotationOverlayColor, annotationOverlayOpacity, type Annotation as IAnnotation } from '../annotation'
+import {
+  annotationFoldColor,
+  annotationFoldStyle,
+  annotationOverlayColor,
+  annotationOverlayOpacity,
+  type Annotation as IAnnotation,
+} from '../annotation'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
 import type { BookTab } from '../models/reader'
 
@@ -265,6 +271,7 @@ interface AnnotationProps {
 }
 const Annotation: React.FC<AnnotationProps> = ({ tab, annotation }) => {
   const { rendition, viewVersion, overlayVersion } = useSnapshot(tab)
+  const foldColor = annotation.notes?.trim() ? annotationFoldColor(annotation.color) : ''
 
   useEffect(() => {
     rendition?.annotations.highlight(
@@ -278,8 +285,10 @@ const Annotation: React.FC<AnnotationProps> = ({ tab, annotation }) => {
       undefined,
       {
         ...clickableMarkStyle,
+        ...annotationFoldStyle,
         'data-overlap-group': 'flow-annotations',
         'data-overlap-opacity': annotationOverlayOpacity,
+        'data-note-fold-color': foldColor,
         fill: annotationOverlayColor(annotation.color),
         'fill-opacity': 1,
         'mix-blend-mode': 'normal',
@@ -289,7 +298,7 @@ const Annotation: React.FC<AnnotationProps> = ({ tab, annotation }) => {
     return () => {
       rendition?.annotations.remove(annotation.cfi, 'highlight')
     }
-  }, [annotation.cfi, annotation.color, overlayVersion, rendition?.annotations, tab, viewVersion])
+  }, [annotation.cfi, annotation.color, foldColor, overlayVersion, rendition?.annotations, tab, viewVersion])
 
   return null
 }

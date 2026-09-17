@@ -1208,6 +1208,8 @@ class IframeView extends EventEmitter<ViewEvents> {
 
     if (this.pane) {
       try {
+        this.pane.pageWidth =
+          this.settings.flow === 'paginated' ? this.layout.pageWidth : 0
         this.pane.render()
       } catch (error) {
         // Marks may point to ranges from a view that was just cleared.
@@ -1612,7 +1614,12 @@ class IframeView extends EventEmitter<ViewEvents> {
   ensureAnnotationPane() {
     if (this.pane) return this.pane
 
-    this.pane = new Pane(this.iframe!, this.element, this.writingMode)
+    this.pane = new Pane(
+      this.iframe!,
+      this.element,
+      this.writingMode,
+      this.settings.flow === 'paginated' ? this.layout.pageWidth : 0,
+    )
     for (let i = 0; i < this.annotationBatchDepth; i++) {
       this.pane.beginBatch()
     }

@@ -11,6 +11,7 @@ import { Highlight } from './annotation-pane'
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 
 class WavyUnderline extends Highlight {
+  drawsBackground = false
   render() {
     while (this.element!.firstChild!) {
       this.element!.removeChild(this.element!.firstChild!)
@@ -81,6 +82,7 @@ class WavyUnderline extends Highlight {
 }
 
 class VerticalUnderline extends Highlight {
+  drawsBackground = false
   render() {
     while (this.element!.firstChild!) {
       this.element!.removeChild(this.element!.firstChild!)

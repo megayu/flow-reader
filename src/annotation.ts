@@ -31,9 +31,19 @@ export const colorMap = Object.fromEntries(
 
 export const annotationOverlayOpacity = 0.4
 
+export const annotationFoldStyle = {
+  'data-note-fold-ratio': 0.34,
+  'data-note-fold-max-size': 12,
+}
+
 export function annotationOverlayColor(color: AnnotationColor) {
   const { red, green, blue } = annotationColorValues[color]
   return `rgb(${red}, ${green}, ${blue})`
+}
+
+export function annotationFoldColor(color: AnnotationColor) {
+  const { red, green, blue } = annotationColorValues[color]
+  return `rgb(${Math.round(red * 0.55)}, ${Math.round(green * 0.55)}, ${Math.round(blue * 0.55)})`
 }
 
 export function orderRangeRectsForWritingMode<T extends DOMRectReadOnly>(rects: readonly T[], writingMode: string) {
