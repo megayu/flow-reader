@@ -79,9 +79,13 @@ export class BookLayoutTransactionController {
     const rendition = tab.rendition
     const session = rendition?.session
     const layoutKey = tab.layoutAnchorKey(width, height)
+    // Absolute page indexes are reusable only at the same layout size. For a
+    // new size, resolve the content anchor again, except for semantic end-of-section anchors.
     const spread =
       tab.storedSpreadForLayout(width, height) ??
-      hydrateReflowableSpread(tab.runtimeSpreadAnchor, tab.sections, tab.layoutStyleSignature)
+      (tab.runtimeSpreadAnchor?.endsAtSectionEnd
+        ? hydrateReflowableSpread(tab.runtimeSpreadAnchor, tab.sections, tab.layoutStyleSignature)
+        : undefined)
 
     if (!rendition || !session) return
 

@@ -5407,6 +5407,61 @@ test('does not paginate during unchanged-size tab switches', async ({ page }) =>
   }
 })
 
+test('long-book preserves the reading anchor and recounts pages at a new window size', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await openFixtureBook(page, 0)
+  await page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    tab.updateConfiguration({ ...tab.book.configuration, typography: { fontSize: '28px', zoom: 1.2 } })
+  })
+  await waitForStableReaderLayout(page, { header: false, sidebarVisible: true })
+  const before = await page.evaluate(async () => {
+    const tab = (window as any).reader.focusedBookTab
+    await tab.displayFromSelector('p:nth-of-type(8)', tab.sections[0])
+    return { total: tab.location.start.displayed.total, terminal: !!tab.runtimeSpreadAnchor?.endsAtSectionEnd }
+  })
+  expect(before.terminal).toBe(false)
+  await page.setViewportSize({ width: 960, height: 650 })
+  await expect
+    .poll(() =>
+      page.evaluate(({ total }) => {
+        const tab = (window as any).reader.focusedBookTab
+        const location = tab.paginationSnapshot?.location
+        const view = tab.view
+        const paragraph = view?.contents?.document.querySelector('p:nth-of-type(8)')
+        const range = paragraph?.ownerDocument.createRange()
+        if (!range || !paragraph?.firstChild || !view?.iframe) return null
+        range.setStart(paragraph.firstChild, 0)
+        range.setEnd(paragraph.firstChild, 1)
+        const glyph = range.getBoundingClientRect()
+        const frame = view.iframe.getBoundingClientRect()
+        const pane = document
+          .querySelector('[data-flow-reader-pane][aria-hidden="false"] [data-flow-reader-content]')!
+          .getBoundingClientRect()
+        const left = frame.left + glyph.left
+        const top = frame.top + glyph.top
+        return {
+          sameSection: location?.start.index === 0,
+          anchorVisible:
+            left >= pane.left &&
+            left + glyph.width <= pane.right &&
+            top >= pane.top &&
+            top + glyph.height <= pane.bottom,
+          increasedTotal: location?.start.displayed.total > total,
+          matchingCount: location?.start.displayed.total === view?.pageCount(),
+          committedLayout: tab.paginationSnapshot?.layoutVersion === tab.layoutVersion,
+        }
+      }, before),
+    )
+    .toEqual({
+      sameSection: true,
+      anchorVisible: true,
+      increasedTotal: true,
+      matchingCount: true,
+      committedLayout: true,
+    })
+})
+
 test('long-book keeps distant chapter bodies tied to their committed tab state', async ({ page }) => {
   await page.setViewportSize({ width: 1500, height: 900 })
 
