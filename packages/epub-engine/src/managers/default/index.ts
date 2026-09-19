@@ -81,7 +81,6 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
   declare currentReflowableSpread: ReaderSpread | undefined
   declare prePaginatedSlotCache: WeakMap<Section, SpreadSlot>
   declare currentPrePaginatedSpread: PrePaginatedSpread | undefined
-  declare _onUnload: () => void
   declare overflow: string | undefined
   declare stage: Stage
   declare container: HTMLDivElement
@@ -150,7 +149,6 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     this.currentReflowableSpread = undefined
     this.prePaginatedSlotCache = new WeakMap()
     this.currentPrePaginatedSpread = undefined
-    this._onUnload = this.onUnload.bind(this)
   }
 
   resetReflowablePageState(clearCache?: boolean) {
@@ -238,8 +236,6 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
   addEventListeners() {
     var scroller
 
-    window.addEventListener('unload', this._onUnload)
-
     if (!this.settings.fullsize) {
       scroller = this.container
     } else {
@@ -253,8 +249,6 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
   removeEventListeners() {
     var scroller
 
-    window.removeEventListener('unload', this._onUnload)
-
     if (!this.settings.fullsize) {
       scroller = this.container
     } else {
@@ -263,10 +257,6 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
 
     scroller?.removeEventListener('scroll', this._onScroll!)
     this._onScroll = undefined
-  }
-
-  onUnload() {
-    this.destroy()
   }
 
   destroy() {

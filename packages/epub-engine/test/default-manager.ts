@@ -97,34 +97,6 @@ function stubRenderedViews(manager: DefaultViewManager) {
 }
 
 describe('DefaultViewManager pre-paginated spread', function () {
-  it('removes the window unload listener when a manager is torn down', function () {
-    const addListener = vi.spyOn(window, 'addEventListener')
-    const removeListener = vi.spyOn(window, 'removeEventListener')
-
-    try {
-      const manager = createManager()
-      manager.container = document.createElement('div')
-      manager.addEventListeners()
-      manager.removeEventListeners()
-
-      assert.ok(
-        addListener.mock.calls.some(
-          ([event, listener]) =>
-            event === 'unload' && listener === manager._onUnload,
-        ),
-      )
-      assert.ok(
-        removeListener.mock.calls.some(
-          ([event, listener]) =>
-            event === 'unload' && listener === manager._onUnload,
-        ),
-      )
-    } finally {
-      addListener.mockRestore()
-      removeListener.mockRestore()
-    }
-  })
-
   it('pairs and navigates fixed-layout RTL spreads in reading order', async function () {
     const manager = createManager({ direction: 'rtl' })
     manager.layout.name = 'pre-paginated'
