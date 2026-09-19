@@ -1,3 +1,5 @@
+import { repairOrphanClosingTags } from './xhtml-repair'
+
 export type LegacyWindow = Window &
   typeof globalThis & {
     mozRequestAnimationFrame?: typeof window.requestAnimationFrame
@@ -463,13 +465,19 @@ export function parse(markup: string, mime: DOMParserSupportedType) {
 
   doc = new DOMParser().parseFromString(markup, mime)
 
-  // Some otherwise readable EPUBs contain HTML-style URLs with bare ampersands.
-  // Keep the strict parser as the normal path and repair only a failed XHTML.
+  // Keep valid XHTML untouched and accept a repair only after strict re-parsing.
   if (mime === 'application/xhtml+xml' && isParserErrorDocument(doc)) {
-    var repairedMarkup = repairBareXmlAmpersands(markup)
+    var escapedMarkup = repairBareXmlAmpersands(markup)
+    var repairedMarkup = repairOrphanClosingTags(escapedMarkup)
     if (repairedMarkup !== markup) {
       var repairedDoc = new DOMParser().parseFromString(repairedMarkup, mime)
       if (!isParserErrorDocument(repairedDoc)) {
+        if (import.meta.env.DEV) {
+          console.warn('[Flow Reader] Repaired malformed XHTML', {
+            bareAmpersands: escapedMarkup !== markup,
+            orphanClosingTags: repairedMarkup !== escapedMarkup,
+          })
+        }
         return repairedDoc
       }
     }
