@@ -53,7 +53,14 @@ export async function invokeStorage<T>(command: StorageCommand, args?: Record<st
     throw new Error('Native storage is not available on the server')
   }
 
-  return invokeNative<T>(command, args)
+  try {
+    return await invokeNative<T>(command, args)
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('[Flow Reader] Native storage command failed', { command }, error)
+    }
+    throw error
+  }
 }
 
 export function storagePathToUrl(path: string) {

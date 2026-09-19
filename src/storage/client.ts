@@ -317,6 +317,14 @@ export async function runBookImportBatch<T>(operation: (batch: BookImportCache) 
   )
 }
 
+function logBookImportFailures(command: string, result: BookImportResult) {
+  if (!import.meta.env.DEV) return
+
+  for (const failure of result.failures) {
+    console.error('[Flow Reader] Book import/open failed', { command, ...failure })
+  }
+}
+
 async function importBooksWithProgress(
   command: 'import_epub_paths' | 'import_text_paths',
   args: Record<string, unknown>,
@@ -344,6 +352,7 @@ async function importBooksWithProgress(
     onProgress?.(progress)
   })
   const result = await invoke<BookImportResult>(command, { ...args, onProgress: progressChannel })
+  logBookImportFailures(command, result)
   result.books.forEach((book) => {
     books.set(book.id, book)
     batch.books.set(book.id, book)
@@ -641,6 +650,7 @@ export async function openExternalEpubPaths(paths: string[]) {
   await waitForPendingNativeWrites()
   beginBooksMutation()
   const result = await trackNativeWrite(invoke<BookImportResult>('open_external_epub_paths', { paths }))
+  logBookImportFailures('open_external_epub_paths', result)
   return result
 }
 
