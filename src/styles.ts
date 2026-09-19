@@ -6,15 +6,17 @@ import type { ReaderView } from '@flow/epub-engine/rendition'
 import {
   type BodyTextDetectionCache,
   bodyTextCandidateSelector,
+  bodyTextFontFallbackAttribute,
   bodyTextFontSelector,
+  bodyTextFontSizeRatioAttribute,
+  bodyTextFontWeightOffsetAttribute,
   bodyTextInlineFollowFontAttribute,
-  bodyTextInlineFollowWeightAttribute,
-  bodyTextInlineFontSizeRatioAttribute,
+  bodyTextInlineSecondaryFontAttribute,
+  bodyTextPreserveFontAttribute,
   bodyTextSelector,
   createHiddenNoteContentSelector,
   ensureBodyTextMarkers,
   notePopoverClass,
-  noteTextSelector,
 } from './bodyText'
 import type { Settings } from './state'
 import { keys } from './utils'
@@ -25,10 +27,6 @@ export { getBodyTypographyBaseline, notePopoverClass } from './bodyText'
 export const activeClass = 'bg-(--flow-accent)'
 
 const readerLinkSelector = ['body > a:any-link', `body > :not(.${notePopoverClass}) a:any-link`].join(',\n')
-
-const notePopoverListSelector = [`.${notePopoverClass} ol`, `.${notePopoverClass} ul`, `.${notePopoverClass} li`].join(
-  ',\n',
-)
 
 const hiddenEndnoteSelector = createHiddenNoteContentSelector(notePopoverClass)
 
@@ -46,12 +44,6 @@ export const defaultStyle = {
   '::selection': {
     'background-color': 'rgba(3, 102, 214, 0.2)',
   },
-  [notePopoverListSelector]: {
-    'list-style-type': 'none !important',
-  },
-  [`.${notePopoverClass} li::marker`]: {
-    content: '"" !important',
-  },
 }
 
 const camelToSnake = (str: string) => str.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
@@ -63,39 +55,80 @@ function mapToCss(o: CSSProperties) {
     .join('\n')
 }
 
-export function createBodyTextInlineTypographyCss(document: Document, typography: CSSProperties) {
+export function createBodyTextTypographyCss(
+  document: Document,
+  typography: CSSProperties,
+  secondaryFontFamily?: string,
+) {
   let css = ''
   const fontSize =
     typeof typography.fontSize === 'string' ? Number.parseFloat(typography.fontSize) : typography.fontSize
 
   if (typeof fontSize === 'number' && Number.isFinite(fontSize)) {
     const ratios = new Map<string, number>()
-    document.querySelectorAll<HTMLElement>(`[${bodyTextInlineFontSizeRatioAttribute}]`).forEach((el) => {
-      const value = el.getAttribute(bodyTextInlineFontSizeRatioAttribute)
+    document.querySelectorAll<HTMLElement>(`[${bodyTextFontSizeRatioAttribute}]`).forEach((el) => {
+      const value = el.getAttribute(bodyTextFontSizeRatioAttribute)
       const ratio = value === null ? Number.NaN : Number.parseFloat(value)
-      if (value !== null && Number.isFinite(ratio) && ratio > 0) ratios.set(value, ratio)
+      if (value !== null && Number.isFinite(ratio) && ratio >= 0) ratios.set(value, ratio)
     })
 
     ratios.forEach((ratio, value) => {
-      css += `${bodyTextSelector} [${bodyTextInlineFontSizeRatioAttribute}="${value}"] {
+      css += `[${bodyTextFontSizeRatioAttribute}="${value}"] {
         font-size: ${formatCssPixel(fontSize * ratio)} !important;
       }`
     })
   }
 
-  if (typography.fontWeight !== undefined) {
-    css += `${bodyTextSelector} [${bodyTextInlineFollowWeightAttribute}="true"] {
-      ${mapToCss({ fontWeight: typography.fontWeight })}
-    }`
+  const fontWeight = Number(typography.fontWeight)
+  if (Number.isFinite(fontWeight)) {
+    const offsets = new Map<string, number>()
+    document.querySelectorAll<HTMLElement>(`[${bodyTextFontWeightOffsetAttribute}]`).forEach((el) => {
+      const value = el.getAttribute(bodyTextFontWeightOffsetAttribute)
+      const offset = value === null ? Number.NaN : Number(value)
+      if (value !== null && Number.isFinite(offset)) offsets.set(value, offset)
+    })
+    offsets.forEach((offset, value) => {
+      css += `[${bodyTextFontWeightOffsetAttribute}="${value}"] {
+        ${mapToCss({ fontWeight: Math.min(1000, Math.max(1, fontWeight + offset)) })}
+      }`
+    })
   }
 
   if (typography.fontFamily) {
-    css += `${bodyTextFontSelector} [${bodyTextInlineFollowFontAttribute}="true"] {
-      ${mapToCss({ fontFamily: typography.fontFamily })}
+    css += `${bodyTextFontSelector}, [${bodyTextInlineFollowFontAttribute}="true"] {
+      ${mapToCss({ fontFamily: `${typography.fontFamily}, sans-serif` })}
     }`
+    css += createFontFallbackOverrides(
+      [bodyTextFontSelector, `[${bodyTextInlineFollowFontAttribute}="true"]`],
+      typography.fontFamily,
+    )
+  }
+
+  if (secondaryFontFamily) {
+    css += `${bodyTextSelector}[${bodyTextPreserveFontAttribute}="true"], [${bodyTextInlineSecondaryFontAttribute}="true"] {
+      ${mapToCss({ fontFamily: `${secondaryFontFamily}, sans-serif` })}
+    }`
+    css += createFontFallbackOverrides(
+      [
+        `${bodyTextSelector}[${bodyTextPreserveFontAttribute}="true"]`,
+        `[${bodyTextInlineSecondaryFontAttribute}="true"]`,
+      ],
+      secondaryFontFamily,
+    )
   }
 
   return css
+}
+
+function createFontFallbackOverrides(selectors: string[], fontFamily: string) {
+  return (['serif', 'monospace'] as const)
+    .map((fallback) => {
+      const selector = selectors.map((value) => `${value}[${bodyTextFontFallbackAttribute}="${fallback}"]`).join(', ')
+      return `${selector} {
+        ${mapToCss({ fontFamily: `${fontFamily}, ${fallback}` })}
+      }`
+    })
+    .join('')
 }
 
 function formatCssPixel(value: number) {
@@ -105,6 +138,7 @@ function formatCssPixel(value: number) {
 export function createTypographyLayoutSignature(settings: Settings) {
   return [
     settings.fontFamily,
+    settings.secondaryFontFamily,
     settings.fontSize,
     settings.fontWeight,
     settings.lineHeight,
@@ -148,7 +182,7 @@ export function updateCustomStyle(
   if (!contents || !settings) return
 
   const bodyTypography = pickBodyTypography(settings)
-  const hasBodyTypography = keys(bodyTypography).length > 0
+  const hasBodyTypography = keys(bodyTypography).length > 0 || !!settings.secondaryFontFamily
   const needsTextMarkers = hasBodyTypography || settings.hideEndnotes
   let css = ' '
   const writingMode = view?.writingMode ?? contents.writingMode()
@@ -160,26 +194,19 @@ export function updateCustomStyle(
   }
 
   if (hasBodyTypography) {
-    const { fontFamily, ...bodyTypographyWithoutFontFamily } = bodyTypography
-    if (keys(bodyTypographyWithoutFontFamily).length) {
+    const {
+      fontFamily: _fontFamily,
+      fontSize: _fontSize,
+      fontWeight: _fontWeight,
+      ...bodyParagraphTypography
+    } = bodyTypography
+    if (keys(bodyParagraphTypography).length) {
       css += `${bodyTextSelector} {
-        ${mapToCss(bodyTypographyWithoutFontFamily)}
+        ${mapToCss(bodyParagraphTypography)}
       }`
     }
 
-    if (fontFamily) {
-      css += `${bodyTextFontSelector} {
-        ${mapToCss({ fontFamily })}
-      }`
-    }
-
-    css += createBodyTextInlineTypographyCss(contents.document, bodyTypography)
-
-    if (settings.fontSize) {
-      css += `${noteTextSelector}, ${noteTextSelector} * {
-        font-size: ${settings.fontSize} !important;
-      }`
-    }
+    css += createBodyTextTypographyCss(contents.document, bodyTypography, settings.secondaryFontFamily)
   }
 
   if (settings.hideEndnotes) {
@@ -219,6 +246,7 @@ function logStyleDiagnostics(
     sectionIndex: (contents as any).sectionIndex,
     settings: {
       fontFamily: settings.fontFamily,
+      secondaryFontFamily: settings.secondaryFontFamily,
       fontSize: settings.fontSize,
       fontWeight: settings.fontWeight,
       lineHeight: settings.lineHeight,

@@ -8,13 +8,14 @@ export const notePopoverClass = 'flow-note-popover'
 export const bodyTextAttribute = 'data-flow-body-text'
 export const bodyTextSelector = `[${bodyTextAttribute}="true"]`
 export const bodyTextPreserveFontAttribute = 'data-flow-body-text-preserve-font'
-export const bodyTextInlineFontSizeRatioAttribute = 'data-flow-body-text-inline-font-size-ratio'
+export const bodyTextFontSizeRatioAttribute = 'data-flow-body-text-font-size-ratio'
+export const bodyTextFontFallbackAttribute = 'data-flow-body-text-font-fallback'
 export const bodyTextInlineFollowFontAttribute = 'data-flow-body-text-inline-follow-font'
-export const bodyTextInlineFollowWeightAttribute = 'data-flow-body-text-inline-follow-weight'
+export const bodyTextInlineSecondaryFontAttribute = 'data-flow-body-text-inline-secondary-font'
+export const bodyTextFontWeightOffsetAttribute = 'data-flow-body-text-font-weight-offset'
 export const bodyTextFontSelector = `${bodyTextSelector}:not([${bodyTextPreserveFontAttribute}="true"])`
 export const bodyTextCandidateSelector = 'p, blockquote > p, div'
 const bodyTextStructuralDescendantSelector = 'p, div, blockquote, table, figure, img, h1, h2, h3, h4, h5, h6, ol, ul'
-const bodyTextInlineWrapperTags = new Set(['span', 'b', 'strong', 'em', 'i'])
 const bodyTextDetectedAttribute = 'data-flow-body-text-detected'
 export const noteTextAttribute = 'data-flow-note-text'
 export const noteTextSelector = `[${noteTextAttribute}="true"]`
@@ -36,12 +37,28 @@ export type BodyTextDetectionCache = Map<string, BodyTextDetectionCacheEntry>
 export interface BodyTextMarker {
   index: number
   preserveFont: boolean
+  primaryFontFamily?: string
+  fontFallback: BodyTextFontFallback
+  fontSizeRatio?: number
+  fontWeightOffset?: number
 }
+
+export type BodyTextFontFallback = 'serif' | 'sans-serif' | 'monospace'
 
 export interface BodyTypographyBaseline {
   fontSize?: number
   fontWeight?: number
   lineHeight?: number
+}
+
+interface OriginalBodyTypography extends BodyTypographyBaseline {
+  fontFamily: string
+}
+
+const originalBodyTypography = new WeakMap<Document, OriginalBodyTypography>()
+
+export function getOriginalBodyTypography(document: Document) {
+  return originalBodyTypography.get(document)
 }
 
 export function getBodyTypographyBaseline(
@@ -51,16 +68,18 @@ export function getBodyTypographyBaseline(
   if (!contents) return {}
 
   const candidates = getBodyTextCandidates(contents.document)
-  const bodyIndexes = detectBodyTextIndexes(contents, candidates)
-  const firstBodyIndex = bodyIndexes[0]
-
-  const el = (firstBodyIndex === undefined ? undefined : candidates[firstBodyIndex]) ?? contents.document.body
+  const bodyMarkers = detectBodyTextMarkers(contents, candidates)
+  const marker = bodyMarkers.find((marker) => !marker.preserveFont) ?? bodyMarkers[0]
+  const el = (marker ? candidates[marker.index] : undefined) ?? contents.document.body
   if (!el) return {}
 
   const style = contents.window.getComputedStyle(el)
-  const fontSize = parseCssPixel(style.fontSize)
-  const fontWeight = parseCssFontWeight(style.fontWeight)
-  const lineHeight = parseCssLineHeight(style.lineHeight, fontSize)
+  const originalSize = parseCssPixel(style.fontSize)
+  const originalWeight = parseCssFontWeight(style.fontWeight)
+  const fontSize =
+    originalSize !== undefined && marker?.fontSizeRatio ? originalSize / marker.fontSizeRatio : originalSize
+  const fontWeight = originalWeight !== undefined ? originalWeight - (marker?.fontWeightOffset ?? 0) : undefined
+  const lineHeight = parseCssLineHeight(style.lineHeight, originalSize)
 
   return {
     fontSize,
@@ -78,6 +97,11 @@ export function ensureBodyTextMarkers(contents: Contents, bodyTextCache?: BodyTe
   const noteTextDetected = body.getAttribute(noteTextDetectedAttribute) === 'true'
   if (bodyTextDetected && noteTextDetected) return
 
+  if (!noteTextDetected) {
+    applyNoteTextMarkers(document)
+    body.setAttribute(noteTextDetectedAttribute, 'true')
+  }
+
   if (!bodyTextDetected) {
     const candidates = getBodyTextCandidates(document)
     const cacheKey = getBodyTextCacheKey(contents)
@@ -90,10 +114,9 @@ export function ensureBodyTextMarkers(contents: Contents, bodyTextCache?: BodyTe
       body.setAttribute(bodyTextDetectedAttribute, 'true')
     } else {
       const bodyMarkers = detectBodyTextMarkers(contents, candidates)
+      applyBodyTextMarkers(contents, candidates, bodyMarkers)
+      body.setAttribute(bodyTextDetectedAttribute, 'true')
       if (bodyMarkers.length) {
-        applyBodyTextMarkers(contents, candidates, bodyMarkers)
-        body.setAttribute(bodyTextDetectedAttribute, 'true')
-
         if (cacheKey) {
           bodyTextCache?.set(cacheKey, {
             candidateCount: candidates.length,
@@ -102,11 +125,6 @@ export function ensureBodyTextMarkers(contents: Contents, bodyTextCache?: BodyTe
         }
       }
     }
-  }
-
-  if (!noteTextDetected) {
-    applyNoteTextMarkers(document)
-    body.setAttribute(noteTextDetectedAttribute, 'true')
   }
 }
 
@@ -123,23 +141,20 @@ function detectBodyTextMarkers(contents: Contents, candidates: HTMLElement[]) {
   const bodyTextCandidates = candidates.flatMap((el, index) => {
     if (isFactuallyExcludedElement(el)) return []
     if (isStructuralDiv(el)) return []
-    const textLength = getBodyTextCandidateLength(el, el)
-    if (!textLength) return []
-    if (isImageOnlyElement(el)) return []
-
-    const style = window.getComputedStyle(el)
-    if (isInvisible(style)) return []
+    const rootStyle = window.getComputedStyle(el)
+    if (isInvisible(rootStyle)) return []
+    const readable = getReadableParagraphStyle(contents, el, rootStyle)
+    if (!readable) return []
+    const { style, textLength } = readable
 
     return [
       {
-        baseSignature: createBodyTextBaseSignature(el, style),
+        fontFallback: getBodyTextFontFallback(style.fontFamily),
         fontSignature: createBodyTextFontSignature(style),
         index,
-        inlineMargin: getInlineMargin(style),
         fontSize: style.fontSize,
         fontWeight: style.fontWeight,
-        textAlign: style.textAlign,
-        textIndent: style.textIndent,
+        rootStyle,
         textLength,
         signature: createBodyTextSignature(el, style),
       },
@@ -149,27 +164,19 @@ function detectBodyTextMarkers(contents: Contents, candidates: HTMLElement[]) {
   if (!bodyTextCandidates.length) return []
 
   const clusters = createBodyTextClusters(bodyTextCandidates)
-  const bodyClusters = selectBodyTextClusters(clusters)
-  const clusterCounts = new Map(clusters.map((cluster) => [cluster.signature, cluster.count]))
-  const selectedSignatures = new Set(bodyClusters.map((cluster) => cluster.signature))
-  const fontTypographySignature = selectFontTypographySignature(bodyClusters)
-  const selectedBaseSignatures = new Set(
-    bodyTextCandidates.flatMap((candidate) =>
-      selectedSignatures.has(candidate.signature) ? [candidate.baseSignature] : [],
-    ),
-  )
+  // Statistics choose this section's baseline, not which readable paragraphs
+  // receive typography. Short and uncommon styles retain their relative sizes.
+  const winner = selectBodyTextWinner(clusters)
+  const baselineFontSize = parseCssPixel(winner?.fontSize ?? '')
+  const baselineFontWeight = parseCssFontWeight(winner?.fontWeight ?? '')
 
-  return bodyTextCandidates.flatMap((candidate) =>
-    selectedSignatures.has(candidate.signature) ||
-    (selectedBaseSignatures.has(candidate.baseSignature) && clusterCounts.get(candidate.signature) === 1)
-      ? [
-          {
-            index: candidate.index,
-            preserveFont: !!fontTypographySignature && candidate.fontSignature !== fontTypographySignature,
-          },
-        ]
-      : [],
-  )
+  return bodyTextCandidates.map((candidate) => ({
+    fontFallback: candidate.fontFallback,
+    index: candidate.index,
+    preserveFont: !!winner && createBodyTextFontSignature(candidate.rootStyle) !== winner.fontSignature,
+    primaryFontFamily: winner?.fontSignature,
+    ...getRelativeTypography(candidate.rootStyle, baselineFontSize, baselineFontWeight),
+  }))
 }
 
 function getBodyTextCacheKey(contents: Contents) {
@@ -181,71 +188,108 @@ function clearBodyTextMarkers(candidates: HTMLElement[]) {
   candidates.forEach((el) => {
     el.removeAttribute(bodyTextAttribute)
     el.removeAttribute(bodyTextPreserveFontAttribute)
+    el.removeAttribute(bodyTextFontSizeRatioAttribute)
+    el.removeAttribute(bodyTextFontFallbackAttribute)
+    el.removeAttribute(bodyTextFontWeightOffsetAttribute)
     walkBodyTextInlineElements(el, (inline) => {
-      inline.removeAttribute(bodyTextInlineFontSizeRatioAttribute)
+      inline.removeAttribute(bodyTextFontSizeRatioAttribute)
+      inline.removeAttribute(bodyTextFontFallbackAttribute)
       inline.removeAttribute(bodyTextInlineFollowFontAttribute)
-      inline.removeAttribute(bodyTextInlineFollowWeightAttribute)
+      inline.removeAttribute(bodyTextInlineSecondaryFontAttribute)
+      inline.removeAttribute(bodyTextFontWeightOffsetAttribute)
     })
   })
 }
 
 function applyBodyTextMarkers(contents: Contents, candidates: HTMLElement[], bodyMarkers: BodyTextMarker[]) {
+  const primaryMarker = bodyMarkers[0]
+  const primaryElement = primaryMarker === undefined ? undefined : candidates[primaryMarker.index]
+  const primaryFontFamily =
+    primaryMarker?.primaryFontFamily ??
+    (primaryElement ? normalizeFontFamily(contents.window.getComputedStyle(primaryElement).fontFamily) : undefined)
   bodyMarkers.forEach((marker) => {
     const candidate = candidates[marker.index]
     if (!candidate) return
 
     candidate.setAttribute(bodyTextAttribute, 'true')
+    candidate.setAttribute(bodyTextFontFallbackAttribute, marker.fontFallback)
     if (marker.preserveFont) {
       candidate.setAttribute(bodyTextPreserveFontAttribute, 'true')
     }
-    applyBodyTextInlineTypographyMarkers(contents, candidate)
+    applyRelativeTypographyMarkers(candidate, marker)
+    applyBodyTextInlineTypographyMarkers(contents, candidate, marker, primaryFontFamily)
   })
+  const baselineElement = primaryElement ?? contents.document.body
+  if (baselineElement) {
+    const style = contents.window.getComputedStyle(baselineElement)
+    const size = parseCssPixel(style.fontSize)
+    const weight = parseCssFontWeight(style.fontWeight)
+    originalBodyTypography.set(contents.document, {
+      fontFamily: primaryFontFamily ?? normalizeFontFamily(style.fontFamily),
+      fontSize: size !== undefined && primaryMarker?.fontSizeRatio ? size / primaryMarker.fontSizeRatio : size,
+      fontWeight: weight !== undefined ? weight - (primaryMarker?.fontWeightOffset ?? 0) : undefined,
+    })
+    applyNoteTypographyMarkers(
+      contents,
+      primaryFontFamily ?? normalizeFontFamily(style.fontFamily),
+      size !== undefined && primaryMarker?.fontSizeRatio ? size / primaryMarker.fontSizeRatio : size,
+      weight !== undefined ? weight - (primaryMarker?.fontWeightOffset ?? 0) : undefined,
+    )
+  }
 }
 
-function applyBodyTextInlineTypographyMarkers(contents: Contents, candidate: HTMLElement) {
+function getRelativeTypography(
+  style: { fontSize: string; fontWeight: string },
+  baselineFontSize: number | undefined,
+  baselineFontWeight: number | undefined,
+) {
+  const fontSize = parseCssPixel(style.fontSize)
+  const fontWeight = parseCssFontWeight(style.fontWeight)
+  return {
+    fontSizeRatio: baselineFontSize && fontSize !== undefined ? fontSize / baselineFontSize : undefined,
+    fontWeightOffset:
+      baselineFontWeight !== undefined && fontWeight !== undefined ? fontWeight - baselineFontWeight : undefined,
+  }
+}
+
+function applyRelativeTypographyMarkers(
+  el: HTMLElement,
+  typography: Pick<BodyTextMarker, 'fontSizeRatio' | 'fontWeightOffset'>,
+) {
+  if (typography.fontSizeRatio !== undefined) {
+    el.setAttribute(bodyTextFontSizeRatioAttribute, formatTypographyRatio(typography.fontSizeRatio))
+  }
+  if (typography.fontWeightOffset !== undefined) {
+    el.setAttribute(bodyTextFontWeightOffsetAttribute, String(typography.fontWeightOffset))
+  }
+}
+
+function applyBodyTextInlineTypographyMarkers(
+  contents: Contents,
+  candidate: HTMLElement,
+  marker: BodyTextMarker,
+  primaryFontFamily: string | undefined,
+) {
   const parentStyle = contents.window.getComputedStyle(candidate)
   const parentFontSize = parseCssPixel(parentStyle.fontSize)
-  const parentFontFamily = normalizeFontFamily(parentStyle.fontFamily)
   const parentFontWeight = parseCssFontWeight(parentStyle.fontWeight)
-  const inlineWrapperChildren = getBodyTextInlineWrapperChildren(candidate)
+  // Cached paragraph ratios reconstruct the same section baseline in a fresh
+  // iframe. Read authored styles before custom CSS; never compound adjustments.
+  const baselineFontSize =
+    parentFontSize !== undefined && marker.fontSizeRatio ? parentFontSize / marker.fontSizeRatio : undefined
+  const baselineFontWeight =
+    parentFontWeight !== undefined && marker.fontWeightOffset !== undefined
+      ? parentFontWeight - marker.fontWeightOffset
+      : undefined
 
   walkBodyTextInlineElements(candidate, (inline) => {
     const style = contents.window.getComputedStyle(inline)
-    const fontSize = parseCssPixel(style.fontSize)
-    const fontWeight = parseCssFontWeight(style.fontWeight)
-
-    if (parentFontSize && fontSize) {
-      inline.setAttribute(bodyTextInlineFontSizeRatioAttribute, formatTypographyRatio(fontSize / parentFontSize))
-    }
-    if (inlineWrapperChildren?.has(inline) || normalizeFontFamily(style.fontFamily) === parentFontFamily) {
-      inline.setAttribute(bodyTextInlineFollowFontAttribute, 'true')
-    }
-    if (fontWeight !== undefined && fontWeight === parentFontWeight) {
-      inline.setAttribute(bodyTextInlineFollowWeightAttribute, 'true')
-    }
+    applyRelativeTypographyMarkers(inline, getRelativeTypography(style, baselineFontSize, baselineFontWeight))
+    const family = normalizeFontFamily(style.fontFamily)
+    const primary = family === primaryFontFamily
+    inline.setAttribute(bodyTextFontFallbackAttribute, getBodyTextFontFallback(style.fontFamily))
+    inline.setAttribute(primary ? bodyTextInlineFollowFontAttribute : bodyTextInlineSecondaryFontAttribute, 'true')
   })
-}
-
-function getBodyTextInlineWrapperChildren(root: HTMLElement) {
-  if (!isElementWithTag(root, 'p')) return
-
-  // Direct wrappers that carry the whole paragraph are body containers, while
-  // nested or mixed-content inline elements can still represent authored emphasis.
-  let wrappers: Set<HTMLElement> | undefined
-
-  for (const node of root.childNodes) {
-    if (node.nodeType === 3) {
-      if (hasNonWhitespaceText(node.textContent)) return
-      continue
-    }
-    if (!isHTMLElement(node)) continue
-    if (isElementWithTag(node, 'br')) continue
-    if (!bodyTextInlineWrapperTags.has(node.tagName.toLowerCase()) || !hasNonWhitespaceText(node.textContent)) return
-    if (!wrappers) wrappers = new Set()
-    wrappers.add(node)
-  }
-
-  return wrappers
 }
 
 function walkBodyTextInlineElements(root: HTMLElement, visit: (el: HTMLElement) => void) {
@@ -261,10 +305,7 @@ function walkBodyTextInlineElements(root: HTMLElement, visit: (el: HTMLElement) 
 }
 
 function isInlineTypographyExcludedElement(el: HTMLElement) {
-  return (
-    isFactuallyExcludedElement(el) ||
-    ['br', 'img', 'svg', 'math', 'ruby', 'rt', 'rp', 'sup', 'sub'].some((tagName) => isElementWithTag(el, tagName))
-  )
+  return isFactuallyExcludedElement(el) || inlineTypographyExcludedTags.has(el.tagName.toLowerCase())
 }
 
 function normalizeFontFamily(value: string) {
@@ -279,8 +320,65 @@ function normalizeFontFamily(value: string) {
     .join(',')
 }
 
+function getBodyTextFontFallback(value: string): BodyTextFontFallback {
+  const families = normalizeFontFamily(value).split(',')
+  for (let index = families.length - 1; index >= 0; index--) {
+    const family = families[index]
+    if (family === 'sans-serif' || family === 'ui-sans-serif' || family === 'system-ui') return 'sans-serif'
+    if (family === 'serif' || family === 'ui-serif' || family === 'fangsong') return 'serif'
+    if (family === 'monospace' || family === 'ui-monospace') return 'monospace'
+  }
+  return 'sans-serif'
+}
+
 function formatTypographyRatio(value: number) {
   return String(Math.round(value * 10000) / 10000)
+}
+
+const protectedTypographySelector =
+  'h1,h2,h3,h4,h5,h6,pre,code,table,thead,tbody,tfoot,tr,td,th,caption,figure,figcaption,nav,script,style'
+const noteTypographyExcludedTags = new Set(`${protectedTypographySelector},aside,ol,ul`.split(','))
+const inlineTypographyExcludedTags = new Set(['br', 'img', 'svg', 'math', 'ruby', 'rt', 'rp', 'sup', 'sub'])
+
+export function applyNoteTypographyMarkers(
+  contents: Contents,
+  primaryFontFamily: string,
+  baselineFontSize: number | undefined,
+  baselineFontWeight: number | undefined,
+  roots = getNoteIndex(contents.document).getTextTargets(),
+) {
+  const protectedSubtrees = new Map<HTMLElement, boolean>()
+  for (const root of roots) {
+    if (root.closest(protectedTypographySelector)) continue
+    const walk = (el: HTMLElement): boolean => {
+      const cached = protectedSubtrees.get(el)
+      if (cached !== undefined) return cached
+      if (el !== root && noteTypographyExcludedTags.has(el.tagName.toLowerCase())) {
+        protectedSubtrees.set(el, true)
+        return true
+      }
+      if (inlineTypographyExcludedTags.has(el.tagName.toLowerCase())) return false
+      const style = contents.window.getComputedStyle(el)
+      if (isInvisible(style)) return false
+      let hasProtectedContent = false
+      let hasOwnText = false
+      for (const child of el.childNodes) {
+        if (isHTMLElement(child)) hasProtectedContent = walk(child) || hasProtectedContent
+        else if (child.nodeType === 3 && hasNonWhitespaceText(child.textContent)) hasOwnText = true
+      }
+      // A mixed container must not pass forced typography into protected structures.
+      // Its ordinary child paragraphs remain eligible; paragraph layout stays authored.
+      if (hasOwnText && !hasProtectedContent) {
+        applyRelativeTypographyMarkers(el, getRelativeTypography(style, baselineFontSize, baselineFontWeight))
+        el.setAttribute(bodyTextFontFallbackAttribute, getBodyTextFontFallback(style.fontFamily))
+        const primary = normalizeFontFamily(style.fontFamily) === primaryFontFamily
+        el.setAttribute(primary ? bodyTextInlineFollowFontAttribute : bodyTextInlineSecondaryFontAttribute, 'true')
+      }
+      protectedSubtrees.set(el, hasProtectedContent)
+      return hasProtectedContent
+    }
+    walk(root)
+  }
 }
 
 function applyNoteTextMarkers(document: Document) {
@@ -302,30 +400,21 @@ function applyNoteTextMarkers(document: Document) {
 }
 
 interface BodyTextCandidate {
-  baseSignature: string
+  fontFallback: BodyTextFontFallback
   fontSignature: string
   index: number
-  inlineMargin: number
   fontSize: string
   fontWeight: string
-  textAlign: string
-  textIndent: string
   textLength: number
   signature: string
 }
 
 interface BodyTextCluster {
-  signature: string
   fontSignature: string
-  indexes: number[]
   count: number
   totalText: number
-  avgText: number
-  inlineMargin: number
   fontSize: string
   fontWeight: string
-  textAlign: string
-  textIndent: string
   score: number
 }
 
@@ -335,6 +424,14 @@ function isFactuallyExcludedElement(el: HTMLElement) {
       [
         `.${notePopoverClass}`,
         noteContentSelector,
+        'h1',
+        'h2',
+        'h3',
+        'h4',
+        'h5',
+        'h6',
+        'pre',
+        'code',
         'table',
         'thead',
         'tbody',
@@ -418,27 +515,6 @@ function isHTMLElement(node: Node): node is HTMLElement {
   return node.nodeType === 1 && typeof (node as HTMLElement).tagName === 'string'
 }
 
-function isImageOnlyElement(el: HTMLElement) {
-  const meaningfulChildren = [...el.childNodes].filter((node) => {
-    if (node.nodeType === 3) {
-      return hasNonWhitespaceText(node.textContent)
-    }
-
-    if (isElementWithTag(node, 'br')) {
-      return false
-    }
-
-    return true
-  })
-
-  return (
-    meaningfulChildren.length > 0 &&
-    meaningfulChildren.every((node) => {
-      return isElementWithTag(node, 'img') || isElementWithTag(node, 'svg')
-    })
-  )
-}
-
 function isStructuralDiv(el: HTMLElement) {
   if (el.tagName.toLowerCase() !== 'div') return false
 
@@ -463,45 +539,34 @@ function createBodyTextSignature(el: HTMLElement, style: CSSStyleDeclaration) {
 }
 
 function createBodyTextFontSignature(style: CSSStyleDeclaration) {
-  return style.fontFamily
+  return normalizeFontFamily(style.fontFamily)
 }
 
-function createBodyTextBaseSignature(el: HTMLElement, style: CSSStyleDeclaration) {
-  return [
-    el.tagName.toLowerCase(),
-    style.fontFamily,
-    style.fontSize,
-    style.fontWeight,
-    style.lineHeight,
-    style.color,
-    style.backgroundColor,
-    style.textAlign,
-  ].join('|')
-}
-
-function getInlineMargin(style: CSSStyleDeclaration) {
-  return (parseCssPixel(style.marginLeft) ?? 0) + (parseCssPixel(style.marginRight) ?? 0)
-}
-
-function getBodyTextCandidateLength(node: Node, root: HTMLElement): number {
-  if (node.nodeType === 3) {
-    return (node.textContent ?? '').replace(/\s+/g, '').length
+function getReadableParagraphStyle(contents: Contents, root: HTMLElement, rootStyle: CSSStyleDeclaration) {
+  const groups = new Map<string, { style: CSSStyleDeclaration; textLength: number }>()
+  let textLength = 0
+  const walk = (el: HTMLElement) => {
+    if (el !== root && isInlineTypographyExcludedElement(el)) return
+    const style = el === root ? rootStyle : contents.window.getComputedStyle(el)
+    if (isInvisible(style)) return
+    let ownLength = 0
+    for (const child of el.childNodes) {
+      if (child.nodeType === 3) ownLength += (child.textContent ?? '').replace(/\s+/g, '').length
+      else if (isHTMLElement(child)) walk(child)
+    }
+    if (!ownLength) return
+    const key = [normalizeFontFamily(style.fontFamily), style.fontSize, style.fontWeight].join('|')
+    const group = groups.get(key) ?? { style, textLength: 0 }
+    group.textLength += ownLength
+    groups.set(key, group)
+    textLength += ownLength
   }
-
-  if (node.nodeType !== 1) return 0
-
-  const el = node as HTMLElement
-  if (el !== root) {
-    if (isElementWithTag(el, 'br')) return 0
-    if (isElementWithTag(el, 'img') || isElementWithTag(el, 'svg')) return 0
-    if (isFactuallyExcludedElement(el)) return 0
+  walk(root)
+  let winner: { style: CSSStyleDeclaration; textLength: number } | undefined
+  for (const group of groups.values()) {
+    if (!winner || group.textLength > winner.textLength) winner = group
   }
-
-  let length = 0
-  for (const child of el.childNodes) {
-    length += getBodyTextCandidateLength(child, root)
-  }
-  return length
+  return winner ? { style: winner.style, textLength } : undefined
 }
 
 function createBodyTextClusters(candidates: BodyTextCandidate[]) {
@@ -509,99 +574,21 @@ function createBodyTextClusters(candidates: BodyTextCandidate[]) {
 
   candidates.forEach((candidate) => {
     const cluster = clusters.get(candidate.signature) ?? {
-      signature: candidate.signature,
       fontSignature: candidate.fontSignature,
-      indexes: [],
       count: 0,
       totalText: 0,
-      avgText: 0,
-      inlineMargin: candidate.inlineMargin,
       fontSize: candidate.fontSize,
       fontWeight: candidate.fontWeight,
-      textAlign: candidate.textAlign,
-      textIndent: candidate.textIndent,
       score: 0,
     }
 
-    cluster.indexes.push(candidate.index)
     cluster.count += 1
     cluster.totalText += candidate.textLength
+    cluster.score = cluster.totalText + cluster.count * 80
     clusters.set(candidate.signature, cluster)
   })
 
-  return [...clusters.values()].map((cluster) => {
-    const avgText = cluster.totalText / cluster.count
-    return {
-      ...cluster,
-      avgText,
-      score: cluster.totalText + cluster.count * 80,
-    }
-  })
-}
-
-function selectBodyTextClusters(clusters: BodyTextCluster[]) {
-  const viable = clusters.filter((cluster) => cluster.count >= 2 || cluster.totalText >= 80)
-  const candidates = viable.length ? viable : clusters
-  const winner = selectBodyTextWinner(candidates)
-
-  if (!winner) return clusters
-
-  const selected = [winner]
-  const rest = candidates.filter((cluster) => cluster !== winner).sort((a, b) => b.score - a.score)
-  const sameFontRest = rest.filter((cluster) => cluster.fontSignature === winner.fontSignature)
-  const differentFontRest = rest.filter((cluster) => cluster.fontSignature !== winner.fontSignature)
-
-  // Same-font clusters are treated as the winner's body family. Their margins,
-  // size, weight, or indentation may differ by publisher style, but applying the
-  // full reader typography will not erase a distinct font-family design.
-  selected.push(...sameFontRest)
-
-  // The strongest different-font groups usually cover the main alternate body
-  // streams in a section: letters, bilingual text, inset narration, or quoted
-  // passages. Include the first two directly; if they are short headings, the
-  // section lacks enough competing body evidence for a safer distinction.
-  selected.push(...differentFontRest.slice(0, 2))
-
-  for (const cluster of differentFontRest.slice(2)) {
-    if (shouldIncludeAdditionalBodyTextCluster(cluster, winner)) {
-      selected.push(cluster)
-    }
-  }
-
-  return selected
-}
-
-function shouldIncludeAdditionalBodyTextCluster(cluster: BodyTextCluster, winner: BodyTextCluster) {
-  const totalTextRatio = cluster.totalText / winner.totalText
-  const countRatio = cluster.count / winner.count
-  const avgTextRatio = cluster.avgText / winner.avgText
-
-  // Long independent content blocks are usually real reading material: letters,
-  // extended quotations, inserts, or another body-text style. At this size,
-  // preserving font-family is enough protection; excluding it would leave a
-  // visibly small or cramped run inside otherwise reader-controlled text.
-  if (cluster.totalText >= Math.max(600, winner.totalText * 0.25)) return true
-
-  // Parallel body flows appear repeatedly with paragraph lengths near the
-  // winner: bilingual text, Q&A, alternating narration, or translation/commentary
-  // blocks. They may not dominate total text, but their recurrence and length
-  // show they are a body stream rather than a decorative fragment.
-  if (cluster.count >= Math.max(3, winner.count * 0.35) && avgTextRatio >= 0.45) {
-    return true
-  }
-
-  // Short-line books need a different shape test. Only when the winner itself is
-  // short-line body text do other repeated short-line groups look like poetry,
-  // aphorisms, scripts, or list-like prose that should share reader sizing.
-  if (winner.avgText < 35 && cluster.count >= 3 && cluster.avgText < 60) {
-    return true
-  }
-
-  return countRatio >= 0.35 && avgTextRatio >= 0.5 && totalTextRatio >= 0.2
-}
-
-function selectFontTypographySignature(clusters: BodyTextCluster[]) {
-  return clusters[0]?.fontSignature
+  return [...clusters.values()]
 }
 
 function selectBodyTextWinner(clusters: BodyTextCluster[]) {
@@ -625,9 +612,6 @@ function selectBodyTextWinner(clusters: BodyTextCluster[]) {
   const byScore = [...clusters].sort((a, b) => b.score - a.score)
   const scoreWinner = byScore[0]!
 
-  // A weak winner is still safer than widening back to every raw cluster:
-  // selected related clusters can still be added below, but non-viable single
-  // chapter titles stay excluded from body text.
   return scoreWinner
 }
 
@@ -655,7 +639,7 @@ function parseCssFontWeight(value: string) {
   const number = parseFloat(value)
   if (!Number.isFinite(number)) return undefined
 
-  return Math.min(900, Math.max(100, Math.round(number / 100) * 100))
+  return Math.min(1000, Math.max(1, number))
 }
 
 function parseCssLineHeight(value: string, fontSize?: number) {

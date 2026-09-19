@@ -9,8 +9,9 @@ import * as stylesModule from '../../src/styles.ts'
 const {
   bodyTextAttribute,
   bodyTextInlineFollowFontAttribute,
-  bodyTextInlineFollowWeightAttribute,
-  bodyTextInlineFontSizeRatioAttribute,
+  bodyTextInlineSecondaryFontAttribute,
+  bodyTextFontWeightOffsetAttribute,
+  bodyTextFontSizeRatioAttribute,
   bodyTextPreserveFontAttribute,
   detectBodyTextIndexes,
   ensureBodyTextMarkers,
@@ -19,7 +20,7 @@ const {
   noteTextAttribute,
 } = bodyTextModule as Record<string, any>
 const { findReciprocalNoteItem, getNoteIndex } = noteIndexModule as Record<string, any>
-const { createBodyTextInlineTypographyCss } = stylesModule as Record<string, any>
+const { createBodyTextTypographyCss } = stylesModule as Record<string, any>
 
 class FakeTextNode {
   readonly nodeType = 3
@@ -299,7 +300,14 @@ function testBodyParagraphOwnsReadableInlineTypography() {
   }).append('保留不同的字体和字重。')
   const mixedParagraph = new FakeElement('p', { className: 'main' }).append('正文引导文字：', annotation, emphasized)
 
-  body.append(...bodyParagraphs, mixedParagraph)
+  const variants = ['serif', 'cursive'].map((fontFamily) =>
+    styledParagraph('variant', 'Synthetic alternate reading paragraph. '.repeat(3), {
+      fontFamily,
+      fontSize: '14.4px',
+      fontWeight: '350',
+    }),
+  )
+  body.append(...variants, ...bodyParagraphs, mixedParagraph)
 
   const contents = createContents(body)
   const candidates = getBodyTextCandidates(contents.document)
@@ -307,25 +315,40 @@ function testBodyParagraphOwnsReadableInlineTypography() {
 
   const selectedClasses = bodyIndexes.map((index: number) => candidates[index]!.className)
 
-  assert.deepStrictEqual(selectedClasses, ['main', 'main', 'main', 'main'])
+  assert.deepStrictEqual(selectedClasses, ['variant', 'variant', 'main', 'main', 'main', 'main'])
 
   ensureBodyTextMarkers(contents)
-  assert.strictEqual(annotation.getAttribute(bodyTextInlineFontSizeRatioAttribute), '0.75')
+  assert.strictEqual(annotation.getAttribute(bodyTextFontSizeRatioAttribute), '0.75')
   assert.strictEqual(annotation.getAttribute(bodyTextInlineFollowFontAttribute), 'true')
-  assert.strictEqual(annotation.getAttribute(bodyTextInlineFollowWeightAttribute), 'true')
-  assert.strictEqual(emphasized.getAttribute(bodyTextInlineFontSizeRatioAttribute), '1.25')
+  assert.strictEqual(annotation.getAttribute(bodyTextFontWeightOffsetAttribute), '0')
+  assert.strictEqual(emphasized.getAttribute(bodyTextFontSizeRatioAttribute), '1.25')
   assert.strictEqual(emphasized.getAttribute(bodyTextInlineFollowFontAttribute), null)
-  assert.strictEqual(emphasized.getAttribute(bodyTextInlineFollowWeightAttribute), null)
+  assert.strictEqual(emphasized.getAttribute(bodyTextFontWeightOffsetAttribute), '300')
+  for (const variant of variants) {
+    assert.strictEqual(variant.getAttribute(bodyTextFontSizeRatioAttribute), '0.9')
+    assert.strictEqual(variant.getAttribute(bodyTextFontWeightOffsetAttribute), '-50')
+  }
 
-  const css = createBodyTextInlineTypographyCss(contents.document, {
+  const css = createBodyTextTypographyCss(contents.document, {
     fontFamily: 'Reader Serif',
     fontSize: '24px',
     fontWeight: 600,
   })
   assert.match(css, /font-size:\s*18px\s*!important/)
   assert.match(css, /font-size:\s*30px\s*!important/)
+  assert.match(css, /font-size:\s*21.6px\s*!important/)
+  assert.match(css, /font-weight:\s*550\s*!important/)
+  assert.match(css, /font-weight:\s*900\s*!important/)
   assert.match(css, /data-flow-body-text-inline-follow-font="true"/)
-  assert.match(css, /data-flow-body-text-inline-follow-weight="true"/)
+  variants.forEach((variant) => {
+    variant.style.fontSize = '21.6px'
+    variant.style.fontWeight = '550'
+  })
+  ensureBodyTextMarkers(contents)
+  const changedCss = createBodyTextTypographyCss(contents.document, { fontSize: '20px', fontWeight: 800 })
+  assert.match(changedCss, /font-size:\s*18px\s*!important/)
+  assert.match(changedCss, /font-weight:\s*750\s*!important/)
+  assert.match(changedCss, /font-weight:\s*1000\s*!important/)
 }
 
 function testInlineWrappedParagraphsFollowReaderFont() {
@@ -371,6 +394,62 @@ function testInlineWrappedParagraphsFollowReaderFont() {
     assert.strictEqual(wrapper.getAttribute(bodyTextInlineFollowFontAttribute), 'true')
   })
   assert.strictEqual((wrappers[0]!.childNodes[1] as FakeElement).getAttribute(bodyTextInlineFollowFontAttribute), null)
+}
+
+function testVisibleNestedTextDefinesTypographyBaseline() {
+  const body = new FakeElement('body')
+  const visible = new FakeElement('span', {
+    style: { fontFamily: 'cursive', fontSize: '20px', fontWeight: '500' },
+  }).append('Visible text defines the chapter baseline. '.repeat(4))
+  const emphasis = new FakeElement('strong', {
+    style: { fontFamily: 'fantasy', fontSize: '28px', fontWeight: '700' },
+  }).append('Hi')
+  const nested = new FakeElement('p', { style: { fontSize: '32px' } }).append(
+    emphasis,
+    new FakeElement('span').append(visible),
+  )
+  body.append(nested, paragraph('', 'x'), paragraph('', 'y'))
+  const contents = createContents(body)
+  ensureBodyTextMarkers(contents)
+  assert.strictEqual(visible.getAttribute(bodyTextFontSizeRatioAttribute), '1')
+  assert.strictEqual(visible.getAttribute(bodyTextFontWeightOffsetAttribute), '0')
+  assert.strictEqual(visible.getAttribute(bodyTextInlineFollowFontAttribute), 'true')
+  assert.strictEqual(emphasis.getAttribute(bodyTextFontSizeRatioAttribute), '1.4')
+  assert.strictEqual(emphasis.getAttribute(bodyTextInlineSecondaryFontAttribute), 'true')
+}
+
+function testBookNotesShareRelativeTypographyWithoutParagraphLayout() {
+  const body = new FakeElement('body')
+  const ref = anchor('#note-relative', '[1]', { id: 'note-source', 'epub:type': 'noteref' })
+  const main = styledParagraph('', 'Main reading text. '.repeat(30), { fontSize: '20px' }).append(ref)
+  const text = new FakeElement('p', { style: { fontSize: '14px', fontWeight: '300', fontFamily: 'cursive' } }).append(
+    'Note reading text.',
+  )
+  const inline = new FakeElement('span', { style: { fontSize: '10px', fontWeight: '700' } }).append('Note emphasis.')
+  text.append(inline)
+  const tableText = paragraph('', 'Protected table text.')
+  const code = new FakeElement('code').append('Protected code.')
+  const listText = paragraph('', 'Protected nested list.')
+  const note = new FakeElement('aside', { attributes: { id: 'note-relative', 'epub:type': 'footnote' } }).append(
+    'Mixed container text remains unchanged to protect its table.',
+    text,
+    new FakeElement('table').append(new FakeElement('td').append(tableText)),
+    code,
+    new FakeElement('ul').append(new FakeElement('li').append(listText)),
+  )
+  body.append(main, note)
+  const contents = createContents(body)
+  ensureBodyTextMarkers(contents)
+  assert.strictEqual(text.getAttribute(bodyTextFontSizeRatioAttribute), '0.7')
+  assert.strictEqual(text.getAttribute(bodyTextFontWeightOffsetAttribute), '-100')
+  assert.strictEqual(text.getAttribute(bodyTextInlineSecondaryFontAttribute), 'true')
+  assert.strictEqual(text.getAttribute(bodyTextAttribute), null)
+  assert.strictEqual(inline.getAttribute(bodyTextFontSizeRatioAttribute), '0.5')
+  assert.strictEqual(inline.getAttribute(bodyTextFontWeightOffsetAttribute), '300')
+  for (const excluded of [note, tableText, code, listText]) {
+    assert.strictEqual(excluded.getAttribute(bodyTextFontSizeRatioAttribute), null)
+    assert.strictEqual(excluded.getAttribute(bodyTextInlineFollowFontAttribute), null)
+  }
 }
 
 function testSameBaseStyleParagraphsAreCountedAsBodyText() {
@@ -525,15 +604,21 @@ function testBodyTextIncludesLeadingDifferentFontCandidates() {
     }),
     styledParagraph('variant', variantText, { fontFamily: 'monospace' }),
     styledParagraph('variant', variantText, { fontFamily: 'monospace' }),
+    styledParagraph('short-main', 'Short.', { fontFamily: 'serif', fontSize: '12px' }),
+    styledParagraph('short-alternate', 'Brief.', { fontFamily: 'cursive', fontSize: '14px' }),
+    styledParagraph('later-alternate', 'End.', { fontFamily: 'sans-serif', fontSize: '15px' }),
   ]
 
   body.append(...paragraphs)
+  for (const tag of ['table', 'pre', 'code', 'h2']) {
+    body.append(new FakeElement(tag).append(new FakeElement('div').append('Structured text.')))
+  }
 
   const contents = createContents(body)
   const candidates = getBodyTextCandidates(contents.document)
   const bodyIndexes = detectBodyTextIndexes(contents, candidates)
 
-  assert.deepStrictEqual(bodyIndexes, [0, 1, 2, 3, 4, 5, 6, 7, 8])
+  assert.deepStrictEqual(bodyIndexes, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
 }
 
 function testBodyTextVariantsPreserveOriginalFontFamily() {
@@ -545,8 +630,8 @@ function testBodyTextVariantsPreserveOriginalFontFamily() {
     styledParagraph('main', mainText, { fontFamily: 'serif' }),
     styledParagraph('main', mainText, { fontFamily: 'serif' }),
     styledParagraph('main', mainText, { fontFamily: 'serif' }),
-    styledParagraph('variant', variantText, { fontFamily: 'fantasy' }),
-    styledParagraph('variant', variantText, { fontFamily: 'fantasy' }),
+    styledParagraph('variant', variantText, { fontFamily: 'monospace' }),
+    styledParagraph('variant', variantText, { fontFamily: 'monospace' }),
     styledParagraph('same-font', sameFontVariantText, {
       fontFamily: 'serif',
       textIndent: '32px',
@@ -557,6 +642,10 @@ function testBodyTextVariantsPreserveOriginalFontFamily() {
     }),
   ]
 
+  const alternateInline = new FakeElement('span', { style: { fontFamily: 'sans-serif' } }).append('Alternate text.')
+  const mainInline = new FakeElement('span', { style: { fontFamily: 'serif' } }).append('Main text.')
+  paragraphs[0]!.append(alternateInline)
+  paragraphs[3]!.append(mainInline)
   body.append(...paragraphs)
 
   const contents = createContents(body)
@@ -574,6 +663,16 @@ function testBodyTextVariantsPreserveOriginalFontFamily() {
     assert.strictEqual(el.getAttribute(bodyTextAttribute), 'true')
     assert.strictEqual(el.getAttribute(bodyTextPreserveFontAttribute), null)
   })
+  assert.strictEqual(alternateInline.getAttribute(bodyTextInlineSecondaryFontAttribute), 'true')
+  assert.strictEqual(mainInline.getAttribute(bodyTextInlineFollowFontAttribute), 'true')
+  const primaryOnly = createBodyTextTypographyCss(contents.document, { fontFamily: 'Primary Serif' })
+  const secondaryOnly = createBodyTextTypographyCss(contents.document, {}, 'Secondary Serif')
+  assert.match(primaryOnly, /font-family:\s*Primary Serif, serif\s*!important/)
+  assert.doesNotMatch(primaryOnly, /data-flow-body-text-inline-secondary-font/)
+  assert.match(secondaryOnly, /font-family:\s*Secondary Serif, monospace\s*!important/)
+  assert.match(secondaryOnly, /font-family:\s*Secondary Serif, sans-serif\s*!important/)
+  assert.match(secondaryOnly, /data-flow-body-text-preserve-font="true"/)
+  assert.match(secondaryOnly, /data-flow-body-text-inline-secondary-font="true"/)
 }
 
 function testReciprocalNoteContentIsMarkedStructurally() {
@@ -822,6 +921,8 @@ function testReciprocalLinkContentMayLiveInsideBacklinkAnchor() {
 for (const run of [
   testBodyParagraphOwnsReadableInlineTypography,
   testInlineWrappedParagraphsFollowReaderFont,
+  testVisibleNestedTextDefinesTypographyBaseline,
+  testBookNotesShareRelativeTypographyWithoutParagraphLayout,
   testSameBaseStyleParagraphsAreCountedAsBodyText,
   testBodyTextIgnoresClassNameWhenComputedStyleMatches,
   testBodyTextIgnoresBlockMarginsWhenComputedStyleMatches,

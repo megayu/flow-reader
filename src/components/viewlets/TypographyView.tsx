@@ -44,7 +44,7 @@ const TypographyPane: React.FC = () => {
   const typography = bookTypography ?? {}
   const isScrolledDocument = focusedBookTab?.isScrolledDocument ?? false
 
-  const { fontFamily, fontSize, fontWeight, lineHeight, textIndent, zoom } = typography
+  const { fontFamily, secondaryFontFamily, fontSize, fontWeight, lineHeight, textIndent, zoom } = typography
   const globalSpread = settings.spread ?? RenditionSpread.Auto
   const inheritedSpread = resolveBookSpreadPolicy({
     publicationSpread: focusedBookTab?.book.metadata.spread,
@@ -157,12 +157,23 @@ const TypographyPane: React.FC = () => {
             }}
           />
           <FontField
-            name={t('typography.font_family')}
+            name={t('typography.primary_font')}
+            tooltip={t('typography.primary_font.tooltip')}
             value={fontFamily ?? ''}
             options={localFonts ?? []}
             loadOptions={queryFonts}
             onChange={(value) => {
               setTypography('fontFamily', value || undefined)
+            }}
+          />
+          <FontField
+            name={t('typography.secondary_font')}
+            tooltip={t('typography.secondary_font.tooltip')}
+            value={secondaryFontFamily ?? ''}
+            options={localFonts ?? []}
+            loadOptions={queryFonts}
+            onChange={(value) => {
+              setTypography('secondaryFontFamily', value || undefined)
             }}
           />
           <NumberField
@@ -304,11 +315,11 @@ function SegmentedField<T extends string>({
   )
 }
 
-const FieldLabel: React.FC<{ name: string }> = ({ name }) => {
+const FieldLabel: React.FC<{ name: string; tooltip?: string }> = ({ name, tooltip }) => {
   return (
-    <label htmlFor={name} className="text-muted-foreground mb-1 block text-base font-medium">
+    <div title={tooltip} className="text-muted-foreground mb-1 cursor-default text-base font-medium">
       {name}
-    </label>
+    </div>
   )
 }
 
@@ -388,18 +399,19 @@ const PageAppearanceField: React.FC<PageAppearanceFieldProps> = ({ name, value, 
 
 interface FontFieldProps {
   name: string
+  tooltip: string
   value: string
   options: ComboboxOption[]
   loadOptions: () => Promise<ComboboxOption[] | undefined>
   onChange: (value: string) => void
 }
 
-const FontField: React.FC<FontFieldProps> = ({ name, value, options, loadOptions, onChange }) => {
+const FontField: React.FC<FontFieldProps> = ({ name, tooltip, value, options, loadOptions, onChange }) => {
   const t = useTranslation()
 
   return (
     <div className="flex flex-col">
-      <FieldLabel name={name} />
+      <FieldLabel name={name} tooltip={tooltip} />
       <Combobox
         id={name}
         name={name}
@@ -461,6 +473,7 @@ const NumberField: React.FC<NumberFieldProps> = ({ value, baseValue, onChange, .
         <InputGroupInput
           ref={ref}
           type="number"
+          aria-label={props.name}
           id={typeof props.name === 'string' ? props.name : undefined}
           placeholder={t('typography.default_value')}
           defaultValue={value}

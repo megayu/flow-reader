@@ -6,6 +6,7 @@ export interface TypographyConfiguration {
   fontSize?: string
   fontWeight?: number
   fontFamily?: string
+  secondaryFontFamily?: string
   lineHeight?: number
   textIndent?: number
   textAlign?: 'default' | 'justify'

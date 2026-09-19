@@ -206,6 +206,7 @@ function Combobox({
             <InputGroupInput
               ref={inputRef}
               name={name}
+              aria-label={name}
               id={id}
               role="combobox"
               aria-autocomplete="list"
