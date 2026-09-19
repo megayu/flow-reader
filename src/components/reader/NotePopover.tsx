@@ -91,7 +91,15 @@ export const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) =>
         visibility: size.width ? 'visible' : 'hidden',
       }}
       onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }}
+      onAuxClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }}
+      onDragStart={(e) => e.preventDefault()}
       onKeyDown={(e) => {
         e.stopPropagation()
         if (e.key === 'Escape') {
@@ -115,6 +123,8 @@ export const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) =>
           writingMode: popover.writingMode === 'vertical-rl' ? 'vertical-rl' : undefined,
           textOrientation: popover.writingMode === 'vertical-rl' ? 'mixed' : undefined,
           color: 'inherit',
+          userSelect: 'text',
+          WebkitUserSelect: 'text',
         }}
       />
       <div

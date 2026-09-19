@@ -3696,6 +3696,117 @@ test('previews external reader links and dismisses across documents', async ({ p
   )
 })
 
+test('long-book note previews preserve structure and use the referring chapter typography', async ({ page }) => {
+  const note = (id: string, backlink: string) => `<aside role="doc-footnote"><ol>
+    <li id="${id}"><a href="${backlink}"><p style="font:300 14px serif;line-height:1.8;color:rgb(150,30,50);margin:12px 0">Note text
+      <span style="font-size:12px;font-weight:700">Emphasis</span><img class="note-glyph" alt="Glyph" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect width='120' height='120'/%3E%3C/svg%3E"/></p></a>
+      <p><a href="chapter_003.xhtml">Dangerous link</a></p>
+      <table style="border-collapse:collapse"><tr><td style="border:1px solid gray;padding:6px;font:400 13px serif">Cell</td></tr></table>
+      <ul style="list-style-type:disc;padding-left:30px"><li style="font:400 13px serif">List item</li></ul>
+    </li>
+    <li id="${id}-sibling"><p>Sibling note must not appear</p></li>
+  </ol></aside>`
+  await page.route(/\/test-assets\/long\/OPS\/chapter_00[13]\.xhtml/, (route) => {
+    const source = route.request().url().includes('chapter_001')
+    const refs =
+      '<p><a id="local-ref" role="doc-noteref" href="#local-note">Local note</a> <a id="remote-ref" role="doc-noteref" href="chapter_003.xhtml#remote-note">Remote note</a></p><p><a id="back-ref" role="doc-noteref" href="chapter_003.xhtml#back-note">Backlink target</a> at the start of its paragraph.</p>'
+    return route.fulfill({
+      contentType: 'application/xhtml+xml',
+      body: `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Note sample</title><style>body{font:${source ? '400 20px serif' : '700 30px sans-serif'}}p{margin:1em 0}.note-glyph{width:17px;height:19px}</style></head><body>
+        ${source ? refs : ''}${'<p>Ordinary reading text establishes this chapter baseline.</p>'.repeat(12)}
+        ${source ? note('local-note', '#local-ref') : note('remote-note', 'chapter_001.xhtml#remote-ref')}
+        ${source ? '' : '<div id="back-note"><p><a href="chapter_001.xhtml#back-ref">[Back]</a>Remote backlink note.</p></div>'}</body></html>`,
+    })
+  })
+  await openFixtureBook(page, 0)
+  await page.evaluate(() => {
+    const tab = (window as any).reader.focusedBookTab
+    tab.updateConfiguration({ ...tab.book.configuration, typography: { fontSize: '24px', fontWeight: 500 } })
+  })
+  await waitForStableReaderLayout(page, { header: false })
+  for (const reference of ['local-ref', 'remote-ref', 'remote-ref']) {
+    const frame = page.locator('[data-flow-reader-pane][aria-hidden="false"] iframe').filter({ visible: true }).first()
+    await frame.contentFrame().locator(`#${reference}`).click()
+    const popup = page.locator('.flow-note-popover')
+    await expect(popup).toBeVisible()
+    await expect(popup).not.toContainText('Sibling note must not appear')
+    const styles = await popup.evaluate((el) => {
+      const paragraph = getComputedStyle(el.querySelector('p')!)
+      const emphasis = getComputedStyle(el.querySelector('p span')!)
+      const cell = getComputedStyle(el.querySelector('td')!)
+      const glyph = el.querySelector('img')!.getBoundingClientRect()
+      return {
+        size: parseFloat(paragraph.fontSize),
+        weight: paragraph.fontWeight,
+        color: paragraph.color,
+        margin: paragraph.marginBottom,
+        emphasisSize: parseFloat(emphasis.fontSize),
+        emphasisWeight: emphasis.fontWeight,
+        cellSize: cell.fontSize,
+        border: cell.borderTopWidth,
+        padding: cell.paddingLeft,
+        marker: getComputedStyle(el.querySelector('ul li')!).listStyleType,
+        glyphWidth: glyph.width,
+        glyphHeight: glyph.height,
+        linkHref: el.querySelector<HTMLAnchorElement>('a')?.getAttribute('href'),
+      }
+    })
+    expect(styles.size).toBeCloseTo(16.8, 1)
+    expect(styles.emphasisSize).toBeCloseTo(14.4, 1)
+    expect(styles).toMatchObject({
+      weight: '400',
+      color: 'rgb(150, 30, 50)',
+      margin: '12px',
+      emphasisWeight: '800',
+      cellSize: '13px',
+      border: '1px',
+      padding: '6px',
+      marker: 'disc',
+      linkHref: null,
+    })
+    expect(styles.glyphWidth).toBeCloseTo(17, 1)
+    expect(styles.glyphHeight).toBeCloseTo(19, 1)
+    const linkText = popup.getByText('Dangerous link', { exact: true })
+    const rect = await linkText.boundingBox()
+    if (!rect) throw new Error('Missing selectable note text')
+    await page.mouse.move(rect.x + 1, rect.y + rect.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(rect.x + rect.width - 1, rect.y + rect.height / 2, { steps: 8 })
+    await page.mouse.up()
+    expect(await page.evaluate(() => window.getSelection()?.toString())).toContain('Dangerous')
+    const url = page.url()
+    await linkText.click()
+    expect(page.url()).toBe(url)
+    await expect(popup).toBeVisible()
+    await page.keyboard.press('Escape')
+    if (reference === 'local-ref') continue
+    await page.evaluate(async () => {
+      const tab = (window as any).reader.focusedBookTab
+      await tab.displayBookLink('chapter_003.xhtml')
+      await tab.displayBookLink('chapter_001.xhtml')
+    })
+  }
+
+  await page.evaluate(async () => {
+    await (window as any).reader.focusedBookTab.displayBookLink('chapter_003.xhtml')
+  })
+  await waitForStableReaderLayout(page, { header: false })
+  const remoteFrame = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .filter({ visible: true })
+    .first()
+  await remoteFrame
+    .contentFrame()
+    .locator('#back-note a')
+    .evaluate((backlink: HTMLAnchorElement) => backlink.click())
+  const returnedFrame = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .filter({ visible: true })
+    .first()
+  await expect(returnedFrame.contentFrame().locator('#back-ref')).toBeVisible()
+  await expect(page.locator('.flow-note-popover')).toBeHidden()
+})
+
 test('does not scroll a horizontal note for glyph overflow inside the available height', async ({ page }) => {
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })

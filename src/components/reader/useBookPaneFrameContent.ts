@@ -23,6 +23,7 @@ import {
   getBookLinkDisplayTarget,
   getLinkedNote,
   isInternalBookHashLink,
+  isNoteBacklink,
   type LinkedNoteResult,
   type NotePopoverState,
   type NotePopoverTypography,
@@ -194,7 +195,7 @@ export function useBookPaneFrameContent({
         setNotePopover(undefined)
 
         const displayTarget = getBookLinkDisplayTarget(tab, anchor)
-        if (getNoteIndex(anchor.ownerDocument).getItemForAnchor(anchor)) {
+        if (isNoteBacklink(anchor) || getNoteIndex(anchor.ownerDocument).getItemForAnchor(anchor)) {
           noteRequestId.current += 1
           if (displayTarget) tab.displayBookLink(displayTarget).catch(console.error)
           return
@@ -205,22 +206,19 @@ export function useBookPaneFrameContent({
 
         void (async () => {
           try {
-            note = await getLinkedNote(tab, anchor, containerRef.current)
-            if (!note) {
-              if (displayTarget) await tab.displayBookLink(displayTarget)
-              return
-            }
+            note = await getLinkedNote(tab, anchor, containerRef.current, typography)
             if (requestId !== noteRequestId.current) {
               return
             }
             if (!anchor.isConnected) {
               return
             }
+            if (!note) {
+              if (displayTarget) await tab.displayBookLink(displayTarget)
+              return
+            }
 
-            const popover = createNotePopoverState(anchor, note.element, containerRef.current, rendition, {
-              fontSize: typography.fontSize,
-              lineHeight: typography.lineHeight,
-            })
+            const popover = createNotePopoverState(anchor, note.element, containerRef.current, rendition)
             if (!popover) {
               return
             }
@@ -254,17 +252,7 @@ export function useBookPaneFrameContent({
     return () => {
       cleanups.forEach((cleanup) => cleanup())
     }
-  }, [
-    active,
-    containerRef,
-    frameWindows,
-    rendition,
-    setNotePopover,
-    tab,
-    typography.fontSize,
-    typography.lineHeight,
-    zenMode,
-  ])
+  }, [active, containerRef, frameWindows, rendition, setNotePopover, tab, typography, zenMode])
 
   const handleFrameClick = useCallback(
     (event: MouseEvent) => {
