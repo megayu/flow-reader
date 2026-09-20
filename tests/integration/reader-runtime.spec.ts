@@ -3757,7 +3757,8 @@ test('long-book note previews preserve structure and use the referring chapter t
   const note = (id: string, backlink: string) => `<aside role="doc-footnote"><ol>
     <li id="${id}"><a href="${backlink}"><p style="font:300 14px serif;line-height:1.8;color:rgb(150,30,50);margin:12px 0">Note text
       <span style="font-size:12px;font-weight:700">Emphasis</span><img class="note-glyph" alt="Glyph" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect width='120' height='120'/%3E%3C/svg%3E"/></p></a>
-      <p><a href="chapter_003.xhtml">Dangerous link</a></p>
+      <p><a href="chapter_003.xhtml#ordinary-target">Book link</a></p>
+      <p><a href="https://example.com/note">External link</a></p>
       <table style="border-collapse:collapse"><tr><td style="border:1px solid gray;padding:6px;font:400 13px serif">Cell</td></tr></table>
       <ul style="list-style-type:disc;padding-left:30px"><li style="font:400 13px serif">List item</li></ul>
     </li>
@@ -3772,7 +3773,7 @@ test('long-book note previews preserve structure and use the referring chapter t
       body: `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Note sample</title><style>body{font:${source ? '400 20px serif' : '700 30px sans-serif'}}p{margin:1em 0}.note-glyph{width:17px;height:19px}</style></head><body>
         ${source ? refs : ''}${'<p>Ordinary reading text establishes this chapter baseline.</p>'.repeat(12)}
         ${source ? note('local-note', '#local-ref') : note('remote-note', 'chapter_001.xhtml#remote-ref')}
-        ${source ? '' : '<div id="back-note"><p><a href="chapter_001.xhtml#back-ref">[Back]</a>Remote backlink note.</p></div>'}</body></html>`,
+        ${source ? '' : '<p id="ordinary-target">Ordinary linked content.</p><div id="back-note"><p><a href="chapter_001.xhtml#back-ref">[Back]</a>Remote backlink note.</p></div>'}</body></html>`,
     })
   })
   await openFixtureBook(page, 0)
@@ -3805,7 +3806,10 @@ test('long-book note previews preserve structure and use the referring chapter t
         marker: getComputedStyle(el.querySelector('ul li')!).listStyleType,
         glyphWidth: glyph.width,
         glyphHeight: glyph.height,
-        linkHref: el.querySelector<HTMLAnchorElement>('a')?.getAttribute('href'),
+        backlinkHref: el.querySelector<HTMLAnchorElement>('a')?.getAttribute('href'),
+        bookLinkHref: [...el.querySelectorAll<HTMLAnchorElement>('a')]
+          .find((link) => link.textContent === 'Book link')
+          ?.getAttribute('href'),
       }
     })
     expect(styles.size).toBeCloseTo(16.8, 1)
@@ -3819,22 +3823,19 @@ test('long-book note previews preserve structure and use the referring chapter t
       border: '1px',
       padding: '6px',
       marker: 'disc',
-      linkHref: null,
+      backlinkHref: null,
+      bookLinkHref: 'chapter_003.xhtml#ordinary-target',
     })
     expect(styles.glyphWidth).toBeCloseTo(17, 1)
     expect(styles.glyphHeight).toBeCloseTo(19, 1)
-    const linkText = popup.getByText('Dangerous link', { exact: true })
-    const rect = await linkText.boundingBox()
+    const selectableText = popup.getByText('Emphasis', { exact: true })
+    const rect = await selectableText.boundingBox()
     if (!rect) throw new Error('Missing selectable note text')
     await page.mouse.move(rect.x + 1, rect.y + rect.height / 2)
     await page.mouse.down()
     await page.mouse.move(rect.x + rect.width - 1, rect.y + rect.height / 2, { steps: 8 })
     await page.mouse.up()
-    expect(await page.evaluate(() => window.getSelection()?.toString())).toContain('Dangerous')
-    const url = page.url()
-    await linkText.click()
-    expect(page.url()).toBe(url)
-    await expect(popup).toBeVisible()
+    expect(await page.evaluate(() => window.getSelection()?.toString())).toContain('Emphasis')
     await page.keyboard.press('Escape')
     if (reference === 'local-ref') continue
     await page.evaluate(async () => {
@@ -3843,6 +3844,36 @@ test('long-book note previews preserve structure and use the referring chapter t
       await tab.displayBookLink('chapter_001.xhtml')
     })
   }
+
+  const sourceFrame = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .filter({ visible: true })
+    .first()
+  await sourceFrame.contentFrame().locator('#local-ref').click()
+  await page.locator('.flow-note-popover').getByRole('link', { name: 'Book link', exact: true }).click()
+  await expect(page.locator('.flow-note-popover')).toBeHidden()
+  await expect(
+    page
+      .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+      .filter({ visible: true })
+      .first()
+      .contentFrame()
+      .locator('#ordinary-target'),
+  ).toBeVisible()
+
+  await page.evaluate(async () => {
+    await (window as any).reader.focusedBookTab.displayBookLink('chapter_001.xhtml')
+  })
+  await waitForStableReaderLayout(page, { header: false })
+  const returnedSourceFrame = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .filter({ visible: true })
+    .first()
+  await returnedSourceFrame.contentFrame().locator('#local-ref').click()
+  await page.locator('.flow-note-popover').getByRole('link', { name: 'External link', exact: true }).click()
+  await expect(page.locator('.flow-note-popover')).toBeHidden()
+  await expect(page.locator('[data-flow-external-link]')).toContainText('https://example.com/note')
+  await page.keyboard.press('Escape')
 
   await page.evaluate(async () => {
     await (window as any).reader.focusedBookTab.displayBookLink('chapter_003.xhtml')

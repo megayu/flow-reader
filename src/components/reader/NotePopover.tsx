@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 
 import { notePopoverClass } from '../../styles'
 
-import type { NotePopoverState } from './noteContent'
+import { getAnchorFromEvent, type NotePopoverState } from './noteContent'
 import {
   getNoteOverlayPlacement,
   NOTE_POPOVER_MARGIN,
@@ -15,9 +15,10 @@ import {
 export interface NotePopoverProps {
   popover?: NotePopoverState
   onClose: () => void
+  onLinkClick: (event: MouseEvent, anchor: HTMLAnchorElement) => void
 }
 
-export const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) => {
+export const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose, onLinkClick }) => {
   const popoverRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
@@ -94,6 +95,8 @@ export const NotePopover: React.FC<NotePopoverProps> = ({ popover, onClose }) =>
       onClick={(e) => {
         e.preventDefault()
         e.stopPropagation()
+        const anchor = getAnchorFromEvent(e.nativeEvent)
+        if (anchor) onLinkClick(e.nativeEvent, anchor)
       }}
       onAuxClick={(e) => {
         e.preventDefault()

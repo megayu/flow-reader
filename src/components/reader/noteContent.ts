@@ -4,11 +4,12 @@ import { applyNoteTypographyMarkers, getOriginalBodyTypography } from '../../bod
 import type { BookTab, ISection } from '../../models/reader'
 import { findNoteItem, getElementByIdOrName } from '../../noteIndex'
 import { findSectionByLinkedHref, resolveLinkedHrefPath, safeDecodeHref, sameHref } from '../../noteLinks'
-import { hasNoteContainerSemantics, hasToken, isNoteMarkerText } from '../../noteSemantics'
+import { hasNoteContainerSemantics, hasToken } from '../../noteSemantics'
 import type { TypographyConfiguration } from '../../state'
 import { createBodyTextTypographyCss } from '../../styles'
 
 import { getVisiblePageRect, intersectRects, type RectLike, rectFromDomRect } from './noteGeometry'
+import { cloneNoteElement } from './notePopoverContent'
 
 export type { RectLike } from './noteGeometry'
 
@@ -21,78 +22,12 @@ export interface NotePopoverState {
 
 export type NotePopoverTypography = TypographyConfiguration
 
-const NOTE_POPOVER_TEXT_STYLE_PROPERTIES = [
-  'color',
-  'background-color',
-  'display',
-  'border-collapse',
-  'border-spacing',
-  'border-top',
-  'border-right',
-  'border-bottom',
-  'border-left',
-  'border-radius',
-  'padding-top',
-  'padding-right',
-  'padding-bottom',
-  'padding-left',
-  'margin-top',
-  'margin-right',
-  'margin-bottom',
-  'margin-left',
-  'list-style-type',
-  'list-style-position',
-  'text-align',
-  'text-indent',
-  'white-space',
-  'direction',
-  'font-family',
-  'font-feature-settings',
-  'font-kerning',
-  'font-size',
-  'font-stretch',
-  'font-style',
-  'font-synthesis',
-  'font-variant',
-  'font-variant-caps',
-  'font-variant-east-asian',
-  'font-variant-ligatures',
-  'font-variant-numeric',
-  'font-weight',
-  'letter-spacing',
-  'line-height',
-  'text-decoration-color',
-  'text-decoration-line',
-  'text-decoration-style',
-  'text-emphasis-color',
-  'text-emphasis-position',
-  'text-emphasis-style',
-  'text-orientation',
-  'text-transform',
-  'unicode-bidi',
-  'vertical-align',
-  'word-spacing',
-  'writing-mode',
-]
-const NOTE_POPOVER_BLOCKED_ELEMENTS = new Set(['BASE', 'EMBED', 'IFRAME', 'LINK', 'META', 'OBJECT', 'SCRIPT', 'STYLE'])
-const NOTE_POPOVER_URL_ATTRIBUTES = new Set([
-  'action',
-  'background',
-  'cite',
-  'data',
-  'formaction',
-  'href',
-  'ping',
-  'poster',
-  'src',
-  'srcset',
-  'xlink:href',
-])
 export function createNotePopoverState(
   anchor: HTMLAnchorElement,
   noteElement: HTMLElement,
   container: HTMLElement | null,
   rendition: unknown,
+  tab: BookTab,
 ): NotePopoverState | undefined {
   const win = anchor.ownerDocument.defaultView
   const frame = win?.frameElement
@@ -129,7 +64,7 @@ export function createNotePopoverState(
   return {
     anchorRect: anchorRectInContainer,
     pageRect: getVisiblePageRect(visibleRect, anchorRectInContainer, rendition),
-    content: cloneNoteElement(noteElement, writingMode),
+    content: cloneNoteElement(noteElement, writingMode, anchor, (link) => getBookLinkDisplayTarget(tab, link)),
     writingMode,
   }
 }
@@ -185,24 +120,13 @@ export async function getLinkedNote(
   const id = safeDecodeHref(hash)
   const target = await findLinkedElement(tab, anchor, path, id, container, typography)
   if (!target) return
-  if (isLinkedNoteBacklink(anchor, target.element)) {
-    target.cleanup?.()
-    return
-  }
-
-  const noteItem = findNoteItem(anchor, target.element)
+  const noteItem = !isLinkedNoteBacklink(anchor, target.element) && findNoteItem(anchor, target.element)
   if (!noteItem) {
     target.cleanup?.()
     return
   }
 
-  const noteElement = findNoteElement(noteItem, anchor)
-  return noteElement
-    ? {
-        element: noteElement,
-        cleanup: target.cleanup,
-      }
-    : target
+  return { element: noteItem, cleanup: target.cleanup }
 }
 
 async function findLinkedElement(
@@ -259,7 +183,7 @@ async function renderLinkedSectionElement(
   container: HTMLElement | null,
   typography?: NotePopoverTypography,
 ): Promise<LinkedNoteResult | undefined> {
-  if (!tab.epub || !container) return
+  if (!tab.epub || !container || !section.url) return
 
   const ownerDocument = container.ownerDocument
   const iframe = ownerDocument.createElement('iframe')
@@ -286,7 +210,13 @@ async function renderLinkedSectionElement(
   }
 
   try {
-    const output = await renderFreshLinkedSectionDocument(tab, section, id)
+    // Load authored content: a previously rendered section may carry another chapter's typography.
+    const document = (await tab.epub.load(section.url)) as Document
+    await section.hooks?.content?.trigger(document, section)
+    if (!getElementByIdOrName(document, id)) {
+      cleanup()
+      return
+    }
     const loaded = new Promise<void>((resolve, reject) => {
       const timer = window.setTimeout(resolve, 1500)
 
@@ -308,7 +238,7 @@ async function renderLinkedSectionElement(
       )
     })
 
-    iframe.srcdoc = output
+    iframe.srcdoc = document.documentElement.outerHTML
     container.appendChild(iframe)
     await loaded
 
@@ -344,24 +274,6 @@ async function renderLinkedSectionElement(
     cleanup()
     return
   }
-}
-
-async function renderFreshLinkedSectionDocument(tab: BookTab, section: ISection, id: string) {
-  const sectionUrl = section.url
-  if (!sectionUrl) {
-    throw new Error(`Missing section url: ${section.href}`)
-  }
-
-  const document = (await tab.epub!.load(sectionUrl)) as Document
-
-  await section.hooks?.content?.trigger(document, section)
-
-  const target = getElementByIdOrName(document, id)
-  if (!target) {
-    throw new Error(`Missing linked note target: ${section.href}#${id}`)
-  }
-
-  return document.documentElement.outerHTML
 }
 
 async function waitForNoteDocumentStyles(doc: Document) {
@@ -434,304 +346,4 @@ function isMatchingNoteReference(
   const [path = '', hash = ''] = candidate.getAttribute('href')?.split('#') ?? []
   if (!hash || !noteIds.has(safeDecodeHref(hash))) return false
   return !noteHref || !referenceHref || sameHref(resolveLinkedHrefPath(referenceHref, path), noteHref)
-}
-
-function findNoteElement(el: HTMLElement, anchor: HTMLAnchorElement) {
-  const segmentedNote = createSegmentedNoteElement(el, anchor)
-  if (segmentedNote) return segmentedNote
-
-  return el
-}
-
-function isEmptyPositionTarget(el: HTMLElement) {
-  return isTagName(el, 'A', 'SPAN') && !!(el.id || el.getAttribute('name')) && !el.textContent?.trim()
-}
-
-function createSegmentedNoteElement(target: HTMLElement, anchor: HTMLAnchorElement) {
-  const container = findNoteContainer(target)
-  const marker = target.closest('a[href]') as HTMLAnchorElement | null
-  if (!container || !marker || !isBacklink(marker, anchor)) return
-
-  const markerChild = getDirectChild(container, marker)
-  if (!markerChild || !hasMultipleNoteMarkers(container)) return
-
-  const doc = target.ownerDocument
-  const wrapper = doc.createElement('div')
-
-  wrapper.className = container.className
-  if (container.id) wrapper.dataset.noteContainerId = container.id
-  copyNoteTextStyles(container, wrapper)
-
-  let node: ChildNode | null = markerChild
-  while (node) {
-    if (node !== markerChild && startsWithNoteMarker(node)) break
-
-    wrapper.appendChild(cloneNoteNode(node))
-    node = node.nextSibling
-  }
-
-  return wrapper.childNodes.length ? wrapper : undefined
-}
-
-function cloneNoteNode(node: ChildNode) {
-  if (isElementNode(node)) {
-    return cloneElementWithNoteStyles(node as HTMLElement)
-  }
-
-  return node.cloneNode(true)
-}
-
-function getDirectChild(parent: HTMLElement, child: HTMLElement) {
-  let cur: HTMLElement = child
-
-  while (cur.parentElement && cur.parentElement !== parent) {
-    cur = cur.parentElement
-  }
-
-  return cur.parentElement === parent ? cur : undefined
-}
-
-function hasMultipleNoteMarkers(container: HTMLElement) {
-  return Array.from(container.childNodes).filter(startsWithNoteMarker).length > 1
-}
-
-function startsWithNoteMarker(node: ChildNode) {
-  if (!isElementNode(node)) return false
-  const el = node as HTMLElement
-
-  if (isNoteMarkerAnchor(el)) return true
-
-  const firstElement = Array.from(el.childNodes).find(
-    (child) => isElementNode(child) || (child.textContent?.trim()?.length ?? 0) > 0,
-  )
-
-  return isElementNode(firstElement) && isNoteMarkerAnchor(firstElement as HTMLElement)
-}
-
-function isNoteMarkerAnchor(el: HTMLElement) {
-  return isTagName(el, 'A') && el.hasAttribute('href') && isNoteMarkerText(el.textContent)
-}
-
-function isElementNode(node: ChildNode | undefined) {
-  return node?.nodeType === 1 && typeof (node as HTMLElement).tagName === 'string'
-}
-
-function findNoteContainer(el: HTMLElement) {
-  let cur: HTMLElement | null = el
-
-  while (cur && cur !== cur.ownerDocument.body) {
-    if (isNoteContainer(cur)) return cur
-    cur = cur.parentElement
-  }
-}
-
-function isNoteContainer(el: HTMLElement) {
-  if (isInlineNoteMarker(el)) return false
-
-  return isTagName(el, 'ASIDE') || hasNoteContainerSemantics(el)
-}
-
-function isInlineNoteMarker(el: HTMLElement) {
-  return isTagName(el, 'A', 'SPAN', 'SUP', 'SUB') && isNoteMarkerText(el.textContent)
-}
-
-function isTagName(el: Element, ...names: string[]) {
-  const tagName = el.tagName.toUpperCase()
-  return names.some((name) => tagName === name)
-}
-
-function cloneNoteElement(el: HTMLElement, writingMode?: string) {
-  const clone = cloneElementWithNoteStyles(el)
-  normalizeNotePopoverOuterSpacing(clone, writingMode)
-  if (clone.style.display === 'none') clone.style.setProperty('display', 'block', 'important')
-  if (clone.tagName === 'LI') clone.style.setProperty('display', 'block', 'important')
-  applyNotePopoverWritingMode(clone, writingMode)
-
-  return clone
-}
-
-function normalizeNotePopoverOuterSpacing(root: HTMLElement, writingMode?: string) {
-  root.style.setProperty('margin', '0', 'important')
-  root.style.setProperty('padding', '0', 'important')
-
-  const children = Array.from(root.children) as HTMLElement[]
-  if (!children.length) return
-
-  if (writingMode === 'vertical-rl') {
-    children.forEach((child) => {
-      child.style.setProperty('margin-top', '0', 'important')
-      child.style.setProperty('margin-bottom', '0', 'important')
-    })
-    trimNotePopoverBoundaryMargin(root, 'first', 'margin-right')
-    trimNotePopoverBoundaryMargin(root, 'last', 'margin-left')
-    return
-  }
-
-  children.forEach((child) => {
-    child.style.setProperty('margin-left', '0', 'important')
-    child.style.setProperty('margin-right', '0', 'important')
-  })
-  trimNotePopoverBoundaryMargin(root, 'first', 'margin-top')
-  trimNotePopoverBoundaryMargin(root, 'last', 'margin-bottom')
-}
-
-function trimNotePopoverBoundaryMargin(
-  root: HTMLElement,
-  edge: 'first' | 'last',
-  property: 'margin-top' | 'margin-right' | 'margin-bottom' | 'margin-left',
-) {
-  let current = getNotePopoverBoundaryElement(root, edge)
-
-  while (current) {
-    current.style.setProperty(property, '0', 'important')
-    current = getNotePopoverBoundaryElement(current, edge)
-  }
-}
-
-function getNotePopoverBoundaryElement(root: HTMLElement, edge: 'first' | 'last') {
-  const nodes = edge === 'first' ? root.childNodes : Array.from(root.childNodes).reverse()
-
-  for (const node of nodes) {
-    if (node.nodeType === 3 && node.textContent?.trim()) return
-    if (node.nodeType === 1 && 'style' in node) return node as HTMLElement
-  }
-}
-
-function applyNotePopoverWritingMode(root: HTMLElement, writingMode?: string) {
-  if (writingMode !== 'vertical-rl') return
-
-  const nodes = [root, ...Array.from(root.querySelectorAll<HTMLElement>('*'))]
-  nodes.forEach((node) => {
-    node.style.setProperty('writing-mode', 'vertical-rl', 'important')
-    node.style.setProperty('text-orientation', 'mixed', 'important')
-  })
-}
-
-function cloneElementWithNoteStyles(el: HTMLElement) {
-  if (isBlockedNotePopoverElement(el)) {
-    return el.ownerDocument.createElement('span')
-  }
-
-  const clone = el.cloneNode(true) as HTMLElement
-  copyNoteStyleTree(el, clone)
-
-  return clone
-}
-
-function copyNoteStyleTree(source: HTMLElement, target: HTMLElement) {
-  sanitizeNotePopoverElement(target)
-  copyNoteTextStyles(source, target)
-  copyResolvedResourceAttributes(source, target)
-
-  const sourceElements = Array.from(source.querySelectorAll<HTMLElement>('*'))
-  const targetElements = Array.from(target.querySelectorAll<HTMLElement>('*'))
-
-  sourceElements.forEach((sourceElement, index) => {
-    const targetElement = targetElements[index]
-    if (!targetElement) return
-
-    if (isBlockedNotePopoverElement(targetElement)) {
-      targetElement.remove()
-      return
-    }
-
-    sanitizeNotePopoverElement(targetElement)
-    copyNoteTextStyles(sourceElement, targetElement)
-    copyResolvedResourceAttributes(sourceElement, targetElement)
-  })
-}
-
-function isBlockedNotePopoverElement(element: Element) {
-  return NOTE_POPOVER_BLOCKED_ELEMENTS.has(element.tagName.toUpperCase())
-}
-
-function sanitizeNotePopoverElement(element: HTMLElement) {
-  for (let index = element.attributes.length - 1; index >= 0; index--) {
-    const attribute = element.attributes.item(index)
-    if (!attribute) continue
-
-    const name = attribute.name.toLowerCase()
-    if (name === 'style' || name.startsWith('on') || NOTE_POPOVER_URL_ATTRIBUTES.has(name)) {
-      element.removeAttribute(attribute.name)
-    }
-  }
-}
-
-function copyNoteTextStyles(source: HTMLElement, target: HTMLElement) {
-  const win = source.ownerDocument.defaultView
-  if (!win) return
-
-  const style = source.isConnected ? win.getComputedStyle(source) : source.style
-  NOTE_POPOVER_TEXT_STYLE_PROPERTIES.forEach((property) => {
-    const value = style.getPropertyValue(property)
-    if (!value || value === 'auto') return
-
-    target.style.setProperty(property, value, style.getPropertyPriority(property))
-  })
-}
-
-function copyResolvedResourceAttributes(source: HTMLElement, target: HTMLElement) {
-  if (source.tagName === 'IMG' && target.tagName === 'IMG') {
-    const src = (source as HTMLImageElement).src
-    if (isSafeNotePopoverImageUrl(src)) target.setAttribute('src', src)
-
-    const style = source.isConnected ? source.ownerDocument.defaultView?.getComputedStyle(source) : source.style
-    for (const property of ['width', 'height', 'aspect-ratio']) {
-      const value = style?.getPropertyValue(property)
-      if (value) target.style.setProperty(property, value, 'important')
-    }
-    const width = Number.parseFloat(style?.width ?? '')
-    const height = Number.parseFloat(style?.height ?? '')
-    if (width > 0 && height > 0) {
-      target.style.setProperty('width', `${width}px`, 'important')
-      target.style.setProperty('height', 'auto', 'important')
-      target.style.setProperty('aspect-ratio', `${width} / ${height}`, 'important')
-    }
-    target.style.setProperty('max-width', '100%', 'important')
-  }
-}
-
-function isSafeNotePopoverImageUrl(value: string) {
-  try {
-    const url = new URL(value)
-    if (url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'blob:') return true
-    return url.protocol === 'data:' && /^data:image\//i.test(value)
-  } catch {
-    return false
-  }
-}
-
-function isBacklink(link: HTMLAnchorElement, anchor: HTMLAnchorElement) {
-  const href = link.getAttribute('href') ?? ''
-  const text = link.textContent?.trim() ?? ''
-  const role = link.getAttribute('role') ?? ''
-  const type = link.getAttribute('epub:type') ?? ''
-  const anchorId = getBacklinkTargetId(anchor)
-
-  return (
-    /(?:doc-backlink|backlink)/i.test(`${role} ${type}`) ||
-    /^[↩←↑返回back]+$/i.test(text) ||
-    !!(anchorId && href.endsWith(`#${anchorId}`))
-  )
-}
-
-function getBacklinkTargetId(anchor: HTMLAnchorElement) {
-  return anchor.id || findNearbyEmptyPositionTargetId(anchor) || anchor.closest('[id]')?.id
-}
-
-function findNearbyEmptyPositionTargetId(anchor: HTMLAnchorElement) {
-  let cur: HTMLElement | null = anchor
-
-  while (cur?.parentElement && cur.parentElement !== cur.ownerDocument.body) {
-    const previous = cur.previousElementSibling
-    if (isElementNode(previous as ChildNode | undefined) && isEmptyPositionTarget(previous as HTMLElement)) {
-      const target = previous as HTMLElement
-      return target.id || target.getAttribute('name') || undefined
-    }
-
-    cur = cur.parentElement
-    if (isTagName(cur, 'P', 'LI', 'BLOCKQUOTE', 'DIV', 'SECTION', 'ARTICLE')) {
-      return
-    }
-  }
 }

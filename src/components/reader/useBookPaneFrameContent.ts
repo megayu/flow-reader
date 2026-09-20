@@ -50,12 +50,9 @@ function consumeExternalLinkClick(
       console.error(error)
     })
   } else if (event.button === 0 && !event.altKey && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
-    const frame = anchor.ownerDocument.defaultView?.frameElement
-    if (frame) {
-      const frameRect = frame.getBoundingClientRect()
-      const rect = new DOMRect(frameRect.left + event.clientX, frameRect.top + event.clientY, 0, 0)
-      setPreview({ href, getBoundingClientRect: () => rect })
-    }
+    const frameRect = anchor.ownerDocument.defaultView?.frameElement?.getBoundingClientRect()
+    const rect = new DOMRect((frameRect?.left ?? 0) + event.clientX, (frameRect?.top ?? 0) + event.clientY, 0, 0)
+    setPreview({ href, getBoundingClientRect: () => rect })
   }
   return true
 }
@@ -249,7 +246,7 @@ export function useBookPaneFrameContent({
               return
             }
 
-            const popover = createNotePopoverState(anchor, note.element, containerRef.current, rendition)
+            const popover = createNotePopoverState(anchor, note.element, containerRef.current, rendition, tab)
             if (!popover) {
               return
             }
@@ -284,6 +281,29 @@ export function useBookPaneFrameContent({
       cleanups.forEach((cleanup) => cleanup())
     }
   }, [active, containerRef, displayBookLink, frameWindows, rendition, setNotePopover, tab, typography, zenMode])
+
+  const handleNotePopoverLinkClick = useCallback(
+    (event: MouseEvent, anchor: HTMLAnchorElement) => {
+      setExternalLink(undefined)
+      if (consumeExternalLinkClick(event, anchor, setExternalLink)) {
+        noteRequestId.current += 1
+        setNotePopover(undefined)
+        return
+      }
+
+      const target = anchor.getAttribute('href')
+      if (!target) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation()
+      closeChapterFind()
+      noteRequestId.current += 1
+      setNotePopover(undefined)
+      displayBookLink(target).catch(console.error)
+    },
+    [closeChapterFind, displayBookLink, setNotePopover],
+  )
 
   const handleFrameClick = useCallback(
     (event: MouseEvent) => {
@@ -321,6 +341,7 @@ export function useBookPaneFrameContent({
 
   return {
     externalLink,
+    handleNotePopoverLinkClick,
     closeExternalLink,
     closeImagePreview: () => setImagePreview(undefined),
     imagePreview,

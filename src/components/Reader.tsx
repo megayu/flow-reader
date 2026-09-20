@@ -752,20 +752,21 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
     rendition?.themes.overrideProperty('color', dark ? '#bfc8ca' : '#3f484a', dark)
   }, [rendition, dark])
 
-  const { closeImagePreview, imagePreview, externalLink, closeExternalLink } = useBookPaneFrameContent({
-    active,
-    activeFrameWindows,
-    closeChapterFind,
-    containerRef: ref,
-    frameWindows,
-    linkHighlightRef,
-    linkHighlightEnabled: viewMode === 'reader',
-    rendition,
-    setNotePopover,
-    tab,
-    typography,
-    zenMode,
-  })
+  const { closeImagePreview, imagePreview, externalLink, closeExternalLink, handleNotePopoverLinkClick } =
+    useBookPaneFrameContent({
+      active,
+      activeFrameWindows,
+      closeChapterFind,
+      containerRef: ref,
+      frameWindows,
+      linkHighlightRef,
+      linkHighlightEnabled: viewMode === 'reader',
+      rendition,
+      setNotePopover,
+      tab,
+      typography,
+      zenMode,
+    })
 
   useBookPaneWheelNavigation({
     active,
@@ -857,7 +858,13 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
         />
         {!zenMode && active && <TextSelectionMenu tab={tab} onChapterFind={openChapterFind} />}
         <Annotations active={active} tab={tab} />
-        {!zenMode && <NotePopover popover={notePopover} onClose={() => setNotePopover(undefined)} />}
+        {!zenMode && (
+          <NotePopover
+            popover={notePopover}
+            onClose={() => setNotePopover(undefined)}
+            onLinkClick={handleNotePopoverLinkClick}
+          />
+        )}
         {active && externalLink && (
           <ExternalLinkPopover
             preview={externalLink}
