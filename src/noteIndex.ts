@@ -3,6 +3,7 @@ import { safeDecodeHref } from './noteLinks'
 export interface NoteIndex {
   getHideTargets(): HTMLElement[]
   getItemForAnchor(anchor: HTMLAnchorElement): HTMLElement | undefined
+  getItemForTarget(target: HTMLElement): HTMLElement | undefined
   getTextTargets(): HTMLElement[]
 }
 
@@ -20,46 +21,47 @@ export function getNoteIndex(document: Document) {
 }
 
 export function findReciprocalNoteItem(anchor: HTMLAnchorElement, target: HTMLElement) {
-  return findNoteItemForTarget(anchor, target)
+  return getNoteIndex(target.ownerDocument).getItemForTarget(target) ?? findNoteItemForTarget(anchor, target)
 }
 
 function createNoteIndex(document: Document): NoteIndex {
-  const items = collectLinkedNoteItems(document)
+  const { items, itemsByTarget } = collectLinkedNoteItems(document)
   const itemSet = new Set(items)
   const hideTargets = collectNoteHideTargets(items, itemSet)
 
   return {
     getHideTargets: () => hideTargets,
     getItemForAnchor: (anchor) => findAncestorInSet(anchor, itemSet),
+    getItemForTarget: (target) => itemsByTarget.get(target),
     getTextTargets: () => items,
   }
 }
 
 function collectLinkedNoteItems(document: Document) {
   const items: HTMLElement[] = []
+  const itemsByTarget = new Map<HTMLElement, HTMLElement>()
   const getTarget = createNoteTargetLookup()
 
   document.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((anchor) => {
     if (!isUsableHashLink(anchor)) return
 
-    const item = findLinkedNoteItem(anchor, getTarget)
-    if (item) items.push(item)
+    const target = getLinkedHashTarget(anchor, getTarget)
+    if (!target || !isHashTargetAfterSource(anchor, target)) return
+
+    const item = findNoteItemForTarget(anchor, target, getTarget)
+    if (item) {
+      items.push(item)
+      itemsByTarget.set(target, item)
+    }
   })
 
-  return uniqueElements(items)
+  return { items: uniqueElements(items), itemsByTarget }
 }
 
 function isUsableHashLink(anchor: HTMLAnchorElement) {
   const href = anchor.getAttribute('href')?.trim()
   if (!href || href.startsWith('mailto:') || href.includes('://')) return false
   return href.includes('#')
-}
-
-function findLinkedNoteItem(anchor: HTMLAnchorElement, getTarget: NoteTargetLookup) {
-  const target = getLinkedHashTarget(anchor, getTarget)
-  if (!target || !isHashTargetAfterSource(anchor, target)) return
-
-  return findNoteItemForTarget(anchor, target, getTarget)
 }
 
 function getLinkedHashTarget(anchor: HTMLAnchorElement, getTarget: NoteTargetLookup) {

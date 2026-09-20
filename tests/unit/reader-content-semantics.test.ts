@@ -787,6 +787,23 @@ function testReciprocalNoteItemRequiresBacklinkToSourceAnchor() {
   assert.strictEqual(findReciprocalNoteItem(definitionSource, definitionNote), definitionNote)
 }
 
+function testRepeatedReferencesShareReciprocalNoteItem() {
+  const body = new FakeElement('body')
+  const firstSource = anchor('chapter.html#note-1', '[1]', { id: 'back-note-1' })
+  const repeatedSource = anchor('chapter.html#note-1', '[1]')
+  const noteLink = anchor('chapter.html#back-note-1', '[1]', { id: 'note-1' })
+  const noteItem = new FakeElement('p').append(noteLink, ' 这是被正文多次引用的注释。')
+
+  body.append(
+    new FakeElement('p').append('第一次引用', firstSource),
+    new FakeElement('p').append('再次引用', repeatedSource),
+    noteItem,
+  )
+  createContents(body)
+
+  assert.strictEqual(findReciprocalNoteItem(repeatedSource, noteLink), noteItem)
+}
+
 function testReciprocalNoteItemUsesBoundedTargetStructures() {
   const body = new FakeElement('body')
   const kindleSource = anchor('chapter.html#note-span', '[1]')
@@ -933,6 +950,7 @@ for (const run of [
   testSemanticNoteFallbackMarksNamedNoteContent,
   testLinkedNoteResolutionUsesHashTargetItem,
   testReciprocalNoteItemRequiresBacklinkToSourceAnchor,
+  testRepeatedReferencesShareReciprocalNoteItem,
   testReciprocalNoteItemUsesBoundedTargetStructures,
   testNoteIndexMapsBacklinksOnlyInsideRecognizedNoteItems,
   testReciprocalLinksDoNotDependOnNoteMarkerText,
