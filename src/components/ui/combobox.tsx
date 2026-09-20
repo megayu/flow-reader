@@ -1,7 +1,7 @@
 'use client'
 
 import clsx from 'clsx'
-import { XIcon } from 'lucide-react'
+import { type LucideIcon, XIcon } from 'lucide-react'
 import {
   type ComponentProps,
   type ReactNode,
@@ -35,6 +35,12 @@ interface ComboboxProps {
   contentClassName?: string
   emptyContent: ReactNode
   id: string
+  inputAction?: {
+    disabled?: boolean
+    Icon: LucideIcon
+    label: string
+    value: string
+  }
   name: string
   onLoadOptions?: () => unknown
   onValueChange: (value: string) => void
@@ -53,6 +59,7 @@ function Combobox({
   contentClassName,
   emptyContent,
   id,
+  inputAction,
   name,
   onLoadOptions,
   onValueChange,
@@ -255,6 +262,20 @@ function Combobox({
               }}
             />
             <InputGroupActions>
+              {inputAction && (
+                <IconButton
+                  className="text-muted-foreground"
+                  title={inputAction.label}
+                  Icon={inputAction.Icon}
+                  disabled={inputAction.disabled}
+                  onMouseDown={(event) => {
+                    event.preventDefault()
+                  }}
+                  onClick={() => {
+                    selectValue(inputAction.value)
+                  }}
+                />
+              )}
               <IconButton
                 className="text-muted-foreground"
                 title={clearLabel}

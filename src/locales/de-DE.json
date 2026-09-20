@@ -365,6 +365,7 @@
 
   "translation.auto_detect": "Automatisch erkennen",
 
+  "typography.copy_primary_font": "Primärschrift übernehmen",
   "typography.decrease_font_size": "Schrift verkleinern",
   "typography.default_value": "Standard",
   "typography.font_size": "Schriftgröße",

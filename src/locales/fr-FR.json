@@ -365,6 +365,7 @@
 
   "translation.auto_detect": "Détection automatique",
 
+  "typography.copy_primary_font": "Copier la police principale",
   "typography.decrease_font_size": "Diminuer la taille de police",
   "typography.default_value": "Par défaut",
   "typography.font_size": "Taille de police",

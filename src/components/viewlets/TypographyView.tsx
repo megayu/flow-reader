@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import { MinusIcon, PlusIcon, XIcon } from 'lucide-react'
+import { CopyIcon, MinusIcon, PlusIcon, XIcon } from 'lucide-react'
 import { type ComponentProps, useCallback, useEffect, useRef, useState } from 'react'
 
 import { RenditionSpread } from '@flow/epub-engine/rendition'
@@ -170,6 +170,7 @@ const TypographyPane: React.FC = () => {
             name={t('typography.secondary_font')}
             tooltip={t('typography.secondary_font.tooltip')}
             value={secondaryFontFamily ?? ''}
+            copyValue={fontFamily ?? ''}
             options={localFonts ?? []}
             loadOptions={queryFonts}
             onChange={(value) => {
@@ -398,6 +399,7 @@ const PageAppearanceField: React.FC<PageAppearanceFieldProps> = ({ name, value, 
 }
 
 interface FontFieldProps {
+  copyValue?: string
   name: string
   tooltip: string
   value: string
@@ -406,7 +408,7 @@ interface FontFieldProps {
   onChange: (value: string) => void
 }
 
-const FontField: React.FC<FontFieldProps> = ({ name, tooltip, value, options, loadOptions, onChange }) => {
+const FontField: React.FC<FontFieldProps> = ({ copyValue, name, tooltip, value, options, loadOptions, onChange }) => {
   const t = useTranslation()
 
   return (
@@ -419,6 +421,16 @@ const FontField: React.FC<FontFieldProps> = ({ name, tooltip, value, options, lo
         options={options}
         placeholder={t('typography.default_value')}
         clearLabel={t('action.clear')}
+        inputAction={
+          copyValue !== undefined
+            ? {
+                disabled: !copyValue || copyValue === value,
+                Icon: CopyIcon,
+                label: t('typography.copy_primary_font'),
+                value: copyValue,
+              }
+            : undefined
+        }
         emptyContent={t('typography.no_matching_fonts')}
         side="right"
         align="start"

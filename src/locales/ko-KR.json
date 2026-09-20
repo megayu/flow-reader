@@ -365,6 +365,7 @@
 
   "translation.auto_detect": "자동 감지",
 
+  "typography.copy_primary_font": "기본 글꼴 복사",
   "typography.decrease_font_size": "글자 크기 축소",
   "typography.default_value": "기본값",
   "typography.font_size": "글자 크기",

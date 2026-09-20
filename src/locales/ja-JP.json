@@ -365,6 +365,7 @@
 
   "translation.auto_detect": "自動検出",
 
+  "typography.copy_primary_font": "主フォントをコピー",
   "typography.decrease_font_size": "文字サイズを縮小",
   "typography.default_value": "デフォルト",
   "typography.font_size": "文字サイズ",

@@ -365,6 +365,7 @@
 
   "translation.auto_detect": "自动检测",
 
+  "typography.copy_primary_font": "复制主字体",
   "typography.decrease_font_size": "减小字号",
   "typography.default_value": "默认",
   "typography.font_size": "字号",
