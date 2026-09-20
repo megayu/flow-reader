@@ -3807,6 +3807,107 @@ test('long-book note previews preserve structure and use the referring chapter t
   await expect(page.locator('.flow-note-popover')).toBeHidden()
 })
 
+test('long-book link target hints preserve pagination and content geometry', async ({ page }) => {
+  test.setTimeout(60_000)
+  const targets = ['marker', 'icon', 'paragraph', 'picture', 'empty-anchor']
+  await page.route(/\/test-assets\/long\/OPS\/chapter_00[13]\.xhtml/, (route) => {
+    const source = route.request().url().includes('chapter_001')
+    return route.fulfill({
+      contentType: 'application/xhtml+xml',
+      body: `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Link targets</title></head><body>
+        ${
+          source
+            ? targets
+                .map(
+                  (id) =>
+                    `<p><a ${id === 'marker' ? 'role="doc-backlink"' : ''} href="chapter_003.xhtml#${id}">Go ${id}</a></p>`,
+                )
+                .join('')
+            : `
+          <p data-type="footnote" id="marker">[<a href="chapter_001.xhtml#source">15</a>] Synthetic reference.</p>
+          <p>Icon <a id="icon" href="chapter_001.xhtml"><svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><circle cx="4" cy="4" r="4"/></svg></a> in ordinary body text.</p>
+          <section id="paragraph"><h2>Target heading</h2><p>${'Target paragraph with readable synthetic content. '.repeat(8)}</p></section>
+          <figure id="picture"><img alt="Target illustration" width="180" height="130" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='130'%3E%3Crect width='180' height='130' fill='teal'/%3E%3C/svg%3E"/><figcaption>Synthetic illustration caption.</figcaption></figure>
+          <a id="empty-anchor"></a><p>Paragraph following an empty destination anchor.</p>`
+        }
+        ${'<p>Additional synthetic reading content establishes stable pagination.</p>'.repeat(45)}
+      </body></html>`,
+    })
+  })
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+  const pane = page.locator('[data-flow-reader-pane][aria-hidden="false"]')
+  const hint = pane.locator('[data-flow-link-target]')
+  const readGeometry = (id: string) =>
+    page.evaluate((id) => {
+      const tab = (window as any).reader.focusedBookTab
+      const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')!
+      const frame = [...pane.querySelectorAll('iframe')].find((frame) => frame.contentDocument?.getElementById(id))!
+      const doc = frame.contentDocument!
+      const target = doc.getElementById(id)!
+      return {
+        target: target.getBoundingClientRect().toJSON(),
+        frame: frame.getBoundingClientRect().toJSON(),
+        body: doc.body.getBoundingClientRect().toJSON(),
+        scroll: [
+          doc.documentElement.scrollWidth,
+          doc.documentElement.scrollHeight,
+          pane.scrollWidth,
+          pane.scrollHeight,
+        ],
+        location: tab.rendition.location,
+        footer: pane.querySelector('[data-flow-reader-footer]')?.textContent,
+        content: doc.body.innerHTML,
+      }
+    }, id)
+
+  for (const id of targets) {
+    await page.evaluate(async (id) => {
+      await (window as any).reader.focusedBookTab.displayBookLink(`chapter_003.xhtml#${id}`)
+    }, id)
+    await waitForStableReaderLayout(page, { header: false })
+    const baseline = await readGeometry(id)
+    await page.evaluate(async () => {
+      await (window as any).reader.focusedBookTab.displayBookLink('chapter_001.xhtml')
+    })
+    await waitForStableReaderLayout(page, { header: false })
+    await pane
+      .locator('iframe')
+      .filter({ visible: true })
+      .first()
+      .contentFrame()
+      .getByRole('link', { name: `Go ${id}`, exact: true })
+      .click()
+    await expect
+      .poll(() => page.evaluate(() => (window as any).reader.focusedBookTab.rendition.location))
+      .toEqual(baseline.location)
+    if (id === 'empty-anchor') {
+      await expect(hint).toHaveCount(0)
+      expect(await readGeometry(id)).toEqual(baseline)
+      continue
+    }
+    await expect(hint.first()).toBeVisible()
+    expect(await readGeometry(id)).toEqual(baseline)
+    const visual = await hint.first().evaluate((el) => {
+      const rect = el.getBoundingClientRect()
+      return {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        pointerEvents: getComputedStyle(el).pointerEvents,
+      }
+    })
+    expect(visual.pointerEvents).toBe('none')
+    expect(visual.left).toBeCloseTo(baseline.frame.left + baseline.target.left, 0)
+    expect(visual.top).toBeCloseTo(baseline.frame.top + baseline.target.top, 0)
+    expect(visual.width).toBeCloseTo(baseline.target.width, 0)
+    expect(visual.height).toBeCloseTo(baseline.target.height, 0)
+    await expect(hint).toHaveCount(0)
+    expect(await readGeometry(id)).toEqual(baseline)
+  }
+})
+
 test('does not scroll a horizontal note for glyph overflow inside the available height', async ({ page }) => {
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })

@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react'
@@ -16,6 +17,7 @@ import { getNoteIndex } from '../../noteIndex'
 import { reloadCurrentView } from '../../reader/reload'
 import { useDndContext } from '../base/dropZoneContext'
 
+import { createBookLinkHighlight } from './bookLinkHighlight'
 import type { ExternalLinkPreview } from './ExternalLinkPopover'
 import {
   createNotePopoverState,
@@ -78,6 +80,8 @@ interface BookPaneFrameContentOptions {
   activeFrameWindows: readonly Window[]
   closeChapterFind: () => void
   containerRef: RefObject<HTMLDivElement | null>
+  linkHighlightRef: RefObject<HTMLDivElement | null>
+  linkHighlightEnabled: boolean
   frameWindows: readonly Window[]
   rendition: unknown
   setNotePopover: Dispatch<SetStateAction<NotePopoverState | undefined>>
@@ -91,6 +95,8 @@ export function useBookPaneFrameContent({
   activeFrameWindows,
   closeChapterFind,
   containerRef,
+  linkHighlightRef,
+  linkHighlightEnabled,
   frameWindows,
   rendition,
   setNotePopover,
@@ -99,6 +105,25 @@ export function useBookPaneFrameContent({
   zenMode,
 }: BookPaneFrameContentOptions) {
   const noteRequestId = useRef(0)
+  const linkHighlight = useRef<ReturnType<typeof createBookLinkHighlight> | undefined>(undefined)
+  useLayoutEffect(() => {
+    if (!active || !linkHighlightEnabled || !containerRef.current || !linkHighlightRef.current) return
+    const controller = createBookLinkHighlight(tab, containerRef.current, linkHighlightRef.current)
+    linkHighlight.current = controller
+    return () => {
+      controller.dispose()
+      linkHighlight.current = undefined
+    }
+  }, [active, containerRef, linkHighlightEnabled, linkHighlightRef, tab])
+
+  const displayBookLink = useCallback(
+    async (target: string) => {
+      const show = linkHighlight.current?.begin()
+      await tab.displayBookLink(target)
+      show?.(target)
+    },
+    [tab],
+  )
   const [externalLink, setExternalLink] = useState<ExternalLinkPreview>()
   const closeExternalLink = useCallback(() => setExternalLink(undefined), [])
   const imagePreviewOpenKey = useRef(0)
@@ -154,6 +179,8 @@ export function useBookPaneFrameContent({
           return
         }
 
+        linkHighlight.current?.clear()
+
         if (consumeExternalLinkClick(event, anchor, setExternalLink)) {
           noteRequestId.current += 1
           setNotePopover(undefined)
@@ -166,7 +193,7 @@ export function useBookPaneFrameContent({
             event.preventDefault()
             event.stopPropagation()
             event.stopImmediatePropagation()
-            tab.displayBookLink(target).catch(console.error)
+            displayBookLink(target).catch(console.error)
           }
           noteRequestId.current += 1
           setNotePopover(undefined)
@@ -182,7 +209,7 @@ export function useBookPaneFrameContent({
             closeChapterFindEvent()
             noteRequestId.current += 1
             setNotePopover(undefined)
-            tab.displayBookLink(target).catch(console.error)
+            displayBookLink(target).catch(console.error)
           }
 
           return
@@ -197,7 +224,7 @@ export function useBookPaneFrameContent({
         const displayTarget = getBookLinkDisplayTarget(tab, anchor)
         if (isNoteBacklink(anchor) || getNoteIndex(anchor.ownerDocument).getItemForAnchor(anchor)) {
           noteRequestId.current += 1
-          if (displayTarget) tab.displayBookLink(displayTarget).catch(console.error)
+          if (displayTarget) displayBookLink(displayTarget).catch(console.error)
           return
         }
 
@@ -214,7 +241,7 @@ export function useBookPaneFrameContent({
               return
             }
             if (!note) {
-              if (displayTarget) await tab.displayBookLink(displayTarget)
+              if (displayTarget) await displayBookLink(displayTarget)
               return
             }
 
@@ -252,7 +279,7 @@ export function useBookPaneFrameContent({
     return () => {
       cleanups.forEach((cleanup) => cleanup())
     }
-  }, [active, containerRef, frameWindows, rendition, setNotePopover, tab, typography, zenMode])
+  }, [active, containerRef, displayBookLink, frameWindows, rendition, setNotePopover, tab, typography, zenMode])
 
   const handleFrameClick = useCallback(
     (event: MouseEvent) => {

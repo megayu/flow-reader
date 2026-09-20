@@ -599,6 +599,7 @@ interface BookPaneProps {
 
 const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active, tab }) {
   const ref = useRef<HTMLDivElement>(null)
+  const linkHighlightRef = useRef<HTMLDivElement>(null)
   const [notePopover, setNotePopover] = useState<NotePopoverState>()
   const typography = useTypography(tab)
   const pageAppearance = typography.pageAppearance
@@ -757,6 +758,8 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
     closeChapterFind,
     containerRef: ref,
     frameWindows,
+    linkHighlightRef,
+    linkHighlightEnabled: viewMode === 'reader',
     rendition,
     setNotePopover,
     tab,
@@ -806,7 +809,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
   }, [active, rendition])
 
   return (
-    <div className="flex h-full flex-col" data-flow-page-appearance={pageAppearance}>
+    <div className="relative flex h-full flex-col" data-flow-page-appearance={pageAppearance}>
       <ReaderImagePreview
         bookId={tab.id}
         openKey={!zenMode ? imagePreview?.key : undefined}
@@ -867,6 +870,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
         {!zenMode && active && <ReaderEdgeNavigation tab={tab} />}
       </div>
       <ReaderPaneFooter tab={tab} />
+      <div ref={linkHighlightRef} className="flow-link-target-layer" aria-hidden="true" />
     </div>
   )
 })
