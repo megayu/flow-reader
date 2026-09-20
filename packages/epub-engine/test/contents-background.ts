@@ -281,29 +281,116 @@ describe('Contents page backgrounds', function () {
     })
   })
 
-  it('preserves authored readable section background constraints', function () {
-    const { contents, doc, cleanup } = createContents('<p>Readable body</p>')
-    doc.body.style.backgroundImage = 'url("data:image/png;base64,iVBORw0KGgo=")'
-    doc.body.style.backgroundRepeat = 'no-repeat'
-    doc.body.style.backgroundPosition = 'center center'
-    doc.body.style.backgroundSize = 'cover'
-    doc.body.style.backgroundAttachment = 'fixed'
+  it('preserves authored background constraints within each readable text page', function () {
+    for (const size of ['cover', 'contain', '100% auto', '80px 60px']) {
+      const { contents, doc, cleanup } = createContents('<p>Readable body</p>')
+      doc.body.style.backgroundImage =
+        'url("data:image/png;base64,iVBORw0KGgo=")'
+      doc.body.style.backgroundRepeat = 'no-repeat'
+      doc.body.style.backgroundPosition = 'center center'
+      doc.body.style.backgroundSize = size
+      doc.body.style.backgroundAttachment = 'fixed'
+      doc.body.style.backgroundColor = 'rgba(20, 30, 40, 0.7)'
+      doc.body.style.border = '2px solid red'
+      doc.body.style.borderRadius = '12px'
+      doc.body.style.padding = '16px'
+      doc.body.style.opacity = '0.9'
+      const otherStyles = () =>
+        [...doc.body.style]
+          .filter((property) => property !== 'background-image')
+          .map((property) => [
+            property,
+            doc.body.style.getPropertyValue(property),
+          ])
+      const originalStyles = otherStyles()
+      const authoredSize = doc.body.style.backgroundSize
+      const resolvedSize = doc.defaultView!.getComputedStyle(
+        doc.body,
+      ).backgroundSize
 
+      try {
+        assert.equal(
+          contents.backgrounds.normalizePageBackgrounds(400, 600, 'ltr'),
+          true,
+        )
+        assert.equal(doc.body.style.backgroundSize, authoredSize)
+        assert.equal(doc.body.style.backgroundRepeat, 'no-repeat')
+        assert.equal(doc.body.style.backgroundPosition, 'center center')
+        assert.equal(doc.body.style.backgroundAttachment, 'fixed')
+
+        const before = doc.body
+          .firstElementChild!.getBoundingClientRect()
+          .toJSON()
+        assert.equal(
+          contents.backgrounds.fillReadablePageBackgrounds(
+            400,
+            600,
+            1200,
+            'ltr',
+          ),
+          true,
+        )
+        const host = doc.querySelector('flow-page-backgrounds')!
+        assert.deepEqual(otherStyles(), originalStyles)
+        const pages = [...host.shadowRoot!.children] as HTMLElement[]
+        assert.equal(pages.length, 3)
+        for (const [index, page] of pages.entries()) {
+          const style = doc.defaultView!.getComputedStyle(page)
+          assert.equal(style.backgroundSize, resolvedSize)
+          assert.equal(style.backgroundPosition, '50% 50%')
+          assert.equal(style.backgroundRepeat, 'no-repeat')
+          assert.equal(style.backgroundAttachment, 'scroll')
+          assert.equal(page.getBoundingClientRect().width, 400)
+          assert.equal(page.getBoundingClientRect().height, 600)
+          assert.equal(page.getBoundingClientRect().left, index * 400)
+        }
+        assert.deepEqual(
+          doc.body.firstElementChild!.getBoundingClientRect().toJSON(),
+          before,
+        )
+        contents.backgrounds.fillReadablePageBackgrounds(400, 600, 1200, 'ltr')
+        assert.strictEqual(doc.querySelector('flow-page-backgrounds'), host)
+
+        contents.backgrounds.fillReadablePageBackgrounds(400, 600, 400, 'ltr')
+        assert.isNull(doc.querySelector('flow-page-backgrounds'))
+        assert.notEqual(doc.body.style.backgroundImage, 'none')
+
+        contents.backgrounds.clearPageBackgroundNormalization()
+        assert.equal(doc.body.style.backgroundSize, authoredSize)
+        assert.equal(doc.body.style.backgroundRepeat, 'no-repeat')
+        assert.equal(doc.body.style.backgroundPosition, 'center center')
+        assert.equal(doc.body.style.backgroundAttachment, 'fixed')
+        assert.isNull(doc.querySelector('flow-page-backgrounds'))
+      } finally {
+        cleanup()
+      }
+    }
+  })
+
+  it('does not paginate local, layered, or repeating authored backgrounds', function () {
+    const { contents, doc, cleanup } = createContents(
+      '<div style="width:400px;height:600px">Readable body</div>',
+    )
+    const local = doc.body.firstElementChild as HTMLElement
+    local.style.background = 'url("local.png") no-repeat center / contain'
     try {
-      assert.equal(
-        contents.backgrounds.normalizePageBackgrounds(400, 600, 'ltr'),
-        true,
-      )
-      assert.equal(doc.body.style.backgroundSize, 'cover')
-      assert.equal(doc.body.style.backgroundRepeat, 'no-repeat')
-      assert.equal(doc.body.style.backgroundPosition, 'center center')
-      assert.equal(doc.body.style.backgroundAttachment, 'fixed')
-
-      contents.backgrounds.clearPageBackgroundNormalization()
-      assert.equal(doc.body.style.backgroundSize, 'cover')
-      assert.equal(doc.body.style.backgroundRepeat, 'no-repeat')
-      assert.equal(doc.body.style.backgroundPosition, 'center center')
-      assert.equal(doc.body.style.backgroundAttachment, 'fixed')
+      for (const image of [
+        'url("one.png"), url("two.png")',
+        'url("texture.png")',
+      ]) {
+        doc.body.style.backgroundImage = image
+        doc.body.style.backgroundRepeat = image.includes('two')
+          ? 'no-repeat'
+          : 'repeat'
+        const before = doc.body.style.cssText
+        const localBefore = local.style.cssText
+        contents.backgrounds.normalizePageBackgrounds(400, 600, 'ltr')
+        contents.backgrounds.fillReadablePageBackgrounds(400, 600, 1200, 'ltr')
+        assert.equal(doc.body.style.cssText, before)
+        assert.equal(local.style.cssText, localBefore)
+        assert.isNull(doc.querySelector('flow-page-backgrounds'))
+        contents.backgrounds.clearPageBackgroundNormalization()
+      }
     } finally {
       cleanup()
     }

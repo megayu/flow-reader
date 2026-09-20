@@ -1302,7 +1302,6 @@ class IframeView extends EventEmitter<ViewEvents> {
 
     this.contents!.on(EVENTS.CONTENTS.EXPAND, () => {
       if (this.displayed && this.iframe) {
-        this.expand()
         if (this.contents) {
           this.layout.format(
             this.contents,
@@ -1311,12 +1310,12 @@ class IframeView extends EventEmitter<ViewEvents> {
             this.settings.spreadSlot,
           )
         }
+        this.expand()
       }
     })
 
     this.contents!.on(EVENTS.CONTENTS.RESIZE, (e) => {
       if (this.displayed && this.iframe) {
-        this.expand()
         if (this.contents) {
           this.layout.format(
             this.contents,
@@ -1325,6 +1324,7 @@ class IframeView extends EventEmitter<ViewEvents> {
             this.settings.spreadSlot,
           )
         }
+        this.expand()
       }
     })
 

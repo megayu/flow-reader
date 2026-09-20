@@ -34,13 +34,25 @@ export default class PageBackgrounds {
   declare window: LegacyWindow
   declare pendingImages: Set<HTMLImageElement>
   declare _readablePageBackgrounds:
-    | { element: StyledElement; backgroundImage: string }[]
+    | {
+        element: StyledElement
+        backgroundImage: string
+        hasAuthoredConstraints: boolean
+        pageStyle: string
+      }[]
     | undefined
   declare _pageBackgroundVersion: number | undefined
   declare _pageBackgroundOverrides:
     | Map<StyledElement, Map<string, { value: string; priority: string }>>
     | undefined
   declare _backgroundImageSizes: Record<string, Size> | undefined
+  private pageBackgroundSignature?: string
+  private paintedBackground?: {
+    host: HTMLElement
+    element: StyledElement
+    image: string
+    priority: string
+  }
 
   constructor(document: Document, content: HTMLElement) {
     this.document = document
@@ -68,6 +80,7 @@ export default class PageBackgrounds {
       return false
     }
 
+    this.clearPagePaint()
     this.restorePageBackgroundOverrides()
 
     var backgrounds = this.findPageBackgrounds(width, height)
@@ -100,20 +113,48 @@ export default class PageBackgrounds {
       }
     })
 
-    var hasReadableText = this.hasReadableTextContent()
+    var hasReadableText =
+      backgrounds.length > 0 && this.hasReadableTextContent()
     if (hasReadableText) {
+      // Only the canvas background can be painted outside the body without
+      // changing the stacking of an ordinary element's color/border/content.
+      const rootStyle = this.window.getComputedStyle(this.documentElement)
+      const canvas =
+        rootStyle.backgroundImage === 'none' &&
+        (rootStyle.backgroundColor === 'transparent' ||
+          rootStyle.backgroundColor === 'rgba(0, 0, 0, 0)')
+          ? this.content
+          : this.documentElement
+      backgrounds = backgrounds.filter(
+        (background) =>
+          background.element === canvas &&
+          !!this.backgroundImageUrl(background.computed.backgroundImage) &&
+          !this.hasMultipleBackgroundImages(
+            background.computed.backgroundImage,
+          ) &&
+          background.computed.backgroundBlendMode === 'normal',
+      )
       backgrounds.forEach((background) => {
         background.hasAuthoredConstraints =
+          background.computed.backgroundRepeat === 'no-repeat' ||
           this.hasAuthoredPageBackgroundConstraints(background.element)
       })
     }
 
     this._readablePageBackgrounds = hasReadableText
       ? backgrounds
-          .filter((background) => !background.hasAuthoredConstraints)
+          .filter(
+            (background) =>
+              !background.hasAuthoredConstraints ||
+              background.computed.backgroundRepeat === 'no-repeat',
+          )
           .map((background) => ({
             element: background.element,
             backgroundImage: background.computed.backgroundImage,
+            hasAuthoredConstraints: Boolean(background.hasAuthoredConstraints),
+            pageStyle: background.hasAuthoredConstraints
+              ? this.pageStyle(background.computed)
+              : '',
           }))
       : undefined
     this._pageBackgroundVersion = (this._pageBackgroundVersion || 0) + 1
@@ -121,7 +162,7 @@ export default class PageBackgrounds {
 
     backgrounds.forEach((background) => {
       if (hasReadableText) {
-        if (!background.hasAuthoredConstraints) {
+        if (background.isRoot && !background.hasAuthoredConstraints) {
           this.fillPageBackground(background, width, height, width, direction)
         }
       } else {
@@ -135,6 +176,7 @@ export default class PageBackgrounds {
   clearPageBackgroundNormalization() {
     if (!this.document) return false
 
+    this.clearPagePaint()
     this.restorePageBackgroundOverrides()
     this._pageBackgroundVersion = (this._pageBackgroundVersion || 0) + 1
 
@@ -347,7 +389,7 @@ export default class PageBackgrounds {
     direction?: string | null,
   ) {
     if (
-      !this._readablePageBackgrounds ||
+      !this._readablePageBackgrounds?.length ||
       !isNumber(width) ||
       !isNumber(height) ||
       !isNumber(totalWidth) ||
@@ -358,7 +400,17 @@ export default class PageBackgrounds {
       return false
     }
 
+    const signature = `${width}:${height}:${totalWidth}:${direction}`
+    if (this.pageBackgroundSignature === signature) return true
+    this.clearPagePaint()
+    this.pageBackgroundSignature = signature
+    if (totalWidth > width) {
+      this.paintAuthoredPageBackgrounds(width, height, totalWidth, direction)
+    }
+
     this._readablePageBackgrounds.forEach((background) => {
+      if (background.hasAuthoredConstraints) return
+
       this.setPageBackgroundLayers(
         background.element,
         background.backgroundImage,
@@ -370,6 +422,81 @@ export default class PageBackgrounds {
     })
 
     return true
+  }
+
+  private pageStyle(computed: CSSStyleDeclaration) {
+    const style = this.document.createElement('div').style
+    for (const property of [
+      'background-image',
+      'background-size',
+      'background-position',
+      'background-repeat',
+      'background-origin',
+      'background-clip',
+    ]) {
+      style.setProperty(property, computed.getPropertyValue(property))
+    }
+    // Each physical page is the attachment viewport, including authored fixed
+    // backgrounds. The iframe itself spans all pages of the section.
+    style.backgroundAttachment = 'scroll'
+    return style.cssText
+  }
+
+  private paintAuthoredPageBackgrounds(
+    width: number,
+    height: number,
+    totalWidth: number,
+    direction?: string | null,
+  ) {
+    const background = this._readablePageBackgrounds?.find(
+      (background) => background.hasAuthoredConstraints,
+    )
+    if (!background) return
+
+    // Sibling paint boxes keep percentages/cover/contain native to each page.
+    // They are outside the body range, so pagination and CFIs do not include
+    // decoration. Shadow DOM isolates them from publisher selectors.
+    const host = this.document.createElement('flow-page-backgrounds')
+    host.setAttribute('aria-hidden', 'true')
+    host.setAttribute('inert', '')
+    host.style.cssText = `all: initial !important; position: absolute !important; top: 0 !important; ${direction === 'rtl' ? 'right' : 'left'}: 0 !important; width: ${totalWidth}px !important; height: ${height}px !important; pointer-events: none !important; z-index: -1 !important; contain: strict !important;`
+    const shadow = host.attachShadow({ mode: 'open' })
+    for (let index = 0; index < Math.ceil(totalWidth / width); index++) {
+      const page = this.document.createElement('div')
+      page.style.cssText = `all: initial; position: absolute; top: 0; ${direction === 'rtl' ? 'right' : 'left'}: ${index * width}px; width: ${width}px; height: ${height}px; ${background.pageStyle}`
+      shadow.appendChild(page)
+    }
+    const style = background.element.style
+    this.paintedBackground = {
+      host,
+      element: background.element,
+      image: style.getPropertyValue('background-image'),
+      priority: style.getPropertyPriority('background-image'),
+    }
+    // Keep html/body canvas-background propagation unchanged while hiding
+    // the original image; `none` could make body become the canvas source.
+    style.setProperty(
+      'background-image',
+      'linear-gradient(transparent, transparent)',
+      'important',
+    )
+    this.documentElement.appendChild(host)
+  }
+
+  private clearPagePaint() {
+    this.pageBackgroundSignature = undefined
+    const background = this.paintedBackground
+    if (background) {
+      background.host.remove()
+      if (background.image)
+        background.element.style.setProperty(
+          'background-image',
+          background.image,
+          background.priority,
+        )
+      else background.element.style.removeProperty('background-image')
+      this.paintedBackground = undefined
+    }
   }
 
   setPageBackgroundLayers(
