@@ -225,6 +225,71 @@ describe('Contents page backgrounds', function () {
     })
   })
 
+  it('sizes only a sole normal-flow text wrapper to its content during horizontal pagination', function () {
+    const text = 'Synthetic paragraph text for pagination. '.repeat(25)
+    const cases = [
+      { markup: `<div id="wrapper">${`<p>${text}</p>`.repeat(30)}</div>`, grows: true },
+      { markup: '<!-- ignored -->\n<div id="wrapper"><p><br></p><p>Short text.</p></div>', grows: false },
+      { markup: '<p id="wrapper">Short text.</p>', grows: false },
+      { markup: '<div id="wrapper"><p>Short text.</p></div><p>Sibling.</p>' },
+      { markup: 'Sibling text<div id="wrapper"><p>Short text.</p></div>' },
+      { markup: '<div id="wrapper"><p><img alt="Cover"></p></div>' },
+      { markup: '<div id="wrapper"><h1>Title</h1></div>' },
+      { markup: '<div id="wrapper" style="display:flex"><p>Short text.</p></div>' },
+      { markup: '<div id="wrapper" style="display:grid"><p>Short text.</p></div>' },
+      { markup: '<div id="wrapper" style="position:absolute"><p>Short text.</p></div>' },
+      { markup: '<div id="wrapper" style="overflow:auto"><p>Short text.</p></div>' },
+      { markup: '<div id="wrapper"><p>Short text.</p></div>', vertical: true },
+    ]
+
+    for (const scenario of cases) {
+      const { contents, doc, cleanup } = createContents(scenario.markup)
+      const wrapper = doc.getElementById('wrapper')!
+      const style = doc.createElement('style')
+      style.textContent = '#wrapper { height: 200%; background: rgba(255,255,255,.9); border: 1px solid red; padding: 8px; border-radius: 8px; } p { margin: 0; font: 16px/24px serif; }'
+      doc.head.appendChild(style)
+      if (scenario.vertical) doc.body.style.writingMode = 'vertical-rl'
+
+      try {
+        for (const columnWidth of [800, 360]) {
+          contents.columns(800, 400, columnWidth, 40, 'ltr')
+          const computed = doc.defaultView!.getComputedStyle(wrapper)
+          const height = Number.parseFloat(computed.height)
+          assert.equal(doc.body.style.height, '400px', 'body remains the pagination frame')
+          assert.equal(computed.backgroundColor, 'rgba(255, 255, 255, 0.9)')
+          assert.equal(computed.borderTopWidth, '1px')
+          assert.equal(computed.paddingTop, '8px')
+          assert.equal(computed.borderTopLeftRadius, '8px')
+          if (scenario.grows === true) {
+            assert.isAbove(height, 800, 'long text must extend its own background container')
+            const range = doc.createRange()
+            range.selectNodeContents(wrapper.lastElementChild!)
+            const lastLine = Array.from(range.getClientRects()).at(-1)!
+            assert.isTrue(Array.from(wrapper.getClientRects()).some(rect =>
+              rect.width > 0 && rect.height > 0 &&
+              rect.left <= lastLine.left && rect.right >= lastLine.right &&
+              rect.top <= lastLine.top && rect.bottom >= lastLine.bottom,
+            ), 'the last text line must remain inside a painted wrapper fragment')
+          } else if (scenario.grows === false) {
+            assert.isBelow(height, 400, 'short text must not retain authored blank pages')
+          } else {
+            wrapper.style.setProperty('height', '200%', 'important')
+            assert.equal(height, Number.parseFloat(doc.defaultView!.getComputedStyle(wrapper).height),
+              'excluded structures retain authored height')
+            wrapper.style.removeProperty('height')
+          }
+        }
+        contents.size(800, 400)
+        const scrollingHeight = doc.defaultView!.getComputedStyle(wrapper).height
+        wrapper.style.setProperty('height', '200%', 'important')
+        assert.equal(scrollingHeight, doc.defaultView!.getComputedStyle(wrapper).height,
+          'scrolling must restore the authored height')
+      } finally {
+        cleanup()
+      }
+    }
+  })
+
   it('ignores comments and non-content text when detecting readable text', function () {
     const { contents, cleanup } = createContents(
       '<!-- comment --><script>var ignored = true</script><style>body { color: red }</style>',

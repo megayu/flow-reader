@@ -1272,6 +1272,52 @@ class Contents extends EventEmitter<ContentsEvents> {
     this._orthogonalBlockLayoutSignature = layoutSignature
   }
 
+  private textWrapperHeightRule(writingMode: string) {
+    if (writingMode !== 'horizontal-tb' || this.content !== this.document.body)
+      return ''
+
+    const wrapper = this.content.firstElementChild
+    if (
+      !wrapper ||
+      wrapper.nextElementSibling ||
+      !wrapper.matches('div, section, main, article, p')
+    )
+      return ''
+    for (const node of this.content.childNodes) {
+      if (node.nodeType === 3 && /\S/.test(node.textContent || '')) return ''
+    }
+
+    const style = this.window.getComputedStyle(wrapper)
+    if (
+      style.display !== 'block' ||
+      !['static', 'relative'].includes(style.position) ||
+      style.cssFloat !== 'none' ||
+      style.overflowY !== 'visible' ||
+      style.visibility !== 'visible' ||
+      style.writingMode !== 'horizontal-tb'
+    )
+      return ''
+
+    // Stop at the first text-bearing direct paragraph; skip empty spacer paragraphs.
+    let hasText = false
+    const nodes = wrapper.matches('p') ? [wrapper] : wrapper.childNodes
+    for (const node of nodes) {
+      if (
+        (node.nodeType === 3 ||
+          (node.nodeType === ELEMENT_NODE && (node as Element).localName === 'p')) &&
+        /\S/.test(node.textContent || '')
+      ) {
+        hasText = true
+        break
+      }
+    }
+    if (!hasText) return ''
+
+    // Body remains the fixed-height pagination frame. Only its text wrapper
+    // follows natural content height; min/max-height and descendants stay authored.
+    return 'body > :only-child { height: auto !important; }'
+  }
+
   /**
    * Apply columns to the contents for pagination
    * @param {number} width
@@ -1299,7 +1345,7 @@ class Contents extends EventEmitter<ContentsEvents> {
 
     this.layoutStyle('paginated')
     this.addStylesheetCss(
-      ':root { margin: 0 !important; }',
+      ':root { margin: 0 !important; }' + this.textWrapperHeightRule(writingMode),
       PAGINATED_ROOT_STYLE,
     )
     this.constrainOrthogonalBlocks(writingMode, Math.max(height - 20, 1))
@@ -1469,6 +1515,8 @@ class Contents extends EventEmitter<ContentsEvents> {
     // }
 
     this.layoutStyle('paginated')
+
+    this.addStylesheetCss(' ', PAGINATED_ROOT_STYLE)
 
     // scale needs width and height to be set
     this.setWidth(viewportWidth)
