@@ -19,7 +19,7 @@ const {
   noteContentAttribute,
   noteTextAttribute,
 } = bodyTextModule as Record<string, any>
-const { findReciprocalNoteItem, getNoteIndex } = noteIndexModule as Record<string, any>
+const { findNoteItem: findReciprocalNoteItem, getNoteIndex } = noteIndexModule as Record<string, any>
 const { createBodyTextTypographyCss } = stylesModule as Record<string, any>
 
 class FakeTextNode {
@@ -935,6 +935,33 @@ function testReciprocalLinkContentMayLiveInsideBacklinkAnchor() {
   assert.strictEqual(index.getHideTargets().includes(noteItem), true)
 }
 
+function testDataTypeExplicitlyClassifiesNoteLinks() {
+  const body = new FakeElement('body')
+  const xref = anchor('#linked-section', 'Chapter 4', { 'data-type': 'xref', id: 'xref-source' })
+  const linkedSection = new FakeElement('p', { attributes: { id: 'linked-section' } }).append(
+    anchor('#xref-source', 'Back'),
+    'Ordinary cross-reference target.',
+  )
+  const ordinaryRef = anchor('#ordinary-section', 'Section', { 'data-type': 'xref' })
+  const ordinarySection = new FakeElement('p', { attributes: { id: 'ordinary-section' } }).append('Ordinary text.')
+  const explicitFootnoteRef = anchor('#authored-note', 'Note', { 'data-type': 'footnote' })
+  const authoredNote = new FakeElement('p', { attributes: { id: 'authored-note' } }).append('Authored note content.')
+  body.append(
+    new FakeElement('p').append(xref, explicitFootnoteRef, ordinaryRef),
+    linkedSection,
+    authoredNote,
+    ordinarySection,
+  )
+  const contents = createContents(body)
+
+  assert.strictEqual(findReciprocalNoteItem(xref, linkedSection), linkedSection)
+  assert.strictEqual(findReciprocalNoteItem(ordinaryRef, ordinarySection), undefined)
+  assert.strictEqual(findReciprocalNoteItem(explicitFootnoteRef, authoredNote), authoredNote)
+  assert.strictEqual(getNoteIndex(contents.document).getHideTargets().includes(linkedSection), true)
+  assert.strictEqual(getNoteIndex(contents.document).getHideTargets().includes(ordinarySection), false)
+  assert.strictEqual(getNoteIndex(contents.document).getHideTargets().includes(authoredNote), true)
+}
+
 for (const run of [
   testBodyParagraphOwnsReadableInlineTypography,
   testInlineWrappedParagraphsFollowReaderFont,
@@ -955,6 +982,7 @@ for (const run of [
   testNoteIndexMapsBacklinksOnlyInsideRecognizedNoteItems,
   testReciprocalLinksDoNotDependOnNoteMarkerText,
   testReciprocalLinkContentMayLiveInsideBacklinkAnchor,
+  testDataTypeExplicitlyClassifiesNoteLinks,
 ]) {
   test(run.name, run)
 }

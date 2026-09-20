@@ -1,4 +1,10 @@
-import { safeDecodeHref } from './noteLinks'
+import { resolveLinkedHrefPath, safeDecodeHref, sameHref } from './noteLinks'
+import {
+  hasDeclaredNoteSemantics,
+  hasNoteCollectionSemantics,
+  hasNoteContainerSemantics,
+  isExplicitNoteLink,
+} from './noteSemantics'
 
 export interface NoteIndex {
   getHideTargets(): HTMLElement[]
@@ -20,20 +26,24 @@ export function getNoteIndex(document: Document) {
   return index
 }
 
-export function findReciprocalNoteItem(anchor: HTMLAnchorElement, target: HTMLElement) {
-  return getNoteIndex(target.ownerDocument).getItemForTarget(target) ?? findNoteItemForTarget(anchor, target)
+export function findNoteItem(anchor: HTMLAnchorElement, target: HTMLElement) {
+  return getNoteIndex(target.ownerDocument).getItemForTarget(target) ?? classifyLinkedNoteItem(anchor, target)
 }
 
 function createNoteIndex(document: Document): NoteIndex {
   const { items, itemsByTarget } = collectLinkedNoteItems(document)
+  const semanticRoots = Array.from(
+    document.querySelectorAll<HTMLElement>('[data-type], [role], [epub\\:type], [type]'),
+  ).filter(hasDeclaredNoteSemantics)
   const itemSet = new Set(items)
-  const hideTargets = collectNoteHideTargets(items, itemSet)
+  const hideTargets = outermostElements([...semanticRoots, ...collectNoteHideTargets(items, itemSet)])
+  const textTargets = uniqueElements([...items, ...semanticRoots])
 
   return {
     getHideTargets: () => hideTargets,
     getItemForAnchor: (anchor) => findAncestorInSet(anchor, itemSet),
     getItemForTarget: (target) => itemsByTarget.get(target),
-    getTextTargets: () => items,
+    getTextTargets: () => textTargets,
   }
 }
 
@@ -46,9 +56,12 @@ function collectLinkedNoteItems(document: Document) {
     if (!isUsableHashLink(anchor)) return
 
     const target = getLinkedHashTarget(anchor, getTarget)
-    if (!target || !isHashTargetAfterSource(anchor, target)) return
+    if (!target) return
+    // Known limitation: preceding class-only notes are excluded from hiding,
+    // although popup resolution can still recognize their container semantics.
+    if (!isExplicitNoteLink(anchor) && !isHashTargetAfterSource(anchor, target)) return
 
-    const item = findNoteItemForTarget(anchor, target, getTarget)
+    const item = classifyLinkedNoteItem(anchor, target, getTarget)
     if (item) {
       items.push(item)
       itemsByTarget.set(target, item)
@@ -65,8 +78,11 @@ function isUsableHashLink(anchor: HTMLAnchorElement) {
 }
 
 function getLinkedHashTarget(anchor: HTMLAnchorElement, getTarget: NoteTargetLookup) {
-  const [, hash = ''] = anchor.getAttribute('href')?.split('#') ?? []
+  const [path = '', hash = ''] = anchor.getAttribute('href')?.split('#') ?? []
   if (!hash) return
+
+  const canonical = anchor.ownerDocument.querySelector?.('link[rel="canonical"]')?.getAttribute('href')
+  if (path && canonical && !sameHref(resolveLinkedHrefPath(canonical, path), canonical)) return
 
   return getTarget(anchor.ownerDocument, safeDecodeHref(hash))
 }
@@ -80,16 +96,19 @@ function isHashTargetAfterSource(source: HTMLAnchorElement, target: HTMLElement)
   return !!(position & 4)
 }
 
-function findNoteItemForTarget(
+function classifyLinkedNoteItem(
   anchor: HTMLAnchorElement,
   target: HTMLElement,
   getTarget: NoteTargetLookup = getElementByIdOrName,
 ) {
-  return (
-    findEmptyTargetNoteItem(anchor, target, getTarget) ??
-    findBacklinkedTargetNoteItem(anchor, target, getTarget) ??
-    findSemanticLinkedNoteItem(anchor, target)
-  )
+  const semanticItem = findSemanticNoteItem(target)
+  if (semanticItem) return semanticItem
+
+  if (isExplicitNoteLink(anchor)) return findExplicitNoteItem(target)
+
+  if (anchor.ownerDocument === target.ownerDocument && !isHashTargetAfterSource(anchor, target)) return
+
+  return findEmptyTargetNoteItem(anchor, target, getTarget) ?? findBacklinkedTargetNoteItem(anchor, target, getTarget)
 }
 
 function findBacklinkedTargetNoteItem(anchor: HTMLAnchorElement, target: HTMLElement, getTarget: NoteTargetLookup) {
@@ -114,7 +133,7 @@ function getBacklinkedTargetNoteItemCandidates(target: HTMLElement) {
   while (cur && cur !== cur.ownerDocument.body) {
     if (
       isPotentialNoteContentElement(cur) &&
-      (cur === target || isTargetAtStartOfCandidate(cur, target) || isSemanticNoteTarget(cur))
+      (cur === target || isTargetAtStartOfCandidate(cur, target) || hasNoteContainerSemantics(cur))
     ) {
       if (isTagName(cur, 'DT') && cur.parentElement && isTagName(cur.parentElement, 'DL')) {
         candidates.push(cur.parentElement)
@@ -173,14 +192,31 @@ function getEmptyTargetNoteItemCandidates(target: HTMLElement) {
   return uniqueElements(candidates)
 }
 
-function findSemanticLinkedNoteItem(anchor: HTMLAnchorElement, target: HTMLElement) {
-  if (!isSemanticNoteSourceAnchor(anchor)) return
-
+function findSemanticNoteItem(target: HTMLElement) {
+  let item: HTMLElement | undefined
+  let listItem: HTMLElement | undefined
   let cur: HTMLElement | null = target
+
+  // Body-level note collections can be hidden, but are not resolved into popup items.
   while (cur && cur !== cur.ownerDocument.body) {
-    if (isSemanticNoteTarget(cur) && hasUsefulNoteContent(cur)) return cur
+    if (!item && isPotentialNoteContentElement(cur)) item = cur
+    if (!listItem && isTagName(cur, 'LI', 'DD')) listItem = cur
+    if (hasNoteContainerSemantics(cur)) {
+      return listItem ?? (hasNoteCollectionSemantics(cur) ? (item ?? cur) : cur)
+    }
     cur = cur.parentElement
   }
+}
+
+function findExplicitNoteItem(target: HTMLElement) {
+  let cur: HTMLElement | null = target
+
+  while (cur && cur !== cur.ownerDocument.body) {
+    if (isPotentialNoteContentElement(cur)) return cur
+    cur = cur.parentElement
+  }
+
+  return target
 }
 
 function collectNoteHideTargets(items: HTMLElement[], itemSet: Set<HTMLElement>) {
@@ -190,6 +226,15 @@ function collectNoteHideTargets(items: HTMLElement[], itemSet: Set<HTMLElement>)
 }
 
 function findNoteHideTarget(item: HTMLElement, itemSet: Set<HTMLElement>, containers: WeakMap<HTMLElement, boolean>) {
+  let semanticRoot: HTMLElement | undefined
+  for (
+    let ancestor = item.parentElement;
+    ancestor && ancestor !== item.ownerDocument.body;
+    ancestor = ancestor.parentElement
+  ) {
+    if (hasNoteContainerSemantics(ancestor)) semanticRoot = ancestor
+  }
+  if (semanticRoot) return semanticRoot
   let current = item
 
   while (current.parentElement && current.parentElement !== current.ownerDocument.body) {
@@ -276,10 +321,6 @@ function hasTextOutsideElement(root: HTMLElement, excluded: HTMLElement) {
   }
 
   return false
-}
-
-function hasUsefulNoteContent(candidate: HTMLElement) {
-  return !!candidate.textContent?.trim() || !!candidate.querySelector('img, svg, math')
 }
 
 function isTargetAtStartOfCandidate(candidate: HTMLElement, target: HTMLElement) {
@@ -372,39 +413,6 @@ function isPotentialBodyTextElement(el: HTMLElement) {
   return isTagName(el, 'BLOCKQUOTE', 'DD', 'DIV', 'LI', 'OL', 'P', 'SECTION', 'TABLE', 'UL')
 }
 
-function isSemanticNoteSourceAnchor(anchor: HTMLAnchorElement) {
-  return (
-    hasKeywordToken(anchor.className, 'footnote', 'endnote', 'noteref') ||
-    hasKeywordToken(anchor.getAttribute('role'), 'doc-noteref', 'noteref', 'footnote', 'endnote', 'note') ||
-    hasKeywordToken(
-      anchor.getAttribute('epub:type') ?? anchor.getAttribute('type'),
-      'noteref',
-      'footnote',
-      'endnote',
-      'note',
-    )
-  )
-}
-
-function isSemanticNoteTarget(el: HTMLElement) {
-  if (hasKeywordToken(el.className, 'footnote', 'endnote')) {
-    return true
-  }
-
-  if (hasKeywordToken(el.getAttribute('role'), 'doc-footnote', 'doc-endnote', 'doc-note', 'note')) {
-    return true
-  }
-
-  if (
-    hasKeywordToken(el.getAttribute('epub:type') ?? el.getAttribute('type'), 'footnote', 'endnote', 'rearnote', 'note')
-  ) {
-    return true
-  }
-
-  const parent = el.parentElement
-  return !!parent && hasKeywordToken(parent.className, 'footnote', 'endnote')
-}
-
 function findNearbyEmptyPositionTarget(anchor: HTMLAnchorElement) {
   let cur: HTMLElement | null = anchor
 
@@ -423,23 +431,6 @@ function isEmptyPositionTarget(el: HTMLElement) {
   return isTagName(el, 'A', 'SPAN') && !!(el.id || el.getAttribute('name')) && !el.textContent?.trim()
 }
 
-function hasKeywordToken(value: string | null | undefined, ...keywords: string[]) {
-  if (!value) return false
-
-  return value
-    .toLowerCase()
-    .split(/\s+/)
-    .some((token) =>
-      keywords.some(
-        (keyword) =>
-          token === keyword ||
-          token.startsWith(`${keyword}-`) ||
-          token.endsWith(`-${keyword}`) ||
-          token.includes(`-${keyword}-`),
-      ),
-    )
-}
-
 function findAncestorInSet<T extends HTMLElement>(element: HTMLElement, set: Set<T>) {
   let cur: HTMLElement | null = element
 
@@ -451,6 +442,20 @@ function findAncestorInSet<T extends HTMLElement>(element: HTMLElement, set: Set
 
 function uniqueElements<T extends HTMLElement>(elements: T[]) {
   return [...new Set(elements)]
+}
+
+function outermostElements(elements: HTMLElement[]) {
+  const roots = new Set(elements)
+  const covered = new WeakMap<HTMLElement, boolean>()
+  const hasAncestor = (element: HTMLElement): boolean => {
+    const cached = covered.get(element)
+    if (cached !== undefined) return cached
+    const parent = element.parentElement
+    const result = !!parent && (roots.has(parent) || hasAncestor(parent))
+    covered.set(element, result)
+    return result
+  }
+  return [...roots].filter((element) => !hasAncestor(element))
 }
 
 function isElementNode(node: ChildNode | undefined) {

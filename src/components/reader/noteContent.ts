@@ -2,9 +2,9 @@ import { Contents } from '@flow/epub-engine'
 
 import { applyNoteTypographyMarkers, getOriginalBodyTypography } from '../../bodyText'
 import type { BookTab, ISection } from '../../models/reader'
-import { findReciprocalNoteItem, getElementByIdOrName } from '../../noteIndex'
+import { findNoteItem, getElementByIdOrName } from '../../noteIndex'
 import { findSectionByLinkedHref, resolveLinkedHrefPath, safeDecodeHref, sameHref } from '../../noteLinks'
-import { isNoteMarkerText } from '../../noteSemantics'
+import { hasNoteContainerSemantics, hasToken, isNoteMarkerText } from '../../noteSemantics'
 import type { TypographyConfiguration } from '../../state'
 import { createBodyTextTypographyCss } from '../../styles'
 
@@ -190,7 +190,7 @@ export async function getLinkedNote(
     return
   }
 
-  const noteItem = findReciprocalNoteItem(anchor, target.element)
+  const noteItem = findNoteItem(anchor, target.element)
   if (!noteItem) {
     target.cleanup?.()
     return
@@ -329,11 +329,9 @@ async function renderLinkedSectionElement(
     tab.rendition?.themes.inject(contents)
     tab.rendition?.themes.applyOverrides(contents)
     const baseline = getOriginalBodyTypography(anchor.ownerDocument)
-    const noteItem = findReciprocalNoteItem(anchor, target)
+    const noteItem = findNoteItem(anchor, target)
     if (baseline && noteItem && typography) {
-      applyNoteTypographyMarkers(contents, baseline.fontFamily, baseline.fontSize, baseline.fontWeight, [
-        findRegularNoteElement(noteItem),
-      ])
+      applyNoteTypographyMarkers(contents, baseline.fontFamily, baseline.fontSize, baseline.fontWeight, [noteItem])
       const { fontFamily, fontSize, fontWeight, secondaryFontFamily } = typography
       contents.addStylesheetCss(
         createBodyTextTypographyCss(doc, { fontFamily, fontSize, fontWeight }, secondaryFontFamily),
@@ -393,7 +391,7 @@ export function isNoteBacklink(anchor: HTMLAnchorElement) {
 
   let current = anchor.parentElement
   while (current && current !== current.ownerDocument.body) {
-    if (hasStandardNoteSemantics(current)) return true
+    if (hasNoteContainerSemantics(current)) return true
     current = current.parentElement
   }
 
@@ -442,40 +440,7 @@ function findNoteElement(el: HTMLElement, anchor: HTMLAnchorElement) {
   const segmentedNote = createSegmentedNoteElement(el, anchor)
   if (segmentedNote) return segmentedNote
 
-  const regularNote = findRegularNoteElement(el)
-  if (hasUsefulNoteElementContent(regularNote)) return regularNote
-
-  return regularNote ?? el
-}
-
-function findRegularNoteElement(el: HTMLElement) {
-  if (isTagName(el, 'LI', 'DD', 'DT')) return el
-
-  let cur: HTMLElement | null = el
-  let fallback: HTMLElement | undefined
-
-  while (cur && cur !== cur.ownerDocument.body) {
-    if (isNoteContainer(cur)) {
-      return cur
-    }
-
-    if (!fallback && isTagName(cur, 'P', 'LI', 'BLOCKQUOTE', 'DIV', 'TABLE')) {
-      fallback = cur
-    }
-
-    cur = cur.parentElement
-  }
-
-  return fallback ?? el
-}
-
-function hasUsefulNoteElementContent(el: HTMLElement | undefined) {
-  if (!el || isEmptyPositionTarget(el)) return false
-
-  const text = el.textContent?.trim() ?? ''
-  if (text && !isNoteMarkerText(text)) return true
-
-  return !!el.querySelector('img, svg, math')
+  return el
 }
 
 function isEmptyPositionTarget(el: HTMLElement) {
@@ -563,7 +528,7 @@ function findNoteContainer(el: HTMLElement) {
 function isNoteContainer(el: HTMLElement) {
   if (isInlineNoteMarker(el)) return false
 
-  return isTagName(el, 'ASIDE') || hasStandardNoteSemantics(el)
+  return isTagName(el, 'ASIDE') || hasNoteContainerSemantics(el)
 }
 
 function isInlineNoteMarker(el: HTMLElement) {
@@ -573,22 +538,6 @@ function isInlineNoteMarker(el: HTMLElement) {
 function isTagName(el: Element, ...names: string[]) {
   const tagName = el.tagName.toUpperCase()
   return names.some((name) => tagName === name)
-}
-
-function hasStandardNoteSemantics(el: HTMLElement) {
-  const role = el.getAttribute('role')
-  if (hasToken(role, 'doc-footnote', 'doc-endnote', 'doc-note', 'note')) {
-    return true
-  }
-
-  return hasToken(el.getAttribute('epub:type') ?? el.getAttribute('type'), 'footnote', 'endnote', 'rearnote', 'note')
-}
-
-function hasToken(value: string | null | undefined, ...tokens: string[]) {
-  if (!value) return false
-
-  const normalized = value.toLowerCase().split(/\s+/)
-  return tokens.some((token) => normalized.includes(token))
 }
 
 function cloneNoteElement(el: HTMLElement, writingMode?: string) {

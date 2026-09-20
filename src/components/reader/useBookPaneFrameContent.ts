@@ -14,6 +14,7 @@ import { isSupportedExternalUrl, openSupportedExternalUrl } from '../../external
 import { installReloadShortcut } from '../../keyboard'
 import type { BookTab } from '../../models/reader'
 import { getNoteIndex } from '../../noteIndex'
+import { isExplicitNoteLink } from '../../noteSemantics'
 import { reloadCurrentView } from '../../reader/reload'
 import { useDndContext } from '../base/dropZoneContext'
 
@@ -222,7 +223,10 @@ export function useBookPaneFrameContent({
         setNotePopover(undefined)
 
         const displayTarget = getBookLinkDisplayTarget(tab, anchor)
-        if (isNoteBacklink(anchor) || getNoteIndex(anchor.ownerDocument).getItemForAnchor(anchor)) {
+        if (
+          !isExplicitNoteLink(anchor) &&
+          (isNoteBacklink(anchor) || getNoteIndex(anchor.ownerDocument).getItemForAnchor(anchor))
+        ) {
           noteRequestId.current += 1
           if (displayTarget) displayBookLink(displayTarget).catch(console.error)
           return

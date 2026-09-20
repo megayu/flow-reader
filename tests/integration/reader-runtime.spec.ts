@@ -3696,6 +3696,63 @@ test('previews external reader links and dismisses across documents', async ({ p
   )
 })
 
+test('long-book note popovers keep item boundaries and hide complete local and remote notes', async ({ page }) => {
+  await page.route(/\/test-assets\/long\/OPS\/chapter_00[13]\.xhtml/, (route) => {
+    const source = route.request().url().includes('chapter_001')
+    const local = `<div data-type="footnotes" id="collection"><h5>Collection heading</h5><div><h6>Group heading</h6>
+      <p id="local-note">Only the selected note.</p><p id="sibling-note">Unselected sibling.</p>
+      <div data-type="footnote" id="multi-note"><p>First note paragraph.</p><p>Second note paragraph.</p></div>
+      </div></div>`
+    const remote = `<aside role="doc-footnote"><h5>Remote notes</h5><ol>
+      <li><p id="remote-note">Selected remote note.</p><p>Remote continuation.</p></li>
+      <li>Unselected sibling.</li></ol></aside>`
+    return route.fulfill({
+      contentType: 'application/xhtml+xml',
+      body: `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Notes</title></head><body>
+        ${source ? local : remote}
+        <p>Ordinary reading text stays visible.</p>
+        ${
+          source
+            ? `<p><a data-type="noteref" href="#local-note" id="local-ref">Local</a>
+          <a href="#multi-note" id="multi-ref">Multiple paragraphs</a>
+          <a data-type="xref" href="chapter_003.xhtml#remote-note" id="remote-ref">Remote</a>
+          <a data-type="xref" href="chapter_003.xhtml#ordinary" id="ordinary-ref">Section</a></p>`
+            : '<p id="ordinary">Ordinary target remains visible.</p>'
+        }
+        ${'<p>Ordinary reading text establishes the chapter layout and remains available.</p>'.repeat(12)}
+      </body></html>`,
+    })
+  })
+  await page.getByRole('button', { name: msg('settings.title') }).click()
+  const settings = page.getByRole('dialog', { name: msg('settings.title') })
+  await settings.getByRole('button', { name: msg('settings.tabs.reading'), exact: true }).click()
+  await settings.locator('#settings-hide-endnotes').click()
+  await page.keyboard.press('Escape')
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+  const frame = () =>
+    page.locator('[data-flow-reader-pane][aria-hidden="false"] iframe').filter({ visible: true }).first().contentFrame()
+  await expect(frame().locator('#collection')).toBeHidden()
+  for (const [id, content] of [
+    ['local-ref', 'Only the selected note.'],
+    ['multi-ref', 'Second note paragraph.'],
+    ['remote-ref', 'Remote continuation.'],
+  ]) {
+    await frame().locator(`#${id}`).click()
+    const popup = page.locator('.flow-note-popover')
+    await expect(popup).toBeVisible()
+    await expect(popup).toContainText(content!)
+    await expect(popup).not.toContainText('Unselected sibling.')
+    await expect(popup).not.toContainText('Collection heading')
+    await page.keyboard.press('Escape')
+  }
+  await frame().locator('#ordinary-ref').click()
+  await waitForStableReaderLayout(page, { header: false })
+  await expect(page.locator('.flow-note-popover')).toHaveCount(0)
+  await expect(frame().locator('#ordinary')).toBeVisible()
+  await expect(frame().locator('#remote-note')).toBeHidden()
+})
+
 test('long-book note previews preserve structure and use the referring chapter typography', async ({ page }) => {
   const note = (id: string, backlink: string) => `<aside role="doc-footnote"><ol>
     <li id="${id}"><a href="${backlink}"><p style="font:300 14px serif;line-height:1.8;color:rgb(150,30,50);margin:12px 0">Note text
