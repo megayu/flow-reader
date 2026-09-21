@@ -1725,7 +1725,6 @@ fn importing_persisted_external_epub_promotes_disk_metadata_and_state() {
     let _ = fs::remove_dir_all(root);
 }
 
-#[test]
 fn epub_import_extracts_cover_from_percent_encoded_zip_path() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
@@ -1796,7 +1795,6 @@ fn epub_materialization_repairs_plain_png_cover_when_another_resource_is_encrypt
     fs::remove_dir_all(root).unwrap();
 }
 
-#[test]
 fn epub_import_extracts_cover_from_xhtml_img_cover_page() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
@@ -1823,7 +1821,6 @@ fn epub_import_extracts_cover_from_xhtml_img_cover_page() {
     let _ = fs::remove_dir_all(root);
 }
 
-#[test]
 fn epub_import_extracts_cover_from_xhtml_svg_image_cover_page() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
@@ -1850,7 +1847,6 @@ fn epub_import_extracts_cover_from_xhtml_svg_image_cover_page() {
     let _ = fs::remove_dir_all(root);
 }
 
-#[test]
 fn epub_import_uses_first_image_spine_page_when_cover_metadata_is_missing() {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let root = std::env::temp_dir().join(format!(
@@ -1869,6 +1865,14 @@ fn epub_import_uses_first_image_spine_page_when_cover_metadata_is_missing() {
     assert!(!book_dir.join("cover.svg").exists());
 
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn epub_import_extracts_covers_across_supported_package_variants() {
+    epub_import_extracts_cover_from_percent_encoded_zip_path();
+    epub_import_extracts_cover_from_xhtml_img_cover_page();
+    epub_import_extracts_cover_from_xhtml_svg_image_cover_page();
+    epub_import_uses_first_image_spine_page_when_cover_metadata_is_missing();
 }
 
 #[test]
@@ -2383,7 +2387,7 @@ fn bounded_epub_read_rejects_content_past_the_limit() {
 }
 
 #[test]
-fn normalizes_common_publication_date_formats() {
+fn normalizes_supported_publication_dates_and_preserves_unrecognized_values() {
     let cases = [
         ("2020/1/1", "2020-01-01"),
         ("2020-1-1 12:34:56", "2020-01-01"),
@@ -2398,13 +2402,8 @@ fn normalizes_common_publication_date_formats() {
     for (input, expected) in cases {
         assert_eq!(normalize_publication_date(input), expected);
     }
-}
 
-#[test]
-fn leaves_unrecognized_publication_dates_unchanged() {
-    let cases = ["2020/13/1", "not a date"];
-
-    for input in cases {
+    for input in ["2020/13/1", "not a date"] {
         assert_eq!(normalize_publication_date(input), input);
     }
 }

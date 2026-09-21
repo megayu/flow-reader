@@ -5,93 +5,61 @@ import Url from '../src/utils/url'
 
 describe('Path and URL utilities', function () {
   describe('Url', function () {
-    it('Url()', function () {
-      var url = new Url('http://example.com/fred/chasen/derf.html')
+    it('parses supported URL forms', function () {
+      const cases = [
+        [
+          'http://example.com/fred/chasen/derf.html',
+          'http://example.com',
+          'http:',
+          '/fred/chasen/',
+          'html',
+          'derf.html',
+        ],
+        [
+          'file:///library/sample/OPS/Text/chapter.xhtml',
+          'file://',
+          'file:',
+          '/library/sample/OPS/Text/',
+          'xhtml',
+          'chapter.xhtml',
+        ],
+      ] as const
 
-      assert.equal(url.href, 'http://example.com/fred/chasen/derf.html')
-      assert.equal(url.directory, '/fred/chasen/')
-      assert.equal(url.extension, 'html')
-      assert.equal(url.filename, 'derf.html')
-      assert.equal(url.origin, 'http://example.com')
-      assert.equal(url.protocol, 'http:')
-      assert.equal(url.search, '')
+      for (const [input, origin, protocol, directory, extension, filename] of cases) {
+        const url = new Url(input)
+        assert.equal(url.href, input)
+        assert.equal(url.origin, origin)
+        assert.equal(url.protocol, protocol)
+        assert.equal(url.directory, directory)
+        assert.equal(url.extension, extension)
+        assert.equal(url.filename, filename)
+        assert.equal(url.search, '')
+      }
     })
 
     describe('#resolve()', function () {
-      it('should join subfolders', function () {
-        var a = 'http://example.com/fred/chasen/'
-        var b = 'ops/derf.html'
+      it('resolves supported URL forms', function () {
+        const cases = [
+          ['http://example.com/fred/chasen/', 'ops/derf.html', 'http://example.com/fred/chasen/ops/derf.html'],
+          ['http://example.com/fred/chasen/index.html', '../derf.html', 'http://example.com/fred/derf.html'],
+          ['http://example.com/fred/chasen/index.html', '/derf.html', 'http://example.com/derf.html'],
+          ['http://example.com/fred/chasen/index.html?debug=true', '/derf.html', 'http://example.com/derf.html'],
+          ['file:///books/sample/OPS/Text/', '../Images/cover.jpg', 'file:///books/sample/OPS/Images/cover.jpg'],
+          [
+            'asset://localhost/%2Fbooks%2Fsample.epub%2FOPS%2FText%2Fchapter.xhtml',
+            '../Images/cover.jpg',
+            'asset://localhost/%2Fbooks%2Fsample.epub%2FOPS%2FImages%2Fcover.jpg',
+          ],
+          [
+            'http://asset.localhost/C%3A%5Cbooks%5Csample.epub%5COPS%5CText%5Cchapter.xhtml',
+            '../Images/cover.jpg',
+            'http://asset.localhost/C%3A%2Fbooks%2Fsample.epub%2FOPS%2FImages%2Fcover.jpg',
+          ],
+        ] as const
 
-        var resolved = new Url(a).resolve(b)
-        assert.equal(resolved, 'http://example.com/fred/chasen/ops/derf.html')
-      })
-
-      it('should resolve up a level', function () {
-        var a = 'http://example.com/fred/chasen/index.html'
-        var b = '../derf.html'
-
-        var resolved = new Url(a).resolve(b)
-        assert.equal(resolved, 'http://example.com/fred/derf.html')
-      })
-
-      it('should resolve absolute', function () {
-        var a = 'http://example.com/fred/chasen/index.html'
-        var b = '/derf.html'
-
-        var resolved = new Url(a).resolve(b)
-        assert.equal(resolved, 'http://example.com/derf.html')
-      })
-
-      it('should resolve with search strings', function () {
-        var a = 'http://example.com/fred/chasen/index.html?debug=true'
-        var b = '/derf.html'
-
-        var resolved = new Url(a).resolve(b)
-        assert.equal(resolved, 'http://example.com/derf.html')
-      })
-
-      it('should handle file urls', function () {
-        var url = new Url('file:///library/sample/OPS/Text/chapter.xhtml')
-
-        assert.equal(url.href, 'file:///library/sample/OPS/Text/chapter.xhtml')
-        assert.equal(url.directory, '/library/sample/OPS/Text/')
-        assert.equal(url.extension, 'xhtml')
-        assert.equal(url.filename, 'chapter.xhtml')
-        assert.equal(url.origin, 'file://')
-        assert.equal(url.protocol, 'file:')
-        assert.equal(url.search, '')
-      })
-
-      it('should resolve with file urls', function () {
-        var a = 'file:///books/sample/OPS/Text/'
-        var b = '../Images/cover.jpg'
-
-        var resolved = new Url(a).resolve(b)
-        assert.equal(resolved, 'file:///books/sample/OPS/Images/cover.jpg')
-      })
-
-      it('resolves encoded resources from the cross-platform Tauri asset protocol', function () {
-        const chapter = new Url(
-          'asset://localhost/%2Fbooks%2Fsample.epub%2FOPS%2FText%2Fchapter.xhtml',
-        )
-
-        assert.equal(chapter.directory, '/books/sample.epub/OPS/Text/')
-        assert.equal(
-          chapter.resolve('../Images/cover.jpg'),
-          'asset://localhost/%2Fbooks%2Fsample.epub%2FOPS%2FImages%2Fcover.jpg',
-        )
-      })
-
-      it('resolves encoded Windows resources from the Tauri HTTP asset host', function () {
-        const chapter = new Url(
-          'http://asset.localhost/C%3A%5Cbooks%5Csample.epub%5COPS%5CText%5Cchapter.xhtml',
-        )
-
-        assert.equal(chapter.directory, '/C:/books/sample.epub/OPS/Text/')
-        assert.equal(
-          chapter.resolve('../Images/cover.jpg'),
-          'http://asset.localhost/C%3A%2Fbooks%2Fsample.epub%2FOPS%2FImages%2Fcover.jpg',
-        )
+        for (const [base, target, expected] of cases) {
+          assert.equal(new Url(base).resolve(target), expected)
+        }
       })
     })
   })
@@ -115,41 +83,31 @@ describe('Path and URL utilities', function () {
       assert.equal(path.filename, 'derf.html')
     })
 
-    it('ignores query strings and hashes when parsing file type', function () {
-      var path = new Path('fred/chasen/derf.xhtml?flowContentVersion=1#page')
+    it('ignores query strings and hashes when parsing file types', function () {
+      const cases = [
+        ['fred/chasen/derf.xhtml?flowContentVersion=1#page', 'fred/chasen/derf.xhtml'],
+        ['http://example.com/fred/chasen/derf.xhtml?flowContentVersion=1', '/fred/chasen/derf.xhtml'],
+      ] as const
 
-      assert.equal(path.path, 'fred/chasen/derf.xhtml')
-      assert.equal(path.directory, 'fred/chasen/')
-      assert.equal(path.extension, 'xhtml')
-      assert.equal(path.filename, 'derf.xhtml')
-    })
-
-    it('ignores URL query strings when parsing file type', function () {
-      var path = new Path(
-        'http://example.com/fred/chasen/derf.xhtml?flowContentVersion=1',
-      )
-
-      assert.equal(path.path, '/fred/chasen/derf.xhtml')
-      assert.equal(path.directory, '/fred/chasen/')
-      assert.equal(path.extension, 'xhtml')
-      assert.equal(path.filename, 'derf.xhtml')
+      for (const [input, expectedPath] of cases) {
+        const path = new Path(input)
+        assert.equal(path.path, expectedPath)
+        assert.equal(path.extension, 'xhtml')
+        assert.equal(path.filename, 'derf.xhtml')
+      }
     })
 
     describe('#parse()', function () {
-      it('should parse a path', function () {
-        var path = Path.prototype.parse('/fred/chasen/derf.html')
-
-        assert.equal(path.dir, '/fred/chasen')
-        assert.equal(path.base, 'derf.html')
-        assert.equal(path.ext, '.html')
-      })
-
-      it('should parse a relative path', function () {
-        var path = Path.prototype.parse('fred/chasen/derf.html')
-
-        assert.equal(path.dir, 'fred/chasen')
-        assert.equal(path.base, 'derf.html')
-        assert.equal(path.ext, '.html')
+      it('parses absolute and relative paths', function () {
+        for (const [input, directory] of [
+          ['/fred/chasen/derf.html', '/fred/chasen'],
+          ['fred/chasen/derf.html', 'fred/chasen'],
+        ] as const) {
+          const path = Path.prototype.parse(input)
+          assert.equal(path.dir, directory)
+          assert.equal(path.base, 'derf.html')
+          assert.equal(path.ext, '.html')
+        }
       })
     })
 
@@ -164,54 +122,30 @@ describe('Path and URL utilities', function () {
     })
 
     describe('#resolve()', function () {
-      it('should resolve a path', function () {
-        var a = '/fred/chasen/index.html'
-        var b = 'derf.html'
+      it('resolves absolute and relative paths', function () {
+        const cases = [
+          ['/fred/chasen/index.html', 'derf.html', '/fred/chasen/derf.html'],
+          ['fred/chasen/index.html', 'derf.html', '/fred/chasen/derf.html'],
+          ['/fred/chasen/index.html', '../derf.html', '/fred/derf.html'],
+        ] as const
 
-        var resolved = new Path(a).resolve(b)
-        assert.equal(resolved, '/fred/chasen/derf.html')
-      })
-
-      it('should resolve a relative path', function () {
-        var a = 'fred/chasen/index.html'
-        var b = 'derf.html'
-
-        var resolved = new Path(a).resolve(b)
-        assert.equal(resolved, '/fred/chasen/derf.html')
-      })
-
-      it('should resolve a level up', function () {
-        var a = '/fred/chasen/index.html'
-        var b = '../derf.html'
-
-        var resolved = new Path(a).resolve(b)
-        assert.equal(resolved, '/fred/derf.html')
+        for (const [base, target, expected] of cases) {
+          assert.equal(new Path(base).resolve(target), expected)
+        }
       })
     })
 
     describe('#relative()', function () {
-      it('should find a relative path at the same level', function () {
-        var a = '/fred/chasen/index.html'
-        var b = '/fred/chasen/derf.html'
+      it('finds relative paths across directory levels', function () {
+        const cases = [
+          ['/fred/chasen/derf.html', 'derf.html'],
+          ['/fred/chasen/ops/derf.html', 'ops/derf.html'],
+          ['/fred/derf.html', '../derf.html'],
+        ] as const
 
-        var relative = new Path(a).relative(b)
-        assert.equal(relative, 'derf.html')
-      })
-
-      it('should find a relative path down a level', function () {
-        var a = '/fred/chasen/index.html'
-        var b = '/fred/chasen/ops/derf.html'
-
-        var relative = new Path(a).relative(b)
-        assert.equal(relative, 'ops/derf.html')
-      })
-
-      it('should resolve a level up', function () {
-        var a = '/fred/chasen/index.html'
-        var b = '/fred/derf.html'
-
-        var relative = new Path(a).relative(b)
-        assert.equal(relative, '../derf.html')
+        for (const [target, expected] of cases) {
+          assert.equal(new Path('/fred/chasen/index.html').relative(target), expected)
+        }
       })
     })
   })

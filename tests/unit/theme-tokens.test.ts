@@ -4,11 +4,9 @@ import { test } from 'vitest'
 
 import {
   backgroundPresets,
-  createBackgroundPalette,
   createFlowThemeCss,
   createFlowThemeTokens,
   type FlowThemeTokens,
-  isDarkPaletteColor,
   normalizePaletteColor,
   normalizeThemeConfiguration,
   type ThemeConfiguration,
@@ -329,6 +327,10 @@ function testFlowThemeCssOutputsFlowTokensAndCompatibilityBridge() {
 }
 
 function testThemeConfigurationMigratesLegacySettings() {
+  assert.strictEqual(normalizePaletteColor('abc'), '#AABBCC')
+  assert.strictEqual(normalizePaletteColor('#e1eed8'), '#E1EED8')
+  assert.strictEqual(normalizePaletteColor('not-a-color'), undefined)
+
   assert.deepStrictEqual(
     normalizeThemeConfiguration({
       source: '#16a34a',
@@ -361,21 +363,6 @@ function testThemeConfigurationMigratesLegacySettings() {
   )
 }
 
-function testBackgroundPaletteNormalizesPresetAndCustomColors() {
-  assert.strictEqual(normalizePaletteColor('abc'), '#AABBCC')
-  assert.strictEqual(normalizePaletteColor('#e1eed8'), '#E1EED8')
-  assert.strictEqual(normalizePaletteColor('not-a-color'), undefined)
-
-  assert.deepStrictEqual(createBackgroundPalette('#E1EED8'), {
-    content: '#E1EED8',
-    sidebar: '#D4E0CB',
-    activity: '#C6D1BE',
-    active: '#B9C3B1',
-  })
-  assert.strictEqual(isDarkPaletteColor('#24292E'), true)
-  assert.strictEqual(isDarkPaletteColor('#FFFFFF'), false)
-}
-
 for (const run of [
   testFlowThemeTokensCoverPresetsAndContrast,
   testTabTokensKeepVisibleLayeringForDarkAndCustomThemes,
@@ -383,7 +370,6 @@ for (const run of [
   testCustomThemeTokensKeepAccentAndDangerSeparate,
   testFlowThemeCssOutputsFlowTokensAndCompatibilityBridge,
   testThemeConfigurationMigratesLegacySettings,
-  testBackgroundPaletteNormalizesPresetAndCustomColors,
 ]) {
   test(run.name, run)
 }

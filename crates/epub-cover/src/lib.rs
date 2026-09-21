@@ -36,7 +36,6 @@ mod tests {
 
     use super::inspect_epub_cover;
 
-    #[test]
     fn discovers_epub3_cover_image_from_package_manifest() {
         let container = r#"<?xml version="1.0"?>
 <container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
@@ -75,7 +74,6 @@ mod tests {
         assert_eq!(cover.bytes, cover_bytes);
     }
 
-    #[test]
     fn falls_back_to_cover_prefixed_manifest_image_id() {
         let container =
             r#"<container><rootfiles><rootfile full-path="package.opf"/></rootfiles></container>"#;
@@ -109,7 +107,6 @@ mod tests {
         assert_eq!(cover.bytes, cover_bytes);
     }
 
-    #[test]
     fn discovers_cover_from_utf16_xml_documents() {
         fn utf16_le(value: &str) -> Vec<u8> {
             let mut bytes = vec![0xff, 0xfe];
@@ -141,5 +138,12 @@ mod tests {
 
         assert_eq!(cover.archive_path, "cover.png");
         assert_eq!(cover.bytes, cover_bytes);
+    }
+
+    #[test]
+    fn discovers_covers_across_supported_package_variants() {
+        discovers_epub3_cover_image_from_package_manifest();
+        falls_back_to_cover_prefixed_manifest_image_id();
+        discovers_cover_from_utf16_xml_documents();
     }
 }

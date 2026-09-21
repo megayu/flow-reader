@@ -67,7 +67,7 @@ test.describe('translation payload contract', () => {
     expect(splitTranslationSections('chapter one\n\nchapter two')).toEqual(['chapter one', 'chapter two'])
   })
 
-  test('unpacks Google and Azure responses into one result per input', () => {
+  test('unpacks a Google response into one result', () => {
     expect(
       parseGoogleTranslationResponse(
         JSON.stringify([
@@ -80,7 +80,9 @@ test.describe('translation payload contract', () => {
         ]),
       ),
     ).toEqual(['Hello world'])
+  })
 
+  test('unpacks an Azure response into one result per input', () => {
     expect(
       parseAzureTranslationResponse(
         JSON.stringify([

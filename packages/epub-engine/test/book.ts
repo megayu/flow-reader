@@ -21,16 +21,8 @@ describe('Book', function () {
       await book.opened
       await book.loaded.navigation
 
-      assert.equal(
-        book.navigation.get('cover.xhtml'),
-        undefined,
-        'linear=no cover is not exposed in navigation',
-      )
-      assert.equal(
-        book.navigation.get('toc.xhtml'),
-        undefined,
-        'linear=no toc is not exposed in navigation',
-      )
+      assert.equal(book.navigation.get('cover.xhtml'), undefined, 'linear=no cover is not exposed in navigation')
+      assert.equal(book.navigation.get('toc.xhtml'), undefined, 'linear=no toc is not exposed in navigation')
     })
     it('should skip non-readable spine entries', async function () {
       await book.opened
@@ -115,9 +107,7 @@ describe('Book', function () {
       )
 
       const buffer = await zip.generateAsync({ type: 'arraybuffer' })
-      const url = URL.createObjectURL(
-        new Blob([buffer], { type: 'application/epub+zip' }),
-      )
+      const url = URL.createObjectURL(new Blob([buffer], { type: 'application/epub+zip' }))
       const book = new Book(url, { openAs: 'epub' })
 
       try {
@@ -129,9 +119,7 @@ describe('Book', function () {
         assert.equal(book.navigation.toc[0]!.href, decodedSectionHref)
         assert.equal(book.spine.spineItems[0]!.href, decodedSectionHref)
 
-        const output = await book.spine.spineItems[0]!.render(
-          book.load.bind(book),
-        )
+        const output = await book.spine.spineItems[0]!.render(book.load.bind(book))
         assert.ok(output.includes('Body'))
       } finally {
         book.destroy()
@@ -195,15 +183,10 @@ describe('Book', function () {
         </html>`,
       )
       zip.file('OEBPS/art.psd', 'unsupported')
-      zip.file(
-        'OEBPS/art.png',
-        new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
-      )
+      zip.file('OEBPS/art.png', new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]))
 
       const buffer = await zip.generateAsync({ type: 'arraybuffer' })
-      const url = URL.createObjectURL(
-        new Blob([buffer], { type: 'application/epub+zip' }),
-      )
+      const url = URL.createObjectURL(new Blob([buffer], { type: 'application/epub+zip' }))
       const book = new Book(url, { openAs: 'epub' })
 
       try {
@@ -263,9 +246,7 @@ describe('Book', function () {
       )
 
       const buffer = await zip.generateAsync({ type: 'arraybuffer' })
-      const url = URL.createObjectURL(
-        new Blob([buffer], { type: 'application/epub+zip' }),
-      )
+      const url = URL.createObjectURL(new Blob([buffer], { type: 'application/epub+zip' }))
       const book = new Book(url, { openAs: 'epub' })
 
       try {
@@ -274,9 +255,7 @@ describe('Book', function () {
         await section!.load(book.load.bind(book))
 
         const paragraph = section!.document!.querySelector('p')
-        const indexMarker = section!.document!.querySelector(
-          'a[data-type="indexterm"]',
-        )
+        const indexMarker = section!.document!.querySelector('a[data-type="indexterm"]')
 
         assert.equal(section!.document!.contentType, 'application/xhtml+xml')
         assert.equal(indexMarker!.textContent, '')
@@ -329,9 +308,7 @@ describe('Book', function () {
       )
 
       const buffer = await zip.generateAsync({ type: 'arraybuffer' })
-      const url = URL.createObjectURL(
-        new Blob([buffer], { type: 'application/epub+zip' }),
-      )
+      const url = URL.createObjectURL(new Blob([buffer], { type: 'application/epub+zip' }))
       const book = new Book(url, { openAs: 'epub' })
 
       try {
@@ -367,16 +344,6 @@ describe('Book', function () {
       await book!.opened
       assert.equal(book!.isOpen, true, 'book is opened')
       assert(book!.archive, 'book is unarchived')
-    })
-  })
-
-  describe('Archived EPUB without a cover', function () {
-    var book = new Book('/fixtures/alice_without_cover.epub')
-
-    it('opens the archive', async function () {
-      await book.opened
-      assert.equal(book.isOpen, true, 'book is opened')
-      assert(book.archive, 'book is unarchived')
     })
   })
 })

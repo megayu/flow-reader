@@ -998,27 +998,35 @@ function testDataTypeExplicitlyClassifiesNoteLinks() {
   assert.strictEqual(getNoteIndex(contents.document).getHideTargets().includes(authoredNote), true)
 }
 
+function testComputedTypographyIdentifiesBodyTextAcrossDomVariants() {
+  testSameBaseStyleParagraphsAreCountedAsBodyText()
+  testBodyTextIgnoresClassNameWhenComputedStyleMatches()
+  testBodyTextIgnoresBlockMarginsWhenComputedStyleMatches()
+  testBodyTextIncludesSameFontStyleVariants()
+  testBodyTextIncludesLeadingDifferentFontCandidates()
+  testBodyTextVariantsPreserveOriginalFontFamily()
+}
+
+function testStructuralNoteRecognitionAcrossSupportedMarkup() {
+  testReciprocalNoteContentIsMarkedStructurally()
+  testSemanticNoteFallbackMarksNamedNoteContent()
+  testLinkedNoteResolutionUsesHashTargetItem()
+  testReciprocalNoteItemRequiresBacklinkToSourceAnchor()
+  testRepeatedReferencesShareReciprocalNoteItem()
+  testReciprocalNoteItemUsesBoundedTargetStructures()
+  testNoteIndexMapsBacklinksOnlyInsideRecognizedNoteItems()
+  testReciprocalLinksDoNotDependOnNoteMarkerText()
+  testReciprocalLinkContentMayLiveInsideBacklinkAnchor()
+  testDataTypeExplicitlyClassifiesNoteLinks()
+}
+
 for (const run of [
   testBodyParagraphOwnsReadableInlineTypography,
   testInlineWrappedParagraphsFollowReaderFont,
   testVisibleNestedTextDefinesTypographyBaseline,
   testBookNotesShareRelativeTypographyWithoutParagraphLayout,
-  testSameBaseStyleParagraphsAreCountedAsBodyText,
-  testBodyTextIgnoresClassNameWhenComputedStyleMatches,
-  testBodyTextIgnoresBlockMarginsWhenComputedStyleMatches,
-  testBodyTextIncludesSameFontStyleVariants,
-  testBodyTextIncludesLeadingDifferentFontCandidates,
-  testBodyTextVariantsPreserveOriginalFontFamily,
-  testReciprocalNoteContentIsMarkedStructurally,
-  testSemanticNoteFallbackMarksNamedNoteContent,
-  testLinkedNoteResolutionUsesHashTargetItem,
-  testReciprocalNoteItemRequiresBacklinkToSourceAnchor,
-  testRepeatedReferencesShareReciprocalNoteItem,
-  testReciprocalNoteItemUsesBoundedTargetStructures,
-  testNoteIndexMapsBacklinksOnlyInsideRecognizedNoteItems,
-  testReciprocalLinksDoNotDependOnNoteMarkerText,
-  testReciprocalLinkContentMayLiveInsideBacklinkAnchor,
-  testDataTypeExplicitlyClassifiesNoteLinks,
+  testComputedTypographyIdentifiesBodyTextAcrossDomVariants,
+  testStructuralNoteRecognitionAcrossSupportedMarkup,
 ]) {
   test(run.name, run)
 }

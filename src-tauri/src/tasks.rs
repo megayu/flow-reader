@@ -996,17 +996,13 @@ mod tests {
     }
 
     #[test]
-    fn io_writer_limit_input_uses_conservative_bounds() {
+    fn io_writer_configuration_enforces_conservative_bounds() {
         assert_eq!(super::normalize_io_writer_limit(None), 1);
         assert_eq!(super::normalize_io_writer_limit(Some("")), 1);
         assert_eq!(super::normalize_io_writer_limit(Some("0")), 1);
         assert_eq!(super::normalize_io_writer_limit(Some("2")), 2);
         assert_eq!(super::normalize_io_writer_limit(Some("99")), 4);
         assert_eq!(super::normalize_io_writer_limit(Some("invalid")), 1);
-    }
-
-    #[test]
-    fn io_writer_limit_policy_uses_disk_hint_conservatively() {
         assert_eq!(
             super::io_writer_limit_for_volume_class(super::IoVolumeClass::FastLocal),
             2
@@ -1023,10 +1019,7 @@ mod tests {
             super::io_writer_limit_for_volume_class(super::IoVolumeClass::Unknown),
             1
         );
-    }
 
-    #[test]
-    fn io_writer_env_config_overrides_disk_hint() {
         let configured = super::io_writer_config_from_input(Some("3"));
         assert_eq!(configured.limit, 3);
         assert!(configured.overridden);
@@ -1034,10 +1027,7 @@ mod tests {
         let defaulted = super::io_writer_config_from_input(None);
         assert_eq!(defaulted.limit, 1);
         assert!(!defaulted.overridden);
-    }
 
-    #[test]
-    fn task_service_io_writer_limit_can_be_adjusted_with_bounds() {
         let service = TaskService::default();
 
         service.set_io_writer_limit(3);
@@ -1051,7 +1041,7 @@ mod tests {
     }
 
     #[test]
-    fn io_feedback_probes_higher_writer_limit_after_stable_single_writer_samples() {
+    fn io_feedback_adapts_writer_limit_without_overriding_explicit_configuration() {
         let service = TaskService::with_io_writer_config(super::IoWriterConfig {
             limit: 1,
             overridden: false,
@@ -1062,10 +1052,7 @@ mod tests {
 
         service.record_io_observation("C:\\", 1_000_000, Duration::from_millis(100));
         assert_eq!(service.io_writer_limit(), 2);
-    }
 
-    #[test]
-    fn io_feedback_reduces_writer_limit_when_probe_does_not_improve_throughput() {
         let service = TaskService::with_io_writer_config(super::IoWriterConfig {
             limit: 1,
             overridden: false,
@@ -1080,10 +1067,7 @@ mod tests {
 
         service.record_io_observation("C:\\", 1_000_000, Duration::from_millis(130));
         assert_eq!(service.io_writer_limit(), 1);
-    }
 
-    #[test]
-    fn io_feedback_keeps_explicit_writer_override_unchanged() {
         let service = TaskService::with_io_writer_config(super::IoWriterConfig {
             limit: 3,
             overridden: true,
@@ -1095,10 +1079,7 @@ mod tests {
         }
 
         assert_eq!(service.io_writer_limit(), 3);
-    }
 
-    #[test]
-    fn observed_io_work_feeds_adaptive_writer_policy() {
         let service = TaskService::with_io_writer_config(super::IoWriterConfig {
             limit: 1,
             overridden: false,

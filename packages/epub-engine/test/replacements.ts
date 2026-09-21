@@ -3,151 +3,54 @@ import { assert } from 'vitest'
 import { replaceLinks } from '../src/utils/replacements'
 
 function createDocument(html: string) {
-  return new DOMParser().parseFromString(
-    `<html><head></head><body>${html}</body></html>`,
-    'text/html',
-  )
+  return new DOMParser().parseFromString(`<html><head></head><body>${html}</body></html>`, 'text/html')
 }
 
 describe('Replacements', function () {
   describe('replaceLinks', function () {
-    it('emits modified primary clicks for external http links', function () {
-      const doc = createDocument('<a href="https://example.com/path">link</a>')
-      const calls: {
-        href: string
-        meta: Parameters<Parameters<typeof replaceLinks>[1]>[1]
-      }[] = []
+    it('applies the external-link click policy across supported links and modifiers', function () {
+      const cases: ReadonlyArray<{ ctrlKey?: boolean; href: string; metaKey?: boolean }> = [
+        { href: 'https://example.com/path', metaKey: true },
+        { href: 'http://example.com/path' },
+        { ctrlKey: true, href: 'http://example.com/path' },
+        { href: 'mailto:bookquestions@oreilly.com', metaKey: true },
+        { href: 'mailto:bookquestions@oreilly.com' },
+      ]
 
-      replaceLinks(doc.body, (href, meta) => calls.push({ href, meta }))
+      for (const { href, ctrlKey = false, metaKey = false } of cases) {
+        const doc = createDocument(`<a href="${href}">link</a>`)
+        const calls: {
+          href: string
+          meta: Parameters<Parameters<typeof replaceLinks>[1]>[1]
+        }[] = []
+        let bubbled = false
 
-      const link = doc.querySelector('a')
-      const click = new MouseEvent('click', {
-        bubbles: true,
-        button: 0,
-        cancelable: true,
-        metaKey: true,
-      })
+        replaceLinks(doc.body, (emittedHref, meta) => calls.push({ href: emittedHref, meta }))
+        doc.body.addEventListener('click', () => {
+          bubbled = true
+        })
 
-      assert.equal(link!.getAttribute('target'), '_blank')
-      assert.equal(link!.dispatchEvent(click), false)
-      assert.equal(calls.length, 1)
-      assert.equal(calls[0]!.href, 'https://example.com/path')
-      assert.deepEqual(calls[0]!.meta, {
-        button: 0,
-        ctrlKey: false,
-        external: true,
-        metaKey: true,
-      })
-    })
+        const link = doc.querySelector('a')!
+        const emitted = ctrlKey || metaKey
+        const click = new MouseEvent('click', {
+          bubbles: true,
+          button: 0,
+          cancelable: true,
+          ctrlKey,
+          metaKey,
+        })
 
-    it('consumes ordinary primary clicks for external http links without emitting', function () {
-      const doc = createDocument('<a href="http://example.com/path">link</a>')
-      const calls: {
-        href: string
-        meta: Parameters<Parameters<typeof replaceLinks>[1]>[1]
-      }[] = []
-      let bubbled = false
-
-      replaceLinks(doc.body, (href, meta) => calls.push({ href, meta }))
-      doc.body.addEventListener('click', () => {
-        bubbled = true
-      })
-
-      const link = doc.querySelector('a')
-      const click = new MouseEvent('click', {
-        bubbles: true,
-        button: 0,
-        cancelable: true,
-      })
-
-      assert.equal(link!.dispatchEvent(click), false)
-      assert.equal(calls.length, 0)
-      assert.equal(bubbled, false)
-    })
-
-    it('emits ctrl primary clicks for external http links', function () {
-      const doc = createDocument('<a href="http://example.com/path">link</a>')
-      const calls: {
-        href: string
-        meta: Parameters<Parameters<typeof replaceLinks>[1]>[1]
-      }[] = []
-
-      replaceLinks(doc.body, (href, meta) => calls.push({ href, meta }))
-
-      const link = doc.querySelector('a')
-      const click = new MouseEvent('click', {
-        bubbles: true,
-        button: 0,
-        cancelable: true,
-        ctrlKey: true,
-      })
-
-      assert.equal(link!.dispatchEvent(click), false)
-      assert.equal(calls.length, 1)
-      assert.equal(calls[0]!.href, 'http://example.com/path')
-      assert.deepEqual(calls[0]!.meta, {
-        button: 0,
-        ctrlKey: true,
-        external: true,
-        metaKey: false,
-      })
-    })
-
-    it('emits modified primary clicks for mailto links', function () {
-      const doc = createDocument(
-        '<a href="mailto:bookquestions@oreilly.com">bookquestions@oreilly.com</a>',
-      )
-      const calls: {
-        href: string
-        meta: Parameters<Parameters<typeof replaceLinks>[1]>[1]
-      }[] = []
-
-      replaceLinks(doc.body, (href, meta) => calls.push({ href, meta }))
-
-      const link = doc.querySelector('a')
-      const click = new MouseEvent('click', {
-        bubbles: true,
-        button: 0,
-        cancelable: true,
-        metaKey: true,
-      })
-
-      assert.equal(link!.dispatchEvent(click), false)
-      assert.equal(calls.length, 1)
-      assert.equal(calls[0]!.href, 'mailto:bookquestions@oreilly.com')
-      assert.deepEqual(calls[0]!.meta, {
-        button: 0,
-        ctrlKey: false,
-        external: true,
-        metaKey: true,
-      })
-    })
-
-    it('consumes ordinary primary clicks for mailto links without emitting', function () {
-      const doc = createDocument(
-        '<a href="mailto:bookquestions@oreilly.com">bookquestions@oreilly.com</a>',
-      )
-      const calls: {
-        href: string
-        meta: Parameters<Parameters<typeof replaceLinks>[1]>[1]
-      }[] = []
-      let bubbled = false
-
-      replaceLinks(doc.body, (href, meta) => calls.push({ href, meta }))
-      doc.body.addEventListener('click', () => {
-        bubbled = true
-      })
-
-      const link = doc.querySelector('a')
-      const click = new MouseEvent('click', {
-        bubbles: true,
-        button: 0,
-        cancelable: true,
-      })
-
-      assert.equal(link!.dispatchEvent(click), false)
-      assert.equal(calls.length, 0)
-      assert.equal(bubbled, false)
+        if (emitted && href.startsWith('http')) assert.equal(link.getAttribute('target'), '_blank')
+        assert.equal(link.dispatchEvent(click), false)
+        assert.equal(bubbled, false)
+        assert.equal(calls.length, emitted ? 1 : 0)
+        if (emitted) {
+          assert.deepEqual(calls[0], {
+            href,
+            meta: { button: 0, ctrlKey, external: true, metaKey },
+          })
+        }
+      }
     })
   })
 })

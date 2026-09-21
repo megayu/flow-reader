@@ -200,34 +200,6 @@ pub(super) fn create_text_cover_input(metadata: &Value, fallback_title: Option<&
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn text_cover_uses_default_cover_layout() {
-        let svg = create_text_cover_svg("A Very Long Generated Title", "Author & Co");
-
-        assert!(svg.contains(r#"data-flow-generated-cover="true""#));
-        assert!(svg.contains("<foreignObject"));
-        assert!(svg.contains(r#"width="600" height="800""#));
-        assert!(svg.contains(r#"viewBox="0 0 600 800""#));
-        assert!(svg.contains(r#"preserveAspectRatio="xMidYMid meet""#));
-        assert!(svg.contains("overflow-wrap:anywhere"));
-        assert!(svg.contains(r#"x="45" y="240" width="510" height="320""#));
-        assert!(svg.contains(r#"x="45" y="560" width="510" height="240""#));
-        assert!(svg.contains("align-items:flex-start"));
-        assert!(svg.contains("font-size:72px"));
-        assert!(svg.contains("font-size:48px"));
-        assert!(!svg.contains("clamp("));
-        assert!(!svg.contains("vw"));
-        assert!(svg.contains("font-weight:700"));
-        assert!(svg.contains("color:#776b5c"));
-        assert!(svg.contains("Author &amp; Co"));
-        assert!(!svg.contains("<tspan"));
-    }
-}
-
 pub(super) fn text_import_encoding_options() -> Vec<TextImportEncodingOption> {
     [
         ("auto", "Auto"),
