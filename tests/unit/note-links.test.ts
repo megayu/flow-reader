@@ -2,7 +2,14 @@ import assert from 'node:assert/strict'
 
 import { test } from 'vitest'
 
-import { findSectionByLinkedHref, resolveLinkedHrefPath, sameHref } from '../../src/noteLinks.ts'
+import { findSectionByLinkedHref, resolveLinkedHrefPath, sameHref, splitLinkedHref } from '../../src/noteLinks.ts'
+
+test('preserves hash characters inside linked fragments', () => {
+  assert.deepEqual(splitLinkedHref('part0007.xhtml##a24'), {
+    path: 'part0007.xhtml',
+    hash: '#a24',
+  })
+})
 
 test('resolves linked note paths relative to the clicked section', () => {
   const cases = [

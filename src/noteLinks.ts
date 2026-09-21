@@ -11,6 +11,16 @@ export function safeDecodeHref(text: string) {
   }
 }
 
+export function splitLinkedHref(href: string) {
+  const hashIndex = href.indexOf('#')
+  if (hashIndex < 0) return { path: href, hash: '' }
+
+  return {
+    path: href.slice(0, hashIndex),
+    hash: href.slice(hashIndex + 1),
+  }
+}
+
 export function normalizeHrefPath(href: string | undefined) {
   if (!href) return ''
 

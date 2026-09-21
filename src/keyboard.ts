@@ -59,7 +59,14 @@ export function installReloadShortcut(target: Document, reload: () => Promise<vo
     event.preventDefault()
     event.stopPropagation()
     event.stopImmediatePropagation()
-    if (event.repeat || event.shiftKey || isGlobalKeyboardShortcutBlocked(event)) return
+    if (
+      event.repeat ||
+      event.shiftKey ||
+      isGlobalKeyboardShortcutBlocked(event) ||
+      hasKeyboardCaptureLayer(event.target)
+    ) {
+      return
+    }
     void reload().catch(console.error)
   }
 

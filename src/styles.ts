@@ -26,7 +26,7 @@ export { getBodyTypographyBaseline, notePopoverClass } from './bodyText'
 
 export const activeClass = 'bg-(--flow-accent)'
 
-const readerLinkSelector = ['body > a:any-link', `body > :not(.${notePopoverClass}) a:any-link`].join(',\n')
+const readerLinkSelector = `body a:any-link, .${notePopoverClass} a`
 
 const hiddenEndnoteSelector = createHiddenNoteContentSelector(notePopoverClass)
 

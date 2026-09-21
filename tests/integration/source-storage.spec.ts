@@ -131,6 +131,25 @@ test('closes a referenced archive tab and notifies when its source is unreadable
   await expect(page.locator('[data-flow-reader-content]')).toHaveCount(0)
 })
 
+test('keeps an opened archive tab when another chapter cannot load', async ({ page }) => {
+  await installEpubFixtureRoutes(page)
+  await page.route(/\/OPS\/chapter_001\.xhtml/, (route) =>
+    route.fulfill({
+      contentType: 'application/xhtml+xml',
+      body: '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Reading</title></head><body><p><a href="chapter_010.xhtml">Unavailable chapter</a></p><p>Readable chapter.</p></body></html>',
+    }),
+  )
+  await page.route(/\/OPS\/chapter_010\.xhtml/, (route) => route.fulfill({ status: 404, body: 'Missing chapter' }))
+  const book = createTestBook({ ...missingArchiveBook, cfi: 'chapter_001.xhtml' })
+  await installTauriMock(page, { books: [book], readerSources: { [book.id]: epubFixturePackageUrl } })
+  await page.goto('/')
+  await page.locator('[data-flow-library-book-card]').click()
+  const frame = page.locator('[data-flow-reader-pane] iframe').filter({ visible: true }).first().contentFrame()
+  await frame.getByRole('link', { name: 'Unavailable chapter', exact: true }).click()
+  await expect(page.getByRole('alert').filter({ hasText: msg('error.reader_render_failed') })).toBeVisible()
+  await expect(page.locator('[data-flow-reader-tab-index]')).toHaveCount(1)
+})
+
 test('keeps a missing source distinct when it disappears during open', async ({ page }) => {
   await installTauriMock(page, {
     books: [missingArchiveBook],

@@ -49,8 +49,10 @@
   "error.folder_import_failed": "Falha ao importar pasta",
   "error.open_book_directory_failed": "Não foi possível abrir a pasta do livro",
   "error.operation_failed": "Falha: {1}",
+  "error.reader_navigation_failed": "Não foi possível seguir o link do livro",
   "error.reader_open_failed": "Não foi possível abrir o livro",
   "error.reader_render_failed": "Falha ao renderizar o livro",
+  "error.reader_toc_failed": "Não foi possível carregar o sumário",
   "error.txt_import_failed": "Falha na importação de TXT",
   "error.txt_preview_failed": "Falha na pré-visualização do TXT",
 

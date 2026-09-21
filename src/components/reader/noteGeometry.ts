@@ -79,15 +79,6 @@ export function getNoteOverlayPlacement(
   }
 }
 
-export function rectFromDomRect(rect: RectLike): RectLike {
-  return {
-    left: rect.left,
-    top: rect.top,
-    width: rect.width,
-    height: rect.height,
-  }
-}
-
 export function intersectRects(a: RectLike, b: RectLike): RectLike | undefined {
   const left = Math.max(a.left, b.left)
   const top = Math.max(a.top, b.top)

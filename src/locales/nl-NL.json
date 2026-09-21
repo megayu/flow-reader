@@ -49,8 +49,10 @@
   "error.folder_import_failed": "Map importeren mislukt",
   "error.open_book_directory_failed": "Kan de map van het boek niet openen",
   "error.operation_failed": "{1} mislukt",
+  "error.reader_navigation_failed": "Kan de boeklink niet volgen",
   "error.reader_open_failed": "Kan het boek niet openen",
   "error.reader_render_failed": "Weergeven van het boek mislukt",
+  "error.reader_toc_failed": "Kan de inhoudsopgave niet laden",
   "error.txt_import_failed": "TXT-import mislukt",
   "error.txt_preview_failed": "TXT-voorvertoning mislukt",
 

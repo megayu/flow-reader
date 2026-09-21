@@ -49,8 +49,10 @@
   "error.folder_import_failed": "Import folderu nie powiódł się",
   "error.open_book_directory_failed": "Nie udało się otworzyć folderu książki",
   "error.operation_failed": "Niepowodzenie: {1}",
+  "error.reader_navigation_failed": "Nie udało się przejść do odnośnika w książce",
   "error.reader_open_failed": "Nie udało się otworzyć książki",
   "error.reader_render_failed": "Renderowanie książki nie powiodło się",
+  "error.reader_toc_failed": "Nie udało się wczytać spisu treści",
   "error.txt_import_failed": "Import pliku TXT nie powiódł się",
   "error.txt_preview_failed": "Podgląd pliku TXT nie powiódł się",
 

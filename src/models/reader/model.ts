@@ -2053,7 +2053,7 @@ export class BookTab {
       preparation = await readerOpening
       this.readerResourceOpen = true
     } catch (error) {
-      this.reportOpenError('source', error)
+      if (generation === this.renderGeneration) this.reportOpenError('source', error)
       clearRendering()
       return
     } finally {
@@ -2094,7 +2094,7 @@ export class BookTab {
       } catch (destroyError) {
         console.error(destroyError)
       }
-      this.reportOpenError('open', error)
+      if (generation === this.renderGeneration) this.reportOpenError('open', error)
       clearRendering()
       return
     }
@@ -2142,7 +2142,7 @@ export class BookTab {
       )
       rendition.session.setAutomaticResize(false)
     } catch (error) {
-      this.reportOpenError('render', error)
+      if (generation === this.renderGeneration) this.reportOpenError('render', error)
       try {
         epub.destroy()
       } catch (destroyError) {
@@ -2177,7 +2177,7 @@ export class BookTab {
         if (this.tocVersion === previousTocVersion) this.tocVersion++
       })
       .catch((error) => {
-        this.failCommittedRender(generation, 'spine', error)
+        if (generation === this.renderGeneration) this.reportOpenError('toc', error, false)
       })
     try {
       const spine = await this.epub.loaded.spine
@@ -2230,20 +2230,19 @@ export class BookTab {
     this.initialPositionPromise = initialPosition
     try {
       await initialPosition
-      if (this.initialPositionPromise === initialPosition) this.initialPositionPromise = undefined
-      await this.displayPendingDeepLinkTarget()
     } catch (error) {
-      if (this.initialPositionPromise === initialPosition) this.initialPositionPromise = undefined
       this.failCommittedRender(generation, 'position', error)
       return
+    } finally {
+      if (this.initialPositionPromise === initialPosition) this.initialPositionPromise = undefined
     }
-    if (!this.book.managed && this.book.sourceFormat === 'epub' && !this.book.editable) {
-      this.rendition.on('displayerror', (error: unknown) => {
-        if (generation === this.renderGeneration) {
-          this.reportOpenError('render', error)
-        }
-      })
-    }
+    if (generation !== this.renderGeneration) return
+    this.rendition.on('displayerror', (error: unknown) => {
+      if (generation === this.renderGeneration) this.reportOpenError('render', error, false)
+    })
+    await this.displayPendingDeepLinkTarget().catch((error) => {
+      if (generation === this.renderGeneration) this.reportNavigationError(error)
+    })
   }
 
   private failCommittedRender(generation: number, stage: ReaderOpenErrorStage, error: unknown) {
@@ -2254,12 +2253,17 @@ export class BookTab {
     this.destroyRendering()
   }
 
-  private reportOpenError(stage: ReaderOpenErrorStage, error: unknown) {
+  reportNavigationError(error: unknown) {
+    this.reportOpenError('navigation', error, false)
+  }
+
+  private reportOpenError(stage: ReaderOpenErrorStage, error: unknown, fatal = true) {
     console.error(error)
     emitReaderOpenError({
       bookId: this.book.id,
       bookTitle: getBookDisplayTitle(this.book),
-      closeTab: !this.book.managed && this.book.sourceFormat === 'epub' && !this.book.editable,
+      closeTab: fatal && !this.book.managed && this.book.sourceFormat === 'epub' && !this.book.editable,
+      fatal,
       error,
       stage,
     })

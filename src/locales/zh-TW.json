@@ -49,8 +49,10 @@
   "error.folder_import_failed": "資料夾匯入失敗",
   "error.open_book_directory_failed": "開啟書籍所在資料夾失敗",
   "error.operation_failed": "{1}失敗",
+  "error.reader_navigation_failed": "書內連結跳轉失敗",
   "error.reader_open_failed": "開啟書籍失敗",
   "error.reader_render_failed": "算繪書籍失敗",
+  "error.reader_toc_failed": "目錄載入失敗",
   "error.txt_import_failed": "TXT 匯入失敗",
   "error.txt_preview_failed": "TXT 預覽失敗",
 

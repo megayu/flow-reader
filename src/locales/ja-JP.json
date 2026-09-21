@@ -49,8 +49,10 @@
   "error.folder_import_failed": "フォルダーの取り込みに失敗しました",
   "error.open_book_directory_failed": "書籍のフォルダーを開けませんでした",
   "error.operation_failed": "{1}に失敗しました",
+  "error.reader_navigation_failed": "書籍内のリンクに移動できませんでした",
   "error.reader_open_failed": "書籍を開けませんでした",
   "error.reader_render_failed": "書籍の描画に失敗しました",
+  "error.reader_toc_failed": "目次を読み込めませんでした",
   "error.txt_import_failed": "TXT の取り込みに失敗しました",
   "error.txt_preview_failed": "TXT のプレビューに失敗しました",
 

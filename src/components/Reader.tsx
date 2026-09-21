@@ -52,8 +52,6 @@ import { BookTooltipContent } from './BookTooltipContent'
 import { DropZone } from './base/DropZone'
 import { ChapterFindBar, ChapterFindHighlights, ChapterFindOverlay } from './reader/ChapterFind'
 import { ExternalLinkPopover } from './reader/ExternalLinkPopover'
-import { NotePopover } from './reader/NotePopover'
-import type { NotePopoverState } from './reader/noteContent'
 import { ReaderImagePreview } from './reader/ReaderImagePreview'
 import { useBookPaneChapterFind, useBookPaneChapterFindResults } from './reader/useBookPaneChapterFind'
 import { useBookPaneFrameContent } from './reader/useBookPaneFrameContent'
@@ -600,7 +598,6 @@ interface BookPaneProps {
 const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active, tab }) {
   const ref = useRef<HTMLDivElement>(null)
   const linkHighlightRef = useRef<HTMLDivElement>(null)
-  const [notePopover, setNotePopover] = useState<NotePopoverState>()
   const typography = useTypography(tab)
   const pageAppearance = typography.pageAppearance
   const typographyStyleSignature = useMemo(() => createTypographyStyleSignature(typography), [typography])
@@ -640,7 +637,20 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
   const [action, setAction] = useAction()
   const setSettingsOpen = useSetSettingsDialogOpen()
 
-  const closeNotePopover = useCallback(() => setNotePopover(undefined), [])
+  const { closeImagePreview, imagePreview, externalLink, closeExternalLink, closeNotePopover } =
+    useBookPaneFrameContent({
+      active,
+      activeFrameWindows,
+      closeChapterFind: () => closeChapterFind(),
+      containerRef: ref,
+      frameWindows,
+      hideEndnotes: typography.hideEndnotes,
+      linkHighlightRef,
+      linkHighlightEnabled: viewMode === 'reader',
+      rendition,
+      tab,
+      zenMode,
+    })
   const {
     close: closeChapterFind,
     inputRef: chapterFindInputRef,
@@ -660,10 +670,10 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
     if (!zenMode) return
 
     closeChapterFind()
-    setNotePopover(undefined)
+    closeNotePopover()
     if (tab.annotationRange) tab.annotationRange = undefined
     if (tab.annotationCfi) tab.annotationCfi = undefined
-  }, [closeChapterFind, tab, zenMode])
+  }, [closeChapterFind, closeNotePopover, tab, zenMode])
 
   const handleReturnMouseButton = useCallback(
     (e: MouseEvent) => {
@@ -751,22 +761,6 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
     // set `!important` when in dark mode
     rendition?.themes.overrideProperty('color', dark ? '#bfc8ca' : '#3f484a', dark)
   }, [rendition, dark])
-
-  const { closeImagePreview, imagePreview, externalLink, closeExternalLink, handleNotePopoverLinkClick } =
-    useBookPaneFrameContent({
-      active,
-      activeFrameWindows,
-      closeChapterFind,
-      containerRef: ref,
-      frameWindows,
-      linkHighlightRef,
-      linkHighlightEnabled: viewMode === 'reader',
-      rendition,
-      setNotePopover,
-      tab,
-      typography,
-      zenMode,
-    })
 
   useBookPaneWheelNavigation({
     active,
@@ -858,13 +852,6 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
         />
         {!zenMode && active && <TextSelectionMenu tab={tab} onChapterFind={openChapterFind} />}
         <Annotations active={active} tab={tab} />
-        {!zenMode && (
-          <NotePopover
-            popover={notePopover}
-            onClose={() => setNotePopover(undefined)}
-            onLinkClick={handleNotePopoverLinkClick}
-          />
-        )}
         {active && externalLink && (
           <ExternalLinkPopover
             preview={externalLink}

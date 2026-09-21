@@ -49,8 +49,10 @@
   "error.folder_import_failed": "폴더 가져오기 실패",
   "error.open_book_directory_failed": "도서 폴더를 열 수 없습니다",
   "error.operation_failed": "{1} 실패",
+  "error.reader_navigation_failed": "도서 내 링크로 이동할 수 없습니다",
   "error.reader_open_failed": "도서를 열 수 없습니다",
   "error.reader_render_failed": "도서 렌더링에 실패했습니다",
+  "error.reader_toc_failed": "목차를 불러올 수 없습니다",
   "error.txt_import_failed": "TXT 가져오기 실패",
   "error.txt_preview_failed": "TXT 미리보기 실패",
 

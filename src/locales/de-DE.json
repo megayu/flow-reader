@@ -49,8 +49,10 @@
   "error.folder_import_failed": "Ordnerimport fehlgeschlagen",
   "error.open_book_directory_failed": "Buchordner konnte nicht geöffnet werden",
   "error.operation_failed": "{1} fehlgeschlagen",
+  "error.reader_navigation_failed": "Buchverweis konnte nicht geöffnet werden",
   "error.reader_open_failed": "Buch konnte nicht geöffnet werden",
   "error.reader_render_failed": "Buchdarstellung fehlgeschlagen",
+  "error.reader_toc_failed": "Inhaltsverzeichnis konnte nicht geladen werden",
   "error.txt_import_failed": "TXT-Import fehlgeschlagen",
   "error.txt_preview_failed": "TXT-Vorschau fehlgeschlagen",
 

@@ -189,7 +189,7 @@ function matchesAnySelector(el: FakeElement, selector: string) {
     .some((part) => matchesSelector(el, part))
 }
 
-function matchesSelector(el: FakeElement, selector: string) {
+function matchesSelector(el: FakeElement, selector: string): boolean {
   if (!selector) return false
   const tagName = el.tagName.toLowerCase()
 
@@ -219,10 +219,10 @@ function matchesSelector(el: FakeElement, selector: string) {
     return el.getAttribute(attrName.replace('\\:', ':')) !== null
   }
 
-  const tagAttrExists = selector.match(/^([a-z]+)\[(.+)\]$/)
+  const tagAttrExists = selector.match(/^([a-z]+)(\[.+\])$/)
   if (tagAttrExists) {
-    const [, expectedTag = '', attrName = ''] = tagAttrExists
-    return tagName === expectedTag && el.getAttribute(attrName.replace('\\:', ':')) !== null
+    const [, expectedTag = '', attributeSelector = ''] = tagAttrExists
+    return tagName === expectedTag && matchesSelector(el, attributeSelector)
   }
 
   return selector === tagName
@@ -260,6 +260,7 @@ function createContents(body: FakeElement) {
       })
       return result
     },
+    querySelector: (selector: string) => body.querySelector(selector),
     querySelectorAll: (selector: string) => body.querySelectorAll(selector),
   }
   walkElements(body, (el) => {
@@ -768,9 +769,7 @@ function testReciprocalNoteItemRequiresBacklinkToSourceAnchor() {
   })
   const wrongNoteItem = new FakeElement('p').append(wrongBacklink, ' 这条没有指回正文引用。')
   const definitionSource = anchor('notes.html#note-3', '3')
-  const definitionMarker = new FakeElement('sup', {
-    attributes: { id: 'back-note-3' },
-  }).append(definitionSource)
+  const definitionMarker = new FakeElement('sup', { attributes: { id: 'back-note-3' } }).append(definitionSource)
   const definitionSourceParagraph = new FakeElement('p').append('正文里的定义列表注释引用', definitionMarker)
   const definitionNote = new FakeElement('dl', {
     attributes: { id: 'note-3' },
@@ -785,6 +784,47 @@ function testReciprocalNoteItemRequiresBacklinkToSourceAnchor() {
   assert.strictEqual(findReciprocalNoteItem(source, noteLink), noteItem)
   assert.strictEqual(findReciprocalNoteItem(source, wrongBacklink), undefined)
   assert.strictEqual(findReciprocalNoteItem(definitionSource, definitionNote), definitionNote)
+
+  const chapterRef = anchor('ch12.html#ch_future', 'Chapter 12')
+  const sourceRoot = new FakeElement('div').append(
+    new FakeElement('span', { attributes: { id: 'ch_introduction' } }),
+    chapterRef,
+  )
+  const targetRoot = new FakeElement('div', { attributes: { id: 'ch_future' } }).append(
+    new FakeElement('p').append(anchor('ch01.html#ch_introduction', 'Chapter 1'), ' Ordinary chapter content.'),
+  )
+  createContents(new FakeElement('body').append(sourceRoot))
+  createContents(new FakeElement('body').append(targetRoot))
+  assert.strictEqual(findReciprocalNoteItem(chapterRef, targetRoot), undefined)
+
+  const nestedSource = anchor('#nested#note', '')
+  nestedSource.append(new FakeElement('span', { attributes: { id: 'nested#ref' } }).append('[2]'))
+  const nestedNote = new FakeElement('p', { attributes: { id: 'nested#note' } }).append(
+    anchor('#nested#ref', '[2]'),
+    ' Synthetic nested-reference note.',
+  )
+  const nestedContents = createContents(new FakeElement('body').append(nestedSource, nestedNote))
+  assert.strictEqual(findReciprocalNoteItem(nestedSource, nestedNote), nestedNote)
+  assert.strictEqual(getNoteIndex(nestedContents.document).getItemForTarget(nestedNote), nestedNote)
+
+  const jenaSource = anchor('notes.html#Jena2013', '42', { id: 'Jena2013-marker' })
+  const jenaBacklink = anchor('ch02.html#Jena2013-marker', '42')
+  const jenaNote = new FakeElement('p', { attributes: { id: 'Jena2013' } }).append(jenaBacklink, ' Apache Jena.')
+  createContents(
+    new FakeElement('body').append(
+      new FakeElement('link', { attributes: { rel: 'canonical', href: 'ch02.html' } }),
+      jenaSource,
+    ),
+  )
+  createContents(
+    new FakeElement('body').append(
+      new FakeElement('link', { attributes: { rel: 'canonical', href: 'notes.html' } }),
+      jenaNote,
+    ),
+  )
+  assert.strictEqual(findReciprocalNoteItem(jenaSource, jenaNote), jenaNote)
+  jenaBacklink.setAttribute('href', 'wrong-chapter.html#Jena2013-marker')
+  assert.strictEqual(findReciprocalNoteItem(jenaSource, jenaNote), undefined)
 }
 
 function testRepeatedReferencesShareReciprocalNoteItem() {
@@ -823,10 +863,8 @@ function testReciprocalNoteItemUsesBoundedTargetStructures() {
     ' 这是空 span 目标后面的尾注正文。',
   )
 
-  const tableSource = anchor('chapter.html#note-table', '[2]')
-  const tableSourceParagraph = new FakeElement('p', {
-    attributes: { id: 'back-table' },
-  }).append('正文里的表格注释引用', tableSource)
+  const tableSource = anchor('chapter.html#note-table', '[2]', { id: 'back-table' })
+  const tableSourceParagraph = new FakeElement('p').append('正文里的表格注释引用', tableSource)
   const tableTarget = new FakeElement('a', {
     attributes: { id: 'note-table' },
   })
@@ -847,7 +885,7 @@ function testReciprocalNoteItemUsesBoundedTargetStructures() {
   body.append(kindleSourceParagraph, kindleNote, tableSourceParagraph, chapterWrapper, formulaSourceParagraph, formula)
   createContents(body)
 
-  assert.strictEqual(findReciprocalNoteItem(kindleSource, kindleTarget), kindleNote)
+  assert.strictEqual(findReciprocalNoteItem(kindleSource, kindleTarget), undefined)
   assert.strictEqual(findReciprocalNoteItem(tableSource, tableTarget), tableNote)
   assert.notStrictEqual(findReciprocalNoteItem(tableSource, tableTarget), chapterWrapper)
   assert.strictEqual(findReciprocalNoteItem(formulaSource, formula), undefined)
@@ -855,10 +893,8 @@ function testReciprocalNoteItemUsesBoundedTargetStructures() {
 
 function testNoteIndexMapsBacklinksOnlyInsideRecognizedNoteItems() {
   const body = new FakeElement('body')
-  const source = anchor('chapter.html#note-table', '[1]')
-  const sourceParagraph = new FakeElement('p', {
-    attributes: { id: 'back-table' },
-  }).append('正文', source)
+  const source = anchor('chapter.html#note-table', '[1]', { id: 'back-table' })
+  const sourceParagraph = new FakeElement('p').append('正文', source)
   const tableTarget = new FakeElement('a', {
     attributes: { id: 'note-table' },
   })

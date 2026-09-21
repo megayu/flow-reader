@@ -1,36 +1,18 @@
-import {
-  type Dispatch,
-  type RefObject,
-  type SetStateAction,
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react'
+import { type RefObject, useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 
+import { notePopoverClass } from '../../bodyText'
 import { isSupportedExternalUrl, openSupportedExternalUrl } from '../../externalLink'
 import { installReloadShortcut } from '../../keyboard'
 import type { BookTab } from '../../models/reader'
 import { getNoteIndex } from '../../noteIndex'
-import { isExplicitNoteLink } from '../../noteSemantics'
+import { isExplicitNoteLink, isNoteBacklink } from '../../noteSemantics'
 import { reloadCurrentView } from '../../reader/reload'
 import { useDndContext } from '../base/dropZoneContext'
 
 import { createBookLinkHighlight } from './bookLinkHighlight'
 import type { ExternalLinkPreview } from './ExternalLinkPopover'
-import {
-  createNotePopoverState,
-  getAnchorFromEvent,
-  getBookLinkDisplayTarget,
-  getLinkedNote,
-  isInternalBookHashLink,
-  isNoteBacklink,
-  type LinkedNoteResult,
-  type NotePopoverState,
-  type NotePopoverTypography,
-} from './noteContent'
+import { getAnchorFromEvent, getBookLinkDisplayTarget, getInternalBookHref, getLinkedNote } from './noteContent'
+import { showNotePopover } from './notePopover'
 import { useFrameEvent } from './useFrameEvent'
 
 function consumeExternalLinkClick(
@@ -81,10 +63,9 @@ interface BookPaneFrameContentOptions {
   linkHighlightRef: RefObject<HTMLDivElement | null>
   linkHighlightEnabled: boolean
   frameWindows: readonly Window[]
+  hideEndnotes?: boolean
   rendition: unknown
-  setNotePopover: Dispatch<SetStateAction<NotePopoverState | undefined>>
   tab: BookTab
-  typography: NotePopoverTypography
   zenMode: boolean
 }
 
@@ -96,13 +77,18 @@ export function useBookPaneFrameContent({
   linkHighlightRef,
   linkHighlightEnabled,
   frameWindows,
+  hideEndnotes,
   rendition,
-  setNotePopover,
   tab,
-  typography,
   zenMode,
 }: BookPaneFrameContentOptions) {
   const noteRequestId = useRef(0)
+  const notePopover = useRef<(() => void) | undefined>(undefined)
+  const closeNotePopover = useCallback(() => {
+    noteRequestId.current += 1
+    notePopover.current?.()
+    notePopover.current = undefined
+  }, [])
   const linkHighlight = useRef<ReturnType<typeof createBookLinkHighlight> | undefined>(undefined)
   useLayoutEffect(() => {
     if (!active || !linkHighlightEnabled || !containerRef.current || !linkHighlightRef.current) return
@@ -162,148 +148,87 @@ export function useBookPaneFrameContent({
     return () => cleanups.forEach((cleanup) => cleanup())
   }, [active, frameWindows])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!active) return
-
-    const cleanups = frameWindows.map((frame) => {
-      const document = frame.document
-
-      const handleClick = (event: MouseEvent) => {
-        setExternalLink(undefined)
-        const anchor = getAnchorFromEvent(event)
-        if (!anchor) {
-          noteRequestId.current += 1
-          setNotePopover(undefined)
-          return
-        }
-
-        linkHighlight.current?.clear()
-
-        if (consumeExternalLinkClick(event, anchor, setExternalLink)) {
-          noteRequestId.current += 1
-          setNotePopover(undefined)
-          return
-        }
-
-        if (zenMode) {
-          const target = getBookLinkDisplayTarget(tab, anchor)
-          if (target) {
-            event.preventDefault()
-            event.stopPropagation()
-            event.stopImmediatePropagation()
-            displayBookLink(target).catch(console.error)
-          }
-          noteRequestId.current += 1
-          setNotePopover(undefined)
-          return
-        }
-
-        if (!isInternalBookHashLink(anchor)) {
-          const target = getBookLinkDisplayTarget(tab, anchor)
-          if (target) {
-            event.preventDefault()
-            event.stopPropagation()
-            event.stopImmediatePropagation()
-            closeChapterFindEvent()
-            noteRequestId.current += 1
-            setNotePopover(undefined)
-            displayBookLink(target).catch(console.error)
-          }
-
-          return
-        }
-
-        event.preventDefault()
-        event.stopPropagation()
+    const currentRendition = tab.rendition
+    const handleClick = (event: MouseEvent) => {
+      const insideNote = (event.target as Element | null)?.closest?.(`.${notePopoverClass}`)
+      const anchor = getAnchorFromEvent(event)
+      if (insideNote && !anchor) {
         event.stopImmediatePropagation()
-        closeChapterFindEvent()
-        setNotePopover(undefined)
-
-        const displayTarget = getBookLinkDisplayTarget(tab, anchor)
-        if (
-          !isExplicitNoteLink(anchor) &&
-          (isNoteBacklink(anchor) || getNoteIndex(anchor.ownerDocument).getItemForAnchor(anchor))
-        ) {
-          noteRequestId.current += 1
-          if (displayTarget) displayBookLink(displayTarget).catch(console.error)
-          return
-        }
-
-        const requestId = (noteRequestId.current += 1)
-        let note: LinkedNoteResult | undefined
-
-        void (async () => {
-          try {
-            note = await getLinkedNote(tab, anchor, containerRef.current, typography)
-            if (requestId !== noteRequestId.current) {
-              return
-            }
-            if (!anchor.isConnected) {
-              return
-            }
-            if (!note) {
-              if (displayTarget) await displayBookLink(displayTarget)
-              return
-            }
-
-            const popover = createNotePopoverState(anchor, note.element, containerRef.current, rendition, tab)
-            if (!popover) {
-              return
-            }
-            if (requestId !== noteRequestId.current) {
-              return
-            }
-
-            setNotePopover(popover)
-          } finally {
-            note?.cleanup?.()
-          }
-        })()
-      }
-
-      const handleKeyDown = (event: KeyboardEvent) => {
-        if (event.key === 'Escape') setNotePopover(undefined)
-      }
-
-      document.addEventListener('click', handleClick, true)
-      document.addEventListener('keydown', handleKeyDown, true)
-
-      return () => {
-        document.removeEventListener('click', handleClick, true)
-        document.removeEventListener('keydown', handleKeyDown, true)
-        noteRequestId.current += 1
-        setNotePopover(undefined)
-        setExternalLink(undefined)
-      }
-    })
-
-    return () => {
-      cleanups.forEach((cleanup) => cleanup())
-    }
-  }, [active, containerRef, displayBookLink, frameWindows, rendition, setNotePopover, tab, typography, zenMode])
-
-  const handleNotePopoverLinkClick = useCallback(
-    (event: MouseEvent, anchor: HTMLAnchorElement) => {
-      setExternalLink(undefined)
-      if (consumeExternalLinkClick(event, anchor, setExternalLink)) {
-        noteRequestId.current += 1
-        setNotePopover(undefined)
         return
       }
+      closeNotePopover()
+      setExternalLink(undefined)
+      if (!anchor) return
+      linkHighlight.current?.clear()
+      if (consumeExternalLinkClick(event, anchor, setExternalLink)) return
 
-      const target = anchor.getAttribute('href')
-      if (!target) return
-
+      const href = getInternalBookHref(anchor)
+      if (!href) return
+      const target = insideNote ? href : getBookLinkDisplayTarget(tab, anchor)
       event.preventDefault()
       event.stopPropagation()
       event.stopImmediatePropagation()
-      closeChapterFind()
-      noteRequestId.current += 1
-      setNotePopover(undefined)
-      displayBookLink(target).catch(console.error)
-    },
-    [closeChapterFind, displayBookLink, setNotePopover],
-  )
+      closeChapterFindEvent()
+      const navigate = async () => {
+        if (!target) {
+          tab.reportNavigationError(new Error(`No Section Found: ${href}`))
+          return
+        }
+        return displayBookLink(target)
+      }
+      if (
+        insideNote ||
+        zenMode ||
+        !href.includes('#') ||
+        isNoteBacklink(anchor) ||
+        (!isExplicitNoteLink(anchor) && getNoteIndex(anchor.ownerDocument).getItemForAnchor(anchor))
+      ) {
+        void navigate().catch((error) => tab.reportNavigationError(error))
+        return
+      }
+
+      const requestId = noteRequestId.current
+      void getLinkedNote(tab, anchor, hideEndnotes)
+        .then((content) => {
+          if (requestId !== noteRequestId.current || !anchor.isConnected) return
+          if (!content || !containerRef.current) {
+            return navigate()
+          }
+          notePopover.current = showNotePopover(anchor, content, containerRef.current, rendition)
+        })
+        .catch((error) => {
+          if (requestId === noteRequestId.current && anchor.isConnected) tab.reportNavigationError(error)
+        })
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!notePopover.current || event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      closeNotePopover()
+    }
+    for (const frame of frameWindows) {
+      frame.document.addEventListener('click', handleClick, true)
+      frame.addEventListener('keydown', handleKeyDown, true)
+    }
+    document.addEventListener('pointerdown', closeNotePopover, true)
+    document.addEventListener('keydown', handleKeyDown, true)
+    window.addEventListener('resize', closeNotePopover)
+    currentRendition?.on('relocated', closeNotePopover)
+    return () => {
+      for (const frame of frameWindows) {
+        frame.document.removeEventListener('click', handleClick, true)
+        frame.removeEventListener('keydown', handleKeyDown, true)
+      }
+      document.removeEventListener('pointerdown', closeNotePopover, true)
+      document.removeEventListener('keydown', handleKeyDown, true)
+      window.removeEventListener('resize', closeNotePopover)
+      currentRendition?.off('relocated', closeNotePopover)
+      closeNotePopover()
+      setExternalLink(undefined)
+    }
+  }, [active, closeNotePopover, containerRef, displayBookLink, frameWindows, hideEndnotes, rendition, tab, zenMode])
 
   const handleFrameClick = useCallback(
     (event: MouseEvent) => {
@@ -341,7 +266,7 @@ export function useBookPaneFrameContent({
 
   return {
     externalLink,
-    handleNotePopoverLinkClick,
+    closeNotePopover,
     closeExternalLink,
     closeImagePreview: () => setImagePreview(undefined),
     imagePreview,

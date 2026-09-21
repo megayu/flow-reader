@@ -1,9 +1,10 @@
-import { resolveLinkedHrefPath, safeDecodeHref, sameHref } from './noteLinks'
+import { resolveLinkedHrefPath, safeDecodeHref, sameHref, splitLinkedHref } from './noteLinks'
 import {
   hasDeclaredNoteSemantics,
   hasNoteCollectionSemantics,
   hasNoteContainerSemantics,
   isExplicitNoteLink,
+  isNoteBacklink,
 } from './noteSemantics'
 
 export interface NoteIndex {
@@ -53,7 +54,7 @@ function collectLinkedNoteItems(document: Document) {
   const getTarget = createNoteTargetLookup()
 
   document.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((anchor) => {
-    if (!isUsableHashLink(anchor)) return
+    if (!isUsableHashLink(anchor) || isNoteBacklink(anchor)) return
 
     const target = getLinkedHashTarget(anchor, getTarget)
     if (!target) return
@@ -78,7 +79,7 @@ function isUsableHashLink(anchor: HTMLAnchorElement) {
 }
 
 function getLinkedHashTarget(anchor: HTMLAnchorElement, getTarget: NoteTargetLookup) {
-  const [path = '', hash = ''] = anchor.getAttribute('href')?.split('#') ?? []
+  const { path, hash } = splitLinkedHref(anchor.getAttribute('href')?.trim() ?? '')
   if (!hash) return
 
   const canonical = anchor.ownerDocument.querySelector?.('link[rel="canonical"]')?.getAttribute('href')
@@ -353,20 +354,22 @@ function isInlineNoteTargetWrapper(el: HTMLElement) {
   return isTagName(el, 'A', 'B', 'EM', 'FONT', 'I', 'SMALL', 'SPAN', 'STRONG', 'SUB', 'SUP')
 }
 
-function backlinkTargetsAnchor(backlink: HTMLAnchorElement, anchor: HTMLAnchorElement, getTarget: NoteTargetLookup) {
-  const [, hash = ''] = backlink.getAttribute('href')?.split('#') ?? []
+export function backlinkTargetsAnchor(
+  backlink: HTMLAnchorElement,
+  anchor: HTMLAnchorElement,
+  getTarget: NoteTargetLookup = getElementByIdOrName,
+) {
+  const { path, hash } = splitLinkedHref(backlink.getAttribute('href')?.trim() ?? '')
   if (!hash) return false
 
-  const target = getTarget(anchor.ownerDocument, safeDecodeHref(hash))
-  if (!target) return false
+  const sourceHref = anchor.ownerDocument.querySelector?.('link[rel="canonical"]')?.getAttribute('href')
+  const noteHref = backlink.ownerDocument.querySelector?.('link[rel="canonical"]')?.getAttribute('href')
+  if (sourceHref && noteHref && !sameHref(resolveLinkedHrefPath(noteHref, path), sourceHref)) return false
 
-  return (
-    target === anchor ||
-    anchor.contains(target) ||
-    target.contains(anchor) ||
-    target.closest('a[href]') === anchor ||
-    findNearbyEmptyPositionTarget(anchor) === target
-  )
+  const target = getTarget(anchor.ownerDocument, safeDecodeHref(hash))
+  // Publishers place reference IDs on the link or its wrappers; nearby siblings
+  // do not establish ownership of the reference.
+  return !!target && (target === anchor || target.contains(anchor) || anchor.contains(target))
 }
 
 export function getElementByIdOrName(doc: Document, id: string) {
@@ -407,24 +410,6 @@ function createNoteTargetLookup(): NoteTargetLookup {
 
 function isPotentialNoteContentElement(el: HTMLElement) {
   return isTagName(el, 'ASIDE', 'BLOCKQUOTE', 'DD', 'DIV', 'DL', 'LI', 'OL', 'P', 'SECTION', 'TABLE', 'UL')
-}
-
-function isPotentialBodyTextElement(el: HTMLElement) {
-  return isTagName(el, 'BLOCKQUOTE', 'DD', 'DIV', 'LI', 'OL', 'P', 'SECTION', 'TABLE', 'UL')
-}
-
-function findNearbyEmptyPositionTarget(anchor: HTMLAnchorElement) {
-  let cur: HTMLElement | null = anchor
-
-  while (cur?.parentElement && cur.parentElement !== cur.ownerDocument.body) {
-    const previous = cur.previousElementSibling
-    if (isHTMLElement(previous) && isEmptyPositionTarget(previous)) {
-      return previous
-    }
-
-    cur = cur.parentElement
-    if (cur && isPotentialBodyTextElement(cur)) return
-  }
 }
 
 function isEmptyPositionTarget(el: HTMLElement) {

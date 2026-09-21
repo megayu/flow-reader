@@ -49,8 +49,10 @@
   "error.folder_import_failed": "Échec de l'importation du dossier",
   "error.open_book_directory_failed": "Impossible d'ouvrir le dossier du livre",
   "error.operation_failed": "Échec : {1}",
+  "error.reader_navigation_failed": "Impossible de suivre le lien du livre",
   "error.reader_open_failed": "Impossible d'ouvrir le livre",
   "error.reader_render_failed": "Échec du rendu du livre",
+  "error.reader_toc_failed": "Impossible de charger la table des matières",
   "error.txt_import_failed": "Échec de l'importation TXT",
   "error.txt_preview_failed": "Échec de l'aperçu TXT",
 

@@ -49,8 +49,10 @@
   "error.folder_import_failed": "Не удалось импортировать папку",
   "error.open_book_directory_failed": "Не удалось открыть папку книги",
   "error.operation_failed": "Ошибка: {1}",
+  "error.reader_navigation_failed": "Не удалось перейти по ссылке в книге",
   "error.reader_open_failed": "Не удалось открыть книгу",
   "error.reader_render_failed": "Ошибка отображения книги",
+  "error.reader_toc_failed": "Не удалось загрузить оглавление",
   "error.txt_import_failed": "Ошибка импорта TXT",
   "error.txt_preview_failed": "Ошибка предпросмотра TXT",
 

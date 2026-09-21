@@ -3558,97 +3558,73 @@ verticalBookTest(
 
 verticalBookTest('[vertical-rl] places note popover on the physical left with vertical content', async ({ page }) => {
   await openVerticalFixtureBook(page)
-  const activeFrame = page
+  const frame = page
     .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
     .filter({ visible: true })
     .first()
-  const noteRef = activeFrame.contentFrame().locator('#note-ref')
-  await noteRef.click()
-  const popover = page.locator('.flow-note-popover')
+    .contentFrame()
+  const readLayout = () =>
+    frame.locator('body').evaluate((body) => ({
+      body: body.getBoundingClientRect().toJSON(),
+      scroll: [body.ownerDocument.documentElement.scrollWidth, body.ownerDocument.documentElement.scrollHeight],
+    }))
+  const before = await readLayout()
+  await frame.locator('#note-ref').click()
+  const popover = frame.locator('.flow-note-popover')
   await expect(popover).toBeVisible()
-
-  const geometry = await page.evaluate(() => {
-    const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')
-    const frame = Array.from(pane?.querySelectorAll('iframe') ?? []).find(
-      (candidate) => candidate.getBoundingClientRect().width > 0,
-    ) as HTMLIFrameElement | undefined
-    const anchor = frame?.contentDocument?.querySelector('#note-ref')
-    const popover = pane?.querySelector('.flow-note-popover')
-    const content = popover?.firstElementChild
-    if (!frame || !anchor || !popover || !content) {
-      throw new Error('Missing note popover geometry')
-    }
-    const frameRect = frame.getBoundingClientRect()
-    const anchorRect = anchor.getBoundingClientRect()
-    const popoverRect = popover.getBoundingClientRect()
-
+  const geometry = await popover.evaluate((popover) => {
+    const content = popover.firstElementChild!
+    const anchor = popover.ownerDocument.querySelector('#note-ref')!
     return {
-      anchorLeft: frameRect.left + anchorRect.left,
-      contentClientHeight: content.clientHeight,
-      contentClientWidth: content.clientWidth,
-      contentOverflowX: getComputedStyle(content).overflowX,
-      contentOverflowY: getComputedStyle(content).overflowY,
-      contentScrollHeight: content.scrollHeight,
-      contentScrollWidth: content.scrollWidth,
-      popoverLeft: popoverRect.left,
-      popoverRight: popoverRect.right,
+      anchorLeft: anchor.getBoundingClientRect().left,
+      right: popover.getBoundingClientRect().right,
       writingMode: getComputedStyle(content).writingMode,
+      overflowX: getComputedStyle(content).overflowX,
+      overflowY: getComputedStyle(content).overflowY,
     }
   })
-
-  expect(geometry.popoverRight).toBeLessThan(geometry.anchorLeft)
-  expect(geometry.writingMode).toBe('vertical-rl')
-  expect(geometry.contentOverflowX).toBe('visible')
-  expect(geometry.contentOverflowY).toBe('clip')
-  expect(
-    Math.max(
-      geometry.contentScrollHeight - geometry.contentClientHeight,
-      geometry.contentScrollWidth - geometry.contentClientWidth,
-    ),
-  ).toBeLessThanOrEqual(1)
-
-  await page.evaluate(() => {
-    const content = document.querySelector('.flow-note-popover > div') as HTMLElement | null
-    if (!content) throw new Error('Missing note popover content')
-
-    const paragraph = document.createElement('p')
+  expect(geometry.right).toBeLessThan(geometry.anchorLeft)
+  expect(geometry).toMatchObject({ writingMode: 'vertical-rl', overflowX: 'visible', overflowY: 'clip' })
+  expect(await readLayout()).toEqual(before)
+  await popover.evaluate((popover) => {
+    const paragraph = popover.ownerDocument.createElement('p')
     paragraph.textContent = '用于验证长注释滚动能力。'.repeat(500)
-    content.appendChild(paragraph)
+    popover.firstElementChild!.appendChild(paragraph)
   })
+  await expect(popover.locator(':scope > div').first()).toHaveCSS('overflow-x', 'auto')
+  await expect(popover.locator(':scope > div').first()).toHaveCSS('overflow-y', 'hidden')
+  expect(await readLayout()).toEqual(before)
+  await page.keyboard.press('Escape')
+  await expect(popover).toHaveCount(0)
+  expect(await readLayout()).toEqual(before)
+})
 
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const content = document.querySelector('.flow-note-popover > div') as HTMLElement | null
-        if (!content) throw new Error('Missing note popover content')
-
-        return {
-          clientHeight: content.clientHeight,
-          overflowX: getComputedStyle(content).overflowX,
-          overflowY: getComputedStyle(content).overflowY,
-          scrollHeight: content.scrollHeight,
-        }
-      }),
+verticalBookTest('keeps a note open and prevents browser reload for the reload shortcut', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.code !== 'KeyR') return
+        // Native event dispatch can run microtasks between successive listeners.
+        setTimeout(() => {
+          document.documentElement.dataset.reloadPrevented = String(event.defaultPrevented)
+        }, 0)
+      },
+      true,
     )
-    .toMatchObject({ overflowX: 'auto', overflowY: 'hidden' })
-
-  const longNoteGeometry = await page.evaluate(() => {
-    const content = document.querySelector('.flow-note-popover > div') as HTMLElement | null
-    if (!content) throw new Error('Missing note popover content')
-
-    return {
-      clientHeight: content.clientHeight,
-      clientWidth: content.clientWidth,
-      scrollHeight: content.scrollHeight,
-      scrollWidth: content.scrollWidth,
-    }
   })
-  expect(
-    Math.max(
-      longNoteGeometry.scrollHeight - longNoteGeometry.clientHeight,
-      longNoteGeometry.scrollWidth - longNoteGeometry.clientWidth,
-    ),
-  ).toBeGreaterThan(1)
+  await openVerticalFixtureBook(page)
+  const frame = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .filter({ visible: true })
+    .first()
+    .contentFrame()
+  await frame.locator('#note-ref').click()
+  const popover = frame.locator('.flow-note-popover')
+  await expect(popover).toBeVisible()
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+r' : 'Control+r')
+  await expect(frame.locator('html')).toHaveAttribute('data-reload-prevented', 'true')
+  await expect(popover).toBeVisible()
 })
 
 test('previews external reader links and dismisses across documents', async ({ page }) => {
@@ -3696,6 +3672,40 @@ test('previews external reader links and dismisses across documents', async ({ p
   )
 })
 
+test('long-book invalid paths only fall back to local notes and otherwise preserve reading', async ({ page }) => {
+  await page.route(/\/test-assets\/long\/OPS\/chapter_001\.xhtml/, (route) =>
+    route.fulfill({
+      contentType: 'application/xhtml+xml',
+      body: `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Links</title></head><body>
+        <p><a id="note-ref" href="missing.xhtml#local-note">Note</a>
+        <a href="missing.xhtml#ordinary">Invalid ordinary link</a>
+        <a href="missing.xhtml#absent">Missing target</a></p>
+        <p id="ordinary">Ordinary content.</p>
+        <aside role="doc-footnote" id="local-note"><p><a href="#note-ref">Return</a>Local fallback note.</p></aside>
+        ${'<p>Reading content remains available after a failed link.</p>'.repeat(30)}
+        </body></html>`,
+    }),
+  )
+  await openFixtureBook(page, 0)
+  await waitForStableReaderLayout(page, { header: false })
+  const frame = page
+    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
+    .filter({ visible: true })
+    .first()
+    .contentFrame()
+  const location = await page.evaluate(() => (window as any).reader.focusedBookTab.rendition.location)
+  await frame.getByRole('link', { name: 'Note', exact: true }).click()
+  await expect(frame.locator('.flow-note-popover')).toContainText('Local fallback note.')
+  await page.keyboard.press('Escape')
+  for (const label of ['Invalid ordinary link', 'Missing target']) {
+    await frame.getByRole('link', { name: label, exact: true }).click()
+    await expect(page.getByRole('alert').last()).toContainText('missing.xhtml#')
+    await expect(frame.locator('.flow-note-popover')).toHaveCount(0)
+    await expect(readerTabs(page)).toHaveCount(1)
+    expect(await page.evaluate(() => (window as any).reader.focusedBookTab.rendition.location)).toEqual(location)
+  }
+})
+
 test('long-book note popovers keep item boundaries and hide complete local and remote notes', async ({ page }) => {
   await page.route(/\/test-assets\/long\/OPS\/chapter_00[13]\.xhtml/, (route) => {
     const source = route.request().url().includes('chapter_001')
@@ -3739,7 +3749,7 @@ test('long-book note popovers keep item boundaries and hide complete local and r
     ['remote-ref', 'Remote continuation.'],
   ]) {
     await frame().locator(`#${id}`).click()
-    const popup = page.locator('.flow-note-popover')
+    const popup = frame().locator('.flow-note-popover')
     await expect(popup).toBeVisible()
     await expect(popup).toContainText(content!)
     await expect(popup).not.toContainText('Unselected sibling.')
@@ -3748,156 +3758,157 @@ test('long-book note popovers keep item boundaries and hide complete local and r
   }
   await frame().locator('#ordinary-ref').click()
   await waitForStableReaderLayout(page, { header: false })
-  await expect(page.locator('.flow-note-popover')).toHaveCount(0)
+  await expect(frame().locator('.flow-note-popover')).toHaveCount(0)
   await expect(frame().locator('#ordinary')).toBeVisible()
   await expect(frame().locator('#remote-note')).toBeHidden()
 })
 
-test('long-book note previews preserve structure and use the referring chapter typography', async ({ page }) => {
-  const note = (id: string, backlink: string) => `<aside role="doc-footnote"><ol>
-    <li id="${id}"><a href="${backlink}"><p style="font:300 14px serif;line-height:1.8;color:rgb(150,30,50);margin:12px 0">Note text
-      <span style="font-size:12px;font-weight:700">Emphasis</span><img class="note-glyph" alt="Glyph" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect width='120' height='120'/%3E%3C/svg%3E"/></p></a>
-      <p><a href="chapter_003.xhtml#ordinary-target">Book link</a></p>
-      <p><a href="https://example.com/note">External link</a></p>
-      <table style="border-collapse:collapse"><tr><td style="border:1px solid gray;padding:6px;font:400 13px serif">Cell</td></tr></table>
-      <ul style="list-style-type:disc;padding-left:30px"><li style="font:400 13px serif">List item</li></ul>
-    </li>
-    <li id="${id}-sibling"><p>Sibling note must not appear</p></li>
-  </ol></aside>`
+test('long-book note popovers share the reader document without changing pagination', async ({ page }) => {
   await page.route(/\/test-assets\/long\/OPS\/chapter_00[13]\.xhtml/, (route) => {
     const source = route.request().url().includes('chapter_001')
-    const refs =
-      '<p><a id="local-ref" role="doc-noteref" href="#local-note">Local note</a> <a id="remote-ref" role="doc-noteref" href="chapter_003.xhtml#remote-note">Remote note</a></p><p><a id="back-ref" role="doc-noteref" href="chapter_003.xhtml#back-note">Backlink target</a> at the start of its paragraph.</p>'
     return route.fulfill({
       contentType: 'application/xhtml+xml',
-      body: `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Note sample</title><style>body{font:${source ? '400 20px serif' : '700 30px sans-serif'}}p{margin:1em 0}.note-glyph{width:17px;height:19px}</style></head><body>
-        ${source ? refs : ''}${'<p>Ordinary reading text establishes this chapter baseline.</p>'.repeat(12)}
-        ${source ? note('local-note', '#local-ref') : note('remote-note', 'chapter_001.xhtml#remote-ref')}
-        ${source ? '' : '<p id="ordinary-target">Ordinary linked content.</p><div id="back-note"><p><a href="chapter_001.xhtml#back-ref">[Back]</a>Remote backlink note.</p></div>'}</body></html>`,
+      body: `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Notes</title>
+        <style>.note-emphasis { text-decoration: underline dotted; } ${source ? '' : '.remote-only { color: rgb(255, 0, 0); }'}</style>
+        </head><body><p>
+        ${source ? '<a id="local-ref" href="#local-note">Local</a> <a id="remote-ref" href="chapter_003.xhtml#remote-note">Remote</a>' : ''}
+        </p>${'<p>Ordinary reading text establishes the chapter layout.</p>'.repeat(25)}
+        <aside role="doc-footnote" id="${source ? 'local-note' : 'remote-note'}">
+          <p><a role="doc-backlink" href="chapter_001.xhtml#${source ? 'local-ref' : 'remote-ref'}">Return</a>
+          <em class="note-emphasis remote-only">Selected note content</em></p>
+          <p><a href="chapter_003.xhtml#ordinary-target">Book link</a></p>
+          <p><a href="chapter_003.xhtml#${source ? 'local-ref' : 'remote-ref'}">Other chapter</a>
+          <a href="chapter_003.xhtml#ordinary-target">a</a></p>
+          <p><a href="https://example.com/note">External link</a></p>
+          <img alt="Note image" width="16" height="16" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'/%3E"/>
+        </aside><p id="ordinary-target">Ordinary linked content.</p></body></html>`,
     })
   })
+  await page.getByRole('button', { name: msg('settings.title') }).click()
+  const settings = page.getByRole('dialog', { name: msg('settings.title') })
+  await settings.getByRole('button', { name: msg('settings.tabs.reading'), exact: true }).click()
+  await settings.locator('#settings-hide-endnotes').click()
+  await page.keyboard.press('Escape')
   await openFixtureBook(page, 0)
-  await page.evaluate(() => {
-    const tab = (window as any).reader.focusedBookTab
-    tab.updateConfiguration({ ...tab.book.configuration, typography: { fontSize: '24px', fontWeight: 500 } })
-  })
   await waitForStableReaderLayout(page, { header: false })
-  for (const reference of ['local-ref', 'remote-ref', 'remote-ref']) {
-    const frame = page.locator('[data-flow-reader-pane][aria-hidden="false"] iframe').filter({ visible: true }).first()
-    await frame.contentFrame().locator(`#${reference}`).click()
-    const popup = page.locator('.flow-note-popover')
-    await expect(popup).toBeVisible()
-    await expect(popup).not.toContainText('Sibling note must not appear')
-    const styles = await popup.evaluate((el) => {
-      const paragraph = getComputedStyle(el.querySelector('p')!)
-      const emphasis = getComputedStyle(el.querySelector('p span')!)
-      const cell = getComputedStyle(el.querySelector('td')!)
-      const glyph = el.querySelector('img')!.getBoundingClientRect()
+  const frame = () =>
+    page.locator('[data-flow-reader-pane][aria-hidden="false"] iframe').filter({ visible: true }).first().contentFrame()
+  const popup = () => frame().locator('.flow-note-popover')
+  const geometry = () =>
+    page.evaluate(() => {
+      const tab = (window as any).reader.focusedBookTab
+      const pane = document.querySelector('[data-flow-reader-pane][aria-hidden="false"]')!
+      const frames = [...pane.querySelectorAll('iframe')]
       return {
-        size: parseFloat(paragraph.fontSize),
-        weight: paragraph.fontWeight,
-        color: paragraph.color,
-        margin: paragraph.marginBottom,
-        emphasisSize: parseFloat(emphasis.fontSize),
-        emphasisWeight: emphasis.fontWeight,
-        cellSize: cell.fontSize,
-        border: cell.borderTopWidth,
-        padding: cell.paddingLeft,
-        marker: getComputedStyle(el.querySelector('ul li')!).listStyleType,
-        glyphWidth: glyph.width,
-        glyphHeight: glyph.height,
-        backlinkHref: el.querySelector<HTMLAnchorElement>('a')?.getAttribute('href'),
-        bookLinkHref: [...el.querySelectorAll<HTMLAnchorElement>('a')]
-          .find((link) => link.textContent === 'Book link')
-          ?.getAttribute('href'),
+        location: tab.rendition.location,
+        footer: pane.querySelector('[data-flow-reader-footer]')?.textContent,
+        frames: frames.map((frame) => ({
+          rect: frame.getBoundingClientRect().toJSON(),
+          body: frame.contentDocument!.body.getBoundingClientRect().toJSON(),
+          scroll: [
+            frame.contentDocument!.documentElement.scrollWidth,
+            frame.contentDocument!.documentElement.scrollHeight,
+          ],
+        })),
       }
     })
-    expect(styles.size).toBeCloseTo(16.8, 1)
-    expect(styles.emphasisSize).toBeCloseTo(14.4, 1)
-    expect(styles).toMatchObject({
-      weight: '400',
-      color: 'rgb(150, 30, 50)',
-      margin: '12px',
-      emphasisWeight: '800',
-      cellSize: '13px',
-      border: '1px',
-      padding: '6px',
-      marker: 'disc',
-      backlinkHref: null,
-      bookLinkHref: 'chapter_003.xhtml#ordinary-target',
-    })
-    expect(styles.glyphWidth).toBeCloseTo(17, 1)
-    expect(styles.glyphHeight).toBeCloseTo(19, 1)
-    const selectableText = popup.getByText('Emphasis', { exact: true })
-    const rect = await selectableText.boundingBox()
-    if (!rect) throw new Error('Missing selectable note text')
-    await page.mouse.move(rect.x + 1, rect.y + rect.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(rect.x + rect.width - 1, rect.y + rect.height / 2, { steps: 8 })
-    await page.mouse.up()
-    expect(await page.evaluate(() => window.getSelection()?.toString())).toContain('Emphasis')
+  const baseline = await geometry()
+  for (const reference of ['local-ref', 'remote-ref', 'remote-ref']) {
+    await frame().locator(`#${reference}`).click()
+    await expect(popup()).toBeVisible()
+    await expect(popup()).toHaveAttribute('popover', 'manual')
+    await expect(popup()).toContainText('Selected note content')
+    await expect(popup().getByText('Return', { exact: true })).not.toHaveAttribute('href')
+    await expect(popup().getByRole('link', { name: 'Other chapter', exact: true })).toBeVisible()
+    await expect(popup().getByRole('link', { name: 'a', exact: true })).toBeVisible()
+    await popup().getByText('Return', { exact: true }).click()
+    await expect(popup()).toBeVisible()
+    expect(await geometry()).toEqual(baseline)
+    const emphasis = popup().locator('em')
+    await expect(emphasis).toHaveCSS('text-decoration-style', 'dotted')
+    await expect(emphasis).not.toHaveCSS('color', 'rgb(255, 0, 0)')
+    await page.keyboard.press('ArrowRight')
+    expect(await geometry()).toEqual(baseline)
     await page.keyboard.press('Escape')
-    if (reference === 'local-ref') continue
-    await page.evaluate(async () => {
-      const tab = (window as any).reader.focusedBookTab
-      await tab.displayBookLink('chapter_003.xhtml')
-      await tab.displayBookLink('chapter_001.xhtml')
-    })
+    await expect(popup()).toHaveCount(0)
+    expect(await geometry()).toEqual(baseline)
   }
-
-  const sourceFrame = page
-    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
-    .filter({ visible: true })
-    .first()
-  await sourceFrame.contentFrame().locator('#local-ref').click()
-  await page.locator('.flow-note-popover').getByRole('link', { name: 'Book link', exact: true }).click()
-  await expect(page.locator('.flow-note-popover')).toBeHidden()
-  await expect(
-    page
-      .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
-      .filter({ visible: true })
-      .first()
-      .contentFrame()
-      .locator('#ordinary-target'),
-  ).toBeVisible()
-
-  await page.evaluate(async () => {
-    await (window as any).reader.focusedBookTab.displayBookLink('chapter_001.xhtml')
-  })
-  await waitForStableReaderLayout(page, { header: false })
-  const returnedSourceFrame = page
-    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
-    .filter({ visible: true })
-    .first()
-  await returnedSourceFrame.contentFrame().locator('#local-ref').click()
-  await page.locator('.flow-note-popover').getByRole('link', { name: 'External link', exact: true }).click()
-  await expect(page.locator('.flow-note-popover')).toBeHidden()
+  await frame().locator('#remote-ref').click()
+  await popup().getByRole('link', { name: 'External link', exact: true }).click()
+  await expect(popup()).toHaveCount(0)
   await expect(page.locator('[data-flow-external-link]')).toContainText('https://example.com/note')
   await page.keyboard.press('Escape')
+  await frame().locator('#remote-ref').click()
+  await popup().getByRole('link', { name: 'Book link', exact: true }).click()
+  await expect(popup()).toHaveCount(0)
+  await expect(frame().locator('#ordinary-target')).toBeVisible()
 
-  await page.evaluate(async () => {
-    await (window as any).reader.focusedBookTab.displayBookLink('chapter_003.xhtml')
-  })
+  await page.getByRole('button', { name: msg('settings.title') }).click()
+  await settings.getByRole('button', { name: msg('settings.tabs.reading'), exact: true }).click()
+  await settings.locator('#settings-hide-endnotes').click()
+  await page.keyboard.press('Escape')
+  for (const [reference, target] of [
+    ['local-ref', 'chapter_001.xhtml#local-note'],
+    ['remote-ref', 'chapter_003.xhtml#remote-note'],
+  ]) {
+    await page.evaluate(async (target) => (window as any).reader.focusedBookTab.displayBookLink(target), target)
+    await waitForStableReaderLayout(page, { header: false })
+    const destination = (await geometry()).location
+    await page.evaluate(async () => (window as any).reader.focusedBookTab.displayBookLink('chapter_001.xhtml'))
+    await waitForStableReaderLayout(page, { header: false })
+    await frame().locator(`#${reference}`).click()
+    await popup().getByRole('link', { name: 'Return', exact: true }).click()
+    await expect(popup()).toHaveCount(0)
+    await expect.poll(async () => (await geometry()).location).toEqual(destination)
+  }
+})
+
+test('long-book explicit note references open previews and nested references return to the source', async ({
+  page,
+}) => {
+  const semantics = [
+    'epub:type="noteref"',
+    'role="doc-noteref"',
+    'role="noteref"',
+    'type="noteref"',
+    'data-type="footnote"',
+  ]
+  await page.route(/\/test-assets\/long\/OPS\/chapter_001\.xhtml/, (route) =>
+    route.fulfill({
+      contentType: 'application/xhtml+xml',
+      body: `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Notes</title></head><body>
+        ${semantics.map((attributes, index) => `<p><a id="reference-${index}" ${attributes} href="chapter_001.xhtml#footnote-${index}">[${index + 1}]</a></p>`).join('')}
+        ${'<p>Ordinary reading content separates references from their notes.</p>'.repeat(45)}
+        <section epub:type="footnotes">${semantics.map((attributes, index) => `<aside id="footnote-${index}" epub:type="footnote"><p><a ${attributes} href="chapter_001.xhtml#reference-${index}">[${index + 1}]</a> Synthetic note ${index}.<br/></p></aside>`).join('')}</section>
+      </body></html>`,
+    }),
+  )
+  await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })
-  const remoteFrame = page
-    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
-    .filter({ visible: true })
-    .first()
-  await remoteFrame
-    .contentFrame()
-    .locator('#back-note a')
-    .evaluate((backlink: HTMLAnchorElement) => backlink.click())
-  const returnedFrame = page
-    .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
-    .filter({ visible: true })
-    .first()
-  await expect(returnedFrame.contentFrame().locator('#back-ref')).toBeVisible()
-  await expect(page.locator('.flow-note-popover')).toBeHidden()
+  const frame = () =>
+    page.locator('[data-flow-reader-pane][aria-hidden="false"] iframe').filter({ visible: true }).first().contentFrame()
+  for (const index of semantics.keys()) {
+    const location = await page.evaluate(() => (window as any).reader.focusedBookTab.rendition.location)
+    await frame().locator(`#reference-${index}`).click()
+    const popup = frame().locator('.flow-note-popover')
+    await expect(popup).toBeVisible()
+    await expect(popup).toContainText(`Synthetic note ${index}.`)
+    expect(await page.evaluate(() => (window as any).reader.focusedBookTab.rendition.location)).toEqual(location)
+    await page.keyboard.press('Escape')
+    await page.evaluate(async (index) => {
+      await (window as any).reader.focusedBookTab.displayBookLink(`chapter_001.xhtml#footnote-${index}`)
+    }, index)
+    await waitForStableReaderLayout(page, { header: false })
+    await frame().locator(`#footnote-${index} a`).click()
+    await waitForStableReaderLayout(page, { header: false })
+    await expect(frame().locator('.flow-note-popover')).toHaveCount(0)
+    await expect(frame().locator(`#reference-${index}`)).toBeVisible()
+  }
 })
 
 test('long-book link target hints preserve pagination and content geometry', async ({ page }) => {
   test.setTimeout(60_000)
-  const targets = ['marker', 'icon', 'paragraph', 'picture', 'empty-anchor']
+  const targets = ['chapter-start', 'marker', 'icon', 'paragraph', 'picture', 'empty-anchor']
   await page.route(/\/test-assets\/long\/OPS\/chapter_00[13]\.xhtml/, (route) => {
     const source = route.request().url().includes('chapter_001')
     return route.fulfill({
@@ -3908,10 +3919,11 @@ test('long-book link target hints preserve pagination and content geometry', asy
             ? targets
                 .map(
                   (id) =>
-                    `<p><a ${id === 'marker' ? 'role="doc-backlink"' : ''} href="chapter_003.xhtml#${id}">Go ${id}</a></p>`,
+                    `<p><a ${id === 'marker' ? 'role="doc-backlink"' : ''} href="chapter_003.xhtml${id === 'chapter-start' ? '' : `#${id}`}">Go ${id}</a></p>`,
                 )
                 .join('')
             : `
+          <p id="chapter-start">Go chapter-start</p>
           <p data-type="footnote" id="marker">[<a href="chapter_001.xhtml#source">15</a>] Synthetic reference.</p>
           <p>Icon <a id="icon" href="chapter_001.xhtml"><svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><circle cx="4" cy="4" r="4"/></svg></a> in ordinary body text.</p>
           <section id="paragraph"><h2>Target heading</h2><p>${'Target paragraph with readable synthetic content. '.repeat(8)}</p></section>
@@ -3951,7 +3963,9 @@ test('long-book link target hints preserve pagination and content geometry', asy
 
   for (const id of targets) {
     await page.evaluate(async (id) => {
-      await (window as any).reader.focusedBookTab.displayBookLink(`chapter_003.xhtml#${id}`)
+      await (window as any).reader.focusedBookTab.displayBookLink(
+        `chapter_003.xhtml${id === 'chapter-start' ? '' : `#${id}`}`,
+      )
     }, id)
     await waitForStableReaderLayout(page, { header: false })
     const baseline = await readGeometry(id)
@@ -3969,8 +3983,13 @@ test('long-book link target hints preserve pagination and content geometry', asy
     await expect
       .poll(() => page.evaluate(() => (window as any).reader.focusedBookTab.rendition.location))
       .toEqual(baseline.location)
-    if (id === 'empty-anchor') {
-      await expect(hint).toHaveCount(0)
+    if (id === 'empty-anchor' || id === 'chapter-start') {
+      // Let the committed navigation's one-shot highlight frame finish; do not
+      // poll until an incorrectly created hint fades away.
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+      )
+      expect(await hint.count()).toBe(0)
       expect(await readGeometry(id)).toEqual(baseline)
       continue
     }
@@ -4024,7 +4043,7 @@ test('does not scroll a horizontal note for glyph overflow inside the available 
     .filter({ visible: true })
     .first()
   await activeFrame.contentFrame().locator('#horizontal-note-ref').click()
-  const popover = page.locator('.flow-note-popover')
+  const popover = activeFrame.contentFrame().locator('.flow-note-popover')
   await expect(popover).toBeVisible()
 
   const overflow = await popover

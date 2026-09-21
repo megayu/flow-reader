@@ -49,8 +49,10 @@
   "error.folder_import_failed": "文件夹导入失败",
   "error.open_book_directory_failed": "打开书籍所在文件夹失败",
   "error.operation_failed": "{1}失败",
+  "error.reader_navigation_failed": "书内链接跳转失败",
   "error.reader_open_failed": "打开书籍失败",
   "error.reader_render_failed": "渲染书籍失败",
+  "error.reader_toc_failed": "目录加载失败",
   "error.txt_import_failed": "TXT 导入失败",
   "error.txt_preview_failed": "TXT 预览失败",
 

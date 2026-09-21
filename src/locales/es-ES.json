@@ -49,8 +49,10 @@
   "error.folder_import_failed": "Error al importar la carpeta",
   "error.open_book_directory_failed": "No se pudo abrir la carpeta del libro",
   "error.operation_failed": "Error: {1}",
+  "error.reader_navigation_failed": "No se pudo seguir el enlace del libro",
   "error.reader_open_failed": "No se pudo abrir el libro",
   "error.reader_render_failed": "Error al procesar el libro",
+  "error.reader_toc_failed": "No se pudo cargar el índice",
   "error.txt_import_failed": "Error al importar el archivo TXT",
   "error.txt_preview_failed": "Error en la vista previa del TXT",
 

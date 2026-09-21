@@ -51,16 +51,6 @@ export interface BodyTypographyBaseline {
   lineHeight?: number
 }
 
-interface OriginalBodyTypography extends BodyTypographyBaseline {
-  fontFamily: string
-}
-
-const originalBodyTypography = new WeakMap<Document, OriginalBodyTypography>()
-
-export function getOriginalBodyTypography(document: Document) {
-  return originalBodyTypography.get(document)
-}
-
 export function getBodyTypographyBaseline(
   contents: Contents | undefined,
   _bodyTextCache?: BodyTextDetectionCache,
@@ -224,11 +214,6 @@ function applyBodyTextMarkers(contents: Contents, candidates: HTMLElement[], bod
     const style = contents.window.getComputedStyle(baselineElement)
     const size = parseCssPixel(style.fontSize)
     const weight = parseCssFontWeight(style.fontWeight)
-    originalBodyTypography.set(contents.document, {
-      fontFamily: primaryFontFamily ?? normalizeFontFamily(style.fontFamily),
-      fontSize: size !== undefined && primaryMarker?.fontSizeRatio ? size / primaryMarker.fontSizeRatio : size,
-      fontWeight: weight !== undefined ? weight - (primaryMarker?.fontWeightOffset ?? 0) : undefined,
-    })
     applyNoteTypographyMarkers(
       contents,
       primaryFontFamily ?? normalizeFontFamily(style.fontFamily),
@@ -340,15 +325,14 @@ const protectedTypographySelector =
 const noteTypographyExcludedTags = new Set(`${protectedTypographySelector},aside,ol,ul`.split(','))
 const inlineTypographyExcludedTags = new Set(['br', 'img', 'svg', 'math', 'ruby', 'rt', 'rp', 'sup', 'sub'])
 
-export function applyNoteTypographyMarkers(
+function applyNoteTypographyMarkers(
   contents: Contents,
   primaryFontFamily: string,
   baselineFontSize: number | undefined,
   baselineFontWeight: number | undefined,
-  roots = getNoteIndex(contents.document).getTextTargets(),
 ) {
   const protectedSubtrees = new Map<HTMLElement, boolean>()
-  for (const root of roots) {
+  for (const root of getNoteIndex(contents.document).getTextTargets()) {
     if (root.closest(protectedTypographySelector)) continue
     const walk = (el: HTMLElement): boolean => {
       const cached = protectedSubtrees.get(el)

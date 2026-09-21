@@ -49,8 +49,10 @@
   "error.folder_import_failed": "Folder import failed",
   "error.open_book_directory_failed": "Failed to open book folder",
   "error.operation_failed": "{1} failed",
+  "error.reader_navigation_failed": "Could not follow book link",
   "error.reader_open_failed": "Failed to open book",
   "error.reader_render_failed": "Failed to render book",
+  "error.reader_toc_failed": "Could not load table of contents",
   "error.txt_import_failed": "TXT import failed",
   "error.txt_preview_failed": "TXT preview failed",
 

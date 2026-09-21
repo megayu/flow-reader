@@ -65,7 +65,7 @@ import { useTranslation } from '../hooks/useTranslation'
 import { isGlobalKeyboardShortcutBlocked } from '../keyboard'
 import type { MessageKey } from '../locales'
 import { completeTabOpen, reader, useReaderSnapshot } from '../models/reader'
-import { subscribeReaderOpenErrors } from '../reader/errorEvents'
+import { type ReaderOpenErrorStage, subscribeReaderOpenErrors } from '../reader/errorEvents'
 import { createTextSearchIndex, matchesTextSearch } from '../search/textSearch'
 import { getShortcutChords } from '../shortcuts'
 import {
@@ -127,6 +127,16 @@ import {
   selectBookIdRange,
 } from './selection'
 import { useLibraryGridWindow } from './useLibraryGridWindow'
+
+const readerErrorMessageKeys = {
+  source: 'error.reader_open_failed',
+  open: 'error.reader_open_failed',
+  render: 'error.reader_render_failed',
+  spine: 'error.reader_render_failed',
+  position: 'error.reader_render_failed',
+  navigation: 'error.reader_navigation_failed',
+  toc: 'error.reader_toc_failed',
+} satisfies Record<ReaderOpenErrorStage, MessageKey>
 
 const sortFieldIconMap = {
   title: BookTextIcon,
@@ -413,10 +423,10 @@ export function LibraryPage() {
   )
 
   useEffect(() => {
-    return subscribeReaderOpenErrors(({ bookId, bookTitle, closeTab, error, stage }) => {
-      setNativeStartupReaderFailed(true)
+    return subscribeReaderOpenErrors(({ bookId, bookTitle, closeTab, fatal, error, stage }) => {
+      if (fatal) setNativeStartupReaderFailed(true)
       const errorMessage = formatErrorMessage(error)
-      const sourceErrorStatus = bookSourceStatusFromError(errorMessage)
+      const sourceErrorStatus = fatal ? bookSourceStatusFromError(errorMessage) : undefined
       if (closeTab) {
         if (sourceErrorStatus) {
           setSourceStatuses((current) => {
@@ -431,9 +441,7 @@ export function LibraryPage() {
       notify({
         autoCloseMs: false,
         description: `${bookTitle}: ${sourceErrorDescription ?? errorMessage}`,
-        title: sourceErrorDescription
-          ? t('home.source_unavailable')
-          : t(`error.${stage === 'source' || stage === 'open' ? 'reader_open_failed' : 'reader_render_failed'}`),
+        title: sourceErrorDescription ? t('home.source_unavailable') : t(readerErrorMessageKeys[stage]),
         type: 'error',
       })
     })

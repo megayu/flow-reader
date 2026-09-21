@@ -1,10 +1,11 @@
-// Reader open failures are broadcast without coupling the model to library UI.
-export type ReaderOpenErrorStage = 'source' | 'open' | 'render' | 'spine' | 'position'
+// Reader failures are broadcast without coupling the model to library UI.
+export type ReaderOpenErrorStage = 'source' | 'open' | 'render' | 'spine' | 'position' | 'navigation' | 'toc'
 
 export interface ReaderOpenErrorEvent {
   bookId: string
   bookTitle: string
   closeTab: boolean
+  fatal: boolean
   error: unknown
   stage: ReaderOpenErrorStage
 }
