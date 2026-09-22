@@ -2859,6 +2859,53 @@ fn writes_image_index_cache_only_for_current_book_revision() {
 }
 
 #[test]
+fn removes_only_obsolete_schema_cache_files() {
+    let root = std::env::temp_dir().join(format!(
+        "flow-reader-schema-cache-test-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    let book = test_library_book_with_id("book", BookSourceFormat::Epub);
+    let storage = test_storage_with_book(&root, book.clone());
+    let dir = storage.book_dir("book");
+    fs::create_dir_all(&dir).unwrap();
+    let obsolete = ["image-index.v0.s1.r1.json.zst", "image-index.v0.s2.r3.json.zst"];
+    let preserved = [
+        "search-text.v1.s1.r1.json.zst",
+        "image-index.v999.s1.r1.json.zst",
+        "reading-metrics.v0.s1.json.zst",
+        "image-index.v0.notes.json.zst",
+        "state.json",
+        "book.epub",
+    ];
+    for name in obsolete.iter().chain(&preserved) {
+        fs::write(dir.join(name), b"payload").unwrap();
+    }
+    fs::create_dir(dir.join("image-index.v0.s3.r3.json.zst")).unwrap();
+    let mut cache = ImageIndexCache {
+        version: IMAGE_INDEX_CACHE_VERSION,
+        source_revision: book.source_revision,
+        revision: book.revision + 1,
+        sections: Vec::new(),
+    };
+    assert!(!write_image_index_cache_if_current(&storage, &book.id, &cache).unwrap());
+    for name in obsolete {
+        assert!(dir.join(name).exists());
+    }
+    cache.revision = book.revision;
+    assert!(write_image_index_cache_if_current(&storage, &book.id, &cache).unwrap());
+    assert!(read_image_index_cache(&storage, &book).is_ok());
+    for name in obsolete {
+        assert!(!dir.join(name).exists(), "obsolete cache retained: {name}");
+    }
+    for name in preserved {
+        assert_eq!(fs::read(dir.join(name)).unwrap(), b"payload", "{name}");
+    }
+    assert!(dir.join("image-index.v0.s3.r3.json.zst").is_dir());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn edited_book_preserves_revision_independent_reading_metrics_cache() {
     let root = std::env::temp_dir().join(format!(
         "flow-reader-previous-cache-version-test-{}-{}",

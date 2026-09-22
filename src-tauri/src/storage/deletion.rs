@@ -1,5 +1,56 @@
 use super::*;
 
+pub(super) fn remove_obsolete_schema_caches(
+    storage: &AppStorage,
+    id: &str,
+    prefix: &str,
+    current_version: u32,
+    has_revision: bool,
+) -> Result<(), String> {
+    let entries = match fs::read_dir(storage.book_dir(id)) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+    for entry in entries {
+        let entry = entry.map_err(|error| error.to_string())?;
+        if entry.file_type().map_err(|error| error.to_string())?.is_file()
+            && entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| is_obsolete_schema_cache(name, prefix, current_version, has_revision))
+        {
+            match fs::remove_file(entry.path()) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.to_string()),
+            }
+        }
+    }
+    Ok(())
+}
+
+fn is_obsolete_schema_cache(name: &str, prefix: &str, current_version: u32, has_revision: bool) -> bool {
+    let Some(stem) = name.strip_suffix(".json.zst") else {
+        return false;
+    };
+    let Some((version, revisions)) = stem.strip_prefix(prefix).and_then(|rest| rest.split_once(".s")) else {
+        return false;
+    };
+    let valid_number = |value: &str| {
+        !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()) && value.parse::<u32>().is_ok()
+    };
+    let valid_revisions = if has_revision {
+        revisions
+            .split_once(".r")
+            .is_some_and(|(source, revision)| valid_number(source) && valid_number(revision))
+    } else {
+        valid_number(revisions)
+    };
+    // Keep newer schemas so downgrading the application does not destroy their caches.
+    valid_revisions && valid_number(version) && version.parse::<u32>().is_ok_and(|version| version < current_version)
+}
+
 fn unedited_source_path(storage: &AppStorage, book: &StoredBook) -> Option<PathBuf> {
     if book.source_format == BookSourceFormat::Txt
         && book.source_storage == SourceStorage::Managed

@@ -125,7 +125,13 @@ fn write_reading_metrics_cache(
     if path.exists() {
         fs::remove_file(&path).map_err(|error| error.to_string())?;
     }
-    fs::rename(&tmp, path).map_err(|error| error.to_string())
+    fs::rename(&tmp, path).map_err(|error| error.to_string())?;
+    if let Err(error) =
+        super::deletion::remove_obsolete_schema_caches(storage, id, "reading-metrics.v", READING_METRICS_VERSION, false)
+    {
+        eprintln!("Failed to remove obsolete reading metrics caches for book '{id}': {error}");
+    }
+    Ok(())
 }
 
 pub(super) fn load_or_build_reading_metrics(

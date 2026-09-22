@@ -186,6 +186,11 @@ fn write_search_text_cache_if_current(storage: &AppStorage, id: &str, cache: &Se
     }
 
     fs::rename(&tmp, &path).map_err(|error| error.to_string())?;
+    if let Err(error) =
+        deletion::remove_obsolete_schema_caches(storage, id, "search-text.v", SEARCH_TEXT_CACHE_VERSION, true)
+    {
+        eprintln!("Failed to remove obsolete search text caches for book '{id}': {error}");
+    }
     Ok(true)
 }
 
@@ -294,6 +299,11 @@ pub(super) fn write_image_index_cache_if_current(
         return Ok(false);
     }
     fs::rename(&tmp, &path).map_err(|error| error.to_string())?;
+    if let Err(error) =
+        deletion::remove_obsolete_schema_caches(storage, id, "image-index.v", IMAGE_INDEX_CACHE_VERSION, true)
+    {
+        eprintln!("Failed to remove obsolete image index caches for book '{id}': {error}");
+    }
     Ok(true)
 }
 
