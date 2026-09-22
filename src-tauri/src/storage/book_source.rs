@@ -179,12 +179,18 @@ fn mode_switch_work_path(source: &Path, suffix: &str) -> Result<PathBuf, String>
     )))
 }
 
+enum ModeSwitchSourceChange {
+    Unchanged,
+    Created,
+    Replaced(PathBuf),
+}
+
 fn write_defined_epub_from_unpacked(
     storage: &AppStorage,
     book: &StoredBook,
     source_path: &Path,
     unpacked_dir: &Path,
-) -> Result<(String, u64, Option<PathBuf>), String> {
+) -> Result<(String, u64, ModeSwitchSourceChange), String> {
     storage.release_archive_resource(&book.id);
     let output = mode_switch_work_path(source_path, "new")?;
     let backup = source_path
@@ -227,15 +233,23 @@ fn write_defined_epub_from_unpacked(
         let _ = fs::remove_file(&output);
         return Err(error.to_string());
     }
-    Ok((hash, size, backup))
+    let change = match backup {
+        Some(backup) => ModeSwitchSourceChange::Replaced(backup),
+        None => ModeSwitchSourceChange::Created,
+    };
+    Ok((hash, size, change))
 }
 
-fn rollback_defined_epub(source_path: &Path, backup: Option<&Path>) {
-    if let Some(backup) = backup {
-        let _ = fs::remove_file(source_path);
-        let _ = fs::rename(backup, source_path);
-    } else {
-        let _ = fs::remove_file(source_path);
+fn rollback_defined_epub(source_path: &Path, change: &ModeSwitchSourceChange) {
+    match change {
+        ModeSwitchSourceChange::Unchanged => {}
+        ModeSwitchSourceChange::Created => {
+            let _ = fs::remove_file(source_path);
+        }
+        ModeSwitchSourceChange::Replaced(backup) => {
+            let _ = fs::remove_file(source_path);
+            let _ = fs::rename(backup, source_path);
+        }
     }
 }
 
@@ -288,13 +302,13 @@ pub(super) fn switch_book_content_mode_impl(
 
     let unpacked_dir = storage.book_dir(&id).join(UNPACKED_DIR);
     let mut updated = book.clone();
-    let mut source_backup = None;
+    let mut source_change = ModeSwitchSourceChange::Unchanged;
     match resolution {
         Some(BookModeSwitchResolution::Overwrite) => {
             find_unpacked_opf_path(&unpacked_dir)?;
             let exported_revision = current_book_revision(&book);
-            let (hash, size, backup) = write_defined_epub_from_unpacked(storage, &book, &source_path, &unpacked_dir)?;
-            source_backup = backup;
+            let (hash, size, change) = write_defined_epub_from_unpacked(storage, &book, &source_path, &unpacked_dir)?;
+            source_change = change;
             mark_book_exported(&mut updated, exported_revision, Some(hash.clone()));
             adopt_book_source_fields(&mut updated, hash, size)?;
         }
@@ -312,7 +326,7 @@ pub(super) fn switch_book_content_mode_impl(
     if updated.source_revision != book.source_revision
         && let Err(error) = remove_book_derived_cache_files(storage, &id)
     {
-        rollback_defined_epub(&source_path, source_backup.as_deref());
+        rollback_defined_epub(&source_path, &source_change);
         return Err(error);
     }
     updated.editable = false;
@@ -321,7 +335,7 @@ pub(super) fn switch_book_content_mode_impl(
     let unpacked_backup = if unpacked_dir.exists() {
         let backup = mode_switch_work_path(&unpacked_dir, "backup")?;
         if let Err(error) = fs::rename(&unpacked_dir, &backup) {
-            rollback_defined_epub(&source_path, source_backup.as_deref());
+            rollback_defined_epub(&source_path, &source_change);
             return Err(error.to_string());
         }
         Some(backup)
@@ -334,14 +348,14 @@ pub(super) fn switch_book_content_mode_impl(
             if let Some(backup) = &unpacked_backup {
                 let _ = fs::rename(backup, &unpacked_dir);
             }
-            rollback_defined_epub(&source_path, source_backup.as_deref());
+            rollback_defined_epub(&source_path, &source_change);
             return Err(error);
         }
     };
     if let Some(backup) = unpacked_backup {
         let _ = fs::remove_dir_all(backup);
     }
-    if let Some(backup) = source_backup {
+    if let ModeSwitchSourceChange::Replaced(backup) = source_change {
         let _ = fs::remove_file(backup);
     }
     storage.remove_derived_memory_caches(&id);

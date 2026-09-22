@@ -4403,50 +4403,52 @@ fn referenced_mode_switch_writes_only_the_defined_source_path_and_preserves_edit
 
 #[test]
 fn mode_switch_restores_source_unpacked_and_book_when_library_flush_fails() {
-    let root = std::env::temp_dir().join(format!(
-        "flow-reader-mode-rollback-test-{}-{}",
-        std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
-    ));
-    let source = root.join("defined.epub");
-    write_minimal_epub_file(&source, "Rollback", "original");
-    let original_source = fs::read(&source).unwrap();
+    for resolution in [BookModeSwitchResolution::Overwrite, BookModeSwitchResolution::Adopt] {
+        let root = std::env::temp_dir().join(format!(
+            "flow-reader-mode-rollback-test-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let source = root.join("defined.epub");
+        write_minimal_epub_file(&source, "Rollback", "original");
+        let original_source = fs::read(&source).unwrap();
 
-    let mut book = test_library_book(BookSourceFormat::Epub);
-    book.source_storage = SourceStorage::Referenced;
-    book.source_path = source.clone();
-    book.source_hash = hash_file(&source).unwrap();
-    book.source_revision = 1;
-    book.revision = 2;
-    book.content_edited_at = Some(10);
-    let original_book = book.clone();
-    let storage = test_storage_with_book(&root, book);
-    let unpacked = storage.book_dir("book").join(UNPACKED_DIR);
-    write_minimal_unpacked_package(&unpacked, "edited");
-    let unpacked_opf = unpacked.join("OEBPS/content.opf");
-    let original_unpacked_opf = fs::read(&unpacked_opf).unwrap();
-    fs::create_dir_all(library_path(&root).unwrap()).unwrap();
+        let mut book = test_library_book(BookSourceFormat::Epub);
+        book.source_storage = SourceStorage::Referenced;
+        book.source_path = source.clone();
+        book.source_hash = hash_file(&source).unwrap();
+        book.source_revision = 1;
+        book.revision = 2;
+        book.content_edited_at = Some(10);
+        let original_book = book.clone();
+        let storage = test_storage_with_book(&root, book);
+        let unpacked = storage.book_dir("book").join(UNPACKED_DIR);
+        write_minimal_unpacked_package(&unpacked, "edited");
+        let unpacked_opf = unpacked.join("OEBPS/content.opf");
+        let original_unpacked_opf = fs::read(&unpacked_opf).unwrap();
+        fs::create_dir_all(library_path(&root).unwrap()).unwrap();
 
-    assert!(
-        switch_book_content_mode_impl(
-            &storage,
-            &TaskService::default(),
-            "book".to_string(),
-            false,
-            Some(BookModeSwitchResolution::Overwrite),
-        )
-        .is_err()
-    );
+        assert!(
+            switch_book_content_mode_impl(
+                &storage,
+                &TaskService::default(),
+                "book".to_string(),
+                false,
+                Some(resolution),
+            )
+            .is_err()
+        );
 
-    let restored = storage.stored_book("book").unwrap();
-    assert!(restored.editable);
-    assert_eq!(restored.source_hash, original_book.source_hash);
-    assert_eq!(restored.source_revision, original_book.source_revision);
-    assert_eq!(restored.revision, original_book.revision);
-    assert_eq!(fs::read(&source).unwrap(), original_source);
-    assert_eq!(fs::read(unpacked_opf).unwrap(), original_unpacked_opf);
+        let restored = storage.stored_book("book").unwrap();
+        assert!(restored.editable);
+        assert_eq!(restored.source_hash, original_book.source_hash);
+        assert_eq!(restored.source_revision, original_book.source_revision);
+        assert_eq!(restored.revision, original_book.revision);
+        assert_eq!(fs::read(&source).unwrap(), original_source);
+        assert_eq!(fs::read(unpacked_opf).unwrap(), original_unpacked_opf);
 
-    let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(root);
+    }
 }
 
 #[test]

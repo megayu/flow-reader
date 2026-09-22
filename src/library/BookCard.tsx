@@ -339,8 +339,7 @@ const BookCardComponent: React.FC<BookCardProps> = ({
         }
       }
 
-      await reader.closeBookTab(book.id)
-      const result = await db.books.switchContentMode(book.id, editable, resolution)
+      const result = await reader.switchBookContentMode(book.id, editable, resolution)
       if (result.conflict) {
         setActiveDialog({ type: 'mode', conflict: result.conflict })
         return

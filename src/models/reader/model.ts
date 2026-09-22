@@ -15,6 +15,8 @@ import { normalizeHrefPath, safeDecodeHref, sameHref } from '@/noteLinks'
 import { emitReaderOpenError, type ReaderOpenErrorStage } from '@/reader/errorEvents'
 import { isRecentReadingEnabled } from '@/state'
 import {
+  type BookModeSwitchResolution,
+  type BookModeSwitchResult,
   type BookReaderPreparation,
   type BookRecord,
   type BookTextReplaceTarget,
@@ -1677,13 +1679,16 @@ export class BookTab {
     } finally {
       db.recentBooks.cancelSession(this.book.id)
       await this.readerOpening?.catch(() => undefined)
-      if (this.readerResourceOpen) {
-        this.readerResourceOpen = false
-        await db.files.closeReader(this.book.id).catch(console.error)
-      }
       if (!renderingDestroyed) this.destroyRendering()
-      if (this.book.scope === 'external') {
-        await cleanupExternalBook(this.book.id).catch(console.error)
+      try {
+        if (this.readerResourceOpen) {
+          await db.files.closeReader(this.book.id)
+          this.readerResourceOpen = false
+        }
+      } finally {
+        if (this.book.scope === 'external') {
+          await cleanupExternalBook(this.book.id).catch(console.error)
+        }
       }
     }
   }
@@ -2309,6 +2314,7 @@ export class Reader {
   tabs: BookTab[] = []
   selectedIndex = -1
   private closingBooks = new Map<string, Promise<BookTab>>()
+  private switchingBooks = new Map<string, Promise<BookModeSwitchResult>>()
 
   get focusedBookTab() {
     return this.tabs[this.selectedIndex]
@@ -2425,6 +2431,14 @@ export class Reader {
     const activate = options?.activate !== false
     if (activate && isRecentReadingEnabled()) db.recentBooks.record(bookId)
 
+    const switching = this.switchingBooks.get(bookId)
+    if (switching)
+      return this.loadAndAddBookTab(
+        bookId,
+        switching.catch(() => undefined),
+        activate,
+      )
+
     const existing = this.findBookTab(bookId)
     if (existing) {
       if (!activate) return existing.tab
@@ -2439,6 +2453,9 @@ export class Reader {
   }
 
   async openBookFromDeepLink(bookId: string, cfi?: string) {
+    while (this.switchingBooks.has(bookId)) {
+      await this.switchingBooks.get(bookId)?.catch(() => undefined)
+    }
     const existing = this.findBookTab(bookId)
     let tab: BookTab
     if (existing) {
@@ -2449,8 +2466,7 @@ export class Reader {
       const book = await db.books.get(bookId)
       if (!book) return
 
-      const opened = this.findBookTab(bookId)
-      tab = opened ? this.focusBookTab(opened) : await this.addTab(book)
+      tab = await this.addTab(book)
     }
 
     if (tab.book.scope === 'library' && isRecentReadingEnabled()) db.recentBooks.record(bookId)
@@ -2461,6 +2477,13 @@ export class Reader {
   addTab(book: BookRecord, options?: { activate?: boolean }): BookTab | Promise<BookTab> {
     const bookId = book.id
     const activate = options?.activate !== false
+    const switching = this.switchingBooks.get(bookId)
+    if (switching)
+      return this.loadAndAddBookTab(
+        bookId,
+        switching.catch(() => undefined),
+        activate,
+      )
     const existing = this.findBookTab(bookId)
     if (existing) {
       return activate ? this.focusBookTab(existing) : existing.tab
@@ -2474,21 +2497,16 @@ export class Reader {
     return this.insertTab(book, activate)
   }
 
-  private async loadAndAddBookTab(bookId: string, closingBook: Promise<BookTab> | undefined, activate = true) {
+  private async loadAndAddBookTab(bookId: string, closingBook: Promise<unknown> | undefined, activate = true) {
     await closingBook
 
     const existing = this.findBookTab(bookId)
     if (existing) {
-      return activate ? this.focusBookTab(existing) : existing.tab
+      return this.addTab(existing.tab.book, { activate })
     }
 
     const book = await db.books.get(bookId)
     if (!book) throw new Error(`Book not found: ${bookId}`)
-
-    const opened = this.findBookTab(bookId)
-    if (opened) {
-      return activate ? this.focusBookTab(opened) : opened.tab
-    }
 
     return this.addTab(book, { activate })
   }
@@ -2513,6 +2531,25 @@ export class Reader {
     const located = this.findBookTab(bookId)
     if (located) return this.removeTab(located.tabIndex)
     return this.closingBooks.get(bookId) ?? Promise.resolve(undefined)
+  }
+
+  switchBookContentMode(bookId: string, editable: boolean, resolution?: BookModeSwitchResolution) {
+    const pending = this.switchingBooks.get(bookId)
+    if (pending) return pending
+
+    // Publish the barrier before closing; all opening paths wait for the entire transaction.
+    const switching = Promise.resolve()
+      .then(async () => {
+        const closed = await this.closeBookTab(bookId)
+        // A prior failed close may have detached the tab without releasing native resources.
+        if (!closed) await db.files.closeReader(bookId)
+        return db.books.switchContentMode(bookId, editable, resolution)
+      })
+      .finally(() => {
+        this.switchingBooks.delete(bookId)
+      })
+    this.switchingBooks.set(bookId, switching)
+    return switching
   }
 
   async applyBookContentEdit(
