@@ -955,8 +955,13 @@ const Library: React.FC<LibraryProps> = ({
     !virtualizeLibraryGrid,
   )
   const focusTitleSearch = useCallback(() => {
-    titleSearchInputRef.current?.focus()
-    titleSearchInputRef.current?.select()
+    const input = titleSearchInputRef.current
+    if (!input) return
+
+    input.focus()
+    window.setTimeout(() => {
+      if (input.ownerDocument.activeElement === input) input.select()
+    })
   }, [])
 
   const updateSelectedReadingStatus = (readingStatus: ReadingStatus | null) => {

@@ -27,6 +27,23 @@ function createBook(index: number, titlePrefix = 'Virtual Book') {
   })
 }
 
+test('library find shortcut focuses the title search and selects its query', async ({ page }) => {
+  await installTauriMock(page, { books: [createBook(1)] })
+  await page.goto('/')
+
+  const titleSearch = page.getByRole('textbox', { name: msg('home.library_search.title') })
+  const query = 'Virtual Book'
+  await titleSearch.fill(query)
+  await titleSearch.evaluate((input) => input.blur())
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+F' : 'Control+F')
+
+  await expect(titleSearch).toBeFocused()
+  expect(await titleSearch.evaluate((input: HTMLInputElement) => [input.selectionStart, input.selectionEnd])).toEqual([
+    0,
+    query.length,
+  ])
+})
+
 test('large libraries mount a bounded window while preserving far books and full-result selection', async ({
   page,
 }) => {
