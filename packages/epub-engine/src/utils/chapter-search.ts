@@ -10,6 +10,7 @@ export interface ChapterSearchOptions<Result = ChapterSearchMatch> {
 }
 
 import EpubCFI from '../epubcfi'
+import { findTextMatches } from './text-matches'
 
 // The sibling index belongs to one query over an unchanged document.
 class SearchCFI extends EpubCFI {
@@ -73,21 +74,17 @@ export async function findChapterMatches(
   while ((node = walker.nextNode())) {
     if (signal?.aborted || section.document !== document) return []
     const original = node.textContent!
-    const text = original.toLowerCase()
-    let offset = 0
-    let pos
-    while ((pos = text.indexOf(query, offset)) !== -1) {
+    for (const { start: pos, end } of findTextMatches(original, query)) {
       if (signal?.aborted || section.document !== document) return []
       const range = document.createRange()
       range.setStart(node, pos)
-      range.setEnd(node, pos + query.length)
+      range.setEnd(node, end)
       const cfi = new SearchCFI(range, section.cfiBase, positions).toString()
       const excerpt =
         original.length < 150
           ? original
           : `...${original.substring(pos - 75, pos + 75)}...`
       matches.push(mapMatch({ cfi, excerpt }))
-      offset = pos + 1
       if (performance.now() >= deadline) {
         await yieldSearch()
         deadline = performance.now() + 8

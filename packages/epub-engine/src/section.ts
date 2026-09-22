@@ -28,6 +28,7 @@ import Hook from './utils/hook'
 import { replaceBase } from './utils/replacements'
 import Request from './utils/request'
 import { findChapterMatches } from './utils/chapter-search'
+import { findTextMatches } from './utils/text-matches'
 
 function requestType(mediaType: string | undefined) {
   if (mediaType === 'application/xhtml+xml') return 'xhtml'
@@ -325,19 +326,18 @@ class Section {
     let first
     let node
     let index = 0
-    const resolve = ({ node, pos }: { node: Node; pos: number }) => {
+    const resolve = (
+      { node, start, end }: { node: Node; start: number; end: number },
+    ) => {
       const range = this.document!.createRange()
-      range.setStart(node, pos)
-      range.setEnd(node, pos + query.length)
+      range.setStart(node, start)
+      range.setEnd(node, end)
       return this.cfiFromRange(range)
     }
     while ((node = walker.nextNode())) {
-      const text = node.textContent!.toLowerCase()
-      let pos = text.indexOf(query)
-      while (pos !== -1) {
-        first ??= { node, pos }
-        if (index++ === occurrence) return resolve({ node, pos })
-        pos = text.indexOf(query, pos + 1)
+      for (const { start, end } of findTextMatches(node.textContent!, query)) {
+        first ??= { node, start, end }
+        if (index++ === occurrence) return resolve({ node, start, end })
       }
     }
     // Preserve the existing result-navigation fallback for an outdated occurrence.
@@ -355,50 +355,39 @@ class Section {
     var matches: SectionMatch[] = []
     var query = _query.toLowerCase()
     var find = function (node: Text) {
-      var text = node.textContent!.toLowerCase()
       var range = section.document!.createRange()
       var cfi
-      var pos
-      var last = -1
       var excerpt
       var limit = 150
 
-      while (pos != -1) {
-        // Search for the query
-        pos = text.indexOf(query, last + 1)
+      for (const { start: pos, end } of findTextMatches(node.textContent!, query)) {
+        // We found it! Generate a CFI
+        range = section.document!.createRange()
+        range.setStart(node, pos)
+        range.setEnd(node, end)
 
-        if (pos != -1) {
-          // We found it! Generate a CFI
-          range = section.document!.createRange()
-          range.setStart(node, pos)
-          range.setEnd(node, pos + query.length)
+        cfi = section.cfiFromRange(range)
 
-          cfi = section.cfiFromRange(range)
-
-          if (!includeExcerpt) {
-            matches.push({ cfi })
-            last = pos
-            continue
-          }
-          // Generate the excerpt
-          if (node.textContent!.length < limit) {
-            excerpt = node.textContent
-          } else {
-            excerpt = node.textContent!.substring(
-              pos - limit / 2,
-              pos + limit / 2,
-            )
-            excerpt = '...' + excerpt + '...'
-          }
-
-          // Add the CFI to the matches list
-          matches.push({
-            cfi: cfi,
-            excerpt: excerpt,
-          })
+        if (!includeExcerpt) {
+          matches.push({ cfi })
+          continue
+        }
+        // Generate the excerpt
+        if (node.textContent!.length < limit) {
+          excerpt = node.textContent
+        } else {
+          excerpt = node.textContent!.substring(
+            pos - limit / 2,
+            pos + limit / 2,
+          )
+          excerpt = '...' + excerpt + '...'
         }
 
-        last = pos
+        // Add the CFI to the matches list
+        matches.push({
+          cfi: cfi,
+          excerpt: excerpt,
+        })
       }
     }
 
@@ -413,9 +402,15 @@ class Section {
   }
 
   /**
-   * Search a string in multiple sequential Element of the section. If the document.createTreeWalker api is missed(eg: IE8), use `find` as a fallback.
+   * Search consecutive text-node windows, falling back to `find` without TreeWalker.
+   * This is not an exhaustive chapter search: each window emits at most its
+   * first match, and only when that match starts in the window's first node.
+   * It can omit later matches and matches spanning more than maxSeqEle nodes,
+   * and concatenates text across block boundaries without adding separators.
+   * The final partial window is searched once, not drained one node at a time.
+   * Its result ordinals must not be used to resolve external full-text results.
    * @param  {string} _query The query string to search
-   * @param  {int} maxSeqEle The maximum number of Element that are combined for search, default value is 5.
+   * @param  {int} maxSeqEle Maximum text nodes per window, default 5.
    * @return {object[]} A list of matches, with form {cfi, excerpt}
    */
   search(_query: string, maxSeqEle = 5) {
@@ -430,11 +425,11 @@ class Section {
       const textWithCase = nodeList.reduce((acc, current) => {
         return acc + current.textContent
       }, '')
-      const text = textWithCase.toLowerCase()
-      const pos = text.indexOf(query)
-      if (pos != -1) {
+      const match = findTextMatches(textWithCase, query).next().value
+      if (match) {
+        const pos = match.start
         const startNodeIndex = 0,
-          endPos = pos + query.length
+          endPos = match.end
         let endNodeIndex = 0,
           l = 0
         if (pos < nodeList[startNodeIndex]!.length) {

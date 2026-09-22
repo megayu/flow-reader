@@ -1,6 +1,7 @@
 import { assert } from 'vitest'
 
 import ePub from '../src/epub'
+import EpubCFI from '../src/epubcfi'
 import Section from '../src/section'
 
 const fixtureUrl = '/fixtures/search/OPS/package.opf'
@@ -16,6 +17,57 @@ async function loadFixtureSection() {
 }
 
 describe('Section search', function () {
+  it('returns non-overlapping ranges in original text coordinates', async function () {
+    const { book, section } = await loadFixtureSection()
+    try {
+      for (const { text, query, offsets } of [
+        {
+          text: 'zzzzz',
+          query: 'zz',
+          offsets: [[0, 2], [2, 4]],
+        },
+        { text: 'İ😀Echo', query: 'ECHO', offsets: [[3, 7]] },
+        { text: 'İ', query: 'i', offsets: [[0, 1]] },
+        { text: 'ΟΣ', query: 'ος', offsets: [[0, 2]] },
+      ]) {
+        section.document!.body.textContent = text
+        const expected = offsets.map(([start, end]) => ({ start, end }))
+        const coordinates = (cfi: string) => {
+          const range = new EpubCFI(cfi).toRange(section.document!)!
+          assert.equal(range.startContainer, section.document!.body.firstChild)
+          assert.equal(range.endContainer, range.startContainer)
+          return { start: range.startOffset, end: range.endOffset }
+        }
+        for (const matches of [
+          section.find(query),
+          await section.findAsync(query),
+        ]) {
+          assert.deepEqual(
+            matches.map(({ cfi }) => coordinates(cfi)),
+            expected,
+            text,
+          )
+        }
+        assert.deepEqual(
+          offsets.map((_, index) =>
+            coordinates(section.findOccurrence(query, index)!),
+          ),
+          expected,
+          text,
+        )
+        if (offsets.length === 1) {
+          assert.deepEqual(
+            section.search(query).map(({ cfi }) => coordinates(cfi)),
+            expected,
+            text,
+          )
+        }
+      }
+    } finally {
+      book.destroy()
+    }
+  })
+
   it('locates the requested occurrence with the same CFI as complete search', async function () {
     const { book, section } = await loadFixtureSection()
     try {
