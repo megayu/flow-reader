@@ -95,7 +95,7 @@ export function cloneNoteElement(
 }
 
 function prependSyntheticReturnLink(root: HTMLElement, noteTarget: string) {
-  const link = root.ownerDocument.createElement('a')
+  const link = root.ownerDocument.createElementNS(root.namespaceURI, 'a')
   link.textContent = '↩'
   link.setAttribute('href', noteTarget)
   const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT)
