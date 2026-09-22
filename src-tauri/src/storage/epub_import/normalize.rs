@@ -23,7 +23,7 @@ pub(in crate::storage) fn normalize_unpacked_epub_structure(unpacked_dir: &Path)
         .replace('\\', "/");
     let opf_parent = parent_zip_path(&opf_zip_path).to_string();
 
-    let ncx_context = {
+    let (ncx_context, nav_context, navigation) = {
         let opf_doc = match roxmltree::Document::parse(&opf_xml) {
             Ok(doc) => doc,
             Err(_) => return Ok(changed),
@@ -34,31 +34,49 @@ pub(in crate::storage) fn normalize_unpacked_epub_structure(unpacked_dir: &Path)
 
         let manifest = opf_manifest_items(&opf_doc);
         let spine = opf_spine_items(&opf_doc);
-        let Some(ncx_item) = find_ncx_manifest_item(&opf_doc, &manifest) else {
-            return Ok(changed);
-        };
-        let ncx_abs_path = normalize_zip_path(join_zip_path(&opf_parent, &ncx_item.href));
-        let ncx_file_path = unpacked_resource_path(unpacked_dir, &ncx_abs_path);
-        let Ok(ncx_xml) = fs::read_to_string(&ncx_file_path) else {
-            return Ok(changed);
-        };
-        let ncx_parent = parent_zip_path(&ncx_abs_path).to_string();
-        let mut toc_target_abs_paths = ncx_content_paths(&ncx_xml)
-            .into_iter()
-            .map(|path| normalize_zip_path(join_zip_path(&ncx_parent, &path)))
-            .collect::<Vec<_>>();
-
-        if let Some(nav_item) = find_nav_manifest_item(&manifest) {
-            let nav_abs_path = normalize_zip_path(join_zip_path(&opf_parent, &nav_item.href));
-            let nav_file_path = unpacked_resource_path(unpacked_dir, &nav_abs_path);
-            if let Ok(nav_xml) = fs::read_to_string(&nav_file_path) {
-                let nav_parent = parent_zip_path(&nav_abs_path);
-                toc_target_abs_paths.extend(
-                    nav_toc_href_paths(&nav_xml)
-                        .into_iter()
-                        .map(|path| normalize_zip_path(join_zip_path(nav_parent, &path))),
-                );
-            }
+        let ncx_context = find_ncx_manifest_item(&opf_doc, &manifest).and_then(|item| {
+            let abs_path = normalize_zip_path(join_zip_path(&opf_parent, &item.href));
+            let file_path = unpacked_resource_path(unpacked_dir, &abs_path);
+            let xml = fs::read_to_string(&file_path).ok()?;
+            Some((file_path, xml, parent_zip_path(&abs_path).to_string()))
+        });
+        let nav_context = find_nav_manifest_item(&manifest).and_then(|item| {
+            let abs_path = normalize_zip_path(join_zip_path(&opf_parent, &item.href));
+            let file_path = unpacked_resource_path(unpacked_dir, &abs_path);
+            let xml = fs::read_to_string(&file_path).ok()?;
+            let hrefs = nav_toc_content(&xml).map(html_hrefs);
+            Some((file_path, xml, parent_zip_path(&abs_path).to_string(), hrefs))
+        });
+        // A present EPUB 3 TOC is authoritative even when it has no split anchors.
+        let navigation = nav_context
+            .as_ref()
+            .and_then(|(_, _, parent, hrefs)| hrefs.as_ref().map(|hrefs| (parent.clone(), hrefs.clone())))
+            .or_else(|| {
+                ncx_context.as_ref().map(|(_, xml, parent)| {
+                    (
+                        parent.clone(),
+                        NCX_CONTENT_REGEX
+                            .captures_iter(xml)
+                            .filter_map(|capture| capture.get(1).map(|value| value.as_str().to_string()))
+                            .collect::<Vec<_>>(),
+                    )
+                })
+            });
+        let mut toc_target_abs_paths = Vec::new();
+        if let Some((_, xml, parent)) = &ncx_context {
+            toc_target_abs_paths.extend(
+                ncx_content_paths(xml)
+                    .into_iter()
+                    .map(|path| normalize_zip_path(join_zip_path(parent, &path))),
+            );
+        }
+        if let Some((_, _, parent, Some(hrefs))) = &nav_context {
+            toc_target_abs_paths.extend(
+                hrefs
+                    .iter()
+                    .filter_map(|href| normalize_local_href_path(href))
+                    .map(|path| normalize_zip_path(join_zip_path(parent, &path))),
+            );
         }
         for guide_toc_href in opf_guide_toc_hrefs(&opf_doc) {
             let toc_abs_path = normalize_zip_path(join_zip_path(&opf_parent, &guide_toc_href));
@@ -74,15 +92,17 @@ pub(in crate::storage) fn normalize_unpacked_epub_structure(unpacked_dir: &Path)
         }
 
         drop(opf_doc);
-        if let Some(updated_opf) = repair_missing_spine_nav_targets(
-            &opf_xml,
-            unpacked_dir,
-            &opf_parent,
-            &manifest,
-            &spine,
-            &ncx_xml,
-            &ncx_parent,
-        ) {
+        if let Some((_, ncx_xml, ncx_parent)) = &ncx_context
+            && let Some(updated_opf) = repair_missing_spine_nav_targets(
+                &opf_xml,
+                unpacked_dir,
+                &opf_parent,
+                &manifest,
+                &spine,
+                ncx_xml,
+                ncx_parent,
+            )
+        {
             fs::write(&opf_path, updated_opf.as_bytes()).map_err(|error| error.to_string())?;
             opf_xml = updated_opf;
             changed = true;
@@ -100,7 +120,7 @@ pub(in crate::storage) fn normalize_unpacked_epub_structure(unpacked_dir: &Path)
             changed = true;
         }
 
-        (ncx_file_path, ncx_xml, ncx_parent)
+        (ncx_context, nav_context, navigation)
     };
 
     let opf_doc = match roxmltree::Document::parse(&opf_xml) {
@@ -113,10 +133,13 @@ pub(in crate::storage) fn normalize_unpacked_epub_structure(unpacked_dir: &Path)
         .iter()
         .map(|item| (item.id.as_str(), item))
         .collect::<HashMap<_, _>>();
-    let (ncx_file_path, ncx_xml, ncx_parent) = ncx_context;
-    let ncx_references = ncx_content_references(&ncx_xml);
-    if ncx_references.len() < EPUB_SECTION_SPLIT_MIN_NAV_POINTS {
+    let Some((navigation_parent, hrefs)) = navigation else {
         return Ok(changed);
+    };
+    let mut references_by_path: HashMap<String, Vec<NavigationReference>> = HashMap::new();
+    for reference in navigation_references(hrefs) {
+        let path = percent_decode_zip_path(&normalize_zip_path(join_zip_path(&navigation_parent, &reference.path)));
+        references_by_path.entry(path).or_default().push(reference);
     }
 
     let used_ids = manifest.iter().map(|item| item.id.clone()).collect::<HashSet<_>>();
@@ -131,14 +154,9 @@ pub(in crate::storage) fn normalize_unpacked_epub_structure(unpacked_dir: &Path)
         }
 
         let section_abs_path = normalize_zip_path(join_zip_path(&opf_parent, &item.href));
-        let section_refs = ncx_references
-            .iter()
-            .filter(|reference| {
-                let reference_abs = normalize_zip_path(join_zip_path(&ncx_parent, &reference.path));
-                percent_decode_zip_path(&reference_abs) == percent_decode_zip_path(&section_abs_path)
-            })
-            .cloned()
-            .collect::<Vec<_>>();
+        let Some(section_refs) = references_by_path.get(&percent_decode_zip_path(&section_abs_path)) else {
+            continue;
+        };
         if section_refs.len() < EPUB_SECTION_SPLIT_MIN_NAV_POINTS {
             continue;
         }
@@ -159,8 +177,7 @@ pub(in crate::storage) fn normalize_unpacked_epub_structure(unpacked_dir: &Path)
             item,
             &section_abs_path,
             &section_path,
-            &section_refs,
-            &ncx_parent,
+            section_refs,
             &opf_parent,
             &used_ids,
         ) {
@@ -175,15 +192,16 @@ pub(in crate::storage) fn normalize_unpacked_epub_structure(unpacked_dir: &Path)
     let mut updated_opf = replace_split_opf_items(opf_xml, &split_sections)?;
     updated_opf = rewrite_current_package_link_values(&updated_opf, &opf_parent, &split_sections);
 
-    let replacements = split_sections
-        .iter()
-        .flat_map(|split| split.replacements.iter().cloned())
-        .collect::<Vec<_>>();
-    let updated_ncx = replace_quoted_values(&ncx_xml, &replacements);
     rewrite_current_package_html_links(unpacked_dir, &split_sections)?;
-
+    if let Some((nav_path, nav_xml, nav_parent, _)) = nav_context {
+        let updated_nav = rewrite_navigation_link_values(&nav_xml, &nav_parent, &split_sections);
+        fs::write(nav_path, updated_nav).map_err(|error| error.to_string())?;
+    }
+    if let Some((ncx_file_path, ncx_xml, ncx_parent)) = ncx_context {
+        let updated_ncx = rewrite_navigation_link_values(&ncx_xml, &ncx_parent, &split_sections);
+        fs::write(ncx_file_path, updated_ncx).map_err(|error| error.to_string())?;
+    }
     fs::write(&opf_path, updated_opf).map_err(|error| error.to_string())?;
-    fs::write(&ncx_file_path, updated_ncx).map_err(|error| error.to_string())?;
 
     for split in &split_sections {
         for item in &split.split_items {
@@ -564,20 +582,18 @@ pub(super) fn spine_item_is_linear_no(item: &OpfSpineItem) -> bool {
         .is_some_and(|value| value.eq_ignore_ascii_case("no"))
 }
 
-pub(super) fn nav_toc_href_paths(nav: &str) -> Vec<String> {
+fn nav_toc_content(nav: &str) -> Option<&str> {
     static NAV_START_REGEX: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r#"(?is)<nav\b[^>]*>"#).expect("valid nav start regex"));
     static TYPE_REGEX: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r#"(?is)\b(?:epub:)?type\s*=\s*['"]([^'"]*)['"]"#).expect("valid nav type regex"));
 
-    let Some(start_match) = NAV_START_REGEX.find_iter(nav).find(|nav_match| {
+    let start_match = NAV_START_REGEX.find_iter(nav).find(|nav_match| {
         TYPE_REGEX
             .captures(nav_match.as_str())
             .and_then(|captures| captures.get(1))
             .is_some_and(|types| types.as_str().split_whitespace().any(|value| value == "toc"))
-    }) else {
-        return Vec::new();
-    };
+    })?;
     let content_start = start_match.end();
     let content_end = nav[content_start..]
         .to_ascii_lowercase()
@@ -585,18 +601,24 @@ pub(super) fn nav_toc_href_paths(nav: &str) -> Vec<String> {
         .map(|index| content_start + index)
         .unwrap_or(nav.len());
 
-    html_href_paths(&nav[content_start..content_end])
+    Some(&nav[content_start..content_end])
 }
 
 pub(super) fn html_href_paths(html: &str) -> Vec<String> {
+    html_hrefs(html)
+        .iter()
+        .filter_map(|href| normalize_local_href_path(href))
+        .collect()
+}
+
+fn html_hrefs(html: &str) -> Vec<String> {
     static HREF_REGEX: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r#"(?is)<a\b[^>]*\bhref\s*=\s*['"]([^'"]+)['"][^>]*>"#).expect("valid HTML href regex")
     });
 
     HREF_REGEX
         .captures_iter(html)
-        .filter_map(|captures| captures.get(1).map(|match_| match_.as_str()))
-        .filter_map(normalize_local_href_path)
+        .filter_map(|captures| captures.get(1).map(|match_| match_.as_str().to_string()))
         .collect()
 }
 
@@ -660,21 +682,16 @@ pub(super) fn spine_itemref_insert_indent(opf: &str, spine_close: usize) -> Stri
     }
 }
 
-pub(super) fn ncx_content_references(ncx: &str) -> Vec<NcxReference> {
-    NCX_CONTENT_REGEX
-        .captures_iter(ncx)
-        .filter_map(|captures| {
-            let raw_src = captures.get(1)?.as_str().to_string();
-            let (path, fragment) = split_href_fragment(&raw_src);
-            if path.is_empty() || fragment.is_empty() {
+fn navigation_references(hrefs: Vec<String>) -> Vec<NavigationReference> {
+    hrefs
+        .into_iter()
+        .filter_map(|href| {
+            let path = normalize_local_href_path(&href)?;
+            let (_, fragment) = split_href_fragment(href.trim());
+            if fragment.is_empty() {
                 return None;
             }
-
-            Some(NcxReference {
-                raw_src,
-                path,
-                fragment,
-            })
+            Some(NavigationReference { path, fragment })
         })
         .collect()
 }
@@ -689,15 +706,12 @@ pub(super) fn unpacked_resource_path(unpacked_dir: &Path, zip_path: &str) -> Pat
     unpacked_dir.join(zip_path.replace('/', std::path::MAIN_SEPARATOR_STR))
 }
 
-// Split planning keeps path, navigation, and ID inputs explicit so their invariants remain visible.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn plan_split_section(
     xhtml: &str,
     item: &OpfManifestItem,
     section_abs_path: &str,
     section_path: &Path,
-    section_refs: &[NcxReference],
-    ncx_parent: &str,
+    section_refs: &[NavigationReference],
     opf_parent: &str,
     used_ids: &HashSet<String>,
 ) -> Option<SplitSection> {
@@ -792,16 +806,6 @@ pub(super) fn plan_split_section(
         });
     }
 
-    let mut replacements = Vec::new();
-    for reference in section_refs {
-        let fragment = percent_decode_path(&reference.fragment);
-        let position = anchor_split_points.get(&fragment)?.anchor_position;
-        let split_index = split_starts.partition_point(|start| start.split_start_position <= position) - 1;
-        let split = split_items.get(split_index)?;
-        let relative = relative_zip_path(ncx_parent, &split.abs_path);
-        replacements.push((reference.raw_src.clone(), format!("{relative}#{}", reference.fragment)));
-    }
-
     let mut all_link_targets = Vec::new();
     for (fragment, split_point) in &anchor_split_points {
         let split_index =
@@ -816,7 +820,6 @@ pub(super) fn plan_split_section(
         original_id: item.id.clone(),
         original_abs_path: section_abs_path.to_string(),
         original_file_path: section_path.to_path_buf(),
-        replacements,
         link_targets: all_link_targets,
         split_items,
     })
@@ -1237,57 +1240,6 @@ pub(super) fn escape_xml_attr_local(value: &str) -> String {
         .replace('>', "&gt;")
 }
 
-pub(super) fn replace_quoted_values(text: &str, replacements: &[(String, String)]) -> String {
-    if replacements.len() > 4
-        && replacements
-            .iter()
-            .all(|(from, to)| !from.contains(['\'', '"']) && !to.contains(['\'', '"']))
-        && let Some(updated) = replace_quoted_values_in_batch(text, replacements)
-    {
-        return updated;
-    }
-    replacements.iter().fold(text.to_string(), |current, (from, to)| {
-        current
-            .replace(&format!(r#""{from}""#), &format!(r#""{to}""#))
-            .replace(&format!("'{from}'"), &format!("'{to}'"))
-    })
-}
-
-fn replace_quoted_values_in_batch(text: &str, replacements: &[(String, String)]) -> Option<String> {
-    // Resolve later rules first, preserving cascades and first-effective duplicate keys.
-    let mut lookup = HashMap::with_capacity(replacements.len());
-    for (from, to) in replacements.iter().rev() {
-        let target = lookup.get(to.as_str()).copied().unwrap_or(to.as_str());
-        lookup.insert(from.as_str(), target);
-    }
-    let mut previous_quotes = [None, None];
-    let mut last_match_end = None;
-    let mut last_written = 0;
-    let mut updated = String::with_capacity(text.len());
-    for (end, byte) in text.bytes().enumerate() {
-        let quote_index = match byte {
-            b'\'' => 0,
-            b'"' => 1,
-            _ => continue,
-        };
-        if let Some(start) = previous_quotes[quote_index]
-            && let Some(target) = lookup.get(&text[start + 1..end])
-        {
-            // Shared delimiters can make sequential non-overlapping replacements order-dependent.
-            if last_match_end == Some(start) {
-                return None;
-            }
-            updated.push_str(&text[last_written..start + 1]);
-            updated.push_str(target);
-            last_written = end;
-            last_match_end = Some(end);
-        }
-        previous_quotes[quote_index] = Some(end);
-    }
-    updated.push_str(&text[last_written..]);
-    Some(updated)
-}
-
 pub(super) fn replace_quoted_values_by_lookup(text: &str, replacements: &HashMap<String, String>) -> String {
     if replacements.is_empty() {
         return text.to_string();
@@ -1381,6 +1333,48 @@ pub(super) fn rewrite_current_package_link_values(
 ) -> String {
     let mut replacements = HashMap::new();
     populate_current_package_link_replacements(current_parent, split_sections, &mut replacements);
+    replace_quoted_values_by_lookup(text, &replacements)
+}
+
+fn rewrite_navigation_link_values(text: &str, parent: &str, splits: &[SplitSection]) -> String {
+    static LINK_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?is)\b(?:href|src)\s*=\s*['"]([^'"]+)['"]"#).expect("valid navigation link regex")
+    });
+    // Navigation links resolve against their own document, never a basename alias.
+    let mut targets = HashMap::new();
+    for split in splits {
+        let original = percent_decode_zip_path(&split.original_abs_path);
+        if let Some(first) = split.split_items.first() {
+            targets.insert(original.clone(), relative_zip_path(parent, &first.abs_path));
+        }
+        for (fragment, target) in &split.link_targets {
+            targets.insert(format!("{original}#{fragment}"), relative_zip_path(parent, target));
+        }
+    }
+    let replacements = LINK_REGEX
+        .captures_iter(text)
+        .filter_map(|capture| {
+            let value = capture.get(1)?.as_str();
+            let (path, fragment) = split_href_fragment(value);
+            if path.is_empty() || path.starts_with("//") || is_absolute_url(&path) {
+                return None;
+            }
+            let path = percent_decode_zip_path(&normalize_zip_path(join_zip_path(parent, &path)));
+            let key = if fragment.is_empty() {
+                path
+            } else {
+                format!("{path}#{}", percent_decode_path(&fragment))
+            };
+            let target = targets.get(&key)?;
+            // Decode only for lookup; preserve the authored fragment's URL encoding.
+            let replacement = if fragment.is_empty() {
+                target.clone()
+            } else {
+                format!("{target}#{fragment}")
+            };
+            Some((value.to_string(), replacement))
+        })
+        .collect();
     replace_quoted_values_by_lookup(text, &replacements)
 }
 

@@ -72,8 +72,7 @@ struct OpfSpineItem {
 }
 
 #[derive(Debug, Clone)]
-struct NcxReference {
-    raw_src: String,
+struct NavigationReference {
     path: String,
     fragment: String,
 }
@@ -83,7 +82,6 @@ struct SplitSection {
     original_id: String,
     original_abs_path: String,
     original_file_path: PathBuf,
-    replacements: Vec<(String, String)>,
     link_targets: Vec<(String, String)>,
     split_items: Vec<SplitItem>,
 }
@@ -113,6 +111,88 @@ struct AnchorSplitPoint {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_prefers_epub3_toc_and_preserves_navigation_targets() {
+        for with_ncx in [false, true] {
+            let root = split_test_root(if with_ncx { "nav-with-ncx" } else { "nav-only" });
+            write_split_fixture(&root, 3);
+            let content_path = root.join("OEBPS/Text/part0000.xhtml");
+            let content = fs::read_to_string(&content_path)
+                .unwrap()
+                .replace(r#"id="nav_point_2""#, r#"id="nav_point_%32""#)
+                .replace("#nav_point_2", "#nav_point_%2532");
+            fs::write(content_path, content).unwrap();
+            let ncx_path = root.join("OEBPS/toc.ncx");
+            let ncx = fs::read_to_string(&ncx_path)
+                .unwrap()
+                .replace("#nav_point_2", "#nav_point_%2532");
+            fs::write(ncx_path, ncx).unwrap();
+            let opf_path = root.join("OEBPS/content.opf");
+            let mut opf = fs::read_to_string(&opf_path).unwrap().replace(
+                "<manifest>",
+                r#"<manifest><item id="nav" href="Navigation/toc.nav" media-type="application/xhtml+xml" properties="nav"/>"#,
+            );
+            if !with_ncx {
+                opf = opf.replace(
+                    r#"<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>"#,
+                    "",
+                );
+                fs::remove_file(root.join("OEBPS/toc.ncx")).unwrap();
+            }
+            if with_ncx {
+                fs::create_dir_all(root.join("OEBPS/Other")).unwrap();
+                fs::write(
+                    root.join("OEBPS/Other/part0000.xhtml"),
+                    r#"<html><body><p id="nav_point_1">Unrelated</p></body></html>"#,
+                )
+                .unwrap();
+                let ncx = fs::read_to_string(root.join("OEBPS/toc.ncx"))
+                    .unwrap()
+                    .replace("Text/part0000.xhtml", "../Text/part0000.xhtml")
+                    .replace(
+                        "</navMap>",
+                        r#"<navPoint><content src="part0000.xhtml#nav_point_1"/></navPoint></navMap>"#,
+                    );
+                fs::write(root.join("OEBPS/Other/toc.ncx"), ncx).unwrap();
+                opf = opf.replace(r#"href="toc.ncx""#, r#"href="Other/toc.ncx""#);
+            }
+            fs::write(&opf_path, opf).unwrap();
+            fs::create_dir_all(root.join("OEBPS/Navigation")).unwrap();
+            let nav_path = root.join("OEBPS/Navigation/toc.nav");
+            fs::write(
+                &nav_path,
+                r#"<html xmlns:epub="http://www.idpf.org/2007/ops"><body>
+    <nav epub:type="landmarks"><a href="../Text/part0000.xhtml#nav_point_1">Middle</a></nav>
+    <nav epub:type="toc"><ol>
+    <li><a href="../Text/part0000.xhtml#nav_point_0">First</a><ol>
+    <li><a href="../Text/part0000.xhtml#nav_point_%2532">Last</a></li>
+    </ol></li></ol></nav></body></html>"#,
+            )
+            .unwrap();
+
+            assert!(normalize_unpacked_epub_structure(&root).unwrap());
+            assert!(!root.join("OEBPS/Text/part0000.xhtml").exists());
+            let opf = fs::read_to_string(&opf_path).unwrap();
+            let doc = roxmltree::Document::parse(&opf).unwrap();
+            assert_eq!(opf_spine_items(&doc).len(), 2);
+            let first = fs::read_to_string(root.join("OEBPS/Text/part0000-flow-split-0001.xhtml")).unwrap();
+            let last = fs::read_to_string(root.join("OEBPS/Text/part0000-flow-split-0002.xhtml")).unwrap();
+            assert!(first.contains(r#"id="nav_point_1""#));
+            assert!(last.contains(r#"id="nav_point_%32""#));
+            let nav = fs::read_to_string(&nav_path).unwrap();
+            assert!(nav.contains("../Text/part0000-flow-split-0001.xhtml#nav_point_1"));
+            assert!(nav.contains("../Text/part0000-flow-split-0002.xhtml#nav_point_%2532"));
+            if with_ncx {
+                let ncx = fs::read_to_string(root.join("OEBPS/Other/toc.ncx")).unwrap();
+                assert!(ncx.contains(r#"src="part0000.xhtml#nav_point_1""#));
+                assert!(ncx.contains("Text/part0000-flow-split-0001.xhtml#nav_point_1"));
+                assert!(ncx.contains("Text/part0000-flow-split-0002.xhtml#nav_point_%2532"));
+            }
+            assert!(!normalize_unpacked_epub_structure(&root).unwrap());
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
 
     fn split_test_root(name: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!("flow-reader-{name}-{}-{}", std::process::id(), now_ms()));
