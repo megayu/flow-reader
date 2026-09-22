@@ -1,13 +1,7 @@
 import type { BookTab } from '../../models/reader'
 import { findNoteItem, getElementByIdOrName } from '../../noteIndex'
-import {
-  findSectionByLinkedHref,
-  resolveLinkedHrefPath,
-  safeDecodeHref,
-  sameHref,
-  splitLinkedHref,
-} from '../../noteLinks'
-import { isExplicitNoteLink, isNoteBacklink } from '../../noteSemantics'
+import { findSectionByLinkedHref, safeDecodeHref, sameHref, splitLinkedHref } from '../../noteLinks'
+import { isNoteBacklink } from '../../noteSemantics'
 
 import { cloneNoteElement } from './notePopoverContent'
 
@@ -50,13 +44,14 @@ export async function getLinkedNote(tab: BookTab, anchor: HTMLAnchorElement, hid
     await section.hooks?.content?.trigger(doc, section)
   }
   const target = getElementByIdOrName(doc, safeDecodeHref(hash))
-  if (!target || isLinkedNoteBacklink(anchor, target)) return
-  const item = findNoteItem(anchor, target)
+  if (!target) return
+  const sourceSection = findSectionByLinkedHref(tab.sections, sourceHref, '')
+  const item = findNoteItem(anchor, target, !!section && !!sourceSection && section.index > sourceSection.index)
   if (!item) return
-  const noteHref = section?.href ?? sourceHref
+  // Canonical URLs may use the native resource server; navigation needs a spine href.
+  const noteHref = (section ?? sourceSection)?.href
   return cloneNoteElement(
     item,
-    anchor,
     (link) => getBookLinkDisplayTarget(tab, link, noteHref),
     !hideEndnotes && noteHref ? `${noteHref}#${safeDecodeHref(hash)}` : undefined,
   )
@@ -64,40 +59,4 @@ export async function getLinkedNote(tab: BookTab, anchor: HTMLAnchorElement, hid
 
 function getDocumentCanonicalHref(doc: Document) {
   return doc.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? undefined
-}
-
-function isLinkedNoteBacklink(anchor: HTMLAnchorElement, target: HTMLElement) {
-  // A declared reference may point to a note whose return link is also marked noteref.
-  if (isExplicitNoteLink(anchor)) return false
-
-  const noteIds = new Set<string>()
-  for (let element: HTMLElement | null = anchor; element; element = element.parentElement) {
-    if (element.id) noteIds.add(element.id)
-    const name = element.getAttribute('name')
-    if (name) noteIds.add(name)
-  }
-  const noteHref = getDocumentCanonicalHref(anchor.ownerDocument)
-  const referenceHref = getDocumentCanonicalHref(target.ownerDocument)
-  const matches = (candidate: HTMLAnchorElement) => isMatchingNoteReference(candidate, noteIds, noteHref, referenceHref)
-  const containingAnchor = target.closest<HTMLAnchorElement>('a[href]')
-  if (containingAnchor && matches(containingAnchor)) return true
-
-  for (const candidate of target.querySelectorAll<HTMLAnchorElement>('a[href]')) {
-    if (matches(candidate)) return true
-  }
-
-  return false
-}
-
-function isMatchingNoteReference(
-  candidate: HTMLAnchorElement,
-  noteIds: Set<string>,
-  noteHref: string | undefined,
-  referenceHref: string | undefined,
-) {
-  if (!isExplicitNoteLink(candidate)) return false
-
-  const { path, hash } = splitLinkedHref(candidate.getAttribute('href') ?? '')
-  if (!hash || !noteIds.has(safeDecodeHref(hash))) return false
-  return !noteHref || !referenceHref || sameHref(resolveLinkedHrefPath(referenceHref, path), noteHref)
 }

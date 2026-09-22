@@ -5,28 +5,14 @@ const NOTE_MARKER_OPENERS = '([〔［（【〚〖'
 const NOTE_MARKER_CLOSERS = ')]〕］）】〛〗'
 
 export function isExplicitNoteLink(link: Pick<Element, 'getAttribute'>) {
-  return (
-    link.getAttribute('data-type')?.trim().toLowerCase() === 'footnote' ||
-    hasToken(link.getAttribute('role'), 'doc-noteref', 'noteref') ||
-    hasToken(link.getAttribute('epub:type') ?? link.getAttribute('type'), 'noteref')
-  )
+  return link.getAttribute('data-type')?.trim().toLowerCase() === 'footnote'
 }
 
 export function isNoteBacklink(anchor: HTMLAnchorElement) {
-  if (
+  return (
     hasToken(anchor.getAttribute('role'), 'doc-backlink', 'backlink') ||
     hasToken(anchor.getAttribute('epub:type') ?? anchor.getAttribute('type'), 'doc-backlink', 'backlink')
-  ) {
-    return true
-  }
-
-  let current = anchor.parentElement
-  while (current && current !== current.ownerDocument.body) {
-    if (hasNoteContainerSemantics(current)) return true
-    current = current.parentElement
-  }
-
-  return false
+  )
 }
 
 export function hasNoteContainerSemantics(element: HTMLElement) {

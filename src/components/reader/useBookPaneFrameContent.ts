@@ -4,8 +4,7 @@ import { notePopoverClass } from '../../bodyText'
 import { isSupportedExternalUrl, openSupportedExternalUrl } from '../../externalLink'
 import { installReloadShortcut } from '../../keyboard'
 import type { BookTab } from '../../models/reader'
-import { getNoteIndex } from '../../noteIndex'
-import { isExplicitNoteLink, isNoteBacklink } from '../../noteSemantics'
+import { isNoteBacklink } from '../../noteSemantics'
 import { reloadCurrentView } from '../../reader/reload'
 import { useDndContext } from '../base/dropZoneContext'
 
@@ -152,7 +151,8 @@ export function useBookPaneFrameContent({
     if (!active) return
     const currentRendition = tab.rendition
     const handleClick = (event: MouseEvent) => {
-      const insideNote = (event.target as Element | null)?.closest?.(`.${notePopoverClass}`)
+      const targetElement = event.target as Element | null
+      const insideNote = targetElement?.closest?.(`.${notePopoverClass}`)
       const anchor = getAnchorFromEvent(event)
       if (insideNote && !anchor) {
         event.stopImmediatePropagation()
@@ -160,6 +160,18 @@ export function useBookPaneFrameContent({
       }
       closeNotePopover()
       setExternalLink(undefined)
+      // WeRead web exports store footer-note text on the empty marker instead of linking to a note node.
+      const footerNote = targetElement?.getAttribute('data-wr-footernote')?.trim()
+      if (footerNote && targetElement && containerRef.current) {
+        event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation()
+        closeChapterFindEvent()
+        const content = targetElement.ownerDocument.createElement('span')
+        content.textContent = footerNote
+        notePopover.current = showNotePopover(targetElement as HTMLElement, content, containerRef.current, rendition)
+        return
+      }
       if (!anchor) return
       linkHighlight.current?.clear()
       if (consumeExternalLinkClick(event, anchor, setExternalLink)) return
@@ -178,13 +190,7 @@ export function useBookPaneFrameContent({
         }
         return displayBookLink(target)
       }
-      if (
-        insideNote ||
-        zenMode ||
-        !href.includes('#') ||
-        isNoteBacklink(anchor) ||
-        (!isExplicitNoteLink(anchor) && getNoteIndex(anchor.ownerDocument).getItemForAnchor(anchor))
-      ) {
+      if (insideNote || !href.includes('#') || isNoteBacklink(anchor)) {
         void navigate().catch((error) => tab.reportNavigationError(error))
         return
       }
@@ -228,7 +234,7 @@ export function useBookPaneFrameContent({
       closeNotePopover()
       setExternalLink(undefined)
     }
-  }, [active, closeNotePopover, containerRef, displayBookLink, frameWindows, hideEndnotes, rendition, tab, zenMode])
+  }, [active, closeNotePopover, containerRef, displayBookLink, frameWindows, hideEndnotes, rendition, tab])
 
   const handleFrameClick = useCallback(
     (event: MouseEvent) => {

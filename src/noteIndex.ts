@@ -27,8 +27,11 @@ export function getNoteIndex(document: Document) {
   return index
 }
 
-export function findNoteItem(anchor: HTMLAnchorElement, target: HTMLElement) {
-  return getNoteIndex(target.ownerDocument).getItemForTarget(target) ?? classifyLinkedNoteItem(anchor, target)
+export function findNoteItem(anchor: HTMLAnchorElement, target: HTMLElement, targetSectionAfterSource = false) {
+  return (
+    getNoteIndex(target.ownerDocument).getItemForTarget(target) ??
+    classifyLinkedNoteItem(anchor, target, getElementByIdOrName, targetSectionAfterSource)
+  )
 }
 
 function createNoteIndex(document: Document): NoteIndex {
@@ -101,13 +104,17 @@ function classifyLinkedNoteItem(
   anchor: HTMLAnchorElement,
   target: HTMLElement,
   getTarget: NoteTargetLookup = getElementByIdOrName,
+  targetSectionAfterSource = false,
 ) {
   const semanticItem = findSemanticNoteItem(target)
   if (semanticItem) return semanticItem
 
   if (isExplicitNoteLink(anchor)) return findExplicitNoteItem(target)
 
-  if (anchor.ownerDocument === target.ownerDocument && !isHashTargetAfterSource(anchor, target)) return
+  if (
+    anchor.ownerDocument === target.ownerDocument ? !isHashTargetAfterSource(anchor, target) : !targetSectionAfterSource
+  )
+    return
 
   return findEmptyTargetNoteItem(anchor, target, getTarget) ?? findBacklinkedTargetNoteItem(anchor, target, getTarget)
 }
@@ -203,7 +210,10 @@ function findSemanticNoteItem(target: HTMLElement) {
     if (!item && isPotentialNoteContentElement(cur)) item = cur
     if (!listItem && isTagName(cur, 'LI', 'DD')) listItem = cur
     if (hasNoteContainerSemantics(cur)) {
-      return listItem ?? (hasNoteCollectionSemantics(cur) ? (item ?? cur) : cur)
+      const noteItem = listItem ?? (hasNoteCollectionSemantics(cur) ? (item ?? cur) : cur)
+      return isTagName(noteItem, 'TD') && noteItem.parentElement && isTagName(noteItem.parentElement, 'TR')
+        ? noteItem.parentElement
+        : noteItem
     }
     cur = cur.parentElement
   }
@@ -367,9 +377,31 @@ export function backlinkTargetsAnchor(
   if (sourceHref && noteHref && !sameHref(resolveLinkedHrefPath(noteHref, path), sourceHref)) return false
 
   const target = getTarget(anchor.ownerDocument, safeDecodeHref(hash))
-  // Publishers place reference IDs on the link or its wrappers; nearby siblings
-  // do not establish ownership of the reference.
-  return !!target && (target === anchor || target.contains(anchor) || anchor.contains(target))
+  if (!target) return false
+  if (target === anchor || anchor.contains(target)) return true
+
+  // An empty ID anchor immediately before a reference marks that reference's position.
+  if (
+    isTagName(target, 'A') &&
+    target.getAttribute('id') &&
+    target.getAttribute('href') === null &&
+    !target.hasChildNodes()
+  ) {
+    let previous = anchor.previousSibling
+    while (previous && (previous.nodeType === 8 || (previous.nodeType === 3 && !previous.textContent?.trim()))) {
+      previous = previous.previousSibling
+    }
+    if (previous === target) return true
+  }
+
+  // Reference IDs may belong to inline wrappers, but a containing paragraph or
+  // chapter is not the reference itself even when it links back to this chapter.
+  let wrapper = anchor.parentElement
+  while (wrapper && isInlineNoteTargetWrapper(wrapper)) {
+    if (wrapper === target) return true
+    wrapper = wrapper.parentElement
+  }
+  return false
 }
 
 export function getElementByIdOrName(doc: Document, id: string) {

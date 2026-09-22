@@ -1,5 +1,4 @@
 import { isSupportedExternalUrl } from '../../externalLink'
-import { backlinkTargetsAnchor } from '../../noteIndex'
 import { hasNoteContainerSemantics, hasToken, isNoteMarkerText } from '../../noteSemantics'
 
 const blockedElements = 'base, embed, iframe, link, meta, object, script, style'
@@ -17,11 +16,10 @@ const blockedAttributes = new Set([
 
 export function cloneNoteElement(
   source: HTMLElement,
-  anchor: HTMLAnchorElement,
   resolveBookLink: (link: HTMLAnchorElement) => string | undefined,
   noteTarget?: string,
 ) {
-  const segment = getSegmentedNote(source, anchor)
+  const segment = getSegmentedNote(source)
   let clone: HTMLElement
   if (segment) {
     const range = source.ownerDocument.createRange()
@@ -32,6 +30,18 @@ export function cloneNoteElement(
   } else {
     clone = source.cloneNode(true) as HTMLElement
   }
+
+  const links = clone.matches('a[href]')
+    ? [clone as HTMLAnchorElement, ...clone.querySelectorAll<HTMLAnchorElement>('a[href]')]
+    : [...clone.querySelectorAll<HTMLAnchorElement>('a[href]')]
+  // The note has already been identified. Its leading return entry and declared
+  // backlinks use the note destination, independent of the clicked reference.
+  const returnHrefs = new Set(
+    links
+      .filter((link, index) => (index === 0 && isLeadingNoteLink(clone, link)) || isDeclaredBacklink(link))
+      .map((link) => link.getAttribute('href')?.trim())
+      .filter((href): href is string => !!href && href.includes('#')),
+  )
 
   // Preserve classes and inline styles; the clone uses the referring chapter's stylesheet.
   // Sanitize active content and resolve links before inserting it into the reader document.
@@ -47,11 +57,11 @@ export function cloneNoteElement(
       const href = link.getAttribute('href')?.trim()
       let destination: string | undefined
       if (href && isSupportedExternalUrl(href)) destination = href
-      else if (isBacklink(link, anchor)) {
+      else if (isDeclaredBacklink(link) || (href && returnHrefs.has(href))) {
         // Open the original endnote when visible; leave backlinks disabled when hidden.
         destination = noteTarget
       } else {
-        // Shared notes may link to other references; unmarked links remain navigable.
+        // Ordinary book links keep their own destinations.
         destination = resolveBookLink(link)
       }
       element.removeAttribute('href')
@@ -83,6 +93,16 @@ export function cloneNoteElement(
   return clone
 }
 
+function isLeadingNoteLink(root: HTMLElement, link: HTMLAnchorElement) {
+  if (root === link) return true
+  const range = root.ownerDocument.createRange()
+  range.selectNodeContents(root)
+  range.setEndBefore(link)
+  const prefix = range.toString().trim()
+  // Allow a note-number wrapper before the link, but not preceding note prose.
+  return !prefix || isNoteMarkerText(prefix + link.textContent)
+}
+
 function trimBoundaryMargin(root: HTMLElement, edge: 'start' | 'end') {
   let element: HTMLElement | undefined = root
   while (element) {
@@ -95,10 +115,10 @@ function trimBoundaryMargin(root: HTMLElement, edge: 'start' | 'end') {
   }
 }
 
-function getSegmentedNote(target: HTMLElement, anchor: HTMLAnchorElement) {
+function getSegmentedNote(target: HTMLElement) {
   const container = findNoteContainer(target)
   const marker = target.closest('a[href]') as HTMLAnchorElement | null
-  if (!container || !marker || !isBacklink(marker, anchor)) return
+  if (!container || !marker) return
 
   const markerChild = getDirectChild(container, marker)
   if (!markerChild || !hasMultipleNoteMarkers(container)) return
@@ -174,10 +194,9 @@ function isTagName(el: Element, ...names: string[]) {
   return names.some((name) => tagName === name)
 }
 
-function isBacklink(link: HTMLAnchorElement, anchor: HTMLAnchorElement) {
+function isDeclaredBacklink(link: HTMLAnchorElement) {
   return (
     hasToken(link.getAttribute('role'), 'doc-backlink', 'backlink') ||
-    hasToken(link.getAttribute('epub:type') ?? link.getAttribute('type'), 'doc-backlink', 'backlink') ||
-    backlinkTargetsAnchor(link, anchor)
+    hasToken(link.getAttribute('epub:type') ?? link.getAttribute('type'), 'doc-backlink', 'backlink')
   )
 }

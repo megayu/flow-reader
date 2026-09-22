@@ -5,10 +5,18 @@ import { test } from 'vitest'
 import { findSectionByLinkedHref, resolveLinkedHrefPath, sameHref, splitLinkedHref } from '../../src/noteLinks.ts'
 
 test('preserves hash characters inside linked fragments', () => {
-  assert.deepEqual(splitLinkedHref('part0007.xhtml##a24'), {
-    path: 'part0007.xhtml',
-    hash: '#a24',
-  })
+  for (const [href, path, hash] of [
+    ['', '', ''],
+    ['chapter.xhtml', 'chapter.xhtml', ''],
+    ['chapter.xhtml#', 'chapter.xhtml', ''],
+    ['#note', '', 'note'],
+    ['chapter.xhtml#note', 'chapter.xhtml', 'note'],
+    ['part0007.xhtml##a24', 'part0007.xhtml', '#a24'],
+    ['chapter.xhtml#one#two', 'chapter.xhtml', 'one#two'],
+    ['chapter.xhtml#%23note', 'chapter.xhtml', '%23note'],
+  ]) {
+    assert.deepEqual(splitLinkedHref(href!), { path, hash }, href)
+  }
 })
 
 test('resolves linked note paths relative to the clicked section', () => {

@@ -1,5 +1,7 @@
 import type { Location } from '@flow/epub-engine'
 
+import { getElementByIdOrName } from '../../noteIndex'
+
 import { imageSourcesMatch } from './image'
 import type { BookTab, ISection } from './model'
 
@@ -198,12 +200,11 @@ export async function displayFromSelector(
 ) {
   try {
     await tab.ensureSectionInfo(section)
-    const element = selector.startsWith('#')
-      ? section.document!.getElementById(selector.slice(1))
-      : section.document!.querySelector(selector)
+    const id = selector.startsWith('#') ? selector.slice(1) : undefined
+    const element = id ? getElementByIdOrName(section.document!, id) : section.document!.querySelector(selector)
     if (element) {
       const locationTarget = section.cfiFromElement(element)
-      await tab.displayTarget(section, selector.startsWith('#') ? selector : locationTarget, {
+      await tab.displayTarget(section, id && element.id === id ? selector : locationTarget, {
         alignTargetAsSpreadStart,
         locationTarget,
         returnable,

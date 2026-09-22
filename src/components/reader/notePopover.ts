@@ -9,12 +9,7 @@ import {
   NOTE_POPOVER_PADDING,
 } from './noteGeometry'
 
-export function showNotePopover(
-  anchor: HTMLAnchorElement,
-  content: HTMLElement,
-  container: HTMLElement,
-  rendition: unknown,
-) {
+export function showNotePopover(anchor: HTMLElement, content: HTMLElement, container: HTMLElement, rendition: unknown) {
   const doc = anchor.ownerDocument
   const frame = doc.defaultView?.frameElement
   if (!frame) return

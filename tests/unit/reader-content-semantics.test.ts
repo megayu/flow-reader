@@ -421,7 +421,7 @@ function testVisibleNestedTextDefinesTypographyBaseline() {
 
 function testBookNotesShareRelativeTypographyWithoutParagraphLayout() {
   const body = new FakeElement('body')
-  const ref = anchor('#note-relative', '[1]', { id: 'note-source', 'epub:type': 'noteref' })
+  const ref = anchor('#note-relative', '[1]', { id: 'note-source' })
   const main = styledParagraph('', 'Main reading text. '.repeat(30), { fontSize: '20px' }).append(ref)
   const text = new FakeElement('p', { style: { fontSize: '14px', fontWeight: '300', fontFamily: 'cursive' } }).append(
     'Note reading text.',
@@ -785,17 +785,42 @@ function testReciprocalNoteItemRequiresBacklinkToSourceAnchor() {
   assert.strictEqual(findReciprocalNoteItem(source, wrongBacklink), undefined)
   assert.strictEqual(findReciprocalNoteItem(definitionSource, definitionNote), definitionNote)
 
-  const chapterRef = anchor('ch12.html#ch_future', 'Chapter 12')
-  const sourceRoot = new FakeElement('div').append(
-    new FakeElement('span', { attributes: { id: 'ch_introduction' } }),
-    chapterRef,
-  )
-  const targetRoot = new FakeElement('div', { attributes: { id: 'ch_future' } }).append(
-    new FakeElement('p').append(anchor('ch01.html#ch_introduction', 'Chapter 1'), ' Ordinary chapter content.'),
-  )
-  createContents(new FakeElement('body').append(sourceRoot))
-  createContents(new FakeElement('body').append(targetRoot))
-  assert.strictEqual(findReciprocalNoteItem(chapterRef, targetRoot), undefined)
+  for (const nested of [false, true]) {
+    const wrappedSource = anchor('chapter.html#annot5', '[1]')
+    const reference = new FakeElement('span', { attributes: { id: 'ref5' } }).append(
+      nested ? new FakeElement('sup').append(wrappedSource) : wrappedSource,
+    )
+    const wrappedNote = new FakeElement('p', { attributes: { id: 'annot5' } }).append(
+      anchor('chapter.html#ref5', '[1].'),
+      ' Synthetic traditional footnote content.',
+    )
+    const contents = createContents(
+      new FakeElement('body').append(new FakeElement('p').append('Source text. ', reference), wrappedNote),
+    )
+    assert.strictEqual(findReciprocalNoteItem(wrappedSource, wrappedNote), wrappedNote)
+    assert.strictEqual(getNoteIndex(contents.document).getItemForTarget(wrappedNote), wrappedNote)
+  }
+
+  for (const sourceTag of ['div', 'section', 'p', 'sibling']) {
+    const chapterRef = anchor(
+      'ch12.html#ch_future',
+      'Chapter 12',
+      sourceTag === 'sibling' ? {} : { id: 'chapter-reference' },
+    )
+    const sourceRoot =
+      sourceTag === 'sibling'
+        ? new FakeElement('div').append(new FakeElement('span', { attributes: { id: 'ch_introduction' } }), chapterRef)
+        : new FakeElement(sourceTag, { attributes: { id: 'ch_introduction' } }).append(
+            'Ordinary chapter cross-reference: ',
+            new FakeElement('span').append(chapterRef),
+          )
+    const targetRoot = new FakeElement('div', { attributes: { id: 'ch_future' } }).append(
+      new FakeElement('p').append(anchor('ch01.html#ch_introduction', 'Chapter 1'), ' Ordinary chapter content.'),
+    )
+    createContents(new FakeElement('body').append(sourceRoot))
+    createContents(new FakeElement('body').append(targetRoot))
+    assert.strictEqual(findReciprocalNoteItem(chapterRef, targetRoot, true), undefined, sourceTag)
+  }
 
   const nestedSource = anchor('#nested#note', '')
   nestedSource.append(new FakeElement('span', { attributes: { id: 'nested#ref' } }).append('[2]'))
@@ -822,9 +847,11 @@ function testReciprocalNoteItemRequiresBacklinkToSourceAnchor() {
       jenaNote,
     ),
   )
-  assert.strictEqual(findReciprocalNoteItem(jenaSource, jenaNote), jenaNote)
-  jenaBacklink.setAttribute('href', 'wrong-chapter.html#Jena2013-marker')
+  assert.strictEqual(findReciprocalNoteItem(jenaSource, jenaNote, true), jenaNote)
+  assert.strictEqual(findReciprocalNoteItem(jenaSource, jenaNote, false), undefined)
   assert.strictEqual(findReciprocalNoteItem(jenaSource, jenaNote), undefined)
+  jenaBacklink.setAttribute('href', 'wrong-chapter.html#Jena2013-marker')
+  assert.strictEqual(findReciprocalNoteItem(jenaSource, jenaNote, true), undefined)
 }
 
 function testRepeatedReferencesShareReciprocalNoteItem() {
@@ -841,28 +868,12 @@ function testRepeatedReferencesShareReciprocalNoteItem() {
   )
   createContents(body)
 
+  assert.strictEqual(findReciprocalNoteItem(firstSource, noteLink), noteItem)
   assert.strictEqual(findReciprocalNoteItem(repeatedSource, noteLink), noteItem)
 }
 
 function testReciprocalNoteItemUsesBoundedTargetStructures() {
   const body = new FakeElement('body')
-  const kindleSource = anchor('chapter.html#note-span', '[1]')
-  const kindleSourceMarker = new FakeElement('sup').append(
-    new FakeElement('span', { attributes: { id: 'back-span' } }),
-    new FakeElement('small').append(kindleSource),
-  )
-  const kindleSourceParagraph = new FakeElement('p').append('正文里的 Kindle filepos 形式注释引用', kindleSourceMarker)
-  const kindleTarget = new FakeElement('span', {
-    attributes: { id: 'note-span' },
-  })
-  const kindleNote = new FakeElement('p').append(
-    new FakeElement('sup').append(
-      kindleTarget,
-      new FakeElement('small').append(anchor('chapter.html#back-span', '[1]')),
-    ),
-    ' 这是空 span 目标后面的尾注正文。',
-  )
-
   const tableSource = anchor('chapter.html#note-table', '[2]', { id: 'back-table' })
   const tableSourceParagraph = new FakeElement('p').append('正文里的表格注释引用', tableSource)
   const tableTarget = new FakeElement('a', {
@@ -882,13 +893,28 @@ function testReciprocalNoteItemUsesBoundedTargetStructures() {
   const formula = paragraph('', '(1) 这是公式内容，不是尾注。')
   formula.setAttribute('id', 'formula-1')
 
-  body.append(kindleSourceParagraph, kindleNote, tableSourceParagraph, chapterWrapper, formulaSourceParagraph, formula)
+  body.append(tableSourceParagraph, chapterWrapper, formulaSourceParagraph, formula)
   createContents(body)
 
-  assert.strictEqual(findReciprocalNoteItem(kindleSource, kindleTarget), undefined)
   assert.strictEqual(findReciprocalNoteItem(tableSource, tableTarget), tableNote)
   assert.notStrictEqual(findReciprocalNoteItem(tableSource, tableTarget), chapterWrapper)
   assert.strictEqual(findReciprocalNoteItem(formulaSource, formula), undefined)
+}
+
+function testSiblingReferenceIdDoesNotBelongToNestedLink() {
+  const source = anchor('chapter.html#note-span', '[1]')
+  const sourceMarker = new FakeElement('sup').append(
+    new FakeElement('span', { attributes: { id: 'back-span' } }),
+    new FakeElement('small').append(source),
+  )
+  const noteTarget = new FakeElement('span', { attributes: { id: 'note-span' } })
+  const note = new FakeElement('p').append(anchor('chapter.html#back-span', '[1]'), ' 注释正文。')
+  const body = new FakeElement('body').append(new FakeElement('p').append('正文', sourceMarker), noteTarget, note)
+  createContents(body)
+
+  // `back-span` belongs to the sibling span, not to the nested href link.
+  // Supporting this shape would require guessing ownership beyond the link's DOM subtree.
+  assert.strictEqual(findReciprocalNoteItem(source, noteTarget), undefined)
 }
 
 function testNoteIndexMapsBacklinksOnlyInsideRecognizedNoteItems() {
@@ -971,29 +997,17 @@ function testReciprocalLinkContentMayLiveInsideBacklinkAnchor() {
   assert.strictEqual(index.getHideTargets().includes(noteItem), true)
 }
 
-function testDataTypeExplicitlyClassifiesNoteLinks() {
+function testExplicitFootnoteReferenceAndOrdinaryLinkClassification() {
   const body = new FakeElement('body')
-  const xref = anchor('#linked-section', 'Chapter 4', { 'data-type': 'xref', id: 'xref-source' })
-  const linkedSection = new FakeElement('p', { attributes: { id: 'linked-section' } }).append(
-    anchor('#xref-source', 'Back'),
-    'Ordinary cross-reference target.',
-  )
-  const ordinaryRef = anchor('#ordinary-section', 'Section', { 'data-type': 'xref' })
+  const ordinaryRef = anchor('#ordinary-section', 'Section')
   const ordinarySection = new FakeElement('p', { attributes: { id: 'ordinary-section' } }).append('Ordinary text.')
   const explicitFootnoteRef = anchor('#authored-note', 'Note', { 'data-type': 'footnote' })
   const authoredNote = new FakeElement('p', { attributes: { id: 'authored-note' } }).append('Authored note content.')
-  body.append(
-    new FakeElement('p').append(xref, explicitFootnoteRef, ordinaryRef),
-    linkedSection,
-    authoredNote,
-    ordinarySection,
-  )
+  body.append(new FakeElement('p').append(explicitFootnoteRef, ordinaryRef), authoredNote, ordinarySection)
   const contents = createContents(body)
 
-  assert.strictEqual(findReciprocalNoteItem(xref, linkedSection), linkedSection)
   assert.strictEqual(findReciprocalNoteItem(ordinaryRef, ordinarySection), undefined)
   assert.strictEqual(findReciprocalNoteItem(explicitFootnoteRef, authoredNote), authoredNote)
-  assert.strictEqual(getNoteIndex(contents.document).getHideTargets().includes(linkedSection), true)
   assert.strictEqual(getNoteIndex(contents.document).getHideTargets().includes(ordinarySection), false)
   assert.strictEqual(getNoteIndex(contents.document).getHideTargets().includes(authoredNote), true)
 }
@@ -1007,26 +1021,23 @@ function testComputedTypographyIdentifiesBodyTextAcrossDomVariants() {
   testBodyTextVariantsPreserveOriginalFontFamily()
 }
 
-function testStructuralNoteRecognitionAcrossSupportedMarkup() {
-  testReciprocalNoteContentIsMarkedStructurally()
-  testSemanticNoteFallbackMarksNamedNoteContent()
-  testLinkedNoteResolutionUsesHashTargetItem()
-  testReciprocalNoteItemRequiresBacklinkToSourceAnchor()
-  testRepeatedReferencesShareReciprocalNoteItem()
-  testReciprocalNoteItemUsesBoundedTargetStructures()
-  testNoteIndexMapsBacklinksOnlyInsideRecognizedNoteItems()
-  testReciprocalLinksDoNotDependOnNoteMarkerText()
-  testReciprocalLinkContentMayLiveInsideBacklinkAnchor()
-  testDataTypeExplicitlyClassifiesNoteLinks()
-}
-
 for (const run of [
   testBodyParagraphOwnsReadableInlineTypography,
   testInlineWrappedParagraphsFollowReaderFont,
   testVisibleNestedTextDefinesTypographyBaseline,
   testBookNotesShareRelativeTypographyWithoutParagraphLayout,
   testComputedTypographyIdentifiesBodyTextAcrossDomVariants,
-  testStructuralNoteRecognitionAcrossSupportedMarkup,
+  testReciprocalNoteContentIsMarkedStructurally,
+  testSemanticNoteFallbackMarksNamedNoteContent,
+  testLinkedNoteResolutionUsesHashTargetItem,
+  testReciprocalNoteItemRequiresBacklinkToSourceAnchor,
+  testRepeatedReferencesShareReciprocalNoteItem,
+  testReciprocalNoteItemUsesBoundedTargetStructures,
+  testSiblingReferenceIdDoesNotBelongToNestedLink,
+  testNoteIndexMapsBacklinksOnlyInsideRecognizedNoteItems,
+  testReciprocalLinksDoNotDependOnNoteMarkerText,
+  testReciprocalLinkContentMayLiveInsideBacklinkAnchor,
+  testExplicitFootnoteReferenceAndOrdinaryLinkClassification,
 ]) {
   test(run.name, run)
 }
