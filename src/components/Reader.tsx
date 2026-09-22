@@ -677,7 +677,6 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
 
   const handleReturnMouseButton = useCallback(
     (e: MouseEvent) => {
-      if (zenMode) return
       if (e.button !== 3) return
       if (reader.focusedBookTab !== tab) return
       if (!tab.locationToReturn) return
@@ -690,7 +689,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
       e.stopImmediatePropagation?.()
       tab.returnToPreviousLocation()
     },
-    [tab, zenMode],
+    [tab],
   )
   const handleReturnMouseButtonEvent = useEffectEvent(handleReturnMouseButton)
 
@@ -791,17 +790,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
       zenMode,
     ],
   )
-  const handleFrameKeyDownEvent = useEffectEvent(handleFrameKeyDown)
-
-  useEffect(() => {
-    if (!active || !rendition) return
-
-    const onKeyDown = (event: KeyboardEvent) => handleFrameKeyDownEvent(event)
-    rendition.on('keydown', onKeyDown)
-    return () => {
-      rendition.off('keydown', onKeyDown)
-    }
-  }, [active, rendition])
+  useFrameEvent(activeFrameWindows, 'keydown', handleFrameKeyDown)
 
   return (
     <div className="relative flex h-full flex-col" data-flow-page-appearance={pageAppearance}>

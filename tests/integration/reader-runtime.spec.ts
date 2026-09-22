@@ -4490,7 +4490,20 @@ test('keeps Escape owned by settings above the reader selection menu', async ({ 
   await expect(copy).toBeVisible()
 })
 
-test('exits zen mode when Escape is pressed from the focused reader frame', async ({ page }) => {
+test('unwinds a reader popup before leaving zen mode and keeps mouse return available', async ({ page }) => {
+  await page.route(/\/test-assets\/epub\/OPS\/chapter_001\.xhtml/, (route) =>
+    route.fulfill({
+      contentType: 'application/xhtml+xml',
+      body: `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Zen input</title></head><body>
+        <p><a id="note-ref" role="doc-noteref" href="#note">Open note</a></p>
+        <p><a id="external-ref" href="https://example.org/reading">External link</a></p>
+        <p><a id="jump" href="#target">Jump to target</a></p>
+        ${'<p>Reading content keeps the source and target on separate pages.</p>'.repeat(50)}
+        <aside id="note" role="doc-footnote"><p>Focused note content.</p></aside>
+        <p id="target">Return target.</p>
+      </body></html>`,
+    }),
+  )
   await openFixtureBook(page, 0)
   await waitForStableReaderLayout(page, { header: false })
 
@@ -4501,9 +4514,32 @@ test('exits zen mode when Escape is pressed from the focused reader frame', asyn
     .locator('[data-flow-reader-pane][aria-hidden="false"] iframe')
     .filter({ visible: true })
     .first()
-  await activeFrame.contentFrame().locator('body').press('Escape')
+  const frame = activeFrame.contentFrame()
+  await frame.locator('#note-ref').click()
+  await expect(frame.locator('.flow-note-popover')).toBeVisible()
 
+  await page.keyboard.press('Escape')
+  await expect(frame.locator('.flow-note-popover')).toHaveCount(0)
+  await expect(page.locator('.ActivityBar')).toBeHidden()
+
+  await frame.locator('#external-ref').click()
+  await expect(page.locator('[data-flow-external-link]')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-flow-external-link]')).toHaveCount(0)
+  await expect(page.locator('.ActivityBar')).toBeHidden()
+
+  await page.keyboard.press('Escape')
   await expect(page.locator('.ActivityBar')).toBeVisible()
+
+  await frame.locator('#jump').click()
+  await waitForStableReaderLayout(page, { header: false })
+  await expect(frame.locator('#target')).toBeVisible()
+  await expect(page.getByRole('button', { name: msg('reader.return_to_previous'), exact: true })).toBeVisible()
+  await page.getByRole('button', { name: msg('zen.enter') }).click()
+  await frame.locator('body').dispatchEvent('mousedown', { button: 3 })
+
+  await expect(page.getByRole('button', { name: msg('reader.return_to_previous'), exact: true })).toHaveCount(0)
+  await expect(frame.locator('#jump')).toBeVisible()
 })
 
 verticalBookTest('keeps the dictionary popup inside the reader without repagination', async ({ page }) => {
