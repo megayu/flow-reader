@@ -10,7 +10,7 @@ export interface ChapterSearchOptions<Result = ChapterSearchMatch> {
 }
 
 import EpubCFI from '../epubcfi'
-import { findTextMatches } from './text-matches'
+import { chapterSearchQuery, findRunMatches, searchTextRuns } from './search-text'
 
 // The sibling index belongs to one query over an unchanged document.
 class SearchCFI extends EpubCFI {
@@ -60,30 +60,18 @@ export async function findChapterMatches(
   keyword: string,
   { signal, mapMatch = (match) => match }: ChapterSearchOptions<unknown> = {},
 ) {
-  const query = keyword.toLowerCase()
+  const query = chapterSearchQuery(keyword)
   const document = section.document
   if (!query || !document || signal?.aborted) return []
-  const walker = document.createTreeWalker(
-    document.body || document.documentElement,
-    4,
-  )
   const positions = new WeakMap<Node, number>()
   const matches = []
   let deadline = performance.now() + 8
-  let node
-  while ((node = walker.nextNode())) {
+  // Yield between runs and matches; building a single run is synchronous.
+  for (const run of searchTextRuns(document)) {
     if (signal?.aborted || section.document !== document) return []
-    const original = node.textContent!
-    for (const { start: pos, end } of findTextMatches(original, query)) {
+    for (const { range, excerpt } of findRunMatches(document, run, query)) {
       if (signal?.aborted || section.document !== document) return []
-      const range = document.createRange()
-      range.setStart(node, pos)
-      range.setEnd(node, end)
       const cfi = new SearchCFI(range, section.cfiBase, positions).toString()
-      const excerpt =
-        original.length < 150
-          ? original
-          : `...${original.substring(pos - 75, pos + 75)}...`
       matches.push(mapMatch({ cfi, excerpt }))
       if (performance.now() >= deadline) {
         await yieldSearch()

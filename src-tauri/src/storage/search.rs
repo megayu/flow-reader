@@ -1215,7 +1215,8 @@ fn search_text_and_title_from_document(doc: &roxmltree::Document<'_>) -> (String
                 .filter(|title| !title.is_empty())
         });
 
-    (collapse_search_text_whitespace(&text), title)
+    // Preserve source whitespace and the newlines inserted at block boundaries.
+    (text, title)
 }
 
 fn remove_doctype_declaration(value: &str) -> String {
@@ -1340,6 +1341,7 @@ fn collapse_search_text_whitespace(value: &str) -> String {
 }
 
 fn strip_html_for_search_text(value: &str) -> String {
+    // Tag stripping cannot reproduce browser DOM repair for malformed markup.
     let mut text = String::with_capacity(value.len());
     let mut in_tag = false;
 
@@ -1385,7 +1387,8 @@ pub(super) fn search_text_in_cache_cancellable(
 ) -> Vec<SearchTextResult> {
     let started = Instant::now();
     let keyword = keyword.trim();
-    if keyword.is_empty() || limit == Some(0) || cancelled() {
+    // Newlines separate blocks and cannot be part of a search query.
+    if keyword.is_empty() || keyword.contains(['\r', '\n']) || limit == Some(0) || cancelled() {
         return Vec::new();
     }
 
@@ -1945,6 +1948,37 @@ mod tests {
         thread,
         time::{Duration, SystemTime, UNIX_EPOCH},
     };
+
+    #[test]
+    fn search_cache_matches_literal_text_contract() {
+        let cases: serde_json::Value =
+            serde_json::from_str(include_str!("../../../tests/support/search-contract.json")).unwrap();
+        for case in cases.as_array().unwrap() {
+            let xhtml = format!(
+                "<html xmlns=\"http://www.w3.org/1999/xhtml\"><body>{}</body></html>",
+                case["body"].as_str().unwrap()
+            );
+            let text = visible_search_text_from_xhtml(&xhtml);
+            assert_eq!(text, case["text"].as_str().unwrap(), "{}", case["name"]);
+            let cache = SearchTextCache {
+                version: SEARCH_TEXT_CACHE_VERSION,
+                source_revision: 1,
+                revision: 1,
+                sections: vec![SearchTextSection {
+                    section_index: 0,
+                    href: "chapter.xhtml".into(),
+                    title: None,
+                    nav_path: vec![],
+                    text,
+                }],
+            };
+            let count: usize = search_text_in_cache(&cache, case["query"].as_str().unwrap(), None)
+                .iter()
+                .map(|group| group.offsets.len())
+                .sum();
+            assert_eq!(count, case["matches"].as_array().unwrap().len(), "{}", case["name"]);
+        }
+    }
 
     #[test]
     fn cancelling_a_search_discards_only_its_results() {

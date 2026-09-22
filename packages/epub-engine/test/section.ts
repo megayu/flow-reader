@@ -3,6 +3,7 @@ import { assert } from 'vitest'
 import ePub from '../src/epub'
 import EpubCFI from '../src/epubcfi'
 import Section from '../src/section'
+import searchContract from '../../../tests/support/search-contract.json'
 
 const fixtureUrl = '/fixtures/search/OPS/package.opf'
 
@@ -17,6 +18,40 @@ async function loadFixtureSection() {
 }
 
 describe('Section search', function () {
+  it('resolves ordered cross-node matches with literal whitespace', async function () {
+    const { book, section } = await loadFixtureSection()
+    try {
+      for (const entry of searchContract) {
+        section.document = new DOMParser().parseFromString(
+          `<html xmlns="http://www.w3.org/1999/xhtml"><body>${entry.body}</body></html>`,
+          'application/xhtml+xml',
+        )
+        const nodes: Node[] = []
+        const walker = section.document.createTreeWalker(section.document.body, 4)
+        let node
+        while ((node = walker.nextNode())) nodes.push(node)
+        const coordinates = (cfi: string) => {
+          const range = new EpubCFI(cfi).toRange(section.document!)!
+          return [
+            [nodes.indexOf(range.startContainer), range.startOffset],
+            [nodes.indexOf(range.endContainer), range.endOffset],
+          ]
+        }
+        for (const matches of [section.find(entry.query), section.search(entry.query), await section.findAsync(entry.query)]) {
+          assert.deepEqual(matches.map(({ cfi }) => coordinates(cfi)), entry.matches, entry.name)
+        }
+        assert.deepEqual(
+          entry.matches.map((_, index) => coordinates(section.findOccurrence(entry.query, index)!)),
+          entry.matches,
+          entry.name,
+        )
+        assert.isUndefined(section.findOccurrence(entry.query, entry.matches.length), entry.name)
+      }
+    } finally {
+      book.destroy()
+    }
+  })
+
   it('returns non-overlapping ranges in original text coordinates', async function () {
     const { book, section } = await loadFixtureSection()
     try {
@@ -72,12 +107,13 @@ describe('Section search', function () {
     const { book, section } = await loadFixtureSection()
     try {
       const matches = section.find('repeat marker')
-      for (const index of [0, 1, 9]) {
+      for (const index of [0, 1]) {
         assert.equal(
           section.findOccurrence('repeat marker', index),
-          (matches[index] || matches[0])!.cfi,
+          matches[index]!.cfi,
         )
       }
+      assert.isUndefined(section.findOccurrence('repeat marker', 9))
       assert.isUndefined(section.findOccurrence('absent marker', 0))
     } finally {
       book.destroy()
@@ -147,7 +183,7 @@ describe('Section search', function () {
     const { book, section } = await loadFixtureSection()
 
     try {
-      assert.lengthOf(section.find('Cross node phrase'), 0)
+      assert.lengthOf(section.find('Cross node phrase'), 1)
 
       const results = section.search('Cross node phrase')
       assert.lengthOf(results, 1)

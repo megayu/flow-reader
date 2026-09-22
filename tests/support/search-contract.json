@@ -1,0 +1,72 @@
+[
+  {
+    "name": "inline repeats",
+    "body": "<p>sun<em>lit</em> garden; <b>sun</b><i>lit</i> garden</p>",
+    "text": "sunlit garden; sunlit garden\n",
+    "query": "sunlit garden",
+    "matches": [[[0, 0], [2, 7]], [[3, 0], [5, 7]]]
+  },
+  {
+    "name": "more than five nodes",
+    "body": "<p><i>s</i><i>u</i><i>n</i><i>l</i><i>i</i><i>t</i></p>",
+    "text": "sunlit\n",
+    "query": "sunlit",
+    "matches": [[[0, 0], [5, 1]]]
+  },
+  {
+    "name": "literal spaces",
+    "body": "<p>sun  <i>lit</i></p><p>sun <i>lit</i></p>",
+    "text": "sun  lit\nsun lit\n",
+    "query": "sun lit",
+    "matches": [[[2, 0], [3, 3]]]
+  },
+  {
+    "name": "block boundary",
+    "body": "<p>sun</p><p>lit</p>",
+    "text": "sun\nlit\n",
+    "query": "sunlit",
+    "matches": []
+  },
+  {
+    "name": "line break",
+    "body": "<p>sun<br/>lit</p>",
+    "text": "sun\nlit\n",
+    "query": "sunlit",
+    "matches": []
+  },
+  {
+    "name": "ignored elements",
+    "body": "<script>sunlit</script><style>sunlit</style><svg><text>sunlit</text></svg><math><mi>sunlit</mi></math><p>sun<i>lit</i></p>",
+    "text": "sunlit\n",
+    "query": "sunlit",
+    "matches": [[[4, 0], [5, 3]]]
+  },
+  {
+    "name": "contextual casing across nodes",
+    "body": "<p>Ο<b>Σ</b></p>",
+    "text": "ΟΣ\n",
+    "query": "ος",
+    "matches": [[[0, 0], [1, 1]]]
+  },
+  {
+    "name": "expanding casing and supplementary prefix",
+    "body": "<p>İ😀Ec<b>ho</b> Ec<i>ho</i></p>",
+    "text": "İ😀Echo Echo\n",
+    "query": "echo",
+    "matches": [[[0, 3], [1, 2]], [[2, 1], [3, 2]]]
+  },
+  {
+    "name": "nonoverlapping inline matches",
+    "body": "<p>zz<i>zzz</i></p>",
+    "text": "zzzzz\n",
+    "query": "zz",
+    "matches": [[[0, 0], [0, 2]], [[1, 0], [1, 2]]]
+  },
+  {
+    "name": "multiline query unsupported",
+    "body": "<p>sun</p><p>lit</p>",
+    "text": "sun\nlit\n",
+    "query": "sun\nlit",
+    "matches": []
+  }
+]

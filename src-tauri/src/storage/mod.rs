@@ -151,7 +151,7 @@ fn is_derived_cache_file_name(name: &str) -> bool {
         && name.ends_with(".json.zst")
 }
 const SEARCH_TEXT_EXCERPT_RADIUS: usize = 60;
-pub const SEARCH_TEXT_CACHE_VERSION: u32 = 1;
+pub const SEARCH_TEXT_CACHE_VERSION: u32 = 2;
 pub const IMAGE_INDEX_CACHE_VERSION: u32 = 1;
 const COVER_STEM: &str = "cover";
 const STATE_FILE: &str = "state.json";

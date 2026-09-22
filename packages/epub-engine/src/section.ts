@@ -23,12 +23,11 @@ export interface SectionHooks {
 
 import EpubCFI from './epubcfi'
 import { defer } from './utils/core'
-import { sprint } from './utils/core'
 import Hook from './utils/hook'
 import { replaceBase } from './utils/replacements'
 import Request from './utils/request'
 import { findChapterMatches } from './utils/chapter-search'
-import { findTextMatches } from './utils/text-matches'
+import { findChapterRanges } from './utils/search-text'
 
 function requestType(mediaType: string | undefined) {
   if (mediaType === 'application/xhtml+xml') return 'xhtml'
@@ -317,194 +316,27 @@ class Section {
 
   /** Resolve one occurrence without constructing CFIs for the other matches. */
   findOccurrence(keyword: string, occurrence = 0) {
-    const query = keyword.toLowerCase()
-    if (!query || !this.document) return
-    const walker = this.document.createTreeWalker(
-      this.document.body || this.document.documentElement,
-      4,
-    )
-    let first
-    let node
+    if (!this.document || !Number.isInteger(occurrence) || occurrence < 0) return
     let index = 0
-    const resolve = (
-      { node, start, end }: { node: Node; start: number; end: number },
-    ) => {
-      const range = this.document!.createRange()
-      range.setStart(node, start)
-      range.setEnd(node, end)
-      return this.cfiFromRange(range)
+    for (const { range } of findChapterRanges(this.document, keyword)) {
+      if (index++ === occurrence) return this.cfiFromRange(range)
     }
-    while ((node = walker.nextNode())) {
-      for (const { start, end } of findTextMatches(node.textContent!, query)) {
-        first ??= { node, start, end }
-        if (index++ === occurrence) return resolve({ node, start, end })
-      }
-    }
-    // Preserve the existing result-navigation fallback for an outdated occurrence.
-    if (first) return resolve(first)
   }
 
-  /**
-   * Find a string in a section
-   * @param  {string} _query The query string to find
-   * @param  {object} [options] Set includeExcerpt to false for CFI-only consumers
-   * @return {object[]} Matches with cfi and, by default, excerpt
-   */
-  find(_query: string, { includeExcerpt = true } = {}) {
-    var section = this
-    var matches: SectionMatch[] = []
-    var query = _query.toLowerCase()
-    var find = function (node: Text) {
-      var range = section.document!.createRange()
-      var cfi
-      var excerpt
-      var limit = 150
-
-      for (const { start: pos, end } of findTextMatches(node.textContent!, query)) {
-        // We found it! Generate a CFI
-        range = section.document!.createRange()
-        range.setStart(node, pos)
-        range.setEnd(node, end)
-
-        cfi = section.cfiFromRange(range)
-
-        if (!includeExcerpt) {
-          matches.push({ cfi })
-          continue
-        }
-        // Generate the excerpt
-        if (node.textContent!.length < limit) {
-          excerpt = node.textContent
-        } else {
-          excerpt = node.textContent!.substring(
-            pos - limit / 2,
-            pos + limit / 2,
-          )
-          excerpt = '...' + excerpt + '...'
-        }
-
-        // Add the CFI to the matches list
-        matches.push({
-          cfi: cfi,
-          excerpt: excerpt,
-        })
-      }
+  /** Find literal, non-overlapping matches, including across inline text nodes. */
+  find(query: string, { includeExcerpt = true } = {}) {
+    const matches: SectionMatch[] = []
+    if (!this.document) return matches
+    for (const { range, excerpt } of findChapterRanges(this.document, query)) {
+      const cfi = this.cfiFromRange(range)
+      matches.push(includeExcerpt ? { cfi, excerpt } : { cfi })
     }
-
-    sprint(
-      section.document!.body || section.document!.documentElement,
-      function (node) {
-        find(node)
-      },
-    )
-
     return matches
   }
 
-  /**
-   * Search consecutive text-node windows, falling back to `find` without TreeWalker.
-   * This is not an exhaustive chapter search: each window emits at most its
-   * first match, and only when that match starts in the window's first node.
-   * It can omit later matches and matches spanning more than maxSeqEle nodes,
-   * and concatenates text across block boundaries without adding separators.
-   * The final partial window is searched once, not drained one node at a time.
-   * Its result ordinals must not be used to resolve external full-text results.
-   * @param  {string} _query The query string to search
-   * @param  {int} maxSeqEle Maximum text nodes per window, default 5.
-   * @return {object[]} A list of matches, with form {cfi, excerpt}
-   */
-  search(_query: string, maxSeqEle = 5) {
-    if (typeof document.createTreeWalker == 'undefined') {
-      return this.find(_query)
-    }
-    let matches: SectionMatch[] = []
-    const excerptLimit = 150
-    const section = this
-    const query = _query.toLowerCase()
-    const search = function (nodeList: Text[]) {
-      const textWithCase = nodeList.reduce((acc, current) => {
-        return acc + current.textContent
-      }, '')
-      const match = findTextMatches(textWithCase, query).next().value
-      if (match) {
-        const pos = match.start
-        const startNodeIndex = 0,
-          endPos = match.end
-        let endNodeIndex = 0,
-          l = 0
-        if (pos < nodeList[startNodeIndex]!.length) {
-          let cfi
-          while (endNodeIndex < nodeList.length - 1) {
-            l += nodeList[endNodeIndex]!.length
-            if (endPos <= l) {
-              break
-            }
-            endNodeIndex += 1
-          }
-
-          let startNode = nodeList[startNodeIndex]!,
-            endNode = nodeList[endNodeIndex]!
-          let range = section.document!.createRange()
-          range.setStart(startNode, pos)
-          let beforeEndLengthCount = nodeList
-            .slice(0, endNodeIndex)
-            .reduce((acc, current) => {
-              return acc + current.textContent!.length
-            }, 0)
-          range.setEnd(
-            endNode,
-            beforeEndLengthCount > endPos
-              ? endPos
-              : endPos - beforeEndLengthCount,
-          )
-          cfi = section.cfiFromRange(range)
-
-          let excerpt = nodeList
-            .slice(0, endNodeIndex + 1)
-            .reduce((acc, current) => {
-              return acc + current.textContent
-            }, '')
-          if (excerpt.length > excerptLimit) {
-            excerpt = excerpt.substring(
-              pos - excerptLimit / 2,
-              pos + excerptLimit / 2,
-            )
-            excerpt = '...' + excerpt + '...'
-          }
-          matches.push({
-            cfi: cfi,
-            excerpt: excerpt,
-          })
-        }
-      }
-    }
-
-    const treeWalker = (
-      document.createTreeWalker as (
-        root: Node,
-        mask: number,
-        filter: NodeFilter | null,
-        expand: boolean,
-      ) => TreeWalker
-    )(
-      section.document!.body || section.document!.documentElement,
-      NodeFilter.SHOW_TEXT,
-      null,
-      false,
-    )
-    let node,
-      nodeList: Text[] = []
-    while ((node = treeWalker.nextNode())) {
-      nodeList.push(node as Text)
-      if (nodeList.length == maxSeqEle) {
-        search(nodeList.slice(0, maxSeqEle))
-        nodeList = nodeList.slice(1, maxSeqEle)
-      }
-    }
-    if (nodeList.length > 0) {
-      search(nodeList)
-    }
-    return matches
+  /** Alias of `find`; `_maxSeqEle` is ignored. */
+  search(query: string, _maxSeqEle = 5) {
+    return this.find(query)
   }
 
   /**

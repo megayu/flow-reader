@@ -2199,7 +2199,7 @@ fn archive_only_epub_search_reads_sections_from_package() {
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].id, "Text/invalid:path.xhtml");
     let cache_path = storage.search_text_cache_path(&book.id, book.source_revision, book.revision);
-    assert_eq!(cache_path.file_name().unwrap(), "search-text.v1.s1.r1.json.zst");
+    assert_eq!(cache_path.file_name().unwrap(), "search-text.v2.s1.r1.json.zst");
     assert!(!cache_path.exists());
     storage.set_derived_cache_active(&book.id, false).unwrap();
     assert!(cache_path.exists());
@@ -2773,7 +2773,10 @@ fn extracts_visible_text_for_search_cache() {
 
     let text = visible_search_text_from_xhtml(xhtml);
 
-    assert_eq!(text, "第一章\nAlpha target & beta platform\nSecond paragraph.");
+    assert_eq!(
+        text,
+        "\n  \n第一章\n\n  \nAlpha target & beta platform\n\n  \nSecond paragraph.\n\n"
+    );
     assert!(!text.contains("不应进入搜索"));
 }
 
@@ -3132,7 +3135,7 @@ fn reads_search_text_sections_from_unpacked_spine_order() {
     assert_eq!(sections[0].section_index, 0);
     assert_eq!(sections[0].href, "Text/one.xhtml");
     assert_eq!(sections[0].title.as_deref(), Some("Chapter One"));
-    assert_eq!(sections[0].text, "Chapter One\nThe target phrase appears.");
+    assert_eq!(sections[0].text, "Chapter One\nThe target phrase appears.\n");
     assert_eq!(sections[1].section_index, 1);
     assert_eq!(sections[1].href, "Text/two.xhtml");
 
