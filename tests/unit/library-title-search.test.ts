@@ -37,3 +37,13 @@ function testTextSearchNormalizationAndMatching() {
 }
 
 test(testTextSearchNormalizationAndMatching.name, testTextSearchNormalizationAndMatching)
+
+test('matches polyphonic initials without losing character positions', () => {
+  const index = createTextSearchIndex(['水浒传'])
+  for (const query of ['shz', 'shc', 'sxz', 'sxc', 'hz', '水浒']) {
+    assert.equal(matchesTextSearch(index, query), true, query)
+  }
+  for (const query of ['shxz', 'shcz', 'sz', 'shz missing']) {
+    assert.equal(matchesTextSearch(index, query), false, query)
+  }
+})

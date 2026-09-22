@@ -1,4 +1,4 @@
-import { pinyin } from 'pinyin-pro'
+import { pinyin, polyphonic } from 'pinyin-pro'
 
 type TextSearchUnit =
   | {
@@ -10,7 +10,9 @@ type TextSearchUnit =
       text: string
     }
 
-export type TextSearchIndex = readonly string[]
+type TextSearchCandidate = string | readonly string[]
+
+export type TextSearchIndex = readonly TextSearchCandidate[]
 export type TextSearchQuery = readonly string[]
 
 const hanCharacterPattern = /\p{Script=Han}/u
@@ -74,7 +76,25 @@ function createTextSearchCandidates(value: string) {
     .map((unit) => (unit.kind === 'word' ? Array.from(unit.text)[0] : hanInitials[hanIndex++] || unit.text))
     .join('')
 
-  return [literal, hybrid, initials].filter(Boolean)
+  const candidates: TextSearchCandidate[] = [literal, hybrid, initials].filter(Boolean)
+  if (!hanText) return candidates
+  const alternatives = polyphonic(hanText, { pattern: 'first', toneType: 'none', type: 'array' }).map((options) =>
+    [...new Set(options)].join(''),
+  )
+  if (alternatives.some((options) => options.length > 1)) {
+    for (const abbreviateWords of [false, true]) {
+      hanIndex = 0
+      candidates.push(
+        units.flatMap((unit) => {
+          if (unit.kind === 'han') return [alternatives[hanIndex++] || unit.text]
+          const characters = Array.from(unit.text)
+          return abbreviateWords ? characters.slice(0, 1) : characters
+        }),
+      )
+      if (hybrid === initials) break
+    }
+  }
+  return candidates
 }
 
 export function createTextSearchIndex(values: readonly string[]): TextSearchIndex {
@@ -88,5 +108,28 @@ export function createTextSearchQuery(value: string): TextSearchQuery {
 export function matchesTextSearch(index: TextSearchIndex, query: string | TextSearchQuery) {
   const keywords = typeof query === 'string' ? createTextSearchQuery(query) : query
 
-  return keywords.every((keyword) => index.some((candidate) => candidate.includes(keyword)))
+  return keywords.every((keyword) => {
+    if (index.some((candidate) => typeof candidate === 'string' && candidate.includes(keyword))) return true
+    if (index.every((candidate) => typeof candidate === 'string')) return false
+
+    // Shift-And tracks all matching prefixes without expanding polyphonic combinations.
+    const masks = new Map<string, bigint>()
+    let bit = 1n
+    for (const character of keyword) {
+      masks.set(character, (masks.get(character) ?? 0n) | bit)
+      bit <<= 1n
+    }
+    const complete = bit >> 1n
+    return index.some((candidate) => {
+      if (typeof candidate === 'string') return false
+      let matched = 0n
+      for (const options of candidate) {
+        let mask = 0n
+        for (const character of options) mask |= masks.get(character) ?? 0n
+        matched = ((matched << 1n) | 1n) & mask
+        if ((matched & complete) !== 0n) return true
+      }
+      return false
+    })
+  })
 }
