@@ -2045,6 +2045,7 @@ export class BookTab {
     if (el === this.renderingEl) return
     if (el.getBoundingClientRect().width === 0) return
 
+    const openStartedAt = performance.now()
     this.renderingEl = ref(el)
     const generation = ++this.renderGeneration
     const clearRendering = () => {
@@ -2242,12 +2243,14 @@ export class BookTab {
       if (this.initialPositionPromise === initialPosition) this.initialPositionPromise = undefined
     }
     if (generation !== this.renderGeneration) return
+    const openDurationMs = performance.now() - openStartedAt
     this.rendition.on('displayerror', (error: unknown) => {
       if (generation === this.renderGeneration) this.reportOpenError('render', error, false)
     })
     await this.displayPendingDeepLinkTarget().catch((error) => {
       if (generation === this.renderGeneration) this.reportNavigationError(error)
     })
+    if (generation === this.renderGeneration) return openDurationMs
   }
 
   private failCommittedRender(generation: number, stage: ReaderOpenErrorStage, error: unknown) {

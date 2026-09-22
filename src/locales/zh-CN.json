@@ -219,6 +219,8 @@
   "reader.previous_page": "上一页",
   "reader.return_to_previous": "返回上一处",
   "reader.return_to_start": "返回最初位置",
+  "reader.slow_open.description": "在书架中右键点击本书，选择“开启编辑”。应用会尝试拆分过大的章节，以加快加载速度、减少内存占用。",
+  "reader.slow_open.title": "《{1}》打开较慢",
 
   "search.result.summary": "在 {2} 个章节中找到 {1} 个结果",
   "search.title": "搜索",

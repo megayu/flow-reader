@@ -219,6 +219,8 @@
   "reader.previous_page": "Vorherige Seite",
   "reader.return_to_previous": "Zurückkehren",
   "reader.return_to_start": "Zur ersten Position zurückkehren",
+  "reader.slow_open.description": "Klicken Sie in der Bibliothek mit der rechten Maustaste auf dieses Buch und wählen Sie „Bearbeitung aktivieren“. Die App versucht, zu große Kapitel aufzuteilen, um das Laden zu beschleunigen und den Arbeitsspeicherbedarf zu senken.",
+  "reader.slow_open.title": "„{1}“ wurde langsam geöffnet",
 
   "search.result.summary": "Treffer: {1} · Abschnitte: {2}",
   "search.title": "Suchen",

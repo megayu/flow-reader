@@ -219,6 +219,8 @@
   "reader.previous_page": "Poprzednia strona",
   "reader.return_to_previous": "Wróć",
   "reader.return_to_start": "Wróć do początku",
+  "reader.slow_open.description": "Kliknij tę książkę prawym przyciskiem myszy w bibliotece i wybierz „Włącz edycję”. Aplikacja spróbuje podzielić zbyt duże rozdziały, aby przyspieszyć wczytywanie i zmniejszyć zużycie pamięci.",
+  "reader.slow_open.title": "Otwieranie „{1}” trwało długo",
 
   "search.result.summary": "Wyniki: {1} · sekcje: {2}",
   "search.title": "Szukaj",

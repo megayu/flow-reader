@@ -219,6 +219,8 @@
   "reader.previous_page": "Previous page",
   "reader.return_to_previous": "Go back",
   "reader.return_to_start": "Return to first location",
+  "reader.slow_open.description": "Right-click this book in your library and choose “Enable editing”. The app will try to split oversized chapters to speed up loading and reduce memory usage.",
+  "reader.slow_open.title": "“{1}” took a while to open",
 
   "search.result.summary": "{1} results in {2} sections",
   "search.title": "Search",

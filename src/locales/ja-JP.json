@@ -219,6 +219,8 @@
   "reader.previous_page": "前のページ",
   "reader.return_to_previous": "前の場所に戻る",
   "reader.return_to_start": "最初の場所に戻る",
+  "reader.slow_open.description": "本棚でこの本を右クリックし、「編集を有効化」を選択してください。アプリが大きすぎる章の分割を試み、読み込みの高速化とメモリ使用量の削減を図ります。",
+  "reader.slow_open.title": "「{1}」を開くのに時間がかかりました",
 
   "search.result.summary": "{2} か所のセクションで {1} 件の結果",
   "search.title": "検索",

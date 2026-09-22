@@ -219,6 +219,8 @@
   "reader.previous_page": "Página anterior",
   "reader.return_to_previous": "Volver atrás",
   "reader.return_to_start": "Volver al inicio",
+  "reader.slow_open.description": "Haz clic derecho en este libro en la biblioteca y elige «Activar edición». La aplicación intentará dividir los capítulos demasiado grandes para acelerar la carga y reducir el uso de memoria.",
+  "reader.slow_open.title": "«{1}» tardó en abrirse",
 
   "search.result.summary": "Resultados: {1} · secciones: {2}",
   "search.title": "Buscar",

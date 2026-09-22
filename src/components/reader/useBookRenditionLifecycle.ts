@@ -2,7 +2,12 @@ import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef } from 
 
 import type { RenditionSpread } from '@flow/epub-engine/rendition'
 
+import { getBookDisplayTitle } from '../../book'
+import { useTranslation } from '../../hooks/useTranslation'
 import type { BookBeforeLayout, BookTab } from '../../models/reader'
+import { useNotify } from '../ui/notificationContext'
+
+const SLOW_BOOK_OPEN_MS = 5000
 
 interface BookRenditionLifecycleOptions {
   active: boolean
@@ -40,6 +45,9 @@ export function useBookRenditionLifecycle({
   applyCustomStyle,
   containerRef,
 }: BookRenditionLifecycleOptions) {
+  const notify = useNotify()
+  const t = useTranslation()
+  const notifiedTab = useRef<BookTab | undefined>(undefined)
   const prevSize = useRef<string | undefined>(undefined)
   const previousSpread = useRef<string | undefined>(undefined)
   const previousTypographyLayoutSignature = useRef<string | undefined>(undefined)
@@ -86,8 +94,31 @@ export function useBookRenditionLifecycle({
     const container = containerRef.current
     if (!container) return
 
-    void tab.render(container, spread, beforeLayout, layoutSignature).catch(console.error)
-  }, [active, containerRef, rendition, settingsReady, tab])
+    void tab
+      .render(container, spread, beforeLayout, layoutSignature)
+      .then((openDurationMs) => {
+        if (
+          openDurationMs === undefined ||
+          openDurationMs <= SLOW_BOOK_OPEN_MS ||
+          !container.isConnected ||
+          notifiedTab.current === tab ||
+          tab.book.scope !== 'library' ||
+          tab.book.sourceFormat !== 'epub' ||
+          tab.book.editable ||
+          tab.book.archive
+        ) {
+          return
+        }
+        notifiedTab.current = tab
+        notify({
+          autoCloseMs: 10000,
+          description: t('reader.slow_open.description'),
+          title: t('reader.slow_open.title', getBookDisplayTitle(tab.book)),
+          type: 'warning',
+        })
+      })
+      .catch(console.error)
+  }, [active, containerRef, notify, rendition, settingsReady, t, tab])
 
   const syncVisibleSize = useCallback(() => {
     if (!active || !settingsReady) return
