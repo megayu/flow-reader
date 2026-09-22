@@ -3796,8 +3796,8 @@ test('long-book note return links use the note destination without resolving a b
         ${'<p>Ordinary reading content.</p>'.repeat(30)}
         <aside role="doc-footnote"><p><a id="note-marker" href="chapter_002.xhtml#original-reference">Return</a> Synthetic note.</p>
         <p><a href="chapter_003.xhtml#ordinary">Ordinary link</a></p></aside>
-        <aside role="doc-footnote" id="ordinary-note"><p>For details see
-        <a href="chapter_003.xhtml#ordinary">Figure</a>.</p></aside>
+        <ol class="duokan-footnote-content"><li class="duokan-footnote-item" id="ordinary-note"><p class="footnote">
+        For details see <a href="chapter_003.xhtml#ordinary">Figure</a>.</p></li></ol>
         </body></html>`,
     }),
   )
@@ -3817,6 +3817,16 @@ test('long-book note return links use the note destination without resolving a b
   )
   await page.keyboard.press('Escape')
   await frame().locator('#ordinary-note-ref').click()
+  await expect(popup().getByRole('link', { name: '↩', exact: true })).toHaveAttribute(
+    'href',
+    'chapter_001.xhtml#ordinary-note',
+  )
+  expect(
+    await popup()
+      .getByRole('link', { name: '↩', exact: true })
+      .evaluate((link) => link.parentElement?.localName),
+  ).toBe('p')
+  await expect(popup()).toContainText('↩ For details see')
   await expect(popup().getByRole('link', { name: 'Figure', exact: true })).toHaveAttribute(
     'href',
     'chapter_003.xhtml#ordinary',
@@ -3832,6 +3842,7 @@ test('long-book note return links use the note destination without resolving a b
   await expect(popup().getByText('Return', { exact: true })).not.toHaveAttribute('href')
   await page.keyboard.press('Escape')
   await frame().locator('#ordinary-note-ref').click()
+  await expect(popup().getByText('↩', { exact: true })).toHaveCount(0)
   await expect(popup().getByRole('link', { name: 'Figure', exact: true })).toHaveAttribute(
     'href',
     'chapter_003.xhtml#ordinary',

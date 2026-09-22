@@ -86,11 +86,27 @@ export function cloneNoteElement(
       }
     }
   }
+  if (returnHrefs.size === 0 && noteTarget) prependSyntheticReturnLink(clone, noteTarget)
   clone.removeAttribute('hidden')
   clone.style.setProperty('display', 'block', 'important')
   trimBoundaryMargin(clone, 'start')
   trimBoundaryMargin(clone, 'end')
   return clone
+}
+
+function prependSyntheticReturnLink(root: HTMLElement, noteTarget: string) {
+  const link = root.ownerDocument.createElement('a')
+  link.textContent = '↩'
+  link.setAttribute('href', noteTarget)
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let text = walker.nextNode()
+  while (text && !text.textContent?.trim()) text = walker.nextNode()
+  if (text?.parentNode) {
+    text.parentNode.insertBefore(link, text)
+    text.parentNode.insertBefore(root.ownerDocument.createTextNode(' '), text)
+  } else {
+    root.prepend(link, ' ')
+  }
 }
 
 function isLeadingNoteLink(root: HTMLElement, link: HTMLAnchorElement) {
