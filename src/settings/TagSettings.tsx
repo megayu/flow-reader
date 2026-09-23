@@ -176,13 +176,14 @@ export function TagSettings() {
                 active={selectedTagIds.has(tag.id)}
                 label={tag.name}
                 menuItems={tagMenuItems}
-                onPin={(tagId) =>
-                  void db.pins.pinTag(tagId).catch((error) => notifyError(error, 'home.library_filter.pin'))
+                onPinChange={(tagId, pinned) =>
+                  void db.pins
+                    .set('tag', tagId, pinned)
+                    .catch((error) =>
+                      notifyError(error, pinned ? 'home.library_filter.pin' : 'home.library_filter.unpin'),
+                    )
                 }
                 onToggle={toggleTag}
-                onUnpin={(tagId) =>
-                  void db.pins.unpinTag(tagId).catch((error) => notifyError(error, 'home.library_filter.unpin'))
-                }
                 pinLabel={t('home.library_filter.pin')}
                 pinned={pinnedTagIds.has(tag.id)}
                 unpinLabel={t('home.library_filter.unpin')}

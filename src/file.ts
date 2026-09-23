@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 
+import { bookCollator } from './collation'
 import { waitForBookCacheClearing } from './state'
 import {
   applyFolderImportTags,
@@ -15,11 +16,6 @@ import {
 } from './storage'
 
 const nativeOpenEvent = 'flow-open-files'
-const filePathCollator = new Intl.Collator(undefined, {
-  numeric: true,
-  sensitivity: 'base',
-})
-
 interface HandleFilesOptions {
   directTextImport?: boolean
   onImportProgress?: (progress: BookImportProgress | undefined) => void
@@ -57,10 +53,10 @@ function compareExactText(a: string, b: string) {
 
 function sortDroppedFilePaths(paths: readonly string[]) {
   return [...paths].sort((a, b) => {
-    const filenameOrder = filePathCollator.compare(getPathFilename(a), getPathFilename(b))
+    const filenameOrder = bookCollator.compare(getPathFilename(a), getPathFilename(b))
     if (filenameOrder) return filenameOrder
 
-    const pathOrder = filePathCollator.compare(a, b)
+    const pathOrder = bookCollator.compare(a, b)
     return pathOrder || compareExactText(a, b)
   })
 }

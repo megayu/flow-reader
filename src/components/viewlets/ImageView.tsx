@@ -15,13 +15,13 @@ import {
   useState,
 } from 'react'
 
-import { useAction } from '@/hooks/useAction'
 import { LIST_ITEM_SIZE } from '@/hooks/useList'
 import { useScrollViewport } from '@/hooks/useScrollViewport'
 import { useStringSet } from '@/hooks/useStringSet'
 import { useTranslation } from '@/hooks/useTranslation'
 import { type ImageEntry, type ISection, reader, useReaderSnapshot } from '@/models/reader'
 import { normalizeHrefPath, sameHref } from '@/noteLinks'
+import { useReaderActionState } from '@/state'
 import type { BookImageIndexCache } from '@/storage'
 import { loadBookImageIndex } from '@/storage'
 
@@ -253,7 +253,7 @@ interface ImagePaneProps {
 }
 
 const ImagePane: React.FC<ImagePaneProps> = ({ mode, onModeChange }) => {
-  const [action] = useAction()
+  const [action] = useReaderActionState()
   const { focusedBookTab } = useReaderSnapshot()
   const t = useTranslation()
   const tab = reader.focusedBookTab

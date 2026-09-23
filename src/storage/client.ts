@@ -555,17 +555,8 @@ export const db = {
     peek() {
       return pinsCache
     },
-    async pinAuthor(author: string) {
-      return updateLibraryPin('author', author, true)
-    },
-    async unpinAuthor(author: string) {
-      return updateLibraryPin('author', author, false)
-    },
-    async pinTag(tagId: string) {
-      return updateLibraryPin('tag', tagId, true)
-    },
-    async unpinTag(tagId: string) {
-      return updateLibraryPin('tag', tagId, false)
+    set(kind: 'author' | 'tag', id: string, pinned: boolean) {
+      return updateLibraryPin(kind, id, pinned)
     },
   },
   recentBooks: {

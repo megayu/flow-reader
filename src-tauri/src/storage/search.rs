@@ -490,11 +490,11 @@ fn load_or_build_search_text_cache_with_builder(
     builder: impl FnOnce(&AppStorage, &TaskService, &StoredBook) -> Result<SearchTextCache, String>,
 ) -> Result<Arc<SearchTextCache>, String> {
     let started = Instant::now();
-    if let Some(cache) = load_search_text_memory_cache(storage, book)? {
+    let record_hit = |kind: &str, sections: usize| {
         let mut fields = vec![
             ("book", book.id.clone()),
-            ("cache", "memory".to_string()),
-            ("sections", cache.sections.len().to_string()),
+            ("cache", kind.to_string()),
+            ("sections", sections.to_string()),
             (
                 "search_memory_caches",
                 storage.search_text_memory_cache_len().to_string(),
@@ -502,6 +502,9 @@ fn load_or_build_search_text_cache_with_builder(
         ];
         fields.extend(tasks.diagnostic_fields());
         diagnostics::record_timing("search-index", started.elapsed(), &fields);
+    };
+    if let Some(cache) = load_search_text_memory_cache(storage, book)? {
+        record_hit("memory", cache.sections.len());
         return Ok(cache);
     }
 
@@ -514,17 +517,7 @@ fn load_or_build_search_text_cache_with_builder(
             false,
             book.scope == BookScope::Library,
         )?;
-        let mut fields = vec![
-            ("book", book.id.clone()),
-            ("cache", "disk".to_string()),
-            ("sections", cache.sections.len().to_string()),
-            (
-                "search_memory_caches",
-                storage.search_text_memory_cache_len().to_string(),
-            ),
-        ];
-        fields.extend(tasks.diagnostic_fields());
-        diagnostics::record_timing("search-index", started.elapsed(), &fields);
+        record_hit("disk", cache.sections.len());
         return Ok(cache);
     }
 
@@ -554,17 +547,7 @@ fn load_or_build_search_text_cache_with_builder(
         false,
         book.scope == BookScope::Library,
     )?;
-    let mut fields = vec![
-        ("book", book.id.clone()),
-        ("cache", "built".to_string()),
-        ("sections", cache.sections.len().to_string()),
-        (
-            "search_memory_caches",
-            storage.search_text_memory_cache_len().to_string(),
-        ),
-    ];
-    fields.extend(tasks.diagnostic_fields());
-    diagnostics::record_timing("search-index", started.elapsed(), &fields);
+    record_hit("built", cache.sections.len());
     Ok(cache)
 }
 

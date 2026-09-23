@@ -17,7 +17,6 @@ import type { Rendition } from '@flow/epub-engine'
 import { type AnnotationColor, annotationColors, colorMap, orderRangeRectsForWritingMode } from '../annotation'
 import { type LocalDictionaryRecord, listLocalDictionariesCached } from '../dictionary/native'
 import { normalizeDictionaryQuery } from '../dictionary/query'
-import { useSetAction } from '../hooks/useAction'
 import { useNotifyError } from '../hooks/useNotifyError'
 import { isForwardSelection, useTextSelection } from '../hooks/useTextSelection'
 import { useTranslation } from '../hooks/useTranslation'
@@ -26,7 +25,7 @@ import { type BookTab, getBookTabFrameWindows, reader } from '../models/reader'
 import { LayoutAnchorMode, LayoutAnchorPosition, layout, layoutBesideRect } from '../reader/contextViewLayout'
 import { hasKeyboardCapturingLayer } from '../reader/shortcuts'
 import { getShortcutChords } from '../shortcuts'
-import { createDefaultTranslationSettings, useSettings } from '../state'
+import { createDefaultTranslationSettings, useSetReaderActionState, useSettings } from '../state'
 import { type BookTextReplaceTarget, replaceBookText } from '../storage'
 import { resolveTranslationDirection } from '../translation/languages'
 import { serializeTranslationFragment } from '../translation/serialize'
@@ -354,7 +353,7 @@ const TextSelectionMenuRenderer: React.FC<TextSelectionMenuRendererProps> = ({
   cfi: annotationCfi,
   hide,
 }) => {
-  const setAction = useSetAction()
+  const setAction = useSetReaderActionState()
   const ref = useRef<HTMLTextAreaElement>(null)
   const popupElementRef = useRef<HTMLDivElement>(null)
   const keyboardWindows = useMemo(() => [window, ...windows], [windows])

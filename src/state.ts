@@ -205,65 +205,57 @@ export function useSidebarWidth(viewMode: ViewMode) {
   return [width!, setWidth] as const
 }
 
-export function useReaderActionState() {
-  const action = useAppStore((state) => state.action)
-  const setAction = useAppStore((state) => state.setAction)
-
-  return [action, setAction] as const
+function makeValueSetter<Value, Setter>(getValue: (state: AppStore) => Value, getSetter: (state: AppStore) => Setter) {
+  return function useValueSetter() {
+    const value = useAppStore(getValue)
+    const setter = useAppStore(getSetter)
+    return [value, setter] as const
+  }
 }
+
+export const useReaderActionState = makeValueSetter(
+  (state) => state.action,
+  (state) => state.setAction,
+)
 
 export function useSetReaderActionState() {
   return useAppStore((state) => state.setAction)
 }
 
-export function useLibraryActionState() {
-  const action = useAppStore((state) => state.libraryAction)
-  const setAction = useAppStore((state) => state.setLibraryAction)
+export const useLibraryActionState = makeValueSetter(
+  (state) => state.libraryAction,
+  (state) => state.setLibraryAction,
+)
 
-  return [action, setAction] as const
-}
+export const useLibraryStatusFilter = makeValueSetter(
+  (state) => state.libraryStatusFilter,
+  (state) => state.setLibraryStatusFilter,
+)
 
-export function useLibraryStatusFilter() {
-  const filters = useAppStore((state) => state.libraryStatusFilter)
-  const setFilters = useAppStore((state) => state.setLibraryStatusFilter)
+export const useLibraryAuthorFilter = makeValueSetter(
+  (state) => state.libraryAuthorFilter,
+  (state) => state.setLibraryAuthorFilter,
+)
 
-  return [filters, setFilters] as const
-}
+export const useLibraryAuthorFilterExpanded = makeValueSetter(
+  (state) => state.libraryAuthorFilterExpanded,
+  (state) => state.setLibraryAuthorFilterExpanded,
+)
 
-export function useLibraryAuthorFilter() {
-  const filters = useAppStore((state) => state.libraryAuthorFilter)
-  const setFilters = useAppStore((state) => state.setLibraryAuthorFilter)
+export const useLibraryTagFilter = makeValueSetter(
+  (state) => state.libraryTagFilter,
+  (state) => state.setLibraryTagFilter,
+)
 
-  return [filters, setFilters] as const
-}
+export const useLibraryTagFilterExpanded = makeValueSetter(
+  (state) => state.libraryTagFilterExpanded,
+  (state) => state.setLibraryTagFilterExpanded,
+)
 
-export function useLibraryAuthorFilterExpanded() {
-  const expanded = useAppStore((state) => state.libraryAuthorFilterExpanded)
-  const setExpanded = useAppStore((state) => state.setLibraryAuthorFilterExpanded)
-
-  return [expanded, setExpanded] as const
-}
-
-export function useLibraryTagFilter() {
-  const filters = useAppStore((state) => state.libraryTagFilter)
-  const setFilters = useAppStore((state) => state.setLibraryTagFilter)
-
-  return [filters, setFilters] as const
-}
-
-export function useLibraryTagFilterExpanded() {
-  const expanded = useAppStore((state) => state.libraryTagFilterExpanded)
-  const setExpanded = useAppStore((state) => state.setLibraryTagFilterExpanded)
-
-  return [expanded, setExpanded] as const
-}
-
-export function useSettingsDialogOpen() {
-  const open = useAppStore((state) => state.settingsDialogOpen)
-  const setOpen = useAppStore((state) => state.setSettingsDialogOpen)
-
-  return [open, setOpen] as const
-}
+export const useSettingsDialogOpen = makeValueSetter(
+  (state) => state.settingsDialogOpen,
+  (state) => state.setSettingsDialogOpen,
+)
 
 export function useBookCacheClearing() {
   return useAppStore((state) => state.bookCacheClearing)
@@ -297,12 +289,10 @@ export function useUiFontSizeValue() {
   return useAppStore((state) => normalizeUiFontSize(state.settings.ui?.fontSize))
 }
 
-export function useViewMode() {
-  const viewMode = useAppStore((state) => state.viewMode)
-  const setViewMode = useAppStore((state) => state.setViewMode)
-
-  return [viewMode, setViewMode] as const
-}
+export const useViewMode = makeValueSetter(
+  (state) => state.viewMode,
+  (state) => state.setViewMode,
+)
 
 export function useViewModeValue() {
   return useAppStore((state) => state.viewMode)
@@ -312,12 +302,10 @@ export function useSetViewMode() {
   return useAppStore((state) => state.setViewMode)
 }
 
-export function useZenMode() {
-  const zenMode = useAppStore((state) => state.zenMode)
-  const setZenMode = useAppStore((state) => state.setZenMode)
-
-  return [zenMode, setZenMode] as const
-}
+export const useZenMode = makeValueSetter(
+  (state) => state.zenMode,
+  (state) => state.setZenMode,
+)
 
 export function useZenModeValue() {
   return useAppStore((state) => state.zenMode)

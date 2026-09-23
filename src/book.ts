@@ -1,3 +1,4 @@
+import { bookCollator } from './collation'
 import type { BookRecord } from './storage'
 
 export type BookPresentation = Pick<BookRecord, 'name' | 'metadata' | 'scope' | 'archive' | 'editable'>
@@ -8,11 +9,6 @@ export interface BookTooltipLine {
   kind: BookTooltipLineKind
   text: string
 }
-
-const collator = new Intl.Collator(undefined, {
-  numeric: true,
-  sensitivity: 'base',
-})
 
 export function cleanBookText(value?: string | null) {
   return value?.replace(/\s+/g, ' ').trim() ?? ''
@@ -27,10 +23,10 @@ export function getBookDisplayTitle(book: BookPresentation) {
 }
 
 export function compareBookDisplayTitle(a: BookRecord, b: BookRecord) {
-  const title = collator.compare(getBookDisplayTitle(a), getBookDisplayTitle(b))
+  const title = bookCollator.compare(getBookDisplayTitle(a), getBookDisplayTitle(b))
   if (title) return title
 
-  return collator.compare(cleanBookText(a.name), cleanBookText(b.name))
+  return bookCollator.compare(cleanBookText(a.name), cleanBookText(b.name))
 }
 
 export function getBookTooltip(book: BookPresentation) {

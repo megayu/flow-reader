@@ -1,4 +1,5 @@
 import { cleanBookText, compareBookDisplayTitle } from '../book'
+import { bookCollator } from '../collation'
 import type { MessageKey } from '../locales'
 import type { LibrarySortDirection, LibrarySortField } from '../state'
 import {
@@ -9,11 +10,6 @@ import {
   type LibraryTagRecord,
   type ReadingStatus,
 } from '../storage'
-
-const collator = new Intl.Collator(undefined, {
-  numeric: true,
-  sensitivity: 'base',
-})
 
 const readingStatusMessageKeys = {
   toRead: 'home.reading_status.to_read',
@@ -183,7 +179,7 @@ export function mergeLibraryTags(tags: LibraryTagRecord[], extraTags: LibraryTag
     byId.set(tag.id, tag)
   })
 
-  return Array.from(byId.values()).sort((a, b) => collator.compare(a.name, b.name))
+  return Array.from(byId.values()).sort((a, b) => bookCollator.compare(a.name, b.name))
 }
 
 export function sortBooks(books: BookRecord[], field: LibrarySortField, direction: LibrarySortDirection) {
@@ -205,7 +201,7 @@ export function sortBooks(books: BookRecord[], field: LibrarySortField, directio
     const primary =
       field === 'title'
         ? compareBookDisplayTitle(a, b)
-        : collator.compare(cleanBookText(a.metadata.creator), cleanBookText(b.metadata.creator))
+        : bookCollator.compare(cleanBookText(a.metadata.creator), cleanBookText(b.metadata.creator))
     return direction === 'asc' ? primary : -primary
   })
 }

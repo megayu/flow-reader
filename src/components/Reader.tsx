@@ -22,6 +22,7 @@ import { useSnapshot } from 'valtio'
 import type { Contents } from '@flow/epub-engine'
 import { type ReaderView, RenditionSpread } from '@flow/epub-engine/rendition'
 import {
+  useReaderActionState,
   useSetSettingsDialogOpen,
   useSettingsReady,
   useSetViewMode,
@@ -36,7 +37,6 @@ import { backgroundClassNames } from '@/styles/theme'
 import { type BookPresentation, getBookDisplayTitle, getBookTooltip } from '../book'
 import { handleFilePaths, handleFiles } from '../file'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
-import { useAction } from '../hooks/useAction'
 import { useEventListener } from '../hooks/useEventListener'
 import { useTranslation } from '../hooks/useTranslation'
 import { useTypography } from '../hooks/useTypography'
@@ -86,7 +86,7 @@ export function ReaderGridView({
   onEpubImportResult,
 }: ReaderGridViewProps) {
   const { tabs } = useReaderSnapshot()
-  const [action, setAction] = useAction()
+  const [action, setAction] = useReaderActionState()
   const setViewMode = useSetViewMode()
   const viewMode = useViewModeValue()
   const zenMode = useZenModeValue()
@@ -634,7 +634,7 @@ const BookPane: React.FC<BookPaneProps> = React.memo(function BookPane({ active,
   const enterReaderMode = useCallback(() => {
     if (viewMode !== 'reader') setViewMode('reader')
   }, [setViewMode, viewMode])
-  const [action, setAction] = useAction()
+  const [action, setAction] = useReaderActionState()
   const setSettingsOpen = useSetSettingsDialogOpen()
 
   const { closeImagePreview, imagePreview, externalLink, closeExternalLink, closeNotePopover } =

@@ -55,7 +55,6 @@ import {
   selectImportFolder,
   setupNativeOpenFiles,
 } from '../file'
-import { useLibraryAction } from '../hooks/useAction'
 import { useBookImportNotifications } from '../hooks/useBookImportNotifications'
 import { useBookImport, useCovers, useLibrary, useLibraryTags, useRecentBookIds } from '../hooks/useLibrary'
 import { useNotifyError } from '../hooks/useNotifyError'
@@ -78,6 +77,7 @@ import {
   libraryBookCardWidthMin,
   libraryBookCardWidthStep,
   librarySortFieldOptions,
+  useLibraryActionState,
   useLibraryAuthorFilter,
   useLibraryStatusFilter,
   useLibraryTagFilter,
@@ -763,7 +763,7 @@ const Library: React.FC<LibraryProps> = ({
   const [statusFilters, setStatusFilters] = useLibraryStatusFilter()
   const [authorFilters] = useLibraryAuthorFilter()
   const [tagFilters] = useLibraryTagFilter()
-  const [, setLibraryAction] = useLibraryAction()
+  const [, setLibraryAction] = useLibraryActionState()
 
   const [returnState] = useState(() => returnStateRef.current)
   const [select, setSelect] = useState(false)

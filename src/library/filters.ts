@@ -1,10 +1,6 @@
 import { cleanBookText } from '../book'
+import { bookCollator } from '../collation'
 import type { BookRecord, LibraryTagRecord, ReadingStatus } from '../storage'
-
-const authorCollator = new Intl.Collator(undefined, {
-  numeric: true,
-  sensitivity: 'base',
-})
 
 export interface LibraryAuthorOption {
   name: string
@@ -30,7 +26,7 @@ export function sameLibraryTagName(a: string, b: string) {
 }
 
 export function orderLibraryTags(tags: LibraryTagRecord[], pinnedTags: string[] = []) {
-  const sortedTags = [...tags].sort((a, b) => authorCollator.compare(a.name, b.name))
+  const sortedTags = [...tags].sort((a, b) => bookCollator.compare(a.name, b.name))
   const tagById = new Map(sortedTags.map((tag) => [tag.id, tag]))
   const pinned = uniqueStringValues(pinnedTags).filter((tagId) => tagById.has(tagId))
   const pinnedSet = new Set(pinned)
@@ -78,7 +74,7 @@ export function getLibraryAuthorOptions(
     if (author) authorNames.add(author)
   })
 
-  const sortedAuthors = Array.from(authorNames).sort((a, b) => authorCollator.compare(a, b))
+  const sortedAuthors = Array.from(authorNames).sort((a, b) => bookCollator.compare(a, b))
   const availableAuthors = new Set(sortedAuthors)
   const pinned = uniqueStringValues(pinnedAuthors).filter((author) => availableAuthors.has(author))
   const pinnedSet = new Set(pinned)

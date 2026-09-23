@@ -26,9 +26,8 @@ interface LibraryFilterChipProps {
   label: string
   labelTestId?: string
   menuItems?: LibraryFilterMenuItem[]
-  onPin: (value: string) => void
+  onPinChange: (value: string, pinned: boolean) => void
   onToggle: (value: string) => void
-  onUnpin: (value: string) => void
   pinLabel: string
   pinned: boolean
   preserveInputFocus?: boolean
@@ -43,9 +42,8 @@ export const LibraryFilterChip = memo(function LibraryFilterChip({
   label,
   labelTestId,
   menuItems = EMPTY_MENU_ITEMS,
-  onPin,
+  onPinChange,
   onToggle,
-  onUnpin,
   pinLabel,
   pinned,
   preserveInputFocus = false,
@@ -72,12 +70,12 @@ export const LibraryFilterChip = memo(function LibraryFilterChip({
           />
         </ContextMenuTrigger>
         <ContextMenuContent className="w-max" data-testid={contextMenuTestId}>
-          <ContextMenuItem onSelect={() => onPin(value)}>
+          <ContextMenuItem onSelect={() => onPinChange(value, true)}>
             <PinIcon aria-hidden className="size-4 shrink-0" />
             <span className="min-w-0 truncate">{pinLabel}</span>
           </ContextMenuItem>
           {pinned && (
-            <ContextMenuItem onSelect={() => onUnpin(value)}>
+            <ContextMenuItem onSelect={() => onPinChange(value, false)}>
               <PinOffIcon aria-hidden className="size-4 shrink-0" />
               <span className="min-w-0 truncate">{unpinLabel}</span>
             </ContextMenuItem>

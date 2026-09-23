@@ -40,7 +40,6 @@ import { SettingsDialog } from '@/settings/SettingsDialog'
 import { backgroundClassNames } from '@/styles/theme'
 
 import { useColorScheme } from '../hooks/theme/useColorScheme'
-import { type LibraryAction, type Action as ReaderPanelAction, useAction, useLibraryAction } from '../hooks/useAction'
 import { useLibrary, useLibraryPins, useLibraryTags } from '../hooks/useLibrary'
 import { useLibraryTagCreation } from '../hooks/useLibraryTagCreation'
 import { useNotifyError } from '../hooks/useNotifyError'
@@ -70,11 +69,15 @@ import { useReaderSnapshot } from '../models/reader'
 import { createTextSearchIndex, createTextSearchQuery, matchesTextSearch } from '../search/textSearch'
 import { getShortcutChords, type ShortcutActionId } from '../shortcuts'
 import {
+  type LibraryAction,
+  type Action as ReaderPanelAction,
+  useLibraryActionState,
   useLibraryAuthorFilter,
   useLibraryAuthorFilterExpanded,
   useLibraryStatusFilter,
   useLibraryTagFilter,
   useLibraryTagFilterExpanded,
+  useReaderActionState,
   useSettingsDialogOpen,
   useSetZenTypographyOverrides,
   useSidebarWidth,
@@ -104,7 +107,7 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
   useColorScheme()
 
   const [settingsOpen, setSettingsOpen] = useSettingsDialogOpen()
-  const [action, setAction] = useAction()
+  const [action, setAction] = useReaderActionState()
   const actionBeforeZen = useRef<ReaderPanelAction | undefined>(undefined)
   const zenModeRef = useRef(false)
   const zenMode = useZenModeValue()
@@ -245,8 +248,8 @@ const ActivityBar: React.FC<SettingsActionProps> = ({ settingsOpen, onSettingsOp
 interface PageActionBarProps extends ComponentProps<'div'>, SettingsActionProps {}
 
 function ViewActionBar({ className }: ComponentProps<'div'>) {
-  const [action, setAction] = useAction()
-  const [libraryAction, setLibraryAction] = useLibraryAction()
+  const [action, setAction] = useReaderActionState()
+  const [libraryAction, setLibraryAction] = useLibraryActionState()
   const viewMode = useViewModeValue()
   const t = useTranslation()
   const actions: Array<IViewAction | ILibraryViewAction> = viewMode === 'library' ? libraryViewActions : viewActions
@@ -570,8 +573,8 @@ const SideBar: React.FC = () => {
 const SideBarForMode: React.FC<{
   viewMode: ReturnType<typeof useViewModeValue>
 }> = ({ viewMode }) => {
-  const [action] = useAction()
-  const [libraryAction] = useLibraryAction()
+  const [action] = useReaderActionState()
+  const [libraryAction] = useLibraryActionState()
   const activeAction = viewMode === 'library' ? libraryAction : action
   const actions = viewMode === 'library' ? libraryViewActions : viewActions
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth(viewMode)
@@ -626,7 +629,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
   const books = useLibrary()
   const tags = useLibraryTags()
   const pins = useLibraryPins()
-  const [libraryAction, setLibraryAction] = useLibraryAction()
+  const [libraryAction, setLibraryAction] = useLibraryActionState()
   const [statusFilters, setStatusFilters] = useLibraryStatusFilter()
   const [authorFilters, setAuthorFilters] = useLibraryAuthorFilter()
   const [tagFilters, setTagFilters] = useLibraryTagFilter()
@@ -801,30 +804,20 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
     [setTagFilters],
   )
 
-  const pinAuthor = useCallback(
-    (author: string) => {
-      void db.pins.pinAuthor(author).catch((error) => notifyError(error, 'home.library_filter.pin'))
+  const setAuthorPin = useCallback(
+    (author: string, pinned: boolean) => {
+      void db.pins
+        .set('author', author, pinned)
+        .catch((error) => notifyError(error, pinned ? 'home.library_filter.pin' : 'home.library_filter.unpin'))
     },
     [notifyError],
   )
 
-  const unpinAuthor = useCallback(
-    (author: string) => {
-      void db.pins.unpinAuthor(author).catch((error) => notifyError(error, 'home.library_filter.unpin'))
-    },
-    [notifyError],
-  )
-
-  const pinTag = useCallback(
-    (tagId: string) => {
-      void db.pins.pinTag(tagId).catch((error) => notifyError(error, 'home.library_filter.pin'))
-    },
-    [notifyError],
-  )
-
-  const unpinTag = useCallback(
-    (tagId: string) => {
-      void db.pins.unpinTag(tagId).catch((error) => notifyError(error, 'home.library_filter.unpin'))
+  const setTagPin = useCallback(
+    (tagId: string, pinned: boolean) => {
+      void db.pins
+        .set('tag', tagId, pinned)
+        .catch((error) => notifyError(error, pinned ? 'home.library_filter.pin' : 'home.library_filter.unpin'))
     },
     [notifyError],
   )
@@ -1088,8 +1081,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                     onToggle={toggleTag}
                     pinLabel={t('home.library_filter.pin')}
                     unpinLabel={t('home.library_filter.unpin')}
-                    onPin={pinTag}
-                    onUnpin={unpinTag}
+                    onPinChange={setTagPin}
                     menuItems={tagMenuItems}
                   />
                 ))}
@@ -1137,8 +1129,7 @@ function LibraryFilterView({ className }: ComponentProps<'div'>) {
                     onToggle={toggleAuthor}
                     pinLabel={t('home.library_filter.pin')}
                     unpinLabel={t('home.library_filter.unpin')}
-                    onPin={pinAuthor}
-                    onUnpin={unpinAuthor}
+                    onPinChange={setAuthorPin}
                   />
                 ))}
               </div>
