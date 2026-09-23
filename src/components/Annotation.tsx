@@ -6,7 +6,6 @@ import {
   annotationFoldStyle,
   annotationOverlayColor,
   annotationOverlayOpacity,
-  type Annotation as IAnnotation,
 } from '../annotation'
 import { useColorScheme } from '../hooks/theme/useColorScheme'
 import type { BookTab } from '../models/reader'
@@ -265,65 +264,73 @@ const Definitions: React.FC<DefinitionsProps> = ({ active, definitions, tab, dar
   return null
 }
 
-interface AnnotationProps {
-  tab: BookTab
-  annotation: IAnnotation
-}
-const Annotation: React.FC<AnnotationProps> = ({ tab, annotation }) => {
-  const { rendition, viewVersion, overlayVersion } = useSnapshot(tab)
-  const foldColor = annotation.notes?.trim() ? annotationFoldColor(annotation.color) : ''
-
-  useEffect(() => {
-    rendition?.annotations.highlight(
-      annotation.cfi,
-      undefined,
-      (event?: Event) => {
-        event?.preventDefault()
-        event?.stopPropagation()
-        tab.setAnnotationRange(annotation.cfi, event?.currentTarget)
-      },
-      undefined,
-      {
-        ...clickableMarkStyle,
-        ...annotationFoldStyle,
-        'data-overlap-group': 'flow-annotations',
-        'data-overlap-opacity': annotationOverlayOpacity,
-        'data-note-fold-color': foldColor,
-        fill: annotationOverlayColor(annotation.color),
-        'fill-opacity': 1,
-        'mix-blend-mode': 'normal',
-      },
-    )
-
-    return () => {
-      rendition?.annotations.remove(annotation.cfi, 'highlight')
-    }
-  }, [annotation.cfi, annotation.color, foldColor, overlayVersion, rendition?.annotations, tab, viewVersion])
-
-  return null
-}
-
 interface AnnotationsProps {
   active: boolean
   tab: BookTab
 }
 export const Annotations: React.FC<AnnotationsProps> = ({ active, tab }) => {
-  const { overlayState, visibleSectionIndexes, overlayVersion } = useSnapshot(tab)
+  const { overlayState, visibleSectionIndexes, viewVersion, overlayVersion, rendition } = useSnapshot(tab)
   const { dark } = useColorScheme()
-  void overlayVersion
-  const visibleSectionIndexSet = new Set(visibleSectionIndexes)
+
+  useEffect(() => {
+    const annotations = rendition?.annotations
+    if (!active || !annotations) return
+    const visibleSectionIndexSet = new Set(visibleSectionIndexes)
+    const visibleAnnotations = overlayState.annotations.filter((annotation) =>
+      visibleSectionIndexSet.has(annotation.spine.index),
+    )
+    if (!visibleAnnotations.length) return
+
+    annotations.batch(() => {
+      for (const annotation of visibleAnnotations) {
+        const foldColor = annotation.notes?.trim() ? annotationFoldColor(annotation.color) : ''
+        try {
+          annotations.highlight(
+            annotation.cfi,
+            undefined,
+            (event?: Event) => {
+              event?.preventDefault()
+              event?.stopPropagation()
+              tab.setAnnotationRange(annotation.cfi, event?.currentTarget)
+            },
+            undefined,
+            {
+              ...clickableMarkStyle,
+              ...annotationFoldStyle,
+              'data-overlap-group': 'flow-annotations',
+              'data-overlap-opacity': annotationOverlayOpacity,
+              'data-note-fold-color': foldColor,
+              fill: annotationOverlayColor(annotation.color),
+              'fill-opacity': 1,
+              'mix-blend-mode': 'normal',
+            },
+          )
+        } catch (_error) {
+          // Ignore annotations whose range no longer resolves in the visible view.
+        }
+      }
+    })
+
+    return () => {
+      annotations.batch(() => {
+        for (const annotation of visibleAnnotations) {
+          annotations.remove(annotation.cfi, 'highlight')
+        }
+      })
+    }
+  }, [
+    active,
+    overlayState.annotations,
+    visibleSectionIndexes,
+    viewVersion,
+    overlayVersion,
+    rendition?.annotations,
+    tab,
+  ])
 
   return (
     <>
       <FindMatches active={active} tab={tab} />
-      {/* with `key`, react will mount/unmount it automatically */}
-      {active &&
-        overlayState.annotations.flatMap((annotation) =>
-          // seems to fix annotation flash when executing `next()` and `display()`
-          visibleSectionIndexSet.has(annotation.spine.index)
-            ? [<Annotation key={annotation.cfi} tab={tab} annotation={annotation} />]
-            : [],
-        )}
       <Definitions active={active} definitions={overlayState.definitions} tab={tab} dark={!!dark} />
     </>
   )

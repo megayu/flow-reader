@@ -17,6 +17,13 @@ start of rejected approaches. Other entries cover reader interactions.
 
 ## Retained Approaches
 
+### Batch displayed-section annotation attachment
+
+- Change: attach saved highlights for the displayed sections in one React effect, batching group attachment and cleanup. An annotation change remounts the group without maintaining a second mark index in React.
+- Evidence: matched Windows `tauri-release` builds, three native synthetic TXT tabs, 80 annotations mounted in one displayed chapter with 100 paragraphs, isolated data, 1280x800 window at DPR 1.5, 12 operations per scenario with the first three excluded. Against individual attachment, tab-switch operation p50 improved 39.9%, operation p95 improved 48.6%, and first-frame p95 improved 47.6%. Editing one of the annotations improved operation p50 by 47.1% and p95 by 35.5%; neither build had long tasks. A separate 18-annotation run showed no stable tab-switch speedup. The annotation count is for the mounted chapter, not the marks currently visible in the viewport.
+- Decision: retain. Group batching removes repeated pane normalization at larger chapter annotation counts while keeping one effect and no persistent React-side mark index.
+- Constraint: one annotation edit remounts the chapter's annotation group and causes a batch redraw on cleanup and attachment. The effect retains an array proportional to annotations in displayed sections. Heap change, authored EPUB behavior, hundreds of annotations, and macOS/Linux native performance were not measured.
+
 ### SVG section document budget
 
 - Change: identify loaded section documents by their root element, so standalone SVG participates in the existing 48/32 document budget and active-section protection.
