@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-24
+
+- Added folded-corner markers for highlights with personal notes and improved sidebar navigation to open the note editor.
+- Added highlights for book link destinations.
+- Added support for polyphonic pinyin initials in text search.
+- Added EPUB 3 navigation support when splitting large chapters.
+- Added suggestions for speeding up EPUB books that take a long time to open.
+- Improved book typography to preserve relative text sizes and weights, and added a secondary font option.
+- Improved EPUB footnote and endnote previews and navigation for varied note formats, repeated references, and missing return links.
+- Improved performance in areas such as page turns, annotations, etc.
+- Several bug fixes.
+- Several minor UI improvements.
+
 ## [0.1.3] - 2026-09-13
 
 - Added previews for external links in books.
