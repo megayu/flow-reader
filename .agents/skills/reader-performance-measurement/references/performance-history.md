@@ -17,6 +17,13 @@ start of rejected approaches. Other entries cover reader interactions.
 
 ## Retained Approaches
 
+### Resume page mapping from the current spread
+
+- Change: resolve page start and end in one DOM walk and retain only the current page's scan anchor and CFI pair per contents document. Forward and backward turns resume near that anchor. Invalidate the state after layout, content-size, image, or font changes.
+- Evidence: matched Windows `tauri-release` master baseline and updated binaries used the same single-XHTML EPUB, 1113 rendered pages, 1280×800 window at DPR 1.5, and page 900 as the starting position. Each direction order covered 12 turns out and 12 back. A prototype-level timer captured `Mapping.page()` even when the baseline replaced its mapping instance. In the forward-first sequence, median page-mapping cost improved 98.9% going forward and 98.8% returning; time through the committed location and two animation frames improved 67.5% and 74.3%. In the backward-first sequence, mapping improved 99.1% backward and 98.9% returning; frame-complete time improved 69.9% and 73.3%. Two matched pairs on a synthetic small-chapter book used the same client setup: median mapping improved 25.0–50.0% across the four directions, while median frame-complete time ranged from a 4.3% improvement to a 5.4% regression. Forward frame-complete p95 increased 24.4% in one pair and improved 3.4% in the other, so the tail change was not stable. Every turn's page numbers and start/end CFIs matched the baseline, and all saved page screenshots contained rendered body pixels. Focused resize and final-page integration scenarios passed in Chromium and WebKit after the history was reduced to one page; earlier sidebar and cross-section scenarios passed for the mapping algorithm before that reduction.
+- Decision: retain for long single-section books. The current page's anchor avoids repeatedly measuring the chapter prefix while removing the bounded history array and its lookup work.
+- Constraint: returning to a previously visited noncurrent page recalculates its mapping. A distant jump can still scan a large part of the chapter, and an unusually long single text node can still require a full word-range scan. Screenshot capture validated visible content but was excluded from frame-complete timing because encoding cost obscures small-chapter differences. The client benchmark did not instrument heap or long tasks, and macOS/Linux native clients were not measured.
+
 ### Batch displayed-section annotation attachment
 
 - Change: attach saved highlights for the displayed sections in one React effect, batching group attachment and cleanup. An annotation change remounts the group without maintaining a second mark index in React.

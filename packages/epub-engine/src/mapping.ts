@@ -4,6 +4,15 @@ import type Contents from './contents'
 import EpubCFI from './epubcfi'
 import { nodeBounds } from './utils/core'
 
+type PageMapping = {
+  start: number
+  end: number
+  first: Node
+  previous: Node
+  result: { start: string; end: string }
+}
+type MappingState = { root: Node; key: string; current?: PageMapping }
+
 /**
  * Map text locations to CFI ranges
  * @class
@@ -17,6 +26,12 @@ class Mapping {
   declare horizontal: boolean
   declare direction: string
   declare _dev: boolean
+  styleSignature = ''
+  private history = new WeakMap<Contents, MappingState>()
+
+  invalidate() {
+    this.history = new WeakMap()
+  }
 
   constructor(
     layout: LayoutProperties,
@@ -45,10 +60,35 @@ class Mapping {
       return
     }
 
-    result = this.rangePairToCfiPair(cfiBase, {
-      start: this.findStart(root, start, end),
-      end: this.findEnd(root, start, end),
-    })
+    const key = [
+      cfiBase, this.layout.width, this.layout.height, this.layout.pageWidth,
+      this.layout.columnWidth, this.layout.gap, this.horizontal, this.direction,
+      this.styleSignature, contents.mappingRevision,
+    ].join(':')
+    let state = this.history.get(contents)
+    if (!state || state.root !== root || state.key !== key) {
+      state = { root, key }
+      this.history.set(contents, state)
+    }
+    const current = state.current
+    if (current?.start === start && current.end === end) {
+      result = { ...current.result }
+    } else {
+      const rtl = this.horizontal && this.direction === 'rtl'
+      const later = current && (rtl
+        ? current.start <= start && current.end <= end
+        : current.start >= start && current.end >= end)
+      const earlier = current && (rtl
+        ? current.start >= start && current.end >= end
+        : current.start <= start && current.end <= end)
+      const resume = later
+        ? { first: this.findBackwardResume(root, current.first, start, end), previous: root }
+        : earlier ? current : undefined
+      const ranges = this.findRanges(root, start, end, resume)
+      const first = ranges.start!.startContainer
+      result = this.rangePairToCfiPair(cfiBase, ranges)
+      state.current = { start, end, first, previous: ranges.previous, result: { ...result } }
+    }
 
     if (this._dev === true) {
       let doc = contents.document
@@ -73,7 +113,7 @@ class Mapping {
    * @param {function} func walk function
    * @return {*} returns the result of the walk function
    */
-  walk(root: Node, func: (node: Text) => Node | undefined) {
+  walk(root: Node, func: (node: Text) => Node | undefined, from?: Node, reverse = false) {
     // IE11 has strange issue, if root is text node IE throws exception on
     // calling treeWalker.nextNode(), saying
     // Unexpected call to method or property access instead of returning null value
@@ -97,7 +137,7 @@ class Mapping {
     safeFilter.acceptNode = filter.acceptNode
 
     var treeWalker = (
-      document.createTreeWalker as (
+      root.ownerDocument!.createTreeWalker as (
         root: Node,
         mask: number,
         filter: NodeFilter,
@@ -106,7 +146,12 @@ class Mapping {
     )(root, NodeFilter.SHOW_TEXT, safeFilter, false)
     var node
     var result
-    while ((node = treeWalker.nextNode())) {
+    if (from?.nodeType === Node.TEXT_NODE && root.contains(from)) {
+      treeWalker.currentNode = from
+      result = func(from as Text)
+      if (result) return result
+    }
+    while ((node = reverse ? treeWalker.previousNode() : treeWalker.nextNode())) {
       result = func(node as Text)
       if (result) break
     }
@@ -114,146 +159,55 @@ class Mapping {
     return result
   }
 
-  /**
-   * Find Start Range
-   * @private
-   * @param {Node} root root node
-   * @param {number} start position to start at
-   * @param {number} end position to end at
-   * @return {Range}
-   */
-  findStart(root: Node, start: number, end: number) {
-    var stack = [root]
-    var $el
-    var found
-    var $prev = root
-
-    while (stack.length) {
-      $el = stack.shift()!
-
-      found = this.walk($el, (node) => {
-        var left, right, top, bottom
-        var elPos
-
-        elPos = nodeBounds(node)
-
-        if (this.horizontal && this.direction === 'ltr') {
-          left = this.horizontal ? elPos.left : elPos.top
-          right = this.horizontal ? elPos.right : elPos.bottom
-
-          if (left >= start && left <= end) {
-            return node
-          } else if (right > start) {
-            return node
-          } else {
-            $prev = node
-            stack.push(node)
-          }
-        } else if (this.horizontal && this.direction === 'rtl') {
-          left = elPos.left
-          right = elPos.right
-
-          if (right <= end && right >= start) {
-            return node
-          } else if (left < end) {
-            return node
-          } else {
-            $prev = node
-            stack.push(node)
-          }
-        } else {
-          top = elPos.top
-          bottom = elPos.bottom
-
-          if (top >= start && top <= end) {
-            return node
-          } else if (bottom > start) {
-            return node
-          } else {
-            $prev = node
-            stack.push(node)
-          }
-        }
-      })
-
-      if (found) {
-        return this.findTextStartRange(found, start, end)
-      }
-    }
-
-    // Return last element
-    return this.findTextStartRange($prev, start, end)
+  findBackwardResume(root: Node, from: Node, start: number, end: number) {
+    return this.walk(root, (node) => {
+      const bounds = nodeBounds(node)
+      const before = this.horizontal && this.direction === 'rtl'
+        ? bounds.left >= end
+        : this.horizontal ? bounds.right <= start : bounds.bottom <= start
+      return before ? node : undefined
+    }, from, true) || root
   }
 
-  /**
-   * Find End Range
-   * @private
-   * @param {Node} root root node
-   * @param {number} start position to start at
-   * @param {number} end position to end at
-   * @return {Range}
-   */
-  findEnd(root: Node, start: number, end: number) {
-    var stack = [root]
-    var $el
-    var $prev = root
-    var found
+  findRanges(root: Node, start: number, end: number, earlier?: Pick<PageMapping, 'first' | 'previous'>) {
+    let startNode: Node | undefined
+    let endNode: Node | undefined
+    let startPrevious = earlier?.previous || root
+    let endPrevious = earlier?.first || root
+    const horizontal = this.horizontal
+    const rtl = horizontal && this.direction === 'rtl'
 
-    while (stack.length) {
-      $el = stack.shift()!
-
-      found = this.walk($el, (node) => {
-        var left, right, top, bottom
-        var elPos
-
-        elPos = nodeBounds(node)
-
-        if (this.horizontal && this.direction === 'ltr') {
-          left = Math.round(elPos.left)
-          right = Math.round(elPos.right)
-
-          if (left > end && $prev) {
-            return $prev
-          } else if (right > end) {
-            return node
-          } else {
-            $prev = node
-            stack.push(node)
-          }
-        } else if (this.horizontal && this.direction === 'rtl') {
-          left = Math.round(this.horizontal ? elPos.left : elPos.top)
-          right = Math.round(this.horizontal ? elPos.right : elPos.bottom)
-
-          if (right < start && $prev) {
-            return $prev
-          } else if (left < start) {
-            return node
-          } else {
-            $prev = node
-            stack.push(node)
-          }
-        } else {
-          top = Math.round(elPos.top)
-          bottom = Math.round(elPos.bottom)
-
-          if (top > end && $prev) {
-            return $prev
-          } else if (bottom > end) {
-            return node
-          } else {
-            $prev = node
-            stack.push(node)
-          }
-        }
-      })
-
-      if (found) {
-        return this.findTextEndRange(found, start, end)
+    this.walk(root, (node) => {
+      const bounds = nodeBounds(node)
+      if (!startNode) {
+        const matches = rtl
+          ? (bounds.right <= end && bounds.right >= start) || bounds.left < end
+          : horizontal
+            ? (bounds.left >= start && bounds.left <= end) || bounds.right > start
+            : (bounds.top >= start && bounds.top <= end) || bounds.bottom > start
+        if (matches) startNode = node
+        else startPrevious = node
       }
-    }
 
-    // end of chapter
-    return this.findTextEndRange($prev, start, end)
+      const leading = Math.round(rtl || horizontal ? bounds.left : bounds.top)
+      const trailing = Math.round(rtl || horizontal ? bounds.right : bounds.bottom)
+      if (rtl ? trailing < start : leading > end) {
+        endNode = endPrevious
+      } else if (rtl ? leading < start : trailing > end) {
+        endNode = node
+      } else {
+        endPrevious = node
+      }
+      return endNode
+    }, earlier?.first)
+
+    const first = startNode || startPrevious
+    const last = endNode || endPrevious
+    return {
+      start: this.findTextStartRange(first, start, end),
+      end: this.findTextEndRange(last, start, end),
+      previous: startPrevious,
+    }
   }
 
   /**

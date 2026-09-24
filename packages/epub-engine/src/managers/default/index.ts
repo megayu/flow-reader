@@ -155,11 +155,13 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
     this.currentReflowableSpread = undefined
     if (clearCache) {
       this.sectionMeasurements.clear()
+      this.mapping?.invalidate?.()
     }
   }
 
   refreshSection(section: Section) {
     this.sectionMeasurements.invalidate(section)
+    this.mapping?.invalidate?.()
     for (const view of this.views.all()) {
       if (view.section === section) view.refreshContents()
     }
@@ -1682,6 +1684,7 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
   }
 
   afterResized(view: IframeView) {
+    this.mapping?.invalidate?.()
     if (this.canUseLogicalReflowableSpread()) {
       this.sectionMeasurements.invalidate(view && view.section)
     }
@@ -2646,11 +2649,14 @@ class DefaultViewManager extends EventEmitter<ManagerEvents> {
   setLayout(layout: Layout) {
     this.viewSettings.layout = layout
 
-    this.mapping = new Mapping(
-      layout.props,
-      this.settings.direction,
-      this.settings.axis,
-    )
+    if (this.mapping) {
+      this.mapping.layout = layout.props
+      this.mapping.direction = this.settings.direction || 'ltr'
+      this.mapping.axis(this.settings.axis)
+    } else {
+      this.mapping = new Mapping(layout.props, this.settings.direction, this.settings.axis)
+    }
+    this.mapping.styleSignature = this.viewSettings.layoutStyleSignature || ''
 
     if (this.views) {
       this.views.forEach(function (this: DefaultViewManager, view: IframeView) {

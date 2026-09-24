@@ -89,8 +89,9 @@ percentage changes, level, conditions, and decision; store accepted/rejected
 work once and move it if evidence reverses. Do not record feature gates,
 after-only results, smoke, or local artifact paths.
 
-Report the gate, level, key deltas, decision, and limitations. Mention artifacts
-only when retained for review.
+Report the gate, level, key deltas, decision, and limitations. Include baseline
+and after times in the response to the user. Mention artifacts only when
+retained for review.
 
 ## Resources
 

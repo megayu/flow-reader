@@ -101,6 +101,8 @@ function parseViewportContent(content: string) {
  * @param {number} sectionIndex Index in Spine of Conntent's Section
  */
 class Contents extends EventEmitter<ContentsEvents> {
+  mappingRevision = 0
+  private fontMappingListener = () => { this.mappingRevision++ }
   declare epubcfi: EpubCFI
   declare document: Document
   declare documentElement: HTMLElement
@@ -417,6 +419,7 @@ class Contents extends EventEmitter<ContentsEvents> {
    * @private
    */
   expand() {
+    this.mappingRevision++
     this.emit(EVENTS.CONTENTS.EXPAND)
   }
 
@@ -425,6 +428,7 @@ class Contents extends EventEmitter<ContentsEvents> {
    * @private
    */
   addListeners() {
+    this.document.fonts?.addEventListener?.('loadingdone', this.fontMappingListener)
     this.imageLoadListeners()
 
     this.mediaQueryListeners()
@@ -454,6 +458,7 @@ class Contents extends EventEmitter<ContentsEvents> {
    * @private
    */
   removeListeners() {
+    this.document.fonts?.removeEventListener?.('loadingdone', this.fontMappingListener)
     this.removeEventListeners()
 
     this.removeSelectionListeners()
@@ -492,6 +497,7 @@ class Contents extends EventEmitter<ContentsEvents> {
     let height = this.textHeight()
 
     if (width != this._size.width || height != this._size.height) {
+      this.mappingRevision++
       this._size = {
         width: width,
         height: height,
