@@ -3832,7 +3832,7 @@ fn exports_epub_with_required_mimetype_entry() {
     let mut archive = ZipArchive::new(file).unwrap();
     let (mimetype_name, mimetype_compression) = {
         let mimetype = archive.by_index(0).unwrap();
-        (mimetype.name().to_string(), mimetype.compression())
+        (mimetype.name().unwrap().into_owned(), mimetype.compression())
     };
     assert_eq!(mimetype_name, "mimetype");
     assert_eq!(mimetype_compression, CompressionMethod::Stored);
@@ -3918,7 +3918,7 @@ fn exports_epub_reuses_original_entries_and_rewrites_changed_files() {
     let mut archive = ZipArchive::new(file).unwrap();
     let (mimetype_name, mimetype_compression) = {
         let mimetype = archive.by_index(0).unwrap();
-        (mimetype.name().to_string(), mimetype.compression())
+        (mimetype.name().unwrap().into_owned(), mimetype.compression())
     };
     assert_eq!(mimetype_name, "mimetype");
     assert_eq!(mimetype_compression, CompressionMethod::Stored);

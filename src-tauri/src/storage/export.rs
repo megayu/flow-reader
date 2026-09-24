@@ -191,7 +191,8 @@ pub(super) fn original_epub_file_count<R: Read + Seek>(archive: &mut ZipArchive<
         let name = archive
             .name_for_index(index)
             .ok_or_else(|| "Invalid EPUB entry index".to_string())?
-            .to_string();
+            .map_err(|error| error.to_string())?
+            .into_owned();
         let relative = normalize_zip_path(name.replace('\\', "/"));
         if relative.is_empty() {
             continue;
@@ -277,7 +278,8 @@ pub(super) fn write_epub_from_original_and_unpacked(
         let name = archive
             .name_for_index(index)
             .ok_or_else(|| "Invalid EPUB entry index".to_string())?
-            .to_string();
+            .map_err(|error| error.to_string())?
+            .into_owned();
         let relative = normalize_zip_path(name.replace('\\', "/"));
         if relative.is_empty() || relative == "mimetype" {
             continue;

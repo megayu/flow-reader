@@ -52,7 +52,7 @@ pub(super) fn inspect_epub_archive<R: Read + Seek>(archive: &mut ZipArchive<R>) 
     for index in 0..archive.len() {
         let file = archive.by_index(index).map_err(|error| error.to_string())?;
         validate_epub_entry(&file, &mut total_size)?;
-        let name = file.name().replace('\\', "/");
+        let name = file.name().map_err(|error| error.to_string())?.replace('\\', "/");
         if cfg!(windows) && non_portable_zip_path(&name) {
             has_non_portable_path = true;
         }
@@ -83,7 +83,10 @@ pub(in crate::storage) fn validate_epub_archive_limits<R: Read + Seek>(
 fn validate_epub_entry<R: Read>(file: &zip::read::ZipFile<'_, R>, total_size: &mut u64) -> Result<(), String> {
     let size = file.size();
     if size > EPUB_MAX_ENTRY_BYTES {
-        return Err(format!("EPUB entry exceeds the supported size limit: {}", file.name()));
+        return Err(format!(
+            "EPUB entry exceeds the supported size limit: {}",
+            file.name().map_err(|error| error.to_string())?
+        ));
     }
     *total_size = total_size
         .checked_add(size)
@@ -97,7 +100,10 @@ fn validate_epub_entry<R: Read>(file: &zip::read::ZipFile<'_, R>, total_size: &m
         && compressed_size > 0
         && size > compressed_size.saturating_mul(EPUB_MAX_COMPRESSION_RATIO)
     {
-        return Err(format!("EPUB entry has an unsafe compression ratio: {}", file.name()));
+        return Err(format!(
+            "EPUB entry has an unsafe compression ratio: {}",
+            file.name().map_err(|error| error.to_string())?
+        ));
     }
     Ok(())
 }

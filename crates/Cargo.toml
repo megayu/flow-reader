@@ -9,4 +9,4 @@ version = "0.1.3"
 [workspace.dependencies]
 roxmltree = "0.21"
 thiserror = "2"
-zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { git = "https://github.com/zip-rs/zip2.git", rev = "96407e1332cb9ec8f39af88e6dac866ce83995b8", default-features = false, features = ["deflate-flate2-zlib-rs"] }

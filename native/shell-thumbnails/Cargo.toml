@@ -19,4 +19,4 @@ windows = { version = "=0.62.2", features = [
 ] }
 windows-core = "=0.62.2"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
-zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { git = "https://github.com/zip-rs/zip2.git", rev = "96407e1332cb9ec8f39af88e6dac866ce83995b8", default-features = false, features = ["deflate-flate2-zlib-rs"] }

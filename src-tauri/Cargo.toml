@@ -33,7 +33,7 @@ tauri-plugin-process = { version = "2", optional = true }
 tauri-plugin-updater = { version = "2", optional = true, default-features = false, features = ["native-tls"] }
 roxmltree = "0.21"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-zip = { version = "8", default-features = false, features = ["chrono", "deflate-flate2-zlib-rs"] }
+zip = { git = "https://github.com/zip-rs/zip2.git", rev = "96407e1332cb9ec8f39af88e6dac866ce83995b8", default-features = false, features = ["chrono", "deflate-flate2-zlib-rs"] }
 encoding_rs = "0.8"
 regex = "1"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }

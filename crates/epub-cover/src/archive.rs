@@ -87,7 +87,7 @@ fn find_entry<R: Read + Seek>(
     }
 
     for index in 0..archive.len() {
-        let raw_name = archive.by_index(index)?.name().to_string();
+        let raw_name = archive.by_index(index)?.name()?.into_owned();
         let normalized_name = match path::lookup_candidates(&raw_name) {
             Ok(mut names) => names.remove(0),
             Err(_) => continue,
