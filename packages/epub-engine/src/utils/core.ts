@@ -1,4 +1,8 @@
-import { repairOrphanClosingTags } from './xhtml-repair'
+import {
+  repairUndeclaredXlinkNamespace,
+  repairXhtmlTags,
+  repairXmlEntities,
+} from './xhtml-repair'
 
 export type LegacyWindow = Window &
   typeof globalThis & {
@@ -75,10 +79,6 @@ function isParserErrorDocument(doc: Document) {
   if (isParserError(root)) return true
 
   return isParserError(root.firstElementChild)
-}
-
-function repairBareXmlAmpersands(markup: string) {
-  return markup.replace(/&(?!(?:#\d+|#x[\da-f]+|[^\s<>&;]+);)/gi, '&amp;')
 }
 
 /**
@@ -467,15 +467,17 @@ export function parse(markup: string, mime: DOMParserSupportedType) {
 
   // Keep valid XHTML untouched and accept a repair only after strict re-parsing.
   if (mime === 'application/xhtml+xml' && isParserErrorDocument(doc)) {
-    var escapedMarkup = repairBareXmlAmpersands(markup)
-    var repairedMarkup = repairOrphanClosingTags(escapedMarkup)
+    const entityRepairedMarkup = repairXmlEntities(markup)
+    const tagRepairedMarkup = repairXhtmlTags(entityRepairedMarkup)
+    const repairedMarkup = repairUndeclaredXlinkNamespace(tagRepairedMarkup)
     if (repairedMarkup !== markup) {
       var repairedDoc = new DOMParser().parseFromString(repairedMarkup, mime)
       if (!isParserErrorDocument(repairedDoc)) {
         if (import.meta.env.DEV) {
           console.warn('[Flow Reader] Repaired malformed XHTML', {
-            bareAmpersands: escapedMarkup !== markup,
-            orphanClosingTags: repairedMarkup !== escapedMarkup,
+            entities: entityRepairedMarkup !== markup,
+            tagRepairs: tagRepairedMarkup !== entityRepairedMarkup,
+            undeclaredXlinkNamespace: repairedMarkup !== tagRepairedMarkup,
           })
         }
         return repairedDoc
