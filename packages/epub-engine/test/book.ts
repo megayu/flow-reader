@@ -43,6 +43,47 @@ describe('Book', function () {
   describe('Navigation paths', function () {
     var book = new Book('/fixtures/nav-relative/OPS/package.opf')
 
+    it('resolves navigation above the package directory to readable chapters', async function () {
+      const zip = new JSZip()
+      zip.file('mimetype', 'application/epub+zip')
+      zip.file('META-INF/container.xml', `
+        <container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+          <rootfiles><rootfile full-path="OPS/package.opf" media-type="application/oebps-package+xml"/></rootfiles>
+        </container>`)
+      zip.file('OPS/package.opf', `
+        <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Navigation Paths</dc:title></metadata>
+          <manifest>
+            <item id="nav" href="../nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+            <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+          </manifest>
+          <spine><itemref idref="chapter"/></spine>
+        </package>`)
+      zip.file('nav.xhtml', `
+        <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+          <head><title>Contents</title></head>
+          <body><nav epub:type="toc"><ol><li><a href="OPS/chapter.xhtml#start">Chapter</a></li></ol></nav></body>
+        </html>`)
+      zip.file('OPS/chapter.xhtml', `
+        <html xmlns="http://www.w3.org/1999/xhtml">
+          <head><title>Chapter</title></head><body><p id="start">Chapter body</p></body>
+        </html>`)
+
+      const book = new Book(await zip.generateAsync({ type: 'arraybuffer' }))
+      try {
+        await book.opened
+        await book.loaded.navigation
+        assert.equal(book.navigation.toc.length, 1)
+        const item = book.navigation.toc[0]!
+        assert.equal(item.href, 'chapter.xhtml#start')
+        const section = book.section(item.href)
+        assert.ok(section)
+        assert.include(await section.render(book.load.bind(book)), 'id="start"')
+      } finally {
+        book.destroy()
+      }
+    })
+
     it('keeps nav links relative to the nav document directory', async function () {
       await book.opened
       await book.loaded.navigation

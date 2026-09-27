@@ -81,42 +81,22 @@ function splitHrefSuffix(href: string) {
     : { path: href.slice(0, suffixIndex), suffix: href.slice(suffixIndex) }
 }
 
-function normalizePathSegments(path: string) {
-  let parts: string[] = []
-
-  path
-    .replace(/\\/g, '/')
-    .replace(/^\/+/, '')
-    .split('/')
-    .forEach((part) => {
-      if (!part || part === '.') return
-      if (part === '..') {
-        parts.pop()
-        return
-      }
-      parts.push(part)
-    })
-
-  return parts.join('/')
-}
-
-function resolveNavigationHrefFromNavPath(href: string, navPath: string) {
-  if (!href || !navPath || href.charAt(0) === '#') return href
+function resolveNavigationHrefFromNavPath(
+  href: string,
+  navPath: Path,
+  packagePath: Path,
+) {
+  if (!href || href.charAt(0) === '#') return href
   if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.indexOf('//') === 0) {
     return href
   }
 
   let { path, suffix } = splitHrefSuffix(href)
-  if (!path || path.charAt(0) === '/')
-    return normalizePathSegments(path) + suffix
+  if (!path) return href
 
-  let navDir = normalizedNavigationHref(navPath)
-  navDir =
-    navDir && navDir.indexOf('/') > -1
-      ? navDir.slice(0, navDir.lastIndexOf('/'))
-      : ''
-
-  return normalizePathSegments(navDir ? `${navDir}/${path}` : path) + suffix
+  // Resolve against the actual nav location before returning to OPF-relative
+  // spine hrefs; the nav document can live above the package directory.
+  return packagePath.relative(navPath.resolve(path.replace(/\\/g, '/'))) + suffix
 }
 
 function addReadableSectionHref(index: Set<string>, href: string) {
@@ -166,7 +146,8 @@ function navigationHrefMatchesReadableSection(
 function normalizeNavigationHrefsBySpine(
   items: NavItem[],
   readableHrefs: Set<string>,
-  navPath?: string | false | null,
+  packagePath: Path,
+  navPath?: Path,
 ) {
   if (!items || !navPath) return
 
@@ -175,13 +156,13 @@ function normalizeNavigationHrefsBySpine(
       item.href &&
       !navigationHrefMatchesReadableSection(readableHrefs, item.href)
     ) {
-      let resolved = resolveNavigationHrefFromNavPath(item.href, navPath)
+      let resolved = resolveNavigationHrefFromNavPath(item.href, navPath, packagePath)
       if (navigationHrefMatchesReadableSection(readableHrefs, resolved)) {
         item.href = resolved
       }
     }
 
-    normalizeNavigationHrefsBySpine(item.subitems, readableHrefs, navPath)
+    normalizeNavigationHrefsBySpine(item.subitems, readableHrefs, packagePath, navPath)
   })
 }
 
@@ -726,7 +707,12 @@ class Book extends EventEmitter<{ openFailed: [Error] }> {
     let readableHrefs = readableSectionHrefIndex(this.spine.spineItems)
     let navPath = packaging && (packaging.navPath || packaging.ncxPath)
 
-    normalizeNavigationHrefsBySpine(this.navigation.toc, readableHrefs, navPath)
+    normalizeNavigationHrefsBySpine(
+      this.navigation.toc,
+      readableHrefs,
+      this.path,
+      navPath ? new Path(this.path.resolve(navPath)) : undefined,
+    )
 
     this.navigation.filter((item) => {
       if (!item.href) {
