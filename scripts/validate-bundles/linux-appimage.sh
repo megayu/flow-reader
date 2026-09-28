@@ -106,6 +106,17 @@ mkdir -p "${app_data}" "${epub_root}/META-INF" "${epub_root}/EPUB"
   "${appimage_path}" --appimage-extract >/dev/null
 )
 
+wrapped_app_run="${extracted_root}/AppRun.wrapped"
+if [[ ! -f "${wrapped_app_run}" ]]; then
+  echo "The AppImage does not contain AppRun.wrapped." >&2
+  exit 1
+fi
+wrapped_mode="$(stat -Lc '%a' "${wrapped_app_run}")"
+if (( (8#${wrapped_mode} & 5) != 5 )); then
+  echo "AppRun.wrapped must be readable and executable by all users (mode ${wrapped_mode})." >&2
+  exit 1
+fi
+
 mapfile -t desktop_files < <(find -L "${extracted_root}" -maxdepth 2 -type f -name '*.desktop' -print)
 if [[ "${#desktop_files[@]}" -ne 1 ]]; then
   echo "Expected one AppImage desktop entry, found ${#desktop_files[@]}." >&2

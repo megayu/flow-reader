@@ -1,4 +1,8 @@
-import { applicationBundleCargoProfile, runTauri } from './bundle-cargo.ts'
+import { execFileSync } from 'node:child_process'
+import { chmodSync, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { applicationBundleCargoProfile, repositoryRoot, runTauri } from './bundle-cargo.ts'
 
 const platform = process.argv[2]
 const flavor = process.argv[3]
@@ -72,6 +76,48 @@ function releaseArguments() {
 
 const updaterArguments = releaseArguments()
 
+function prepareLinuxAppRun() {
+  const arch = process.arch === 'x64' ? 'x86_64' : 'aarch64'
+  const metadata = JSON.parse(
+    execFileSync(
+      'cargo',
+      ['metadata', '--no-deps', '--format-version', '1', '--manifest-path', 'src-tauri/Cargo.toml'],
+      {
+        cwd: repositoryRoot,
+        encoding: 'utf8',
+      },
+    ),
+  ) as { target_directory: string }
+  const toolsDirectory = join(metadata.target_directory, '.tauri')
+  const appRun = join(toolsDirectory, `AppRun-${arch}`)
+  mkdirSync(toolsDirectory, { recursive: true })
+
+  // Tauri 2.11.4 creates AppRun with mode 770; linuxdeploy preserves it as AppRun.wrapped.
+  if (!existsSync(appRun)) {
+    const download = `${appRun}.${process.pid}.download`
+    try {
+      execFileSync(
+        'curl',
+        [
+          '--fail',
+          '--location',
+          '--retry',
+          '3',
+          '--output',
+          download,
+          `https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-${arch}`,
+        ],
+        { stdio: 'inherit' },
+      )
+      chmodSync(download, 0o755)
+      renameSync(download, appRun)
+    } finally {
+      rmSync(download, { force: true })
+    }
+  }
+  chmodSync(appRun, 0o755)
+}
+
 switch (platform) {
   case 'windows':
     if (process.platform !== 'win32') {
@@ -120,6 +166,7 @@ switch (platform) {
     if (process.arch !== 'x64' && process.arch !== 'arm64') {
       throw new Error(`The Linux installed bundle does not support ${process.arch}.`)
     }
+    prepareLinuxAppRun()
     runTauri(
       [
         'build',

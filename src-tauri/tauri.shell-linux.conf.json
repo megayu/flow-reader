@@ -1,6 +1,7 @@
 {
   "bundle": {
     "active": true,
+    "useLocalToolsDir": true,
     "targets": ["appimage"],
     "fileAssociations": [
       {
