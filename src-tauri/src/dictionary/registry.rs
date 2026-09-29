@@ -168,10 +168,13 @@ pub struct DictionaryRegistryStore {
 }
 
 impl DictionaryRegistryStore {
+    /// Open during exclusive startup, before starting any registry writers.
     pub fn open(app_data_root: &Path) -> Result<Self, DictionaryRegistryError> {
         let root = app_data_root.join(DICTIONARIES_DIR);
         let registry_path = root.join(REGISTRY_FILE);
         let cache_root = root.join(CACHE_DIR);
+        crate::atomic_file::cleanup_interrupted_json_write(&registry_path)
+            .map_err(|error| DictionaryRegistryError::new("registryCleanupFailed", error))?;
         let temp_registry = registry_path.with_extension("tmp");
         if temp_registry.exists() {
             fs::remove_file(&temp_registry).map_err(|error| {
@@ -512,50 +515,8 @@ fn cleanup_orphaned_caches(cache_root: &Path, registry: &RegistryFile) -> Result
 }
 
 fn persist_registry(path: &Path, registry: &RegistryFile) -> Result<(), DictionaryRegistryError> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
-            DictionaryRegistryError::new(
-                "registryWriteFailed",
-                format!("Cannot create the dictionary registry folder: {error}"),
-            )
-        })?;
-    }
-    let bytes = serde_json::to_vec_pretty(registry).map_err(|error| {
-        DictionaryRegistryError::new(
-            "registryWriteFailed",
-            format!("Cannot encode the dictionary registry: {error}"),
-        )
-    })?;
-    let temp = path.with_extension("tmp");
-    fs::write(&temp, bytes).map_err(|error| {
-        DictionaryRegistryError::new(
-            "registryWriteFailed",
-            format!("Cannot write the dictionary registry: {error}"),
-        )
-    })?;
-    if let Err(error) = fs::rename(&temp, path) {
-        let backup = path.with_extension("bak");
-        if path.exists() {
-            let _ = fs::remove_file(&backup);
-            fs::rename(path, &backup).map_err(|backup_error| {
-                DictionaryRegistryError::new(
-                    "registryWriteFailed",
-                    format!("Cannot replace the dictionary registry: {backup_error}"),
-                )
-            })?;
-        }
-        if let Err(replace_error) = fs::rename(&temp, path) {
-            if backup.exists() {
-                let _ = fs::rename(&backup, path);
-            }
-            return Err(DictionaryRegistryError::new(
-                "registryWriteFailed",
-                format!("Cannot replace the dictionary registry: {error}; {replace_error}"),
-            ));
-        }
-        let _ = fs::remove_file(backup);
-    }
-    Ok(())
+    crate::atomic_file::write_json(path, registry, crate::atomic_file::Durability::Buffered)
+        .map_err(|error| DictionaryRegistryError::new("registryWriteFailed", error))
 }
 
 fn record_from_inspection(id: String, inspected: InspectedDictionary, order: u32, now: u64) -> LocalDictionaryRecord {
@@ -732,6 +693,23 @@ mod tests {
     }
 
     #[test]
+    fn failed_registry_replace_preserves_target_and_backup() {
+        let root = temp_dir("failed-replace");
+        let path = root.join("registry.json");
+        fs::create_dir(&path).unwrap();
+        fs::write(path.join("original"), b"original data").unwrap();
+        let backup = path.with_extension("bak");
+        fs::write(&backup, b"existing backup").unwrap();
+
+        let result = super::persist_registry(&path, &super::RegistryFile::default());
+        assert!(result.is_err(), "an incompatible target must not be moved aside");
+        assert_eq!(fs::read(path.join("original")).unwrap(), b"original data");
+        assert_eq!(fs::read(&backup).unwrap(), b"existing backup");
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 2);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn rejects_mdict_registration_without_a_readable_entry_index() {
         let root = temp_dir("incomplete-mdict");
         let sources = root.join("sources");
@@ -883,10 +861,19 @@ mod tests {
         let dictionaries = root.join("dictionaries");
         fs::create_dir_all(&dictionaries).unwrap();
         fs::write(dictionaries.join("registry.tmp"), b"partial").unwrap();
+        let interrupted = dictionaries.join(".registry.json.flow-reader-123-45.tmp");
+        fs::write(&interrupted, b"partial new write").unwrap();
+        let unrelated = dictionaries.join(".registry.json.flow-reader-not-owned.tmp");
+        fs::write(&unrelated, b"unrelated").unwrap();
+        let unrelated_directory = dictionaries.join(".registry.json.flow-reader-123-46.tmp");
+        fs::create_dir(&unrelated_directory).unwrap();
         let orphan = dictionaries.join("cache").join("dict-deadbeefdeadbeefdead");
         fs::create_dir_all(&orphan).unwrap();
         let store = DictionaryRegistryStore::open(&root).unwrap();
         assert!(!dictionaries.join("registry.tmp").exists());
+        assert!(!interrupted.exists());
+        assert_eq!(fs::read(&unrelated).unwrap(), b"unrelated");
+        assert!(unrelated_directory.is_dir());
         assert!(!orphan.exists());
         assert!(store.list().unwrap().is_empty());
         let _ = fs::remove_dir_all(root);

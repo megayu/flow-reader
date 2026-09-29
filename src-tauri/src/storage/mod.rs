@@ -290,6 +290,13 @@ impl AppStorage {
         {
             return Err("Storage contains an invalid book revision".to_string());
         }
+        // Single-instance startup owns storage; no readers or background writers are running yet.
+        for name in [LIBRARY_FILE, SETTINGS_FILE, WINDOW_STATE_FILE] {
+            crate::atomic_file::cleanup_interrupted_json_write(&root.join(name))?;
+        }
+        for book in &library.books {
+            crate::atomic_file::cleanup_interrupted_json_write(&books_root(&root).join(&book.id).join(STATE_FILE))?;
+        }
         let storage = Self {
             inner: Arc::new(StorageInner {
                 root,
@@ -709,40 +716,14 @@ fn write_json<T>(path: &Path, value: &T) -> Result<(), String>
 where
     T: Serialize,
 {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-
-    let data = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, data).map_err(|error| error.to_string())?;
-    fs::rename(&tmp, path).map_err(|error| error.to_string())
+    crate::atomic_file::write_json(path, value, crate::atomic_file::Durability::Buffered)
 }
 
 fn write_json_durable<T>(path: &Path, value: &T) -> Result<(), String>
 where
     T: Serialize,
 {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-
-    let data = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
-    let tmp = path.with_extension("tmp");
-    let mut file = fs::File::create(&tmp).map_err(|error| error.to_string())?;
-    file.write_all(&data).map_err(|error| error.to_string())?;
-    file.sync_all().map_err(|error| error.to_string())?;
-    drop(file);
-    fs::rename(&tmp, path).map_err(|error| error.to_string())?;
-
-    #[cfg(not(windows))]
-    if let Some(parent) = path.parent() {
-        fs::File::open(parent)
-            .and_then(|directory| directory.sync_all())
-            .map_err(|error| error.to_string())?;
-    }
-
-    Ok(())
+    crate::atomic_file::write_json(path, value, crate::atomic_file::Durability::Synced)
 }
 
 fn path_to_client_string(path: &Path) -> String {

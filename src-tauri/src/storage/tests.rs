@@ -53,6 +53,31 @@ fn imported_books_or_first_error(result: BookImportResult) -> Result<Vec<BookRec
 }
 
 #[test]
+fn json_save_preserves_unrelated_staging_files() {
+    let root = std::env::temp_dir().join(format!(
+        "flow-reader-json-staging-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    fs::create_dir_all(&root).unwrap();
+    for durable in [false, true] {
+        let path = root.join(if durable { "book.json" } else { "settings.json" });
+        let unrelated = path.with_extension("tmp");
+        fs::write(&path, b"old data").unwrap();
+        fs::write(&unrelated, b"unrelated data").unwrap();
+        let value = json!({"saved": true});
+        if durable {
+            super::write_json_durable(&path, &value).unwrap();
+        } else {
+            super::write_json(&path, &value).unwrap();
+        }
+        assert_eq!(read_json_value_or_default(&path).unwrap(), value);
+        assert_eq!(fs::read(&unrelated).unwrap(), b"unrelated data");
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn settings_update_honors_explicit_flush_policy() {
     let root = std::env::temp_dir().join(format!(
         "flow-reader-settings-flush-test-{}-{}",

@@ -11,6 +11,7 @@ use std::{
 use serde::Serialize;
 use tauri::{Emitter, Manager, WindowEvent};
 
+mod atomic_file;
 mod diagnostics;
 pub mod dictionary;
 mod file_manager;
