@@ -108,6 +108,7 @@ interface TauriMockState {
   revealedBookSourceIds: string[]
   takePendingOpenPathsCalls: number
   settingsOperations: string[]
+  settingsDiagnostics: Array<{ command: string; time: number; dialogState: string | null; stack?: string }>
   settingsStore: Record<string, unknown>
   textImports: TextImportSelection[]
 }
@@ -284,6 +285,7 @@ export async function installTauriMock(page: Page, options: TauriMockOptions = {
         },
         takePendingOpenPathsCalls: 0,
         settingsOperations: [],
+        settingsDiagnostics: [],
         settingsStore,
         openedExternalUrls: [],
         openedBookDirectoryIds: [],
@@ -305,6 +307,14 @@ export async function installTauriMock(page: Page, options: TauriMockOptions = {
       }
       internals.runCallback = (id, ...args) => callbacks[id]?.(...args)
       internals.invoke = async (command, args) => {
+        if (['update_settings', 'flush_settings', 'reset_text_import_rule'].includes(command)) {
+          globalWindow.__FLOW_TEST_TAURI__?.settingsDiagnostics.push({
+            command,
+            time: performance.now(),
+            dialogState: document.querySelector('[data-slot="dialog-content"]')?.getAttribute('data-state') ?? null,
+            stack: new Error().stack,
+          })
+        }
         if (command === 'fetch_translation') {
           if (fixtureTranslationResponseDelayMs > 0) {
             await new Promise((resolve) => window.setTimeout(resolve, fixtureTranslationResponseDelayMs))
@@ -931,6 +941,13 @@ export async function getSettingsOperations(page: Page) {
     const globalWindow = window as TauriMockWindow
 
     return [...(globalWindow.__FLOW_TEST_TAURI__?.settingsOperations ?? [])]
+  })
+}
+
+export async function getSettingsDiagnostics(page: Page) {
+  return page.evaluate(() => {
+    const globalWindow = window as TauriMockWindow
+    return globalWindow.__FLOW_TEST_TAURI__?.settingsDiagnostics ?? []
   })
 }
 

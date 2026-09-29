@@ -4,6 +4,8 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 
+import { checkEnvironment } from './verify-environment.ts'
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 process.chdir(root)
 
@@ -40,6 +42,7 @@ const checks = {
   scripts: { group: 'node', script: 'check:scripts' },
   skills: { group: 'node', script: 'check:skills' },
   json: { group: 'portable' },
+  versions: { group: 'portable', script: 'version:check' },
   shell: { group: 'portable' },
   powershell: { group: 'powershell' },
   workflows: { group: 'portable' },
@@ -71,6 +74,7 @@ function revision(ref: string) {
 const { values } = parseArgs({
   options: {
     plan: { type: 'boolean' },
+    preflight: { type: 'boolean' },
     json: { type: 'boolean' },
     all: { type: 'boolean' },
     local: { type: 'boolean' },
@@ -92,11 +96,15 @@ function selectChecks(files: string[], full: boolean) {
   }
   if (full) add(allChecks, 'Full verification requested')
   for (const path of full ? [] : files) {
-    if (path === 'scripts/verify.ts' || path === '.github/workflows/ci.yml') {
+    if (
+      path === 'scripts/verify.ts' ||
+      path === 'scripts/verify-environment.ts' ||
+      path === '.github/workflows/ci.yml'
+    ) {
       add(allChecks, `${path}: verification infrastructure`)
     } else if (['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.npmrc'].includes(path)) {
       add(
-        [...webChecks, ...rustChecks, 'scripts', 'skills', 'epub-engine', 'json'],
+        [...webChecks, ...rustChecks, 'scripts', 'skills', 'epub-engine', 'json', 'versions'],
         `${path}: commands or dependencies`,
       )
     } else if (path === 'rust-toolchain.toml' || path.startsWith('.cargo/')) {
@@ -148,6 +156,16 @@ function selectChecks(files: string[], full: boolean) {
       add(['shell'], `${path}: Git hook`)
     } else if (!/\.md$/.test(path) && !['LICENSE', '.gitignore'].includes(path) && !path.startsWith('.vscode/')) {
       add(allChecks, `${path}: unclassified file (conservative fallback)`)
+    }
+    if (
+      path === 'CHANGELOG.md' ||
+      path === 'scripts/set-version.ts' ||
+      path === 'src/updateChangelog.ts' ||
+      /^(src-tauri|crates|native\/shell-thumbnails)\/(Cargo\.(toml|lock)|tauri\.conf\.json|macos-extension\/.*\.pbxproj)$/.test(
+        path,
+      )
+    ) {
+      add(['versions'], `${path}: synchronized release versions`)
     }
   }
   return reasons
@@ -247,10 +265,10 @@ function execute(id: CheckId, files: string[]) {
   }
 }
 
-function main() {
+async function main() {
   if (values.help) {
     console.log(
-      'pnpm verify [--plan] [--json] [--base <ref> [--head <ref>]] [--all] [--local]\nDefault: tracked changes against HEAD plus untracked, non-ignored files.\n--local explicitly defers checks requiring another OS to CI.\n--checks <comma-separated IDs> runs an exact CI matrix selection; --ci-plan writes GITHUB_OUTPUT.',
+      'pnpm verify [--plan] [--json] [--preflight] [--base <ref> [--head <ref>]] [--all] [--local]\nDefault: tracked changes against HEAD plus untracked, non-ignored files.\n--preflight checks required tools without running suites.\n--local explicitly defers checks requiring another OS to CI.\n--checks <comma-separated IDs> runs an exact CI matrix selection; --ci-plan writes GITHUB_OUTPUT.',
     )
     return
   }
@@ -311,6 +329,15 @@ function main() {
   const deferred = selected.filter((check) => !check.runnable)
   if (deferred.length && !values.local)
     throw new Error('This plan requires macOS checks. Use CI, or --local to explicitly defer them.')
+  if (deferred.length)
+    console.log(
+      `Deferred to CI: ${deferred.map((check) => check.id).join(',')}. Cross-platform verification is incomplete.`,
+    )
+  const environmentDeferred = await checkEnvironment(
+    selected.filter((check) => check.runnable).map((check) => check.id),
+  )
+  deferred.push(...selected.filter((check) => environmentDeferred.includes(check.id)))
+  if (values.preflight) return
   const files = [
     ...new Set(
       git(['ls-files', '-z', '--cached', '--others', '--exclude-standard'])
@@ -318,18 +345,16 @@ function main() {
         .filter((file) => file && existsSync(file)),
     ),
   ].sort()
-  for (const check of selected.filter((check) => check.runnable)) {
+  for (const check of selected.filter((check) => check.runnable && !environmentDeferred.includes(check.id))) {
     console.log(`\nRunning ${check.id}`)
     execute(check.id, files)
   }
   console.log(
-    `\nPassed ${selected.length - deferred.length} checks.${deferred.length ? ` Deferred to CI: ${deferred.map((check) => check.id).join(',')}. Cross-platform verification is incomplete.` : ''}`,
+    `\nPassed ${selected.length - deferred.length} checks.${deferred.length ? ` Deferred to CI: ${deferred.map((check) => check.id).join(',')}. Verification is incomplete.` : ''}`,
   )
 }
 
-try {
-  main()
-} catch (error) {
+main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : error)
   process.exitCode = 1
-}
+})

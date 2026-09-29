@@ -65,6 +65,7 @@
     "bundle:macos:collect": "node scripts/collect-installed-bundle.ts macos",
     "bundle:linux:collect": "node scripts/collect-installed-bundle.ts linux",
     "bundle:release:manifest": "node scripts/generate-updater-manifest.ts",
+    "version:check": "node scripts/set-version.ts --check",
     "version:set": "node scripts/set-version.ts",
     "bundle:windows:installed": "pnpm bundle:windows:thumbnail && powershell -NoProfile -ExecutionPolicy Bypass -File native/shell-thumbnails/packaging/windows/prepare-nsis.ps1 && pnpm bundle:windows:installed:tauri && pnpm bundle:windows:collect",
     "bundle:macos:installed": "pnpm bundle:macos:thumbnail && pnpm bundle:macos:installed:tauri && pnpm bundle:macos:collect",

@@ -11,6 +11,8 @@
 ## Commands
 
 - `pnpm verify --plan` previews checks and their triggering files; `pnpm verify` runs that plan. Selection is shared with CI in `scripts/verify.ts`.
+- Verification checks selected tools and browser launch readiness before running suites; `pnpm verify --preflight` runs only this environment check. `pnpm version:check` checks synchronized release versions without writing files.
+- Missing local actionlint defers workflow validation to CI with an explicit incomplete-verification notice. CI requires actionlint; an installed tool that fails is never silently skipped.
 - The default diff includes staged, unstaged, and untracked non-ignored files against HEAD. Use `--base <ref>` to include committed changes, or `--base <ref> --head <ref>` for an exact commit comparison. An empty working tree is not verification of the last commit.
 - `pnpm check` remains the standard web suite. `pnpm check:full` runs every host-compatible catalog check, including all three Rust workspaces, EPUB engine, both browsers, and script/configuration checks. Checks requiring another OS are explicitly deferred to CI; this is not cross-platform release approval.
 - `pnpm check:release` runs the full host suite and builds an unbundled application. Packaged-app and updater validation belong to the release workflow.
@@ -52,6 +54,7 @@
 - Use `pnpm verify --plan` to select validation, then `pnpm verify` to execute it. For explicitly host-only work, `--local` reports checks deferred to another OS. Required tools include the selected browsers, Rust, Bash, PowerShell, actionlint, and Xcode for macOS-native checks.
 - `pnpm check` is a web-only convenience command and does not replace the selected verification plan.
 - Integration tests are expensive: whenever possible, run only the cases relevant to the change, using spec paths and `--grep`. Run the full integration suite or `pnpm check:full` only when the impact cannot reasonably be narrowed or a full run is explicitly required.
+- Browser failures retain traces, screenshots, and a JSON report under `test-results/`; CI uploads this directory on browser-job failure. Use `pnpm exec playwright show-trace <trace.zip>` to inspect a trace. These diagnostics are development/test tooling, not production error handling.
 - Use synthetic fixture text in tests; do not copy book text, user-provided context, or investigation-specific prose into test cases unless the exact text is required to reproduce a parser or encoding bug.
 - Keep test fixtures platform-neutral. Do not use Windows- or Unix-specific drive letters, absolute paths, path separators, shell syntax, or other operating-system characteristics unless the test explicitly verifies platform-specific path handling or system integration.
 - For reader rendering, selection, keyboard, layout, or performance-sensitive changes, use the repository skills above to choose the required client checks.

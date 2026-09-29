@@ -4,6 +4,7 @@ import { msg } from '../support/i18n'
 import {
   clearSettingsOperations,
   getFullscreenState,
+  getSettingsDiagnostics,
   getSettingsOperations,
   getStoredSettings,
   installTauriMock,
@@ -39,6 +40,14 @@ test.beforeEach(async ({ page }) => {
   await installTauriMock(page)
   await page.goto('/')
   await expect(page.locator('#layout')).toBeVisible()
+})
+
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus || page.isClosed()) return
+  await testInfo.attach('settings-operations', {
+    body: JSON.stringify(await getSettingsDiagnostics(page), null, 2),
+    contentType: 'application/json',
+  })
 })
 
 test('persists accent color settings', async ({ page }) => {
@@ -99,6 +108,8 @@ test('settings dropdown dismissal closes one layer at a time', async ({ page }) 
 })
 
 test('settings close flushes only a changed session after its update', async ({ page }) => {
+  // Startup also writes settings; isolate the dialog session from that background write.
+  await expect.poll(async () => (await getStoredSettings(page)).startupSession).toEqual({ viewMode: 'library' })
   let dialog = await openSettings(page)
   await clearSettingsOperations(page)
   await dialog.locator('[data-slot="dialog-close"]').click()

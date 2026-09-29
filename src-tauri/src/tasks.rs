@@ -816,6 +816,15 @@ mod tests {
         time::{Duration, Instant},
     };
 
+    fn join_with_deadline<T>(handle: thread::JoinHandle<T>, waiting_for: &str) -> T {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !handle.is_finished() {
+            assert!(Instant::now() < deadline, "timed out waiting for {waiting_for}");
+            thread::sleep(Duration::from_millis(1));
+        }
+        handle.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+    }
+
     #[test]
     fn task_registry_reuses_one_in_flight_task_for_matching_keys() {
         let registry = Arc::new(TaskRegistry::<u32>::new());
@@ -848,8 +857,8 @@ mod tests {
             })
         };
 
-        assert_eq!(first.join().unwrap(), Ok(42));
-        assert_eq!(second.join().unwrap(), Ok(42));
+        assert_eq!(join_with_deadline(first, "first matching registry task"), Ok(42));
+        assert_eq!(join_with_deadline(second, "second matching registry task"), Ok(42));
         assert_eq!(runs.load(Ordering::SeqCst), 1);
     }
 
@@ -903,8 +912,8 @@ mod tests {
         service.cancel_background();
         release_first_tx.send(()).unwrap();
 
-        first.join().unwrap().unwrap();
-        assert!(second.join().unwrap().is_err());
+        join_with_deadline(first, "running background task after cancellation").unwrap();
+        assert!(join_with_deadline(second, "cancelled background waiter").is_err());
         assert_eq!(executed.load(Ordering::SeqCst), 0);
     }
 
@@ -931,7 +940,7 @@ mod tests {
         gate.set_max(2);
 
         acquired_rx.recv_timeout(Duration::from_millis(100)).unwrap();
-        waiter.join().unwrap();
+        join_with_deadline(waiter, "resource waiter after limit increase");
     }
 
     #[test]
@@ -963,7 +972,7 @@ mod tests {
         drop(second);
 
         acquired_rx.recv_timeout(Duration::from_millis(100)).unwrap();
-        waiter.join().unwrap();
+        join_with_deadline(waiter, "resource waiter after permits released");
     }
 
     #[test]
@@ -992,7 +1001,7 @@ mod tests {
 
         drop(first);
         release_tx.send(()).unwrap();
-        waiter.join().unwrap();
+        join_with_deadline(waiter, "resource snapshot waiter after release");
     }
 
     #[test]
@@ -1159,8 +1168,8 @@ mod tests {
             })
         };
 
-        first.join().unwrap().unwrap();
-        second.join().unwrap().unwrap();
+        join_with_deadline(first, "first operation on the same book").unwrap();
+        join_with_deadline(second, "second operation on the same book").unwrap();
 
         assert_eq!(max_active.load(Ordering::SeqCst), 1);
     }
@@ -1182,14 +1191,18 @@ mod tests {
                     let now = active.fetch_add(1, Ordering::SeqCst) + 1;
                     max_active.fetch_max(now, Ordering::SeqCst);
                     first_entered_tx.send(()).unwrap();
-                    release_first_rx.recv().unwrap();
+                    release_first_rx
+                        .recv_timeout(Duration::from_secs(10))
+                        .expect("timed out waiting for release of book-a operation");
                     active.fetch_sub(1, Ordering::SeqCst);
                     Ok(())
                 })
             })
         };
 
-        first_entered_rx.recv().unwrap();
+        first_entered_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("timed out waiting for book-a operation to start");
         let (second_entered_tx, second_entered_rx) = mpsc::channel();
 
         let second = {
@@ -1209,10 +1222,13 @@ mod tests {
 
         let overlapped = second_entered_rx.recv_timeout(Duration::from_secs(5)).is_ok();
         release_first_tx.send(()).unwrap();
-        first.join().unwrap().unwrap();
-        second.join().unwrap().unwrap();
+        join_with_deadline(first, "book-a operation after release").unwrap();
+        join_with_deadline(second, "book-b operation").unwrap();
 
-        assert!(overlapped);
+        assert!(
+            overlapped,
+            "timed out waiting for book-b to enter while book-a was active"
+        );
         assert!(max_active.load(Ordering::SeqCst) > 1);
     }
 
@@ -1220,9 +1236,12 @@ mod tests {
     fn book_exclusive_work_is_reentrant_on_same_thread() {
         let service = TaskService::default();
 
-        let result = service.run_book_exclusive("book", super::TaskPriority::Foreground, || {
-            service.run_book_exclusive("book", super::TaskPriority::Foreground, || Ok(42))
+        let worker = thread::spawn(move || {
+            service.run_book_exclusive("book", super::TaskPriority::Foreground, || {
+                service.run_book_exclusive("book", super::TaskPriority::Foreground, || Ok(42))
+            })
         });
+        let result = join_with_deadline(worker, "reentrant operation on the same book");
 
         assert_eq!(result, Ok(42));
     }

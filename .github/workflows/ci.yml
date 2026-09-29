@@ -105,6 +105,15 @@ jobs:
           pnpm_config_verify_deps_before_run: 'false'
         run: pnpm verify --checks '${{ matrix.checks }}'
 
+      - name: Upload browser failure diagnostics
+        if: failure() && matrix.browser
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-diagnostics-${{ matrix.area }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
   result:
     name: CI result
     if: always()

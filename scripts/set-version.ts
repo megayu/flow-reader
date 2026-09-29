@@ -6,11 +6,14 @@ import { parseChangelog } from '../src/updateChangelog.ts'
 import { repositoryRoot } from './bundle-cargo.ts'
 
 const [requestedVersion, ...extraArguments] = process.argv.slice(2).filter((argument) => argument !== '--')
-if (!requestedVersion || extraArguments.length > 0 || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(requestedVersion)) {
-  throw new Error('Usage: pnpm version:set <semver>')
+const checkOnly = requestedVersion === '--check'
+if (
+  !requestedVersion ||
+  extraArguments.length > 0 ||
+  (!checkOnly && !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(requestedVersion))
+) {
+  throw new Error('Usage: pnpm version:set <semver> | pnpm version:check')
 }
-const version = requestedVersion
-const appleBundleVersion = version.split('-', 1)[0] ?? version
 
 const tauriConfigPath = resolve(repositoryRoot, 'src-tauri/tauri.conf.json')
 const cargoManifestPath = resolve(repositoryRoot, 'src-tauri/Cargo.toml')
@@ -24,6 +27,13 @@ const thumbnailXcodeProjectPath = resolve(
   'native/shell-thumbnails/macos-extension/FlowReaderThumbnail.xcodeproj/project.pbxproj',
 )
 const changelogPath = resolve(repositoryRoot, 'CHANGELOG.md')
+const tauriConfigSource = readFileSync(tauriConfigPath, 'utf8')
+const parsedTauriConfig = JSON.parse(tauriConfigSource) as { version?: string }
+if (typeof parsedTauriConfig.version !== 'string') {
+  throw new Error('src-tauri/tauri.conf.json does not define a version.')
+}
+const version = checkOnly ? parsedTauriConfig.version : requestedVersion
+const appleBundleVersion = version.split('-', 1)[0] ?? version
 
 function replaceSingleVersion(source: string, pattern: RegExp, replacement: string, description: string) {
   const matches = [...source.matchAll(pattern)]
@@ -50,11 +60,6 @@ function replaceCargoLockPackageVersions(source: string, packageNames: string[],
   )
 }
 
-const tauriConfigSource = readFileSync(tauriConfigPath, 'utf8')
-const parsedTauriConfig = JSON.parse(tauriConfigSource) as { version?: string }
-if (typeof parsedTauriConfig.version !== 'string') {
-  throw new Error('src-tauri/tauri.conf.json does not define a version.')
-}
 const tauriConfig = replaceSingleVersion(
   tauriConfigSource,
   /^ {2}"version": "[^"]+",$/gmu,
@@ -132,16 +137,30 @@ function releaseChangelogVersion(markdown: string) {
   return markdown.replace(unreleased[0], `## [Unreleased]\n\n${released}\n\n`)
 }
 
-const changelog = releaseChangelogVersion(readFileSync(changelogPath, 'utf8'))
-
-writeFileSync(tauriConfigPath, tauriConfig)
-writeFileSync(cargoManifestPath, cargoManifest)
-writeFileSync(cargoLockPath, cargoLock)
-writeFileSync(cratesManifestPath, cratesManifest)
-writeFileSync(cratesLockPath, cratesLock)
-writeFileSync(thumbnailManifestPath, thumbnailManifest)
-writeFileSync(thumbnailLockPath, thumbnailLock)
-writeFileSync(thumbnailXcodeProjectPath, thumbnailXcodeProject)
-writeFileSync(changelogPath, changelog)
-
-console.log(`Set Flow Reader version to ${version}.`)
+const outputs = new Map([
+  [tauriConfigPath, tauriConfig],
+  [cargoManifestPath, cargoManifest],
+  [cargoLockPath, cargoLock],
+  [cratesManifestPath, cratesManifest],
+  [cratesLockPath, cratesLock],
+  [thumbnailManifestPath, thumbnailManifest],
+  [thumbnailLockPath, thumbnailLock],
+  [thumbnailXcodeProjectPath, thumbnailXcodeProject],
+])
+const changelogSource = readFileSync(changelogPath, 'utf8')
+if (checkOnly) {
+  const mismatches = [...outputs]
+    .filter(([path, expected]) => readFileSync(path, 'utf8') !== expected)
+    .map(([path]) => path)
+  if (parseChangelog(changelogSource).find((section) => section.version !== 'Unreleased')?.version !== version)
+    mismatches.push(changelogPath)
+  if (mismatches.length)
+    throw new Error(
+      `Version mismatch (expected ${version}):\n${mismatches.join('\n')}\nRun pnpm version:set ${version} after checking the intended release version.`,
+    )
+  console.log(`Version ${version} is consistent across manifests, lockfiles, Xcode and changelog.`)
+} else {
+  outputs.set(changelogPath, releaseChangelogVersion(changelogSource))
+  for (const [path, source] of outputs) writeFileSync(path, source)
+  console.log(`Set Flow Reader version to ${version}.`)
+}
