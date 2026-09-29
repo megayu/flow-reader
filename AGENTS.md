@@ -10,7 +10,10 @@
 
 ## Commands
 
-- `pnpm check` runs the standard web validation suite; `pnpm check:full` also runs the EPUB engine, Rust, and browser integration suites.
+- `pnpm verify --plan` previews checks and their triggering files; `pnpm verify` runs that plan. Selection is shared with CI in `scripts/verify.ts`.
+- The default diff includes staged, unstaged, and untracked non-ignored files against HEAD. Use `--base <ref>` to include committed changes, or `--base <ref> --head <ref>` for an exact commit comparison. An empty working tree is not verification of the last commit.
+- `pnpm check` remains the standard web suite. `pnpm check:full` runs every host-compatible catalog check, including all three Rust workspaces, EPUB engine, both browsers, and script/configuration checks. Checks requiring another OS are explicitly deferred to CI; this is not cross-platform release approval.
+- `pnpm check:release` runs the full host suite and builds an unbundled application. Packaged-app and updater validation belong to the release workflow.
 - `pnpm exec playwright test <spec> --grep <pattern>` - run matching integration test cases in the specified Playwright spec; omit `--grep` to run the whole spec. Set `PLAYWRIGHT_PORT` if 7127 is busy.
 - `pnpm doctor:lines` - run after non-trivial React component/hook changes to catch render, hook, and state-flow issues on changed lines.
 - `pnpm --filter @flow/epub-engine test` - run the internal EPUB engine Vitest Browser Mode suite in headless Chromium.
@@ -46,8 +49,8 @@
 ## Testing Guidelines
 
 - Use `msg(...)` for localized UI labels in tests; never hard-code them.
-- Use `pnpm check` for standard web validation; it does not include EPUB engine or Rust checks.
-- When the EPUB engine or native code is affected, separately run `pnpm check:epub-engine` or `pnpm check:rust`, respectively.
+- Use `pnpm verify --plan` to select validation, then `pnpm verify` to execute it. For explicitly host-only work, `--local` reports checks deferred to another OS. Required tools include the selected browsers, Rust, Bash, PowerShell, actionlint, and Xcode for macOS-native checks.
+- `pnpm check` is a web-only convenience command and does not replace the selected verification plan.
 - Integration tests are expensive: whenever possible, run only the cases relevant to the change, using spec paths and `--grep`. Run the full integration suite or `pnpm check:full` only when the impact cannot reasonably be narrowed or a full run is explicitly required.
 - Use synthetic fixture text in tests; do not copy book text, user-provided context, or investigation-specific prose into test cases unless the exact text is required to reproduce a parser or encoding bug.
 - Keep test fixtures platform-neutral. Do not use Windows- or Unix-specific drive letters, absolute paths, path separators, shell syntax, or other operating-system characteristics unless the test explicitly verifies platform-specific path handling or system integration.

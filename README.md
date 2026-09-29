@@ -139,7 +139,14 @@ pnpm tauri:dev
 
 ### Verify
 
-Run the source checks and production frontend build:
+Preview and run checks for the current changes:
+
+```bash
+pnpm verify --plan
+pnpm verify
+```
+
+Run the standard web checks and production frontend build:
 
 ```bash
 pnpm check
@@ -172,7 +179,7 @@ Run one integration test by matching its title:
 pnpm test:integration tests/integration/app-shell.spec.ts -g "loads without client exceptions"
 ```
 
-Run the complete browser, EPUB engine, and native quality and test suite:
+Run all checks supported on the current platform:
 
 ```bash
 pnpm check:full

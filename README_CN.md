@@ -97,7 +97,14 @@ pnpm tauri:dev
 
 ### 检查与测试
 
-运行常规源码检查、单元测试和前端生产构建：
+预览并执行当前修改所需的检查：
+
+```bash
+pnpm verify --plan
+pnpm verify
+```
+
+运行常规 Web 源码检查、单元测试和前端生产构建：
 
 ```bash
 pnpm check
@@ -129,7 +136,7 @@ pnpm test:integration:webkit tests/integration/app-shell.spec.ts
 pnpm test:integration tests/integration/app-shell.spec.ts -g "loads without client exceptions"
 ```
 
-运行完整的浏览器测试、EPUB 引擎测试、原生代码检查与测试：
+运行当前平台支持的完整检查：
 
 ```bash
 pnpm check:full
