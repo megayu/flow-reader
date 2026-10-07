@@ -222,6 +222,7 @@
   "reader.slow_open.description": "Klicken Sie in der Bibliothek mit der rechten Maustaste auf dieses Buch und wählen Sie „Bearbeitung aktivieren“. Die App versucht, zu große Kapitel aufzuteilen, um das Laden zu beschleunigen und den Arbeitsspeicherbedarf zu senken.",
   "reader.slow_open.title": "„{1}“ wurde langsam geöffnet",
 
+  "search.failed": "Suche fehlgeschlagen. Bitte erneut versuchen.",
   "search.result.summary": "Treffer: {1} · Abschnitte: {2}",
   "search.title": "Suchen",
 

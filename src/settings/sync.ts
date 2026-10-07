@@ -32,7 +32,7 @@ export function updateNativeSettings(settings: Settings, flush: boolean) {
 }
 
 export function getNativeSettingsBootstrap() {
-  return getSettingsFromStorage<SettingsBootstrap>()
+  return getSettingsFromStorage()
 }
 
 export function resetNativeTextImportRule(kind: TextImportRuleKind) {

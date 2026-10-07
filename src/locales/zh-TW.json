@@ -222,6 +222,7 @@
   "reader.slow_open.description": "在書架中以滑鼠右鍵點擊本書，選擇「開啟編輯」。應用程式會嘗試拆分過大的章節，以加快載入速度、減少記憶體用量。",
   "reader.slow_open.title": "《{1}》開啟較慢",
 
+  "search.failed": "搜尋失敗，請重試。",
   "search.result.summary": "在 {2} 個章節中找到 {1} 個結果",
   "search.title": "搜尋",
 

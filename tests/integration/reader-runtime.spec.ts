@@ -3230,6 +3230,46 @@ verticalBookTest('turns to the next spread for an off-page chapter find result',
   await expectVisibleReaderMarks(page, 'flow-epub-hl', 1)
 })
 
+verticalBookTest('distinguishes a failed book search from no matches and retries the query', async ({ page }) => {
+  await openVerticalFixtureBook(page)
+  await page.evaluate(() => {
+    const internals = (window as any).__TAURI_INTERNALS__
+    const invoke = internals.invoke
+    let failNextSearch = true
+    internals.invoke = (command: string, args: any) => {
+      if (command === 'search_book_text' && !args.query.positions && failNextSearch) {
+        failNextSearch = false
+        return Promise.reject(new Error('Synthetic search read failure'))
+      }
+      return invoke(command, args)
+    }
+  })
+  const sidebar = page.locator('.SideBar')
+  await page
+    .locator('.ActivityBar')
+    .getByRole('button', { name: msg('search.title'), exact: true })
+    .click()
+  const input = sidebar.getByRole('textbox', { name: msg('search.title'), exact: true })
+  await input.fill('VERTICAL-CHAPTER-01-29')
+
+  const failure = sidebar.getByText(msg('search.failed'), { exact: true })
+  const retry = failure.locator('..').getByRole('button')
+  const noMatches = sidebar.getByText(msg('search.result.summary').replace('{1}', '0').replace('{2}', '0'), {
+    exact: true,
+  })
+  await expect(failure).toBeVisible()
+  await expect(noMatches).toBeHidden()
+  await retry.click()
+  await expect(listRow(sidebar, 'VERTICAL-CHAPTER-01-29')).toBeVisible()
+  await expect(failure).toBeHidden()
+  await expect(retry).toBeHidden()
+
+  await input.fill('SYNTHETIC-NO-MATCH')
+  await expect(noMatches).toBeVisible()
+  await expect(failure).toBeHidden()
+  await expect(retry).toBeHidden()
+})
+
 verticalBookTest('[vertical-rl] keeps a clicked sidebar search result active and visible', async ({ page }) => {
   await openVerticalFixtureBook(page)
   await page.locator('.ActivityBar button[aria-label="Search"]').click()

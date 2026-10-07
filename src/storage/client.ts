@@ -1,44 +1,27 @@
 import { Channel } from '@tauri-apps/api/core'
 
 import { RecentReadingModel } from '../library/recentReading'
+import type { Settings } from '../settings/configuration'
+import type { TextImportRuleKind } from '../settings/sync'
 
 import { storagePathToUrl as filePathToUrl, invokeStorage as invoke } from './native'
 import type {
   BookCacheClearProgress,
   BookExportFormat,
-  BookImageIndexCache,
   BookImportProgress,
   BookImportResult,
-  BookModeSwitchConflict,
   BookModeSwitchResolution,
-  BookModeSwitchResult,
   BookReaderPreparation,
-  BookReaderSource,
   BookRecord,
-  BookSearchResult,
-  BookSourceStatusRecord,
   BookStateCheckpointInput,
-  BookTextReplaceResult,
   BookTextReplaceTarget,
   CoverRecord,
-  FolderImportCandidate,
   FolderImportTagAssignment,
-  FolderImportTagResult,
   LibraryPins,
   LibraryTagRecord,
   ReadingStatus,
-  TextImportEncodingOption,
-  TextImportPreview,
   TextImportSelection,
 } from './types'
-
-interface NativeBookReaderPreparation {
-  mode: BookReaderSource['mode']
-  path: string
-  rootPath?: string
-  updatedBook?: BookRecord
-  readingMetrics?: BookReaderSource['readingMetrics']
-}
 
 type Listener = () => void
 type TableName = 'books' | 'bookImports' | 'covers' | 'pins' | 'recentBooks' | 'settings' | 'tags'
@@ -206,7 +189,7 @@ function rememberPins(pins: LibraryPins) {
 }
 
 async function updateLibraryPin(kind: 'author' | 'tag', id: string, pinned: boolean) {
-  const pins = await trackNativeWrite(invoke<LibraryPins>('update_library_pin', { kind, id, pinned }))
+  const pins = await trackNativeWrite(invoke('update_library_pin', { kind, id, pinned }))
   rememberPins(pins)
   notify('pins')
   return pins
@@ -220,7 +203,7 @@ function loadRecentBooks() {
   if (recentBooksLoaded) return Promise.resolve(recentReading.snapshot())
   if (recentBooksPromise) return recentBooksPromise
 
-  const request = invoke<string[] | undefined>('get_recent_book_ids').then((ids) => {
+  const request = invoke('get_recent_book_ids').then((ids) => {
     const storedIds = ids ?? []
     recentReading.replace(recentBooksChangedDuringLoad ? [...recentReading.snapshot(), ...storedIds] : storedIds)
     recentBooksChangedDuringLoad = false
@@ -254,7 +237,7 @@ async function fetchCurrentBooks(): Promise<BookRecord[]> {
   if (booksCache) return booksCache
 
   const requestEpoch = booksCacheEpoch
-  const books = await invoke<BookRecord[]>('list_books')
+  const books = await invoke('list_books')
   if (requestEpoch !== booksCacheEpoch) return fetchCurrentBooks()
 
   cacheBooks(books)
@@ -325,15 +308,18 @@ function logBookImportFailures(command: string, result: BookImportResult) {
   }
 }
 
+type BookImportRequest =
+  | { command: 'import_epub_paths'; args: { paths: string[] } }
+  | { command: 'import_text_paths'; args: { imports: TextImportSelection[]; copySourceFiles?: boolean } }
+
 async function importBooksWithProgress(
-  command: 'import_epub_paths' | 'import_text_paths',
-  args: Record<string, unknown>,
+  request: BookImportRequest,
   importId: string | undefined,
   onProgress: ((progress: BookImportProgress) => void) | undefined,
   batch?: BookImportCache,
 ): Promise<BookImportResult> {
   if (!batch) {
-    return runBookImportBatch((batch) => importBooksWithProgress(command, args, importId, onProgress, batch))
+    return runBookImportBatch((batch) => importBooksWithProgress(request, importId, onProgress, batch))
   }
 
   const books = new Map<string, BookRecord>()
@@ -351,14 +337,17 @@ async function importBooksWithProgress(
     notify('bookImports')
     onProgress?.(progress)
   })
-  const result = await invoke<BookImportResult>(command, { ...args, onProgress: progressChannel })
-  logBookImportFailures(command, result)
+  const result =
+    request.command === 'import_epub_paths'
+      ? await invoke('import_epub_paths', { ...request.args, onProgress: progressChannel })
+      : await invoke('import_text_paths', { ...request.args, onProgress: progressChannel })
+  logBookImportFailures(request.command, result)
   result.books.forEach((book) => {
     books.set(book.id, book)
     batch.books.set(book.id, book)
   })
   if (result.books.length && coversCache) {
-    const fallbackCovers = await invoke<CoverRecord[]>('list_covers', {
+    const fallbackCovers = await invoke('list_covers', {
       ids: result.books.map((book) => book.id),
     })
     fallbackCovers.forEach((cover) => batch.covers.set(cover.id, normalizeCoverRecord(cover)))
@@ -378,7 +367,7 @@ export const db = {
       return loadBooks()
     },
     async get(id: string): Promise<BookRecord | undefined> {
-      const book = await invoke<BookRecord | null>('get_book', { id })
+      const book = await invoke('get_book', { id })
       return book ?? undefined
     },
     peek(id: string) {
@@ -391,10 +380,10 @@ export const db = {
       return invoke('open_book_directory', { id })
     },
     revealSource(id: string) {
-      return invoke<boolean>('reveal_book_source', { id })
+      return invoke('reveal_book_source', { id })
     },
     async getWordCount(id: string) {
-      const wordCount = await invoke<number>('get_book_word_count', { id })
+      const wordCount = await invoke('get_book_word_count', { id })
       updateCachedBook(id, { wordCount })
       return wordCount
     },
@@ -405,7 +394,7 @@ export const db = {
       updateCachedBook(id, changes)
     },
     persistState(checkpoint: BookStateCheckpointInput, flush: boolean) {
-      return trackNativeWrite(invoke<void>('persist_book_state', { checkpoint, flush }))
+      return trackNativeWrite(invoke('persist_book_state', { checkpoint, flush }))
     },
     async update(id: string, changes: Pick<BookRecord, 'metadata'>) {
       beginBooksMutation()
@@ -416,7 +405,7 @@ export const db = {
       }
 
       const updatedCover = await trackNativeWrite(
-        invoke<CoverRecord | null>('update_book', {
+        invoke('update_book', {
           id,
           changes: committedChanges,
         }),
@@ -427,18 +416,16 @@ export const db = {
       notify(...(['books', updatedCover ? 'covers' : undefined, 'pins'].filter(Boolean) as TableName[]))
     },
     checkSourceStatuses(ids: string[]) {
-      return invoke<BookSourceStatusRecord[]>('check_book_source_statuses', {
+      return invoke('check_book_source_statuses', {
         ids,
       })
     },
     checkContentModeSwitch(id: string, editable: boolean) {
-      return invoke<BookModeSwitchConflict | null>('check_book_content_mode_switch', { id, editable })
+      return invoke('check_book_content_mode_switch', { id, editable })
     },
     async switchContentMode(id: string, editable: boolean, resolution?: BookModeSwitchResolution) {
       beginBooksMutation()
-      const result = await trackNativeWrite(
-        invoke<BookModeSwitchResult>('switch_book_content_mode', { id, editable, resolution }),
-      )
+      const result = await trackNativeWrite(invoke('switch_book_content_mode', { id, editable, resolution }))
       if (result.book) {
         upsertCachedBook(result.book)
         notify('books')
@@ -460,7 +447,7 @@ export const db = {
       beginBooksMutation()
       const updatedAt = Date.now()
       await trackNativeWrite(
-        invoke<void>('update_book_reading_status', {
+        invoke('update_book_reading_status', {
           ids,
           readingStatus,
         }),
@@ -479,7 +466,7 @@ export const db = {
     ) {
       return runTagMutation(async () => {
         beginBooksMutation()
-        const books = await invoke<BookRecord[]>('update_book_tags', { ids, addTagIds, removeTagIds })
+        const books = await invoke('update_book_tags', { ids, addTagIds, removeTagIds })
         applyTagBookUpdates(books)
         notify('books')
       })
@@ -489,7 +476,7 @@ export const db = {
     async toArray() {
       if (tagsCache) return tagsCache
 
-      const tags = await invoke<LibraryTagRecord[]>('list_tags')
+      const tags = await invoke('list_tags')
       rememberTags(tags)
       return tags
     },
@@ -498,7 +485,7 @@ export const db = {
     },
     create(name: string) {
       return runTagMutation(async () => {
-        const tag = await invoke<LibraryTagRecord | null>('create_tag', { name })
+        const tag = await invoke('create_tag', { name })
         if (tag) rememberTag(tag)
         notify('tags')
         return tag ?? undefined
@@ -506,7 +493,7 @@ export const db = {
     },
     update(id: string, name: string) {
       return runTagMutation(async () => {
-        const tag = await invoke<LibraryTagRecord | null>('update_tag', { id, name })
+        const tag = await invoke('update_tag', { id, name })
         if (tag) rememberTag(tag)
         notify('tags')
         return tag ?? undefined
@@ -518,7 +505,7 @@ export const db = {
     deleteMany(ids: string[]) {
       return runTagMutation(async () => {
         beginBooksMutation()
-        const books = await invoke<BookRecord[]>('delete_tags', { ids })
+        const books = await invoke('delete_tags', { ids })
         applyTagBookUpdates(books)
         const removed = new Set(ids)
         if (tagsCache) tagsCache = tagsCache.filter((tag) => !removed.has(tag.id))
@@ -529,7 +516,7 @@ export const db = {
     merge(ids: string[], target: { id?: string; name?: string }) {
       return runTagMutation(async () => {
         beginBooksMutation()
-        const { tag, books } = await invoke<{ tag: LibraryTagRecord; books: BookRecord[] }>('merge_tags', {
+        const { tag, books } = await invoke('merge_tags', {
           ids,
           targetId: target.id,
           targetName: target.name,
@@ -548,7 +535,7 @@ export const db = {
     async get() {
       if (pinsCache) return pinsCache
 
-      const pins = await invoke<LibraryPins>('get_library_pins')
+      const pins = await invoke('get_library_pins')
       rememberPins(pins)
       return pins
     },
@@ -588,7 +575,7 @@ export const db = {
       return invoke('reveal_exported_file', { path })
     },
     async openReader(id: string): Promise<BookReaderPreparation> {
-      const result = await invoke<NativeBookReaderPreparation>('get_book_reader_source', { id })
+      const result = await invoke('get_book_reader_source', { id })
       const updatedBook = result.updatedBook
       if (updatedBook) {
         beginBooksMutation()
@@ -606,14 +593,14 @@ export const db = {
       }
     },
     closeReader(id: string) {
-      return invoke<void>('set_book_cache_active', { id, active: false })
+      return invoke('set_book_cache_active', { id, active: false })
     },
   },
   covers: {
     async toArray() {
       if (coversCache) return coversCache
 
-      const covers = await invoke<CoverRecord[]>('list_covers', { ids: null })
+      const covers = await invoke('list_covers', { ids: null })
       return rememberCovers(covers)
     },
     peekAll() {
@@ -634,23 +621,23 @@ export async function importEpubPaths(
     onProgress?: (progress: BookImportProgress) => void
   } = {},
 ) {
-  return importBooksWithProgress('import_epub_paths', { paths }, importId, onProgress, batch)
+  return importBooksWithProgress({ command: 'import_epub_paths', args: { paths } }, importId, onProgress, batch)
 }
 
 export async function openExternalEpubPaths(paths: string[]) {
   await waitForPendingNativeWrites()
   beginBooksMutation()
-  const result = await trackNativeWrite(invoke<BookImportResult>('open_external_epub_paths', { paths }))
+  const result = await trackNativeWrite(invoke('open_external_epub_paths', { paths }))
   logBookImportFailures('open_external_epub_paths', result)
   return result
 }
 
 export function getTextImportEncodings() {
-  return invoke<TextImportEncodingOption[]>('get_text_import_encodings')
+  return invoke('get_text_import_encodings')
 }
 
 export async function previewTextImportPaths(paths: string[], encodings: Record<string, string> = {}) {
-  return invoke<TextImportPreview[]>('preview_text_import_paths', {
+  return invoke('preview_text_import_paths', {
     paths,
     encodings,
   })
@@ -670,11 +657,16 @@ export async function importTextPaths(
     onProgress?: (progress: BookImportProgress) => void
   } = {},
 ) {
-  return importBooksWithProgress('import_text_paths', { imports, copySourceFiles }, importId, onProgress, batch)
+  return importBooksWithProgress(
+    { command: 'import_text_paths', args: { imports, copySourceFiles } },
+    importId,
+    onProgress,
+    batch,
+  )
 }
 
 export function scanImportFolder(root: string, recursive: boolean) {
-  return invoke<FolderImportCandidate[]>('scan_import_folder', { root, recursive })
+  return invoke('scan_import_folder', { root, recursive })
 }
 
 export async function applyFolderImportTags(assignments: FolderImportTagAssignment[]) {
@@ -682,7 +674,7 @@ export async function applyFolderImportTags(assignments: FolderImportTagAssignme
 
   beginBooksMutation()
   const result = await trackNativeWrite(
-    invoke<FolderImportTagResult>('apply_folder_import_tags', {
+    invoke('apply_folder_import_tags', {
       assignments,
     }),
   )
@@ -697,7 +689,7 @@ export async function searchBookText(id: string, keyword: string, limit?: number
   const requestId = signal ? crypto.randomUUID() : undefined
   let started = false
   const cancel = () => {
-    if (started) {
+    if (started && requestId) {
       void invoke('cancel_book_text_search', { requestId }).catch((error) => {
         console.error('Failed to cancel book search', error)
       })
@@ -711,10 +703,10 @@ export async function searchBookText(id: string, keyword: string, limit?: number
     : undefined
   signal?.addEventListener('abort', cancel, { once: true })
   try {
-    return await invoke<BookSearchResult[]>('search_book_text', {
+    return await invoke('search_book_text', {
       id,
       query: { keyword, limit },
-      request: onStarted ? { id: requestId, onStarted } : undefined,
+      request: requestId && onStarted ? { id: requestId, onStarted } : undefined,
     })
   } finally {
     signal?.removeEventListener('abort', cancel)
@@ -722,7 +714,7 @@ export async function searchBookText(id: string, keyword: string, limit?: number
 }
 
 export function loadBookImageIndex(id: string) {
-  return invoke<BookImageIndexCache>('load_book_image_index', { id })
+  return invoke('load_book_image_index', { id })
 }
 
 export async function replaceBookText({
@@ -738,7 +730,7 @@ export async function replaceBookText({
 }) {
   beginBooksMutation()
   const result = await trackNativeWrite(
-    invoke<BookTextReplaceResult>('replace_book_text', {
+    invoke('replace_book_text', {
       id,
       target,
       oldText,
@@ -752,7 +744,7 @@ export async function replaceBookText({
 
 export async function exportBook(id: string, format: BookExportFormat, outputPath: string) {
   beginBooksMutation()
-  const book = await trackNativeWrite(invoke<BookRecord | null>('export_book', { id, format, outputPath }))
+  const book = await trackNativeWrite(invoke('export_book', { id, format, outputPath }))
   if (book) {
     upsertCachedBook(book)
     notify('books')
@@ -771,7 +763,7 @@ export async function clearBookCaches(
 
   beginBooksMutation()
   const books = await trackNativeWrite(
-    invoke<BookRecord[]>('clear_book_caches', {
+    invoke('clear_book_caches', {
       discardUnexportedEdits,
       preservedUnpackedBookIds,
       onProgress: progressChannel,
@@ -786,16 +778,16 @@ export function cleanupExternalBook(id: string) {
   return trackNativeWrite(invoke('cleanup_external_book', { id }))
 }
 
-export async function getSettingsFromStorage<T>() {
-  return invoke<T>('get_settings')
+export async function getSettingsFromStorage() {
+  return invoke('get_settings')
 }
 
-export async function updateSettingsInStorage<T>(settings: T, flush: boolean) {
+export async function updateSettingsInStorage(settings: Settings, flush: boolean) {
   await trackNativeWrite(invoke('update_settings', { settings, flush }))
   notify('settings')
 }
 
-export async function resetTextImportRuleInStorage(kind: string) {
+export async function resetTextImportRuleInStorage(kind: TextImportRuleKind) {
   await trackNativeWrite(invoke('reset_text_import_rule', { kind }))
   notify('settings')
 }
@@ -805,5 +797,5 @@ export async function flushSettingsInStorage() {
 }
 
 export function loadBookSearchExcerpts(id: string, keyword: string, positions: [number, number][]) {
-  return invoke<string[]>('search_book_text', { id, query: { keyword, positions } })
+  return invoke('search_book_text', { id, query: { keyword, positions } })
 }

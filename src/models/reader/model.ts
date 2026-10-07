@@ -211,7 +211,7 @@ export interface INavItem extends NavItem, Omit<INode, 'id' | 'subitems'> {
 
 export interface IMatch extends INode {
   excerpt: string
-  description?: string
+  description?: string | null
   cfi?: string
   sectionIndex?: number
   href?: string
@@ -278,6 +278,7 @@ export class BookTab {
   visibleSections: ISection[] = []
   visibleSectionIndexes: number[] = []
   results?: IMatch[]
+  searchFailed = false
   activeResultID?: string
   bodyTextCache: BodyTextDetectionCache = ref(new Map())
   overlayState: BookOverlayState = {

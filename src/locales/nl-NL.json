@@ -222,6 +222,7 @@
   "reader.slow_open.description": "Klik met de rechtermuisknop op dit boek in je bibliotheek en kies ‘Bewerken inschakelen’. De app probeert te grote hoofdstukken op te splitsen om het laden te versnellen en het geheugengebruik te verminderen.",
   "reader.slow_open.title": "Het openen van ‘{1}’ duurde lang",
 
+  "search.failed": "Zoeken mislukt. Probeer het opnieuw.",
   "search.result.summary": "Resultaten: {1} · secties: {2}",
   "search.title": "Zoeken",
 

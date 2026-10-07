@@ -222,6 +222,7 @@
   "reader.slow_open.description": "Faites un clic droit sur ce livre dans la bibliothèque et choisissez « Activer la modification ». L’application tentera de diviser les chapitres trop volumineux pour accélérer le chargement et réduire l’utilisation de la mémoire.",
   "reader.slow_open.title": "« {1} » a mis du temps à s’ouvrir",
 
+  "search.failed": "La recherche a échoué. Veuillez réessayer.",
   "search.result.summary": "Résultats : {1} · sections : {2}",
   "search.title": "Recherche",
 

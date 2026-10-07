@@ -222,6 +222,7 @@
   "reader.slow_open.description": "Clique com o botão direito neste livro na biblioteca e escolha “Habilitar edição”. O aplicativo tentará dividir capítulos muito grandes para acelerar o carregamento e reduzir o uso de memória.",
   "reader.slow_open.title": "“{1}” demorou para abrir",
 
+  "search.failed": "A busca falhou. Tente novamente.",
   "search.result.summary": "Resultados: {1} · seções: {2}",
   "search.title": "Busca",
 

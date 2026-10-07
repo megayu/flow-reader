@@ -1,4 +1,4 @@
-import { FoldVerticalIcon, LocateFixedIcon, UnfoldVerticalIcon, XIcon } from 'lucide-react'
+import { FoldVerticalIcon, LocateFixedIcon, RefreshCwIcon, UnfoldVerticalIcon, XIcon } from 'lucide-react'
 import {
   forwardRef,
   useCallback,
@@ -115,6 +115,16 @@ const SearchPane: React.FC = () => {
           </InputGroupActions>
         </InputGroup>
       </div>
+      {keyword && focusedBookTab?.searchFailed && (
+        <div className="text-destructive inline-flex items-center gap-1 px-3 py-2 text-base">
+          <span>{t('search.failed')}</span>
+          <IconButton
+            Icon={RefreshCwIcon}
+            className="text-muted-foreground hover:text-foreground size-6 shrink-0"
+            onClick={() => void reader.focusedBookTab?.searchKeywordImmediately(keyword)}
+          />
+        </div>
+      )}
       {keyword && results && (
         <ResultList
           key={`${focusedBookTab?.book.id}:${focusedBookTab?.keyword}`}

@@ -13,11 +13,13 @@ export class BookSearchController {
   }
 
   setKeyword(tab: BookTab, keyword: string) {
+    tab.searchFailed = false
     const requestVersion = this.nextRequestVersion()
     this.onKeywordChange(tab, keyword, requestVersion)
   }
 
   async searchImmediately(tab: BookTab, keyword: string) {
+    tab.searchFailed = false
     if (tab.keyword !== keyword) {
       tab.keyword = keyword
       tab.activeResultID = undefined
@@ -55,10 +57,9 @@ export class BookSearchController {
       if (this.isCurrent(tab, keyword, requestVersion)) {
         tab.results = results
       }
-    } catch (error) {
-      console.error('Failed to update book search results', error)
+    } catch {
       if (this.isCurrent(tab, keyword, requestVersion)) {
-        tab.results = []
+        tab.searchFailed = true
       }
     } finally {
       if (this.pending === controller) this.pending = undefined
@@ -89,12 +90,7 @@ export function searchInSection(tab: BookTab, keyword = tab.keyword, section = t
 export async function searchBook(tab: BookTab, keyword = tab.keyword, signal?: AbortSignal) {
   if (!keyword.trim()) return undefined
 
-  try {
-    return (await searchBookText(tab.book.id, keyword, undefined, signal)) as IMatch[]
-  } catch (error) {
-    console.error(error)
-    return []
-  }
+  return searchBookText(tab.book.id, keyword, undefined, signal)
 }
 
 export async function displaySearchResult(

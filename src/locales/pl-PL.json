@@ -222,6 +222,7 @@
   "reader.slow_open.description": "Kliknij tę książkę prawym przyciskiem myszy w bibliotece i wybierz „Włącz edycję”. Aplikacja spróbuje podzielić zbyt duże rozdziały, aby przyspieszyć wczytywanie i zmniejszyć zużycie pamięci.",
   "reader.slow_open.title": "Otwieranie „{1}” trwało długo",
 
+  "search.failed": "Wyszukiwanie nie powiodło się. Spróbuj ponownie.",
   "search.result.summary": "Wyniki: {1} · sekcje: {2}",
   "search.title": "Szukaj",
 

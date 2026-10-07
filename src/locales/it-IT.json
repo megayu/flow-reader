@@ -222,6 +222,7 @@
   "reader.slow_open.description": "Fai clic con il pulsante destro su questo libro nella libreria e scegli «Abilita modifica». L’app proverà a dividere i capitoli troppo grandi per velocizzare il caricamento e ridurre l’uso di memoria.",
   "reader.slow_open.title": "L’apertura di «{1}» è stata lenta",
 
+  "search.failed": "Ricerca non riuscita. Riprova.",
   "search.result.summary": "Risultati: {1} · sezioni: {2}",
   "search.title": "Cerca",
 
